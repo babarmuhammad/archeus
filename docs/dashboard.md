@@ -30,7 +30,7 @@ From [pypistats.org](https://pypistats.org/packages/claudectl), mirrors excluded
 
 | Last day | Last week | Last month |
 |---|---|---|
-| 19 | 439 | 574 |
+| 9 | 439 | 703 |
 
 ## Repository
 
@@ -50,9 +50,9 @@ From [pypistats.org](https://pypistats.org/packages/claudectl), mirrors excluded
 | Lines of Python | 61,309 |
 | Tests | 1,479 |
 | Documentation pages | 28 |
-| Commits | 147 |
-| Commits in the last 30 days | 78 |
+| Commits | 148 |
+| Commits in the last 30 days | 71 |
 
 Tests run on Windows, macOS and Linux across the supported Python versions on every push — see [CI](https://github.com/babarmuhammad/claudectl/actions).
 
-*Generated 2026-09-04 10:14 UTC.*
+*Generated 2026-09-07 09:26 UTC.*
