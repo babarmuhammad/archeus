@@ -97,7 +97,8 @@ const FAM = CLUSTER.PALETTE_FAMILIES as readonly (readonly [number, string, read
 const FAM_TOTAL = FAM.reduce((t, f) => t + f[0], 0);
 
 function chordOf(seed: number): readonly number[] {
-  let at = (seed - Math.floor(seed)) * FAM_TOTAL, acc = 0;
+  const at = (seed - Math.floor(seed)) * FAM_TOTAL;
+  let acc = 0;
   for (const f of FAM) { acc += f[0]; if (at < acc) return f[2]; }
   return FAM[FAM.length - 1][2];
 }
