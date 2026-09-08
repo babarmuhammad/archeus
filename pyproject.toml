@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "archeus"
-# 2.0.0, not 1.0.0: this package continues the previous name's 1.9.1 rather
-# than starting over, and its first run migrates that install's settings,
-# caches and per-project state onto the new names. A fresh 1.0.0 would read as
-# a downgrade to everyone coming across.
-version = "2.0.0"
+# The 2.x line, not a fresh 1.0.0: this package continues the previous name's
+# 1.9.1 rather than starting over, and its first run migrates that install's
+# settings, caches and per-project state onto the new names. A 1.0.0 would have
+# read as a downgrade to everyone coming across.
+version = "2.0.1"
 description = "The workspace layer for Claude Code - persistent project memory, an interactive architecture graph, MCP awareness, and per-project launch control in a fast terminal UI"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -74,6 +74,10 @@ claude_sessions = [
     # nested: every template is skills_templates/<name>/SKILL.md, so the flat
     # glob matched nothing and the wheel shipped an empty templates directory.
     "skills_templates/*/*.md",
+    # the app icon. It used to live at the repo root, which package-data cannot
+    # reach, so every pip and pipx install ran the desktop window with no icon
+    # and only a dev checkout ever had one.
+    "*.ico",
 ]
 
 [tool.ruff]

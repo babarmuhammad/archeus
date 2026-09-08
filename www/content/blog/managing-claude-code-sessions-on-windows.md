@@ -123,7 +123,7 @@ $lnk = $shell.CreateShortcut("$env:USERPROFILE\Desktop\Open Repo Claude.lnk")
 $lnk.TargetPath       = "C:\Windows\System32\cmd.exe"
 $lnk.Arguments        = "/c `"$PWD\Open Repo cmd.bat`""
 $lnk.WorkingDirectory = "$PWD"
-$lnk.IconLocation     = "$PWD\archeus.ico, 0"
+$lnk.IconLocation     = "$PWD\claude_sessions\archeus.ico, 0"
 $lnk.Save()
 ```
 

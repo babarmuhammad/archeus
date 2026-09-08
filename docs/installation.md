@@ -117,9 +117,9 @@ archeus --gui                   # after `pip install -e .`
 `edge`, or `browser`. The bottom-left **TUI/GUI** toggle (or the `ui_mode` setting) selects
 which interface starts by default; `--tui` / `--gui` always override.
 
-**Desktop shortcut with the GUI icon** — the GUI has its own icon (`archeus-gui.ico`,
-regenerate with `py tools/make_gui_icon.py`). `pythonw.exe` runs it without a console
-window:
+**Desktop shortcut for the GUI** — `pythonw.exe` runs it without a console window.
+`archeus.ico` is the icon for every surface (rebuild it with `py tools/make_icon.py`,
+which writes it and both site favicons from `docs/assets/logo.png`):
 
 ```powershell
 $shell = New-Object -ComObject WScript.Shell
@@ -127,7 +127,7 @@ $lnk = $shell.CreateShortcut("$env:USERPROFILE\Desktop\archeus GUI.lnk")
 $lnk.TargetPath       = "$env:LOCALAPPDATA\Programs\Python\Python310\pythonw.exe"
 $lnk.Arguments        = "`"$PWD\claude-sessions.py`" --gui"
 $lnk.WorkingDirectory = "$PWD"
-$lnk.IconLocation     = "$PWD\archeus-gui.ico, 0"
+$lnk.IconLocation     = "$PWD\claude_sessions\archeus.ico, 0"
 $lnk.Save()
 ```
 
@@ -147,7 +147,7 @@ $lnk.Save()
     $lnk.TargetPath       = "C:\Windows\System32\cmd.exe"
     $lnk.Arguments        = "/c `"$PWD\Open Repo cmd.bat`""
     $lnk.WorkingDirectory = "$PWD"
-    $lnk.IconLocation     = "$PWD\archeus.ico, 0"
+    $lnk.IconLocation     = "$PWD\claude_sessions\archeus.ico, 0"
     $lnk.Save()
     ```
 
@@ -172,7 +172,7 @@ $lnk.Save()
     $lnk.TargetPath       = "C:\Windows\System32\schtasks.exe"
     $lnk.Arguments        = '/run /tn "Archeus"'
     $lnk.WorkingDirectory = "<repo>"
-    $lnk.IconLocation     = "<repo>\archeus.ico, 0"
+    $lnk.IconLocation     = "<repo>\claude_sessions\archeus.ico, 0"
     $lnk.Save()
     ```
 

@@ -62,6 +62,42 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   site. Someone had been hand-correcting the generated file; the generator
   overwrote it each time.
 
+## [2.0.1] - 2026-09-08
+
+### Fixed
+
+- **The desktop window had no icon for anyone who installed from PyPI.** The
+  `.ico` lived at the repository root, which `package-data` cannot reach, so it
+  never entered the wheel — `gui_qt._icon_path()` returned `''` and Qt drew its
+  default. A dev checkout had an icon and nothing else did, which is why this
+  survived so long: the machine it was written on always had one.
+
+  The icon now lives inside the package, where `_icon_path` was already looking
+  as its second candidate, and ships with it.
+
+### Changed
+
+- **One logo, everywhere.** archeus had two marks — a navy-tile one for the
+  terminal and an inverted bright-tile one for the desktop GUI — each drawn by
+  its own script. Two marks for one product is two things to keep in step, and
+  the answer to "which one is the logo" was "it depends where you are looking".
+
+  There is now a single hand-drawn mark, kept as `docs/assets/logo.png`, and one
+  generator that writes every icon from it: the app icon, the documentation
+  favicon and the marketing-site favicon. `tools/make_gui_icon.py` is deleted.
+
+  Two things `tools/make_icon.py` does to the source, both deliberate: it crops
+  to the tile using the alpha channel, because the export carries a soft drop
+  shadow that an icon must not bake in (every OS draws its own) and the artwork
+  sits off-centre in its canvas; and it saves from the largest frame, because
+  passing `sizes` alongside a small base silently keeps only 16×16.
+
+- **The social card carries the mark**, sized from the measured width of the
+  text rather than a chosen number — the first attempt used a fixed 360px and
+  landed on top of the tagline. It is written to both sites now. It used to be
+  generated into the documentation site and copied into the marketing one by
+  hand, and the two had already drifted apart by a kilobyte.
+
 ## [2.0.0]
 
 ### Changed

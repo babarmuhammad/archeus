@@ -10,15 +10,16 @@ import threading
 
 
 def _icon_path():
-    # GUI-specific icon first, TUI icon as fallback; repo root (dev checkout)
-    # or alongside the package
-    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    pkg = os.path.dirname(os.path.abspath(__file__))
-    for name in ('archeus-gui.ico', 'archeus.ico'):
-        for cand in (os.path.join(here, name), os.path.join(pkg, name)):
-            if os.path.isfile(cand):
-                return cand
-    return ''
+    """The app icon, or '' — one file, shipped with the package.
+
+    Two things were wrong here. There was a GUI-specific icon with the TUI's as
+    a fallback, which is two marks to keep in step and no answer to "which one
+    is the logo". And the copy that actually existed lived at the REPO ROOT,
+    which package-data cannot reach — so a dev checkout had a window icon and
+    every pip and pipx install silently had none.
+    """
+    cand = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'archeus.ico')
+    return cand if os.path.isfile(cand) else ''
 
 
 #: fallback when nothing is saved or the saved name has gone — the 'default'

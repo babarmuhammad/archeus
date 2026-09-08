@@ -1,7 +1,7 @@
 {
   "name": "archeus",
   "displayName": "archeus",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Recall this project's memory, check its health, and review the current diff — from inside a session. The full workspace manager is the archeus CLI; this plugin is its in-session surface.",
   "author": {
     "name": "Babar Muhammad Anas",
