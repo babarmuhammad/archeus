@@ -1,14 +1,17 @@
+<p align="center">
+  <img alt="archeus" src="https://raw.githubusercontent.com/babarmuhammad/archeus/main/docs/assets/wordmark.png" width="440">
+</p>
+
 <h1 align="center">archeus</h1>
 
 <p align="center">
-  <sub><i>Formerly <code>claudectl</code>. Everything migrates on first run —
-  settings, memory graphs and per-project state. Nothing is deleted.</i></sub>
+  <sub><i>Formerly <code>claudectl</code>. Everything migrates on first run — settings, memory graphs and per-project state. Nothing is deleted.</i></sub>
 </p>
 
 <p align="center">
-  <b>The workspace layer for Claude Code.</b><br>
-  Your projects stop being a stream of chats and start being workspaces —
-  with memory, history, and per-project launch control.
+  <b>The memory and workspace layer for AI coding agents.</b><br>
+  Persistent per-project memory, every session you have ever had, and control
+  over what the next one costs. Works with Claude Code today.
 </p>
 
 <p align="center">
@@ -24,8 +27,7 @@
   <b>🌐 <a href="https://claudectl.space">claudectl.space</a>
   &nbsp;·&nbsp;
   📖 Full documentation → <a href="https://docs.claudectl.space/">docs.claudectl.space</a></b><br>
-  <sub>Everything below is the short version. Every feature, key binding and file is
-  documented in detail on the docs site.</sub><br>
+  <sub>Everything below is the short version. Every feature, key binding and file is documented in detail on the docs site.</sub><br>
   <sub>
     <a href="https://pypi.org/project/archeus/">PyPI</a> ·
     <a href="https://claudectl.space/blog">Blog</a> ·
@@ -36,8 +38,7 @@
 </p>
 
 <p align="center">
-  <sub><i>Not the Rust <code>archeus</code>. Two independent projects share this name;
-  this one is the Python workspace layer for Claude Code.</i></sub>
+  <sub><i>Not the Rust <code>archeus</code>. Two independent projects share this name; this one is the Python memory and workspace layer for AI coding agents.</i></sub>
 </p>
 
 <p align="center">
@@ -48,18 +49,19 @@
 
 ## What problem does this solve?
 
-Claude Code is excellent inside a session and forgetful between them. Every new
-session starts from nothing, your old sessions are hard to find, and the only
-way to give the agent context is a `CLAUDE.md` that grows until it costs more
-than it's worth.
+A coding agent is excellent inside a session and forgetful between them. Every
+new session starts from nothing, your old sessions are hard to find, and the
+only way to give the agent context is a `CLAUDE.md` that grows until it costs
+more than it's worth. That is not a Claude Code problem; it is what every
+agent that runs in a terminal has in common.
 
-**archeus sits in front of Claude Code and fixes that.** Pick a project, see
+**archeus sits in front of the agent and fixes that.** Pick a project, see
 every session you've ever had in it, and launch with the model, effort,
 permissions and context you meant. Underneath, it maintains a semantic memory
 of the codebase and injects only the part relevant to what you just asked.
 
-It is a terminal UI and a desktop GUI over the same engine — use whichever you
-prefer, they do the same things.
+Claude Code is the agent it drives today. It is a terminal UI and a desktop
+GUI over the same engine — use whichever you prefer, they do the same things.
 
 ## Quickstart
 
@@ -135,13 +137,9 @@ not just its colours.
 
 ## Why archeus
 
-- 🧠 **Intelligent memory, not a memory dump** — task-scoped, token-budgeted injection at the launcher: a micro-index always on (≤250 tok), per-module detail loaded only when Claude touches those files, and an optional per-prompt hook that injects just the subgraph relevant to what you asked.
-- 📚 **It learns from every session** — durable lessons (fixes, decisions, preferences) distilled from transcripts, human-reviewed, injected when relevant, decayed when stale.
-- 🕸️ **See your architecture** — an animated, expandable dependency graph that opens at the project level and drills down to single files.
-- 🩺 **Auto-solves common Claude Code pain** — pre-launch health checks, context-loss insurance after `/compact`, permission-fatigue killer, token-burn advisor, daily usage tracking.
-- 🤖 **Adaptive agents** — the right subagents suggested (or auto-applied) per project from local signals.
-- 📦 **Workspace, not chats** — browse, search, tag, fork, resume and archive every Claude Code session across every project and account.
-- ⚡ **Zero runtime dependencies** — pure Python standard library; uses your existing Claude Code auth.
+- 🧠 **Memory, not a memory dump** — task-scoped, token-budgeted injection at the launcher: a micro-index always on (≤250 tok), per-module detail loaded only when the agent touches those files, and an optional per-prompt hook that injects just the subgraph relevant to what you asked. It also learns: durable lessons (fixes, decisions, preferences) distilled from transcripts, human-reviewed, injected when relevant, decayed when stale.
+- 📦 **Workspace, not chats** — browse, search, tag, fork, resume and archive every session across every project and account, over an animated dependency graph that opens at the project level and drills down to single files.
+- 🩺 **It removes the friction you actually hit** — pre-launch health checks, context-loss insurance after `/compact`, permission-fatigue killer, token-burn advisor, daily usage tracking, and the right subagents suggested per project from local signals. Zero runtime dependencies: pure Python standard library, using the agent auth you already have.
 
 ### How archeus saves tokens
 
@@ -154,6 +152,13 @@ Without archeus, a big project either starves the agent (no context) or floods i
 - **Cheaper model for the grunt work** — Plan→Execute runs the expensive model once for the plan and a cheap (or free) one for execution.
 
 → [How the token economy works](https://docs.claudectl.space/usage/)
+
+## Where this is going
+
+A long-term goal, not a feature list, and none of it ships today:
+provider-neutral memory, then an open harness of its own. Claude Code is the
+first surface, not the boundary. What works right now is exactly what is
+claimed above — everything runs against the files Claude Code writes to disk.
 
 ---
 
@@ -179,16 +184,14 @@ The full manual lives at **[docs.claudectl.space](https://docs.claudectl.space/)
 Product pages — [Features](https://claudectl.space/features/) ·
 [Compare](https://docs.claudectl.space/compare/) · [FAQ](https://claudectl.space/faq/) ·
 [Download](https://claudectl.space/download/) ·
-[Changelog](https://claudectl.space/changelog/) — are on
-[claudectl.space](https://claudectl.space/).
+[Changelog](https://claudectl.space/changelog/) — are on [claudectl.space](https://claudectl.space/).
 
 ## Credits
 
 archeus is built on ideas from the wider Claude Code ecosystem — cognee and Aider's
 repo-map behind the memory graph, Anthropic's `code-review` plugin behind `archeus review`,
 claude-mem behind recent-work memory, OmniRoute behind free execution, and VoltAgent's
-subagent catalog behind the agent library. Every one is credited, with links, on the
-[Credits page](https://docs.claudectl.space/credits/).
+subagent catalog behind the agent library. Every one is credited, with links, on the [Credits page](https://docs.claudectl.space/credits/).
 
 ## License
 

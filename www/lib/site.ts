@@ -2,7 +2,7 @@ export const SITE = {
   url: 'https://claudectl.space',
   docs: 'https://docs.claudectl.space',
   name: 'archeus',
-  tagline: 'The workspace layer for Claude Code',
+  tagline: 'The memory and workspace layer for AI coding agents.',
   repo: 'https://github.com/babarmuhammad/archeus',
   pypi: 'https://pypi.org/project/archeus/',
   author: 'Babar Muhammad Anas',

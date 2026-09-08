@@ -103,6 +103,84 @@ def test_cache_roundtrip(monkeypatch, tmp_path):
     assert g3['meta']['counts']['files'] == 2
 
 
+# ── the cage ─────────────────────────────────────────────────
+
+def test_the_cage_really_is_a_geodesic_icosahedron():
+    """The cage's faces are DERIVED from adjacency rather than read off a
+    hardcoded face list, so a wrong tolerance quietly builds a different solid —
+    and a wrong-but-plausible cage is exactly what a string assertion cannot
+    see. So run the real JS and count.
+
+    42 vertices, 120 edges, and the degree histogram is the proof it is the
+    right subdivision and not merely the right totals: the 12 original vertices
+    keep degree 5, the 30 new edge midpoints have degree 6.
+
+    Skips without node. Local runs have it; the pytest CI job does not, which is
+    why the shape is also pinned by string in test_stage.py."""
+    import json
+    import shutil
+    import subprocess
+    import tempfile
+
+    if not shutil.which('node'):
+        import pytest
+        pytest.skip('node not available')
+
+    src = open(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'claude_sessions', 'connections.py'),
+        encoding='utf-8').read()
+    js = src[src.index('const PHI=1.6180339887;'):src.index('function drawCluster(')]
+    js += """
+console.log(JSON.stringify({v: DV.length, e: DE.length,
+  unit: DV.every(v => Math.abs(Math.hypot(v[0],v[1],v[2]) - 1) < 1e-9),
+  deg: (() => {const d = new Array(DV.length).fill(0);
+    for (const [a,b] of DE) {d[a]++; d[b]++;}
+    return [Math.min(...d), Math.max(...d), d.filter(x => x === 5).length];})()}));
+"""
+    fd, path = tempfile.mkstemp(suffix='.js')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(js)
+        out = subprocess.run(['node', path], capture_output=True, text=True)
+    finally:
+        os.remove(path)
+    assert out.returncode == 0, out.stderr
+    got = json.loads(out.stdout)
+    assert got['v'] == 42 and got['e'] == 120, got
+    assert got['unit'], 'a vertex is off the circumsphere'
+    assert got['deg'] == [5, 6, 12], got
+
+
+def test_the_cage_costs_enough_to_lower_the_dot_fallback():
+    """120 strokes where the platonic solid was 30, plus a halo pass and an
+    interior cloud, and a 2D canvas pays every one of them on the CPU. The
+    threshold came down from 250 to 180 for that reason, and the interior is
+    drawn only for the nodes big enough for it to read as structure."""
+    src = open(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'claude_sessions', 'connections.py'),
+        encoding='utf-8').read()
+    assert 'const dod=VARR.length<=180;' in src, 'the fallback did not come down'
+    # gated on APPARENT size, not model radius. `r` is in graph units and the
+    # view zooms, so `r >= 12` drew a 120-edge cage plus a 90-point cloud into
+    # an 8px disc at low zoom — a solid burr — and skipped both on a hull
+    # filling the screen at high zoom. `px` is `r * view.k`, which is the
+    # number the decision is actually about.
+    assert 'if(px>=44){' in src, 'the interior cloud is not gated on apparent size'
+    # ONE gradient per cluster, never one per hull VERTEX. The distinction is
+    # the whole cost: 42 vertices across 180 nodes is 7,500
+    # createRadialGradient allocations a frame, which is what this rule exists
+    # against. The lit centre is one per cluster and it genuinely needs a
+    # gradient — a plasma core is white in the middle running out through the
+    # cluster's own chord, and three flat discs cannot say that.
+    dc = src.split('function drawCluster(')[1].split('function draw()')[0]
+    assert dc.count('createRadialGradient(') <= 1, \
+        'a gradient allocation per hull vertex'
+    # ...and it is outside both vertex loops, which is what makes it one.
+    for loop in ('for(const p of P)', 'for(const p of FP)'):
+        i = dc.index(loop)
+        assert 'createRadialGradient(' not in dc[i:dc.index('}', dc.index('{', i))], loop
+
+
 # ── HTML ─────────────────────────────────────────────────────
 
 def test_render_html_self_contained(monkeypatch, tmp_path):
@@ -110,7 +188,7 @@ def test_render_html_self_contained(monkeypatch, tmp_path):
     actual, enc, folder, _ = sb.add_project('alpha')
     _mkfile(actual, 'a/x.py', 'x=1\n')
     html = connections.render_html(connections.build_hierarchy(actual, folder))
-    for needle in ('<canvas', 'const CODE', 'id="search"', 'expanded', 'id="fit"', 'drawDodec'):
+    for needle in ('<canvas', 'const CODE', 'id="search"', 'expanded', 'id="fit"', 'drawCluster'):
         assert needle in html, needle
     assert 'http://' not in html and 'https://' not in html
     assert '<script src=' not in html

@@ -168,6 +168,11 @@ def _claude():
     return get_claude_exe()
 
 
+# The one test in the suite that is MEANT to run Claude's own binary: it asks
+# the real `claude plugin validate` whether these manifests are acceptable, and
+# a stub answering "yes" would be the whole point thrown away. Everything else
+# is blocked from starting Claude by `_no_test_starts_claude` in conftest.
+@pytest.mark.real_process
 @pytest.mark.parametrize('target', ['.', 'plugin'])
 def test_the_claude_cli_validates_both_manifests(target):
     exe = _claude()

@@ -2,7 +2,7 @@
   "name": "archeus",
   "displayName": "archeus",
   "version": "2.0.1",
-  "description": "Recall this project's memory, check its health, and review the current diff — from inside a session. The full workspace manager is the archeus CLI; this plugin is its in-session surface.",
+  "description": "The memory and workspace layer for AI coding agents. This plugin is its in-session surface: recall this project's memory, check its health, and review the current diff without leaving the conversation. The whole layer is the archeus CLI.",
   "author": {
     "name": "Babar Muhammad Anas",
     "url": "https://github.com/babarmuhammad"
@@ -10,5 +10,5 @@
   "homepage": "https://github.com/babarmuhammad/archeus",
   "repository": "https://github.com/babarmuhammad/archeus",
   "license": "MIT",
-  "keywords": ["memory", "workspace", "sessions", "review", "claude-code"]
+  "keywords": ["agent-memory", "memory", "workspace", "sessions", "review", "claude-code"]
 }

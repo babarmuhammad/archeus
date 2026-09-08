@@ -1,8 +1,9 @@
 # Contributing to archeus
 
-Thanks for looking. archeus is a workspace layer for Claude Code — a terminal UI, a
-desktop GUI and a Claude Code plugin over one Python engine. It has **zero runtime
-dependencies** and that is a deliberate constraint, not an accident.
+Thanks for looking. **The memory and workspace layer for AI coding agents.** In practice
+that is a terminal UI, a desktop GUI and a Claude Code plugin over one Python engine —
+Claude Code is the agent it drives today. It has **zero runtime dependencies** and that
+is a deliberate constraint, not an accident.
 
 By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 

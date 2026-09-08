@@ -3,10 +3,17 @@
  *
  * Ported from archeus's own `graph` background world (claude_sessions/web/stage.js).
  * Same vocabulary, same reasons:
- *   - wireframe dodecahedra (20 vertices, 30 edges) spinning on two axes at
+ *   - geodesic icosahedral CAGES (42 vertices, 120 edges) spinning on two axes at
  *     T*0.5 and T*0.37 with a per-node phase, exactly as connections.py's
- *     drawDodec does;
- *   - a lit joint at every vertex;
+ *     drawCluster does. A dodecahedron is a SOLID and says "here is a thing"; a
+ *     cage holding a population says "here is a thing made of things, and it is
+ *     connected to other things", which is the subject. Every number comes from
+ *     notes/constellation-study.md — read it before retuning one;
+ *   - an interior population of smaller points inside every hull: a cluster made
+ *     of clusters, the shape of the project's own memory graph;
+ *   - a white-cored, halo-lit joint at every vertex. The halo is a second
+ *     additive Points over the SAME buffer, never a bloom pass — see the
+ *     no-post-processing note in Canvas.tsx;
  *   - hairline links carrying packets;
  *   - deterministic golden-angle placement (i * 2.399963, no Math.random) so the
  *     constellation is identical on every reload;
@@ -19,6 +26,7 @@
  * frame beyond writing those uniforms and the camera.
  */
 import * as THREE from 'three';
+import { CLUSTER } from '@/lib/cluster-spec';
 
 export const STATION_COUNT = 6;
 
@@ -54,7 +62,7 @@ const CURVE = new THREE.CatmullRomCurve3(STATIONS, false, 'catmullrom', 0.4);
 const CAM_CURVE = new THREE.CatmullRomCurve3(CAM, false, 'catmullrom', 0.5);
 const LOOK_CURVE = new THREE.CatmullRomCurve3(LOOK, false, 'catmullrom', 0.5);
 
-/* Rotate about the solid's own centre, exactly as drawDodec does: ay around Y,
+/* Rotate about the cage's own centre, exactly as drawCluster does: ay around Y,
    then ax around X. */
 const SPIN = /* glsl */ `
   vec3 spin(vec3 local, float ph, float t){
@@ -67,8 +75,160 @@ const SPIN = /* glsl */ `
     return vec3(x, y2, z2);
   }`;
 
-/** Node hues, from connections.TYPE_COLORS. */
+/** Node hues, from connections.TYPE_COLORS. Six of them are bound as uniforms
+ *  below, in the role order cluster_spec.py numbers them, and every colour in
+ *  the scene is picked off the chord they make. */
 const HUES = ['#7dcfff', '#9d7bff', '#f7768e', '#73daca', '#e0af68', '#7ee787'];
+
+/** THE CHORD A CLUSTER WEARS — four ROLE indices, from a deterministic seed.
+ *
+ *  This replaces a five-stop hue ladder indexed by one number per cluster.
+ *  A tone was one stop on a shared ramp, so a cluster was ONE COLOUR by
+ *  construction, and the reference has a single cluster running violet into
+ *  magenta into cyan with gold picking out individual struts. The rule the
+ *  brief calls the most important is exactly the one that ladder broke: never
+ *  reduce a cluster to a single flat colour.
+ *
+ *  The families and their weights are `claude_sessions/cluster_spec.py`, via
+ *  the generated `@/lib/cluster-spec` — the GUI's stage.js and the 2D
+ *  architecture graph read the same table, which is what makes "all three
+ *  render the same reference" a fact rather than three separate intentions. */
+const FAM = CLUSTER.PALETTE_FAMILIES as readonly (readonly [number, string, readonly number[]])[];
+const FAM_TOTAL = FAM.reduce((t, f) => t + f[0], 0);
+
+function chordOf(seed: number): readonly number[] {
+  const at = (seed - Math.floor(seed)) * FAM_TOTAL;
+  let acc = 0;
+  for (const f of FAM) { acc += f[0]; if (at < acc) return f[2]; }
+  return FAM[FAM.length - 1][2];
+}
+
+/** A station's or a section's own seed. Deterministic, and NOT the index: the
+ *  index is 0..5 and every family boundary would land in the same place, so
+ *  three of the six stations would come out the same chord. */
+const seedOf = (i: number) => {
+  const h = Math.sin(i * 45.233 + 7.13) * 21473.7;
+  return h - Math.floor(h);
+};
+
+/** ...and the gradient's DIRECTION, per cluster. Two clusters wearing the same
+ *  chord must not read as the same object rotated. */
+const axisOf = (i: number): [number, number, number] => {
+  const a1 = seedOf(i) * 6.2831853, a2 = (i * 2.399963) % 3.14159265;
+  return [Math.cos(a1) * Math.sin(a2), Math.cos(a2), Math.sin(a1) * Math.sin(a2)];
+};
+
+/** The seed a SECTION's cluster wears, in document order.
+ *
+ *  Stations take their own index, because their order is arbitrary and all six
+ *  are on screen together. Sections are read in order and only a span of two to
+ *  five is visible at once, so walking a ladder monotonically would put violet
+ *  next to indigo next to cyan and never gold next to violet — and the study's
+ *  whole colour argument is that gold BESIDE violet, blue and green is what
+ *  makes the image read. Striding by 5 through 7 is a permutation, so the
+ *  weighting is preserved exactly while adjacent sections differ. */
+const secSeed = (s: number) => seedOf((s * 5) % 7 + 11);
+
+/** ...and the SIX STATIONS are stratified rather than sampled, which is a
+ *  different problem from the sections' one.
+ *
+ *  `seedOf(i)` is a fair draw and six draws are not a fair sample: it put three
+ *  of the six stations on `blend` — the deliberately magenta-leaning violet, 14%
+ *  of the table — including station 01, the hero of the front page, which came
+ *  out hot magenta against a reference that is violet and blue. Nothing about
+ *  the hero's colour should be a lottery it lost.
+ *
+ *  Walking the weighted table at (i + 0.5) / n reproduces the table's weights
+ *  exactly for any n, so the six come out two violet and one each of blend,
+ *  cyan, magenta and gold. The gradient AXIS still comes off seedOf(i), so the
+ *  two violet stations are not the same object rotated.
+ *
+ *  The sections keep their stride: seven of them are read in order with only a
+ *  few visible at once, and stratifying THOSE would put three violets in a row
+ *  at the top of the page, which is the thing the stride exists to avoid. */
+const stationSeed = (i: number, n: number) => (i + 0.5) / n;
+
+/* THE SIX ROLES, INDEXED — one place a number becomes a colour, numbered by
+   cluster_spec.py so the same index means the same hue in every renderer. */
+const SF_ROLE = /* glsl */ `
+  vec3 roleCol(float r){
+    vec3 c = u_acc;
+    c = mix(c, u_acc2, step(0.5, r));
+    // the magenta role, pulled a third of the way toward the violet accent:
+    // err is a SALMON in most palettes because its real job is to read as a
+    // failure against body text, and used raw every cluster came out coral
+    c = mix(c, mix(u_err, u_acc2, 0.45), step(1.5, r));
+    c = mix(c, u_warn, step(2.5, r));
+    c = mix(c, u_ok,   step(3.5, r));
+    c = mix(c, vec3(1.0), step(4.5, r));
+    return c;
+  }`;
+
+/* Three stops and a highlight, weighted rather than three even thirds: a
+   violet cluster is roughly six parts its primary, three its secondary and one
+   its accent. An even split puts as much magenta on it as violet and the field
+   comes out pink. The overlap between the stops is what keeps it a blend
+   rather than two bands. */
+const SF_CHORD = /* glsl */ `
+  vec3 chord(vec4 pal, float t, float hot){
+    vec3 a = roleCol(pal.x), b = roleCol(pal.y), c = roleCol(pal.z);
+    vec3 col = mix(a, b, smoothstep(0.52, 0.88, t));
+    col = mix(col, c, smoothstep(0.86, 1.0, t));
+    return mix(col, roleCol(pal.w), clamp(hot, 0.0, 1.0));
+  }`;
+
+/* Where a fragment sits in its cluster's gradient. Every input the brief names
+   is here and each does a different job: the angular term gives the gradient a
+   direction, the radial term makes the centre a different colour from the rim,
+   the noise breaks the sweep up (a clean sweep reads as a stripe), and the
+   per-cluster seed offsets the noise so the same chord is a different picture.
+   3D noise, not the 2D kind projected onto a sphere — that has a visible seam
+   down the axis it dropped. */
+const SF_GRAD = /* glsl */ `
+  float h31(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+  float vnoise3(vec3 p){
+    vec3 i = floor(p), f = fract(p);
+    vec3 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(h31(i), h31(i + vec3(1,0,0)), u.x),
+                   mix(h31(i + vec3(0,1,0)), h31(i + vec3(1,1,0)), u.x), u.y),
+               mix(mix(h31(i + vec3(0,0,1)), h31(i + vec3(1,0,1)), u.x),
+                   mix(h31(i + vec3(0,1,1)), h31(i + vec3(1,1,1)), u.x), u.y), u.z);
+  }
+  float gradT(vec3 local, vec3 axis, float seed, float scale){
+    vec3 d = local / max(length(local), 1e-4);
+    float ang = dot(d, axis) * 0.5 + 0.5;
+    float rad = clamp(length(local), 0.0, 1.2);
+    float n = vnoise3(local * scale + seed * 31.7);
+    return clamp(ang * 0.58 + rad * 0.20 + n * 0.34 - 0.06, 0.0, 1.0);
+  }`;
+
+/** Every hue consumer declares the same six, in whichever stage reads them. */
+const SF_HUES = /* glsl */ `uniform vec3 u_acc, u_acc2, u_err, u_warn, u_ok;`;
+
+/** What a chord consumer declares, in whichever stage reads it. Written once
+ *  because a varying declared in one stage and not the other is a link error
+ *  with no line number worth reading. */
+const SF_CVAR = /* glsl */ `varying vec4 vPal; varying float vGT;`;
+
+/** ...and how a vertex stage fills them. `unit` is the local offset in UNIT
+ *  hull space: gradT wants a direction and a radius, and a position already
+ *  scaled by the hull would make the radial term depend on how big the cluster
+ *  happens to be. */
+const SF_CSET = /* glsl */ `
+  void setChord(vec4 pal, vec4 cx, vec3 unit){
+    vPal = pal;
+    vGT = gradT(unit, cx.xyz, cx.w, 1.8 + cx.w * 3.2);
+  }`;
+
+/* Depth is REAL, not just a z: far means small, dim AND washed. Size by depth is
+   the `vD` the shaders already had; this is the second cue, and they are not the
+   same cue. Exponential, because that is how a haze accumulates over distance —
+   the mechanism is stage.js's exactly, the two constants are not: this scene's
+   depth budget is 46 units against the stage's 26, and the finale parks the
+   camera 58 units from the last station. stage.js's `dist - 7` at 0.085 leaves
+   that station at 1% and deletes the one shot the whole page builds toward. */
+const SF_FOG = /* glsl */ `
+  float fogOf(float dist){ return exp(-max(0.0, dist - 14.0) * 0.022); }`;
 
 /* ── the per-section solids: constants shared by the shader and the hit test ──
    These numbers appear ONCE. The GLSL below interpolates them and `arrangeAt()`
@@ -162,13 +322,27 @@ const uniforms = (): U => ({
   u_res: { value: new THREE.Vector2(1, 1) },
   u_acc: { value: new THREE.Color(HUES[0]) },
   u_acc2: { value: new THREE.Color(HUES[1]) },
+  // Gold and green: the two warm stops of the ladder. Accents, at two sevenths
+  // of the weight — see TONES.
+  u_warn: { value: new THREE.Color(HUES[4]) },
+  u_ok: { value: new THREE.Color(HUES[3]) },
+  // THE MAGENTA. The reference cluster holds violet and magenta at once, and
+  // until this was bound every hue the scene could reach was cool, gold or
+  // green — the same gap the GUI's stage had.
+  u_err: { value: new THREE.Color(HUES[2]) },
+  // The renderer's clear colour (Canvas.tsx), which is what the depth fog mixes
+  // toward. A fog that mixes toward black instead reads as a shadow.
+  u_bg: { value: new THREE.Color(0x0a0c10) },
 });
 
-/** The 20 distinct vertices of a dodecahedron, deduplicated from the triangle
- *  soup three hands back — the joints have to light in a stable order, and 108
- *  overlapping points cannot give one. */
-function dodecVertices(): THREE.Vector3[] {
-  const g = new THREE.DodecahedronGeometry(1, 0);
+/** The 42 distinct vertices of the cage, deduplicated from the triangle soup
+ *  three hands back — IcosahedronGeometry(1, 1) is 240 positions for 42 corners,
+ *  so drawing the soup stacks five or six additive sprites on one pixel: five or
+ *  six times the fill for a halo that is then five or six times too bright. The
+ *  joints also have to light in a stable order, which overlapping points cannot
+ *  give. Verified: 240 positions in, 42 out, every one at circumradius 1. */
+function cageVertices(): THREE.Vector3[] {
+  const g = new THREE.IcosahedronGeometry(1, 1);
   const pos = g.getAttribute('position');
   const seen = new Map<string, THREE.Vector3>();
   for (let i = 0; i < pos.count; i++) {
@@ -180,6 +354,43 @@ function dodecVertices(): THREE.Vector3[] {
   // Deterministic order: by height, so "lighting one by one" reads as a sweep.
   return [...seen.values()].sort((a, b) => a.y - b.y || a.x - b.x);
 }
+
+/** THE trait that carries the whole idea, and the one the dodecahedral scene had
+ *  no equivalent of: every hull encloses a haze of smaller points — nodes made of
+ *  nodes, which is literally the shape of this project's memory graph, entities
+ *  inside modules inside repositories. A hull with nothing in it is a cosmetic
+ *  swap.
+ *
+ *  Returns local offsets for a UNIT hull (so `local * r` in the shader lands them
+ *  inside a hull of any radius, which is what lets the per-section solids — whose
+ *  radius is a slot measured at runtime — share this), as flat (x, y, z, h)
+ *  quadruples where `h` is the point's own hash.
+ *
+ *  Direction comes off a Fibonacci sphere and the radius off an INDEPENDENT hash:
+ *  driving both from `k` piles every point at one pole. The radius exponent is
+ *  0.45, ABOVE the volume-uniform 1/3, so the cloud is very slightly hollowed
+ *  rather than core-heavy — in the reference image the densest reading comes from
+ *  the hull's own vertices, not from a ball in the middle.
+ *
+ *  No Math.random: `seed` is the hull's index, so the interior is identical on
+ *  every reload for the same reason the layout is. */
+const MOTE_R = 0.55;
+function moteLocals(count: number, seed: number): number[] {
+  const out: number[] = [];
+  for (let k = 0; k < count; k++) {
+    const y = 1 - (2 * (k + 0.5)) / count;
+    const ring = Math.sqrt(Math.max(0, 1 - y * y));
+    const th = k * 2.399963;                              // golden angle
+    const h = ((k * 7919 + seed * 104729) % 233280) / 233280;
+    const rad = MOTE_R * Math.pow(h, 0.45);
+    out.push(Math.cos(th) * ring * rad, y * rad, Math.sin(th) * ring * rad, h);
+  }
+  return out;
+}
+
+/** How many motes a hull of relative size `q` (0..1 against the largest in its
+ *  group) holds: a leaf a dozen, a hub about two hundred and fifty. */
+const moteCount = (q: number) => 12 + Math.round(240 * Math.pow(q, 1.8));
 
 /** A `.spine-slot` rect, in CSS pixels, document space: centre x, centre y from
  *  the top of the DOCUMENT (not the viewport), and half-extent. */
@@ -237,15 +448,38 @@ export function buildJourney(): Journey {
   const stations = new THREE.Group();
   group.add(stations);
 
-  /* ── 1. the six solids, one merged LineSegments ─────────────────────────── */
-  const base = new THREE.DodecahedronGeometry(1, 0);
+  /* ── 1. the six cages, one merged LineSegments ──────────────────────────────
+     IcosahedronGeometry(1, 1): 42 vertices, 120 edges, 80 faces — a subdivided
+     icosahedron projected back onto its circumsphere. Two consequences worth
+     stating. The facets are NOT coplanar after that projection (the dihedral
+     between two sub-triangles of one original face is ~10-20°), so EdgesGeometry
+     keeps all 120 rather than welding them away at its 1° default. And a
+     120-edge cage is dense enough that the eye stops counting faces and starts
+     reading a surface, which is most of the difference between this and a
+     30-edge platonic solid that reads as a die. */
+  const base = new THREE.IcosahedronGeometry(1, 1);
   const wire = new THREE.EdgesGeometry(base);
   const wp = wire.getAttribute('position');
   base.dispose();
 
+  const R_MAX = Math.max(...RADII);
+  /* Per-station colour, carried as ATTRIBUTES rather than uniform arrays. The
+     GUI's stage.js does the opposite because its forty clusters MOVE and it
+     needs a uniform array for their positions anyway; these six are static, the
+     buffers are a few thousand vertices, and an attribute cannot be indexed
+     out of range by a shader that has lost track of how many there are. */
+  const PAL = Array.from({ length: STATION_COUNT }, (_, i) => chordOf(stationSeed(i, STATION_COUNT)));
+  const AXIS = Array.from({ length: STATION_COUNT }, (_, i) => axisOf(i));
+  const pushChord = (pal: number[], cx: number[], s: number) => {
+    const q = PAL[s], a = AXIS[s];
+    pal.push(q[0], q[1], q[2], q[3]);
+    cx.push(a[0], a[1], a[2], seedOf(s));
+  };
+
   const ePos: number[] = [], eCtr: number[] = [], eNd: number[] = [], eMid: number[] = [];
+  const ePal: number[] = [], eCx: number[] = [], eLoc: number[] = [];
   for (let s = 0; s < STATION_COUNT; s++) {
-    const c = STATIONS[s], r = RADII[s], ph = (s * 1.7) % 6.283, tone = s / STATION_COUNT;
+    const c = STATIONS[s], r = RADII[s], ph = (s * 1.7) % 6.283;
     for (let v = 0; v < wp.count; v += 2) {
       const a = new THREE.Vector3().fromBufferAttribute(wp, v).multiplyScalar(r);
       const b = new THREE.Vector3().fromBufferAttribute(wp, v + 1).multiplyScalar(r);
@@ -255,8 +489,10 @@ export function buildJourney(): Journey {
       for (const q of [a, b]) {
         ePos.push(q.x, q.y, q.z);
         eCtr.push(c.x, c.y, c.z);
-        eNd.push(ph, tone, s);
+        eNd.push(ph, 0, s);
         eMid.push(mid.x, mid.y, mid.z);
+        eLoc.push(q.x / r, q.y / r, q.z / r);
+        pushChord(ePal, eCx, s);
       }
     }
   }
@@ -267,6 +503,9 @@ export function buildJourney(): Journey {
   gEdges.setAttribute('ctr', new THREE.Float32BufferAttribute(eCtr, 3));
   gEdges.setAttribute('nd', new THREE.Float32BufferAttribute(eNd, 3));
   gEdges.setAttribute('emid', new THREE.Float32BufferAttribute(eMid, 3));
+  gEdges.setAttribute('cpal', new THREE.Float32BufferAttribute(ePal, 4));
+  gEdges.setAttribute('ccx', new THREE.Float32BufferAttribute(eCx, 4));
+  gEdges.setAttribute('cloc', new THREE.Float32BufferAttribute(eLoc, 3));
 
   const mEdges = new THREE.LineSegments(
     gEdges,
@@ -276,28 +515,48 @@ export function buildJourney(): Journey {
       depthWrite: false,
       vertexShader: /* glsl */ `
         attribute vec3 ctr; attribute vec3 nd; attribute vec3 emid;
-        varying vec2 vN; varying float vD; varying float vS;
+        attribute vec4 cpal; attribute vec4 ccx; attribute vec3 cloc;
+        varying vec2 vN; varying float vD; varying float vS; varying float vF;
+        ${SF_CVAR}
         uniform float u_t, u_frag;
         ${SPIN}
+        ${SF_FOG}
+        ${SF_GRAD}
+        ${SF_CSET}
         void main(){
           vN = nd.xy; vS = nd.z;
+          // A STRUT GRADIENTS ALONG ITS OWN LENGTH: the walk is evaluated at
+          // THIS end's position, so the two ends of one edge get different
+          // values and the fragment interpolates between them.
+          setChord(cpal, ccx, cloc);
           // Station 02 is the one that comes apart: its edges fly outward and
-          // the solid stops being a solid.
+          // the cage stops being a cage.
           float fr = (abs(nd.z - 1.0) < 0.5) ? u_frag : 0.0;
           vec3 local = position + emid * fr * 2.6;
           vec3 p = ctr + spin(local, nd.x, u_t * (1.0 - 0.55 * fr));
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
           vD = clamp(1.0 - (-mv.z) / 46.0, 0.0, 1.0);
+          vF = fogOf(-mv.z);
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: /* glsl */ `
-        varying vec2 vN; varying float vD; varying float vS;
-        uniform vec3 u_acc, u_acc2;
+        varying vec2 vN; varying float vD; varying float vS; varying float vF;
+        ${SF_CVAR}
+        ${SF_HUES}
+        uniform vec3 u_bg;
         uniform float u_frag, u_web;
+        ${SF_ROLE}
+        ${SF_CHORD}
         void main(){
           float fr = (abs(vS - 1.0) < 0.5) ? u_frag : 0.0;
-          vec3 col = mix(u_acc, u_acc2, vN.y);
-          float a = (0.30 + 0.44 * vD) * (1.0 - 0.62 * fr) * (0.86 + 0.30 * u_web);
+          vec3 col = mix(u_bg, chord(vPal, vGT, 0.0), vF);
+          /* A strut is DIMMER than a node and a hull-to-hull link is dimmer
+             still. In the reference image the ladder is unmistakable: nodes are
+             the brightest thing in the frame, struts are filaments with
+             presence, links are almost background. WebGL line width is 1px
+             whatever you ask for, so "thinner" is spent as alpha — the right
+             currency anyway, since one control then buys both reads. */
+          float a = (0.20 + 0.30 * vD) * vF * (1.0 - 0.62 * fr) * (0.86 + 0.30 * u_web);
           gl_FragColor = vec4(col, a);
         }`,
     })),
@@ -307,15 +566,18 @@ export function buildJourney(): Journey {
   stations.add(mEdges);
 
   /* ── 2. the lit joint at every vertex ───────────────────────────────────── */
-  const verts = dodecVertices();
+  const verts = cageVertices();
   const jPos: number[] = [], jCtr: number[] = [], jNd: number[] = [], jOrd: number[] = [];
+  const jPal: number[] = [], jCx: number[] = [], jLoc: number[] = [];
   for (let s = 0; s < STATION_COUNT; s++) {
-    const c = STATIONS[s], r = RADII[s], ph = (s * 1.7) % 6.283, tone = s / STATION_COUNT;
+    const c = STATIONS[s], r = RADII[s], ph = (s * 1.7) % 6.283;
     verts.forEach((v, k) => {
       jPos.push(v.x * r, v.y * r, v.z * r);
       jCtr.push(c.x, c.y, c.z);
-      jNd.push(ph, tone, s);
+      jNd.push(ph, 0, s);
       jOrd.push(k / verts.length);
+      jLoc.push(v.x, v.y, v.z);
+      pushChord(jPal, jCx, s);
     });
   }
   const gJoint = track(new THREE.BufferGeometry());
@@ -323,6 +585,42 @@ export function buildJourney(): Journey {
   gJoint.setAttribute('ctr', new THREE.Float32BufferAttribute(jCtr, 3));
   gJoint.setAttribute('nd', new THREE.Float32BufferAttribute(jNd, 3));
   gJoint.setAttribute('ord', new THREE.Float32BufferAttribute(jOrd, 1));
+  gJoint.setAttribute('cpal', new THREE.Float32BufferAttribute(jPal, 4));
+  gJoint.setAttribute('ccx', new THREE.Float32BufferAttribute(jCx, 4));
+  gJoint.setAttribute('cloc', new THREE.Float32BufferAttribute(jLoc, 3));
+
+  /* The joint's vertex stage, shared by the white core and by its halo — the
+     halo is the SAME 42 points drawn a second time, wider and additive, over the
+     SAME buffer (one more draw call, not one more byte). That is how this scene
+     gets a glow with no post-processing: bloom went in here and came straight
+     back out, because these are raw ShaderMaterials writing final display values
+     and a pass that re-encodes them lifts the dark tones instead of blooming the
+     bright ones. See the note in Canvas.tsx. `k` is the size multiplier. */
+  const jointVert = (k: number) => /* glsl */ `
+    attribute vec3 ctr; attribute vec3 nd; attribute float ord;
+    attribute vec4 cpal; attribute vec4 ccx; attribute vec3 cloc;
+    varying vec2 vN; varying float vD; varying float vA; varying float vF;
+    ${SF_CVAR}
+    uniform float u_t, u_lit, u_frag, u_web; uniform vec2 u_res;
+    ${SPIN}
+    ${SF_FOG}
+    ${SF_GRAD}
+    ${SF_CSET}
+    void main(){
+      vN = nd.xy;
+      setChord(cpal, ccx, cloc);
+      vec3 p = ctr + spin(position, nd.x, u_t);
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      vD = clamp(1.0 - (-mv.z) / 46.0, 0.0, 1.0);
+      vF = fogOf(-mv.z);
+      // Station 01 lights its joints one by one on arrival; station 02 loses
+      // them as it comes apart; the finale brings every one back up.
+      float lit = (abs(nd.z) < 0.5) ? smoothstep(ord, ord + 0.22, u_lit) : 1.0;
+      float dim = (abs(nd.z - 1.0) < 0.5) ? (1.0 - 0.88 * u_frag) : 1.0;
+      vA = lit * dim * (0.85 + 0.45 * u_web);
+      gl_Position = projectionMatrix * mv;
+      gl_PointSize = (2.2 + 3.4 * vD) * (u_res.y / 900.0 + 0.6) * ${k.toFixed(2)};
+    }`;
 
   const mJoint = new THREE.Points(
     gJoint,
@@ -331,34 +629,28 @@ export function buildJourney(): Journey {
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
-      vertexShader: /* glsl */ `
-        attribute vec3 ctr; attribute vec3 nd; attribute float ord;
-        varying vec2 vN; varying float vD; varying float vA;
-        uniform float u_t, u_lit, u_frag, u_web; uniform vec2 u_res;
-        ${SPIN}
-        void main(){
-          vN = nd.xy;
-          vec3 p = ctr + spin(position, nd.x, u_t);
-          vec4 mv = modelViewMatrix * vec4(p, 1.0);
-          vD = clamp(1.0 - (-mv.z) / 46.0, 0.0, 1.0);
-          // Station 01 lights its joints one by one on arrival; station 02 loses
-          // them as it comes apart; the finale brings every one back up.
-          float lit = (abs(nd.z) < 0.5) ? smoothstep(ord, ord + 0.22, u_lit) : 1.0;
-          float dim = (abs(nd.z - 1.0) < 0.5) ? (1.0 - 0.88 * u_frag) : 1.0;
-          vA = lit * dim * (0.85 + 0.45 * u_web);
-          gl_Position = projectionMatrix * mv;
-          gl_PointSize = (2.2 + 3.4 * vD) * (u_res.y / 900.0 + 0.6);
-        }`,
+      vertexShader: jointVert(1),
       fragmentShader: /* glsl */ `
-        varying vec2 vN; varying float vD; varying float vA;
-        uniform vec3 u_acc, u_acc2;
+        varying vec2 vN; varying float vD; varying float vA; varying float vF;
+        ${SF_CVAR}
+        ${SF_HUES}
+        uniform vec3 u_bg;
+        ${SF_ROLE}
+        ${SF_CHORD}
         void main(){
           float d = length(gl_PointCoord - 0.5);
           if (d > 0.5) discard;
-          vec3 col = mix(u_acc, u_acc2, vN.y);
-          // the white highlight drawDodec puts in the middle of each joint
-          col = mix(col, vec3(1.0), smoothstep(0.28, 0.0, d) * 0.45);
-          float a = (1.0 - smoothstep(0.30, 0.5, d)) * (0.30 + 0.42 * vD) * vA;
+          /* WHITE core inside a COLOURED halo. The reference image's nodes are
+             white points sitting in a coloured bloom, not coloured dots with a
+             highlight — the old joint mixed 45% toward white over the inner half
+             and read as a pale version of the accent. */
+          float core = smoothstep(0.20, 0.0, d);
+          float wide = pow(max(0.0, 1.0 - d * 2.0), 2.2);
+          vec3 col = mix(chord(vPal, vGT, 0.0), vec3(1.0), core * 0.75);
+          col = mix(u_bg, col, vF);
+          // Nodes are the brightest thing in the frame; struts and links are
+          // scaled under them.
+          float a = (core * 0.85 + wide * 0.30) * (0.30 + 0.55 * vD) * vA * vF;
           gl_FragColor = vec4(col, a);
         }`,
     })),
@@ -366,6 +658,377 @@ export function buildJourney(): Journey {
   mJoint.frustumCulled = false;
   mJoint.renderOrder = 3;
   stations.add(mJoint);
+
+  // …and the halo: the same points, three times as wide, coloured, additive,
+  // faint. Drawn UNDER the core so the white centre stays white.
+  const mHalo = new THREE.Points(
+    gJoint,
+    track(new THREE.ShaderMaterial({
+      uniforms: u,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      vertexShader: jointVert(3.2),
+      fragmentShader: /* glsl */ `
+        varying vec2 vN; varying float vD; varying float vA; varying float vF;
+        ${SF_CVAR}
+        ${SF_HUES}
+        uniform vec3 u_bg;
+        ${SF_ROLE}
+        ${SF_CHORD}
+        void main(){
+          float d = length(gl_PointCoord - 0.5);
+          if (d > 0.5) discard;
+          float g = pow(max(0.0, 1.0 - d * 2.0), 2.2);
+          gl_FragColor = vec4(mix(u_bg, chord(vPal, vGT, 0.0), vF),
+                              g * 0.16 * (0.35 + 0.65 * vD) * vA * vF);
+        }`,
+    })),
+  );
+  mHalo.frustumCulled = false;
+  mHalo.renderOrder = 2;
+  stations.add(mHalo);
+
+  /* ── 2b. the interior population: a cluster is made of clusters ───────────
+     One merged additive Points cloud for all six hulls, animated entirely in the
+     vertex shader like everything else. See moteLocals for the distribution. */
+  const mtPos: number[] = [], mtCtr: number[] = [], mtNd: number[] = [], mtH: number[] = [];
+  const mtPal: number[] = [], mtCx: number[] = [], mtLoc: number[] = [];
+  for (let s = 0; s < STATION_COUNT; s++) {
+    const c = STATIONS[s], r = RADII[s], ph = (s * 1.7) % 6.283;
+    const q = moteLocals(moteCount(r / R_MAX), s);
+    for (let k = 0; k < q.length; k += 4) {
+      mtPos.push(q[k] * r, q[k + 1] * r, q[k + 2] * r);
+      mtCtr.push(c.x, c.y, c.z);
+      mtNd.push(ph, 0, s);
+      mtH.push(q[k + 3]);
+      mtLoc.push(q[k], q[k + 1], q[k + 2]);
+      pushChord(mtPal, mtCx, s);
+    }
+  }
+  const gMote = track(new THREE.BufferGeometry());
+  gMote.setAttribute('position', new THREE.Float32BufferAttribute(mtPos, 3));
+  gMote.setAttribute('ctr', new THREE.Float32BufferAttribute(mtCtr, 3));
+  gMote.setAttribute('nd', new THREE.Float32BufferAttribute(mtNd, 3));
+  gMote.setAttribute('mh', new THREE.Float32BufferAttribute(mtH, 1));
+  gMote.setAttribute('cpal', new THREE.Float32BufferAttribute(mtPal, 4));
+  gMote.setAttribute('ccx', new THREE.Float32BufferAttribute(mtCx, 4));
+  gMote.setAttribute('cloc', new THREE.Float32BufferAttribute(mtLoc, 3));
+
+  const mMote = new THREE.Points(
+    gMote,
+    track(new THREE.ShaderMaterial({
+      uniforms: u,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      vertexShader: /* glsl */ `
+        attribute vec3 ctr; attribute vec3 nd; attribute float mh;
+        attribute vec4 cpal; attribute vec4 ccx; attribute vec3 cloc;
+        varying vec2 vN; varying float vD; varying float vA;
+        varying float vF; varying float vH;
+        ${SF_CVAR}
+        uniform float u_t, u_lit, u_frag, u_web; uniform vec2 u_res;
+        ${SPIN}
+        ${SF_FOG}
+        ${SF_GRAD}
+        ${SF_CSET}
+        void main(){
+          vN = nd.xy; vH = mh;
+          setChord(cpal, ccx, cloc);
+          vec3 p = ctr + spin(position, nd.x, u_t);
+          vec4 mv = modelViewMatrix * vec4(p, 1.0);
+          vD = clamp(1.0 - (-mv.z) / 46.0, 0.0, 1.0);
+          vF = fogOf(-mv.z);
+          // The interior fills in with the joints on station 01 and is thrown
+          // out with the cage on station 02 — the hash stands in for the order,
+          // so it fills from nowhere in particular rather than bottom to top.
+          float lit = (abs(nd.z) < 0.5) ? smoothstep(mh, mh + 0.22, u_lit) : 1.0;
+          float dim = (abs(nd.z - 1.0) < 0.5) ? (1.0 - 0.88 * u_frag) : 1.0;
+          vA = lit * dim * (0.85 + 0.45 * u_web);
+          gl_Position = projectionMatrix * mv;
+          gl_PointSize = (1.1 + 1.8 * vD) * (u_res.y / 900.0 + 0.6);
+        }`,
+      fragmentShader: /* glsl */ `
+        varying vec2 vN; varying float vD; varying float vA;
+        varying float vF; varying float vH;
+        ${SF_CVAR}
+        ${SF_HUES}
+        uniform vec3 u_bg;
+        ${SF_ROLE}
+        ${SF_CHORD}
+        void main(){
+          float d = length(gl_PointCoord - 0.5);
+          if (d > 0.5) discard;
+          /* THE INTERNAL NETWORK IS FOUR POPULATIONS, in the split the brief
+             gives and cluster_spec.py holds: most of it cool, a quarter
+             magenta, a tenth gold, a few white-hot. Gold is an ACCENT here,
+             never the dominant colour — and it is not white either: white was a
+             guess from a still, and it is why the interior used to read as flat
+             fog with sparkles in it rather than as a population with a second
+             kind of thing in it. */
+          vec3 col = chord(vPal, clamp(mix(0.05, 0.55, vH / ${CLUSTER.FILAMENT_MIX[0]}), 0.0, 1.0), 0.0);
+          col = mix(col, roleCol(2.0), step(${CLUSTER.FILAMENT_MIX[0]}, vH) * 0.85);
+          col = mix(col, u_warn, step(${CLUSTER.FILAMENT_MIX[1]}, vH) * 0.9);
+          col = mix(col, vec3(1.0), step(${CLUSTER.FILAMENT_MIX[2]}, vH) * 0.9);
+          col = mix(u_bg, col, vF);
+          float a = (1.0 - smoothstep(0.1, 0.5, d)) * (0.16 + 0.26 * vD) * vA * vF;
+          gl_FragColor = vec4(col, a);
+        }`,
+    })),
+  );
+  mMote.frustumCulled = false;
+  mMote.renderOrder = 2;
+  stations.add(mMote);
+
+  /* ── 2c. THE FRAME: the part that makes a station an OBJECT ───────────────
+     Everything above is additive and depth-write-off, which is right for a
+     hairline mesh and wrong for the thing the mesh is wrapped around. In the
+     reference a cluster's most recognisable feature is a coarse icosahedral
+     frame — twelve big glass junctions joined by thirty tubes, with a lit core
+     in the middle — and an additive scene with no depth cannot draw it: nothing
+     occludes anything, so the frame sums into the haze it is supposed to sit in
+     front of. The GUI's stage.js learned this the expensive way; this is the
+     same fix in the same numbers.
+
+     Real geometry, real lights, depth-written. InstancedMesh over
+     MeshPhysicalMaterial, with the placement injected into the vertex stage so
+     the CPU still touches nothing per frame — the spin has to reach the NORMAL
+     as well as the position, or the highlights sit still while the cage turns,
+     and that is the whole reason to go lit.
+
+     NO BLOOM PASS, here as everywhere in this scene: the emissive term carries
+     the glow. See the note in Canvas.tsx — a pass that re-encodes raw shader
+     output lifts the dark tones instead of blooming the bright ones. */
+  const solids = new THREE.Group();
+  solids.frustumCulled = false;
+  stations.add(solids);
+
+  /* A DEEP ALBEDO WITH A NARROW SPECULAR, not a bright albedo under a bright
+     key — the same correction the GUI's graph world took, for the same reason.
+     These accents clear a contrast floor as TEXT, so a 1.15 white key on them
+     is milk. */
+  stations.add(new THREE.HemisphereLight(0xdfe9ff, 0x0a0e18, 0.09));
+  const keyL = new THREE.DirectionalLight(0xffffff, 0.95);
+  keyL.position.set(-0.62, 0.78, 0.92);
+  stations.add(keyL);
+  const fillL = new THREE.DirectionalLight(0x5fa8ff, 0.6);
+  fillL.position.set(0.86, -0.34, 0.52);
+  stations.add(fillL);
+  // The rim is MAGENTA — the reference's most obvious light, and the cheapest
+  // way to get magenta onto a violet cluster without painting it there. A hue
+  // that arrives from a direction reads as illumination; the same hue in the
+  // material reads as decoration.
+  const rimL = new THREE.DirectionalLight(0xff4fd8, 0.9);
+  rimL.position.set(0.18, -0.72, -0.94);
+  stations.add(rimL);
+
+  const SOLID_ATTRS = /* glsl */ `
+    attribute vec4 aI; attribute vec3 aC; attribute vec4 aPal; attribute vec4 aCx;`;
+
+  const solidMat = (o: { key: string; glass?: boolean; rough: number; metal: number;
+                         cc?: number; irid?: number; emis: number; fresA?: boolean;
+                         fresE?: number; env?: number }) => {
+    const m = track(new THREE.MeshPhysicalMaterial({
+      color: 0xffffff, roughness: o.rough, metalness: o.metal,
+      clearcoat: o.cc ?? 0, clearcoatRoughness: 0.16,
+      iridescence: o.irid ?? 0, iridescenceIOR: 1.55,
+      envMapIntensity: o.env ?? 1.0,
+      emissive: 0xffffff, emissiveIntensity: 1,
+      transparent: !!o.glass,
+      // A glass shell must not write depth and everything else must. That one
+      // line is most of the difference between a frame and a smear.
+      depthWrite: !o.glass, depthTest: true,
+      side: o.glass ? THREE.DoubleSide : THREE.FrontSide,
+      toneMapped: true,
+    }));
+    // three caches compiled programs by material type plus this key: without it
+    // the first variant compiled is handed to every other one.
+    m.customProgramCacheKey = () => 'archeus-station-' + o.key;
+    m.onBeforeCompile = (sh) => {
+      for (const k of ['u_t', 'u_frag', 'u_web', 'u_acc', 'u_acc2', 'u_err',
+                       'u_warn', 'u_ok', 'u_bg']) {
+        (sh.uniforms as Record<string, THREE.IUniform>)[k] = (u as Record<string, THREE.IUniform>)[k];
+      }
+      // the newline is load-bearing: three's own shader opens with
+      // '#define STANDARD', a preprocessor directive has to begin a LINE, and
+      // gluing it to the end of a prelude is an error a hundred lines away
+      //: the spare slot of aI, spent: how far this part is pulled to WHITE. A
+      //: junction's hot core and a cluster's own centre are white in every
+      //: reference cage whatever hue the cage wears, and the chord's highlight
+      //: role cannot say that - it is gold on a violet cluster.
+      sh.vertexShader = [SOLID_ATTRS, SF_CVAR, 'varying float vFog; varying float vWhite;',
+                         'uniform float u_t, u_frag;', SPIN, SF_FOG, SF_GRAD, SF_CSET,
+                         sh.vertexShader].join('\n')
+        .replace('#include <defaultnormal_vertex>', `
+          mat3 im = mat3(instanceMatrix);
+          vec3 sn = objectNormal / vec3(dot(im[0], im[0]), dot(im[1], im[1]), dot(im[2], im[2]));
+          vec3 transformedNormal = normalMatrix * spin(im * sn, aI.x, u_t);`)
+        .replace('#include <begin_vertex>', `
+          vec3 lp = (instanceMatrix * vec4(position, 1.0)).xyz;
+          /* aI.y carries TWO things: the station in its integer part and this
+             part's GRADIENT BIAS in its fraction. Without the bias every part
+             of a cage reads the chord at the same place, so a junction's energy
+             shell came out the same hue as the tube it sits on — flat blue
+             balls where the GUI (which has had the bias since it went lit) has
+             the reference's magenta core. There is no room for a fifth
+             per-instance float: aI is (spin phase, station, radius, whiteness)
+             and aCx is (axis xyz, seed). A station index is a small integer and
+             a bias is in 0..1, so they share one. */
+          float aSt = floor(aI.y);
+          setChord(aPal, aCx, lp / max(aI.z, 1e-4));
+          vGT = clamp(vGT + (aI.y - aSt), 0.0, 1.0);
+          vWhite = aI.w;
+          // station 02 comes apart: its frame flies outward with its mesh
+          float fr = (abs(aSt - 1.0) < 0.5) ? u_frag : 0.0;
+          vec3 transformed = aC + spin(lp * (1.0 + fr * 2.2), aI.x, u_t * (1.0 - 0.55 * fr));`)
+        .replace('#include <project_vertex>', `
+          vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          vFog = fogOf(-mvPosition.z);`);
+      sh.fragmentShader = [SF_CVAR, 'varying float vFog; varying float vWhite;', SF_HUES,
+                           'uniform vec3 u_bg; uniform float u_web, u_frag;',
+                           SF_ROLE, SF_CHORD, sh.fragmentShader].join('\n')
+        .replace('#include <emissivemap_fragment>', `
+          #include <emissivemap_fragment>
+          vec3 vd = normalize(vViewPosition);
+          float fres = clamp(1.0 - abs(dot(normalize(normal), vd)), 0.0, 1.0);
+          vec3 ch = mix(chord(vPal, vGT, ${o.glass ? '0.20 * fres' : '0.0'}),
+                        vec3(1.0), vWhite);
+          /* DEEPEN AND SATURATE BEFORE LIGHTING IT. These accents are PALE by
+             design — they clear a contrast floor as TEXT — and a pale albedo
+             under a key, a fill and a rim is white. */
+          ch = clamp(mix(vec3(dot(ch, vec3(0.30, 0.59, 0.11))), ch, 1.90), 0.0, 1.0);
+          ch = mix(u_bg, ch, vFog);
+          diffuseColor.rgb *= pow(max(ch, vec3(0.0)), vec3(2.5));
+          /* A GLASS SHELL IS A RIM, AND A RIM IS A BAND. The ramp it replaces
+             is a soft bubble; the reference's junction is a clear sphere with a
+             hard bright ring you read the pink core through. */
+          diffuseColor.a *= ${o.fresA ? '(0.10 + 1.30 * smoothstep(0.55, 0.96, fres))' : '1.0'} * vFog;
+          /* ...and a TUBE is its mirror image: a cylinder's specular is a
+             narrow line down the part that FACES you, and its silhouette goes
+             dark. Running the rim term on a strut is what made every one of
+             them a flat pale band with bright edges. */
+          totalEmissiveRadiance = pow(max(ch, vec3(0.0)), vec3(2.05))
+            * ${o.emis.toFixed(3)}
+            * ${({1: '(0.25 + 0.95 * pow(fres, 2.0))',
+                  2: '(0.05 + 2.30 * pow(1.0 - fres, 9.0))',
+                  3: '(0.06 + 2.40 * smoothstep(0.55, 0.96, fres))'} as Record<number, string>)[o.fresE ?? 0] ?? '1.0'}
+            * (0.85 + 0.35 * u_web) * vFog;`);
+    };
+    return m;
+  };
+
+  type Row = { m: THREE.Matrix4; i: number[] };
+  const mkInst = (tmpl: THREE.BufferGeometry, mat: THREE.Material, rows: Row[], order: number) => {
+    if (!rows.length) return;
+    // the geometry is CLONED because the per-instance attributes live on it:
+    // two meshes sharing one would share one instance list
+    const geo = track(tmpl.clone());
+    const mesh = new THREE.InstancedMesh(geo, mat, rows.length);
+    const A = new Float32Array(rows.length * 4);
+    const C = new Float32Array(rows.length * 3);
+    const PL = new Float32Array(rows.length * 4);
+    const CX = new Float32Array(rows.length * 4);
+    rows.forEach((r, k) => {
+      mesh.setMatrixAt(k, r.m);
+      // ...and the LOOKUPS take the integer part. aI.y packs the station in
+      // its integer part and the part's gradient bias in its fraction (see the
+      // begin_vertex injection); the attribute keeps both, every array indexed
+      // by station takes only the station.
+      const st = Math.floor(r.i[1]);
+      A.set([r.i[0], r.i[1], r.i[2], r.i[3]], k * 4);
+      C.set([STATIONS[st].x, STATIONS[st].y, STATIONS[st].z], k * 3);
+      PL.set(PAL[st] as number[], k * 4);
+      const ax = AXIS[st];
+      CX.set([ax[0], ax[1], ax[2], seedOf(st)], k * 4);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    geo.setAttribute('aI', new THREE.InstancedBufferAttribute(A, 4));
+    geo.setAttribute('aC', new THREE.InstancedBufferAttribute(C, 3));
+    geo.setAttribute('aPal', new THREE.InstancedBufferAttribute(PL, 4));
+    geo.setAttribute('aCx', new THREE.InstancedBufferAttribute(CX, 4));
+    mesh.frustumCulled = false;
+    mesh.renderOrder = order;
+    solids.add(mesh);
+  };
+
+  const _q = new THREE.Quaternion(), _up = new THREE.Vector3(0, 1, 0);
+  const _d = new THREE.Vector3(), _p = new THREE.Vector3(), _s3 = new THREE.Vector3();
+  const at = (pos: THREE.Vector3, quat: THREE.Quaternion, sc: THREE.Vector3) =>
+    new THREE.Matrix4().compose(pos, quat, sc);
+  const ball = (v: THREE.Vector3, r: number) =>
+    at(_p.copy(v), _q.identity(), _s3.set(r, r, r));
+  const tube = (a: THREE.Vector3, b: THREE.Vector3, half: number) => {
+    _d.copy(b).sub(a);
+    const L = _d.length() || 1e-4;
+    return at(_p.copy(a).add(b).multiplyScalar(0.5),
+              _q.setFromUnitVectors(_up, _d.divideScalar(L)),
+              _s3.set(half, L, half));
+  };
+
+  /* The coarse frame is the plain icosahedron's 30 edges with its 12 corners
+     carrying the junctions — read off the geometry rather than written down, so
+     a frame and the beads that sit on it cannot disagree about where a corner
+     is. The numbers are cluster_spec.py's, the same ones the GUI and the
+     architecture graph read. */
+  const ico0 = new THREE.IcosahedronGeometry(1, 0);
+  const w0 = new THREE.EdgesGeometry(ico0);
+  const w0p = w0.getAttribute('position');
+  const seenC = new Map<string, THREE.Vector3>();
+  const i0p = ico0.getAttribute('position');
+  for (let i = 0; i < i0p.count; i++) {
+    const v = new THREE.Vector3().fromBufferAttribute(i0p, i);
+    seenC.set(`${v.x.toFixed(3)}|${v.y.toFixed(3)}|${v.z.toFixed(3)}`, v);
+  }
+  const CORNERS0 = [...seenC.values()];
+  ico0.dispose();
+
+  const rTube: Row[] = [], rCore: Row[] = [], rGlass: Row[] = [];
+  for (let st = 0; st < STATION_COUNT; st++) {
+    const r = RADII[st], ph = (st * 1.7) % 6.283;
+    for (let v = 0; v < w0p.count; v += 2) {
+      const a = new THREE.Vector3().fromBufferAttribute(w0p, v).multiplyScalar(r);
+      const b = new THREE.Vector3().fromBufferAttribute(w0p, v + 1).multiplyScalar(r);
+      rTube.push({ m: tube(a, b, CLUSTER.FRAME_HALF * r), i: [ph, st, r, 0] });
+    }
+    for (const c of CORNERS0) {
+      const p2 = c.clone().multiplyScalar(r);
+      // four nested parts, at the model's own radii: a hot core and an energy
+      // shell inside a glass housing (Hub_HotCore / Hub_EnergyCore /
+      // Hub_GlassShell). The version that guessed from a still had three and
+      // was missing the energy core, which is what stops a junction being a
+      // white dot with a tint around it.
+      // A JUNCTION'S TWO INNER SHELLS HAVE THEIR OWN RADII. They used to be
+      // the conduit hub's ratios with the hot core scaled 1.7, which put the
+      // white core on top of the energy shell so no pink ever showed.
+      rCore.push({ m: ball(p2, CLUSTER.FRAME_BEAD_HOT * r), i: [ph, st + 0.72, r, 0.80] });
+      rCore.push({ m: ball(p2, CLUSTER.FRAME_BEAD_ENERGY * r), i: [ph, st + 0.52, r, 0.14] });
+      rGlass.push({ m: ball(p2, CLUSTER.FRAME_BEAD_R * r), i: [ph, st, r, 0] });
+    }
+    // THE LIT CENTRE — a white core with a gold seed in it, inside its own
+    // glass. The one thing the model's parts list says that no still image did,
+    // and the reason every hull built before it was read was hollow.
+    const O = new THREE.Vector3();
+    // THE CENTRE IS NOT A SUN — it is a junction one size up. In both
+    // references the middle of a cage is dark.
+    rCore.push({ m: ball(O, CLUSTER.CORE_ENERGY_R * r), i: [ph, st + 0.50, r, 0.10] });
+    rCore.push({ m: ball(O, CLUSTER.CORE_R * r), i: [ph, st + 0.62, r, 0.78] });
+    rCore.push({ m: ball(O, CLUSTER.SEED_R * r), i: [ph, st + 0.86, r, 0] });
+    rGlass.push({ m: ball(O, CLUSTER.CORE_SHELL_R * r), i: [ph, st, r, 0] });
+  }
+  w0.dispose();
+
+  const TUBE_G = track(new THREE.CylinderGeometry(1, 1, 1, 12, 1, true));
+  const BALL_G = track(new THREE.IcosahedronGeometry(1, 2));
+  /* ...and the emissives run hotter here than in the GUI's graph world, by
+     the same amount the composer would have added: this scene has NO BLOOM
+     PASS and never gets one (Canvas.tsx), so a hot core that the GUI reads
+     through its halo has to be legible as pixels. */
+  mkInst(TUBE_G, solidMat({ key: 'frame', rough: 0.22, metal: 0.78, cc: 0.9, irid: 0.35, emis: 0.72, fresE: 2, env: 0.6 }), rTube, 4);
+  mkInst(BALL_G, solidMat({ key: 'core', rough: 0.10, metal: 0.05, cc: 0.4, irid: 0.2, emis: 1.70, env: 0.5 }), rCore, 5);
+  mkInst(BALL_G, solidMat({ key: 'glass', glass: true, rough: 0.08, metal: 0.15, cc: 1.0, irid: 0.65, emis: 0.90, fresA: true, fresE: 3, env: 2.2 }), rGlass, 6);
+
 
   /* ── 3. the link: a tube along the same curve, drawn by scroll ───────────
      TubeGeometry parameterises by ARC LENGTH, but scroll progress is in
@@ -388,11 +1051,14 @@ export function buildJourney(): Journey {
   }
   gTube.setAttribute('aT', new THREE.BufferAttribute(aT, 1));
 
-  /* Where the trunk is INSIDE a solid. The curve runs through every station
-     centre, so the tube skewered each dodecahedron and came out the far side —
-     the link never read as arriving anywhere. 1 at a centre, 0 at that solid's
-     surface; the fragment shader fades it out over the outer third, so the trunk
-     stops on the wireframe. Measured once at build, not per frame. */
+  /* Where the trunk is INSIDE a cage. The curve runs through every station
+     centre, so the tube skewered each hull and came out the far side — the link
+     never read as arriving anywhere. 1 at a centre, 0 at that cage's surface;
+     the fragment shader fades it out over the outer third, so the trunk stops on
+     the wireframe. Measured once at build, not per frame, and it is measured
+     against RADII rather than against the geometry — so the swap to a subdivided
+     icosahedron, whose vertices sit at circumradius 1 exactly as the previous
+     solid's did, leaves this correct with nothing to change. */
   const tPos = gTube.getAttribute('position');
   const aIn = new Float32Array(tPos.count);
   const tv = new THREE.Vector3();
@@ -623,9 +1289,10 @@ export function buildJourney(): Journey {
     for (let j = i + 1; j < STATION_COUNT; j++) {
       cd.copy(STATIONS[j]).sub(STATIONS[i]).normalize();
       // Surface to surface, not centre to centre — the same defect the section
-      // chain already fixed, and the reason these ran through both solids and out
-      // the far side. DodecahedronGeometry(1) has circumradius 1, so RADII is
-      // exactly where the wireframe is, at every spin angle.
+      // chain already fixed, and the reason these ran through both hulls and out
+      // the far side. A normalized subdivided icosahedron has every one of its
+      // 42 vertices at circumradius 1, exactly as the platonic solid it replaced
+      // did, so RADII is still where the wireframe is at every spin angle.
       const a = STATIONS[i].clone().addScaledVector(cd, RADII[i]);
       const b = STATIONS[j].clone().addScaledVector(cd, -RADII[j]);
       cp.push(a.x, a.y, a.z, b.x, b.y, b.z);
@@ -663,18 +1330,26 @@ export function buildJourney(): Journey {
   mWeb.renderOrder = 1;
   stations.add(mWeb);
 
-  /* ── 7. ONE SOLID PER SECTION, arriving from the background ───────────────
+  /* ── 7. ONE CLUSTER PER SECTION, arriving from the background ─────────────
      Not a background field, and not one object that morphs. Every section owns
-     its own dodecahedron, sized by that section's weight and coloured by its
-     place in the palette. The solid you are reading is in the foreground beside
-     the copy; the others wait behind it, further back the further away their
-     section is, and each travels forward as you reach it.
+     its own cluster — the same geodesic cage holding the same interior
+     population the six stations wear, sized by that section's weight and
+     coloured off the same five-stop ladder. The cluster you are reading is in
+     the foreground beside the copy; the others wait behind it, further back the
+     further away their section is, and each travels forward as you reach it.
 
-     All of it happens in the vertex shader from one uniform (`u_sec`), and all
-     of them are one merged buffer — so N sections still cost two draw calls, and
-     nothing is animated on the CPU. The group is re-anchored to the camera every
-     frame, which makes these positions CAMERA-SPACE: the solids hold their place
-     on screen no matter what the journey camera is doing. */
+     They are the SAME language as the stations on purpose. A page whose sections
+     were platonic solids while the landing page's stations were clusters said
+     two different things about what the project is — and the study's whole point
+     is that a solid says "here is a thing" while a cluster says "here is a thing
+     made of things, and it is connected to other things".
+
+     All of it happens in the vertex shader from one uniform (`u_sec`), and each
+     of the five layers is one merged buffer — so N sections cost five draw calls
+     whatever N is, and nothing is animated on the CPU. The group is re-anchored
+     to the camera every frame, which makes these positions CAMERA-SPACE: the
+     clusters hold their place on screen no matter what the journey camera is
+     doing. */
   const secGroup = new THREE.Group();
   group.add(secGroup);
 
@@ -743,7 +1418,7 @@ ${LAYOUTS.map((n, i) =>
       // The slot is a SCREEN-space anchor, so the centre is scaled by its own
       // depth to cancel the perspective divide. Without this a receding solid
       // slides toward the middle of the frame and leaves the box the page gave
-      // it — which is exactly what "the dodecahedra do not anchor" was.
+      // it — which is exactly what "the section solids do not anchor" was.
       // Receding then does only what it should: make it smaller.
       float depth = ${FOCAL.toFixed(1)} + a.z;
       float k = depth / ${FOCAL.toFixed(1)};
@@ -757,18 +1432,24 @@ ${LAYOUTS.map((n, i) =>
       return (sl.z / u_vh) * 2.0 * u_halfH * w;
     }`;
 
-  /** Unit dodecahedron edges and vertices, reused for every section's solid. */
-  const sBase = new THREE.DodecahedronGeometry(1, 0);
+  /** The unit cage a section's cluster is built from — the SAME geometry the six
+   *  stations wear, at radius 1, so `place()` scaling it by the slot radius is
+   *  the only difference between the two. 42 vertices, 120 edges, 80 faces. */
+  const sBase = new THREE.IcosahedronGeometry(1, 1);
   const sWire = new THREE.EdgesGeometry(sBase);
   const swp = sWire.getAttribute('position');
   const S_EDGE = Array.from({ length: swp.count }, (_, i) =>
     new THREE.Vector3().fromBufferAttribute(swp, i));
   sBase.dispose();
   sWire.dispose();
-  const S_VERT = dodecVertices();
+  // The same deduplicated 42, from the same helper the stations use. Two
+  // implementations of "the corners of the cage" is two chances to disagree
+  // about how many there are.
+  const S_VERT = verts;
 
   const gSecE = track(new THREE.BufferGeometry());
   const gSecJ = track(new THREE.BufferGeometry());
+  const gSecM = track(new THREE.BufferGeometry());
 
   const secUniforms = {
     uniforms: u,
@@ -781,14 +1462,20 @@ ${LAYOUTS.map((n, i) =>
   const mSecE = new THREE.LineSegments(gSecE, track(new THREE.ShaderMaterial({
     ...secUniforms,
     vertexShader: /* glsl */ `
-      attribute float sid; attribute float sw; attribute vec3 shue;
-      varying float vA; varying vec3 vC;
+      attribute float sid; attribute float sw;
+      attribute vec4 spal; attribute vec4 scx;
+      varying float vA;
+      ${SF_CVAR}
       uniform float u_span;
       ${SPIN}
       ${PLACE}
+      ${SF_GRAD}
+      ${SF_CSET}
       void main(){
         float ad = abs(sid - u_sec);
-        vC = shue;
+        // position is already in UNIT hull space here — place() is what scales
+        // it to the slot — so it is exactly what gradT wants
+        setChord(spal, scx, position);
         // Visible for a few sections either side, brightest when current. How
         // many is per layout: a rail of short rows scrolls through five in the
         // time a full-height page covers one.
@@ -797,43 +1484,149 @@ ${LAYOUTS.map((n, i) =>
         gl_Position = projectionMatrix * modelViewMatrix * vec4(place(local, sid, sw), 1.0);
       }`,
     fragmentShader: /* glsl */ `
-      varying float vA; varying vec3 vC;
+      varying float vA;
+      ${SF_CVAR}
+      ${SF_HUES}
       uniform float u_wash;
-      void main(){ gl_FragColor = vec4(vC, (0.10 + 0.42 * vA * vA) * u_wash); }`,
+      ${SF_ROLE}
+      ${SF_CHORD}
+      // A strut is DIMMER than a node and DULLER than nothing else in the
+      // layer except the chain — the same ladder the stations keep: nodes
+      // brightest, struts filaments with presence, links almost background.
+      void main(){ gl_FragColor = vec4(chord(vPal, vGT, 0.0), (0.10 + 0.42 * vA * vA) * u_wash); }`,
   })));
   mSecE.frustumCulled = false;
   mSecE.renderOrder = 8;
   secGroup.add(mSecE);
 
+  /* The joint's vertex stage, shared by the white core and by its halo — the
+     halo is the SAME 42 points per section drawn a second time, wider and
+     fainter, over the SAME buffer. One more draw call, not one more byte, and
+     it is how this layer gets a glow with no post-processing: bloom went into
+     this scene and came straight back out, because these are raw ShaderMaterials
+     writing final display values and a pass that re-encodes them lifts the dark
+     tones instead of blooming the bright ones. See the note in Canvas.tsx.
+     `k` is the size multiplier. */
+  const secJointVert = (k: number) => /* glsl */ `
+    attribute float sid; attribute float sw;
+    attribute vec4 spal; attribute vec4 scx;
+    varying float vA;
+    ${SF_CVAR}
+    uniform float u_span; uniform vec2 u_res;
+    ${SPIN}
+    ${PLACE}
+    ${SF_GRAD}
+    ${SF_CSET}
+    void main(){
+      float ad = abs(sid - u_sec);
+      setChord(spal, scx, position);
+      vA = smoothstep(u_span, 0.0, ad);
+      vec3 local = spin(position, sid * 1.7, u_t * 0.55);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(place(local, sid, sw), 1.0);
+      gl_PointSize = (1.6 + 2.6 * vA) * (u_res.y / 900.0 + 0.6) * ${k.toFixed(2)};
+    }`;
+
   const mSecJ = new THREE.Points(gSecJ, track(new THREE.ShaderMaterial({
     ...secUniforms,
-    vertexShader: /* glsl */ `
-      attribute float sid; attribute float sw; attribute vec3 shue;
-      varying float vA; varying vec3 vC;
-      uniform float u_span; uniform vec2 u_res;
-      ${SPIN}
-      ${PLACE}
-      void main(){
-        float ad = abs(sid - u_sec);
-        vC = shue;
-        vA = smoothstep(u_span, 0.0, ad);
-        vec3 local = spin(position, sid * 1.7, u_t * 0.55);
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(place(local, sid, sw), 1.0);
-        gl_PointSize = (1.6 + 2.6 * vA) * (u_res.y / 900.0 + 0.6);
-      }`,
+    vertexShader: secJointVert(1),
     fragmentShader: /* glsl */ `
-      varying float vA; varying vec3 vC;
+      varying float vA;
+      ${SF_CVAR}
+      ${SF_HUES}
       uniform float u_wash;
+      ${SF_ROLE}
+      ${SF_CHORD}
       void main(){
         float d = length(gl_PointCoord - 0.5);
         if (d > 0.5) discard;
-        vec3 col = mix(vC, vec3(1.0), smoothstep(0.30, 0.0, d) * 0.5);
-        gl_FragColor = vec4(col, (1.0 - smoothstep(0.28, 0.5, d)) * (0.25 + 0.7 * vA) * u_wash);
+        /* WHITE core inside a COLOURED halo, exactly as a station's joint —
+           the reference image's nodes are white points sitting in a coloured
+           bloom, not coloured dots with a highlight. The old joint mixed 50%
+           toward white over the inner third and read as a pale accent. */
+        float core = smoothstep(0.20, 0.0, d);
+        float wide = pow(max(0.0, 1.0 - d * 2.0), 2.2);
+        vec3 col = mix(chord(vPal, vGT, 0.0), vec3(1.0), core * 0.75);
+        // Nodes are the brightest thing in the layer; struts and the chain are
+        // scaled under them.
+        gl_FragColor = vec4(col, (core * 0.85 + wide * 0.30) * (0.25 + 0.7 * vA) * u_wash);
       }`,
   })));
   mSecJ.frustumCulled = false;
   mSecJ.renderOrder = 9;
   secGroup.add(mSecJ);
+
+  // …and the halo: the same points, three times as wide, coloured, additive,
+  // faint. The glow is a second Points, never a pass.
+  const mSecH = new THREE.Points(gSecJ, track(new THREE.ShaderMaterial({
+    ...secUniforms,
+    vertexShader: secJointVert(3.2),
+    fragmentShader: /* glsl */ `
+      varying float vA;
+      ${SF_CVAR}
+      ${SF_HUES}
+      uniform float u_wash;
+      ${SF_ROLE}
+      ${SF_CHORD}
+      void main(){
+        float d = length(gl_PointCoord - 0.5);
+        if (d > 0.5) discard;
+        float g = pow(max(0.0, 1.0 - d * 2.0), 2.2);
+        gl_FragColor = vec4(chord(vPal, vGT, 0.0), g * 0.16 * (0.25 + 0.7 * vA) * u_wash);
+      }`,
+  })));
+  mSecH.frustumCulled = false;
+  mSecH.renderOrder = 8;
+  secGroup.add(mSecH);
+
+  /* The interior population — the trait that makes this a cluster rather than a
+     cage. `moteLocals` returns offsets for a UNIT hull, which is exactly what
+     `place()` wants: a section's radius is a slot measured at runtime, so there
+     is nothing to bake in. One merged Points for the whole page. */
+  const mSecM = new THREE.Points(gSecM, track(new THREE.ShaderMaterial({
+    ...secUniforms,
+    vertexShader: /* glsl */ `
+      attribute float sid; attribute float sw;
+      attribute vec4 spal; attribute vec4 scx;
+      attribute float mh;
+      varying float vA; varying float vH;
+      ${SF_CVAR}
+      uniform float u_span; uniform vec2 u_res;
+      ${SPIN}
+      ${PLACE}
+      ${SF_GRAD}
+      ${SF_CSET}
+      void main(){
+        setChord(spal, scx, position); vH = mh;
+        vA = smoothstep(u_span, 0.0, abs(sid - u_sec));
+        vec3 local = spin(position, sid * 1.7, u_t * 0.55);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(place(local, sid, sw), 1.0);
+        gl_PointSize = (0.9 + 1.5 * vA) * (u_res.y / 900.0 + 0.6);
+      }`,
+    fragmentShader: /* glsl */ `
+      varying float vA; varying float vH;
+      ${SF_CVAR}
+      ${SF_HUES}
+      uniform float u_wash;
+      ${SF_ROLE}
+      ${SF_CHORD}
+      void main(){
+        float d = length(gl_PointCoord - 0.5);
+        if (d > 0.5) discard;
+        /* THE INTERNAL NETWORK IS FOUR POPULATIONS, in the split
+           cluster_spec.py holds and all three renderers read: most of it cool,
+           a quarter magenta, a tenth gold, a few white-hot. Gold is an ACCENT,
+           never the dominant colour. */
+        vec3 col = chord(vPal, clamp(mix(0.05, 0.55, vH / ${CLUSTER.FILAMENT_MIX[0]}), 0.0, 1.0), 0.0);
+        col = mix(col, roleCol(2.0), step(${CLUSTER.FILAMENT_MIX[0]}, vH) * 0.85);
+        col = mix(col, u_warn, step(${CLUSTER.FILAMENT_MIX[1]}, vH) * 0.9);
+        col = mix(col, vec3(1.0), step(${CLUSTER.FILAMENT_MIX[2]}, vH) * 0.9);
+        gl_FragColor = vec4(col,
+          (1.0 - smoothstep(0.1, 0.5, d)) * (0.10 + 0.26 * vA) * u_wash);
+      }`,
+  })));
+  mSecM.frustumCulled = false;
+  mSecM.renderOrder = 8;
+  secGroup.add(mSecM);
 
   /* The chain. One segment per linked pair, each end placed by the same
      `place()` the solids use — so the link cannot drift away from what it links,
@@ -846,13 +1639,20 @@ ${LAYOUTS.map((n, i) =>
     vertexShader: /* glsl */ `
       attribute float sid; attribute float sw;
       attribute float osid; attribute float osw;
-      attribute vec3 shue;
-      varying float vA; varying vec3 vC;
+      attribute vec4 spal; attribute vec4 scx;
+      varying float vA;
+      ${SF_CVAR}
       uniform float u_span;
       ${SPIN}
       ${PLACE}
+      ${SF_GRAD}
+      ${SF_CSET}
       void main(){
-        vC = shue;
+        // each END carries its own cluster's chord, so the segment interpolates
+        // from one to the other. The position is a placeholder here (both ends
+        // are computed below), so the gradient walk is evaluated at a fixed
+        // mid-hull radius rather than at a point that does not exist yet.
+        setChord(spal, scx, vec3(0.0, 0.62, 0.0));
         vA = smoothstep(u_span + 0.2, 0.0, abs(sid - u_sec));
         // Centre to centre is what made these look wrong: the line ran straight
         // through both solids and out the other side. Each end starts on its own
@@ -866,9 +1666,16 @@ ${LAYOUTS.map((n, i) =>
           * vec4(a + dir * drawnRadius(sid, sw) * 1.04, 1.0);
       }`,
     fragmentShader: /* glsl */ `
-      varying float vA; varying vec3 vC;
+      varying float vA;
+      ${SF_CVAR}
+      ${SF_HUES}
       uniform float u_wash;
-      void main(){ gl_FragColor = vec4(vC, (0.06 + 0.30 * vA) * u_wash); }`,
+      ${SF_ROLE}
+      ${SF_CHORD}
+      // The dullest thing in the layer. An inter-cluster link is thinner AND
+      // duller than a hull strut; WebGL line width is 1px whatever you ask for,
+      // so "thinner" is spent as alpha — the right currency anyway.
+      void main(){ gl_FragColor = vec4(chord(vPal, vGT, 0.0), (0.06 + 0.30 * vA) * u_wash); }`,
   })));
   mSecL.frustumCulled = false;
   mSecL.renderOrder = 7;
@@ -894,35 +1701,62 @@ ${LAYOUTS.map((n, i) =>
 
     const ep: number[] = [], ei: number[] = [], ew: number[] = [], eh: number[] = [];
     const jp: number[] = [], ji: number[] = [], jw: number[] = [], jh: number[] = [];
+    const mp: number[] = [], mi: number[] = [], mw: number[] = [];
+    const mth: number[] = [], mhash: number[] = [];
+    const ecx: number[] = [], jcx: number[] = [], mcx: number[] = [];
+    /* A section's cluster wears a CHORD, exactly as a station's does — four
+       role indices and a gradient axis, pushed per vertex. `eh` used to be one
+       tone, i.e. one colour for a whole cluster, which is the rule the brief
+       calls the most important and the one every renderer here broke. */
+    const chord4 = (out: number[], cxOut: number[], k: number) => {
+      const q = chordOf(secSeed(k)), a = axisOf((k * 5) % 7 + 11);
+      out.push(q[0], q[1], q[2], q[3]);
+      cxOut.push(a[0], a[1], a[2], secSeed(k));
+    };
     for (let s = 0; s < n; s++) {
-      const c = new THREE.Color(HUES[s % HUES.length]);
       for (const v of S_EDGE) {
-        ep.push(v.x, v.y, v.z); ei.push(s); ew.push(rad[s]); eh.push(c.r, c.g, c.b);
+        ep.push(v.x, v.y, v.z); ei.push(s); ew.push(rad[s]); chord4(eh, ecx, s);
       }
       for (const v of S_VERT) {
-        jp.push(v.x, v.y, v.z); ji.push(s); jw.push(rad[s]); jh.push(c.r, c.g, c.b);
+        jp.push(v.x, v.y, v.z); ji.push(s); jw.push(rad[s]); chord4(jh, jcx, s);
+      }
+      // The interior. `rad[s]` is already relative — how much of its slot this
+      // cluster fills, 0.52..1 — so it is exactly the `q` moteCount wants, and a
+      // one-paragraph section holds a hundred motes where the page's longest
+      // holds two hundred and fifty.
+      const q = moteLocals(moteCount(rad[s]), s);
+      for (let k = 0; k < q.length; k += 4) {
+        mp.push(q[k], q[k + 1], q[k + 2]);
+        mi.push(s); mw.push(rad[s]); chord4(mth, mcx, s); mhash.push(q[k + 3]);
       }
     }
-    const set3 = (g: THREE.BufferGeometry, p: number[], i: number[], w: number[], h: number[]) => {
+    const set3 = (g: THREE.BufferGeometry, p: number[], i: number[], w: number[],
+                  h: number[], cx: number[]) => {
       g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
       g.setAttribute('sid', new THREE.Float32BufferAttribute(i, 1));
       g.setAttribute('sw', new THREE.Float32BufferAttribute(w, 1));
-      g.setAttribute('shue', new THREE.Float32BufferAttribute(h, 3));
+      g.setAttribute('spal', new THREE.Float32BufferAttribute(h, 4));
+      g.setAttribute('scx', new THREE.Float32BufferAttribute(cx, 4));
     };
-    set3(gSecE, ep, ei, ew, eh);
-    set3(gSecJ, jp, ji, jw, jh);
+    set3(gSecE, ep, ei, ew, eh, ecx);
+    set3(gSecJ, jp, ji, jw, jh, jcx);
+    set3(gSecM, mp, mi, mw, mth, mcx);
+    gSecM.setAttribute('mh', new THREE.Float32BufferAttribute(mhash, 1));
 
     // The chain: two vertices per link. Each end carries BOTH its own section and
     // the one at the far end, which is what lets the shader start the line on the
     // surface of its own solid rather than at its centre.
     const lp: number[] = [], li: number[] = [], lw: number[] = [];
-    const lo: number[] = [], low: number[] = [], lh: number[] = [];
+    const lo: number[] = [], low: number[] = [], lh: number[] = [], lcx: number[] = [];
+    /* Each end of the chain carries its OWN cluster's chord, so the line
+       interpolates from one to the other exactly as the GUI's conduit does —
+       the brief's "the connection inherits colour information from the clusters
+       it connects", and the thing a single accent could never say. */
     const push = (self: number, other: number) => {
-      const c = new THREE.Color(HUES[self % HUES.length]);
       lp.push(0, 0, 0);
       li.push(self); lw.push(rad[self]);
       lo.push(other); low.push(rad[other]);
-      lh.push(c.r, c.g, c.b);
+      chord4(lh, lcx, self);
     };
     // Topology is the one thing a layout changes on the CPU. A community is a
     // mesh, not a queue: /community chords all three to each other. Everything
@@ -937,7 +1771,8 @@ ${LAYOUTS.map((n, i) =>
     gSecL.setAttribute('sw', new THREE.Float32BufferAttribute(lw, 1));
     gSecL.setAttribute('osid', new THREE.Float32BufferAttribute(lo, 1));
     gSecL.setAttribute('osw', new THREE.Float32BufferAttribute(low, 1));
-    gSecL.setAttribute('shue', new THREE.Float32BufferAttribute(lh, 3));
+    gSecL.setAttribute('spal', new THREE.Float32BufferAttribute(lh, 4));
+    gSecL.setAttribute('scx', new THREE.Float32BufferAttribute(lcx, 4));
   };
   secGroup.visible = false;
 

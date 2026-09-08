@@ -90,6 +90,50 @@ OVERFLOW_JS = """[...document.querySelectorAll('.dash>.card')].map(c=>{
       +'+'+Math.round(over)+'px');});
   return (c.className.match(/d-[\\w]+/)||['?'])[0]+': '+(bad.length?bad.join(', '):'clean');})"""
 
+#: the widths the fluid content grid actually has to survive. One column at
+#: 1280, two at 1920, three at 2560 — decided by `auto-fill`, not by a
+#: breakpoint, which is exactly why it has to be MEASURED rather than reasoned
+#: about. Auditing at one width could never see a card that only breaks when the
+#: browser fits another column in and every column gets narrower.
+WIDTHS = (1280, 1920, 2560)
+
+# Does every card's content fit the grid CELL it landed in?
+#
+# RIGHT-EDGE ONLY, and deliberately so: `#content` scrolls vertically, so a page
+# taller than the viewport is not a bug — a card wider than its column is. The
+# probe is rooted on each grid item rather than on `#content` because the cell
+# is the box that narrows when auto-fill adds a column.
+#
+# A descendant of a horizontally scrolling ancestor is skipped for the same
+# reason OVERFLOW_JS skips one inside a scroller: `.diff`, `.dlist` and
+# `.acct-rail` are *supposed* to hold content wider than themselves. The root
+# itself is excluded from that walk — `#content` and `.modal` both scroll, so a
+# probe that consulted the root's own overflow skipped every element it was
+# asked to measure and reported `clean` for measuring nothing.
+GRID_JS = """(()=>{const out=[];
+  const c0=document.querySelector('#content');
+  if(c0&&c0.scrollWidth-c0.clientWidth>1.5)
+    out.push('#content scrolls sideways by '+Math.round(c0.scrollWidth-c0.clientWidth)+'px');
+  document.querySelectorAll('.content>*').forEach(c=>{
+    const cb=c.getBoundingClientRect();
+    if(!cb.width||!cb.height)return;
+    const scrolls=e=>{
+      for(let p=e.parentElement;p&&p!==c.parentElement;p=p.parentElement){
+        if(p===c)continue;
+        const o=getComputedStyle(p).overflowX;
+        if(o==='auto'||o==='scroll'||o==='hidden')return true;}
+      return false;};
+    const bad=[];
+    c.querySelectorAll('*').forEach(e=>{
+      const b=e.getBoundingClientRect();
+      if(!b.width||!b.height||scrolls(e))return;
+      const over=b.right-cb.right;
+      if(over>1.5)bad.push((typeof e.className==='string'
+        ?e.className.split(' ')[0]:e.tagName)+'+'+Math.round(over)+'px');});
+    if(bad.length)out.push(((typeof c.className==='string'&&c.className)
+      ||c.tagName)+' > '+[...new Set(bad)].slice(0,4).join(', '));});
+  return [...new Set(out)];})()"""
+
 
 # Does the effort slider's thumb land on the label it names?
 #
@@ -126,14 +170,27 @@ TICKS_JS = """(()=>{
 })()"""
 
 # Same idea as OVERFLOW_JS but scoped to whatever modal is open.
+#
+# The ancestor walk stops AT the root instead of at its parent. It used to
+# include the root, and both roots this probe is used with scroll — `.modal` is
+# `max-height:88vh;overflow-y:auto` and `#content` is the app's scroll area — so
+# the very first ancestor it looked at said "scrolling" and every element was
+# skipped. It reported `clean` for measuring nothing, on modals and on every
+# manager page. And a root that IS scrolled legitimately holds content taller
+# than itself, so there the right edge is the only fault worth reporting.
 MODAL_JS = """(()=>{const m=document.querySelector('.ovl.show .modal');
   if(!m)return [];const mb=m.getBoundingClientRect();const bad=[];
+  const scrolly=m.scrollHeight-m.clientHeight>1.5;
+  const vis=e=>!e.checkVisibility||e.checkVisibility(
+    {contentVisibilityAuto:true,visibilityProperty:true});
   m.querySelectorAll('*').forEach(e=>{
+    if(!vis(e))return;
     const b=e.getBoundingClientRect(); if(!b.height)return;
-    for(let p=e.parentElement;p&&p!==m.parentElement;p=p.parentElement){
+    for(let p=e.parentElement;p&&p!==m;p=p.parentElement){
       const o=getComputedStyle(p).overflowY;
       if(o==='auto'||o==='scroll'||o==='hidden')return;}
-    const over=Math.max(b.bottom-mb.bottom,b.right-mb.right);
+    const over=scrolly?b.right-mb.right
+                      :Math.max(b.bottom-mb.bottom,b.right-mb.right);
     if(over>1.5)bad.push((typeof e.className==='string'?e.className.split(' ')[0]
       :e.tagName)+'+'+Math.round(over)+'px');});
   return [...new Set(bad)];})()"""
@@ -187,6 +244,55 @@ def audit_page(pg, label, settle=6000):
     state = ('OVERFLOW ' + '; '.join(bad)) if bad else             ('OVAL ' + '; '.join(ovals)) if ovals else 'clean'
     print(f'  {label:<11} {state}')
     return state == 'clean'
+
+
+def _rendered(pg, settle=6000):
+    try:
+        pg.wait_for_function(
+            "()=>{const c=document.querySelector('#content');"
+            "return c && !c.querySelector('.spin') && c.querySelector('.card,.slist,.dash');}",
+            timeout=settle)
+        return True
+    except Exception:
+        return False
+
+
+def audit_widths(pg, pages, tabs):
+    """Every page, at every width the fluid content grid has to survive.
+
+    This is the pass that catches the failure the 940px cap used to hide: a card
+    is no longer a fixed measure, so its contents have to fit whatever column
+    auto-fill hands it — and the narrowest column happens at the WIDEST viewport,
+    where the browser has just fitted one more in. A single-width audit cannot
+    see that, which is why every page is walked three times."""
+    print(chr(10) + '— content grid fit, per width —')
+    total = 0
+    for w in WIDTHS:
+        pg.set_viewport_size({'width': w, 'height': 1000})
+        found = []
+        for page in pages:
+            pg.evaluate(f"go('{page}')")
+            pg.wait_for_timeout(400)
+            found += ([f'{page}: NEVER RENDERED'] if not _rendered(pg)
+                      else [f'{page}: {ln}' for ln in pg.evaluate(GRID_JS)])
+        pg.evaluate("openProject(ST.projects[0])")
+        pg.wait_for_timeout(500)
+        for tab in tabs:
+            pg.evaluate(f"TAB='{tab}';go('project')")
+            pg.wait_for_timeout(400)
+            found += ([f'tab {tab}: NEVER RENDERED'] if not _rendered(pg)
+                      else [f'tab {tab}: {ln}' for ln in pg.evaluate(GRID_JS)])
+        pg.evaluate("go('home')")
+        pg.wait_for_timeout(400)
+        cols = pg.evaluate(
+            "getComputedStyle(document.querySelector('#content'))"
+            ".gridTemplateColumns.trim().split(/\\s+/).length")
+        print(f'  {w}px  {cols} column(s)  {"clean" if not found else str(len(found))+" issue(s)"}')
+        for ln in found:
+            print('    ' + ln)
+        total += len(found)
+    pg.set_viewport_size({'width': 1600, 'height': 1000})
+    return total
 
 
 def main():
@@ -306,13 +412,17 @@ def main():
         print(chr(10) + '— project tabs —')
         pg.evaluate("openProject(ST.projects[0])")
         pg.wait_for_timeout(800)
-        for tab in pg.evaluate('TABS.map(t => t[0])'):   # derived, not a 3-of-9 copy
+        tabs = pg.evaluate('TABS.map(t => t[0])')        # derived, not a 3-of-9 copy
+        for tab in tabs:
             pg.evaluate(f"TAB='{tab}';go('project')")
             pg.wait_for_timeout(800)
             audit_page(pg, 'tab ' + tab)
             pg.screenshot(path=os.path.join(OUT, f'_shot_tab_{tab}.png'))
         pg.evaluate("go('home')")
         pg.wait_for_timeout(600)
+
+        # ── the fluid grid, at every width ──
+        audit_widths(pg, pg.evaluate('NAV.map(n => n[0])'), tabs)
 
         # ── per-skin pass ──
         # A skin changes card geometry, so it can break fit in ways the default
@@ -330,14 +440,23 @@ def main():
             else:
                 pg.evaluate(f"ST.world='';ST.skin='{sk}';applyTheme(ST.theme)")
             pg.wait_for_timeout(500)
-            bad = [ln for ln in pg.evaluate(OVERFLOW_JS) if 'clean' not in ln]
-            heights = pg.evaluate(
-                "['d-i1','d-i2','d-i3','d-i4'].map(k=>Math.round("
-                "document.querySelector('.'+k).getBoundingClientRect().height))")
-            even = len(set(heights)) == 1
-            state = 'clean' if (not bad and even) else (
-                ('OVERFLOW ' + '; '.join(bad)) if bad else f'RAGGED {heights}')
-            print(f'  {sk:<10} {state}')
+            # every width, not just one: a skin's 3px border and hard shadow
+            # break fit at the narrowest COLUMN, and the narrowest column shows
+            # up at the widest viewport, where auto-fill has added one more
+            for w in WIDTHS:
+                pg.set_viewport_size({'width': w, 'height': 1000})
+                pg.wait_for_timeout(320)
+                bad = [ln for ln in pg.evaluate(OVERFLOW_JS) if 'clean' not in ln]
+                bad += pg.evaluate(GRID_JS)
+                heights = pg.evaluate(
+                    "['d-i1','d-i2','d-i3','d-i4'].map(k=>Math.round("
+                    "document.querySelector('.'+k).getBoundingClientRect().height))")
+                even = len(set(heights)) == 1
+                state = 'clean' if (not bad and even) else (
+                    ('OVERFLOW ' + '; '.join(bad)) if bad else f'RAGGED {heights}')
+                print(f'  {sk:<10} {w:>5}px  {state}')
+            pg.set_viewport_size({'width': 1600, 'height': 1000})
+            pg.wait_for_timeout(400)
             pg.screenshot(path=os.path.join(OUT, f'_skin_{sk}.png'))
         pg.evaluate("ST.world='';ST.skin='';applyTheme(ST.theme)")
         br.close()
@@ -364,18 +483,25 @@ DOC_SHOTS = {
 
 
 def export_docs():
+    """Publish into BOTH sites — the same reason make_og_card writes twice.
+
+    mkdocs reads `docs/img` and the Next site reads `www/public/img`, and they
+    embed the same captures. Copying to one and remembering the other by hand is
+    how a re-shoot ships with the docs updated and the site a release behind."""
     import shutil
-    dest = os.path.join(_ROOT, 'docs', 'img')
-    os.makedirs(dest, exist_ok=True)
-    n = 0
-    for src, name in DOC_SHOTS.items():
-        p = os.path.join(OUT, src)
-        if not os.path.isfile(p):
-            print('  MISSING', src)
-            continue
-        shutil.copyfile(p, os.path.join(dest, name))
-        n += 1
-    print('exported %d/%d shots → %s' % (n, len(DOC_SHOTS), dest))
+    dests = [os.path.join(_ROOT, 'docs', 'img'),
+             os.path.join(_ROOT, 'www', 'public', 'img')]
+    for dest in dests:
+        os.makedirs(dest, exist_ok=True)
+        n = 0
+        for src, name in DOC_SHOTS.items():
+            p = os.path.join(OUT, src)
+            if not os.path.isfile(p):
+                print('  MISSING', src)
+                continue
+            shutil.copyfile(p, os.path.join(dest, name))
+            n += 1
+        print('exported %d/%d shots → %s' % (n, len(DOC_SHOTS), dest))
 
 
 if __name__ == '__main__':

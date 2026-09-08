@@ -13,6 +13,12 @@
   --shadow:0 8px 28px rgba(0,0,0,.45);
   /* ── spacing scale (4px base) ── */
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-8:32px;
+  /* ── the content grid's reading measure ──
+     The narrowest a card column is allowed to get before the browser drops a
+     column. It is the ONLY number in the fluid layout, and it is a token
+     rather than a literal so a dense look can lower it (html.skin-x
+     {--card-min:…}) without touching a geometry rule. See .content below. */
+  --card-min:560px;
   /* ── layered shadows ── */
   --shadow-sm:0 1px 3px rgba(0,0,0,.25);
   --shadow-md:0 4px 12px rgba(0,0,0,.3),0 1px 4px rgba(0,0,0,.15);
@@ -134,15 +140,69 @@ body{background:var(--bg);color:var(--txt);
 .sgrip:focus-visible{outline:none}
 /* while dragging, nothing else may take the pointer or show a text caret */
 html.sgrip-drag,html.sgrip-drag *{cursor:col-resize !important;user-select:none !important}
-.brand{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-5) var(--sp-4) var(--sp-3);
-  cursor:pointer;user-select:none;transition:opacity var(--t-f)}
-.brand:hover{opacity:.85}
-.logo{width:34px;height:34px;border-radius:var(--r-md,9px);background:var(--grad);
-  display:grid;place-items:center;font-weight:800;font-size:17px;color:var(--onacc);
-  box-shadow:0 2px 8px rgba(138,92,246,.25);transition:transform var(--t-f),box-shadow var(--t-f)}
-.brand:hover .logo{transform:scale(1.05);box-shadow:0 3px 12px rgba(138,92,246,.35)}
-.brand b{font-size:16px;letter-spacing:.3px}
-.brand small{display:block;color:var(--dim);font-size:11px;font-weight:400;margin-top:-1px}
+/* ── the sidebar's top row ──
+   ONE row, 48px, with its own hover backplate and NO divider under it — so it
+   reads as a row of the same family as the project rows below rather than as a
+   masthead. That is the shape shadcn ships as its sidebar header default, and
+   it is what Notion, Linear, GitLab and Figma all put in this slot: the
+   switchable context, not the logo. The 8px inset and the 6px radius are what
+   make the backplate look like it belongs to the list.
+   It used to be a two-line marketing block with 20px of padding above it —
+   ~70px of a 280px column permanently parked above the search field the user
+   is actually aiming at. */
+.brand{display:flex;align-items:center;gap:var(--sp-2);height:48px;
+  margin:var(--sp-2) var(--sp-2) var(--sp-1);padding:0 8px;
+  border-radius:var(--r);cursor:pointer;user-select:none;
+  transition:background var(--t-f)}
+.brand:hover{background:var(--sk-row-hover,rgba(var(--cyan-rgb),.07))}
+.brand.open{background:rgba(var(--cyan-rgb),.11)}
+.brand .bl{min-width:0;flex:1}
+/* the chevron renders only when the row actually opens something: one that
+   opens nothing is worse than none at all */
+.bchev{margin-left:auto;flex:0 0 auto;color:var(--dim2);line-height:0}
+.bchev svg{width:15px;height:15px;display:block}
+/* The tile is the app icon's own ground, and it is FIXED rather than themed —
+   see the long note in index.html. It is deliberately not `--code` or any
+   other palette surface: four palettes are light and six are near-black OLED,
+   and the mark is drawn in cream and gold for a dark tile in every one of
+   them. The violet plate this replaced was a different thing — a gradient
+   swatch with a letter typed into it, standing in for an icon that did not
+   exist yet. This is the icon.
+   No `filter` and no `backdrop-filter`: the highlight and the hairline are
+   inset box-shadows, which cost no readback (tests/test_gui_flicker.py). */
+.logo{width:40px;height:40px;display:grid;place-items:center;flex:0 0 auto;
+  border-radius:11px;background:linear-gradient(157deg,#1c1c21,#0a0a0d 70%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),
+    inset 0 0 0 1px rgba(226,166,62,.13),0 2px 10px rgba(0,0,0,.4);
+  transition:transform var(--t-f),box-shadow var(--t-f)}
+.logo svg{display:block;overflow:visible}
+.brand:hover .logo{transform:scale(1.05);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.1),
+    inset 0 0 0 1px rgba(226,166,62,.32),0 3px 14px rgba(0,0,0,.45)}
+/* Body foreground, NOT the accent. The accent version was faithful to the OG
+   card — but a card is a banner and this is chrome, and the rule chrome follows
+   is the one Linear moved to deliberately: the accent appears on the mark, on
+   focus rings and on a few intentional states, never decoratively. Spending it
+   on a permanently-visible label leaves nothing to say "this is live" with.
+   14px/500 and 12px are shadcn's sidebar header sizes; both truncate, because
+   an account name and a project count are both arbitrary-length. */
+.brand b{display:block;font-size:14px;font-weight:500;letter-spacing:-.01em;
+  color:var(--txt);line-height:1.25;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.brand small{display:block;color:var(--dim2);font-size:12px;font-weight:400;
+  line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The account menu opens under the row, not over the page: it is a sidebar
+   control and the sidebar is where its result applies. */
+.acctmenu{margin:0 var(--sp-2) var(--sp-2);padding:4px;border-radius:var(--r);
+  background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow-md)}
+.acctmenu button{display:flex;align-items:center;gap:8px;width:100%;
+  background:none;border:0;color:var(--txt);font-size:13px;text-align:left;
+  padding:7px 8px;border-radius:var(--r-sm);cursor:pointer}
+.acctmenu button:hover{background:var(--sk-row-hover,rgba(var(--cyan-rgb),.08))}
+.acctmenu .adot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.acctmenu .an{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acctmenu .amark{color:var(--cyan);flex:0 0 auto;line-height:0}
+.acctmenu .amark svg{width:14px;height:14px;display:block}
 .search{margin:0 var(--sp-3) var(--sp-2)}
 .search input{width:100%;background:var(--panel);border:1px solid var(--line);
   border-radius:var(--r-sm);padding:7px 12px;color:var(--txt);outline:none;font-size:13px;
@@ -196,13 +256,13 @@ html.sgrip-drag,html.sgrip-drag *{cursor:col-resize !important;user-select:none 
 .hgrip:hover::after,.hgrip:focus-visible::after,html.hgrip-drag .hgrip::after{opacity:.8}
 .hgrip:focus-visible{outline:none}
 html.hgrip-drag,html.hgrip-drag *{cursor:row-resize !important;user-select:none !important}
-/* Twelve rows at ~39px is ~470px, which on a 1000px sidebar left the project
-   list less room than the menu used to reach it. The fix is NOT a vh cap — that
-   clipped Settings and Help off the bottom even on a tall window. It is flex
-   give-and-take: .plist holds a hard floor (min-height above), .nav shows
-   everything while there is room and only starts scrolling once .plist is at
-   its floor. min-height:0 is what allows a flex item to shrink below its
-   content in the first place.
+/* Five rows at ~33px is ~165px, and the nav is no longer what squeezes the
+   project list — but the give-and-take stays, because a skin can raise the row
+   height and the window can be short. The fix is NOT a vh cap: that clipped the
+   bottom rows even on a tall window. It is flex give-and-take: .plist holds a
+   hard floor (min-height above), .nav shows everything while there is room and
+   only starts scrolling once .plist is at its floor. min-height:0 is what
+   allows a flex item to shrink below its content in the first place.
 
    --nav-h, when the user has dragged the grip, pins the nav to an explicit
    height instead; flex-basis rather than height so it still participates in the
@@ -210,22 +270,6 @@ html.hgrip-drag,html.hgrip-drag *{cursor:row-resize !important;user-select:none 
 .nav{border-top:1px solid var(--line);padding:var(--sp-2);
   flex:0 1 auto;min-height:0;overflow-y:auto}
 html.nav-sized .nav{flex:0 1 var(--nav-h);min-height:34px}
-.nav .grp{display:flex;align-items:center;gap:6px;cursor:pointer;
-  font:var(--fs-cap)/1 var(--mono);text-transform:uppercase;
-  letter-spacing:.08em;color:var(--dim2);opacity:.65;
-  padding:9px 12px 5px;user-select:none;border-radius:var(--r-sm);
-  transition:opacity var(--t-f),color var(--t-f)}
-.nav .grp:hover,.nav .grp:focus-visible{opacity:1;color:var(--txt);outline:none}
-.nav .grp .chev{width:11px;height:11px;flex:none;fill:none;stroke:currentColor;
-  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;
-  transform:rotate(90deg);transition:transform var(--t-f)}
-.nav .grp.shut .chev{transform:rotate(0deg)}
-/* a collapsed group is not an empty promise: one pip per page it hides, and the
-   pip for the page you are on stays lit */
-.nav .grp .gpip{display:inline-flex;gap:3px;margin-left:auto;align-items:center}
-.nav .grp .gpip i{width:4px;height:4px;border-radius:50%;background:currentColor;
-  opacity:.4}
-.nav .grp .gpip i.on{opacity:1;background:var(--cyan)}
 .nav .it{display:flex;align-items:center;gap:var(--sp-2);padding:6px 12px;
   border-radius:var(--r-sm);cursor:pointer;color:var(--dim);font-size:13px;
   transition:background var(--t-f),color var(--t-f)}
@@ -344,15 +388,53 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
   text-transform:uppercase;letter-spacing:.06em;
   transition:color var(--t-f),border-color var(--t-f)}
 .tab:hover{color:var(--txt)}
+/* The second level. Quieter than the first by every axis that reads as
+   hierarchy — smaller type, no uppercase, a hairline instead of a 2px underline
+   — because two rows of equal-weight tabs is two rows competing to be the one
+   you are meant to read. It carries no sticky/z-index of its own: it sits
+   directly under #tabs, which is the sticky one, and a second sticky box would
+   detach from it on scroll. */
+.tabs.sub{background:var(--bg);padding-top:2px;padding-bottom:2px;position:static}
+.tabs.sub .tab{padding:5px var(--tab-px);font-size:11.5px;text-transform:none;
+  letter-spacing:0;font-weight:500;border-bottom-width:1px}
+.tabs.sub .tab.sel::before{content:none}
+/* the one line under the tabs. Reading measure is capped rather than the
+   column: a sentence that runs the full width of a 2560px window is a sentence
+   nobody reads to the end of. */
+.pgnote{padding:9px 26px 0;color:var(--dim);font-size:12.5px;line-height:1.5;
+  max-width:88ch}
 .tab.sel{color:var(--cyan);border-bottom-color:var(--cyan)}
 .tab.sel::before{content:'▸ ';color:var(--cyan)}
 .nav .it.sel::before{content:'▸';color:var(--cyan);margin-right:-2px}
-.brand b::before{content:'[ ';color:var(--dim2)}
-.brand b::after{content:' ]';color:var(--dim2)}
+/* the `[ archeus ]` brackets are gone: they were terminal flavour from before
+   there was a mark, and next to one they read as decoration competing with it */
 /* metrics read as instrument output, not prose */
 .kpi .kv2,.upct,.arow .ap,.tbl .num,.tstat,.hn,.dlist .num,.sess .meta{
   font-family:var(--mono)}
-.content{flex:1;overflow-y:auto;padding:20px 26px;min-height:0}
+/* ── the content column is a FLUID GRID, not a 940px measure ────────────────
+   Every page except the dashboard capped its cards at 940px, so on a 2560px
+   display the app used ~37% of the width — and the dashboard was the proof of
+   cause: `.dash>.card{max-width:none}` is the only reason that one page filled
+   the screen.
+
+   So `#content` becomes the grid, cards are the cells, and the reading measure
+   is protected by the track minimum instead of by a cap on the card. The
+   browser decides how many columns fit — one at 1280, two at 1920, three at
+   2560 — and NO breakpoint invents a number. `min(100%,…)` is load-bearing: a
+   bare `minmax(560px,1fr)` makes the track 560px wide even in a 400px
+   viewport, which overflows the grid sideways.
+
+   Anything that is NOT a card keeps the whole row — a page header, `.dash`,
+   the sessions `.slist`, a bare spinner — so a page's furniture needs no
+   marking and only a genuinely wide card has to say `.wide`. `min-width:0`
+   because a grid item's default `min-width:auto` would let a wide table push
+   its own cell past the track. */
+.content{flex:1;overflow-y:auto;padding:20px 26px;min-height:0;
+  display:grid;align-items:start;gap:var(--sp-3);
+  grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--card-min,560px)),1fr))}
+.content>*{grid-column:1/-1}
+.content>.card{grid-column:auto;min-width:0;margin-bottom:0}
+.content>.card.wide{grid-column:1/-1}
 
 /* home: the dashboard bento — instruments first (how much plan is left, how
    hard am I working, is my tooling up, is anything running), then what to
@@ -375,6 +457,14 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
     "projects projects projects projects"}
 .dash>.card{margin-bottom:0;max-width:none;min-width:0}
 .d-i1{grid-area:i1}.d-i2{grid-area:i2}.d-i3{grid-area:i3}.d-i4{grid-area:i4}
+/* …except these four, which are a ROW and have to read as one. `align-items:
+   start` above is right for the big cards and wrong here: spend carries a
+   legend and activity carries a job list, so the four came out 265/224/224/265
+   and the row looked broken (`shot_gui.py` has been reporting it as RAGGED on
+   every skin and every width). Stretching costs nothing because .icard is
+   already a flex column whose .ifoot is `margin-top:auto` — the extra height
+   goes under the footer, not between the gauge and its label. */
+.d-i1,.d-i2,.d-i3,.d-i4{align-self:stretch}
 .d-acct{grid-area:acct}
 .d-chart{grid-area:chart}
 .d-projects{grid-area:projects}
@@ -580,7 +670,7 @@ html.mo-off .tchart .omnibg{animation:none}
 .qcard .s{color:var(--dim);font-size:12px}
 
 /* lists & cards */
-.slist{display:flex;flex-direction:column;gap:8px;max-width:940px}
+.slist{display:flex;flex-direction:column;gap:8px}
 .sess{display:flex;align-items:center;gap:13px;background:var(--panel);
   border:1px solid var(--line);border-radius:var(--r);padding:11px 16px;
   transition:border-color var(--t-f),background var(--t-f),box-shadow var(--t-f)}
@@ -610,7 +700,7 @@ html.mo-off .tchart .omnibg{animation:none}
 .sess:hover .acts,.sess:focus-within .acts{opacity:1;pointer-events:auto}
 .sess .pri{flex:none}
 .rowtune{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r);
-  padding:14px 18px;max-width:940px;margin-top:-2px}
+  padding:14px 18px;margin-top:-2px}
 .empty{color:var(--dim);text-align:center;margin-top:7vh}
 /* the 7vh above is for a whole page with nothing in it. Inside a card it
    pushes a one-line "nothing here" down by 70px and leaves the card looking
@@ -623,10 +713,16 @@ html.mo-off .tchart .omnibg{animation:none}
   gap:14px 18px;align-items:start}
 @media(max-width:900px){.cols3{grid-template-columns:1fr}}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
-  padding:16px 18px;margin-bottom:12px;max-width:940px;
+  padding:16px 18px;margin-bottom:12px;
   transition:border-color var(--t-f),box-shadow var(--t-f)}
 .card:hover{border-color:var(--line);box-shadow:var(--shadow-sm)}
-.card h3{font-size:14px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+/* flex-wrap, and it is load-bearing: a card heading is also its button bar
+   (Write one · Have Claude write one · Sharpen descriptions), and in a narrow
+   grid column the last button was CLIPPED at the card's edge while the title
+   itself wrapped to two lines. The overflow audit never saw it — it walks the
+   dashboard cards only. Wrapping puts the buttons on their own line instead. */
+.card h3{font-size:14px;margin-bottom:10px;display:flex;align-items:center;
+  gap:8px;flex-wrap:wrap;row-gap:6px}
 .card h3 .sp{flex:1}
 .kv{display:grid;grid-template-columns:170px 1fr;gap:4px 14px;font-size:13px}
 .kv .k{color:var(--dim)}
@@ -730,6 +826,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .modal .sub{color:var(--dim);font-size:12px;margin-bottom:16px;white-space:pre-wrap}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
 .fld{margin-bottom:2px}
+.fld label span{text-transform:none;letter-spacing:0;font-weight:400;
+  font-size:11.5px}
 .fld label{display:block;color:var(--dim);font-size:11px;text-transform:uppercase;
   letter-spacing:.8px;margin-bottom:4px}
 /* `.fld` gives the layout; the generic selector gives the LOOK. Only `.fld`
@@ -1304,13 +1402,12 @@ html.mo-off *,html.mo-off *::before,html.mo-off *::after{
   .proj .nm .pn{font-size:0}          /* keep the node for the tooltip/hit area */
   .proj .nm .pn::first-letter{font-size:13px}
   .nav{padding:6px 6px}
-  .nav .grp{display:none}   /* a group label is nothing but its label */
   .nav .it{justify-content:center;padding:9px 0}
   .nav .it span,.nav .it{font-size:0}
   .nav .it .ic{width:18px;height:18px;margin:0}
   .nav .it.sel::before,.tab.sel::before{content:none}
   .side .foot{justify-content:center;padding:10px 4px}
-  .content,.top,.ubar,.tabs,.jban{padding-left:14px;padding-right:14px}
+  .content,.top,.ubar,.tabs,.jban,.pgnote{padding-left:14px;padding-right:14px}
   /* same trick as above, and it has to be restated because this block sets the
      padding directly: the tab keeps 14px of its own, the row keeps none */
   .tabs{--tab-px:14px;padding-left:0;padding-right:0}
@@ -1964,3 +2061,32 @@ html.win-blur body::before,html.win-blur body::after{transition:none}
 html.win-blur .ovl-fx{display:none}
 html.win-blur *,html.win-blur *::before,html.win-blur *::after{
   animation-play-state:paused !important}
+
+/* ── zen: the theme with nothing on top of it ─────────────────────────────
+   The stage is this app's one ambient surface, and until now there was no way
+   to actually LOOK at it — every skin, world and palette was only ever seen
+   through a sidebar and a page of cards. Zen hides the app; it unmounts
+   nothing, so nothing re-fetches on the way back in and a job that is running
+   keeps running (and still escalates to `#jovl`, which is outside `.app` and
+   therefore still on top).
+
+   It is the LAST block in this file on purpose, for the reason the icon-rail
+   and chassis blocks above it are also here: `html.zen .app` and
+   `html.ch-bezel .app` have identical specificity, so source order is the only
+   thing deciding, and a chassis must not put the 280px sidebar column back. */
+/* !important, and it is not laziness: `#updbar`, `#tabs`, `#jban` and
+   `#pactions` are all shown by JS writing `style.display`, and an inline style
+   beats any selector. Without it zen hid the page and left the update banner
+   and the project action buttons floating over the scene — which is exactly
+   the state the first screenshot of this mode showed. */
+html.zen .side,html.zen .ubar,html.zen .updbar,html.zen .tabs,html.zen .pgnote,
+html.zen .jban,html.zen .content,html.zen .top>*{display:none !important}
+html.zen .app{grid-template-columns:1fr}
+/* pointer-events:none on the bar, auto on the button: the bar still spans the
+   width and must not eat a click meant for nothing. */
+html.zen .top{background:none;border-bottom:0;padding:14px 18px;
+  justify-content:flex-end;pointer-events:none;position:fixed;right:0;left:0}
+html.zen .top>#bZen{display:inline-flex !important;pointer-events:auto;opacity:.5;
+  background:rgba(var(--panel-rgb,22,30,46),.8)}
+html.zen .top>#bZen:hover,html.zen .top>#bZen:focus-visible{opacity:1}
+#bZen.on{color:var(--cyan);border-color:var(--cyan)}

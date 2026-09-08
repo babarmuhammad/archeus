@@ -1,7 +1,8 @@
 # claudectl.space
 
-The marketing site for [archeus](https://github.com/babarmuhammad/archeus), the
-workspace layer for Claude Code. Next.js App Router, deployed to Vercel from `main`.
+The marketing site for [archeus](https://github.com/babarmuhammad/archeus).
+The memory and workspace layer for AI coding agents. Next.js App Router, deployed to
+Vercel from `main`.
 
 The documentation is a separate site: MkDocs Material in `../docs`, served at
 [docs.claudectl.space](https://docs.claudectl.space/). Each root directory owns its own

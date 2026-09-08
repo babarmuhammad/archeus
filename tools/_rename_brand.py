@@ -41,6 +41,11 @@ SKIP = {
     # package because that is the thing being uninstalled. Verified to contain
     # no held string, so skipping the whole file cannot strand the domain.
     'docs/installation.md',
+    # the design note that ARGUES for the rename: it has to write the old name to
+    # explain what was wrong with it, and it quotes the substitution table by
+    # name. Verified to contain no held string (the domain is referred to, never
+    # spelled), so skipping the whole file cannot strand it.
+    'notes/brand-study.md',
     'claude_sessions/migrate.py',      # the one module that must know both names
     'tests/test_migration.py',
     'tests/test_no_old_brand_string.py',

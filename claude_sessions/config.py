@@ -159,11 +159,6 @@ _DEFAULT_SETTINGS = {
     # the next POST. `theme` was declared and survived, which is exactly why it
     # was the only one that appeared to work.
     'motion': 'full',
-    #: names of the sidebar nav groups the user has collapsed. Declared HERE for
-    #: the same reason every other appearance key is: load_settings drops what it
-    #: does not know and /api/settings does load->mutate->save, so an undeclared
-    #: key is written once and deleted by the next save.
-    'nav_collapsed': [],
     #: sidebar width in px, 0 = "never dragged, use the CSS default". Kept as 0
     #: rather than 280 so the default lives in exactly one place (app.css).
     'side_w': 0,
@@ -172,6 +167,9 @@ _DEFAULT_SETTINGS = {
     'stage': '',
     'world': '',
     'surface': 0,
+    #: background brightness as a percentage of what the skin asks for.
+    #: 0 = follow the skin, same convention as `surface`.
+    'brightness': 0,
     # ── OpenTelemetry export (team observability) ──
     # Declared here for the same reason the appearance keys are: load_settings
     # drops anything it does not know, and /api/settings does load->mutate->save,
@@ -209,7 +207,7 @@ INTERNAL_SETTINGS = frozenset({
     'ui_mode',                       # handled first, validated against two values
     'omniroute_api_key',             # write-only: never echoed back to be resubmitted
     'failover_models', 'launch_fallback_models',  # list sanitizers
-    'nav_collapsed', 'side_w', 'nav_h',           # geometry clamps
+    'side_w', 'nav_h',                            # geometry clamps
     'headless_budget_usd',                        # float clamp
     'memory_budget',                 # owned by /api/memory/toggles
     'skills_migrated',               # a migration marker, not a preference

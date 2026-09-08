@@ -205,6 +205,13 @@ def frame_height():
 
 # ── frame line builders ──────────────────────────────────────
 
+#: The wordmark, and the first crumb of every screen's header. Upper case only
+#: here — the product is `archeus` in prose (notes/brand-study.md 4.5) and this
+#: is the mark, not the word. It lived as a bare literal at eleven call sites in
+#: ui.py alone, which is eleven places the last rename had to find by grep.
+WORDMARK = 'ARCHEUS'
+
+
 def header(*crumbs):
     """Breadcrumb title bar:  ARCHEUS ▸ project ▸ SESSIONS """
     hb = _c.C_HEADER_BG

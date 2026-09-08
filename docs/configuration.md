@@ -10,6 +10,23 @@ description: >-
 Where everything archeus uses lives on disk. Nothing here is a database and nothing is
 uploaded anywhere: every file below is plain text or JSON you can read, edit and delete.
 
+## Where the settings are, in the app
+
+In the desktop app **Settings** is five sub-tabs rather than one long page — the same five
+in the terminal UI's `⚙ Settings` submenu and in this section of the documentation:
+
+| Sub-tab | What it holds |
+|---|---|
+| **Launch** | What every new session starts with: effort, model, permission mode, thinking cap, subagent model, the window it opens in — and the plan/execute model pair |
+| **Appearance** | Palette, skin, world, motion, surface transparency, background brightness and which background scene runs |
+| **Paths & limits** | Editor and `claude.exe` paths, `CLAUDE_CONFIG_DIR`, the per-call budget cap, the memory-graph ceilings, the economy model, the statusline and the OpenTelemetry export |
+| **Models** | Free execution through [OmniRoute](plan-execute.md) and the failover list |
+| **Updates** | Update checks, desktop notifications and the auto-memory schedule |
+
+Each card keeps its own **Save**: one button covering a page of unrelated settings is a
+button you cannot press with confidence. Appearance is the exception — a palette is a
+setting you judge by looking at it, so it applies and saves the moment you click a card.
+
 ## Its own settings
 
 archeus's settings live at `~/.claude/archeus.json` — accounts, defaults, theme, editor

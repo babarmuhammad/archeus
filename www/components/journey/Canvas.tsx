@@ -423,6 +423,18 @@ export function JourneyCanvas({ mode = 'journey' }: { mode?: 'journey' | 'ambien
         return;
       }
       renderer.setClearColor(0x0a0c10, 1);
+      /* ACES, and it reaches ONLY the station solids.
+
+         three applies tone mapping per material, to materials that ask for it
+         (`toneMapped`), and a raw ShaderMaterial never gets the chunk injected
+         — so every scene shader in scene.ts is untouched and the note below
+         about not re-encoding raw output still holds exactly. What it does
+         reach is the lit MeshPhysicalMaterials the frame is made of, which
+         routinely exceed 1.0 once an emissive term meets three lights: without
+         a curve every one of them clips to white, channel by channel at a
+         different point, and a violet cluster comes out pink. */
+      renderer.toneMapping = three.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.0;
 
       scene = new three.Scene();
       camera = new three.PerspectiveCamera(52, 1, 0.1, 220);

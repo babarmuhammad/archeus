@@ -1,21 +1,27 @@
 # archeus
 
-> The workspace layer for Claude Code. A terminal UI and desktop app that give Claude Code
-> persistent per-project memory, a browsable and searchable session archive, MCP server
-> awareness, an interactive architecture graph and per-project launch control. Pure Python
-> standard library, zero runtime dependencies, MIT licensed. Runs on Windows, macOS and
-> Linux; Windows-first.
+> The memory and workspace layer for AI coding agents. Persistent per-project memory,
+> every session you have ever had, and control over what the next one costs. Works with
+> Claude Code today: a terminal UI and desktop app that give it a browsable and searchable
+> session archive, MCP server awareness, an interactive architecture graph and per-project
+> launch control. Pure Python standard library, zero runtime dependencies, MIT licensed.
+> Runs on Windows, macOS and Linux; Windows-first.
 
-archeus does not replace Claude Code — it configures and launches it, and maintains the
-project context between sessions. It uses your existing Claude Code authentication.
-Install with `pipx install archeus`, or clone the repository and run it.
+archeus does not replace the agent — it configures and launches it, and maintains the
+project context between sessions. Claude Code is the agent it drives today, using the
+Claude Code authentication you already have. Install with `pipx install archeus`, or
+clone the repository and run it.
+
+Where this is going, stated as a long-term goal and not as a feature: provider-neutral
+memory, then an open harness of its own. Claude Code is the first surface, not the
+boundary. Nothing beyond Claude Code is supported today.
 
 This is the documentation site. The product site is at https://claudectl.space/, the source
 at https://github.com/babarmuhammad/archeus and the package at
 https://pypi.org/project/archeus/. Author: Babar Muhammad Anas.
 
 Disambiguation: two independent open-source projects use the name "archeus". This one is
-the Python workspace layer for Claude Code described above, published on PyPI. The other is
+the Python memory and workspace layer described above, published on PyPI. The other is
 a Rust agent orchestrator by a different author, published on crates.io at
 https://crates.io/crates/archeus. They are unrelated, and neither is affiliated with
 Anthropic.

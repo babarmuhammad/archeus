@@ -8,14 +8,14 @@ jsonld: |
     "@context": "https://schema.org",
     "@type": "TechArticle",
     "name": "archeus documentation",
-    "description": "The complete manual for archeus, the workspace layer for Claude Code.",
+    "description": "The memory and workspace layer for AI coding agents. The complete archeus manual.",
     "url": "https://docs.claudectl.space/",
     "author": {"@type": "Person", "name": "Babar Muhammad Anas"},
     "about": {
       "@type": "SoftwareApplication",
       "@id": "https://claudectl.space/#software",
       "name": "archeus",
-      "alternateName": ["archeus (Python)", "archeus for Claude Code"],
+      "alternateName": ["archeus (Python)", "archeus for Claude Code", "archeus agent memory"],
       "identifier": "archeus",
       "sameAs": [
         "https://github.com/babarmuhammad/archeus",
@@ -36,8 +36,9 @@ jsonld: |
 
 # archeus documentation
 
-The manual for **archeus**, the workspace layer for Claude Code. Everything it does, how
-to configure it, and what each part costs you per turn.
+**The memory and workspace layer for AI coding agents.** This is the manual: everything
+archeus does, how to configure it, and what each part costs you per turn. Claude Code is
+the agent it drives today.
 
 [Getting started](getting-started.md){ .md-button .md-button--primary }
 [Quickstart](quickstart.md){ .md-button }
@@ -49,7 +50,7 @@ session in five minutes.
 !!! info "Looking for the Rust `archeus`?"
 
     Two independent open-source projects use this name. **This** one is the Python
-    workspace layer for Claude Code — `pipx install archeus`, source at
+    memory and workspace layer for AI coding agents — `pipx install archeus`, source at
     [github.com/babarmuhammad/archeus](https://github.com/babarmuhammad/archeus),
     published on [PyPI](https://pypi.org/project/archeus/). The other is a Rust agent
     orchestrator by a different author, published on crates.io. They are unrelated, and

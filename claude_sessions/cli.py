@@ -15,7 +15,8 @@ breakable by anything in it. This module imports the standard library only.
 """
 import sys
 
-HELP = """archeus {ver}— the workspace layer for Claude Code.
+HELP = """archeus {ver}— The memory and workspace layer for AI coding agents.
+Works with Claude Code today.
 
 USAGE
   archeus                  open the workspace UI (TUI unless ui_mode says GUI)

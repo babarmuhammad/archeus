@@ -181,7 +181,7 @@ def test_the_gui_setting_keys_are_derived_from_the_registry():
     # and every excluded key really does have another owner in the handler
     src = io.open(gui.__file__, encoding='utf-8').read()
     body = src[src.index('def _api_settings('):src.index('_LOCAL_GET =')]
-    for k in ('failover_models', 'nav_collapsed', 'side_w', 'headless_budget_usd',
+    for k in ('failover_models', 'side_w', 'headless_budget_usd',
               'omniroute_api_key', 'ui_mode'):
         assert k in body, '%s is excluded from the generic loop and unhandled' % k
 
@@ -235,6 +235,32 @@ def test_the_main_menu_is_built_from_the_table():
     assert 'for label, key, _route in MAIN_ACTIONS' in src
     keys = {k for _l, k, _r in main.MAIN_ACTIONS}
     assert {'__mcp__', '__hooks__', '__settings__', '__accounts__'} <= keys
+
+
+def test_every_main_menu_row_is_reachable_from_the_new_menu():
+    """The regrouping's own hazard: MAIN_ACTIONS stays the flat parity table,
+    but the menu now renders five sections plus a short top level — so a row in
+    neither is a row that still passes every OTHER gate here and cannot be
+    picked. `__updates__` was exactly that shape while the sections were being
+    written."""
+    placed = {k for _label, keys in main.MAIN_SECTIONS for k in keys}
+    keys = {k for _l, k, _r in main.MAIN_ACTIONS}
+    orphan = keys - placed - set(main.MAIN_TOP)
+    assert not orphan, 'main-menu rows no section or top level offers: %s' % sorted(orphan)
+    assert not placed & set(main.MAIN_TOP), 'a row is offered twice'
+    assert not placed - keys, 'a section names a key that is not a row: %s' % sorted(placed - keys)
+
+
+def test_the_five_sections_are_the_ones_the_gui_sidebar_has():
+    """The two surfaces are only 'the same five sections' if something checks.
+    The GUI's are authored in app.js, so this reads them out of the served
+    page rather than restating them."""
+    from claude_sessions.gui_html import PAGE
+    import re
+    sec = PAGE[PAGE.index('const SECTIONS=['):PAGE.index('const OFFNAV=')]
+    gui_labels = re.findall(r"\n\s*\['([A-Z][^']*)'", sec)
+    assert [l for l, _k in main.MAIN_SECTIONS] == gui_labels, (
+        'TUI %s vs GUI %s' % ([l for l, _k in main.MAIN_SECTIONS], gui_labels))
 
 
 # ── stubs that stand in for a stdlib function must accept its real calls ───

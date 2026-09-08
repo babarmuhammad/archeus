@@ -20,7 +20,6 @@ desktop.ini
 
 # Local setup / environment launchers (machine-specific)
 Environment Start.bat
-setup environment.ico
 *.lnk
 .claude/worktrees/
 
@@ -66,3 +65,13 @@ ARCHEUS_COMMITMSG
 .claude/rules/claudectl-mem-*.md
 .claude/.claudectl-agents.json
 CLAUDECTL_COMMITMSG
+
+# Visual reference for the cluster language (notes/cluster-spec.md is measured
+# out of these). ~11 MB of 3D models and 4K renders — kept on disk because the
+# spec is only checkable against them, kept OUT of the repo because a design
+# reference is not a build input and nobody cloning this needs eleven megabytes
+# to run the tests.
+notes/reference/
+
+# iteration renders from the cluster/reference passes
+.qa/

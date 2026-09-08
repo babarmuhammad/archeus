@@ -222,10 +222,6 @@ def state_payload():
         'failover_quiet': bool(s.get('failover_quiet')),
         'theme': s.get('theme', 'default'),
         'motion': _motion_level(s),
-        # collapsed sidebar nav groups — a list of group names, so adding or
-        # renaming a group never needs a migration: an unknown name is simply
-        # not matched by any group and is carried through untouched.
-        'nav_collapsed': [str(x) for x in (s.get('nav_collapsed') or [])],
         # 0 = never dragged; the CSS default stays in charge
         'side_w': int(s.get('side_w') or 0),
         'nav_h': int(s.get('nav_h') or 0),
@@ -236,6 +232,8 @@ def state_payload():
         'stage': _stage_tier(s),
         # 0 = follow whatever the look asks for; 40..100 = an explicit override
         'surface': _surface(s),
+        # same convention, for how bright the background is allowed to be
+        'brightness': _brightness(s),
         # Flat, and named exactly as /api/settings takes them back. Nested under
         # an 'otel' key they did not match what the settings page read
         # (`ST.otel_enabled`), so every field showed its default however it was
@@ -292,6 +290,30 @@ def _surface(s):
     except (TypeError, ValueError):
         return 0
     return 0 if v <= 0 else max(40, min(100, v))
+
+
+def _brightness(s):
+    """How bright the animated background may get, as a percentage of what the
+    skin asks for — or 0 for "ask the look".
+
+    Every skin ships a `calm` value, and `calm` is a ceiling: it mixes the scene
+    back toward the page background so the background stays a ground rather than
+    a competitor to the text. That ceiling was tuned once, against one verdict
+    ("overstimulating, confonde") and later against the opposite one ("too dim,
+    I can't see anything") — which is the signature of a taste question wearing
+    a constant's clothes. Two monitors, two rooms, two people.
+
+    So it is exposed, and it SCALES rather than replaces: 100 means exactly what
+    the skin authored, so the looks keep their relative brightness at every
+    setting instead of flattening to one number. The clamp is generous at the
+    top because the scene's own ceiling (0.95, in stage.js) is the real limit;
+    it is 40 at the bottom because below that a scene is indistinguishable from
+    `stage: off`, which is its own setting and a cheaper one."""
+    try:
+        v = int(s.get('brightness') or 0)
+    except (TypeError, ValueError):
+        return 0
+    return 0 if v <= 0 else max(40, min(220, v))
 
 
 def _stage_tier(s):
@@ -703,10 +725,6 @@ def _api_settings(q, body):
     # Chrome geometry is user input that decides layout on the NEXT boot, so a
     # junk value would render an unusable window with no obvious way back.
     # Clamped and typed here rather than trusted from the client.
-    if 'nav_collapsed' in body:
-        raw = body['nav_collapsed']
-        s['nav_collapsed'] = ([str(x)[:40] for x in raw][:16]
-                              if isinstance(raw, list) else [])
     for key, lo, hi in (('side_w', 210, 520), ('nav_h', 34, 900)):
         if key in body:
             try:

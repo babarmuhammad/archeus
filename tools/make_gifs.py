@@ -1,5 +1,5 @@
 """Dev-only: render a promo GIF of the architecture graph — a faithful preview
-of the live HTML canvas (rotating wireframe dodecahedra, per-cluster bubbles,
+of the live HTML canvas (rotating geodesic wireframe cages, per-cluster bubbles,
 glowing curved edges, flowing particles on a dark neural field). NOT a runtime
 dependency and NOT a screen recording — it recreates the graph's look from a
 small example structure (archeus's own module names; no user data).
@@ -37,19 +37,71 @@ EDGES = [('recall', 'graph'), ('recall', 'lessons'), ('graph', 'hierarchy'),
          ('hub', 'recall'), ('suggest', 'graph'), ('hub', 'themes'),
          ('library', 'hooks'), ('digest', 'recall'), ('menu', 'suggest')]
 
+# The geodesic icosahedral cage: 42 vertices, 120 edges. Same swap as the GUI
+# stage and the real graph — notes/constellation-study.md. Faces are derived from
+# adjacency rather than a hardcoded list, so the base solid is stated once.
 PHI = 1.6180339887
-_DV = [(1, 1, 1), (1, 1, -1), (1, -1, 1), (1, -1, -1), (-1, 1, 1), (-1, 1, -1),
-       (-1, -1, 1), (-1, -1, -1), (0, 1 / PHI, PHI), (0, 1 / PHI, -PHI),
-       (0, -1 / PHI, PHI), (0, -1 / PHI, -PHI), (1 / PHI, PHI, 0), (1 / PHI, -PHI, 0),
-       (-1 / PHI, PHI, 0), (-1 / PHI, -PHI, 0), (PHI, 0, 1 / PHI), (PHI, 0, -1 / PHI),
-       (-PHI, 0, 1 / PHI), (-PHI, 0, -1 / PHI)]
-_DV = [tuple(c / math.sqrt(3) for c in v) for v in _DV]
-_DE = []
-_mn = min(math.dist(_DV[i], _DV[j]) for i in range(20) for j in range(i + 1, 20))
-for i in range(20):
-    for j in range(i + 1, 20):
-        if math.dist(_DV[i], _DV[j]) < _mn * 1.1:
-            _DE.append((i, j))
+
+
+def _nrm(v):
+    L = math.sqrt(sum(c * c for c in v))
+    return tuple(c / L for c in v)
+
+
+_IV = [_nrm(v) for v in
+       [(0, 1, PHI), (0, 1, -PHI), (0, -1, PHI), (0, -1, -PHI),
+        (1, PHI, 0), (1, -PHI, 0), (-1, PHI, 0), (-1, -PHI, 0),
+        (PHI, 0, 1), (PHI, 0, -1), (-PHI, 0, 1), (-PHI, 0, -1)]]
+_MN = min(math.dist(_IV[i], _IV[j]) for i in range(12) for j in range(i + 1, 12))
+#: the BASE icosahedron's own 30 edges — the small-hull level of detail below.
+_LE = [(i, j) for i in range(12) for j in range(i + 1, 12)
+       if math.dist(_IV[i], _IV[j]) < _MN * 1.1]
+_DV, _DE = [], []
+
+
+def _build_cage():
+    mn = _MN
+    idx, seen = {}, set()
+
+    def put(v):
+        k = tuple(round(c, 4) for c in v)
+        if k not in idx:
+            idx[k] = len(_DV)
+            _DV.append(v)
+        return idx[k]
+
+    def edge(a, b):
+        k = (min(a, b), max(a, b))
+        if k not in seen:
+            seen.add(k)
+            _DE.append(k)
+
+    def mid(a, b):
+        return _nrm(tuple(a[c] + b[c] for c in range(3)))
+
+    for i in range(12):
+        for j in range(i + 1, 12):
+            if math.dist(_IV[i], _IV[j]) > mn * 1.1:
+                continue
+            for k in range(j + 1, 12):
+                if (math.dist(_IV[i], _IV[k]) > mn * 1.1
+                        or math.dist(_IV[j], _IV[k]) > mn * 1.1):
+                    continue
+                a, b, c = _IV[i], _IV[j], _IV[k]
+                ab, bc, ca = mid(a, b), mid(b, c), mid(c, a)
+                for tri in ((a, ab, ca), (ab, b, bc), (ca, bc, c), (ab, bc, ca)):
+                    p = [put(v) for v in tri]
+                    edge(p[0], p[1]); edge(p[1], p[2]); edge(p[2], p[0])
+
+
+_build_cage()
+assert (len(_DV), len(_DE)) == (42, 120), (len(_DV), len(_DE))
+assert (len(_IV), len(_LE)) == (12, 30), (len(_IV), len(_LE))
+
+#: Apparent radius, in pixels, at which a hull can carry the subdivided cage.
+#: This frame is a fixed 720x400 render with no zoom, so a node's radius IS its
+#: apparent size — the equivalent of `r*view.k` in `connections.drawCluster`.
+BIG_PX = 20
 
 
 def _bg():
@@ -78,19 +130,59 @@ def _positions():
     return pos
 
 
-def _dodec(draw, x, y, rad, col, T, ph):
+def _cluster(draw, x, y, rad, col, T, ph):
+    """One node: a wireframe cage holding an interior population.
+
+    LEVEL OF DETAIL, by apparent size — the same call `connections.drawCluster`
+    makes, and the one thing that decides whether this reads as a cage or as a
+    solid ball. 120 struts over a 15px hull put an edge every 2px and paint a
+    filled disc, so the subdivided cage (42v/120e) is for the hulls that can
+    carry it and the base icosahedron (12v/30e) is for the rest. The joints are
+    sized in pixels and capped at both ends for the same reason: one that grows
+    with the hull turns a large cage into a ring of blobs, and one that does not
+    shrink turns a small cage into a burr.
+    """
     ax, ay = T * 0.9 + ph, T * 0.66 + ph * 1.7
     ca, sa, cb, sb = math.cos(ax), math.sin(ax), math.cos(ay), math.sin(ay)
-    P = []
-    for vx, vy, vz in _DV:
-        x1 = vx * cb + vz * sb
-        z1 = -vx * sb + vz * cb
-        y2 = vy * ca - z1 * sa
-        P.append((x + x1 * rad, y + y2 * rad))
-    for i, j in _DE:
-        draw.line([P[i], P[j]], fill=col, width=1)
-    for pxp, pyp in P:
-        draw.ellipse([pxp - 1.4, pyp - 1.4, pxp + 1.4, pyp + 1.4], fill=col)
+
+    def rot(v):
+        x1 = v[0] * cb + v[2] * sb
+        z1 = -v[0] * sb + v[2] * cb
+        # third value is the depth cue — the far side of a hull is dimmer, which
+        # is most of what stops a wireframe sphere reading as a flat disc
+        return x1, v[1] * ca - z1 * sa, 0.55 + 0.45 * (v[1] * sa + z1 * ca + 1) / 2
+
+    def shade(f):
+        return tuple(min(255, int(c * f)) for c in col)
+
+    big = rad >= BIG_PX
+    GV, GE = (_DV, _DE) if big else (_IV, _LE)
+    P = [(x + p[0] * rad, y + p[1] * rad, p[2]) for p in (rot(v) for v in GV)]
+    # struts are filaments and dimmer than the joints; a denser cage has to be
+    # dimmer still, or its 120 lines sum to a fill
+    k = 0.58 if big else 1.0
+    for i, j in GE:
+        draw.line([P[i][:2], P[j][:2]],
+                  fill=shade(k * (P[i][2] + P[j][2]) / 2), width=1)
+    # the interior population — a cluster is made of clusters. Big hulls only:
+    # below that it is noise rather than structure.
+    if big:
+        cnt = min(56, int(rad * 1.8))
+        for m in range(cnt):
+            yy = 1 - 2 * (m + 0.5) / cnt
+            ring = math.sqrt(max(0.0, 1 - yy * yy))
+            th = m * 2.399963
+            hr = ((m * 7919 + 13) % 2333) / 2333
+            r2 = 0.55 * rad * hr ** 0.45
+            mx, my, ms = rot((math.cos(th) * ring, yy, math.sin(th) * ring))
+            draw.point((x + mx * r2, y + my * r2), fill=shade(0.45 + 0.5 * ms))
+    # a white core inside a coloured node, not a coloured dot
+    vr = min(1.7, max(0.9, rad * 0.055))
+    for pxp, pyp, ps in P:
+        draw.ellipse([pxp - vr, pyp - vr, pxp + vr, pyp + vr],
+                     fill=shade(0.6 + 0.4 * ps))
+        if vr >= 1.2:
+            draw.point((pxp, pyp), fill=(255, 255, 255))
 
 
 def _qpt(a, b, t):
@@ -134,10 +226,10 @@ def _frame(fi, base, pos):
             t = ((fi / FRAMES) * 1.4 + ei * 0.13) % 1.0
             px_, py_ = _qpt(pos[a][:2], pos[b][:2], t)
             d.ellipse([px_ - 2, py_ - 2, px_ + 2, py_ + 2], fill=(210, 235, 255))
-    # rotating dodecahedra + labels
+    # rotating cages + labels
     for lbl, (x, y, imp, col) in pos.items():
         r = 6 + imp * 1.5
-        _dodec(d, x, y, r, col, T, hash(lbl) % 100 / 10.0)
+        _cluster(d, x, y, r, col, T, hash(lbl) % 100 / 10.0)
         d.text((x + r + 3, y - 5), lbl, fill=(200, 214, 235))
     # title
     d.text((16, 14), "archeus  architecture graph", fill=(150, 190, 255))
@@ -149,7 +241,16 @@ def main():
     base = _bg()
     pos = _positions()
     frames = [_frame(i, base, pos) for i in range(FRAMES)]
-    frames = [f.quantize(colors=128, method=Image.MEDIANCUT) for f in frames]
+    # MAXCOVERAGE, not MEDIANCUT: median-cut splits the colour cube by pixel
+    # POPULATION, and this frame is overwhelmingly dark blue — so the four
+    # per-cluster accents, which are exactly what the picture is about, get
+    # merged into the blue and every cage comes out the same pale hue. Measured:
+    # the agents cluster's #5EEAD4 landed on (138,203,222) under median cut and
+    # on (93,233,211) under max coverage, at the same 128 colours. Max coverage
+    # then spends its bins on colour SPREAD, so a 128-entry palette bands the
+    # soft cluster bubbles into contour rings — the full 256 buys them back and
+    # the file is still lighter than the median-cut 128 it replaces.
+    frames = [f.quantize(colors=256, method=Image.MAXCOVERAGE) for f in frames]
     out = os.path.join(OUT_DIR, 'graph.gif')
     frames[0].save(out, save_all=True, append_images=frames[1:],
                    duration=70, loop=0, optimize=True, disposal=2)

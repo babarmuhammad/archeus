@@ -26,7 +26,9 @@ def _read(name):
 #: load for no benefit, and they are not ours to assert on. They are served
 #: separately from /vendor/ (see VENDOR_FILES) and cached by the browser, and
 #: stage.js/motion.js both degrade gracefully when they never arrive.
-_JS = ("motion.js", "instruments.js", "stage.js", "app.js")
+#: cluster-spec.js is GENERATED (tools/gen_cluster_spec.py) and defines
+#: CLUSTER, which stage.js reads at build time, so it leads.
+_JS = ("cluster-spec.js", "motion.js", "instruments.js", "stage.js", "app.js")
 
 
 def _scan_vendor():
