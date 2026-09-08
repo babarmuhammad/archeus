@@ -6,8 +6,8 @@ manually to regenerate:
 Design (per 2025 app-icon best practice: one dominant element, legible at 16px,
 rounded square, gradient depth, brand colour):
   - rounded-square tile, deep-navy → near-black vertical gradient
-  - one bold cyan "C" (archeus) with round caps
-  - three glowing nodes on the arc — a subtle nod to the connections graph
+  - one bold cyan "A" (archeus) with round caps
+  - three glowing nodes at its apex and feet — a nod to the connections graph
   - soft outer glow for depth
 
 Requires Pillow. Writes archeus.ico (multi-size) at the repo root.
@@ -45,6 +45,34 @@ def _gradient(size, top, bot):
     return g
 
 
+def draw_mark(d, cx, cy, w, ink, node_ink, size=SS):
+    """The "A" — two legs, a crossbar, three nodes. Shared by both icons.
+
+    The nodes at the apex and the feet are not decoration: they are the same
+    nod to the connections graph the previous mark carried, and the one thing
+    about that icon that was about this project rather than about its initial.
+    The letter itself is what had to change.
+
+    The crossbar sits low (0.66 of the way down) and slightly narrower than the
+    legs, because the icon has to stay legible at 16px — a centred bar closes
+    the counter into a solid triangle at that size.
+    """
+    hw, hh = size * 0.26, size * 0.27
+    apex = (cx, cy - hh)
+    feet = [(cx - hw, cy + hh), (cx + hw, cy + hh)]
+    # one polyline, so the apex is a mitred join rather than two overlapping caps
+    d.line([feet[0], apex, feet[1]], fill=ink, width=w, joint='curve')
+    t = 0.66
+    ybar = apex[1] + (feet[0][1] - apex[1]) * t
+    d.line([(cx - hw * t, ybar), (cx + hw * t, ybar)], fill=ink, width=int(w * 0.8))
+    nodes = [apex] + feet
+    for (nx, ny) in nodes:                   # round caps
+        d.ellipse([nx - w / 2, ny - w / 2, nx + w / 2, ny + w / 2], fill=ink)
+    nr = w * 0.42                            # bright cores
+    for (nx, ny) in nodes:
+        d.ellipse([nx - nr, ny - nr, nx + nr, ny + nr], fill=node_ink)
+
+
 def draw_icon():
     pad = int(SS * 0.04)
     inner = SS - pad * 2
@@ -60,26 +88,11 @@ def draw_icon():
     tile = Image.alpha_composite(tile, sheen)
     base.alpha_composite(tile, (pad, pad))
 
-    # ── the "C" mark + nodes, drawn on a transparent layer for glow ──
+    # ── the mark + nodes, drawn on a transparent layer for glow ──
     layer = Image.new('RGBA', (SS, SS), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     cx = cy = SS / 2
-    R = SS * 0.27
-    w = int(SS * 0.12)                       # stroke width
-    box = [cx - R, cy - R, cx + R, cy + R]
-    a0, a1 = 52, 308                          # open on the right (a "C")
-    d.arc(box, a0, a1, fill=CYAN, width=w)
-    # round caps + endpoint nodes
-    nodes = []
-    for ang in (a0, a1, 180):                 # two caps + left middle
-        nx = cx + R * math.cos(math.radians(ang))
-        ny = cy + R * math.sin(math.radians(ang))
-        nodes.append((nx, ny))
-        d.ellipse([nx - w / 2, ny - w / 2, nx + w / 2, ny + w / 2], fill=CYAN)
-    # bright node cores
-    nr = w * 0.42
-    for (nx, ny) in nodes:
-        d.ellipse([nx - nr, ny - nr, nx + nr, ny + nr], fill=CYAN_HI)
+    draw_mark(d, cx, cy, int(SS * 0.12), CYAN, CYAN_HI)
 
     glow = layer.filter(ImageFilter.GaussianBlur(SS * 0.02))
     base = Image.alpha_composite(base, glow)

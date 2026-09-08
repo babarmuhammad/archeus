@@ -34,6 +34,7 @@ ALLOWED = {
     'tests/test_no_old_brand_string.py',
     'tools/_rename_brand.py',
     'tools/_mut_migration.py',
+    'tools/_e2e_migration.py',
 }
 
 

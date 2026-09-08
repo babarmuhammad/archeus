@@ -1,6 +1,6 @@
 """Dev-only: generate the DESKTOP GUI app icon (distinct from the TUI's
 navy-tile archeus.ico — this is the GUI brand inverted: the app's
-cyan→violet gradient tile with a dark "C"). Run manually to regenerate:
+cyan→violet gradient tile with a dark "A"). Run manually to regenerate:
 
     py tools/make_gui_icon.py
 
@@ -12,7 +12,7 @@ import os
 
 from PIL import Image, ImageDraw, ImageFilter
 
-from make_icon import _rounded_mask, SIZES
+from make_icon import _rounded_mask, draw_mark, SIZES
 
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                    'archeus-gui.ico')
@@ -51,20 +51,8 @@ def draw_icon():
     layer = Image.new('RGBA', (SS, SS), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     cx = cy = SS / 2
-    R = SS * 0.27
-    w = int(SS * 0.13)
-    box = [cx - R, cy - R, cx + R, cy + R]
-    a0, a1 = 52, 308
-    d.arc(box, a0, a1, fill=DARK, width=w)
-    nodes = []
-    for ang in (a0, a1, 180):
-        nx = cx + R * math.cos(math.radians(ang))
-        ny = cy + R * math.sin(math.radians(ang))
-        nodes.append((nx, ny))
-        d.ellipse([nx - w / 2, ny - w / 2, nx + w / 2, ny + w / 2], fill=DARK)
-    nr = w * 0.38
-    for (nx, ny) in nodes:
-        d.ellipse([nx - nr, ny - nr, nx + nr, ny + nr], fill=WHITE)
+    # same mark as the TUI icon, inked dark on the bright tile
+    draw_mark(d, cx, cy, int(SS * 0.13), DARK, WHITE)
 
     shadow = layer.filter(ImageFilter.GaussianBlur(SS * 0.015))
     base = Image.alpha_composite(base, shadow)
