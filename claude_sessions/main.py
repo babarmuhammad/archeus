@@ -219,8 +219,15 @@ def run():
         # and one that deletes itself on the user's next tidy-up.
         _warn = _migrate.coinstalled_warning()
         if _warn:
-            from .config import C_WARN, C_RESET
-            print(f'{C_WARN}!{C_RESET} {_warn}\n')
+            # `from .config import C_RESET` HERE would make C_RESET a local of
+            # run(), which every nested closure below then resolves from this
+            # scope instead of the module — unbound on every start where this
+            # branch does not run, which is all of them once the user has acted.
+            # Reading the colours off the module at use time is also the rule
+            # statusline.py learned: `from .config import C_WARN as _WARN` froze
+            # the palette at import and apply_theme could never move it.
+            from . import config as _cfg
+            print(f'{_cfg.C_WARN}!{_cfg.C_RESET} {_warn}\n')
     except Exception:
         pass          # a migration must never be the reason archeus won't start
     try:
