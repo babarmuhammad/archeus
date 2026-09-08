@@ -226,7 +226,7 @@ TEMPLATES = {
         'event': 'PostToolUse',
         'entry': {'matcher': 'Bash',
                   'hooks': [{'type': 'command', 'command': _py_hook('logbash_hook.py')}]},
-        'desc': 'Append every Bash command to .claudectl/bash-log.txt',
+        'desc': 'Append every Bash command to .archeus/bash-log.txt',
     },
     'notify-on-stop': {
         'event': 'Stop',
@@ -265,10 +265,10 @@ TEMPLATES = {
                   'hooks': [{'type': 'command', 'command': _py_hook('testfilter_hook.py')}]},
         'desc': 'Pipe pytest/npm test/go test output through a failures-only filter (saves tokens)',
     },
-    # ── lifecycle events claudectl has a specific reason to want ──────
+    # ── lifecycle events archeus has a specific reason to want ──────
     # Two of these replace approximations with the real signal.
     'reinject-after-compact': {
-        # THE one worth having. claudectl already advertises "context-loss
+        # THE one worth having. archeus already advertises "context-loss
         # insurance after /compact", but until PostCompact existed the only
         # available moment was SessionStart — i.e. before the loss, not after
         # it. This fires on the far side of a compaction, when the context has
@@ -295,7 +295,7 @@ TEMPLATES = {
     'log-permission-denials': {
         # feeds the permission-fatigue work: what actually gets denied, rather
         # than what someone guessed would be. --denied writes the STRUCTURED
-        # sidecar (.claudectl/denied.jsonl); without the flag this same script
+        # sidecar (.archeus/denied.jsonl); without the flag this same script
         # is the plain bash log, where a denial was indistinguishable from a
         # success and every non-Bash denial was dropped on the floor.
         'event': 'PermissionDenied',
@@ -560,7 +560,7 @@ _SCRIPT_LABELS = {
 
 
 #: `_py_hook` bakes `sys.executable` into the command, and that is
-#: `pythonw.exe` when claudectl runs as a GUI but `python.exe` from a console.
+#: `pythonw.exe` when archeus runs as a GUI but `python.exe` from a console.
 #: The same template installed from the two shells therefore produced two
 #: strings that were not equal — two entries in settings.json, and a row that
 #: never went "installed" because the running process had generated the other
@@ -778,7 +778,7 @@ def _ai_hook(cfgdir=None):
                              'desc': {'type': 'string'}},
               'required': ['event', 'command']}
     data = memory._claude_json(
-        prompt, os.getcwd(), schema, crumbs=('CLAUDECTL', 'HOOK'),
+        prompt, os.getcwd(), schema, crumbs=('ARCHEUS', 'HOOK'),
         label='Generating hook with Claude...')
     if not isinstance(data, dict):
         flash("Claude returned no valid hook", ok=False, secs=1.8)

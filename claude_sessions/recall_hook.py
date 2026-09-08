@@ -2,7 +2,7 @@
 subgraph as additionalContext. Pure local scoring, <1s; NEVER blocks the
 prompt (exit 0 on every failure).
 
-Installed by claudectl (hooks.install_memory_hook) as:
+Installed by archeus (hooks.install_memory_hook) as:
     "<python.exe>" "<this file>"
 Runs as a plain script; bootstraps sys.path so the package imports regardless
 of install mode.
@@ -40,8 +40,10 @@ def _enabled_for(cwd, settings):
 
 
 def _prompt_submit(cwd, prompt):
-    # cheap gate BEFORE package imports: no graph → no-op
-    graph_p = os.path.join(cwd, '.claudectl', 'memory', 'graph.json')
+    # cheap gate BEFORE package imports: no graph → no-op. The literal is
+    # deliberate — importing store to read store.WORKDIR would pull config and
+    # cost the import this gate exists to avoid. Keep in step with it by hand.
+    graph_p = os.path.join(cwd, '.archeus', 'memory', 'graph.json')
     if not os.path.isfile(graph_p) or not (prompt or '').strip():
         return 0
     from claude_sessions.config import load_settings

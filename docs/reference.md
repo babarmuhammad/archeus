@@ -1,6 +1,6 @@
 ---
 description: >-
-  How claudectl generates CLAUDE.md, how Claude Code encodes project paths into folder
+  How archeus generates CLAUDE.md, how Claude Code encodes project paths into folder
   names, and where the rest of the file reference now lives.
 ---
 
@@ -59,6 +59,6 @@ letter.
 
 ## See also
 
-- [Configuration](configuration.md) — every file claudectl reads and writes
+- [Configuration](configuration.md) — every file archeus reads and writes
 - [Projects](projects.md) — health checks and the workspace freshness manifest
 - [API reference](api.md) — the HTTP routes the desktop app is built on

@@ -1,20 +1,20 @@
 ---
 description: >-
-  claudectl's terminal UI — every screen, notifications, the two kinds of loop, and the
+  archeus's terminal UI — every screen, notifications, the two kinds of loop, and the
   complete key-binding reference.
 ---
 
 # Terminal UI
 
-`claudectl`. Keyboard-first, one screen per job. Everything here has an equivalent in the
+`archeus`. Keyboard-first, one screen per job. Everything here has an equivalent in the
 [desktop app](desktop.md), and the headless jobs have a [command](cli.md).
 
 ## Main screen
 
-On launch, claudectl shows all projects Claude Code has ever opened, sorted by most recently
+On launch, archeus shows all projects Claude Code has ever opened, sorted by most recently
 used.
 
-![claudectl TUI — project picker](img/tui-main.png)
+![archeus TUI — project picker](img/tui-main.png)
 
 - Quick-resume items appear at the top (★ = most recent session, ☆ = older sessions). These are the 5 most recently used sessions across all projects; selecting one resumes that exact session without navigating into the project's list.
 - All other projects follow, sorted by recency — type to filter live
@@ -40,7 +40,7 @@ sessions stay resumable, and restoring is one keypress. The main screen says how
 are being filtered; in the GUI a project page has a **Hide** button and the sidebar grows a
 **Show N hidden projects** button while any are hidden.
 
-**⚙ Logs** — what claudectl itself did, and what failed. Its own headless Claude calls,
+**⚙ Logs** — what archeus itself did, and what failed. Its own headless Claude calls,
 background jobs, the auto-memory scheduler, the failover proxy and any state file it had to
 quarantine, newest first. Type `/` to search the stream, `e` to open the raw file. Before
 this screen existed those failures went nowhere: a background job that crashed left no
@@ -63,29 +63,29 @@ notify. **⚙ Settings → Notifications** turns it off.
 
 ## Logs
 
-claudectl does a lot of work you are not watching: the auto-memory scheduler, a detached
+archeus does a lot of work you are not watching: the auto-memory scheduler, a detached
 scan worker, background jobs in the GUI, the failover proxy, and its own headless `claude -p`
 calls for every generate-this-for-me feature. All of those failures used to go nowhere — the
-logger only wrote a file when `CLAUDECTL_DEBUG` was set, which is off for everyone.
+logger only wrote a file when `ARCHEUS_DEBUG` was set, which is off for everyone.
 
 **⚙ Logs** (TUI) and the **Logs** page (GUI) read one append-only file:
 
 ```
-~/.claude/claudectl-events.jsonl
+~/.claude/archeus-events.jsonl
 ```
 
 One line per event — `error`, `warn` or `info` — with the source, the message, and the
 detail (a stack trace, or exactly what `claude` printed on stderr). It is capped at 256 KB
 and drops its oldest half when it gets there, so it never needs attention. Nothing on a
-per-turn path writes to it: every writer is a claudectl-owned process, never a hook.
+per-turn path writes to it: every writer is an archeus-owned process, never a hook.
 
-For verbose tracing of a specific problem, set `CLAUDECTL_DEBUG=1` and read
-`%TEMP%\claudectl.log` — that one is DEBUG-level and unbounded, and is meant to be turned
+For verbose tracing of a specific problem, set `ARCHEUS_DEBUG=1` and read
+`%TEMP%\archeus.log` — that one is DEBUG-level and unbounded, and is meant to be turned
 on for one run and off again.
 
 ## Rate limits and a second account
 
-When claudectl wants to make one of its own Claude calls and the account's session or weekly
+When archeus wants to make one of its own Claude calls and the account's session or weekly
 window is **already full**, it no longer launches the call anyway. It stops, and offers any
 other configured account that still has headroom:
 
@@ -122,7 +122,7 @@ Two kinds, because Claude Code only offers one.
 `/loop` re-runs a prompt inside a session — polling a deploy, babysitting a PR, working
 through a maintenance pass. Its tasks are **session-scoped**: they fire only while that
 session is open and idle, expire after seven days, and a fresh conversation clears them.
-claudectl **starts** one by opening a session whose first typed message is
+archeus **starts** one by opening a session whose first typed message is
 `/loop [interval] [prompt]` (with the project's usual account, agents, skills and system
 prompt), **watches** it through that session's own transcript — each iteration is a turn —
 and **ends** it by closing the session, because from outside the session there is no other
@@ -132,10 +132,10 @@ neither runs your `loop.md`.
 
 ### In the background
 
-For work that should carry on with claudectl closed and no session open, claudectl
+For work that should carry on with archeus closed and no session open, archeus
 registers an entry in your **OS scheduler** — Task Scheduler on Windows, cron elsewhere —
 that runs headless `claude -p` on the interval, in the project, under the account you pick.
-This is claudectl doing locally what Claude Code's own comparison table calls a Desktop
+This is archeus doing locally what Claude Code's own comparison table calls a Desktop
 scheduled task.
 
 Because it runs unattended, it carries its guardrails in the runner rather than the UI:
@@ -153,7 +153,7 @@ Because it runs unattended, it carries its guardrails in the runner rather than 
 
 Each run is a **fresh session** — resuming one forever would grow its context and its cost
 without bound. What makes it a loop rather than a repeated one-shot is a rolling record:
-after every run claudectl rewrites a `CLAUDECTL:LOOP` block in the project's `CLAUDE.md`
+after every run archeus rewrites a `ARCHEUS:LOOP` block in the project's `CLAUDE.md`
 with the last five outcomes, so the next run starts knowing what the previous ones did. It
 is rewritten, never appended, so it cannot grow.
 
@@ -179,7 +179,7 @@ Edits apply from the next iteration.
 
 ### Sessions screen (session list for a project)
 
-![claudectl TUI — sessions](img/tui-sessions.png)
+![archeus TUI — sessions](img/tui-sessions.png)
 
 | Key | Action |
 |-----|--------|

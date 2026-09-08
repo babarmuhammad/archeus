@@ -141,17 +141,17 @@ def test_every_command_declares_a_description():
 
 
 def test_the_commands_say_what_to_do_when_the_cli_is_missing():
-    """They shell out to `claudectl`, which is a separate pip install."""
+    """They shell out to `archeus`, which is a separate pip install."""
     d = os.path.join(PLUGIN, 'commands')
     for n in os.listdir(d):
         text = io.open(os.path.join(d, n), encoding='utf-8').read()
-        assert 'claudectl' in text, n
+        assert 'archeus' in text, n
         assert 'not installed' in text or 'not found' in text, \
             '%s does not handle the CLI being absent' % n
 
 
 def test_the_plugin_ships_no_hooks():
-    """claudectl already installs its own through a manager that places them
+    """archeus already installs its own through a manager that places them
     per account. Two owners for one settings.json entry means installing both
     runs the recall hook twice per prompt, and uninstalling either leaves the
     other behind looking broken. The README says so; this keeps it true."""

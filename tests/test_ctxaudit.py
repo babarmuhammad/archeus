@@ -237,10 +237,10 @@ def test_the_headless_openers_still_match_the_prompts_we_send():
         assert opener in src, f'no prompt starts with {opener!r} any more — update HEADLESS_OPENERS'
 
 
-def test_claudectl_talking_to_itself_is_not_a_session_topic(monkeypatch, tmp_path):
+def test_archeus_talking_to_itself_is_not_a_session_topic(monkeypatch, tmp_path):
     """`claude -p` writes a transcript into ~/.claude/projects exactly like a
-    session you had, so claudectl's own calls were listed back as "session
-    topics" — always-on CLAUDE.md tokens spent describing claudectl extracting
+    session you had, so archeus's own calls were listed back as "session
+    topics" — always-on CLAUDE.md tokens spent describing archeus extracting
     a module, distilling lessons, and compressing this very file."""
     from claude_sessions import sessions, claude_md as cmd
     sb = Sandbox(monkeypatch, tmp_path)

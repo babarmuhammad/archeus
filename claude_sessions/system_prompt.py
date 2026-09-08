@@ -92,7 +92,7 @@ def ai_generate_system_prompt(sp_path, project_name, project_path, proj_folder):
     out, cancelled = run_with_progress(
         [claude_exe, *_mf, '--print', prompt,
          '--disallowedTools', 'Write,Edit,NotebookEdit,Bash'],
-        ('CLAUDECTL', project_name, 'AI SYSTEM PROMPT'),
+        ('ARCHEUS', project_name, 'AI SYSTEM PROMPT'),
         'Generating system prompt with Claude...  (15-60s)',
         timeout=120)
     if cancelled:

@@ -3,8 +3,12 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "claudectl"
-version = "1.9.1"
+name = "archeus"
+# 2.0.0, not 1.0.0: this package continues the previous name's 1.9.1 rather
+# than starting over, and its first run migrates that install's settings,
+# caches and per-project state onto the new names. A fresh 1.0.0 would read as
+# a downgrade to everyone coming across.
+version = "2.0.0"
 description = "The workspace layer for Claude Code - persistent project memory, an interactive architecture graph, MCP awareness, and per-project launch control in a fast terminal UI"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,9 +35,14 @@ classifiers = [
 
 # PyPI renders these as the sidebar links, and they are also the strongest
 # machine-readable statement that this package, the site, the docs and the
-# repository are one thing — which matters because an unrelated Rust project
-# publishes under the same name. `Repository` is the key PyPI gives its own
-# icon to; `Source` is kept because it is what the existing listing shows.
+# repository are one thing. `Repository` is the key PyPI gives its own icon to;
+# `Source` is kept because it is what the existing listing shows.
+#
+# The domain and the repository path still carry the old name on purpose: the
+# new domain is not registered yet and the GitHub repo has not been renamed, so
+# every link here has to keep resolving until both moves happen. They are one
+# substitution away — see tools/_rename_brand.py, which holds exactly these two
+# strings back.
 [project.urls]
 Homepage = "https://claudectl.space"
 Documentation = "https://docs.claudectl.space/"
@@ -44,8 +53,8 @@ Changelog = "https://claudectl.space/changelog"
 
 [project.scripts]
 # cli:run, not main:run — main's import chain pulls urllib/ssl/http.client via
-# `usage`, and `claudectl statusline` runs on every conversation turn.
-claudectl = "claude_sessions.cli:run"
+# `usage`, and `archeus statusline` runs on every conversation turn.
+archeus = "claude_sessions.cli:run"
 
 [project.optional-dependencies]
 dev = ["pytest"]

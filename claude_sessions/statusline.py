@@ -1,4 +1,4 @@
-"""`claudectl statusline` — two rows under every Claude Code prompt.
+"""`archeus statusline` — two rows under every Claude Code prompt.
 
 Claude Code pipes session JSON on stdin and renders every line printed as its
 own row, refreshed on each assistant message and debounced 300ms.
@@ -9,7 +9,7 @@ own row, refreshed on each assistant message and debounced 300ms.
 WHAT THIS SAYS THAT OTHERS CANNOT
 ---------------------------------
 Every statusline tool shows model, directory, cost and context, because that is
-what the payload hands out. Two of the fields here come from claudectl's own
+what the payload hands out. Two of the fields here come from archeus's own
 files: how stale this project's memory graph is, and how many lessons are
 waiting for review. "memory 6d" is the one segment that changes what you do
 next, and only the tool maintaining the graph can say it.
@@ -19,7 +19,7 @@ CONSTRAINTS THAT SHAPE THIS FILE
 It runs on EVERY turn and a traceback here sits under the prompt for the rest of
 the session, so every read is guarded and failure degrades to a shorter line.
 Nothing goes to stderr. No transcript scan — the numbers come from stdin or from
-files claudectl already wrote. Git is never spawned inline: `repos.state` serves
+files archeus already wrote. Git is never spawned inline: `repos.state` serves
 it from a cache the GUI board warms.
 
 Two Windows details that are not cosmetic:
@@ -382,7 +382,7 @@ def _command():
 
     NOT `-m claude_sessions`: `sys.path[0]` for `-m` is the CURRENT DIRECTORY,
     so that form found the package only when the session's cwd was the
-    claudectl checkout. Everywhere else it exited 1 and Claude Code drew an
+    archeus checkout. Everywhere else it exited 1 and Claude Code drew an
     empty line without saying why. Same reasoning as hooks._py_hook, which got
     this right for the hook scripts.
     """
@@ -427,13 +427,13 @@ def blockers(cfgdir=None):
     out = []
     cmd = str((s.get('statusLine') or {}).get('command', ''))
     # The one that actually bit: `-m claude_sessions` resolves the package off
-    # the CURRENT DIRECTORY, so it printed a statusline in the claudectl
+    # the CURRENT DIRECTORY, so it printed a statusline in the archeus
     # checkout and nothing anywhere else. Claude Code swallows the failure, so
     # the only symptom was a blank line.
     if _LEGACY in cmd:
         out.append(('cwd-dependent-command',
                     'the installed command uses `-m claude_sessions`, which only '
-                    'resolves when the session runs inside the claudectl '
+                    'resolves when the session runs inside the archeus '
                     'checkout — reinstall to point it at an absolute path'))
     # The classic renderer simply does not draw a statusLine, and nothing says
     # so: an account can be correctly installed and permanently blank.

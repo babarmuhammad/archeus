@@ -2,9 +2,9 @@
 
 Records where a project's generated context came from (CLAUDE.md, MCP docs,
 sessions, repo state) and whether it is still valid. Written after scaffold,
-AI-analyze, MCP discovery, and launch ops into <project>/.claudectl/
+AI-analyze, MCP discovery, and launch ops into <project>/.archeus/
 workspace-manifest.json (falling back to the encoded ~/.claude/projects folder
-when the working dir is gone or read-only). Surfaced via `claudectl workspace
+when the working dir is gone or read-only). Surfaced via `archeus workspace
 status` and the sessions-menu `w` screen.
 
 The manifest is schema-versioned: _migrate() fills missing keys and preserves
@@ -23,9 +23,10 @@ from datetime import datetime, timezone
 
 from . import config as _c
 from . import render
+from . import store
 
 SCHEMA_VERSION = 1
-MANIFEST_DIR = '.claudectl'
+MANIFEST_DIR = store.WORKDIR
 MANIFEST_NAME = 'workspace-manifest.json'
 IMPORTANT_FILES = ['CLAUDE.md', 'README.md', '.mcp.json', 'pyproject.toml', 'package.json']
 
@@ -58,7 +59,7 @@ _FIXES = {
     'conflicts': 'README is newer than CLAUDE.md — re-run analyze (a)',
     'claude_md_claims': 'one of the two is out of date — rebuild memory (m → b) if '
                         'the graph is behind, or edit that sentence in CLAUDE.md '
-                        'yourself; your prose is the one block claudectl never rewrites',
+                        'yourself; your prose is the one block archeus never rewrites',
 }
 
 
@@ -211,7 +212,7 @@ def save_manifest(project_path, m, proj_folder=None):
 
 # ── does the prose still agree with the graph? ───────────────
 #
-# CLAUDE.md has two halves and claudectl owns exactly one of them. It rewrites
+# CLAUDE.md has two halves and archeus owns exactly one of them. It rewrites
 # AUTOGEN/SESSIONS/MEMORY/AGENTS from live inputs; it must never touch the prose
 # above them, because a tool that silently rewords what you wrote is worse than
 # one that lets it age. The consequence is that the hand-written half is the only
@@ -641,7 +642,7 @@ def _evaluate(m, live):
         add('conflicts', 'fresh', 'n/a', applicable=False)
 
     # claude_md_claims: the hand-written prose vs the graph. This is the only
-    # check about the half of CLAUDE.md claudectl may not repair, so its detail
+    # check about the half of CLAUDE.md archeus may not repair, so its detail
     # has to carry the whole finding — there is no button that fixes it.
     conflicts = live.get('claim_conflicts')
     if not md_exists or conflicts is None:
@@ -776,7 +777,7 @@ def workspace_status_screen(project_path, proj_folder=None):
 
     while True:
         lines, m, score, safe = _status_lines(project_path, proj_folder)
-        frame = [render.header('CLAUDECTL', name, 'WORKSPACE'), '', render.hline(), '']
+        frame = [render.header('ARCHEUS', name, 'WORKSPACE'), '', render.hline(), '']
         frame += lines
         # ── project health card (frequent Claude Code problems, auto-checked) ──
         try:

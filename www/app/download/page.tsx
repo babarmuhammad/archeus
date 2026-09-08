@@ -104,7 +104,7 @@ export default function DownloadPage() {
         lead={DOWNLOAD.intro}
       >
         <Cta href={SITE.pypi} primary>
-          claudectl on PyPI
+          archeus on PyPI
         </Cta>
         <Cta href={`${SITE.repo}/releases`}>GitHub releases</Cta>
         <Cta href={`${SITE.docs}/installation/`}>Installation guide</Cta>
@@ -117,7 +117,7 @@ export default function DownloadPage() {
           ))}
         </div>
         <p className="mt-4 text-[0.85rem] text-dim2">
-          Python 3.10 or newer, no runtime dependencies, and no API key — claudectl uses the
+          Python 3.10 or newer, no runtime dependencies, and no API key — archeus uses the
           Claude Code authentication you already have. Every tagged build is also on the{' '}
           <a
             href={`${SITE.repo}/releases`}

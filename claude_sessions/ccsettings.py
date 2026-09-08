@@ -1,9 +1,9 @@
 """A typed editor for Claude Code's own settings.json, per account.
 
-claudectl wrote four of roughly eighty documented keys, all of them indirectly
+archeus wrote four of roughly eighty documented keys, all of them indirectly
 (hooks, permissions, outputStyle, statusLine), and offered no way to see or set
 the rest — so the file had to be edited by hand in a text editor, which is
-exactly the workflow claudectl exists to remove.
+exactly the workflow archeus exists to remove.
 
 Two constraints shape this module:
 
@@ -24,7 +24,7 @@ __all__ = ['SCHEMA', 'read', 'write', 'read_all']
 
 #: (kind, choices, help, group). kind: bool | str | int | enum | list | json
 #:
-#: Only keys claudectl can validate are here. A key it does not know is still
+#: Only keys archeus can validate are here. A key it does not know is still
 #: preserved — nothing outside this table is ever touched.
 #:
 #: `group` exists for the editor: twenty-one raw camelCase keys in one flat

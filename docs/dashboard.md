@@ -1,7 +1,7 @@
 ---
-title: claudectl project dashboard
+title: archeus project dashboard
 description: >-
-  Live-ish numbers for claudectl — release version, PyPI downloads, GitHub stars, test
+  Live-ish numbers for archeus — release version, PyPI downloads, GitHub stars, test
   count, source size and commit activity. Regenerated from PyPI and the GitHub API.
 ---
 
@@ -26,7 +26,7 @@ itself — do not edit by hand. Refreshed weekly by `.github/workflows/metrics.y
 
 ## Downloads
 
-From [pypistats.org](https://pypistats.org/packages/claudectl), mirrors excluded.
+From [pypistats.org](https://pypistats.org/packages/archeus), mirrors excluded.
 
 | Last day | Last week | Last month |
 |---|---|---|

@@ -179,7 +179,7 @@ def test_junk_is_never_passed_to_the_installer(monkeypatch, tmp_path):
 def test_an_npm_install_is_reported_not_overwritten(monkeypatch, tmp_path):
     """`claude install` writes the NATIVE build. Running it over an npm install
     leaves two Claude Codes on the machine with the npm one still first on
-    PATH, so claudectl hands back the npm command instead."""
+    PATH, so archeus hands back the npm command instead."""
     Sandbox(monkeypatch, tmp_path)
     _exe(monkeypatch, 'C:/Users/x/AppData/Roaming/npm/claude.cmd')
     called = []
@@ -194,7 +194,7 @@ def test_an_npm_install_is_reported_not_overwritten(monkeypatch, tmp_path):
 
 def _mkt(sb, name, entries, sha='', installed=None):
     """One marketplace on disk: its manifest, optionally a .git HEAD, and the
-    installed-plugins record that claudectl reads."""
+    installed-plugins record that archeus reads."""
     root = sb.cfg / 'plugins'
     mroot = root / 'marketplaces' / name
     (mroot / '.claude-plugin').mkdir(parents=True, exist_ok=True)
@@ -326,13 +326,13 @@ def test_the_cache_is_written_inside_the_account_dir(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     _npm(monkeypatch)
     v.released()
-    assert (sb.cfg / 'claudectl-versions.json').is_file()
+    assert (sb.cfg / 'archeus-versions.json').is_file()
     assert time.time() - json.loads(
-        (sb.cfg / 'claudectl-versions.json').read_text(encoding='utf-8')
+        (sb.cfg / 'archeus-versions.json').read_text(encoding='utf-8')
     )['fetched'] < 60
 
 
-# ── claudectl's own version ──────────────────────────────────
+# ── archeus's own version ──────────────────────────────────
 
 class _Dist:
     """Enough of importlib.metadata.Distribution for versions._dist()."""
@@ -352,7 +352,7 @@ class _Dist:
 
 
 def _self(monkeypatch, dist=None, ver=None):
-    """Pin what claudectl looks like: a distribution (or none), and clear the
+    """Pin what archeus looks like: a distribution (or none), and clear the
     installed-version memo so one test cannot leak into the next."""
     monkeypatch.setattr(v, '_SELF_VER', None)
     monkeypatch.setattr(v, '_dist', lambda: dist)
@@ -413,7 +413,7 @@ def test_an_editable_install_is_a_checkout(monkeypatch, tmp_path):
 
 def test_a_pipx_venv_is_recognised_by_its_path(monkeypatch, tmp_path):
     Sandbox(monkeypatch, tmp_path)
-    pipx = os.path.join('C:', os.sep, 'Users', 'x', 'pipx', 'venvs', 'claudectl',
+    pipx = os.path.join('C:', os.sep, 'Users', 'x', 'pipx', 'venvs', 'archeus',
                         'Lib', 'site-packages', 'claude_sessions')
     _self(monkeypatch, dist=_Dist(pkg_dir=pipx))
     assert v.self_install_mode() == 'pipx'
@@ -429,7 +429,7 @@ def test_pipx_home_is_honoured_when_the_path_does_not_say_pipx(monkeypatch, tmp_
     home = tmp_path / 'tools'
     monkeypatch.setenv('PIPX_HOME', str(home))
     _self(monkeypatch, dist=_Dist(
-        pkg_dir=str(home / 'venvs' / 'claudectl' / 'lib' / 'claude_sessions')))
+        pkg_dir=str(home / 'venvs' / 'archeus' / 'lib' / 'claude_sessions')))
     assert v.self_install_mode() == 'pipx'
 
 
@@ -443,17 +443,17 @@ def test_pipx_and_pip_get_different_upgrade_commands(monkeypatch, tmp_path):
 
     monkeypatch.setattr(v, 'self_install_mode', lambda: 'pipx')
     assert v.update_self()[0]
-    assert seen[-1][5:] == ['pipx', 'upgrade', 'claudectl']
+    assert seen[-1][5:] == ['pipx', 'upgrade', 'archeus']
 
     monkeypatch.setattr(v, 'self_install_mode', lambda: 'pip')
     assert v.update_self()[0]
-    assert seen[-1][6:] == ['-m', 'pip', 'install', '-U', 'claudectl']
+    assert seen[-1][6:] == ['-m', 'pip', 'install', '-U', 'archeus']
 
 
 def test_the_upgrade_is_deferred_to_a_window_that_waits_for_this_process(monkeypatch, tmp_path):
     """pip rewrites the console script, which Windows keeps locked while it is
     the running process — so the install cannot happen here. The spawned command
-    carries our pid and re-enters claudectl through the __main__ dispatch that
+    carries our pid and re-enters archeus through the __main__ dispatch that
     imports nothing pip is about to replace."""
     Sandbox(monkeypatch, tmp_path)
     seen = []
@@ -485,20 +485,20 @@ def test_pypi_is_cached_for_a_day_and_refreshes_on_demand(monkeypatch, tmp_path)
     assert len(calls) == 1
     v.self_released(refresh=True)
     assert len(calls) == 2
-    assert (sb.cfg / 'claudectl-self.json').is_file()
+    assert (sb.cfg / 'archeus-self.json').is_file()
 
 
 def test_the_two_version_caches_do_not_overwrite_each_other(monkeypatch, tmp_path):
-    """released() writes its whole document, so claudectl's answer lives in its
+    """released() writes its whole document, so archeus's answer lives in its
     own file — sharing one would mean each fetch erasing the other."""
     sb = Sandbox(monkeypatch, tmp_path)
     _npm(monkeypatch)
     v.released()
     _pypi(monkeypatch)
     v.self_released()
-    assert json.loads((sb.cfg / 'claudectl-versions.json').read_text(
+    assert json.loads((sb.cfg / 'archeus-versions.json').read_text(
         encoding='utf-8'))['latest'] == '2.1.241'
-    assert json.loads((sb.cfg / 'claudectl-self.json').read_text(
+    assert json.loads((sb.cfg / 'archeus-self.json').read_text(
         encoding='utf-8'))['latest'] == '1.7.0'
 
 
@@ -515,7 +515,7 @@ def test_a_dead_pypi_keeps_the_cached_answer_and_says_why(monkeypatch, tmp_path)
     assert 'no route' in out['error']
 
 
-def test_status_says_whether_claudectl_is_behind(monkeypatch, tmp_path):
+def test_status_says_whether_archeus_is_behind(monkeypatch, tmp_path):
     Sandbox(monkeypatch, tmp_path)
     _self(monkeypatch, dist=_Dist(version='1.6.0'))
     _pypi(monkeypatch, latest='1.7.0')
@@ -562,7 +562,7 @@ def test_no_notice_when_there_is_nothing_to_say(monkeypatch, tmp_path):
 
 
 def test_off_means_no_outbound_check_at_all(monkeypatch, tmp_path):
-    """One switch covers every network check claudectl makes on the user's
+    """One switch covers every network check archeus makes on the user's
     behalf, so 'off' has to actually stop the thread starting."""
     Sandbox(monkeypatch, tmp_path)
     monkeypatch.setattr(v, '_bg_started', False)
@@ -601,9 +601,9 @@ def test_the_deferred_worker_waits_for_the_pid_then_runs(monkeypatch):
     monkeypatch.setattr(proc, 'pid_alive', lambda p: alive.pop(0) if alive else False)
     ran = []
     monkeypatch.setattr(_sp, 'call', lambda argv: ran.append(argv) or 0)
-    rc = proc.wait_and_run(1234, ['pipx', 'upgrade', 'claudectl'],
+    rc = proc.wait_and_run(1234, ['pipx', 'upgrade', 'archeus'],
                            poll=0, out=lambda *a: None)
-    assert rc == 0 and ran == [['pipx', 'upgrade', 'claudectl']]
+    assert rc == 0 and ran == [['pipx', 'upgrade', 'archeus']]
     assert alive == []          # it really waited rather than running straight away
 
 
@@ -645,20 +645,20 @@ def _screen(monkeypatch, tmp_path, keys, upd=None, plug=None, sst=None, self_upd
     return run_flow(monkeypatch, keys, v.updates_menu)
 
 
-def test_the_screen_states_claudectls_own_version(monkeypatch, tmp_path):
+def test_the_screen_states_archeuss_own_version(monkeypatch, tmp_path):
     _r, cap, _ = _screen(monkeypatch, tmp_path, [*ESC])
-    assert 'claudectl' in cap.text and '1.6.0' in cap.text
+    assert 'archeus' in cap.text and '1.6.0' in cap.text
     assert 'installed via pip' in cap.text
     # up to date: no update row competing with Claude Code's
-    assert 'Update claudectl' not in cap.text
+    assert 'Update archeus' not in cap.text
 
 
-def test_the_claudectl_update_row_appears_only_when_one_exists(monkeypatch, tmp_path):
+def test_the_archeus_update_row_appears_only_when_one_exists(monkeypatch, tmp_path):
     behind = dict(_SST, latest='1.7.0', update=True, current=False)
     seen = []
     _r, cap, _ = _screen(monkeypatch, tmp_path, [*ENTER, *ESC], sst=behind,
                          self_upd=lambda: (seen.append(1) or (True, 'scheduled')))
-    assert 'Update claudectl to 1.7.0' in cap.text
+    assert 'Update archeus to 1.7.0' in cap.text
     assert seen == [1]          # it is the first selectable row when present
 
 

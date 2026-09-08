@@ -1,7 +1,7 @@
 """Claude Code hook — record which files Claude just changed.
 
 Fires on `PostToolUse` for Edit/Write/NotebookEdit and appends the edited path
-to `<cwd>/.claudectl/memory/dirty.log`. The auto-memory scheduler drains that
+to `<cwd>/.archeus/memory/dirty.log`. The auto-memory scheduler drains that
 list and knows what to re-extract without walking the project at all.
 
 Why this exists: staleness was decided by SHA-256-ing every source file in the

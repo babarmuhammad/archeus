@@ -1,4 +1,4 @@
-"""Frame-based rendering for the claudectl TUI.
+"""Frame-based rendering for the archeus TUI.
 
 Screens build a list[str] frame; render_frame() diffs it against the
 previous frame and rewrites only changed lines (wrapped in DECSET 2026
@@ -206,7 +206,7 @@ def frame_height():
 # ── frame line builders ──────────────────────────────────────
 
 def header(*crumbs):
-    """Breadcrumb title bar:  CLAUDECTL ▸ project ▸ SESSIONS """
+    """Breadcrumb title bar:  ARCHEUS ▸ project ▸ SESSIONS """
     hb = _c.C_HEADER_BG
     text = '  ' + f' ▸ '.join(f'{C_BOLD}{c}{C_RESET}{hb}' for c in crumbs) + ' '
     w = content_width()

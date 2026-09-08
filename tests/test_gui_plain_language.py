@@ -206,7 +206,7 @@ def test_your_own_agents_are_divided_by_category():
 
 # ── 6. CLAUDE.md tells the truth about who wrote each block ──────────────────
 
-#: every block claudectl writes into a PROJECT CLAUDE.md, and the sentinel pair
+#: every block archeus writes into a PROJECT CLAUDE.md, and the sentinel pair
 #: that fences it. `split_blocks` has to know all of them, because whatever it
 #: does not know is reported as YOUR prose.
 _PROJECT_BLOCKS = {
@@ -276,7 +276,7 @@ def test_every_generated_block_says_who_wrote_it_and_how_to_rebuild():
 def test_the_notice_carries_the_three_things_that_make_it_useful():
     note = _cfg.generated_note('the graph', 'the Memory tab')
     assert note.startswith('<!--') and note.endswith('-->'),         'it must be an HTML comment — Anthropic strips those before injection'
-    assert 'claudectl' in note, 'name the tool'
+    assert 'archeus' in note, 'name the tool'
     assert 'Do not edit' in note, 'state the prohibition'
     assert 'the Memory tab' in note, 'say how to get it back'
 
@@ -286,7 +286,7 @@ def test_the_notice_is_not_in_the_sentinel_itself():
     INTO the marker would stop matching an existing file and append a second
     copy of every block — the migration this deliberately avoids."""
     assert _cfg._AUTOGEN_START == '<!-- AUTOGEN:START -->'
-    assert _cfg._MEMORY_START == '<!-- CLAUDECTL:MEMORY:START -->'
+    assert _cfg._MEMORY_START == '<!-- ARCHEUS:MEMORY:START -->'
 
 
 def test_the_tab_says_who_writes_each_block(acct, tmp_path):
@@ -305,7 +305,7 @@ def test_the_tab_says_who_writes_each_block(acct, tmp_path):
     for key in list(_PROJECT_BLOCKS) + ['manual', 'keep']:
         assert re.search(r'(?m)^\s*%s:\[' % key, what.group(1)), \
             'CMWHAT has no line for the %s block' % key
-    assert 'claudectl writes it' in src and 'you write it' in src
+    assert 'archeus writes it' in src and 'you write it' in src
 
 
 # ── 7. "is this stale?", per artifact ────────────────────────────────────────
@@ -316,10 +316,10 @@ def test_only_an_artifact_that_is_one_file_gets_dated(acct, tmp_path):
     shares a file with your prose, so dating it off that file would call the
     digest fresh because you fixed a typo — those rows stay bare."""
     proj = tmp_path / 'proj'
-    (proj / '.claudectl' / 'memory').mkdir(parents=True)
+    (proj / '.archeus' / 'memory').mkdir(parents=True)
     (proj / 'CLAUDE.md').write_text('# proj\n', encoding='utf-8')
     assert memhub.last_written(str(proj), None) == {},         'nothing written yet, so nothing may claim a date'
-    (proj / '.claudectl' / 'memory' / 'worklog.json').write_text('[]', encoding='utf-8')
+    (proj / '.archeus' / 'memory' / 'worklog.json').write_text('[]', encoding='utf-8')
     w = memhub.last_written(str(proj), None)
     assert set(w) == {'worklog'}, w
     assert w['worklog'] > 0

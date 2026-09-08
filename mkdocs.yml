@@ -1,4 +1,4 @@
-site_name: claudectl
+site_name: archeus
 site_description: >-
   The workspace layer for Claude Code — persistent project memory, an interactive
   architecture graph, MCP server management, and per-project launch control, in a fast
@@ -117,11 +117,11 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/babarmuhammad/claudectl
-      name: claudectl on GitHub
+      name: archeus on GitHub
 
   # schema.org `sameAs` for the author entity, emitted on every page by
   # overrides/main.html. An unrelated Rust project publishes under this name,
-  # so what identifies THIS claudectl is one author corroborated by a set of
+  # so what identifies THIS archeus is one author corroborated by a set of
   # profiles that link back. Must stay in step with `PROFILES` in
   # www/lib/site.ts — both hosts have to assert the same entity or the graph
   # says there are two of them.

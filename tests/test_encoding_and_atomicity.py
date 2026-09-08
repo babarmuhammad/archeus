@@ -7,9 +7,9 @@ too crash-free to exercise.
    broad `except` that reports the whole feature as unavailable — so git status
    goes blank and the CLAUDE.md commit block silently empties.
 
-2. The settings files claudectl writes are parsed by Claude Code itself. A plain
+2. The settings files archeus writes are parsed by Claude Code itself. A plain
    open(path,'w') that dies partway leaves truncated JSON and breaks the user's
-   session, not just claudectl.
+   session, not just archeus.
 """
 
 import json

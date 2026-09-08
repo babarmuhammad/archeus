@@ -1,6 +1,6 @@
 """One reader, one cache ladder: memory -> disk -> parse.
 
-The disk cache (`stats.claudectl-stats-cache.json`, ~1 MB on a real machine)
+The disk cache (`stats.archeus-stats-cache.json`, ~1 MB on a real machine)
 existed but was only reachable through `stats.get_session_stats_cached`, and on
 the cold path nothing reached it: `gui.list_sessions` calls `scan_sessions`
 FIRST, which full-parses every transcript through `sessions._parse_session`, and
@@ -9,7 +9,7 @@ hit the in-memory cache the parse just warmed.
 
 So every GUI restart re-parsed a project's entire transcript corpus on the
 request thread. Live evidence: `GET /api/sessions` at an 8.06 s median and a
-13.6 s worst case in `~/.claude/claudectl-events.jsonl`, against ~620 MB of
+13.6 s worst case in `~/.claude/archeus-events.jsonl`, against ~620 MB of
 transcripts for the largest project on this machine.
 
 The ladder lives in the parser now, which is the only thing that reads a
@@ -108,7 +108,7 @@ def test_scan_sessions_warms_the_disk_cache(_cache_in_tmp):
 
 def test_a_schema_change_invalidates_a_cache_entry(_cache_in_tmp, monkeypatch):
     """The key is (mtime_ns, size), and a finished transcript never changes
-    either — so without a schema number a value written by an older claudectl is
+    either — so without a schema number a value written by an older archeus is
     served forever. Widening `preview` from 65 to 200 characters is exactly that
     case: it would have shown the new length only on sessions written after the
     upgrade, which reads as "it did not work" rather than as a cache.

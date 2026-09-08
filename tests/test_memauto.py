@@ -2,12 +2,12 @@
 
     "se abilitato auto memory, tutte le cose riguardanti memoria devono essere
      aggiornate automaticamente, tenendo in mente di non sovrascrivere regole
-     importanti che non sono state auto generate da claudectl"
+     importanti che non sono state auto generate da archeus"
 
 Two halves, and the second is the load-bearing one. Silent automation that
 rewrites a file is only acceptable if the boundary of what it may rewrite is
 exact and tested — so the tests below seed hand-written content in every place
-claudectl writes and assert it comes back byte-identical.
+archeus writes and assert it comes back byte-identical.
 """
 import os
 import sys
@@ -26,11 +26,11 @@ This paragraph is mine. Nobody generated it and nothing may rewrite it.
 - always run the linter
 - never touch vendor/
 
-<!-- CLAUDECTL:MEMORY:START -->
-## Project memory (claudectl — auto-maintained)
+<!-- ARCHEUS:MEMORY:START -->
+## Project memory (archeus — auto-maintained)
 
 - stale content that SHOULD be replaced
-<!-- CLAUDECTL:MEMORY:END -->
+<!-- ARCHEUS:MEMORY:END -->
 
 ## Notes after the block
 Also mine. Also untouchable.
@@ -91,7 +91,7 @@ def test_rewriting_the_block_is_idempotent(tmp_path):
 
 
 def test_a_hand_written_rules_file_is_never_touched(tmp_path):
-    """`.claude/rules/` holds both. claudectl owns the `claudectl-mem-` prefix
+    """`.claude/rules/` holds both. archeus owns the `archeus-mem-` prefix
     and must treat everything else in that directory as someone's work."""
     p = tmp_path / 'proj'
     rules = p / '.claude' / 'rules'
@@ -99,7 +99,7 @@ def test_a_hand_written_rules_file_is_never_touched(tmp_path):
     mine = rules / 'our-conventions.md'
     mine.write_text('# ours\nnever delete me\n', encoding='utf-8')
     # a stale generated one, which SHOULD be pruned
-    stale = rules / 'claudectl-mem-gone.md'
+    stale = rules / 'archeus-mem-gone.md'
     stale.write_text('# old unit\n', encoding='utf-8')
     before = mine.read_bytes()
 
@@ -250,7 +250,7 @@ def test_every_runner_reads_the_same_per_project_flag(tmp_path, monkeypatch):
 def test_background_auto_memory_is_explicit_opt_in(tmp_path, monkeypatch):
     """`memory_auto_refresh` defaults to 'open' and means "refresh when you open
     this". Letting it also mean "poll every project hourly" would put a Claude
-    spend on every project claudectl can see."""
+    spend on every project archeus can see."""
     from harness import Sandbox
     from claude_sessions import config
     sb = Sandbox(monkeypatch, tmp_path)
@@ -439,7 +439,7 @@ def test_a_project_that_is_already_current_still_reports_fresh(monkeypatch, tmp_
 # ── it runs on launch, then on the interval ──────────────────
 #
 #     "if i want to build auto memory it should do it automatically when i
-#      launch claudectl, then do it periodically on the configured time period,
+#      launch archeus, then do it periodically on the configured time period,
 #      right now i have to click on a project then it starts updating memory"
 #
 # The loop had no coverage at all: only that the stop flag could be set.

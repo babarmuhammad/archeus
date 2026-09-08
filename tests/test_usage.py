@@ -141,7 +141,7 @@ def test_status_no_creds(tmp_path):
 
 def test_poll_keeps_last_good_data_and_never_writes_creds(monkeypatch, tmp_path):
     """A failing poll degrades `status` but keeps the last percentages, and the
-    credentials file is left byte-identical — claudectl never rewrites it."""
+    credentials file is left byte-identical — archeus never rewrites it."""
     import claude_sessions.usage as u
     d = _creds_dir(tmp_path)
     path = d / '.credentials.json'

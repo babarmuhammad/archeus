@@ -197,5 +197,5 @@ def test_sep_line_label_passthrough(monkeypatch):
 
 def test_header_many_crumbs_fits(monkeypatch):
     monkeypatch.setattr(render, 'content_width', lambda: 60)
-    h = header('CLAUDECTL', 'verylongprojectname', 'SESSIONS', 'EXTRA', 'MORE')
+    h = header('ARCHEUS', 'verylongprojectname', 'SESSIONS', 'EXTRA', 'MORE')
     assert disp_width(strip_ansi(h)) <= 60

@@ -7,7 +7,7 @@ description: >-
 
 # Sessions & search
 
-claudectl turns Claude Code's flat pile of chats into a browsable workspace: every project
+archeus turns Claude Code's flat pile of chats into a browsable workspace: every project
 Claude Code has ever opened, every session inside it, sorted by recency and searchable
 across the lot.
 
@@ -46,8 +46,8 @@ on a subscription plan.
 
 - **Themes (17)** — switch palette in Settings (live preview, cursor stays on the selection): default, ocean, forest, mono, ember (red), plus Catppuccin Mocha, Catppuccin Latte, Tokyo Night, Dracula, Nord, Gruvbox, Rosé Pine, Kanagawa, Everforest, Ayu, Monokai Pro, Solarized
 - **AI session titles** — unnamed sessions show their AI-generated transcript title
-- **Settings screen** (⚙) — editor, claude.exe path, **config dir / account** (`CLAUDE_CONFIG_DIR`), theme, and default launch options (`~/.claude/claudectl.json`)
-- **Live model list** — the launch picker reads what Anthropic actually offers (using Claude Code's own login, no API key, refreshed daily in the background), so a newly released model is selectable without updating claudectl. Cost/capability/"best for" stay curated and are inherited by family. Offline or logged out it falls back to the bundled list — never to an empty picker — and a retired model you had pinned keeps its place with a warning rather than resetting itself to *default*.
-- **Self-update** — claudectl checks PyPI for a newer release and says so in the banner. `⚙ Updates` (and the GUI's Plugins page) offers the upgrade; `Settings → Updates` switches between *tell me*, *install on quit* and *off*. The install runs in its own window once claudectl exits — pip cannot rewrite the console script it is running from — and a git checkout is told to `git pull` instead of having a release installed over it.
+- **Settings screen** (⚙) — editor, claude.exe path, **config dir / account** (`CLAUDE_CONFIG_DIR`), theme, and default launch options (`~/.claude/archeus.json`)
+- **Live model list** — the launch picker reads what Anthropic actually offers (using Claude Code's own login, no API key, refreshed daily in the background), so a newly released model is selectable without updating archeus. Cost/capability/"best for" stay curated and are inherited by family. Offline or logged out it falls back to the bundled list — never to an empty picker — and a retired model you had pinned keeps its place with a warning rather than resetting itself to *default*.
+- **Self-update** — archeus checks PyPI for a newer release and says so in the banner. `⚙ Updates` (and the GUI's Plugins page) offers the upgrade; `Settings → Updates` switches between *tell me*, *install on quit* and *off*. The install runs in its own window once archeus exits — pip cannot rewrite the console script it is running from — and a git checkout is told to `git pull` instead of having a release installed over it.
 - **Confirm dialogs & multi-select** — modern yes/no and checkbox pickers throughout; command keys accent-colored on every screen
 - **Help screen** — press `?` for a keyboard reference, generated from the same table that drives the `/` action palette and the on-screen hints, so it cannot fall behind the keys

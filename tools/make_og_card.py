@@ -27,7 +27,7 @@ VIOLET = (138, 92, 246)
 TXT = (219, 228, 243)
 DIM = (125, 138, 165)
 
-TITLE = 'claudectl'
+TITLE = 'archeus'
 TAG = 'The workspace layer for Claude Code'
 BULLETS = ['Persistent project memory',
            'Browsable session archive',

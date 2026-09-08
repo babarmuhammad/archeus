@@ -35,7 +35,7 @@ writes are a second source of it.
 
 ### AGENTS.md (research disagreement E)
 AGENTS.md is the cross-tool standard Claude Code deliberately does not read; it
-recommends `@AGENTS.md` as CLAUDE.md's first line instead. If claudectl's
+recommends `@AGENTS.md` as CLAUDE.md's first line instead. If archeus's
 generated blocks live only in CLAUDE.md, a repo that later adopts AGENTS.md has
 them in the file other agents ignore. **A decision to take, not necessarily a
 change.**
@@ -68,10 +68,10 @@ makes it structural: a module that opens a machine block must also write a notic
 
 ### Two blocks were being reported as your own prose
 Not in the research, found while making the tab honest. `ctxaudit.split_blocks`
-knew three sentinels; `CLAUDECTL:AGENTS` and `CLAUDECTL:LOOP` fell into
+knew three sentinels; `ARCHEUS:AGENTS` and `ARCHEUS:LOOP` fell into
 `manual`, so the token audit charged them to your prose, the CLAUDE.md tab
-labelled them *"yours — claudectl never rewrites it unprompted"* while claudectl
-rewrote them on every agent change, and AI compression was handed claudectl's
+labelled them *"yours — archeus never rewrites it unprompted"* while archeus
+rewrote them on every agent change, and AI compression was handed archeus's
 own generated tables to reword. Splitting them out required carrying them across
 a rewrite in the same change (`_preserve_machine_blocks`), or compress would
 have deleted them — the two halves are one change, and one gate each.
@@ -117,13 +117,13 @@ genuinely optional. Line numbering in the failure is real, because `_source()`
 now collapses a block comment to the newlines it spanned.
 
 ### `linguist-generated`
-`.gitattributes` marks `.claude/rules/claudectl-mem-*.md`, `docs/api.md` and
+`.gitattributes` marks `.claude/rules/archeus-mem-*.md`, `docs/api.md` and
 `plugin/skills/**` as generated, so their diffs collapse in review. Verified with
 `git check-attr`.
 
 ### The live CLAUDE.md
 Regenerated through `claude_md.prune_claude_md` (atomic, snapshotted, manifest
-re-baselined). The SESSIONS block held ten rows of claudectl talking to itself
+re-baselined). The SESSIONS block held ten rows of archeus talking to itself
 and now holds ten real topics. One opener was missing from `HEADLESS_OPENERS` —
 `agents.sharpen_prompt` — so it leaked one row; added, and `agents` is now in the
 gate's module list. The gate can only rot one way and this was the other way, so
@@ -135,7 +135,7 @@ for transcripts written before it existed.
 
 ## 3. Finished earlier — do not redo
 
-Each was verified against this repo's real data, per *"test on my real claudectl
+Each was verified against this repo's real data, per *"test on my real archeus
 project before saying it's implemented correctly"*.
 
 - **Why the cycle said "0 modules, 6 still queued".** All six `_extract` calls
@@ -147,7 +147,7 @@ project before saying it's implemented correctly"*.
 - **"why does the reinforcement log say folding in?"** It was a literal string
   derived from the graph's top-hits list — a different thing, and it never
   changed. `recall.hits_pending` counts the sidecar; the row reads `<n> to fold in`.
-- **The rule files were never actually lazy.** All 11 `claudectl-mem-*.md` used
+- **The rule files were never actually lazy.** All 11 `archeus-mem-*.md` used
   `globs:` (the Cursor key). Claude Code reads `paths:`; a rule without it "is
   loaded unconditionally". Measured: **22 238 → 18 363 always-on tokens, 3 875
   off every single turn**, 11 files migrated free, and one rule that had scoped

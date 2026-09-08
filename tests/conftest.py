@@ -1,7 +1,7 @@
 """Insulate the suite from the environment it happens to be run in.
 
 `config.get_config_dir()` resolves `CLAUDE_CONFIG_DIR` env > setting > default,
-because claudectl sets that variable when it launches a session under a named
+because archeus sets that variable when it launches a session under a named
 account and everything running inside that session has to agree about which
 account it is. The consequence is that running pytest from INSIDE a Claude Code
 session inherits the account of whoever is running it — which is exactly how
@@ -35,20 +35,20 @@ _AMBIENT = ('CLAUDE_CONFIG_DIR',)
 for _var in _AMBIENT:
     os.environ.pop(_var, None)
 
-#: claudectl's own real files, redirected into a throwaway directory for the
+#: archeus's own real files, redirected into a throwaway directory for the
 #: WHOLE session rather than per test. A monkeypatch is undone at teardown, and
 #: several of these are written by background threads (the failover proxy, the
 #: memory worker) that outlive the test that started them — which is exactly how
-#: the real `claudectl.json` kept being rewritten after the per-test guard below
+#: the real `archeus.json` kept being rewritten after the per-test guard below
 #: had already been lifted. Pinning the module attributes at import means a late
 #: thread has nowhere real to write.
-_TMP_STATE = tempfile.mkdtemp(prefix='claudectl-tests-')
+_TMP_STATE = tempfile.mkdtemp(prefix='archeus-tests-')
 
 from claude_sessions import config as _config      # noqa: E402
 from claude_sessions import hooks as _hooks        # noqa: E402
 from claude_sessions import stats as _stats        # noqa: E402
 
-_config.settings_file = os.path.join(_TMP_STATE, 'claudectl.json')
+_config.settings_file = os.path.join(_TMP_STATE, 'archeus.json')
 _hooks.settings_path = os.path.join(_TMP_STATE, 'settings.json')
 _stats.cache_file = os.path.join(_TMP_STATE, 'stats-cache.json')
 
@@ -61,7 +61,7 @@ def _no_ambient_claude_env(monkeypatch):
     # `_no_real_editor` below: the job runner notifies from its `finally`, which
     # every job in the suite reaches, so blocking the SPAWN is the only place
     # that cannot be forgotten by a new caller.
-    monkeypatch.setenv('CLAUDECTL_NO_NOTIFY', '1')
+    monkeypatch.setenv('ARCHEUS_NO_NOTIFY', '1')
 
 
 @pytest.fixture(autouse=True)
@@ -102,10 +102,10 @@ def pytest_configure(config):
 
 def _real_user_files():
     """Files a test must never modify: every account's settings.json and
-    claudectl's real `claudectl.json` — the files claudectl itself WRITES, so a
+    archeus's real `archeus.json` — the files archeus itself WRITES, so a
     change to one during a test is a leak worth restoring.
 
-    Claude Code's own `.claude.json` is deliberately NOT here. claudectl only
+    Claude Code's own `.claude.json` is deliberately NOT here. archeus only
     ever reads it (`clientstate` is read-only by design), so a change to it
     during a test is by definition another program's — and this fixture's
     remedy is to overwrite the file with its pre-test bytes, which would roll
@@ -211,7 +211,7 @@ def _stats_cache_is_never_the_real_one(monkeypatch, tmp_path_factory):
 
 @pytest.fixture(autouse=True)
 def _model_catalogue_is_never_the_real_one(monkeypatch, tmp_path_factory):
-    """`models._cache_path()` is `<config_dir>/claudectl-models.json` — the
+    """`models._cache_path()` is `<config_dir>/archeus-models.json` — the
     account's REAL live catalogue, refreshed daily by a background thread.
 
     Same class of leak as `stats.cache_file` above, with a sharper edge: this
@@ -226,7 +226,7 @@ def _model_catalogue_is_never_the_real_one(monkeypatch, tmp_path_factory):
     (`tests/test_models.py`) — its monkeypatch runs after this fixture and wins.
     """
     from claude_sessions import models
-    p = str(tmp_path_factory.mktemp('catalogue') / 'claudectl-models.json')
+    p = str(tmp_path_factory.mktemp('catalogue') / 'archeus-models.json')
     monkeypatch.setattr(models, '_cache_path', lambda: p)
 
 

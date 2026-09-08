@@ -21,7 +21,7 @@ try:
 except (AttributeError, ValueError, OSError):
     pass
 
-MARKER = 'claudectl-testfilter'
+MARKER = 'archeus-testfilter'
 
 _RUNNERS = re.compile(
     r'^\s*(?:'

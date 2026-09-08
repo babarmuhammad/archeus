@@ -1,18 +1,18 @@
 ---
-title: claudectl vs bare Claude Code — alternatives compared
+title: archeus vs bare Claude Code — alternatives compared
 description: >-
-  An honest comparison of claudectl against bare Claude Code, /resume, manual CLAUDE.md
-  maintenance and terminal multiplexers, including what claudectl does not do.
+  An honest comparison of archeus against bare Claude Code, /resume, manual CLAUDE.md
+  maintenance and terminal multiplexers, including what archeus does not do.
 ---
 
-# claudectl compared
+# archeus compared
 
 Claude Code already works. This page is about what it does *not* do between sessions, which
-alternatives cover, and where claudectl is the wrong choice.
+alternatives cover, and where archeus is the wrong choice.
 
 ## At a glance
 
-| | Bare Claude Code | Terminal multiplexer (tmux/Windows Terminal) | Hand-maintained `CLAUDE.md` | claudectl |
+| | Bare Claude Code | Terminal multiplexer (tmux/Windows Terminal) | Hand-maintained `CLAUDE.md` | archeus |
 |---|---|---|---|---|
 | Browse past sessions | `/resume`, current directory, recent only | No | No | Every session, every project, every account |
 | Search session content | No | No | No | Yes |
@@ -29,7 +29,7 @@ alternatives cover, and where claudectl is the wrong choice.
 
 `/resume` is the closest built-in. It reattaches you to a recent session in the current
 directory, and for "put me back where I was five minutes ago" it is faster than anything
-else — including claudectl.
+else — including archeus.
 
 It is not an archive. It does not search, does not span projects or accounts, does not tag
 or fork, and does not decide how the next session should start. If your question is "what
@@ -42,18 +42,18 @@ It is precise, you control every word, and there is nothing to learn.
 
 It degrades with size. The file is loaded on every message, so its cost is paid constantly
 and grows monotonically as you add to it — and the usual failure is not that it is wrong,
-but that it is too big to justify and too tedious to prune. claudectl keeps the always-on
+but that it is too big to justify and too tedious to prune. archeus keeps the always-on
 block bounded and pushes detail into path-scoped rules that load only when relevant. If
 your `CLAUDE.md` is 40 lines and stays that way, you do not need this.
 
 ## Versus a terminal multiplexer
 
 tmux, screen or Windows Terminal panes solve *running* several sessions at once. That is a
-genuinely different problem, and claudectl does not replace them — run claudectl inside
+genuinely different problem, and archeus does not replace them — run archeus inside
 one if you like. Multiplexers have no idea what a Claude Code session is, so they cannot
 browse, search or contextualise anything.
 
-## What claudectl does not do
+## What archeus does not do
 
 Stated plainly, because a comparison page that only lists strengths is not useful:
 
@@ -75,7 +75,7 @@ Stated plainly, because a comparison page that only lists strengths is not usefu
 - **One repo, long-lived, lots of conventions** → hand-written `CLAUDE.md` is likely
   enough.
 - **Several repos, months of history, more than one account, or a `CLAUDE.md` you have
-  stopped wanting to pay for** → claudectl.
+  stopped wanting to pay for** → archeus.
 
 [Install](installation.md){ .md-button .md-button--primary }
 [Features](https://claudectl.space/features/){ .md-button }

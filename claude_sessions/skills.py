@@ -17,7 +17,7 @@ all four because anything else is a list of files nobody reads:
   - **bundled**   built into Claude Code        — not on disk at all
 
 This module used to offer a fifth, `config.skills_library_dir`
-(`~/.claude/claudectl-skills`), as "your library". Nothing reads that path:
+(`~/.claude/archeus-skills`), as "your library". Nothing reads that path:
 copying a skill there looked like installing it and did nothing, which is why
 the whole section read as inert. It is now a legacy location that
 `migrate_library()` empties into the personal scope once, and "my skills" means
@@ -75,7 +75,7 @@ def library_dir(cfgdir=None):
 
 
 def legacy_library_dir():
-    """The pre-1.8 private store (`~/.claude/claudectl-skills`). Only
+    """The pre-1.8 private store (`~/.claude/archeus-skills`). Only
     `migrate_library` and the tests that pin it have any business here."""
     return _c.skills_library_dir
 
@@ -337,7 +337,7 @@ def inventory(project_path='', cfgdir=None):
 def migrate_library(settings=None):
     """Move the pre-1.8 private library into the personal scope, once.
 
-    `~/.claude/claudectl-skills` is a directory Claude Code never reads, so a
+    `~/.claude/archeus-skills` is a directory Claude Code never reads, so a
     skill saved there was invisible to the tool it was written for. Every
     account gets a copy (what you provision is a property of you, not of
     whichever account was active), a name that already exists is left alone, and
@@ -404,7 +404,7 @@ def install_from_git(repo_url, project_path, exec_model='', cfgdir=None):
     github.com/olsenbrands/fable-foreman, MIT, Jordan Olsen): skills/<name>/
     goes to the normal skill dest (project if given, else the user library);
     agents/*.md go to Claude Code's OWN global agent dir (<config_dir>/agents)
-    so Claude auto-discovers them directly — deliberately NOT claudectl's
+    so Claude auto-discovers them directly — deliberately NOT archeus's
     agents_library_dir, which is excluded from auto-discovery on purpose.
 
     If exec_model is set, any agent frontmatter pinning `model: <id>` is
@@ -418,7 +418,7 @@ def install_from_git(repo_url, project_path, exec_model='', cfgdir=None):
     """
     import subprocess
     import tempfile
-    tmp = tempfile.mkdtemp(prefix='claudectl-skill-')
+    tmp = tempfile.mkdtemp(prefix='archeus-skill-')
     try:
         from . import proc
         # BEFORE the clone, not with the review gate below it: the gate protects
@@ -635,7 +635,7 @@ def view_skill_file(skill_dir):
             cut = cut if cut > 0 else w - 4
             lines.append(raw[:cut]); raw = raw[cut:].lstrip()
         lines.append(raw)
-    pager(('CLAUDECTL', os.path.basename(skill_dir), 'SKILL'), lines)
+    pager(('ARCHEUS', os.path.basename(skill_dir), 'SKILL'), lines)
 
 
 def _skill_detail(skill_dir, scope, project_path):
@@ -780,7 +780,7 @@ def _new_skill_ai(project_path):
     _mf = ['--model', extract_model()] if extract_model() else []
     out, cancelled = run_with_progress(
         [claude, *_mf, '--print', prompt, '--disallowedTools', 'Write,Edit,NotebookEdit,Bash'],
-        ('CLAUDECTL', 'SKILLS', _slug(name)),
+        ('ARCHEUS', 'SKILLS', _slug(name)),
         f'Authoring skill {_slug(name)} with Claude...  (15-60s)', timeout=120)
     if cancelled:
         flash("Cancelled", ok=False); return

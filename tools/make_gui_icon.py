@@ -1,10 +1,10 @@
 """Dev-only: generate the DESKTOP GUI app icon (distinct from the TUI's
-navy-tile claudectl.ico — this is the GUI brand inverted: the app's
+navy-tile archeus.ico — this is the GUI brand inverted: the app's
 cyan→violet gradient tile with a dark "C"). Run manually to regenerate:
 
     py tools/make_gui_icon.py
 
-Requires Pillow. Writes claudectl-gui.ico (multi-size) at the repo root.
+Requires Pillow. Writes archeus-gui.ico (multi-size) at the repo root.
 """
 
 import math
@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFilter
 from make_icon import _rounded_mask, SIZES
 
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                   'claudectl-gui.ico')
+                   'archeus-gui.ico')
 SS = 1024
 
 CYAN = (125, 207, 255)       # #7dcfff — GUI gradient start

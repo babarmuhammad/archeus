@@ -33,14 +33,14 @@ def _graph():
 def test_hook_injects_context(monkeypatch, tmp_path):
     proj = tmp_path / 'proj'
     proj.mkdir()
-    mdir = proj / '.claudectl' / 'memory'
+    mdir = proj / '.archeus' / 'memory'
     mdir.mkdir(parents=True)
     (mdir / 'graph.json').write_text(json.dumps(_graph()), encoding='utf-8')
-    # settings live in the REAL ~/.claude/claudectl.json — force enable via env-safe
+    # settings live in the REAL ~/.claude/archeus.json — force enable via env-safe
     # temp settings file by pointing USERPROFILE at tmp
     home = tmp_path / 'home'
     (home / '.claude').mkdir(parents=True)
-    (home / '.claude' / 'claudectl.json').write_text(
+    (home / '.claude' / 'archeus.json').write_text(
         json.dumps({'memory_prompt_hook': True, 'memory_budget': 600}), encoding='utf-8')
     payload = json.dumps({'hook_event_name': 'UserPromptSubmit',
                           'cwd': str(proj), 'prompt': 'fix the usage limits parser'})
@@ -68,8 +68,8 @@ def test_hook_silent_on_malformed_stdin(tmp_path):
 
 def test_hook_disabled_by_default(tmp_path):
     proj = tmp_path / 'proj'
-    (proj / '.claudectl' / 'memory').mkdir(parents=True)
-    (proj / '.claudectl' / 'memory' / 'graph.json').write_text(
+    (proj / '.archeus' / 'memory').mkdir(parents=True)
+    (proj / '.archeus' / 'memory' / 'graph.json').write_text(
         json.dumps(_graph()), encoding='utf-8')
     home = tmp_path / 'home'
     (home / '.claude').mkdir(parents=True)          # no settings → default off

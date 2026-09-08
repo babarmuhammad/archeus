@@ -1,4 +1,4 @@
-"""Dev-only: generate claudectl's app icon. NOT a runtime dependency — run
+"""Dev-only: generate archeus's app icon. NOT a runtime dependency — run
 manually to regenerate:
 
     py tools/make_icon.py
@@ -6,11 +6,11 @@ manually to regenerate:
 Design (per 2025 app-icon best practice: one dominant element, legible at 16px,
 rounded square, gradient depth, brand colour):
   - rounded-square tile, deep-navy → near-black vertical gradient
-  - one bold cyan "C" (claudectl) with round caps
+  - one bold cyan "C" (archeus) with round caps
   - three glowing nodes on the arc — a subtle nod to the connections graph
   - soft outer glow for depth
 
-Requires Pillow. Writes claudectl.ico (multi-size) at the repo root.
+Requires Pillow. Writes archeus.ico (multi-size) at the repo root.
 """
 
 import math
@@ -18,7 +18,7 @@ import os
 
 from PIL import Image, ImageDraw, ImageFilter
 
-OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'claudectl.ico')
+OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'archeus.ico')
 SS = 1024
 SIZES = [16, 32, 48, 64, 128, 256]
 

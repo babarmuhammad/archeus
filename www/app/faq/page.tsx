@@ -7,7 +7,7 @@ import { Spine } from '@/components/site/Spine';
 export const metadata = meta({
   title: 'Frequently asked questions',
   description:
-    'What claudectl is, how to install it, where Claude Code keeps its sessions, how claudectl cuts token usage and handles multiple accounts — and how it differs from /resume. Answered plainly.',
+    'What archeus is, how to install it, where Claude Code keeps its sessions, how archeus cuts token usage and handles multiple accounts — and how it differs from /resume. Answered plainly.',
   path: '/faq',
 });
 
@@ -33,7 +33,7 @@ export default function FaqPage() {
       <PageHeader
         eyebrow="FAQ"
         title="Frequently asked questions"
-        lead={`The ${FAQ.length} questions that come up most: what claudectl does, what it costs in tokens, and how it sits alongside Claude Code's own commands.`}
+        lead={`The ${FAQ.length} questions that come up most: what archeus does, what it costs in tokens, and how it sits alongside Claude Code's own commands.`}
       >
         <Cta href={SITE.docs} primary>
           Documentation

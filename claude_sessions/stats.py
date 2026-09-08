@@ -15,7 +15,7 @@ from . import config as _c
 from . import render
 from . import store
 
-cache_file = os.path.join(config_dir, 'claudectl-stats-cache.json')
+cache_file = os.path.join(config_dir, 'archeus-stats-cache.json')
 
 _disk_cache  = None    # path -> {'key': [mtime_ns, size], 'stats': {...}}
 _cache_dirty = False
@@ -159,7 +159,7 @@ def iter_all_sessions(entries, title='SCANNING SESSIONS', silent=False):
                 yield (mtime, ppath, enc, f[:-6], stats, cfgdir)
             if not silent:
                 render.render_frame([
-                    render.header('CLAUDECTL', title),
+                    render.header('ARCHEUS', title),
                     '',
                     f"  Scanning project {pi}/{total} — {render.trunc(os.path.basename(ppath) or ppath, 40)}",
                     '',
@@ -257,7 +257,7 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
 
     # ── live activity, across every account ──
     # What the dashboard's Activity card should have been reading all along. It
-    # was wired to claudectl's own background-job count, which is ~always zero,
+    # was wired to archeus's own background-job count, which is ~always zero,
     # so the card reported the tool's idleness on a dashboard simultaneously
     # showing hundreds of millions of tokens.
     #
@@ -290,8 +290,8 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
             p['accounts'].append(acct)
         _merge_ubm(p['ubm'], ubm)
         # real last-activity across every account. The launch-history store
-        # (last-session.json) only knows sessions claudectl itself started.
-        # claudectl's own headless one-shots (lesson distilling, memory graph
+        # (last-session.json) only knows sessions archeus itself started.
+        # archeus's own headless one-shots (lesson distilling, memory graph
         # building, title extraction) land in the same transcript store and are
         # always a couple of turns — they are not sessions the user resumes
         if stats.get('count', 0) > 3:
@@ -299,7 +299,7 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
                              'account': acct, 'mtime': mtime, 'msgs': stats.get('count', 0),
                              'title': stats.get('title') or _sid[:8],
                              'omni': _used_omni(stats)})
-            # same `count > 3` gate as above, and for the same reason: claudectl's
+            # same `count > 3` gate as above, and for the same reason: archeus's
             # own headless one-shots (lesson distilling, graph building, title
             # extraction) land in this transcript store and would otherwise read
             # as "you are working" every time memory refreshed itself
@@ -487,7 +487,7 @@ def daily_usage_screen(entries):
              f"{C_BOLD}out{C_RESET}", f"{C_BOLD}cache{C_RESET}", f"{C_BOLD}est.${C_RESET}", ''],
             [12, 5, 8, 8, 9, 8, None],
             aligns=['left', 'right', 'right', 'right', 'right', 'right', 'left'])
-        frame = [render.header('CLAUDECTL', 'DAILY USAGE (last 14 days)'), '',
+        frame = [render.header('ARCHEUS', 'DAILY USAGE (last 14 days)'), '',
                  '  ' + head, render.hline()]
         for day, u, cost, n in rows:
             tot = u['in'] + u['out']
@@ -559,7 +559,7 @@ def usage_dashboard(entries):
             [None, 6, 7, 8, 8, 9, 9],
             aligns=['left', 'right', 'right', 'right', 'right', 'right', 'right'])
         total_cost = sum(r[0] for r in proj_rows)
-        frame = [render.header('CLAUDECTL', 'USAGE STATS' + (' (partial)' if partial else '')),
+        frame = [render.header('ARCHEUS', 'USAGE STATS' + (' (partial)' if partial else '')),
                  '', '  ' + head, render.hline()]
         for i, (cost, key, p, exact) in enumerate(proj_rows):
             u = p['usage']
@@ -613,7 +613,7 @@ def project_usage_screen(proj_folder, project_name):
              f"{C_BOLD}in{C_RESET}", f"{C_BOLD}out{C_RESET}", f"{C_BOLD}est.${C_RESET}"],
             [7, None, 6, 8, 8, 8],
             aligns=['left', 'left', 'right', 'right', 'right', 'right'])
-        frame = [render.header('CLAUDECTL', project_name, 'USAGE'),
+        frame = [render.header('ARCHEUS', project_name, 'USAGE'),
                  '', '  ' + head, render.hline()]
         for i, (mtime, name, count, u, cost, exact) in enumerate(sess_rows):
             label = render.cols(

@@ -2,14 +2,14 @@
 description: Pull this project's task-relevant memory into the conversation
 ---
 
-Run `claudectl recall "$ARGUMENTS"` with the Bash tool from the project root,
+Run `archeus recall "$ARGUMENTS"` with the Bash tool from the project root,
 and read the result as project context before answering.
 
-`claudectl recall` scores claudectl's semantic memory graph for this project
+`archeus recall` scores archeus's semantic memory graph for this project
 against the query and prints only the subgraph that fits a token budget — it is
 local, needs no model call, and returns in well under a second. If the command
-is not found, tell the user claudectl is not installed
-(`pip install claudectl`) and continue without it.
+is not found, tell the user archeus is not installed
+(`pip install archeus`) and continue without it.
 
 If it prints `(no relevant project memory)` there is simply nothing recorded
 for this topic yet: say so once, briefly, and carry on. Do not re-run it with

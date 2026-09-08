@@ -1,4 +1,4 @@
-"""The claudectl GUI single-page app. Pure static markup — all data arrives
+"""The archeus GUI single-page app. Pure static markup — all data arrives
 via fetch() from gui.py / gui_api.py endpoints. Self-contained: no CDN, no
 external fonts, works offline. Full TUI parity: sessions, transcript,
 memory suite, CLAUDE.md ops (job + diff-approve), usage, search, managers."""

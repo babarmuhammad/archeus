@@ -24,5 +24,5 @@ Plan a refactor so behavior is preserved and the change is reviewable.
 - If a step can't be verified, it's too big — split it.
 - Stop and re-plan if reality diverges from the plan.
 
-<!-- claudectl starter skill. Mirrors claudectl's own Plan→Execute workflow;
+<!-- archeus starter skill. Mirrors archeus's own Plan→Execute workflow;
      inspired by planning skills in obra/superpowers. -->

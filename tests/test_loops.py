@@ -1,8 +1,8 @@
-"""Loops: the one Claude Code offers, and the one claudectl adds.
+"""Loops: the one Claude Code offers, and the one archeus adds.
 
 A `/loop` is session-scoped — it fires only while its session is open and idle,
 and has no documented state file — so the first half of these tests is about not
-overclaiming: the registry holds what claudectl itself started, "running" means
+overclaiming: the registry holds what archeus itself started, "running" means
 the process, and the turn count comes from the transcript.
 
 The second half is the background kind, which exists because the first is no use
@@ -74,7 +74,7 @@ def test_a_loop_is_recorded_where_the_account_lives(monkeypatch, tmp_path):
 
 
 def test_running_means_the_process_is_alive(monkeypatch, tmp_path):
-    """A loop has no state claudectl can read. What it CAN read is whether the
+    """A loop has no state archeus can read. What it CAN read is whether the
     session it launched is still there, so that is what the board reports."""
     sb = Sandbox(monkeypatch, tmp_path)
     actual, enc, _f, _s = sb.add_project('alpha', n_sessions=1)
@@ -134,7 +134,7 @@ def test_stopping_something_already_gone_is_not_an_error(monkeypatch, tmp_path):
 
 
 def test_a_loop_with_no_process_handle_is_refused(monkeypatch, tmp_path):
-    """Never kill a pid claudectl did not record — 0 is not a process."""
+    """Never kill a pid archeus did not record — 0 is not a process."""
     sb = Sandbox(monkeypatch, tmp_path)
     actual, enc, _f, _s = sb.add_project('alpha', n_sessions=1)
     row = loops.record(actual, enc, str(sb.cfg), '', '', 0)
@@ -164,7 +164,7 @@ def test_the_registry_does_not_grow_without_bound(monkeypatch, tmp_path):
 
 # ── the background kind ──────────────────────────────────────
 #
-# The point of this half: it must keep firing with claudectl closed and no
+# The point of this half: it must keep firing with archeus closed and no
 # session anywhere. That means an OS scheduler entry, which also means every
 # guardrail has to live in the thing the scheduler runs — the UI is not there.
 
@@ -188,7 +188,7 @@ def test_windows_registers_a_task_with_no_stored_password(monkeypatch):
     ok, msg = loops.schedule('abc123', '15m', 'C:/acct')
     assert ok and 'schtasks' in seen[0][0]
     argv = seen[0]
-    assert '/create' in argv and '/tn' in argv and 'claudectl-loop-abc123' in argv
+    assert '/create' in argv and '/tn' in argv and 'archeus-loop-abc123' in argv
     assert '/sc' in argv and argv[argv.index('/sc') + 1] == 'minute'
     assert argv[argv.index('/mo') + 1] == '15'
     assert '/ru' not in argv, 'never ask for a password'
@@ -222,17 +222,17 @@ def test_posix_rewrites_the_crontab_and_keeps_everyone_elses_lines(monkeypatch):
     ok, _ = loops.schedule('abc123', '15m', '')
     assert ok
     assert 'backup.sh' in state['tab']
-    assert '*/15 * * * *' in state['tab'] and '# claudectl-loop-abc123' in state['tab']
+    assert '*/15 * * * *' in state['tab'] and '# archeus-loop-abc123' in state['tab']
 
     ok, _ = loops.unschedule('abc123')
     assert ok
-    assert 'backup.sh' in state['tab'] and 'claudectl-loop-abc123' not in state['tab']
+    assert 'backup.sh' in state['tab'] and 'archeus-loop-abc123' not in state['tab']
 
 
 def test_a_run_is_headless_with_the_permission_mode_it_was_given(monkeypatch, tmp_path):
     """`claude -p` starts in Manual mode, so an unattended run does nothing
     unless it is told what it may do — and NEVER --bare, which skips hooks,
-    skills, CLAUDE.md and memory: everything claudectl provisions."""
+    skills, CLAUDE.md and memory: everything archeus provisions."""
     sb = Sandbox(monkeypatch, tmp_path)
     actual, enc, _f, _s = sb.add_project('alpha', n_sessions=1)
     row = loops.record(actual, enc, str(sb.cfg), '15m', 'check CI', 0,
@@ -296,7 +296,7 @@ def test_the_record_in_claude_md_is_rewritten_not_appended(monkeypatch, tmp_path
     for n in range(8):
         loops.run_once(row['id'], str(sb.cfg))
     md = open(os.path.join(actual, 'CLAUDE.md'), encoding='utf-8').read()
-    assert md.count('CLAUDECTL:LOOP:START') == 1, 'appended instead of rewritten'
+    assert md.count('ARCHEUS:LOOP:START') == 1, 'appended instead of rewritten'
     assert md.count('- 20') == loops.JOURNAL_IN_MD, 'the block grew past its cap'
     assert 'did thing 7' in md and 'did thing 0' not in md, 'newest first'
     assert 'My own notes.' in md, 'the user\'s own text survives every rewrite'

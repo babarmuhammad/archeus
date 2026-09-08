@@ -68,7 +68,7 @@ export const viewport: Viewport = {
  *  Three nodes rather than one bare SoftwareApplication, because an unrelated
  *  Rust project ships under this name: the Person is the hub every profile in
  *  PROFILES points back to, and `sameAs` is how a search engine merges those
- *  scattered profiles into one entity instead of two projects called claudectl.
+ *  scattered profiles into one entity instead of two projects called archeus.
  *  `alternateName` gives it the strings people actually type. */
 const AUTHOR_ID = `${SITE.url}/#author`;
 
@@ -86,7 +86,7 @@ const SITE_LD = {
       '@type': 'WebSite',
       '@id': `${SITE.url}/#website`,
       name: SITE.name,
-      alternateName: ['claudectl (Python)', 'claudectl for Claude Code'],
+      alternateName: ['archeus (Python)', 'archeus for Claude Code'],
       url: SITE.url,
       description: HOME.description,
       inLanguage: 'en',
@@ -96,8 +96,8 @@ const SITE_LD = {
       '@type': 'SoftwareApplication',
       '@id': `${SITE.url}/#software`,
       name: SITE.name,
-      alternateName: ['claudectl (Python)', 'claudectl for Claude Code'],
-      identifier: 'claudectl',
+      alternateName: ['archeus (Python)', 'archeus for Claude Code'],
+      identifier: 'archeus',
       applicationCategory: 'DeveloperApplication',
       operatingSystem: 'Windows, macOS, Linux',
       description: HOME.description,

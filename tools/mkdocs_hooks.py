@@ -52,7 +52,7 @@ def on_page_markdown(markdown, page, config, **kw):
 def on_post_build(config, **kw):
     parts = ['# %s\n' % config['site_name'],
              '> %s\n' % ' '.join(config['site_description'].split()),
-             'The complete claudectl documentation as one file. The linked index is at '
+             'The complete archeus documentation as one file. The linked index is at '
              '%sllms.txt.\n' % config['site_url']]
     for title, url, body in _PAGES:
         parts.append('\n---\n\n# %s\n\nSource: %s\n\n%s' % (title, url, body.strip()))

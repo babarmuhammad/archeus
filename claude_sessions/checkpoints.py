@@ -17,7 +17,7 @@ lookup simply finds nothing and `history()` returns `recognised: False`. It
 cannot mis-attribute one file's contents to another file's name, and the UI
 turns the panel off rather than showing something invented. That is the only
 honest posture for reading a private format, and it is why this is read-only:
-claudectl never writes here, never deletes here, and `/rewind` remains the only
+archeus never writes here, never deletes here, and `/rewind` remains the only
 thing that restores.
 """
 

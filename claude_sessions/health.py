@@ -12,6 +12,7 @@ import re
 import json
 
 from . import config as _c
+from . import store
 from .memory import tokens_estimate
 
 CLAUDEMD_TOKEN_WARN = 1500
@@ -123,13 +124,13 @@ def _check_mcp():
 
 # ── context-loss insurance (session log) ─────────────────────
 
-SESSION_LOG = os.path.join('.claudectl', 'session-log.md')
+SESSION_LOG = os.path.join(store.WORKDIR, 'session-log.md')
 _LOG_MAX_LINES = 400
 
 
 def append_session_log(project_path, proj_folder, sid):
     """Append a 5-line summary of the finished session (goal + files touched)
-    to .claudectl/session-log.md — local, no Claude call. Next session can
+    to .archeus/session-log.md — local, no Claude call. Next session can
     recall what happened even after /compact killed the context."""
     try:
         from .sessions import session_changed_files, get_session_info

@@ -1,7 +1,7 @@
 /**
  * The journey scene.
  *
- * Ported from claudectl's own `graph` background world (claude_sessions/web/stage.js).
+ * Ported from archeus's own `graph` background world (claude_sessions/web/stage.js).
  * Same vocabulary, same reasons:
  *   - wireframe dodecahedra (20 vertices, 30 edges) spinning on two axes at
  *     T*0.5 and T*0.37 with a per-node phase, exactly as connections.py's

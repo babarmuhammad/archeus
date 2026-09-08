@@ -24,18 +24,18 @@ setup environment.ico
 *.lnk
 .claude/worktrees/
 
-# Claude Code project agents (copied from the claudectl library, machine-local)
+# Claude Code project agents (copied from the archeus library, machine-local)
 .claude/agents/
 
 # Workspace provenance manifest (machine-local: paths, session counts)
-.claudectl/
+.archeus/
 
 # Auto-generated per-module memory rules (regenerate on every memory refresh)
-.claude/rules/claudectl-mem-*.md
+.claude/rules/archeus-mem-*.md
 
 # The nudge hook's index — generated from .claude/agents/, which is itself
 # machine-local, so committing the index would describe files that are not here
-.claude/.claudectl-agents.json
+.claude/.archeus-agents.json
 
 # Skills installed into this project from the bundled starters (machine-local,
 # same as .claude/agents/ above)
@@ -53,4 +53,16 @@ references/
 /site/
 
 # scratch commit-message file
+ARCHEUS_COMMITMSG
+
+# ── transitional: the names this tool used before it was renamed ──────────
+# Delete once every working copy has run the new version once (migrate.py moves
+# these on first start). They are listed because until then they are UNIGNORED
+# and stageable, and the contents are exactly what must never be committed:
+# bash-log.txt is every command a session ran, injected-context.md is a whole
+# transcript. The root .claudectl/ carries its own `.gitignore` holding `*`;
+# these are the copies under subdirectories, which do not.
+.claudectl/
+.claude/rules/claudectl-mem-*.md
+.claude/.claudectl-agents.json
 CLAUDECTL_COMMITMSG

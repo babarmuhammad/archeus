@@ -1,4 +1,4 @@
-"""Native desktop shell for the claudectl GUI — a PyQt6 window hosting the
+"""Native desktop shell for the archeus GUI — a PyQt6 window hosting the
 local web app (like Claude Desktop: web UI in a native frame). PyQt6 is an
 OPTIONAL dependency: gui.run_gui() only calls run_desktop() when the import
 succeeds, falling back to an Edge app-mode window, then the default browser.
@@ -14,7 +14,7 @@ def _icon_path():
     # or alongside the package
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     pkg = os.path.dirname(os.path.abspath(__file__))
-    for name in ('claudectl-gui.ico', 'claudectl.ico'):
+    for name in ('archeus-gui.ico', 'archeus.ico'):
         for cand in (os.path.join(here, name), os.path.join(pkg, name)):
             if os.path.isfile(cand):
                 return cand
@@ -79,10 +79,10 @@ def run_desktop():
 
     # QtWebEngine's Chromium layer needs argv[0] (the program name) — an
     # empty list crashes it with STATUS_STACK_BUFFER_OVERRUN on load.
-    app = QApplication(sys.argv[:1] or ['claudectl'])
-    app.setApplicationName('claudectl')
+    app = QApplication(sys.argv[:1] or ['archeus'])
+    app.setApplicationName('archeus')
     win = QMainWindow()
-    win.setWindowTitle('claudectl')
+    win.setWindowTitle('archeus')
     ico = _icon_path()
     if ico:
         win.setWindowIcon(QIcon(ico))

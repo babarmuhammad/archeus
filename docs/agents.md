@@ -1,7 +1,7 @@
 ---
 description: >-
   The agent library, per-project subagent selection, adaptive suggestions, AI-generated
-  agents, and the skills manager — everything claudectl does with Claude Code subagents and
+  agents, and the skills manager — everything archeus does with Claude Code subagents and
   SKILL.md files.
 ---
 
@@ -9,8 +9,8 @@ description: >-
 
 ## Agents (subagents)
 
-- **Agent library** — a category-organized store at `~/.claude/claudectl-agents/<category>/` (not auto-loaded by Claude, so sessions stay lean). Roll your own or bulk-install the [awesome-claude-code-subagents](https://github.com/VoltAgent/awesome-claude-code-subagents) catalog (150+ agents across 10 categories) — see [Installing the agent library](agent-library.md).
-- **Per-project selection** (`g` in the sessions menu) — pick agents from a category checklist (optional, default none). The chosen agents are **copied into `<project>/.claude/agents/`** where Claude auto-discovers them, so they apply to every launch of that project and the selection auto-restores next time. claudectl only manages the files it placed (tracked in `.claudectl-managed.json`) — your own project agents are never touched.
+- **Agent library** — a category-organized store at `~/.claude/archeus-agents/<category>/` (not auto-loaded by Claude, so sessions stay lean). Roll your own or bulk-install the [awesome-claude-code-subagents](https://github.com/VoltAgent/awesome-claude-code-subagents) catalog (150+ agents across 10 categories) — see [Installing the agent library](agent-library.md).
+- **Per-project selection** (`g` in the sessions menu) — pick agents from a category checklist (optional, default none). The chosen agents are **copied into `<project>/.claude/agents/`** where Claude auto-discovers them, so they apply to every launch of that project and the selection auto-restores next time. archeus only manages the files it placed (tracked in `.archeus-managed.json`) — your own project agents are never touched.
 - **Scaffold** — create an agent into a chosen or new category: pick tools (multi-select) and model, edit the body
 - **AI-generated** — Claude analyzes the project and authors a focused subagent (role, when-to-use, tool subset, system prompt); you review before it's written
 - **Lead agent** — also set a single `--agent` (from `~/.claude/agents/`) in launch options
@@ -28,10 +28,10 @@ suggestions automatically on first open (your manual picks are never touched).
 Copying agent files into a project makes them **available**. It does not make them
 **used**: Claude Code decides to delegate by matching the task against each agent's
 `description`, and library descriptions read as catalogue entries, so a project can carry
-ten agents that never fire. Two things claudectl does about it:
+ten agents that never fire. Two things archeus does about it:
 
 - **A delegation table in `CLAUDE.md`.** Applying a selection writes a
-  `CLAUDECTL:AGENTS` sentinel block naming the installed agents and the trigger from each
+  `ARCHEUS:AGENTS` sentinel block naming the installed agents and the trigger from each
   one's own frontmatter. `CLAUDE.md` is read on **every** turn, which makes it the one
   place that changes the outcome. The block is regenerated from what is on disk and
   disappears with the last agent, so it can never name something that is not there.
@@ -46,7 +46,7 @@ ten agents that never fire. Two things claudectl does about it:
   byte-for-byte, because the description is the only thing the router reads.
 
     It is machine-wide, not per project: every account's user-level agents, every
-    project's `.claude/agents`, and the claudectl library, so sharpening also improves
+    project's `.claude/agents`, and the archeus library, so sharpening also improves
     every *future* install. Agents that share a name and description are one question and
     many writes — the same agent in twelve projects is not twelve chances to get twelve
     different answers. Each touched project's CLAUDE.md routing table and nudge index are
@@ -64,7 +64,7 @@ trigger ("use when the task involves X") over ones that describe a job title.
 
 ## Skills
 
-claudectl shows the scopes **Claude Code itself loads**, in the order it resolves them:
+archeus shows the scopes **Claude Code itself loads**, in the order it resolves them:
 
 | Scope | Where | Applies |
 |---|---|---|
@@ -104,7 +104,7 @@ statically risk-scanned and shown to you before anything is written. TUI: **⚙ 
 GUI: the **Skills** page.
 
 !!! note "Upgrading from 1.7 or earlier"
-    claudectl used to keep "your library" in `~/.claude/claudectl-skills`, which **no
+    archeus used to keep "your library" in `~/.claude/archeus-skills`, which **no
     Claude Code reads** — saving a skill there looked like installing it and did nothing.
     That folder is copied into every account's `skills/` directory once, on the next start,
     and left in place as a backup.

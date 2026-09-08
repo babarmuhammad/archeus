@@ -68,12 +68,12 @@ def _used_omni(stats):
 
 
 #: Appended to every prompt `memory._claude_stdin` sends. `claude -p` writes a
-#: transcript like any other session, so without this claudectl's own calls are
+#: transcript like any other session, so without this archeus's own calls are
 #: indistinguishable from yours.
-HEADLESS_MARK = '<!-- claudectl:headless -->'
+HEADLESS_MARK = '<!-- archeus:headless -->'
 
 #: Transcripts written before HEADLESS_MARK existed carry no marker, so the
-#: opening line of each prompt claudectl sends is matched too. The list can only
+#: opening line of each prompt archeus sends is matched too. The list can only
 #: rot by a prompt being reworded, and
 #: `test_the_headless_openers_still_match_the_prompts_we_send` fails when it is.
 HEADLESS_OPENERS = (
@@ -87,7 +87,7 @@ HEADLESS_OPENERS = (
 
 
 def is_headless_text(text):
-    """True when this user message is claudectl prompting Claude, not you."""
+    """True when this user message is archeus prompting Claude, not you."""
     t = (text or '').lstrip()
     return HEADLESS_MARK in t or any(t.startswith(p) for p in HEADLESS_OPENERS)
 
@@ -102,7 +102,7 @@ _EMPTY_STATS = {
 #: Bump when the MEANING of a field changes, not just the set of them.
 #:
 #: The cache key is (mtime_ns, size), and a transcript that is finished never
-#: changes either — so without this, a value written by an older claudectl is
+#: changes either — so without this, a value written by an older archeus is
 #: served forever. It is not hypothetical: widening `preview` from 65 to 200
 #: characters would have shown the new length only on sessions written after the
 #: upgrade. A field being ADDED is caught automatically by the key-set check in
@@ -381,7 +381,7 @@ def save_add_dirs(proj_folder, dirs):
 
 
 def is_internal_session(jsonl_path):
-    """True if this transcript was spawned by claudectl's own `claude -p` calls
+    """True if this transcript was spawned by archeus's own `claude -p` calls
     (memory build / lesson extraction / ask). Claude Code marks print-mode/SDK
     sessions with entrypoint 'sdk-cli'; interactive ones use 'cli'. These are
     not user conversations — exclude them from the browser and lesson scans."""
@@ -404,7 +404,7 @@ def is_internal_session(jsonl_path):
 
 def scan_sessions(folder):
     """List sessions in a project folder. Returns [(mtime, sid, preview, count)] newest-first.
-    claudectl-internal print-mode sessions (entrypoint sdk-cli) are excluded."""
+    archeus-internal print-mode sessions (entrypoint sdk-cli) are excluded."""
     sessions = []
     if not folder or not os.path.isdir(folder):
         return sessions

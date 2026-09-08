@@ -1,6 +1,6 @@
 """Packaging invariants that only a real install can prove.
 
-`pip install claudectl` shipped an empty skills_templates/ for its whole life:
+`pip install archeus` shipped an empty skills_templates/ for its whole life:
 package-data globbed `skills_templates/*.md` while every file is one level
 deeper at `skills_templates/<name>/SKILL.md`. CI's import smoke check could not
 catch it, because it runs from the source tree where the files are simply there.
@@ -70,11 +70,11 @@ def test_the_plugin_bundle_is_tracked_by_git():
 
 
 def test_the_console_script_target_exists_and_is_thin():
-    """`claudectl statusline` runs on every conversation turn. main's import
+    """`archeus statusline` runs on every conversation turn. main's import
     chain pulls urllib/ssl/http.client via `usage`; cli.py must dispatch before
     that, exactly as __main__.py does."""
     text = open(os.path.join(ROOT, 'pyproject.toml'), encoding='utf-8').read()
-    assert 'claudectl = "claude_sessions.cli:run"' in text
+    assert 'archeus = "claude_sessions.cli:run"' in text
 
     from claude_sessions import cli
     assert callable(cli.run)
@@ -90,7 +90,7 @@ def test_statusline_via_the_console_script_path_stays_light():
     modules including ssl, on every turn."""
     probe = (
         "import sys;"
-        "sys.argv=['claudectl','statusline'];"
+        "sys.argv=['archeus','statusline'];"
         "import claude_sessions.cli as c;"
         "print('ssl' in sys.modules, 'urllib.request' in sys.modules)"
     )
@@ -108,7 +108,7 @@ def test_help_does_not_pay_for_the_tui():
     answer cannot fail for a reason that has nothing to do with the question."""
     probe = (
         "import sys;"
-        "sys.argv=['claudectl','--help'];"
+        "sys.argv=['archeus','--help'];"
         "import claude_sessions.cli as c;"
         "c.print_help();"
         "print('MAIN' if 'claude_sessions.main' in sys.modules else 'clean',"
@@ -134,7 +134,7 @@ def _docs():
 
 def test_no_document_denies_an_install_that_now_works():
     """This guard used to assert the opposite — that nothing advertised
-    `pipx install claudectl`, because the name 404'd and the first instruction a
+    `pipx install archeus`, because the name 404'd and the first instruction a
     visitor followed was the one that failed.
 
     1.6.0 is published, so the hazard inverted: a leftover "not on PyPI yet"
@@ -148,7 +148,7 @@ def test_no_document_denies_an_install_that_now_works():
         for i, line in enumerate(text.splitlines(), 1):
             if re.search(r'not (on PyPI|published)|both fail with a 404', line, re.I):
                 stale.append('%s:%d %s' % (rel, i, line.strip()[:70]))
-    assert not stale, 'claims claudectl is unavailable on PyPI: %s' % stale
+    assert not stale, 'claims archeus is unavailable on PyPI: %s' % stale
 
 
 def test_the_working_install_is_the_one_shown_first():

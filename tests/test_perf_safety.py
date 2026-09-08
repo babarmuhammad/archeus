@@ -75,10 +75,10 @@ def test_the_api_caps_the_page_size(monkeypatch, tmp_path):
 
 def test_an_unknown_settings_key_survives_a_round_trip(monkeypatch, tmp_path):
     """save_settings writes back what load_settings returned, so dropping the
-    keys this version does not know means an older claudectl ERASES a newer
+    keys this version does not know means an older archeus ERASES a newer
     one's settings — and syncing this file between two machines is enough."""
     from claude_sessions import config
-    p = tmp_path / 'claudectl.json'
+    p = tmp_path / 'archeus.json'
     p.write_text(json.dumps({'theme': 'nord', 'a_future_key': {'deep': [1, 2]}}),
                  encoding='utf-8')
     monkeypatch.setattr(config, 'settings_file', str(p))

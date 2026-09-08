@@ -7,7 +7,7 @@
 > being build and updated, rehaul the memory and claude md tabs
 
 Read literally: the project view presents memory as *CLAUDE.md plus a few counters*,
-but claudectl actually builds and maintains **twelve distinct artifacts** per project.
+but archeus actually builds and maintains **twelve distinct artifacts** per project.
 Most are measured already and shown nowhere. The user wants to see what exists, what
 is being written, and what it costs.
 
@@ -44,20 +44,20 @@ Live numbers on `D:\Claude` for sanity-checking your work: 350 entities, 126 rel
 
 | # | Artifact | Path | Written by | Injected? |
 |---|---|---|---|---|
-| A1 | **Semantic graph** | `<proj>/.claudectl/memory/graph.json` **and** the encoded mirror | `memory.save_memory` `memory.py:110` | never directly — source for A2/A3/A7/A11 |
-| A2 | **CLAUDE.md digest** (`CLAUDECTL:MEMORY`) | project `CLAUDE.md` | `memory.sync_to_claudemd` `memory.py:1422` → `claude_md.write_memory_block` `claude_md.py:71`; built by `build_digest_micro` `memory.py:1342` (≤250 tok) | **always-on, every turn** |
-| A3 | **Path-scoped rules** | `<proj>/.claude/rules/claudectl-mem-*.md` | `memrules.sync_rules` `memrules.py:93`; glob `memrules.py:27`; cap 400 tok `memrules.py:16` | **lazy** — only when Claude touches a matching path |
-| A4 | **Worklog** | `<proj>/.claudectl/memory/worklog.json` | `worklog.add_entry` `worklog.py:39` (cap 10) | **per session** (SessionStart) `worklog_hook.py:58` |
+| A1 | **Semantic graph** | `<proj>/.archeus/memory/graph.json` **and** the encoded mirror | `memory.save_memory` `memory.py:110` | never directly — source for A2/A3/A7/A11 |
+| A2 | **CLAUDE.md digest** (`ARCHEUS:MEMORY`) | project `CLAUDE.md` | `memory.sync_to_claudemd` `memory.py:1422` → `claude_md.write_memory_block` `claude_md.py:71`; built by `build_digest_micro` `memory.py:1342` (≤250 tok) | **always-on, every turn** |
+| A3 | **Path-scoped rules** | `<proj>/.claude/rules/archeus-mem-*.md` | `memrules.sync_rules` `memrules.py:93`; glob `memrules.py:27`; cap 400 tok `memrules.py:16` | **lazy** — only when Claude touches a matching path |
+| A4 | **Worklog** | `<proj>/.archeus/memory/worklog.json` | `worklog.add_entry` `worklog.py:39` (cap 10) | **per session** (SessionStart) `worklog_hook.py:58` |
 | A5 | **Hits sidecar** | `.../memory/hits.log` | `recall._log_hits` `recall.py:322`; folded + deleted by `fold_hits` `recall.py:336` | never (feedback channel) |
 | A6 | **Dirty sidecar** | `.../memory/dirty.log` | `memdirty_hook.record` `memdirty_hook.py:55`; drained `memory.py:688` | never |
 | A7 | **Cross-project conventions** | global `~/.claude/CLAUDE.md` block | `conventions.sync_to_global` `conventions.py:216` | **always-on, in every project on the account** |
-| A8 | **Workspace manifest** | `<proj>/.claudectl/workspace-manifest.json` | `workspace.update_manifest` `workspace.py:285`; score `workspace.py:396` | never — status only |
+| A8 | **Workspace manifest** | `<proj>/.archeus/workspace-manifest.json` | `workspace.update_manifest` `workspace.py:285`; score `workspace.py:396` | never — status only |
 | A9 | **Lessons** | entities inside `graph.json` | `lessons.merge_lessons` `lessons.py:153`; decay `lessons.py:184` | count in digest; text per-prompt via recall |
 | A10 | **AUTOGEN / SESSIONS blocks** | project `CLAUDE.md` | `claude_md.py:267` / `:194` | **always-on** |
 | A11 | **Recall injection** | (runtime) | `recall.retrieve` `recall.py:365`, hook `recall_hook.py:52` | **per prompt**, ≤ `memory_budget` |
-| A12 | **Snapshots** | `<proj>/.claudectl/snapshots/` | `diffview.record` `diffview.py:158`, 12 versions/key `diffview.py:25` | never |
+| A12 | **Snapshots** | `<proj>/.archeus/snapshots/` | `diffview.record` `diffview.py:158`, 12 versions/key `diffview.py:25` | never |
 
-Also under `.claudectl/`: `scan.lock` (live progress, `memory.py:274`), `bash-log.txt`,
+Also under `.archeus/`: `scan.lock` (live progress, `memory.py:274`), `bash-log.txt`,
 `session-log.md`, `injected-context.md`, `plan-latest.md`, `connections-cache.json`.
 
 **The sentence the UI never says:** CLAUDE.md carries ~117 always-on tokens of memory
@@ -150,11 +150,11 @@ A grep of `app.js` for `est|digest_tokens|total_always|evicted|module_edges|repo
 
 ## 5. Suggested shape (not prescriptive)
 
-The repo's own recorded lesson is *"users report claudectl is great but too complicated
+The repo's own recorded lesson is *"users report archeus is great but too complicated
 — prioritise usability over feature expansion."* So this is a **consolidation**, not
 more cards. Two tabs with one job each:
 
-**Memory = "what claudectl knows, and what it costs."** One inventory of the twelve
+**Memory = "what archeus knows, and what it costs."** One inventory of the twelve
 artifacts, each row: name · what writes it · when it last changed · size/tokens ·
 whether it reaches a session (always-on / lazy / per-prompt / never) · an action. Then
 the live state: last cycle (`auto_last` + cost), what is queued (`pending_units`,
@@ -215,7 +215,7 @@ These are load-bearing here; all are documented in `CLAUDE.md` and enforced by t
 - **`site/` and `notes/` are being indexed into memory.** `connections.SKIP_DIRS`
   (`connections.py:21`) has no `site`, and the walk does not consult `.gitignore` —
   so mkdocs build output became a memory unit with its own rule file
-  (`claudectl-mem-Claude-site_assets.md`, glob `site/assets/javascripts/**`, 396 tok).
+  (`archeus-mem-Claude-site_assets.md`, glob `site/assets/javascripts/**`, 396 tok).
   That is a Claude call and a rule file spent on generated output. Worth adding `site`
   to `SKIP_DIRS`, or honouring `.gitignore` in the walk.
 - **`_bg_scan_cli` notification wording** differs from the GUI toast; both now report

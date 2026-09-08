@@ -268,7 +268,7 @@ def test_probe_skips_known_dead_without_a_request(monkeypatch):
 
 def test_dead_cache_roundtrip_and_recovery(monkeypatch, tmp_path):
     from claude_sessions import config as _cfg
-    monkeypatch.setattr(_cfg, 'settings_file', str(tmp_path / 'claudectl.json'))
+    monkeypatch.setattr(_cfg, 'settings_file', str(tmp_path / 'archeus.json'))
     omniroute.save_dead([{'id': 'a', 'status': 'gone', 'ok': False},
                          {'id': 'b', 'status': 'auth', 'ok': False},
                          {'id': 'c', 'status': 'timeout', 'ok': False}])
@@ -283,7 +283,7 @@ def test_dead_cache_expires(monkeypatch, tmp_path):
     import json as _j
     import time as _t
     from claude_sessions import config as _cfg
-    monkeypatch.setattr(_cfg, 'settings_file', str(tmp_path / 'claudectl.json'))
+    monkeypatch.setattr(_cfg, 'settings_file', str(tmp_path / 'archeus.json'))
     with open(omniroute.dead_path(), 'w', encoding='utf-8') as f:
         _j.dump({'old': {'status': 'gone', 'ts': _t.time() - omniroute._DEAD_TTL - 10},
                  'new': {'status': 'gone', 'ts': _t.time()}}, f)
@@ -307,7 +307,7 @@ def test_order_fairly_puts_known_good_first():
 
 def test_record_result_learns_from_a_real_turn(monkeypatch, tmp_path):
     from claude_sessions import config as _cfg
-    monkeypatch.setattr(_cfg, 'settings_file', str(tmp_path / 'claudectl.json'))
+    monkeypatch.setattr(_cfg, 'settings_file', str(tmp_path / 'archeus.json'))
     omniroute.record_result('m1', True)
     assert omniroute.load_alive() == ['m1']
     omniroute.record_result('m2', False, 'HTTP 410: gone')
@@ -319,7 +319,7 @@ def test_record_result_learns_from_a_real_turn(monkeypatch, tmp_path):
 
 def test_record_result_is_a_noop_when_status_unchanged(monkeypatch, tmp_path):
     from claude_sessions import config as _cfg
-    monkeypatch.setattr(_cfg, 'settings_file', str(tmp_path / 'claudectl.json'))
+    monkeypatch.setattr(_cfg, 'settings_file', str(tmp_path / 'archeus.json'))
     omniroute.record_result('m1', True)
     calls = []
     monkeypatch.setattr(omniroute, 'save_dead', lambda *a, **k: calls.append(a))
@@ -422,7 +422,7 @@ def test_prepare_launch_unknown_model_raises_valueerror(monkeypatch, tmp_path):
     monkeypatch.setattr(omniroute, 'ensure_running', lambda *a, **k: (True, 'running'))
     from claude_sessions import config
     from claude_sessions.config import load_settings, save_settings
-    monkeypatch.setattr(config, 'settings_file', str(tmp_path / 'claudectl.json'))
+    monkeypatch.setattr(config, 'settings_file', str(tmp_path / 'archeus.json'))
     s = load_settings()
     s['omniroute_base_url'] = 'http://localhost:20128'
     s['omniroute_api_key'] = ''

@@ -8,12 +8,12 @@ faq:
   - q: Where does Claude Code store sessions on Windows?
     a: Under `%USERPROFILE%\.claude\projects\<encoded-project-path>\`, one `<session-id>.jsonl` file per session, with one JSON object per line. The folder name encodes the project's real path by replacing separators with dashes, so `D:\Projects\my-app` becomes `D--Projects-my-app`.
   - q: How do I search across all my Claude Code sessions?
-    a: Claude Code has no cross-session search — `/resume` only lists recent sessions in the current directory. claudectl indexes session names, AI-generated titles and previews across every project and caches the result, so you can filter live and press ENTER to resume any match regardless of which project it belongs to.
+    a: Claude Code has no cross-session search — `/resume` only lists recent sessions in the current directory. archeus indexes session names, AI-generated titles and previews across every project and caches the result, so you can filter live and press ENTER to resume any match regardless of which project it belongs to.
   - q: Can I rename, tag or archive a Claude Code session?
-    a: Not with Claude Code alone; sessions are identified by UUID and there is no delete-safe archive. claudectl adds a display name (`<session-id>.name`), per-session tags stored in `tags.json`, and an archive that moves a session into a restorable `archived/` folder rather than deleting the transcript.
+    a: Not with Claude Code alone; sessions are identified by UUID and there is no delete-safe archive. archeus adds a display name (`<session-id>.name`), per-session tags stored in `tags.json`, and an archive that moves a session into a restorable `archived/` folder rather than deleting the transcript.
   - q: Why does my Claude Code status line show broken characters on Windows?
     a: Because Claude Code captures a status line's stdout as a pipe, so CPython picks the locale codepage — cp1252 on Windows — and a non-ASCII glyph goes out mis-encoded or raises UnicodeEncodeError outright. Any script writing a status line or hook output must call `sys.stdout.reconfigure(encoding='utf-8')` before printing.
-  - q: How do I pin claudectl to the Windows 11 taskbar?
+  - q: How do I pin archeus to the Windows 11 taskbar?
     a: Windows 11 cannot pin a `.bat` shortcut directly, so the shortcut has to point at `cmd.exe` with the batch file as an argument. Create it with WScript.Shell in PowerShell, set `IconLocation` to the bundled `.ico`, then right-click the desktop shortcut and choose Pin to taskbar.
 ---
 
@@ -28,11 +28,11 @@ Claude Code stores every session as a JSONL transcript under `%USERPROFILE%\.cla
 ├── projects\
 │   └── D--Projects-my-app\
 │       ├── 6aff4b52-....jsonl        # the transcript
-│       ├── 6aff4b52-....name         # display name (claudectl)
-│       ├── tags.json                 # per-session tags (claudectl)
-│       ├── system-prompt.txt         # injected on every launch (claudectl)
-│       ├── add-dirs.txt              # --add-dir roots (claudectl)
-│       └── archived\                 # restorable archive (claudectl)
+│       ├── 6aff4b52-....name         # display name (archeus)
+│       ├── tags.json                 # per-session tags (archeus)
+│       ├── system-prompt.txt         # injected on every launch (archeus)
+│       ├── add-dirs.txt              # --add-dir roots (archeus)
+│       └── archived\                 # restorable archive (archeus)
 ├── settings.json                     # hooks, permissions, statusLine, outputStyle
 ├── CLAUDE.md                         # loaded in every session on this account
 └── file-history\<session-id>\        # Claude Code's checkpoint store
@@ -40,7 +40,7 @@ Claude Code stores every session as a JSONL transcript under `%USERPROFILE%\.cla
 
 The `.jsonl` files are the whole record: user turns, assistant turns, tool calls, tool results, one JSON object per line. They are append-only and nothing reads them back — Claude Code does not consult a prior transcript when you start a new session.
 
-They also get big. A 2,787-message session is a normal week. Any tool that touches these must stream rather than `readlines()`; claudectl funnels every transcript read through one module (`transcripts.iter_json`) that yields objects with a `limit`/`offset`, a `max_bytes` cap, and a `prefilter` substring tested against the *raw line*, so a caller that only wants the `"Bash"` entries never pays for a `json.loads` it throws away.
+They also get big. A 2,787-message session is a normal week. Any tool that touches these must stream rather than `readlines()`; archeus funnels every transcript read through one module (`transcripts.iter_json`) that yields objects with a `limit`/`offset`, a `max_bytes` cap, and a `prefilter` substring tested against the *raw line*, so a caller that only wants the `"Bash"` entries never pays for a `json.loads` it throws away.
 
 ## The folder name is lossy — do not decode it
 
@@ -72,7 +72,7 @@ This only *looked* fine in development because `PYTHONIOENCODING=utf-8` was set 
 subprocess.run(cmd, text=True, encoding='utf-8', errors='ignore')
 ```
 
-claudectl routes every git call through a single function for exactly this reason; one door, one place to get the encoding right.
+archeus routes every git call through a single function for exactly this reason; one door, one place to get the encoding right.
 
 ## Repo discovery: `.git` is not always a directory
 
@@ -87,7 +87,7 @@ No subprocess needed to tell them apart. Getting this wrong in the obvious direc
 
 ## What a workspace layer adds
 
-With that on-disk picture, the useful operations are the ones Claude Code does not expose. In claudectl's session menu:
+With that on-disk picture, the useful operations are the ones Claude Code does not expose. In archeus's session menu:
 
 | Key | Action |
 |---|---|
@@ -109,7 +109,7 @@ Cross-project search is separate from per-project filtering: **🔍 Search all s
 
 ## Usage, read from your own transcripts
 
-Everything needed to cost a session is already in the file — tokens in, out, cache, per model. claudectl's usage dashboard parses local transcripts (no API call) into a per-project and per-session table with estimated cost at published API rates, plus a per-day table of the last 14 days. On a subscription plan those numbers are not a bill, they are a consumption gauge — which is the right way to read them.
+Everything needed to cost a session is already in the file — tokens in, out, cache, per model. archeus's usage dashboard parses local transcripts (no API call) into a per-project and per-session table with estimated cost at published API rates, plus a per-day table of the last 14 days. On a subscription plan those numbers are not a bill, they are a consumption gauge — which is the right way to read them.
 
 The plan-usage bars on the main screen are a different source: they come from the rate-limit windows Claude Code itself reports.
 
@@ -123,13 +123,13 @@ $lnk = $shell.CreateShortcut("$env:USERPROFILE\Desktop\Open Repo Claude.lnk")
 $lnk.TargetPath       = "C:\Windows\System32\cmd.exe"
 $lnk.Arguments        = "/c `"$PWD\Open Repo cmd.bat`""
 $lnk.WorkingDirectory = "$PWD"
-$lnk.IconLocation     = "$PWD\claudectl.ico, 0"
+$lnk.IconLocation     = "$PWD\archeus.ico, 0"
 $lnk.Save()
 ```
 
 Then right-click the desktop shortcut → **Pin to taskbar**.
 
-**Elevation without a UAC prompt every time.** If `claude.exe` or your project paths need admin rights, ticking "Run as administrator" on a shortcut gives you a UAC prompt on every launch. Register a scheduled task that already runs at highest privilege and point the shortcut at `schtasks /run /tn "ClaudeCtl"` instead; leave the shortcut's own elevation checkbox *unticked*, because `schtasks.exe` does not need elevating, only the task it triggers. Launch the task through `wt.exe` rather than `cmd.exe` directly — elevated console apps otherwise fall back to legacy conhost, which renders a TUI with broken colours and box-drawing.
+**Elevation without a UAC prompt every time.** If `claude.exe` or your project paths need admin rights, ticking "Run as administrator" on a shortcut gives you a UAC prompt on every launch. Register a scheduled task that already runs at highest privilege and point the shortcut at `schtasks /run /tn "Archeus"` instead; leave the shortcut's own elevation checkbox *unticked*, because `schtasks.exe` does not need elevating, only the task it triggers. Launch the task through `wt.exe` rather than `cmd.exe` directly — elevated console apps otherwise fall back to legacy conhost, which renders a TUI with broken colours and box-drawing.
 
 **No console window.** `pythonw.exe` runs the GUI without one; the full shortcut recipe including the GUI icon is in [the install guide](https://docs.claudectl.space/installation/).
 
@@ -137,6 +137,6 @@ Then right-click the desktop shortcut → **Pin to taskbar**.
 
 ## Terminal or window
 
-The same operations exist in both interfaces over one engine. `claudectl` opens the TUI; `claudectl --gui` opens a desktop window — PyQt6 native if installed, otherwise an Edge app-mode window, otherwise your browser, served on loopback only. Neither needs a third-party Python package; claudectl is standard library only, and uses the Claude Code authentication you already have.
+The same operations exist in both interfaces over one engine. `archeus` opens the TUI; `archeus --gui` opens a desktop window — PyQt6 native if installed, otherwise an Edge app-mode window, otherwise your browser, served on loopback only. Neither needs a third-party Python package; archeus is standard library only, and uses the Claude Code authentication you already have.
 
 Full key map and command line: [docs.claudectl.space/usage](https://docs.claudectl.space/usage/).

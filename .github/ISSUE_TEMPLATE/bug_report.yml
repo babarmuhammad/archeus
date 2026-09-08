@@ -1,11 +1,11 @@
 name: Bug report
-description: Something claudectl does is wrong or crashes
+description: Something archeus does is wrong or crashes
 labels: [bug]
 body:
   - type: markdown
     attributes:
       value: |
-        Before filing: `claudectl --version`, and check
+        Before filing: `archeus --version`, and check
         [Troubleshooting](https://docs.claudectl.space/troubleshooting/) —
         it is a symptom-to-fix table and covers most of what gets reported.
 
@@ -25,14 +25,14 @@ body:
     attributes:
       label: Error output
       description: >-
-        The full traceback if there is one. claudectl also keeps an event log —
-        the Logs screen in the TUI and GUI, or `~/.claude/claudectl/events.jsonl`.
+        The full traceback if there is one. archeus also keeps an event log —
+        the Logs screen in the TUI and GUI, or `~/.claude/archeus/events.jsonl`.
       render: text
 
   - type: input
     id: version
     attributes:
-      label: claudectl version
+      label: archeus version
       placeholder: "1.8.2"
     validations:
       required: true

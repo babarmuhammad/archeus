@@ -1,6 +1,6 @@
 """Plugins/marketplaces and the worktree board.
 
-These are the two categories claudectl was absent from. What is worth testing is
+These are the two categories archeus was absent from. What is worth testing is
 not the listing — that is a JSON read — but the two claims that justify building
 them at all:
 

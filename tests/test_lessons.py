@@ -47,7 +47,7 @@ def test_pending_sids_skips_internal_sdk_cli(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     actual, enc, folder, _ = sb.add_project('alpha', n_sessions=0)
     _mk_transcript(folder, 'user-sess', age_sec=300)
-    # claudectl-internal print-mode session (the bug source)
+    # archeus-internal print-mode session (the bug source)
     p = os.path.join(folder, 'internal.jsonl')
     with open(p, 'w', encoding='utf-8') as f:
         f.write(json.dumps({'type': 'queue-operation', 'entrypoint': 'sdk-cli',

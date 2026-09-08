@@ -9,7 +9,7 @@ const CLAUSES = splitHeadings(CONDUCT_HTML);
 export const metadata = meta({
   title: 'Code of conduct',
   description:
-    'The Contributor Covenant claudectl follows, and how it applies to the issue tracker, discussions and pull requests.',
+    'The Contributor Covenant archeus follows, and how it applies to the issue tracker, discussions and pull requests.',
   path: '/code-of-conduct',
 });
 
@@ -29,7 +29,7 @@ export default function CodeOfConductPage() {
       <PageHeader
         eyebrow="Community"
         title="Code of conduct"
-        lead="claudectl follows the Contributor Covenant. It applies to the issue tracker, discussions and pull requests, and to anyone taking part in them."
+        lead="archeus follows the Contributor Covenant. It applies to the issue tracker, discussions and pull requests, and to anyone taking part in them."
       >
         <Cta href={`${SITE.repo}/blob/main/CODE_OF_CONDUCT.md`} primary>
           This file on GitHub

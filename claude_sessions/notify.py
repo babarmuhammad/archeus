@@ -3,7 +3,7 @@
 Memory refreshes, plans and reviews take minutes and run in the background on
 purpose — the job banner exists so you can navigate away. That is exactly why
 the finish has to reach you outside the window: the detached memory worker
-(`claudectl --bg-scan`) has no UI at all, and a Plan→Execute run that ends while
+(`archeus --bg-scan`) has no UI at all, and a Plan→Execute run that ends while
 you are in another app ended silently.
 
 Stdlib only, fire-and-forget, and it never raises: a notification that breaks
@@ -15,7 +15,7 @@ the thing it is reporting on is worse than no notification.
   Linux    notify-send, when it exists.
 
 Two switches, deliberately: the `notifications` setting is the user's, and
-`CLAUDECTL_NO_NOTIFY` is the test suite's — conftest sets it for the whole run
+`ARCHEUS_NO_NOTIFY` is the test suite's — conftest sets it for the whole run
 so no test can pop a real toast, the same choke-point discipline the editor
 spawn already uses.
 """
@@ -33,11 +33,11 @@ __all__ = ['send', 'enabled', 'job_finished', 'MIN_SECONDS']
 #: off — see the ambient-motion lesson in CLAUDE.md.
 MIN_SECONDS = 20
 
-APP_NAME = 'claudectl'
+APP_NAME = 'archeus'
 
 
 def enabled():
-    if os.environ.get('CLAUDECTL_NO_NOTIFY'):
+    if os.environ.get('ARCHEUS_NO_NOTIFY'):
         return False
     try:
         from .config import load_settings
@@ -50,7 +50,7 @@ def _ps_toast(title, message):
     """PowerShell one-liner building a WinRT toast.
 
     The AppID is PowerShell's own registered AUMID: a toast raised under an
-    unregistered id is silently dropped by Windows, and claudectl has no
+    unregistered id is silently dropped by Windows, and archeus has no
     installer to register one of its own.
     """
     def q(s):

@@ -18,7 +18,7 @@ from .repos import _git      # pins encoding='utf-8' — see repos._git docstrin
 from .sessions import get_session_info, get_session_rich_summary, read_extra_paths, format_age
 from .ui import text_input, _cls, wait_event, poll_event
 
-#: Every block in a PROJECT CLAUDE.md that claudectl writes and therefore owns.
+#: Every block in a PROJECT CLAUDE.md that archeus writes and therefore owns.
 #: AUTOGEN and SESSIONS are absent on purpose: they are rebuilt from scratch on
 #: the same pass that rewrites the file, so carrying the old ones across would
 #: put back exactly what was just regenerated. (Conventions live in the GLOBAL
@@ -79,11 +79,11 @@ def upsert_block(project_path, start, end, section):
 
 
 def write_memory_block(project_path, digest):
-    """Insert/replace the CLAUDECTL:MEMORY sentinel block in <project>/CLAUDE.md.
+    """Insert/replace the ARCHEUS:MEMORY sentinel block in <project>/CLAUDE.md.
     Returns (ok, old_content, new_content)."""
     note = _c.generated_note("this project's semantic memory graph",
                              "the project's Memory tab -> Build with Claude")
-    section = (f"{_MEMORY_START}\n## Project memory (claudectl — auto-maintained)\n"
+    section = (f"{_MEMORY_START}\n## Project memory (archeus — auto-maintained)\n"
                f"{note}\n\n"
                f"{digest}\n{_MEMORY_END}\n")
     return upsert_block(project_path, _MEMORY_START, _MEMORY_END, section)
@@ -103,7 +103,7 @@ def _valid_claude_md(text):
 def _preserve_block(final, existing, start=_MEMORY_START, end=_MEMORY_END):
     """Carry a sentinel block from `existing` into `final` verbatim. AI analyze
     rewrites the whole CLAUDE.md and would otherwise drop the machine-maintained
-    CLAUDECTL:MEMORY block (it lives after AUTOGEN/SESSIONS, so Claude never
+    ARCHEUS:MEMORY block (it lives after AUTOGEN/SESSIONS, so Claude never
     sees it). Always keep it."""
     if start not in existing or end not in existing:
         return final
@@ -114,12 +114,12 @@ def _preserve_block(final, existing, start=_MEMORY_START, end=_MEMORY_END):
 
 
 def _preserve_machine_blocks(final, existing):
-    """Carry EVERY block claudectl maintains across a rewrite.
+    """Carry EVERY block archeus maintains across a rewrite.
 
     Only MEMORY was carried, because only MEMORY was known here. The subagent
     delegation table and the loop log are written by `agents.write_routing_block`
     and the loop runner into the same file, and both landed in the "manual"
-    remainder — so AI compression was shown claudectl's own generated tables,
+    remainder — so AI compression was shown archeus's own generated tables,
     reworded them, and the CLAUDE.md tab labelled them *your prose*. Splitting
     them out of `manual` without carrying them across would have deleted them
     instead, which is why the two changes are one change.
@@ -240,10 +240,10 @@ def _build_sessions_block(proj_folder, existing_entries, cap=None):
             cap = load_settings().get('claude_md_sessions_cap', 10)
         except Exception:
             cap = 10
-    # claudectl's own headless calls (extract a module, distil lessons, compress
+    # archeus's own headless calls (extract a module, distil lessons, compress
     # this very file) leave transcripts in ~/.claude/projects like any session,
     # and were being listed back as "session topics" — always-on CLAUDE.md
-    # tokens spent describing claudectl talking to itself. New ones carry
+    # tokens spent describing archeus talking to itself. New ones carry
     # sessions.HEADLESS_MARK; lines already written into the file are matched by
     # the prompt opener that produced their preview.
     from .sessions import is_headless_text
@@ -444,7 +444,7 @@ def prune_claude_md(project_path, proj_folder=None):
     if not prev['changed']:
         return (tokens_estimate(existing), tokens_estimate(existing))
     # atomic: Claude Code parses this file on every turn, so a half-written
-    # CLAUDE.md breaks the user's whole session, not just claudectl
+    # CLAUDE.md breaks the user's whole session, not just archeus
     if not _cfg.write_atomic(md_path, final):
         return None
     try:
@@ -465,11 +465,11 @@ def prune_claude_md(project_path, proj_folder=None):
 
 _KEEP_RE = re.compile(re.escape(_cfg._KEEP_START) + r'.*?' + re.escape(_cfg._KEEP_END),
                       re.S)
-_KEEP_MARK = '@@CLAUDECTL_KEEP_%d@@'
+_KEEP_MARK = '@@ARCHEUS_KEEP_%d@@'
 
 
 def _fence_out(manual):
-    """Cut CLAUDECTL:KEEP regions out of `manual`, leaving a numbered marker.
+    """Cut ARCHEUS:KEEP regions out of `manual`, leaving a numbered marker.
 
     Returns (text_with_markers, [region_text]). The regions never reach the
     model, so no amount of creative rewriting can touch them."""
@@ -538,7 +538,7 @@ def ai_compress_claude_md(project_path, proj_folder=None):
         "command, constraint and preference, drop filler, marketing tone, "
         "restatements of things obvious from the code, and meeting-notes-style "
         "history. Keep the # title. Do not invent new facts.\n\n"
-        + ("Reproduce every @@CLAUDECTL_KEEP_n@@ marker exactly as it appears, "
+        + ("Reproduce every @@ARCHEUS_KEEP_n@@ marker exactly as it appears, "
            "each on its own line, in the same order. They stand for protected "
            "sections you are not being shown.\n\n" if kept else "")
         + "Output ONLY the raw markdown of the compressed file — no preamble, no "
@@ -546,7 +546,7 @@ def ai_compress_claude_md(project_path, proj_folder=None):
         f"FILE:\n{manual}"
     )
     out = _claude_stdin(prompt, os.path.abspath(project_path),
-                        crumbs=('CLAUDECTL', 'COMPRESS', name),
+                        crumbs=('ARCHEUS', 'COMPRESS', name),
                         label='Compressing CLAUDE.md...')
     compressed = (out or '').strip()
     if compressed.startswith('```'):
@@ -723,7 +723,7 @@ def _pager_confirm(title, content):
         top = max(0, min(top, max(0, len(lines) - page)))
         at_end = top + page >= len(lines)
 
-        frame = [render.header('CLAUDECTL', title, 'REVIEW'), '']
+        frame = [render.header('ARCHEUS', title, 'REVIEW'), '']
         for ln in lines[top:top + page]:
             frame.append(render.fit('  ' + ln, render.content_width()))
         frame.append('')
@@ -1063,7 +1063,7 @@ def ai_scaffold_claude_md(project_path, proj_folder=None):
                 preview = render.trunc(ai_content.strip().split('\n')[-1] if ai_content else '',
                                        render.content_width() - 6)
                 render.render_frame([
-                    render.header('CLAUDECTL', name, 'AI ANALYZE'),
+                    render.header('ARCHEUS', name, 'AI ANALYZE'),
                     '',
                     f"  Claude is analyzing the project and writing CLAUDE.md...",
                     '',

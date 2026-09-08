@@ -1,8 +1,8 @@
-"""`claudectl statusline` — the line under every Claude Code prompt.
+"""`archeus statusline` — the line under every Claude Code prompt.
 
 There is a whole category of statusline tools and they all show the same four
 things, because that is all the stdin payload has: model, cwd, cost, context.
-The reason claudectl should ship one is the two fields nobody else can compute —
+The reason archeus should ship one is the two fields nobody else can compute —
 how stale this project's memory is, and how many lessons are waiting. Those are
 the only bits that change what you do next.
 
@@ -25,7 +25,7 @@ def _plain(s):
     return re.sub(r'\033\[[0-9;]*m', '', s)
 
 
-# ── it says the things only claudectl knows ───────────────────
+# ── it says the things only archeus knows ───────────────────
 
 def test_it_reports_how_stale_the_memory_is(monkeypatch):
     """The one field no other statusline can print. A graph nobody has rebuilt
@@ -319,7 +319,7 @@ def test_install_and_remove_round_trip(monkeypatch, tmp_path):
 
 def test_the_events_a_workspace_manager_needs_are_covered():
     """5 of 32 was the starting point, and the missing ones were exactly the
-    ones claudectl has a reason to want."""
+    ones archeus has a reason to want."""
     from claude_sessions.hooks import EVENTS, TEMPLATES
     for e in ('PostCompact', 'SubagentStart', 'PermissionRequest',
               'PermissionDenied', 'WorktreeCreate', 'WorktreeRemove',
@@ -331,7 +331,7 @@ def test_the_events_a_workspace_manager_needs_are_covered():
 
 
 def test_compaction_recovery_uses_the_real_signal():
-    """claudectl advertises context-loss insurance after /compact. Until
+    """archeus advertises context-loss insurance after /compact. Until
     PostCompact existed the only available moment was SessionStart — i.e.
     before the loss, not after it."""
     from claude_sessions.hooks import TEMPLATES
@@ -366,7 +366,7 @@ def test_otel_never_turns_on_prompt_content_logging():
 
 
 def test_otel_reaches_the_launch_environment():
-    """claudectl owns the launch env, which is the only reason this can be one
+    """archeus owns the launch env, which is the only reason this can be one
     toggle instead of a shell profile edit."""
     import inspect
     from claude_sessions import main as main_mod
@@ -396,7 +396,7 @@ def _acct(tmp_path, monkeypatch, settings):
 def test_a_cwd_dependent_command_is_reported_as_a_blocker(tmp_path, monkeypatch):
     """The bug this exists for. `-m claude_sessions` resolves the package off
     sys.path[0], which for -m is the CURRENT DIRECTORY — so the statusline
-    printed in the claudectl checkout and nowhere else. Claude Code swallows
+    printed in the archeus checkout and nowhere else. Claude Code swallows
     the command's failure, so the only symptom was a blank line, and it looked
     like an account problem for exactly as long as the accounts were tested in
     different directories."""
@@ -446,7 +446,7 @@ def test_running_it_as_a_module_from_elsewhere_is_what_used_to_fail(tmp_path):
                 errors='replace', cwd=str(tmp_path), timeout=120)
     if r.returncode == 0:
         import pytest
-        pytest.skip('claudectl is installed here, so -m resolves anyway')
+        pytest.skip('archeus is installed here, so -m resolves anyway')
     assert 'No module named' in (r.stderr or '')
 
 

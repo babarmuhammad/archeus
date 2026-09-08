@@ -1,6 +1,6 @@
 ---
 description: >-
-  claudectl's hooks manager — 31 ready-made Claude Code hook templates (formatting, safety
+  archeus's hooks manager — 31 ready-made Claude Code hook templates (formatting, safety
   guardrails, failure logging, notifications, memory freshness, context injection, token
   savers), AI-generated hooks, and repair of broken ones.
 ---
@@ -22,7 +22,7 @@ description: >-
 
 Hooks are written into Claude Code's own `settings.json`, read-modify-write and atomically,
 so your existing hooks, permissions and output style survive every edit. With multiple
-[accounts](accounts.md) configured, `claudectl sync-accounts` places the same hooks in every
+[accounts](accounts.md) configured, `archeus sync-accounts` places the same hooks in every
 account's config dir.
 
 SessionStart hook injections are counted by the
@@ -31,7 +31,7 @@ per-turn cost like any other.
 
 !!! note "The plugin ships no hooks, on purpose"
 
-    claudectl's hook manager already places the recall, worklog and guard hooks per account.
+    archeus's hook manager already places the recall, worklog and guard hooks per account.
     Bundling the same hooks in the [Claude Code plugin](plugin.md)
     would give one `settings.json` entry two owners: installing both runs the recall hook
     twice on every prompt, and uninstalling either leaves the other behind looking broken.

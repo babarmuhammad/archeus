@@ -92,7 +92,7 @@ def test_cache_roundtrip(monkeypatch, tmp_path):
     actual, enc, folder, _ = sb.add_project('alpha')
     _mkfile(actual, 'a/x.py', 'x=1\n')
     g1 = connections.build_hierarchy(actual, folder)
-    cache = os.path.join(actual, '.claudectl', connections._CACHE_NAME)
+    cache = os.path.join(actual, '.archeus', connections._CACHE_NAME)
     assert os.path.isfile(cache)
     g2 = connections.build_hierarchy(actual, folder)            # served from cache
     assert g2['meta']['signature'] == g1['meta']['signature']

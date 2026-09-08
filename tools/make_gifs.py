@@ -2,7 +2,7 @@
 of the live HTML canvas (rotating wireframe dodecahedra, per-cluster bubbles,
 glowing curved edges, flowing particles on a dark neural field). NOT a runtime
 dependency and NOT a screen recording — it recreates the graph's look from a
-small example structure (claudectl's own module names; no user data).
+small example structure (archeus's own module names; no user data).
 
     py tools/make_gifs.py
 
@@ -140,7 +140,7 @@ def _frame(fi, base, pos):
         _dodec(d, x, y, r, col, T, hash(lbl) % 100 / 10.0)
         d.text((x + r + 3, y - 5), lbl, fill=(200, 214, 235))
     # title
-    d.text((16, 14), "claudectl  architecture graph", fill=(150, 190, 255))
+    d.text((16, 14), "archeus  architecture graph", fill=(150, 190, 255))
     return img.convert('RGB')
 
 

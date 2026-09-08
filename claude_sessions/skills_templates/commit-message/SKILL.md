@@ -21,5 +21,5 @@ Write a commit message that explains **what changed and why**, from the staged d
 - One logical change per commit — if the diff spans unrelated concerns, suggest splitting.
 - Never invent changes you can't see in the diff.
 
-<!-- claudectl starter skill. Conventional Commits pattern (conventionalcommits.org);
+<!-- archeus starter skill. Conventional Commits pattern (conventionalcommits.org);
      inspired by community commit skills in alirezarezvani/claude-skills. -->

@@ -10,12 +10,12 @@ const $=s=>document.querySelector(s);
    history.replaceState looked strictly better and broke reload: F5 re-requests
    whatever the address bar holds, which was then a bare `/`, and the answer to
    that is 403 {"error":"missing or bad token"} — a dead page with no way back
-   except relaunching claudectl. A cookie is not the escape hatch either;
+   except relaunching archeus. A cookie is not the escape hatch either;
    cookies ignore the port, so any other loopback server the user visits would
    be sent it. The exposure left is a URL in this machine's own browser history,
    holding a secret that dies with the process. */
-const CK='__CLAUDECTL_TOKEN__';
-const api=(p,opt={})=>fetch(p,{...opt,headers:{'X-Claudectl':CK,
+const CK='__ARCHEUS_TOKEN__';
+const api=(p,opt={})=>fetch(p,{...opt,headers:{'X-Archeus':CK,
   'Content-Type':'application/json',...(opt.headers||{})}}).then(r=>r.json());
 const post=(p,body)=>api(p,{method:'POST',body:JSON.stringify(body||{})});
 
@@ -442,7 +442,7 @@ function jobHost(J){
    activity equalizer animate forever after a single token had been spent. */
 function stageEnergy(jobs,burn){
   if(!window.STAGE)return;
-  // /4, not /2: the input used to be claudectl's background jobs, where one was
+  // /4, not /2: the input used to be archeus's background jobs, where one was
   // already remarkable. It is now live Claude Code sessions, and two of those
   // is an ordinary Tuesday — at /2 the background would sit pinned at full
   // energy all day and stop meaning anything.
@@ -652,7 +652,7 @@ const NAV_GROUPS=[
   ['System',   [
     ['accounts','group','Accounts','Every Claude login, and the sync that levels them all up to the same provisioning.',()=>pgAccounts],
     ['client','ai','Claude Code','What Claude Code records about itself: versions, disk, background agents, its own settings.',()=>pgClient],
-    ['logs','history','Logs','What claudectl itself did and why it failed — its own Claude calls, background jobs, the scheduler and the proxy, newest first.',()=>pgLogs],
+    ['logs','history','Logs','What archeus itself did and why it failed — its own Claude calls, background jobs, the scheduler and the proxy, newest first.',()=>pgLogs],
     ['settings','settings','Settings','Launch defaults, paths and limits, models, appearance, updates and telemetry.',()=>pgSettings],
     ['helpp','help','Help','This page: every screen in the app and every key in the terminal UI.',()=>pgHelp]]],
 ];
@@ -660,7 +660,7 @@ const NAV_GROUPS=[
    tools/smoke_gui.py and tools/shot_gui.py evaluate `NAV.map(n => n[0])` to get
    the page list rather than hardcoding one. Derived, never maintained twice. */
 const NAV=NAV_GROUPS.flatMap(g=>g[1]);
-/* Collapsed groups persist in claudectl.json (`nav_collapsed`), not in
+/* Collapsed groups persist in archeus.json (`nav_collapsed`), not in
    localStorage: every other appearance choice this app makes is a setting, and
    the Qt shell and a browser tab have to agree about the chrome. Stored as
    NAMES rather than indices so reordering or inserting a group never silently
@@ -1311,7 +1311,7 @@ function drawActivity(){
     ${j.status==='awaiting'?`<button class="btn sm pri" onclick="closeActivity();jobOpen(${hesc(j.id)})">Open</button>`:''}
   </div>`;
   // live Claude Code sessions are the OTHER kind of ongoing work, and the one
-  // that is usually actually happening — claudectl's own jobs are rare
+  // that is usually actually happening — archeus's own jobs are rare
   const liveRows=Object.entries(live.by_account||{}).sort((a,b)=>b[1]-a[1])
     .map(([n,c])=>`<div class="arow3">
       <span class="dot" style="background:${acctColor(n)}"></span>
@@ -1336,7 +1336,7 @@ function drawActivity(){
       ||'<div class="empty">No live sessions and no running jobs.</div>')
     +sect('Finished',done.length||'',
       done.length?done.map(jobRow).join('')
-        :'<div class="empty">No claudectl job has finished this run.</div>')
+        :'<div class="empty">No archeus job has finished this run.</div>')
     +sect('Recently ended sessions',ended.length||'',
       ended.length?ended.map(sessRow).join('')
         :'<div class="empty">Nothing has ended recently.</div>');
@@ -1414,7 +1414,7 @@ function feedDashboard(d,plan){
 
   /* ── Tooling → is the workspace actually wired up ──────────────────────────
      MCP reachability alone answered a narrow question. The card now counts
-     every wiring claudectl can verify from files: MCP servers up, the failover
+     every wiring archeus can verify from files: MCP servers up, the failover
      proxy, and per account whether hooks and a statusline are installed AND
      whether the statusline will actually be drawn — an installed statusline
      under the classic renderer is invisible, which from the settings file looks
@@ -1426,7 +1426,7 @@ function feedDashboard(d,plan){
      currently connected is usually not a fault — most start on demand, and
      "1/10 up" is an ordinary healthy state — so counting them would pin this
      card at red forever and it would stop meaning anything. That is the same
-     mistake the activity gauge already made once by measuring claudectl's
+     mistake the activity gauge already made once by measuring archeus's
      idleness instead of the workspace's work. MCP stays in the footer as
      information; the ring counts things that are actually misconfigured. */
   const nodes=wir.total+1,liveN=wir.ok+(fo?1:0);   // +1: the failover proxy
@@ -1454,7 +1454,7 @@ function feedDashboard(d,plan){
     :`mcp <b>${up}/${mcp.length}</b> up · ${wir.total} account${wir.total===1?'':'s'} wired`);
 
   /* ── Activity ──────────────────────────────────────────────────────────
-     Reads LIVE CLAUDE CODE SESSIONS across every account, not claudectl's own
+     Reads LIVE CLAUDE CODE SESSIONS across every account, not archeus's own
      background jobs. It used to read the latter, which are almost never
      running, so the card sat at "0 RUNNING" and flat while the same dashboard
      reported hundreds of millions of tokens that day — it was reporting the
@@ -1479,7 +1479,7 @@ function feedDashboard(d,plan){
   // owning a timer of its own
   if($('#actovl')&&$('#actovl').classList.contains('show'))drawActivity();
   INST.set('jobs',{v:Math.min(1,nlive/3),beats:nlive,series:d.hours||[]});
-  // Feed the background: live sessions dominate, claudectl's own jobs also
+  // Feed the background: live sessions dominate, archeus's own jobs also
   // count (a memory build IS the workspace working), burn is a floor.
   stageEnergy(Math.max(nlive,jobs),burn/peakHr);
   setRead('jobs',nlive);
@@ -1500,7 +1500,7 @@ function feedDashboard(d,plan){
     ?`<b style="color:var(--warn)">${gated} waiting for approval</b> — click to open`
     :nlive
       ?`<b>${nlive}</b> live${byAcct?' · '+byAcct:''} · ${sess} today`
-      :(jobs?`<b>${jobs}</b> claudectl job${jobs>1?'s':''} · ${sess} today`
+      :(jobs?`<b>${jobs}</b> archeus job${jobs>1?'s':''} · ${sess} today`
             :`idle · <b>${sess}</b> session${sess===1?'':'s'} today`));
 
   // flow map: one node per project, dashed links where two share a non-default
@@ -1725,8 +1725,8 @@ function goToFullSearch(){PENDING_SEARCH_Q=($('#hqSearch').value||'');go('search
    the help page renders from this array instead of a retyped copy of it. */
 const TABS=[
   ['sessions','Sessions','Every session in this project, across accounts — open, rename, archive, export.'],
-  ['memory','Memory','Everything claudectl knows about this project and what knowing it costs — the graph, the rules, lessons, spend, and what the last cycle did.'],
-  ['claudemd','CLAUDE.md','The instruction file block by block, what each block costs, the memory map, and every version claudectl replaced.'],
+  ['memory','Memory','Everything archeus knows about this project and what knowing it costs — the graph, the rules, lessons, spend, and what the last cycle did.'],
+  ['claudemd','CLAUDE.md','The instruction file block by block, what each block costs, the memory map, and every version archeus replaced.'],
   ['review','Review','Run a code review over the working tree, staged changes or a branch.'],
   ['audit','Audit','What one turn costs across every surface at once — this project, your account, hooks and MCP — before you spend it.'],
   ['pusage','Usage','This project\'s token spend over time.'],
@@ -2076,9 +2076,9 @@ async function memToggle(patch){
 
 /* memory tab.
 
-   Memory is not "CLAUDE.md plus a few counters" — claudectl builds twelve
+   Memory is not "CLAUDE.md plus a few counters" — archeus builds twelve
    artifacts per project, and until now the tab could name three of them. The
-   two questions this tab answers are "what does claudectl know" and "what does
+   two questions this tab answers are "what does archeus know" and "what does
    knowing it cost me", and the cost half is what was missing: the digest is
    read on EVERY turn while several KB of rules cost nothing until Claude opens
    a matching path, and nothing said so. Every number below already existed in
@@ -2092,8 +2092,8 @@ const REACH={
   lazy:  ['when Claude opens a matching file','tag',"Costs nothing until Claude reads a file the rule's paths match — then only that one rule loads."],
   prompt:['every prompt', 'tag warn','Added to each message you send, inside the recall budget. The only cost that multiplies by how much you talk.'],
   start: ['session start','tag',     'Injected once, when a session starts.'],
-  source:['on request',   'tag ok',  'Never loaded on its own. It is what the always-on surfaces are built FROM, and you can query it directly with `claudectl recall`.'],
-  never: ['not loaded',   '',        'claudectl reads it to do its job. Claude never sees it, and it costs you nothing.']};
+  source:['on request',   'tag ok',  'Never loaded on its own. It is what the always-on surfaces are built FROM, and you can query it directly with `archeus recall`.'],
+  never: ['not loaded',   '',        'archeus reads it to do its job. Claude never sees it, and it costs you nothing.']};
 function rch(k){const r=REACH[k]||REACH.never;
   return r[1]?`<span class="${r[1]}" title="${esc(r[2])}">${r[0]}</span>`
              :`<span style="color:var(--dim2)" title="${esc(r[2])}">${r[0]}</span>`;}
@@ -2218,31 +2218,31 @@ async function drawMemory(){
   // the rows it is counting.
   const W=st.written||{};
   const stored=[
-    invRow('Semantic graph','Everything claudectl has learned about the code. Nothing reads it directly — every surface above is written from it.',
-      '.claudectl/memory/graph.json',`${st.n_entities||0}+${st.n_lessons||0}`,
+    invRow('Semantic graph','Everything archeus has learned about the code. Nothing reads it directly — every surface above is written from it.',
+      '.archeus/memory/graph.json',`${st.n_entities||0}+${st.n_lessons||0}`,
       `<button class="btn sm" onclick="go('graph')">${ic('share')} Graph</button>`,W.graph),
     invRow('Reinforcement log','Which facts recall actually injected. Folded into the graph on the next build; it is what makes useful facts survive.',
-      '.claudectl/memory/hits.log',
+      '.archeus/memory/hits.log',
       st.hits_pending?`<span class="tag">${st.hits_pending} to fold in</span>`:'folded in','',W.hits),
     invRow('Edit log','Files Claude changed, so the next cycle knows what to re-read instead of rescanning everything.',
-      '.claudectl/memory/dirty.log',
+      '.archeus/memory/dirty.log',
       st.dirty?`<span class="tag warn">${st.dirty} queued</span>`:'0',
       st.dirty_hook?'':`<span class="hlink" onclick="go('hooks')">install hook</span>`,W.dirty),
     invRow('Workspace manifest','What memory was built from — commit, file hashes, session count — so staleness is a fact rather than a guess.',
-      '.claudectl/workspace-manifest.json',
+      '.archeus/workspace-manifest.json',
       '<span id="wsScore" style="color:var(--dim2)">checking…</span>',
       `<span class="hlink" onclick="showDetail('wsBox')">show ↓</span>`,W.manifest),
     // "12 kept" was the CAP read as a count — it said twelve whether there
     // were twelve or none. The honest pair is the limit and the last write.
-    invRow('Version snapshots','A copy of everything claudectl was about to overwrite. Nothing it shrinks is gone until it falls off this list.',
-      '.claudectl/snapshots/','up to 12 each',
+    invRow('Version snapshots','A copy of everything archeus was about to overwrite. Nothing it shrinks is gone until it falls off this list.',
+      '.archeus/snapshots/','up to 12 each',
       `<span class="hlink" onclick="TAB='claudemd';drawProject()">History</span>`,W.snapshots)];
   paint(nav,`
-    <div class="card"><h3>What claudectl knows <span class="sp"></span>
+    <div class="card"><h3>What archeus knows <span class="sp"></span>
       <button class="btn sm" onclick="askMem()">${ic('chat')} Ask</button>
       <button class="btn sm" onclick="recallPrev()">${ic('eye')} Recall preview</button>
       <button class="btn sm pri" onclick="buildMemory()">${ic('bolt')} Build with Claude</button></h3>
-      <p style="color:var(--dim);font-size:13px;margin:0 0 10px">claudectl reads this project — its code, its git history and your past sessions — and
+      <p style="color:var(--dim);font-size:13px;margin:0 0 10px">archeus reads this project — its code, its git history and your past sessions — and
         builds a knowledge graph of it. The graph itself is never sent to Claude. What a session
         actually reads is written <i>from</i> it, and the next card is that list.</p>
       <div class="memhd">
@@ -2259,7 +2259,7 @@ async function drawMemory(){
       ${(st.evicted_names||[]).length?`<div class="lbl" style="margin-top:10px" title="When the graph passes its cap, the least-used unpinned facts go. Pinned ones never do.">Dropped to stay under the cap (${st.evicted||0})</div>
         <div class="chips">${st.evicted_names.slice(0,12).map(n=>`<span class="chip">${esc(n)}</span>`).join('')}</div>`:''}
       <div class="lbl" style="margin-top:16px">Keeping it current</div>
-      <p style="color:var(--dim);font-size:13px;margin:0 0 10px">Keeping memory current costs Claude calls. One pass runs when you open claudectl and
+      <p style="color:var(--dim);font-size:13px;margin:0 0 10px">Keeping memory current costs Claude calls. One pass runs when you open archeus and
         one every ${every(st.auto_interval)} after that — never sooner, however much is left to do.
         Each pass re-reads at most a few changed modules, so a big backlog is spread across
         passes instead of spent at once.</p>
@@ -2284,7 +2284,7 @@ async function drawMemory(){
     </div>
     <div class="card"><h3>What a session costs <span class="sp"></span>
       <button class="btn sm" onclick="inlineJob('#jban','rules_sync',C(),{label:'Rebuilding rules',redraw:()=>drawMemory()})" title="Rewrite the path-scoped rule files from the current graph. Free — no Claude call.">${ic('refresh')} Rebuild rules</button></h3>
-      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">You write the prose in CLAUDE.md. claudectl writes everything below it, and every
+      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">You write the prose in CLAUDE.md. archeus writes everything below it, and every
         one of these can be opened, rebuilt or switched off. What separates them is <b>when</b>
         each one reaches a session — which is what the four groups say.</p>
       <p style="color:var(--dim);font-size:13px;margin:0 0 4px">
@@ -2296,7 +2296,7 @@ async function drawMemory(){
         st.generated_at?` · rebuilt ${esc(String(st.generated_at).slice(0,16))}`:''}`)}
       ${invTable(
         invRow('CLAUDE.md digest','What this project is, its modules, and the lessons worth carrying into every session.',
-          'the CLAUDECTL:MEMORY block in CLAUDE.md',`~${est.digest_tokens||0} tok`,
+          'the ARCHEUS:MEMORY block in CLAUDE.md',`~${est.digest_tokens||0} tok`,
           `<span class="hlink" onclick="TAB='claudemd';drawProject()">CLAUDE.md</span>`)
        +invRow('AUTOGEN / SESSIONS','Which repos this is, its recent commits, and what past sessions were about.',
           'blocks in CLAUDE.md','see blocks',
@@ -2305,7 +2305,7 @@ async function drawMemory(){
           'a block in your user CLAUDE.md','account-wide',
           `<span class="hlink" onclick="go('globalmd')">Global</span>`)
        +invRow('Recent work','A one-line summary of what each session changed, put back when the next one starts.',
-          '.claudectl/memory/worklog.json',
+          '.archeus/memory/worklog.json',
           `${(wl.entries||[]).length} entr${(wl.entries||[]).length===1?'y':'ies'}`,
           `<span class="hlink" onclick="showDetail('memWork')">show ↓</span>`,W.worklog))}
       ${bucket('Every prompt','prompt','the only one that grows with how much you talk')}
@@ -2332,7 +2332,7 @@ async function drawMemory(){
             <td class="num">${r.tokens||0}</td></tr>`).join('')
             ||'<tr><td colspan="3" style="color:var(--dim)">None written yet.</td></tr>'}
         </table>
-        <label class="autoline" style="margin:0" title="Write .claude/rules/claudectl-mem-*.md so Claude Code loads the memory for the paths it is actually working in.">
+        <label class="autoline" style="margin:0" title="Write .claude/rules/archeus-mem-*.md so Claude Code loads the memory for the paths it is actually working in.">
           <input type="checkbox" id="memRules" ${st.rules_on?'checked':''} onchange="memToggle({rules:this.checked})">
           <span>${ic('folder')} Keep the rule files in sync</span></label></details>
       ${invTable(invRow('Lessons','Things this project learned the hard way — a bug and its fix, a decision, a preference you corrected. Recall injects one when it applies.',
@@ -2340,7 +2340,7 @@ async function drawMemory(){
         `<span class="hlink" onclick="showDetail('memLessons')">show ↓</span>`,W.graph))}
       ${bucket('Stored, not loaded','source',`${stored.length} records · 0 tokens — read only when you or Claude ask`)}
       <details id="memKeep"><summary style="cursor:pointer;padding:6px 0;color:var(--dim);font-size:13px">
-        What claudectl keeps for itself, so it knows what to rebuild and can undo it</summary>
+        What archeus keeps for itself, so it knows what to rebuild and can undo it</summary>
       ${invTable(stored.join(''))}
       </details></div></div>
     <div class="card"><h3>What it learned <span class="sp"></span>
@@ -2367,11 +2367,11 @@ async function drawMemory(){
           <td style="color:var(--dim);font-size:12px">${esc((e.files||[]).join(', '))}</td></tr>`).join('')
         +`</table>`:'<div class="empty">No sessions recorded yet.</div>'}</div></div>
     <div class="card"><h3>Freshness &amp; history <span class="sp"></span><span id="wsHead"></span></h3>
-      <p style="color:var(--dim);font-size:13px;margin:0 0 10px">How much of what claudectl generated still matches the code as it is now. Each row is worth
+      <p style="color:var(--dim);font-size:13px;margin:0 0 10px">How much of what archeus generated still matches the code as it is now. Each row is worth
         the points beside it; clearing one raises the score.</p>
       <div id="wsBox"><span class="spin"></span></div>
       <div class="lbl" style="margin-top:12px">History</div>
-      <p style="color:var(--dim);font-size:12px;margin:0 0 6px">Every graph claudectl replaced. Eviction and rebuild both snapshot what they were about to overwrite, and restoring is itself snapshotted.</p>
+      <p style="color:var(--dim);font-size:12px;margin:0 0 6px">Every graph archeus replaced. Eviction and rebuild both snapshot what they were about to overwrite, and restoring is itself snapshotted.</p>
       <div id="histOut"><span class="spin"></span></div></div>`);
   INST.set('memory',{v:cover,tone:cover>=.6?'ok':cover>=.25?null:'warn'});
   setRead('memory',cover*100);
@@ -2494,7 +2494,7 @@ async function recallPrev(){
 /* CLAUDE.md tab — the file, block by block.
 
    CLAUDE.md is five things stacked in one file: your prose, KEEP-fenced
-   regions, and three blocks claudectl rewrites (AUTOGEN, SESSIONS, MEMORY).
+   regions, and three blocks archeus rewrites (AUTOGEN, SESSIONS, MEMORY).
    Shown as one 46vh scroll of raw text, there was no way to tell which part
    cost what, which button regenerated which part, or that "Prune" only ever
    touches the SESSIONS block. `ctxaudit.split_blocks` already did the split for
@@ -2510,17 +2510,17 @@ const CMFIX={
   agents:['Agents',"go('agents')",'Written from the agents installed here — manage them on the Agents page.'],
   loop:['Loops',"go('loops')",'Written by the background loop — start, watch or end one on the Loops page.']};
 /* WHAT each block is, in one line, and WHO writes it. Two questions, and the
-   row answered neither: "maintained by claudectl" says who and not what, and
+   row answered neither: "maintained by archeus" says who and not what, and
    was the same six words on three different blocks. A subtitle, never a
    tooltip — the row has to be readable without hovering it. */
 const CMWHAT={
   manual:['What you wrote — the instructions you want in every session here.','you'],
   keep:['Sections you fenced off. AI compression is not even shown this text.','you'],
-  autogen:['Which repos this is, and what has been committed lately.','claudectl'],
-  sessions:['What your past sessions in this project were about.','claudectl'],
-  memory:['The project memory digest — modules, dependencies, hard-won lessons.','claudectl'],
-  agents:['The subagents installed here and when to delegate to each. Claude Code only picks an agent it has been told about.','claudectl'],
-  loop:['What a background /loop has done lately, rewritten on every run.','claudectl']};
+  autogen:['Which repos this is, and what has been committed lately.','archeus'],
+  sessions:['What your past sessions in this project were about.','archeus'],
+  memory:['The project memory digest — modules, dependencies, hard-won lessons.','archeus'],
+  agents:['The subagents installed here and when to delegate to each. Claude Code only picks an agent it has been told about.','archeus'],
+  loop:['What a background /loop has done lately, rewritten on every run.','archeus']};
 async function drawClaudeMd(){
   const nav=paintNow('<div class="empty"><span class="spin"></span></div>');
   const c=C();
@@ -2533,13 +2533,13 @@ async function drawClaudeMd(){
       <button class="btn sm" onclick="inlineJob('#jban','ai_scaffold',C(),{label:'AI-analyzing project',redraw:()=>drawClaudeMd()})">${ic('ai')} AI analyze</button>
       <button class="btn sm" onclick="post('/api/open-editor',{file:CUR.path+'\\\\CLAUDE.md'})">${ic('edit')} Edit</button></h3>
       <p class="secthint">Claude reads this whole file on <b>every turn</b> of every session in this project — it is the one place an instruction is guaranteed to be seen, and the one place a wasted paragraph is paid for over and over.</p>
-      <p class="secthint">It is not one document but several stacked in one file: your own prose, the regions you have fenced off, and the blocks claudectl regenerates. Each row says what it is, <b>who writes it</b>, what it costs, and the one button that rebuilds it.</p>
+      <p class="secthint">It is not one document but several stacked in one file: your own prose, the regions you have fenced off, and the blocks archeus regenerates. Each row says what it is, <b>who writes it</b>, what it costs, and the one button that rebuilds it.</p>
       ${md.exists?`
       <div id="cmBlocks">${blocks.map(b=>{
         const f=CMFIX[b.key]||null,w=CMWHAT[b.key]||['',''];
         const who=w[1]==='you'
-          ?'<span class="tag ok" title="claudectl never rewrites this unprompted.">you write it</span>'
-          :'<span class="tag" title="Rewritten by claudectl. Hand edits here are replaced on the next pass.">claudectl writes it</span>';
+          ?'<span class="tag ok" title="archeus never rewrites this unprompted.">you write it</span>'
+          :'<span class="tag" title="Rewritten by archeus. Hand edits here are replaced on the next pass.">archeus writes it</span>';
         return `
         <div class="agrow">
           <div class="agmain">
@@ -2573,9 +2573,9 @@ async function drawClaudeMd(){
       <div class="lbl" style="margin-top:16px">System prompt</div>
       <div id="spBox"><span class="spin"></span></div></div>
     <div class="card"><h3>${ic('refresh')} History <span class="sp"></span>
-      <span style="color:var(--dim2);font-size:12px">every version claudectl replaced</span></h3>
+      <span style="color:var(--dim2);font-size:12px">every version archeus replaced</span></h3>
       <p style="color:var(--dim);font-size:13px;margin:0 0 8px">Compress and prune both snapshot what they were about to
-        overwrite. Nothing claudectl shrinks is gone until it falls off the end of this list.
+        overwrite. Nothing archeus shrinks is gone until it falls off the end of this list.
         Restoring is itself snapshotted, so you can walk back out again.</p>
       <div id="histOut"><span class="spin"></span></div></div>`))return;
   drawHistory(['claude_md','system_prompt']);
@@ -2739,7 +2739,7 @@ function drawTools(){
       <p style="color:var(--dim);font-size:13px;margin-bottom:10px">What the terminal UI's architecture screen shows. The endpoint behind it existed and had no consumer at all.</p>
       <div id="archOut"><span class="spin"></span></div></div>
     <div class="card"><h3>${ic('ai')} Claude Code's own record</h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">What Claude Code itself has stored about this project in <code>.claude.json</code> — not claudectl's numbers.</p>
+      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">What Claude Code itself has stored about this project in <code>.claude.json</code> — not archeus's numbers.</p>
       <div id="ccProj"><span class="spin"></span></div></div>
     <div class="card"><h3>${ic('robot')} Project agents</h3><div id="agSel"></div></div>
     <div class="card"><h3>${ic('terminal')} Extra PATH entries</h3>
@@ -2914,7 +2914,7 @@ async function handoffS(i){
     [{label:'Start the new chat under account',type:'select',
       options:ST.accounts.map(a=>[a.dir,a.name])}],
     "A new chat opens in this project, seeded with this session's transcript as "
-    +'context. The transcript is written to .claudectl/injected-context.md and '
+    +'context. The transcript is written to .archeus/injected-context.md and '
     +'the new session is told to read it first.');
   if(v===null)return;
   /* cfgdir + enc, not a folder path: the server derives the source folder
@@ -3047,7 +3047,7 @@ function peRenderStatus(){
     // hint that upstream is wedged and surface the Cancel path
     const sub=peStalled()
       ? `${PE.elapsed||0}s elapsed — still running, NO progress for 2m (upstream may be stuck). Click Cancel to stop.`
-      : `${PE.elapsed||0}s elapsed — keep using claudectl; you'll be notified when it's done`;
+      : `${PE.elapsed||0}s elapsed — keep using archeus; you'll be notified when it's done`;
     if(sub!==__peSub){__peSub=sub;const s=$('#peSub');if(s)s.textContent=sub;}
     const msgs=(PE.msgs||[]).slice(-3).map(m=>`<div class="${m.ok?'':'bad'}">${esc(m.text)}</div>`).join('');
     if(msgs!==__peMsgs){__peMsgs=msgs;const m=$('#peMsgs');if(m)m.innerHTML=msgs;}
@@ -3102,7 +3102,7 @@ function drawPlanExec(){
       <ol style="color:var(--dim);font-size:13px;padding-left:18px;display:flex;flex-direction:column;gap:5px;margin:0">
         <li>The plan model reasons about the task and writes numbered steps — headless, read-only, no file writes.</li>
         <li>You review the plan before anything executes and can reject it with nothing launched.</li>
-        <li>Approved plan is saved to <code>.claudectl/plan-latest.md</code> in this project.</li>
+        <li>Approved plan is saved to <code>.archeus/plan-latest.md</code> in this project.</li>
         <li>A real interactive <code>claude</code> session opens in a new console, pointed at the plan file — with this project's usual agents, skills, system prompt, and add-dirs already in place.</li>
         <li>Executing via OmniRoute: it auto-starts in the background if it isn't already running (no terminal to babysit), and on <i>Auto</i> it picks the best free model per request, falling back automatically if one is rate-limited or exhausted.</li>
         <li>Model council (optional): the draft plan is critiqued by a small set of other models, then merged into one improved plan before you see it for approval.</li>
@@ -3333,7 +3333,7 @@ async function drawPage(id){
   await n[4]()(nav);
 }
 
-/* Claude Code's OWN state: what it records about itself, which claudectl had
+/* Claude Code's OWN state: what it records about itself, which archeus had
    never opened. Read-only except the settings editor and the disk sweep, and
    the sweep reports before it ever deletes. */
 async function pgClient(nav){
@@ -3687,10 +3687,10 @@ async function pgMcp(nav){
   }
 }
 
-/* ── what claudectl itself did ───────────────────────────────────────────────
-   Until this page existed a failure inside claudectl went to a NullHandler: the
-   logger only wrote a file when CLAUDECTL_DEBUG was set, so every background job
-   crash, every faulted handler and every one of claudectl's own Claude calls
+/* ── what archeus itself did ───────────────────────────────────────────────
+   Until this page existed a failure inside archeus went to a NullHandler: the
+   logger only wrote a file when ARCHEUS_DEBUG was set, so every background job
+   crash, every faulted handler and every one of archeus's own Claude calls
    failing against a rate-limited account vanished. The level chips ride
    bindFilter's `extra` predicate rather than a query parameter, so the endpoint
    takes no arguments and switching level costs no round trip. */
@@ -3717,20 +3717,20 @@ async function pgLogs(nav){
     </div>`;}).join('');
   if(!paint(nav,`<div class="card"><h3>${ic('history')} Logs <span class="sp"></span>
     <span class="tag${n.error?' err':''}">${n.error} error${n.error===1?'':'s'}</span></h3>
-    <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Everything claudectl did on its own: its headless Claude calls, background jobs, the auto-memory scheduler, the failover proxy. Newest first, capped at ${Math.round((d.cap||0)/1024)} KB on disk.</p>
+    <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Everything archeus did on its own: its headless Claude calls, background jobs, the auto-memory scheduler, the failover proxy. Newest first, capped at ${Math.round((d.cap||0)/1024)} KB on disk.</p>
     ${ev.length?`<div class="chips" style="margin-bottom:10px">${chips}</div>
     <input id="lgq" class="in" placeholder="Filter events…" style="margin-bottom:8px">
     <span id="lgn" style="color:var(--dim);font-size:12px"></span>
-    ${rows}`:`<div style="color:var(--dim)">Nothing recorded yet — claudectl writes here when one of its own calls, jobs or scheduled passes fails.</div>`}
+    ${rows}`:`<div style="color:var(--dim)">Nothing recorded yet — archeus writes here when one of its own calls, jobs or scheduled passes fails.</div>`}
     <p style="color:var(--dim);font-size:12px;margin:12px 0 0">File: <code>${esc(d.path||'')}</code><br>
-      Verbose tracing: set <code>CLAUDECTL_DEBUG=1</code> and read <code>${esc(d.debug_log||'')}</code>.</p></div>`))return;
+      Verbose tracing: set <code>ARCHEUS_DEBUG=1</code> and read <code>${esc(d.debug_log||'')}</code>.</p></div>`))return;
   bindFilter('lgq','.lgrow','lgn',el=>!LOGLVL||el.dataset.lvl===LOGLVL);
 }
 
 /* ── the account's global instructions ───────────────────────────────────────
    This was three cards at the BOTTOM of the MCP servers page, under the server
    list and a conventions table. It is the file Claude reads in every session on
-   the account — the single most consequential piece of text claudectl can edit
+   the account — the single most consequential piece of text archeus can edit
    — and it was findable only by scrolling past something unrelated. Its own
    page, reachable from the sidebar. No new endpoints: the three it uses all
    already existed and worked. */
@@ -3754,7 +3754,7 @@ async function pgGlobalMd(nav){
       <div style="color:var(--dim2);font-size:12px;margin-top:6px">${esc(gm.path||'')}</div></div>
     <div class="card"><h3>${ic('link')} Cross-project conventions <span class="sp"></span>
       <button class="btn sm" onclick="convSync()">${ic('download')} Promote into global CLAUDE.md</button></h3>
-      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">Preferences, corrections and decisions claudectl learned in <b>one</b> project and saw again in others — read from every account's memory, not from CLAUDE.md files. Promoting writes them into a sentinel block above; only that block is touched.</p>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">Preferences, corrections and decisions archeus learned in <b>one</b> project and saw again in others — read from every account's memory, not from CLAUDE.md files. Promoting writes them into a sentinel block above; only that block is touched.</p>
       <div id="convOut"><span class="spin"></span></div></div>`))return;
   drawConv();
 }
@@ -3794,7 +3794,7 @@ function gmdAcct(dir){GMDACCT=dir;drawPage('globalmd');}
      stop    end that session (Esc inside the session clears the next wakeup;
              from out here, closing the session is the honest option)
 
-   — and says so, rather than implying a scheduler claudectl does not own.
+   — and says so, rather than implying a scheduler archeus does not own.
 
    loop.md is the other half: the prompt a BARE `/loop` runs. Project file wins
    over the account one, which is why both are editable here, side by side. */
@@ -3838,8 +3838,8 @@ async function pgLoops(nav){
   if(!paint(nav,`
     <div class="card"><h3>${ic('refresh')} Loops <span class="sp"></span>
       <span class="tag${live.length?' ok':''}">${live.length} live</span></h3>
-      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">Two kinds, because Claude Code only offers one. <b>In a session</b> is a real <code>/loop</code>: it fires while that session is open and idle, and dies with it. <b>In the background</b> is claudectl's own — an entry in ${esc(navigator.platform.startsWith('Win')?'Task Scheduler':'cron')} that runs headless <code>claude -p</code> on the interval, with claudectl closed and no session anywhere.</p>
-      ${rows.length?rows.map(row).join(''):'<div class="empty">No loops started from claudectl yet.</div>'}</div>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">Two kinds, because Claude Code only offers one. <b>In a session</b> is a real <code>/loop</code>: it fires while that session is open and idle, and dies with it. <b>In the background</b> is archeus's own — an entry in ${esc(navigator.platform.startsWith('Win')?'Task Scheduler':'cron')} that runs headless <code>claude -p</code> on the interval, with archeus closed and no session anywhere.</p>
+      ${rows.length?rows.map(row).join(''):'<div class="empty">No loops started from archeus yet.</div>'}</div>
 
     <div class="card"><h3>${ic('play')} Start a loop</h3>
       ${path?'':'<div class="empty">Open a project first — a loop runs inside one.</div>'}
@@ -3997,7 +3997,7 @@ async function mcpRemove(name){
   toast(r.ok?'Removed':'Failed: '+(r.error||''),r.ok?'ok':'err');drawPage('mcp');
 }
 
-/* `user` and `project · claudectl` are the storage scopes; the reader's
+/* `user` and `project · archeus` are the storage scopes; the reader's
    question is who can call the thing. Same move as the hook events: say the
    answer, keep the raw word only where it is the identifier. */
 /* `01-core-development` is a sort key wearing a heading's clothes. The number
@@ -4059,7 +4059,7 @@ async function pgAgents(nav){
       <p class="secthint">It gets picked by matching your task against its <b>description</b>, and nothing reads the body to decide. That is why a vague description means the agent never runs: <i>Sharpen descriptions</i> rewrites that one field everywhere the agent is installed, so the fix lands once instead of per project.</p>
       ${own||'<div class="empty">No agents of your own yet. Write one, or install one from the library below.</div>'}</div>
     <div class="card"><h3>${ic('folder')} Ready-made agents <span class="tag">${nLib}</span></h3>
-      <p class="secthint">Specialists that ship with claudectl, by trade. Too many to read down — type to narrow, and the filter opens the categories that match and covers your own list above too.</p>
+      <p class="secthint">Specialists that ship with archeus, by trade. Too many to read down — type to narrow, and the filter opens the categories that match and covers your own list above too.</p>
       <div class="fld" style="margin:0 0 8px"><input id="agQ" placeholder="Filter by name, description or trade…" spellcheck="false">
         <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="agQCount"></div></div>
       ${lib||'<div class="empty">Library is empty.</div>'}</div>`))return;
@@ -4093,7 +4093,7 @@ async function agNew(){
     {label:'Model',type:'select',
      options:[['','inherit'],...(d.models||[]).map(m=>[m.id,m.label])]},
     {label:'System prompt / instructions',type:'textarea'}],
-    'The category is claudectl’s own filing, not something Claude Code reads — it only decides which heading the agent appears under here.');
+    'The category is archeus’s own filing, not something Claude Code reads — it only decides which heading the agent appears under here.');
   if(v===null||!v[0].trim())return;
   const r=await post('/api/agents/create',{name:v[0],description:v[1],
     category:v[2],scope:v[3],tools:v[4],model:v[5],path:CUR?CUR.path:'',body:v[6]});
@@ -4128,7 +4128,7 @@ async function agDel(path){
 
 /* ── Plugins ────────────────────────────────────────────────────────────────
    A plugin is the canonical unit of distribution now — a versioned bundle of
-   skills, subagents, commands, hooks and MCP servers. claudectl managed every
+   skills, subagents, commands, hooks and MCP servers. archeus managed every
    one of those individually and could not see the bundle around them.
 
    The listing is table stakes; `/plugin` already does it. The part worth
@@ -4177,7 +4177,7 @@ async function pgPlugins(nav){
         :(vr.outdated===false?'<span class="tag ok">current</span>':'')}
       ${p.missing?'<span class="tag warn">files missing</span>':''}
       ${accts.length>1?spread(p.on_accounts):''}
-      <span style="flex:1">${gives||'<span style="color:var(--dim2);font-size:12px">ships nothing claudectl reads</span>'}</span>
+      <span style="flex:1">${gives||'<span style="color:var(--dim2);font-size:12px">ships nothing archeus reads</span>'}</span>
       ${(accts.length>1&&(p.on_accounts||[]).length<accts.length)
         ?`<button class="btn sm pri" onclick='pluginSpread(${hesc(p.name)},${hesc(p.marketplace)})' title="Install it into the accounts that do not have it">Install everywhere</button>`:''}
       ${vr.outdated?`<button class="btn sm pri" onclick='pluginUpdate(${hesc(p.key)})'>Update</button>`:''}
@@ -4194,7 +4194,7 @@ async function pgPlugins(nav){
     <div class="card"><h3>Marketplaces <span class="sp"></span>
       <button class="btn sm" onclick="mktRefresh()">${ic('refresh')} Refresh</button>
       <button class="btn sm pri" onclick="mktAdd()">${ic('add')} Add marketplace</button></h3>
-      <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">A repo, a URL or a local path. Adding, installing and removing are delegated to the <code>claude</code> CLI: these files belong to Claude Code, the format has already changed once, and writing them directly would corrupt the state of the tool claudectl exists to support.</p>
+      <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">A repo, a URL or a local path. Adding, installing and removing are delegated to the <code>claude</code> CLI: these files belong to Claude Code, the format has already changed once, and writing them directly would corrupt the state of the tool archeus exists to support.</p>
       ${mkts||'<div style="color:var(--dim)">No marketplaces registered.</div>'}</div>
     <div class="card"><h3>Where they live</h3>
       <div class="kv"><span>plugins dir</span><code>${esc(d.dir||'')}</code></div>
@@ -4207,19 +4207,19 @@ async function pgPlugins(nav){
    question asked of the whole toolchain, and a plugin update and a Claude Code
    update are the same kind of action with the same kind of risk. */
 let VER=null;
-/* claudectl's own version. A separate card from Claude Code's on purpose: it
+/* archeus's own version. A separate card from Claude Code's on purpose: it
    has no channel and no rollback (PyPI is not a versions directory on disk),
    and the one thing it does have that Claude Code's does not is a refusal —
    a checkout is updated with git, not by installing a release over it. */
 function selfCard(V){
-  const c=(V||{}).claudectl||{};
+  const c=(V||{}).archeus||{};
   if(!c.installed&&!c.error)return '';
   const state=c.error?`<span class="tag warn">could not check (${esc(c.error)})</span>`
     :c.update?`<span class="tag warn">${esc(c.latest)} available</span>`
     :(c.current?'<span class="tag ok">current</span>':'');
   const act=(c.update&&c.mode!=='checkout')
-    ? `<button class="btn sm pri" onclick="selfUpdate()">Update claudectl</button>`:'';
-  return `<div class="card" id="selfCard"><h3>${ic('bolt')} claudectl ${state}
+    ? `<button class="btn sm pri" onclick="selfUpdate()">Update archeus</button>`:'';
+  return `<div class="card" id="selfCard"><h3>${ic('bolt')} archeus ${state}
       <span class="sp"></span>
       <button class="btn sm" onclick="verCheck()">${ic('refresh')} Check now</button>${act}
     </h3>
@@ -4227,16 +4227,16 @@ function selfCard(V){
     <div class="kv"><span>latest on PyPI</span><code>${esc(c.latest||'?')}</code></div>
     <div class="kv"><span>install mode</span><code>${esc(c.mode||'?')}</code>
       ${c.mode==='checkout'?'<span style="color:var(--dim2);font-size:12px">a git checkout — update it with <code>git pull</code>, not with pip</span>'
-        :'<span style="color:var(--dim2);font-size:12px">the upgrade runs in its own window after claudectl exits, because pip cannot rewrite the script it is running from</span>'}</div>
+        :'<span style="color:var(--dim2);font-size:12px">the upgrade runs in its own window after archeus exits, because pip cannot rewrite the script it is running from</span>'}</div>
     </div>`;
 }
 function selfUpdate(){
-  inlineJob('#selfCard','claudectl_update',{},
-            {label:'Scheduling the claudectl upgrade',
-             onDone:()=>toast('claudectl upgrades once you close it')});
+  inlineJob('#selfCard','archeus_update',{},
+            {label:'Scheduling the archeus upgrade',
+             onDone:()=>toast('archeus upgrades once you close it')});
 }
 /* The model catalogue. It sits with the other two because it answers the same
-   question of a third thing — "is what claudectl is showing you still what
+   question of a third thing — "is what archeus is showing you still what
    Anthropic offers?" — and because the ONE state a user has to be able to see
    is that the picker fell back to the bundled list, which is not visible from
    the picker itself.
@@ -4255,7 +4255,7 @@ function modelCard(V){
       <span class="sp"></span>
       <button class="btn sm" onclick="verCheck()">${ic('refresh')} Check now</button>
     </h3>
-    <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Read from Anthropic with the login Claude&nbsp;Code already holds, once a day, so a model released this week reaches the launch picker without a claudectl release. When it cannot be read, the picker falls back to the list shipped with this version — never to an empty one.</p>
+    <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Read from Anthropic with the login Claude&nbsp;Code already holds, once a day, so a model released this week reaches the launch picker without an archeus release. When it cannot be read, the picker falls back to the list shipped with this version — never to an empty one.</p>
     ${m.live?`<div class="kv"><span>catalogue</span><code>${m.count} models across ${m.families} families</code>
       <span style="color:var(--dim2);font-size:12px">checked ${esc(when)}</span></div>`
       :'<div class="kv"><span>catalogue</span><code>not fetched</code><span style="color:var(--dim2);font-size:12px">a logged-out account, no network, or auto-update set to off</span></div>'}
@@ -4284,7 +4284,7 @@ function verCard(V){
     <div class="kv"><span>channel</span><code>${esc(c.channel||'latest')}</code>
       <span style="color:var(--dim2);font-size:12px">autoUpdatesChannel — what an unpinned update follows</span></div>
     <div class="kv"><span>install mode</span><code>${esc(c.mode||'?')}</code>
-      ${c.mode==='npm'?'<span style="color:var(--dim2);font-size:12px">npm owns this binary — claudectl will not install the native build over it</span>':''}</div>
+      ${c.mode==='npm'?'<span style="color:var(--dim2);font-size:12px">npm owns this binary — archeus will not install the native build over it</span>':''}</div>
     <div class="hrow" style="margin-top:8px">
       <button class="btn sm" onclick="verPick()">Install a specific version…</button>
       ${locals?`<span style="color:var(--dim2);font-size:12px">on disk:</span> ${locals}`:''}
@@ -4360,12 +4360,12 @@ function provTag(kind,name){
 }
 
 /* ── Worktrees ──────────────────────────────────────────────────────────────
-   Which agent is working where. claudectl could already launch into a worktree
+   Which agent is working where. archeus could already launch into a worktree
    and had no idea what happened next; every tool in this category is built on
    the view that was missing.
 
    The join is the bit nobody else can make: a session's transcript records its
-   cwd, a worktree is a path, so claudectl — which owns both — can say which
+   cwd, a worktree is a path, so archeus — which owns both — can say which
    SESSION is in which tree. And every one of them reads the same semantic
    memory, so they are not each rediscovering the codebase. */
 function wtRow(w,repoPath,indent){
@@ -4445,10 +4445,10 @@ async function wtMerge(repoPath,branch){
 }
 
 /* ── Output styles ──────────────────────────────────────────────────────────
-   The last Claude Code config surface claudectl did not manage. A style swaps
+   The last Claude Code config surface archeus did not manage. A style swaps
    the "how to behave" half of the system prompt — same tools, same permissions,
    different job — and it is set per project OR per account, which is precisely
-   the pair claudectl already knows at launch. Clicking a card writes the
+   the pair archeus already knows at launch. Clicking a card writes the
    `outputStyle` key and leaves every other key in that settings.json alone. */
 /* ── Output styles ───────────────────────────────────────────────────────────
    The page was one undifferentiated grid of cards. It never said what a style
@@ -4460,7 +4460,7 @@ async function wtMerge(repoPath,branch){
    file — which reads as a broken button.
 
    Now: what is active and where it is pinned, then your styles by scope, then
-   the built-ins, then claudectl's starters to copy. The scope of every write is
+   the built-ins, then archeus's starters to copy. The scope of every write is
    a choice you can see. */
 let OSSCOPE='user';
 async function pgOStyles(nav){
@@ -4519,8 +4519,8 @@ async function pgOStyles(nav){
       <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Shipped inside Claude Code, so there is no file to edit — copy a starter or write your own to replace one.</p>
       ${grid(of('built-in'),'None reported.')}</div>
 
-    <div class="card"><h3>${ic('download')} Starters from claudectl</h3>
-      <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Four jobs Claude Code does not ship a style for. Copying one writes a normal markdown file you own and can edit — nothing stays linked to claudectl.</p>
+    <div class="card"><h3>${ic('download')} Starters from archeus</h3>
+      <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Four jobs Claude Code does not ship a style for. Copying one writes a normal markdown file you own and can edit — nothing stays linked to archeus.</p>
       <div class="presetrow">${(d.starters||[]).map(starter).join('')}</div></div>`);
 }
 function osScope(sc){OSSCOPE=sc;drawPage('ostyles');}
@@ -4571,7 +4571,7 @@ async function osDel(name){
    The store's naming scheme is NOT documented, so the backend proves it holds
    on every call by hashing the paths this session actually edited; if nothing
    resolves it reports recognised:false and we say so instead of rendering a
-   guess. Restoring stays with /rewind — claudectl only ever reads here. */
+   guess. Restoring stays with /rewind — archeus only ever reads here. */
 async function ckptS(i){
   const s=SESS[i];
   $('#dTitle').textContent='Checkpoints — '+(s.title||s.sid.slice(0,8));
@@ -4582,11 +4582,11 @@ async function ckptS(i){
   if(!d.store){body.innerHTML='<div class="empty">Claude Code kept no snapshots for this session.</div>';return;}
   if(!d.recognised){
     body.innerHTML=`<div class="card"><h3>Format not recognised</h3>
-      <p style="color:var(--dim);font-size:13px">Snapshots exist for this session, but none of the files it edited match them. Claude Code's checkpoint layout is undocumented and appears to have changed, so claudectl is showing nothing rather than guessing which snapshot belongs to which file. <code>/rewind</code> inside the session still works.</p></div>`;
+      <p style="color:var(--dim);font-size:13px">Snapshots exist for this session, but none of the files it edited match them. Claude Code's checkpoint layout is undocumented and appears to have changed, so archeus is showing nothing rather than guessing which snapshot belongs to which file. <code>/rewind</code> inside the session still works.</p></div>`;
     return;
   }
   body.innerHTML='<div class="card"><h3>'+ic('history')+' Snapshots before each edit</h3>'
-    +'<p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Read-only. Restoring is <code>/rewind</code> inside the session — claudectl never writes to this store.</p>'
+    +'<p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Read-only. Restoring is <code>/rewind</code> inside the session — archeus never writes to this store.</p>'
     +(d.files||[]).map(f=>{
       const vs=f.versions;
       const chain=vs.map((v,n)=>{
@@ -4614,7 +4614,7 @@ async function ckptDiff(sid,file,a,b,cfgdir){
    (<account>/skills), project (<project>/.claude/skills), plugin skills and its
    own bundled ones — and nothing else. The old page led with a "Project skills"
    card that was inert unless a project happened to be open, and offered "copy to
-   library", which wrote into ~/.claude/claudectl-skills: a directory nothing
+   library", which wrote into ~/.claude/archeus-skills: a directory nothing
    reads. So it listed files that could never run and said nothing about what
    actually does.
 
@@ -4698,7 +4698,7 @@ async function pgSkills(nav){
     <div class="card"><h3>${ic('add')} Add a skill</h3>
       <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Everything here lands in <b>personal — all ${accts.length||1} account${(accts.length||1)===1?'':'s'}</b> unless you pick the project.${path?'':' Open a project to install into one.'}</p>
       <div class="mrow" style="align-items:flex-end;flex-wrap:wrap">
-        <div class="fld" style="flex:1;min-width:220px;margin:0"><label for="skTmpl">Starter shipped with claudectl</label>
+        <div class="fld" style="flex:1;min-width:220px;margin:0"><label for="skTmpl">Starter shipped with archeus</label>
           <select id="skTmpl">${(d.templates||[]).map(t=>
             `<option value="${esc(t.dir)}">${esc(t.command)} — ${esc((t.desc||'').slice(0,70))}</option>`).join('')}</select></div>
         <button class="btn sm" onclick="skTmplView()">view</button>
@@ -5041,7 +5041,7 @@ async function pgHelp(nav){
     ${tbl('tab',TABS.map(([,l,blurb])=>row(l,blurb)).join(''))}</div>
     ${groups}
     <div class="card"><h3>${ic('ai')} Terminal UI keys</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:10px">The sessions screen in <code>claudectl</code>'s terminal interface. Rendered from the same table the terminal itself reads, so the two cannot disagree — press <code>?</code> there for this list, <code>/</code> for a searchable palette.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:10px">The sessions screen in <code>archeus</code>'s terminal interface. Rendered from the same table the terminal itself reads, so the two cannot disagree — press <code>?</code> there for this list, <code>/</code> for a searchable palette.</p>
     ${keys.length?`<table class="tbl"><tr><th>key</th><th>action</th></tr>
       ${keys.map(([k,blurb])=>`<tr><td style="white-space:nowrap"><code>${esc(k)}</code></td><td>${esc(blurb)}</td></tr>`).join('')}</table>`
       :`<div class="empty">No key table in this build.</div>`}</div>
@@ -5110,16 +5110,16 @@ async function pgSettings(nav){
       <div class="fld"><label>Budget cap <span style="color:var(--dim2)">— $ per headless call, 0 = no cap</span></label>
         <input id="sBudget" type="number" min="0" max="1000" step="0.05"></div>
     </div>
-    <div style="color:var(--dim2);font-size:12px">The cap is <code>--max-budget-usd</code> on claudectl's <b>own</b> Claude calls (memory, lessons, plans, reviews) — your interactive sessions are unaffected. Changing the config dir takes effect on restart.</div>
+    <div style="color:var(--dim2);font-size:12px">The cap is <code>--max-budget-usd</code> on archeus's <b>own</b> Claude calls (memory, lessons, plans, reviews) — your interactive sessions are unaffected. Changing the config dir takes effect on restart.</div>
     <div class="mrow"><button class="btn pri" onclick="setPathsSave()">Save</button></div></div>
   <div class="card"><h3>${ic('doc')} Statusline <span class="sp"></span>
       <span class="tag" id="slDot">checking…</span></h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code renders two rows at the bottom of every session — identity and git on the first, pressure on the second. claudectl can be those rows, and it puts things there nobody else can compute: how stale this project's memory is, how many sessions are still unmined for lessons, which account you are on, and the branch, uncommitted count and sub-repo roll-up for wherever you are. Plan limits come free from the session payload, so it never polls the API. It refuses to replace a statusline you wrote yourself.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code renders two rows at the bottom of every session — identity and git on the first, pressure on the second. archeus can be those rows, and it puts things there nobody else can compute: how stale this project's memory is, how many sessions are still unmined for lessons, which account you are on, and the branch, uncommitted count and sub-repo roll-up for wherever you are. Plan limits come free from the session payload, so it never polls the API. It refuses to replace a statusline you wrote yourself.</p>
     <div class="kv"><span>preview</span><code id="slPrev" style="color:var(--dim);white-space:pre">—</code></div>
     <div id="slAccts"></div>
     <div class="mrow"><button class="btn" id="slBtn" onclick="slToggle()">…</button></div></div>
   <div class="card"><h3>${ic('chart')} OpenTelemetry export</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code exports metrics and events over OTLP. claudectl already owns the launch environment, so it can switch this on per account without you exporting variables by hand. <b>Prompt text is never collected</b> unless you also set <code>OTEL_LOG_USER_PROMPTS=1</code> — this toggle does not.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code exports metrics and events over OTLP. archeus already owns the launch environment, so it can switch this on per account without you exporting variables by hand. <b>Prompt text is never collected</b> unless you also set <code>OTEL_LOG_USER_PROMPTS=1</code> — this toggle does not.</p>
     <div class="fld"><label>Enabled</label><div class="chips" id="sOtel"></div></div>
     <div class="grid2">
       <div class="fld"><label>Endpoint</label><input id="sOtelUrl" placeholder="http://localhost:4318"></div>
@@ -5129,11 +5129,11 @@ async function pgSettings(nav){
       <input id="sOtelHdr" placeholder="leave blank for none"></div>
     <div class="mrow"><button class="btn pri" onclick="setOtelSave()">Save</button></div></div>
   <div class="card"><h3>Economy model</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Model used for claudectl's <b>own</b> internal Claude calls — memory extraction, lessons, CLAUDE.md / agent / hook / skill generation. Defaults to Haiku to cut cost. Your actual coding sessions are unaffected. <i>default</i> = your account's model.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Model used for archeus's <b>own</b> internal Claude calls — memory extraction, lessons, CLAUDE.md / agent / hook / skill generation. Defaults to Haiku to cut cost. Your actual coding sessions are unaffected. <i>default</i> = your account's model.</p>
     ${fld('sExtract','Economy model')}
     <div class="mrow"><button class="btn pri" onclick="setExtractSave()">Save</button></div></div>
   <div class="card"><h3>${ic('bolt')} Memory limits</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">What one memory cycle may spend, and how much the graph may hold. These lived only in <code>claudectl.json</code> — while the memory hub and the health check both told you to raise <code>memory_max_calls</code>, a setting with no control on either surface.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">What one memory cycle may spend, and how much the graph may hold. These lived only in <code>archeus.json</code> — while the memory hub and the health check both told you to raise <code>memory_max_calls</code>, a setting with no control on either surface.</p>
     <div class="grid2">
       <div class="fld"><label>Max Claude calls per cycle <span style="color:var(--dim2)">— 0 = unlimited</span></label>
         <input id="sMemCalls" type="number" min="0" max="500" step="1"></div>
@@ -5187,7 +5187,7 @@ async function pgSettings(nav){
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code retries a failed turn against the
       <b>same</b> model ~10× with backoff, so a model that has been dropped upstream (<code>401 not supported</code>)
       or whose provider rejects a tool schema (<code>400</code>) makes a session look frozen. List fallback models
-      below and claudectl runs its own local proxy that retries the <b>next</b> one whenever a turn fails before any
+      below and archeus runs its own local proxy that retries the <b>next</b> one whenever a turn fails before any
       output reaches the session. Leave the list empty to disable.</p>
     <div class="fld"><label>Fallback models — one per line, tried in order after the selected model</label>
       <textarea id="foModels" rows="4" spellcheck="false"
@@ -5208,12 +5208,12 @@ async function pgSettings(nav){
   <div class="card"><h3>Interface</h3>
     <p style="color:var(--dim);font-size:13px">Default interface on startup — the toggle in the bottom-left does the same. <code>--tui</code>/<code>--gui</code> flags always override.</p>
     ${fld('sUpd','Updates')}
-    <p style="color:var(--dim);font-size:13px;margin:0 0 10px">One switch for everything claudectl fetches on your behalf: whether a newer release exists, and the current Claude model list. <b>Install on quit</b> runs the upgrade in its own window after claudectl closes — pip cannot rewrite the script it is running from. <b>Off</b> stops both checks.</p>
+    <p style="color:var(--dim);font-size:13px;margin:0 0 10px">One switch for everything archeus fetches on your behalf: whether a newer release exists, and the current Claude model list. <b>Install on quit</b> runs the upgrade in its own window after archeus closes — pip cannot rewrite the script it is running from. <b>Off</b> stops both checks.</p>
     ${fld('sNotif','Notifications')}
     <p style="color:var(--dim);font-size:13px;margin:0">A desktop notification when a background job that ran longer than ${20}s finishes — memory builds, plans, reviews — and when the detached memory worker is done, which has no window of its own at all. Quick jobs never notify.</p></div>
   <div class="card"><h3>${ic('refresh')} Auto-memory <span class="sp"></span>
     <span class="fld" style="margin:0"><select id="amInt" onchange="amSaveInterval(this.value)" style="width:auto"></select></span></h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Projects checked below have their memory refreshed in the background — one pass when claudectl starts, then one every interval, whenever their files change. Only changed projects use Claude; nothing runs while unchanged.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Projects checked below have their memory refreshed in the background — one pass when archeus starts, then one every interval, whenever their files change. Only changed projects use Claude; nothing runs while unchanged.</p>
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">A pass re-reads a few changed modules at most, and whatever is left waits for the <b>next</b> interval — so a big backlog is spread out rather than spent at once. Opening a checked project does not add a pass; this schedule is the only thing that spends on it.</p>
     <div id="amList"><span class="spin"></span></div></div>`))return;
   chipsFill($('#sEff'),o.efforts,null,ST.defaults.effort);
@@ -5668,7 +5668,7 @@ async function orUseWorking(){
   toast('Failover list set from the models that actually answered','ok');
 }
 
-/* ── model failover (claudectl's own proxy — see failover.py) ── */
+/* ── model failover (archeus's own proxy — see failover.py) ── */
 function foDot(){
   const d=$('#foDot');if(!d)return;
   const n=(ST.failover_models||[]).length;
@@ -5917,7 +5917,7 @@ function updateHint(){
 }
 /* What the chosen mode means, and — the part that matters — whether it will
    actually apply. `auto` is unavailable on some models, and Claude Code starts
-   the session in manual without saying so, so claudectl says so here. */
+   the session in manual without saying so, so archeus says so here. */
 function updatePermHint(model){
   const el=$('#fPermHint');if(!el)return;
   const p=chipVal($('#fPerm'));
@@ -6156,26 +6156,26 @@ async function drawUsageBar(force){
   }
 }
 
-/* ── "claudectl N is out" strip ──
+/* ── "archeus N is out" strip ──
    Its own element (#updbar), not a row inside #ubar, because drawUsageBar
    rewrites that wholesale every 60s. Never polls: one fetch per session. */
 async function drawUpdateBar(){
   let c;
-  try{c=(await api('/api/versions')).claudectl||{};}catch(e){return;}
+  try{c=(await api('/api/versions')).archeus||{};}catch(e){return;}
   if(!c.update)return;
   const host=$('#updbar');if(!host)return;
   const act=c.mode==='checkout'
     ? `<span style="color:var(--dim2)">run <code>git pull</code> in your checkout</span>`
     : `<button class="btn sm pri" id="updNow">Update now</button>`;
-  host.innerHTML=`<span class="uptxt">${ic('download')} <b>claudectl ${esc(c.latest)}</b>
+  host.innerHTML=`<span class="uptxt">${ic('download')} <b>archeus ${esc(c.latest)}</b>
     is available — you have ${esc(c.installed||'?')}</span>${act}
     <button class="btn sm" id="updHide">Dismiss</button>`;
   host.style.display='flex';
   const hide=$('#updHide');if(hide)hide.onclick=()=>{host.style.display='none';};
   const now=$('#updNow');
-  if(now)now.onclick=()=>inlineJob('#updbar','claudectl_update',{},
-    {label:'Scheduling the claudectl upgrade',
-     onDone:()=>{toast('claudectl upgrades once you close it');
+  if(now)now.onclick=()=>inlineJob('#updbar','archeus_update',{},
+    {label:'Scheduling the archeus upgrade',
+     onDone:()=>{toast('archeus upgrades once you close it');
                  host.style.display='none';}});
 }
 

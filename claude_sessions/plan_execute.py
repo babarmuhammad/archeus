@@ -5,7 +5,7 @@ approve/edit the plan, then launch an interactive session with a cheaper/faster
 model (default Sonnet 5) seeded with the approved plan. Big token savings:
 expensive reasoning happens once, execution runs on the cheap tier.
 
-The plan is written to <project>/.claudectl/plan-latest.md and the execution
+The plan is written to <project>/.archeus/plan-latest.md and the execution
 session gets a SHORT `--append-system-prompt` pointer (avoids the Windows argv
 length limit — the model reads the full plan from disk with its own tools).
 """
@@ -18,14 +18,14 @@ import subprocess
 from . import config as _c
 from . import store
 
-PLAN_FILE = os.path.join('.claudectl', 'plan-latest.md')
+PLAN_FILE = os.path.join(store.WORKDIR, 'plan-latest.md')
 
 # Hard cap on a headless plan-generation call. A dead/slow OmniRoute upstream
 # (or a failover proxy whose candidates are all unreachable) must never leave
 # the plan job spinning in 'running' forever. Overridable via the
-# CLAUDECTL_PLAN_TIMEOUT env var or the plan_timeout_sec setting (see
+# ARCHEUS_PLAN_TIMEOUT env var or the plan_timeout_sec setting (see
 # _plan_timeout); the value here is the floor default.
-_PLAN_TIMEOUT = int(os.environ.get('CLAUDECTL_PLAN_TIMEOUT', '900'))
+_PLAN_TIMEOUT = int(os.environ.get('ARCHEUS_PLAN_TIMEOUT', '900'))
 
 
 def _plan_timeout():
@@ -178,7 +178,7 @@ def edit_plan(plan, action, index=None, text=''):
 
 def _plan(task, plan_model, cwd, effort='', cfgdir=''):
     """Headless plan generation with the plan model. Returns plan text or ''.
-    effort matters here more than almost anywhere else in claudectl -- this
+    effort matters here more than almost anywhere else in archeus -- this
     is the ONE call that does the expensive reasoning, so it's worth paying
     for xhigh/max if the task is hard; a cheap effort here undermines the
     entire point of Plan→Execute.
@@ -186,7 +186,7 @@ def _plan(task, plan_model, cwd, effort='', cfgdir=''):
     cfgdir: resolved config dir of the account to plan under ('' = current
     active account). Same knob build_exec_launch() takes for the execute
     half -- without it the plan call always ran under whichever account
-    claudectl itself is running as, regardless of what account the user
+    archeus itself is running as, regardless of what account the user
     picked to execute under.
 
     run_with_progress_stdin itself is silent-aware (memory._tls.silent, set
@@ -210,7 +210,7 @@ def _plan(task, plan_model, cwd, effort='', cfgdir=''):
         args += ['--effort', effort]
     # plan_timeout_sec bounds how LONG this may run; this bounds what it may
     # spend. Same helper as memory's calls, so there is one cap for all of
-    # claudectl's own headless work.
+    # archeus's own headless work.
     from .memory import _budget_args
     args += _budget_args()
 
@@ -221,7 +221,7 @@ def _plan(task, plan_model, cwd, effort='', cfgdir=''):
 
     from .ui import run_with_progress_stdin
     out, _cancelled = run_with_progress_stdin(
-        args, prompt, ('CLAUDECTL', 'PLAN'),
+        args, prompt, ('ARCHEUS', 'PLAN'),
         f'Planning with {plan_model}...', timeout=_plan_timeout(), cwd=cwd, env=env)
     result = (out or '').strip()
     if result:
@@ -242,7 +242,7 @@ def _headless(model, prompt, cwd, omni_env=None, cfgdir=''):
 
     cfgdir: same account override _plan() takes -- council voices should run
     under the same account the user picked for the plan/execute, not
-    whatever account claudectl itself is running as.
+    whatever account archeus itself is running as.
 
     Caller picks the right roster for the target (COUNCIL_MODELS for direct
     API, OMNI_COUNCIL_MODELS for OmniRoute) -- model arrives here ready to use
@@ -340,7 +340,7 @@ def optimize_plan_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''
 
 
 def write_plan_file(project_path, task, plan):
-    """Write the approved plan to <project>/.claudectl/plan-latest.md. Returns
+    """Write the approved plan to <project>/.archeus/plan-latest.md. Returns
     the absolute path, or '' on failure. Shared by the TUI and GUI flows so
     there's exactly one plan-file format."""
     plan_path = os.path.join(project_path, PLAN_FILE)
@@ -414,7 +414,7 @@ def build_exec_launch(project_path, proj_folder, task, exec_model, omni_env=None
                f"{PLAN_FILE.replace(os.sep, '/')}. Read it first, then execute it "
                f"step by step. Task: {task[:200]}")
     sp_file = os.path.join(proj_folder, 'system-prompt.txt') if proj_folder else ''
-    merged_path = os.path.join(project_path, '.claudectl', 'plan-system-prompt.txt')
+    merged_path = store.workfile(project_path, 'plan-system-prompt.txt')
     merged_system_prompt(sp_file, pointer, merged_path)
 
     args = [exe, '--system-prompt-file', merged_path]
@@ -604,7 +604,7 @@ def run(project_path, proj_folder, project_name, plan=None, per_step=False, shou
         if not ok:
             flash(f"OmniRoute: {msg}", ok=False, secs=2.5)
             return False
-        # omni_env already points ANTHROPIC_BASE_URL at claudectl's own failover
+        # omni_env already points ANTHROPIC_BASE_URL at archeus's own failover
         # proxy when candidates are configured; it must be up before launching.
         from . import failover
         if failover.enabled(s):

@@ -25,7 +25,7 @@ export function Header() {
         >
           <Mark className="h-6 w-6" />
           <span className="font-mono text-[0.95rem] font-semibold tracking-tight">
-            claudectl
+            archeus
           </span>
         </Link>
 

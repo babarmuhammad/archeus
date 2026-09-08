@@ -29,7 +29,7 @@ def main():
     if len(sys.argv) < 3:
         return 0
     field, pattern = sys.argv[1], sys.argv[2]
-    msg = sys.argv[3] if len(sys.argv) > 3 else 'blocked by claudectl'
+    msg = sys.argv[3] if len(sys.argv) > 3 else 'blocked by archeus'
     try:
         data = json.load(sys.stdin)
     except Exception:
@@ -45,7 +45,7 @@ def main():
         return 0
     # The decision is already made; explaining it must never be able to undo it.
     try:
-        sys.stderr.write('claudectl: ' + msg + '\n')
+        sys.stderr.write('archeus: ' + msg + '\n')
     except Exception:
         pass
     return 2

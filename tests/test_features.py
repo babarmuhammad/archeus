@@ -39,7 +39,7 @@ def test_choice_line_full():
 
 def test_choice_line_per_launch_account():
     # the per-launch account pick (opts['cfgdir']) must reach the choice file,
-    # not claudectl's own config_dir
+    # not archeus's own config_dir
     o = dict(OPTS, cfgdir=r'C:\Users\x\.claude-work')
     line = build_choice_line(r'D:\p', 'D--p', 'new', o)
     assert line.split('|')[9] == r'C:\Users\x\.claude-work'

@@ -1,4 +1,4 @@
-"""claudectl GUI — a local web app served from the stdlib, zero deps.
+"""archeus GUI — a local web app served from the stdlib, zero deps.
 
 Runs a ThreadingHTTPServer bound to 127.0.0.1 on a free port, opens the
 default browser, and serves a single-page app (markup in gui_html.py).
@@ -8,7 +8,7 @@ reusing main.build_launch_command for exact TUI parity.
 
 Security: the server binds loopback only, and _guard() enforces three things
 on every /api request — an allowlisted Host, no cross-site fetch-metadata, and a
-per-run secret in X-Claudectl. A custom header alone is NOT enough: it stops a
+per-run secret in X-Archeus. A custom header alone is NOT enough: it stops a
 plain cross-origin fetch, but under DNS rebinding the attacker's own origin IS
 this server, so it may send any header it likes with no preflight. The Host
 check is what actually closes that, and TOKEN closes the case of another local
@@ -103,8 +103,8 @@ def list_projects():
                     # the TUI's `!` badge condition, verbatim (session_menu.py):
                     # two isfile() per project, negligible beside find_actual_path
                     'set_up': (os.path.isfile(os.path.join(g['path'], 'CLAUDE.md'))
-                               or os.path.isfile(os.path.join(
-                                   g['path'], '.claudectl', 'memory', 'graph.json')))})
+                               or os.path.isfile(store.workfile(
+                                   g['path'], 'memory', 'graph.json')))})
     out.sort(key=lambda r: r['mtime'], reverse=True)
     return out
 
@@ -439,8 +439,8 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._fetch_metadata_ok():
             self._send(403, {'error': 'cross-site request'})
             return False
-        if not self._token_ok(self.headers.get('X-Claudectl')):
-            self._send(403, {'error': 'missing or bad X-Claudectl header'})
+        if not self._token_ok(self.headers.get('X-Archeus')):
+            self._send(403, {'error': 'missing or bad X-Archeus header'})
             return False
         return True
 
@@ -459,7 +459,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(403, {'error': 'missing or bad token'})
                 return
             from .gui_html import PAGE
-            page = PAGE.replace('__CLAUDECTL_TOKEN__', TOKEN)
+            page = PAGE.replace('__ARCHEUS_TOKEN__', TOKEN)
             self._send(200, page.encode('utf-8'), ctype='text/html')
             return
         if u.path == '/graph':
@@ -518,7 +518,7 @@ class _Handler(BaseHTTPRequestHandler):
         """Vendored browser libraries (three.js, anime.js) — see gui_html.
 
         Deliberately BEFORE _guard(): a <script src> cannot attach the
-        X-Claudectl header, so a guarded route would 403 every module fetch.
+        X-Archeus header, so a guarded route would 403 every module fetch.
         Nothing is exposed by that — these are public MIT libraries, byte-identical
         to their npm originals, and the allowlist is a dict built by walking
         web/vendor at import, so a traversal attempt is simply a miss.
@@ -669,7 +669,7 @@ def _api_settings(q, body):
     for k in _SETTING_KEYS:
         if k in body:
             s[k] = body[k]
-    # a dollar cap on claudectl's own headless calls: its own owner because it
+    # a dollar cap on archeus's own headless calls: its own owner because it
     # is the one float, and an unclamped one silently disables the cap
     if 'headless_budget_usd' in body:
         try:
@@ -801,7 +801,7 @@ else:
 def run_gui(open_browser=True):
     """Show the GUI as a desktop app. Shell preference (settings gui_shell):
     'auto' tries PyQt6 native window → Edge app-mode window → browser tab.
-    Blocks until the window closes / Ctrl+C. Entry for `claudectl --gui`."""
+    Blocks until the window closes / Ctrl+C. Entry for `archeus --gui`."""
     shell = load_settings().get('gui_shell', 'auto')
 
     from .gui_api import start_auto_memory_scheduler
@@ -831,7 +831,7 @@ def run_gui(open_browser=True):
             sys.stdout.reconfigure(encoding='utf-8', errors='replace')
         except Exception:
             pass
-        print(f'  claudectl GUI  →  {url}   (Ctrl+C to stop)', flush=True)
+        print(f'  archeus GUI  →  {url}   (Ctrl+C to stop)', flush=True)
 
     def _open():
         if shell in ('auto', 'edge'):

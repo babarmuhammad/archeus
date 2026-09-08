@@ -26,5 +26,5 @@ Add tests that pin down behavior and would fail if the code regressed.
 - Keep each test independent and deterministic (no shared mutable state, no real network/clock unless the project already does).
 - Prefer a few sharp tests over many shallow ones.
 
-<!-- claudectl starter skill. Inspired by testing skills in
+<!-- archeus starter skill. Inspired by testing skills in
      alirezarezvani/claude-skills and khalilbenaz/claude-skills-collection. -->

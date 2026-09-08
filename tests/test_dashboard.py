@@ -23,7 +23,7 @@ def _serve(monkeypatch):
 
 
 def _req(url, body=None, headers=None):
-    h = {'X-Claudectl': gui.TOKEN}
+    h = {'X-Archeus': gui.TOKEN}
     if headers is not None:
         h = headers
     data = json.dumps(body).encode() if body is not None else None
@@ -113,7 +113,7 @@ def test_dashboard_breakdown_splits_accounts_and_flags_omni(monkeypatch, tmp_pat
 
 def test_dashboard_recent_spans_accounts_and_skips_headless_oneshots(monkeypatch, tmp_path):
     """Recent sessions come from the transcript scan, not last-session.json —
-    that store only knows sessions claudectl itself launched, so anything opened
+    that store only knows sessions archeus itself launched, so anything opened
     with `claude` directly (or under another account) never appeared."""
     sb = _fresh(monkeypatch, tmp_path)
     second = tmp_path / 'cfg2' / 'projects'
@@ -215,7 +215,7 @@ def _mk_acct(tmp_path, name, enc, when, n_msgs=12):
 def test_live_sessions_are_counted_across_every_account(monkeypatch, tmp_path):
     """The Activity card reads LIVE CLAUDE CODE SESSIONS, cross-account.
 
-    It used to read claudectl's own background-job count, which is almost
+    It used to read archeus's own background-job count, which is almost
     always zero — so on a workspace burning hundreds of millions of tokens a day
     the card sat at "0 RUNNING" and flat. It reported the tool's idleness, not
     the workspace's.
@@ -258,7 +258,7 @@ def test_a_stale_session_is_not_live(monkeypatch, tmp_path):
     assert sum(bd['hours']) >= 1, bd['hours']
 
 
-def test_claudectl_own_one_shots_do_not_read_as_activity(monkeypatch, tmp_path):
+def test_archeus_own_one_shots_do_not_read_as_activity(monkeypatch, tmp_path):
     """Lesson distilling, graph building and title extraction all land in the
     same transcript store and are a couple of turns each. Counting them would
     mean memory refreshing itself looked like you working."""
@@ -280,7 +280,7 @@ def test_activity_bars_are_hours_not_days():
     from claude_sessions.gui_html import PAGE
     assert "series:d.hours||[]" in PAGE
     assert "series:days.slice(-24)" not in PAGE
-    assert "beats:nlive" in PAGE, 'still driven by claudectl job count'
+    assert "beats:nlive" in PAGE, 'still driven by archeus job count'
 
 
 def test_the_stage_surface_comes_down_when_unfocused():

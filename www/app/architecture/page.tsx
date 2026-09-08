@@ -47,8 +47,8 @@ export default function ArchitecturePage() {
               height={460}
               unoptimized
               sizes="(min-width: 936px) 856px, 100vw"
-              alt="The claudectl architecture graph expanding from repository level down to individual files, with dependency edges between modules."
-              caption="The graph claudectl draws of a real repository — one self-contained HTML file, written into the project and opened locally."
+              alt="The archeus architecture graph expanding from repository level down to individual files, with dependency edges between modules."
+              caption="The graph archeus draws of a real repository — one self-contained HTML file, written into the project and opened locally."
             />
           ),
         }}

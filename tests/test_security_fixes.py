@@ -44,7 +44,7 @@ def _post(base, path, body):
     import urllib.request
     req = urllib.request.Request(
         base + path, data=json.dumps(body).encode(),
-        headers={'X-Claudectl': gui.TOKEN, 'Content-Type': 'application/json'})
+        headers={'X-Archeus': gui.TOKEN, 'Content-Type': 'application/json'})
     try:
         with urllib.request.urlopen(req) as r:
             return r.status, json.loads(r.read())
@@ -122,25 +122,25 @@ def test_the_clone_terminates_its_options():
         'the URL is validated AFTER the clone, which is after the payload ran'
 
 
-# ── the workdir claudectl writes into other people's repositories ────
+# ── the workdir archeus writes into other people's repositories ────
 
 def test_the_project_workdir_marks_itself_never_commit(tmp_path):
     """`bash-log.txt` is every Bash command Claude Code ran — `export TOKEN=…`,
     `curl -H "Authorization: …"` — and `injected-context.md` is a whole
-    transcript. claudectl's own repo gitignores `.claudectl/`; nobody else's
+    transcript. archeus's own repo gitignores `.archeus/`; nobody else's
     does, so it landed in users' trees looking like something to commit."""
     from claude_sessions import config as _c
     from claude_sessions import store
 
-    d = store.claudectl_dir(str(tmp_path))
+    d = store.workdir(str(tmp_path))
     ign = os.path.join(d, '.gitignore')
     assert os.path.isfile(ign)
     assert '*' in open(ign, encoding='utf-8').read().split('\n')
 
     # and the writers that only go through write_atomic get it too
     other = tmp_path / 'p2'
-    _c.write_atomic(str(other / '.claudectl' / 'injected-context.md'), 'x')
-    assert os.path.isfile(str(other / '.claudectl' / '.gitignore'))
+    _c.write_atomic(str(other / '.archeus' / 'injected-context.md'), 'x')
+    assert os.path.isfile(str(other / '.archeus' / '.gitignore'))
 
 
 def test_the_settings_file_is_not_world_readable(monkeypatch, tmp_path):
@@ -170,7 +170,7 @@ def test_the_job_decide_route_writes_exactly_one_response(server):
     s = socket.create_connection(('127.0.0.1', port), timeout=5)
     s.sendall(b'POST /api/job/nope/decide HTTP/1.1\r\n'
               b'Host: 127.0.0.1:%d\r\n'
-              b'X-Claudectl: %s\r\n'
+              b'X-Archeus: %s\r\n'
               b'Content-Type: application/json\r\n'
               b'Content-Length: %d\r\n\r\n%s'
               % (port, gui.TOKEN.encode(), len(body), body))
@@ -196,7 +196,7 @@ def test_the_token_stays_in_the_url_so_reload_still_works(server):
     string. Having the page then strip it with `history.replaceState` looks
     strictly better — until F5, which re-requests whatever the address bar
     holds. A bare `/` answers 403 and the window is dead with no way back short
-    of relaunching claudectl. (A cookie is not the escape hatch: cookies ignore
+    of relaunching archeus. (A cookie is not the escape hatch: cookies ignore
     the port, so any other loopback server the user visits gets sent it.)
 
     Two halves, because either alone would pass while the product was broken.

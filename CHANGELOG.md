@@ -10,7 +10,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **Workspace status now checks whether your CLAUDE.md prose still agrees with
-  the memory graph.** `CLAUDE.md` has two halves and claudectl owns exactly one:
+  the memory graph.** `CLAUDE.md` has two halves and archeus owns exactly one:
   it rewrites the AUTOGEN, SESSIONS and memory blocks from live inputs, and it
   never touches the prose above them, because a tool that silently rewords what
   you wrote is worse than one that lets it age. The cost of that guarantee is
@@ -61,6 +61,56 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and `[Changelog](changelog.md)` name documentation pages that moved to the apex
   site. Someone had been hand-correcting the generated file; the generator
   overwrote it each time.
+
+## [2.0.0]
+
+### Changed
+
+- **claudectl is now archeus.** The name changes; nothing else in this release
+  does. Two reasons, and the second is the one that mattered:
+
+  An unrelated Rust project publishes a `claudectl` too, and it holds six of the
+  eight organic search results for the name — partly because a Rust crate is
+  granted three high-authority domains (crates.io, docs.rs, lib.rs) where a
+  Python package is granted one. That is not a gap any amount of content
+  closes. And the tool is outgrowing what the name says: reading and managing
+  *other* agent harnesses' state is the next piece of work, and a tool named
+  after one vendor's product cannot carry it.
+
+  In Paracelsian alchemy the *archeus* is the organising principle that keeps a
+  body coherent as it grows, which is the job here.
+
+  **Everything migrates on first run, and nothing is deleted.** Settings,
+  accounts, per-project launch defaults, the stats and model caches, the agent
+  and skill libraries, and every project's `.claudectl/` — its memory graph,
+  snapshots, plans and logs — move to the new names in one pass. A destination
+  that already exists is merged into rather than clobbered, and a step that
+  fails leaves both copies in place and is retried on the next start rather
+  than being written off.
+
+  What this means for you:
+
+  ```
+  pip install archeus          # the command is `archeus` now
+  ```
+
+  Installed hooks and the statusline need no attention: they were always
+  recorded as a path to a script, never as the command name.
+
+  Renamed alongside: the `X-Claudectl` GUI request header, the `CLAUDECTL_*`
+  environment variables, `~/.claude/claudectl.json` and its sibling caches,
+  and `<project>/.claudectl/`.
+
+  Not yet renamed, on purpose: the documentation domain and the GitHub
+  repository path, which still resolve under the old name until both moves
+  happen. They are one substitution away.
+
+## [1.9.1] - 2026-09-08
+
+The last release published as `claudectl`. Its only change is a notice saying
+so — in the terminal UI's banner, in `claudectl --help` and on the PyPI page.
+Without it `pip install -U claudectl` would report "already up to date"
+forever, because from PyPI's side nothing had changed.
 
 ## [1.9.0] - 2026-09-04
 

@@ -6,7 +6,7 @@ Claude Code routes to a subagent by matching your task against each agent's
 `description`, and nothing else reads the agent body. Copying agents into
 `<project>/.claude/agents/` therefore makes them *available*, never *suggested*
 — measured on the machine this was written for, `agentLastUsed` held exactly one
-entry while ten agents sat installed. The delegation table claudectl writes into
+entry while ten agents sat installed. The delegation table archeus writes into
 CLAUDE.md helps, but it is one paragraph competing with the whole file.
 
 This is the deterministic half: a keyword match against what you just typed,
@@ -17,7 +17,7 @@ by default or it becomes noise you turn off.
 THE PER-TURN RULE
 -----------------
 This runs on EVERY prompt, so it reads ONE small index
-(`<project>/.claude/.claudectl-agents.json`, written by
+(`<project>/.claude/.archeus-agents.json`, written by
 `agents.sync_project_agents`) instead of opening and parsing every agent file.
 That is the cost lesson this codebase already learned twice: the recall hook's
 counters and the worklog hook's transcript re-scan.
@@ -37,7 +37,7 @@ try:
 except (AttributeError, ValueError, OSError):
     pass
 
-INDEX_NAME = '.claudectl-agents.json'
+INDEX_NAME = '.archeus-agents.json'
 
 #: words that match everything and therefore identify nothing
 _STOP = {
@@ -99,7 +99,7 @@ def main():
     print(json.dumps({'hookSpecificOutput': {
         'hookEventName': 'UserPromptSubmit',
         'additionalContext':
-            'Subagent available for this task (claudectl): %s. Delegate with the '
+            'Subagent available for this task (archeus): %s. Delegate with the '
             'Agent tool if it fits — say which one you used, or say why you did '
             'it inline instead.' % lines}}))
     return 0

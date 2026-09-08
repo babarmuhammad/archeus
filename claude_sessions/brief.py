@@ -225,11 +225,11 @@ def scan_age(mem):
 
 
 def scan_prompt(project_path, mem):
-    """One prompt, built from what claudectl already knows.
+    """One prompt, built from what archeus already knows.
 
     Deliberately fed the memory graph rather than the source tree: the graph is
     the compressed, already-paid-for description of this project, and asking a
-    model to re-read the repo is the expensive way to learn what claudectl has
+    model to re-read the repo is the expensive way to learn what archeus has
     been recording all along."""
     from .repos import _git
     ents = [e for e in (mem.get('entities') or []) if e.get('type') != 'lesson']
@@ -311,7 +311,7 @@ def run_scan(project_path, proj_folder):
     mem = memory.load_memory(project_path, proj_folder)
     out = memory._claude_stdin(scan_prompt(project_path, mem),
                                os.path.abspath(project_path or '.'),
-                               crumbs=('CLAUDECTL', 'WORK SCAN'),
+                               crumbs=('ARCHEUS', 'WORK SCAN'),
                                label='Scanning for work...')
     items = parse_scan(out)
     if not items:

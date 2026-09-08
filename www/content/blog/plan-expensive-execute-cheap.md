@@ -26,9 +26,9 @@ Most of the token cost of an agentic coding session is not the thinking, it is t
 `⇧X` in the terminal UI, or the **Plan → Execute** project tab in the GUI.
 
 1. **Describe the task.** One prompt, as you would to any session.
-2. **claudectl plans it headlessly** with `plan_model` — default Opus 5, reasoning effort picked per task. No interactive session, no back-and-forth; one pass producing a plan.
+2. **archeus plans it headlessly** with `plan_model` — default Opus 5, reasoning effort picked per task. No interactive session, no back-and-forth; one pass producing a plan.
 3. **You approve, edit or re-plan.** The plan appears in a monospace textarea for inline editing. "Re-plan" sends your feedback back for a regeneration. Every generated plan is auto-saved.
-4. **The plan is written to `.claudectl/plan-latest.md`.**
+4. **The plan is written to `.archeus/plan-latest.md`.**
 5. **A real, full interactive `claude` session launches** on `exec_model` — default Sonnet 5 — with the same account, agents, skills, system prompt and `--add-dir` roots the project already has, seeded to read and execute that plan.
 
 Point 5 is the part worth being precise about. The execute half is not a headless `-p` run and not a constrained sub-mode. It is the ordinary interactive session you would have started anyway, with one extra instruction. You can interrupt it, argue with it, and take over.
@@ -43,42 +43,42 @@ So the plan goes to a path and the session gets a short system-prompt line sayin
 
 - The command line stays short regardless of plan size.
 - The model pulls the file in with its own tools, so it can **re-read** the plan mid-session when it loses the thread.
-- The same mechanism serves the context hand-off feature, which writes a whole prior transcript to `.claudectl/injected-context.md` and hands over a pointer to it for exactly the same reason.
+- The same mechanism serves the context hand-off feature, which writes a whole prior transcript to `.archeus/injected-context.md` and hands over a pointer to it for exactly the same reason.
 
-`.claudectl/` is machine-local. Add it to `.gitignore` if the project does not already ignore it.
+`.archeus/` is machine-local. Add it to `.gitignore` if the project does not already ignore it.
 
 ## Free execution via OmniRoute
 
 Cheap is Sonnet. Free is [OmniRoute](https://github.com/diegosouzapw/OmniRoute) — a local proxy aggregating free-tier providers behind one endpoint. Point the execute half at it and the build phase costs nothing against your Anthropic quota.
 
-Left on **Auto** (the default), OmniRoute scores every currently-healthy free model per request on health, quota, cost, latency and task fit, and transparently falls back to the next-best one when the current one is rate-limited or exhausted. claudectl auto-starts it in the background the first time you route a task through it, so there is no terminal to babysit.
+Left on **Auto** (the default), OmniRoute scores every currently-healthy free model per request on health, quota, cost, latency and task fit, and transparently falls back to the next-best one when the current one is rate-limited or exhausted. archeus auto-starts it in the background the first time you route a task through it, so there is no terminal to babysit.
 
 Setup, once:
 
 ```bash
 npm install -g omniroute
 omniroute setup --password <yours>
-omniroute                       # or let claudectl start it
+omniroute                       # or let archeus start it
 # → http://localhost:20128 → log in → Providers → Add Provider / Free tiers
 ```
 
-Then in claudectl's **Settings → Free execution — OmniRoute**: leave the base URL at `http://localhost:20128`, click **Refresh**, leave **Execute model** on *Auto*, save. Open a project's **Plan → Execute** tab, describe a task, pick **Execute via → OmniRoute**, approve the plan.
+Then in archeus's **Settings → Free execution — OmniRoute**: leave the base URL at `http://localhost:20128`, click **Refresh**, leave **Execute model** on *Auto*, save. Open a project's **Plan → Execute** tab, describe a task, pick **Execute via → OmniRoute**, approve the plan.
 
 Three honest caveats about that setup, all confirmed rather than theoretical:
 
 - OmniRoute's marketing claims roughly 90 free providers. What is actually reachable **without a real signup** is a smaller genuinely-keyless subset — Pollinations, Puter, NVIDIA, OpenCode, FriendliAI, Coze and a few more. Check the current list in the dashboard yourself.
-- The `omniroute providers add` CLI commands crash on Windows. The dashboard is the only reliable path, which is also why claudectl never touches that credential.
+- The `omniroute providers add` CLI commands crash on Windows. The dashboard is the only reliable path, which is also why archeus never touches that credential.
 - OmniRoute's own per-connection self-check reports false negatives — it will call a working no-auth connection broken. Use **Send a live test** for the authoritative answer.
 
-Beyond the plan-execute split, claudectl can launch a **standalone** interactive session through OmniRoute: open a project in the TUI and pick a model from the **OMNIROUTE** menu, which appears only when OmniRoute is reachable.
+Beyond the plan-execute split, archeus can launch a **standalone** interactive session through OmniRoute: open a project in the TUI and pick a model from the **OMNIROUTE** menu, which appears only when OmniRoute is reachable.
 
 ## What actually breaks on a free model
 
 This is the section that decides whether the idea is useful to you.
 
-**Small context windows.** Free-tier models frequently sit under 16K tokens. Your `CLAUDE.md` plus rules files plus the plan has to fit inside that with room for the work. claudectl warns when the total passes roughly 8K. This is where a bounded always-on index stops being a nice-to-have and becomes the thing that makes free execution possible at all — see [the 250-token index pattern](/blog/cut-claude-code-token-costs).
+**Small context windows.** Free-tier models frequently sit under 16K tokens. Your `CLAUDE.md` plus rules files plus the plan has to fit inside that with room for the work. archeus warns when the total passes roughly 8K. This is where a bounded always-on index stops being a nice-to-have and becomes the thing that makes free execution possible at all — see [the 250-token index pattern](/blog/cut-claude-code-token-costs).
 
-**Missing tool use.** Some free models have no `tool_use`, which degrades agents, skills and MCP calls. claudectl automatically sets `CLAUDE_CODE_SUBAGENT_MODEL=claude-sonnet-5`, so delegated work always runs on a capable model even when the main session does not. That covers the common case; the main model's own capabilities remain whatever the free model has.
+**Missing tool use.** Some free models have no `tool_use`, which degrades agents, skills and MCP calls. archeus automatically sets `CLAUDE_CODE_SUBAGENT_MODEL=claude-sonnet-5`, so delegated work always runs on a capable model even when the main session does not. That covers the common case; the main model's own capabilities remain whatever the free model has.
 
 **Telemetry the provider rejects.** `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` is set automatically, because non-essential calls to the Anthropic API will fail in this configuration.
 
@@ -90,22 +90,22 @@ What *does* work unchanged: per-project memory, hooks, MCP servers and skills. A
 
 A free model failing at launch is a bad model choice. A free model failing on turn forty is a different problem, and Claude Code cannot solve it: it sends each turn as a fresh request and, when one fails, retries **the same request against the same model** with backoff. Nothing ever tries a different model, because Claude Code has no such concept. A model deregistered upstream, or a tool schema the backing provider rejects, makes the session look frozen forever.
 
-claudectl's failover proxy sits between `claude.exe` and the OmniRoute upstream. It forwards bytes verbatim, and when a turn errors **before any response body byte has reached the client**, it rewrites the request's `model` field and tries the next candidate. That "before any byte" condition is the whole correctness argument — once the client has seen part of a response you cannot retry without duplicating output.
+archeus's failover proxy sits between `claude.exe` and the OmniRoute upstream. It forwards bytes verbatim, and when a turn errors **before any response body byte has reached the client**, it rewrites the request's `model` field and tries the next candidate. That "before any byte" condition is the whole correctness argument — once the client has seen part of a response you cannot retry without duplicating output.
 
 The elegant part is that no per-turn machinery was needed: because every turn *is* its own request, request-level retry already is per-turn failover.
 
 ```
-claudectl --failover-serve [port]   # foreground
-claudectl --failover-stop           # terminate the daemon in the lock file
+archeus --failover-serve [port]   # foreground
+archeus --failover-stop           # terminate the daemon in the lock file
 ```
 
-It runs as a detached child, so closing claudectl does not leave every live session with connection-refused, and it binds `127.0.0.1` only. The routing log runs in its own console window unless you hide it — deliberately, because the original complaint was never "a model died", it was "I could not see that a model died".
+It runs as a detached child, so closing archeus does not leave every live session with connection-refused, and it binds `127.0.0.1` only. The routing log runs in its own console window unless you hide it — deliberately, because the original complaint was never "a model died", it was "I could not see that a model died".
 
 **One security note, because this is the kind of thing that gets built carelessly.** An early version of this proxy was a second HTTP server on a fixed, source-published port with no guard at all, substituting the user's OmniRoute key into everything it forwarded. A single CORS-simple `fetch()` from any open browser tab would have spent that quota. "It's loopback" is not an authorisation boundary and neither is a custom header — under DNS rebinding an attacker's page becomes same-origin with your local server and can send any header it likes. The layering that works, cheapest check first: a `Host` allowlist (this is the rebinding defence, because a rebound request carries the attacker's hostname), rejection of anything carrying browser fetch metadata (`Origin`, `Referer`, `Sec-Fetch-*` — Claude Code's HTTP client sends none of them, every browser sends at least one), and a per-run secret compared with `hmac.compare_digest`. If you build a local proxy that spends money, apply all three.
 
 ## Telling afterwards which sessions ran free
 
-Worth knowing if you analyse your own transcripts. OmniRoute records the *resolved provider* model in `message.model` under a bare name — `big-pickle`, `deepseek-v4-flash-free`, `mimo-auto` — **not** the slash-namespaced id you selected at launch. So looking for a `/` finds nothing. The reliable signal is exclusion: a model is a free-tier run if its id is not a Claude or Anthropic one (no `claude`/`anthropic` substring, and not a bare alias like `sonnet`/`opus`/`haiku`). claudectl tags those sessions in the session list.
+Worth knowing if you analyse your own transcripts. OmniRoute records the *resolved provider* model in `message.model` under a bare name — `big-pickle`, `deepseek-v4-flash-free`, `mimo-auto` — **not** the slash-namespaced id you selected at launch. So looking for a `/` finds nothing. The reliable signal is exclusion: a model is a free-tier run if its id is not a Claude or Anthropic one (no `claude`/`anthropic` substring, and not a bare alias like `sonnet`/`opus`/`haiku`). archeus tags those sessions in the session list.
 
 The unavoidable caveat: Anthropic served *through* OmniRoute is indistinguishable from a direct Anthropic run by id alone.
 

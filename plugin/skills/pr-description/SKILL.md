@@ -37,5 +37,5 @@ Summarize a branch's changes so a reviewer understands them fast.
 - Call out anything needing reviewer attention (schema changes, config, security).
 - Omit a section only when it's genuinely empty; never pad.
 
-<!-- claudectl starter skill. Inspired by PR/changelog skills across
+<!-- archeus starter skill. Inspired by PR/changelog skills across
      ComposioHQ/awesome-claude-skills and the anthropics code-review plugin. -->

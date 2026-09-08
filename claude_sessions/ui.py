@@ -157,7 +157,7 @@ def run_with_progress(args, crumbs, label, timeout=120, cwd=None, env=None):
     env: full environment dict for the subprocess (e.g. CLAUDE_CONFIG_DIR
     pointing at a non-default account). None = inherit. Its sibling
     run_with_progress_stdin already had this; the gap meant every `claude mcp`
-    call ran against whichever account claudectl inherited."""
+    call ran against whichever account archeus inherited."""
     import subprocess
     from . import memory
     if getattr(memory._tls, 'silent', False):
@@ -354,7 +354,7 @@ def confirm(question, danger=False, yes_label='Yes', no_label='No'):
             (f"{_c.C_SEL_BG} {o} {C_RESET}" if i == sel else f"  {o}  ")
             for i, o in enumerate(opts))
         frame = [
-            render.header('CLAUDECTL', 'CONFIRM'), '',
+            render.header('ARCHEUS', 'CONFIRM'), '',
             f"  {qcol}{render.trunc(question, render.content_width() - 4)}{C_RESET}",
             '', '  ' + row, '',
             render.hint_keys([('←→', 'choose'), ('ENTER', 'confirm'), ('ESC', 'cancel')]),
@@ -386,7 +386,7 @@ def multiselect(items, title, preselected=None, hint='', view_fn=None):
         keys.append(('v', 'view'))
     keys += [('ENTER', 'confirm'), ('ESC', 'cancel')]
     while True:
-        frame = [render.header('CLAUDECTL', title), '']
+        frame = [render.header('ARCHEUS', title), '']
         page = max(3, render.frame_height() - 6)
         start = min(max(nav - page // 2, 0), max(0, n - page)) if n > page else 0
         if start > 0:
@@ -429,7 +429,7 @@ def text_input(prompt, default=''):
     buf = list(default)
     while True:
         frame = [
-            render.header('CLAUDECTL', 'INPUT'),
+            render.header('ARCHEUS', 'INPUT'),
             '',
             f"  {C_TITLE}{prompt}{C_RESET}",
             '',
@@ -489,7 +489,7 @@ def path_input(prompt, default=''):
             sel = len(sugg) - 1
         cw = render.content_width()
         frame = [
-            render.header('CLAUDECTL', 'OPEN PROJECT'), '',
+            render.header('ARCHEUS', 'OPEN PROJECT'), '',
             f"  {C_TITLE}{prompt}{C_RESET}", '',
             f"  {C_SEL}>{C_RESET} {render.trunc(text, cw - 6)}{C_SRCH}▌{C_RESET}", '',
         ]
@@ -564,7 +564,7 @@ def _theme_picker(s):
 
     _apply(idx)
     while True:
-        frame = [render.header('CLAUDECTL', 'SETTINGS', 'THEME'), '']
+        frame = [render.header('ARCHEUS', 'SETTINGS', 'THEME'), '']
         for i, n in enumerate(names):
             mark = f"{C_OK}●{C_RESET} " if n == s.get('theme') else '  '
             label = _c.theme_label(n)
@@ -625,7 +625,7 @@ def menu(items, title, footer='', footer_fn=None, banner_fn=None):
         ni   = _nav_idx(disp)
         cur  = ni[min(nav_pos, len(ni) - 1)] if ni else -1
 
-        frame = [render.header('CLAUDECTL', title), '']
+        frame = [render.header('ARCHEUS', title), '']
         if current_banner:
             for bl in current_banner.split('\n'):
                 frame.append(bl)
@@ -783,7 +783,7 @@ def _session_key_lines(cols=HELP_COLS):
 def help_screen():
     """Static hotkey reference. ENTER/ESC returns."""
     frame = [
-        render.header('CLAUDECTL', 'HELP'),
+        render.header('ARCHEUS', 'HELP'),
         '',
         f"  {C_BOLD}Main screen{C_RESET}",
         f"    ↑↓ navigate    ENTER open project / resume    ESC exit",
@@ -937,7 +937,7 @@ def _automode_menu():
             body = (_json.dumps(data, indent=2) if ok and not isinstance(data, str)
                     else str(data))
             # pager takes (crumbs, lines) — crumbs first
-            pager(('CLAUDECTL', 'AUTO MODE', sel[1].upper()), body.splitlines())
+            pager(('ARCHEUS', 'AUTO MODE', sel[1].upper()), body.splitlines())
             continue
         _name, cfgdir = sel[1], sel[2]
         what = menu([("Starting permission mode", 'mode'),
@@ -982,7 +982,7 @@ def _default_pickers(models, model_labels):
 
 
 def settings_menu():
-    """Edit ~/.claude/claudectl.json interactively."""
+    """Edit ~/.claude/archeus.json interactively."""
     while True:
         s = load_settings()
         # The LIVE roster shadows the module-level floor for this screen. The
@@ -1019,13 +1019,13 @@ def settings_menu():
             (f"Permissions :  {perm}   {C_DIM}({_c.PERM_PROFILES.get(_pv, '--permission-mode')}){C_RESET}", 'default_permission'),
             (f"Think cap   :  {think}   {C_DIM}(MAX_THINKING_TOKENS — save tokens){C_RESET}", 'default_max_thinking'),
             (f"Subagent mdl:  {submod}   {C_DIM}(CLAUDE_CODE_SUBAGENT_MODEL){C_RESET}", 'default_subagent_model'),
-            (f"Economy mdl :  {xmod}   {C_DIM}(claudectl's own memory/gen calls — cuts cost){C_RESET}", 'extract_model'),
+            (f"Economy mdl :  {xmod}   {C_DIM}(archeus's own memory/gen calls — cuts cost){C_RESET}", 'extract_model'),
             (f"Auto mode   :  {_automode_label()}   {C_DIM}(classifier config, per account){C_RESET}", 'automode'),
-            (f"Budget cap  :  {_budget_label(s)}   {C_DIM}(--max-budget-usd on claudectl's own calls){C_RESET}", 'headless_budget_usd'),
+            (f"Budget cap  :  {_budget_label(s)}   {C_DIM}(--max-budget-usd on archeus's own calls){C_RESET}", 'headless_budget_usd'),
             (f"Theme       :  {theme}", 'theme'),
             (f"Interface   :  {s.get('ui_mode', 'tui').upper()}   {C_DIM}(TUI here / GUI in browser — or run --gui){C_RESET}", 'ui_mode'),
             (f"Failover    :  {_failover_label(s)}   {C_DIM}(retry a dead model instead of hanging){C_RESET}", 'failover'),
-            (f"Updates     :  {_update_label(s)}   {C_DIM}(new claudectl releases + the model list){C_RESET}", 'auto_update'),
+            (f"Updates     :  {_update_label(s)}   {C_DIM}(new archeus releases + the model list){C_RESET}", 'auto_update'),
             (f"Notifications: {'on' if s.get('notifications', True) else 'off'}   {C_DIM}(desktop toast when a long background job ends){C_RESET}", 'notifications'),
             (f"{'─' * W}", None),
             (f"Back", 'back'),
@@ -1062,11 +1062,11 @@ def settings_menu():
                 else:
                     s['claude_config_dir'] = v
                     save_settings(s)
-                    flash("Saved — restart claudectl to apply", secs=1.6)
+                    flash("Saved — restart archeus to apply", secs=1.6)
         elif sel == 'automode':
             _automode_menu()
         elif sel == 'headless_budget_usd':
-            v = text_input("Max $ per claudectl headless call (0 = no cap):",
+            v = text_input("Max $ per archeus headless call (0 = no cap):",
                            default=str(s.get('headless_budget_usd') or 0))
             if v is not None:
                 try:
@@ -1080,8 +1080,8 @@ def settings_menu():
         elif sel == 'failover':
             _failover_menu()
         elif sel == 'auto_update':
-            pick = menu([('Tell me when a new claudectl is released', 'notify'),
-                         ('Install it automatically when I quit claudectl', 'auto'),
+            pick = menu([('Tell me when a new archeus is released', 'notify'),
+                         ('Install it automatically when I quit archeus', 'auto'),
                          ('Off — never check (also stops the model-list refresh)', 'off')],
                         "UPDATES")
             if pick:
@@ -1115,7 +1115,7 @@ def settings_menu():
                 flash("Saved")
         elif sel == 'extract_model':
             pick = menu([(l, v if v else '__default__') for l, v in zip(MODEL_LABELS, MODELS)],
-                        "ECONOMY MODEL  (claudectl's own generation calls)")
+                        "ECONOMY MODEL  (archeus's own generation calls)")
             if pick is not None:
                 s['extract_model'] = '' if pick == '__default__' else pick
                 save_settings(s)
@@ -1262,7 +1262,7 @@ def paths_menu(proj_folder, project_name, filename='extra-paths.txt', title='EXT
         redraw = False
         while not redraw:
             cur = nav_indices[nav_pos]
-            frame = [render.header('CLAUDECTL', project_name, title), '']
+            frame = [render.header('ARCHEUS', project_name, title), '']
             for i, (label, val) in enumerate(items):
                 if val is None:
                     frame.append(f"  {C_DIM}{label}{C_RESET}")
@@ -1394,7 +1394,7 @@ def launch_options_menu(project_name, defaults=None, is_new=False, agents=None,
         flash(f"Preset: {name}", secs=1.0)
 
     def _show_guide():
-        lines = [render.header('CLAUDECTL', project_name, 'MODEL GUIDE'), '',
+        lines = [render.header('ARCHEUS', project_name, 'MODEL GUIDE'), '',
                  render.hline(),
                  f"  {C_DIM}model         SWE    cost    cap      best for{C_RESET}"]
         for _mid, lbl, cb, capb, bf, sw in _c.model_card_rows():
@@ -1427,7 +1427,7 @@ def launch_options_menu(project_name, defaults=None, is_new=False, agents=None,
                  for pn, _d, _f in _c.LAUNCH_PRESETS]
         slcol = C_SEL if field == 0 else C_DIM
         frame = [
-            render.header('CLAUDECTL', project_name, 'START SESSION' if is_new else 'LAUNCH OPTIONS'),
+            render.header('ARCHEUS', project_name, 'START SESSION' if is_new else 'LAUNCH OPTIONS'),
             '',
             f"  {C_DIM}Quick start{C_RESET}   " + f" {C_DIM}·{C_RESET} ".join(strip)
             + f"   {C_DIM}1-4{C_RESET}",

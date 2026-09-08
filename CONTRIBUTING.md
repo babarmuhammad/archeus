@@ -1,6 +1,6 @@
-# Contributing to claudectl
+# Contributing to archeus
 
-Thanks for looking. claudectl is a workspace layer for Claude Code — a terminal UI, a
+Thanks for looking. archeus is a workspace layer for Claude Code — a terminal UI, a
 desktop GUI and a Claude Code plugin over one Python engine. It has **zero runtime
 dependencies** and that is a deliberate constraint, not an accident.
 
@@ -10,7 +10,7 @@ By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ```bash
 git clone https://github.com/babarmuhammad/claudectl.git
-cd claudectl
+cd archeus
 python claude-sessions.py          # terminal UI
 python claude-sessions.py --gui    # desktop GUI
 ```
@@ -84,7 +84,7 @@ that records the reasoning is worth more than one that restates the patch.
 
 ## Reporting bugs
 
-Open an issue with your OS, your Python version, `claudectl --version`, what you
+Open an issue with your OS, your Python version, `archeus --version`, what you
 expected, and what happened. If a screen is involved, a screenshot helps — but check it
 for project names or paths you would rather not publish first.
 

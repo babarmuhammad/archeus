@@ -1,4 +1,4 @@
-"""`claudectl --help` answers, and it answers about the whole CLI.
+"""`archeus --help` answers, and it answers about the whole CLI.
 
 A pip install is most people's first contact with this tool, and `--help` is the
 only thing they can type without reading the docs. Two hazards, both guarded
@@ -22,7 +22,7 @@ import pytest
 
 from claude_sessions import cli as cli_mod, main as main_mod
 
-#: dispatches a user never types — claudectl spawns these at itself. They stay
+#: dispatches a user never types — archeus spawns these at itself. They stay
 #: out of the help text on purpose; naming them here is what makes that a
 #: decision instead of an omission.
 INTERNAL = {'--bg-scan', '--failover-serve', '--gateway-serve', '--self-update',
@@ -65,7 +65,7 @@ def _dispatched():
 
 
 def _run(monkeypatch, capsys, argv):
-    monkeypatch.setattr(sys, 'argv', ['claudectl'] + argv)
+    monkeypatch.setattr(sys, 'argv', ['archeus'] + argv)
     main_mod.run()
     return capsys.readouterr().out
 
@@ -78,7 +78,7 @@ def test_help_prints_without_starting_a_ui(monkeypatch, capsys, flag):
     monkeypatch.setattr(render, 'screen_init',
                         lambda *a, **k: pytest.fail('--help started the TUI'))
     out = _run(monkeypatch, capsys, [flag])
-    assert 'claudectl' in out and 'USAGE' in out
+    assert 'archeus' in out and 'USAGE' in out
     assert 'COMMANDS' in out
 
 
@@ -102,5 +102,5 @@ def test_the_help_says_where_the_state_lives(monkeypatch, capsys):
     """The three questions support answers most often: which settings file, which
     config dir, where a project's memory is."""
     out = _run(monkeypatch, capsys, ['--help'])
-    for expected in ('claudectl.json', 'CLAUDE_CONFIG_DIR', '.claudectl/memory'):
+    for expected in ('archeus.json', 'CLAUDE_CONFIG_DIR', '.archeus/memory'):
         assert expected in out, expected

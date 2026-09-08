@@ -1,6 +1,6 @@
 """Don't spend an account that has nothing left — offer one that does.
 
-claudectl makes its own headless `claude -p` calls for every generate-this-for-me
+archeus makes its own headless `claude -p` calls for every generate-this-for-me
 feature (AI agents, skills, MCP analysis, system prompts, CLAUDE.md, memory and
 lessons extraction, Plan→Execute and its council, scheduled loops). None of them
 used to ask whether the account they were about to spend had any quota left, so
@@ -331,7 +331,7 @@ def _report(why):
     try:
         from . import events
         events.record('quota', why, level='warn',
-                      detail='claudectl did not start a Claude call it wanted '
+                      detail='archeus did not start a Claude call it wanted '
                              'to make')
     except Exception:
         pass

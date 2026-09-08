@@ -1,12 +1,12 @@
 ---
 description: >-
-  What claudectl is, the three surfaces it offers — terminal UI, desktop app and Claude Code
+  What archeus is, the three surfaces it offers — terminal UI, desktop app and Claude Code
   plugin — and which page of the manual to read next.
 ---
 
 # Getting started
 
-claudectl is a **workspace layer that sits in front of Claude Code**. It does not replace
+archeus is a **workspace layer that sits in front of Claude Code**. It does not replace
 it and does not proxy your conversations: it configures Claude Code, launches it with the
 model, effort, permissions and context you meant, and maintains the project's context
 between sessions.
@@ -29,12 +29,12 @@ The same engine, three ways in. Pick whichever you prefer — they do the same t
 
 <div class="grid cards" markdown>
 
-- **[Terminal UI](tui.md)** — `claudectl`
+- **[Terminal UI](tui.md)** — `archeus`
 
     Keyboard-first, one screen per job, instant. The default. Every action has a key and
     `?` prints the map.
 
-- **[Desktop app](desktop.md)** — `claudectl --gui`
+- **[Desktop app](desktop.md)** — `archeus --gui`
 
     The whole workspace as a local app on loopback, with the dashboard, the usage banner
     and the theme system. Full parity with the terminal UI.
@@ -55,7 +55,7 @@ one answer on stdout.
 |---|---|
 | [Installation](installation.md) | pipx, pip, a checkout, the desktop window, Windows shortcuts |
 | [Quickstart](quickstart.md) | install to first session in five minutes |
-| [Configuration](configuration.md) | every file claudectl reads and writes, and where |
+| [Configuration](configuration.md) | every file archeus reads and writes, and where |
 | [Projects](projects.md) | health checks, auto-fixes and whether the generated context still matches the repo |
 | [Sessions](sessions.md) | browse, search, tag, fork, resume, archive, export |
 | [Project memory](memory.md) | the memory graph and its three injection surfaces |
