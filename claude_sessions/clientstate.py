@@ -1,4 +1,4 @@
-"""Claude Code's own client state, which claudectl had never opened.
+"""Claude Code's own client state, which archeus had never opened.
 
 Four stores, all read-only here:
 
@@ -6,13 +6,13 @@ Four stores, all read-only here:
   cost, token totals, the last session id, lines added/removed, MCP approval
   state, allowed tools. At the top level: `skillUsage`, `pluginUsage` and
   `agentLastUsed`, which are the only record of what is actually being USED
-  versus carried as dead weight — a question claudectl could not answer.
+  versus carried as dead weight — a question archeus could not answer.
 - `~/.claude/history.jsonl` — 1.1 MB of prompt history across every project.
 - `~/.claude/daemon/roster.json` — live background agents.
 - `~/.claude/teams/`, `~/.claude/tasks/` — agent teams.
 
 None of these formats is documented, so every reader here follows the
-`checkpoints.py` discipline: re-derive from what claudectl already knows, match
+`checkpoints.py` discipline: re-derive from what archeus already knows, match
 what is actually on disk, and report `recognised: False` rather than pairing
 records at random. The teams reader especially — the docs say a team is named
 `session-` plus the first 8 characters of the session id, and on the machine
@@ -41,8 +41,8 @@ def _path(name, cfgdir=None):
 
 def client_json(cfgdir=None):
     # quarantine=False: this file belongs to Claude Code, which rewrites it
-    # while claudectl is running. Quarantining is the right answer for a file
-    # claudectl OWNS — the next write would otherwise destroy the evidence —
+    # while archeus is running. Quarantining is the right answer for a file
+    # archeus OWNS — the next write would otherwise destroy the evidence —
     # but here an unparseable read most likely means we caught a live write
     # mid-flight, and renaming the user's `.claude.json` out from under a
     # running session is a far worse outcome than reading it again next tick.
@@ -107,7 +107,7 @@ def usage_rollup(cfgdir=None):
 #   {"type":"attachment","attachment":{"type":"hook_success","hookName":…,
 #    "hookEvent":"SessionStart","command":…,"content":…}}
 # so "in how many of your recent sessions did this actually run" is answerable
-# from data claudectl already streams — and it is the number the user expects to
+# from data archeus already streams — and it is the number the user expects to
 # see next to caveman and ponytail.
 
 #: recomputed at most this often; a walk over recent transcripts is cheap but
@@ -117,7 +117,7 @@ ACTIVITY_SESSIONS = 40
 
 
 def _activity_cache(cfgdir=None):
-    return _path('claudectl-activity.json', cfgdir)
+    return _path('archeus-activity.json', cfgdir)
 
 
 def hook_activity(cfgdir=None, limit=ACTIVITY_SESSIONS, refresh=False):

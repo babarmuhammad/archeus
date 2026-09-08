@@ -20,7 +20,7 @@ from . import render
 from . import store as _store
 
 SKIP_DIRS = {'.git', 'node_modules', '__pycache__', 'venv', '.venv', '.tox',
-             'dist', 'build', 'site', '.mypy_cache', '.pytest_cache', '.claudectl',
+             'dist', 'build', 'site', '.mypy_cache', '.pytest_cache', _store.WORKDIR,
              '.claude', 'site-packages', '.next', 'target', 'bin', 'obj',
              '.idea', '.vscode', 'coverage', '.cache'}
 SKIP_EXT = {'.pyc', '.pyo', '.so', '.dll', '.exe', '.bin', '.png', '.jpg',
@@ -314,7 +314,7 @@ def _signature(root, files):
 def _cache_path(project_path, proj_folder):
     for base in (project_path, proj_folder):
         if base:
-            return os.path.join(base, '.claudectl', _CACHE_NAME)
+            return _store.workfile(base, _CACHE_NAME)
     return ''
 
 
@@ -334,7 +334,7 @@ def _save_cache(graph, project_path, proj_folder):
         if not base:
             continue
         try:
-            d = _store.claudectl_dir(base)
+            d = _store.workdir(base)
             with open(os.path.join(d, _CACHE_NAME), 'w', encoding='utf-8') as f:
                 json.dump(graph, f)
             return True
@@ -917,7 +917,7 @@ TYPE_COLORS = {
 def graph_html_path(project_path, proj_folder=None):
     for base in (project_path, proj_folder):
         if base:
-            return os.path.join(base, '.claudectl', 'connections-graph.html')
+            return _store.workfile(base, 'connections-graph.html')
     return ''
 
 
@@ -926,7 +926,7 @@ def write_graph_html(graph, project_path, proj_folder=None, memory=None, default
         if not base:
             continue
         try:
-            d = _store.claudectl_dir(base)
+            d = _store.workdir(base)
             p = os.path.join(d, 'connections-graph.html')
             with open(p, 'w', encoding='utf-8') as f:
                 f.write(render_html(graph, memory=memory, default_view=default_view))
@@ -964,7 +964,7 @@ def connections_screen(project_path, proj_folder, project_name):
     R, D = _c.C_RESET, _c.C_DIM
     while True:
         c = graph['meta']['counts']
-        frame = [render.header('CLAUDECTL', project_name, 'ARCHITECTURE'), '', render.hline(), '']
+        frame = [render.header('ARCHEUS', project_name, 'ARCHITECTURE'), '', render.hline(), '']
         langs = graph['meta'].get('languages') or []
         lang_str = '  '.join(f"{n} {k}" for n, k in langs[:6]) or '?'
         frame.append(f"  {D}Languages   {R}{render.trunc(lang_str, render.content_width() - 18)}")
@@ -1044,5 +1044,5 @@ def connections_screen(project_path, proj_folder, project_name):
                     ans = memory.ask_memory(project_path, proj_folder, q)
                 except Exception as e:
                     ans = f"(failed: {e})"
-                pager(('CLAUDECTL', project_name, 'ASK'),
+                pager(('ARCHEUS', project_name, 'ASK'),
                       (ans or '(no answer)').splitlines(), hint='ESC back')

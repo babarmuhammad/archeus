@@ -1,6 +1,6 @@
 ---
 description: >-
-  How claudectl reduces the per-turn context cost of Claude Code — a bounded always-on
+  How archeus reduces the per-turn context cost of Claude Code — a bounded always-on
   index, path-scoped rules, task-scoped injection, the context weight audit, deny rules and
   economy model routing.
 ---
@@ -10,16 +10,16 @@ description: >-
 What you spend per turn, and how to spend less.
 
 `CLAUDE.md` and memory files ride in the model's context on **every** message, so their size
-is a permanent per-turn tax. claudectl makes that cost visible and cuts it.
+is a permanent per-turn tax. archeus makes that cost visible and cuts it.
 
-Without claudectl, a big project either starves the agent (no context) or floods it (a huge
-CLAUDE.md loaded every message). claudectl spends the *minimum* tokens for the *maximum*
+Without archeus, a big project either starves the agent (no context) or floods it (a huge
+CLAUDE.md loaded every message). archeus spends the *minimum* tokens for the *maximum*
 relevant context:
 
 | | |
 |---|---|
 | **Flat always-on cost** | The CLAUDE.md block is a ≤250-token index, not a full dump; it does **not** grow as the codebase grows (consolidation + rollups keep it bounded). |
-| **On-demand detail** | Per-module knowledge lives in path-scoped `.claude/rules/` (loads only when Claude touches those files) and in `claudectl recall`, so nothing is paid for until it's relevant. |
+| **On-demand detail** | Per-module knowledge lives in path-scoped `.claude/rules/` (loads only when Claude touches those files) and in `archeus recall`, so nothing is paid for until it's relevant. |
 | **Task-scoped injection** | The optional prompt hook injects only the subgraph your prompt actually needs (budgeted, default ≤600 tok), instead of everything. |
 | **No stale weight** | Superseded facts are invalidated, not carried; dead entities are evicted; only current, useful knowledge is ever sent. |
 | **Cheaper model for the grunt work** | [Plan → Execute](plan-execute.md) runs the expensive model once for the plan and a cheap one for execution; the token-burn advisor nudges you off Opus for routine work. |
@@ -78,7 +78,7 @@ missing.
 
 ## Economy model routing
 
-claudectl's own internal Claude calls (memory extraction, lessons, CLAUDE.md / agent / hook
+archeus's own internal Claude calls (memory extraction, lessons, CLAUDE.md / agent / hook
 / skill generation) default to **Haiku** to cut cost, while your actual coding sessions keep
 whatever model you choose. Change it in **⚙ Settings → Economy model** (`extract_model`).
 
@@ -88,5 +88,5 @@ For free execution rather than cheap, see
 ## Related workflow features
 
 - **Skills** — `.claude/skills/<name>/SKILL.md` files load on demand instead of bloating `CLAUDE.md`. See [Agents & skills](agents.md#skills).
-- **Code review** — `claudectl review [--staged] [--branch <base>]` reviews your working diff against your `CLAUDE.md` rules + learned memory lessons and reports **confidence-scored** findings (only ≥80% shown). Also on the project **Review** tab (GUI) and the `⇧R` key in the session menu.
+- **Code review** — `archeus review [--staged] [--branch <base>]` reviews your working diff against your `CLAUDE.md` rules + learned memory lessons and reports **confidence-scored** findings (only ≥80% shown). Also on the project **Review** tab (GUI) and the `⇧R` key in the session menu.
 - **Recent-work memory** — a token-free one-line summary per session, injected as a compact digest on the next `SessionStart`. See [Project memory](memory.md#recent-work-memory).

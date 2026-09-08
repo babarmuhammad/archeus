@@ -34,7 +34,7 @@ def test_sync_writes_a_path_scoped_rule(monkeypatch, tmp_path):
     body = open(p, encoding='utf-8').read()
     # `paths:`, not `globs:` — Claude Code loads a rule with no `paths` field
     # into EVERY session, so the old key made every rule file always-on while
-    # claudectl reported it as lazy.
+    # archeus reported it as lazy.
     assert 'paths:' in body and '- "svc/engine/**"' in body
     assert 'globs:' not in body
     assert 'Engine' in body and 'Cache' in body
@@ -49,7 +49,7 @@ def test_sync_prunes_only_own_files(monkeypatch, tmp_path):
     actual, enc, folder, _ = sb.add_project('alpha')
     rules_dir = os.path.join(actual, '.claude', 'rules')
     os.makedirs(rules_dir)
-    stale = os.path.join(rules_dir, 'claudectl-mem-old-unit.md')
+    stale = os.path.join(rules_dir, 'archeus-mem-old-unit.md')
     user = os.path.join(rules_dir, 'my-own-rule.md')
     open(stale, 'w').write('x')
     open(user, 'w').write('mine')
@@ -120,7 +120,7 @@ def test_written_rules_are_never_globally_scoped(tmp_path):
     ], 'relations': [], 'summaries': {}}
     memrules.sync_rules(str(tmp_path), None, mem)
     rules = tmp_path / '.claude' / 'rules'
-    written = list(rules.glob('claudectl-mem-*.md')) if rules.is_dir() else []
+    written = list(rules.glob('archeus-mem-*.md')) if rules.is_dir() else []
     assert written, 'nothing was written'
     for p in written:
         txt = p.read_text(encoding='utf-8')
@@ -144,13 +144,13 @@ def test_a_root_level_file_is_not_dropped_from_the_prefix():
 def test_only_paths_scopes_a_rule(monkeypatch, tmp_path):
     """Claude Code scopes a rule file on `paths:` alone — "rules without a
     paths field are loaded unconditionally and apply to all files". `globs:` is
-    the Cursor spelling, and writing it meant every memory rule claudectl ever
+    the Cursor spelling, and writing it meant every memory rule archeus ever
     wrote was loaded into every session while the audit reported it as lazy.
     Verified empirically first: all eleven of this repo's rule files appeared in
     a fresh session's context with no matching file opened."""
     from claude_sessions import ctxaudit, recall
     memrules.sync_rules(str(tmp_path), None, _mem())
-    p = next((tmp_path / '.claude' / 'rules').glob('claudectl-mem-*.md'))
+    p = next((tmp_path / '.claude' / 'rules').glob('archeus-mem-*.md'))
     txt = p.read_text(encoding='utf-8')
 
     assert ctxaudit._rule_is_lazy(txt) is True
@@ -179,6 +179,6 @@ def test_a_glob_is_never_narrower_than_its_own_module(tmp_path):
          'valid': True},
     ], 'relations': [], 'summaries': {}}
     memrules.sync_rules(str(tmp_path), None, mem)
-    txt = next((tmp_path / '.claude' / 'rules').glob('claudectl-mem-*.md')).read_text(
+    txt = next((tmp_path / '.claude' / 'rules').glob('archeus-mem-*.md')).read_text(
         encoding='utf-8')
     assert '- "plugin/skills/**"' in txt, txt.splitlines()[:5]

@@ -336,7 +336,7 @@ def test_micro_digest_within_budget(monkeypatch, tmp_path):
            'relations': []}
     d = memory.build_digest_micro(mem)
     assert memory.tokens_estimate(d) <= 250
-    assert 'claudectl recall' in d                           # on-demand pointer
+    assert 'archeus recall' in d                           # on-demand pointer
     assert 'E0' not in d                                     # no entity dump
 
 
@@ -397,7 +397,7 @@ def test_refresh_writes_claudemd(monkeypatch, tmp_path):
     _stub(monkeypatch)
     memory.refresh_memory(actual, folder, 'alpha')
     md = os.path.join(actual, 'CLAUDE.md')
-    assert os.path.isfile(md) and 'CLAUDECTL:MEMORY' in open(md, encoding='utf-8').read()
+    assert os.path.isfile(md) and 'ARCHEUS:MEMORY' in open(md, encoding='utf-8').read()
 
 
 # ── ask ──────────────────────────────────────────────────────
@@ -441,7 +441,7 @@ def test_claude_json_asks_claude_code_to_enforce_the_schema(monkeypatch, tmp_pat
 def test_claude_json_falls_back_when_there_is_no_structured_output(monkeypatch, tmp_path):
     """Claude Code before v2.1.205 silently ignored a schema it thought invalid
     and returned unstructured text. That must land on the OLD behaviour, not on
-    nothing — otherwise upgrading claudectl breaks an older CLI."""
+    nothing — otherwise upgrading archeus breaks an older CLI."""
     import json as _json
     monkeypatch.setattr(memory, '_claude_stdin', lambda *a, **k: _json.dumps(
         {'type': 'result', 'result': 'Here you go:\n```json\n{"summary":"prose"}\n```'}))

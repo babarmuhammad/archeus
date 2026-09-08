@@ -119,7 +119,7 @@ def ansi_palette(p):
 PALETTES = {
     # ── cyan ──
     'default': {
-        'label': 'Claudectl', 'family': 'cyan', 'mode': 'dark', 'motion': 'smooth',
+        'label': 'Archeus', 'family': 'cyan', 'mode': 'dark', 'motion': 'smooth',
         'accent': '#7dcfff', 'accent2': '#a78bfa', 'ok': '#3fdd9d',
         'warn': '#f7b955', 'err': '#ff6b81',
         'bg': '#0d1117', 'bg2': '#111827', 'panel': '#161e2e', 'panel2': '#1b2436',

@@ -570,7 +570,7 @@ def _auto_scan_pass():
 
 
 #: how long the first pass waits after start — enough for the server/TUI to
-#: settle, short enough that "it updates when I launch claudectl" is true.
+#: settle, short enough that "it updates when I launch archeus" is true.
 #: A module constant so the loop can actually be tested; it had none.
 STARTUP_DELAY = 2
 
@@ -672,7 +672,7 @@ class BadRequest(ValueError):
 
 
 def _cfgdir_ok(v):
-    """An account directory claudectl actually knows about.
+    """An account directory archeus actually knows about.
 
     Unvalidated, this parameter is a filesystem read primitive: it is joined
     with 'projects' and a name on about forty endpoints, so any directory on
@@ -684,7 +684,7 @@ def _cfgdir_ok(v):
 
 
 def _managed_path_ok(v):
-    """Is this somewhere claudectl is allowed to DELETE?
+    """Is this somewhere archeus is allowed to DELETE?
 
     `os.remove(body['file'])` and `shutil.rmtree(body['dir'])` were reachable
     with any path at all, so `{"dir": "C:\\\\Users\\\\mab"}` was a recursive
@@ -694,7 +694,7 @@ def _managed_path_ok(v):
     Enumerating every root is the wrong shape — project-scoped agents and skills
     live under an arbitrary project. Both managed locations are recognisable
     instead: an account config directory (which `_cfgdir_ok` already knows), or
-    anything below a `.claude` / `.claudectl` directory, which is where every
+    anything below a `.claude` / `.archeus` directory, which is where every
     project-scoped one lives by construction.
     """
     p = os.path.normcase(os.path.abspath(v))
@@ -703,7 +703,7 @@ def _managed_path_ok(v):
         if p == root or p.startswith(root + os.sep):
             return True
     parts = p.split(os.sep)
-    return '.claude' in parts or '.claudectl' in parts
+    return '.claude' in parts or _store.WORKDIR in parts
 
 
 #: checked by NAME, wherever they appear. These reach the filesystem; `path` is
@@ -1056,7 +1056,7 @@ def api_dashboard(q, body):
                 for n, s in mcp_mod.get_mcp_status()]
 
     # from the breakdown's own scan of every account's transcripts, not the
-    # last-session.json launch history — that only records sessions claudectl
+    # last-session.json launch history — that only records sessions archeus
     # itself started, so anything opened by `claude` directly never showed up.
     recent = []
     for r in bd.get('recent', []):
@@ -1396,7 +1396,7 @@ def api_agent_create(q, body):
     d = project_agents_dir(body['path']) if body.get('scope') == 'project' else user_agents_dir()
     os.makedirs(d, exist_ok=True)
     p = os.path.join(d, f"{_slug(body['name'])}.md")
-    # `category` is claudectl's own frontmatter key — Claude Code ignores what
+    # `category` is archeus's own frontmatter key — Claude Code ignores what
     # it does not recognise, and `write_agent` preserves any key not in its
     # fixed order, so filing an agent costs nothing at load time.
     cat = (body.get('category') or '').strip()
@@ -1412,7 +1412,7 @@ def api_agent_create(q, body):
 def api_agent_delete(q, body):
     f = body['file']
     if not f.lower().endswith('.md') or not _managed_path_ok(f):
-        raise BadRequest('not an agent file claudectl manages')
+        raise BadRequest('not an agent file archeus manages')
     try:
         os.remove(f)
         return {'ok': True}
@@ -1435,7 +1435,7 @@ def api_agents_session_get(q, body):
     return {'refs': load_session_agents(folder).get('__project__', []),
             'suggested': suggested, 'limit': SAFE_AGENT_LIMIT,
             # what Claude Code says it has actually delegated to, and the
-            # delegation table claudectl writes into CLAUDE.md so it can
+            # delegation table archeus writes into CLAUDE.md so it can
             'usage': _agent_usage(q.get('cfgdir')),
             'routing': [{'name': n, 'trigger': t}
                         for n, t in (routing_table(q['path']) if q.get('path') else [])]}
@@ -1536,7 +1536,7 @@ def api_client_usage(q, body):
 
 def api_client_project(q, body):
     """Claude Code's own record for one project: cost, tokens, MCP approval
-    state, allowed tools. Distinct from claudectl's own stats, which are
+    state, allowed tools. Distinct from archeus's own stats, which are
     derived from transcripts."""
     from . import clientstate
     st = clientstate.project_state(q['path'], q.get('cfgdir') or None)
@@ -1556,7 +1556,7 @@ def api_background_agents(q, body):
 
 
 def api_logs(q, body):
-    """claudectl's own event log — what it did and what failed, newest first."""
+    """archeus's own event log — what it did and what failed, newest first."""
     from . import events
     return {'events': events.read(), 'path': events.path(),
             'cap': events.MAX_BYTES, 'debug_log': _c.log_file_path()}
@@ -1672,7 +1672,7 @@ def api_skill_remove(q, body):
     d = body.get('dir', '')
     # this reaches shutil.rmtree, and it used to reach it with any path at all
     if not _managed_path_ok(d) or not os.path.isfile(os.path.join(d, 'SKILL.md')):
-        raise BadRequest('not a skill directory claudectl manages')
+        raise BadRequest('not a skill directory archeus manages')
     if body.get('scope') == 'personal' and body.get('all_accounts', True):
         gone = delete_personal(d)
         return {'ok': bool(gone), 'accounts': [n for n, _p in gone]}
@@ -2130,7 +2130,7 @@ def _graph_shape(text):
 
 
 def api_history(q, body):
-    """Every replaced version claudectl still holds, newest first.
+    """Every replaced version archeus still holds, newest first.
 
     `added`/`removed` are LINE counts, which is the right summary for a
     CLAUDE.md and pure noise for the graph: re-serialising a 300 KB JSON reports
@@ -2275,7 +2275,7 @@ def api_claude_md_get(q, body):
     """The file, plus what it is made OF.
 
     CLAUDE.md is five things stacked in one file — your prose, KEEP-fenced
-    regions, and three machine blocks claudectl rewrites — and the GUI showed it
+    regions, and three machine blocks archeus rewrites — and the GUI showed it
     as one undifferentiated blob, so which part cost what, and which button
     regenerated which part, was unknowable. `ctxaudit` already splits it for the
     token audit; reuse that splitter rather than parsing sentinels again."""
@@ -2300,11 +2300,11 @@ def api_claude_md_get(q, body):
         {'key': 'sessions', 'label': 'SESSIONS — session topics',
          'present': bool(sess), 'tokens': tokens_estimate(sess), 'text': sess,
          'entries': sum(1 for l in sess.splitlines() if l.strip().startswith('- '))},
-        {'key': 'memory', 'label': 'MEMORY — the digest claudectl builds',
+        {'key': 'memory', 'label': 'MEMORY — the digest archeus builds',
          'present': bool(b['memory']), 'tokens': tokens_estimate(b['memory']),
          'text': b['memory']},
         # Both used to be invisible here and counted as "Your prose" — the one
-        # row that promises claudectl never rewrites it. See split_blocks.
+        # row that promises archeus never rewrites it. See split_blocks.
         {'key': 'agents', 'label': 'AGENTS — the subagents installed here',
          'present': bool(b['agents']), 'tokens': tokens_estimate(b['agents']),
          'text': b['agents']},
@@ -2460,7 +2460,7 @@ def api_loop_md_set(q, body):
 
 
 def api_loops(q, body):
-    """Loops claudectl started, with live state read off the process and the
+    """Loops archeus started, with live state read off the process and the
     transcript. See loops.py for why there is nothing else to read."""
     from . import loops
     return {'loops': loops.listing(_cfg(q)),
@@ -2474,12 +2474,12 @@ def api_loop_start(q, body):
     """Start a loop — in a session, or in the OS scheduler.
 
     `kind='session'`: a `/loop` is session-scoped, so starting one IS starting a
-    session; it is a normal claudectl launch (same account, agents, skills,
+    session; it is a normal archeus launch (same account, agents, skills,
     system prompt, add-dirs) whose first typed message is the command.
 
-    `kind='schedule'`: no session at all. claudectl registers a scheduler entry
+    `kind='schedule'`: no session at all. archeus registers a scheduler entry
     that runs headless `claude -p` on the interval, under the chosen account,
-    and keeps running with claudectl closed.
+    and keeps running with archeus closed.
     """
     from . import gui as _gui
     from . import loops
@@ -2624,7 +2624,7 @@ def api_inject_launch(q, body):
     derived here. It used to arrive as an absolute `body['folder']` that was
     joined and read — trusted only because the one caller got it from
     `/api/inject/sessions`, which is not a check. `cfgdir` goes through
-    `PARAM_CHECKS` -> `_cfgdir_ok`, so it must name an account claudectl knows.
+    `PARAM_CHECKS` -> `_cfgdir_ok`, so it must name an account archeus knows.
     """
     import subprocess
     from .context_inject import _write_context_file, CTX_FILE
@@ -2684,7 +2684,7 @@ def _sharpen_descriptions(scope, path):
     """Rewrite agent `description` fields — for one project, or everywhere.
 
     Everywhere means every account's user-level agents, every project's
-    `.claude/agents`, and the claudectl library. Grouped by (name, description)
+    `.claude/agents`, and the archeus library. Grouped by (name, description)
     so the SAME agent installed in twelve projects is one question and twelve
     writes, and one approval gate covers the lot: approving the same rewrite
     twelve times is not consent, it is attrition.
@@ -2948,7 +2948,7 @@ def api_job_start(q, body):
         effort = body.get('effort', '')
         council = bool(body.get('council'))
         # plan under the same account chosen for execution -- otherwise the
-        # plan call silently runs under whatever account claudectl itself is
+        # plan call silently runs under whatever account archeus itself is
         # active as, regardless of what the user picked in the GUI.
         cfgdir = body.get('account') or ''
         # council must route through the SAME channel the user picked for
@@ -3102,14 +3102,14 @@ def api_job_start(q, body):
                 raise RuntimeError(msg or 'update failed')
             return {'message': msg, 'installed': versions.installed_version()}
         jid = start_job('Updating Claude Code' + (f' to {target}' if target else ''), _cu)
-    elif kind == 'claudectl_update':
+    elif kind == 'archeus_update':
         from . import versions
         def _su():
             ok, msg = versions.update_self()
             if not ok:
                 raise RuntimeError(msg or 'update failed')
             return {'message': msg}
-        jid = start_job('Updating claudectl', _su)
+        jid = start_job('Updating archeus', _su)
     elif kind == 'plugin_update':
         from . import versions
         key = str(body.get('key', '') or '')
@@ -3240,7 +3240,7 @@ def _memfn(refresh_memory, path, folder, name):
 # the browser gets reloaded.
 
 def api_plan_last(q, body):
-    """Read back <project>/.claudectl/plan-latest.md, split into the task
+    """Read back <project>/.archeus/plan-latest.md, split into the task
     title write_plan_file() stamps on it and the plan body. {'exists': False}
     if there's no saved plan for this project yet."""
     import re
@@ -3391,7 +3391,7 @@ def api_plugins(q, body):
 
 
 def api_versions(q, body):
-    """claudectl and the installed Claude Code against what has been released,
+    """archeus and the installed Claude Code against what has been released,
     every plugin against what its marketplace offers, and the model catalogue
     against what Anthropic currently serves.
 
@@ -3409,7 +3409,7 @@ def api_versions(q, body):
     mst = _mods.status()
     mst['notices'] = _mods.notices()
     return {'claude': versions.status(refresh=refresh),
-            'claudectl': versions.self_status(refresh=refresh),
+            'archeus': versions.self_status(refresh=refresh),
             'models': mst,
             'plugins': versions.plugin_rows()}
 
@@ -3494,7 +3494,7 @@ def api_worktree_merge(q, body):
     """Merge a worktree branch, behind the standard approval gate.
 
     The diff is shown through diffview.confirm — the same path every other
-    destructive write in claudectl takes — so a merge is never something this
+    destructive write in archeus takes — so a merge is never something this
     endpoint decides on its own.
     """
     from . import worktrees, diffview
@@ -3547,7 +3547,7 @@ def api_output_style_read(q, body):
 
 
 def api_output_style_install(q, body):
-    """Copy a claudectl starter into the user or project scope."""
+    """Copy an archeus starter into the user or project scope."""
     from . import outputstyles
     b = body or {}
     ok, msg = outputstyles.install_starter(

@@ -2,7 +2,7 @@
 
 WHY THIS EXISTS
 ---------------
-claudectl treated "the account" as a process-global, so hooks, plugins,
+archeus treated "the account" as a process-global, so hooks, plugins,
 marketplaces, user agents and the global CLAUDE.md all landed in whichever
 config dir was active when the module was imported — in practice the default
 one. Measured across five configured accounts:
@@ -287,7 +287,7 @@ def apply(d=None, kinds=KINDS, review=None, progress=None):
 
 
 def main(argv=None):
-    """`claudectl sync-accounts [--yes] [--dry-run]` — show the diff, then level up.
+    """`archeus sync-accounts [--yes] [--dry-run]` — show the diff, then level up.
 
     `--yes` IS the review gate on this path, which is why the report above it
     names every plugin and marketplace by hand. The GUI and TUI pass

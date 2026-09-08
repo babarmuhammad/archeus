@@ -101,7 +101,7 @@ def test_installed_state_is_reported_per_account(monkeypatch, tmp_path):
 
 
 def test_one_account_refusing_does_not_abort_the_others(monkeypatch, tmp_path):
-    """statusLine is single-valued and claudectl refuses to clobber someone
+    """statusLine is single-valued and archeus refuses to clobber someone
     else's. That refusal is per account: it must not cost the other accounts
     their install, and it must be reported rather than swallowed."""
     dirs = _accounts(monkeypatch, tmp_path)
@@ -159,7 +159,7 @@ def test_settings_path_for_none_is_still_the_module_attribute(monkeypatch, tmp_p
 def test_claude_config_dir_env_wins_over_the_saved_setting(monkeypatch, tmp_path):
     """The other half of the reported bug.
 
-    claudectl WRITES `CLAUDE_CONFIG_DIR` into the child environment at five
+    archeus WRITES `CLAUDE_CONFIG_DIR` into the child environment at five
     spawn sites to pick the account, but `get_config_dir` never read it back —
     it went straight to the saved setting. So the statusline running inside a
     session launched under another account resolved the wrong dir and labelled

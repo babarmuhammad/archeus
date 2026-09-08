@@ -134,11 +134,11 @@ def pid_alive(pid):
 def wait_and_run(pid, argv, timeout=300, poll=0.5, out=print):
     """Wait for *pid* to exit, then run *argv* and return its exit code.
 
-    This is what lets a program replace its own files: claudectl's upgrade
+    This is what lets a program replace its own files: archeus's upgrade
     rewrites the console script it is running from, which Windows keeps locked
     until the process ends. Lives here rather than in versions.py so the waiting
     process can reach it without importing the package pip is replacing — this
-    module imports only the standard library, nothing from claudectl.
+    module imports only the standard library, nothing from archeus.
 
     `pid_alive` returning None means "cannot tell"; that stops the wait rather
     than hanging on it, and the command's own error is then the honest report.
@@ -149,7 +149,7 @@ def wait_and_run(pid, argv, timeout=300, poll=0.5, out=print):
         pid = 0
     if not argv:
         return 2
-    out('Waiting for claudectl to exit...')
+    out('Waiting for archeus to exit...')
     deadline = time.time() + timeout
     while pid and time.time() < deadline:
         if pid_alive(pid) is not True:
@@ -178,7 +178,7 @@ def kill_tree(proc):
                 proc.kill()
         elif os.getpgid(proc.pid) == proc.pid:
             # Only when the child leads its own group. Otherwise its group is
-            # OURS, and killpg would take down claudectl along with it.
+            # OURS, and killpg would take down archeus along with it.
             os.killpg(proc.pid, 15)
         else:
             proc.kill()

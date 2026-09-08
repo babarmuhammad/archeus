@@ -129,7 +129,7 @@ def test_a_starter_can_be_read_before_it_is_installed(tmp_path):
 
 
 def test_installing_a_starter_produces_an_ordinary_style(tmp_path):
-    """Nothing stays linked to claudectl: what lands on disk is a normal
+    """Nothing stays linked to archeus: what lands on disk is a normal
     markdown style the user owns, listed like any other."""
     cfg = str(tmp_path / 'cfg')
     ok, msg = outputstyles.install_starter('Reviewer', None, cfg)

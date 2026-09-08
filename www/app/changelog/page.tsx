@@ -11,7 +11,7 @@ const RELEASES = splitHeadings(CHANGELOG_HTML);
 export const metadata = meta({
   title: 'Changelog',
   description:
-    'Every claudectl release and what changed in it, straight from the repository CHANGELOG.md. Semantic versioning, Keep a Changelog format.',
+    'Every archeus release and what changed in it, straight from the repository CHANGELOG.md. Semantic versioning, Keep a Changelog format.',
   path: '/changelog',
 });
 

@@ -149,13 +149,13 @@ ROUTES = {
              'proj': '/demo/acme-api'},
             {'ts': _NOW - 400, 'lvl': 'warn', 'src': 'quota',
              'msg': 'session limit full (resets 15:00)',
-             'detail': 'claudectl did not start a Claude call it wanted to make',
+             'detail': 'archeus did not start a Claude call it wanted to make',
              'proj': ''},
             {'ts': _NOW - 7200, 'lvl': 'info', 'src': 'scheduler',
              'msg': 'auto-memory pass: 1 refreshed, more still owed',
              'detail': '', 'proj': ''}],
-        'path': 'C:/Users/demo/.claude/claudectl-events.jsonl',
-        'cap': 262144, 'debug_log': 'C:/Temp/claudectl.log'},
+        'path': 'C:/Users/demo/.claude/archeus-events.jsonl',
+        'cap': 262144, 'debug_log': 'C:/Temp/archeus.log'},
     '/api/accounts': {'accounts': [
         {'name': 'default', 'resolved': '~/.claude', 'active': True, 'dir': ''},
         {'name': 'teamA', 'resolved': '~/.claude-teamA', 'active': False, 'dir': 'w'}]},
@@ -285,11 +285,11 @@ ROUTES = {
                     'dirty': _NOW - 60, 'manifest': _NOW - 5400,
                     'snapshots': _NOW - 172800},
         'est': {'digest_tokens': 232, 'hook_budget': 600, 'rules': [
-            {'file': 'claudectl-mem-app-api.md', 'tokens': 372,
+            {'file': 'archeus-mem-app-api.md', 'tokens': 372,
              'unit': 'app/api', 'glob': 'api/**'},
-            {'file': 'claudectl-mem-app-billing.md', 'tokens': 288,
+            {'file': 'archeus-mem-app-billing.md', 'tokens': 288,
              'unit': 'app/billing', 'glob': 'billing/**'},
-            {'file': 'claudectl-mem-app-root.md', 'tokens': 145,
+            {'file': 'archeus-mem-app-root.md', 'tokens': 145,
              'unit': 'app/(root)', 'glob': '*'}]}},
     '/api/memory/progress': {'progress': None, 'last': {
         'ok': False, 'at': _NOW - 900,
@@ -399,7 +399,7 @@ ROUTES = {
             {'key': 'sessions', 'label': 'SESSIONS — session topics',
              'present': True, 'tokens': 318, 'entries': 12,
              'text': '## Session topics\n- **a1b2c3d4** (44 msgs): checkout retries\n'},
-            {'key': 'memory', 'label': 'MEMORY — the digest claudectl builds',
+            {'key': 'memory', 'label': 'MEMORY — the digest archeus builds',
              'present': True, 'tokens': 232,
              'text': '## Project memory\n- **app/api** — checkout, retries\n'},
             # both used to be invisible here and counted as "Your prose"
@@ -442,8 +442,8 @@ ROUTES = {
         {'label': 'global ~/.claude/CLAUDE.md', 'tokens': 640, 'lazy': False,
          'warnings': ['> 500 tok — loads in EVERY project'],
          'path': 'C:/Users/x/.claude/CLAUDE.md'},
-        {'label': 'rule claudectl-mem-app-api.md', 'tokens': 372, 'lazy': True,
-         'warnings': [], 'path': 'C:/x/alpha/.claude/rules/claudectl-mem-app-api.md'},
+        {'label': 'rule archeus-mem-app-api.md', 'tokens': 372, 'lazy': True,
+         'warnings': [], 'path': 'C:/x/alpha/.claude/rules/archeus-mem-app-api.md'},
         # tokens=None is unknowable-statically and rendered as literal `null`
         # for its whole life — the row that proves the fix
         {'label': 'MCP servers (2) — rough estimate', 'tokens': None, 'lazy': False,
@@ -502,11 +502,11 @@ ROUTES = {
     '/api/plugins/provenance': {'provenance': {'skill': {'a': 'demo@official'}}},
     # one plugin behind its marketplace and a Claude Code two releases behind:
     # the update buttons only exist in that state, so the stub has to be in it.
-    # Same rule for the other two subjects on this route — claudectl with an
+    # Same rule for the other two subjects on this route — archeus with an
     # upgrade waiting, and a model catalogue holding a retired pin, because the
     # warning rows are the only part of those cards worth auditing.
     '/api/versions': {
-        'claudectl': {'installed': '1.6.0', 'latest': '1.7.0', 'mode': 'pip',
+        'archeus': {'installed': '1.6.0', 'latest': '1.7.0', 'mode': 'pip',
                       'update': True, 'current': False, 'error': ''},
         'models': {'count': 4, 'families': 4, 'live': True, 'age': 3600,
                    'fetched': 1, 'error': '',
@@ -601,7 +601,7 @@ ROUTES = {
                      'exists': True},
     # one loop still open and one that ended: the board's two states, and the
     # only place the turn counter and the End-session button are rendered
-    '/api/loops': {'registry': 'C:/x/claudectl-loops.json', 'loops': [
+    '/api/loops': {'registry': 'C:/x/archeus-loops.json', 'loops': [
         {'id': 'aaaa1111', 'name': 'acme-api', 'path': '/demo/acme-api',
          'encoded': 'demo-acme-api', 'cfgdir': '', 'interval': '15m',
          'prompt': 'check CI', 'text': '/loop 15m check CI', 'pid': 4242,
@@ -803,7 +803,7 @@ def main():
         rows = pg.evaluate("document.querySelectorAll('#dashProjects .hrow').length")
         check('project rows reconciled', rows == 2, f'{rows} rows')
 
-        # Activity reads LIVE SESSIONS across accounts, not claudectl's own jobs.
+        # Activity reads LIVE SESSIONS across accounts, not archeus's own jobs.
         # It used to read the latter and so sat at 0 on a busy workspace.
         foot = pg.evaluate("document.querySelector('#iJobsFoot').textContent")
         check('activity says idle when nothing is live', 'idle' in foot, foot)
@@ -959,7 +959,7 @@ def main():
         # The rAF chain parking was never the whole story. Chromium throttles
         # keyframes for a HIDDEN page; an unfocused window is not hidden, and a
         # Qt one is never `document.hidden` at all. So a world's full-viewport
-        # overlay and every infinite animation kept running while claudectl sat
+        # overlay and every infinite animation kept running while archeus sat
         # in the background — which is what "it flickers a lot when I'm on
         # another app" was. Asserted on COMPUTED style, because the whole class
         # of bug here is a rule that exists but loses on specificity or source
@@ -1161,7 +1161,7 @@ def main():
         txt=pg.evaluate("document.querySelector('#content').innerText")
         check('the output-style page says what is in force','in force' in txt)
         check('…and which file pins it','settings.json' in txt)
-        check('starters are offered','Starters from claudectl' in txt)
+        check('starters are offered','Starters from archeus' in txt)
         before=len(errs)
         pg.evaluate("osView('default')")
         pg.wait_for_timeout(500)
@@ -1409,9 +1409,9 @@ def main():
               bool(blk) and blk['txt'].count('tok') >= 7)
         # who wrote it is the FIRST question a reader has, and the row used to
         # make them infer it. The subagent table is the one that was labelled
-        # "your prose" while claudectl rewrote it on every agent change.
+        # "your prose" while archeus rewrote it on every agent change.
         check('every block says who writes it',
-              bool(blk) and blk['txt'].count('claudectl writes it') == 5
+              bool(blk) and blk['txt'].count('archeus writes it') == 5
               and blk['txt'].count('you write it') == 2, blk and blk['txt'][:0])
         check('every block says what it IS, not just who wrote it',
               bool(blk) and 'when to delegate to each' in blk['txt']

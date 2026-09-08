@@ -1,4 +1,4 @@
-"""The guard that stops claudectl spending an account with nothing left.
+"""The guard that stops archeus spending an account with nothing left.
 
 Before this, every internal `claude -p` call launched blind: a full 5-hour
 window produced a nonzero exit reported as "No output from Claude" while a

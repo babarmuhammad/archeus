@@ -2,7 +2,7 @@
 
 /**
  * A command with a copy button — the one interaction the landing page owes the
- * visitor, since "download claudectl" really means "run this line".
+ * visitor, since "download archeus" really means "run this line".
  *
  * Styled to match the `code` case in components/doc/Blocks.tsx, so a command
  * looks the same wherever on the site it appears.

@@ -33,7 +33,7 @@ const SHOTS: Record<string, ReactNode> = {
         width={1600}
         height={1000}
         sizes={HALF}
-        alt="The claudectl session browser listing past Claude Code sessions with topic, message count and age."
+        alt="The archeus session browser listing past Claude Code sessions with topic, message count and age."
         caption="Every session in a project, searchable and resumable."
       />
       <Shot
@@ -97,7 +97,7 @@ const SHOTS: Record<string, ReactNode> = {
         src="/img/tui-main.png"
         width={836}
         height={477}
-        alt="The claudectl terminal UI main screen, listing projects with usage bars."
+        alt="The archeus terminal UI main screen, listing projects with usage bars."
         caption="And the terminal UI, which has parity with all of it."
       />
     </div>
@@ -118,7 +118,7 @@ export default function FeaturesPage() {
         lead={FEATURES.intro}
       >
         <Cta href="/download" primary>
-          Install claudectl
+          Install archeus
         </Cta>
         <Cta href={SITE.docs}>Read the documentation</Cta>
       </PageHeader>
@@ -146,7 +146,7 @@ export default function FeaturesPage() {
             width={1600}
             height={1000}
             priority
-            alt="The claudectl desktop dashboard: projects, recent sessions, usage and job status on one screen."
+            alt="The archeus desktop dashboard: projects, recent sessions, usage and job status on one screen."
             caption="The dashboard: every project Claude Code has opened, with its sessions, memory and usage."
           />
         </div>

@@ -28,5 +28,5 @@ For each finding: **severity** (critical/high/medium/low), **location** (`file:l
 - Rank by real-world exploitability, not theoretical purity.
 - If you find nothing solid, say so plainly.
 
-<!-- claudectl starter skill. Inspired by the security plugins in
+<!-- archeus starter skill. Inspired by the security plugins in
      anthropics/claude-plugins-official and community security skills. -->

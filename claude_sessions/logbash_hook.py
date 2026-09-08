@@ -2,10 +2,10 @@
 
 Two bindings, two logs, and the split matters:
 
-- **PostToolUse** appends the Bash command to `.claudectl/bash-log.txt`. That
+- **PostToolUse** appends the Bash command to `.archeus/bash-log.txt`. That
   feeds `health.frequent_bash_commands`, whose question is "what does this
   project run a lot" — an allowlist candidate list.
-- **PermissionDenied** appends a structured record to `.claudectl/denied.jsonl`.
+- **PermissionDenied** appends a structured record to `.archeus/denied.jsonl`.
 
 Both used to write the same bash log, which made a denial indistinguishable
 from a success in the one file that claimed to teach the deny-rule generator
@@ -71,7 +71,7 @@ def main(argv=None):
         return 0
     try:
         from claude_sessions import store
-        d = store.claudectl_dir(cwd)
+        d = store.workdir(cwd)
         p = os.path.join(d, 'bash-log.txt')
         with open(p, 'a', encoding='utf-8') as f:
             f.write(cmd + '\n')

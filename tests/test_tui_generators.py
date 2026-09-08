@@ -264,13 +264,13 @@ def test_a_fenced_section_goes_back_where_its_marker_was(monkeypatch, tmp_path):
     with open(md_path, 'w', encoding='utf-8') as f:
         f.write(text)
     monkeypatch.setattr(memory, '_claude_stdin', lambda *a, **k:
-                        "# alpha\n\n@@CLAUDECTL_KEEP_0@@\n\n- run: pytest -q here\n"
+                        "# alpha\n\n@@ARCHEUS_KEEP_0@@\n\n- run: pytest -q here\n"
                         "- package manager: uv\n- never touch the dist/ directory\n")
     monkeypatch.setattr(diffview, 'confirm', lambda *a, **k: True)
     monkeypatch.setattr(ui, 'flash', lambda *a, **k: None)
     assert claude_md.ai_compress_claude_md(proj, folder) is True
     out = open(md_path, encoding='utf-8').read()
-    assert 'KEEP ME EXACTLY' in out and '@@CLAUDECTL_KEEP_0@@' not in out
+    assert 'KEEP ME EXACTLY' in out and '@@ARCHEUS_KEEP_0@@' not in out
     # placed where the marker was, i.e. before the compressed line
     assert out.index('KEEP ME EXACTLY') < out.index('- run: pytest -q here')
 

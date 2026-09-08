@@ -26,14 +26,14 @@ COMPACT_HEADING = '# Compact instructions'
 
 
 #: the user-owned fence. Every other sentinel in this codebase protects
-#: claudectl's output from a human editing it; this one is the reverse, and it
+#: archeus's output from a human editing it; this one is the reverse, and it
 #: is the answer to "if I compress, do I lose what I wrote".
 _KEEP_RE = re.compile(re.escape(_c._KEEP_START) + r'.*?' + re.escape(_c._KEEP_END),
                       re.S)
 
 
 def keep_regions(text):
-    """How many CLAUDECTL:KEEP regions the text fences off."""
+    """How many ARCHEUS:KEEP regions the text fences off."""
     return len(_KEEP_RE.findall(text or ''))
 
 
@@ -70,10 +70,10 @@ def split_blocks(text):
     rest. Returns {'autogen','sessions','memory','agents','loop','manual'}
     ('' when absent).
 
-    `agents` and `loop` were missing, so claudectl's own generated tables — the
+    `agents` and `loop` were missing, so archeus's own generated tables — the
     subagent delegation table and the loop log — counted as MANUAL everywhere
     this is used: the token audit attributed them to your prose, the CLAUDE.md
-    tab labelled them "yours — claudectl never rewrites it unprompted", and AI
+    tab labelled them "yours — archeus never rewrites it unprompted", and AI
     compression was handed them to reword. See `_MACHINE_BLOCKS`.
     """
     manual = text or ''
@@ -111,7 +111,7 @@ def _rule_is_lazy(text):
     for ln in lines[1:12]:
         if ln.strip() == '---':
             break
-        # `paths:` ONLY. Accepting `globs:` here is what let claudectl's own
+        # `paths:` ONLY. Accepting `globs:` here is what let archeus's own
         # rule files — which wrote `globs:` — be counted as lazy while Claude
         # Code loaded every one of them into every session. The audit's whole
         # job is the always-on total, so a false lazy is the worst answer it
@@ -279,7 +279,7 @@ def audit_screen(project_path, proj_folder, project_name):
     while True:
         items = audit_items(project_path, proj_folder)
         total = audit_total(items)
-        frame = [render.header('CLAUDECTL', project_name, 'CONTEXT WEIGHT'), '',
+        frame = [render.header('ARCHEUS', project_name, 'CONTEXT WEIGHT'), '',
                  f"  {C_DIM}Estimated tokens auto-loaded on every turn of a session "
                  f"here (chars/4):{C_RESET}", '']
         for it in items:

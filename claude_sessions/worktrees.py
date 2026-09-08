@@ -3,7 +3,7 @@
 Every tool in the parallel-agent category — Conductor, Crystal/Nimbalyst, Claude
 Squad, ccpm, vibe-kanban — is built on the same idea: run several agents at once
 in isolated git worktrees, then review and merge the diffs in one place.
-claudectl could already *launch* into a worktree (`-w`) and had no idea what
+archeus could already *launch* into a worktree (`-w`) and had no idea what
 happened next.
 
 WHAT THIS IS NOT
@@ -12,7 +12,7 @@ Not a clone of Conductor. About 70% of the parts were already here — worktree
 launch, background jobs with approval gates, `diffview`, multi-account, and the
 semantic memory — and what was missing is only the view that joins them up.
 
-The join is the interesting bit and it is one nobody else can make: claudectl
+The join is the interesting bit and it is one nobody else can make: archeus
 knows which SESSION is in which worktree, because it knows both. A session's
 transcript records its `cwd`; a worktree is a path. Match them and the board can
 say "the refactor is running in ../wt-refactor, it has touched 9 files, and it
@@ -273,7 +273,7 @@ def merge_into_main(project_path, branch):
     """Merge a worktree's branch into the current branch of the main tree.
 
     Gated by the caller through `diffview.confirm` — the same approval path
-    every other write in claudectl goes through — so nothing here decides on
+    every other write in archeus goes through — so nothing here decides on
     its own that a merge is a good idea. `--no-ff` keeps the parallel work
     legible as its own line in the history, which is the whole reason it was
     run in a separate worktree.

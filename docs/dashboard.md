@@ -1,7 +1,7 @@
 ---
-title: claudectl project dashboard
+title: archeus project dashboard
 description: >-
-  Live-ish numbers for claudectl — release version, PyPI downloads, GitHub stars, test
+  Live-ish numbers for archeus — release version, PyPI downloads, GitHub stars, test
   count, source size and commit activity. Regenerated from PyPI and the GitHub API.
 ---
 
@@ -15,10 +15,10 @@ itself — do not edit by hand. Refreshed weekly by `.github/workflows/metrics.y
 
 | | |
 |---|---|
-| Version in this repository | **1.9.0** |
-| Published on PyPI | 1.9.0 |
-| Latest upload | 2026-09-04 |
-| Releases to date | 6 |
+| Version in this repository | **2.0.0** |
+| Published on PyPI | not yet published |
+| Latest upload | — |
+| Releases to date | — |
 | License | MIT |
 | Runtime dependencies | **0** |
 
@@ -26,11 +26,11 @@ itself — do not edit by hand. Refreshed weekly by `.github/workflows/metrics.y
 
 ## Downloads
 
-From [pypistats.org](https://pypistats.org/packages/claudectl), mirrors excluded.
+From [pypistats.org](https://pypistats.org/packages/archeus), mirrors excluded.
 
 | Last day | Last week | Last month |
 |---|---|---|
-| 9 | 439 | 703 |
+| — | — | — |
 
 ## Repository
 
@@ -40,19 +40,19 @@ From [pypistats.org](https://pypistats.org/packages/claudectl), mirrors excluded
 | Forks | 2 |
 | Open issues and pull requests | 0 |
 | First commit | 2026-06-11 |
-| Last push | 2026-09-04 |
+| Last push | 2026-09-08 |
 
 ## Codebase
 
 | | |
 |---|---|
-| Python files | 192 |
-| Lines of Python | 61,309 |
-| Tests | 1,479 |
+| Python files | 198 |
+| Lines of Python | 62,520 |
+| Tests | 1,493 |
 | Documentation pages | 28 |
-| Commits | 148 |
-| Commits in the last 30 days | 71 |
+| Commits | 156 |
+| Commits in the last 30 days | 79 |
 
-Tests run on Windows, macOS and Linux across the supported Python versions on every push — see [CI](https://github.com/babarmuhammad/claudectl/actions).
+Tests run on Windows, macOS and Linux across the supported Python versions on every push — see [CI](https://github.com/babarmuhammad/archeus/actions).
 
-*Generated 2026-09-07 09:26 UTC.*
+*Generated 2026-09-08 13:07 UTC.*

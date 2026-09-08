@@ -52,7 +52,7 @@ def test_an_unknown_project_is_empty_not_an_error(acct):
 
 def test_usage_reports_what_is_actually_used(acct):
     """The only record of which skills, plugins and agents are live rather than
-    dead weight — a question claudectl could not answer at all."""
+    dead weight — a question archeus could not answer at all."""
     now_ms = int(time.time() * 1000)
     _client_json(acct, {
         'skillUsage': {'rare': {'usageCount': 1, 'lastUsedAt': now_ms},
@@ -191,8 +191,8 @@ def test_applying_deletes_only_what_was_reported(acct):
 
 
 def test_a_named_session_is_never_deleted(acct):
-    """claudectl's own state points at it: deleting the transcript breaks
-    claudectl, not just Claude Code."""
+    """archeus's own state points at it: deleting the transcript breaks
+    archeus, not just Claude Code."""
     proj = acct / 'projects' / 'D--x'
     proj.mkdir(parents=True)
     f = proj / 'aaaa.jsonl'
@@ -217,7 +217,7 @@ def test_a_tagged_session_is_never_deleted(acct):
 
 def test_the_sidecars_are_not_swept_with_the_transcripts(acct):
     """projects/ is pruned per FILE: the same folders hold the names, tags,
-    extra paths and system prompts claudectl writes."""
+    extra paths and system prompts archeus writes."""
     proj = acct / 'projects' / 'D--x'
     proj.mkdir(parents=True)
     sp = proj / 'system-prompt.txt'
@@ -350,8 +350,8 @@ def test_a_nested_key_never_clobbers_its_siblings(tmp_path, monkeypatch):
 
 
 def test_clearing_a_nested_key_prunes_a_block_it_emptied(tmp_path):
-    """An empty `"permissions": {}` is noise claudectl put there and should
-    take back — but only when claudectl is what created it."""
+    """An empty `"permissions": {}` is noise archeus put there and should
+    take back — but only when archeus is what created it."""
     import json
     acct = tmp_path / 'acct'
     acct.mkdir()
@@ -384,7 +384,7 @@ def test_fallback_model_is_a_chain_not_a_string(tmp_path):
 
 def test_nothing_writes_claude_code_state():
     """`.claude.json`, the daemon roster and the teams directory belong to
-    Claude Code. claudectl reads them and must never write one.
+    Claude Code. archeus reads them and must never write one.
 
     A static gate, not a runtime snapshot: the conftest fixture that used to
     watch `.claude.json` could not tell a test's write from the live Claude Code
@@ -404,7 +404,7 @@ def test_nothing_writes_claude_code_state():
 
 
 def test_a_corrupt_claude_json_is_not_quarantined(monkeypatch, tmp_path):
-    """Moving a file aside is right for a file claudectl owns — the next write
+    """Moving a file aside is right for a file archeus owns — the next write
     would destroy the evidence. `.claude.json` is Claude Code's and is rewritten
     constantly, so an unparseable read most likely caught a live write in
     flight; renaming it out from under a running session is far worse than

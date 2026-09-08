@@ -3,7 +3,7 @@ name: release
 # Publishes to PyPI via trusted publishing (OIDC) — no API token is stored
 # anywhere. Register the publisher on PyPI BEFORE pushing the first tag:
 #   https://pypi.org/manage/account/publishing/
-#   owner: babarmuhammad   repo: claudectl
+#   owner: babarmuhammad   repo: archeus
 #   workflow: release.yml  environment: pypi
 #
 # Inert until a v* tag is pushed.

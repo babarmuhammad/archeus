@@ -41,10 +41,10 @@ const table = (head: string[], rows: string[][]): Block => ({ kind: 'table', hea
 
 export const HOME: Doc = {
   slug: '',
-  title: 'claudectl — the workspace layer for Claude Code',
+  title: 'archeus — the workspace layer for Claude Code',
   h1: 'The workspace layer for Claude Code',
   description:
-    'claudectl gives Claude Code persistent per-project memory, a searchable session archive, an interactive architecture graph, MCP management and per-project launch control. Pure Python standard library, zero runtime dependencies, MIT.',
+    'archeus gives Claude Code persistent per-project memory, a searchable session archive, an interactive architecture graph, MCP management and per-project launch control. Pure Python standard library, zero runtime dependencies, MIT.',
   intro:
     'Your projects stop being a stream of chats and start being workspaces — with memory, history and per-project launch control.',
   sections: [
@@ -55,7 +55,7 @@ export const HOME: Doc = {
       lead:
         'Persistent project memory, every session you have ever had, and control over how the next one starts. A terminal UI and a desktop GUI over the same engine.',
       blocks: [
-        code('pipx install claudectl', 'install'),
+        code('pipx install archeus', 'install'),
         ul([
           'Python 3.10 or newer, and the Claude Code CLI you already have.',
           'No API key — it uses your existing Claude Code authentication.',
@@ -78,7 +78,7 @@ export const HOME: Doc = {
           'The context problem is worse, because it is recurring. CLAUDE.md rides in the model context on every single message, so its size is a permanent per-turn tax. The usual failure is not that the file is wrong — it is that it is too big to justify and too tedious to prune. A big project either starves the agent or floods it.',
         ),
         p(
-          'claudectl sits in front of Claude Code and fixes both. Pick a project, see every session you have ever had in it, and launch with the model, effort, permissions and context you meant.',
+          'archeus sits in front of Claude Code and fixes both. Pick a project, see every session you have ever had in it, and launch with the model, effort, permissions and context you meant.',
         ),
       ],
     },
@@ -142,7 +142,7 @@ export const HOME: Doc = {
           },
           {
             t: 'Multiple accounts',
-            d: 'Claude Code picks its account through CLAUDE_CONFIG_DIR. claudectl detects every configured account, merges their projects into one list, shows per-account usage side by side, and sets the variable for you at launch.',
+            d: 'Claude Code picks its account through CLAUDE_CONFIG_DIR. archeus detects every configured account, merges their projects into one list, shows per-account usage side by side, and sets the variable for you at launch.',
           },
           {
             t: 'Launch control',
@@ -160,7 +160,7 @@ export const HOME: Doc = {
       eyebrow: 'Station 05',
       heading: 'Where the tokens go',
       lead:
-        'CLAUDE.md and memory files ride in the context on every message. claudectl makes that cost visible, then cuts it.',
+        'CLAUDE.md and memory files ride in the context on every message. archeus makes that cost visible, then cuts it.',
       blocks: [
         dl([
           {
@@ -177,7 +177,7 @@ export const HOME: Doc = {
           },
           {
             t: 'Cheaper models for the grunt work',
-            d: 'claudectl’s own internal calls default to a cheap economy model. Plan → Execute runs the expensive model once for the plan and a cheap — or, through OmniRoute, a free — one for execution.',
+            d: 'archeus’s own internal calls default to a cheap economy model. Plan → Execute runs the expensive model once for the plan and a cheap — or, through OmniRoute, a free — one for execution.',
           },
           {
             t: 'Measured, not asserted',
@@ -189,12 +189,12 @@ export const HOME: Doc = {
     {
       id: 'get',
       eyebrow: 'Station 06',
-      heading: 'Get claudectl',
+      heading: 'Get archeus',
       lead: 'Four ways in. All of them are free, MIT licensed and take one line.',
       blocks: [
-        code('pipx install claudectl\nclaudectl', 'pipx — recommended'),
-        code('pip install claudectl', 'pip'),
-        code('/plugin marketplace add babarmuhammad/claudectl\n/plugin install claudectl@claudectl', 'Claude Code plugin'),
+        code('pipx install archeus\narcheus', 'pipx — recommended'),
+        code('pip install archeus', 'pip'),
+        code('/plugin marketplace add babarmuhammad/archeus\n/plugin install archeus@archeus', 'Claude Code plugin'),
         p(
           'Or clone the repository and run python claude-sessions.py. There is nothing to build and nothing to install alongside it.',
         ),
@@ -209,9 +209,9 @@ export const FEATURES: Doc = {
   slug: 'features',
   title: 'Features',
   description:
-    'Everything claudectl does — sessions and search, project memory, the architecture graph, Plan to Execute, multiple accounts, MCP servers, agents, hooks, the status line and the desktop GUI.',
+    'Everything archeus does — sessions and search, project memory, the architecture graph, Plan to Execute, multiple accounts, MCP servers, agents, hooks, the status line and the desktop GUI.',
   intro:
-    'Everything claudectl does, grouped. It is one engine behind two interfaces: a keyboard-first terminal UI and a desktop GUI with full parity.',
+    'Everything archeus does, grouped. It is one engine behind two interfaces: a keyboard-first terminal UI and a desktop GUI with full parity.',
   sections: [
     {
       id: 'sessions',
@@ -324,7 +324,7 @@ export const FEATURES: Doc = {
       heading: 'Compared with the alternatives',
       blocks: [
         table(
-          ['', 'Bare Claude Code', 'Hand-maintained CLAUDE.md', 'claudectl'],
+          ['', 'Bare Claude Code', 'Hand-maintained CLAUDE.md', 'archeus'],
           [
             ['Browse past sessions', '/resume, current directory, recent only', 'No', 'Every session, project and account'],
             ['Search session content', 'No', 'No', 'Yes'],
@@ -340,7 +340,7 @@ export const FEATURES: Doc = {
     },
     {
       id: 'not',
-      heading: 'What claudectl does not do',
+      heading: 'What archeus does not do',
       lead: 'Stated plainly, because a feature page that only lists strengths is not useful.',
       blocks: [
         ul([
@@ -360,28 +360,28 @@ export const FEATURES: Doc = {
 
 export const DOWNLOAD: Doc = {
   slug: 'download',
-  title: 'Download claudectl',
+  title: 'Download archeus',
   description:
-    'Every way to install claudectl — pipx, pip, a GitHub release, a git checkout or the Claude Code plugin. Python 3.10+, zero runtime dependencies, MIT licensed.',
+    'Every way to install archeus — pipx, pip, a GitHub release, a git checkout or the Claude Code plugin. Python 3.10+, zero runtime dependencies, MIT licensed.',
   intro:
-    'claudectl is a pure-Python package with no runtime dependencies. Any of these takes one line, and none of them needs an API key — it uses the Claude Code authentication you already have.',
+    'archeus is a pure-Python package with no runtime dependencies. Any of these takes one line, and none of them needs an API key — it uses the Claude Code authentication you already have.',
   sections: [
     {
       id: 'pipx',
       heading: 'pipx — recommended',
       lead: 'Installs into its own environment and puts one command on your PATH.',
       blocks: [
-        code('pipx install claudectl\nclaudectl'),
-        p('Upgrade later with pipx upgrade claudectl, or from the Updates screen inside claudectl.'),
+        code('pipx install archeus\narcheus'),
+        p('Upgrade later with pipx upgrade archeus, or from the Updates screen inside archeus.'),
       ],
     },
     {
       id: 'pip',
       heading: 'pip',
       blocks: [
-        code('pip install claudectl\nclaudectl'),
+        code('pip install archeus\narcheus'),
         p(
-          'Use a virtual environment if you would rather not install into your system Python. The package installs one console script, claudectl.',
+          'Use a virtual environment if you would rather not install into your system Python. The package installs one console script, archeus.',
         ),
       ],
     },
@@ -390,9 +390,9 @@ export const DOWNLOAD: Doc = {
       heading: 'Claude Code plugin',
       lead: 'If you would rather stay inside the session.',
       blocks: [
-        code('/plugin marketplace add babarmuhammad/claudectl\n/plugin install claudectl@claudectl'),
+        code('/plugin marketplace add babarmuhammad/archeus\n/plugin install archeus@archeus'),
         p(
-          'The plugin ships commands and skills. It deliberately ships no hooks: claudectl’s own hook manager already places the recall, worklog and guard hooks per account, and giving one settings.json entry two owners means installing both runs the same hook twice.',
+          'The plugin ships commands and skills. It deliberately ships no hooks: archeus’s own hook manager already places the recall, worklog and guard hooks per account, and giving one settings.json entry two owners means installing both runs the same hook twice.',
         ),
       ],
     },
@@ -401,7 +401,7 @@ export const DOWNLOAD: Doc = {
       heading: 'From a git checkout',
       blocks: [
         code(
-          'git clone https://github.com/babarmuhammad/claudectl.git\ncd claudectl\npython claude-sessions.py          # terminal UI\npython claude-sessions.py --gui    # desktop GUI',
+          'git clone https://github.com/babarmuhammad/archeus.git\ncd archeus\npython claude-sessions.py          # terminal UI\npython claude-sessions.py --gui    # desktop GUI',
         ),
         p(
           'There is nothing to build. A checkout is told to git pull when it updates itself, rather than having a release installed over it.',
@@ -413,7 +413,7 @@ export const DOWNLOAD: Doc = {
       heading: 'What a release contains',
       blocks: [
         ul([
-          'The claudectl package: the terminal UI, the desktop GUI, the memory engine, the connections engine and the hook, agent and skill managers.',
+          'The archeus package: the terminal UI, the desktop GUI, the memory engine, the connections engine and the hook, agent and skill managers.',
           'Bundled starter skills and 31 hook templates.',
           'The Claude Code plugin manifest, with commands and skills generated from the package so they cannot fall behind it.',
           'A signed source distribution and a wheel on PyPI. Versioning is semantic; the changelog follows Keep a Changelog.',
@@ -446,9 +446,9 @@ export const ARCHITECTURE: Doc = {
   slug: 'architecture',
   title: 'Architecture',
   description:
-    'How claudectl is built — the connections engine, the memory graph, the job runner, the local HTTP API behind the GUI, and the interactive dependency graph it draws of your own project.',
+    'How archeus is built — the connections engine, the memory graph, the job runner, the local HTTP API behind the GUI, and the interactive dependency graph it draws of your own project.',
   intro:
-    'claudectl is one engine with two front ends. Everything below runs locally, on the standard library, against files Claude Code already writes.',
+    'archeus is one engine with two front ends. Everything below runs locally, on the standard library, against files Claude Code already writes.',
   sections: [
     {
       id: 'graph',
@@ -487,7 +487,7 @@ export const ARCHITECTURE: Doc = {
           },
           {
             t: 'Claude Code’s own state',
-            d: 'settings.json and the plugin caches are read-modify-written atomically, never rewritten. claudectl shares those files with Claude Code, so a half-written one breaks your session, not just this tool.',
+            d: 'settings.json and the plugin caches are read-modify-written atomically, never rewritten. archeus shares those files with Claude Code, so a half-written one breaks your session, not just this tool.',
           },
         ]),
       ],
@@ -514,9 +514,9 @@ export const COMMUNITY: Doc = {
   slug: 'community',
   title: 'Community',
   description:
-    'Where to report a claudectl bug, ask a question, propose a feature and read the code of conduct.',
+    'Where to report an archeus bug, ask a question, propose a feature and read the code of conduct.',
   intro:
-    'claudectl is a young project with a small user base. Bug reports are genuinely useful, especially from macOS and Linux, where there is less real-world use than on Windows.',
+    'archeus is a young project with a small user base. Bug reports are genuinely useful, especially from macOS and Linux, where there is less real-world use than on Windows.',
   sections: [
     {
       id: 'help',
@@ -525,7 +525,7 @@ export const COMMUNITY: Doc = {
         dl([
           {
             t: 'Something is broken',
-            d: 'Open an issue. Include your platform, Python version, the claudectl version and what you ran. If a screen faulted, the traceback matters more than the description.',
+            d: 'Open an issue. Include your platform, Python version, the archeus version and what you ran. If a screen faulted, the traceback matters more than the description.',
           },
           {
             t: 'A question, or an idea',
@@ -563,11 +563,11 @@ export const COMMUNITY: Doc = {
 
 export const ABOUT: Doc = {
   slug: 'about',
-  title: 'About claudectl',
+  title: 'About archeus',
   description:
-    'Who builds claudectl, the MIT licence it ships under, and the Claude Code ecosystem projects its memory, review, skills and model routing are built on.',
+    'Who builds archeus, the MIT licence it ships under, and the Claude Code ecosystem projects its memory, review, skills and model routing are built on.',
   intro:
-    'claudectl is built and maintained by Babar Muhammad Anas. It is MIT licensed, free, and has no subscription and no API key of its own.',
+    'archeus is built and maintained by Babar Muhammad Anas. It is MIT licensed, free, and has no subscription and no API key of its own.',
   sections: [
     {
       id: 'why',
@@ -582,7 +582,7 @@ export const ABOUT: Doc = {
       id: 'credits',
       heading: 'Credits & inspiration',
       lead:
-        'claudectl is built on ideas from the wider Claude Code ecosystem. With thanks:',
+        'archeus is built on ideas from the wider Claude Code ecosystem. With thanks:',
       blocks: [
         dl([
           {
@@ -591,7 +591,7 @@ export const ABOUT: Doc = {
           },
           {
             t: 'Anthropic’s claude-code code-review plugin',
-            d: 'The confidence-scoring, high-threshold, CLAUDE.md-compliance review pattern behind claudectl review.',
+            d: 'The confidence-scoring, high-threshold, CLAUDE.md-compliance review pattern behind archeus review.',
           },
           {
             t: 'thedotmack/claude-mem',
@@ -632,7 +632,7 @@ export const ABOUT: Doc = {
       heading: 'Licence',
       blocks: [
         p(
-          'MIT. Use it, fork it, ship it. claudectl uses your existing Claude Code authentication and adds no subscription and no API key of its own.',
+          'MIT. Use it, fork it, ship it. archeus uses your existing Claude Code authentication and adds no subscription and no API key of its own.',
         ),
       ],
     },
@@ -643,18 +643,18 @@ export const ABOUT: Doc = {
 
 export const CONTRIBUTING: Doc = {
   slug: 'contributing',
-  title: 'Contributing to claudectl',
+  title: 'Contributing to archeus',
   description:
-    'How to work on claudectl — the development setup, the test suite as a contract, the lint gate, and what makes a change land.',
+    'How to work on archeus — the development setup, the test suite as a contract, the lint gate, and what makes a change land.',
   intro:
-    'claudectl has no build step and no runtime dependencies, so getting from a clone to a running copy is one command.',
+    'archeus has no build step and no runtime dependencies, so getting from a clone to a running copy is one command.',
   sections: [
     {
       id: 'setup',
       heading: 'Setting up',
       blocks: [
         code(
-          'git clone https://github.com/babarmuhammad/claudectl.git\ncd claudectl\npython claude-sessions.py          # terminal UI\npython claude-sessions.py --gui    # desktop GUI\npython -m pytest                   # the suite',
+          'git clone https://github.com/babarmuhammad/archeus.git\ncd archeus\npython claude-sessions.py          # terminal UI\npython claude-sessions.py --gui    # desktop GUI\npython -m pytest                   # the suite',
         ),
         p(
           'Python 3.10 or newer. pytest is the only development dependency; PyQt6 is optional and only affects whether the GUI opens in a native window or your browser.',

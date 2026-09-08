@@ -1,4 +1,4 @@
-site_name: claudectl
+site_name: archeus
 site_description: >-
   The workspace layer for Claude Code — persistent project memory, an interactive
   architecture graph, MCP server management, and per-project launch control, in a fast
@@ -10,8 +10,8 @@ site_description: >-
 # Asset and page links stay relative, which is why one site_url serves both.
 site_url: https://docs.claudectl.space/
 site_author: Babar Muhammad Anas
-repo_url: https://github.com/babarmuhammad/claudectl
-repo_name: babarmuhammad/claudectl
+repo_url: https://github.com/babarmuhammad/archeus
+repo_name: babarmuhammad/archeus
 edit_uri: edit/main/docs/
 copyright: MIT licensed — Copyright &copy; 2026 Babar Muhammad Anas
 
@@ -116,12 +116,12 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/babarmuhammad/claudectl
-      name: claudectl on GitHub
+      link: https://github.com/babarmuhammad/archeus
+      name: archeus on GitHub
 
   # schema.org `sameAs` for the author entity, emitted on every page by
   # overrides/main.html. An unrelated Rust project publishes under this name,
-  # so what identifies THIS claudectl is one author corroborated by a set of
+  # so what identifies THIS archeus is one author corroborated by a set of
   # profiles that link back. Must stay in step with `PROFILES` in
   # www/lib/site.ts — both hosts have to assert the same entity or the graph
   # says there are two of them.

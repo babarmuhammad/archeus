@@ -1,4 +1,4 @@
-"""The event log — the only record of what claudectl did when it failed.
+"""The event log — the only record of what archeus did when it failed.
 
 Every assertion here is written against a mutation that would silently return
 the old behaviour: a logger that writes to nothing, a file that grows forever,
@@ -20,7 +20,7 @@ from claude_sessions import events
 
 @pytest.fixture(autouse=True)
 def _log_in_tmp(monkeypatch, tmp_path):
-    p = tmp_path / 'claudectl-events.jsonl'
+    p = tmp_path / 'archeus-events.jsonl'
     monkeypatch.setattr(events, 'path', lambda: str(p))
     events._recent.clear()
     return p
@@ -117,7 +117,7 @@ def test_an_absent_file_is_an_empty_state_not_an_error(_log_in_tmp):
 
 def test_no_hook_writes_an_event():
     """Everything on a per-turn path pays its cost forever. Every writer is a
-    claudectl-owned process; a hook runs once per prompt."""
+    archeus-owned process; a hook runs once per prompt."""
     pkg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        'claude_sessions')
     offenders = []

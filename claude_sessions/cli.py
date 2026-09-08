@@ -1,4 +1,4 @@
-"""Console-script entry point (`claudectl`) — and the two answers that must
+"""Console-script entry point (`archeus`) — and the two answers that must
 not cost anything: `--help` and `--version`.
 
 Deliberately thin, and the statusline dispatch is deliberately duplicated from
@@ -15,17 +15,12 @@ breakable by anything in it. This module imports the standard library only.
 """
 import sys
 
-HELP = """claudectl {ver}— the workspace layer for Claude Code.
-
-  NOTE  claudectl is now archeus. This is the last release under the old name.
-        Install the new one with:  pip install archeus
-        Your settings, memory graphs and project state migrate automatically
-        the first time archeus runs. Nothing is deleted.
+HELP = """archeus {ver}— the workspace layer for Claude Code.
 
 USAGE
-  claudectl                  open the workspace UI (TUI unless ui_mode says GUI)
-  claudectl --gui | --tui    force the web/desktop GUI, or the terminal UI
-  claudectl <command> [...]
+  archeus                  open the workspace UI (TUI unless ui_mode says GUI)
+  archeus --gui | --tui    force the web/desktop GUI, or the terminal UI
+  archeus <command> [...]
 
 COMMANDS
   workspace status           print the current folder's project status — memory
@@ -48,7 +43,7 @@ COMMANDS
 
 OPTIONS
   -h, --help                 this text
-  -V, --version              print the installed claudectl version
+  -V, --version              print the installed archeus version
 
 WHAT YOU GET
   Projects   every folder Claude Code has a session for, across all accounts, in
@@ -56,7 +51,7 @@ WHAT YOU GET
              agent set and worktree. Projects you never want to see can be
              hidden from the list (they are not deleted, and come back).
   Memory     a per-project graph of entities, relations and learned lessons in
-             <project>/.claudectl/memory, injected through CLAUDE.md and the
+             <project>/.archeus/memory, injected through CLAUDE.md and the
              recall hook, so a fresh session starts knowing the project.
   Sessions   browse, resume, fork, rename, tag, export or archive any past
              session; read its transcript, tokens and cost.
@@ -66,10 +61,10 @@ WHAT YOU GET
              behind a per-run token. Nothing is uploaded anywhere.
 
 FILES
-  ~/.claude/claudectl.json      claudectl's own settings (accounts, defaults)
+  ~/.claude/archeus.json      archeus's own settings (accounts, defaults)
   ~/.claude/                    Claude Code's config dir. CLAUDE_CONFIG_DIR
-                                overrides it, and claudectl follows it.
-  <project>/.claudectl/memory   that project's memory graph
+                                overrides it, and archeus follows it.
+  <project>/.archeus/memory   that project's memory graph
 
 DOCS   https://docs.claudectl.space/
 """

@@ -107,7 +107,7 @@ function Panel({
 
 /** Station 01. Hand-composed rather than run through SectionView: it is the
  *  only panel with an h1, a copy button and the two CTAs, and the point of the
- *  page is that you can get claudectl from it without scrolling. */
+ *  page is that you can get archeus from it without scrolling. */
 function Hero({ section }: { section: Section }) {
   const install = section.blocks.filter(isCode)[0];
   const bullets = section.blocks.filter(isUl).flatMap((b) => b.items);
@@ -147,7 +147,7 @@ function Hero({ section }: { section: Section }) {
 
           <div className="mt-5 flex flex-wrap gap-3">
             <Link href="/download" className={`${BTN} bg-cyan text-bg hover:bg-violet`}>
-              Download claudectl
+              Download archeus
               <span aria-hidden="true">↓</span>
             </Link>
             <a
@@ -195,7 +195,7 @@ function Finale({ section, index }: { section: Section; index: number }) {
       </div>
       <div className="mt-8 flex flex-wrap gap-3 border-t border-line pt-7">
         <Link href="/download" className={`${BTN} bg-cyan text-bg hover:bg-violet`}>
-          Download claudectl
+          Download archeus
           <span aria-hidden="true">↓</span>
         </Link>
         <a

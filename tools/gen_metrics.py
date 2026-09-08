@@ -27,14 +27,14 @@ from datetime import datetime, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'docs', 'dashboard.md')
 README = os.path.join(ROOT, 'README.md')
-REPO = 'babarmuhammad/claudectl'
-PKG = 'claudectl'
-UA = {'User-Agent': 'claudectl-docs-metrics'}
+REPO = 'babarmuhammad/archeus'
+PKG = 'archeus'
+UA = {'User-Agent': 'archeus-docs-metrics'}
 
 HEADER = """---
-title: claudectl project dashboard
+title: archeus project dashboard
 description: >-
-  Live-ish numbers for claudectl — release version, PyPI downloads, GitHub stars, test
+  Live-ish numbers for archeus — release version, PyPI downloads, GitHub stars, test
   count, source size and commit activity. Regenerated from PyPI and the GitHub API.
 ---
 

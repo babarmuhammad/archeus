@@ -57,8 +57,7 @@ def _iter_project_graphs():
             continue
         for enc in os.listdir(root):
             folder = os.path.join(root, enc)
-            d = _load_graph(os.path.join(folder, '.claudectl', 'memory',
-                                         'graph.json'))
+            d = _load_graph(store.workfile(folder, 'memory', 'graph.json'))
             if d and enc not in seen:
                 seen.add(enc)
                 # the working-dir path matters for WRITES: save_memory mirrors
@@ -69,7 +68,7 @@ def _iter_project_graphs():
     for enc, ppath in paths.items():
         if enc in seen or not ppath:
             continue
-        d = _load_graph(os.path.join(ppath, '.claudectl', 'memory', 'graph.json'))
+        d = _load_graph(store.workfile(ppath, 'memory', 'graph.json'))
         if d:
             seen.add(enc)
             yield enc, d, ppath, ''
@@ -204,7 +203,7 @@ def build_block():
     convs = collect_conventions()
     if not convs:
         return ''
-    lines = ["## Conventions (claudectl — learned across your projects)"]
+    lines = ["## Conventions (archeus — learned across your projects)"]
     for c in convs:
         line = f"- {c['text']}"
         if tokens_estimate('\n'.join(lines + [line])) > MAX_TOKENS:
@@ -237,7 +236,7 @@ def sync_to_global(cfgdir=None):
     else:
         from .config import generated_note
         note = generated_note('conventions that recur across your projects',
-                              "claudectl's Global CLAUDE.md page")
+                              "archeus's Global CLAUDE.md page")
         section = f"{_CONV_START}\n{note}\n{block_body}\n{_CONV_END}\n"
         if _CONV_START in old and _CONV_END in old:
             new = (old[:old.index(_CONV_START)] + section

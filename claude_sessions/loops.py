@@ -7,24 +7,24 @@ they live in one conversation, fire only while that session is open and idle,
 die with it, and expire after seven days. That is the whole contract — there is
 no daemon to talk to and no documented state file to poll.
 
-  **kind='session'** — what `/loop` really is. claudectl starts it by launching a
+  **kind='session'** — what `/loop` really is. archeus starts it by launching a
   session whose first typed message is `/loop …` (`claude "<prompt>"` submits it
   and stays interactive), watches it through that session's own transcript (each
   iteration is a turn), and "stops" it by ending the session, because from
   outside the session that is the only lever there is.
 
   **kind='schedule'** — the answer to "I do not want to keep a session open".
-  claudectl registers an entry in the OS scheduler (Task Scheduler on Windows,
+  archeus registers an entry in the OS scheduler (Task Scheduler on Windows,
   cron elsewhere) that runs `claude -p` headless on the interval, in the project,
-  under the account you picked. It keeps running with claudectl closed and no
-  session anywhere. This is claudectl doing locally what Claude Code's own
+  under the account you picked. It keeps running with archeus closed and no
+  session anywhere. This is archeus doing locally what Claude Code's own
   comparison table calls a Desktop scheduled task.
 
 WHY A SCHEDULED RUN IS FRESH, AND HOW IT STILL REMEMBERS
 --------------------------------------------------------
 Every scheduled run is a NEW session. Resuming one forever would grow its
 context (and its cost) without bound. What makes it a loop rather than a
-repeated one-shot is `CLAUDECTL:LOOP`: a sentinel block in the project's
+repeated one-shot is `ARCHEUS:LOOP`: a sentinel block in the project's
 CLAUDE.md holding the last few outcomes, **rewritten** on every run so it can
 never grow. CLAUDE.md is read on every turn, so the next run starts knowing what
 the previous ones did.
@@ -80,7 +80,7 @@ PERMS = [
 
 
 def registry_path(cfgdir=None):
-    return os.path.join(cfgdir or _c.config_dir, 'claudectl-loops.json')
+    return os.path.join(cfgdir or _c.config_dir, 'archeus-loops.json')
 
 
 def _load(cfgdir=None):
@@ -107,7 +107,7 @@ def loop_prompt(interval='', prompt=''):
 
 def record(path, encoded, cfgdir, interval, prompt, pid, name='',
            kind='session', perm='auto', ttl=DEFAULT_TTL):
-    """Note a loop claudectl just started. Returns the row."""
+    """Note a loop archeus just started. Returns the row."""
     row = {'id': uuid.uuid4().hex[:8], 'kind': kind,
            'path': path, 'encoded': encoded, 'cfgdir': cfgdir or '',
            'name': name or os.path.basename(path.rstrip('\\/')) or path,
@@ -127,7 +127,7 @@ def record(path, encoded, cfgdir, interval, prompt, pid, name='',
 def _newest_transcript(row):
     """The session file that loop is most likely writing into.
 
-    claudectl cannot know the session id it just created — Claude Code mints it
+    archeus cannot know the session id it just created — Claude Code mints it
     — so the newest transcript in the project folder that has been touched since
     the loop started is the honest answer, and none is reported when nothing
     has been."""
@@ -172,7 +172,7 @@ def _turns_since(jsonl, since):
 
 
 def listing(cfgdir=None, with_activity=True):
-    """Every loop claudectl started, newest first, with live state.
+    """Every loop archeus started, newest first, with live state.
 
     For a SESSION loop `running` is the process — a session can be open with its
     loop already stopped from inside, so the board says "session open" rather
@@ -227,7 +227,7 @@ def stop(loop_id, cfgdir=None):
             return ok, msg
         pid = int(row.get('pid') or 0)
         if not pid:
-            return False, 'claudectl has no process handle for that loop'
+            return False, 'archeus has no process handle for that loop'
         if proc.pid_alive(pid) is False:
             row['stopped'] = time.time()
             _save(rows, cfgdir)
@@ -270,11 +270,11 @@ def renew(loop_id, cfgdir=None, ttl=DEFAULT_TTL):
 
 # ── the OS scheduler ─────────────────────────────────────────
 # One platform branch, in the shape proc.py uses: never raises, returns
-# (ok, message). What runs is `claudectl --loop-run <id>`, so everything the
+# (ok, message). What runs is `archeus --loop-run <id>`, so everything the
 # schedule needs to know stays in the registry rather than in a command line
 # that a user might see and would have to be re-created to change.
 
-TASK_PREFIX = 'claudectl-loop-'
+TASK_PREFIX = 'archeus-loop-'
 
 
 def task_name(loop_id):
@@ -436,8 +436,8 @@ def _run_claude(row):
     """(stdout, stderr, returncode) for one headless iteration.
 
     NOT `--bare`: that mode skips hooks, skills, CLAUDE.md, memory and MCP — in
-    other words everything claudectl provisions — and it refuses the
-    subscription login. The whole point of running the loop through claudectl is
+    other words everything archeus provisions — and it refuses the
+    subscription login. The whole point of running the loop through archeus is
     that it arrives with the project's context.
     """
     from .config import get_claude_exe, account_env
@@ -495,7 +495,7 @@ def _parse_result(out):
 
 
 def write_journal_block(row):
-    """Rewrite the CLAUDECTL:LOOP block in the project's CLAUDE.md.
+    """Rewrite the ARCHEUS:LOOP block in the project's CLAUDE.md.
 
     REWRITTEN, never appended: this text is read on every turn of every session
     in the project, so an append-only log would quietly become the most
@@ -517,7 +517,7 @@ def write_journal_block(row):
         mark = '' if e.get('ok') else 'FAILED — '
         lines.append('- %s — %s%s' % (when, mark, ' '.join(str(e.get('text') or '').split())[:220]))
     section = (
-        f"{_LOOP_START}\n## Background loop — recent runs (claudectl — auto-maintained)\n"
+        f"{_LOOP_START}\n## Background loop — recent runs (archeus — auto-maintained)\n"
         "%s\n\n"
         "This project has a scheduled loop (`%s`). What it did, newest first — "
         "continue from here rather than starting over:\n\n%s\n%s\n"

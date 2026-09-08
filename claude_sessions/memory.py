@@ -2,7 +2,7 @@
 
 Builds and stores a semantic knowledge graph of a project — entities and
 relationships extracted by Claude (claude.exe) from source files, CLAUDE.md,
-and session summaries — under <project>/.claudectl/memory/. Updated
+and session summaries — under <project>/.archeus/memory/. Updated
 incrementally via file hashes. Powers the semantic layer of the connections
 graph and a grounded "ask the project" query. No third-party deps, no separate
 API key (reuses Claude Code's auth). Best-effort: failures never corrupt the
@@ -18,6 +18,7 @@ import threading
 import time
 
 from . import config as _c
+from . import store as _store
 
 # background-refresh coordination: a thread sets _tls.silent so its Claude calls
 # run headless (no progress UI / keyboard) and never touch the live TUI.
@@ -28,7 +29,7 @@ _bg_spawned = {}            # project path -> when a detached worker was last sp
 _BG_SPAWN_COOLDOWN = 60
 
 SCHEMA_VERSION = 3
-MEM_SUBDIR = os.path.join('.claudectl', 'memory')
+MEM_SUBDIR = os.path.join(_store.WORKDIR, 'memory')
 GRAPH_NAME = 'graph.json'
 PER_FILE_CHARS = 4000    # cap content per file
 PER_BATCH_CHARS = 40000  # cap corpus per repo/module Claude call
@@ -120,7 +121,7 @@ def save_memory(project_path, proj_folder, m):
     for d in _mem_dirs(project_path, proj_folder):
         try:
             os.makedirs(d, exist_ok=True)
-            # atomic: a killed process (the detached bg worker, or claudectl
+            # atomic: a killed process (the detached bg worker, or archeus
             # exiting to launch claude) must never leave torn JSON here —
             # load_memory would silently reset it to _empty().
             if not _c.write_json_atomic(os.path.join(d, GRAPH_NAME), m):
@@ -134,7 +135,7 @@ def save_memory(project_path, proj_folder, m):
 # ── cross-process scan lock ──────────────────────────────────
 # The background memory update runs in a DETACHED worker process (see
 # spawn_background_worker) so it survives the TUI exiting to launch claude.
-# A marker file makes its status visible to any claudectl process: dedup
+# A marker file makes its status visible to any archeus process: dedup
 # guard for spawners, live progress for the sessions-menu badge.
 
 SCAN_LOCK = 'scan.lock'
@@ -293,7 +294,7 @@ def _report_progress(text, project_path=None):
 
 def spawn_background_worker(project_path, proj_folder):
     """Run the memory update (lessons scan, then refresh) in a DETACHED child
-    process so it survives claudectl exiting to launch claude.exe — on the .bat
+    process so it survives archeus exiting to launch claude.exe — on the .bat
     path the TUI process dies the moment a session is picked, which used to
     kill the daemon-thread scan mid-flight. Dedup via scan.lock. Returns the
     Popen or None."""
@@ -315,7 +316,7 @@ def spawn_background_worker(project_path, proj_folder):
         # uptime inside the cooldown and suppressed every spawn. Invisible in
         # development (uptime is hours) and on the Windows CI runners (minutes
         # to reach the job); deterministic on a Linux runner, which starts the
-        # job ~30s after boot, and on claudectl launched from a login shortcut.
+        # job ~30s after boot, and on archeus launched from a login shortcut.
         if time.monotonic() - _bg_spawned.get(root, float('-inf')) < _BG_SPAWN_COOLDOWN:
             return None
         _bg_spawned[root] = time.monotonic()
@@ -339,7 +340,7 @@ def spawn_background_worker(project_path, proj_folder):
 # ── Claude calls (monkeypatched in tests) ────────────────────
 
 def extract_model():
-    """Economy model for claudectl's OWN internal generation calls (memory,
+    """Economy model for archeus's OWN internal generation calls (memory,
     lessons, CLAUDE.md, agent/hook/skill gen). '' = leave the account default."""
     try:
         from .config import load_settings
@@ -350,7 +351,7 @@ def extract_model():
 
 def _budget_args():
     """`--max-budget-usd`, when the user has set a cap. A timeout bounds how
-    LONG one of claudectl's own calls may run; this bounds what it may spend,
+    LONG one of archeus's own calls may run; this bounds what it may spend,
     and subagent spend counts toward the same cap."""
     try:
         from .config import load_settings
@@ -361,7 +362,7 @@ def _budget_args():
 
 
 def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
-                  crumbs=('CLAUDECTL', 'MEMORY'), label='Working with Claude...',
+                  crumbs=('ARCHEUS', 'MEMORY'), label='Working with Claude...',
                   model=None, extra_args=()):
     """Run `claude -p` reading the prompt from stdin (avoids the Windows
     command-line length limit). Foreground: visible progress bar (ESC cancels).
@@ -373,9 +374,9 @@ def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
 
     Every prompt leaves with `sessions.HEADLESS_MARK`. `claude -p` writes a
     transcript into ~/.claude/projects exactly like a session you had, so
-    claudectl's own calls — extract a module, distil lessons, compress
+    archeus's own calls — extract a module, distil lessons, compress
     CLAUDE.md — were being listed back to you as "session topics" and costing
-    always-on CLAUDE.md tokens to describe claudectl talking to itself. This is
+    always-on CLAUDE.md tokens to describe archeus talking to itself. This is
     the one seam every headless call passes through, so marking here is both
     complete and impossible to forget at a new call site."""
     global last_call_error
@@ -422,7 +423,7 @@ def why_failed(default='No output from Claude'):
 
 #: last `total_cost_usd` reported by a _claude_json envelope, or None. The JSON
 #: output format carries the real figure, which is strictly better than the
-#: COST_PER_MTOK estimate claudectl otherwise has to make about its own calls.
+#: COST_PER_MTOK estimate archeus otherwise has to make about its own calls.
 last_call_cost = None
 
 
@@ -548,7 +549,7 @@ def _extract(corpus_text, cwd, unit='', progress=''):
     )
     label = f"Analyzing {unit} with Claude...  {progress}".strip()
     data = _claude_json(prompt, cwd, GRAPH_SCHEMA,
-                        crumbs=('CLAUDECTL', 'MEMORY', unit or 'EXTRACT'), label=label)
+                        crumbs=('ARCHEUS', 'MEMORY', unit or 'EXTRACT'), label=label)
     # None means the CALL failed (timeout, budget, unparseable) — which is a
     # different fact from "this module has no entities", and the caller must be
     # able to tell them apart. Returning an empty result for a failure made the
@@ -569,7 +570,7 @@ def _answer(context, question, cwd):
         f"CONTEXT:\n{context}\n\nQUESTION: {question}\n"
     )
     return _claude_stdin(prompt, cwd, timeout=120,
-                         crumbs=('CLAUDECTL', 'ASK'),
+                         crumbs=('ARCHEUS', 'ASK'),
                          label='Asking Claude about the project...').strip()
 
 
@@ -693,7 +694,7 @@ def auto_enabled(project_path, encoded=None):
     outside a running GUI window and the TUI had no way to set it at all.
 
     Explicit opt-in, deliberately: a machine-wide default here would mean an
-    hourly Claude spend on every project claudectl can see."""
+    hourly Claude spend on every project archeus can see."""
     _st, proj = _project_opts(project_path, encoded)
     return bool(proj.get('auto_memory'))
 
@@ -1365,8 +1366,8 @@ def auto_cycle(project_path, proj_folder, project_name, auto_cap=6):
     What this must never do is touch anything a person wrote. Every write below
     goes through a namespaced writer:
       · claude_md.write_memory_block  — replaces only the region between the
-        CLAUDECTL:MEMORY sentinels, leaving prose, AUTOGEN and SESSIONS intact
-      · memrules.sync_rules           — owns `claudectl-mem-*.md` and nothing
+        ARCHEUS:MEMORY sentinels, leaving prose, AUTOGEN and SESSIONS intact
+      · memrules.sync_rules           — owns `archeus-mem-*.md` and nothing
         else in .claude/rules/
       · lessons.apply_decay           — never evicts a pinned lesson
     tests/test_memauto.py holds that line byte-for-byte.
@@ -1488,7 +1489,7 @@ def _short_unit(u):
 
 def build_digest_micro(mem, max_tokens=250):
     """Tiny always-loaded memory INDEX (repo one-liners + module names + recall
-    pointer). Detail lives in path-scoped rules and `claudectl recall` — this
+    pointer). Detail lives in path-scoped rules and `archeus recall` — this
     replaces the old full entity dump (~430 tok) with ≤250 tok."""
     ents = mem.get('entities', [])
     summaries = mem.get('summaries', {})
@@ -1549,7 +1550,7 @@ def build_digest_micro(mem, max_tokens=250):
     if top:
         out.append("- most used: " + ', '.join(
             f"{e.get('name', '')} ({e.get('module', '')})" for e in top))
-    out.append('Detail on demand: run `claudectl recall "<topic>"` (Bash) for the '
+    out.append('Detail on demand: run `archeus recall "<topic>"` (Bash) for the '
                'task-relevant subgraph of this project\'s memory.')
     text = '\n'.join(out)
     # trim from the end (reinforced facts, then links, then lesson detail, then

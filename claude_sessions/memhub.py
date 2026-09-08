@@ -50,7 +50,7 @@ def last_written(project_path, proj_folder):
     rules_dir = os.path.join(project_path or '', '.claude', 'rules')
     try:
         rules = [os.path.join(rules_dir, n) for n in os.listdir(rules_dir)
-                 if n.startswith('claudectl-mem-')]
+                 if n.startswith('archeus-mem-')]
     except OSError:
         rules = []
     snaps = []
@@ -98,7 +98,7 @@ def hub_screen(project_path, proj_folder, project_name):
         mem, est = st['mem'], st['est']
         gen = mem.get('generated_at', '')
 
-        frame = [render.header('CLAUDECTL', project_name, 'MEMORY'), '']
+        frame = [render.header('ARCHEUS', project_name, 'MEMORY'), '']
         if st['entities']:
             frame.append(f"  {C_OK}● {len(st['entities'])} entities{C_RESET}"
                          f"  {C_DIM}· {len(mem.get('relations', []))} relations"
@@ -166,7 +166,7 @@ def hub_screen(project_path, proj_folder, project_name):
                     ans = memory.ask_memory(project_path, proj_folder, q)
                 except Exception as e:
                     ans = f"(failed: {e})"
-                pager(('CLAUDECTL', project_name, 'ASK'),
+                pager(('ARCHEUS', project_name, 'ASK'),
                       (ans or '(no answer)').splitlines(), hint='ESC back')
         elif ch == 'p':
             from . import recall
@@ -175,11 +175,11 @@ def hub_screen(project_path, proj_folder, project_name):
             from . import brief
             sug = brief.work_suggestions(project_path, proj_folder)
             body = [f"[{tag}] {text}" for tag, text in sug]
-            pager(('CLAUDECTL', project_name, 'SUGGESTIONS'), body, hint='ESC back')
+            pager(('ARCHEUS', project_name, 'SUGGESTIONS'), body, hint='ESC back')
         elif ch == 'd':
             from . import brief
             body = brief.session_diff(project_path, proj_folder)
-            pager(('CLAUDECTL', project_name, 'SINCE LAST SESSION'), body, hint='ESC back')
+            pager(('ARCHEUS', project_name, 'SINCE LAST SESSION'), body, hint='ESC back')
         elif ch == 'L':
             from . import lessons as lessons_mod
             pend = lessons_mod.pending_sids(proj_folder, st['mem'])

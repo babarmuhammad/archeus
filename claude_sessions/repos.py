@@ -31,8 +31,8 @@ mtime of `.git/index`. The branch is never cached — reading `.git/HEAD` is
 cheaper than the cache lookup and cannot go stale.
 
 The cache lives beside the other per-account caches rather than in the project's
-own `.claudectl/`: the statusline resolves a bare cwd with no project folder,
-and writing into `D:/repos/SV3/.claudectl/` would show up in that repo's own
+own `.archeus/`: the statusline resolves a bare cwd with no project folder,
+and writing into `D:/repos/SV3/.archeus/` would show up in that repo's own
 `git status` — this tool must never dirty a tree it is reporting on.
 """
 
@@ -198,7 +198,7 @@ def head_branch(repo):
 # ── cached git state ─────────────────────────────────────────
 
 def _cache_file():
-    return os.path.join(_c.config_dir, 'claudectl-repostate.json')
+    return os.path.join(_c.config_dir, 'archeus-repostate.json')
 
 
 def _load_cache():

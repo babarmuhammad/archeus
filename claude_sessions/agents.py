@@ -229,7 +229,7 @@ def _new_agent_manual(project_path):
 # input queue was never read even past the hang; two prompts asked for against
 # one field collected; the prompt passed on ARGV (the 32767-char CreateProcess
 # limit `memory._claude_stdin` exists to avoid) with no cwd, no HEADLESS_MARK
-# and no budget cap; and the file written into claudectl's own read-only
+# and no budget cap; and the file written into archeus's own read-only
 # library, where Claude Code does not look for installed agents.
 
 
@@ -319,7 +319,7 @@ def generate_agent_ai(name, role='', scope='user', project_path=None, category='
     out = memory._claude_stdin(
         build_ai_prompt(name, role or name, project_path),
         project_path or None, timeout=180,
-        crumbs=('CLAUDECTL', 'AGENTS', name),
+        crumbs=('ARCHEUS', 'AGENTS', name),
         label=f'Authoring agent {name} with Claude...  (15-60s)')
     if not (out or '').strip():
         return {'ok': False, 'error': memory.why_failed('No output from Claude'),
@@ -342,12 +342,12 @@ def _new_agent_ai(project_path):
                       ('this project only', 'project')], "SCOPE")
         if not scope:
             return
-    category = text_input("Category (optional — claudectl's own filing):") or ''
+    category = text_input("Category (optional — archeus's own filing):") or ''
 
     from . import memory
     md = memory._claude_stdin(
         build_ai_prompt(name, role, project_path), project_path or None,
-        timeout=180, crumbs=('CLAUDECTL', 'AGENTS', name),
+        timeout=180, crumbs=('ARCHEUS', 'AGENTS', name),
         label=f'Authoring agent {name} with Claude...  (15-60s)')
     content = (md or '').strip()
     if not content:
@@ -385,7 +385,7 @@ def view_agent_file(path):
             lines.append(raw[:cut])
             raw = raw[cut:].lstrip()
         lines.append(raw)
-    pager(('CLAUDECTL', os.path.basename(path), 'AGENT'), lines)
+    pager(('ARCHEUS', os.path.basename(path), 'AGENT'), lines)
 
 
 def _agent_detail(path):
@@ -557,7 +557,7 @@ def write_agents_json_tempfile(refs):
     js = build_agents_json(refs)
     if js == '{}':
         return ''
-    path = os.path.join(tempfile.gettempdir(), 'claudectl_agents.json')
+    path = os.path.join(tempfile.gettempdir(), 'archeus_agents.json')
     try:
         with open(path, 'w', encoding='utf-8') as f:
             f.write(js)
@@ -566,13 +566,13 @@ def write_agents_json_tempfile(refs):
         return ''
 
 
-_MANIFEST = '.claudectl-managed.json'
+_MANIFEST = '.archeus-managed.json'
 
 
 def sync_project_agents(project_path, refs, omniroute=False):
     """Make <project>/.claude/agents/ contain exactly the selected library
     agents. Claude auto-discovers them at launch — no command-line size limit.
-    Only files claudectl previously placed (tracked in a manifest) are removed,
+    Only files archeus previously placed (tracked in a manifest) are removed,
     so the user's own project agents are never touched. Returns count synced.
 
     When *omniroute* is truthy, the ``model:`` field is stripped from copied
@@ -701,7 +701,7 @@ def routing_table(project_path):
 #: not open and parse every agent file, so `sync_project_agents` writes this one
 #: small index instead — the cost rule this codebase learned from the recall
 #: hook's counters and the worklog hook's transcript re-scan.
-AGENT_INDEX = '.claudectl-agents.json'
+AGENT_INDEX = '.archeus-agents.json'
 
 _KW = re.compile(r'[a-z][a-z0-9+#._-]{2,}')
 _KW_STOP = {'the', 'and', 'for', 'with', 'this', 'that', 'when', 'use', 'used',
@@ -728,7 +728,7 @@ def keywords_for(name, description, cap=24):
 
 
 def write_agent_index(project_path):
-    """Refresh `.claude/.claudectl-agents.json` from what is installed."""
+    """Refresh `.claude/.archeus-agents.json` from what is installed."""
     import json
     dest = os.path.join(project_path, '.claude', 'agents')
     rows = [{'name': name, 'keywords': keywords_for(name, desc)}
@@ -745,7 +745,7 @@ def write_agent_index(project_path):
 
 
 def write_routing_block(project_path):
-    """Refresh the CLAUDECTL:AGENTS block in <project>/CLAUDE.md from what is
+    """Refresh the ARCHEUS:AGENTS block in <project>/CLAUDE.md from what is
     actually installed. Removes it when no agents are. Returns the row count."""
     from .claude_md import upsert_block
     from .config import _AGENTS_START, _AGENTS_END, generated_note
@@ -756,7 +756,7 @@ def write_routing_block(project_path):
     lines = '\n'.join('- **%s** — %s' % (n, t or 'see its own description')
                       for n, t in rows)
     section = (
-        f"{_AGENTS_START}\n## Subagents available here (claudectl — auto-maintained)\n"
+        f"{_AGENTS_START}\n## Subagents available here (archeus — auto-maintained)\n"
         + generated_note('the agents installed in .claude/agents/',
                          'the Agents page, or any change to those files') + "\n\n"
         "Delegate to one of these with the Agent tool when the work matches — "
@@ -819,11 +819,11 @@ def apply_descriptions(project_path, new_by_name):
 
 
 def all_installed():
-    """Every agent file claudectl can reach, across every scope.
+    """Every agent file archeus can reach, across every scope.
 
     [{'scope','dir','project_path','account','name','desc','path'}] over each
     account's user-level agents, each project's `.claude/agents`, and the
-    claudectl library — so sharpening the library means every FUTURE install is
+    archeus library — so sharpening the library means every FUTURE install is
     already sharp, not just the copies that exist today.
 
     Best-effort per source: one unreadable project must not hide the rest.

@@ -1,4 +1,4 @@
-"""Economy model routing: claudectl's own internal `claude -p` calls should
+"""Economy model routing: archeus's own internal `claude -p` calls should
 carry `--model <extract_model>` when set, and no `--model` when the setting is
 blank (account default). Verifies the shared memory._claude_stdin helper.
 """

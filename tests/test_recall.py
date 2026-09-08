@@ -152,6 +152,6 @@ def test_rule_estimates_carry_their_glob(monkeypatch, tmp_path):
     assert est['rules'], 'no rule files written'
     r = est['rules'][0]
     assert isinstance(r, dict), 'rules must not be positional tuples on the wire'
-    assert r['file'].startswith('claudectl-mem-') and r['tokens'] > 0
+    assert r['file'].startswith('archeus-mem-') and r['tokens'] > 0
     assert r['glob'] and r['glob'] != '**', f"unscoped glob {r['glob']!r}"
     assert r['unit'].startswith('app/'), r['unit']

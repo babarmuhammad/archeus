@@ -8,13 +8,13 @@ faq:
   - q: What actually uses the most tokens in Claude Code?
     a: Not the conversation — the context that is re-sent with every message. CLAUDE.md, the global `~/.claude/CLAUDE.md`, any always-loaded rules files, a system-prompt file and every connected MCP server's tool schemas are all part of each turn's input. A 4,000-token context block costs 4,000 tokens on turn one and again on turn two hundred.
   - q: How do I see how many tokens my Claude Code project loads per turn?
-    a: Run claudectl's context weight audit (`⇧W` in the sessions menu, or the Audit tab in the GUI). It estimates the always-on cost of CLAUDE.md broken into its blocks, the global CLAUDE.md, each rules file (marked lazy when glob-scoped), the system prompt, SessionStart hook injections and MCP schemas, with a running total and warnings for the usual offenders.
+    a: Run archeus's context weight audit (`⇧W` in the sessions menu, or the Audit tab in the GUI). It estimates the always-on cost of CLAUDE.md broken into its blocks, the global CLAUDE.md, each rules file (marked lazy when glob-scoped), the system prompt, SessionStart hook injections and MCP schemas, with a running total and warnings for the usual offenders.
   - q: Do .claude/rules files cost tokens if Claude never opens those files?
     a: No, provided the rule file carries a `globs:` header scoping it to specific paths. A glob-scoped rule loads only when Claude touches a matching file, so several kilobytes of per-module detail can sit on disk at zero per-turn cost. A rules file with no globs is always-on and should be counted alongside CLAUDE.md.
   - q: Does a large CLAUDE.md slow Claude Code down or just cost more?
     a: Both, indirectly. Every token of always-on context is input on every request, so it adds latency and cost per turn, and it consumes context-window space that would otherwise hold the actual work — which brings `/compact` forward and loses conversation detail sooner.
   - q: Can I stop Claude Code from reading node_modules and lockfiles into context?
-    a: Yes, with `permissions.deny` rules in the project's `.claude/settings.json`. claudectl's audit can scan the project and generate them (`node_modules/**`, `dist/**`, lockfiles and similar), merging into the existing settings rather than replacing them, so one stray read cannot pull thousands of tokens of generated content into the window.
+    a: Yes, with `permissions.deny` rules in the project's `.claude/settings.json`. archeus's audit can scan the project and generate them (`node_modules/**`, `dist/**`, lockfiles and similar), merging into the existing settings rather than replacing them, so one stray read cannot pull thousands of tokens of generated content into the window.
 ---
 
 ## The short answer
@@ -26,7 +26,7 @@ The expensive part of Claude Code is not the conversation, it is the context tha
 Nobody's estimate of their own `CLAUDE.md` is accurate. Run the context weight audit:
 
 ```
-claudectl          # open the project, then ⇧W in the sessions menu
+archeus          # open the project, then ⇧W in the sessions menu
 ```
 
 or the **Audit** tab in the GUI, which does the same thing project-scoped and account-scoped together. It itemises everything auto-loaded per turn:
@@ -60,10 +60,10 @@ The net effect is that the always-on cost stops tracking codebase size. A ten-mo
 
 ## Making the lazy tier actually lazy
 
-A rules file only costs nothing if Claude Code knows when it is irrelevant. That is what the `globs:` header does — the file is loaded when a matching path is touched and skipped otherwise. claudectl generates one per module:
+A rules file only costs nothing if Claude Code knows when it is irrelevant. That is what the `globs:` header does — the file is loaded when a matching path is touched and skipped otherwise. archeus generates one per module:
 
 ```
-.claude/rules/claudectl-mem-<project>-<module>.md
+.claude/rules/archeus-mem-<project>-<module>.md
 ```
 
 each containing that module's entities, their types, one-line summaries and the relations between them. Several kilobytes across the set, zero per-turn cost.
@@ -89,9 +89,9 @@ Prune touches only those blocks. Your manual prose and the memory digest are unt
 If part of your prose must survive verbatim — a legal note, a hard-won gotcha with exact wording — fence it:
 
 ```markdown
-<!-- CLAUDECTL:KEEP:START -->
+<!-- ARCHEUS:KEEP:START -->
 Never regenerate the migration order. See docs/migrations.md.
-<!-- CLAUDECTL:KEEP:END -->
+<!-- ARCHEUS:KEEP:END -->
 ```
 
 A fenced section is not *sent to the model at all* during compression, so it cannot be reworded, shortened or dropped. That is a stronger guarantee than "the model was told to preserve it".
@@ -113,7 +113,7 @@ Two levers, separate from context size.
 
 **A think cap and a cheap subagent model.** The launch-options screen exposes `MAX_THINKING_TOKENS` (Think cap) and `CLAUDE_CODE_SUBAGENT_MODEL` (Subagents). The `e` key applies an economy preset in one keystroke: Sonnet, an 8k thinking cap, Haiku subagents. Subagent model choice is underrated — a fan-out of six searches on the same model as your main session is six times the rate you meant to spend.
 
-**A cheap model for the tool's own calls.** claudectl's internal Claude calls — memory extraction, lesson distillation, CLAUDE.md and hook and skill generation — default to Haiku (`extract_model` in Settings → Economy model). Your actual coding sessions keep whatever model you picked. Worth checking in any tool that makes model calls on your behalf: the default is often the same expensive model you use for the work.
+**A cheap model for the tool's own calls.** archeus's internal Claude calls — memory extraction, lesson distillation, CLAUDE.md and hook and skill generation — default to Haiku (`extract_model` in Settings → Economy model). Your actual coding sessions keep whatever model you picked. Worth checking in any tool that makes model calls on your behalf: the default is often the same expensive model you use for the work.
 
 Beyond cheap there is free — plan on an accurate model and execute on a free one, covered in [plan on an expensive model, execute on a free one](/blog/plan-expensive-execute-cheap).
 

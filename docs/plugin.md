@@ -1,34 +1,34 @@
 ---
 description: >-
-  The claudectl Claude Code plugin — three slash commands and eight skills inside the
+  The archeus Claude Code plugin — three slash commands and eight skills inside the
   session itself, how to install it, and why it deliberately ships no hooks.
 ---
 
 # Claude Code plugin
 
-The in-session surface. claudectl ships as a Claude Code plugin, which puts its three most
+The in-session surface. archeus ships as a Claude Code plugin, which puts its three most
 useful commands and its eight skills inside the conversation rather than in a separate
 window.
 
 ```
-/plugin marketplace add babarmuhammad/claudectl
-/plugin install claudectl@claudectl
+/plugin marketplace add babarmuhammad/archeus
+/plugin install archeus@archeus
 ```
 
 ## What it adds
 
 | | |
 |---|---|
-| `/claudectl:recall <topic>` | This project's task-relevant memory, scored locally against the topic — no model call |
-| `/claudectl:status` | Memory age, repositories and worktrees, health checks |
-| `/claudectl:review` | Review the current diff against this project's own learned conventions |
+| `/archeus:recall <topic>` | This project's task-relevant memory, scored locally against the topic — no model call |
+| `/archeus:status` | Memory age, repositories and worktrees, health checks |
+| `/archeus:review` | Review the current diff against this project's own learned conventions |
 | 8 skills | changelog, code-explainer, commit-message, pr-description, refactor-planner, security-review, test-writer, token-economy |
 
-The three commands shell out to the `claudectl` CLI, so [install that](installation.md)
+The three commands shell out to the `archeus` CLI, so [install that](installation.md)
 too:
 
 ```
-pipx install claudectl     # or: pip install claudectl
+pipx install archeus     # or: pip install archeus
 ```
 
 The skills work on their own, without the CLI.
@@ -47,7 +47,7 @@ turn — which is why they are skills rather than more `CLAUDE.md`. See
 
 ## What it deliberately does not add
 
-**Hooks.** claudectl already installs its own — the memory-recall hook, the worklog
+**Hooks.** archeus already installs its own — the memory-recall hook, the worklog
 capture, the guard hooks — through a [manager](hooks.md) that places them per account and
 can show, repair and remove them.
 
@@ -57,14 +57,14 @@ uninstalling either leaves the other behind looking broken. `${CLAUDE_PLUGIN_ROO
 and hooks *can* be inlined in `plugin.json` — the constraint here is ownership, not
 capability.
 
-Use `claudectl` → Hooks.
+Use `archeus` → Hooks.
 
 ## Updating and removing
 
-The plugin is versioned with claudectl itself and updates through Claude Code's own
+The plugin is versioned with archeus itself and updates through Claude Code's own
 `/plugin` commands. It is independent of the CLI install: removing one leaves the other
 working.
 
 The plugin marketplace and install caches are Claude Code state whose format has already
-changed once, so claudectl never rewrites them directly — every plugin mutation it makes
+changed once, so archeus never rewrites them directly — every plugin mutation it makes
 shells out to the `claude` CLI.

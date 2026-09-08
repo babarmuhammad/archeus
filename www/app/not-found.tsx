@@ -5,8 +5,8 @@ import { SITE } from '@/lib/site';
    noindex with the 404 status. */
 
 const LINKS = [
-  { href: '/features', label: 'Features', desc: 'What claudectl does, screen by screen.' },
-  { href: '/download', label: 'Download', desc: 'pipx install claudectl, and the requirements.' },
+  { href: '/features', label: 'Features', desc: 'What archeus does, screen by screen.' },
+  { href: '/download', label: 'Download', desc: 'pipx install archeus, and the requirements.' },
   { href: '/blog', label: 'Blog', desc: 'Notes on Claude Code memory and context cost.' },
   { href: '/faq', label: 'FAQ', desc: 'The questions people actually ask.' },
 ];

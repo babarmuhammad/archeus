@@ -1,7 +1,7 @@
 """The skills manager, against the scopes Claude Code actually loads.
 
 The old shape of this file tested a private library at
-`~/.claude/claudectl-skills` — a directory no Claude Code has ever read, so
+`~/.claude/archeus-skills` — a directory no Claude Code has ever read, so
 every one of those assertions was green while the feature was inert. What is
 tested now is the inventory: personal (`<account>/skills`), project, plugin, and
 the bundled skills that exist only as usage counters.
@@ -46,7 +46,7 @@ def test_bundled_templates_all_valid():
         meta, body = skills.parse_skill(d)
         assert meta.get('name'), f'{name} missing name'
         assert meta.get('description'), f'{name} missing description'
-        assert '<!--' in body and 'claudectl' in body.lower(), \
+        assert '<!--' in body and 'archeus' in body.lower(), \
             f'{name} missing attribution footer'
 
 
@@ -60,7 +60,7 @@ def test_the_personal_scope_is_the_one_claude_code_reads(monkeypatch, tmp_path):
     assert skills.personal_dir() == os.path.join(config.config_dir, 'skills')
     # and "my library" now means exactly that, not the private directory
     assert skills.library_dir() == skills.personal_dir()
-    assert 'claudectl-skills' in skills.legacy_library_dir()
+    assert 'archeus-skills' in skills.legacy_library_dir()
 
 
 def test_templates_are_starters_not_a_scope(monkeypatch, tmp_path):
@@ -263,7 +263,7 @@ def test_save_to_library_lands_where_claude_code_looks(monkeypatch, tmp_path):
 
 def test_the_private_library_moves_into_every_account_once(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
-    legacy = tmp_path / 'claudectl-skills'
+    legacy = tmp_path / 'archeus-skills'
     monkeypatch.setattr(config, 'skills_library_dir', str(legacy))
     skills.write_skill(os.path.join(str(legacy), 'token-economy'),
                        {'name': 'token-economy', 'description': 'terse'}, 'body')
@@ -280,7 +280,7 @@ def test_the_private_library_moves_into_every_account_once(monkeypatch, tmp_path
 
 def test_the_migration_never_overwrites_a_personal_skill(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
-    legacy = tmp_path / 'claudectl-skills'
+    legacy = tmp_path / 'archeus-skills'
     monkeypatch.setattr(config, 'skills_library_dir', str(legacy))
     skills.write_skill(os.path.join(str(legacy), 'x'), {'name': 'x'}, 'old')
     skills.write_skill(os.path.join(_personal(sb), 'x'), {'name': 'x'}, 'mine')

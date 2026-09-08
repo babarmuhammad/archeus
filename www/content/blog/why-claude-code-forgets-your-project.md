@@ -14,7 +14,7 @@ faq:
   - q: Where does Claude Code store session transcripts?
     a: Under your config directory, at `~/.claude/projects/<encoded-project-path>/<session-id>.jsonl`, one JSON object per line. The folder name is a lossy encoding of the project's real path, and every transcript line records the real working directory in its `cwd` field, which is the reliable way to map a folder back to a project.
   - q: Can Claude Code learn from mistakes across sessions?
-    a: Not on its own — nothing reads yesterday's transcript before today's session. It takes an external step that distils durable lessons (an error and its fix, a decision, a stated preference) out of finished transcripts and re-injects the relevant ones later. claudectl does this after each session and gates low-confidence lessons behind a review screen.
+    a: Not on its own — nothing reads yesterday's transcript before today's session. It takes an external step that distils durable lessons (an error and its fix, a decision, a stated preference) out of finished transcripts and re-injects the relevant ones later. archeus does this after each session and gates low-confidence lessons behind a review screen.
 ---
 
 ## The short answer
@@ -55,36 +55,36 @@ That table is the whole design space. Anything you want Claude to know next Tues
 
 `CLAUDE.md` is read on every turn. Not every session — every *message*. A 4,000-token file is 4,000 tokens on turn one and on turn two hundred. That is fine at 40 lines and stable conventions; a hand-written `CLAUDE.md` is genuinely the right tool for a small project, and if yours is short and stays short you do not need anything else.
 
-It degrades with size, and it degrades in a specific way: the usual failure is not that the file is wrong, it is that the file is too big to justify and too tedious to prune. So it keeps growing, the per-turn tax keeps rising, and eventually you are paying for a paragraph about a module you deleted in March. The comparison is honest in both directions — [claudectl's own compare page](https://docs.claudectl.space/compare/) says plainly that a 40-line `CLAUDE.md` needs no replacement.
+It degrades with size, and it degrades in a specific way: the usual failure is not that the file is wrong, it is that the file is too big to justify and too tedious to prune. So it keeps growing, the per-turn tax keeps rising, and eventually you are paying for a paragraph about a module you deleted in March. The comparison is honest in both directions — [archeus's own compare page](https://docs.claudectl.space/compare/) says plainly that a 40-line `CLAUDE.md` needs no replacement.
 
 The scalable shape is different: a small always-on index, plus detail that costs nothing until it becomes relevant.
 
 ## Knowledge that lives outside the transcript
 
-claudectl's answer is a semantic memory graph stored per project at `.claudectl/memory/graph.json`. Modules and repos are summarised (incrementally, keyed by file hash, so unchanged code is never re-analysed) and merged with the **real** dependency graph extracted from the source — cross-module edges and an importance rank, not a guess from filenames.
+archeus's answer is a semantic memory graph stored per project at `.archeus/memory/graph.json`. Modules and repos are summarised (incrementally, keyed by file hash, so unchanged code is never re-analysed) and merged with the **real** dependency graph extracted from the source — cross-module edges and an importance rank, not a guess from filenames.
 
 Two properties matter more than the extraction:
 
 **It is bounded.** Duplicate entities merge across modules, and a global importance cap (`memory_max_entities`, default 500) evicts the least-connected. The always-on cost stays flat while accuracy rises. That is the inversion that makes this work at all: memory gets *leaner and sharper* as the project grows, instead of heavier.
 
-**Nothing shrinks without a way back.** Any entity or lesson can be pinned so the cap can never evict it — pin more than the cap allows and the pins win, the cap gives way. A section of `CLAUDE.md` can be fenced between `<!-- CLAUDECTL:KEEP:START -->` and `<!-- CLAUDECTL:KEEP:END -->`, and AI compression will not even *send* it to the model, so it cannot be reworded or dropped. Pruning names the exact entries it will remove before removing them. Every replacement is snapshotted — twelve versions of `CLAUDE.md` and of the graph, browsable with a diff and restorable, and restoring is itself snapshotted so you can walk back out again.
+**Nothing shrinks without a way back.** Any entity or lesson can be pinned so the cap can never evict it — pin more than the cap allows and the pins win, the cap gives way. A section of `CLAUDE.md` can be fenced between `<!-- ARCHEUS:KEEP:START -->` and `<!-- ARCHEUS:KEEP:END -->`, and AI compression will not even *send* it to the model, so it cannot be reworded or dropped. Pruning names the exact entries it will remove before removing them. Every replacement is snapshotted — twelve versions of `CLAUDE.md` and of the graph, browsable with a diff and restorable, and restoring is itself snapshotted so you can walk back out again.
 
 That graph then reaches a session through the three surfaces above:
 
 | Surface | What Claude sees | Cost |
 |---|---|---|
 | CLAUDE.md micro-index | Repo one-liners, module names, a recall pointer | ≤250 tokens, every session |
-| `.claude/rules/claudectl-mem-*.md` | Per-module entities and relations, `globs:`-scoped | **0 until Claude touches those files** |
+| `.claude/rules/archeus-mem-*.md` | Per-module entities and relations, `globs:`-scoped | **0 until Claude touches those files** |
 | `UserPromptSubmit` hook (opt-in) | The subgraph relevant to *this prompt* | ≤600 tokens/prompt, under a second, local |
 
 The token arithmetic behind that split is a separate topic — see [how to cut Claude Code token costs](/blog/cut-claude-code-token-costs) for the audit and the numbers.
 
 ## Retrieval, and being honest about it
 
-The per-prompt surface only works if retrieval is good. claudectl's recall engine runs four local rankers — BM25 over entity names and summaries, path and module match, dependency rank, and a confidence-weighted lesson signal — combined with Reciprocal Rank Fusion, which uses each ranker's *position* rather than its score, so nothing needs calibrating. No embeddings, deterministic, under half a second on 500 entities. You can call it yourself:
+The per-prompt surface only works if retrieval is good. archeus's recall engine runs four local rankers — BM25 over entity names and summaries, path and module match, dependency rank, and a confidence-weighted lesson signal — combined with Reciprocal Rank Fusion, which uses each ranker's *position* rather than its score, so nothing needs calibrating. No embeddings, deterministic, under half a second on 500 entities. You can call it yourself:
 
 ```
-claudectl recall "the memory graph consolidation cap"
+archeus recall "the memory graph consolidation cap"
 ```
 
 Claude can call it too, mid-session, through Bash — which is the cheapest possible form of on-demand memory, because it costs nothing until something asks.
@@ -95,23 +95,23 @@ And the honest limit, stated in [the memory docs](https://docs.claudectl.space/m
 
 ## Facts that stop being true
 
-A memory that only accumulates is a memory that goes stale. When you migrate Flask to FastAPI, "this project uses Flask" is not wrong-forever, it is wrong-from-a-date. claudectl invalidates superseded facts with a timestamp instead of deleting them: the old fact is kept as history and never injected again. The graph tracks what is true *now* and what changed, which is a materially different data model from a pile of notes.
+A memory that only accumulates is a memory that goes stale. When you migrate Flask to FastAPI, "this project uses Flask" is not wrong-forever, it is wrong-from-a-date. archeus invalidates superseded facts with a timestamp instead of deleting them: the old fact is kept as history and never injected again. The graph tracks what is true *now* and what changed, which is a materially different data model from a pile of notes.
 
 Alongside that, entities recalled often gain weight and survive consolidation; knowledge nobody touches fades, access-based, like a forgetting curve.
 
 ## Learning from finished sessions
 
-The transcript nobody reads does contain something worth keeping: the moment you told Claude its fix was wrong, and the fix that actually worked. After each session claudectl distils durable **lessons** — error→fix pairs, decisions, preferences — from the transcript. High-confidence ones auto-approve; the rest wait in a review screen. Approved lessons boost recall and decay if never used again.
+The transcript nobody reads does contain something worth keeping: the moment you told Claude its fix was wrong, and the fix that actually worked. After each session archeus distils durable **lessons** — error→fix pairs, decisions, preferences — from the transcript. High-confidence ones auto-approve; the rest wait in a review screen. Approved lessons boost recall and decay if never used again.
 
 The load-bearing detail is that this runs at `SessionEnd`, not `Stop`. `Stop` fires on every turn, and binding a whole-transcript scan to it means re-streaming a growing file dozens of times per session for a heuristic that only needs to run once.
 
 ## What to actually do
 
-1. **Install it and build the graph.** `pipx install claudectl`, open the project, press `m` for the memory hub, build. Nothing on disk moves.
+1. **Install it and build the graph.** `pipx install archeus`, open the project, press `m` for the memory hub, build. Nothing on disk moves.
 2. **Turn on the rules surface.** Per-module knowledge in `.claude/rules/` costs zero until Claude opens a matching file. This is the single highest-value change.
 3. **Add the recall hook only if you want per-prompt injection.** It is opt-in, budgeted at ~600 tokens, and runs locally.
 4. **Turn on recent-work memory** for a token-free one-line summary per session, injected as a compact digest on the next `SessionStart` — so a new session knows what the last few did.
-5. **After a compact, hand off instead of re-explaining.** **Hand off** on the session row (or `⇧K` in the terminal UI) starts a *new* session seeded with the previous transcript, written to `.claudectl/injected-context.md` and passed as a pointer, not a paste.
+5. **After a compact, hand off instead of re-explaining.** **Hand off** on the session row (or `⇧K` in the terminal UI) starts a *new* session seeded with the previous transcript, written to `.archeus/injected-context.md` and passed as a pointer, not a paste.
 
 ## Where this does not help
 

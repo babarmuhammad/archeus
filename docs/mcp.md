@@ -1,6 +1,6 @@
 ---
 description: >-
-  Add, remove and inspect MCP servers from claudectl — connection state at a glance, a live
+  Add, remove and inspect MCP servers from archeus — connection state at a glance, a live
   status footer, and tool documentation written into the global CLAUDE.md.
 ---
 

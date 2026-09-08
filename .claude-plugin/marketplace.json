@@ -1,6 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "claudectl",
+  "name": "archeus",
   "description": "The workspace layer for Claude Code: persistent project memory, an interactive architecture graph, MCP awareness, and per-project launch control.",
   "owner": {
     "name": "Babar Muhammad Anas",
@@ -8,10 +8,10 @@
   },
   "plugins": [
     {
-      "name": "claudectl",
+      "name": "archeus",
       "source": "./plugin",
       "description": "Recall this project's memory, check its health, and review the current diff — from inside a session.",
-      "version": "1.9.1",
+      "version": "2.0.0",
       "category": "productivity",
       "tags": ["memory", "workspace", "sessions", "review"]
     }

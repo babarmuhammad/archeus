@@ -25,7 +25,7 @@ def sent(monkeypatch, tmp_path):
     """Capture what would have been spawned.
 
     `notify-send` is pinned as present because otherwise these tests assert a
-    property of the HOST rather than of claudectl: on Linux with no notifier
+    property of the HOST rather than of archeus: on Linux with no notifier
     installed — a headless CI runner, for instance — `command()` correctly
     returns None, `send()` returns False before it ever reaches Popen, and the
     'a long job notifies' tests below fail for a reason that has nothing to do
@@ -34,7 +34,7 @@ def sent(monkeypatch, tmp_path):
     bottom of this file cover each branch of it directly."""
     import shutil
     Sandbox(monkeypatch, tmp_path)
-    monkeypatch.delenv('CLAUDECTL_NO_NOTIFY', raising=False)
+    monkeypatch.delenv('ARCHEUS_NO_NOTIFY', raising=False)
     monkeypatch.setattr(shutil, 'which', lambda n: '/usr/bin/notify-send')
     calls = []
     monkeypatch.setattr(notify.subprocess, 'Popen',
@@ -82,10 +82,10 @@ def test_it_is_on_by_default(sent):
 
 
 def test_the_suite_cannot_raise_a_real_notification(monkeypatch, tmp_path):
-    """conftest sets CLAUDECTL_NO_NOTIFY for every test. Without this assertion
+    """conftest sets ARCHEUS_NO_NOTIFY for every test. Without this assertion
     the block is a convention; with it, deleting the fixture goes red."""
     Sandbox(monkeypatch, tmp_path)
-    assert os.environ.get('CLAUDECTL_NO_NOTIFY')
+    assert os.environ.get('ARCHEUS_NO_NOTIFY')
     assert notify.enabled() is False
 
 
@@ -93,7 +93,7 @@ def test_the_suite_cannot_raise_a_real_notification(monkeypatch, tmp_path):
 
 def test_windows_uses_a_powershell_toast(monkeypatch):
     monkeypatch.setattr(proc, 'WINDOWS', True)
-    argv = notify.command('Memory updated', 'claudectl')
+    argv = notify.command('Memory updated', 'archeus')
     assert argv[0] == 'powershell' and '-NoProfile' in argv
     script = argv[-1]
     assert 'ToastNotificationManager' in script
@@ -127,10 +127,10 @@ def test_a_machine_with_no_notifier_is_silent_not_broken(monkeypatch, tmp_path):
     Asserted deliberately because it used to be asserted by ACCIDENT, in the
     other direction: the 'a long job notifies' tests stubbed Popen but not the
     command builder, so on a host without notify-send they failed on a property
-    of the machine rather than of claudectl."""
+    of the machine rather than of archeus."""
     import shutil
     Sandbox(monkeypatch, tmp_path)
-    monkeypatch.delenv('CLAUDECTL_NO_NOTIFY', raising=False)
+    monkeypatch.delenv('ARCHEUS_NO_NOTIFY', raising=False)
     monkeypatch.setattr(proc, 'WINDOWS', False)
     monkeypatch.setattr(sys, 'platform', 'linux')
     monkeypatch.setattr(shutil, 'which', lambda n: None)

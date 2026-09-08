@@ -1,10 +1,10 @@
 export const SITE = {
   url: 'https://claudectl.space',
   docs: 'https://docs.claudectl.space',
-  name: 'claudectl',
+  name: 'archeus',
   tagline: 'The workspace layer for Claude Code',
-  repo: 'https://github.com/babarmuhammad/claudectl',
-  pypi: 'https://pypi.org/project/claudectl/',
+  repo: 'https://github.com/babarmuhammad/archeus',
+  pypi: 'https://pypi.org/project/archeus/',
   author: 'Babar Muhammad Anas',
   authorGithub: 'https://github.com/babarmuhammad',
   license: 'MIT',
@@ -15,7 +15,7 @@ export const SITE = {
  *
  *  This is the disambiguation mechanism, not decoration: an unrelated Rust
  *  project publishes under the same name, so the thing that tells a search
- *  engine which "claudectl" this is, is one entity corroborated by a set of
+ *  engine which "archeus" this is, is one entity corroborated by a set of
  *  profiles that all link back here. Add a URL only once it exists AND links
  *  to claudectl.space — a dead or one-way profile weakens the graph.
  *

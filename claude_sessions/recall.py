@@ -1,4 +1,4 @@
-"""Task-scoped memory retrieval — the engine behind claudectl's token-efficient
+"""Task-scoped memory retrieval — the engine behind archeus's token-efficient
 injection. Scores the semantic graph against a query (IDF keyword overlap +
 path match + dependency rank + relation expansion) and assembles a context
 string cut to a hard token budget. Pure local — no Claude call, fast enough
@@ -255,7 +255,7 @@ def expand_relations(mem, index, seeds, hops=1, decay=0.5):
 
 # ── assembly ─────────────────────────────────────────────────
 
-_HEADER = "PROJECT MEMORY (claudectl) — task-relevant subset:"
+_HEADER = "PROJECT MEMORY (archeus) — task-relevant subset:"
 
 
 def render_context(scored, mem, budget_tokens):
@@ -447,7 +447,7 @@ def _rule_frontmatter(text):
         ln = ln.strip()
         if ln == '---' and unit:
             break
-        m = re.match(r'^description\s*:\s*"?claudectl memory:\s*(.+?)"?\s*$', ln)
+        m = re.match(r'^description\s*:\s*"?archeus memory:\s*(.+?)"?\s*$', ln)
         if m:
             unit = m.group(1)
         if re.match(r'^paths\s*:', ln):
@@ -472,7 +472,7 @@ def estimate_surfaces(project_path, proj_folder, settings):
     rules_dir = os.path.join(project_path or '', '.claude', 'rules')
     try:
         for nm in sorted(os.listdir(rules_dir)):
-            if nm.startswith('claudectl-mem-'):
+            if nm.startswith('archeus-mem-'):
                 p = os.path.join(rules_dir, nm)
                 txt = open(p, encoding='utf-8', errors='ignore').read()
                 unit, glob, scoped = _rule_frontmatter(txt)
@@ -513,7 +513,7 @@ def preview_screen(project_path, proj_folder, project_name):
     lines += ['', "PER PROMPT — recall hook " +
               (f"(ON, budget {hook} tok)" if hook is not None else "(off)")]
     while True:
-        key = pager(('CLAUDECTL', project_name, 'MEMORY PREVIEW'), lines,
+        key = pager(('ARCHEUS', project_name, 'MEMORY PREVIEW'), lines,
                     hint='t try a prompt   ESC back', extra_keys=('t',))
         if key != 't':
             return
@@ -528,7 +528,7 @@ def _try_prompt(project_path, proj_folder, project_name, settings):
     r = retrieve(project_path, proj_folder, q, settings.get('memory_budget', 600),
                  log=False)
     body = r['text'].splitlines() if not r['empty'] else ['(nothing relevant — no injection)']
-    pager(('CLAUDECTL', project_name, f'HOOK WOULD INJECT (~{r["tokens"]} tok)'),
+    pager(('ARCHEUS', project_name, f'HOOK WOULD INJECT (~{r["tokens"]} tok)'),
           body, hint='ESC back')
 
 

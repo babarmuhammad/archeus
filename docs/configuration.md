@@ -1,22 +1,22 @@
 ---
 description: >-
-  Every file claudectl reads and writes — per-project files under ~/.claude/projects and in
+  Every file archeus reads and writes — per-project files under ~/.claude/projects and in
   the working directory, the global CLAUDE.md, its own settings file, and the repository
   layout.
 ---
 
 # Configuration
 
-Where everything claudectl uses lives on disk. Nothing here is a database and nothing is
+Where everything archeus uses lives on disk. Nothing here is a database and nothing is
 uploaded anywhere: every file below is plain text or JSON you can read, edit and delete.
 
 ## Its own settings
 
-claudectl's settings live at `~/.claude/claudectl.json` — accounts, defaults, theme, editor
+archeus's settings live at `~/.claude/archeus.json` — accounts, defaults, theme, editor
 path, `claude.exe` path, economy model. It is **always read from `~/.claude`**, independent
 of the config dir you are using, so switching account does not switch your preferences.
 
-Safe to edit by hand or delete to reset. Settings written by a newer claudectl are
+Safe to edit by hand or delete to reset. Settings written by a newer archeus are
 preserved by an older one: the reader carries keys it does not recognise, so syncing the
 file between two machines with different versions cannot erase either one's configuration.
 
@@ -24,16 +24,16 @@ Two more files sit beside it, both account-independent for the same reason:
 
 | File | Purpose |
 |------|---------|
-| `~/.claude/claudectl-events.jsonl` | claudectl's own event log — what it did and what failed. Capped at 256 KB. See [Logs](tui.md#logs) |
+| `~/.claude/archeus-events.jsonl` | archeus's own event log — what it did and what failed. Capped at 256 KB. See [Logs](tui.md#logs) |
 | `~/.claude/failover.log` | the local failover proxy's request log, when it is running |
 
-`headless_quota` (`prompt` / `auto` / `off`) decides what happens when claudectl wants to
+`headless_quota` (`prompt` / `auto` / `off`) decides what happens when archeus wants to
 make one of its own Claude calls and the account's limit is already full — see
 [Rate limits and a second account](tui.md#rate-limits-and-a-second-account).
 
 ## Per-project files
 
-Each project gets a folder at `~/.claude/projects/<encoded-name>/`. claudectl reads and
+Each project gets a folder at `~/.claude/projects/<encoded-name>/`. archeus reads and
 writes several files there:
 
 | File | Purpose |
@@ -47,34 +47,34 @@ writes several files there:
 | `session-agents.json` | Selected agent refs, keyed by `__project__` (project-level picks) |
 | `archived/` | Archived sessions (restorable from the A view) |
 
-In the project's **working directory** (not the encoded folder), claudectl also maintains:
+In the project's **working directory** (not the encoded folder), archeus also maintains:
 
 | File | Purpose |
 |------|---------|
 | `.claude/agents/*.md` | Selected library agents, copied here so Claude auto-discovers them |
-| `.claude/agents/.claudectl-managed.json` | Filenames claudectl placed (so it never removes your own agents) |
-| `.claudectl/workspace-manifest.json` | Provenance & freshness manifest (repo HEAD, hashes, sessions, MCP, timestamps) |
-| `.claudectl/memory/graph.json` | Claude-extracted semantic memory (entities, relations, per-repo/module summaries) |
-| `.claudectl/connections-cache.json` | Cached architecture graph (rebuilt when the file signature changes) |
-| `.claudectl/connections-graph.html` | The rendered interactive architecture graph (opened in the browser) |
-| `.claudectl/snapshots/` | Previous versions of generated files (for the `w` change diffs) |
+| `.claude/agents/.archeus-managed.json` | Filenames archeus placed (so it never removes your own agents) |
+| `.archeus/workspace-manifest.json` | Provenance & freshness manifest (repo HEAD, hashes, sessions, MCP, timestamps) |
+| `.archeus/memory/graph.json` | Claude-extracted semantic memory (entities, relations, per-repo/module summaries) |
+| `.archeus/connections-cache.json` | Cached architecture graph (rebuilt when the file signature changes) |
+| `.archeus/connections-graph.html` | The rendered interactive architecture graph (opened in the browser) |
+| `.archeus/snapshots/` | Previous versions of generated files (for the `w` change diffs) |
 
-The agent library lives at `~/.claude/claudectl-agents/<category>/*.md` (account-wide, not
+The agent library lives at `~/.claude/archeus-agents/<category>/*.md` (account-wide, not
 auto-loaded); selecting agents for a project copies them into that project's
 `.claude/agents/`. A single lead agent can also come from `~/.claude/agents/`. Hooks and MCP
 servers are stored in `settings.json` / managed via `claude mcp`.
 
-!!! note "`settings.json` is Claude Code's file, not claudectl's"
+!!! note "`settings.json` is Claude Code's file, not archeus's"
 
     Hooks, permissions and the output style all live in Claude Code's own
-    `settings.json`. claudectl read-modify-writes it — never rewrites it — and every write
+    `settings.json`. archeus read-modify-writes it — never rewrites it — and every write
     goes through one atomic helper, because a half-written `settings.json` breaks the
-    user's entire session and not just claudectl.
+    user's entire session and not just archeus.
 
 ## Global CLAUDE.md
 
 `~/.claude/CLAUDE.md` is loaded by Claude Code in every session across all projects.
-claudectl uses it to store MCP tool documentation. Each MCP server gets its own
+archeus uses it to store MCP tool documentation. Each MCP server gets its own
 sentinel-delimited section:
 
 ```
@@ -95,7 +95,7 @@ per-project file for exactly that reason.
 ## File layout
 
 ```
-.\claudectl\
+.\archeus\
 ├── claude-sessions.py      # launcher stub: applies theme, --launch, crash handler
 ├── Open Repo cmd.bat       # bat launcher (runs TUI, then py --launch)
 ├── pyproject.toml
@@ -134,12 +134,12 @@ per-project file for exactly that reason.
     ├── hooks.py            # hooks template / toggle / remove
     ├── plugins.py          # plugin marketplaces + installs (shells out to `claude`)
     ├── outputstyles.py     # output-style browse / save / select
-    ├── statusline.py       # `claudectl statusline` — renders the Claude Code status line
+    ├── statusline.py       # `archeus statusline` — renders the Claude Code status line
     ├── accounts.py         # multiple CLAUDE_CONFIG_DIR accounts
     ├── denygen.py          # generated permissions.deny rules for heavy paths
     ├── health.py           # project health checks + auto-fixes
     ├── quota.py            # don't spend an exhausted account — offer one with headroom
-    ├── events.py           # claudectl's own event log + the Logs screen
+    ├── events.py           # archeus's own event log + the Logs screen
     ├── *_hook.py           # the hook scripts themselves (guard, recall, worklog, …)
     │
     │  # memory & context
@@ -147,7 +147,7 @@ per-project file for exactly that reason.
     ├── memhub.py           # cross-project memory index
     ├── memrules.py         # per-module .claude/rules generation
     ├── lessons.py          # durable lessons distilled from transcripts
-    ├── recall.py           # `claudectl recall "<topic>"` — task-relevant subgraph
+    ├── recall.py           # `archeus recall "<topic>"` — task-relevant subgraph
     ├── worklog.py          # recent-work ring buffer per project
     ├── conventions.py      # inferred repo conventions
     ├── context_inject.py   # cross-session context hand-off
@@ -159,7 +159,7 @@ per-project file for exactly that reason.
     ├── repos.py            # repo discovery, cached state, _git (the one git door)
     ├── worktrees.py        # linked-worktree board
     ├── workspace.py        # provenance manifest + freshness status
-    ├── review.py           # `claudectl review` — diff review
+    ├── review.py           # `archeus review` — diff review
     ├── diffview.py         # git-style diffs + the approval gate for generated files
     ├── connections.py      # project architecture graph (standalone HTML)
     │

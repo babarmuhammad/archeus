@@ -27,7 +27,7 @@ def _serve(monkeypatch):
 
 
 def _req(url, body=None, headers=None):
-    h = {'X-Claudectl': gui.TOKEN}
+    h = {'X-Archeus': gui.TOKEN}
     if headers is not None:
         h = headers
     data = json.dumps(body).encode() if body is not None else None
@@ -115,7 +115,7 @@ def test_http_guard_rejects_missing_header(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     srv, base = _serve(monkeypatch)
     try:
-        code, d = _req(base + '/api/state', headers={})   # no X-Claudectl
+        code, d = _req(base + '/api/state', headers={})   # no X-Archeus
         assert code == 403
         code, d = _req(base + '/api/launch', body={'path': 'x'}, headers={})
         assert code == 403
@@ -309,7 +309,7 @@ def test_index_serves_html(monkeypatch, tmp_path):
         with urllib.request.urlopen(base + '/?k=' + gui.TOKEN) as r:
             body = r.read().decode('utf-8')
             assert r.status == 200
-            assert 'claudectl' in body and '<html' in body
+            assert 'archeus' in body and '<html' in body
     finally:
         srv.shutdown()
 
@@ -336,8 +336,8 @@ def test_guard_requires_the_per_run_token(monkeypatch, tmp_path):
     srv, base = _serve(monkeypatch)
     port = srv.server_address[1]
     try:
-        assert _raw(port, extra={'X-Claudectl': '1'})[0] == 403
-        assert _raw(port, extra={'X-Claudectl': gui.TOKEN})[0] == 200
+        assert _raw(port, extra={'X-Archeus': '1'})[0] == 403
+        assert _raw(port, extra={'X-Archeus': gui.TOKEN})[0] == 200
     finally:
         srv.shutdown()
 
@@ -350,7 +350,7 @@ def test_guard_rejects_a_rebound_host(monkeypatch, tmp_path):
     srv, base = _serve(monkeypatch)
     port = srv.server_address[1]
     try:
-        code, body = _raw(port, extra={'X-Claudectl': gui.TOKEN},
+        code, body = _raw(port, extra={'X-Archeus': gui.TOKEN},
                           host='evil.example:%d' % port)
         assert code == 403 and b'bad host' in body
         # the unguarded routes are covered too, or the page itself leaks the token
@@ -369,7 +369,7 @@ def test_page_carries_the_token_and_the_placeholder_never_ships(monkeypatch, tmp
         code, body = _raw(port, path='/?k=' + gui.TOKEN)
         assert code == 200
         assert gui.TOKEN.encode() in body
-        assert b'__CLAUDECTL_TOKEN__' not in body
+        assert b'__ARCHEUS_TOKEN__' not in body
     finally:
         srv.shutdown()
 
@@ -399,7 +399,7 @@ def test_a_cross_site_fetch_is_refused_even_with_the_token(monkeypatch, tmp_path
     Sandbox(monkeypatch, tmp_path)
     srv, _base = _serve(monkeypatch)
     port = srv.server_address[1]
-    tok = {'X-Claudectl': gui.TOKEN}
+    tok = {'X-Archeus': gui.TOKEN}
     try:
         for extra in ({'Sec-Fetch-Site': 'cross-site'},
                       {'Sec-Fetch-Site': 'same-site'},
@@ -424,7 +424,7 @@ def test_a_non_ascii_token_header_is_a_403_not_a_traceback(monkeypatch, tmp_path
     srv, _base = _serve(monkeypatch)
     port = srv.server_address[1]
     try:
-        assert _raw(port, extra={'X-Claudectl': '\xff\xfe'})[0] == 403
+        assert _raw(port, extra={'X-Archeus': '\xff\xfe'})[0] == 403
     finally:
         srv.shutdown()
 
@@ -463,7 +463,7 @@ def test_responses_carry_the_hardening_headers(monkeypatch, tmp_path):
     srv, base = _serve(monkeypatch)
     try:
         r = urllib.request.Request(base + '/api/state',
-                                   headers={'X-Claudectl': gui.TOKEN})
+                                   headers={'X-Archeus': gui.TOKEN})
         with urllib.request.urlopen(r) as resp:
             h = dict(resp.headers)
         assert h['X-Content-Type-Options'] == 'nosniff'

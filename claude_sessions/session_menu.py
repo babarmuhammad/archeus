@@ -219,7 +219,7 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
     archived_dir   = os.path.join(proj_folder, 'archived') if proj_folder else None
     # session-learning badge + background memory update. The update (lessons
     # scan and/or auto-refresh) runs in a DETACHED worker process, not a
-    # daemon thread — it must survive claudectl exiting to launch claude.exe
+    # daemon thread — it must survive archeus exiting to launch claude.exe
     # (.bat path), which used to kill the scan mid-flight.
     unlearned = 0
     try:
@@ -276,10 +276,11 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
     pending_ev     = None    # synthesized event (action palette dispatch)
     # first-open setup badge: no CLAUDE.md AND no memory graph
     try:
+        from . import store
         not_set_up = (project_path
                       and not os.path.isfile(os.path.join(project_path, 'CLAUDE.md'))
-                      and not os.path.isfile(os.path.join(
-                          project_path, '.claudectl', 'memory', 'graph.json')))
+                      and not os.path.isfile(store.workfile(
+                          project_path, 'memory', 'graph.json')))
     except Exception:
         not_set_up = False
 
@@ -363,7 +364,7 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
         crumb = 'ARCHIVED' if show_archived else 'SESSIONS'
         if acct_label:
             crumb += f'  ·  {acct_label}'
-        frame = [render.header('CLAUDECTL', project_name, crumb), '']
+        frame = [render.header('ARCHEUS', project_name, crumb), '']
         if not show_archived:
             try:
                 from . import memory as _mem_mod
@@ -595,7 +596,7 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
                          for p, n in changed]
             else:
                 lines = [f"{C_DIM}(no file edits recorded in this session){C_RESET}"]
-            pager(('CLAUDECTL', project_name, 'CHANGED FILES'), lines)
+            pager(('ARCHEUS', project_name, 'CHANGED FILES'), lines)
 
         elif ev[0] == 'char' and ev[1] == 'M' and not show_archived:
             from .claude_md import memory_map_menu

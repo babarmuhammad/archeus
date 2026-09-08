@@ -59,7 +59,7 @@ def global_search(entries):
         nav = min(nav, max(0, len(shown) - 1))
 
         title = 'SEARCH ALL SESSIONS' + (' (partial index)' if partial else '')
-        frame = [render.header('CLAUDECTL', title), '',
+        frame = [render.header('ARCHEUS', title), '',
                  f"  {C_SRCH}[ {query}▌ ]{C_RESET}  {C_DIM}{len(matches)} match(es){C_RESET}", '']
         for i, (mtime, ppath, enc, sid, display, _, _cfgdir) in enumerate(shown):
             label = render.cols(

@@ -5,7 +5,7 @@ set "CHOICE_FILE=%temp%\choice_claude.txt"
 if exist "%CHOICE_FILE%" del "%CHOICE_FILE%"
 
 rem 1) run the TUI - writes the choice file and exits
-set "CLAUDECTL_BAT=1"
+set "ARCHEUS_BAT=1"
 py "%~dp0claude-sessions.py"
 
 if not exist "%CHOICE_FILE%" (

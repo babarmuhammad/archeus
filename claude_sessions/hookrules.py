@@ -15,7 +15,7 @@ dependency points hook -> library only.
 """
 
 MINIMAL_CODE = (
-    "Code minimization (claudectl): read/understand fully, then write the LEAST "
+    "Code minimization (archeus): read/understand fully, then write the LEAST "
     "code that works. Before writing, stop at the first hit — 1) needed at all? "
     "(YAGNI) 2) already in this repo? reuse 3) stdlib? 4) native platform feature? "
     "5) an installed dependency? 6) one line? 7) only then the minimum that works. "
@@ -23,7 +23,7 @@ MINIMAL_CODE = (
 )
 
 CONCISE = (
-    "Concise output (claudectl): answer directly — no preamble, no narration of "
+    "Concise output (archeus): answer directly — no preamble, no narration of "
     "what you are about to do, no recap of what you just did. Never re-print "
     "unchanged code; reference file:line instead. Explain only what was asked, "
     "at the depth asked. Skip closing summaries when the result is visible from "

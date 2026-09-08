@@ -1,7 +1,7 @@
 """Session learning — distill lessons from finished session transcripts into
 the semantic memory graph.
 
-Post-session scan (not a Stop hook: claudectl owns the lifecycle and the TUI
+Post-session scan (not a Stop hook: archeus owns the lifecycle and the TUI
 is the review point). One `claude -p` call per session extracts error→fix
 pairs, decisions, corrected assumptions, and preferences as type='lesson'
 entities with a pending → approved/pinned lifecycle. Pending lessons never
@@ -67,7 +67,7 @@ def pending_sids(proj_folder, mem):
             except OSError:
                 continue
             if is_internal_session(p):
-                continue                      # claudectl's own claude -p calls
+                continue                      # archeus's own claude -p calls
             seen_sids.add(sid)
             out.append((os.path.getmtime(p), sid))
     return [sid for _mt, sid in sorted(out)]
@@ -127,7 +127,7 @@ def extract_lessons(project_path, proj_folder, sid):
     )
     data = memory._claude_json(
         prompt, os.path.abspath(project_path), LESSONS_SCHEMA,
-        crumbs=('CLAUDECTL', 'LESSONS', sid[:8]),
+        crumbs=('ARCHEUS', 'LESSONS', sid[:8]),
         label=f"Learning from session {sid[:8]}...")
     if not isinstance(data, dict):
         return []
@@ -260,7 +260,7 @@ def review_screen(project_path, proj_folder, project_name):
         mem = memory.load_memory(project_path, proj_folder)
         lessons = [e for e in mem.get('entities', []) if e.get('type') == 'lesson']
         lessons.sort(key=lambda e: (e.get('status') != 'pending', -e.get('confidence', 0)))
-        frame = [render.header('CLAUDECTL', project_name, 'LESSONS'), '']
+        frame = [render.header('ARCHEUS', project_name, 'LESSONS'), '']
         if not lessons:
             frame += [f"  {C_DIM}No lessons yet. They appear after sessions are scanned",
                       f"  (badge in the sessions menu, or 'auto' in settings).{C_RESET}"]

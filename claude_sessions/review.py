@@ -171,7 +171,7 @@ def run_review(project_path, proj_folder=None, staged=False, base=None,
         memory._tls.silent = True
     try:
         out = memory._claude_json(prompt, project_path, FINDINGS_SCHEMA,
-                                  timeout=300, crumbs=('CLAUDECTL', 'REVIEW'),
+                                  timeout=300, crumbs=('ARCHEUS', 'REVIEW'),
                                   label='Reviewing changes with Claude...',
                                   model=model)
     finally:
@@ -225,11 +225,11 @@ def review_screen(project_path, proj_folder, project_name):
         return
     result = run_review(project_path, proj_folder)   # foreground: shows progress
     lines = render_lines(result)
-    pager(('CLAUDECTL', project_name, 'REVIEW'), lines,
+    pager(('ARCHEUS', project_name, 'REVIEW'), lines,
           hint='confidence-scored review of your working changes')
 
 
-# ── CLI: `claudectl review [--staged|--branch BASE] [--min-confidence N] [path]` ──
+# ── CLI: `archeus review [--staged|--branch BASE] [--min-confidence N] [path]` ──
 
 def review_cli(argv):
     staged = '--staged' in argv

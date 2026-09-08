@@ -199,7 +199,7 @@ def test_spawn_terminal_never_reaches_a_windows_shell_off_windows(monkeypatch):
 
 
 def test_kill_tree_never_signals_our_own_process_group(monkeypatch):
-    """os.killpg on a child that is NOT its own group leader takes claudectl
+    """os.killpg on a child that is NOT its own group leader takes archeus
     down with it — the child's group is ours."""
     from claude_sessions import proc
     killed = []

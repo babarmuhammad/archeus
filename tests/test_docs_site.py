@@ -300,7 +300,7 @@ def test_the_pages_deploy_keeps_the_custom_domain():
 def test_both_hosts_assert_the_same_author_entity():
     """The apex and the docs subdomain both publish a schema.org Person with the
     same @id and the same sameAs list. That is not decoration: an unrelated Rust
-    project publishes under the name claudectl, so the only thing telling a search
+    project publishes under the name archeus, so the only thing telling a search
     engine which one this is, is one author entity corroborated by a set of
     profiles that link back.
 

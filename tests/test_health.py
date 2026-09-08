@@ -38,7 +38,7 @@ def test_session_log_appended(monkeypatch, tmp_path):
     actual, enc, folder, sids = sb.add_project('alpha', n_sessions=1)
     ok = health.append_session_log(actual, folder, sids[0])
     assert ok
-    log = open(os.path.join(actual, '.claudectl', 'session-log.md'),
+    log = open(os.path.join(actual, '.archeus', 'session-log.md'),
                encoding='utf-8').read()
     assert sids[0][:8] in log and 'goal:' in log
 

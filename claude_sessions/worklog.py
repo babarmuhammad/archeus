@@ -2,7 +2,7 @@
 complementing the code-structure knowledge graph.
 
 On session end a heuristic (token-free) capture records a one-line summary and
-the files touched into a bounded ring buffer (.claudectl/memory/worklog.json).
+the files touched into a bounded ring buffer (.archeus/memory/worklog.json).
 On session start the digest is injected so the next session knows what the last
 few sessions did. Opt-in per project (project_defaults[enc]['worklog']).
 
@@ -23,8 +23,8 @@ DIGEST_BUDGET = 700      # char budget for the injected block
 
 
 def worklog_path(project_path):
-    return os.path.join(os.path.abspath(project_path), '.claudectl', 'memory',
-                        'worklog.json')
+    from . import store
+    return store.workfile(os.path.abspath(project_path), 'memory', 'worklog.json')
 
 
 def load_worklog(project_path):
@@ -120,7 +120,7 @@ def render_digest(project_path, n=DIGEST_N, budget=DIGEST_BUDGET):
     entries = load_worklog(project_path)
     if not entries:
         return ''
-    lines = ["## Recent work (claudectl — last sessions)"]
+    lines = ["## Recent work (archeus — last sessions)"]
     for e in reversed(entries[-n:]):
         when = _ago(e.get('ended_at', ''))
         files = e.get('files') or []

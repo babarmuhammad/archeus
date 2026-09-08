@@ -21,7 +21,7 @@ from . import store
 
 
 def _workspace_status_cli():
-    """`claudectl workspace status` — resolve the project from cwd and print."""
+    """`archeus workspace status` — resolve the project from cwd and print."""
     from .paths import encode_component
     from . import workspace
     cwd = os.path.abspath(os.getcwd())
@@ -33,7 +33,7 @@ def _workspace_status_cli():
 
 
 def _recall_cli(query):
-    """`claudectl recall "<query>"` — print the task-relevant memory subgraph.
+    """`archeus recall "<query>"` — print the task-relevant memory subgraph.
     This is the on-demand surface the CLAUDE.md micro-digest points Claude to."""
     from .paths import encode_component
     from . import recall
@@ -47,7 +47,7 @@ def _recall_cli(query):
 
 
 def _bg_scan_cli(project_path, proj_folder):
-    """`claudectl --bg-scan <path> <folder>` — detached memory worker: lessons
+    """`archeus --bg-scan <path> <folder>` — detached memory worker: lessons
     scan, then (if enabled) incremental memory refresh — SEQUENTIALLY, so the
     two graph writers never clobber each other. Spawned headless by
     memory.spawn_background_worker; survives the TUI exiting to launch claude.
@@ -145,14 +145,14 @@ MAIN_ACTIONS = [
     ('⚙  Updates (Claude Code + plugins)',   '__updates__',          '/api/versions'),
     ('⚙  Global CLAUDE.md  /  MCP Analysis', '__global_claude_md__', '/api/global-claude-md'),
     ('⚙  Accounts (switch / run 2 at once)', '__accounts__',         '/api/accounts'),
-    ('⚙  Logs (what claudectl did, what failed)', '__logs__',        '/api/logs'),
+    ('⚙  Logs (what archeus did, what failed)', '__logs__',        '/api/logs'),
     ('⚙  Settings',                          '__settings__',         '/api/settings'),
     ('?  Help',                              '__help__',             ''),   # the GUI's help page is generated in the browser from NAV_GROUPS/TABS — there is nothing for it to fetch
 ]
 
 
 def run():
-    # `claudectl --help` / `-h` / `help` — FIRST: a released package must answer
+    # `archeus --help` / `-h` / `help` — FIRST: a released package must answer
     # the one thing a new user types, and it must never start a UI to do it.
     if len(sys.argv) >= 2 and sys.argv[1] in ('--help', '-h', 'help'):
         from .cli import print_help
@@ -162,26 +162,26 @@ def run():
         from .cli import print_version
         print_version()
         return
-    # `claudectl workspace status` — scriptable, no TUI
+    # `archeus workspace status` — scriptable, no TUI
     if sys.argv[1:3] == ['workspace', 'status']:
         _workspace_status_cli()
         return
-    # `claudectl recall "<query>"` — scriptable, no TUI
+    # `archeus recall "<query>"` — scriptable, no TUI
     if len(sys.argv) >= 3 and sys.argv[1] == 'recall':
         _recall_cli(' '.join(sys.argv[2:]))
         return
-    # `claudectl statusline` — Claude Code's statusLine command. Reads one JSON
+    # `archeus statusline` — Claude Code's statusLine command. Reads one JSON
     # payload on stdin, prints one line. Runs on every conversation turn, so it
     # is dispatched FIRST-ish and must never touch the TUI.
     if len(sys.argv) >= 2 and sys.argv[1] == 'statusline':
         from .statusline import main as _sl
         sys.exit(_sl(sys.argv[2:]))
-    # `claudectl sync-accounts [--yes|--dry-run]` — level every account up to
+    # `archeus sync-accounts [--yes|--dry-run]` — level every account up to
     # what the user has actually provisioned. Shows the diff before writing.
     if len(sys.argv) >= 2 and sys.argv[1] == 'sync-accounts':
         from .provision import main as _sync
         sys.exit(_sync(sys.argv[2:]))
-    # `claudectl review [--staged|--branch BASE] [--min-confidence N] [path]`
+    # `archeus review [--staged|--branch BASE] [--min-confidence N] [path]`
     if len(sys.argv) >= 2 and sys.argv[1] == 'review':
         from .review import review_cli
         sys.exit(review_cli(sys.argv[2:]))
@@ -200,16 +200,43 @@ def run():
         sys.exit(0 if ok else 1)
 
     # ── one-time settings migrations ──────────────────────────────
-    # HERE, below every scriptable dispatch above: `claudectl statusline` runs
+    # HERE, below every scriptable dispatch above: `archeus statusline` runs
     # on every conversation turn and must never pay for a settings write, and
     # __main__.py deliberately routes it before this module is even imported.
+
+    # FIRST of the three, because it moves the settings file the other two
+    # then read. `pending()` is two stat calls once it has run.
+    try:
+        from . import migrate as _migrate
+        if _migrate.pending():
+            _moved, _failed = _migrate.run()
+            if _failed:
+                from .config import log as _log
+                _log.warning('rename migration left %d item(s) behind: %s',
+                             len(_failed), _failed[0][0])
+        # Printed rather than logged, and printed EVERY start until it is acted
+        # on: the action it names is the difference between a working install
+        # and one that deletes itself on the user's next tidy-up.
+        _warn = _migrate.coinstalled_warning()
+        if _warn:
+            # `from .config import C_RESET` HERE would make C_RESET a local of
+            # run(), which every nested closure below then resolves from this
+            # scope instead of the module — unbound on every start where this
+            # branch does not run, which is all of them once the user has acted.
+            # Reading the colours off the module at use time is also the rule
+            # statusline.py learned: `from .config import C_WARN as _WARN` froze
+            # the palette at import and apply_theme could never move it.
+            from . import config as _cfg
+            print(f'{_cfg.C_WARN}!{_cfg.C_RESET} {_warn}\n')
+    except Exception:
+        pass          # a migration must never be the reason archeus won't start
     try:
         from .config import migrate_settings
         _s, _changed = migrate_settings(load_settings())
         if _changed:
             save_settings(_s)
     except Exception:
-        pass          # a migration must never be the reason claudectl won't start
+        pass          # a migration must never be the reason archeus won't start
     try:
         # the private skill library moves into <account>/skills, which is the
         # only place Claude Code reads. Guarded by its own settings flag, so
@@ -219,9 +246,9 @@ def run():
     except Exception:
         pass
 
-    # ── is claudectl itself out of date? ──────────────────────────
+    # ── is archeus itself out of date? ──────────────────────────
     # ABOVE the interface pick, so the GUI gets it too — that branch returns.
-    # BELOW the scriptable dispatches above, so `claudectl statusline` (every
+    # BELOW the scriptable dispatches above, so `archeus statusline` (every
     # conversation turn) never starts a thread or reads this setting.
     # The check is a daemon thread and every reader takes its cache; the install
     # is deferred to exit, because pip cannot rewrite the console script of the
@@ -233,7 +260,7 @@ def run():
     # ── and is the MODEL list out of date? ────────────────────────
     # Same thread discipline, same TTL gate, same silence on failure. This is
     # what puts a model released last week into the launch picker without a
-    # claudectl release; nothing downstream fetches, they all read its cache.
+    # archeus release; nothing downstream fetches, they all read its cache.
     from . import models as _models
     _models.refresh_in_background()
 
@@ -274,10 +301,10 @@ def run():
     if not get_claude_exe():
         _cls()
         print(f"\n  {C_TITLE}{C_BOLD}claude.exe not found{C_RESET}\n")
-        print(f"  claudectl could not locate Claude Code. Checked:")
+        print(f"  archeus could not locate Claude Code. Checked:")
         print(f"    - %USERPROFILE%\\.local\\bin\\claude.exe")
         print(f"    - PATH (claude / claude.exe)")
-        print(f"    - settings override (~/.claude/claudectl.json)\n")
+        print(f"    - settings override (~/.claude/archeus.json)\n")
         print(f"  Install Claude Code:  https://docs.anthropic.com/claude-code")
         print(f"  Or set the path in Settings (⚙) after continuing.\n")
         pause("  Press Enter to continue anyway...")
@@ -396,8 +423,7 @@ def run():
     def _banner():
         """Plan usage, plus the update notice when there is one. menu() splits
         this on newlines, so two facts stack rather than compete for one row."""
-        lines = [x for x in (_versions.rename_notice(), _versions.update_notice(),
-                             usage_status_line()) if x]
+        lines = [x for x in (_versions.update_notice(), usage_status_line()) if x]
         return '\n'.join(lines)
 
     while True:
@@ -639,9 +665,9 @@ def run():
         print("  Expected one of: terminal, new, continue, resume:<id>,")
         print("  fork:<id>, resume-named:<id>::<name>.")
         print("\n  Nothing was launched and nothing was changed. This is a bug in")
-        print("  claudectl rather than something you did — please report it with")
+        print("  archeus rather than something you did — please report it with")
         print("  the action shown above:")
-        print("  https://github.com/babarmuhammad/claudectl/issues")
+        print("  https://github.com/babarmuhammad/archeus/issues")
         pause("\n  Press Enter to exit...")
         sys.exit(1)
     # '|' is the choice-file delimiter. Strip it from user-typed fields
@@ -658,7 +684,7 @@ def run():
                if '|' in (v or '')]
         print("\n  Cannot launch: a '|' character appears in the "
               + ' and the '.join(bad) + '.')
-        print("  claudectl hands the launch options to the new console as a")
+        print("  archeus hands the launch options to the new console as a")
         print("  '|'-separated line, so a '|' inside a path would split it apart.")
         print("\n  Fix: rename the folder to remove the '|' — Windows permits it in")
         print("  a path but very little tooling handles it — or move the project.")
@@ -667,7 +693,7 @@ def run():
 
     # cmd reads the choice file in the ANSI codepage — keep bat-bound
     # name/worktree ASCII-safe (direct launch is unaffected).
-    if os.environ.get('CLAUDECTL_BAT') == '1':
+    if os.environ.get('ARCHEUS_BAT') == '1':
         opts['name']     = opts['name'].encode('ascii', 'ignore').decode()
         opts['worktree'] = opts['worktree'].encode('ascii', 'ignore').decode()
 
@@ -680,7 +706,7 @@ def run():
     # Launch is unified in Python: the bat re-invokes this script with --launch
     # (so it can pass big --agents JSON the cmd choice-file can't hold), and the
     # pipx/standalone path launches inline here.
-    if os.environ.get('CLAUDECTL_BAT') != '1':
+    if os.environ.get('ARCHEUS_BAT') != '1':
         _direct_launch(path, encoded_name, choice, opts)
 
 
@@ -767,7 +793,7 @@ def build_launch_command(path, encoded_name, choice, opts):
 
     env = os.environ.copy()
     # Pin the account/config dir explicitly — overrides any ambient
-    # CLAUDE_CONFIG_DIR claudectl itself may have been launched under.
+    # CLAUDE_CONFIG_DIR archeus itself may have been launched under.
     env['CLAUDE_CONFIG_DIR'] = cfgdir
     env['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'] = '1'
     # launch-economy env: cap thinking tokens / route subagents to a cheap model
@@ -775,7 +801,7 @@ def build_launch_command(path, encoded_name, choice, opts):
         env['MAX_THINKING_TOKENS'] = str(opts['max_thinking'])
     if opts.get('subagent_model'):
         env['CLAUDE_CODE_SUBAGENT_MODEL'] = opts['subagent_model']
-    # OpenTelemetry export, if configured. claudectl already owns the launch
+    # OpenTelemetry export, if configured. archeus already owns the launch
     # environment, so this is the natural place for it — and it is the step from
     # a personal tool to one a team can point at a shared backend.
     from .config import otel_env
@@ -829,7 +855,7 @@ def build_launch_command(path, encoded_name, choice, opts):
     if perm:
         args += ['--permission-mode', perm]
     # Model fallback chain for an overloaded primary. Unrelated to failover.py,
-    # which retries a DIFFERENT free-tier model through claudectl's own proxy;
+    # which retries a DIFFERENT free-tier model through archeus's own proxy;
     # this is Claude Code's own retry against the Anthropic API.
     fbs = [m for m in (settings.get('launch_fallback_models') or []) if m]
     if fbs:
@@ -857,7 +883,7 @@ def build_launch_command(path, encoded_name, choice, opts):
     # An opening message for an INTERACTIVE session — `claude "<text>"` submits
     # it as the first turn and leaves you in the session. It is last because it
     # is the CLI's positional argument, and it is the whole mechanism behind
-    # starting a `/loop` from claudectl: a loop is session-scoped, so there is
+    # starting a `/loop` from archeus: a loop is session-scoped, so there is
     # nothing to start except a session that begins by typing it.
     if opts.get('prompt'):
         args += [str(opts['prompt'])]

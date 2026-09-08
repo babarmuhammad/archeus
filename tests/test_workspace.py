@@ -349,9 +349,9 @@ def test_a_generated_block_never_counts_as_the_prose_contradicting_itself():
     # repeated a noun the prose also states, the ambiguity rule would swallow
     # the finding and this test would pass whether or not the block was read.
     md = ('Prose says 32 palettes.\n'
-          '<!-- CLAUDECTL:MEMORY:START -->\n'
+          '<!-- ARCHEUS:MEMORY:START -->\n'
           '- 3 worlds\n'
-          '<!-- CLAUDECTL:MEMORY:END -->\n')
+          '<!-- ARCHEUS:MEMORY:END -->\n')
     mem = {'entities': [{'summary': 'Ships 32 palettes and 4 worlds.'}]}
     assert workspace._claim_conflicts(md, mem) == []
     # and the past-tense filter has to be WIRED, not merely available
@@ -362,7 +362,7 @@ def test_a_generated_block_never_counts_as_the_prose_contradicting_itself():
 
 
 def test_the_prose_going_stale_is_reported_and_names_both_numbers(monkeypatch, tmp_path):
-    """The bug this check was built for: claudectl's own CLAUDE.md said "29
+    """The bug this check was built for: archeus's own CLAUDE.md said "29
     palettes" for months against a themes.py holding 32, while the graph — read
     from the same code — said 32. Nothing compared the two."""
     sb = Sandbox(monkeypatch, tmp_path)

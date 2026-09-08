@@ -152,7 +152,7 @@ def test_logbash_hook_appends(tmp_path):
     payload = json.dumps({'cwd': str(tmp_path), 'tool_input': {'command': 'git status'}})
     subprocess.run([sys.executable, lb], input=payload, capture_output=True,
                    text=True, timeout=15)
-    log = tmp_path / '.claudectl' / 'bash-log.txt'
+    log = tmp_path / '.archeus' / 'bash-log.txt'
     assert log.is_file() and 'git status' in log.read_text(encoding='utf-8')
 
 
@@ -223,7 +223,7 @@ def test_testfilter_hook_rewrites_test_commands(tmp_path):
     out = run('pytest -q')
     upd = json.loads(out)['hookSpecificOutput']['updatedInput']['command']
     assert 'pytest -q' in upd and 'testfilter_filter.py' in upd
-    assert 'pipefail' in upd and 'claudectl-testfilter' in upd
+    assert 'pipefail' in upd and 'archeus-testfilter' in upd
     assert run('git status') == ''                       # non-test → untouched
     assert run('pytest -q | tee out.txt') == ''          # already piped → hands off
     assert run(upd) == ''                                # marker → no double-wrap

@@ -5,7 +5,7 @@
 Please do not open a public issue for a security problem.
 
 Use GitHub's private vulnerability reporting on this repository:
-[Report a vulnerability](https://github.com/babarmuhammad/claudectl/security/advisories/new).
+[Report a vulnerability](https://github.com/babarmuhammad/archeus/security/advisories/new).
 
 You should get an acknowledgement within a few days. If a fix is needed, it ships in
 the next release and the advisory is published alongside it with credit, unless you
@@ -13,12 +13,12 @@ ask otherwise.
 
 ## Supported versions
 
-claudectl releases from `main` and only the latest version on PyPI is supported.
+archeus releases from `main` and only the latest version on PyPI is supported.
 There are no maintenance branches.
 
 ## What is in scope
 
-claudectl runs locally, on your own machine, against files Claude Code already writes.
+archeus runs locally, on your own machine, against files Claude Code already writes.
 The parts worth reporting are:
 
 - **The local HTTP server** behind the desktop GUI (`claude_sessions/gui.py`,
@@ -27,29 +27,29 @@ The parts worth reporting are:
   — including anything reachable through DNS rebinding.
 - **The failover proxy** (`claude_sessions/failover.py`), which substitutes your
   OmniRoute key into requests it forwards.
-- **Credential handling.** claudectl reads Claude Code's own state and never writes
+- **Credential handling.** archeus reads Claude Code's own state and never writes
   `.credentials.json`. Anything that leaks a token, an API key or a session id into a
   log, an error message, a generated file or an outbound request is in scope.
 
   Two exposures are deliberate, so that they are not reported as surprises. The
   per-run GUI token rides in the address bar (`/?k=…`), because a top-level
   navigation cannot carry a header and stripping it would break reload; it is
-  per-process and inert once claudectl exits. And the Claude Code settings editor
+  per-process and inert once archeus exits. And the Claude Code settings editor
   shows that account's `env` block, which is where an `ANTHROPIC_API_KEY` would
   live — it is an editor for your own file, behind the same token as everything
   else. A way to read either *without* the token is in scope.
 - **Path handling.** Project paths, config directories and transcript names come from
   disk and from Claude Code. A traversal out of an account's config directory is in scope.
-- **Anything claudectl writes to a file another program parses** — `settings.json`
+- **Anything archeus writes to a file another program parses** — `settings.json`
   above all, which belongs to Claude Code, not to us.
 
 ## What is not in scope
 
 - Claude Code itself, or the Claude API. Report those to Anthropic.
-- Third-party agents and skills installed through claudectl's library — those are the
-  upstream projects' code and claudectl shows you the source before writing it.
+- Third-party agents and skills installed through archeus's library — those are the
+  upstream projects' code and archeus shows you the source before writing it.
 - Anything that requires an attacker who already has local user-level access to your
-  machine. At that point they can read the same files claudectl reads.
-- Models generating wrong or unsafe suggestions. claudectl shows you every generated hook,
+  machine. At that point they can read the same files archeus reads.
+- Models generating wrong or unsafe suggestions. archeus shows you every generated hook,
   agent and CLAUDE.md block before it writes one, and that review is what you are relying
   on.

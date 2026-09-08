@@ -57,7 +57,7 @@ Knowing that, the tempting move is to decode: walk the snapshot directory and re
 
 The correct move is the inverse. **Hash the paths this session edited** (they are in the transcript) and look those hashes up in the store. The property that buys you is graceful failure: if Anthropic changes the scheme, nothing matches, and the tool reports `recognised: False` — "cannot read the store" — instead of confidently pairing snapshots with filenames at random.
 
-Read-only, too. Restoring is `/rewind`'s job; claudectl enforces this with a test that greps the module for any write call, because "we only read it" is a claim that decays the moment someone adds a convenience feature.
+Read-only, too. Restoring is `/rewind`'s job; archeus enforces this with a test that greps the module for any write call, because "we only read it" is a claim that decays the moment someone adds a convenience feature.
 
 ## Plugin caches
 
@@ -86,7 +86,7 @@ def write_json_atomic(path, data):
     os.replace(tmp, path)   # atomic on the same filesystem
 ```
 
-claudectl had three modules that had each solved this locally before it was consolidated into one helper with eleven call sites and an AST-walking test that fails when any writer near anything named "settings" uses a plain `open(..., 'w')` — because five of them were written the plain way one at a time, and a sixth would have been.
+archeus had three modules that had each solved this locally before it was consolidated into one helper with eleven call sites and an AST-walking test that fails when any writer near anything named "settings" uses a plain `open(..., 'w')` — because five of them were written the plain way one at a time, and a sixth would have been.
 
 **A missing file is an empty state; a file that will not parse is a fault.** Seven modules in this codebase had written `except Exception: return {}` around a `json.load`, and every one of those readers was also a writer — so the first truncated write was also the last time the data existed. The one that mattered most read Claude Code's `settings.json`: returning `{}` for an unparseable file erased the user's hooks, permissions and output style on the next save. The fix is to move a corrupt file aside as `<name>.corrupt-<timestamp>` and report it.
 
@@ -102,13 +102,13 @@ If you write a status line, Claude Code hands you a JSON payload on stdin on **e
 | `rate_limits.five_hour` | The 5-hour window |
 | `rate_limits.seven_day` | The 7-day window |
 
-There is a lesson attached to that table. claudectl's status line originally read `context_used_pct`, then `contextUsedPercent`, then `context.used` / `context.total`. Claude Code has never sent any of them. The segment was dead in production for its entire life — and its test passed, because the test asserted the same invented shape. It was testing the bug rather than the behaviour.
+There is a lesson attached to that table. archeus's status line originally read `context_used_pct`, then `contextUsedPercent`, then `context.used` / `context.total`. Claude Code has never sent any of them. The segment was dead in production for its entire life — and its test passed, because the test asserted the same invented shape. It was testing the bug rather than the behaviour.
 
 **Check field names against the payload you actually receive.** A plausible wrong name renders nothing, and nothing looks like "no data yet". The regression test now asserts the dead names render *nothing*, which is the only assertion that would have caught it.
 
 The rate-limit fields are the second half of the same discovery: they were already in the payload while a background OAuth poll was being paid for to fetch the same numbers.
 
-Because this runs per turn, cost matters. claudectl dispatches the `statusline` subcommand *before* importing its main module, which drags in `urllib`/`ssl`/`http.client` for a poll the status line must never make — that alone took the round trip from about 125ms to 58ms. The git branch is read straight from `.git/HEAD`, which is cheaper than a cache lookup and can never be stale; everything else comes from a disk cache that is guaranteed never to spawn a subprocess.
+Because this runs per turn, cost matters. archeus dispatches the `statusline` subcommand *before* importing its main module, which drags in `urllib`/`ssl`/`http.client` for a poll the status line must never make — that alone took the round trip from about 125ms to 58ms. The git branch is read straight from `.git/HEAD`, which is cheaper than a cache lookup and can never be stale; everything else comes from a disk cache that is guaranteed never to spawn a subprocess.
 
 ## When the docs and the disk disagree
 

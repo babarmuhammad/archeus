@@ -105,7 +105,7 @@ def deny_rules_screen(project_path, project_name):
     from .config import C_DIM, C_RESET, C_OK, C_WARN
     from .ui import wait_event, flash, confirm
     found = scan_heavy(project_path)
-    frame = [render.header('CLAUDECTL', project_name, 'DENY RULES'), '',
+    frame = [render.header('ARCHEUS', project_name, 'DENY RULES'), '',
              f"  {C_DIM}Block Claude from reading heavy/generated content "
              f"(.claude/settings.json → permissions.deny):{C_RESET}", '']
     if not found:

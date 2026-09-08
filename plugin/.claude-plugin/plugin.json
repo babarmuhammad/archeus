@@ -1,14 +1,14 @@
 {
-  "name": "claudectl",
-  "displayName": "claudectl",
-  "version": "1.9.1",
-  "description": "Recall this project's memory, check its health, and review the current diff — from inside a session. The full workspace manager is the claudectl CLI; this plugin is its in-session surface.",
+  "name": "archeus",
+  "displayName": "archeus",
+  "version": "2.0.0",
+  "description": "Recall this project's memory, check its health, and review the current diff — from inside a session. The full workspace manager is the archeus CLI; this plugin is its in-session surface.",
   "author": {
     "name": "Babar Muhammad Anas",
     "url": "https://github.com/babarmuhammad"
   },
-  "homepage": "https://github.com/babarmuhammad/claudectl",
-  "repository": "https://github.com/babarmuhammad/claudectl",
+  "homepage": "https://github.com/babarmuhammad/archeus",
+  "repository": "https://github.com/babarmuhammad/archeus",
   "license": "MIT",
   "keywords": ["memory", "workspace", "sessions", "review", "claude-code"]
 }

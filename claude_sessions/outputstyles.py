@@ -6,8 +6,8 @@ tools, same permissions, different job. Claude Code ships `default`,
 frontmatter in `~/.claude/output-styles/` (user) or `.claude/output-styles/`
 (project), selected by `outputStyle` in the corresponding settings.json.
 
-It sits beside skills, agents and hooks in claudectl for one reason worth
-stating: it is *per project and per account*, and claudectl is the only thing
+It sits beside skills, agents and hooks in archeus for one reason worth
+stating: it is *per project and per account*, and archeus is the only thing
 here that already knows which project and which account you are launching. A
 style that suits a code review is wrong for a refactor, and switching it by
 hand in a JSON file is exactly the friction this tool exists to remove.
@@ -35,7 +35,7 @@ BUILTIN_NOTE = (
     "one for the scope you save it in."
 )
 
-#: claudectl's own starters. Inline rather than package data on purpose: a
+#: archeus's own starters. Inline rather than package data on purpose: a
 #: `package-data` glob that matches nothing fails SILENTLY (it shipped an empty
 #: skills_templates/ for a whole release), and four short documents are not
 #: worth that risk. Each one is a real job, none of them overlaps the three
@@ -236,7 +236,7 @@ def read(name, project_path=None, cfgdir=None):
 
 
 def install_starter(name, project_path=None, cfgdir=None):
-    """Write one of claudectl's starters into the user or project scope, from
+    """Write one of archeus's starters into the user or project scope, from
     where it behaves exactly like a style you wrote — because it now is one."""
     for s in STARTERS:
         if s['name'].lower() == (name or '').lower():

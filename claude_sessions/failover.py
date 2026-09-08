@@ -6,7 +6,7 @@ So a model deregistered upstream ("minimax-m3-free is not supported", HTTP 401)
 or a tool schema the backing provider rejects (Gemini 400s on a JSON-Schema node
 carrying `properties` without `"type": "object"` — e.g. Notion MCP's rich_text)
 makes a session look frozen forever. Nothing retried a *different* model: Claude
-Code has no such concept, and claudectl only set ANTHROPIC_BASE_URL and walked
+Code has no such concept, and archeus only set ANTHROPIC_BASE_URL and walked
 away.
 
 This proxy sits between claude.exe and the real upstream. It does NOT translate
@@ -19,7 +19,7 @@ own request.
 Runs as a DETACHED child process for the same reason as
 memory.spawn_background_worker: the GUI launches sessions with
 CREATE_NEW_CONSOLE (gui.py) and detached `cmd /c start` (gui_api.py), and the
-user can then close claudectl. An in-process thread would die with it and leave
+user can then close archeus. An in-process thread would die with it and leave
 every live session with connection-refused on every turn — strictly worse than
 the bug being fixed. Unlike that worker this spawns with CREATE_NEW_CONSOLE, not
 CREATE_NO_WINDOW: the original complaint was not "a model died", it was "I could
@@ -47,8 +47,8 @@ _LOG_MAX = 1 << 20
 
 # A bare connectivity check would happily trust any process squatting the port,
 # so readiness is proven by a marker only this server serves.
-_MARKER_PATH = '/__claudectl_failover__/health'
-_MARKER = b'claudectl-failover'
+_MARKER_PATH = '/__archeus_failover__/health'
+_MARKER = b'archeus-failover'
 
 _HOP_BY_HOP = frozenset((
     'host', 'content-length', 'connection', 'proxy-connection', 'keep-alive',
@@ -290,17 +290,17 @@ def serve_cli(port):
     try:
         srv = make_server(port)
     except Exception as e:
-        _emit('claudectl failover: cannot bind port %d: %s' % (port, e))
+        _emit('archeus failover: cannot bind port %d: %s' % (port, e))
         return 1
     _write_lock(port)
     try:
         import ctypes
-        ctypes.windll.kernel32.SetConsoleTitleW('claudectl failover :%d' % port)
+        ctypes.windll.kernel32.SetConsoleTitleW('archeus failover :%d' % port)
     except Exception:
         pass
     cands = ', '.join([m for m in (s.get('failover_models') or []) if str(m).strip()]) or '(none)'
     _emit('')
-    _emit('claudectl failover  :%d -> %s' % (port, s.get('omniroute_base_url') or '?'))
+    _emit('archeus failover  :%d -> %s' % (port, s.get('omniroute_base_url') or '?'))
     _emit('candidates: %s' % cands)
     _emit('%-8s  %-28s %-22s %7s  %s' % ('time', 'request', 'model', 'took', 'result'))
     try:
@@ -368,7 +368,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _deny(self, why):
         self._json(403, {'type': 'error', 'error': {
             'type': 'permission_error',
-            'message': 'claudectl failover: refused (%s)' % why}})
+            'message': 'archeus failover: refused (%s)' % why}})
         return False
 
     def _settings(self):
@@ -452,7 +452,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._note('-', time.monotonic() - t0, 'UNREACHABLE %s' % e)
             self._json(502, {'type': 'error', 'error': {
                 'type': 'api_error',
-                'message': 'claudectl failover: upstream unreachable: %s' % e}})
+                'message': 'archeus failover: upstream unreachable: %s' % e}})
             return
         self._relay(resp, conn, {})
 
@@ -556,8 +556,8 @@ class _Handler(BaseHTTPRequestHandler):
                        '%s  served' % resp.status if resp.status < 400
                        else 'HTTP %s (last candidate)' % resp.status)
             self._learn(model, resp.status < 400, 'HTTP %s' % resp.status)
-            self._relay(resp, conn, {'X-Claudectl-Model': model,
-                                     'X-Claudectl-Attempts': str(i + 1)})
+            self._relay(resp, conn, {'X-Archeus-Model': model,
+                                     'X-Archeus-Attempts': str(i + 1)})
             return
 
         self._note('-', time.monotonic() - t0, 'ALL %d CANDIDATES FAILED' % len(tried))
@@ -567,7 +567,7 @@ class _Handler(BaseHTTPRequestHandler):
         # CLI ends up hanging forever.
         self._json(502, {'type': 'error', 'error': {
             'type': 'failover_exhausted',
-            'message': 'claudectl failover: every candidate model failed',
+            'message': 'archeus failover: every candidate model failed',
             'attempts': tried}})
 
 

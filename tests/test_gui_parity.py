@@ -44,7 +44,7 @@ def _serve():
 
 def _req(url, body=None):
     data = json.dumps(body).encode() if body is not None else None
-    r = urllib.request.Request(url, data=data, headers={'X-Claudectl': gui.TOKEN},
+    r = urllib.request.Request(url, data=data, headers={'X-Archeus': gui.TOKEN},
                                method='POST' if data else 'GET')
     try:
         with urllib.request.urlopen(r) as resp:
@@ -687,7 +687,7 @@ def test_job_plan_make_surfaces_real_subprocess_error(monkeypatch, tmp_path):
         assert st['status'] == 'error'
         assert 'exited 1' in st['error']
         assert 'claude-bogus-9 not found' in st['error']
-        assert not os.path.exists(os.path.join(actual, '.claudectl', 'plan-latest.md'))
+        assert not os.path.exists(os.path.join(actual, '.archeus', 'plan-latest.md'))
     finally:
         srv.shutdown()
 
@@ -760,7 +760,7 @@ def test_job_plan_make_council_uses_omniroute_when_via_selected(monkeypatch, tmp
 
 def test_job_plan_make_forwards_account(monkeypatch, tmp_path):
     # regression: the plan-generation call itself used to always run under
-    # whichever account claudectl was active as, ignoring the account the
+    # whichever account archeus was active as, ignoring the account the
     # user picked in the GUI -- only the later plan_launch honored it.
     sb = Sandbox(monkeypatch, tmp_path)
     actual, enc, folder, sids = _seed(sb, monkeypatch)

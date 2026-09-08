@@ -139,9 +139,9 @@ def test_lessons_under_a_second_account_are_collected(monkeypatch, tmp_path):
     # a second account with its own projects root holding the same lesson
     alt = os.path.join(str(tmp_path), 'alt-account')
     other = os.path.join(alt, 'projects', '-D--code-beta')
-    os.makedirs(os.path.join(other, '.claudectl', 'memory'), exist_ok=True)
+    os.makedirs(os.path.join(other, '.archeus', 'memory'), exist_ok=True)
     m2 = memory._empty(); m2['entities'] = [_pref(text + ' always')]
-    with open(os.path.join(other, '.claudectl', 'memory', 'graph.json'),
+    with open(os.path.join(other, '.archeus', 'memory', 'graph.json'),
               'w', encoding='utf-8') as fh:
         json.dump(m2, fh)
     monkeypatch.setattr('claude_sessions.config.all_config_dirs',

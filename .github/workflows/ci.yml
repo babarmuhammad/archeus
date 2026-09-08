@@ -107,22 +107,22 @@ jobs:
       - name: The installed console script answers --help
         shell: pwsh
         run: |
-          $exe = if ($IsWindows -eq $false) { '.wheeltest/bin/claudectl' }
-                 else { '.wheeltest\Scripts\claudectl.exe' }
+          $exe = if ($IsWindows -eq $false) { '.wheeltest/bin/archeus' }
+                 else { '.wheeltest\Scripts\archeus.exe' }
           # Out-String: `& exe` yields an ARRAY of lines, and on an array
           # `-notmatch` is the FILTER operator — it returns every line that does
           # not match, which for multi-line help is a non-empty (truthy) array.
           # The check therefore threw no matter what the command printed; it had
           # never run before the release that added it.
           $help = (& $exe --help | Out-String)
-          if ($LASTEXITCODE -ne 0) { throw 'claudectl --help failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'archeus --help failed' }
           if ($help -notmatch 'USAGE' -or $help -notmatch 'COMMANDS') {
             Write-Host $help
-            throw 'claudectl --help printed no usage'
+            throw 'archeus --help printed no usage'
           }
           $ver = (& $exe --version).Trim()
           $want = python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])"
-          if ($ver -ne $want.Trim()) { throw "claudectl --version says $ver, pyproject says $want" }
+          if ($ver -ne $want.Trim()) { throw "archeus --version says $ver, pyproject says $want" }
 
   plugin:
     # The same validation the community plugin review runs. Cheap, and the

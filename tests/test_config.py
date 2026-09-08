@@ -17,7 +17,7 @@ def test_load_settings_defaults_when_missing(monkeypatch, tmp_path):
 
 
 def test_settings_roundtrip(monkeypatch, tmp_path):
-    monkeypatch.setattr(config, 'settings_file', str(tmp_path / 'claudectl.json'))
+    monkeypatch.setattr(config, 'settings_file', str(tmp_path / 'archeus.json'))
     s = config.load_settings()
     s['default_effort'] = 'high'
     s['project_defaults']['D--repos'] = {'effort': 'low', 'model': ''}
@@ -43,7 +43,7 @@ def test_a_settings_dict_never_shares_a_default_with_the_next_one(monkeypatch, t
 
 
 def test_load_settings_ignores_unknown_keys(monkeypatch, tmp_path):
-    f = tmp_path / 'claudectl.json'
+    f = tmp_path / 'archeus.json'
     f.write_text(json.dumps({'editor': 'x', 'evil_key': 1}), encoding='utf-8')
     monkeypatch.setattr(config, 'settings_file', str(f))
     s = config.load_settings()
@@ -51,7 +51,7 @@ def test_load_settings_ignores_unknown_keys(monkeypatch, tmp_path):
 
 
 def test_load_settings_corrupt_file(monkeypatch, tmp_path):
-    f = tmp_path / 'claudectl.json'
+    f = tmp_path / 'archeus.json'
     f.write_text('{{{not json', encoding='utf-8')
     monkeypatch.setattr(config, 'settings_file', str(f))
     s = config.load_settings()
@@ -64,14 +64,14 @@ def test_get_config_dir_default(monkeypatch, tmp_path):
 
 
 def test_get_config_dir_override(monkeypatch, tmp_path):
-    f = tmp_path / 'claudectl.json'
+    f = tmp_path / 'archeus.json'
     f.write_text(json.dumps({'claude_config_dir': str(tmp_path / 'acct')}), encoding='utf-8')
     monkeypatch.setattr(config, 'settings_file', str(f))
     assert config.get_config_dir() == str(tmp_path / 'acct')
 
 
 def test_get_config_dir_expands(monkeypatch, tmp_path):
-    f = tmp_path / 'claudectl.json'
+    f = tmp_path / 'archeus.json'
     f.write_text(json.dumps({'claude_config_dir': '~/.claude-work'}), encoding='utf-8')
     monkeypatch.setattr(config, 'settings_file', str(f))
     assert config.get_config_dir() == os.path.expanduser('~/.claude-work')
@@ -98,7 +98,7 @@ def test_every_editor_launch_goes_through_one_spawn_point(monkeypatch):
 
 @pytest.mark.real_editor          # reaches the real _spawn_editor; Popen is faked
 def test_the_editor_window_does_not_take_the_foreground(monkeypatch):
-    """claudectl opens an editor as a side effect of a screen the user is
+    """archeus opens an editor as a side effect of a screen the user is
     already looking at; stealing focus interrupts them."""
     if os.name != 'nt':
         pytest.skip('STARTUPINFO is a Windows mechanism')

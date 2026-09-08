@@ -23,5 +23,5 @@ Explain code so a competent engineer new to it can build a correct mental model.
 - Say "I'm not sure" rather than guessing at behavior you can't see.
 - Match depth to the question — a one-liner deserves a one-paragraph answer.
 
-<!-- claudectl starter skill. Inspired by explain/onboarding skills across the
+<!-- archeus starter skill. Inspired by explain/onboarding skills across the
      Claude Code skills ecosystem (claudemarketplaces.com). -->

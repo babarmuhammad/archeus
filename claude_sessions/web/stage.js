@@ -292,7 +292,7 @@ const STAGE = {
   },
 
   /* ── unfocused: take the surface DOWN, do not just stop drawing to it ──────
-     The tearing you see when claudectl is in the background comes from exactly
+     The tearing you see when archeus is in the background comes from exactly
      that distinction. On blur the frame chain stops (setVis -> MO.stop), which
      is right — but the canvas stayed *visible* while no longer being redrawn,
      and with preserveDrawingBuffer:false the WebGL backbuffer is undefined

@@ -1,8 +1,8 @@
 """Git-like colored diffs for generated/updated files.
 
 Shows what changed (old → new) after CLAUDE.md / system-prompt / global MCP
-updates, and snapshots the previous version under <project>/.claudectl/snapshots
-(fallback ~/.claude/projects/<encoded>/.claudectl/snapshots) so the last change
+updates, and snapshots the previous version under <project>/.archeus/snapshots
+(fallback ~/.claude/projects/<encoded>/.archeus/snapshots) so the last change
 can be reviewed later from the workspace screen. All helpers are best-effort —
 a diff/snapshot failure never blocks the operation that triggered it.
 """
@@ -14,8 +14,9 @@ import difflib
 
 from . import config as _c
 from . import render
+from . import store
 
-_SNAP_SUBDIR = os.path.join('.claudectl', 'snapshots')
+_SNAP_SUBDIR = os.path.join(store.WORKDIR, 'snapshots')
 _INDEX = 'index.json'
 #: how many versions of each key to keep on disk. The index already remembered
 #: the last 20 CHANGES, but only one `<key>.prev` file ever existed — so the
@@ -68,14 +69,14 @@ def show(old, new, title):
     from .ui import pager
     label = title
     if (old or '') == (new or ''):
-        pager(('CLAUDECTL', title, 'DIFF'),
+        pager(('ARCHEUS', title, 'DIFF'),
               [f"{_c.C_DIM}(no changes){_c.C_RESET}"], hint='ESC back')
         return
     added, removed = stat(old, new)
     header = [f"{_c.C_OK}+{added}{_c.C_RESET}  {_c.C_ERR}-{removed}{_c.C_RESET}"
               f"   {_c.C_DIM}{label}{_c.C_RESET}"]
     body = colorize(unified(old, new, label))
-    pager(('CLAUDECTL', title, 'DIFF'), body, header_lines=header, hint='ESC back')
+    pager(('ARCHEUS', title, 'DIFF'), body, header_lines=header, hint='ESC back')
 
 
 def confirm(old, new, title):
@@ -103,7 +104,7 @@ def confirm(old, new, title):
                    f"{_c.C_DIM}{title} — {'diff' if mode_diff else 'full proposed'}{_c.C_RESET}")
         else:
             hdr = f"{_c.C_DIM}{title} — new content (nothing to compare){_c.C_RESET}"
-        frame = [render.header('CLAUDECTL', title, 'REVIEW'), '', '  ' + hdr, render.hline()]
+        frame = [render.header('ARCHEUS', title, 'REVIEW'), '', '  ' + hdr, render.hline()]
         for ln in body[top:top + page]:
             frame.append(render.fit('  ' + ln, render.content_width()))
         frame.append('')

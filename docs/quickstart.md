@@ -1,6 +1,6 @@
 ---
 description: >-
-  Install claudectl, launch it, pick a project and start your first session — the
+  Install archeus, launch it, pick a project and start your first session — the
   five-minute path from nothing to a Claude Code session that already knows the codebase.
 ---
 
@@ -13,7 +13,7 @@ working; there is no API key to obtain and nothing to configure first.
 ## 1. Install
 
 ```
-pipx install claudectl     # or: pip install claudectl
+pipx install archeus     # or: pip install archeus
 ```
 
 That is the whole install — no third-party packages, nothing to compile. Other routes (a
@@ -22,13 +22,13 @@ source checkout, the release page, the plugin) are in [Installation](installatio
 ## 2. Launch
 
 ```
-claudectl
+archeus
 ```
 
 The terminal UI opens on the project list. For the desktop app instead:
 
 ```
-claudectl --gui
+archeus --gui
 ```
 
 The bottom-left **TUI/GUI** toggle makes the choice stick; `--tui` / `--gui` always
@@ -36,7 +36,7 @@ override it for one run.
 
 ## 3. Pick a project
 
-![claudectl TUI — project picker](img/tui-main.png)
+![archeus TUI — project picker](img/tui-main.png)
 
 The list is every folder Claude Code has ever opened, most recent first. **Type to filter**
 it live, then `ENTER`.

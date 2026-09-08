@@ -28,7 +28,7 @@ def get_mcp_status(cfgdir=None, refresh=False):
     """Run 'claude mcp list', return list of (name, status) tuples. Cached 30s.
 
     cfgdir names the account: `claude mcp` honours CLAUDE_CONFIG_DIR, and
-    without it the list came from whichever account claudectl inherited while
+    without it the list came from whichever account archeus inherited while
     every other MCP surface resolved the active one."""
     key = _c.resolve_config_dir(cfgdir)
     hit = _status_cache.get(key)
@@ -129,7 +129,7 @@ def analyze_mcp_tools(mcp_name):
     out, cancelled = run_with_progress(
         [claude_exe, *_mf, '--print', prompt,
          '--disallowedTools', 'Write,Edit,NotebookEdit,Bash'],
-        ('CLAUDECTL', mcp_name, 'MCP ANALYSIS'),
+        ('ARCHEUS', mcp_name, 'MCP ANALYSIS'),
         f'Analyzing {mcp_name} MCP tools via Claude...  (15-60s)',
         timeout=120)
     if cancelled:
@@ -148,7 +148,7 @@ def update_global_claude_md_mcp(mcp_name, tools_doc, cfgdir=None):
 
     Atomic, because Claude Code reads this file every session: a plain
     open(...,'w') that dies partway leaves a half-written file and breaks the
-    user's whole session, not just claudectl. The existing gate only walks
+    user's whole session, not just archeus. The existing gate only walks
     writers NAMED settings, so it never looked here.
     """
     path      = _c.global_claude_md_for(cfgdir)
@@ -235,7 +235,7 @@ def mcp_cli(args, cfgdir=None, timeout=60):
     return r.returncode == 0, ((r.stdout or '') + (r.stderr or '')).strip()
 
 
-def _mcp_run(args, label, crumbs=('CLAUDECTL', 'MCP'), cfgdir=None):
+def _mcp_run(args, label, crumbs=('ARCHEUS', 'MCP'), cfgdir=None):
     """Run `claude mcp <args>` with progress. Returns (stdout, cancelled)."""
     claude = get_claude_exe()
     if not claude:
@@ -342,7 +342,7 @@ def _mcp_detail(name):
     out, _ = _mcp_run(['get', name], f"Loading {name}...")
     lines = (out or 'no details').splitlines() or ['(empty)']
     while True:
-        key = pager(('CLAUDECTL', 'MCP', name), lines,
+        key = pager(('ARCHEUS', 'MCP', name), lines,
                     hint="d remove   t tool docs", extra_keys=('d', 't'))
         if key == 'd':
             scope = menu([(s, s) for s in MCP_SCOPES], f"REMOVE {name} — scope")
@@ -353,7 +353,7 @@ def _mcp_detail(name):
         elif key == 't':
             doc = analyze_mcp_tools(name)
             if doc:
-                pager(('CLAUDECTL', 'MCP', name, 'TOOLS'), doc.splitlines())
+                pager(('ARCHEUS', 'MCP', name, 'TOOLS'), doc.splitlines())
             else:
                 flash("No tool docs (MCP may need auth)", ok=False, secs=1.4)
         else:

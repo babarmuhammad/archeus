@@ -145,12 +145,13 @@ def set_default_mode(mode, cfgdir=None):
 
 # ── denials ──────────────────────────────────────────────────
 # Claude Code records blocked actions under /permissions → Recently denied, and
-# fires a PermissionDenied hook. claudectl's hook writes them here so the
+# fires a PermissionDenied hook. archeus's hook writes them here so the
 # allowlist and environment proposals can be driven by what ACTUALLY got
 # blocked rather than by what someone guessed would.
 
 def denials_path(project_path):
-    return os.path.join(project_path, '.claudectl', 'denied.jsonl')
+    from . import store
+    return store.workfile(project_path, 'denied.jsonl')
 
 
 def denials(project_path, limit=50):
@@ -201,7 +202,7 @@ def record(project_path, tool, command, reason):
     writer and one reader."""
     try:
         from . import store
-        d = store.claudectl_dir(project_path)
+        d = store.workdir(project_path)
         line = json.dumps({'ts': round(time.time()), 'tool': tool or '',
                            'command': (command or '')[:500],
                            'reason': (reason or '')[:300]}, ensure_ascii=False)

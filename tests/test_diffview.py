@@ -43,7 +43,7 @@ def test_snapshot_roundtrip(monkeypatch, tmp_path):
     lc = diffview.last_change(actual, folder, 'claude_md')
     assert lc and lc['added'] >= 1 and lc['key'] == 'claude_md'
     # snapshot lives in the project working dir
-    assert os.path.isfile(os.path.join(actual, '.claudectl', 'snapshots', 'claude_md.prev'))
+    assert os.path.isfile(os.path.join(actual, '.archeus', 'snapshots', 'claude_md.prev'))
 
     # second update overwrites .prev with the now-old version
     diffview.record(actual, folder, 'claude_md', 'v2\nmore\n', 'v3\n')

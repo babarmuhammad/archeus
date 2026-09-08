@@ -2,7 +2,7 @@
 ways it can quietly do damage.
 
 The feature exists because the launch picker was a hand-edited list in
-`config.py`, so a model released after a claudectl release was unreachable
+`config.py`, so a model released after an archeus release was unreachable
 until someone shipped a new one. `/v1/models` answers that with the OAuth token
 Claude Code already holds — no API key, no new setting.
 
@@ -85,7 +85,7 @@ def _logged_in(monkeypatch, token='sk-ant-oat-fake'):
 
 
 def _cache(monkeypatch, tmp_path):
-    p = str(tmp_path / 'claudectl-models.json')
+    p = str(tmp_path / 'archeus-models.json')
     monkeypatch.setattr(m, '_cache_path', lambda: p)
     return p
 
@@ -94,7 +94,7 @@ def _cache(monkeypatch, tmp_path):
 
 def test_the_snapshot_suffix_is_stripped_because_the_cli_takes_the_alias():
     # The API answers with the pinned snapshot; --model and every settings key
-    # claudectl has ever written take the alias.
+    # archeus has ever written take the alias.
     assert m.alias('claude-haiku-4-5-20251001') == 'claude-haiku-4-5'
     assert m.alias('claude-sonnet-4-6-20260101') == 'claude-sonnet-4-6'
     # dateless ids from the 5 generation on are already their own alias
@@ -232,7 +232,7 @@ def test_an_expired_token_is_not_spent_on_a_doomed_call(monkeypatch, tmp_path):
 
 
 def test_auto_update_off_stops_the_catalogue_too(monkeypatch, tmp_path):
-    # One switch for everything claudectl fetches on the user's behalf — the
+    # One switch for everything archeus fetches on the user's behalf — the
     # setting the GUI describes as stopping "both checks".
     Sandbox(monkeypatch, tmp_path)
     _cache(monkeypatch, tmp_path)
@@ -545,7 +545,7 @@ def test_the_refresh_runs_once_per_launch_and_never_on_a_screen(monkeypatch, tmp
 
 
 def test_a_refresh_that_explodes_is_swallowed(monkeypatch, tmp_path):
-    # A catalogue refresh must never be why claudectl misbehaves.
+    # A catalogue refresh must never be why archeus misbehaves.
     Sandbox(monkeypatch, tmp_path)
     monkeypatch.setattr(m, '_bg_started', False)
     monkeypatch.setattr(m, 'fetch', lambda *a, **k: (_ for _ in ()).throw(RuntimeError('x')))

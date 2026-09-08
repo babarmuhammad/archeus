@@ -1,6 +1,6 @@
 """Compile the semantic memory graph into path-scoped Claude Code rules.
 
-Each repo/module unit becomes <project>/.claude/rules/claudectl-mem-*.md with a
+Each repo/module unit becomes <project>/.claude/rules/archeus-mem-*.md with a
 `globs:` frontmatter — Claude Code loads the rule ONLY when it touches matching
 files. Zero always-on token cost; per-module detail appears exactly when
 relevant. Prunes only its own (prefix-scoped) files — user rules are never
@@ -12,7 +12,7 @@ import re
 
 from .memory import tokens_estimate
 
-RULE_PREFIX = 'claudectl-mem-'
+RULE_PREFIX = 'archeus-mem-'
 RULE_MAX_TOKENS = 400
 
 
@@ -83,12 +83,12 @@ def render_rule(repo, module, summary, entities, relations):
     # "rules without a paths field are loaded unconditionally and apply to all
     # files" — and `globs:` is the Cursor spelling, which it does not recognise.
     # Every rule file this wrote was therefore loaded into EVERY session, ~3.9k
-    # tokens on this repo, while claudectl's own audit reported them as lazy.
+    # tokens on this repo, while archeus's own audit reported them as lazy.
     # Verified empirically: all 11 files appeared in a fresh session's context
     # with no matching file opened. Documented list form, one pattern per item.
     lines = [
         '---',
-        f'description: "claudectl memory: {repo}/{module}"',
+        f'description: "archeus memory: {repo}/{module}"',
         'paths:',
         f'  - "{glob}"',
         '---',
@@ -110,7 +110,7 @@ def render_rule(repo, module, summary, entities, relations):
 
 
 def sync_rules(project_path, proj_folder, mem):
-    """Write one rule per unit with >=2 entities; prune stale claudectl-mem-*
+    """Write one rule per unit with >=2 entities; prune stale archeus-mem-*
     files. Returns list of written filenames. Best-effort."""
     from .config import load_settings
     if not load_settings().get('memory_rules', True):

@@ -117,7 +117,7 @@ def test_installing_agents_writes_a_delegation_table_into_claude_md(monkeypatch,
     proj.mkdir()
     agents.sync_project_agents(str(proj), ['01-core/rev'])
     md = (proj / 'CLAUDE.md').read_text(encoding='utf-8')
-    assert '<!-- CLAUDECTL:AGENTS:START -->' in md
+    assert '<!-- ARCHEUS:AGENTS:START -->' in md
     assert 'rev' in md and 'Delegate' in md
 
 
@@ -132,7 +132,7 @@ def test_the_table_disappears_with_the_last_agent(monkeypatch, tmp_path):
     agents.sync_project_agents(str(proj), ['01-core/rev'])
     agents.sync_project_agents(str(proj), [])
     md = (proj / 'CLAUDE.md').read_text(encoding='utf-8')
-    assert 'CLAUDECTL:AGENTS' not in md
+    assert 'ARCHEUS:AGENTS' not in md
     assert 'My own notes.' in md, 'the block must take nothing else with it'
 
 
@@ -277,7 +277,7 @@ def test_the_model_reply_is_parsed_leniently():
 
 def test_usage_comes_from_claude_codes_own_record(monkeypatch, tmp_path):
     """`agentLastUsed` is the only honest answer to "is this doing anything?",
-    and claudectl already reads that file for other things."""
+    and archeus already reads that file for other things."""
     sb = Sandbox(monkeypatch, tmp_path)
     import json as _json
     import time as _time
@@ -413,7 +413,7 @@ def test_new_manual_new_category(monkeypatch, tmp_path):
 def test_new_ai_agent(monkeypatch, tmp_path):
     """It lands in `~/.claude/agents/`, FLAT — where Claude Code reads agents.
 
-    It used to be written into claudectl's own category-organised library, which
+    It used to be written into archeus's own category-organised library, which
     Claude Code never looks at, so an AI-generated agent was never picked. The
     category is frontmatter now, exactly as `agents.category_of` documents and as
     the manual GUI path (`api_agent_create`) already did.

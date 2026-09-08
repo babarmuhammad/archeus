@@ -134,7 +134,7 @@ def show_metadata(proj_folder, sid, project_name):
     jsonl = os.path.join(proj_folder, f"{sid}.jsonl")
     stats = get_session_stats_cached(jsonl)
     name  = load_name(proj_folder, sid)
-    pager(('CLAUDECTL', project_name, 'SESSION INFO'), metadata_lines(stats, name, sid))
+    pager(('ARCHEUS', project_name, 'SESSION INFO'), metadata_lines(stats, name, sid))
 
 
 # ── viewer ───────────────────────────────────────────────────
@@ -180,7 +180,7 @@ def view_transcript(proj_folder, sid, project_name, project_path):
     show_meta = False
     while True:
         header = metadata_lines(stats, name, sid) if show_meta else None
-        key = pager(('CLAUDECTL', project_name, 'TRANSCRIPT'),
+        key = pager(('ARCHEUS', project_name, 'TRANSCRIPT'),
                     lines, hint="i info   e export",
                     header_lines=header, extra_keys=('i', 'e'),
                     marks=marks, mark_label='msg')

@@ -1,20 +1,20 @@
-"""claudectl's own event log — what it did, and what failed.
+"""archeus's own event log — what it did, and what failed.
 
-Until this existed, a failure inside claudectl was structurally invisible: the
-`claudectl` logger carried a NullHandler unless `CLAUDECTL_DEBUG` was set, so
+Until this existed, a failure inside archeus was structurally invisible: the
+`archeus` logger carried a NullHandler unless `ARCHEUS_DEBUG` was set, so
 every background job crash, every faulted API handler, the bg-scan worker and
 the failover proxy all wrote to nothing. The motivating case is the one the
 comment in `gui_api._run_cancellable` already describes — a rate-limited
 account producing six silent failures an hour, reported as "queued".
 
 One append-only JSONL under `~/.claude/` (account-independent, like
-`claudectl.json` itself and like `failover.log`), because the interesting
+`archeus.json` itself and like `failover.log`), because the interesting
 failures are cross-process and usually belong to no project at all: the
 scheduler, the proxy, the detached scan worker.
 
 Two rules keep it cheap enough to leave on:
 
-* **Nothing on a per-turn path writes here.** Every writer is a claudectl-owned
+* **Nothing on a per-turn path writes here.** Every writer is an archeus-owned
   process (TUI, GUI server, scheduler, bg-scan, proxy). No hook records an
   event — the recall hook already taught this project what a per-prompt write
   costs.
@@ -80,12 +80,12 @@ def _dedupe_shape(msg):
 
 
 def path():
-    """`~/.claude/claudectl-events.jsonl` — beside claudectl.json, and
+    """`~/.claude/archeus-events.jsonl` — beside archeus.json, and
     account-independent for the same reason it is: an event from the scheduler
     or the proxy belongs to the machine, not to whichever account happened to
     be active."""
     return os.path.join(os.path.dirname(_c.settings_file),
-                        'claudectl-events.jsonl')
+                        'archeus-events.jsonl')
 
 
 def record(src, msg, *, level='error', detail='', proj=''):
@@ -186,7 +186,7 @@ def _lines(evs, width):
 
 
 def logs_screen():
-    """What claudectl did and what failed, newest first.
+    """What archeus did and what failed, newest first.
 
     A pager rather than a hand-drawn list: the stream is flat and nothing in it
     is actionable, and the pager's in-content search already IS the filter.
@@ -206,10 +206,10 @@ def logs_screen():
                       f"  {_c.C_DIM}{render.trunc(path(), width - 4)}{_c.C_RESET}", '']
         else:
             lines = ['', '  Nothing recorded yet.', '',
-                     f"  {_c.C_DIM}claudectl writes here when one of its own Claude calls,",
+                     f"  {_c.C_DIM}archeus writes here when one of its own Claude calls,",
                      f"  background jobs or scheduled passes fails.{_c.C_RESET}", '']
             header = []
-        key = pager(('CLAUDECTL', 'LOGS'), lines,
+        key = pager(('ARCHEUS', 'LOGS'), lines,
                     hint='e  open the raw file   /  search',
                     header_lines=header, extra_keys=('e',))
         if key != 'e':

@@ -25,7 +25,7 @@ from claude_sessions import failover
 def _isolate_state(monkeypatch, tmp_path):
     """lock_path()/log_path() hang off settings_file — without this the suite
     writes into the user's real ~/.claude/failover.log and failover.lock."""
-    monkeypatch.setattr(_c, 'settings_file', str(tmp_path / 'claudectl.json'))
+    monkeypatch.setattr(_c, 'settings_file', str(tmp_path / 'archeus.json'))
 
 
 # ── fake upstream ────────────────────────────────────────────
@@ -163,8 +163,8 @@ def test_retries_next_candidate_on_401(monkeypatch):
         status, body, headers = px.post('/v1/messages', {'model': 'dead'})
         assert status == 200
         assert b'live' in body
-        assert headers.get('X-Claudectl-Model') == 'live'
-        assert headers.get('X-Claudectl-Attempts') == '2'
+        assert headers.get('X-Archeus-Model') == 'live'
+        assert headers.get('X-Archeus-Attempts') == '2'
         assert [m for _p, m in up.seen] == ['dead', 'live']
     finally:
         px.close()
@@ -207,7 +207,7 @@ def test_single_candidate_is_plain_passthrough(monkeypatch):
         status, body, headers = px.post('/v1/messages', {'model': 'a'})
         assert status == 401
         assert b'nope' in body
-        assert 'X-Claudectl-Model' not in headers
+        assert 'X-Archeus-Model' not in headers
         assert len(up.seen) == 1
     finally:
         px.close()
@@ -233,7 +233,7 @@ def test_count_tokens_also_fails_over(monkeypatch):
     try:
         status, _b, headers = px.post('/v1/messages/count_tokens', {'model': 'a'})
         assert status == 200
-        assert headers.get('X-Claudectl-Attempts') == '2'
+        assert headers.get('X-Archeus-Attempts') == '2'
     finally:
         px.close()
         up.close()

@@ -200,7 +200,7 @@ def test_vendor_is_served_not_inlined():
 
 
 def test_the_vendor_route_is_reachable_without_the_guard_header():
-    """A <script src> cannot attach X-Claudectl, so a guarded route would 403
+    """A <script src> cannot attach X-Archeus, so a guarded route would 403
     every module fetch. Placed with / and /graph, before _guard()."""
     src = gui.do_GET_SOURCE if hasattr(gui, 'do_GET_SOURCE') else ''
     import inspect
@@ -268,7 +268,7 @@ def test_every_setting_the_gui_can_post_actually_survives_a_reload():
     the next save of any other setting. `world`, `skin`, `stage`, `motion` and
     `surface` were all in that state:
 
-        "when i close and open the claudectl app, it goes back to classic theme"
+        "when i close and open the archeus app, it goes back to classic theme"
 
     `theme` happened to be declared, which is why it was the only appearance
     setting that appeared to work. Reading the POST allowlist straight out of the
@@ -282,7 +282,7 @@ def test_every_setting_the_gui_can_post_actually_survives_a_reload():
 
 def test_appearance_settings_round_trip_through_disk(tmp_path, monkeypatch):
     from claude_sessions import config as cfg
-    monkeypatch.setattr(cfg, 'settings_file', str(tmp_path / 'claudectl.json'))
+    monkeypatch.setattr(cfg, 'settings_file', str(tmp_path / 'archeus.json'))
     s = cfg.load_settings()
     s.update({'world': 'graph', 'skin': 'crt', 'stage': 'lite',
               'motion': 'subtle', 'surface': 64, 'theme': 'slate'})

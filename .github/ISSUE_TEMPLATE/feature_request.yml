@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest something claudectl should do
+description: Suggest something archeus should do
 labels: [enhancement]
 body:
   - type: textarea
@@ -21,6 +21,6 @@ body:
   - type: markdown
     attributes:
       value: >-
-        claudectl has zero runtime dependencies and reads Claude Code's own state
+        archeus has zero runtime dependencies and reads Claude Code's own state
         rather than replacing it — proposals that keep both constraints are much
         easier to land.

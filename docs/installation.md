@@ -1,6 +1,6 @@
 ---
 description: >-
-  Install claudectl with pipx or pip, run it from a checkout, add it to a Claude Code
+  Install archeus with pipx or pip, run it from a checkout, add it to a Claude Code
   session as a plugin, and set up the desktop app window and shortcuts.
 ---
 
@@ -13,26 +13,64 @@ description: >-
 - [Claude Code CLI](https://docs.anthropic.com/claude-code) installed (auto-detected at `~/.local/bin/` or on PATH; overridable in Settings)
 - Any text editor — Notepad++ / VS Code / `$EDITOR` are auto-detected (overridable in Settings)
 
-No API key: claudectl uses the Claude Code authentication you already have. No third-party
+No API key: archeus uses the Claude Code authentication you already have. No third-party
 packages — it is pure Python standard library.
+
+## Coming from claudectl
+
+archeus is the same project under a new name. Everything you have is kept.
+
+**Uninstall the old package first, then install the new one — in that order.**
+
+```
+pipx uninstall claudectl && pipx install archeus     # or the pip equivalents
+archeus
+```
+
+The order matters and the reason is not obvious: both packages ship the same
+internal module, so installing archeus on top of claudectl overwrites those
+files and leaves *both* claiming to own them. `pip uninstall claudectl` then
+deletes them, and archeus stops working while still showing up as installed.
+If you have already done it in that order, the repair is one line:
+
+```
+pip uninstall claudectl && pip install --force-reinstall archeus
+```
+
+archeus warns you about this on startup whenever it finds both installed.
+
+**What moves, the first time you run `archeus`:** your settings and accounts,
+per-project launch defaults, the stats/model/version caches, your agent and
+skill libraries, and every project's `.claudectl/` — its memory graph,
+snapshots, plans and logs — become their `archeus` equivalents. Nothing is
+deleted, nothing is overwritten, and a step that fails is retried on the next
+start rather than skipped. It runs once and reports what it did.
+
+**Hooks and the statusline need nothing from you.** They record a path to a
+script rather than the command name, so an in-place upgrade leaves them
+working; if you moved environments (pipx builds a new one), the first run
+re-points them at the new install.
+
+The last release under the old name is `claudectl 1.9.1`, which exists only to
+tell you the project moved.
 
 ## Setup
 
 ### Installing it as a command
 
 ```
-pipx install claudectl     # or: pip install claudectl
-claudectl
+pipx install archeus     # or: pip install archeus
+archeus
 ```
 
-That gives you `claudectl`, `claudectl --gui`, `claudectl review`,
-`claudectl recall "<topic>"` and `claudectl statusline` from anywhere.
+That gives you `archeus`, `archeus --gui`, `archeus review`,
+`archeus recall "<topic>"` and `archeus statusline` from anywhere.
 
 ### Clone and run
 
 ```
-git clone https://github.com/babarmuhammad/claudectl.git
-cd claudectl
+git clone https://github.com/babarmuhammad/archeus.git
+cd archeus
 python claude-sessions.py
 ```
 
@@ -48,12 +86,12 @@ pip install -e .        # or: pipx install .
 
 ### Inside a Claude Code session
 
-claudectl also ships as a Claude Code plugin, which puts its three slash commands and its
+archeus also ships as a Claude Code plugin, which puts its three slash commands and its
 eight skills inside the session itself:
 
 ```
-/plugin marketplace add babarmuhammad/claudectl
-/plugin install claudectl@claudectl
+/plugin marketplace add babarmuhammad/archeus
+/plugin install archeus@archeus
 ```
 
 It is independent of the CLI install, and it deliberately ships no hooks. See
@@ -72,24 +110,24 @@ Start it with:
 
 ```
 python claude-sessions.py --gui   # from the checkout
-claudectl --gui                   # after `pip install -e .`
+archeus --gui                   # after `pip install -e .`
 ```
 
 `gui_shell` in Settings picks the window: `auto` (Qt → Edge app window → browser), `qt`,
 `edge`, or `browser`. The bottom-left **TUI/GUI** toggle (or the `ui_mode` setting) selects
 which interface starts by default; `--tui` / `--gui` always override.
 
-**Desktop shortcut with the GUI icon** — the GUI has its own icon (`claudectl-gui.ico`,
+**Desktop shortcut with the GUI icon** — the GUI has its own icon (`archeus-gui.ico`,
 regenerate with `py tools/make_gui_icon.py`). `pythonw.exe` runs it without a console
 window:
 
 ```powershell
 $shell = New-Object -ComObject WScript.Shell
-$lnk = $shell.CreateShortcut("$env:USERPROFILE\Desktop\claudectl GUI.lnk")
+$lnk = $shell.CreateShortcut("$env:USERPROFILE\Desktop\archeus GUI.lnk")
 $lnk.TargetPath       = "$env:LOCALAPPDATA\Programs\Python\Python310\pythonw.exe"
 $lnk.Arguments        = "`"$PWD\claude-sessions.py`" --gui"
 $lnk.WorkingDirectory = "$PWD"
-$lnk.IconLocation     = "$PWD\claudectl-gui.ico, 0"
+$lnk.IconLocation     = "$PWD\archeus-gui.ico, 0"
 $lnk.Save()
 ```
 
@@ -109,7 +147,7 @@ $lnk.Save()
     $lnk.TargetPath       = "C:\Windows\System32\cmd.exe"
     $lnk.Arguments        = "/c `"$PWD\Open Repo cmd.bat`""
     $lnk.WorkingDirectory = "$PWD"
-    $lnk.IconLocation     = "$PWD\claudectl.ico, 0"
+    $lnk.IconLocation     = "$PWD\archeus.ico, 0"
     $lnk.Save()
     ```
 
@@ -126,15 +164,15 @@ $lnk.Save()
     $action    = New-ScheduledTaskAction -Execute "C:\Users\<you>\AppData\Local\Microsoft\WindowsApps\wt.exe" -Argument '-d "<repo>" powershell -Command "& ''<repo>\Open Repo cmd.bat''"' -WorkingDirectory "<repo>"
     $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest -LogonType Interactive
     $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-    Register-ScheduledTask -TaskName "ClaudeCtl" -Action $action -Principal $principal -Settings $settings -Force
+    Register-ScheduledTask -TaskName "Archeus" -Action $action -Principal $principal -Settings $settings -Force
 
     # 2) point the shortcut at the task instead of launching directly
     $shell = New-Object -ComObject WScript.Shell
-    $lnk = $shell.CreateShortcut("$env:USERPROFILE\Desktop\claudectl.lnk")
+    $lnk = $shell.CreateShortcut("$env:USERPROFILE\Desktop\archeus.lnk")
     $lnk.TargetPath       = "C:\Windows\System32\schtasks.exe"
-    $lnk.Arguments        = '/run /tn "ClaudeCtl"'
+    $lnk.Arguments        = '/run /tn "Archeus"'
     $lnk.WorkingDirectory = "<repo>"
-    $lnk.IconLocation     = "<repo>\claudectl.ico, 0"
+    $lnk.IconLocation     = "<repo>\archeus.ico, 0"
     $lnk.Save()
     ```
 

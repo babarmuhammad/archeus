@@ -1,6 +1,6 @@
 ---
 description: >-
-  Plan with an accurate model, execute with a cheap or free one — claudectl's Plan to
+  Plan with an accurate model, execute with a cheap or free one — archeus's Plan to
   Execute flow, plus the full OmniRoute setup, troubleshooting and standalone free-tier
   sessions.
 ---
@@ -10,9 +10,9 @@ description: >-
 `⇧X` in the TUI; its own **Plan → Execute** project tab in the GUI.
 
 Plan with an accurate model, execute with a cheaper — or completely free — one, for the
-same result. claudectl plans the task headlessly with `plan_model` (default Opus 5, effort
+same result. archeus plans the task headlessly with `plan_model` (default Opus 5, effort
 picked per task), shows you the plan to approve/reject, saves it to
-`.claudectl/plan-latest.md`, then launches a **real, full interactive `claude` session** —
+`.archeus/plan-latest.md`, then launches a **real, full interactive `claude` session** —
 same account, agents, skills, system prompt, and `--add-dir` roots this project already has
 — on `exec_model` (default Sonnet 5), seeded to read and execute that plan. Expensive
 reasoning happens once; the build runs on the cheap tier.
@@ -24,20 +24,20 @@ Point the execute half at a local
 account, and it runs on OmniRoute's aggregated free-tier providers. Left on *Auto* (the
 default), OmniRoute itself scores every currently-healthy free model per request
 (health/quota/cost/latency/task-fit) and transparently falls back to the next-best one if
-the current one is rate-limited or exhausted — no manual model juggling, and claudectl
+the current one is rate-limited or exhausted — no manual model juggling, and archeus
 auto-starts OmniRoute in the background the moment you run a task through it, so there's no
 terminal to babysit.
 
 ### Setup (one-time)
 
-Connecting at least one provider happens in OmniRoute's own dashboard — claudectl never
+Connecting at least one provider happens in OmniRoute's own dashboard — archeus never
 touches that credential. The CLI commands for adding providers are broken on Windows
 (confirmed upstream), so the dashboard is the only reliable path.
 
 1. Install OmniRoute: `npm install -g omniroute` (PowerShell: run on its own line, or `;`-chain — no `&&`).
 2. Set a dashboard password once: `omniroute setup --password <yours>`.
-3. Start it (`omniroute`, or let claudectl auto-start it on first use) and open `http://localhost:20128` → log in → **Providers → Add Provider**, or go straight to **Free tiers**. Several are genuinely zero-signup (Pollinations, Puter, NVIDIA, OpenCode, FriendliAI, Coze, and more) — connect one or two. *(Note: OmniRoute's marketing claims ~90 free providers; what's actually reachable without a real signup is a smaller genuinely-keyless subset — worth checking the current list yourself in the dashboard. The CLI `omniroute providers add` commands crash on this platform — dashboard only for now.)*
-4. In claudectl's GUI **Settings → Free execution — OmniRoute**: leave the base URL at `http://localhost:20128`, click **Refresh** — the status dot shows provider(s) active once step 3 is done. The built-in connection self-check can report false negatives (confirmed: reports working no-auth connections as broken); use **Send a live test** for the real answer. Leave **Execute model** on *Auto*, Save.
+3. Start it (`omniroute`, or let archeus auto-start it on first use) and open `http://localhost:20128` → log in → **Providers → Add Provider**, or go straight to **Free tiers**. Several are genuinely zero-signup (Pollinations, Puter, NVIDIA, OpenCode, FriendliAI, Coze, and more) — connect one or two. *(Note: OmniRoute's marketing claims ~90 free providers; what's actually reachable without a real signup is a smaller genuinely-keyless subset — worth checking the current list yourself in the dashboard. The CLI `omniroute providers add` commands crash on this platform — dashboard only for now.)*
+4. In archeus's GUI **Settings → Free execution — OmniRoute**: leave the base URL at `http://localhost:20128`, click **Refresh** — the status dot shows provider(s) active once step 3 is done. The built-in connection self-check can report false negatives (confirmed: reports working no-auth connections as broken); use **Send a live test** for the real answer. Leave **Execute model** on *Auto*, Save.
 5. Open a project's **Plan → Execute** tab, describe a task, pick **Execute via → OmniRoute**, approve the plan. First run starts OmniRoute for you if it isn't already running.
 
 ### Troubleshooting
@@ -49,7 +49,7 @@ touches that credential. The CLI commands for adding providers are broken on Win
 
 ## OmniRoute standalone sessions
 
-claudectl also supports launching a **standalone interactive `claude` session** through
+archeus also supports launching a **standalone interactive `claude` session** through
 OmniRoute, not just the Plan→Execute execute half. When you open a project in the TUI and
 pick a model from the **OMNIROUTE** menu (appears only when OmniRoute is reachable on a
 configured base URL), your session runs entirely on OmniRoute's free/cheap tier, with full
