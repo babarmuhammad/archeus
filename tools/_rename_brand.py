@@ -37,6 +37,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKIP = {
     'CHANGELOG.md',                    # releases that really were named that
     '.gitignore',                      # keeps old machine-local state unstageable
+    # the "Coming from claudectl" section — instructions that name the old
+    # package because that is the thing being uninstalled. Verified to contain
+    # no held string, so skipping the whole file cannot strand the domain.
+    'docs/installation.md',
     'claude_sessions/migrate.py',      # the one module that must know both names
     'tests/test_migration.py',
     'tests/test_no_old_brand_string.py',

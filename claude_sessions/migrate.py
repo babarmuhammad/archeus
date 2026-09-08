@@ -36,6 +36,7 @@ every other account's caches and projects.
 
 import json
 import os
+import re
 import time
 
 from . import config as _c
@@ -146,6 +147,88 @@ def _migrate_project(base, moved, failed):
                      moved, failed)
 
 
+#: any .py path inside a hook or statusLine command, quoted or bare
+_PY_ARG = re.compile(r'"([^"]+\.py)"|(\S+\.py)')
+
+
+def _repoint(cmd, pkg_dir):
+    """Re-point a command at THIS installation, or return it unchanged.
+
+    Hooks and the statusline record an absolute path to a script inside the
+    package — never the CLI name — which is why the rename itself did not touch
+    them, and why a pip upgrade in place needs nothing done here.
+
+    Installing into a DIFFERENT environment is the case that breaks, and pipx
+    does exactly that: `pipx install archeus` builds a new venv, so every
+    recorded path still points into claudectl's, and `pipx uninstall claudectl`
+    then deletes it. Nothing notices. `hooks._cmd_keys` compares whole command
+    strings, so an old-path hook is simply unrecognised and sits there orphaned;
+    `statusline.is_installed` only tests that the command CONTAINS the package
+    name, so a dead statusline still reports itself as installed and prints
+    nothing at all, on every turn, forever.
+
+    Identity is the script FILENAME — the same rule `hooks.install_memory_hook`
+    already uses to repair a stale path. Only a path that is BOTH dead and one
+    of ours is rewritten; anything the user wrote by hand is left alone.
+    """
+    out = cmd
+    for m in _PY_ARG.finditer(cmd):
+        raw = m.group(1) or m.group(2)
+        if os.path.isfile(raw):
+            continue                       # still resolves — not ours to touch
+        ours = os.path.join(pkg_dir, os.path.basename(raw))
+        if os.path.isfile(ours):
+            out = out.replace(raw, ours)
+    if out == cmd:
+        return cmd
+    # The interpreter moved with the package, so rebuild that half too — a
+    # command that runs the OLD venv's python against the NEW venv's script
+    # works only until `pipx uninstall claudectl` removes it. `hooks._PYEXE` is
+    # already the "strip the interpreter, keep the rest" rule, so the arguments
+    # a template appended (`--denied`) survive.
+    import sys
+    from . import hooks
+    tail = hooks._PYEXE.sub('', out.strip())
+    return f'"{sys.executable}" {tail}' if tail != out.strip() else out
+
+
+def _repair_commands(cfgdirs, moved, failed):
+    """Fix hook and statusLine commands whose script path no longer exists."""
+    from . import hooks
+    pkg_dir = os.path.dirname(os.path.abspath(__file__))
+    for cfgdir in cfgdirs:
+        try:
+            s = hooks._load(cfgdir)
+        except Exception as e:
+            failed.append((cfgdir, str(e)))
+            continue
+        changed = False
+        for _event, entries in (s.get('hooks') or {}).items():
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                for h in (entry.get('hooks') or []):
+                    if not isinstance(h, dict):
+                        continue
+                    fixed = _repoint(str(h.get('command', '')), pkg_dir)
+                    if fixed != h.get('command'):
+                        h['command'] = fixed
+                        changed = True
+                        moved.append((cfgdir, 'hook -> ' + fixed))
+        sl = s.get('statusLine')
+        if isinstance(sl, dict):
+            fixed = _repoint(str(sl.get('command', '')), pkg_dir)
+            if fixed != sl.get('command'):
+                sl['command'] = fixed
+                changed = True
+                moved.append((cfgdir, 'statusLine -> ' + fixed))
+        if changed:
+            try:
+                hooks._save(s, cfgdir)
+            except Exception as e:
+                failed.append((cfgdir, str(e)))
+
+
 def _old_config_dirs():
     """[dir] for every account named by the OLD settings file, default first."""
     default = os.path.dirname(_c.settings_file)
@@ -232,10 +315,40 @@ def run():
         _migrate_config_dir(cfgdir, moved, failed)
 
     _rederive_config_paths()
+    _repair_commands(cfgdirs, moved, failed)
 
     if not failed:
         _mark_done(moved)
     return moved, failed
+
+
+def coinstalled_warning():
+    """The one thing a user can do that breaks this install, worded as the fix.
+
+    Both distributions ship the same import package, `claude_sessions`. So
+    `pip install archeus` over an existing claudectl silently OVERWRITES those
+    files — both distributions then claim to own them — and the obvious next
+    step, `pip uninstall claudectl`, deletes them. archeus is left listed as
+    installed and unable to import itself:
+
+        ModuleNotFoundError: No module named 'claude_sessions.cli'
+
+    Verified end to end in a clean venv, in both orders. There is no packaging
+    metadata that expresses "conflicts with", so the only defence is saying so
+    before the user reaches for the uninstall — which is the order everybody
+    does it in.
+
+    Returns '' when there is nothing to warn about, which is every case except
+    the two packages sharing one environment.
+    """
+    try:
+        import importlib.metadata as md
+        md.distribution(OLD)
+    except Exception:
+        return ''                      # not installed here — nothing to say
+    return (f'{OLD} is still installed alongside archeus and they share files. '
+            f'Do NOT `pip uninstall {OLD}` on its own — it deletes archeus too. '
+            f'Run:  pip uninstall {OLD} && pip install --force-reinstall archeus')
 
 
 def _mark_done(moved):

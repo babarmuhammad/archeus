@@ -58,6 +58,15 @@ MUTANTS = [
     ("the module no longer knows the name it is migrating FROM",
      "OLD = 'claudectl'",
      "OLD = 'archeus'"),
+    ("hook and statusLine paths are never re-pointed",
+     "    _repair_commands(cfgdirs, moved, failed)",
+     "    pass"),
+    ("a command the user wrote by hand is rewritten too",
+     "        if os.path.isfile(raw):\n            continue",
+     "        if False:\n            continue"),
+    ("the interpreter is left pointing into the old environment",
+     "    return f'\"{sys.executable}\" {tail}' if tail != out.strip() else out",
+     "    return out"),
 ]
 
 

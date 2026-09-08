@@ -214,6 +214,13 @@ def run():
                 from .config import log as _log
                 _log.warning('rename migration left %d item(s) behind: %s',
                              len(_failed), _failed[0][0])
+        # Printed rather than logged, and printed EVERY start until it is acted
+        # on: the action it names is the difference between a working install
+        # and one that deletes itself on the user's next tidy-up.
+        _warn = _migrate.coinstalled_warning()
+        if _warn:
+            from .config import C_WARN, C_RESET
+            print(f'{C_WARN}!{C_RESET} {_warn}\n')
     except Exception:
         pass          # a migration must never be the reason archeus won't start
     try:

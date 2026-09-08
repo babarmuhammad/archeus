@@ -11,6 +11,7 @@ doing exactly that for each of them.
 import io
 import json
 import os
+import sys
 
 import pytest
 
@@ -196,6 +197,78 @@ def test_a_clean_install_settles_in_one_run_without_walking_projects(
     s = _c.load_settings()
     assert s['brand_migrated'] is True
     assert s['migrated_from'] == '', 'it claimed to have migrated something'
+
+
+def test_a_hook_pointing_into_the_old_environment_is_re_pointed(old_home,
+                                                                monkeypatch):
+    """pipx installs into a NEW venv, so every recorded hook path still points
+    into claudectl's — which `pipx uninstall claudectl` then deletes.
+
+    Nothing notices on its own: hooks are matched by whole command string, so an
+    old-path one is unrecognised rather than repaired, and `statusline
+    .is_installed` only tests that the command CONTAINS the package name, so a
+    dead statusline reports itself installed and prints nothing on every turn.
+    """
+    home, _other, _proj, _folder = old_home
+    dead = str(home / 'gone' / 'claude_sessions' / 'recall_hook.py')
+    _write(str(home / 'settings.json'), json.dumps({
+        'hooks': {'UserPromptSubmit': [
+            {'hooks': [{'type': 'command', 'command': '"C:\\gone\\python.exe" "%s"' % dead}]}]},
+        'statusLine': {'type': 'command',
+                       'command': '"C:\\gone\\pythonw.exe" "%s"'
+                                  % str(home / 'gone' / 'claude_sessions' / 'statusline_cli.py')},
+    }))
+    _moved, failed = migrate.run()
+    assert not failed, failed
+
+    s = json.load(io.open(str(home / 'settings.json'), encoding='utf-8'))
+    hook = s['hooks']['UserPromptSubmit'][0]['hooks'][0]['command']
+    sl = s['statusLine']['command']
+    pkg = os.path.dirname(os.path.abspath(migrate.__file__))
+    for cmd, script in ((hook, 'recall_hook.py'), (sl, 'statusline_cli.py')):
+        assert os.path.join(pkg, script) in cmd, cmd
+        assert 'gone' not in cmd, 'it still points into the environment being removed'
+        assert sys.executable in cmd, 'the interpreter was left in the old venv'
+
+
+def test_a_live_command_is_left_alone_even_when_the_filename_is_one_of_ours(
+        old_home, tmp_path):
+    """Only a path that is BOTH dead and one of ours may be rewritten.
+
+    The filename is deliberately `recall_hook.py` — the same name the bundled
+    hook has. A user who wrote their own, or who runs a fork from a checkout,
+    has a LIVE path whose basename collides with ours, and the only thing
+    standing between that and being silently re-pointed at this installation is
+    the "does it still resolve?" check. A test using a made-up filename proves
+    nothing: the second check catches that one anyway.
+    """
+    home, _other, _proj, _folder = old_home
+    theirs = tmp_path / 'fork' / 'claude_sessions' / 'recall_hook.py'
+    theirs.parent.mkdir(parents=True)
+    theirs.write_text('# their own', encoding='utf-8')
+    mine = '"python" "%s" --flag' % theirs
+    _write(str(home / 'settings.json'), json.dumps({
+        'hooks': {'PreToolUse': [{'hooks': [{'type': 'command', 'command': mine}]}]}}))
+    migrate.run()
+    s = json.load(io.open(str(home / 'settings.json'), encoding='utf-8'))
+    assert s['hooks']['PreToolUse'][0]['hooks'][0]['command'] == mine, \
+        'a hook that still resolves was re-pointed at this installation'
+
+
+def test_the_coinstall_warning_names_the_command_that_repairs_it(monkeypatch):
+    """Both distributions ship `claude_sessions`, so `pip uninstall claudectl`
+    deletes archeus's files and leaves it listed as installed but unimportable.
+    No packaging metadata expresses 'conflicts with', so saying so is the only
+    defence — and it has to name the fix, not just the hazard."""
+    import importlib.metadata as md
+    monkeypatch.setattr(md, 'distribution', lambda name: object())
+    msg = migrate.coinstalled_warning()
+    assert 'pip uninstall claudectl' in msg and '--force-reinstall archeus' in msg
+
+    def _absent(name):
+        raise md.PackageNotFoundError(name)
+    monkeypatch.setattr(md, 'distribution', _absent)
+    assert migrate.coinstalled_warning() == '', 'it warns on a clean install'
 
 
 def test_the_migration_still_knows_both_names():

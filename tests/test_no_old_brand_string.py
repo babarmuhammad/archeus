@@ -52,6 +52,29 @@ def test_nothing_still_carries_the_old_name():
     assert not bad, 'the old name survives in:\n  ' + '\n  '.join(bad[:25])
 
 
+def test_nothing_in_skip_is_hiding_a_held_string():
+    """SKIP is a whole-file exemption, so a file listed there is invisible to
+    the rename script forever. That is fine for a changelog and for migration
+    instructions — and NOT fine if one of them also contains something still
+    waiting on an external move, because the pass that finally releases it
+    would silently miss that file."""
+    bad = []
+    # the two files that DEFINE the lists necessarily contain the strings; the
+    # question is about content files that happen to be exempt
+    for rel in sorted(SKIP - {'tools/_rename_brand.py',
+                              'tests/test_no_old_brand_string.py'}):
+        path = os.path.join(ROOT, rel.replace('/', os.sep))
+        try:
+            with io.open(path, encoding='utf-8') as f:
+                text = f.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for h in HOLD:
+            if h.endswith('.space') and h in text:
+                bad.append('%s contains %r' % (rel, h))
+    assert not bad, 'a skipped file carries a string still waiting to move: %s' % bad
+
+
 def test_the_domain_is_the_only_thing_still_waiting_on_a_move():
     """`claudectl.space` is held because the new domain is not registered yet,
     and it is the last thing standing between here and the name being gone.

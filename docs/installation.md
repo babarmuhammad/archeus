@@ -16,6 +16,44 @@ description: >-
 No API key: archeus uses the Claude Code authentication you already have. No third-party
 packages — it is pure Python standard library.
 
+## Coming from claudectl
+
+archeus is the same project under a new name. Everything you have is kept.
+
+**Uninstall the old package first, then install the new one — in that order.**
+
+```
+pipx uninstall claudectl && pipx install archeus     # or the pip equivalents
+archeus
+```
+
+The order matters and the reason is not obvious: both packages ship the same
+internal module, so installing archeus on top of claudectl overwrites those
+files and leaves *both* claiming to own them. `pip uninstall claudectl` then
+deletes them, and archeus stops working while still showing up as installed.
+If you have already done it in that order, the repair is one line:
+
+```
+pip uninstall claudectl && pip install --force-reinstall archeus
+```
+
+archeus warns you about this on startup whenever it finds both installed.
+
+**What moves, the first time you run `archeus`:** your settings and accounts,
+per-project launch defaults, the stats/model/version caches, your agent and
+skill libraries, and every project's `.claudectl/` — its memory graph,
+snapshots, plans and logs — become their `archeus` equivalents. Nothing is
+deleted, nothing is overwritten, and a step that fails is retried on the next
+start rather than skipped. It runs once and reports what it did.
+
+**Hooks and the statusline need nothing from you.** They record a path to a
+script rather than the command name, so an in-place upgrade leaves them
+working; if you moved environments (pipx builds a new one), the first run
+re-points them at the new install.
+
+The last release under the old name is `claudectl 1.9.1`, which exists only to
+tell you the project moved.
+
 ## Setup
 
 ### Installing it as a command
