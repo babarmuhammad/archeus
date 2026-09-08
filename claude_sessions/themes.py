@@ -695,7 +695,20 @@ SKINS = {
         'enter': 'lift', 'burst': 'link',
         'gauge': {'tick': 'dot', 'cap': 'round', 'lw': 1.1, 'glow': .5},
         'chassis': 'float', 'topbar': 'flat',
-        'arrive': 'lift', 'op': .58, 'stage': 'graph', 'bloom': .5, 'calm': .40, 'flow': 0.85,
+        # calm at the ceiling test_skin_reach allows, and it is a WORLD that
+        # earns it: the graph scene is an homage to this project's own
+        # architecture graph, its reference image is a black field with
+        # everything on it luminous, and a world owns its palette outright so
+        # it cannot make some other palette overstimulating. The cap itself
+        # stays where it is — it is protecting the mixable skins, which have to
+        # be a ground under 32 palettes they did not choose.
+                # bloom .34, down from .5. The threshold rule this file already
+        # records (0.55, because at 0.2 a neon scene is an undifferentiated
+        # spill) is about WHAT blooms; this is about how much, and the scene it
+        # was tuned against had 120 rods per cluster. It now has 480 shell rods,
+        # 30 frame tubes, 20 spokes and a 480-rod inner web — five times the lit
+        # surface, so the same strength is five times the glow.
+        'arrive': 'lift', 'op': .58, 'stage': 'graph', 'bloom': .34, 'calm': .50, 'flow': 0.85,
     },
     'crt': {
         'label': 'Terminal', 'blurb': 'Retro CRT in a bezel. Curved raster, rolling refresh, phosphor glow.',

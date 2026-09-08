@@ -1,14 +1,16 @@
 ---
 title: archeus vs bare Claude Code — alternatives compared
 description: >-
-  An honest comparison of archeus against bare Claude Code, /resume, manual CLAUDE.md
-  maintenance and terminal multiplexers, including what archeus does not do.
+  The memory and workspace layer for AI coding agents, compared honestly against bare
+  Claude Code, /resume, manual CLAUDE.md maintenance and terminal multiplexers —
+  including what archeus does not do.
 ---
 
 # archeus compared
 
-Claude Code already works. This page is about what it does *not* do between sessions, which
-alternatives cover, and where archeus is the wrong choice.
+**The memory and workspace layer for AI coding agents.** Claude Code — the agent archeus
+drives today — already works. This page is about what it does *not* do between sessions,
+which alternatives cover, and where archeus is the wrong choice.
 
 ## At a glance
 
@@ -66,6 +68,8 @@ Stated plainly, because a comparison page that only lists strengths is not usefu
 - **The memory features cost tokens to build.** Extraction and lesson distillation are
   Claude calls. They are routed to a cheap model and run rarely, but they are not free —
   the saving is on the per-message context you stop paying for.
+- **It drives Claude Code only, today.** Provider-neutral memory and an open harness of
+  its own are a long-term goal, not a feature — nothing else is supported yet.
 - **It is a young project.** Small user base, and the API surface still moves.
 
 ## When to use which

@@ -114,6 +114,24 @@ def test_every_markdown_page_under_docs_is_in_the_nav():
         'nav and docs/ disagree: %s' % sorted(_doc_pages() ^ _nav_pages())
 
 
+def test_the_documented_session_keys_are_the_keys_the_screen_has():
+    """`docs/tui.md` carries a hand-typed copy of `session_menu.ACTIONS`, which is
+    the shape this repo has been bitten by repeatedly — the three lists that
+    described this screen had already drifted to 21 / 26 / 22 keys against 29
+    real handlers, and that is what generating the palette and the help screen
+    from the table fixed. The doc page is the one copy left, so it gets the gate
+    the in-app surfaces got by construction."""
+    from claude_sessions import session_menu
+    doc = _read(os.path.join(DOCS, 'tui.md'))
+    documented = set(re.findall(r'^\| (?:\u21e7)?(\S)\s*\|', doc, re.M))
+    table = {k for k, _l, _s, _r, _b, _bk in session_menu.ACTIONS}
+    assert not table - documented, (
+        'keys the sessions screen has that tui.md does not list: %s'
+        % sorted(table - documented))
+    stray = {k for k in documented - table if k.isalnum() or k in '/?!'}
+    assert not stray, 'tui.md documents keys the screen does not handle: %s' % sorted(stray)
+
+
 def test_the_nav_only_references_pages_that_exist():
     for page in _nav_pages():
         assert os.path.isfile(os.path.join(DOCS, page)), 'nav points at missing %s' % page

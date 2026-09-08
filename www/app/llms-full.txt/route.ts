@@ -22,7 +22,7 @@ export function GET() {
     [
       `# ${SITE.name} — full text`,
       '',
-      `> ${SITE.tagline}. Every page of ${SITE.url}, the FAQ and the release history, concatenated as plain text for language models.`,
+      `> ${SITE.tagline} Every page of ${SITE.url}, the FAQ and the release history, concatenated as plain text for language models.`,
       '',
       [
         VERSION ? `Version: ${VERSION}` : null,

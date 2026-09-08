@@ -41,19 +41,19 @@ const table = (head: string[], rows: string[][]): Block => ({ kind: 'table', hea
 
 export const HOME: Doc = {
   slug: '',
-  title: 'archeus — the workspace layer for Claude Code',
-  h1: 'The workspace layer for Claude Code',
+  title: 'archeus — the memory and workspace layer for AI coding agents',
+  h1: 'The memory and workspace layer for AI coding agents.',
   description:
-    'archeus gives Claude Code persistent per-project memory, a searchable session archive, an interactive architecture graph, MCP management and per-project launch control. Pure Python standard library, zero runtime dependencies, MIT.',
+    'The memory and workspace layer for AI coding agents. Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code today: a searchable session archive, an interactive architecture graph, MCP management and per-project launch control. Pure Python standard library, zero runtime dependencies, MIT.',
   intro:
-    'Your projects stop being a stream of chats and start being workspaces — with memory, history and per-project launch control.',
+    'Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code today.',
   sections: [
     {
       id: 'hero',
       eyebrow: 'Station 01',
-      heading: 'The workspace layer for Claude Code',
+      heading: 'The memory and workspace layer for AI coding agents.',
       lead:
-        'Persistent project memory, every session you have ever had, and control over how the next one starts. A terminal UI and a desktop GUI over the same engine.',
+        'Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code today — a terminal UI and a desktop GUI over the same engine.',
       blocks: [
         code('pipx install archeus', 'install'),
         ul([
@@ -69,7 +69,7 @@ export const HOME: Doc = {
       eyebrow: 'Station 02',
       heading: 'Excellent inside a session. Forgetful between them.',
       lead:
-        'Every new session starts from nothing, old sessions are hard to find, and the only way to give the agent context is a CLAUDE.md that grows until it costs more than it is worth.',
+        'Every new session starts from nothing, old sessions are hard to find, and the only way to give the agent context is a CLAUDE.md that grows until it costs more than it is worth. That is not one vendor’s bug — it is what every coding agent that runs in a terminal has in common.',
       blocks: [
         p(
           'Claude Code stores each session as a JSONL transcript under your config directory and gives you no way to browse them. /resume reattaches you to something recent in the current directory; it does not search, does not span projects or accounts, and cannot answer "what did I do in this repo three weeks ago, and what did we decide".',
@@ -78,7 +78,10 @@ export const HOME: Doc = {
           'The context problem is worse, because it is recurring. CLAUDE.md rides in the model context on every single message, so its size is a permanent per-turn tax. The usual failure is not that the file is wrong — it is that it is too big to justify and too tedious to prune. A big project either starves the agent or floods it.',
         ),
         p(
-          'archeus sits in front of Claude Code and fixes both. Pick a project, see every session you have ever had in it, and launch with the model, effort, permissions and context you meant.',
+          'archeus sits in front of the agent and fixes both. Pick a project, see every session you have ever had in it, and launch with the model, effort, permissions and context you meant. Claude Code is the agent it drives today.',
+        ),
+        p(
+          'Where this is going, as a long-term goal and not a feature: provider-neutral memory, then an open harness of its own. Claude Code is the first surface, not the boundary. Nothing beyond Claude Code is supported today.',
         ),
       ],
     },
@@ -190,7 +193,7 @@ export const HOME: Doc = {
       id: 'get',
       eyebrow: 'Station 06',
       heading: 'Get archeus',
-      lead: 'Four ways in. All of them are free, MIT licensed and take one line.',
+      lead: 'The memory and workspace layer for AI coding agents. Four ways in, all free, MIT licensed and one line each — and all of them need the Claude Code CLI, which is the agent archeus drives today.',
       blocks: [
         code('pipx install archeus\narcheus', 'pipx — recommended'),
         code('pip install archeus', 'pip'),

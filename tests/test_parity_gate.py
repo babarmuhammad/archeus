@@ -26,7 +26,7 @@ def _routes():
 def test_every_tui_action_has_a_gui_counterpart():
     routes = _routes()
     missing = [(k, label, route)
-               for k, label, _scope, route, _blurb in
+               for k, label, _scope, route, _blurb, _bucket in
                session_menu.ACTIONS + session_menu.ARCHIVED_ACTIONS
                if route and route not in routes]
     assert not missing, 'TUI actions with no GUI route: %s' % (missing,)
@@ -37,7 +37,7 @@ def test_an_action_without_a_counterpart_must_say_why():
     but it has to be a decision, so the table carries a comment beside it."""
     src = io.open(session_menu.__file__, encoding='utf-8').read()
     table = src[src.index('ACTIONS = ['):src.index('#: actions reachable only')]
-    for k, label, _scope, route, _blurb in session_menu.ACTIONS:
+    for k, label, _scope, route, _blurb, _bucket in session_menu.ACTIONS:
         if route:
             continue
         line = next(ln for ln in table.splitlines() if "'%s'" % label in ln)
@@ -49,7 +49,7 @@ def test_the_action_table_still_drives_the_hints():
     the hints stop coming from it, the table is decoration."""
     src = io.open(session_menu.__file__, encoding='utf-8').read()
     assert "_hints('session')" in src and "_hints('project')" in src
-    labels = {label for _k, label, _s, _r, _b in session_menu.ACTIONS}
+    labels = {label for _k, label, _s, _r, _b, _bk in session_menu.ACTIONS}
     assert {'view', 'fork', 'review', 'ctx audit'} <= labels
 
 
@@ -77,7 +77,7 @@ def test_every_key_the_sessions_screen_handles_is_in_the_table():
                 and isinstance(right.value, str) and len(right.value) == 1):
             handled.add(right.value)
     assert len(handled) > 20, 'the handler walk found nothing — the dispatch shape changed'
-    known = {k for k, _l, _s, _r, _b in
+    known = {k for k, _l, _s, _r, _b, _bk in
              session_menu.ACTIONS + session_menu.ARCHIVED_ACTIONS}
     assert not (handled - known), (
         'keys the sessions screen handles but the table does not list: %s'
@@ -92,13 +92,13 @@ def test_every_action_is_discoverable_without_reading_the_source():
     """
     src = io.open(session_menu.__file__, encoding='utf-8').read()
     table = src[src.index('ACTIONS = ['):src.index('#: actions reachable only')]
-    silent = [(k, label) for k, label, _s, _r, blurb in session_menu.ACTIONS if not blurb]
+    silent = [(k, label) for k, label, _s, _r, blurb, _bk in session_menu.ACTIONS if not blurb]
     for k, label in silent:
         line = next(ln for ln in table.splitlines() if "'%s'" % label in ln)
         assert '#' in line, 'undiscoverable action %r gives no reason' % (label,)
     # the palette and the help screen are the same inventory, generated
     palette = {k for _blurb, k in session_menu.palette_rows()}
-    assert palette == {k for k, _l, _s, _r, b in session_menu.ACTIONS if b}
+    assert palette == {k for k, _l, _s, _r, b, _bk in session_menu.ACTIONS if b}
     assert 'R' in palette and 'X' in palette and 'K' in palette
     from claude_sessions import ui
     helptext = '\n'.join(ui._session_key_lines())
@@ -152,7 +152,7 @@ def test_a_blurb_fits_the_help_grid(monkeypatch):
     from claude_sessions import ui
     _at_the_narrowest_supported_terminal(monkeypatch)
     budget = ui.help_blurb_budget()
-    too_long = [(k, len(b), b) for k, _l, _s, _r, b in session_menu.ACTIONS
+    too_long = [(k, len(b), b) for k, _l, _s, _r, b, _bk in session_menu.ACTIONS
                 if len(b) > budget]
     assert not too_long, (
         'these truncate in the help screen (budget %d chars): %s'

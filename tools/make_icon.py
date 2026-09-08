@@ -14,6 +14,13 @@ Written from that one source:
     archeus.ico              the app icon — Qt window, shortcuts, taskbar pin
     docs/assets/favicon.ico  the documentation site
     www/public/favicon.ico   the marketing site
+    www/app/favicon.ico      the marketing site, again — and it is not a
+                             duplicate. Next.js's App Router serves
+                             `app/favicon.ico` in preference to
+                             `public/favicon.ico`, so writing only the public
+                             one left the apex serving the OLD mark while every
+                             other surface had the new one, with nothing to
+                             show for it in any diff.
 
 Two things this does to the source, and both matter:
 
@@ -50,6 +57,7 @@ TARGETS = [
     os.path.join('claude_sessions', 'archeus.ico'),
     os.path.join('docs', 'assets', 'favicon.ico'),
     os.path.join('www', 'public', 'favicon.ico'),
+    os.path.join('www', 'app', 'favicon.ico'),
 ]
 
 #: alpha at or above this is the tile; below it is the drop shadow. Measured on

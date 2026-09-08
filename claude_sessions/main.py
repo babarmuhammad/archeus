@@ -147,8 +147,32 @@ MAIN_ACTIONS = [
     ('⚙  Accounts (switch / run 2 at once)', '__accounts__',         '/api/accounts'),
     ('⚙  Logs (what archeus did, what failed)', '__logs__',        '/api/logs'),
     ('⚙  Settings',                          '__settings__',         '/api/settings'),
-    ('?  Help',                              '__help__',             ''),   # the GUI's help page is generated in the browser from NAV_GROUPS/TABS — there is nothing for it to fetch
+    ('?  Help',                              '__help__',             ''),   # the GUI's help page is generated in the browser from SECTIONS/TABS — there is nothing for it to fetch
 ]
+
+#: the same five sections the GUI sidebar has, as [(label, [keys])] pointing
+#: INTO MAIN_ACTIONS. Fourteen flat rows under the project list read as a wall
+#: and buried the three that operate on the list itself; five submenus is the
+#: GUI's answer and the two surfaces are gated to move together.
+#:
+#: Keys rather than rows, so MAIN_ACTIONS stays the one table carrying a row's
+#: label and its GUI route — the parity gate reads it and would have no way to
+#: check a copy. Keyed by LABEL, never by index, for the reason the sidebar's
+#: collapsed set was: reordering the sections must not silently open a
+#: different one.
+MAIN_SECTIONS = [
+    ('Context',  ['__global_claude_md__', '__mcp__']),
+    ('Library',  ['__agents__', '__skills__', '__hooks__']),
+    ('Activity', ['__usage_stats__', '__logs__']),
+    ('Accounts', ['__accounts__']),
+    ('Settings', ['__settings__', '__updates__']),
+]
+#: rows that stay ON the main menu. The first three act on the project list the
+#: menu is already showing — burying "open a folder" one level down would put a
+#: submenu between the user and the reason they opened archeus — and `?` is the
+#: same door the GUI moved Help to. test_surface_parity fails a MAIN_ACTIONS key
+#: that is in neither this set nor a section.
+MAIN_TOP = ['__open_path__', '__search_all__', '__hidden_projects__', '__help__']
 
 
 def run():
@@ -406,7 +430,11 @@ def run():
         rows = (qr_items + [(f"{'─' * W}", None)] + project_items) if qr_items \
             else project_items
         rows = rows + [(f"{'─' * W}", None)] + \
-            [(label, key) for label, key, _route in MAIN_ACTIONS]
+            [(label, key) for label, key, _route in MAIN_ACTIONS
+             if key in MAIN_TOP and key != '__help__'] + \
+            [(f"⚙  {label}…", f'__sec_{label}__') for label, _keys in MAIN_SECTIONS] + \
+            [(label, key) for label, key, _route in MAIN_ACTIONS
+             if key == '__help__']
         if len(visible) < len(grouped):
             rows = rows + [(f"{C_DIM}  {len(grouped) - len(visible)} project(s) hidden"
                             f"{C_RESET}", None)]
@@ -434,6 +462,23 @@ def run():
             sys.exit(0)
 
         opts = dict(_EMPTY_OPTS)   # fresh each iteration (launch_options_menu may have returned None on ESC)
+
+        # A section row is not an action: it opens the submenu and then hands
+        # the chosen key to the SAME dispatch chain below, so every branch there
+        # is untouched by the regrouping. A one-row section skips the menu — a
+        # list of one is a keystroke spent on nothing.
+        if sel and sel.startswith('__sec_'):
+            label = sel[len('__sec_'):-2]
+            keys = dict(MAIN_SECTIONS)[label]
+            # in the SECTION's order, not the table's: the table is ordered by
+            # the history of the menu it used to be, and reading its order back
+            # out put `Updates` above `Settings` inside Settings
+            labels = {key: lbl for lbl, key, _route in MAIN_ACTIONS}
+            sub_items = [(labels[k], k) for k in keys if k in labels]
+            sel = (sub_items[0][1] if len(sub_items) == 1
+                   else menu(sub_items, label.upper()))
+            if not sel:
+                continue
 
         if sel and sel.startswith('__quickresume_'):
             idx  = int(sel[len('__quickresume_'):-2])

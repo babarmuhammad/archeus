@@ -1,9 +1,9 @@
 import { Stations } from '@/components/journey/Stations';
 
 /**
- * The landing page is one scroll down a constellation: six wireframe dodecahedra
- * joined by a curve that draws itself as you go, with the copy for each station
- * beside its solid.
+ * The landing page is one scroll down a constellation: six geodesic cages, each
+ * holding a population of its own, joined by a curve that draws itself as you go,
+ * with the copy for each station beside its cluster.
  *
  * The canvas is decoration and the stations are the page. Remove the canvas —
  * no WebGL, reduced motion, JavaScript off — and every word is still here,

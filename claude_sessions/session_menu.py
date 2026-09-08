@@ -37,49 +37,57 @@ from .system_prompt import edit_system_prompt
 #:           key, while the palette is a menu with room to spare. Ask
 #:           `ui.help_blurb_budget()` for the number; test_parity_gate.py fails
 #:           a blurb that would truncate.
+#:   bucket  which of the project's four tabs this key belongs under — the same
+#:           four the GUI groups its project tabs into, plus `Help` for the two
+#:           discovery surfaces themselves. It groups the `/` palette and the
+#:           help grid; `scope` still drives the one-line hint bar, which is a
+#:           different cut (what is on screen right now) and cannot be reused
+#:           for it. Beside the row rather than in a lookup table for the same
+#:           reason the blurb is: a second list keyed by the same keys is a
+#:           second thing to forget when a key is added.
 ACTIONS = [
-    ('v', 'view',           'session', '/api/transcript',            'View transcript (/ to search)'),
-    ('r', 'rename',         'session', '/api/rename',                'Rename session'),
-    ('f', 'fork',           'session', '/api/launch',                'Fork session'),  # choice='fork:<sid>'
-    ('t', 'tag',            'session', '/api/session/tags',          'Tag session'),
-    ('d', 'archive',        'session', '/api/session/archive',       'Archive / delete session'),
-    ('e', 'export',         'session', '/api/session/export',        'Export to markdown'),
-    ('i', 'info',           'session', '/api/session/meta',          'Session info: tokens, cost'),
-    ('F', 'files',          'session', '/api/session/changed-files', 'Changed files'),
-    ('A', 'archived',       'session', '/api/session/archived',      'Archived sessions view'),
-    ('m', 'memory',         'project', '/api/memory/state',          'Memory hub: build, ask, preview'),
-    ('g', 'agents',         'project', '/api/agents/session',        'Project agents'),
-    ('n', 'graph',          'project', '/api/graph-lite',            'Architecture + memory graph'),
-    ('X', 'plan→exec',      'project', '/api/job',                   'Plan on one model, run another'),
-    ('R', 'review',         'project', '/api/job',                   'Code review of the working tree'),
-    ('a', 'ai-analyze',     'project', '/api/job',                   'AI-generate CLAUDE.md'),
-    ('c', 'claude.md',      'project', '/api/claude-md',             'Scaffold CLAUDE.md'),
-    ('s', 'sys-prompt',     'project', '/api/system-prompt',         'System prompt'),
-    ('u', 'usage',          'project', '/api/usage/project',         'Project usage stats'),
-    ('w', 'status',         'project', '/api/workspace-status',      'Workspace status & freshness'),
+    ('v', 'view',           'session', '/api/transcript',            'View transcript (/ to search)', 'Sessions'),
+    ('r', 'rename',         'session', '/api/rename',                'Rename session', 'Sessions'),
+    ('f', 'fork',           'session', '/api/launch',                'Fork session', 'Sessions'),  # choice='fork:<sid>'
+    ('t', 'tag',            'session', '/api/session/tags',          'Tag session', 'Sessions'),
+    ('d', 'archive',        'session', '/api/session/archive',       'Archive / delete session', 'Sessions'),
+    ('e', 'export',         'session', '/api/session/export',        'Export to markdown', 'Sessions'),
+    ('i', 'info',           'session', '/api/session/meta',          'Session info: tokens, cost', 'Sessions'),
+    ('F', 'files',          'session', '/api/session/changed-files', 'Changed files', 'Sessions'),
+    ('A', 'archived',       'session', '/api/session/archived',      'Archived sessions view', 'Sessions'),
+    ('m', 'memory',         'project', '/api/memory/state',          'Memory hub: build, ask, preview', 'Context'),
+    ('g', 'agents',         'project', '/api/agents/session',        'Project agents', 'Project'),
+    ('n', 'graph',          'project', '/api/graph-lite',            'Architecture + memory graph', 'Project'),
+    ('X', 'plan→exec',      'project', '/api/job',                   'Plan on one model, run another', 'Actions'),
+    ('R', 'review',         'project', '/api/job',                   'Code review of the working tree', 'Actions'),
+    ('a', 'ai-analyze',     'project', '/api/job',                   'AI-generate CLAUDE.md', 'Context'),
+    ('c', 'claude.md',      'project', '/api/claude-md',             'Scaffold CLAUDE.md', 'Context'),
+    ('s', 'sys-prompt',     'project', '/api/system-prompt',         'System prompt', 'Context'),
+    ('u', 'usage',          'project', '/api/usage/project',         'Project usage stats', 'Project'),
+    ('w', 'status',         'project', '/api/workspace-status',      'Workspace status & freshness', 'Project'),
     # 'session' scope now, not 'project': the GUI's equivalent is the `Hand off`
     # button on a session row, so the row IS the source and there is no
     # source-picker step. The TUI's own ⇧K still opens the picker (a terminal
     # list has no per-row buttons), which is why the key and blurb are unchanged.
-    ('K', 'hand off',       'session', '/api/inject/launch',         'Hand this chat to a new one'),
-    ('W', 'ctx audit',      'project', '/api/ctxaudit',              'Context weight audit (tokens)'),
+    ('K', 'hand off',       'session', '/api/inject/launch',         'Hand this chat to a new one', 'Sessions'),
+    ('W', 'ctx audit',      'project', '/api/ctxaudit',              'Context weight audit (tokens)', 'Context'),
     # ── in the palette and in help, but not in the hint bar: that bar is one
     #    line wide, and these are the half that is reached less often.
-    ('L', 'lessons',        'more', '/api/lessons',      'Lessons review'),
-    ('M', 'memory map',     'more', '/api/memory-map',   'Memory files map (hierarchy)'),
-    ('C', 'compress',       'more', '/api/job',          'Compress CLAUDE.md with AI'),
-    ('p', 'extra PATH',     'more', '/api/extra-paths',  'Extra PATH entries'),
-    ('x', 'add-dirs',       'more', '/api/add-dirs',     'Add directories (--add-dir)'),
-    ('!', 'set up project', 'more', '/api/job',          'One-key setup: CLAUDE.md+memory'),
+    ('L', 'lessons',        'more', '/api/lessons',      'Lessons review', 'Context'),
+    ('M', 'memory map',     'more', '/api/memory-map',   'Memory files map (hierarchy)', 'Context'),
+    ('C', 'compress',       'more', '/api/job',          'Compress CLAUDE.md with AI', 'Context'),
+    ('p', 'extra PATH',     'more', '/api/extra-paths',  'Extra PATH entries', 'Project'),
+    ('x', 'add-dirs',       'more', '/api/add-dirs',     'Add directories (--add-dir)', 'Project'),
+    ('!', 'set up project', 'more', '/api/job',          'One-key setup: CLAUDE.md+memory', 'Context'),
     # ── the discovery surface itself. Listing `/` inside the palette it opens
     #    would be a loop, so it carries no blurb; `?` is a real destination.
-    ('/', 'actions',        'meta', '',                  ''),   # opens the palette below
-    ('?', 'help',           'meta', '',                  'Help'),   # opens ui.help_screen
+    ('/', 'actions',        'meta', '',                  '', 'Help'),   # opens the palette below
+    ('?', 'help',           'meta', '',                  'Help', 'Help'),   # opens ui.help_screen
 ]
 
 #: actions reachable only from the archived view
 ARCHIVED_ACTIONS = [
-    ('d', 'restore/delete', 'session', '/api/session/restore', 'Restore or delete'),
+    ('d', 'restore/delete', 'session', '/api/session/restore', 'Restore or delete', 'Sessions'),
 ]
 
 
@@ -94,19 +102,39 @@ def palette_rows(skip=()):
     list simply omitted `!`, and a row that falls through to the type-to-filter
     handler when picked is worse than no row.
     """
-    return [(blurb, k) for k, _l, _sc, _r, blurb in ACTIONS
-            if blurb and k not in skip]
+    return [(blurb, k) for bucket in _buckets()
+            for k, _l, _sc, _r, blurb, b in ACTIONS
+            if b == bucket and blurb and k not in skip]
+
+
+def _buckets():
+    """Bucket labels in table order. Derived: a hand-kept order would be a
+    second list to reorder when a bucket is renamed."""
+    return list(dict.fromkeys(b for *_x, b in ACTIONS))
 
 
 def key_rows():
     """[(key, blurb)] for the help screen — every key except the palette that
     opens onto them."""
-    return [(k, blurb) for k, _l, _sc, _r, blurb in ACTIONS if blurb]
+    return [r for _b, rows in key_groups() for r in rows]
+
+
+def key_groups():
+    """[(bucket, [(key, blurb)])] — the help grid and the palette read the
+    same four groups the GUI's project tabs use, so a key is looked for in the
+    same place in both surfaces."""
+    out = []
+    for bucket in _buckets():
+        rows = [(k, blurb) for k, _l, _sc, _r, blurb, b in ACTIONS
+                if b == bucket and blurb]
+        if rows:
+            out.append((bucket, rows))
+    return out
 
 
 def _hints(scope):
     return [(('⇧' + k) if k.isupper() else k, label)
-            for k, label, sc, _r, _b in ACTIONS if sc == scope]
+            for k, label, sc, _r, _b, _bk in ACTIONS if sc == scope]
 
 
 def _sid_of(val):

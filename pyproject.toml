@@ -9,15 +9,19 @@ name = "archeus"
 # settings, caches and per-project state onto the new names. A 1.0.0 would have
 # read as a downgrade to everyone coming across.
 version = "2.0.1"
-description = "The workspace layer for Claude Code - persistent project memory, an interactive architecture graph, MCP awareness, and per-project launch control in a fast terminal UI"
+description = "The memory and workspace layer for AI coding agents. Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code today."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Babar Muhammad Anas" }]
+# Agent-first, not Claude-first. The old list was a `claude*` monopoly, which
+# describes the surface it drives today rather than the thing it is — and the
+# terms someone reaches for when they want this are about the agent's memory,
+# not about one vendor's CLI. `claude-code` stays, because that IS the surface.
 keywords = [
-    "claude", "claude-code", "tui", "session-manager", "windows",
-    "ai-agents", "context-management", "developer-tools", "mcp",
-    "terminal-ui", "workspace", "session-history",
+    "ai-agents", "agent-memory", "coding-agent", "context-management",
+    "claude-code", "claude", "mcp", "developer-tools",
+    "session-manager", "session-history", "workspace", "terminal-ui", "tui",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

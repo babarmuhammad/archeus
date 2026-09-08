@@ -19,7 +19,24 @@ used.
 - Quick-resume items appear at the top (★ = most recent session, ☆ = older sessions). These are the 5 most recently used sessions across all projects; selecting one resumes that exact session without navigating into the project's list.
 - All other projects follow, sorted by recency — type to filter live
 - The MCP status footer shows connected MCP servers once the background check completes
-- Bottom menu: **🔍 Search all sessions**, **📦 Hide / restore projects**, **⚙ Usage stats**, **⚙ MCP servers**, **⚙ Agents**, **⚙ Skills**, **⚙ Hooks**, **⚙ Updates**, **⚙ Global CLAUDE.md**, **⚙ Accounts**, **⚙ Logs**, **⚙ Settings**, **? Help**
+- Bottom menu: three rows that act on the list you are looking at — **📂 Open new
+  project by path**, **🔍 Search all sessions**, **📦 Hide / restore projects** — then five
+  sections, then **? Help**
+
+The five sections are the same five the [desktop app](desktop.md) puts in its sidebar, in
+the same order, and each one opens a submenu:
+
+| Section | What is in it |
+|---|---|
+| **⚙ Context** | Global CLAUDE.md / MCP Analysis · MCP servers |
+| **⚙ Library** | Agents · Skills · Hooks |
+| **⚙ Activity** | Usage stats · Logs |
+| **⚙ Accounts** | Accounts (switch, run two at once) |
+| **⚙ Settings** | Settings · Updates (Claude Code + plugins) |
+
+It used to be fourteen flat rows under the project list, which read as a wall and buried
+the three that operate on the list itself. A section holding one row opens it directly
+rather than showing a menu of one.
 
 ## Built-in screens
 
@@ -181,42 +198,73 @@ Edits apply from the next iteration.
 
 ![archeus TUI — sessions](img/tui-sessions.png)
 
+Grouped the way the `/` palette and the `?` help screen group them — the same four
+buckets the desktop app puts its project tabs in. The keys themselves have not changed and
+will not: they are muscle memory.
+
+**Moving around**
+
 | Key | Action |
 |-----|--------|
 | ↑ / ↓ | Navigate |
 | ENTER | Select / confirm |
 | ESC | Back / cancel (clears filter first if active) |
-| r | Rename session |
-| d | Archive or delete session |
-| f | Fork session |
+| BACKSPACE | Delete last filter character |
+| Type text | Filter sessions live by name or preview |
+
+**Sessions** — one row, one chat
+
+| Key | Action |
+|-----|--------|
 | v | View transcript |
+| r | Rename session |
+| f | Fork session |
+| t | Tag session |
+| d | Archive or delete session |
 | e | Export transcript to markdown |
 | i | Session info (tokens, cost, models, branch) |
 | F | Changed files (from session tool calls) |
-| t | Tag session |
-| u | Project usage stats |
-| m | Memory hub (build · ask · preview injection · lessons · toggles) |
-| L | Lessons review (approve / pin / evict session learnings) |
-| / | Action palette — every action, type-to-filter |
-| ! | One-key project setup (first open: CLAUDE.md + memory + rules) |
-| M | Memory map (CLAUDE.md hierarchy) |
 | A | Toggle archived sessions view |
+| ⇧K | New chat seeded with context from another session, any account ([hand-off](context-handoff.md)) |
+
+**Context** — what Claude reads before you type
+
+| Key | Action |
+|-----|--------|
+| m | Memory hub (build · ask · preview injection · lessons · toggles) |
 | c | Scaffold CLAUDE.md (git + sessions) |
 | a | AI-generate CLAUDE.md (Claude CLI) |
 | s | Edit / generate system prompt |
-| g | Pick project agents (library checklist → `.claude/agents/`) |
-| n | Architecture graph + project memory screen (then `o` open graph · `m` build memory · `a` ask · `r` rebuild) |
-| w | Workspace status (provenance & freshness) |
-| ⇧K | New chat seeded with context from another session, any account ([hand-off](context-handoff.md)) |
 | ⇧W | Context weight audit — token cost of everything auto-loaded per turn |
+| L | Lessons review (approve / pin / evict session learnings) |
+| M | Memory map (CLAUDE.md hierarchy) |
 | ⇧C | Compress CLAUDE.md with AI (cut per-turn tokens) |
+| ! | One-key project setup (first open: CLAUDE.md + memory + rules) |
+
+**Actions** — one Claude call, one result
+
+| Key | Action |
+|-----|--------|
 | ⇧X | Plan → Execute (plan on one model, execute on another) |
 | ⇧R | Code review of the working diff |
+
+**Project** — the folder and how it is launched
+
+| Key | Action |
+|-----|--------|
+| n | Architecture graph + project memory screen (then `o` open graph · `m` build memory · `a` ask · `r` rebuild) |
+| g | Pick project agents (library checklist → `.claude/agents/`) |
+| u | Project usage stats |
+| w | Workspace status (provenance & freshness) |
 | p | Manage extra PATH entries |
 | x | Manage --add-dir directories |
+
+**Finding the rest**
+
+| Key | Action |
+|-----|--------|
+| / | Action palette — every action, type-to-filter, in these same groups |
 | ? | Help / keyboard reference |
-| BACKSPACE | Delete last filter character |
-| Type text | Filter sessions live by name or preview |
 
 ### Transcript viewer (`v`)
 

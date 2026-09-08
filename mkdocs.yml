@@ -1,8 +1,9 @@
 site_name: archeus
 site_description: >-
-  The workspace layer for Claude Code — persistent project memory, an interactive
-  architecture graph, MCP server management, and per-project launch control, in a fast
-  terminal UI or a native desktop GUI. Zero runtime dependencies.
+  The memory and workspace layer for AI coding agents. Persistent per-project memory,
+  every session you have ever had, and control over what the next one costs. Works with
+  Claude Code today, in a fast terminal UI or a native desktop GUI. Zero runtime
+  dependencies.
 # Canonical host. The manual lives on its own subdomain; the apex is the marketing
 # site and is a different deployment entirely. The site is built by Vercel and
 # mirrored on GitHub Pages; both copies emit this URL, so search and answer engines
@@ -23,6 +24,9 @@ theme:
   # docs/img holds only tool-generated screenshots (test_demo_fixtures guards
   # that); brand assets live in docs/assets.
   favicon: assets/favicon.ico
+  # The master dark tile, straight from docs/assets — the header logo, the
+  # favicon and the app icon are all the one artwork (brand study 5.1).
+  logo: assets/logo.png
   # No Google Fonts fetch — the GUI itself ships zero CDN requests, and the site
   # holds the same line.
   font: false
@@ -68,15 +72,21 @@ markdown_extensions:
   - toc:
       permalink: true
 
-# Two sections (navigation.sections is on above). The first is the manual, read
-# top to bottom: what it is, how to install it, then one page per surface, then
-# what things cost and what to do when they break. The second is everything you
-# look something up in rather than read.
+# Sections named after the app's own. The first is the manual, read top to
+# bottom: what it is, how to install it, then one page per surface. The five
+# after it are the five sections of the GUI sidebar and the five submenus of the
+# terminal main menu, carrying the same names in the same order — so a screen
+# and the page describing it are called the same thing, which is the whole
+# reason they were renamed. The last is everything you look something up in
+# rather than read.
+#
+# navigation.sections is on above, so a top-level key renders as a heading in
+# the sidebar rather than a collapsible page.
 #
 # The product pitch is NOT here — it belongs to the marketing site on the apex.
-# features/faq/compare/credits/changelog are the last of it and are parked at the
-# end of Reference until those pages exist there; moving them first would 404
-# links that are already live.
+# compare/credits are the last of it and are parked at the end of Reference
+# until those pages exist there; moving them first would 404 links that are
+# already live.
 nav:
   - Manual:
       - Home: index.md
@@ -87,29 +97,30 @@ nav:
       - Terminal UI: tui.md
       - Desktop app: desktop.md
       - Claude Code plugin: plugin.md
-      - Configuration: configuration.md
       - Projects: projects.md
       - Sessions: sessions.md
+      - Troubleshooting: troubleshooting.md
+  - Context:
       - Project memory: memory.md
       - Architecture graph: architecture.md
-      - Usage & cost: usage.md
-      - Troubleshooting: troubleshooting.md
-  - Reference:
-      - API reference: api.md
-      - Project dashboard: dashboard.md
-      - Multiple accounts: accounts.md
-      - Context hand-off: context-handoff.md
       - MCP servers: mcp.md
+  - Library:
       - Agents & skills: agents.md
       - Agent library install: agent-library.md
       - Hooks: hooks.md
+  - Activity:
+      - Usage & cost: usage.md
+      - Project dashboard: dashboard.md
+  - Accounts:
+      - Multiple accounts: accounts.md
+      - Context hand-off: context-handoff.md
+  - Settings:
+      - Configuration: configuration.md
       - Plan → Execute & OmniRoute: plan-execute.md
       - Status line, failover & checkpoints: statusline.md
+  - Reference:
+      - API reference: api.md
       - Files, layout & encoding: reference.md
-      # Features, FAQ, Download, Changelog and the code of conduct live on the
-      # apex marketing site now — one page per URL, on one host. vercel.json
-      # redirects their old docs URLs there. What stays here is what the apex
-      # has no equivalent for.
       - Compare: compare.md
       - Credits: credits.md
 

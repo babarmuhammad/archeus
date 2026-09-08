@@ -746,6 +746,26 @@ def main():
         pg.goto(f'http://127.0.0.1:{PORT}/?k={gui.TOKEN}')   # / is token-gated
         pg.wait_for_timeout(1800)
 
+        # FIRST, and before anything reaches into the page: did the script run
+        # at all? A single stray backtick inside a GLSL template literal ends
+        # the string, turns the shader body into code, and kills the WHOLE
+        # bundle — every `let` and every function in it, since app.js, stage.js
+        # and the rest share one script scope. What the user sees is the
+        # loading screen, forever, with no error anywhere they would look.
+        # Without this line the tool did not report that: it crashed four
+        # checks later on `INST is not defined`, from inside a Playwright
+        # traceback that says nothing about what is actually wrong.
+        print('\n— the page executed —')
+        # typeof and not `n in window`: ST is a top-level `let`, which lives in
+        # the global LEXICAL environment and never becomes a window property.
+        alive = pg.evaluate(
+            "['INST','STAGE','MO','ST','applyTheme','setZen']"
+            ".filter(n=>{try{return eval('typeof '+n)==='undefined';}"
+            "catch(e){return true;}})")
+        check('every top-level module reached the page', alive == [], alive)
+        if alive:
+            print('  the bundle did not parse — everything below is meaningless')
+
         print('\n— dashboard —')
         kinds = pg.evaluate("INST.reg.map(t=>t.kind+':'+t.key)")
         check('instruments mounted', len(kinds) >= 5, kinds)
@@ -1218,12 +1238,15 @@ def main():
               pg.evaluate("!!document.querySelector('#agQ')"))
         # your own agents are divided by category too — a flat roll of
         # everything installed is the wall the library would be without folders
-        heads=pg.evaluate("[...document.querySelectorAll('#content .fgrp .hkwhen span')]"
-                          ".map(e=>e.textContent.trim())")
+        # the FIRST card only — both lists are collapsed categories now, so an
+        # unscoped query returns your own three followed by the library's
+        heads=pg.evaluate("[...document.querySelector('#content .card')"
+                          ".querySelectorAll('.fgrp summary')]"
+                          ".map(e=>e.textContent.trim().replace(/\\s+\\d+$/,''))")
         check('your agents are grouped by category, unfiled last',
               heads==['Core development','Quality security','Uncategorised'],heads)
-        pg.evaluate("(()=>{const i=document.querySelector('#agQ');i.value='migrat';"
-                    "i.dispatchEvent(new Event('input'));})()")
+        pg.evaluate("(()=>{const i=document.querySelector('#agQ');if(!i)return;"
+                    "i.value='migrat';i.dispatchEvent(new Event('input'));})()")
         pg.wait_for_timeout(200)
         vis=pg.evaluate("[...document.querySelectorAll('#content .agrow')]"
                         ".filter(e=>e.style.display!=='none').length")
@@ -1231,12 +1254,20 @@ def main():
                          ".filter(e=>e.style.display!=='none').length")
         check('the agent filter drops the categories it emptied',
               vis==1 and grps==1,f'{vis} rows in {grps} groups')
-        pg.evaluate("(()=>{const i=document.querySelector('#agQ');i.value='security';"
-                    "i.dispatchEvent(new Event('input'));})()")
+        pg.evaluate("(()=>{const i=document.querySelector('#agQ');if(!i)return;"
+                    "i.value='security';i.dispatchEvent(new Event('input'));})()")
         pg.wait_for_timeout(200)
-        opened=pg.evaluate("[...document.querySelectorAll('#content details')]"
-                           ".filter(d=>d.open&&d.style.display!=='none').length")
-        check('the agent filter opens the matching library category',opened==1,opened)
+        # BOTH lists are collapsed categories now — your own agents used to be
+        # printed expanded under a plain heading, which is the wall the library
+        # would be without its folders — so a term matching in each opens one in
+        # each. The count is per CARD, not per page, or this check would have
+        # gone on passing by counting only half the page.
+        opened=pg.evaluate(
+            "[...document.querySelectorAll('#content .card')].map(c=>"
+            "[...c.querySelectorAll('details')]"
+            ".filter(d=>d.open&&d.style.display!=='none').length)")
+        check('the agent filter opens the matching category in each list',
+              opened==[1,1],opened)
         # filing a new agent must offer the categories that exist AND accept a
         # name that does not — one control, not a select plus an escape hatch
         # NOT `pg.evaluate("agNew()")`: evaluate awaits what the expression
@@ -1444,16 +1475,28 @@ def main():
         check('audit still totals the account-scoped surfaces',
               'global ~/.claude/CLAUDE.md' in au and 'MCP servers' in au)
 
-        pg.evaluate("go('settings')")
-        pg.wait_for_timeout(900)
         # every settings key the server accepts must resolve to a LIVE control.
         # `editor`, `claude_exe`, `claude_config_dir` and `headless_budget_usd`
         # round-tripped through the API with nothing on the page to set them.
-        for cid in ('sEditor', 'sClaudeExe', 'sCfgDir', 'sBudget'):
-            ok = pg.evaluate(
-                f"(()=>{{const e=document.querySelector('#{cid}');"
-                f"return !!e && !e.disabled && e.offsetParent!==null;}})()")
-            check(f'#{cid} is a live, enabled control', ok)
+        # The page is five sub-pages now, so the check names the one that owns
+        # each control — asserting them all on `settings` would have passed for
+        # the wrong reason once, and then failed the moment they moved.
+        for page, cids in (('settings', ('sEff', 'sMod', 'sPlanMod')),
+                           ('paths', ('sEditor', 'sClaudeExe', 'sCfgDir',
+                                      'sBudget', 'sMemCalls', 'sExtract')),
+                           ('appearance', ('sMotion', 'sStage', 'sSurf')),
+                           ('models', ('orUrl', 'foModels', 'foPort')),
+                           ('updates', ('sUpd', 'sNotif', 'amInt'))):
+            pg.evaluate(f"go('{page}')")
+            pg.wait_for_timeout(900)
+            for cid in cids:
+                ok = pg.evaluate(
+                    f"(()=>{{const e=document.querySelector('#{cid}');"
+                    f"return !!e && !e.disabled && e.offsetParent!==null;}})()")
+                check(f'#{cid} is a live, enabled control on {page}', ok)
+            check(f'{page} kept its own Save or applies on pick',
+                  pg.evaluate("!!document.querySelector('#content .btn.pri')"
+                              " || !!document.querySelector('#content .chip')"))
 
         pg.evaluate("go('helpp')")
         pg.wait_for_timeout(700)
@@ -1470,7 +1513,11 @@ def main():
         boxes = pg.evaluate(
             "document.querySelectorAll('#content .hrow input[type=checkbox]').length")
         rows = pg.evaluate("document.querySelectorAll('#content .hrow').length")
-        check('every hook row can be enabled or disabled', rows == 0 or boxes == rows,
+        # `rows == 0 or …` passed VACUOUSLY on an empty page, which is how one
+        # run where the hooks page rendered nothing at all still reported this
+        # as OK — only the grouping check below noticed. The stub always
+        # installs hooks, so the row count is itself a fact worth asserting.
+        check('every hook row can be enabled or disabled', rows and boxes == rows,
               f'{boxes} controls on {rows} rows')
         # both lists group by WHEN a hook fires, and the heading says it in
         # English — `PreToolUse` alone is unreadable to anyone who has not
@@ -1480,8 +1527,10 @@ def main():
                           ".includes('before Claude runs a tool')"))
         # a filtered-away group must take its heading with it, or a search
         # leaves headings standing over nothing
-        pg.evaluate("(()=>{const i=document.querySelector('#hkQ');"
-                    "i.value='inject';i.dispatchEvent(new Event('input'));})()")
+        typed = pg.evaluate(
+            "(()=>{const i=document.querySelector('#hkQ');if(!i)return false;"
+            "i.value='inject';i.dispatchEvent(new Event('input'));return true;})()")
+        check('the hook filter box is on the page', typed)
         pg.wait_for_timeout(200)
         vis_rows = pg.evaluate(
             "[...document.querySelectorAll('#content .trow')]"
@@ -1639,6 +1688,37 @@ def main():
         check('no shader reads an attribute its geometry never set',
               missing == [], missing)
 
+        print(chr(10) + '— zen: the theme with nothing on top of it —')
+        # The one thing a CSS grep cannot tell you: whether the sidebar column
+        # actually goes away. `.side{display:none}` inside a two-column grid
+        # whose first track is a fixed `var(--side-w)` leaves a 280px hole, and
+        # the page still "looks fine" in a screenshot of the middle of it.
+        pg.evaluate("setZen(true)")
+        pg.wait_for_timeout(120)
+        zen = pg.evaluate("""(()=>{
+          const app=document.querySelector('.app');
+          const side=document.querySelector('.side');
+          const b=document.getElementById('bZen');
+          return {cols:getComputedStyle(app).gridTemplateColumns,
+                  sideW:side.getBoundingClientRect().width,
+                  contentShown:document.getElementById('content').offsetParent!==null,
+                  btnShown:b.offsetParent!==null,
+                  pressed:b.getAttribute('aria-pressed')};})()""")
+        check('zen collapses the sidebar COLUMN, not just the sidebar',
+              zen['sideW'] == 0 and ' ' not in zen['cols'].strip(), zen['cols'])
+        check('zen hides the page', not zen['contentShown'])
+        check('zen leaves its own way out visible',
+              zen['btnShown'] and zen['pressed'] == 'true', zen)
+        # Esc is the escape hatch that works when the button is off-screen. It
+        # must not fire while a modal is up — the modal owns Esc first.
+        pg.keyboard.press('Escape')
+        pg.wait_for_timeout(120)
+        back = pg.evaluate("""({zen:document.documentElement.classList.contains('zen'),
+          sideW:document.querySelector('.side').getBoundingClientRect().width,
+          contentShown:document.getElementById('content').offsetParent!==null})""")
+        check('Esc leaves zen and the whole app comes back',
+              not back['zen'] and back['sideW'] > 100 and back['contentShown'], back)
+
         br.close()
     srv.shutdown()
 
@@ -1648,7 +1728,7 @@ def main():
     # "FAILURES: none" every time. A floor on the number of checks executed is
     # the cheapest thing that would have caught it.
     # And a floor that never moves stops being a floor: it rises with the suite.
-    FLOOR = 170
+    FLOOR = 175
     if len(ran) < FLOOR:
         fails.append(f'only {len(ran)} checks ran, expected >= {FLOOR} — '
                      'part of this suite is not executing')

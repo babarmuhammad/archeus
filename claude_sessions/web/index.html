@@ -61,9 +61,84 @@
 <div class="app">
   <aside class="side">
     <div class="brand">
-      <div class="logo">C</div>
-      <div><b>archeus</b><small>workspace for Claude Code</small></div>
+      <!-- The APP ICON at sidebar size: the same object as docs/assets/logo.png
+           and the OG card's tile. Brand-study §5.1 is the tier — it "assumes a
+           dark ground and is the only tier allowed to carry its own
+           background", so the colours here are FIXED, not palette vars (on this
+           tile a light palette's --txt would be black on black). The tier that
+           adapts is the monochrome glyph, §5.3, and it is a different drawing.
+           Without the tile the letter floats on the sidebar's own ground and a
+           modulated letterform plus a hairline ellipse smudges at 36px.
+
+           Two things are easy to get wrong by hand:
+           · The letter is FILLED, not stroked — a uniform stroke draws a wire
+             diagram of an A. Two triangles of unequal foot width (thin left,
+             heavy right) plus a crescent that DIPS in the middle.
+           · The bead sits ON the orbit BY CONSTRUCTION: same rotated <g>, at
+             (16 + rx·cos-42°, 16.5 + ry·sin-42°). -->
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="40" height="40">
+          <defs>
+            <linearGradient id="lgA" x1="0" y1="0" x2=".72" y2="1">
+              <stop offset="0" stop-color="#fffaf0"/>
+              <stop offset=".5" stop-color="#f7ecd6"/>
+              <stop offset="1" stop-color="#e2a63e"/>
+            </linearGradient>
+            <linearGradient id="lgO" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#e2a63e" stop-opacity=".18"/>
+              <stop offset=".5" stop-color="#e2a63e" stop-opacity=".6"/>
+              <stop offset=".86" stop-color="#ffd98a" stop-opacity="1"/>
+              <stop offset="1" stop-color="#e2a63e" stop-opacity=".8"/>
+            </linearGradient>
+            <radialGradient id="rgB">
+              <stop offset="0" stop-color="#ffd98a" stop-opacity=".75"/>
+              <stop offset="1" stop-color="#ffd98a" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="rgW">
+              <stop offset="0" stop-color="#e2a63e" stop-opacity=".22"/>
+              <stop offset=".55" stop-color="#e2a63e" stop-opacity=".08"/>
+              <stop offset="1" stop-color="#e2a63e" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <!-- the artwork sits inside the tile's padding, exactly as it does in
+               logo.png: one scale about the centre, so no coordinate below
+               needs to know about it -->
+          <g transform="translate(16 16) scale(.82) translate(-16 -16)">
+            <circle cx="16" cy="16.5" r="15.5" fill="url(#rgW)"/>
+            <g fill="url(#lgA)">
+              <path d="M16 3.6 L7.6 27.8 L4.8 27.8 Z"/>
+              <path d="M16 3.6 L27.7 27.8 L23.5 27.8 Z"/>
+              <path d="M8.6 21 Q16 28.2 23.4 21 Q16 23.6 8.6 21 Z"/>
+            </g>
+            <g transform="rotate(-18 16 16.5)">
+              <ellipse cx="16" cy="16.5" rx="13.2" ry="5.4" fill="none"
+                       stroke="url(#lgO)" stroke-width="1.35"/>
+              <circle cx="25.81" cy="12.89" r="4" fill="url(#rgB)"/>
+              <circle cx="25.81" cy="12.89" r="1.7" fill="#ffd98a"/>
+              <circle cx="25.45" cy="12.5" r=".8" fill="#fff"/>
+            </g>
+          </g>
+        </svg>
+      </div>
+      <!-- The second line is STATE, never a descriptor. It carried
+           "memory & workspace for AI agents" — a tagline, which is a website
+           device: its audience is someone who does not yet know what the thing
+           is, and nobody reading this sidebar is that person. They installed
+           it, launched it, and are looking at their own projects. It also fails
+           the differentiation test outright: every coding-agent tool shipping
+           could print it verbatim, and no product claims the opposite.
+
+           What goes here instead is the convention every current app follows —
+           shadcn's sidebar header, Notion, Linear, GitLab, Figma all put the
+           switchable CONTEXT in this slot, with a second line that is data (a
+           plan, an email, a branch). Ours is the Claude Code account, which was
+           previously reachable only from inside the launch modal. Filled in by
+           drawBrand(); the markup carries no copy of its own. -->
+      <div class="bl"><b id="brandName">archeus</b><small id="brandSub"></small></div>
+      <span class="bchev" id="brandChev" hidden></span>
     </div>
+    <!-- the account menu, anchored under the row. Empty until opened. -->
+    <div class="acctmenu" id="acctMenu" hidden></div>
     <div class="search"><input id="q" placeholder="Filter projects…"></div>
     <button class="btn sm openp" id="bOpenPath">＋ Open project by path…</button>
     <!-- only appears once something IS hidden: an always-on row would be a
@@ -79,6 +154,12 @@
         <button id="segTui">TUI</button>
         <button id="segGui">GUI</button>
       </div>
+      <!-- Help left the nav for here: a row in a five-row sidebar is the most
+           expensive slot in the app, and the page explaining the app is the one
+           you open least. `?` is also the key that opens the same inventory in
+           the terminal UI. -->
+      <button class="btn icon sm" id="bHelp" title="Help — every screen, and every key in the terminal UI"
+              aria-label="Help">?</button>
     </div>
     <div class="sgrip" id="sgrip" role="separator" aria-orientation="vertical"
          tabindex="0" title="Drag to resize · double-click to reset"></div>
@@ -90,6 +171,13 @@
       <span id="hdrChips" class="hdrchips"></span>
       <span class="membadge" id="membadge" style="display:none"></span>
       <span class="sp"></span>
+      <!-- Theme-only view. It is a direct child of `.top` and not a floating
+           element of its own because zen hides `.top > *` and un-hides exactly
+           this one: the switch out of the mode lives in the same box as the
+           switch in, so there is only ever one thing to find. -->
+      <button class="btn icon" id="bZen" aria-pressed="false"
+              title="Theme only — hide the interface (Esc to come back)"
+              aria-label="Theme only"></button>
       <span id="pactions" style="display:none">
         <button class="btn" id="bHide">Hide</button>
         <button class="btn" id="bTerm">Terminal</button>
@@ -103,6 +191,20 @@
          would wipe it. Outside #content for the same reason #jban is. -->
     <div class="updbar" id="updbar" style="display:none"></div>
     <div class="tabs" id="tabs" style="display:none"></div>
+    <!-- second tab level. Only a project page has one (the four groups above,
+         the pages of one group here); a global section fills #tabs and leaves
+         this empty. Its own element rather than a second row inside #tabs
+         because every skin styles `.tabs` as one sticky bar with one bottom
+         border, and two rows in that box would draw the border through the
+         middle of the strip. -->
+    <div class="tabs sub" id="subtabs" style="display:none"></div>
+    <!-- One line saying what this page is, taken from the SAME blurb the nav
+         tooltip and the help page render. Twelve of nineteen pages opened
+         straight into a table of API names with nothing saying what the page
+         was for; writing an intro into each renderer would have been twelve
+         new sentences to keep in step with the twelve already in NAV. Outside
+         #content because a renderer rewrites that wholesale. -->
+    <div class="pgnote" id="pgnote" style="display:none"></div>
     <!-- running-job banner. Outside #content on purpose: the SPA rewrites
          #content wholesale, and a job outlives navigation (the work runs in a
          server-side daemon thread), so its progress should follow you rather

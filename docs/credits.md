@@ -6,6 +6,16 @@ description: >-
 
 # Credits & inspiration
 
+## Visual identity
+
+The archeus mark — the gold **A** pierced by its orbit — and the banner lockup were
+designed by **[Federico Coscia](https://github.com/cosfederico)**. Every derivative in this
+repository is that artwork re-drawn or re-cut: the application and OS icons
+(`tools/make_icon.py`), the OG card and wordmark (`tools/make_og_card.py`), and the inline
+SVG glyph in the desktop sidebar.
+
+## Built on
+
 archeus is built on ideas from the wider Claude Code ecosystem. With thanks:
 
 - **[microsoft/markitdown](https://github.com/microsoft/markitdown)** — document→markdown token-efficiency thinking (doc ingestion is on the roadmap).

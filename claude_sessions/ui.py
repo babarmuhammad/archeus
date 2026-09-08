@@ -13,6 +13,7 @@ from .config import load_settings, save_settings, find_editor, get_claude_exe, s
 from .config import use_16color_fallback
 from .sessions import load_extra_paths, save_extra_paths
 from . import render
+from .render import WORDMARK
 from . import config as _c
 from . import term
 
@@ -354,7 +355,7 @@ def confirm(question, danger=False, yes_label='Yes', no_label='No'):
             (f"{_c.C_SEL_BG} {o} {C_RESET}" if i == sel else f"  {o}  ")
             for i, o in enumerate(opts))
         frame = [
-            render.header('ARCHEUS', 'CONFIRM'), '',
+            render.header(WORDMARK, 'CONFIRM'), '',
             f"  {qcol}{render.trunc(question, render.content_width() - 4)}{C_RESET}",
             '', '  ' + row, '',
             render.hint_keys([('←→', 'choose'), ('ENTER', 'confirm'), ('ESC', 'cancel')]),
@@ -386,7 +387,7 @@ def multiselect(items, title, preselected=None, hint='', view_fn=None):
         keys.append(('v', 'view'))
     keys += [('ENTER', 'confirm'), ('ESC', 'cancel')]
     while True:
-        frame = [render.header('ARCHEUS', title), '']
+        frame = [render.header(WORDMARK, title), '']
         page = max(3, render.frame_height() - 6)
         start = min(max(nav - page // 2, 0), max(0, n - page)) if n > page else 0
         if start > 0:
@@ -429,7 +430,7 @@ def text_input(prompt, default=''):
     buf = list(default)
     while True:
         frame = [
-            render.header('ARCHEUS', 'INPUT'),
+            render.header(WORDMARK, 'INPUT'),
             '',
             f"  {C_TITLE}{prompt}{C_RESET}",
             '',
@@ -489,7 +490,7 @@ def path_input(prompt, default=''):
             sel = len(sugg) - 1
         cw = render.content_width()
         frame = [
-            render.header('ARCHEUS', 'OPEN PROJECT'), '',
+            render.header(WORDMARK, 'OPEN PROJECT'), '',
             f"  {C_TITLE}{prompt}{C_RESET}", '',
             f"  {C_SEL}>{C_RESET} {render.trunc(text, cw - 6)}{C_SRCH}▌{C_RESET}", '',
         ]
@@ -564,7 +565,7 @@ def _theme_picker(s):
 
     _apply(idx)
     while True:
-        frame = [render.header('ARCHEUS', 'SETTINGS', 'THEME'), '']
+        frame = [render.header(WORDMARK, 'SETTINGS', 'THEME'), '']
         for i, n in enumerate(names):
             mark = f"{C_OK}●{C_RESET} " if n == s.get('theme') else '  '
             label = _c.theme_label(n)
@@ -625,7 +626,7 @@ def menu(items, title, footer='', footer_fn=None, banner_fn=None):
         ni   = _nav_idx(disp)
         cur  = ni[min(nav_pos, len(ni) - 1)] if ni else -1
 
-        frame = [render.header('ARCHEUS', title), '']
+        frame = [render.header(WORDMARK, title), '']
         if current_banner:
             for bl in current_banner.split('\n'):
                 frame.append(bl)
@@ -763,33 +764,41 @@ def _session_key_lines(cols=HELP_COLS):
 
     Imported inside the function because session_menu imports this module.
     """
-    from .session_menu import key_rows
-    # `?` is the screen you are reading, so it is not one of its own entries.
-    rows = [(k, b) for k, b in key_rows() if k != '?']
+    from .session_menu import key_groups
     # Follow the terminal rather than a fixed column: these blurbs are the ONLY
     # description of each key now, so a width that truncates half of them on a
     # normal window would lose what merging the three lists was meant to keep.
     width = help_blurb_budget() if cols == HELP_COLS else max(
         28, (render.content_width() - 8) // cols - 3)
     out = []
-    for i in range(0, len(rows), cols):
-        cells = []
-        for k, blurb in rows[i:i + cols]:
-            cells.append(f"{k}  {render.trunc(blurb, width):<{width}}")
-        out.append('    ' + '  '.join(cells).rstrip())
+    # Grouped by the same four buckets the GUI's project tabs use, so a key is
+    # looked for in the same place on both surfaces. Headings carry NO ANSI:
+    # test_the_help_grid_shows_every_blurb_whole measures these lines with
+    # len(), and escape bytes would read as width the frame does not have.
+    for bucket, rows in key_groups():
+        # `?` is the screen you are reading, so it is not one of its own entries
+        rows = [(k, b) for k, b in rows if k != '?']
+        if not rows:
+            continue
+        out.append('    · ' + bucket)
+        for i in range(0, len(rows), cols):
+            cells = []
+            for k, blurb in rows[i:i + cols]:
+                cells.append(f"{k}  {render.trunc(blurb, width):<{width}}")
+            out.append('    ' + '  '.join(cells).rstrip())
     return out
 
 
 def help_screen():
     """Static hotkey reference. ENTER/ESC returns."""
     frame = [
-        render.header('ARCHEUS', 'HELP'),
+        render.header(WORDMARK, 'HELP'),
         '',
         f"  {C_BOLD}Main screen{C_RESET}",
         f"    ↑↓ navigate    ENTER open project / resume    ESC exit",
         f"    type to search projects    ★/☆ quick-resume recent sessions",
         f"    📂 open new project by path (TAB-complete folders)",
-        f"    🔍 search all   ⚙ usage / MCP servers / agents / hooks / settings",
+        f"    🔍 search all   ⚙ context / library / activity / accounts / settings",
         '',
         f"  {C_BOLD}Sessions screen{C_RESET}",
         f"    ↑↓ navigate    ENTER resume    ESC back    type to filter",
@@ -937,7 +946,7 @@ def _automode_menu():
             body = (_json.dumps(data, indent=2) if ok and not isinstance(data, str)
                     else str(data))
             # pager takes (crumbs, lines) — crumbs first
-            pager(('ARCHEUS', 'AUTO MODE', sel[1].upper()), body.splitlines())
+            pager((WORDMARK, 'AUTO MODE', sel[1].upper()), body.splitlines())
             continue
         _name, cfgdir = sel[1], sel[2]
         what = menu([("Starting permission mode", 'mode'),
@@ -1262,7 +1271,7 @@ def paths_menu(proj_folder, project_name, filename='extra-paths.txt', title='EXT
         redraw = False
         while not redraw:
             cur = nav_indices[nav_pos]
-            frame = [render.header('ARCHEUS', project_name, title), '']
+            frame = [render.header(WORDMARK, project_name, title), '']
             for i, (label, val) in enumerate(items):
                 if val is None:
                     frame.append(f"  {C_DIM}{label}{C_RESET}")
@@ -1394,7 +1403,7 @@ def launch_options_menu(project_name, defaults=None, is_new=False, agents=None,
         flash(f"Preset: {name}", secs=1.0)
 
     def _show_guide():
-        lines = [render.header('ARCHEUS', project_name, 'MODEL GUIDE'), '',
+        lines = [render.header(WORDMARK, project_name, 'MODEL GUIDE'), '',
                  render.hline(),
                  f"  {C_DIM}model         SWE    cost    cap      best for{C_RESET}"]
         for _mid, lbl, cb, capb, bf, sw in _c.model_card_rows():
@@ -1427,7 +1436,7 @@ def launch_options_menu(project_name, defaults=None, is_new=False, agents=None,
                  for pn, _d, _f in _c.LAUNCH_PRESETS]
         slcol = C_SEL if field == 0 else C_DIM
         frame = [
-            render.header('ARCHEUS', project_name, 'START SESSION' if is_new else 'LAUNCH OPTIONS'),
+            render.header(WORDMARK, project_name, 'START SESSION' if is_new else 'LAUNCH OPTIONS'),
             '',
             f"  {C_DIM}Quick start{C_RESET}   " + f" {C_DIM}·{C_RESET} ".join(strip)
             + f"   {C_DIM}1-4{C_RESET}",

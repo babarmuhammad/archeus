@@ -131,6 +131,7 @@ share:'M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.
 map:'M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11z',
 inject:'M21 3H3c-1.1 0-2 .9-2 2v3h2V5h18v14H3v-3H1v3c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM11 15l4-3-4-3v2H1v2h10z',
 star:'M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',
+unfold:'M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9zm0 12.34L8.83 15l-1.42 1.41L12 21l4.59-4.59L15.17 15z',
 palette:'M12 3a9 9 0 0 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.42-4.03-8-9-8zm-5.5 9a1.5 1.5 0 1 1 1.5-1.5A1.5 1.5 0 0 1 6.5 12zm3-4A1.5 1.5 0 1 1 11 6.5 1.5 1.5 0 0 1 9.5 8zm5 0A1.5 1.5 0 1 1 16 6.5 1.5 1.5 0 0 1 14.5 8zm3 4a1.5 1.5 0 1 1 1.5-1.5 1.5 1.5 0 0 1-1.5 1.5z'};
 /* ── per-world icon sets ────────────────────────────────────────────────────
    A world redraws only the ~16 glyphs that actually appear in the nav and the
@@ -624,10 +625,13 @@ function modalGate(J,gate){
 }
 
 /* ── sidebar ── */
-/* Twelve equal rows in one flat column read as a wall, and they took ~46% of the
-   sidebar's height away from the project list — the thing the sidebar is FOR.
-   Grouping is the fix for the reading problem; capping the height (.nav in
-   app.css) is the fix for the space problem, and both are needed. */
+/* Fifteen equal rows in one flat column read as a wall, and they took ~46% of
+   the sidebar's height away from the project list — the thing the sidebar is
+   FOR. Grouping with a collapse was the previous answer; five SECTIONS is this
+   one, and every page survives as a sub-tab of its section drawn in the same
+   strip the project tabs use. The collapse went with the rows it was managing:
+   five is not a wall, and a chevron on every one of them was chrome for a
+   problem that no longer existed. */
 /* [id, icon, label, blurb, renderer] — FIVE fields, and the last two are why:
    drawPage kept a title map and a renderer map beside this list, and pgHelp kept
    a hand-typed third copy that had already drifted (it listed a dead page and
@@ -635,36 +639,61 @@ function modalGate(J,gate){
    page's own nav entry, where the author of a new page is already standing, and
    the help screen is rendered from this array instead of retyped.
    Referencing the pg* functions here is safe: they are hoisted `function`
-   declarations, so the initializer runs before their definitions with no TDZ. */
-const NAV_GROUPS=[
-  ['Workspace',[
-    ['usage','chart','Usage','Token spend and rate limits across every account, by day and by project.',()=>pgUsage],
-    ['searchp','search','Search','Full-text search over every session transcript on the machine.',()=>pgSearch],
-    ['loops','refresh','Loops','Start a /loop in its own session, watch it fire, end it — and the loop.md that says what a bare /loop does.',()=>pgLoops]]],
-  ['Library',  [
-    ['agents','robot','Agents','Subagent definitions: browse the library, write one by hand or have Claude draft it.',()=>pgAgents],
-    ['skills','ai','Skills','SKILL.md skills — bundled templates, your library, and the ones installed in a project.',()=>pgSkills],
-    ['hooks','link','Hooks','Claude Code hooks per account: install from a template, enable, disable or remove.',()=>pgHooks],
-    ['plugins','folder','Plugins','Marketplaces and installed plugins, with the provenance of everything they shipped.',()=>pgPlugins],
-    ['ostyles','palette','Output styles','Output styles Claude Code can wear, and which one is active.',()=>pgOStyles],
-    ['mcp','plug','MCP servers','MCP servers: status, detail and the tool documentation they can write into the global CLAUDE.md.',()=>pgMcp],
-    ['globalmd','doc','Global CLAUDE.md','The instructions Claude reads in every session on an account, its loop.md, and the conventions worth promoting into it.',()=>pgGlobalMd]]],
-  ['System',   [
-    ['accounts','group','Accounts','Every Claude login, and the sync that levels them all up to the same provisioning.',()=>pgAccounts],
-    ['client','ai','Claude Code','What Claude Code records about itself: versions, disk, background agents, its own settings.',()=>pgClient],
-    ['logs','history','Logs','What archeus itself did and why it failed — its own Claude calls, background jobs, the scheduler and the proxy, newest first.',()=>pgLogs],
-    ['settings','settings','Settings','Launch defaults, paths and limits, models, appearance, updates and telemetry.',()=>pgSettings],
-    ['helpp','help','Help','This page: every screen in the app and every key in the terminal UI.',()=>pgHelp]]],
+   declarations, so the initializer runs before their definitions with no TDZ.
+   It stays FLAT and stays the public list: the command palette walks it, and
+   both tools/smoke_gui.py and tools/shot_gui.py evaluate `NAV.map(n => n[0])`
+   for the page list rather than hardcoding one. */
+const NAV=[
+  ['globalmd','doc','Global CLAUDE.md','The instructions Claude reads in every session on an account, its loop.md, and the conventions worth promoting into it.',()=>pgGlobalMd],
+  ['ostyles','palette','Output styles','Output styles Claude Code can wear, and which one is active.',()=>pgOStyles],
+  ['mcp','plug','MCP servers','MCP servers: status, detail and the tool documentation they can write into the global CLAUDE.md.',()=>pgMcp],
+  ['agents','robot','Agents','Subagent definitions: browse the library, write one by hand or have Claude draft it.',()=>pgAgents],
+  ['skills','ai','Skills','SKILL.md skills — bundled templates, your library, and the ones installed in a project.',()=>pgSkills],
+  ['hooks','link','Hooks','Claude Code hooks per account: install from a template, enable, disable or remove.',()=>pgHooks],
+  ['plugins','folder','Plugins','Versions of archeus and Claude Code, the marketplaces you have registered, and every plugin installed from them.',()=>pgPlugins],
+  // 'Usage & cost', not 'Usage': the project side has a tab called Usage too,
+  // and this is the name the docs page carries — a screen and the page about it
+  // should be called the same thing.
+  ['usage','chart','Usage & cost','Token spend and rate limits across every account, by day and by project.',()=>pgUsage],
+  ['loops','refresh','Loops','Start a /loop in its own session, watch it fire, end it — and the loop.md that says what a bare /loop does.',()=>pgLoops],
+  ['logs','history','Logs','What archeus itself did and why it failed — its own Claude calls, background jobs, the scheduler and the proxy, newest first.',()=>pgLogs],
+  ['accounts','group','Accounts','Every Claude login, and the sync that levels them all up to the same provisioning.',()=>pgAccounts],
+  ['client','ai','Claude Code','What Claude Code records about itself: versions, disk, background agents, its own settings.',()=>pgClient],
+  ['settings','bolt','Launch','What every new session starts with — effort, model, permission mode, the window it opens in, and the plan/execute pair.',()=>pgSetLaunch],
+  ['appearance','palette','Appearance','Palette, skin, world, motion, surface transparency and the background scene.',()=>pgSetAppearance],
+  // plain '&', never '&amp;': every consumer escapes it (the tab strip, the nav
+  // row, the help table), so a pre-escaped label came out as "Paths &amp; limits"
+  // on screen. A LABEL is data; the entity goes in the markup, not in the data.
+  ['paths','folder','Paths & limits','Where archeus finds your editor and Claude Code, what its own calls may spend, and what the memory graph may hold.',()=>pgSetPaths],
+  ['models','ai','Models','Free execution through OmniRoute, and the failover list that retries the next model when a turn dies.',()=>pgSetModels],
+  ['updates','refresh','Updates','What archeus does on its own: update checks, notifications, and the auto-memory schedule.',()=>pgSetUpdates],
+  ['searchp','search','Search','Full-text search over every session transcript on the machine.',()=>pgSearch],
+  ['helpp','help','Help','This page: every screen in the app and every key in the terminal UI.',()=>pgHelp],
 ];
-/* The FLAT list stays the public one: the command palette walks it, and both
-   tools/smoke_gui.py and tools/shot_gui.py evaluate `NAV.map(n => n[0])` to get
-   the page list rather than hardcoding one. Derived, never maintained twice. */
-const NAV=NAV_GROUPS.flatMap(g=>g[1]);
-/* Collapsed groups persist in archeus.json (`nav_collapsed`), not in
-   localStorage: every other appearance choice this app makes is a setting, and
-   the Qt shell and a browser tab have to agree about the chrome. Stored as
-   NAMES rather than indices so reordering or inserting a group never silently
-   collapses a different one. */
+/* [label, icon, blurb, [page ids]] — the sidebar itself. It carries page IDS
+   rather than the tuples, so NAV stays the ONE place a page is declared and a
+   page cannot exist twice with two different blurbs. The label is the key: no
+   section id, because a section id would have collided with the `settings` and
+   `accounts` PAGE ids and a lookup would have silently found the wrong one. */
+const SECTIONS=[
+  ['Context','doc','What Claude reads before you type: the instructions on the account, the style it answers in, and the tools it can reach.',['globalmd','ostyles','mcp']],
+  ['Library','ai','What you install once and every session then uses — subagents, skills, hooks and plugins.',['agents','skills','hooks','plugins']],
+  ['Activity','chart','What has been spent and what is running: token spend, loops, and archeus’s own log of what it did.',['usage','loops','logs']],
+  ['Accounts','group','Every Claude login on this machine, and what Claude Code records about itself.',['accounts','client']],
+  ['Settings','settings','Launch defaults, appearance, paths and limits, models and updates.',['settings','appearance','paths','models','updates']],
+];
+/* A page in no section, and where you reach it instead. Search left the nav
+   because the home dashboard already opens on a search box, and Help became the
+   `?` at the foot of the sidebar — a nav row for the page explaining the nav is
+   a row spent on the least-used destination. tests/test_gui.py fails a section
+   naming a page that does not exist, and a page in neither a section nor here. */
+const OFFNAV={searchp:'the search box on the home dashboard, and Ctrl+K',
+              helpp:'the ? button at the foot of the sidebar'};
+/* page id → section label. Derived; the reverse direction is what drawNav, the
+   sub-tab strip and the page title all need, and computing it three times is
+   three chances to disagree. */
+const SEC_OF=Object.fromEntries(
+  SECTIONS.flatMap(([label,,,ids])=>ids.map(id=>[id,label])));
 /* ── sidebar width: drag the grip, and it sticks ──────────────────────────────
    Persisted as a setting, like every other chrome choice, so the Qt shell and a
    browser tab agree. Clamped rather than free: below SIDE_MIN the project paths
@@ -743,45 +772,63 @@ function bindSideGrips(){
     step:k=>k==='ArrowUp'?16:k==='ArrowDown'?-16:0});
 }
 
-/* In the icon rail there IS no group label to click, so a collapsed group would
-   have no way back. The rail therefore ignores the collapsed set entirely; the
-   saved setting is untouched and comes back when the window widens again. */
-const RAIL=window.matchMedia('(max-width:1099px)');
-RAIL.addEventListener('change',()=>{if(ST)drawNav();});
-function navSaved(){return new Set(ST.nav_collapsed||[]);}
-function navCollapsed(){return RAIL.matches?new Set():navSaved();}
-async function toggleNavGroup(grp){
-  // the SAVED set, never the rail-filtered view — toggling off a rail would
-  // otherwise persist an empty set and silently discard the user's choices
-  const set=navSaved();
-  set.has(grp)?set.delete(grp):set.add(grp);
-  ST.nav_collapsed=[...set];
-  drawNav();
-  // one write per click; the page never re-reads, so a failed save is the only
-  // thing that could desync and it surfaces as the usual toast
-  await post('/api/settings',{nav_collapsed:ST.nav_collapsed});
-}
 /* Nav rows carry no gauge. They used to each own an animated canvas, which put
    ~10 looping surfaces in the chrome to encode numbers about pages you weren't
    looking at — the clearest case of motion that cost frames and said nothing. */
 function drawNav(){
-  const col=navCollapsed();
-  $('#nav').innerHTML=NAV_GROUPS.map(([grp,items])=>{
-    const shut=col.has(grp);
-    // a collapsed group still shows a dot per page it hides, so the row is not
-    // an empty promise — and the current page's dot is lit, which is how you
-    // can tell where you are without opening it
-    const pips=shut?`<span class="gpip">${items.map(([id])=>
-      `<i class="${PAGE_===id?'on':''}"></i>`).join('')}</span>`:'';
-    return `<div class="grp${shut?' shut':''}" onclick="toggleNavGroup(${hesc(grp)})"
-        role="button" tabindex="0" aria-expanded="${!shut}"
-        title="${shut?'Expand':'Collapse'} ${esc(grp)}">
-        <svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg>
-        <span>${esc(grp)}</span>${pips}</div>`
-      +(shut?'':items.map(([id,i,l])=>
-        `<div class="it${PAGE_===id?' sel':''}" onclick="go(${hesc(id)})" title="${esc(l)}">${ic(i)} <span>${l}</span></div>`
-      ).join(''));
-  }).join('');
+  const cur=SEC_OF[PAGE_]||'';
+  // clicking the section you are already in keeps the sub-tab you are on:
+  // jumping back to the first page of the section you never left is a move you
+  // did not ask for
+  $('#nav').innerHTML=SECTIONS.map(([label,icon,blurb,ids])=>
+    `<div class="it${cur===label?' sel':''}" onclick="go(${hesc(ids.includes(PAGE_)?PAGE_:ids[0])})"
+       title="${esc(blurb)}">${ic(icon)} <span>${esc(label)}</span></div>`).join('');
+}
+/* ONE writer for both tab strips. A project page has two levels (the four
+   groups, then the pages inside one) and a global section has one (its pages,
+   with the section name carried by the title); a second copy of this would be a
+   second chance for the two rows to disagree about which of them is selected.
+   Empty string, not `display:none` on a filled strip — a hidden strip that
+   still holds last page's tabs is what the Ctrl+K palette would keep matching. */
+function tabBtn(id,label,sel,fn){
+  return `<div class="tab${sel?' sel':''}" onclick="${fn}(${hesc(id)})">${esc(label)}</div>`;
+}
+function drawTabStrips(){
+  const t=$('#tabs'),s=$('#subtabs');
+  let top='',sub='';
+  drawPageNote();
+  if(PAGE_==='project'){
+    const grp=TAB_GROUPS.find(g=>g[1].includes(TAB))||TAB_GROUPS[0];
+    top=TAB_GROUPS.map(([label,ids])=>
+      tabBtn(ids.includes(TAB)?TAB:ids[0],label,grp[0]===label,'openTab')).join('')
+      +`<div class="tab" onclick="window.open('/graph?${qs({path:CUR.path,enc:CUR.encoded,k:CK})}','_blank')">Graph ${ic('ext')}</div>`;
+    if(grp[1].length>1)sub=grp[1].map(id=>
+      tabBtn(id,tabLabel(id),TAB===id,'openTab')).join('');
+  }else{
+    const sec=SECTIONS.find(x=>x[3].includes(PAGE_));
+    if(sec&&sec[3].length>1)top=sec[3].map(id=>
+      tabBtn(id,navLabel(id),PAGE_===id,'go')).join('');
+  }
+  t.innerHTML=top;t.style.display=top?'flex':'none';
+  s.innerHTML=sub;s.style.display=sub?'flex':'none';
+}
+function navLabel(id){const n=NAV.find(x=>x[0]===id);return n?n[2]:id;}
+function tabLabel(id){const t=TABS.find(x=>x[0]===id);return t?t[1]:id;}
+function openTab(id){TAB=id;drawProject();}
+/* The one line under the tabs saying what this page is. Read out of the SAME
+   blurb the nav tooltip and the help page render, never typed into a renderer:
+   twelve of the nineteen pages opened directly into a table of Claude Code's
+   own vocabulary with nothing on screen saying what the page was for, and
+   twelve hand-written intros would be twelve sentences to keep in step with the
+   twelve already in NAV. The home page has no note — the dashboard is not a
+   page you need told about. */
+function drawPageNote(){
+  const el=$('#pgnote');if(!el)return;
+  const n=PAGE_==='project'?TABS.find(x=>x[0]===TAB)
+         :NAV.find(x=>x[0]===PAGE_);
+  const txt=PAGE_==='home'?'':(n?(PAGE_==='project'?n[2]:n[3]):'');
+  el.textContent=txt;
+  el.style.display=txt?'':'none';
 }
 /* 14-day activity trace per project. Static inline SVG, never animated — this
    renders once per sidebar row and there can be dozens, so it is deliberately
@@ -805,6 +852,7 @@ function drawProjects(){
   const list=ST.projects.filter(p=>(SHOW_HIDDEN||!p.hidden)&&(!q
     ||p.name.toLowerCase().includes(q)||p.path.toLowerCase().includes(q)));
   drawHiddenToggle();
+  drawBrand();
   MO.patch(box,list,p=>p.encoded,p=>{
     // Account chips are flex:none, so with three of them they claimed the whole
     // row and the project NAME shrank to a single character ("Claude" rendered
@@ -873,12 +921,14 @@ function go(page){PAGE_=page;CUR=page==='project'?CUR:null;
 function render(){
   NAV_ID++;
   drawNav();drawProjects();
-  $('#tabs').style.display=PAGE_==='project'?'flex':'none';
   $('#pactions').style.display=PAGE_==='project'?'':'none';
   if(PAGE_!=='project')stopMemBadge();   // hide the badge off a project page
-  if(PAGE_==='home')drawHome();
+  // drawProject draws its OWN two strips (openTab re-enters through it, not
+  // through here), so calling drawTabStrips for it would write the same
+  // markup twice on every navigation
+  if(PAGE_==='home'){drawTabStrips();drawHome();}
   else if(PAGE_==='project')drawProject();
-  else drawPage(PAGE_);
+  else {drawTabStrips();drawPage(PAGE_);}
   // navigation should read as a move, not a substitution. Fires here rather
   // than inside each renderer so async pages animate their shell immediately
   // instead of after the fetch lands.
@@ -1733,6 +1783,21 @@ const TABS=[
   ['planexec','Plan → Execute','Have one model write a plan, approve or edit it, then have another execute it.'],
   ['worktrees','Repos','Git repos, submodules and linked worktrees under this project.'],
   ['tools','Tools','Architecture, the interactive graph, Claude Code\'s own record of the project, and the loop file.']];
+/* [label, [tab ids]] — the four the project opens on. Nine tabs is the same
+   wall the sidebar had: the row wrapped, and the order in it had no argument
+   behind it. TABS stays the FLAT leaf list for the same reason NAV does —
+   drawProject dispatches off it, pgHelp renders from it, and smoke_gui.py and
+   shot_gui.py walk `TABS.map(t => t[0])` to render every one of them. */
+const TAB_GROUPS=[
+  ['Sessions',['sessions']],
+  // Audit leads: it is the page that answers "what does one turn cost", which
+  // is the question the group is named after, and it was the LAST of nine tabs.
+  // Coming back to the group from elsewhere keeps the sub-tab you were on, so
+  // this decides the first visit only.
+  ['Context',['audit','memory','claudemd']],
+  ['Actions',['review','planexec']],
+  ['Project',['pusage','worktrees','tools']],
+];
 /* The project a project-scoped setting targets from a GLOBAL page.
 
    `go()` clears CUR on purpose — the header leaves project mode — so a "this
@@ -1797,9 +1862,7 @@ function drawProject(){
   $('#bHide').textContent=CUR.hidden?'Unhide':'Hide';
   $('#bHide').title=CUR.hidden?'Show this project in the list again'
                               :'Hide this project from the project list (nothing is deleted)';
-  $('#tabs').innerHTML=TABS.map(([id,l])=>
-    `<div class="tab${TAB===id?' sel':''}" onclick="TAB=${hesc(id)};drawProject()">${l}</div>`).join('')
-    +`<div class="tab" onclick="window.open('/graph?${qs({path:CUR.path,enc:CUR.encoded,k:CK})}','_blank')">Graph ${ic('ext')}</div>`;
+  drawTabStrips();
   ({sessions:drawSessions,memory:drawMemory,claudemd:drawClaudeMd,review:drawReview,
     audit:drawAudit,pusage:drawProjUsage,planexec:drawPlanExec,
     worktrees:drawWorktrees,tools:drawTools}[TAB])();
@@ -1836,11 +1899,11 @@ function drawReview(){
         <div style="color:var(--dim);font-size:13px">${esc(f.detail||'')}</div></div>`;
     }).join('');
   }
-  paintNow(`<div class="card"><h3>Code review <span class="sp"></span>
+  paintNow(`<div class="card wide"><h3>Code review <span class="sp"></span>
       <button class="btn sm pri" onclick="runReview(false)">${ic('search')} Review working changes</button>
       <button class="btn sm" onclick="runReview(true)">Staged only</button></h3>
-      <p style="color:var(--dim);font-size:12px;margin:0 0 10px">Inspired by the Claude Code code-review plugin — confidence-scored, high-threshold, CLAUDE.md-aware.</p>
-      ${out}</div>`);
+      ${out}
+      <p style="color:var(--dim2);font-size:12px;margin:10px 0 0">Confidence-scored, high-threshold and CLAUDE.md-aware, after the Claude Code code-review plugin.</p></div>`);
 }
 function runReview(staged){
   inlineJob('#jban','review',{...C(),staged},{label:'Reviewing changes',
@@ -1872,8 +1935,8 @@ async function drawSessions(archived){
   /* The TUI's `!` badge condition, verbatim: no CLAUDE.md AND no memory graph.
      Both halves of the action existed in the GUI (scaffold, then build memory)
      and were never chained into one, which is what the ACTIONS row said. */
-  const setup=(!archived&&CUR&&CUR.set_up===false)?`<div class="card"
-      style="border-left:3px solid var(--warn);margin-bottom:12px">
+  const setup=(!archived&&CUR&&CUR.set_up===false)?`<div class="card wide"
+      style="border-left:3px solid var(--warn)">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <b>${ic('bolt')} This project isn't set up yet</b>
         <span style="flex:1;color:var(--dim);font-size:13px">Scaffold its CLAUDE.md and build the memory graph in one go — the same thing <code>!</code> does in the terminal UI.</span>
@@ -2718,15 +2781,18 @@ async function drawProjUsage(){
     <tr><td>${esc(r.age)}</td><td>${esc(r.name)} ${r.account&&r.account!=='default'?`<span class="tag">${esc(r.account)}</span>`:''}</td>
     <td class="num">${r.msgs}</td><td class="num">${r.usage.in}</td>
     <td class="num">${r.usage.out}</td><td class="num">${r.exact?'':'~'}$${r.cost.toFixed(2)}</td></tr>`).join('');
-  paint(nav,`<div class="card"><h3>Per-session usage</h3>
-    <table class="tbl"><tr><th>age</th><th>session</th><th>msgs</th><th>in</th><th>out</th><th>est.$</th></tr>${rows}</table></div>`);
+  paint(nav,`<div class="card wide"><h3>Per-session usage</h3>
+    <p class="secthint">Every session of this project, oldest cost first. The estimate is at published API rates — a useful gauge of consumption even on a subscription, where nothing is billed per token.</p>
+    ${rows?`<table class="tbl"><tr><th>age</th><th>session</th><th>msgs</th>
+      <th>in</th><th>out</th><th>est.$</th></tr>${rows}</table>`
+    :'<div class="empty">No sessions in this project yet.</div>'}</div>`);
 }
 
 /* tools tab */
 function drawTools(){
   paintNow(`
     <div class="card"><h3>${ic('check')} Project health</h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">The checks the TUI's workspace screen runs — they had no GUI trace at all.</p>
+      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Whether this project's context is in a state Claude can use: is the memory current, is CLAUDE.md a sensible size, is anything archeus wrote missing. Each row carries the button that fixes it.</p>
       <div id="hOut"><span class="spin"></span></div></div>
     <div class="card"><h3>${ic('ai')} What to work on <span class="sp"></span>
       <button class="btn sm" title="One Claude call over the memory graph, recorded lessons and recent diff — returns bugs, vulnerabilities, slow paths and functions worth building. Findings are stored, so this list stays instant afterwards."
@@ -2736,7 +2802,7 @@ function drawTools(){
     <div class="card"><h3>${ic('map')} Architecture <span class="sp"></span>
       <button class="btn sm" onclick="archRefresh()">${ic('refresh')} Rebuild</button>
       <button class="btn sm" onclick="window.open('/graph?${qs({path:CUR.path,enc:CUR.encoded,k:CK})}','_blank')">Graph ${ic('ext')}</button></h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">What the terminal UI's architecture screen shows. The endpoint behind it existed and had no consumer at all.</p>
+      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">What archeus read to build its memory of this project: how much code there is, in which languages, and what it depends on. <b>Graph</b> opens the interactive map in its own window.</p>
       <div id="archOut"><span class="spin"></span></div></div>
     <div class="card"><h3>${ic('ai')} Claude Code's own record</h3>
       <p style="color:var(--dim);font-size:13px;margin-bottom:10px">What Claude Code itself has stored about this project in <code>.claude.json</code> — not archeus's numbers.</p>
@@ -3325,7 +3391,11 @@ async function applyAgents(){
 /* ── manager pages ── */
 async function drawPage(id){
   const n=NAV.find(x=>x[0]===id);
-  $('#ttl').textContent=n?n[2]:id;
+  // inside a section the SECTION names the page and the sub-tab names the
+  // screen — the same division the project side already uses (title = project,
+  // tab = tab). Printing the page's own label in both places says it twice.
+  const sec=SECTIONS.find(x=>x[3].includes(id));
+  $('#ttl').textContent=(sec&&sec[3].length>1)?sec[0]:(n?n[2]:id);
   $('#tpath').textContent='';
   // the token is taken BEFORE the fetches start; each page function drops its
   // write if navigation moved on while it was waiting
@@ -3358,7 +3428,7 @@ async function pgClient(nav){
       :`<div class="empty">No background agents running${d.updated?' (roster updated '+esc(d.updated)+' ago)':''}.</div>`;
   const teamCard=!tm.recognised
     ?'<div class="empty">Agent teams are not in use on this machine.</div>'
-    :`<div style="color:var(--dim);font-size:13px">${(tm.teams||[]).length} team(s), ${(tm.tasks||[]).length} task director(ies)</div>`;
+    :`<div style="color:var(--dim);font-size:13px">${(tm.teams||[]).length} team${(tm.teams||[]).length===1?'':'s'}, ${(tm.tasks||[]).length} task director${(tm.tasks||[]).length===1?'y':'ies'}</div>`;
   const mb=b=>(b/1048576).toFixed(1)+' MB';
   const diskRows=(disk.accounts||[]).map(a=>
     `<tr><td><b>${esc(a.account)}</b></td><td class="num">${mb(a.bytes)}</td>
@@ -3368,14 +3438,14 @@ async function pgClient(nav){
      question you ask occasionally, "change how Claude behaves" is why you came.
      Everything below the editor is read-mostly and stays in that order. */
   if(!paint(nav,`
-    <div class="card"><h3>${ic('settings')} How Claude Code behaves</h3>
+    <div class="card wide"><h3>${ic('settings')} How Claude Code behaves</h3>
       <p class="secthint">These are Claude Code's own preferences — the same ones you would otherwise hand-edit in <code>settings.json</code>. Each account keeps its own file, and a change applies to <b>sessions you start after it</b>, not the one already running.</p>
       <p class="secthint">A dash (<b>—</b>) means <b>not set</b>: Claude Code falls back to its own built-in default. Clearing a field removes the key rather than writing a default in, because <i>off</i> and <i>absent</i> are not the same thing to it.</p>
       <div class="fld" style="margin:0 0 10px"><input id="ccQ" placeholder="Find a setting — type what you want to change…" spellcheck="false">
         <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="ccCount"></div></div>
       ${ccTable(cc)}</div>
     ${autoModeCard(am)}
-    <div class="card"><h3>${ic('ai')} What is actually being used</h3>
+    <div class="card wide"><h3>${ic('ai')} What is actually being used</h3>
       <p class="secthint">Straight from Claude Code's own counters — the only record of which skills, plugins and agents are live rather than dead weight.</p>
       <div class="cols3">
         <div>${useRows('skills','Skill')}</div>
@@ -3419,7 +3489,7 @@ function autoModeCard(am){
     <div class="amname" title="${esc(a.dir)}">${esc(a.name)}</div>
     <div class="chips">${modeChips(a,i)}</div>
     <div class="amenv">${a.environment.length
-      ? `${a.environment.filter(e=>e!=='$defaults').length} trusted entry(ies)`
+      ? `${a.environment.filter(e=>e!=='$defaults').length} trusted entr${a.environment.filter(e=>e!=='$defaults').length===1?'y':'ies'}`
       : '<span style="color:var(--dim2)">defaults only</span>'}
       <button class="btn sm" onclick="amEditEnv(${i})">Edit</button></div></div>`).join('');
   // grouped, not a raw log: the question is "what keeps getting blocked"
@@ -3430,7 +3500,7 @@ function autoModeCard(am){
         ${g.reason?`<div style="color:var(--dim2);font-size:11.5px">${esc(g.reason)}</div>`:''}</div>
     </div>`).join('')
     :'<div class="empty">Nothing blocked in this project yet.</div>';
-  return `<div class="card"><h3>${ic('check')} Auto mode</h3>
+  return `<div class="card wide"><h3>${ic('check')} Auto mode</h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:12px">A classifier reviews each
       action instead of you. It trusts this repo and its existing remotes; everything else
       counts as external until you say otherwise. <b>Written to each account's own
@@ -3613,8 +3683,10 @@ async function pgUsage(nav){
     <div class="card"><h3>Daily tokens (14 days)</h3>
       ${INST.html('spark','daily',{fmt:'tok',unit:'peak day'})}
       ${dRows}</div>
-    <div class="card"><h3>Per-project — total est. $${total.toFixed(2)}</h3>
-      <table class="tbl"><tr><th>project</th><th>sess</th><th>msgs</th><th>in</th><th>out</th><th>est.$</th></tr>${pRows}</table></div>`))return;
+    <div class="card wide"><h3>Per-project — total est. $${total.toFixed(2)}</h3>
+      ${pRows?`<table class="tbl"><tr><th>project</th><th>sessions</th><th>msgs</th>
+        <th>in</th><th>out</th><th>est.$</th></tr>${pRows}</table>`
+      :'<div class="empty">No token spend recorded yet. A project appears here after its first session.</div>'}</div>`))return;
   const days=(daily.days||[]).map(d=>d.tokens||0);
   INST.set('daily',{series:days});
   setRead('daily',Math.max(0,...days));
@@ -3624,7 +3696,7 @@ let SIDX=null;
 async function pgSearch(nav){
   // this one paints its shell BEFORE the fetch so the input is focusable
   // immediately; the guard still matters for everything after the await
-  if(!paint(nav,`<div class="card"><h3>${ic('search')} Search every session</h3>
+  if(!paint(nav,`<div class="card wide"><h3>${ic('search')} Search every session</h3>
     <div class="fld"><input id="gq" placeholder="Type to search names, titles, previews…"></div>
     <div id="gres" style="margin-top:10px"></div></div>`))return;
   if(!SIDX){const d=await api('/api/search-index');SIDX=d.rows||[];}
@@ -3663,7 +3735,7 @@ async function pgMcp(nav){
       ${accts.map(a=>`<span class="chip${(MCPACCT||'')===(a.dir||'')?' on':''}"
         onclick='mcpAcct(${hesc(a.dir||'')})'>${esc(a.name)}</span>`).join('')}
     </div>`:'';
-  if(!paint(nav,`<div class="card"><h3>MCP servers <span class="sp"></span>
+  if(!paint(nav,`<div class="card wide"><h3>MCP servers <span class="sp"></span>
     <button class="btn sm" onclick="mcpAdd()">${ic('add')} Add server</button></h3>
     ${picker}
     ${srv.length?`<div class="pghd">
@@ -3679,7 +3751,7 @@ async function pgMcp(nav){
       <button class="btn sm" onclick='mcpDocs(${hesc(s.name)})'>${ic('search')} Tool docs</button>
       <button class="btn sm danger" onclick='mcpRemove(${hesc(s.name)})'>Remove</button>
     </div>`).join('')||'<div style="color:var(--dim)">No MCP servers configured.</div>'}
-    <p style="color:var(--dim);font-size:12.5px;margin:10px 0 0">Analyzing a server writes its tool documentation into a sentinel block of the account's <b>global CLAUDE.md</b>, which now has its own page.</p></div>`))return;
+    <p style="color:var(--dim);font-size:12.5px;margin:10px 0 0">Analyzing a server writes its tool documentation into a sentinel block of the account's <b>global CLAUDE.md</b>, which is the <b>Global CLAUDE.md</b> tab of this section.</p></div>`))return;
   if(srv.length){
     INST.set('mcp',{v:up/srv.length,tone:up===srv.length?'ok':up?'warn':'err'});
     setRead('mcp',up);
@@ -3710,12 +3782,12 @@ async function pgLogs(nav){
       <div class="lghd"><span class="tag ${tone[lvl]||'err'}">${esc(lvl)}</span>
         <b>${esc(e.src||'?')}</b>
         <span class="sp"></span>
-        <span class="aage">${esc(fmtAge(Math.max(0,now-(e.ts||0))))}</span></div>
+        <span class="aage">${esc(fmtAgo(Math.max(0,now-(e.ts||0))))}</span></div>
       <div class="lgmsg">${esc(e.msg||'')}</div>
       ${e.proj?`<div class="asub">${esc(e.proj)}</div>`:''}
       ${e.detail?`<pre class="lgdet">${esc(e.detail)}</pre>`:''}
     </div>`;}).join('');
-  if(!paint(nav,`<div class="card"><h3>${ic('history')} Logs <span class="sp"></span>
+  if(!paint(nav,`<div class="card wide"><h3>${ic('history')} Logs <span class="sp"></span>
     <span class="tag${n.error?' err':''}">${n.error} error${n.error===1?'':'s'}</span></h3>
     <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Everything archeus did on its own: its headless Claude calls, background jobs, the auto-memory scheduler, the failover proxy. Newest first, capped at ${Math.round((d.cap||0)/1024)} KB on disk.</p>
     ${ev.length?`<div class="chips" style="margin-bottom:10px">${chips}</div>
@@ -3823,10 +3895,10 @@ async function pgLoops(nav){
         :(r.running?'session open':'ended')}</span>
       ${r.kind==='schedule'
         ?`${r.runs?`<span class="tag">${r.runs} run${r.runs===1?'':'s'}</span>`:''}${cost(r.last_cost)}
-          ${r.running?`<span class="tag${r.expires_in<86400?' warn':''}">expires ${fmtAge(r.expires_in)}</span>`:''}`
+          ${r.running?`<span class="tag${r.expires_in<86400?' warn':''}">expires in ${fmtAge(r.expires_in)}</span>`:''}`
         :`${r.iterations?`<span class="tag ok">${r.iterations} turns</span>`:''}
           ${r.last_activity?`<span class="tag">quiet ${fmtAge(r.last_activity)}</span>`:''}`}
-      <span style="color:var(--dim2);font-size:12px">${fmtAge(r.age)} ago</span>
+      <span style="color:var(--dim2);font-size:12px">${fmtAgo(r.age)}</span>
       ${r.journal&&r.journal.length?`<button class="btn sm" onclick='loopLog(${hesc(r.id)})'>log</button>`:''}
       ${r.running&&r.kind==='schedule'?`<button class="btn sm" onclick='loopRenew(${hesc(r.id)})'>renew</button>`:''}
       ${r.running
@@ -3852,7 +3924,7 @@ async function pgLoops(nav){
         ?`Runs <b>${esc(P.name)}</b> unattended on a timer, spending money without anyone watching — so it carries an expiry of ${d.ttl_days||7} days (renewable), your per-call budget cap, and the permission mode below. Each run is a fresh session that reads a rolling record of what the previous ones did, kept in the project's CLAUDE.md.`
         :`Opens a session in <b>${esc(P.name)}</b> and types the command for you. It fires while that session is open; closing it ends the loop.`}</p>
       <div class="grid2">
-        <div class="fld"><label for="loopInt">Interval${LOOPKIND==='schedule'?'':' — blank = Claude decides'}</label>
+        <div class="fld"><label for="loopInt">Interval${LOOPKIND==='schedule'?'':' <span style="color:var(--dim2)">— blank means Claude decides</span>'}</label>
           <input id="loopInt" placeholder="15m" spellcheck="false"></div>
         <div class="fld"><label for="loopPrompt">Prompt — blank = loop.md</label>
           <input id="loopPrompt" placeholder="check CI and fix what is red" spellcheck="false"></div>
@@ -4009,17 +4081,28 @@ function agCat(c){
   return s.charAt(0).toUpperCase()+s.slice(1);
 }
 const NO_CAT='Uncategorised';
-/* Group installed agents the way the library is grouped — by category, with
-   the unfiled ones last. `.fgrp` so the filter can take a heading away with
-   the rows under it. */
+/* Group installed agents the way the library is grouped — by category, with the
+   unfiled ones last, and CLOSED, exactly like the library's categories.
+
+   It used to print every one of your agents expanded under a plain heading:
+   three rows of name + scope + description + three buttons before you reached
+   the library beside it, growing with every agent you write, while the same
+   information on the right sat behind one collapsed line per trade. Two shapes
+   for one thing, and the longer shape given to the list that grows. It is one
+   shape now — categories, opened when you want them, which is also what makes
+   the filter's "open the ones that match" behaviour apply to both lists.
+
+   The <details> carries `.fgrp` as well, because bindFilter treats the two
+   selectors slightly differently and this element is genuinely both. */
 function agByCat(rows,render){
   const by={};
   rows.forEach(r=>{const c=r.category||NO_CAT;(by[c]=by[c]||[]).push(r);});
   const names=Object.keys(by).sort((a,b)=>
     a===NO_CAT?1:b===NO_CAT?-1:a.localeCompare(b));
-  return names.map(c=>`<div class="fgrp"><div class="hkwhen">
-      <span>${esc(agCat(c))}</span><code>${by[c].length}</code></div>
-    ${by[c].map(render).join('')}</div>`).join('');
+  return names.map(c=>`<details class="fgrp" style="margin-bottom:6px">
+      <summary style="cursor:pointer;font-weight:600">${esc(agCat(c))}
+      <span class="tag">${by[c].length}</span></summary>
+    ${by[c].map(render).join('')}</details>`).join('');
 }
 function agScope(sc){
   const s=String(sc||'');
@@ -4044,11 +4127,15 @@ async function pgAgents(nav){
     `<button class="btn sm" onclick='post("/api/open-editor",{file:${hesc(a.path)}})'>edit</button>
      <button class="btn sm danger" onclick='agDel(${hesc(a.path)})'>${ic('del')}</button>`,
     agScope(a.scope)));
-  const nLib=(d.categories||[]).reduce((n,c)=>n+c.agents.length,0);
-  const lib=(d.categories||[]).map(c=>`
-    <details style="margin-bottom:6px"><summary style="cursor:pointer;font-weight:600">${esc(agCat(c.category))} <span class="tag">${c.agents.length}</span></summary>
-    ${c.agents.map(a=>agRow(a,'',agCat(c.category),c.category)).join('')}
-    </details>`).join('');
+  /* Through agByCat as well, now that both lists are the same shape — the
+     library's categories arrive pre-grouped, so the rows are flattened and the
+     category stamped onto each one, which is where agRow's filter haystack
+     wanted it anyway. Raw category names sort the way the folders do (`01-` …
+     `10-`), so the disk order survives. */
+  const libRows=(d.categories||[]).flatMap(c=>
+    c.agents.map(a=>({...a,category:c.category})));
+  const nLib=libRows.length;
+  const lib=agByCat(libRows,a=>agRow(a,'',agCat(a.category),a.category));
   if(!paint(nav,`
     <div class="card"><h3>${ic('robot')} Your agents <span class="tag">${(d.own||[]).length}</span><span class="sp"></span>
       <button class="btn sm" onclick="agNew()">${ic('add')} Write one</button>
@@ -4378,7 +4465,7 @@ function wtRow(w,repoPath,indent){
       ${w.ahead?`<span class="tag">+${w.ahead}</span>`:''}
       ${w.behind?`<span class="tag warn">-${w.behind}</span>`:''}
       <span style="flex:1;color:var(--dim);font-size:12px">${
-        s?`${esc(s.title||s.sid.slice(0,8))} · ${esc(s.account)} · ${s.msgs} msgs · ${live?'live now':fmtAge(s.age)}`
+        s?`${esc(s.title||s.sid.slice(0,8))} · ${esc(s.account)} · ${s.msgs} msgs · ${live?'live now':fmtAgo(s.age)}`
          :'<span style="color:var(--dim2)">no session here</span>'}</span>
       ${w.dirty?`<button class="btn sm" onclick='wtDiff(${hesc(w.path)})'>${ic('eye')} Diff</button>`:''}
       ${w.main?'':`<button class="btn sm" onclick='wtMerge(${hesc(repoPath)},${hesc(w.branch)})'>Merge</button>`}
@@ -4410,7 +4497,7 @@ async function drawWorktrees(){
   const nav=paintNow(LOADING);
   const d=await api('/api/worktrees?'+qs({path:CUR.path,enc:CUR.encoded,cfgdir:CUR.primary_cfgdir}));
   if(!d.repo){
-    paint(nav,`<div class="card"><h3>Repos</h3>
+    paint(nav,`<div class="card wide"><h3>Repos</h3>
       <div style="color:var(--dim)">No git repository here or below — nothing to show.</div></div>`);
     return;
   }
@@ -4420,18 +4507,27 @@ async function drawWorktrees(){
     nlive+=(r.worktrees||[]).filter(w=>w.session&&w.session.live).length;
     walk(r.children||[]);});})(tops);
   paint(nav,`
-    <div class="card"><h3>${ic('fork')} Repos <span class="sp"></span>
+    <div class="card wide"><h3>${ic('fork')} Repos <span class="sp"></span>
       ${multi?`<span class="tag">${nrepo} repos</span>`:''}
       <span class="tag${nlive?' ok':''}">${nlive} live</span></h3>
       <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Every repo under this project — submodules and worktrees included — and the session working in each. All of them read the same project memory, so parallel agents are not each rediscovering the codebase.</p>
       ${tops.map(r=>repoGroup(r,multi,0)).join('')}</div>`);
 }
+/* A DURATION, never a phrase: "15m", "3h", "just now". It used to return
+   "15m ago", which made the loops board print "15m ago ago" at the one site
+   that added the word itself and "expires 3d ago" at the site describing a
+   time in the FUTURE. A formatter that bakes in a preposition can only ever
+   serve one of its callers. */
 function fmtAge(sec){
   if(sec<90)return 'just now';
-  if(sec<5400)return Math.round(sec/60)+'m ago';
-  if(sec<172800)return Math.round(sec/3600)+'h ago';
-  return Math.round(sec/86400)+'d ago';
+  if(sec<5400)return Math.round(sec/60)+'m';
+  if(sec<172800)return Math.round(sec/3600)+'h';
+  return Math.round(sec/86400)+'d';
 }
+/* …and the one phrase that is wanted often enough to have a name. Kept
+   separate rather than as a flag on fmtAge, because 'just now ago' is the bug
+   a flag would have re-created. */
+function fmtAgo(sec){return sec<90?'just now':fmtAge(sec)+' ago';}
 async function wtDiff(path){
   const d=await api('/api/worktree/diff?'+qs({wt:path}));
   await ask('Uncommitted changes',[],(d.diff||'(no diff)').slice(0,20000));
@@ -4709,7 +4805,7 @@ async function pgSkills(nav){
         <button class="btn sm" onclick="skNew()">${ic('add')} Write one</button>
         <button class="btn sm" onclick="skAI()">${ic('ai')} Have Claude write one</button>
         <span class="sp"></span>
-        <div class="fld" style="flex:1;min-width:260px;margin:0"><label for="skGitUrl">Clone a skill+agents bundle from GitHub — risk-scanned and shown to you first</label>
+        <div class="fld" style="flex:1;min-width:260px;margin:0"><label for="skGitUrl">Clone from GitHub <span style="color:var(--dim2)">— a skill+agents bundle, risk-scanned and shown to you before anything is installed</span></label>
           <input id="skGitUrl" value="https://github.com/olsenbrands/fable-foreman"></div>
         <button class="btn sm" onclick="skGitInstall()">${ic('download')} Clone</button>
       </div></div>`))return;
@@ -4922,7 +5018,7 @@ async function pgAccounts(nav){
     const wins=(a.windows||[]).map(w=>(w.pct||0)/100);
     return wins.length?Math.max(...wins):null;
   };
-  if(!paint(nav,`<div class="card"><h3>Claude accounts <span class="sp"></span>
+  if(!paint(nav,`<div class="card wide"><h3>Claude accounts <span class="sp"></span>
     <button class="btn sm" onclick="acctAdd()">${ic('add')} Add account</button></h3>
     ${(d.accounts||[]).map(a=>{
       const q=quotaOf(a.name);
@@ -4939,7 +5035,7 @@ async function pgAccounts(nav){
           <button class="btn sm" onclick='acctRename(${hesc(a.name)})'>Rename</button>
           <button class="btn sm danger" onclick='acctAct("remove",${hesc(a.name)})'>${ic('del')}</button>`:''}
       </div>`;}).join('')}</div>
-    <div class="card"><h3>${ic('refresh')} Sync accounts</h3>
+    <div class="card wide"><h3>${ic('refresh')} Sync accounts</h3>
       <p style="color:var(--dim);font-size:13px;margin:0 0 8px">What you provision — hooks, plugins, marketplaces, user agents, the global CLAUDE.md — is a property of <b>you</b>, not of whichever account happened to be active. This levels every account up to the union of them all. It only ever <b>adds</b>: an account keeps anything the others do not have, because there is no way to tell a deliberate choice from a gap.</p>
       <div id="syncOut"><span class="spin"></span></div></div>`))return;
   drawSync();
@@ -4961,8 +5057,8 @@ async function drawSync(){
   const el=$('#syncOut');if(!el)return;
   const d=await api('/api/accounts/sync');
   if(!$('#syncOut'))return;
-  const kinds=[['plugins','plugins'],['marketplaces','mkts'],['hooks','hooks'],
-               ['agents','agents']];
+  const kinds=[['plugins','plugins'],['marketplaces','marketplaces'],
+               ['hooks','hooks'],['agents','agents']];
   const rows=(d.accounts||[]).map(r=>`<tr>
       <td><b>${esc(r.name)}</b></td>
       ${kinds.map(([k])=>`<td class="num">${r.have[k]}</td>`).join('')}
@@ -4980,7 +5076,9 @@ async function drawSync(){
       <div style="font-size:12.5px;color:var(--dim)">${bits.join(' · ')}</div></div>`;}).join('');
   $('#syncOut').innerHTML=`<table class="tbl"><tr><th>account</th>
       ${kinds.map(([,l])=>`<th class="num">${l}</th>`).join('')}
-      <th class="num">stline</th><th class="num">CLAUDE.md</th><th></th></tr>${rows}</table>
+      <th class="num">statusline</th><th class="num">CLAUDE.md</th>
+      <th></th></tr>${rows||''}</table>
+    ${rows?'':'<div class="empty">No accounts to compare.</div>'}
     ${d.clean?'<div class="empty" style="color:var(--ok)">✓ Every account already has everything.</div>'
       :`<div style="margin-top:10px">${detail}</div>
         <div class="mrow"><button class="btn pri" onclick="syncApply()">Copy the missing items into every account</button></div>`}`;
@@ -5021,7 +5119,8 @@ async function acctTerm(name,dir){
   toast(r.ok?`Terminal opened as '${name}' — use /login if needed`:'Failed','ok');
 }
 
-/* GENERATED from NAV_GROUPS, TABS and the TUI's own ACTIONS table — never
+/* GENERATED from SECTIONS, NAV, TAB_GROUPS, TABS and the TUI's own ACTIONS
+   table — never
    typed. The hand-written version listed "Project → Graph" (an endpoint that had
    no consumer) and omitted Plugins, Output styles, Claude Code, Review and
    Repos. docs/api.md needs a generator because Markdown cannot compute; this is
@@ -5031,15 +5130,29 @@ async function acctTerm(name,dir){
 async function pgHelp(nav){
   const row=(where,what)=>`<tr data-help-row><td style="white-space:nowrap;color:var(--cyan)">${esc(where)}</td><td>${esc(what)}</td></tr>`;
   const tbl=(head,rows)=>`<table class="tbl"><tr><th>${head}</th><th>what it is for</th></tr>${rows}</table>`;
-  const groups=NAV_GROUPS.map(([grp,items])=>
-    `<div class="card"><h3>${ic(items[0][1])} ${esc(grp)}</h3>
-     ${tbl('page',items.map(([,,l,blurb])=>row(l,blurb)).join(''))}</div>`).join('');
+  const pageRow=id=>{const n=NAV.find(x=>x[0]===id);return row(n?n[2]:id,n?n[3]:'');};
+  const groups=SECTIONS.map(([grp,icon,blurb,ids])=>
+    `<div class="card"><h3>${ic(icon)} ${esc(grp)}</h3>
+     <p style="color:var(--dim);font-size:13px;margin-bottom:10px">${esc(blurb)}</p>
+     ${tbl('page',ids.map(pageRow).join(''))}</div>`).join('');
+  // the two pages that are deliberately in no section still have to appear
+  // here, and the row says where they ARE reached — a page missing from its own
+  // help page is how "there is no search any more" gets believed
+  const off=`<div class="card"><h3>${ic('search')} Not in the sidebar</h3>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Two screens have a better door than a nav row.</p>
+    <table class="tbl"><tr><th>page</th><th>where it is</th></tr>
+    ${Object.entries(OFFNAV).map(([id,where])=>
+      `<tr data-help-row><td style="white-space:nowrap;color:var(--cyan)">${esc(navLabel(id))}</td><td>${esc(where)}</td></tr>`).join('')}
+    </table></div>`;
   const keys=(ST.tui_keys||[]);
   paint(nav,`
     <div class="card"><h3>${ic('help')} Projects</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Pick a project in the sidebar; these are its tabs.</p>
-    ${tbl('tab',TABS.map(([,l,blurb])=>row(l,blurb)).join(''))}</div>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Pick a project in the sidebar; these are its four tabs and the pages inside them.</p>
+    ${TAB_GROUPS.map(([label,ids])=>
+      `<div class="lbl" style="margin:10px 0 4px">${esc(label)}</div>
+       ${tbl('tab',ids.map(id=>{const t=TABS.find(x=>x[0]===id);return row(t?t[1]:id,t?t[2]:'');}).join(''))}`).join('')}</div>
     ${groups}
+    ${off}
     <div class="card"><h3>${ic('ai')} Terminal UI keys</h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:10px">The sessions screen in <code>archeus</code>'s terminal interface. Rendered from the same table the terminal itself reads, so the two cannot disagree — press <code>?</code> there for this list, <code>/</code> for a searchable palette.</p>
     ${keys.length?`<table class="tbl"><tr><th>key</th><th>action</th></tr>
@@ -5057,23 +5170,36 @@ async function pgHelp(nav){
     <p style="color:var(--dim2);font-size:12px;margin-top:10px">Motion elsewhere is transitional: numbers count to their new value, rows slide when they reorder, and a travelling border marks a job that is still running. <b>Settings → Appearance → Motion</b> sets how much of that you get; your OS "reduce motion" preference always wins.</p></div>`);
 }
 
-async function pgSettings(nav){
-  const o=ST.options;
-  if(!paint(nav,`<div class="card"><h3>Defaults</h3>
+/* The settings page was eleven cards in one paint, and with its wiring the
+   longest function in the app — the page the section split helps most and the
+   most mechanical to split, because it was already a list of independent cards
+   with independent Save buttons. ONE renderer and five parts: the part decides
+   which cards are painted, and the wiring below runs unchanged, because every
+   control it touches is looked up and guarded — one that is not on this
+   sub-page is simply not written to. Splitting the WIRING as well would have
+   been five copies of the same twenty lines. */
+const SETTINGS_CARDS={
+  settings:o=>`<div class="card"><h3>${ic('bolt')} Defaults</h3>
+    <p class="secthint">What the launch modal opens on — you can still change any of it per session, and nothing here touches a session that is already running.</p>
     ${fld('sEff','Effort')}${fld('sMod','Model')}${fld('sPerm','Permission mode')}
     ${fld('sThink','Thinking cap')}${fld('sSub','Subagent model')}
     ${fld('sShell','GUI window')}
     <div class="chips" id="sTheme" style="display:none"></div>
     <div class="mrow"><button class="btn pri" onclick="setSave()">Save</button></div></div>
-  <div class="card"><h3>${ic('palette')} Appearance</h3>
-    <div class="fld"><label>World — a complete look, locked</label>
+  <div class="card"><h3>${ic('map')} Plan → Execute</h3>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Model that writes the plan (runs once, headless) vs the model that executes it interactively. Keep the plan model accurate — the expensive reasoning happens once.</p>
+    ${fld('sPlanMod','Plan model')}${fld('sExecMod','Execute model')}
+    <div class="mrow"><button class="btn pri" onclick="setPlanExecSave()">Save</button></div></div>
+`,
+  appearance:o=>`<div class="card wide"><h3>${ic('palette')} Appearance</h3>
+    <div class="fld"><label>World <span style="color:var(--dim2)">— a complete look, locked</span></label>
       <p style="color:var(--dim);font-size:13px;margin:0 0 8px">A world owns everything at once: its own palette, shape, icons, background, overlay and hover behaviour. Nothing in it can be mixed with anything else — that is the point, and it is why these can go much further than a skin that has to survive 32 different palettes.</p>
       <div class="wgal" id="thWorld"></div>
       <div class="monote" id="wNote"></div></div>
     <div id="classicBlock">
       <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Or build your own: a palette for the colours, a skin for the shape. Click a card to apply and save it. Each palette also carries a motion <i>personality</i> (how far things travel, how much they glow), so Mono stays terse and Dracula does not.</p>
       <div class="thgal" id="thGallery"></div>
-      <div class="fld" style="margin-top:16px"><label>Skin — the shape of the app, independent of its colours</label>
+      <div class="fld" style="margin-top:16px"><label>Skin <span style="color:var(--dim2)">— the shape of the app, independent of its colours</span></label>
         <div class="skgal" id="thSkin"></div>
         <div class="monote" id="skNote"></div></div>
     </div>
@@ -5084,20 +5210,27 @@ async function pgSettings(nav){
         <b>subtle</b>: only the motion that carries information — value tweens, meter fills, page changes ·
         <b>off</b>: nothing moves.<br>
         Gauges stop once they reach their value either way, so an idle page renders no frames at all. Your OS <i>reduce motion</i> setting overrides this.</div></div>
-    <div class="fld" style="margin-top:14px"><label>Surface transparency — how much of the background shows through</label>
+    <div class="fld" style="margin-top:14px"><label>Surface transparency <span style="color:var(--dim2)">— how much of the background shows through</span></label>
       <input type="range" id="sSurf" min="40" max="100" step="2">
       <div class="frontends"><span>See-through</span><span>Solid</span></div>
       <div class="frontread" id="surfRead"></div>
       <div style="color:var(--dim2);font-size:12px;margin-top:4px">Applies to every theme. Each look proposes its own value — drag to override it everywhere, or
         <a href="#" id="surfReset" style="color:var(--cyan)">use each theme's default</a>.</div></div>
+    <div class="fld" style="margin-top:14px"><label>Background brightness <span style="color:var(--dim2)">— how far the scene may come up off the page colour</span></label>
+      <input type="range" id="sGlow" min="40" max="220" step="5">
+      <div class="frontends"><span>Barely there</span><span>Full strength</span></div>
+      <div class="frontread" id="glowRead"></div>
+      <div style="color:var(--dim2);font-size:12px;margin-top:4px">Every look proposes its own — this scales it, so the looks keep their relative brightness. Drag to override everywhere, or
+        <a href="#" id="glowReset" style="color:var(--cyan)">use each theme's default</a>. The theme-only view (the palette button in the header) comes up brighter still, since nothing is on top of it.</div></div>
     <div class="fld" style="margin-top:14px"><label>Background</label>
       <div class="chips" id="sStage"></div>
       <div class="monote" id="stgNote"></div>
       <div style="color:var(--dim2);font-size:12px;margin-top:6px">
         One animated scene behind the whole app, chosen by the skin and driven by what the workspace is actually doing — idle crawls, a running job speeds it up, launching a session sends a shockwave through it.
-        It stops entirely when the window is hidden, minimised or blurred, and <b>motion: off<\b> turns it off with everything else.</div></div></div>
-  <div class="card"><h3>${ic('folder')} Paths &amp; limits</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Blank means auto-detect. A path that does not exist is <b>refused</b> rather than saved — pinning a broken one makes every launch fail with no clue why. Its own Save: the Defaults button above must not half-cover another card.</p>
+        It stops entirely when the window is hidden, minimised or blurred, and <b>motion: off</b> turns it off with everything else.</div></div></div>
+`,
+  paths:o=>`  <div class="card"><h3>${ic('folder')} Paths &amp; limits</h3>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Blank means auto-detect. A path that does not exist is <b>refused</b> rather than saved — pinning a broken one makes every launch fail with no clue why. Each card here saves on its own — a Save that covered a page of unrelated settings is a Save you cannot press with confidence.</p>
     <div class="grid2">
       <div class="fld"><label>Editor <span style="color:var(--dim2)">— what "open in editor" runs</span></label>
         <input id="sEditor" placeholder="auto-detect (Notepad++, VS Code, notepad)"></div>
@@ -5112,6 +5245,23 @@ async function pgSettings(nav){
     </div>
     <div style="color:var(--dim2);font-size:12px">The cap is <code>--max-budget-usd</code> on archeus's <b>own</b> Claude calls (memory, lessons, plans, reviews) — your interactive sessions are unaffected. Changing the config dir takes effect on restart.</div>
     <div class="mrow"><button class="btn pri" onclick="setPathsSave()">Save</button></div></div>
+  <div class="card"><h3>${ic('bolt')} Memory limits</h3>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">What one memory cycle may spend, and how big the graph may get. The call cap is the ceiling on a single pass: whatever it does not finish waits for the next one, so a low number spreads the cost rather than losing the work. The entity cap is what the graph is pruned back to, least-connected first.</p>
+    <div class="grid2">
+      <div class="fld"><label>Max Claude calls per cycle <span style="color:var(--dim2)">— 0 = unlimited</span></label>
+        <input id="sMemCalls" type="number" min="0" max="500" step="1"></div>
+      <div class="fld"><label>Max entities kept <span style="color:var(--dim2)">— least-connected are evicted first</span></label>
+        <input id="sMemEnts" type="number" min="50" max="20000" step="50"></div>
+    </div>
+    <div class="grid2">
+      <div class="fld"><label>Refresh on open <span style="color:var(--dim2)">— for projects <i>not</i> on the auto-memory schedule; those refresh on their own interval and never on open</span></label><div class="chips" id="sMemOpen"></div></div>
+      <div class="fld"><label>Learn lessons from sessions</label><div class="chips" id="sMemLessons"></div></div>
+    </div>
+    <div class="mrow"><button class="btn pri" onclick="setMemLimitsSave()">Save</button></div></div>
+  <div class="card"><h3>Economy model</h3>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Model used for archeus's <b>own</b> internal Claude calls — memory extraction, lessons, CLAUDE.md / agent / hook / skill generation. Defaults to Haiku to cut cost. Your actual coding sessions are unaffected. <i>default</i> = your account's model.</p>
+    ${fld('sExtract','Economy model')}
+    <div class="mrow"><button class="btn pri" onclick="setExtractSave()">Save</button></div></div>
   <div class="card"><h3>${ic('doc')} Statusline <span class="sp"></span>
       <span class="tag" id="slDot">checking…</span></h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code renders two rows at the bottom of every session — identity and git on the first, pressure on the second. archeus can be those rows, and it puts things there nobody else can compute: how stale this project's memory is, how many sessions are still unmined for lessons, which account you are on, and the branch, uncommitted count and sub-repo roll-up for wherever you are. Plan limits come free from the session payload, so it never polls the API. It refuses to replace a statusline you wrote yourself.</p>
@@ -5128,28 +5278,8 @@ async function pgSettings(nav){
     <div class="fld"><label>Headers <span style="color:var(--dim2)">— comma-separated, e.g. Authorization=Bearer xyz</span></label>
       <input id="sOtelHdr" placeholder="leave blank for none"></div>
     <div class="mrow"><button class="btn pri" onclick="setOtelSave()">Save</button></div></div>
-  <div class="card"><h3>Economy model</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Model used for archeus's <b>own</b> internal Claude calls — memory extraction, lessons, CLAUDE.md / agent / hook / skill generation. Defaults to Haiku to cut cost. Your actual coding sessions are unaffected. <i>default</i> = your account's model.</p>
-    ${fld('sExtract','Economy model')}
-    <div class="mrow"><button class="btn pri" onclick="setExtractSave()">Save</button></div></div>
-  <div class="card"><h3>${ic('bolt')} Memory limits</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">What one memory cycle may spend, and how much the graph may hold. These lived only in <code>archeus.json</code> — while the memory hub and the health check both told you to raise <code>memory_max_calls</code>, a setting with no control on either surface.</p>
-    <div class="grid2">
-      <div class="fld"><label>Max Claude calls per cycle <span style="color:var(--dim2)">— 0 = unlimited</span></label>
-        <input id="sMemCalls" type="number" min="0" max="500" step="1"></div>
-      <div class="fld"><label>Max entities kept <span style="color:var(--dim2)">— least-connected are evicted first</span></label>
-        <input id="sMemEnts" type="number" min="50" max="20000" step="50"></div>
-    </div>
-    <div class="grid2">
-      <div class="fld"><label>Refresh when a project is opened <span style="color:var(--dim2)">— for projects <i>not</i> on the auto-memory schedule; those refresh on their own interval and never on open</span></label><div class="chips" id="sMemOpen"></div></div>
-      <div class="fld"><label>Learn lessons from sessions</label><div class="chips" id="sMemLessons"></div></div>
-    </div>
-    <div class="mrow"><button class="btn pri" onclick="setMemLimitsSave()">Save</button></div></div>
-  <div class="card"><h3>${ic('map')} Plan → Execute</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Model that writes the plan (runs once, headless) vs the model that executes it interactively. Keep the plan model accurate — the expensive reasoning happens once.</p>
-    ${fld('sPlanMod','Plan model')}${fld('sExecMod','Execute model')}
-    <div class="mrow"><button class="btn pri" onclick="setPlanExecSave()">Save</button></div></div>
-  <div class="card"><h3>${ic('plug')} Free execution — OmniRoute <span class="sp"></span>
+`,
+  models:o=>`  <div class="card"><h3>${ic('plug')} Free execution — OmniRoute <span class="sp"></span>
       <span id="orDot" class="tag">checking…</span></h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Route the <b>execute</b> half of Plan → Execute through a local
       <a href="https://github.com/diegosouzapw/OmniRoute" target="_blank" rel="noopener"
@@ -5189,7 +5319,7 @@ async function pgSettings(nav){
       or whose provider rejects a tool schema (<code>400</code>) makes a session look frozen. List fallback models
       below and archeus runs its own local proxy that retries the <b>next</b> one whenever a turn fails before any
       output reaches the session. Leave the list empty to disable.</p>
-    <div class="fld"><label>Fallback models — one per line, tried in order after the selected model</label>
+    <div class="fld"><label>Fallback models <span style="color:var(--dim2)">— one per line, tried in order after the model you selected</span></label>
       <textarea id="foModels" rows="4" spellcheck="false"
         placeholder="auto/coding:free&#10;auto/best-coding&#10;auto/fast"></textarea></div>
     <div class="grid2">
@@ -5205,17 +5335,31 @@ async function pgSettings(nav){
       <button class="btn sm" onclick="foStop()">${ic('close')} Stop proxy</button>
       <span class="sp"></span>
       <button class="btn pri" onclick="foSave()">Save failover</button></div></div>
-  <div class="card"><h3>Interface</h3>
-    <p style="color:var(--dim);font-size:13px">Default interface on startup — the toggle in the bottom-left does the same. <code>--tui</code>/<code>--gui</code> flags always override.</p>
+`,
+  updates:o=>`<div class="card"><h3>${ic('refresh')} Update checks &amp; notifications</h3>
     ${fld('sUpd','Updates')}
     <p style="color:var(--dim);font-size:13px;margin:0 0 10px">One switch for everything archeus fetches on your behalf: whether a newer release exists, and the current Claude model list. <b>Install on quit</b> runs the upgrade in its own window after archeus closes — pip cannot rewrite the script it is running from. <b>Off</b> stops both checks.</p>
     ${fld('sNotif','Notifications')}
-    <p style="color:var(--dim);font-size:13px;margin:0">A desktop notification when a background job that ran longer than ${20}s finishes — memory builds, plans, reviews — and when the detached memory worker is done, which has no window of its own at all. Quick jobs never notify.</p></div>
+    <p style="color:var(--dim);font-size:13px;margin:0 0 10px">A desktop notification when a background job that ran longer than ${20}s finishes — memory builds, plans, reviews — and when the detached memory worker is done, which has no window of its own at all. Quick jobs never notify.</p>
+    <p class="secthint" style="margin:0">Which interface <i>starts</i> — terminal or desktop — is the <b>TUI / GUI</b> toggle at the foot of the sidebar, and <code>--tui</code>/<code>--gui</code> always override it.</p></div>
   <div class="card"><h3>${ic('refresh')} Auto-memory <span class="sp"></span>
     <span class="fld" style="margin:0"><select id="amInt" onchange="amSaveInterval(this.value)" style="width:auto"></select></span></h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Projects checked below have their memory refreshed in the background — one pass when archeus starts, then one every interval, whenever their files change. Only changed projects use Claude; nothing runs while unchanged.</p>
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">A pass re-reads a few changed modules at most, and whatever is left waits for the <b>next</b> interval — so a big backlog is spread out rather than spent at once. Opening a checked project does not add a pass; this schedule is the only thing that spends on it.</p>
-    <div id="amList"><span class="spin"></span></div></div>`))return;
+    <div id="amList"><span class="spin"></span></div></div>
+`,
+};
+/* Hoisted function declarations, not arrow consts: NAV names these in its
+   fifth field, and while that field is lazy, keeping the convention means the
+   next page added cannot get it wrong. */
+function pgSetLaunch(nav){return pgSettings(nav,'settings');}
+function pgSetAppearance(nav){return pgSettings(nav,'appearance');}
+function pgSetPaths(nav){return pgSettings(nav,'paths');}
+function pgSetModels(nav){return pgSettings(nav,'models');}
+function pgSetUpdates(nav){return pgSettings(nav,'updates');}
+async function pgSettings(nav,part='settings'){
+  const o=ST.options;
+  if(!paint(nav,SETTINGS_CARDS[part](o)))return;
   chipsFill($('#sEff'),o.efforts,null,ST.defaults.effort);
   chipsFill($('#sMod'),o.models,o.model_labels,ST.defaults.model);
   chipsFill($('#sPerm'),o.perms,o.perm_labels,ST.defaults.perm);
@@ -5244,7 +5388,7 @@ async function pgSettings(nav){
   chipsFill($('#sMemLessons'),['auto','prompt','off'],
     ['learn automatically','learn, but let me review','off'],
     ST.memory_lessons||'prompt');
-  slRefresh();
+  if($('#slDot'))slRefresh();
   chipsFill($('#sExtract'),o.models,o.model_labels,ST.extract_model||'');
   chipsFill($('#sShell'),['auto','qt','edge','browser'],
     ['auto (Qt → Edge → browser)','Qt native window','Edge app window','browser tab'],
@@ -5263,13 +5407,20 @@ async function pgSettings(nav){
   drawThemeGallery();
   chipsFill($('#sPlanMod'),o.models,o.model_labels,ST.plan_model||'');
   chipsFill($('#sExecMod'),o.models,o.model_labels,ST.exec_model||'');
-  $('#orUrl').value=ST.omniroute_base_url||'';
-  $('#foModels').value=(ST.failover_models||[]).join('\n');
-  $('#foPort').value=ST.failover_port||20129;
-  $('#foQuiet').checked=!!ST.failover_quiet;
-  foDot();
-  drawAutoMemList();
-  orRefresh();
+  // Guarded by their own card, not written blind: these four are the only
+  // reads on this page that were not, and with the page split into five parts
+  // four of them are absent four times out of five. The three calls below each
+  // make a request, so they are gated on their host too — a fetch for a card
+  // that is not on screen is the cost the split was supposed to remove.
+  if($('#orUrl')){
+    $('#orUrl').value=ST.omniroute_base_url||'';
+    $('#foModels').value=(ST.failover_models||[]).join('\n');
+    $('#foPort').value=ST.failover_port||20129;
+    $('#foQuiet').checked=!!ST.failover_quiet;
+    foDot();
+    orRefresh();
+  }
+  if($('#amList'))drawAutoMemList();
 }
 /* ── theme gallery ──
    A dot swatch can't distinguish 26 palettes, so every card paints a real mock
@@ -5450,6 +5601,28 @@ function drawThemeGallery(){
   }));
   const sn=$('#stgNote');if(sn)sn.textContent=STAGE_NOTE[ST.stage||'cinematic']||'';
   drawSurfaceSlider();
+  drawGlowSlider();
+}
+/* Background brightness. Same shape as the surface slider above and for the
+   same reason — you judge it by looking at it, so it applies live on input and
+   only persists on release. 0 in storage means "whatever the look asks for".
+   It SCALES the skin's own calm rather than replacing it, which is why the
+   readout is a percentage of the theme's value and not an absolute number. */
+function drawGlowSlider(){
+  const el=$('#sGlow');if(!el)return;
+  const skCalm=Math.round((curSkin().calm!=null?curSkin().calm:0.3)*100);
+  const show=v=>{const r=$('#glowRead');
+    if(r)r.textContent=ST.brightness?`${v}% of this theme's own brightness`
+                                    :`this theme's default (${skCalm}% of full)`;};
+  el.value=String(ST.brightness||100);
+  show(el.value);
+  el.oninput=()=>{ST.brightness=+el.value;
+    if(window.STAGE)STAGE.setGlow(ST.brightness);show(el.value);};
+  el.onchange=()=>post('/api/settings',{brightness:+el.value});
+  const rs=$('#glowReset');
+  if(rs)rs.onclick=e=>{e.preventDefault();ST.brightness=0;
+    if(window.STAGE)STAGE.setGlow(0);
+    drawGlowSlider();post('/api/settings',{brightness:0});};
 }
 /* Surface transparency. Live on input (you judge this by looking at it, not by
    saving it) and persisted on release, so dragging does not fire a POST per
@@ -6090,10 +6263,31 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     const openModals=['#ovl','#govl','#oovl','#jovl','#povl','#actovl'].find(id=>$(id)&&$(id).classList.contains('show'));
     if(openModals)$(openModals).classList.remove('show');
+    else if(zenOn())setZen(false);
     else $('#drawer').classList.remove('show');
     if(__lastFocus){__lastFocus.focus();__lastFocus=null;}
   }
 });
+/* ── zen: look at the theme, with nothing on top of it ──
+   Deliberately NOT persisted. A mode whose only way out is a button it also
+   hides is a mode you can boot into and not understand; it lives for the
+   window, and Esc gets you out even if the button is off-screen.
+
+   It touches one class and nothing else — no unmount, no re-render, no fetch.
+   The impulse is the same one navigation sends: the scene is the entire
+   content now, so it should react to being asked for. */
+const zenOn=()=>document.documentElement.classList.contains('zen');
+function setZen(on){
+  document.documentElement.classList.toggle('zen',on);
+  const b=$('#bZen');
+  if(b){b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));}
+  // The ceiling comes off while the app is hidden — the scene is not a ground
+  // for anything any more. STAGE.zen() is what decides by how much; here we
+  // only say which mode we are in.
+  if(window.STAGE){if(STAGE.zen)STAGE.zen(on);if(STAGE.impulse)STAGE.impulse();}
+}
+$('#bZen').innerHTML=ic('palette');
+$('#bZen').onclick=()=>setZen(!zenOn());
 // save focus when opening a modal, restore on close
 document.querySelectorAll('.ovl').forEach(el=>{
   el.addEventListener('click',function(e){if(e.target===this&&__lastFocus){__lastFocus.focus();__lastFocus=null;this.classList.remove('show');}});
@@ -6117,9 +6311,75 @@ function segDraw(){
   $('#segGui').className=ST.ui_mode==='gui'?'on':'';}
 $('#segTui').onclick=()=>setMode('tui');
 $('#segGui').onclick=()=>setMode('gui');
-// brand click → home
-document.querySelector('.brand').style.cursor='pointer';
-document.querySelector('.brand').onclick=()=>go('home');
+$('#bHelp').onclick=()=>go('helpp');
+/* ── the sidebar's top row ──
+   It carried a logo, the product name and a tagline. The tagline is gone: it is
+   a website device — its audience is someone who does not yet know what the
+   thing is, and nobody reading this sidebar is that person — and it failed the
+   differentiation test besides (every coding-agent tool could print it, no
+   product claims the opposite). What every current app puts in this slot is the
+   switchable CONTEXT with a line of state under it: shadcn's sidebar header
+   ships as a team switcher with the plan underneath, Notion switches
+   workspaces, Linear the workspace, GitLab the current context, Figma the
+   account.
+
+   Ours is the Claude Code ACCOUNT, and it had no home before this: it was
+   reachable only from inside the launch modal, on the one branch where you were
+   starting a new session. Switching here sets the default for every launch.
+
+   The chevron and the menu appear only with more than one account. A control
+   that opens nothing is worse than no control, so with a single account this is
+   what it has always been — a row you click to go home — and it says archeus,
+   because "default" is not a name anyone chose. */
+function drawBrand(){
+  const b=$('#brandName'),s=$('#brandSub'),ch=$('#brandChev');
+  if(!b)return;
+  const accs=ST.accounts||[];
+  const multi=accs.length>1;
+  // fall back to the FIRST account, not to the product name: with several
+  // accounts configured, a row that says archeus is hiding the one piece of
+  // state it exists to show. active_cfgdir can legitimately name none of them
+  // — it is restored from localStorage and an account can be removed.
+  const act=accs.find(a=>a.dir===ST.active_cfgdir)||(multi?accs[0]:null);
+  b.textContent=act?act.name:'archeus';
+  // the second line is a MEASUREMENT, never a descriptor: how much workspace
+  // there is and how much of it is awake. Both numbers are already in hand —
+  // no fetch, the same rule INST.set() and the stage follow.
+  const projs=(ST.projects||[]).filter(p=>SHOW_HIDDEN||!p.hidden).length;
+  const live=ACTIVE_MEM.size;
+  s.textContent=projs
+    ?`${projs} project${projs===1?'':'s'}${live?` · ${live} active`:''}`
+    :'no projects yet';
+  ch.hidden=!multi;
+  if(multi&&!ch.innerHTML)ch.innerHTML=ic('unfold');
+  $('.brand').setAttribute('aria-haspopup',multi?'menu':'false');
+}
+function acctMenu(open){
+  const m=$('#acctMenu');if(!m)return;
+  const row=$('.brand');
+  if(open===false||!m.hidden){m.hidden=true;row.classList.remove('open');return;}
+  m.innerHTML=(ST.accounts||[]).map(a=>
+    `<button data-dir=${hesc(a.dir)}><span class="adot" style="background:${acctColor(a.name)}"></span>`
+    +`<span class="an">${esc(a.name)}</span>`
+    +(a.dir===ST.active_cfgdir?`<span class="amark">${ic('check')}</span>`:'')
+    +`</button>`).join('');
+  m.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{
+    ST.active_cfgdir=btn.dataset.dir;
+    localStorage.setItem('ctl_account',ST.active_cfgdir);
+    acctMenu(false);drawBrand();
+    toast('Default account: '+($('#brandName').textContent),'ok');
+  });
+  m.hidden=false;row.classList.add('open');
+}
+$('.brand').onclick=e=>{
+  // the chevron is the switcher; the rest of the row is still "go home", which
+  // is what it did before and what people will have in their fingers
+  if((ST.accounts||[]).length>1&&e.target.closest('.bchev'))return acctMenu();
+  acctMenu(false);go('home');
+};
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.brand')&&!e.target.closest('#acctMenu'))acctMenu(false);
+});
 
 /* ── all-accounts usage banner (mirrors the TUI's grid) ── */
 let _uTimer=null;
@@ -6243,6 +6503,9 @@ function startHeartbeat(){if(!HB_TIMER){heartbeat();HB_TIMER=setInterval(heartbe
   // STAGE holds the settings and mounts when `vendor-ready` fires.
   if(window.STAGE){
     STAGE.tier=ST.stage||'lite';
+    // set, not kicked: the scene does not exist yet, and _calm() reads this
+    // whenever the first frame does land
+    STAGE.glowPct=+ST.brightness||0;
     if(STAGE.tier==='off'||!MO.on)STAGE._static();
   }
   applyTheme(ST.theme);segDraw();

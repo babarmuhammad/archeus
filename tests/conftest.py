@@ -23,6 +23,7 @@ test still wins, because fixtures run before the test body.
 """
 import glob
 import os
+import re
 import urllib.parse
 import tempfile
 
@@ -87,9 +88,167 @@ def _no_real_editor(monkeypatch, request):
     return opened
 
 
+class _NoProc:
+    """Stands in for a process that was never started.
+
+    Deliberately permissive rather than clever: it answers every attribute the
+    spawn sites use (`stdin.write`, `communicate`, `wait`, `poll`, `kill`,
+    `returncode`, `pid`) as an immediate, empty, successful run. A stub that
+    raised would surface inside a daemon thread, where nothing can catch it and
+    the test hangs instead of failing — the same reason `_no_real_editor`
+    records a call rather than blowing up.
+    """
+    returncode = 0
+    pid = -1
+
+    def __init__(self, *a, **k):
+        self.stdin = self.stdout = self.stderr = _Sink()
+
+    def communicate(self, *a, **k):
+        return ('', '')
+
+    def wait(self, *a, **k):
+        return 0
+
+    def poll(self):
+        return 0
+
+    def kill(self):
+        pass
+
+    terminate = send_signal = kill
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+class _Sink:
+    def write(self, *a):
+        pass
+
+    def close(self):
+        pass
+
+    def flush(self):
+        pass
+
+    def read(self, *a):
+        return ''
+
+    readline = read
+
+    def __iter__(self):
+        return iter(())
+
+
+#: argv entries that mean "this starts Claude, or starts something whose whole
+#: job is to start Claude". Matched on the BASENAME of every argument, not just
+#: the executable, because a terminal spawn is `cmd /c start … claude …` and a
+#: detached worker is `python -m claude_sessions --bg-scan`.
+_CLAUDE_EXE = {'claude', 'claude.exe', 'claude.cmd', 'claude.bat'}
+_CLAUDE_FLAG = {'--bg-scan', '--failover-serve'}
+
+
+def _starts_claude(args):
+    argv = [args] if isinstance(args, (str, bytes)) else list(args or [])
+    argv = [os.fsdecode(a) if isinstance(a, bytes) else str(a) for a in argv]
+    if any(os.path.basename(a).lower() in _CLAUDE_EXE for a in argv):
+        return True
+    # `python -m claude_sessions …` deliberately does NOT count on its own:
+    # the statusline is dispatched that way and never reaches Claude (that is
+    # the whole reason __main__.py dispatches it before importing main), and
+    # test_statusline.py runs it for real to prove its glyphs survive a pipe.
+    # The two subcommands that DO end in a Claude call name themselves.
+    return any(a in _CLAUDE_FLAG for a in argv)
+
+
+@pytest.fixture(autouse=True)
+def _no_test_starts_claude(monkeypatch, request):
+    """No test may start Claude, or start the worker that starts Claude.
+
+    This is the `_no_real_editor` lesson at the level where it is complete.
+    Blocking the editor stopped one window; what was still getting out was the
+    expensive one: opening the TUI sessions screen calls
+    `memory.spawn_background_worker`, which launches a DETACHED child that runs
+    a real `claude -p` memory extraction. It outlives the test, so no fixture
+    teardown could see it, and `claude -p` writes a transcript into the REAL
+    `~/.claude/projects/<encoded cwd>` — which is how **ninety** project folders
+    named after pytest temp directories came to be listed in the user's own
+    project list, dashboard, usage and search, each one a Claude call billed to
+    whichever account happened to be default.
+
+    `subprocess.Popen` is the choke point every one of them passes through
+    (`gui_api._run_cancellable` headless, `ui.run_with_progress_stdin`
+    foreground, the detached worker, the failover proxy child, a terminal
+    spawn), so the guard sits there and inspects the argv.
+
+    It has to inspect it. Blocking Popen outright took 50 tests down with it,
+    because **`subprocess.run` is implemented in terms of `Popen`** — the hook
+    and statusline suites run a real interpreter and read its real stdout, and
+    `test_the_glyphs_survive_a_pipe` cannot be tested any other way. So
+    everything that is not Claude goes through to the real thing.
+
+    A test that means to reach the real spawn asks with
+    @pytest.mark.real_process.
+    """
+    if request.node.get_closest_marker('real_process'):
+        return
+    import subprocess
+    real = subprocess.Popen
+    started = []
+
+    def _guarded(args, *a, **k):
+        if _starts_claude(args):
+            started.append(args)
+            return _NoProc()
+        return real(args, *a, **k)
+
+    monkeypatch.setattr(subprocess, 'Popen', _guarded)
+    return started
+
+
+#: A project folder Claude Code created because a test made it run with cwd
+#: inside a pytest temp directory. The encoded name keeps the whole path with
+#: every non-alphanumeric character replaced by `-`, so the pytest basetemp
+#: shape survives verbatim and is unmistakable: `pytest-of-<user>` followed by
+#: `pytest-<n>`. Matching on both halves is what makes this safe to delete —
+#: a real project would have to live inside a pytest temp directory to match.
+_LEAKED_PROJECT = re.compile(r'pytest-of-.+-pytest-\d+')
+
+
+def _leaked_project_dirs():
+    home = os.path.expanduser('~')
+    out = []
+    for d in glob.glob(os.path.join(home, '.claude*', 'projects', '*')):
+        if os.path.isdir(d) and _LEAKED_PROJECT.search(os.path.basename(d)):
+            out.append(d)
+    return out
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Sweep any project folder a test caused to be created in a REAL config
+    dir. `_no_real_process` should mean there are none; this exists because the
+    thing it is cleaning up was created by a DETACHED grandchild process, and
+    no in-process guard can promise to have covered every way to reach one.
+    Belt and braces, and it reports rather than tidying up silently."""
+    leaked = _leaked_project_dirs()
+    if not leaked:
+        return
+    import shutil
+    for d in leaked:
+        shutil.rmtree(d, ignore_errors=True)
+    print('\nconftest: swept %d project folder(s) a test caused Claude Code to '
+          'create in a real config dir' % len(leaked))
+
+
 def pytest_configure(config):
     config.addinivalue_line(
         'markers', 'real_editor: allow this test to spawn a real editor process')
+    config.addinivalue_line(
+        'markers', 'real_process: allow this test to spawn a real child process')
 
 
 # ── nothing the USER owns may be written by a test ───────────

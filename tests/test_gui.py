@@ -226,41 +226,64 @@ def test_settings_failover_accepts_newline_text_and_caps_length(monkeypatch, tmp
     assert config_mod.load_settings()['failover_models'] == ['m%d' % i for i in range(8)]
 
 
-def test_nav_collapsed_roundtrips_and_survives_the_next_save(monkeypatch, tmp_path):
+def test_a_clamped_geometry_setting_survives_the_next_save(monkeypatch, tmp_path):
     """A GUI preference that is not declared in _DEFAULT_SETTINGS is written
     once and then deleted by the very next /api/settings POST — the bug that
-    made the chosen theme 'go back to classic' on restart. This asserts the
-    whole path: POST it, read it back, POST something ELSE, read it again."""
+    made the chosen theme 'go back to classic' on restart. Asserted on the
+    sidebar width because it is one of the keys the generic settings loop
+    deliberately excludes (it is clamped by hand), which is exactly the shape
+    that can fall out of the defaults table unnoticed. This asserts the whole
+    path: POST it, read it back, POST something ELSE, read it again."""
     Sandbox(monkeypatch, tmp_path)
     srv, base = _serve(monkeypatch)
     try:
-        code, d = _req(base + '/api/settings',
-                       body={'nav_collapsed': ['Library', 'System']})
+        code, d = _req(base + '/api/settings', body={'side_w': 340})
         assert code == 200 and d['ok']
-        assert config_mod.load_settings()['nav_collapsed'] == ['Library', 'System']
+        assert config_mod.load_settings()['side_w'] == 340
         # an unrelated save must not wipe it
         _req(base + '/api/settings', body={'theme': 'default'})
     finally:
         srv.shutdown()
-    assert config_mod.load_settings()['nav_collapsed'] == ['Library', 'System']
+    assert config_mod.load_settings()['side_w'] == 340
     from claude_sessions.gui import state_payload
-    assert state_payload()['nav_collapsed'] == ['Library', 'System']
+    assert state_payload()['side_w'] == 340
 
 
-def test_every_nav_group_is_collapsible_and_the_flat_list_is_derived():
-    """Two regressions in one: NAV must stay a FLAT list because
-    tools/smoke_gui.py and tools/shot_gui.py both evaluate `NAV.map(n => n[0])`
-    for the page list, and every group must carry a name because the name is
-    what the collapsed set is keyed by — an unnamed group could be collapsed
-    and never reopened."""
+def test_every_section_names_real_pages_and_every_page_has_a_door():
+    """NAV is the ONE page table and SECTIONS points into it by id, which buys
+    a cross-check the old nested list could not have: a section naming a page
+    that does not exist would render a nav row that navigates to a blank
+    screen, and a page in no section is unreachable unless something else
+    reaches it — so it has to say what does, in OFFNAV.
+
+    NAV must also stay FLAT: tools/smoke_gui.py and tools/shot_gui.py both
+    evaluate `NAV.map(n => n[0])` for the page list, and a page nobody walks is
+    a page nobody knows is broken.
+    """
     import re
     from claude_sessions.gui_html import PAGE
-    assert 'const NAV=NAV_GROUPS.flatMap(' in PAGE, 'NAV must be derived, not a second list'
-    block = PAGE[PAGE.index('const NAV_GROUPS=['):PAGE.index('const NAV=NAV_GROUPS')]
-    groups = re.findall(r"\n\s*\['([^']*)'\s*,\s*\[", block)
-    assert groups, 'no nav groups found'
-    assert all(g.strip() for g in groups), f'unnamed nav group: {groups}'
-    assert 'onclick="toggleNavGroup(' in PAGE
+    nav = PAGE[PAGE.index('const NAV=['):PAGE.index('const SECTIONS=[')]
+    pages = re.findall(r"\n\s*\['([a-z]+)',", nav)
+    assert len(pages) > 12, pages
+    assert len(set(pages)) == len(pages), 'a page is declared twice'
+    # five fields per row, renderer last — drawPage calls n[4]()
+    assert nav.count('()=>pg') == len(pages), 'a page row is missing its renderer'
+
+    sec = PAGE[PAGE.index('const SECTIONS=['):PAGE.index('const OFFNAV=')]
+    labels = re.findall(r"\n\s*\['([A-Z][^']*)'", sec)
+    assert labels and all(x.strip() for x in labels), labels
+    assert len(labels) == 5, 'the sidebar is five sections: %s' % (labels,)
+    placed = [x for grp in re.findall(r"\[('[a-z]+'(?:,'[a-z]+')*)\]\]", sec)
+              for x in grp.replace("'", '').split(',')]
+    assert not set(placed) - set(pages), (
+        'a section names a page that does not exist: %s'
+        % sorted(set(placed) - set(pages)))
+
+    off = PAGE[PAGE.index('const OFFNAV='):PAGE.index('const SEC_OF=')]
+    loose = set(re.findall(r"(\w+):'", off))
+    assert set(pages) == set(placed) | loose, (
+        'a page in neither a section nor OFFNAV is unreachable: %s'
+        % sorted(set(pages) ^ (set(placed) | loose)))
 
 
 def test_the_sidebar_gives_the_project_list_a_floor_and_the_name_a_width():

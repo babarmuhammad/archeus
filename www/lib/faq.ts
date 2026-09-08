@@ -9,11 +9,11 @@ export type QA = { q: string; a: string };
 export const FAQ: QA[] = [
   {
     q: 'What is archeus?',
-    a: 'archeus is a free, open-source workspace layer for Anthropic’s Claude Code CLI. It sits in front of Claude Code: you pick a project, see every session you have ever had in it, and launch the next one with the model, effort, permissions and context you intended. It adds persistent project memory, a session archive you can search and tag, MCP server management, an interactive architecture graph and per-turn cost tracking. It is a Python package, MIT licensed, with zero runtime dependencies, and it runs as a terminal UI or a desktop GUI over the same engine.',
+    a: 'The memory and workspace layer for AI coding agents. archeus is free and open source, and it sits in front of the agent: you pick a project, see every session you have ever had in it, and launch the next one with the model, effort, permissions and context you intended. It adds persistent project memory, a session archive you can search and tag, MCP server management, an interactive architecture graph and per-turn cost tracking. Anthropic’s Claude Code CLI is the agent it drives today. It is a Python package, MIT licensed, with zero runtime dependencies, and it runs as a terminal UI or a desktop GUI over the same engine.',
   },
   {
     q: 'Is this the same as the Rust archeus?',
-    a: 'No. There are two independent open-source projects using the name archeus. This one is the Python workspace layer for Claude Code — install it with pipx install archeus, source at github.com/babarmuhammad/archeus, documentation at docs.claudectl.space. The other is a Rust agent orchestrator by a different author, published on crates.io. They are unrelated projects and neither is affiliated with Anthropic.',
+    a: 'No. There are two independent open-source projects using the name archeus. This one is the Python memory and workspace layer for AI coding agents — install it with pipx install archeus, source at github.com/babarmuhammad/archeus, documentation at docs.claudectl.space. The other is a Rust agent orchestrator by a different author, published on crates.io. They are unrelated projects and neither is affiliated with Anthropic.',
   },
   {
     q: 'Is archeus made by Anthropic?',
@@ -90,6 +90,10 @@ export const FAQ: QA[] = [
   {
     q: 'Can I install it from PyPI?',
     a: 'Yes: pipx install archeus, or pip install archeus. It also ships as a Claude Code plugin if you would rather stay inside the session.',
+  },
+  {
+    q: 'Does archeus work with coding agents other than Claude Code?',
+    a: 'Not today. Claude Code is the only agent archeus drives, and everything it does reads the files Claude Code writes to disk. Provider-neutral memory, and then an open harness of its own, is the long-term direction — a goal, not a feature, and not something you can use yet. Claude Code is the first surface, not the boundary.',
   },
 ];
 

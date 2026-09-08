@@ -157,8 +157,11 @@ def test_help_screen_roundtrip(monkeypatch, tmp_path):
 def test_settings_screen_roundtrip(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     sb.add_project('alpha')
-    # UP x2 wraps to second-from-last item ('⚙  Settings')
-    keys = flat(UP, UP, ENTER, ESC, ESC)
+    # UP x2 wraps to second-from-last item ('⚙  Settings…'), which is now a
+    # SECTION: it opens a submenu, and the first row of that submenu is the
+    # settings screen itself. Two ENTERs, not one — that extra step is the whole
+    # point of the regrouping and the test says so.
+    keys = flat(UP, UP, ENTER, ENTER, ESC, ESC, ESC)
     cap, _ = run_main(monkeypatch, sb, keys)
     assert 'SETTINGS' in cap.plain
     assert 'Editor' in cap.plain
