@@ -18,7 +18,7 @@ jsonld: |
       "alternateName": ["archeus (Python)", "archeus for Claude Code"],
       "identifier": "archeus",
       "sameAs": [
-        "https://github.com/babarmuhammad/claudectl",
+        "https://github.com/babarmuhammad/archeus",
         "https://pypi.org/project/archeus/",
         "https://docs.claudectl.space/"
       ],
@@ -26,7 +26,7 @@ jsonld: |
       "operatingSystem": "Windows, macOS, Linux",
       "softwareVersion": "2.0.0",
       "url": "https://claudectl.space/",
-      "codeRepository": "https://github.com/babarmuhammad/claudectl",
+      "codeRepository": "https://github.com/babarmuhammad/archeus",
       "programmingLanguage": "Python",
       "license": "https://opensource.org/licenses/MIT",
       "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}
@@ -50,7 +50,7 @@ session in five minutes.
 
     Two independent open-source projects use this name. **This** one is the Python
     workspace layer for Claude Code — `pipx install archeus`, source at
-    [github.com/babarmuhammad/claudectl](https://github.com/babarmuhammad/claudectl),
+    [github.com/babarmuhammad/archeus](https://github.com/babarmuhammad/archeus),
     published on [PyPI](https://pypi.org/project/archeus/). The other is a Rust agent
     orchestrator by a different author, published on crates.io. They are unrelated, and
     neither is affiliated with Anthropic.

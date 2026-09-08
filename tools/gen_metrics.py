@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'docs', 'dashboard.md')
 README = os.path.join(ROOT, 'README.md')
-REPO = 'babarmuhammad/claudectl'
+REPO = 'babarmuhammad/archeus'
 PKG = 'archeus'
 UA = {'User-Agent': 'archeus-docs-metrics'}
 

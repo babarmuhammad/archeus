@@ -11,7 +11,7 @@ useful commands and its eight skills inside the conversation rather than in a se
 window.
 
 ```
-/plugin marketplace add babarmuhammad/claudectl
+/plugin marketplace add babarmuhammad/archeus
 /plugin install archeus@archeus
 ```
 

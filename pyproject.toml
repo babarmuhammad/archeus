@@ -38,17 +38,17 @@ classifiers = [
 # repository are one thing. `Repository` is the key PyPI gives its own icon to;
 # `Source` is kept because it is what the existing listing shows.
 #
-# The domain and the repository path still carry the old name on purpose: the
-# new domain is not registered yet and the GitHub repo has not been renamed, so
-# every link here has to keep resolving until both moves happen. They are one
-# substitution away — see tools/_rename_brand.py, which holds exactly these two
-# strings back.
+# The DOMAIN still carries the old name on purpose — the new one is not
+# registered yet, and these links have to keep resolving until it is. It is one
+# substitution away: `tools/_rename_brand.py` holds that single string back, and
+# `test_the_domain_is_the_only_thing_still_waiting_on_a_move` fails if anything
+# else joins it. The repository path is already moved.
 [project.urls]
 Homepage = "https://claudectl.space"
 Documentation = "https://docs.claudectl.space/"
-Repository = "https://github.com/babarmuhammad/claudectl"
-Source = "https://github.com/babarmuhammad/claudectl"
-Issues = "https://github.com/babarmuhammad/claudectl/issues"
+Repository = "https://github.com/babarmuhammad/archeus"
+Source = "https://github.com/babarmuhammad/archeus"
+Issues = "https://github.com/babarmuhammad/archeus/issues"
 Changelog = "https://claudectl.space/changelog"
 
 [project.scripts]

@@ -52,6 +52,12 @@ MUTANTS = [
     ('a clean install walks every project anyway',
      "    if not _has_old_artifacts(cfgdirs):",
      "    if False:"),
+    # the real incident: a blind rename pass rewrote this module's own OLD.
+    # Every move becomes a no-op, nothing is found, the done flag is written,
+    # and every existing user's state stays under the old name forever.
+    ("the module no longer knows the name it is migrating FROM",
+     "OLD = 'claudectl'",
+     "OLD = 'archeus'"),
 ]
 
 

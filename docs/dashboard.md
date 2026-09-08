@@ -53,6 +53,6 @@ From [pypistats.org](https://pypistats.org/packages/archeus), mirrors excluded.
 | Commits | 148 |
 | Commits in the last 30 days | 71 |
 
-Tests run on Windows, macOS and Linux across the supported Python versions on every push — see [CI](https://github.com/babarmuhammad/claudectl/actions).
+Tests run on Windows, macOS and Linux across the supported Python versions on every push — see [CI](https://github.com/babarmuhammad/archeus/actions).
 
 *Generated 2026-09-07 09:26 UTC.*

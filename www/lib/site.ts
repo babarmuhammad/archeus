@@ -3,7 +3,7 @@ export const SITE = {
   docs: 'https://docs.claudectl.space',
   name: 'archeus',
   tagline: 'The workspace layer for Claude Code',
-  repo: 'https://github.com/babarmuhammad/claudectl',
+  repo: 'https://github.com/babarmuhammad/archeus',
   pypi: 'https://pypi.org/project/archeus/',
   author: 'Babar Muhammad Anas',
   authorGithub: 'https://github.com/babarmuhammad',

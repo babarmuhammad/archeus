@@ -4,48 +4,40 @@ A rename done by substitution is only finished when nothing is left, and the
 dangerous leftovers are the quiet ones: a path literal, a header name, an env
 var, a settings key. Grepping is the only check that sees all four at once.
 
-Three kinds of mention are legitimate and are listed explicitly, so adding a
-fourth is a decision someone has to make rather than something that drifts in:
+The two kinds of legitimate mention are NOT listed here. They are imported from
+`tools/_rename_brand.py`, which is the thing that has to honour them:
 
-  the two HELD strings   the domain and the GitHub repo path still resolve to
-                         the old name because neither move has happened yet
-  the migration          migrate.py and its tests exist to know the old name
-  the history            CHANGELOG.md describes releases that really were
-                         called claudectl, and prose that says "formerly"
+  SKIP   whole files that keep the old name — the changelog, the migration
+         module, the tools and tests that exist to know both names
+  HOLD   exact strings preserved wherever they appear — the documentation
+         domain, which is not bought yet, and the README's "Formerly" line
+
+Those lists used to be duplicated here, and the duplication cost exactly what
+duplication costs: the script's copy was the shorter one, so a second run
+rewrote `migrate.py` to `OLD = 'archeus'` — and rewrote this file's copy of the
+allowlist in the same pass, so the suite went on passing over a migration that
+had become a no-op. One definition, imported.
 """
 import io
 import os
 import re
 import subprocess
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, 'tools'))
 
-#: substrings that legitimately still contain the old name anywhere they appear
-HELD = ('claudectl.space', 'babarmuhammad/claudectl')
-
-#: files allowed to name it outright
-ALLOWED = {
-    'CHANGELOG.md',                    # releases that really were named that
-    'README.md',                       # the "formerly claudectl" line
-    '.gitignore',                      # transitional: keeps old machine-local
-                                       # state unstageable until it is migrated
-    'claude_sessions/migrate.py',      # the one module that must know both
-    'tests/test_migration.py',
-    'tests/test_no_old_brand_string.py',
-    'tools/_rename_brand.py',
-    'tools/_mut_migration.py',
-    'tools/_e2e_migration.py',
-}
+from _rename_brand import HOLD, SKIP        # noqa: E402  (needs the path above)
 
 
 def _tracked():
     out = subprocess.run(['git', 'ls-files'], cwd=ROOT, capture_output=True,
                          text=True, encoding='utf-8', check=True).stdout
-    return [r for r in out.splitlines() if r and r not in ALLOWED]
+    return [r for r in out.splitlines() if r and r not in SKIP]
 
 
 def test_nothing_still_carries_the_old_name():
-    held = re.compile('|'.join(re.escape(h) for h in HELD), re.I)
+    held = re.compile('|'.join(re.escape(h) for h in HOLD), re.I)
     bad = []
     for rel in _tracked():
         path = os.path.join(ROOT, rel.replace('/', os.sep))
@@ -60,15 +52,12 @@ def test_nothing_still_carries_the_old_name():
     assert not bad, 'the old name survives in:\n  ' + '\n  '.join(bad[:25])
 
 
-def test_the_two_held_strings_are_still_only_the_domain_and_the_repo():
-    """They are held back because the domain is not bought and the repo is not
-    renamed. When either moves, the one substitution that finishes the job must
-    not silently miss a THIRD thing that grew into the exemption meanwhile."""
-    from claude_sessions import migrate  # noqa: F401  (import proves it loads)
-    src = io.open(os.path.join(ROOT, 'tools', '_rename_brand.py'),
-                  encoding='utf-8').read()
-    for h in HELD:
-        assert repr(h) in src or "'%s'" % h in src, \
-            '%s is exempted here but not held by the rename script' % h
-    assert src.count("': '\\x00HOLD") == len(HELD), \
-        'the rename script holds a different number of strings than this test'
+def test_the_domain_is_the_only_thing_still_waiting_on_a_move():
+    """`claudectl.space` is held because the new domain is not registered yet,
+    and it is the last thing standing between here and the name being gone.
+
+    This is a reminder with a filename attached: when the domain moves, drop it
+    from HOLD and re-run the script. Everything else in HOLD is permanent."""
+    pending = [h for h in HOLD if h.endswith('.space')]
+    assert pending == ['claudectl.space'], \
+        'the set of things waiting on an external move changed: %r' % (pending,)

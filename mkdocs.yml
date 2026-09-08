@@ -10,8 +10,8 @@ site_description: >-
 # Asset and page links stay relative, which is why one site_url serves both.
 site_url: https://docs.claudectl.space/
 site_author: Babar Muhammad Anas
-repo_url: https://github.com/babarmuhammad/claudectl
-repo_name: babarmuhammad/claudectl
+repo_url: https://github.com/babarmuhammad/archeus
+repo_name: babarmuhammad/archeus
 edit_uri: edit/main/docs/
 copyright: MIT licensed — Copyright &copy; 2026 Babar Muhammad Anas
 
@@ -116,7 +116,7 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/babarmuhammad/claudectl
+      link: https://github.com/babarmuhammad/archeus
       name: archeus on GitHub
 
   # schema.org `sameAs` for the author entity, emitted on every page by

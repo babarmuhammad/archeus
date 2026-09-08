@@ -5,7 +5,7 @@
 Please do not open a public issue for a security problem.
 
 Use GitHub's private vulnerability reporting on this repository:
-[Report a vulnerability](https://github.com/babarmuhammad/claudectl/security/advisories/new).
+[Report a vulnerability](https://github.com/babarmuhammad/archeus/security/advisories/new).
 
 You should get an acknowledgement within a few days. If a fix is needed, it ships in
 the next release and the advisory is published alongside it with credit, unless you

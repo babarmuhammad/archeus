@@ -194,7 +194,7 @@ export const HOME: Doc = {
       blocks: [
         code('pipx install archeus\narcheus', 'pipx — recommended'),
         code('pip install archeus', 'pip'),
-        code('/plugin marketplace add babarmuhammad/claudectl\n/plugin install archeus@archeus', 'Claude Code plugin'),
+        code('/plugin marketplace add babarmuhammad/archeus\n/plugin install archeus@archeus', 'Claude Code plugin'),
         p(
           'Or clone the repository and run python claude-sessions.py. There is nothing to build and nothing to install alongside it.',
         ),
@@ -390,7 +390,7 @@ export const DOWNLOAD: Doc = {
       heading: 'Claude Code plugin',
       lead: 'If you would rather stay inside the session.',
       blocks: [
-        code('/plugin marketplace add babarmuhammad/claudectl\n/plugin install archeus@archeus'),
+        code('/plugin marketplace add babarmuhammad/archeus\n/plugin install archeus@archeus'),
         p(
           'The plugin ships commands and skills. It deliberately ships no hooks: archeus’s own hook manager already places the recall, worklog and guard hooks per account, and giving one settings.json entry two owners means installing both runs the same hook twice.',
         ),
@@ -401,7 +401,7 @@ export const DOWNLOAD: Doc = {
       heading: 'From a git checkout',
       blocks: [
         code(
-          'git clone https://github.com/babarmuhammad/claudectl.git\ncd archeus\npython claude-sessions.py          # terminal UI\npython claude-sessions.py --gui    # desktop GUI',
+          'git clone https://github.com/babarmuhammad/archeus.git\ncd archeus\npython claude-sessions.py          # terminal UI\npython claude-sessions.py --gui    # desktop GUI',
         ),
         p(
           'There is nothing to build. A checkout is told to git pull when it updates itself, rather than having a release installed over it.',
@@ -654,7 +654,7 @@ export const CONTRIBUTING: Doc = {
       heading: 'Setting up',
       blocks: [
         code(
-          'git clone https://github.com/babarmuhammad/claudectl.git\ncd archeus\npython claude-sessions.py          # terminal UI\npython claude-sessions.py --gui    # desktop GUI\npython -m pytest                   # the suite',
+          'git clone https://github.com/babarmuhammad/archeus.git\ncd archeus\npython claude-sessions.py          # terminal UI\npython claude-sessions.py --gui    # desktop GUI\npython -m pytest                   # the suite',
         ),
         p(
           'Python 3.10 or newer. pytest is the only development dependency; PyQt6 is optional and only affects whether the GUI opens in a native window or your browser.',

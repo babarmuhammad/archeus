@@ -198,6 +198,27 @@ def test_a_clean_install_settles_in_one_run_without_walking_projects(
     assert s['migrated_from'] == '', 'it claimed to have migrated something'
 
 
+def test_the_migration_still_knows_both_names():
+    """The rename was done by substitution, and a substitution pass over this
+    repo once rewrote migrate.py's own `OLD` to the new name.
+
+    That is the worst failure this module has: `OLD == NEW` makes every move a
+    no-op, `_has_old_artifacts` finds nothing, and the done flag is written
+    anyway — so every existing user's settings, caches and memory graphs stay
+    under the old name forever, and nothing anywhere reports a problem. It went
+    unnoticed at the time because the same pass rewrote the tests too, so they
+    kept passing.
+
+    Asserting that the two constants DIFFER is what survives that: a blind
+    substitution collapses them into each other, and no rewrite of this file
+    can make the comparison true again.
+    """
+    assert migrate.OLD != migrate.NEW
+    assert migrate.OLD_WORKDIR != migrate.NEW_WORKDIR
+    assert not migrate.OLD_SETTINGS.endswith(os.path.basename(_c.settings_file)), \
+        'the migration is looking for the settings file it is migrating TO'
+
+
 def test_the_workdir_name_the_migration_targets_is_the_one_store_uses():
     """Two spellings of the destination is two chances to disagree, and the
     disagreement would be silent: the move would succeed into a directory

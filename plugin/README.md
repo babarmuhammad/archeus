@@ -1,9 +1,9 @@
 # archeus — the plugin
 
-The in-session surface of [archeus](https://github.com/babarmuhammad/claudectl).
+The in-session surface of [archeus](https://github.com/babarmuhammad/archeus).
 
 ```
-/plugin marketplace add babarmuhammad/claudectl
+/plugin marketplace add babarmuhammad/archeus
 /plugin install archeus@archeus
 ```
 

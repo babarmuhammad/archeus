@@ -653,7 +653,7 @@ def run():
         print("\n  Nothing was launched and nothing was changed. This is a bug in")
         print("  archeus rather than something you did — please report it with")
         print("  the action shown above:")
-        print("  https://github.com/babarmuhammad/claudectl/issues")
+        print("  https://github.com/babarmuhammad/archeus/issues")
         pause("\n  Press Enter to exit...")
         sys.exit(1)
     # '|' is the choice-file delimiter. Strip it from user-typed fields

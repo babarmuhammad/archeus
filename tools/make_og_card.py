@@ -78,7 +78,7 @@ def draw_card():
         d.text((x + 30, y), b, font=small, fill=DIM)
         y += 44
 
-    d.text((x, H - 62), 'github.com/babarmuhammad/claudectl', font=small, fill=CYAN)
+    d.text((x, H - 62), 'github.com/babarmuhammad/archeus', font=small, fill=CYAN)
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     img.convert('RGB').save(OUT, 'PNG', optimize=True)

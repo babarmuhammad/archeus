@@ -69,7 +69,7 @@ Try in this order, stopping at the first that works:
    archeus does not override the variable if you have already set it.
 
 If the *browser* GUI flickers too, it is not this — please
-[open an issue](https://github.com/babarmuhammad/claudectl/issues) with your GPU and
+[open an issue](https://github.com/babarmuhammad/archeus/issues) with your GPU and
 browser, because that is a different bug.
 
 ## Flicker while the window is unfocused
@@ -127,5 +127,5 @@ Repos board to refresh it.
 | `%TEMP%\archeus.log` | Verbose DEBUG tracing — **only** written when `ARCHEUS_DEBUG=1` is set. Unbounded; turn it on for one run |
 | `~/.claude/failover.log` | The local failover proxy's requests, when it is running |
 
-Still stuck? [Open an issue](https://github.com/babarmuhammad/claudectl/issues) — and check
+Still stuck? [Open an issue](https://github.com/babarmuhammad/archeus/issues) — and check
 the [FAQ](https://claudectl.space/faq/) first.

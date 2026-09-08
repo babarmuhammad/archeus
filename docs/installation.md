@@ -31,7 +31,7 @@ That gives you `archeus`, `archeus --gui`, `archeus review`,
 ### Clone and run
 
 ```
-git clone https://github.com/babarmuhammad/claudectl.git
+git clone https://github.com/babarmuhammad/archeus.git
 cd archeus
 python claude-sessions.py
 ```
@@ -52,7 +52,7 @@ archeus also ships as a Claude Code plugin, which puts its three slash commands 
 eight skills inside the session itself:
 
 ```
-/plugin marketplace add babarmuhammad/claudectl
+/plugin marketplace add babarmuhammad/archeus
 /plugin install archeus@archeus
 ```
 

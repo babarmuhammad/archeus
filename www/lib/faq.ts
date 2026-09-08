@@ -13,7 +13,7 @@ export const FAQ: QA[] = [
   },
   {
     q: 'Is this the same as the Rust archeus?',
-    a: 'No. There are two independent open-source projects using the name archeus. This one is the Python workspace layer for Claude Code — install it with pipx install archeus, source at github.com/babarmuhammad/claudectl, documentation at docs.claudectl.space. The other is a Rust agent orchestrator by a different author, published on crates.io. They are unrelated projects and neither is affiliated with Anthropic.',
+    a: 'No. There are two independent open-source projects using the name archeus. This one is the Python workspace layer for Claude Code — install it with pipx install archeus, source at github.com/babarmuhammad/archeus, documentation at docs.claudectl.space. The other is a Rust agent orchestrator by a different author, published on crates.io. They are unrelated projects and neither is affiliated with Anthropic.',
   },
   {
     q: 'Is archeus made by Anthropic?',
@@ -41,7 +41,7 @@ export const FAQ: QA[] = [
   },
   {
     q: 'Does archeus work with Claude Code plugins and skills?',
-    a: 'Yes, and it ships as one. archeus manages the marketplaces and plugins Claude Code has installed, and has its own plugin with slash commands and skills — /plugin marketplace add babarmuhammad/claudectl. It deliberately bundles no hooks in the plugin: its hook manager already installs them per account, and two owners for one settings.json entry means the recall hook runs twice.',
+    a: 'Yes, and it ships as one. archeus manages the marketplaces and plugins Claude Code has installed, and has its own plugin with slash commands and skills — /plugin marketplace add babarmuhammad/archeus. It deliberately bundles no hooks in the plugin: its hook manager already installs them per account, and two owners for one settings.json entry means the recall hook runs twice.',
   },
   {
     q: 'How do I manage Claude Code sessions on Windows?',

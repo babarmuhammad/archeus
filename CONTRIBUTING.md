@@ -9,7 +9,7 @@ By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 ## Getting set up
 
 ```bash
-git clone https://github.com/babarmuhammad/claudectl.git
+git clone https://github.com/babarmuhammad/archeus.git
 cd archeus
 python claude-sessions.py          # terminal UI
 python claude-sessions.py --gui    # desktop GUI

@@ -11,7 +11,7 @@ project context between sessions. It uses your existing Claude Code authenticati
 Install with `pipx install archeus`, or clone the repository and run it.
 
 This is the documentation site. The product site is at https://claudectl.space/, the source
-at https://github.com/babarmuhammad/claudectl and the package at
+at https://github.com/babarmuhammad/archeus and the package at
 https://pypi.org/project/archeus/. Author: Babar Muhammad Anas.
 
 Disambiguation: two independent open-source projects use the name "archeus". This one is
@@ -73,4 +73,4 @@ carries them.
 ## Optional
 
 - [Full documentation as one file](https://docs.claudectl.space/llms-full.txt): every page above concatenated, for reading without crawling.
-- [Source](https://github.com/babarmuhammad/claudectl): the repository.
+- [Source](https://github.com/babarmuhammad/archeus): the repository.
