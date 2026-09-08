@@ -11,7 +11,7 @@
       "name": "archeus",
       "source": "./plugin",
       "description": "Recall this project's memory, check its health, and review the current diff — from inside a session.",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "category": "productivity",
       "tags": ["memory", "workspace", "sessions", "review"]
     }

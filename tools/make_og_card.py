@@ -8,8 +8,11 @@ read as one product. Fonts are Windows-shipped with a DejaVu fallback so a Linux
 CI run still produces something rather than dying — the file is committed, so
 this normally runs on the author's machine only.
 
-Requires Pillow. Writes docs/assets/og-card.png (not docs/img, which holds only
-tool-generated screenshots — see tests/test_demo_fixtures.py).
+Requires Pillow. Writes the card to BOTH sites (not docs/img, which holds only
+tool-generated screenshots — see tests/test_demo_fixtures.py). Both, because
+this used to write the docs copy and leave `www/public/` to be updated by hand,
+and the two had already drifted apart by a kilobyte — the same one-source rule
+`make_icon.py` follows for the favicons.
 """
 
 import os
@@ -17,7 +20,9 @@ import os
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, 'docs', 'assets', 'og-card.png')
+OUTS = [os.path.join(ROOT, 'docs', 'assets', 'og-card.png'),
+        os.path.join(ROOT, 'www', 'public', 'og-card.png')]
+OUT = OUTS[0]
 W, H = 1200, 630
 
 NAVY_TOP = (16, 32, 60)
@@ -80,9 +85,33 @@ def draw_card():
 
     d.text((x, H - 62), 'github.com/babarmuhammad/archeus', font=small, fill=CYAN)
 
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
-    img.convert('RGB').save(OUT, 'PNG', optimize=True)
-    print('wrote', OUT, img.size)
+    # The mark, in whatever space the text actually leaves. Same source and the
+    # same crop as the app icon (make_icon.master), so the card cannot drift
+    # away from the icon.
+    #
+    # Sized from the measured text, not from a chosen number: the first attempt
+    # used a fixed 360px and the tile landed on top of the tagline, and any
+    # fixed value goes wrong again the moment a line gets longer.
+    try:
+        from make_icon import master
+        right = max(d.textbbox((x, 0), TAG, font=mid)[2],
+                    d.textbbox((x, 0), TITLE, font=bold)[2],
+                    max(d.textbbox((x + 30, 0), b, font=small)[2] for b in BULLETS))
+        margin = 48
+        side = min(H - 2 * margin, W - right - 2 * margin)
+        if side >= 160:                         # below that it reads as a smudge
+            mark = master(side)
+            img.alpha_composite(mark, (W - side - margin, (H - side) // 2))
+        else:
+            print('logo skipped: only %dpx of clear space' % side)
+    except Exception as e:                      # Pillow missing, or no source
+        print('logo skipped:', e)
+
+    flat = img.convert('RGB')
+    for out in OUTS:
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        flat.save(out, 'PNG', optimize=True)
+        print('wrote', out, img.size)
 
 
 if __name__ == '__main__':
