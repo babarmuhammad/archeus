@@ -396,7 +396,8 @@ def run():
     def _banner():
         """Plan usage, plus the update notice when there is one. menu() splits
         this on newlines, so two facts stack rather than compete for one row."""
-        lines = [x for x in (_versions.update_notice(), usage_status_line()) if x]
+        lines = [x for x in (_versions.rename_notice(), _versions.update_notice(),
+                             usage_status_line()) if x]
         return '\n'.join(lines)
 
     while True:

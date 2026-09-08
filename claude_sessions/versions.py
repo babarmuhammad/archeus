@@ -67,6 +67,13 @@ PYPI_URL = 'https://pypi.org/pypi/%s/json' % SELF_PKG
 #: unattended on a background thread rather than when a screen is opened.
 SELF_TTL = 86400
 
+#: claudectl is being renamed to archeus, and 1.9.1 is the last release under
+#: the old name. Without this line `pip install -U claudectl` reports "already
+#: up to date" forever and nobody learns the project moved — the update checker
+#: cannot say so, because from PyPI's side nothing changed. Static text, no
+#: fetch: it is true whether or not the new package has been published yet.
+RENAME_NOTICE = 'claudectl is now archeus — install with: pip install archeus'
+
 
 def _cache_path():
     return os.path.join(_c.config_dir, 'claudectl-versions.json')
@@ -333,6 +340,16 @@ def self_status(refresh=False):
     return {'installed': cur, 'mode': self_install_mode(), 'latest': latest,
             'update': behind, 'current': bool(cur and latest and not behind),
             'error': rel.get('error', ''), 'fetched': rel.get('fetched', 0)}
+
+
+def rename_notice():
+    """The one-line "this project moved" banner. Always shown in 1.9.x.
+
+    Kept separate from update_notice() rather than folded into it: that one is
+    a fact about PyPI and goes quiet once you are current, this one is a fact
+    about the project and must not.
+    """
+    return f"  {_c.C_WARN}{RENAME_NOTICE}{_c.C_RESET}"
 
 
 def update_notice():

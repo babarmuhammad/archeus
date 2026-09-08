@@ -24,7 +24,7 @@ jsonld: |
       ],
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "Windows, macOS, Linux",
-      "softwareVersion": "1.9.0",
+      "softwareVersion": "1.9.1",
       "url": "https://claudectl.space/",
       "codeRepository": "https://github.com/babarmuhammad/claudectl",
       "programmingLanguage": "Python",

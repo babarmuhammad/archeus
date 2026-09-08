@@ -11,7 +11,7 @@ authors:
     website: 'https://claudectl.space'
 repository-code: 'https://github.com/babarmuhammad/claudectl'
 url: 'https://claudectl.space'
-version: 1.9.0
+version: 1.9.1
 date-released: '2026-09-04'
 abstract: >-
   A workspace layer for Anthropic's Claude Code CLI. Browse, search, tag, fork

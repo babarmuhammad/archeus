@@ -17,6 +17,11 @@ import sys
 
 HELP = """claudectl {ver}— the workspace layer for Claude Code.
 
+  NOTE  claudectl is now archeus. This is the last release under the old name.
+        Install the new one with:  pip install archeus
+        Your settings, memory graphs and project state migrate automatically
+        the first time archeus runs. Nothing is deleted.
+
 USAGE
   claudectl                  open the workspace UI (TUI unless ui_mode says GUI)
   claudectl --gui | --tui    force the web/desktop GUI, or the terminal UI

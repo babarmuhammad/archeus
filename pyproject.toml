@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claudectl"
-version = "1.9.0"
+version = "1.9.1"
 description = "The workspace layer for Claude Code - persistent project memory, an interactive architecture graph, MCP awareness, and per-project launch control in a fast terminal UI"
 readme = "README.md"
 requires-python = ">=3.10"

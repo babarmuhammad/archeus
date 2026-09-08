@@ -1,5 +1,13 @@
 <h1 align="center">claudectl</h1>
 
+<!-- BRIDGE-RELEASE-NOTICE: delete this block in the rename commit -->
+<p align="center">
+  <b>⚠️ claudectl is now <code>archeus</code>.</b> 1.9.1 is the last release under this name.<br>
+  <sub><code>pip install archeus</code> — settings, memory graphs and per-project state
+  migrate automatically on first run, and nothing is deleted. The rename is because the
+  tool is growing past Claude Code: other agent harnesses are next.</sub>
+</p>
+
 <p align="center">
   <b>The workspace layer for Claude Code.</b><br>
   Your projects stop being a stream of chats and start being workspaces —
