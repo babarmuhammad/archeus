@@ -129,6 +129,25 @@ const axisOf = (i: number): [number, number, number] => {
  *  weighting is preserved exactly while adjacent sections differ. */
 const secSeed = (s: number) => seedOf((s * 5) % 7 + 11);
 
+/** ...and the SIX STATIONS are stratified rather than sampled, which is a
+ *  different problem from the sections' one.
+ *
+ *  `seedOf(i)` is a fair draw and six draws are not a fair sample: it put three
+ *  of the six stations on `blend` — the deliberately magenta-leaning violet, 14%
+ *  of the table — including station 01, the hero of the front page, which came
+ *  out hot magenta against a reference that is violet and blue. Nothing about
+ *  the hero's colour should be a lottery it lost.
+ *
+ *  Walking the weighted table at (i + 0.5) / n reproduces the table's weights
+ *  exactly for any n, so the six come out two violet and one each of blend,
+ *  cyan, magenta and gold. The gradient AXIS still comes off seedOf(i), so the
+ *  two violet stations are not the same object rotated.
+ *
+ *  The sections keep their stride: seven of them are read in order with only a
+ *  few visible at once, and stratifying THOSE would put three violets in a row
+ *  at the top of the page, which is the thing the stride exists to avoid. */
+const stationSeed = (i: number, n: number) => (i + 0.5) / n;
+
 /* THE SIX ROLES, INDEXED — one place a number becomes a colour, numbered by
    cluster_spec.py so the same index means the same hue in every renderer. */
 const SF_ROLE = /* glsl */ `
@@ -138,7 +157,7 @@ const SF_ROLE = /* glsl */ `
     // the magenta role, pulled a third of the way toward the violet accent:
     // err is a SALMON in most palettes because its real job is to read as a
     // failure against body text, and used raw every cluster came out coral
-    c = mix(c, mix(u_err, u_acc2, 0.35), step(1.5, r));
+    c = mix(c, mix(u_err, u_acc2, 0.45), step(1.5, r));
     c = mix(c, u_warn, step(2.5, r));
     c = mix(c, u_ok,   step(3.5, r));
     c = mix(c, vec3(1.0), step(4.5, r));
@@ -153,8 +172,8 @@ const SF_ROLE = /* glsl */ `
 const SF_CHORD = /* glsl */ `
   vec3 chord(vec4 pal, float t, float hot){
     vec3 a = roleCol(pal.x), b = roleCol(pal.y), c = roleCol(pal.z);
-    vec3 col = mix(a, b, smoothstep(0.40, 0.76, t));
-    col = mix(col, c, smoothstep(0.74, 1.0, t));
+    vec3 col = mix(a, b, smoothstep(0.52, 0.88, t));
+    col = mix(col, c, smoothstep(0.86, 1.0, t));
     return mix(col, roleCol(pal.w), clamp(hot, 0.0, 1.0));
   }`;
 
@@ -449,7 +468,7 @@ export function buildJourney(): Journey {
      needs a uniform array for their positions anyway; these six are static, the
      buffers are a few thousand vertices, and an attribute cannot be indexed
      out of range by a shader that has lost track of how many there are. */
-  const PAL = Array.from({ length: STATION_COUNT }, (_, i) => chordOf(seedOf(i)));
+  const PAL = Array.from({ length: STATION_COUNT }, (_, i) => chordOf(stationSeed(i, STATION_COUNT)));
   const AXIS = Array.from({ length: STATION_COUNT }, (_, i) => axisOf(i));
   const pushChord = (pal: number[], cx: number[], s: number) => {
     const q = PAL[s], a = AXIS[s];
@@ -785,8 +804,12 @@ export function buildJourney(): Journey {
   solids.frustumCulled = false;
   stations.add(solids);
 
-  stations.add(new THREE.HemisphereLight(0xdfe9ff, 0x0a0e18, 0.16));
-  const keyL = new THREE.DirectionalLight(0xffffff, 1.15);
+  /* A DEEP ALBEDO WITH A NARROW SPECULAR, not a bright albedo under a bright
+     key — the same correction the GUI's graph world took, for the same reason.
+     These accents clear a contrast floor as TEXT, so a 1.15 white key on them
+     is milk. */
+  stations.add(new THREE.HemisphereLight(0xdfe9ff, 0x0a0e18, 0.09));
+  const keyL = new THREE.DirectionalLight(0xffffff, 0.95);
   keyL.position.set(-0.62, 0.78, 0.92);
   stations.add(keyL);
   const fillL = new THREE.DirectionalLight(0x5fa8ff, 0.6);
@@ -805,7 +828,7 @@ export function buildJourney(): Journey {
 
   const solidMat = (o: { key: string; glass?: boolean; rough: number; metal: number;
                          cc?: number; irid?: number; emis: number; fresA?: boolean;
-                         env?: number }) => {
+                         fresE?: number; env?: number }) => {
     const m = track(new THREE.MeshPhysicalMaterial({
       color: 0xffffff, roughness: o.rough, metalness: o.metal,
       clearcoat: o.cc ?? 0, clearcoatRoughness: 0.16,
@@ -830,7 +853,11 @@ export function buildJourney(): Journey {
       // the newline is load-bearing: three's own shader opens with
       // '#define STANDARD', a preprocessor directive has to begin a LINE, and
       // gluing it to the end of a prelude is an error a hundred lines away
-      sh.vertexShader = [SOLID_ATTRS, SF_CVAR, 'varying float vFog;',
+      //: the spare slot of aI, spent: how far this part is pulled to WHITE. A
+      //: junction's hot core and a cluster's own centre are white in every
+      //: reference cage whatever hue the cage wears, and the chord's highlight
+      //: role cannot say that - it is gold on a violet cluster.
+      sh.vertexShader = [SOLID_ATTRS, SF_CVAR, 'varying float vFog; varying float vWhite;',
                          'uniform float u_t, u_frag;', SPIN, SF_FOG, SF_GRAD, SF_CSET,
                          sh.vertexShader].join('\n')
         .replace('#include <defaultnormal_vertex>', `
@@ -839,31 +866,55 @@ export function buildJourney(): Journey {
           vec3 transformedNormal = normalMatrix * spin(im * sn, aI.x, u_t);`)
         .replace('#include <begin_vertex>', `
           vec3 lp = (instanceMatrix * vec4(position, 1.0)).xyz;
+          /* aI.y carries TWO things: the station in its integer part and this
+             part's GRADIENT BIAS in its fraction. Without the bias every part
+             of a cage reads the chord at the same place, so a junction's energy
+             shell came out the same hue as the tube it sits on — flat blue
+             balls where the GUI (which has had the bias since it went lit) has
+             the reference's magenta core. There is no room for a fifth
+             per-instance float: aI is (spin phase, station, radius, whiteness)
+             and aCx is (axis xyz, seed). A station index is a small integer and
+             a bias is in 0..1, so they share one. */
+          float aSt = floor(aI.y);
           setChord(aPal, aCx, lp / max(aI.z, 1e-4));
+          vGT = clamp(vGT + (aI.y - aSt), 0.0, 1.0);
+          vWhite = aI.w;
           // station 02 comes apart: its frame flies outward with its mesh
-          float fr = (abs(aI.y - 1.0) < 0.5) ? u_frag : 0.0;
+          float fr = (abs(aSt - 1.0) < 0.5) ? u_frag : 0.0;
           vec3 transformed = aC + spin(lp * (1.0 + fr * 2.2), aI.x, u_t * (1.0 - 0.55 * fr));`)
         .replace('#include <project_vertex>', `
           vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
           gl_Position = projectionMatrix * mvPosition;
           vFog = fogOf(-mvPosition.z);`);
-      sh.fragmentShader = [SF_CVAR, 'varying float vFog;', SF_HUES,
+      sh.fragmentShader = [SF_CVAR, 'varying float vFog; varying float vWhite;', SF_HUES,
                            'uniform vec3 u_bg; uniform float u_web, u_frag;',
                            SF_ROLE, SF_CHORD, sh.fragmentShader].join('\n')
         .replace('#include <emissivemap_fragment>', `
           #include <emissivemap_fragment>
           vec3 vd = normalize(vViewPosition);
           float fres = clamp(1.0 - abs(dot(normalize(normal), vd)), 0.0, 1.0);
-          vec3 ch = chord(vPal, vGT, ${o.glass ? '0.20 * fres' : '0.0'});
+          vec3 ch = mix(chord(vPal, vGT, ${o.glass ? '0.20 * fres' : '0.0'}),
+                        vec3(1.0), vWhite);
           /* DEEPEN AND SATURATE BEFORE LIGHTING IT. These accents are PALE by
              design — they clear a contrast floor as TEXT — and a pale albedo
              under a key, a fill and a rim is white. */
-          ch = clamp(mix(vec3(dot(ch, vec3(0.30, 0.59, 0.11))), ch, 1.45), 0.0, 1.0);
+          ch = clamp(mix(vec3(dot(ch, vec3(0.30, 0.59, 0.11))), ch, 1.90), 0.0, 1.0);
           ch = mix(u_bg, ch, vFog);
-          diffuseColor.rgb *= pow(max(ch, vec3(0.0)), vec3(1.9));
-          diffuseColor.a *= ${o.fresA ? 'pow(fres, 1.7)' : '1.0'} * vFog;
-          totalEmissiveRadiance = pow(max(ch, vec3(0.0)), vec3(1.55))
-            * ${o.emis.toFixed(3)} * (0.85 + 0.35 * u_web) * vFog;`);
+          diffuseColor.rgb *= pow(max(ch, vec3(0.0)), vec3(2.5));
+          /* A GLASS SHELL IS A RIM, AND A RIM IS A BAND. The ramp it replaces
+             is a soft bubble; the reference's junction is a clear sphere with a
+             hard bright ring you read the pink core through. */
+          diffuseColor.a *= ${o.fresA ? '(0.10 + 1.30 * smoothstep(0.55, 0.96, fres))' : '1.0'} * vFog;
+          /* ...and a TUBE is its mirror image: a cylinder's specular is a
+             narrow line down the part that FACES you, and its silhouette goes
+             dark. Running the rim term on a strut is what made every one of
+             them a flat pale band with bright edges. */
+          totalEmissiveRadiance = pow(max(ch, vec3(0.0)), vec3(2.05))
+            * ${o.emis.toFixed(3)}
+            * ${({1: '(0.25 + 0.95 * pow(fres, 2.0))',
+                  2: '(0.05 + 2.30 * pow(1.0 - fres, 9.0))',
+                  3: '(0.06 + 2.40 * smoothstep(0.55, 0.96, fres))'} as Record<number, string>)[o.fresE ?? 0] ?? '1.0'}
+            * (0.85 + 0.35 * u_web) * vFog;`);
     };
     return m;
   };
@@ -881,8 +932,12 @@ export function buildJourney(): Journey {
     const CX = new Float32Array(rows.length * 4);
     rows.forEach((r, k) => {
       mesh.setMatrixAt(k, r.m);
-      const st = r.i[1];
-      A.set([r.i[0], st, r.i[2], r.i[3]], k * 4);
+      // ...and the LOOKUPS take the integer part. aI.y packs the station in
+      // its integer part and the part's gradient bias in its fraction (see the
+      // begin_vertex injection); the attribute keeps both, every array indexed
+      // by station takes only the station.
+      const st = Math.floor(r.i[1]);
+      A.set([r.i[0], r.i[1], r.i[2], r.i[3]], k * 4);
       C.set([STATIONS[st].x, STATIONS[st].y, STATIONS[st].z], k * 3);
       PL.set(PAL[st] as number[], k * 4);
       const ax = AXIS[st];
@@ -944,25 +999,35 @@ export function buildJourney(): Journey {
       // Hub_GlassShell). The version that guessed from a still had three and
       // was missing the energy core, which is what stops a junction being a
       // white dot with a tint around it.
-      rCore.push({ m: ball(p2, CLUSTER.FRAME_BEAD_R * r * CLUSTER.HUB_HOT / CLUSTER.HUB_HOUSING * 1.7), i: [ph, st, r, 0] });
-      rCore.push({ m: ball(p2, CLUSTER.FRAME_BEAD_R * r * CLUSTER.HUB_ENERGY / CLUSTER.HUB_HOUSING), i: [ph, st, r, 0] });
+      // A JUNCTION'S TWO INNER SHELLS HAVE THEIR OWN RADII. They used to be
+      // the conduit hub's ratios with the hot core scaled 1.7, which put the
+      // white core on top of the energy shell so no pink ever showed.
+      rCore.push({ m: ball(p2, CLUSTER.FRAME_BEAD_HOT * r), i: [ph, st + 0.72, r, 0.80] });
+      rCore.push({ m: ball(p2, CLUSTER.FRAME_BEAD_ENERGY * r), i: [ph, st + 0.52, r, 0.14] });
       rGlass.push({ m: ball(p2, CLUSTER.FRAME_BEAD_R * r), i: [ph, st, r, 0] });
     }
     // THE LIT CENTRE — a white core with a gold seed in it, inside its own
     // glass. The one thing the model's parts list says that no still image did,
     // and the reason every hull built before it was read was hollow.
     const O = new THREE.Vector3();
-    rCore.push({ m: ball(O, CLUSTER.CORE_R * r), i: [ph, st, r, 0] });
-    rCore.push({ m: ball(O, CLUSTER.SEED_R * r), i: [ph, st, r, 0] });
+    // THE CENTRE IS NOT A SUN — it is a junction one size up. In both
+    // references the middle of a cage is dark.
+    rCore.push({ m: ball(O, CLUSTER.CORE_ENERGY_R * r), i: [ph, st + 0.50, r, 0.10] });
+    rCore.push({ m: ball(O, CLUSTER.CORE_R * r), i: [ph, st + 0.62, r, 0.78] });
+    rCore.push({ m: ball(O, CLUSTER.SEED_R * r), i: [ph, st + 0.86, r, 0] });
     rGlass.push({ m: ball(O, CLUSTER.CORE_SHELL_R * r), i: [ph, st, r, 0] });
   }
   w0.dispose();
 
   const TUBE_G = track(new THREE.CylinderGeometry(1, 1, 1, 12, 1, true));
   const BALL_G = track(new THREE.IcosahedronGeometry(1, 2));
-  mkInst(TUBE_G, solidMat({ key: 'frame', rough: 0.32, metal: 0.78, cc: 0.7, irid: 0.35, emis: 0.30 }), rTube, 4);
-  mkInst(BALL_G, solidMat({ key: 'core', rough: 0.10, metal: 0.05, cc: 0.4, irid: 0.2, emis: 1.20, env: 0.5 }), rCore, 5);
-  mkInst(BALL_G, solidMat({ key: 'glass', glass: true, rough: 0.08, metal: 0.15, cc: 1.0, irid: 0.65, emis: 0.22, fresA: true, env: 1.6 }), rGlass, 6);
+  /* ...and the emissives run hotter here than in the GUI's graph world, by
+     the same amount the composer would have added: this scene has NO BLOOM
+     PASS and never gets one (Canvas.tsx), so a hot core that the GUI reads
+     through its halo has to be legible as pixels. */
+  mkInst(TUBE_G, solidMat({ key: 'frame', rough: 0.22, metal: 0.78, cc: 0.9, irid: 0.35, emis: 0.72, fresE: 2, env: 0.6 }), rTube, 4);
+  mkInst(BALL_G, solidMat({ key: 'core', rough: 0.10, metal: 0.05, cc: 0.4, irid: 0.2, emis: 1.70, env: 0.5 }), rCore, 5);
+  mkInst(BALL_G, solidMat({ key: 'glass', glass: true, rough: 0.08, metal: 0.15, cc: 1.0, irid: 0.65, emis: 0.90, fresA: true, fresE: 3, env: 2.2 }), rGlass, 6);
 
 
   /* ── 3. the link: a tube along the same curve, drawn by scroll ───────────

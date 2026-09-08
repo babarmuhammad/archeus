@@ -76,18 +76,18 @@ def test_every_renderer_reads_the_spec():
 READS = {
     'stage.js graph scene': (
         'SHELL_ROD_HALF', 'SPOKE_HALF', 'WEB_ROD_HALF', 'FRAME_HALF',
-        'FRAME_BEAD_R', 'CORE_R', 'SEED_R', 'CORE_SHELL_R', 'SPOKE_IN',
+        'FRAME_BEAD_R', 'FRAME_BEAD_HOT', 'FRAME_BEAD_ENERGY',
+        'CORE_R', 'SEED_R', 'CORE_ENERGY_R', 'CORE_SHELL_R', 'SPOKE_IN',
         'SPOKE_OUT', 'WEB_R', 'MOTE_R', 'ORBIT_R', 'ORBIT_N',
         'MOTE_MIN', 'MOTE_MAX', 'LOD_BREAKS', 'ROD_ALPHA_BY_EDGES',
         'CONDUIT_HOUSING', 'CONDUIT_GLASS', 'CONDUIT_CORE', 'CONDUIT_REACH',
-        'CONDUIT_CLAMP', 'COLLAR_D', 'COLLAR_THICK',
-        'HUB_HOUSING', 'HUB_ENERGY', 'HUB_HOT', 'PALETTE_FAMILIES',
+        'CONDUIT_CLAMP', 'COLLAR_D', 'COLLAR_THICK', 'PALETTE_FAMILIES',
         'FILAMENT_MIX',
     ),
     'www scene.ts': (
-        'FRAME_HALF', 'FRAME_BEAD_R', 'CORE_R', 'SEED_R', 'CORE_SHELL_R',
-        'HUB_HOUSING', 'HUB_ENERGY', 'HUB_HOT', 'PALETTE_FAMILIES',
-        'FILAMENT_MIX',
+        'FRAME_HALF', 'FRAME_BEAD_R', 'FRAME_BEAD_HOT', 'FRAME_BEAD_ENERGY',
+        'CORE_R', 'SEED_R', 'CORE_ENERGY_R', 'CORE_SHELL_R',
+        'PALETTE_FAMILIES', 'FILAMENT_MIX',
     ),
 }
 

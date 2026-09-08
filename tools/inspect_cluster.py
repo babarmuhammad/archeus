@@ -62,10 +62,15 @@ LINK_FRAME = """(sel) => {
   const sc = STAGE._sc, ns = sc.__nodes;
   const u = sc.__np;
   let a = 0; for (let i = 1; i < ns.length; i++) if (ns[i].r > ns[a].r) a = i;
+  // the NEAREST cluster that is not overlapping a: the field packs 40 bodies
+  // densely and the plain nearest neighbour is usually a hull a is already
+  // inside, which parks the camera in the middle of a cage and photographs
+  // everything except the conduit.
   let b = -1, best = 1e9;
   for (let i = 0; i < ns.length; i++) {
     if (i === a) continue;
     const d = u[i].distanceTo(u[a]);
+    if (d < (ns[i].r + ns[a].r) * 1.45) continue;
     if (d < best) { best = d; b = i; }
   }
   const orig = sc.update;

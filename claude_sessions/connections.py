@@ -773,25 +773,32 @@ function drawCluster(n,r,col,alpha,bright){
   ctx.fillStyle='rgba(255,255,255,'+(0.7*p.s)+')';ctx.beginPath();ctx.arc(p.x,p.y,rr*0.5,0,7);ctx.fill();}
  /* THE JUNCTIONS. Twelve of them against the shell's forty-two, and they are
     the things you are meant to look at: a glass housing with an energy shell
-    and a hot core inside it, at the model's own radii. Drawn as three concentric
-    discs rather than a gradient — a createRadialGradient per junction per node
+    and a hot core inside it, at the junction's OWN radii — they used to be the
+    conduit hub's ratios with the hot core scaled 1.7, which put the white core
+    practically on top of the energy shell so no colour ever showed between
+    them. In both references the coloured core is about half the glass sphere.
+    Drawn as three concentric discs rather than a gradient — a createRadialGradient per junction per node
     per frame allocates, and this canvas already pays for 120 strokes. */
  if(px>=18){const br=Math.max(1.8/view.k,CL.FRAME_BEAD_R*r);
   for(const p of FP){const a=alpha*(0.5+0.5*p.s);
    ctx.globalAlpha=a*0.30;ctx.fillStyle=chordCol(col,p.t,4);
    ctx.beginPath();ctx.arc(p.x,p.y,br,0,7);ctx.fill();
    ctx.globalAlpha=a*0.85;ctx.fillStyle=chordCol(col,Math.min(1,p.t+0.30),16);
-   ctx.beginPath();ctx.arc(p.x,p.y,br*(CL.HUB_ENERGY/CL.HUB_HOUSING),0,7);ctx.fill();
+   ctx.beginPath();ctx.arc(p.x,p.y,br*(CL.FRAME_BEAD_ENERGY/CL.FRAME_BEAD_R),0,7);ctx.fill();
    ctx.globalAlpha=a;ctx.fillStyle='rgba(255,255,255,0.92)';
-   ctx.beginPath();ctx.arc(p.x,p.y,br*(CL.HUB_HOT/CL.HUB_HOUSING)*1.7,0,7);ctx.fill();}}
+   ctx.beginPath();ctx.arc(p.x,p.y,br*(CL.FRAME_BEAD_HOT/CL.FRAME_BEAD_R),0,7);ctx.fill();}}
  /* THE LIT CENTRE — a white core with a warm seed in it. The one thing the
     model's parts list says that no still image did, and the reason every hull
     drawn before it was read looked hollow however the shell was tuned. */
  if(px>=26){ctx.globalCompositeOperation='lighter';
   const cr=Math.max(1.6/view.k,CL.CORE_SHELL_R*r);
   const g2=ctx.createRadialGradient(n.x,n.y,0,n.x,n.y,cr);
+  // ...and it is NOT a sun. In both references the middle of a cage is dark:
+  // the white stop reaches only as far as CORE_R inside the shell, and what
+  // fills the rest is the chord, not a flare.
   g2.addColorStop(0,'rgba(255,255,255,'+(0.85*alpha)+')');
-  g2.addColorStop(0.35,hsla(chordCol(col,0.92,24),0.55*alpha));
+  g2.addColorStop(CL.CORE_R/CL.CORE_SHELL_R,hsla(chordCol(col,0.92,24),0.62*alpha));
+  g2.addColorStop(CL.CORE_ENERGY_R/CL.CORE_SHELL_R,hsla(chordCol(col,0.70,8),0.34*alpha));
   g2.addColorStop(1,hsla(chordCol(col,0.55,0),0));
   ctx.globalAlpha=1;ctx.fillStyle=g2;
   ctx.beginPath();ctx.arc(n.x,n.y,cr,0,7);ctx.fill();
@@ -1090,7 +1097,8 @@ def _cluster_payload():
     that carries them invites someone to use one."""
     return {k: getattr(_spec, k) for k in (
         'FRAME_HALF', 'FRAME_BEAD_R', 'FRAME_EDGES', 'FRAME_NODES',
-        'SHELL_BEAD_R', 'CORE_R', 'SEED_R', 'CORE_SHELL_R',
+        'SHELL_BEAD_R', 'CORE_R', 'SEED_R', 'CORE_ENERGY_R', 'CORE_SHELL_R',
+        'FRAME_BEAD_HOT', 'FRAME_BEAD_ENERGY',
         'WEB_R', 'MOTE_R', 'ORBIT_R', 'MOTE_GOLD', 'MOTE_WHITE',
         'SHELL_SPLIT', 'FILAMENT_MIX', 'LOD_BREAKS',
         'HUB_HOUSING', 'HUB_GLASS', 'HUB_ENERGY', 'HUB_HOT',

@@ -711,7 +711,7 @@ vec3 roleCol(float r){
      coral. The reference's magenta is violet-leaning — pushing the role rather
      than naming a colour keeps all 32 palettes working and lands the hue where
      the render has it. */
-  c = mix(c, mix(u_err, u_acc2, 0.35), step(1.5, r));
+  c = mix(c, mix(u_err, u_acc2, 0.45), step(1.5, r));
   c = mix(c, u_warn, step(2.5, r));
   c = mix(c, u_ok,   step(3.5, r));
   c = mix(c, u_white, step(4.5, r));
@@ -739,8 +739,8 @@ vec3 chord(vec4 pal, float t, float hot){
      accent — an even split put as much magenta on it as violet and the field
      came out pink. The overlap between the two stops is what keeps it a blend
      rather than two bands. */
-  vec3 col = mix(a, b, smoothstep(0.40, 0.76, t));
-  col = mix(col, c, smoothstep(0.74, 1.0, t));
+  vec3 col = mix(a, b, smoothstep(0.52, 0.88, t));
+  col = mix(col, c, smoothstep(0.86, 1.0, t));
   return mix(col, roleCol(pal.w), clamp(hot, 0.0, 1.0));
 }`;
 
@@ -1192,7 +1192,15 @@ const STAGE_SCENES = {
       nodes.push({
         x: ((gx + 0.5 + j1) / GX * 2.0 - 1.0) * 10.0,
         y: ((gy + 0.5 + j2) / GY * 2.0 - 1.0) * 5.2,
-        z: ((gz + 0.5 + j3) / GZ * 2.0 - 1.0) * 3.4 - 1.5,
+        /* THE BOX IS DEEP, and that is where the background network comes
+           from. The brief asks for distant clusters — smaller, dimmer, fading
+           into darkness rather than a flat starfield — and at a span of 3.4
+           there was no BACK of the field: every cage sat within a couple of
+           units of the camera plane, so the frame had a foreground and empty
+           black behind it. 6.6 deep and pushed back 4.6 puts a third of them
+           past 18 units, where vFar and the LOD ladder already make them
+           small, soft and mixed toward the ground with nothing new to draw. */
+        z: ((gz + 0.5 + j3) / GZ * 2.0 - 1.0) * 6.6 - 4.6,
         r,
         // mass by volume. Without this the collision below is equal-mass and a
         // pea deflects a boulder, which looks wrong the moment sizes differ.
@@ -1302,7 +1310,7 @@ const STAGE_SCENES = {
     u.u_np = {value: Array.from({length: N}, (_, i) =>
       new TH.Vector3(POS[i * 3], POS[i * 3 + 1], POS[i * 3 + 2]))};
 
-    const BOUND = [11.5, 6.2, 5.0];     // the box they are kept inside
+    const BOUND = [11.5, 6.2, 11.5];    // the box they are kept inside
     function physics(dt, e) {
       // busier workspace, livelier lattice — but the floor is a drift, not a
       // scurry. The energy term still doubles it, which is the part that has to
@@ -1458,8 +1466,14 @@ const STAGE_SCENES = {
        cheapest way to get magenta onto a violet cluster without painting it
        there — a hue that arrives from a direction reads as illumination,
        where the same hue painted into the material reads as decoration. */
-    S.add(new TH.HemisphereLight(0xdfe9ff, 0x0a0e18, 0.16));
-    const key = new TH.DirectionalLight(0xffffff, 1.05);
+    /* A DEEP ALBEDO WITH A NARROW SPECULAR, not a bright albedo under a bright
+       key. The references' tubes are saturated mid-dark blue and violet with a
+       hot streak down one side; a pale albedo (these accents clear a contrast
+       floor as TEXT) under a 1.05 white key is milk, which is what the field
+       came out as the moment magenta stopped hiding it. The light lost a third
+       and the albedo curve gained a half; the streak is the clearcoat's. */
+    S.add(new TH.HemisphereLight(0xdfe9ff, 0x0a0e18, 0.09));
+    const key = new TH.DirectionalLight(0xffffff, 0.72);
     key.position.set(-0.62, 0.78, 0.92);
     S.add(key);
     const fill = new TH.DirectionalLight(0x5fa8ff, 0.58);
@@ -1593,7 +1607,12 @@ const STAGE_SCENES = {
             vPal = u_pal[ni]; vPal2 = u_pal[ni];
             vT = clamp(gradT(lp / max(nd.w, 1e-4), u_axis[ni], nd.y, nd.z) + aI.y, 0.0, 1.0);
             vAng = atan(lp.z, lp.x);
-            vLay = 0.0;
+            //: the spare slot, spent: how far this part is pulled to WHITE.
+            //: A junction's hot core and the cluster's own centre are white in
+            //: every reference cage whatever hue the cage wears, and the
+            //: chord's highlight role cannot say that — it is gold on a violet
+            //: cluster and green on a cyan one.
+            vLay = aI.w;
             vHot = aI.z;
             vec3 transformed = u_np[ni] + spin(lp, nd.x, u_t);`;
 
@@ -1626,10 +1645,15 @@ const STAGE_SCENES = {
     const V_PROJECT = `
             vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
             gl_Position = projectionMatrix * mvPosition;
-            // depth haze, exponential: nothing in the field is closer than
-            // about 15 units, and starting it at 7 was a global half-dimmer
-            // wearing a depth cue's clothes
-            vFar = exp(-max(0.0, -mvPosition.z - 15.0) * 0.075);`;
+            /* depth haze, exponential: nothing in the field is closer than
+               about 15 units, and starting it at 7 was a global half-dimmer
+               wearing a depth cue's clothes. 16/0.042 and not 15/0.075 — the
+               box is deep now (it is where the background network comes from)
+               and at the old rate a cage at 22 units was a dark lump rather
+               than a dim cluster. In cluster-render-field.png the far cages
+               are about half the brightness of the near ones and still
+               obviously coloured. */
+            vFar = exp(-max(0.0, -mvPosition.z - 16.0) * 0.042);`;
 
     //: a conduit runs between two clusters and carries BOTH their chords, so a
     //: cyan cluster joined to a magenta one is joined by something that is cyan
@@ -1638,7 +1662,7 @@ const STAGE_SCENES = {
     const CHORD_LINK = `mix(chord(vPal, mix(0.12, 0.84, vT), vHot),
                             chord(vPal2, mix(0.84, 0.12, vT), vHot),
                             smoothstep(0.12, 0.88, vT))`;
-    const CHORD_CLUSTER = 'chord(vPal, vT, vHot * (0.30 + 0.70 * fres))';
+    const CHORD_CLUSTER = 'mix(chord(vPal, vT, vHot * (0.30 + 0.70 * fres)), u_white, vLay)';
 
     const F_SHADE = o => `
           #include <emissivemap_fragment>
@@ -1660,15 +1684,30 @@ const STAGE_SCENES = {
              luminance pushes the separation further. The raw-shader passes in
              this scene have carried the same pow() for rounds; this is the
              same correction where the light is. */
-          ch = mix(vec3(dot(ch, vec3(0.30, 0.59, 0.11))), ch, 1.45);
+          ch = mix(vec3(dot(ch, vec3(0.30, 0.59, 0.11))), ch, 1.90);
           ch = clamp(ch, 0.0, 1.0);
           ch = mix(u_bg, ch, vFar);
           ch = calm(ch, u_bg, u_calm + ${F(o.calm)});
-          diffuseColor.rgb *= pow(max(ch, vec3(0.0)), vec3(1.9))
+          diffuseColor.rgb *= pow(max(ch, vec3(0.0)), vec3(2.5))
                             * ${F(o.tint == null ? 1 : o.tint)};
-          diffuseColor.a *= ${F(o.alpha)} * ${o.fresA ? 'pow(fres, 1.7)' : '1.0'} * vFar;
-          totalEmissiveRadiance = pow(max(ch, vec3(0.0)), vec3(1.55)) * ${F(o.emis)}
-            * ${o.fresE ? '(0.25 + 0.95 * pow(fres, 2.0))' : '1.0'}
+          /* A GLASS SHELL IS A RIM, AND A RIM IS A BAND — not a ramp. The
+             junctions used to fade pow(fres, 1.7) from the middle out, which
+             is a soft bubble; in both references a junction is a clear sphere
+             with a HARD bright ring at its silhouette that you read the pink
+             core THROUGH. So the alpha is a narrow smoothstep with a low floor:
+             the floor is what you see the core through, the band is the ring. */
+          diffuseColor.a *= ${F(o.alpha)}
+            * ${o.fresA ? '(0.10 + 1.30 * smoothstep(0.55, 0.96, fres))' : '1.0'} * vFar;
+          /* ...and a TUBE is the mirror image of that, which is why fresE is a
+             mode and not a flag. A cylinder's specular is a narrow line down
+             the part that FACES you and its silhouette goes dark — which is
+             exactly what the reference's tubes do and the opposite of a rim
+             glow. Running the glass term on them is what made every strut a
+             flat pale band with bright edges. */
+          totalEmissiveRadiance = pow(max(ch, vec3(0.0)), vec3(2.05)) * ${F(o.emis)}
+            * ${{1: '(0.25 + 0.95 * pow(fres, 2.0))',
+                 2: '(0.05 + 2.30 * pow(1.0 - fres, 9.0))',
+                 3: '(0.06 + 2.40 * smoothstep(0.55, 0.96, fres))'}[o.fresE] || '1.0'}
             * (0.82 + 0.30 * u_e) * (1.0 + u_shock * 0.8) * vFar * u_dens;
           ${o.over || ''}`;
 
@@ -1809,10 +1848,12 @@ const STAGE_SCENES = {
           // the energy shell are opaque and go in the core mesh; the glass
           // housing is transparent and goes in the glass mesh, which draws
           // after so it blends over what it contains.
-          rCore.push({m: ball(p, CL.FRAME_BEAD_R * n.r * CL.HUB_HOT / CL.HUB_HOUSING * 1.7),
-                      i: [i, 0.72, 0.62, 0]});
-          rCore.push({m: ball(p, CL.FRAME_BEAD_R * n.r * CL.HUB_ENERGY / CL.HUB_HOUSING),
-                      i: [i, 0.58, 0.12, 0]});
+          // ...and the hot core is WHITE, from the fourth slot, not from the
+          // chord's highlight role: that role is gold on a violet cluster and
+          // green on a cyan one, and in both renders every junction core is
+          // the same white whatever hue the cage around it wears.
+          rCore.push({m: ball(p, CL.FRAME_BEAD_HOT * n.r), i: [i, 0.72, 0.30, 0.80]});
+          rCore.push({m: ball(p, CL.FRAME_BEAD_ENERGY * n.r), i: [i, 0.52, 0.10, 0.14]});
           rGlass.push({m: ball(p, CL.FRAME_BEAD_R * n.r), i: [i, 0.08, 0.22, 0]});
         }
       }
@@ -1824,8 +1865,9 @@ const STAGE_SCENES = {
          cyan outer glow, which is exactly a chord walked from its highlight
          end — so the seed sits at the hot end of the gradient and the shell at
          the cool end. */
-      rCore.push({m: ball([0, 0, 0], CL.CORE_R * n.r), i: [i, 0.62, 1.00, 0]});
-      rCore.push({m: ball([0, 0, 0], CL.SEED_R * n.r), i: [i, 0.86, 0.55, 0]});
+      rCore.push({m: ball([0, 0, 0], CL.CORE_ENERGY_R * n.r), i: [i, 0.50, 0.10, 0.10]});
+      rCore.push({m: ball([0, 0, 0], CL.CORE_R * n.r), i: [i, 0.62, 0.35, 0.78]});
+      rCore.push({m: ball([0, 0, 0], CL.SEED_R * n.r), i: [i, 0.86, 0.85, 0]});
       if (n.lod > 0) rGlass.push({m: ball([0, 0, 0], CL.CORE_SHELL_R * n.r), i: [i, 0.02, 0.35, 0]});
     }
 
@@ -1837,15 +1879,23 @@ const STAGE_SCENES = {
     const BALL_G = new TH.IcosahedronGeometry(1, 2);
 
     mkInst(TUBE_G, solidMat({
-      key: 'frame', rough: 0.32, metal: 0.78, cc: 0.7, irid: 0.35,
-      emis: 0.30, fresE: 1, fresA: 0, alpha: 1.0, calm: 0.34, hot: 0,
+      /* exponent 7 on the specular line and env down to 0.6. A cylinder's
+         normal turns as the SINE of the angle across it, so pow(1 - fres, 3)
+         is still at 65% of full brightness half way to the silhouette — a
+         broad pale band, which is what our tubes were. The reference's tube is
+         a mid-dark saturated body with a thin hot line down it; 7 is where the
+         same term is 32% at half width. The environment came down for the same
+         reason: at 1.1 a metal 0.78 tube reflects most of its own brightness
+         and the albedo curve underneath it stops mattering. */
+      key: 'frame', rough: 0.22, metal: 0.78, cc: 0.9, irid: 0.35, env: 0.6,
+      emis: 0.42, fresE: 2, fresA: 0, alpha: 1.0, calm: 0.34, hot: 0,
     }), rFrame, 0);
 
     mkInst(BALL_G, solidMat({
       key: 'core', rough: 0.10, metal: 0.05, cc: 0.4, irid: 0.2,
       // the cores are the only thing in the scene meant to clear the bloom
       // threshold on their own — 0.55, so only a near-white surface does
-      emis: 1.20, fresE: 0, fresA: 0, alpha: 1.0, calm: 0.50, hot: 0, env: 0.5,
+      emis: 0.95, fresE: 0, fresA: 0, alpha: 1.0, calm: 0.50, hot: 0, env: 0.5,
     }), rCore, 1);
 
     mkInst(BALL_G, solidMat({
@@ -1854,7 +1904,11 @@ const STAGE_SCENES = {
       // makes the middle see-through and the edge solid, which is how a
       // transparent sphere is legible at all — a flat 40% sphere is a washer.
       // It is also why no backdrop-filter is needed anywhere near this app.
-      emis: 0.22, fresE: 1, fresA: 1, alpha: 0.92, calm: 0.44, hot: 0, env: 1.6,
+      // pow 1.25 and not 1.7 on the alpha, emissive up from 0.22, env up from
+      // 1.6: in both references a junction is a CLEAR SPHERE with a hard bright
+      // rim and a pink core visible inside it. At the old numbers the shell was
+      // a grey ghost the core's bloom ate, and a junction read as a halo.
+      emis: 0.62, fresE: 3, fresA: 1, alpha: 0.92, calm: 0.44, hot: 0, env: 2.2,
     }), rGlass, 2);
 
     /* ── the conduit ──────────────────────────────────────────────────────
@@ -1922,9 +1976,27 @@ const STAGE_SCENES = {
     const COLLAR_G = new TH.TorusGeometry(CL.COLLAR_D * 0.5, CL.COLLAR_THICK * 0.5, 8, 20);
 
     mkInst(COND_G, solidMat({
-      key: 'conduit', link: 1, glass: 1, rough: 0.12, metal: 0.55,
-      cc: 0.9, irid: 0.4, emis: 0.55, fresE: 1, fresA: 0, alpha: 1.0,
-      calm: 0.42, hot: 0.0, env: 1.3,
+      /* env 0.35 and metal 0.25, down from 1.3 and 0.55 — THE GREY WAS A
+         REFLECTION. The housing's own albedo is 30% chord over 70% background,
+         i.e. nearly black, and it still rendered as a pale grey pipe: a metal
+         0.55 clearcoat 0.9 surface under a 1.3 environment reflects the map,
+         and a reflection does not go through the albedo the over-block sets.
+         Tuning the alpha and the emissive (which is where this was looked for
+         twice) could not have reached it. */
+      /* NO IRIDESCENCE ON THE CONDUIT. A thin-film term replaces F0 with a
+         broad pastel sheen over the WHOLE surface, and six stacked translucent
+         faces (front and back of three coaxial layers) each add one — which is
+         a warm white pipe whatever the albedo underneath it says. It is right
+         on a junction, which is one convex sphere and wants the oil-on-water
+         edge; it is wrong here. */
+      //: ...and the environment goes with it, for the third time in this
+      //: material. A rough 0.16 surface mirrors the PMREM map, the map is a
+      //: pale sky, and an indirect specular is not multiplied by anything the
+      //: over-block writes — so the NEAR conduits stayed pale while the far
+      //: ones (which vFar mixes toward the background) were already right.
+      key: 'conduit', link: 1, glass: 1, rough: 0.34, metal: 0.25,
+      cc: 0.20, irid: 0.0, emis: 0.55, fresE: 1, fresA: 0, alpha: 1.0,
+      calm: 0.42, hot: 0.0, env: 0.10,
       /* THE THREE LAYERS, told apart by the instance's own w. One mesh and one
          draw call for all three: they differ in radius, which is placement, and
          in how they shade, which is four lines. Three meshes would be three
@@ -1978,11 +2050,28 @@ const STAGE_SCENES = {
            the clusters it connects" — it is where the inheritance lives. A
            conduit whose every layer was the endpoint chord had no identity of
            its own and read as a stretched piece of cluster. */
-        ch = mix(ch, mix(u_acc, ch, 0.30), glass * 0.85);
-        ch = mix(mix(u_bg, ch, 0.30), ch, glass * 0.75 + core + rail);
-        diffuseColor.rgb = pow(max(ch, vec3(0.0)), vec3(1.6));
-        diffuseColor.a = (housing * (0.16 + 0.80 * pow(fres, 1.5))
-                        + glass * (0.12 + 0.58 * pow(fres, 1.2))
+        /* ...and it is BRIGHT. In connection-render.png the conduit is the
+           brightest object in the frame — electric blue, brighter than either
+           cage it joins — and ours read grey: the glass was only 70% of the way
+           to the accent, carried a 0.30 emissive against the core's 2.10, and
+           had a soft alpha ramp instead of a wall. All three are the same
+           mistake, which is treating the middle layer as a veil over the core
+           rather than as the object you are looking at. */
+        //: ...and the blue is not the accent RAW. u_acc clears a contrast floor
+        //: as text and is a pale cyan; the model names this layer Deep Blue
+        //: Glass and the render is an electric blue, which is the accent a
+        //: third of the way to the violet one.
+        ch = mix(ch, mix(mix(u_acc, u_acc2, 0.34), ch, 0.14), glass * 0.92);
+        ch = mix(mix(u_bg, ch, 0.30), ch, glass * 0.90 + core + rail);
+        /* 2.6, the SAME curve every other solid in this scene gets. F_SHADE
+           applies pow(ch, 2.5) to diffuseColor and this block ASSIGNS over it,
+           so the conduit was the one lit surface running a 1.6 albedo — a
+           full stop paler than the cages around it, under the same key. That
+           is the whole of "the conduit reads grey next to the reference's
+           bright blue": it was not grey, it was washed out. */
+        diffuseColor.rgb = pow(max(ch, vec3(0.0)), vec3(2.6));
+        diffuseColor.a = (housing * (0.06 + 0.62 * pow(fres, 2.2))
+                        + glass * (0.20 + 0.95 * pow(fres, 1.1))
                         + core * 0.98 + rail * 0.95
                         + gold * 0.80 + cross * 0.65) * ends * vFar;
         // the threads are the one part of a conduit that is NOT the two
@@ -1991,8 +2080,22 @@ const STAGE_SCENES = {
         // coloured clusters being the same picture in two inks.
         vec3 tc = mix(ch, u_warn, clamp(gold * 0.9 + bead * 0.6, 0.0, 1.0));
         tc = mix(tc, u_acc, clamp(cross * 0.85, 0.0, 1.0));
-        totalEmissiveRadiance = mix(tc, vec3(1.0), core * 0.45 + railn * 0.8 + pk * 0.7 + bead * 0.7)
-          * (housing * 0.05 + glass * 0.30 + core * 2.10 + rail * 1.30 + railn * 2.1
+        /* THE AXIS FILAMENT IS NOT A WHITE ROD. At core 1.55 with a 0.45 pull
+           to white it out-blooms the layer around it, and since bloom spreads
+           the result is a white pipe with a blue edge — which is what the
+           conduit read as through three rounds of tuning the GLASS. In
+           connection-render.png the middle of a conduit is BLUE with threads
+           and beads visible in it; the only white is the beads. */
+        /* ...and the EMISSIVE takes the same curve, for the same reason and
+           with more at stake. F_SHADE writes pow(ch, 2.05) and this block
+           assigns over it, so the conduit emitted a PALE blue — and a pale
+           blue past the bloom threshold spreads as WHITE, which is why three
+           rounds of dimming and brightening this layer only ever moved it
+           between grey and a white beam. Bloom does not desaturate a colour
+           that was saturated going in. */
+        totalEmissiveRadiance = pow(max(mix(tc, vec3(1.0),
+              core * 0.16 + railn * 0.8 + pk * 0.7 + bead * 0.7), vec3(0.0)), vec3(2.05))
+          * (housing * 0.05 + glass * 0.72 + core * 1.15 + rail * 1.30 + railn * 2.1
              + pk * 2.4 + gold * 1.15 + cross * 0.85 + bead * 2.2)
           * (0.82 + 0.30 * u_e) * ends * vFar * u_dens;`,
     }), rCond, 3);
@@ -2004,9 +2107,16 @@ const STAGE_SCENES = {
       // cluster and a violet one being the same picture in two inks
       emis: 0.55, fresE: 0, fresA: 0, alpha: 1.0, calm: 0.46, hot: 0, env: 1.4,
       over: `
+        /* A COLLAR IS METAL, NOT A LAMP. At 0.65 emissive a gold torus clears
+           the bloom threshold, and where several conduits converge on one small
+           hull their collars stack into a cream haze that reads as a pale pipe
+           — which is what the last three rounds of tuning the conduit's GLASS
+           were chasing. In connection-render.png the ring at the hub is a dark
+           metallic band with a gold edge, and the light in that area comes from
+           the hub's plasma behind it. */
         vec3 gold = calm(mix(u_bg, u_warn, vFar), u_bg, u_calm + 0.46);
-        diffuseColor.rgb = gold;
-        totalEmissiveRadiance = gold * 0.65 * (0.82 + 0.30 * u_e) * vFar * u_dens;`,
+        diffuseColor.rgb = pow(max(gold, vec3(0.0)), vec3(1.7)) * 0.55;
+        totalEmissiveRadiance = gold * 0.20 * (0.82 + 0.30 * u_e) * vFar * u_dens;`,
     }), rCollar, 3);
 
     mkInst(BALL_G, solidMat({
@@ -2133,7 +2243,7 @@ const STAGE_SCENES = {
           mv.xyz += side * ew * nd.y;
           float dist = -mv.z;
           vD = clamp(1.0 - dist / 26.0, 0.0, 1.0);
-          vF = exp(-max(0.0, dist - 15.0) * 0.075);
+          vF = exp(-max(0.0, dist - 16.0) * 0.042);
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: `
@@ -2160,13 +2270,26 @@ const STAGE_SCENES = {
              and teal cages kept coming out white-blue whatever the alphas were.
              pow(c, 1.6) darkens without desaturating: it pulls the channels
              apart rather than scaling them together. */
-          col = pow(max(col, vec3(0.0)), vec3(1.6));
+          /* pow 2.4, not 1.6. Measured against the reference at cage scale:
+             its MEDIAN pixel is (23, 27, 113) — near-black in red and green
+             with the blue still up — and ours was (115, 117, 176), a grey
+             lavender fog. Six hundred additive rods do not make a picture too
+             bright so much as too DESATURATED: each sum pulls red and green up
+             toward the blue, and the exponent is the only term that pulls the
+             channels apart instead of scaling them together. */
+          col = pow(max(col, vec3(0.0)), vec3(2.4));
           col += vec3(u_shock * 0.5);
           col = mix(u_bg, col, vF);          // depth, BEFORE calm() — never instead
-          // raised from 0.30/0.55: the mesh used to BE the cluster and had
-          // to be held down; now it sits behind a lit frame that occludes it,
-          // and at the old alpha it had disappeared entirely.
-          float a = (body * 0.52 + rim * 0.95) * vA
+          /* THE BODY IS THE HAZE AND THE RIM IS THE LINE, so the body is
+             what has to go. Measured against the reference: the interior of a
+             cage there means (42, 36, 106) with a p90 of (155, 129, 249) — a
+             DARK navy volume with crisp bright things in it — and ours was
+             (145, 122, 188) against a p90 of (194, 177, 221), which is a milky
+             ball. Six hundred additive rods overlap three deep on most interior
+             pixels, so the broad term is multiplied by the overlap and the thin
+             one is not; cutting body to a third and rim by a half is what turns
+             the sum back into a mesh you see the black through. */
+          float a = (body * 0.11 + rim * 0.46) * vA
                   * (0.46 + 0.48 * vD) * vF * u_dens * (0.78 + 0.32 * u_e);
           gl_FragColor = vec4(calm(col, u_bg, u_calm + 0.30), a);
         }`,
@@ -2218,7 +2341,7 @@ const STAGE_SCENES = {
           vE = 1.0 - abs(dot(nv, normalize(-mv.xyz)));
           float dist = -mv.z;
           vD = clamp(1.0 - dist / 26.0, 0.0, 1.0);
-          vF = exp(-max(0.0, dist - 15.0) * 0.075);
+          vF = exp(-max(0.0, dist - 16.0) * 0.042);
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: `
@@ -2229,11 +2352,11 @@ const STAGE_SCENES = {
         varying float vE;
         uniform vec3 u_bg; uniform float u_dens, u_calm, u_e;
         void main(){
-          vec3 col = pow(max(chord(vPal, vT, 0.05), vec3(0.0)), vec3(1.5));
+          vec3 col = pow(max(chord(vPal, vT, 0.05), vec3(0.0)), vec3(2.3));
           col = mix(u_bg, col, vF);          // depth, BEFORE calm()
           // pow 3 and not 2: at 2 the interior still carries enough to fill the
           // hull with flat colour, which is a bubble rather than a cage.
-          float a = (0.055 + 0.230 * pow(vE, 3.0)) * (0.45 + 0.55 * vD)
+          float a = (0.016 + 0.130 * pow(vE, 3.0)) * (0.45 + 0.55 * vD)
                   * vF * u_dens * (0.85 + 0.3 * u_e);
           gl_FragColor = vec4(calm(col, u_bg, u_calm + 0.26), a);
         }`,
@@ -2286,7 +2409,7 @@ const STAGE_SCENES = {
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
           float dist = -mv.z;
           vD = clamp(1.0 - dist / 26.0, 0.0, 1.0);
-          vF = exp(-max(0.0, dist - 15.0) * 0.075);
+          vF = exp(-max(0.0, dist - 16.0) * 0.042);
           gl_Position = projectionMatrix * mv;
           // size by mass AND size by depth AND defocus — three cues, and they
           // are not the same cue. In the reference the far clusters are not
@@ -2362,7 +2485,14 @@ const STAGE_SCENES = {
           const th2 = k * 2.399963 + i;
           const rr = CL.ORBIT_R * n.r;
           mp.push(Math.cos(th2) * rg * rr, y2 * rr, Math.sin(th2) * rg * rr);
-          mn.push(i, 0.985);
+          /* 0.90, not 0.985 — and this was a BUG, not a taste. The fragment
+             splits the population on FILAMENT_MIX (0.60 magenta, 0.85 gold,
+             0.95 white-hot), and 0.985 is past the last stop: all 28 "orbit
+             GOLD" beads were being mixed 90% to white. In both references the
+             amber beads inside a cage are one of its most recognisable
+             features and ours had none. 0.90 lands in the gold band, and it is
+             still above the 0.90 size gate that makes an orbiter 2.4x a mote. */
+          mn.push(i, 0.90);
         }
       }
     }
@@ -2389,7 +2519,7 @@ const STAGE_SCENES = {
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
           float dist = -mv.z;
           vD = clamp(1.0 - dist / 26.0, 0.0, 1.0);
-          vF = exp(-max(0.0, dist - 15.0) * 0.075);
+          vF = exp(-max(0.0, dist - 16.0) * 0.042);
           gl_Position = projectionMatrix * mv;
           // a gold orbiter is 2.4x an interior particle — the model has them at
           // 0.046 R against 0.020 R, and at one size they read as stray sparks
@@ -2420,7 +2550,10 @@ const STAGE_SCENES = {
           col = mix(col, u_warn, step(${F(CL.FILAMENT_MIX[1])}, vH) * 0.9);
           col = mix(col, vec3(1.0), step(${F(CL.FILAMENT_MIX[2])}, vH) * 0.9);
           col = mix(u_bg, col, vF);
-          float a = (1.0 - smoothstep(0.1, 0.5, d)) * (0.18 + 0.26 * vD)
+          //: ...and a gold orbiter is brighter as well as bigger. It is a
+          //: glossy metallic bead in the reference, not a spark in the fog.
+          float a = (1.0 - smoothstep(0.1, 0.5, d)) * (0.13 + 0.21 * vD)
+                  * (1.0 + 1.5 * step(${F(CL.FILAMENT_MIX[1])}, vH))
                   * (0.8 + 0.3 * u_e) * vF * u_dens;
           gl_FragColor = vec4(calm(col, u_bg, u_calm + 0.34), a);
         }`,
@@ -2442,9 +2575,20 @@ const STAGE_SCENES = {
       sFeed(u, f);
       physics(Math.min(0.05, f.dt), f.e);
       // a slow orbit, so the cages are seen turning against a moving camera
+      /* 9.0 and not 11. THE FIELD'S DENSITY IS THE CAMERA, not the seeding:
+         cluster-render-field.png is a PACKED frame where cages overlap and
+         every visible one is large, and at 11 this scene showed the whole
+         drift box with black margins down both sides — the reference's
+         composition is a crop of a constellation, ours was a diagram of one.
+         Nothing about the bodies moved (raising the radius floor was tried
+         first and only made forty cages of similar size); the frame did.
+         This is a background as well as a showcase, which is why the answer is
+         a crop and not more or bigger cages: u_calm still mixes the whole
+         scene back toward --bg behind the app, and cropping costs nothing
+         there while a denser field would cost forty more hulls. */
       cam.position.set(Math.sin(f.t * 0.06) * 2.2 + f.cam * 2.0,
                        Math.cos(f.t * 0.045) * 1.2,
-                       11 - f.e * 1.2);
+                       8.4 - f.e * 1.2);
       cam.lookAt(0, 0, -2);
     };
     S.resize = (w, h) => {

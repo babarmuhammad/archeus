@@ -52,14 +52,23 @@ SHELL_BY_DETAIL = {0: (12, 30), 1: (42, 120), 2: (162, 480)}
 #: (see the module docstring), so the render is its only source. Tube Ø ≈ 40 px
 #: = 0.084 R; 0.052 half is that plus a little presence.
 SHELL_ROD_HALF = 0.013       # Outer lattice rod, 480 of them, on the hull
-SPOKE_HALF = 0.040           # Hub spoke, 20 of them, from the core outward
+#: 0.011, not the model's 0.095 half and not the 0.040 that shipped. THE SPOKE
+#: AND THE FRAME ARE THE SAME TUBES SEEN TWICE. `notes/cluster-spec.md` read
+#: the thick violet tubes in the still as the twenty Hub spokes; then FRAME_*
+#: was added for the same tubes, read the second time as an icosahedral frame.
+#: Drawing both put twenty rods as thick as the frame across the interior, and
+#: in `cluster-render-single.png` NOTHING radial crosses the interior at that
+#: weight — count the tubes there and every one of them runs between two
+#: junctions. What the render does show inside is a faint radial fan around the
+#: centre glow, which is what these are now: a hairline, stopping at 0.56 R.
+SPOKE_HALF = 0.011           # Hub spoke, 20 of them, from the core outward
 WEB_ROD_HALF = 0.009         # Inner filament, a second cage at WEB_R
 
 #: where each population sits, as a fraction of R
 WEB_R = 0.53                 # Inner filament, 257 at 0.53 R
 MOTE_R = 0.61                # Inner particle, 150 at 0.61 R
 ORBIT_R = 0.47               # Orbit gold, 28 at 0.47 R
-SPOKE_IN, SPOKE_OUT = 0.22, 0.90
+SPOKE_IN, SPOKE_OUT = 0.22, 0.56
 #: ...and the spoke does NOT reach the core. Twenty rods meeting at one point
 #: sum, additively, into a white star brighter than anything the scene means;
 #: the model gets away with it because its materials are opaque. Starting at
@@ -69,16 +78,24 @@ SPOKE_FADE = 0.34
 #: the lit centre. A white core with a gold seed inside it — the single thing
 #: the parts list says that no still image did, and the reason every version we
 #: built before reading the model had a hollow interior.
-#: 0.16 and not the model's 0.1215. Twenty spokes converge on the centre and
-#: at the model's radius the core is smaller than the bundle that hides it —
-#: in the render the centre is the brightest thing in the cluster and reads
-#: as a plasma ball, which is a thing you can SEE past the spokes.
-CORE_R = 0.16                # Central glowing core, Ø 0.243 R in the model
-SEED_R = 0.0645              # Central energy seed, Ø 0.129 R
+#:
+#: **THE CENTRE IS NOT A SUN.** 0.16 R at emissive 1.2 was a blown white ball
+#: filling a third of the frame, and in BOTH renders the middle of a cluster is
+#: DARK — `cluster-render-single.png` shows fine web and interior motes there,
+#: and every one of the two dozen cages in `cluster-render-field.png` is dark
+#: at the centre with its bright things on the shell. What the model's part
+#: list calls the core is the same OBJECT as a junction, one size up: hot white
+#: inside a violet energy shell inside glass. So the four radii below are the
+#: junction's, scaled 1.4x, rather than one big emissive ball:
+#:      hot 0.048 / energy 0.090 / glass 0.190   vs a junction's
+#:          0.031 /        0.061 /       0.135
+CORE_R = 0.048               # Central glowing core, hot white
+SEED_R = 0.022               # Central energy seed, gold, inside it
+CORE_ENERGY_R = 0.090        # the violet/magenta shell around them
 #: ...inside a glass shell of its own, the way every junction is. The model
 #: lists the core and the seed but not the volume around them; the render shows
 #: the centre as the same object as a junction, one size up and brighter.
-CORE_SHELL_R = 0.26
+CORE_SHELL_R = 0.19
 
 #: the coarse frame — the renders' contribution, see the module docstring
 #: 0.042 and not 0.052. The ratio the render fixes is not the tube against
@@ -94,7 +111,15 @@ FRAME_NODES = 12
 #: tube it sits on, which is what makes the frame read as built rather than as
 #: wire. The previous version drew them as point sprites at 2.1x a shell bead,
 #: which is a dot, and it is why the frame vanished into the haze.
-FRAME_BEAD_R = 0.135         # the glass housing
+FRAME_BEAD_R = 0.150         # the glass housing
+#: and inside it, the two shells that make it a junction rather than a bead.
+#: The renderer used to take these from the CONDUIT hub's ratios and multiply
+#: the hot core by 1.7 — which put the white core (0.053) practically on top of
+#: the energy shell (0.061), so no pink ever showed and every junction was a
+#: white blob in a grey bubble. In the render the pink core is about HALF the
+#: glass sphere and the white-hot part about a quarter of it.
+FRAME_BEAD_HOT = 0.034       # white-hot, the quarter
+FRAME_BEAD_ENERGY = 0.076    # magenta/violet energy, the half
 SHELL_BEAD_R = 0.0375        # Outer node, Ø 0.075 R — the mesh's own texture
 
 #: counts that scale with the hull rather than being fixed
@@ -192,12 +217,27 @@ ROLE_UNIFORMS = ('u_acc', 'u_acc2', 'u_err', 'u_warn', 'u_ok', 'u_white')
 #: blue field with violet in it.
 #:
 #: Each row is (weight, name, [primary, secondary, accent, highlight]).
+#:
+#: **THE SECOND ROLE IS WHERE MOST OF THE CLUSTER IS**, and putting magenta
+#: there is what made the whole field pink. `chord()` walks primary into
+#: secondary over `smoothstep(0.40, 0.76)` and `gradT` lands most of a cage in
+#: exactly that band, so the secondary is not an accent — it is half the
+#: geometry. Violet's used to be `ROLE_ERR`, and every tube on a violet cage
+#: came out hot magenta. In both renders a violet cage's tubes run violet into
+#: BLUE, and magenta appears only in the junction cores and on a few struts, so
+#: the cool accent is the secondary and magenta drops to third.
+#:
+#: The highlight is `ROLE_WHITE` almost everywhere for the same reason read the
+#: other way: a highlight is a GATE, a handful of pixels, and in the references
+#: those pixels are white. Gold survives as a whole FAMILY (its own cages, of
+#: which the field has several) and as the interior motes, which is where the
+#: renders actually put it.
 PALETTE_FAMILIES = (
-    (8, 'violet',  (ROLE_ACC2, ROLE_ERR,  ROLE_ACC,  ROLE_WARN)),
-    (3, 'blend',   (ROLE_ACC2, ROLE_ACC,  ROLE_ERR,  ROLE_WHITE)),
-    (2, 'cyan',    (ROLE_ACC,  ROLE_ACC2, ROLE_OK,   ROLE_WARN)),
-    (2, 'magenta', (ROLE_ERR,  ROLE_ACC2, ROLE_ACC,  ROLE_WARN)),
-    (3, 'gold',    (ROLE_WARN, ROLE_ERR,  ROLE_ACC2, ROLE_ACC)),
+    (9, 'violet',  (ROLE_ACC2, ROLE_ACC,  ROLE_ERR,  ROLE_WHITE)),
+    (3, 'blend',   (ROLE_ACC2, ROLE_ERR,  ROLE_ACC,  ROLE_WHITE)),
+    (3, 'cyan',    (ROLE_ACC,  ROLE_ACC2, ROLE_OK,   ROLE_WHITE)),
+    (2, 'magenta', (ROLE_ERR,  ROLE_ACC2, ROLE_ACC,  ROLE_WHITE)),
+    (3, 'gold',    (ROLE_WARN, ROLE_ERR,  ROLE_ACC2, ROLE_WHITE)),
     (2, 'green',   (ROLE_OK,   ROLE_ACC,  ROLE_ACC2, ROLE_WARN)),
 )
 
@@ -245,8 +285,9 @@ def family_for(seed):
 EXPORTED = (
     'SHELL_BY_DETAIL', 'SHELL_ROD_HALF', 'SPOKE_HALF', 'WEB_ROD_HALF',
     'WEB_R', 'MOTE_R', 'ORBIT_R', 'SPOKE_IN', 'SPOKE_OUT', 'SPOKE_FADE',
-    'CORE_R', 'SEED_R', 'FRAME_HALF', 'FRAME_EDGES',
-    'FRAME_NODES', 'FRAME_BEAD_R', 'SHELL_BEAD_R', 'CORE_SHELL_R',
+    'CORE_R', 'SEED_R', 'CORE_ENERGY_R', 'FRAME_HALF', 'FRAME_EDGES',
+    'FRAME_NODES', 'FRAME_BEAD_R', 'FRAME_BEAD_HOT', 'FRAME_BEAD_ENERGY',
+    'SHELL_BEAD_R', 'CORE_SHELL_R',
     'MOTE_MIN', 'MOTE_MAX', 'ORBIT_N', 'ROD_ALPHA_BY_EDGES', 'LOD_BREAKS',
     'CONDUIT_HOUSING', 'CONDUIT_GLASS', 'CONDUIT_CORE', 'CONDUIT_RAIL',
     'CONDUIT_RAIL_OFFSET', 'COLLAR_D', 'COLLAR_THICK', 'RAIL_NODE',

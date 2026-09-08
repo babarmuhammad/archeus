@@ -56,11 +56,27 @@ eye merges them.
 middle of a dark translucent volume. Every version we have built was hollow —
 that is why the interiors read as empty no matter how the shell was tuned.
 
+> **...but it is not a SUN.** Drawn at 0.16 R with a 1.2 emissive it was a
+> blown white ball filling a third of the frame, and in BOTH references the
+> middle of a cage is **dark**. What the part list calls the core is the same
+> object as a junction, one size up: hot white inside an energy shell inside
+> glass. The four radii in `cluster_spec.py` are the junction's, scaled 1.4x.
+
 **There are two scales of strut, not one.** Twenty thick spokes (0.19 R —
 *thicker than the shell rods*) radiating from the core to about half-way out,
-and 480 thin rods forming the shell. The thick violet tubes in the stills are
-the SPOKES; the fine mesh behind them is the shell. Drawing one mesh at a
-middling thickness produces neither.
+and 480 thin rods forming the shell. Drawing one mesh at a middling thickness
+produces neither.
+
+> **Correction, 2026-09-09.** The sentence that used to end that paragraph —
+> "the thick violet tubes in the stills are the SPOKES" — is **wrong**, and it
+> cost a round. `FRAME_*` was later added for the *same* tubes, read a second
+> time as the icosahedral frame the .glb does not contain, and both shipped:
+> twenty rods as thick as the frame crossing every interior. In
+> `cluster-render-single.png` nothing radial crosses the interior at that
+> weight; count them and every tube runs between two junctions. The thick tubes
+> in the stills are the FRAME. `SPOKE_HALF` is a hairline now (0.011 R,
+> stopping at 0.56 R) and draws the faint radial fan the render does show
+> around the centre. `cluster_spec.py` says so at the value.
 
 **A bead is small.** 0.075 R across — smaller than the rod it sits on
 (0.111 R). The big glass spheres in the stills are a bloom artefact around a

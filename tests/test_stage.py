@@ -459,11 +459,18 @@ def test_a_node_is_a_solid_bead_inside_a_transparent_shell():
     g = _graph()
     # the junction: real geometry, at the model's radii, in the solid pass
     assert 'ball(p, CL.FRAME_BEAD_R * n.r)' in g, 'the junction is not a sphere'
-    assert 'CL.HUB_HOT / CL.HUB_HOUSING' in g, 'no hot core inside the glass'
-    assert 'CL.HUB_ENERGY / CL.HUB_HOUSING' in g, 'no energy shell inside the glass'
+    # ...and its two inner shells have their OWN spec keys now. They used to be
+    # the conduit hub's ratios with the hot core multiplied by 1.7, which put
+    # the white core (0.053 R) on top of the energy shell (0.061 R): no pink
+    # ever showed, and a junction was a white blob in a grey bubble. In both
+    # references the pink core is about half the glass sphere.
+    assert 'CL.FRAME_BEAD_HOT * n.r' in g, 'no hot core inside the glass'
+    assert 'CL.FRAME_BEAD_ENERGY * n.r' in g, 'no energy shell inside the glass'
     # ...and the glass is a rim, which is what makes it read as glass without a
-    # backdrop-filter anywhere near this app
-    assert "pow(fres, 1.7)" in g, 'the glass shell has no Fresnel alpha'
+    # backdrop-filter anywhere near this app. A BAND and not a ramp: the ramp
+    # was a soft bubble, and what the reference has is a hard bright ring you
+    # read the core through.
+    assert 'smoothstep(0.55, 0.96, fres)' in g, 'the glass shell has no Fresnel alpha'
     assert "key: 'glass', glass: 1" in g and 'fresA: 1' in g
 
     # the shell texture, still sprites, still crisp
@@ -580,12 +587,19 @@ def test_depth_washes_toward_the_background_before_calm_not_instead_of_it():
     the depth is `-mvPosition.z` because that chunk is where mvPosition exists.
     One number, two places it can be reached from."""
     g = _graph()
-    # The onset is 15 and not 7, and that number is not cosmetic. The camera
-    # sits at z=11 and the field spans z=-4.5..-11, so NOTHING is closer than
+    # The onset is 16 and not 7, and that number is not cosmetic. The camera
+    # sits at z=8.4 and the field spans z=+2..-11, so NOTHING is closer than
     # ~15 units — starting the haze at 7 put every cage in it, which is not a
     # depth cue, it is a global dimmer set to about a half.
-    assert g.count('vF = exp(-max(0.0, dist - 15.0) * 0.075);') == 4, 'all four haze passes'
-    assert g.count('vFar = exp(-max(0.0, -mvPosition.z - 15.0) * 0.075);') == 1, 'the solids'
+    #
+    # The RATE came down from 0.075 to 0.042 when the seeding box was deepened
+    # from a 3.4 span to a 6.6 one. The depth is where the brief's background
+    # network comes from — distant cages, smaller and dimmer, rather than a
+    # flat starfield — and at the old rate a cage at 22 units was a dark lump
+    # instead of a dim cluster. In cluster-render-field.png the far cages are
+    # roughly half the brightness of the near ones and still obviously coloured.
+    assert g.count('vF = exp(-max(0.0, dist - 16.0) * 0.042);') == 4, 'all four haze passes'
+    assert g.count('vFar = exp(-max(0.0, -mvPosition.z - 16.0) * 0.042);') == 1, 'the solids'
     # counted, not just ordered: a loop over zero matches passes vacuously, and
     # that is exactly how this gate failed its own mutation the first time
     assert g.count('mix(u_bg, col, vF);') == 4, 'a haze pass does not wash with depth'
@@ -746,9 +760,13 @@ def test_a_cage_is_one_hue_but_not_only_one_hue():
     # ...and the axis and the seed are PER CLUSTER, not global
     assert 'axis: [Math.cos(a1) * Math.sin(a2), Math.cos(a2), Math.sin(a1) * Math.sin(a2)],' in g
     assert 'u.u_axis = {value: nodes.map(' in g and 'u.u_pal = {value: nodes.map(' in g
-    # the weighted walk
-    assert 'vec3 col = mix(a, b, smoothstep(0.40, 0.76, t));' in _STAGE
-    assert 'col = mix(col, c, smoothstep(0.74, 1.0, t));' in _STAGE
+    # The weighted walk, and the stops are 0.52/0.88 rather than 0.40/0.74.
+    # gradT is centred near 0.5, so a first stop at 0.40 hands most of the
+    # geometry to the SECONDARY role: a violet cage came out cyan-dominant with
+    # violet only at its poles, where both references are violet WITH blue in
+    # them. The stops are what give the primary the middle of the range back.
+    assert 'vec3 col = mix(a, b, smoothstep(0.52, 0.88, t));' in _STAGE
+    assert 'col = mix(col, c, smoothstep(0.86, 1.0, t));' in _STAGE
     # EVERY pass reads it, or a cluster's frame disagrees with its own mesh
     assert g.count('chord(') >= 8, g.count('chord(')
 

@@ -72,3 +72,6 @@ CLAUDECTL_COMMITMSG
 # reference is not a build input and nobody cloning this needs eleven megabytes
 # to run the tests.
 notes/reference/
+
+# iteration renders from the cluster/reference passes
+.qa/
