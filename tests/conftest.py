@@ -155,7 +155,12 @@ _CLAUDE_FLAG = {'--bg-scan', '--failover-serve'}
 def _starts_claude(args):
     argv = [args] if isinstance(args, (str, bytes)) else list(args or [])
     argv = [os.fsdecode(a) if isinstance(a, bytes) else str(a) for a in argv]
-    if any(os.path.basename(a).lower() in _CLAUDE_EXE for a in argv):
+    # split on BOTH separators, never os.path.basename: it splits on the
+    # platform's own, so `C:\\…\\claude.exe` was one long basename on Linux and
+    # macOS and the guard did not fire there (CI caught it; Windows is the
+    # primary platform, so the Windows shape has to be recognised everywhere).
+    if any(a.replace('\\', '/').rsplit('/', 1)[-1].lower() in _CLAUDE_EXE
+           for a in argv):
         return True
     # `python -m claude_sessions …` deliberately does NOT count on its own:
     # the statusline is dispatched that way and never reaches Claude (that is

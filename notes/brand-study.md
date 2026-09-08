@@ -422,8 +422,10 @@ catches a surface nobody remembered to list.
   `test_brand_copy.py::test_the_app_chrome_carries_no_tagline` asserts the ABSENCE —
   because the pressure to put something explanatory back at the top of a sidebar does not
   go away.
-- **`claudectl.space` is frozen.** The domain is not registered under the new name;
-  `tools/_rename_brand.py` holds that one string back and
+- **The documentation domain is frozen.** It is still on the old name, which is not
+  registered under the new one; the literal string lives in `HOLD` in
+  `tools/_rename_brand.py` — and only there, so this file can be exempted from the
+  old-name gate without hiding it —
   `test_the_domain_is_the_only_thing_still_waiting_on_a_move` fails if anything else joins
   it. Every link in every file above still resolves there on purpose.
 - **The h1 keeps its full stop.** The pitch is a sentence and is asserted verbatim, so
