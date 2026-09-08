@@ -29,11 +29,20 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #: Every surface that states a count in prose. `docs/api.md` and
 #: `docs/dashboard.md` are generated and guarded elsewhere, so they are not here.
-SURFACES = (['README.md', 'CLAUDE.md', 'docs/llms.txt',
-             'www/lib/content.ts']
-            + sorted(os.path.relpath(p, ROOT).replace(os.sep, '/')
-                     for p in glob.glob(os.path.join(ROOT, 'docs', '*.md'))
-                     if os.path.basename(p) not in ('api.md', 'dashboard.md')))
+#:
+#: FILTERED BY EXISTENCE, and that is not defensive: `CLAUDE.md` is in the list
+#: but is not in the repository. It is gitignored, because this project's own
+#: CLAUDE.md is regenerated from its memory graph and never committed. So it is
+#: present on a working machine and absent in a fresh clone — and without the
+#: filter this file passes locally and dies with FileNotFoundError on every CI
+#: runner, which is exactly what it did the first time it ran there.
+SURFACES = tuple(
+    rel for rel in
+    (['README.md', 'CLAUDE.md', 'docs/llms.txt', 'www/lib/content.ts']
+     + sorted(os.path.relpath(p, ROOT).replace(os.sep, '/')
+              for p in glob.glob(os.path.join(ROOT, 'docs', '*.md'))
+              if os.path.basename(p) not in ('api.md', 'dashboard.md')))
+    if os.path.isfile(os.path.join(ROOT, rel.replace('/', os.sep))))
 
 WORDS = {'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6,
          'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'nineteen': 19,
