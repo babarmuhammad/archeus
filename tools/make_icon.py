@@ -3,18 +3,25 @@ manually to regenerate:
 
     py tools/make_icon.py
 
-Design (per 2025 app-icon best practice: one dominant element, legible at 16px,
-rounded square, gradient depth, brand colour):
+The mark is an "A" that is also an apex and also a graph, because for this
+project those are the same idea: an apex IS a vertex.
+
   - rounded-square tile, deep-navy → near-black vertical gradient
-  - one bold cyan "A" (archeus) with round caps
-  - three glowing nodes at its apex and feet — a nod to the connections graph
-  - soft outer glow for depth
+  - tapered legs — wide at the feet, narrow at the peak, so the silhouette has
+    a direction instead of being an even monogram
+  - a cyan→violet ramp running down the letter, so it reads as lit from its own
+    apex rather than filled flat
+  - one blazing node at the apex, with a soft halo
+  - three linked nodes inside the counter: the neural core. It lives in the
+    chamber the letter already has, which is why it reads at 256px and
+    dissolves cleanly at 16px instead of turning into speckle — the failure
+    mode of every version that scattered nodes across the strokes.
 
 Requires Pillow. Writes archeus.ico (multi-size) at the repo root.
 """
 
-import math
 import os
+from collections import namedtuple
 
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -24,8 +31,14 @@ SIZES = [16, 32, 48, 64, 128, 256]
 
 NAVY_TOP = (16, 32, 60)      # #10203c
 NAVY_BOT = (5, 8, 16)        # #050810
-CYAN = (92, 200, 255)        # #5cc8ff
-CYAN_HI = (170, 226, 255)    # highlight
+CYAN = (125, 207, 255)       # #7dcfff — the GUI's gradient start
+VIOLET = (138, 92, 246)      # #8a5cf6 — and its end
+NODE = (215, 238, 255)
+NODE_HI = (255, 255, 255)
+
+#: geometry only — the two icons ink it completely differently (a ramp on the
+#: dark tile, flat dark on the bright one), so colour is the caller's business.
+Mark = namedtuple('Mark', 'letter apex core_pts core_edges')
 
 
 def _rounded_mask(size, radius):
@@ -45,32 +58,71 @@ def _gradient(size, top, bot):
     return g
 
 
-def draw_mark(d, cx, cy, w, ink, node_ink, size=SS):
-    """The "A" — two legs, a crossbar, three nodes. Shared by both icons.
+def build_mark(size):
+    """The letter as an 'L' mask, plus the points the caller draws on top.
 
-    The nodes at the apex and the feet are not decoration: they are the same
-    nod to the connections graph the previous mark carried, and the one thing
-    about that icon that was about this project rather than about its initial.
-    The letter itself is what had to change.
-
-    The crossbar sits low (0.66 of the way down) and slightly narrower than the
-    legs, because the icon has to stay legible at 16px — a centred bar closes
-    the counter into a solid triangle at that size.
+    The crossbar spans centreline to centreline of the two legs rather than a
+    fixed width. That is not a detail: the legs taper, so any fixed half-width
+    leaves the bar floating in the counter with a visible gap at both ends.
     """
-    hw, hh = size * 0.26, size * 0.27
+    cx = cy = size / 2
+    hw, hh = size * 0.29, size * 0.30
     apex = (cx, cy - hh)
-    feet = [(cx - hw, cy + hh), (cx + hw, cy + hh)]
-    # one polyline, so the apex is a mitred join rather than two overlapping caps
-    d.line([feet[0], apex, feet[1]], fill=ink, width=w, joint='curve')
-    t = 0.66
-    ybar = apex[1] + (feet[0][1] - apex[1]) * t
-    d.line([(cx - hw * t, ybar), (cx + hw * t, ybar)], fill=ink, width=int(w * 0.8))
-    nodes = [apex] + feet
-    for (nx, ny) in nodes:                   # round caps
-        d.ellipse([nx - w / 2, ny - w / 2, nx + w / 2, ny + w / 2], fill=ink)
-    nr = w * 0.42                            # bright cores
-    for (nx, ny) in nodes:
-        d.ellipse([nx - nr, ny - nr, nx + nr, ny + nr], fill=node_ink)
+    thin, thick = size * 0.042, size * 0.092
+
+    letter = Image.new('L', (size, size), 0)
+    d = ImageDraw.Draw(letter)
+    for s in (-1, 1):
+        d.polygon([(cx - thin * .5, apex[1]), (cx + thin * .5, apex[1]),
+                   (cx + s * hw + thick * .5, cy + hh),
+                   (cx + s * hw - thick * .5, cy + hh)], fill=255)
+    tbar = 0.72
+    ybar = apex[1] + (cy + hh - apex[1]) * tbar
+    d.rectangle([cx - hw * tbar, ybar, cx + hw * tbar, ybar + size * .050], fill=255)
+
+    mid = (apex[1] + ybar) / 2 + size * .015
+    spread = size * .066
+    core = [(cx, mid - size * .045),
+            (cx - spread, mid + size * .030), (cx + spread, mid + size * .030)]
+    return Mark(letter, apex, core, [(core[i], core[(i + 1) % 3]) for i in range(3)])
+
+
+def paint_mark(mark, size, ink, node, node_hi, edge_alpha=130):
+    """The mark as one RGBA layer. *ink* is an image the size of the canvas
+    (a gradient) or a flat colour tuple — whichever the tile calls for."""
+    layer = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    if isinstance(ink, tuple):
+        flat = Image.new('RGBA', (size, size), ink + (255,))
+        flat.putalpha(mark.letter)
+        layer = flat
+    else:
+        ink = ink.convert('RGBA')
+        ink.putalpha(mark.letter)
+        layer = ink
+
+    d = ImageDraw.Draw(layer)
+    for a, b in mark.core_edges:
+        d.line([a, b], fill=node[:3] + (edge_alpha,), width=max(1, int(size * .009)))
+    for (x, y) in mark.core_pts:
+        r = size * .026
+        d.ellipse([x - r, y - r, x + r, y + r], fill=node)
+        r *= .45
+        d.ellipse([x - r, y - r, x + r, y + r], fill=node_hi)
+    ax, ay = mark.apex
+    r = size * .050
+    d.ellipse([ax - r, ay - r, ax + r, ay + r], fill=node)
+    r *= .45
+    d.ellipse([ax - r, ay - r, ax + r, ay + r], fill=node_hi)
+    return layer
+
+
+def apex_halo(mark, size, colour, alpha=50, radius=0.125):
+    g = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    ax, ay = mark.apex
+    ImageDraw.Draw(g).ellipse([ax - size * radius, ay - size * radius,
+                               ax + size * radius, ay + size * radius],
+                              fill=colour[:3] + (alpha,))
+    return g
 
 
 def draw_icon():
@@ -88,14 +140,10 @@ def draw_icon():
     tile = Image.alpha_composite(tile, sheen)
     base.alpha_composite(tile, (pad, pad))
 
-    # ── the mark + nodes, drawn on a transparent layer for glow ──
-    layer = Image.new('RGBA', (SS, SS), (0, 0, 0, 0))
-    d = ImageDraw.Draw(layer)
-    cx = cy = SS / 2
-    draw_mark(d, cx, cy, int(SS * 0.12), CYAN, CYAN_HI)
-
-    glow = layer.filter(ImageFilter.GaussianBlur(SS * 0.02))
-    base = Image.alpha_composite(base, glow)
+    mark = build_mark(SS)
+    layer = paint_mark(mark, SS, _gradient(SS, CYAN, VIOLET), NODE + (255,), NODE_HI + (255,))
+    base = Image.alpha_composite(base, apex_halo(mark, SS, CYAN))
+    base = Image.alpha_composite(base, layer.filter(ImageFilter.GaussianBlur(SS * 0.020)))
     base = Image.alpha_composite(base, layer)
 
     # clip everything to the rounded tile so the glow doesn't bleed past corners
