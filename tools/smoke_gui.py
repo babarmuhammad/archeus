@@ -1557,8 +1557,14 @@ def main():
         pg.evaluate("TAB='audit';drawProject()")
         pg.wait_for_timeout(900)
         au = pg.evaluate("document.querySelector('#content').innerText")
+        # Both halves matter. `null` leaking to screen is the bug; the positive
+        # half proves the unknowable ROW actually rendered, or the check passes
+        # by measuring nothing. The wording is the screen's, not jargon: `~?`
+        # was what this asserted until the pass that removed it from app.js as
+        # one of the places the app spoke to itself — and this check was not
+        # moved with it, so the gate failed on every run in between.
         check('an unknowable token count is not rendered as null',
-              'null' not in au and '~?' in au,
+              'null' not in au and 'not until it connects' in au,
               [l for l in au.split('\n') if 'null' in l][:2])
         check('audit rows can open the file they cost you', 'open' in au)
         check('audit no longer duplicates the history panel',
