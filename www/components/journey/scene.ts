@@ -77,8 +77,24 @@ const SPIN = /* glsl */ `
 
 /** Node hues, from connections.TYPE_COLORS. Six of them are bound as uniforms
  *  below, in the role order cluster_spec.py numbers them, and every colour in
- *  the scene is picked off the chord they make. */
-const HUES = ['#7dcfff', '#9d7bff', '#f7768e', '#73daca', '#e0af68', '#7ee787'];
+ *  the scene is picked off the chord they make.
+ *
+ *  DEEPENED, and these are the deepened values rather than the palette's own.
+ *  A perpendicular cut across a frame tube in the reference render reads
+ *  (0, 55, 135) in the wall and (0, 128, 233) in the energy — RED IS ZERO in
+ *  both, and connections.TYPE_COLORS is #7dcfff, which is (125, 207, 255).
+ *  Same hue, same HSL saturation, a third of the way to white: the gap is
+ *  LIGHTNESS, which is why no saturation push ever reached it (#7dcfff is
+ *  already s = 1.0, its max channel being 255) and why this file kept reaching
+ *  for pow() instead.
+ *
+ *  The transform is `s x 1.12, l x 0.58` in sRGB HSL, the same pair the GUI's
+ *  graph scene applies at run time (DEEP_S / DEEP_L in stage.js). Applied HERE
+ *  as literals rather than computed, because this list is literal already and
+ *  a run-time THREE.Color round trip would go through the working colour space
+ *  — which this scene has managed and the GUI has switched off, so the same
+ *  two lines of code would not produce the same two colours. */
+const HUES = ['#008bdc', '#3800db', '#d30028', '#22a08c', '#a56c19', '#18b726'];
 
 /** THE CHORD A CLUSTER WEARS — four ROLE indices, from a deterministic seed.
  *
@@ -781,254 +797,302 @@ export function buildJourney(): Journey {
   mMote.renderOrder = 2;
   stations.add(mMote);
 
-  /* ── 2c. THE FRAME: the part that makes a station an OBJECT ───────────────
-     Everything above is additive and depth-write-off, which is right for a
-     hairline mesh and wrong for the thing the mesh is wrapped around. In the
-     reference a cluster's most recognisable feature is a coarse icosahedral
-     frame — twelve big glass junctions joined by thirty tubes, with a lit core
-     in the middle — and an additive scene with no depth cannot draw it: nothing
-     occludes anything, so the frame sums into the haze it is supposed to sit in
-     front of. The GUI's stage.js learned this the expensive way; this is the
-     same fix in the same numbers.
+  /* ── 2c. THE FRAME AND THE SPOKES, AS RIBBONS ─────────────────────────────
+     A station's most recognisable feature is the coarse icosahedral frame:
+     twelve junctions joined by thirty tubes. It used to be real lit geometry
+     here — `InstancedMesh` over `MeshPhysicalMaterial`, three directional
+     lights and a magenta rim, depth-written — on the argument that an additive
+     scene with no depth cannot have a silhouette, so the frame sums into the
+     haze it is supposed to sit in front of.
 
-     Real geometry, real lights, depth-written. InstancedMesh over
-     MeshPhysicalMaterial, with the placement injected into the vertex stage so
-     the CPU still touches nothing per frame — the spin has to reach the NORMAL
-     as well as the position, or the highlights sit still while the cage turns,
-     and that is the whole reason to go lit.
+     THAT ARGUMENT LOST. The GUI's graph world was rebuilt the same way and the
+     judgement on it was "keep the complications of the cluster … just remove
+     from all of this the 3d effect", so both renderers draw every part the
+     reference has and none of the lighting. What made the frame read as a
+     frame was never the lighting model: it is that it is three times the width
+     of a shell rod and carries a junction at each end, and both survive being
+     drawn flat.
 
-     NO BLOOM PASS, here as everywhere in this scene: the emissive term carries
-     the glow. See the note in Canvas.tsx — a pass that re-encodes raw shader
-     output lifts the dark tones instead of blooming the bright ones. */
-  const solids = new THREE.Group();
-  solids.frustumCulled = false;
-  stations.add(solids);
-
-  /* A DEEP ALBEDO WITH A NARROW SPECULAR, not a bright albedo under a bright
-     key — the same correction the GUI's graph world took, for the same reason.
-     These accents clear a contrast floor as TEXT, so a 1.15 white key on them
-     is milk. */
-  stations.add(new THREE.HemisphereLight(0xdfe9ff, 0x0a0e18, 0.09));
-  const keyL = new THREE.DirectionalLight(0xffffff, 0.95);
-  keyL.position.set(-0.62, 0.78, 0.92);
-  stations.add(keyL);
-  const fillL = new THREE.DirectionalLight(0x5fa8ff, 0.6);
-  fillL.position.set(0.86, -0.34, 0.52);
-  stations.add(fillL);
-  // The rim is MAGENTA — the reference's most obvious light, and the cheapest
-  // way to get magenta onto a violet cluster without painting it there. A hue
-  // that arrives from a direction reads as illumination; the same hue in the
-  // material reads as decoration.
-  const rimL = new THREE.DirectionalLight(0xff4fd8, 0.9);
-  rimL.position.set(0.18, -0.72, -0.94);
-  stations.add(rimL);
-
-  const SOLID_ATTRS = /* glsl */ `
-    attribute vec4 aI; attribute vec3 aC; attribute vec4 aPal; attribute vec4 aCx;`;
-
-  const solidMat = (o: { key: string; glass?: boolean; rough: number; metal: number;
-                         cc?: number; irid?: number; emis: number; fresA?: boolean;
-                         fresE?: number; env?: number }) => {
-    const m = track(new THREE.MeshPhysicalMaterial({
-      color: 0xffffff, roughness: o.rough, metalness: o.metal,
-      clearcoat: o.cc ?? 0, clearcoatRoughness: 0.16,
-      iridescence: o.irid ?? 0, iridescenceIOR: 1.55,
-      envMapIntensity: o.env ?? 1.0,
-      emissive: 0xffffff, emissiveIntensity: 1,
-      transparent: !!o.glass,
-      // A glass shell must not write depth and everything else must. That one
-      // line is most of the difference between a frame and a smear.
-      depthWrite: !o.glass, depthTest: true,
-      side: o.glass ? THREE.DoubleSide : THREE.FrontSide,
-      toneMapped: true,
-    }));
-    // three caches compiled programs by material type plus this key: without it
-    // the first variant compiled is handed to every other one.
-    m.customProgramCacheKey = () => 'archeus-station-' + o.key;
-    m.onBeforeCompile = (sh) => {
-      for (const k of ['u_t', 'u_frag', 'u_web', 'u_acc', 'u_acc2', 'u_err',
-                       'u_warn', 'u_ok', 'u_bg']) {
-        (sh.uniforms as Record<string, THREE.IUniform>)[k] = (u as Record<string, THREE.IUniform>)[k];
-      }
-      // the newline is load-bearing: three's own shader opens with
-      // '#define STANDARD', a preprocessor directive has to begin a LINE, and
-      // gluing it to the end of a prelude is an error a hundred lines away
-      //: the spare slot of aI, spent: how far this part is pulled to WHITE. A
-      //: junction's hot core and a cluster's own centre are white in every
-      //: reference cage whatever hue the cage wears, and the chord's highlight
-      //: role cannot say that - it is gold on a violet cluster.
-      sh.vertexShader = [SOLID_ATTRS, SF_CVAR, 'varying float vFog; varying float vWhite;',
-                         'uniform float u_t, u_frag;', SPIN, SF_FOG, SF_GRAD, SF_CSET,
-                         sh.vertexShader].join('\n')
-        .replace('#include <defaultnormal_vertex>', `
-          mat3 im = mat3(instanceMatrix);
-          vec3 sn = objectNormal / vec3(dot(im[0], im[0]), dot(im[1], im[1]), dot(im[2], im[2]));
-          vec3 transformedNormal = normalMatrix * spin(im * sn, aI.x, u_t);`)
-        .replace('#include <begin_vertex>', `
-          vec3 lp = (instanceMatrix * vec4(position, 1.0)).xyz;
-          /* aI.y carries TWO things: the station in its integer part and this
-             part's GRADIENT BIAS in its fraction. Without the bias every part
-             of a cage reads the chord at the same place, so a junction's energy
-             shell came out the same hue as the tube it sits on — flat blue
-             balls where the GUI (which has had the bias since it went lit) has
-             the reference's magenta core. There is no room for a fifth
-             per-instance float: aI is (spin phase, station, radius, whiteness)
-             and aCx is (axis xyz, seed). A station index is a small integer and
-             a bias is in 0..1, so they share one. */
-          float aSt = floor(aI.y);
-          setChord(aPal, aCx, lp / max(aI.z, 1e-4));
-          vGT = clamp(vGT + (aI.y - aSt), 0.0, 1.0);
-          vWhite = aI.w;
-          // station 02 comes apart: its frame flies outward with its mesh
-          float fr = (abs(aSt - 1.0) < 0.5) ? u_frag : 0.0;
-          vec3 transformed = aC + spin(lp * (1.0 + fr * 2.2), aI.x, u_t * (1.0 - 0.55 * fr));`)
-        .replace('#include <project_vertex>', `
-          vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
-          gl_Position = projectionMatrix * mvPosition;
-          vFog = fogOf(-mvPosition.z);`);
-      sh.fragmentShader = [SF_CVAR, 'varying float vFog; varying float vWhite;', SF_HUES,
-                           'uniform vec3 u_bg; uniform float u_web, u_frag;',
-                           SF_ROLE, SF_CHORD, sh.fragmentShader].join('\n')
-        .replace('#include <emissivemap_fragment>', `
-          #include <emissivemap_fragment>
-          vec3 vd = normalize(vViewPosition);
-          float fres = clamp(1.0 - abs(dot(normalize(normal), vd)), 0.0, 1.0);
-          vec3 ch = mix(chord(vPal, vGT, ${o.glass ? '0.20 * fres' : '0.0'}),
-                        vec3(1.0), vWhite);
-          /* DEEPEN AND SATURATE BEFORE LIGHTING IT. These accents are PALE by
-             design — they clear a contrast floor as TEXT — and a pale albedo
-             under a key, a fill and a rim is white. */
-          ch = clamp(mix(vec3(dot(ch, vec3(0.30, 0.59, 0.11))), ch, 1.90), 0.0, 1.0);
-          ch = mix(u_bg, ch, vFog);
-          diffuseColor.rgb *= pow(max(ch, vec3(0.0)), vec3(2.5));
-          /* A GLASS SHELL IS A RIM, AND A RIM IS A BAND. The ramp it replaces
-             is a soft bubble; the reference's junction is a clear sphere with a
-             hard bright ring you read the pink core through. */
-          diffuseColor.a *= ${o.fresA ? '(0.10 + 1.30 * smoothstep(0.55, 0.96, fres))' : '1.0'} * vFog;
-          /* ...and a TUBE is its mirror image: a cylinder's specular is a
-             narrow line down the part that FACES you, and its silhouette goes
-             dark. Running the rim term on a strut is what made every one of
-             them a flat pale band with bright edges. */
-          totalEmissiveRadiance = pow(max(ch, vec3(0.0)), vec3(2.05))
-            * ${o.emis.toFixed(3)}
-            * ${({1: '(0.25 + 0.95 * pow(fres, 2.0))',
-                  2: '(0.05 + 2.30 * pow(1.0 - fres, 9.0))',
-                  3: '(0.06 + 2.40 * smoothstep(0.55, 0.96, fres))'} as Record<number, string>)[o.fresE ?? 0] ?? '1.0'}
-            * (0.85 + 0.35 * u_web) * vFog;`);
-    };
-    return m;
-  };
-
-  type Row = { m: THREE.Matrix4; i: number[] };
-  const mkInst = (tmpl: THREE.BufferGeometry, mat: THREE.Material, rows: Row[], order: number) => {
-    if (!rows.length) return;
-    // the geometry is CLONED because the per-instance attributes live on it:
-    // two meshes sharing one would share one instance list
-    const geo = track(tmpl.clone());
-    const mesh = new THREE.InstancedMesh(geo, mat, rows.length);
-    const A = new Float32Array(rows.length * 4);
-    const C = new Float32Array(rows.length * 3);
-    const PL = new Float32Array(rows.length * 4);
-    const CX = new Float32Array(rows.length * 4);
-    rows.forEach((r, k) => {
-      mesh.setMatrixAt(k, r.m);
-      // ...and the LOOKUPS take the integer part. aI.y packs the station in
-      // its integer part and the part's gradient bias in its fraction (see the
-      // begin_vertex injection); the attribute keeps both, every array indexed
-      // by station takes only the station.
-      const st = Math.floor(r.i[1]);
-      A.set([r.i[0], r.i[1], r.i[2], r.i[3]], k * 4);
-      C.set([STATIONS[st].x, STATIONS[st].y, STATIONS[st].z], k * 3);
-      PL.set(PAL[st] as number[], k * 4);
-      const ax = AXIS[st];
-      CX.set([ax[0], ax[1], ax[2], seedOf(st)], k * 4);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    geo.setAttribute('aI', new THREE.InstancedBufferAttribute(A, 4));
-    geo.setAttribute('aC', new THREE.InstancedBufferAttribute(C, 3));
-    geo.setAttribute('aPal', new THREE.InstancedBufferAttribute(PL, 4));
-    geo.setAttribute('aCx', new THREE.InstancedBufferAttribute(CX, 4));
-    mesh.frustumCulled = false;
-    mesh.renderOrder = order;
-    solids.add(mesh);
-  };
-
-  const _q = new THREE.Quaternion(), _up = new THREE.Vector3(0, 1, 0);
-  const _d = new THREE.Vector3(), _p = new THREE.Vector3(), _s3 = new THREE.Vector3();
-  const at = (pos: THREE.Vector3, quat: THREE.Quaternion, sc: THREE.Vector3) =>
-    new THREE.Matrix4().compose(pos, quat, sc);
-  const ball = (v: THREE.Vector3, r: number) =>
-    at(_p.copy(v), _q.identity(), _s3.set(r, r, r));
-  const tube = (a: THREE.Vector3, b: THREE.Vector3, half: number) => {
-    _d.copy(b).sub(a);
-    const L = _d.length() || 1e-4;
-    return at(_p.copy(a).add(b).multiplyScalar(0.5),
-              _q.setFromUnitVectors(_up, _d.divideScalar(L)),
-              _s3.set(half, L, half));
-  };
-
-  /* The coarse frame is the plain icosahedron's 30 edges with its 12 corners
-     carrying the junctions — read off the geometry rather than written down, so
-     a frame and the beads that sit on it cannot disagree about where a corner
-     is. The numbers are cluster_spec.py's, the same ones the GUI and the
-     architecture graph read. */
+     A RIBBON AND NOT A LINE, because WebGL ignores `lineWidth` — the 120-edge
+     cage above is a `LineSegments` and can only ever be a one-pixel hairline,
+     which is right for a mesh you look through and wrong for the frame that
+     mesh is wrapped around. Four vertices and two triangles per rod, expanded
+     across its own width in the vertex shader, still one draw call. The width
+     is in WORLD units, so a distant rod is genuinely thinner rather than a
+     constant-width ribbon fighting every other depth cue in the scene. */
   const ico0 = new THREE.IcosahedronGeometry(1, 0);
   const w0 = new THREE.EdgesGeometry(ico0);
   const w0p = w0.getAttribute('position');
-  const seenC = new Map<string, THREE.Vector3>();
   const i0p = ico0.getAttribute('position');
+  const seenC = new Map<string, THREE.Vector3>();
   for (let i = 0; i < i0p.count; i++) {
     const v = new THREE.Vector3().fromBufferAttribute(i0p, i);
     seenC.set(`${v.x.toFixed(3)}|${v.y.toFixed(3)}|${v.z.toFixed(3)}`, v);
   }
+  /* The corners are deduplicated out of the triangle soup and CHECKED against
+     the spec: `IcosahedronGeometry` hands back sixty positions for twelve
+     corners, and the two counts are the one thing this scene, the GUI's stage
+     and the architecture graph all have to agree about. */
   const CORNERS0 = [...seenC.values()];
+  if (CORNERS0.length !== CLUSTER.FRAME_NODES || w0p.count / 2 !== CLUSTER.FRAME_EDGES) {
+    throw new Error(`frame: ${CORNERS0.length}/${w0p.count / 2} against the spec's `
+      + `${CLUSTER.FRAME_NODES}/${CLUSTER.FRAME_EDGES}`);
+  }
+  //: the 20 face centres — where a hub spoke points
+  const SPOKES0: THREE.Vector3[] = [];
+  for (let f = 0; f < i0p.count; f += 3) {
+    const c3 = new THREE.Vector3();
+    for (let k = 0; k < 3; k++) c3.add(new THREE.Vector3().fromBufferAttribute(i0p, f + k));
+    SPOKES0.push(c3.normalize());
+  }
   ico0.dispose();
 
-  const rTube: Row[] = [], rCore: Row[] = [], rGlass: Row[] = [];
+  const dPos: number[] = [], dOther: number[] = [], dSide: number[] = [];
+  const dAlpha: number[] = [], dHalf: number[] = [], dCtr: number[] = [];
+  const dMid: number[] = [], dNd: number[] = [], dPal: number[] = [];
+  const dCx: number[] = [], dLoc: number[] = [], dIdx: number[] = [];
+  let nRod = 0;
+  const rod = (st: number, a: THREE.Vector3, b: THREE.Vector3,
+               half: number, alpha: number) => {
+    const c = STATIONS[st], r = RADII[st], ph = (st * 1.7) % 6.283;
+    // the direction this rod flies off in when station 02 comes apart —
+    // outward from the centre, along its own midpoint, exactly as the cage's
+    // edges do, or the frame stays put while the mesh around it scatters
+    const mid = a.clone().add(b).multiplyScalar(0.5).normalize();
+    const base = nRod * 4;
+    for (const [t, side] of [[0, -1], [0, 1], [1, -1], [1, 1]] as [number, number][]) {
+      const me = t ? b : a, other = t ? a : b;
+      dPos.push(me.x, me.y, me.z);
+      dOther.push(other.x, other.y, other.z);
+      dSide.push(side); dAlpha.push(alpha); dHalf.push(half);
+      dCtr.push(c.x, c.y, c.z);
+      dMid.push(mid.x, mid.y, mid.z);
+      dNd.push(ph, 0, st);
+      dLoc.push(me.x / r, me.y / r, me.z / r);
+      pushChord(dPal, dCx, st);
+    }
+    dIdx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+    nRod++;
+  };
+
   for (let st = 0; st < STATION_COUNT; st++) {
-    const r = RADII[st], ph = (st * 1.7) % 6.283;
+    const r = RADII[st];
+    /* Alpha 1.0 against the cage's own ~0.2: thirty rods and a hundred and
+       twenty cannot share a number, and this is the population the eye is
+       supposed to read first. */
     for (let v = 0; v < w0p.count; v += 2) {
-      const a = new THREE.Vector3().fromBufferAttribute(w0p, v).multiplyScalar(r);
-      const b = new THREE.Vector3().fromBufferAttribute(w0p, v + 1).multiplyScalar(r);
-      rTube.push({ m: tube(a, b, CLUSTER.FRAME_HALF * r), i: [ph, st, r, 0] });
+      rod(st, new THREE.Vector3().fromBufferAttribute(w0p, v).multiplyScalar(r),
+          new THREE.Vector3().fromBufferAttribute(w0p, v + 1).multiplyScalar(r),
+          CLUSTER.FRAME_HALF * r, 1.0);
     }
-    for (const c of CORNERS0) {
-      const p2 = c.clone().multiplyScalar(r);
-      // four nested parts, at the model's own radii: a hot core and an energy
-      // shell inside a glass housing (Hub_HotCore / Hub_EnergyCore /
-      // Hub_GlassShell). The version that guessed from a still had three and
-      // was missing the energy core, which is what stops a junction being a
-      // white dot with a tint around it.
-      // A JUNCTION'S TWO INNER SHELLS HAVE THEIR OWN RADII. They used to be
-      // the conduit hub's ratios with the hot core scaled 1.7, which put the
-      // white core on top of the energy shell so no pink ever showed.
-      rCore.push({ m: ball(p2, CLUSTER.FRAME_BEAD_HOT * r), i: [ph, st + 0.72, r, 0.80] });
-      rCore.push({ m: ball(p2, CLUSTER.FRAME_BEAD_ENERGY * r), i: [ph, st + 0.52, r, 0.14] });
-      rGlass.push({ m: ball(p2, CLUSTER.FRAME_BEAD_R * r), i: [ph, st, r, 0] });
+    /* ...and the twenty spokes, which stop at 0.56 R and never reach the
+       centre. Twenty rods meeting at one point sum, additively, into a white
+       star brighter than anything the scene means — that is what SPOKE_IN is
+       for, and it matters more here than it did under the lights because every
+       pass in this scene is additive. */
+    for (const d of SPOKES0) {
+      rod(st, d.clone().multiplyScalar(r * CLUSTER.SPOKE_IN),
+          d.clone().multiplyScalar(r * CLUSTER.SPOKE_OUT),
+          CLUSTER.SPOKE_HALF * r, 0.42);
     }
-    // THE LIT CENTRE — a white core with a gold seed in it, inside its own
-    // glass. The one thing the model's parts list says that no still image did,
-    // and the reason every hull built before it was read was hollow.
-    const O = new THREE.Vector3();
-    // THE CENTRE IS NOT A SUN — it is a junction one size up. In both
-    // references the middle of a cage is dark.
-    rCore.push({ m: ball(O, CLUSTER.CORE_ENERGY_R * r), i: [ph, st + 0.50, r, 0.10] });
-    rCore.push({ m: ball(O, CLUSTER.CORE_R * r), i: [ph, st + 0.62, r, 0.78] });
-    rCore.push({ m: ball(O, CLUSTER.SEED_R * r), i: [ph, st + 0.86, r, 0] });
-    rGlass.push({ m: ball(O, CLUSTER.CORE_SHELL_R * r), i: [ph, st, r, 0] });
   }
   w0.dispose();
 
-  const TUBE_G = track(new THREE.CylinderGeometry(1, 1, 1, 12, 1, true));
-  const BALL_G = track(new THREE.IcosahedronGeometry(1, 2));
-  /* ...and the emissives run hotter here than in the GUI's graph world, by
-     the same amount the composer would have added: this scene has NO BLOOM
-     PASS and never gets one (Canvas.tsx), so a hot core that the GUI reads
-     through its halo has to be legible as pixels. */
-  mkInst(TUBE_G, solidMat({ key: 'frame', rough: 0.22, metal: 0.78, cc: 0.9, irid: 0.35, emis: 0.72, fresE: 2, env: 0.6 }), rTube, 4);
-  mkInst(BALL_G, solidMat({ key: 'core', rough: 0.10, metal: 0.05, cc: 0.4, irid: 0.2, emis: 1.70, env: 0.5 }), rCore, 5);
-  mkInst(BALL_G, solidMat({ key: 'glass', glass: true, rough: 0.08, metal: 0.15, cc: 1.0, irid: 0.65, emis: 0.90, fresA: true, fresE: 3, env: 2.2 }), rGlass, 6);
+  const gRods = track(new THREE.BufferGeometry());
+  gRods.setAttribute('position', new THREE.Float32BufferAttribute(dPos, 3));
+  gRods.setAttribute('rother', new THREE.Float32BufferAttribute(dOther, 3));
+  gRods.setAttribute('rside', new THREE.Float32BufferAttribute(dSide, 1));
+  gRods.setAttribute('ralpha', new THREE.Float32BufferAttribute(dAlpha, 1));
+  gRods.setAttribute('rhalf', new THREE.Float32BufferAttribute(dHalf, 1));
+  gRods.setAttribute('ctr', new THREE.Float32BufferAttribute(dCtr, 3));
+  gRods.setAttribute('emid', new THREE.Float32BufferAttribute(dMid, 3));
+  gRods.setAttribute('nd', new THREE.Float32BufferAttribute(dNd, 3));
+  gRods.setAttribute('cpal', new THREE.Float32BufferAttribute(dPal, 4));
+  gRods.setAttribute('ccx', new THREE.Float32BufferAttribute(dCx, 4));
+  gRods.setAttribute('cloc', new THREE.Float32BufferAttribute(dLoc, 3));
+  gRods.setIndex(dIdx);
 
+  const mRods = new THREE.Mesh(
+    gRods,
+    track(new THREE.ShaderMaterial({
+      uniforms: u,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      vertexShader: /* glsl */ `
+        attribute vec3 rother; attribute float rside; attribute float ralpha;
+        attribute float rhalf; attribute vec3 ctr; attribute vec3 emid;
+        attribute vec3 nd; attribute vec4 cpal; attribute vec4 ccx;
+        attribute vec3 cloc;
+        varying float vX; varying float vA; varying float vD; varying float vF;
+        varying float vS;
+        ${SF_CVAR}
+        uniform float u_t, u_frag;
+        ${SPIN}
+        ${SF_FOG}
+        ${SF_GRAD}
+        ${SF_CSET}
+        void main(){
+          vX = rside; vA = ralpha; vS = nd.z;
+          setChord(cpal, ccx, cloc);
+          float fr = (abs(nd.z - 1.0) < 0.5) ? u_frag : 0.0;
+          float sp = u_t * (1.0 - 0.55 * fr);
+          vec3 pa = ctr + spin(position + emid * fr * 2.6, nd.x, sp);
+          vec3 pb = ctr + spin(rother + emid * fr * 2.6, nd.x, sp);
+          vec4 mv = modelViewMatrix * vec4(pa, 1.0);
+          vec3 bv = (modelViewMatrix * vec4(pb, 1.0)).xyz;
+          // across the rod, camera-facing: perpendicular to the rod and to the
+          // view axis
+          vec3 side = normalize(cross(normalize(bv - mv.xyz), normalize(-mv.xyz)));
+          mv.xyz += side * rside * rhalf;
+          float dist = -mv.z;
+          vD = clamp(1.0 - dist / 46.0, 0.0, 1.0);
+          vF = fogOf(dist);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: /* glsl */ `
+        varying float vX; varying float vA; varying float vD; varying float vF;
+        varying float vS;
+        ${SF_CVAR}
+        ${SF_HUES}
+        uniform vec3 u_bg;
+        uniform float u_frag, u_web;
+        ${SF_ROLE}
+        ${SF_CHORD}
+        void main(){
+          float ax = abs(vX);
+          /* A hairline rod has room for exactly two terms: the body of the
+             material and the wall where it turns away. A core term at this
+             width IS the hairline the ribbon was built to replace, drawn
+             inside its own replacement. */
+          float body = pow(max(0.0, 1.0 - ax * ax), 1.3);
+          float rim  = smoothstep(0.55, 0.92, ax) * (1.0 - smoothstep(0.92, 1.0, ax));
+          vec3 col = mix(u_bg, chord(vPal, vGT, 0.08 + 0.30 * rim), vF);
+          float fr = (abs(vS - 1.0) < 0.5) ? u_frag : 0.0;
+          float a = (body * 0.11 + rim * 0.46) * vA * (0.46 + 0.48 * vD) * vF
+                  * (1.0 - 0.62 * fr) * (0.86 + 0.30 * u_web);
+          gl_FragColor = vec4(col, a);
+        }`,
+    })),
+  );
+  mRods.frustumCulled = false;
+  mRods.renderOrder = 2;
+  stations.add(mRods);
+
+  /* ── 2d. THE JUNCTIONS AND THE CENTRE: A DOT WITH AN OUTER CIRCLE ─────────
+     What the five lit passes were for. A junction was a hot core inside an
+     energy volume inside a glass housing, and the centre the same object one
+     size up; drawn flat, that object is a dot with a ring around it — the
+     white middle, the chord in the gap, and the housing's silhouette as the
+     circle.
+
+     SIZED IN WORLD UNITS, which is the one thing that had to be got right.
+     The 42 shell beads above are a TEXTURE and keep their screen size (a
+     texture that scales to a quarter of a pixel is gone); a junction is a
+     fixed fraction of its own hull in the reference, so it is projected like
+     geometry — `worldR * viewportHeight * P[1][1] / 2 / distance` is exactly
+     how many pixels a sphere of that radius covers. Clamped at the top, or the
+     nearest station's centre is a dinner plate. */
+  const kPos: number[] = [], kCtr: number[] = [], kNd: number[] = [];
+  const kKd: number[] = [], kPal: number[] = [], kCx: number[] = [], kLoc: number[] = [];
+  for (let s = 0; s < STATION_COUNT; s++) {
+    const c = STATIONS[s], r = RADII[s], ph = (s * 1.7) % 6.283;
+    for (const v of CORNERS0) {
+      kPos.push(v.x * r, v.y * r, v.z * r);
+      kCtr.push(c.x, c.y, c.z);
+      kNd.push(ph, 0, s);
+      kKd.push(1, CLUSTER.FRAME_BEAD_R * r);
+      kLoc.push(v.x, v.y, v.z);
+      pushChord(kPal, kCx, s);
+    }
+    kPos.push(0, 0, 0);
+    kCtr.push(c.x, c.y, c.z);
+    kNd.push(ph, 0, s);
+    kKd.push(2, CLUSTER.CORE_SHELL_R * r);
+    kLoc.push(0, 0, 0);
+    pushChord(kPal, kCx, s);
+  }
+  const gNode = track(new THREE.BufferGeometry());
+  gNode.setAttribute('position', new THREE.Float32BufferAttribute(kPos, 3));
+  gNode.setAttribute('ctr', new THREE.Float32BufferAttribute(kCtr, 3));
+  gNode.setAttribute('nd', new THREE.Float32BufferAttribute(kNd, 3));
+  //: .x is which population (1 a junction, 2 the centre), .y its world radius
+  gNode.setAttribute('kd', new THREE.Float32BufferAttribute(kKd, 2));
+  gNode.setAttribute('cpal', new THREE.Float32BufferAttribute(kPal, 4));
+  gNode.setAttribute('ccx', new THREE.Float32BufferAttribute(kCx, 4));
+  gNode.setAttribute('cloc', new THREE.Float32BufferAttribute(kLoc, 3));
+
+  const mNode = new THREE.Points(
+    gNode,
+    track(new THREE.ShaderMaterial({
+      uniforms: u,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      vertexShader: /* glsl */ `
+        attribute vec3 ctr; attribute vec3 nd; attribute vec2 kd;
+        attribute vec4 cpal; attribute vec4 ccx; attribute vec3 cloc;
+        varying float vD; varying float vA; varying float vF; varying float vK;
+        ${SF_CVAR}
+        uniform float u_t, u_lit, u_frag, u_web; uniform vec2 u_res;
+        ${SPIN}
+        ${SF_FOG}
+        ${SF_GRAD}
+        ${SF_CSET}
+        void main(){
+          vK = kd.x;
+          setChord(cpal, ccx, cloc);
+          float fr = (abs(nd.z - 1.0) < 0.5) ? u_frag : 0.0;
+          vec3 p = ctr + spin(position, nd.x, u_t * (1.0 - 0.55 * fr));
+          vec4 mv = modelViewMatrix * vec4(p, 1.0);
+          float dist = -mv.z;
+          vD = clamp(1.0 - dist / 46.0, 0.0, 1.0);
+          vF = fogOf(dist);
+          // station 01 lights up on arrival, 02 dims as it comes apart, the
+          // finale brings every station back — the same two uniforms the shell
+          // beads read, so a junction cannot be lit while its cage is not
+          float lit = (abs(nd.z) < 0.5) ? smoothstep(0.0, 0.6, u_lit) : 1.0;
+          vA = lit * (1.0 - 0.88 * fr) * (0.85 + 0.45 * u_web);
+          gl_Position = projectionMatrix * mv;
+          gl_PointSize = clamp(kd.y * u_res.y * projectionMatrix[1][1]
+                               / max(dist, 0.25), 2.0, 96.0);
+        }`,
+      fragmentShader: /* glsl */ `
+        varying float vD; varying float vA; varying float vF; varying float vK;
+        ${SF_CVAR}
+        ${SF_HUES}
+        uniform vec3 u_bg;
+        ${SF_ROLE}
+        ${SF_CHORD}
+        void main(){
+          float d = length(gl_PointCoord - 0.5);
+          if (d > 0.5) discard;
+          /* aa widens with distance: crisp edges, not one smoothstep from the
+             middle out — that is a blur, and a blur reads as a smudge at every
+             size. */
+          float aa = 0.02 + 0.10 * (1.0 - vD);
+          float core = 1.0 - smoothstep(0.30 - aa, 0.30 + aa, d);
+          float ring = smoothstep(0.33, 0.46, d)
+                     * (1.0 - smoothstep(0.46, 0.46 + aa * 2.0, d));
+          float halo = pow(max(0.0, 1.0 - d * 2.0), 2.6);
+          /* the white stops at the DOT: in both references you read a white
+             middle through a coloured volume, and whitening the volume is what
+             turns a node into a pale blob. The centre is hotter than a
+             junction and it is still not a sun — the middle of a cage is dark
+             in both. */
+          vec3 col = chord(vPal, vGT, 0.0);
+          col = mix(col, vec3(1.0), core * (0.52 + 0.34 * step(1.5, vK)) + ring * 0.24);
+          col = mix(u_bg, col, vF);
+          float a = (core * 0.62 + ring * 0.72 + halo * 0.22)
+                  * (0.40 + 0.55 * vD) * vA * vF;
+          gl_FragColor = vec4(col, a);
+        }`,
+    })),
+  );
+  mNode.frustumCulled = false;
+  mNode.renderOrder = 4;
+  stations.add(mNode);
 
   /* ── 3. the link: a tube along the same curve, drawn by scroll ───────────
      TubeGeometry parameterises by ARC LENGTH, but scroll progress is in

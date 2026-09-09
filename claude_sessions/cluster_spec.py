@@ -106,6 +106,27 @@ FRAME_HALF = 0.042           # measured: Ø 40 px against a 950 px hull
 FRAME_EDGES = 30
 FRAME_NODES = 12
 
+#: ...AND THE TUBE IS A GLASS SLEEVE WITH ENERGY INSIDE IT, not a rod. This is
+#: the one measurement taken by scanning the render rather than by eye, and it
+#: settles a question three rounds of tuning the frame's albedo could not.
+#: A perpendicular cut across a frame tube in `cluster-render-single.png`
+#: (x = 70, y = 475..515, a 40 px tube) reads:
+#:
+#:      14 px   (0,  55, 135)    the far glass wall — RED IS ZERO
+#:      15 px   (0, 128, 233)    the energy inside it, same hue, three stops up
+#:       8 px   (218, 253, 254)  one narrow specular rail, near white, OFF-AXIS
+#:       4 px   (0,  50, 110)    the near wall again, falling to the silhouette
+#:
+#: So: a translucent sleeve at FRAME_HALF that you read the interior THROUGH,
+#: a brighter coaxial core at a little over half its width, and a rail rather
+#: than a rim. What shipped instead was ONE opaque cylinder at FRAME_HALF with
+#: metal 0.78 and a clearcoat, which is a pale plastic bar — it cannot show a
+#: core because there is nothing inside it, and it cannot show the geometry
+#: behind it because it writes depth over the whole width. 0.024 and not the
+#: 0.021 the 15 px band measures: the sleeve's own inner wall is dark and eats
+#: a pixel either side of the core once the two are composited.
+FRAME_CORE_HALF = 0.024
+
 #: THE JUNCTIONS, and they are the thing you are meant to look at. Measured at
 #: Ø 130 px against the same 950 px hull — a junction is nearly THREE TIMES the
 #: tube it sits on, which is what makes the frame read as built rather than as
@@ -285,7 +306,8 @@ def family_for(seed):
 EXPORTED = (
     'SHELL_BY_DETAIL', 'SHELL_ROD_HALF', 'SPOKE_HALF', 'WEB_ROD_HALF',
     'WEB_R', 'MOTE_R', 'ORBIT_R', 'SPOKE_IN', 'SPOKE_OUT', 'SPOKE_FADE',
-    'CORE_R', 'SEED_R', 'CORE_ENERGY_R', 'FRAME_HALF', 'FRAME_EDGES',
+    'CORE_R', 'SEED_R', 'CORE_ENERGY_R', 'FRAME_HALF', 'FRAME_CORE_HALF',
+    'FRAME_EDGES',
     'FRAME_NODES', 'FRAME_BEAD_R', 'FRAME_BEAD_HOT', 'FRAME_BEAD_ENERGY',
     'SHELL_BEAD_R', 'CORE_SHELL_R',
     'MOTE_MIN', 'MOTE_MAX', 'ORBIT_N', 'ROD_ALPHA_BY_EDGES', 'LOD_BREAKS',

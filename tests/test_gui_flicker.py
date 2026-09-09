@@ -219,10 +219,17 @@ def test_exactly_one_raf_chain_in_the_app():
     # entered from exactly two places: kick(), and the loop's own tail
     assert PAGE.count('requestAnimationFrame(t => this._loop(t))') == 2
     assert 'A.engine.useDefaultMainLoop = false;' in PAGE
-    # the stage renders from a registered job, never from a loop of its own
+    # the stage renders from a registered job, never from a loop of its own —
+    # and its resize coalescer goes through MO.frame for the same reason, which
+    # this gate is what caught. Comments stripped before the scan, exactly as
+    # test_it_is_frame_capped_and_render_scaled does for devicePixelRatio: the
+    # word has to survive in the note saying why the call is not there.
     stage = PAGE[PAGE.index('const STAGE = {'):PAGE.index('window.STAGE = STAGE;')]
+    stage = re.sub(r'^\s*//.*$', '', re.sub(r'/\*.*?\*/', '', stage, flags=re.S), flags=re.M)
     assert 'requestAnimationFrame' not in stage, 'the stage started its own chain'
     assert 'MO.frame(dt => this._tick(dt))' in stage
+    assert 'MO.frame(() => { _rsz = 0; STAGE.resize(); return false; });' in stage, \
+        'the resize coalescer is not on the one chain'
     # no renderer may start a loop of its own
     for dead in ('function liveLoop', 'function constLoop', 'function moLoop'):
         assert dead not in PAGE, dead

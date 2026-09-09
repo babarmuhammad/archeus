@@ -44,10 +44,18 @@ def _page_bg():
         return _FALLBACK_BG
 
 
-def run_desktop():
+def run_desktop(on_ready=None):
     """Serve the GUI and show it in a native Qt window. Blocks until the
     window closes. Raises ImportError if PyQt6/WebEngine is unavailable —
-    caller falls back."""
+    caller falls back.
+
+    `on_ready(view, app)` is called once the page has loaded, and exists for
+    ONE caller: tools/probe_qt.py, which measures the stage inside the real Qt
+    shell because that is the only place the surface-tearing bug lives. It is a
+    callback rather than a copy of this function in the tool because a
+    hand-maintained copy of something the code already states drifts — and what
+    would drift here is precisely the GPU and compositing setup the measurement
+    is about."""
     # GPU compositing stays ON here — forcing --disable-gpu-compositing (the
     # old fix) routed the WHOLE page through the CPU compositor and made the
     # app sluggish. The flicker it was papering over had a specific DOM cause,
@@ -69,7 +77,7 @@ def run_desktop():
     from PyQt6.QtWidgets import QApplication, QMainWindow
     from PyQt6.QtWebEngineWidgets import QWebEngineView
     from PyQt6.QtGui import QIcon, QDesktopServices, QColor
-    from PyQt6.QtCore import QUrl
+    from PyQt6.QtCore import QMetaObject, Qt, QUrl
 
     from . import gui
     from .gui import make_server
@@ -110,6 +118,17 @@ def run_desktop():
     win.setCentralWidget(view)
     win.resize(1280, 840)
     win.show()
+    if on_ready is not None:
+        view.loadFinished.connect(lambda ok: ok and on_ready(view, app))
+
+    # POST /api/quit runs on a request thread, and Qt may only be touched from
+    # the thread that owns the object — a QTimer created off-thread has no event
+    # loop to fire it. A queued invocation is the one safe way across.
+    def _quit():
+        QMetaObject.invokeMethod(app, 'quit', Qt.ConnectionType.QueuedConnection)
+        return True
+
+    gui.QUIT_HOOK = _quit
     try:
         app.exec()
     finally:

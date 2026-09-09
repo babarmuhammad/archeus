@@ -1,4 +1,4 @@
-"""Three renderers, one cluster.
+"""Three renderers, one cluster, and none of them is lit.
 
 The GUI's background (`claude_sessions/web/stage.js`), the site's scroll journey
 (`www/components/journey/scene.ts`) and the real architecture graph
@@ -6,6 +6,26 @@ The GUI's background (`claude_sessions/web/stage.js`), the site's scroll journey
 `notes/reference/cluster.glb` and `connection.glb`. The instruction that
 produced this file was that all three must represent the SAME reference rather
 than three approximations of it.
+
+ALL THREE ARE FLAT. Every part the reference has, drawn as additive ribbons and
+sprites, with no lighting model, no glass and no depth writes:
+
+    "keep the complications of the cluster as it was before just remove the 3d
+     part … just remove from all of this the 3d effect"
+    "put this version of the cluster in the website too"
+
+That was two instructions and it is worth keeping both, because the file spent
+one round in between describing a deliberate SPLIT — the GUI flat, the site
+still lit on the argument that a showcase and a background are asked for
+different things. They are not being asked for different things. So the checks
+below run over all three again, and what they are for has inverted: they used
+to keep a renderer from quietly dropping the 3D, and they now keep one from
+quietly putting it back.
+
+What the three share is the SHAPE and the COLOUR RULES — the spec's
+measurements, the role numbering, the chord — and the READS table says per
+renderer which of them it spends, because they still do not all draw all of
+it.
 
 Three hand-typed copies of forty numbers do not stay equal — this repository
 already records what happened to `docs/gui-audit.md`, which drifted to listing
@@ -43,7 +63,7 @@ STAGE = _read('claude_sessions', 'web', 'stage.js')
 SCENE = _read('www', 'components', 'journey', 'scene.ts')
 CONN = _read('claude_sessions', 'connections.py')
 #: the graph scene only — the other six scenes in stage.js draw other things
-GRAPH = STAGE[STAGE.index('  graph(TH, c, ren) {'):STAGE.index('  /* Terminal')]
+GRAPH = STAGE[STAGE.index('  graph(TH, c) {'):STAGE.index('  /* Terminal')]
 
 
 def test_the_generated_copies_are_current():
@@ -71,23 +91,39 @@ def test_every_renderer_reads_the_spec():
 
 
 #: What a renderer must READ, per renderer, because not all three draw all of
-#: it: the 2D canvas has no conduit and the site's journey has no field of
-#: forty. A key in this list is one the renderer visibly spends.
+#: it — and since the GUI went flat, not all three draw the same PARTS either.
+#: The site is the only one with a glass sleeve, a coaxial core and three
+#: concentric spheres per junction, so it is the only one that reads their
+#: radii; the GUI spends the populations and their placement; the 2D canvas
+#: spends the frame's topology. A key in this list is one the renderer visibly
+#: spends.
 READS = {
     'stage.js graph scene': (
-        'SHELL_ROD_HALF', 'SPOKE_HALF', 'WEB_ROD_HALF', 'FRAME_HALF',
-        'FRAME_BEAD_R', 'FRAME_BEAD_HOT', 'FRAME_BEAD_ENERGY',
-        'CORE_R', 'SEED_R', 'CORE_ENERGY_R', 'CORE_SHELL_R', 'SPOKE_IN',
-        'SPOKE_OUT', 'WEB_R', 'MOTE_R', 'ORBIT_R', 'ORBIT_N',
-        'MOTE_MIN', 'MOTE_MAX', 'LOD_BREAKS', 'ROD_ALPHA_BY_EDGES',
-        'CONDUIT_HOUSING', 'CONDUIT_GLASS', 'CONDUIT_CORE', 'CONDUIT_REACH',
-        'CONDUIT_CLAMP', 'COLLAR_D', 'COLLAR_THICK', 'PALETTE_FAMILIES',
-        'FILAMENT_MIX',
+        # the populations and where they sit
+        'SHELL_ROD_HALF', 'WEB_ROD_HALF', 'WEB_R', 'FRAME_HALF',
+        'SPOKE_HALF', 'SPOKE_IN', 'SPOKE_OUT',
+        'MOTE_R', 'MOTE_MIN', 'MOTE_MAX', 'ORBIT_R', 'ORBIT_N', 'FILAMENT_MIX',
+        # the two nodes that are a dot with an outer circle, at their own radii
+        'FRAME_BEAD_R', 'CORE_SHELL_R',
+        # how much of it to draw at a given size, and how bright a rod is when
+        # there are four hundred and eighty of them
+        'LOD_BREAKS', 'ROD_ALPHA_BY_EDGES',
+        # the conduit, as a line that stops on a hull
+        'CONDUIT_REACH', 'CONDUIT_CLAMP',
+        'PALETTE_FAMILIES',
     ),
     'www scene.ts': (
-        'FRAME_HALF', 'FRAME_BEAD_R', 'FRAME_BEAD_HOT', 'FRAME_BEAD_ENERGY',
-        'CORE_R', 'SEED_R', 'CORE_ENERGY_R', 'CORE_SHELL_R',
+        # the frame and the spokes, as ribbons
+        'FRAME_NODES', 'FRAME_EDGES', 'FRAME_HALF',
+        'SPOKE_HALF', 'SPOKE_IN', 'SPOKE_OUT',
+        # the two nodes that are a dot with an outer circle, at their own radii
+        'FRAME_BEAD_R', 'CORE_SHELL_R',
         'PALETTE_FAMILIES', 'FILAMENT_MIX',
+    ),
+    'connections.py': (
+        # a 2D canvas draws the coarse frame and its junctions, and the two
+        # counts are the whole contract: twelve nodes on thirty edges
+        'FRAME_NODES', 'FRAME_EDGES', 'FRAME_BEAD_R',
     ),
 }
 
@@ -114,8 +150,9 @@ def test_every_renderer_reads_the_spec_keys_it_draws():
     instead would stop naming the key, which is the thing this catches:
     somebody tunes the frame in the GUI, the site keeps the old width, and the
     two stop being the same object with nothing breaking."""
-    for label, src in (('stage.js graph scene', GRAPH), ('www scene.ts', SCENE)):
-        prefix = 'CL.' if 'graph' in label else 'CLUSTER.'
+    for label, src in (('stage.js graph scene', GRAPH), ('www scene.ts', SCENE),
+                       ('connections.py', CONN)):
+        prefix = 'CLUSTER.' if 'scene.ts' in label else 'CL.'
         for key in READS[label]:
             assert prefix + key in src, f'{label} does not read {key}'
 
@@ -151,6 +188,104 @@ def test_a_cluster_is_never_one_flat_colour_in_any_renderer():
     # ...and no family in the shared table is one colour repeated
     for _w, name, roles in CS.PALETTE_FAMILIES:
         assert len(set(roles)) >= 3, f'{name} is not a chord: {roles}'
+
+
+def test_no_renderer_draws_a_lit_or_glass_cluster_any_more():
+    """The 3D came out of all three, and this is what keeps it out.
+
+    The instruction that produced the glass sleeve is still a true reading of
+    the reference — the structural tubes there ARE thick transparent glass, and
+    one cylinder cannot be that, so it took two: a sleeve at FRAME_HALF and a
+    brighter coaxial core at FRAME_CORE_HALF, only the core writing depth. It
+    was built three times, in three renderers, and rejected as a look. The
+    measurements survive in `cluster_spec.py`, where a measurement belongs; the
+    rendering does not survive anywhere, and none of these three files may grow
+    it back without a new instruction.
+
+    A frame rod is one additive ribbon in a merged buffer. A junction is a dot
+    with an outer circle. Nothing is shaded by a light and nothing writes
+    depth."""
+    strip = lambda t: re.sub(r'^\s*//.*$', '',
+                             re.sub(r'/\*.*?\*/', '', t, flags=re.S), flags=re.M)
+    for label, src in (('stage.js', GRAPH), ('scene.ts', SCENE)):
+        code = strip(src)
+        for gone in ('MeshPhysicalMaterial', 'InstancedMesh', 'DirectionalLight',
+                     'HemisphereLight', 'PMREMGenerator', 'FRAME_CORE_HALF',
+                     'depthWrite: true'):
+            assert gone not in code, f'{label}: the 3D cluster is back ({gone})'
+        # ...and what replaced it, in both: a ribbon rod and a ringed sprite
+        assert 'blending: THREE.AdditiveBlending' in src \
+            or 'blending: TH.AdditiveBlending' in src, label
+        assert 'rim  = smoothstep(0.55, 0.92, ax)' in src, \
+            f'{label}: a rod is not a ribbon with a wall term'
+        assert 'kd' in src, f'{label}: the node populations are not separated'
+    dc = CONN.split('function drawCluster(')[1].split('function draw()')[0]
+    assert 'CL.FRAME_CORE_HALF' not in dc, \
+        'connections.py: the sleeve-and-core double stroke is back'
+    assert dc.count('ctx.stroke();') == 1, \
+        'connections.py: a frame edge is more than one stroke again'
+
+
+def test_the_conduits_still_carry_something_in_the_renderer_that_has_them():
+    """The brief asks for energy flowing INSIDE the tubes, and the tubes are
+    gone from every renderer — so the effect lives where there is still
+    something for it to travel along.
+
+    The GUI has conduits between its forty clusters and they are fine lines, so
+    the packet IS the line brightening: a travelling gaussian on the segment's
+    own parameter, seeded per SEGMENT and pushed onto both endpoints so it
+    survives interpolation (without it every conduit pulses in lockstep, which
+    is a strobe and not traffic).
+
+    The site's six stations are joined by a scroll-driven link rather than by a
+    field of conduits, and its per-station cages have no tube to run anything
+    inside any more — the version that did ran a gaussian on `vLen`, the
+    cylinder's own axis, hashed off the instance translation, and it went with
+    the instanced cylinder. The travelling term it still has is the one on that
+    link, which is the same idea on the only geometry left to hang it on.
+
+    2D is deliberately not in this check: a canvas render is a still."""
+    assert 'float packet(float at, float head){' in GRAPH, 'stage.js: no packet'
+    assert 'packet(vT, fract(u_t * sp + vS))' in GRAPH, \
+        'stage.js: the packet does not travel'
+    assert 'cs.push(sd, sd);' in GRAPH, \
+        'stage.js: the seed does not survive interpolation'
+    # the site: the link is still drawn by scroll and still carries a head
+    assert 'the link: a tube along the same curve, drawn by scroll' in SCENE
+    # ...and the instanced-tube flow term is gone rather than half-removed
+    for gone in ('varying float vLen;', 'instanceMatrix[3].xyz'):
+        assert gone not in SCENE, f'scene.ts: the instanced tube is back ({gone})'
+
+
+def test_the_roles_are_deepened_by_the_same_amount_in_both_gl_renderers():
+    """The reference's hues are saturated and this palette's are pale, and the
+    gap is LIGHTNESS: #7dcfff is already s = 1.0 (its max channel is 255), so a
+    saturation push cannot move it, while dropping L to 0.46 lands it on the
+    (0, 128, 233) a cut across a reference tube measures.
+
+    The two renderers apply the same transform in two different places, and
+    that is deliberate rather than sloppy: the GUI wears 32 palettes so it has
+    to compute it at run time, while the site's HUES is a literal list, and a
+    run-time THREE.Color round trip there would go through a MANAGED working
+    colour space that the GUI has switched off — the same two lines of code
+    would not produce the same two colours. So the site carries the deepened
+    literals and this test is what keeps the two definitions in step."""
+    import colorsys
+    m = re.search(r'const DEEP_L = ([\d.]+), DEEP_S = ([\d.]+);', GRAPH)
+    assert m, 'stage.js does not deepen its roles'
+    dl, ds = float(m.group(1)), float(m.group(2))
+    pale = ['#7dcfff', '#9d7bff', '#f7768e', '#73daca', '#e0af68', '#7ee787']
+    want = []
+    for h in pale:
+        n = int(h[1:], 16)
+        hh, li, sa = colorsys.rgb_to_hls(((n >> 16) & 255) / 255,
+                                         ((n >> 8) & 255) / 255, (n & 255) / 255)
+        r, g, b = colorsys.hls_to_rgb(hh, li * dl, min(1.0, sa * ds))
+        want.append('#%02x%02x%02x' % (round(r * 255), round(g * 255), round(b * 255)))
+    got = re.search(r'const HUES = \[([^\]]*)\]', SCENE)
+    assert got, 'scene.ts has no HUES'
+    assert [x.strip().strip("'") for x in got.group(1).split(',')] == want, \
+        f'scene.ts HUES are not stage.js DEEP_L/DEEP_S applied: want {want}'
 
 
 def test_the_roles_are_numbered_once_and_every_renderer_agrees():

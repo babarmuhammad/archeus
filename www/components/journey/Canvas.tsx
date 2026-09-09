@@ -433,8 +433,16 @@ export function JourneyCanvas({ mode = 'journey' }: { mode?: 'journey' | 'ambien
          routinely exceed 1.0 once an emissive term meets three lights: without
          a curve every one of them clips to white, channel by channel at a
          different point, and a violet cluster comes out pink. */
+      /* 1.25, the same lift the GUI's graph scene takes, and for the reason
+         that scene's handoff finally identified: the field was bright in
+         CHARACTER and not in amount — every white in the reference renders is
+         a blown highlight and ours topped out around half of one. ACES rolls
+         off hard (an input of 1.0 leaves at about 0.8) and the exposure is
+         what feeds it, so this lifts the whole lit set at once rather than
+         each pass's emissive being nudged separately. It reaches only
+         toneMapped materials, which is the station solids and nothing else. */
       renderer.toneMapping = three.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.0;
+      renderer.toneMappingExposure = 1.25;
 
       scene = new three.Scene();
       camera = new three.PerspectiveCamera(52, 1, 0.1, 220);

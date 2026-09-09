@@ -22,9 +22,12 @@
    Cost discipline, given that QtWebEngine composites through a GPU hardware
    surface and this adds a second one:
 
-     · Opaque canvas (alpha:false). A transparent surface has to be blended with
-       the page underneath on every composite; an opaque one is a straight blit,
-       and the scene clears to --bg so the result is identical.
+     · The canvas declares an alpha channel (alpha:true) and is opaque anyway —
+       it clears to --bg at alpha 1. That is the reverse of the obvious call and
+       the reason is presentation, not drawing: an OPAQUE canvas is eligible to
+       become its own scanout plane, Windows hands a fullscreen window
+       independent flip, and a plane updating every third vsync against a page
+       plane updating every one shows two moments at once. See boot().
      · No CSS filter / backdrop-filter / mix-blend-mode anywhere near it. All
        glow is done in GL, which is precisely why bloom is affordable here and a
        CSS blur never was (tests/test_gui_flicker.py forbids the CSS form).
@@ -58,6 +61,22 @@
    land on the static CSS gradient (html.stage-off) with the app untouched. */
 
 const STAGE_SCALE = 0.75;      // render scale; scenes may raise it for crisp lines
+/* ...AND A CEILING ON WHAT THAT SCALE MAY COST, because a scale is a
+   MULTIPLIER and a multiplier has no idea how big the window is.
+
+   The graph scene asks for 1.5 (it draws hairlines — see _ratio), and 1.5 is
+   right at the size it was judged at. On a 2560x1440 window the same number is
+   3840x2160 = 8.3 MILLION pixels of blended PBR, drawn again by every mip of
+   the bloom pass. That is the whole of "the graph theme tears in the Qt shell":
+   the frame does not finish inside the compositor's budget, so QtWebEngine
+   swaps a surface mid-composite. Nothing was wrong with the scale; it was
+   unbounded.
+
+   3.0M is roughly a 1080p frame at 1.19, or 1440p at 0.89, and leaves a small
+   window at the full 1.5 — the sizes the hairlines were tuned at keep them.
+   _budget is the STAGE's own field rather than a constant so the degrade
+   ladder in _tick can halve it on hardware that still cannot keep up. */
+const STAGE_PIXEL_BUDGET = 3.0e6;
 /* Idle fps. Two knobs govern the background and they are NOT the same thing:
 
      calm  = how BRIGHT it is   (per skin, --sk-calm / u_calm)
@@ -74,24 +93,46 @@ const STAGE_FPS_BUSY = 34;     // a job is running
 const STAGE_ENERGY_TAU = 0.9;  // seconds for energy to close ~63% of a change
 const STAGE_SHOCK_S = 1.15;    // launch shockwave decay
 const STAGE_PULSE_S = 0.8;     // navigation ripple decay
+/* The two halves of "brighter", and they are the stage's own — see _calm().
+   Both were the zen mode's lift until the theme was judged in both modes at
+   once and the mode lost. In an alpha-composited scene calm decides how far a
+   colour comes up off the page and gain decides how much of it survives its
+   own alpha, which is why moving one without the other reaches a ceiling and
+   still looks dim. */
+const STAGE_LIFT = 0.12;
+const STAGE_GAIN = 1.12;
 
 /* Per-page character. The canvas is global and never restarts across
    navigation — that is what makes it one stage rather than seven wallpapers —
-   but each page tilts it. `d` is density/intensity, `c` biases the camera. */
+   but each page tilts it. `c` biases the camera, and that is now the whole of
+   it.
+
+   THERE IS NO PER-PAGE EXPOSURE ANY MORE, and the note that used to be here
+   was already most of the way to saying why: `d` dimmed the field by up to a
+   quarter, the first cut dropped Settings to 0.34 and Help to 0.30, and "that
+   is most of why the background looked absent — you are usually ON one of
+   those pages when you go looking for it". Raising the floor to 0.72 treated
+   the symptom. The verdict that finished it is that the theme must look the
+   same whether or not you are looking AT it:
+
+       "theme on vs theme off have different brightness and settings, i like
+        the one where i am only viewing the theme, so keep those settings for
+        the theme and the theme toggle shouldn't change brightness"
+
+   A page you are on cannot be a reason for the theme to be a different theme.
+   The camera bias stays because it changes the COMPOSITION rather than the
+   exposure — a different view of the same object, which is what per-page
+   character was supposed to mean. */
 const STAGE_PAGES = {
-  home:     {d: 1.00, c: 0.00},
-  sessions: {d: 0.92, c: 0.35},
-  usage:    {d: 0.86, c: -0.30},
-  memory:   {d: 0.80, c: 0.15},
-  plan:     {d: 0.95, c: 0.55},
-  settings: {d: 0.78, c: -0.55},
-  help:     {d: 0.76, c: -0.20},
+  home:     {c: 0.00},
+  sessions: {c: 0.35},
+  usage:    {c: -0.30},
+  memory:   {c: 0.15},
+  plan:     {c: 0.55},
+  settings: {c: -0.55},
+  help:     {c: -0.20},
 };
-// The floor is 0.72, not 0.3. The first cut dropped Settings to 0.34 and Help to
-// 0.30, which is most of why the background looked absent — you are usually ON
-// one of those pages when you go looking for it. A page may lean the scene back;
-// it may not switch it off.
-function stagePage(name) { return STAGE_PAGES[name] || {d: 0.82, c: 0.1}; }
+function stagePage(name) { return STAGE_PAGES[name] || {c: 0.1}; }
 
 /* Shared vertex shader for the screen-filling backdrop each scene sits on.
    Writes clip space directly, so it fills the viewport whatever the camera is
@@ -126,14 +167,43 @@ const STAGE = {
   failed: false,      // gave up for this page load; never retry in a loop
 
   _pal: null, _pageKey: 'home',
-  _E: 0, _Etgt: 0, _shock: 0, _pulse: 0, _dens: 1, _densTgt: 1, _cam: 0, _camTgt: 0,
+  _E: 0, _Etgt: 0, _shock: 0, _pulse: 0, _cam: 0, _camTgt: 0,
   //: brightness preference, 0 = follow the skin. See setGlow()/_calm().
-  glowPct: 0, _zen: false, _zenTier: null,
+  /* THERE IS NO ZEN MODE HERE, and that is the point.
+     STAGE used to carry a `zen()` that lifted calm by 0.12, lifted the gain by
+     1.12, forced the `cinematic` tier over a user who had chosen `lite`, and
+     supersampled off devicePixelRatio — so the theme was a brighter, sharper
+     theme while you were looking at it than while you were using it:
+
+         "theme on vs theme off have different brightness and settings, i like
+          the one where i am only viewing the theme, so keep those settings for
+          the theme and the theme toggle shouldn't change brightness"
+
+     Three of the four are the stage's own settings now (STAGE_LIFT,
+     STAGE_GAIN, and the graph scene's 1.5 render scale) and the fourth is
+     simply gone: `lite` is a COST setting — it drops EffectComposer, and the
+     tearing ladder in CLAUDE.md starts there — so no mode may overrule it.
+     What is left of zen is layout, which app.js owns: it hides the app and
+     collapses the sidebar column, and STAGE.impulse() ripples once because
+     something changed. */
+  glowPct: 0,
   // _T is scene time; _Tw is the rendered time it was advanced over, so
   // _T/_Tw is the clock multiplier itself — observable without counting
   // frames, which is what a software rasteriser makes meaningless.
   _T: 0, _Tw: 0, _acc: 0, _job: null,
   _th: null, _ren: null, _post: null, _sc: null, _canvas: null,
+  /* the degrade ladder — see _tick. _budget is the live pixel ceiling,
+     _degraded counts the steps taken (ONE WAY, it never comes back up), _cost
+     is the rolling mean of what a rendered frame actually took and _over how
+     many consecutive rendered frames have been above budget. */
+  _budget: STAGE_PIXEL_BUDGET, _degraded: 0, _cost: 0, _over: 0,
+  //: the measured display period and the ring it is the median of — see _tick.
+  //: 60Hz is not a fact about anyone's machine, so it is measured.
+  _vs: 0, _vsHi: 0, _vr: new Array(31).fill(1 / 60), _vi: 0,
+  //: how many of our own frames we skip to keep the COMPOSITOR at 60Hz — a
+  //: different resource from the tier and the pixel budget, and the one that
+  //: was actually short in fullscreen. See _watch. Reset by resize().
+  _slow: 1, _strain: 0,
 
   /* ── lifecycle ────────────────────────────────────────────────────────── */
   boot() {
@@ -143,9 +213,57 @@ const STAGE = {
     if (!TH || !cv) return;
     if (this.tier === 'off' || !MO.on) { this._static(); return; }
     try {
+      /* preserveDrawingBuffer: TRUE, and it is the fix for the flicker — the
+         one thing in this file that had been reasoned about correctly and
+         concluded backwards.
+
+         The fact was already written down, in blur() below: "with
+         preserveDrawingBuffer:false the WebGL backbuffer is undefined after it
+         has been presented. Qt then recomposites against a surface with
+         nothing valid in it, and you get artefacts." That was applied to the
+         unfocused window and dismissed everywhere else as "a buffer copy on
+         every single frame to repair a state nobody is looking at".
+
+         Somebody is looking at it. The stage draws at 30fps by design and
+         QtWebEngine composites at 60 — more often than that while scrolling —
+         so on every composite BETWEEN stage frames the canvas is exactly the
+         surface that sentence describes. That is the reported symptom, which
+         is a strobe rather than a scanline tear: constant, worse on scroll,
+         and gone the moment the stage is switched off.
+
+         The copy is per RENDERED frame (30/s), not per composite, and
+         STAGE_PIXEL_BUDGET now bounds what it copies — measured at 2.4M px on
+         an Intel UHD it does not move the frame interval. Drawing every vsync
+         instead would also fix it and costs twice the GPU on exactly the
+         hardware that cannot afford it. */
+      /* ...and `alpha: TRUE`, which is the fullscreen half of the same bug.
+         This one was a deliberate cost decision and the cost it was avoiding
+         turns out not to be the one that matters.
+
+         The old note: "a transparent surface has to be blended with the page
+         underneath on every composite; an opaque one is a straight blit, and
+         the scene clears to --bg so the result is identical." True, and the
+         blit is exactly the problem. An OPAQUE canvas is eligible to become
+         its own scanout plane, and Windows hands a fullscreen or maximised
+         window independent flip — so the canvas gets promoted, and a plane
+         updating every third vsync against a page plane updating every one
+         puts two different moments on screen at once. Which is the report,
+         exactly: clean windowed, starts on fullscreen. Windowed it cannot
+         happen at all, because DWM composites everything and DWM is vsynced.
+
+         Declaring an alpha channel makes the canvas something that must be
+         BLENDED into the page, so it is not a promotion candidate and it goes
+         back through the compositor with everything else. Chromium decides
+         this on the context attribute, not on the pixels, and the pixels do
+         not change: the clear colour is still --bg at alpha 1, so it is opaque
+         to look at and identical on screen.
+
+         The blend is per composite and it is cheap — measured, the page holds
+         a clean 16.7ms rAF. Drawing every vsync in fullscreen was the other
+         candidate fix and it is NOT cheap; see the note in _tick. */
       const ren = new TH.WebGLRenderer({
-        canvas: cv, alpha: false, antialias: false, depth: true, stencil: false,
-        powerPreference: 'high-performance', preserveDrawingBuffer: false,
+        canvas: cv, alpha: true, antialias: false, depth: true, stencil: false,
+        powerPreference: 'high-performance', preserveDrawingBuffer: true,
         failIfMajorPerformanceCaveat: false,
       });
       ren.setPixelRatio(STAGE_SCALE);
@@ -169,30 +287,13 @@ const STAGE = {
          no textures and no colours arriving from anywhere but the palette, so
          there is nothing for a linear working space to be more correct about.
 
-         The graph scene DOES have one, and it does not need the working space
-         either — what it needs is a tone curve, which is a different thing and
-         is set immediately below. Its lit materials opt into ACES; its raw
-         shaders, like every other scene's, are untouched by it. */
+         That is now true of ALL of them: the graph scene was the one
+         exception — instanced solids under a key/fill/rim and a PMREM
+         environment, with ACES rolling off their highlights — and it is drawn
+         in additive hairlines again, so there is no lighting model left in
+         this file for a working space or a tone curve to be correct about. */
       if (TH.ColorManagement) TH.ColorManagement.enabled = false;
       if (TH.LinearSRGBColorSpace) ren.outputColorSpace = TH.LinearSRGBColorSpace;
-      /* ACES, and ONLY the graph scene's lit solids opt into it.
-
-         Everything above is about colour SPACE; this is about what happens
-         above 1.0, and it is the problem this file has been solving by hand
-         for rounds. "Two pale colours added together are white" is the note on
-         four separate passes, and the answer each time was another pow() on
-         the hue before it was summed — an approximation of a tone curve,
-         written out four times. A filmic curve rolls the highlight off with
-         its hue intact instead of clipping every channel to 1 at a different
-         point, which is exactly what turned a violet cluster white the moment
-         it was lit.
-
-         three applies it per material, to materials that ask (`toneMapped`),
-         so it reaches the graph scene's MeshPhysicalMaterials and NOTHING
-         else: the six raw-ShaderMaterial scenes are untouched, on both tiers,
-         and the lite/cinematic agreement measured above still holds. */
-      if (TH.ACESFilmicToneMapping) ren.toneMapping = TH.ACESFilmicToneMapping;
-      ren.toneMappingExposure = 1.0;
       this._th = TH; this._ren = ren; this._canvas = cv;
       // QtWebEngine does lose contexts (tab suspend, driver reset). Losing the
       // background must never take the app with it.
@@ -245,9 +346,7 @@ const STAGE = {
     this._teardown();
     const mk = STAGE_SCENES[this.scene] || STAGE_SCENES.hud;
     try {
-      // the renderer goes in because the graph scene builds an environment
-      // map with PMREMGenerator, which needs one. Every other scene ignores it.
-      this._sc = mk(TH, this._colors(), this._ren);
+      this._sc = mk(TH, this._colors());
     } catch (e) { this._giveUp('scene build failed: ' + e.message); return; }
     this._ren.setPixelRatio(this._ratio());
     this._ren.setClearColor(this._colors().bg, 1);
@@ -283,37 +382,54 @@ const STAGE = {
       // the cage inside it stops having a colour at all, which is how a field
       // of violet, gold, green and cyan clusters came out uniformly white-blue.
       // Tight glow keeps the flare ON the bead and leaves the hull its hue.
-      c.addPass(new P.UnrealBloomPass(sz, strength, 0.28, 0.55));
+      const b = new P.UnrealBloomPass(sz, strength, 0.28, 0.55);
+      /* ...AND ITS MIPS RUN AT HALF. EffectComposer.setSize multiplies by the
+         renderer's pixel ratio and hands that to every pass, so the bloom's
+         five mip PAIRS were being allocated and blurred at the scene's
+         supersampled resolution — the most expensive thing in the frame, to
+         produce a BLUR. Halving the size it is given is a quarter of the area
+         at no visible cost: a gaussian does not get sharper with resolution,
+         which is the one property that makes this free.
+         The radius stays 0.28 and the threshold 0.55. Both are about WHICH
+         pixels bloom and neither is a cost lever — widening the radius is how
+         a neon scene turns into an undifferentiated spill, which is the
+         opposite of what a sharper highlight needs. */
+      const bset = b.setSize.bind(b);
+      b.setSize = (w, h) => bset(Math.max(2, w >> 1), Math.max(2, h >> 1));
+      c.addPass(b);
       c.addPass(new P.OutputPass());
       c.setSize(sz.x, sz.y);
       this._post = c;
     } catch (e) { console.warn('[stage] bloom unavailable', e); this._post = null; }
   },
 
-  /* HOW MANY PIXELS THE SCENE IS DRAWN INTO.
-     Outside zen this is unchanged: STAGE_SCALE (0.75), the display ratio ignored
-     — a background is a soft full-screen field and paying for a 4K one behind
-     opaque cards is waste. That is still the right call, and it is the opposite
-     of the instruments' clamp-to-2, which exists because they draw hairline
-     arcs.
+  /* HOW MANY PIXELS THE SCENE IS DRAWN INTO, and it is the SCENE's number.
+     STAGE_SCALE (0.75) with the display ratio ignored is right for a soft
+     full-screen field, and it is the opposite of the instruments' clamp-to-2,
+     which exists because they draw hairline arcs.
 
-     Zen is where that reasoning inverts, and the scene changed under it too.
-     The app is hidden, nothing else is competing for the frame, and what is on
-     screen is now thin glass rods and 42 small beads per cage — hairlines, in
-     other words, and at 0.75 they crawl and stair-step. So zen supersamples:
-     the display's own ratio, floored at 1.5 so a plain 1x monitor still gets
-     more than one sample per pixel, capped at 2 because past that it is
-     quadratic cost for nothing anyone can see.
+     A scene that IS hairlines says so in its own scale, and the graph scene
+     does (1.5): thin glass rods and 42 small beads per cage crawl and
+     stair-step at 0.75. This used to be a zen-only supersample off
+     devicePixelRatio, which meant the theme was sharper when you were looking
+     at it than when you were using it — the same complaint as the brightness
+     lift, and the same answer. A mode may not change what the scene is.
 
      Supersampling and not MSAA on purpose: antialias can only be chosen when
      the context is created, and it does not reach EffectComposer's render
      targets anyway — so it would sharpen the tier that has no bloom and leave
-     the one that does exactly as it was. */
+     the one that does exactly as it was.
+
+     ...AND THE SCENE'S NUMBER IS A WISH, NOT THE ANSWER. A scale is a
+     multiplier and knows nothing about the window it multiplies; 1.5 was
+     judged at one size and silently became 8.3M pixels of blended PBR on a
+     1440p panel, which is most of why this scene tore in the Qt shell. The
+     cap is on the PRODUCT, so a small window still gets the crisp hairlines
+     the scene asked for and a large one gets the same frame budget. */
   _ratio() {
-    const base = (this._sc && this._sc.scale) || STAGE_SCALE;
-    if (!this._zen) return base;
-    const dpr = window.devicePixelRatio || 1;
-    return Math.min(2, Math.max(1.5, dpr));
+    const want = (this._sc && this._sc.scale) || STAGE_SCALE;
+    const px = Math.max(1, window.innerWidth * window.innerHeight);
+    return Math.min(want, Math.sqrt(this._budget / px));
   },
 
   _colors() {
@@ -416,11 +532,25 @@ const STAGE = {
          every skin instead of flattening them all to one number,
        zen ADDS on top, because it is a mode and not a taste.
      Capped below 1 whatever they say: a scene that reaches 1.0 has stopped
-     being mixed toward the page at all, and a bright skin washes out flat. */
+     being mixed toward the page at all, and a bright skin washes out flat.
+
+     STAGE_LIFT is unconditional, and it used to be the zen exception. Zen is
+     the mode where the app is hidden and the canvas is the only thing on
+     screen, so it lifted the ceiling by 0.12 and the gain by 1.12 — and the
+     result was a theme that looked like one theme while you were looking at it
+     and a dimmer one while you were using it. That is not an exception, it is
+     two settings:
+
+         "i like the one where i am only viewing the theme, so keep those
+          settings for the theme and the theme toggle shouldn't change
+          brightness"
+
+     So the lift stays and the mode goes. Zen is now a LAYOUT mode: it hides
+     the app and nothing else. */
   _calm() {
     const base = this.calmOf != null ? this.calmOf : 0.3;
     const k = this.glowPct > 0 ? this.glowPct / 100 : 1;
-    return Math.min(0.95, base * k + (this._zen ? 0.12 : 0));
+    return Math.min(0.95, base * k + STAGE_LIFT);
   },
   /* The OTHER half of brightness, and the half the first cut missed.
      calm decides how far a colour comes up off the page background, and it
@@ -436,30 +566,11 @@ const STAGE = {
      alpha is not what they are modulating. */
   _gain() {
     const k = this.glowPct > 0 ? this.glowPct / 100 : 1;
-    return Math.min(2.2, k * (this._zen ? 1.12 : 1));
-  },
-  zen(on) {
-    on = !!on;
-    if (on === !!this._zen) return;
-    this._zen = on;
-    if (on) {
-      this._zenTier = this.tier;
-      this._densTgt = 1;
-      if (this.tier === 'lite') this.setTier('cinematic');
-    } else {
-      this._densTgt = stagePage(this._pageKey).d;
-      if (this._zenTier && this._zenTier !== this.tier) this.setTier(this._zenTier);
-      this._zenTier = null;
-    }
-    // the render scale changes with the mode, and setPixelRatio alone does not
-    // resize the drawing buffer — resize() is what actually re-allocates it,
-    // and the composer's two targets with it
-    if (this._ren) { this._ren.setPixelRatio(this._ratio()); this.resize(); }
-    this.kick();
+    return Math.min(2.2, k * STAGE_GAIN);
   },
   page(name) {
     const p = stagePage(name);
-    this._pageKey = name; this._densTgt = p.d; this._camTgt = p.c;
+    this._pageKey = name; this._camTgt = p.c;
     this.kick();
   },
 
@@ -477,20 +588,19 @@ const STAGE = {
   },
 
   /* ── unfocused: take the surface DOWN, do not just stop drawing to it ──────
-     The tearing you see when archeus is in the background comes from exactly
-     that distinction. On blur the frame chain stops (setVis -> MO.stop), which
-     is right — but the canvas stayed *visible* while no longer being redrawn,
-     and with preserveDrawingBuffer:false the WebGL backbuffer is undefined
-     after it has been presented. Qt then recomposites an unfocused window
-     against a surface with nothing valid in it, and you get artefacts.
+     This used to be where the undefined-backbuffer fact was written down, and
+     hiding the canvas was called the cheap fix for it because
+     `preserveDrawingBuffer: true` "costs a buffer copy on every single frame
+     to repair a state nobody is looking at". That reasoning is now in boot(),
+     where it belongs, and it came out the other way: somebody is looking at
+     it on every composite between stage frames, which is what the flicker was.
+     The buffer is preserved, so this is no longer load-bearing for artefacts.
 
-     Hiding it removes the surface from the composite entirely, which also means
-     zero GPU for the app while you are working in another one — strictly better
-     than a paused-but-present canvas. The static CSS wash takes over, so the
-     window still looks like itself if you glance at it.
-
-     `preserveDrawingBuffer: true` would also fix it, and was rejected: it costs
-     a buffer copy on every single frame to repair a state nobody is looking at. */
+     It stays anyway, for the reason that was always the better one: hiding the
+     surface removes it from the composite entirely, which is zero GPU for the
+     app while you work in another one — strictly better than a
+     paused-but-present canvas. The static CSS wash takes over, so the window
+     still looks like itself if you glance at it. */
   blur(on) {
     if (!this._canvas) return;
     document.documentElement.classList.toggle('stage-blur', !!on);
@@ -506,15 +616,88 @@ const STAGE = {
     // very frame that notices it
     const k = 1 - Math.exp(-dt / STAGE_ENERGY_TAU);
     this._E += (this._Etgt - this._E) * k;
-    this._dens += (this._densTgt - this._dens) * k;
     this._cam += (this._camTgt - this._cam) * k;
     if (this._shock > 0) this._shock = Math.max(0, this._shock - dt / STAGE_SHOCK_S);
     if (this._pulse > 0) this._pulse = Math.max(0, this._pulse - dt / STAGE_PULSE_S);
 
+    /* ── THE FRAME CAP IS A VSYNC DIVISOR, and this is the tearing bug ───────
+       Measured in the real Qt shell, on the graph world, after the cost pass
+       below had already landed: the page's own rAF was a clean 16.7ms at both
+       p50 and p95 — a rock-solid 60Hz with zero long tasks — while the stage's
+       own frame interval came out p50 33.7ms and p95 50.1ms. Those two numbers
+       are not "slow". They are exactly TWO and THREE vsyncs.
+
+       The old cap was an accumulator against a wall-clock target: render once
+       1/fps has elapsed. 1/34 is 29.4ms and a 60Hz display cannot deliver
+       29.4ms — the only intervals that exist are 16.7, 33.3, 50.0. So the
+       accumulator alternated 2,2,3,2,2,3… forever. That is a beat frequency,
+       the canvas swap lands at a different point of the compositor's cycle
+       every frame, and on a QtWebEngine GPU hardware surface that is precisely
+       what reads as tearing. It is also invisible to every measurement this
+       repo had, because the AVERAGE is right — only the distribution is wrong,
+       and nothing was looking at one.
+
+       So the target is snapped to a whole number of vsyncs. CEIL rather than
+       round: never render more often than the fps asked for, and at 60Hz it
+       keeps idle and busy on genuinely different divisors (3 -> 20fps and
+       2 -> 30fps) instead of collapsing both to 30. Idle loses four nominal
+       fps and gains a cadence that does not beat, which is the whole trade —
+       and what carries "the workspace is busy" was never the frame rate, it is
+       the scene CLOCK below.
+
+       The vsync period is measured, not assumed: 60Hz is not a fact about
+       anyone's machine, and a 120Hz panel or a 30Hz remote session needs a
+       different divisor. It is a median-ish floor over the deltas MO hands us,
+       clamped to a sane range so one hitched frame cannot latch a slow rate. */
     const fps = STAGE_FPS_IDLE + (STAGE_FPS_BUSY - STAGE_FPS_IDLE) * this._E;
+    /* THE MEDIAN OF A RING, and neither half of that is decoration. The first
+       cut of this ratcheted toward the minimum (`Math.min(prev, ema)`) so that
+       one hitched frame could not latch a slow rate — and it guarded the wrong
+       direction: a ratchet that only goes down latches on the SHORT side
+       instead, which is what two rAF callbacks landing close together produce.
+       Measured in the Qt shell, it reported a 6.5ms vsync on a 60Hz panel and
+       the divisor came out 5. An average is no better: a dropped frame is
+       double-length and pulls it up. A median is indifferent to both, which is
+       exactly the property wanted, and over 31 samples it costs one sort every
+       31 frames rather than anything per frame. */
+    this._vr[this._vi++ % 31] = dt;
+    if (this._vi % 31 === 0) {
+      const s = this._vr.slice().sort((a, b) => a - b);
+      this._vs = s[15];
+      /* ...and the UPPER end of the same sort, which is a different question.
+         The median answers "what is the display period" and has to be robust,
+         so it ignores the tail by construction. Strain lives entirely IN the
+         tail: measured at _slow 2, the page's rAF was a healthy 16.7ms at p50
+         and still 50ms at p95, and a median-triggered back-off therefore
+         stopped one rung early while the thing being reported — an occasional
+         dropped frame, which is what a flicker IS — was still happening. One
+         sort, two statistics. */
+      this._vsHi = s[27];
+    }
+    const vs = Math.min(0.05, Math.max(1 / 144, this._vs || 1 / 60));
+    /* DRAWING EVERY VSYNC IN FULLSCREEN WAS TRIED HERE AND IT IS WORSE.
+       It is the obvious answer to the fullscreen flicker (see `alpha` in
+       boot(): the canvas gets its own scanout plane there, and a plane that
+       updates every third vsync against a page plane that updates every one
+       shows both at once), and it is wrong. Measured in the Qt shell: the
+       stage's own interval went 50.0 -> 28.2ms as intended, and the PAGE's rAF
+       went from a clean 16.7/16.7 to 16.8/66.6 — the whole app dropped to
+       ~36fps, which is far worse than the artefact it was chasing.
+
+       The 0.2ms "drained frame" this was justified on is not real: gl.finish()
+       does not force a drain under ANGLE/D3D11, so that number measures
+       command submission like everything else. Do not re-derive full-rate
+       from it. The mechanism is fixed at the plane instead. */
+    /* ...times _slow, which is how often we are ALLOWED to make the compositor
+       redraw the screen. See _watch: this is a different resource from the one
+       everything above manages, and it is the one that was actually short. */
+    const want = Math.max(1, Math.ceil(1 / fps / vs)) * vs * this._slow;
     this._acc += dt;
-    if (this._acc < 1 / fps) return true;
+    // half a vsync of slack: the delta MO reports jitters by a millisecond
+    // either way, and without it every other frame is pushed a whole vsync late
+    if (this._acc < want - vs * 0.5) return true;
     const fdt = this._acc; this._acc = 0;
+    this._watch(fdt, want);
 
     // Scene time: always moving, and clearly faster when the workspace is busy.
     // The idle term is the baseline "this thing is alive"; the energy term is
@@ -527,7 +710,7 @@ const STAGE = {
     const sc = this._sc;
     try {
       sc.update({t: this._T, dt: fdt, e: this._E, shock: this._shock,
-                 pulse: this._pulse, dens: this._dens * this._gain(),
+                 pulse: this._pulse, dens: this._gain(),
                  cam: this._cam, calm: this._calm()});
       if (this._post) this._post.render(fdt);
       else this._ren.render(sc.scene, sc.camera);
@@ -537,9 +720,117 @@ const STAGE = {
     return true;
   },
 
+  /* ── the degrade ladder, and it is MEASURED rather than guessed ───────────
+     Every number in this file was tuned under SwiftShader on a bench, and the
+     handoff says so in as many words: "cost has not been measured on real
+     hardware, and this pass ADDED to it". A background cannot ask the user
+     what their GPU is, so it watches itself.
+
+     WHAT IS MEASURED IS THE ACHIEVED INTERVAL, not the time around render().
+     WebGL submission is asynchronous — timing the render call measures how
+     long it took to queue the commands, which on a saturated GPU is near zero.
+     What a saturated GPU actually does is stall the next buffer swap, and
+     that shows up here as `fdt`: the real wall time since the last frame we
+     drew. We asked for `want` and got `fdt`, so the ratio is the answer, and
+     it is frame-rate independent — same lesson as _T/_Tw, never assert on how
+     many frames the machine managed.
+
+     ONE WAY, ALWAYS. A ladder that can climb back up oscillates: it degrades,
+     the frame gets cheap, it restores, the frame gets expensive, forever — and
+     a background that changes quality twice a second is worse than a slow one.
+     Two steps, then it stops trying. */
+  _watch(fdt, want) {
+    // a parked chain resuming (blur, tab switch, blur() forcing _acc = 1) is
+    // not a slow frame, and one such sample would poison the mean for a minute
+    if (fdt > 0.5) { this._over = 0; return; }
+    this._cost = this._cost ? this._cost * 0.9 + fdt * 0.1 : fdt;
+
+    /* ── EVERY CANVAS UPDATE COSTS A FULL-SCREEN RECOMPOSITE ────────────────
+       The resource this manages is the COMPOSITOR's, and it is a different one
+       from everything else in this file. Our own drawing is trivial — measured
+       on the reporting machine, a 3.75x cut in fill bought 4ms and a
+       two-triangle scene ran at the same rate as this one, so the scene is
+       about 1.6ms. But the canvas is full-viewport, so every frame we present
+       makes the compositor redraw the whole screen underneath the app's
+       translucent panels, and at 2560x1440 on an Intel UHD it cannot do that
+       24 times a second on top of everything else.
+
+       What that looks like is NOT slowness. Chromium halves the page's frame
+       rate when it cannot keep up, so the whole app lurches between 60 and
+       30Hz — which is what was reported as flickering in fullscreen, and why
+       it appears at fullscreen and nowhere else: windowed, the composited area
+       is small enough to afford. Measured, with the stage at its normal rate
+       against the same stage let through one frame in three:
+
+           every frame:   page rAF p50 33.3ms / p95 83.3ms   (30fps, lurching)
+           one in three:  page rAF p50 16.7ms / p95 33.4ms   (60fps, steady)
+
+       So the signal is the DISPLAY PERIOD ITSELF, which _tick already measures
+       as the median of recent rAF deltas. A compositor delivering 60Hz reads
+       16.7ms; one that has given up reads 33.3ms. Nothing else here could see
+       this: the stage's own interval stayed within 25% of its target the whole
+       time, because it was hitting the target it asked for — on a page that
+       had been slowed to half speed underneath it.
+
+       ONE WAY UNTIL THE LAYOUT CHANGES, which is what stops it oscillating.
+       Back off, and the period recovers to 16.7 — speed up on that and it
+       strains again, forever. So _slow only rises, and resize() resets it,
+       because entering or leaving fullscreen is exactly when the answer
+       changes and exactly when a resize fires.
+
+       A genuine 30Hz panel will back off once and lose a little motion in a
+       background. That is the right trade against the alternative, which is
+       reading a strained 60Hz panel as if it were fine. */
+    if (this._vi > 31 && this._slow < 4) {
+      this._strain = Math.max(0, this._strain + (this._vsHi > 0.020 ? 2 : -1));
+      if (this._strain > 90) {
+        this._strain = 0;
+        this._slow *= 2;
+        console.warn('[stage] compositor at ' + Math.round(this._vs * 1000) +
+                     'ms/frame — drawing 1 in ' + this._slow);
+      }
+    }
+    if (this._degraded >= 2) return;
+    /* AN INTEGRATOR, NOT A CONSECUTIVE RUN. The first cut of this counted 90
+       frames in a row over budget and reset on any frame that was not, which
+       measured against the real Qt shell never fired once — even while the
+       scene was visibly missing its target, because a machine that is 20% short
+       is late in bursts and on time in between, and a run of ninety never
+       happens. Up two, down one: it trips when clearly more than a third of
+       frames are late and stays quiet on an occasional hitch, which is the
+       distinction that matters and a consecutive counter cannot express. */
+    this._over = Math.max(0, this._over + (fdt > want * 1.5 ? 2 : -1));
+    if (this._over < 120) return;
+    this._over = 0; this._degraded++;
+    const ms = Math.round(this._cost * 1000);
+    if (this._degraded === 1) {
+      // fill first: it is the cheapest thing to give up and the one the user
+      // is least likely to notice on a background
+      this._budget *= 0.5;
+      this.resize();
+      console.warn('[stage] ' + ms + 'ms frames — halving the pixel budget');
+    } else {
+      // then bloom, which is the tearing ladder CLAUDE.md already documents
+      this.tier = 'lite';
+      this._mkPost();
+      console.warn('[stage] ' + ms + 'ms frames — dropping to the lite tier');
+    }
+  },
+
   resize() {
     if (!this.ok || !this._ren || !this._sc) return;
     const w = window.innerWidth, h = window.innerHeight;
+    /* the compositor back-off is per LAYOUT: how much screen a canvas update
+       costs to recomposite is a function of how big the screen area is, and
+       that is exactly what has just changed. Entering fullscreen is where it
+       is earned and leaving is where it must be given back — resetting here is
+       also what lets it be one-way in between, which is what stops it
+       oscillating. See _watch. */
+    this._slow = 1; this._strain = 0;
+    // the ratio is a function of the window now (_ratio caps the product), so
+    // it has to be re-read here and not only at build — otherwise a window
+    // dragged from a laptop panel to a 4K one keeps the small window's scale
+    this._ren.setPixelRatio(this._ratio());
     this._ren.setSize(w, h, false);
     if (this._sc.resize) this._sc.resize(w, h);
     if (this._post) {
@@ -609,7 +900,7 @@ function sMerge(TH, tmpl, n, attrs, place) {
    because the settings picker rebuilds on hover */
 function sScene(TH, camera, bloom, scale) {
   const scene = new TH.Scene();
-  const bag = [], extra = [];
+  const bag = [];
   return {
     scene, camera, bloom, scale,
     add(o) { scene.add(o); bag.push(o); return o; },
@@ -626,14 +917,8 @@ function sScene(TH, camera, bloom, scale) {
           if (k.material) k.material.dispose();
         }) : 0;
       }
-      for (const f of extra) { try { f(); } catch (e) {} }
-      extra.length = 0;
       bag.length = 0;
     },
-    //: anything else the scene made that is not in the graph — an environment
-    //: map, a PMREM generator. Freed in the same pass, so a scene has ONE place
-    //: to give things back.
-    onDispose(f) { extra.push(f); },
   };
 }
 function sU(TH, c) {
@@ -644,8 +929,8 @@ function sU(TH, c) {
     u_acc: {value: c.acc}, u_acc2: {value: c.acc2}, u_glow: {value: c.glow},
     u_bg: {value: c.bg}, u_panel: {value: c.panel}, u_warn: {value: c.warn},
     u_ok: {value: c.ok}, u_err: {value: c.err || c.acc2},
-    // white is a role like any other, so a shader never writes a bare vec3(1)
-    // and the six roles can be indexed by a single number. See SF_ROLE.
+    //: white is a role like any other, so a shader need never write a bare
+    //: vec3(1) — the ceiling in calm() is the only place a literal belongs.
     u_white: {value: new TH.Color(0xffffff)},
     u_light: {value: c.light ? 1 : 0},
   };
@@ -1048,59 +1333,52 @@ const STAGE_SCENES = {
     return S;
   },
 
-  /* Graph — THE homage, and the only scene in this file built against a
-     supplied model rather than against a photograph.
+  /* Graph — THE homage, and the cluster is FLAT.
 
-     `notes/reference/cluster.glb` and `connection.glb` were measured into
-     `claude_sessions/cluster_spec.py`, which generates `web/cluster-spec.js`
-     (the `CLUSTER` object below) and `www/lib/cluster-spec.ts`. All three
-     renderers of this object read those numbers, so "the GUI, the site and the
-     architecture graph all draw the same cluster" is a fact the build enforces
-     rather than a claim three files make separately.
+     Every part the reference has, and no 3D rendering of any of it:
 
-     WHAT A CLUSTER IS, in the order the eye reads it:
+     > "keep the complications of the cluster as it was before just remove the
+     > 3d part, so keep the nodes on the cluster as a dot which has an outer
+     > circle and keep everything inside, just remove from all of this the 3d
+     > effect"
 
-       the frame     twelve big glass junctions joined by thirty tubes along an
-                     icosahedron's edges, plus twenty spokes from a lit centre.
-                     SOLID geometry, depth-written — this is the object.
-       the centre    a white core with a gold seed in it, inside its own glass.
-       the mesh      480 hairline rods and 162 small beads on the hull, and a
-                     second 480-rod cage at 0.53 R inside it. Additive haze,
-                     depth-TESTED against the frame so the frame occludes it.
-       the interior  a population of motes and gold orbiters: nodes made of
-                     nodes, which is the shape of this project's memory graph.
+     What that removed: three lights, a PMREM environment built from a gradient
+     scene, ACES tone mapping, and nine InstancedMesh passes of
+     MeshPhysicalMaterial — the frame as a glass sleeve with a coaxial core, a
+     junction as a hot core inside an energy volume inside a glass housing, the
+     centre as the same object one size up, and a conduit as a coaxial triple
+     with a gold collar and a glass hub at each end. 353,566 triangles in 33
+     draw calls.
 
-     THE TWO THINGS THIS REWRITE FIXED, and both were structural rather than a
-     number that needed tuning:
+     What it kept, which is everything the cluster is MADE of:
 
-     1. EVERY PASS WAS `depthWrite: false` AND ADDITIVE. An additive scene with
-        no depth cannot have a silhouette: nothing occludes anything, so forty
-        overlapping translucent things sum into one smear and the frame — the
-        most recognisable feature of the reference — was invisible inside its
-        own cluster. The frame, the junctions and the centre are now real
-        instanced solids with a real lighting model, and the haze draws behind
-        them. That is what turns a cloud of light into an object.
+       · the 480-rod hairline shell, at the LOD the cage's own size earns
+       · the second 480-rod cage inside it at 0.53 R — a cluster is made of
+         clusters, which is literally this project's memory graph
+       · the hull's tinted faces, so a cage has a volume rather than being a
+         bare wireframe
+       · the coarse frame — 30 rods, three times a shell rod's width
+       · the 20 spokes, stopping at 0.56 R and never reaching the centre
+       · the 162 beads on the hull, the 12 junctions, the lit centre
+       · the interior population and its 28 gold orbiters
+       · the conduits, as fine lines with packets travelling them
 
-     2. A CLUSTER WAS ONE HUE BY CONSTRUCTION. `hue5(n.tone)` took a number that
-        was constant across the cluster, so no amount of tuning inside it could
-        produce the reference, where ONE cluster runs violet into magenta into
-        cyan with gold picking out individual struts. Every cluster now wears a
-        CHORD of four roles (cluster_spec.PALETTE_FAMILIES) and every pass reads
-        `chord(pal, gradT(...), hot)` — a colour that varies across the geometry
-        by angular position, radius and noise. The rule the brief calls the most
-        important is the one this file broke: never reduce a cluster to a single
-        flat colour.
-
-     Cost: five InstancedMesh solids and five merged-buffer haze passes, all
-     placed from uniform arrays in the vertex shader. The CPU integrates 40
-     bodies and writes uniforms; it touches no geometry per frame.
+     Four draw calls: one merged ribbon buffer for every rod, one for the
+     faces, one merged sprite buffer for every node, one LineSegments for the
+     conduits. Every pass is additive and depth-TESTED but never depth-WRITING,
+     which is what "no 3D" means here — nothing in this scene is shaded by a
+     light, and nothing occludes anything.
 
      Node positions are deterministic — no Math.random anywhere — so the
      constellation is identical on every reload. A layout that reshuffles reads
      as noise. */
-  graph(TH, c, ren) {
+  graph(TH, c) {
     const cam = new TH.PerspectiveCamera(55, 1, 0.1, 60);
-    const S = sScene(TH, cam, .5, 1.0);
+    //: 1.5, and it is the scene that asks. This is a field of glass rods a few
+    //: pixels wide and 42 beads per cage; at 1.0 they crawl and stair-step,
+    //: which is what the zen-only supersample was for before a mode stopped
+    //: being allowed to change the picture.
+    const S = sScene(TH, cam, .5, 1.5);
     const u = sU(TH, c);
     //: every measurement of the cluster and the conduit, generated from
     //: claude_sessions/cluster_spec.py. Referenced directly and not defensively:
@@ -1108,10 +1386,42 @@ const STAGE_SCENES = {
     //: on the static background, which is the right answer to a broken bundle.
     const CL = CLUSTER;
 
+    /* THE ROLES, DEEPENED — measured, and it is the answer to "the theme's
+       accents are pale by design and the reference's are not".
+
+       A perpendicular cut across a frame tube in `cluster-render-single.png`
+       reads (0, 55, 135) in the wall and (0, 128, 233) in the energy: RED IS
+       ZERO, in both. Ours is #7dcfff, which is (125, 207, 255) — the same hue
+       and the same HSL saturation, and a third of the way to white. That is
+       the whole gap, and it is a LIGHTNESS gap rather than a saturation one:
+       #7dcfff is already s = 1.0 (its max channel is 255), so no saturation
+       push can move it. What makes a pale tint a saturated hue is dropping L
+       at constant H and S — #7dcfff at L 0.46 is (0, 118, 235), which is the
+       measurement above to within a couple of levels.
+
+       That is also why this file kept reaching for pow(): pow darkens, and
+       darkening was the half of it that worked. Doing it here instead means
+       every pass gets it — the lit solids, the additive hairlines, the faces,
+       the motes and the conduit — from one place, and the pow() curves stay
+       what they are for, which is composition.
+
+       Scene-local on purpose, and it is NOT a palette edit. u_acc and u_acc2
+       are the app's link and focus colours and they clear a 4.5:1 contrast
+       floor as TEXT (tests/test_themes.py); a palette deep enough for this
+       field would fail that. u_bg, u_panel and u_white are left alone: the
+       first two are the ground this scene is mixed back toward and the third
+       is a highlight gate, not a hue. */
+    const DEEP_L = 0.58, DEEP_S = 1.12;
+    const _hsl = {h: 0, s: 0, l: 0};
+    for (const k of ['u_acc', 'u_acc2', 'u_err', 'u_warn', 'u_ok']) {
+      u[k].value.getHSL(_hsl);
+      u[k].value.setHSL(_hsl.h, Math.min(1, _hsl.s * DEEP_S), _hsl.l * DEEP_L);
+    }
+
     // ── node field ──
     const N = 40;
     const R_MAX = 1.60;
-    //: the near face of the drift box (see BOUND below). The hero starts
+    //: the near face of the drift wedge (see BOUND_Z below). The hero starts
     //: here so it is the closest thing to the camera from the first frame.
     const BOUND_Z_NEAR = 2.6;
     const nodes = [];
@@ -1129,6 +1439,36 @@ const STAGE_SCENES = {
        radius uses: sharing a hash would correlate a cage's size with its
        position and put every large hull down one edge of the box. */
     const GX = 5, GY = 4, GZ = 2;
+    /* ...AND THE BOX IS A FRUSTUM, WHICH IS WHAT FILLS THE FRAME.
+       The one thing left on the work queue that the eye reads first: the
+       reference field is edge to edge and ours had black gutters down both
+       sides and along the bottom. Measured rather than judged — the seeding
+       box was a RECTANGLE 20.0 wide and 10.4 tall at every depth, and the
+       frame a perspective camera sees is a wedge. At the near slice (9.4 units
+       out) the visible half-height is 4.89 and the box filled it exactly; at
+       the far slice (22.6 out) the visible half-height is 11.8 and the box
+       still only reached 4.94, so the back HALF of the field sat in the middle
+       fifth of the frame with nothing around it. No amount of colour or bloom
+       reaches that, and neither does the lever the queue named first: more
+       bodies packs the middle tighter and leaves the corners exactly as empty.
+
+       So x and y are placed as a FRACTION OF THE FRAME at each body's own
+       depth. The near slice is unchanged (which is why the hero still reads);
+       the far slice spreads 2.4x and lands in the corners. It also costs
+       nothing the drift has to absorb — spreading the back apart LOWERS the
+       density the collision term sees, where narrowing the box (the queue's
+       other lever) would have raised it into the cascade the drift speeds were
+       tuned against.
+
+       DESIGN_AR is fixed rather than read from the camera: the seeding happens
+       once at build and the window resizes. 1.92 is the ratio the rectangular
+       box already had (20.0 / 10.4), so a square window crops the sides
+       exactly as it did before. */
+    const CAM_Z = 8.4, TAN_HALF_FOV = 0.5206, DESIGN_AR = 1.92;
+    const SEED_FILL = 1.02, DRIFT_FILL = 1.18;
+    //: half-height of the frame at a body's depth, in POS space — u_np pushes
+    //: every cluster 3.0 further back than the number the physics holds
+    const frameH = z => (CAM_Z - (z - 3.0)) * TAN_HALF_FOV;
     /* THE CHORD A CLUSTER WEARS. Four ROLE indices — primary, secondary,
        accent, highlight — picked from cluster_spec.PALETTE_FAMILIES by a
        deterministic hash. The family weights are counted off the reference
@@ -1171,14 +1511,27 @@ const STAGE_SCENES = {
       // seeding made it visible.
       const sh = Math.sin(i * 12.9898) * 43758.5453;
       const h = sh - Math.floor(sh);
-      // Floor 0.16 and exponent 3.4, not 0.10 and 4. The tail is still long
-      // — three or four dominant hulls among dozens — but the reference FIELD
-      // is a packed frame, and at the old floor half the field was specks with
-      // nothing but bare conduit between them. Raising the floor fills the
-      // frame without moving bodies closer together, which is the thing the
-      // drift cannot absorb: the lattice already packs 40 bodies densely and
-      // the old speeds turned a drift into a permanent collision cascade.
-      const r = 0.16 + Math.pow(h, 3.4) * 1.44;
+      /* Floor 0.34, top 1.60, exponent 3.4 — and the FLOOR is the number that
+         has moved three times, always for the same reason and always by too
+         little. The tail's shape is right (three or four dominant hulls among
+         dozens is what the reference field measures) and the top is right; the
+         problem was always the bottom. At 0.10 and then 0.16, thirteen of the
+         forty cages came out under 0.22 — below the LOD ladder's first break,
+         which means NO frame and NO junctions at all, so they drew as bare
+         specks joined by conduit and a third of the frame was a wire diagram.
+         In cluster-render-field.png every cage, down to the smallest in the
+         crop, has its frame and its twelve lit junctions.
+
+         The floor is also the only lever here that costs nothing the drift has
+         to absorb. Moving bodies closer together is what the drift cannot take
+         (the lattice already packs 40 densely and the old speeds turned a
+         drift into a permanent collision cascade), and the frustum seeding
+         above LOWERED the density at depth, which is what left room for this.
+         The multiplier comes down to 1.26 so the largest hull does not grow
+         with the smallest: the top of the range is unchanged at 1.60, and only
+         about one more cluster crosses the ladder's upper break into the
+         480-rod shell. */
+      const r = 0.34 + Math.pow(h, 3.4) * 1.26;
       // A THIRD hash, independent of both the position jitter and the radius:
       // sharing one would tie a cluster's colour to its size, and the reference
       // field has large gold clusters and tiny violet ones.
@@ -1189,9 +1542,13 @@ const STAGE_SCENES = {
       // chord still must not look like the same object rotated, and this is
       // the cheapest thing that separates them.
       const a1 = seed * 6.2831853, a2 = ((i * 2.399963) % 3.14159265);
+      /* the depth first, because x and y are a fraction of the frame AT that
+         depth — see the frustum note above the lattice constants. */
+      const nz = ((gz + 0.5 + j3) / GZ * 2.0 - 1.0) * 6.6 - 4.6;
+      const nh = frameH(nz) * SEED_FILL;
       nodes.push({
-        x: ((gx + 0.5 + j1) / GX * 2.0 - 1.0) * 10.0,
-        y: ((gy + 0.5 + j2) / GY * 2.0 - 1.0) * 5.2,
+        x: ((gx + 0.5 + j1) / GX * 2.0 - 1.0) * nh * DESIGN_AR,
+        y: ((gy + 0.5 + j2) / GY * 2.0 - 1.0) * nh,
         /* THE BOX IS DEEP, and that is where the background network comes
            from. The brief asks for distant clusters — smaller, dimmer, fading
            into darkness rather than a flat starfield — and at a span of 3.4
@@ -1200,7 +1557,7 @@ const STAGE_SCENES = {
            black behind it. 6.6 deep and pushed back 4.6 puts a third of them
            past 18 units, where vFar and the LOD ladder already make them
            small, soft and mixed toward the ground with nothing new to draw. */
-        z: ((gz + 0.5 + j3) / GZ * 2.0 - 1.0) * 6.6 - 4.6,
+        z: nz,
         r,
         // mass by volume. Without this the collision below is equal-mass and a
         // pea deflects a boulder, which looks wrong the moment sizes differ.
@@ -1260,9 +1617,15 @@ const STAGE_SCENES = {
     let hero = 0;
     for (let i = 1; i < N; i++) if (nodes[i].r > nodes[hero].r) hero = i;
     nodes[hero].hero = true;
-    nodes[hero].x *= 0.45;                      // off the exact centre, not out of frame
-    nodes[hero].y *= 0.35;
-    nodes[hero].z = BOUND_Z_NEAR;               // the near face of the box
+    /* off the exact centre, not out of frame — and the two ratios are of the
+       frame, not of the old rectangle. Pulling the hero forward SHRINKS the
+       frame around it (the wedge again), so a hero seeded in the corner of the
+       far slice would start a third of the way outside the near one and spend
+       the first seconds of every session being shoved back in by the wall. */
+    const heroK = frameH(BOUND_Z_NEAR) / frameH(nodes[hero].z);
+    nodes[hero].x *= 0.45 * heroK;
+    nodes[hero].y *= 0.35 * heroK;
+    nodes[hero].z = BOUND_Z_NEAR;               // the near face of the wedge
 
     //: LOD by the cluster's own size, from the spec's ladder. A 480-rod shell
     //: inside eight pixels is a solid disc — the same failure the GIF renderer
@@ -1310,7 +1673,11 @@ const STAGE_SCENES = {
     u.u_np = {value: Array.from({length: N}, (_, i) =>
       new TH.Vector3(POS[i * 3], POS[i * 3 + 1], POS[i * 3 + 2]))};
 
-    const BOUND = [11.5, 6.2, 11.5];    // the box they are kept inside
+    //: how far a body may drift in z. x and y are not constants any more —
+    //: they are DRIFT_FILL of the frame at the body's own depth, or a cage
+    //: seeded into the corner of the far slice would be shoved back into the
+    //: rectangle the frustum seeding just replaced.
+    const BOUND_Z = 11.5;
     function physics(dt, e) {
       // busier workspace, livelier lattice — but the floor is a drift, not a
       // scurry. The energy term still doubles it, which is the part that has to
@@ -1367,6 +1734,10 @@ const STAGE_SCENES = {
         // the hero drifts at a quarter speed: it is there to be looked at, and
         // something you are looking at should not leave while you look at it
         const spi = nodes[i].hero ? sp * 0.25 : sp;
+        //: the wedge at this body's depth, read once per body. One frame of
+        //: lag on z is not worth a second pass over the axes.
+        const h = frameH(POS[i * 3 + 2]) * DRIFT_FILL;
+        const WALL = [h * DESIGN_AR, h, BOUND_Z];
         for (let k = 0; k < 3; k++) {
           const a = i * 3 + k;
           POS[a] += VEL[a] * dt * spi;
@@ -1374,7 +1745,7 @@ const STAGE_SCENES = {
           // escape and drift off screen for the rest of the session. The limit
           // is inset by the radius, or a large solid half-leaves the frame while
           // its centre is still legally inside.
-          const lim = Math.max(0.5, BOUND[k] - nodes[i].r);
+          const lim = Math.max(0.5, WALL[k] - nodes[i].r);
           if (POS[a] > lim) { POS[a] = lim; VEL[a] = -Math.abs(VEL[a]); }
           else if (POS[a] < -lim) { POS[a] = -lim; VEL[a] = Math.abs(VEL[a]); }
           // Real drag, not a whisper. At 0.9995 a body kept whatever a
@@ -1448,684 +1819,11 @@ const STAGE_SCENES = {
       return out;
     })();
 
-    /* ── LIGHT ────────────────────────────────────────────────────────────
-       The rest of this file has no lighting model at all — every other scene
-       writes final display values out of a raw ShaderMaterial, and that is
-       still the right call for a soft full-screen field. A cluster is not a
-       soft field: it is glass and metal tubes with specular highlights, and
-       the single thing that separates the reference renders from every version
-       we shipped is that theirs are LIT and ours were emissive smears.
 
-       Three directional lights, not point lights: intensity is in candela for
-       a point light and falls off with distance squared, so a scene whose
-       bodies drift between 5 and 25 units away would have to re-tune its
-       lights against the physics. A directional light is the same everywhere,
-       which is what an art-directed key/fill/rim wants.
-
-       The rim is MAGENTA. It is the reference's most obvious light and the
-       cheapest way to get magenta onto a violet cluster without painting it
-       there — a hue that arrives from a direction reads as illumination,
-       where the same hue painted into the material reads as decoration. */
-    /* A DEEP ALBEDO WITH A NARROW SPECULAR, not a bright albedo under a bright
-       key. The references' tubes are saturated mid-dark blue and violet with a
-       hot streak down one side; a pale albedo (these accents clear a contrast
-       floor as TEXT) under a 1.05 white key is milk, which is what the field
-       came out as the moment magenta stopped hiding it. The light lost a third
-       and the albedo curve gained a half; the streak is the clearcoat's. */
-    S.add(new TH.HemisphereLight(0xdfe9ff, 0x0a0e18, 0.09));
-    const key = new TH.DirectionalLight(0xffffff, 0.72);
-    key.position.set(-0.62, 0.78, 0.92);
-    S.add(key);
-    const fill = new TH.DirectionalLight(0x5fa8ff, 0.58);
-    fill.position.set(0.86, -0.34, 0.52);
-    S.add(fill);
-    const rim = new TH.DirectionalLight(0xff4fd8, 0.85);
-    rim.position.set(0.18, -0.72, -0.94);
-    S.add(rim);
-
-    /* ...and an ENVIRONMENT, which is what makes glass read as glass. A
-       specular highlight from three lights gives three dots; a reflection
-       gives the whole curved surface something to show. Generated with
-       PMREMGenerator over a six-line gradient scene, so there is no asset to
-       fetch and the GUI stays offline by construction — the same rule that
-       forbids a webfont here. Built once, freed with the scene. */
-    if (ren && TH.PMREMGenerator) {
-      try {
-        const pm = new TH.PMREMGenerator(ren);
-        const es = new TH.Scene();
-        const eg = new TH.SphereGeometry(12, 20, 14);
-        const em = new TH.ShaderMaterial({
-          side: TH.BackSide, depthWrite: false,
-          uniforms: {u_acc: u.u_acc, u_acc2: u.u_acc2, u_err: u.u_err, u_bg: u.u_bg},
-          vertexShader: `varying vec3 vP;
-            void main(){ vP = normalize(position);
-              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-          fragmentShader: `varying vec3 vP;
-            uniform vec3 u_acc, u_acc2, u_err, u_bg;
-            void main(){
-              // a cool sky, a violet floor and one magenta quadrant: three
-              // things for a curved surface to reflect, which is all a
-              // reflection needs to stop reading as a flat tint
-              float up = vP.y * 0.5 + 0.5;
-              vec3 col = mix(u_acc2 * 0.55, u_acc * 0.85, smoothstep(0.25, 0.95, up));
-              col = mix(col, u_err * 1.1, smoothstep(0.35, 0.95, vP.x) * 0.55);
-              gl_FragColor = vec4(mix(u_bg, col, 0.85), 1.0);
-            }`,
-        });
-        es.add(new TH.Mesh(eg, em));
-        const rt = pm.fromScene(es, 0.03);
-        S.scene.environment = rt.texture;
-        eg.dispose(); em.dispose(); pm.dispose();
-        S.onDispose(() => { S.scene.environment = null; rt.dispose(); });
-      } catch (e) { console.warn('[stage] no environment map', e); }
-    }
-
-    /* ── the solid pass ───────────────────────────────────────────────────
-       Six InstancedMesh, two placement families, one shader injection.
-
-       PLACEMENT IS IN THE SHADER, and `instanceMatrix` carries only where a
-       part sits INSIDE its cluster. The cluster itself moves every frame (the
-       physics above) and spins about its own centre, so a baked world matrix
-       would have to be rewritten forty times a frame for nothing. So the
-       standard `<project_vertex>` is replaced: it would apply instanceMatrix
-       in world space, and we need it applied BEFORE the spin and the offset.
-
-       `<defaultnormal_vertex>` is replaced for the same reason — a PBR
-       material with an unrotated normal is lit as if the cluster were still,
-       and the whole point of going lit is that the highlights travel across
-       the tubes as they turn. It runs BEFORE `<begin_vertex>` in three's
-       vertex shader (checked against the vendored r185, not assumed), which is
-       why the conduit's axis frame is computed there and left in globals. */
-    /* GLSL has no implicit int-to-float, so `${o.alpha}` for an alpha of 1
-       emits `1` and every expression it lands in fails to compile — with the
-       symptom being a scene that never appears and one console line. Every
-       number substituted into a shader goes through this. */
+    /* GLSL has no implicit int-to-float, so a spec value that happens to be
+       a whole number must still be written with a decimal point: `${CL.X}` for
+       an X of 1 emits `1`, and `float y = 1;` does not compile. */
     const F = v => (Number(v) || 0).toFixed(4);
-
-    const N_UNI = `
-      uniform float u_t; uniform vec3 u_np[${N}]; uniform vec3 u_axis[${N}];
-      uniform vec4 u_pal[${N}]; uniform vec4 u_nd[${N}];
-      attribute vec4 aI;`;
-
-    //: the conduit's own frame, filled once per vertex and read by both chunks
-    const LINK_FRAME = `
-      vec3 gAx, gSx, gSz, gA, gB; float gSpan;
-      void linkFrame(){
-        int ia = int(aI.x), ib = int(aI.y);
-        vec3 pa = u_np[ia], pb = u_np[ib];
-        vec3 dv = pb - pa;
-        float L = max(length(dv), 1e-4);
-        gAx = dv / L;
-        // the endpoint is pushed out of its own centre toward the other end,
-        // and CLAMPED at a fraction of the gap: without that, two overlapping
-        // hulls invert the segment and the conduit turns inside out
-        gA = pa + gAx * min(u_nd[ia].w * ${F(CL.CONDUIT_REACH)}, L * ${F(CL.CONDUIT_CLAMP)});
-        gB = pb - gAx * min(u_nd[ib].w * ${F(CL.CONDUIT_REACH)}, L * ${F(CL.CONDUIT_CLAMP)});
-        gSpan = max(length(gB - gA), 1e-3);
-        vec3 upv = abs(gAx.y) > 0.95 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
-        gSx = normalize(cross(upv, gAx));
-        gSz = cross(gAx, gSx);
-      }`;
-
-    /* ONE MATERIAL FACTORY. Every solid in the scene is a MeshPhysicalMaterial
-       with the same injection and a different set of numbers, so "a junction is
-       glass and a frame tube is not" is a config line rather than a shader.
-
-       customProgramCacheKey is REQUIRED, not hygiene: three caches compiled
-       programs by material type plus that key, so without it the first variant
-       compiled would be handed to every other one and the whole cluster would
-       draw with the junction's shader. */
-    /* THE INJECTED CHUNKS, each a named string rather than a template nested
-       inside the one it lands in.
-
-       That is not style. `tests/test_shader_strings.py` reads a GLSL template
-       literal as "everything between the line that opens one and the line that
-       closes it", and a backtick inside that run is the bug it exists to catch:
-       one written in a comment ends the string, the GLSL after it is parsed as
-       JavaScript, and since the four web modules share one script scope the
-       whole app dies with the loading screen showing forever. A nested template
-       is indistinguishable from that bug to any textual reader — so the shader
-       source is assembled by concatenating named pieces, and every template
-       here opens and closes on its own terms. */
-    const V_NORMAL_CLUSTER = `
-            mat3 im = mat3(instanceMatrix);
-            vec3 sn = objectNormal / vec3(dot(im[0], im[0]), dot(im[1], im[1]), dot(im[2], im[2]));
-            vec3 transformedNormal = normalMatrix * spin(im * sn, u_nd[int(aI.x)].x, u_t);`;
-
-    //: the conduit's frame is built HERE and left in globals, because three
-    //: runs defaultnormal_vertex BEFORE begin_vertex (checked against the
-    //: vendored r185) and both chunks need the same axis
-    const V_NORMAL_LINK = `
-            linkFrame();
-            vec3 transformedNormal = normalMatrix *
-              (gSx * objectNormal.x + gAx * objectNormal.y + gSz * objectNormal.z);`;
-
-    const V_PLACE_CLUSTER = `
-            vec3 lp = (instanceMatrix * vec4(position, 1.0)).xyz;
-            int ni = int(aI.x);
-            vec4 nd = u_nd[ni];
-            vPal = u_pal[ni]; vPal2 = u_pal[ni];
-            vT = clamp(gradT(lp / max(nd.w, 1e-4), u_axis[ni], nd.y, nd.z) + aI.y, 0.0, 1.0);
-            vAng = atan(lp.z, lp.x);
-            //: the spare slot, spent: how far this part is pulled to WHITE.
-            //: A junction's hot core and the cluster's own centre are white in
-            //: every reference cage whatever hue the cage wears, and the
-            //: chord's highlight role cannot say that — it is gold on a violet
-            //: cluster and green on a cyan one.
-            vLay = aI.w;
-            vHot = aI.z;
-            vec3 transformed = u_np[ni] + spin(lp, nd.x, u_t);`;
-
-    const V_PLACE_LINK = o => `
-            int ia = int(aI.x), ib = int(aI.y);
-            vPal = u_pal[ia]; vPal2 = u_pal[ib];
-            vT = position.y + 0.5;
-            vAng = atan(position.z, position.x);
-            vLay = aI.w;
-            vHot = ${F(o.hot)};
-            vec3 transformed = gA + gAx * ((position.y + 0.5) * gSpan)
-                             + (gSx * position.x + gSz * position.z) * aI.z;`;
-
-    //: an endpoint piece wears the chord of the cluster it lands ON, not a
-    //: blend of both: it is on that hull, not between them. A torus lies in
-    //: its own XY plane with the hole along Z, so x maps to the side, y to the
-    //: other side and z to the conduit's axis.
-    const V_PLACE_LINK_END = o => `
-            int ia = int(aI.x), ib = int(aI.y);
-            vPal = u_pal[ia]; vPal2 = u_pal[ib];
-            vT = aI.w;
-            vAng = atan(position.z, position.x);
-            vLay = 0.0;
-            vHot = ${F(o.hot)};
-            vec3 transformed = mix(gA, gB, step(0.5, aI.w))
-                             + gAx * (mix(1.0, -1.0, step(0.5, aI.w)) * ${F(o.endOff)} * aI.z)
-                             + (gSx * position.x + gSz * position.y) * aI.z
-                             + gAx * position.z * aI.z;`;
-
-    const V_PROJECT = `
-            vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
-            gl_Position = projectionMatrix * mvPosition;
-            /* depth haze, exponential: nothing in the field is closer than
-               about 15 units, and starting it at 7 was a global half-dimmer
-               wearing a depth cue's clothes. 16/0.042 and not 15/0.075 — the
-               box is deep now (it is where the background network comes from)
-               and at the old rate a cage at 22 units was a dark lump rather
-               than a dim cluster. In cluster-render-field.png the far cages
-               are about half the brightness of the near ones and still
-               obviously coloured. */
-            vFar = exp(-max(0.0, -mvPosition.z - 16.0) * 0.042);`;
-
-    //: a conduit runs between two clusters and carries BOTH their chords, so a
-    //: cyan cluster joined to a magenta one is joined by something that is cyan
-    //: at one end and magenta at the other. This is the brief's "the connection
-    //: inherits colour information from the clusters it connects".
-    const CHORD_LINK = `mix(chord(vPal, mix(0.12, 0.84, vT), vHot),
-                            chord(vPal2, mix(0.84, 0.12, vT), vHot),
-                            smoothstep(0.12, 0.88, vT))`;
-    const CHORD_CLUSTER = 'mix(chord(vPal, vT, vHot * (0.30 + 0.70 * fres)), u_white, vLay)';
-
-    const F_SHADE = o => `
-          #include <emissivemap_fragment>
-          vec3 vd = normalize(vViewPosition);
-          float fres = clamp(1.0 - abs(dot(normalize(normal), vd)), 0.0, 1.0);
-          /* THE COLOUR VARIES ACROSS THE GEOMETRY. This is the line the whole
-             rewrite exists for: vT is a position-derived walk through the
-             cluster's chord, so one tube runs cyan into violet into magenta
-             along its own length and one junction is a different colour on its
-             lit side than on its shadowed one. */
-          vec3 ch = ${o.link ? CHORD_LINK : CHORD_CLUSTER};
-          /* DEEPEN AND SATURATE BEFORE LIGHTING IT.
-             This palette's accents are PALE by design — they clear a contrast
-             floor as TEXT (#7dcfff, #9d7bff) — and a pale albedo under a key,
-             a fill and a rim is white. The first lit render came out uniformly
-             pink-white for exactly that reason, on a field that is meant to be
-             violet. pow() darkens without desaturating (it pulls the channels
-             apart rather than scaling them together) and the mix away from
-             luminance pushes the separation further. The raw-shader passes in
-             this scene have carried the same pow() for rounds; this is the
-             same correction where the light is. */
-          ch = mix(vec3(dot(ch, vec3(0.30, 0.59, 0.11))), ch, 1.90);
-          ch = clamp(ch, 0.0, 1.0);
-          ch = mix(u_bg, ch, vFar);
-          ch = calm(ch, u_bg, u_calm + ${F(o.calm)});
-          diffuseColor.rgb *= pow(max(ch, vec3(0.0)), vec3(2.5))
-                            * ${F(o.tint == null ? 1 : o.tint)};
-          /* A GLASS SHELL IS A RIM, AND A RIM IS A BAND — not a ramp. The
-             junctions used to fade pow(fres, 1.7) from the middle out, which
-             is a soft bubble; in both references a junction is a clear sphere
-             with a HARD bright ring at its silhouette that you read the pink
-             core THROUGH. So the alpha is a narrow smoothstep with a low floor:
-             the floor is what you see the core through, the band is the ring. */
-          diffuseColor.a *= ${F(o.alpha)}
-            * ${o.fresA ? '(0.10 + 1.30 * smoothstep(0.55, 0.96, fres))' : '1.0'} * vFar;
-          /* ...and a TUBE is the mirror image of that, which is why fresE is a
-             mode and not a flag. A cylinder's specular is a narrow line down
-             the part that FACES you and its silhouette goes dark — which is
-             exactly what the reference's tubes do and the opposite of a rim
-             glow. Running the glass term on them is what made every strut a
-             flat pale band with bright edges. */
-          totalEmissiveRadiance = pow(max(ch, vec3(0.0)), vec3(2.05)) * ${F(o.emis)}
-            * ${{1: '(0.25 + 0.95 * pow(fres, 2.0))',
-                 2: '(0.05 + 2.30 * pow(1.0 - fres, 9.0))',
-                 3: '(0.06 + 2.40 * smoothstep(0.55, 0.96, fres))'}[o.fresE] || '1.0'}
-            * (0.82 + 0.30 * u_e) * (1.0 + u_shock * 0.8) * vFar * u_dens;
-          ${o.over || ''}`;
-
-    //: the varyings the two stages must agree about, written once so they
-    //: cannot drift — a varying declared in one stage and not the other is a
-    //: link error with no line number worth reading
-    const VARYINGS = `
-          varying vec4 vPal; varying vec4 vPal2;
-          varying float vT; varying float vHot; varying float vFar; varying float vAng;
-          varying float vLay;`;
-    const F_UNIFORMS = `
-          uniform vec3 u_bg; uniform float u_calm, u_dens, u_e, u_t, u_shock;`;
-    const V_PRELUDE = o => N_UNI + VARYINGS + SPIN + SF_GRAD + (o.link ? LINK_FRAME : '');
-    const F_PRELUDE = VARYINGS + F_UNIFORMS + SF_ROLE + SF_CHORD + SF_CALM;
-
-    /* ONE MATERIAL FACTORY. Every solid in the scene is a MeshPhysicalMaterial
-       with the same injection and a different set of numbers, so "a junction is
-       glass and a frame tube is not" is a config line rather than a shader.
-
-       customProgramCacheKey is REQUIRED, not hygiene: three caches compiled
-       programs by material type plus that key, so without it the first variant
-       compiled would be handed to every other one and the whole cluster would
-       draw with the junction's shader. */
-    const solidMat = o => {
-      const m = new TH.MeshPhysicalMaterial({
-        color: 0xffffff,
-        roughness: o.rough, metalness: o.metal,
-        clearcoat: o.cc || 0, clearcoatRoughness: 0.16,
-        iridescence: o.irid || 0, iridescenceIOR: 1.55,
-        envMapIntensity: o.env == null ? 1.1 : o.env,
-        emissive: 0xffffff, emissiveIntensity: 1,
-        transparent: !!o.glass,
-        // A GLASS SHELL MUST NOT WRITE DEPTH and everything else MUST. That
-        // one line is most of the difference between this scene and the smear
-        // it replaced: with every pass depth-write-off and additive, nothing
-        // occludes anything and forty translucent objects sum into one cloud.
-        depthWrite: !o.glass, depthTest: true,
-        side: o.glass ? TH.DoubleSide : TH.FrontSide,
-        /* ...and these are the ONLY materials in the file that do. Every
-           other scene writes final display values out of a raw shader and must
-           not be touched; these are lit, they routinely exceed 1.0, and
-           without the curve every one of them clips to white — which is what
-           the first render of this pass did, uniformly, to a field that is
-           meant to be violet. */
-        toneMapped: true,
-      });
-      m.customProgramCacheKey = () => 'archeus-cluster-' + o.key;
-      m.onBeforeCompile = sh => {
-        for (const k of ['u_t', 'u_np', 'u_axis', 'u_pal', 'u_nd', 'u_e', 'u_dens',
-                         'u_calm', 'u_bg', 'u_acc', 'u_acc2', 'u_err', 'u_warn',
-                         'u_ok', 'u_white', 'u_shock', 'u_pulse']) sh.uniforms[k] = u[k];
-        const place = o.link ? (o.ends ? V_PLACE_LINK_END(o) : V_PLACE_LINK(o))
-                             : V_PLACE_CLUSTER;
-        // the newline is load-bearing: three's own shader starts with
-        // '#define STANDARD', a preprocessor directive has to begin a LINE,
-        // and gluing it to the end of the prelude is an 'invalid character'
-        // error a hundred lines away from anything this file wrote
-        sh.vertexShader = (V_PRELUDE(o) + '\n' + sh.vertexShader)
-          .replace('#include <defaultnormal_vertex>',
-                   o.link ? V_NORMAL_LINK : V_NORMAL_CLUSTER)
-          .replace('#include <begin_vertex>', place)
-          .replace('#include <project_vertex>', V_PROJECT);
-        sh.fragmentShader = (F_PRELUDE + '\n' + sh.fragmentShader)
-          .replace('#include <emissivemap_fragment>', F_SHADE(o));
-      };
-      return m;
-    };
-
-    /* ONE InstancedMesh out of a template geometry and a list of rows. The
-       geometry is cloned per call because the per-instance attributes live on
-       it — two meshes sharing one geometry would share one instance list, and
-       the second would draw the first's placements. */
-    const SOLIDS = new TH.Group();
-    SOLIDS.frustumCulled = false;
-    const mkInst = (tmpl, mat, rows, order) => {
-      if (!rows.length) return null;
-      const geo = tmpl.clone();
-      const m = new TH.InstancedMesh(geo, mat, rows.length);
-      const A = new Float32Array(rows.length * 4);
-      for (let k = 0; k < rows.length; k++) {
-        m.setMatrixAt(k, rows[k].m);
-        A.set(rows[k].i, k * 4);
-      }
-      m.instanceMatrix.needsUpdate = true;
-      geo.setAttribute('aI', new TH.InstancedBufferAttribute(A, 4));
-      m.frustumCulled = false;        // every position comes from u_np, so the
-      m.renderOrder = order;          // bounding sphere describes nothing
-      SOLIDS.add(m);
-      return m;
-    };
-
-    //: place a part inside its cluster: local offset, orientation, scale
-    const _q = new TH.Quaternion(), _up = new TH.Vector3(0, 1, 0),
-          _d = new TH.Vector3(), _p = new TH.Vector3(), _s = new TH.Vector3();
-    const at = (pos, quat, scale) => new TH.Matrix4().compose(pos, quat, scale);
-    const ball = (v, r) => at(_p.set(v[0], v[1], v[2]), _q.identity(), _s.set(r, r, r));
-    const tube = (a, b, half) => {
-      _d.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
-      const L = _d.length() || 1e-4;
-      return at(_p.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2),
-                _q.setFromUnitVectors(_up, _d.divideScalar(L)),
-                _s.set(half, L, half));
-    };
-
-    /* the rows. `i` is the one per-instance attribute: for a cluster part it is
-       (node, gradient bias, highlight gate, spare); for a conduit part it is
-       (node A, node B, radius, which end). Two meanings for one attribute is
-       normally a smell — here it is what keeps both families on one factory,
-       and the two are never mixed in a single mesh. */
-    const rFrame = [], rCore = [], rGlass = [];
-    for (let i = 0; i < N; i++) {
-      const n = nodes[i];
-      if (n.lod > 0) {
-        // THE FRAME. Thirty tubes along the icosahedron's edges with a big
-        // glass junction at each of its twelve corners — the feature that
-        // makes a cluster read as a built object rather than as a ball of
-        // wire, and the one the .glb does not contain (see cluster_spec.py).
-        for (const q of SHELL[0]) {
-          rFrame.push({m: tube([q[0] * n.r, q[1] * n.r, q[2] * n.r],
-                                [q[3] * n.r, q[4] * n.r, q[5] * n.r], CL.FRAME_HALF * n.r),
-                       i: [i, 0.0, 0.30, 0]});
-        }
-        // the twenty spokes, from just outside the core to just inside the
-        // hull. They stop short at BOTH ends: twenty rods meeting at a point
-        // is a star brighter than anything the scene means, and a rod that
-        // pierces its own hull has a flat end hanging outside it.
-        for (const d of SPOKES) {
-          rFrame.push({m: tube([d[0] * n.r * CL.SPOKE_IN, d[1] * n.r * CL.SPOKE_IN,
-                                d[2] * n.r * CL.SPOKE_IN],
-                               [d[0] * n.r * CL.SPOKE_OUT, d[1] * n.r * CL.SPOKE_OUT,
-                                d[2] * n.r * CL.SPOKE_OUT], CL.SPOKE_HALF * n.r),
-                       i: [i, 0.22, 0.18, 0]});
-        }
-        for (const v of V_FRAME) {
-          const p = [v[0] * n.r, v[1] * n.r, v[2] * n.r];
-          // A JUNCTION IS FOUR NESTED SPHERES, off the model's own part list
-          // (Hub_HotCore / Hub_EnergyCore / Hub_GlassShell). The hot core and
-          // the energy shell are opaque and go in the core mesh; the glass
-          // housing is transparent and goes in the glass mesh, which draws
-          // after so it blends over what it contains.
-          // ...and the hot core is WHITE, from the fourth slot, not from the
-          // chord's highlight role: that role is gold on a violet cluster and
-          // green on a cyan one, and in both renders every junction core is
-          // the same white whatever hue the cage around it wears.
-          rCore.push({m: ball(p, CL.FRAME_BEAD_HOT * n.r), i: [i, 0.72, 0.30, 0.80]});
-          rCore.push({m: ball(p, CL.FRAME_BEAD_ENERGY * n.r), i: [i, 0.52, 0.10, 0.14]});
-          rGlass.push({m: ball(p, CL.FRAME_BEAD_R * n.r), i: [i, 0.08, 0.22, 0]});
-        }
-      }
-      /* THE LIT CENTRE — a white core with a gold seed inside it, inside its
-         own glass. The single thing the model's parts list says that no still
-         image did, and the reason every version built before it was read had a
-         hollow interior no amount of shell tuning could fix. The brief calls
-         for a plasma: white at the middle, then magenta, then violet, then a
-         cyan outer glow, which is exactly a chord walked from its highlight
-         end — so the seed sits at the hot end of the gradient and the shell at
-         the cool end. */
-      rCore.push({m: ball([0, 0, 0], CL.CORE_ENERGY_R * n.r), i: [i, 0.50, 0.10, 0.10]});
-      rCore.push({m: ball([0, 0, 0], CL.CORE_R * n.r), i: [i, 0.62, 0.35, 0.78]});
-      rCore.push({m: ball([0, 0, 0], CL.SEED_R * n.r), i: [i, 0.86, 0.85, 0]});
-      if (n.lod > 0) rGlass.push({m: ball([0, 0, 0], CL.CORE_SHELL_R * n.r), i: [i, 0.02, 0.35, 0]});
-    }
-
-    //: 12 segments and one height segment, open-ended: a frame tube is capped
-    //: by the junction at each end, so its own caps are geometry nobody sees.
-    const TUBE_G = new TH.CylinderGeometry(1, 1, 1, 12, 1, true);
-    //: detail 2 for a junction (162 vertices) — it is the biggest thing on the
-    //: cluster and a faceted silhouette on it reads as a bug, not as a style.
-    const BALL_G = new TH.IcosahedronGeometry(1, 2);
-
-    mkInst(TUBE_G, solidMat({
-      /* exponent 7 on the specular line and env down to 0.6. A cylinder's
-         normal turns as the SINE of the angle across it, so pow(1 - fres, 3)
-         is still at 65% of full brightness half way to the silhouette — a
-         broad pale band, which is what our tubes were. The reference's tube is
-         a mid-dark saturated body with a thin hot line down it; 7 is where the
-         same term is 32% at half width. The environment came down for the same
-         reason: at 1.1 a metal 0.78 tube reflects most of its own brightness
-         and the albedo curve underneath it stops mattering. */
-      key: 'frame', rough: 0.22, metal: 0.78, cc: 0.9, irid: 0.35, env: 0.6,
-      emis: 0.42, fresE: 2, fresA: 0, alpha: 1.0, calm: 0.34, hot: 0,
-    }), rFrame, 0);
-
-    mkInst(BALL_G, solidMat({
-      key: 'core', rough: 0.10, metal: 0.05, cc: 0.4, irid: 0.2,
-      // the cores are the only thing in the scene meant to clear the bloom
-      // threshold on their own — 0.55, so only a near-white surface does
-      emis: 0.95, fresE: 0, fresA: 0, alpha: 1.0, calm: 0.50, hot: 0, env: 0.5,
-    }), rCore, 1);
-
-    mkInst(BALL_G, solidMat({
-      key: 'glass', glass: 1, rough: 0.08, metal: 0.15, cc: 1.0, irid: 0.65,
-      // A GLASS SHELL IS ITS RIM. Alpha driven by the Fresnel term is what
-      // makes the middle see-through and the edge solid, which is how a
-      // transparent sphere is legible at all — a flat 40% sphere is a washer.
-      // It is also why no backdrop-filter is needed anywhere near this app.
-      // pow 1.25 and not 1.7 on the alpha, emissive up from 0.22, env up from
-      // 1.6: in both references a junction is a CLEAR SPHERE with a hard bright
-      // rim and a pink core visible inside it. At the old numbers the shell was
-      // a grey ghost the core's bloom ate, and a junction read as a halo.
-      emis: 0.62, fresE: 3, fresA: 1, alpha: 0.92, calm: 0.44, hot: 0, env: 2.2,
-    }), rGlass, 2);
-
-    /* ── the conduit ──────────────────────────────────────────────────────
-       WHICH clusters are joined: the three nearest neighbours BY DISTANCE,
-       taken once at rest and then held. The pairs used to be index offsets —
-       i+1, i+2, i+3 and an i+8 chord — and the indices run along a lattice, so
-       after the physics has moved anything "i+8" is an arbitrary partner on the
-       far side of the box: a fan of long chords crossing the middle of the
-       frame, which is what the field looked like and nothing like a lattice.
-       Recomputing them every frame is the other wrong answer — the drift is
-       supposed to stretch the structure, not rewire it. */
-    const PAIRS = [];
-    const seenPair = new Set();
-    for (let i = 0; i < N; i++) {
-      const near = [];
-      for (let j = 0; j < N; j++) {
-        if (j === i) continue;
-        const dx = nodes[i].x - nodes[j].x;
-        const dy = nodes[i].y - nodes[j].y;
-        const dz = nodes[i].z - nodes[j].z;
-        near.push([dx * dx + dy * dy + dz * dz, j]);
-      }
-      near.sort((a, b) => a[0] - b[0]);
-      for (let k = 0; k < 4 && k < near.length; k++) {
-        const j = near[k][1];
-        const key2 = i < j ? i + ':' + j : j + ':' + i;
-        if (seenPair.has(key2)) continue;
-        seenPair.add(key2);
-        PAIRS.push([i, j]);
-      }
-    }
-
-    /* WHAT is drawn, and this is the second half of what the model settled.
-       A link is a COAXIAL TRIPLE, not a tube: a dark housing that gives it a
-       silhouette, a translucent glass layer you see threads through, and a hot
-       filament at the axis — plus one luminous rail riding the OUTSIDE of the
-       housing, a gold collar where it meets each hull, and a glass hub at each
-       end. Every version before the model was read had ONE shell and the
-       argument was only ever about its falloff: core-led it reads as a hairline
-       with a glow, wall-led as an empty pipe. Neither is what the object is,
-       and no amount of tuning one number was going to find three.
-
-       Rh is the HUB radius, which is what the model's fractions are against —
-       the hub's glass shell is 2.00 Rh, so a hub sphere is exactly Rh across
-       its radius and the conduit inside it is a little over half that. */
-    const rCond = [], rCollar = [], rHub = [];
-    const I4 = new TH.Matrix4();
-    for (const [i, j] of PAIRS) {
-      // the conduit is sized by the SMALLER of the two clusters it joins: a
-      // leaf tethered to a hub gets a conduit its own leaf can carry, which is
-      // what stops one thick pipe from dominating a small cluster entirely.
-      const Rh = 0.105 + 0.060 * Math.min(nodes[i].r, nodes[j].r);
-      const lay = [CL.CONDUIT_HOUSING, CL.CONDUIT_GLASS, CL.CONDUIT_CORE];
-      for (let k = 0; k < 3; k++) rCond.push({m: I4, i: [i, j, lay[k] * 0.5 * Rh, k]});
-      for (let e = 0; e < 2; e++) {
-        rCollar.push({m: I4, i: [i, j, Rh, e]});
-        rHub.push({m: I4, i: [i, j, Rh, e]});
-      }
-    }
-
-    //: a conduit's own placement is entirely in the shader (both its ends are
-    //: moving), so instanceMatrix is the identity for every one of these and
-    //: the cylinder is a unit one along Y.
-    const COND_G = new TH.CylinderGeometry(1, 1, 1, 14, 1, true);
-    const COLLAR_G = new TH.TorusGeometry(CL.COLLAR_D * 0.5, CL.COLLAR_THICK * 0.5, 8, 20);
-
-    mkInst(COND_G, solidMat({
-      /* env 0.35 and metal 0.25, down from 1.3 and 0.55 — THE GREY WAS A
-         REFLECTION. The housing's own albedo is 30% chord over 70% background,
-         i.e. nearly black, and it still rendered as a pale grey pipe: a metal
-         0.55 clearcoat 0.9 surface under a 1.3 environment reflects the map,
-         and a reflection does not go through the albedo the over-block sets.
-         Tuning the alpha and the emissive (which is where this was looked for
-         twice) could not have reached it. */
-      /* NO IRIDESCENCE ON THE CONDUIT. A thin-film term replaces F0 with a
-         broad pastel sheen over the WHOLE surface, and six stacked translucent
-         faces (front and back of three coaxial layers) each add one — which is
-         a warm white pipe whatever the albedo underneath it says. It is right
-         on a junction, which is one convex sphere and wants the oil-on-water
-         edge; it is wrong here. */
-      //: ...and the environment goes with it, for the third time in this
-      //: material. A rough 0.16 surface mirrors the PMREM map, the map is a
-      //: pale sky, and an indirect specular is not multiplied by anything the
-      //: over-block writes — so the NEAR conduits stayed pale while the far
-      //: ones (which vFar mixes toward the background) were already right.
-      key: 'conduit', link: 1, glass: 1, rough: 0.34, metal: 0.25,
-      cc: 0.20, irid: 0.0, emis: 0.55, fresE: 1, fresA: 0, alpha: 1.0,
-      calm: 0.42, hot: 0.0, env: 0.10,
-      /* THE THREE LAYERS, told apart by the instance's own w. One mesh and one
-         draw call for all three: they differ in radius, which is placement, and
-         in how they shade, which is four lines. Three meshes would be three
-         chances for the layers to disagree about where the axis is. */
-      over: `
-        float housing = 1.0 - step(0.5, vLay);
-        float glass = step(0.5, vLay) * (1.0 - step(1.5, vLay));
-        float core = step(1.5, vLay);
-        /* the rail: ONE bright line on the outside of the housing, off-axis.
-           Symmetry is what made every earlier conduit read as a smear — a real
-           cylinder lit from somewhere has a top, and one off-centre highlight
-           is the whole cue. Rail_Node beads ride it, spaced along vT. */
-        float rail = exp(-pow((vAng - 2.05) / 0.20, 2.0)) * housing;
-        float railn = rail * pow(max(0.0, 1.0 - abs(fract(vT * 7.0) - 0.5) * 9.0), 3.0);
-        /* THE THREADS INSIDE THE GLASS — Internal_Filament (gold) and
-           Internal_CrossLink (cyan) in the model's part list, and the thing
-           that makes a conduit read as something with an INSIDE rather than as
-           a lit pipe. In the reference you can see them spiralling behind the
-           wall, which is the whole reason the middle layer is translucent.
-
-           They cost no geometry: a helix on a cylinder is a straight line in
-           (angle, length), so it is one fract() on two numbers the fragment
-           already has. Two gold running one way and two cyan the other, so
-           they cross — a single family of parallel threads reads as a texture,
-           and it is the crossing that reads as a network. */
-        float lam = 1.0 - step(0.5, abs(vLay - 1.0));
-        float helA = 1.0 - min(fract(vAng * 0.3183099 - vT * 3.5), 1.0 - fract(vAng * 0.3183099 - vT * 3.5)) * 2.0;
-        float helB = 1.0 - min(fract(vAng * 0.3183099 + vT * 4.5 + 0.37), 1.0 - fract(vAng * 0.3183099 + vT * 4.5 + 0.37)) * 2.0;
-        float gold = pow(max(0.0, helA), 42.0) * lam;
-        float cross = pow(max(0.0, helB), 34.0) * lam;
-        // ...and beads riding the gold thread, the model's Energy_Particle
-        float bead = gold * pow(max(0.0, 1.0 - abs(fract(vT * 9.0 - u_t * 0.10) - 0.5) * 11.0), 3.0);
-        /* DATA TRAVELLING — always running, because this is the graph showing
-           that the links carry something, but faster and denser when the
-           workspace is busy. Slow: at 0.16 a packet crossed a link in about six
-           seconds and read as a strobe rather than as something moving along a
-           wire, and the whole point is that you can watch one travel. */
-        float sp = 0.045 + 0.11 * u_e;
-        float ph = fract(u_t * sp + float(int(vLay)) * 0.31);
-        float pk = pow(max(0.0, 1.0 - abs(vT - ph) * 22.0), 2.0) * core;
-        //: and the ends TAPER. The endpoint push is clamped at a fraction of
-        //: the gap, so where a big hull exceeds that clamp the tube stops short
-        //: of its own surface — and a flat end hanging in mid-air is exactly
-        //: what read as "the collar is a hard cut".
-        float ends = smoothstep(0.0, 0.05, vT) * (1.0 - smoothstep(0.95, 1.0, vT));
-        /* THE GLASS IS THE CONDUIT'S OWN COLOUR, not the clusters'.
-           The model names it Deep Blue Glass and the render agrees: the tube
-           between two violet clusters is BLUE, and only the filament at its
-           axis and the rail on its housing carry the hues of the things it
-           joins. That is not a contradiction of "a connection inherits from
-           the clusters it connects" — it is where the inheritance lives. A
-           conduit whose every layer was the endpoint chord had no identity of
-           its own and read as a stretched piece of cluster. */
-        /* ...and it is BRIGHT. In connection-render.png the conduit is the
-           brightest object in the frame — electric blue, brighter than either
-           cage it joins — and ours read grey: the glass was only 70% of the way
-           to the accent, carried a 0.30 emissive against the core's 2.10, and
-           had a soft alpha ramp instead of a wall. All three are the same
-           mistake, which is treating the middle layer as a veil over the core
-           rather than as the object you are looking at. */
-        //: ...and the blue is not the accent RAW. u_acc clears a contrast floor
-        //: as text and is a pale cyan; the model names this layer Deep Blue
-        //: Glass and the render is an electric blue, which is the accent a
-        //: third of the way to the violet one.
-        ch = mix(ch, mix(mix(u_acc, u_acc2, 0.34), ch, 0.14), glass * 0.92);
-        ch = mix(mix(u_bg, ch, 0.30), ch, glass * 0.90 + core + rail);
-        /* 2.6, the SAME curve every other solid in this scene gets. F_SHADE
-           applies pow(ch, 2.5) to diffuseColor and this block ASSIGNS over it,
-           so the conduit was the one lit surface running a 1.6 albedo — a
-           full stop paler than the cages around it, under the same key. That
-           is the whole of "the conduit reads grey next to the reference's
-           bright blue": it was not grey, it was washed out. */
-        diffuseColor.rgb = pow(max(ch, vec3(0.0)), vec3(2.6));
-        diffuseColor.a = (housing * (0.06 + 0.62 * pow(fres, 2.2))
-                        + glass * (0.20 + 0.95 * pow(fres, 1.1))
-                        + core * 0.98 + rail * 0.95
-                        + gold * 0.80 + cross * 0.65) * ends * vFar;
-        // the threads are the one part of a conduit that is NOT the two
-        // clusters' chord: gold and cyan whatever they join, exactly as the
-        // collar is gold. It is what stops two conduits between differently
-        // coloured clusters being the same picture in two inks.
-        vec3 tc = mix(ch, u_warn, clamp(gold * 0.9 + bead * 0.6, 0.0, 1.0));
-        tc = mix(tc, u_acc, clamp(cross * 0.85, 0.0, 1.0));
-        /* THE AXIS FILAMENT IS NOT A WHITE ROD. At core 1.55 with a 0.45 pull
-           to white it out-blooms the layer around it, and since bloom spreads
-           the result is a white pipe with a blue edge — which is what the
-           conduit read as through three rounds of tuning the GLASS. In
-           connection-render.png the middle of a conduit is BLUE with threads
-           and beads visible in it; the only white is the beads. */
-        /* ...and the EMISSIVE takes the same curve, for the same reason and
-           with more at stake. F_SHADE writes pow(ch, 2.05) and this block
-           assigns over it, so the conduit emitted a PALE blue — and a pale
-           blue past the bloom threshold spreads as WHITE, which is why three
-           rounds of dimming and brightening this layer only ever moved it
-           between grey and a white beam. Bloom does not desaturate a colour
-           that was saturated going in. */
-        totalEmissiveRadiance = pow(max(mix(tc, vec3(1.0),
-              core * 0.16 + railn * 0.8 + pk * 0.7 + bead * 0.7), vec3(0.0)), vec3(2.05))
-          * (housing * 0.05 + glass * 0.72 + core * 1.15 + rail * 1.30 + railn * 2.1
-             + pk * 2.4 + gold * 1.15 + cross * 0.85 + bead * 2.2)
-          * (0.82 + 0.30 * u_e) * ends * vFar * u_dens;`,
-    }), rCond, 3);
-
-    mkInst(COLLAR_G, solidMat({
-      key: 'collar', link: 1, ends: 1, endOff: 0.95, rough: 0.22, metal: 0.85,
-      // the collar is GOLD whatever the two clusters are wearing — the one
-      // part of the conduit that is not the chord, which is what stops a gold
-      // cluster and a violet one being the same picture in two inks
-      emis: 0.55, fresE: 0, fresA: 0, alpha: 1.0, calm: 0.46, hot: 0, env: 1.4,
-      over: `
-        /* A COLLAR IS METAL, NOT A LAMP. At 0.65 emissive a gold torus clears
-           the bloom threshold, and where several conduits converge on one small
-           hull their collars stack into a cream haze that reads as a pale pipe
-           — which is what the last three rounds of tuning the conduit's GLASS
-           were chasing. In connection-render.png the ring at the hub is a dark
-           metallic band with a gold edge, and the light in that area comes from
-           the hub's plasma behind it. */
-        vec3 gold = calm(mix(u_bg, u_warn, vFar), u_bg, u_calm + 0.46);
-        diffuseColor.rgb = pow(max(gold, vec3(0.0)), vec3(1.7)) * 0.55;
-        totalEmissiveRadiance = gold * 0.20 * (0.82 + 0.30 * u_e) * vFar * u_dens;`,
-    }), rCollar, 3);
-
-    mkInst(BALL_G, solidMat({
-      key: 'hub', link: 1, ends: 1, glass: 1, rough: 0.07, metal: 0.2,
-      cc: 1.0, irid: 0.7, emis: 0.30, fresE: 1, fresA: 1, alpha: 0.95,
-      calm: 0.46, hot: 0.35, env: 1.7,
-    }), rHub, 4);
-
-    S.add(SOLIDS);
 
     /* ── the haze ─────────────────────────────────────────────────────────
        Everything the solids are not: the 480-rod hairline shell, the second
@@ -2161,14 +1859,19 @@ const STAGE_SCENES = {
        mesh is a web you see the interior THROUGH. */
     const ep = [], eo = [], et = [], ew = [], ea = [], en = [], eidx = [];
     let erod = 0;
-    const rod = (n, i, A, B, half, alpha) => {
+    /* `pop` is which population the rod belongs to — 0 the shell, 1 the inner
+       web, 2 the coarse frame, 3 a spoke. It exists because the WEB has to
+       turn on its own clock (see the vertex shader): every rod used to be spun
+       by one call, so the cage at 0.53 R was rigidly locked to the one at
+       1.0 R and the two read as a single object with a denser middle. */
+    const rod = (n, i, A, B, half, alpha, pop) => {
       const base = erod * 4;
       for (const [t, side] of [[0, -1], [0, 1], [1, -1], [1, 1]]) {
         const me = t ? B : A, other = t ? A : B;
         ep.push(me[0], me[1], me[2]);
         eo.push(other[0], other[1], other[2]);
         et.push(t); ew.push(side); ea.push(alpha);
-        en.push(i, half);
+        en.push(i, half, pop);
       }
       eidx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
       erod++;
@@ -2182,7 +1885,8 @@ const STAGE_SCENES = {
       const dens = CL.ROD_ALPHA_BY_EDGES[shell.length] || 0.3;
       for (const q of shell) {
         rod(n, i, [q[0] * n.r, q[1] * n.r, q[2] * n.r],
-                  [q[3] * n.r, q[4] * n.r, q[5] * n.r], CL.SHELL_ROD_HALF * n.r, dens);
+                  [q[3] * n.r, q[4] * n.r, q[5] * n.r],
+                  CL.SHELL_ROD_HALF * n.r, dens, 0);
       }
       /* THE INNER WEB — the model's `Inner filament`, 257 of them at 0.53 R,
          each 0.16 R long. Those numbers name a shape rather than a scatter: a
@@ -2195,9 +1899,43 @@ const STAGE_SCENES = {
       if (n.lod === 2) {
         const w = CL.WEB_R;
         for (const q of SHELL[2]) {
+          //: 0.75, up from 0.55 — "brighten a bit the geometric figure inside
+          //: the cluster just a bit". It is the one population that reads
+          //: THROUGH the shell rather than on it, so it loses to two layers of
+          //: additive hairline before it reaches the eye.
           rod(n, i, [q[0] * n.r * w, q[1] * n.r * w, q[2] * n.r * w],
                     [q[3] * n.r * w, q[4] * n.r * w, q[5] * n.r * w],
-                    CL.WEB_ROD_HALF * n.r, 0.55);
+                    CL.WEB_ROD_HALF * n.r, 0.75, 1);
+        }
+      }
+      /* THE COARSE FRAME — the most recognisable feature of the reference, and
+         it is in this buffer now rather than being a lit glass sleeve with a
+         coaxial core inside it. It is the same `rod()` as the shell: a
+         camera-facing ribbon at the spec's own width, additive, no depth
+         write. What made it read as a frame was never the lighting model — it
+         is that it is three times the width of a shell rod and carries a
+         junction at each end, and both of those survive being flat.
+
+         Alpha 1.0 against the shell's ~0.3 and the web's 0.55: thirty rods
+         against four hundred and eighty cannot share a number (the same
+         argument ROD_ALPHA_BY_EDGES already makes), and this is the population
+         the eye is supposed to read first. */
+      if (n.lod > 0) {
+        for (const q of SHELL[0]) {
+          rod(n, i, [q[0] * n.r, q[1] * n.r, q[2] * n.r],
+                    [q[3] * n.r, q[4] * n.r, q[5] * n.r],
+                    CL.FRAME_HALF * n.r, 1.0, 2);
+        }
+        /* ...and the twenty spokes, which stop at 0.56 R and never reach the
+           centre. Twenty rods meeting at one point sum, additively, into a
+           white star brighter than anything the scene means — that is what
+           SPOKE_IN is for, and it matters MORE here than it did under the
+           lights, because every one of these passes is additive. */
+        for (const d of SPOKES) {
+          rod(n, i, [d[0] * n.r * CL.SPOKE_IN, d[1] * n.r * CL.SPOKE_IN,
+                     d[2] * n.r * CL.SPOKE_IN],
+                    [d[0] * n.r * CL.SPOKE_OUT, d[1] * n.r * CL.SPOKE_OUT,
+                     d[2] * n.r * CL.SPOKE_OUT], CL.SPOKE_HALF * n.r, 0.42, 3);
         }
       }
     }
@@ -2207,14 +1945,14 @@ const STAGE_SCENES = {
     gEdges.setAttribute('et', new TH.Float32BufferAttribute(et, 1));
     gEdges.setAttribute('ew', new TH.Float32BufferAttribute(ew, 1));
     gEdges.setAttribute('ea', new TH.Float32BufferAttribute(ea, 1));
-    gEdges.setAttribute('nd', new TH.Float32BufferAttribute(en, 2));
+    gEdges.setAttribute('nd', new TH.Float32BufferAttribute(en, 3));
     gEdges.setIndex(eidx);
     const mEdges = new TH.Mesh(gEdges, new TH.ShaderMaterial({
       uniforms: u, transparent: true, depthWrite: false, depthTest: true,
       side: TH.DoubleSide, blending: TH.AdditiveBlending,
       vertexShader: `
         attribute vec3 eo; attribute float et; attribute float ew;
-        attribute float ea; attribute vec2 nd;
+        attribute float ea; attribute vec3 nd;
         varying vec4 vPal; varying float vT; varying float vD; varying float vF;
         varying float vX; varying float vA;
         ${HAZE_V}
@@ -2231,8 +1969,29 @@ const STAGE_SCENES = {
              asks for and what a per-cage tone could never produce. */
           vT = clamp(gradT(position / max(ndv.w, 1e-4), u_axis[ni], ndv.y, ndv.z), 0.0, 1.0);
           vec3 org = u_np[ni];
-          vec3 pa = org + spin(position, ndv.x, u_t);
-          vec3 pb = org + spin(eo, ndv.x, u_t);
+          /* THE INNER WEB TURNS ON ITS OWN CLOCK, and that is the whole
+             reason nd.z exists. Every rod used to be spun by one call, so
+             the cage at 0.53 R was rigidly locked to the cage at 1.0 R and the
+             two read as one object with a denser middle — you could not see
+             that there was a second cage in there at all.
+
+             OPPOSITE, which is -1 and not the -0.62 this first shipped as.
+             Reversed-and-slower was chosen on the grounds that slower is
+             calmer; opposite means the mirror of the outer cage's motion, and
+             it is also the fastest the pair can be made to read without
+             either one of them turning faster — the RELATIVE rate between the
+             two lattices is what the eye picks up, and at -1 that is twice the
+             cluster's own. A co-rotation at a different rate is only legible
+             while you watch one rod, where two lattices sliding THROUGH each
+             other is legible from the shape of the whole thing. The +1.7
+             offset stops them starting aligned, which is the one moment the
+             effect is invisible. Only the web (pop 1) takes it; the shell, the
+             frame and the spokes are the same object and must not drift
+             apart. */
+          float own = step(0.5, nd.z) * step(nd.z, 1.5);
+          float tw = mix(u_t, -u_t + 1.7, own);
+          vec3 pa = org + spin(position, ndv.x, tw);
+          vec3 pb = org + spin(eo, ndv.x, tw);
           vec4 mv = modelViewMatrix * vec4(pa, 1.0);
           vec3 bv = (modelViewMatrix * vec4(pb, 1.0)).xyz;
           // across the rod, camera-facing: perpendicular to the rod and to the
@@ -2277,7 +2036,7 @@ const STAGE_SCENES = {
              bright so much as too DESATURATED: each sum pulls red and green up
              toward the blue, and the exponent is the only term that pulls the
              channels apart instead of scaling them together. */
-          col = pow(max(col, vec3(0.0)), vec3(2.4));
+          col = pow(max(col, vec3(0.0)), vec3(1.5));
           col += vec3(u_shock * 0.5);
           col = mix(u_bg, col, vF);          // depth, BEFORE calm() — never instead
           /* THE BODY IS THE HAZE AND THE RIM IS THE LINE, so the body is
@@ -2352,7 +2111,7 @@ const STAGE_SCENES = {
         varying float vE;
         uniform vec3 u_bg; uniform float u_dens, u_calm, u_e;
         void main(){
-          vec3 col = pow(max(chord(vPal, vT, 0.05), vec3(0.0)), vec3(2.3));
+          vec3 col = pow(max(chord(vPal, vT, 0.05), vec3(0.0)), vec3(1.5));
           col = mix(u_bg, col, vF);          // depth, BEFORE calm()
           // pow 3 and not 2: at 2 the interior still carries enough to fill the
           // hull with flat colour, which is a bubble rather than a cage.
@@ -2362,36 +2121,62 @@ const STAGE_SCENES = {
         }`,
     }));
     mFaces.frustumCulled = false;
-    mFaces.renderOrder = 6;      // under the mesh and the beads, over the solids
+    mFaces.renderOrder = 6;      // under the rods, the beads and the conduits
     S.add(mFaces);
 
-    /* 3 ── the 162 small beads on the hull.
-       Only the shell's own nodes now: the twelve frame junctions became real
-       glass spheres in the solid pass, which is where they belonged — at one
-       alpha the 162 outnumbered the 12 thirteen to one and every cluster was a
-       ball of white dots. What is left here is a TEXTURE on the surface, and it
-       is deduplicated to the distinct corners because IcosahedronGeometry is a
-       triangle soup: 240 positions for 42 corners, and drawing the soup stacks
-       five or six additive sprites on each of them. */
-    const jp = [], jn = [];
+    /* 3 ── EVERY NODE ON THE CLUSTER, AS A DOT WITH AN OUTER CIRCLE.
+       One buffer, three populations, told apart by `kd`:
+
+         kd 0  the 162 small beads on the hull — a TEXTURE on the surface,
+               deduplicated to the distinct corners because
+               IcosahedronGeometry is a triangle soup (240 positions for 42
+               corners, and drawing the soup stacks five or six additive
+               sprites on each of them).
+         kd 1  the 12 frame junctions. These were three concentric
+               MeshPhysicalMaterial spheres in the solid pass — a hot core
+               inside an energy volume inside a glass housing — and the
+               instruction is to keep the node and drop the 3D: a dot with an
+               outer circle is what that object looks like drawn flat, and the
+               fragment shader below already had the core/rim/halo terms to do
+               it with.
+         kd 2  the lit centre, one per cluster. Same object one size up, which
+               is what the model's parts list says it is.
+
+       Sized in WORLD units for kd 1 and 2 (see the vertex shader): a junction
+       is a fixed fraction of its own hull in the reference, so it has to shrink
+       with distance like the rods do, or a far cluster is a ring of blobs. The
+       shell beads keep the screen-space size they had — they are a texture,
+       and a texture that scales to a quarter of a pixel is gone. */
+    const jp = [], jn = [], jk = [];
     for (let i = 0; i < N; i++) {
       const n = nodes[i];
       const V = n.lod === 2 ? V_SHELL : V_FRAME;
       for (const v of V) {
         jp.push(v[0] * n.r, v[1] * n.r, v[2] * n.r);
-        jn.push(i, n.r);
+        jn.push(i, n.r); jk.push(0, 0);
+      }
+      if (n.lod > 0) {
+        for (const v of V_FRAME) {
+          jp.push(v[0] * n.r, v[1] * n.r, v[2] * n.r);
+          jn.push(i, n.r); jk.push(1, CL.FRAME_BEAD_R * n.r);
+        }
+        jp.push(0, 0, 0);
+        jn.push(i, n.r); jk.push(2, CL.CORE_SHELL_R * n.r);
       }
     }
     const gJoint = new TH.BufferGeometry();
     gJoint.setAttribute('position', new TH.Float32BufferAttribute(jp, 3));
     gJoint.setAttribute('nd', new TH.Float32BufferAttribute(jn, 2));
+    //: .x is which population, .y is its world radius (0 for a shell bead,
+    //: which is sized in screen space)
+    gJoint.setAttribute('kd', new TH.Float32BufferAttribute(jk, 2));
     const mJoint = new TH.Points(gJoint, new TH.ShaderMaterial({
       uniforms: u, transparent: true, depthWrite: false, depthTest: true,
       blending: TH.AdditiveBlending,
       vertexShader: `
-        attribute vec2 nd;
+        attribute vec2 nd; attribute vec2 kd;
         varying vec4 vPal; varying float vT; varying float vD; varying float vF;
-        varying float vR; varying float vJ;
+        varying float vR; varying float vJ; varying float vK;
         uniform vec2 u_res;
         ${HAZE_V}
         ${SPIN}
@@ -2399,7 +2184,7 @@ const STAGE_SCENES = {
         void main(){
           int ni = int(nd.x);
           vec4 ndv = u_nd[ni];
-          vPal = u_pal[ni]; vR = nd.y;
+          vPal = u_pal[ni]; vR = nd.y; vK = kd.x;
           vT = clamp(gradT(position / max(ndv.w, 1e-4), u_axis[ni], ndv.y, ndv.z), 0.0, 1.0);
           // stable per bead, hashed off its local position — the reference has
           // gold beads sitting on otherwise violet cages, as individual points
@@ -2416,15 +2201,28 @@ const STAGE_SCENES = {
           // merely small and dim, they are optically BLURRED; a real blur is a
           // readback this shell does not get to have (that is what tore the Qt
           // surface), so a far bead keeps its size and loses its edges instead.
-          gl_PointSize = (1.5 + 3.4 * vR) * (0.45 + 0.75 * vD)
-                       * (1.0 + 1.1 * (1.0 - vD)) * (u_res.y / 900.0 + 0.6);
+          /* A SHELL BEAD IS SIZED IN SCREEN SPACE AND A JUNCTION IS NOT,
+             and that is the difference between a texture and a part. The bead
+             gets the same three cues it always had — mass, depth, and a
+             defocus that keeps its size and loses its edges, because a real
+             blur is a readback this shell does not get to have (it is what
+             tore the Qt surface). A junction and the centre are a fixed
+             fraction of their own hull in the reference, so they are projected
+             like geometry: worldR * (viewport height * P[1][1] / 2) / distance,
+             which is exactly how many pixels a sphere of that radius covers.
+             Clamped at the top, or the hero's centre is a dinner plate. */
+          float scr = (1.5 + 3.4 * vR) * (0.45 + 0.75 * vD)
+                    * (1.0 + 1.1 * (1.0 - vD)) * (u_res.y / 900.0 + 0.6);
+          float wrl = kd.y * u_res.y * projectionMatrix[1][1] * 0.5
+                    / max(dist, 0.25);
+          gl_PointSize = kd.x > 0.5 ? clamp(wrl * 2.0, 2.0, 96.0) : scr;
         }`,
       fragmentShader: `
         ${SF_CALM}
         ${SF_ROLE}
         ${SF_CHORD}
         varying vec4 vPal; varying float vT; varying float vD; varying float vF;
-        varying float vR; varying float vJ;
+        varying float vR; varying float vJ; varying float vK;
         uniform vec3 u_bg; uniform float u_dens, u_calm;
         void main(){
           float d = length(gl_PointCoord - 0.5);
@@ -2437,12 +2235,40 @@ const STAGE_SCENES = {
              Crisp edges, not one smoothstep from the middle out — that is a
              blur, and a blur reads as a smudge at every size. */
           float aa = 0.02 + 0.10 * (1.0 - vD);
-          float core = 1.0 - smoothstep(0.16 - aa, 0.16 + aa, d);
-          float rim  = smoothstep(0.30, 0.42, d) * (1.0 - smoothstep(0.42, 0.42 + aa * 2.0, d));
+          /* A DOT WITH AN OUTER CIRCLE, and the three populations differ only
+             in where the two radii sit. A shell bead is mostly dot: it is a
+             point of light on a surface. A junction and the centre are the
+             object the solid pass drew as three concentric spheres — a hot
+             white middle, a coloured volume around it, and a bright ring at
+             the edge where the housing turned away — so the dot keeps the
+             white, the gap between the radii keeps the chord, and the ring IS
+             the silhouette. Drawn flat, that reads as a node rather than as a
+             sphere, which is the whole instruction.
+
+             THE FOUR-TERM VERSION OF THIS WAS TRIED AND REJECTED. A second
+             reference still was read for a spiked core, a filled bubble, a
+             hairline shell and a second hairline outside it — every one of
+             them present in that image, and the judgement on the result was
+             "the cluster was better before this last reference modifications
+             to the cluster nodes and core". So the node is two radii again.
+             The rejected version is in the session notes rather than here,
+             because what a shader needs to say is what it draws. */
+          float isN = step(0.5, vK);
+          float rc = mix(0.16, 0.30, isN);          // the dot
+          float rr = mix(0.42, 0.46, isN);          // the outer circle
+          float core = 1.0 - smoothstep(rc - aa, rc + aa, d);
+          float ring = smoothstep(rr - 0.13, rr, d)
+                     * (1.0 - smoothstep(rr, rr + aa * 2.0, d));
           float halo = pow(max(0.0, 1.0 - d * 2.0), 2.6);
-          col = mix(col, vec3(1.0), core * 0.72 + rim * 0.2);
+          //: the centre is the one thing in a cage that is WHITE at its middle
+          //: — and it is not a sun: in both references the middle of a cluster
+          //: is dark, so the white stops at the dot and the volume around it is
+          //: the chord, mixed no further out than the ring.
+          float hot = core * mix(0.72, 0.52 + 0.34 * step(1.5, vK), isN);
+          col = mix(col, vec3(1.0), hot + ring * 0.24);
           col = mix(u_bg, col, vF);
-          float a = (core * 0.55 + rim * 0.34 + halo * 0.12)
+          float a = (core * mix(0.55, 0.62, isN) + ring * mix(0.34, 0.72, isN)
+                   + halo * mix(0.12, 0.22, isN))
                   * (0.40 + 0.55 * vD) * vF * u_dens;
           gl_FragColor = vec4(calm(col, u_bg, u_calm + 0.50), a);
         }`,
@@ -2561,6 +2387,132 @@ const STAGE_SCENES = {
     mMote.frustumCulled = false;
     mMote.renderOrder = 8;
     S.add(mMote);
+
+    /* 5 ── THE CONDUITS, AS FINE LINES.
+       "for the connection lines you can go back to drawing fine lines instead
+       of all this mess" — so this is one LineSegments, not the coaxial triple
+       of housing, glass sleeve and filament plus a gold collar and a glass hub
+       at each end that the solid pass drew.
+
+       WHICH cages are joined: the four nearest neighbours BY DISTANCE, taken
+       once at rest and then held. The pairs used to be index offsets — i+1,
+       i+2, i+3 and an i+8 chord — and the indices run along the seeding
+       lattice, so after the physics has moved anything "i+8" is an arbitrary
+       partner on the far side of the box. Recomputing them every frame is the
+       other wrong answer: the drift is supposed to stretch the structure, not
+       rewire it. */
+    const PAIRS = [];
+    const seenPair = new Set();
+    for (let i = 0; i < N; i++) {
+      const near = [];
+      for (let j = 0; j < N; j++) {
+        if (j === i) continue;
+        const dx = nodes[i].x - nodes[j].x;
+        const dy = nodes[i].y - nodes[j].y;
+        const dz = nodes[i].z - nodes[j].z;
+        near.push([dx * dx + dy * dy + dz * dz, j]);
+      }
+      near.sort((a, b) => a[0] - b[0]);
+      for (let k = 0; k < 4 && k < near.length; k++) {
+        const j = near[k][1];
+        const key = i < j ? i + ':' + j : j + ':' + i;
+        if (seenPair.has(key)) continue;
+        seenPair.add(key);
+        PAIRS.push([i, j]);
+      }
+    }
+    /* `position` is a placeholder — BOTH endpoints are placed by u_np in the
+       vertex shader, so a conduit follows its cages as they drift. Every
+       attribute here is required: a declared-but-absent attribute reads as 0,
+       which pins every segment to node 0 and gives it zero length, so the
+       lines vanish without a single error anywhere. */
+    const cp = [], cat = [], ci = [], cj = [], cs = [];
+    PAIRS.forEach(([i, j], seg) => {
+      cp.push(0, 0, 0, 0, 0, 0);
+      cat.push(0, 1);                // where along the conduit this end is
+      ci.push(i, j);                 // this end's cage
+      cj.push(j, i);                 // the other end's
+      // one seed per SEGMENT (identical on both endpoints, so it survives
+      // interpolation) — it de-synchronises the packets. Without it every
+      // conduit pulses in lockstep and the field reads as a strobe.
+      const sd = ((seg * 9301 + 49297) % 233280) / 233280;
+      cs.push(sd, sd);
+    });
+    const gLink = new TH.BufferGeometry();
+    gLink.setAttribute('position', new TH.Float32BufferAttribute(cp, 3));
+    gLink.setAttribute('cat', new TH.Float32BufferAttribute(cat, 1));
+    gLink.setAttribute('ci', new TH.Float32BufferAttribute(ci, 1));
+    gLink.setAttribute('cj', new TH.Float32BufferAttribute(cj, 1));
+    gLink.setAttribute('csd', new TH.Float32BufferAttribute(cs, 1));
+    const mLink = new TH.LineSegments(gLink, new TH.ShaderMaterial({
+      uniforms: u, transparent: true, depthWrite: false, depthTest: true,
+      blending: TH.AdditiveBlending,
+      vertexShader: `
+        attribute float cat; attribute float ci; attribute float cj;
+        attribute float csd;
+        varying vec4 vPal; varying float vT; varying float vD; varying float vF;
+        varying float vS;
+        ${HAZE_V}
+        void main(){
+          int a = int(ci), b = int(cj);
+          vS = csd; vT = cat; vPal = u_pal[a];
+          /* IT STOPS ON THE HULL, not at the centre of one. CONDUIT_REACH is
+             how far into a hull the reference's tube goes; run it to the centre
+             instead and every line crosses its own cage, which is what turns a
+             lattice into a scribble. CONDUIT_CLAMP is the floor for two hulls
+             close enough that the two insets would cross and invert the
+             segment. */
+          vec3 pa = u_np[a], pb = u_np[b];
+          vec3 dv = pb - pa;
+          float L = max(length(dv), 1e-4);
+          float inset = min(u_nd[a].w * ${F(CL.CONDUIT_REACH)},
+                            L * ${F(CL.CONDUIT_CLAMP)});
+          vec4 mv = modelViewMatrix * vec4(pa + dv / L * inset, 1.0);
+          float dist = -mv.z;
+          vD = clamp(1.0 - dist / 26.0, 0.0, 1.0);
+          vF = exp(-max(0.0, dist - 16.0) * 0.042);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: `
+        ${SF_CALM}
+        ${SF_ROLE}
+        ${SF_CHORD}
+        varying vec4 vPal; varying float vT; varying float vD; varying float vF;
+        varying float vS;
+        uniform vec3 u_bg; uniform float u_t, u_e, u_pulse, u_dens, u_calm;
+        // a packet: a bright head with a short tail behind it, like the
+        // particles connections.py runs along its own edges
+        float packet(float at, float head){
+          float d = at - head;
+          float dot_ = pow(max(0.0, 1.0 - abs(d) * 26.0), 2.0);
+          float tail = d < 0.0 ? pow(max(0.0, 1.0 + d * 7.0), 3.0) * 0.35 : 0.0;
+          return dot_ + tail;
+        }
+        void main(){
+          // DATA TRAVELLING. Always running — this is the graph showing that
+          // the conduits carry something — but faster and denser when the
+          // workspace is busy, so it still reports rather than decorates.
+          float sp = 0.16 + 0.42 * u_e;
+          float data = packet(vT, fract(u_t * sp + vS))
+                     + packet(vT, fract(u_t * sp * 0.72 + vS + 0.53)) * 0.7;
+          // …plus the one-shot surge when you navigate
+          float surge = pow(1.0 - abs(fract(u_t * 0.2) - vT), 26.0) * u_pulse;
+          /* THE CONDUIT INHERITS THE COLOUR OF WHAT IT CONNECTS, which is the
+             brief's own rule. vPal is the chord of the cage at THIS end and
+             the fragment interpolates to the other's, so a cyan cluster joined
+             to a magenta one is joined by something cyan at one end and
+             magenta at the other. */
+          vec3 col = chord(vPal, mix(0.12, 0.84, vT), 0.0);
+          col = mix(col, vec3(1.0), clamp(data, 0.0, 1.0) * 0.55);
+          col = mix(u_bg, col, vF);
+          float a = (0.20 + 0.18 * vD + 0.70 * data + 0.55 * surge)
+                  * vF * u_dens;
+          gl_FragColor = vec4(calm(col, u_bg, u_calm + 0.34), a);
+        }`,
+    }));
+    mLink.frustumCulled = false;
+    mLink.renderOrder = 5;
+    S.add(mLink);
 
     /* READ BY tools/ PROBES. Both handles are named, because the previous
        version of inspect_cluster.py reached the live positions through
@@ -2696,6 +2648,23 @@ window.addEventListener('vendor-ready', () => {
   if (window.STAGE_WANT !== false) STAGE.boot();
 });
 window.addEventListener('vendor-failed', () => STAGE._static());
-window.addEventListener('resize', () => STAGE.resize());
+/* COALESCED, because resize() reallocates the canvas backing store and all
+   three composer render targets. Dragging a Qt window edge fires this on every
+   mouse move, and reallocating a 3-megapixel target sixty times a second is
+   the one thing guaranteed to tear the surface it is trying to fit.
+
+   Through MO.frame and NOT requestAnimationFrame: there is exactly one rAF
+   chain in this app and a coalescer is not a good enough reason to be the
+   second one (tests/test_gui_flicker.py enforces it, and it caught this).
+   Returning false retires the job after one pass. It also falls out right for
+   a hidden window — MO refuses to reschedule while hidden, so the resize is
+   applied when the window comes back rather than into a surface nobody is
+   compositing. */
+let _rsz = 0;
+window.addEventListener('resize', () => {
+  if (_rsz) return;
+  _rsz = 1;
+  MO.frame(() => { _rsz = 0; STAGE.resize(); return false; });
+});
 
 window.STAGE = STAGE;
