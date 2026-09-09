@@ -507,28 +507,121 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
    The narrow-window collapse sits in this block rather than with the icon rail
    at the end of the file because nothing below re-declares `.tpane` — the
    source-order rule those override blocks exist for does not bite here. */
-.tpane{display:grid;gap:var(--sp-3);align-items:start;
+/* `stretch`, not `start`. A split is two PANES, and a pane is a surface the
+   whole height of the row — not a card sized to its own content. With `start`
+   the detail was a 200px box beside a 900px list and the column under it was
+   simply dark: `tools/shot_gui.py` reported the MCP page ragged by 616px at
+   every width, and pre-selecting a row (which every split now does) only
+   halved it. Levelling them costs nothing, because the row is still as tall as
+   whichever pane is taller. */
+.tpane{display:grid;gap:var(--sp-3);align-items:stretch;
   grid-template-columns:minmax(320px,440px) 1fr}
 .tpane>.card{margin-bottom:0;max-width:none;min-width:0}
+/* the same exception the grid and the pile both have: a card whose content
+   cannot live in one column takes the whole row, below the split. The accounts
+   page's sync report is a seven-column table — in a 440px list column it is
+   unreadable, and in the detail pane it is not a detail. */
+.tpane>.card.wide{grid-column:1/-1}
 /* The list scrolls in its own card: picking something forty rows down must not
    leave the detail pane off screen, and #content is the page's only scroller. */
 .tpane .tbody{max-height:min(62vh,760px);overflow-y:auto}
-.tpane .tdet{position:sticky;top:0}
-.tpane .trow,.tpane .skrow,.tpane .hrow{cursor:pointer}
+/* …and the detail scrolls INSIDE its pane rather than growing the row: a
+   style's whole text or a server's config dump is longer than the list beside
+   it, and a row as tall as the longest thing either side holds is a page you
+   scroll past nothing to read. It stops being sticky in the same move — a pane
+   that is already the height of the row has nowhere to travel. */
+.tpane .tdet{max-height:min(78vh,900px);overflow:auto}
+.tpane .trow,.tpane .skrow,.tpane .hrow,.tpane .sess{cursor:pointer}
+/* raw text in a detail pane — a server's own report, a config dump. It has
+   no height cap: the pane is what you opened to read it. */
+.tpane .tdet pre{color:var(--dim);font:11.5px/1.6 var(--mono);margin:8px 0 0;
+  white-space:pre-wrap;overflow-wrap:anywhere}
 /* The selected row. bindFilter already refuses to hide a row carrying `.on`
    (filtering is a way to find more, not to lose track of what you picked), so
    this class is the whole of the selection state. */
-.tpane .skrow.on,.tpane .hrow.on,.tpane .agrow.on{
+.tpane .skrow.on,.tpane .hrow.on,.tpane .agrow.on,.tpane .sess.on{
   background:var(--sk-sel-bg,rgba(125,207,255,.12));
   box-shadow:inset 2px 0 0 var(--cyan)}
 /* 860px of CONTENT, not 1099px of window: the split needs 320px for the list
    and ~540 for the detail, and how much of the window the sidebar is holding is
-   not the split's business. Below it they stack and the detail stops being
-   sticky, because there is nothing beside it to stay level with. */
+   not the split's business. Below it they stack, and the detail gives up its
+   own scroller — stacked it is level with nothing, and a second 78vh box under
+   the first is two scrollbars on a page that has one. */
 @container page (max-width:860px){
   .tpane{grid-template-columns:1fr}
-  .tpane .tdet{position:static}
+  .tpane .tdet{max-height:none;overflow:visible}
   .tpane .tbody{max-height:none}}
+
+/* ── a feed: one homogeneous list, the whole width of the page ──
+   A resource index — log lines, search hits, review findings, a day-by-day
+   spend table — is one kind of thing repeated, and every design system says
+   the same thing about it: give it the most width on the page. Dropping it
+   into #content's auto-fit grid gave it ONE 560px track out of three and put
+   the two explainer cards beside it, so the list you opened the page for got a
+   third of the room and every row wrapped.
+
+   There is nothing to balance and nothing to compose: a feed is a stack. The
+   toolbar that filters it belongs to the TABLE, not to the page header — it is
+   part of the list's own anatomy, which is why it is a `.card` child here and
+   not something the shell writes. */
+.feed{display:flex;flex-direction:column;gap:var(--sp-3)}
+.feed>.card{margin-bottom:0;max-width:none;min-width:0}
+
+/* ── a form: controls, stacked, each section annotated ──
+   Multicol was exactly wrong for these five pages. Primer says it in as many
+   words — "don't lay out forms that flow into columns just to reduce the
+   vertical space used by the form" — and a settings page is nothing but
+   controls, so the whole page was the anti-pattern.
+
+   Single column, then: every control under the one above it, in the order you
+   read them. That leaves the horizontal room unspent on a wide window, and the
+   annotated-settings layout is what spends it — the section's title and the
+   sentence explaining it sit in a narrow left column, the controls in a wide
+   right one. The width goes to the explanation instead of to the form, which
+   is the one thing a settings page can do with it that is not squeezing two
+   unrelated fields side by side.
+
+   `dense` is load-bearing: the header and its description are forced into
+   column 1 and take rows 1 and 2, so without it the first control would start
+   at row 2 and the top-right cell would be empty. */
+.form{display:flex;flex-direction:column;gap:var(--sp-3)}
+.form>.card{margin-bottom:0;max-width:none;min-width:0;
+  display:grid;grid-auto-flow:row dense;column-gap:var(--sp-6);
+  grid-template-columns:minmax(0,clamp(180px,24%,300px)) minmax(0,1fr);
+  align-content:start}
+.form>.card>*{grid-column:2}
+/* the FIRST heading only, and the FIRST paragraph — a later one is a footnote
+   under a control and stays with it. A card may carry a second `<h3>` for a sub-section
+   (the models page splits OmniRoute from failover inside one card) and that one
+   belongs above the controls it introduces, not in the annotation column with
+   its own paragraph left behind on the other side. */
+.form>.card>h3:first-of-type{grid-column:1;align-self:start}
+/* …and the description SPANS the rows beside it instead of sitting in one of
+   them. A grid row is as tall as its tallest cell, so a four-line explanation
+   in row 2 pushed the second control down by the difference and left a hole
+   between it and the third — 110px of it on Plan → Execute. Spanning lets that
+   height distribute over the controls it is opposite. The row gap is zero, so
+   the rows a short card never uses cost nothing. */
+.form>.card>p:first-of-type,.form>.card>.secthint{
+  grid-column:1;grid-row:2/span 20;align-self:start}
+/* a control is sized to fit its value: a 4-digit port is not a 900px input.
+   `.fld input{width:100%}` is right for a path and wrong for a number, and it
+   applied to every input in #content. */
+.form .fld input[type=number]{width:auto;max-width:14ch}
+/* The save belongs under the controls it saves, not pinned to the far edge of
+   a card whose right half is empty, and it WRAPS — the models card ends in
+   five buttons and at 1280px the control column is 700px, so the last one hung
+   20px outside the form. (It is also SECONDARY now: each of these covers one
+   section and not the page, and six primary Saves down one page is six things
+   all claiming to be the thing to press.) */
+.form .mrow{justify-content:flex-start;flex-wrap:wrap}
+/* 720px of CONTENT: below it the annotation cannot hold a sentence and the
+   controls cannot hold a value, so the two columns become one and the
+   description goes back above the fields it describes. */
+@container page (max-width:720px){
+  .form>.card{grid-template-columns:minmax(0,1fr)}
+  .form>.card>*,.form>.card>h3:first-of-type,
+  .form>.card>p:first-of-type,.form>.card>.secthint{grid-column:1;grid-row:auto}}
 
 /* home: the dashboard bento — instruments first (how much plan is left, how
    hard am I working, is my tooling up, is anything running), then what to
@@ -633,18 +726,15 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
 .lgdet{color:var(--dim);font:11.5px/1.55 var(--mono);margin:4px 0 0;
   max-height:9em;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
 
-/* accounts page rows */
-.arow2{display:flex;align-items:center;gap:10px;padding:8px 0;
-  border-top:1px solid var(--panel2);flex-wrap:wrap}
-.arow2:first-of-type{border-top:0}
-.arow2 b{min-width:110px}
-.arow2 .apath{flex:1;min-width:120px;color:var(--dim2);font-size:12px;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.arow2 .aq{color:var(--dim2);font-size:11px}
-.arow2 .iwrap{flex:none}
-.arow2 .i-ring .inst{width:42px;height:42px}
-.arow2 .iread b{font-size:10.5px;letter-spacing:-.3px}
-.arow2 .iread i,.arow2 .iread u{display:none}
+/* A gauge inside a list row is a glyph, not an instrument panel: a ring drops
+   in at its own 140px unless the row says otherwise, which is the same trap
+   `.iwrap` exists for. These four rules are all that survives `.arow2`, the
+   accounts page's old flat row — the page is a list and a pane now, and no
+   markup in the app writes that class any more. */
+.tpane .hrow .iwrap{flex:none}
+.tpane .hrow .i-ring .inst{width:42px;height:42px}
+.tpane .hrow .iread b{font-size:10px;letter-spacing:-.3px}
+.tpane .hrow .iread i,.tpane .hrow .iread u{display:none}
 
 /* KPI strip */
 .kpi{display:flex;flex-wrap:wrap;gap:var(--sp-4) var(--sp-6);align-items:flex-end}
@@ -1883,7 +1973,7 @@ html.tb-rail .top::after{content:'';position:absolute;left:0;right:0;bottom:-4px
   border-radius:var(--sk-in-r,var(--sk-r,6px));
   border-width:var(--sk-in-bw,1px)}
 /* list rows — the marker on the leading edge is a look's cheapest signature */
-.sess,.proj,.hrow,.arow,.arow2,.jrow,.drow,.lrow,.urow,.qcard{
+.sess,.proj,.hrow,.arow,.jrow,.drow,.lrow,.urow,.qcard{
   border-radius:var(--sk-row-r,var(--sk-r,6px));
   border-left-width:var(--sk-row-lead,1px)}
 .sess::before,.hrow::before{content:var(--sk-row-mark,none);

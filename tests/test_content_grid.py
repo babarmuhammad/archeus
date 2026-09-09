@@ -107,9 +107,15 @@ def _top_level_commas(s):
 
 _ARCH = _arch_table()
 
-#: The shapes `shell()` knows how to write. `grid` is the un-designed default a
-#: page carries until this rehaul reaches it.
-SHAPES = ('grid', 'dash', 'split', 'feed', 'form', 'pile')
+#: page id -> the function that paints it. NAV names it in its fifth field; the
+#: project tabs are dispatched by `drawProject`, so those four are named here.
+_RENDERER = dict(
+    re.findall(r"\['([a-z]+)',[^\n]*?\(\)=>(\w+),'[a-z]+'\]", _JS))
+_RENDERER.update(sessions='drawSessions', worktrees='drawWorktrees')
+
+#: The shapes `shell()` knows how to write — and the whole set, because a
+#: page naming anything else gets no wrapper at all.
+SHAPES = ('dash', 'split', 'feed', 'form', 'pile')
 
 
 def _arch(page):
@@ -213,36 +219,53 @@ def test_wide_is_only_ever_put_on_a_card():
 
 
 def test_the_wide_cards_are_the_ones_that_cannot_share_a_row():
-    """Two reasons a card takes the whole row, and both are about content:
+    """`wide` is an instruction to a container that TILES, and only two do: the
+    auto-fit grid and the pile's multicol. A `feed` card already has the whole
+    width and a `form` card is a two-column annotated section, so the class
+    said nothing on either — it was on nine cards across five pages that had
+    stopped being grids, left over from when every page was one.
 
-    it is ALONE on its page (a column of one card on a 2560px screen is the
-    original bug with a smaller number), or it holds something that does not
-    survive a 560px column — `.cctable`, whose own grid has a 664px minimum
-    with three accounts; `.cols3`, three tables side by side; a six- or
-    eight-column table; the theme gallery.
-
+    What survives is the real case: a card in a PILE whose content cannot live
+    in a 560px column — `.cctable`, whose own grid has a 664px minimum with
+    three accounts; a six- or eight-column table; three tables side by side.
     Pinned by name because the failure is silent: an unmarked wide card does
     not throw, it just squeezes, and only a screenshot shows it."""
     for anchor in (
-            'class="card wide"><h3>Code review',           # sole card
-            'class="card wide"><h3>Per-session usage',      # 6-col table
-            'class="card wide"><h3>${ic(\'search\')} Search every session',
-            'class="card wide"><h3>MCP servers',
-            'class="card wide"><h3>${ic(\'history\')} Logs',
-            'class="card wide"><h3>Repos',                  # both repo paths
-            'class="card wide"><h3>${ic(\'fork\')} Repos',
             'class="card wide"><h3>${ic(\'settings\')} How Claude Code behaves',
             'class="card wide"><h3>${ic(\'ai\')} What is actually being used',
             'class="card wide"><h3>${ic(\'check\')} Auto mode',
             'class="card wide"><h3>Per-project',
-            'class="card wide"><h3>Claude accounts',
+            'class="card wide"><h3>${ic(\'refresh\')} Loops',
+            'class="card wide" id="pluginCard"><h3>${ic(\'folder\')} Installed plugins',
+            'class="card wide"><h3>Marketplaces',
             'class="card wide"><h3>${ic(\'refresh\')} Sync accounts',
-            'class="card wide"><h3>${ic(\'palette\')} Appearance',
     ):
         assert anchor in _JS, f'no longer a full-row card: {anchor}'
-    # the sessions setup banner sits above a full-width list; a 560px banner
-    # over a 2242px list is the one place .wide is about alignment, not content
-    assert 'class="card wide"\n      style="border-left:3px solid var(--warn)"' in _JS
+    # every page carrying one of them tiles: a pile, or the split whose own
+    # `.wide` rule drops a card below both panes
+    for page in ('client', 'usage', 'loops', 'plugins'):
+        assert _arch(page) == 'pile', f'{page} tiles no more — .wide is dead there'
+    assert _arch('accounts') == 'split'
+    # and all three tiling containers honour it, or the mark is a no-op
+    css = _CSS.replace(' ', '')
+    for sel in ('.content>.card.wide{grid-column:1/-1}',
+                '.tpane>.card.wide{grid-column:1/-1}'):
+        assert sel in css, sel
+    assert '.pile>.card.wide,' in css
+
+
+def test_no_shape_that_is_already_full_width_marks_a_card_wide():
+    """The mirror of the check above, and the one that would have caught the
+    nine stale marks: a renderer on a `feed` or `form` page has no row to take,
+    so a `wide` there is a leftover from the page's previous shape."""
+    for fn, page in (('drawReview', 'review'), ('drawProjUsage', 'pusage'),
+                     ('pgSearch', 'searchp'), ('pgLogs', 'logs')):
+        body = _JS[_JS.index('function ' + fn):]
+        body = body[:body.index(chr(10) + '}' + chr(10))]
+        assert _arch(page) == 'feed'
+        assert 'card wide' not in body, f'{fn} is a feed — every card is full width'
+    settings = _JS[_JS.index('const SETTINGS_CARDS={'):_JS.index('function pgSetLaunch')]
+    assert 'card wide' not in settings, 'a form card is annotated, not a grid cell'
 
 
 def test_the_fit_gate_measures_more_than_one_width():
@@ -286,7 +309,10 @@ def test_the_library_split_is_a_grid_child_like_the_dashboard():
     block = block[:block.index('}')]
     assert 'display:grid' in block
     assert 'minmax(320px,440px)' in block and '1fr' in block,         'the split is no longer a narrow list beside a wide detail'
-    assert 'align-items:start' in block
+    # …and STRETCHED, not `start`: both halves are panes the height of the row,
+    # so a short detail leaves a surface rather than a dark column. The audit
+    # measured 616px of it on the MCP page at every width.
+    assert 'align-items:stretch' in block
     cell = _CSS[_CSS.index('.tpane>.card{'):]
     cell = cell[:cell.index('}')]
     for want in ('max-width:none', 'min-width:0', 'margin-bottom:0'):
@@ -295,8 +321,9 @@ def test_the_library_split_is_a_grid_child_like_the_dashboard():
 
 def test_the_split_collapses_before_its_columns_get_unreadable():
     """A 320px list next to a detail pane needs about 860px of CONTENT to be two
-    columns at all — below that they stack, and the detail stops being sticky
-    because there is nothing beside it to stay level with.
+    columns at all — below that they stack, and the detail gives up its own
+    scroller: stacked, it is not level with anything, and a second 78vh box
+    under the first is two scrollbars where the page has one.
 
     Of content, not of window: it asked for 1099px of viewport, which is a
     different number every time the sidebar is dragged, and 240px different at
@@ -304,7 +331,10 @@ def test_the_split_collapses_before_its_columns_get_unreadable():
     flat = _CSS.replace(' ', '').replace('\n', '')
     assert '@containerpage(max-width:860px){.tpane{grid-template-columns:1fr}' \
         in flat
-    assert '.tpane.tdet{position:static}' in flat
+    assert '.tpane.tdet{max-height:none;overflow:visible}' in flat
+    # and side by side it caps itself instead of growing the row past the
+    # window — a style's whole text is longer than the list beside it
+    assert '.tpane.tdet{max-height:min(78vh,900px);overflow:auto}' in flat
 
 
 def test_the_skills_list_and_its_detail_are_one_pane_each():
@@ -502,26 +532,71 @@ def test_a_designed_layout_is_never_a_pile():
     """This used to be four function names typed into this file. It is every
     page now, derived from what each one declares: multicol pours content down
     column 1 and then starts column 2, so a pile is right for INDEPENDENT
-    sections and wrong for anything whose order or composition is designed."""
+    sections and wrong for anything whose order or composition is designed.
+
+    Which is also the rule for what may JOIN the pile: a page of one repeated
+    thing is a `feed` or a `split`, never a stack of sections that happen to be
+    near each other."""
     for page, arch in _ARCH.items():
-        if arch == 'pile':
-            continue
-        assert arch in SHAPES
-    # the shapes that are compositions rather than a stack
-    for page in ('agents', 'skills'):
+        assert arch in SHAPES, f'{page}: {arch!r}'
+    # a list of one kind of thing, and what you picked out of it
+    for page in ('agents', 'skills', 'mcp', 'hooks', 'ostyles', 'accounts',
+                 'worktrees', 'sessions'):
         assert _arch(page) == 'split', f'{page} stopped being a list + detail'
-    assert _ARCH.get('sessions') != 'pile', 'the sessions list is not a pile'
+    # one homogeneous list, the whole width of the page
+    for page in ('logs', 'searchp', 'review', 'pusage', 'audit'):
+        assert _arch(page) == 'feed', f'{page} stopped being a feed'
+    # controls, and Primer's Don't: never flowed into columns
+    for page in ('settings', 'appearance', 'paths', 'models', 'updates',
+                 'planexec'):
+        assert _arch(page) == 'form', f'{page} is a form and must not be a pile'
 
 
-def test_the_migration_marker_only_ever_shrinks():
-    """`grid` is what a page is before anyone decided what it should be — a bag
-    of cards dropped into the auto-fit grid. It is scaffolding for this rehaul,
-    so the count is pinned DOWNWARD: a page may leave it, nothing may join it,
-    and when the last one goes the shape itself should be deleted rather than
-    left as a place for the next page to land by default."""
-    grid = sorted(p for p, a in _ARCH.items() if a == 'grid')
-    assert len(grid) <= 12, \
-        f'{len(grid)} pages still undesigned, was 12: {grid}'
+def test_a_split_page_fills_both_of_its_columns():
+    """The archetype writes the two-column wrapper; it cannot make a renderer
+    fill both columns, and a split that paints one card leaves half the page
+    dark — a bigger hole than the one it was meant to close. Two cards, then,
+    and the list in a `.tbody`: without the scroller, picking something forty
+    rows down leaves the detail pane off the screen, which is the whole reason
+    the two are side by side.
+
+    The second card is `.tdet` wherever it is a DETAIL (what you picked out of
+    the list). Agents and hooks are the other shape a split takes — what you
+    have installed beside what you could install — so the pair is asserted, not
+    the class."""
+    for page in ('agents', 'skills', 'mcp', 'hooks', 'ostyles', 'accounts',
+                 'worktrees', 'sessions'):
+        fn = _RENDERER[page]
+        body = _JS[_JS.index('function ' + fn + '('):]
+        body = body[:body.index(chr(10) + '}' + chr(10))]
+        assert body.count('class="card') >= 2, \
+            f'{page} is a split that paints one card — half the page is dark'
+        assert 'class="tbody"' in body, f'{page}: the list is not in a scroller'
+    # and the detail pane, on the six that have one
+    for page in ('skills', 'mcp', 'ostyles', 'accounts', 'worktrees',
+                 'sessions'):
+        fn = _RENDERER[page]
+        body = _JS[_JS.index('function ' + fn + '('):]
+        body = body[:body.index(chr(10) + '}' + chr(10))]
+        assert 'card tdet' in body, f'{page} lost its detail pane'
+
+
+def test_there_is_no_undesigned_default_left():
+    """`grid` was the sixth shape: a bag of cards dropped into the auto-fit
+    grid, which is what a page was before anyone decided what it should be. It
+    was scaffolding for this rehaul and the count was pinned downward until it
+    reached zero — at which point leaving it in the map would make it the place
+    the next page lands by accident, which is the one thing the field exists to
+    prevent. So it is deleted, in both halves: no page declares it, and
+    `shellWrap` no longer knows the word."""
+    assert 'grid' not in _ARCH.values(), \
+        f"still undesigned: {sorted(p for p, a in _ARCH.items() if a == 'grid')}"
+    wrap = _JS[_JS.index('const ARCH_WRAP='):]
+    wrap = wrap[:wrap.index(';')]
+    assert 'grid' not in wrap, 'the migration marker is still a shape shell() writes'
+    assert "||'grid'" not in _JS.replace(' ', ''), \
+        'archNow still falls back to the migration marker'
+
 
 
 # ── and the tool that measures all of it ─────────────────────────────

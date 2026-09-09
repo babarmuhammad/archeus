@@ -55,7 +55,11 @@ STATE = {
                 'perm_notes': {p: {m: list(_TH_CFG.perm_note(p, m))
                                    for m in ('', 'opus', 'sonnet')}
                                for p in _TH_CFG.PERMS},
-                'thinking': [''], 'thinking_labels': [''],
+                # the real ladder, for the same reason the efforts above are
+                # real: a one-stop chip row is a control that cannot be
+                # misrendered, so auditing it proves nothing
+                'thinking': list(_TH_CFG.THINKING_CAPS),
+                'thinking_labels': list(_TH_CFG.THINKING_LABELS),
                 'frontier': [['opus', 'high', 'Opus', '$$', '70', 'note']],
                 # real presets, so the launch modal actually renders its cards.
                 # Without them tools/shot_gui.py audits an empty modal — which is
@@ -135,6 +139,10 @@ ROUTES = {
     '/api/search-index': {'rows': []},
     '/api/mcp': {'servers': [{'name': 'ide', 'status': 'ok'},
                              {'name': 'asana', 'status': 'down'}]},
+    # what `claude mcp get` prints. The MCP page is a split now and the pane
+    # fetches this on every pick, so a missing route would leave it spinning.
+    '/api/mcp/detail': {'text': 'ide\n  transport: stdio\n  command: ide-server\n'
+                                '  scope: user\n  tools: 4'},
     '/api/usage/daily': {'days': [{'day': 'd%d' % i, 'tokens': i * 1000,
                                    'tok_fmt': '%dk' % i, 'cost': i * .1}
                                   for i in range(14)]},
@@ -1165,15 +1173,25 @@ def main():
             check(f'tab {t}', len(errs) == before, errs[before:])
 
         # "no JS error" passes on an EMPTY card, which is exactly what the old
-        # renderer produced against the new API shape — so assert the tree.
+        # renderer produced against the new API shape — so assert the list AND
+        # the pane. The board used to be a `<details>` tree whose summary row
+        # spread a name, a branch and four tags across the whole window with a
+        # `flex:1` hole in the middle; it is one list with the worktrees of the
+        # repo you picked beside it, so both halves have to be checked.
         pg.evaluate("TAB='worktrees';go('project')")
         pg.wait_for_timeout(600)
-        groups = pg.evaluate("document.querySelectorAll('#content details.rgrp').length")
-        check('repos tab groups every repo', groups == 3, groups)
+        rows = pg.evaluate("document.querySelectorAll('#content .tbody .hrow').length")
+        check('repos tab lists every repo, submodules included', rows == 3, rows)
         txt = pg.evaluate("document.querySelector('#content').innerText")
-        check('a submodule is nested and labelled',
-              'core' in txt and 'submodule' in txt and 'submodules' in txt, txt[:200])
-        check('a worktree still shows its session', 'refactor' in txt, txt[:200])
+        check('a submodule is indented and labelled',
+              'core' in txt and 'submodule' in txt, txt[:200])
+        # the list alone must not be the whole page: one repo is pre-selected,
+        # so the pane is never the intro on a board that has something to show
+        det = pg.evaluate("document.querySelector('#wtDet').innerText")
+        check('a repo is picked and its worktrees are in the pane',
+              'Branch' in det and 'refactor' in det, det[:160])
+        picked = pg.evaluate("document.querySelectorAll('#content .hrow.on').length")
+        check('…and the row it came from is marked', picked == 1, picked)
 
         print('\n— hidden projects leave the sidebar and can come back —')
         # The reveal button only exists while something IS hidden, so the branch
@@ -1265,22 +1283,47 @@ def main():
               pg.evaluate("document.querySelectorAll('#content .skrow.on').length")==0
               and pg.evaluate("!!document.querySelector('#skTmpl')"))
 
-        # Output styles: what is active, WHERE it is pinned, and a view button
-        # that shows something for a built-in (which has no file at all).
+        # Output styles: what is active, WHERE it is pinned, and — now that the
+        # page is a split — that picking a row fills the pane rather than
+        # opening a drawer over the page you were reading. A built-in has no
+        # file at all, so the pane has to say so instead of showing "(empty)".
         pg.evaluate("go('ostyles')")
         pg.wait_for_timeout(900)
         txt=pg.evaluate("document.querySelector('#content').innerText")
         check('the output-style page says what is in force','in force' in txt)
         check('…and which file pins it','settings.json' in txt)
         check('starters are offered','Starters from archeus' in txt)
+        check('every scope is one list, not one card each',
+              pg.evaluate("document.querySelectorAll('#content .tbody .hrow').length")==4)
         before=len(errs)
-        pg.evaluate("osView('default')")
+        pg.evaluate("osSel(0)")
         pg.wait_for_timeout(500)
-        shown=pg.evaluate("document.querySelector('#drawer').classList.contains('show')")
-        body=pg.evaluate("document.querySelector('#dBody').innerText")
-        check('view opens on a built-in and is not empty',
-              shown and len(body)>20 and len(errs)==before,body[:60])
-        pg.evaluate("document.querySelector('#drawer').classList.remove('show')")
+        det=pg.evaluate("document.querySelector('#osDet').innerText")
+        check('picking a style fills the pane and nothing overlays the page',
+              len(det)>20 and len(errs)==before
+              and not pg.evaluate(
+                  "document.querySelector('#drawer').classList.contains('show')"),
+              det[:60])
+        check('a built-in says it has no file rather than reading "(empty)"',
+              'no file to read' in det, det[:80])
+
+        # MCP: the page was one card whose rows put the name at `flex:1` and
+        # three buttons at the far right, so on a wide window it was a name,
+        # two thousand pixels of nothing, and then the controls — and `Detail`
+        # opened a drawer over the page. List, then pane.
+        pg.evaluate("go('mcp')")
+        pg.wait_for_timeout(900)
+        rows = pg.evaluate("document.querySelectorAll('#content .tbody .hrow').length")
+        check('every MCP server is one row of one list', rows == 2, rows)
+        before = len(errs)
+        pg.evaluate("mcPick(0)")
+        pg.wait_for_timeout(500)
+        det = pg.evaluate("document.querySelector('#mcDet').innerText")
+        check('picking a server fills the pane with what it is',
+              'transport' in det and len(errs) == before, det[:80])
+        check('…and nothing overlays the page to show it',
+              not pg.evaluate(
+                  "document.querySelector('#drawer').classList.contains('show')"))
 
         # The account's global instructions used to be the third card of the MCP
         # page. It is the file read in EVERY session, so it has its own page.
@@ -1591,9 +1634,18 @@ def main():
                     f"(()=>{{const e=document.querySelector('#{cid}');"
                     f"return !!e && !e.disabled && e.offsetParent!==null;}})()")
                 check(f'#{cid} is a live, enabled control on {page}', ok)
+            # A Save, or controls that apply the moment you pick them — never
+            # nothing. Matched on the WORD rather than on `.btn.pri`, which is
+            # what it used to look for: each of these Saves covers one section
+            # of the page and not the page, so they are secondary now, and the
+            # old check read that as the page having lost its Save.
             check(f'{page} kept its own Save or applies on pick',
-                  pg.evaluate("!!document.querySelector('#content .btn.pri')"
+                  pg.evaluate("[...document.querySelectorAll('#content .btn')]"
+                              ".some(b=>/save/i.test(b.textContent))"
                               " || !!document.querySelector('#content .chip')"))
+            check(f'{page} has no Save claiming to be the page\'s own',
+                  pg.evaluate("[...document.querySelectorAll('#content .btn.pri')]"
+                              ".every(b=>!/save/i.test(b.textContent))"))
 
         pg.evaluate("go('helpp')")
         pg.wait_for_timeout(700)

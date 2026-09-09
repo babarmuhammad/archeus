@@ -942,12 +942,25 @@ def test_gui_launch_modal_redesign(monkeypatch, tmp_path):
     assert 'chipVal($(\'#fEffort\'))' not in PAGE   # old dead-code bug
     assert '<details class="adv">' in PAGE
     assert '--r-sm:' in PAGE and '--sp1:' in PAGE and '--mono:' in PAGE
-    # primary Resume/Restore button sits after the hover-revealed .acts block
-    sess_tpl = PAGE[PAGE.index('function drawSessions'):PAGE.index('function resumeS')]
-    assert 'class="acts">' in sess_tpl
-    acts_close = sess_tpl.index('</div>', sess_tpl.index('class="acts">'))
-    pri_idx = sess_tpl.index('btn sm pri')
-    assert pri_idx > acts_close
+    # Resume is on the ROW and nothing hides it. It used to share the row with
+    # ten more actions in a `.acts` strip revealed by hovering, and the check
+    # here was that the primary button came after that strip in source order.
+    # The strip is gone — the ten live in the detail pane beside the list — so
+    # what is asserted is the invariant the ordering was protecting: resuming a
+    # session is one click, on the row, with no hover and no selection first.
+    sess_tpl = PAGE[PAGE.index('function drawSessions'):PAGE.index('function seSel')]
+    assert 'class="acts">' not in sess_tpl, \
+        'the hover-only action strip is back on the session row'
+    row = sess_tpl[sess_tpl.index('const row=(s,i)=>'):]
+    row = row[:row.index('if(!shell(nav,')]
+    assert 'btn sm pri' in row and 'resumeS(' in row and 'restoreS(' in row, \
+        'Resume/Restore left the session row'
+    # and the pane carries the rest, on the session you picked
+    pane = PAGE[PAGE.index('function seSel'):]
+    pane = pane[:pane.index('\n}\n')]
+    for act in ('viewS(', 'exportS(', 'filesS(', 'ckptS(', 'tagS(', 'renameS(',
+                'archiveS(', 'forkS(', 'handoffS(', 'toggleTune('):
+        assert act in pane, f'{act} is reachable from nowhere'
 
 
 def test_list_projects_exposes_last_active(monkeypatch, tmp_path):

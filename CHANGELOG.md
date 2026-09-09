@@ -7,6 +7,66 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Every page now has a declared shape, and five shapes is all there are.** A
+  page's composition used to be whatever its renderer happened to emit, so the
+  choice between a plain grid of cards and a balanced pile was made by hand,
+  once per page, twenty-eight times — and nothing could tell a considered
+  layout from an accident. The shape is now the sixth field of the table the
+  page itself is declared in, and one function reads it, so a renderer emits
+  its sections and never states, or gets to forget, what kind of page it is on.
+
+  There were six shapes; the sixth was `grid`, the un-designed default. Every
+  page has a real one now, so it is deleted rather than left as the place the
+  next page lands by accident.
+
+  - **A list of one kind of thing is a list, with what you picked beside it.**
+    MCP servers, hooks, output styles, accounts, repos and sessions were pages
+    of rows whose name sat at the left of the window and whose buttons sat at
+    the right of it — on a wide display, a name, two thousand pixels of
+    nothing, and then the controls. Each is now a list in its own scroller with
+    a detail pane next to it. Three of them stop opening a drawer over the page
+    you were reading to show you a detail: the MCP server's configuration, an
+    output style's text, and a repo's worktrees are in the pane.
+  - **The two halves of a split are level.** A detail pane sized to its own
+    content sat as a 200px box beside a 900px list with the column under it
+    simply dark — 616px of it on the MCP page, at every window width. Both
+    halves are panes the height of the row now, the detail scrolls inside its
+    own instead of growing the row past the window, and every split opens with
+    a row already picked, so the pane is never an invitation next to a full
+    list.
+  - **Output styles is one list, not five grids of the same object.** Clicking
+    a card used to write a settings.json — selecting a style and inspecting one
+    were the same gesture. Picking a row now only picks it; putting a style in
+    force, copying a starter and deleting are buttons in the pane.
+  - **The session list gives up its hover-only action strip.** Ten actions
+    appeared at the right edge of a row when the pointer crossed it. Resume
+    stays on the row — resuming is one click, from the list, as it was — and
+    the other ten are in the pane, on the session you picked, visible.
+  - **A page that is one homogeneous list gets the whole width.** Logs, search,
+    the code review, per-session usage and the context audit were single cards
+    in a three-track grid, so the list you opened the page for got one column
+    of three.
+  - **The settings pages stop flowing their controls into columns.** Every
+    design system says the same thing about a form and multicol was exactly the
+    wrong shape for the five pages that are nothing but controls. Each section
+    is now a single column of controls with its title and the sentence
+    explaining it in a narrow column beside them, which is what the width on a
+    wide display is for. A section's Save sits under the controls it saves
+    rather than pinned to the far edge of a half-empty card, and it is
+    secondary: six primary buttons down one page is six things all claiming to
+    be the thing to press.
+  - **A number input is as wide as its value.** A four-digit port had a 900px
+    box, because the rule that gives every control the full width of its field
+    is right for a path and wrong for a number.
+  - **A section whose body resolves to nothing is not painted**, and neither is
+    a table whose header stands over no rows. Reading the pages found eight of
+    them. Emptiness that is itself the information keeps its card — "no MCP
+    servers configured" is that page's whole subject — because an empty state
+    is text, and the rule only removes what has nothing at all.
+
+
 ## [2.1.0] - 2026-09-09
 
 ### Added

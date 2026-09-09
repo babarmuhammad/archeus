@@ -23,7 +23,7 @@ across the lot.
 - **Tags** — tag sessions (`t`); tags show inline and are searchable
 - **Changed files** — list the files a session edited/created, derived from its tool calls (`F`)
 
-- **Context hand-off** — start a *new* session seeded with any prior session's transcript, from any account: **Hand off** on the session row in the GUI, `⇧K` in the terminal UI. See [Context hand-off](context-handoff.md).
+- **Context hand-off** — start a *new* session seeded with any prior session's transcript, from any account: **Hand off** in the session's detail pane in the GUI, `⇧K` in the terminal UI. See [Context hand-off](context-handoff.md).
 
 The full key map for these actions is on the [Usage](tui.md#key-bindings) page.
 

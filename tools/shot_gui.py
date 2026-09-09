@@ -340,6 +340,13 @@ SPACE_JS = """(()=>{
     });
   });
   document.querySelectorAll('#content .card').forEach(c=>{
+    /* A pane is not a card. Both halves of a split are stretched to the height
+       of the row on purpose — that is what stops the short one leaving a dark
+       column — so the space under a short detail is the surface it sits on,
+       not a hole between two things. `ragged` on the .tpane grid is what
+       guards these instead, and it is the stronger check: it fails the moment
+       the two stop being level. */
+    if(c.parentElement&&c.parentElement.classList.contains('tpane'))return;
     const kids=[...c.children].filter(e=>vis(e)&&box(e).height>0).map(box);
     if(!kids.length)return;
     seen.push('card:'+cn(c));
