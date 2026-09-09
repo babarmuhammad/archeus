@@ -286,7 +286,7 @@ def test_every_headless_prompt_leaves_marked(monkeypatch, tmp_path):
     monkeypatch.setattr(memory._c, 'get_claude_exe', lambda: 'claude.exe')
     monkeypatch.setattr(memory._tls, 'silent', True, raising=False)
 
-    def fake(args, input_text=None, cwd=None, timeout=None):
+    def fake(args, input_text=None, **kw):
         seen['prompt'] = input_text
         return '{}'
     import claude_sessions.gui_api as ga

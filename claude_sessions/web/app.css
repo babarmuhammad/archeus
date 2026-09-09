@@ -294,15 +294,9 @@ html.nav-sized .nav{flex:0 1 var(--nav-h);min-height:34px}
 /* the three project actions must stay reachable, so they wrap as a unit rather
    than letting the path push them off the row */
 #pactions{display:inline-flex;gap:var(--sp-2);flex-wrap:wrap;justify-content:flex-end}
-@media(max-width:899px){
-  .top{padding:10px 14px;gap:var(--sp-2)}
-  .top .path{flex-basis:100%;order:9}
-  .tabs{overflow-x:auto;scrollbar-width:none}
-  .tabs::-webkit-scrollbar{display:none}
-  .tab{padding:9px 11px}
-  .kpi{gap:var(--sp-3) var(--sp-4)}
-  .kpi .kv2{font-size:17px}
-}
+/* the narrow-window chrome that used to sit here is the last block in the
+   file — it was declared before `.tab`, `.kpi` and `.kpi .kv2`, so three of its
+   seven rules had never once applied */
 .top .sp{flex:1}
 .amrow{display:flex;align-items:center;gap:var(--sp-2);padding:6px 0;
   border-bottom:1px solid var(--panel2);cursor:pointer;font-size:13px;
@@ -428,13 +422,113 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
    the sessions `.slist`, a bare spinner — so a page's furniture needs no
    marking and only a genuinely wide card has to say `.wide`. `min-width:0`
    because a grid item's default `min-width:auto` would let a wide table push
-   its own cell past the track. */
+   its own cell past the track.
+
+   `auto-FIT`, not auto-fill: an empty track is COLLAPSED and the cards that
+   exist stretch to fill the row. auto-fill keeps the empty track alive, so a
+   page with two short cards on a 2560px display had a third of the row dark for
+   no reason. Nothing else changes — with enough cards to occupy every track the
+   two keywords are identical.
+
+   And it is a CONTAINER, which is the rule the whole stylesheet now follows:
+   a layout decision reads the box it is in, never the window. No card is ever
+   the width of the viewport — it is a 560-760px track of this grid — so a
+   `@media` query asking about the window was asking about the wrong number, and
+   the sidebar being draggable makes the two disagree by up to 240px. */
 .content{flex:1;overflow-y:auto;padding:20px 26px;min-height:0;
+  container:page/inline-size;
   display:grid;align-items:start;gap:var(--sp-3);
-  grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--card-min,560px)),1fr))}
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,var(--card-min,560px)),1fr))}
 .content>*{grid-column:1/-1}
 .content>.card{grid-column:auto;min-width:0;margin-bottom:0}
 .content>.card.wide{grid-column:1/-1}
+/* A card takes the whole row when what is INSIDE it cannot live in one track,
+   which is a property of its content and not of the author's memory. The
+   lessons table is five columns wide; squeezed into a 740px track its status
+   column came out 23px wide and wrapped to three lines, which is the
+   "not aligned properly" that was reported. Four columns is the threshold
+   because every 2- and 3-column table in the app reads fine in one track.
+   `.wide` still works and still wins — this only adds the cases nobody
+   remembered to mark. */
+.content>.card:has(.tbl th:nth-child(4)),
+.content>.card:has(.cctable){grid-column:1/-1}
+
+/* ── a pile: N independent sections, balanced ─────────────────────────────────
+   A grid ROW is what makes the holes. A row is as tall as its tallest card and
+   `align-items:start` leaves the rest of it dark, so a page holding a 147px
+   card beside a 794px one has 650px of nothing in the middle of it — measured
+   on Tools, CLAUDE.md, Help, Plan → Execute and Memory, every one of them a
+   page that is simply a stack of unrelated sections.
+
+   Hand-marking the tall one `.wide` fixes the screenshot and not the page: a
+   card's height is DATA. Help's project card is 656px next to thirteen
+   projects and 200px next to two, so which card is "the tall one" changes with
+   the workspace, and the next person's data puts the hole somewhere else.
+
+   Multi-column balances instead: the browser fills column 1 to the balance
+   point and continues in column 2, whatever the heights are, with no
+   breakpoint and nothing to mark. Reading order becomes column-major, which is
+   what a pile IS — independent sections, read in any order. A page with a
+   DESIGNED layout keeps the grid: the dashboard (`.dash`), a list + detail
+   (`.tpane`) and the sessions list are compositions, not piles.
+
+   It has to be a WRAPPER rather than `#content` itself: `#content` is a flex
+   item that scrolls, so it has a definite height, and a multicol box with a
+   definite height paginates SIDEWAYS instead of growing downward.
+
+   `column-width` and not `column-count`, from the same token as the grid's
+   track floor, so a pile and a grid page break to two and three columns at the
+   same window width. */
+.pile{columns:var(--card-min,560px);column-gap:var(--sp-3)}
+/* multicol has no row gap, so the separation is the card's own margin — and
+   `break-inside` is what stops a card being sliced across the column break */
+.pile>*{break-inside:avoid;margin:0 0 var(--sp-3)}
+/* the same two exceptions the grid has, said the way multicol says them:
+   furniture spans, and so does a card whose content needs the width */
+.pile>*:not(.card),
+.pile>.card.wide,
+.pile>.card:has(.tbl th:nth-child(4)),
+.pile>.card:has(.cctable){column-span:all}
+/* a spanning element ends one balanced run and starts another, so it needs the
+   margin on both sides or the run below it touches it */
+.pile>.card.wide,.pile>*:not(.card){margin-top:0}
+
+/* ── list + detail ──
+   A long list of one kind of thing, and what you picked out of it. The Library
+   pages used to put an explainer, an unbounded list and an "add" form beside
+   each other as three cards in #content's auto-fill grid, so on a wide screen
+   the list — the reason you opened the page — got one narrow column of three,
+   and the two static cards got the rest.
+
+   Its relationship to #content is `.dash`'s exactly: it is not a card, so it
+   takes the whole row from `.content>*`, and its own children need the cell
+   rules the grid would otherwise have handed them.
+
+   The narrow-window collapse sits in this block rather than with the icon rail
+   at the end of the file because nothing below re-declares `.tpane` — the
+   source-order rule those override blocks exist for does not bite here. */
+.tpane{display:grid;gap:var(--sp-3);align-items:start;
+  grid-template-columns:minmax(320px,440px) 1fr}
+.tpane>.card{margin-bottom:0;max-width:none;min-width:0}
+/* The list scrolls in its own card: picking something forty rows down must not
+   leave the detail pane off screen, and #content is the page's only scroller. */
+.tpane .tbody{max-height:min(62vh,760px);overflow-y:auto}
+.tpane .tdet{position:sticky;top:0}
+.tpane .trow,.tpane .skrow,.tpane .hrow{cursor:pointer}
+/* The selected row. bindFilter already refuses to hide a row carrying `.on`
+   (filtering is a way to find more, not to lose track of what you picked), so
+   this class is the whole of the selection state. */
+.tpane .skrow.on,.tpane .hrow.on,.tpane .agrow.on{
+  background:var(--sk-sel-bg,rgba(125,207,255,.12));
+  box-shadow:inset 2px 0 0 var(--cyan)}
+/* 860px of CONTENT, not 1099px of window: the split needs 320px for the list
+   and ~540 for the detail, and how much of the window the sidebar is holding is
+   not the split's business. Below it they stack and the detail stops being
+   sticky, because there is nothing beside it to stay level with. */
+@container page (max-width:860px){
+  .tpane{grid-template-columns:1fr}
+  .tpane .tdet{position:static}
+  .tpane .tbody{max-height:none}}
 
 /* home: the dashboard bento — instruments first (how much plan is left, how
    hard am I working, is my tooling up, is anything running), then what to
@@ -476,10 +570,15 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
   letter-spacing:.1em;color:var(--dim2);white-space:nowrap}
 .dband::after{content:'';flex:1;height:1px;background:var(--line)}
 .dband:first-child{margin-top:0}
-@media(max-width:1279px){.dash{grid-template-columns:repeat(2,1fr);
+/* The same two maps the window used to pick, measured on #content instead.
+   950px and 620px are what 1279px and 719px of window actually WERE once the
+   sidebar had taken its 280-330px — so the breakpoints have not moved, they
+   have started being true when the sidebar is dragged wide or narrow, which
+   moved the content edge by up to 240px with no @media noticing. */
+@container page (max-width:950px){.dash{grid-template-columns:repeat(2,1fr);
   grid-template-areas:"b1 b1""i1 i2""i3 i4""acct acct""chart chart"
     "b2 b2""continue continue""recent recent""b3 b3""projects projects"}}
-@media(max-width:719px){.dash{grid-template-columns:1fr;
+@container page (max-width:620px){.dash{grid-template-columns:1fr;
   grid-template-areas:"b1""i1""i2""i3""i4""acct""chart"
     "b2""continue""recent""b3""projects"}}
 
@@ -555,9 +654,15 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
 .kpi .sp{flex:1}
 .kpi .fresh{color:var(--dim2);font-size:11px;font-variant-numeric:tabular-nums}
 
-/* per-account plan-usage rail (home) */
-.acct-rail{display:flex;gap:var(--sp-3);overflow-x:auto;padding-bottom:2px}
-.acct-card{flex:0 0 232px;background:var(--bg2);border:1px solid var(--line);
+/* per-account plan-usage rail (home)
+   A WRAPPING GRID, not a scrolling flex row. `flex:0 0 232px` inside the
+   half-width `acct` area of the dashboard fits three cards and put the fourth
+   and fifth behind a horizontal scrollbar nobody scrolls — with five accounts
+   configured, two of them were simply not on the dashboard. Wrapping also
+   evens out the band: this card was 130px shorter than the chart beside it. */
+.acct-rail{display:grid;gap:var(--sp-3);padding-bottom:2px;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,232px),1fr))}
+.acct-card{background:var(--bg2);border:1px solid var(--line);min-width:0;
   border-radius:var(--r);padding:10px 12px;position:relative}
 .acct-card.bad{box-shadow:0 0 0 1px var(--err) inset}
 .acct-card.stale{opacity:.72}
@@ -709,13 +814,36 @@ html.mo-off .tchart .omnibg{animation:none}
 /* three equal columns that size to their own content rather than stretching
    to the tallest — an empty column next to a full one must not inherit its
    height */
-.cols3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));
+/* Three columns when three fit, two when two do, one when one does — the
+   breakpoint it used to carry asked the window whether three 210px columns fit
+   inside a card the window knows nothing about. `auto-fit` needs no query and
+   no name: 3 above ~660px, 2 above ~440, 1 below. */
+.cols3{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
   gap:14px 18px;align-items:start}
-@media(max-width:900px){.cols3{grid-template-columns:1fr}}
+/* A card is the second CONTAINER, and the one that mattered most: everything
+   inside a card — a table, a two-column form, a header gauge — was deciding its
+   own shape from the WINDOW, which is 2-4x the width it actually has. That is
+   the whole of "it looks broken on a big screen": at 2560px the window says
+   "plenty of room" while the card holding a five-column table is 740px wide.
+   `container-type:inline-size` also brings layout containment, so a card is now
+   the containing block for an absolutely-positioned descendant — every one in
+   this file is `inset:0` on the card itself or a skin's own connector stub, both
+   of which already meant the card. */
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
-  padding:16px 18px;margin-bottom:12px;
+  padding:16px 18px;margin-bottom:12px;container:card/inline-size;
   transition:border-color var(--t-f),box-shadow var(--t-f)}
 .card:hover{border-color:var(--line);box-shadow:var(--shadow-sm)}
+/* ── a reading measure for prose, and for prose only ──
+   The cards fill the width; the SENTENCES inside them do not. Measured on a
+   2560px display, an explanatory paragraph in a full-row card ran to 325
+   characters a line — about four times the width anybody reads to the end of.
+   88ch is the same cap `.pgnote` has carried one level up since it was written,
+   for the same reason and with the same number.
+   Only text gets it. A table, a list, a gauge row or a chip row is data, and
+   data uses every pixel it is given — which is what the fluid grid is for. */
+#content p,#content .secthint,#content .pghdt .sub,#content .cchelp,
+.modal .sub{max-width:88ch}
+
 /* flex-wrap, and it is load-bearing: a card heading is also its button bar
    (Write one · Have Claude write one · Sharpen descriptions), and in a narrow
    grid column the last button was CLIPPED at the card's edge while the title
@@ -734,10 +862,15 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .tbl tr{transition:background var(--t-f)}
 .tbl tr:hover td{background:var(--panel2)}
 .tbl .num{text-align:right;font-variant-numeric:tabular-nums}
-/* narrow window: a 6-column table either scrolls sideways or shrinks to
-   unreadable. Stack each row into label/value pairs instead, using the header
-   text captured into data-th by tblStack() (app.js). */
-@media(max-width:719px){
+/* A narrow CARD (not a narrow window): a 6-column table either scrolls
+   sideways or shrinks to unreadable. Stack each row into label/value pairs
+   instead, using the header text captured into data-th by tblStack() (app.js).
+   520px is the card width below which the widest table in the app has columns
+   too narrow to read — and it is reachable at ANY window size, which is the
+   whole reason this is a container query: `#content`'s track floor is 560px, so
+   the only cards narrower than that are the ones inside a split pane or a
+   genuinely small window, and both are cases the window could not see. */
+@container card (max-width:520px){
   table.tbl,.tbl tbody,.tbl tr,.tbl td{display:block;width:100%}
   .tbl thead{display:none}
   .tbl tr{border:1px solid var(--line);border-radius:var(--r);
@@ -787,7 +920,9 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .ccall .btn{opacity:0;transition:opacity var(--t-f)}
 .cctable:hover .ccall .btn{opacity:.55}
 .ccall .btn:hover{opacity:1}
-@media(max-width:719px){
+/* 620px of card: the label column alone asks for 220 and every account adds
+   120, so this collapses well before the columns start lying about their width. */
+@container card (max-width:620px){
   .cctable{grid-template-columns:1fr}
   .cchead,.ccall{display:none}
   .ccrow>*{border-bottom:0;padding:3px 0}
@@ -817,6 +952,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .ovl.show{display:flex}
 .modal{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);
   padding:var(--sp4) 26px;width:540px;max-width:94vw;max-height:88vh;overflow-y:auto;
+  container:card/inline-size;
   box-shadow:var(--shadow-lg);animation:modalIn .2s ease}
 @keyframes modalIn{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
 .modal.wide{width:860px}
@@ -824,7 +960,11 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 /* pre-wrap so a confirm dialog can LIST what it is about to destroy; every
    caller passes plain text through textContent, so this is safe to widen */
 .modal .sub{color:var(--dim);font-size:12px;margin-bottom:16px;white-space:pre-wrap}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+/* Two fields side by side when two fit. This had no breakpoint of any kind,
+   so a pair of inputs stayed two columns inside a 380px card and each one was
+   too narrow to show its own value. */
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+  gap:12px 16px}
 .fld{margin-bottom:2px}
 .fld label span{text-transform:none;letter-spacing:0;font-weight:400;
   font-size:11.5px}
@@ -892,6 +1032,7 @@ input[type=checkbox]:checked::after{transform:rotate(-45deg) scaleX(1);
 .osubmsg{color:var(--err);font-size:12px;min-height:16px;margin-top:6px}
 .drawer{position:fixed;top:0;right:-720px;width:720px;max-width:95vw;height:100vh;
   background:var(--bg2);border-left:1px solid var(--line);z-index:40;
+  container:card/inline-size;
   transition:right var(--t-s);display:flex;flex-direction:column;box-shadow:var(--shadow-xl)}
 .drawer.show{right:0}
 .drawer .dhead{display:flex;align-items:center;gap:10px;padding:15px 20px;
@@ -964,7 +1105,10 @@ input[type=checkbox]:checked::after{transform:rotate(-45deg) scaleX(1);
 .card h3 .i-eq{width:150px;flex:none}
 .card h3 .i-eq .inst{height:22px}
 .card h3 .i-eq .iread b{font-size:12px}
-@media(max-width:719px){.pghd,.memhd{flex-direction:column;align-items:stretch}
+/* a 96px gauge beside a 170px label column and its values wants ~420px of
+   card; below that the two stack and the gauge centres over the text */
+@container card (max-width:420px){
+  .pghd,.memhd{flex-direction:column;align-items:stretch}
   .pghd .iwrap,.memhd .iwrap{align-self:center}}
 .msgs .bad{color:var(--err)}
 .chip{display:inline-block;padding:2px 10px;border-radius:var(--r-pill);font-size:11px;
@@ -1407,9 +1551,9 @@ html.mo-off *,html.mo-off *::before,html.mo-off *::after{
   .nav .it .ic{width:18px;height:18px;margin:0}
   .nav .it.sel::before,.tab.sel::before{content:none}
   .side .foot{justify-content:center;padding:10px 4px}
-  .content,.top,.ubar,.tabs,.jban,.pgnote{padding-left:14px;padding-right:14px}
-  /* same trick as above, and it has to be restated because this block sets the
-     padding directly: the tab keeps 14px of its own, the row keeps none */
+  /* the 14px gutters this block used to set are in the last block in the
+     file: the chassis density layer below re-declares `.content{padding}` and
+     took them back. Restated there for the same reason as always. */
   .tabs{--tab-px:14px;padding-left:0;padding-right:0}
 }
 
@@ -1593,22 +1737,17 @@ html.stage-off .ubar{background-color:var(--bg2)}
 html.stage-on body{background:transparent}
 
 /* ── type scale ──
-   One multiplier, applied where size actually carries the skin's voice:
-   headings, section labels, the big readouts. Body copy is left alone — a skin
-   may shout, but it may not make the transcript hard to read. */
-.card h3{font-size:14px}
-.top h1{font-size:16px}
-.lbl{font-size:11px}
-.kpi .kv2{font-size:20px}
-.iread b{font-size:17px}
-.dhd,.thname{font-size:13px}
-
-/* ── density ── */
-.card{padding:16px 18px;
-  margin-bottom:12px}
-.sess{padding:11px 16px}
-.content{padding:20px 26px}
-.dash{gap:var(--sp-3)}
+   ONE canonical geometry for the whole app, and no skin may change it: the
+   spacing and type scales were tuned once for legibility, so a per-theme
+   multiplier does not make a theme different, it makes some themes worse.
+   That is enforced by test_no_look_may_change_how_big_the_ui_is, not by
+   declaring the sizes twice — which is what this block used to do. Six type
+   lines and four density lines restated their base rules character for
+   character, and being the LAST word on `.content{padding}` is how they
+   silently disabled the icon rail's narrow gutters and the @899 readout size.
+   What is left is the two that genuinely differ from their base rule. */
+.iread b{font-size:17px}          /* the base is 21px, for a wider tile */
+.dhd,.thname{font-size:13px}      /* the base .thname is 11.5px */
 
 /* ── chassis: brackets (HUD, Neon City) ──
    Corner rules on the VIEWPORT, not on each card — an instrument housing the
@@ -2090,3 +2229,29 @@ html.zen .top>#bZen{display:inline-flex !important;pointer-events:auto;opacity:.
   background:rgba(var(--panel-rgb,22,30,46),.8)}
 html.zen .top>#bZen:hover,html.zen .top>#bZen:focus-visible{opacity:1}
 #bZen.on{color:var(--cyan);border-color:var(--cyan)}
+
+/* ── narrow window: the chrome ────────────────────────────────────────────────
+   THE LAST BLOCK, and the reason is the one this file has learned five times:
+   a @media query adds no specificity, so it has to come after every base rule
+   it countermands. These seven declarations sat at the top of the `main`
+   section, where `.tab{padding:9px var(--tab-px)}`, `.kpi{gap:…}` and
+   `.kpi .kv2{font-size:20px}` are all declared LATER — so at 899px the tab row
+   never tightened, the KPI strip never closed up and the big readouts never
+   shrank. The 1099px gutters have the same story with the chassis density
+   layer, which restated `.content{padding}` below the icon rail.
+
+   Placed after the zen block, which is safe in the only way that matters:
+   every zen rule is `html.zen …`, so it outranks a bare class selector here
+   whatever the order. */
+@media(max-width:1099px){
+  .content,.top,.ubar,.tabs,.jban,.pgnote{padding-left:14px;padding-right:14px}
+}
+@media(max-width:899px){
+  .top{padding:10px 14px;gap:var(--sp-2)}
+  .top .path{flex-basis:100%;order:9}
+  .tabs{overflow-x:auto;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{padding:9px 11px}
+  .kpi{gap:var(--sp-3) var(--sp-4)}
+  .kpi .kv2{font-size:17px}
+}

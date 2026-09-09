@@ -72,6 +72,12 @@ def _cache_path():
     return os.path.join(_c.config_dir, 'archeus-versions.json')
 
 
+def _update_log_path():
+    """Where the detached upgrade worker writes. It has no console, so this
+    file is the only record of a failed install."""
+    return os.path.join(_c.config_dir, 'archeus-update.log')
+
+
 def _self_cache_path():
     """A separate file from _cache_path(), deliberately: released() writes its
     whole document, so sharing one file would mean one fetch erasing the
@@ -396,13 +402,24 @@ def update_on_quit():
     return update_self()
 
 
-def update_self():
-    """(ok, message). Schedules the upgrade into a NEW window that waits for
-    this process to exit before running it.
+def update_self(restart=False):
+    """(ok, message). Stages the upgrade into a detached, WINDOWLESS worker
+    that waits for this process to exit before running it.
 
     It cannot run in-process: pip rewrites the console script on every upgrade
     and Windows holds that file open while it is the running process. Deferring
     is also what makes "update now" and "update on quit" the same code path.
+
+    What it must NOT do is open a console. The worker blocks on our pid, so a
+    terminal for it was a window that took the foreground and then showed
+    "Waiting for archeus to exit..." until the user quit — read, reasonably,
+    as the update having hung. It is detached with its output in a log file.
+
+    *restart* asks the worker to bring archeus back up once the install
+    succeeds, which is the only way to have the new version without quitting
+    and starting it by hand. Both instructions travel in the ENVIRONMENT
+    rather than in argv, so the command line stays exactly what __main__'s
+    --self-update dispatch already parses.
 
     A checkout is reported rather than overwritten, exactly as update_claude()
     reports an npm install instead of installing the native build over it.
@@ -414,17 +431,31 @@ def update_self():
         return False, 'archeus is not an installed package — nothing to update'
     upgrade = (['pipx', 'upgrade', SELF_PKG] if mode == 'pipx' else
                [sys.executable, '-m', 'pip', 'install', '-U', SELF_PKG])
-    # `-m claude_sessions`, not `-c <script>`: spawn_terminal goes through
-    # `cmd /c`, where a script argument carrying newlines or quotes is a quoting
-    # hazard. __main__ dispatches --self-update before it imports anything else,
-    # so the waiting process never holds a lazy import of the package pip is
-    # about to replace.
+    # `-m claude_sessions`, not `-c <script>`: a script argument carrying
+    # newlines or quotes is a quoting hazard on every platform. __main__
+    # dispatches --self-update before it imports anything else, so the waiting
+    # process never holds a lazy import of the package pip is about to replace.
     argv = ([sys.executable, '-m', 'claude_sessions', '--self-update',
              str(os.getpid())] + upgrade)
-    p, err = proc.spawn_terminal(argv, title='archeus update', keep_open=True)
+    env = dict(os.environ)
+    env['ARCHEUS_UPDATE_TO'] = str(
+        (jsonstore.load(_self_cache_path(), {}) or {}).get('latest') or '')
+    if restart:
+        # `-m claude_sessions` again rather than sys.argv[0]: the console script
+        # is the file pip is about to replace. `--gui` is forced when the
+        # command line has no arguments of its own, because the only caller of
+        # restart is the GUI and a detached TUI would come back invisible.
+        tail = [a for a in sys.argv[1:]] or ['--gui']
+        if '--gui' not in tail:
+            tail.append('--gui')
+        env['ARCHEUS_RELAUNCH'] = json.dumps(
+            [sys.executable, '-m', 'claude_sessions'] + tail)
+    p, err = proc.spawn_detached(argv, env=env, log=_update_log_path())
     if not p:
-        return False, err or 'could not open a window for the update'
-    return True, 'Updating once archeus exits — watch the new window'
+        return False, err or 'could not start the update worker'
+    if restart:
+        return True, 'Installing — archeus will close and come back'
+    return True, 'Update staged — it installs when you close archeus'
 
 
 # ── plugins ──────────────────────────────────────

@@ -438,7 +438,7 @@ def test_pipx_and_pip_get_different_upgrade_commands(monkeypatch, tmp_path):
     one either does nothing or installs into the wrong environment."""
     Sandbox(monkeypatch, tmp_path)
     seen = []
-    monkeypatch.setattr(v.proc, 'spawn_terminal',
+    monkeypatch.setattr(v.proc, 'spawn_detached',
                         lambda argv, **k: (seen.append(argv) or (object(), '')))
 
     monkeypatch.setattr(v, 'self_install_mode', lambda: 'pipx')
@@ -450,14 +450,14 @@ def test_pipx_and_pip_get_different_upgrade_commands(monkeypatch, tmp_path):
     assert seen[-1][6:] == ['-m', 'pip', 'install', '-U', 'archeus']
 
 
-def test_the_upgrade_is_deferred_to_a_window_that_waits_for_this_process(monkeypatch, tmp_path):
+def test_the_upgrade_is_deferred_to_a_worker_that_waits_for_this_process(monkeypatch, tmp_path):
     """pip rewrites the console script, which Windows keeps locked while it is
     the running process — so the install cannot happen here. The spawned command
     carries our pid and re-enters archeus through the __main__ dispatch that
     imports nothing pip is about to replace."""
     Sandbox(monkeypatch, tmp_path)
     seen = []
-    monkeypatch.setattr(v.proc, 'spawn_terminal',
+    monkeypatch.setattr(v.proc, 'spawn_detached',
                         lambda argv, **k: (seen.append(argv) or (object(), '')))
     monkeypatch.setattr(v, 'self_install_mode', lambda: 'pip')
     ok, _msg = v.update_self()
@@ -467,12 +467,67 @@ def test_the_upgrade_is_deferred_to_a_window_that_waits_for_this_process(monkeyp
     assert argv[4] == str(os.getpid())
 
 
+def test_the_upgrade_worker_gets_no_window_of_its_own(monkeypatch, tmp_path):
+    """The bug this replaced: the worker's first act is to BLOCK on our pid, so
+    a console for it took the foreground and then sat there showing `Waiting for
+    archeus to exit...` until the user quit — which reads as the update having
+    hung. Nothing about the upgrade may reach spawn_terminal any more."""
+    Sandbox(monkeypatch, tmp_path)
+    monkeypatch.setattr(v, 'self_install_mode', lambda: 'pip')
+    console = []
+    monkeypatch.setattr(v.proc, 'spawn_terminal',
+                        lambda *a, **k: console.append(a) or (None, 'x'))
+    seen = {}
+    monkeypatch.setattr(v.proc, 'spawn_detached',
+                        lambda argv, **k: (seen.update(k) or (object(), '')))
+    assert v.update_self()[0]
+    assert not console, 'the upgrade opened a terminal window'
+    assert seen.get('log'), 'a windowless worker with no log leaves no trace of a failure'
+
+
+def test_a_detached_spawn_never_asks_for_a_console():
+    """The two flags are opposites and this module holds both, so the seam that
+    exists to avoid a window must not be reachable from the one that opens it."""
+    src = io.open(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'claude_sessions', 'proc.py'),
+        encoding='utf-8').read()
+    body = src[src.index('def spawn_detached('):src.index('def wait_and_run(')]
+    assert 'new_console_flags' not in body
+    assert 'detached_flags' in body           # Windows
+    assert 'start_new_session' in body        # POSIX
+
+
+def test_the_worker_is_told_what_to_announce_and_whether_to_come_back(monkeypatch, tmp_path):
+    """Both instructions travel in the ENVIRONMENT, so the command line stays
+    exactly what __main__'s --self-update dispatch already parses — the pid has
+    to remain argv[4]."""
+    Sandbox(monkeypatch, tmp_path)
+    _self(monkeypatch, dist=_Dist(version='1.6.0'))
+    _pypi(monkeypatch, latest='1.7.0')
+    v.self_released()
+    monkeypatch.setattr(v, 'self_install_mode', lambda: 'pip')
+    seen = {}
+    monkeypatch.setattr(v.proc, 'spawn_detached',
+                        lambda argv, **k: (seen.update(k, argv=argv) or (object(), '')))
+
+    v.update_self()
+    assert seen['env']['ARCHEUS_UPDATE_TO'] == '1.7.0'
+    assert 'ARCHEUS_RELAUNCH' not in seen['env'], 'staging must not relaunch on its own'
+
+    v.update_self(restart=True)
+    relaunch = json.loads(seen['env']['ARCHEUS_RELAUNCH'])
+    # `-m claude_sessions`, never sys.argv[0]: the console script is the file pip
+    # is replacing. And --gui, because the restart button only exists there.
+    assert relaunch[1:3] == ['-m', 'claude_sessions'] and '--gui' in relaunch
+    assert seen['argv'][4] == str(os.getpid())
+
+
 def test_a_failed_spawn_is_not_reported_as_a_scheduled_update(monkeypatch, tmp_path):
     Sandbox(monkeypatch, tmp_path)
     monkeypatch.setattr(v, 'self_install_mode', lambda: 'pip')
-    monkeypatch.setattr(v.proc, 'spawn_terminal', lambda argv, **k: (None, 'no console'))
+    monkeypatch.setattr(v.proc, 'spawn_detached', lambda argv, **k: (None, 'no worker'))
     ok, msg = v.update_self()
-    assert ok is False and 'no console' in msg
+    assert ok is False and 'no worker' in msg
 
 
 def test_pypi_is_cached_for_a_day_and_refreshes_on_demand(monkeypatch, tmp_path):
@@ -609,6 +664,41 @@ def test_the_deferred_worker_waits_for_the_pid_then_runs(monkeypatch):
 
 def test_the_worker_refuses_an_empty_command(monkeypatch):
     assert proc.wait_and_run(1, [], out=lambda *a: None) == 2
+
+
+def test_the_worker_announces_the_upgrade_only_when_it_worked(monkeypatch):
+    """The notification IS the report: the worker has no console to print to and
+    the app that staged it is gone by the time it runs. Announcing a failed
+    install would be worse than silence — nobody would go looking for the log."""
+    import subprocess as _sp
+    monkeypatch.setattr(proc, 'pid_alive', lambda p: False)
+    started = []
+    monkeypatch.setattr(proc, 'spawn_detached',
+                        lambda argv, **k: started.append(argv) or (object(), ''))
+
+    monkeypatch.setattr(_sp, 'call', lambda argv: 0)
+    proc.wait_and_run(0, ['pip', 'x'], poll=0, out=lambda *a: None,
+                      after=[['toast'], ['archeus', '--gui']])
+    assert started == [['toast'], ['archeus', '--gui']]
+
+    del started[:]
+    monkeypatch.setattr(_sp, 'call', lambda argv: 1)
+    proc.wait_and_run(0, ['pip', 'x'], poll=0, out=lambda *a: None, after=[['toast']])
+    assert started == [], 'a failed install still announced itself'
+
+
+def test_the_worker_resolves_its_after_steps_before_the_install():
+    """pip replaces every file in this package, so an import after the install
+    is a coin toss between the old files and the new. __main__ builds both argv
+    lists — the toast and the relaunch — above the wait, and hands them over as
+    plain lists."""
+    src = io.open(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'claude_sessions', '__main__.py'),
+        encoding='utf-8').read()
+    branch = src[src.index("== '--self-update'"):src.index('from .main import run')]
+    assert 'from .notify import command' in branch
+    assert branch.index('from .notify import command') < branch.index('wait_and_run(')
+    assert 'ARCHEUS_RELAUNCH' in branch and 'ARCHEUS_UPDATE_TO' in branch
 
 
 def test_main_dispatches_the_worker_before_importing_the_package(monkeypatch):

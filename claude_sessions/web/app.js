@@ -51,6 +51,16 @@ function paint(nav,html){
   $('#content').innerHTML=html;
   return true;
 }
+/* A page whose content is N independent sections is a PILE, not a grid: it goes
+   in a multi-column wrapper that balances the heights, because a grid row is as
+   tall as its tallest card and leaves the rest dark (see `.pile` in app.css).
+   Wrapping here rather than in each renderer's template keeps the change to one
+   word at the call site — and, more importantly, keeps the raw `#content` write
+   at exactly the two functions above, which is the invariant
+   `test_no_page_can_paint_over_the_one_you_are_on` counts. */
+const PILE=h=>`<div class="pile">${h}</div>`;
+function paintNowPile(html){return paintNow(PILE(html));}
+function paintPile(nav,html){return paint(nav,PILE(html));}
 const LOADING='<div class="empty"><span class="spin"></span> Loading…</div>';
 
 function toast(msg,cls){const w=$('#toast-wrap');const t=document.createElement('div');
@@ -487,12 +497,17 @@ async function jobStart(kind,params,o){
    reload, which drops JOBS entirely. Adopting it re-enters the SAME poll loop,
    so it escalates to the gate modal by the existing path rather than by a
    second implementation of gate rendering. */
-function jobOpen(jid,label){
+/* `sel` adopts into a BANNER instead of the modal, which is what a long job
+   needs: the modal is right for one parked at an approval gate and a wall in
+   front of the whole app for a build queue that runs for an hour. Callers that
+   pass no selector keep the modal, unchanged. */
+function jobOpen(jid,label,sel){
   const J=JOBS[jid]||{jid,kind:'',label:label||'Job',status:'running',msgs:[],
-    elapsed:0,sub:'',err:'',host:null,sel:'',onDone:null,memPath:null};
-  J.modal=true;
+    elapsed:0,sub:'',err:'',host:sel?$(sel):null,sel:sel||'',onDone:null,memPath:null};
+  J.modal=!sel;
   if(!JOBS[jid]){JOBS[jid]=J;jobPoll(J);}
-  else modalOpen(J);
+  else if(J.modal)modalOpen(J);
+  else inlineRender(J);
 }
 async function jobPoll(J){
   if(!JOBS[J.jid])return;                       // finished or superseded
@@ -1358,7 +1373,9 @@ function drawActivity(){
       ${j.last?`<div class="asub">${esc(j.last)}</div>`:''}
       ${j.error?`<div class="asub err">${esc(j.error)}</div>`:''}</div>
     <span class="aage">${actDur(j.elapsed)}${j.ended?' · '+actAgo(j.ended):''}</span>
-    ${j.status==='awaiting'?`<button class="btn sm pri" onclick="closeActivity();jobOpen(${hesc(j.id)})">Open</button>`:''}
+    ${j.status==='awaiting'?`<button class="btn sm pri" onclick="closeActivity();jobOpen(${hesc(j.id)})">Open</button>`
+      :j.status==='running'?`<button class="btn sm" title="Bring its banner back, so you can watch it or cancel it"
+        onclick="closeActivity();jobOpen(${hesc(j.id)},${hesc(j.kind||'Job')},'#jban')">Show</button>`:''}
   </div>`;
   // live Claude Code sessions are the OTHER kind of ongoing work, and the one
   // that is usually actually happening — archeus's own jobs are rare
@@ -2256,7 +2273,7 @@ async function drawMemory(){
         ttl=les.ttl||30,counter=les.counter||0;
   const lesRows=(les.lessons||[]).map(l=>{
     const left=ttl-(counter-(l.last_used||0));
-    return `<tr><td>${l.status==='pending'?'…':l.status==='pinned'?ic('pin'):ic('check')} ${esc(l.status)}
+    return `<tr><td style="white-space:nowrap">${l.status==='pending'?'…':l.status==='pinned'?ic('pin'):ic('check')} ${esc(l.status)}
       ${l.kind?`<span class="tag">${esc(l.kind)}</span>`:''}</td>
     <td><b>${esc(l.name)}</b><div style="color:var(--dim);font-size:12px">${esc(l.summary)}</div></td>
     <td class="num">${(l.confidence||0).toFixed(1)}</td>
@@ -2300,7 +2317,7 @@ async function drawMemory(){
     invRow('Version snapshots','A copy of everything archeus was about to overwrite. Nothing it shrinks is gone until it falls off this list.',
       '.archeus/snapshots/','up to 12 each',
       `<span class="hlink" onclick="TAB='claudemd';drawProject()">History</span>`,W.snapshots)];
-  paint(nav,`
+  paintPile(nav,`
     <div class="card"><h3>What archeus knows <span class="sp"></span>
       <button class="btn sm" onclick="askMem()">${ic('chat')} Ask</button>
       <button class="btn sm" onclick="recallPrev()">${ic('eye')} Recall preview</button>
@@ -2590,7 +2607,7 @@ async function drawClaudeMd(){
   const [md,mm]=await Promise.all([api('/api/claude-md?'+qs(c)),
                                    api('/api/memory-map?'+qs(c))]);
   const blocks=md.blocks||[];
-  if(!paint(nav,`
+  if(!paintPile(nav,`
     <div class="card"><h3>CLAUDE.md — block by block <span class="sp"></span>
       <button class="btn sm" onclick="cmScaffold()">${ic('doc')} Scaffold</button>
       <button class="btn sm" onclick="inlineJob('#jban','ai_scaffold',C(),{label:'AI-analyzing project',redraw:()=>drawClaudeMd()})">${ic('ai')} AI analyze</button>
@@ -2691,7 +2708,7 @@ async function drawAudit(){
     <td class="num">${it.tokens==null?'<span title="Not knowable before the session starts.">~?</span>':it.tokens}</td>
     <td style="color:var(--warn);font-size:12px">${esc((it.warnings||[]).join(' · '))}</td>
     <td style="white-space:nowrap">${it.path?`<button class="btn sm" onclick="post('/api/open-editor',{file:${hesc(it.path)}})">open</button>`:''}</td></tr>`;}).join('');
-  if(!paint(nav,`
+  if(!paintPile(nav,`
     <div class="card"><h3>Context weight — ~${d.total||0} tok loaded every turn
       <span class="sp"></span>
       <button class="btn sm" onclick="cmPrune(drawAudit)">${ic('cut')} Prune sessions</button>
@@ -2790,7 +2807,7 @@ async function drawProjUsage(){
 
 /* tools tab */
 function drawTools(){
-  paintNow(`
+  paintNowPile(`
     <div class="card"><h3>${ic('check')} Project health</h3>
       <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Whether this project's context is in a state Claude can use: is the memory current, is CLAUDE.md a sensible size, is anything archeus wrote missing. Each row carries the button that fixes it.</p>
       <div id="hOut"><span class="spin"></span></div></div>
@@ -3131,7 +3148,7 @@ function peRenderStatus(){
 }
 function drawPlanExec(){
   const o=ST.options;
-  paintNow(`
+  paintNowPile(`
     <div id="peStatus" style="display:none;margin-bottom:14px"></div>
     <div class="card"><h3>${ic('map')} Plan → Execute <span class="sp"></span>
       ${INST.html('eq','planexec',{fmt:'int',sub:'steps'})}</h3>
@@ -3815,7 +3832,7 @@ async function pgGlobalMd(nav){
         onclick='gmdAcct(${hesc(a.dir||'')})'>${esc(a.name)}</span>`).join('')}
     </div>`:'';
   const words=(gm.text||'').trim()?(gm.text.trim().split(/\s+/).length):0;
-  if(!paint(nav,`
+  if(!paintPile(nav,`
     <div class="card"><h3>${ic('doc')} Global CLAUDE.md <span class="sp"></span>
       <button class="btn sm" onclick='post("/api/open-editor",{file:${hesc(gm.path||'')}}).then(r=>toast(r.ok?"Opened in your editor":"Could not open it","ok"))'>${ic('edit')} Open in editor</button>
       <button class="btn sm pri" onclick="gmSave()">Save</button></h3>
@@ -3907,8 +3924,8 @@ async function pgLoops(nav){
     </div>`;
   window._loopRows=rows;
   const permNote=(d.perms||[]).find(x=>x.id===LOOPPERM);
-  if(!paint(nav,`
-    <div class="card"><h3>${ic('refresh')} Loops <span class="sp"></span>
+  if(!paintPile(nav,`
+    <div class="card wide"><h3>${ic('refresh')} Loops <span class="sp"></span>
       <span class="tag${live.length?' ok':''}">${live.length} live</span></h3>
       <p style="color:var(--dim);font-size:13px;margin:0 0 8px">Two kinds, because Claude Code only offers one. <b>In a session</b> is a real <code>/loop</code>: it fires while that session is open and idle, and dies with it. <b>In the background</b> is archeus's own — an entry in ${esc(navigator.platform.startsWith('Win')?'Task Scheduler':'cron')} that runs headless <code>claude -p</code> on the interval, with archeus closed and no session anywhere.</p>
       ${rows.length?rows.map(row).join(''):'<div class="empty">No loops started from archeus yet.</div>'}</div>
@@ -4136,7 +4153,12 @@ async function pgAgents(nav){
     c.agents.map(a=>({...a,category:c.category})));
   const nLib=libRows.length;
   const lib=agByCat(libRows,a=>agRow(a,'',agCat(a.category),a.category));
-  if(!paint(nav,`
+  /* Two lists of very different size — sixteen of yours against a hundred and
+     fifty ready-made — so they get the asymmetric split rather than two equal
+     columns of the #content grid, and the library scrolls inside its own card.
+     Still exactly two cards: the smoke tool counts the opened category per
+     card, which is what caught this check passing on half the page. */
+  if(!paint(nav,`<div class="tpane">
     <div class="card"><h3>${ic('robot')} Your agents <span class="tag">${(d.own||[]).length}</span><span class="sp"></span>
       <button class="btn sm" onclick="agNew()">${ic('add')} Write one</button>
       <button class="btn sm" onclick="agAI()">${ic('ai')} Have Claude write one</button>
@@ -4149,7 +4171,7 @@ async function pgAgents(nav){
       <p class="secthint">Specialists that ship with archeus, by trade. Too many to read down — type to narrow, and the filter opens the categories that match and covers your own list above too.</p>
       <div class="fld" style="margin:0 0 8px"><input id="agQ" placeholder="Filter by name, description or trade…" spellcheck="false">
         <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="agQCount"></div></div>
-      ${lib||'<div class="empty">Library is empty.</div>'}</div>`))return;
+      <div class="tbody">${lib||'<div class="empty">Library is empty.</div>'}</div></div></div>`))return;
   bindFilter('agQ','.agrow','agQCount');
 }
 /* the existing #drawer, shown with plain text. Everything that used to have no
@@ -4274,11 +4296,11 @@ async function pgPlugins(nav){
     ${selfCard(V)}
     ${verCard(V)}
     ${modelCard(V)}
-    <div class="card" id="pluginCard"><h3>${ic('folder')} Installed plugins</h3>
+    <div class="card wide" id="pluginCard"><h3>${ic('folder')} Installed plugins</h3>
       <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">A plugin bundles skills, subagents, commands, hooks and MCP servers together. The tags say what each one actually placed on disk — the same information the Skills, Agents and Hooks pages now use to mark which of their rows came from a bundle rather than from you.${accts.length>1?' The <b>accounts</b> tag says how many of your logins have it: a plugin is a property of you, not of whichever account happened to be active when you installed it.':''}</p>
       ${picker}
       ${plugs||'<div style="color:var(--dim)">No plugins installed.</div>'}</div>
-    <div class="card"><h3>Marketplaces <span class="sp"></span>
+    <div class="card wide"><h3>Marketplaces <span class="sp"></span>
       <button class="btn sm" onclick="mktRefresh()">${ic('refresh')} Refresh</button>
       <button class="btn sm pri" onclick="mktAdd()">${ic('add')} Add marketplace</button></h3>
       <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">A repo, a URL or a local path. Adding, installing and removing are delegated to the <code>claude</code> CLI: these files belong to Claude Code, the format has already changed once, and writing them directly would corrupt the state of the tool archeus exists to support.</p>
@@ -4305,7 +4327,8 @@ function selfCard(V){
     :c.update?`<span class="tag warn">${esc(c.latest)} available</span>`
     :(c.current?'<span class="tag ok">current</span>':'');
   const act=(c.update&&c.mode!=='checkout')
-    ? `<button class="btn sm pri" onclick="selfUpdate()">Update archeus</button>`:'';
+    ? `<button class="btn sm pri" onclick="selfUpdate(false)">Update archeus</button>
+       <button class="btn sm" onclick="selfUpdate(true)">Restart now</button>`:'';
   return `<div class="card" id="selfCard"><h3>${ic('bolt')} archeus ${state}
       <span class="sp"></span>
       <button class="btn sm" onclick="verCheck()">${ic('refresh')} Check now</button>${act}
@@ -4314,13 +4337,17 @@ function selfCard(V){
     <div class="kv"><span>latest on PyPI</span><code>${esc(c.latest||'?')}</code></div>
     <div class="kv"><span>install mode</span><code>${esc(c.mode||'?')}</code>
       ${c.mode==='checkout'?'<span style="color:var(--dim2);font-size:12px">a git checkout — update it with <code>git pull</code>, not with pip</span>'
-        :'<span style="color:var(--dim2);font-size:12px">the upgrade runs in its own window after archeus exits, because pip cannot rewrite the script it is running from</span>'}</div>
+        :'<span style="color:var(--dim2);font-size:12px">the upgrade installs in the background once archeus exits, because pip cannot rewrite the script it is running from — Restart now does both at once</span>'}</div>
     </div>`;
 }
-function selfUpdate(){
-  inlineJob('#selfCard','archeus_update',{},
-            {label:'Scheduling the archeus upgrade',
-             onDone:()=>toast('archeus upgrades once you close it')});
+function selfUpdate(restart){
+  inlineJob('#selfCard','archeus_update',{restart:!!restart},
+            {label:restart?'Restarting archeus to finish the upgrade'
+                          :'Staging the archeus upgrade',
+             onDone:()=>{
+               if(!restart){toast('Update staged — it installs when you close archeus','ok');return;}
+               toast('Installing — archeus will close and come back','ok');
+               post('/api/quit',{});}});
 }
 /* The model catalogue. It sits with the other two because it answers the same
    question of a third thing — "is what archeus is showing you still what
@@ -4593,7 +4620,7 @@ async function pgOStyles(nav){
       <span class="chip${OSSCOPE==='project'?' on':''}" onclick="osScope('project')">${esc(P.name)} only${CUR?'':' (last opened)'}</span>
     </div>`:'';
 
-  paint(nav,`
+  paintPile(nav,`
     <div class="card"><h3>${ic('palette')} Output styles <span class="sp"></span>
       <button class="btn sm pri" onclick="osNew()">${ic('add')} New style</button></h3>
       <p style="color:var(--dim);font-size:13px;margin:0 0 8px">A style replaces the <b>behavioural</b> half of Claude Code's system prompt — how it talks and works. Tools, permissions, CLAUDE.md and skills are untouched: this is voice and method, not knowledge. It is a markdown file with YAML frontmatter, and selecting one writes <code>outputStyle</code> into a settings.json, leaving every other key in that file alone.</p>
@@ -4717,6 +4744,13 @@ async function ckptDiff(sid,file,a,b,cfgdir){
    Every row now carries the command you type and its real usage count, straight
    from Claude Code's own skillUsage counters. */
 let SKACCT='',SKSCOPE='all';
+/* The detail pane's two states, both built at paint time. Rendering them up
+   front rather than on click is what keeps skPick() a one-liner: `act(r)` and
+   the description need the project context and the account list, and a click
+   handler that had to re-derive those would be a second copy of the renderer.
+   -1 is "nothing picked", and its pane is the Add form — so there is no empty
+   state to design, and the commonest reason to open the page is one click in. */
+let SKDET=[],SKADD='',SKSEL=-1;
 async function pgSkills(nav){
   const P=projCtx();
   const path=P?P.path:'';
@@ -4759,13 +4793,25 @@ async function pgSkills(nav){
       b.push(`<button class="btn sm danger" onclick='skRemove(${hesc(r.dir)},${hesc(r.scope)})'>${ic('del')}</button>`);
     return b.join('');
   };
-  const row=r=>`<div class="skrow" data-scope="${esc(r.scope)}"
+  const nodesc='<span style="color:var(--dim2)">No description — Claude can only reach this one if you type it.</span>';
+  /* The row is what you SCAN: the command, where it comes from, and whether it
+     is live. The description and the buttons are what you read once you have
+     picked one, and they moved to the detail pane — a description on every row
+     is what made 62 of them a page you scroll rather than a list you use. */
+  const row=(r,i)=>`<div class="skrow" data-scope="${esc(r.scope)}" data-i="${i}"
+      onclick="skPick(${i})"
       data-f="${esc(r.command+' '+r.name+' '+r.desc+' '+r.scope)}">
       <code class="skcmd">/${esc(r.command)}</code>
       <span class="tag">${esc(r.scope)}</span>${provTag('skill',r.name)}
-      ${usage(r)}${warn(r)}
-      <span class="sp"></span>${act(r)}
-      <span class="skdesc">${esc(r.desc)||'<span style="color:var(--dim2)">No description — Claude can only reach this one if you type it.</span>'}</span></div>`;
+      ${usage(r)}${warn(r)}</div>`;
+  const det=r=>`<h3><code class="skcmd">/${esc(r.command)}</code>
+      <span class="tag">${esc(r.scope)}</span>${provTag('skill',r.name)}
+      <span class="sp"></span>${act(r)}</h3>
+    <p style="margin:0 0 10px;font-size:13px;line-height:1.55">${esc(r.desc)||nodesc}</p>
+    <div class="chips" style="margin:0 0 10px">${usage(r)}${warn(r)}</div>
+    ${r.dir?`<div class="kv"><span>folder</span><code>${esc(r.dir)}</code></div>`:''}
+    ${r.via?`<div class="kv"><span>came from</span><code>${esc(r.via)}</code></div>`:''}
+    <p class="secthint" style="margin:10px 0 0">Two counters, and the gap between them is the point. <b>typed N×</b> is Claude Code's own tally of the times <i>you</i> wrote <code>/name</code>. <b>in N/M sessions</b> is measured from your transcripts — how often something by that name actually ran, including the times Claude loaded it on its own. A skill can read as "never typed" and still be live in most of your sessions.</p>`;
 
   const chip=(id,label)=>`<span class="chip skchip${SKSCOPE===id?' on':''}"
       data-sc="${id}" onclick='skScope(${hesc(id)})'>${label} ${n(id)}</span>`;
@@ -4774,29 +4820,13 @@ async function pgSkills(nav){
         onclick='skAcct(${hesc(a.dir||'')})'>${esc(a.name)}</span>`).join('')}
     </div>`:'';
 
-  if(!paint(nav,`
-    <div class="card"><h3>${ic('ai')} Skills <span class="sp"></span>
-      <span class="tag">${all.length} loadable</span></h3>
-      <p class="secthint">A skill is a folder of instructions Claude loads <b>only when it needs it</b> — you type <code>/name</code>, or Claude reads the descriptions and picks one itself. That is why it costs almost nothing to have many of them, and why the description matters more than the body.</p>
-      <p class="secthint">Everything Claude Code can load here, in the order it resolves them: <b>personal</b> (every project on an account) beats <b>project</b> (this one only), plugins are namespaced, and the built-in ones live inside Claude Code. The command is the folder name.</p>
-      ${acctChips}
-      <div class="chips" style="margin:0 0 8px">${chip('all','all')}${chip('personal','personal — every project')}${
-        path?chip('project','project — '+esc(P.name)):''}${chip('plugin','from a plugin')}${chip('bundled','built into Claude Code')}</div>
-      <div class="fld" style="margin:0"><input id="skQ" placeholder="Filter by name, description or scope…" spellcheck="false">
-        <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="skCount"></div></div></div>
-
-    <div class="card">${all.length?all.map(row).join(''):'<div class="empty">No skills anywhere yet — add one below.</div>'}
-      <p class="secthint" style="margin:10px 0 0">Two counters, and the gap between them is the point. <b>typed N×</b> is Claude Code's own tally of the times <i>you</i> wrote <code>/name</code>. <b>in N/M sessions</b> is measured from your transcripts — how often something by that name actually ran, including the times Claude loaded it on its own. A skill can read as "never typed" and still be live in most of your sessions.</p>
-      <p class="secthint" style="margin:6px 0 0">The amber tags are the three ways a skill quietly never runs: <b>manual only</b> — it has opted out of Claude loading it, so only you can; <b>thin description</b> — too little for Claude to match a task against, so it is reachable by name alone; <b>shadowed</b> — a personal skill of the same name wins, and this copy is dead.</p>
-      <p style="color:var(--dim2);font-size:12px;margin:6px 0 0">Personal: <code>${esc(d.personal_dir||'')}</code>${
-        path?` · Project: <code>${esc(d.project_dir||'')}</code>`:''} · session counts from your last ${d.sessions_scanned||0} sessions across every account.</p></div>
-
-    <div class="card"><h3>${ic('add')} Add a skill</h3>
+  SKDET=all.map(det);
+  SKADD=`<h3>${ic('add')} Add a skill</h3>
       <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Everything here lands in <b>personal — all ${accts.length||1} account${(accts.length||1)===1?'':'s'}</b> unless you pick the project.${path?'':' Open a project to install into one.'}</p>
-      <div class="mrow" style="align-items:flex-end;flex-wrap:wrap">
-        <div class="fld" style="flex:1;min-width:220px;margin:0"><label for="skTmpl">Starter shipped with archeus</label>
-          <select id="skTmpl">${(d.templates||[]).map(t=>
-            `<option value="${esc(t.dir)}">${esc(t.command)} — ${esc((t.desc||'').slice(0,70))}</option>`).join('')}</select></div>
+      <div class="fld" style="margin:0 0 8px"><label for="skTmpl">Starter shipped with archeus</label>
+        <select id="skTmpl">${(d.templates||[]).map(t=>
+          `<option value="${esc(t.dir)}">${esc(t.command)} — ${esc((t.desc||'').slice(0,70))}</option>`).join('')}</select></div>
+      <div class="mrow" style="flex-wrap:wrap">
         <button class="btn sm" onclick="skTmplView()">view</button>
         <button class="btn pri sm" onclick="skTmplInstall('personal')">Install → personal</button>
         ${path?`<button class="btn sm" onclick="skTmplInstall('project')">→ ${esc(P.name)}</button>`:''}
@@ -4804,13 +4834,46 @@ async function pgSkills(nav){
       <div class="mrow" style="margin-top:10px;flex-wrap:wrap">
         <button class="btn sm" onclick="skNew()">${ic('add')} Write one</button>
         <button class="btn sm" onclick="skAI()">${ic('ai')} Have Claude write one</button>
-        <span class="sp"></span>
-        <div class="fld" style="flex:1;min-width:260px;margin:0"><label for="skGitUrl">Clone from GitHub <span style="color:var(--dim2)">— a skill+agents bundle, risk-scanned and shown to you before anything is installed</span></label>
-          <input id="skGitUrl" value="https://github.com/olsenbrands/fable-foreman"></div>
-        <button class="btn sm" onclick="skGitInstall()">${ic('download')} Clone</button>
-      </div></div>`))return;
+      </div>
+      <div class="fld" style="margin:10px 0 0"><label for="skGitUrl">Clone from GitHub <span style="color:var(--dim2)">— a skill+agents bundle, risk-scanned and shown to you before anything is installed</span></label>
+        <input id="skGitUrl" value="https://github.com/olsenbrands/fable-foreman"></div>
+      <div class="mrow" style="margin-top:8px"><span class="sp"></span>
+        <button class="btn sm" onclick="skGitInstall()">${ic('download')} Clone</button></div>`;
+
+  if(!paint(nav,`<div class="tpane">
+    <div class="card"><h3>${ic('ai')} Skills
+      <span class="tag">${all.length} loadable</span><span class="sp"></span>
+      <button class="btn sm" onclick="skAddPane()">${ic('add')} Add a skill</button></h3>
+      ${acctChips}
+      <div class="chips" style="margin:0 0 8px">${chip('all','all')}${chip('personal','personal — every project')}${
+        path?chip('project','project — '+esc(P.name)):''}${chip('plugin','from a plugin')}${chip('bundled','built into Claude Code')}</div>
+      <div class="fld" style="margin:0 0 4px"><input id="skQ" placeholder="Filter by name, description or scope…" spellcheck="false">
+        <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="skCount"></div></div>
+      <div class="tbody">${all.length?all.map(row).join(''):'<div class="empty">No skills anywhere yet — add one with the button above.</div>'}</div>
+      <details style="margin-top:10px"><summary class="secthint" style="cursor:pointer">How Claude resolves a skill, and the three ways one quietly never runs</summary>
+      <p class="secthint">A skill is a folder of instructions Claude loads <b>only when it needs it</b> — you type <code>/name</code>, or Claude reads the descriptions and picks one itself. That is why it costs almost nothing to have many of them, and why the description matters more than the body.</p>
+      <p class="secthint">The order it resolves them: <b>personal</b> (every project on an account) beats <b>project</b> (this one only), plugins are namespaced, and the built-in ones live inside Claude Code. The command is the folder name.</p>
+      <p class="secthint">The amber tags are the three ways a skill quietly never runs: <b>manual only</b> — it has opted out of Claude loading it, so only you can; <b>thin description</b> — too little for Claude to match a task against, so it is reachable by name alone; <b>shadowed</b> — a personal skill of the same name wins, and this copy is dead.</p>
+      <p style="color:var(--dim2);font-size:12px;margin:6px 0 0">Personal: <code>${esc(d.personal_dir||'')}</code>${
+        path?` · Project: <code>${esc(d.project_dir||'')}</code>`:''} · session counts from your last ${d.sessions_scanned||0} sessions across every account.</p></details></div>
+
+    <div class="card tdet" id="skDet">${SKADD}</div></div>`))return;
   bindFilter('skQ','.skrow','skCount',
     el=>SKSCOPE==='all'||el.dataset.scope===SKSCOPE);
+}
+/* Picking a row is the whole of the selection state: `.on` is what the CSS
+   paints and what bindFilter reads to keep a chosen row visible through a
+   filter that would otherwise hide it. */
+function skPick(i){
+  SKSEL=i;
+  document.querySelectorAll('#content .skrow').forEach(el=>
+    el.classList.toggle('on',+el.dataset.i===i));
+  const h=$('#skDet');if(h)h.innerHTML=SKDET[i]||SKADD;
+}
+function skAddPane(){
+  SKSEL=-1;
+  document.querySelectorAll('#content .skrow.on').forEach(el=>el.classList.remove('on'));
+  const h=$('#skDet');if(h)h.innerHTML=SKADD;
 }
 /* A chip is a filter, not a navigation: it re-runs the one filter pass and
    moves the highlight. Redrawing the page instead would re-fetch the whole
@@ -5145,7 +5208,10 @@ async function pgHelp(nav){
       `<tr data-help-row><td style="white-space:nowrap;color:var(--cyan)">${esc(navLabel(id))}</td><td>${esc(where)}</td></tr>`).join('')}
     </table></div>`;
   const keys=(ST.tui_keys||[]);
-  paint(nav,`
+  // a pile, not a grid: nine independent sections whose heights come from the
+  // workspace (thirteen projects make the first card 656px, two make it 200),
+  // so which one is "the tall one" is not something the markup can know
+  paintPile(nav,`
     <div class="card"><h3>${ic('help')} Projects</h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Pick a project in the sidebar; these are its four tabs and the pages inside them.</p>
     ${TAB_GROUPS.map(([label,ids])=>
@@ -5338,7 +5404,7 @@ const SETTINGS_CARDS={
 `,
   updates:o=>`<div class="card"><h3>${ic('refresh')} Update checks &amp; notifications</h3>
     ${fld('sUpd','Updates')}
-    <p style="color:var(--dim);font-size:13px;margin:0 0 10px">One switch for everything archeus fetches on your behalf: whether a newer release exists, and the current Claude model list. <b>Install on quit</b> runs the upgrade in its own window after archeus closes — pip cannot rewrite the script it is running from. <b>Off</b> stops both checks.</p>
+    <p style="color:var(--dim);font-size:13px;margin:0 0 10px">One switch for everything archeus fetches on your behalf: whether a newer release exists, and the current Claude model list. <b>Install on quit</b> stages the upgrade into a background worker with no window of its own, which installs once archeus has closed — pip cannot rewrite the script it is running from — and then raises a notification. <b>Off</b> stops both checks.</p>
     ${fld('sNotif','Notifications')}
     <p style="color:var(--dim);font-size:13px;margin:0 0 10px">A desktop notification when a background job that ran longer than ${20}s finishes — memory builds, plans, reviews — and when the detached memory worker is done, which has no window of its own at all. Quick jobs never notify.</p>
     <p class="secthint" style="margin:0">Which interface <i>starts</i> — terminal or desktop — is the <b>TUI / GUI</b> toggle at the foot of the sidebar, and <code>--tui</code>/<code>--gui</code> always override it.</p></div>
@@ -5347,6 +5413,11 @@ const SETTINGS_CARDS={
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Projects checked below have their memory refreshed in the background — one pass when archeus starts, then one every interval, whenever their files change. Only changed projects use Claude; nothing runs while unchanged.</p>
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">A pass re-reads a few changed modules at most, and whatever is left waits for the <b>next</b> interval — so a big backlog is spread out rather than spent at once. Opening a checked project does not add a pass; this schedule is the only thing that spends on it.</p>
     <div id="amList"><span class="spin"></span></div></div>
+  <div class="card"><h3>${ic('ai')} Build the backlog now <span class="sp"></span>
+    <button class="btn sm pri" id="mqStart">${ic('ai')} Build modules</button></h3>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">The schedule above spends a little, often, and only on the projects you checked. This spends the idle time instead: one project after another across <b>every</b> account, the stalest first, until there is nothing left to build. It runs only while you hold this button's job open — nothing here starts on its own.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">It waits while one of your own jobs is running or a Claude Code session is live, so it never competes with the work the quota is for, and it drops an account for the rest of the run if Claude says that one is rate-limited. Each project is capped the same way a scheduled pass is, and the sweep repeats — so one big repo cannot starve the others.</p>
+    <p class="secthint" style="margin:0">Cancel it on its banner, which follows you from page to page. If you have lost the banner, the <b>Activity</b> drawer on the dashboard has a <i>Show</i> button for anything still running.</p></div>
 `,
 };
 /* Hoisted function declarations, not arrow consts: NAV names these in its
@@ -5359,7 +5430,13 @@ function pgSetModels(nav){return pgSettings(nav,'models');}
 function pgSetUpdates(nav){return pgSettings(nav,'updates');}
 async function pgSettings(nav,part='settings'){
   const o=ST.options;
-  if(!paint(nav,SETTINGS_CARDS[part](o)))return;
+  if(!paintPile(nav,SETTINGS_CARDS[part](o)))return;
+  /* Looked up and guarded, like every other control on this page: the five
+     sub-pages share one wiring block, so a control that is not on THIS one is
+     simply not written to. */
+  const mq=$('#mqStart');
+  if(mq)mq.onclick=()=>inlineJob('#jban','memory_queue',{},
+    {label:'Building modules'});
   chipsFill($('#sEff'),o.efforts,null,ST.defaults.effort);
   chipsFill($('#sMod'),o.models,o.model_labels,ST.defaults.model);
   chipsFill($('#sPerm'),o.perms,o.perm_labels,ST.defaults.perm);
@@ -6238,8 +6315,12 @@ async function openPathSubmit(){
   const r=await post('/api/open-path',{path:$('#oPath').value});
   if(!r.ok){$('#oErr').textContent=r.error||'Could not open that path';return;}
   $('#oovl').classList.remove('show');
-  askLaunch({title:'New session',sub:r.path,isNew:true,
-    path:r.path,enc:r.enc,choice:'new'});
+  /* The project PAGE, not the launch modal: opening a folder is how you get to
+     its sessions, memory and CLAUDE.md, and the page has its own Launch button.
+     A path with no project folder renders fine — scan_sessions returns [] and
+     load_memory returns an empty graph — so nothing here has to exist yet. */
+  openProject({path:r.path,name:r.name,encoded:r.enc,
+    primary_cfgdir:ST.active_cfgdir,accounts:[],hidden:false});
 }
 
 /* ── wiring ── */
@@ -6281,10 +6362,14 @@ function setZen(on){
   document.documentElement.classList.toggle('zen',on);
   const b=$('#bZen');
   if(b){b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));}
-  // The ceiling comes off while the app is hidden — the scene is not a ground
-  // for anything any more. STAGE.zen() is what decides by how much; here we
-  // only say which mode we are in.
-  if(window.STAGE){if(STAGE.zen)STAGE.zen(on);if(STAGE.impulse)STAGE.impulse();}
+  /* ZEN IS LAYOUT ONLY — the stage is not told, because there is nothing for
+     it to change. It used to lift the ceiling and the gain here on the
+     reasoning that a hidden app means the scene is no longer a ground for
+     anything; the result was a theme that looked like a different theme
+     depending on whether you were looking at it, and the brighter one was the
+     one that was wanted. Those values are the stage's own now (STAGE_LIFT /
+     STAGE_GAIN in stage.js). The ripple stays: something did change. */
+  if(window.STAGE&&STAGE.impulse)STAGE.impulse();
 }
 $('#bZen').innerHTML=ic('palette');
 $('#bZen').onclick=()=>setZen(!zenOn());
@@ -6433,10 +6518,28 @@ async function drawUpdateBar(){
   host.style.display='flex';
   const hide=$('#updHide');if(hide)hide.onclick=()=>{host.style.display='none';};
   const now=$('#updNow');
-  if(now)now.onclick=()=>inlineJob('#updbar','archeus_update',{},
-    {label:'Scheduling the archeus upgrade',
-     onDone:()=>{toast('archeus upgrades once you close it');
-                 host.style.display='none';}});
+  if(now)now.onclick=()=>inlineJob('#updbar','archeus_update',{restart:false},
+    {label:'Staging the archeus upgrade',
+     onDone:()=>{toast('Update staged — it installs when you close archeus','ok');
+                 updStaged(c);}});
+}
+/* Staged, not installed, and the strip has to say so — pip cannot overwrite the
+   console script it is running from, so the worker waits for this process to
+   exit. Restarting is the only way to have it NOW, and it is the same job with
+   `restart:true`: that is what tells the waiting worker to bring archeus back up
+   once the install succeeds. Replacing the button rather than adding one is what
+   stops a second worker being staged behind the first. */
+function updStaged(c){
+  const host=$('#updbar');if(!host)return;
+  host.innerHTML=`<span class="uptxt">${ic('download')} <b>archeus ${esc(c.latest)}</b>
+    is staged — it installs when you close archeus</span>
+    <button class="btn sm pri" id="updRestart">Restart now</button>
+    <button class="btn sm" id="updLater">Later</button>`;
+  $('#updLater').onclick=()=>{host.style.display='none';};
+  $('#updRestart').onclick=()=>inlineJob('#updbar','archeus_update',{restart:true},
+    {label:'Restarting archeus to finish the upgrade',
+     onDone:()=>{toast('Installing — archeus will close and come back','ok');
+                 post('/api/quit',{});}});
 }
 
 /* global poll: which projects' memory is updating right now (scheduler or

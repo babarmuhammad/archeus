@@ -14,7 +14,8 @@ import sys
 import time
 
 __all__ = ['run', 'git', 'pid_alive', 'kill_tree', 'spawn_terminal',
-           'wait_and_run', 'new_console_flags', 'no_window_flags', 'WINDOWS']
+           'spawn_detached', 'wait_and_run', 'new_console_flags',
+           'no_window_flags', 'WINDOWS']
 
 WINDOWS = os.name == 'nt'
 
@@ -29,6 +30,11 @@ new_console_flags = getattr(subprocess, 'CREATE_NEW_CONSOLE', 0)
 #: dozen black windows flash open and shut. Nothing is ever shown in them —
 #: stdout and stderr are captured — so the window is pure visual noise.
 no_window_flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+
+#: DETACHED_PROCESS — no console AT ALL, and no tie to ours. The child of a
+#: detached spawn outlives archeus, which is the whole point of the deferred
+#: upgrade worker: it starts here and does its work after we are gone.
+detached_flags = getattr(subprocess, 'DETACHED_PROCESS', 0) or no_window_flags
 
 
 def run(args, *, cwd=None, env=None, timeout=30, stdin=None, check=False):
@@ -131,7 +137,46 @@ def pid_alive(pid):
         return None
 
 
-def wait_and_run(pid, argv, timeout=300, poll=0.5, out=print):
+def spawn_detached(argv, *, cwd=None, env=None, log=None):
+    """Start *argv* with no console and no tie to this process.
+
+    Returns (Popen|None, error) — the same shape as spawn_terminal, because
+    it is the same decision made the other way. A console is right for work
+    the user is meant to watch (a Claude session, a shell in a project) and
+    pure damage for work they are not: the upgrade worker's first act is to
+    BLOCK until archeus exits, so its window stole focus and then sat there
+    doing nothing until you quit.
+
+    *log* is a file to append the output to, since a detached child has
+    nowhere else to put it and its failure is the only record of why an
+    upgrade did not happen.
+    """
+    sink = subprocess.DEVNULL
+    if log:
+        try:
+            os.makedirs(os.path.dirname(log), exist_ok=True)
+            sink = open(log, 'ab')
+        except Exception:
+            sink = subprocess.DEVNULL
+    kw = {'cwd': cwd, 'env': env, 'stdin': subprocess.DEVNULL,
+          'stdout': sink, 'stderr': subprocess.STDOUT}
+    if WINDOWS:
+        kw['creationflags'] = detached_flags
+    else:
+        kw['start_new_session'] = True
+    try:
+        return subprocess.Popen(list(argv), **kw), ''
+    except Exception as e:
+        return None, str(e)
+    finally:
+        if sink is not subprocess.DEVNULL:
+            try:
+                sink.close()          # the child holds its own handle now
+            except Exception:
+                pass
+
+
+def wait_and_run(pid, argv, timeout=300, poll=0.5, out=print, after=()):
     """Wait for *pid* to exit, then run *argv* and return its exit code.
 
     This is what lets a program replace its own files: archeus's upgrade
@@ -142,6 +187,11 @@ def wait_and_run(pid, argv, timeout=300, poll=0.5, out=print):
 
     `pid_alive` returning None means "cannot tell"; that stops the wait rather
     than hanging on it, and the command's own error is then the honest report.
+
+    *after* is argv lists to start once the command SUCCEEDS — the desktop
+    notification saying the upgrade landed, and archeus itself when the user
+    asked to restart into it. They are built by the caller before the install
+    begins, because pip is replacing every file this package could import.
     """
     try:
         pid = int(pid)
@@ -157,10 +207,15 @@ def wait_and_run(pid, argv, timeout=300, poll=0.5, out=print):
         time.sleep(poll)
     out('Running: ' + ' '.join(argv))
     try:
-        return subprocess.call(argv)
+        rc = subprocess.call(argv)
     except Exception as e:
         out('Failed: %s' % e)
         return 1
+    if rc == 0:
+        for cmd in after or ():
+            if cmd:
+                spawn_detached(cmd)
+    return rc
 
 
 def kill_tree(proc):

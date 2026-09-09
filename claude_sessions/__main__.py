@@ -8,6 +8,7 @@ whole TUI stack plus `usage`, which drags in urllib/ssl/http.client for an OAuth
 poll the statusline must never make — 48ms of import on a path that runs on
 every conversation turn.
 """
+import os
 import sys
 
 if len(sys.argv) >= 2 and sys.argv[1] == 'statusline':
@@ -40,8 +41,31 @@ if len(sys.argv) >= 3 and sys.argv[1] == '--loop-run':
 # every file in this package, so the worker must hold no lazy import of one.
 # `proc` imports os/subprocess/sys/time and nothing from archeus.
 if len(sys.argv) >= 4 and sys.argv[1] == '--self-update':
+    import json
+
     from .proc import wait_and_run
-    raise SystemExit(wait_and_run(sys.argv[2], sys.argv[3:]))
+    # Both after-steps are resolved to plain argv lists HERE, before the wait:
+    # once pip starts, importing anything from this package is a coin toss
+    # between the old files and the new ones. `notify.command` needs the
+    # settings and the platform, both of which are readable right now.
+    _to = os.environ.get('ARCHEUS_UPDATE_TO') or ''
+    try:
+        _relaunch = json.loads(os.environ.get('ARCHEUS_RELAUNCH') or 'null')
+    except ValueError:
+        _relaunch = None
+    _after = []
+    try:
+        from .notify import command, enabled
+        if enabled():
+            _after.append(command(
+                'archeus updated' + (' to ' + _to if _to else ''),
+                'archeus is restarting.' if _relaunch
+                else 'Start archeus to use the new version.'))
+    except Exception:
+        pass
+    if _relaunch:
+        _after.append(_relaunch)
+    raise SystemExit(wait_and_run(sys.argv[2], sys.argv[3:], after=_after))
 
 from .main import run
 

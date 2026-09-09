@@ -513,3 +513,242 @@ def test_both_interfaces_start_it(monkeypatch):
     from claude_sessions import gui, main as main_mod
     assert 'start_auto_memory_scheduler' in inspect.getsource(gui.run_gui)
     assert 'start_auto_memory_scheduler' in inspect.getsource(main_mod.run)
+
+
+# ── the build queue ───────────────────────────────────────────
+#
+#     "mettimi una opzione per buildare i moduli in coda, quando non siamo
+#      facendo niente … finche non lo stoppo anche con altri account diversi
+#      da default … only runs when i click on the function"
+#
+# Not a second scheduler: the scheduler above spends a little on a cadence, and
+# this drains the backlog on purpose, once, because a button was pressed. What
+# is pinned here is the four things that make that safe — the order, the pause,
+# the account, and the stop.
+
+
+def _q(monkeypatch, rows, stale=True):
+    """Point the queue at fixture rows and stub the one thing that spends."""
+    from claude_sessions import gui_api, memory, quota
+    built = []
+    monkeypatch.setattr(gui_api, '_queue_order', lambda: list(rows))
+    monkeypatch.setattr(gui_api, 'machine_busy', lambda exclude='': '')
+    monkeypatch.setattr(quota, 'reason', lambda cfgdir=None: '')
+    # stale until built, like a real project — a fixture that stays stale for
+    # ever makes the sweep loop run until QUEUE_MAX_SWEEPS, which is a brake and
+    # not the behaviour under test
+    monkeypatch.setattr(memory, 'is_stale',
+                        lambda p, f: stale and p not in [b[0] for b in built])
+
+    def _refresh(path, folder, auto_cap=6, cfgdir=None):
+        built.append((path, cfgdir))
+        gui_api._LAST_REFRESH[os.path.abspath(path)] = {
+            'ok': True, 'extracted': 1, 'lessons': 0, 'pending': 0}
+        return True
+    monkeypatch.setattr(gui_api, '_refresh_project', _refresh)
+    return built
+
+
+def _row(name, cfgdir='', **kw):
+    r = {'path': '/p/' + name, 'folder': '/f/' + name, 'name': name,
+         'cfgdir': cfgdir, 'pending': 0, 'built': True, 'at': '2026-01-01'}
+    r.update(kw)
+    return r
+
+
+def test_the_queue_takes_the_stalest_project_first(monkeypatch, tmp_path):
+    """Order is read off each graph, never measured: a project with units still
+    owed comes first because the last cycle already counted them, then one that
+    has never been built at all, then whatever was built longest ago. is_stale()
+    hashes the whole tree, so it may not be what decides the order."""
+    from claude_sessions import gui_api, memory
+    rows = [_row('fresh', at='2026-09-01'),
+            _row('never', built=False, at=''),
+            _row('owed', pending=4, at='2026-09-01'),
+            _row('old', at='2020-01-01')]
+    monkeypatch.setattr(gui_api, 'list_projects', lambda: [], raising=False)
+
+    from claude_sessions import gui
+    monkeypatch.setattr(gui, 'list_projects', lambda: [
+        {'path': r['path'], 'name': r['name'], 'encoded': 'E' + r['name'],
+         'primary_cfgdir': r['cfgdir'], 'hidden': False} for r in rows])
+    monkeypatch.setattr(memory, 'load_memory', lambda path, folder=None: {
+        'entities': [1] if next(r for r in rows if r['path'] == path)['built'] else [],
+        'pending_units': next(r for r in rows if r['path'] == path)['pending'],
+        'generated_at': next(r for r in rows if r['path'] == path)['at']})
+    order = [r['name'] for r in gui_api._queue_order()]
+    assert order == ['owed', 'never', 'old', 'fresh'], order
+
+
+def test_a_hidden_project_is_not_in_the_queue(monkeypatch):
+    """Hiding a project is how you say "not this one" everywhere else."""
+    from claude_sessions import gui, gui_api, memory
+    monkeypatch.setattr(gui, 'list_projects', lambda: [
+        {'path': '/p/a', 'name': 'a', 'encoded': 'Ea', 'primary_cfgdir': '',
+         'hidden': True}])
+    monkeypatch.setattr(memory, 'load_memory', lambda *a, **k: {'entities': []})
+    assert gui_api._queue_order() == []
+
+
+def test_it_waits_while_you_are_working_and_never_spends(monkeypatch):
+    """The whole point of "when we are not doing anything": background
+    extraction must not compete with the session the quota is for. It gives up
+    waiting rather than parking forever, and it has still spent nothing."""
+    from claude_sessions import gui_api
+    built = _q(monkeypatch, [_row('a')])
+    monkeypatch.setattr(gui_api, 'machine_busy',
+                        lambda exclude='': 'a Claude session is live')
+    monkeypatch.setattr(gui_api, 'QUEUE_WAIT', 0)
+    monkeypatch.setattr(gui_api, 'QUEUE_MAX_WAITS', 2)
+    res = gui_api.build_queue(None)
+    assert built == [], 'it built while the user was working'
+    assert res['stopped'] == 'busy'
+
+
+def test_the_queue_builds_each_account_under_its_own_login(monkeypatch):
+    """The gap this feature exposed: memory's Claude call passed no env at all,
+    so every build spent whichever account the archeus PROCESS resolved — the
+    wrong quota, and the wrong attribution, for a project belonging to another
+    login."""
+    from claude_sessions import gui_api
+    built = _q(monkeypatch, [_row('a', cfgdir='C:/acct/one'),
+                             _row('b', cfgdir='C:/acct/two')])
+    gui_api.build_queue(None)
+    assert built == [('/p/a', 'C:/acct/one'), ('/p/b', 'C:/acct/two')]
+
+
+def test_the_account_env_reaches_the_claude_call(monkeypatch, tmp_path):
+    """…and it reaches it through the ONE seam every headless call passes, so a
+    new call site cannot forget it. Thread-local, because the four functions in
+    between would otherwise each need an `env=` parameter kept in step."""
+    from claude_sessions import config, gui_api, memory
+    seen = {}
+    monkeypatch.setattr(memory._c, 'get_claude_exe', lambda: 'claude.exe')
+    monkeypatch.setattr(memory, 'extract_model', lambda: '')
+    monkeypatch.setattr(memory._tls, 'silent', True, raising=False)
+    monkeypatch.setattr(gui_api, '_run_cancellable',
+                        lambda args, **kw: seen.update(kw) or '{}')
+
+    with memory.use_account(config.account_env(str(tmp_path))):
+        memory._claude_stdin('hi', str(tmp_path))
+    assert (seen.get('env') or {}).get('CLAUDE_CONFIG_DIR') == str(tmp_path)
+
+    seen.clear()
+    memory._claude_stdin('hi', str(tmp_path))
+    assert seen.get('env') is None, 'the account leaked out of its block'
+
+
+def test_a_rate_limited_account_is_dropped_for_the_whole_run(monkeypatch):
+    """One refusal is what stops the other five — the same reasoning
+    quota.note_failure carries, applied to a queue that would otherwise walk
+    every project of a dead account in turn."""
+    from claude_sessions import gui_api, quota
+    built = _q(monkeypatch, [_row('a', cfgdir='C:/dead'),
+                             _row('b', cfgdir='C:/dead'),
+                             _row('c', cfgdir='C:/live')])
+    monkeypatch.setattr(quota, 'reason',
+                        lambda cfgdir=None: 'account rate-limited by Claude'
+                        if cfgdir == 'C:/dead' else '')
+    res = gui_api.build_queue(None)
+    assert built == [('/p/c', 'C:/live')]
+    assert res['accounts_blocked'] == ['C:/dead']
+
+
+def test_nothing_stale_is_a_finished_queue_not_a_spin(monkeypatch):
+    """It stops when the backlog is empty. A sweep that advances nothing must
+    end the run, or the thread sits there re-listing the same projects until it
+    hits the sweep cap — which is a brake for a pathological project, not the
+    way an up-to-date workspace is supposed to finish. So this counts SWEEPS:
+    asserting only that nothing was built passed either way."""
+    from claude_sessions import gui_api, memory
+    built = _q(monkeypatch, [_row('a'), _row('b')])
+    sweeps = []
+    rows = [_row('a'), _row('b')]
+    monkeypatch.setattr(gui_api, '_queue_order',
+                        lambda: sweeps.append(1) or list(rows))
+    monkeypatch.setattr(memory, 'is_stale', lambda p, f: False)
+    res = gui_api.build_queue(None)
+    assert built == [] and res['built'] == 0
+    assert len(sweeps) == 1, f'{len(sweeps)} sweeps for a workspace with no work'
+
+
+def test_a_build_spends_the_account_the_project_belongs_to(monkeypatch, tmp_path):
+    """_refresh_project is the one place that turns "this project's account"
+    into "what this thread's Claude calls spend". Nothing else in the chain
+    knows the cfgdir, and nothing below it knows the project."""
+    from claude_sessions import gui_api, memory
+    seen = {}
+    monkeypatch.setattr(memory, 'acquire_scan_lock', lambda p: True)
+    monkeypatch.setattr(memory, 'clear_scan_lock', lambda p: None)
+    monkeypatch.setattr(memory, 'auto_cycle',
+                        lambda *a, **k: seen.update(env=getattr(memory._tls, 'env', None)) or {})
+    gui_api._refresh_project(str(tmp_path), str(tmp_path), cfgdir='C:/acct/two')
+    assert (seen['env'] or {}).get('CLAUDE_CONFIG_DIR') == 'C:/acct/two'
+
+    seen.clear()
+    gui_api._refresh_project(str(tmp_path), str(tmp_path))
+    assert seen['env'] is None, 'no account named means the process default'
+
+
+def test_cancel_stops_the_queue(monkeypatch):
+    """Stop is the user's, so it is the job's own cancel Event — which is also
+    what kill-trees the running `claude -p` rather than waiting for it."""
+    import threading
+    from claude_sessions import gui_api
+    built = _q(monkeypatch, [_row('a'), _row('b')])
+    job = gui_api.new_job('Building modules')
+    job['cancel_event'].set()
+    try:
+        gui_api.build_queue(job)
+    except gui_api.JobCancelled:
+        pass
+    else:
+        raise AssertionError('a cancelled queue kept going')
+    assert built == []
+    assert isinstance(job['cancel_event'], threading.Event)
+
+
+def test_a_queue_that_is_working_is_not_reaped_as_abandoned(monkeypatch):
+    """The 6-hour reaper exists to catch a thread that died without leaving a
+    terminal status. It keyed on `started`, and a queue may legitimately run for
+    hours — so it declared one abandoned mid-extraction. `beat` is what tells
+    working from dead, and a job that sets none behaves exactly as before."""
+    import time
+    from claude_sessions import gui_api
+    old = time.time() - gui_api._STUCK_AFTER - 60
+    working = gui_api.new_job('Building modules')
+    working['started'] = old
+    working['beat'] = time.time()
+    dead = gui_api.new_job('Something that died')
+    dead['started'] = old
+    with gui_api._JOBS_LOCK:
+        gui_api._JOBS[working['id']] = working
+        gui_api._JOBS[dead['id']] = dead
+        gui_api._reap_locked()
+    assert working['status'] == 'running', 'a working queue was reaped'
+    assert dead['status'] == 'error'
+
+
+def test_the_queue_never_reads_its_own_extraction_as_you_working(monkeypatch):
+    """archeus's own headless calls write transcripts into the same store, so a
+    plain "was a transcript touched recently" test makes the queue pause itself
+    forever the moment it starts. The `count > 3` gate is what separates them,
+    and it is the same one the dashboard applies."""
+    import inspect
+    from claude_sessions import gui_api
+    src = inspect.getsource(gui_api._live_sessions)
+    assert "get('count', 0) > 3" in src
+    assert 'LIVE_WINDOW' in src
+
+
+def test_the_queue_starts_only_when_asked(monkeypatch):
+    """"only runs when i click on the function" — so nothing may call it from a
+    scheduler, a startup path or an on-open hook."""
+    import inspect
+    from claude_sessions import gui_api
+    callers = [name for name, fn in vars(gui_api).items()
+               if callable(fn) and getattr(fn, '__module__', '') == gui_api.__name__
+               and name not in ('build_queue',)
+               and 'build_queue(' in (inspect.getsource(fn)
+                                      if hasattr(fn, '__code__') else '')]
+    assert callers == ['api_job_start'], callers

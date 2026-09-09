@@ -877,6 +877,64 @@ def main():
         check('and every shader compiles', not shader,
               shader[0][1].split(chr(10))[0] if shader else '')
 
+        # ── A CEILING ON WHAT A FRAME COSTS ──────────────────────────────────
+        # This repo already carries the rule that a tool whose only output is
+        # "it passed" needs a FLOOR on how much it did. This is its mirror, and
+        # it exists because the opposite failure actually shipped: the graph
+        # scene grew to 1.24 MILLION triangles a frame — 0.88M of it DoubleSide
+        # blended MeshPhysicalMaterial with clearcoat and iridescence — for a
+        # BACKGROUND, and the first anyone knew was a user reporting tearing in
+        # the Qt shell. Nothing in the suite could see it: every string matched,
+        # every scene built, every shader compiled.
+        #
+        # Draw calls and triangle counts come off renderer.info and are
+        # HARDWARE INDEPENDENT, which is exactly why this is the right shape
+        # under SwiftShader — the same lesson as _T/_Tw, never assert on how
+        # many frames the machine managed.
+        #
+        # info.autoReset has to go off first, and that is not hygiene: three
+        # resets info at the top of EVERY render() call, so on the cinematic
+        # tier reading it afterwards reports the composer's last fullscreen
+        # quad — one call, one triangle. The first cut of this check did
+        # exactly that and passed, which is the "reports success while running
+        # nothing" failure wearing a different hat. Reset once, draw one whole
+        # frame, read the sum, put it back.
+        cost = pg.evaluate("""(()=>{const was=ST.world;
+          ST.world='graph';applyTheme(ST.theme);
+          const r=STAGE._ren, sc=STAGE._sc;
+          r.info.autoReset=false; r.info.reset();
+          if(STAGE._post)STAGE._post.render(0.016); else r.render(sc.scene, sc.camera);
+          const out={tri:r.info.render.triangles, calls:r.info.render.calls,
+                     tier:STAGE.tier, deg:STAGE._degraded, ratio:STAGE._ratio()};
+          r.info.autoReset=true; r.info.reset();
+          ST.world=was;applyTheme(ST.theme);
+          return out;})()""")
+        pg.wait_for_timeout(300)
+        # 353,552 at the time of writing, against 757,776 before the cost pass
+        # and a ceiling that must never be reachable by going back.
+        #
+        # READ THIS NUMBER RIGHT: three renders a TRANSPARENT DoubleSide
+        # material in two passes, back faces then front, and info counts both.
+        # Six of the scene's thirteen meshes are glass, so 105,448 of the total
+        # is drawn twice — which is also the half that costs the most per
+        # triangle, since it is blended and depth-write-off. Before the pass
+        # that share was 522,576. If this check ever fails, look at what became
+        # DoubleSide-transparent before you look at vertex counts.
+        check('the graph frame stays under its triangle ceiling',
+              0 < cost['tri'] < 400000, cost['tri'])
+        # 19: thirteen meshes, six of them glass and therefore drawn twice.
+        # Everything is instanced or merged, so a number in the hundreds means
+        # an InstancedMesh became a Mesh per body — the shape stage.js's own
+        # header forbids. The ceiling allows for the composer's mip passes.
+        check('and under its draw-call ceiling', 0 < cost['calls'] < 40, cost['calls'])
+        # the pixel budget is a cap on the PRODUCT, so it must actually bind
+        check('the render scale is capped by the pixel budget',
+              cost['ratio'] <= 1.5 + 1e-9, cost['ratio'])
+        # a degrade under a healthy renderer is a false positive, and that is
+        # the failure mode of a self-tuning ladder worth gating
+        check('and the degrade ladder has not fired on the bench',
+              cost['deg'] == 0 and cost['tier'] == 'cinematic', cost)
+
         print('\n— …and it is driven by state, not free-running —')
         # The whole justification for bringing a background back. String matching
         # can show the wiring exists; only running it shows the numbers move.
@@ -932,11 +990,18 @@ def main():
         check('which decays away', wait_for("STAGE._shock === 0"),
               pg.evaluate("STAGE._shock"))
 
-        was = pg.evaluate("[STAGE._densTgt, STAGE._T]")
+        # the CAMERA, not the exposure. A page used to dim the field by up to a
+        # quarter (`d` in STAGE_PAGES) and that is gone: the theme must look the
+        # same whether or not you are looking at it, so a page tilts the
+        # composition and nothing else. Settings is the largest bias (-0.55),
+        # which is why it is still the page this navigates to.
+        was = pg.evaluate("[STAGE._camTgt, STAGE._T, STAGE._calm()]")
         pg.evaluate("go('settings')")
         pg.wait_for_timeout(200)
-        now = pg.evaluate("[STAGE._densTgt, STAGE._T, STAGE._pulse]")
+        now = pg.evaluate("[STAGE._camTgt, STAGE._T, STAGE._pulse, STAGE._calm()]")
         check('each page tunes the one stage', now[0] < was[0], f'{was[0]} -> {now[0]}')
+        check('...and it tunes the camera, not the brightness', now[3] == was[2],
+              f'{was[2]} -> {now[3]}')
         check('navigation ripples but never restarts it',
               now[2] > 0 and now[1] >= was[1], now)
         pg.evaluate("go('home');startDashboard()")
@@ -1173,6 +1238,32 @@ def main():
         check('…and going back to all restores every row',
               pg.evaluate("[...document.querySelectorAll('#content .skrow')]"
                           ".filter(e=>e.style.display!=='none').length")==4)
+        # THE point of the split: the list is what you scan and the pane is what
+        # you read. Nothing picked yet is the Add form, so the pane is never an
+        # empty state, and picking a row swaps in that skill with its buttons.
+        check('the detail pane starts on the Add form, not on nothing',
+              pg.evaluate("document.querySelector('#skDet').innerText")
+              .strip().lower().startswith('add a skill'))
+        pg.evaluate("document.querySelector('#content .skrow').click()")
+        pg.wait_for_timeout(150)
+        det=pg.evaluate("document.querySelector('#skDet').innerText")
+        cmd=pg.evaluate("document.querySelector('#content .skrow .skcmd').textContent")
+        check('picking a row fills the detail pane with that skill',
+              cmd.strip() in det, f'{cmd!r} not in pane')
+        check('…and the picked row is marked, so the filter cannot lose it',
+              pg.evaluate("document.querySelectorAll('#content .skrow.on').length")==1)
+        pg.evaluate("(()=>{const i=document.querySelector('#skQ');"
+                    "i.value='zzznope';i.dispatchEvent(new Event('input'));})()")
+        pg.wait_for_timeout(200)
+        check('a filter that matches nothing still leaves what you picked',
+              pg.evaluate("[...document.querySelectorAll('#content .skrow')]"
+                          ".filter(e=>e.style.display!=='none').length")==1)
+        pg.evaluate("(()=>{const i=document.querySelector('#skQ');"
+                    "i.value='';i.dispatchEvent(new Event('input'));})();skAddPane()")
+        pg.wait_for_timeout(150)
+        check('Add a skill comes back to the pane',
+              pg.evaluate("document.querySelectorAll('#content .skrow.on').length")==0
+              and pg.evaluate("!!document.querySelector('#skTmpl')"))
 
         # Output styles: what is active, WHERE it is pinned, and a view button
         # that shows something for a built-in (which has no file at all).
@@ -1486,7 +1577,7 @@ def main():
                                       'sBudget', 'sMemCalls', 'sExtract')),
                            ('appearance', ('sMotion', 'sStage', 'sSurf')),
                            ('models', ('orUrl', 'foModels', 'foPort')),
-                           ('updates', ('sUpd', 'sNotif', 'amInt'))):
+                           ('updates', ('sUpd', 'sNotif', 'amInt', 'mqStart'))):
             pg.evaluate(f"go('{page}')")
             pg.wait_for_timeout(900)
             for cid in cids:

@@ -15,6 +15,9 @@ three.js and anime.js (both MIT, served from `/vendor/`, never a CDN).
 ![archeus dashboard](img/gui-dashboard.png){ width="900" }
 
 - **Shells** — PyQt6 native window if installed, else an Edge app-mode window, else the browser (`gui_shell` setting: auto / qt / edge / browser). The bottom-left toggle (or `ui_mode`) picks which interface starts by default; `--tui`/`--gui` always override.
+- **Open project by path** — type or complete any folder and it opens as a project
+  page: its sessions, memory, CLAUDE.md and the rest, whether or not it has ever had a
+  session. Launching is the page's own button, the same as for any other project.
 - **Projects & sessions** — sidebar with live filter and quick-resume; per-session resume / fork / rename / tag / archive / restore / delete / export markdown / transcript with session info / changed files.
 - **Launch modal** — effort, model, permission mode, account, thinking cap, subagent model, session name, worktree — as one-click chips, prefilled from your defaults. Sessions open in a real new console window.
 - **Sidebar** — five sections, each a set of sub-tabs across the top of the page:
@@ -39,9 +42,14 @@ three.js and anime.js (both MIT, served from `/vendor/`, never a CDN).
 - **Job cancel** — running background jobs (plan generation, memory build, review) show a Cancel button; the `cancelled` flag is cooperative (checked at loop top, no thread kill).
 - **Persistent preferences** — theme and account selection saved to `localStorage`, restored across page reloads.
 - **Editable Plan → Execute** — the generated plan appears in a monospace textarea for inline editing before approval; "Re-plan" sends feedback to regenerate; "Per-step approval" gates execution step by step. Every generated plan is auto-saved.
-- **Skills** — the four scopes Claude Code actually loads (personal, project, plugin,
-  built-in), each row showing the command you type and how often Claude Code has used it,
-  with a filter over the lot. See [Agents & skills](agents.md#skills).
+- **Skills** — a list beside what you picked out of it. The four scopes Claude Code
+  actually loads (personal, project, plugin, built-in) are one scrolling list of rows,
+  each carrying the command you type and how often Claude Code has used it, with a
+  filter and scope chips over the lot; the pane on the right holds the description,
+  the folder and the actions for the row you clicked, and *Add a skill* until you
+  click one. A row you have picked stays visible through a filter that would otherwise
+  hide it. Agents is the same split — yours beside the ready-made library.
+  See [Agents & skills](agents.md#skills).
 - **Loops** — start a `/loop` in its own session, watch it fire, end it, and edit the
   `loop.md` behind a bare `/loop`. See [Loops](tui.md#loops).
 - **Global CLAUDE.md** — the first tab of **Context**: the instructions read in every

@@ -216,9 +216,23 @@ def test_no_look_may_change_how_big_the_ui_is():
     for name, sk in SKINS.items():
         for dead in ('scale', 'density'):
             assert dead not in sk, f'{name} declares {dead}'
-    # the sizes themselves must still be declared in exactly one place
-    assert '.card h3{font-size:14px}' in _CSS
-    assert '.kpi .kv2{font-size:20px}' in _CSS
+    # …and the sizes are declared in exactly ONE place, which is the assertion
+    # this comment always claimed to be making. It used to check that the
+    # chassis block CONTAINED them, and that block restated six type sizes and
+    # four density values character for character from their base rules — so the
+    # canonical geometry was declared twice and the duplicate, being last in the
+    # file, silently disabled the icon rail's narrow gutters and the 899px
+    # readout size. A second declaration of a canonical value is not a guard,
+    # it is a second thing to keep in step.
+    assert _CSS.count('.card h3{font-size') == 1, \
+        'the heading size is declared twice again'
+    assert 'font-size:14px' in _CSS[_CSS.index('.card h3{font-size'):][:40]
+    assert _CSS.count('.kpi .kv2{font-size:20px') == 1, \
+        'the readout size is declared twice again'
+    # the one place a size may be restated is where it genuinely differs, and
+    # then only under a narrower selector or a media query
+    assert _CSS.count('.kpi .kv2{font-size:17px}') == 1, \
+        'the 899px readout size is gone, or duplicated'
 
 
 # ── form controls ────────────────────────────────────────────

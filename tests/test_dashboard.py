@@ -284,10 +284,13 @@ def test_activity_bars_are_hours_not_days():
 
 
 def test_the_stage_surface_comes_down_when_unfocused():
-    """A visible-but-unrendered WebGL surface is what tears when Qt
-    recomposites a background window: with preserveDrawingBuffer:false the
-    backbuffer is undefined once presented. Stopping the frame loop is not
-    enough — the canvas has to leave the composite."""
+    """Hiding the canvas on blur is zero GPU for the app while you work in
+    another one, which is strictly better than a paused-but-present surface.
+
+    It used to be justified by the undefined-backbuffer artefact instead, and
+    that reasoning turned out to be right about the fact and wrong about the
+    scope — see test_the_drawing_buffer_is_preserved. This check stands on the
+    cost argument now, which is the one that does not depend on it."""
     from claude_sessions.gui_html import PAGE
     assert 'blur(on) {' in PAGE
     assert "classList.toggle('stage-blur', !!on)" in PAGE

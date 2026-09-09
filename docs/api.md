@@ -129,7 +129,7 @@ a handler sees them; a missing or malformed one is a 400.
 | `/api/memory/autoscan` | `api_memory_autoscan` | Called each time a project is opened. Kick off an in-process memory |
 | `/api/memory/toggles` | `api_memory_toggles` | The two memory flags the GUI could only print, plus the recall budget. |
 | `/api/open-editor` | `api_open_editor` | — |
-| `/api/open-path` | `api_open_path` | Resolve a typed folder into a launchable project — validate it's an |
+| `/api/open-path` | `api_open_path` | Resolve a typed folder into a project — validate it's an existing |
 | `/api/output-style/delete` | `api_output_style_delete` | — |
 | `/api/output-style/install` | `api_output_style_install` | Copy an archeus starter into the user or project scope. |
 | `/api/output-style/save` | `api_output_style_save` | — |
@@ -140,6 +140,7 @@ a handler sees them; a missing or malformed one is a 400.
 | `/api/plugins/marketplace/remove` | `api_plugin_marketplace_remove` | — |
 | `/api/plugins/remove` | `api_plugin_remove` | — |
 | `/api/project/hide` | `api_project_hide` | Archive a project out of the project lists, or bring it back. |
+| `/api/quit` | `api_quit` | Close archeus. The only endpoint that ends the process, and it exists |
 | `/api/rename` | `_api_rename` | — |
 | `/api/session/archive` | `api_session_archive` | — |
 | `/api/session/delete` | `api_session_delete` | — |

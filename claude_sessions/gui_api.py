@@ -200,7 +200,12 @@ def _reap_locked():
     """
     now = time.time()
     for j in list(_JOBS.values()):
-        if j['status'] in ('running', 'awaiting') and now - j['started'] > _STUCK_AFTER:
+        # `beat`, when the job sets one, is the last time it did something. The
+        # reaper exists to catch a thread that died without a terminal status;
+        # the build queue can legitimately run for hours, and reading `started`
+        # alone declared it abandoned while it was mid-extraction.
+        if j['status'] in ('running', 'awaiting') \
+                and now - max(j['started'], j.get('beat') or 0) > _STUCK_AFTER:
             j['status'] = 'error'
             j['error'] = j.get('error') or 'abandoned after %dh' % (_STUCK_AFTER // 3600)
     terminal = [j for j in _JOBS.values() if j['status'] not in ('running', 'awaiting')]
@@ -484,10 +489,15 @@ def last_refresh(path):
     return _LAST_REFRESH.get(os.path.abspath(path or ''))
 
 
-def _refresh_project(path, folder, auto_cap=6):
+def _refresh_project(path, folder, auto_cap=6, cfgdir=None):
     """Run one incremental memory refresh in-process under the scan-lock so the
     badge and /api/memory/active reflect it. Silent (headless Claude calls).
-    Returns True if it actually ran (acquired the lock)."""
+    Returns True if it actually ran (acquired the lock).
+
+    *cfgdir* names the account that pays for it. Without one the call spends
+    whichever account this process resolved, which for a project belonging to
+    another login is the wrong quota and the wrong attribution.
+    """
     from . import memory
     if not memory.acquire_scan_lock(path):
         return False                      # another refresh already in flight
@@ -497,7 +507,8 @@ def _refresh_project(path, folder, auto_cap=6):
         name = os.path.basename(path.rstrip('\\/')) or path
         # auto_cycle, not refresh_memory: "auto memory" means every memory
         # surface, lessons included. See memory.auto_cycle.
-        res = memory.auto_cycle(path, folder, name, auto_cap=auto_cap) or {}
+        with memory.use_account(_c.account_env(cfgdir) if cfgdir else None):
+            res = memory.auto_cycle(path, folder, name, auto_cap=auto_cap) or {}
         _LAST_REFRESH[key] = {'ok': True, 'at': time.time(),
                               'extracted': res.get('extracted', 0),
                               'lessons': res.get('lessons', 0),
@@ -517,6 +528,212 @@ def _refresh_async(path, folder, auto_cap=6):
     import threading
     threading.Thread(target=_refresh_project, args=(path, folder, auto_cap),
                      daemon=True).start()
+
+
+#: how long a "somebody is working" answer is reused. The queue asks before
+#: every project, and a live session does not appear and vanish inside a minute.
+_BUSY_TTL = 15
+_busy_at = 0.0
+_busy_ans = ''
+
+
+def _live_sessions():
+    """How many Claude Code sessions were touched inside stats.LIVE_WINDOW.
+
+    The dashboard measures this too, but through the whole cross-account
+    breakdown — seconds of work, and the queue asks before every project. Only a
+    transcript touched inside the window can be live, and there are normally one
+    or two of those, so finding the candidates by mtime is the cheap half and
+    `stats` is asked about those alone (its per-file answer is cached on
+    mtime+size, so a repeat is free).
+
+    The `count > 3` gate is the exact half, and it is not optional: archeus's
+    own headless calls write transcripts into the same store, so without it the
+    build queue reads its OWN extraction as the machine being busy and pauses
+    itself forever.
+    """
+    from . import stats
+    now = time.time()
+    n = 0
+    for _name, cfg in _c.all_config_dirs():
+        root = _store.projects_root(cfg)
+        try:
+            projects = list(os.scandir(root))
+        except OSError:
+            continue
+        for pd in projects:
+            if not pd.is_dir():
+                continue
+            try:
+                entries = list(os.scandir(pd.path))
+            except OSError:
+                continue
+            for f in entries:
+                if not f.name.endswith('.jsonl'):
+                    continue
+                try:
+                    if now - f.stat().st_mtime >= stats.LIVE_WINDOW:
+                        continue
+                except OSError:
+                    continue
+                try:
+                    if (stats.get_session_stats_cached(f.path) or {}).get('count', 0) > 3:
+                        n += 1
+                except Exception:
+                    pass
+    return n
+
+
+def machine_busy(exclude=''):
+    """Why the build queue should wait, or ''.
+
+    Two signals and both are about the user, not the machine: a job they started
+    and are watching the banner of, and a Claude Code session they are typing
+    in. Spending an account's quota on background extraction while either is
+    true is competing with the work the quota is for.
+    """
+    global _busy_at, _busy_ans
+    with _JOBS_LOCK:
+        for j in _JOBS.values():
+            if j['id'] != exclude and j['status'] in ('running', 'awaiting'):
+                return 'a job is running — %s' % j['label']
+    if time.time() - _busy_at < _BUSY_TTL:
+        return _busy_ans
+    try:
+        n = _live_sessions()
+    except Exception:
+        _c.log.exception('gui: live-session check failed')
+        n = 0                     # fail open: never wedge the queue on a stat
+    _busy_ans = ('a Claude session is live' if n == 1
+                 else '%d Claude sessions are live' % n) if n else ''
+    _busy_at = time.time()
+    return _busy_ans
+
+
+def _queue_order():
+    """Every project, stalest first — cheaply, and without spending anything.
+
+    Read off each graph rather than measured: `pending_units` is a backlog the
+    last cycle already counted and wrote down, a graph with no entities has
+    never been built at all, and `generated_at` is when the rest were last
+    touched. `is_stale()` hashes the whole tree, so it is asked once per project
+    when its turn comes and never in order to sort.
+    """
+    from . import gui, memory
+    rows = []
+    for p in gui.list_projects():
+        if p.get('hidden'):
+            continue
+        try:
+            folder = _store.project_folder(p['primary_cfgdir'], p['encoded'])
+            mem = memory.load_memory(p['path'], folder)
+        except Exception:
+            continue
+        rows.append({'path': p['path'], 'folder': folder,
+                     'name': p.get('name') or p['path'],
+                     'cfgdir': p.get('primary_cfgdir') or '',
+                     'pending': int(mem.get('pending_units') or 0),
+                     'built': bool(mem.get('entities')),
+                     'at': str(mem.get('generated_at') or '')})
+    # most owed first, then never-built, then oldest graph
+    rows.sort(key=lambda r: (-r['pending'], r['built'], r['at']))
+    return rows
+
+
+#: the queue's own pacing. It is not a scheduler: it runs because the user
+#: pressed a button, and it stops when the backlog is empty or they cancel.
+QUEUE_WAIT = 20
+QUEUE_MAX_WAITS = 90          # ~30 minutes of "come back when you are idle"
+#: A sweep that advances nothing already ends the run. This is the other end of
+#: it: every sweep spends real Claude calls, so a project that reports itself
+#: stale however often it is built — a hashing bug, a module that cannot be
+#: extracted — must not be paid for forever. Same reasoning as `auto_cap` and
+#: `headless_budget_usd`, one level up.
+QUEUE_MAX_SWEEPS = 20
+
+
+def build_queue(job=None, cap=6):
+    """Work through every project's module backlog, stalest first, pausing while
+    the user is busy and stopping when there is nothing left to build.
+
+    A job rather than a second scheduler, and that is the whole design: the job
+    banner already gives it progress, a Cancel that kill-trees the running
+    `claude -p`, and a desktop notification at the end. The existing auto-memory
+    scheduler is untouched — it has its own opt-in and its own cadence, and this
+    is the explicit "spend the idle time catching up" the user asked for.
+
+    Sweeps repeat: a project is capped at `cap` units a pass, so one repo with a
+    hundred changed modules cannot starve the rest. A sweep that builds nothing
+    ends the run.
+    """
+    from . import memory, quota, ui
+    jid = (job or {}).get('id', '')
+    done = failed = 0
+    blocked = set()               # accounts that answered "rate limited"
+    waits = 0
+    for _sweep in range(QUEUE_MAX_SWEEPS):
+        rows = [r for r in _queue_order() if r['cfgdir'] not in blocked]
+        if not rows:
+            break
+        built_this_sweep = 0
+        for i, r in enumerate(rows):
+            if job is not None and job['cancel_event'].is_set():
+                raise JobCancelled()
+            why = machine_busy(exclude=jid)
+            while why:
+                if job is not None and job['cancel_event'].is_set():
+                    raise JobCancelled()
+                if waits >= QUEUE_MAX_WAITS:
+                    ui.flash('Stopped waiting — %s' % why)
+                    return {'built': done, 'failed': failed, 'stopped': 'busy'}
+                waits += 1
+                ui.flash('Paused — %s' % why)
+                # the job's own Event, so Cancel is not 20 seconds late
+                if job is not None:
+                    job['cancel_event'].wait(QUEUE_WAIT)
+                else:
+                    time.sleep(QUEUE_WAIT)
+                why = machine_busy(exclude=jid)
+            if r['cfgdir'] in blocked:
+                continue
+            reason = quota.reason(r['cfgdir'] or None)
+            if reason:
+                blocked.add(r['cfgdir'])
+                ui.flash('%s skipped — %s' % (r['name'], reason))
+                continue
+            if not memory.is_stale(r['path'], r['folder']):
+                continue
+            ui.flash('%s (%d/%d) — building modules…' % (r['name'], i + 1, len(rows)))
+            if job is not None:
+                # The 6-hour abandoned-job reaper keys on `started`, and a queue
+                # that is working is not a leak. A beat per project is what tells
+                # the two apart.
+                job['beat'] = time.time()
+            ran = _refresh_project(r['path'], r['folder'], auto_cap=cap,
+                                   cfgdir=r['cfgdir'] or None)
+            if not ran:
+                continue          # somebody else holds this project's scan lock
+            res = _LAST_REFRESH.get(os.path.abspath(r['path'])) or {}
+            if res.get('ok'):
+                done += 1
+                built_this_sweep += 1
+                ui.flash('%s — %d module(s), %d lesson(s)%s'
+                      % (r['name'], res.get('extracted', 0), res.get('lessons', 0),
+                         ', %d still queued' % res['pending'] if res.get('pending') else ''))
+            else:
+                failed += 1
+                err = str(res.get('error') or memory.why_failed(''))
+                ui.flash('%s failed — %s' % (r['name'], err[:120]))
+                # quota.note_failure is NOT called here: _run_cancellable
+                # already latched it, with the env that names the account
+                # this project was built under. Twice would be one place
+                # too many, and this one has only a cfgdir to offer.
+                if quota.is_limit_error(err):
+                    blocked.add(r['cfgdir'])
+        if not built_this_sweep:
+            break                 # nothing left that a pass can advance
+    return {'built': done, 'failed': failed,
+            'accounts_blocked': sorted(a for a in blocked if a)}
 
 
 def _auto_projects():
@@ -2592,11 +2809,33 @@ def api_path_complete(q, body):
     return {'dirs': dirs, 'more': max(0, len(names) - 12)}
 
 
+def api_quit(q, body):
+    """Close archeus. The only endpoint that ends the process, and it exists
+    for one caller: finishing a staged self-upgrade, which cannot install while
+    the console script it is replacing is the running process.
+
+    The shell registers `gui.QUIT_HOOK`; with none registered there is nothing
+    a request can close, which is also why the endpoint floor's route sweep
+    cannot shut down its own server with this.
+
+    The reply goes out first — quitting inline would close the socket the
+    answer is travelling on, and the SPA would read that as a failure.
+    """
+    from . import gui
+    hook = gui.QUIT_HOOK
+    if not hook:
+        return {'ok': False, 'error': 'no window to close — quit archeus yourself'}
+    threading.Timer(0.4, hook).start()
+    return {'ok': True}
+
+
 def api_open_path(q, body):
-    """Resolve a typed folder into a launchable project — validate it's an
-    existing directory and encode it, exactly like the TUI's __open_path__
-    branch. Returns {ok, path, enc, name} for the launch modal to use with
-    choice='new'."""
+    """Resolve a typed folder into a project — validate it's an existing
+    directory and encode it, exactly like the TUI's __open_path__ branch.
+
+    Returns {ok, path, enc, name}: everything openProject() needs to render the
+    project page for a folder that has no session history yet. Writes nothing.
+    """
     from .paths import encode_component, resolve_dir
     cand = resolve_dir(body.get('path'))
     if not cand:
@@ -3093,6 +3332,14 @@ def api_job_start(q, body):
                                    or 'Re-plan failed or produced no output')
             return {'plan': revised}
         jid = start_job('Re-planning with feedback', _replan)
+    elif kind == 'memory_queue':
+        def _mq():
+            res = build_queue(_JOBCTX.job)
+            if not res.get('built') and not res.get('failed'):
+                return {'message': 'Every project\'s memory is already current'}
+            return dict(res, message='Built %d project(s), %d failed'
+                        % (res.get('built', 0), res.get('failed', 0)))
+        jid = start_job('Building modules', _mq)
     elif kind == 'claude_update':
         from . import versions
         target = str(body.get('target', '') or '')
@@ -3104,8 +3351,9 @@ def api_job_start(q, body):
         jid = start_job('Updating Claude Code' + (f' to {target}' if target else ''), _cu)
     elif kind == 'archeus_update':
         from . import versions
+        restart = bool(body.get('restart'))
         def _su():
-            ok, msg = versions.update_self()
+            ok, msg = versions.update_self(restart=restart)
             if not ok:
                 raise RuntimeError(msg or 'update failed')
             return {'message': msg}
@@ -3794,6 +4042,7 @@ POST_ROUTES = {
     '/api/extra-paths': api_extra_paths_set,
     '/api/add-dirs': api_add_dirs_set,
     '/api/open-path': api_open_path,
+    '/api/quit': api_quit,
     '/api/health/allowlist': api_health_allowlist,
     '/api/conventions/sync': api_conventions_sync,
     '/api/conventions/pin': api_conventions_pin,

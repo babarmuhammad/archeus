@@ -361,6 +361,35 @@ def _budget_args():
     return ['--max-budget-usd', f'{cap:g}'] if cap > 0 else []
 
 
+def use_account(env):
+    """Context manager: every headless Claude call on THIS thread spends the
+    account described by *env*, until the block ends.
+
+    Thread-local for the same reason `_tls.silent` is: it is a property of the
+    work running on this thread, and the call that needs it sits five frames
+    below the code that knows the answer (the build queue picks the account, and
+    `_claude_stdin` is what spawns). The alternative was an `env=` parameter on
+    auto_cycle, refresh_memory, _extract and _claude_json — four signatures to
+    keep in step for one value that never varies within a project.
+
+    Until this existed, every build spent whichever account the archeus PROCESS
+    resolved, whatever the project belonged to. It is also what makes quota
+    attribution right: quota.preflight reads CLAUDE_CONFIG_DIR out of this dict
+    to decide which account's headroom it is about to use.
+    """
+    import contextlib
+
+    @contextlib.contextmanager
+    def _held():
+        prev = getattr(_tls, 'env', None)
+        _tls.env = env or None
+        try:
+            yield
+        finally:
+            _tls.env = prev
+    return _held()
+
+
 def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
                   crumbs=('ARCHEUS', 'MEMORY'), label='Working with Claude...',
                   model=None, extra_args=()):
@@ -399,7 +428,8 @@ def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
     if getattr(_tls, 'silent', False):
         from .gui_api import _run_cancellable
         try:
-            return _run_cancellable(args, input_text=prompt, cwd=cwd, timeout=timeout)
+            return _run_cancellable(args, input_text=prompt, cwd=cwd, timeout=timeout,
+                                    env=getattr(_tls, 'env', None))
         except Exception:
             return ''
     from .ui import run_with_progress_stdin

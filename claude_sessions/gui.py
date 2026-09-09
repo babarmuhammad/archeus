@@ -759,6 +759,14 @@ MAX_DRAIN = 8 * 1024 * 1024
 MAX_CONNECTIONS = 32
 
 
+#: How to close the window, registered by whichever shell owns it and read by
+#: POST /api/quit. It exists for one caller: finishing a staged self-upgrade,
+#: which cannot install while the console script it replaces is the running
+#: process. None means there is nothing a request can close — which is also
+#: what makes the endpoint inert under test, where no shell ever runs.
+QUIT_HOOK = None
+
+
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -838,6 +846,15 @@ def run_gui(open_browser=True):
 
     srv = make_server()
     port = srv.server_address[1]
+
+    def _quit():
+        # From a request thread, so shutdown() cannot be called inline: it
+        # waits for serve_forever's loop, which is what would be waiting for us.
+        threading.Thread(target=srv.shutdown, daemon=True).start()
+        return True
+
+    global QUIT_HOOK
+    QUIT_HOOK = _quit
     # ?k= is required: `/` is what carries the token into the page, so it cannot
     # itself be served unauthenticated (see the module doc). app.js drops it from
     # the address bar as soon as it has booted.

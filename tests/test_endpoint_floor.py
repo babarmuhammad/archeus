@@ -45,6 +45,8 @@ def live(monkeypatch, tmp_path):
     from claude_sessions import proc
     monkeypatch.setattr(proc, 'spawn_terminal',
                         lambda *a, **kw: (None, 'blocked in tests'))
+    monkeypatch.setattr(proc, 'spawn_detached',
+                        lambda *a, **kw: (None, 'blocked in tests'))
     monkeypatch.setattr(proc, 'run', lambda *a, **kw: None)
     monkeypatch.setattr(gui_api, 'start_job', lambda *a, **kw: 'stub-job')
     # An OSError, not a test failure: some routes legitimately shell out to the

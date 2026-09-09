@@ -500,7 +500,14 @@ def run():
             encoded_name = encode_component(path)
             proj_folder  = os.path.join(projects_dir, encoded_name)
             project_name = os.path.basename(path) or path
-            choice = 'new'
+            # The project SCREEN, like __proj_ below — opening a folder is how
+            # you reach its sessions and memory, not a shortcut to one launch.
+            choice, foreign_dir = sessions_menu(scan_sessions(proj_folder),
+                                                proj_folder, project_name, path)
+            if not choice:
+                continue
+            if foreign_dir:
+                opts['cfgdir'] = foreign_dir if foreign_dir != config_dir else ''
 
         elif sel == '__search_all__':
             from .search import global_search
