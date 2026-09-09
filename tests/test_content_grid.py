@@ -50,6 +50,71 @@ def _fn_body(name):
 #: `.content>.card{` first, which is a different rule about a different thing.
 NL = chr(10)
 
+#: Every page's declared archetype, read out of the served page rather than
+#: restated here. This is what turns the two lists that used to be typed into
+#: this file — four "designed" function names, fourteen `.wide` heading strings
+#: — into facts about all 28 pages instead of assertions about the handful
+#: somebody remembered. A page missing from either table simply has no
+#: archetype, which `test_every_page_declares_a_shape` is what catches.
+def _arch_table():
+    out = {}
+    for tbl, idx in (('NAV', 5), ('TABS', 3)):
+        block = _JS[_JS.index('const %s=[' % tbl) + len('const %s=[' % tbl):]
+        block = block[:block.index('];')]
+        # Rows are found by their BRACKETS, not by matching a whole line: the
+        # last row of TABS ends `]];` and a line-anchored pattern could not
+        # match it, so `tools` was missing and everything still passed. Neither
+        # table nests a bracket inside a row, so this is exact.
+        for row in re.finditer(r'\[([^\[\]]+)\]', block):
+            # split on top-level commas only — a blurb contains commas
+            parts = _top_level_commas(row.group(1))
+            if len(parts) > idx and parts[0].strip()[:1] in '\'"':
+                out[parts[0].strip().strip("'\"")] = \
+                    parts[idx].strip().strip("'\"")
+    return out
+
+
+def _top_level_commas(s):
+    """Split a tuple body on commas that are not inside a quote.
+
+    The escape branch is load-bearing: two blurbs carry an apostrophe as `\\'`
+    ("This project's token spend", "Claude Code's own record"), and without it
+    the scan thought the string had closed and lost those two rows — 26 of 28,
+    silently, which is the shape of bug this whole file exists to distrust."""
+    parts, buf, q, esc = [], '', None, False
+    for ch in s:
+        if esc:
+            buf += ch
+            esc = False
+        elif ch == '\\':
+            buf += ch
+            esc = True
+        elif q:
+            buf += ch
+            if ch == q:
+                q = None
+        elif ch in '\'"':
+            q = ch
+            buf += ch
+        elif ch == ',':
+            parts.append(buf)
+            buf = ''
+        else:
+            buf += ch
+    parts.append(buf)
+    return parts
+
+
+_ARCH = _arch_table()
+
+#: The shapes `shell()` knows how to write. `grid` is the un-designed default a
+#: page carries until this rehaul reaches it.
+SHAPES = ('grid', 'dash', 'split', 'feed', 'form', 'pile')
+
+
+def _arch(page):
+    return _ARCH.get(page)
+
 
 def _read_tool(name):
     """The audit tools are part of the contract this file pins: a probe that
@@ -245,7 +310,9 @@ def test_the_split_collapses_before_its_columns_get_unreadable():
 def test_the_skills_list_and_its_detail_are_one_pane_each():
     """The page this replaced put an explainer, 62 unbounded rows and an "add"
     form side by side, so the list got one narrow column of three."""
-    assert '<div class="tpane">' in _JS
+    # the split is DECLARED now, not hand-written into the template: the page
+    # says `split` in NAV and `shell()` writes the wrapper
+    assert _arch('skills') == 'split', 'the skills page is no longer a split pane'
     assert 'class="card tdet" id="skDet"' in _JS
     row = _JS[_JS.index('const row=(r,i)=>'):]
     row = row[:row.index('const det=')]
@@ -386,21 +453,75 @@ def test_a_pile_balances_instead_of_leaving_rows_ragged():
     assert '.pile>*:not(.card)' in _CSS, 'furniture no longer spans a pile'
 
 
-def test_a_pile_is_painted_through_the_two_functions_that_may_write_content():
-    """The wrapper goes on at the call site, not in each renderer's template,
-    so the raw `#content` write stays at exactly `paint`/`paintNow` — which is
-    what test_no_page_can_paint_over_the_one_you_are_on counts."""
-    assert 'function paintPile(nav,html){return paint(nav,PILE(html));}' in _JS
-    assert 'function paintNowPile(html){return paintNow(PILE(html));}' in _JS
-    # every page that is a stack of independent sections, and no page with a
-    # designed layout (the dashboard, a list + detail, the sessions list)
-    assert _JS.count('paintPile(nav,') + _JS.count('paintNowPile(') >= 10
-    for designed in ('drawHome', 'pgSkills', 'pgAgents', 'drawSessions'):
-        body = _fn_body(designed)
-        assert 'paint(' in body or 'paintNow(' in body, \
-            f'{designed} does not paint — the slice is wrong, not the page'
-        assert 'paintPile(' not in body and 'paintNowPile(' not in body, \
-            f'{designed} has a designed layout and must not be a pile'
+def test_every_page_declares_a_shape():
+    """A page's composition used to be whatever its renderer happened to emit,
+    so `paint` vs `paintPile` was a choice made 28 separate times and nothing
+    could tell a considered layout from an accident. The archetype is that
+    decision, declared in the same table the page is declared in — which is
+    what makes it impossible to add a page without one."""
+    ids = re.findall(r"^\s*\['([a-z]+)'", _JS[_JS.index('const NAV=['):
+                                              _JS.index('const SECTIONS=[')],
+                     re.M)
+    assert len(ids) == 19, f'expected 19 NAV pages, parsed {len(ids)}'
+    for page in ids:
+        assert _arch(page) in SHAPES, \
+            f'{page} declares no archetype (or an unknown one: {_arch(page)!r})'
+    tab_ids = re.findall(r"^\s*\['([a-z]+)'", _JS[_JS.index('const TABS=['):
+                                                 _JS.index('const TAB_GROUPS=[')],
+                         re.M)
+    assert len(tab_ids) == 9, f'expected 9 project tabs, parsed {len(tab_ids)}'
+    for tab in tab_ids:
+        assert _arch(tab) in SHAPES, f'tab {tab} declares no archetype'
+
+
+def test_the_shell_is_the_only_thing_that_writes_a_layout_wrapper():
+    """One writer for `.pile`, `.dash`, `.tpane` and every shape after them,
+    for the same reason `paint`/`paintNow` are the only writers of `#content`:
+    a renderer that hand-writes the wrapper is a renderer that will be missing
+    `break-inside` the day the rule changes, and four hand-written wrappers is
+    four chances to disagree about what a shape means.
+
+    Asserted as an ABSENCE across the whole of app.js, so a new page cannot
+    reintroduce one — the previous form of this check counted `class="pile"`
+    and had nothing to say about the two hand-written `.tpane`s or the
+    dashboard's own `.dash`, all three of which existed while it passed."""
+    assert 'function shellNow(html){return paintNow(shellWrap(html));}' in _JS
+    assert 'function shell(nav,html){return paint(nav,shellWrap(html));}' in _JS
+    # the wrapper class appears exactly once each: inside ARCH_WRAP
+    for shape in ('pile', 'dash', 'tpane'):
+        assert f'class="{shape}"' not in _JS, \
+            f'a renderer is hand-writing the {shape} wrapper — use shell()'
+    assert _JS.count('ARCH_WRAP=') == 1 and _JS.count('function shellWrap(') == 1
+    # and the shape is read from the table, never passed in by the caller
+    assert re.search(r'function shell\(nav,html\)\{return paint\(nav,'
+                     r'shellWrap\(html\)\);\}', _JS), \
+        'shell() takes an archetype argument — a renderer must not claim a shape'
+
+
+def test_a_designed_layout_is_never_a_pile():
+    """This used to be four function names typed into this file. It is every
+    page now, derived from what each one declares: multicol pours content down
+    column 1 and then starts column 2, so a pile is right for INDEPENDENT
+    sections and wrong for anything whose order or composition is designed."""
+    for page, arch in _ARCH.items():
+        if arch == 'pile':
+            continue
+        assert arch in SHAPES
+    # the shapes that are compositions rather than a stack
+    for page in ('agents', 'skills'):
+        assert _arch(page) == 'split', f'{page} stopped being a list + detail'
+    assert _ARCH.get('sessions') != 'pile', 'the sessions list is not a pile'
+
+
+def test_the_migration_marker_only_ever_shrinks():
+    """`grid` is what a page is before anyone decided what it should be — a bag
+    of cards dropped into the auto-fit grid. It is scaffolding for this rehaul,
+    so the count is pinned DOWNWARD: a page may leave it, nothing may join it,
+    and when the last one goes the shape itself should be deleted rather than
+    left as a place for the next page to land by default."""
+    grid = sorted(p for p, a in _ARCH.items() if a == 'grid')
+    assert len(grid) <= 12, \
+        f'{len(grid)} pages still undesigned, was 12: {grid}'
 
 
 # ── and the tool that measures all of it ─────────────────────────────
@@ -448,15 +569,12 @@ def test_the_space_probe_measures_the_thing_and_not_an_artefact_of_it():
     assert 'IHEIGHTS_JS' in src and 'rows.get(r).push' in src
 
 
-def test_the_pile_wrapper_has_exactly_one_writer():
-    """`<div class="pile">` is markup with a rule behind it — a multi-column box
-    whose children must not be split — and a page that hand-writes the div is a
-    page that will be missing `break-inside` the day the rule changes. It is
-    also the same shape as the `#content` invariant one function up: one place
-    writes the wrapper, every renderer asks for it by name."""
-    assert _JS.count('class="pile"') == 1, \
-        'a renderer is writing the pile wrapper itself — use paintPile()'
-    assert 'const PILE=' in _JS and 'function paintPile(' in _JS
+# The pile's single-writer check lived here and is now
+# test_the_shell_is_the_only_thing_that_writes_a_layout_wrapper, which asserts
+# the same invariant for every shape instead of only for `.pile`. It counted
+# `class="pile"` and therefore had nothing to say about the two hand-written
+# `.tpane` wrappers or the dashboard's own `.dash` — all three of which were in
+# the file, and passing, the whole time it existed.
 
 
 def test_a_card_that_cannot_share_a_row_cannot_share_a_column_either():

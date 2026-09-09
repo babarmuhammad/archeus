@@ -1006,7 +1006,15 @@ def test_gui_home_dashboard_zones_and_recent_age(monkeypatch, tmp_path):
     # the dashboard zones exist. Matched on the class token rather than the whole
     # attribute: cards also carry .spot/.lift now, and pinning the exact string
     # made this fail on a purely presentational change.
-    assert 'class="dash"' in PAGE
+    #
+    # The wrapper itself is no longer written here: a page declares its shape
+    # and `shell()` writes it, so what this asserts is that home still resolves
+    # to the bento rather than that drawHome types the div.
+    assert "if(PAGE_==='home')return 'dash'" in PAGE, \
+        'home no longer declares the dashboard archetype'
+    assert 'dash:' in PAGE[PAGE.index('const ARCH_WRAP='):
+                           PAGE.index('const ARCH_WRAP=') + 200], \
+        'the shell cannot write the dash wrapper'
     for zone in ('d-i1', 'd-i2', 'd-i3', 'd-i4', 'd-acct', 'd-chart',
                  'd-projects', 'd-continue', 'd-recent'):
         assert f'card {zone}' in PAGE or f' {zone} ' in PAGE, zone
