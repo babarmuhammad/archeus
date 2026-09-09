@@ -2194,6 +2194,17 @@ function ago(sec){
     if(s>=n)return Math.floor(s/n)+u+' ago';
   return 'just now';
 }
+/* When something happened, said once. The Memory tab printed `ago()` for its
+   inventory rows and a raw `2026-08-12T09:15:00Z` for Built, for the last
+   automatic run and for every recent-work row — three surfaces of the same card
+   answering "when" in two different languages. The exact stamp stays on hover,
+   because a timestamp is what you want when you are comparing two of them. */
+function stamp(v){
+  if(!v)return 'never';
+  const d=new Date(v);
+  if(isNaN(d))return String(v);
+  return `<span title="${esc(d.toLocaleString())}">${ago(d.getTime()/1000)||'just now'}</span>`;
+}
 function invRow(name,does,where,size,action,when){
   return `<tr><td title="${esc(where)}"><b>${name}</b>
       <div style="color:var(--dim2);font-size:11px">${does}</div>
@@ -2242,9 +2253,9 @@ async function entDetail(name){
       :`<p style="color:var(--dim2);font-size:12px;margin-top:10px">Recall counts hits per fact, not per session, so there is no per-session breakdown for a code fact — only lessons carry the session they came from.</p>`}`;
   $('#drawer').classList.add('show');
 }
-/* what actually raises each freshness check, as a button. workspace._FIXES is
-   phrased in TUI keystrokes ("press c", "m → b"), which is the right answer
-   there and no answer at all here. */
+/* what actually raises each freshness check, as a button. workspace._FIXES says
+   the action in words for both surfaces; this is the GUI's way of offering it,
+   and the reason the shared text no longer names a keystroke. */
 const WSFIX={claude_md:['Scaffold','cmScaffold()'],
   claude_md_fresh:['Rebuild memory','buildMemory()'],
   repo:['Rebuild memory','buildMemory()'],
@@ -2332,7 +2343,7 @@ async function drawMemory(){
         <span class="k">Relations</span><span>${st.n_relations||0}${st.n_module_edges?` · ${st.n_module_edges} module link(s)`:''}</span>
         <span class="k">Lessons</span><span>${st.n_lessons||0} (${st.n_pending||0} pending review)</span>
         <span class="k">Unscanned sessions</span><span>${st.n_unscanned||0} of ${st.session_counter||0} seen</span>
-        <span class="k">Built</span><span>${esc(st.generated_at||'never')}</span>
+        <span class="k">Built</span><span>${stamp(st.generated_at)}</span>
       </div></div>
       ${(st.top||[]).length?`<div class="lbl" style="margin-top:10px" title="How often recall has injected each fact. It is a term in the ranking and in what eviction drops first.">Facts Claude reaches for most</div>
         <div class="chips">${st.top.map(t=>`<span class="chip" style="cursor:pointer" onclick="entDetail(${hesc(t.name)})" title="Recalled into ${t.hits} prompt(s)${t.module?' · '+esc(t.module):''} — click for what it means">${esc(t.name)} <i>${t.hits}</i></span>`).join('')}</div>`:''}
@@ -2347,7 +2358,7 @@ async function drawMemory(){
         <input type="checkbox" id="autoMem" ${st.auto_on?'checked':''} onchange="toggleAutoMem(this.checked)">
         <span>${ic('refresh')} Keep this project's memory updated automatically</span>
         <span class="tag" title="Change it on the Claude Code page, under auto-memory.">every ${every(st.auto_interval)}</span>
-        ${st.auto_updated?`<span class="tag">last run ${esc(String(st.auto_updated).slice(0,16))}</span>`:''}</label>
+        ${st.auto_updated?`<span class="tag">last run ${stamp(st.auto_updated)}</span>`:''}</label>
       <div style="margin-top:12px">${INST.html('spark','memcost',{fmt:'usd',label:'what each cycle cost',noread:true})}</div>
       <div class="kv" style="margin-top:10px">
         <span class="k">Last cycle</span><span>${al.extracted??st.last_extracted??0} module(s)${al.lessons?` · ${al.lessons} lesson(s)`:''}${al.scanned?` · ${al.scanned} session(s) scanned`:''}${st.last_cost_usd?` · $${(+st.last_cost_usd).toFixed(3)}`:''}</span>
@@ -2442,7 +2453,7 @@ async function drawMemory(){
         <span class="hlink" onclick="go('hooks')">Fix</span></div>`:''}
       <div id="memWork">${(wl.entries||[]).length?`<table class="tbl" style="margin-top:10px"><tr><th>when</th><th>summary</th><th>files</th></tr>`
         +wl.entries.map(e=>`<tr${e.session_id?` style="cursor:pointer" onclick="openWorkSession(${hesc(e.session_id)})" title="Open this session"`:''}>
-          <td style="white-space:nowrap;color:var(--dim)">${esc(e.ended_at||'')}</td>
+          <td style="white-space:nowrap;color:var(--dim)">${stamp(e.ended_at)}</td>
           <td>${esc(e.summary||'')}</td>
           <td style="color:var(--dim);font-size:12px">${esc((e.files||[]).join(', '))}</td></tr>`).join('')
         +`</table>`:'<div class="empty">No sessions recorded yet.</div>'}</div></div>
@@ -2473,7 +2484,7 @@ async function fillWorkspace(){
   b.innerHTML=(ws.checks||[]).map(k=>{
     const f=WSFIX[k.name]||null,na=!k.applicable;
     return `<div class="hrow">
-      <span style="min-width:150px">${esc(k.name.replace(/_/g,' '))}</span>
+      <span style="min-width:150px">${esc(k.label||k.name)}</span>
       <span style="min-width:74px">${na?'<span style="color:var(--dim2)">n/a</span>'
         :k.state==='fresh'?'<span class="tag ok">fresh</span>'
         :k.state==='invalid'?'<span class="tag warn">invalid</span>':'<span class="tag warn">stale</span>'}</span>
@@ -2705,7 +2716,9 @@ async function drawAudit(){
     return `
     <tr><td>${esc(it.label)} ${it.lazy?'<span class="tag" title="Loaded only when Claude opens a matching path.">lazy</span>':''}
       ${owner?`<span class="hlink" style="font-size:11px" onclick="TAB=${hesc(owner)};drawProject()">detail →</span>`:''}</td>
-    <td class="num">${it.tokens==null?'<span title="Not knowable before the session starts.">~?</span>':it.tokens}</td>
+    <td class="num">${it.tokens==null
+      ?'<span style="color:var(--dim2)" title="An MCP server\'s tool list is only known once the session has connected to it.">not until it connects</span>'
+      :it.tokens}</td>
     <td style="color:var(--warn);font-size:12px">${esc((it.warnings||[]).join(' · '))}</td>
     <td style="white-space:nowrap">${it.path?`<button class="btn sm" onclick="post('/api/open-editor',{file:${hesc(it.path)}})">open</button>`:''}</td></tr>`;}).join('');
   if(!paintPile(nav,`
@@ -2796,8 +2809,8 @@ async function drawProjUsage(){
   const ss=d.sessions||[],spend=ss.reduce((a,r)=>a+(r.cost||0),0);
   const rows=(d.sessions||[]).map(r=>`
     <tr><td>${esc(r.age)}</td><td>${esc(r.name)} ${r.account&&r.account!=='default'?`<span class="tag">${esc(r.account)}</span>`:''}</td>
-    <td class="num">${r.msgs}</td><td class="num">${r.usage.in}</td>
-    <td class="num">${r.usage.out}</td><td class="num">${r.exact?'':'~'}$${r.cost.toFixed(2)}</td></tr>`).join('');
+    <td class="num">${r.msgs}</td><td class="num">${fmtTok(r.usage.in)}</td>
+    <td class="num">${fmtTok(r.usage.out)}</td><td class="num">${r.exact?'':'~'}$${r.cost.toFixed(2)}</td></tr>`).join('');
   paint(nav,`<div class="card wide"><h3>Per-session usage</h3>
     <p class="secthint">Every session of this project, oldest cost first. The estimate is at published API rates — a useful gauge of consumption even on a subscription, where nothing is billed per token.</p>
     ${rows?`<table class="tbl"><tr><th>age</th><th>session</th><th>msgs</th>
@@ -3968,8 +3981,11 @@ async function pgLoops(nav){
       <div style="color:var(--dim2);font-size:12px;margin-top:6px">${esc(md.file||'')}${md.exists?'':' — does not exist yet'}</div></div>`))return;
   const upd=()=>{const e=$('#loopPreview');if(!e)return;
     const i=($('#loopInt').value||'').trim(),p=($('#loopPrompt').value||'').trim();
+    /* `every ?` was a placeholder leaking into a preview: until an interval is
+       typed there is no schedule to show, so the clause is left off. */
     e.textContent=LOOPKIND==='schedule'
-      ?`claude -p ${p?JSON.stringify(p):'<loop.md>'} --permission-mode ${LOOPPERM}  ·  every ${i||'?'}`
+      ?`claude -p ${p?JSON.stringify(p):'<loop.md>'} --permission-mode ${LOOPPERM}`
+        +(i?`  ·  every ${i}`:'')
       :['/loop',i,p].filter(Boolean).join(' ');};
   if($('#loopInt')){$('#loopInt').oninput=upd;$('#loopPrompt').oninput=upd;upd();}
   // one poll while the page is open, and it stops with the page — the same
@@ -5137,11 +5153,14 @@ async function drawSync(){
     if(m.claude_md)bits.push('<b>CLAUDE.md</b> copy global instructions');
     return `<div class="lrow"><span class="tag warn">${esc(r.name)}</span>
       <div style="font-size:12.5px;color:var(--dim)">${bits.join(' · ')}</div></div>`;}).join('');
-  $('#syncOut').innerHTML=`<table class="tbl"><tr><th>account</th>
+  /* The header only exists if there is a body under it. It used to be printed
+     unconditionally, so an account list with nothing to compare showed seven
+     column names over the sentence "No accounts to compare." */
+  $('#syncOut').innerHTML=`${rows?`<table class="tbl"><tr><th>account</th>
       ${kinds.map(([,l])=>`<th class="num">${l}</th>`).join('')}
       <th class="num">statusline</th><th class="num">CLAUDE.md</th>
-      <th></th></tr>${rows||''}</table>
-    ${rows?'':'<div class="empty">No accounts to compare.</div>'}
+      <th></th></tr>${rows}</table>`
+    :'<div class="empty">Nothing to compare — sync needs at least two accounts.</div>'}
     ${d.clean?'<div class="empty" style="color:var(--ok)">✓ Every account already has everything.</div>'
       :`<div style="margin-top:10px">${detail}</div>
         <div class="mrow"><button class="btn pri" onclick="syncApply()">Copy the missing items into every account</button></div>`}`;

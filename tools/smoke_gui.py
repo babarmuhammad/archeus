@@ -641,7 +641,7 @@ ROUTES = {
                         # the new emitters: an alert tag, a dismissible scan
                         # finding, and a plain local one
                         {'tag': 'stale', 'text': 'CLAUDE.md may be outdated (repo moved)'
-                                                 ' — rebuild memory (m → b) (+25% freshness)'},
+                                                 ' — rebuild memory (+25% freshness)'},
                         {'tag': 'vuln', 'text': 'cfgdir is joined with a path on ~40 endpoints'},
                         {'tag': 'todo', 'text': 'claude_sessions/gui.py:88 — TODO: cache this'},
                         {'tag': 'test', 'text': 'no test file for: failover, denygen'}],

@@ -47,17 +47,37 @@ _WEIGHTS = {
 #: nothing on earth wrote.
 _BASELINE_OPS = ('scaffold', 'ai_analyze', 'compress', 'memory', 'prune')
 
-#: what the user should press to clear each stale check. Diagnosis without a
-#: remedy is why this screen got read once and never again.
+#: What each check is CALLED on screen. The name above is an identifier — the
+#: score reads it, the payload keys on it, `_FIXES` looks up by it — and both
+#: surfaces were printing it with its underscores swapped for spaces, so the
+#: Memory tab listed `claude md` and `claude md fresh` as two rows whose names
+#: do not say how they differ. A reader gets a label; the code keeps the name.
+_LABELS = {
+    'manifest': 'Memory built',
+    'claude_md': 'CLAUDE.md exists',
+    'claude_md_fresh': 'CLAUDE.md matches the code',
+    'mcp_docs': 'MCP tools documented',
+    'repo': 'Baselined against this commit',
+    'sessions': 'Sessions folded in',
+    'conflicts': 'README and CLAUDE.md agree',
+    'claude_md_claims': 'Your prose agrees with memory',
+}
+
+#: what clears each stale check. Diagnosis without a remedy is why this screen
+#: got read once and never again.
+#:
+#: It says the ACTION and not the keystroke: this table is read by the terminal
+#: UI and by the GUI, and `(m → b)` is the terminal's key path — printed in the
+#: GUI it sat next to the button that does the same thing.
 _FIXES = {
-    'manifest': 'build memory (m → b) or scaffold CLAUDE.md (c)',
-    'claude_md': 'scaffold CLAUDE.md (c)',
-    'claude_md_fresh': 'rebuild memory (m → b) — cheap and incremental',
+    'manifest': 'build memory, or scaffold CLAUDE.md',
+    'claude_md': 'scaffold CLAUDE.md',
+    'claude_md_fresh': 'rebuild memory — cheap and incremental',
     'mcp_docs': 'analyze the undocumented server(s) from the MCP screen',
-    'repo': 'rebuild memory (m → b) to re-baseline against this HEAD',
-    'sessions': 'rebuild memory (m → b) to fold in the new sessions',
-    'conflicts': 'README is newer than CLAUDE.md — re-run analyze (a)',
-    'claude_md_claims': 'one of the two is out of date — rebuild memory (m → b) if '
+    'repo': 'rebuild memory to re-baseline against this HEAD',
+    'sessions': 'rebuild memory to fold in the new sessions',
+    'conflicts': 'README is newer than CLAUDE.md — re-run analyze',
+    'claude_md_claims': 'one of the two is out of date — rebuild memory if '
                         'the graph is behind, or edit that sentence in CLAUDE.md '
                         'yourself; your prose is the one block archeus never rewrites',
 }
@@ -554,7 +574,11 @@ def _evaluate(m, live):
     checks = []
 
     def add(name, state, detail, applicable=True):
+        # `label` rides along rather than being looked up per surface: the TUI
+        # and the GUI both render these rows, and a second lookup is a second
+        # chance for one of them to print the identifier instead.
         checks.append({'name': name, 'state': state, 'detail': detail,
+                       'label': _LABELS.get(name, name.replace('_', ' ')),
                        'applicable': applicable})
 
     corrupt = m.get('_corrupt')

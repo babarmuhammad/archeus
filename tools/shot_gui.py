@@ -61,13 +61,16 @@ sg.ROUTES['/api/mcp'] = {'servers': [{'name': 'server-%d' % i,
 # hid the bug: `.acct-card{flex:0 0 232px}` in a half-width dashboard area fits
 # three and clips the fourth, which is exactly what a user photographed. A stub
 # is only as strong as the state it puts the UI in.
+# The email is its own value, not the account name again: every account row in
+# the app prints name and email side by side, and a stub that repeats itself
+# reads as a bug on screen ("default default") while hiding the real width.
 _ACCTS = [('default', 87, '01:40', 59, 'Sun 09:00'),
           ('teamA', 82, '03:09', 57, 'Sat 08:59'),
           ('teamB', 45, '04:50', 48, 'Mon 02:00'),
           ('teamC', 12, '05:20', 31, 'Tue 07:30'),
           ('research', 99, '00:25', 77, 'Wed 11:00')]
 sg.PLAN['accounts'] = [
-    {'account': n, 'email': n, 'plan': 'max', 'status': 'ok',
+    {'account': n, 'email': '%s@example.invalid' % n, 'plan': 'max', 'status': 'ok',
      'windows': [{'label': 'session', 'pct': sp, 'resets': sr},
                  {'label': 'weekly', 'pct': wp, 'resets': wr}]}
     for n, sp, sr, wp, wr in _ACCTS]
@@ -103,6 +106,48 @@ sg.ROUTES['/api/lessons'] = {
              'Search indexes rebuild from the read replica',
              'The rebuild saturated the primary during business hours; it '
              'reads the replica and throttles now.')))]}
+# The project's own Usage tab, which was being audited in its empty state while
+# the Sessions tab beside it listed five. Oldest cost first, as the page says.
+sg.ROUTES['/api/usage/project'] = {'sessions': [
+    {'age': a, 'name': nm, 'account': acct, 'msgs': m, 'exact': ex,
+     'cost': c, 'usage': {'in': i, 'out': o}}
+    for a, nm, acct, m, ex, c, i, o in (
+        ('4d', 'cache the search index warm-up', 'teamA', 25, False, 0.42,
+         61_000, 16_000),
+        ('2d', 'add the migration gate to deploy', 'default', 42, True, 0.88,
+         121_000, 35_000),
+        ('1d', 'split the checkout handler', 'teamA', 137, False, 4.71,
+         702_000, 208_000),
+        ('3h', 'move invoice totals to integer cents', 'default', 61, True, 1.63,
+         224_000, 64_000),
+        ('12m', 'retry storm on the payments upstream', 'default', 84, False,
+         2.35, 318_000, 94_000))]}
+
+# The auto-memory schedule, which the Updates page lists with a checkbox each.
+# Two of the thirteen are on the schedule, which is the state STATE['projects']
+# already describes with its own `auto_memory` flag.
+sg.ROUTES['/api/memory/auto'] = {'interval': 1800, 'projects': [
+    {'name': p['name'], 'path': '/demo/' + p['name'], 'enc': p['enc'],
+     'auto': i < 2, 'running': i == 0}
+    for i, p in enumerate(sg.DASH['breakdown']['projects'][:6])]}
+
+# Account sync, in the state the card exists for: two accounts that differ, so
+# the seven-column table is audited instead of its empty branch.
+sg.ROUTES['/api/accounts/sync'] = {'clean': False, 'accounts': [
+    {'name': 'default', 'todo': 0,
+     'have': {'plugins': 1, 'marketplaces': 1, 'hooks': 2, 'agents': 3,
+              'statusline': True, 'claude_md': True},
+     'missing': {}},
+    {'name': 'teamA', 'todo': 3,
+     'have': {'plugins': 0, 'marketplaces': 1, 'hooks': 1, 'agents': 3,
+              'statusline': False, 'claude_md': True},
+     'missing': {'plugins': ['demo'], 'hooks': ['inject-memory'],
+                 'statusline': True}},
+    {'name': 'teamB', 'todo': 2,
+     'have': {'plugins': 1, 'marketplaces': 0, 'hooks': 2, 'agents': 0,
+              'statusline': True, 'claude_md': False},
+     'missing': {'marketplaces': ['official'], 'claude_md': True}}]}
+
 sg.STATE['projects'] = [
     {'name': p['name'], 'path': '/demo/' + p['name'],
      'encoded': p['enc'], 'accounts': p['accounts'], 'primary_cfgdir': '',

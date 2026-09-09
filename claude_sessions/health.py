@@ -56,14 +56,16 @@ def _check_memory(project_path, proj_folder):
     from . import memory as memory_mod
     mem = memory_mod.load_memory(project_path, proj_folder)
     if not mem.get('entities'):
+        # the action, not the terminal's key path: this text is rendered in
+        # the GUI's Project health card too, next to the button that does it
         return [('info', 'no semantic memory yet',
-                 "press m → b to build it (Claude remembers the project)")]
+                 'build memory — Claude reads the project once and remembers it')]
     out = []
     if mem.get('pending_units'):
         # not an error any more: a cycle does what its budget allows and leaves
         # the rest queued, and with auto-memory on the next cycle takes them
         out.append(('info', f"{mem['pending_units']} module(s) still queued for memory",
-                    'the next auto cycle takes them — or press m → b to finish now'))
+                    'the next auto cycle takes them — or build memory to finish now'))
     try:
         from .workspace import load_manifest
         man = load_manifest(project_path, proj_folder) or {}
@@ -73,7 +75,7 @@ def _check_memory(project_path, proj_folder):
             head = (_git(['rev-parse', 'HEAD'], project_path) or '').strip()
             if head and base.get('head_at_gen') and head != base['head_at_gen']:
                 out.append(('info', 'memory may be stale (repo HEAD moved since build)',
-                            'press m → b to refresh (incremental, cheap)'))
+                            'rebuild memory to refresh — incremental, cheap'))
     except Exception:
         pass
     return out

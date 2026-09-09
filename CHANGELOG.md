@@ -112,6 +112,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   properly and prints whether it had focus, rather than reporting zero frames
   beside a clean frame rate.
 
+- **Eight places the app spoke to itself instead of to you.** Found by reading
+  every page's text rather than looking at it: the freshness rows on the Memory
+  tab were the checks' own identifiers with their underscores swapped for spaces
+  (`claude md`, `claude md fresh` — two rows whose names do not say how they
+  differ), so each check has a written label now; the remedies beside them said
+  "press m → b", which is the terminal's key path printed next to the GUI button
+  that does the same thing; the account sync card printed a seven-column table
+  header over the words "No accounts to compare"; the Audit tab's token column
+  read `~?`; the Loops command preview read `every ?` until you typed an
+  interval; the Memory tab answered "when" as `2026-08-12T09:15:00Z` in three
+  places and as "10m ago" in four others; and the project's Usage tab printed
+  raw token counts where the rest of the app writes `412.0k`.
+
 - **The dashboard was hiding accounts.** The plan-usage rail was a horizontal
   scroller sized for three cards, so with five accounts configured two of them
   were simply not on the dashboard. It wraps now.
