@@ -5518,32 +5518,24 @@ const SETTINGS_CARDS={
 `,
   paths:o=>`  <div class="card"><h3>${ic('folder')} Paths &amp; limits</h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Blank means auto-detect. A path that does not exist is <b>refused</b> rather than saved — pinning a broken one makes every launch fail with no clue why. Each card here saves on its own — a Save that covered a page of unrelated settings is a Save you cannot press with confidence.</p>
-    <div class="grid2">
-      <div class="fld"><label>Editor <span style="color:var(--dim2)">— what "open in editor" runs</span></label>
-        <input id="sEditor" placeholder="auto-detect (Notepad++, VS Code, notepad)"></div>
-      <div class="fld"><label>claude.exe <span style="color:var(--dim2)">— the Claude Code binary</span></label>
-        <input id="sClaudeExe" placeholder="auto-detect (~/.local/bin, then PATH)"></div>
-    </div>
-    <div class="grid2">
-      <div class="fld"><label>CLAUDE_CONFIG_DIR <span style="color:var(--dim2)">— which account is active</span></label>
-        <input id="sCfgDir" placeholder="default: ~/.claude"></div>
-      <div class="fld"><label>Budget cap <span style="color:var(--dim2)">— $ per headless call, 0 = no cap</span></label>
-        <input id="sBudget" type="number" min="0" max="1000" step="0.05"></div>
-    </div>
+    <div class="fld"><label>Editor <span style="color:var(--dim2)">— what "open in editor" runs</span></label>
+      <input id="sEditor" placeholder="auto-detect (Notepad++, VS Code, notepad)"></div>
+    <div class="fld"><label>claude.exe <span style="color:var(--dim2)">— the Claude Code binary</span></label>
+      <input id="sClaudeExe" placeholder="auto-detect (~/.local/bin, then PATH)"></div>
+    <div class="fld"><label>CLAUDE_CONFIG_DIR <span style="color:var(--dim2)">— which account is active</span></label>
+      <input id="sCfgDir" placeholder="default: ~/.claude"></div>
+    <div class="fld"><label>Budget cap <span style="color:var(--dim2)">— $ per headless call, 0 = no cap</span></label>
+      <input id="sBudget" type="number" min="0" max="1000" step="0.05"></div>
     <div style="color:var(--dim2);font-size:12px">The cap is <code>--max-budget-usd</code> on archeus's <b>own</b> Claude calls (memory, lessons, plans, reviews) — your interactive sessions are unaffected. Changing the config dir takes effect on restart.</div>
     <div class="mrow"><button class="btn" onclick="setPathsSave()">Save</button></div></div>
   <div class="card"><h3>${ic('bolt')} Memory limits</h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">What one memory cycle may spend, and how big the graph may get. The call cap is the ceiling on a single pass: whatever it does not finish waits for the next one, so a low number spreads the cost rather than losing the work. The entity cap is what the graph is pruned back to, least-connected first.</p>
-    <div class="grid2">
-      <div class="fld"><label>Max Claude calls per cycle <span style="color:var(--dim2)">— 0 = unlimited</span></label>
-        <input id="sMemCalls" type="number" min="0" max="500" step="1"></div>
-      <div class="fld"><label>Max entities kept <span style="color:var(--dim2)">— least-connected are evicted first</span></label>
-        <input id="sMemEnts" type="number" min="50" max="20000" step="50"></div>
-    </div>
-    <div class="grid2">
-      <div class="fld"><label>Refresh on open <span style="color:var(--dim2)">— for projects <i>not</i> on the auto-memory schedule; those refresh on their own interval and never on open</span></label><div class="chips" id="sMemOpen"></div></div>
-      <div class="fld"><label>Learn lessons from sessions</label><div class="chips" id="sMemLessons"></div></div>
-    </div>
+    <div class="fld"><label>Max Claude calls per cycle <span style="color:var(--dim2)">— 0 = unlimited</span></label>
+      <input id="sMemCalls" type="number" min="0" max="500" step="1"></div>
+    <div class="fld"><label>Max entities kept <span style="color:var(--dim2)">— least-connected are evicted first</span></label>
+      <input id="sMemEnts" type="number" min="50" max="20000" step="50"></div>
+    <div class="fld"><label>Refresh on open <span style="color:var(--dim2)">— for projects <i>not</i> on the auto-memory schedule; those refresh on their own interval and never on open</span></label><div class="chips" id="sMemOpen"></div></div>
+    <div class="fld"><label>Learn lessons from sessions</label><div class="chips" id="sMemLessons"></div></div>
     <div class="mrow"><button class="btn" onclick="setMemLimitsSave()">Save</button></div></div>
   <div class="card"><h3>Economy model</h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Model used for archeus's <b>own</b> internal Claude calls — memory extraction, lessons, CLAUDE.md / agent / hook / skill generation. Defaults to Haiku to cut cost. Your actual coding sessions are unaffected. <i>default</i> = your account's model.</p>
@@ -5559,8 +5551,8 @@ const SETTINGS_CARDS={
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code exports metrics and events over OTLP. archeus already owns the launch environment, so it can switch this on per account without you exporting variables by hand. <b>Prompt text is never collected</b> unless you also set <code>OTEL_LOG_USER_PROMPTS=1</code> — this toggle does not.</p>
     <div class="fld"><label>Enabled</label><div class="chips" id="sOtel"></div></div>
     <div class="grid2">
-      <div class="fld"><label>Endpoint</label><input id="sOtelUrl" placeholder="http://localhost:4318"></div>
-      <div class="fld"><label>Protocol</label><div class="chips" id="sOtelProto"></div></div>
+    <div class="fld"><label>Endpoint</label><input id="sOtelUrl" placeholder="http://localhost:4318"></div>
+    <div class="fld"><label>Protocol</label><div class="chips" id="sOtelProto"></div></div>
     </div>
     <div class="fld"><label>Headers <span style="color:var(--dim2)">— comma-separated, e.g. Authorization=Bearer xyz</span></label>
       <input id="sOtelHdr" placeholder="leave blank for none"></div>
@@ -5583,8 +5575,8 @@ const SETTINGS_CARDS={
       a free one (Pollinations, Puter, DuckDuckGo AI Chat…).</p>
     <div id="orConns" style="margin-bottom:8px"></div>
     <div class="grid2">
-      <div class="fld"><label>Base URL</label><input id="orUrl" placeholder="http://localhost:20128"></div>
-      <div class="fld"><label>API key</label><input id="orKey" type="password"
+    <div class="fld"><label>Base URL</label><input id="orUrl" placeholder="http://localhost:20128"></div>
+    <div class="fld"><label>API key</label><input id="orKey" type="password"
         placeholder="${ST.omniroute_has_key?'set — leave blank to keep':'leave blank if none needed'}"></div>
     </div>
     <div id="orModWrap"></div>
@@ -5609,14 +5601,12 @@ const SETTINGS_CARDS={
     <div class="fld"><label>Fallback models <span style="color:var(--dim2)">— one per line, tried in order after the model you selected</span></label>
       <textarea id="foModels" rows="4" spellcheck="false"
         placeholder="auto/coding:free&#10;auto/best-coding&#10;auto/fast"></textarea></div>
-    <div class="grid2">
-      <div class="fld"><label>Proxy port</label><input id="foPort" placeholder="20129"></div>
-      <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" id="foQuiet"> Hide the proxy console window</label>
+    <div class="fld"><label>Proxy port</label><input id="foPort" placeholder="20129"></div>
+    <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="foQuiet"> Hide the proxy console window</label>
         <div style="color:var(--dim);font-size:12px;margin-top:4px">The window logs every turn — which model was
           tried, what failed, what served it. It doubles as live plan-execution progress. Hiding it keeps the log
           at <code>~/.claude/failover.log</code>.</div></div>
-    </div>
     <div id="foResult" style="color:var(--dim);font-size:12.5px;margin:4px 0"></div>
     <div class="mrow">
       <button class="btn sm" onclick="foStop()">${ic('close')} Stop proxy</button>

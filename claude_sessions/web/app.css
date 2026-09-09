@@ -285,9 +285,21 @@ html.nav-sized .nav{flex:0 1 var(--nav-h);min-height:34px}
 
 /* ── main ── */
 .main{display:flex;flex-direction:column;min-width:0;min-height:0}
+/* `relative`, not `sticky` — and the difference is only in what it CLAIMS.
+   `.app` is a 100vh grid, `.main` a flex column, and `.content` is the one
+   thing in it that scrolls; the header and the tab strip are siblings ABOVE
+   that scroller, so `position:sticky` never had anything to stick to and did
+   nothing. It stays positioned because `z-index` only applies to a positioned
+   element, and these two have to sit above the stage and the page.
+
+   Primer's "an app header is never fixed to the top of the viewport, it
+   scrolls with the rest of the page" is about a document-scroll page. This is
+   a two-pane app shell: the pane scrolls, its chrome does not, which is the
+   same shape Grafana and Datadog use. Worth restating rather than re-deciding
+   the next time someone reads that guidance. */
 .top{display:flex;align-items:center;gap:var(--sp-3);padding:13px 26px;
   border-bottom:1px solid var(--line);background:var(--bg2);flex-wrap:wrap;
-  position:sticky;top:0;z-index:5}
+  position:relative;z-index:5}
 .top h1{font-size:16px;font-weight:700;letter-spacing:.2px;white-space:nowrap}
 .top .path{color:var(--dim2);font-size:12px;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap;min-width:0;flex:0 1 auto}
@@ -376,7 +388,7 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
    its full click target and underline width. */
 .tabs{--tab-px:16px;display:flex;gap:2px;padding:0 calc(26px - var(--tab-px));
   background:var(--bg2);
-  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:4}
+  border-bottom:1px solid var(--line);position:relative;z-index:4}
 .tab{padding:9px var(--tab-px);cursor:pointer;color:var(--dim);font-size:12.5px;
   border-bottom:2px solid transparent;font-weight:600;
   text-transform:uppercase;letter-spacing:.06em;
@@ -644,7 +656,15 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
     "projects projects projects projects"}
 .dash>.card{margin-bottom:0;max-width:none;min-width:0}
 .d-i1{grid-area:i1}.d-i2{grid-area:i2}.d-i3{grid-area:i3}.d-i4{grid-area:i4}
-/* …except these four, which are a ROW and have to read as one. `align-items:
+/* …except these four, which are a ROW and have to read as one.
+
+   NOT subgrid, though that is the modern answer and it reached Baseline in
+   March. `.dash` is an explicit area map in which every card occupies exactly
+   ONE row, and `grid-template-rows:subgrid` needs the child to span at least
+   two of the parent's rows — so adopting it means splitting every band of the
+   area map into three, to align head/body/foot on cards that already come out
+   level. Measured here at 265/265/265/265 with `slack` clean, so there is
+   nothing left for it to fix. `align-items:
    start` above is right for the big cards and wrong here: spend carries a
    legend and activity carries a job list, so the four came out 265/224/224/265
    and the row looked broken (`shot_gui.py` has been reporting it as RAGGED on
@@ -896,7 +916,15 @@ html.mo-off .tchart .omnibg{animation:none}
 .sess .pri{flex:none}
 .rowtune{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r);
   padding:14px 18px;margin-top:-2px}
-.empty{color:var(--dim);text-align:center;margin-top:7vh}
+/* An empty state is a BLOCK, left-aligned where the content it replaces would
+   have started. Centred with 7vh above it, it read as a page-level apology
+   wherever it was really an in-card note — floating in the middle of a detail
+   pane, a third of the way down a card whose heading sits at the top of it.
+   Carbon: left-aligned, and "if space is limited, use just text". */
+.empty{color:var(--dim);margin:6px 0}
+/* …except when it IS the page: a bare spinner or a "nothing here yet" written
+   straight into #content, with no card around it to align to. */
+.content>.empty{text-align:center;margin-top:7vh}
 /* the 7vh above is for a whole page with nothing in it. Inside a card it
    pushes a one-line "nothing here" down by 70px and leaves the card looking
    broken, so an in-card empty state opts out. */

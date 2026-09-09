@@ -1715,6 +1715,57 @@ def main():
         pg.evaluate("go('home')")
         pg.wait_for_timeout(500)
 
+        # ── a section whose body resolves to nothing is not painted ──
+        # prune() REMOVES DOM on every paint, so it is the one guard in this
+        # file that can destroy something rather than fail to catch it. The
+        # cases are built here rather than hunted for on a real page: a page
+        # that happens to have no empty card proves nothing, and the four
+        # things that keep a card alive are exactly what a future edit would
+        # get wrong. Same method as the space audit's own self-check.
+        print('\n— empty sections are not painted —')
+        pg.evaluate("""(()=>{
+          const c=document.querySelector('#content');
+          c.innerHTML=[
+            '<div class="card" id="pk-bare"><h3>Heading over nothing</h3></div>',
+            '<div class="card" id="pk-blank"><h3>H</h3><div></div><p></p></div>',
+            '<div class="card" id="pk-text"><h3>H</h3><p>It says something.</p></div>',
+            '<div class="card" id="pk-empty"><h3>H</h3>'
+              +'<div class="empty">No MCP servers configured.</div></div>',
+            '<div class="card" id="pk-mount"><h3>H</h3><div id="pk-later"></div></div>',
+            '<div class="card" id="pk-spin"><h3>H</h3>'
+              +'<div><span class="spin"></span></div></div>',
+            '<div class="card" id="pk-btn"><h3>H</h3><div><button>Do it</button></div></div>',
+            '<div class="card" id="pk-hdr"><h3>H</h3>'
+              +'<table class="tbl"><tr><th>a</th><th>b</th></tr></table></div>',
+            '<div class="card" id="pk-rows"><h3>H</h3>'
+              +'<table class="tbl"><tr><th>a</th></tr><tr><td>1</td></tr></table></div>',
+          ].join('');
+          prune();
+        })()""")
+        alive = pg.evaluate(
+            "(()=>{const o={};['bare','blank','text','empty','mount','spin',"
+            "'btn','hdr','rows'].forEach(k=>o[k]=!!document.querySelector('#pk-'+k));"
+            "o.hdrTable=!!document.querySelector('#pk-hdr table');"
+            "o.rowsTable=!!document.querySelector('#pk-rows table');return o;})()")
+        check('a heading over nothing is not painted',
+              not alive['bare'] and not alive['blank'], alive)
+        check('…but text is content, so an explanation keeps its card',
+              alive['text'])
+        check('…and so is an empty STATE, which is the page saying something',
+              alive['empty'])
+        check('a mount point something fills later is not pruned first',
+              alive['mount'] and alive['spin'],
+              'a fetch that lands after the paint would have nowhere to go')
+        check('a card whose only content is an action keeps it', alive['btn'])
+        check('a header row over no rows is not painted',
+              not alive['hdrTable'] and alive['rowsTable'], alive)
+        # and the card that held only that header goes with it, since removing
+        # the table left it with a heading and nothing else
+        check('…and the card left holding only that header goes too',
+              not alive['hdr'] and alive['rows'], alive)
+        pg.evaluate("go('home')")
+        pg.wait_for_timeout(700)
+
         print('\n— motion levels —')
         for lv, want in [('subtle', 'mo-subtle'), ('off', 'mo-off'), ('full', 'mo-beam')]:
             pg.evaluate(f"MO.set('{lv}')")

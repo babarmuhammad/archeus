@@ -11,7 +11,7 @@
       "name": "archeus",
       "source": "./plugin",
       "description": "The in-session surface of archeus: recall this project's memory, check its health, and review the current diff without leaving the conversation.",
-      "version": "2.1.0",
+      "version": "2.2.0",
       "category": "productivity",
       "tags": ["agent-memory", "memory", "workspace", "sessions", "review"]
     }

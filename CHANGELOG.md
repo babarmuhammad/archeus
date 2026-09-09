@@ -7,6 +7,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-10
+
 ### Changed
 
 - **Every page now has a declared shape, and five shapes is all there are.** A
@@ -60,6 +62,30 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - **A number input is as wide as its value.** A four-digit port had a 900px
     box, because the rule that gives every control the full width of its field
     is right for a path and wrong for a number.
+  - **A form section does not mix its save patterns.** Nothing did, and the one
+    place that nearly did is commented in the wiring — update checks and
+    notifications write the moment you pick one, so they sit in a card with no
+    Save at all. That is a gate now, read out of the wiring rather than from a
+    list: a chip row that posts on pick, inside a card that also has a Save,
+    fails the build.
+  - **Two fields share a row only when they are one value.** Five pairs on the
+    settings pages were two unrelated settings side by side to save vertical
+    space — an editor path beside the Claude binary, the config dir beside a
+    spend cap, two independent memory caps, two unrelated switches, a proxy
+    port beside a window preference. Each is a control on its own row. The
+    three that remain are one value each: an exporter's endpoint and protocol,
+    a proxy's URL and key, a model and the effort it runs at.
+  - **An empty state is left-aligned where the content it replaces would have
+    started.** Centred with 7vh above it, it read as a page-level apology
+    wherever it was really an in-card note — floating in the middle of a detail
+    pane, or a third of the way down a card whose heading is at the top. It
+    keeps the old treatment in the one place it earns it: written straight into
+    the page with no card around it.
+  - **The app chrome stops claiming to be sticky.** The header and the tab strip
+    carried `position:sticky` and had nothing to stick to — they are siblings
+    above the only thing that scrolls, so it did nothing. They stay positioned,
+    because that is what makes their `z-index` mean anything.
+
   - **A section whose body resolves to nothing is not painted**, and neither is
     a table whose header stands over no rows. Reading the pages found eight of
     them. Emptiness that is itself the information keeps its card — "no MCP

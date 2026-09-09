@@ -534,7 +534,14 @@ def _rendered(pg, settle=6000):
 #: and 8 looks at three widths each. The floor is well under that because a
 #: probe is allowed to find less when a page legitimately holds less; it is not
 #: allowed to find almost nothing.
-SPACE_FLOOR = 600
+# 844 on the current app. It was 600 when the card scan still walked the two
+# panes of every split; those left it (a pane's empty bottom is not a card's
+# empty floor) and the floor has to come back UP to keep meaning something —
+# a probe that stops finding containers reports "clean", and a floor 244 below
+# what the run actually reaches would sleep through most of that. Set with a
+# margin, not at the number: unwrapping five `.grid2` pairs took 15 containers
+# off the count without taking anything off the app.
+SPACE_FLOOR = 780
 
 #: filled by audit_space(); main() exits non-zero if it is not empty. Every
 #: other audit in this file only PRINTS, which is why `instrument row RAGGED`

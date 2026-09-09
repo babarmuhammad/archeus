@@ -8,7 +8,7 @@ name = "archeus"
 # 1.9.1 rather than starting over, and its first run migrates that install's
 # settings, caches and per-project state onto the new names. A 1.0.0 would have
 # read as a downgrade to everyone coming across.
-version = "2.1.0"
+version = "2.2.0"
 description = "The memory and workspace layer for AI coding agents. Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code today."
 readme = "README.md"
 requires-python = ">=3.10"

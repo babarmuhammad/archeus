@@ -581,6 +581,140 @@ def test_a_split_page_fills_both_of_its_columns():
         assert 'card tdet' in body, f'{page} lost its detail pane'
 
 
+def test_the_empty_section_sweep_runs_at_the_only_two_writers():
+    """A heading over an empty body is the one defect no layout can close, and
+    the rule is applied where #content is written rather than in each renderer
+    — the same argument as the paint guard, which fifteen renderers were meant
+    to remember and one did.
+
+    It is the only thing in the app that DELETES painted DOM, so what keeps a
+    card alive is pinned here: text, a control or a table, a mount point
+    something fills later, a spinner. `tools/smoke_gui.py` builds each of those
+    cases and watches the sweep act on them; this asserts it is reached at all,
+    which no DOM check can (a page with no empty card passes either way)."""
+    assert _JS.count('function prune(') == 1, 'two sweeps is two rules'
+    for writer in ("function paintNow(html){$('#content').innerHTML=html;prune();",
+                   "$('#content').innerHTML=html;\n  prune();"):
+        assert writer in _JS, f'a #content writer does not sweep: {writer!r}'
+    body = _JS[_JS.index('function prune('):]
+    body = body[:body.index(chr(10) + '}' + chr(10))]
+    # the four reprieves, each a way of saying "there is something here"
+    for keep in ('[id]', '.spin', 'button', 'table'):
+        assert keep in body, f'{keep} no longer keeps a card alive'
+    assert "textContent" in body, 'text is no longer a reason to keep a card'
+    # and the header-over-nothing case one level down
+    assert "table.tbl" in body and "querySelectorAll('tr').length<2" in body, \
+        'a table header standing over no rows is painted again'
+
+
+def _settings_cards():
+    """Each settings sub-page's markup, split into the cards it paints."""
+    block = _JS[_JS.index('const SETTINGS_CARDS={'):_JS.index('function pgSetLaunch')]
+    parts = {}
+    keys = [k for k in ('settings', 'appearance', 'paths', 'models', 'updates')]
+    marks = sorted((block.index('\n  %s:' % k), k) for k in keys)
+    for n, (i, k) in enumerate(marks):
+        j = marks[n + 1][0] if n + 1 < len(marks) else len(block)
+        parts[k] = [c for c in block[i:j].split('<div class="card') if c.strip()]
+    return parts
+
+
+def _applies_on_pick():
+    """Chip rows that WRITE the moment you pick one, read from the wiring: a
+    `chipsFill` whose callback posts, or a click handler bound to the row right
+    after it. Derived rather than listed, because the list is the thing that
+    would go stale."""
+    ids = set()
+    for m in re.finditer(r"chipsFill\(\$\('#(\w+)'\)", _JS):
+        k = m.start() + len('chipsFill')      # the call's own paren, not one inside it
+        depth, i = 0, k
+        while i < len(_JS):
+            if _JS[i] == '(':
+                depth += 1
+            elif _JS[i] == ')':
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        if 'post(' in _JS[k:i]:
+            ids.add(m.group(1))
+    varof = dict((v, i) for v, i in
+                 re.findall(r"const (\w+)=\$\('#(\w+)'\)", _JS))
+    for m in re.finditer(r"(\w+)\.querySelectorAll\('\.chip'\)"
+                         r"\.forEach\(c=>c\.addEventListener\('click'", _JS):
+        who = varof.get(m.group(1))
+        if who and 'post(' in _JS[m.end():m.end() + 600]:
+            ids.add(who)
+    return ids
+
+
+def test_a_form_section_does_not_mix_its_save_patterns():
+    """"Avoid mixing explicit and automatic save patterns on a single page with
+    multiple forms, and never mix save patterns in a single form" — a card
+    whose chips write the moment you pick one AND that carries a Save leaves
+    you unable to tell which half of it you have committed.
+
+    archeus does not do this, and the one place it nearly did is commented in
+    the wiring: update checks and notifications save on pick, so they were put
+    in a card of their own with no Save at all. This is the gate that keeps
+    that true, derived from the wiring rather than from a list — both halves
+    are read out of app.js, so adding a chip row to a Save-bearing card and
+    giving it a callback fails here."""
+    live = _applies_on_pick()
+    assert live, 'nothing applies on pick — the wiring scan stopped working'
+    for part, cards in _settings_cards().items():
+        for card in cards:
+            if 'Save<' not in card and 'Save failover<' not in card:
+                continue
+            for cid in re.findall(r'class="chips" id="(\w+)"', card) + \
+                    re.findall(r"fld\('(\w+)'", card):
+                assert cid not in live, (
+                    f'{part}: #{cid} writes on pick inside a card that also '
+                    f'has a Save — half the card is committed and half is not')
+
+
+def test_two_fields_share_a_row_only_when_they_are_one_value():
+    """`.grid2` is Primer's Don't one level down: two unrelated fields put side
+    by side to save vertical space. Five of them were on the settings pages —
+    an editor path beside the Claude binary, the config dir beside a spend cap,
+    two independent memory caps, two unrelated switches, a proxy port beside a
+    window preference — and each is now a control on its own row.
+
+    What is left is the case the rule allows: a pair that is one value, where
+    splitting them would be the odd thing. Counted rather than listed, because
+    the count is the claim — a sixth pair on a settings page is the
+    regression."""
+    block = _JS[_JS.index('const SETTINGS_CARDS={'):_JS.index('function pgSetLaunch')]
+    assert block.count('class="grid2"') == 2, \
+        'a settings pair that is not one value'
+    # an exporter's endpoint and its protocol; a proxy's URL and its key
+    for want in ('<label>Endpoint', '<label>Base URL'):
+        assert want in block, want
+    # and the two outside the settings pages, for the same reason: a model and
+    # the effort it runs at, an interval and the prompt it fires
+    assert _JS.count('class="grid2"') == 4, 'a new side-by-side pair appeared'
+
+
+def test_the_app_chrome_does_not_claim_to_stick():
+    """`.top` and `.tabs` carried `position:sticky;top:0` and could not stick to
+    anything: `.app` is a 100vh grid, `.main` a flex column, and `.content` is
+    the only thing in it that scrolls — the two of them are siblings ABOVE that
+    scroller. They stay POSITIONED, because `z-index` does nothing to a static
+    element and both have to sit above the stage, but they no longer describe
+    behaviour they never had."""
+    css = _CSS.replace(' ', '').replace('\n', '')
+    assert 'position:relative;z-index:5}' in css, '.top is not positioned'
+    assert 'position:relative;z-index:4}' in css, '.tabs is not positioned'
+    top = _CSS[_CSS.index('.top{display:flex'):]
+    top = top[:top.index('}')]
+    tabs = _CSS[_CSS.index('.tabs{--tab-px'):]
+    tabs = tabs[:tabs.index('}')]
+    for name, rule in (('.top', top), ('.tabs', tabs)):
+        assert 'sticky' not in rule, f'{name} claims to stick to a scroller it is not in'
+    # the one scroller, so the claim stays falsifiable
+    assert '.content{flex:1;overflow-y:auto' in _CSS
+
+
 def test_there_is_no_undesigned_default_left():
     """`grid` was the sixth shape: a bag of cards dropped into the auto-fit
     grid, which is what a page was before anyone decided what it should be. It
