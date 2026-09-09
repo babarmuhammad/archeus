@@ -1,7 +1,7 @@
 {
   "name": "archeus",
   "displayName": "archeus",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "The memory and workspace layer for AI coding agents. This plugin is its in-session surface: recall this project's memory, check its health, and review the current diff without leaving the conversation. The whole layer is the archeus CLI.",
   "author": {
     "name": "Babar Muhammad Anas",

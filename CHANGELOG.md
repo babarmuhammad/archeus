@@ -7,7 +7,47 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-09
+
 ### Added
+
+- **Every page now fits the space it has, at any window size.** Every internal
+  layout rule in the GUI decided its shape from the WINDOW, and no card is ever
+  the width of the window: a card sits in a 560-760px column of the content
+  grid at any window above 1280px. So the rules written to rescue narrow
+  content — a table's row-stacking, the settings matrix, a page header's gauge,
+  the three-across lists, the list+detail split, the dashboard's own layout —
+  described a state nobody is ever in. On a 2048px window the Memory tab's
+  lessons table was handed one 740px column, squeezed its status column to
+  23px, stacked `approved` onto its own tag, and left the other half of the row
+  dark. Those rules now measure the box they are in rather than the screen,
+  which also means dragging the sidebar re-lays the page out instead of moving
+  the content edge by 240px with nothing noticing.
+
+  A row of cards is also what leaves a hole in a page — a row is as tall as its
+  tallest card, and the rest of it is empty. Pages that are a stack of
+  independent sections (Help, Tools, CLAUDE.md, Plan → Execute, Memory, Output
+  styles, Loops, Audit, the settings pages, the global CLAUDE.md) now balance
+  their sections into columns instead, so a 147px section beside a 794px one
+  costs nothing. A card holding something genuinely wide — a five-column table,
+  the per-account settings matrix — takes the full width by itself, decided by
+  what is in it rather than by a list somebody has to maintain. Sparse pages
+  stretch to fill instead of leaving an empty column, and explanatory prose
+  inside a card stops at a readable line length rather than running the width
+  of a 2560px display.
+
+  Measured with a new probe in `tools/shot_gui.py` that reports dead space
+  rather than overflow — ragged rows, wasted grid cells, empty card floors,
+  squeezed table columns, over-long lines — across 19 pages, 9 project tabs and
+  8 looks at three widths: 78 findings, down to none. It fails the run rather
+  than printing, and counts what it measured, because a probe that stops
+  finding anything reports success. Verified in the desktop shell as well as
+  the test browser (`tools/probe_layout_qt.py`).
+
+- **A build queue for project memory.** Turn it on and archeus works through
+  the modules that still owe an extraction while you are not using it, across
+  every account rather than whichever one the process happened to start under,
+  and stops when you tell it to.
 
 - **Workspace status now checks whether your CLAUDE.md prose still agrees with
   the memory graph.** `CLAUDE.md` has two halves and archeus owns exactly one:
@@ -38,7 +78,50 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   marked `n/a` and scores nothing either way. One JSON read, no model call and
   no subprocess.
 
+### Changed
+
+- **The graph world's cluster is drawn without a lighting model, and so are the
+  architecture graph and the website.** It keeps every part it had — the rod
+  shell, the inner web on its own reversed clock, the hull faces, the coarse
+  frame, the spokes, the beads, the junctions, the centre, the orbiters, the
+  conduits — as fine additive lines and rings rather than lit, glassy solids,
+  so all three surfaces represent one object instead of three approximations of
+  it. It is also 24,494 triangles in 19 draw calls where it was 353,566 in 33,
+  which is what fixed the stutter below.
+
+- **Updating no longer opens a terminal.** The installer has to wait for
+  archeus to exit before it can replace the running files, and it used to do
+  that in a console window that took the foreground and sat on "Waiting for
+  archeus to exit…" — which reads as the update having hung. It runs detached
+  and windowless now, writes to a log, and can bring archeus back up when it
+  finishes.
+
+- **"Open project by path" opens the project.** It launched a session in that
+  directory instead, which is a different and much larger action than the one
+  the button names.
+
 ### Fixed
+
+- **The graph world stuttered in the desktop shell, worst in full screen.**
+  Measured inside the real Qt window, the lit cluster pushed frame delivery to
+  a 249.9ms 95th percentile with no long tasks at all, so Chromium halved the
+  page's frame rate and the whole app lurched between 60 and ~17Hz. The flat
+  cluster holds 16.8ms. Two sessions of measurements before it had been reading
+  a PARKED page — the probe never took focus, and the app pauses everything
+  when it loses focus by design — so the tool now takes the foreground
+  properly and prints whether it had focus, rather than reporting zero frames
+  beside a clean frame rate.
+
+- **The dashboard was hiding accounts.** The plan-usage rail was a horizontal
+  scroller sized for three cards, so with five accounts configured two of them
+  were simply not on the dashboard. It wraps now.
+
+- **Four responsive rules that had never once applied.** The narrow-window
+  chrome and the icon rail's content gutters were declared before the rules
+  they countermand, and a `@media` block adds no specificity — so at narrow
+  widths the tab row never tightened, the metric strip never closed up and the
+  big readouts never shrank. Ten declarations that restated their base rules
+  character for character are gone with them.
 
 - **Published numbers that had drifted since 1.8.2.** The project dashboard
   still reported version 1.8.2, 1,367 tests, 183 Python files and 129 commits;
