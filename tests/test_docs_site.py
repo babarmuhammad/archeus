@@ -150,7 +150,8 @@ def test_the_site_sources_are_tracked_by_git():
             os.path.join('overrides', 'main.html'),
             os.path.join('docs', 'stylesheets', 'extra.css'),
             os.path.join('docs', 'assets', 'favicon.ico'),
-            os.path.join('docs', 'assets', 'og-card.png')]
+            os.path.join('docs', 'assets', 'og-card.png'),
+            os.path.join('docs', 'assets', 'wordmark.png')]
     r = subprocess.run(['git', 'check-ignore'] + want, cwd=ROOT,
                        capture_output=True, text=True, encoding='utf-8',
                        errors='ignore', timeout=60)
@@ -347,3 +348,40 @@ def test_both_hosts_assert_the_same_author_entity():
         'overrides/main.html does not emit extra.profiles, so the docs host asserts nothing'
     assert '/#author' in tpl and 'config.extra.apex' in tpl, \
         'the docs Person @id must be the apex URL, or the two hosts are two entities'
+
+
+def test_the_banner_is_artwork_the_card_only_reads(tmp_path):
+    """`docs/assets/wordmark.png` is the supplied gold lockup, drawn rather than
+    composed — the same standing as `logo.png`. `make_og_card.py` used to build a
+    cyan one from a system font and write it here, so the artwork survived
+    exactly until the next person ran that tool. It now READS it, to compose the
+    social card from the same file the README shows, and the check is
+    behavioural for that reason: run the generator and see whether the artwork
+    still has the bytes it had.
+
+    The transparency matters as much as the pixels: the README renders on a
+    light GitHub page and a dark one, and the card composites the mark straight
+    onto navy — a banner with a baked ground is wrong on all three.
+    """
+    import importlib.util
+    from PIL import Image
+    banner = os.path.join(ROOT, 'docs', 'assets', 'wordmark.png')
+    with open(banner, 'rb') as f:
+        before = f.read()
+
+    spec = importlib.util.spec_from_file_location(
+        'mkog', os.path.join(ROOT, 'tools', 'make_og_card.py'))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert not hasattr(mod, 'draw_wordmark'), 'the banner generator came back'
+    out = tmp_path / 'og.png'
+    mod.OUTS = [str(out)]
+    mod.draw_card()
+    assert out.stat().st_size > 10000, 'the card generator produced nothing'
+    with open(banner, 'rb') as f:
+        assert f.read() == before, 'the card generator rewrote the banner'
+
+    im = Image.open(banner)
+    assert im.mode == 'RGBA', im.mode
+    lo, _hi = im.getchannel('A').getextrema()
+    assert lo == 0, 'the banner has no transparent ground'

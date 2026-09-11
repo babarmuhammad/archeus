@@ -84,6 +84,27 @@ def _day(stamp):
     return stamp[:10]
 
 
+def _collected_tests():
+    """What `pytest` says it has, or 0 when it cannot be asked.
+
+    A `def test_` count is not the number the suite reports: a parametrized
+    function is one definition and many cases, and this project has hundreds of
+    them. Counting definitions made the badge go BACKWARDS across a release that
+    added tests (2017 -> 1622), because the number it replaced had come from
+    pytest. Collection does not execute anything, so it costs seconds.
+
+    The fallback matters: the metrics workflow installs nothing but Python.
+    """
+    try:
+        r = subprocess.run([sys.executable, '-m', 'pytest', '--collect-only', '-q'],
+                           cwd=ROOT, capture_output=True, text=True,
+                           encoding='utf-8', errors='ignore', timeout=600)
+    except Exception:
+        return 0
+    m = re.search(r'(\d+)\s+tests? collected', r.stdout or '')
+    return int(m.group(1)) if m else 0
+
+
 def repo_facts():
     version = re.search(r'^version\s*=\s*"([^"]+)"', _read('pyproject.toml'), re.M).group(1)
     py, loc, tests = 0, 0, 0
@@ -107,7 +128,9 @@ def repo_facts():
         'version': version,
         'py_files': py,
         'loc': loc,
-        'tests': tests,
+        # collected cases when pytest is here, definitions when it is not — a
+        # smaller true number beats a missing one
+        'tests': _collected_tests() or tests,
         'docs_pages': len([f for f in os.listdir(os.path.join(ROOT, 'docs'))
                            if f.endswith('.md')]),
         'commits': int(_git('rev-list', '--count', 'HEAD') or 0),

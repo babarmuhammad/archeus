@@ -445,17 +445,70 @@ def test_a_project_that_is_already_current_still_reports_fresh(monkeypatch, tmp_
 # The loop had no coverage at all: only that the stop flag could be set.
 
 def test_the_scheduler_runs_a_pass_on_launch(monkeypatch):
-    """Not "when you open a project" — on start."""
+    """Not "when you open a project" — on start, when nothing has run before."""
     import threading
     from claude_sessions import gui_api
     passes = threading.Event()
     monkeypatch.setattr(gui_api, 'STARTUP_DELAY', 0.05)
+    monkeypatch.setattr(gui_api, '_last_pass', lambda: 0.0)   # never run here
     monkeypatch.setattr(gui_api, '_auto_scan_pass',
                         lambda: passes.set() or False)
     monkeypatch.setattr(gui_api, '_sched_started', False)
     try:
         gui_api.start_auto_memory_scheduler()
         assert passes.wait(5), 'no pass ran after launch'
+    finally:
+        gui_api.stop_auto_memory_scheduler()
+
+
+# ── …and the interval is counted from the last pass, not from launch ──
+#
+#     "the auto memory timer resets itself if i close archeus and reopen it,
+#      instead it should keep the timer and restart it instead of resetting it,
+#      so that if someone open and closes it alot it doesn't eat their limits"
+#
+# The launch pass above was unconditional, so every start bought one. The clock
+# is a file mtime, which is why there is no schema to get wrong.
+
+def test_a_restart_does_not_buy_another_pass(monkeypatch):
+    """Closing and reopening archeus inside the interval spends nothing."""
+    import threading
+    import time as _t
+    from claude_sessions import gui_api
+    ran = threading.Event()
+    monkeypatch.setattr(gui_api, 'STARTUP_DELAY', 0.05)
+    monkeypatch.setattr(gui_api, '_last_pass', lambda: _t.time())  # just ran
+    monkeypatch.setattr(gui_api, '_next_wait', lambda owed=False: 60)
+    monkeypatch.setattr(gui_api, '_auto_scan_pass', lambda: ran.set() or False)
+    monkeypatch.setattr(gui_api, '_sched_started', False)
+    try:
+        gui_api.start_auto_memory_scheduler()
+        assert not ran.wait(0.6), 'a restart ran a pass inside the interval'
+    finally:
+        gui_api.stop_auto_memory_scheduler()
+
+
+def test_a_pass_stamps_the_clock_the_next_start_reads(monkeypatch):
+    """The two halves have to meet: what the loop writes is what a later
+    process reads, through the real file and not a patched seam."""
+    import threading
+    import time as _t
+    from claude_sessions import gui_api
+    ran = threading.Event()
+    before = _t.time() - 1
+    try:
+        os.remove(gui_api._stamp_file())
+    except OSError:
+        pass
+    monkeypatch.setattr(gui_api, 'STARTUP_DELAY', 0.05)
+    monkeypatch.setattr(gui_api, '_next_wait', lambda owed=False: 60)
+    monkeypatch.setattr(gui_api, '_auto_scan_pass', lambda: ran.set() or False)
+    monkeypatch.setattr(gui_api, '_sched_started', False)
+    try:
+        gui_api.start_auto_memory_scheduler()
+        assert ran.wait(5), 'no pass ran with no stamp on disk'
+        _t.sleep(0.2)
+        assert gui_api._last_pass() > before, 'the pass left no stamp behind'
     finally:
         gui_api.stop_auto_memory_scheduler()
 

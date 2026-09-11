@@ -501,6 +501,12 @@ ROUTES = {
              'event': 'SessionStart', 'installed': False, 'missing': []}]},
     '/api/omniroute/status': {'ok': False}, '/api/failover/status': {'running': False},
     '/api/memory/auto-list': {'projects': []},
+    '/api/memory/auto': {'projects': [], 'interval': 3600, 'next_in': 2400},
+    # one job, already finished. The stub had no job route at all, so every
+    # job the UI can start ended as 'Failed' here and the DONE path — the one
+    # that runs onDone and clears the inline banner — was unreachable.
+    '/api/job/j1': {'status': 'done', 'label': 'Staging the archeus upgrade',
+                    'messages': [], 'elapsed': 1, 'result': {}},
     '/api/plugins': {'dir': 'C:/x/plugins', 'marketplaces': [
         {'name': 'official', 'source': 'github', 'repo': 'anthropics/claude-plugins',
          'path': 'C:/x/mkt'}],
@@ -707,7 +713,10 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get('Content-Length') or 0)
         self.rfile.read(n)
-        self._j({'ok': True})
+        # /api/job answers with a job id so the client enters the poll loop and
+        # reaches jobFinish; anything else keeps the bare ack it always sent.
+        self._j({'ok': True, 'job': 'j1'}
+                if self.path.split('?')[0] == '/api/job' else {'ok': True})
 
 
 def main():
@@ -1143,19 +1152,59 @@ def main():
         # "no JS error" passes on a card that rendered nothing, and the update
         # buttons only exist when something is actually behind — so assert the
         # state, not just the absence of an exception.
-        pg.evaluate("go('plugins')")
-        pg.wait_for_timeout(600)
+        #
+        # The three version cards are on Settings ▸ Updates, and they are filled
+        # by a fetch AFTER the page paints, through a mount that is
+        # `display:contents` — so a check on the page they used to be on would
+        # have passed for the wrong reason once and then gone quiet.
+        pg.evaluate("go('updates')")
+        wait_for("!!document.querySelector('#verCard')")
         ver = pg.evaluate(
-            "(()=>{const c=document.querySelector('#verCard');return c?{"
+            "(()=>{const c=document.querySelector('#verCard'),"
+            "m=document.querySelector('#verMount');return c?{"
             "card:1,behind:/2 releases behind/.test(c.textContent),"
             "latest:/Update to latest/.test(c.textContent),"
-            "rollback:/2\\.1\\.232/.test(c.textContent)}:{card:0};})()")
-        check('claude code version card', ver.get('card') and ver.get('behind')
-              and ver.get('latest') and ver.get('rollback'), ver)
+            "rollback:/2\\.1\\.232/.test(c.textContent),"
+            "self:!!document.querySelector('#selfCard'),"
+            "models:!!document.querySelector('#modelCard'),"
+            "flat:getComputedStyle(m).display==='contents',"
+            "wide:Math.round(c.getBoundingClientRect().width)}:{card:0};})()")
+        check('the version cards are on Settings > Updates',
+              ver.get('card') and ver.get('behind') and ver.get('latest')
+              and ver.get('rollback') and ver.get('self') and ver.get('models'),
+              ver)
+        # a mount that kept its own box would leave the cards in one column of
+        # the form's grid at a fraction of the width
+        check('the async mount is transparent to the form layout',
+              ver.get('flat') and ver.get('wide', 0) > 500, ver)
+        pg.evaluate("go('plugins')")
+        pg.wait_for_timeout(600)
         pupd = pg.evaluate(
             "[...document.querySelectorAll('#pluginCard button')]"
             ".filter(b=>b.textContent.trim()==='Update').length")
         check('an outdated plugin offers an update', pupd == 1, pupd)
+        check('the version cards left the plugins page',
+              pg.evaluate("!document.querySelector('#verCard')"))
+
+        # ── the update strip, through the job that borrows it ──
+        # "Update now" starts an inline job whose HOST IS THE STRIP, so the
+        # finish path clears the strip — display:none, innerHTML '' — and then
+        # asks updStaged to paint the staged message into it. Nothing put the
+        # strip back on screen, so the Restart button and every sign the click
+        # had done anything went into a hidden element. Nothing here could see
+        # it: the stub had no job route, so the DONE path never ran at all.
+        pg.evaluate('drawUpdateBar()')
+        wait_for("!!document.querySelector('#updNow')")
+        pg.evaluate("document.querySelector('#updNow').click()")
+        wait_for("!!document.querySelector('#updRestart')", 12000)
+        strip = pg.evaluate(
+            "(()=>{const b=document.querySelector('#updbar');return {"
+            "shown:getComputedStyle(b).display!=='none',"
+            "h:Math.round(b.getBoundingClientRect().height),"
+            "staged:/is installed/.test(b.textContent)};})()")
+        check('the staged update strip is on screen, not painted into a hidden'
+              ' element', strip.get('shown') and strip.get('h', 0) > 10
+              and strip.get('staged'), strip)
 
         print('\n— project tabs —')
         # Two dispatchers: go() drives the global pages, `TAB=<id>;go('project')`

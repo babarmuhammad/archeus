@@ -1,5 +1,5 @@
 <p align="center">
-  <img alt="archeus" src="https://raw.githubusercontent.com/babarmuhammad/archeus/main/docs/assets/wordmark.png" width="440">
+  <img alt="archeus" src="https://raw.githubusercontent.com/babarmuhammad/archeus/main/docs/assets/wordmark.png" width="320">
 </p>
 
 <h1 align="center">archeus</h1>
@@ -18,7 +18,7 @@
   <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-0078D6">
   <img alt="Dependencies" src="https://img.shields.io/badge/runtime%20deps-zero%20(stdlib)-brightgreen">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-2017-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-2035-brightgreen">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
   <img alt="Claude Code" src="https://img.shields.io/badge/for-Claude%20Code-8A5CF6">
 </p>

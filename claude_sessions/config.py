@@ -61,6 +61,55 @@ if os.environ.get('ARCHEUS_DEBUG'):
     except Exception:
         pass
 
+
+#: errno of a peer that went away, by the name Python gives it. A client
+#: closing a connection it had an in-flight request on is NORMAL traffic on a
+#: loopback server: a browser tab closed, a page navigated away from while its
+#: fetches were still running, a Claude Code session killed mid-turn.
+_PEER_GONE = (ConnectionAbortedError, ConnectionResetError, BrokenPipeError)
+
+
+def log_request_error(who, client_address=None):
+    """`handle_error` for a loopback HTTP server, called from an except block.
+
+    `socketserver` prints a full traceback to stderr for ANY exception that
+    escapes a handler, and `log_message` does not cover it — so closing the GUI
+    window on an in-flight fetch dumped fifteen lines of
+    `ConnectionAbortedError: [WinError 10053]` into the user's console, over and
+    over, with nothing wrong. A peer that went away is dropped; anything else
+    goes to the log (and so to the Events screen), which is where a real fault
+    is wanted rather than on stdout.
+
+    Both servers route through here for the reason every other one-owner rule in
+    this codebase exists: the policy is "which exceptions are the user's
+    problem", and two copies of it is two answers.
+    """
+    import sys
+    exc = sys.exc_info()[1]
+    if isinstance(exc, _PEER_GONE):
+        return
+    log.exception('%s: request from %s failed', who,
+                  (client_address or ('?',))[0])
+
+
+def app_icon_path():
+    """`claude_sessions/archeus.ico`, or '' when it did not ship.
+
+    ONE owner, because there are two consumers and only one of them is the Qt
+    window. PyQt6 is optional, so most pip installs never reach `gui_qt` at all
+    — their desktop window is Edge in `--app` mode, whose taskbar icon is the
+    PAGE's favicon, and the page served none. A helper inside `gui_qt` cannot be
+    that favicon's source: importing it costs PyQt6, which is exactly what the
+    installs missing an icon do not have.
+
+    Inside the package, never at the repo root: `package-data` cannot reach
+    outside it, which is how a dev checkout had a window icon and every pip and
+    pipx install silently had none.
+    """
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'archeus.ico')
+    return p if os.path.isfile(p) else ''
+
+
 # ── user settings ────────────────────────────────────────────
 # settings_file is FIXED under ~/.claude (account-independent) so the
 # claude_config_dir selector can always be read regardless of which

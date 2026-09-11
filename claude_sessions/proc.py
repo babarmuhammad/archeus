@@ -14,7 +14,7 @@ import sys
 import time
 
 __all__ = ['run', 'git', 'pid_alive', 'kill_tree', 'spawn_terminal',
-           'spawn_detached', 'wait_and_run', 'new_console_flags',
+           'spawn_detached', 'wait_and_run', 'python_exe', 'new_console_flags',
            'no_window_flags', 'WINDOWS']
 
 WINDOWS = os.name == 'nt'
@@ -176,7 +176,95 @@ def spawn_detached(argv, *, cwd=None, env=None, log=None):
                 pass
 
 
-def wait_and_run(pid, argv, timeout=300, poll=0.5, out=print, after=()):
+def python_exe():
+    """`sys.executable`, but never `pythonw.exe`.
+
+    This is the whole reason the self-update had never once worked from the
+    desktop app. The GUI runs under `pythonw`, so `sys.executable` is
+    `pythonw.exe`, and a `pythonw` child started with an inherited FILE handle
+    gets `sys.stdout = None` — pip then exits 1 having printed nothing at all,
+    not even the traceback, because its stderr is None too. The update log held
+    the worker's own two lines and no pip output whatsoever, which reads as
+    "the install never ran".
+
+    Measured, both ways: `pythonw.exe -m pip --version` through the detached
+    worker returns 1 with an empty log; `python.exe -m pip --version` through
+    the same worker returns 0 and logs the version. Same family as the hook
+    lesson already in CLAUDE.md — under `pythonw` there is no stdout, and
+    anything that writes to one dies.
+    """
+    exe = sys.executable or ''
+    base = os.path.basename(exe)
+    if base.lower().startswith('pythonw'):
+        cand = os.path.join(os.path.dirname(exe), 'python' + base[7:])
+        if os.path.isfile(cand):
+            return cand
+    return exe
+
+
+def _is_locked(path):
+    """Can pip overwrite this file? Opening for append is the cheap probe: a
+    running .exe is mapped by the loader and refuses write sharing."""
+    try:
+        with open(path, 'ab'):
+            return False
+    except OSError:
+        return True
+
+
+def free_locked(paths, out=print):
+    """Move any locked file in *paths* aside, and say what was moved.
+
+    An upgrade cannot overwrite the console script of the process running it —
+    but Windows opens a running image with FILE_SHARE_DELETE, so it can be
+    RENAMED, and pip then writes a fresh one beside it. That is the difference
+    between "quit archeus and update" and "update now", and it is measured: with
+    the script locked, `pip install -U` fails with WinError 32 **after it has
+    already uninstalled the package**, leaving nothing installed at all. With
+    the script moved aside first, the same install returns 0.
+
+    Returns [(aside, original)] so a FAILED install can put them back — a user
+    whose upgrade did not happen must still have the command they had before.
+    """
+    moved = []
+    for path in paths or ():
+        if not path or not os.path.isfile(path) or not _is_locked(path):
+            continue
+        # leftovers from a previous update, now that nothing holds them
+        for old in _aside_siblings(path):
+            try:
+                os.remove(old)
+            except OSError:
+                pass
+        aside = '%s.old-%d' % (path, int(time.time()))
+        try:
+            os.replace(path, aside)
+        except OSError as e:
+            out('could not move %s aside: %s' % (path, e))
+            continue
+        moved.append((aside, path))
+        out('moved aside (in use): ' + path)
+    return moved
+
+
+def _aside_siblings(path):
+    import glob
+    return [p for p in glob.glob(path + '.old-*') if os.path.isfile(p)]
+
+
+def restore_locked(moved, out=print):
+    """Undo `free_locked` — only for the paths pip did not replace itself."""
+    for aside, path in moved or ():
+        if os.path.exists(path):
+            continue                      # pip wrote a new one; keep that
+        try:
+            os.replace(aside, path)
+            out('restored: ' + path)
+        except OSError as e:
+            out('could not restore %s: %s' % (path, e))
+
+
+def wait_and_run(pid, argv, timeout=None, poll=0.5, out=print, after=(), free=()):
     """Wait for *pid* to exit, then run *argv* and return its exit code.
 
     This is what lets a program replace its own files: archeus's upgrade
@@ -184,6 +272,17 @@ def wait_and_run(pid, argv, timeout=300, poll=0.5, out=print, after=()):
     until the process ends. Lives here rather than in versions.py so the waiting
     process can reach it without importing the package pip is replacing — this
     module imports only the standard library, nothing from archeus.
+
+    The wait is UNBOUNDED, and that is the fix for the bug this shipped with: it
+    was capped at five minutes, after which it ran the install anyway. The user
+    is told "it installs when you close archeus" and then keeps working — a
+    session lasts hours — so the cap fired first every time, pip met the locked
+    console script it was told to wait for, and the whole thing failed into a
+    log file nobody reads. Which is what "update now does nothing" was. A
+    finite *timeout* is still honoured for a caller that wants one, but on
+    expiry the command is SKIPPED rather than run against a live process: a
+    deferral that gives up and does the unsafe thing anyway is worse than one
+    that reports it could not.
 
     `pid_alive` returning None means "cannot tell"; that stops the wait rather
     than hanging on it, and the command's own error is then the honest report.
@@ -200,18 +299,39 @@ def wait_and_run(pid, argv, timeout=300, poll=0.5, out=print, after=()):
     if not argv:
         return 2
     out('Waiting for archeus to exit...')
-    deadline = time.time() + timeout
-    while pid and time.time() < deadline:
+    deadline = None if timeout is None else time.time() + timeout
+    while pid:
         if pid_alive(pid) is not True:
             break
+        if deadline is not None and time.time() >= deadline:
+            out('Gave up waiting for pid %d — NOT installing over a running '
+                'archeus. Quit it and update again.' % pid)
+            return 1
         time.sleep(poll)
+    moved = free_locked(free, out)
     out('Running: ' + ' '.join(argv))
-    try:
-        rc = subprocess.call(argv)
-    except Exception as e:
-        out('Failed: %s' % e)
+    # CAPTURED, never inherited, and this is the bug that made the self-update
+    # fail silently for its whole life. This process is detached: its stdout is
+    # a file handle, and a child started with no redirection of its own does not
+    # inherit it — CreateProcess is called with bInheritHandles false — so pip
+    # came up with `sys.stdout` None, printed nothing anywhere, and under
+    # `pythonw` died of it with exit 1 and not one line of traceback. The log
+    # held this function's own two lines and nothing else, which reads exactly
+    # like "the install never ran". Capturing gives pip real pipes AND puts its
+    # output in the log, which is the only place a windowless worker can speak.
+    r = run(argv, timeout=1800)
+    if r is None:
+        out('Failed: could not run ' + argv[0])
+        restore_locked(moved, out)
         return 1
-    if rc == 0:
+    for chunk in (r.stdout, r.stderr):
+        if chunk and chunk.strip():
+            out(chunk.strip())
+    rc = r.returncode
+    if rc:
+        out('Exit code %s' % rc)
+        restore_locked(moved, out)
+    else:
         for cmd in after or ():
             if cmd:
                 spawn_detached(cmd)

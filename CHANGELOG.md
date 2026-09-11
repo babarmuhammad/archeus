@@ -5,7 +5,88 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.3.0] - 2026-09-11
+
+### Changed
+
+- **The banner is the gold ARCHEUS lockup, and so is the social card.** It
+  replaces the generated cyan wordmark everywhere it was used, and it is artwork
+  now rather than output — `tools/make_og_card.py` no longer writes
+  `docs/assets/wordmark.png`, it READS it, so the card and the README show the
+  same file and neither can drift. Transparent, so it works on a light GitHub
+  page, a dark one, and straight on the card's navy. The card loses its cyan
+  `archeus` title with it: the mark carries the name, in the brand's own
+  letterforms and twice the size, so the word was on the card twice.
+
+### Fixed
+
+- **"Update now" installs, with archeus still open.** It had never worked on
+  any path, for four separate reasons, and each one hid the next.
+
+  - **pip was run with no stdout.** The worker is detached, so its output goes
+    to a file handle — and a child that redirects nothing does not inherit one.
+    pip came up with `sys.stdout` None and, under `pythonw` (which is what the
+    desktop shell runs on), exited 1 having printed nothing at all, not even a
+    traceback. The update log held the worker's own two lines and no pip output,
+    which reads exactly like an install that never ran. The install is captured
+    now, and the whole of pip's output goes to the log.
+  - **It waited five minutes and then installed anyway.** The strip says "it
+    installs when you close archeus" and a session lasts hours, so the cap fired
+    first every time and pip met the locked console script it had been deferred
+    to avoid. Measured: that install fails *after* uninstalling the old package,
+    leaving nothing installed at all. The wait is unbounded, and a caller that
+    passes a deadline gets "could not" rather than the unsafe install.
+  - **It never had to wait in the first place.** A running `.exe` can be
+    renamed, only not overwritten, so the worker moves the console script aside
+    and pip writes a fresh one beside it — and puts the old one back if the
+    install fails. *Update now* installs immediately; *install on quit* is the
+    same worker told to wait for this process first.
+  - **A checkout called itself a stale pip install.** One `pip install -e .`
+    leaves `archeus.egg-info` in the repository for ever, and the checkout is
+    first on `sys.path`, so `importlib.metadata` reported the working tree as an
+    installed distribution at whatever version that file was built at — 2.1.0
+    for a 2.2.0 tree. The banner offered an upgrade, pip answered "Requirement
+    already satisfied" about a copy the process was not running, and the restart
+    showed the old version and offered it again. What archeus is running is
+    decided by the layout on disk now, not by the record sitting next to it.
+
+  The strip itself was the fourth fault: the click starts a job whose banner IS
+  the update strip, and the finish path hides the strip it borrowed, so the
+  message that followed — with its **Restart now** button — was painted into a
+  hidden element. And the job used to report "done" the moment a background
+  worker had been *started*, which is a different fact from an install that
+  worked; it now holds until pip is finished and reports what pip said.
+
+- **The app icon reaches installs without PyQt6 — which is most of them.** The
+  mark shipped inside the package and only the Qt window ever read it. PyQt6 is
+  optional, so a plain `pip install archeus` opens the GUI as an Edge `--app`
+  window, whose taskbar icon is the page's favicon, and the page served none.
+  The server now serves `/favicon.ico` from the same file the Qt window uses.
+
+- **A browser tab that abandons a request no longer prints a traceback.**
+  Closing the window, or navigating away while the page's fetches were still in
+  flight, dumped fifteen lines of `ConnectionAbortedError: [WinError 10053]`
+  into the console with nothing wrong — `socketserver` prints a full traceback
+  for any exception escaping a handler, and the per-request log silencer does
+  not cover it. Both local servers now share one rule for which exceptions are
+  the user's problem: a peer that went away is dropped, anything else goes to
+  the log and the Events screen. The failover proxy had the same hole, and its
+  console window is the one users are told to read.
+
+- **Auto-memory's interval is counted from the last pass, and the clock now
+  survives the process.** A pass ran a couple of seconds after every launch, so
+  closing and reopening archeus five times in an hour bought five passes and
+  spent five times the quota the schedule was supposed to cap. The last pass is
+  recorded (a file mtime, so there is no state to corrupt), the first pass of a
+  run waits out whatever is left of the interval, and the Auto-memory card
+  shows when the next one is due.
+
+- **Two paragraphs printed on top of each other on the Updates page.** The
+  annotation column of a settings card gave `grid-row: 2 / span 20` to both the
+  section's first paragraph and every `.secthint` below it — which is one grid
+  cell, not a stack. The layout audit gained the check that sees it: two
+  normal-flow children of a card whose boxes overlap, the opposite failure to
+  the empty-floor measurement it already had.
 
 ## [2.2.0] - 2026-09-10
 

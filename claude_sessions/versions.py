@@ -3,12 +3,21 @@ installed, what has been released, and updating it.
 
 Five things worth knowing before changing this:
 
-- **archeus's own update cannot run in archeus.** pip rewrites the console
-  script (`Scripts/archeus.exe`) on every upgrade, and Windows holds that file
-  open for as long as it is the running process, so the install dies with a
-  PermissionError. `update_self()` therefore *schedules* the upgrade into a new
-  window that waits for this PID to exit — which is also what makes "update now"
-  and "update automatically on quit" one code path rather than two.
+- **archeus's own update runs beside archeus, not inside it.** pip rewrites the
+  console script (`Scripts/archeus.exe`) on every upgrade and Windows holds that
+  file open while it is the running image, so an in-process install dies — and
+  measurably worse than "dies": pip uninstalls the old package FIRST and then
+  fails on the script, leaving nothing installed at all. `update_self()`
+  therefore hands the install to a detached, windowless worker, which moves a
+  locked script aside (a running image can be renamed, just not overwritten)
+  and puts it back if the install fails. *Update now* installs immediately,
+  with archeus still open; *install on quit* is the same worker told to wait for
+  this PID first.
+
+- **Nothing in that chain may run on `pythonw`.** The desktop shell does, so
+  `sys.executable` is `pythonw.exe`, and a pythonw child writing to an inherited
+  file handle gets `sys.stdout = None`: pip exits 1 having printed nothing, not
+  even its traceback. Every spawn here goes through `proc.python_exe()`.
 
 - **There is no official version-list endpoint.** The docs advertise
   `downloads.claude.ai/claude-code-releases/{latest,stable}/manifest.json`;
@@ -47,7 +56,7 @@ __all__ = ['installed_version', 'install_mode', 'local_versions', 'released',
            'status', 'update_claude', 'plugin_rows', 'update_plugin',
            'update_marketplaces', 'updates_menu',
            'self_installed', 'self_install_mode', 'self_released',
-           'self_status', 'update_self', 'update_notice',
+           'self_status', 'update_self', 'update_notice', 'console_scripts',
            'start_background_check', 'update_on_quit']
 
 #: npm metadata for the published package. The `abbreviated` accept header keeps
@@ -222,15 +231,43 @@ def _source_version():
     return m.group(1) if m else ''
 
 
+def _running_from_source():
+    """Is the code in this process the working tree rather than an installed
+    copy? A repository marker beside the package is the signal.
+
+    It has to be the LAYOUT and not the metadata, because the metadata lies: one
+    `pip install -e .` or one `setup.py build` leaves `<repo>/archeus.egg-info`
+    behind, `importlib.metadata` finds it (the checkout is first on sys.path),
+    and it reports whatever version it was built at, for ever. Nothing removes
+    it and nothing updates it.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return any(os.path.exists(os.path.join(root, name))
+               for name in ('pyproject.toml', 'setup.py', '.git'))
+
+
 def _dist():
     """The installed archeus distribution — but ONLY when it is the one this
-    process is actually running from.
+    process is actually running from, and only when it is INSTALLED at all.
 
-    A checkout early on sys.path shadows an installed copy: `distribution()`
-    still finds the site-packages dist-info, and believing it would mean
-    reporting the wrong version and pip-upgrading a package the running process
-    is not using. Same class of mistake as trusting a decoded folder name.
+    Two ways to be wrong, and both have happened:
+
+    - a checkout early on sys.path shadows an installed copy, so
+      `distribution()` finds the site-packages dist-info while the code actually
+      running is the working tree;
+    - the reverse, which is worse because it looks like a healthy install: a
+      stale `archeus.egg-info` sitting IN the checkout. Measured here — a 2.2.0
+      working tree called itself a 2.1.0 pip install, so the banner offered
+      2.2.0, pip answered "Requirement already satisfied" about a site-packages
+      copy this process was not running, and the restart showed 2.1.0 and
+      offered the update again. That loop is what the user reported as "it
+      installs, then tells me a new version is available".
+
+    Same discipline as checkpoints.py: what is on disk decides, not what a
+    record claims about it.
     """
+    if _running_from_source():
+        return None
     try:
         from importlib.metadata import distribution
         d = distribution(SELF_PKG)
@@ -399,27 +436,34 @@ def update_on_quit():
         return False, ''
     if not update_notice():
         return False, ''
-    return update_self()
+    return update_self(defer=True)
 
 
-def update_self(restart=False):
-    """(ok, message). Stages the upgrade into a detached, WINDOWLESS worker
-    that waits for this process to exit before running it.
+def update_self(restart=False, defer=False, wait=0):
+    """(ok, message). Hands the upgrade to a detached, WINDOWLESS worker.
 
-    It cannot run in-process: pip rewrites the console script on every upgrade
-    and Windows holds that file open while it is the running process. Deferring
-    is also what makes "update now" and "update on quit" the same code path.
+    By default the install happens NOW, with archeus still open: the worker
+    moves the console script aside if this process has it locked (a running
+    image can be renamed, never overwritten) and pip writes a fresh one. The
+    running process keeps the code it loaded — a restart is what picks the new
+    version up — but the install itself no longer waits on anything.
 
-    What it must NOT do is open a console. The worker blocks on our pid, so a
+    *defer* is the other half: wait for this PID to exit first. That is what
+    "install on quit" means, and what *restart* needs, since relaunching while
+    the old process is still up would be two archeuses.
+
+    What it must NOT do is open a console. The worker may block on our pid, so a
     terminal for it was a window that took the foreground and then showed
     "Waiting for archeus to exit..." until the user quit — read, reasonably,
     as the update having hung. It is detached with its output in a log file.
 
-    *restart* asks the worker to bring archeus back up once the install
-    succeeds, which is the only way to have the new version without quitting
-    and starting it by hand. Both instructions travel in the ENVIRONMENT
-    rather than in argv, so the command line stays exactly what __main__'s
-    --self-update dispatch already parses.
+    *wait* (seconds) makes this call BLOCK on the worker and report what
+    actually happened, instead of reporting that a worker was started. Only
+    useful without *defer*, and only for a caller that can afford to wait — the
+    GUI job thread can, the TUI menu cannot.
+
+    Both instructions travel in the ENVIRONMENT rather than in argv, so the
+    command line stays exactly what __main__'s --self-update dispatch parses.
 
     A checkout is reported rather than overwritten, exactly as update_claude()
     reports an npm install instead of installing the native build over it.
@@ -429,17 +473,19 @@ def update_self(restart=False):
         return False, 'running from a checkout — update it with `git pull`'
     if not mode:
         return False, 'archeus is not an installed package — nothing to update'
+    py = proc.python_exe()          # never pythonw: pip dies with no stdout
     upgrade = (['pipx', 'upgrade', SELF_PKG] if mode == 'pipx' else
-               [sys.executable, '-m', 'pip', 'install', '-U', SELF_PKG])
+               [py, '-m', 'pip', 'install', '-U', SELF_PKG])
     # `-m claude_sessions`, not `-c <script>`: a script argument carrying
     # newlines or quotes is a quoting hazard on every platform. __main__
     # dispatches --self-update before it imports anything else, so the waiting
     # process never holds a lazy import of the package pip is about to replace.
-    argv = ([sys.executable, '-m', 'claude_sessions', '--self-update',
-             str(os.getpid())] + upgrade)
+    argv = ([py, '-m', 'claude_sessions', '--self-update',
+             str(os.getpid() if (defer or restart) else 0)] + upgrade)
     env = dict(os.environ)
-    env['ARCHEUS_UPDATE_TO'] = str(
-        (jsonstore.load(_self_cache_path(), {}) or {}).get('latest') or '')
+    latest = str((jsonstore.load(_self_cache_path(), {}) or {}).get('latest') or '')
+    env['ARCHEUS_UPDATE_TO'] = latest
+    env['ARCHEUS_FREE'] = json.dumps(console_scripts())
     if restart:
         # `-m claude_sessions` again rather than sys.argv[0]: the console script
         # is the file pip is about to replace. `--gui` is forced when the
@@ -448,6 +494,9 @@ def update_self(restart=False):
         tail = [a for a in sys.argv[1:]] or ['--gui']
         if '--gui' not in tail:
             tail.append('--gui')
+        # sys.executable here, NOT python_exe(): the desktop app runs on
+        # pythonw precisely so it has no console window, and relaunching it
+        # on python.exe would bring it back with one.
         env['ARCHEUS_RELAUNCH'] = json.dumps(
             [sys.executable, '-m', 'claude_sessions'] + tail)
     p, err = proc.spawn_detached(argv, env=env, log=_update_log_path())
@@ -455,7 +504,55 @@ def update_self(restart=False):
         return False, err or 'could not start the update worker'
     if restart:
         return True, 'Installing — archeus will close and come back'
-    return True, 'Update staged — it installs when you close archeus'
+    if defer:
+        return True, 'Update staged — it installs when you close archeus'
+    if wait:
+        try:
+            rc = p.wait(timeout=wait)
+        except Exception:
+            return True, 'Still installing in the background — see the update log'
+        if rc:
+            return False, _last_update_error() or (
+                'the install failed — see %s' % _update_log_path())
+        return True, ('Installed %s — restart archeus to use it' % latest
+                      if latest else 'Installed — restart archeus to use it')
+    return True, 'Installing in the background — restart archeus to use it'
+
+
+def console_scripts():
+    """The files pip would rewrite that THIS process might have locked.
+
+    Only ever `<name>.exe` for our own distribution: the worker moves what this
+    names out of the way, so it must not be able to name an interpreter. On
+    POSIX nothing is locked and this is simply empty of effect.
+    """
+    import shutil
+    out = []
+    d = os.path.dirname(sys.executable or '')
+    for cand in (sys.argv[0] if sys.argv else '', shutil.which(SELF_PKG) or '',
+                 os.path.join(d, SELF_PKG + '.exe'),
+                 os.path.join(d, 'Scripts', SELF_PKG + '.exe')):
+        if not cand:
+            continue
+        cand = os.path.abspath(cand)
+        if (os.path.basename(cand).lower() == SELF_PKG + '.exe'
+                and os.path.isfile(cand) and cand not in out):
+            out.append(cand)
+    return out
+
+
+def _last_update_error():
+    """The line pip failed on, for a message the user can act on. The log is the
+    worker's only voice — it has no console by design."""
+    try:
+        with open(_update_log_path(), encoding='utf-8', errors='replace') as f:
+            lines = [ln.strip() for ln in f.read().splitlines()[-40:] if ln.strip()]
+    except OSError:
+        return ''
+    for ln in reversed(lines):
+        if ln.startswith('ERROR') or 'Error' in ln or ln.startswith('Failed'):
+            return ln[:200]
+    return lines[-1][:200] if lines else ''
 
 
 # ── plugins ──────────────────────────────────────

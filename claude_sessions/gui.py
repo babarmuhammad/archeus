@@ -492,6 +492,9 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             self._serve_graph(q)
             return
+        if u.path == '/favicon.ico':
+            self._serve_icon()
+            return
         if u.path.startswith('/vendor/'):
             self._serve_vendor(u.path[len('/vendor/'):])
             return
@@ -535,6 +538,31 @@ class _Handler(BaseHTTPRequestHandler):
         if dt > 0.5:
             _c.log.warning('gui api %s %s slow: %.2fs', verb, path, dt)
         self._send(200, out)
+
+    def _serve_icon(self):
+        """The app icon, as the page's favicon — which is the ONLY icon most
+        installs ever get.
+
+        PyQt6 is optional, so a plain `pip install archeus` opens the GUI as an
+        Edge `--app` window instead: a real taskbar entry whose icon is the
+        page's favicon, and the page had none, so it took Edge's. A browser tab
+        took the default globe. The mark shipped inside the package all along —
+        nothing was reading it unless PyQt6 happened to be installed.
+
+        Before `_guard()`, for the same reason `/vendor/` is: a `<link
+        rel=icon>` cannot attach the X-Archeus header, and a browser asks for
+        `/favicon.ico` on its own with no headers at all. It is a public logo.
+        """
+        from .config import app_icon_path
+        p = app_icon_path()
+        try:
+            with open(p, 'rb') as f:
+                data = f.read()
+        except OSError:
+            self._send(404, {'error': 'not found'})
+            return
+        self._send(200, data, ctype='image/x-icon',
+                   cache='public, max-age=604800, immutable')
 
     def _serve_vendor(self, rel):
         """Vendored browser libraries (three.js, anime.js) — see gui_html.
@@ -769,6 +797,9 @@ QUIT_HOOK = None
 
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        _c.log_request_error('gui', client_address)
 
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)

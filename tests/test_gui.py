@@ -529,3 +529,105 @@ def test_archived_sessions_span_every_account(monkeypatch, tmp_path):
     assert {r['account'] for r in rows} == {'default', 'work'}
     for r in rows:
         assert r['cfgdir'] and os.path.isdir(r['cfgdir']), r
+
+
+# ── a client that goes away is not a fault ───────────────────
+#
+#     ConnectionAbortedError: [WinError 10053] Connessione interrotta dal
+#     software del computer host
+#
+# Fifteen lines of traceback in the user's console, twice, from nothing worse
+# than a page abandoning its in-flight fetches. socketserver prints that for
+# ANY exception escaping a handler, and `log_message` does not silence it.
+
+def _raise_into(exc, who='gui'):
+    """Call the policy from inside an except block, as handle_error is."""
+    from claude_sessions import config as _cfg
+    try:
+        raise exc
+    except BaseException:
+        _cfg.log_request_error(who, ('127.0.0.1', 54837))
+
+
+def test_a_peer_that_went_away_is_not_logged_and_not_printed(capsys, caplog):
+    """Aborted, reset and broken-pipe are the three ways a client leaves."""
+    import logging
+    caplog.set_level(logging.DEBUG, logger='archeus')
+    for exc in (ConnectionAbortedError(10053, 'aborted by host software'),
+                ConnectionResetError(10054, 'reset by peer'),
+                BrokenPipeError(32, 'broken pipe')):
+        _raise_into(exc)
+    assert not caplog.records, [r.getMessage() for r in caplog.records]
+    assert capsys.readouterr().err == ''
+
+
+def test_a_real_handler_fault_is_still_reported(caplog):
+    """The filter is 'the peer left', not 'be quiet'."""
+    import logging
+    caplog.set_level(logging.DEBUG, logger='archeus')
+    _raise_into(ValueError('something genuinely broke'))
+    assert any('something genuinely broke' in (r.exc_text or '')
+               or 'request from 127.0.0.1 failed' in r.getMessage()
+               for r in caplog.records), [r.getMessage() for r in caplog.records]
+
+
+def test_both_servers_route_their_errors_through_the_one_policy():
+    """Two copies of 'which exceptions are the user's problem' is two answers,
+    and the failover console is the one the user is told to read."""
+    import inspect
+    from claude_sessions import failover, gui
+    for mod, srv in ((gui, gui._Server), (failover, failover._Server)):
+        src = inspect.getsource(srv)
+        assert 'def handle_error' in src, mod.__name__
+        assert 'log_request_error' in src, mod.__name__
+    assert 'return _Server(' in inspect.getsource(failover.make_server)
+
+
+# ── the icon most installs actually see ──────────────────────
+#
+#     "the users installing archeus from pip are still not getting the icon"
+#
+# The .ico shipped inside the package and only `gui_qt` ever read it — and PyQt6
+# is optional, so a plain pip install opens an Edge `--app` window instead,
+# whose taskbar icon is the PAGE's favicon. The page had none.
+
+def test_the_page_asks_for_a_favicon_and_the_server_serves_it(monkeypatch, tmp_path):
+    """Both halves, because either one alone is still a blank icon."""
+    Sandbox(monkeypatch, tmp_path)
+    srv, base = _serve(monkeypatch)
+    port = srv.server_address[1]
+    try:
+        code, body = _raw(port, path='/?k=' + gui.TOKEN)
+        assert code == 200 and b'rel="icon" href="/favicon.ico"' in body
+        # unguarded, like /vendor/: a <link rel=icon> cannot carry the header,
+        # and a browser asks for /favicon.ico on its own with no headers at all
+        code, body = _raw(port, path='/favicon.ico')
+        assert code == 200, code
+        assert body[:4] == b'\x00\x00\x01\x00', body[:8]      # an ICO header
+    finally:
+        srv.shutdown()
+
+
+def test_the_icon_is_still_refused_to_a_rebound_host(monkeypatch, tmp_path):
+    """Unguarded is not unchecked — Host is the rebinding defence and it runs
+    first, on every route."""
+    Sandbox(monkeypatch, tmp_path)
+    srv, base = _serve(monkeypatch)
+    port = srv.server_address[1]
+    try:
+        assert _raw(port, path='/favicon.ico',
+                    host='evil.example:%d' % port)[0] == 403
+    finally:
+        srv.shutdown()
+
+
+def test_one_owner_for_the_app_icon(monkeypatch):
+    """`gui_qt` cannot own it: importing that module costs PyQt6, which the
+    installs with no icon are precisely the ones that do not have it."""
+    import inspect
+    from claude_sessions import config as _cfg, gui as _gui, gui_qt as _qt
+    assert os.path.isfile(_cfg.app_icon_path()), _cfg.app_icon_path()
+    assert 'app_icon_path' in inspect.getsource(_qt._icon_path)
+    assert 'app_icon_path' in inspect.getsource(_gui._Handler._serve_icon)
+    assert "'archeus.ico'" not in inspect.getsource(_qt)
+    assert "'archeus.ico'" not in inspect.getsource(_gui)

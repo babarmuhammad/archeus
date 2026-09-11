@@ -7,7 +7,7 @@ Claude Code"* with the sentence in §3.
 **Scope, and the sibling document.** This study owns the *meaning, the copy and the
 colour*. `notes/constellation-study.md` owns the *geometry* — the figure the mark, the
 backdrop and the architecture graph all draw — and is being implemented in parallel. Where
-the two touch (§5.3, §6) that document wins on shape and this one on why the shape is
+the two touch (§5.4, §6) that document wins on shape and this one on why the shape is
 right.
 
 ---
@@ -202,7 +202,7 @@ two.
 
 ---
 
-## 5. The mark, in three tiers
+## 5. The mark, in four tiers
 
 One artwork, three renderings, each with a job no other tier can do. All three derive from
 a single hand-drawn source; nothing is generated from a hue ladder. (That mistake was made
@@ -233,12 +233,24 @@ and pipx install ran with no icon at all), `docs/assets/favicon.ico`,
 
 This tier assumes a dark ground and is the only tier allowed to carry its own background.
 
-### 5.2 Light lockup — README, OG card, social
+### 5.2 The banner — README and anywhere the product signs itself
 
-The word **ARCHEUS** set large, with the tile to its side. Rendered by
-`tools/make_og_card.py` to `docs/assets/og-card.png` *and* `www/public/og-card.png` —
-both, from one run, because this used to write the docs copy and leave `www/public/` to be
-updated by hand, and the two had drifted apart by a kilobyte.
+**Source of truth: `docs/assets/wordmark.png`**, and it is ARTWORK, not output: the gold
+**A** with its orbit over **ARCHEUS** letterspaced beneath, on transparency, trimmed to
+its own ink. It is drawn, like `logo.png`, and `tools/make_og_card.py` no longer writes
+it — that file used to rebuild a cyan lockup from a system font, so running it would
+simply overwrite the artwork.
+
+Transparent rather than on a ground, and that is what makes it usable in both GitHub
+themes: every semi-transparent pixel in it is the drop SHADOW, which is dark, so it
+disappears on a dark page instead of leaving a pale halo.
+
+### 5.3 OG card — social preview
+
+The card is composed rather than drawn: lowercase `archeus`, the sentence, the bullets and
+the dark tile. Rendered by `tools/make_og_card.py` to `docs/assets/og-card.png` *and*
+`www/public/og-card.png` — both, from one run, because this used to write the docs copy
+and leave `www/public/` to be updated by hand, and the two had drifted apart by a kilobyte.
 
 Card palette, which is the app's `--grad` and not a separate brand palette:
 
@@ -261,7 +273,7 @@ Fonts: Windows-shipped (Bahnschrift → Segoe UI → Consolas) with a DejaVu fal
 Linux CI run produces something rather than dying. No `@font-face` anywhere in the product
 — the GUI is self-contained and works offline.
 
-### 5.3 Monochrome glyph — inline, `currentColor`
+### 5.4 Monochrome glyph — inline, `currentColor`
 
 `www/components/site/Mark.tsx` — inline SVG rather than a file, one request fewer,
 `viewBox="0 0 32 32"`, and it is deliberately the same figure the journey scene draws

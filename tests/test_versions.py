@@ -452,9 +452,13 @@ def test_pipx_and_pip_get_different_upgrade_commands(monkeypatch, tmp_path):
 
 def test_the_upgrade_is_deferred_to_a_worker_that_waits_for_this_process(monkeypatch, tmp_path):
     """pip rewrites the console script, which Windows keeps locked while it is
-    the running process — so the install cannot happen here. The spawned command
-    carries our pid and re-enters archeus through the __main__ dispatch that
-    imports nothing pip is about to replace."""
+    the running process — so the install cannot happen HERE. It happens in the
+    worker, which re-enters archeus through the __main__ dispatch that imports
+    nothing pip is about to replace.
+
+    Which pid it carries is the whole difference between the two modes: 0 means
+    "install now, beside the running archeus", and our own pid means "wait for
+    it to go first", which is what *install on quit* and *restart* need."""
     Sandbox(monkeypatch, tmp_path)
     seen = []
     monkeypatch.setattr(v.proc, 'spawn_detached',
@@ -464,7 +468,11 @@ def test_the_upgrade_is_deferred_to_a_worker_that_waits_for_this_process(monkeyp
     assert ok
     argv = seen[0]
     assert argv[1:4] == ['-m', 'claude_sessions', '--self-update']
-    assert argv[4] == str(os.getpid())
+    assert argv[4] == '0', 'Update now waited for something'
+
+    del seen[:]
+    ok, _msg = v.update_self(defer=True)
+    assert ok and seen[0][4] == str(os.getpid())
 
 
 def test_the_upgrade_worker_gets_no_window_of_its_own(monkeypatch, tmp_path):
@@ -637,7 +645,8 @@ def test_only_auto_installs_on_quit(monkeypatch, tmp_path):
     _pypi(monkeypatch, latest='1.7.0')
     v.self_released()
     calls = []
-    monkeypatch.setattr(v, 'update_self', lambda: (calls.append(1) or (True, 'ok')))
+    monkeypatch.setattr(v, 'update_self',
+                        lambda **k: (calls.append(k) or (True, 'ok')))
 
     for mode, expect in (('notify', 0), ('off', 0), ('auto', 1)):
         del calls[:]
@@ -646,16 +655,29 @@ def test_only_auto_installs_on_quit(monkeypatch, tmp_path):
         config_mod.save_settings(s)
         v.update_on_quit()
         assert len(calls) == expect, mode
+    # and it DEFERS — an install on quit that did not wait for the quit would be
+    # pip against a live process, which is the one thing that must not happen
+    assert calls and calls[-1].get('defer') is True, calls
+
+
+def _fake_run(seen, rc, stdout='', stderr=''):
+    """A stand-in for `proc.run`, which is how the worker executes the install
+    now — captured rather than inherited, because a detached parent's file
+    handle is NOT inherited by a child that redirects nothing, so pip came up
+    with no stdout at all and (under pythonw) died of it, silently."""
+    class R:
+        returncode, stdout, stderr = rc, '', ''
+    R.stdout, R.stderr = stdout, stderr
+    return lambda argv, **k: (seen.append(argv), R)[1]
 
 
 def test_the_deferred_worker_waits_for_the_pid_then_runs(monkeypatch):
     """proc.wait_and_run is what makes a program able to replace its own files.
     It lives in proc so the waiting process imports nothing pip is replacing."""
-    import subprocess as _sp
     alive = [True, True, False]
     monkeypatch.setattr(proc, 'pid_alive', lambda p: alive.pop(0) if alive else False)
     ran = []
-    monkeypatch.setattr(_sp, 'call', lambda argv: ran.append(argv) or 0)
+    monkeypatch.setattr(proc, 'run', _fake_run(ran, 0))
     rc = proc.wait_and_run(1234, ['pipx', 'upgrade', 'archeus'],
                            poll=0, out=lambda *a: None)
     assert rc == 0 and ran == [['pipx', 'upgrade', 'archeus']]
@@ -666,23 +688,53 @@ def test_the_worker_refuses_an_empty_command(monkeypatch):
     assert proc.wait_and_run(1, [], out=lambda *a: None) == 2
 
 
+# ── the wait is unbounded, and giving up does not mean installing anyway ──
+#
+#     "the update now function is still broken"
+#
+# It was capped at five minutes. The banner says "it installs when you close
+# archeus" and the user keeps working, so the cap fired first every time: pip
+# ran against the live process, met the console script it had been deferred to
+# avoid, and failed into a log file with no window and no reader.
+
+def test_the_worker_waits_as_long_as_archeus_runs(monkeypatch):
+    """A session lasts hours; the deferral has to outlast it. Asserted on the
+    default itself because the alternative is a test that sleeps for the old
+    five minutes to tell the two apart."""
+    import inspect
+    assert inspect.signature(proc.wait_and_run).parameters['timeout'].default is None
+
+
+def test_giving_up_does_not_install_over_a_running_archeus(monkeypatch):
+    """A caller that does pass a deadline gets 'could not', never 'did it
+    anyway' — the unsafe install is the exact thing the wait exists to avoid."""
+    monkeypatch.setattr(proc, 'pid_alive', lambda p: True)      # never exits
+    ran = []
+    monkeypatch.setattr(proc, 'run', _fake_run(ran, 0))
+    said = []
+    rc = proc.wait_and_run(4321, ['pip', 'install', '-U', 'archeus'],
+                           timeout=0.05, poll=0.01, out=said.append)
+    assert ran == [], 'it installed over a process that was still running'
+    assert rc != 0
+    assert any('NOT installing' in m for m in said), said
+
+
 def test_the_worker_announces_the_upgrade_only_when_it_worked(monkeypatch):
     """The notification IS the report: the worker has no console to print to and
     the app that staged it is gone by the time it runs. Announcing a failed
     install would be worse than silence — nobody would go looking for the log."""
-    import subprocess as _sp
     monkeypatch.setattr(proc, 'pid_alive', lambda p: False)
     started = []
     monkeypatch.setattr(proc, 'spawn_detached',
                         lambda argv, **k: started.append(argv) or (object(), ''))
 
-    monkeypatch.setattr(_sp, 'call', lambda argv: 0)
+    monkeypatch.setattr(proc, 'run', _fake_run([], 0))
     proc.wait_and_run(0, ['pip', 'x'], poll=0, out=lambda *a: None,
                       after=[['toast'], ['archeus', '--gui']])
     assert started == [['toast'], ['archeus', '--gui']]
 
     del started[:]
-    monkeypatch.setattr(_sp, 'call', lambda argv: 1)
+    monkeypatch.setattr(proc, 'run', _fake_run([], 1))
     proc.wait_and_run(0, ['pip', 'x'], poll=0, out=lambda *a: None, after=[['toast']])
     assert started == [], 'a failed install still announced itself'
 
@@ -785,3 +837,163 @@ def test_a_plugin_row_updates_that_plugin(monkeypatch, tmp_path):
     _screen(monkeypatch, tmp_path, keys,
             plug=lambda k: (seen.append(k) or (True, 'updated')))
     assert seen == ['demo@mkt']
+
+
+# ── why it had never worked, on any path ─────────────────────
+#
+#     "update now still doesn't work ... right now it doesn't work with
+#      archeus closed too"
+#
+# Two causes, both measured on this machine before they were fixed. The worker
+# ran pip with its stdout INHERITED from a detached parent, which Windows does
+# not actually inherit, so pip came up with no stdout — under `pythonw`, which
+# is what the desktop shell runs on, it exited 1 having printed nothing at all,
+# and the update log held the worker's own two lines and no pip output.
+
+def test_the_install_is_captured_not_inherited(monkeypatch):
+    """The log is the only voice a windowless worker has, so pip's output has to
+    be put there rather than pointed at a handle the child never receives."""
+    said = []
+    monkeypatch.setattr(proc, 'pid_alive', lambda p: False)
+    monkeypatch.setattr(proc, 'run',
+                        _fake_run([], 0, stdout='Successfully installed archeus-2.2.0'))
+    assert proc.wait_and_run(0, ['pip', 'x'], poll=0, out=said.append) == 0
+    assert any('Successfully installed' in m for m in said), said
+
+    del said[:]
+    monkeypatch.setattr(proc, 'run', _fake_run([], 1, stderr='ERROR: no matching dist'))
+    assert proc.wait_and_run(0, ['pip', 'x'], poll=0, out=said.append) == 1
+    assert any('no matching dist' in m for m in said), said
+
+
+def test_nothing_in_the_upgrade_runs_on_pythonw(monkeypatch, tmp_path):
+    """A pythonw child gets `sys.stdout = None` and pip dies of it. The relaunch
+    is the deliberate exception: the desktop app runs on pythonw exactly so it
+    has no console, and bringing it back on python.exe would give it one."""
+    Sandbox(monkeypatch, tmp_path)
+    pyw = tmp_path / 'pythonw.exe'
+    pyw.write_text('', encoding='utf-8')
+    (tmp_path / 'python.exe').write_text('', encoding='utf-8')
+    monkeypatch.setattr(v.sys, 'executable', str(pyw))
+    monkeypatch.setattr(proc.sys, 'executable', str(pyw))
+    assert os.path.basename(proc.python_exe()) == 'python.exe'
+
+    seen = {}
+    monkeypatch.setattr(v.proc, 'spawn_detached',
+                        lambda argv, **k: (seen.update(argv=argv, env=k.get('env') or {}),
+                                           (object(), ''))[1])
+    monkeypatch.setattr(v, 'self_install_mode', lambda: 'pip')
+    v.update_self(restart=True)
+    assert 'pythonw' not in os.path.basename(seen['argv'][0]).lower(), seen['argv']
+    assert not any('pythonw' in str(a).lower() for a in seen['argv']), seen['argv']
+    relaunch = json.loads(seen['env']['ARCHEUS_RELAUNCH'])
+    assert 'pythonw' in relaunch[0].lower(), relaunch
+
+
+def test_a_locked_console_script_is_moved_aside_and_put_back(tmp_path):
+    """Measured, and the reason this exists: with the script locked, `pip install
+    -U` fails AFTER uninstalling the old package, so the user is left with
+    nothing installed. Renaming is allowed on a running image where overwriting
+    is not, which is what makes an install with archeus still open possible."""
+    exe = tmp_path / 'archeus.exe'
+    exe.write_bytes(b'MZ')
+    os.chmod(exe, 0o444)                     # unwritable == locked, portably
+    said = []
+    moved = proc.free_locked([str(exe)], out=said.append)
+    assert moved and not exe.exists(), (moved, said)
+    aside = moved[0][0]
+    assert os.path.isfile(aside)
+
+    # pip failed: the user must still have the command they started with
+    proc.restore_locked(moved, out=said.append)
+    assert exe.exists() and not os.path.exists(aside)
+
+    # pip succeeded: the fresh script it wrote is kept, not overwritten
+    moved = proc.free_locked([str(exe)], out=said.append)
+    exe.write_bytes(b'MZ-new')
+    proc.restore_locked(moved, out=said.append)
+    assert exe.read_bytes() == b'MZ-new'
+
+
+def test_an_unlocked_script_is_left_exactly_where_it_is(tmp_path):
+    """Most installs are not locked at all — a desktop shortcut runs pythonw, not
+    the console script — and moving a file that pip can simply overwrite would
+    be damage for nothing."""
+    exe = tmp_path / 'archeus.exe'
+    exe.write_bytes(b'MZ')
+    assert proc.free_locked([str(exe)]) == []
+    assert exe.exists()
+
+
+def test_the_worker_is_only_ever_handed_our_own_console_script(monkeypatch):
+    """It MOVES what it is handed, so the list may never name an interpreter."""
+    for path in v.console_scripts():
+        assert os.path.basename(path).lower() == 'archeus.exe', path
+        assert os.path.isfile(path)
+
+
+# ── the loop: install, restart, "a new version is available" ──
+#
+#     "it let me install archeus new version then told me to restart archeus to
+#      use it, when i restarted it's saying again that a new version is
+#      available and it's still showing me the old version"
+#
+# One `pip install -e .` leaves `<repo>/archeus.egg-info` behind for ever, and
+# the checkout is first on sys.path, so importlib.metadata reported the working
+# tree as an INSTALLED distribution at whatever version that file was built at.
+# Measured here: a 2.2.0 checkout calling itself a 2.1.0 pip install, offering an
+# upgrade that pip answered with "Requirement already satisfied" about a
+# site-packages copy the process was not running.
+
+def test_a_checkout_with_stale_metadata_beside_it_is_still_a_checkout(
+        monkeypatch, tmp_path):
+    """The layout decides, not the record sitting next to it."""
+    pkg = tmp_path / 'claude_sessions'
+    pkg.mkdir()
+    (tmp_path / 'pyproject.toml').write_text('version = "9.9.9"\n', encoding='utf-8')
+    monkeypatch.setattr(v, '__file__', str(pkg / 'versions.py'))
+    monkeypatch.setattr(v, '_SELF_VER', None)
+
+    class _Stale:                       # what the egg-info would have said
+        version = '2.1.0'
+
+        def locate_file(self, _x):
+            return str(pkg)
+
+        def read_text(self, _x):
+            return ''
+
+    import importlib.metadata as _md
+    monkeypatch.setattr(_md, 'distribution', lambda _n: _Stale())
+
+    assert v._running_from_source()
+    assert v._dist() is None, 'stale metadata was believed'
+    assert v.self_install_mode() == 'checkout'
+    assert v.self_installed() == '9.9.9', 'the version came from the record, not the code'
+    ok, msg = v.update_self()
+    assert not ok and 'git pull' in msg, msg
+
+
+def test_a_real_install_is_still_a_real_install(monkeypatch, tmp_path):
+    """The guard is about a repository beside the package — site-packages has no
+    pyproject.toml and no .git, so nothing about an installed copy changes."""
+    site = tmp_path / 'site-packages'
+    pkg = site / 'claude_sessions'
+    pkg.mkdir(parents=True)
+    monkeypatch.setattr(v, '__file__', str(pkg / 'versions.py'))
+    monkeypatch.setattr(v, '_SELF_VER', None)
+
+    class _Real:
+        version = '2.2.0'
+
+        def locate_file(self, x):
+            return str(site / x) if x else str(site)
+
+        def read_text(self, _x):
+            return ''
+
+    import importlib.metadata as _md
+    monkeypatch.setattr(_md, 'distribution', lambda _n: _Real())
+    assert not v._running_from_source()
+    assert v.self_install_mode() == 'pip'
+    assert v.self_installed() == '2.2.0'

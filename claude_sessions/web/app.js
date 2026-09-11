@@ -752,7 +752,7 @@ const NAV=[
   ['agents','robot','Agents','Subagent definitions: browse the library, write one by hand or have Claude draft it.',()=>pgAgents,'split'],
   ['skills','ai','Skills','SKILL.md skills — bundled templates, your library, and the ones installed in a project.',()=>pgSkills,'split'],
   ['hooks','link','Hooks','Claude Code hooks per account: install from a template, enable, disable or remove.',()=>pgHooks,'split'],
-  ['plugins','folder','Plugins','Versions of archeus and Claude Code, the marketplaces you have registered, and every plugin installed from them.',()=>pgPlugins,'pile'],
+  ['plugins','folder','Plugins','The marketplaces you have registered and every plugin installed from them, with what each one contributes.',()=>pgPlugins,'pile'],
   // 'Usage & cost', not 'Usage': the project side has a tab called Usage too,
   // and this is the name the docs page carries — a screen and the page about it
   // should be called the same thing.
@@ -768,7 +768,7 @@ const NAV=[
   // on screen. A LABEL is data; the entity goes in the markup, not in the data.
   ['paths','folder','Paths & limits','Where archeus finds your editor and Claude Code, what its own calls may spend, and what the memory graph may hold.',()=>pgSetPaths,'form'],
   ['models','ai','Models','Free execution through OmniRoute, and the failover list that retries the next model when a turn dies.',()=>pgSetModels,'form'],
-  ['updates','refresh','Updates','What archeus does on its own: update checks, notifications, and the auto-memory schedule.',()=>pgSetUpdates,'form'],
+  ['updates','refresh','Updates','Versions of archeus, Claude Code and the model catalogue — and what archeus checks on its own: updates, notifications, and the auto-memory schedule.',()=>pgSetUpdates,'form'],
   ['searchp','search','Search','Full-text search over every session transcript on the machine.',()=>pgSearch,'feed'],
   ['helpp','help','Help','This page: every screen in the app and every key in the terminal UI.',()=>pgHelp,'pile'],
 ];
@@ -2464,11 +2464,12 @@ async function drawMemory(){
       ${(st.evicted_names||[]).length?`<div class="lbl" style="margin-top:10px" title="When the graph passes its cap, the least-used unpinned facts go. Pinned ones never do.">Dropped to stay under the cap (${st.evicted||0})</div>
         <div class="chips">${st.evicted_names.slice(0,12).map(n=>`<span class="chip">${esc(n)}</span>`).join('')}</div>`:''}
       <div class="lbl" style="margin-top:16px">Keeping it current</div>
-      <p style="color:var(--dim);font-size:13px;margin:0 0 10px">Keeping memory current costs Claude calls. One pass runs when you open archeus and
-        one every ${every(st.auto_interval)} after that — never sooner, however much is left to do.
+      <p style="color:var(--dim);font-size:13px;margin:0 0 10px">Keeping memory current costs Claude calls. One pass every ${every(st.auto_interval)} —
+        never sooner, however much is left to do, and counted from the last pass rather than from
+        launch, so closing and reopening archeus does not buy another one.
         Each pass re-reads at most a few changed modules, so a big backlog is spread across
         passes instead of spent at once.</p>
-      <label class="autoline" style="margin-top:0" title="Refresh this project's memory in the background — on launch and then on the interval, from whichever interface is running — whenever its files change, without needing this tab open.">
+      <label class="autoline" style="margin-top:0" title="Refresh this project's memory in the background — once per interval, from whichever interface is running — whenever its files change, without needing this tab open.">
         <input type="checkbox" id="autoMem" ${st.auto_on?'checked':''} onchange="toggleAutoMem(this.checked)">
         <span>${ic('refresh')} Keep this project's memory updated automatically</span>
         <span class="tag" title="Change it on the Claude Code page, under auto-memory.">every ${every(st.auto_interval)}</span>
@@ -4454,10 +4455,13 @@ async function pgPlugins(nav){
       ${vr.outdated?`<button class="btn sm pri" onclick='pluginUpdate(${hesc(p.key)})'>Update</button>`:''}
       <button class="btn sm danger" onclick='pluginRemove(${hesc(p.key)})'>${ic('del')}</button>
     </div>`;}).join('');
+  /* The three version cards used to open this page. They are on
+     Settings ▸ Updates now, with the schedule that checks for them — "what is
+     installed and is it current" is the same question as "how often do you
+     look", and this page is about marketplaces and what came from them. The
+     `/api/versions` fetch stays: a plugin row needs its marketplace's version
+     to say `update available`. */
   shell(nav,`
-    ${selfCard(V)}
-    ${verCard(V)}
-    ${modelCard(V)}
     <div class="card wide" id="pluginCard"><h3>${ic('folder')} Installed plugins</h3>
       <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">A plugin bundles skills, subagents, commands, hooks and MCP servers together. The tags say what each one actually placed on disk — the same information the Skills, Agents and Hooks pages now use to mark which of their rows came from a bundle rather than from you.${accts.length>1?' The <b>accounts</b> tag says how many of your logins have it: a plugin is a property of you, not of whichever account happened to be active when you installed it.':''}</p>
       ${picker}
@@ -4499,17 +4503,22 @@ function selfCard(V){
     <div class="kv"><span>latest on PyPI</span><code>${esc(c.latest||'?')}</code></div>
     <div class="kv"><span>install mode</span><code>${esc(c.mode||'?')}</code>
       ${c.mode==='checkout'?'<span style="color:var(--dim2);font-size:12px">a git checkout — update it with <code>git pull</code>, not with pip</span>'
-        :'<span style="color:var(--dim2);font-size:12px">the upgrade installs in the background once archeus exits, because pip cannot rewrite the script it is running from — Restart now does both at once</span>'}</div>
+        :'<span style="color:var(--dim2);font-size:12px">the upgrade installs in the background with archeus still open; the running app keeps the version it started on, so restart to use the new one — <b>Restart now</b> does both at once</span>'}</div>
     </div>`;
 }
+/* Same job, same truth, as the `#updbar` strip — and it must report what the
+   job reports rather than a sentence written here. This one said "it installs
+   when you close archeus" whatever happened, which stopped being true when the
+   install stopped waiting for the close, and would have gone on saying it. */
 function selfUpdate(restart){
   inlineJob('#selfCard','archeus_update',{restart:!!restart},
             {label:restart?'Restarting archeus to finish the upgrade'
-                          :'Staging the archeus upgrade',
-             onDone:()=>{
-               if(!restart){toast('Update staged — it installs when you close archeus','ok');return;}
-               toast('Installing — archeus will close and come back','ok');
-               post('/api/quit',{});}});
+                          :'Installing archeus',
+             onDone:st=>{
+               if(st.status!=='done')return;      // the inline banner says why
+               toast((st.result||{}).message||'Installed','ok');
+               if(restart)post('/api/quit',{});},
+             redraw:st=>{if(!restart&&st.status==='done')drawVersionCards();}});
 }
 /* The model catalogue. It sits with the other two because it answers the same
    question of a third thing — "is what archeus is showing you still what
@@ -4566,10 +4575,19 @@ function verCard(V){
       ${locals?`<span style="color:var(--dim2);font-size:12px">on disk:</span> ${locals}`:''}
     </div></div>`;
 }
+/* Gated on its host like every other helper this page fires: a request for a
+   card that is not on screen is exactly the cost the settings split removed. */
+async function drawVersionCards(refresh){
+  if(!$('#verMount'))return;
+  const V=await api('/api/versions'+(refresh?'?refresh=1':'')).catch(()=>({}));
+  VER=V||{};
+  const host=$('#verMount');if(!host)return;      // navigated away mid-fetch
+  host.innerHTML=selfCard(V)+verCard(V)+modelCard(V);
+}
 async function verCheck(){
   const V=await api('/api/versions?refresh=1');VER=V;
   toast(((V.claude||{}).error)||'Checked',(V.claude||{}).error?'err':'ok');
-  drawPage('plugins');
+  if($('#verMount'))drawVersionCards();else drawPage('plugins');
 }
 async function verPick(){
   const c=(VER||{}).claude||{};
@@ -4582,7 +4600,7 @@ async function verPick(){
 }
 function claudeUpdate(target){
   inlineJob('#verCard','claude_update',{target:target||''},
-            {redraw:()=>drawPage('plugins')});
+            {redraw:()=>drawVersionCards()});
 }
 function pluginUpdate(key){
   inlineJob('#pluginCard','plugin_update',{key},{redraw:()=>drawPage('plugins')});
@@ -5613,15 +5631,21 @@ const SETTINGS_CARDS={
       <span class="sp"></span>
       <button class="btn" onclick="foSave()">Save failover</button></div></div>
 `,
-  updates:o=>`<div class="card"><h3>${ic('refresh')} Update checks &amp; notifications</h3>
+  /* `#verMount` is `display:contents` (app.css), so the three cards it holds
+     are laid out by `.form` as if they were written here — which is what lets
+     them stay the async, self-contained builders they already were rather than
+     becoming three more static templates to keep in step. */
+  updates:o=>`<div id="verMount"><span class="spin"></span></div>
+  <div class="card"><h3>${ic('refresh')} Update checks &amp; notifications</h3>
     ${fld('sUpd','Updates')}
-    <p style="color:var(--dim);font-size:13px;margin:0 0 10px">One switch for everything archeus fetches on your behalf: whether a newer release exists, and the current Claude model list. <b>Install on quit</b> stages the upgrade into a background worker with no window of its own, which installs once archeus has closed — pip cannot rewrite the script it is running from — and then raises a notification. <b>Off</b> stops both checks.</p>
+    <p style="color:var(--dim);font-size:13px;margin:0 0 10px">One switch for everything archeus fetches on your behalf: whether a newer release exists, and the current Claude model list. <b>Install on quit</b> stages the upgrade into a background worker with no window of its own, which waits for archeus to close, installs, and raises a notification. <b>Tell me</b> offers the same install straight away — it runs beside the open app, and you restart when you want the new version. <b>Off</b> stops both checks.</p>
     ${fld('sNotif','Notifications')}
     <p style="color:var(--dim);font-size:13px;margin:0 0 10px">A desktop notification when a background job that ran longer than ${20}s finishes — memory builds, plans, reviews — and when the detached memory worker is done, which has no window of its own at all. Quick jobs never notify.</p>
     <p class="secthint" style="margin:0">Which interface <i>starts</i> — terminal or desktop — is the <b>TUI / GUI</b> toggle at the foot of the sidebar, and <code>--tui</code>/<code>--gui</code> always override it.</p></div>
   <div class="card"><h3>${ic('refresh')} Auto-memory <span class="sp"></span>
+    <span class="tag" id="amNext" title="Counted from the last pass, not from launch."></span>
     <span class="fld" style="margin:0"><select id="amInt" onchange="amSaveInterval(this.value)" style="width:auto"></select></span></h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Projects checked below have their memory refreshed in the background — one pass when archeus starts, then one every interval, whenever their files change. Only changed projects use Claude; nothing runs while unchanged.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Projects checked below have their memory refreshed in the background — one pass per interval, whenever their files change. Only changed projects use Claude; nothing runs while unchanged. The clock is counted from the last pass and <b>survives a restart</b>, so closing and reopening archeus does not buy another pass.</p>
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">A pass re-reads a few changed modules at most, and whatever is left waits for the <b>next</b> interval — so a big backlog is spread out rather than spent at once. Opening a checked project does not add a pass; this schedule is the only thing that spends on it.</p>
     <div id="amList"><span class="spin"></span></div></div>
   <div class="card"><h3>${ic('ai')} Build the backlog now <span class="sp"></span>
@@ -5709,6 +5733,7 @@ async function pgSettings(nav,part='settings'){
     orRefresh();
   }
   if($('#amList'))drawAutoMemList();
+  if($('#verMount'))drawVersionCards();
 }
 /* ── theme gallery ──
    A dot swatch can't distinguish 26 palettes, so every card paints a real mock
@@ -6164,6 +6189,8 @@ async function drawAutoMemList(){
   const sel=$('#amInt');
   if(sel)sel.innerHTML=AM_INTERVALS.map(([v,l])=>
     `<option value="${v}"${v===d.interval?' selected':''}>${l}</option>`).join('');
+  const nx=$('#amNext'),n=+d.next_in||0;
+  if(nx)nx.textContent=n<90?'next pass imminent':'next pass in '+fmtAge(n);
   const rows=(d.projects||[]).sort((a,b)=>(b.auto-a.auto)).map(p=>`
     <label class="amrow">
       <input type="checkbox" ${p.auto?'checked':''} onchange="amToggle(${hesc(p.enc)},this.checked)">
@@ -6715,41 +6742,54 @@ async function drawUsageBar(force){
 /* ── "archeus N is out" strip ──
    Its own element (#updbar), not a row inside #ubar, because drawUsageBar
    rewrites that wholesale every 60s. Never polls: one fetch per session. */
+/* ONE writer, because the strip is hidden in two ways that a renderer cannot
+   see: `display:none` inline in index.html, and `inlineClear` putting it back
+   when a job that BORROWED the strip finishes. Painting innerHTML without the
+   display wrote the message into an invisible element — which is exactly what
+   "Update now does nothing" was: the job cleared the strip on success and the
+   staged message, with its Restart button, was never on screen. */
+function updShow(html){
+  const host=$('#updbar');if(!host)return null;
+  host.innerHTML=html;host.style.display='flex';return host;
+}
 async function drawUpdateBar(){
   let c;
   try{c=(await api('/api/versions')).archeus||{};}catch(e){return;}
   if(!c.update)return;
-  const host=$('#updbar');if(!host)return;
   const act=c.mode==='checkout'
     ? `<span style="color:var(--dim2)">run <code>git pull</code> in your checkout</span>`
     : `<button class="btn sm pri" id="updNow">Update now</button>`;
-  host.innerHTML=`<span class="uptxt">${ic('download')} <b>archeus ${esc(c.latest)}</b>
+  const host=updShow(`<span class="uptxt">${ic('download')} <b>archeus ${esc(c.latest)}</b>
     is available — you have ${esc(c.installed||'?')}</span>${act}
-    <button class="btn sm" id="updHide">Dismiss</button>`;
-  host.style.display='flex';
+    <button class="btn sm" id="updHide">Dismiss</button>`);
+  if(!host)return;
   const hide=$('#updHide');if(hide)hide.onclick=()=>{host.style.display='none';};
   const now=$('#updNow');
+  // The job now HOLDS until pip is finished, so its banner is the progress and
+  // its failure is pip's own message. It used to report "done" the moment a
+  // background worker had been started, which is a different fact.
   if(now)now.onclick=()=>inlineJob('#updbar','archeus_update',{restart:false},
-    {label:'Staging the archeus upgrade',
-     onDone:()=>{toast('Update staged — it installs when you close archeus','ok');
-                 updStaged(c);}});
+    {label:`Installing archeus ${c.latest}`,
+     onDone:st=>{const m=(st.result||{}).message||'';
+                 if(st.status!=='done'){drawUpdateBar();return;}
+                 toast(m||'Installed','ok');updInstalled(c);}});
 }
-/* Staged, not installed, and the strip has to say so — pip cannot overwrite the
-   console script it is running from, so the worker waits for this process to
-   exit. Restarting is the only way to have it NOW, and it is the same job with
-   `restart:true`: that is what tells the waiting worker to bring archeus back up
-   once the install succeeds. Replacing the button rather than adding one is what
-   stops a second worker being staged behind the first. */
-function updStaged(c){
-  const host=$('#updbar');if(!host)return;
-  host.innerHTML=`<span class="uptxt">${ic('download')} <b>archeus ${esc(c.latest)}</b>
-    is staged — it installs when you close archeus</span>
+/* Installed, with archeus still open — the running process keeps the code it
+   loaded, so a restart is what picks the new version up, and saying "installed"
+   without saying that would be a half-truth. Restart is the same job with
+   `restart:true`, which is what tells the worker to wait for this process to go
+   and bring archeus back on the new version. Replacing the button rather than
+   adding one is what stops a second worker being started behind the first. */
+function updInstalled(c){
+  const host=updShow(`<span class="uptxt">${ic('download')} <b>archeus ${esc(c.latest)}</b>
+    is installed — restart archeus to use it</span>
     <button class="btn sm pri" id="updRestart">Restart now</button>
-    <button class="btn sm" id="updLater">Later</button>`;
+    <button class="btn sm" id="updLater">Later</button>`);
+  if(!host)return;
   $('#updLater').onclick=()=>{host.style.display='none';};
   $('#updRestart').onclick=()=>inlineJob('#updbar','archeus_update',{restart:true},
     {label:'Restarting archeus to finish the upgrade',
-     onDone:()=>{toast('Installing — archeus will close and come back','ok');
+     onDone:()=>{toast('archeus will close and come back','ok');
                  post('/api/quit',{});}});
 }
 

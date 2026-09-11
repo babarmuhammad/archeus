@@ -613,8 +613,16 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
    in row 2 pushed the second control down by the difference and left a hole
    between it and the third — 110px of it on Plan → Execute. Spanning lets that
    height distribute over the controls it is opposite. The row gap is zero, so
-   the rows a short card never uses cost nothing. */
-.form>.card>p:first-of-type,.form>.card>.secthint{
+   the rows a short card never uses cost nothing.
+
+   EXACTLY ONE element may take that placement, which is why `.secthint` is not
+   in this selector and must never be added back. Two elements each given
+   `grid-row:2/span 20` in column 1 are not stacked, they are in the SAME CELL:
+   on Updates the section explainer and the `.secthint` under it were printed
+   on top of each other, and so were the two on "Build the backlog now". A
+   `.secthint` that is the first paragraph is already caught by `p:first-of-type`;
+   a later one is a footnote and belongs with the controls. */
+.form>.card>p:first-of-type{
   grid-column:1;grid-row:2/span 20;align-self:start}
 /* a control is sized to fit its value: a 4-digit port is not a 900px input.
    `.fld input{width:100%}` is right for a path and wrong for a number, and it
@@ -627,13 +635,21 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
    section and not the page, and six primary Saves down one page is six things
    all claiming to be the thing to press.) */
 .form .mrow{justify-content:flex-start;flex-wrap:wrap}
+/* An async MOUNT is not a section. `display:contents` takes the wrapper out of
+   the box tree so the cards it fills stand as the form's own children, which is
+   what lets the three version cards keep the self-contained builders they had
+   on the page they came from instead of becoming static templates here. They
+   are kv rows and buttons, not labelled fields, so they do not want the
+   annotation column — only the card's own geometry and spacing. */
+.form>#verMount{display:contents}
+.form>#verMount>.card{margin-bottom:0;max-width:none;min-width:0}
 /* 720px of CONTENT: below it the annotation cannot hold a sentence and the
    controls cannot hold a value, so the two columns become one and the
    description goes back above the fields it describes. */
 @container page (max-width:720px){
   .form>.card{grid-template-columns:minmax(0,1fr)}
   .form>.card>*,.form>.card>h3:first-of-type,
-  .form>.card>p:first-of-type,.form>.card>.secthint{grid-column:1;grid-row:auto}}
+  .form>.card>p:first-of-type{grid-column:1;grid-row:auto}}
 
 /* home: the dashboard bento — instruments first (how much plan is left, how
    hard am I working, is my tooling up, is anything running), then what to

@@ -314,9 +314,16 @@ def serve_cli(port):
 
 # ── proxy ────────────────────────────────────────────────────
 
+class _Server(ThreadingHTTPServer):
+    # the console window IS the feature here, so a session killed mid-turn may
+    # not fill it with tracebacks for a peer that simply went away
+    def handle_error(self, request, client_address):
+        _c.log_request_error('failover', client_address)
+
+
 def make_server(port=0):
     """Bind 127.0.0.1:<port> (0 = ephemeral, used by tests)."""
-    return ThreadingHTTPServer(('127.0.0.1', port), _Handler)
+    return _Server(('127.0.0.1', port), _Handler)
 
 
 class _Handler(BaseHTTPRequestHandler):

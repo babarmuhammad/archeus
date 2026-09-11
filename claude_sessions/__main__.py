@@ -53,6 +53,13 @@ if len(sys.argv) >= 4 and sys.argv[1] == '--self-update':
         _relaunch = json.loads(os.environ.get('ARCHEUS_RELAUNCH') or 'null')
     except ValueError:
         _relaunch = None
+    # the console scripts this process may have locked. Resolved by the PARENT,
+    # which is the one that knows how it was launched; the worker only moves
+    # what it is handed, and puts it back if the install fails.
+    try:
+        _free = json.loads(os.environ.get('ARCHEUS_FREE') or '[]')
+    except ValueError:
+        _free = []
     _after = []
     try:
         from .notify import command, enabled
@@ -65,7 +72,8 @@ if len(sys.argv) >= 4 and sys.argv[1] == '--self-update':
         pass
     if _relaunch:
         _after.append(_relaunch)
-    raise SystemExit(wait_and_run(sys.argv[2], sys.argv[3:], after=_after))
+    raise SystemExit(wait_and_run(sys.argv[2], sys.argv[3:], after=_after,
+                                  free=_free))
 
 from .main import run
 

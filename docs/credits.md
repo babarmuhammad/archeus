@@ -9,10 +9,11 @@ description: >-
 ## Visual identity
 
 The archeus mark — the gold **A** pierced by its orbit — and the banner lockup were
-designed by **[Federico Coscia](https://github.com/cosfederico)**. Every derivative in this
-repository is that artwork re-drawn or re-cut: the application and OS icons
-(`tools/make_icon.py`), the OG card and wordmark (`tools/make_og_card.py`), and the inline
-SVG glyph in the desktop sidebar.
+designed by **[Federico Coscia](https://github.com/cosfederico)**. Both are kept as
+artwork: the dark tile at `docs/assets/logo.png`, the banner at
+`docs/assets/wordmark.png`. Everything else in this repository is one of the two re-drawn
+or re-cut: the application and OS icons (`tools/make_icon.py`), the OG card
+(`tools/make_og_card.py`), and the inline SVG glyph in the desktop sidebar.
 
 ## Built on
 

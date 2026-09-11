@@ -796,6 +796,27 @@ STARTUP_DELAY = 2
 MIN_INTERVAL = 60
 
 
+def _stamp_file():
+    """Beside archeus.json, which is FIXED under ~/.claude: the schedule is one
+    schedule across every account, so it may not live in an account's cfgdir."""
+    return os.path.join(os.path.dirname(_c.settings_file), 'archeus-automem.stamp')
+
+
+def _last_pass():
+    """When a pass last ran, epoch seconds — 0 when none ever has.
+
+    The file's MTIME is the value; nothing is parsed, so there is no corrupt
+    state to recover from and no schema to version."""
+    try:
+        return os.path.getmtime(_stamp_file())
+    except OSError:
+        return 0.0
+
+
+def _mark_pass():
+    _c.write_atomic(_stamp_file(), '')      # content unused; mtime is the record
+
+
 def _next_wait(owed=False):
     """Seconds until the next pass. Always the cadence the user configured.
 
@@ -823,9 +844,10 @@ def _next_wait(owed=False):
 
 
 def start_auto_memory_scheduler():
-    """Daemon thread: one pass on start, then one every `auto_memory_interval`
-    seconds — never sooner, however much work is left. Started by the real entry
-    points only (never make_server, so tests don't spawn refreshes). Idempotent."""
+    """Daemon thread: one pass every `auto_memory_interval` seconds — never
+    sooner, however much work is left, and the clock SURVIVES the process.
+    Started by the real entry points only (never make_server, so tests don't
+    spawn refreshes). Idempotent."""
     global _sched_started
     if _sched_started:
         return
@@ -834,9 +856,16 @@ def start_auto_memory_scheduler():
     _sched_stop.clear()
 
     def _loop():
+        # The interval is a budget, so it is counted from the last pass and not
+        # from launch: it used to run a pass STARTUP_DELAY seconds after start,
+        # every start, so opening and closing archeus five times in an hour
+        # bought five passes — "it eats their limits to build the memory".
+        # Nothing else changes: a first run has no stamp, so the remainder is
+        # negative and the first pass still happens at STARTUP_DELAY.
         # wait(), not sleep(): server_close() must be able to end this, and a
-        # thread parked in sleep(3600) cannot be told anything
-        if _sched_stop.wait(STARTUP_DELAY):    # let the server/TUI settle first
+        # thread parked in sleep(3600) cannot be told anything.
+        due = _last_pass() + _next_wait() - time.time()
+        if _sched_stop.wait(max(STARTUP_DELAY, due)):
             return
         while not _sched_stop.is_set():
             owed = False
@@ -844,6 +873,9 @@ def start_auto_memory_scheduler():
                 owed = _auto_scan_pass()
             except Exception:
                 _c.log.exception('gui: auto-memory scheduler tick failed')
+            # after the pass, whatever it found: the budget is one pass per
+            # interval, and a pass that found nothing stale still happened
+            _mark_pass()
             _sched_stop.wait(_next_wait(owed))
 
     threading.Thread(target=_loop, daemon=True).start()
@@ -2229,8 +2261,11 @@ def api_memory_auto_get(q, body):
             pass
         projs.append({'enc': p['encoded'], 'path': p['path'], 'name': p['name'],
                       'auto': auto, 'running': running})
+    # when the next pass is due, so "did closing archeus reset the clock?" is
+    # answered on screen rather than trusted. 0 = at once (no pass has run yet).
     return {'projects': projs,
-            'interval': load_settings().get('auto_memory_interval', 3600)}
+            'interval': load_settings().get('auto_memory_interval', 3600),
+            'next_in': max(0, int(_last_pass() + _next_wait() - time.time()))}
 
 
 def api_memory_auto_set(q, body):
@@ -3353,7 +3388,12 @@ def api_job_start(q, body):
         from . import versions
         restart = bool(body.get('restart'))
         def _su():
-            ok, msg = versions.update_self(restart=restart)
+            # wait=, because a job that reports "done" the moment a worker was
+            # STARTED reports the wrong thing: pip is where this fails, and its
+            # failure arrived minutes later in a log file with no reader. The
+            # restart path still defers — it has to outlive this process.
+            ok, msg = versions.update_self(restart=restart,
+                                           wait=0 if restart else 300)
             if not ok:
                 raise RuntimeError(msg or 'update failed')
             return {'message': msg}

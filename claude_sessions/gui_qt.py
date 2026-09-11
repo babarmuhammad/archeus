@@ -12,14 +12,13 @@ import threading
 def _icon_path():
     """The app icon, or '' — one file, shipped with the package.
 
-    Two things were wrong here. There was a GUI-specific icon with the TUI's as
-    a fallback, which is two marks to keep in step and no answer to "which one
-    is the logo". And the copy that actually existed lived at the REPO ROOT,
-    which package-data cannot reach — so a dev checkout had a window icon and
-    every pip and pipx install silently had none.
+    There was a GUI-specific icon with the TUI's as a fallback, which is two
+    marks to keep in step and no answer to "which one is the logo". It resolves
+    in `config` now, because the Qt window is not the only consumer: the browser
+    shells need the same file as a favicon and cannot import this module.
     """
-    cand = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'archeus.ico')
-    return cand if os.path.isfile(cand) else ''
+    from .config import app_icon_path
+    return app_icon_path()
 
 
 #: fallback when nothing is saved or the saved name has gone — the 'default'

@@ -24,7 +24,7 @@ jsonld: |
       ],
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "Windows, macOS, Linux",
-      "softwareVersion": "2.2.0",
+      "softwareVersion": "2.3.0",
       "url": "https://claudectl.space/",
       "codeRepository": "https://github.com/babarmuhammad/archeus",
       "programmingLanguage": "Python",

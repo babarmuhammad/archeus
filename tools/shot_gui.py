@@ -340,6 +340,29 @@ SPACE_JS = """(()=>{
     });
   });
   document.querySelectorAll('#content .card').forEach(c=>{
+    const kk=[...c.children].filter(e=>vis(e)&&box(e).height>0);
+    if(!kk.length)return;
+    const kids=kk.map(box);
+    /* Two children of one card OVERLAPPING — the opposite failure to `slack`,
+       and the one a user photographs: text printed over text. Normal flow
+       cannot produce it; a grid can, and did. The annotation column handed
+       `grid-row:2/span 20` in column 1 to BOTH `p:first-of-type` and every
+       `.secthint`, which is one cell and not a stack, so the Updates card and
+       "Build the backlog now" each printed two paragraphs on top of each
+       other. Only static children count: `.acts` and a tooltip are positioned
+       deliberately and are supposed to sit over something. */
+    for(let i=0;i<kk.length;i++){
+      if(getComputedStyle(kk[i]).position!=='static')continue;
+      for(let j=i+1;j<kk.length;j++){
+        if(getComputedStyle(kk[j]).position!=='static')continue;
+        const ov=Math.min(kids[i].bottom,kids[j].bottom)
+                -Math.max(kids[i].top,kids[j].top);
+        const oh=Math.min(kids[i].right,kids[j].right)
+                -Math.max(kids[i].left,kids[j].left);
+        if(ov>4&&oh>4)out.push('card '+cn(c)+': '+cn(kk[i])+' and '+cn(kk[j])
+          +' OVERLAP by '+Math.round(oh)+'x'+Math.round(ov)+'px');
+      }
+    }
     /* A pane is not a card. Both halves of a split are stretched to the height
        of the row on purpose — that is what stops the short one leaving a dark
        column — so the space under a short detail is the surface it sits on,
@@ -347,8 +370,6 @@ SPACE_JS = """(()=>{
        guards these instead, and it is the stronger check: it fails the moment
        the two stop being level. */
     if(c.parentElement&&c.parentElement.classList.contains('tpane'))return;
-    const kids=[...c.children].filter(e=>vis(e)&&box(e).height>0).map(box);
-    if(!kids.length)return;
     seen.push('card:'+cn(c));
     const st=getComputedStyle(c);
     const floor=box(c).bottom-parseFloat(st.paddingBottom||0)
