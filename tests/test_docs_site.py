@@ -8,6 +8,8 @@ import os
 import re
 import subprocess
 
+import pytest
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCS = os.path.join(ROOT, 'docs')
 # The manual moved to its own subdomain; the apex is the marketing site and is a
@@ -355,31 +357,41 @@ def test_the_banner_is_artwork_the_card_only_reads(tmp_path):
     composed — the same standing as `logo.png`. `make_og_card.py` used to build a
     cyan one from a system font and write it here, so the artwork survived
     exactly until the next person ran that tool. It now READS it, to compose the
-    social card from the same file the README shows, and the check is
-    behavioural for that reason: run the generator and see whether the artwork
-    still has the bytes it had.
+    social card from the same file the README shows.
 
     The transparency matters as much as the pixels: the README renders on a
     light GitHub page and a dark one, and the card composites the mark straight
     onto navy — a banner with a baked ground is wrong on all three.
+
+    Split in two on purpose. The first half is stdlib only, because this job
+    installs pytest and nothing else, and a gate that skips on CI is a gate
+    nobody watches fail. The second half runs the generator for real and is
+    worth having where Pillow exists.
     """
-    import importlib.util
-    from PIL import Image
     banner = os.path.join(ROOT, 'docs', 'assets', 'wordmark.png')
     with open(banner, 'rb') as f:
-        before = f.read()
+        raw = f.read()
+    # PNG signature, then IHDR: byte 24 is the bit depth and byte 25 the colour
+    # type, of which 6 is truecolour WITH an alpha channel.
+    assert raw[:8] == b'\x89PNG\r\n\x1a\n', 'not a PNG'
+    assert raw[25] == 6, 'the banner has no alpha channel (colour type %d)' % raw[25]
 
+    card = _read(os.path.join(ROOT, 'tools', 'make_og_card.py'))
+    for gone in ('draw_wordmark', 'WORDMARK_OUT', 'save(MARK_SRC'):
+        assert gone not in card, 'the banner generator came back: %s' % gone
+
+    Image = pytest.importorskip('PIL.Image', reason='the test job has no Pillow')
+    import importlib.util
     spec = importlib.util.spec_from_file_location(
         'mkog', os.path.join(ROOT, 'tools', 'make_og_card.py'))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    assert not hasattr(mod, 'draw_wordmark'), 'the banner generator came back'
     out = tmp_path / 'og.png'
     mod.OUTS = [str(out)]
     mod.draw_card()
     assert out.stat().st_size > 10000, 'the card generator produced nothing'
     with open(banner, 'rb') as f:
-        assert f.read() == before, 'the card generator rewrote the banner'
+        assert f.read() == raw, 'the card generator rewrote the banner'
 
     im = Image.open(banner)
     assert im.mode == 'RGBA', im.mode
