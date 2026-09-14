@@ -2233,17 +2233,27 @@ def api_memory_autoscan(q, body):
 
 
 def api_memory_active(q, body):
-    """Project paths whose memory is being refreshed right now (scan-lock held)
-    — lets the sidebar show which projects are updating, tab-independent."""
+    """The project list, plus which of them are refreshing their memory right
+    now (scan-lock held) — so the sidebar can show both, tab-independent.
+
+    The list rides along because this handler ALREADY builds it: it walked every
+    project to ask each one for its lock, and then returned one field. The SPA
+    reads `projects` once at boot from /api/state and had nothing that re-read
+    it — not the launch, not window focus, not the heartbeat — so a project you
+    opened by path and then launched a session in stayed missing from the
+    sidebar until a reload. Sending what was computed anyway costs no extra
+    walk and no extra round-trip.
+    """
     from . import memory, gui
+    projs = gui.list_projects()
     active = []
-    for p in gui.list_projects():
+    for p in projs:
         try:
             if memory.scan_lock_status(p['path']) is not None:
                 active.append(p['path'])
         except Exception:
             pass
-    return {'active': active}
+    return {'active': active, 'projects': projs}
 
 
 def api_memory_auto_get(q, body):

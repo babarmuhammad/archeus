@@ -50,7 +50,7 @@ a handler sees them; a missing or malformed one is a 400.
 | `/api/mcp` | `api_mcp_get` | The MCP page itself, so `?refresh=1` gets a live probe — the 30s cache |
 | `/api/mcp/detail` | `api_mcp_detail` | `claude mcp get <name>` — the detail the TUI shows and the GUI did not. |
 | `/api/memory-map` | `api_memory_map` | — |
-| `/api/memory/active` | `api_memory_active` | Project paths whose memory is being refreshed right now (scan-lock held) |
+| `/api/memory/active` | `api_memory_active` | The project list, plus which of them are refreshing their memory right |
 | `/api/memory/auto` | `api_memory_auto_get` | Per-project auto-memory state for the management UI. |
 | `/api/memory/entity` | `api_memory_entity` | One fact in the graph, in full: what it means and what cites it. |
 | `/api/memory/progress` | `api_memory_progress` | Live progress, and — once the lock clears — HOW the last run ended. |

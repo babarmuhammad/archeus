@@ -138,7 +138,11 @@ PLAN = {'accounts': [{'account': 'default', 'email': 'demo@example.com', 'plan':
                                   {'label': 'weekly', 'pct': 88, 'resets': 'Fri'}]}]}
 ROUTES = {
     '/api/state': STATE, '/api/dashboard': DASH, '/api/usage/plan': PLAN,
-    '/api/memory/active': {'active': ['/demo/acme-api']},
+    # carries the project list too, and it must be the SAME rows /api/state
+    # served: the poll swaps ST.projects wholesale, so a stub that disagreed
+    # would make the sidebar flip between two lists every five seconds.
+    '/api/memory/active': {'active': ['/demo/acme-api'],
+                           'projects': STATE['projects']},
     '/api/search-index': {'rows': []},
     '/api/mcp': {'servers': [{'name': 'ide', 'status': 'ok'},
                              {'name': 'asana', 'status': 'down'}]},
@@ -721,11 +725,23 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         n = int(self.headers.get('Content-Length') or 0)
-        self.rfile.read(n)
+        raw = self.rfile.read(n)
+        path = self.path.split('?')[0]
+        # Hiding a project has to STICK, because /api/memory/active re-sends the
+        # project list every five seconds and the SPA swaps it in wholesale — a
+        # stub that forgot the flag would revert the row mid-check and report a
+        # bug in the app that only exists in the fixture.
+        if path == '/api/project/hide':
+            try:
+                b = json.loads(raw or b'{}')
+                for p in STATE['projects']:
+                    if p['encoded'] == b.get('enc'):
+                        p['hidden'] = bool(b.get('hidden'))
+            except Exception:
+                pass
         # /api/job answers with a job id so the client enters the poll loop and
         # reaches jobFinish; anything else keeps the bare ack it always sent.
-        self._j({'ok': True, 'job': 'j1'}
-                if self.path.split('?')[0] == '/api/job' else {'ok': True})
+        self._j({'ok': True, 'job': 'j1'} if path == '/api/job' else {'ok': True})
 
 
 NL = chr(10)

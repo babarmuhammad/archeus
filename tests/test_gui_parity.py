@@ -501,6 +501,41 @@ def test_memory_active_reports_locked_project(monkeypatch, tmp_path):
         srv.shutdown()
 
 
+def test_the_project_list_reaches_the_sidebar_after_boot(monkeypatch, tmp_path):
+    """`ST.projects` is read once from /api/state and the SPA had nothing that
+    re-read it — so a project that appeared WHILE the app was open (opened by
+    path and then launched into, or worked on from a terminal) stayed missing
+    from the sidebar until a reload.
+
+    This poll already walked every project to ask each for its scan lock, so it
+    carries the list: the fix is a field on a request that was being made
+    anyway, which is why both halves are checked here — a payload nothing reads
+    is as dead as a reader with no payload.
+    """
+    import io
+    import os as _os
+    sb = Sandbox(monkeypatch, tmp_path)
+    actual, enc, folder, sids = _seed(sb, monkeypatch)
+    srv, base = _serve()
+    try:
+        code, d = _req(base + '/api/memory/active')
+        assert code == 200
+        assert [p['path'] for p in d['projects']] == [
+            p['path'] for p in gui.list_projects()]
+        assert actual in [p['path'] for p in d['projects']]
+    finally:
+        srv.shutdown()
+
+    js = io.open(_os.path.join(_os.path.dirname(_os.path.dirname(
+        _os.path.abspath(__file__))), 'claude_sessions', 'web', 'app.js'),
+        encoding='utf-8').read()
+    poll = js[js.index('async function pollActiveMem('):]
+    poll = poll[:poll.index('\n}')]
+    assert 'ST.projects=d.projects' in poll, \
+        'the poll carries the project list and the SPA ignores it'
+    assert 'drawProjects()' in poll
+
+
 def test_claude_md_scaffold_and_system_prompt(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     actual, enc, folder, sids = _seed(sb, monkeypatch)

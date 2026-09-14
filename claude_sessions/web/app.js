@@ -6938,8 +6938,17 @@ async function pollActiveMem(){
   try{
     const d=await api('/api/memory/active');
     const next=new Set(d.active||[]);
-    const changed=next.size!==ACTIVE_MEM.size||[...next].some(p=>!ACTIVE_MEM.has(p));
+    let changed=next.size!==ACTIVE_MEM.size||[...next].some(p=>!ACTIVE_MEM.has(p));
     ACTIVE_MEM=next;
+    /* The project list itself, not just the scan locks. ST.projects came from
+       /api/state at boot and NOTHING re-read it, so a project that appeared
+       while the app was open — opened by path and then launched into, or worked
+       on from a terminal — was missing from the sidebar until a reload. The
+       rows arrive on a poll that was already walking every project, so this is
+       a comparison, not a request. */
+    if(d.projects&&JSON.stringify(d.projects)!==JSON.stringify(ST.projects)){
+      ST.projects=d.projects;changed=true;
+    }
     if(changed)drawProjects();
   }catch(e){}
 }
