@@ -1008,7 +1008,6 @@ function drawProjects(){
   const list=ST.projects.filter(p=>(SHOW_HIDDEN||!p.hidden)&&(!q
     ||p.name.toLowerCase().includes(q)||p.path.toLowerCase().includes(q)));
   drawHiddenToggle();
-  drawBrand();
   MO.patch(box,list,p=>p.encoded,p=>{
     // Account chips are flex:none, so with three of them they claimed the whole
     // row and the project NAME shrank to a single character ("Claude" rendered
@@ -7117,70 +7116,24 @@ $('#bHelp').onclick=()=>go('helpp');
    It carried a logo, the product name and a tagline. The tagline is gone: it is
    a website device — its audience is someone who does not yet know what the
    thing is, and nobody reading this sidebar is that person — and it failed the
-   differentiation test besides (every coding-agent tool could print it, no
-   product claims the opposite). What every current app puts in this slot is the
-   switchable CONTEXT with a line of state under it: shadcn's sidebar header
-   ships as a team switcher with the plan underneath, Notion switches
-   workspaces, Linear the workspace, GitLab the current context, Figma the
-   account.
+/* THE SIDEBAR HEADER IS THE WORDMARK, and it opens nothing.
 
-   Ours is the Claude Code ACCOUNT, and it had no home before this: it was
-   reachable only from inside the launch modal, on the one branch where you were
-   starting a new session. Switching here sets the default for every launch.
+   It was the account switcher — the shadcn/Notion/Linear convention of putting
+   the switchable context in the sidebar header with a line of state under it.
+   That convention earns its place in an app whose header is the only chrome it
+   has. It stopped earning it here: the account is already a chip row inside the
+   launch modal, where picking one decides what is about to happen, and a page
+   of its own under Accounts. Two controls for one setting is two chances for
+   them to disagree about which account is current, and the one in the header
+   was the one you had to open to find out what it said.
 
-   The chevron and the menu appear only with more than one account. A control
-   that opens nothing is worse than no control, so with a single account this is
-   what it has always been — a row you click to go home — and it says archeus,
-   because "default" is not a name anyone chose. */
-function drawBrand(){
-  const b=$('#brandName'),s=$('#brandSub'),ch=$('#brandChev');
-  if(!b)return;
-  const accs=ST.accounts||[];
-  const multi=accs.length>1;
-  // fall back to the FIRST account, not to the product name: with several
-  // accounts configured, a row that says archeus is hiding the one piece of
-  // state it exists to show. active_cfgdir can legitimately name none of them
-  // — it is restored from localStorage and an account can be removed.
-  const act=accs.find(a=>a.dir===ST.active_cfgdir)||(multi?accs[0]:null);
-  b.textContent=act?act.name:'archeus';
-  // the second line is a MEASUREMENT, never a descriptor: how much workspace
-  // there is and how much of it is awake. Both numbers are already in hand —
-  // no fetch, the same rule INST.set() and the stage follow.
-  const projs=(ST.projects||[]).filter(p=>SHOW_HIDDEN||!p.hidden).length;
-  const live=ACTIVE_MEM.size;
-  s.textContent=projs
-    ?`${projs} project${projs===1?'':'s'}${live?` · ${live} active`:''}`
-    :'no projects yet';
-  ch.hidden=!multi;
-  if(multi&&!ch.innerHTML)ch.innerHTML=ic('unfold');
-  $('.brand').setAttribute('aria-haspopup',multi?'menu':'false');
-}
-function acctMenu(open){
-  const m=$('#acctMenu');if(!m)return;
-  const row=$('.brand');
-  if(open===false||!m.hidden){m.hidden=true;row.classList.remove('open');return;}
-  m.innerHTML=(ST.accounts||[]).map(a=>
-    `<button data-dir=${hesc(a.dir)}><span class="adot" style="background:${acctColor(a.name)}"></span>`
-    +`<span class="an">${esc(a.name)}</span>`
-    +(a.dir===ST.active_cfgdir?`<span class="amark">${ic('check')}</span>`:'')
-    +`</button>`).join('');
-  m.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{
-    ST.active_cfgdir=btn.dataset.dir;
-    localStorage.setItem('ctl_account',ST.active_cfgdir);
-    acctMenu(false);drawBrand();
-    toast('Default account: '+($('#brandName').textContent),'ok');
-  });
-  m.hidden=false;row.classList.add('open');
-}
-$('.brand').onclick=e=>{
-  // the chevron is the switcher; the rest of the row is still "go home", which
-  // is what it did before and what people will have in their fingers
-  if((ST.accounts||[]).length>1&&e.target.closest('.bchev'))return acctMenu();
-  acctMenu(false);go('home');
-};
-document.addEventListener('click',e=>{
-  if(!e.target.closest('.brand')&&!e.target.closest('#acctMenu'))acctMenu(false);
-});
+   What is left is drawn in `index.html` and needs no JS at all: the mark and
+   the wordmark, one lockup, no state. `drawBrand` is gone with it, along with
+   the click handler that made the whole row a second route home — the nav
+   already has one, and a header that navigates on click is a surprise in a
+   sidebar full of rows that do.
+
+   The `.acctmenu` rules stay in app.css: the Accounts page reuses them. */
 
 /* ── all-accounts usage banner (mirrors the TUI's grid) ── */
 let _uTimer=null;

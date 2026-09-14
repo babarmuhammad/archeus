@@ -180,12 +180,23 @@ def test_the_app_chrome_carries_no_tagline():
     for dead in ('workspace for AI agents', 'workspace for Claude Code',
                  'memory &amp; workspace', 'memory & workspace'):
         assert dead not in html, f'a tagline is back in the sidebar: {dead!r}'
-    # and the slot that replaced it is the account, with state under it
-    assert 'id="brandName"' in html and 'id="brandSub"' in html
-    assert 'id="acctMenu"' in html, 'the row switches nothing'
+    # The slot is the WORDMARK now. It was the account switcher for a while,
+    # which is the shadcn/Notion/Linear convention — and a good one for an app
+    # whose header is its only chrome. It is not this one: the account is a chip
+    # row in the launch modal, where picking it decides something, and a page of
+    # its own under Accounts, so the header was a third control for one setting
+    # that had to be opened to find out what it said.
+    #
+    # The absence above is what this test is for and it still holds: a wordmark
+    # is a NAME, and the thing that must never come back is a sentence under it.
+    assert 'class="bwm"' in html, 'the sidebar header lost its wordmark'
     js = _read('claude_sessions/web/app.js')
-    assert 'function drawBrand()' in js
-    assert "b.textContent=act?act.name:'archeus';" in js
+    for gone in ('function drawBrand()', 'function acctMenu('):
+        assert gone not in js, '%s is back — the header is a control again' % gone
+    # the letterforms are OUTLINES, not text in a font: the GUI ships no faces
+    # and must not depend on one being installed
+    wm = html[html.index('class="bwm"'):html.index('</svg>', html.index('class="bwm"'))]
+    assert '<text' not in wm and 'font' not in wm
 
 
 def test_the_long_form_slots_state_what_it_does_and_what_it_works_with():

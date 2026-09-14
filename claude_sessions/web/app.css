@@ -150,17 +150,14 @@ html.sgrip-drag,html.sgrip-drag *{cursor:col-resize !important;user-select:none 
    It used to be a two-line marketing block with 20px of padding above it —
    ~70px of a 280px column permanently parked above the search field the user
    is actually aiming at. */
-.brand{display:flex;align-items:center;gap:var(--sp-2);height:48px;
+.brand{display:flex;align-items:center;gap:10px;height:48px;
   margin:var(--sp-2) var(--sp-2) var(--sp-1);padding:0 8px;
-  border-radius:var(--r);cursor:pointer;user-select:none;
-  transition:background var(--t-f)}
-.brand:hover{background:var(--sk-row-hover,rgba(var(--cyan-rgb),.07))}
-.brand.open{background:rgba(var(--cyan-rgb),.11)}
-.brand .bl{min-width:0;flex:1}
-/* the chevron renders only when the row actually opens something: one that
-   opens nothing is worse than none at all */
-.bchev{margin-left:auto;flex:0 0 auto;color:var(--dim2);line-height:0}
-.bchev svg{width:15px;height:15px;display:block}
+  border-radius:var(--r);user-select:none}
+/* It is a WORDMARK now, not a control: no hover ground, no pointer, nothing to
+   open. The account moved to the launch modal's chips and the Accounts page,
+   which is where changing one decides something. */
+.bwm{height:13px;width:auto;max-width:100%;flex:0 1 auto;display:block;
+  overflow:visible}
 /* The tile is the app icon's own ground, and it is FIXED rather than themed —
    see the long note in index.html. It is deliberately not `--code` or any
    other palette surface: four palettes are light and six are near-black OLED,
@@ -179,20 +176,13 @@ html.sgrip-drag,html.sgrip-drag *{cursor:col-resize !important;user-select:none 
 .brand:hover .logo{transform:scale(1.05);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.1),
     inset 0 0 0 1px rgba(226,166,62,.32),0 3px 14px rgba(0,0,0,.45)}
-/* Body foreground, NOT the accent. The accent version was faithful to the OG
-   card — but a card is a banner and this is chrome, and the rule chrome follows
-   is the one Linear moved to deliberately: the accent appears on the mark, on
-   focus rings and on a few intentional states, never decoratively. Spending it
-   on a permanently-visible label leaves nothing to say "this is live" with.
-   14px/500 and 12px are shadcn's sidebar header sizes; both truncate, because
-   an account name and a project count are both arbitrary-length. */
-.brand b{display:block;font-size:14px;font-weight:500;letter-spacing:-.01em;
-  color:var(--txt);line-height:1.25;overflow:hidden;text-overflow:ellipsis;
-  white-space:nowrap}
-.brand small{display:block;color:var(--dim2);font-size:12px;font-weight:400;
-  line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The wordmark is the one place the accent is spent decoratively, and that is
+   the exception a mark IS: it is the same gradient the glyph beside it takes,
+   so the two read as one lockup rather than as an icon with a label. */
 /* The account menu opens under the row, not over the page: it is a sidebar
-   control and the sidebar is where its result applies. */
+   control and the sidebar is where its result applies.
+   ponytail: kept for the Accounts page's own picker, which reuses these rules;
+   the sidebar no longer renders one. */
 .acctmenu{margin:0 var(--sp-2) var(--sp-2);padding:4px;border-radius:var(--r);
   background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow-md)}
 .acctmenu button{display:flex;align-items:center;gap:8px;width:100%;
@@ -1672,7 +1662,9 @@ html.mo-off *,html.mo-off *::before,html.mo-off *::after{
 @media(max-width:1099px){
   .app{grid-template-columns:64px 1fr}
   .sgrip,.hgrip{display:none}   /* the rail has one width; nothing to drag */
-  .brand small,.brand div>b,.search,.openp,.side .foot span{display:none}
+  /* the wordmark goes; the mark beside it is the app icon and stays, which is
+     what every icon rail does with a lockup that no longer fits */
+  .bwm,.search,.openp,.side .foot span{display:none}
   .brand{justify-content:center;padding:14px 0 10px}
   .plist{padding:2px 6px}
   .proj .pt,.proj .tag{display:none}

@@ -9,7 +9,7 @@ export type QA = { q: string; a: string };
 export const FAQ: QA[] = [
   {
     q: 'What is archeus?',
-    a: 'The memory and workspace layer for AI coding agents. archeus is free and open source, and it sits in front of the agent: you pick a project, see every session you have ever had in it, and launch the next one with the model, effort, permissions and context you intended. It adds persistent project memory, a session archive you can search and tag, MCP server management, an interactive architecture graph and per-turn cost tracking. Anthropic’s Claude Code CLI is the agent it drives today. It is a Python package, MIT licensed, with zero runtime dependencies, and it runs as a terminal UI or a desktop GUI over the same engine.',
+    a: 'The memory and workspace layer for AI coding agents. archeus is free and open source, and it sits in front of the agent: you pick a project, see every session you have ever had in it, and launch the next one with the model, effort, permissions and context you intended. It adds persistent project memory, a session archive you can search and tag, MCP server management, an interactive architecture graph and per-turn cost tracking. It drives three coding CLIs — Anthropic’s Claude Code, OpenAI Codex and pi — with Claude Code much the deepest of them. It is a Python package, MIT licensed, with zero runtime dependencies, and it runs as a terminal UI or a desktop GUI over the same engine.',
   },
   {
     q: 'Where does the name archeus come from, and what is it not?',
@@ -21,11 +21,11 @@ export const FAQ: QA[] = [
   },
   {
     q: 'Does archeus need an API key?',
-    a: 'Not by default. Out of the box it launches the Claude Code CLI, which uses the login you already have, and it reads the transcripts and settings Claude Code writes to disk — there is nothing to configure and no subscription. A key is only involved if you deliberately point a session somewhere else: archeus can route a session at a local model server, OpenRouter, OmniRoute or anything that serves POST /v1/messages, and that endpoint’s credentials are yours to supply. Everything runs on your machine either way, and the desktop GUI is served on loopback only.',
+    a: 'Not by default. Out of the box it launches the CLI you already have — Claude Code, Codex or pi — using the login that CLI already holds, and it reads the transcripts and settings each one writes to disk — there is nothing to configure and no subscription. A key is only involved if you deliberately point a session somewhere else: archeus can route a session at a local model server, OpenRouter, OmniRoute or anything that serves POST /v1/messages, and that endpoint’s credentials are yours to supply. Everything runs on your machine either way, and the desktop GUI is served on loopback only.',
   },
   {
     q: 'How do I install archeus on Windows, macOS or Linux?',
-    a: 'The same command on all three: pipx install archeus (or pip install archeus). It needs Python 3.10 or newer and the Claude Code CLI on your PATH. Then run archeus for the terminal UI, or archeus --gui for the desktop app. On Windows the GUI opens in a native window if PyQt6 is installed; everywhere else, and without PyQt6, it opens in your browser.',
+    a: 'The same command on all three: pipx install archeus (or pip install archeus). It needs Python 3.10 or newer and at least one coding CLI on your PATH — Claude Code, OpenAI Codex or pi. Then run archeus for the terminal UI, or archeus --gui for the desktop app. On Windows the GUI opens in a native window if PyQt6 is installed; everywhere else, and without PyQt6, it opens in your browser.',
   },
   {
     q: 'Where does Claude Code store its sessions?',
@@ -93,7 +93,7 @@ export const FAQ: QA[] = [
   },
   {
     q: 'Does archeus work with coding agents other than Claude Code?',
-    a: 'Not yet — Claude Code is still the only harness archeus drives, and everything it does reads the files Claude Code writes to disk. The half of that goal which has shipped is the model: a session can run against a local server, OpenRouter, OmniRoute or any endpoint that serves POST /v1/messages, and it keeps its agents, skills, hooks, MCP servers and checkpoints while it does. Driving other harnesses is the work in progress: an open harness of its own is a long-term goal and not something you can use yet. Claude Code is the first surface, not the boundary.',
+    a: 'Yes — OpenAI Codex and pi, with nothing to configure: archeus looks for each CLI’s binary and its home directory, and one it cannot find is simply not offered. Their projects, sessions, previews, models and token spend merge into the same lists, one memory graph is delivered to all three (CLAUDE.md for Claude Code, AGENTS.md for Codex, both for pi), skills install into every one of them, and any of them can be launched from the same picker — each with its own model list and its own effort scale. Claude Code is much the deepest of the three: hooks, MCP servers, subagents, plugins, output styles and checkpoints are its alone, and every one of those screens says which CLI cannot do it and why rather than hiding the gap. The other half of the goal shipped earlier: a session can run against a local server, OpenRouter, OmniRoute or any endpoint that serves POST /v1/messages. Claude Code is the first surface, not the boundary, and it is no longer the only one — a harness of archeus’ own remains a long-term goal.',
   },
   {
     q: 'Can I run archeus against a local model, or something other than Anthropic?',

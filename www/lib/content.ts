@@ -44,7 +44,7 @@ export const HOME: Doc = {
   title: 'archeus — the memory and workspace layer for AI coding agents',
   h1: 'The memory and workspace layer for AI coding agents.',
   description:
-    'The memory and workspace layer for AI coding agents. Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code today: a searchable session archive, an interactive architecture graph, MCP management and per-project launch control. Pure Python standard library, zero runtime dependencies, MIT.',
+    'The memory and workspace layer for AI coding agents. Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code today, and with OpenAI Codex and pi beside it: a searchable session archive, an interactive architecture graph, MCP management and per-project launch control. Pure Python standard library, zero runtime dependencies, MIT.',
   intro:
     'Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code today.',
   sections: [
@@ -78,10 +78,10 @@ export const HOME: Doc = {
           'The context problem is worse, because it is recurring. CLAUDE.md rides in the model context on every single message, so its size is a permanent per-turn tax. The usual failure is not that the file is wrong — it is that it is too big to justify and too tedious to prune. A big project either starves the agent or floods it.',
         ),
         p(
-          'archeus sits in front of the agent and fixes both. Pick a project, see every session you have ever had in it, and launch with the model, effort, permissions and context you meant. Claude Code is the agent it drives today.',
+          'archeus sits in front of the agent and fixes both. Pick a project, see every session you have ever had in it, and launch with the model, effort, permissions and context you meant.',
         ),
         p(
-          'Half of where this is going has arrived. A session no longer has to talk to Anthropic: point it at a local model server, at OpenRouter, at OmniRoute’s free tier or at anything that serves POST /v1/messages, and it stays a real Claude Code session with its agents, skills, hooks and MCP servers intact. The other half has not. Driving a harness other than Claude Code is the work in progress: an open harness of its own is a long-term goal and not something you can use yet. Claude Code is the first surface, not the boundary.',
+          'Both halves of where this is going have started. A session no longer has to talk to Anthropic: point it at a local model server, at OpenRouter, at OmniRoute’s free tier or at anything that serves POST /v1/messages, and it stays a real Claude Code session with its agents, skills, hooks and MCP servers intact. And it no longer has to be Claude Code at all — OpenAI Codex and pi are read end to end, their sessions and spend merge into the same lists, and one memory graph is delivered to all three. Claude Code is the first surface, not the boundary, and it is no longer the only one; a harness of archeus’ own remains a long-term goal rather than a feature.',
         ),
       ],
     },
@@ -193,7 +193,7 @@ export const HOME: Doc = {
       id: 'get',
       eyebrow: 'Station 06',
       heading: 'Get archeus',
-      lead: 'The memory and workspace layer for AI coding agents. Four ways in, all free, MIT licensed and one line each — and all of them need the Claude Code CLI, which is the agent archeus drives today.',
+      lead: 'The memory and workspace layer for AI coding agents. Four ways in, all free, MIT licensed and one line each — and all of them need at least one coding CLI already installed: Claude Code, OpenAI Codex or pi.',
       blocks: [
         code('pipx install archeus\narcheus', 'pipx — recommended'),
         code('pip install archeus', 'pip'),
@@ -285,6 +285,50 @@ export const FEATURES: Doc = {
         ),
         p(
           'archeus’ own Claude calls — memory extraction, lesson distillation, code review, the CLAUDE.md, agent, skill, hook and system-prompt generators — can be routed there too. They are the cheapest and highest-volume calls it makes and the best fit for a local model. It is opt-in and off by default: they run unattended, and moving them changes which account is billed.',
+        ),
+      ],
+    },
+    {
+      id: 'harnesses',
+      heading: 'Three coding CLIs, one workspace',
+      lead:
+        'Claude Code, OpenAI Codex and pi — their sessions, projects and spend in the same lists, and one memory graph behind all three.',
+      blocks: [
+        p(
+          'A provider is an endpoint; a harness is the binary itself, plus the conventions it keeps on disk — where its transcripts live, what its instructions file is called, what a session id even is. The two are orthogonal, and archeus now reads three harnesses with nothing to configure: it looks for each CLI’s binary and its home, and one it cannot find is simply not offered.',
+        ),
+        table(
+          ['CLI', 'Home', 'Instructions file'],
+          [
+            ['Claude Code', '~/.claude, and every other account', 'CLAUDE.md'],
+            ['OpenAI Codex', '~/.codex', 'AGENTS.md'],
+            ['pi', '~/.pi/agent', 'AGENTS.md'],
+          ],
+        ),
+        dl([
+          {
+            t: 'One memory graph, not three',
+            d: 'A project’s memory is the project’s, not one tool’s memory of it, so the same digest is delivered into every instructions file an installed CLI reads — and a machine with no Codex never grows an AGENTS.md. The agent routing table deliberately does not follow: delegating to a subagent is a Claude Code capability, and writing “delegate with the Agent tool” into AGENTS.md would instruct Codex to use a tool it does not have.',
+          },
+          {
+            t: 'Skills install everywhere',
+            d: 'SKILL.md is the Agent Skills standard and all three read the same file, so a personal skill lands in every account and every CLI. A project skill writes .claude/skills and .agents/skills — two directories, not three, because .agents/skills is the cross-harness convention Codex and pi share.',
+          },
+          {
+            t: 'The launch picker asks which tool first',
+            d: 'A tab per installed CLI and per configured backend, because the answer decides what the rest of the form means: a Codex session has no worktree and no name-at-launch, a pi session has no permission mode. Those fields are removed with the reason stated rather than left as dead inputs, and each CLI brings its own model list and its own effort scale — --effort ultracode is Claude Code’s and Codex rejects it.',
+          },
+          {
+            t: 'Nothing is guessed, and nothing is written',
+            d: 'A Codex thread’s transcript is named by its index, so archeus reads the path out of the index rather than reconstructing it; a pi session directory’s name is lossy, so archeus reads the working directory out of the file instead of decoding the name. Both stores are opened read-only.',
+          },
+          {
+            t: 'And any of them can be switched off',
+            d: 'Off means everywhere — the launch tabs, the project list, the sessions list, the usage table, and the instructions files that get a memory block. Nothing is uninstalled and nothing on disk is touched.',
+          },
+        ]),
+        p(
+          'Claude Code remains much the deepest of the three: hooks, MCP servers, subagents, plugins, output styles and checkpoints are its alone. Every one of those screens says which CLI cannot do it and why, rather than hiding the gap or failing at launch.',
         ),
       ],
     },
