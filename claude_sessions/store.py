@@ -12,7 +12,8 @@ import os
 
 from . import config as _c
 
-__all__ = ['projects_root', 'project_folder', 'session_file', 'is_encoded',
+__all__ = ['projects_root', 'project_folder', 'session_file', 'transcript_path',
+           'is_encoded',
            'workdir', 'workfile', 'WORKDIR']
 
 #: what archeus writes into a project it does not own. Defined in config
@@ -70,6 +71,19 @@ def project_folder(cfgdir, enc):
     if not is_encoded(enc):
         raise ValueError('not a project folder name: %r' % (enc,))
     return os.path.join(projects_root(cfgdir), enc)
+
+
+def transcript_path(folder, sid):
+    """The transcript of one session, from the FOLDER it lives in.
+
+    Same answer as session_file() by a different road: that one starts from
+    (cfgdir, enc) and validates both, this one is the form every reader actually
+    holds, and it had been written out by hand in thirteen places. It is also the
+    join that stops being a join the moment a second harness exists — a Codex
+    thread records an arbitrary rollout path rather than a file named after its
+    id — so it has to be a function before it can be a per-harness one.
+    """
+    return os.path.join(folder, sid + '.jsonl')
 
 
 def session_file(cfgdir, enc, sid):

@@ -121,7 +121,7 @@ def list_sessions(encoded):
         cfgdir = os.path.dirname(os.path.dirname(folder))
         rec = load_session_providers(folder)
         for mtime, sid, preview, count in scan_sessions(folder):
-            jsonl = os.path.join(folder, f'{sid}.jsonl')
+            jsonl = store.transcript_path(folder, sid)
             title = load_name(folder, sid) or get_session_title(jsonl) or ''
             tokens = ''
             provider = False
@@ -272,7 +272,7 @@ def state_payload():
     for r in load_recent_sessions(5):
         enc = r.get('encoded_name', '')
         pf = store.project_folder(r.get('cfgdir'), enc) if enc else ''
-        jsonl = os.path.join(pf, f"{r['session_id']}.jsonl")
+        jsonl = store.transcript_path(pf, r['session_id'])
         recent.append({'project': os.path.basename(r['project_path']) or r['project_path'],
                        'path': r['project_path'], 'encoded': r.get('encoded_name', ''),
                        'sid': r['session_id'],

@@ -121,6 +121,46 @@ def test_no_module_hand_builds_a_project_folder():
     assert not offenders, 'hand-built projects join: ' + ', '.join(offenders)
 
 
+def test_no_module_hand_builds_a_transcript_path():
+    """`join(<folder>, <sid> + '.jsonl')` is store.transcript_path's job.
+
+    Thirteen copies is not a style complaint: it is the one join that stops
+    being a join once a second harness exists. A Codex thread records an
+    arbitrary rollout path rather than a file named after its id, so every one
+    of these is a site that would have to learn about harnesses separately.
+    """
+    def _is_jsonl(node):
+        # a DYNAMIC name only. archeus's own `denied.jsonl` and
+        # `archeus-events.jsonl` are literal filenames it owns outright; what
+        # this is about is a path built out of a session id.
+        if isinstance(node, ast.JoinedStr):
+            return any(isinstance(v, ast.Constant)
+                       and str(v.value).endswith('.jsonl') for v in node.values)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            return _is_jsonl(node.right)
+        return False
+
+    offenders = []
+    for name, src in _modules():
+        if name == 'store.py':                    # the one implementation
+            continue
+        for node in ast.walk(ast.parse(src)):
+            if not (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == 'join'):
+                continue
+            if any(_is_jsonl(a) for a in node.args):
+                offenders.append('%s:%d' % (name, node.lineno))
+    assert not offenders, 'hand-built transcript path: ' + ', '.join(offenders)
+
+
+def test_transcript_path_and_session_file_agree():
+    """Two roads to one answer is two chances to disagree about the extension."""
+    folder = store.project_folder('C:/cfg', 'X--work-proj')
+    assert store.transcript_path(folder, 'abc') == \
+        store.session_file('C:/cfg', 'X--work-proj', 'abc')
+
+
 # ── jsonstore ────────────────────────────────────────────────
 
 def test_absent_file_is_the_default(tmp_path):

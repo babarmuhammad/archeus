@@ -8,6 +8,7 @@ from .sessions import (load_name, save_name, format_age, get_session_title,
 from .ui import (text_input, paths_menu, _cls, wait_event, help_screen,
                  flash, menu, confirm)
 from . import render
+from . import store
 from .claude_md import scaffold_claude_md, ai_scaffold_claude_md
 from .system_prompt import edit_system_prompt
 
@@ -183,8 +184,8 @@ def _move_session(src_folder, dst_folder, sid):
     sid_dir = os.path.join(src_folder, sid)
     if os.path.isdir(sid_dir):
         moves.append((sid_dir, os.path.join(dst_folder, sid)))
-    moves.append((os.path.join(src_folder, f"{sid}.jsonl"),
-                  os.path.join(dst_folder, f"{sid}.jsonl")))   # jsonl last
+    moves.append((store.transcript_path(src_folder, sid),
+                  store.transcript_path(dst_folder, sid)))     # jsonl last
     for src, dst in moves:
         try:
             shutil.move(src, dst)
@@ -304,7 +305,6 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
     pending_ev     = None    # synthesized event (action palette dispatch)
     # first-open setup badge: no CLAUDE.md AND no memory graph
     try:
-        from . import store
         not_set_up = (project_path
                       and not os.path.isfile(os.path.join(project_path, 'CLAUDE.md'))
                       and not os.path.isfile(store.workfile(
@@ -321,7 +321,7 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
         key = (folder, sid)
         if key not in names:
             names[key] = load_name(folder, sid) or \
-                         get_session_title(os.path.join(folder, f"{sid}.jsonl"))
+                         get_session_title(store.transcript_path(folder, sid))
         return names[key]
 
     def active_sessions():
@@ -593,7 +593,7 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
                             flash("Delete failed: " + "; ".join(errors)[:120], ok=False, secs=2)
                         else:
                             flash("Session deleted")
-                        if not os.path.exists(os.path.join(sess_live_dir, f"{cur_sid}.jsonl")):
+                        if not os.path.exists(store.transcript_path(sess_live_dir, cur_sid)):
                             sessions = [s for s in sessions if s[1] != cur_sid]
                             names.pop((sess_live_dir, cur_sid), None)
                 # rows shrank by one selectable; loop top also re-clamps
@@ -618,7 +618,7 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
         elif ev[0] == 'char' and ev[1] == 'F' and cur_sid:
             from .sessions import session_changed_files
             from .ui import pager
-            changed = session_changed_files(os.path.join(folder, f"{cur_sid}.jsonl"))
+            changed = session_changed_files(store.transcript_path(folder, cur_sid))
             if changed:
                 lines = [f"{render.fit(p, render.content_width() - 8)}  {C_DIM}×{n}{C_RESET}"
                          for p, n in changed]

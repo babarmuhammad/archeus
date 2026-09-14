@@ -136,7 +136,7 @@ def append_session_log(project_path, proj_folder, sid):
     recall what happened even after /compact killed the context."""
     try:
         from .sessions import session_changed_files, get_session_info
-        jsonl = os.path.join(proj_folder, f'{sid}.jsonl')
+        jsonl = store.transcript_path(proj_folder, sid)
         if not os.path.isfile(jsonl):
             return False
         preview, _cnt = get_session_info(jsonl)

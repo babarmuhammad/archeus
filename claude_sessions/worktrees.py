@@ -33,6 +33,7 @@ import os
 import time
 
 from . import config as _c
+from . import store
 from .repos import _git      # module-level name so tests can still monkeypatch it
 
 #: a session whose transcript moved inside this window is "live" in its worktree
@@ -117,7 +118,7 @@ def _sessions_by_cwd(project_path, proj_folder):
         except Exception:
             continue
         for mtime, sid, _preview, count in rows:
-            jsonl = os.path.join(folder, f'{sid}.jsonl')
+            jsonl = store.transcript_path(folder, sid)
             try:
                 st = get_session_stats_cached(jsonl)
             except Exception:

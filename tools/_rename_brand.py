@@ -46,6 +46,11 @@ SKIP = {
     # name. Verified to contain no held string (the domain is referred to, never
     # spelled), so skipping the whole file cannot strand it.
     'notes/brand-study.md',
+    # the handoff note for the harness work: it documents what the migration
+    # repairs, and two of those things ARE the old name (a stale CLAUDECTL_* var,
+    # a plugin still installed under the old id). Verified to contain no held
+    # string — it names no domain — so skipping it cannot strand one.
+    'notes/harness-integration-and-the-migration.md',
     'claude_sessions/migrate.py',      # the one module that must know both names
     # the final release under the old name: it ships no code, and its whole job
     # is to BE that name on PyPI and depend on this one. Both files deliberately

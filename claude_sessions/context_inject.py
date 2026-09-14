@@ -40,7 +40,7 @@ def find_sessions_across_accounts(project_path):
         folder = store.project_folder(acct_dir, encoded)
         for mtime, sid, preview, _count in scan_sessions(folder):
             title = (load_name(folder, sid)
-                     or get_session_title(os.path.join(folder, f"{sid}.jsonl")) or '')
+                     or get_session_title(store.transcript_path(folder, sid)) or '')
             out.append((name, folder, sid, mtime, preview, title))
     out.sort(key=lambda r: r[3], reverse=True)
     return out
@@ -51,7 +51,7 @@ def _write_context_file(project_path, folder, sid, acct_name):
     from .stats import get_session_stats_cached
     from .sessions import load_name
 
-    jsonl = os.path.join(folder, f"{sid}.jsonl")
+    jsonl = store.transcript_path(folder, sid)
     msgs  = iter_transcript(jsonl)
     stats = get_session_stats_cached(jsonl)
     name  = load_name(folder, sid)

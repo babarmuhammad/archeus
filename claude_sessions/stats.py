@@ -400,7 +400,7 @@ def assemble_session_usage(proj_folder):
             if sid in seen_sids:
                 continue
             seen_sids.add(sid)
-            stats = get_session_stats_cached(os.path.join(folder, f"{sid}.jsonl"))
+            stats = get_session_stats_cached(store.transcript_path(folder, sid))
             cost, exact = estimate_cost(stats.get('usage_by_model'))
             u = _sum_usage(stats)
             name = load_name(folder, sid) or stats.get('title') or preview or sid[:8]

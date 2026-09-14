@@ -1037,7 +1037,7 @@ def api_session_meta(q, body):
     from .stats import get_session_stats_cached
     from .sessions import load_name
     folder = _folder(q.get('cfgdir'), q['enc'])
-    jsonl = os.path.join(folder, f"{q['sid']}.jsonl")
+    jsonl = _store.transcript_path(folder, q['sid'])
     stats = get_session_stats_cached(jsonl)
     return {'lines': metadata_lines(stats, load_name(folder, q['sid']),
                                     q['sid'], plain=True)}
@@ -1052,7 +1052,7 @@ def api_session_export(q, body):
 
 def api_changed_files(q, body):
     from .sessions import session_changed_files
-    jsonl = os.path.join(_folder(q.get('cfgdir'), q['enc']), f"{q['sid']}.jsonl")
+    jsonl = _store.transcript_path(_folder(q.get('cfgdir'), q['enc']), q['sid'])
     return {'files': session_changed_files(jsonl)}
 
 
@@ -1109,7 +1109,7 @@ def api_archived(q, body):
         for mtime, sid, preview, count in scan_sessions(arch):
             provider, ai_title = False, ''
             try:
-                st = get_session_stats_cached(os.path.join(arch, f'{sid}.jsonl'))
+                st = get_session_stats_cached(_store.transcript_path(arch, sid))
                 provider = resolve_provider(rec, sid, st)
                 # the AI title, same as a live row. It was already parsed — the
                 # stats dict is being read here anyway — and without it every
@@ -3962,7 +3962,7 @@ def api_checkpoints(q, body):
     """
     from . import checkpoints
     folder = _folder(q.get('cfgdir'), q['enc'])
-    jsonl = os.path.join(folder, f"{q['sid']}.jsonl")
+    jsonl = _store.transcript_path(folder, q['sid'])
     cfgdir = os.path.dirname(os.path.dirname(folder))
     try:
         return checkpoints.history(q['sid'], jsonl, cfgdir)

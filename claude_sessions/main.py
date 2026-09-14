@@ -443,7 +443,7 @@ def run():
             sid        = sess['session_id']
             _enc       = sess.get('encoded_name', '')
             pf         = store.project_folder(sess.get('cfgdir'), _enc) if _enc else ''
-            jsonl      = os.path.join(pf, f"{sid}.jsonl")
+            jsonl      = store.transcript_path(pf, sid)
             # Session name: manual rename > AI transcript title > preview > id.
             lr_name    = (load_name(pf, sid) or get_session_title(jsonl)
                           or sess.get('preview', '') or sid[:8] + '…')
