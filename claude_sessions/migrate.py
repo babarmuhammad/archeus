@@ -61,6 +61,14 @@ NEW_WORKDIR = '.' + NEW
 #: launch forever.
 FLAG = 'brand_migrated'
 
+#: gate for the SECOND pass. The first one moves PATHS, and three things that
+#: carry the old name are not paths: the sentinels inside a CLAUDE.md, the OS
+#: scheduler's own entry names, and whatever the user typed into a shell profile.
+#: It needs its own key because `brand_migrated` is already True on every install
+#: this has to reach — re-opening that flag would re-run the whole move against a
+#: machine that finished it months ago.
+SWEEP_FLAG = 'brand_sweep'
+
 #: `~/.claude/claudectl.json`, whatever config.settings_file now says. Derived
 #: rather than hardcoded so the two cannot drift apart.
 OLD_SETTINGS = os.path.join(os.path.dirname(_c.settings_file), OLD + '.json')
@@ -192,9 +200,31 @@ def _repoint(cmd, pkg_dir):
     return f'"{sys.executable}" {tail}' if tail != out.strip() else out
 
 
-def _repair_commands(cfgdirs, moved, failed):
-    """Fix hook and statusLine commands whose script path no longer exists."""
+def repair_commands(cfgdirs=None, moved=None, failed=None):
+    """Fix hook and statusLine commands whose script path no longer exists.
+
+    **This runs on every start, not once**, and that is the whole point of it.
+    `_repoint` only rewrites a path that is DEAD, and the single run the first
+    version got happened at the one moment when the old paths still resolve: you
+    install into the new environment, archeus starts, the migration finds nothing
+    to repair and closes its gate — and only THEN do you remove the old one.
+
+        pipx install archeus      # both venvs exist, nothing is dead, flag set
+        pipx uninstall claudectl  # every recorded path dies, and nothing is left
+                                  # that would ever look at them again
+
+    The same hole swallows a checkout that is moved, renamed or re-cloned after
+    the flag was written, and anyone who never had the old name at all. Running
+    it unconditionally costs one settings read per account and one `isfile` per
+    `.py` argument, on a path that already loads the TUI.
+    """
     from . import hooks
+    if cfgdirs is None:
+        cfgdirs = [d for _name, d in _c.all_config_dirs()]
+    if moved is None:
+        moved = []
+    if failed is None:
+        failed = []
     pkg_dir = os.path.dirname(os.path.abspath(__file__))
     for cfgdir in cfgdirs:
         try:
@@ -217,16 +247,24 @@ def _repair_commands(cfgdirs, moved, failed):
                         moved.append((cfgdir, 'hook -> ' + fixed))
         sl = s.get('statusLine')
         if isinstance(sl, dict):
-            fixed = _repoint(str(sl.get('command', '')), pkg_dir)
-            if fixed != sl.get('command'):
-                sl['command'] = fixed
+            # NOT `_repoint`: it rebuilds the interpreter half as
+            # `sys.executable`, which is python.exe — and this command runs on
+            # every conversation turn, so on Windows that is a console window
+            # flashing up each time. `statusline._command()` is the same script
+            # path with `_interpreter()`'s pythonw preference, which is why it
+            # exists.
+            cur = str(sl.get('command', ''))
+            if _repoint(cur, pkg_dir) != cur:
+                from . import statusline
+                sl['command'] = statusline._command()
                 changed = True
-                moved.append((cfgdir, 'statusLine -> ' + fixed))
+                moved.append((cfgdir, 'statusLine -> ' + sl['command']))
         if changed:
             try:
                 hooks._save(s, cfgdir)
             except Exception as e:
                 failed.append((cfgdir, str(e)))
+    return moved, failed
 
 
 def _old_config_dirs():
@@ -315,11 +353,251 @@ def run():
         _migrate_config_dir(cfgdir, moved, failed)
 
     _rederive_config_paths()
-    _repair_commands(cfgdirs, moved, failed)
+    # its own `fixed` list, NOT `moved`: `_mark_done` reads that one to decide
+    # whether to stamp `migrated_from`, and a routine hook repair years later
+    # must not record a clean install as having come from the old name.
+    _rfixed, _rfailed = repair_commands(cfgdirs)
+    failed.extend(_rfailed)
 
     if not failed:
         _mark_done(moved)
     return moved, failed
+
+
+# ── the second pass: the state that is not a path ─────────────
+# `run()` renames things. These three carry the old name INSIDE them, so a
+# rename could never have reached them and nothing noticed for a whole release.
+
+#: the blocks a renderer owns end to end (`claude_md.write_memory_block`,
+#: `agents._write_routing_block`, `loops.write_journal_block`,
+#: `conventions`), so an orphaned one is stale generated text and nothing else.
+#: KEEP is deliberately absent: it is a REPEATABLE fence around the user's own
+#: prose, and it is renamed, never removed.
+_UNIQUE_BLOCKS = ('MEMORY', 'AGENTS', 'LOOP', 'CONVENTIONS')
+
+#: KEEP is the user's own fence and may legitimately appear many times, so it is
+#: renamed with the rest and never removed.
+_SENTINEL_BLOCKS = _UNIQUE_BLOCKS + ('KEEP',)
+
+_OLD_TAG = '<!-- %s:' % OLD.upper()
+_NEW_TAG = '<!-- %s:' % NEW.upper()
+
+#: `loops.TASK_PREFIX` under the old name. A scheduler entry is a NAME, so no
+#: path move could have reached it. Asserted against `loops.TASK_PREFIX` in the
+#: tests, or a second blind substitution would collapse the pair.
+OLD_TASK_PREFIX = OLD + '-loop-'
+
+
+def sweep_pending():
+    """True until the second pass has completed without a failure."""
+    return not _c.load_settings().get(SWEEP_FLAG)
+
+
+def sweep(cfgdirs=None):
+    """Rewrite the sentinels and re-register the scheduler entries.
+
+    Returns (fixed, failed). Gated separately from `run()`, because everyone
+    this has to reach has already run `run()` to completion.
+
+    **It reads `all_config_dirs()`, which `run()` is forbidden to use** — the
+    rule there is inverted, not relaxed: `run()` cannot use it because the file
+    it reads has not been moved yet, and by the time this runs that file is the
+    only place the account list exists. Using `_old_config_dirs()` here would
+    silently sweep the default account and skip every other one.
+
+    Accepted ceiling: `diffview.restore` can put a pre-rename snapshot back
+    after the gate has closed. A permanent guard for that is not worth carrying.
+    """
+    from . import paths
+    fixed, failed = [], []
+    # the gate lives HERE and not at the call site, so "has this run?" has one
+    # owner and a second caller cannot forget to ask
+    if not sweep_pending():
+        return fixed, failed
+    if _c.load_settings().get('migrated_from') != OLD:
+        _mark_sweep_done(failed)        # never had the old name — nothing to walk
+        return fixed, failed
+    if cfgdirs is None:
+        cfgdirs = [d for _name, d in _c.all_config_dirs()]
+    for cfgdir in cfgdirs:
+        # the account's own CLAUDE.md — the CONVENTIONS block lives there, and
+        # `upsert_block` joins 'CLAUDE.md' onto whatever it is given, so the
+        # global file needs no special case
+        _sweep_claude_md(cfgdir, fixed, failed)
+        _sweep_loops(cfgdir, fixed, failed)
+        for enc in _encoded_folders(cfgdir):
+            folder = store.project_folder(cfgdir, enc)
+            try:
+                real = paths.find_actual_path(enc, folder=folder)
+            except Exception:
+                real = None
+            # only the real working directory: nothing writes a CLAUDE.md into
+            # the `projects/<enc>` mirror, which holds snapshots and diff records
+            # — history, and history keeps its own bytes
+            if real and os.path.isdir(real):
+                _sweep_claude_md(real, fixed, failed)
+    _mark_sweep_done(failed)
+    return fixed, failed
+
+
+def _mark_sweep_done(failed):
+    """Close the second gate, unless a WRITE failed.
+
+    Narrower than `run()`'s rule on purpose: a CLAUDE.md that cannot be read may
+    not even contain an old sentinel, and treating that as a reason to retry
+    would re-walk every account on every start for ever.
+    """
+    if failed:
+        return
+    s = _c.load_settings()
+    s[SWEEP_FLAG] = True
+    _c.save_settings(s)
+
+
+def _sweep_claude_md(base, fixed, failed):
+    """One CLAUDE.md: drop a block the new name already owns, rename the rest.
+
+    `claude_md.upsert_block` needs BOTH new sentinels to replace a block, so an
+    old one is invisible to it and every build appended a second block beside the
+    first — measured on three of this machine's own projects. The orphan is then
+    injected into every session for ever, saying whatever it said the day the
+    rename landed.
+
+    The order is load-bearing. Delete the superseded blocks FIRST, while their
+    sentinels still carry the old name, and only then rename what is left; doing
+    it the other way round produces two blocks with identical sentinels and no
+    way to tell which one the renderer will find.
+
+    KEEP is renamed and never removed — `claude_md._KEEP_RE` is built from the
+    new sentinels only, so until this runs a user's protected prose is no longer
+    excised before the compression prompt and the model may rewrite it.
+
+    A HALF pair — a start with no end — is left exactly as it is. Renaming one
+    would manufacture the state above: `upsert_block` indexes the FIRST
+    occurrence, so a stray new-name start sentinel silently captures every later
+    write and orphans the real block.
+    """
+    from . import claude_md
+    path = os.path.join(base, 'CLAUDE.md')
+    if not os.path.isfile(path):
+        return
+    try:
+        with open(path, encoding='utf-8', errors='ignore') as f:
+            text = f.read()
+    except OSError as e:
+        _c.log.warning('sweep could not read %s: %s', path, e)
+        return          # a read failure is not a reason to retry for ever
+    if _OLD_TAG not in text:
+        return
+    for name in _UNIQUE_BLOCKS:
+        start, end = _OLD_TAG + name + ':START -->', _OLD_TAG + name + ':END -->'
+        if (text.count(start) == text.count(end) > 0
+                and (_NEW_TAG + name + ':START -->') in text):
+            ok, _before, text = claude_md.upsert_block(base, start, end, '')
+            if not ok:
+                failed.append((path, 'could not drop the superseded %s block' % name))
+                return
+            fixed.append((path, 'dropped the superseded %s block' % name))
+    new = text
+    for name in _SENTINEL_BLOCKS:
+        start, end = _OLD_TAG + name + ':START -->', _OLD_TAG + name + ':END -->'
+        if new.count(start) == new.count(end) > 0:
+            new = (new.replace(start, _NEW_TAG + name + ':START -->')
+                      .replace(end, _NEW_TAG + name + ':END -->'))
+    if new == text:
+        return
+    if _c.write_atomic(path, new):
+        fixed.append((path, 'sentinels renamed'))
+    else:
+        failed.append((path, 'could not rewrite the sentinels'))
+
+
+def _sweep_loops(cfgdir, fixed, failed):
+    """Drop the scheduler entry registered under the old name, re-create it.
+
+    A scheduler entry is a NAME, not a path, so no move could reach it: the
+    registry is `archeus-loops.json` now while the task is still
+    `claudectl-loop-<id>`. `loops.is_scheduled` therefore reports the loop as
+    unscheduled while the old entry goes on firing — and the moment the user
+    schedules it again from the UI there are two of them.
+
+    Delete-and-recreate rather than rename, because the old entry's command line
+    also names the OLD environment's interpreter, which is the one `pipx
+    uninstall claudectl` deleted. A rename would leave a correctly named task
+    that fails silently for ever; `loops.schedule` rebuilds the argv.
+
+    The POSIX half cannot go through `loops._cron_write`: it filters on the NEW
+    tag, so the old line survives every rewrite it ever does.
+    """
+    from . import loops, proc
+    rows = [r for r in loops._load(cfgdir) if r.get('id')]
+    if not rows:
+        return
+    stale = []
+    if proc.WINDOWS:
+        for r in rows:
+            tn = OLD_TASK_PREFIX + r['id']
+            q = proc.run(['schtasks', '/query', '/tn', tn], timeout=30)
+            if q is None or q.returncode:
+                continue
+            proc.run(['schtasks', '/delete', '/tn', tn, '/f'], timeout=30)
+            stale.append(r)
+    else:
+        cur = proc.run(['crontab', '-l'], timeout=15)
+        lines = ((cur.stdout or '').splitlines()
+                 if cur is not None and not cur.returncode else [])
+        keep = [ln for ln in lines if OLD_TASK_PREFIX not in ln]
+        if len(keep) == len(lines):
+            return
+        w = proc.run(['crontab', '-'], stdin='\n'.join(keep).strip() + '\n', timeout=15)
+        if w is None or w.returncode:
+            failed.append((cfgdir, 'could not rewrite the crontab'))
+            return
+        stale = [r for r in rows
+                 if any(OLD_TASK_PREFIX + r['id'] in ln for ln in lines)]
+    for r in stale:
+        ok, msg = loops.schedule(r['id'], r.get('interval') or '', cfgdir)
+        (fixed if ok else failed).append((cfgdir, 'loop %s: %s' % (r['id'], msg)))
+
+
+def stale_env_warning():
+    """`CLAUDECTL_*` is read nowhere and fails silently — say so, fix nothing.
+
+    A read-the-old-name-too fallback is exactly what this module exists to stop
+    the rest of the codebase from carrying, and the value lives in a shell
+    profile or a CI config that archeus has no business editing either way.
+    """
+    names = sorted(k for k in os.environ if k.startswith(OLD.upper() + '_'))
+    if not names:
+        return ''
+    pairs = ', '.join('%s is now %s' % (n, NEW.upper() + n[len(OLD):]) for n in names)
+    return ('set but no longer read: ' + pairs
+            + '. Rename them in your shell profile, or they do nothing.')
+
+
+def stale_plugin_warning(cfgdir=None):
+    """The Claude Code plugin id moved with the name, and nothing aliases it.
+
+    Both the marketplace and the plugin are called archeus now, so an install
+    made as `claudectl@claudectl` still resolves to a directory on disk and goes
+    on shadowing the new one. The repair is two commands typed into Claude Code;
+    the plugin caches are only ever written through the `claude` CLI (their
+    format has already changed once), so this reads and reports.
+    """
+    from . import plugins
+    try:
+        stale = [p['key'] for p in plugins.installed(cfgdir)
+                 if OLD in (p['name'] + p['marketplace'])]
+        stale += [m['name'] for m in plugins.known_marketplaces(cfgdir)
+                  if m['name'] == OLD and not stale]
+    except Exception:
+        return ''
+    if not stale:
+        return ''
+    return ('the Claude Code plugin is still installed under the old name (%s). '
+            'In Claude Code run:  /plugin uninstall %s@%s  then  '
+            '/plugin marketplace add babarmuhammad/%s  and  /plugin install %s@%s'
+            % (', '.join(sorted(set(stale))), OLD, OLD, NEW, NEW, NEW))
 
 
 def coinstalled_warning():

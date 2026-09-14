@@ -767,7 +767,7 @@ const NAV=[
   // row, the help table), so a pre-escaped label came out as "Paths &amp; limits"
   // on screen. A LABEL is data; the entity goes in the markup, not in the data.
   ['paths','folder','Paths & limits','Where archeus finds your editor and Claude Code, what its own calls may spend, and what the memory graph may hold.',()=>pgSetPaths,'form'],
-  ['models','ai','Models','The backend your sessions run against — Anthropic, a local server, OpenRouter or OmniRoute — and the failover list that retries the next model when a turn dies.',()=>pgSetModels,'form'],
+  ['models','ai','Models','The backends your sessions can run against — Anthropic, a local server, OpenRouter or OmniRoute — each with its own model and failover list.',()=>pgSetModels,'split'],
   ['updates','refresh','Updates','Versions of archeus, Claude Code and the model catalogue — and what archeus checks on its own: updates, notifications, and the auto-memory schedule.',()=>pgSetUpdates,'form'],
   ['searchp','search','Search','Full-text search over every session transcript on the machine.',()=>pgSearch,'feed'],
   ['helpp','help','Help','This page: every screen in the app and every key in the terminal UI.',()=>pgHelp,'pile'],
@@ -5483,6 +5483,10 @@ async function pgHelp(nav){
    control it touches is looked up and guarded — one that is not on this
    sub-page is simply not written to. Splitting the WIRING as well would have
    been five copies of the same twenty lines. */
+const PVINTRO=`<h3>${ic('plug')} Pick a backend</h3>
+  <p class="secthint">Choose one on the left to edit its URL, model, gateway and failover list — or add
+  another. With none configured every session runs on your Anthropic account, which is the default and
+  costs nothing to keep.</p>`;
 const SETTINGS_CARDS={
   settings:o=>`<div class="card"><h3>${ic('bolt')} Defaults</h3>
     <p class="secthint">What the launch modal opens on — you can still change any of it per session, and nothing here touches a session that is already running.</p>
@@ -5576,95 +5580,24 @@ const SETTINGS_CARDS={
       <input id="sOtelHdr" placeholder="leave blank for none"></div>
     <div class="mrow"><button class="btn" onclick="setOtelSave()">Save</button></div></div>
 `,
-  models:o=>`  <div class="card"><h3>${ic('plug')} Model provider <span class="sp"></span>
-      <span id="orDot" class="tag">checking…</span></h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Run sessions against something other than your
-      Anthropic account — a local <b>Ollama / llama.cpp / vLLM</b> server, <b>OpenRouter</b>, a self-hosted box, or a
-      local <a href="https://github.com/diegosouzapw/OmniRoute" target="_blank" rel="noopener"
-         style="color:var(--cyan);text-decoration:none">OmniRoute</a> proxy. It stays a real, full
-      <code>claude</code> session with this project's usual agents/skills/hooks/MCP — only the model endpoint
-      changes. The backend must speak <code>POST /v1/messages</code>.
-      <a href="#" onclick="go('help');return false" style="color:var(--cyan);text-decoration:none">What stops working</a>.</p>
-    <div class="fld"><label>Backend</label>
-      <div class="chips" id="pvKind">
-        <span class="chip" data-v="">Anthropic (direct)</span>
-        <span class="chip" data-v="generic">Anthropic-shaped server</span>
-        <span class="chip" data-v="omniroute">OmniRoute</span></div></div>
-    <div class="fld"><label>Translating gateway <span style="color:var(--dim);font-weight:normal">— for a backend that only speaks OpenAI Chat Completions (LM Studio, most bare local servers)</span></label>
-      <div class="chips" id="gwKind">
-        <span class="chip" data-v="">Off</span>
-        <span class="chip" data-v="openai">OpenAI-shaped upstream</span></div></div>
-    <div class="grid2">
-      <div class="fld"><label>Gateway target URL</label><input id="gwUrl" placeholder="http://localhost:1234/v1"></div>
-      <div class="fld"><label>Gateway target key</label><input id="gwKey" type="password"
-        placeholder="${ST.gateway_has_key?'set — leave blank to keep':'leave blank if none needed'}"></div>
-    </div>
-    <div id="gwRow" style="display:none;align-items:center;gap:8px;margin:2px 0 8px">
-      <span id="gwDot" class="tag">—</span>
-      <button class="btn sm" onclick="gwStart()">${ic('bolt')} Start now</button>
-      <button class="btn sm" onclick="gwStop()">${ic('x')} Stop</button>
-      <span style="color:var(--dim);font-size:12px">Runs in its own console window — that window is the log.</span>
-    </div>
-    <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-      <input type="checkbox" id="pvTools" style="width:auto;margin:0"> Re-enable MCP tool search</label>
-      <div style="color:var(--dim);font-size:12px;margin-top:4px">Claude Code turns tool search off on any
-        non-Anthropic endpoint. Re-enabling it only works if your backend forwards
-        <code>tool_reference</code> blocks — if it does not, the turn fails outright, which is why this is
-        your assertion rather than something a provider setting implies.</div></div>
-    <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-      <input type="checkbox" id="pvHeadless" style="width:auto;margin:0"> Run archeus's own calls here too</label>
-      <div style="color:var(--dim);font-size:12px;margin-top:4px">Memory extraction, lessons, code review and
-        the CLAUDE.md / agent / skill / hook generators normally run on Anthropic whatever this card says —
-        they are unattended, so moving them costs money you did not watch being spent. Turned on, they use
-        the model id above instead of <code>${(ST.extract_model||'the economy model')}</code>.</div></div>
-    <p id="orNeedsProvider" class="orOnly" style="color:var(--warn);font-size:12px;margin-bottom:8px;display:none">
-      OmniRoute's own per-connection status shows nothing passing below — but that check can be stale/wrong
-      (confirmed: it reported a genuinely working no-auth connection as broken). Use <b>Send a live test</b> to know
-      for real. If that also fails: adding a provider is dashboard-only right now (OmniRoute's CLI add commands
-      crash on this platform — confirmed upstream bug). First run <code>omniroute setup --password &lt;yours&gt;</code>
-      once if you haven't set a dashboard password, then open the dashboard below → Providers → Add Provider → try
-      a free one (Pollinations, Puter, DuckDuckGo AI Chat…).</p>
-    <div id="orConns" style="margin-bottom:8px"></div>
-    <div class="grid2">
-    <div class="fld"><label>Base URL</label><input id="orUrl" placeholder="http://localhost:20128"></div>
-    <div class="fld"><label>API key</label><input id="orKey" type="password"
-        placeholder="${ST.provider_has_key?'set — leave blank to keep':'leave blank if none needed'}"></div>
-    </div>
-    <div class="fld"><label>Context window (tokens) <span style="color:var(--dim2)">— used only to warn you before a launch. Not probed: most <code>/v1/models</code> responses omit it, and a number made up here is worse than none.</span></label>
-      <input id="pvCtx" type="number" min="0" placeholder="0 = unknown"></div>
-    <div id="orModWrap"></div>
-    <div id="orLiveResult" style="color:var(--dim);font-size:12.5px;margin:4px 0"></div>
-    <div class="mrow">
-      <button class="btn sm" onclick="orRefresh()">${ic('refresh')} Refresh</button>
-      <button class="btn sm" onclick="orLiveTest()">${ic('bolt')} Send a live test</button>
-      <button class="btn sm orOnly" onclick="orProbe()" title="Sends a few real requests to find working models. Each one is a billed request — on free tiers repeated runs will exhaust the key, so this stops as soon as it finds enough. The proxy then refines the list from real sessions at no cost.">${ic('check')} Find working models</button>
-      <button class="btn sm orOnly" onclick="orDashboard()">${ic('ext')} Open OmniRoute dashboard</button>
-      <span class="sp"></span>
-      <button class="btn" onclick="orSave()">Save</button></div>
-    <div id="orProbeOut" style="font-size:12.5px;margin-top:6px"></div>
-
-    <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
-    <h3 style="font-size:14px;margin:0 0 6px">${ic('refresh')} Model failover
-      <span class="sp"></span><span id="foDot" class="tag">off</span></h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code retries a failed turn against the
-      <b>same</b> model ~10× with backoff, so a model that has been dropped upstream (<code>401 not supported</code>)
-      or whose provider rejects a tool schema (<code>400</code>) makes a session look frozen. List fallback models
-      below and archeus runs its own local proxy that retries the <b>next</b> one whenever a turn fails before any
-      output reaches the session. Leave the list empty to disable.</p>
-    <div class="fld"><label>Fallback models <span style="color:var(--dim2)">— one per line, tried in order after the model you selected</span></label>
-      <textarea id="foModels" rows="4" spellcheck="false"
-        placeholder="auto/coding:free&#10;auto/best-coding&#10;auto/fast"></textarea></div>
-    <div class="fld"><label>Proxy port</label><input id="foPort" placeholder="20129"></div>
-    <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-      <input type="checkbox" id="foQuiet"> Hide the proxy console window</label>
-        <div style="color:var(--dim);font-size:12px;margin-top:4px">The window logs every turn — which model was
-          tried, what failed, what served it. It doubles as live plan-execution progress. Hiding it keeps the log
-          at <code>~/.claude/failover.log</code>.</div></div>
-    <div id="foResult" style="color:var(--dim);font-size:12.5px;margin:4px 0"></div>
-    <div class="mrow">
-      <button class="btn sm" onclick="foStop()">${ic('close')} Stop proxy</button>
-      <span class="sp"></span>
-      <button class="btn" onclick="foSave()">Save failover</button></div></div>
+  /* A LIST, because there is more than one backend now. Same shape the Accounts
+     page uses and for the same reason — a named connection you switch between —
+     so the detail pane is built in JS (pvSel) rather than being a sixth static
+     template that would have to know every field twice. */
+  models:o=>`<div class="card"><h3>${ic('plug')} Model providers
+    <span class="tag" id="pvCount"></span><span class="sp"></span>
+    <button class="btn sm" onclick="pvAdd()">${ic('add')} Add provider</button></h3>
+    <p class="secthint">Run sessions against something other than your Anthropic account — a local
+      <b>Ollama / llama.cpp / vLLM</b> server, <b>OpenRouter</b>, a self-hosted box, or a local
+      <a href="https://github.com/diegosouzapw/OmniRoute" target="_blank" rel="noopener"
+         style="color:var(--cyan);text-decoration:none">OmniRoute</a> proxy. Each one keeps its own
+      URL, key, model and failover list, and you pick which to use when you start a session.
+      A backend must speak <code>POST /v1/messages</code>.
+      <a href="#" onclick="go('helpp');return false" style="color:var(--cyan);text-decoration:none">What stops working</a>.</p>
+    <div class="tbody" id="pvList"><span class="spin"></span></div></div>
+  <!-- painted, not empty: prune() removes a card with no content after every
+       paint, so an empty detail pane is deleted before pvDetail() can fill it -->
+  <div class="card tdet" id="pvDet">${PVINTRO}</div>
 `,
   /* `#verMount` is `display:contents` (app.css), so the three cards it holds
      are laid out by `.form` as if they were written here — which is what lets
@@ -5760,29 +5693,11 @@ async function pgSettings(nav,part='settings'){
   // are gated on their host too — a fetch for a card that is not on screen is
   // the cost the split was supposed to remove.
   //
-  // The gate is #pvKind, not #orUrl: the backend picker is the one control on
-  // this card that exists for every backend, while #orUrl is now OmniRoute's.
-  if($('#pvKind')){
-    $('#orUrl').value=ST.provider_base_url||'';
-    $('#pvCtx').value=ST.provider_context_tokens||'';
-    chipSet($('#pvKind'),ST.provider_kind||'');
-    /* Hand-written chip groups carry no behaviour of their own -- only
-       chipsFill() wires the exclusive-select, and these are literal markup
-       (same as #peVia, which does this by hand for the same reason). Without
-       it the chip never takes .on, chipVal() keeps returning the old value,
-       and the control looks clickable while being inert. */
-    pickOne($('#pvKind'),()=>orRefresh());
-    pickOne($('#gwKind'),()=>orRefresh());
-    chipSet($('#gwKind'),ST.gateway_kind||'');
-    $('#gwUrl').value=ST.gateway_target_base_url||'';
-    $('#pvTools').checked=!!ST.provider_tool_search;
-    $('#pvHeadless').checked=!!ST.headless_provider;
-    $('#foModels').value=(ST.failover_models||[]).join('\n');
-    $('#foPort').value=ST.failover_port||20129;
-    $('#foQuiet').checked=!!ST.failover_quiet;
-    foDot();
-    orRefresh();
-  }
+  // The provider card fills itself from ST.providers and renders its own
+  // detail pane, so the gate is the list it draws into. Everything inside the
+  // pane is written by pvDetail(), which is also what re-wires its chip groups
+  // after each render.
+  if($('#pvList'))drawProviders();
   if($('#amList'))drawAutoMemList();
   if($('#verMount'))drawVersionCards();
 }
@@ -6034,10 +5949,199 @@ async function setPlanExecSave(){
    exhausted — server-side, invisible to the claude client. That's "auto"
    below; specific model ids are only for manually pinning one. ── */
 const OR_AUTO='auto/coding';
+
+/* ── model providers: a list, and the one currently open ──
+   PV is the profile being edited. Held rather than re-read from ST on every
+   keystroke because the form is a draft until Save — and read back from the
+   server after, so what the card shows is what the daemons will load. */
+let PV=null;
+function pvList(){return ST.providers||[];}
+function pvRow(p){
+  const act=p.id===ST.provider_active, cur=PV&&PV.id===p.id;
+  const tags=[act?'<span class="tag ok">default</span>':'',
+    p.id===ST.headless_provider_id?'<span class="tag">archeus’s own calls</span>':'',
+    (p.failover_models||[]).length?`<span class="tag">${(p.failover_models||[]).length} fallback${(p.failover_models||[]).length>1?'s':''}</span>`:''
+  ].filter(Boolean).join(' ');
+  return `<div class="hrow${cur?' on':''}" onclick="pvSel(${hesc(p.id)})">
+    <span class="dot" style="background:${act?'var(--ok)':'var(--dim2)'}"></span>
+    <span class="info">${esc(p.name||'(unnamed)')}
+      <span style="color:var(--dim)">${esc(p.kind==='omniroute'?'OmniRoute':(p.base_url||''))}</span></span>
+    ${tags}</div>`;
+}
+function drawProviders(){
+  const box=$('#pvList');if(!box)return;
+  const list=pvList();
+  const n=$('#pvCount');if(n)n.textContent=list.length;
+  box.innerHTML=list.length?list.map(pvRow).join('')
+    :'<div class="empty">No provider yet — every session runs on your Anthropic account.</div>';
+  /* Drop the selection only when the thing it POINTED AT is gone — a draft
+     from pvAdd() has id:'' by design and matched nothing, so the old test threw
+     away the form it had just opened. And arrive on something live: landing on
+     "no provider selected" beside a list of them makes the page look inert and
+     leaves every control on it absent. */
+  if(PV&&PV.id&&!list.some(p=>p.id===PV.id))PV=null;
+  pvDetail();
+}
+function pvSel(id){PV=pvList().find(p=>p.id===id)||null;drawProviders();orRefresh();}
+function pvAdd(){
+  /* A draft with no id: /api/provider/save creates one, and only then does it
+     get a port. Nothing is written until Save, so an abandoned Add leaves
+     nothing behind. */
+  PV={id:'',name:'',kind:'generic',base_url:'',model:'',context_tokens:0,
+      tool_search:false,gateway_kind:'',gateway_target_base_url:'',
+      failover_models:[],failover_quiet:false,api_key_set:false,
+      gateway_target_api_key_set:false};
+  drawProviders();
+}
+function pvDetail(){
+  const d=$('#pvDet');if(!d)return;
+  if(!PV){
+    d.innerHTML=`<h3>${ic('plug')} No provider selected</h3>
+      <p class="secthint">Pick one on the left to edit it, or add another. With none configured
+      every session runs on your Anthropic account, which is the default and costs nothing to keep.</p>`;
+    return;
+  }
+  const om=PV.kind==='omniroute';
+  d.innerHTML=`<h3>${ic('plug')} ${esc(PV.name||'New provider')}
+      <span class="sp"></span><span id="orDot" class="tag">${PV.id?'checking…':'not saved yet'}</span></h3>
+    <div class="fld"><label>Name</label><input id="pvName" placeholder="e.g. vLLM box"
+      value="${esc(PV.name||'')}"></div>
+    <div class="fld"><label>Backend</label>
+      <div class="chips" id="pvKind">
+        <span class="chip${om?'':' on'}" data-v="generic">Anthropic-shaped server</span>
+        <span class="chip${om?' on':''}" data-v="omniroute">OmniRoute</span></div></div>
+    <div class="grid2">
+      <div class="fld"><label>Base URL</label><input id="orUrl"
+        placeholder="${om?'http://localhost:20128':'http://localhost:8000'}"
+        value="${esc(PV.base_url||'')}"></div>
+      <div class="fld"><label>API key</label><input id="orKey" type="password"
+        placeholder="${PV.api_key_set?'set — leave blank to keep':'leave blank if none needed'}"></div>
+    </div>
+    <div id="orModWrap"></div>
+    <div class="fld"><label>Context window (tokens) <span style="color:var(--dim2)">— used only to warn you before a launch. Not probed: most <code>/v1/models</code> responses omit it, and a number made up here is worse than none.</span></label>
+      <input id="pvCtx" type="number" min="0" placeholder="0 = unknown"
+        value="${PV.context_tokens||''}"></div>
+    <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="pvTools" style="width:auto;margin:0"${PV.tool_search?' checked':''}> Re-enable MCP tool search</label>
+      <div style="color:var(--dim);font-size:12px;margin-top:4px">Claude Code turns tool search off on any
+        non-Anthropic endpoint. Re-enabling it only works if your backend forwards
+        <code>tool_reference</code> blocks — if it does not, the turn fails outright, which is why this is
+        your assertion rather than something a backend setting implies.</div></div>
+
+    <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
+    <div class="fld"><label>Translating gateway <span style="color:var(--dim);font-weight:normal">— for a backend that only speaks OpenAI Chat Completions (LM Studio, most bare local servers)</span></label>
+      <div class="chips" id="gwKind">
+        <span class="chip${PV.gateway_kind?'':' on'}" data-v="">Off</span>
+        <span class="chip${PV.gateway_kind?' on':''}" data-v="openai">OpenAI-shaped upstream</span></div></div>
+    <div class="grid2">
+      <div class="fld"><label>Gateway target URL</label><input id="gwUrl"
+        placeholder="http://localhost:1234/v1" value="${esc(PV.gateway_target_base_url||'')}"></div>
+      <div class="fld"><label>Gateway target key</label><input id="gwKey" type="password"
+        placeholder="${PV.gateway_target_api_key_set?'set — leave blank to keep':'leave blank if none needed'}"></div>
+    </div>
+    <div id="gwRow" style="display:none;align-items:center;gap:8px;margin:2px 0 8px">
+      <span id="gwDot" class="tag">—</span>
+      <button class="btn sm" onclick="gwStart()">${ic('bolt')} Start now</button>
+      <button class="btn sm" onclick="gwStop()">${ic('x')} Stop</button>
+      <span style="color:var(--dim);font-size:12px">Runs in its own console window — that window is the log.</span>
+    </div>
+
+    <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
+    <h3 style="font-size:14px;margin:0 0 6px">${ic('refresh')} Model failover
+      <span class="sp"></span><span id="foDot" class="tag">off</span></h3>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code retries a failed turn against the
+      <b>same</b> model ~10× with backoff, so a model dropped upstream (<code>401 not supported</code>) or whose
+      provider rejects a tool schema (<code>400</code>) makes a session look frozen. archeus runs a proxy
+      <b>for this backend</b> that retries the <b>next</b> candidate whenever a turn fails before any output
+      reaches the session. The ids below only mean anything to this backend, which is why the list lives here
+      and not in one global setting.</p>
+    <div class="fld"><label>Fallback models <span style="color:var(--dim2)">— one per line, tried in order after the model you selected</span></label>
+      <textarea id="foModels" rows="3" spellcheck="false">${esc((PV.failover_models||[]).join('\n'))}</textarea></div>
+    <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="foQuiet"${PV.failover_quiet?' checked':''}> Hide the proxy console window</label>
+      <div style="color:var(--dim);font-size:12px;margin-top:4px">The window logs every turn — which model was
+        tried, what failed, what served it. Hiding it keeps the log at <code>~/.claude/failover.log</code>.
+        ${PV.port?`This backend uses port <code>${PV.port}</code> (its gateway: <code>${PV.port+1}</code>).`:''}</div></div>
+
+    <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
+    <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="pvDefault" style="width:auto;margin:0"${PV.id===ST.provider_active?' checked':''}> Use as the default backend</label>
+      <div style="color:var(--dim);font-size:12px;margin-top:4px">What Plan → Execute and the failover screen
+        act on when nothing names a backend. A session still picks its own at launch.</div></div>
+    <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="pvHeadless" style="width:auto;margin:0"${PV.id===ST.headless_provider_id?' checked':''}> Run archeus’s own calls here</label>
+      <div style="color:var(--dim);font-size:12px;margin-top:4px">Memory extraction, lessons, code review and
+        the CLAUDE.md / agent / skill / hook generators run on Anthropic unless you say otherwise — they are
+        unattended, so moving them costs money you did not watch being spent. Turned on, they use this
+        backend’s model instead of <code>${esc(ST.extract_model||'the economy model')}</code>.</div></div>
+
+    <p id="orNeedsProvider" class="orOnly" style="color:var(--warn);font-size:12px;margin-bottom:8px;display:none">
+      OmniRoute’s own per-connection status shows nothing passing below — but that check can be stale/wrong
+      (confirmed: it reported a genuinely working no-auth connection as broken). Use <b>Send a live test</b> to know
+      for real. Adding a provider is dashboard-only right now (OmniRoute’s CLI add commands crash on this
+      platform — confirmed upstream bug). Run <code>omniroute setup --password &lt;yours&gt;</code> once if you
+      have not set a dashboard password, then open the dashboard below → Providers → Add Provider.</p>
+    <div id="orConns" style="margin-bottom:8px"></div>
+    <div id="orLiveResult" style="color:var(--dim);font-size:12.5px;margin:4px 0"></div>
+    <div class="mrow">
+      <button class="btn sm" onclick="orRefresh()">${ic('refresh')} Refresh</button>
+      <button class="btn sm" onclick="orLiveTest()">${ic('bolt')} Send a live test</button>
+      <button class="btn sm orOnly" onclick="orProbe()" title="Sends a few real requests to find working models. Each one is a billed request — on free tiers repeated runs will exhaust the key, so this stops as soon as it finds enough.">${ic('check')} Find working models</button>
+      <button class="btn sm orOnly" onclick="orDashboard()">${ic('ext')} Open OmniRoute dashboard</button>
+      <span class="sp"></span>
+      ${PV.id?`<button class="btn sm" onclick="pvDelete()">${ic('trash')} Delete</button>`:''}
+      <button class="btn pri" onclick="pvSave()">Save</button></div>
+    <div id="orProbeOut" style="font-size:12.5px;margin-top:6px"></div>`;
+  pickOne($('#pvKind'),v=>{PV.kind=v;pvDetail();});
+  pickOne($('#gwKind'),v=>{PV.gateway_kind=v;pvDetail();});
+  foDot();
+  if(PV.id){orRefresh();}
+  else{
+    /* an unsaved draft has nothing on the server to ask about, and an
+       OmniRoute catalogue needs a URL that has been stored. Show the free
+       text field so the model can be typed before the first Save. */
+    const w=$('#orModWrap');
+    if(w)w.innerHTML=orExecModelInput(PV.model);
+  }
+}
+async function pvSave(){
+  const body={id:PV.id||'',name:$('#pvName').value,kind:chipVal($('#pvKind')),
+    base_url:$('#orUrl').value,model:orExecModel(),
+    context_tokens:parseInt($('#pvCtx').value||'0',10)||0,
+    tool_search:$('#pvTools').checked,
+    gateway_kind:chipVal($('#gwKind')),
+    gateway_target_base_url:$('#gwUrl').value,
+    failover_models:$('#foModels').value,
+    failover_quiet:$('#foQuiet').checked};
+  if($('#orKey').value)body.api_key=$('#orKey').value;
+  if($('#gwKey').value)body.gateway_target_api_key=$('#gwKey').value;
+  const r=await post('/api/provider/save',body);
+  if(r.error){toast('Not saved: '+r.error,'err');return;}
+  /* which backend is the default, and which one archeus spends on itself, are
+     whole-installation settings rather than fields of a profile — so they go
+     through /api/settings, keyed by the id the save just returned. */
+  await post('/api/settings',{
+    provider_active:$('#pvDefault').checked?r.id
+      :(ST.provider_active===r.id?'':ST.provider_active),
+    headless_provider_id:$('#pvHeadless').checked?r.id
+      :(ST.headless_provider_id===r.id?'':ST.headless_provider_id)});
+  ST=await api('/api/state');
+  PV=pvList().find(p=>p.id===r.id)||null;
+  drawProviders();
+  toast('Provider saved','ok');
+}
+async function pvDelete(){
+  if(!PV||!PV.id)return;
+  await post('/api/provider/delete',{id:PV.id});
+  ST=await api('/api/state');
+  PV=null;
+  drawProviders();
+  toast('Provider removed','ok');
+}
 function orExecModel(){
   const free=$('#pvModel');
   if(free)return free.value.trim();
-  if(!$('#sOrAuto')&&!$('#sOrPin'))return ST.provider_exec_model||'';
+  if(!$('#sOrAuto')&&!$('#sOrPin'))return (PV&&PV.model)||'';
   return chipVal($('#sOrAuto'))||chipVal($('#sOrPin'))||OR_AUTO;
 }
 function orExecModelInput(cur){
@@ -6058,14 +6162,19 @@ function gwRender(gw){
   dot.textContent=gw.running?('gateway running → '+(gw.target||'')):'gateway not running';
   dot.className='tag '+(gw.running?'ok':'warn');
 }
-function gwStart(){runJob('gateway_ensure',{},st=>{
+function pvJob(kind,body,after){
+  /* every provider job names the profile its button belongs to — the settings
+     page shows them all, and "the active one" would act on the wrong backend */
+  runJob(kind,Object.assign({provider_id:(PV&&PV.id)||''},body||{}),after);
+}
+function gwStart(){pvJob('gateway_ensure',{},st=>{
   toast((st.result&&st.result.message)||'started',(st.result&&st.result.ok)?'ok':'err');orRefresh();});}
-function gwStop(){runJob('gateway_stop',{},st=>{
+function gwStop(){pvJob('gateway_stop',{},st=>{
   toast((st.result&&st.result.message)||'stopped','ok');orRefresh();});}
 async function orRefresh(){
   const dot=$('#orDot');if(!dot)return;
   dot.textContent='checking…';dot.className='tag';
-  const st=await api('/api/provider/status');
+  const st=await api('/api/provider/status?'+qs({id:(PV&&PV.id)||''}));
   const warn=$('#orNeedsProvider');
   const conns=$('#orConns');
   gwRender(st.gateway);
@@ -6081,13 +6190,13 @@ async function orRefresh(){
   // runs themselves.
   document.querySelectorAll('.orOnly').forEach(el=>{
     el.style.display=(kind==='omniroute')?'':'none';});
-  if(!kind){
-    dot.textContent='Anthropic (direct)';dot.className='tag ok';
+  if(st.missing){
+    /* the server has no such profile — a draft that has not been saved, or one
+       deleted in another window. Never fall back to the active backend: this
+       card would then be reporting a backend the user is not looking at. */
+    dot.textContent='not saved yet';dot.className='tag';
     if(warn)warn.style.display='none';
     if(conns)conns.innerHTML='';
-    const w=$('#orModWrap');
-    if(w)w.innerHTML='<div style="color:var(--dim);font-size:13px;margin:6px 0">'+
-      'Sessions run on your Anthropic account. Pick a backend above to route them elsewhere.</div>';
     return;
   }
   if(kind!=='omniroute'){
@@ -6149,9 +6258,12 @@ async function orRefresh(){
       <span style="color:var(--dim)">${esc(l.reason||'')}${mins?` · ${mins} min left`:''}</span></div>`;
   });
   if(conns)conns.innerHTML=html||'<div style="color:var(--dim);font-size:12.5px">No providers connected yet.</div>';
-  const m=await api('/api/provider/models');
+  // ?id=, like every other provider endpoint: /api/provider/models reads the
+  // profile by id and a missing one is a 400, so the catalogue silently never
+  // arrived and the model picker was never built.
+  const m=await api('/api/provider/models?'+qs({id:(PV&&PV.id)||''}));
   const wrap=$('#orModWrap');if(!wrap)return;
-  const cur=ST.provider_exec_model||OR_AUTO;
+  const cur=(PV&&PV.model)||OR_AUTO;
   // Only models on a configured, non-tripped provider that can actually run a
   // session. The full catalog lists every routable id regardless of whether a
   // provider backing it is connected, so offering it invites picking a model
@@ -6184,7 +6296,7 @@ async function orRefresh(){
     $('#sOrAuto').querySelectorAll('.chip').forEach(x=>x.classList.remove('on'))));
 }
 function orTestConn(id){
-  runJob('provider_test_connection',{conn_id:id},st=>{
+  pvJob('provider_test_connection',{conn_id:id},st=>{
     const r=st.result||{};
     // this self-check can be wrong either way -- report it as informational,
     // never as a verdict (that's what "Send a live test" is for)
@@ -6195,7 +6307,7 @@ function orTestConn(id){
 function orLiveTest(){
   const model=orExecModel();
   $('#orLiveResult').textContent='Sending a real request through '+model+'…';
-  runJob('provider_live_test',{model},st=>{
+  pvJob('provider_live_test',{model},st=>{
     const r=st.result||{};
     $('#orLiveResult').innerHTML=r.ok
       ?`<span style="color:var(--ok)">${ic('check')} Works — ${esc(r.message||'')}</span>`
@@ -6204,29 +6316,13 @@ function orLiveTest(){
   });
 }
 async function orStart(){
-  runJob('provider_ensure',{},st=>{
+  pvJob('provider_ensure',{},st=>{
     toast(st.result&&st.result.ok?'OmniRoute started':'Could not start — check it\'s installed','ok');
     orRefresh();
   });
 }
 function orDashboard(){
   window.open(($('#orUrl').value||'http://localhost:20128'),'_blank');
-}
-async function orSave(){
-  const body={provider_base_url:$('#orUrl').value,provider_exec_model:orExecModel(),
-              provider_kind:chipVal($('#pvKind')),
-              provider_context_tokens:parseInt($('#pvCtx').value||'0',10)||0,
-              provider_tool_search:$('#pvTools').checked,
-              headless_provider:$('#pvHeadless').checked,
-              gateway_kind:chipVal($('#gwKind')),
-              gateway_target_base_url:$('#gwUrl').value};
-  if($('#gwKey').value)body.gateway_target_api_key=$('#gwKey').value;
-  if($('#orKey').value)body.provider_api_key=$('#orKey').value;
-  await post('/api/settings',body);
-  ST=await api('/api/state');
-  $('#orKey').value='';
-  toast('OmniRoute settings saved','ok');
-  orRefresh();
 }
 
 /* Probe every candidate with a real request. The catalog and the health endpoint
@@ -6237,7 +6333,7 @@ let ORPROBE=[];
 function orProbe(full){
   const out=$('#orProbeOut');
   out.innerHTML=`<span style="color:var(--dim)">Probing with real requests — stops as soon as 4 answer, ${full?'re-testing everything (spends more quota)':'skipping models already known dead'}, ${full?'240':'45'}s ceiling…</span>`;
-  runJob('provider_probe',full?{full:true,want:0,budget:240}:{},st=>{
+  pvJob('provider_probe',full?{full:true,want:0,budget:240}:{},st=>{
     const r=st.result||{};ORPROBE=r.results||[];
     if(!ORPROBE.length){out.innerHTML='<span style="color:var(--dim)">Nothing to probe.</span>';return;}
     // A timeout is not a verdict on the model -- it means the probe budget
@@ -6275,33 +6371,20 @@ async function orUseWorking(){
   const ids=ORPROBE.filter(x=>x.ok).map(x=>x.id).slice(0,8);
   if(!ids.length)return;
   $('#foModels').value=ids.join('\n');
-  await foSave();
+  await pvSave();
   toast('Failover list set from the models that actually answered','ok');
 }
 
 /* ── model failover (archeus's own proxy — see failover.py) ── */
 function foDot(){
   const d=$('#foDot');if(!d)return;
-  const n=(ST.failover_models||[]).length;
+  const n=((PV&&PV.failover_models)||[]).length;
   d.textContent=n?`${n} fallback${n>1?'s':''}`:'off';
   d.style.color=n?'var(--ok)':'var(--dim)';
   d.style.borderColor='currentColor';d.style.background='transparent';
 }
-async function foSave(){
-  const models=$('#foModels').value.split('\n').map(s=>s.trim()).filter(Boolean).slice(0,8);
-  const port=parseInt($('#foPort').value,10)||20129;
-  await post('/api/settings',
-    {failover_models:models,failover_port:port,failover_quiet:$('#foQuiet').checked});
-  ST=await api('/api/state');
-  $('#foModels').value=(ST.failover_models||[]).join('\n');
-  foDot();
-  $('#foResult').innerHTML=models.length
-    ?`<span style="color:var(--ok)">${ic('check')} Failover on — the proxy starts with your next Plan → Execute run.</span>`
-    :`<span style="color:var(--dim)">Failover off — sessions go straight to OmniRoute.</span>`;
-  toast('Failover settings saved','ok');
-}
 function foStop(){
-  runJob('failover_stop',{},st=>{
+  pvJob('failover_stop',{},st=>{
     const r=st.result||{};
     $('#foResult').textContent=r.message||'stopped';
     toast(r.ok?'Failover proxy stopped':'Could not stop the proxy','ok');
@@ -6623,19 +6706,22 @@ function askLaunch(cfg){
   chipsFill($('#fThink'),o.thinking,o.thinking_labels,d.max_thinking);
   chipsFill($('#fSub'),o.models,o.model_labels,d.subagent_model);
   chipsFill($('#fWt'),['','*'],['off','auto'],'');
-  // Hidden unless a provider is configured. For OmniRoute the list is its live
-  // catalogue; for a generic server there is no catalogue, so the endpoint
-  // returns the one configured model and this becomes an on/off choice.
-  const orWrap=$('#fOmniWrap');orWrap.style.display='none';
-  api('/api/provider/models').then(m=>{
-    const models=m&&m.models||[];
-    if(!models.length)return;
-    const cur=ST.provider_exec_model||'';
-    const vals=['',...models];
-    const lbls=['off (use Anthropic API)',...models.map(id=>id==='auto/coding'?'auto/coding (dynamic)':id)];
-    chipsFill($('#fOmni'),vals,lbls,cur);
-    orWrap.style.display='';
-  }).catch(()=>{});
+  /* Which BACKEND, then which model on it. Two rows, because those are two
+     questions: the backend list is local so it always renders, and only the
+     model half can need the network. It used to be one row of model ids that
+     disappeared entirely when nothing was saved — so a configured backend was
+     unreachable from here. */
+  const provs=ST.providers||[];
+  const pw=$('#fProvWrap'),pmw=$('#fProvModelWrap');
+  pw.style.display=provs.length?'':'none';
+  pmw.style.display='none';
+  if(provs.length){
+    chipsFill($('#fProv'),['',...provs.map(p=>p.id)],
+      ['Anthropic',...provs.map(p=>p.name||'(unnamed)')],
+      ST.provider_active&&provs.some(p=>p.id===ST.provider_active)?'':'',
+      drawLaunchModel);
+    drawLaunchModel('');
+  }
   $('#fAcctWrap').style.display=(cfg.isNew&&ST.accounts.length>1)?'':'none';
   $('#fNameWrap').style.display=cfg.isNew?'':'none';
   $('#fWtWrap').style.display=cfg.isNew?'':'none';
@@ -6646,6 +6732,39 @@ function askLaunch(cfg){
   updateHint();
   $('#ovl').classList.add('show');
 }
+/* The model row follows the backend chip. An OmniRoute profile has a live
+   catalogue worth offering; anything else publishes nothing, so the model is
+   free text defaulted to what the profile is configured with — inventing a list
+   would be offering ids that 401 on the first turn. */
+async function drawLaunchModel(pid){
+  const box=$('#fProvModel'),wrap=$('#fProvModelWrap');
+  if(!box||!wrap)return;
+  const prof=(ST.providers||[]).find(p=>p.id===pid);
+  if(!prof){wrap.style.display='none';box.innerHTML='';return;}
+  wrap.style.display='';
+  if(prof.kind!=='omniroute'){
+    box.innerHTML=`<input id="fProvModelIn" placeholder="e.g. qwen3-coder:30b"
+      value="${esc(prof.model||'')}">`;
+    return;
+  }
+  box.innerHTML='<span class="spin"></span>';
+  let m={};
+  try{m=await api('/api/provider/models?'+qs({id:pid}));}catch(e){m={};}
+  const ids=(m.models||[]);
+  if(!ids.length){
+    box.innerHTML=`<input id="fProvModelIn" placeholder="model id"
+      value="${esc(prof.model||'')}">`;
+    return;
+  }
+  box.innerHTML='<div class="chips" id="fProvChips"></div>';
+  chipsFill($('#fProvChips'),ids,ids.map(id=>(m.labels||{})[id]||id),
+            prof.model||ids[0]);
+}
+function launchProviderModel(){
+  const free=$('#fProvModelIn');
+  if(free)return free.value.trim();
+  return chipVal($('#fProvChips'));
+}
 async function doLaunch(){
   const c=PENDING;if(!c)return;
   const [model,effort]=currentModelEffort();
@@ -6654,7 +6773,8 @@ async function doLaunch(){
     subagent_model:chipVal($('#fSub')),
     name:c.isNew?$('#fName').value:'',worktree:c.isNew?chipVal($('#fWt')):'',
     cfgdir:c.isNew&&ST.accounts.length>1?chipVal($('#fAcct')):(c.cfgdir||''),
-    provider:chipVal($('#fOmni'))};
+    provider:chipVal($('#fProv')),
+    provider_model:launchProviderModel()};
   $('#ovl').classList.remove('show');
   const r=await post('/api/launch',{path:c.path,enc:c.enc,choice:c.choice,opts});
   if(r.ok)toast('Launched in a new terminal window','ok');

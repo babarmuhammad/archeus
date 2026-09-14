@@ -650,7 +650,8 @@ def test_job_plan_make_with_council(monkeypatch, tmp_path):
     from claude_sessions import plan_execute
     monkeypatch.setattr(plan_execute, '_plan', lambda task, m, cwd, effort='', cfgdir='': 'draft plan')
     seen = {}
-    def fake_council(task, plan, cwd, models=None, prov_env=None, cfgdir=''):
+    def fake_council(task, plan, cwd, models=None, prov_env=None, cfgdir='',
+                     prof=None):
         seen['called'] = (task, plan)
         return 'council-optimized plan'
     monkeypatch.setattr(plan_execute, 'optimize_plan_council', fake_council)
@@ -743,7 +744,8 @@ def test_job_plan_make_council_ignores_stale_provider_default(monkeypatch, tmp_p
     cfg.save_settings(s)
     monkeypatch.setattr(plan_execute, '_plan', lambda task, m, cwd, effort='', cfgdir='': 'draft plan')
     seen = {}
-    def fake_council(task, plan, cwd, models=None, prov_env=None, cfgdir=''):
+    def fake_council(task, plan, cwd, models=None, prov_env=None, cfgdir='',
+                     prof=None):
         seen['prov_env'] = prov_env
         return 'council-optimized plan'
     monkeypatch.setattr(plan_execute, 'optimize_plan_council', fake_council)
@@ -766,14 +768,17 @@ def test_job_plan_make_council_uses_the_provider_when_via_selected(monkeypatch, 
     actual, enc, folder, sids = _seed(sb, monkeypatch)
     from claude_sessions import plan_execute, config as cfg
     s = cfg.load_settings()
-    s['provider_exec_model'] = 'auto/coding'
-    s['provider_base_url'] = 'http://localhost:20128'
-    s['provider_api_key'] = 'secret'
+    prof = cfg.new_profile(id='p1', name='OmniRoute', kind='omniroute',
+                           model='auto/coding', base_url='http://localhost:20128',
+                           api_key='secret', port=20129)
+    s['providers'] = [prof]
+    s['provider_active'] = 'p1'
     cfg.save_settings(s)
     monkeypatch.setattr(plan_execute, '_plan', lambda task, m, cwd, effort='', cfgdir='': 'draft plan')
     monkeypatch.setattr(plan_execute, 'check_endpoint', lambda *a, **k: None)
     seen = {}
-    def fake_council(task, plan, cwd, models=None, prov_env=None, cfgdir=''):
+    def fake_council(task, plan, cwd, models=None, prov_env=None, cfgdir='',
+                     prof=None):
         seen['prov_env'] = prov_env
         return 'council-optimized plan'
     monkeypatch.setattr(plan_execute, 'optimize_plan_council', fake_council)

@@ -720,7 +720,7 @@ def _new_skill_from_git(project_path):
         default='https://github.com/olsenbrands/fable-foreman')
     if not url:
         return
-    exec_model = _c.load_settings().get('provider_exec_model', '')
+    exec_model = (_c.active_provider() or {}).get('model', '')
     _cls()
     print(f"\n  Cloning {url} ...\n")
     ok, msg = install_from_git(url, project_path, exec_model)

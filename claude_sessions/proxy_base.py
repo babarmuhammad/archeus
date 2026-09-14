@@ -161,9 +161,15 @@ class Daemon:
 
     # ── lifecycle ──
 
-    def ensure(self, port, quiet=False, on_ready=None):
+    def ensure(self, port, quiet=False, on_ready=None, extra_args=()):
         """(ok, message). Never raises. Reuses a live daemon; evicts a stale lock
-        and respawns. *on_ready* supplies the success message."""
+        and respawns. *on_ready* supplies the success message.
+
+        *extra_args* are appended to the child's argv after the port. That is how
+        a daemon is PINNED to the provider profile it serves: the id travels in
+        the spawn rather than being looked up from the settings once the child is
+        running, so the child cannot be handed a different backend by an edit
+        that lands between the spawn and its first request."""
         import subprocess
         import sys
         port = int(port)
@@ -196,6 +202,7 @@ class Daemon:
         env['PYTHONPATH'] = pkg_parent + (
             os.pathsep + env['PYTHONPATH'] if env.get('PYTHONPATH') else '')
         cmd = [sys.executable, '-m', 'claude_sessions', self.serve_flag, str(port)]
+        cmd += [str(x) for x in extra_args]
         try:
             if quiet:
                 subprocess.Popen(

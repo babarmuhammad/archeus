@@ -363,7 +363,11 @@ def _budget_args():
 
 def _provider_headless(model):
     """(env, model) for one of archeus's OWN headless calls when the user has
-    asked for them to run on the configured provider, else (None, model).
+    named a provider profile for them, else (None, model).
+
+    Its own setting (`headless_provider_id`) rather than whatever a session was
+    last launched on: these run unattended, from a hook and from background
+    threads, so the backend they spend has to be chosen once and deliberately.
 
     Routed through `omniroute.prepare_launch`, the same seam an interactive
     launch uses — so the gateway gets started, the failover proxy gets started,
@@ -372,12 +376,13 @@ def _provider_headless(model):
 
     The model is replaced, not kept: `extract_model()` names an Anthropic model
     that a local backend cannot resolve, so a routed call has to ask for the
-    provider's own model id.  Raises whatever prepare_launch raises."""
-    from .config import load_settings
+    profile's own model id.  Raises whatever prepare_launch raises."""
+    from .config import load_settings, provider_profile
     s = load_settings()
-    if not s.get('headless_provider') or not s.get('provider_kind'):
+    prof = provider_profile(s.get('headless_provider_id') or '', s)
+    if not prof:
         return None, model
-    pm = (s.get('provider_exec_model') or '').strip()
+    pm = (prof.get('model') or '').strip()
     if not pm:
         return None, model
     from . import omniroute
@@ -385,7 +390,7 @@ def _provider_headless(model):
     # decides CLAUDE_CONFIG_DIR (where the transcript lands, which MCP servers
     # load), and only the model endpoint moves.
     env = dict(getattr(_tls, 'env', None) or os.environ)
-    env.update(omniroute.prepare_launch(pm, s)[0])
+    env.update(omniroute.prepare_launch(pm, prof)[0])
     return env, pm
 
 

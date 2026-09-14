@@ -76,12 +76,22 @@ STATE = {
     'classic_skins': list(_TH.CLASSIC_SKINS),
     'world': '',
     'plan_model': '', 'exec_model': '', 'extract_model': '',
-    'provider_base_url': '', 'provider_has_key': False,
-    'provider_exec_model': '', 'provider_kind': '', 'provider_context_tokens': 0,
-    'provider_tool_search': False, 'headless_provider': False,
-    'gateway_kind': '', 'gateway_target_base_url': '', 'gateway_has_key': False,
-    'failover_models': [], 'failover_port': 20129,
-    'failover_quiet': False,
+    # two backends, because the whole point of the card is that there is more
+    # than one — and the launch modal offers them beside Anthropic
+    'providers': [
+        {'id': 'p1', 'name': 'OmniRoute', 'kind': 'omniroute',
+         'base_url': 'http://localhost:20128', 'model': 'auto/coding',
+         'context_tokens': 0, 'tool_search': False, 'gateway_kind': '',
+         'gateway_target_base_url': '', 'failover_models': ['auto/fast'],
+         'failover_quiet': False, 'port': 20129,
+         'api_key_set': True, 'gateway_target_api_key_set': False},
+        {'id': 'p2', 'name': 'vLLM box', 'kind': 'generic',
+         'base_url': 'http://10.0.0.5:8000', 'model': 'Qwen3-VL-32B',
+         'context_tokens': 32768, 'tool_search': False, 'gateway_kind': '',
+         'gateway_target_base_url': '', 'failover_models': [],
+         'failover_quiet': False, 'port': 20131,
+         'api_key_set': False, 'gateway_target_api_key_set': False}],
+    'provider_active': 'p1', 'headless_provider_id': '',
 }
 _NOW = time.time()
 DASH = {
@@ -509,9 +519,18 @@ ROUTES = {
     # kind '' is Anthropic direct, which is what the stub settings say — the
     # card then renders no model widget at all, and the OmniRoute-only actions
     # stay hidden. Both branches are driven explicitly in the provider block.
-    '/api/provider/status': {'ok': False, 'kind': '',
+    # reachable: the catalogue is only fetched for a backend that answers, so a
+    # False here made 'its own catalogue' unprovable in the fixture rather than
+    # in the app
+    '/api/provider/status': {'ok': True, 'kind': 'omniroute', 'reachable': True,
+                             'exec_model': 'auto/coding', 'providers': [],
+                             'lockouts': [], 'connections': [], 'model_count': 0,
+                             'usable_count': 0,
                              'gateway': {'kind': '', 'target': '', 'running': False}},
-    '/api/provider/models': {'models': [], 'usable': [], 'autos': []},
+    '/api/provider/models': {'models': ['auto/coding'],
+                             'labels': {'auto/coding': 'auto/coding (dynamic router)'},
+                             'usable': [], 'excluded': {}, 'filtered': True,
+                             'kind': 'omniroute'},
     '/api/failover/status': {'running': False},
     '/api/memory/auto-list': {'projects': []},
     '/api/memory/auto': {'projects': [], 'interval': 3600, 'next_in': 2400},
@@ -1702,7 +1721,6 @@ def main():
                            ('paths', ('sEditor', 'sClaudeExe', 'sCfgDir',
                                       'sBudget', 'sMemCalls', 'sExtract')),
                            ('appearance', ('sMotion', 'sStage', 'sSurf')),
-                           ('models', ('orUrl', 'foModels', 'foPort')),
                            ('updates', ('sUpd', 'sNotif', 'amInt', 'mqStart'))):
             pg.evaluate(f"go('{page}')")
             pg.wait_for_timeout(900)
@@ -1928,33 +1946,73 @@ def main():
         # card lives on that one.
         pg.evaluate("go('models')")
         pg.wait_for_timeout(700)
-        for cid in ('pvKind', 'gwKind', 'gwUrl', 'gwKey', 'pvCtx', 'pvTools',
-                    'pvHeadless', 'orUrl', 'orKey', 'gwRow'):
+        rows = pg.evaluate("document.querySelectorAll('#pvList .hrow').length")
+        check('every configured backend is listed', rows == 2, rows)
+        check('nothing is selected until you pick one',
+              pg.evaluate("!document.getElementById('pvName')"))
+
+        pg.evaluate("document.querySelectorAll('#pvList .hrow')[1].click()")
+        pg.wait_for_timeout(700)
+        for cid in ('pvName', 'pvKind', 'gwKind', 'gwUrl', 'gwKey', 'pvCtx',
+                    'pvTools', 'pvHeadless', 'pvDefault', 'orUrl', 'orKey',
+                    'gwRow', 'foModels', 'foQuiet'):
             check('control #' + cid + ' exists',
                   pg.evaluate("!!document.getElementById('" + cid + "')"))
         kinds = pg.evaluate(
             "[...document.querySelectorAll('#pvKind .chip')].map(c=>c.dataset.v)")
-        check('every backend kind is offered',
-              kinds == ['', 'generic', 'omniroute'], kinds)
+        check('both backend kinds are offered',
+              kinds == ['generic', 'omniroute'], kinds)
         gws = pg.evaluate(
             "[...document.querySelectorAll('#gwKind .chip')].map(c=>c.dataset.v)")
         check('gateway kinds offered', gws == ['', 'openai'], gws)
-
-        pg.evaluate("""document.querySelector('#pvKind .chip[data-v="generic"]').click()""")
-        pg.wait_for_timeout(900)
-        check('generic backend gets a free-text model input',
+        check('the generic backend gets a free-text model input',
               pg.evaluate("!!document.getElementById('pvModel')"))
-        check('generic backend hides the OmniRoute catalogue',
-              pg.evaluate("!document.getElementById('sOrPin')"))
         check('OmniRoute-only actions hidden for a generic backend',
               pg.evaluate("[...document.querySelectorAll('.orOnly')]"
                           ".every(e=>e.style.display==='none')"))
+        check('its own failover list, not a global one',
+              pg.evaluate("document.getElementById('foModels').value") == '')
 
-        pg.evaluate("""document.querySelector('#pvKind .chip[data-v=""]').click()""")
+        pg.evaluate("document.querySelectorAll('#pvList .hrow')[0].click()")
         pg.wait_for_timeout(900)
-        check('Anthropic direct offers no model widget',
-              pg.evaluate("!document.getElementById('pvModel') "
-                          "&& !document.getElementById('sOrPin')"))
+        check('the other backend brings its own failover list',
+              pg.evaluate("document.getElementById('foModels').value") == 'auto/fast')
+        check('and its own catalogue',
+              pg.evaluate("!!document.getElementById('sOrAuto')"))
+
+        pg.evaluate("pvAdd()")
+        pg.wait_for_timeout(300)
+        check('adding one opens an empty draft',
+              pg.evaluate("document.getElementById('pvName').value") == '')
+        # the pane, not the body: app.js is inlined into the page, so the whole
+        # source -- pvDelete() included -- is inside document.body.innerHTML and
+        # this could never have passed
+        check('a draft has nothing to delete yet',
+              pg.evaluate("!document.getElementById('pvDet')"
+                          ".innerHTML.includes('pvDelete()')"))
+
+        # -- the launch modal picks the backend, not just a model --
+        print(NL + '-- launch modal provider --')
+        pg.evaluate("go('home')")
+        pg.wait_for_timeout(600)
+        pg.evaluate("askLaunch({path:'/demo/acme-api',enc:'demo-acme-api',"
+                    "choice:'new',isNew:true})")
+        pg.wait_for_timeout(900)
+        provs = pg.evaluate(
+            "[...document.querySelectorAll('#fProv .chip')].map(c=>c.dataset.v)")
+        check('Anthropic and every backend are offered at launch',
+              provs == ['', 'p1', 'p2'], provs)
+        check('the model row is hidden while Anthropic is picked',
+              pg.evaluate("document.getElementById('fProvModelWrap').style.display")
+              == 'none')
+        pg.evaluate("""document.querySelector('#fProv .chip[data-v="p2"]').click()""")
+        pg.wait_for_timeout(700)
+        check('picking a generic backend asks for its model as free text',
+              pg.evaluate("!!document.getElementById('fProvModelIn')"))
+        check('prefilled with what that backend is configured with',
+              pg.evaluate("(document.getElementById('fProvModelIn')||{}).value")
+              == 'Qwen3-VL-32B')
+        pg.evaluate("$('#ovl').classList.remove('show')")
 
         print('\n— narrow window —')
         pg.set_viewport_size({'width': 700, 'height': 900})

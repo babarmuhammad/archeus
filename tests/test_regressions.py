@@ -70,9 +70,9 @@ def test_pipe_in_name_stripped(monkeypatch, tmp_path):
     line = sb.choice_line()
     assert line is not None
     parts = line.split('|')
-    # v7|path|enc|action|effort|model|perm|name|worktree|cfg|agent|agents_json|
-    #    max_thinking|subagent_model|provider -> 15
-    assert len(parts) == 15
+    # v8|path|enc|action|effort|model|perm|name|worktree|cfg|agent|agents_json|
+    #    max_thinking|subagent_model|provider|provider_model -> 16
+    assert len(parts) == 16
     assert parts[7] == 'abc'      # name pipes stripped
     assert parts[8] == 'wt'       # worktree pipes stripped
     assert parts[10] == 'xy'      # agent pipes stripped

@@ -541,15 +541,33 @@ def test_a_designed_layout_is_never_a_pile():
         assert arch in SHAPES, f'{page}: {arch!r}'
     # a list of one kind of thing, and what you picked out of it
     for page in ('agents', 'skills', 'mcp', 'hooks', 'ostyles', 'accounts',
-                 'worktrees', 'sessions'):
+                 'worktrees', 'sessions', 'models'):
         assert _arch(page) == 'split', f'{page} stopped being a list + detail'
     # one homogeneous list, the whole width of the page
     for page in ('logs', 'searchp', 'review', 'pusage', 'audit'):
         assert _arch(page) == 'feed', f'{page} stopped being a feed'
     # controls, and Primer's Don't: never flowed into columns
-    for page in ('settings', 'appearance', 'paths', 'models', 'updates',
+    for page in ('settings', 'appearance', 'paths', 'updates',
                  'planexec'):
         assert _arch(page) == 'form', f'{page} is a form and must not be a pile'
+
+
+def _renderer_markup(page):
+    """The markup a page paints, following a settings sub-page to its template.
+
+    `pgSetModels` and its four siblings are one-line delegates into
+    SETTINGS_CARDS — reading only the function body would find no cards at all
+    and report a page that paints two as painting none.
+    """
+    fn = _RENDERER[page]
+    body = _JS[_JS.index('function ' + fn + '('):]
+    body = body[:body.index(chr(10) + '}' + chr(10))]
+    m = re.search(r"pgSettings\(nav,\s*'(\w+)'\)", body)
+    if not m:
+        return body
+    cards = _JS[_JS.index('const SETTINGS_CARDS={'):_JS.index('function pgSetLaunch')]
+    part = cards[cards.index('  %s:o=>' % m.group(1)):]
+    return part[:part.index(chr(10) + '`,' + chr(10))]
 
 
 def test_a_split_page_fills_both_of_its_columns():
@@ -565,10 +583,8 @@ def test_a_split_page_fills_both_of_its_columns():
     have installed beside what you could install — so the pair is asserted, not
     the class."""
     for page in ('agents', 'skills', 'mcp', 'hooks', 'ostyles', 'accounts',
-                 'worktrees', 'sessions'):
-        fn = _RENDERER[page]
-        body = _JS[_JS.index('function ' + fn + '('):]
-        body = body[:body.index(chr(10) + '}' + chr(10))]
+                 'worktrees', 'sessions', 'models'):
+        body = _renderer_markup(page)
         assert body.count('class="card') >= 2, \
             f'{page} is a split that paints one card — half the page is dark'
         assert 'class="tbody"' in body, f'{page}: the list is not in a scroller'
@@ -688,7 +704,11 @@ def test_two_fields_share_a_row_only_when_they_are_one_value():
     beside its key, the gateway target's URL beside its key. An endpoint and the
     credential that opens it are one value; the provider card's context-window
     field is NOT, which is why it sits on its own row beneath them."""
-    block = _JS[_JS.index('const SETTINGS_CARDS={'):_JS.index('function pgSetLaunch')]
+    # the provider detail is a settings pane too — it is rendered by JS
+    # rather than being a sixth static template, and the rule is about what
+    # the user sees, not about which function emitted it
+    block = (_JS[_JS.index('const SETTINGS_CARDS={'):_JS.index('function pgSetLaunch')]
+             + _JS[_JS.index('function pvDetail('):_JS.index('async function pvSave(')])
     assert block.count('class="grid2"') == 3, \
         'a settings pair that is not one value'
     # an exporter's endpoint and its protocol; a backend's URL and its key, twice

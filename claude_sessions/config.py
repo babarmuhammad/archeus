@@ -141,6 +141,12 @@ _DEFAULT_SETTINGS = {
     'default_permission': 'auto',  # preselected --permission-mode (see PERMS)
     'perm_default_migrated': False,  # one-time '' -> 'auto' flip, see migrate_settings
     'brand_migrated': False,   # one-time move off the previous name, see migrate.py
+    'brand_sweep': False,      # one-time rewrite of what that MOVE could not reach:
+                               # the sentinels inside a CLAUDE.md and the OS
+                               # scheduler's entry names. Its own key, because
+                               # brand_migrated is already True everywhere this has
+                               # to run. Declared HERE or load_settings parks it
+                               # under _unknown and the sweep repeats every start.
     'migrated_from': '',       # the previous name, when that move found state to move
     'migrated_at': 0,          # when it did (epoch seconds)
     'project_defaults': {},    # encoded_name -> {'effort','model','permission'}
@@ -188,14 +194,6 @@ _DEFAULT_SETTINGS = {
     #: Does not apply to a call that is routed at a provider — that one is not
     #: spending this account's quota at all (see quota.preflight).
     'headless_quota': 'prompt',
-    #: run archeus's OWN headless calls (memory, lessons, review, CLAUDE.md,
-    #: agent/skill/hook/system-prompt generation) on the configured provider
-    #: instead of Anthropic. Off by default on purpose: these run unattended,
-    #: from a hook and from background threads, and quietly moving them to a
-    #: different model — and a different bill — is a surprise rather than a
-    #: feature. Needs provider_kind AND provider_exec_model set to do anything,
-    #: because extract_model names an Anthropic model no local backend resolves.
-    'headless_provider': False,
     'ui_mode': 'tui',              # default interface: 'tui' | 'gui' (desktop app)
     'gui_shell': 'auto',          # GUI window: 'auto' | 'qt' | 'edge' | 'browser'
     #: 'notify' = say so in the banner | 'auto' = also install it on quit |
@@ -238,52 +236,97 @@ _DEFAULT_SETTINGS = {
     'otel_protocol': 'http/protobuf',
     'otel_headers': '',           # e.g. "Authorization=Bearer <token>"
     'auto_memory_interval': 3600,  # GUI background auto-memory re-check cadence (s)
-    # ── alternate model backend ──
-    # ONE active backend at a time, globally — deliberately, not a limitation
-    # waiting to be lifted. failover.py (and gateway.py) resolve their upstream
-    # by re-reading these keys PER REQUEST, so two concurrently-active backends
-    # would hand one session's credential to the other's upstream.
-    'provider_base_url':   'http://localhost:20128',  # Anthropic-shaped endpoint
-    'provider_api_key':    '',   # -> ANTHROPIC_AUTH_TOKEN for the routed session
-    'provider_exec_model': '',   # Plan→Execute exec model, routed through the
-                                  # provider instead of the real Anthropic API.
-                                  # '' = disabled (exec_model/real API as usual).
-    #: '' = Anthropic direct (default, nothing is overridden at all)
+    # ── alternate model backends ──
+    # There used to be ONE globally, because failover.py and gateway.py re-read
+    # the settings PER REQUEST and two live backends would have handed one
+    # session's credential to the other's upstream. What lifted that is the
+    # stored `port` (see PROFILE_FIELDS) plus the per-profile daemons: each
+    # proxy is pinned to one profile id at spawn and resolves only that one, so
+    # the re-read can no longer reach a different backend. The two _daemon()
+    # docstrings carry the rest.
+    #: Named backends, chosen per session at launch. See PROFILE_FIELDS for the
+    #: shape of one, and provider_profiles()/provider_profile()/active_provider()
+    #: to read them.
+    #:
+    #: A LIST, and no flat copy of "the current one" beside it. Two sources for
+    #: one fact is this codebase's recurring bug — hooks.settings_path,
+    #: config.config_dir and the statusline palette were all a derived constant
+    #: that stopped tracking what it was derived from. Read it through an
+    #: accessor or not at all.
+    'providers': [],
+    #: id of the profile used wherever there is no per-session choice: the
+    #: Plan→Execute default, the failover screen, a project's saved default.
+    #: '' = Anthropic direct.
+    'provider_active': '',
+    #: id of the profile archeus's OWN headless calls run on (memory, lessons,
+    #: review, the CLAUDE.md / agent / skill / hook / system-prompt generators).
+    #: '' = Anthropic. Deliberately its own setting rather than following
+    #: provider_active: these run unattended, from a hook and from background
+    #: threads, so moving them to a different model — and a different bill — has
+    #: to be asked for once, not inherited from whatever you last launched.
+    'headless_provider_id': '',
+    'provider_profiles_migrated': False,  # flat keys -> one profile, see migrate_settings
+    'provider_keys_migrated': False,      # one-time omniroute_* rename, see migrate_settings
+}
+
+#: One backend, by name. Every field that used to be a flat `provider_*` /
+#: `gateway_*` / `failover_*` setting lives here instead, because every one of
+#: them is a property OF a backend rather than of the installation.
+#:
+#: `failover_models` most obviously: the candidates are model ids, and a list of
+#: OmniRoute ids means nothing to a vLLM. Applying one global list to whichever
+#: backend happened to be configured was already wrong; it only looked right
+#: while there could be exactly one.
+PROFILE_FIELDS = {
+    'id': '',                  # generated, never the name — a name is renameable
+    'name': '',
     #: 'omniroute' = daemon auto-start, live /v1/models catalogue, circuit health
     #: 'generic'   = any already-running Anthropic-shaped URL (Ollama >= 0.14,
     #:               vLLM, llama.cpp, OpenRouter's Anthropic endpoint, a remote
     #:               server). No catalogue exists for these, so the model id is
     #:               free text and health is one real POST /v1/messages.
-    'provider_kind':       '',
+    'kind': 'generic',
+    'base_url': '',            # Anthropic-shaped endpoint
+    'api_key': '',             # -> ANTHROPIC_AUTH_TOKEN for the routed session
+    'model': '',               # the model id sessions on this profile ask for
     #: user-entered context window of the routed model. 0 = unknown, no advisory.
     #: NOT probed from /v1/models: most catalogues omit context_length, and a
     #: fabricated number is worse than none.
-    'provider_context_tokens': 0,
+    'context_tokens': 0,
     #: -> ENABLE_TOOL_SEARCH=true. Claude Code disables MCP tool search on any
     #: non-first-party base URL; re-enabling it only works when the upstream
-    #: forwards tool_reference blocks, so this is opt-in rather than implied by
-    #: provider_kind.
-    'provider_tool_search': False,
-    'provider_keys_migrated': False,  # one-time omniroute_* rename, see migrate_settings
+    #: forwards tool_reference blocks, so this is opt-in rather than implied.
+    'tool_search': False,
     # ── translating gateway (OpenAI-shaped backends) ──
     #: '' = off. 'openai' = archeus runs a local proxy that speaks the
     #: Anthropic Messages API to `claude` and OpenAI Chat Completions upstream,
     #: for backends that never implemented /v1/messages (LM Studio, most bare
-    #: local servers). When on, provider_base_url points AT the gateway.
+    #: local servers). When on, the session is pointed AT the gateway.
     'gateway_kind': '',
-    'gateway_port': 20130,            # loopback (failover: 20129, OmniRoute: 20128)
     'gateway_target_base_url': '',    # the OpenAI-shaped upstream
-    #: SEPARATE from provider_api_key on purpose: the gateway's upstream and a
-    #: direct provider connection are not guaranteed to be the same host, let
-    #: alone the same credential.
+    #: SEPARATE from api_key on purpose: the gateway's upstream and a direct
+    #: provider connection are not guaranteed to be the same host, let alone the
+    #: same credential.
     'gateway_target_api_key': '',
-    'failover_models': [],        # ordered model ids archeus's own proxy retries
-                                   # when a turn errors before any byte reaches the
-                                   # client. [] = feature off (no separate flag —
-                                   # a second switch is a second thing to desync).
-    'failover_port':   20129,     # loopback port for that proxy (OmniRoute: 20128)
-    'failover_quiet':  False,     # True = hide the proxy console window
+    # ── failover ──
+    'failover_models': [],     # ordered model ids this profile's proxy retries
+                               # when a turn errors before any byte reaches the
+                               # client. [] = off (no separate flag — a second
+                               # switch is a second thing to desync).
+    'failover_quiet': False,   # True = hide the proxy console window
+    #: The loopback port this profile's failover proxy binds; its gateway binds
+    #: port+1. PER PROFILE, and that is what makes concurrent backends possible
+    #: at all: the two daemons used to be singletons on fixed ports that
+    #: re-read the global settings per request, so two live backends handed one
+    #: session's credential to the other's upstream. Stored rather than derived
+    #: from the list index, so reordering or deleting a profile cannot move a
+    #: port out from under a session that is already running on it.
+    'port': 0,
 }
+
+#: where generated profile ports start. failover binds PORT_BASE + 2n, its
+#: gateway PORT_BASE + 2n + 1, so the two never collide across profiles.
+PROFILE_PORT_BASE = 20129
 
 
 #: settings the GUI's generic key loop must NOT accept straight off the wire.
@@ -296,15 +339,20 @@ _DEFAULT_SETTINGS = {
 INTERNAL_SETTINGS = frozenset({
     '_unknown',                      # the carry-through bucket, not a setting
     'accounts', 'project_defaults', 'cost_table',
-    'perm_default_migrated', 'provider_keys_migrated',
+    'perm_default_migrated', 'provider_keys_migrated', 'provider_profiles_migrated',
     'ui_mode',                       # handled first, validated against two values
-    'provider_api_key',              # write-only: never echoed back to be resubmitted
-    'gateway_target_api_key',        # same
-    'failover_models', 'launch_fallback_models',  # list sanitizers
+    #: carries api_key and gateway_target_api_key INSIDE it, and a base URL plus
+    #: a port that two DETACHED daemons then connect to. The generic loop writes
+    #: any key not listed here straight off the wire, so leaving this out would
+    #: let one POST rewrite every credential and endpoint archeus forwards to.
+    #: Owned by /api/provider/save, which validates field by field.
+    'providers',
+    'launch_fallback_models',        # list sanitizer
     'side_w', 'nav_h',                            # geometry clamps
     'headless_budget_usd',                        # float clamp
     'memory_budget',                 # owned by /api/memory/toggles
     'skills_migrated',               # a migration marker, not a preference
+    'brand_migrated', 'brand_sweep', 'migrated_from', 'migrated_at',  # the same
 })
 
 
@@ -364,6 +412,12 @@ def migrate_settings(s):
     has already parked them there (they are no longer in _DEFAULT_SETTINGS), and
     they are popped rather than left, because save_settings() layers _unknown
     back over the output and would otherwise rewrite the dead names forever.
+
+    Then the flat provider_* keys -> one named profile. It must run AFTER the
+    rename, in the same call, because the rename is what produces the keys it
+    reads; and it reads each one from the top level OR from _UNKNOWN_KEYS,
+    because which of the two it is in depends on whether this settings file was
+    written before or after those keys left _DEFAULT_SETTINGS.
     """
     changed = False
     if not s.get('provider_keys_migrated'):
@@ -381,6 +435,10 @@ def migrate_settings(s):
             s['provider_kind'] = 'omniroute'
         s['provider_keys_migrated'] = True
         changed = True
+    if not s.get('provider_profiles_migrated'):
+        _migrate_to_profiles(s)
+        s['provider_profiles_migrated'] = True
+        changed = True
     if not s.get('perm_default_migrated'):
         if not (s.get('default_permission') or ''):
             s['default_permission'] = 'auto'
@@ -392,6 +450,152 @@ def migrate_settings(s):
         s['perm_default_migrated'] = True
         changed = True
     return s, changed
+
+
+#: the flat keys a pre-profiles settings file holds, and where each one lands
+#: inside a profile. Written down once so the migration and the test that proves
+#: it carries everything read the same list.
+_FLAT_TO_PROFILE = (
+    ('provider_kind', 'kind'),
+    ('provider_base_url', 'base_url'),
+    ('provider_api_key', 'api_key'),
+    ('provider_exec_model', 'model'),
+    ('provider_context_tokens', 'context_tokens'),
+    ('provider_tool_search', 'tool_search'),
+    ('gateway_kind', 'gateway_kind'),
+    ('gateway_target_base_url', 'gateway_target_base_url'),
+    ('gateway_target_api_key', 'gateway_target_api_key'),
+    ('failover_models', 'failover_models'),
+    ('failover_quiet', 'failover_quiet'),
+)
+
+#: flat keys that become nothing: the ports are re-derived per profile, and
+#: headless_provider was a boolean over the one global backend. Popped anyway,
+#: so save_settings() stops writing dead names back forever.
+_FLAT_DROPPED = ('failover_port', 'gateway_port', 'headless_provider')
+
+
+def _take_flat(s, key):
+    """A pre-profiles value, from wherever this settings file happens to keep it.
+
+    Top level when the rename above just wrote it; _UNKNOWN_KEYS when it was
+    read off disk after these keys left _DEFAULT_SETTINGS. Popped from both, or
+    save_settings() layers the bucket back over its output and the dead name
+    survives every future migration."""
+    if key in s:
+        return s.pop(key)
+    return (s.get(_UNKNOWN_KEYS) or {}).pop(key, None)
+
+
+def _migrate_to_profiles(s):
+    """Fold the one flat backend into the profile list. In place."""
+    flat = {}
+    for old, new in _FLAT_TO_PROFILE:
+        v = _take_flat(s, old)
+        if v is not None:
+            flat[new] = v
+    headless = _take_flat(s, 'headless_provider')
+    for dead in _FLAT_DROPPED:
+        _take_flat(s, dead)
+    if s.get('providers'):
+        return                      # already has profiles; nothing to fold in
+    # A kind is what "a backend was configured" meant. Without one there was
+    # nothing to route to, so an empty list is the honest result — not a profile
+    # pointing at the placeholder localhost URL the default carried.
+    if not (flat.get('kind') or ''):
+        return
+    prof = new_profile(name=_profile_name_for(flat),
+                       port=free_profile_port(s), **flat)
+    s['providers'] = [prof]
+    s['provider_active'] = prof['id']
+    if headless:
+        s['headless_provider_id'] = prof['id']
+
+
+def _profile_name_for(flat):
+    """A name for the one backend that existed before names did."""
+    if (flat.get('kind') or '') == 'omniroute':
+        return 'OmniRoute'
+    url = (flat.get('base_url') or '').strip()
+    if url:
+        from urllib.parse import urlsplit
+        host = urlsplit(url).hostname or ''
+        if host:
+            return host
+    return 'Provider'
+
+
+# ── provider profiles ────────────────────────────────────────
+
+def new_profile(**over):
+    """A profile dict with every field present, an id, and a free port pair.
+
+    Every field present matters: the daemons and the launch path index these
+    without a default, and a profile written by an older archeus that lacked a
+    field would KeyError at the first request rather than at save time."""
+    import uuid
+    p = {k: (list(v) if isinstance(v, list) else v)
+         for k, v in PROFILE_FIELDS.items()}
+    p.update({k: v for k, v in over.items() if k in PROFILE_FIELDS})
+    if not p.get('id'):
+        p['id'] = uuid.uuid4().hex[:8]
+    return p
+
+
+def provider_profiles(s=None):
+    """Every configured backend, oldest first. Always a list of complete dicts:
+    a profile stored by an older version is filled in from PROFILE_FIELDS here,
+    once, rather than defended against at ~80 read sites.
+
+    NOT `profiles`/`profile`: this module already has a `profile(model)` for a
+    MODEL's editorial, and the shorter names shadowed it silently — the second
+    definition won and the first became dead code that still had a caller."""
+    raw = (load_settings() if s is None else s).get('providers') or []
+    if not isinstance(raw, list):
+        return []
+    return [new_profile(**p) for p in raw if isinstance(p, dict) and p.get('id')]
+
+
+def provider_profile(pid, s=None):
+    """One backend by id, or None — never a fallback to the active one.
+
+    A caller that asked for a specific profile and is handed a different one is
+    the exact failure this whole feature exists to remove: a session routed at
+    an upstream it did not choose, with a credential that is not its own."""
+    if not pid:
+        return None
+    for p in provider_profiles(s):
+        if p['id'] == pid:
+            return p
+    return None
+
+
+def active_provider(s=None):
+    """The backend used where there is no per-session choice, or None for
+    Anthropic direct."""
+    s = load_settings() if s is None else s
+    return provider_profile(s.get('provider_active') or '', s)
+
+
+def free_profile_port(s=None):
+    """The next unused failover port. Each profile owns a PAIR — failover on
+    `port`, its gateway on `port + 1` — so they step by two.
+
+    THE one allocator: every place that creates a profile calls this, because
+    two profiles sharing a port is two daemons racing for one bind and a session
+    silently served by whichever won."""
+    used = {int(p.get('port') or 0) for p in provider_profiles(s)}
+    port = PROFILE_PORT_BASE
+    while port in used:
+        port += 2
+    return port
+
+
+def gateway_port_of(prof):
+    """A profile's gateway binds the port after its failover proxy. Derived
+    rather than stored: two numbers for one allocation is two things to keep in
+    step, and nothing may ever choose them independently."""
+    return int(prof.get('port') or PROFILE_PORT_BASE) + 1
 
 
 def effective_perm(perm, model='', routed=''):
@@ -1059,9 +1263,9 @@ def otel_env(s=None):
     return env
 
 
-def provider_upstream(s):
-    """Where the provider actually lives, as far as anything downstream of the
-    failover proxy is concerned.
+def provider_upstream(prof):
+    """Where this profile's backend actually lives, as far as anything
+    downstream of its failover proxy is concerned.
 
     With a translating gateway configured that is the gateway, not the real
     backend: the gateway IS the thing that speaks the Anthropic Messages API,
@@ -1072,39 +1276,47 @@ def provider_upstream(s):
     Chain when everything is on:
         claude -> failover (retries a dead model) -> gateway (translates) -> host
     """
-    if s.get('gateway_kind'):
-        return 'http://127.0.0.1:%d' % int(s.get('gateway_port') or 20130)
-    return s.get('provider_base_url') or ''
+    if not prof:
+        return ''
+    if prof.get('gateway_kind'):
+        return 'http://127.0.0.1:%d' % gateway_port_of(prof)
+    return prof.get('base_url') or ''
 
 
-def provider_env(s=None, model=None):
+def provider_env(prof, model=None):
     """{} when the session runs on Anthropic direct; else the environment that
-    points an interactive ``claude`` launch at the configured alternate backend
-    — OmniRoute, a local Ollama/vLLM/llama.cpp server, OpenRouter's Anthropic
-    endpoint, or a remote host.  Used for the execution half of Plan→Execute and
-    for standalone routed sessions (see main.py, plan_execute.py).
+    points an interactive ``claude`` launch at *prof* — OmniRoute, a local
+    Ollama/vLLM/llama.cpp server, OpenRouter's Anthropic endpoint, or a remote
+    host.  Used for the execution half of Plan→Execute and for standalone routed
+    sessions (see main.py, plan_execute.py).
 
-    Returns ``{}`` when no provider is configured.  Pass *model* to force the
-    provider env even when ``provider_exec_model`` is unset (the GUI
-    plan-execute modal's ``via='provider'`` path uses this).
+    Takes the PROFILE rather than the settings dict, and that is the whole point
+    of the profile layer: a session's backend is decided once, at launch, and
+    carried — never re-derived from whatever is globally current by the time
+    something asks.
+
+    Returns ``{}`` for a missing profile, which is how Anthropic direct is
+    spelled.  Pass *model* to force the env even when the profile names no model
+    (the GUI plan-execute modal uses this).
 
     Beyond the base URL and token this also disables three things that cannot
     work off Anthropic's own infrastructure — see docs/providers.md for why each
     one is unfixable rather than merely unimplemented."""
-    s = load_settings() if s is None else s
-    if not s.get('provider_exec_model') and not model:
+    if not prof:
         return {}
-    # When failover candidates are configured, claude talks to archeus's own
+    if not prof.get('model') and not model:
+        return {}
+    # When failover candidates are configured, claude talks to THIS PROFILE's
     # proxy instead of the provider directly, and the proxy forwards to
     # provider_upstream() — see failover.py. Kept a PURE mapping here (no I/O,
     # no spawning, no raising); starting a daemon belongs where prepare_launch's
     # ensure_running already governs launch failure.
-    _url = provider_upstream(s)
-    if [m for m in (s.get('failover_models') or []) if str(m or '').strip()]:
-        _url = 'http://127.0.0.1:%d' % int(s.get('failover_port') or 20129)
+    _url = provider_upstream(prof)
+    if [m for m in (prof.get('failover_models') or []) if str(m or '').strip()]:
+        _url = 'http://127.0.0.1:%d' % int(prof.get('port') or PROFILE_PORT_BASE)
     env = {
         'ANTHROPIC_BASE_URL': _url,
-        'ANTHROPIC_AUTH_TOKEN': s.get('provider_api_key') or '',
+        'ANTHROPIC_AUTH_TOKEN': prof.get('api_key') or '',
         'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
         # Extended thinking is Anthropic-only in practice, on EVERY provider
         # kind including an Anthropic-shaped local server: a thinking block
@@ -1123,7 +1335,7 @@ def provider_env(s=None, model=None):
         # agent .md files is stripped by sync_project_agents(routed=True) for
         # the same reason.
     }
-    if s.get('provider_tool_search'):
+    if prof.get('tool_search'):
         # Claude Code turns MCP tool search off on any non-first-party base
         # URL. Re-enabling it only works if the upstream forwards
         # tool_reference blocks, so it is the user's assertion, not ours.

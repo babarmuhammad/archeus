@@ -230,7 +230,7 @@ def _plan(task, plan_model, cwd, effort='', cfgdir=''):
     return result
 
 
-def _headless(model, prompt, cwd, prov_env=None, cfgdir=''):
+def _headless(model, prompt, cwd, prov_env=None, cfgdir='', prof=None):
     """One-shot headless call to `model` -- same plain-subprocess pattern
     _plan() uses for the silent/background path, minus the progress bar
     (council voices run back-to-back, not worth a renderer each).
@@ -276,11 +276,15 @@ def _headless(model, prompt, cwd, prov_env=None, cfgdir=''):
         # thing that speaks the Anthropic Messages API, and the OpenAI-shaped
         # host behind it cannot answer `claude` at all. Skipping it would not
         # degrade the council, it would guarantee it never works.
-        _s = _c.load_settings()
-        if _s.get('gateway_kind'):
+        # THIS session's profile, passed in — not the globally active one. The
+        # council must speak to the same backend the plan will be executed on,
+        # or the plan is optimised by one model and carried out by another with
+        # both reported as "Provider".
+        prof_ = prof or _c.active_provider()
+        if (prof_ or {}).get('gateway_kind'):
             from . import gateway
-            gateway.ensure_running(_s)
-        _direct = _c.provider_upstream(_s)
+            gateway.ensure_running(prof_)
+        _direct = _c.provider_upstream(prof_)
         if _direct:
             env['ANTHROPIC_BASE_URL'] = _direct
     from .gui_api import _run_cancellable
@@ -302,7 +306,8 @@ COUNCIL_MODELS = ['claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5']
 OMNI_COUNCIL_MODELS = ['auto/best-reasoning', 'auto/best-coding', 'auto/best-fast']
 
 
-def optimize_plan_council(task, plan, cwd, models=None, prov_env=None, cfgdir=''):
+def optimize_plan_council(task, plan, cwd, models=None, prov_env=None, cfgdir='',
+                          prof=None):
     """Fan the draft plan out to a small council of OTHER models for critique,
     then synthesize one improved plan. Disabled callers simply never call
     this -- zero extra token cost. Routes through OmniRoute (prov_env) when
@@ -329,7 +334,7 @@ def optimize_plan_council(task, plan, cwd, models=None, prov_env=None, cfgdir=''
     )
     critiques = []
     for m in roster:
-        out = _headless(m, critique_prompt, cwd, prov_env, cfgdir)
+        out = _headless(m, critique_prompt, cwd, prov_env, cfgdir, prof)
         if out:
             critiques.append((m, out))
     if not critiques:
@@ -344,7 +349,7 @@ def optimize_plan_council(task, plan, cwd, models=None, prov_env=None, cfgdir=''
         f"\n\nTASK:\n{task}\n\nDRAFT PLAN:\n{plan}\n\n"
         + "\n\n".join(f"CRITIQUE ({m}):\n{c}" for m, c in critiques)
     )
-    merged = _headless(roster[0], synth_prompt, cwd, prov_env, cfgdir)
+    merged = _headless(roster[0], synth_prompt, cwd, prov_env, cfgdir, prof)
     return merged or plan
 
 
@@ -545,11 +550,12 @@ def run(project_path, proj_folder, project_name, plan=None, per_step=False, shou
 
     s = load_settings()
     plan_model = s.get('plan_model', 'claude-opus-5')
-    prov_env = _c.provider_env(s)
+    prof = _c.active_provider(s)
+    prov_env = _c.provider_env(prof)
     if prov_env:
         from . import omniroute
-        exec_model = s.get('provider_exec_model') or omniroute.AUTO_MODEL
-        exec_via = s.get('provider_base_url') or 'provider'
+        exec_model = prof.get('model') or omniroute.AUTO_MODEL
+        exec_via = prof.get('name') or prof.get('base_url') or 'provider'
     else:
         exec_model = s.get('exec_model', 'claude-sonnet-5')
         exec_via = 'Anthropic'
@@ -592,7 +598,8 @@ def run(project_path, proj_folder, project_name, plan=None, per_step=False, shou
             via_note = ' via OmniRoute (free tier)' if prov_env else ''
             roster = OMNI_COUNCIL_MODELS if prov_env else COUNCIL_MODELS
             print(f"\n  Optimizing plan with model council ({', '.join(roster)}){via_note}...\n")
-            plan = optimize_plan_council(task, plan, project_path, prov_env=prov_env, cfgdir=cfgdir)
+            plan = optimize_plan_council(task, plan, project_path, prov_env=prov_env,
+                                         cfgdir=cfgdir, prof=prof)
 
     # per-step approval: show each step and let user approve/skip
     if per_step and plan:
@@ -635,7 +642,7 @@ def run(project_path, proj_folder, project_name, plan=None, per_step=False, shou
         # interactive launch goes through too.
         try:
             _pv_env, warn = omniroute.prepare_launch(
-                exec_model, s, ctx_bytes=context_bytes(project_path, plan))
+                exec_model, prof, ctx_bytes=context_bytes(project_path, plan))
         except (RuntimeError, ValueError) as e:
             flash(str(e), ok=False, secs=3)
             return False

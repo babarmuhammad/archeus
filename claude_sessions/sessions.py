@@ -364,6 +364,43 @@ def save_session_agents(proj_folder, key, refs):
         os.path.join(proj_folder, 'session-agents.json'), data)
 
 
+def load_session_providers(proj_folder):
+    """session-providers.json: {sid: provider profile id}. '' is a RECORD, not a
+    gap — it means "this one was launched on Anthropic direct"."""
+    try:
+        with open(os.path.join(proj_folder, 'session-providers.json'),
+                  encoding='utf-8') as f:
+            d = json.load(f)
+            return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_session_provider(proj_folder, sid, pid):
+    """Write down which backend a session was launched on."""
+    data = load_session_providers(proj_folder)
+    data[sid] = pid or ''
+    return _c.write_json_atomic(
+        os.path.join(proj_folder, 'session-providers.json'), data)
+
+
+def resolve_provider(rec, sid, stats):
+    """Did this session run on a provider backend rather than Anthropic direct?
+
+    The RECORD wins: archeus writes the profile id at launch, so for anything it
+    started this is a fact. _used_provider stays underneath for sessions archeus
+    did not launch and for those it launched before the record existed — there
+    the model ids are the only signal, and they cannot tell an Anthropic model
+    served THROUGH a provider from a direct run.
+
+    *rec* is passed in rather than read here: the callers list a whole folder and
+    would otherwise re-read the same small file once per row.
+    """
+    if sid in rec:
+        return bool(rec[sid])
+    return _used_provider(stats)
+
+
 def load_add_dirs(proj_folder):
     """Per-project --add-dir entries from add-dirs.txt."""
     if not proj_folder:

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A pointer package. archeus is a Python program; this exists so the name on
+  NuGet resolves to the real project rather than to nothing.
+
+  It carries no assemblies and no tool manifest on purpose: a .NET tool package
+  would have to ship a .NET program that is not the thing anyone is looking for.
+  The README is the payload.
+-->
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>archeus</id>
+    <version>2.3.0</version>
+    <title>archeus</title>
+    <authors>Babar Muhammad Anas</authors>
+    <owners>Babar Muhammad Anas</owners>
+    <license type="expression">MIT</license>
+    <projectUrl>https://github.com/babarmuhammad/archeus</projectUrl>
+    <repository type="git" url="https://github.com/babarmuhammad/archeus.git" />
+    <readme>README.md</readme>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <summary>archeus is a Python tool — install it with `pipx install archeus`.</summary>
+    <description>
+      The memory and workspace layer for AI coding agents: persistent per-project
+      memory, every session you have ever had, and control over what the next one
+      costs. Works with Claude Code today.
+
+      archeus is written in Python and is installed from PyPI:
+      pipx install archeus  (or: pip install archeus)
+
+      This package exists only so the name resolves to the real project.
+    </description>
+    <tags>claude-code ai-agents agent-memory cli developer-tools</tags>
+  </metadata>
+  <files>
+    <file src="README.md" target="" />
+  </files>
+</package>

@@ -49,8 +49,25 @@ _READ_TIMEOUT = 600        # a local model can be slow; the ping keeps the clien
 _PING_EVERY = 20           # well inside Claude Code's ~90s idle abort
 _CHUNK = 65536
 
-_D = _proxy.Daemon('gateway', '--gateway-serve', 'gateway')
-_MARKER_PATH = _D.marker_path
+#: ONE DAEMON PER PROFILE, named after it — same reasoning as failover.py: the
+#: lock file and the readiness marker are derived from the name, and a singleton
+#: on a fixed port re-reading the global settings per request is what let one
+#: session's turns reach another profile's upstream with another profile's key.
+def _daemon(prof):
+    return _proxy.Daemon('gateway-%s' % (prof or {}).get('id', ''),
+                         '--gateway-serve', 'gateway')
+
+
+#: the profile THIS process serves, pinned by argv at spawn. See failover.py.
+_SERVING = ''
+
+
+def _serving_daemon():
+    return _daemon({'id': _SERVING})
+
+
+def _marker_path():
+    return _serving_daemon().marker_path
 
 #: The gateway substitutes the user's own upstream credential into everything it
 #: forwards. Pointing it at Anthropic would mean a archeus-built request
@@ -64,14 +81,12 @@ _warned = set()
 _print_lock = threading.Lock()
 
 
-def enabled(s=None):
-    s = _c.load_settings() if s is None else s
-    return bool(s.get('gateway_kind'))
+def enabled(prof):
+    return bool((prof or {}).get('gateway_kind'))
 
 
-def base_url(s=None):
-    s = _c.load_settings() if s is None else s
-    return 'http://127.0.0.1:%d' % int(s.get('gateway_port') or 20130)
+def base_url(prof):
+    return 'http://127.0.0.1:%d' % _c.gateway_port_of(prof or {})
 
 
 def target_error(url):
@@ -86,18 +101,20 @@ def target_error(url):
     return ''
 
 
-def ensure_running(s=None):
-    s = _c.load_settings() if s is None else s
-    why = target_error(s.get('gateway_target_base_url'))
+def ensure_running(prof):
+    if not prof:
+        return False, 'no provider profile'
+    why = target_error(prof.get('gateway_target_base_url'))
     if why:
         return False, why
-    return _D.ensure(int(s.get('gateway_port') or 20130),
-                     quiet=bool(s.get('failover_quiet')),
-                     on_ready=lambda: base_url(s))
+    return _daemon(prof).ensure(_c.gateway_port_of(prof),
+                                quiet=bool(prof.get('failover_quiet')),
+                                on_ready=lambda: base_url(prof),
+                                extra_args=[prof['id']])
 
 
-def stop_running():
-    return _D.stop()
+def stop_running(prof):
+    return _daemon(prof).stop()
 
 
 def _emit(line):
@@ -153,6 +170,16 @@ def to_openai_request(body):
                     'tool_call_id': blk.get('tool_use_id') or '',
                     'content': _flatten_text(blk.get('content')),
                 })
+            elif t:
+                # There was no else branch, so an `image` block — or a document,
+                # or a web_search result — left the request with nothing said
+                # anywhere: a vision model behind the gateway simply stopped
+                # seeing the picture. cache_control below already had the right
+                # treatment; this is the same, keyed per type so each one is
+                # reported once rather than every turn.
+                _warn_once('blk:' + t,
+                           'gateway: %s block dropped — no OpenAI-shape '
+                           'translation, the model never sees it' % t)
         if role == 'assistant':
             m = {'role': 'assistant', 'content': '\n'.join(p for p in text_parts if p) or None}
             if tool_calls:
@@ -376,10 +403,19 @@ PING = _sse('ping', {'type': 'ping'})
 
 # ── server ───────────────────────────────────────────────────
 
-def serve_cli(port):
-    s = _c.load_settings()
-    port = int(port or s.get('gateway_port') or 20130)
-    why = target_error(s.get('gateway_target_base_url'))
+def serve_cli(port, pid=''):
+    """The detached daemon's entry point. *pid* is the profile id it translates
+    for. A missing profile is a refusal, never a fall back — see
+    failover.serve_cli for why guessing here is the failure this design removes."""
+    global _SERVING
+    prof = _c.provider_profile(pid) if pid else _c.active_provider()
+    if not prof:
+        _emit('archeus gateway: no such provider profile %r — refusing to start'
+              % (pid or '(active)'))
+        return 1
+    _SERVING = prof['id']
+    port = int(port or _c.gateway_port_of(prof))
+    why = target_error(prof.get('gateway_target_base_url'))
     if why:
         _emit('archeus gateway: %s' % why)
         return 1
@@ -388,16 +424,16 @@ def serve_cli(port):
     except Exception as e:
         _emit('archeus gateway: cannot bind port %d: %s' % (port, e))
         return 1
-    _D.write_lock(port)
+    _daemon(prof).write_lock(port)
     _emit('')
-    _emit('archeus gateway  :%d -> %s (openai-chat)'
-          % (port, s.get('gateway_target_base_url')))
+    _emit('archeus gateway  :%d  %s -> %s (openai-chat)'
+          % (port, prof.get('name') or '?', prof.get('gateway_target_base_url')))
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
-        _D.clear_lock()
+        _daemon(prof).clear_lock()
     return 0
 
 
@@ -411,15 +447,21 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def _settings(self):
-        return _c.load_settings()
+    def _profile(self):
+        """THIS daemon's profile, re-read per request but looked up by the id
+        pinned at spawn — see failover._profile."""
+        return _c.provider_profile(_SERVING)
 
     def _guard(self):
-        return _proxy.guard(self, self._settings().get('provider_api_key'),
-                            _MARKER_PATH, 'gateway')
+        # the PROFILE's key, not a global one: `claude` was handed this
+        # profile's api_key as ANTHROPIC_AUTH_TOKEN, and the gateway stands
+        # where its provider would. Guarding with another profile's key is a
+        # 403 that reads like a bug in Claude Code.
+        return _proxy.guard(self, (self._profile() or {}).get('api_key'),
+                            _marker_path(), 'gateway')
 
     def do_GET(self):
-        if _D.serves_marker(self):
+        if _serving_daemon().serves_marker(self):
             return
         if not self._guard():
             return
@@ -450,40 +492,40 @@ class _Handler(BaseHTTPRequestHandler):
             return _proxy.write_json(self, 404, {'type': 'error', 'error': {
                 'type': 'not_found_error', 'message': 'unsupported path %s' % path}})
 
-        s = self._settings()
-        why = target_error(s.get('gateway_target_base_url'))
+        prof = self._profile()
+        why = target_error((prof or {}).get('gateway_target_base_url'))
         if why:
             return _proxy.write_json(self, 502, {'type': 'error', 'error': {
                 'type': 'api_error', 'message': why}})
         if body.get('stream'):
-            self._stream(body, s)
+            self._stream(body, prof)
         else:
-            self._once(body, s)
+            self._once(body, prof)
 
     # ── upstream ──
 
-    def _upstream_call(self, body, s):
-        url = (s.get('gateway_target_base_url') or '').rstrip('/') + '/chat/completions'
+    def _upstream_call(self, body, prof):
+        url = ((prof or {}).get('gateway_target_base_url') or '').rstrip('/') + '/chat/completions'
         payload = json.dumps(to_openai_request(body)).encode('utf-8')
         req = urllib.request.Request(url, data=payload, method='POST')
         req.add_header('Content-Type', 'application/json')
-        key = s.get('gateway_target_api_key') or ''
+        key = (prof or {}).get('gateway_target_api_key') or ''
         if key:
             req.add_header('Authorization', 'Bearer ' + key)
         return urllib.request.urlopen(req, timeout=_CONNECT_TIMEOUT)
 
-    def _once(self, body, s):
+    def _once(self, body, prof):
         try:
-            with self._upstream_call(body, s) as r:
+            with self._upstream_call(body, prof) as r:
                 data = json.loads(r.read().decode('utf-8', 'replace') or '{}')
         except Exception as e:
             return _proxy.write_json(self, 502, {'type': 'error', 'error': {
                 'type': 'api_error', 'message': 'gateway upstream: %s' % e}})
         _proxy.write_json(self, 200, to_anthropic_response(data, body.get('model') or ''))
 
-    def _stream(self, body, s):
+    def _stream(self, body, prof):
         try:
-            resp = self._upstream_call(body, s)
+            resp = self._upstream_call(body, prof)
         except Exception as e:
             return _proxy.write_json(self, 502, {'type': 'error', 'error': {
                 'type': 'api_error', 'message': 'gateway upstream: %s' % e}})

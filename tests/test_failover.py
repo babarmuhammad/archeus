@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 
 from claude_sessions import config as _c
+from claude_sessions import proxy_base as _proxy
 from claude_sessions import failover
 
 
@@ -125,20 +126,30 @@ class _Proxy:
         self.srv.server_close()
 
 
-def _wire(monkeypatch, upstream, models):
-    monkeypatch.setattr(_c, 'load_settings', lambda: {
-        'provider_base_url': upstream.url,
-        'provider_api_key': 'k',
-        'failover_models': models,
-        'failover_port': 20129,
-    })
+#: the lock file, the readiness marker and the spawn claim are all per profile
+#: now, so every lifecycle helper takes one. `_P` is the profile those tests use.
+_P = _c.new_profile(id='p1', name='test', kind='generic', port=20129)
+
+
+#: the profile every test in this file serves. The proxy is pinned to a profile
+#: id at spawn and re-reads THAT profile per request, so wiring one means putting
+#: it where `config.provider_profile` will find it — not handing the daemon a
+#: settings dict, which is exactly the shape this design removed.
+def _wire(monkeypatch, upstream, models, pid='p1'):
+    prof = _c.new_profile(id=pid, name='test', kind='generic',
+                          base_url=upstream.url, api_key='k',
+                          failover_models=models, port=20129)
+    monkeypatch.setattr(_c, 'load_settings',
+                        lambda: {'providers': [prof], 'provider_active': pid})
+    monkeypatch.setattr(failover, '_SERVING', pid)
+    return prof
 
 
 # ── candidates() is pure ─────────────────────────────────────
 
 def test_candidates_puts_primary_first_and_dedupes():
-    s = {'failover_models': ['b', 'a', 'c', '', 'b']}
-    assert failover.candidates('a', s) == ['a', 'b', 'c']
+    prof = {'failover_models': ['b', 'a', 'c', '', 'b']}
+    assert failover.candidates('a', prof) == ['a', 'b', 'c']
 
 
 def test_candidates_with_no_fallbacks_is_just_primary():
@@ -330,11 +341,11 @@ def test_marker_path_served_locally_and_not_forwarded(monkeypatch):
     _wire(monkeypatch, up, [])
     px = _Proxy()
     try:
-        status, body, _h = px.get(failover._MARKER_PATH)
+        status, body, _h = px.get(failover._marker_path())
         assert status == 200
-        assert body.strip() == failover._MARKER
+        assert body.strip() == failover._marker()
         assert up.seen == []
-        assert failover.is_ready(px.port) is True
+        assert failover.is_ready(dict(_P, port=px.port)) is True
     finally:
         px.close()
         up.close()
@@ -344,51 +355,51 @@ def test_is_ready_false_when_nothing_listening():
     up = _Upstream({})
     port = up.port
     up.close()
-    assert failover.is_ready(port, timeout=1) is False
+    assert failover.is_ready(dict(_P, port=port), timeout=1) is False
 
 
 # ── lock file lifecycle ──────────────────────────────────────
 
 def test_stale_lock_is_evicted(monkeypatch):
-    os.makedirs(os.path.dirname(failover.lock_path()), exist_ok=True)
-    with open(failover.lock_path(), 'w', encoding='utf-8') as f:
+    os.makedirs(os.path.dirname(failover.lock_path(_P)), exist_ok=True)
+    with open(failover.lock_path(_P), 'w', encoding='utf-8') as f:
         json.dump({'pid': 999999999, 'port': 20129, 'started': 0}, f)
-    monkeypatch.setattr(failover, '_pid_alive', lambda pid: False)
-    ok, _msg = failover.stop_running()
+    monkeypatch.setattr(_proxy, 'pid_alive', lambda pid: False)
+    ok, _msg = failover.stop_running(_P)
     assert ok
-    assert not os.path.isfile(failover.lock_path())
+    assert not os.path.isfile(failover.lock_path(_P))
 
 
 def test_write_and_read_lock_roundtrip():
-    failover._write_lock(20129)
-    data = failover._read_lock()
+    d = failover._daemon(_P)
+    d.write_lock(20129)
+    data = d.read_lock()
     assert data['port'] == 20129
     assert data['pid'] == os.getpid()
-    failover._clear_lock()
-    assert failover._read_lock() is None
+    d.clear_lock()
+    assert d.read_lock() is None
 
 
 def test_log_and_lock_live_beside_settings_file():
     root = os.path.dirname(_c.settings_file)
     assert os.path.dirname(failover.log_path()) == root
-    assert os.path.dirname(failover.lock_path()) == root
+    assert os.path.dirname(failover.lock_path(_P)) == root
 
 
 # ── config wiring ────────────────────────────────────────────
 
 def test_provider_env_repoints_base_url_when_candidates_configured():
-    s = {'provider_exec_model': 'auto/coding',
-         'provider_base_url': 'http://localhost:20128',
-         'provider_api_key': 'k',
-         'failover_models': ['x'], 'failover_port': 20129}
-    assert _c.provider_env(s)['ANTHROPIC_BASE_URL'] == 'http://127.0.0.1:20129'
+    prof = _c.new_profile(id='p1', model='auto/coding',
+                          base_url='http://localhost:20128', api_key='k',
+                          failover_models=['x'], port=20129)
+    assert _c.provider_env(prof)['ANTHROPIC_BASE_URL'] == 'http://127.0.0.1:20129'
 
 
 def test_provider_env_leaves_base_url_alone_without_candidates():
-    s = {'provider_exec_model': 'auto/coding',
-         'provider_base_url': 'http://localhost:20128',
-         'provider_api_key': 'k', 'failover_models': []}
-    assert _c.provider_env(s)['ANTHROPIC_BASE_URL'] == 'http://localhost:20128'
+    prof = _c.new_profile(id='p1', model='auto/coding',
+                          base_url='http://localhost:20128', api_key='k',
+                          failover_models=[], port=20129)
+    assert _c.provider_env(prof)['ANTHROPIC_BASE_URL'] == 'http://localhost:20128'
 
 
 def test_council_calls_bypass_the_proxy(monkeypatch):
@@ -398,10 +409,11 @@ def test_council_calls_bypass_the_proxy(monkeypatch):
     from claude_sessions import plan_execute
 
     real = 'http://localhost:20128'
-    s = {'provider_exec_model': 'auto/coding', 'provider_base_url': real,
-         'provider_api_key': 'k', 'failover_models': ['x'], 'failover_port': 20129}
-    monkeypatch.setattr(_c, 'load_settings', lambda: s)
-    provider = _c.provider_env(s)
+    prof = _c.new_profile(id='p1', name='t', model='auto/coding', base_url=real,
+                          api_key='k', failover_models=['x'], port=20129)
+    monkeypatch.setattr(_c, 'load_settings',
+                        lambda: {'providers': [prof], 'provider_active': 'p1'})
+    provider = _c.provider_env(prof)
     assert provider['ANTHROPIC_BASE_URL'] == 'http://127.0.0.1:20129'
 
     seen = {}
@@ -490,9 +502,9 @@ def test_readiness_marker_needs_no_key_but_still_needs_the_host(monkeypatch):
     _wire(monkeypatch, up, [])
     px = _Proxy()
     try:
-        status, body = _raw(px.port, path=failover._MARKER_PATH, method='GET', body=b'')
-        assert status == 200 and body == failover._MARKER
-        assert _raw(px.port, path=failover._MARKER_PATH, method='GET', body=b'',
+        status, body = _raw(px.port, path=failover._marker_path(), method='GET', body=b'')
+        assert status == 200 and body == failover._marker()
+        assert _raw(px.port, path=failover._marker_path(), method='GET', body=b'',
                     host='evil.example:%d' % px.port)[0] == 403
     finally:
         px.close()
@@ -502,32 +514,32 @@ def test_readiness_marker_needs_no_key_but_still_needs_the_host(monkeypatch):
 def test_only_one_caller_may_spawn_the_daemon(monkeypatch, tmp_path):
     """Two callers arriving together (two GUI tabs, or TUI + GUI) both used to
     conclude "not running" and both spawn; the loser's bind then failed."""
-    assert failover._claim_spawn(20129) is True
-    assert failover._claim_spawn(20129) is False        # claim is held
-    failover._clear_lock()
-    assert failover._claim_spawn(20129) is True         # released
+    d = failover._daemon(_P)
+    assert d.claim_spawn(20129) is True
+    assert d.claim_spawn(20129) is False        # claim is held
+    d.clear_lock()
+    assert d.claim_spawn(20129) is True         # released
 
 
 def test_a_stale_claim_from_a_dead_run_is_evicted(monkeypatch, tmp_path):
     import json as _json
-    p = failover.lock_path()
+    p = failover.lock_path(_P)
     os.makedirs(os.path.dirname(p), exist_ok=True)
     with open(p, 'w', encoding='utf-8') as f:
         _json.dump({'pid': 999999, 'port': 20129,
                     'started': 0}, f)                  # ancient, pid long gone
-    monkeypatch.setattr(failover, '_pid_alive', lambda pid: False)
-    assert failover._claim_spawn(20129) is True
+    monkeypatch.setattr(_proxy, 'pid_alive', lambda pid: False)
+    assert failover._daemon(_P).claim_spawn(20129) is True
 
 
 def test_a_failed_spawn_releases_the_claim(monkeypatch, tmp_path):
     """Otherwise the first crash wedges failover for the rest of the machine's
     uptime — nothing would ever retry."""
     import subprocess as _sp
-    monkeypatch.setattr(failover, 'is_ready', lambda port, timeout=2: False)
+    monkeypatch.setattr(failover, 'is_ready', lambda prof, timeout=2: False)
     monkeypatch.setattr(_sp, 'Popen',
                         lambda *a, **k: (_ for _ in ()).throw(OSError('boom')))
-    ok, msg = failover.ensure_running({'failover_port': 20129,
-                                       'failover_models': ['x'],
-                                       'failover_quiet': True})
+    prof = dict(_P, failover_models=['x'], failover_quiet=True)
+    ok, msg = failover.ensure_running(prof)
     assert not ok and 'could not start' in msg
-    assert failover._read_lock() is None
+    assert failover._daemon(prof).read_lock() is None

@@ -199,31 +199,82 @@ def test_settings_ui_mode_roundtrip(monkeypatch, tmp_path):
     assert config_mod.load_settings()['ui_mode'] == 'gui'
 
 
-def test_settings_failover_roundtrip(monkeypatch, tmp_path):
+def test_provider_save_roundtrip(monkeypatch, tmp_path):
+    """The failover list belongs to a backend now: its candidates are model ids,
+    so a global list applied to whichever profile was current was already wrong."""
     sb = Sandbox(monkeypatch, tmp_path)
     srv, base = _serve(monkeypatch)
     try:
-        code, d = _req(base + '/api/settings', body={
+        code, d = _req(base + '/api/provider/save', body={
+            'name': 'OmniRoute', 'kind': 'omniroute',
+            'base_url': 'http://localhost:20128', 'api_key': 'sk-x',
+            'model': 'auto/coding',
             'failover_models': ['  auto/a  ', '', 'auto/b'],
-            'failover_port': 20130, 'failover_quiet': True})
+            'failover_quiet': True})
         assert code == 200 and d['ok']
     finally:
         srv.shutdown()
-    s = config_mod.load_settings()
-    assert s['failover_models'] == ['auto/a', 'auto/b']   # stripped, blanks dropped
-    assert s['failover_port'] == 20130
-    assert s['failover_quiet'] is True
+    prof, = config_mod.provider_profiles()
+    assert prof['failover_models'] == ['auto/a', 'auto/b']  # stripped, blanks dropped
+    assert prof['failover_quiet'] is True
+    assert prof['api_key'] == 'sk-x'
+    assert prof['port'] == config_mod.PROFILE_PORT_BASE     # allocated on create
+    assert config_mod.load_settings()['provider_active'] == prof['id']
 
 
-def test_settings_failover_accepts_newline_text_and_caps_length(monkeypatch, tmp_path):
+def test_provider_save_accepts_newline_text_and_caps_length(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     srv, base = _serve(monkeypatch)
     try:
-        _req(base + '/api/settings',
-             body={'failover_models': '\n'.join('m%d' % i for i in range(20))})
+        _req(base + '/api/provider/save',
+             body={'name': 'x', 'kind': 'generic', 'base_url': 'http://h',
+                   'failover_models': '\n'.join('m%d' % i for i in range(20))})
     finally:
         srv.shutdown()
-    assert config_mod.load_settings()['failover_models'] == ['m%d' % i for i in range(8)]
+    prof, = config_mod.provider_profiles()
+    assert prof['failover_models'] == ['m%d' % i for i in range(8)]
+
+
+def test_a_profile_url_must_be_http(monkeypatch, tmp_path):
+    """The value decides which host a DETACHED daemon connects to and forwards
+    the user's credential at, so it is checked at this trust boundary rather
+    than in the daemon — the rule the failover list already carried."""
+    Sandbox(monkeypatch, tmp_path)
+    srv, base = _serve(monkeypatch)
+    try:
+        for bad in ('file:///etc/passwd', 'javascript:alert(1)', 'ftp://h/x'):
+            code, _d = _req(base + '/api/provider/save',
+                            body={'name': 'x', 'kind': 'generic', 'base_url': bad})
+            assert code == 400, bad
+        code, _d = _req(base + '/api/provider/save',
+                        body={'name': '', 'kind': 'generic'})
+        assert code == 400                       # a backend needs a name
+        code, _d = _req(base + '/api/provider/save',
+                        body={'name': 'x', 'kind': 'wat'})
+        assert code == 400                       # and a kind archeus knows
+    finally:
+        srv.shutdown()
+    assert config_mod.provider_profiles() == []
+
+
+def test_editing_a_profile_keeps_a_key_the_form_never_saw(monkeypatch, tmp_path):
+    """The page is never sent a credential, so a save that echoed back what it
+    received would clear one on every edit."""
+    Sandbox(monkeypatch, tmp_path)
+    srv, base = _serve(monkeypatch)
+    try:
+        _req(base + '/api/provider/save',
+             body={'name': 'x', 'kind': 'generic', 'base_url': 'http://h',
+                   'api_key': 'sk-keep'})
+        pid = config_mod.provider_profiles()[0]['id']
+        _req(base + '/api/provider/save',
+             body={'id': pid, 'name': 'renamed', 'kind': 'generic',
+                   'base_url': 'http://h'})
+    finally:
+        srv.shutdown()
+    prof, = config_mod.provider_profiles()
+    assert prof['name'] == 'renamed' and prof['api_key'] == "sk-keep"
+
 
 
 def test_a_clamped_geometry_setting_survives_the_next_save(monkeypatch, tmp_path):
@@ -302,13 +353,20 @@ def test_the_sidebar_gives_the_project_list_a_floor_and_the_name_a_width():
     assert re.search(r'\.plist\{[^}]*min-height:190px', css)
 
 
-def test_state_payload_exposes_failover(monkeypatch, tmp_path):
+def test_state_payload_exposes_profiles_without_their_keys(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     from claude_sessions.gui import state_payload
     p = state_payload()
-    assert p['failover_models'] == []
-    assert p['failover_port'] == 20129
-    assert p['failover_quiet'] is False
+    assert p['providers'] == [] and p['provider_active'] == ''
+    prof = config_mod.new_profile(id='p1', name='x', api_key='sk-secret',
+                                  failover_models=['a'])
+    s = config_mod.load_settings()
+    s['providers'] = [prof]
+    config_mod.save_settings(s)
+    p = state_payload()
+    assert p['providers'][0]['failover_models'] == ['a']
+    assert p['providers'][0]['api_key_set'] is True
+    assert 'sk-secret' not in repr(p)
 
 
 def test_rename_via_api(monkeypatch, tmp_path):

@@ -113,11 +113,13 @@ def list_sessions(encoded):
     """Sessions of a project across every account, newest-first.
     [{'sid','title','preview','age','count','account','cfgdir','tokens','provider'}]"""
     from .sessions import (account_folders_for, scan_sessions, load_name,
-                           get_session_title, format_age)
+                           get_session_title, format_age,
+                           load_session_providers, resolve_provider)
     from .stats import get_session_stats_cached, _sum_usage, fmt_tok
     out = []
     for acct_name, folder in account_folders_for(encoded):
         cfgdir = os.path.dirname(os.path.dirname(folder))
+        rec = load_session_providers(folder)
         for mtime, sid, preview, count in scan_sessions(folder):
             jsonl = os.path.join(folder, f'{sid}.jsonl')
             title = load_name(folder, sid) or get_session_title(jsonl) or ''
@@ -128,7 +130,7 @@ def list_sessions(encoded):
                 tot = sum(_sum_usage(st).values())
                 if tot:
                     tokens = fmt_tok(tot)
-                provider = _used_provider(st)
+                provider = resolve_provider(rec, sid, st)
             except Exception:
                 pass
             out.append({'sid': sid, 'title': title, 'preview': preview,
@@ -147,6 +149,119 @@ def theme_palettes():
     (label/family/mode/motion) ride along for the settings gallery and the
     ambient motion layer."""
     return {name: dict(pal) for name, pal in _themes.PALETTES.items()}
+
+
+#: profile fields that are secrets. Reported as `<name>_set: bool` and never
+#: sent — the page is readable by anything that reaches the port, so the only
+#: safe answer to "what is the key" is that the payload does not carry one.
+_PROFILE_SECRETS = ('api_key', 'gateway_target_api_key')
+
+
+def _public_profile(prof):
+    """One profile as the SPA may see it: every field except the credentials,
+    plus a boolean saying whether each is set so the form can say 'leave blank
+    to keep' instead of silently clearing it."""
+    out = {k: v for k, v in prof.items() if k not in _PROFILE_SECRETS}
+    for k in _PROFILE_SECRETS:
+        out[k + '_set'] = bool(prof.get(k))
+    return out
+
+
+def _clean_profile(body, prev=None):
+    """A profile dict from untrusted JSON, or raise BadRequest.
+
+    This is the trust boundary `failover_models` already named: the values land
+    in a settings file that two DETACHED daemons read back, and they decide
+    which host archeus connects to and which credential it forwards. Validating
+    in the daemon instead would be validating after the damage.
+
+    *prev* is the stored profile when editing: an omitted or blank secret KEEPS
+    the stored one rather than clearing it, which is how a form that never
+    receives the key can still be saved.
+    """
+    from .gui_api import BadRequest
+    from urllib.parse import urlsplit
+    prev = prev or {}
+
+    def _url(v, field):
+        v = str(v or '').strip()
+        if not v:
+            return ''
+        u = urlsplit(v)
+        if u.scheme not in ('http', 'https') or not u.hostname:
+            raise BadRequest('%s must be an http:// or https:// URL' % field)
+        return v.rstrip('/')
+
+    kind = str(body.get('kind') or '').strip()
+    if kind not in ('generic', 'omniroute'):
+        raise BadRequest("kind must be 'generic' or 'omniroute'")
+    name = str(body.get('name') or '').strip()[:60]
+    if not name:
+        raise BadRequest('a provider needs a name')
+    gw_kind = str(body.get('gateway_kind') or '').strip()
+    if gw_kind not in ('', 'openai'):
+        raise BadRequest("gateway_kind must be '' or 'openai'")
+    raw = body.get('failover_models')
+    if isinstance(raw, str):
+        raw = raw.replace(',', '\n').split('\n')
+    prof = _c.new_profile(
+        id=str(body.get('id') or prev.get('id') or ''),
+        name=name, kind=kind,
+        base_url=_url(body.get('base_url'), 'Base URL'),
+        model=str(body.get('model') or '').strip()[:120],
+        context_tokens=max(0, min(10_000_000, int(body.get('context_tokens') or 0))),
+        tool_search=bool(body.get('tool_search')),
+        gateway_kind=gw_kind,
+        gateway_target_base_url=_url(body.get('gateway_target_base_url'),
+                                     'Gateway target URL'),
+        failover_models=[str(m).strip() for m in (raw or []) if str(m).strip()][:8],
+        failover_quiet=bool(body.get('failover_quiet')),
+        # never from the wire: one allocator, and moving a live profile's port
+        # would strand the session already talking to it
+        port=int(prev.get('port') or 0),
+    )
+    for k in _PROFILE_SECRETS:
+        prof[k] = str(body.get(k) or '').strip() or prev.get(k, '')
+    return prof
+
+
+def _api_provider_save(q, body):
+    """Create or update one profile. The ONLY writer of `providers`, which is in
+    INTERNAL_SETTINGS precisely so the generic settings loop cannot be it."""
+    from .gui_api import BadRequest
+    s = load_settings()
+    existing = _c.provider_profiles(s)
+    prev = next((p for p in existing if p['id'] == str(body.get('id') or '')), None)
+    prof = _clean_profile(body, prev)
+    if not prof['port']:
+        prof['port'] = _c.free_profile_port(s)
+    if prev:
+        s['providers'] = [prof if p['id'] == prof['id'] else p for p in existing]
+    else:
+        if len(existing) >= 12:
+            raise BadRequest('12 provider profiles is already more than anyone needs')
+        s['providers'] = existing + [prof]
+        if not s.get('provider_active'):
+            s['provider_active'] = prof['id']
+    save_settings(s)
+    return {'ok': True, 'id': prof['id']}
+
+
+def _api_provider_delete(q, body):
+    """Remove a profile, and drop every pointer to it.
+
+    A dangling `provider_active` or `headless_provider_id` would be read as
+    Anthropic by `provider_profile`, which is the right FAILURE but the wrong
+    STATE — the setting would keep naming something that does not exist and
+    reappear the moment an id was reused."""
+    pid = str(body.get('id') or '')
+    s = load_settings()
+    s['providers'] = [p for p in _c.provider_profiles(s) if p['id'] != pid]
+    for k in ('provider_active', 'headless_provider_id'):
+        if s.get(k) == pid:
+            s[k] = ''
+    save_settings(s)
+    return {'ok': True}
 
 
 def state_payload():
@@ -214,16 +329,13 @@ def state_payload():
         'plan_model': s.get('plan_model', ''),
         'exec_model': s.get('exec_model', ''),
         'extract_model': s.get('extract_model', ''),
-        'provider_base_url': s.get('provider_base_url', ''),
-        'provider_has_key': bool(s.get('provider_api_key')),
-        'provider_exec_model': s.get('provider_exec_model', ''),
-        'provider_kind': s.get('provider_kind', ''),
-        'gateway_kind': s.get('gateway_kind', ''),
-        'gateway_target_base_url': s.get('gateway_target_base_url', ''),
-        'gateway_has_key': bool(s.get('gateway_target_api_key')),
-        'failover_models': s.get('failover_models', []),
-        'failover_port': s.get('failover_port', 20129),
-        'failover_quiet': bool(s.get('failover_quiet')),
+        # Every backend, with BOTH credentials replaced by a boolean. Same
+        # treatment otel_headers gets, for the same reason: this payload is
+        # readable by anything that reaches the page, and a key that is never
+        # sent cannot be read back out of it.
+        'providers': [_public_profile(p) for p in _c.provider_profiles(s)],
+        'provider_active': s.get('provider_active', ''),
+        'headless_provider_id': s.get('headless_provider_id', ''),
         'theme': s.get('theme', 'default'),
         'motion': _motion_level(s),
         # 0 = never dragged; the CSS default stays in charge
@@ -681,7 +793,8 @@ def _api_launch(q, body):
     # its own reason (no field in the choice line); two paths, one symptom.
     opts = {'effort': '', 'model': '', 'perm': '', 'name': '',
             'worktree': '', 'agent': '', 'agents_json': '', 'cfgdir': '',
-            'max_thinking': '', 'subagent_model': '', 'provider': ''}
+            'max_thinking': '', 'subagent_model': '',
+            'provider': '', 'provider_model': ''}
     opts.update({k: str(v) for k, v in (body.get('opts') or {}).items()
                  if k in opts})
     ok, err = launch_session(body.get('path', ''), body.get('enc', ''),
@@ -751,14 +864,6 @@ def _api_settings(q, body):
                                                    int(body['memory_max_entities'] or 500)))
         except (TypeError, ValueError):
             raise BadRequest('memory_max_entities must be a whole number')
-    # failover_models is user input that a detached daemon reads back —
-    # sanitize at this trust boundary rather than in the daemon.
-    if 'failover_models' in body:
-        raw = body['failover_models']
-        if isinstance(raw, str):
-            raw = raw.replace(',', '\n').split('\n')
-        s['failover_models'] = [
-            str(m).strip() for m in (raw or []) if str(m).strip()][:8]
     # Chrome geometry is user input that decides layout on the NEXT boot, so a
     # junk value would render an unusable window with no obvious way back.
     # Clamped and typed here rather than trusted from the client.
@@ -772,17 +877,15 @@ def _api_settings(q, body):
     # api_key only overwritten when the user actually typed a new one — never
     # blanked by a settings-save round-trip that omits it because the frontend
     # never receives the raw key back to resubmit
-    if body.get('provider_api_key'):
-        s['provider_api_key'] = body['provider_api_key']
-    if body.get('gateway_target_api_key'):
-        s['gateway_target_api_key'] = body['gateway_target_api_key']
     save_settings(s)
     return {'ok': True}
 
 
 _LOCAL_GET = {'/api/state': _api_state, '/api/sessions': _api_sessions}
 _LOCAL_POST = {'/api/launch': _api_launch, '/api/rename': _api_rename,
-               '/api/settings': _api_settings}
+               '/api/settings': _api_settings,
+               '/api/provider/save': _api_provider_save,
+               '/api/provider/delete': _api_provider_delete}
 
 
 #: the biggest thing the SPA legitimately posts is an edited system prompt or a

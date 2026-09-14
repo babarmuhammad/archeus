@@ -20,6 +20,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   what a backend swap genuinely costs — subagents, prompt caching, extended thinking and
   `web_search` are affected, and three of the four cannot be fixed from outside Claude Code.
 
+- **Every session picks its own backend.** One backend at a time was a real constraint, not a
+  screen limitation: the failover and gateway proxies re-read the settings on every request, so
+  two live backends would have handed one session's credential to the other's upstream. Backends
+  are now **named profiles** — Settings → **Models** lists them, each with its own URL, key,
+  model, context window, translating gateway and failover list — and each one owns its own pair
+  of ports, so its proxies are pinned to it at spawn and can no longer resolve to a neighbour.
+  The launch modal and the terminal picker both offer the list, so one project can run on a local
+  vLLM while the next runs on OmniRoute and a third on your Anthropic account. Your existing
+  backend is carried across into a profile on first start, keeping its key, URL, model and
+  failover list; nothing is lost and nothing needs re-entering.
+
 - **Run archeus's own Claude calls on the configured provider too.** Memory extraction,
   lesson distillation, code review and the CLAUDE.md / agent / skill / hook / system-prompt
   generators always went to Anthropic, whatever the provider card said — they are the
@@ -30,6 +41,60 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The upgrade from the previous name is finished.** The rename moved everything that was a
+  path and nothing that was not, and the one repair it did ship ran exactly once — at the one
+  moment when nothing was broken yet. Four things came out of that, and every one of them was
+  measured on a real machine rather than reasoned about:
+    - **Hooks and the statusline are repaired on every start**, not once during the migration.
+      They record an absolute path into the environment that installed them, and everything
+      that kills such a path — uninstalling the old package from its own pipx venv, moving or
+      re-cloning a checkout, rebuilding a virtualenv — happens *after* the migration has run
+      and closed its flag. Only a path that no longer exists and names one of archeus's own
+      scripts is rewritten; a hook you wrote by hand, or a fork running from a checkout, is
+      left alone. The statusline is rebuilt with the windowless interpreter it was installed
+      with, so the repair does not start flashing a console window once per conversation turn.
+    - **A duplicated memory block in `CLAUDE.md` is removed.** The sentinel comments around the
+      generated memory, agent-routing and loop blocks carry the tool's name, so after the
+      rename nothing could find the old ones and every build appended a second block beside
+      the first — which then went into every session, for ever, saying whatever it said the
+      day the rename landed. A block the new name has since rewritten is dropped; a block with
+      no successor is renamed in place, so the next build updates it instead of duplicating it
+      too. A half-written pair is left alone, and the `KEEP` fence around your own prose is
+      always renamed and never removed — until it was, the compression pass could not see it.
+    - **Scheduled loops are re-registered.** A scheduler entry is a name, not a path, so the
+      registry moved and the Task Scheduler / cron entry did not: the loop read as unscheduled
+      in the UI while the old entry went on firing, into an interpreter that may since have
+      been deleted. The old entry is removed and the loop re-registered, which rebuilds its
+      command line at the same time.
+    - **`CLAUDECTL_*` environment variables and a plugin still installed under the old id are
+      reported on startup.** Both have been silently doing nothing since the rename, and
+      neither is archeus's to edit: one lives in your shell profile, the other in caches that
+      only the `claude` CLI may write.
+- **`CLAUDE.md` is written atomically.** The writer for all three machine-maintained blocks was
+  the last one still using a plain truncating write, and Claude Code parses that file on every
+  turn — a write that died partway left it half a file.
+- **Adding a backend threw away the form it had just opened.** A new profile has no id until it
+  is saved — that is what keeps an abandoned Add from leaving anything behind — but the list
+  redraw dropped any selection whose id was not in the list, which is every draft. The pane blanked
+  the moment it appeared.
+- **The model catalogue never loaded.** Backends are per-profile now and the catalogue endpoint
+  takes the profile id; the page was still asking for it without one, so the request was refused
+  and the model picker was simply never built. The card offered a free-text box where it should
+  have offered the live list.
+- **Stopping the failover proxy did nothing at all.** The button raised a `TypeError` on the
+  background thread — it asked to stop "the" proxy, from before there was one per backend — where
+  nothing logs it, so the job neither finished nor reported. The last call site missed in that
+  conversion.
+- **An image sent through the translating gateway is now reported.** Anything that is not text, a
+  tool call or a tool result had no branch in the translation and left the request in silence, so
+  a vision model behind the gateway stopped seeing the picture with nothing said anywhere. It is
+  still dropped — translating it is a larger change — but the proxy console now says so, once per
+  kind of block, exactly as it already did for prompt caching.
+- **Which backend a session ran on is written down at launch** instead of guessed afterwards from
+  the model ids in its transcript. That guess cannot tell an Anthropic model served *through* a
+  provider from a direct run, and said so in its own source. A new session's id is archeus's to
+  choose, so the answer is recorded before the first line is written; sessions started elsewhere
+  still fall back to the guess.
 - **Four generators bypassed the one headless-call helper.** Authoring an agent, a skill or a
   system prompt, and analysing an MCP server, each rebuilt the same `claude --print` command
   by hand — so none of them honoured the `--max-budget-usd` cap, and all four passed the whole

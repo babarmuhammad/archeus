@@ -179,3 +179,93 @@ def test_the_readme_shows_both_interfaces():
     text = open(os.path.join(ROOT, 'README.md'), encoding='utf-8').read()
     assert 'docs/img/tui-' in text, 'no TUI screenshot'
     assert text.count('docs/img/gui-') >= 4, 'barely any GUI screenshots'
+
+
+def _version(path):
+    import re
+    text = open(path, encoding='utf-8').read()
+    return re.search(r'(?m)^version = "([^"]+)"', text).group(1)
+
+
+def _tuple(v):
+    return tuple(int(p) for p in v.split('.')[:3])
+
+
+def test_the_final_release_under_the_old_name_ships_no_code():
+    """Both distributions used to ship `claude_sessions`, so installing one over
+    the other overwrote those files and uninstalling either deleted them. The
+    last release under the old name owns nothing, which is what makes it safe to
+    hold alongside this one."""
+    shim = os.path.join(ROOT, 'packaging', 'legacy-name', 'pyproject.toml')
+    text = open(shim, encoding='utf-8').read()
+    assert 'packages = []' in text
+    assert '[tool.setuptools.package-data]' not in text
+    assert 'claude_sessions.cli:run' in text, 'the old command stops working'
+
+
+#: manifest -> how its version is spelled. Everything under packaging/ except
+#: the final release under the old name, which has a life of its own.
+_MANIFESTS = {
+    os.path.join('packaging', 'npm', 'package.json'): r'"version":\s*"([^"]+)"',
+    os.path.join('packaging', 'crates', 'Cargo.toml'): r'(?m)^version = "([^"]+)"',
+    os.path.join('packaging', 'rubygems', 'archeus.gemspec'): r"s\.version\s*=\s*'([^']+)'",
+    os.path.join('packaging', 'nuget', 'archeus.nuspec'): r'<version>([^<]+)</version>',
+    os.path.join('packaging', 'docker', 'Dockerfile'): r'ARG ARCHEUS_VERSION=(\S+)',
+}
+
+
+def test_every_packaging_manifest_declares_the_same_version():
+    """A release is one number in six files.
+
+    None of these ship code — npm launches the real thing, Docker installs it,
+    the rest are pointers — but a user who sees `archeus 2.1.0` on npm beside
+    `2.4.0` on PyPI has no way to know which is the tool and which is a name.
+    Nothing builds them in CI, so nothing else would ever notice the drift.
+    """
+    import re
+    here = _version(os.path.join(ROOT, 'pyproject.toml'))
+    wrong = []
+    for rel, pat in _MANIFESTS.items():
+        path = os.path.join(ROOT, rel)
+        assert os.path.isfile(path), 'missing packaging manifest: %s' % rel
+        m = re.search(pat, open(path, encoding='utf-8').read())
+        assert m, 'no version found in %s' % rel
+        if m.group(1) != here:
+            wrong.append('%s says %s' % (rel, m.group(1)))
+    assert not wrong, 'pyproject is %s but %s' % (here, '; '.join(wrong))
+
+
+def test_the_npm_launcher_never_installs_without_saying_so():
+    """`npx <thing>` may not put software on a machine silently. Every install
+    route goes through one helper that prints the command first, so there is one
+    place to check rather than three."""
+    src = open(os.path.join(ROOT, 'packaging', 'npm', 'bin', 'archeus.js'),
+               encoding='utf-8').read()
+    body = src[src.index('function install('):]
+    body = body[:body.index('\nfunction ')]
+    assert 'spawnSync' not in body, \
+        'the install path spawns directly instead of going through run(), which prints'
+    assert body.count('run(') >= 2, 'no install command is announced'
+
+
+def test_the_shim_pins_a_version_of_this_package_that_is_not_out_yet():
+    """The pin is the whole mechanism, not a formality.
+
+    Upgrading the old distribution uninstalls its own previous version first,
+    and that version's RECORD still lists the shared `claude_sessions` files —
+    so it deletes this package's copy of them on the way out. Requiring a
+    version the user does NOT have forces pip to reinstall archeus in the same
+    transaction, which puts the files back. Pin a version they already have and
+    the requirement is satisfied without reinstalling anything, leaving an
+    install that cannot import itself.
+
+    So the release order is: this package first, then the shim.
+    """
+    import re
+    shim = os.path.join(ROOT, 'packaging', 'legacy-name', 'pyproject.toml')
+    pin = re.search(r'"archeus>=([^"]+)"',
+                    open(shim, encoding='utf-8').read()).group(1)
+    here = _version(os.path.join(ROOT, 'pyproject.toml'))
+    assert _tuple(pin) > _tuple(here), (
+        'the shim pins archeus>=%s and this tree is already %s — publishing it '
+        'would not reinstall the shared files it deletes' % (pin, here))

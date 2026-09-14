@@ -178,12 +178,16 @@ def test_the_gui_setting_keys_are_derived_from_the_registry():
     while three others were accepted and had no control."""
     assert set(gui._SETTING_KEYS) == (set(config._DEFAULT_SETTINGS)
                                       - config.INTERNAL_SETTINGS)
-    # and every excluded key really does have another owner in the handler
+    # and every excluded key really does have another owner. Most are sanitized
+    # inside _api_settings itself; `providers` has its own endpoint, because it
+    # carries two credentials and a base URL a detached daemon connects to.
     src = io.open(gui.__file__, encoding='utf-8').read()
     body = src[src.index('def _api_settings('):src.index('_LOCAL_GET =')]
-    for k in ('failover_models', 'side_w', 'headless_budget_usd',
-              'provider_api_key', 'ui_mode'):
+    for k in ('side_w', 'headless_budget_usd', 'ui_mode'):
         assert k in body, '%s is excluded from the generic loop and unhandled' % k
+    owner = src[src.index('def _api_provider_save('):src.index('def _api_provider_delete(')]
+    assert "s['providers']" in owner
+    assert "'/api/provider/save': _api_provider_save" in src
 
 
 def test_every_tui_setting_reaches_the_gui():
@@ -199,11 +203,11 @@ def test_every_tui_setting_reaches_the_gui():
 
 
 def test_the_settings_the_gui_saves_are_the_settings_it_renders():
-    """False-positive guard included: provider_base_url reaches post() through
-    a variable, and must stay green."""
+    """False-positive guard included: a profile's base_url reaches post()
+    through a variable, and must stay green."""
     js = _js()
     for key in ('default_model', 'editor', 'claude_exe', 'claude_config_dir',
-                'headless_budget_usd', 'provider_base_url'):
+                'headless_budget_usd', 'base_url'):
         assert re.search(r'\b%s\s*:' % key, js), (
             '%s is a setting the GUI never sends back' % key)
 

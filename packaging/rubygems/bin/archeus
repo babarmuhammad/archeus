@@ -1,0 +1,16 @@
+#!/usr/bin/env ruby
+# Says what archeus is and how to install it, then exits non-zero: whoever ran
+# `gem install archeus` did not get the tool, so the shell should not call it a
+# success.
+warn <<~MSG
+  archeus is a Python program, not a Ruby one.
+
+      pipx install archeus        # or: pip install archeus
+
+  The memory and workspace layer for AI coding agents: persistent per-project
+  memory, every session you have ever had, and control over what the next one
+  costs.
+
+  https://github.com/babarmuhammad/archeus
+MSG
+exit 1

@@ -1,0 +1,64 @@
+# The FINAL release under the previous name, and it ships no code at all.
+#
+# WHY IT EXISTS
+#
+# The last real release under that name is 1.9.1 and it points nowhere: an
+# install still on it polls PyPI for its own name, is told it is current, and
+# never learns the project moved. That is the only channel that reaches those
+# users where they are — 1.9.x checks for an update on every start and can
+# install one on quit — so a release is worth more than any amount of README.
+#
+# WHY IT SHIPS NOTHING
+#
+# Both distributions used to ship the same import package, `claude_sessions`.
+# Installing the new one over the old silently overwrote those files, both
+# distributions then claimed to own them, and the obvious next step — uninstall
+# the old one — deleted them, leaving the new one installed and unable to import
+# itself. This release owns no files, so that collision cannot happen again: it
+# is metadata, one console script, and a dependency.
+#
+# WHY THE PIN IS A VERSION NOBODY HAS YET
+#
+# For anyone holding BOTH distributions, upgrading this one uninstalls the old
+# 1.9.x first — whose RECORD still lists the shared `claude_sessions` files, so
+# it deletes the other package's copy of them on the way out. Requiring a
+# version they do not have forces pip to reinstall archeus in the same
+# transaction, which puts the files back. Pinning a version they already have
+# would satisfy the requirement without reinstalling anything and leave a broken
+# import. So: publish the archeus release FIRST, then this, and keep this pin
+# equal to that release. `test_the_shim_pins_a_version_that_does_not_exist_yet`
+# fails when the two drift into the same number.
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claudectl"
+version = "1.9.2"
+description = "claudectl is now archeus. This release installs it."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Babar Muhammad Anas" }]
+keywords = ["claude-code", "archeus", "agent-memory"]
+dependencies = ["archeus>=2.4.0"]
+
+# Only repository links here, deliberately. This file is on the rename script's
+# SKIP list — it has to keep the old name to BE the old name — and a skipped file
+# may not also carry a string that is still waiting on an external move, or the
+# pass that finally releases the documentation domain would silently miss it.
+# `test_nothing_in_skip_is_hiding_a_held_string` is that rule.
+[project.urls]
+Homepage = "https://github.com/babarmuhammad/archeus"
+Repository = "https://github.com/babarmuhammad/archeus"
+Issues = "https://github.com/babarmuhammad/archeus/issues"
+
+# The command keeps working, so a shell alias, a script or a muscle-memorised
+# habit does not break on the day the user upgrades. It resolves through the
+# dependency, which is the only thing here that ships `claude_sessions`.
+[project.scripts]
+claudectl = "claude_sessions.cli:run"
+
+# no packages, no package-data, nothing: see the note at the top
+[tool.setuptools]
+packages = []

@@ -96,6 +96,33 @@ def test_cache_control_is_dropped_loudly(capsys):
     assert 'cache_control' in capsys.readouterr().out
 
 
+def test_an_image_is_dropped_loudly_too(capsys):
+    """A vision model behind the gateway simply stopped seeing the picture.
+    There was no else branch on the block loop, so nothing said so anywhere."""
+    gateway._warned.clear()
+    out = gateway.to_openai_request({
+        'model': 'm', 'messages': [{'role': 'user', 'content': [
+            {'type': 'text', 'text': 'what is this'},
+            {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/png',
+                                         'data': 'iVBORw0KGgo='}}]}]})
+    said = capsys.readouterr().out
+    assert 'image' in said and 'dropped' in said
+    # still dropped -- translating it is a bigger change than saying so
+    assert out['messages'][-1]['content'] == 'what is this'
+
+
+def test_the_same_block_type_is_only_reported_once(capsys):
+    """Per type, not per turn: the proxy console would otherwise carry a line
+    for every message of every session."""
+    gateway._warned.clear()
+    body = {'model': 'm', 'messages': [{'role': 'user', 'content': [
+        {'type': 'image', 'source': {}}]}]}
+    gateway.to_openai_request(body)
+    capsys.readouterr()
+    gateway.to_openai_request(body)
+    assert capsys.readouterr().out.strip() == ''
+
+
 # ── response translation ─────────────────────────────────────
 
 def test_a_plain_completion_becomes_an_anthropic_message():
@@ -223,17 +250,27 @@ def test_the_gateway_refuses_to_target_anthropic():
 
 def test_an_unconfigured_target_is_a_refusal_to_start_not_a_broken_session():
     assert gateway.target_error('') != ''
-    ok, msg = gateway.ensure_running({'gateway_target_base_url': ''})
+    from claude_sessions import config as _cfg
+    ok, msg = gateway.ensure_running(_cfg.new_profile(id='p', gateway_kind='openai'))
     assert not ok and 'no gateway target' in msg
+    ok, msg = gateway.ensure_running(None)
+    assert not ok and 'no provider profile' in msg
 
 
 def test_the_two_daemons_do_not_share_a_lock_file_or_a_readiness_marker():
     """A bare port check would trust whichever daemon answered. The marker is
-    per-name so failover cannot be mistaken for the gateway, and vice versa."""
-    from claude_sessions import failover
-    assert gateway._D.lock_path() != failover._D.lock_path()
-    assert gateway._D.marker != failover._D.marker
-    assert gateway._D.marker_path != failover._D.marker_path
+    per-name so failover cannot be mistaken for the gateway, and — now that
+    every PROFILE gets its own pair — so one profile's proxy cannot be mistaken
+    for another's."""
+    from claude_sessions import config as _cfg, failover
+    a, b = _cfg.new_profile(id='a', port=20129), _cfg.new_profile(id='b', port=20131)
+    for prof in (a, b):
+        assert gateway._daemon(prof).lock_path() != failover._daemon(prof).lock_path()
+        assert gateway._daemon(prof).marker != failover._daemon(prof).marker
+        assert gateway._daemon(prof).marker_path != failover._daemon(prof).marker_path
+    for mod in (gateway, failover):
+        assert mod._daemon(a).lock_path() != mod._daemon(b).lock_path()
+        assert mod._daemon(a).marker != mod._daemon(b).marker
 
 
 def test_failover_never_reserializes_a_response_body():
@@ -253,22 +290,22 @@ def test_the_gateway_takes_the_provider_slot_when_configured():
     """Downstream of `claude`, the gateway IS the Anthropic-speaking endpoint --
     the OpenAI-shaped host behind it cannot answer claude directly."""
     from claude_sessions import config as c
-    s = dict(c._DEFAULT_SETTINGS, gateway_kind='openai', gateway_port=20130,
-             provider_base_url='http://openai-host:8000/v1')
-    assert c.provider_upstream(s) == 'http://127.0.0.1:20130'
+    prof = c.new_profile(id='p', gateway_kind='openai', port=20129,
+                         base_url='http://openai-host:8000/v1')
+    assert c.provider_upstream(prof) == 'http://127.0.0.1:20130'
 
 
 def test_failover_still_wins_the_front_position():
     """chain: claude -> failover -> gateway -> host. Both proxies on must not
     mean the gateway is skipped."""
     from claude_sessions import config as c
-    s = dict(c._DEFAULT_SETTINGS, gateway_kind='openai', provider_exec_model='m',
-             provider_base_url='http://host', failover_models=['b'])
-    assert c.provider_env(s)['ANTHROPIC_BASE_URL'] == 'http://127.0.0.1:20129'
+    prof = c.new_profile(id='p', gateway_kind='openai', model='m',
+                         base_url='http://host', failover_models=['b'], port=20129)
+    assert c.provider_env(prof)['ANTHROPIC_BASE_URL'] == 'http://127.0.0.1:20129'
     # ...and the failover proxy forwards to the gateway, not past it
     from claude_sessions import failover
     h = failover._Handler.__new__(failover._Handler)
-    assert h._upstream(s) == 'http://127.0.0.1:20130'
+    assert h._upstream(prof) == 'http://127.0.0.1:20130'
 
 
 def test_count_tokens_is_answered_rather_than_404ed():
@@ -280,11 +317,16 @@ def test_count_tokens_is_answered_rather_than_404ed():
 
 
 def test_gateway_settings_are_declared_and_the_key_is_write_only():
+    """They live on the PROFILE now — the gateway target is a property of one
+    backend, and a scalar port is why two profiles with a gateway could not
+    coexist at all."""
     from claude_sessions import config as c
-    for k in ('gateway_kind', 'gateway_port', 'gateway_target_base_url',
-              'gateway_target_api_key'):
-        assert k in c._DEFAULT_SETTINGS, k
-    assert 'gateway_target_api_key' in c.INTERNAL_SETTINGS
+    for k in ('gateway_kind', 'gateway_target_base_url', 'gateway_target_api_key'):
+        assert k in c.PROFILE_FIELDS, k
+    # the credentials never leave the server
+    from claude_sessions import gui
+    assert 'gateway_target_api_key' in gui._PROFILE_SECRETS
+    assert 'providers' in c.INTERNAL_SETTINGS
 
 
 def test_the_gateway_thread_actually_stops(monkeypatch):
@@ -337,6 +379,23 @@ def _post(port, path, payload, key=''):
     return r.status, r.read()
 
 
+
+def _serve_profile(monkeypatch, pid='p1', **over):
+    """Put one profile where the daemon will find it, and pin the daemon to it.
+
+    The gateway is per profile and reads ITS profile by the id fixed at spawn,
+    so a test that patched load_settings with a flat dict would be configuring
+    a backend nothing looks at.
+    """
+    from claude_sessions import config as _cfg
+    prof = _cfg.new_profile(id=pid, name='test', kind='generic',
+                            gateway_kind='openai', port=20129, **over)
+    monkeypatch.setattr(_cfg, 'load_settings',
+                        lambda: {'providers': [prof], 'provider_active': pid})
+    monkeypatch.setattr(gateway, '_SERVING', pid)
+    return prof
+
+
 def test_end_to_end_a_turn_survives_the_round_trip(monkeypatch):
     seen = {}
 
@@ -348,10 +407,9 @@ def test_end_to_end_a_turn_survives_the_round_trip(monkeypatch):
             'usage': {'prompt_tokens': 5, 'completion_tokens': 2}}).encode()
 
     up = _fake_upstream(upstream)
-    from claude_sessions import config as c
-    monkeypatch.setattr(c, 'load_settings', lambda: dict(
-        c._DEFAULT_SETTINGS, provider_api_key='',
-        gateway_target_base_url='http://127.0.0.1:%d/v1' % up.server_address[1]))
+    _serve_profile(monkeypatch, api_key='',
+                   gateway_target_base_url='http://127.0.0.1:%d/v1'
+                                           % up.server_address[1])
     gw = gateway.make_server(0)
     threading.Thread(target=gw.serve_forever, daemon=True).start()
     try:
@@ -371,9 +429,7 @@ def test_end_to_end_a_browser_request_is_refused(monkeypatch):
     """Same class of attack the failover proxy is guarded against, and the same
     reason: this daemon spends the user's upstream quota and sits on a fixed,
     source-published port."""
-    from claude_sessions import config as c
-    monkeypatch.setattr(c, 'load_settings', lambda: dict(
-        c._DEFAULT_SETTINGS, gateway_target_base_url='http://127.0.0.1:1/v1'))
+    _serve_profile(monkeypatch, gateway_target_base_url='http://127.0.0.1:1/v1')
     gw = gateway.make_server(0)
     threading.Thread(target=gw.serve_forever, daemon=True).start()
     try:
@@ -390,13 +446,11 @@ def test_end_to_end_a_browser_request_is_refused(monkeypatch):
 def test_end_to_end_the_readiness_marker_answers_without_a_key(monkeypatch):
     """The probe cannot carry a credential, so it must be served before the
     guard -- otherwise ensure_running can never see its own daemon come up."""
-    from claude_sessions import config as c
-    monkeypatch.setattr(c, 'load_settings', lambda: dict(
-        c._DEFAULT_SETTINGS, provider_api_key='required',
-        gateway_target_base_url='http://127.0.0.1:1/v1'))
+    prof = _serve_profile(monkeypatch, api_key='required',
+                          gateway_target_base_url='http://127.0.0.1:1/v1')
     gw = gateway.make_server(0)
     threading.Thread(target=gw.serve_forever, daemon=True).start()
     try:
-        assert gateway._D.is_ready(gw.server_address[1])
+        assert gateway._daemon(prof).is_ready(gw.server_address[1])
     finally:
         gw.shutdown()

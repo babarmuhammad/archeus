@@ -1097,18 +1097,20 @@ def api_archived(q, body):
     """
     from .session_menu import _arch_of
     from .sessions import (account_folders_for, scan_sessions, load_name,
-                           format_age)
+                           format_age, load_session_providers, resolve_provider)
     from .stats import get_session_stats_cached
-    from .gui import _used_provider
     out = []
     for acct_name, folder in account_folders_for(q['enc']):
         arch = _arch_of(folder)
         cfgdir = os.path.dirname(os.path.dirname(folder))
+        # the record lives beside the LIVE sessions: archiving moves the
+        # transcript into a subfolder, not the note about how it was launched
+        rec = load_session_providers(folder)
         for mtime, sid, preview, count in scan_sessions(arch):
             provider, ai_title = False, ''
             try:
                 st = get_session_stats_cached(os.path.join(arch, f'{sid}.jsonl'))
-                provider = _used_provider(st)
+                provider = resolve_provider(rec, sid, st)
                 # the AI title, same as a live row. It was already parsed — the
                 # stats dict is being read here anyway — and without it every
                 # archived row fell back to the preview.
@@ -3040,6 +3042,50 @@ def _sharpen_descriptions(scope, path):
             'projects': len(projects)}
 
 
+def _via_profile(body):
+    """The provider a Plan -> Execute run uses, or None for Anthropic.
+
+    `via` used to be the two-valued string 'anthropic' | 'provider', which could
+    only ever mean "the one configured backend". It carries a profile id now;
+    the old literal still resolves, to the active profile, so a page held open
+    across the upgrade does not launch at something nobody chose.
+    """
+    from .config import active_provider, provider_profile
+    via = str(body.get('via') or '')
+    if not via or via == 'anthropic':
+        return None
+    if via == 'provider':
+        return active_provider()
+    return provider_profile(via)
+
+
+def _job_profile(body):
+    """The provider profile a job button belongs to.
+
+    `id` rather than "the active one": the settings page shows every profile and
+    each row's buttons act on ITS backend. Falls back to the active profile only
+    when the caller named none, which is what the pages that have one backend in
+    view (Plan -> Execute) send.
+    """
+    from .config import active_provider, provider_profile
+    pid = str(body.get('provider_id') or '')
+    return provider_profile(pid) if pid else active_provider()
+
+
+def _job_daemon_profile(body):
+    """_job_profile for a job that starts or stops a per-profile DAEMON.
+
+    `None` is a legitimate answer from _job_profile — it means Anthropic direct,
+    which has no proxy to start or stop — but proxy_base derives its lock file
+    and marker from `prof['id']`, so handing it None raises TypeError on the job
+    thread, where nothing logs it and the job simply never finishes.
+    """
+    prof = _job_profile(body)
+    if not prof:
+        raise RuntimeError('no provider profile selected')
+    return prof
+
+
 def api_job_start(q, body):
     kind = body.get('kind', '')
     path = body.get('path', '')
@@ -3235,14 +3281,14 @@ def api_job_start(q, body):
         # plan call silently runs under whatever account archeus itself is
         # active as, regardless of what the user picked in the GUI.
         cfgdir = body.get('account') or ''
-        # council must route through the SAME channel the user picked for
-        # execution (body['via']), not the account-wide default setting --
-        # else a stale provider_exec_model default silently routes every
-        # council call at an unreachable proxy, _headless swallows the
-        # errors, and optimize_plan_council quietly no-ops the plan back
-        # unchanged with no error shown.
-        via = body.get('via', 'anthropic')
-        prov_env = provider_env(s, model='_') if via == 'provider' else {}
+        # council must route through the SAME backend the user picked for
+        # execution (body['via'] is a PROFILE ID now), not the account-wide
+        # default -- else a stale default silently routes every council call at
+        # the wrong upstream, _headless swallows the errors, and
+        # optimize_plan_council quietly no-ops the plan back unchanged with no
+        # error shown.
+        prof = _via_profile(body)
+        prov_env = provider_env(prof, model='_') if prof else {}
 
         # Pre-flight: fail fast (~5s) if the endpoint the headless `claude`
         # call will talk to is unreachable, instead of spawning a job that
@@ -3261,7 +3307,8 @@ def api_job_start(q, body):
                 raise RuntimeError(_subprocess_error_detail()
                                    or 'Planning failed or produced no output')
             if council:
-                plan = optimize_plan_council(task, plan, path, prov_env=prov_env, cfgdir=cfgdir)
+                plan = optimize_plan_council(task, plan, path, prov_env=prov_env,
+                                             cfgdir=cfgdir, prof=prof)
             plan_path = write_plan_file(path, task, plan)
             if not plan_path:
                 raise RuntimeError('Could not save plan file')
@@ -3286,15 +3333,15 @@ def api_job_start(q, body):
         def _launch():
             import subprocess
             s = load_settings()
-            via = body.get('via', 'anthropic')
-            prov_env = provider_env(s, model='_') if via == 'provider' else {}
+            prof = _via_profile(body)
+            prov_env = provider_env(prof, model='_') if prof else {}
             # write user-edited plan text before launching
             if plan_text:
                 write_plan_file(path, task, plan_text)
             if body.get('model'):
                 model = body['model']
             elif prov_env:
-                model = s.get('provider_exec_model') or omniroute.AUTO_MODEL
+                model = prof.get('model') or omniroute.AUTO_MODEL
             else:
                 model = s.get('exec_model', '')
             if prov_env:
@@ -3304,7 +3351,7 @@ def api_job_start(q, body):
                 # plan_execute.run(), and the two copies had already drifted.
                 from .plan_execute import context_bytes
                 _pv_env, _warn = omniroute.prepare_launch(
-                    model, s, ctx_bytes=context_bytes(path, plan_text))
+                    model, prof, ctx_bytes=context_bytes(path, plan_text))
                 prov_env.update(_pv_env)
                 if _warn:
                     ui.flash(_warn, ok=False, secs=3)
@@ -3318,7 +3365,7 @@ def api_job_start(q, body):
             _p, err = _proc.spawn_terminal(args, cwd=path, env=env, title=title)
             if err:
                 raise RuntimeError(err)
-            return {'model': model, 'via': via}
+            return {'model': model, 'via': (prof or {}).get('name') or 'Anthropic'}
         jid = start_job('Launching execute session' + (' (per-step)' if per_step else ''), _launch)
     elif kind == 'plan_replan':
         from .plan_execute import replan_from_plan
@@ -3403,7 +3450,8 @@ def api_job_start(q, body):
         cfgdir = body.get('cfgdir')
 
         def _install():
-            exec_model = load_settings().get('provider_exec_model', '')
+            from .config import active_provider
+            exec_model = (active_provider() or {}).get('model', '')
             ok, msg = skills.install_from_git(url, proj, exec_model, cfgdir)
             if not ok:
                 raise RuntimeError(msg)
@@ -3413,32 +3461,30 @@ def api_job_start(q, body):
         from . import gateway
 
         def _gwup():
-            ok, msg = gateway.ensure_running()
+            ok, msg = gateway.ensure_running(_job_daemon_profile(body))
             return {'ok': ok, 'message': msg}
         jid = start_job('Starting gateway', _gwup)
     elif kind == 'gateway_stop':
         from . import gateway
 
         def _gwdown():
-            ok, msg = gateway.stop_running()
+            ok, msg = gateway.stop_running(_job_daemon_profile(body))
             return {'ok': ok, 'message': msg}
         jid = start_job('Stopping gateway', _gwdown)
     elif kind == 'provider_ensure':
         from . import omniroute
-        from .config import load_settings
 
         def _ensure():
-            s = load_settings()
-            ok, msg = omniroute.ensure_running(s.get('provider_base_url', ''))
+            prof = _job_profile(body)
+            ok, msg = omniroute.ensure_running((prof or {}).get('base_url', ''))
             return {'ok': ok, 'message': msg}
         jid = start_job('Starting OmniRoute', _ensure)
     elif kind == 'provider_probe':
         from . import omniroute
-        from .config import load_settings
 
         def _probe():
-            s = load_settings()
-            base, key = s.get('provider_base_url', ''), s.get('provider_api_key', '')
+            prof = _job_profile(body) or {}
+            base, key = prof.get('base_url', ''), prof.get('api_key', '')
             ids = body.get('models') or []
             if not ids:
                 usable, autos, _ex = omniroute.usable_models(base, key)
@@ -3467,7 +3513,7 @@ def api_job_start(q, body):
         from . import failover
 
         def _fstop():
-            ok, msg = failover.stop_running()
+            ok, msg = failover.stop_running(_job_daemon_profile(body))
             return {'ok': ok, 'message': msg}
         jid = start_job('Stopping failover proxy', _fstop)
     elif kind == 'provider_test_connection':
@@ -3480,13 +3526,12 @@ def api_job_start(q, body):
         jid = start_job(f'Testing {conn_id}', _test)
     elif kind == 'provider_live_test':
         from . import omniroute
-        from .config import load_settings
         model = body.get('model') or omniroute.AUTO_MODEL
 
         def _live():
-            s = load_settings()
+            prof = _job_profile(body) or {}
             ok, used, msg = omniroute.test_live(
-                s.get('provider_base_url', ''), model, s.get('provider_api_key', ''))
+                prof.get('base_url', ''), model, prof.get('api_key', ''))
             return {'ok': ok, 'model_used': used, 'message': msg}
         jid = start_job(f'Sending a real test request via {model}', _live)
     else:
@@ -3554,27 +3599,31 @@ def api_provider_status(q, body):
     path would report a perfectly working Ollama as "not running". A plain
     reachability dot is the honest amount of signal available."""
     from . import gateway, omniroute
-    from .config import load_settings
-    s = load_settings()
-    kind = s.get('provider_kind') or ''
-    gw = {'kind': s.get('gateway_kind') or '',
-          'target': s.get('gateway_target_base_url') or ''}
+    from .config import gateway_port_of, provider_profile
+    prof = provider_profile(str(q.get('id') or ''))
+    if not prof:
+        return {'kind': '', 'gateway': {'kind': '', 'target': ''}, 'reachable': False,
+                'exec_model': '', 'providers': [], 'lockouts': [], 'connections': [],
+                'model_count': 0, 'usable_count': 0, 'missing': True}
+    kind = prof.get('kind') or ''
+    gw = {'kind': prof.get('gateway_kind') or '',
+          'target': prof.get('gateway_target_base_url') or ''}
     if gw['kind']:
         gw['error'] = gateway.target_error(gw['target'])
-        gw['running'] = gateway._D.is_ready(int(s.get('gateway_port') or 20130))
+        gw['running'] = gateway._daemon(prof).is_ready(gateway_port_of(prof))
     if kind != 'omniroute':
-        base = s.get('provider_base_url', '')
+        base = prof.get('base_url', '')
         return {'kind': kind, 'gateway': gw,
-                'exec_model': s.get('provider_exec_model', ''),
+                'exec_model': prof.get('model', ''),
                 # With a gateway in front, the reachable thing IS the gateway --
                 # the OpenAI-shaped host behind it cannot answer a probe shaped
                 # like this one.
                 'reachable': bool(gw.get('running')) if gw['kind']
                              else (bool(base) and omniroute.is_reachable(
-                                 base, s.get('provider_api_key', ''))),
+                                 base, prof.get('api_key', ''))),
                 'providers': [], 'lockouts': [], 'connections': [],
                 'model_count': 0, 'usable_count': 0}
-    base, key = s.get('provider_base_url', ''), s.get('provider_api_key', '')
+    base, key = prof.get('base_url', ''), prof.get('api_key', '')
     # ONE concurrent fetch of both payloads, then everything is derived locally.
     # Each OmniRoute round trip costs ~2s on a loaded instance, so the previous
     # five serial calls made this handler a ~13s page stall.
@@ -3584,7 +3633,7 @@ def api_provider_status(q, body):
     return {
         'kind': kind,
         'gateway': gw,
-        'exec_model': s.get('provider_exec_model', ''),
+        'exec_model': prof.get('model', ''),
         'reachable': bool(entries or h.get('providers')),
         'model_count': len(entries),
         'configured': summary.get('configuredCount', 0),
@@ -3612,21 +3661,24 @@ def api_provider_models(q, body):
     ``all=1`` returns the unfiltered catalog for the user who wants to see it.
     """
     from . import omniroute
-    from .config import load_settings
-    s = load_settings()
-    base = s.get('provider_base_url', '')
-    key = s.get('provider_api_key', '')
+    from .config import provider_profile
+    prof = provider_profile(str(q.get('id') or ''))
+    if not prof:
+        return {'models': [], 'labels': {}, 'usable': [], 'excluded': {},
+                'filtered': False, 'kind': '', 'missing': True}
+    base = prof.get('base_url', '')
+    key = prof.get('api_key', '')
 
-    if (s.get('provider_kind') or '') != 'omniroute':
+    if (prof.get('kind') or '') != 'omniroute':
         # No catalogue exists for a generic Anthropic-shaped server or an
         # OpenAI-shaped host behind the gateway. Offer the model the user
         # configured and nothing else -- inventing a list here would be offering
         # ids that 401 on the first turn, which is the exact failure the
         # OmniRoute filtering below exists to prevent.
-        cur = s.get('provider_exec_model', '')
+        cur = prof.get('model', '')
         return {'models': [cur] if cur else [], 'labels': {cur: cur} if cur else {},
                 'usable': [], 'excluded': {}, 'filtered': False,
-                'kind': s.get('provider_kind') or ''}
+                'kind': prof.get('kind') or ''}
 
     entries, h = omniroute.fetch_both(base, key)
 

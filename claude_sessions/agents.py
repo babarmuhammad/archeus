@@ -581,7 +581,7 @@ def sync_project_agents(project_path, refs, routed=None):
     sends it anyway, so the subagent 401s or the proxy answers "Ambiguous
     model". Stripping it makes agents inherit the session's own model.
 
-    *routed* defaults to reading ``provider_kind`` at call time rather than
+    *routed* defaults to reading the ACTIVE provider at call time rather than
     taking False, because it was a parameter for a while and two of the four
     call sites simply never passed it — so GUI-launched and suggestion-accepted
     agents kept their model: field and broke on every routed session. A default
@@ -589,7 +589,8 @@ def sync_project_agents(project_path, refs, routed=None):
     here is a guard in one."""
     if routed is None:
         from .config import load_settings
-        routed = bool(load_settings().get('provider_kind'))
+        from .config import active_provider
+        routed = bool(active_provider())
     import json, shutil, re
     if not project_path:
         return 0

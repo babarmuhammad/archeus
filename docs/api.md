@@ -140,6 +140,8 @@ a handler sees them; a missing or malformed one is a 400.
 | `/api/plugins/marketplace/remove` | `api_plugin_marketplace_remove` | — |
 | `/api/plugins/remove` | `api_plugin_remove` | — |
 | `/api/project/hide` | `api_project_hide` | Archive a project out of the project lists, or bring it back. |
+| `/api/provider/delete` | `_api_provider_delete` | Remove a profile, and drop every pointer to it. |
+| `/api/provider/save` | `_api_provider_save` | Create or update one profile. The ONLY writer of `providers`, which is in |
 | `/api/quit` | `api_quit` | Close archeus. The only endpoint that ends the process, and it exists |
 | `/api/rename` | `_api_rename` | — |
 | `/api/session/archive` | `api_session_archive` | — |

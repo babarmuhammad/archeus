@@ -197,16 +197,27 @@ def test_the_long_form_slots_state_what_it_does_and_what_it_works_with():
 
 
 def test_the_direction_is_stated_as_a_goal_and_not_as_a_feature():
-    """Provider-neutral memory does not exist. It is a goal, so every surface
-    that mentions it has to say so in the same breath — and the README, the
-    docs, the LLM-facing text and the FAQ are the four places someone forms an
-    expectation from."""
+    """An open harness of archeus's own does not exist. It is a goal, so every
+    surface that mentions it has to say so in the same breath — and the README,
+    the docs, the LLM-facing text and the FAQ are the four places someone forms
+    an expectation from.
+
+    The ambition used to be one sentence covering two halves, and one of them
+    has since shipped: a session can be routed at any endpoint serving
+    `POST /v1/messages`. So `harness` is required here too. Without it the
+    remaining sentence reads as "nothing else works", which is now wrong in the
+    direction that costs a user something — they go on believing archeus can
+    only talk to Anthropic. Naming the half that is still missing is what keeps
+    the claim honest in both directions at once.
+    """
     for rel in ('README.md', 'docs/getting-started.md', 'docs/llms.txt',
                 'www/lib/faq.ts', 'www/lib/content.ts'):
         text = _norm(_read(rel))
         assert GOAL in text, '%s does not state the direction' % rel
         assert re.search(r'long-term (goal|direction)', text), \
             '%s states the direction without calling it a goal' % rel
+        assert 'harness' in text.lower(), \
+            '%s states the direction without naming what is still missing' % rel
 
 
 def test_the_pypi_keywords_are_not_a_claude_monopoly():

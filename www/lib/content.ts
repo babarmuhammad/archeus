@@ -81,7 +81,7 @@ export const HOME: Doc = {
           'archeus sits in front of the agent and fixes both. Pick a project, see every session you have ever had in it, and launch with the model, effort, permissions and context you meant. Claude Code is the agent it drives today.',
         ),
         p(
-          'Where this is going, as a long-term goal and not a feature: provider-neutral memory, then an open harness of its own. Claude Code is the first surface, not the boundary. Nothing beyond Claude Code is supported today.',
+          'Half of where this is going has arrived. A session no longer has to talk to Anthropic: point it at a local model server, at OpenRouter, at OmniRoute’s free tier or at anything that serves POST /v1/messages, and it stays a real Claude Code session with its agents, skills, hooks and MCP servers intact. The other half has not. Driving a harness other than Claude Code is the work in progress: an open harness of its own is a long-term goal and not something you can use yet. Claude Code is the first surface, not the boundary.',
         ),
       ],
     },
@@ -272,6 +272,23 @@ export const FEATURES: Doc = {
       ],
     },
     {
+      id: 'providers',
+      heading: 'Any model, still a real session',
+      lead:
+        'Point a session at a local server, OpenRouter, OmniRoute or anything that serves POST /v1/messages.',
+      blocks: [
+        p(
+          'archeus could always aim a real Claude Code session at another backend — that is what the OmniRoute support has always been — but the capability was wired to one product name. Settings → Model provider now takes any endpoint, with a translating gateway for backends that speak the OpenAI chat format instead, and a failover list so a dead model is retried rather than hung on.',
+        ),
+        p(
+          'The session stays a session. Agents, skills, hooks, MCP servers, slash commands and checkpoints all keep working, because none of them ever talk to the model API. What a backend swap genuinely costs is written down rather than glossed: subagents, prompt caching, extended thinking and web_search are affected, and three of those four cannot be fixed from outside Claude Code.',
+        ),
+        p(
+          'archeus’ own Claude calls — memory extraction, lesson distillation, code review, the CLAUDE.md, agent, skill, hook and system-prompt generators — can be routed there too. They are the cheapest and highest-volume calls it makes and the best fit for a local model. It is opt-in and off by default: they run unattended, and moving them changes which account is billed.',
+        ),
+      ],
+    },
+    {
       id: 'integration',
       heading: 'Claude Code integration',
       blocks: [
@@ -295,6 +312,26 @@ export const FEATURES: Doc = {
           {
             t: 'Status line, failover & checkpoints',
             d: 'A cheap per-turn status line, a proxy that retries a dead model instead of hanging, and a strictly read-only view of Claude Code’s checkpoint store.',
+          },
+          {
+            t: 'Plugins, marketplaces & output styles',
+            d: 'Browse and install from plugin marketplaces, see what a plugin actually contains before it runs, and switch output styles — every mutation goes through the claude CLI rather than editing its caches, whose format has already changed once.',
+          },
+          {
+            t: 'The client itself',
+            d: 'Which Claude Code version each account is on, what its state directory is costing you on disk, which background agents are running, and a typed editor for its own settings — read and written the same way Claude Code reads them, never rewritten wholesale.',
+          },
+          {
+            t: 'Repos & worktrees',
+            d: 'Every repository under a project root, including submodules and linked worktrees, with branch, dirty state and ahead/behind read from disk rather than from a subprocess — so opening the board costs nothing. Launching a session into a fresh worktree is one option on the launch screen.',
+          },
+          {
+            t: 'Scheduled loops',
+            d: 'A session-scoped /loop, and headless loops registered with the OS scheduler that wake up, run a prompt against a project and write what they found into a journal. Both are listed, both can be stopped, and neither is a daemon archeus keeps alive.',
+          },
+          {
+            t: 'A log of what it did',
+            d: 'Every Claude call archeus makes on your behalf, every background job, every scheduler run and every proxy failure, with what failed and why. The point of a tool that acts unattended is being able to read back what it did.',
           },
         ]),
       ],
@@ -342,6 +379,24 @@ export const FEATURES: Doc = {
       ],
     },
     {
+      id: 'cli',
+      heading: 'Scriptable, not only interactive',
+      lead: 'The parts worth calling from a hook, a CI job or another agent are commands.',
+      blocks: [
+        code(
+          'archeus recall "<topic>"        # the task-relevant slice of this project’s memory\n'
+          + 'archeus workspace status       # what this project is, in one screenful\n'
+          + 'archeus review --staged        # review the diff against CLAUDE.md and the lessons\n'
+          + 'archeus statusline             # one line per turn, for Claude Code’s status line\n'
+          + 'archeus sync-accounts          # level every account up to what you have provisioned',
+          'commands',
+        ),
+        p(
+          'It also ships as a Claude Code plugin, so recall, review and workspace status are available as slash commands without leaving the session. The plugin deliberately installs no hooks: archeus already places those per account, and one settings entry with two owners is how an uninstall leaves the other looking broken.',
+        ),
+      ],
+    },
+    {
       id: 'not',
       heading: 'What archeus does not do',
       lead: 'Stated plainly, because a feature page that only lists strengths is not useful.',
@@ -349,7 +404,7 @@ export const FEATURES: Doc = {
         ul([
           'It is not a Claude Code replacement. It configures and launches Claude Code; every actual coding turn is Claude Code doing the work.',
           'It is Windows-first. macOS and Linux are supported and tested in CI, but Windows gets the widest version matrix and by far the most real-world use.',
-          'It does not host or proxy a model of its own. It uses your existing authentication and your existing quota.',
+          'It does not host a model of its own, and it does not bill you. By default a session runs on your existing Claude Code authentication and your existing quota. If you route one elsewhere, archeus runs a loopback proxy to translate and retry — your endpoint, your key, your bill.',
           'The memory features cost tokens to build. Extraction and lesson distillation are Claude calls, routed to a cheap model and run rarely, but not free. The saving is on the per-message context you stop paying for.',
           'It is a young project. Small user base, and the API surface still moves.',
           'If your CLAUDE.md is 40 lines and stays that way, you do not need this.',

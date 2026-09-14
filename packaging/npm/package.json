@@ -1,0 +1,38 @@
+{
+  "name": "archeus",
+  "version": "2.3.0",
+  "description": "The memory and workspace layer for AI coding agents. Persistent per-project memory, every session you have ever had, and control over what the next one costs.",
+  "keywords": [
+    "claude-code",
+    "agent-memory",
+    "ai-agents",
+    "developer-tools",
+    "cli",
+    "project-memory",
+    "session-manager"
+  ],
+  "homepage": "https://github.com/babarmuhammad/archeus",
+  "bugs": "https://github.com/babarmuhammad/archeus/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/babarmuhammad/archeus.git",
+    "directory": "packaging/npm"
+  },
+  "license": "MIT",
+  "author": "Babar Muhammad Anas",
+  "bin": {
+    "archeus": "bin/archeus.js"
+  },
+  "files": [
+    "bin/archeus.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ]
+}

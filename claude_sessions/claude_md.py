@@ -70,12 +70,13 @@ def upsert_block(project_path, start, end, section):
         new = f"# {name}\n\n{section}"
     if new == old:
         return True, old, new
-    try:
-        with open(md_path, 'w', encoding='utf-8') as f:
-            f.write(new)
-        return True, old, new
-    except Exception:
+    # write_atomic, like every other writer of this file (`prune_claude_md`,
+    # `scaffold_claude_md`): Claude Code parses CLAUDE.md on every turn, and a
+    # plain open(,'w') that dies partway leaves it half a file. This was the last
+    # holdout, and it is the writer for all three machine-maintained blocks.
+    if not _c.write_atomic(md_path, new):
         return False, old, old
+    return True, old, new
 
 
 def write_memory_block(project_path, digest):

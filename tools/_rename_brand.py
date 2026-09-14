@@ -47,6 +47,12 @@ SKIP = {
     # spelled), so skipping the whole file cannot strand it.
     'notes/brand-study.md',
     'claude_sessions/migrate.py',      # the one module that must know both names
+    # the final release under the old name: it ships no code, and its whole job
+    # is to BE that name on PyPI and depend on this one. Both files deliberately
+    # link to the repository rather than the documentation domain, so skipping
+    # them cannot strand the one string still waiting on an external move.
+    'packaging/legacy-name/pyproject.toml',
+    'packaging/legacy-name/README.md',
     'tests/test_migration.py',
     'tests/test_no_old_brand_string.py',
     'tools/_rename_brand.py',

@@ -46,9 +46,41 @@ _LOG_MAX = 1 << 20
 #: lock file, readiness marker, spawn/stop — shared with gateway.py, which is a
 #: SIBLING and not a mode of this module: it re-serializes response bodies and
 #: this one must never be able to.
-_D = _proxy.Daemon('failover', '--failover-serve', 'failover proxy')
-_MARKER_PATH = _D.marker_path
-_MARKER = _D.marker
+#:
+#: ONE DAEMON PER PROFILE, named after it. `Daemon` derives the lock file and
+#: the readiness marker from the name, so two profiles get both for free — and
+#: both are load-bearing: a bare connectivity check on a port would happily
+#: trust whatever is squatting it, including the OTHER profile's proxy, and a
+#: shared lock would let one profile's daemon be reported as the other's.
+def _daemon(prof):
+    return _proxy.Daemon('failover-%s' % (prof or {}).get('id', ''),
+                         '--failover-serve', 'failover proxy')
+
+
+#: The profile THIS process serves, pinned by argv at spawn (serve_cli) and
+#: never re-chosen. The handler re-reads the profile by this id on every
+#: request, so editing its URL still takes effect immediately — but no request
+#: can ever be answered with another profile's upstream or credential, which is
+#: what a singleton reading the global settings per request used to do.
+_SERVING = ''
+
+
+def _serving_daemon():
+    """The Daemon object for the profile this process serves.
+
+    Built from `_SERVING` rather than kept as a second global, and the marker is
+    read OFF it rather than re-formatted here: `Daemon` derives both the lock
+    path and the marker from the name, and a second copy of that format is a
+    second thing to keep in step with it."""
+    return _daemon({'id': _SERVING})
+
+
+def _marker_path():
+    return _serving_daemon().marker_path
+
+
+def _marker():
+    return _serving_daemon().marker
 
 _HOP_BY_HOP = frozenset((
     'host', 'content-length', 'connection', 'proxy-connection', 'keep-alive',
@@ -81,12 +113,12 @@ def _emit(line):
             pass
 
 
-def candidates(primary, s):
-    """Ordered model ids to try: the requested one first, then the configured
+def candidates(primary, prof):
+    """Ordered model ids to try: the requested one first, then this profile's
     fallbacks, deduped with order preserved. Strips because the settings file is
     hand-editable and a whitespace-only entry is truthy."""
     out, seen = [], set()
-    for m in [primary] + list(s.get('failover_models') or []):
+    for m in [primary] + list((prof or {}).get('failover_models') or []):
         m = str(m or '').strip()
         if m and m not in seen:
             seen.add(m)
@@ -94,58 +126,81 @@ def candidates(primary, s):
     return out
 
 
-def enabled(s=None):
-    s = _c.load_settings() if s is None else s
-    return bool([m for m in (s.get('failover_models') or []) if str(m or '').strip()])
+def enabled(prof):
+    return bool([m for m in ((prof or {}).get('failover_models') or [])
+                 if str(m or '').strip()])
 
 
-def base_url(s=None):
-    s = _c.load_settings() if s is None else s
-    return 'http://127.0.0.1:%d' % int(s.get('failover_port') or 20129)
+def port_of(prof):
+    return int((prof or {}).get('port') or _c.PROFILE_PORT_BASE)
+
+
+def base_url(prof):
+    return 'http://127.0.0.1:%d' % port_of(prof)
 
 
 # ── lifecycle ────────────────────────────────────────────────
 
-lock_path = _D.lock_path
-is_ready = _D.is_ready
-_read_lock = _D.read_lock
-_write_lock = _D.write_lock
-_clear_lock = _D.clear_lock
-_claim_spawn = _D.claim_spawn
+def lock_path(prof):
+    return _daemon(prof).lock_path()
+
+
+def is_ready(prof, timeout=2):
+    return _daemon(prof).is_ready(port_of(prof), timeout=timeout)
+
+
 _pid_alive = _proxy.pid_alive
 
 
-def ensure_running(s=None):
+def ensure_running(prof):
     """(ok, base_url) or (False, message). Never raises. Reuses a live daemon;
     evicts a stale lock and respawns."""
-    s = _c.load_settings() if s is None else s
-    return _D.ensure(int(s.get('failover_port') or 20129),
-                     quiet=bool(s.get('failover_quiet')),
-                     on_ready=lambda: base_url(s))
+    if not prof:
+        return False, 'no provider profile'
+    return _daemon(prof).ensure(port_of(prof),
+                                quiet=bool(prof.get('failover_quiet')),
+                                on_ready=lambda: base_url(prof),
+                                extra_args=[prof['id']])
 
 
-def stop_running():
-    """(ok, message). Terminates the daemon named in the lock file."""
-    return _D.stop()
+def stop_running(prof):
+    """(ok, message). Terminates the daemon named in this profile's lock file."""
+    return _daemon(prof).stop()
 
 
-def serve_cli(port):
-    s = _c.load_settings()
-    port = int(port or s.get('failover_port') or 20129)
+def serve_cli(port, pid=''):
+    """The detached daemon's entry point. *pid* is the profile id it serves.
+
+    A missing profile is a REFUSAL, never a fall back to the active one. This
+    process is dispatched in main.run() BEFORE migrate_settings, so it can be
+    looking at a settings file that predates the profile list entirely — and
+    guessing there would route a session at an upstream nobody chose, which is
+    the whole failure this daemon-per-profile design removes."""
+    global _SERVING
+    prof = _c.provider_profile(pid) if pid else _c.active_provider()
+    if not prof:
+        _emit('archeus failover: no such provider profile %r — refusing to start'
+              % (pid or '(active)'))
+        return 1
+    _SERVING = prof['id']
+    port = int(port or port_of(prof))
     try:
         srv = make_server(port)
     except Exception as e:
         _emit('archeus failover: cannot bind port %d: %s' % (port, e))
         return 1
-    _write_lock(port)
+    _daemon(prof).write_lock(port)
     try:
         import ctypes
-        ctypes.windll.kernel32.SetConsoleTitleW('archeus failover :%d' % port)
+        ctypes.windll.kernel32.SetConsoleTitleW(
+            'archeus failover :%d  %s' % (port, prof.get('name') or ''))
     except Exception:
         pass
-    cands = ', '.join([m for m in (s.get('failover_models') or []) if str(m).strip()]) or '(none)'
+    cands = ', '.join([m for m in (prof.get('failover_models') or [])
+                       if str(m).strip()]) or '(none)'
     _emit('')
-    _emit('archeus failover  :%d -> %s' % (port, s.get('provider_base_url') or '?'))
+    _emit('archeus failover  :%d  %s -> %s'
+          % (port, prof.get('name') or '?', _c.provider_upstream(prof) or '?'))
     _emit('candidates: %s' % cands)
     _emit('%-8s  %-28s %-22s %7s  %s' % ('time', 'request', 'model', 'took', 'result'))
     try:
@@ -153,7 +208,7 @@ def serve_cli(port):
     except KeyboardInterrupt:
         pass
     finally:
-        _clear_lock()
+        _daemon(prof).clear_lock()
     return 0
 
 
@@ -176,38 +231,41 @@ class _Handler(BaseHTTPRequestHandler):
         """See proxy_base.guard — same three checks, same reasons, shared with
         the gateway daemon so the two cannot drift apart on the one thing that
         keeps a web page out of the user's upstream quota."""
-        return _proxy.guard(self, self._settings().get('provider_api_key'),
-                            _MARKER_PATH, 'failover')
+        return _proxy.guard(self, (self._profile() or {}).get('api_key'),
+                            _marker_path(), 'failover')
 
     def _deny(self, why):
         return _proxy.deny(self, 'failover', why)
 
-    def _settings(self):
-        return _c.load_settings()
+    def _profile(self):
+        """THIS daemon's profile, re-read per request so an edit to its URL or
+        candidates takes effect without a restart — but looked up by the id
+        pinned at spawn, so it can never resolve to a different backend."""
+        return _c.provider_profile(_SERVING)
 
-    def _upstream(self, s):
-        return _c.provider_upstream(s).rstrip('/')
+    def _upstream(self, prof):
+        return _c.provider_upstream(prof).rstrip('/')
 
-    def _fwd_headers(self, length, s):
+    def _fwd_headers(self, length, prof):
         h = {k: v for k, v in self.headers.items()
              if k.lower() not in _HOP_BY_HOP}
         h['Content-Length'] = str(length)
-        key = s.get('provider_api_key') or ''
+        key = (prof or {}).get('api_key') or ''
         if key:
             h['Authorization'] = 'Bearer ' + key
             h['x-api-key'] = key
         return h
 
-    def _open(self, s, body, timeout=_FIRST_BYTE_TIMEOUT):
+    def _open(self, prof, body, timeout=_FIRST_BYTE_TIMEOUT):
         """Send upstream and read status+headers ONLY. The response body is left
         untouched — returning from here is the last point at which a retry is
         still possible."""
-        u = urllib.parse.urlsplit(self._upstream(s))
+        u = urllib.parse.urlsplit(self._upstream(prof))
         cls = (http.client.HTTPSConnection if u.scheme == 'https'
                else http.client.HTTPConnection)
         conn = cls(u.hostname, u.port, timeout=_CONNECT_TIMEOUT)
         conn.request(self.command, self.path, body=body,
-                     headers=self._fwd_headers(len(body or b''), s))
+                     headers=self._fwd_headers(len(body or b''), prof))
         if conn.sock is not None:
             conn.sock.settimeout(timeout)
         return conn, conn.getresponse()
@@ -255,10 +313,10 @@ class _Handler(BaseHTTPRequestHandler):
                 pass
 
     def _passthrough(self, body):
-        s = self._settings()
+        prof = self._profile()
         t0 = time.monotonic()
         try:
-            conn, resp = self._open(s, body)
+            conn, resp = self._open(prof, body)
         except Exception as e:
             self._note('-', time.monotonic() - t0, 'UNREACHABLE %s' % e)
             self._json(502, {'type': 'error', 'error': {
@@ -287,12 +345,13 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self._guard():
             return
-        if self.path == _MARKER_PATH:
+        marker = _marker()
+        if self.path == _marker_path():
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain')
-            self.send_header('Content-Length', str(len(_MARKER)))
+            self.send_header('Content-Length', str(len(marker)))
             self.end_headers()
-            self.wfile.write(_MARKER)
+            self.wfile.write(marker)
             return
         self._passthrough(None)
 
@@ -312,7 +371,7 @@ class _Handler(BaseHTTPRequestHandler):
     # ── the point of the whole module ──
 
     def _failover(self, body):
-        s = self._settings()
+        prof = self._profile()
         try:
             parsed = json.loads(body)
         except Exception:
@@ -322,7 +381,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._passthrough(body)
             return
 
-        cands = candidates(parsed['model'], s)
+        cands = candidates(parsed['model'], prof)
         if len(cands) <= 1:
             self._passthrough(body)
             return
@@ -338,7 +397,7 @@ class _Handler(BaseHTTPRequestHandler):
             a0 = time.monotonic()
             last = (i == len(cands) - 1)
             try:
-                conn, resp = self._open(s, out)
+                conn, resp = self._open(prof, out)
             except Exception as e:
                 took = time.monotonic() - a0
                 why = 'TIMEOUT' if isinstance(e, (TimeoutError, OSError)) and 'timed out' in str(e).lower() else str(e)[:60]

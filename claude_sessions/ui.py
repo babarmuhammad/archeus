@@ -827,25 +827,45 @@ def help_screen():
 
 
 def _failover_label(s):
-    models = [m for m in (s.get('failover_models') or []) if str(m).strip()]
+    prof = _c.active_provider(s)
+    if not prof:
+        return 'no provider'
+    models = [m for m in (prof.get('failover_models') or []) if str(m).strip()]
     if not models:
         return 'off'
-    return f"{len(models)} fallback{'s' if len(models) != 1 else ''} on :{s.get('failover_port') or 20129}"
+    return (f"{len(models)} fallback{'s' if len(models) != 1 else ''} on "
+            f":{prof.get('port')} ({prof.get('name')})")
+
+
+def _save_profile(s, prof):
+    """Write one profile back into the list, by id."""
+    s['providers'] = [prof if p['id'] == prof['id'] else p
+                      for p in _c.provider_profiles(s)]
+    save_settings(s)
 
 
 def _failover_menu():
     """The failover proxy was GUI-only: three settings and start/stop with no TUI
-    equivalent at all, so a TUI-only user could not see it existed."""
+    equivalent at all, so a TUI-only user could not see it existed.
+
+    Edits the ACTIVE profile's failover, and says which one in the heading:
+    the candidates are model ids, so a list only means anything against the
+    backend that serves them."""
     from . import failover
     while True:
         s = load_settings()
-        models = [m for m in (s.get('failover_models') or []) if str(m).strip()]
-        port = int(s.get('failover_port') or 20129)
-        live = failover.is_ready(port)
+        prof = _c.active_provider(s)
+        if not prof:
+            flash('No provider profile — add one in the desktop app first',
+                  ok=False, secs=2.5)
+            return
+        models = [m for m in (prof.get('failover_models') or []) if str(m).strip()]
+        port = failover.port_of(prof)
+        live = failover.is_ready(prof)
         items = [
             (f"Fallback models :  {', '.join(models) if models else C_DIM + '(none — failover off)' + C_RESET}", 'models'),
-            (f"Port            :  {port}", 'port'),
-            (f"Log window      :  {'hidden' if s.get('failover_quiet') else 'visible'}   "
+            (f"Port            :  {port}   {C_DIM}(this profile's own){C_RESET}", None),
+            (f"Log window      :  {'hidden' if prof.get('failover_quiet') else 'visible'}   "
              f"{C_DIM}(the routing log is the feature — keep it visible){C_RESET}", 'quiet'),
             (f"{'─' * W}", None),
             ((f"{C_GREEN}running{C_RESET} — stop it" if live else 'not running — start it'),
@@ -853,36 +873,26 @@ def _failover_menu():
             (f"{'─' * W}", None),
             ('Back', 'back'),
         ]
-        sel = menu(items, "MODEL FAILOVER")
+        sel = menu(items, "MODEL FAILOVER  /  %s" % prof['name'])
         if not sel or sel == 'back':
             return
         if sel == 'models':
             v = text_input("Fallback models, comma-separated (blank = off):",
                            default=', '.join(models))
             if v is not None:
-                s['failover_models'] = [m.strip() for m in v.split(',') if m.strip()]
-                save_settings(s)
+                prof['failover_models'] = [m.strip() for m in v.split(',') if m.strip()]
+                _save_profile(s, prof)
                 flash("Saved")
-        elif sel == 'port':
-            v = text_input("Proxy port:", default=str(port))
-            if v is not None:
-                try:
-                    s['failover_port'] = int(v)
-                except ValueError:
-                    flash("Enter a port number", ok=False, secs=1.2)
-                    continue
-                save_settings(s)
-                flash("Saved — restart the proxy for it to take effect", secs=2)
         elif sel == 'quiet':
-            s['failover_quiet'] = not s.get('failover_quiet')
-            save_settings(s)
-            flash(f"Log window {'hidden' if s['failover_quiet'] else 'visible'}")
+            prof['failover_quiet'] = not prof.get('failover_quiet')
+            _save_profile(s, prof)
+            flash(f"Log window {'hidden' if prof['failover_quiet'] else 'visible'}")
         elif sel == 'start':
-            ok, msg = failover.ensure_running(s)
+            ok, msg = failover.ensure_running(prof)
             flash(msg if not ok else f"Failover proxy running at {msg}",
                   ok=ok, secs=2.5)
         elif sel == 'stop':
-            ok, msg = failover.stop_running()
+            ok, msg = failover.stop_running(prof)
             flash(msg, ok=ok, secs=2)
 
 

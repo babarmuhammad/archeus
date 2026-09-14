@@ -4,13 +4,14 @@ from claude_sessions import omniroute
 
 def test_provider_env_disabled_by_default():
     assert c.provider_env({}) == {}
-    assert c.provider_env({'provider_exec_model': ''}) == {}
+    assert c.provider_env(c.new_profile(id='p', model='')) == {}
+    assert c.provider_env(None) == {}
 
 
 def test_provider_env_returns_anthropic_override_when_configured():
-    s = {'provider_exec_model': 'glm-4.6',
-         'provider_base_url': 'http://localhost:20128',
-         'provider_api_key': 'secret-token'}
+    s = c.new_profile(id='p', model='glm-4.6',
+                      base_url='http://localhost:20128',
+                      api_key='secret-token')
     env = c.provider_env(s)
     assert env == {'ANTHROPIC_BASE_URL': 'http://localhost:20128',
                     'ANTHROPIC_AUTH_TOKEN': 'secret-token',
@@ -22,10 +23,10 @@ def test_provider_env_leaves_tool_search_alone_unless_asked():
     """Claude Code disables MCP tool search on a non-first-party base URL and
     re-enabling it only works if the upstream forwards tool_reference blocks --
     so it is the user's assertion, never implied by configuring a provider."""
-    s = {'provider_exec_model': 'glm-4.6', 'provider_base_url': 'http://x',
-         'provider_api_key': 'k'}
+    s = c.new_profile(id='p', model='glm-4.6', base_url='http://x',
+                      api_key='k')
     assert 'ENABLE_TOOL_SEARCH' not in c.provider_env(s)
-    s['provider_tool_search'] = True
+    s['tool_search'] = True
     assert c.provider_env(s)['ENABLE_TOOL_SEARCH'] == 'true'
 
 
@@ -402,8 +403,8 @@ if __name__ == '__main__':
 def test_provider_env_with_model_param_bypasses_exec_model_gate():
     """Passing model='_' forces OmniRoute env even when provider_exec_model is
     not set — handles the GUI plan-execute modal's via='omniroute' path."""
-    s = {'provider_base_url': 'http://localhost:20128',
-         'provider_api_key': 'secret-token'}
+    s = c.new_profile(id='p', base_url='http://localhost:20128',
+                      api_key='secret-token')
     # without model param: empty because exec_model is not set
     assert c.provider_env(s) == {}
     # with model param: env vars are returned
@@ -416,9 +417,9 @@ def test_provider_env_includes_disable_traffic_not_subagent_model():
     """omniroute_env sets CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC but no
     longer forces CLAUDE_CODE_SUBAGENT_MODEL — OmniRoute can't route a bare
     Anthropic model id, so agents must inherit the session's OmniRoute model."""
-    s = {'provider_exec_model': 'auto/coding',
-         'provider_base_url': 'http://localhost:20128',
-         'provider_api_key': 'secret'}
+    s = c.new_profile(id='p', model='auto/coding',
+                      base_url='http://localhost:20128',
+                      api_key='secret')
     env = c.provider_env(s)
     assert 'CLAUDE_CODE_SUBAGENT_MODEL' not in env
     assert env['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'] == '1'
@@ -426,34 +427,25 @@ def test_provider_env_includes_disable_traffic_not_subagent_model():
 
 def test_provider_env_filters_empty_values():
     """Empty string values are filtered out so ambient env is never clobbered."""
-    s = {'provider_exec_model': 'auto/coding',
-         'provider_base_url': '',
-         'provider_api_key': ''}
+    s = c.new_profile(id='p', model='auto/coding', base_url='', api_key='')
     env = c.provider_env(s)
     assert 'ANTHROPIC_BASE_URL' not in env
     assert 'ANTHROPIC_AUTH_TOKEN' not in env
 
 
-def test_prepare_launch_unknown_model_raises_valueerror(monkeypatch, tmp_path):
+def test_prepare_launch_unknown_model_raises_valueerror(monkeypatch):
     """prepare_launch() raises ValueError for a model not in list_models()."""
     monkeypatch.setattr(omniroute, 'ensure_running', lambda *a, **k: (True, 'running'))
-    from claude_sessions import config
-    from claude_sessions.config import load_settings, save_settings
-    monkeypatch.setattr(config, 'settings_file', str(tmp_path / 'archeus.json'))
-    s = load_settings()
-    s['provider_base_url'] = 'http://localhost:20128'
-    s['provider_api_key'] = ''
-    s['provider_exec_model'] = 'free/x'
-    s['provider_kind'] = 'omniroute'
-    save_settings(s)
+    prof = c.new_profile(id='p', kind='omniroute', model='free/x',
+                         base_url='http://localhost:20128', api_key='')
     monkeypatch.setattr(omniroute, 'list_models',
                         lambda *a, **k: [('free/x', 'Free Model X'), ('free/y', 'Free Model Y')])
     import pytest
     # 'bogus' is not in the list -> ValueError
     with pytest.raises(ValueError, match='bogus'):
-        omniroute.prepare_launch('bogus')
+        omniroute.prepare_launch('bogus', prof)
     # 'auto/coding' is always accepted without validation
-    env, warn = omniroute.prepare_launch('auto/coding')
+    env, warn = omniroute.prepare_launch('auto/coding', prof)
     assert isinstance(env, dict) and warn == ''
 
 
@@ -463,7 +455,8 @@ def test_prepare_launch_ensure_running_failure_propagates(monkeypatch):
                         lambda *a, **k: (False, 'daemon dead'))
     import pytest
     with pytest.raises(RuntimeError, match='OmniRoute'):
-        omniroute.prepare_launch('auto/coding', {'provider_kind': 'omniroute'})
+        omniroute.prepare_launch('auto/coding',
+                                 c.new_profile(id='p', kind='omniroute'))
 
 
 def test_prepare_launch_never_autostarts_a_daemon_for_a_generic_provider(monkeypatch):
@@ -474,8 +467,8 @@ def test_prepare_launch_never_autostarts_a_daemon_for_a_generic_provider(monkeyp
     monkeypatch.setattr(omniroute, 'ensure_running',
                         lambda *a, **k: called.append(1) or (True, 'running'))
     monkeypatch.setattr(omniroute, 'is_reachable', lambda *a, **k: True)
-    env, _warn = omniroute.prepare_launch('qwen3-coder', {
-        'provider_kind': 'generic', 'provider_base_url': 'http://localhost:11434'})
+    env, _warn = omniroute.prepare_launch('qwen3-coder', c.new_profile(
+        id='p', kind='generic', base_url='http://localhost:11434'))
     assert called == []
     assert env['ANTHROPIC_BASE_URL'] == 'http://localhost:11434'
 
@@ -486,8 +479,8 @@ def test_prepare_launch_does_not_validate_a_generic_model_id(monkeypatch):
     model the user could possibly name."""
     monkeypatch.setattr(omniroute, 'is_reachable', lambda *a, **k: True)
     monkeypatch.setattr(omniroute, 'list_models', lambda *a, **k: [])
-    env, _warn = omniroute.prepare_launch('anything-at-all', {
-        'provider_kind': 'generic', 'provider_base_url': 'http://h'})
+    env, _warn = omniroute.prepare_launch('anything-at-all', c.new_profile(
+        id='p', kind='generic', base_url='http://h'))
     assert env['ANTHROPIC_BASE_URL'] == 'http://h'
 
 
@@ -498,16 +491,17 @@ def test_prepare_launch_fails_before_the_session_opens_when_unreachable(monkeypa
     monkeypatch.setattr(omniroute, 'is_reachable', lambda *a, **k: False)
     import pytest
     with pytest.raises(RuntimeError, match='not reachable'):
-        omniroute.prepare_launch('m', {'provider_kind': 'generic',
-                                       'provider_base_url': 'http://dead'})
+        omniroute.prepare_launch('m', c.new_profile(
+            id='p', kind='generic', base_url='http://dead'))
 
 
 def test_context_warning_counts_claude_codes_own_system_prompt():
     """The 10k-token floor is the whole point: a default 4096-token Ollama
     context is already over budget with an empty repo, and a check that weighed
     only CLAUDE.md would call that fine."""
-    assert omniroute.context_warning({'provider_context_tokens': 4096}, 1) != ''
+    assert omniroute.context_warning({'context_tokens': 4096}, 1) != ''
+    assert omniroute.context_warning(None, 1) == ''
     # no payload measured -> nothing to say
-    assert omniroute.context_warning({'provider_context_tokens': 4096}, 0) == ''
+    assert omniroute.context_warning({'context_tokens': 4096}, 0) == ''
     # a big window swallows the same payload
-    assert omniroute.context_warning({'provider_context_tokens': 200000}, 4000) == ''
+    assert omniroute.context_warning({'context_tokens': 200000}, 4000) == ''

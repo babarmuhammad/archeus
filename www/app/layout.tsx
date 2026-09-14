@@ -59,7 +59,16 @@ export const metadata: Metadata = {
   // they look for anything else on the page.
   alternates: {
     canonical: SITE.url,
-    types: { 'application/rss+xml': [{ url: url('/blog/rss.xml'), title: `${SITE.name} blog` }] },
+    types: {
+      'application/rss+xml': [{ url: url('/blog/rss.xml'), title: `${SITE.name} blog` }],
+      // llms.txt was reachable only from a footer anchor, which is the one place
+      // a crawler that reads the head and stops will never look. It is the file
+      // an answer engine quotes, so it gets the same treatment as the feed.
+      'text/plain': [
+        { url: url('/llms.txt'), title: `${SITE.name} for language models` },
+        { url: url('/llms-full.txt'), title: `${SITE.name} — the whole site as text` },
+      ],
+    },
   },
 };
 

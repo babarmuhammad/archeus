@@ -1,8 +1,22 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { SITE } from '@/lib/site';
 
-/* No `metadata` export: a 404 must not be indexable, and Next already sends
-   noindex with the 404 status. */
+/* `canonical: null` is the whole point of this export, and it has to be explicit:
+   metadata merges field by field, so a page with no `alternates` inherits the
+   root's canonical — and every dead URL on the site then declares itself a
+   duplicate of the homepage.
+
+   `robots` is here for the same reason and was verified the same way: the root
+   sets `index: true`, so leaving it out does not fall back to Next's own
+   noindex — it emits `index, follow` NEXT TO it, and the page ships two
+   contradictory directives. Two agreeing noindex tags is the better of the two
+   states actually on offer. */
+export const metadata: Metadata = {
+  title: 'Page not found',
+  robots: { index: false, follow: true },
+  alternates: { canonical: null },
+};
 
 const LINKS = [
   { href: '/features', label: 'Features', desc: 'What archeus does, screen by screen.' },

@@ -1,5 +1,6 @@
 import os
 import sys
+import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -38,7 +39,12 @@ def argv_of(call):
 def test_direct_launch_new_plain(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     call = captured_launch(monkeypatch, sb, 'new', {})
-    assert argv_of(call) == [r'C:\fake\claude.exe']
+    argv = argv_of(call)
+    # a new session's id is archeus's to choose, so the backend it was launched
+    # on can be written down before Claude Code has written a line
+    assert argv[0] == r'C:\fake\claude.exe'
+    assert argv[1] == '--session-id' and len(argv) == 3
+    uuid.UUID(argv[2])                      # raises if it is not one
 
 
 def test_direct_launch_resume(monkeypatch, tmp_path):
@@ -109,11 +115,21 @@ def test_manual_is_expressible(monkeypatch, tmp_path):
     assert '--permission-mode' not in argv
 
 
-def _stub_provider(monkeypatch):
+def _stub_provider(monkeypatch, **over):
     """prepare_launch() probes (and would start) the real OmniRoute daemon —
-    a blocking network call that has no place in a launch-assembly test."""
-    from claude_sessions import omniroute
-    monkeypatch.setattr(omniroute, 'prepare_launch', lambda m, s=None, **kw: ({}, ''))
+    a blocking network call that has no place in a launch-assembly test.
+
+    Also puts one profile where build_launch_command will resolve it: `provider`
+    is a profile ID now, so a launch naming one that does not exist is correctly
+    treated as Anthropic and proves nothing."""
+    from claude_sessions import config as _cfg, main as _main, omniroute
+    monkeypatch.setattr(omniroute, 'prepare_launch', lambda m, prof=None, **kw: ({}, ''))
+    prof = _cfg.new_profile(id='p1', name='OmniRoute', kind='omniroute',
+                            base_url='http://localhost:20128', model='auto/coding',
+                            port=20129, **over)
+    s = dict(_cfg._DEFAULT_SETTINGS, providers=[prof], provider_active='p1')
+    monkeypatch.setattr(_main, 'load_settings', lambda: dict(s))
+    return prof
 
 
 def test_auto_is_dropped_for_a_routed_provider(monkeypatch, tmp_path):
@@ -122,10 +138,26 @@ def test_auto_is_dropped_for_a_routed_provider(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     _stub_provider(monkeypatch)
     call = captured_launch(monkeypatch, sb, 'new',
-                           {'perm': 'auto', 'provider': 'auto/coding'})
+                           {'perm': 'auto', 'provider': 'p1',
+                            'provider_model': 'auto/coding'})
     argv = argv_of(call)
     assert '--permission-mode' not in argv
     assert '--model' in argv and 'auto/coding' in argv   # the rest still applies
+
+
+def test_a_launch_naming_an_unknown_profile_stays_on_anthropic(monkeypatch, tmp_path):
+    """Never a fall back to the active profile: a session routed at a backend
+    nobody chose is the failure the profile layer exists to remove. A deleted
+    profile means Anthropic, and `auto` keeps working because the classifier is
+    reachable again."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    _stub_provider(monkeypatch)
+    call = captured_launch(monkeypatch, sb, 'new',
+                           {'perm': 'auto', 'provider': 'deleted',
+                            'provider_model': 'auto/coding'})
+    argv = argv_of(call)
+    assert 'auto/coding' not in argv
+    assert '--permission-mode' in argv
 
 
 def test_auto_is_dropped_for_a_model_that_does_not_support_it(monkeypatch, tmp_path):
@@ -204,15 +236,15 @@ def test_choice_line_matrix(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)          # pins main_mod.config_dir
     cfg = str(sb.cfg)
     cases = [
-        ('new', dict(OPTS0), f'v7|P|E|new|-|-|-|-|-|{cfg}|-|-|-|-|-'),
+        ('new', dict(OPTS0), f'v8|P|E|new|-|-|-|-|-|{cfg}|-|-|-|-|-|-'),
         ('continue', dict(OPTS0, effort='low'),
-         f'v7|P|E|continue|low|-|-|-|-|{cfg}|-|-|-|-|-'),
+         f'v8|P|E|continue|low|-|-|-|-|{cfg}|-|-|-|-|-|-'),
         ('resume:abc', dict(OPTS0, model='claude-fable-5', perm='dontAsk'),
-         f'v7|P|E|resume:abc|-|claude-fable-5|dontAsk|-|-|{cfg}|-|-|-|-|-'),
+         f'v8|P|E|resume:abc|-|claude-fable-5|dontAsk|-|-|{cfg}|-|-|-|-|-|-'),
         ('new', dict(OPTS0, name='N N', worktree='wt', agent='rev'),
-         f'v7|P|E|new|-|-|-|N N|wt|{cfg}|rev|-|-|-|-'),
+         f'v8|P|E|new|-|-|-|N N|wt|{cfg}|rev|-|-|-|-|-'),
         ('new', dict(OPTS0, max_thinking='8000', subagent_model='claude-haiku-4-5'),
-         f'v7|P|E|new|-|-|-|-|-|{cfg}|-|-|8000|claude-haiku-4-5|-'),
+         f'v8|P|E|new|-|-|-|-|-|{cfg}|-|-|8000|claude-haiku-4-5|-|-'),
     ]
     for choice, opts, expected in cases:
         line = main_mod.build_choice_line('P', 'E', choice, opts)
@@ -245,13 +277,13 @@ def test_economy_env_absent_when_unset(monkeypatch, tmp_path):
     assert 'CLAUDE_CODE_SUBAGENT_MODEL' not in env
 
 
-def test_choice_line_v7_round_trip(monkeypatch, tmp_path):
+def test_choice_line_v8_round_trip(monkeypatch, tmp_path):
     Sandbox(monkeypatch, tmp_path)
     opts = dict(OPTS0, effort='high', model='claude-sonnet-5', cfgdir='C:/cfg',
                 max_thinking='16000', subagent_model='claude-haiku-4-5',
                 agent='', agents_json='')
     line = main_mod.build_choice_line('C:/proj', 'ENC', 'new', opts)
-    assert line.startswith('v7|')
+    assert line.startswith('v8|')
     p, enc, choice, got = main_mod.parse_choice_line(line)
     assert (p, enc, choice) == ('C:/proj', 'ENC', 'new')
     assert got['max_thinking'] == '16000'

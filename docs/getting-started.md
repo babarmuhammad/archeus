@@ -27,10 +27,14 @@ Code authentication you already have. No API key.
 
 !!! note "Where this is going"
 
-    A long-term goal, not a feature, and none of it ships today: provider-neutral memory,
-    then an open harness of its own. Claude Code is the first surface, not the boundary.
-    Everything documented on this site works against the files Claude Code writes to disk,
-    and nothing else is supported yet.
+    Half of it has arrived: a session can be routed at any endpoint serving
+    `POST /v1/messages` — a local Ollama, llama.cpp or vLLM server, OpenRouter, or
+    OmniRoute — and it stays a real Claude Code session. See [Model providers](providers.md).
+
+    The other half has not. Driving a harness other than Claude Code is a long-term goal,
+    not a feature. Claude Code is the first surface, not the boundary — but today it is
+    still the only one, and everything documented on this site works against the files
+    Claude Code writes to disk.
 
 ## The three surfaces
 

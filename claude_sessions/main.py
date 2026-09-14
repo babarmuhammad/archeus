@@ -18,6 +18,7 @@ from .usage import usage_status_line
 from .ui import _cls
 from . import render
 from . import store
+from . import config as _c
 
 
 def _workspace_status_cli():
@@ -214,18 +215,24 @@ def run():
         _bg_scan_cli(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else '')
         return
     # detached model-failover proxy (spawned by failover.ensure_running)
+    # argv[3] is the provider profile the daemon serves — passed at spawn rather
+    # than looked up, because this branch runs BEFORE migrate_settings below and
+    # may be reading a settings file that predates the profile list.
     if len(sys.argv) >= 2 and sys.argv[1] == '--failover-serve':
         from .failover import serve_cli
-        sys.exit(serve_cli(sys.argv[2] if len(sys.argv) > 2 else 0))
+        sys.exit(serve_cli(sys.argv[2] if len(sys.argv) > 2 else 0,
+                           sys.argv[3] if len(sys.argv) > 3 else ''))
     # detached translating gateway (spawned by gateway.ensure_running)
     if len(sys.argv) >= 2 and sys.argv[1] == '--gateway-serve':
         from .gateway import serve_cli as _gw
-        sys.exit(_gw(sys.argv[2] if len(sys.argv) > 2 else 0))
+        sys.exit(_gw(sys.argv[2] if len(sys.argv) > 2 else 0,
+                     sys.argv[3] if len(sys.argv) > 3 else ''))
     if len(sys.argv) >= 2 and sys.argv[1] == '--failover-stop':
+        from .config import provider_profiles
         from .failover import stop_running
-        ok, msg = stop_running()
-        print(msg)
-        sys.exit(0 if ok else 1)
+        msgs = [stop_running(p)[1] for p in provider_profiles()]
+        print('; '.join(msgs) if msgs else 'no provider profiles configured')
+        sys.exit(0)
 
     # ── one-time settings migrations ──────────────────────────────
     # HERE, below every scriptable dispatch above: `archeus statusline` runs
@@ -242,11 +249,32 @@ def run():
                 from .config import log as _log
                 _log.warning('rename migration left %d item(s) behind: %s',
                              len(_failed), _failed[0][0])
-        # Printed rather than logged, and printed EVERY start until it is acted
-        # on: the action it names is the difference between a working install
-        # and one that deletes itself on the user's next tidy-up.
-        _warn = _migrate.coinstalled_warning()
-        if _warn:
+        # UNGATED, and that is the fix rather than an oversight: a hook or a
+        # statusline records an absolute path into the environment that installed
+        # it, and everything that kills those paths — uninstalling the previous
+        # package from its own pipx venv, a renamed checkout, a rebuilt
+        # environment — happens AFTER the migration has run and closed its flag.
+        # Repairing only during the migration meant repairing at the one moment
+        # when nothing was broken yet.
+        _migrate.repair_commands()
+        # the second pass: what the path move could not reach. It carries its own
+        # flag and returns immediately once that is set, so this is one settings
+        # read on every later start.
+        _swept, _sfailed = _migrate.sweep()
+        if _sfailed:
+            from .config import log as _log
+            _log.warning('rename sweep left %d item(s) behind: %s',
+                         len(_sfailed), _sfailed[0][0])
+        # Printed rather than logged, and printed EVERY start until each is acted
+        # on: what they name is the difference between a working install and one
+        # that deletes itself on the user's next tidy-up — and, for the other two,
+        # a setting or a plugin that has silently done nothing since the rename.
+        # They live HERE rather than inside the one-time sweep because a notice
+        # printed once, during a migration nobody is watching, is not a notice.
+        for _warn in (_migrate.coinstalled_warning(), _migrate.stale_env_warning(),
+                      _migrate.stale_plugin_warning()):
+            if not _warn:
+                continue
             # `from .config import C_RESET` HERE would make C_RESET a local of
             # run(), which every nested closure below then resolves from this
             # scope instead of the module — unbound on every start where this
@@ -448,7 +476,7 @@ def run():
 
     _EMPTY_OPTS = {'effort': '', 'model': '', 'perm': '', 'name': '', 'worktree': '',
                    'agent': '', 'cfgdir': '', 'max_thinking': '', 'subagent_model': '',
-                   'provider': ''}
+                   'provider': '', 'provider_model': ''}
     path = encoded_name = proj_folder = choice = None
     opts = dict(_EMPTY_OPTS)
 
@@ -671,37 +699,22 @@ def run():
                 'subagent_model': opts.get('subagent_model', ''),
             }
             save_settings(settings)
-        # ── routed provider session (optional) ───────────────────
-        # Only offered once a provider kind is chosen in settings. The two
-        # kinds get different pickers because they have different amounts of
-        # truth available: OmniRoute publishes a live catalogue, a generic
-        # Anthropic-shaped server publishes nothing, so offering a menu there
-        # would mean inventing its contents.
-        _pk = settings.get('provider_kind', '')
-        if _pk:
-            _pv_base = settings.get('provider_base_url', '')
-            try:
-                from . import omniroute as _om
-                if _pk == 'omniroute':
-                    _models = _om.list_models(_pv_base, settings.get('provider_api_key', ''))
-                    if _models:
-                        _pv_opts = [('○  off (use Anthropic API)', '')]
-                        _pv_opts += [('◉  auto/coding (dynamic router)', _om.AUTO_MODEL)]
-                        _pv_opts += [(f'●  {lbl}', mid) for mid, lbl in _models]
-                        _pv_pick = menu(_pv_opts, "OMNIROUTE  (free-tier execution)")
-                        if _pv_pick is not None:
-                            opts['provider'] = _pv_pick
-                else:
-                    _pv_opts = [('○  off (use Anthropic API)', ''),
-                                ('●  run on the configured provider', '\x00pick')]
-                    _pv_pick = menu(_pv_opts, f"PROVIDER  ({_pv_base})")
-                    if _pv_pick == '\x00pick':
-                        from .ui import text_input
-                        _pv_pick = text_input("Model id", settings.get('provider_exec_model', ''))
-                    if _pv_pick:
-                        opts['provider'] = _pv_pick
-            except Exception:
-                pass   # backend not reachable — silently skip, launch stays on Anthropic
+        # ── which backend this session runs on ───────────────────
+        # The profile list is LOCAL, so offering it reaches nothing and cannot
+        # fail. Only the second step — a live OmniRoute catalogue — can, and it
+        # is the only part inside a try. The whole block used to be, so an
+        # unreachable backend made the picker vanish and the session opened on
+        # Anthropic with nothing anywhere saying so.
+        _profs = _c.provider_profiles(settings)
+        if _profs:
+            _pv_opts = [('○  Anthropic (your account)', '')]
+            _pv_opts += [('●  %s  %s' % (p['name'], p.get('model') or ''), p['id'])
+                         for p in _profs]
+            _pid = menu(_pv_opts, "PROVIDER")
+            if _pid:
+                opts['provider'] = _pid
+                prof = _c.provider_profile(_pid, settings)
+                opts['provider_model'] = _pick_provider_model(prof)
         break
 
     if choice == 'terminal':
@@ -711,6 +724,7 @@ def run():
     opts.setdefault('max_thinking', '')
     opts.setdefault('subagent_model', '')
     opts.setdefault('provider', '')
+    opts.setdefault('provider_model', '')
 
     # Persist last session for quick-resume (resume/fork only)
     if choice and choice not in ('terminal', 'new', 'continue'):
@@ -777,28 +791,60 @@ def run():
         _direct_launch(path, encoded_name, choice, opts)
 
 
+def _pick_provider_model(prof):
+    """The model id for a session on *prof*, or its configured default.
+
+    The two kinds get different pickers because they have different amounts of
+    truth available: OmniRoute publishes a live catalogue, a generic
+    Anthropic-shaped server publishes nothing, so offering a menu there would
+    mean inventing its contents.
+
+    Only the catalogue fetch can fail, and failing it falls back to the
+    profile's own model rather than to Anthropic — the user has already said
+    which backend they want by this point."""
+    if not prof:
+        return ''
+    default = prof.get('model') or ''
+    if (prof.get('kind') or '') != 'omniroute':
+        from .ui import text_input
+        return text_input('Model id', default) or default
+    try:
+        from . import omniroute as _om
+        models = _om.list_models(prof.get('base_url', ''), prof.get('api_key', ''))
+    except Exception:
+        models = []
+    if not models:
+        return default
+    from . import omniroute as _om
+    opts = [('◉  auto/coding (dynamic router)', _om.AUTO_MODEL)]
+    opts += [(f'●  {lbl}', mid) for mid, lbl in models]
+    return menu(opts, 'MODEL  /  %s' % prof['name']) or default
+
+
 def build_choice_line(path, encoded_name, choice, opts):
-    """v7 choice-file line. Sentinel '-' for empty fields: cmd's for /f
+    """v8 choice-file line. Sentinel '-' for empty fields: cmd's for /f
     collapses consecutive delimiters, which silently shifted fields in the
     old 5-field format. v3 added config_dir; v4 the --agent name; v5 a path
     to a temp JSON file of selected subagents (--agents); v6 the launch-economy
     env values (MAX_THINKING_TOKENS, CLAUDE_CODE_SUBAGENT_MODEL); v7 the routed
-    provider model.
+    model; v8 splits that into the PROFILE and the model within it.
 
-    v7 exists because the field was genuinely missing, not for symmetry: the bat
-    launcher round-trips the whole launch through this line, so a pick the line
-    could not carry was silently dropped and the session ran on Anthropic while
-    the picker said otherwise."""
+    Each of v7 and v8 exists because a field was genuinely missing, not for
+    symmetry: the bat launcher round-trips the whole launch through this line,
+    so a pick the line cannot carry is silently dropped and the session runs on
+    Anthropic while the picker said otherwise. v7 carried a model id and no
+    backend identity, which is the same hole one level up."""
     def sv(x):
         return str(x).replace('|', '') if x else '-'
-    return '|'.join(['v7', path, encoded_name or '-', choice,
+    return '|'.join(['v8', path, encoded_name or '-', choice,
                      sv(opts['effort']), sv(opts['model']), sv(opts['perm']),
                      sv(opts['name']), sv(opts['worktree']),
                      sv(opts.get('cfgdir') or config_dir),
                      sv(opts.get('agent', '')), sv(opts.get('agents_json', '')),
                      sv(opts.get('max_thinking', '')),
                      sv(opts.get('subagent_model', '')),
-                     sv(opts.get('provider', ''))])
+                     sv(opts.get('provider', '')),
+                     sv(opts.get('provider_model', ''))])
 
 
 def parse_choice_line(line):
@@ -811,12 +857,26 @@ def parse_choice_line(line):
         return '' if v == '-' else v
     opts = {'effort': '', 'model': '', 'perm': '', 'name': '',
             'worktree': '', 'agent': '', 'agents_json': '', 'cfgdir': '',
-            'max_thinking': '', 'subagent_model': '', 'provider': ''}
-    if t and t[0] == 'v7':
+            'max_thinking': '', 'subagent_model': '', 'provider': '',
+            'provider_model': ''}
+    if t and t[0] == 'v8':
         path, enc, choice = g(1), g(2), g(3)
         opts.update(effort=g(4), model=g(5), perm=g(6), name=g(7),
                     worktree=g(8), cfgdir=g(9), agent=g(10), agents_json=g(11),
-                    max_thinking=g(12), subagent_model=g(13), provider=g(14))
+                    max_thinking=g(12), subagent_model=g(13), provider=g(14),
+                    provider_model=g(15))
+    elif t and t[0] == 'v7':
+        # field 14 was a MODEL id, with no backend named. Read it as the model
+        # on the active profile: that is what it meant when it was written, and
+        # a v7 line can be sitting in %TEMP% at the moment of upgrade.
+        path, enc, choice = g(1), g(2), g(3)
+        opts.update(effort=g(4), model=g(5), perm=g(6), name=g(7),
+                    worktree=g(8), cfgdir=g(9), agent=g(10), agents_json=g(11),
+                    max_thinking=g(12), subagent_model=g(13),
+                    provider_model=g(14))
+        if opts['provider_model']:
+            _act = _c.active_provider()
+            opts['provider'] = _act['id'] if _act else ''
     elif t and t[0] == 'v6':
         path, enc, choice = g(1), g(2), g(3)
         opts.update(effort=g(4), model=g(5), perm=g(6), name=g(7),
@@ -912,15 +972,45 @@ def build_launch_command(path, encoded_name, choice, opts):
 
     if opts['effort']:
         args += ['--effort', opts['effort']]
-    if opts['model']:
-        args += ['--model', opts['model']]
-    # Routed session: merge the provider env overrides + use the picked model.
-    provider_model = opts.get('provider', '')
-    if provider_model:
+    # Routed session: merge this PROFILE's env overrides + use the picked model.
+    # The profile is resolved from the id the picker chose, never from whatever
+    # is globally active — two sessions may be running on two backends.
+    prof = _c.provider_profile(opts.get('provider', ''), settings)
+    provider_model = (opts.get('provider_model') or
+                      (prof or {}).get('model') or '') if prof else ''
+    if prof:
         from .omniroute import prepare_launch
-        pv_env, _warn = prepare_launch(provider_model, settings)
+        pv_env, _warn = prepare_launch(provider_model, prof)
         env.update(pv_env)
-        args += ['--model', provider_model]
+    # ONE --model flag. The provider's model wins when there is one: it names a
+    # model that backend serves, while opts['model'] is an Anthropic id the
+    # backend cannot resolve. Both used to be emitted and the right one won only
+    # because Claude Code's parser takes the later occurrence.
+    launch_model = provider_model or opts['model']
+    if launch_model:
+        args += ['--model', launch_model]
+    # Which backend a session ran on is RECORDED, not inferred. _used_provider
+    # reads it back off the transcript's model ids, which cannot tell an
+    # Anthropic model served THROUGH a provider from a direct run — sessions.py
+    # says so itself. We know the answer here.
+    #
+    # A new session's id is ours to choose (`--session-id`), which is the only
+    # way to have one before Claude Code has written a line; a resume keeps the
+    # id it is resuming. A fork mints its own and `-c` picks one we have not
+    # seen, so those two keep falling back to the inference.
+    launched_sid = ''
+    if choice == 'new':
+        import uuid
+        launched_sid = str(uuid.uuid4())
+        args += ['--session-id', launched_sid]
+    elif choice.startswith('resume:'):
+        launched_sid = choice[7:]
+    elif choice.startswith('resume-named::'):
+        launched_sid = choice[14:].split('::', 1)[0]
+    if launched_sid and proj_folder:
+        from .sessions import save_session_provider
+        save_session_provider(proj_folder, launched_sid,
+                              prof['id'] if prof else '')
     # `auto` is dropped where the classifier cannot run — with a provider in
     # play the model is whatever that backend served, and the classifier is a
     # SEPARATE request that would go to the same base URL. The model check reads

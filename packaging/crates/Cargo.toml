@@ -1,0 +1,22 @@
+# A pointer crate. archeus is a Python program; this exists so the name on
+# crates.io resolves to the real thing instead of to nothing — the previous name
+# lost six of its eight organic search results to an unrelated Rust crate, which
+# is a large part of why the project was renamed at all. Publishing a crate that
+# tells you the actual install command is the cheap defence against that
+# happening twice.
+[package]
+name = "archeus"
+version = "2.3.0"
+edition = "2021"
+rust-version = "1.70"
+license = "MIT"
+description = "Pointer crate: archeus is a Python tool — install it with `pipx install archeus`. The memory and workspace layer for AI coding agents."
+homepage = "https://github.com/babarmuhammad/archeus"
+repository = "https://github.com/babarmuhammad/archeus"
+readme = "README.md"
+keywords = ["claude-code", "ai-agents", "agent-memory", "cli", "developer-tools"]
+categories = ["development-tools"]
+
+[[bin]]
+name = "archeus"
+path = "src/main.rs"

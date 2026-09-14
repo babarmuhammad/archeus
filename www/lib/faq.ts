@@ -12,8 +12,8 @@ export const FAQ: QA[] = [
     a: 'The memory and workspace layer for AI coding agents. archeus is free and open source, and it sits in front of the agent: you pick a project, see every session you have ever had in it, and launch the next one with the model, effort, permissions and context you intended. It adds persistent project memory, a session archive you can search and tag, MCP server management, an interactive architecture graph and per-turn cost tracking. Anthropic’s Claude Code CLI is the agent it drives today. It is a Python package, MIT licensed, with zero runtime dependencies, and it runs as a terminal UI or a desktop GUI over the same engine.',
   },
   {
-    q: 'Is this the same as the Rust archeus?',
-    a: 'No. There are two independent open-source projects using the name archeus. This one is the Python memory and workspace layer for AI coding agents — install it with pipx install archeus, source at github.com/babarmuhammad/archeus, documentation at docs.claudectl.space. The other is a Rust agent orchestrator by a different author, published on crates.io. They are unrelated projects and neither is affiliated with Anthropic.',
+    q: 'Where does the name archeus come from, and what is it not?',
+    a: 'Archeus is Paracelsus’ name for the vital force that organises living matter — the thing that keeps a body coherent over time, which is what a memory layer does for a codebase. It is not Arceus, the Pokémon, which is spelled with the vowels the other way round and belongs to Nintendo. There is no connection to either. The software called archeus is this one: the Python memory and workspace layer for AI coding agents, installed with pipx install archeus, source at github.com/babarmuhammad/archeus. It is not affiliated with Anthropic.',
   },
   {
     q: 'Is archeus made by Anthropic?',
@@ -21,7 +21,7 @@ export const FAQ: QA[] = [
   },
   {
     q: 'Does archeus need an API key?',
-    a: 'No. It never talks to the Claude API on its own account — it launches the Claude Code CLI, which uses the login you already have, and it reads the transcripts and settings Claude Code writes to disk. There is nothing to configure and no subscription. Everything runs on your machine, and the desktop GUI is served on loopback only.',
+    a: 'Not by default. Out of the box it launches the Claude Code CLI, which uses the login you already have, and it reads the transcripts and settings Claude Code writes to disk — there is nothing to configure and no subscription. A key is only involved if you deliberately point a session somewhere else: archeus can route a session at a local model server, OpenRouter, OmniRoute or anything that serves POST /v1/messages, and that endpoint’s credentials are yours to supply. Everything runs on your machine either way, and the desktop GUI is served on loopback only.',
   },
   {
     q: 'How do I install archeus on Windows, macOS or Linux?',
@@ -93,7 +93,11 @@ export const FAQ: QA[] = [
   },
   {
     q: 'Does archeus work with coding agents other than Claude Code?',
-    a: 'Not today. Claude Code is the only agent archeus drives, and everything it does reads the files Claude Code writes to disk. Provider-neutral memory, and then an open harness of its own, is the long-term direction — a goal, not a feature, and not something you can use yet. Claude Code is the first surface, not the boundary.',
+    a: 'Not yet — Claude Code is still the only harness archeus drives, and everything it does reads the files Claude Code writes to disk. The half of that goal which has shipped is the model: a session can run against a local server, OpenRouter, OmniRoute or any endpoint that serves POST /v1/messages, and it keeps its agents, skills, hooks, MCP servers and checkpoints while it does. Driving other harnesses is the work in progress: an open harness of its own is a long-term goal and not something you can use yet. Claude Code is the first surface, not the boundary.',
+  },
+  {
+    q: 'Can I run archeus against a local model, or something other than Anthropic?',
+    a: 'Yes. Settings → Model provider takes any endpoint that serves POST /v1/messages — Ollama, llama.cpp, vLLM or another self-hosted server on your own machine, OpenRouter, or OmniRoute’s free tier — and a translating gateway handles backends that speak the OpenAI chat format instead. The session is still a real Claude Code session, so agents, skills, hooks, MCP servers, slash commands and checkpoints all keep working; what a backend swap genuinely costs is subagents, prompt caching, extended thinking and web_search, and that is written down rather than glossed. archeus’ own internal Claude calls — memory extraction, lesson distillation, review, the generators — can be routed there too, but that is opt-in and off by default, because they run unattended and moving them changes which account is billed.',
   },
 ];
 
