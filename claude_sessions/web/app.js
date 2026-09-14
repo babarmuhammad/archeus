@@ -767,7 +767,7 @@ const NAV=[
   // row, the help table), so a pre-escaped label came out as "Paths &amp; limits"
   // on screen. A LABEL is data; the entity goes in the markup, not in the data.
   ['paths','folder','Paths & limits','Where archeus finds your editor and Claude Code, what its own calls may spend, and what the memory graph may hold.',()=>pgSetPaths,'form'],
-  ['models','ai','Models','Free execution through OmniRoute, and the failover list that retries the next model when a turn dies.',()=>pgSetModels,'form'],
+  ['models','ai','Models','The backend your sessions run against — Anthropic, a local server, OpenRouter or OmniRoute — and the failover list that retries the next model when a turn dies.',()=>pgSetModels,'form'],
   ['updates','refresh','Updates','Versions of archeus, Claude Code and the model catalogue — and what archeus checks on its own: updates, notifications, and the auto-memory schedule.',()=>pgSetUpdates,'form'],
   ['searchp','search','Search','Full-text search over every session transcript on the machine.',()=>pgSearch,'feed'],
   ['helpp','help','Help','This page: every screen in the app and every key in the terminal UI.',()=>pgHelp,'pile'],
