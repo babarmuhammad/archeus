@@ -208,4 +208,4 @@ def test_the_gate_runs_through_the_shared_confirm(tmp_path):
         __import__('claude_sessions.skills', fromlist=['x']).install_from_git)
     assert 'skillscan.review_gate' in installer
     # and it must be reached before any write
-    assert installer.index('review_gate') < installer.index('install_skill(d, project_path)')
+    assert installer.index('review_gate') < installer.index('install_skill(d,')

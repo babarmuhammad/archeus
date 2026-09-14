@@ -98,7 +98,7 @@ def test_plan_prompt_includes_weak_model_instructions(monkeypatch, tmp_path):
 
 def test_council_synth_prompt_includes_weak_model_instructions(monkeypatch, tmp_path):
     seen = {}
-    def fake_headless(model, prompt, cwd, omni_env=None, cfgdir=''):
+    def fake_headless(model, prompt, cwd, prov_env=None, cfgdir=''):
         if 'CRITIQUE' not in prompt:
             return f'critique from {model}'
         seen['synth_prompt'] = prompt
@@ -132,7 +132,7 @@ def test_council_disabled_returns_plan_unchanged(monkeypatch, tmp_path):
 
 def test_council_enabled_calls_multiple_models_and_synthesizes(monkeypatch, tmp_path):
     calls = []
-    def fake_headless(model, prompt, cwd, omni_env=None, cfgdir=''):
+    def fake_headless(model, prompt, cwd, prov_env=None, cfgdir=''):
         calls.append(model)
         return 'FINAL MERGED PLAN' if model == plan_execute.COUNCIL_MODELS[0] and 'CRITIQUE' in prompt \
             else f'critique from {model}'
@@ -167,13 +167,13 @@ def test_council_short_plan_skipped(monkeypatch, tmp_path):
 
 def test_council_routes_through_omniroute_when_configured(monkeypatch, tmp_path):
     seen_envs = []
-    def fake_headless(model, prompt, cwd, omni_env=None, cfgdir=''):
-        seen_envs.append(omni_env)
+    def fake_headless(model, prompt, cwd, prov_env=None, cfgdir=''):
+        seen_envs.append(prov_env)
         return f'critique from {model}'
     monkeypatch.setattr(plan_execute, '_headless', fake_headless)
-    omni_env = {'ANTHROPIC_BASE_URL': 'http://localhost:20128'}
-    plan_execute.optimize_plan_council('task', _LONG_PLAN, str(tmp_path), omni_env=omni_env)
-    assert seen_envs and all(e == omni_env for e in seen_envs)
+    prov_env = {'ANTHROPIC_BASE_URL': 'http://localhost:20128'}
+    plan_execute.optimize_plan_council('task', _LONG_PLAN, str(tmp_path), prov_env=prov_env)
+    assert seen_envs and all(e == prov_env for e in seen_envs)
 
 
 def test_headless_never_prefixes_model(monkeypatch, tmp_path):
@@ -186,12 +186,12 @@ def test_headless_never_prefixes_model(monkeypatch, tmp_path):
     monkeypatch.setattr(gui_api, '_run_cancellable', fake_run_cancellable)
 
     plan_execute._headless('claude-sonnet-5', 'p', str(tmp_path),
-                           omni_env={'ANTHROPIC_BASE_URL': 'http://localhost:20128'})
+                           prov_env={'ANTHROPIC_BASE_URL': 'http://localhost:20128'})
     args = captured['args']
     assert args[args.index('--model') + 1] == 'claude-sonnet-5'
 
     plan_execute._headless('auto/best-coding', 'p', str(tmp_path),
-                           omni_env={'ANTHROPIC_BASE_URL': 'http://localhost:20128'})
+                           prov_env={'ANTHROPIC_BASE_URL': 'http://localhost:20128'})
     args = captured['args']
     assert args[args.index('--model') + 1] == 'auto/best-coding'
 
@@ -266,12 +266,12 @@ def test_run_cancellable_nonzero_exit_records_job_error(monkeypatch):
 
 def test_council_uses_omni_roster_when_routed_through_omniroute(monkeypatch, tmp_path):
     calls = []
-    def fake_headless(model, prompt, cwd, omni_env=None, cfgdir=''):
+    def fake_headless(model, prompt, cwd, prov_env=None, cfgdir=''):
         calls.append(model)
         return f'critique from {model}'
     monkeypatch.setattr(plan_execute, '_headless', fake_headless)
-    omni_env = {'ANTHROPIC_BASE_URL': 'http://localhost:20128'}
-    plan_execute.optimize_plan_council('task', _LONG_PLAN, str(tmp_path), omni_env=omni_env)
+    prov_env = {'ANTHROPIC_BASE_URL': 'http://localhost:20128'}
+    plan_execute.optimize_plan_council('task', _LONG_PLAN, str(tmp_path), prov_env=prov_env)
     for m in plan_execute.OMNI_COUNCIL_MODELS:
         assert m in calls
     for m in plan_execute.COUNCIL_MODELS:

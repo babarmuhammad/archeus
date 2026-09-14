@@ -39,7 +39,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 
 from . import config as _c
 from . import proxy_base as _proxy
@@ -53,7 +53,7 @@ _D = _proxy.Daemon('gateway', '--gateway-serve', 'gateway')
 _MARKER_PATH = _D.marker_path
 
 #: The gateway substitutes the user's own upstream credential into everything it
-#: forwards. Pointing it at Anthropic would mean a claudectl-built request
+#: forwards. Pointing it at Anthropic would mean a archeus-built request
 #: wearing Anthropic's endpoint — the exact shape of the harness traffic
 #: Anthropic has taken enforcement action against elsewhere. It costs nothing to
 #: refuse, and refusing here means nobody can later "generalize" this module into
@@ -381,16 +381,16 @@ def serve_cli(port):
     port = int(port or s.get('gateway_port') or 20130)
     why = target_error(s.get('gateway_target_base_url'))
     if why:
-        _emit('claudectl gateway: %s' % why)
+        _emit('archeus gateway: %s' % why)
         return 1
     try:
         srv = make_server(port)
     except Exception as e:
-        _emit('claudectl gateway: cannot bind port %d: %s' % (port, e))
+        _emit('archeus gateway: cannot bind port %d: %s' % (port, e))
         return 1
     _D.write_lock(port)
     _emit('')
-    _emit('claudectl gateway  :%d -> %s (openai-chat)'
+    _emit('archeus gateway  :%d -> %s (openai-chat)'
           % (port, s.get('gateway_target_base_url')))
     try:
         srv.serve_forever()
@@ -402,7 +402,7 @@ def serve_cli(port):
 
 
 def make_server(port=0):
-    return ThreadingHTTPServer(('127.0.0.1', port), _Handler)
+    return _proxy.make_server(port, _Handler, 'gateway')
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -444,7 +444,7 @@ class _Handler(BaseHTTPRequestHandler):
         if path.endswith('/v1/messages/count_tokens'):
             # No OpenAI-shape equivalent. Claude Code falls back gracefully when
             # the endpoint is absent, but it asks first, so answer with the same
-            # estimate the rest of claudectl uses rather than 404 on every turn.
+            # estimate the rest of archeus uses rather than 404 on every turn.
             return _proxy.write_json(self, 200, {'input_tokens': _estimate_tokens(body)})
         if not path.endswith('/v1/messages'):
             return _proxy.write_json(self, 404, {'type': 'error', 'error': {
@@ -543,7 +543,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def _estimate_tokens(body):
-    """chars//4, the same floor claudectl uses everywhere it cannot ask. No
+    """chars//4, the same floor archeus uses everywhere it cannot ask. No
     dependency-free exact counter exists across providers, and a wrong-but-close
     number beats a 404 the client has to special-case."""
     n = len(_flatten_text(body.get('system')))

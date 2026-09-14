@@ -1,4 +1,4 @@
-# claudectl — launcher stub
+# archeus — launcher stub
 # Called by: Open Repo cmd.bat → py "%~dp0claude-sessions.py"
 import sys, os, traceback
 
@@ -20,12 +20,12 @@ except SystemExit:
     raise   # normal exit — let bat file handle choice_file check
 except BaseException:
     tb = traceback.format_exc()
-    banner = "\n" + "=" * 60 + "\n  CLAUDECTL CRASH\n" + "=" * 60 + "\n" + tb + "=" * 60
+    banner = "\n" + "=" * 60 + "\n  ARCHEUS CRASH\n" + "=" * 60 + "\n" + tb + "=" * 60
 
     # Always persist the traceback — console may be closed/redirected
     try:
         import tempfile
-        log_path = os.path.join(tempfile.gettempdir(), 'claudectl_crash.log')
+        log_path = os.path.join(tempfile.gettempdir(), 'archeus_crash.log')
         with open(log_path, 'a', encoding='utf-8') as f:
             f.write(banner + "\n")
     except Exception:

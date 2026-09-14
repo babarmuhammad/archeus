@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://babarmuhammad.github.io/claudectl/sitemap.xml
+Sitemap: https://docs.claudectl.space/sitemap.xml

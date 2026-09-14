@@ -1,4 +1,4 @@
-"""Frame-based rendering for the claudectl TUI.
+"""Frame-based rendering for the archeus TUI.
 
 Screens build a list[str] frame; render_frame() diffs it against the
 previous frame and rewrites only changed lines (wrapped in DECSET 2026
@@ -205,8 +205,15 @@ def frame_height():
 
 # ── frame line builders ──────────────────────────────────────
 
+#: The wordmark, and the first crumb of every screen's header. Upper case only
+#: here — the product is `archeus` in prose (notes/brand-study.md 4.5) and this
+#: is the mark, not the word. It lived as a bare literal at eleven call sites in
+#: ui.py alone, which is eleven places the last rename had to find by grep.
+WORDMARK = 'ARCHEUS'
+
+
 def header(*crumbs):
-    """Breadcrumb title bar:  CLAUDECTL ▸ project ▸ SESSIONS """
+    """Breadcrumb title bar:  ARCHEUS ▸ project ▸ SESSIONS """
     hb = _c.C_HEADER_BG
     text = '  ' + f' ▸ '.join(f'{C_BOLD}{c}{C_RESET}{hb}' for c in crumbs) + ' '
     w = content_width()
@@ -245,10 +252,33 @@ def hint_bar(text):
 def hint_keys(pairs, prefix='', suffix=''):
     """Hint line where each (key, label) renders the key in accent and the
     label dim, so command keys stand out from surrounding text. Optional
-    prefix/suffix are dim. ANSI-safe truncation to terminal width."""
-    parts = [f"{_c.C_ACCENT}{key}{C_RESET} {C_DIM}{label}{C_RESET}" for key, label in pairs]
+    prefix/suffix are dim.
+
+    Drops WHOLE items that do not fit rather than truncating the line, which cut
+    the last hint mid-word: the session bar reached ten items and ~118 columns
+    when hand-off moved into it, so on an 80-column terminal `⇧K hand off`
+    rendered as `⇧K hand o…` and read as a rendering bug. A `+n` tail says the
+    rest are still there — `/` opens the palette that lists them all.
+    """
     lead = f"  {C_DIM}{prefix}{C_RESET}   " if prefix else "  "
     tail = f"   {C_DIM}{suffix}{C_RESET}" if suffix else ''
+    room = content_width() - disp_width(lead) - disp_width(tail)
+
+    def fit(space):
+        parts, used, dropped = [], 0, 0
+        for key, label in pairs:
+            w = disp_width(key) + 1 + disp_width(label) + (3 if parts else 0)
+            if used + w > space:
+                dropped += 1
+                continue
+            parts.append(f"{_c.C_ACCENT}{key}{C_RESET} {C_DIM}{label}{C_RESET}")
+            used += w
+        return parts, dropped
+
+    parts, dropped = fit(room)
+    if dropped:                      # the `+n` needs its own room, so refit
+        parts, dropped = fit(room - 5)
+        tail = f"   {C_DIM}+{dropped}{C_RESET}" + tail
     return trunc(lead + "   ".join(parts) + tail, content_width())
 
 

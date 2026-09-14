@@ -38,7 +38,7 @@ _acct_state = {}     # cfgdir -> {'name','email','data','status',...} per accoun
 
 
 def _creds(cfgdir=None):
-    """The account's stored OAuth block, read-only. claudectl NEVER writes this
+    """The account's stored OAuth block, read-only. archeus NEVER writes this
     file: refreshing an access token can rotate the refresh token, and a bad
     write-back would log the account out of Claude Code itself."""
     try:
@@ -128,7 +128,7 @@ def fetch_usage(cfgdir=None):
         'Authorization': f'Bearer {token}',
         'anthropic-beta': 'oauth-2025-04-20',
         'Content-Type': 'application/json',
-        'User-Agent': 'claudectl',
+        'User-Agent': 'archeus',
     })
     try:
         with urllib.request.urlopen(req, timeout=10) as r:

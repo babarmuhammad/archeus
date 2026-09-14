@@ -99,6 +99,67 @@ def test_a_saved_style_round_trips(tmp_path):
     assert 'Code Review' in names
 
 
+def test_viewing_a_builtin_explains_itself_instead_of_showing_nothing(tmp_path):
+    """`read()` returned '' for anything not on disk, and all three built-ins
+    are not on disk — so the view button rendered "(empty)" on the styles most
+    people have, which reads as a dead button rather than as an empty file."""
+    text = outputstyles.read('Explanatory', _proj(tmp_path), str(tmp_path / 'cfg'))
+    assert text and 'ships inside Claude Code' in text
+    assert 'Explains its reasoning' in text, 'the description is the useful half'
+
+
+def test_every_starter_is_a_usable_style(tmp_path):
+    """A starter is offered as something you can read and copy, so it has to
+    hold up as a document — an empty or nameless one would install a file that
+    changes nothing."""
+    rows = outputstyles.starters()
+    assert len(rows) >= 4
+    for s in rows:
+        assert s['name'] and s['description']
+        assert len(s['body'].splitlines()) >= 5, s['name']
+        assert s['scope'] == 'starter' and not s['builtin']
+    names = {s['name'].lower() for s in rows}
+    builtin = {n.lower() for n, _d in outputstyles.BUILTIN}
+    assert not (names & builtin), 'a starter must not shadow a built-in'
+
+
+def test_a_starter_can_be_read_before_it_is_installed(tmp_path):
+    body = outputstyles.read('Terse', None, str(tmp_path / 'cfg'))
+    assert 'No preamble' in body
+
+
+def test_installing_a_starter_produces_an_ordinary_style(tmp_path):
+    """Nothing stays linked to archeus: what lands on disk is a normal
+    markdown style the user owns, listed like any other."""
+    cfg = str(tmp_path / 'cfg')
+    ok, msg = outputstyles.install_starter('Reviewer', None, cfg)
+    assert ok, msg
+    assert os.path.isfile(os.path.join(cfg, 'output-styles', 'Reviewer.md'))
+    row = next(s for s in outputstyles.listing(None, cfg) if s['name'] == 'Reviewer')
+    assert row['scope'] == 'user' and not row['builtin']
+    ok, _ = outputstyles.delete('Reviewer', None, cfg)
+    assert ok
+
+
+def test_an_unknown_starter_is_refused(tmp_path):
+    ok, msg = outputstyles.install_starter('nope', None, str(tmp_path / 'cfg'))
+    assert not ok and 'nope' in msg
+
+
+def test_the_active_scope_says_which_file_won(tmp_path):
+    """Two settings.json files can both name a style and only one is in force.
+    Without this the page could show the winner but not where it came from —
+    so a user changing the wrong file saw nothing happen."""
+    proj = _proj(tmp_path)
+    cfg = str(tmp_path / 'cfg')
+    assert outputstyles.active_scope(proj, cfg) == ''
+    outputstyles.select('Learning', None, cfg)
+    assert outputstyles.active_scope(proj, cfg) == 'user'
+    outputstyles.select('Explanatory', proj, cfg)
+    assert outputstyles.active_scope(proj, cfg) == 'project'
+    assert outputstyles.current(proj, cfg) == 'Explanatory'
+
+
 # ── checkpoints ───────────────────────────────────────────────
 
 def _px(name):

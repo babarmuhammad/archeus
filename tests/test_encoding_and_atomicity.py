@@ -7,9 +7,9 @@ too crash-free to exercise.
    broad `except` that reports the whole feature as unavailable — so git status
    goes blank and the CLAUDE.md commit block silently empties.
 
-2. The settings files claudectl writes are parsed by Claude Code itself. A plain
+2. The settings files archeus writes are parsed by Claude Code itself. A plain
    open(path,'w') that dies partway leaves truncated JSON and breaks the user's
-   session, not just claudectl.
+   session, not just archeus.
 """
 
 import json
@@ -175,6 +175,42 @@ def test_no_captured_subprocess_spawns_a_visible_console():
     assert not offenders, (
         'captured subprocess with no creationflags (flashes a console on '
         'Windows): %s' % offenders)
+
+
+def test_every_captured_spawn_goes_through_proc_run():
+    """`proc.py` says it is the one place a subprocess starts, and that claim is
+    what the test suite's stubs are built on: the endpoint floor patches
+    `proc.run`, so a module calling `subprocess.run` directly runs the REAL
+    binary during tests. `mcp.get_mcp_status` did exactly that — every endpoint
+    test that touched MCP ran `claude mcp list` against the user's own account,
+    which the conftest file-restore guard caught as damage to `~/.claude.json`.
+
+    Exempt: `proc.py` itself, and a spawn that deliberately shows a console
+    (those pass CREATE_NEW_CONSOLE and are covered by the test above).
+    """
+    import ast
+    import pathlib
+    pkg = pathlib.Path(__file__).resolve().parent.parent / 'claude_sessions'
+    offenders = []
+    for f in sorted(pkg.glob('*.py')):
+        if f.name == 'proc.py':
+            continue
+        src = f.read_text(encoding='utf-8')
+        for node in ast.walk(ast.parse(src)):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            # `subprocess.run` only. A raw Popen is a STREAMING seam — the
+            # cancellable job runner, the progress-bar reader, a detached
+            # worker — and each of those is a deliberate thing proc.run cannot
+            # express. A blocking captured `run` has no such excuse.
+            if not (isinstance(fn, ast.Attribute) and fn.attr == 'run'
+                    and isinstance(fn.value, ast.Name) and fn.value.id == 'subprocess'):
+                continue
+            offenders.append('%s:%d' % (f.name, node.lineno))
+    assert not offenders, (
+        'subprocess used directly instead of proc.run — the test stubs cannot '
+        'see these, so they run for real: %s' % offenders)
 
 
 def test_a_test_cannot_write_a_real_file_outside_the_temp_area():

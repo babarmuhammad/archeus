@@ -1,4 +1,4 @@
-"""claudectl GUI — a local web app served from the stdlib, zero deps.
+"""archeus GUI — a local web app served from the stdlib, zero deps.
 
 Runs a ThreadingHTTPServer bound to 127.0.0.1 on a free port, opens the
 default browser, and serves a single-page app (markup in gui_html.py).
@@ -7,12 +7,27 @@ spawns claude.exe in a NEW console window (a browser can't host a terminal),
 reusing main.build_launch_command for exact TUI parity.
 
 Security: the server binds loopback only, and _guard() enforces three things
-on every /api request — an allowlisted Host, no browser fetch-metadata, and a
-per-run secret in X-Claudectl. A custom header alone is NOT enough: it stops a
+on every /api request — an allowlisted Host, no cross-site fetch-metadata, and a
+per-run secret in X-Archeus. A custom header alone is NOT enough: it stops a
 plain cross-origin fetch, but under DNS rebinding the attacker's own origin IS
 this server, so it may send any header it likes with no preflight. The Host
 check is what actually closes that, and TOKEN closes the case of another local
 process that guessed the port.
+
+TOKEN only closes that case if the server does not GIVE it away. `/` used to be
+served on the Host check alone, and `/` is the page the token is substituted
+into — so any process that could open a socket to the port could just ask for it,
+which on Windows includes a process running as a DIFFERENT user, because loopback
+is not a user-identity boundary. `/` now takes the token in its query string, the
+way `/graph` always has, and the launcher puts it there.
+
+The token therefore stays in the address bar, and the obvious tidy-up is a trap:
+having app.js strip it with history.replaceState breaks RELOAD, because F5
+re-requests whatever the address bar holds and the answer to a bare `/` is 403.
+A cookie does not rescue it either — cookies ignore the port, so any other
+loopback server the user visits would be handed it. What is left is a URL in the
+user's own browser history carrying a secret that dies with the process, which
+is the cheaper half of the trade against giving it to anyone who asks.
 """
 
 import hmac
@@ -33,7 +48,7 @@ from .config import (load_settings, save_settings,
                      EFFORTS, PERMS, PERM_LABELS,
                      THINKING_CAPS, THINKING_LABELS)
 from .paths import find_actual_path
-from .sessions import _is_anthropic_model, _used_omni   # noqa: F401 (re-exported)
+from .sessions import _is_anthropic_model, _used_provider   # noqa: F401 (re-exported)
 from . import store
 
 
@@ -68,7 +83,9 @@ def list_projects():
         g = groups.setdefault(enc, {'path': actual, 'dirs': set(), 'mtime': mtime})
         g['dirs'].add(acct_dir)
         g['mtime'] = max(g['mtime'], mtime)
-    pd = load_settings().get('project_defaults') or {}
+    _s = load_settings()
+    pd = _s.get('project_defaults') or {}
+    hidden = _c.hidden_projects(_s)
     from .sessions import format_age
     out = []
     for enc, g in groups.items():
@@ -80,18 +97,21 @@ def list_projects():
                     'accounts': [names.get(d, os.path.basename(d)) for d in dirs],
                     'primary_cfgdir': dirs[0],
                     'auto_memory': bool((pd.get(enc) or {}).get('auto_memory')),
+                    # archived out of the lists, not off the disk — the sidebar
+                    # filters on this and the TUI reads the same flag
+                    'hidden': enc in hidden,
                     # the TUI's `!` badge condition, verbatim (session_menu.py):
                     # two isfile() per project, negligible beside find_actual_path
                     'set_up': (os.path.isfile(os.path.join(g['path'], 'CLAUDE.md'))
-                               or os.path.isfile(os.path.join(
-                                   g['path'], '.claudectl', 'memory', 'graph.json')))})
+                               or os.path.isfile(store.workfile(
+                                   g['path'], 'memory', 'graph.json')))})
     out.sort(key=lambda r: r['mtime'], reverse=True)
     return out
 
 
 def list_sessions(encoded):
     """Sessions of a project across every account, newest-first.
-    [{'sid','title','preview','age','count','account','cfgdir','tokens','omni'}]"""
+    [{'sid','title','preview','age','count','account','cfgdir','tokens','provider'}]"""
     from .sessions import (account_folders_for, scan_sessions, load_name,
                            get_session_title, format_age)
     from .stats import get_session_stats_cached, _sum_usage, fmt_tok
@@ -102,19 +122,19 @@ def list_sessions(encoded):
             jsonl = os.path.join(folder, f'{sid}.jsonl')
             title = load_name(folder, sid) or get_session_title(jsonl) or ''
             tokens = ''
-            omni = False
+            provider = False
             try:
                 st = get_session_stats_cached(jsonl)
                 tot = sum(_sum_usage(st).values())
                 if tot:
                     tokens = fmt_tok(tot)
-                omni = _used_omni(st)
+                provider = _used_provider(st)
             except Exception:
                 pass
             out.append({'sid': sid, 'title': title, 'preview': preview,
                         'age': format_age(mtime).strip(), 'mtime': mtime,
                         'count': count, 'account': acct_name,
-                        'cfgdir': cfgdir, 'tokens': tokens, 'omni': omni})
+                        'cfgdir': cfgdir, 'tokens': tokens, 'provider': provider})
     out.sort(key=lambda r: r['mtime'], reverse=True)
     return out
 
@@ -190,6 +210,7 @@ def state_payload():
         'memory_budget': s.get('memory_budget', 600),
         'gui_shell': s.get('gui_shell', 'auto'),
         'auto_update': s.get('auto_update', 'notify'),
+        'notifications': bool(s.get('notifications', True)),
         'plan_model': s.get('plan_model', ''),
         'exec_model': s.get('exec_model', ''),
         'extract_model': s.get('extract_model', ''),
@@ -205,10 +226,6 @@ def state_payload():
         'failover_quiet': bool(s.get('failover_quiet')),
         'theme': s.get('theme', 'default'),
         'motion': _motion_level(s),
-        # collapsed sidebar nav groups — a list of group names, so adding or
-        # renaming a group never needs a migration: an unknown name is simply
-        # not matched by any group and is carried through untouched.
-        'nav_collapsed': [str(x) for x in (s.get('nav_collapsed') or [])],
         # 0 = never dragged; the CSS default stays in charge
         'side_w': int(s.get('side_w') or 0),
         'nav_h': int(s.get('nav_h') or 0),
@@ -219,10 +236,21 @@ def state_payload():
         'stage': _stage_tier(s),
         # 0 = follow whatever the look asks for; 40..100 = an explicit override
         'surface': _surface(s),
-        'otel': {'enabled': bool(s.get('otel_enabled')),
-                 'endpoint': s.get('otel_endpoint', ''),
-                 'protocol': s.get('otel_protocol', 'http/protobuf'),
-                 'headers': s.get('otel_headers', '')},
+        # same convention, for how bright the background is allowed to be
+        'brightness': _brightness(s),
+        # Flat, and named exactly as /api/settings takes them back. Nested under
+        # an 'otel' key they did not match what the settings page read
+        # (`ST.otel_enabled`), so every field showed its default however it was
+        # configured, and Save wrote those defaults back over the real values.
+        'otel_enabled': bool(s.get('otel_enabled')),
+        'otel_endpoint': s.get('otel_endpoint', ''),
+        'otel_protocol': s.get('otel_protocol', 'http/protobuf'),
+        # `otel_headers` is documented as carrying "Authorization=Bearer <token>"
+        # and is WRITE-ONLY: a boolean goes out, never the value. It is the same
+        # treatment `provider_api_key` gets and the one secret in this payload
+        # that had been missed — readable by injected script until the handler
+        # escaping was fixed.
+        'otel_has_headers': bool(s.get('otel_headers')),
         'themes': theme_palettes(),
         'skins': {n: dict(v) for n, v in _themes.SKINS.items()},
         'worlds': {n: dict(v) for n, v in _themes.WORLDS.items()},
@@ -268,6 +296,30 @@ def _surface(s):
     return 0 if v <= 0 else max(40, min(100, v))
 
 
+def _brightness(s):
+    """How bright the animated background may get, as a percentage of what the
+    skin asks for — or 0 for "ask the look".
+
+    Every skin ships a `calm` value, and `calm` is a ceiling: it mixes the scene
+    back toward the page background so the background stays a ground rather than
+    a competitor to the text. That ceiling was tuned once, against one verdict
+    ("overstimulating, confonde") and later against the opposite one ("too dim,
+    I can't see anything") — which is the signature of a taste question wearing
+    a constant's clothes. Two monitors, two rooms, two people.
+
+    So it is exposed, and it SCALES rather than replaces: 100 means exactly what
+    the skin authored, so the looks keep their relative brightness at every
+    setting instead of flattening to one number. The clamp is generous at the
+    top because the scene's own ceiling (0.95, in stage.js) is the real limit;
+    it is 40 at the bottom because below that a scene is indistinguishable from
+    `stage: off`, which is its own setting and a cheaper one."""
+    try:
+        v = int(s.get('brightness') or 0)
+    except (TypeError, ValueError):
+        return 0
+    return 0 if v <= 0 else max(40, min(220, v))
+
+
 def _stage_tier(s):
     """How much of the animated background runs: 'cinematic' | 'lite' | 'off'.
 
@@ -288,34 +340,41 @@ def _stage_tier(s):
     return t if t in _themes.STAGE_TIERS else 'lite'
 
 
-def launch_session(path, encoded, choice, opts):
-    """Spawn claude.exe in a NEW console window. Returns (ok, error)."""
+def launch_session(path, encoded, choice, opts, want_pid=False):
+    """Spawn claude.exe in a NEW console window. Returns (ok, error).
+
+    `want_pid=True` returns (ok, error, pid) instead — the loops board needs a
+    handle on the console it started, because a `/loop` lives inside its session
+    and stopping it from outside means ending that process tree. The default
+    shape is unchanged so the two existing callers stay as they are."""
     from .main import build_launch_command
     from .paths import resolve_dir
     # `path` arrives in a request body and becomes a subprocess cwd; validate
     # before spawning, not after.
+    def _out(ok, err, pid=0):
+        return (ok, err, pid) if want_pid else (ok, err)
     if not resolve_dir(path):
-        return False, 'not a directory: %s' % (path or '(empty)')
+        return _out(False, 'not a directory: %s' % (path or '(empty)'))
     try:
         args, env, proj_folder = build_launch_command(path, encoded, choice, opts)
     except RuntimeError as e:
-        return False, str(e)
+        return _out(False, str(e))
     title = f'claude — {os.path.basename(path) or path}'
     # CREATE_NEW_CONSOLE directly (inside proc.spawn_terminal): the old
     # `cmd /c start …` chain, spawned from a windowless GUI process, produced a
     # broken/transparent console window under Windows Terminal.
     from . import proc
-    _p, err = proc.spawn_terminal(args, cwd=path, env=env, title=title,
-                                  keep_open=args is None)
+    p, err = proc.spawn_terminal(args, cwd=path, env=env, title=title,
+                                 keep_open=args is None)
     if err:
-        return False, err
+        return _out(False, err)
     try:
         from . import workspace
         workspace.update_manifest(path, proj_folder, 'launch', choice=choice,
                                   opts={k: opts.get(k) for k in ('effort', 'model', 'perm')})
     except Exception:
         pass
-    return True, ''
+    return _out(True, '', getattr(p, 'pid', 0) or 0)
 
 
 def rename_session(encoded, cfgdir, sid, name):
@@ -374,13 +433,40 @@ class _Handler(BaseHTTPRequestHandler):
         return host in ('127.0.0.1:%d' % port, 'localhost:%d' % port,
                         '[::1]:%d' % port)
 
+    def _fetch_metadata_ok(self):
+        """The middle layer the module doc promises, and the one that still holds
+        if the token ever leaks.
+
+        It cannot be `failover.py`'s check — that one rejects Sec-Fetch/Origin
+        outright, which is right there (Claude Code's HTTP client sends none of
+        them) and fatal here, because the SPA's own fetch() sends both. So this
+        is an allowlist rather than a rejection: same-origin only."""
+        port = self.server.server_address[1]
+        sfs = self.headers.get('Sec-Fetch-Site')
+        if sfs and sfs not in ('same-origin', 'none'):
+            return False
+        org = self.headers.get('Origin')
+        return not org or org.lower() in (
+            'http://127.0.0.1:%d' % port, 'http://localhost:%d' % port)
+
+    def _token_ok(self, got):
+        """latin-1, because that is how http.client decoded the header. A
+        non-ASCII byte in it makes compare_digest raise TypeError, which escapes
+        into socketserver.handle_error and prints a traceback the log_message
+        silencer does not cover — free log noise for an unauthenticated peer."""
+        return hmac.compare_digest(str(got or '').encode('latin-1', 'replace'),
+                                   TOKEN.encode('latin-1'))
+
     def _guard(self):
         """Reject anything a cross-origin page could send (see module doc)."""
         if not self._host_ok():
             self._send(403, {'error': 'bad host'})
             return False
-        if not hmac.compare_digest(self.headers.get('X-Claudectl') or '', TOKEN):
-            self._send(403, {'error': 'missing or bad X-Claudectl header'})
+        if not self._fetch_metadata_ok():
+            self._send(403, {'error': 'cross-site request'})
+            return False
+        if not self._token_ok(self.headers.get('X-Archeus')):
+            self._send(403, {'error': 'missing or bad X-Archeus header'})
             return False
         return True
 
@@ -391,17 +477,27 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(403, {'error': 'bad host'})
             return
         if u.path == '/':
+            # The token is not a header here — a top-level navigation cannot
+            # carry one — so it rides the query string, exactly as /graph does.
+            # Serving this page unauthenticated would hand TOKEN to any local
+            # socket peer, which is the one case TOKEN exists to close.
+            if not self._token_ok(q.get('k')):
+                self._send(403, {'error': 'missing or bad token'})
+                return
             from .gui_html import PAGE
-            page = PAGE.replace('__CLAUDECTL_TOKEN__', TOKEN)
+            page = PAGE.replace('__ARCHEUS_TOKEN__', TOKEN)
             self._send(200, page.encode('utf-8'), ctype='text/html')
             return
         if u.path == '/graph':
             # Opened with window.open(), so it cannot carry a header — the token
             # rides the query string instead.
-            if not hmac.compare_digest(q.get('k') or '', TOKEN):
+            if not self._token_ok(q.get('k')):
                 self._send(403, {'error': 'missing or bad token'})
                 return
             self._serve_graph(q)
+            return
+        if u.path == '/favicon.ico':
+            self._serve_icon()
             return
         if u.path.startswith('/vendor/'):
             self._serve_vendor(u.path[len('/vendor/'):])
@@ -447,11 +543,36 @@ class _Handler(BaseHTTPRequestHandler):
             _c.log.warning('gui api %s %s slow: %.2fs', verb, path, dt)
         self._send(200, out)
 
+    def _serve_icon(self):
+        """The app icon, as the page's favicon — which is the ONLY icon most
+        installs ever get.
+
+        PyQt6 is optional, so a plain `pip install archeus` opens the GUI as an
+        Edge `--app` window instead: a real taskbar entry whose icon is the
+        page's favicon, and the page had none, so it took Edge's. A browser tab
+        took the default globe. The mark shipped inside the package all along —
+        nothing was reading it unless PyQt6 happened to be installed.
+
+        Before `_guard()`, for the same reason `/vendor/` is: a `<link
+        rel=icon>` cannot attach the X-Archeus header, and a browser asks for
+        `/favicon.ico` on its own with no headers at all. It is a public logo.
+        """
+        from .config import app_icon_path
+        p = app_icon_path()
+        try:
+            with open(p, 'rb') as f:
+                data = f.read()
+        except OSError:
+            self._send(404, {'error': 'not found'})
+            return
+        self._send(200, data, ctype='image/x-icon',
+                   cache='public, max-age=604800, immutable')
+
     def _serve_vendor(self, rel):
         """Vendored browser libraries (three.js, anime.js) — see gui_html.
 
         Deliberately BEFORE _guard(): a <script src> cannot attach the
-        X-Claudectl header, so a guarded route would 403 every module fetch.
+        X-Archeus header, so a guarded route would 403 every module fetch.
         Nothing is exposed by that — these are public MIT libraries, byte-identical
         to their npm originals, and the allowlist is a dict built by walking
         web/vendor at import, so a traversal attempt is simply a miss.
@@ -523,6 +644,8 @@ class _Handler(BaseHTTPRequestHandler):
             jid = u.path.split('/')[3]
             ok = job_decide(jid, bool(body.get('apply')))
             self._send(200 if ok else 404, {'ok': ok})
+            return            # without this the 404 below is written too, on the
+                              # same socket — one request, two responses
         elif u.path.startswith('/api/job/') and u.path.endswith('/cancel'):
             from .gui_api import job_cancel
             jid = u.path.split('/')[3]
@@ -551,9 +674,14 @@ def _api_sessions(q, body):
 
 
 def _api_launch(q, body):
+    # 'provider' is the routed model id the launch modal offers. It was missing
+    # from this allowlist for as long as the field has existed, so the GUI
+    # posted it and this line dropped it — the session opened on Anthropic with
+    # the picker having said otherwise. Same failure the bat launcher had for
+    # its own reason (no field in the choice line); two paths, one symptom.
     opts = {'effort': '', 'model': '', 'perm': '', 'name': '',
             'worktree': '', 'agent': '', 'agents_json': '', 'cfgdir': '',
-            'max_thinking': '', 'subagent_model': ''}
+            'max_thinking': '', 'subagent_model': '', 'provider': ''}
     opts.update({k: str(v) for k, v in (body.get('opts') or {}).items()
                  if k in opts})
     ok, err = launch_session(body.get('path', ''), body.get('enc', ''),
@@ -600,7 +728,7 @@ def _api_settings(q, body):
     for k in _SETTING_KEYS:
         if k in body:
             s[k] = body[k]
-    # a dollar cap on claudectl's own headless calls: its own owner because it
+    # a dollar cap on archeus's own headless calls: its own owner because it
     # is the one float, and an unclamped one silently disables the cap
     if 'headless_budget_usd' in body:
         try:
@@ -608,6 +736,21 @@ def _api_settings(q, body):
                                                     float(body['headless_budget_usd'] or 0)))
         except (TypeError, ValueError):
             raise BadRequest('headless_budget_usd must be a number')
+    # memory limits are read by the detached memory worker and bound what it
+    # may SPEND, so they are clamped here rather than trusted off the wire.
+    # 0/blank means "no cap", which the backend spells as None.
+    if 'memory_max_calls' in body:
+        try:
+            n = int(body['memory_max_calls'] or 0)
+        except (TypeError, ValueError):
+            raise BadRequest('memory_max_calls must be a whole number')
+        s['memory_max_calls'] = max(1, min(500, n)) if n > 0 else None
+    if 'memory_max_entities' in body:
+        try:
+            s['memory_max_entities'] = max(50, min(20000,
+                                                   int(body['memory_max_entities'] or 500)))
+        except (TypeError, ValueError):
+            raise BadRequest('memory_max_entities must be a whole number')
     # failover_models is user input that a detached daemon reads back —
     # sanitize at this trust boundary rather than in the daemon.
     if 'failover_models' in body:
@@ -619,10 +762,6 @@ def _api_settings(q, body):
     # Chrome geometry is user input that decides layout on the NEXT boot, so a
     # junk value would render an unusable window with no obvious way back.
     # Clamped and typed here rather than trusted from the client.
-    if 'nav_collapsed' in body:
-        raw = body['nav_collapsed']
-        s['nav_collapsed'] = ([str(x)[:40] for x in raw][:16]
-                              if isinstance(raw, list) else [])
     for key, lo, hi in (('side_w', 210, 520), ('nav_h', 34, 900)):
         if key in body:
             try:
@@ -659,8 +798,19 @@ MAX_DRAIN = 8 * 1024 * 1024
 MAX_CONNECTIONS = 32
 
 
+#: How to close the window, registered by whichever shell owns it and read by
+#: POST /api/quit. It exists for one caller: finishing a staged self-upgrade,
+#: which cannot install while the console script it replaces is the running
+#: process. None means there is nothing a request can close — which is also
+#: what makes the endpoint inert under test, where no shell ever runs.
+QUIT_HOOK = None
+
+
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        _c.log_request_error('gui', client_address)
 
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
@@ -719,7 +869,7 @@ else:
 def run_gui(open_browser=True):
     """Show the GUI as a desktop app. Shell preference (settings gui_shell):
     'auto' tries PyQt6 native window → Edge app-mode window → browser tab.
-    Blocks until the window closes / Ctrl+C. Entry for `claudectl --gui`."""
+    Blocks until the window closes / Ctrl+C. Entry for `archeus --gui`."""
     shell = load_settings().get('gui_shell', 'auto')
 
     from .gui_api import start_auto_memory_scheduler
@@ -738,7 +888,19 @@ def run_gui(open_browser=True):
 
     srv = make_server()
     port = srv.server_address[1]
-    url = f'http://127.0.0.1:{port}/'
+
+    def _quit():
+        # From a request thread, so shutdown() cannot be called inline: it
+        # waits for serve_forever's loop, which is what would be waiting for us.
+        threading.Thread(target=srv.shutdown, daemon=True).start()
+        return True
+
+    global QUIT_HOOK
+    QUIT_HOOK = _quit
+    # ?k= is required: `/` is what carries the token into the page, so it cannot
+    # itself be served unauthenticated (see the module doc). app.js drops it from
+    # the address bar as soon as it has booted.
+    url = f'http://127.0.0.1:{port}/?k={TOKEN}'
     if sys.stdout:   # None under pythonw (desktop shortcut launch)
         try:
             # the --gui branch runs before the TUI's UTF-8 console setup,
@@ -746,7 +908,7 @@ def run_gui(open_browser=True):
             sys.stdout.reconfigure(encoding='utf-8', errors='replace')
         except Exception:
             pass
-        print(f'  claudectl GUI  →  {url}   (Ctrl+C to stop)', flush=True)
+        print(f'  archeus GUI  →  {url}   (Ctrl+C to stop)', flush=True)
 
     def _open():
         if shell in ('auto', 'edge'):

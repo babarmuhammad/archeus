@@ -16,15 +16,20 @@ import re
 # codepage (cp1252 on Windows). Without this, one non-ASCII character in the
 # user's own block message raised on the write below, escaped past `return 2`,
 # and the fail-safe at the bottom converted a BLOCK into a silent ALLOW.
-sys.stdout.reconfigure(encoding='utf-8')
-sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+# Guarded: `sys.stdout` is None in a windowed process (pythonw with no
+# console). A hook must degrade to plain output, never die at import.
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except (AttributeError, ValueError, OSError):
+    pass
 
 
 def main():
     if len(sys.argv) < 3:
         return 0
     field, pattern = sys.argv[1], sys.argv[2]
-    msg = sys.argv[3] if len(sys.argv) > 3 else 'blocked by claudectl'
+    msg = sys.argv[3] if len(sys.argv) > 3 else 'blocked by archeus'
     try:
         data = json.load(sys.stdin)
     except Exception:
@@ -40,7 +45,7 @@ def main():
         return 0
     # The decision is already made; explaining it must never be able to undo it.
     try:
-        sys.stderr.write('claudectl: ' + msg + '\n')
+        sys.stderr.write('archeus: ' + msg + '\n')
     except Exception:
         pass
     return 2

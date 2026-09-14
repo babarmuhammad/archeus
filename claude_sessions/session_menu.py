@@ -37,45 +37,57 @@ from .system_prompt import edit_system_prompt
 #:           key, while the palette is a menu with room to spare. Ask
 #:           `ui.help_blurb_budget()` for the number; test_parity_gate.py fails
 #:           a blurb that would truncate.
+#:   bucket  which of the project's four tabs this key belongs under — the same
+#:           four the GUI groups its project tabs into, plus `Help` for the two
+#:           discovery surfaces themselves. It groups the `/` palette and the
+#:           help grid; `scope` still drives the one-line hint bar, which is a
+#:           different cut (what is on screen right now) and cannot be reused
+#:           for it. Beside the row rather than in a lookup table for the same
+#:           reason the blurb is: a second list keyed by the same keys is a
+#:           second thing to forget when a key is added.
 ACTIONS = [
-    ('v', 'view',           'session', '/api/transcript',            'View transcript (/ to search)'),
-    ('r', 'rename',         'session', '/api/rename',                'Rename session'),
-    ('f', 'fork',           'session', '/api/launch',                'Fork session'),  # choice='fork:<sid>'
-    ('t', 'tag',            'session', '/api/session/tags',          'Tag session'),
-    ('d', 'archive',        'session', '/api/session/archive',       'Archive / delete session'),
-    ('e', 'export',         'session', '/api/session/export',        'Export to markdown'),
-    ('i', 'info',           'session', '/api/session/meta',          'Session info: tokens, cost'),
-    ('F', 'files',          'session', '/api/session/changed-files', 'Changed files'),
-    ('A', 'archived',       'session', '/api/session/archived',      'Archived sessions view'),
-    ('m', 'memory',         'project', '/api/memory/state',          'Memory hub: build, ask, preview'),
-    ('g', 'agents',         'project', '/api/agents/session',        'Project agents'),
-    ('n', 'graph',          'project', '/api/graph-lite',            'Architecture + memory graph'),
-    ('X', 'plan→exec',      'project', '/api/job',                   'Plan on one model, run another'),
-    ('R', 'review',         'project', '/api/job',                   'Code review of the working tree'),
-    ('a', 'ai-analyze',     'project', '/api/job',                   'AI-generate CLAUDE.md'),
-    ('c', 'claude.md',      'project', '/api/claude-md',             'Scaffold CLAUDE.md'),
-    ('s', 'sys-prompt',     'project', '/api/system-prompt',         'System prompt'),
-    ('u', 'usage',          'project', '/api/usage/project',         'Project usage stats'),
-    ('w', 'status',         'project', '/api/workspace-status',      'Workspace status & freshness'),
-    ('K', 'inject context', 'project', '/api/inject/sessions',       'Inject context from another chat'),
-    ('W', 'ctx audit',      'project', '/api/ctxaudit',              'Context weight audit (tokens)'),
+    ('v', 'view',           'session', '/api/transcript',            'View transcript (/ to search)', 'Sessions'),
+    ('r', 'rename',         'session', '/api/rename',                'Rename session', 'Sessions'),
+    ('f', 'fork',           'session', '/api/launch',                'Fork session', 'Sessions'),  # choice='fork:<sid>'
+    ('t', 'tag',            'session', '/api/session/tags',          'Tag session', 'Sessions'),
+    ('d', 'archive',        'session', '/api/session/archive',       'Archive / delete session', 'Sessions'),
+    ('e', 'export',         'session', '/api/session/export',        'Export to markdown', 'Sessions'),
+    ('i', 'info',           'session', '/api/session/meta',          'Session info: tokens, cost', 'Sessions'),
+    ('F', 'files',          'session', '/api/session/changed-files', 'Changed files', 'Sessions'),
+    ('A', 'archived',       'session', '/api/session/archived',      'Archived sessions view', 'Sessions'),
+    ('m', 'memory',         'project', '/api/memory/state',          'Memory hub: build, ask, preview', 'Context'),
+    ('g', 'agents',         'project', '/api/agents/session',        'Project agents', 'Project'),
+    ('n', 'graph',          'project', '/api/graph-lite',            'Architecture + memory graph', 'Project'),
+    ('X', 'plan→exec',      'project', '/api/job',                   'Plan on one model, run another', 'Actions'),
+    ('R', 'review',         'project', '/api/job',                   'Code review of the working tree', 'Actions'),
+    ('a', 'ai-analyze',     'project', '/api/job',                   'AI-generate CLAUDE.md', 'Context'),
+    ('c', 'claude.md',      'project', '/api/claude-md',             'Scaffold CLAUDE.md', 'Context'),
+    ('s', 'sys-prompt',     'project', '/api/system-prompt',         'System prompt', 'Context'),
+    ('u', 'usage',          'project', '/api/usage/project',         'Project usage stats', 'Project'),
+    ('w', 'status',         'project', '/api/workspace-status',      'Workspace status & freshness', 'Project'),
+    # 'session' scope now, not 'project': the GUI's equivalent is the `Hand off`
+    # button on a session row, so the row IS the source and there is no
+    # source-picker step. The TUI's own ⇧K still opens the picker (a terminal
+    # list has no per-row buttons), which is why the key and blurb are unchanged.
+    ('K', 'hand off',       'session', '/api/inject/launch',         'Hand this chat to a new one', 'Sessions'),
+    ('W', 'ctx audit',      'project', '/api/ctxaudit',              'Context weight audit (tokens)', 'Context'),
     # ── in the palette and in help, but not in the hint bar: that bar is one
     #    line wide, and these are the half that is reached less often.
-    ('L', 'lessons',        'more', '/api/lessons',      'Lessons review'),
-    ('M', 'memory map',     'more', '/api/memory-map',   'Memory files map (hierarchy)'),
-    ('C', 'compress',       'more', '/api/job',          'Compress CLAUDE.md with AI'),
-    ('p', 'extra PATH',     'more', '/api/extra-paths',  'Extra PATH entries'),
-    ('x', 'add-dirs',       'more', '/api/add-dirs',     'Add directories (--add-dir)'),
-    ('!', 'set up project', 'more', '/api/job',          'One-key setup: CLAUDE.md+memory'),
+    ('L', 'lessons',        'more', '/api/lessons',      'Lessons review', 'Context'),
+    ('M', 'memory map',     'more', '/api/memory-map',   'Memory files map (hierarchy)', 'Context'),
+    ('C', 'compress',       'more', '/api/job',          'Compress CLAUDE.md with AI', 'Context'),
+    ('p', 'extra PATH',     'more', '/api/extra-paths',  'Extra PATH entries', 'Project'),
+    ('x', 'add-dirs',       'more', '/api/add-dirs',     'Add directories (--add-dir)', 'Project'),
+    ('!', 'set up project', 'more', '/api/job',          'One-key setup: CLAUDE.md+memory', 'Context'),
     # ── the discovery surface itself. Listing `/` inside the palette it opens
     #    would be a loop, so it carries no blurb; `?` is a real destination.
-    ('/', 'actions',        'meta', '',                  ''),   # opens the palette below
-    ('?', 'help',           'meta', '',                  'Help'),   # opens ui.help_screen
+    ('/', 'actions',        'meta', '',                  '', 'Help'),   # opens the palette below
+    ('?', 'help',           'meta', '',                  'Help', 'Help'),   # opens ui.help_screen
 ]
 
 #: actions reachable only from the archived view
 ARCHIVED_ACTIONS = [
-    ('d', 'restore/delete', 'session', '/api/session/restore', 'Restore or delete'),
+    ('d', 'restore/delete', 'session', '/api/session/restore', 'Restore or delete', 'Sessions'),
 ]
 
 
@@ -90,19 +102,39 @@ def palette_rows(skip=()):
     list simply omitted `!`, and a row that falls through to the type-to-filter
     handler when picked is worse than no row.
     """
-    return [(blurb, k) for k, _l, _sc, _r, blurb in ACTIONS
-            if blurb and k not in skip]
+    return [(blurb, k) for bucket in _buckets()
+            for k, _l, _sc, _r, blurb, b in ACTIONS
+            if b == bucket and blurb and k not in skip]
+
+
+def _buckets():
+    """Bucket labels in table order. Derived: a hand-kept order would be a
+    second list to reorder when a bucket is renamed."""
+    return list(dict.fromkeys(b for *_x, b in ACTIONS))
 
 
 def key_rows():
     """[(key, blurb)] for the help screen — every key except the palette that
     opens onto them."""
-    return [(k, blurb) for k, _l, _sc, _r, blurb in ACTIONS if blurb]
+    return [r for _b, rows in key_groups() for r in rows]
+
+
+def key_groups():
+    """[(bucket, [(key, blurb)])] — the help grid and the palette read the
+    same four groups the GUI's project tabs use, so a key is looked for in the
+    same place in both surfaces."""
+    out = []
+    for bucket in _buckets():
+        rows = [(k, blurb) for k, _l, _sc, _r, blurb, b in ACTIONS
+                if b == bucket and blurb]
+        if rows:
+            out.append((bucket, rows))
+    return out
 
 
 def _hints(scope):
     return [(('⇧' + k) if k.isupper() else k, label)
-            for k, label, sc, _r, _b in ACTIONS if sc == scope]
+            for k, label, sc, _r, _b, _bk in ACTIONS if sc == scope]
 
 
 def _sid_of(val):
@@ -215,7 +247,7 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
     archived_dir   = os.path.join(proj_folder, 'archived') if proj_folder else None
     # session-learning badge + background memory update. The update (lessons
     # scan and/or auto-refresh) runs in a DETACHED worker process, not a
-    # daemon thread — it must survive claudectl exiting to launch claude.exe
+    # daemon thread — it must survive archeus exiting to launch claude.exe
     # (.bat path), which used to kill the scan mid-flight.
     unlearned = 0
     try:
@@ -231,8 +263,10 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
             unlearned = len(_pend)
             if _pend and _lmode == 'auto':
                 _spawn_bg = True
-        if (_st.get('memory_auto_refresh') == 'open' and project_path
-                and proj_folder and _mem0.get('entities')):
+        # one answer for every runner (memory.auto_enabled), and no longer
+        # gated on the graph being non-empty — that guard is what stopped
+        # auto-memory ever building a project the first time
+        if project_path and proj_folder and _memory.refresh_on_open(project_path):
             _spawn_bg = True
         if _spawn_bg and project_path:
             _memory.spawn_background_worker(project_path, proj_folder)
@@ -270,10 +304,11 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
     pending_ev     = None    # synthesized event (action palette dispatch)
     # first-open setup badge: no CLAUDE.md AND no memory graph
     try:
+        from . import store
         not_set_up = (project_path
                       and not os.path.isfile(os.path.join(project_path, 'CLAUDE.md'))
-                      and not os.path.isfile(os.path.join(
-                          project_path, '.claudectl', 'memory', 'graph.json')))
+                      and not os.path.isfile(store.workfile(
+                          project_path, 'memory', 'graph.json')))
     except Exception:
         not_set_up = False
 
@@ -317,7 +352,11 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
             name = _name_of(s_folder, sid)
             badge = f"{C_DIM}[{count}]{C_RESET} " if count else ''
             if name:
-                disp = f"{C_NAME}{render.trunc(name, 30)}{C_RESET}  {C_DIM}{preview if preview else date}{C_RESET}"
+                # a third of the line, not a fixed 30 columns: the name is the
+                # part you are reading, and on a wide terminal 30 cut a title
+                # that had room to spare while the preview beside it ran on
+                name_w = max(30, render.content_width() // 3)
+                disp = f"{C_NAME}{render.trunc(name, name_w)}{C_RESET}  {C_DIM}{preview if preview else date}{C_RESET}"
             elif preview:
                 disp = f"{badge}{preview}"
             else:
@@ -353,7 +392,7 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
         crumb = 'ARCHIVED' if show_archived else 'SESSIONS'
         if acct_label:
             crumb += f'  ·  {acct_label}'
-        frame = [render.header('CLAUDECTL', project_name, crumb), '']
+        frame = [render.header('ARCHEUS', project_name, crumb), '']
         if not show_archived:
             try:
                 from . import memory as _mem_mod
@@ -585,7 +624,7 @@ def sessions_menu(sessions_in, proj_folder, project_name, project_path, extra_ac
                          for p, n in changed]
             else:
                 lines = [f"{C_DIM}(no file edits recorded in this session){C_RESET}"]
-            pager(('CLAUDECTL', project_name, 'CHANGED FILES'), lines)
+            pager(('ARCHEUS', project_name, 'CHANGED FILES'), lines)
 
         elif ev[0] == 'char' and ev[1] == 'M' and not show_archived:
             from .claude_md import memory_map_menu

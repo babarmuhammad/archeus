@@ -1,9 +1,21 @@
 
 'use strict';
 const $=s=>document.querySelector(s);
-// Per-run secret, substituted into this page by gui._Handler when it is served.
-const CK='__CLAUDECTL_TOKEN__';
-const api=(p,opt={})=>fetch(p,{...opt,headers:{'X-Claudectl':CK,
+/* Per-run secret, substituted into this page by gui._Handler when it is served.
+   `/` is token-gated, so the launcher puts the token in the query string — a
+   top-level navigation cannot carry a header, which is the same reason /graph
+   has always taken it that way.
+
+   It STAYS in the address bar, and that is deliberate. Stripping it with
+   history.replaceState looked strictly better and broke reload: F5 re-requests
+   whatever the address bar holds, which was then a bare `/`, and the answer to
+   that is 403 {"error":"missing or bad token"} — a dead page with no way back
+   except relaunching archeus. A cookie is not the escape hatch either;
+   cookies ignore the port, so any other loopback server the user visits would
+   be sent it. The exposure left is a URL in this machine's own browser history,
+   holding a secret that dies with the process. */
+const CK='__ARCHEUS_TOKEN__';
+const api=(p,opt={})=>fetch(p,{...opt,headers:{'X-Archeus':CK,
   'Content-Type':'application/json',...(opt.headers||{})}}).then(r=>r.json());
 const post=(p,body)=>api(p,{method:'POST',body:JSON.stringify(body||{})});
 
@@ -33,12 +45,90 @@ let _VIS=true;              // QtWebEngine stays 'visible' when minimized — bl
      const nav = paintNow(LOADING);     // pre-await, always safe, returns the token
      …await…
      if(!paint(nav, html)) return;      // post-await, drops if we navigated away */
-function paintNow(html){$('#content').innerHTML=html;return NAV_ID;}
+function paintNow(html){$('#content').innerHTML=html;prune();return NAV_ID;}
 function paint(nav,html){
   if(nav!==NAV_ID)return false;         // navigated away mid-fetch — drop it
   $('#content').innerHTML=html;
+  prune();
   return true;
 }
+/* ── a section whose body resolves to nothing is not painted ──
+   A heading standing over an empty body is the one defect no layout can close:
+   no archetype, no grid mode and no balancing algorithm removes a hole that is
+   a card with nothing in it. Reading the pages found eight of them — Claude
+   Code's "Effective rules", "Prompt history" and "Agent teams", Tools' "Project
+   agents", the first Loops card, the global CLAUDE.md conventions table, the
+   audit's deny rules — every one a `${rows}` whose rows came back empty with no
+   fallback behind it.
+
+   It is done HERE, at the one place that writes #content, for the same reason
+   the paint guard is: a rule that lives in each renderer is a rule fifteen
+   renderers get to forget. Four things keep a card alive, and each is a way of
+   saying "there is something here": TEXT anywhere below the heading, a control
+   or a table, an element with an `id` (a mount point something fills later —
+   `#syncOut`, `#histOut` — which would otherwise be pruned a tick before its
+   fetch lands), and a spinner.
+
+   Emptiness that is itself the information keeps its card, because an empty
+   state is text: "No MCP servers configured" is the MCP page's whole subject. */
+function prune(){
+  // a header row over nothing is the same defect one level down, and it is the
+  // form it actually took in three places: `<table class="tbl">` built from a
+  // `${rows}` that came back empty, so the column names were the whole table
+  document.querySelectorAll('#content table.tbl').forEach(t=>{
+    if(t.querySelectorAll('tr').length<2)t.remove();
+  });
+  document.querySelectorAll('#content .card').forEach(c=>{
+    if(c.querySelector('.card,[id],.spin,input,button,select,textarea,'
+                      +'table,canvas,svg,img,details'))return;
+    const rest=[...c.children].filter(e=>e.tagName!=='H3');
+    if(rest.length&&rest.some(e=>(e.textContent||'').trim()))return;
+    c.remove();
+  });
+}
+/* ── the shell: the page's SHAPE, read from the table, not from the renderer ──
+   A page's composition is declared in NAV's sixth field (TABS' fourth) and
+   applied here. `shell`/`shellNow` are `paint`/`paintNow` plus that wrapper, so
+   a renderer emits its sections and never states — or gets to forget — what
+   kind of page it is on.
+
+   This replaces `PILE`/`paintPile`/`paintNowPile`, which made the wrapper one
+   word at the call site but still left the CHOICE there, 28 times over. The
+   wrapper class stays written in exactly one place for the same reason the raw
+   `#content` write does: two writers is two chances to disagree, and the
+   `break-inside`/`column-span` rules a pile child depends on are invisible from
+   the call site.
+
+     dash   the bento: an explicit area map, for a composition that is designed
+     split  list + detail, the list scrolling in its own pane
+     feed   one homogeneous full-width list under a page-level toolbar
+     form   controls, single column, stacked — never flowed into columns
+     pile   N independent sections, balanced by multicol
+
+   There was a sixth, `grid`: the un-designed default, a bag of cards dropped
+   into #content's auto-fit grid, which is what a page was before anyone
+   decided what it should be. Every page has a shape now, so it is DELETED
+   rather than left here — a default nobody chose is where the next page lands
+   by accident, and the whole point of the field is that the choice is made in
+   the table. A page naming a shape this map does not have gets no wrapper and
+   fails `test_every_page_declares_a_shape`. */
+const ARCH_WRAP={dash:'dash',split:'tpane',feed:'feed',form:'form',pile:'pile'};
+/* The CURRENT page's archetype. Read at paint time rather than passed in,
+   because the one thing a renderer must not be able to do is claim a shape its
+   table entry does not declare. */
+function archNow(){
+  // home is the one page not in NAV — it is the dashboard, not a destination
+  // the sidebar lists — so it names its own shape here.
+  if(PAGE_==='home')return 'dash';
+  const n=PAGE_==='project'?TABS.find(x=>x[0]===TAB):NAV.find(x=>x[0]===PAGE_);
+  return (PAGE_==='project'?(n&&n[3]):(n&&n[5]))||'';
+}
+function shellWrap(html){
+  const c=ARCH_WRAP[archNow()];
+  return c?`<div class="${c}">${html}</div>`:html;
+}
+function shellNow(html){return paintNow(shellWrap(html));}
+function shell(nav,html){return paint(nav,shellWrap(html));}
 const LOADING='<div class="empty"><span class="spin"></span> Loading…</div>';
 
 function toast(msg,cls){const w=$('#toast-wrap');const t=document.createElement('div');
@@ -57,14 +147,14 @@ function setLoading(on){
    attribute-value call site (data-v="${esc(v)}", title="${esc(v)}") was open */
 const _ESC_MAP={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 function esc(s){return s==null?'':String(s).replace(/[&<>"']/g,c=>_ESC_MAP[c]);}
-/* A value going into a JS STRING LITERAL inside an HTML attribute needs its
-   backslashes doubled as well as its HTML escaped: the browser unescapes the
-   attribute, then JS reads `\U` and `\.` as escape sequences, so a Windows
-   path like C:\Users\mab\.claude arrives as C:Usersmab.claude. Two call sites
-   had each open-coded the same .replace, and the third one written forgot it —
-   which is what "invalid cfgdir" was. Prefer passing an INDEX into a global
-   over a path; use this when the value itself has to travel. */
-function jsq(s){return esc(String(s==null?'':s).replace(/\\/g,'\\\\'));}
+/* A value going into a JS literal inside an HTML attribute. JSON.stringify
+   makes it a valid JS literal; esc() then makes that literal survive the HTML
+   parser. JSON.stringify alone escapes NOTHING for HTML -- one apostrophe in a
+   filename, an MCP server name or a git branch closes onclick='...' and
+   everything after it is parsed as new attributes, which is script execution
+   same-origin with the API token. Never interpolate a bare JSON.stringify into
+   markup; tests/test_xss_gate.py fails the build if you do. */
+function hesc(v){return esc(JSON.stringify(v));}
 function C(){return {path:CUR.path,enc:CUR.encoded,cfgdir:CUR.primary_cfgdir};}
 /* stable per-account color: default = the theme's green, others take a FIXED
    (hue, lightness) ramp — not a generated hue wheel. Each slot's lightness is
@@ -119,6 +209,7 @@ share:'M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.
 map:'M20.5 3l-.16.03L15 5.1 9 3 3.36 4.9c-.21.07-.36.25-.36.48V20.5c0 .28.22.5.5.5l.16-.03L9 18.9l6 2.1 5.64-1.9c.21-.07.36-.25.36-.48V3.5c0-.28-.22-.5-.5-.5zM15 19l-6-2.11V5l6 2.11z',
 inject:'M21 3H3c-1.1 0-2 .9-2 2v3h2V5h18v14H3v-3H1v3c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM11 15l4-3-4-3v2H1v2h10z',
 star:'M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z',
+unfold:'M12 5.83 15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9zm0 12.34L8.83 15l-1.42 1.41L12 21l4.59-4.59L15.17 15z',
 palette:'M12 3a9 9 0 0 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.42-4.03-8-9-8zm-5.5 9a1.5 1.5 0 1 1 1.5-1.5A1.5 1.5 0 0 1 6.5 12zm3-4A1.5 1.5 0 1 1 11 6.5 1.5 1.5 0 0 1 9.5 8zm5 0A1.5 1.5 0 1 1 16 6.5 1.5 1.5 0 0 1 14.5 8zm3 4a1.5 1.5 0 1 1 1.5-1.5 1.5 1.5 0 0 1-1.5 1.5z'};
 /* ── per-world icon sets ────────────────────────────────────────────────────
    A world redraws only the ~16 glyphs that actually appear in the nav and the
@@ -291,7 +382,7 @@ const MOTION_PERSONA={
    you wear one the palette and skin pickers are disabled.
 
    Why the orthogonal model was not enough: a skin that has to look sane under
-   29 palettes can commit to nothing, which is how Sakura/Mecha/Glass ended up
+   32 palettes can commit to nothing, which is how Sakura/Mecha/Glass ended up
    as loud wallpapers on weak chrome ("da buttare"). Classic mode is untouched —
    Slate + Terminal still works exactly as before — this sits above it. */
 function curWorld(){return (ST.worlds||{})[ST.world]||null;}
@@ -356,7 +447,13 @@ function ask(title,fields,sub){return new Promise(res=>{
     :f.type==='multi'
     ?`<div class="fld"><label>${esc(f.label)}</label><div class="chips multi" id="pf${i}">${f.options.map(o=>
         `<span class="chip${(f.value||[]).includes(o[0]||o)?' on':''}" data-v="${esc(o[0]||o)}">${esc(o[1]||o)}</span>`).join('')}</div></div>`
-    :`<div class="fld"><label>${esc(f.label)}</label><input id="pf${i}" value="${esc(f.value||'')}" placeholder="${esc(f.ph||'')}"></div>`).join('');
+    /* `list` = pick an existing one OR type a new one, in ONE control. A chip
+       row cannot express "or something you have not thought of yet", and the
+       two-field workaround (a select plus an "only if you picked New" box) is
+       a puzzle. <datalist> is the native answer and needs no JS at all. */
+    :`<div class="fld"><label>${esc(f.label)}</label><input id="pf${i}" value="${esc(f.value||'')}" placeholder="${esc(f.ph||'')}"${
+        f.list?` list="pfl${i}" autocomplete="off"`:''}>${
+        f.list?`<datalist id="pfl${i}">${f.list.map(o=>`<option value="${esc(o)}">`).join('')}</datalist>`:''}</div>`).join('');
   document.querySelectorAll('#pBody .chips').forEach(box=>
     box.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
       if(!box.classList.contains('multi'))
@@ -424,7 +521,7 @@ function jobHost(J){
    activity equalizer animate forever after a single token had been spent. */
 function stageEnergy(jobs,burn){
   if(!window.STAGE)return;
-  // /4, not /2: the input used to be claudectl's background jobs, where one was
+  // /4, not /2: the input used to be archeus's background jobs, where one was
   // already remarkable. It is now live Claude Code sessions, and two of those
   // is an ordinary Tuesday — at /2 the background would sit pinned at full
   // energy all day and stop meaning anything.
@@ -437,12 +534,22 @@ function liveJobs(){
   return Object.keys(JOBS).filter(k=>JOBS[k].status==='running').length
     +(PE&&PE.jid?1:0);
 }
+/* WHERE you are, as one comparable string. A job outlives navigation on purpose
+   — that is the whole point of the inline banner — so its completion handler
+   must not repaint the view it belonged to over the view you moved to. The
+   NAV_ID guard inside paint() cannot catch this: onDone starts a NEW render, so
+   the token matches. Same bug one level up, so the same shape of fix: the guard
+   lives in the runner, not in fifteen call sites that each have to remember. */
+function viewKey(){return PAGE_+'/'+(PAGE_==='project'?(CUR?CUR.encoded:'')+'/'+TAB:'');}
 async function jobStart(kind,params,o){
   o=o||{};
   const r=await post('/api/job',{kind,...params});
   if(!r.ok){toast(r.error||'Could not start','err');return null;}
   const J={jid:r.job,kind,label:o.label||'Working…',status:'running',msgs:[],
     elapsed:0,sub:'',err:'',host:o.host||null,sel:o.sel||'',onDone:o.onDone||null,
+    // `redraw` is the guarded half of onDone: it runs ONLY if the user is still
+    // looking at the view the job was started from.
+    redraw:o.redraw||null,from:viewKey(),
     modal:!!o.modal||!(o.host||o.sel),
     // memory_build reports sub-step progress through its own endpoint
     memPath:kind==='memory_build'?params.path:null};
@@ -458,12 +565,17 @@ async function jobStart(kind,params,o){
    reload, which drops JOBS entirely. Adopting it re-enters the SAME poll loop,
    so it escalates to the gate modal by the existing path rather than by a
    second implementation of gate rendering. */
-function jobOpen(jid,label){
+/* `sel` adopts into a BANNER instead of the modal, which is what a long job
+   needs: the modal is right for one parked at an approval gate and a wall in
+   front of the whole app for a build queue that runs for an hour. Callers that
+   pass no selector keep the modal, unchanged. */
+function jobOpen(jid,label,sel){
   const J=JOBS[jid]||{jid,kind:'',label:label||'Job',status:'running',msgs:[],
-    elapsed:0,sub:'',err:'',host:null,sel:'',onDone:null,memPath:null};
-  J.modal=true;
+    elapsed:0,sub:'',err:'',host:sel?$(sel):null,sel:sel||'',onDone:null,memPath:null};
+  J.modal=!sel;
   if(!JOBS[jid]){JOBS[jid]=J;jobPoll(J);}
-  else modalOpen(J);
+  else if(J.modal)modalOpen(J);
+  else inlineRender(J);
 }
 async function jobPoll(J){
   if(!JOBS[J.jid])return;                       // finished or superseded
@@ -492,6 +604,12 @@ async function jobPoll(J){
     setTimeout(()=>jobPoll(J),J.elapsed>60?4000:J.elapsed>15?1500:600);return;}
   jobFinish(J,st);
 }
+/* the guarded refresh: silently skipped when you have navigated on */
+function jobRedraw(J,st){
+  if(!J.redraw)return;
+  if(viewKey()!==J.from)return;
+  J.redraw(st);
+}
 function jobFinish(J,st){
   delete JOBS[J.jid];
   stageEnergy(liveJobs(),0);      // the background settles as the work stops
@@ -499,6 +617,7 @@ function jobFinish(J,st){
   if(st.status==='done'){
     inlineClear(J);toast(J.label+' — done','ok');
     if(J.onDone)J.onDone(st);
+    jobRedraw(J,st);
   }else if(st.status==='cancelled'){
     inlineClear(J);toast('Cancelled','');
   }else{
@@ -507,6 +626,7 @@ function jobFinish(J,st){
     J.err=st.error||'Failed';
     if(!J.modal&&jobHost(J))inlineRender(J);else toast(J.err,'err');
     if(st.error&&J.onDone)J.onDone(st);
+    if(st.error)jobRedraw(J,st);
   }
 }
 /* ── inline presentation ── */
@@ -588,10 +708,13 @@ function modalGate(J,gate){
 }
 
 /* ── sidebar ── */
-/* Twelve equal rows in one flat column read as a wall, and they took ~46% of the
-   sidebar's height away from the project list — the thing the sidebar is FOR.
-   Grouping is the fix for the reading problem; capping the height (.nav in
-   app.css) is the fix for the space problem, and both are needed. */
+/* Fifteen equal rows in one flat column read as a wall, and they took ~46% of
+   the sidebar's height away from the project list — the thing the sidebar is
+   FOR. Grouping with a collapse was the previous answer; five SECTIONS is this
+   one, and every page survives as a sub-tab of its section drawn in the same
+   strip the project tabs use. The collapse went with the rows it was managing:
+   five is not a wall, and a chevron on every one of them was chrome for a
+   problem that no longer existed. */
 /* [id, icon, label, blurb, renderer] — FIVE fields, and the last two are why:
    drawPage kept a title map and a renderer map beside this list, and pgHelp kept
    a hand-typed third copy that had already drifted (it listed a dead page and
@@ -599,33 +722,80 @@ function modalGate(J,gate){
    page's own nav entry, where the author of a new page is already standing, and
    the help screen is rendered from this array instead of retyped.
    Referencing the pg* functions here is safe: they are hoisted `function`
-   declarations, so the initializer runs before their definitions with no TDZ. */
-const NAV_GROUPS=[
-  ['Workspace',[
-    ['usage','chart','Usage','Token spend and rate limits across every account, by day and by project.',()=>pgUsage],
-    ['searchp','search','Search','Full-text search over every session transcript on the machine.',()=>pgSearch]]],
-  ['Library',  [
-    ['agents','robot','Agents','Subagent definitions: browse the library, write one by hand or have Claude draft it.',()=>pgAgents],
-    ['skills','ai','Skills','SKILL.md skills — bundled templates, your library, and the ones installed in a project.',()=>pgSkills],
-    ['hooks','link','Hooks','Claude Code hooks per account: install from a template, enable, disable or remove.',()=>pgHooks],
-    ['plugins','folder','Plugins','Marketplaces and installed plugins, with the provenance of everything they shipped.',()=>pgPlugins],
-    ['ostyles','palette','Output styles','Output styles Claude Code can wear, and which one is active.',()=>pgOStyles],
-    ['mcp','plug','MCP servers','MCP servers: status, detail, tool docs, and the global CLAUDE.md they are written into.',()=>pgMcp]]],
-  ['System',   [
-    ['accounts','group','Accounts','Every Claude login, and the sync that levels them all up to the same provisioning.',()=>pgAccounts],
-    ['client','ai','Claude Code','What Claude Code records about itself: versions, disk, background agents, its own settings.',()=>pgClient],
-    ['settings','settings','Settings','Launch defaults, paths and limits, models, appearance, updates and telemetry.',()=>pgSettings],
-    ['helpp','help','Help','This page: every screen in the app and every key in the terminal UI.',()=>pgHelp]]],
+   declarations, so the initializer runs before their definitions with no TDZ.
+   It stays FLAT and stays the public list: the command palette walks it, and
+   both tools/smoke_gui.py and tools/shot_gui.py evaluate `NAV.map(n => n[0])`
+   for the page list rather than hardcoding one. */
+/* [id, icon, label, blurb, ()=>renderer, ARCHETYPE]
+   ── the sixth field: what KIND of page this is ───────────────────────────────
+   Everything above it says what the page holds; nothing said what SHAPE it is,
+   so every renderer invented a composition inline and `paint` vs `paintPile`
+   was a per-renderer choice made 28 times. The archetype is that decision,
+   declared once, in the same table the page itself is declared in — a page
+   therefore cannot exist without one, and `shell()` reads it rather than
+   trusting a renderer to remember.
+
+   Two gates fall out of it that a hand-written list could not give: the
+   "designed layouts" that must not be piles used to be four function names
+   typed into a test, and the cards that must take the whole row used to be
+   fourteen heading STRINGS typed into a test. Both are derived now.
+
+   `grid` is the un-designed default — a bag of cards dropped into #content's
+   auto-fit grid — and it is a MIGRATION MARKER, not a design: it is what a
+   page is before anyone decided what it should be. Every page still carrying
+   it is a page this rehaul has not reached, which is why the count is asserted
+   downward rather than merely allowed. */
+const NAV=[
+  ['globalmd','doc','Global CLAUDE.md','The instructions Claude reads in every session on an account, its loop.md, and the conventions worth promoting into it.',()=>pgGlobalMd,'pile'],
+  ['ostyles','palette','Output styles','Output styles Claude Code can wear, and which one is active.',()=>pgOStyles,'split'],
+  ['mcp','plug','MCP servers','MCP servers: status, detail and the tool documentation they can write into the global CLAUDE.md.',()=>pgMcp,'split'],
+  ['agents','robot','Agents','Subagent definitions: browse the library, write one by hand or have Claude draft it.',()=>pgAgents,'split'],
+  ['skills','ai','Skills','SKILL.md skills — bundled templates, your library, and the ones installed in a project.',()=>pgSkills,'split'],
+  ['hooks','link','Hooks','Claude Code hooks per account: install from a template, enable, disable or remove.',()=>pgHooks,'split'],
+  ['plugins','folder','Plugins','The marketplaces you have registered and every plugin installed from them, with what each one contributes.',()=>pgPlugins,'pile'],
+  // 'Usage & cost', not 'Usage': the project side has a tab called Usage too,
+  // and this is the name the docs page carries — a screen and the page about it
+  // should be called the same thing.
+  ['usage','chart','Usage & cost','Token spend and rate limits across every account, by day and by project.',()=>pgUsage,'pile'],
+  ['loops','refresh','Loops','Start a /loop in its own session, watch it fire, end it — and the loop.md that says what a bare /loop does.',()=>pgLoops,'pile'],
+  ['logs','history','Logs','What archeus itself did and why it failed — its own Claude calls, background jobs, the scheduler and the proxy, newest first.',()=>pgLogs,'feed'],
+  ['accounts','group','Accounts','Every Claude login, and the sync that levels them all up to the same provisioning.',()=>pgAccounts,'split'],
+  ['client','ai','Claude Code','What Claude Code records about itself: versions, disk, background agents, its own settings.',()=>pgClient,'pile'],
+  ['settings','bolt','Launch','What every new session starts with — effort, model, permission mode, the window it opens in, and the plan/execute pair.',()=>pgSetLaunch,'form'],
+  ['appearance','palette','Appearance','Palette, skin, world, motion, surface transparency and the background scene.',()=>pgSetAppearance,'form'],
+  // plain '&', never '&amp;': every consumer escapes it (the tab strip, the nav
+  // row, the help table), so a pre-escaped label came out as "Paths &amp; limits"
+  // on screen. A LABEL is data; the entity goes in the markup, not in the data.
+  ['paths','folder','Paths & limits','Where archeus finds your editor and Claude Code, what its own calls may spend, and what the memory graph may hold.',()=>pgSetPaths,'form'],
+  ['models','ai','Models','Free execution through OmniRoute, and the failover list that retries the next model when a turn dies.',()=>pgSetModels,'form'],
+  ['updates','refresh','Updates','Versions of archeus, Claude Code and the model catalogue — and what archeus checks on its own: updates, notifications, and the auto-memory schedule.',()=>pgSetUpdates,'form'],
+  ['searchp','search','Search','Full-text search over every session transcript on the machine.',()=>pgSearch,'feed'],
+  ['helpp','help','Help','This page: every screen in the app and every key in the terminal UI.',()=>pgHelp,'pile'],
 ];
-/* The FLAT list stays the public one: the command palette walks it, and both
-   tools/smoke_gui.py and tools/shot_gui.py evaluate `NAV.map(n => n[0])` to get
-   the page list rather than hardcoding one. Derived, never maintained twice. */
-const NAV=NAV_GROUPS.flatMap(g=>g[1]);
-/* Collapsed groups persist in claudectl.json (`nav_collapsed`), not in
-   localStorage: every other appearance choice this app makes is a setting, and
-   the Qt shell and a browser tab have to agree about the chrome. Stored as
-   NAMES rather than indices so reordering or inserting a group never silently
-   collapses a different one. */
+/* [label, icon, blurb, [page ids]] — the sidebar itself. It carries page IDS
+   rather than the tuples, so NAV stays the ONE place a page is declared and a
+   page cannot exist twice with two different blurbs. The label is the key: no
+   section id, because a section id would have collided with the `settings` and
+   `accounts` PAGE ids and a lookup would have silently found the wrong one. */
+const SECTIONS=[
+  ['Context','doc','What Claude reads before you type: the instructions on the account, the style it answers in, and the tools it can reach.',['globalmd','ostyles','mcp']],
+  ['Library','ai','What you install once and every session then uses — subagents, skills, hooks and plugins.',['agents','skills','hooks','plugins']],
+  ['Activity','chart','What has been spent and what is running: token spend, loops, and archeus’s own log of what it did.',['usage','loops','logs']],
+  ['Accounts','group','Every Claude login on this machine, and what Claude Code records about itself.',['accounts','client']],
+  ['Settings','settings','Launch defaults, appearance, paths and limits, models and updates.',['settings','appearance','paths','models','updates']],
+];
+/* A page in no section, and where you reach it instead. Search left the nav
+   because the home dashboard already opens on a search box, and Help became the
+   `?` at the foot of the sidebar — a nav row for the page explaining the nav is
+   a row spent on the least-used destination. tests/test_gui.py fails a section
+   naming a page that does not exist, and a page in neither a section nor here. */
+const OFFNAV={searchp:'the search box on the home dashboard, and Ctrl+K',
+              helpp:'the ? button at the foot of the sidebar'};
+/* page id → section label. Derived; the reverse direction is what drawNav, the
+   sub-tab strip and the page title all need, and computing it three times is
+   three chances to disagree. */
+const SEC_OF=Object.fromEntries(
+  SECTIONS.flatMap(([label,,,ids])=>ids.map(id=>[id,label])));
 /* ── sidebar width: drag the grip, and it sticks ──────────────────────────────
    Persisted as a setting, like every other chrome choice, so the Qt shell and a
    browser tab agree. Clamped rather than free: below SIDE_MIN the project paths
@@ -704,45 +874,63 @@ function bindSideGrips(){
     step:k=>k==='ArrowUp'?16:k==='ArrowDown'?-16:0});
 }
 
-/* In the icon rail there IS no group label to click, so a collapsed group would
-   have no way back. The rail therefore ignores the collapsed set entirely; the
-   saved setting is untouched and comes back when the window widens again. */
-const RAIL=window.matchMedia('(max-width:1099px)');
-RAIL.addEventListener('change',()=>{if(ST)drawNav();});
-function navSaved(){return new Set(ST.nav_collapsed||[]);}
-function navCollapsed(){return RAIL.matches?new Set():navSaved();}
-async function toggleNavGroup(grp){
-  // the SAVED set, never the rail-filtered view — toggling off a rail would
-  // otherwise persist an empty set and silently discard the user's choices
-  const set=navSaved();
-  set.has(grp)?set.delete(grp):set.add(grp);
-  ST.nav_collapsed=[...set];
-  drawNav();
-  // one write per click; the page never re-reads, so a failed save is the only
-  // thing that could desync and it surfaces as the usual toast
-  await post('/api/settings',{nav_collapsed:ST.nav_collapsed});
-}
 /* Nav rows carry no gauge. They used to each own an animated canvas, which put
    ~10 looping surfaces in the chrome to encode numbers about pages you weren't
    looking at — the clearest case of motion that cost frames and said nothing. */
 function drawNav(){
-  const col=navCollapsed();
-  $('#nav').innerHTML=NAV_GROUPS.map(([grp,items])=>{
-    const shut=col.has(grp);
-    // a collapsed group still shows a dot per page it hides, so the row is not
-    // an empty promise — and the current page's dot is lit, which is how you
-    // can tell where you are without opening it
-    const pips=shut?`<span class="gpip">${items.map(([id])=>
-      `<i class="${PAGE_===id?'on':''}"></i>`).join('')}</span>`:'';
-    return `<div class="grp${shut?' shut':''}" onclick="toggleNavGroup('${jsq(grp)}')"
-        role="button" tabindex="0" aria-expanded="${!shut}"
-        title="${shut?'Expand':'Collapse'} ${esc(grp)}">
-        <svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg>
-        <span>${esc(grp)}</span>${pips}</div>`
-      +(shut?'':items.map(([id,i,l])=>
-        `<div class="it${PAGE_===id?' sel':''}" onclick="go('${id}')" title="${esc(l)}">${ic(i)} <span>${l}</span></div>`
-      ).join(''));
-  }).join('');
+  const cur=SEC_OF[PAGE_]||'';
+  // clicking the section you are already in keeps the sub-tab you are on:
+  // jumping back to the first page of the section you never left is a move you
+  // did not ask for
+  $('#nav').innerHTML=SECTIONS.map(([label,icon,blurb,ids])=>
+    `<div class="it${cur===label?' sel':''}" onclick="go(${hesc(ids.includes(PAGE_)?PAGE_:ids[0])})"
+       title="${esc(blurb)}">${ic(icon)} <span>${esc(label)}</span></div>`).join('');
+}
+/* ONE writer for both tab strips. A project page has two levels (the four
+   groups, then the pages inside one) and a global section has one (its pages,
+   with the section name carried by the title); a second copy of this would be a
+   second chance for the two rows to disagree about which of them is selected.
+   Empty string, not `display:none` on a filled strip — a hidden strip that
+   still holds last page's tabs is what the Ctrl+K palette would keep matching. */
+function tabBtn(id,label,sel,fn){
+  return `<div class="tab${sel?' sel':''}" onclick="${fn}(${hesc(id)})">${esc(label)}</div>`;
+}
+function drawTabStrips(){
+  const t=$('#tabs'),s=$('#subtabs');
+  let top='',sub='';
+  drawPageNote();
+  if(PAGE_==='project'){
+    const grp=TAB_GROUPS.find(g=>g[1].includes(TAB))||TAB_GROUPS[0];
+    top=TAB_GROUPS.map(([label,ids])=>
+      tabBtn(ids.includes(TAB)?TAB:ids[0],label,grp[0]===label,'openTab')).join('')
+      +`<div class="tab" onclick="window.open('/graph?${qs({path:CUR.path,enc:CUR.encoded,k:CK})}','_blank')">Graph ${ic('ext')}</div>`;
+    if(grp[1].length>1)sub=grp[1].map(id=>
+      tabBtn(id,tabLabel(id),TAB===id,'openTab')).join('');
+  }else{
+    const sec=SECTIONS.find(x=>x[3].includes(PAGE_));
+    if(sec&&sec[3].length>1)top=sec[3].map(id=>
+      tabBtn(id,navLabel(id),PAGE_===id,'go')).join('');
+  }
+  t.innerHTML=top;t.style.display=top?'flex':'none';
+  s.innerHTML=sub;s.style.display=sub?'flex':'none';
+}
+function navLabel(id){const n=NAV.find(x=>x[0]===id);return n?n[2]:id;}
+function tabLabel(id){const t=TABS.find(x=>x[0]===id);return t?t[1]:id;}
+function openTab(id){TAB=id;drawProject();}
+/* The one line under the tabs saying what this page is. Read out of the SAME
+   blurb the nav tooltip and the help page render, never typed into a renderer:
+   twelve of the nineteen pages opened directly into a table of Claude Code's
+   own vocabulary with nothing on screen saying what the page was for, and
+   twelve hand-written intros would be twelve sentences to keep in step with the
+   twelve already in NAV. The home page has no note — the dashboard is not a
+   page you need told about. */
+function drawPageNote(){
+  const el=$('#pgnote');if(!el)return;
+  const n=PAGE_==='project'?TABS.find(x=>x[0]===TAB)
+         :NAV.find(x=>x[0]===PAGE_);
+  const txt=PAGE_==='home'?'':(n?(PAGE_==='project'?n[2]:n[3]):'');
+  el.textContent=txt;
+  el.style.display=txt?'':'none';
 }
 /* 14-day activity trace per project. Static inline SVG, never animated — this
    renders once per sidebar row and there can be dozens, so it is deliberately
@@ -763,8 +951,10 @@ function miniSpark(vals){
 function drawProjects(){
   const q=($('#q').value||'').toLowerCase();
   const box=$('#plist');if(!box)return;
-  const list=ST.projects.filter(p=>!q
-    ||p.name.toLowerCase().includes(q)||p.path.toLowerCase().includes(q));
+  const list=ST.projects.filter(p=>(SHOW_HIDDEN||!p.hidden)&&(!q
+    ||p.name.toLowerCase().includes(q)||p.path.toLowerCase().includes(q)));
+  drawHiddenToggle();
+  drawBrand();
   MO.patch(box,list,p=>p.encoded,p=>{
     // Account chips are flex:none, so with three of them they claimed the whole
     // row and the project NAME shrank to a single character ("Claude" rendered
@@ -783,7 +973,8 @@ function drawProjects(){
     const amk=(p.auto_memory||active)
       ?`<span class="amk${active?' pip':''}" title="${active?'memory updating now':'auto-memory on'}">${ic('refresh')}</span>`:'';
     const last=p.last_active?` <span style="opacity:.7">· ${esc(p.last_active)} ago</span>`:'';
-    return `<div class="nm"><span class="pn" title="${esc(p.name)}">${esc(p.name)}</span>${tags}${amk}</div>`
+    const hid=p.hidden?' <span class="tag" title="hidden from the project list">hidden</span>':'';
+    return `<div class="nm"><span class="pn" title="${esc(p.name)}">${esc(p.name)}</span>${hid}${tags}${amk}</div>`
       +`<div class="pt"><span class="pp">${esc(p.path)}${last}</span>`
       +`${miniSpark(PROJ_SPARK[p.encoded])}</div>`;
   },p=>'proj lift'+(CUR&&PAGE_==='project'&&CUR.encoded===p.encoded?' sel':''));
@@ -794,10 +985,35 @@ function drawProjects(){
       if(p)openProject(p);
     });}
 }
+/* Hiding a project is a VIEW flag (settings), not a file move — the sessions of
+   a hidden project stay exactly where Claude Code put them, and the TUI reads
+   the same flag. The reveal button only exists while something is hidden. */
+let SHOW_HIDDEN=false;
+function drawHiddenToggle(){
+  const b=$('#bHidden');if(!b)return;
+  const n=(ST.projects||[]).filter(p=>p.hidden).length;
+  b.style.display=n?'':'none';
+  b.innerHTML=ic('eye')+' '+(SHOW_HIDDEN?'Hide':'Show')
+    +` ${n} hidden project${n===1?'':'s'}`;
+  if(!b.__bound){b.__bound=1;
+    b.onclick=()=>{SHOW_HIDDEN=!SHOW_HIDDEN;drawProjects();};}
+}
+async function toggleHidden(){
+  if(!CUR)return;
+  const hidden=!CUR.hidden;
+  const r=await post('/api/project/hide',{enc:CUR.encoded,hidden});
+  if(r.error){toast('Failed: '+r.error,'err');return;}
+  CUR.hidden=hidden;
+  const p=(ST.projects||[]).find(x=>x.encoded===CUR.encoded);if(p)p.hidden=hidden;
+  if(hidden)SHOW_HIDDEN=true;   // don't make the page you're on vanish from the list
+  toast(hidden?'Project hidden':'Project restored','ok');
+  drawProjects();drawProject();
+}
 
 /* ── router ── */
 function go(page){PAGE_=page;CUR=page==='project'?CUR:null;
   stopDashboard();   // a detached home view never keeps fetching/writing
+  stopLoopPoll();    // …and the loops board is the same promise
   applyTheme(ST.theme);   // drop any unsaved theme preview
   // the stage is global and never restarts across navigation — that is what
   // makes it ONE background rather than seven wallpapers — but each page tilts
@@ -807,12 +1023,14 @@ function go(page){PAGE_=page;CUR=page==='project'?CUR:null;
 function render(){
   NAV_ID++;
   drawNav();drawProjects();
-  $('#tabs').style.display=PAGE_==='project'?'flex':'none';
   $('#pactions').style.display=PAGE_==='project'?'':'none';
   if(PAGE_!=='project')stopMemBadge();   // hide the badge off a project page
-  if(PAGE_==='home')drawHome();
+  // drawProject draws its OWN two strips (openTab re-enters through it, not
+  // through here), so calling drawTabStrips for it would write the same
+  // markup twice on every navigation
+  if(PAGE_==='home'){drawTabStrips();drawHome();}
   else if(PAGE_==='project')drawProject();
-  else drawPage(PAGE_);
+  else {drawTabStrips();drawPage(PAGE_);}
   // navigation should read as a move, not a substitution. Fires here rather
   // than inside each renderer so async pages animate their shell immediately
   // instead of after the fetch lands.
@@ -839,6 +1057,53 @@ function mounted(root){
   // the skin's arrival sequence, not a linear delay ramp in DOM order — see
   // SKIN_ARRIVE. Falls back to the old per-card reveal without the vendor bundle.
   MO.arrive(el,'.card,.mo-in');
+}
+/* ONE filter box for the three lists long enough to need one: the skills
+   inventory, the agent library (155 agents in 10 categories) and the project
+   agent picker. Filtering is client-side over markup already on the page —
+   these lists arrive in a single payload, so a round trip per keystroke would
+   be slower and no more correct.
+
+   Rows opt in with `data-f` (the text to match, which is usually more than the
+   row displays); a <details> category with nothing left in it hides, and one
+   with a hit opens itself, because a match you cannot see is not a match. */
+function bindFilter(inputSel,rowSel,countId,extra){
+  const inp=$('#'+inputSel.replace(/^#/,''));
+  if(!inp)return;
+  // `extra` is a second, non-text condition (the skills page's scope chips).
+  // It runs in the SAME pass rather than as a second sweep over display:
+  // two independent writers of one style property is how a row ends up hidden
+  // by the filter that is off.
+  const run=window['__f_'+inputSel]=()=>{
+    const q=(inp.value||'').toLowerCase().trim();
+    let shown=0,total=0;
+    document.querySelectorAll('#content '+rowSel).forEach(el=>{
+      const inScope=!extra||extra(el);
+      if(inScope)total++;
+      // title as well as text: a chip shows a name and carries its description
+      const hay=(el.dataset.f||(el.title+' '+el.textContent)||'').toLowerCase();
+      // something already SELECTED never hides — filtering is a way to find
+      // more, not a way to lose track of what you picked
+      const hit=inScope&&(!q||hay.includes(q)||el.classList.contains('on'));
+      el.style.display=hit?'':'none';
+      if(hit)shown++;
+    });
+    /* A container whose rows are all hidden must go too, or the filter leaves
+       a category heading standing over nothing. `.fgrp` is the plain version
+       of the same idea as <details> — a group header plus its rows — and it
+       gets the identical treatment minus the open/closed state. */
+    document.querySelectorAll('#content details, #content .fgrp').forEach(dt=>{
+      const rows=[...dt.querySelectorAll(rowSel)];
+      if(!rows.length)return;
+      const any=rows.some(el=>el.style.display!=='none');
+      dt.style.display=any?'':'none';
+      if(q&&any&&dt.tagName==='DETAILS')dt.open=true;
+    });
+    const c=countId&&$('#'+countId);
+    if(c)c.textContent=q?`${shown} of ${total}`:'';
+  };
+  inp.oninput=run;
+  run();
 }
 /* Copy each table's header text onto its cells so the narrow-window stacked
    layout can label them (see the .tbl @media rule). Done in JS because the
@@ -936,8 +1201,7 @@ function fmtTok(n){
 function drawHome(){
   $('#ttl').textContent='Dashboard';$('#tpath').textContent='';
   const inst=(kind,key,o)=>INST.html(kind,key,o);
-  paintNow(`
-  <div class="dash">
+  shellNow(`
     <div class="dband d-b1"><span>Spend</span></div>
     <section class="card icard d-i1 spot lift">
       <div class="ihd">${ic('bolt')}<span>spend today</span><span class="sp"></span>
@@ -979,8 +1243,7 @@ function drawHome(){
     <section class="card d-projects spot">
       <div class="lbl">Projects <span id="dashProjN" style="color:var(--dim2)"></span></div>
       ${inst('flow','flow',{noread:1,title:'Projects — size by tokens, colour by account, dashed links share an account'})}
-      <div class="dlist" id="dashProjects">${MO.skel(4)}</div></section>
-  </div>`);
+      <div class="dlist" id="dashProjects">${MO.skel(4)}</div></section>`);
   bindHomeSearch();
   mounted();
   startDashboard();
@@ -1001,13 +1264,41 @@ function stopDashboard(){
 /* QtWebEngine keeps the page 'visible' while minimized — guard on blur too.
    MO.vis mirrors _VIS because motion.js is concatenated ahead of this file and
    cannot reach forward into a `let` that has not initialised yet. */
-function setVis(v){_VIS=v;MO.vis=v;if(v)MO.kick();else MO.stop();
+function setVis(v){
+  /* Cancel any pending debounce FIRST. `visibilitychange` calls this directly,
+     so a blur that had armed the 150ms timer, followed by the tab becoming
+     visible inside that window, left the timer to fire setVis(false) on a
+     focused page — animations paused and the GL surface down, with nothing left
+     to clear it until the next focus event. */
+  clearTimeout(_VIS_T);_VIS_T=null;
+  _VIS=v;MO.vis=v;if(v)MO.kick();else MO.stop();
+  /* `win-blur` on <html> is what actually stops the PAINTING — see the last
+     block of app.css. It is deliberately not STAGE's own `stage-blur`, which
+     never appears when the stage is off or its context died, while the CSS
+     animations and a world's overlay keep looping regardless. */
+  document.documentElement.classList.toggle('win-blur',!v);
   // and take the GL surface down while we are not drawing to it — see STAGE.blur
   if(window.STAGE)STAGE.blur(!v);}
+/* A blur/focus pair costs a full background swap plus a dashboard teardown and
+   an immediate re-fetch. Qt fires those pairs on interactions that are not
+   really a focus change (opening a native menu, a child window taking focus for
+   a frame), and the round trip is visible. So going AWAY waits; coming back is
+   instant, because a delay there is the thing you would actually notice. */
+let _VIS_T=null;
+/* The dashboard teardown/re-fetch is HALF the cost the comment above is about,
+   and it was left undebounced — stopDashboard() aborts the in-flight request
+   and startDashboard() re-fetches immediately, so every spurious Qt pair still
+   paid the round trip the debounce existed to remove. Both halves move
+   together now. */
+function setVisSoon(v){
+  clearTimeout(_VIS_T);_VIS_T=null;
+  if(v){setVis(true);if(PAGE_==='home')startDashboard();return;}
+  _VIS_T=setTimeout(()=>{_VIS_T=null;setVis(false);stopDashboard();},150);
+}
 document.addEventListener('visibilitychange',()=>{setVis(!document.hidden);
   if(_VIS&&PAGE_==='home')refreshDashboard();});
-window.addEventListener('blur',()=>{setVis(false);stopDashboard();});
-window.addEventListener('focus',()=>{setVis(true);if(PAGE_==='home')startDashboard();});
+window.addEventListener('blur',()=>setVisSoon(false));
+window.addEventListener('focus',()=>setVisSoon(true));
 function setV(el,v){if(!el)return;if(el.__v!==v){el.__v=v;el.innerHTML=v;}}
 /* ── daily token chart: stacked columns by account, inline SVG, no deps ── */
 let CHART_DAYS=14;
@@ -1044,12 +1335,12 @@ function tokenChart(days,accounts){
     if(other>0){const top=y(acc+other),bot=y(acc);
       segs+=`<rect class="seg" x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}"
         height="${Math.max(1,bot-top-2).toFixed(1)}" rx="${Math.min(bw/2,3).toFixed(1)}" fill="var(--dim2)"><title>${esc(r.date)} · other: ${fmtTok(other)} tok</title></rect>`;}
-    // omni tokens cut across accounts, so they can't be another stack segment —
+    // provider tokens cut across accounts, so they can't be another stack segment —
     // hatch the free share up from the baseline over whatever it was spent on
-    const om=Math.min(r.omni_tokens||0,r.tokens||0);
+    const om=Math.min(r.provider_tokens||0,r.tokens||0);
     if(om>0){const top=y(om),hh=Math.max(1,y(0)-top);
       const box=`x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${hh.toFixed(1)}" rx="2"`;
-      segs+=`<rect class="omnibg" ${box}/><rect class="omni" ${box}><title>${esc(r.date)} · omni (free): ${fmtTok(om)} of ${fmtTok(r.tokens||0)} tok</title></rect>`;}
+      segs+=`<rect class="providerbg" ${box}/><rect class="provider" ${box}><title>${esc(r.date)} · provider (free): ${fmtTok(om)} of ${fmtTok(r.tokens||0)} tok</title></rect>`;}
     const today=i===rows.length-1;
     const tick=(i%step===0||today||i===0)
       ?`<text class="${today?'now':''}" x="${(x+bw/2).toFixed(1)}" y="${H-6}" text-anchor="middle">${today?'today':esc(r.date.slice(5))}</text>`:'';
@@ -1057,14 +1348,14 @@ function tokenChart(days,accounts){
       ?`<text class="big" x="${(x+bw/2).toFixed(1)}" y="${(y(r.tokens)-5).toFixed(1)}" text-anchor="middle">${fmtTok(r.tokens)}</text>`:'';
     return segs+tick+lab;
   }).join('');
-  const anyOmni=rows.some(r=>(r.omni_tokens||0)>0);
+  const anyProvider=rows.some(r=>(r.provider_tokens||0)>0);
   const legend=names.map(n=>`<span><i class="dot" style="background:${acctColor(n)}"></i>${esc(n)}</span>`).join('')
-    +(anyOmni?`<span title="Ran on OmniRoute — free tier, not billed"><i class="dot omnikey"></i>omni · free</span>`:'')
+    +(anyProvider?`<span title="Ran on OmniRoute — free tier, not billed"><i class="dot providerkey"></i>provider · free</span>`:'')
     +`<span class="sp"></span>`
     +[7,14,30].map(n=>`<span class="chip${CHART_DAYS===n?' on':''}" onclick="setChartDays(${n})">${n}d</span>`).join('');
   return `<div class="lg">${legend}</div>
-    <svg class="tcsvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Tokens per day, stacked by account, free-tier omni share hatched">
-      <defs><pattern id="omnihatch" width="5" height="5" patternUnits="userSpaceOnUse"
+    <svg class="tcsvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Tokens per day, stacked by account, free-tier provider share hatched">
+      <defs><pattern id="providerhatch" width="5" height="5" patternUnits="userSpaceOnUse"
         patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5"/></pattern></defs>
       <line class="gl" x1="${PL}" y1="${PT}" x2="${W}" y2="${PT}"/>
       <text x="${PL-6}" y="${PT+3}" text-anchor="end">${max?fmtTok(max):''}</text>
@@ -1167,10 +1458,12 @@ function drawActivity(){
       ${j.last?`<div class="asub">${esc(j.last)}</div>`:''}
       ${j.error?`<div class="asub err">${esc(j.error)}</div>`:''}</div>
     <span class="aage">${actDur(j.elapsed)}${j.ended?' · '+actAgo(j.ended):''}</span>
-    ${j.status==='awaiting'?`<button class="btn sm pri" onclick="closeActivity();jobOpen('${jsq(j.id)}')">Open</button>`:''}
+    ${j.status==='awaiting'?`<button class="btn sm pri" onclick="closeActivity();jobOpen(${hesc(j.id)})">Open</button>`
+      :j.status==='running'?`<button class="btn sm" title="Bring its banner back, so you can watch it or cancel it"
+        onclick="closeActivity();jobOpen(${hesc(j.id)},${hesc(j.kind||'Job')},'#jban')">Show</button>`:''}
   </div>`;
   // live Claude Code sessions are the OTHER kind of ongoing work, and the one
-  // that is usually actually happening — claudectl's own jobs are rare
+  // that is usually actually happening — archeus's own jobs are rare
   const liveRows=Object.entries(live.by_account||{}).sort((a,b)=>b[1]-a[1])
     .map(([n,c])=>`<div class="arow3">
       <span class="dot" style="background:${acctColor(n)}"></span>
@@ -1185,7 +1478,7 @@ function drawActivity(){
     <span class="dot" style="background:${acctColor(r.account||'default')}"></span>
     <div><b>${esc(r.project)}</b><div class="asub">${esc(r.title||r.sid)} · ${r.msgs} msgs</div></div>
     <span class="aage">${esc(r.age)} ago</span>
-    <button class="btn sm" onclick="closeActivity();dashResumeSid('${jsq(r.sid)}')">Resume</button></div>`;
+    <button class="btn sm" onclick="closeActivity();dashResumeSid(${hesc(r.sid)})">Resume</button></div>`;
   const sect=(title,n,body)=>`<div class="sect"><div class="secth"><h4>${title}</h4>
       <span class="secttag">${n}</span></div>${body}</div>`;
   const nRun=running.length+Object.keys(live.by_account||{}).length;
@@ -1195,7 +1488,7 @@ function drawActivity(){
       ||'<div class="empty">No live sessions and no running jobs.</div>')
     +sect('Finished',done.length||'',
       done.length?done.map(jobRow).join('')
-        :'<div class="empty">No claudectl job has finished this run.</div>')
+        :'<div class="empty">No archeus job has finished this run.</div>')
     +sect('Recently ended sessions',ended.length||'',
       ended.length?ended.map(sessRow).join('')
         :'<div class="empty">Nothing has ended recently.</div>');
@@ -1261,19 +1554,19 @@ function feedDashboard(d,plan){
   const wk=(d.week||[]).filter(r=>r.tokens>0);
   const wkAvg=wk.length?wk.reduce((n,r)=>n+r.tokens,0)/wk.length:0;
   const ratio=wkAvg?today/wkAvg:0;
-  const omniT=(d.today||{}).omni_tokens||0;
+  const provT=(d.today||{}).provider_tokens||0;
   // .ifoot is one clipped line — the long form lives in the tooltip
   setV($('#iBurnFoot'),
     `<span title="${esc(`${fmtTok(today)} so far today, on track for ${fmtTok(proj)} by midnight`
       + (ratio ? `. That is ${ratio.toFixed(1)}x your 7-day average.` : '')
-      + (omniT ? ` ${fmtTok(omniT)} of it ran on free-tier models.` : ''))}">`
+      + (provT ? ` ${fmtTok(provT)} of it ran on free-tier models.` : ''))}">`
     +`<b>${fmtTok(proj)}</b> by midnight`
     +(ratio?` · <b>${ratio.toFixed(1)}×</b> 7-day avg`:'')
-    +(omniT?` · ${fmtTok(omniT)} free`:'')+'</span>');
+    +(provT?` · ${fmtTok(provT)} free`:'')+'</span>');
 
   /* ── Tooling → is the workspace actually wired up ──────────────────────────
      MCP reachability alone answered a narrow question. The card now counts
-     every wiring claudectl can verify from files: MCP servers up, the failover
+     every wiring archeus can verify from files: MCP servers up, the failover
      proxy, and per account whether hooks and a statusline are installed AND
      whether the statusline will actually be drawn — an installed statusline
      under the classic renderer is invisible, which from the settings file looks
@@ -1285,7 +1578,7 @@ function feedDashboard(d,plan){
      currently connected is usually not a fault — most start on demand, and
      "1/10 up" is an ordinary healthy state — so counting them would pin this
      card at red forever and it would stop meaning anything. That is the same
-     mistake the activity gauge already made once by measuring claudectl's
+     mistake the activity gauge already made once by measuring archeus's
      idleness instead of the workspace's work. MCP stays in the footer as
      information; the ring counts things that are actually misconfigured. */
   const nodes=wir.total+1,liveN=wir.ok+(fo?1:0);   // +1: the failover proxy
@@ -1313,7 +1606,7 @@ function feedDashboard(d,plan){
     :`mcp <b>${up}/${mcp.length}</b> up · ${wir.total} account${wir.total===1?'':'s'} wired`);
 
   /* ── Activity ──────────────────────────────────────────────────────────
-     Reads LIVE CLAUDE CODE SESSIONS across every account, not claudectl's own
+     Reads LIVE CLAUDE CODE SESSIONS across every account, not archeus's own
      background jobs. It used to read the latter, which are almost never
      running, so the card sat at "0 RUNNING" and flat while the same dashboard
      reported hundreds of millions of tokens that day — it was reporting the
@@ -1338,7 +1631,7 @@ function feedDashboard(d,plan){
   // owning a timer of its own
   if($('#actovl')&&$('#actovl').classList.contains('show'))drawActivity();
   INST.set('jobs',{v:Math.min(1,nlive/3),beats:nlive,series:d.hours||[]});
-  // Feed the background: live sessions dominate, claudectl's own jobs also
+  // Feed the background: live sessions dominate, archeus's own jobs also
   // count (a memory build IS the workspace working), burn is a floor.
   stageEnergy(Math.max(nlive,jobs),burn/peakHr);
   setRead('jobs',nlive);
@@ -1359,7 +1652,7 @@ function feedDashboard(d,plan){
     ?`<b style="color:var(--warn)">${gated} waiting for approval</b> — click to open`
     :nlive
       ?`<b>${nlive}</b> live${byAcct?' · '+byAcct:''} · ${sess} today`
-      :(jobs?`<b>${jobs}</b> claudectl job${jobs>1?'s':''} · ${sess} today`
+      :(jobs?`<b>${jobs}</b> archeus job${jobs>1?'s':''} · ${sess} today`
             :`idle · <b>${sess}</b> session${sess===1?'':'s'} today`));
 
   // flow map: one node per project, dashed links where two share a non-default
@@ -1397,7 +1690,7 @@ function setUnit(key,txt){
 function projectRowHtml(p){
   return `<div class="info"><b>${esc(p.name)}</b>
       ${(p.accounts||[]).map(a=>`<span class="dot" title="${esc(a)}" style="width:7px;height:7px;background:${acctColor(a)}"></span>`).join('')}
-      ${p.omni?OMNI_TAG:''}</div>
+      ${p.provider?PROVIDER_TAG:''}</div>
     <span class="num">${fmtTok(p.tokens||0)} · $${(p.cost||0).toFixed(2)}</span>
     <span class="num">${esc(p.age||'')}</span>`;
 }
@@ -1405,11 +1698,11 @@ function recentRowHtml(r){
   return `<div class="info"><b>${esc(r.project)}</b>
       <span style="color:var(--dim)">${esc(r.title)} · ${r.msgs} msgs</span></div>
     ${r.account&&r.account!=='default'?`<span class="tag acct" style="color:${acctColor(r.account)}">${esc(r.account)}</span>`:''}
-    ${r.omni?OMNI_TAG:''}
+    ${r.provider?PROVIDER_TAG:''}
     <span class="num">${esc(r.age||'')}</span>
     <button class="btn sm" data-sid="${esc(r.sid)}">Resume</button>`;
 }
-const OMNI_TAG='<span class="tag acct" style="color:var(--violet)" title="Ran on OmniRoute (free-tier model)">omni</span>';
+const PROVIDER_TAG='<span class="tag acct" style="color:var(--violet)" title="Ran on OmniRoute (free-tier model)">provider</span>';
 let DASH_RECENT=[];
 /* keyed by session id, not row index: the recent list reorders between polls, so
    an index captured at render time could resume a different session than the one
@@ -1433,7 +1726,7 @@ function kpiHtml(d,bd){
     +stat(wtok,'tok','7d tok')
     +stat(wcost,'usd','7d est. cost','API-rate estimate, cache-aware; OmniRoute models count as free')
     +stat(t.sessions||0,'int','sessions today')
-    +stat(tot.omni_tokens||0,'tok','omni tok',`free-tier tokens over ${d.days||30}d — about $${(tot.omni_saved||0).toFixed(2)} of Opus-rate work`)
+    +stat(tot.provider_tokens||0,'tok','provider tok',`free-tier tokens over ${d.days||30}d — about $${(tot.provider_saved||0).toFixed(2)} of Opus-rate work`)
     +`<span class="sp"></span>`
     +`<span class="fresh">${age==null?'':'updated '+age+'s ago'}</span>`;
 }
@@ -1515,7 +1808,7 @@ function acctCard(a){
     <div class="arow"><span class="al">weekly</span><span class="bar shimmer"></span><span class="ap"></span></div>`;
   let note='';
   if(bad)note=`<div class="st err">${esc(a.status_text||'not logged in')}
-    <span class="hlink" onclick="acctReconnect('${jsq(a.account)}','${jsq(a.dir||'')}')">Reconnect ›</span></div>`;
+    <span class="hlink" onclick="acctReconnect(${hesc(a.account)},${hesc(a.dir||'')})">Reconnect ›</span></div>`;
   else if(a.status==='rate_limited')note=`<div class="st warn">rate-limited${a.retry_in?' · retry in '+a.retry_in+'s':''}</div>`;
   else if(a.status==='error')note=`<div class="st warn">${esc(a.status_text||'usage unavailable')}</div>`;
   else if(a.stale_secs!=null&&a.stale_secs>600)note=`<div class="st dim">as of ${Math.round(a.stale_secs/60)}m ago</div>`;
@@ -1582,17 +1875,44 @@ function goToFullSearch(){PENDING_SEARCH_Q=($('#hqSearch').value||'');go('search
 /* ── project view + tabs ── */
 /* [id, label, blurb] — the blurb rides along for the same reason the nav's does:
    the help page renders from this array instead of a retyped copy of it. */
+/* [id, label, blurb, ARCHETYPE] — the fourth field is NAV's sixth, for the
+   same reason and read by the same `shell()`. */
 const TABS=[
-  ['sessions','Sessions','Every session in this project, across accounts — open, rename, archive, export.'],
-  ['memory','Memory','The project knowledge graph, lessons, recall injection and the two per-project memory hooks.'],
-  ['claudemd','CLAUDE.md','The project instruction file, its machine-maintained blocks, and the memory map.'],
-  ['review','Review','Run a code review over the working tree, staged changes or a branch.'],
-  ['audit','Audit','Everything injected into a session and what it costs, before you spend it.'],
-  ['pusage','Usage','This project\'s token spend over time.'],
-  ['planexec','Plan → Execute','Have one model write a plan, approve or edit it, then have another execute it.'],
-  ['worktrees','Repos','Git repos, submodules and linked worktrees under this project.'],
-  ['tools','Tools','Architecture, the interactive graph, Claude Code\'s own record of the project, and the loop file.']];
-async function openProject(p){CUR=p;PAGE_='project';TAB='sessions';REVIEW=null;
+  ['sessions','Sessions','Every session in this project, across accounts — open, rename, archive, export.','split'],
+  ['memory','Memory','Everything archeus knows about this project and what knowing it costs — the graph, the rules, lessons, spend, and what the last cycle did.','pile'],
+  ['claudemd','CLAUDE.md','The instruction file block by block, what each block costs, the memory map, and every version archeus replaced.','pile'],
+  ['review','Review','Run a code review over the working tree, staged changes or a branch.','feed'],
+  ['audit','Audit','What one turn costs across every surface at once — this project, your account, hooks and MCP — before you spend it.','feed'],
+  ['pusage','Usage','This project\'s token spend over time.','feed'],
+  ['planexec','Plan → Execute','Have one model write a plan, approve or edit it, then have another execute it.','form'],
+  ['worktrees','Repos','Git repos, submodules and linked worktrees under this project.','split'],
+  ['tools','Tools','Architecture, the interactive graph, Claude Code\'s own record of the project, and the loop file.','pile']];
+/* [label, [tab ids]] — the four the project opens on. Nine tabs is the same
+   wall the sidebar had: the row wrapped, and the order in it had no argument
+   behind it. TABS stays the FLAT leaf list for the same reason NAV does —
+   drawProject dispatches off it, pgHelp renders from it, and smoke_gui.py and
+   shot_gui.py walk `TABS.map(t => t[0])` to render every one of them. */
+const TAB_GROUPS=[
+  ['Sessions',['sessions']],
+  // Audit leads: it is the page that answers "what does one turn cost", which
+  // is the question the group is named after, and it was the LAST of nine tabs.
+  // Coming back to the group from elsewhere keeps the sub-tab you were on, so
+  // this decides the first visit only.
+  ['Context',['audit','memory','claudemd']],
+  ['Actions',['review','planexec']],
+  ['Project',['pusage','worktrees','tools']],
+];
+/* The project a project-scoped setting targets from a GLOBAL page.
+
+   `go()` clears CUR on purpose — the header leaves project mode — so a "this
+   project" card on the Skills or Output styles page was structurally
+   unreachable: navigating to the page was itself what emptied it. That is why
+   the per-project skills section read as pointless; it could never have shown
+   anything. The last project you opened is the honest answer, and every surface
+   that uses it says which project that is. */
+let LASTPROJ=null;
+function projCtx(){return CUR||LASTPROJ;}
+async function openProject(p){CUR=p;LASTPROJ=p;PAGE_='project';TAB='sessions';REVIEW=null;
   render();
   // kick off the same background memory update the TUI does on open, then
   // watch the scan-lock so the badge shows live progress
@@ -1617,13 +1937,24 @@ function startMemBadge(){
   setMemBadge('');                   // show immediately so the user sees activity
   const tick=async()=>{
     if(!CUR||PAGE_!=='project'){stopMemBadge();return;}
-    let prog=null;
-    try{const r=await api('/api/memory/progress?'+qs({path:CUR.path}));prog=r.progress;}catch(e){}
+    let prog=null,last=null;
+    try{const r=await api('/api/memory/progress?'+qs({path:CUR.path}));
+      prog=r.progress;last=r.last;}catch(e){}
     if(prog!=null){_memSeen=true;setMemBadge(prog);_memTimer=setTimeout(tick,2000);}
     else if(!_memSeen&&_memGrace-->0){_memTimer=setTimeout(tick,2000);}  // worker not up yet
     else{ // finished (or never started) — refresh memory view if it's showing
       const wasRunning=_memSeen;stopMemBadge();
-      if(wasRunning){toast('Memory updated','ok');
+      if(wasRunning){
+        /* The lock vanishing is NOT success: a crashed cycle clears it in its
+           `finally` exactly like a completed one, so this toasted "Memory
+           updated" over a failure. The server records how the run ended. */
+        if(last&&last.ok===false)toast('Memory update failed: '+(last.error||'unknown'),'err');
+        else if(last&&last.ok){
+          const b=[];if(last.extracted)b.push(last.extracted+' module(s)');
+          if(last.lessons)b.push(last.lessons+' lesson(s)');
+          if(last.pending)b.push(last.pending+' still queued');
+          toast(b.length?'Memory updated — '+b.join(', '):'Memory already current','ok');
+        }else toast('Memory updated','ok');
         if(PAGE_==='project'&&TAB==='memory')drawMemory();}
     }
   };
@@ -1632,9 +1963,10 @@ function startMemBadge(){
 function drawProject(){
   NAV_ID++;
   $('#ttl').textContent=CUR.name;$('#tpath').textContent=CUR.path;
-  $('#tabs').innerHTML=TABS.map(([id,l])=>
-    `<div class="tab${TAB===id?' sel':''}" onclick="TAB='${id}';drawProject()">${l}</div>`).join('')
-    +`<div class="tab" onclick="window.open('/graph?${qs({path:CUR.path,enc:CUR.encoded,k:CK})}','_blank')">Graph ${ic('ext')}</div>`;
+  $('#bHide').textContent=CUR.hidden?'Unhide':'Hide';
+  $('#bHide').title=CUR.hidden?'Show this project in the list again'
+                              :'Hide this project from the project list (nothing is deleted)';
+  drawTabStrips();
   ({sessions:drawSessions,memory:drawMemory,claudemd:drawClaudeMd,review:drawReview,
     audit:drawAudit,pusage:drawProjUsage,planexec:drawPlanExec,
     worktrees:drawWorktrees,tools:drawTools}[TAB])();
@@ -1671,15 +2003,15 @@ function drawReview(){
         <div style="color:var(--dim);font-size:13px">${esc(f.detail||'')}</div></div>`;
     }).join('');
   }
-  paintNow(`<div class="card"><h3>Code review <span class="sp"></span>
+  shellNow(`<div class="card"><h3>Code review <span class="sp"></span>
       <button class="btn sm pri" onclick="runReview(false)">${ic('search')} Review working changes</button>
       <button class="btn sm" onclick="runReview(true)">Staged only</button></h3>
-      <p style="color:var(--dim);font-size:12px;margin:0 0 10px">Inspired by the Claude Code code-review plugin — confidence-scored, high-threshold, CLAUDE.md-aware.</p>
-      ${out}</div>`);
+      ${out}
+      <p style="color:var(--dim2);font-size:12px;margin:10px 0 0">Confidence-scored, high-threshold and CLAUDE.md-aware, after the Claude Code code-review plugin.</p></div>`);
 }
 function runReview(staged){
   inlineJob('#jban','review',{...C(),staged},{label:'Reviewing changes',
-    onDone:st=>{REVIEW=st.result||{findings:[]};if(TAB==='review')drawReview();}});
+    onDone:st=>{REVIEW=st.result||{findings:[]};},redraw:()=>drawReview()});
 }
 
 function projectSetup(){
@@ -1687,67 +2019,109 @@ function projectSetup(){
     {label:'Setting up '+CUR.name,onDone:st=>{
       const r=(st&&st.result)||{};
       toast(`Set up: CLAUDE.md + ${r.entities||0} memory entities`,'ok');
-      if(CUR)CUR.set_up=true;
-      if(PAGE_==='project'&&TAB==='sessions')drawSessions();}});
+      if(CUR)CUR.set_up=true;},
+     redraw:()=>drawSessions()});
 }
 
 /* sessions tab */
 async function drawSessions(archived){
   const nav=paintNow(LOADING);
-  const d=archived?await api('/api/session/archived?'+qs({enc:CUR.encoded,cfgdir:CUR.primary_cfgdir}))
+  /* No cfgdir on either branch: both endpoints walk every account server-side.
+     Sending `CUR.primary_cfgdir` was the archived-view bug — it is the FIRST
+     account that has this project (so `default` whenever `default` has it), and
+     anything archived under another account was simply not in the response.
+     The TUI's archived tab has always merged them. */
+  const d=archived?await api('/api/session/archived?enc='+encodeURIComponent(CUR.encoded))
                   :await api('/api/sessions?enc='+encodeURIComponent(CUR.encoded));
   SESS=d.sessions||[];
   const tagsD=await api('/api/session/tags?'+qs({enc:CUR.encoded,cfgdir:CUR.primary_cfgdir}));
   const tags=tagsD.tags||{};
+  SESSTAGS=tags;SESSARCH=!!archived;
   /* The TUI's `!` badge condition, verbatim: no CLAUDE.md AND no memory graph.
      Both halves of the action existed in the GUI (scaffold, then build memory)
      and were never chained into one, which is what the ACTIONS row said. */
-  const setup=(!archived&&CUR&&CUR.set_up===false)?`<div class="card"
-      style="border-left:3px solid var(--warn);margin-bottom:12px">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <b>${ic('bolt')} This project isn't set up yet</b>
-        <span style="flex:1;color:var(--dim);font-size:13px">Scaffold its CLAUDE.md and build the memory graph in one go — the same thing <code>!</code> does in the terminal UI.</span>
-        <button class="btn pri sm" onclick="projectSetup()">Set up now</button></div></div>`:'';
-  const hdr=setup+`<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
-    <span class="lbl" style="margin:0">${archived?'Archived':'Sessions'} (${SESS.length})</span>
-    <span style="flex:1"></span>
-    <button class="btn sm" onclick="drawSessions(${archived?'false':'true'})">
-      ${archived?'← Active sessions':ic('archive')+' Archived'}</button></div>`;
-  if(!SESS.length){
-    paint(nav,hdr+`<div class="empty">${archived?'No archived sessions.':'No sessions yet — start one with New session.'}</div>`);
-    return;}
-  if(!paint(nav,hdr+'<div class="slist">'+SESS.map((s,i)=>{
+  const setup=(!archived&&CUR&&CUR.set_up===false)?`<div class="pghd"
+      style="border-left:3px solid var(--warn);padding-left:10px;margin-bottom:10px">
+      <div class="pghdt"><b>${ic('bolt')} This project isn't set up yet</b>
+        <div class="sub">Scaffold its CLAUDE.md and build the memory graph in one go — the same thing <code>!</code> does in the terminal UI.</div></div>
+      <button class="btn pri sm" onclick="projectSetup()">Set up now</button></div>`:'';
+  const row=(s,i)=>{
     const tg=(tags[s.sid]||[]).map(t=>`<span class="tag ok">${esc(t)}</span>`).join(' ');
-    return `<div class="sess">
+    return `<div class="sess" data-i="${i}" onclick="seSel(${i})"
+      data-f="${esc((s.title||'')+' '+(s.preview||'')+' '+(s.account||'')+' '+s.sid)}">
       <span class="dot" style="background:${acctColor(s.account)}"
             title="${esc(s.account||'')}"></span>
       <div class="info">
-        <div class="t" id="st${i}">${esc(s.title||s.preview||s.sid.slice(0,8))} ${tg}</div>
+        <div class="t" id="st${i}" title="${esc(s.title||s.preview||s.sid)}">${esc(s.title||s.preview||s.sid.slice(0,8))} ${tg}</div>
         <div class="meta"><span>${esc(s.age)} ago</span><span>${s.count} msgs</span>
           ${s.tokens?`<span>${esc(s.tokens)} tok</span>`:''}
           ${s.account&&s.account!=='default'?`<span class="tag acct" style="color:${acctColor(s.account)}">${esc(s.account)}</span>`:''}
-          ${s.omni?`<span class="tag acct" style="color:var(--violet)" title="Executed via OmniRoute (free-tier model)">omni</span>`:''}</div>
+          ${s.provider?`<span class="tag acct" style="color:var(--violet)" title="Executed via OmniRoute (free-tier model)">provider</span>`:''}</div>
       </div>
-      <div class="acts">${archived?`
-        <button class="btn sm danger" onclick="deleteS(${i},true)" title="Delete">${ic('del')}</button>`:`
-        <button class="btn sm" onclick="toggleTune(${i})" title="Adjust power before resuming">${ic('settings')}</button>
-        <button class="btn sm" onclick="viewS(${i})" title="Transcript">${ic('doc')}</button>
-        <button class="btn sm" onclick="exportS(${i})" title="Export markdown">${ic('download')}</button>
-        <button class="btn sm" onclick="filesS(${i})" title="Changed files">${ic('folder')}</button>
-        <button class="btn sm" onclick="ckptS(${i})" title="File checkpoints">${ic('history')}</button>
-        <button class="btn sm" onclick="tagS(${i})" title="Tags">${ic('label')}</button>
-        <button class="btn sm" onclick="renameS(${i})">Rename</button>
-        <button class="btn sm" onclick="archiveS(${i})">Archive</button>
-        <button class="btn sm" onclick="forkS(${i})">Fork</button>`}
-      </div>
-      <button class="btn sm pri" onclick="${archived?`restoreS(${i})`:`resumeS(${i})`}">${archived?'Restore':'Resume'}</button>
-      </div>${archived?'':`
-      <div class="rowtune" id="rowtune-${i}" style="display:none">
-        <input type="range" class="rtfrontier" min="0" step="1">
-        <div class="frontends"><span>Cheap &amp; fast</span><span>Max power</span></div>
-        <div class="frontread rtread"></div>
-        <button class="btn sm pri" onclick="resumeTuned(${i})" style="margin-top:8px">Resume with these settings →</button>
-      </div>`}`;}).join('')+'</div>'))return;
+      <button class="btn sm pri" onclick="event.stopPropagation();${archived?`restoreS(${i})`:`resumeS(${i})`}">${archived?'Restore':'Resume'}</button>
+      </div>`;};
+  if(!shell(nav,`
+    <div class="card"><h3>${archived?'Archived':'Sessions'}
+      <span class="tag">${SESS.length}</span><span class="sp"></span>
+      <button class="btn sm" onclick="drawSessions(${archived?'false':'true'})">
+        ${archived?'← Active sessions':ic('archive')+' Archived'}</button></h3>
+      ${setup}
+      ${SESS.length?`<div class="fld" style="margin:0 0 4px"><input id="seQ" placeholder="Filter by title, account or id…" spellcheck="false">
+        <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="seCount"></div></div>
+      <div class="tbody">${SESS.map(row).join('')}</div>`
+      :`<div class="empty">${archived?'Nothing archived here yet.':'No sessions yet — start one with New session.'}</div>`}</div>
+    <div class="card tdet" id="seDet">${SESSINTRO}</div>`))return;
+  bindFilter('seQ','.sess','seCount');
+  if(SESS.length)seSel(0);
+  // a worklog line asked for this session by id; SESS only exists now
+  if(PENDING_SID){const i=SESS.findIndex(s=>s.sid===PENDING_SID);
+    PENDING_SID=null;if(i>=0)viewS(i);}
+}
+/* Eleven actions used to live in a `.acts` strip revealed by hovering the row,
+   with the title at the left of a 1400px line and Resume at the far right of
+   it — a hole where the session was. Resume stays ON the row (the common case
+   must cost zero clicks, which is what that design got right); everything else
+   is in the pane, visible, on the session you picked.
+
+   `rowtune` is rendered here verbatim, id and all, so `toggleTune`,
+   `updateRowTuneReadout` and `resumeTuned` keep working untouched — there is
+   only ever one of them on the page now, which is what they always assumed. */
+let SESSTAGS={},SESSARCH=false;
+const SESSINTRO='<div class="empty">Pick a session to read it, export it, tag it, or hand it off to another account.</div>';
+function seSel(i){
+  const s=SESS[i];if(!s)return;
+  TUNE_OPEN=-1;
+  document.querySelectorAll('#content .sess').forEach(el=>
+    el.classList.toggle('on',+el.dataset.i===i));
+  const h=$('#seDet');if(!h)return;
+  const tg=(SESSTAGS[s.sid]||[]).map(t=>`<span class="tag ok">${esc(t)}</span>`).join(' ');
+  h.innerHTML=`<h3>${esc(s.title||s.preview||s.sid.slice(0,8))} ${tg}<span class="sp"></span>
+    <button class="btn sm pri" onclick="${SESSARCH?`restoreS(${i})`:`resumeS(${i})`}">${SESSARCH?'Restore':'Resume'}</button></h3>
+    <div class="kv"><span class="k">Age</span><span>${esc(s.age)} ago</span>
+      <span class="k">Messages</span><span>${s.count}</span>
+      ${s.tokens?`<span class="k">Tokens</span><span>${esc(s.tokens)}</span>`:''}
+      <span class="k">Account</span><span>${esc(s.account||'default')}${s.provider?' <span class="tag acct" style="color:var(--violet)">provider</span>':''}</span>
+      <span class="k">Session id</span><span><code>${esc(s.sid)}</code></span></div>
+    ${SESSARCH?`<div class="mrow" style="flex-wrap:wrap">
+      <button class="btn sm danger" onclick="deleteS(${i},true)">${ic('del')} Delete</button></div>`
+    :`<div class="mrow" style="flex-wrap:wrap;justify-content:flex-start">
+      <button class="btn sm" onclick="toggleTune(${i})">${ic('settings')} Adjust power</button>
+      <button class="btn sm" onclick="viewS(${i})">${ic('doc')} Transcript</button>
+      <button class="btn sm" onclick="exportS(${i})">${ic('download')} Export</button>
+      <button class="btn sm" onclick="filesS(${i})">${ic('folder')} Changed files</button>
+      <button class="btn sm" onclick="ckptS(${i})">${ic('history')} Checkpoints</button>
+      <button class="btn sm" onclick="tagS(${i})">${ic('label')} Tags</button>
+      <button class="btn sm" onclick="renameS(${i})">Rename</button>
+      <button class="btn sm" onclick="archiveS(${i})">${ic('archive')} Archive</button>
+      <button class="btn sm" onclick="forkS(${i})">${ic('fork')} Fork</button>
+      <button class="btn sm" onclick="handoffS(${i})"
+        title="Start a new chat — in this or another account — seeded with this session's transcript as context">${ic('inject')} Hand off</button></div>
+    <div class="rowtune" id="rowtune-${i}" style="display:none">
+      <input type="range" class="rtfrontier" min="0" step="1">
+      <div class="frontends"><span>Cheap &amp; fast</span><span>Max power</span></div>
+      <div class="frontread rtread"></div>
+      <button class="btn sm pri" onclick="resumeTuned(${i})" style="margin-top:8px">Resume with these settings →</button>
+    </div>`}`;
 }
 // one-click resume: launches immediately with the recommended/last-used
 // model+effort — no dialog. The settings ⚙ icon expands this row in place
@@ -1894,87 +2268,390 @@ async function memToggle(patch){
   const r=await post('/api/memory/toggles',Object.assign({},C(),{path:CUR.path},patch));
   toast(r.ok?'Saved':'Failed','ok');drawMemory();}
 
-/* memory tab */
+/* memory tab.
+
+   Memory is not "CLAUDE.md plus a few counters" — archeus builds twelve
+   artifacts per project, and until now the tab could name three of them. The
+   two questions this tab answers are "what does archeus know" and "what does
+   knowing it cost me", and the cost half is what was missing: the digest is
+   read on EVERY turn while several KB of rules cost nothing until Claude opens
+   a matching path, and nothing said so. Every number below already existed in
+   a payload this renderer was already fetching. */
+
+/* how far an artifact reaches into a session — the vocabulary is the whole
+   point of the table, because 'always' is the only one you pay for on every
+   single turn and everything else is conditional or free. */
+const REACH={
+  always:['every session','tag warn','Loaded at the start of every session and read on every turn. This is the only kind you pay for unconditionally.'],
+  lazy:  ['when Claude opens a matching file','tag',"Costs nothing until Claude reads a file the rule's paths match — then only that one rule loads."],
+  prompt:['every prompt', 'tag warn','Added to each message you send, inside the recall budget. The only cost that multiplies by how much you talk.'],
+  start: ['session start','tag',     'Injected once, when a session starts.'],
+  source:['on request',   'tag ok',  'Never loaded on its own. It is what the always-on surfaces are built FROM, and you can query it directly with `archeus recall`.'],
+  never: ['not loaded',   '',        'archeus reads it to do its job. Claude never sees it, and it costs you nothing.']};
+function rch(k){const r=REACH[k]||REACH.never;
+  return r[1]?`<span class="${r[1]}" title="${esc(r[2])}">${r[0]}</span>`
+             :`<span style="color:var(--dim2)" title="${esc(r[2])}">${r[0]}</span>`;}
+/* One row = name, a sentence saying what it does FOR YOU, its cost, an action.
+   The sentence is inline and never a tooltip — a tooltip is for a glossary, not
+   for the thing that makes the row comprehensible at all. The file path IS a
+   tooltip, because nobody asks it first. */
+/* "Is this stale?" is the second question, right after "who wrote it?", and no
+   row could answer it: the graph carries one build time while the worklog, the
+   rules and the two logs are each written by a different code path on its own
+   schedule. `when` is the artifact's own mtime, in epoch seconds — sent by
+   /api/memory/state only for the artifacts that ARE one file, so a row that
+   cannot honestly be dated shows nothing rather than a plausible lie. */
+function ago(sec){
+  if(!sec)return '';
+  const s=Math.max(0,Date.now()/1000-sec);
+  for(const [u,n] of [['d',86400],['h',3600],['m',60]])
+    if(s>=n)return Math.floor(s/n)+u+' ago';
+  return 'just now';
+}
+/* When something happened, said once. The Memory tab printed `ago()` for its
+   inventory rows and a raw `2026-08-12T09:15:00Z` for Built, for the last
+   automatic run and for every recent-work row — three surfaces of the same card
+   answering "when" in two different languages. The exact stamp stays on hover,
+   because a timestamp is what you want when you are comparing two of them. */
+function stamp(v){
+  if(!v)return 'never';
+  const d=new Date(v);
+  if(isNaN(d))return String(v);
+  return `<span title="${esc(d.toLocaleString())}">${ago(d.getTime()/1000)||'just now'}</span>`;
+}
+function invRow(name,does,where,size,action,when){
+  return `<tr><td title="${esc(where)}"><b>${name}</b>
+      <div style="color:var(--dim2);font-size:11px">${does}</div>
+      ${when?`<div style="color:var(--dim2);font-size:11px" title="${esc(new Date(when*1000).toLocaleString())}">updated ${ago(when)}</div>`:''}</td>
+    <td class="num" style="white-space:nowrap">${size}</td>
+    <td style="white-space:nowrap">${action||''}</td></tr>`;}
+function invTable(rows){
+  return `<table class="tbl" style="margin:2px 0 4px">${rows}</table>`;}
+/* The load rule is stated ONCE per group instead of as a badge repeated on
+   every row, which is what turned a 12-row table into a wall. */
+function bucket(title,reach,note){
+  return `<div class="lbl" style="margin-top:16px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+    <span>${title}</span>${rch(reach)}
+    ${note?`<span style="color:var(--dim2);font-weight:400;text-transform:none;letter-spacing:0">${note}</span>`:''}</div>`;}
+//: what a session's context window holds, for the "…of what Claude can hold" line
+const CTX_WINDOW=200000;
+/* The auto-memory cadence, read back the way a person would say it. It is the
+   user's own setting, and it is the answer to "when do the queued modules get
+   done" — a cycle is capped on purpose, so nothing comes sooner than this. */
+function every(sec){
+  const s=+sec||3600;
+  if(s<3600)return Math.round(s/60)+' min';
+  const h=s/3600;
+  return (h%1?h.toFixed(1):h)+(h===1?' hour':' hours');}
+/* a name and a hit count says a fact matters without saying what it IS */
+async function entDetail(name){
+  const d=await api('/api/memory/entity?'+qs({...C(),name}));
+  const b=$('#dBody');if(!b)return;
+  $('#dTitle').textContent=name;
+  b.innerHTML=!d.found?'<div class="empty">Not in the graph any more.</div>':`
+    <div class="kv">
+      <span class="k">What it is</span><span>${esc(d.type||'')}${d.kind?' · '+esc(d.kind):''}${d.valid?'':' <span class="tag warn">superseded</span>'}${d.status?` <span class="tag">${esc(d.status)}</span>`:''}</span>
+      <span class="k">Where</span><span>${esc(d.unit||'')}</span>
+      <span class="k" title="How many prompts recall has injected this into. It is a term in the ranking, and in what eviction drops first.">Recalled into</span><span>${d.hits} prompt(s)</span>
+    </div>
+    <p style="margin:10px 0">${esc(d.summary||'')}</p>
+    ${d.unit_summary?`<div class="lbl">The module it belongs to</div>
+      <p style="color:var(--dim);margin:2px 0 10px">${esc(d.unit_summary)}</p>`:''}
+    ${(d.source_files||[]).length?`<div class="lbl">Read from</div>
+      <div class="chips">${d.source_files.map(f=>`<span class="chip">${esc(f)}</span>`).join('')}</div>`:''}
+    ${(d.relations||[]).length?`<div class="lbl" style="margin-top:10px">Connected to</div>
+      ${d.relations.map(r=>`<div class="agrow"><span style="flex:1">${r.dir==='out'?'':'← '}${esc(r.rel)} <b>${esc(r.other)}</b></span>
+        <button class="btn sm" onclick="entDetail(${hesc(r.other)})">open</button></div>`).join('')}`:''}
+    ${(d.sessions||[]).length?`<div class="lbl" style="margin-top:10px">Learned in</div>
+      <div class="chips">${d.sessions.map(s=>`<span class="chip">${esc(String(s).slice(0,8))}</span>`).join('')}</div>`
+      :`<p style="color:var(--dim2);font-size:12px;margin-top:10px">Recall counts hits per fact, not per session, so there is no per-session breakdown for a code fact — only lessons carry the session they came from.</p>`}`;
+  $('#drawer').classList.add('show');
+}
+/* what actually raises each freshness check, as a button. workspace._FIXES says
+   the action in words for both surfaces; this is the GUI's way of offering it,
+   and the reason the shared text no longer names a keystroke. */
+const WSFIX={claude_md:['Scaffold','cmScaffold()'],
+  claude_md_fresh:['Rebuild memory','buildMemory()'],
+  repo:['Rebuild memory','buildMemory()'],
+  sessions:['Rebuild memory','buildMemory()'],
+  manifest:['Rebuild memory','buildMemory()'],
+  mcp_docs:['MCP servers',"go('mcp')"],
+  /* No button can fix this one: it says the prose and the graph disagree, and
+     which side is wrong is a judgement. So it opens the file rather than
+     pretending to repair it — rebuilding memory is one tab away from there. */
+  claude_md_claims:['CLAUDE.md',"TAB='claudemd';drawProject()"],
+  conflicts:['AI analyze',"inlineJob('#jban','ai_scaffold',C(),{label:'AI-analyzing project',redraw:()=>drawMemory()})"]};
+
 async function drawMemory(){
   const nav=paintNow(LOADING);
   const c=C();
-  const [st,les,ws,wl]=await Promise.all([
+  // Three fast calls, and NOT the slow one. /api/workspace-status hashes files
+  // and walks every transcript folder; awaiting it here made the whole tab wait
+  // seconds on a card that is below the fold. It fills #wsBox after the paint,
+  // the same shape drawClaudeMd uses for #spBox.
+  const [st,les,wl]=await Promise.all([
     api('/api/memory/state?'+qs(c)),api('/api/lessons?'+qs(c)),
-    api('/api/workspace-status?'+qs(c)),api('/api/worklog?'+qs(c))]);
+    api('/api/worklog?'+qs(c))]);
   if(nav!==NAV_ID)return;   // navigated away mid-fetch — don't clobber the new page
-  const lesRows=(les.lessons||[]).map(l=>`
-    <tr><td>${l.status==='pending'?'…':l.status==='pinned'?ic('pin'):ic('check')} ${esc(l.status)}</td>
+  const est=st.est||{},rules=est.rules||[],
+        ruleTok=rules.reduce((a,r)=>a+(r.tokens||0),0),
+        ttl=les.ttl||30,counter=les.counter||0;
+  const lesRows=(les.lessons||[]).map(l=>{
+    const left=ttl-(counter-(l.last_used||0));
+    return `<tr><td style="white-space:nowrap">${l.status==='pending'?'…':l.status==='pinned'?ic('pin'):ic('check')} ${esc(l.status)}
+      ${l.kind?`<span class="tag">${esc(l.kind)}</span>`:''}</td>
     <td><b>${esc(l.name)}</b><div style="color:var(--dim);font-size:12px">${esc(l.summary)}</div></td>
     <td class="num">${(l.confidence||0).toFixed(1)}</td>
+    <td class="num">${l.status==='pinned'?'<span class="tag ok">kept</span>'
+      :`<span class="${left<=5?'tag warn':'tag'}" title="Dropped when it has gone ${ttl} sessions unused.">${Math.max(0,left)}</span>`}</td>
     <td style="white-space:nowrap">
-      <button class="btn sm" onclick="lessonAct('${l.id}','approve')" title="Approve">${ic('check')}</button>
-      <button class="btn sm" onclick="lessonAct('${l.id}','pin')" title="Pin">${ic('pin')}</button>
-      <button class="btn sm danger" onclick="lessonAct('${l.id}','evict')" title="Evict">${ic('close')}</button></td></tr>`).join('');
-  const modules=(ws.modules||ws.module_list||[]).length||0;
-  // freshness: entities the graph holds against a rough expectation of ~4 per
-  // module. Deliberately its own project's scale, not an absolute target.
-  const cover=st.n_entities?Math.min(1,st.n_entities/Math.max(8,modules*4)):0;
-  paint(nav,`
-    <div class="card"><h3>Project memory <span class="sp"></span>
+      <button class="btn sm" onclick="lessonAct(${hesc(l.id)},'approve')" title="Approve">${ic('check')}</button>
+      <button class="btn sm" onclick="lessonAct(${hesc(l.id)},'pin')" title="Pin">${ic('pin')}</button>
+      <button class="btn sm danger" onclick="lessonAct(${hesc(l.id)},'evict')" title="Evict">${ic('close')}</button></td></tr>`;}).join('');
+  // coverage against something REAL: how many of the graph's own modules got a
+  // rule file. The old denominator read `ws.modules`, a key no endpoint has
+  // ever returned, so it fell back to a constant 8 for the feature's whole life.
+  const cover=st.n_modules?Math.min(1,rules.length/st.n_modules):0;
+  // A raw token total is a number nobody can calibrate. As a share of what a
+  // session can hold it is both honest and small, which is the de-alarming fact.
+  const pctWin=(((est.digest_tokens||0)/CTX_WINDOW)*100).toFixed(1)+'%';
+  const al=st.auto_last||{},wlIns=wl.installed,
+        wlMissing=wlIns&&typeof wlIns==='object'
+          ?Object.keys(wlIns).filter(k=>!wlIns[k]):[];
+  // The bookkeeping bucket: never sent to Claude, so it collapses behind one
+  // summary line. Built as a list so the count in that line cannot drift from
+  // the rows it is counting.
+  const W=st.written||{};
+  const stored=[
+    invRow('Semantic graph','Everything archeus has learned about the code. Nothing reads it directly — every surface above is written from it.',
+      '.archeus/memory/graph.json',`${st.n_entities||0}+${st.n_lessons||0}`,
+      `<button class="btn sm" onclick="go('graph')">${ic('share')} Graph</button>`,W.graph),
+    invRow('Reinforcement log','Which facts recall actually injected. Folded into the graph on the next build; it is what makes useful facts survive.',
+      '.archeus/memory/hits.log',
+      st.hits_pending?`<span class="tag">${st.hits_pending} to fold in</span>`:'folded in','',W.hits),
+    invRow('Edit log','Files Claude changed, so the next cycle knows what to re-read instead of rescanning everything.',
+      '.archeus/memory/dirty.log',
+      st.dirty?`<span class="tag warn">${st.dirty} queued</span>`:'0',
+      st.dirty_hook?'':`<span class="hlink" onclick="go('hooks')">install hook</span>`,W.dirty),
+    invRow('Workspace manifest','What memory was built from — commit, file hashes, session count — so staleness is a fact rather than a guess.',
+      '.archeus/workspace-manifest.json',
+      '<span id="wsScore" style="color:var(--dim2)">checking…</span>',
+      `<span class="hlink" onclick="showDetail('wsBox')">show ↓</span>`,W.manifest),
+    // "12 kept" was the CAP read as a count — it said twelve whether there
+    // were twelve or none. The honest pair is the limit and the last write.
+    invRow('Version snapshots','A copy of everything archeus was about to overwrite. Nothing it shrinks is gone until it falls off this list.',
+      '.archeus/snapshots/','up to 12 each',
+      `<span class="hlink" onclick="TAB='claudemd';drawProject()">History</span>`,W.snapshots)];
+  shell(nav,`
+    <div class="card"><h3>What archeus knows <span class="sp"></span>
       <button class="btn sm" onclick="askMem()">${ic('chat')} Ask</button>
       <button class="btn sm" onclick="recallPrev()">${ic('eye')} Recall preview</button>
       <button class="btn sm pri" onclick="buildMemory()">${ic('bolt')} Build with Claude</button></h3>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 10px">archeus reads this project — its code, its git history and your past sessions — and
+        builds a knowledge graph of it. The graph itself is never sent to Claude. What a session
+        actually reads is written <i>from</i> it, and the next card is that list.</p>
       <div class="memhd">
-        ${INST.html('ring','memory',{fmt:'pct',sub:'mapped',label:'coverage'})}
+        ${INST.html('ring','memory',{fmt:'pct',sub:'covered',label:'modules with a rule'})}
         <div class="kv" style="flex:1">
-        <span class="k">Entities</span><span>${st.n_entities||0}</span>
+        <span class="k">Entities</span><span>${st.n_entities||0} across ${st.n_modules||0} module(s)</span>
+        <span class="k">Relations</span><span>${st.n_relations||0}${st.n_module_edges?` · ${st.n_module_edges} module link(s)`:''}</span>
         <span class="k">Lessons</span><span>${st.n_lessons||0} (${st.n_pending||0} pending review)</span>
-        <span class="k">Unscanned sessions</span><span>${st.n_unscanned||0}</span>
-        <span class="k">Generated</span><span>${esc(st.generated_at||'never')}</span>
+        <span class="k">Unscanned sessions</span><span>${st.n_unscanned||0} of ${st.session_counter||0} seen</span>
+        <span class="k">Built</span><span>${stamp(st.generated_at)}</span>
       </div></div>
-      <label class="autoline" title="Refresh this project's memory in the background — on GUI start and periodically — whenever its files change, without needing this tab open.">
-        <input type="checkbox" id="autoMem" ${CUR.auto_memory?'checked':''} onchange="toggleAutoMem(this.checked)">
+      ${(st.top||[]).length?`<div class="lbl" style="margin-top:10px" title="How often recall has injected each fact. It is a term in the ranking and in what eviction drops first.">Facts Claude reaches for most</div>
+        <div class="chips">${st.top.map(t=>`<span class="chip" style="cursor:pointer" onclick="entDetail(${hesc(t.name)})" title="Recalled into ${t.hits} prompt(s)${t.module?' · '+esc(t.module):''} — click for what it means">${esc(t.name)} <i>${t.hits}</i></span>`).join('')}</div>`:''}
+      ${(st.evicted_names||[]).length?`<div class="lbl" style="margin-top:10px" title="When the graph passes its cap, the least-used unpinned facts go. Pinned ones never do.">Dropped to stay under the cap (${st.evicted||0})</div>
+        <div class="chips">${st.evicted_names.slice(0,12).map(n=>`<span class="chip">${esc(n)}</span>`).join('')}</div>`:''}
+      <div class="lbl" style="margin-top:16px">Keeping it current</div>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 10px">Keeping memory current costs Claude calls. One pass every ${every(st.auto_interval)} —
+        never sooner, however much is left to do, and counted from the last pass rather than from
+        launch, so closing and reopening archeus does not buy another one.
+        Each pass re-reads at most a few changed modules, so a big backlog is spread across
+        passes instead of spent at once.</p>
+      <label class="autoline" style="margin-top:0" title="Refresh this project's memory in the background — once per interval, from whichever interface is running — whenever its files change, without needing this tab open.">
+        <input type="checkbox" id="autoMem" ${st.auto_on?'checked':''} onchange="toggleAutoMem(this.checked)">
         <span>${ic('refresh')} Keep this project's memory updated automatically</span>
-        ${st.n_entities?'':'<span class="tag warn">build memory once first</span>'}</label>
-      <label class="autoline" title="UserPromptSubmit recall: inject the task-relevant slice of this project's memory before every prompt. The hook itself is installed into every account.">
+        <span class="tag" title="Change it on the Claude Code page, under auto-memory.">every ${every(st.auto_interval)}</span>
+        ${st.auto_updated?`<span class="tag">last run ${stamp(st.auto_updated)}</span>`:''}</label>
+      <div style="margin-top:12px">${INST.html('spark','memcost',{fmt:'usd',label:'what each cycle cost',noread:true})}</div>
+      <div class="kv" style="margin-top:10px">
+        <span class="k">Last cycle</span><span>${al.extracted??st.last_extracted??0} module(s)${al.lessons?` · ${al.lessons} lesson(s)`:''}${al.scanned?` · ${al.scanned} session(s) scanned`:''}${st.last_cost_usd?` · $${(+st.last_cost_usd).toFixed(3)}`:''}</span>
+        <span class="k" title="Every Claude call memory has ever paid for on this project. Asking memory is a query, not memory being built, and is not counted.">Spent in total</span><span>$${(+(st.cost_usd_total||0)).toFixed(3)}</span>
+        ${st.last_failed?`<span class="k">Failed</span><span class="warn">${st.last_failed} module(s) could not be extracted${st.last_error?` — ${esc(String(st.last_error).slice(0,160))}`:''}. Retried on the next pass, in ${every(st.auto_interval)} — not sooner, so a failing account is not called in a loop.</span>`:''}
+        ${st.last_skipped?`<span class="k">Still queued</span><span>${st.last_skipped} module(s) — the next pass takes some, in ${every(st.auto_interval)}</span>`:''}
+        ${(!st.last_failed&&!st.last_skipped&&st.pending_units)?`<span class="k">Still queued</span><span>${st.pending_units} module(s) — the next pass takes some, in ${every(st.auto_interval)}</span>`:''}
+        ${st.dirty?`<span class="k">Edited since</span><span>${st.dirty} file(s) waiting for the next cycle</span>`:''}
+      </div>
+      ${st.dirty_hook?'':`<div style="margin-top:8px"><span class="tag warn">stale-on-edit hook not installed</span>
+        <span style="color:var(--dim);font-size:12px">— memory will not notice edits until something else triggers a cycle.</span>
+        <span class="hlink" onclick="go('hooks')">Install it</span></div>`}
+      <div id="memProg"></div>
+    </div>
+    <div class="card"><h3>What a session costs <span class="sp"></span>
+      <button class="btn sm" onclick="inlineJob('#jban','rules_sync',C(),{label:'Rebuilding rules',redraw:()=>drawMemory()})" title="Rewrite the path-scoped rule files from the current graph. Free — no Claude call.">${ic('refresh')} Rebuild rules</button></h3>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">You write the prose in CLAUDE.md. archeus writes everything below it, and every
+        one of these can be opened, rebuilt or switched off. What separates them is <b>when</b>
+        each one reaches a session — which is what the four groups say.</p>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 4px">
+        <b>~${est.digest_tokens||0} tok</b> of it is in every session — <b>${pctWin}</b> of what Claude can hold ·
+        ${est.hook_budget!=null?`up to <b>${est.hook_budget} tok</b> more per prompt`:'no per-prompt recall'} ·
+        <b>~${ruleTok} tok</b> across ${rules.length} rule file(s), read only when Claude opens a matching path</p>
+      <div id="memInv">
+      ${bucket('Always on','always',`~${est.digest_tokens||0} tok · ${pctWin} of the context window${
+        st.generated_at?` · rebuilt ${esc(String(st.generated_at).slice(0,16))}`:''}`)}
+      ${invTable(
+        invRow('CLAUDE.md digest','What this project is, its modules, and the lessons worth carrying into every session.',
+          'the ARCHEUS:MEMORY block in CLAUDE.md',`~${est.digest_tokens||0} tok`,
+          `<span class="hlink" onclick="TAB='claudemd';drawProject()">CLAUDE.md</span>`)
+       +invRow('AUTOGEN / SESSIONS','Which repos this is, its recent commits, and what past sessions were about.',
+          'blocks in CLAUDE.md','see blocks',
+          `<span class="hlink" onclick="TAB='claudemd';drawProject()">CLAUDE.md</span>`)
+       +invRow('Cross-project conventions','Rules that recur across your repos, promoted once so every project on this account gets them.',
+          'a block in your user CLAUDE.md','account-wide',
+          `<span class="hlink" onclick="go('globalmd')">Global</span>`)
+       +invRow('Recent work','A one-line summary of what each session changed, put back when the next one starts.',
+          '.archeus/memory/worklog.json',
+          `${(wl.entries||[]).length} entr${(wl.entries||[]).length===1?'y':'ies'}`,
+          `<span class="hlink" onclick="showDetail('memWork')">show ↓</span>`,W.worklog))}
+      ${bucket('Every prompt','prompt','the only one that grows with how much you talk')}
+      ${invTable(invRow('Recall','The slice of the graph matching what you just typed, added to the message before it is sent.',
+        'the UserPromptSubmit recall hook',
+        st.budget?`up to ${st.budget} tok`:'<span class="tag">off</span>',''))}
+      <label class="autoline" style="margin-top:0" title="UserPromptSubmit recall: inject the task-relevant slice of this project's memory before every prompt. The hook itself is installed into every account.">
         <input type="checkbox" id="memHook" ${st.hook_on?'checked':''} onchange="memToggle({hook:this.checked})">
         <span>${ic('bolt')} Per-prompt recall for this project</span></label>
-      <label class="autoline" title="Write .claude/rules/claudectl-mem-*.md so Claude Code loads the memory for the paths it is actually working in.">
-        <input type="checkbox" id="memRules" ${st.rules_on?'checked':''} onchange="memToggle({rules:this.checked})">
-        <span>${ic('folder')} Path-scoped rules files</span></label>
-      <div class="fld" style="margin-top:12px;max-width:320px"><label>Recall budget (tokens per prompt)</label>
+      <div class="fld" style="margin-top:8px;max-width:320px"><label>Recall budget (tokens per prompt)</label>
         <input type="number" id="memBudget" min="0" max="20000" step="50"
           value="${st.budget==null?600:st.budget}" onchange="memToggle({budget:+this.value})">
-        <div style="color:var(--dim2);font-size:12px;margin-top:4px">What the recall preview above spends. 0 turns injection off.</div></div>
-      <div id="memProg"></div></div>
-    <div class="card"><h3>Lessons <span class="sp"></span>
-      <button class="btn sm" onclick="inlineJob('#jban','lessons_scan',C(),{label:'Learning from sessions',onDone:()=>drawMemory()})">${ic('school')} Learn from sessions${st.n_unscanned?` <span class="tag warn">${st.n_unscanned} new</span>`:''}</button>
+        <div style="color:var(--dim2);font-size:12px;margin-top:4px">0 turns injection off. Try it with Recall preview.</div></div>
+      ${bucket('When relevant','lazy',`${rules.length} rule file(s) · ~${ruleTok} tok, none of it loaded until it matches${
+        W.rules?` · rewritten ${ago(W.rules)}`:''}`)}
+      <details><summary style="cursor:pointer;padding:6px 0">
+        <b>Path-scoped rules</b> — one file per module. Claude loads the one whose
+        <code>paths:</code> cover the file it just opened, and no others ·
+        ${rules.length} file(s), ~${ruleTok} tok</summary>
+        <table class="tbl" style="margin:4px 0 8px">
+          <tr><th>module</th><th>loads for</th><th>tok</th></tr>
+          ${rules.map(r=>`<tr><td>${esc(r.unit||r.file||'')}</td>
+            <td><code style="color:var(--cyan)">${esc(r.glob||'?')}</code></td>
+            <td class="num">${r.tokens||0}</td></tr>`).join('')
+            ||'<tr><td colspan="3" style="color:var(--dim)">None written yet.</td></tr>'}
+        </table>
+        <label class="autoline" style="margin:0" title="Write .claude/rules/archeus-mem-*.md so Claude Code loads the memory for the paths it is actually working in.">
+          <input type="checkbox" id="memRules" ${st.rules_on?'checked':''} onchange="memToggle({rules:this.checked})">
+          <span>${ic('folder')} Keep the rule files in sync</span></label></details>
+      ${invTable(invRow('Lessons','Things this project learned the hard way — a bug and its fix, a decision, a preference you corrected. Recall injects one when it applies.',
+        'entities inside the graph',`${st.n_lessons||0}`,
+        `<span class="hlink" onclick="showDetail('memLessons')">show ↓</span>`,W.graph))}
+      ${bucket('Stored, not loaded','source',`${stored.length} records · 0 tokens — read only when you or Claude ask`)}
+      <details id="memKeep"><summary style="cursor:pointer;padding:6px 0;color:var(--dim);font-size:13px">
+        What archeus keeps for itself, so it knows what to rebuild and can undo it</summary>
+      ${invTable(stored.join(''))}
+      </details></div></div>
+    <div class="card"><h3>What it learned <span class="sp"></span>
+      <button class="btn sm" onclick="inlineJob('#jban','lessons_scan',C(),{label:'Learning from sessions',redraw:()=>drawMemory()})">${ic('school')} Learn from sessions${st.n_unscanned?` <span class="tag warn">${st.n_unscanned} new</span>`:''}</button>
       <button class="btn sm" onclick="lessonAct('','approve_all')">${ic('check')} Approve all pending</button></h3>
-      ${lesRows?`<table class="tbl"><tr><th>status</th><th>lesson</th><th>conf</th><th></th></tr>${lesRows}</table>`
-        :'<div style="color:var(--dim)">No lessons yet.</div>'}</div>
-    <div class="card"><h3>Recent work</h3>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 10px">What this project learned the hard way, read back out of your past sessions — a bug and its
+        fix, a decision and why, something you corrected. Approved ones are injected when relevant;
+        one nobody uses for ${ttl} sessions is dropped, unless you pin it.</p>
+      <div id="memLessons">${lesRows?`<table class="tbl"><tr><th>status</th><th>lesson</th><th>conf</th>
+        <th title="Sessions of disuse left before it is dropped.">left</th><th></th></tr>${lesRows}</table>`
+        :'<div class="empty">No lessons yet.</div>'}</div>
+      <div class="lbl" style="margin-top:16px">Recent work</div>
       <p style="color:var(--dim);font-size:12px;margin:0 0 8px">A token-free log of what each session changed, injected into the next session on start (claude-mem style).</p>
       <label class="autoline" style="margin-top:0" title="On session end, record a one-line summary + files touched; inject the last few on the next SessionStart.">
         <input type="checkbox" id="wlOn" ${wl.on?'checked':''} onchange="toggleWorklog(this.checked)">
         <span>${ic('school')} Track recent work for this project</span></label>
-      ${(wl.entries||[]).length?`<table class="tbl" style="margin-top:10px"><tr><th>when</th><th>summary</th><th>files</th></tr>`
-        +wl.entries.map(e=>`<tr><td style="white-space:nowrap;color:var(--dim)">${esc(e.ended_at||'')}</td>
+      ${wlMissing.length?`<div style="margin-top:8px"><span class="tag warn">hook missing on ${esc(wlMissing.join(', '))}</span>
+        <span style="color:var(--dim);font-size:12px">— sessions under that account record nothing.</span>
+        <span class="hlink" onclick="go('hooks')">Fix</span></div>`:''}
+      <div id="memWork">${(wl.entries||[]).length?`<table class="tbl" style="margin-top:10px"><tr><th>when</th><th>summary</th><th>files</th></tr>`
+        +wl.entries.map(e=>`<tr${e.session_id?` style="cursor:pointer" onclick="openWorkSession(${hesc(e.session_id)})" title="Open this session"`:''}>
+          <td style="white-space:nowrap;color:var(--dim)">${stamp(e.ended_at)}</td>
           <td>${esc(e.summary||'')}</td>
           <td style="color:var(--dim);font-size:12px">${esc((e.files||[]).join(', '))}</td></tr>`).join('')
-        +`</table>`:'<div style="color:var(--dim);margin-top:8px">No sessions recorded yet.</div>'}</div>
-    <div class="card"><h3>Workspace status — score ${ws.score??'?'} ${ws.safe?'<span class="tag ok">safe</span>':'<span class="tag warn">attention</span>'}</h3>
-      <div style="font:12px Consolas,monospace;white-space:pre-wrap">${esc((ws.lines||[]).join('\n'))}</div></div>`);
+        +`</table>`:'<div class="empty">No sessions recorded yet.</div>'}</div></div>
+    <div class="card"><h3>Freshness &amp; history <span class="sp"></span><span id="wsHead"></span></h3>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 10px">How much of what archeus generated still matches the code as it is now. Each row is worth
+        the points beside it; clearing one raises the score.</p>
+      <div id="wsBox"><span class="spin"></span></div>
+      <div class="lbl" style="margin-top:12px">History</div>
+      <p style="color:var(--dim);font-size:12px;margin:0 0 6px">Every graph archeus replaced. Eviction and rebuild both snapshot what they were about to overwrite, and restoring is itself snapshotted.</p>
+      <div id="histOut"><span class="spin"></span></div></div>`);
   INST.set('memory',{v:cover,tone:cover>=.6?'ok':cover>=.25?null:'warn'});
   setRead('memory',cover*100);
+  const hist=(st.cost_history||[]);
+  if(hist.length>1)INST.set('memcost',{series:hist});
+  drawHistory(['memory_graph']);
+  fillWorkspace();
 }
+/* The freshness checks, fetched AFTER the page is on screen. Hashing files and
+   walking every transcript folder is the slowest thing this tab asks for, and
+   it answers a question nobody has while the page is still blank. Writes its
+   own node, never #content — and re-queries it, because the fetch outlives a
+   navigation away. */
+async function fillWorkspace(){
+  let ws;
+  try{ws=await api('/api/workspace-status?'+qs(C()));}
+  catch(e){const b=$('#wsBox');if(b)b.innerHTML='<div class="empty">Could not read workspace status.</div>';return;}
+  const b=$('#wsBox');if(!b)return;
+  b.innerHTML=(ws.checks||[]).map(k=>{
+    const f=WSFIX[k.name]||null,na=!k.applicable;
+    return `<div class="hrow">
+      <span style="min-width:150px">${esc(k.label||k.name)}</span>
+      <span style="min-width:74px">${na?'<span style="color:var(--dim2)">n/a</span>'
+        :k.state==='fresh'?'<span class="tag ok">fresh</span>'
+        :k.state==='invalid'?'<span class="tag warn">invalid</span>':'<span class="tag warn">stale</span>'}</span>
+      <span class="info" style="flex:1;color:var(--dim)">${esc(k.detail||'')}</span>
+      <span style="color:var(--dim2);font-size:11px;min-width:44px" title="Share of the freshness score this check carries.">${na?'—':'+'+(k.weight||0)}</span>
+      ${(na||k.state==='fresh'||!f)?'':`<button class="btn sm" onclick="${f[1]}">${esc(f[0])}</button>`}
+    </div>`;}).join('')||'<div class="empty">No checks ran.</div>';
+  const h=$('#wsHead');
+  if(h)h.innerHTML=`<span style="color:var(--dim2);font-size:12px">score ${ws.score??'?'}</span>
+    ${ws.safe?'<span class="tag ok">safe to launch</span>':'<span class="tag warn">attention</span>'}`;
+  const s=$('#wsScore');if(s)s.textContent=`score ${ws.score??'?'}`;
+}
+/* One bucket row states what an artifact COSTS; the table stating what is in it
+   is a card further down. The row links there instead of repeating the numbers
+   in both places, where they can disagree. */
+function showDetail(id){
+  const el=$('#'+id);if(!el)return;
+  const d=el.closest('details');if(d)d.open=true;
+  el.scrollIntoView({behavior:'smooth',block:'center'});
+}
+/* a worklog line names its session; opening it was one field away the whole
+   time. `viewS` indexes into SESS, which drawSessions builds — so hand the sid
+   to that renderer rather than trying to resolve it here. */
+let PENDING_SID=null;
+function openWorkSession(sid){PENDING_SID=sid;TAB='sessions';drawProject();}
 async function toggleWorklog(on){
   await post('/api/worklog',{enc:CUR.encoded,on});
   toast(on?'Recent-work tracking on':'Recent-work tracking off','ok');
 }
-/* live progress of a running memory scan (fg job or bg worker) */
+/* live progress of a running memory scan (fg job or bg worker), and — once the
+   lock clears — how the last one ENDED. The poller only ever read `progress`,
+   so a cycle that crashed cleared the lock exactly like one that succeeded and
+   the tab said nothing either way. `last` has been in this payload all along.
+   Cached in __plMemProg: an unconditional innerHTML every 600ms rebuilds nodes
+   and reflows for a string that almost never changes. */
+let __plMemProg=null;
 async function pollMemProg(){
   const el=$('#memProg');
   if(el&&PAGE_==='project'&&TAB==='memory'){
     try{
       const d=await api('/api/memory/progress?'+qs({path:CUR.path}));
-      el.innerHTML=(d.progress===null||d.progress===undefined)?''
-        :`<div style="display:flex;gap:8px;align-items:center;margin-top:10px;color:var(--warn)">
-           <span class="spin"></span> Memory scan running… ${esc(d.progress||'')}</div>`;
+      const L=d.last||null;
+      const html=(d.progress!==null&&d.progress!==undefined)
+        ?`<div style="display:flex;gap:8px;align-items:center;margin-top:10px;color:var(--warn)">
+           <span class="spin"></span> Memory scan running… ${esc(d.progress||'')}</div>`
+        :(L&&L.ok===false)
+        ?`<div style="margin-top:10px"><span class="tag warn">last run failed</span>
+           <span style="color:var(--dim);font-size:12px">${esc(L.error||'')}</span></div>`
+        :(L&&L.ok)
+        ?`<div style="margin-top:10px;color:var(--dim);font-size:12px">Last run: ${L.extracted||0} module(s), ${L.lessons||0} lesson(s)${L.pending?`, ${L.pending} still queued`:''}.</div>`
+        :'';
+      if(html!==__plMemProg){__plMemProg=html;el.innerHTML=html;}
     }catch(e){}
   }
 }
@@ -1993,7 +2670,7 @@ async function buildMemory(){
   // badge instead of starting a second, colliding run
   try{const r=await api('/api/memory/progress?'+qs({path:CUR.path}));
     if(r.progress!=null){startMemBadge();toast('Memory update already running','ok');return;}}catch(e){}
-  inlineJob('#jban','memory_build',C(),{label:'Building memory',onDone:()=>drawMemory()});
+  inlineJob('#jban','memory_build',C(),{label:'Building memory',redraw:()=>drawMemory()});
 }
 async function askMem(){
   const v=await ask('Ask project memory',[{label:'Question'}]);
@@ -2008,79 +2685,236 @@ async function recallPrev(){
   const v=await ask('Recall preview',[{label:'Simulated prompt',ph:'e.g. fix the launch bug'}]);
   if(v===null)return;
   const d=await api('/api/recall-preview?'+qs({...C(),q:v[0]}));
+  const b=$('#dBody');if(!b)return;
   $('#dTitle').textContent=`Recall preview (${d.tokens||0} tok)`;
-  $('#dBody').innerHTML=d.empty?'<div class="empty">Nothing would be injected.</div>'
-    :`<div class="msg"><div class="body">${esc(d.context)}</div></div>`;
+  // the items ARE the answer to "why did that text appear" — they were computed
+  // and dropped at the endpoint. Previewing does not reinforce (log=False), so
+  // opening this repeatedly no longer reshapes what recall will pick next time.
+  b.innerHTML=d.empty?'<div class="empty">Nothing would be injected.</div>'
+    :`${(d.items||[]).length?`<div class="lbl">Injected (${d.items.length})</div>
+       <div class="chips">${d.items.map(n=>`<span class="chip">${esc(n)}</span>`).join('')}</div>`:''}
+     <div class="msg"><div class="body">${esc(d.context)}</div></div>`;
   $('#drawer').classList.add('show');
 }
 
-/* CLAUDE.md tab */
+/* CLAUDE.md tab — the file, block by block.
+
+   CLAUDE.md is five things stacked in one file: your prose, KEEP-fenced
+   regions, and three blocks archeus rewrites (AUTOGEN, SESSIONS, MEMORY).
+   Shown as one 46vh scroll of raw text, there was no way to tell which part
+   cost what, which button regenerated which part, or that "Prune" only ever
+   touches the SESSIONS block. `ctxaudit.split_blocks` already did the split for
+   the token audit; the endpoint just stopped throwing the result away. */
+const CMFIX={
+  manual:['Compress',"inlineJob('#jban','ai_compress',C(),{label:'Compressing CLAUDE.md',redraw:()=>drawClaudeMd()})",
+          'Rewrite your prose shorter with Claude. KEEP-fenced text is never sent.'],
+  keep:['Protect more','cmProtect()',
+        'Fence a section so AI compression can never reword, shorten or drop it.'],
+  autogen:['Rebuild','cmScaffold()','Re-derive the repo and commit block.'],
+  sessions:['Prune','cmPrune()','Drop session entries past the cap. Transcripts are untouched.'],
+  memory:['Rebuild','buildMemory()','Re-extract the project memory this digest is built from.'],
+  agents:['Agents',"go('agents')",'Written from the agents installed here — manage them on the Agents page.'],
+  loop:['Loops',"go('loops')",'Written by the background loop — start, watch or end one on the Loops page.']};
+/* WHAT each block is, in one line, and WHO writes it. Two questions, and the
+   row answered neither: "maintained by archeus" says who and not what, and
+   was the same six words on three different blocks. A subtitle, never a
+   tooltip — the row has to be readable without hovering it. */
+const CMWHAT={
+  manual:['What you wrote — the instructions you want in every session here.','you'],
+  keep:['Sections you fenced off. AI compression is not even shown this text.','you'],
+  autogen:['Which repos this is, and what has been committed lately.','archeus'],
+  sessions:['What your past sessions in this project were about.','archeus'],
+  memory:['The project memory digest — modules, dependencies, hard-won lessons.','archeus'],
+  agents:['The subagents installed here and when to delegate to each. Claude Code only picks an agent it has been told about.','archeus'],
+  loop:['What a background /loop has done lately, rewritten on every run.','archeus']};
 async function drawClaudeMd(){
   const nav=paintNow('<div class="empty"><span class="spin"></span></div>');
   const c=C();
   const [md,mm]=await Promise.all([api('/api/claude-md?'+qs(c)),
                                    api('/api/memory-map?'+qs(c))]);
-  const mf=mm.files||[],have=mf.filter(f=>f.exists).length;
-  paint(nav,`
-    <div class="card"><h3>CLAUDE.md <span class="sp"></span>
+  const blocks=md.blocks||[];
+  if(!shell(nav,`
+    <div class="card"><h3>CLAUDE.md — block by block <span class="sp"></span>
       <button class="btn sm" onclick="cmScaffold()">${ic('doc')} Scaffold</button>
-      <button class="btn sm" onclick="inlineJob('#jban','ai_scaffold',C(),{label:'AI-analyzing project',onDone:()=>drawClaudeMd()})">${ic('ai')} AI analyze</button>
-      <button class="btn sm" onclick="inlineJob('#jban','ai_compress',C(),{label:'Compressing CLAUDE.md',onDone:()=>drawClaudeMd()})">${ic('shrink')} AI compress</button>
-      <button class="btn sm" onclick="cmPrune()">${ic('cut')} Prune</button>
+      <button class="btn sm" onclick="inlineJob('#jban','ai_scaffold',C(),{label:'AI-analyzing project',redraw:()=>drawClaudeMd()})">${ic('ai')} AI analyze</button>
       <button class="btn sm" onclick="post('/api/open-editor',{file:CUR.path+'\\\\CLAUDE.md'})">${ic('edit')} Edit</button></h3>
-      ${md.exists?`<div style="font:12px Consolas,monospace;white-space:pre-wrap;max-height:46vh;overflow-y:auto;background:var(--code);border-radius:8px;padding:12px">${esc(md.text)}</div>`
-        :'<div style="color:var(--dim)">No CLAUDE.md yet — scaffold one.</div>'}</div>
-    <div class="card"><h3>Memory files map</h3>
+      <p class="secthint">Claude reads this whole file on <b>every turn</b> of every session in this project — it is the one place an instruction is guaranteed to be seen, and the one place a wasted paragraph is paid for over and over.</p>
+      <p class="secthint">It is not one document but several stacked in one file: your own prose, the regions you have fenced off, and the blocks archeus regenerates. Each row says what it is, <b>who writes it</b>, what it costs, and the one button that rebuilds it.</p>
+      ${md.exists?`
+      <div id="cmBlocks">${blocks.map(b=>{
+        const f=CMFIX[b.key]||null,w=CMWHAT[b.key]||['',''];
+        const who=w[1]==='you'
+          ?'<span class="tag ok" title="archeus never rewrites this unprompted.">you write it</span>'
+          :'<span class="tag" title="Rewritten by archeus. Hand edits here are replaced on the next pass.">archeus writes it</span>';
+        return `
+        <div class="agrow">
+          <div class="agmain">
+            <b>${b.present?ic('check'):'<span style="color:var(--dim2)">—</span>'} ${esc(b.label)}</b>
+            ${who}${b.present?'':'<span class="tag" style="color:var(--dim2)">not present</span>'}
+            ${b.key==='sessions'&&b.entries?`<span class="tag">${b.entries} entr${b.entries===1?'y':'ies'}</span>`:''}
+            <div class="agdesc">${esc(w[0])}</div></div>
+          <span class="num" style="min-width:70px;color:var(--dim2)">~${b.tokens||0} tok</span>
+          ${f?`<button class="btn sm" title="${esc(f[2])}" onclick="${f[1]}">${esc(f[0])}</button>`:''}
+        </div>${b.text?`<details style="margin:0 0 6px 12px"><summary style="cursor:pointer;color:var(--dim2);font-size:12px">show</summary>
+          <div class="diff">${esc(b.text).split('\n').map(l=>`<div>${l}</div>`).join('')}</div></details>`:''}`;}).join('')}</div>
+      <p style="color:var(--dim);font-size:12px;margin:10px 0 0">
+        <b>~${md.tokens||0} tok</b> of this file is read on every turn of every session in this project.
+        <code>loop.md</code> — what a bare <code>/loop</code> runs here — is edited on the
+        <span class="hlink" onclick="go('loops')">Loops</span> page, beside the loops themselves.</p>
+      <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--dim2);font-size:12px">The whole file</summary>
+        <div style="font:12px Consolas,monospace;white-space:pre-wrap;max-height:46vh;overflow-y:auto;background:var(--code);border-radius:8px;padding:12px;margin-top:6px">${esc(md.text)}</div></details>`
+        :'<div class="empty">No CLAUDE.md yet — scaffold one.</div>'}</div>
+    <div class="card"><h3>What else reaches this project <span class="sp"></span>
+      <span style="color:var(--dim2);font-size:12px">the other files a session here loads</span></h3>
+      <div class="lbl">Memory files map</div>
       ${(mm.files||[]).map(f=>`<div style="display:flex;gap:8px;padding:3px 0;align-items:center">
         <span style="width:18px">${f.exists?ic('check'):'—'}</span>
         <span style="flex:1">${esc(f.label)}</span>
         <span style="color:var(--dim2);font-size:11px">${esc(f.path)}</span>
-        ${f.exists?`<button class="btn sm" onclick="post('/api/open-editor',{file:'${jsq(f.path)}'})">open</button>`:''}
-      </div>`).join('')}</div>
-    <div class="card"><h3>${ic('refresh')} loop.md <span class="sp"></span>
-      <button class="btn sm pri" onclick="loopSave('project')">Save</button></h3>
-      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">Claude Code's repeating-instruction file for THIS project, read on every turn. Saving it empty deletes it. The account-wide one lives on the MCP servers page.</p>
-      <textarea id="loopProject" style="min-height:120px;font-family:var(--mono)"></textarea>
-      <div style="color:var(--dim2);font-size:12px;margin-top:6px" id="loopProjectPath"></div></div>
-    <div class="card"><h3>System prompt</h3><div id="spBox"></div></div>`);
-  api('/api/loop-md?'+qs({...c,scope:'project',path:CUR.path})).then(l=>{
-    if($('#loopProject'))$('#loopProject').value=l.text||'';
-    if($('#loopProjectPath'))$('#loopProjectPath').textContent=l.file||'';});
+        ${f.exists?`<button class="btn sm" onclick="post('/api/open-editor',{file:${hesc(f.path)}})">open</button>`:''}
+      </div>${(f.imports||[]).map(im=>`<div class="agrow" style="margin-left:26px">
+        <span style="flex:1;color:var(--dim);font-size:12px">@import ${esc(im.ref)}</span>
+        ${im.exists?ic('check'):'<span class="tag warn" title="This @import points at a file that does not exist — Claude silently loads nothing for it.">missing</span>'}
+      </div>`).join('')}`).join('')}
+      <div class="lbl" style="margin-top:16px">System prompt</div>
+      <div id="spBox"><span class="spin"></span></div></div>
+    <div class="card"><h3>${ic('refresh')} History <span class="sp"></span>
+      <span style="color:var(--dim2);font-size:12px">every version archeus replaced</span></h3>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">Compress and prune both snapshot what they were about to
+        overwrite. Nothing archeus shrinks is gone until it falls off the end of this list.
+        Restoring is itself snapshotted, so you can walk back out again.</p>
+      <div id="histOut"><span class="spin"></span></div></div>`))return;
+  drawHistory(['claude_md','system_prompt']);
   const sp=await api('/api/system-prompt?'+qs(c));
-  $('#spBox').innerHTML=`<div class="fld"><textarea id="spText">${esc(sp.text)}</textarea></div>
+  const b=$('#spBox');if(!b)return;   // navigated away during the second fetch
+  b.innerHTML=`<div class="fld"><textarea id="spText">${esc(sp.text)}</textarea></div>
     <div class="mrow"><button class="btn pri sm" onclick="spSave()">Save</button></div>`;
 }
 async function cmScaffold(){
   await post('/api/claude-md/scaffold',C());toast('Scaffolded','ok');drawClaudeMd();}
-async function cmPrune(){
+/* Prune drops session entries past the cap. The TUI has always confirmed; the
+   GUI destroyed silently. Same operation, so same contract — and the preview
+   names what goes, because a token delta is not something you can check. */
+async function cmPrune(redraw){
+  const p=await api('/api/ctxaudit/prune-preview?'+qs(C()));
+  if(!p.ok){toast(p.error||'Nothing to prune','err');return;}
+  if(!p.changed){toast('Already pruned — nothing would change','ok');return;}
+  const drop=(p.dropped||[]);
+  const body=`~${p.old_tokens} → ~${p.new_tokens} tok every turn.`
+    +(drop.length?`\n\nDrops ${drop.length} session entr${drop.length===1?'y':'ies'}:\n· `
+      +drop.slice(0,12).join('\n· ')+(drop.length>12?`\n· …and ${drop.length-12} more`:'')
+      +'\n\nThe transcripts themselves are untouched — only their lines in CLAUDE.md.'
+     :'\n\nNo session entries are dropped.');
+  if(!await confirmBox('Prune CLAUDE.md?',body))return;
   const r=await post('/api/ctxaudit/prune',C());
-  toast(`Pruned: ~${r.old_tokens} → ~${r.new_tokens} tok`,'ok');drawClaudeMd();}
+  if(!r.ok){toast(r.error||'Prune failed','err');return;}
+  toast(`Pruned: ~${r.old_tokens} → ~${r.new_tokens} tok · undo from History`,'ok');
+  (redraw||drawClaudeMd)();}
 async function spSave(){
   await post('/api/system-prompt',{...C(),text:$('#spText').value});
   toast('System prompt saved','ok');}
 
-/* audit tab */
+/* audit tab — one question: what does a single turn cost me, across EVERY
+   surface. That includes the ones no project tab should own: the global
+   CLAUDE.md of each account, the system-prompt file, SessionStart hook
+   injections and MCP tool schemas. The per-artifact detail that used to live
+   here now sits on the tab that owns the artifact — CLAUDE.md blocks on the
+   CLAUDE.md tab, rule globs on the Memory tab — so each row here links there
+   instead of restating it. */
 async function drawAudit(){
   const nav=paintNow('<div class="empty"><span class="spin"></span></div>');
   const c=C();
   const [d,deny]=await Promise.all([api('/api/ctxaudit?'+qs(c)),api('/api/deny?'+qs(c))]);
-  const it=d.items||[];
-  const rows=(d.items||[]).map(it=>`
-    <tr><td>${esc(it.label)} ${it.lazy?'<span class="tag">lazy</span>':''}</td>
-    <td class="num">${it.tokens}</td>
-    <td style="color:var(--warn);font-size:12px">${esc((it.warnings||[]).join(' · '))}</td></tr>`).join('');
-  paint(nav,`
+  const rows=(d.items||[]).map(it=>{
+    const owner=it.label.startsWith('CLAUDE.md')?'claudemd'
+               :it.label.startsWith('rule ')?'memory':'';
+    return `
+    <tr><td>${esc(it.label)} ${it.lazy?'<span class="tag" title="Loaded only when Claude opens a matching path.">lazy</span>':''}
+      ${owner?`<span class="hlink" style="font-size:11px" onclick="TAB=${hesc(owner)};drawProject()">detail →</span>`:''}</td>
+    <td class="num">${it.tokens==null
+      ?'<span style="color:var(--dim2)" title="An MCP server\'s tool list is only known once the session has connected to it.">not until it connects</span>'
+      :it.tokens}</td>
+    <td style="color:var(--warn);font-size:12px">${esc((it.warnings||[]).join(' · '))}</td>
+    <td style="white-space:nowrap">${it.path?`<button class="btn sm" onclick="post('/api/open-editor',{file:${hesc(it.path)}})">open</button>`:''}</td></tr>`;}).join('');
+  if(!shell(nav,`
     <div class="card"><h3>Context weight — ~${d.total||0} tok loaded every turn
       <span class="sp"></span>
-      <button class="btn sm" onclick="cmPrune().then(()=>drawAudit())">${ic('cut')} Prune sessions</button>
+      <button class="btn sm" onclick="cmPrune(drawAudit)">${ic('cut')} Prune sessions</button>
       <button class="btn sm" onclick="post('/api/ctxaudit/compact',{path:CUR.path}).then(()=>{toast('Compact section added','ok');drawAudit()})">${ic('add')} Compact instructions</button></h3>
-      <table class="tbl"><tr><th>item</th><th>tokens</th><th>warnings</th></tr>${rows}</table></div>
+      <p style="color:var(--dim);font-size:12px;margin:0 0 8px">Every surface a session loads, project-scoped and account-scoped together. <b>lazy</b> rows cost nothing until Claude opens a matching path, so they are not in the total.</p>
+      <table class="tbl"><tr><th>item</th><th>tokens</th><th>warnings</th><th></th></tr>${rows}</table></div>
     <div class="card"><h3>Deny rules (token-heavy paths) <span class="sp"></span>
       <button class="btn sm pri" onclick="post('/api/deny/apply',{path:CUR.path}).then(r=>{toast(r.added+' added, '+r.existed+' existed','ok');drawAudit()})">Apply all</button></h3>
       ${(deny.patterns||[]).map(p=>`<div style="display:flex;gap:10px;padding:2px 0">
         <code style="color:var(--cyan)">${esc(p.pattern)}</code>
         <span style="color:var(--dim);font-size:12px">${esc(p.why)}</span></div>`).join('')
-      ||'<div style="color:var(--dim)">Nothing heavy found.</div>'}</div>`);
+      ||'<div class="empty">Nothing heavy found.</div>'}</div>`))return;
+}
+async function cmProtect(){
+  const v=await ask('Protect a section of CLAUDE.md',
+    [{label:'Text from the section to keep',ph:'e.g. Deployment checklist'}],
+    'The heading it sits under, and everything down to the next heading, is '
+    +'fenced. AI compression never sees fenced text, so it cannot reword, '
+    +'shorten or drop it.');
+  if(v===null||!v[0].trim())return;
+  const r=await post('/api/ctxaudit/protect',{path:CUR.path,text:v[0].trim()});
+  toast(r.ok?'Section protected':(r.error||'Failed'),r.ok?'ok':'err');
+  if(r.ok)drawClaudeMd();     // the fence is a CLAUDE.md block, shown there
+}
+/* One renderer, three consumers: the Memory tab owns memory_graph, the
+   CLAUDE.md tab owns claude_md + system_prompt. `only` filters by key so
+   history sits beside the artifact it is history OF, instead of in a third tab
+   that has to explain which of the three it is showing. */
+/* Two ways a version can be summarised, and the graph needs the second one.
+   `+27808 -27783` is what a re-serialised 300 KB JSON reports whether one fact
+   changed or every one did — a true number that answers nothing. For the graph
+   the summary is its SHAPE, which is what you would restore for. */
+const HIST_SHOWN=4;
+function histSum(k,v,now){
+  if(v.shape){const s=v.shape,d=(a,b)=>{const n=(b||0)-(a||0);
+      return n?`<span style="color:var(--${n>0?'ok':'err'})">${n>0?'+':''}${n}</span>`:'';};
+    return `${s.entities} facts · ${s.relations} links · ${s.lessons} lessons`
+      +(now?` <span style="color:var(--dim2)">(now ${now.entities}${d(s.entities,now.entities)}`
+        +`, ${now.lessons}${d(s.lessons,now.lessons)} lessons)</span>`:'');}
+  return `<span style="color:var(--ok)">+${v.added}</span> <span style="color:var(--err)">-${v.removed}</span>`;
+}
+function histRows(k,vs){
+  return vs.map(v=>`<div class="agrow">
+      <span style="min-width:70px;color:var(--dim)">${esc(v.age)}</span>
+      <span style="flex:1;font-size:12px">${histSum(k.key,v,k.now)}</span>
+      <button class="btn sm" onclick="histDiff(${hesc(k.key)},${v.ts})">what changed</button>
+      <button class="btn sm pri" onclick="histRestore(${hesc(k.key)},${v.ts},${hesc(k.title)},${hesc(v.age)})">restore</button>
+      </div>`).join('');
+}
+async function drawHistory(only){
+  const d=await api('/api/history?'+qs(C()));const b=$('#histOut');if(!b)return;
+  // 12 versions per key is the right thing to KEEP and the wrong thing to
+  // show — a wall of near-identical rows buries the recent one you want.
+  const rows=(d.keys||[]).filter(k=>(!only||only.includes(k.key))&&(k.versions||[]).length).map(k=>{
+    const vs=k.versions,head=vs.slice(0,HIST_SHOWN),rest=vs.slice(HIST_SHOWN);
+    return `<div class="lbl" style="margin-top:8px">${esc(k.title)}</div>`
+      +histRows(k,head)
+      +(rest.length?`<details><summary style="cursor:pointer;color:var(--dim2);font-size:12px;padding:4px 0">${rest.length} older version(s)</summary>${histRows(k,rest)}</details>`:'');
+  }).join('');
+  b.innerHTML=rows||'<div class="empty">No version has been replaced yet — nothing to roll back to.</div>';
+}
+async function histDiff(key,ts){
+  const d=await api('/api/history/diff?'+qs({...C(),key,ts}));
+  $('#dTitle').textContent=(d.title||key)+' — what this restore would bring back';
+  $('#dBody').innerHTML=`<div class="diff">${(d.diff||[]).map(l=>
+    `<div class="${l.startsWith('+')&&!l.startsWith('+++')?'a':
+       (l.startsWith('-')&&!l.startsWith('---')?'d':
+       (l.startsWith('@@')?'h':''))}">${esc(l)}</div>`).join('')
+    ||'<div class="empty">Identical to what is on disk now.</div>'}</div>`;
+  $('#drawer').classList.add('show');
+}
+async function histRestore(key,ts,title,age){
+  if(!await confirmBox(`Restore ${title}?`,
+    `Puts back the version from ${age}. What is on disk now is snapshotted first, `
+    +`so this is reversible too.`))return;
+  const r=await post('/api/history/restore',{...C(),key,ts});
+  toast(r.ok?(r.message||'Restored'):(r.error||'Restore failed'),r.ok?'ok':'err');
+  if(r.ok)drawProject();     // history now lives on two tabs — redraw whichever
 }
 
 /* project usage tab */
@@ -2090,30 +2924,33 @@ async function drawProjUsage(){
   const ss=d.sessions||[],spend=ss.reduce((a,r)=>a+(r.cost||0),0);
   const rows=(d.sessions||[]).map(r=>`
     <tr><td>${esc(r.age)}</td><td>${esc(r.name)} ${r.account&&r.account!=='default'?`<span class="tag">${esc(r.account)}</span>`:''}</td>
-    <td class="num">${r.msgs}</td><td class="num">${r.usage.in}</td>
-    <td class="num">${r.usage.out}</td><td class="num">${costCell(r.cost,r.exact)}</td></tr>`).join('');
-  paint(nav,`<div class="card"><h3>Per-session usage</h3>
-    <table class="tbl"><tr><th>age</th><th>session</th><th>msgs</th><th>in</th><th>out</th><th>est.$</th></tr>${rows}</table></div>`);
+    <td class="num">${r.msgs}</td><td class="num">${fmtTok(r.usage.in)}</td>
+    <td class="num">${fmtTok(r.usage.out)}</td><td class="num">${costCell(r.cost,r.exact)}</td></tr>`).join('');
+  shell(nav,`<div class="card"><h3>Per-session usage</h3>
+    <p class="secthint">Every session of this project, oldest cost first. The estimate is at published API rates — a useful gauge of consumption even on a subscription, where nothing is billed per token.</p>
+    ${rows?`<table class="tbl"><tr><th>age</th><th>session</th><th>msgs</th>
+      <th>in</th><th>out</th><th>est.$</th></tr>${rows}</table>`
+    :'<div class="empty">No sessions in this project yet.</div>'}</div>`);
 }
 
 /* tools tab */
 function drawTools(){
-  paintNow(`
+  shellNow(`
     <div class="card"><h3>${ic('check')} Project health</h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">The checks the TUI's workspace screen runs — they had no GUI trace at all.</p>
+      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Whether this project's context is in a state Claude can use: is the memory current, is CLAUDE.md a sensible size, is anything archeus wrote missing. Each row carries the button that fixes it.</p>
       <div id="hOut"><span class="spin"></span></div></div>
-    <div class="card"><h3>${ic('ai')} What to work on</h3>
+    <div class="card"><h3>${ic('ai')} What to work on <span class="sp"></span>
+      <button class="btn sm" title="One Claude call over the memory graph, recorded lessons and recent diff — returns bugs, vulnerabilities, slow paths and functions worth building. Findings are stored, so this list stays instant afterwards."
+        onclick="inlineJob('#jban','work_scan',C(),{label:'Scanning for work',onDone:st=>toast(((st.result||{}).items||[]).length+' finding(s)','ok'),redraw:()=>drawBrief()})">${ic('ai')} Find work</button></h3>
+      <p style="color:var(--dim);font-size:12px;margin:2px 0 8px">Free signals — stale context, TODO markers, deferred shortcuts, untested modules — are always listed. Press <b>Find work</b> to add what a model can see that a grep cannot.</p>
       <div id="bOut"><span class="spin"></span></div></div>
-    <div class="card"><h3>${ic('inject')} New chat with injected context</h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Start a new session seeded with another session's transcript — from any account, into any account.</p>
-      <button class="btn" onclick="injectFlow()">Choose source session…</button></div>
     <div class="card"><h3>${ic('map')} Architecture <span class="sp"></span>
       <button class="btn sm" onclick="archRefresh()">${ic('refresh')} Rebuild</button>
       <button class="btn sm" onclick="window.open('/graph?${qs({path:CUR.path,enc:CUR.encoded,k:CK})}','_blank')">Graph ${ic('ext')}</button></h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">What the terminal UI's architecture screen shows. The endpoint behind it existed and had no consumer at all.</p>
+      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">What archeus read to build its memory of this project: how much code there is, in which languages, and what it depends on. <b>Graph</b> opens the interactive map in its own window.</p>
       <div id="archOut"><span class="spin"></span></div></div>
     <div class="card"><h3>${ic('ai')} Claude Code's own record</h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">What Claude Code itself has stored about this project in <code>.claude.json</code> — not claudectl's numbers.</p>
+      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">What Claude Code itself has stored about this project in <code>.claude.json</code> — not archeus's numbers.</p>
       <div id="ccProj"><span class="spin"></span></div></div>
     <div class="card"><h3>${ic('robot')} Project agents</h3><div id="agSel"></div></div>
     <div class="card"><h3>${ic('terminal')} Extra PATH entries</h3>
@@ -2168,12 +3005,30 @@ function drawTools(){
         <div class="cmdchips">${bash.map(b=>
           `<span class="cmdchip"><b>${esc(b.command)}</b><i>${+b.count}</i></span>`).join('')}</div>
         </div>`:'');});
-  api('/api/brief?'+qs(C())).then(d=>{const b=$('#bOut');if(!b)return;
-    const sug=(d.suggestions||[]);
-    b.innerHTML=(sug.length
-      ?sug.map(s=>`<div class="lrow"><span class="tag">${esc(s.tag)}</span><div class="clamp3">${esc(s.text)}</div></div>`).join('')
-      :'<div class="empty">Nothing to suggest yet.</div>')
-      +sinceHtml(d);});
+  drawBrief();
+}
+/* tags that mean "something is wrong" get the warn colour; the rest are
+   neutral, so a list of ideas does not read as a list of alarms */
+const BRIEF_ALERT={vuln:1,bug:1,fix:1,health:1,stale:1};
+/* Only a scan finding is dismissible. A local item (a stale check, a TODO, an
+   untested module) disappears when you FIX it — offering to hide it instead
+   would let the list quietly lie about the state of the project. */
+const BRIEF_SCAN={vuln:1,bug:1,perf:1,idea:1};
+async function drawBrief(){
+  const d=await api('/api/brief?'+qs(C()));const b=$('#bOut');if(!b)return;
+  const sug=(d.suggestions||[]);
+  b.innerHTML=(sug.length
+    ?sug.map(s=>`<div class="lrow">
+        <span class="tag${BRIEF_ALERT[s.tag]?' warn':''}">${esc(s.tag)}</span>
+        <div class="clamp3">${esc(s.text)}</div>
+        ${BRIEF_SCAN[s.tag]?`<button class="btn sm" title="Stop showing this"
+          onclick="briefDismiss(${hesc(s.text)})">${ic('close')}</button>`:''}</div>`).join('')
+    :'<div class="empty">Nothing to suggest yet — press Find work, or build memory first.</div>')
+    +(d.scan_at?`<div style="color:var(--dim2);font-size:11px;margin-top:6px">last scan ${esc(d.scan_at)}</div>`:'')
+    +sinceHtml(d);
+}
+async function briefDismiss(text){
+  await post('/api/brief/dismiss',{...C(),text});drawBrief();
 }
 function archRefresh(){drawArch(true);}
 async function drawArch(force){
@@ -2254,18 +3109,32 @@ async function savePaths(){
 async function saveDirs(){
   await post('/api/add-dirs',{...C(),dirs:dirVals('xdirs')});
   toast('Add directories saved','ok');}
-async function injectFlow(){
-  const d=await api('/api/inject/sessions?'+qs({path:CUR.path}));
-  if(!(d.sessions||[]).length){toast('No sessions found for this project','err');return;}
-  const v=await ask('Inject context',[
-    {label:'Source session',type:'select',options:d.sessions.map((s,i)=>
-      [String(i),`[${s.account}] ${s.title} (${s.age} ago)`])},
-    {label:'Launch under account',type:'select',options:ST.accounts.map(a=>[a.dir,a.name])}]);
+/* ── Hand off ──
+   Was a card in the Tools tab that asked you to pick a source session out of a
+   dropdown, then an account. It is a session-row action now, beside Fork: the
+   row IS the source, so the first step disappears. Nothing is lost with it —
+   `context_inject.find_sessions_across_accounts(path)` and
+   `gui.list_sessions(enc)` return the same per-project, cross-account set, which
+   is what that dropdown was listing.
+
+   The docs and the site already call this "context hand-off", so the button is
+   named after the thing rather than after a new word. */
+async function handoffS(i){
+  const s=SESS[i];
+  const v=await ask('Hand off — '+(s.title||s.sid.slice(0,8)),
+    [{label:'Start the new chat under account',type:'select',
+      options:ST.accounts.map(a=>[a.dir,a.name])}],
+    "A new chat opens in this project, seeded with this session's transcript as "
+    +'context. The transcript is written to .archeus/injected-context.md and '
+    +'the new session is told to read it first.');
   if(v===null)return;
-  const s=d.sessions[parseInt(v[0])];
-  const r=await post('/api/inject/launch',{path:CUR.path,folder:s.folder,sid:s.sid,
-    account:s.account,target_cfgdir:v[1]});
-  toast(r.ok?'New session launched with injected context':'Failed: '+(r.error||''),r.ok?'ok':'err');
+  /* cfgdir + enc, not a folder path: the server derives the source folder
+     through the same validated `_folder()` every other endpoint uses. It used to
+     take an absolute `folder` off the wire and join it. */
+  const r=await post('/api/inject/launch',{path:CUR.path,enc:CUR.encoded,
+    cfgdir:s.cfgdir,sid:s.sid,account:s.account,target_cfgdir:v[0]});
+  toast(r.ok?'New chat launched with this session as context':'Failed: '+(r.error||''),
+    r.ok?'ok':'err');
 }
 /* ── Plan → Execute — own project tab ──
    Two-model workflow: a strong model plans once (headless, no tools), you
@@ -2389,7 +3258,7 @@ function peRenderStatus(){
     // hint that upstream is wedged and surface the Cancel path
     const sub=peStalled()
       ? `${PE.elapsed||0}s elapsed — still running, NO progress for 2m (upstream may be stuck). Click Cancel to stop.`
-      : `${PE.elapsed||0}s elapsed — keep using claudectl; you'll be notified when it's done`;
+      : `${PE.elapsed||0}s elapsed — keep using archeus; you'll be notified when it's done`;
     if(sub!==__peSub){__peSub=sub;const s=$('#peSub');if(s)s.textContent=sub;}
     const msgs=(PE.msgs||[]).slice(-3).map(m=>`<div class="${m.ok?'':'bad'}">${esc(m.text)}</div>`).join('');
     if(msgs!==__peMsgs){__peMsgs=msgs;const m=$('#peMsgs');if(m)m.innerHTML=msgs;}
@@ -2407,7 +3276,7 @@ function peRenderStatus(){
 }
 function drawPlanExec(){
   const o=ST.options;
-  paintNow(`
+  shellNow(`
     <div id="peStatus" style="display:none;margin-bottom:14px"></div>
     <div class="card"><h3>${ic('map')} Plan → Execute <span class="sp"></span>
       ${INST.html('eq','planexec',{fmt:'int',sub:'steps'})}</h3>
@@ -2444,7 +3313,7 @@ function drawPlanExec(){
       <ol style="color:var(--dim);font-size:13px;padding-left:18px;display:flex;flex-direction:column;gap:5px;margin:0">
         <li>The plan model reasons about the task and writes numbered steps — headless, read-only, no file writes.</li>
         <li>You review the plan before anything executes and can reject it with nothing launched.</li>
-        <li>Approved plan is saved to <code>.claudectl/plan-latest.md</code> in this project.</li>
+        <li>Approved plan is saved to <code>.archeus/plan-latest.md</code> in this project.</li>
         <li>A real interactive <code>claude</code> session opens in a new console, pointed at the plan file — with this project's usual agents, skills, system prompt, and add-dirs already in place.</li>
         <li>Executing via OmniRoute: it auto-starts in the background if it isn't already running (no terminal to babysit), and on <i>Auto</i> it picks the best free model per request, falling back automatically if one is rate-limited or exhausted.</li>
         <li>Model council (optional): the draft plan is critiqued by a small set of other models, then merged into one improved plan before you see it for approval.</li>
@@ -2584,8 +3453,16 @@ async function drawAgentPicker(){
     api('/api/agents/session?'+qs(C()))]);
   const on=new Set(cur.refs||[]);
   window._agLimit=cur.limit||10;
-  const chip=(ref,label,desc)=>`<span class="chip${on.has(ref)?' on':''}" data-ref="${esc(ref)}"
-    title="${esc(desc||'')}" onclick="this.classList.toggle('on');agCount()">${esc(label)}</span>`;
+  const used=cur.usage||{};
+  /* Claude Code's own `agentLastUsed`, which is the only honest answer to "is
+     this doing anything?". An agent installed and never delegated to is the one
+     to remove — the picker used to give no way to tell those apart. */
+  const chip=(ref,label,desc)=>{
+    const u=used[label]||used[ref.split('/').pop()];
+    return `<span class="chip${on.has(ref)?' on':''}${u?' used':''}" data-ref="${esc(ref)}"
+      data-f="${esc(ref+' '+(desc||''))}"
+      title="${esc((desc||'')+(u?'  ·  last used '+u+' ago':'  ·  never used'))}"
+      onclick="this.classList.toggle('on');agCount()">${esc(label)}${u?' <i>'+esc(u)+'</i>':''}</span>`;};
   const sug=(cur.suggested||[]).map(s=>chip(s.ref,'★ '+s.ref.split('/').pop(),s.reason)).join('');
   const cats=(lib.categories||[]).map(c=>{
     const nSel=c.agents.filter(a=>on.has(c.category+'/'+a.name)).length;
@@ -2597,11 +3474,28 @@ async function drawAgentPicker(){
         ${c.agents.map(a=>chip(c.category+'/'+a.name,a.name,a.desc)).join('')}</div></details>`;}).join('');
   $('#agSel').innerHTML=(sug?`<div class="lbl">Suggested for this project</div>
       <div class="chips" style="margin-bottom:10px">${sug}</div>`:'')
+    // the same box as the Agents page: ten collapsed categories over 150-odd
+    // agents is not something you scroll, it is something you search
+    +`<div class="fld"><input id="agPickQ" placeholder="Filter agents…" spellcheck="false">
+        <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="agPickCount"></div></div>`
     +(cats||'<div style="color:var(--dim)">Agent library is empty.</div>')
     +`<div class="mrow" style="align-items:center">
       <span id="agTot" style="flex:1;color:var(--dim);font-size:12px"></span>
       <button class="btn sm" onclick="agClear()">Clear all</button>
-      <button class="btn sm pri" onclick="applyAgents()">Apply to project</button></div>`;
+      <button class="btn sm pri" onclick="applyAgents()">Apply to project</button></div>
+     <div style="border-top:1px solid var(--line);margin-top:8px;padding-top:8px">
+      <div class="lbl">Getting them actually used</div>
+      <p style="color:var(--dim);font-size:12px;margin:2px 0 6px">Copying agent files in only makes them <i>available</i>. Claude Code picks a subagent by matching your task against its <b>description</b> — nothing reads the body — so a set nothing ever mentions is a set that never fires. Three levers, strongest first: a sharp description, the table below (kept in the project's CLAUDE.md, the one file read on every turn), and the optional prompt hook that names a match deterministically.</p>
+      <div class="mrow" style="margin:0 0 8px">
+        <button class="btn sm" onclick="go('agents')" title="Sharpening is a machine-wide action now — it lives on the Agents page and rewrites every copy of an agent at once">${ic('ai')} Sharpen descriptions…</button>
+        <button class="btn sm" onclick="go('hooks')" title="Install the suggest-subagent hook: a keyword match on your prompt, no model call">${ic('link')} Prompt-match hook</button>
+      </div>
+      ${(cur.routing||[]).length
+        ?`<div class="clog">${(cur.routing||[]).map(r=>
+            `<div><b>${esc(r.name)}</b> — ${esc(r.trigger||'')}</div>`).join('')}</div>`
+        :'<div class="empty">Nothing installed yet, so no table is written.</div>'}
+     </div>`;
+  bindFilter('agPickQ','#agSel details .chip','agPickCount');
   agCount();
 }
 function agRefs(){return [...new Set([...document.querySelectorAll('#agSel .chip.on')]
@@ -2620,15 +3514,33 @@ function agClear(){
   document.querySelectorAll('#agSel .chip.on').forEach(c=>c.classList.remove('on'));
   agCount();
 }
+/* Machine-wide by default. The same agent lives in a dozen projects and in
+   every account's user directory; sharpening it a dozen times was a dozen
+   model calls and a dozen chances to get a dozen different answers. */
+function agSharpen(scope,redraw){
+  inlineJob('#jban','agent_desc_ai',{...C(),scope:scope||'all'},
+    {label:scope==='project'?'Sharpening agent descriptions'
+                            :'Sharpening every agent description',
+     onDone:st=>{const r=st.result||{},u=r.updated||[];
+       toast(u.length?`Rewrote ${u.length} description(s) in ${r.locations} location(s)`
+                     :(r.rejected?'Rejected — nothing written':'Nothing changed'),
+             u.length||r.rejected?'ok':'ok');},
+     redraw:redraw||(()=>drawPage('agents'))});
+}
 async function applyAgents(){
   const r=await post('/api/agents/session',{...C(),refs:agRefs()});
-  toast(r.active+' agent(s) active','ok');
+  toast(`${r.active} agent(s) active · ${r.routed} in the CLAUDE.md table`,'ok');
+  drawAgentPicker();
 }
 
 /* ── manager pages ── */
 async function drawPage(id){
   const n=NAV.find(x=>x[0]===id);
-  $('#ttl').textContent=n?n[2]:id;
+  // inside a section the SECTION names the page and the sub-tab names the
+  // screen — the same division the project side already uses (title = project,
+  // tab = tab). Printing the page's own label in both places says it twice.
+  const sec=SECTIONS.find(x=>x[3].includes(id));
+  $('#ttl').textContent=(sec&&sec[3].length>1)?sec[0]:(n?n[2]:id);
   $('#tpath').textContent='';
   // the token is taken BEFORE the fetches start; each page function drops its
   // write if navigation moved on while it was waiting
@@ -2636,7 +3548,7 @@ async function drawPage(id){
   await n[4]()(nav);
 }
 
-/* Claude Code's OWN state: what it records about itself, which claudectl had
+/* Claude Code's OWN state: what it records about itself, which archeus had
    never opened. Read-only except the settings editor and the disk sweep, and
    the sweep reports before it ever deletes. */
 async function pgClient(nav){
@@ -2661,41 +3573,50 @@ async function pgClient(nav){
       :`<div class="empty">No background agents running${d.updated?' (roster updated '+esc(d.updated)+' ago)':''}.</div>`;
   const teamCard=!tm.recognised
     ?'<div class="empty">Agent teams are not in use on this machine.</div>'
-    :`<div style="color:var(--dim);font-size:13px">${(tm.teams||[]).length} team(s), ${(tm.tasks||[]).length} task director(ies)</div>`;
+    :`<div style="color:var(--dim);font-size:13px">${(tm.teams||[]).length} team${(tm.teams||[]).length===1?'':'s'}, ${(tm.tasks||[]).length} task director${(tm.tasks||[]).length===1?'y':'ies'}</div>`;
   const mb=b=>(b/1048576).toFixed(1)+' MB';
   const diskRows=(disk.accounts||[]).map(a=>
     `<tr><td><b>${esc(a.account)}</b></td><td class="num">${mb(a.bytes)}</td>
       <td style="color:var(--dim);font-size:12px">${(a.stores||[]).map(s=>esc(s.name)+' '+mb(s.bytes)).join(' · ')}</td></tr>`).join('');
-  if(!paint(nav,`
-    <div class="card"><h3>${ic('ai')} What is actually being used</h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Straight from Claude Code's own counters — the only record of which skills, plugins and agents are live rather than dead weight.</p>
+  /* Settings FIRST. The page opened on three diagnostic cards and buried the
+     editor fifth, which is backwards: "what did it record about itself" is a
+     question you ask occasionally, "change how Claude behaves" is why you came.
+     Everything below the editor is read-mostly and stays in that order. */
+  if(!shell(nav,`
+    <div class="card wide"><h3>${ic('settings')} How Claude Code behaves</h3>
+      <p class="secthint">These are Claude Code's own preferences — the same ones you would otherwise hand-edit in <code>settings.json</code>. Each account keeps its own file, and a change applies to <b>sessions you start after it</b>, not the one already running.</p>
+      <p class="secthint">A dash (<b>—</b>) means <b>not set</b>: Claude Code falls back to its own built-in default. Clearing a field removes the key rather than writing a default in, because <i>off</i> and <i>absent</i> are not the same thing to it.</p>
+      <div class="fld" style="margin:0 0 10px"><input id="ccQ" placeholder="Find a setting — type what you want to change…" spellcheck="false">
+        <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="ccCount"></div></div>
+      ${ccTable(cc)}</div>
+    ${autoModeCard(am)}
+    <div class="card wide"><h3>${ic('ai')} What is actually being used</h3>
+      <p class="secthint">Straight from Claude Code's own counters — the only record of which skills, plugins and agents are live rather than dead weight.</p>
       <div class="cols3">
         <div>${useRows('skills','Skill')}</div>
         <div>${useRows('plugins','Plugin')}</div>
         <div>${useRows('agents','Agent')}</div></div></div>
-    <div class="card"><h3>${ic('robot')} Background agents</h3>${bgCard}
+    <div class="card"><h3>${ic('robot')} Background agents</h3>
+      <p class="secthint">Work Claude Code is running outside your session — a long job you sent to the background, and the teams it splits one into.</p>
+      ${bgCard}
       <h3 style="margin-top:14px">Agent teams</h3>${teamCard}</div>
     <div class="card"><h3>${ic('folder')} Disk</h3>
+      <p class="secthint">What Claude Code has stored for each account: transcripts, file snapshots for <code>/rewind</code>, and its caches. Preview first — cleanup lists what it would delete before it deletes anything.</p>
       <table class="tbl"><tr><th>Account</th><th class="num">Total</th><th>Stores</th></tr>${diskRows}</table>
       <div class="gcbar">
         <div class="fld" style="width:110px"><label for="gcDays">Keep days</label>
           <input id="gcDays" type="number" min="1" value="30"></div>
         <button class="btn sm" onclick="gcRun(false)">Preview cleanup</button>
         <span id="gcOut"></span></div></div>
-    ${autoModeCard(am)}
-    <div class="card"><h3>${ic('settings')} Claude Code settings</h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:12px">
-        Written into each account's own <code>settings.json</code>. Leaving a field empty
-        <b>removes</b> the key rather than writing a default — Claude Code treats
-        <i>off</i> and <i>absent</i> differently.</p>
-      ${ccTable(cc)}</div>
     <div class="card"><h3>${ic('search')} Prompt history</h3>
+      <p class="secthint">Every prompt you have typed into Claude Code, on any account. Useful for finding the phrasing that worked last time.</p>
       <div class="gcbar">
         <div class="fld" style="flex:1;min-width:220px">
           <input id="phQ" placeholder="search every prompt you have typed"
             onkeydown="if(event.key==='Enter')phSearch()"></div>
         <button class="btn sm" onclick="phSearch()">Search</button></div>
       <div id="phOut"></div></div>`))return;
+  bindFilter('ccQ','.ccrow[data-f]','ccCount');
 }
 /* ── auto mode ──
    In auto mode a classifier reviews each action instead of you. It trusts your
@@ -2708,12 +3629,12 @@ function autoModeCard(am){
   const accts=am.accounts||[],den=am.denials||[];
   const modeChips=(a,i)=>(am.modes||[]).map(m=>
     `<span class="chip${(a.mode||'')===m?' on':''}" title="${esc((am.profiles||{})[m]||'')}"
-       onclick="amSetMode(${i},'${jsq(m)}')">${esc((am.mode_labels||[])[(am.modes||[]).indexOf(m)]||m||'unset')}</span>`).join('');
+       onclick="amSetMode(${i},${hesc(m)})">${esc((am.mode_labels||[])[(am.modes||[]).indexOf(m)]||m||'unset')}</span>`).join('');
   const rows=accts.map((a,i)=>`<div class="amrow2">
     <div class="amname" title="${esc(a.dir)}">${esc(a.name)}</div>
     <div class="chips">${modeChips(a,i)}</div>
     <div class="amenv">${a.environment.length
-      ? `${a.environment.filter(e=>e!=='$defaults').length} trusted entry(ies)`
+      ? `${a.environment.filter(e=>e!=='$defaults').length} trusted entr${a.environment.filter(e=>e!=='$defaults').length===1?'y':'ies'}`
       : '<span style="color:var(--dim2)">defaults only</span>'}
       <button class="btn sm" onclick="amEditEnv(${i})">Edit</button></div></div>`).join('');
   // grouped, not a raw log: the question is "what keeps getting blocked"
@@ -2724,7 +3645,7 @@ function autoModeCard(am){
         ${g.reason?`<div style="color:var(--dim2);font-size:11.5px">${esc(g.reason)}</div>`:''}</div>
     </div>`).join('')
     :'<div class="empty">Nothing blocked in this project yet.</div>';
-  return `<div class="card"><h3>${ic('check')} Auto mode</h3>
+  return `<div class="card wide"><h3>${ic('check')} Auto mode</h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:12px">A classifier reviews each
       action instead of you. It trusts this repo and its existing remotes; everything else
       counts as external until you say otherwise. <b>Written to each account's own
@@ -2773,32 +3694,43 @@ async function amRules(which){
    rows are grouped under headings so the list is scannable, and each row says
    whether it is set anywhere and whether the accounts agree. */
 function ccTable(cc){
-  const accts=cc.accounts||[],sch=cc.schema||{},groups=cc.groups||[];
+  const accts=cc.accounts||[],sch=cc.schema||{},groups=cc.groups||[],
+        ghelp=cc.group_help||{};
   if(!accts.length)return '<div class="empty">No accounts configured.</div>';
   const head=`<div class="ccrow cchead"><div></div>`
     +accts.map(a=>`<div title="${esc(a.dir)}">${esc(a.name)}</div>`).join('')
     +`<div></div></div>`;
+  /* A group name tells someone who already knows Claude Code where to look and
+     tells everybody else nothing, so each carries the sentence saying what it
+     is FOR. The `.fgrp` wrapper is what lets the filter take a whole heading
+     away with its rows instead of leaving it standing over nothing; inside a
+     grid it has to be display:contents, like `.ccrow` itself. */
   const body=groups.map(g=>{
     const keys=Object.keys(sch).filter(k=>sch[k].group===g);
     if(!keys.length)return '';
-    return `<div class="ccgrp">${esc(g)}</div>`+keys.map(k=>ccRow(k,sch[k],accts)).join('');
+    return `<div class="fgrp"><div class="ccgrp">${esc(g)}
+      ${ghelp[g]?`<div class="cchelp">${esc(ghelp[g])}</div>`:''}</div>`
+      +keys.map(k=>ccRow(k,sch[k],accts,g)).join('')+'</div>';
   }).join('');
   return `<div class="cctable" style="--cc-accts:${accts.length}">${head}${body}</div>`;
 }
-function ccRow(k,s,accts){
+function ccRow(k,s,accts,group){
   const vals=accts.map(a=>a.values[k]);
   const set=vals.filter(v=>v!==undefined).length;
   const differ=set>0&&new Set(vals.map(v=>JSON.stringify(v))).size>1;
-  const state=!set?'<span class="ccdot off" title="not set anywhere"></span>'
+  const state=!set?'<span class="ccdot off" title="not set anywhere — Claude Code uses its own default"></span>'
     :differ?'<span class="ccdot warn" title="the accounts disagree"></span>'
     :'<span class="ccdot on" title="set, and the same everywhere"></span>';
-  return `<div class="ccrow${differ?' differ':''}">
+  // the raw key is in the haystack because it is what the docs and settings.json
+  // call it — someone arriving from either searches for that, not for the label
+  return `<div class="ccrow${differ?' differ':''}"
+      data-f="${esc(k+' '+ccName(k)+' '+(s.help||'')+' '+(group||''))}">
     <div class="cclbl">${state}<div><b>${esc(ccName(k))}</b>
       <code>${esc(k)}</code>
       <div class="cchelp">${esc(s.help)}</div></div></div>`
     +accts.map((a,i)=>`<div class="fld">${ccInput(k,s,a,i)}</div>`).join('')
     +`<div class="ccall"><button class="btn sm" title="Apply the first account's value to all"
-        onclick="ccAll('${k}')">${ic('group')}</button></div></div>`;
+        onclick="ccAll(${hesc(k)})">${ic('group')}</button></div></div>`;
 }
 /* autoCompactWindow -> "Auto compact window". The raw key still shows, because
    it is what the documentation and settings.json call it. */
@@ -2813,7 +3745,7 @@ function ccName(k){
    fails the account allowlist as "invalid cfgdir". */
 function ccInput(k,s,a,ai){
   const v=a.values[k],id=ccId(k,a.dir);
-  const set=`onchange="ccSet('${k}',this,${ai})"`;
+  const set=`onchange="ccSet(${hesc(k)},this,${ai})"`;
   if(s.kind==='bool')
     return `<select id="${id}" ${set}><option value=""${v===undefined?' selected':''}>—</option>
       <option value="true"${v===true?' selected':''}>on</option>
@@ -2847,7 +3779,7 @@ async function gcRun(apply){
   if(apply){$('#gcOut').textContent=`deleted ${r.files} files (${mb} MB)`;drawPage('client');return;}
   $('#gcOut').innerHTML=r.files
     ?`would delete <b>${r.files}</b> files (${mb} MB), keeping ${r.kept} named or tagged session(s)
-       <button class="btn sm danger" onclick="gcApply(${days},${r.files},'${mb}')">Delete them</button>`
+       <button class="btn sm danger" onclick="gcApply(${days},${r.files},${hesc(mb)})">Delete them</button>`
     :'nothing older than that';
 }
 async function gcApply(days,files,mb){
@@ -2891,13 +3823,15 @@ async function pgUsage(nav){
     <td class="num">${p.usage.in}</td><td class="num">${p.usage.out}</td>
     <td class="num">${costCell(p.cost,p.exact)}</td></tr>`).join('');
   const total=(projects.projects||[]).reduce((a,p)=>a+p.cost,0);
-  if(!paint(nav,`
+  if(!shell(nav,`
     <div class="card"><h3>Plan usage by account</h3>${planRows||'<div style="color:var(--dim)">checking…</div>'}</div>
     <div class="card"><h3>Daily tokens (14 days)</h3>
       ${INST.html('spark','daily',{fmt:'tok',unit:'peak day'})}
       ${dRows}</div>
-    <div class="card"><h3>Per-project — total est. $${total.toFixed(2)}</h3>
-      <table class="tbl"><tr><th>project</th><th>sess</th><th>msgs</th><th>in</th><th>out</th><th>est.$</th></tr>${pRows}</table></div>`))return;
+    <div class="card wide"><h3>Per-project — total est. $${total.toFixed(2)}</h3>
+      ${pRows?`<table class="tbl"><tr><th>project</th><th>sessions</th><th>msgs</th>
+        <th>in</th><th>out</th><th>est.$</th></tr>${pRows}</table>`
+      :'<div class="empty">No token spend recorded yet. A project appears here after its first session.</div>'}</div>`))return;
   const days=(daily.days||[]).map(d=>d.tokens||0);
   INST.set('daily',{series:days});
   setRead('daily',Math.max(0,...days));
@@ -2907,7 +3841,7 @@ let SIDX=null;
 async function pgSearch(nav){
   // this one paints its shell BEFORE the fetch so the input is focusable
   // immediately; the guard still matters for everything after the await
-  if(!paint(nav,`<div class="card"><h3>${ic('search')} Search every session</h3>
+  if(!shell(nav,`<div class="card"><h3>${ic('search')} Search every session</h3>
     <div class="fld"><input id="gq" placeholder="Type to search names, titles, previews…"></div>
     <div id="gres" style="margin-top:10px"></div></div>`))return;
   if(!SIDX){const d=await api('/api/search-index');SIDX=d.rows||[];}
@@ -2916,7 +3850,7 @@ async function pgSearch(nav){
     const q=($('#gq').value||'').toLowerCase().trim();
     const m=q?SIDX.filter(r=>q.split(/\s+/).every(w=>r.haystack.includes(w))):SIDX;
     $('#gres').innerHTML=m.slice(0,80).map((r,i)=>`
-      <div class="qcard" style="margin-bottom:6px" onclick='gResume(${JSON.stringify(i)})'>
+      <div class="qcard" style="margin-bottom:6px" onclick='gResume(${hesc(i)})'>
         <div class="info"><div class="t">${esc(r.display)}</div>
         <div class="s">${esc(r.project)} · ${esc(r.age)} ago</div></div>
         <button class="btn sm">Resume</button></div>`).join('')
@@ -2936,16 +3870,25 @@ function gResume(i){const r=window._gmatch[i];
    the reader and the writer used to be able to disagree about which. */
 let MCPACCT='';
 async function pgMcp(nav){
-  const [d,gm]=await Promise.all([
-    api('/api/mcp?'+qs(MCPACCT?{cfgdir:MCPACCT}:{})),
-    api('/api/global-claude-md?'+qs(MCPACCT?{cfgdir:MCPACCT}:{}))]);
+  /* refresh=1: `get_mcp_status` is cached 30s for the dashboard's 10-second
+     poll, and this page is where you come to find out whether a server is
+     actually up. */
+  const d=await api('/api/mcp?'+qs(Object.assign({refresh:1},MCPACCT?{cfgdir:MCPACCT}:{})));
   const srv=d.servers||[],up=srv.filter(x=>x.status==='ok').length;
-  const accts=gm.accounts||[];
+  const accts=(ST.accounts||[]);
   const picker=accts.length>1?`<div class="chips" style="margin-bottom:10px">
       ${accts.map(a=>`<span class="chip${(MCPACCT||'')===(a.dir||'')?' on':''}"
-        onclick='mcpAcct(${JSON.stringify(a.dir||'')})'>${esc(a.name)}</span>`).join('')}
+        onclick='mcpAcct(${hesc(a.dir||'')})'>${esc(a.name)}</span>`).join('')}
     </div>`:'';
-  if(!paint(nav,`<div class="card"><h3>MCP servers <span class="sp"></span>
+  MCPSRV=srv;
+  const row=(x,i)=>`<div class="hrow" data-i="${i}" data-f="${esc(x.name+' '+x.status)}"
+      onclick="mcPick(${i})">
+      <span style="color:${x.status==='ok'?'var(--ok)':'var(--warn)'}">${ic(x.status==='ok'?'check':'help')}</span>
+      <span class="info">${esc(x.name)}</span>
+      <span class="tag ${x.status==='ok'?'ok':'warn'}">${x.status==='ok'?'up':'unreachable'}</span></div>`;
+  if(!shell(nav,`<div class="card"><h3>MCP servers
+    ${srv.length?`<span class="tag${up===srv.length?' ok':' warn'}">${up}/${srv.length} up</span>`:''}
+    <span class="sp"></span>
     <button class="btn sm" onclick="mcpAdd()">${ic('add')} Add server</button></h3>
     ${picker}
     ${srv.length?`<div class="pghd">
@@ -2954,67 +3897,325 @@ async function pgMcp(nav){
         ${up===srv.length?'<span class="tag ok">all healthy</span>'
           :`<span class="tag warn">${srv.length-up} unreachable</span>`}
         <div class="sub">A server that isn't responding still appears in your session's tool list — the calls just fail.</div></div>
-    </div>`:''}
-    ${srv.map(s=>`<div style="display:flex;align-items:center;gap:10px;padding:5px 0">
-      <span style="color:${s.status==='ok'?'var(--ok)':'var(--warn)'}">${ic(s.status==='ok'?'check':'help')}</span><b style="flex:1">${esc(s.name)}</b>
-      <button class="btn sm" onclick='mcpDetail(${JSON.stringify(s.name)})'>${ic('eye')} Detail</button>
-      <button class="btn sm" onclick='mcpDocs(${JSON.stringify(s.name)})'>${ic('search')} Tool docs</button>
-      <button class="btn sm danger" onclick='mcpRemove(${JSON.stringify(s.name)})'>Remove</button>
-    </div>`).join('')||'<div style="color:var(--dim)">No MCP servers configured.</div>'}</div>
-    <div class="card"><h3>${ic('link')} Cross-project conventions <span class="sp"></span>
-      <button class="btn sm" onclick="convSync()">${ic('download')} Promote into global CLAUDE.md</button></h3>
-      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">Rules that repeat across your projects' CLAUDE.md files. Promoting writes them into a sentinel block in the global file below — only that block is touched.</p>
-      <div id="convOut"><span class="spin"></span></div></div>
-    <div class="card"><h3>${ic('refresh')} loop.md <span class="sp"></span>
-      <button class="btn sm pri" onclick="loopSave('user')">Save</button></h3>
-      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">Claude Code's repeating-instruction file for this account — read on every turn. Saving it empty deletes it. The per-project one lives on the project's CLAUDE.md tab.</p>
-      <textarea id="loopUser" style="min-height:120px;font-family:var(--mono)"></textarea>
-      <div style="color:var(--dim2);font-size:12px;margin-top:6px" id="loopUserPath"></div></div>
-    <div class="card"><h3>${ic('edit')} Global CLAUDE.md <span class="sp"></span>
-      <button class="btn sm" onclick='post("/api/open-editor",{path:${JSON.stringify(gm.path||'')}}).then(r=>toast(r.ok?"Opened in your editor":"Could not open it","ok"))'>${ic('edit')} Open in editor</button>
-      <button class="btn sm pri" onclick="gmSave()">Save</button></h3>
-      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">Claude reads this file in <b>every</b> session on this account. Analyzing an MCP server above writes its tool docs into a sentinel block here.
-        ${gm.exists?'':'<span class="tag warn">does not exist yet</span>'}</p>
-      <textarea id="gmText" style="min-height:220px;font-family:var(--mono)">${esc(gm.text||'')}</textarea>
-      <div style="color:var(--dim2);font-size:12px;margin-top:6px">${esc(gm.path||'')}</div></div>`))return;
+    </div>
+    <div class="fld" style="margin:0 0 4px"><input id="mcQ" placeholder="Filter servers…" spellcheck="false">
+      <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="mcCount"></div></div>
+    <div class="tbody">${srv.map(row).join('')}</div>`
+    :`<div class="empty">Start by adding an MCP server — it gives every session on this account a set of tools it does not otherwise have.</div>`}
+    <p style="color:var(--dim);font-size:12.5px;margin:10px 0 0">Analyzing a server writes its tool documentation into a sentinel block of the account's <b>global CLAUDE.md</b>, which is the <b>Global CLAUDE.md</b> page of this section.</p></div>
+    <div class="card tdet" id="mcDet">${MCPINTRO}</div>`))return;
+  bindFilter('mcQ','.hrow','mcCount');
+  // the pane is a 1100px column: leaving it on the invitation while the
+  // list beside it is full is the hole this page was rebuilt to close
+  if(srv.length)mcPick(0);
   if(srv.length){
     INST.set('mcp',{v:up/srv.length,tone:up===srv.length?'ok':up?'warn':'err'});
     setRead('mcp',up);
     setUnit('mcp','/'+srv.length);
   }
-  api('/api/conventions').then(c=>{const b=$('#convOut');if(!b)return;
-    const rows=(c.conventions||[]);
-    b.innerHTML=rows.length
-      ?`<div class="clog">${rows.map(r=>`<div>${esc(typeof r==='string'?r:(r.text||JSON.stringify(r)))}</div>`).join('')}</div>`
-      :'<div class="empty">Nothing repeats across enough projects yet.</div>';});
-  api('/api/loop-md?'+qs(Object.assign({scope:'user'},MCPACCT?{cfgdir:MCPACCT}:{}))).then(l=>{
-    if($('#loopUser'))$('#loopUser').value=l.text||'';
-    if($('#loopUserPath'))$('#loopUserPath').textContent=l.file||'';});
 }
-async function convSync(){
-  const r=await post('/api/conventions/sync',{cfgdir:MCPACCT||undefined});
-  toast(r.ok?'Promoted into the global CLAUDE.md':'Nothing to promote',r.ok?'ok':'err');
-  drawPage('mcp');
+/* One server, everything about it. It used to be a DRAWER over the page,
+   reached by one of three buttons crammed into the right edge of a row whose
+   name was `flex:1` — on a 2560px window that is a name, then two thousand
+   pixels of nothing, then the controls. The pane is where a detail belongs on
+   a page that is a list of one kind of thing. */
+let MCPSRV=[];
+const MCPINTRO='<div class="empty">Pick a server to see how it is configured, read the tools it exposes, or remove it.</div>';
+async function mcPick(i){
+  const x=MCPSRV[i];if(!x)return;
+  document.querySelectorAll('#content .hrow').forEach(el=>
+    el.classList.toggle('on',+el.dataset.i===i));
+  const h=$('#mcDet');if(!h)return;
+  h.innerHTML=`<h3>${esc(x.name)}
+    <span class="tag ${x.status==='ok'?'ok':'warn'}">${esc(x.status||'?')}</span>
+    <span class="sp"></span>
+    <button class="btn sm" onclick='mcpDocs(${hesc(x.name)})'>${ic('search')} Tool docs</button>
+    <button class="btn sm danger" onclick='mcpRemove(${hesc(x.name)})'>Remove</button></h3>
+    <div class="empty"><span class="spin"></span></div>`;
+  const r=await api('/api/mcp/detail?'+qs(Object.assign({name:x.name},MCPACCT?{cfgdir:MCPACCT}:{})));
+  // the pane may have been replaced by another pick while this was in flight
+  const h2=$('#mcDet');
+  if(h2&&h2.querySelector('h3')&&h2.querySelector('h3').textContent.trim().startsWith(x.name))
+    h2.querySelector('.empty').outerHTML=`<pre>${esc(r.text||'(no details)')}</pre>`;
 }
-/* One writer for both scopes. It used to read #loopUser regardless of the
-   `scope` it was handed, so a project loop.md could only ever have been saved
-   into the account-wide file. */
-async function loopSave(scope){
-  const el=$(scope==='project'?'#loopProject':'#loopUser');
-  if(!el)return;
-  const body={scope,text:el.value};
-  if(scope==='project'){Object.assign(body,C(),{path:CUR.path,scope,text:el.value});}
-  else body.cfgdir=MCPACCT||undefined;
+
+/* ── what archeus itself did ───────────────────────────────────────────────
+   Until this page existed a failure inside archeus went to a NullHandler: the
+   logger only wrote a file when ARCHEUS_DEBUG was set, so every background job
+   crash, every faulted handler and every one of archeus's own Claude calls
+   failing against a rate-limited account vanished. The level chips ride
+   bindFilter's `extra` predicate rather than a query parameter, so the endpoint
+   takes no arguments and switching level costs no round trip. */
+let LOGLVL='';
+function logLvl(v){LOGLVL=(LOGLVL===v?'':v);drawPage('logs');}
+async function pgLogs(nav){
+  const d=await api('/api/logs');
+  const ev=d.events||[],now=Date.now()/1000;
+  const n={error:0,warn:0,info:0};
+  ev.forEach(e=>{if(n[e.lvl]!==undefined)n[e.lvl]++;});
+  const tone={error:'err',warn:'warn',info:'ok'};
+  const chips=['error','warn','info'].map(l=>
+    `<span class="chip${LOGLVL===l?' on':''}" onclick="logLvl(${hesc(l)})">${l} ${n[l]}</span>`).join('');
+  const rows=ev.map(e=>{
+    const lvl=e.lvl||'error';
+    return `<div class="lgrow" data-lvl="${esc(lvl)}" data-f="${esc(lvl+' '+(e.src||'')+' '+(e.msg||'')+' '+(e.detail||'')+' '+(e.proj||''))}">
+      <div class="lghd"><span class="tag ${tone[lvl]||'err'}">${esc(lvl)}</span>
+        <b>${esc(e.src||'?')}</b>
+        <span class="sp"></span>
+        <span class="aage">${esc(fmtAgo(Math.max(0,now-(e.ts||0))))}</span></div>
+      <div class="lgmsg">${esc(e.msg||'')}</div>
+      ${e.proj?`<div class="asub">${esc(e.proj)}</div>`:''}
+      ${e.detail?`<pre class="lgdet">${esc(e.detail)}</pre>`:''}
+    </div>`;}).join('');
+  if(!shell(nav,`<div class="card"><h3>${ic('history')} Logs <span class="sp"></span>
+    <span class="tag${n.error?' err':''}">${n.error} error${n.error===1?'':'s'}</span></h3>
+    <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Everything archeus did on its own: its headless Claude calls, background jobs, the auto-memory scheduler, the failover proxy. Newest first, capped at ${Math.round((d.cap||0)/1024)} KB on disk.</p>
+    ${ev.length?`<div class="chips" style="margin-bottom:10px">${chips}</div>
+    <input id="lgq" class="in" placeholder="Filter events…" style="margin-bottom:8px">
+    <span id="lgn" style="color:var(--dim);font-size:12px"></span>
+    ${rows}`:`<div style="color:var(--dim)">Nothing recorded yet — archeus writes here when one of its own calls, jobs or scheduled passes fails.</div>`}
+    <p style="color:var(--dim);font-size:12px;margin:12px 0 0">File: <code>${esc(d.path||'')}</code><br>
+      Verbose tracing: set <code>ARCHEUS_DEBUG=1</code> and read <code>${esc(d.debug_log||'')}</code>.</p></div>`))return;
+  bindFilter('lgq','.lgrow','lgn',el=>!LOGLVL||el.dataset.lvl===LOGLVL);
+}
+
+/* ── the account's global instructions ───────────────────────────────────────
+   This was three cards at the BOTTOM of the MCP servers page, under the server
+   list and a conventions table. It is the file Claude reads in every session on
+   the account — the single most consequential piece of text archeus can edit
+   — and it was findable only by scrolling past something unrelated. Its own
+   page, reachable from the sidebar. No new endpoints: the three it uses all
+   already existed and worked. */
+let GMDACCT='';
+async function pgGlobalMd(nav){
+  const gm=await api('/api/global-claude-md?'+qs(GMDACCT?{cfgdir:GMDACCT}:{}));
+  const accts=gm.accounts||[];
+  const picker=accts.length>1?`<div class="chips" style="margin-bottom:10px">
+      ${accts.map(a=>`<span class="chip${(GMDACCT||'')===(a.dir||'')?' on':''}"
+        onclick='gmdAcct(${hesc(a.dir||'')})'>${esc(a.name)}</span>`).join('')}
+    </div>`:'';
+  const words=(gm.text||'').trim()?(gm.text.trim().split(/\s+/).length):0;
+  if(!shell(nav,`
+    <div class="card"><h3>${ic('doc')} Global CLAUDE.md <span class="sp"></span>
+      <button class="btn sm" onclick='post("/api/open-editor",{file:${hesc(gm.path||'')}}).then(r=>toast(r.ok?"Opened in your editor":"Could not open it","ok"))'>${ic('edit')} Open in editor</button>
+      <button class="btn sm pri" onclick="gmSave()">Save</button></h3>
+      ${picker}
+      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">Claude reads this file in <b>every</b> session on this account, so every word is paid for on every turn — roughly ${Math.round(words*1.3)} tokens as it stands.
+        ${gm.exists?'':'<span class="tag warn">does not exist yet</span>'}</p>
+      <textarea id="gmText" style="min-height:300px;font-family:var(--mono)">${esc(gm.text||'')}</textarea>
+      <div style="color:var(--dim2);font-size:12px;margin-top:6px">${esc(gm.path||'')}</div></div>
+    <div class="card"><h3>${ic('link')} Cross-project conventions <span class="sp"></span>
+      <button class="btn sm" onclick="convSync()">${ic('download')} Promote into global CLAUDE.md</button></h3>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">Preferences, corrections and decisions archeus learned in <b>one</b> project and saw again in others — read from every account's memory, not from CLAUDE.md files. Promoting writes them into a sentinel block above; only that block is touched.</p>
+      <div id="convOut"><span class="spin"></span></div></div>`))return;
+  drawConv();
+}
+async function drawConv(){
+  const c=await api('/api/conventions');const b=$('#convOut');if(!b)return;
+  const rows=(c.conventions||[]),near=(c.near||[]);
+  const promoted=rows.length
+    ?`<div class="clog">${rows.map(r=>`<div>${esc(r.text||'')}
+        <span class="tag">${r.projects} project${r.projects===1?'':'s'}</span>
+        ${r.pinned?'<span class="tag">pinned</span>':''}</div>`).join('')}</div>`
+    :'<div class="empty">Nothing qualifies yet — but these are close:</div>';
+  /* The old empty state was a dead end: it stated a fact and offered no way to
+     change it, so the card stayed empty forever. A near-miss with its own Pin
+     button is the difference between a report and a control. */
+  const cand=near.length?`<div class="lbl" style="margin-top:10px">Almost there</div>`
+    +near.map(n=>`<div class="lrow">
+        <div class="clamp3">${esc(n.text)}
+          <div style="color:var(--dim2);font-size:11px">${esc(n.why)}</div></div>
+        <button class="btn sm" onclick="convPin(${hesc(n.text)})">Pin</button></div>`).join('')
+    :(rows.length?'':'<div class="empty">No preference or correction lessons recorded in any project yet — they are extracted when you review sessions.</div>');
+  b.innerHTML=promoted+cand;
+}
+async function convPin(text){
+  const r=await post('/api/conventions/pin',{text});
+  toast(r.ok?`Pinned in ${r.pinned} place(s) — now promotable`:'Nothing matched',r.ok?'ok':'err');
+  drawConv();
+}
+function gmdAcct(dir){GMDACCT=dir;drawPage('globalmd');}
+
+/* ── Loops ───────────────────────────────────────────────────────────────────
+   A `/loop` is SESSION-SCOPED: its tasks live in one conversation, fire only
+   while that session is open and idle, and die with it. There is no daemon to
+   talk to, so this page does the only three things that are real —
+
+     start   open a session whose first typed message is `/loop …`
+     watch   its transcript: each iteration is a turn
+     stop    end that session (Esc inside the session clears the next wakeup;
+             from out here, closing the session is the honest option)
+
+   — and says so, rather than implying a scheduler archeus does not own.
+
+   loop.md is the other half: the prompt a BARE `/loop` runs. Project file wins
+   over the account one, which is why both are editable here, side by side. */
+let LOOPSCOPE='project',_loopTimer=null,LOOPKIND='schedule',LOOPPERM='auto',LOOPACCT='';
+async function pgLoops(nav){
+  const P=projCtx();
+  const path=P?P.path:'';
+  const scope=path?LOOPSCOPE:'user';
+  const [d,md]=await Promise.all([
+    api('/api/loops?'+qs(LOOPACCT?{cfgdir:LOOPACCT}:(P?{cfgdir:P.primary_cfgdir}:{}))),
+    api('/api/loop-md?'+qs(Object.assign({scope},path?{path}:{},
+        P?{cfgdir:P.primary_cfgdir}:{})))]);
+  const rows=(d.loops||[]);
+  const live=rows.filter(r=>r.running);
+  const accts=d.accounts||[];
+  const cost=v=>v?`<span class="tag">$${(+v).toFixed(2)}</span>`:'';
+  const row=r=>`<div class="hrow">
+      <span style="color:${r.running?'var(--ok)':'var(--dim)'}">${ic(r.running?'refresh':'check')}</span>
+      <div class="info"><b>${esc(r.name)}</b>
+        <span class="tag">${r.kind==='schedule'?'background':'in a session'}</span>
+        <div style="color:var(--dim);font-size:12px"><code>${esc(r.text)}</code>${
+          r.kind==='schedule'?` · every ${esc(r.interval||'?')} · ${esc(r.perm||'auto')}`:''}</div>
+        ${r.last_result||r.last_error?`<div style="color:${r.last_error?'var(--warn)':'var(--dim2)'};font-size:12px;margin-top:2px">${esc((r.last_error||r.last_result).slice(0,160))}</div>`:''}</div>
+      <span class="tag${r.running?' ok':''}">${r.kind==='schedule'
+        ?(r.running?'scheduled':(r.expired?'expired':'stopped'))
+        :(r.running?'session open':'ended')}</span>
+      ${r.kind==='schedule'
+        ?`${r.runs?`<span class="tag">${r.runs} run${r.runs===1?'':'s'}</span>`:''}${cost(r.last_cost)}
+          ${r.running?`<span class="tag${r.expires_in<86400?' warn':''}">expires in ${fmtAge(r.expires_in)}</span>`:''}`
+        :`${r.iterations?`<span class="tag ok">${r.iterations} turns</span>`:''}
+          ${r.last_activity?`<span class="tag">quiet ${fmtAge(r.last_activity)}</span>`:''}`}
+      <span style="color:var(--dim2);font-size:12px">${fmtAgo(r.age)}</span>
+      ${r.journal&&r.journal.length?`<button class="btn sm" onclick='loopLog(${hesc(r.id)})'>log</button>`:''}
+      ${r.running&&r.kind==='schedule'?`<button class="btn sm" onclick='loopRenew(${hesc(r.id)})'>renew</button>`:''}
+      ${r.running
+        ?`<button class="btn sm danger" onclick='loopStop(${hesc(r.id)})'>${r.kind==='schedule'?'Unschedule':'End session'}</button>`
+        :`<button class="btn sm" onclick='loopForget(${hesc(r.id)})'>${ic('del')}</button>`}
+    </div>`;
+  window._loopRows=rows;
+  const permNote=(d.perms||[]).find(x=>x.id===LOOPPERM);
+  if(!shell(nav,`
+    <div class="card wide"><h3>${ic('refresh')} Loops <span class="sp"></span>
+      <span class="tag${live.length?' ok':''}">${live.length} live</span></h3>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">Two kinds, because Claude Code only offers one. <b>In a session</b> is a real <code>/loop</code>: it fires while that session is open and idle, and dies with it. <b>In the background</b> is archeus's own — an entry in ${esc(navigator.platform.startsWith('Win')?'Task Scheduler':'cron')} that runs headless <code>claude -p</code> on the interval, with archeus closed and no session anywhere.</p>
+      ${rows.length?rows.map(row).join(''):'<div class="empty">No loops started from archeus yet.</div>'}</div>
+
+    <div class="card"><h3>${ic('play')} Start a loop</h3>
+      ${path?'':'<div class="empty">Open a project first — a loop runs inside one.</div>'}
+      ${path?`
+      <div class="chips" style="margin:0 0 10px">
+        <span class="chip${LOOPKIND==='schedule'?' on':''}" onclick="loopKind('schedule')">in the background</span>
+        <span class="chip${LOOPKIND==='session'?' on':''}" onclick="loopKind('session')">in a session</span>
+      </div>
+      <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">${LOOPKIND==='schedule'
+        ?`Runs <b>${esc(P.name)}</b> unattended on a timer, spending money without anyone watching — so it carries an expiry of ${d.ttl_days||7} days (renewable), your per-call budget cap, and the permission mode below. Each run is a fresh session that reads a rolling record of what the previous ones did, kept in the project's CLAUDE.md.`
+        :`Opens a session in <b>${esc(P.name)}</b> and types the command for you. It fires while that session is open; closing it ends the loop.`}</p>
+      <div class="grid2">
+        <div class="fld"><label for="loopInt">Interval${LOOPKIND==='schedule'?'':' <span style="color:var(--dim2)">— blank means Claude decides</span>'}</label>
+          <input id="loopInt" placeholder="15m" spellcheck="false"></div>
+        <div class="fld"><label for="loopPrompt">Prompt — blank = loop.md</label>
+          <input id="loopPrompt" placeholder="check CI and fix what is red" spellcheck="false"></div>
+      </div>
+      ${LOOPKIND==='schedule'?`
+      <div class="fld"><label>What it may do without asking</label>
+        <div class="chips">${(d.perms||[]).map(pm=>`<span class="chip${LOOPPERM===pm.id?' on':''}"
+          onclick='loopPerm(${hesc(pm.id)})' title="${esc(pm.note)}">${esc(pm.id)}</span>`).join('')}</div>
+        <div style="color:var(--dim);font-size:12px;margin-top:4px">${esc(permNote?permNote.note:'')}</div></div>
+      ${accts.length>1?`<div class="fld"><label>Account it runs under</label>
+        <div class="chips">${accts.map(a=>`<span class="chip${(LOOPACCT||(P?P.primary_cfgdir:''))===(a.dir||'')?' on':''}"
+          onclick='loopAcct(${hesc(a.dir||'')})'>${esc(a.name)}</span>`).join('')}</div></div>`:''}`:''}
+      <div class="mrow"><span id="loopPreview" style="flex:1;color:var(--dim);font-size:12px;font-family:var(--mono)"></span>
+        <button class="btn pri" onclick="loopStart()">${ic('play')} ${LOOPKIND==='schedule'?'Schedule it':'Start in a new session'}</button></div>`:''}</div>
+
+    <div class="card"><h3>${ic('doc')} loop.md <span class="sp"></span>
+      <button class="btn sm" onclick="loopAI()">${ic('ai')} Build with AI</button>
+      <button class="btn sm pri" onclick="loopSaveHere()">Save</button></h3>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">What a bare <code>/loop</code> does, and what a background loop runs when you leave the prompt empty. The project file wins wherever both exist, edits apply from the next iteration, and saving it empty deletes the file. Keep it short — anything past 25,000 bytes is truncated.</p>
+      ${path?`<div class="chips" style="margin:0 0 10px">
+        <span class="chip${scope==='project'?' on':''}" onclick="loopScope('project')">${esc(P.name)}${CUR?'':' (last opened)'}</span>
+        <span class="chip${scope==='user'?' on':''}" onclick="loopScope('user')">account — every project</span></div>`:''}
+      <textarea id="loopMd" style="min-height:200px;font-family:var(--mono)">${esc(md.text||'')}</textarea>
+      <div style="color:var(--dim2);font-size:12px;margin-top:6px">${esc(md.file||'')}${md.exists?'':' — does not exist yet'}</div></div>`))return;
+  const upd=()=>{const e=$('#loopPreview');if(!e)return;
+    const i=($('#loopInt').value||'').trim(),p=($('#loopPrompt').value||'').trim();
+    /* `every ?` was a placeholder leaking into a preview: until an interval is
+       typed there is no schedule to show, so the clause is left off. */
+    e.textContent=LOOPKIND==='schedule'
+      ?`claude -p ${p?JSON.stringify(p):'<loop.md>'} --permission-mode ${LOOPPERM}`
+        +(i?`  ·  every ${i}`:'')
+      :['/loop',i,p].filter(Boolean).join(' ');};
+  if($('#loopInt')){$('#loopInt').oninput=upd;$('#loopPrompt').oninput=upd;upd();}
+  // one poll while the page is open, and it stops with the page — the same
+  // discipline as the dashboard: nothing keeps fetching for a detached view
+  stopLoopPoll();
+  if(live.length)_loopTimer=setTimeout(()=>{if(PAGE_==='loops')drawPage('loops');},15000);
+}
+function loopKind(k){LOOPKIND=k;drawPage('loops');}
+function loopPerm(p){LOOPPERM=p;drawPage('loops');}
+function loopAcct(d){LOOPACCT=d;drawPage('loops');}
+function loopLog(id){
+  const r=(window._loopRows||[]).find(x=>x.id===id);if(!r)return;
+  drawerText('Loop · '+r.name,(r.journal||[]).map(e=>
+    `${new Date((e.at||0)*1000).toLocaleString()}  ${e.ok?'ok':'FAILED'}  ${e.cost?'$'+(+e.cost).toFixed(3)+'  ':''}${e.secs}s\n${e.text||''}\n`
+  ).join('\n')||'(no runs yet)');
+}
+async function loopRenew(id){
+  const P=projCtx();
+  const r=await post('/api/loops/stop',{id,renew:true,cfgdir:LOOPACCT||(P?P.primary_cfgdir:'')});
+  toast(r.message||'',r.ok?'ok':'err');drawPage('loops');
+}
+function stopLoopPoll(){if(_loopTimer){clearTimeout(_loopTimer);_loopTimer=null;}}
+function loopScope(sc){LOOPSCOPE=sc;drawPage('loops');}
+async function loopStart(){
+  const P=projCtx();if(!P){toast('Open a project first','err');return;}
+  const r=await post('/api/loops/start',{path:P.path,enc:P.encoded,
+    cfgdir:LOOPACCT||P.primary_cfgdir,project_name:P.name,
+    kind:LOOPKIND,perm:LOOPPERM,
+    interval:($('#loopInt').value||'').trim(),
+    prompt:($('#loopPrompt').value||'').trim()});
+  toast(r.ok?(r.message||('Started: '+r.text)):('Failed: '+(r.error||'')),r.ok?'ok':'err');
+  drawPage('loops');
+}
+async function loopStop(id){
+  const r0=(window._loopRows||[]).find(x=>x.id===id)||{};
+  const ask=r0.kind==='schedule'
+    ?['Remove this loop from the scheduler?','It cannot fire again. Nothing that has already run is undone.']
+    :['End the session this loop runs in?','A /loop is session-scoped, so stopping it from outside means closing its session — anything else that session was doing ends too.'];
+  if(!await confirmBox(ask[0],ask[1]))return;
+  const P=projCtx();
+  const r=await post('/api/loops/stop',{id,cfgdir:LOOPACCT||(P?P.primary_cfgdir:'')});
+  toast(r.message||'',r.ok?'ok':'err');drawPage('loops');
+}
+async function loopForget(id){
+  const P=projCtx();
+  await post('/api/loops/stop',{id,forget:true,cfgdir:P?P.primary_cfgdir:''});
+  drawPage('loops');
+}
+async function loopSaveHere(){
+  const P=projCtx();
+  const scope=(P&&LOOPSCOPE==='project')?'project':'user';
+  const body={scope,text:$('#loopMd').value};
+  if(scope==='project'){body.path=P.path;body.cfgdir=P.primary_cfgdir;}
+  else body.cfgdir=P?P.primary_cfgdir:undefined;
   const r=await post('/api/loop-md',body);
   toast(r.removed?'loop.md removed':'Saved','ok');
+  drawPage('loops');
+}
+async function loopAI(){
+  const P=projCtx();
+  const scope=(P&&LOOPSCOPE==='project')?'project':'user';
+  const v=await ask('Build loop.md with AI',
+    [{label:'What should each iteration do?',type:'textarea',
+      ph:'check the release PR: if CI is red pull the failing log and push a minimal fix'}],
+    'Claude drafts the file; you approve the text before anything is written.');
+  if(v===null||!v[0].trim())return;
+  inlineJob('#jban','loop_ai',{scope,description:v[0],
+      path:P?P.path:'',cfgdir:P?P.primary_cfgdir:''},
+    {label:'Writing loop.md',redraw:()=>drawPage('loops')});
+}
+
+async function convSync(){
+  const r=await post('/api/conventions/sync',{cfgdir:GMDACCT||undefined});
+  toast(r.ok?'Promoted into the global CLAUDE.md':'Nothing to promote',r.ok?'ok':'err');
+  drawPage('globalmd');
 }
 function mcpAcct(dir){MCPACCT=dir;drawPage('mcp');}
 async function gmSave(){
-  const r=await post('/api/global-claude-md',{cfgdir:MCPACCT||undefined,text:$('#gmText').value});
+  const r=await post('/api/global-claude-md',{cfgdir:GMDACCT||undefined,text:$('#gmText').value});
   toast(r.ok?'Saved':'Write failed',r.ok?'ok':'err');}
-async function mcpDetail(name){
-  const r=await api('/api/mcp/detail?'+qs(Object.assign({name},MCPACCT?{cfgdir:MCPACCT}:{})));
-  drawerText(`MCP · ${name}`,r.text||'(no details)');}
 /* the analyze job now RETURNS the doc, so it can be read instead of only
    written into a file the GUI had no way to open */
 function mcpDocs(name){
@@ -3048,30 +4249,93 @@ async function mcpRemove(name){
   toast(r.ok?'Removed':'Failed: '+(r.error||''),r.ok?'ok':'err');drawPage('mcp');
 }
 
+/* `user` and `project · archeus` are the storage scopes; the reader's
+   question is who can call the thing. Same move as the hook events: say the
+   answer, keep the raw word only where it is the identifier. */
+/* `01-core-development` is a sort key wearing a heading's clothes. The number
+   orders the folders on disk and means nothing to a reader; the words do. The
+   raw name stays in each row's filter haystack, so searching for it still
+   works. */
+function agCat(c){
+  const s=String(c||'').replace(/^\d+[-_]/,'').replace(/[-_]/g,' ');
+  return s.charAt(0).toUpperCase()+s.slice(1);
+}
+const NO_CAT='Uncategorised';
+/* Group installed agents the way the library is grouped — by category, with the
+   unfiled ones last, and CLOSED, exactly like the library's categories.
+
+   It used to print every one of your agents expanded under a plain heading:
+   three rows of name + scope + description + three buttons before you reached
+   the library beside it, growing with every agent you write, while the same
+   information on the right sat behind one collapsed line per trade. Two shapes
+   for one thing, and the longer shape given to the list that grows. It is one
+   shape now — categories, opened when you want them, which is also what makes
+   the filter's "open the ones that match" behaviour apply to both lists.
+
+   The <details> carries `.fgrp` as well, because bindFilter treats the two
+   selectors slightly differently and this element is genuinely both. */
+function agByCat(rows,render){
+  const by={};
+  rows.forEach(r=>{const c=r.category||NO_CAT;(by[c]=by[c]||[]).push(r);});
+  const names=Object.keys(by).sort((a,b)=>
+    a===NO_CAT?1:b===NO_CAT?-1:a.localeCompare(b));
+  return names.map(c=>`<details class="fgrp" style="margin-bottom:6px">
+      <summary style="cursor:pointer;font-weight:600">${esc(agCat(c))}
+      <span class="tag">${by[c].length}</span></summary>
+    ${by[c].map(render).join('')}</details>`).join('');
+}
+function agScope(sc){
+  const s=String(sc||'');
+  if(s==='user')return 'every project';
+  if(s.startsWith('project'))return 'only '+(s.split('·')[1]||'this project').trim();
+  return s;
+}
 async function pgAgents(nav){
   await loadProv();
   const d=await api('/api/agents/library');
-  const own=(d.own||[]).map(a=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:4px 0">
-      <b style="min-width:160px">${esc(a.name)}</b>${provTag('agent',a.name)}
-      <span class="tag">${esc(a.scope)}</span>
-      <span style="flex:1;color:var(--dim);font-size:12px">${esc(a.desc)}</span>
-      <button class="btn sm" onclick='agView(${JSON.stringify(a.path)})'>view</button>
-      <button class="btn sm" onclick='post("/api/open-editor",{file:${JSON.stringify(a.path)}})'>edit</button>
-      <button class="btn sm danger" onclick='agDel(${JSON.stringify(a.path)})'>${ic('del')}</button></div>`).join('');
-  const lib=(d.categories||[]).map(c=>`
-    <details style="margin-bottom:6px"><summary style="cursor:pointer;font-weight:600">${esc(c.category)} (${c.agents.length})</summary>
-    ${c.agents.map(a=>`<div style="display:flex;gap:10px;padding:3px 0 3px 16px;align-items:center">
-      <b style="min-width:170px">${esc(a.name)}</b>
-      <span style="flex:1;color:var(--dim);font-size:12px">${esc(a.desc)}</span>
-      <button class="btn sm" onclick='agView(${JSON.stringify(a.path)})'>view</button></div>`).join('')}
-    </details>`).join('');
-  paint(nav,`
-    <div class="card"><h3>My agents <span class="sp"></span>
-      <button class="btn sm" onclick="agNew()">${ic('add')} New agent</button>
-      <button class="btn sm" onclick="agAI()">${ic('ai')} AI-generate</button></h3>
-      ${own||'<div style="color:var(--dim)">No user/project agents yet.</div>'}</div>
-    <div class="card"><h3>Agent library</h3>${lib||'<div style="color:var(--dim)">Library is empty.</div>'}</div>`);
+  const agRow=(a,extra,scope,raw)=>`
+    <div class="agrow" data-f="${esc([a.name,a.desc,scope||'',raw||'',a.category||'',agCat(a.category||'')].join(' '))}">
+      <div class="agmain"><b>${esc(a.name)}</b>${provTag('agent',a.name)}
+        ${scope?`<span class="tag">${esc(scope)}</span>`:''}
+        <div class="agdesc">${esc(a.desc)||'<span style="color:var(--dim2)">No description — Claude can only reach this one if you name it.</span>'}</div></div>
+      <button class="btn sm" onclick='agView(${hesc(a.path)})'>view</button>${extra||''}</div>`;
+  /* Divided by category, both lists. A flat roll of everything installed is
+     the same wall the library would be without its folders, and it gets worse
+     with every agent you write. `Uncategorised` is a real heading rather than
+     a gap, and it sorts LAST so it never leads the page. */
+  const own=agByCat(d.own||[],a=>agRow(a,
+    `<button class="btn sm" onclick='post("/api/open-editor",{file:${hesc(a.path)}})'>edit</button>
+     <button class="btn sm danger" onclick='agDel(${hesc(a.path)})'>${ic('del')}</button>`,
+    agScope(a.scope)));
+  /* Through agByCat as well, now that both lists are the same shape — the
+     library's categories arrive pre-grouped, so the rows are flattened and the
+     category stamped onto each one, which is where agRow's filter haystack
+     wanted it anyway. Raw category names sort the way the folders do (`01-` …
+     `10-`), so the disk order survives. */
+  const libRows=(d.categories||[]).flatMap(c=>
+    c.agents.map(a=>({...a,category:c.category})));
+  const nLib=libRows.length;
+  const lib=agByCat(libRows,a=>agRow(a,'',agCat(a.category),a.category));
+  /* Two lists of very different size — sixteen of yours against a hundred and
+     fifty ready-made — so they get the asymmetric split rather than two equal
+     columns of the #content grid, and the library scrolls inside its own card.
+     Still exactly two cards: the smoke tool counts the opened category per
+     card, which is what caught this check passing on half the page. */
+  if(!shell(nav,`
+    <div class="card"><h3>${ic('robot')} Your agents <span class="tag">${(d.own||[]).length}</span><span class="sp"></span>
+      <button class="btn sm" onclick="agNew()">${ic('add')} Write one</button>
+      <button class="btn sm" onclick="agAI()">${ic('ai')} Have Claude write one</button>
+      <button class="btn sm" title="Rewrite every agent's description into trigger form (Use PROACTIVELY when …) — across every account, every project and the library. You approve the whole diff first; bodies and every other frontmatter field are untouched."
+        onclick="agSharpen('all')">${ic('ai')} Sharpen descriptions</button></h3>
+      <p class="secthint">An agent is a <b>second Claude</b> with its own instructions, its own tools and its own context window. Claude hands it a job, it works in that separate window, and only its answer comes back — so a long search never fills up the conversation you are having.</p>
+      <p class="secthint">It gets picked by matching your task against its <b>description</b>, and nothing reads the body to decide. That is why a vague description means the agent never runs: <i>Sharpen descriptions</i> rewrites that one field everywhere the agent is installed, so the fix lands once instead of per project.</p>
+      ${own||'<div class="empty">No agents of your own yet. Write one, or install one from the library below.</div>'}</div>
+    <div class="card"><h3>${ic('folder')} Ready-made agents <span class="tag">${nLib}</span></h3>
+      <p class="secthint">Specialists that ship with archeus, by trade. Too many to read down — type to narrow, and the filter opens the categories that match and covers your own list above too.</p>
+      <div class="fld" style="margin:0 0 8px"><input id="agQ" placeholder="Filter by name, description or trade…" spellcheck="false">
+        <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="agQCount"></div></div>
+      <div class="tbody">${lib||'<div class="empty">Library is empty.</div>'}</div></div>`))return;
+  bindFilter('agQ','.agrow','agQCount');
 }
 /* the existing #drawer, shown with plain text. Everything that used to have no
    way to display its own output — `claude mcp get`, an MCP tool-doc analysis —
@@ -3093,22 +4357,40 @@ async function agView(path){
 async function agNew(){
   const d=await api('/api/agents/library'+(CUR?'?'+qs({path:CUR.path}):''));
   const v=await ask('New agent',[{label:'Name'},{label:'Description'},
+    {label:'Category — pick one, or type a new name',
+     list:d.category_names||[],ph:NO_CAT},
     {label:'Scope',type:'select',options:[['user','user (all projects)'],['project','this project']]},
     {label:'Tools — none selected inherits all of them',type:'multi',
      options:(d.known_tools||[]).map(t=>[t,t])},
     {label:'Model',type:'select',
      options:[['','inherit'],...(d.models||[]).map(m=>[m.id,m.label])]},
-    {label:'System prompt / instructions',type:'textarea'}]);
+    {label:'System prompt / instructions',type:'textarea'}],
+    'The category is archeus’s own filing, not something Claude Code reads — it only decides which heading the agent appears under here.');
   if(v===null||!v[0].trim())return;
   const r=await post('/api/agents/create',{name:v[0],description:v[1],
-    scope:v[2],tools:v[3],model:v[4],path:CUR?CUR.path:'',body:v[5]});
+    category:v[2],scope:v[3],tools:v[4],model:v[5],path:CUR?CUR.path:'',body:v[6]});
   toast(r.ok?'Agent created':'Failed','ok');drawPage('agents');
 }
 async function agAI(){
-  const v=await ask('AI-generate agent',[{label:'Describe what the agent should do',type:'textarea'}]);
+  /* The same fields agNew() collects, because the agent lands in the same
+     place. The old modal asked for one textarea and the server fed it in as
+     the agent's NAME — it was the only field the TUI flow's first text_input
+     would have read, had that flow been reachable from a job thread at all. */
+  const d=await api('/api/agents/library'+(CUR?'?'+qs({path:CUR.path}):''));
+  const v=await ask('Have Claude write an agent',[
+    {label:'Name',ph:'security-reviewer'},
+    {label:'What should this agent do?',type:'textarea'},
+    {label:'Category — pick one, or type a new name',
+     list:d.category_names||[],ph:NO_CAT},
+    {label:'Scope',type:'select',options:CUR
+      ?[['user','user (all projects)'],['project','this project']]
+      :[['user','user (all projects)']]}],
+    'Claude writes the description, tool list, model and system prompt. It lands in '
+    +'.claude/agents/ — where Claude Code reads them — and you can edit it after.');
   if(v===null||!v[0].trim())return;
-  inlineJob('#jban','agent_ai',{path:CUR?CUR.path:'',description:v[0]},
-    {label:'Generating agent',onDone:()=>drawPage('agents')});
+  inlineJob('#jban','agent_ai',{path:CUR?CUR.path:'',name:v[0],
+      description:v[1],category:v[2],scope:v[3]},
+    {label:'Generating agent',redraw:()=>drawPage('agents')});
 }
 async function agDel(path){
   if(!await confirmBox('Delete this agent?'))return;
@@ -3118,7 +4400,7 @@ async function agDel(path){
 
 /* ── Plugins ────────────────────────────────────────────────────────────────
    A plugin is the canonical unit of distribution now — a versioned bundle of
-   skills, subagents, commands, hooks and MCP servers. claudectl managed every
+   skills, subagents, commands, hooks and MCP servers. archeus managed every
    one of those individually and could not see the bundle around them.
 
    The listing is table stakes; `/plugin` already does it. The part worth
@@ -3143,7 +4425,7 @@ async function pgPlugins(nav){
   };
   const picker=accts.length>1?`<div class="chips" style="margin-bottom:10px">
       ${accts.map(a=>`<span class="chip${(PLACCT||'')===(a.dir||'')?' on':''}"
-        onclick='plAcct(${JSON.stringify(a.dir||'')})'
+        onclick='plAcct(${hesc(a.dir||'')})'
         title="${a.plugins} plugin(s), ${a.marketplaces} marketplace(s)">${esc(a.name)} <b>${a.plugins}</b></span>`).join('')}
     </div>`:'';
   const mkts=(d.marketplaces||[]).map(m=>`
@@ -3152,7 +4434,7 @@ async function pgPlugins(nav){
       <span class="tag">${esc(m.source||'?')}</span>
       ${accts.length>1?spread(m.on_accounts):''}
       <span style="flex:1;color:var(--dim);font-size:12px">${esc(m.repo||m.path)}</span>
-      <button class="btn sm danger" onclick='mktRemove(${JSON.stringify(m.name)})'>${ic('del')}</button>
+      <button class="btn sm danger" onclick='mktRemove(${hesc(m.name)})'>${ic('del')}</button>
     </div>`).join('');
   const vrows={};((V||{}).plugins||[]).forEach(r=>{vrows[r.key]=r;});
   const plugs=(d.plugins||[]).map(p=>{
@@ -3167,24 +4449,27 @@ async function pgPlugins(nav){
         :(vr.outdated===false?'<span class="tag ok">current</span>':'')}
       ${p.missing?'<span class="tag warn">files missing</span>':''}
       ${accts.length>1?spread(p.on_accounts):''}
-      <span style="flex:1">${gives||'<span style="color:var(--dim2);font-size:12px">ships nothing claudectl reads</span>'}</span>
+      <span style="flex:1">${gives||'<span style="color:var(--dim2);font-size:12px">ships nothing archeus reads</span>'}</span>
       ${(accts.length>1&&(p.on_accounts||[]).length<accts.length)
-        ?`<button class="btn sm pri" onclick='pluginSpread(${JSON.stringify(p.name)},${JSON.stringify(p.marketplace)})' title="Install it into the accounts that do not have it">Install everywhere</button>`:''}
-      ${vr.outdated?`<button class="btn sm pri" onclick='pluginUpdate(${JSON.stringify(p.key)})'>Update</button>`:''}
-      <button class="btn sm danger" onclick='pluginRemove(${JSON.stringify(p.key)})'>${ic('del')}</button>
+        ?`<button class="btn sm pri" onclick='pluginSpread(${hesc(p.name)},${hesc(p.marketplace)})' title="Install it into the accounts that do not have it">Install everywhere</button>`:''}
+      ${vr.outdated?`<button class="btn sm pri" onclick='pluginUpdate(${hesc(p.key)})'>Update</button>`:''}
+      <button class="btn sm danger" onclick='pluginRemove(${hesc(p.key)})'>${ic('del')}</button>
     </div>`;}).join('');
-  paint(nav,`
-    ${selfCard(V)}
-    ${verCard(V)}
-    ${modelCard(V)}
-    <div class="card" id="pluginCard"><h3>${ic('folder')} Installed plugins</h3>
+  /* The three version cards used to open this page. They are on
+     Settings ▸ Updates now, with the schedule that checks for them — "what is
+     installed and is it current" is the same question as "how often do you
+     look", and this page is about marketplaces and what came from them. The
+     `/api/versions` fetch stays: a plugin row needs its marketplace's version
+     to say `update available`. */
+  shell(nav,`
+    <div class="card wide" id="pluginCard"><h3>${ic('folder')} Installed plugins</h3>
       <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">A plugin bundles skills, subagents, commands, hooks and MCP servers together. The tags say what each one actually placed on disk — the same information the Skills, Agents and Hooks pages now use to mark which of their rows came from a bundle rather than from you.${accts.length>1?' The <b>accounts</b> tag says how many of your logins have it: a plugin is a property of you, not of whichever account happened to be active when you installed it.':''}</p>
       ${picker}
       ${plugs||'<div style="color:var(--dim)">No plugins installed.</div>'}</div>
-    <div class="card"><h3>Marketplaces <span class="sp"></span>
+    <div class="card wide"><h3>Marketplaces <span class="sp"></span>
       <button class="btn sm" onclick="mktRefresh()">${ic('refresh')} Refresh</button>
       <button class="btn sm pri" onclick="mktAdd()">${ic('add')} Add marketplace</button></h3>
-      <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">A repo, a URL or a local path. Adding, installing and removing are delegated to the <code>claude</code> CLI: these files belong to Claude Code, the format has already changed once, and writing them directly would corrupt the state of the tool claudectl exists to support.</p>
+      <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">A repo, a URL or a local path. Adding, installing and removing are delegated to the <code>claude</code> CLI: these files belong to Claude Code, the format has already changed once, and writing them directly would corrupt the state of the tool archeus exists to support.</p>
       ${mkts||'<div style="color:var(--dim)">No marketplaces registered.</div>'}</div>
     <div class="card"><h3>Where they live</h3>
       <div class="kv"><span>plugins dir</span><code>${esc(d.dir||'')}</code></div>
@@ -3197,19 +4482,20 @@ async function pgPlugins(nav){
    question asked of the whole toolchain, and a plugin update and a Claude Code
    update are the same kind of action with the same kind of risk. */
 let VER=null;
-/* claudectl's own version. A separate card from Claude Code's on purpose: it
+/* archeus's own version. A separate card from Claude Code's on purpose: it
    has no channel and no rollback (PyPI is not a versions directory on disk),
    and the one thing it does have that Claude Code's does not is a refusal —
    a checkout is updated with git, not by installing a release over it. */
 function selfCard(V){
-  const c=(V||{}).claudectl||{};
+  const c=(V||{}).archeus||{};
   if(!c.installed&&!c.error)return '';
   const state=c.error?`<span class="tag warn">could not check (${esc(c.error)})</span>`
     :c.update?`<span class="tag warn">${esc(c.latest)} available</span>`
     :(c.current?'<span class="tag ok">current</span>':'');
   const act=(c.update&&c.mode!=='checkout')
-    ? `<button class="btn sm pri" onclick="selfUpdate()">Update claudectl</button>`:'';
-  return `<div class="card" id="selfCard"><h3>${ic('bolt')} claudectl ${state}
+    ? `<button class="btn sm pri" onclick="selfUpdate(false)">Update archeus</button>
+       <button class="btn sm" onclick="selfUpdate(true)">Restart now</button>`:'';
+  return `<div class="card" id="selfCard"><h3>${ic('bolt')} archeus ${state}
       <span class="sp"></span>
       <button class="btn sm" onclick="verCheck()">${ic('refresh')} Check now</button>${act}
     </h3>
@@ -3217,16 +4503,25 @@ function selfCard(V){
     <div class="kv"><span>latest on PyPI</span><code>${esc(c.latest||'?')}</code></div>
     <div class="kv"><span>install mode</span><code>${esc(c.mode||'?')}</code>
       ${c.mode==='checkout'?'<span style="color:var(--dim2);font-size:12px">a git checkout — update it with <code>git pull</code>, not with pip</span>'
-        :'<span style="color:var(--dim2);font-size:12px">the upgrade runs in its own window after claudectl exits, because pip cannot rewrite the script it is running from</span>'}</div>
+        :'<span style="color:var(--dim2);font-size:12px">the upgrade installs in the background with archeus still open; the running app keeps the version it started on, so restart to use the new one — <b>Restart now</b> does both at once</span>'}</div>
     </div>`;
 }
-function selfUpdate(){
-  inlineJob('#selfCard','claudectl_update',{},
-            {label:'Scheduling the claudectl upgrade',
-             onDone:()=>toast('claudectl upgrades once you close it')});
+/* Same job, same truth, as the `#updbar` strip — and it must report what the
+   job reports rather than a sentence written here. This one said "it installs
+   when you close archeus" whatever happened, which stopped being true when the
+   install stopped waiting for the close, and would have gone on saying it. */
+function selfUpdate(restart){
+  inlineJob('#selfCard','archeus_update',{restart:!!restart},
+            {label:restart?'Restarting archeus to finish the upgrade'
+                          :'Installing archeus',
+             onDone:st=>{
+               if(st.status!=='done')return;      // the inline banner says why
+               toast((st.result||{}).message||'Installed','ok');
+               if(restart)post('/api/quit',{});},
+             redraw:st=>{if(!restart&&st.status==='done')drawVersionCards();}});
 }
 /* The model catalogue. It sits with the other two because it answers the same
-   question of a third thing — "is what claudectl is showing you still what
+   question of a third thing — "is what archeus is showing you still what
    Anthropic offers?" — and because the ONE state a user has to be able to see
    is that the picker fell back to the bundled list, which is not visible from
    the picker itself.
@@ -3245,7 +4540,7 @@ function modelCard(V){
       <span class="sp"></span>
       <button class="btn sm" onclick="verCheck()">${ic('refresh')} Check now</button>
     </h3>
-    <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Read from Anthropic with the login Claude&nbsp;Code already holds, once a day, so a model released this week reaches the launch picker without a claudectl release. When it cannot be read, the picker falls back to the list shipped with this version — never to an empty one.</p>
+    <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Read from Anthropic with the login Claude&nbsp;Code already holds, once a day, so a model released this week reaches the launch picker without an archeus release. When it cannot be read, the picker falls back to the list shipped with this version — never to an empty one.</p>
     ${m.live?`<div class="kv"><span>catalogue</span><code>${m.count} models across ${m.families} families</code>
       <span style="color:var(--dim2);font-size:12px">checked ${esc(when)}</span></div>`
       :'<div class="kv"><span>catalogue</span><code>not fetched</code><span style="color:var(--dim2);font-size:12px">a logged-out account, no network, or auto-update set to off</span></div>'}
@@ -3263,7 +4558,7 @@ function verCard(V){
            :'<span class="tag warn">update available</span>');
   const locals=(c.local||[]).filter(v=>v!==c.installed).slice(0,4)
     .map(v=>`<button class="btn sm" title="already downloaded — rolls back without a fetch"
-      onclick='claudeUpdate(${JSON.stringify(v)})'>${esc(v)}</button>`).join(' ');
+      onclick='claudeUpdate(${hesc(v)})'>${esc(v)}</button>`).join(' ');
   return `<div class="card" id="verCard"><h3>${ic('bolt')} Claude Code ${state}
       <span class="sp"></span>
       <button class="btn sm" onclick="verCheck()">${ic('refresh')} Check now</button>
@@ -3274,16 +4569,25 @@ function verCard(V){
     <div class="kv"><span>channel</span><code>${esc(c.channel||'latest')}</code>
       <span style="color:var(--dim2);font-size:12px">autoUpdatesChannel — what an unpinned update follows</span></div>
     <div class="kv"><span>install mode</span><code>${esc(c.mode||'?')}</code>
-      ${c.mode==='npm'?'<span style="color:var(--dim2);font-size:12px">npm owns this binary — claudectl will not install the native build over it</span>':''}</div>
+      ${c.mode==='npm'?'<span style="color:var(--dim2);font-size:12px">npm owns this binary — archeus will not install the native build over it</span>':''}</div>
     <div class="hrow" style="margin-top:8px">
       <button class="btn sm" onclick="verPick()">Install a specific version…</button>
       ${locals?`<span style="color:var(--dim2);font-size:12px">on disk:</span> ${locals}`:''}
     </div></div>`;
 }
+/* Gated on its host like every other helper this page fires: a request for a
+   card that is not on screen is exactly the cost the settings split removed. */
+async function drawVersionCards(refresh){
+  if(!$('#verMount'))return;
+  const V=await api('/api/versions'+(refresh?'?refresh=1':'')).catch(()=>({}));
+  VER=V||{};
+  const host=$('#verMount');if(!host)return;      // navigated away mid-fetch
+  host.innerHTML=selfCard(V)+verCard(V)+modelCard(V);
+}
 async function verCheck(){
   const V=await api('/api/versions?refresh=1');VER=V;
   toast(((V.claude||{}).error)||'Checked',(V.claude||{}).error?'err':'ok');
-  drawPage('plugins');
+  if($('#verMount'))drawVersionCards();else drawPage('plugins');
 }
 async function verPick(){
   const c=(VER||{}).claude||{};
@@ -3296,13 +4600,13 @@ async function verPick(){
 }
 function claudeUpdate(target){
   inlineJob('#verCard','claude_update',{target:target||''},
-            {onDone:()=>drawPage('plugins')});
+            {redraw:()=>drawVersionCards()});
 }
 function pluginUpdate(key){
-  inlineJob('#pluginCard','plugin_update',{key},{onDone:()=>drawPage('plugins')});
+  inlineJob('#pluginCard','plugin_update',{key},{redraw:()=>drawPage('plugins')});
 }
 function mktRefresh(){
-  inlineJob('#pluginCard','marketplace_refresh',{},{onDone:()=>drawPage('plugins')});
+  inlineJob('#pluginCard','marketplace_refresh',{},{redraw:()=>drawPage('plugins')});
 }
 function plAcct(dir){PLACCT=dir;drawPage('plugins');}
 /* Adding registers the marketplace on EVERY account — a source you trust is a
@@ -3350,12 +4654,12 @@ function provTag(kind,name){
 }
 
 /* ── Worktrees ──────────────────────────────────────────────────────────────
-   Which agent is working where. claudectl could already launch into a worktree
+   Which agent is working where. archeus could already launch into a worktree
    and had no idea what happened next; every tool in this category is built on
    the view that was missing.
 
    The join is the bit nobody else can make: a session's transcript records its
-   cwd, a worktree is a path, so claudectl — which owns both — can say which
+   cwd, a worktree is a path, so archeus — which owns both — can say which
    SESSION is in which tree. And every one of them reads the same semantic
    memory, so they are not each rediscovering the codebase. */
 function wtRow(w,repoPath,indent){
@@ -3368,60 +4672,93 @@ function wtRow(w,repoPath,indent){
       ${w.ahead?`<span class="tag">+${w.ahead}</span>`:''}
       ${w.behind?`<span class="tag warn">-${w.behind}</span>`:''}
       <span style="flex:1;color:var(--dim);font-size:12px">${
-        s?`${esc(s.title||s.sid.slice(0,8))} · ${esc(s.account)} · ${s.msgs} msgs · ${live?'live now':fmtAge(s.age)}`
+        s?`${esc(s.title||s.sid.slice(0,8))} · ${esc(s.account)} · ${s.msgs} msgs · ${live?'live now':fmtAgo(s.age)}`
          :'<span style="color:var(--dim2)">no session here</span>'}</span>
-      ${w.dirty?`<button class="btn sm" onclick='wtDiff(${JSON.stringify(w.path)})'>${ic('eye')} Diff</button>`:''}
-      ${w.main?'':`<button class="btn sm" onclick='wtMerge(${JSON.stringify(repoPath)},${JSON.stringify(w.branch)})'>Merge</button>`}
+      ${w.dirty?`<button class="btn sm" onclick='wtDiff(${hesc(w.path)})'>${ic('eye')} Diff</button>`:''}
+      ${w.main?'':`<button class="btn sm" onclick='wtMerge(${hesc(repoPath)},${hesc(w.branch)})'>Merge</button>`}
     </div>`;
 }
 /* One repo and everything under it. <details> does the collapsing natively —
    no JS, no open/closed state to track, no icon to keep in sync. */
-function repoGroup(r,multi,depth){
-  const inner=(r.worktrees||[]).filter(w=>!w.main||!multi)
-      .map(w=>wtRow(w,r.path,multi?18:0)).join('');
-  const kids=(r.children||[]).map(c=>repoGroup(c,multi,depth+1)).join('');
-  if(!multi)return inner;
-  const live=(r.worktrees||[]).some(w=>w.session&&w.session.live);
-  return `<details open class="rgrp" style="margin-left:${depth*14}px">
-    <summary class="hrow" style="cursor:pointer">
-      <span class="dot${live?' pip':''}" style="background:${live?'var(--ok)':'var(--dim2)'};color:var(--ok)"></span>
-      <b style="min-width:200px">${esc(r.name)}</b>
-      ${r.kind==='submodule'?'<span class="tag">submodule</span>':''}
-      <code style="min-width:170px;color:var(--dim)">${esc(r.branch)}</code>
-      ${r.dirty?`<span class="tag warn">${r.dirty} uncommitted</span>`:'<span class="tag ok">clean</span>'}
-      ${r.ahead?`<span class="tag">+${r.ahead}</span>`:''}
-      ${r.behind?`<span class="tag warn">-${r.behind}</span>`:''}
-      <span style="flex:1"></span>
-      ${(r.children||[]).length?`<span class="tag">${r.children.length} ${esc(r.sublabel)}</span>`:''}
-    </summary>
-    ${inner}${kids}</details>`;
+/* Every repo under the project is ONE list, and the worktrees of the one you
+   picked are the pane. It used to be a nested `<details>` tree whose summary
+   row carried a name, a branch, four tags and a `flex:1` spacer — so on a wide
+   window each repo was a line of scattered fragments with a hole in the middle
+   of it, and the worktrees you came for were behind a disclosure triangle. */
+let WTREPOS=[],WTMULTI=false;
+const WTINTRO='<div class="empty">Pick a repo to see its worktrees and the session working in each.</div>';
+function wtFlat(list,depth,out){
+  (list||[]).forEach(r=>{out.push({r,depth});wtFlat(r.children||[],depth+1,out);});
+  return out;
+}
+function wtSel(i){
+  const e=WTREPOS[i];if(!e)return;
+  const r=e.r;
+  document.querySelectorAll('#content .hrow').forEach(el=>
+    el.classList.toggle('on',+el.dataset.i===i));
+  const h=$('#wtDet');if(!h)return;
+  const wts=(r.worktrees||[]);
+  h.innerHTML=`<h3>${esc(r.name)}
+    ${r.kind==='submodule'?'<span class="tag">submodule</span>':''}
+    ${r.dirty?`<span class="tag warn">${r.dirty} uncommitted</span>`:'<span class="tag ok">clean</span>'}</h3>
+    <div class="kv"><span class="k">Branch</span><span><code>${esc(r.branch||'')}</code></span>
+      <span class="k">Path</span><span><code>${esc(r.path||'')}</code></span>
+      ${(r.children||[]).length?`<span class="k">Contains</span><span>${r.children.length} ${esc(r.sublabel||'')}</span>`:''}</div>
+    ${wts.length?wts.map(w=>wtRow(w,r.path,0)).join('')
+      :'<div class="empty">One checkout, no linked worktrees.</div>'}`;
 }
 async function drawWorktrees(){
   const nav=paintNow(LOADING);
   const d=await api('/api/worktrees?'+qs({path:CUR.path,enc:CUR.encoded,cfgdir:CUR.primary_cfgdir}));
   if(!d.repo){
-    paint(nav,`<div class="card"><h3>Repos</h3>
-      <div style="color:var(--dim)">No git repository here or below — nothing to show.</div></div>`);
+    shell(nav,`<div class="card"><h3>${ic('fork')} Repos</h3>
+      <div class="empty">No git repository here or below — nothing to show.</div></div>`);
     return;
   }
-  const tops=d.repos||[],multi=!!d.multi;
-  let nlive=0,nrepo=0;
-  (function walk(list){list.forEach(r=>{nrepo++;
-    nlive+=(r.worktrees||[]).filter(w=>w.session&&w.session.live).length;
-    walk(r.children||[]);});})(tops);
-  paint(nav,`
-    <div class="card"><h3>${ic('fork')} Repos <span class="sp"></span>
-      ${multi?`<span class="tag">${nrepo} repos</span>`:''}
+  const tops=d.repos||[];
+  WTMULTI=!!d.multi;
+  WTREPOS=wtFlat(tops,0,[]);
+  let nlive=0;
+  WTREPOS.forEach(({r})=>{nlive+=(r.worktrees||[]).filter(w=>w.session&&w.session.live).length;});
+  const row=({r,depth},i)=>`<div class="hrow" data-i="${i}"
+      data-f="${esc(r.name+' '+(r.branch||'')+' '+(r.kind||''))}" onclick="wtSel(${i})"
+      style="padding-left:${depth*14}px">
+      <span class="dot${(r.worktrees||[]).some(w=>w.session&&w.session.live)?' pip':''}"
+        style="background:${(r.worktrees||[]).some(w=>w.session&&w.session.live)?'var(--ok)':'var(--dim2)'};color:var(--ok)"></span>
+      <span class="info">${esc(r.name)}</span>
+      ${r.kind==='submodule'?'<span class="tag">submodule</span>':''}
+      ${r.dirty?`<span class="tag warn">${r.dirty}</span>`:''}
+      ${r.ahead?`<span class="tag">+${r.ahead}</span>`:''}
+      ${r.behind?`<span class="tag warn">-${r.behind}</span>`:''}</div>`;
+  if(!shell(nav,`
+    <div class="card"><h3>${ic('fork')} Repos
+      <span class="tag">${WTREPOS.length} repo${WTREPOS.length===1?'':'s'}</span>
       <span class="tag${nlive?' ok':''}">${nlive} live</span></h3>
-      <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Every repo under this project — submodules and worktrees included — and the session working in each. All of them read the same project memory, so parallel agents are not each rediscovering the codebase.</p>
-      ${tops.map(r=>repoGroup(r,multi,0)).join('')}</div>`);
+      <p class="secthint">Every repo under this project — submodules and linked worktrees included — and the session working in each. All of them read the same project memory, so parallel agents are not each rediscovering the codebase.</p>
+      <div class="fld" style="margin:0 0 4px"><input id="wtQ" placeholder="Filter by repo, branch or kind…" spellcheck="false">
+        <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="wtCount"></div></div>
+      <div class="tbody">${WTREPOS.map(row).join('')}</div></div>
+    <div class="card tdet" id="wtDet">${WTINTRO}</div>`))return;
+  bindFilter('wtQ','.hrow','wtCount');
+  // one repo is still a list of one; pre-select it so the pane is never the
+  // intro on a page that has exactly one thing to pick
+  if(WTREPOS.length)wtSel(0);
 }
+/* A DURATION, never a phrase: "15m", "3h", "just now". It used to return
+   "15m ago", which made the loops board print "15m ago ago" at the one site
+   that added the word itself and "expires 3d ago" at the site describing a
+   time in the FUTURE. A formatter that bakes in a preposition can only ever
+   serve one of its callers. */
 function fmtAge(sec){
   if(sec<90)return 'just now';
-  if(sec<5400)return Math.round(sec/60)+'m ago';
-  if(sec<172800)return Math.round(sec/3600)+'h ago';
-  return Math.round(sec/86400)+'d ago';
+  if(sec<5400)return Math.round(sec/60)+'m';
+  if(sec<172800)return Math.round(sec/3600)+'h';
+  return Math.round(sec/86400)+'d';
 }
+/* …and the one phrase that is wanted often enough to have a name. Kept
+   separate rather than as a flag on fmtAge, because 'just now ago' is the bug
+   a flag would have re-created. */
+function fmtAgo(sec){return sec<90?'just now':fmtAge(sec)+' ago';}
 async function wtDiff(path){
   const d=await api('/api/worktree/diff?'+qs({wt:path}));
   await ask('Uncommitted changes',[],(d.diff||'(no diff)').slice(0,20000));
@@ -3434,39 +4771,116 @@ async function wtMerge(repoPath,branch){
   toast(r.message||'',r.ok?'ok':'err');drawWorktrees();
 }
 
-/* ── Output styles ──────────────────────────────────────────────────────────
-   The last Claude Code config surface claudectl did not manage. A style swaps
-   the "how to behave" half of the system prompt — same tools, same permissions,
-   different job — and it is set per project OR per account, which is precisely
-   the pair claudectl already knows at launch. Clicking a card writes the
-   `outputStyle` key and leaves every other key in that settings.json alone. */
+/* ── Output styles ───────────────────────────────────────────────────────────
+   The page was one undifferentiated grid of cards. It never said what a style
+   IS (it replaces the behavioural half of the system prompt — not the tools,
+   not CLAUDE.md, not a skill), where each one lives, or which of two files was
+   actually in force. Clicking a card silently wrote the PROJECT settings.json,
+   and with no project open that threw on `CUR.path`. `view` showed "(empty)"
+   for the three built-ins, because those ship inside Claude Code and have no
+   file — which reads as a broken button.
+
+   Now: what is active and where it is pinned, every style on the machine as
+   one list grouped by scope, and what you picked out of it in the pane beside
+   it. The scope of every write is a choice you can see. */
+let OSSCOPE='user';
+let OSSEL='';
+const OSINTRO='<div class="empty">Pick a style to read it, put it in force, or copy it into your own.</div>';
+let OSALL=[];
 async function pgOStyles(nav){
-  const path=CUR?CUR.path:'';
-  const d=await api('/api/output-styles?'+qs({path,cfgdir:CUR?CUR.primary_cfgdir:''}));
-  const cards=(d.styles||[]).map(st=>`
-    <div class="preset${st.active?' on':''}" onclick='osPick(${JSON.stringify(st.name)})'>
-      <b>${esc(st.name)}</b>
-      <span>${esc(st.description||'No description.')}</span>
-      <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
-        <span class="tag">${esc(st.scope)}</span>
-        ${st.active?'<span class="tag ok">active</span>':''}
-        <button class="btn sm" onclick='event.stopPropagation();osView(${JSON.stringify(st.name)},${JSON.stringify(st.scope||"")})'>view</button>
-        ${st.builtin?'':`<button class="btn sm danger" onclick='event.stopPropagation();osDel(${JSON.stringify(st.name)})'>${ic('del')}</button>`}
-      </div></div>`).join('');
-  paint(nav,`
+  const P=projCtx();
+  const path=P?P.path:'';
+  if(!path)OSSCOPE='user';        // no project in play: there is only one target
+  const d=await api('/api/output-styles?'+qs({path,cfgdir:P?P.primary_cfgdir:''}));
+  const where=d.active_scope==='project'?`this project's <code>.claude/settings.json</code>`
+    :d.active_scope==='user'?`your account's <code>settings.json</code>`:'';
+  OSALL=(d.styles||[]).concat((d.starters||[]).map(x=>Object.assign({scope:'starter'},x)));
+  const row=(st,i)=>`
+    <div class="hrow${st.active?' on':''}" data-i="${i}"
+      data-f="${esc(st.name+' '+(st.description||'')+' '+st.scope)}" onclick="osSel(${i})">
+      <span class="info">${esc(st.name)}
+        <span style="color:var(--dim2);font-size:11.5px"> — ${esc(st.description||'No description.')}</span></span>
+      ${st.active?'<span class="tag ok">in force</span>':''}
+      ${st.lines?`<span class="tag">${st.lines} lines</span>`:''}</div>`;
+  const grp=(sc,title,note)=>{
+    const rows=OSALL.map((st,i)=>[st,i]).filter(([st])=>st.scope===sc);
+    if(!rows.length)return '';
+    return `<div class="fgrp"><div class="hkwhen"><span>${title}</span>${note?`<code>${note}</code>`:''}</div>
+      ${rows.map(([st,i])=>row(st,i)).join('')}</div>`;
+  };
+  const scopePick=path?`<div class="chips" style="margin:0 0 10px">
+      <span class="chip${OSSCOPE==='user'?' on':''}" onclick="osScope('user')">account — every project</span>
+      <span class="chip${OSSCOPE==='project'?' on':''}" onclick="osScope('project')">${esc(P.name)} only${CUR?'':' (last opened)'}</span>
+    </div>`:'';
+
+  if(!shell(nav,`
     <div class="card"><h3>${ic('palette')} Output styles <span class="sp"></span>
-      <button class="btn sm pri" onclick="osNew()">${ic('add')} New style</button></h3>
-      <p style="color:var(--dim);font-size:12.5px;margin:0 0 10px">A style replaces the behavioural half of Claude Code's system prompt — the tools and permissions are untouched. Clicking one writes <code>outputStyle</code> into this project's <code>.claude/settings.json</code>; everything else in that file is preserved, and <b>default</b> removes the key rather than pinning a value that really means "no override".</p>
-      <div class="presetrow">${cards}</div></div>`);
+      <button class="btn sm" onclick="osNew()">${ic('add')} New style</button></h3>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">A style replaces the <b>behavioural</b> half of Claude Code's system prompt — how it talks and works. Tools, permissions, CLAUDE.md and skills are untouched: this is voice and method, not knowledge. It is a markdown file with YAML frontmatter, and selecting one writes <code>outputStyle</code> into a settings.json, leaving every other key in that file alone.</p>
+      <div class="pghd" style="margin-bottom:8px"><div class="pghdt">
+        <b>${esc(d.active||'default')}</b> is in force${where?' — pinned in '+where:' (nothing pins a style, so Claude Code uses its own default)'}
+        <div class="sub">A project's settings.json shadows your account's, so a project pin wins wherever both name a style.</div></div></div>
+      <p style="color:var(--dim);font-size:12.5px;margin:0">Writes go to: ${scopePick?'':'<b>your account</b> — open a project to target it instead.'}</p>
+      ${scopePick}
+      <div class="fld" style="margin:0 0 4px"><input id="osQ" placeholder="Filter by name, description or scope…" spellcheck="false">
+        <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="osCount"></div></div>
+      <div class="tbody">
+        ${grp('user','Yours',esc(d.user_dir||''))}
+        ${grp('project',P?esc(P.name):'A project',esc(d.project_dir||''))}
+        ${grp('built-in','Built into Claude Code','no file — copy one to edit it')}
+        ${grp('starter','Starters from archeus','four jobs Claude Code ships no style for')}
+      </div></div>
+    <div class="card tdet" id="osDet">${OSINTRO}</div>`))return;
+  bindFilter('osQ','.hrow','osCount');
+  const act=OSALL.findIndex(x=>x.active);
+  if(OSALL.length)osSel(act>=0?act:0);
 }
-async function osView(name,scope){
-  const d=await api('/api/output-style/read?'+qs({name,scope,
-    path:CUR?CUR.path:'',cfgdir:CUR?CUR.primary_cfgdir:''}));
-  drawerText('Output style · '+name,d.body||d.text||'(empty)');
+
+/* The pane. A starter is not installed yet, so its action is "copy to …";
+   anything else can be put in force where the scope chips point. `built-in`
+   ships inside Claude Code and has no file, so it has nothing to delete and
+   nothing to read — which is why `view` used to answer "(empty)". */
+async function osSel(i){
+  const st=OSALL[i];if(!st)return;
+  OSSEL=st.name;
+  document.querySelectorAll('#content .hrow').forEach(el=>
+    el.classList.toggle('on',+el.dataset.i===i));
+  const h=$('#osDet');if(!h)return;
+  const acts=st.scope==='starter'
+    ?`<button class="btn sm pri" onclick='osInstall(${hesc(st.name)})'>${ic('download')} Copy to ${esc(OSSCOPE==='project'?'this project':'your account')}</button>`
+    :`${st.active?'':`<button class="btn sm pri" onclick='osPick(${hesc(st.name)})'>Put in force</button>`}
+      ${st.builtin||st.scope==='built-in'?'':`<button class="btn sm danger" onclick='osDel(${hesc(st.name)})'>${ic('del')} Delete</button>`}`;
+  h.innerHTML=`<h3>${esc(st.name)}
+    ${st.active?'<span class="tag ok">in force</span>':''}
+    <span class="tag">${esc(st.scope)}</span>
+    <span class="sp"></span>${acts}</h3>
+    <p class="secthint">${esc(st.description||'No description.')}</p>
+    <div class="empty"><span class="spin"></span></div>`;
+  const P=projCtx();
+  const r=await api('/api/output-style/read?'+qs({name:st.name,
+    path:P?P.path:'',cfgdir:P?P.primary_cfgdir:''}));
+  const h2=$('#osDet');
+  if(h2&&OSSEL===st.name&&h2.querySelector('.empty'))
+    h2.querySelector('.empty').outerHTML=r.body
+      ?`<pre>${esc(r.body)}</pre>`
+      :'<div class="empty">Shipped inside Claude Code — there is no file to read. Copy a starter or write your own to replace it.</div>';
+}
+function osScope(sc){OSSCOPE=sc;drawPage('ostyles');}
+/* Every write names its scope explicitly. It used to pass scope:'project'
+   unconditionally and read CUR.path — which threw on a page that is reachable
+   with no project open at all. */
+function osTarget(){
+  const P=projCtx();
+  return OSSCOPE==='project'&&P
+    ?{scope:'project',path:P.path,cfgdir:P.primary_cfgdir}
+    :{scope:'user',cfgdir:P?P.primary_cfgdir:''};
 }
 async function osPick(name){
-  const r=await post('/api/output-style/select',
-    {name,scope:'project',path:CUR.path,cfgdir:CUR.primary_cfgdir});
+  const r=await post('/api/output-style/select',{name,...osTarget()});
+  toast(r.message||'',r.ok?'ok':'err');drawPage('ostyles');
+}
+async function osInstall(name){
+  const r=await post('/api/output-style/install',{name,...osTarget()});
   toast(r.message||'',r.ok?'ok':'err');drawPage('ostyles');
 }
 async function osNew(){
@@ -3476,13 +4890,15 @@ async function osNew(){
     {label:'Instructions',type:'textarea'}],
     'Saved as a markdown file with YAML frontmatter — the format Claude Code reads.');
   if(!v||!v[0])return;
-  const r=await post('/api/output-style/save',{name:v[0],description:v[1],body:v[2],
-    scope:'project',path:CUR.path,cfgdir:CUR.primary_cfgdir});
+  const r=await post('/api/output-style/save',
+    {name:v[0],description:v[1],body:v[2],...osTarget()});
   toast(r.message||'',r.ok?'ok':'err');drawPage('ostyles');
 }
 async function osDel(name){
   if(!await confirmBox('Delete output style '+name+'?'))return;
-  const r=await post('/api/output-style/delete',{name,path:CUR.path,cfgdir:CUR.primary_cfgdir});
+  const P=projCtx();
+  const r=await post('/api/output-style/delete',
+    {name,path:P?P.path:'',cfgdir:P?P.primary_cfgdir:''});
   toast(r.message||'',r.ok?'ok':'err');drawPage('ostyles');
 }
 
@@ -3491,7 +4907,7 @@ async function osDel(name){
    The store's naming scheme is NOT documented, so the backend proves it holds
    on every call by hashing the paths this session actually edited; if nothing
    resolves it reports recognised:false and we say so instead of rendering a
-   guess. Restoring stays with /rewind — claudectl only ever reads here. */
+   guess. Restoring stays with /rewind — archeus only ever reads here. */
 async function ckptS(i){
   const s=SESS[i];
   $('#dTitle').textContent='Checkpoints — '+(s.title||s.sid.slice(0,8));
@@ -3502,16 +4918,16 @@ async function ckptS(i){
   if(!d.store){body.innerHTML='<div class="empty">Claude Code kept no snapshots for this session.</div>';return;}
   if(!d.recognised){
     body.innerHTML=`<div class="card"><h3>Format not recognised</h3>
-      <p style="color:var(--dim);font-size:13px">Snapshots exist for this session, but none of the files it edited match them. Claude Code's checkpoint layout is undocumented and appears to have changed, so claudectl is showing nothing rather than guessing which snapshot belongs to which file. <code>/rewind</code> inside the session still works.</p></div>`;
+      <p style="color:var(--dim);font-size:13px">Snapshots exist for this session, but none of the files it edited match them. Claude Code's checkpoint layout is undocumented and appears to have changed, so archeus is showing nothing rather than guessing which snapshot belongs to which file. <code>/rewind</code> inside the session still works.</p></div>`;
     return;
   }
   body.innerHTML='<div class="card"><h3>'+ic('history')+' Snapshots before each edit</h3>'
-    +'<p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Read-only. Restoring is <code>/rewind</code> inside the session — claudectl never writes to this store.</p>'
+    +'<p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Read-only. Restoring is <code>/rewind</code> inside the session — archeus never writes to this store.</p>'
     +(d.files||[]).map(f=>{
       const vs=f.versions;
       const chain=vs.map((v,n)=>{
         const prev=n?vs[n-1].v:0;
-        return prev?`<button class="btn sm" onclick='ckptDiff(${JSON.stringify(s.sid)},${JSON.stringify(f.path)},${prev},${v.v},${JSON.stringify(s.cfgdir||"")})'>v${prev}→v${v.v}</button>`
+        return prev?`<button class="btn sm" onclick='ckptDiff(${hesc(s.sid)},${hesc(f.path)},${prev},${v.v},${hesc(s.cfgdir||"")})'>v${prev}→v${v.v}</button>`
                    :`<span class="tag">v${v.v}</span>`;}).join(' ');
       return `<div class="hrow">
         <b style="min-width:220px" title="${esc(f.path)}">${esc(f.name)}</b>
@@ -3529,56 +4945,177 @@ async function ckptDiff(sid,file,a,b,cfgdir){
     'Read-only. Restoring is /rewind inside the session.');
 }
 
-/* ── Skills ── */
+/* ── Skills ─────────────────────────────────────────────────────────────────
+   The scopes here are CLAUDE CODE'S, not ours. It loads personal
+   (<account>/skills), project (<project>/.claude/skills), plugin skills and its
+   own bundled ones — and nothing else. The old page led with a "Project skills"
+   card that was inert unless a project happened to be open, and offered "copy to
+   library", which wrote into ~/.claude/archeus-skills: a directory nothing
+   reads. So it listed files that could never run and said nothing about what
+   actually does.
+
+   Every row now carries the command you type and its real usage count, straight
+   from Claude Code's own skillUsage counters. */
+let SKACCT='',SKSCOPE='all';
+/* The detail pane's two states, both built at paint time. Rendering them up
+   front rather than on click is what keeps skPick() a one-liner: `act(r)` and
+   the description need the project context and the account list, and a click
+   handler that had to re-derive those would be a second copy of the renderer.
+   -1 is "nothing picked", and its pane is the Add form — so there is no empty
+   state to design, and the commonest reason to open the page is one click in. */
+let SKDET=[],SKADD='',SKSEL=-1;
 async function pgSkills(nav){
+  const P=projCtx();
+  const path=P?P.path:'';
   await loadProv();          // badge rows a plugin brought in — see provTag
-  const path=CUR?CUR.path:'';
-  const d=await api('/api/skills'+(path?'?'+qs({path}):''));
-  const proj=(d.project||[]).map(s=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:4px 0">
-      <b style="min-width:170px">${esc(s.name)}</b>${provTag('skill',s.name)}
-      <span style="flex:1;color:var(--dim);font-size:12px">${esc(s.desc)}</span>
-      <button class="btn sm" onclick='skView(${JSON.stringify(s.dir)})'>view</button>
-      <button class="btn sm" onclick='skSave(${JSON.stringify(s.dir)})' title="Copy into your skill library so it is available in every project">copy to library</button>
-      <button class="btn sm" onclick='post("/api/open-editor",{file:${JSON.stringify(s.dir+"\\\\SKILL.md")}})'>edit</button>
-      <button class="btn sm danger" onclick='skRemove(${JSON.stringify(s.dir)})'>${ic('del')}</button></div>`).join('');
-  const tmpl=(d.templates||[]).map(s=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:4px 0">
-      <b style="min-width:170px">${esc(s.name)}</b>${provTag('skill',s.name)}
-      <span class="tag">${esc(s.source)}</span>
-      <span style="flex:1;color:var(--dim);font-size:12px">${esc(s.desc)}</span>
-      <button class="btn sm" onclick='skView(${JSON.stringify(s.dir)})'>view</button>
-      <button class="btn sm" onclick='skSave(${JSON.stringify(s.dir)})' title="Copy into your skill library so it is available in every project">copy to library</button>
-      ${path?`<button class="btn sm pri" onclick='skInstall(${JSON.stringify(s.dir)})'>install</button>`:''}</div>`).join('');
-  paint(nav,`
-    <div class="card"><h3>Project skills <span class="sp"></span>
-      <button class="btn sm" onclick="skNew()">${ic('add')} New skill</button>
-      <button class="btn sm" onclick="skAI()">${ic('ai')} AI-generate</button></h3>
-      <p style="color:var(--dim);font-size:12px;margin:0 0 8px">${path?`Installed in <code>${esc(path)}\\.claude\\skills</code> — Claude loads each on demand.`:'Open a project to install skills into it.'}</p>
-      ${proj||'<div style="color:var(--dim)">No project skills yet — install a template below.</div>'}</div>
-    <div class="card"><h3>Starter templates &amp; library</h3>
-      <p style="color:var(--dim);font-size:12px;margin:0 0 8px">Bundled starters (credited in the README) plus your saved skills.</p>
-      ${tmpl||'<div style="color:var(--dim)">No templates found.</div>'}</div>
-    <div class="card"><h3>${ic('download')} Install from GitHub</h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Clone a skill+agents bundle straight from its repo — e.g.
-        <a href="https://github.com/olsenbrands/fable-foreman" target="_blank" rel="noopener"
-           style="color:var(--cyan);text-decoration:none">fable-foreman</a> (MIT, Jordan Olsen), which delegates
-        execution to worker/verifier subagents. If a free execute model is set under Settings, its agents'
-        <code>model:</code> pin is rewritten to that model automatically.</p>
-      <div class="fld"><input id="skGitUrl" value="https://github.com/olsenbrands/fable-foreman"></div>
-      <div class="mrow"><button class="btn pri sm" onclick="skGitInstall()">${ic('download')} Clone &amp; install</button></div></div>`);
+  const d=await api('/api/skills?'+qs(Object.assign(path?{path}:{},SKACCT?{cfgdir:SKACCT}:{})));
+  const accts=d.accounts||[];
+  const all=[].concat(d.personal||[],d.project||[],d.plugin||[],d.bundled||[]);
+  const n=sc=>sc==='all'?all.length:all.filter(r=>r.scope===sc).length;
+
+  /* TWO signals, never one number. `typed` is Claude Code's own counter and it
+     counts ONE thing: the times you wrote /name. `in N/M sessions` is measured
+     from the transcripts — how often something by that name actually ran. The
+     gap between them is the whole point: caveman reads as "used twice, 56 days
+     ago" and is in fact active in most of your sessions, because it arrives
+     through a hook, and hooks touch no counter. */
+  const usage=r=>{
+    const typed=r.uses
+      ?`<span class="tag ok" title="You typed /${esc(r.command)} ${r.uses} time(s). This counter only counts explicit invocation.">typed ${r.uses}×${r.last_used?' · '+esc(r.last_used):''}</span>`
+      :'<span class="tag" title="Never invoked by name. A skill Claude loads on its own does not increment this.">never typed</span>';
+    const live=r.sessions
+      ?`<span class="tag ok" title="Measured from your transcripts${r.via?' — the '+esc(r.via)+' plugin\'s hook ran':''}">in ${r.sessions}/${r.of_sessions} sessions</span>`
+      :'';
+    return typed+live;
+  };
+  const warn=r=>(r.auto===false
+      ?'<span class="tag warn" title="disable-model-invocation: true — Claude may never load this on its own; only you can, by typing it">manual only</span>':'')
+    +(r.weak?'<span class="tag warn" title="Claude picks a skill by matching your task against its description. A missing or one-word description can only be found by name.">thin description</span>':'')
+    +(r.shadowed?'<span class="tag warn" title="A personal skill of the same name wins — this one never runs">shadowed</span>':'');
+
+  const act=r=>{
+    const b=[];
+    if(r.dir)b.push(`<button class="btn sm" onclick='skView(${hesc(r.dir)})'>view</button>`);
+    if(r.scope==='personal'||r.scope==='project')
+      b.push(`<button class="btn sm" onclick='post("/api/open-editor",{file:${hesc(r.dir+"\\\\SKILL.md")}})'>edit</button>`);
+    if(r.scope!=='personal'&&r.dir)
+      b.push(`<button class="btn sm" onclick='skSave(${hesc(r.dir)})' title="Copy into the personal scope of every account">→ personal</button>`);
+    if(r.scope!=='project'&&r.dir&&path)
+      b.push(`<button class="btn sm" onclick='skInstall(${hesc(r.dir)},"project")' title="Copy into ${esc(P.name)} only">→ project</button>`);
+    if(r.scope==='personal'||r.scope==='project')
+      b.push(`<button class="btn sm danger" onclick='skRemove(${hesc(r.dir)},${hesc(r.scope)})'>${ic('del')}</button>`);
+    return b.join('');
+  };
+  const nodesc='<span style="color:var(--dim2)">No description — Claude can only reach this one if you type it.</span>';
+  /* The row is what you SCAN: the command, where it comes from, and whether it
+     is live. The description and the buttons are what you read once you have
+     picked one, and they moved to the detail pane — a description on every row
+     is what made 62 of them a page you scroll rather than a list you use. */
+  const row=(r,i)=>`<div class="skrow" data-scope="${esc(r.scope)}" data-i="${i}"
+      onclick="skPick(${i})"
+      data-f="${esc(r.command+' '+r.name+' '+r.desc+' '+r.scope)}">
+      <code class="skcmd">/${esc(r.command)}</code>
+      <span class="tag">${esc(r.scope)}</span>${provTag('skill',r.name)}
+      ${usage(r)}${warn(r)}</div>`;
+  const det=r=>`<h3><code class="skcmd">/${esc(r.command)}</code>
+      <span class="tag">${esc(r.scope)}</span>${provTag('skill',r.name)}
+      <span class="sp"></span>${act(r)}</h3>
+    <p style="margin:0 0 10px;font-size:13px;line-height:1.55">${esc(r.desc)||nodesc}</p>
+    <div class="chips" style="margin:0 0 10px">${usage(r)}${warn(r)}</div>
+    ${r.dir?`<div class="kv"><span>folder</span><code>${esc(r.dir)}</code></div>`:''}
+    ${r.via?`<div class="kv"><span>came from</span><code>${esc(r.via)}</code></div>`:''}
+    <p class="secthint" style="margin:10px 0 0">Two counters, and the gap between them is the point. <b>typed N×</b> is Claude Code's own tally of the times <i>you</i> wrote <code>/name</code>. <b>in N/M sessions</b> is measured from your transcripts — how often something by that name actually ran, including the times Claude loaded it on its own. A skill can read as "never typed" and still be live in most of your sessions.</p>`;
+
+  const chip=(id,label)=>`<span class="chip skchip${SKSCOPE===id?' on':''}"
+      data-sc="${id}" onclick='skScope(${hesc(id)})'>${label} ${n(id)}</span>`;
+  const acctChips=accts.length>1?`<div class="chips" style="margin:0 0 8px">
+      ${accts.map(a=>`<span class="chip${(SKACCT||'')===(a.dir||'')?' on':''}"
+        onclick='skAcct(${hesc(a.dir||'')})'>${esc(a.name)}</span>`).join('')}
+    </div>`:'';
+
+  SKDET=all.map(det);
+  SKADD=`<h3>${ic('add')} Add a skill</h3>
+      <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Everything here lands in <b>personal — all ${accts.length||1} account${(accts.length||1)===1?'':'s'}</b> unless you pick the project.${path?'':' Open a project to install into one.'}</p>
+      <div class="fld" style="margin:0 0 8px"><label for="skTmpl">Starter shipped with archeus</label>
+        <select id="skTmpl">${(d.templates||[]).map(t=>
+          `<option value="${esc(t.dir)}">${esc(t.command)} — ${esc((t.desc||'').slice(0,70))}</option>`).join('')}</select></div>
+      <div class="mrow" style="flex-wrap:wrap">
+        <button class="btn sm" onclick="skTmplView()">view</button>
+        <button class="btn pri sm" onclick="skTmplInstall('personal')">Install → personal</button>
+        ${path?`<button class="btn sm" onclick="skTmplInstall('project')">→ ${esc(P.name)}</button>`:''}
+      </div>
+      <div class="mrow" style="margin-top:10px;flex-wrap:wrap">
+        <button class="btn sm" onclick="skNew()">${ic('add')} Write one</button>
+        <button class="btn sm" onclick="skAI()">${ic('ai')} Have Claude write one</button>
+      </div>
+      <div class="fld" style="margin:10px 0 0"><label for="skGitUrl">Clone from GitHub <span style="color:var(--dim2)">— a skill+agents bundle, risk-scanned and shown to you before anything is installed</span></label>
+        <input id="skGitUrl" value="https://github.com/olsenbrands/fable-foreman"></div>
+      <div class="mrow" style="margin-top:8px"><span class="sp"></span>
+        <button class="btn sm" onclick="skGitInstall()">${ic('download')} Clone</button></div>`;
+
+  if(!shell(nav,`
+    <div class="card"><h3>${ic('ai')} Skills
+      <span class="tag">${all.length} loadable</span><span class="sp"></span>
+      <button class="btn sm" onclick="skAddPane()">${ic('add')} Add a skill</button></h3>
+      ${acctChips}
+      <div class="chips" style="margin:0 0 8px">${chip('all','all')}${chip('personal','personal — every project')}${
+        path?chip('project','project — '+esc(P.name)):''}${chip('plugin','from a plugin')}${chip('bundled','built into Claude Code')}</div>
+      <div class="fld" style="margin:0 0 4px"><input id="skQ" placeholder="Filter by name, description or scope…" spellcheck="false">
+        <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="skCount"></div></div>
+      <div class="tbody">${all.length?all.map(row).join(''):'<div class="empty">No skills anywhere yet — add one with the button above.</div>'}</div>
+      <details style="margin-top:10px"><summary class="secthint" style="cursor:pointer">How Claude resolves a skill, and the three ways one quietly never runs</summary>
+      <p class="secthint">A skill is a folder of instructions Claude loads <b>only when it needs it</b> — you type <code>/name</code>, or Claude reads the descriptions and picks one itself. That is why it costs almost nothing to have many of them, and why the description matters more than the body.</p>
+      <p class="secthint">The order it resolves them: <b>personal</b> (every project on an account) beats <b>project</b> (this one only), plugins are namespaced, and the built-in ones live inside Claude Code. The command is the folder name.</p>
+      <p class="secthint">The amber tags are the three ways a skill quietly never runs: <b>manual only</b> — it has opted out of Claude loading it, so only you can; <b>thin description</b> — too little for Claude to match a task against, so it is reachable by name alone; <b>shadowed</b> — a personal skill of the same name wins, and this copy is dead.</p>
+      <p style="color:var(--dim2);font-size:12px;margin:6px 0 0">Personal: <code>${esc(d.personal_dir||'')}</code>${
+        path?` · Project: <code>${esc(d.project_dir||'')}</code>`:''} · session counts from your last ${d.sessions_scanned||0} sessions across every account.</p></details></div>
+
+    <div class="card tdet" id="skDet">${SKADD}</div>`))return;
+  bindFilter('skQ','.skrow','skCount',
+    el=>SKSCOPE==='all'||el.dataset.scope===SKSCOPE);
 }
+/* Picking a row is the whole of the selection state: `.on` is what the CSS
+   paints and what bindFilter reads to keep a chosen row visible through a
+   filter that would otherwise hide it. */
+function skPick(i){
+  SKSEL=i;
+  document.querySelectorAll('#content .skrow').forEach(el=>
+    el.classList.toggle('on',+el.dataset.i===i));
+  const h=$('#skDet');if(h)h.innerHTML=SKDET[i]||SKADD;
+}
+function skAddPane(){
+  SKSEL=-1;
+  document.querySelectorAll('#content .skrow.on').forEach(el=>el.classList.remove('on'));
+  const h=$('#skDet');if(h)h.innerHTML=SKADD;
+}
+/* A chip is a filter, not a navigation: it re-runs the one filter pass and
+   moves the highlight. Redrawing the page instead would re-fetch the whole
+   inventory to hide four rows. */
+function skScope(sc){
+  SKSCOPE=sc;
+  document.querySelectorAll('#content .skchip').forEach(c=>
+    c.classList.toggle('on',c.dataset.sc===sc));
+  const run=window['__f_skQ'];if(run)run();
+}
+function skTmplDir(){const s=$('#skTmpl');return s?s.value:'';}
+function skTmplView(){const d=skTmplDir();if(d)skView(d);}
+function skTmplInstall(scope){const d=skTmplDir();if(d)skInstall(d,scope);}
+function skAcct(dir){SKACCT=dir;drawPage('skills');}
 async function skSave(dir){
   const r=await post('/api/skills/library',{dir});
-  toast(r.ok?'Copied to your library':'Failed: '+(r.error||''),r.ok?'ok':'err');
+  toast(r.ok?`Personal — installed for ${(r.accounts||[]).length||1} account(s)`
+            :'Failed: '+(r.error||''),r.ok?'ok':'err');
   drawPage('skills');
 }
 function skGitInstall(){
   const url=($('#skGitUrl').value||'').trim();
   if(!url){toast('Enter a git URL','err');return;}
-  inlineJob('#jban','skill_git_install',{path:CUR?CUR.path:'',url},{label:'Installing skill',onDone:st=>{
-    toast((st.result&&st.result.message)||'Installed','ok');drawPage('skills');
-  }});
+  const scope=($('#skGitProj')&&$('#skGitProj').checked)?'project':'personal';
+  const P=projCtx();
+  inlineJob('#jban','skill_git_install',{path:P?P.path:'',url,scope,cfgdir:SKACCT||undefined},
+    {label:'Installing skill',
+     onDone:st=>toast((st.result&&st.result.message)||'Installed','ok'),
+     redraw:()=>drawPage('skills')});
 }
 async function skView(dir){
   const d=await api('/api/skills/read?dir='+encodeURIComponent(dir));
@@ -3588,39 +5125,83 @@ async function skView(dir){
     <div class="msg"><div class="body">${esc(d.body)}</div></div>`;
   $('#drawer').classList.add('show');
 }
-async function skInstall(dir){
-  const r=await post('/api/skills/install',{dir,path:CUR?CUR.path:''});
-  toast(r.ok?'Installed into project':'Install failed',r.ok?'ok':'err');drawPage('skills');
+async function skInstall(dir,scope){
+  const P=projCtx();
+  const r=await post('/api/skills/install',
+    {dir,scope,path:P?P.path:'',cfgdir:SKACCT||undefined});
+  toast(r.ok?(scope==='project'?'Installed into this project'
+              :`Personal — installed for ${(r.accounts||[]).length||1} account(s)`)
+            :'Install failed',r.ok?'ok':'err');
+  drawPage('skills');
 }
-async function skRemove(dir){
-  if(!await confirmBox('Remove this skill from the project?'))return;
-  const r=await post('/api/skills/remove',{dir});
-  toast(r.ok?'Removed':'Failed',r.ok?'ok':'err');drawPage('skills');
+async function skRemove(dir,scope){
+  const many=scope==='personal'&&(ST.accounts||[]).length>1;
+  if(!await confirmBox('Delete this skill folder?',
+    many?`It was installed for every account, so it is removed from all ${(ST.accounts||[]).length} of them.`
+        :'Claude Code stops loading it immediately.'))return;
+  const r=await post('/api/skills/remove',{dir,scope});
+  toast(r.ok?(r.accounts&&r.accounts.length>1?`Deleted from ${r.accounts.length} accounts`:'Deleted')
+            :'Failed',r.ok?'ok':'err');
+  drawPage('skills');
+}
+/* Where a new skill lands is a CHOICE, not a side effect of whether a project
+   happens to be open — that guess is what put skills where they only worked in
+   one place. */
+function skScopeField(){
+  return projCtx()?{label:'Where',type:'select',
+    options:[['personal','personal — every project'],
+             ['project','only '+(projCtx()||{}).name]]}:null;
 }
 async function skNew(){
+  const sc=skScopeField();
   const v=await ask('New skill',[{label:'Name (e.g. commit-message)'},
     {label:'Description — when should Claude use it?'},
+    ...(sc?[sc]:[]),
     {label:'Instructions (markdown)',type:'textarea'}]);
   if(v===null||!v[0].trim())return;
+  const scope=sc?v[2]:'personal';
+  const P=projCtx();
   const r=await post('/api/skills/create',{name:v[0],description:v[1],
-    body:v[2],path:CUR?CUR.path:''});
+    body:sc?v[3]:v[2],scope,path:P?P.path:'',cfgdir:SKACCT||undefined});
   toast(r.ok?'Skill created':'Failed',r.ok?'ok':'err');drawPage('skills');
 }
 async function skAI(){
+  const sc=skScopeField();
   const v=await ask('AI-generate skill',[{label:'Name'},
+    ...(sc?[sc]:[]),
     {label:'Describe what the skill should do',type:'textarea'}]);
   if(v===null||!v[0].trim())return;
-  inlineJob('#jban','skill_ai',{path:CUR?CUR.path:'',name:v[0],description:v[1]},
-    {label:'Generating skill',onDone:()=>drawPage('skills')});
+  const P=projCtx();
+  inlineJob('#jban','skill_ai',{path:P?P.path:'',name:v[0],
+      description:sc?v[2]:v[1],scope:sc?v[1]:'personal',cfgdir:SKACCT||undefined},
+    {label:'Generating skill',redraw:()=>drawPage('skills')});
 }
 
 /* which account's hooks are on screen. '' = the active one. An install still
    fans out to EVERY account by default — the reader narrows, the writer does
    not, because what you provision is a property of you. */
 let HKACCT='';
+/* Plain English leads, the API name follows. `PreToolUse` is Claude Code's
+   vocabulary, not the reader's; a list of nothing but those names can only be
+   read by someone who has already memorised them. Served by /api/hooks from
+   `hooks.EVENT_WHEN` so the phrasing has one home, and an event with no phrase
+   degrades to its raw name rather than to a blank. */
+let HKWHEN={};
+function hkWhen(ev){return HKWHEN[ev]||ev||'anywhere';}
+/* The trigger is stated ONCE per group instead of as a badge repeated on every
+   row — the same move that turned the memory tab's 12-row wall into four
+   groups. Order follows first appearance, so it is the payload's order and
+   never a second list to keep in step. */
+function hkGroup(items,render){
+  const order=[],by={};
+  items.forEach(it=>{const e=it.event||'';if(!by[e]){by[e]=[];order.push(e);}by[e].push(it);});
+  return order.map(e=>`<div class="fgrp"><div class="hkwhen"><span>${esc(hkWhen(e))}</span>
+      <code>${esc(e)}</code></div>${by[e].map(render).join('')}</div>`).join('');
+}
 async function pgHooks(nav){
   await loadProv();
   const d=await api('/api/hooks?'+qs(HKACCT?{cfgdir:HKACCT}:{}));
+  HKWHEN=d.events||{};
   const accts=(d.accounts||[]);
   /* Only a real SKEW is worth a warning: a template missing from EVERY account
      is simply one you never installed, and tagging those turned fourteen clean
@@ -3632,41 +5213,51 @@ async function pgHooks(nav){
   };
   const hookRow=h=>`
     <div class="hrow${h.enabled?'':' off'}" style="display:flex;align-items:center;gap:10px;padding:4px 0${h.enabled?'':';opacity:.55'}">
-      <label class="autoline" title="${h.enabled?'Disable':'Enable'} this hook">
-        <input type="checkbox" ${h.enabled?'checked':''}
-          onchange='hookToggle(${JSON.stringify(h.event)},${h.index},this.checked)'></label>
-      <span class="tag">${esc(h.event)}</span>
+      <input type="checkbox" ${h.enabled?'checked':''}
+        title="${h.enabled?'Disable':'Enable'} this hook"
+        onchange='hookToggle(${hesc(h.event)},${h.index},this.checked)'>
       <span style="flex:1">${esc(h.label)}${h.enabled?'':' <span style="color:var(--dim2);font-size:11px">(disabled)</span>'}</span>
-      ${h.matcher?`<code style="color:var(--dim2);font-size:11px">${esc(h.matcher)}</code>`:''}
-      <button class="btn sm danger" onclick='hookRm(${JSON.stringify(h.event)},${h.index},${h.enabled?'true':'false'})'>${ic('del')}</button></div>`;
-  const active=(d.hooks||[]).map(hookRow).join('');
-  const tmpl=(d.templates||[]).map(t=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:4px 0">
+      ${h.matcher?`<code style="color:var(--dim2);font-size:11px" title="Only runs for this: ${esc(h.matcher)}">${esc(h.matcher)}</code>`:''}
+      <button class="btn sm danger" onclick='hookRm(${hesc(h.event)},${h.index},${h.enabled?'true':'false'})'>${ic('del')}</button></div>`;
+  const active=hkGroup(d.hooks||[],hookRow);
+  /* NOT `.hrow`: that class means "an installed hook", and the smoke tool
+     counts one checkbox per `.hrow` to prove every hook can be turned off.
+     A template is an offer, not a hook — it has nothing to toggle. */
+  const tmplRow=t=>`
+    <div class="trow" data-f="${esc(t.key+' '+t.desc+' '+hkWhen(t.event)+' '+t.event)}">
       <b style="min-width:170px">${esc(t.key)}</b>
       <span style="flex:1;color:var(--dim);font-size:12px">${esc(t.desc)}</span>
       ${skew(t.missing)}
       ${t.installed&&!(t.missing||[]).length?`<span class="tag ok">${ic('check')} installed</span>`
-        :`<button class="btn sm" onclick='hookAdd(${JSON.stringify(t.key)})'>${ic('add')} Install</button>`}</div>`).join('');
+        :`<button class="btn sm" onclick='hookAdd(${hesc(t.key)})'>${ic('add')} Install</button>`}</div>`;
+  const tmpl=hkGroup(d.templates||[],tmplRow);
   const picker=accts.length>1?`<div class="chips" style="margin-bottom:10px">
       ${accts.map(a=>`<span class="chip${(HKACCT||'')===(a.dir||'')?' on':''}"
-        onclick='hookAcct(${JSON.stringify(a.dir||'')})'>${esc(a.name)} <b>${a.count}</b></span>`).join('')}
+        onclick='hookAcct(${hesc(a.dir||'')})'>${esc(a.name)} <b>${a.count}</b></span>`).join('')}
     </div>`:'';
-  paint(nav,`
-    <div class="card"><h3>Active hooks <span class="sp"></span>
+  if(!shell(nav,`
+    <div class="card"><h3>${ic('link')} Hooks <span class="sp"></span>
       <button class="btn sm" onclick="hookEditFile()">${ic('edit')} Edit settings.json</button>
       <button class="btn sm" onclick="hookPurge()">${ic('del')} Purge broken</button>
-      <button class="btn sm" onclick="hookAI()">${ic('ai')} AI-generate</button></h3>
+      <button class="btn sm" onclick="hookAI()">${ic('ai')} Have Claude write one</button></h3>
+      <p class="secthint">A hook is a command <b>your machine</b> runs at a fixed moment — before a tool, after an edit, when a session starts. It is not a suggestion Claude may ignore: it always runs, and a hook that exits with an error can refuse the action outright. Each heading below says when its hooks fire.</p>
       ${picker}
-      ${active||'<div style="color:var(--dim)">No hooks installed.</div>'}
+      <p class="secthint">${HKACCT
+        ?'Acting on this account only.'
+        :'Turning one off or deleting it applies to <b>every</b> account, the same as installing. Pick an account above to act on that one alone.'}</p>
+      <div class="tbody">${active||'<div class="empty">No hooks installed yet — pick one from the ready-made list beside this.</div>'}</div>
       <div style="color:var(--dim2);font-size:12px;margin-top:8px">${esc(d.settings_path||'')}</div></div>
-    <div class="card"><h3>Templates</h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Installing adds the hook to <b>every</b> account. A hook you disabled counts as installed, so it is never silently re-added beside itself.</p>
-      ${tmpl}</div>`);
+    <div class="card tdet"><h3>${ic('add')} Ready-made hooks <span class="tag">${(d.templates||[]).length}</span></h3>
+      <p class="secthint">Installing adds the hook to <b>every</b> account. A hook you disabled still counts as installed, so it is never silently re-added beside itself.</p>
+      <div class="fld" style="margin:0 0 8px"><input id="hkQ" placeholder="Filter by name, what it does, or when it fires…" spellcheck="false">
+        <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="hkCount"></div></div>
+      ${tmpl}</div>`))return;
+  bindFilter('hkQ','.trow','hkCount');
 }
 function hookAcct(dir){HKACCT=dir;drawPage('hooks');}
 async function hookEditFile(){
   const d=await api('/api/hooks?'+qs(HKACCT?{cfgdir:HKACCT}:{}));
-  const r=await post('/api/open-editor',{path:d.settings_path});
+  const r=await post('/api/open-editor',{file:d.settings_path});
   toast(r.ok?'Opened in your editor':'Could not open it','ok');}
 async function hookAdd(key){const r=await post('/api/hooks/template',{key});
   toast(r.already?(r.message||'Already installed')
@@ -3683,8 +5274,11 @@ async function hookPurge(){const r=await post('/api/hooks/purge',{});
 async function hookAI(){
   const v=await ask('AI-generate hook',[{label:'What should the hook do?',type:'textarea'}]);
   if(v===null||!v[0].trim())return;
-  inlineJob('#jban','hook_ai',{description:v[0]},
-    {label:'Generating hook',onDone:()=>drawPage('hooks')});
+  /* HKACCT, like every other hook action on this page: without it an
+     AI-generated hook always landed on the active account, whichever one the
+     account chips above were showing. */
+  inlineJob('#jban','hook_ai',{description:v[0],cfgdir:HKACCT||undefined},
+    {label:'Generating hook',redraw:()=>drawPage('hooks')});
 }
 
 async function pgAccounts(nav){
@@ -3700,26 +5294,25 @@ async function pgAccounts(nav){
     const wins=(a.windows||[]).map(w=>(w.pct||0)/100);
     return wins.length?Math.max(...wins):null;
   };
-  if(!paint(nav,`<div class="card"><h3>Claude accounts <span class="sp"></span>
+  ACCTS=(d.accounts||[]);ACCTPLAN=pw;
+  const row=(a,i)=>`<div class="hrow${a.active?' on':''}" data-i="${i}"
+      data-f="${esc(a.name+' '+a.resolved)}" onclick="acctSel(${i})">
+      <span class="dot${a.active?' pip':''}" style="background:${a.active?'var(--ok)':'var(--dim2)'};color:var(--ok)"></span>
+      <span class="info">${esc(a.name)}</span>
+      ${a.active?'<span class="tag ok">active</span>':''}
+      ${quotaOf(a.name)==null?'<span class="aq dim2">no usage yet</span>'
+        :INST.html('ring','acct:'+a.name,{fmt:'pct'})}</div>`;
+  if(!shell(nav,`<div class="card"><h3>Claude accounts
+    <span class="tag">${(d.accounts||[]).length}</span><span class="sp"></span>
     <button class="btn sm" onclick="acctAdd()">${ic('add')} Add account</button></h3>
-    ${(d.accounts||[]).map(a=>{
-      const q=quotaOf(a.name);
-      return `<div class="arow2 mo-in">
-        <span class="dot${a.active?' pip':''}" style="background:${a.active?'var(--ok)':'var(--dim2)'};color:var(--ok)"></span>
-        <b>${esc(a.name)}</b>
-        ${a.active?'<span class="tag ok">active</span>':''}
-        <span class="apath">${esc(a.resolved)}</span>
-        ${q==null?'<span class="aq dim2">no usage data</span>'
-          :INST.html('ring','acct:'+a.name,{fmt:'pct'})}
-        <button class="btn sm" onclick='acctAct("switch",${JSON.stringify(a.name)})'>Switch</button>
-        <button class="btn sm" onclick='acctTerm(${JSON.stringify(a.name)},${JSON.stringify(a.dir)})'>Open terminal</button>
-        ${a.name!=='default'?`
-          <button class="btn sm" onclick='acctRename(${JSON.stringify(a.name)})'>Rename</button>
-          <button class="btn sm danger" onclick='acctAct("remove",${JSON.stringify(a.name)})'>${ic('del')}</button>`:''}
-      </div>`;}).join('')}</div>
-    <div class="card"><h3>${ic('refresh')} Sync accounts</h3>
+    <p class="secthint">Each account is its own <code>CLAUDE_CONFIG_DIR</code> — its own login, quota, hooks and plugins. The active one is what a new session opens under.</p>
+    <div class="tbody">${(d.accounts||[]).map(row).join('')}</div></div>
+    <div class="card tdet" id="acDet">${ACCTINTRO}</div>
+    <div class="card wide"><h3>${ic('refresh')} Sync accounts</h3>
       <p style="color:var(--dim);font-size:13px;margin:0 0 8px">What you provision — hooks, plugins, marketplaces, user agents, the global CLAUDE.md — is a property of <b>you</b>, not of whichever account happened to be active. This levels every account up to the union of them all. It only ever <b>adds</b>: an account keeps anything the others do not have, because there is no way to tell a deliberate choice from a gap.</p>
       <div id="syncOut"><span class="spin"></span></div></div>`))return;
+  const cur=ACCTS.findIndex(a=>a.active);
+  if(ACCTS.length)acctSel(cur>=0?cur:0);
   drawSync();
   for(const a of (d.accounts||[])){
     const q=quotaOf(a.name);
@@ -3732,6 +5325,30 @@ async function pgAccounts(nav){
     if(q!=null)setRead('acct:'+a.name,q*100);
   }
 }
+/* One account, everything you can do to it. The row used to carry all four
+   actions at its right edge with the name at `flex:1`, so on a wide window it
+   was a name, two thousand pixels of nothing, and then the controls. */
+let ACCTS=[],ACCTPLAN=[];
+const ACCTINTRO='<div class="empty">Pick an account to switch to it, open a terminal under it, rename it or remove it.</div>';
+function acctSel(i){
+  const a=ACCTS[i];if(!a)return;
+  document.querySelectorAll('#content .hrow').forEach(el=>
+    el.classList.toggle('on',+el.dataset.i===i));
+  const h=$('#acDet');if(!h)return;
+  const p=ACCTPLAN.find(x=>x.account===a.name);
+  const wins=(p&&p.windows||[]);
+  h.innerHTML=`<h3>${esc(a.name)}
+    ${a.active?'<span class="tag ok">active</span>':''}<span class="sp"></span>
+    ${a.active?'':`<button class="btn sm pri" onclick='acctAct("switch",${hesc(a.name)})'>Switch to it</button>`}
+    <button class="btn sm" onclick='acctTerm(${hesc(a.name)},${hesc(a.dir)})'>${ic('terminal')} Open terminal</button>
+    ${a.name!=='default'?`<button class="btn sm" onclick='acctRename(${hesc(a.name)})'>Rename</button>
+      <button class="btn sm danger" onclick='acctAct("remove",${hesc(a.name)})'>${ic('del')} Remove</button>`:''}</h3>
+    <div class="kv"><span class="k">Config dir</span><span><code>${esc(a.resolved||'')}</code></span></div>
+    ${wins.length?`<table class="tbl"><tr><th>window</th><th>used</th><th>resets</th></tr>
+      ${wins.map(w=>`<tr><td>${esc(w.label||w.name||'')}</td>
+        <td class="num">${Math.round(w.pct||0)}%</td><td>${esc(w.resets||'')}</td></tr>`).join('')}</table>`
+      :'<div class="empty">No usage recorded for this account yet.</div>'}`;
+}
 /* The diff is shown BEFORE anything is written: what reaches four more accounts
    here is hooks and plugins, which run code on every turn. Every plugin install
    still goes through the same review gate the single-account path uses. */
@@ -3739,8 +5356,8 @@ async function drawSync(){
   const el=$('#syncOut');if(!el)return;
   const d=await api('/api/accounts/sync');
   if(!$('#syncOut'))return;
-  const kinds=[['plugins','plugins'],['marketplaces','mkts'],['hooks','hooks'],
-               ['agents','agents']];
+  const kinds=[['plugins','plugins'],['marketplaces','marketplaces'],
+               ['hooks','hooks'],['agents','agents']];
   const rows=(d.accounts||[]).map(r=>`<tr>
       <td><b>${esc(r.name)}</b></td>
       ${kinds.map(([k])=>`<td class="num">${r.have[k]}</td>`).join('')}
@@ -3756,9 +5373,14 @@ async function drawSync(){
     if(m.claude_md)bits.push('<b>CLAUDE.md</b> copy global instructions');
     return `<div class="lrow"><span class="tag warn">${esc(r.name)}</span>
       <div style="font-size:12.5px;color:var(--dim)">${bits.join(' · ')}</div></div>`;}).join('');
-  $('#syncOut').innerHTML=`<table class="tbl"><tr><th>account</th>
+  /* The header only exists if there is a body under it. It used to be printed
+     unconditionally, so an account list with nothing to compare showed seven
+     column names over the sentence "No accounts to compare." */
+  $('#syncOut').innerHTML=`${rows?`<table class="tbl"><tr><th>account</th>
       ${kinds.map(([,l])=>`<th class="num">${l}</th>`).join('')}
-      <th class="num">stline</th><th class="num">CLAUDE.md</th><th></th></tr>${rows}</table>
+      <th class="num">statusline</th><th class="num">CLAUDE.md</th>
+      <th></th></tr>${rows}</table>`
+    :'<div class="empty">Nothing to compare — sync needs at least two accounts.</div>'}
     ${d.clean?'<div class="empty" style="color:var(--ok)">✓ Every account already has everything.</div>'
       :`<div style="margin-top:10px">${detail}</div>
         <div class="mrow"><button class="btn pri" onclick="syncApply()">Copy the missing items into every account</button></div>`}`;
@@ -3766,10 +5388,10 @@ async function drawSync(){
 async function syncApply(){
   if(!await confirmBox('Copy the missing items into every account?',
     'Hooks and plugins run code on every turn. Each plugin install is reviewed first.'))return;
-  inlineJob('#jban','sync_accounts',{},{label:'Syncing accounts',onDone:st=>{
-    const r=(st&&st.result)||{};
-    toast(r.clean?'Nothing to do':`Synced ${(r.done||[]).length} item(s)`,'ok');
-    drawPage('accounts');}});
+  inlineJob('#jban','sync_accounts',{},{label:'Syncing accounts',
+    onDone:st=>{const r=(st&&st.result)||{};
+      toast(r.clean?'Nothing to do':`Synced ${(r.done||[]).length} item(s)`,'ok');},
+    redraw:()=>drawPage('accounts')});
 }
 async function acctAdd(){
   const v=await ask('Add account',[{label:'Name (e.g. work, personal)'},
@@ -3799,7 +5421,8 @@ async function acctTerm(name,dir){
   toast(r.ok?`Terminal opened as '${name}' — use /login if needed`:'Failed','ok');
 }
 
-/* GENERATED from NAV_GROUPS, TABS and the TUI's own ACTIONS table — never
+/* GENERATED from SECTIONS, NAV, TAB_GROUPS, TABS and the TUI's own ACTIONS
+   table — never
    typed. The hand-written version listed "Project → Graph" (an endpoint that had
    no consumer) and omitted Plugins, Output styles, Claude Code, Review and
    Repos. docs/api.md needs a generator because Markdown cannot compute; this is
@@ -3809,17 +5432,34 @@ async function acctTerm(name,dir){
 async function pgHelp(nav){
   const row=(where,what)=>`<tr data-help-row><td style="white-space:nowrap;color:var(--cyan)">${esc(where)}</td><td>${esc(what)}</td></tr>`;
   const tbl=(head,rows)=>`<table class="tbl"><tr><th>${head}</th><th>what it is for</th></tr>${rows}</table>`;
-  const groups=NAV_GROUPS.map(([grp,items])=>
-    `<div class="card"><h3>${ic(items[0][1])} ${esc(grp)}</h3>
-     ${tbl('page',items.map(([,,l,blurb])=>row(l,blurb)).join(''))}</div>`).join('');
+  const pageRow=id=>{const n=NAV.find(x=>x[0]===id);return row(n?n[2]:id,n?n[3]:'');};
+  const groups=SECTIONS.map(([grp,icon,blurb,ids])=>
+    `<div class="card"><h3>${ic(icon)} ${esc(grp)}</h3>
+     <p style="color:var(--dim);font-size:13px;margin-bottom:10px">${esc(blurb)}</p>
+     ${tbl('page',ids.map(pageRow).join(''))}</div>`).join('');
+  // the two pages that are deliberately in no section still have to appear
+  // here, and the row says where they ARE reached — a page missing from its own
+  // help page is how "there is no search any more" gets believed
+  const off=`<div class="card"><h3>${ic('search')} Not in the sidebar</h3>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Two screens have a better door than a nav row.</p>
+    <table class="tbl"><tr><th>page</th><th>where it is</th></tr>
+    ${Object.entries(OFFNAV).map(([id,where])=>
+      `<tr data-help-row><td style="white-space:nowrap;color:var(--cyan)">${esc(navLabel(id))}</td><td>${esc(where)}</td></tr>`).join('')}
+    </table></div>`;
   const keys=(ST.tui_keys||[]);
-  paint(nav,`
+  // a pile, not a grid: nine independent sections whose heights come from the
+  // workspace (thirteen projects make the first card 656px, two make it 200),
+  // so which one is "the tall one" is not something the markup can know
+  shell(nav,`
     <div class="card"><h3>${ic('help')} Projects</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Pick a project in the sidebar; these are its tabs.</p>
-    ${tbl('tab',TABS.map(([,l,blurb])=>row(l,blurb)).join(''))}</div>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Pick a project in the sidebar; these are its four tabs and the pages inside them.</p>
+    ${TAB_GROUPS.map(([label,ids])=>
+      `<div class="lbl" style="margin:10px 0 4px">${esc(label)}</div>
+       ${tbl('tab',ids.map(id=>{const t=TABS.find(x=>x[0]===id);return row(t?t[1]:id,t?t[2]:'');}).join(''))}`).join('')}</div>
     ${groups}
+    ${off}
     <div class="card"><h3>${ic('ai')} Terminal UI keys</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:10px">The sessions screen in <code>claudectl</code>'s terminal interface. Rendered from the same table the terminal itself reads, so the two cannot disagree — press <code>?</code> there for this list, <code>/</code> for a searchable palette.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:10px">The sessions screen in <code>archeus</code>'s terminal interface. Rendered from the same table the terminal itself reads, so the two cannot disagree — press <code>?</code> there for this list, <code>/</code> for a searchable palette.</p>
     ${keys.length?`<table class="tbl"><tr><th>key</th><th>action</th></tr>
       ${keys.map(([k,blurb])=>`<tr><td style="white-space:nowrap"><code>${esc(k)}</code></td><td>${esc(blurb)}</td></tr>`).join('')}</table>`
       :`<div class="empty">No key table in this build.</div>`}</div>
@@ -3835,23 +5475,36 @@ async function pgHelp(nav){
     <p style="color:var(--dim2);font-size:12px;margin-top:10px">Motion elsewhere is transitional: numbers count to their new value, rows slide when they reorder, and a travelling border marks a job that is still running. <b>Settings → Appearance → Motion</b> sets how much of that you get; your OS "reduce motion" preference always wins.</p></div>`);
 }
 
-async function pgSettings(nav){
-  const o=ST.options;
-  if(!paint(nav,`<div class="card"><h3>Defaults</h3>
+/* The settings page was eleven cards in one paint, and with its wiring the
+   longest function in the app — the page the section split helps most and the
+   most mechanical to split, because it was already a list of independent cards
+   with independent Save buttons. ONE renderer and five parts: the part decides
+   which cards are painted, and the wiring below runs unchanged, because every
+   control it touches is looked up and guarded — one that is not on this
+   sub-page is simply not written to. Splitting the WIRING as well would have
+   been five copies of the same twenty lines. */
+const SETTINGS_CARDS={
+  settings:o=>`<div class="card"><h3>${ic('bolt')} Defaults</h3>
+    <p class="secthint">What the launch modal opens on — you can still change any of it per session, and nothing here touches a session that is already running.</p>
     ${fld('sEff','Effort')}${fld('sMod','Model')}${fld('sPerm','Permission mode')}
     ${fld('sThink','Thinking cap')}${fld('sSub','Subagent model')}
     ${fld('sShell','GUI window')}
     <div class="chips" id="sTheme" style="display:none"></div>
-    <div class="mrow"><button class="btn pri" onclick="setSave()">Save</button></div></div>
-  <div class="card"><h3>${ic('palette')} Appearance</h3>
-    <div class="fld"><label>World — a complete look, locked</label>
+    <div class="mrow"><button class="btn" onclick="setSave()">Save</button></div></div>
+  <div class="card"><h3>${ic('map')} Plan → Execute</h3>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Model that writes the plan (runs once, headless) vs the model that executes it interactively. Keep the plan model accurate — the expensive reasoning happens once.</p>
+    ${fld('sPlanMod','Plan model')}${fld('sExecMod','Execute model')}
+    <div class="mrow"><button class="btn" onclick="setPlanExecSave()">Save</button></div></div>
+`,
+  appearance:o=>`<div class="card"><h3>${ic('palette')} Appearance</h3>
+    <div class="fld"><label>World <span style="color:var(--dim2)">— a complete look, locked</span></label>
       <p style="color:var(--dim);font-size:13px;margin:0 0 8px">A world owns everything at once: its own palette, shape, icons, background, overlay and hover behaviour. Nothing in it can be mixed with anything else — that is the point, and it is why these can go much further than a skin that has to survive 32 different palettes.</p>
       <div class="wgal" id="thWorld"></div>
       <div class="monote" id="wNote"></div></div>
     <div id="classicBlock">
       <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Or build your own: a palette for the colours, a skin for the shape. Click a card to apply and save it. Each palette also carries a motion <i>personality</i> (how far things travel, how much they glow), so Mono stays terse and Dracula does not.</p>
       <div class="thgal" id="thGallery"></div>
-      <div class="fld" style="margin-top:16px"><label>Skin — the shape of the app, independent of its colours</label>
+      <div class="fld" style="margin-top:16px"><label>Skin <span style="color:var(--dim2)">— the shape of the app, independent of its colours</span></label>
         <div class="skgal" id="thSkin"></div>
         <div class="monote" id="skNote"></div></div>
     </div>
@@ -3862,59 +5515,68 @@ async function pgSettings(nav){
         <b>subtle</b>: only the motion that carries information — value tweens, meter fills, page changes ·
         <b>off</b>: nothing moves.<br>
         Gauges stop once they reach their value either way, so an idle page renders no frames at all. Your OS <i>reduce motion</i> setting overrides this.</div></div>
-    <div class="fld" style="margin-top:14px"><label>Surface transparency — how much of the background shows through</label>
+    <div class="fld" style="margin-top:14px"><label>Surface transparency <span style="color:var(--dim2)">— how much of the background shows through</span></label>
       <input type="range" id="sSurf" min="40" max="100" step="2">
       <div class="frontends"><span>See-through</span><span>Solid</span></div>
       <div class="frontread" id="surfRead"></div>
       <div style="color:var(--dim2);font-size:12px;margin-top:4px">Applies to every theme. Each look proposes its own value — drag to override it everywhere, or
         <a href="#" id="surfReset" style="color:var(--cyan)">use each theme's default</a>.</div></div>
+    <div class="fld" style="margin-top:14px"><label>Background brightness <span style="color:var(--dim2)">— how far the scene may come up off the page colour</span></label>
+      <input type="range" id="sGlow" min="40" max="220" step="5">
+      <div class="frontends"><span>Barely there</span><span>Full strength</span></div>
+      <div class="frontread" id="glowRead"></div>
+      <div style="color:var(--dim2);font-size:12px;margin-top:4px">Every look proposes its own — this scales it, so the looks keep their relative brightness. Drag to override everywhere, or
+        <a href="#" id="glowReset" style="color:var(--cyan)">use each theme's default</a>. The theme-only view (the palette button in the header) comes up brighter still, since nothing is on top of it.</div></div>
     <div class="fld" style="margin-top:14px"><label>Background</label>
       <div class="chips" id="sStage"></div>
       <div class="monote" id="stgNote"></div>
       <div style="color:var(--dim2);font-size:12px;margin-top:6px">
         One animated scene behind the whole app, chosen by the skin and driven by what the workspace is actually doing — idle crawls, a running job speeds it up, launching a session sends a shockwave through it.
-        It stops entirely when the window is hidden, minimised or blurred, and <b>motion: off<\b> turns it off with everything else.</div></div></div>
-  <div class="card"><h3>${ic('folder')} Paths &amp; limits</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Blank means auto-detect. A path that does not exist is <b>refused</b> rather than saved — pinning a broken one makes every launch fail with no clue why. Its own Save: the Defaults button above must not half-cover another card.</p>
-    <div class="grid2">
-      <div class="fld"><label>Editor <span style="color:var(--dim2)">— what "open in editor" runs</span></label>
-        <input id="sEditor" placeholder="auto-detect (Notepad++, VS Code, notepad)"></div>
-      <div class="fld"><label>claude.exe <span style="color:var(--dim2)">— the Claude Code binary</span></label>
-        <input id="sClaudeExe" placeholder="auto-detect (~/.local/bin, then PATH)"></div>
-    </div>
-    <div class="grid2">
-      <div class="fld"><label>CLAUDE_CONFIG_DIR <span style="color:var(--dim2)">— which account is active</span></label>
-        <input id="sCfgDir" placeholder="default: ~/.claude"></div>
-      <div class="fld"><label>Budget cap <span style="color:var(--dim2)">— $ per headless call, 0 = no cap</span></label>
-        <input id="sBudget" type="number" min="0" max="1000" step="0.05"></div>
-    </div>
-    <div style="color:var(--dim2);font-size:12px">The cap is <code>--max-budget-usd</code> on claudectl's <b>own</b> Claude calls (memory, lessons, plans, reviews) — your interactive sessions are unaffected. Changing the config dir takes effect on restart.</div>
-    <div class="mrow"><button class="btn pri" onclick="setPathsSave()">Save</button></div></div>
+        It stops entirely when the window is hidden, minimised or blurred, and <b>motion: off</b> turns it off with everything else.</div></div></div>
+`,
+  paths:o=>`  <div class="card"><h3>${ic('folder')} Paths &amp; limits</h3>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Blank means auto-detect. A path that does not exist is <b>refused</b> rather than saved — pinning a broken one makes every launch fail with no clue why. Each card here saves on its own — a Save that covered a page of unrelated settings is a Save you cannot press with confidence.</p>
+    <div class="fld"><label>Editor <span style="color:var(--dim2)">— what "open in editor" runs</span></label>
+      <input id="sEditor" placeholder="auto-detect (Notepad++, VS Code, notepad)"></div>
+    <div class="fld"><label>claude.exe <span style="color:var(--dim2)">— the Claude Code binary</span></label>
+      <input id="sClaudeExe" placeholder="auto-detect (~/.local/bin, then PATH)"></div>
+    <div class="fld"><label>CLAUDE_CONFIG_DIR <span style="color:var(--dim2)">— which account is active</span></label>
+      <input id="sCfgDir" placeholder="default: ~/.claude"></div>
+    <div class="fld"><label>Budget cap <span style="color:var(--dim2)">— $ per headless call, 0 = no cap</span></label>
+      <input id="sBudget" type="number" min="0" max="1000" step="0.05"></div>
+    <div style="color:var(--dim2);font-size:12px">The cap is <code>--max-budget-usd</code> on archeus's <b>own</b> Claude calls (memory, lessons, plans, reviews) — your interactive sessions are unaffected. Changing the config dir takes effect on restart.</div>
+    <div class="mrow"><button class="btn" onclick="setPathsSave()">Save</button></div></div>
+  <div class="card"><h3>${ic('bolt')} Memory limits</h3>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">What one memory cycle may spend, and how big the graph may get. The call cap is the ceiling on a single pass: whatever it does not finish waits for the next one, so a low number spreads the cost rather than losing the work. The entity cap is what the graph is pruned back to, least-connected first.</p>
+    <div class="fld"><label>Max Claude calls per cycle <span style="color:var(--dim2)">— 0 = unlimited</span></label>
+      <input id="sMemCalls" type="number" min="0" max="500" step="1"></div>
+    <div class="fld"><label>Max entities kept <span style="color:var(--dim2)">— least-connected are evicted first</span></label>
+      <input id="sMemEnts" type="number" min="50" max="20000" step="50"></div>
+    <div class="fld"><label>Refresh on open <span style="color:var(--dim2)">— for projects <i>not</i> on the auto-memory schedule; those refresh on their own interval and never on open</span></label><div class="chips" id="sMemOpen"></div></div>
+    <div class="fld"><label>Learn lessons from sessions</label><div class="chips" id="sMemLessons"></div></div>
+    <div class="mrow"><button class="btn" onclick="setMemLimitsSave()">Save</button></div></div>
+  <div class="card"><h3>Economy model</h3>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Model used for archeus's <b>own</b> internal Claude calls — memory extraction, lessons, CLAUDE.md / agent / hook / skill generation. Defaults to Haiku to cut cost. Your actual coding sessions are unaffected. <i>default</i> = your account's model.</p>
+    ${fld('sExtract','Economy model')}
+    <div class="mrow"><button class="btn" onclick="setExtractSave()">Save</button></div></div>
   <div class="card"><h3>${ic('doc')} Statusline <span class="sp"></span>
       <span class="tag" id="slDot">checking…</span></h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code renders two rows at the bottom of every session — identity and git on the first, pressure on the second. claudectl can be those rows, and it puts things there nobody else can compute: how stale this project's memory is, how many sessions are still unmined for lessons, which account you are on, and the branch, uncommitted count and sub-repo roll-up for wherever you are. Plan limits come free from the session payload, so it never polls the API. It refuses to replace a statusline you wrote yourself.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code renders two rows at the bottom of every session — identity and git on the first, pressure on the second. archeus can be those rows, and it puts things there nobody else can compute: how stale this project's memory is, how many sessions are still unmined for lessons, which account you are on, and the branch, uncommitted count and sub-repo roll-up for wherever you are. Plan limits come free from the session payload, so it never polls the API. It refuses to replace a statusline you wrote yourself.</p>
     <div class="kv"><span>preview</span><code id="slPrev" style="color:var(--dim);white-space:pre">—</code></div>
     <div id="slAccts"></div>
     <div class="mrow"><button class="btn" id="slBtn" onclick="slToggle()">…</button></div></div>
   <div class="card"><h3>${ic('chart')} OpenTelemetry export</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code exports metrics and events over OTLP. claudectl already owns the launch environment, so it can switch this on per account without you exporting variables by hand. <b>Prompt text is never collected</b> unless you also set <code>OTEL_LOG_USER_PROMPTS=1</code> — this toggle does not.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code exports metrics and events over OTLP. archeus already owns the launch environment, so it can switch this on per account without you exporting variables by hand. <b>Prompt text is never collected</b> unless you also set <code>OTEL_LOG_USER_PROMPTS=1</code> — this toggle does not.</p>
     <div class="fld"><label>Enabled</label><div class="chips" id="sOtel"></div></div>
     <div class="grid2">
-      <div class="fld"><label>Endpoint</label><input id="sOtelUrl" placeholder="http://localhost:4318"></div>
-      <div class="fld"><label>Protocol</label><div class="chips" id="sOtelProto"></div></div>
+    <div class="fld"><label>Endpoint</label><input id="sOtelUrl" placeholder="http://localhost:4318"></div>
+    <div class="fld"><label>Protocol</label><div class="chips" id="sOtelProto"></div></div>
     </div>
     <div class="fld"><label>Headers <span style="color:var(--dim2)">— comma-separated, e.g. Authorization=Bearer xyz</span></label>
       <input id="sOtelHdr" placeholder="leave blank for none"></div>
-    <div class="mrow"><button class="btn pri" onclick="setOtelSave()">Save</button></div></div>
-  <div class="card"><h3>Economy model</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Model used for claudectl's <b>own</b> internal Claude calls — memory extraction, lessons, CLAUDE.md / agent / hook / skill generation. Defaults to Haiku to cut cost. Your actual coding sessions are unaffected. <i>default</i> = your account's model.</p>
-    ${fld('sExtract','Economy model')}
-    <div class="mrow"><button class="btn pri" onclick="setExtractSave()">Save</button></div></div>
-  <div class="card"><h3>${ic('map')} Plan → Execute</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Model that writes the plan (runs once, headless) vs the model that executes it interactively. Keep the plan model accurate — the expensive reasoning happens once.</p>
-    ${fld('sPlanMod','Plan model')}${fld('sExecMod','Execute model')}
-    <div class="mrow"><button class="btn pri" onclick="setPlanExecSave()">Save</button></div></div>
-  <div class="card"><h3>${ic('plug')} Model provider <span class="sp"></span>
+    <div class="mrow"><button class="btn" onclick="setOtelSave()">Save</button></div></div>
+`,
+  models:o=>`  <div class="card"><h3>${ic('plug')} Model provider <span class="sp"></span>
       <span id="orDot" class="tag">checking…</span></h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Run sessions against something other than your
       Anthropic account — a local <b>Ollama / llama.cpp / vLLM</b> server, <b>OpenRouter</b>, a self-hosted box, or a
@@ -3950,7 +5612,7 @@ async function pgSettings(nav){
         <code>tool_reference</code> blocks — if it does not, the turn fails outright, which is why this is
         your assertion rather than something a provider setting implies.</div></div>
     <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-      <input type="checkbox" id="pvHeadless" style="width:auto;margin:0"> Run claudectl's own calls here too</label>
+      <input type="checkbox" id="pvHeadless" style="width:auto;margin:0"> Run archeus's own calls here too</label>
       <div style="color:var(--dim);font-size:12px;margin-top:4px">Memory extraction, lessons, code review and
         the CLAUDE.md / agent / skill / hook generators normally run on Anthropic whatever this card says —
         they are unattended, so moving them costs money you did not watch being spent. Turned on, they use
@@ -3964,13 +5626,12 @@ async function pgSettings(nav){
       a free one (Pollinations, Puter, DuckDuckGo AI Chat…).</p>
     <div id="orConns" style="margin-bottom:8px"></div>
     <div class="grid2">
-      <div class="fld"><label>Base URL</label><input id="orUrl" placeholder="http://localhost:20128"></div>
-      <div class="fld"><label>API key</label><input id="orKey" type="password"
+    <div class="fld"><label>Base URL</label><input id="orUrl" placeholder="http://localhost:20128"></div>
+    <div class="fld"><label>API key</label><input id="orKey" type="password"
         placeholder="${ST.provider_has_key?'set — leave blank to keep':'leave blank if none needed'}"></div>
-      <div class="fld"><label>Context window (tokens)</label><input id="pvCtx" type="number" min="0"
-        placeholder="0 = unknown"
-        title="Used only to warn before a launch. Not probed: most /v1/models responses omit it."></div>
     </div>
+    <div class="fld"><label>Context window (tokens) <span style="color:var(--dim2)">— used only to warn you before a launch. Not probed: most <code>/v1/models</code> responses omit it, and a number made up here is worse than none.</span></label>
+      <input id="pvCtx" type="number" min="0" placeholder="0 = unknown"></div>
     <div id="orModWrap"></div>
     <div id="orLiveResult" style="color:var(--dim);font-size:12.5px;margin:4px 0"></div>
     <div class="mrow">
@@ -3979,7 +5640,7 @@ async function pgSettings(nav){
       <button class="btn sm orOnly" onclick="orProbe()" title="Sends a few real requests to find working models. Each one is a billed request — on free tiers repeated runs will exhaust the key, so this stops as soon as it finds enough. The proxy then refines the list from real sessions at no cost.">${ic('check')} Find working models</button>
       <button class="btn sm orOnly" onclick="orDashboard()">${ic('ext')} Open OmniRoute dashboard</button>
       <span class="sp"></span>
-      <button class="btn pri" onclick="orSave()">Save</button></div>
+      <button class="btn" onclick="orSave()">Save</button></div>
     <div id="orProbeOut" style="font-size:12.5px;margin-top:6px"></div>
 
     <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
@@ -3988,48 +5649,93 @@ async function pgSettings(nav){
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code retries a failed turn against the
       <b>same</b> model ~10× with backoff, so a model that has been dropped upstream (<code>401 not supported</code>)
       or whose provider rejects a tool schema (<code>400</code>) makes a session look frozen. List fallback models
-      below and claudectl runs its own local proxy that retries the <b>next</b> one whenever a turn fails before any
+      below and archeus runs its own local proxy that retries the <b>next</b> one whenever a turn fails before any
       output reaches the session. Leave the list empty to disable.</p>
-    <div class="fld"><label>Fallback models — one per line, tried in order after the selected model</label>
+    <div class="fld"><label>Fallback models <span style="color:var(--dim2)">— one per line, tried in order after the model you selected</span></label>
       <textarea id="foModels" rows="4" spellcheck="false"
         placeholder="auto/coding:free&#10;auto/best-coding&#10;auto/fast"></textarea></div>
-    <div class="grid2">
-      <div class="fld"><label>Proxy port</label><input id="foPort" placeholder="20129"></div>
-      <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <input type="checkbox" id="foQuiet" style="width:auto;margin:0"> Hide the proxy console window</label>
+    <div class="fld"><label>Proxy port</label><input id="foPort" placeholder="20129"></div>
+    <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="foQuiet"> Hide the proxy console window</label>
         <div style="color:var(--dim);font-size:12px;margin-top:4px">The window logs every turn — which model was
           tried, what failed, what served it. It doubles as live plan-execution progress. Hiding it keeps the log
           at <code>~/.claude/failover.log</code>.</div></div>
-    </div>
     <div id="foResult" style="color:var(--dim);font-size:12.5px;margin:4px 0"></div>
     <div class="mrow">
       <button class="btn sm" onclick="foStop()">${ic('close')} Stop proxy</button>
       <span class="sp"></span>
-      <button class="btn pri" onclick="foSave()">Save failover</button></div></div>
-  <div class="card"><h3>Interface</h3>
-    <p style="color:var(--dim);font-size:13px">Default interface on startup — the toggle in the bottom-left does the same. <code>--tui</code>/<code>--gui</code> flags always override.</p>
+      <button class="btn" onclick="foSave()">Save failover</button></div></div>
+`,
+  /* `#verMount` is `display:contents` (app.css), so the three cards it holds
+     are laid out by `.form` as if they were written here — which is what lets
+     them stay the async, self-contained builders they already were rather than
+     becoming three more static templates to keep in step. */
+  updates:o=>`<div id="verMount"><span class="spin"></span></div>
+  <div class="card"><h3>${ic('refresh')} Update checks &amp; notifications</h3>
     ${fld('sUpd','Updates')}
-    <p style="color:var(--dim);font-size:13px;margin:0">One switch for everything claudectl fetches on your behalf: whether a newer release exists, and the current Claude model list. <b>Install on quit</b> runs the upgrade in its own window after claudectl closes — pip cannot rewrite the script it is running from. <b>Off</b> stops both checks.</p></div>
+    <p style="color:var(--dim);font-size:13px;margin:0 0 10px">One switch for everything archeus fetches on your behalf: whether a newer release exists, and the current Claude model list. <b>Install on quit</b> stages the upgrade into a background worker with no window of its own, which waits for archeus to close, installs, and raises a notification. <b>Tell me</b> offers the same install straight away — it runs beside the open app, and you restart when you want the new version. <b>Off</b> stops both checks.</p>
+    ${fld('sNotif','Notifications')}
+    <p style="color:var(--dim);font-size:13px;margin:0 0 10px">A desktop notification when a background job that ran longer than ${20}s finishes — memory builds, plans, reviews — and when the detached memory worker is done, which has no window of its own at all. Quick jobs never notify.</p>
+    <p class="secthint" style="margin:0">Which interface <i>starts</i> — terminal or desktop — is the <b>TUI / GUI</b> toggle at the foot of the sidebar, and <code>--tui</code>/<code>--gui</code> always override it.</p></div>
   <div class="card"><h3>${ic('refresh')} Auto-memory <span class="sp"></span>
+    <span class="tag" id="amNext" title="Counted from the last pass, not from launch."></span>
     <span class="fld" style="margin:0"><select id="amInt" onchange="amSaveInterval(this.value)" style="width:auto"></select></span></h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Projects checked below have their memory refreshed in the background — on GUI start and on the interval — whenever their files change. Only changed projects use Claude; nothing runs while unchanged.</p>
-    <div id="amList"><span class="spin"></span></div></div>`))return;
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Projects checked below have their memory refreshed in the background — one pass per interval, whenever their files change. Only changed projects use Claude; nothing runs while unchanged. The clock is counted from the last pass and <b>survives a restart</b>, so closing and reopening archeus does not buy another pass.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">A pass re-reads a few changed modules at most, and whatever is left waits for the <b>next</b> interval — so a big backlog is spread out rather than spent at once. Opening a checked project does not add a pass; this schedule is the only thing that spends on it.</p>
+    <div id="amList"><span class="spin"></span></div></div>
+  <div class="card"><h3>${ic('ai')} Build the backlog now <span class="sp"></span>
+    <button class="btn sm pri" id="mqStart">${ic('ai')} Build modules</button></h3>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">The schedule above spends a little, often, and only on the projects you checked. This spends the idle time instead: one project after another across <b>every</b> account, the stalest first, until there is nothing left to build. It runs only while you hold this button's job open — nothing here starts on its own.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">It waits while one of your own jobs is running or a Claude Code session is live, so it never competes with the work the quota is for, and it drops an account for the rest of the run if Claude says that one is rate-limited. Each project is capped the same way a scheduled pass is, and the sweep repeats — so one big repo cannot starve the others.</p>
+    <p class="secthint" style="margin:0">Cancel it on its banner, which follows you from page to page. If you have lost the banner, the <b>Activity</b> drawer on the dashboard has a <i>Show</i> button for anything still running.</p></div>
+`,
+};
+/* Hoisted function declarations, not arrow consts: NAV names these in its
+   fifth field, and while that field is lazy, keeping the convention means the
+   next page added cannot get it wrong. */
+function pgSetLaunch(nav){return pgSettings(nav,'settings');}
+function pgSetAppearance(nav){return pgSettings(nav,'appearance');}
+function pgSetPaths(nav){return pgSettings(nav,'paths');}
+function pgSetModels(nav){return pgSettings(nav,'models');}
+function pgSetUpdates(nav){return pgSettings(nav,'updates');}
+async function pgSettings(nav,part='settings'){
+  const o=ST.options;
+  if(!shell(nav,SETTINGS_CARDS[part](o)))return;
+  /* Looked up and guarded, like every other control on this page: the five
+     sub-pages share one wiring block, so a control that is not on THIS one is
+     simply not written to. */
+  const mq=$('#mqStart');
+  if(mq)mq.onclick=()=>inlineJob('#jban','memory_queue',{},
+    {label:'Building modules'});
   chipsFill($('#sEff'),o.efforts,null,ST.defaults.effort);
   chipsFill($('#sMod'),o.models,o.model_labels,ST.defaults.model);
   chipsFill($('#sPerm'),o.perms,o.perm_labels,ST.defaults.perm);
   chipsFill($('#sThink'),o.thinking,o.thinking_labels,ST.defaults.max_thinking);
   chipsFill($('#sSub'),o.models,o.model_labels,ST.defaults.subagent_model);
-  chipsFill($('#sOtel'),['off','on'],['off','on'],
-    ST.otel_enabled?'on':'off');
+  /* /api/state used to nest these under `otel`, so every read here was
+     undefined: the panel showed its defaults however OTEL was configured, and
+     Save then wrote those defaults back over the real values. */
+  chipsFill($('#sOtel'),['off','on'],['off','on'],ST.otel_enabled?'on':'off');
   chipsFill($('#sOtelProto'),['http/protobuf','grpc'],['http/protobuf','grpc'],
     ST.otel_protocol||'http/protobuf');
   if($('#sOtelUrl'))$('#sOtelUrl').value=ST.otel_endpoint||'';
-  if($('#sOtelHdr'))$('#sOtelHdr').value=ST.otel_headers||'';
+  /* write-only: the value is a bearer token and never comes back down, so the
+     field reports whether one is set and blank means "keep it". */
+  if($('#sOtelHdr')){$('#sOtelHdr').value='';
+    $('#sOtelHdr').placeholder=ST.otel_has_headers
+      ?'set — leave blank to keep, or type to replace':'leave blank for none';}
   if($('#sEditor'))$('#sEditor').value=ST.editor||'';
   if($('#sClaudeExe'))$('#sClaudeExe').value=ST.claude_exe||'';
   if($('#sCfgDir'))$('#sCfgDir').value=ST.claude_config_dir||'';
   if($('#sBudget'))$('#sBudget').value=ST.headless_budget_usd||0;
-  slRefresh();
+  if($('#sMemCalls'))$('#sMemCalls').value=ST.memory_max_calls||0;
+  if($('#sMemEnts'))$('#sMemEnts').value=ST.memory_max_entities||500;
+  chipsFill($('#sMemOpen'),['open','off'],['yes, on open','no'],
+    ST.memory_auto_refresh||'open');
+  chipsFill($('#sMemLessons'),['auto','prompt','off'],
+    ['learn automatically','learn, but let me review','off'],
+    ST.memory_lessons||'prompt');
+  if($('#slDot'))slRefresh();
   chipsFill($('#sExtract'),o.models,o.model_labels,ST.extract_model||'');
   chipsFill($('#sShell'),['auto','qt','edge','browser'],
     ['auto (Qt → Edge → browser)','Qt native window','Edge app window','browser tab'],
@@ -4041,29 +5747,44 @@ async function pgSettings(nav){
     ['tell me','install on quit','off'],ST.auto_update||'notify',
     async v=>{await post('/api/settings',{auto_update:v});ST.auto_update=v;
               toast('Updates: '+v,'ok');});
+  chipsFill($('#sNotif'),['on','off'],['on','off'],
+    ST.notifications===false?'off':'on',
+    async v=>{const on=v==='on';await post('/api/settings',{notifications:on});
+              ST.notifications=on;toast('Notifications: '+v,'ok');});
   drawThemeGallery();
   chipsFill($('#sPlanMod'),o.models,o.model_labels,ST.plan_model||'');
   chipsFill($('#sExecMod'),o.models,o.model_labels,ST.exec_model||'');
-  $('#orUrl').value=ST.provider_base_url||'';
-  $('#pvCtx').value=ST.provider_context_tokens||'';
-  chipSet($('#pvKind'),ST.provider_kind||'');
-  /* Hand-written chip groups carry no behaviour of their own -- only chipsFill()
-     wires the exclusive-select, and these are literal markup (same as #peVia,
-     which does this by hand for the same reason). Without it the chip never
-     takes .on, chipVal() keeps returning the old value, and the control looks
-     clickable while being inert. */
-  pickOne($('#pvKind'),()=>orRefresh());
-  pickOne($('#gwKind'),()=>orRefresh());
-  chipSet($('#gwKind'),ST.gateway_kind||'');
-  $('#gwUrl').value=ST.gateway_target_base_url||'';
-  $('#pvTools').checked=!!ST.provider_tool_search;
-  $('#pvHeadless').checked=!!ST.headless_provider;
-  $('#foModels').value=(ST.failover_models||[]).join('\n');
-  $('#foPort').value=ST.failover_port||20129;
-  $('#foQuiet').checked=!!ST.failover_quiet;
-  foDot();
-  drawAutoMemList();
-  orRefresh();
+  // Guarded by their own card, not written blind: these are the only reads on
+  // this page that were not, and with the page split into five parts they are
+  // absent four times out of five. The calls below each make a request, so they
+  // are gated on their host too — a fetch for a card that is not on screen is
+  // the cost the split was supposed to remove.
+  //
+  // The gate is #pvKind, not #orUrl: the backend picker is the one control on
+  // this card that exists for every backend, while #orUrl is now OmniRoute's.
+  if($('#pvKind')){
+    $('#orUrl').value=ST.provider_base_url||'';
+    $('#pvCtx').value=ST.provider_context_tokens||'';
+    chipSet($('#pvKind'),ST.provider_kind||'');
+    /* Hand-written chip groups carry no behaviour of their own -- only
+       chipsFill() wires the exclusive-select, and these are literal markup
+       (same as #peVia, which does this by hand for the same reason). Without
+       it the chip never takes .on, chipVal() keeps returning the old value,
+       and the control looks clickable while being inert. */
+    pickOne($('#pvKind'),()=>orRefresh());
+    pickOne($('#gwKind'),()=>orRefresh());
+    chipSet($('#gwKind'),ST.gateway_kind||'');
+    $('#gwUrl').value=ST.gateway_target_base_url||'';
+    $('#pvTools').checked=!!ST.provider_tool_search;
+    $('#pvHeadless').checked=!!ST.headless_provider;
+    $('#foModels').value=(ST.failover_models||[]).join('\n');
+    $('#foPort').value=ST.failover_port||20129;
+    $('#foQuiet').checked=!!ST.failover_quiet;
+    foDot();
+    orRefresh();
+  }
+  if($('#amList'))drawAutoMemList();
+  if($('#verMount'))drawVersionCards();
 }
 /* ── theme gallery ──
    A dot swatch can't distinguish 26 palettes, so every card paints a real mock
@@ -4244,6 +5965,28 @@ function drawThemeGallery(){
   }));
   const sn=$('#stgNote');if(sn)sn.textContent=STAGE_NOTE[ST.stage||'cinematic']||'';
   drawSurfaceSlider();
+  drawGlowSlider();
+}
+/* Background brightness. Same shape as the surface slider above and for the
+   same reason — you judge it by looking at it, so it applies live on input and
+   only persists on release. 0 in storage means "whatever the look asks for".
+   It SCALES the skin's own calm rather than replacing it, which is why the
+   readout is a percentage of the theme's value and not an absolute number. */
+function drawGlowSlider(){
+  const el=$('#sGlow');if(!el)return;
+  const skCalm=Math.round((curSkin().calm!=null?curSkin().calm:0.3)*100);
+  const show=v=>{const r=$('#glowRead');
+    if(r)r.textContent=ST.brightness?`${v}% of this theme's own brightness`
+                                    :`this theme's default (${skCalm}% of full)`;};
+  el.value=String(ST.brightness||100);
+  show(el.value);
+  el.oninput=()=>{ST.brightness=+el.value;
+    if(window.STAGE)STAGE.setGlow(ST.brightness);show(el.value);};
+  el.onchange=()=>post('/api/settings',{brightness:+el.value});
+  const rs=$('#glowReset');
+  if(rs)rs.onclick=e=>{e.preventDefault();ST.brightness=0;
+    if(window.STAGE)STAGE.setGlow(0);
+    drawGlowSlider();post('/api/settings',{brightness:0});};
 }
 /* Surface transparency. Live on input (you judge this by looking at it, not by
    saving it) and persisted on release, so dragging does not fire a POST per
@@ -4536,7 +6279,7 @@ async function orUseWorking(){
   toast('Failover list set from the models that actually answered','ok');
 }
 
-/* ── model failover (claudectl's own proxy — see failover.py) ── */
+/* ── model failover (archeus's own proxy — see failover.py) ── */
 function foDot(){
   const d=$('#foDot');if(!d)return;
   const n=(ST.failover_models||[]).length;
@@ -4571,9 +6314,11 @@ async function drawAutoMemList(){
   const sel=$('#amInt');
   if(sel)sel.innerHTML=AM_INTERVALS.map(([v,l])=>
     `<option value="${v}"${v===d.interval?' selected':''}>${l}</option>`).join('');
+  const nx=$('#amNext'),n=+d.next_in||0;
+  if(nx)nx.textContent=n<90?'next pass imminent':'next pass in '+fmtAge(n);
   const rows=(d.projects||[]).sort((a,b)=>(b.auto-a.auto)).map(p=>`
     <label class="amrow">
-      <input type="checkbox" ${p.auto?'checked':''} onchange="amToggle('${esc(p.enc)}',this.checked)">
+      <input type="checkbox" ${p.auto?'checked':''} onchange="amToggle(${hesc(p.enc)},this.checked)">
       <span class="nm">${esc(p.name)}${p.running?' <span class="tag ok">updating…</span>':''}</span>
       <span class="pt">${esc(p.path)}</span></label>`).join('');
   // re-resolve AND guard: this lands after an await, so navigating away between
@@ -4600,6 +6345,15 @@ async function setSave(){
   ST=await api('/api/state');applyTheme(ST.theme);
   localStorage.setItem('ctl_theme',chipVal($('#sTheme')));toast('Settings saved','ok');
 }
+async function setMemLimitsSave(){
+  await post('/api/settings',{
+    // 0 in the box means "no cap", which the backend spells as null
+    memory_max_calls:(+$('#sMemCalls').value||0)||null,
+    memory_max_entities:+($('#sMemEnts').value||500),
+    memory_auto_refresh:chipVal($('#sMemOpen')),
+    memory_lessons:chipVal($('#sMemLessons'))});
+  ST=await api('/api/state');toast('Memory limits saved','ok');
+}
 async function setPathsSave(){
   const r=await post('/api/settings',{editor:$('#sEditor').value.trim(),
     claude_exe:$('#sClaudeExe').value.trim(),
@@ -4609,10 +6363,14 @@ async function setPathsSave(){
   ST=await api('/api/state');toast('Saved','ok');
 }
 async function setOtelSave(){
-  await post('/api/settings',{otel_enabled:chipVal($('#sOtel'))==='on',
+  const hdr=(($('#sOtelHdr')||{}).value||'').trim();
+  const body={otel_enabled:chipVal($('#sOtel'))==='on',
     otel_endpoint:($('#sOtelUrl')||{}).value||'',
-    otel_protocol:chipVal($('#sOtelProto')),
-    otel_headers:($('#sOtelHdr')||{}).value||''});
+    otel_protocol:chipVal($('#sOtelProto'))};
+  // omit, do not blank: the field is write-only, so an untouched save must keep
+  // the headers rather than erase them
+  if(hdr)body.otel_headers=hdr;
+  await post('/api/settings',body);
   ST=await api('/api/state');toast('OTEL settings saved','ok');
 }
 async function slRefresh(){
@@ -4784,7 +6542,7 @@ function updateHint(){
 }
 /* What the chosen mode means, and — the part that matters — whether it will
    actually apply. `auto` is unavailable on some models, and Claude Code starts
-   the session in manual without saying so, so claudectl says so here. */
+   the session in manual without saying so, so archeus says so here. */
 function updatePermHint(model){
   const el=$('#fPermHint');if(!el)return;
   const p=chipVal($('#fPerm'));
@@ -4934,8 +6692,12 @@ async function openPathSubmit(){
   const r=await post('/api/open-path',{path:$('#oPath').value});
   if(!r.ok){$('#oErr').textContent=r.error||'Could not open that path';return;}
   $('#oovl').classList.remove('show');
-  askLaunch({title:'New session',sub:r.path,isNew:true,
-    path:r.path,enc:r.enc,choice:'new'});
+  /* The project PAGE, not the launch modal: opening a folder is how you get to
+     its sessions, memory and CLAUDE.md, and the page has its own Launch button.
+     A path with no project folder renders fine — scan_sessions returns [] and
+     load_memory returns an empty graph — so nothing here has to exist yet. */
+  openProject({path:r.path,name:r.name,encoded:r.enc,
+    primary_cfgdir:ST.active_cfgdir,accounts:[],hidden:false});
 }
 
 /* ── wiring ── */
@@ -4959,10 +6721,35 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     const openModals=['#ovl','#govl','#oovl','#jovl','#povl','#actovl'].find(id=>$(id)&&$(id).classList.contains('show'));
     if(openModals)$(openModals).classList.remove('show');
+    else if(zenOn())setZen(false);
     else $('#drawer').classList.remove('show');
     if(__lastFocus){__lastFocus.focus();__lastFocus=null;}
   }
 });
+/* ── zen: look at the theme, with nothing on top of it ──
+   Deliberately NOT persisted. A mode whose only way out is a button it also
+   hides is a mode you can boot into and not understand; it lives for the
+   window, and Esc gets you out even if the button is off-screen.
+
+   It touches one class and nothing else — no unmount, no re-render, no fetch.
+   The impulse is the same one navigation sends: the scene is the entire
+   content now, so it should react to being asked for. */
+const zenOn=()=>document.documentElement.classList.contains('zen');
+function setZen(on){
+  document.documentElement.classList.toggle('zen',on);
+  const b=$('#bZen');
+  if(b){b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));}
+  /* ZEN IS LAYOUT ONLY — the stage is not told, because there is nothing for
+     it to change. It used to lift the ceiling and the gain here on the
+     reasoning that a hidden app means the scene is no longer a ground for
+     anything; the result was a theme that looked like a different theme
+     depending on whether you were looking at it, and the brighter one was the
+     one that was wanted. Those values are the stage's own now (STAGE_LIFT /
+     STAGE_GAIN in stage.js). The ripple stays: something did change. */
+  if(window.STAGE&&STAGE.impulse)STAGE.impulse();
+}
+$('#bZen').innerHTML=ic('palette');
+$('#bZen').onclick=()=>setZen(!zenOn());
 // save focus when opening a modal, restore on close
 document.querySelectorAll('.ovl').forEach(el=>{
   el.addEventListener('click',function(e){if(e.target===this&&__lastFocus){__lastFocus.focus();__lastFocus=null;this.classList.remove('show');}});
@@ -4975,6 +6762,7 @@ $('#bNew').onclick=()=>CUR&&askLaunch({title:'New session',sub:CUR.name,isNew:tr
   path:CUR.path,enc:CUR.encoded,choice:'new'});
 $('#bCont').onclick=()=>CUR&&askLaunch({title:'Continue latest',sub:CUR.name,isNew:false,
   path:CUR.path,enc:CUR.encoded,choice:'continue',cfgdir:CUR.primary_cfgdir});
+$('#bHide').onclick=toggleHidden;
 $('#bTerm').onclick=async()=>{if(!CUR)return;
   const r=await post('/api/launch',{path:CUR.path,enc:CUR.encoded,choice:'terminal',opts:{}});
   toast(r.ok?'Terminal opened':'Failed: '+(r.error||''),r.ok?'ok':'err');};
@@ -4985,9 +6773,75 @@ function segDraw(){
   $('#segGui').className=ST.ui_mode==='gui'?'on':'';}
 $('#segTui').onclick=()=>setMode('tui');
 $('#segGui').onclick=()=>setMode('gui');
-// brand click → home
-document.querySelector('.brand').style.cursor='pointer';
-document.querySelector('.brand').onclick=()=>go('home');
+$('#bHelp').onclick=()=>go('helpp');
+/* ── the sidebar's top row ──
+   It carried a logo, the product name and a tagline. The tagline is gone: it is
+   a website device — its audience is someone who does not yet know what the
+   thing is, and nobody reading this sidebar is that person — and it failed the
+   differentiation test besides (every coding-agent tool could print it, no
+   product claims the opposite). What every current app puts in this slot is the
+   switchable CONTEXT with a line of state under it: shadcn's sidebar header
+   ships as a team switcher with the plan underneath, Notion switches
+   workspaces, Linear the workspace, GitLab the current context, Figma the
+   account.
+
+   Ours is the Claude Code ACCOUNT, and it had no home before this: it was
+   reachable only from inside the launch modal, on the one branch where you were
+   starting a new session. Switching here sets the default for every launch.
+
+   The chevron and the menu appear only with more than one account. A control
+   that opens nothing is worse than no control, so with a single account this is
+   what it has always been — a row you click to go home — and it says archeus,
+   because "default" is not a name anyone chose. */
+function drawBrand(){
+  const b=$('#brandName'),s=$('#brandSub'),ch=$('#brandChev');
+  if(!b)return;
+  const accs=ST.accounts||[];
+  const multi=accs.length>1;
+  // fall back to the FIRST account, not to the product name: with several
+  // accounts configured, a row that says archeus is hiding the one piece of
+  // state it exists to show. active_cfgdir can legitimately name none of them
+  // — it is restored from localStorage and an account can be removed.
+  const act=accs.find(a=>a.dir===ST.active_cfgdir)||(multi?accs[0]:null);
+  b.textContent=act?act.name:'archeus';
+  // the second line is a MEASUREMENT, never a descriptor: how much workspace
+  // there is and how much of it is awake. Both numbers are already in hand —
+  // no fetch, the same rule INST.set() and the stage follow.
+  const projs=(ST.projects||[]).filter(p=>SHOW_HIDDEN||!p.hidden).length;
+  const live=ACTIVE_MEM.size;
+  s.textContent=projs
+    ?`${projs} project${projs===1?'':'s'}${live?` · ${live} active`:''}`
+    :'no projects yet';
+  ch.hidden=!multi;
+  if(multi&&!ch.innerHTML)ch.innerHTML=ic('unfold');
+  $('.brand').setAttribute('aria-haspopup',multi?'menu':'false');
+}
+function acctMenu(open){
+  const m=$('#acctMenu');if(!m)return;
+  const row=$('.brand');
+  if(open===false||!m.hidden){m.hidden=true;row.classList.remove('open');return;}
+  m.innerHTML=(ST.accounts||[]).map(a=>
+    `<button data-dir=${hesc(a.dir)}><span class="adot" style="background:${acctColor(a.name)}"></span>`
+    +`<span class="an">${esc(a.name)}</span>`
+    +(a.dir===ST.active_cfgdir?`<span class="amark">${ic('check')}</span>`:'')
+    +`</button>`).join('');
+  m.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{
+    ST.active_cfgdir=btn.dataset.dir;
+    localStorage.setItem('ctl_account',ST.active_cfgdir);
+    acctMenu(false);drawBrand();
+    toast('Default account: '+($('#brandName').textContent),'ok');
+  });
+  m.hidden=false;row.classList.add('open');
+}
+$('.brand').onclick=e=>{
+  // the chevron is the switcher; the rest of the row is still "go home", which
+  // is what it did before and what people will have in their fingers
+  if((ST.accounts||[]).length>1&&e.target.closest('.bchev'))return acctMenu();
+  acctMenu(false);go('home');
+};
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.brand')&&!e.target.closest('#acctMenu'))acctMenu(false);
+});
 
 /* ── all-accounts usage banner (mirrors the TUI's grid) ── */
 let _uTimer=null;
@@ -5024,27 +6878,58 @@ async function drawUsageBar(force){
   }
 }
 
-/* ── "claudectl N is out" strip ──
+/* ── "archeus N is out" strip ──
    Its own element (#updbar), not a row inside #ubar, because drawUsageBar
    rewrites that wholesale every 60s. Never polls: one fetch per session. */
+/* ONE writer, because the strip is hidden in two ways that a renderer cannot
+   see: `display:none` inline in index.html, and `inlineClear` putting it back
+   when a job that BORROWED the strip finishes. Painting innerHTML without the
+   display wrote the message into an invisible element — which is exactly what
+   "Update now does nothing" was: the job cleared the strip on success and the
+   staged message, with its Restart button, was never on screen. */
+function updShow(html){
+  const host=$('#updbar');if(!host)return null;
+  host.innerHTML=html;host.style.display='flex';return host;
+}
 async function drawUpdateBar(){
   let c;
-  try{c=(await api('/api/versions')).claudectl||{};}catch(e){return;}
+  try{c=(await api('/api/versions')).archeus||{};}catch(e){return;}
   if(!c.update)return;
-  const host=$('#updbar');if(!host)return;
   const act=c.mode==='checkout'
     ? `<span style="color:var(--dim2)">run <code>git pull</code> in your checkout</span>`
     : `<button class="btn sm pri" id="updNow">Update now</button>`;
-  host.innerHTML=`<span class="uptxt">${ic('download')} <b>claudectl ${esc(c.latest)}</b>
+  const host=updShow(`<span class="uptxt">${ic('download')} <b>archeus ${esc(c.latest)}</b>
     is available — you have ${esc(c.installed||'?')}</span>${act}
-    <button class="btn sm" id="updHide">Dismiss</button>`;
-  host.style.display='flex';
+    <button class="btn sm" id="updHide">Dismiss</button>`);
+  if(!host)return;
   const hide=$('#updHide');if(hide)hide.onclick=()=>{host.style.display='none';};
   const now=$('#updNow');
-  if(now)now.onclick=()=>inlineJob('#updbar','claudectl_update',{},
-    {label:'Scheduling the claudectl upgrade',
-     onDone:()=>{toast('claudectl upgrades once you close it');
-                 host.style.display='none';}});
+  // The job now HOLDS until pip is finished, so its banner is the progress and
+  // its failure is pip's own message. It used to report "done" the moment a
+  // background worker had been started, which is a different fact.
+  if(now)now.onclick=()=>inlineJob('#updbar','archeus_update',{restart:false},
+    {label:`Installing archeus ${c.latest}`,
+     onDone:st=>{const m=(st.result||{}).message||'';
+                 if(st.status!=='done'){drawUpdateBar();return;}
+                 toast(m||'Installed','ok');updInstalled(c);}});
+}
+/* Installed, with archeus still open — the running process keeps the code it
+   loaded, so a restart is what picks the new version up, and saying "installed"
+   without saying that would be a half-truth. Restart is the same job with
+   `restart:true`, which is what tells the worker to wait for this process to go
+   and bring archeus back on the new version. Replacing the button rather than
+   adding one is what stops a second worker being started behind the first. */
+function updInstalled(c){
+  const host=updShow(`<span class="uptxt">${ic('download')} <b>archeus ${esc(c.latest)}</b>
+    is installed — restart archeus to use it</span>
+    <button class="btn sm pri" id="updRestart">Restart now</button>
+    <button class="btn sm" id="updLater">Later</button>`);
+  if(!host)return;
+  $('#updLater').onclick=()=>{host.style.display='none';};
+  $('#updRestart').onclick=()=>inlineJob('#updbar','archeus_update',{restart:true},
+    {label:'Restarting archeus to finish the upgrade',
+     onDone:()=>{toast('archeus will close and come back','ok');
+                 post('/api/quit',{});}});
 }
 
 /* global poll: which projects' memory is updating right now (scheduler or
@@ -5111,6 +6996,9 @@ function startHeartbeat(){if(!HB_TIMER){heartbeat();HB_TIMER=setInterval(heartbe
   // STAGE holds the settings and mounts when `vendor-ready` fires.
   if(window.STAGE){
     STAGE.tier=ST.stage||'lite';
+    // set, not kicked: the scene does not exist yet, and _calm() reads this
+    // whenever the first frame does land
+    STAGE.glowPct=+ST.brightness||0;
     if(STAGE.tier==='off'||!MO.on)STAGE._static();
   }
   applyTheme(ST.theme);segDraw();

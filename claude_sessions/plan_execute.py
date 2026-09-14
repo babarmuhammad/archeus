@@ -5,7 +5,7 @@ approve/edit the plan, then launch an interactive session with a cheaper/faster
 model (default Sonnet 5) seeded with the approved plan. Big token savings:
 expensive reasoning happens once, execution runs on the cheap tier.
 
-The plan is written to <project>/.claudectl/plan-latest.md and the execution
+The plan is written to <project>/.archeus/plan-latest.md and the execution
 session gets a SHORT `--append-system-prompt` pointer (avoids the Windows argv
 length limit — the model reads the full plan from disk with its own tools).
 """
@@ -18,14 +18,14 @@ import subprocess
 from . import config as _c
 from . import store
 
-PLAN_FILE = os.path.join('.claudectl', 'plan-latest.md')
+PLAN_FILE = os.path.join(store.WORKDIR, 'plan-latest.md')
 
 # Hard cap on a headless plan-generation call. A dead/slow OmniRoute upstream
 # (or a failover proxy whose candidates are all unreachable) must never leave
 # the plan job spinning in 'running' forever. Overridable via the
-# CLAUDECTL_PLAN_TIMEOUT env var or the plan_timeout_sec setting (see
+# ARCHEUS_PLAN_TIMEOUT env var or the plan_timeout_sec setting (see
 # _plan_timeout); the value here is the floor default.
-_PLAN_TIMEOUT = int(os.environ.get('CLAUDECTL_PLAN_TIMEOUT', '900'))
+_PLAN_TIMEOUT = int(os.environ.get('ARCHEUS_PLAN_TIMEOUT', '900'))
 
 
 def _plan_timeout():
@@ -178,7 +178,7 @@ def edit_plan(plan, action, index=None, text=''):
 
 def _plan(task, plan_model, cwd, effort='', cfgdir=''):
     """Headless plan generation with the plan model. Returns plan text or ''.
-    effort matters here more than almost anywhere else in claudectl -- this
+    effort matters here more than almost anywhere else in archeus -- this
     is the ONE call that does the expensive reasoning, so it's worth paying
     for xhigh/max if the task is hard; a cheap effort here undermines the
     entire point of Plan→Execute.
@@ -186,7 +186,7 @@ def _plan(task, plan_model, cwd, effort='', cfgdir=''):
     cfgdir: resolved config dir of the account to plan under ('' = current
     active account). Same knob build_exec_launch() takes for the execute
     half -- without it the plan call always ran under whichever account
-    claudectl itself is running as, regardless of what account the user
+    archeus itself is running as, regardless of what account the user
     picked to execute under.
 
     run_with_progress_stdin itself is silent-aware (memory._tls.silent, set
@@ -210,7 +210,7 @@ def _plan(task, plan_model, cwd, effort='', cfgdir=''):
         args += ['--effort', effort]
     # plan_timeout_sec bounds how LONG this may run; this bounds what it may
     # spend. Same helper as memory's calls, so there is one cap for all of
-    # claudectl's own headless work.
+    # archeus's own headless work.
     from .memory import _budget_args
     args += _budget_args()
 
@@ -221,7 +221,7 @@ def _plan(task, plan_model, cwd, effort='', cfgdir=''):
 
     from .ui import run_with_progress_stdin
     out, _cancelled = run_with_progress_stdin(
-        args, prompt, ('CLAUDECTL', 'PLAN'),
+        args, prompt, ('ARCHEUS', 'PLAN'),
         f'Planning with {plan_model}...', timeout=_plan_timeout(), cwd=cwd, env=env)
     result = (out or '').strip()
     if result:
@@ -230,19 +230,19 @@ def _plan(task, plan_model, cwd, effort='', cfgdir=''):
     return result
 
 
-def _headless(model, prompt, cwd, omni_env=None, cfgdir=''):
+def _headless(model, prompt, cwd, prov_env=None, cfgdir=''):
     """One-shot headless call to `model` -- same plain-subprocess pattern
     _plan() uses for the silent/background path, minus the progress bar
     (council voices run back-to-back, not worth a renderer each).
 
-    omni_env: same ANTHROPIC_BASE_URL/AUTH_TOKEN override _plan()'s exec half
+    prov_env: same ANTHROPIC_BASE_URL/AUTH_TOKEN override _plan()'s exec half
     already supports (config.provider_env()) -- routes council calls through
     the free-tier proxy too when it's configured, since a council is N extra
     calls per plan and that's exactly where the extra cost shows up.
 
     cfgdir: same account override _plan() takes -- council voices should run
     under the same account the user picked for the plan/execute, not
-    whatever account claudectl itself is running as.
+    whatever account archeus itself is running as.
 
     Caller picks the right roster for the target (COUNCIL_MODELS for direct
     API, OMNI_COUNCIL_MODELS for OmniRoute) -- model arrives here ready to use
@@ -264,14 +264,23 @@ def _headless(model, prompt, cwd, omni_env=None, cfgdir=''):
     env = os.environ.copy()
     if cfgdir:
         env['CLAUDE_CONFIG_DIR'] = cfgdir
-    if omni_env:
-        env.update(omni_env)
+    if prov_env:
+        env.update(prov_env)
         # Council voices bypass the failover proxy on purpose: they are short
         # blocking calls, optimize_plan_council() already degrades to the
         # unmodified plan when they fail, and they run BEFORE the exec launch
         # starts the proxy -- so routing them through it would just silently
         # disable the council whenever failover is configured.
-        _direct = _c.load_settings().get('provider_base_url') or ''
+        #
+        # The GATEWAY is not the same kind of hop and is NOT bypassed: it is the
+        # thing that speaks the Anthropic Messages API, and the OpenAI-shaped
+        # host behind it cannot answer `claude` at all. Skipping it would not
+        # degrade the council, it would guarantee it never works.
+        _s = _c.load_settings()
+        if _s.get('gateway_kind'):
+            from . import gateway
+            gateway.ensure_running(_s)
+        _direct = _c.provider_upstream(_s)
         if _direct:
             env['ANTHROPIC_BASE_URL'] = _direct
     from .gui_api import _run_cancellable
@@ -293,10 +302,10 @@ COUNCIL_MODELS = ['claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5']
 OMNI_COUNCIL_MODELS = ['auto/best-reasoning', 'auto/best-coding', 'auto/best-fast']
 
 
-def optimize_plan_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''):
+def optimize_plan_council(task, plan, cwd, models=None, prov_env=None, cfgdir=''):
     """Fan the draft plan out to a small council of OTHER models for critique,
     then synthesize one improved plan. Disabled callers simply never call
-    this -- zero extra token cost. Routes through OmniRoute (omni_env) when
+    this -- zero extra token cost. Routes through OmniRoute (prov_env) when
     configured, same free-tier proxy the exec half already uses, so a
     council doesn't have to mean N extra paid Anthropic calls. Returns the
     original plan unchanged if: the plan is too short to bother, fewer than
@@ -305,7 +314,7 @@ def optimize_plan_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''
     if not plan or len(plan) < 40:
         return plan
     roster, seen = [], set()
-    for m in (models or (OMNI_COUNCIL_MODELS if omni_env else COUNCIL_MODELS)):
+    for m in (models or (OMNI_COUNCIL_MODELS if prov_env else COUNCIL_MODELS)):
         if m and m not in seen:
             seen.add(m)
             roster.append(m)
@@ -320,7 +329,7 @@ def optimize_plan_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''
     )
     critiques = []
     for m in roster:
-        out = _headless(m, critique_prompt, cwd, omni_env, cfgdir)
+        out = _headless(m, critique_prompt, cwd, prov_env, cfgdir)
         if out:
             critiques.append((m, out))
     if not critiques:
@@ -335,12 +344,12 @@ def optimize_plan_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''
         f"\n\nTASK:\n{task}\n\nDRAFT PLAN:\n{plan}\n\n"
         + "\n\n".join(f"CRITIQUE ({m}):\n{c}" for m, c in critiques)
     )
-    merged = _headless(roster[0], synth_prompt, cwd, omni_env, cfgdir)
+    merged = _headless(roster[0], synth_prompt, cwd, prov_env, cfgdir)
     return merged or plan
 
 
 def write_plan_file(project_path, task, plan):
-    """Write the approved plan to <project>/.claudectl/plan-latest.md. Returns
+    """Write the approved plan to <project>/.archeus/plan-latest.md. Returns
     the absolute path, or '' on failure. Shared by the TUI and GUI flows so
     there's exactly one plan-file format."""
     plan_path = os.path.join(project_path, PLAN_FILE)
@@ -392,7 +401,7 @@ def context_bytes(project_path, plan):
     return n + len(plan or '') * 3
 
 
-def build_exec_launch(project_path, proj_folder, task, exec_model, omni_env=None, cfgdir=''):
+def build_exec_launch(project_path, proj_folder, task, exec_model, prov_env=None, cfgdir=''):
     """Assemble (args, env) for the Plan→Execute *execute* session — the ONE
     place both the TUI (run(), below) and the GUI (gui_api's `plan_launch`
     job kind) build this, so they can't drift apart.
@@ -427,14 +436,14 @@ def build_exec_launch(project_path, proj_folder, task, exec_model, omni_env=None
     extra = read_extra_paths(proj_folder)
     if extra:
         env['PATH'] = ';'.join(extra) + ';' + env.get('PATH', '')
-    if omni_env:
-        env.update(omni_env)
+    if prov_env:
+        env.update(prov_env)
 
     pointer = (f"An approved implementation plan for this task is saved at "
                f"{PLAN_FILE.replace(os.sep, '/')}. Read it first, then execute it "
                f"step by step. Task: {task[:200]}")
     sp_file = os.path.join(proj_folder, 'system-prompt.txt') if proj_folder else ''
-    merged_path = os.path.join(project_path, '.claudectl', 'plan-system-prompt.txt')
+    merged_path = store.workfile(project_path, 'plan-system-prompt.txt')
     merged_system_prompt(sp_file, pointer, merged_path)
 
     args = [exe, '--system-prompt-file', merged_path]
@@ -536,8 +545,8 @@ def run(project_path, proj_folder, project_name, plan=None, per_step=False, shou
 
     s = load_settings()
     plan_model = s.get('plan_model', 'claude-opus-5')
-    omni_env = _c.provider_env(s)
-    if omni_env:
+    prov_env = _c.provider_env(s)
+    if prov_env:
         from . import omniroute
         exec_model = s.get('provider_exec_model') or omniroute.AUTO_MODEL
         exec_via = s.get('provider_base_url') or 'provider'
@@ -580,10 +589,10 @@ def run(project_path, proj_folder, project_name, plan=None, per_step=False, shou
 
         if council_enabled:
             _cls()
-            via_note = ' via OmniRoute (free tier)' if omni_env else ''
-            roster = OMNI_COUNCIL_MODELS if omni_env else COUNCIL_MODELS
+            via_note = ' via OmniRoute (free tier)' if prov_env else ''
+            roster = OMNI_COUNCIL_MODELS if prov_env else COUNCIL_MODELS
             print(f"\n  Optimizing plan with model council ({', '.join(roster)}){via_note}...\n")
-            plan = optimize_plan_council(task, plan, project_path, omni_env=omni_env, cfgdir=cfgdir)
+            plan = optimize_plan_council(task, plan, project_path, prov_env=prov_env, cfgdir=cfgdir)
 
     # per-step approval: show each step and let user approve/skip
     if per_step and plan:
@@ -618,19 +627,23 @@ def run(project_path, proj_folder, project_name, plan=None, per_step=False, shou
     if should_cancel and should_cancel():
         return False
 
-    if omni_env:
+    if prov_env:
         from . import omniroute
+        # Every check the hand-rolled block above used to do — daemon up,
+        # failover proxy up, model still in the catalogue, context-window
+        # advisory — now lives in prepare_launch, which is the seam an
+        # interactive launch goes through too.
         try:
             _pv_env, warn = omniroute.prepare_launch(
                 exec_model, s, ctx_bytes=context_bytes(project_path, plan))
         except (RuntimeError, ValueError) as e:
             flash(str(e), ok=False, secs=3)
             return False
-        omni_env.update(_pv_env)
+        prov_env.update(_pv_env)
         if warn:
             flash(warn, ok=False, secs=3)
 
-    args, env = build_exec_launch(project_path, proj_folder, task, exec_model, omni_env, cfgdir)
+    args, env = build_exec_launch(project_path, proj_folder, task, exec_model, prov_env, cfgdir)
     if not args:
         flash("claude.exe not found", ok=False, secs=1.8)
         return False

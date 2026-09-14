@@ -1,54 +1,82 @@
-# claudectl
+# archeus
 
-> The workspace layer for Claude Code. A terminal UI and desktop GUI that give Claude Code
-> persistent per-project memory, a browsable and searchable session archive, MCP server
-> awareness, an interactive architecture graph and per-project launch control. Pure Python
-> standard library, zero runtime dependencies, MIT licensed. Runs on Windows, macOS and
-> Linux; Windows-first.
+> The memory and workspace layer for AI coding agents. Persistent per-project memory,
+> every session you have ever had, and control over what the next one costs. Works with
+> Claude Code today: a terminal UI and desktop app that give it a browsable and searchable
+> session archive, MCP server awareness, an interactive architecture graph and per-project
+> launch control. Pure Python standard library, zero runtime dependencies, MIT licensed.
+> Runs on Windows, macOS and Linux; Windows-first.
 
-claudectl does not replace Claude Code — it configures and launches it, and maintains the
-project context between sessions. It uses your existing Claude Code authentication.
-Install with `pipx install claudectl`, or clone the repository and run it.
+archeus does not replace the agent — it configures and launches it, and maintains the
+project context between sessions. Claude Code is the agent it drives today, using the
+Claude Code authentication you already have. Install with `pipx install archeus`, or
+clone the repository and run it.
 
-## Getting started
+Where this is going, stated as a long-term goal and not as a feature: provider-neutral
+memory, then an open harness of its own. Claude Code is the first surface, not the
+boundary. Nothing beyond Claude Code is supported today.
 
-- [Install](https://babarmuhammad.github.io/claudectl/install/): requirements, pipx/pip, running from a checkout, the Claude Code plugin, GUI setup and Windows shortcuts.
-- [Usage](https://babarmuhammad.github.io/claudectl/usage/): screens, full key bindings and the command line.
+This is the documentation site. The product site is at https://claudectl.space/, the source
+at https://github.com/babarmuhammad/archeus and the package at
+https://pypi.org/project/archeus/. Author: Babar Muhammad Anas.
 
-## Features
+Disambiguation: two independent open-source projects use the name "archeus". This one is
+the Python memory and workspace layer described above, published on PyPI. The other is
+a Rust agent orchestrator by a different author, published on crates.io at
+https://crates.io/crates/archeus. They are unrelated, and neither is affiliated with
+Anthropic.
 
-- [Features overview](https://babarmuhammad.github.io/claudectl/features/): one page per feature area.
-- [Sessions and search](https://babarmuhammad.github.io/claudectl/sessions/): browse, search, tag, fork, resume, archive and export sessions; usage analytics; per-project launch control.
-- [Project memory](https://babarmuhammad.github.io/claudectl/memory/): the semantic memory graph, its three token-budgeted injection surfaces, session lessons and recall.
-- [Architecture graph](https://babarmuhammad.github.io/claudectl/graph/): the interactive, expandable dependency graph rendered as self-contained HTML.
-- [Plan to Execute and OmniRoute](https://babarmuhammad.github.io/claudectl/plan-execute/): plan on an accurate model, execute on a cheap or free one; OmniRoute setup and troubleshooting.
-- [Multiple accounts](https://babarmuhammad.github.io/claudectl/accounts/): running two or more Claude accounts, per-launch account selection, cross-account context injection.
-- [Context hand-off](https://babarmuhammad.github.io/claudectl/context-handoff/): starting a new session seeded with a previous session's transcript, optionally under a different account — for when the context window fills up or an account hits its rate limit.
-- [MCP servers](https://babarmuhammad.github.io/claudectl/mcp/): add, remove and inspect MCP servers; connection state; tool documentation.
-- [Agents and skills](https://babarmuhammad.github.io/claudectl/agents/): the agent library, per-project subagent selection, adaptive suggestions, the skills manager.
-- [Hooks](https://babarmuhammad.github.io/claudectl/hooks/): 19 Claude Code hook templates plus AI-generated hooks.
-- [Status line, failover and checkpoints](https://babarmuhammad.github.io/claudectl/statusline/): the per-turn status line, the model failover proxy, the read-only checkpoint view.
-- [Desktop GUI](https://babarmuhammad.github.io/claudectl/gui/): the local web GUI, its shells, and the 29 palettes / 7 skins / 4 worlds theme system.
+## Install & first run
 
-## Guides
+- [Getting started](https://docs.claudectl.space/getting-started/): what archeus is, the three surfaces it offers (terminal UI, desktop app, Claude Code plugin), and where to go next.
+- [Installation](https://docs.claudectl.space/installation/): requirements, pipx/pip, running from a checkout, the desktop window and Windows shortcuts.
+- [Quickstart](https://docs.claudectl.space/quickstart/): install, launch, pick a project, seed its context, start a first session — the five-minute path.
 
-- [Token economy](https://babarmuhammad.github.io/claudectl/token-economy/): how it reduces per-message context cost — bounded index, path-scoped rules, task-scoped injection, context weight audit, deny rules, economy model routing.
-- [Project health and auto-fixes](https://babarmuhammad.github.io/claudectl/health/): pre-launch health card, context-loss insurance, permission-fatigue killer.
-- [Installing the agent library](https://babarmuhammad.github.io/claudectl/agent-library/): bulk-installing the awesome-claude-code-subagents catalog.
+## The interfaces
+
+- [Command line](https://docs.claudectl.space/cli/): every command — `workspace status`, `recall`, `review`, `sync-accounts`, `statusline`, the failover proxy — and where archeus's state lives.
+- [Terminal UI](https://docs.claudectl.space/tui/): every screen, notifications, the two kinds of loop, and the complete key-binding reference.
+- [Desktop app](https://docs.claudectl.space/desktop/): the local web GUI, its shells, and the 32 palettes / 8 skins / 4 worlds theme system.
+- [Claude Code plugin](https://docs.claudectl.space/plugin/): the three slash commands and eight skills the plugin adds inside a session, and why it ships no hooks.
+
+## Working with projects
+
+- [Configuration](https://docs.claudectl.space/configuration/): every file archeus reads and writes — its own settings, per-project files, the global CLAUDE.md, the repository layout.
+- [Projects](https://docs.claudectl.space/projects/): pre-launch health card, context-loss insurance, permission-fatigue killer, the workspace provenance/freshness manifest, and the check that flags CLAUDE.md prose contradicting the memory graph.
+- [Sessions](https://docs.claudectl.space/sessions/): browse, search, tag, fork, resume, archive and export sessions; usage analytics; per-project launch control.
+- [Project memory](https://docs.claudectl.space/memory/): the semantic memory graph, its three token-budgeted injection surfaces, session lessons and recall.
+- [Architecture graph](https://docs.claudectl.space/architecture/): the interactive, expandable dependency graph rendered as self-contained HTML.
+- [Usage & cost](https://docs.claudectl.space/usage/): what a turn costs across every surface and how to cut it — bounded index, path-scoped rules, task-scoped injection, context weight audit, deny rules, economy model routing.
+- [Troubleshooting](https://docs.claudectl.space/troubleshooting/): common problems and fixes.
 
 ## Reference
 
-- [Files, layout and encoding](https://babarmuhammad.github.io/claudectl/reference/): per-project files, workspace status, CLAUDE.md auto-generation, session encoding, file layout.
-- [API reference](https://babarmuhammad.github.io/claudectl/api/): the local HTTP API the desktop GUI is built on, generated from the route tables.
+- [API reference](https://docs.claudectl.space/api/): the local HTTP API the desktop app is built on, generated from the route tables.
+- [Download](https://claudectl.space/download/): every way to get it — PyPI, the GitHub release page, the Claude Code plugin marketplace, a source checkout — what each release contains and the versioning policy.
+- [Project dashboard](https://docs.claudectl.space/dashboard/): release version, PyPI download counts, stars, test count, source size and commit activity.
+- [Multiple accounts](https://docs.claudectl.space/accounts/): running two or more Claude accounts, per-launch account selection, cross-account context injection.
+- [Context hand-off](https://docs.claudectl.space/context-handoff/): starting a new session seeded with a previous session's transcript, optionally under a different account — for when the context window fills up or an account hits its rate limit.
+- [MCP servers](https://docs.claudectl.space/mcp/): add, remove and inspect MCP servers; connection state; tool documentation.
+- [Agents and skills](https://docs.claudectl.space/agents/): the agent library, per-project subagent selection, adaptive suggestions, the skills manager.
+- [Agent library install](https://docs.claudectl.space/agent-library/): bulk-installing the awesome-claude-code-subagents catalog.
+- [Hooks](https://docs.claudectl.space/hooks/): 31 Claude Code hook templates plus AI-generated hooks.
+- [Plan to Execute and OmniRoute](https://docs.claudectl.space/plan-execute/): plan on an accurate model, execute on a cheap or free one; OmniRoute setup and troubleshooting.
+- [Status line, failover and checkpoints](https://docs.claudectl.space/statusline/): the per-turn status line, the model failover proxy, the read-only checkpoint view.
+- [Files, layout and encoding](https://docs.claudectl.space/reference/): CLAUDE.md auto-generation and how Claude Code encodes project paths into folder names.
+- [Code of conduct](https://claudectl.space/code-of-conduct/): the Contributor Covenant this project follows.
 
-## About
+## Moving to the product site
 
-- [FAQ](https://babarmuhammad.github.io/claudectl/faq/): platform support, dependencies, multiple accounts, how it differs from /resume.
-- [Compare](https://babarmuhammad.github.io/claudectl/compare/): honest comparison against bare Claude Code, hand-written CLAUDE.md and terminal multiplexers, including what claudectl does not do.
-- [Troubleshooting](https://babarmuhammad.github.io/claudectl/troubleshooting/): common problems and fixes.
-- [Changelog](https://babarmuhammad.github.io/claudectl/changelog/): release history.
-- [Credits](https://babarmuhammad.github.io/claudectl/credits/): the projects and ideas claudectl builds on.
+These pages are still served here and will move to https://claudectl.space/ once that site
+carries them.
+
+- [Features overview](https://claudectl.space/features/): one page per feature area.
+- [FAQ](https://claudectl.space/faq/): platform support, dependencies, multiple accounts, how it differs from /resume.
+- [Compare](https://docs.claudectl.space/compare/): honest comparison against bare Claude Code, hand-written CLAUDE.md and terminal multiplexers, including what archeus does not do.
+- [Changelog](https://claudectl.space/changelog/): release history.
+- [Credits](https://docs.claudectl.space/credits/): the projects and ideas archeus builds on.
 
 ## Optional
 
-- [Source](https://github.com/babarmuhammad/claudectl): the repository.
+- [Full documentation as one file](https://docs.claudectl.space/llms-full.txt): every page above concatenated, for reading without crawling.
+- [Source](https://github.com/babarmuhammad/archeus): the repository.

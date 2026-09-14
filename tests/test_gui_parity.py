@@ -44,7 +44,7 @@ def _serve():
 
 def _req(url, body=None):
     data = json.dumps(body).encode() if body is not None else None
-    r = urllib.request.Request(url, data=data, headers={'X-Claudectl': gui.TOKEN},
+    r = urllib.request.Request(url, data=data, headers={'X-Archeus': gui.TOKEN},
                                method='POST' if data else 'GET')
     try:
         with urllib.request.urlopen(r) as resp:
@@ -186,7 +186,9 @@ def test_hooks_template_and_remove(monkeypatch, tmp_path):
 def test_agents_create_read_delete(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     from claude_sessions import agents as agents_mod
-    udir = tmp_path / 'uagents'
+    # under the sandbox's config dir, which is where `<cfgdir>/agents` really
+    # lives — /api/agents/delete refuses a path outside a managed root now
+    udir = os.path.join(sb.cfg, 'agents')
     monkeypatch.setattr(agents_mod, 'user_agents_dir', lambda: str(udir))
     srv, base = _serve()
     try:
@@ -204,34 +206,53 @@ def test_agents_create_read_delete(monkeypatch, tmp_path):
 
 
 def test_skills_endpoints(monkeypatch, tmp_path):
+    """The payload is the SCOPES Claude Code loads, and a write says which one.
+
+    It used to be `{templates, project}`: a list of starters plus one project's
+    folder. Nothing said what was actually active, and an install with no scope
+    went wherever the caller's `path` happened to point."""
     sb = Sandbox(monkeypatch, tmp_path)
-    monkeypatch.setattr(config_mod, 'skills_library_dir', str(tmp_path / 'sklib'))
     actual, enc, folder, sids = _seed(sb, monkeypatch)
     srv, base = _serve()
     try:
-        # templates list includes the bundled starters
         code, d = _req(f'{base}/api/skills?path={urllib.request.quote(actual)}')
         assert code == 200
+        assert {'personal', 'project', 'plugin', 'bundled', 'templates'} <= set(d)
         names = [t['name'] for t in d['templates']]
-        assert 'commit-message' in names and d['project'] == []
+        assert 'commit-message' in names and d['project'] == [] and d['personal'] == []
+        assert d['personal_dir'].endswith('skills')
 
-        # install a bundled template into the project
         tmpl = next(t for t in d['templates'] if t['name'] == 'commit-message')
-        code, r = _req(base + '/api/skills/install', {'dir': tmpl['dir'], 'path': actual})
+
+        # no scope = personal, which is the one that works in every project
+        code, r = _req(base + '/api/skills/install', {'dir': tmpl['dir']})
         assert r['ok'] and os.path.isfile(os.path.join(r['dir'], 'SKILL.md'))
+        assert r['dir'].startswith(d['personal_dir'])
 
-        # now it shows under project skills
-        code, d = _req(f'{base}/api/skills?path={urllib.request.quote(actual)}')
-        assert any(s['name'] == 'commit-message' for s in d['project'])
+        # and it comes back as personal, with the command Claude Code would use
+        code, d2 = _req(f'{base}/api/skills?path={urllib.request.quote(actual)}')
+        row = next(s for s in d2['personal'] if s['command'] == 'commit-message')
+        assert row['scope'] == 'personal'
 
-        # read it back
+        # asking for the project scope puts it there instead
+        code, r = _req(base + '/api/skills/install',
+                       {'dir': tmpl['dir'], 'scope': 'project', 'path': actual})
+        assert r['ok'] and r['dir'].startswith(os.path.join(actual, '.claude', 'skills'))
+        code, d3 = _req(f'{base}/api/skills?path={urllib.request.quote(actual)}')
+        proj = next(s for s in d3['project'] if s['command'] == 'commit-message')
+        assert proj['shadowed'], 'a personal skill of the same name wins — say so'
+
+        # project scope without a project is the caller getting it wrong
+        code, r = _req(base + '/api/skills/install',
+                       {'dir': tmpl['dir'], 'scope': 'project'})
+        assert code == 400
+
         code, r = _req(base + '/api/skills/read?dir=' + urllib.request.quote(tmpl['dir']))
         assert r['meta']['name'] == 'commit-message'
 
-        # create a fresh skill, then remove it
         code, r = _req(base + '/api/skills/create',
                        {'name': 'my new skill', 'description': 'does things',
-                        'path': actual, 'body': '# X\n\nstep'})
+                        'scope': 'project', 'path': actual, 'body': '# X\n\nstep'})
         assert r['ok'] and os.path.isfile(os.path.join(r['dir'], 'SKILL.md'))
         code, r = _req(base + '/api/skills/remove', {'dir': r['dir']})
         assert r['ok']
@@ -325,7 +346,10 @@ def test_memory_state_lessons_audit_deny_workspace(monkeypatch, tmp_path):
                                        encoding='utf-8'))
         assert any('node_modules' in x for x in proj_settings['permissions']['deny'])
         code, d = _req(f'{base}/api/workspace-status?{c}')
-        assert code == 200 and 'lines' in d
+        assert code == 200 and 'checks' in d
+        # structured, not pre-rendered terminal lines: the GUI needs each
+        # check's name/state/weight to render a state dot and a fix button
+        assert {'name', 'state', 'detail', 'applicable', 'weight'} <= set(d['checks'][0])
     finally:
         srv.shutdown()
 
@@ -591,7 +615,7 @@ def test_job_plan_make_with_council(monkeypatch, tmp_path):
     from claude_sessions import plan_execute
     monkeypatch.setattr(plan_execute, '_plan', lambda task, m, cwd, effort='', cfgdir='': 'draft plan')
     seen = {}
-    def fake_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''):
+    def fake_council(task, plan, cwd, models=None, prov_env=None, cfgdir=''):
         seen['called'] = (task, plan)
         return 'council-optimized plan'
     monkeypatch.setattr(plan_execute, 'optimize_plan_council', fake_council)
@@ -663,7 +687,7 @@ def test_job_plan_make_surfaces_real_subprocess_error(monkeypatch, tmp_path):
         assert st['status'] == 'error'
         assert 'exited 1' in st['error']
         assert 'claude-bogus-9 not found' in st['error']
-        assert not os.path.exists(os.path.join(actual, '.claudectl', 'plan-latest.md'))
+        assert not os.path.exists(os.path.join(actual, '.archeus', 'plan-latest.md'))
     finally:
         srv.shutdown()
 
@@ -684,8 +708,8 @@ def test_job_plan_make_council_ignores_stale_provider_default(monkeypatch, tmp_p
     cfg.save_settings(s)
     monkeypatch.setattr(plan_execute, '_plan', lambda task, m, cwd, effort='', cfgdir='': 'draft plan')
     seen = {}
-    def fake_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''):
-        seen['omni_env'] = omni_env
+    def fake_council(task, plan, cwd, models=None, prov_env=None, cfgdir=''):
+        seen['prov_env'] = prov_env
         return 'council-optimized plan'
     monkeypatch.setattr(plan_execute, 'optimize_plan_council', fake_council)
     srv, base = _serve()
@@ -697,7 +721,7 @@ def test_job_plan_make_council_ignores_stale_provider_default(monkeypatch, tmp_p
         jid = d['job']
         st = _wait_job(base, jid, 'done', 'error')
         assert st['status'] == 'done'
-        assert seen['omni_env'] == {}
+        assert seen['prov_env'] == {}
     finally:
         srv.shutdown()
 
@@ -714,8 +738,8 @@ def test_job_plan_make_council_uses_the_provider_when_via_selected(monkeypatch, 
     monkeypatch.setattr(plan_execute, '_plan', lambda task, m, cwd, effort='', cfgdir='': 'draft plan')
     monkeypatch.setattr(plan_execute, 'check_endpoint', lambda *a, **k: None)
     seen = {}
-    def fake_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''):
-        seen['omni_env'] = omni_env
+    def fake_council(task, plan, cwd, models=None, prov_env=None, cfgdir=''):
+        seen['prov_env'] = prov_env
         return 'council-optimized plan'
     monkeypatch.setattr(plan_execute, 'optimize_plan_council', fake_council)
     srv, base = _serve()
@@ -727,7 +751,7 @@ def test_job_plan_make_council_uses_the_provider_when_via_selected(monkeypatch, 
         jid = d['job']
         st = _wait_job(base, jid, 'done', 'error')
         assert st['status'] == 'done'
-        assert seen['omni_env'] == {'ANTHROPIC_BASE_URL': 'http://localhost:20128',
+        assert seen['prov_env'] == {'ANTHROPIC_BASE_URL': 'http://localhost:20128',
                                      'ANTHROPIC_AUTH_TOKEN': 'secret',
                                      'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
                                      'CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING': '1'}
@@ -737,7 +761,7 @@ def test_job_plan_make_council_uses_the_provider_when_via_selected(monkeypatch, 
 
 def test_job_plan_make_forwards_account(monkeypatch, tmp_path):
     # regression: the plan-generation call itself used to always run under
-    # whichever account claudectl was active as, ignoring the account the
+    # whichever account archeus was active as, ignoring the account the
     # user picked in the GUI -- only the later plan_launch honored it.
     sb = Sandbox(monkeypatch, tmp_path)
     actual, enc, folder, sids = _seed(sb, monkeypatch)
@@ -919,12 +943,25 @@ def test_gui_launch_modal_redesign(monkeypatch, tmp_path):
     assert 'chipVal($(\'#fEffort\'))' not in PAGE   # old dead-code bug
     assert '<details class="adv">' in PAGE
     assert '--r-sm:' in PAGE and '--sp1:' in PAGE and '--mono:' in PAGE
-    # primary Resume/Restore button sits after the hover-revealed .acts block
-    sess_tpl = PAGE[PAGE.index('function drawSessions'):PAGE.index('function resumeS')]
-    assert 'class="acts">' in sess_tpl
-    acts_close = sess_tpl.index('</div>', sess_tpl.index('class="acts">'))
-    pri_idx = sess_tpl.index('btn sm pri')
-    assert pri_idx > acts_close
+    # Resume is on the ROW and nothing hides it. It used to share the row with
+    # ten more actions in a `.acts` strip revealed by hovering, and the check
+    # here was that the primary button came after that strip in source order.
+    # The strip is gone — the ten live in the detail pane beside the list — so
+    # what is asserted is the invariant the ordering was protecting: resuming a
+    # session is one click, on the row, with no hover and no selection first.
+    sess_tpl = PAGE[PAGE.index('function drawSessions'):PAGE.index('function seSel')]
+    assert 'class="acts">' not in sess_tpl, \
+        'the hover-only action strip is back on the session row'
+    row = sess_tpl[sess_tpl.index('const row=(s,i)=>'):]
+    row = row[:row.index('if(!shell(nav,')]
+    assert 'btn sm pri' in row and 'resumeS(' in row and 'restoreS(' in row, \
+        'Resume/Restore left the session row'
+    # and the pane carries the rest, on the session you picked
+    pane = PAGE[PAGE.index('function seSel'):]
+    pane = pane[:pane.index('\n}\n')]
+    for act in ('viewS(', 'exportS(', 'filesS(', 'ckptS(', 'tagS(', 'renameS(',
+                'archiveS(', 'forkS(', 'handoffS(', 'toggleTune('):
+        assert act in pane, f'{act} is reachable from nowhere'
 
 
 def test_list_projects_exposes_last_active(monkeypatch, tmp_path):
@@ -983,7 +1020,15 @@ def test_gui_home_dashboard_zones_and_recent_age(monkeypatch, tmp_path):
     # the dashboard zones exist. Matched on the class token rather than the whole
     # attribute: cards also carry .spot/.lift now, and pinning the exact string
     # made this fail on a purely presentational change.
-    assert 'class="dash"' in PAGE
+    #
+    # The wrapper itself is no longer written here: a page declares its shape
+    # and `shell()` writes it, so what this asserts is that home still resolves
+    # to the bento rather than that drawHome types the div.
+    assert "if(PAGE_==='home')return 'dash'" in PAGE, \
+        'home no longer declares the dashboard archetype'
+    assert 'dash:' in PAGE[PAGE.index('const ARCH_WRAP='):
+                           PAGE.index('const ARCH_WRAP=') + 200], \
+        'the shell cannot write the dash wrapper'
     for zone in ('d-i1', 'd-i2', 'd-i3', 'd-i4', 'd-acct', 'd-chart',
                  'd-projects', 'd-continue', 'd-recent'):
         assert f'card {zone}' in PAGE or f' {zone} ' in PAGE, zone

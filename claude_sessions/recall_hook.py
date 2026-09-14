@@ -2,7 +2,7 @@
 subgraph as additionalContext. Pure local scoring, <1s; NEVER blocks the
 prompt (exit 0 on every failure).
 
-Installed by claudectl (hooks.install_memory_hook) as:
+Installed by archeus (hooks.install_memory_hook) as:
     "<python.exe>" "<this file>"
 Runs as a plain script; bootstraps sys.path so the package imports regardless
 of install mode.
@@ -17,7 +17,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Claude Code captures stdout as a PIPE, so CPython picks the locale
 # codepage (cp1252 on Windows) and any non-ASCII character in the payload
 # either mojibakes or raises — silently losing the whole hook output.
-sys.stdout.reconfigure(encoding='utf-8')
+# Guarded: `sys.stdout` is None in a windowed process (pythonw with no
+# console). A hook must degrade to plain output, never die at import.
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except (AttributeError, ValueError, OSError):
+    pass
 
 
 def _enabled_for(cwd, settings):
@@ -35,8 +40,10 @@ def _enabled_for(cwd, settings):
 
 
 def _prompt_submit(cwd, prompt):
-    # cheap gate BEFORE package imports: no graph → no-op
-    graph_p = os.path.join(cwd, '.claudectl', 'memory', 'graph.json')
+    # cheap gate BEFORE package imports: no graph → no-op. The literal is
+    # deliberate — importing store to read store.WORKDIR would pull config and
+    # cost the import this gate exists to avoid. Keep in step with it by hand.
+    graph_p = os.path.join(cwd, '.archeus', 'memory', 'graph.json')
     if not os.path.isfile(graph_p) or not (prompt or '').strip():
         return 0
     from claude_sessions.config import load_settings

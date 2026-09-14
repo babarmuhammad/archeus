@@ -102,6 +102,191 @@ def test_sync_project_agents(monkeypatch, tmp_path):
     assert not (dest / agents._MANIFEST).exists()
 
 
+# ── getting the installed agents actually USED ────────────────
+#
+# The complaint this answers: agents are selected, copied in, carried on every
+# launch — and almost never delegated to. Claude Code picks a subagent by
+# matching the task against its `description`, so a set of files nothing ever
+# mentions is a set that never fires. CLAUDE.md is read on every turn, which
+# makes it the one place a delegation table can change the outcome.
+
+def test_installing_agents_writes_a_delegation_table_into_claude_md(monkeypatch, tmp_path):
+    sb = Sandbox(monkeypatch, tmp_path)
+    _seed(sb, '01-core', 'rev')
+    proj = tmp_path / 'proj'
+    proj.mkdir()
+    agents.sync_project_agents(str(proj), ['01-core/rev'])
+    md = (proj / 'CLAUDE.md').read_text(encoding='utf-8')
+    assert '<!-- ARCHEUS:AGENTS:START -->' in md
+    assert 'rev' in md and 'Delegate' in md
+
+
+def test_the_table_disappears_with_the_last_agent(monkeypatch, tmp_path):
+    """A table naming agents that are no longer installed is worse than none:
+    it tells the model to delegate to something that is not there."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    _seed(sb, '01-core', 'rev')
+    proj = tmp_path / 'proj'
+    proj.mkdir()
+    (proj / 'CLAUDE.md').write_text('# proj\n\nMy own notes.\n', encoding='utf-8')
+    agents.sync_project_agents(str(proj), ['01-core/rev'])
+    agents.sync_project_agents(str(proj), [])
+    md = (proj / 'CLAUDE.md').read_text(encoding='utf-8')
+    assert 'ARCHEUS:AGENTS' not in md
+    assert 'My own notes.' in md, 'the block must take nothing else with it'
+
+
+def test_the_table_is_built_from_what_is_on_disk(monkeypatch, tmp_path):
+    """From the agent files themselves, so it cannot describe a selection that
+    was changed by hand or by another tool."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    proj = tmp_path / 'proj'
+    dest = proj / '.claude' / 'agents'
+    dest.mkdir(parents=True)
+    (dest / 'sec.md').write_text(
+        '---\nname: sec\ndescription: Use this agent when auditing auth code. '
+        'It also does other things.\n---\n\nbody\n', encoding='utf-8')
+    rows = agents.routing_table(str(proj))
+    assert rows == [('sec', 'auditing auth code')], rows
+
+
+def test_the_prompt_hook_reads_one_small_index(monkeypatch, tmp_path):
+    """It fires on EVERY prompt. Opening and parsing every agent file per turn
+    is the cost mistake the recall hook and the worklog hook each made once, so
+    `sync_project_agents` writes a single index and the hook reads that."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    _seed(sb, '01-core', 'rev')
+    proj = tmp_path / 'proj'
+    proj.mkdir()
+    agents.sync_project_agents(str(proj), ['01-core/rev'])
+    idx = proj / '.claude' / agents.AGENT_INDEX
+    assert idx.is_file()
+    import json as _json
+    rows = _json.loads(idx.read_text(encoding='utf-8'))['agents']
+    assert rows and rows[0]['name'] and rows[0]['keywords']
+    # …and it goes when the last agent does
+    agents.sync_project_agents(str(proj), [])
+    assert not idx.exists()
+
+
+def test_the_hook_names_a_match_and_stays_quiet_otherwise():
+    """A hook on every prompt has to be silent by default: two coincidental
+    words are not a reason to interrupt."""
+    from claude_sessions import agentnudge_hook as nudge
+    index = [{'name': 'security-auditor',
+              'keywords': ['security', 'auth', 'vulnerability', 'audit']},
+             {'name': 'frontend-developer',
+              'keywords': ['react', 'css', 'component', 'browser']}]
+    hits = nudge.suggest('review the auth flow for a security vulnerability', index)
+    assert [n for n, _s, _r in hits] == ['security-auditor']
+    assert nudge.suggest('rename a variable', index) == []
+    assert nudge.suggest('', index) == []
+    # one weak overlap is not a match
+    assert nudge.suggest('is this secure?', index) == []
+
+
+def test_keywords_come_from_the_description_the_router_reads():
+    """The hook and Claude Code must be matching on the same text, or the hook
+    recommends what the model would never pick."""
+    kw = agents.keywords_for('security-auditor',
+                             'Use PROACTIVELY when auditing authentication code '
+                             'for vulnerabilities.')
+    assert 'auditing' in kw and 'authentication' in kw
+    assert 'the' not in kw and 'use' not in kw and 'proactively' not in kw
+
+
+def test_sharpening_rewrites_only_the_description(monkeypatch, tmp_path):
+    """It is the only field Claude Code routes on — and touching the body would
+    change what the agent DOES while leaving the reason it is never picked."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    proj = tmp_path / 'proj'
+    dest = proj / '.claude' / 'agents'
+    dest.mkdir(parents=True)
+    (dest / 'sec.md').write_text(
+        '---\nname: sec\ndescription: Expert security engineer.\nmodel: opus\n---\n\n'
+        'You are a security engineer.\nLine two.\n', encoding='utf-8')
+    done = agents.apply_descriptions(str(proj), {
+        'sec': 'Use PROACTIVELY when auditing auth code. Do not use for UI work.'})
+    assert done == ['sec']
+    meta, body = agents.parse_agent(str(dest / 'sec.md'))
+    assert meta['description'].startswith('Use PROACTIVELY')
+    assert meta['model'] == 'opus', 'the other frontmatter survives'
+    assert 'You are a security engineer.' in body and 'Line two.' in body
+
+
+def test_the_same_agent_in_many_places_is_one_question(monkeypatch, tmp_path):
+    """A library agent copied into a dozen projects is the SAME description a
+    dozen times. Grouping is what keeps one prompt row from becoming twelve —
+    and twelve chances at twelve different answers to one question."""
+    rows = [
+        {'name': 'sec', 'desc': 'Expert security engineer.', 'dir': 'a',
+         'project_path': '/p1', 'scope': 'project', 'path': 'a/sec.md'},
+        {'name': 'sec', 'desc': 'Expert security engineer.', 'dir': 'b',
+         'project_path': '/p2', 'scope': 'project', 'path': 'b/sec.md'},
+        {'name': 'fe', 'desc': 'Frontend person.', 'dir': 'a',
+         'project_path': '/p1', 'scope': 'project', 'path': 'a/fe.md'},
+    ]
+    groups = agents.sharpen_groups(rows)
+    assert len(groups) == 2, 'two unique agents, not three installs'
+    assert len(groups[('sec', 'Expert security engineer.')]) == 2
+
+
+def test_sharpening_writes_every_directory_an_agent_lives_in(monkeypatch, tmp_path):
+    """The point of moving this to the global page: one approval, every copy."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    dirs = []
+    for n in ('p1', 'p2'):
+        d = tmp_path / n / '.claude' / 'agents'
+        d.mkdir(parents=True)
+        (d / 'sec.md').write_text(
+            '---\nname: sec\ndescription: Expert security engineer.\n---\n\nBody.\n',
+            encoding='utf-8')
+        dirs.append(d)
+    new = {'sec': 'Use PROACTIVELY when auditing auth code. Do not use for UI.'}
+    for d in dirs:
+        assert agents.apply_descriptions_dir(str(d), new) == ['sec']
+    for d in dirs:
+        meta, body = agents.parse_agent(str(d / 'sec.md'))
+        assert meta['description'].startswith('Use PROACTIVELY')
+        assert 'Body.' in body
+
+
+def test_apply_descriptions_dir_knows_nothing_about_projects(monkeypatch, tmp_path):
+    """It has to serve a user-level agents dir and the library too, neither of
+    which has a CLAUDE.md routing table to refresh."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    d = tmp_path / 'useragents'
+    d.mkdir()
+    (d / 'x.md').write_text('---\nname: x\ndescription: old.\n---\n\nB\n',
+                            encoding='utf-8')
+    assert agents.apply_descriptions_dir(str(d), {'x': 'Use PROACTIVELY when X.'}) == ['x']
+    assert not (tmp_path / 'CLAUDE.md').exists()
+
+
+def test_the_model_reply_is_parsed_leniently():
+    """A model that adds a bullet or a stray line must not cost the whole batch."""
+    got = agents.parse_sharpened(
+        '- `sec`|Use PROACTIVELY when auditing auth code.\n'
+        '\n'
+        'here you go:\n'
+        '2. fe|Use PROACTIVELY when the task touches React components.\n'
+        'garbage line with no pipe\n')
+    assert got == {'sec': 'Use PROACTIVELY when auditing auth code.',
+                   'fe': 'Use PROACTIVELY when the task touches React components.'}
+
+
+def test_usage_comes_from_claude_codes_own_record(monkeypatch, tmp_path):
+    """`agentLastUsed` is the only honest answer to "is this doing anything?",
+    and archeus already reads that file for other things."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    import json as _json
+    import time as _time
+    with open(os.path.join(str(sb.cfg), '.claude.json'), 'w', encoding='utf-8') as f:
+        _json.dump({'agentLastUsed': {'rev': (_time.time() - 7200) * 1000}}, f)
+    got = agents.usage(str(sb.cfg))
+    assert got.get('rev'), got
+
+
 # ── per-session selection screen ─────────────────────────────
 
 def test_suggest_agents_matches_language(monkeypatch, tmp_path):
@@ -226,19 +411,51 @@ def test_new_manual_new_category(monkeypatch, tmp_path):
 
 
 def test_new_ai_agent(monkeypatch, tmp_path):
+    """It lands in `~/.claude/agents/`, FLAT — where Claude Code reads agents.
+
+    It used to be written into archeus's own category-organised library, which
+    Claude Code never looks at, so an AI-generated agent was never picked. The
+    category is frontmatter now, exactly as `agents.category_of` documents and as
+    the manual GUI path (`api_agent_create`) already did.
+    """
     sb = Sandbox(monkeypatch, tmp_path)
     _seed(sb, '01-core', 'x')
     monkeypatch.setattr(agents, 'get_claude_exe', lambda: r'C:\fake.exe')
     body = "---\nname: sec\ndescription: security\n---\n\nYou review security."
     monkeypatch.setattr(memory, '_claude_stdin', lambda *a, **k: body)
     keys = flat(DOWN, DOWN, ENTER,           # New AI (3rd selectable)
-                ENTER,                       # category 01-core
                 typed('sec'), ENTER,         # name
                 typed('review security'), ENTER,  # role
+                ENTER,                       # category (blank)
                 ENTER,                       # approve pager
                 ESC)
     run_flow(monkeypatch, keys, agents.agents_menu, None)
-    assert (sb.agents_lib / '01-core' / 'sec.md').exists()
+    assert (sb.cfg / 'agents' / 'sec.md').exists()
+    assert not (sb.agents_lib / '01-core' / 'sec.md').exists()
+
+
+def test_the_ai_agent_prompt_goes_over_stdin_with_the_shared_guards(monkeypatch, tmp_path):
+    """It used to spawn `claude --print <prompt>` directly: the prompt on ARGV
+    (the 32767-char CreateProcess limit `_claude_stdin` exists to dodge, and
+    `_build_ai_context` can push it past that), no cwd, no HEADLESS_MARK so the
+    call was listed back as one of your own session topics, no `--max-turns` and
+    no `--max-budget-usd`. Every one of those comes free from the shared seam."""
+    Sandbox(monkeypatch, tmp_path)
+    seen = {}
+
+    def fake(prompt, cwd, **kw):
+        seen['prompt'], seen['cwd'], seen['kw'] = prompt, cwd, kw
+        return "---\nname: sec\n---\n\nbody"
+
+    monkeypatch.setattr(memory, '_claude_stdin', fake)
+    r = agents.generate_agent_ai('sec', 'review security', 'user', None)
+    assert r['ok'] and r['path'].endswith(os.path.join('agents', 'sec.md'))
+    assert 'review security' in seen['prompt']
+    assert 'timeout' in seen['kw'] and seen['kw']['timeout'] > 0
+    # and the module no longer has its own spawn site at all
+    src = open(agents.__file__, encoding='utf-8').read()
+    assert '--print' not in src, 'agents.py spawns claude directly again'
+    assert 'run_with_progress' not in src, 'agents.py has its own spawn site again'
 
 
 def test_delete_agent(monkeypatch, tmp_path):

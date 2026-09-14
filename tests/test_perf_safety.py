@@ -75,10 +75,10 @@ def test_the_api_caps_the_page_size(monkeypatch, tmp_path):
 
 def test_an_unknown_settings_key_survives_a_round_trip(monkeypatch, tmp_path):
     """save_settings writes back what load_settings returned, so dropping the
-    keys this version does not know means an older claudectl ERASES a newer
+    keys this version does not know means an older archeus ERASES a newer
     one's settings — and syncing this file between two machines is enough."""
     from claude_sessions import config
-    p = tmp_path / 'claudectl.json'
+    p = tmp_path / 'archeus.json'
     p.write_text(json.dumps({'theme': 'nord', 'a_future_key': {'deep': [1, 2]}}),
                  encoding='utf-8')
     monkeypatch.setattr(config, 'settings_file', str(p))
@@ -152,3 +152,58 @@ def test_the_statusline_does_not_reparse_an_unchanged_graph(monkeypatch, tmp_pat
     b = statusline._load(str(proj))
     assert a['entities'] and b['entities']
     assert len(calls) == 1, 'the graph was parsed twice for one unchanged file'
+
+
+# ── hooks are entry points, not libraries ────────────────────
+
+def test_no_library_module_imports_a_hook_script():
+    """A `*_hook.py` reconfigures stdout at IMPORT, because Claude Code hands
+    it a pipe. Importing one as a library runs that line in whatever process
+    did the importing — and `sys.stdout` is None in a windowed one (pythonw,
+    no console, i.e. the GUI). `memory.drain_dirty` did exactly this and took
+    the whole auto-memory cycle down with
+    `AttributeError: 'NoneType' object has no attribute 'reconfigure'`.
+
+    The dependency may only point hook -> library.
+    """
+    import ast
+    import glob
+    pkg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       'claude_sessions')
+    offenders = []
+    for path in glob.glob(os.path.join(pkg, '*.py')):
+        name = os.path.basename(path)
+        if name.endswith('_hook.py'):
+            continue                      # a hook may import whatever it likes
+        tree = ast.parse(open(path, encoding='utf-8').read(), filename=path)
+        for node in ast.walk(tree):
+            mods = []
+            if isinstance(node, ast.ImportFrom) and node.module:
+                mods = [node.module]
+            elif isinstance(node, ast.Import):
+                mods = [a.name for a in node.names]
+            for m in mods:
+                if m.split('.')[-1].endswith('_hook'):
+                    offenders.append(f'{name}:{node.lineno} imports {m}')
+    assert not offenders, (
+        'a library module imported a hook entry point:\n  '
+        + '\n  '.join(offenders))
+
+
+def test_every_hook_survives_a_missing_stdout(monkeypatch):
+    """The reconfigure that makes a hook's output survive a pipe must not be
+    the thing that kills it when there is no stdout at all."""
+    import glob
+    import re
+    pkg = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       'claude_sessions')
+    bare = []
+    for path in sorted(glob.glob(os.path.join(pkg, '*_hook.py'))):
+        src = open(path, encoding='utf-8').read()
+        for m in re.finditer(r'^(\s*)sys\.std(?:out|err)\.reconfigure\(', src, re.M):
+            if not m.group(1):            # column 0 == not inside a try block
+                bare.append(f'{os.path.basename(path)}:'
+                            f'{src[:m.start()].count(chr(10)) + 1}')
+    assert not bare, (
+        'unguarded module-level reconfigure — dies when sys.stdout is None:\n  '
+        + '\n  '.join(bare))

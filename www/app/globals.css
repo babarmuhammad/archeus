@@ -1,0 +1,557 @@
+@import "tailwindcss";
+
+/* Palette lifted verbatim from the app: connections.TYPE_COLORS for the node
+   hues and themes.PALETTES['graph'] for the surfaces. The site is the graph
+   world worn as a website, so nothing here is re-derived from a hue — the hex is
+   the source of truth, exactly as it is in themes.py. */
+@theme {
+  --color-bg: #0a0c10;
+  --color-bg2: #0e1117;
+  --color-panel: #12161e;
+  --color-panel2: #1a2029;
+  --color-line: #28303d;
+
+  --color-text: #dfe9ff;
+  --color-dim: #a3b1c9;
+  --color-dim2: #7d8aa3;
+
+  --color-module: #7dcfff;
+  --color-component: #9d7bff;
+  --color-concept: #f7768e;
+  --color-service: #73daca;
+  --color-model: #e0af68;
+  --color-lesson: #ffd479;
+  --color-agent: #7ee787;
+
+  --color-cyan: #7dcfff;
+  --color-violet: #9d7bff;
+
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+  --font-mono: Consolas, "Cascadia Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--color-bg);
+}
+
+/* NO background on body. This is load-bearing, not an omission.
+   A block's own background is painted AFTER its negative-z-index descendants, so
+   an opaque `background` here covers both #journey (z-index -1) and the wash
+   below (-3) — the scene rendered perfectly and nothing was ever visible on the
+   page. The ground colour belongs on <html>, whose background is the root's and
+   paints first. */
+body {
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The fail-open wash. This is what is behind the page when there is no WebGL, a
+   lost context, or reduced motion — and it is also what the canvas composites
+   over, so the two never look like different sites. Static paint only. */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  pointer-events: none;
+}
+body::before {
+  background:
+    radial-gradient(120% 90% at 78% -10%, rgba(157, 123, 255, 0.16), transparent 58%),
+    radial-gradient(95% 80% at 8% 8%, rgba(125, 207, 255, 0.13), transparent 60%),
+    radial-gradient(90% 70% at 50% 108%, rgba(115, 218, 202, 0.09), transparent 62%),
+    linear-gradient(180deg, #0a0c10 0%, #0e1117 55%, #0a0c10 100%);
+}
+/* A faint lattice, so the empty half of every screen is not flat. */
+body::after {
+  background-image:
+    linear-gradient(rgba(40, 48, 61, 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(40, 48, 61, 0.5) 1px, transparent 1px);
+  background-size: 88px 88px;
+  opacity: 0.28;
+  mask-image: radial-gradient(75% 60% at 50% 40%, #000 20%, transparent 78%);
+}
+
+::selection {
+  background: rgba(125, 207, 255, 0.28);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-cyan);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── surfaces ───────────────────────────────────────────────────────────────
+   Glass is faked. Real glassmorphism wants backdrop-filter: blur(), which forces
+   a GPU readback and tears the compositor — the exact bug this project already
+   paid for. Layered translucent gradients plus a 1px inset highlight and a
+   hairline border read as glass with zero readback. Do not "fix" this. */
+.panel {
+  background:
+    linear-gradient(180deg, rgba(26, 32, 41, 0.72) 0%, rgba(18, 22, 30, 0.82) 100%);
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  box-shadow:
+    inset 0 1px 0 rgba(223, 233, 255, 0.07),
+    0 18px 44px -28px rgba(0, 0, 0, 0.9);
+}
+
+.panel-solid {
+  background: linear-gradient(180deg, rgba(18, 22, 30, 0.96), rgba(10, 12, 16, 0.97));
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(223, 233, 255, 0.06);
+}
+
+.hairline {
+  border-top: 1px solid var(--color-line);
+}
+
+/* ── prose, for the markdown-rendered routes ───────────────────────────────── */
+.prose {
+  color: var(--color-dim);
+  line-height: 1.72;
+  overflow-wrap: anywhere;
+}
+.prose > * + * { margin-top: 1rem; }
+.prose h2 {
+  color: var(--color-text);
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 2.75rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-line);
+}
+.prose h3 {
+  color: var(--color-text);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-top: 2rem;
+}
+.prose h4 { color: var(--color-text); font-weight: 600; margin-top: 1.5rem; }
+.prose strong { color: var(--color-text); font-weight: 600; }
+.prose a { color: var(--color-cyan); text-decoration: underline; text-underline-offset: 3px; }
+.prose a:hover { color: var(--color-violet); }
+.prose ul, .prose ol { padding-left: 1.25rem; }
+.prose ul { list-style: disc; }
+.prose ol { list-style: decimal; }
+.prose li { margin-top: 0.4rem; }
+.prose li::marker { color: var(--color-dim2); }
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  color: var(--color-module);
+  background: rgba(125, 207, 255, 0.08);
+  border: 1px solid rgba(125, 207, 255, 0.14);
+  border-radius: 5px;
+  padding: 0.1em 0.36em;
+}
+.prose pre {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  background: rgba(10, 12, 16, 0.85);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+.prose pre code { background: none; border: 0; padding: 0; color: var(--color-dim); }
+.prose blockquote {
+  border-left: 2px solid var(--color-violet);
+  padding-left: 1rem;
+  color: var(--color-dim2);
+}
+.prose table { width: 100%; border-collapse: collapse; font-size: 0.9rem; display: block; overflow-x: auto; }
+.prose th, .prose td { border: 1px solid var(--color-line); padding: 0.55rem 0.7rem; text-align: left; }
+.prose th { color: var(--color-text); background: rgba(26, 32, 41, 0.6); font-weight: 600; }
+.prose hr { border: 0; border-top: 1px solid var(--color-line); }
+.prose img { max-width: 100%; border-radius: 10px; border: 1px solid var(--color-line); }
+
+/* ── motion ─────────────────────────────────────────────────────────────────
+   transform and opacity ONLY. Both are compositor-only, so an animation never
+   invalidates paint and never asks the compositor to read anything back — which
+   is what tears a surface swap. No filter, no backdrop-filter, no
+   mix-blend-mode anywhere in this file. */
+@keyframes rise {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+.rise {
+  animation: rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ── the journey (landing page) ─────────────────────────────────────────────
+   Everything below belongs to the home page's scene and stations. It is at the
+   END of the file for the usual reason: @media and a class on <html> add no
+   specificity, so source order is the only thing deciding. */
+
+/* A canvas is a replaced element: inset:0 alone leaves it at its intrinsic size,
+   so the explicit 100% is load-bearing, not tidy-up. It is opaque and covers the
+   wash above, which makes the fade a crossfade from the static background to the
+   live one rather than a fade-in over nothing. `journey-on` is set by Canvas.tsx
+   only once GL has painted a frame, so a deferred import is never a blank second. */
+#journey {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 900ms ease;
+  pointer-events: none;
+}
+html.journey-on #journey {
+  opacity: 1;
+}
+
+/* The only rule from lenis/dist/lenis.css this page needs — the other four
+   selectors never match here (no iframes, no [data-lenis-prevent], stop() is
+   never called). Two lines beats an extra stylesheet in the critical path. */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+/* Station reveal on the native view timeline: no observer, no JS, transform and
+   opacity only. Where animation-timeline is unsupported the animation simply
+   plays once on load and fills forwards, so the copy is visible either way. */
+@keyframes station-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 26px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.station-in {
+  animation: station-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-timeline: view();
+  animation-range: entry 5% cover 26%;
+}
+
+/* The same mechanism for the content routes, which otherwise had no motion at
+   all — measured: the landing page ran six animations and every other page ran
+   zero, so the site stopped moving the moment you left it. Shorter travel than a
+   station, because these fire on a paragraph rather than a whole panel. */
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.reveal {
+  animation: reveal-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-timeline: view();
+  animation-range: entry 2% cover 20%;
+}
+
+/* ── the page transition ────────────────────────────────────────────────────
+   The App Router swaps the DOM instantly and `.reveal` is a view timeline, which
+   does nothing for content that is already in frame — so a route change read as
+   a hard cut with the scene carrying on behind it. One short entrance, keyed on
+   the pathname, transform and opacity only. */
+@keyframes page-in {
+  from { opacity: 0; transform: translate3d(0, 10px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+.page-in {
+  animation: page-in 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* A solid under the pointer is clickable — it scrolls to its own section. The
+   canvas itself stays pointer-events:none and at z-index -1; Canvas.tsx hit-tests
+   on the document and sets this class, so nothing about stacking changes. */
+html.solid-hover,
+html.solid-hover body {
+  cursor: pointer;
+}
+
+/* The home page's screenshots are drawn IN the scene, on framed planes at their
+   own stations. The DOM copy stays for anyone without WebGL — same picture, same
+   alt text — and is hidden the moment GL has actually painted. */
+html.journey-on .shot-fallback {
+  display: none;
+}
+
+/* ── the skill tree on the content routes ───────────────────────────────────
+   The landing page connects its sections in 3D; these connect in the DOM. The
+   rail draws itself with stroke-dashoffset on the same view timeline the reveal
+   uses — `pathLength: 1` makes the dash arithmetic unit-independent, so one rule
+   works for a two-line section and a two-screen one. */
+@keyframes spine-draw {
+  from { transform: translateX(-50%) scaleY(0); }
+  to   { transform: translateX(-50%) scaleY(1); }
+}
+
+.spine-rail {
+  position: absolute;
+  left: 50%;
+  /* Out into the row padding. The marker cell stretches to the CONTENT box,
+     so a rail pinned to 0 left a gap the height of the padding between every
+     pair of rows — the spine read as a dashed line rather than a spine. */
+  top: calc(-1 * var(--sp-pad, 0px));
+  bottom: calc(-1 * var(--sp-pad, 0px));
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    var(--color-cyan) 0%,
+    color-mix(in srgb, var(--color-cyan) 35%, transparent) 55%,
+    color-mix(in srgb, var(--color-line) 80%, transparent) 100%
+  );
+  transform-origin: top;
+  transform: translateX(-50%) scaleY(0);
+  animation: spine-draw 1s linear both;
+  animation-timeline: view();
+  animation-range: entry 0% cover 42%;
+}
+
+/* A tree ends, it does not trail off. */
+.spine-rail-end {
+  bottom: 50%;
+}
+
+/* The node lights as its own row arrives. Scale and opacity only — the ring is a
+   box-shadow spread, which composites like any other shadow and needs no filter. */
+@keyframes spine-light {
+  from { opacity: 0.25; transform: scale(0.55); box-shadow: 0 0 0 0 currentColor; }
+  to   { opacity: 1; transform: scale(1); box-shadow: 0 0 0 5px rgba(125, 207, 255, 0.08); }
+}
+
+.spine-node {
+  position: relative;
+  height: 0.625rem;
+  width: 0.625rem;
+  border-radius: 9999px;
+  animation: spine-light 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-timeline: view();
+  animation-range: entry 4% cover 16%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Back onto the document timeline, where the block above has already collapsed
+     every duration to nothing. A view timeline ignores duration, so without this
+     the reveal would stay scroll-linked — which is the motion being declined. */
+  .station-in,
+  .reveal,
+  .spine-rail,
+  .spine-node {
+    animation-timeline: none;
+  }
+  #journey,
+  .page-in {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* ── the per-route showcases ────────────────────────────────────────────────
+   LAST BLOCK IN THE FILE, deliberately. A class on the container adds no more
+   specificity than the base `.spine-row` rule it countermands, so source order
+   is the only thing deciding — the same lesson the app's icon rail and skin
+   blocks are already at the bottom for.
+
+   Every layout is the same three-cell grid: marker, copy, and an EMPTY
+   `.spine-slot`. The slot is the space this page gives that section's solid, and
+   Canvas.tsx measures its rect — so a new showcase is a grid here, never new
+   shader code. See components/site/Spine.tsx. */
+.spine {
+  margin-inline: auto;
+  max-width: 92rem;
+  padding-inline: 1.25rem;
+}
+
+.spine-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 1rem;
+  --sp-pad: 1.5rem;
+  padding-block: var(--sp-pad);
+}
+
+.spine-mark {
+  position: relative;
+  grid-column: 1;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spine-copy {
+  grid-column: 2;
+  min-width: 0;
+  max-width: 44rem;
+  padding-bottom: 0.5rem;
+}
+
+/* Narrow viewports have no empty half to give, so there is no slot to measure
+   and the scene simply draws no section solids — the parked constellation is the
+   background there. Better than the old behaviour, which put them over the copy. */
+.spine-slot {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .spine-row {
+    grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 1.5rem;
+  }
+  /* All three cells are pinned to row 1, and this is load-bearing. Several
+     layouts below put the slot in a column to the LEFT of the copy, and grid
+     auto-placement never goes backwards: the slot was pushed onto a second
+     implicit row underneath the text, so the solid drew below its own section
+     instead of beside it. Measured, not guessed — a slot 883px down a 1015px
+     row is what gave it away. */
+  .spine-mark,
+  .spine-copy,
+  .spine-slot {
+    grid-row: 1;
+  }
+  .spine-slot {
+    display: block;
+    grid-column: 3;
+    align-self: stretch;
+    min-height: 16rem;
+  }
+
+  /* features — the copy takes one half and leaves the other for its solid, and
+     the two trade sides down the page. */
+  .spine-beside .spine-row {
+    min-height: 74svh;
+  }
+  .spine-beside .spine-row:nth-child(even) .spine-copy {
+    grid-column: 3;
+    justify-self: end;
+  }
+  .spine-beside .spine-row:nth-child(even) .spine-slot {
+    grid-column: 2;
+  }
+
+  /* download — a sequence, so the solids stay in one right-hand column and read
+     as rungs rather than as a path wandering across the page. */
+  .spine-ladder .spine-row {
+    grid-template-columns: 36px minmax(0, 1fr) 22rem;
+    min-height: 58svh;
+  }
+
+  /* architecture — a page about layers: one column, and the scene nests the
+     three solids front to back inside it. */
+  .spine-depth .spine-row {
+    grid-template-columns: 36px minmax(0, 1fr) 26rem;
+    min-height: 70svh;
+  }
+  .spine-depth .spine-slot {
+    min-height: 22rem;
+  }
+
+  /* about — three small solids circling one point beside the copy. */
+  .spine-orbit .spine-row {
+    grid-template-columns: 36px minmax(0, 1fr) 20rem;
+    min-height: 54svh;
+  }
+
+  /* community — chorded to each other rather than chained: a community is a
+     mesh. The topology is built in scene.ts; this is only the space. */
+  .spine-triad .spine-row {
+    grid-template-columns: 36px minmax(0, 1fr) 24rem;
+    min-height: 60svh;
+  }
+
+  /* faq / blog — a list. Padding it to one section per screen makes it worse to
+     read, so the rows keep their natural height and the solids shrink to a rail. */
+  .spine-rail-left,
+  .spine-rail-right {
+    max-width: 74rem;
+  }
+  .spine-rail-left .spine-row,
+  .spine-rail-right .spine-row {
+    --sp-pad: 1.15rem;
+  }
+  .spine-rail-left .spine-copy,
+  .spine-rail-right .spine-copy {
+    max-width: 52rem;
+  }
+  .spine-rail-right .spine-row {
+    grid-template-columns: 36px minmax(0, 1fr) 7.5rem;
+  }
+  .spine-rail-left .spine-row {
+    grid-template-columns: 7.5rem 36px minmax(0, 1fr);
+  }
+  .spine-rail-left .spine-mark {
+    grid-column: 2;
+  }
+  .spine-rail-left .spine-copy {
+    grid-column: 3;
+  }
+  .spine-rail-left .spine-slot {
+    grid-column: 1;
+  }
+  .spine-rail-left .spine-slot,
+  .spine-rail-right .spine-slot {
+    min-height: 4.5rem;
+  }
+
+  /* changelog and the prose routes — the copy fills its column, so there is no
+     empty half to work with. The column moves right instead and the solids run
+     down the left, alternating in and out so the chain between them zig-zags. */
+  .spine-zigzag {
+    max-width: 80rem;
+  }
+  .spine-zigzag .spine-row {
+    /* A wide slot column with a narrow slot in it: the alternation between
+       justify-self start and end is the amplitude of the zig-zag, so the gap
+       between the two is what you actually see. */
+    grid-template-columns: 14rem 36px minmax(0, 1fr);
+    --sp-pad: 1.75rem;
+  }
+  .spine-zigzag .spine-mark {
+    grid-column: 2;
+  }
+  .spine-zigzag .spine-copy {
+    grid-column: 3;
+    max-width: 54rem;
+  }
+  .spine-zigzag .spine-slot {
+    grid-column: 1;
+    width: 7rem;
+    min-height: 7rem;
+    justify-self: start;
+  }
+  .spine-zigzag .spine-row:nth-child(even) .spine-slot {
+    justify-self: end;
+  }
+}

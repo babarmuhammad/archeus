@@ -1,19 +1,19 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "claudectl",
-  "description": "The workspace layer for Claude Code: persistent project memory, an interactive architecture graph, MCP awareness, and per-project launch control.",
+  "name": "archeus",
+  "description": "The memory and workspace layer for AI coding agents. Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code today.",
   "owner": {
     "name": "Babar Muhammad Anas",
     "url": "https://github.com/babarmuhammad"
   },
   "plugins": [
     {
-      "name": "claudectl",
+      "name": "archeus",
       "source": "./plugin",
-      "description": "Recall this project's memory, check its health, and review the current diff — from inside a session.",
-      "version": "1.7.0",
+      "description": "The in-session surface of archeus: recall this project's memory, check its health, and review the current diff without leaving the conversation.",
+      "version": "2.3.0",
       "category": "productivity",
-      "tags": ["memory", "workspace", "sessions", "review"]
+      "tags": ["agent-memory", "memory", "workspace", "sessions", "review"]
     }
   ]
 }

@@ -27,7 +27,7 @@ def _serve(monkeypatch):
 
 
 def _req(url, body=None, headers=None):
-    h = {'X-Claudectl': gui.TOKEN}
+    h = {'X-Archeus': gui.TOKEN}
     if headers is not None:
         h = headers
     data = json.dumps(body).encode() if body is not None else None
@@ -68,7 +68,7 @@ def test_list_projects_and_sessions(monkeypatch, tmp_path):
 
 def test_sessions_omni_flag(monkeypatch, tmp_path):
     """A session that ran on a non-Anthropic (OmniRoute free-tier) model is
-    flagged omni=True; a plain Anthropic session is not."""
+    flagged provider=True; a plain Anthropic session is not."""
     sb = Sandbox(monkeypatch, tmp_path)
     actual = str(sb.root / 'work' / 'alpha')
     os.makedirs(actual, exist_ok=True)
@@ -78,21 +78,21 @@ def test_sessions_omni_flag(monkeypatch, tmp_path):
     make_jsonl(str(folder / 'aaaa0000-0000-0000-0000-000000000000.jsonl'),
                title='Anthropic run', model='claude-sonnet-5')
     make_jsonl(str(folder / 'bbbb0000-0000-0000-0000-000000000000.jsonl'),
-               title='Omni run', model='deepseek-v4-flash-free')
+               title='Provider run', model='deepseek-v4-flash-free')
     monkeypatch.setattr(gui, 'find_actual_path', lambda e, *a, **k: actual if e == enc else None)
     by_title = {s['title']: s for s in gui.list_sessions(enc)}
-    assert by_title['Omni run']['omni'] is True
-    assert by_title['Anthropic run']['omni'] is False
+    assert by_title['Provider run']['provider'] is True
+    assert by_title['Anthropic run']['provider'] is False
     # OmniRoute records bare provider model names (no slash namespace); the
     # discriminator is "not an Anthropic/Claude model".
-    assert gui._used_omni({'models': ['big-pickle']}) is True
-    assert gui._used_omni({'models': ['mimo-auto']}) is True
-    assert gui._used_omni({'models': ['claude-opus-4-8', 'claude-sonnet-5']}) is False
-    assert gui._used_omni({'models': ['sonnet']}) is False            # bare Claude alias
-    assert gui._used_omni({'models': ['us.anthropic.claude-sonnet-5']}) is False
-    # a mixed session (Claude + free-tier) still flags omni
-    assert gui._used_omni({'models': ['claude-sonnet-5', 'big-pickle']}) is True
-    assert gui._used_omni({'models': []}) is False
+    assert gui._used_provider({'models': ['big-pickle']}) is True
+    assert gui._used_provider({'models': ['mimo-auto']}) is True
+    assert gui._used_provider({'models': ['claude-opus-4-8', 'claude-sonnet-5']}) is False
+    assert gui._used_provider({'models': ['sonnet']}) is False            # bare Claude alias
+    assert gui._used_provider({'models': ['us.anthropic.claude-sonnet-5']}) is False
+    # a mixed session (Claude + free-tier) still flags provider
+    assert gui._used_provider({'models': ['claude-sonnet-5', 'big-pickle']}) is True
+    assert gui._used_provider({'models': []}) is False
 
 
 def test_http_state_and_sessions(monkeypatch, tmp_path):
@@ -115,7 +115,7 @@ def test_http_guard_rejects_missing_header(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     srv, base = _serve(monkeypatch)
     try:
-        code, d = _req(base + '/api/state', headers={})   # no X-Claudectl
+        code, d = _req(base + '/api/state', headers={})   # no X-Archeus
         assert code == 403
         code, d = _req(base + '/api/launch', body={'path': 'x'}, headers={})
         assert code == 403
@@ -226,41 +226,64 @@ def test_settings_failover_accepts_newline_text_and_caps_length(monkeypatch, tmp
     assert config_mod.load_settings()['failover_models'] == ['m%d' % i for i in range(8)]
 
 
-def test_nav_collapsed_roundtrips_and_survives_the_next_save(monkeypatch, tmp_path):
+def test_a_clamped_geometry_setting_survives_the_next_save(monkeypatch, tmp_path):
     """A GUI preference that is not declared in _DEFAULT_SETTINGS is written
     once and then deleted by the very next /api/settings POST — the bug that
-    made the chosen theme 'go back to classic' on restart. This asserts the
-    whole path: POST it, read it back, POST something ELSE, read it again."""
+    made the chosen theme 'go back to classic' on restart. Asserted on the
+    sidebar width because it is one of the keys the generic settings loop
+    deliberately excludes (it is clamped by hand), which is exactly the shape
+    that can fall out of the defaults table unnoticed. This asserts the whole
+    path: POST it, read it back, POST something ELSE, read it again."""
     Sandbox(monkeypatch, tmp_path)
     srv, base = _serve(monkeypatch)
     try:
-        code, d = _req(base + '/api/settings',
-                       body={'nav_collapsed': ['Library', 'System']})
+        code, d = _req(base + '/api/settings', body={'side_w': 340})
         assert code == 200 and d['ok']
-        assert config_mod.load_settings()['nav_collapsed'] == ['Library', 'System']
+        assert config_mod.load_settings()['side_w'] == 340
         # an unrelated save must not wipe it
         _req(base + '/api/settings', body={'theme': 'default'})
     finally:
         srv.shutdown()
-    assert config_mod.load_settings()['nav_collapsed'] == ['Library', 'System']
+    assert config_mod.load_settings()['side_w'] == 340
     from claude_sessions.gui import state_payload
-    assert state_payload()['nav_collapsed'] == ['Library', 'System']
+    assert state_payload()['side_w'] == 340
 
 
-def test_every_nav_group_is_collapsible_and_the_flat_list_is_derived():
-    """Two regressions in one: NAV must stay a FLAT list because
-    tools/smoke_gui.py and tools/shot_gui.py both evaluate `NAV.map(n => n[0])`
-    for the page list, and every group must carry a name because the name is
-    what the collapsed set is keyed by — an unnamed group could be collapsed
-    and never reopened."""
+def test_every_section_names_real_pages_and_every_page_has_a_door():
+    """NAV is the ONE page table and SECTIONS points into it by id, which buys
+    a cross-check the old nested list could not have: a section naming a page
+    that does not exist would render a nav row that navigates to a blank
+    screen, and a page in no section is unreachable unless something else
+    reaches it — so it has to say what does, in OFFNAV.
+
+    NAV must also stay FLAT: tools/smoke_gui.py and tools/shot_gui.py both
+    evaluate `NAV.map(n => n[0])` for the page list, and a page nobody walks is
+    a page nobody knows is broken.
+    """
     import re
     from claude_sessions.gui_html import PAGE
-    assert 'const NAV=NAV_GROUPS.flatMap(' in PAGE, 'NAV must be derived, not a second list'
-    block = PAGE[PAGE.index('const NAV_GROUPS=['):PAGE.index('const NAV=NAV_GROUPS')]
-    groups = re.findall(r"\n\s*\['([^']*)'\s*,\s*\[", block)
-    assert groups, 'no nav groups found'
-    assert all(g.strip() for g in groups), f'unnamed nav group: {groups}'
-    assert 'onclick="toggleNavGroup(' in PAGE
+    nav = PAGE[PAGE.index('const NAV=['):PAGE.index('const SECTIONS=[')]
+    pages = re.findall(r"\n\s*\['([a-z]+)',", nav)
+    assert len(pages) > 12, pages
+    assert len(set(pages)) == len(pages), 'a page is declared twice'
+    # five fields per row, renderer last — drawPage calls n[4]()
+    assert nav.count('()=>pg') == len(pages), 'a page row is missing its renderer'
+
+    sec = PAGE[PAGE.index('const SECTIONS=['):PAGE.index('const OFFNAV=')]
+    labels = re.findall(r"\n\s*\['([A-Z][^']*)'", sec)
+    assert labels and all(x.strip() for x in labels), labels
+    assert len(labels) == 5, 'the sidebar is five sections: %s' % (labels,)
+    placed = [x for grp in re.findall(r"\[('[a-z]+'(?:,'[a-z]+')*)\]\]", sec)
+              for x in grp.replace("'", '').split(',')]
+    assert not set(placed) - set(pages), (
+        'a section names a page that does not exist: %s'
+        % sorted(set(placed) - set(pages)))
+
+    off = PAGE[PAGE.index('const OFFNAV='):PAGE.index('const SEC_OF=')]
+    loose = set(re.findall(r"(\w+):'", off))
+    assert set(pages) == set(placed) | loose, (
+        'a page in neither a section nor OFFNAV is unreachable: %s'
+        % sorted(set(pages) ^ (set(placed) | loose)))
 
 
 def test_the_sidebar_gives_the_project_list_a_floor_and_the_name_a_width():
@@ -306,10 +329,10 @@ def test_index_serves_html(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     srv, base = _serve(monkeypatch)
     try:
-        with urllib.request.urlopen(base + '/') as r:
+        with urllib.request.urlopen(base + '/?k=' + gui.TOKEN) as r:
             body = r.read().decode('utf-8')
             assert r.status == 200
-            assert 'claudectl' in body and '<html' in body
+            assert 'archeus' in body and '<html' in body
     finally:
         srv.shutdown()
 
@@ -336,8 +359,8 @@ def test_guard_requires_the_per_run_token(monkeypatch, tmp_path):
     srv, base = _serve(monkeypatch)
     port = srv.server_address[1]
     try:
-        assert _raw(port, extra={'X-Claudectl': '1'})[0] == 403
-        assert _raw(port, extra={'X-Claudectl': gui.TOKEN})[0] == 200
+        assert _raw(port, extra={'X-Archeus': '1'})[0] == 403
+        assert _raw(port, extra={'X-Archeus': gui.TOKEN})[0] == 200
     finally:
         srv.shutdown()
 
@@ -350,7 +373,7 @@ def test_guard_rejects_a_rebound_host(monkeypatch, tmp_path):
     srv, base = _serve(monkeypatch)
     port = srv.server_address[1]
     try:
-        code, body = _raw(port, extra={'X-Claudectl': gui.TOKEN},
+        code, body = _raw(port, extra={'X-Archeus': gui.TOKEN},
                           host='evil.example:%d' % port)
         assert code == 403 and b'bad host' in body
         # the unguarded routes are covered too, or the page itself leaks the token
@@ -366,10 +389,65 @@ def test_page_carries_the_token_and_the_placeholder_never_ships(monkeypatch, tmp
     srv, base = _serve(monkeypatch)
     port = srv.server_address[1]
     try:
-        code, body = _raw(port, path='/')
+        code, body = _raw(port, path='/?k=' + gui.TOKEN)
         assert code == 200
         assert gui.TOKEN.encode() in body
-        assert b'__CLAUDECTL_TOKEN__' not in body
+        assert b'__ARCHEUS_TOKEN__' not in body
+    finally:
+        srv.shutdown()
+
+
+def test_the_page_that_carries_the_token_does_not_give_it_away(monkeypatch, tmp_path):
+    """`/` is the response TOKEN is substituted into, so serving it on the Host
+    check alone handed the secret to any process that could open a socket to the
+    port — which on Windows includes one running as a different user, because
+    loopback is not a user-identity boundary. It takes the token in the query
+    string now, exactly as /graph does."""
+    Sandbox(monkeypatch, tmp_path)
+    srv, _base = _serve(monkeypatch)
+    port = srv.server_address[1]
+    try:
+        for bad in ('/', '/?k=', '/?k=nope'):
+            code, body = _raw(port, path=bad)
+            assert code == 403, bad
+            assert gui.TOKEN.encode() not in body, bad
+    finally:
+        srv.shutdown()
+
+
+def test_a_cross_site_fetch_is_refused_even_with_the_token(monkeypatch, tmp_path):
+    """The middle layer the module doc has always promised: it is what still
+    holds if the token leaks. An allowlist, not failover.py's outright
+    rejection — the SPA's own fetch() sends both of these headers."""
+    Sandbox(monkeypatch, tmp_path)
+    srv, _base = _serve(monkeypatch)
+    port = srv.server_address[1]
+    tok = {'X-Archeus': gui.TOKEN}
+    try:
+        for extra in ({'Sec-Fetch-Site': 'cross-site'},
+                      {'Sec-Fetch-Site': 'same-site'},
+                      {'Origin': 'http://evil.example'}):
+            h = dict(tok)
+            h.update(extra)
+            assert _raw(port, extra=h)[0] == 403, extra
+        # what the SPA itself sends must still pass
+        h = dict(tok)
+        h.update({'Sec-Fetch-Site': 'same-origin',
+                  'Origin': 'http://127.0.0.1:%d' % port})
+        assert _raw(port, extra=h)[0] == 200
+    finally:
+        srv.shutdown()
+
+
+def test_a_non_ascii_token_header_is_a_403_not_a_traceback(monkeypatch, tmp_path):
+    """Headers decode as latin-1, and hmac.compare_digest raises TypeError on a
+    non-ASCII str — which escapes into socketserver.handle_error and prints a
+    traceback the log_message silencer does not cover."""
+    Sandbox(monkeypatch, tmp_path)
+    srv, _base = _serve(monkeypatch)
+    port = srv.server_address[1]
+    try:
+        assert _raw(port, extra={'X-Archeus': '\xff\xfe'})[0] == 403
     finally:
         srv.shutdown()
 
@@ -408,7 +486,7 @@ def test_responses_carry_the_hardening_headers(monkeypatch, tmp_path):
     srv, base = _serve(monkeypatch)
     try:
         r = urllib.request.Request(base + '/api/state',
-                                   headers={'X-Claudectl': gui.TOKEN})
+                                   headers={'X-Archeus': gui.TOKEN})
         with urllib.request.urlopen(r) as resp:
             h = dict(resp.headers)
         assert h['X-Content-Type-Options'] == 'nosniff'
@@ -416,3 +494,145 @@ def test_responses_carry_the_hardening_headers(monkeypatch, tmp_path):
         assert "frame-ancestors 'none'" in h['Content-Security-Policy']
     finally:
         srv.shutdown()
+
+
+def test_archived_sessions_span_every_account(monkeypatch, tmp_path):
+    """It resolved ONE folder — whatever `cfgdir` the client sent, which was
+    always `CUR.primary_cfgdir`: the first account in all_config_dirs() order
+    that has the project, so `default` whenever `default` has it. Anything
+    archived under another account was invisible, and the rows carried no
+    `account`/`cfgdir` either, so even a visible one could not be restored to
+    the right place. The TUI's archived tab has always merged accounts.
+    """
+    import json
+    from claude_sessions import config as _cfg, gui_api, sessions as _sess
+
+    enc = 'D--proj'
+    a = tmp_path / 'acct-default'
+    b = tmp_path / 'acct-work'
+    made = []
+    for cfg, name, sid in ((a, 'default', 'aaaaaaaa'), (b, 'work', 'bbbbbbbb')):
+        arch = cfg / 'projects' / enc / 'archived'
+        arch.mkdir(parents=True)
+        (arch / f'{sid}.jsonl').write_text(
+            json.dumps({'type': 'user', 'message': {'role': 'user',
+                        'content': 'a real question about the code'}}) + '\n',
+            encoding='utf-8')
+        made.append((name, str(cfg)))
+    monkeypatch.setattr(_cfg, 'all_config_dirs', lambda: made)
+    _sess._info_cache.clear()
+
+    rows = gui_api.api_archived({'enc': enc}, {})['sessions']
+    assert {r['sid'] for r in rows} == {'aaaaaaaa', 'bbbbbbbb'}, rows
+    # and each row says which account it is in, so Restore/Delete put it back
+    # where it came from instead of falling back to primary_cfgdir
+    assert {r['account'] for r in rows} == {'default', 'work'}
+    for r in rows:
+        assert r['cfgdir'] and os.path.isdir(r['cfgdir']), r
+
+
+# ── a client that goes away is not a fault ───────────────────
+#
+#     ConnectionAbortedError: [WinError 10053] Connessione interrotta dal
+#     software del computer host
+#
+# Fifteen lines of traceback in the user's console, twice, from nothing worse
+# than a page abandoning its in-flight fetches. socketserver prints that for
+# ANY exception escaping a handler, and `log_message` does not silence it.
+
+def _raise_into(exc, who='gui'):
+    """Call the policy from inside an except block, as handle_error is."""
+    from claude_sessions import config as _cfg
+    try:
+        raise exc
+    except BaseException:
+        _cfg.log_request_error(who, ('127.0.0.1', 54837))
+
+
+def test_a_peer_that_went_away_is_not_logged_and_not_printed(capsys, caplog):
+    """Aborted, reset and broken-pipe are the three ways a client leaves."""
+    import logging
+    caplog.set_level(logging.DEBUG, logger='archeus')
+    for exc in (ConnectionAbortedError(10053, 'aborted by host software'),
+                ConnectionResetError(10054, 'reset by peer'),
+                BrokenPipeError(32, 'broken pipe')):
+        _raise_into(exc)
+    assert not caplog.records, [r.getMessage() for r in caplog.records]
+    assert capsys.readouterr().err == ''
+
+
+def test_a_real_handler_fault_is_still_reported(caplog):
+    """The filter is 'the peer left', not 'be quiet'."""
+    import logging
+    caplog.set_level(logging.DEBUG, logger='archeus')
+    _raise_into(ValueError('something genuinely broke'))
+    assert any('something genuinely broke' in (r.exc_text or '')
+               or 'request from 127.0.0.1 failed' in r.getMessage()
+               for r in caplog.records), [r.getMessage() for r in caplog.records]
+
+
+def test_both_servers_route_their_errors_through_the_one_policy():
+    """Two copies of 'which exceptions are the user's problem' is two answers,
+    and the failover console is the one the user is told to read.
+
+    There are three servers now — the GUI, the failover proxy and the translating
+    gateway — and the last two share ONE class, so what this checks is that
+    neither of them bound a bare ThreadingHTTPServer instead."""
+    import inspect
+    from claude_sessions import failover, gateway, gui, proxy_base
+    for name, srv in (('gui', gui._Server), ('proxy', proxy_base.Server)):
+        src = inspect.getsource(srv)
+        assert 'def handle_error' in src, name
+        assert 'log_request_error' in src, name
+    for mod in (failover, gateway):
+        assert '_proxy.make_server(' in inspect.getsource(mod.make_server), mod.__name__
+
+
+# ── the icon most installs actually see ──────────────────────
+#
+#     "the users installing archeus from pip are still not getting the icon"
+#
+# The .ico shipped inside the package and only `gui_qt` ever read it — and PyQt6
+# is optional, so a plain pip install opens an Edge `--app` window instead,
+# whose taskbar icon is the PAGE's favicon. The page had none.
+
+def test_the_page_asks_for_a_favicon_and_the_server_serves_it(monkeypatch, tmp_path):
+    """Both halves, because either one alone is still a blank icon."""
+    Sandbox(monkeypatch, tmp_path)
+    srv, base = _serve(monkeypatch)
+    port = srv.server_address[1]
+    try:
+        code, body = _raw(port, path='/?k=' + gui.TOKEN)
+        assert code == 200 and b'rel="icon" href="/favicon.ico"' in body
+        # unguarded, like /vendor/: a <link rel=icon> cannot carry the header,
+        # and a browser asks for /favicon.ico on its own with no headers at all
+        code, body = _raw(port, path='/favicon.ico')
+        assert code == 200, code
+        assert body[:4] == b'\x00\x00\x01\x00', body[:8]      # an ICO header
+    finally:
+        srv.shutdown()
+
+
+def test_the_icon_is_still_refused_to_a_rebound_host(monkeypatch, tmp_path):
+    """Unguarded is not unchecked — Host is the rebinding defence and it runs
+    first, on every route."""
+    Sandbox(monkeypatch, tmp_path)
+    srv, base = _serve(monkeypatch)
+    port = srv.server_address[1]
+    try:
+        assert _raw(port, path='/favicon.ico',
+                    host='evil.example:%d' % port)[0] == 403
+    finally:
+        srv.shutdown()
+
+
+def test_one_owner_for_the_app_icon(monkeypatch):
+    """`gui_qt` cannot own it: importing that module costs PyQt6, which the
+    installs with no icon are precisely the ones that do not have it."""
+    import inspect
+    from claude_sessions import config as _cfg, gui as _gui, gui_qt as _qt
+    assert os.path.isfile(_cfg.app_icon_path()), _cfg.app_icon_path()
+    assert 'app_icon_path' in inspect.getsource(_qt._icon_path)
+    assert 'app_icon_path' in inspect.getsource(_gui._Handler._serve_icon)
+    assert "'archeus.ico'" not in inspect.getsource(_qt)
+    assert "'archeus.ico'" not in inspect.getsource(_gui)

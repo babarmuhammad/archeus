@@ -88,7 +88,7 @@ def ai_generate_system_prompt(sp_path, project_name, project_path, proj_folder):
     from . import memory
     out = memory._claude_stdin(
         prompt, project_path or None, timeout=120,
-        crumbs=('CLAUDECTL', project_name, 'AI SYSTEM PROMPT'),
+        crumbs=('ARCHEUS', project_name, 'AI SYSTEM PROMPT'),
         label='Generating system prompt with Claude...  (15-60s)')
     if memory.last_call_cancelled:
         flash("Generation cancelled", ok=False)
@@ -118,7 +118,8 @@ def ai_generate_system_prompt(sp_path, project_name, project_path, proj_folder):
         open_in_editor(sp_path)
     else:
         _cls()
-        print(f"\n  ✘ No output from Claude (timeout or empty response).\n")
+        from .memory import why_failed
+        print(f"\n  ✘ {why_failed('No output from Claude (timeout or empty response).')}\n")
         pause("  Press Enter...")
 
 

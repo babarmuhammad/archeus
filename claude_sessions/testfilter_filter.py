@@ -35,7 +35,7 @@ def main():
     suppressed = len(lines) - len(kept) - len(tail)
     out = kept + tail
     if suppressed > 0:
-        out.append(f'[claudectl testfilter: {suppressed} passing/noise lines suppressed]')
+        out.append(f'[archeus testfilter: {suppressed} passing/noise lines suppressed]')
     sys.stdout.write('\n'.join(out) + '\n')
     return 0
 

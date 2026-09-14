@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+title: archeus
+message: >-
+  The memory and workspace layer for AI coding agents. Note that an unrelated
+  Rust project also publishes under the name "archeus"; this entry describes
+  the Python package at https://pypi.org/project/archeus/.
+type: software
+authors:
+  - given-names: Babar Muhammad
+    family-names: Anas
+    website: 'https://claudectl.space'
+repository-code: 'https://github.com/babarmuhammad/archeus'
+url: 'https://claudectl.space'
+version: 2.3.0
+date-released: 2026-09-11
+abstract: >-
+  A memory and workspace layer for AI coding agents, driving Anthropic's Claude
+  Code CLI today. Browse, search, tag, fork and resume every session across
+  every project and account; maintain a semantic project memory that is
+  injected within a token budget; manage MCP servers, agents, skills and hooks;
+  and see what a turn costs, read from your own transcripts. Terminal UI and
+  desktop GUI over one engine, with zero runtime dependencies.
+keywords:
+  - ai-agents
+  - agent-memory
+  - coding-agent
+  - context-management
+  - claude-code
+  - developer-tools
+  - terminal-ui
+  - session-manager
+  - mcp
+license: MIT

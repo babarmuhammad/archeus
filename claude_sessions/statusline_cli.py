@@ -6,7 +6,7 @@ This file exists because of how the statusline used to be installed:
     "<python.exe>" -m claude_sessions statusline
 
 `-m` resolves the package off `sys.path`, and `sys.path[0]` for `-m` is the
-CURRENT DIRECTORY. claudectl is normally run from a source checkout rather than
+CURRENT DIRECTORY. archeus is normally run from a source checkout rather than
 installed, so that command found `claude_sessions` only when the session's cwd
 happened to BE the checkout. In every other project it exited 1 with
 "No module named claude_sessions", printed nothing, and Claude Code drew an

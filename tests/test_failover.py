@@ -25,7 +25,7 @@ from claude_sessions import failover
 def _isolate_state(monkeypatch, tmp_path):
     """lock_path()/log_path() hang off settings_file — without this the suite
     writes into the user's real ~/.claude/failover.log and failover.lock."""
-    monkeypatch.setattr(_c, 'settings_file', str(tmp_path / 'claudectl.json'))
+    monkeypatch.setattr(_c, 'settings_file', str(tmp_path / 'archeus.json'))
 
 
 # ── fake upstream ────────────────────────────────────────────
@@ -163,8 +163,8 @@ def test_retries_next_candidate_on_401(monkeypatch):
         status, body, headers = px.post('/v1/messages', {'model': 'dead'})
         assert status == 200
         assert b'live' in body
-        assert headers.get('X-Claudectl-Model') == 'live'
-        assert headers.get('X-Claudectl-Attempts') == '2'
+        assert headers.get('X-Archeus-Model') == 'live'
+        assert headers.get('X-Archeus-Attempts') == '2'
         assert [m for _p, m in up.seen] == ['dead', 'live']
     finally:
         px.close()
@@ -207,7 +207,7 @@ def test_single_candidate_is_plain_passthrough(monkeypatch):
         status, body, headers = px.post('/v1/messages', {'model': 'a'})
         assert status == 401
         assert b'nope' in body
-        assert 'X-Claudectl-Model' not in headers
+        assert 'X-Archeus-Model' not in headers
         assert len(up.seen) == 1
     finally:
         px.close()
@@ -233,7 +233,7 @@ def test_count_tokens_also_fails_over(monkeypatch):
     try:
         status, _b, headers = px.post('/v1/messages/count_tokens', {'model': 'a'})
         assert status == 200
-        assert headers.get('X-Claudectl-Attempts') == '2'
+        assert headers.get('X-Archeus-Attempts') == '2'
     finally:
         px.close()
         up.close()
@@ -401,8 +401,8 @@ def test_council_calls_bypass_the_proxy(monkeypatch):
     s = {'provider_exec_model': 'auto/coding', 'provider_base_url': real,
          'provider_api_key': 'k', 'failover_models': ['x'], 'failover_port': 20129}
     monkeypatch.setattr(_c, 'load_settings', lambda: s)
-    omni = _c.provider_env(s)
-    assert omni['ANTHROPIC_BASE_URL'] == 'http://127.0.0.1:20129'
+    provider = _c.provider_env(s)
+    assert provider['ANTHROPIC_BASE_URL'] == 'http://127.0.0.1:20129'
 
     seen = {}
 
@@ -414,7 +414,7 @@ def test_council_calls_bypass_the_proxy(monkeypatch):
     import claude_sessions.gui_api as ga
     monkeypatch.setattr(ga, '_run_cancellable', fake_run)
 
-    plan_execute._headless('m', 'p', os.getcwd(), omni_env=omni, cfgdir='')
+    plan_execute._headless('m', 'p', os.getcwd(), prov_env=provider, cfgdir='')
     assert seen['url'] == real
 
 

@@ -8,10 +8,10 @@ Three rules, in the order they matter:
 
 1. **Dry run is the default.** `run()` reports what it WOULD delete and
    deletes nothing unless `apply=True` is passed explicitly.
-2. **A referenced session is never touched.** claudectl's own state names
+2. **A referenced session is never touched.** archeus's own state names
    sessions — the recent list, the per-project last-session marker, and every
    `.name`/tag/checkpoint sidecar. Deleting a transcript those point at breaks
-   claudectl, not just Claude Code.
+   archeus, not just Claude Code.
 3. **Only ever inside a known account directory.** Every candidate path is
    checked to be under the account's own store before it is removed, so a bug
    in the walk cannot escape into the filesystem.
@@ -30,7 +30,7 @@ __all__ = ['run', 'DEFAULT_DAYS', 'PRUNABLE']
 DEFAULT_DAYS = 30
 
 #: what may be pruned, and what may not. `projects/` holds transcripts AND the
-#: sidecars claudectl writes, so it is pruned per file, never per directory.
+#: sidecars archeus writes, so it is pruned per file, never per directory.
 PRUNABLE = ('file-history', 'paste-cache', 'shell-snapshots', 'session-env')
 
 
@@ -68,7 +68,7 @@ def run(days=0, apply=False, cfgdir=None):
 
 
 def _referenced_sessions(cfgdir):
-    """Session ids claudectl's own state points at. These are never candidates.
+    """Session ids archeus's own state points at. These are never candidates.
 
     Deliberately generous: a session named, tagged, or listed as recent stays
     regardless of age, because those are the ones the user came back for.
@@ -124,7 +124,7 @@ def _prune_tree(path, cutoff, apply, cfgdir):
 
 def _prune_transcripts(cfgdir, cutoff, referenced, apply):
     """`projects/` per FILE, never per directory: the same folders hold the
-    sidecars claudectl writes (names, tags, extra-paths, system prompts), and
+    sidecars archeus writes (names, tags, extra-paths, system prompts), and
     those are not size and are not disposable."""
     from . import store
     size = files = kept = 0

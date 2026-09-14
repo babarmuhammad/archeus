@@ -1,4 +1,4 @@
-"""Shared machinery for claudectl's local proxy daemons.
+"""Shared machinery for archeus's local proxy daemons.
 
 Two of them exist and they are deliberately separate programs: `failover.py`
 relays bytes verbatim and only ever rewrites a request's `model`, while
@@ -24,10 +24,33 @@ import json
 import os
 import time
 import urllib.request
+from http.server import ThreadingHTTPServer
 
 from . import config as _c
 
 READY_TIMEOUT = 15
+
+
+class Server(ThreadingHTTPServer):
+    """The console window IS the feature for these daemons, so a session killed
+    mid-turn may not fill it with tracebacks for a peer that simply went away.
+
+    One class rather than one per daemon: the policy being shared is "which
+    exceptions are the user's problem", and two copies of that is two answers —
+    which is the same argument `config.log_request_error` itself is built on.
+    """
+
+    label = 'proxy'
+
+    def handle_error(self, request, client_address):
+        _c.log_request_error(self.label, client_address)
+
+
+def make_server(port, handler, label):
+    """Bind 127.0.0.1:<port> (0 = ephemeral, used by tests)."""
+    srv = Server(('127.0.0.1', port), handler)
+    srv.label = label
+    return srv
 
 
 class Daemon:
@@ -43,8 +66,8 @@ class Daemon:
         self.name = name
         self.serve_flag = serve_flag
         self.label = label or name
-        self.marker_path = '/__claudectl_%s__/health' % name
-        self.marker = ('claudectl-%s' % name).encode('ascii')
+        self.marker_path = '/__archeus_%s__/health' % name
+        self.marker = ('archeus-%s' % name).encode('ascii')
 
     # ── lock file ──
 
@@ -266,7 +289,11 @@ def guard(handler, key, marker_path, label):
         got = (handler.headers.get('x-api-key')
                or (handler.headers.get('Authorization') or '').removeprefix('Bearer ')
                or '').strip()
-        if not hmac.compare_digest(got, key):
+        # latin-1 bytes, not str: that is how the header was decoded, and a
+        # non-ASCII byte makes compare_digest raise TypeError — which lands in
+        # socketserver.handle_error as a traceback, unauthenticated.
+        if not hmac.compare_digest(got.encode('latin-1', 'replace'),
+                                   key.encode('latin-1', 'replace')):
             return deny(handler, label, 'bad credentials')
     return True
 
@@ -288,7 +315,7 @@ def deny(handler, label, why):
             pass
     write_json(handler, 403, {'type': 'error', 'error': {
         'type': 'permission_error',
-        'message': 'claudectl %s: refused (%s)' % (label, why)}})
+        'message': 'archeus %s: refused (%s)' % (label, why)}})
     return False
 
 

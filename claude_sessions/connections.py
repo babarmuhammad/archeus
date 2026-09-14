@@ -15,11 +15,13 @@ import ast
 import json
 import html as _htmlmod
 
+from . import cluster_spec as _spec
 from . import config as _c
 from . import render
+from . import store as _store
 
 SKIP_DIRS = {'.git', 'node_modules', '__pycache__', 'venv', '.venv', '.tox',
-             'dist', 'build', '.mypy_cache', '.pytest_cache', '.claudectl',
+             'dist', 'build', 'site', '.mypy_cache', '.pytest_cache', _store.WORKDIR,
              '.claude', 'site-packages', '.next', 'target', 'bin', 'obj',
              '.idea', '.vscode', 'coverage', '.cache'}
 SKIP_EXT = {'.pyc', '.pyo', '.so', '.dll', '.exe', '.bin', '.png', '.jpg',
@@ -101,9 +103,14 @@ def _walk_source_files(root, max_files):
 
 
 def _discover_repos(root, proj_folder):
-    """Absolute repo paths under the project + linked extra paths."""
+    """Absolute cluster paths under the project + linked extra paths.
+
+    A cluster is a git repo OR a directory with its own manifest: a subproject
+    you drop into a project has to become its own section of the graph the same
+    day, and most of them (a Next.js app, a Go service) never carry a `.git`.
+    """
     try:
-        from .repos import find_git_repos
+        from .repos import find_git_repos, find_subprojects
         from .sessions import read_extra_paths
     except Exception:
         return []
@@ -117,7 +124,7 @@ def _discover_repos(root, proj_folder):
         try:
             # depth 4 and submodules included: a submodule genuinely IS its own
             # cluster, and attributing its files to the parent was wrong
-            for repo in find_git_repos(r):
+            for repo in find_git_repos(r) + find_subprojects(r):
                 rp = os.path.abspath(repo)
                 if rp not in seen:
                     seen.append(rp)
@@ -308,7 +315,7 @@ def _signature(root, files):
 def _cache_path(project_path, proj_folder):
     for base in (project_path, proj_folder):
         if base:
-            return os.path.join(base, '.claudectl', _CACHE_NAME)
+            return _store.workfile(base, _CACHE_NAME)
     return ''
 
 
@@ -328,8 +335,7 @@ def _save_cache(graph, project_path, proj_folder):
         if not base:
             continue
         try:
-            d = os.path.join(base, '.claudectl')
-            os.makedirs(d, exist_ok=True)
+            d = _store.workdir(base)
             with open(os.path.join(d, _CACHE_NAME), 'w', encoding='utf-8') as f:
                 json.dump(graph, f)
             return True
@@ -443,7 +449,22 @@ html,body{margin:0;height:100%;background:radial-gradient(circle at 50% 42%,#0a1
 #panel{position:fixed;top:10px;right:12px;background:rgba(14,16,22,.9);border:1px solid #262a35;border-radius:8px;padding:10px 12px;width:210px}
 #panel h4{margin:0 0 6px;font-size:11px;color:#9aa3b2;text-transform:uppercase;letter-spacing:.5px}
 #panel label{display:block;cursor:pointer;line-height:1.7;user-select:none}
-#panel input[type=checkbox]{vertical-align:middle;margin-right:6px}
+/* same drawn checkbox as the app (app.css) — two bars scaled from their own
+   end, so the tick draws itself with transform only. This page is standalone
+   and has no palette vars, so the colours are literal. */
+#panel input[type=checkbox]{appearance:none;-webkit-appearance:none;
+ width:15px;height:15px;margin:0 6px 0 0;position:relative;cursor:pointer;
+ vertical-align:middle;background:#0c0e14;border:1px solid #333;border-radius:4px;
+ transition:background .12s ease,border-color .12s ease}
+#panel input[type=checkbox]:hover{border-color:#7dcfff}
+#panel input[type=checkbox]:checked{background:#7dcfff;border-color:#7dcfff}
+#panel input[type=checkbox]::before,#panel input[type=checkbox]::after{content:'';
+ position:absolute;height:2px;border-radius:1px;background:#0c0e14;
+ transform-origin:left center;transition:transform .2s ease}
+#panel input[type=checkbox]::before{left:18%;top:39%;width:29%;transform:rotate(45deg) scaleX(0)}
+#panel input[type=checkbox]::after{left:39%;top:60%;width:63%;transform:rotate(-45deg) scaleX(0)}
+#panel input[type=checkbox]:checked::before{transform:rotate(45deg) scaleX(1)}
+#panel input[type=checkbox]:checked::after{transform:rotate(-45deg) scaleX(1);transition-delay:.08s}
 #search{width:100%;box-sizing:border-box;background:#0c0e14;border:1px solid #333;color:#eee;padding:5px 7px;border-radius:5px;margin:4px 0}
 .btn{display:inline-block;background:#1c2029;border:1px solid #333;color:#cdd2da;padding:4px 10px;border-radius:5px;cursor:pointer;margin:5px 6px 0 0}
 .btn:hover{background:#272c38}#panel hr{border:0;border-top:1px solid #222732;margin:9px 0}
@@ -600,24 +621,117 @@ function bg(){const g=ctx.createRadialGradient(W/2,H*0.42,0,W/2,H*0.42,Math.max(
  ctx.globalCompositeOperation='source-over';}
 function curve(a,b){const mx=(a.x+b.x)/2,my=(a.y+b.y)/2,nx=-(b.y-a.y),ny=(b.x-a.x),L=Math.sqrt(nx*nx+ny*ny)+.01,cf=Math.min(48,L*0.14);return{cx:mx+nx/L*cf,cy:my+ny/L*cf};}
 function qpt(a,c,b,t){const u=1-t;return{x:u*u*a.x+2*u*t*c.cx+t*t*b.x,y:u*u*a.y+2*u*t*c.cy+t*t*b.y};}
-// ── rotating 3D dodecahedron geometry (20 verts, 30 edges) ──
-const PHI=1.6180339887,IPH=1/PHI;
-const DV=[[1,1,1],[1,1,-1],[1,-1,1],[1,-1,-1],[-1,1,1],[-1,1,-1],[-1,-1,1],[-1,-1,-1],
- [0,IPH,PHI],[0,IPH,-PHI],[0,-IPH,PHI],[0,-IPH,-PHI],[IPH,PHI,0],[IPH,-PHI,0],[-IPH,PHI,0],
- [-IPH,-PHI,0],[PHI,0,IPH],[PHI,0,-IPH],[-PHI,0,IPH],[-PHI,0,-IPH]];
-for(const v of DV){const L=Math.hypot(v[0],v[1],v[2]);v[0]/=L;v[1]/=L;v[2]/=L;}
-const DE=[];(function(){let mn=9;for(let i=0;i<DV.length;i++)for(let j=i+1;j<DV.length;j++){const d=Math.hypot(DV[i][0]-DV[j][0],DV[i][1]-DV[j][1],DV[i][2]-DV[j][2]);if(d<mn)mn=d;}
- for(let i=0;i<DV.length;i++)for(let j=i+1;j<DV.length;j++){const d=Math.hypot(DV[i][0]-DV[j][0],DV[i][1]-DV[j][1],DV[i][2]-DV[j][2]);if(d<mn*1.1)DE.push([i,j]);}})();
-function drawDodec(n,r,col,alpha,bright){
+const CL=__CLUSTER_JSON__;
+/* THE CHORD — never reduce a cluster to a single flat colour.
+
+   This view drew every cluster in ONE colour: its type's hue from TYPE_COLORS,
+   flat across the cage, the interior and the joints. That is the rule the
+   reference breaks hardest — one cluster there runs violet into magenta into
+   cyan with gold picking out individual struts — and it is the same failure the
+   GUI's stage had, where a per-cage `tone` meant a cage could not be anything
+   else.
+
+   What is NOT copied from the reference is which hue a cluster wears. Its
+   colour is real data (TYPE_COLORS, by node type) and its position is the force
+   layout's, so the chord ROTATES AROUND the node's own hue rather than
+   replacing it: the primary is exactly the type colour, the secondary sits
+   +34 degrees off it and the accent -52, which is the violet/magenta/cyan
+   relationship the model's roles have, expressed as a rotation so it works from
+   whatever hue the data gives. A module still reads as a module. */
+const _HSL=/hsl\(\s*([\d.]+)[,\s]+([\d.]+)%[,\s]+([\d.]+)%\s*\)/;
+function chordCol(col,t,lift){
+ const m=_HSL.exec(col);if(!m)return col;
+ const h0=+m[1],s0=+m[2],l0=+m[3];
+ // weighted, not three even thirds: a cluster is roughly six parts its
+ // primary, three its secondary and one its accent. An even split puts as much
+ // of the second hue on it as the first and the field loses its identity.
+ const k1=Math.min(1,Math.max(0,(t-0.40)/0.36));
+ const k2=Math.min(1,Math.max(0,(t-0.74)/0.26));
+ const h=((h0+34*k1*(1-k2)-52*k2)%360+360)%360;
+ return 'hsl('+h.toFixed(1)+','+Math.min(96,s0+8*k1).toFixed(0)+'%,'
+   +Math.min(92,l0+(lift||0)).toFixed(0)+'%)';
+}
+/* Where a point sits in its cluster's gradient. The same four inputs the GL
+   renderers use and each does a different job: the angular term gives the
+   gradient a DIRECTION (so two clusters of one type are not the same object
+   rotated), the radial term makes the centre a different colour from the rim,
+   the hash breaks the sweep up (a clean sweep reads as a stripe), and the
+   per-node seed offsets it so two nodes of one type still differ. */
+function gradT(v,ax,seed){
+ const d=v[0]*ax[0]+v[1]*ax[1]+v[2]*ax[2];
+ const q=Math.sin((v[0]*12.9898+v[1]*78.233+v[2]*37.719)*43.7585+seed*31.7);
+ return Math.min(1,Math.max(0,(d*0.5+0.5)*0.58+0.20+(q-Math.floor(q))*0.34-0.06));
+}
+function nodeSeed(n){
+ if(n._sd==null){let h=0;const k=String(n.id);
+  for(let i=0;i<k.length;i++)h=(h*31+k.charCodeAt(i))%99991;
+  n._sd=h/99991;
+  const a1=n._sd*6.2831853,a2=(h*2.399963)%3.14159265;
+  n._ax=[Math.cos(a1)*Math.sin(a2),Math.cos(a2),Math.sin(a1)*Math.sin(a2)];}
+ return n._sd;
+}
+// ── the rotating cage: 12 junctions, 30 edges ──
+// The coarse icosahedral frame out of cluster_spec, and NOTHING else on the
+// hull. It carried a once-subdivided cage over it as well (42 verts, 120
+// edges) plus an interior population and a bead at every shell vertex, on the
+// reading that a dense surface is what the reference renders show — and the
+// judgement on all of it was blunt: "go back to drawing fine lines instead of
+// all this mess". The shape stays (it is better than the dodecahedron this
+// replaced); the weight of ink on it does not.
+// The rotation is unchanged (T*0.5, T*0.37, per-node phase) because matching
+// the GUI's background exactly IS the homage; losing it loses the point.
+const PHI=1.6180339887;
+const IV=[[0,1,PHI],[0,1,-PHI],[0,-1,PHI],[0,-1,-PHI],[1,PHI,0],[1,-PHI,0],
+ [-1,PHI,0],[-1,-PHI,0],[PHI,0,1],[PHI,0,-1],[-PHI,0,1],[-PHI,0,-1]];
+const nrm3=v=>{const L=Math.hypot(v[0],v[1],v[2]);return [v[0]/L,v[1]/L,v[2]/L];};
+const FV=IV.map(nrm3),FE=[];
+(function(){
+ // adjacency by minimum separation — the twelve vertices of an icosahedron
+ // each have exactly five nearest neighbours, which is its thirty edges
+ let mn=9;
+ const dist=(i,j)=>Math.hypot(FV[i][0]-FV[j][0],FV[i][1]-FV[j][1],FV[i][2]-FV[j][2]);
+ for(let i=0;i<12;i++)for(let j=i+1;j<12;j++){const d=dist(i,j);if(d<mn)mn=d;}
+ for(let i=0;i<12;i++)for(let j=i+1;j<12;j++)if(dist(i,j)<mn*1.1)FE.push([i,j]);
+ // ...checked against the spec, because these two counts are the one thing
+ // this canvas and the site's lit cluster still have to agree about
+ if(FV.length!==CL.FRAME_NODES||FE.length!==CL.FRAME_EDGES)
+  throw new Error('frame: '+FV.length+'/'+FE.length+' against the spec\'s '
+   +CL.FRAME_NODES+'/'+CL.FRAME_EDGES);})();
+function drawCluster(n,r,col,alpha,bright){
  const ax=T*0.5+(n._ph||0),ay=T*0.37+(n._ph||0)*1.7,ca=Math.cos(ax),sa=Math.sin(ax),cb=Math.cos(ay),sb=Math.sin(ay);
- const P=DV.map(v=>{let x=v[0]*cb+v[2]*sb,z=-v[0]*sb+v[2]*cb,y=v[1];let y2=y*ca-z*sa,z2=y*sa+z*ca;return{x:n.x+x*r,y:n.y+y2*r,s:0.8+0.2*((z2+1)/2)};});
- ctx.globalAlpha=alpha;ctx.strokeStyle=col;ctx.lineWidth=(bright?1.8:1.05)/view.k;
- ctx.beginPath();for(const e of DE){ctx.moveTo(P[e[0]].x,P[e[0]].y);ctx.lineTo(P[e[1]].x,P[e[1]].y);}ctx.stroke();
- // small joint circles where the edges meet (vertices)
- const vr=Math.max(1.6,r*0.13);
- for(const p of P){const rr=vr*p.s/view.k;
-  ctx.fillStyle=col;ctx.beginPath();ctx.arc(p.x,p.y,rr,0,7);ctx.fill();
-  ctx.fillStyle='rgba(255,255,255,'+(0.6*p.s)+')';ctx.beginPath();ctx.arc(p.x,p.y,rr*0.5,0,7);ctx.fill();}
+ // rotate a unit direction about the node's own centre; s is the depth cue
+ const rot=v=>{const x=v[0]*cb+v[2]*sb,z=-v[0]*sb+v[2]*cb;
+  return{x:x,y:v[1]*ca-z*sa,s:0.8+0.2*((v[1]*sa+z*ca+1)/2)};};
+ const px=r*view.k;
+ const sd=nodeSeed(n),AX=n._ax;
+ const P=FV.map(v=>{const p=rot(v);return{x:n.x+p.x*r,y:n.y+p.y*r,s:p.s,t:gradT(v,AX,sd)};});
+ const hsla=(c,a)=>c.replace('hsl(','hsla(').replace(')',','+a+')');
+ /* THE CAGE, one hairline per edge rather than one path for all of them. A
+    single path is one strokeStyle and therefore one colour, which is exactly
+    the flat cluster the chord exists to replace; per-edge is thirty strokes
+    and each takes the chord at its own midpoint, so the cage varies across
+    the hull the way the stage's merged buffer does. */
+ ctx.lineWidth=(bright?1.1:0.7)/view.k;
+ for(const e of FE){const a=P[e[0]],b=P[e[1]];
+  ctx.globalAlpha=alpha*(0.34+0.42*(a.s+b.s)*0.5);
+  ctx.strokeStyle=chordCol(col,(a.t+b.t)*0.5,0);
+  ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}
+ /* THE JUNCTIONS — a lit point at each of the twelve corners, drawn additively
+    so two that overlap sum instead of one hiding the other. Sized in SCREEN px
+    and capped: a junction is a point of light, and one that grows with the hull
+    turns a large cage into a ring of blobs. FRAME_BEAD_R is the spec's own
+    ratio of junction to hull, which is what keeps a big cage's joints bigger
+    than a speck's without letting them grow without limit. */
+ const vr=Math.min(3.0,Math.max(1.2,px*CL.FRAME_BEAD_R*0.5))/view.k;
+ ctx.globalCompositeOperation='lighter';
+ for(const p of P){const rr=vr*p.s;ctx.globalAlpha=alpha*(0.45+0.45*p.s);
+  ctx.fillStyle=chordCol(col,p.t,6);
+  ctx.beginPath();ctx.arc(p.x,p.y,rr,0,7);ctx.fill();
+  // the white highlight in the middle of a joint, the same one the stage's
+  // point shader writes
+  ctx.fillStyle='rgba(255,255,255,'+(0.55*p.s)+')';
+  ctx.beginPath();ctx.arc(p.x,p.y,rr*0.45,0,7);ctx.fill();}
+ ctx.globalCompositeOperation='source-over';
  ctx.globalAlpha=1;}
 function draw(){
  ctx.setTransform(1,0,0,1,0,0);bg();
@@ -647,10 +761,14 @@ function draw(){
   g.addColorStop(1,col.replace('hsl(','hsla(').replace(')',',0)'));
   ctx.fillStyle=g;ctx.beginPath();ctx.arc(n.x,n.y,gr,0,7);ctx.fill();}
  ctx.globalCompositeOperation='source-over';
- // node bodies — rotating dodecahedra (dot fallback when very dense)
+ // node bodies — rotating cages (dot fallback when very dense)
+ // 250 again: a cage is thirty strokes and twelve joints, which is what the
+ // platonic solid before it cost. It came down to 180 for the subdivided
+ // version (120 strokes plus a halo pass and an interior cloud, all on the
+ // CPU) and that version is gone. The fallback is the same dot it always was.
  const dod=VARR.length<=250;
  for(const n of VARR){const on=!hi||hi.has(n.id);const r=size(n)*(1+0.05*Math.sin(T*1.5+(n._ph||0)));const col=color(n);const df=dimf(n);
-  if(dod&&r>=6){drawDodec(n,r,col,(on?1:0.3)*df,!!(hi&&hi.has(n.id)));}
+  if(dod&&r>=6){drawCluster(n,r,col,(on?1:0.3)*df,!!(hi&&hi.has(n.id)));}
   else{ctx.globalAlpha=(on?1:0.28)*df;ctx.beginPath();ctx.arc(n.x,n.y,r,0,7);ctx.fillStyle=col;ctx.fill();
    ctx.beginPath();ctx.arc(n.x-r*0.28,n.y-r*0.28,r*0.42,0,7);ctx.fillStyle='rgba(255,255,255,'+(on?0.45:0.14)+')';ctx.fill();ctx.globalAlpha=1;}
   if(hasKids(n.id)&&!expanded.has(n.id)){ctx.lineWidth=1.3/view.k;ctx.strokeStyle='rgba(255,255,255,'+(on?0.7:0.2)+')';ctx.beginPath();ctx.arc(n.x,n.y,r+3.5/view.k,0,7);ctx.stroke();}}
@@ -704,9 +822,15 @@ document.getElementById('expand').onclick=()=>{for(const id in N)if(hasKids(id))
 document.getElementById('collapse').onclick=()=>{expanded.clear();expanded.add('root:');refresh();setTimeout(fit,300);};
 document.getElementById('fit').onclick=fit;
 document.getElementById('reset').onclick=()=>{view={x:0,y:0,k:0.8};temp=1;};
+/* a repo name is a DIRECTORY NAME off disk — the one string in this page that
+   an attacker picks, by shipping a repo with that name. This page is served
+   same-origin with the SPA and under the same 'unsafe-inline' CSP, so script
+   injected here reaches the API token. */
+function hx(s){return String(s==null?'':s).replace(/[&<>"']/g,
+  c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function buildLegend(){const el=document.getElementById('legend');
  if(VIEW==='code'){const seen=[...new Set(VARR.map(n=>n.repo))].filter(r=>r!=='root').slice(0,8);
-  el.innerHTML=seen.map(r=>'<span><i style="background:'+rcol[r]+'"></i>'+r+'</span>').join('');return;}
+  el.innerHTML=seen.map(r=>'<span><i style="background:'+hx(rcol[r])+'"></i>'+hx(r)+'</span>').join('');return;}
  const kinds=[['component','component'],['concept','concept'],['service','service'],['model','model'],['module','module'],['lesson','lesson'],['agent','agent']];
  const present=new Set(VARR.map(n=>n.type));
  el.innerHTML=kinds.filter(k=>present.has(k[0])).map(([t,lbl])=>'<span><i style="background:'+(TYPES[t]||'#888')+'"></i>'+lbl+'</span>').join('');}
@@ -849,9 +973,39 @@ def build_memory_hierarchy(project_path, proj_folder=None):
     return {'nodes': list(nodes.values()), 'dep_edges': edges, 'meta': meta}
 
 
+def _script_json(obj):
+    """JSON safe to drop straight into a <script> block.
+
+    Three things end a JS string that JSON does not escape: `</script`, and
+    U+2028 / U+2029, which are JS line terminators. ensure_ascii=False (kept,
+    because the graph is full of non-ASCII names and the file is served UTF-8)
+    is what lets the last two through raw.
+    """
+    return (json.dumps(obj, ensure_ascii=False)
+            .replace('</', '<\\/')
+            .replace('\u2028', '\\u2028')
+            .replace('\u2029', '\\u2029'))
+
+
 def render_html(graph, memory=None, default_view='code'):
-    payload = json.dumps(graph, ensure_ascii=False).replace('</', '<\\/')
-    mem_payload = json.dumps(memory or {}, ensure_ascii=False).replace('</', '<\\/')
+    """The graph page, with the cluster spec substituted into it.
+
+    This view draws the SAME object the GUI's stage and the site's journey do,
+    and `claude_sessions/cluster_spec.py` is the one place its proportions live
+    — imported here rather than generated, because Python can import Python.
+    The other two read a generated copy of the same table.
+
+    The fidelity ceiling is honest and worth stating: this is a 2D canvas, and
+    it is written to a file that is opened over `file://`, where the GUI's
+    `/vendor/three.module.min.js` is unreachable. So it takes the SPEC, not the
+    shaders — the same proportions, the same layer stack, the same per-cluster
+    chord and the same hue ratios, drawn with gradients and composite modes
+    instead of glass and light. What it must NOT take is the reference's
+    placement or its palette: positions come from the force layout and colours
+    from TYPE_COLORS, and both are real data about a real project.
+    """
+    payload = _script_json(graph)
+    mem_payload = _script_json(memory or {})
     if not memory:
         default_view = 'code'
     title = _htmlmod.escape(graph['meta'].get('project_name', 'project'))
@@ -860,8 +1014,26 @@ def render_html(graph, memory=None, default_view='code'):
             .replace('__MEMORY_JSON__', mem_payload)
             .replace('__DEFAULT_VIEW__', json.dumps(default_view))
             .replace('__COLORS_JSON__', json.dumps(TYPE_COLORS))
+            .replace('__CLUSTER_JSON__', json.dumps(_cluster_payload()))
             .replace('__AUTOEXP__', str(AUTO_EXPAND_NODES))
             .replace('__TITLE__', title))
+
+
+def _cluster_payload():
+    """The subset of the cluster spec a 2D canvas can actually spend.
+
+    Named explicitly rather than shipping the whole module: the conduit's
+    coaxial radii and the shader thresholds mean nothing here, and a payload
+    that carries them invites someone to use one."""
+    return {k: getattr(_spec, k) for k in (
+        'FRAME_HALF', 'FRAME_CORE_HALF', 'FRAME_BEAD_R', 'FRAME_EDGES',
+        'FRAME_NODES',
+        'SHELL_BEAD_R', 'CORE_R', 'SEED_R', 'CORE_ENERGY_R', 'CORE_SHELL_R',
+        'FRAME_BEAD_HOT', 'FRAME_BEAD_ENERGY',
+        'WEB_R', 'MOTE_R', 'ORBIT_R', 'MOTE_GOLD', 'MOTE_WHITE',
+        'SHELL_SPLIT', 'FILAMENT_MIX', 'LOD_BREAKS',
+        'HUB_HOUSING', 'HUB_GLASS', 'HUB_ENERGY', 'HUB_HOT',
+    )}
 
 
 # semantic-memory node colors (memory / both views); code view keeps repo hues
@@ -877,7 +1049,7 @@ TYPE_COLORS = {
 def graph_html_path(project_path, proj_folder=None):
     for base in (project_path, proj_folder):
         if base:
-            return os.path.join(base, '.claudectl', 'connections-graph.html')
+            return _store.workfile(base, 'connections-graph.html')
     return ''
 
 
@@ -886,8 +1058,7 @@ def write_graph_html(graph, project_path, proj_folder=None, memory=None, default
         if not base:
             continue
         try:
-            d = os.path.join(base, '.claudectl')
-            os.makedirs(d, exist_ok=True)
+            d = _store.workdir(base)
             p = os.path.join(d, 'connections-graph.html')
             with open(p, 'w', encoding='utf-8') as f:
                 f.write(render_html(graph, memory=memory, default_view=default_view))
@@ -925,7 +1096,7 @@ def connections_screen(project_path, proj_folder, project_name):
     R, D = _c.C_RESET, _c.C_DIM
     while True:
         c = graph['meta']['counts']
-        frame = [render.header('CLAUDECTL', project_name, 'ARCHITECTURE'), '', render.hline(), '']
+        frame = [render.header('ARCHEUS', project_name, 'ARCHITECTURE'), '', render.hline(), '']
         langs = graph['meta'].get('languages') or []
         lang_str = '  '.join(f"{n} {k}" for n, k in langs[:6]) or '?'
         frame.append(f"  {D}Languages   {R}{render.trunc(lang_str, render.content_width() - 18)}")
@@ -973,7 +1144,7 @@ def connections_screen(project_path, proj_folder, project_name):
                 msg = (f"Memory built: {n_ent} entities" if n_ent
                        else "Claude returned no entities (cancelled or empty)")
                 if n_ent and pend:
-                    msg += f" — coverage incomplete ({pend} units pending, raise memory_max_calls)"
+                    msg += f" — {pend} module(s) still queued (run again to finish)"
                 flash(msg, ok=bool(n_ent), secs=2.5 if pend else 1.8)
             except Exception as e:
                 flash(f"Memory build failed: {e}", ok=False, secs=2)
@@ -1005,5 +1176,5 @@ def connections_screen(project_path, proj_folder, project_name):
                     ans = memory.ask_memory(project_path, proj_folder, q)
                 except Exception as e:
                     ans = f"(failed: {e})"
-                pager(('CLAUDECTL', project_name, 'ASK'),
+                pager(('ARCHEUS', project_name, 'ASK'),
                       (ans or '(no answer)').splitlines(), hint='ESC back')

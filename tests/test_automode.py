@@ -148,7 +148,7 @@ def test_the_hook_records_a_non_bash_denial(tmp_path, monkeypatch):
     assert got[0]['command'] == 'C:/secrets/.env'
     assert got[0]['reason'] == 'Blocked by classifier'
     # and it did NOT go in the bash log, which answers a different question
-    assert not os.path.exists(os.path.join(str(tmp_path), '.claudectl', 'bash-log.txt'))
+    assert not os.path.exists(os.path.join(str(tmp_path), '.archeus', 'bash-log.txt'))
 
 
 def test_the_hook_without_the_flag_is_still_the_bash_log(tmp_path, monkeypatch):
@@ -158,7 +158,7 @@ def test_the_hook_without_the_flag_is_still_the_bash_log(tmp_path, monkeypatch):
                'tool_input': {'command': 'pytest -x'}}
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
     assert logbash_hook.main([]) == 0
-    log = os.path.join(str(tmp_path), '.claudectl', 'bash-log.txt')
+    log = os.path.join(str(tmp_path), '.archeus', 'bash-log.txt')
     assert open(log, encoding='utf-8').read().strip() == 'pytest -x'
     assert automode.denials(str(tmp_path)) == []
 

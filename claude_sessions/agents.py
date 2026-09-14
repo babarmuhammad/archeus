@@ -81,6 +81,39 @@ def list_agents(scope_dir):
     return out
 
 
+#: what an agent with no `category:` is filed under. A word, not an empty
+#: string, because it is a heading the reader sees.
+NO_CATEGORY = 'Uncategorised'
+
+
+def category_of(path):
+    """The agent's category, from its own frontmatter.
+
+    The library gets its categories from the folder tree, but a user or project
+    agent lives flat in `.claude/agents/` — Claude Code reads that one
+    directory, so a subfolder per category would hide every agent in it. The
+    category rides in the frontmatter instead, where an unknown key is simply
+    ignored by Claude Code and preserved by `write_agent`.
+    """
+    meta, _ = parse_agent(path)
+    return (meta.get('category') or '').strip() or NO_CATEGORY
+
+
+def installed_categories():
+    """Every category name actually in use by an installed agent, sorted.
+
+    Offered beside the library's folder names when you file a new agent, so the
+    second agent in a category you invented lands in the same one rather than
+    in "Reviewers" beside "reviewers".
+    """
+    seen = set()
+    for r in all_installed():
+        c = r.get('category') or ''
+        if c and c != NO_CATEGORY:
+            seen.add(c)
+    return sorted(seen)
+
+
 def _slug(name):
     return re.sub(r'[^a-z0-9-]+', '-', name.lower()).strip('-') or 'agent'
 
@@ -181,21 +214,31 @@ def _new_agent_manual(project_path):
         flash("Write failed", ok=False, secs=1.4)
 
 
-def _new_agent_ai(project_path):
-    scope_dir = _pick_category()
-    if not scope_dir:
-        return
-    claude = get_claude_exe()
-    if not claude:
-        _cls(); print("\n  claude.exe not found.\n"); pause("  Press Enter..."); return
-    name = text_input("Agent name (e.g. security-reviewer):")
-    if not name:
-        return
-    role = text_input("What should this agent do? (one line):") or name
+# ── AI-generated agents ──────────────────────────────────────
+#
+# Split into three non-interactive pieces plus a thin TUI wrapper, which is the
+# shape `skills.build_ai_prompt` / `skills.write_skill_raw` already uses and the
+# reason the skill generator works from both surfaces.
+#
+# `_new_agent_ai` used to BE the GUI's handler, and it is an interactive TUI
+# flow: `_pick_category()` opens a `menu()`, which is not one of the five
+# primitives `gui_api._install_bridge` patches. A job thread reaching it blocks
+# in `wait_event()` forever — the job stayed 'running' until the six-hour
+# reaper, which is exactly what "AI generate agents doesn't work" was. Four more
+# defects sat behind that one: `text_input` imported by value so the bridge's
+# input queue was never read even past the hang; two prompts asked for against
+# one field collected; the prompt passed on ARGV (the 32767-char CreateProcess
+# limit `memory._claude_stdin` exists to avoid) with no cwd, no HEADLESS_MARK
+# and no budget cap; and the file written into archeus's own read-only
+# library, where Claude Code does not look for installed agents.
 
-    from .claude_md import _build_ai_context, _pager_confirm
+
+def build_ai_prompt(name, role, project_path=None):
+    """The authoring prompt. Pure — shared by the TUI flow and the GUI job so
+    both produce identical output."""
+    from .claude_md import _build_ai_context
     ctx = _build_ai_context(project_path, None) if project_path else ''
-    prompt = (
+    return (
         f"Author a Claude Code subagent definition named '{name}'.\n"
         f"Purpose: {role}\n\n"
         + (f"PROJECT CONTEXT:\n{ctx}\n\n" if ctx else "")
@@ -211,27 +254,112 @@ def _new_agent_ai(project_path):
         "Do NOT create or write any files and do not use any tools — return the "
         "markdown text directly. No preamble, no code fences."
     )
+
+
+def write_agent_raw(md, name, scope='user', project_path=None, category=''):
+    """Write generated agent markdown where Claude Code actually reads it.
+
+    `~/.claude/agents/` or `<project>/.claude/agents/`, FLAT — the same
+    destination `gui_api.api_agent_create` uses for a hand-written agent, and
+    the one `category_of` documents: Claude Code reads that one directory, so a
+    subfolder per category would hide every agent inside it. The category rides
+    in the frontmatter instead.
+
+    Returns {'ok', 'path', 'name', 'error'}.
+    """
+    md = (md or '').strip()
+    if not md:
+        return {'ok': False, 'error': 'nothing to write', 'path': '', 'name': name}
+    d = (project_agents_dir(project_path) if scope == 'project' and project_path
+         else user_agents_dir())
+    path = os.path.join(d, f'{_slug(name)}.md')
+    if category.strip():
+        meta, body = _parse_md(md)
+        meta.setdefault('category', category.strip())
+        if write_agent(path, meta, body):
+            return {'ok': True, 'path': path, 'name': name, 'error': ''}
+        return {'ok': False, 'error': 'write failed', 'path': path, 'name': name}
+    try:
+        os.makedirs(d, exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(md if md.endswith('\n') else md + '\n')
+        return {'ok': True, 'path': path, 'name': name, 'error': ''}
+    except Exception as e:
+        return {'ok': False, 'error': str(e), 'path': path, 'name': name}
+
+
+def _parse_md(text):
+    """Frontmatter of a markdown STRING (parse_agent takes a path)."""
+    meta, body = {}, text
+    if text.startswith('---'):
+        end = text.find('\n---', 3)
+        if end != -1:
+            body = text[end + 4:].lstrip('\n')
+            for line in text[3:end].strip('\n').splitlines():
+                if ':' in line:
+                    k, v = line.split(':', 1)
+                    meta[k.strip()] = v.strip()
+    return meta, body
+
+
+def generate_agent_ai(name, role='', scope='user', project_path=None, category=''):
+    """Author an agent with Claude and write it. NON-INTERACTIVE — this is what
+    the GUI job calls, so it must not touch a keyboard primitive.
+
+    Goes through `memory._claude_stdin`, which is the one seam that supplies the
+    stdin prompt, the cwd, the HEADLESS_MARK, `--max-turns` and the
+    `--max-budget-usd` cap. Returns the same dict as `write_agent_raw`, so the
+    job has something to report; the old flow returned None and the UI could not
+    tell written from rejected from failed.
+    """
     from . import memory
+    name = (name or '').strip()
+    if not name:
+        return {'ok': False, 'error': 'no agent name given', 'path': '', 'name': ''}
     out = memory._claude_stdin(
-        prompt, project_path or None, timeout=120,
-        crumbs=('CLAUDECTL', 'AGENTS', name),
+        build_ai_prompt(name, role or name, project_path),
+        project_path or None, timeout=180,
+        crumbs=('ARCHEUS', 'AGENTS', name),
         label=f'Authoring agent {name} with Claude...  (15-60s)')
-    if memory.last_call_cancelled:
-        flash("Cancelled", ok=False); return
-    content = (out or '').strip()
+    if not (out or '').strip():
+        return {'ok': False, 'error': memory.why_failed('No output from Claude'),
+                'path': '', 'name': name}
+    return write_agent_raw(out, name, scope, project_path, category)
+
+
+def _new_agent_ai(project_path):
+    """TUI wrapper: collect the fields, generate, show the diff, write."""
+    from .claude_md import _pager_confirm
+    if not get_claude_exe():
+        _cls(); print("\n  claude.exe not found.\n"); pause("  Press Enter..."); return
+    name = text_input("Agent name (e.g. security-reviewer):")
+    if not name:
+        return
+    role = text_input("What should this agent do? (one line):") or name
+    scope = 'user'
+    if project_path:
+        scope = menu([('user  (every project)', 'user'),
+                      ('this project only', 'project')], "SCOPE")
+        if not scope:
+            return
+    category = text_input("Category (optional — archeus's own filing):") or ''
+
+    from . import memory
+    md = memory._claude_stdin(
+        build_ai_prompt(name, role, project_path), project_path or None,
+        timeout=180, crumbs=('ARCHEUS', 'AGENTS', name),
+        label=f'Authoring agent {name} with Claude...  (15-60s)')
+    content = (md or '').strip()
     if not content:
-        flash("No output from Claude", ok=False, secs=1.4); return
+        flash(memory.why_failed(), ok=False, secs=2.4); return
     if not _pager_confirm(f"AGENT  /  {name}  — approve to write", content):
         _cls(); print("\n  Rejected — not written.\n"); pause("  Press Enter..."); return
-    path = os.path.join(scope_dir, f"{_slug(name)}.md")
-    try:
-        os.makedirs(scope_dir, exist_ok=True)
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(content if content.endswith('\n') else content + '\n')
-        flash(f"Created {os.path.basename(path)}")
-        open_in_editor(path)
-    except Exception as e:
-        flash(f"Write failed: {e}", ok=False, secs=1.6)
+    r = write_agent_raw(content, name, scope, project_path, category)
+    if r['ok']:
+        flash(f"Created {os.path.basename(r['path'])}")
+        open_in_editor(r['path'])
+    else:
+        flash(f"Write failed: {r['error']}", ok=False, secs=1.6)
 
 
 def view_agent_file(path):
@@ -257,7 +385,7 @@ def view_agent_file(path):
             lines.append(raw[:cut])
             raw = raw[cut:].lstrip()
         lines.append(raw)
-    pager(('CLAUDECTL', os.path.basename(path), 'AGENT'), lines)
+    pager(('ARCHEUS', os.path.basename(path), 'AGENT'), lines)
 
 
 def _agent_detail(path):
@@ -429,7 +557,7 @@ def write_agents_json_tempfile(refs):
     js = build_agents_json(refs)
     if js == '{}':
         return ''
-    path = os.path.join(tempfile.gettempdir(), 'claudectl_agents.json')
+    path = os.path.join(tempfile.gettempdir(), 'archeus_agents.json')
     try:
         with open(path, 'w', encoding='utf-8') as f:
             f.write(js)
@@ -438,13 +566,13 @@ def write_agents_json_tempfile(refs):
         return ''
 
 
-_MANIFEST = '.claudectl-managed.json'
+_MANIFEST = '.archeus-managed.json'
 
 
 def sync_project_agents(project_path, refs, routed=None):
     """Make <project>/.claude/agents/ contain exactly the selected library
     agents. Claude auto-discovers them at launch — no command-line size limit.
-    Only files claudectl previously placed (tracked in a manifest) are removed,
+    Only files archeus previously placed (tracked in a manifest) are removed,
     so the user's own project agents are never touched. Returns count synced.
 
     When the session is *routed* to a non-Anthropic backend, the ``model:``
@@ -495,6 +623,9 @@ def sync_project_agents(project_path, refs, routed=None):
                 except Exception:
                     pass
 
+    # copy selected (strip model: frontmatter when routing via OmniRoute
+    # so agents inherit CLAUDE_CODE_SUBAGENT_MODEL instead of trying to
+    # call a bare Anthropic model id through the OmniRoute proxy)
     written = []
     for fn, src in desired.items():
         try:
@@ -526,12 +657,263 @@ def sync_project_agents(project_path, refs, routed=None):
             os.remove(manifest_path)
     except Exception:
         pass
+    # Installing an agent is only half of getting it used — see the note above
+    # write_routing_block. Refreshed here so the table can never describe a
+    # selection that is no longer on disk.
+    try:
+        write_routing_block(project_path)
+        write_agent_index(project_path)
+    except Exception:
+        pass
     return len(written)
 
 
 # Inline --agents JSON rides the command line (Windows ~32KB cap). Past this
 # many agents the launch can fail, so warn the user.
 SAFE_AGENT_LIMIT = 10
+
+
+# ── making the installed agents actually get used ────────────
+#
+# Copying agent files into <project>/.claude/agents/ makes them AVAILABLE.
+# It does not make them used: Claude Code decides to delegate by matching the
+# task against each agent's `description`, and library descriptions are written
+# as catalogue entries ("Use this agent when building server-side APIs…"), which
+# read as documentation rather than as a trigger. The result is the complaint
+# this exists to answer — a project carrying ten agents that never fire.
+#
+# The lever is CLAUDE.md, because it is the one thing read on EVERY turn. A
+# short delegation table there turns "these exist somewhere" into "for this kind
+# of work, hand it to this one". It is written from the agents' own frontmatter,
+# so it cannot drift from what is installed, and it is a sentinel block, so it
+# is replaced rather than appended and disappears when the selection empties.
+
+def _first_sentence(text, cap=150):
+    t = ' '.join((text or '').split())
+    # library descriptions open with "Use this agent when/for …" — that clause
+    # IS the trigger, so keep it and drop the rest of the catalogue prose
+    for stop in ('. ', '; '):
+        if stop in t:
+            t = t.split(stop)[0]
+            break
+    t = re.sub(r'(?i)^use (?:this|the) agent (?:when|for|to)\s*', '', t).strip()
+    return (t[:cap - 1] + '…') if len(t) > cap else t
+
+
+def routing_table(project_path):
+    """[(name, trigger)] for the agents installed in this project, in the order
+    Claude will see them."""
+    dest = os.path.join(project_path, '.claude', 'agents')
+    return [(name, _first_sentence(desc))
+            for name, desc, _model, _path in list_agents(dest)]
+
+
+#: what the per-turn nudge hook reads. A hook that fires on every prompt must
+#: not open and parse every agent file, so `sync_project_agents` writes this one
+#: small index instead — the cost rule this codebase learned from the recall
+#: hook's counters and the worklog hook's transcript re-scan.
+AGENT_INDEX = '.archeus-agents.json'
+
+_KW = re.compile(r'[a-z][a-z0-9+#._-]{2,}')
+_KW_STOP = {'the', 'and', 'for', 'with', 'this', 'that', 'when', 'use', 'used',
+            'using', 'agent', 'agents', 'code', 'project', 'file', 'files',
+            'from', 'into', 'your', 'you', 'are', 'was', 'has', 'have', 'not',
+            'but', 'can', 'all', 'any', 'run', 'make', 'need', 'want', 'like',
+            'also', 'more', 'than', 'then', 'them', 'invoke', 'proactively'}
+
+
+def keywords_for(name, description, cap=24):
+    """The words that should make this agent come to mind.
+
+    Taken from the description because that is what Claude Code itself matches
+    on — the hook and the model are then looking at the same text, rather than
+    at two ideas of what the agent is for."""
+    words = [w for w in _KW.findall(('%s %s' % (name, description)).lower())
+             if w not in _KW_STOP]
+    seen, out = set(), []
+    for w in words:
+        if w not in seen:
+            seen.add(w)
+            out.append(w)
+    return out[:cap]
+
+
+def write_agent_index(project_path):
+    """Refresh `.claude/.archeus-agents.json` from what is installed."""
+    import json
+    dest = os.path.join(project_path, '.claude', 'agents')
+    rows = [{'name': name, 'keywords': keywords_for(name, desc)}
+            for name, desc, _m, _p in list_agents(dest)]
+    path = os.path.join(project_path, '.claude', AGENT_INDEX)
+    if not rows:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return 0
+    _c.write_atomic(path, json.dumps({'agents': rows}, indent=1))
+    return len(rows)
+
+
+def write_routing_block(project_path):
+    """Refresh the ARCHEUS:AGENTS block in <project>/CLAUDE.md from what is
+    actually installed. Removes it when no agents are. Returns the row count."""
+    from .claude_md import upsert_block
+    from .config import _AGENTS_START, _AGENTS_END, generated_note
+    rows = routing_table(project_path)
+    if not rows:
+        upsert_block(project_path, _AGENTS_START, _AGENTS_END, '')
+        return 0
+    lines = '\n'.join('- **%s** — %s' % (n, t or 'see its own description')
+                      for n, t in rows)
+    section = (
+        f"{_AGENTS_START}\n## Subagents available here (archeus — auto-maintained)\n"
+        + generated_note('the agents installed in .claude/agents/',
+                         'the Agents page, or any change to those files') + "\n\n"
+        "Delegate to one of these with the Agent tool when the work matches — "
+        "prefer a specialist over doing it inline, and say which one you used.\n\n"
+        f"{lines}\n{_AGENTS_END}\n")
+    upsert_block(project_path, _AGENTS_START, _AGENTS_END, section)
+    return len(rows)
+
+
+def sharpen_prompt(rows):
+    """The authoring prompt for rewriting descriptions into trigger form.
+
+    Only the `description` is touched, because it is the ONLY field Claude Code
+    matches a task against — rewriting the body would change what the agent does
+    while leaving the reason it never gets picked exactly as it was."""
+    listing = '\n'.join('- %s: %s' % (n, d or '(no description)') for n, d in rows)
+    return (
+        "Rewrite the `description` field of these Claude Code subagents so the "
+        "router actually picks them.\n\n"
+        "Claude Code chooses a subagent by matching the user's task against this "
+        "one field. A description written as a job title ('Expert backend "
+        "engineer') never matches anything; one written as a trigger does.\n\n"
+        "For each agent below, output exactly one line:\n"
+        "<name>|Use PROACTIVELY when <concrete trigger: the kind of task, the "
+        "file types, the words a user would actually type>. Do not use for "
+        "<the nearest thing it should NOT take>.\n\n"
+        "Rules: one line per agent, same order, no numbering, no commentary, no "
+        "code fences. Keep each under 220 characters. Preserve the agent's real "
+        "purpose — you are sharpening how it is found, not changing what it is.\n\n"
+        "AGENTS:\n" + listing)
+
+
+def apply_descriptions_dir(agents_dir, new_by_name):
+    """Write rewritten descriptions into one directory of agent files.
+
+    Frontmatter only: `write_agent` re-emits the file from (meta, body), so the
+    body is carried through byte-for-byte and a bad rewrite can only ever have
+    damaged one field. Knows nothing about projects, so it serves a project's
+    `.claude/agents`, an account's user-level agents and the library alike."""
+    done = []
+    for name, desc, _model, path in list_agents(agents_dir):
+        new = (new_by_name.get(name) or '').strip()
+        if not new or new == desc:
+            continue
+        meta, body = parse_agent(path)
+        meta['description'] = new
+        if write_agent(path, meta, body):
+            done.append(name)
+    return done
+
+
+def apply_descriptions(project_path, new_by_name):
+    """As above for a project, plus the two files that only a project has: the
+    CLAUDE.md routing table and the nudge hook's index."""
+    done = apply_descriptions_dir(project_agents_dir(project_path), new_by_name)
+    if done:
+        write_routing_block(project_path)
+        write_agent_index(project_path)
+    return done
+
+
+def all_installed():
+    """Every agent file archeus can reach, across every scope.
+
+    [{'scope','dir','project_path','account','name','desc','path'}] over each
+    account's user-level agents, each project's `.claude/agents`, and the
+    archeus library — so sharpening the library means every FUTURE install is
+    already sharp, not just the copies that exist today.
+
+    Best-effort per source: one unreadable project must not hide the rest.
+    """
+    out = []
+
+    def _add(scope, d, project_path='', account=''):
+        if not d or not os.path.isdir(d):
+            return
+        for name, desc, _model, path in list_agents(d):
+            out.append({'scope': scope, 'dir': d, 'project_path': project_path,
+                        'account': account, 'name': name,
+                        'desc': desc or '', 'path': path,
+                        'category': category_of(path)})
+
+    try:
+        for acct, cfgdir in _c.all_config_dirs():
+            _add('user', user_agents_dir(cfgdir), account=acct)
+    except Exception:
+        _add('user', user_agents_dir())
+    try:
+        from . import gui
+        seen = set()
+        for row in gui.list_projects():
+            p = row.get('path')
+            if not p or p in seen:
+                continue
+            seen.add(p)
+            _add('project', project_agents_dir(p), project_path=p,
+                 account=row.get('name', ''))
+    except Exception:
+        _c.log.exception('agents: project scan failed')
+    try:
+        for cat in list_categories():
+            _add('library', os.path.join(library_dir(), cat))
+    except Exception:
+        pass
+    return out
+
+
+def sharpen_groups(rows):
+    """Group installs by (name, description) — one prompt row, many writes.
+
+    A library agent copied into twelve projects is the SAME description twelve
+    times. Asking a model to rewrite it twelve times costs twelve times as much
+    and invites twelve different answers to the same question."""
+    groups = {}
+    for r in rows:
+        groups.setdefault((r['name'], r['desc']), []).append(r)
+    return groups
+
+
+def parse_sharpened(text):
+    """`name|description` lines → {name: description}. Tolerant: a model that
+    adds a stray blank line or a bullet must not lose the whole batch."""
+    out = {}
+    for line in (text or '').splitlines():
+        line = line.strip().lstrip('-*0123456789. ').strip()
+        if '|' not in line:
+            continue
+        name, _, desc = line.partition('|')
+        name, desc = name.strip().strip('`'), desc.strip()
+        if name and len(desc) > 10:
+            out[name] = desc[:400]
+    return out
+
+
+def usage(cfgdir=None):
+    """{agent_name: age_string} from Claude Code's own `agentLastUsed`.
+
+    The honest measure of whether any of this works, and it costs nothing —
+    `clientstate` already reads that file. An agent installed months ago and
+    never used is the thing to remove, not to explain."""
+    try:
+        from . import clientstate
+        return {r['name']: r.get('last_used', '')
+                for r in clientstate.usage_rollup(cfgdir).get('agents') or []}
+    except Exception:
+        return {}
 
 
 # ── per-session agent selection screen ───────────────────────

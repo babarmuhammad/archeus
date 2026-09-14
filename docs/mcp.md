@@ -1,6 +1,6 @@
 ---
 description: >-
-  Add, remove and inspect MCP servers from claudectl — connection state at a glance, a live
+  Add, remove and inspect MCP servers from archeus — connection state at a glance, a live
   status footer, and tool documentation written into the global CLAUDE.md.
 ---
 
@@ -13,7 +13,7 @@ description: >-
 
 Each analyzed server gets its own sentinel-delimited section in the global file, so
 re-running the analysis updates only that server — see
-[Global CLAUDE.md](reference.md#global-claudemd).
+[Global CLAUDE.md](configuration.md#global-claudemd).
 
-MCP servers also appear in the [context weight audit](token-economy.md), because their
+MCP servers also appear in the [context weight audit](usage.md), because their
 tool definitions ride in the model's context on every turn.

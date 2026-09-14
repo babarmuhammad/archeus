@@ -2,7 +2,7 @@
 
 WHY THIS EXISTS
 ---------------
-claudectl treated "the account" as a process-global, so hooks, plugins,
+archeus treated "the account" as a process-global, so hooks, plugins,
 marketplaces, user agents and the global CLAUDE.md all landed in whichever
 config dir was active when the module was imported — in practice the default
 one. Measured across five configured accounts:
@@ -33,7 +33,8 @@ import os
 from . import config as _c
 
 #: the surfaces a user provisions, in the order the report lists them
-KINDS = ('marketplaces', 'plugins', 'hooks', 'statusline', 'agents', 'claude_md')
+KINDS = ('marketplaces', 'plugins', 'hooks', 'statusline', 'agents', 'skills',
+         'claude_md')
 
 
 def _hooks_of(cfgdir):
@@ -76,6 +77,18 @@ def _agents_of(cfgdir):
             if fn.endswith('.md')}
 
 
+def _skills_of(cfgdir):
+    """Personal skills of one account: {name: dir}.
+
+    The same shape as `_agents_of` and for the same reason — a skill you wrote
+    is a property of you, not of whichever account happened to be active when
+    you saved it. `<cfgdir>/skills` is what Claude Code actually loads.
+    """
+    from . import skills
+    d = skills.personal_dir(cfgdir)
+    return {os.path.basename(sd): sd for _n, _desc, sd in skills.list_skills(d)}
+
+
 def _state(name, cfgdir):
     from . import statusline
     md = _c.global_claude_md_for(cfgdir)
@@ -86,6 +99,7 @@ def _state(name, cfgdir):
         'hooks': _hooks_of(cfgdir),
         'n_hooks': _n_hooks(cfgdir),
         'agents': _agents_of(cfgdir),
+        'skills': _skills_of(cfgdir),
         'statusline': statusline.is_installed(cfgdir),
         'claude_md': os.path.isfile(md) and bool(
             open(md, encoding='utf-8', errors='ignore').read().strip()),
@@ -106,6 +120,7 @@ def diff():
         'plugins': set(),
         'hooks': {},
         'agents': {},
+        'skills': {},
         'statusline': any(a['statusline'] for a in accts),
         'claude_md': next((a['claude_md_path'] for a in accts if a['claude_md']), ''),
     }
@@ -114,6 +129,7 @@ def diff():
         union['plugins'] |= a['plugins']
         union['hooks'].update(a['hooks'])
         union['agents'].update(a['agents'])
+        union['skills'].update(a['skills'])
 
     rows = []
     for a in accts:
@@ -123,6 +139,7 @@ def diff():
             'hooks': sorted('%s %s' % (e, ' '.join(k)[:40])
                             for e, k in set(union['hooks']) - set(a['hooks'])),
             'agents': sorted(set(union['agents']) - set(a['agents'])),
+            'skills': sorted(set(union['skills']) - set(a['skills'])),
             'statusline': union['statusline'] and not a['statusline'],
             'claude_md': bool(union['claude_md']) and not a['claude_md'],
         }
@@ -130,6 +147,7 @@ def diff():
             'name': a['name'], 'dir': a['dir'],
             'have': {'marketplaces': len(a['marketplaces']), 'plugins': len(a['plugins']),
                      'hooks': a['n_hooks'], 'agents': len(a['agents']),
+                     'skills': len(a['skills']),
                      'statusline': a['statusline'], 'claude_md': a['claude_md']},
             'missing': missing,
             'todo': sum(len(v) if isinstance(v, list) else int(bool(v))
@@ -151,14 +169,15 @@ def _plugin_source(marketplaces, key):
 def report(d=None):
     """The diff as lines, in the table shape the plan's Context section used."""
     d = d or diff()
-    head = ('account', 'plugins', 'mkts', 'hooks', 'stline', 'agents', 'CLAUDE.md')
-    out = ['  %-12s %8s %6s %6s %7s %7s %10s' % head,
-           '  ' + '-' * 62]
+    head = ('account', 'plugins', 'mkts', 'hooks', 'stline', 'agents', 'skills',
+            'CLAUDE.md')
+    out = ['  %-12s %8s %6s %6s %7s %7s %7s %10s' % head,
+           '  ' + '-' * 70]
     for r in d['accounts']:
         h = r['have']
-        out.append('  %-12s %8d %6d %6d %7s %7d %10s'
+        out.append('  %-12s %8d %6d %6d %7s %7d %7d %10s'
                    % (r['name'][:12], h['plugins'], h['marketplaces'], h['hooks'],
-                      'yes' if h['statusline'] else '-', h['agents'],
+                      'yes' if h['statusline'] else '-', h['agents'], h['skills'],
                       'yes' if h['claude_md'] else '-'))
     out.append('')
     if d['clean']:
@@ -169,7 +188,7 @@ def report(d=None):
             continue
         out.append('  %s — %d to add' % (r['name'], r['todo']))
         m = r['missing']
-        for kind in ('marketplaces', 'plugins', 'agents', 'hooks'):
+        for kind in ('marketplaces', 'plugins', 'agents', 'skills', 'hooks'):
             if m[kind]:
                 out.append('      %-13s %s' % (kind + ':', ', '.join(m[kind])[:90]))
         if m['statusline']:
@@ -194,11 +213,12 @@ def apply(d=None, kinds=KINDS, review=None, progress=None):
                      for r in d['accounts'] if r['have']['claude_md']), '')
     # re-read the union's own objects; the diff only carried their names
     full = {n: _state(n, dd) for n, dd in h.account_dirs()}
-    u_mkt, u_hooks, u_agents = {}, {}, {}
+    u_mkt, u_hooks, u_agents, u_skills = {}, {}, {}, {}
     for a in full.values():
         u_mkt.update(a['marketplaces'])
         u_hooks.update(a['hooks'])
         u_agents.update(a['agents'])
+        u_skills.update(a['skills'])
 
     done = []
 
@@ -253,6 +273,11 @@ def apply(d=None, kinds=KINDS, review=None, progress=None):
             except OSError as e:
                 step(name, 'agents', '%s: %s' % (fn, e), False)
 
+        for sk in (m['skills'] if 'skills' in want else []):
+            from . import skills as skills_mod
+            dest = skills_mod.install_skill(u_skills[sk], skills_mod.personal_dir(cfgdir))
+            step(name, 'skills', sk if dest else '%s: copy failed' % sk, bool(dest))
+
         if 'claude_md' in want and m['claude_md'] and union_md:
             text = open(union_md, encoding='utf-8', errors='ignore').read()
             ok = _c.write_atomic(_c.global_claude_md_for(cfgdir), text)
@@ -262,7 +287,7 @@ def apply(d=None, kinds=KINDS, review=None, progress=None):
 
 
 def main(argv=None):
-    """`claudectl sync-accounts [--yes] [--dry-run]` — show the diff, then level up.
+    """`archeus sync-accounts [--yes] [--dry-run]` — show the diff, then level up.
 
     `--yes` IS the review gate on this path, which is why the report above it
     names every plugin and marketplace by hand. The GUI and TUI pass

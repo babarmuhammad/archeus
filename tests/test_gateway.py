@@ -212,7 +212,7 @@ def test_the_ping_timer_covers_the_whole_stream_not_just_the_first_byte():
 
 def test_the_gateway_refuses_to_target_anthropic():
     """It substitutes the user's own upstream credential into everything it
-    forwards. Aiming it at Anthropic would be a claudectl-built request wearing
+    forwards. Aiming it at Anthropic would be a archeus-built request wearing
     the Anthropic client's endpoint -- the exact traffic shape Anthropic has
     taken enforcement action over elsewhere."""
     for bad in ('https://api.anthropic.com', 'https://claude.ai/x',
@@ -273,7 +273,7 @@ def test_failover_still_wins_the_front_position():
 
 def test_count_tokens_is_answered_rather_than_404ed():
     """Claude Code asks before falling back. Answering with the same chars//4
-    floor claudectl uses elsewhere beats a 404 on every turn."""
+    floor archeus uses elsewhere beats a 404 on every turn."""
     n = gateway._estimate_tokens({'system': [{'type': 'text', 'text': 'x' * 400}],
                                   'messages': [{'role': 'user', 'content': 'y' * 400}]})
     assert 150 < n < 250

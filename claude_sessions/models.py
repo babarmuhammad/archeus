@@ -2,7 +2,7 @@
 
 Four things worth knowing before changing this:
 
-- **The credential already exists.** claudectl holds no Anthropic API key and
+- **The credential already exists.** archeus holds no Anthropic API key and
   deliberately strips one from every launch env (accounts._env_for), but Claude
   Code's own OAuth token — the one `usage.py` reads for the plan meters — is
   accepted by `GET /v1/models` (scope `user:inference`). So a live catalogue
@@ -58,14 +58,14 @@ _DATED = re.compile(r'-\d{8}$')
 
 
 def _cache_path():
-    return os.path.join(_c.config_dir, 'claudectl-models.json')
+    return os.path.join(_c.config_dir, 'archeus-models.json')
 
 
 def alias(model_id):
     """'claude-haiku-4-5-20251001' -> 'claude-haiku-4-5'.
 
     The API answers with the pinned snapshot id; Claude Code's --model takes the
-    alias, and that is what claudectl has always stored in settings. Stripping a
+    alias, and that is what archeus has always stored in settings. Stripping a
     trailing -YYYYMMDD is the whole rule — dateless ids from the 4.6 generation
     on are already their own alias.
     """
@@ -93,7 +93,7 @@ def _token():
 
 
 def _row(m):
-    """One API model object reduced to what claudectl renders."""
+    """One API model object reduced to what archeus renders."""
     mid = alias(m.get('id'))
     eff = ((m.get('capabilities') or {}).get('effort') or {})
     return {
@@ -135,7 +135,7 @@ def fetch(refresh=False):
             'Authorization': 'Bearer %s' % token,
             'anthropic-beta': 'oauth-2025-04-20',
             'anthropic-version': '2023-06-01',
-            'User-Agent': 'claudectl',
+            'User-Agent': 'archeus',
         })
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
             doc = json.loads(resp.read().decode('utf-8', 'ignore'))
@@ -255,7 +255,7 @@ def refresh_in_background():
         try:
             fetch()
         except Exception:
-            pass       # a catalogue refresh must never be why claudectl misbehaves
+            pass       # a catalogue refresh must never be why archeus misbehaves
 
     threading.Thread(target=_work, daemon=True).start()
 

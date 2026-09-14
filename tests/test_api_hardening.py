@@ -30,7 +30,7 @@ def _serve():
 def _req(url, body=None, raw=None):
     data = raw if raw is not None else (
         json.dumps(body).encode() if body is not None else None)
-    r = urllib.request.Request(url, data=data, headers={'X-Claudectl': gui.TOKEN},
+    r = urllib.request.Request(url, data=data, headers={'X-Archeus': gui.TOKEN},
                                method='POST' if data is not None else 'GET')
     try:
         with urllib.request.urlopen(r) as resp:

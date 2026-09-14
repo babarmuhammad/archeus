@@ -10,7 +10,7 @@ Setup (once):
 
 Usage:
     py tools/capture_graph_gif.py --project . --frames 48 --out docs/graph-real.gif
-    py tools/capture_graph_gif.py --html "D:\\repos\\.claudectl\\connections-graph.html"
+    py tools/capture_graph_gif.py --html "D:\\repos\\.archeus\\connections-graph.html"
 
 Notes:
   --project builds/uses that project's graph (defaults to the current dir).

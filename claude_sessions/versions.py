@@ -1,14 +1,23 @@
-"""What version of Claude Code — or a plugin, or claudectl itself — is
+"""What version of Claude Code — or a plugin, or archeus itself — is
 installed, what has been released, and updating it.
 
 Five things worth knowing before changing this:
 
-- **claudectl's own update cannot run in claudectl.** pip rewrites the console
-  script (`Scripts/claudectl.exe`) on every upgrade, and Windows holds that file
-  open for as long as it is the running process, so the install dies with a
-  PermissionError. `update_self()` therefore *schedules* the upgrade into a new
-  window that waits for this PID to exit — which is also what makes "update now"
-  and "update automatically on quit" one code path rather than two.
+- **archeus's own update runs beside archeus, not inside it.** pip rewrites the
+  console script (`Scripts/archeus.exe`) on every upgrade and Windows holds that
+  file open while it is the running image, so an in-process install dies — and
+  measurably worse than "dies": pip uninstalls the old package FIRST and then
+  fails on the script, leaving nothing installed at all. `update_self()`
+  therefore hands the install to a detached, windowless worker, which moves a
+  locked script aside (a running image can be renamed, just not overwritten)
+  and puts it back if the install fails. *Update now* installs immediately,
+  with archeus still open; *install on quit* is the same worker told to wait for
+  this PID first.
+
+- **Nothing in that chain may run on `pythonw`.** The desktop shell does, so
+  `sys.executable` is `pythonw.exe`, and a pythonw child writing to an inherited
+  file handle gets `sys.stdout = None`: pip exits 1 having printed nothing, not
+  even its traceback. Every spawn here goes through `proc.python_exe()`.
 
 - **There is no official version-list endpoint.** The docs advertise
   `downloads.claude.ai/claude-code-releases/{latest,stable}/manifest.json`;
@@ -37,8 +46,6 @@ import os
 import re
 import sys
 import time
-import urllib.error
-import urllib.request
 
 from . import config as _c
 from . import jsonstore
@@ -49,7 +56,7 @@ __all__ = ['installed_version', 'install_mode', 'local_versions', 'released',
            'status', 'update_claude', 'plugin_rows', 'update_plugin',
            'update_marketplaces', 'updates_menu',
            'self_installed', 'self_install_mode', 'self_released',
-           'self_status', 'update_self', 'update_notice',
+           'self_status', 'update_self', 'update_notice', 'console_scripts',
            'start_background_check', 'update_on_quit']
 
 #: npm metadata for the published package. The `abbreviated` accept header keeps
@@ -60,25 +67,31 @@ NPM_ACCEPT = 'application/vnd.npm.install-v1+json'
 CACHE_TTL = 3600
 _TIMEOUT = 20
 
-#: claudectl publishes to PyPI from every v* tag (.github/workflows/release.yml),
+#: archeus publishes to PyPI from every v* tag (.github/workflows/release.yml),
 #: so PyPI is both the release record AND the thing an update installs from —
 #: unlike Claude Code, whose npm metadata is a stand-in for a missing endpoint.
-SELF_PKG = 'claudectl'
+SELF_PKG = 'archeus'
 PYPI_URL = 'https://pypi.org/pypi/%s/json' % SELF_PKG
-#: a day, not an hour: claudectl releases are not hourly, and this check runs
+#: a day, not an hour: archeus releases are not hourly, and this check runs
 #: unattended on a background thread rather than when a screen is opened.
 SELF_TTL = 86400
 
 
 def _cache_path():
-    return os.path.join(_c.config_dir, 'claudectl-versions.json')
+    return os.path.join(_c.config_dir, 'archeus-versions.json')
+
+
+def _update_log_path():
+    """Where the detached upgrade worker writes. It has no console, so this
+    file is the only record of a failed install."""
+    return os.path.join(_c.config_dir, 'archeus-update.log')
 
 
 def _self_cache_path():
     """A separate file from _cache_path(), deliberately: released() writes its
     whole document, so sharing one file would mean one fetch erasing the
     other's answer."""
-    return os.path.join(_c.config_dir, 'claudectl-self.json')
+    return os.path.join(_c.config_dir, 'archeus-self.json')
 
 
 def _ver_key(v):
@@ -137,6 +150,10 @@ def released(refresh=False):
              and time.time() - float(cached.get('fetched') or 0) < CACHE_TTL)
     if fresh and not refresh:
         return dict(cached, error='')
+    # imported HERE, not at module level: urllib pulls ssl and http.client, and
+    # this module is on the path of `archeus --version` and of the version
+    # banner — neither of which fetches anything.
+    import urllib.error, urllib.request
     try:
         req = urllib.request.Request(NPM_URL, headers={'Accept': NPM_ACCEPT})
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
@@ -196,10 +213,10 @@ def update_claude(target=''):
     return plugins._claude_cli(args, timeout=900)
 
 
-# ── claudectl itself ─────────────────────────────────────────
+# ── archeus itself ─────────────────────────────────────────
 
 def _source_version():
-    """The version out of the checkout's pyproject.toml, for a claudectl that is
+    """The version out of the checkout's pyproject.toml, for an archeus that is
     not an installed distribution at all (`python claude-sessions.py`).
 
     Parsed with a regex rather than tomllib: requires-python is >=3.10 and
@@ -214,15 +231,43 @@ def _source_version():
     return m.group(1) if m else ''
 
 
-def _dist():
-    """The installed claudectl distribution — but ONLY when it is the one this
-    process is actually running from.
+def _running_from_source():
+    """Is the code in this process the working tree rather than an installed
+    copy? A repository marker beside the package is the signal.
 
-    A checkout early on sys.path shadows an installed copy: `distribution()`
-    still finds the site-packages dist-info, and believing it would mean
-    reporting the wrong version and pip-upgrading a package the running process
-    is not using. Same class of mistake as trusting a decoded folder name.
+    It has to be the LAYOUT and not the metadata, because the metadata lies: one
+    `pip install -e .` or one `setup.py build` leaves `<repo>/archeus.egg-info`
+    behind, `importlib.metadata` finds it (the checkout is first on sys.path),
+    and it reports whatever version it was built at, for ever. Nothing removes
+    it and nothing updates it.
     """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return any(os.path.exists(os.path.join(root, name))
+               for name in ('pyproject.toml', 'setup.py', '.git'))
+
+
+def _dist():
+    """The installed archeus distribution — but ONLY when it is the one this
+    process is actually running from, and only when it is INSTALLED at all.
+
+    Two ways to be wrong, and both have happened:
+
+    - a checkout early on sys.path shadows an installed copy, so
+      `distribution()` finds the site-packages dist-info while the code actually
+      running is the working tree;
+    - the reverse, which is worse because it looks like a healthy install: a
+      stale `archeus.egg-info` sitting IN the checkout. Measured here — a 2.2.0
+      working tree called itself a 2.1.0 pip install, so the banner offered
+      2.2.0, pip answered "Requirement already satisfied" about a site-packages
+      copy this process was not running, and the restart showed 2.1.0 and
+      offered the update again. That loop is what the user reported as "it
+      installs, then tells me a new version is available".
+
+    Same discipline as checkpoints.py: what is on disk decides, not what a
+    record claims about it.
+    """
+    if _running_from_source():
+        return None
     try:
         from importlib.metadata import distribution
         d = distribution(SELF_PKG)
@@ -245,7 +290,7 @@ _SELF_VER = None
 
 
 def self_installed():
-    """'1.6.0' — the running claudectl's version, or '' when it cannot be told."""
+    """'1.6.0' — the running archeus's version, or '' when it cannot be told."""
     global _SELF_VER
     if _SELF_VER is None:
         d = _dist()
@@ -260,7 +305,7 @@ def self_installed():
 
 
 def self_install_mode():
-    """'pipx' | 'pip' | 'checkout' | '' — which installer owns claudectl.
+    """'pipx' | 'pip' | 'checkout' | '' — which installer owns archeus.
 
     The same job install_mode() does for Claude Code, and it exists for the same
     reason: it decides what an update even means. `pipx upgrade` and
@@ -294,7 +339,7 @@ def self_install_mode():
 
 
 def self_released(refresh=False):
-    """{'latest','fetched','error'} for the published claudectl, read from PyPI.
+    """{'latest','fetched','error'} for the published archeus, read from PyPI.
 
     Daily disk cache, and a failed fetch keeps the cached answer with the error
     beside it — the same contract as released(), for the same reason: a stale
@@ -305,9 +350,10 @@ def self_released(refresh=False):
              and time.time() - float(cached.get('fetched') or 0) < SELF_TTL)
     if fresh and not refresh:
         return dict(cached, error='')
+    import urllib.error, urllib.request     # see released(), same reason
     try:
         req = urllib.request.Request(
-            PYPI_URL, headers={'Accept': 'application/json', 'User-Agent': 'claudectl'})
+            PYPI_URL, headers={'Accept': 'application/json', 'User-Agent': 'archeus'})
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
             doc = json.loads(resp.read().decode('utf-8', 'ignore'))
     except (urllib.error.URLError, OSError, ValueError) as e:
@@ -321,7 +367,7 @@ def self_released(refresh=False):
 
 
 def self_status(refresh=False):
-    """"Is claudectl itself current?" in one dict — the payload the banner, the
+    """"Is archeus itself current?" in one dict — the payload the banner, the
     TUI screen and the GUI card all render."""
     cur = self_installed()
     rel = self_released(refresh=refresh)
@@ -333,7 +379,7 @@ def self_status(refresh=False):
 
 
 def update_notice():
-    """The one-line "claudectl N is out" banner, or ''.
+    """The one-line "archeus N is out" banner, or ''.
 
     CACHE ONLY — never a fetch. `ui.menu()` re-polls `banner_fn()` every 0.5
     seconds, so a network call on this path would be a stall twice a second,
@@ -346,8 +392,8 @@ def update_notice():
         return ''
     mode = (_c.load_settings().get('auto_update') or 'notify')
     tail = ('installing when you quit' if mode == 'auto'
-            else 'Updates ▸ Update claudectl')
-    return (f"  {_c.C_WARN}claudectl {latest} available{_c.C_RESET}  "
+            else 'Updates ▸ Update archeus')
+    return (f"  {_c.C_WARN}archeus {latest} available{_c.C_RESET}  "
             f"{_c.C_DIM}(you have {cur} — {tail}){_c.C_RESET}")
 
 
@@ -357,7 +403,7 @@ _bg_started = False
 def start_background_check():
     """Refresh the PyPI answer once, on a daemon thread, if today's is stale.
 
-    No re-poll loop (unlike usage.py's): claudectl's published version cannot
+    No re-poll loop (unlike usage.py's): archeus's published version cannot
     change in a way this process can act on while it runs, so one TTL-gated call
     per launch is the whole job. `self_released()` is already TTL-gated, so this
     is a no-op on every launch inside the day.
@@ -374,7 +420,7 @@ def start_background_check():
         try:
             self_released()
         except Exception:
-            pass          # a version check must never be why claudectl misbehaves
+            pass          # a version check must never be why archeus misbehaves
 
     threading.Thread(target=_work, daemon=True).start()
 
@@ -384,22 +430,40 @@ def update_on_quit():
 
     Reads the cache only — the same discipline as update_notice(), and for a
     stronger reason here: this runs during shutdown, where a hanging socket
-    would be a claudectl that will not close.
+    would be an archeus that will not close.
     """
     if (_c.load_settings().get('auto_update') or 'notify') != 'auto':
         return False, ''
     if not update_notice():
         return False, ''
-    return update_self()
+    return update_self(defer=True)
 
 
-def update_self():
-    """(ok, message). Schedules the upgrade into a NEW window that waits for
-    this process to exit before running it.
+def update_self(restart=False, defer=False, wait=0):
+    """(ok, message). Hands the upgrade to a detached, WINDOWLESS worker.
 
-    It cannot run in-process: pip rewrites the console script on every upgrade
-    and Windows holds that file open while it is the running process. Deferring
-    is also what makes "update now" and "update on quit" the same code path.
+    By default the install happens NOW, with archeus still open: the worker
+    moves the console script aside if this process has it locked (a running
+    image can be renamed, never overwritten) and pip writes a fresh one. The
+    running process keeps the code it loaded — a restart is what picks the new
+    version up — but the install itself no longer waits on anything.
+
+    *defer* is the other half: wait for this PID to exit first. That is what
+    "install on quit" means, and what *restart* needs, since relaunching while
+    the old process is still up would be two archeuses.
+
+    What it must NOT do is open a console. The worker may block on our pid, so a
+    terminal for it was a window that took the foreground and then showed
+    "Waiting for archeus to exit..." until the user quit — read, reasonably,
+    as the update having hung. It is detached with its output in a log file.
+
+    *wait* (seconds) makes this call BLOCK on the worker and report what
+    actually happened, instead of reporting that a worker was started. Only
+    useful without *defer*, and only for a caller that can afford to wait — the
+    GUI job thread can, the TUI menu cannot.
+
+    Both instructions travel in the ENVIRONMENT rather than in argv, so the
+    command line stays exactly what __main__'s --self-update dispatch parses.
 
     A checkout is reported rather than overwritten, exactly as update_claude()
     reports an npm install instead of installing the native build over it.
@@ -408,20 +472,87 @@ def update_self():
     if mode == 'checkout':
         return False, 'running from a checkout — update it with `git pull`'
     if not mode:
-        return False, 'claudectl is not an installed package — nothing to update'
+        return False, 'archeus is not an installed package — nothing to update'
+    py = proc.python_exe()          # never pythonw: pip dies with no stdout
     upgrade = (['pipx', 'upgrade', SELF_PKG] if mode == 'pipx' else
-               [sys.executable, '-m', 'pip', 'install', '-U', SELF_PKG])
-    # `-m claude_sessions`, not `-c <script>`: spawn_terminal goes through
-    # `cmd /c`, where a script argument carrying newlines or quotes is a quoting
-    # hazard. __main__ dispatches --self-update before it imports anything else,
-    # so the waiting process never holds a lazy import of the package pip is
-    # about to replace.
-    argv = ([sys.executable, '-m', 'claude_sessions', '--self-update',
-             str(os.getpid())] + upgrade)
-    p, err = proc.spawn_terminal(argv, title='claudectl update', keep_open=True)
+               [py, '-m', 'pip', 'install', '-U', SELF_PKG])
+    # `-m claude_sessions`, not `-c <script>`: a script argument carrying
+    # newlines or quotes is a quoting hazard on every platform. __main__
+    # dispatches --self-update before it imports anything else, so the waiting
+    # process never holds a lazy import of the package pip is about to replace.
+    argv = ([py, '-m', 'claude_sessions', '--self-update',
+             str(os.getpid() if (defer or restart) else 0)] + upgrade)
+    env = dict(os.environ)
+    latest = str((jsonstore.load(_self_cache_path(), {}) or {}).get('latest') or '')
+    env['ARCHEUS_UPDATE_TO'] = latest
+    env['ARCHEUS_FREE'] = json.dumps(console_scripts())
+    if restart:
+        # `-m claude_sessions` again rather than sys.argv[0]: the console script
+        # is the file pip is about to replace. `--gui` is forced when the
+        # command line has no arguments of its own, because the only caller of
+        # restart is the GUI and a detached TUI would come back invisible.
+        tail = [a for a in sys.argv[1:]] or ['--gui']
+        if '--gui' not in tail:
+            tail.append('--gui')
+        # sys.executable here, NOT python_exe(): the desktop app runs on
+        # pythonw precisely so it has no console window, and relaunching it
+        # on python.exe would bring it back with one.
+        env['ARCHEUS_RELAUNCH'] = json.dumps(
+            [sys.executable, '-m', 'claude_sessions'] + tail)
+    p, err = proc.spawn_detached(argv, env=env, log=_update_log_path())
     if not p:
-        return False, err or 'could not open a window for the update'
-    return True, 'Updating once claudectl exits — watch the new window'
+        return False, err or 'could not start the update worker'
+    if restart:
+        return True, 'Installing — archeus will close and come back'
+    if defer:
+        return True, 'Update staged — it installs when you close archeus'
+    if wait:
+        try:
+            rc = p.wait(timeout=wait)
+        except Exception:
+            return True, 'Still installing in the background — see the update log'
+        if rc:
+            return False, _last_update_error() or (
+                'the install failed — see %s' % _update_log_path())
+        return True, ('Installed %s — restart archeus to use it' % latest
+                      if latest else 'Installed — restart archeus to use it')
+    return True, 'Installing in the background — restart archeus to use it'
+
+
+def console_scripts():
+    """The files pip would rewrite that THIS process might have locked.
+
+    Only ever `<name>.exe` for our own distribution: the worker moves what this
+    names out of the way, so it must not be able to name an interpreter. On
+    POSIX nothing is locked and this is simply empty of effect.
+    """
+    import shutil
+    out = []
+    d = os.path.dirname(sys.executable or '')
+    for cand in (sys.argv[0] if sys.argv else '', shutil.which(SELF_PKG) or '',
+                 os.path.join(d, SELF_PKG + '.exe'),
+                 os.path.join(d, 'Scripts', SELF_PKG + '.exe')):
+        if not cand:
+            continue
+        cand = os.path.abspath(cand)
+        if (os.path.basename(cand).lower() == SELF_PKG + '.exe'
+                and os.path.isfile(cand) and cand not in out):
+            out.append(cand)
+    return out
+
+
+def _last_update_error():
+    """The line pip failed on, for a message the user can act on. The log is the
+    worker's only voice — it has no console by design."""
+    try:
+        with open(_update_log_path(), encoding='utf-8', errors='replace') as f:
+            lines = [ln.strip() for ln in f.read().splitlines()[-40:] if ln.strip()]
+    except OSError:
+        return ''
+    for ln in reversed(lines):
+        if ln.startswith('ERROR') or 'Error' in ln or ln.startswith('Failed'):
+            return ln[:200]
+    return lines[-1][:200] if lines else ''
 
 
 # ── plugins ──────────────────────────────────────
@@ -586,7 +717,7 @@ def _models_row(mst):
     picker is running on the bundled floor."""
     if not mst['live']:
         return (f"{_c.C_DIM}not fetched — the picker is showing "
-                f"claudectl's bundled list{_c.C_RESET}")
+                f"archeus's bundled list{_c.C_RESET}")
     age = mst['age']
     when = ('just now' if age < 90 else
             f"{int(age // 60)}m ago" if age < 5400 else
@@ -597,7 +728,7 @@ def _models_row(mst):
 
 
 def updates_menu():
-    """Versions of claudectl, of Claude Code and of every installed plugin, and
+    """Versions of archeus, of Claude Code and of every installed plugin, and
     updating any of them. A plugin can only be moved to whatever its marketplace
     offers, so the version prompt is offered for Claude Code alone."""
     from .ui import menu, flash, text_input, confirm
@@ -614,11 +745,11 @@ def updates_menu():
         refresh = False
         rows = plugin_rows()
         W = 62
-        items = [(_c.C_NAME + 'claudectl    ' + _c.C_RESET + _self_row(sst), None)]
+        items = [(_c.C_NAME + 'archeus    ' + _c.C_RESET + _self_row(sst), None)]
         if sst['mode']:
             items.append((f"{_c.C_DIM}  installed via {sst['mode']}{_c.C_RESET}", None))
         if sst['update']:
-            items.append((f"⬆  Update claudectl to {sst['latest']}", '__self__'))
+            items.append((f"⬆  Update archeus to {sst['latest']}", '__self__'))
         items.append((f"{'─' * W}", None))
         items.append((_c.C_NAME + 'Claude Code  ' + _c.C_RESET + _row(st), None))
         if st['mode'] and st['mode'] != 'native':

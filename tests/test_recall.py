@@ -113,3 +113,45 @@ def test_memory_status_line(monkeypatch, tmp_path):
     s = {'memory_prompt_hook': True, 'memory_budget': 600}
     line = recall.memory_status_line(actual, folder, s)
     assert 'tok always' in line and 'hook <=600/prompt' in line
+
+
+def test_a_preview_does_not_reinforce(monkeypatch, tmp_path):
+    """`hits` is a term in both the recall ranking and the eviction score, so a
+    preview that logged would let LOOKING at memory reshape it — and a preview
+    is opened repeatedly on the same query while you tune a prompt."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    actual, enc, folder, _ = sb.add_project('alpha')
+    memory.save_memory(actual, folder, _graph())
+    log = recall.hits_log_path(actual, folder)
+
+    r = recall.retrieve(actual, folder, 'usage limit parsing', log=False)
+    assert not r['empty'] and r['items']          # it really did retrieve
+    assert not os.path.exists(log), 'a preview reinforced the graph'
+
+    recall.retrieve(actual, folder, 'usage limit parsing')   # the real path
+    assert os.path.exists(log) and open(log).read().strip(), 'real recall stopped logging'
+
+
+def test_rule_estimates_carry_their_glob(monkeypatch, tmp_path):
+    """The filename cannot be decoded back to a unit (`_sanitize` maps every
+    non-alnum char to '_'), so the estimate has to carry what the rule file
+    itself declares — otherwise the UI can only show an opaque filename."""
+    from claude_sessions import memrules
+    sb = Sandbox(monkeypatch, tmp_path)
+    actual, enc, folder, _ = sb.add_project('alpha')
+    mem = _graph()
+    # a rule file needs >=2 entities in one (repo, module) unit
+    mem['entities'] += [
+        {'name': 'UsageCache', 'type': 'service', 'summary': 'caches usage lookups',
+         'repo': 'app', 'module': 'usage', 'source_files': ['app/usage_cache.py']}]
+    mem['summaries'] = {'app/usage': 'reading plan usage'}
+    memory.save_memory(actual, folder, mem)
+    memrules.sync_rules(actual, folder, mem)
+
+    est = recall.estimate_surfaces(actual, folder, {'memory_budget': 600})
+    assert est['rules'], 'no rule files written'
+    r = est['rules'][0]
+    assert isinstance(r, dict), 'rules must not be positional tuples on the wire'
+    assert r['file'].startswith('archeus-mem-') and r['tokens'] > 0
+    assert r['glob'] and r['glob'] != '**', f"unscoped glob {r['glob']!r}"
+    assert r['unit'].startswith('app/'), r['unit']

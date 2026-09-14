@@ -35,7 +35,6 @@ fetch — no new dependency.
 
 import json
 import shutil
-import subprocess
 import time
 import urllib.request
 import urllib.error
@@ -45,7 +44,7 @@ import urllib.error
 # healthy free model by a 12-factor score (health/quota/cost/latency/task
 # fit/...) and transparently swap to the next-best one on failure/exhaustion
 # via its circuit-breaker (resilience.mjs) — entirely server-side, invisible
-# to the `claude` client. No claudectl-side ranking or retry logic needed;
+# to the `claude` client. No archeus-side ranking or retry logic needed;
 # this IS "automatically choose best model, fall back when it runs out."
 AUTO_MODEL = 'auto/coding'
 
@@ -96,7 +95,7 @@ def prepare_launch(model, s=None, ctx_bytes=0):
         gok, gmsg = gateway.ensure_running(s)
         if not gok:
             raise RuntimeError(f'Gateway: {gmsg}')
-    # provider_env() has already pointed ANTHROPIC_BASE_URL at claudectl's own
+    # provider_env() has already pointed ANTHROPIC_BASE_URL at archeus's own
     # failover proxy when candidates are configured, so it must actually be up —
     # fail the launch rather than hand claude a dead base URL.
     from . import failover
@@ -476,7 +475,7 @@ def ensure_running(base_url, timeout=25):
     needs the user to have a terminal open. Uses OmniRoute's own `serve
     --daemon` (confirmed in bin/cli/commands/serve.mjs: spawns detached,
     server.unref()s, writes a PID file, returns immediately) rather than a
-    foreground process claudectl would have to babysit in a console window.
+    foreground process archeus would have to babysit in a console window.
 
     Returns (ok, message). Never raises.
     """
@@ -485,13 +484,9 @@ def ensure_running(base_url, timeout=25):
     exe = shutil.which('omniroute')
     if not exe:
         return False, 'OmniRoute not installed — run: npm install -g omniroute'
-    try:
-        from .proc import no_window_flags
-        subprocess.run([exe, 'serve', '--daemon'], capture_output=True,
-                       text=True, encoding='utf-8', errors='ignore', timeout=15,
-                       creationflags=no_window_flags)
-    except Exception as e:
-        return False, f'could not start OmniRoute: {e}'
+    from . import proc
+    if proc.run([exe, 'serve', '--daemon'], timeout=15) is None:
+        return False, 'could not start OmniRoute'
     deadline = time.time() + timeout
     while time.time() < deadline:
         if is_reachable(base_url, timeout=2):
@@ -514,12 +509,9 @@ def _cli(args, timeout=15):
     exe = shutil.which('omniroute')
     if not exe:
         return None
-    try:
-        from .proc import no_window_flags
-        r = subprocess.run([exe, *args], capture_output=True, text=True,
-                           encoding='utf-8', errors='ignore', timeout=timeout,
-                           creationflags=no_window_flags)
-    except Exception:
+    from . import proc
+    r = proc.run([exe, *args], timeout=timeout)
+    if r is None:
         return None
     start = r.stdout.find('{')
     if start == -1:

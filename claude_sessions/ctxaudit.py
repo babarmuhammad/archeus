@@ -25,15 +25,65 @@ SYSPROMPT_TOKENS_WARN = 500
 COMPACT_HEADING = '# Compact instructions'
 
 
+#: the user-owned fence. Every other sentinel in this codebase protects
+#: archeus's output from a human editing it; this one is the reverse, and it
+#: is the answer to "if I compress, do I lose what I wrote".
+_KEEP_RE = re.compile(re.escape(_c._KEEP_START) + r'.*?' + re.escape(_c._KEEP_END),
+                      re.S)
+
+
+def keep_regions(text):
+    """How many ARCHEUS:KEEP regions the text fences off."""
+    return len(_KEEP_RE.findall(text or ''))
+
+
+def protect_section(md_path, needle):
+    """Wrap the section containing `needle` in a KEEP fence. Returns True if
+    the file changed.
+
+    Section, not line: a heading and the prose under it are one idea, and a
+    fence around half of it protects half of it."""
+    try:
+        text = open(md_path, encoding='utf-8', errors='ignore').read()
+    except Exception:
+        return False
+    if not needle or needle not in text or _c._KEEP_START in text[
+            max(0, text.index(needle) - 400):text.index(needle)]:
+        return False
+    lines = text.splitlines(True)
+    idx = next((i for i, l in enumerate(lines) if needle in l), -1)
+    if idx < 0:
+        return False
+    start = idx
+    while start > 0 and not lines[start].lstrip().startswith('#'):
+        start -= 1
+    end = start + 1
+    while end < len(lines) and not lines[end].lstrip().startswith('#'):
+        end += 1
+    out = (lines[:start] + [_c._KEEP_START + '\n'] + lines[start:end]
+           + [_c._KEEP_END + '\n'] + lines[end:])
+    return bool(_c.write_atomic(md_path, ''.join(out)))
+
+
 def split_blocks(text):
     """Split CLAUDE.md text into its sentinel machine blocks and the manual
-    rest. Returns {'autogen','sessions','memory','manual'} ('' when absent)."""
+    rest. Returns {'autogen','sessions','memory','agents','loop','manual'}
+    ('' when absent).
+
+    `agents` and `loop` were missing, so archeus's own generated tables — the
+    subagent delegation table and the loop log — counted as MANUAL everywhere
+    this is used: the token audit attributed them to your prose, the CLAUDE.md
+    tab labelled them "yours — archeus never rewrites it unprompted", and AI
+    compression was handed them to reword. See `_MACHINE_BLOCKS`.
+    """
     manual = text or ''
     out = {}
     for key, (start, end) in (
             ('autogen',  (_c._AUTOGEN_START, _c._AUTOGEN_END)),
             ('sessions', (_c._SESSIONS_START, _c._SESSIONS_END)),
-            ('memory',   (_c._MEMORY_START, _c._MEMORY_END))):
+            ('memory',   (_c._MEMORY_START, _c._MEMORY_END)),
+            ('agents',   (_c._AGENTS_START, _c._AGENTS_END)),
+            ('loop',     (_c._LOOP_START, _c._LOOP_END))):
         if start in manual and end in manual:
             i, j = manual.index(start), manual.index(end) + len(end)
             out[key] = manual[i:j]
@@ -61,7 +111,12 @@ def _rule_is_lazy(text):
     for ln in lines[1:12]:
         if ln.strip() == '---':
             break
-        if re.match(r'^(globs|paths)\s*:', ln.strip()):
+        # `paths:` ONLY. Accepting `globs:` here is what let archeus's own
+        # rule files — which wrote `globs:` — be counted as lazy while Claude
+        # Code loaded every one of them into every session. The audit's whole
+        # job is the always-on total, so a false lazy is the worst answer it
+        # can give.
+        if re.match(r'^paths\s*:', ln.strip()):
             return True
     return False
 
@@ -91,6 +146,13 @@ def audit_items(project_path, proj_folder, settings=None):
             manual_warn.append("no '# Compact instructions' section — add one (i)")
         add('CLAUDE.md · manual content', tokens_estimate(blocks['manual']),
             md_path, warnings=manual_warn)
+        # what AI compression is forbidden to touch. Reported as its own line
+        # because "protected" is a fact about your file you should be able to
+        # SEE before you press compress, not one you find out afterwards.
+        n_keep = keep_regions(md)
+        if n_keep:
+            add(f'CLAUDE.md · protected ({n_keep} fenced)',
+                tokens_estimate(''.join(_KEEP_RE.findall(md))), md_path)
         if blocks['autogen']:
             add('CLAUDE.md · autogen (repos/commits)', tokens_estimate(blocks['autogen']),
                 md_path)
@@ -104,15 +166,29 @@ def audit_items(project_path, proj_folder, settings=None):
                 tokens_estimate(blocks['sessions']), md_path, warnings=w)
         if blocks['memory']:
             add('CLAUDE.md · memory digest', tokens_estimate(blocks['memory']), md_path)
+        # both were counted inside "manual content" until split_blocks learnt
+        # them, which is the one number on this screen you cannot act on
+        if blocks['agents']:
+            add('CLAUDE.md · subagent table', tokens_estimate(blocks['agents']), md_path)
+        if blocks['loop']:
+            add('CLAUDE.md · loop log', tokens_estimate(blocks['loop']), md_path)
     else:
         add('CLAUDE.md', 0, md_path or None,
             warnings=['missing — press c in the sessions menu to scaffold'])
 
     # ── global CLAUDE.md (every session of EVERY project) ──
-    g = _read(_c.global_claude_md)
-    if g:
+    # Per account, derived per call: `_c.global_claude_md` is bound at import to
+    # whichever account was active then, so the audit silently costed the wrong
+    # file — and reported nothing at all for the accounts that actually have one.
+    from . import workspace as _ws
+    for _acct, gpath in _ws._global_md_paths():
+        g = _read(gpath)
+        if not g:
+            continue
         t = tokens_estimate(g)
-        add('global ~/.claude/CLAUDE.md', t, _c.global_claude_md,
+        label = ('global ~/.claude/CLAUDE.md' if _acct == 'default'
+                 else f'global CLAUDE.md ({_acct})')
+        add(label, t, gpath,
             warnings=([f'> {GLOBAL_TOKENS_WARN} tok — loads in EVERY project']
                       if t > GLOBAL_TOKENS_WARN else []))
 
@@ -139,12 +215,18 @@ def audit_items(project_path, proj_folder, settings=None):
         for e in (hooks_mod._load().get('hooks', {}) or {}).get('SessionStart', []):
             for h in e.get('hooks', []) if isinstance(e, dict) else []:
                 cmd = h.get('command', '')
+                # the rule TEXT, not the hook module: importing an entry point
+                # runs its stdout setup in this process, which is None in a
+                # windowed one — and the bare `except` below turned that into a
+                # silently under-reported audit
                 if 'minimalcode_hook.py' in cmd:
-                    from .minimalcode_hook import _RULE
-                    add('hook minimal-code (SessionStart)', tokens_estimate(_RULE))
+                    from .hookrules import MINIMAL_CODE
+                    add('hook minimal-code (SessionStart)',
+                        tokens_estimate(MINIMAL_CODE))
                 elif 'concise_hook.py' in cmd:
-                    from .concise_hook import _RULE
-                    add('hook concise-output (SessionStart)', tokens_estimate(_RULE))
+                    from .hookrules import CONCISE
+                    add('hook concise-output (SessionStart)',
+                        tokens_estimate(CONCISE))
                 elif cmd:
                     add(f'hook SessionStart: {cmd[:40]}', None,
                         warnings=['injection size unknown'])
@@ -197,7 +279,7 @@ def audit_screen(project_path, proj_folder, project_name):
     while True:
         items = audit_items(project_path, proj_folder)
         total = audit_total(items)
-        frame = [render.header('CLAUDECTL', project_name, 'CONTEXT WEIGHT'), '',
+        frame = [render.header('ARCHEUS', project_name, 'CONTEXT WEIGHT'), '',
                  f"  {C_DIM}Estimated tokens auto-loaded on every turn of a session "
                  f"here (chars/4):{C_RESET}", '']
         for it in items:

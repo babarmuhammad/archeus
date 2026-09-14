@@ -1,7 +1,7 @@
 """Insulate the suite from the environment it happens to be run in.
 
 `config.get_config_dir()` resolves `CLAUDE_CONFIG_DIR` env > setting > default,
-because claudectl sets that variable when it launches a session under a named
+because archeus sets that variable when it launches a session under a named
 account and everything running inside that session has to agree about which
 account it is. The consequence is that running pytest from INSIDE a Claude Code
 session inherits the account of whoever is running it — which is exactly how
@@ -23,6 +23,7 @@ test still wins, because fixtures run before the test body.
 """
 import glob
 import os
+import re
 import urllib.parse
 import tempfile
 
@@ -35,20 +36,20 @@ _AMBIENT = ('CLAUDE_CONFIG_DIR',)
 for _var in _AMBIENT:
     os.environ.pop(_var, None)
 
-#: claudectl's own real files, redirected into a throwaway directory for the
+#: archeus's own real files, redirected into a throwaway directory for the
 #: WHOLE session rather than per test. A monkeypatch is undone at teardown, and
 #: several of these are written by background threads (the failover proxy, the
 #: memory worker) that outlive the test that started them — which is exactly how
-#: the real `claudectl.json` kept being rewritten after the per-test guard below
+#: the real `archeus.json` kept being rewritten after the per-test guard below
 #: had already been lifted. Pinning the module attributes at import means a late
 #: thread has nowhere real to write.
-_TMP_STATE = tempfile.mkdtemp(prefix='claudectl-tests-')
+_TMP_STATE = tempfile.mkdtemp(prefix='archeus-tests-')
 
 from claude_sessions import config as _config      # noqa: E402
 from claude_sessions import hooks as _hooks        # noqa: E402
 from claude_sessions import stats as _stats        # noqa: E402
 
-_config.settings_file = os.path.join(_TMP_STATE, 'claudectl.json')
+_config.settings_file = os.path.join(_TMP_STATE, 'archeus.json')
 _hooks.settings_path = os.path.join(_TMP_STATE, 'settings.json')
 _stats.cache_file = os.path.join(_TMP_STATE, 'stats-cache.json')
 
@@ -57,6 +58,11 @@ _stats.cache_file = os.path.join(_TMP_STATE, 'stats-cache.json')
 def _no_ambient_claude_env(monkeypatch):
     for var in _AMBIENT:
         monkeypatch.delenv(var, raising=False)
+    # No test may raise a desktop notification. Same choke-point discipline as
+    # `_no_real_editor` below: the job runner notifies from its `finally`, which
+    # every job in the suite reaches, so blocking the SPAWN is the only place
+    # that cannot be forgotten by a new caller.
+    monkeypatch.setenv('ARCHEUS_NO_NOTIFY', '1')
 
 
 @pytest.fixture(autouse=True)
@@ -82,9 +88,172 @@ def _no_real_editor(monkeypatch, request):
     return opened
 
 
+class _NoProc:
+    """Stands in for a process that was never started.
+
+    Deliberately permissive rather than clever: it answers every attribute the
+    spawn sites use (`stdin.write`, `communicate`, `wait`, `poll`, `kill`,
+    `returncode`, `pid`) as an immediate, empty, successful run. A stub that
+    raised would surface inside a daemon thread, where nothing can catch it and
+    the test hangs instead of failing — the same reason `_no_real_editor`
+    records a call rather than blowing up.
+    """
+    returncode = 0
+    pid = -1
+
+    def __init__(self, *a, **k):
+        self.stdin = self.stdout = self.stderr = _Sink()
+
+    def communicate(self, *a, **k):
+        return ('', '')
+
+    def wait(self, *a, **k):
+        return 0
+
+    def poll(self):
+        return 0
+
+    def kill(self):
+        pass
+
+    terminate = send_signal = kill
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+class _Sink:
+    def write(self, *a):
+        pass
+
+    def close(self):
+        pass
+
+    def flush(self):
+        pass
+
+    def read(self, *a):
+        return ''
+
+    readline = read
+
+    def __iter__(self):
+        return iter(())
+
+
+#: argv entries that mean "this starts Claude, or starts something whose whole
+#: job is to start Claude". Matched on the BASENAME of every argument, not just
+#: the executable, because a terminal spawn is `cmd /c start … claude …` and a
+#: detached worker is `python -m claude_sessions --bg-scan`.
+_CLAUDE_EXE = {'claude', 'claude.exe', 'claude.cmd', 'claude.bat'}
+_CLAUDE_FLAG = {'--bg-scan', '--failover-serve'}
+
+
+def _starts_claude(args):
+    argv = [args] if isinstance(args, (str, bytes)) else list(args or [])
+    argv = [os.fsdecode(a) if isinstance(a, bytes) else str(a) for a in argv]
+    # split on BOTH separators, never os.path.basename: it splits on the
+    # platform's own, so `C:\\…\\claude.exe` was one long basename on Linux and
+    # macOS and the guard did not fire there (CI caught it; Windows is the
+    # primary platform, so the Windows shape has to be recognised everywhere).
+    if any(a.replace('\\', '/').rsplit('/', 1)[-1].lower() in _CLAUDE_EXE
+           for a in argv):
+        return True
+    # `python -m claude_sessions …` deliberately does NOT count on its own:
+    # the statusline is dispatched that way and never reaches Claude (that is
+    # the whole reason __main__.py dispatches it before importing main), and
+    # test_statusline.py runs it for real to prove its glyphs survive a pipe.
+    # The two subcommands that DO end in a Claude call name themselves.
+    return any(a in _CLAUDE_FLAG for a in argv)
+
+
+@pytest.fixture(autouse=True)
+def _no_test_starts_claude(monkeypatch, request):
+    """No test may start Claude, or start the worker that starts Claude.
+
+    This is the `_no_real_editor` lesson at the level where it is complete.
+    Blocking the editor stopped one window; what was still getting out was the
+    expensive one: opening the TUI sessions screen calls
+    `memory.spawn_background_worker`, which launches a DETACHED child that runs
+    a real `claude -p` memory extraction. It outlives the test, so no fixture
+    teardown could see it, and `claude -p` writes a transcript into the REAL
+    `~/.claude/projects/<encoded cwd>` — which is how **ninety** project folders
+    named after pytest temp directories came to be listed in the user's own
+    project list, dashboard, usage and search, each one a Claude call billed to
+    whichever account happened to be default.
+
+    `subprocess.Popen` is the choke point every one of them passes through
+    (`gui_api._run_cancellable` headless, `ui.run_with_progress_stdin`
+    foreground, the detached worker, the failover proxy child, a terminal
+    spawn), so the guard sits there and inspects the argv.
+
+    It has to inspect it. Blocking Popen outright took 50 tests down with it,
+    because **`subprocess.run` is implemented in terms of `Popen`** — the hook
+    and statusline suites run a real interpreter and read its real stdout, and
+    `test_the_glyphs_survive_a_pipe` cannot be tested any other way. So
+    everything that is not Claude goes through to the real thing.
+
+    A test that means to reach the real spawn asks with
+    @pytest.mark.real_process.
+    """
+    if request.node.get_closest_marker('real_process'):
+        return
+    import subprocess
+    real = subprocess.Popen
+    started = []
+
+    def _guarded(args, *a, **k):
+        if _starts_claude(args):
+            started.append(args)
+            return _NoProc()
+        return real(args, *a, **k)
+
+    monkeypatch.setattr(subprocess, 'Popen', _guarded)
+    return started
+
+
+#: A project folder Claude Code created because a test made it run with cwd
+#: inside a pytest temp directory. The encoded name keeps the whole path with
+#: every non-alphanumeric character replaced by `-`, so the pytest basetemp
+#: shape survives verbatim and is unmistakable: `pytest-of-<user>` followed by
+#: `pytest-<n>`. Matching on both halves is what makes this safe to delete —
+#: a real project would have to live inside a pytest temp directory to match.
+_LEAKED_PROJECT = re.compile(r'pytest-of-.+-pytest-\d+')
+
+
+def _leaked_project_dirs():
+    home = os.path.expanduser('~')
+    out = []
+    for d in glob.glob(os.path.join(home, '.claude*', 'projects', '*')):
+        if os.path.isdir(d) and _LEAKED_PROJECT.search(os.path.basename(d)):
+            out.append(d)
+    return out
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Sweep any project folder a test caused to be created in a REAL config
+    dir. `_no_real_process` should mean there are none; this exists because the
+    thing it is cleaning up was created by a DETACHED grandchild process, and
+    no in-process guard can promise to have covered every way to reach one.
+    Belt and braces, and it reports rather than tidying up silently."""
+    leaked = _leaked_project_dirs()
+    if not leaked:
+        return
+    import shutil
+    for d in leaked:
+        shutil.rmtree(d, ignore_errors=True)
+    print('\nconftest: swept %d project folder(s) a test caused Claude Code to '
+          'create in a real config dir' % len(leaked))
+
+
 def pytest_configure(config):
     config.addinivalue_line(
         'markers', 'real_editor: allow this test to spawn a real editor process')
+    config.addinivalue_line(
+        'markers', 'real_process: allow this test to spawn a real child process')
 
 
 # ── nothing the USER owns may be written by a test ───────────
@@ -96,10 +265,21 @@ def pytest_configure(config):
 # guard the CHOKE POINT instead.
 
 def _real_user_files():
-    """Files a test must never modify: every account's settings.json, Claude
-    Code's own `.claude.json`, and claudectl's real `claudectl.json`."""
+    """Files a test must never modify: every account's settings.json and
+    archeus's real `archeus.json` — the files archeus itself WRITES, so a
+    change to one during a test is a leak worth restoring.
+
+    Claude Code's own `.claude.json` is deliberately NOT here. archeus only
+    ever reads it (`clientstate` is read-only by design), so a change to it
+    during a test is by definition another program's — and this fixture's
+    remedy is to overwrite the file with its pre-test bytes, which would roll
+    back the live session that legitimately wrote it. Running the suite inside
+    an active Claude Code session hit that twice. `test_nothing_writes_claude_code_state`
+    below is the stronger and concurrency-proof replacement: it proves the
+    absence of a writer instead of watching for one.
+    """
     home = os.path.expanduser('~')
-    out = [os.path.join(home, '.claude.json')]
+    out = []
     for d in glob.glob(os.path.join(home, '.claude*')):
         if os.path.isdir(d):
             out.append(os.path.join(d, 'settings.json'))
@@ -139,12 +319,12 @@ def _no_writes_outside_the_sandbox(monkeypatch, tmp_path_factory):
     allowed = os.path.normcase(os.path.realpath(tempfile.gettempdir()))
     basetemp = os.path.normcase(os.path.realpath(str(tmp_path_factory.getbasetemp())))
 
-    def guarded(path, text):
+    def guarded(path, text, **kw):
         p = os.path.normcase(os.path.realpath(os.path.abspath(path)))
         if not (p.startswith(allowed) or p.startswith(basetemp)):
             raise AssertionError(
                 'test tried to write a real file outside the pytest temp area: %s' % path)
-        return real_write(path, text)
+        return real_write(path, text, **kw)
 
     monkeypatch.setattr(config, 'write_atomic', guarded)
 
@@ -163,6 +343,25 @@ def _no_writes_outside_the_sandbox(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def _no_process_global_cache_leaks_between_tests():
+    """Two caches live for the life of the process on purpose, and both would
+    otherwise make a test's result depend on which test ran before it.
+
+    `mcp._status_cache` holds `claude mcp list` for 30s (that subprocess is 1.7s
+    and /api/dashboard polls every 10s). `paths._path_cache` holds resolved —
+    and, since it also caches misses, UNRESOLVED — project folders. Autouse
+    rather than in `Sandbox`, because the tests that hit these are exactly the
+    ones that never build one.
+    """
+    from claude_sessions import mcp, paths
+    mcp._status_cache.clear()
+    paths._path_cache.clear()
+    yield
+    mcp._status_cache.clear()
+    paths._path_cache.clear()
+
+
+@pytest.fixture(autouse=True)
 def _stats_cache_is_never_the_real_one(monkeypatch, tmp_path_factory):
     """`stats.cache_file` is an import-time path inside the real account dir.
     A test that does not build a Sandbox inherited it, so three dashboard tests
@@ -172,6 +371,27 @@ def _stats_cache_is_never_the_real_one(monkeypatch, tmp_path_factory):
                         str(tmp_path_factory.mktemp('stats') / 'stats-cache.json'))
     stats._disk_cache = None
     stats._cache_dirty = False
+
+
+@pytest.fixture(autouse=True)
+def _model_catalogue_is_never_the_real_one(monkeypatch, tmp_path_factory):
+    """`models._cache_path()` is `<config_dir>/archeus-models.json` — the
+    account's REAL live catalogue, refreshed daily by a background thread.
+
+    Same class of leak as `stats.cache_file` above, with a sharper edge: this
+    one decides what `config.models()` answers, so a test comparing the roster
+    against the bundled floor passes or fails depending on what Anthropic
+    shipped and whether the poller had run yet.
+    `test_model_card_rows_covers_roster_with_swe` went red the hour a new Fable
+    landed in the cache and was green in CI the whole time, because a clean
+    machine has no catalogue and falls back to the floor.
+
+    A test that WANTS a catalogue redirects `_cache_path` itself
+    (`tests/test_models.py`) — its monkeypatch runs after this fixture and wins.
+    """
+    from claude_sessions import models
+    p = str(tmp_path_factory.mktemp('catalogue') / 'archeus-models.json')
+    monkeypatch.setattr(models, '_cache_path', lambda: p)
 
 
 @pytest.fixture(autouse=True)

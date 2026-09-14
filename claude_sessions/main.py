@@ -21,7 +21,7 @@ from . import store
 
 
 def _workspace_status_cli():
-    """`claudectl workspace status` — resolve the project from cwd and print."""
+    """`archeus workspace status` — resolve the project from cwd and print."""
     from .paths import encode_component
     from . import workspace
     cwd = os.path.abspath(os.getcwd())
@@ -33,7 +33,7 @@ def _workspace_status_cli():
 
 
 def _recall_cli(query):
-    """`claudectl recall "<query>"` — print the task-relevant memory subgraph.
+    """`archeus recall "<query>"` — print the task-relevant memory subgraph.
     This is the on-demand surface the CLAUDE.md micro-digest points Claude to."""
     from .paths import encode_component
     from . import recall
@@ -47,34 +47,85 @@ def _recall_cli(query):
 
 
 def _bg_scan_cli(project_path, proj_folder):
-    """`claudectl --bg-scan <path> <folder>` — detached memory worker: lessons
+    """`archeus --bg-scan <path> <folder>` — detached memory worker: lessons
     scan, then (if enabled) incremental memory refresh — SEQUENTIALLY, so the
     two graph writers never clobber each other. Spawned headless by
     memory.spawn_background_worker; survives the TUI exiting to launch claude.
     Status/progress via the scan.lock marker."""
+    import time as _time
     from . import memory, lessons
     from .config import log
     proj_folder = proj_folder or None
     memory._tls.silent = True                # headless Claude calls, no UI
     if not memory.acquire_scan_lock(project_path):
         return                               # another worker beat us to it
+    name = os.path.basename(project_path.rstrip('\\/')) or project_path
+    started, did_work, failed = _time.time(), '', ''
     try:
         st = load_settings()
         mem = memory.load_memory(project_path, proj_folder)
-        if st.get('memory_auto_refresh') == 'open' and mem.get('entities'):
+        if memory.refresh_on_open(project_path):
             # one call now does the graph, the CLAUDE.md block, the rules AND
             # the lessons — see memory.auto_cycle
-            name = os.path.basename(project_path.rstrip('\\/')) or project_path
-            memory.auto_cycle(project_path, proj_folder, name, auto_cap=6)
+            res = memory.auto_cycle(project_path, proj_folder, name, auto_cap=6)
+            # report what actually happened. This used to discard the result and
+            # say "Memory updated" even when the cycle had done nothing at all.
+            bits = []
+            if res.get('extracted'):
+                bits.append(f"{res['extracted']} module(s)")
+            if res.get('lessons'):
+                bits.append(f"{res['lessons']} lesson(s)")
+            if res.get('pending'):
+                bits.append(f"{res['pending']} still queued")
+            did_work = 'Memory updated — ' + ', '.join(bits) if bits else ''
         elif st.get('memory_lessons', 'prompt') == 'auto':
             # refresh is off but lesson learning is on — mine them on their own
             sids = lessons.pending_sids(proj_folder, mem)
             if sids:
                 lessons.scan_sessions(project_path, proj_folder, sids)
-    except Exception:
+                did_work = 'Lessons learned'
+    except memory.MemoryBusy:
+        return                              # another worker has it; not an error
+    except Exception as e:
         log.exception('bg-scan worker failed')
+        failed = str(e) or e.__class__.__name__
     finally:
+        # This worker is detached and has NO interface of any kind — the badge
+        # in the GUI only exists while that window is open, and the TUI has
+        # already moved on (or exited to launch claude). A desktop notification
+        # is the only way its result reaches anyone — INCLUDING when it fails,
+        # which used to reach no one at all because the notify was gated on
+        # having succeeded.
+        try:
+            from . import notify
+            if failed:
+                notify.job_finished(f'Memory update failed — {name}: {failed[:120]}',
+                                    'error', _time.time() - started)
+            elif did_work:
+                notify.job_finished(f'{did_work} — {name}', 'done',
+                                    _time.time() - started)
+        except Exception:
+            pass
         memory.clear_scan_lock(project_path)
+
+
+def _hidden_projects_menu(grouped):
+    """Archive projects out of the main list, and bring them back.
+
+    Its own screen rather than a key over the project list because `menu()` has
+    no hotkeys — every printable key goes to its search bar. Enter toggles the
+    row under the cursor and the screen redraws, so hiding several is one visit.
+    """
+    from .config import hidden_projects, set_project_hidden
+    while True:
+        hidden = hidden_projects()
+        items = [(f"{'☐' if enc in hidden else '☑'}  "
+                  f"{os.path.basename(path) or path:<28}  {C_DIM}{path}{C_RESET}", enc)
+                 for _m, path, enc, _pd, _od in grouped]
+        sel = menu(items, "HIDE / RESTORE PROJECTS   (Enter toggles · ☐ = hidden)")
+        if not sel:
+            return
+        set_project_hidden(sel, sel not in hidden)
 
 
 #: the main menu's own rows, hoisted to module scope so a test can read them.
@@ -85,6 +136,7 @@ def _bg_scan_cli(project_path, proj_folder):
 MAIN_ACTIONS = [
     ('📂  Open new project by path…',        '__open_path__',        '/api/state'),
     ('🔍  Search all sessions',              '__search_all__',       '/api/search-index'),
+    ('📦  Hide / restore projects',           '__hidden_projects__',  '/api/project/hide'),
     ('⚙  Usage stats',                       '__usage_stats__',      '/api/usage/daily'),
     ('⚙  MCP servers',                       '__mcp__',              '/api/mcp'),
     ('⚙  Agents',                            '__agents__',           '/api/agents/library'),
@@ -93,32 +145,67 @@ MAIN_ACTIONS = [
     ('⚙  Updates (Claude Code + plugins)',   '__updates__',          '/api/versions'),
     ('⚙  Global CLAUDE.md  /  MCP Analysis', '__global_claude_md__', '/api/global-claude-md'),
     ('⚙  Accounts (switch / run 2 at once)', '__accounts__',         '/api/accounts'),
+    ('⚙  Logs (what archeus did, what failed)', '__logs__',        '/api/logs'),
     ('⚙  Settings',                          '__settings__',         '/api/settings'),
-    ('?  Help',                              '__help__',             ''),   # the GUI's help page is generated in the browser from NAV_GROUPS/TABS — there is nothing for it to fetch
+    ('?  Help',                              '__help__',             ''),   # the GUI's help page is generated in the browser from SECTIONS/TABS — there is nothing for it to fetch
 ]
+
+#: the same five sections the GUI sidebar has, as [(label, [keys])] pointing
+#: INTO MAIN_ACTIONS. Fourteen flat rows under the project list read as a wall
+#: and buried the three that operate on the list itself; five submenus is the
+#: GUI's answer and the two surfaces are gated to move together.
+#:
+#: Keys rather than rows, so MAIN_ACTIONS stays the one table carrying a row's
+#: label and its GUI route — the parity gate reads it and would have no way to
+#: check a copy. Keyed by LABEL, never by index, for the reason the sidebar's
+#: collapsed set was: reordering the sections must not silently open a
+#: different one.
+MAIN_SECTIONS = [
+    ('Context',  ['__global_claude_md__', '__mcp__']),
+    ('Library',  ['__agents__', '__skills__', '__hooks__']),
+    ('Activity', ['__usage_stats__', '__logs__']),
+    ('Accounts', ['__accounts__']),
+    ('Settings', ['__settings__', '__updates__']),
+]
+#: rows that stay ON the main menu. The first three act on the project list the
+#: menu is already showing — burying "open a folder" one level down would put a
+#: submenu between the user and the reason they opened archeus — and `?` is the
+#: same door the GUI moved Help to. test_surface_parity fails a MAIN_ACTIONS key
+#: that is in neither this set nor a section.
+MAIN_TOP = ['__open_path__', '__search_all__', '__hidden_projects__', '__help__']
 
 
 def run():
-    # `claudectl workspace status` — scriptable, no TUI
+    # `archeus --help` / `-h` / `help` — FIRST: a released package must answer
+    # the one thing a new user types, and it must never start a UI to do it.
+    if len(sys.argv) >= 2 and sys.argv[1] in ('--help', '-h', 'help'):
+        from .cli import print_help
+        print_help()
+        return
+    if len(sys.argv) >= 2 and sys.argv[1] in ('--version', '-V'):
+        from .cli import print_version
+        print_version()
+        return
+    # `archeus workspace status` — scriptable, no TUI
     if sys.argv[1:3] == ['workspace', 'status']:
         _workspace_status_cli()
         return
-    # `claudectl recall "<query>"` — scriptable, no TUI
+    # `archeus recall "<query>"` — scriptable, no TUI
     if len(sys.argv) >= 3 and sys.argv[1] == 'recall':
         _recall_cli(' '.join(sys.argv[2:]))
         return
-    # `claudectl statusline` — Claude Code's statusLine command. Reads one JSON
+    # `archeus statusline` — Claude Code's statusLine command. Reads one JSON
     # payload on stdin, prints one line. Runs on every conversation turn, so it
     # is dispatched FIRST-ish and must never touch the TUI.
     if len(sys.argv) >= 2 and sys.argv[1] == 'statusline':
         from .statusline import main as _sl
         sys.exit(_sl(sys.argv[2:]))
-    # `claudectl sync-accounts [--yes|--dry-run]` — level every account up to
+    # `archeus sync-accounts [--yes|--dry-run]` — level every account up to
     # what the user has actually provisioned. Shows the diff before writing.
     if len(sys.argv) >= 2 and sys.argv[1] == 'sync-accounts':
         from .provision import main as _sync
         sys.exit(_sync(sys.argv[2:]))
-    # `claudectl review [--staged|--branch BASE] [--min-confidence N] [path]`
+    # `archeus review [--staged|--branch BASE] [--min-confidence N] [path]`
     if len(sys.argv) >= 2 and sys.argv[1] == 'review':
         from .review import review_cli
         sys.exit(review_cli(sys.argv[2:]))
@@ -141,20 +228,55 @@ def run():
         sys.exit(0 if ok else 1)
 
     # ── one-time settings migrations ──────────────────────────────
-    # HERE, below every scriptable dispatch above: `claudectl statusline` runs
+    # HERE, below every scriptable dispatch above: `archeus statusline` runs
     # on every conversation turn and must never pay for a settings write, and
     # __main__.py deliberately routes it before this module is even imported.
+
+    # FIRST of the three, because it moves the settings file the other two
+    # then read. `pending()` is two stat calls once it has run.
+    try:
+        from . import migrate as _migrate
+        if _migrate.pending():
+            _moved, _failed = _migrate.run()
+            if _failed:
+                from .config import log as _log
+                _log.warning('rename migration left %d item(s) behind: %s',
+                             len(_failed), _failed[0][0])
+        # Printed rather than logged, and printed EVERY start until it is acted
+        # on: the action it names is the difference between a working install
+        # and one that deletes itself on the user's next tidy-up.
+        _warn = _migrate.coinstalled_warning()
+        if _warn:
+            # `from .config import C_RESET` HERE would make C_RESET a local of
+            # run(), which every nested closure below then resolves from this
+            # scope instead of the module — unbound on every start where this
+            # branch does not run, which is all of them once the user has acted.
+            # Reading the colours off the module at use time is also the rule
+            # statusline.py learned: `from .config import C_WARN as _WARN` froze
+            # the palette at import and apply_theme could never move it.
+            from . import config as _cfg
+            print(f'{_cfg.C_WARN}!{_cfg.C_RESET} {_warn}\n')
+    except Exception:
+        pass          # a migration must never be the reason archeus won't start
     try:
         from .config import migrate_settings
         _s, _changed = migrate_settings(load_settings())
         if _changed:
             save_settings(_s)
     except Exception:
-        pass          # a migration must never be the reason claudectl won't start
+        pass          # a migration must never be the reason archeus won't start
+    try:
+        # the private skill library moves into <account>/skills, which is the
+        # only place Claude Code reads. Guarded by its own settings flag, so
+        # this is one listdir on every later start.
+        from .skills import migrate_library
+        migrate_library()
+    except Exception:
+        pass
 
-    # ── is claudectl itself out of date? ──────────────────────────
+    # ── is archeus itself out of date? ──────────────────────────
     # ABOVE the interface pick, so the GUI gets it too — that branch returns.
-    # BELOW the scriptable dispatches above, so `claudectl statusline` (every
+    # BELOW the scriptable dispatches above, so `archeus statusline` (every
     # conversation turn) never starts a thread or reads this setting.
     # The check is a daemon thread and every reader takes its cache; the install
     # is deferred to exit, because pip cannot rewrite the console script of the
@@ -166,7 +288,7 @@ def run():
     # ── and is the MODEL list out of date? ────────────────────────
     # Same thread discipline, same TTL gate, same silence on failure. This is
     # what puts a model released last week into the launch picker without a
-    # claudectl release; nothing downstream fetches, they all read its cache.
+    # archeus release; nothing downstream fetches, they all read its cache.
     from . import models as _models
     _models.refresh_in_background()
 
@@ -191,14 +313,26 @@ def run():
     render.screen_init()
     atexit.register(render.screen_restore)
 
+    # ── background memory, in the TUI too ─────────────────────────
+    # Same daemon-thread pass the GUI runs. It had exactly one caller, in
+    # run_gui, so "keep this project's memory updated automatically" silently
+    # meant "while the GUI window is open" — a TUI user's opted-in projects were
+    # only ever refreshed by the one-shot spawn when they happened to open one.
+    # Below the --gui branch, which returns, so this starts once per interface.
+    try:
+        from .gui_api import start_auto_memory_scheduler
+        start_auto_memory_scheduler()
+    except Exception:
+        pass          # background memory must never be why the TUI won't start
+
     # ── claude.exe availability check ─────────────────────────────
     if not get_claude_exe():
         _cls()
         print(f"\n  {C_TITLE}{C_BOLD}claude.exe not found{C_RESET}\n")
-        print(f"  claudectl could not locate Claude Code. Checked:")
+        print(f"  archeus could not locate Claude Code. Checked:")
         print(f"    - %USERPROFILE%\\.local\\bin\\claude.exe")
         print(f"    - PATH (claude / claude.exe)")
-        print(f"    - settings override (~/.claude/claudectl.json)\n")
+        print(f"    - settings override (~/.claude/archeus.json)\n")
         print(f"  Install Claude Code:  https://docs.anthropic.com/claude-code")
         print(f"  Or set the path in Settings (⚙) after continuing.\n")
         pause("  Press Enter to continue anyway...")
@@ -250,19 +384,31 @@ def run():
     grouped.sort(reverse=True, key=lambda r: r[0])
 
     _default_acct_dir = all_config_dirs()[0][1]
-    project_items = []
-    for i, (_, p, _n, primary_dir, other_dirs) in enumerate(grouped):
-        if other_dirs:
-            names = ', '.join(_account_name_for(d) for d in other_dirs)
-            tag = f"  {C_DIM}[+{names}]{C_RESET}"
-        elif primary_dir != _default_acct_dir:
-            tag = f"  {C_DIM}[{os.path.basename(primary_dir)}]{C_RESET}"
-        else:
-            tag = ''
-        project_items.append((f"{os.path.basename(p) or p:<28}  {p}{tag}", f'__proj_{i}__'))
+    all_recent = load_recent_sessions(5)
 
-    recent = load_recent_sessions(5)
-    if recent:
+    def _build_items():
+        """(visible projects, visible recents, menu rows).
+
+        Rebuilt on every pass of the loop below, because hiding a project
+        changes what belongs in the menu — and the `__proj_N__` / `__quickresume_N__`
+        values index the FILTERED lists, so they are returned together with it.
+        """
+        from .config import hidden_projects
+        hidden  = hidden_projects()
+        visible = [g for g in grouped if g[2] not in hidden]
+        recent  = [s for s in all_recent if s.get('encoded_name', '') not in hidden]
+
+        project_items = []
+        for i, (_, p, _n, primary_dir, other_dirs) in enumerate(visible):
+            if other_dirs:
+                names = ', '.join(_account_name_for(d) for d in other_dirs)
+                tag = f"  {C_DIM}[+{names}]{C_RESET}"
+            elif primary_dir != _default_acct_dir:
+                tag = f"  {C_DIM}[{os.path.basename(primary_dir)}]{C_RESET}"
+            else:
+                tag = ''
+            project_items.append((f"{os.path.basename(p) or p:<28}  {p}{tag}", f'__proj_{i}__'))
+
         qr_items = []
         for i, sess in enumerate(recent):
             lr_proj    = os.path.basename(sess['project_path']) or sess['project_path']
@@ -284,12 +430,19 @@ def run():
                          [3, 18, None, 7],
                          aligns=['left', 'left', 'left', 'right']))
             qr_items.append((label, f"__quickresume_{i}__"))
-        full_items = qr_items + [(f"{'─' * W}", None)] + project_items
-    else:
-        full_items = project_items
 
-    full_items = full_items + [(f"{'─' * W}", None)] + \
-        [(label, key) for label, key, _route in MAIN_ACTIONS]
+        rows = (qr_items + [(f"{'─' * W}", None)] + project_items) if qr_items \
+            else project_items
+        rows = rows + [(f"{'─' * W}", None)] + \
+            [(label, key) for label, key, _route in MAIN_ACTIONS
+             if key in MAIN_TOP and key != '__help__'] + \
+            [(f"⚙  {label}…", f'__sec_{label}__') for label, _keys in MAIN_SECTIONS] + \
+            [(label, key) for label, key, _route in MAIN_ACTIONS
+             if key == '__help__']
+        if len(visible) < len(grouped):
+            rows = rows + [(f"{C_DIM}  {len(grouped) - len(visible)} project(s) hidden"
+                            f"{C_RESET}", None)]
+        return visible, recent, rows
 
     # ── main loop ─────────────────────────────────────────────────
 
@@ -306,12 +459,30 @@ def run():
         return '\n'.join(lines)
 
     while True:
+        visible, recent, full_items = _build_items()
         sel = menu(full_items, "SELECT PROJECT",
                    footer_fn=mcp_status_line, banner_fn=_banner)
         if not sel:
             sys.exit(0)
 
         opts = dict(_EMPTY_OPTS)   # fresh each iteration (launch_options_menu may have returned None on ESC)
+
+        # A section row is not an action: it opens the submenu and then hands
+        # the chosen key to the SAME dispatch chain below, so every branch there
+        # is untouched by the regrouping. A one-row section skips the menu — a
+        # list of one is a keystroke spent on nothing.
+        if sel and sel.startswith('__sec_'):
+            label = sel[len('__sec_'):-2]
+            keys = dict(MAIN_SECTIONS)[label]
+            # in the SECTION's order, not the table's: the table is ordered by
+            # the history of the menu it used to be, and reading its order back
+            # out put `Updates` above `Settings` inside Settings
+            labels = {key: lbl for lbl, key, _route in MAIN_ACTIONS}
+            sub_items = [(labels[k], k) for k in keys if k in labels]
+            sel = (sub_items[0][1] if len(sub_items) == 1
+                   else menu(sub_items, label.upper()))
+            if not sel:
+                continue
 
         if sel and sel.startswith('__quickresume_'):
             idx  = int(sel[len('__quickresume_'):-2])
@@ -333,7 +504,14 @@ def run():
             encoded_name = encode_component(path)
             proj_folder  = os.path.join(projects_dir, encoded_name)
             project_name = os.path.basename(path) or path
-            choice = 'new'
+            # The project SCREEN, like __proj_ below — opening a folder is how
+            # you reach its sessions and memory, not a shortcut to one launch.
+            choice, foreign_dir = sessions_menu(scan_sessions(proj_folder),
+                                                proj_folder, project_name, path)
+            if not choice:
+                continue
+            if foreign_dir:
+                opts['cfgdir'] = foreign_dir if foreign_dir != config_dir else ''
 
         elif sel == '__search_all__':
             from .search import global_search
@@ -387,13 +565,22 @@ def run():
             settings_menu()
             continue
 
+        elif sel == '__logs__':
+            from .events import logs_screen
+            logs_screen()
+            continue
+
+        elif sel == '__hidden_projects__':
+            _hidden_projects_menu(grouped)
+            continue
+
         elif sel == '__help__':
             help_screen()
             continue
 
         elif sel and sel.startswith('__proj_'):
             idx = int(sel[len('__proj_'):-2])
-            _, path, encoded_name, primary_dir, other_dirs = grouped[idx]
+            _, path, encoded_name, primary_dir, other_dirs = visible[idx]
             opts['cfgdir'] = primary_dir if primary_dir != config_dir else ''
             proj_folder  = store.project_folder(primary_dir, encoded_name)
 
@@ -545,9 +732,9 @@ def run():
         print("  Expected one of: terminal, new, continue, resume:<id>,")
         print("  fork:<id>, resume-named:<id>::<name>.")
         print("\n  Nothing was launched and nothing was changed. This is a bug in")
-        print("  claudectl rather than something you did — please report it with")
+        print("  archeus rather than something you did — please report it with")
         print("  the action shown above:")
-        print("  https://github.com/babarmuhammad/claudectl/issues")
+        print("  https://github.com/babarmuhammad/archeus/issues")
         pause("\n  Press Enter to exit...")
         sys.exit(1)
     # '|' is the choice-file delimiter. Strip it from user-typed fields
@@ -564,7 +751,7 @@ def run():
                if '|' in (v or '')]
         print("\n  Cannot launch: a '|' character appears in the "
               + ' and the '.join(bad) + '.')
-        print("  claudectl hands the launch options to the new console as a")
+        print("  archeus hands the launch options to the new console as a")
         print("  '|'-separated line, so a '|' inside a path would split it apart.")
         print("\n  Fix: rename the folder to remove the '|' — Windows permits it in")
         print("  a path but very little tooling handles it — or move the project.")
@@ -573,7 +760,7 @@ def run():
 
     # cmd reads the choice file in the ANSI codepage — keep bat-bound
     # name/worktree ASCII-safe (direct launch is unaffected).
-    if os.environ.get('CLAUDECTL_BAT') == '1':
+    if os.environ.get('ARCHEUS_BAT') == '1':
         opts['name']     = opts['name'].encode('ascii', 'ignore').decode()
         opts['worktree'] = opts['worktree'].encode('ascii', 'ignore').decode()
 
@@ -586,7 +773,7 @@ def run():
     # Launch is unified in Python: the bat re-invokes this script with --launch
     # (so it can pass big --agents JSON the cmd choice-file can't hold), and the
     # pipx/standalone path launches inline here.
-    if os.environ.get('CLAUDECTL_BAT') != '1':
+    if os.environ.get('ARCHEUS_BAT') != '1':
         _direct_launch(path, encoded_name, choice, opts)
 
 
@@ -685,7 +872,7 @@ def build_launch_command(path, encoded_name, choice, opts):
 
     env = os.environ.copy()
     # Pin the account/config dir explicitly — overrides any ambient
-    # CLAUDE_CONFIG_DIR claudectl itself may have been launched under.
+    # CLAUDE_CONFIG_DIR archeus itself may have been launched under.
     env['CLAUDE_CONFIG_DIR'] = cfgdir
     env['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'] = '1'
     # launch-economy env: cap thinking tokens / route subagents to a cheap model
@@ -693,7 +880,7 @@ def build_launch_command(path, encoded_name, choice, opts):
         env['MAX_THINKING_TOKENS'] = str(opts['max_thinking'])
     if opts.get('subagent_model'):
         env['CLAUDE_CODE_SUBAGENT_MODEL'] = opts['subagent_model']
-    # OpenTelemetry export, if configured. claudectl already owns the launch
+    # OpenTelemetry export, if configured. archeus already owns the launch
     # environment, so this is the natural place for it — and it is the step from
     # a personal tool to one a team can point at a shared backend.
     from .config import otel_env
@@ -745,7 +932,7 @@ def build_launch_command(path, encoded_name, choice, opts):
     if perm:
         args += ['--permission-mode', perm]
     # Model fallback chain for an overloaded primary. Unrelated to failover.py,
-    # which retries a DIFFERENT free-tier model through claudectl's own proxy;
+    # which retries a DIFFERENT free-tier model through archeus's own proxy;
     # this is Claude Code's own retry against the Anthropic API.
     fbs = [m for m in (settings.get('launch_fallback_models') or []) if m]
     if fbs:
@@ -770,6 +957,13 @@ def build_launch_command(path, encoded_name, choice, opts):
     add_dirs = [d for d in load_add_dirs(proj_folder) if os.path.isdir(d)]
     if add_dirs:
         args += ['--add-dir', *add_dirs]
+    # An opening message for an INTERACTIVE session — `claude "<text>"` submits
+    # it as the first turn and leaves you in the session. It is last because it
+    # is the CLI's positional argument, and it is the whole mechanism behind
+    # starting a `/loop` from archeus: a loop is session-scoped, so there is
+    # nothing to start except a session that begins by typing it.
+    if opts.get('prompt'):
+        args += [str(opts['prompt'])]
     return args, env, proj_folder
 
 

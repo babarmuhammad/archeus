@@ -12,7 +12,10 @@ on:
       - 'mkdocs.yml'
       - 'README.md'
       - 'CHANGELOG.md'
+      # Included by docs/code-of-conduct.md, the same way CHANGELOG.md is.
+      - 'CODE_OF_CONDUCT.md'
       - 'requirements-docs.txt'
+      - 'tools/mkdocs_hooks.py'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -29,8 +32,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - run: python -m pip install -r requirements-docs.txt

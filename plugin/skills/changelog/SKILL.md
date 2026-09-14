@@ -23,5 +23,5 @@ Maintain a human-readable changelog that tells users what changed.
 - Link issues/PRs where it helps.
 - Newest version on top; keep entries terse and parallel in phrasing.
 
-<!-- claudectl starter skill. Follows Keep a Changelog (keepachangelog.com) +
+<!-- archeus starter skill. Follows Keep a Changelog (keepachangelog.com) +
      Semantic Versioning; inspired by release skills in the ecosystem. -->

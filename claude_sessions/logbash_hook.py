@@ -2,10 +2,10 @@
 
 Two bindings, two logs, and the split matters:
 
-- **PostToolUse** appends the Bash command to `.claudectl/bash-log.txt`. That
+- **PostToolUse** appends the Bash command to `.archeus/bash-log.txt`. That
   feeds `health.frequent_bash_commands`, whose question is "what does this
   project run a lot" — an allowlist candidate list.
-- **PermissionDenied** appends a structured record to `.claudectl/denied.jsonl`.
+- **PermissionDenied** appends a structured record to `.archeus/denied.jsonl`.
 
 Both used to write the same bash log, which made a denial indistinguishable
 from a success in the one file that claimed to teach the deny-rule generator
@@ -25,7 +25,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Claude Code captures stdout as a PIPE, so CPython picks the locale
 # codepage (cp1252 on Windows) and any non-ASCII character in the payload
 # either mojibakes or raises — silently losing the whole hook output.
-sys.stdout.reconfigure(encoding='utf-8')
+# Guarded: `sys.stdout` is None in a windowed process (pythonw with no
+# console). A hook must degrade to plain output, never die at import.
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except (AttributeError, ValueError, OSError):
+    pass
 
 
 def _command_of(data):
@@ -65,8 +70,8 @@ def main(argv=None):
     if not cmd:
         return 0
     try:
-        d = os.path.join(cwd, '.claudectl')
-        os.makedirs(d, exist_ok=True)
+        from claude_sessions import store
+        d = store.workdir(cwd)
         p = os.path.join(d, 'bash-log.txt')
         with open(p, 'a', encoding='utf-8') as f:
             f.write(cmd + '\n')

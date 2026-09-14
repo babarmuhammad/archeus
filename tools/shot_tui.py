@@ -3,7 +3,7 @@
 The GUI can be screenshotted with a browser; the TUI cannot, and a terminal
 capture pasted as text loses every colour the interface uses to mean something.
 So this drives the actual screens through the same fake keyboard the test suite
-uses, captures the ANSI they emit, and paints it with the palette claudectl
+uses, captures the ANSI they emit, and paints it with the palette archeus
 itself resolves — a real frame, not a mock-up, and regenerable when the screens
 change.
 
@@ -57,7 +57,7 @@ _SGR = re.compile(r'\033\[([0-9;]*)m')
 
 
 def parse(text, width=100):
-    """ANSI text -> list of rows of Cells. Only the SGR subset claudectl emits:
+    """ANSI text -> list of rows of Cells. Only the SGR subset archeus emits:
     reset, bold, the 16 base colours, and 38/48;5;<n>."""
     rows, cur = [], []
     fg = bg = None
@@ -227,7 +227,7 @@ def main():
     total = 0
     for name, cols, drive in SHOTS:
         mp = MonkeyPatch()
-        tmp = Path(tempfile.mkdtemp(prefix='claudectl-shot-'))
+        tmp = Path(tempfile.mkdtemp(prefix='archeus-shot-'))
         try:
             sb = H.Sandbox(mp, tmp)
             mp.setattr('shutil.get_terminal_size',

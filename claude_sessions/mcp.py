@@ -1,5 +1,4 @@
 import os
-import subprocess
 import threading
 import time
 
@@ -13,27 +12,56 @@ from . import render
 
 # ── MCP status ────────────────────────────────────────────────
 
-def get_mcp_status(cfgdir=None):
-    """Run 'claude mcp list', return list of (name, status) tuples.
+#: `claude mcp list` connects to every configured server before answering, so it
+#: costs ~1.7s measured — 42% of a profiled /api/dashboard, which the SPA polls
+#: every 10 seconds. The endpoint's own `_dash_cache` cannot help: its TTL and
+#: the poll interval are the same number, so every poll was a cache miss and a
+#: fresh subprocess. A server going up or down is not something you need to see
+#: inside 30s, and every MCP page action already busts this by calling with
+#: `refresh=True`.
+#: ponytail: process-local dict, no lock — a duplicate probe is harmless
+_STATUS_TTL = 30
+_status_cache = {}
+
+
+def get_mcp_status(cfgdir=None, refresh=False):
+    """Run 'claude mcp list', return list of (name, status) tuples. Cached 30s.
 
     cfgdir names the account: `claude mcp` honours CLAUDE_CONFIG_DIR, and
-    without it the list came from whichever account claudectl inherited while
+    without it the list came from whichever account archeus inherited while
     every other MCP surface resolved the active one."""
+    key = _c.resolve_config_dir(cfgdir)
+    hit = _status_cache.get(key)
+    if hit and not refresh and time.time() - hit[0] < _STATUS_TTL:
+        return list(hit[1])
+
+    def miss():
+        """Cache the empty answer too.
+
+        Only the success path wrote the cache, so the three ways this returns []
+        — no claude.exe, proc.run gave up, the parse raised — re-spawned a 1.7s
+        subprocess on every 10-second dashboard poll. That is the case that
+        costs the MOST, because `claude mcp list` returning nothing usually
+        means it is slow-failing or timing out. Same argument `paths.py` makes
+        for caching a negative result.
+        """
+        _status_cache[key] = (time.time(), [])
+        return []
+
     claude_exe = get_claude_exe()
     if not claude_exe:
-        return []
+        return miss()
+    # Through proc.run, not subprocess directly. It was the last hand-rolled
+    # spawn outside that module, and being outside it had a cost: the test
+    # suite's process stubs patch `proc`, so every endpoint test that touched
+    # MCP ran the REAL `claude mcp list` against the user's real account —
+    # caught by the conftest guard that restores files a test damaged.
+    from . import proc
     try:
-        r = subprocess.run(
-                [claude_exe, 'mcp', 'list'],
-                capture_output=True, text=True,
-                encoding='utf-8', errors='ignore', timeout=10,
-                stdin=subprocess.DEVNULL, env=_c.account_env(cfgdir),
-                # getattr, not a bare reference: the constant does not exist on
-                # POSIX, and the bare form raised AttributeError inside the
-                # try/except that returns [] — so every MCP server silently
-                # vanished from the list on macOS and Linux.
-                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
-            )
+        r = proc.run([claude_exe, 'mcp', 'list'], timeout=10,
+                     env=_c.account_env(cfgdir))
+        if r is None:
+            return miss()
         lines = (r.stdout + r.stderr).splitlines()
         servers = []
         for line in lines:
@@ -52,9 +80,10 @@ def get_mcp_status(cfgdir=None):
                 # vanish from the list entirely — the one state the user most
                 # needs to see.
                 servers.append((name, 'fail'))
+        _status_cache[key] = (time.time(), list(servers))
         return servers
     except Exception:
-        return []
+        return miss()
 
 
 def _status_icon(status):
@@ -97,7 +126,7 @@ def analyze_mcp_tools(mcp_name):
     from . import memory
     out = memory._claude_stdin(
         prompt, None, timeout=120,
-        crumbs=('CLAUDECTL', mcp_name, 'MCP ANALYSIS'),
+        crumbs=('ARCHEUS', mcp_name, 'MCP ANALYSIS'),
         label=f'Analyzing {mcp_name} MCP tools via Claude...  (15-60s)')
     return (out or '').strip()
 
@@ -113,7 +142,7 @@ def update_global_claude_md_mcp(mcp_name, tools_doc, cfgdir=None):
 
     Atomic, because Claude Code reads this file every session: a plain
     open(...,'w') that dies partway leaves a half-written file and breaks the
-    user's whole session, not just claudectl. The existing gate only walks
+    user's whole session, not just archeus. The existing gate only walks
     writers NAMED settings, so it never looked here.
     """
     path      = _c.global_claude_md_for(cfgdir)
@@ -200,7 +229,7 @@ def mcp_cli(args, cfgdir=None, timeout=60):
     return r.returncode == 0, ((r.stdout or '') + (r.stderr or '')).strip()
 
 
-def _mcp_run(args, label, crumbs=('CLAUDECTL', 'MCP'), cfgdir=None):
+def _mcp_run(args, label, crumbs=('ARCHEUS', 'MCP'), cfgdir=None):
     """Run `claude mcp <args>` with progress. Returns (stdout, cancelled)."""
     claude = get_claude_exe()
     if not claude:
@@ -307,7 +336,7 @@ def _mcp_detail(name):
     out, _ = _mcp_run(['get', name], f"Loading {name}...")
     lines = (out or 'no details').splitlines() or ['(empty)']
     while True:
-        key = pager(('CLAUDECTL', 'MCP', name), lines,
+        key = pager(('ARCHEUS', 'MCP', name), lines,
                     hint="d remove   t tool docs", extra_keys=('d', 't'))
         if key == 'd':
             scope = menu([(s, s) for s in MCP_SCOPES], f"REMOVE {name} — scope")
@@ -318,7 +347,7 @@ def _mcp_detail(name):
         elif key == 't':
             doc = analyze_mcp_tools(name)
             if doc:
-                pager(('CLAUDECTL', 'MCP', name, 'TOOLS'), doc.splitlines())
+                pager(('ARCHEUS', 'MCP', name, 'TOOLS'), doc.splitlines())
             else:
                 flash("No tool docs (MCP may need auth)", ok=False, secs=1.4)
         else:

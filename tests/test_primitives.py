@@ -211,7 +211,7 @@ def test_no_module_spawns_a_terminal_directly():
                                     for e in arg.elts)):
                         offenders.append('%s:%d cmd /c start' % (name, node.lineno))
     # proxy_base spawns the detached proxy consoles and documents why: they must
-    # outlive claudectl, and the routing log IS the feature. ONE spawn shared by
+    # outlive archeus, and the routing log IS the feature. ONE spawn shared by
     # both daemons (failover, gateway) — which is the point this gate is making.
     offenders = [o for o in offenders if not o.startswith('proxy_base.py')]
     assert not offenders, 'terminal spawned outside proc.py: ' + ', '.join(offenders)
@@ -299,10 +299,14 @@ def test_no_module_builds_its_own_headless_claude_call():
                      if isinstance(e, ast.Constant) and isinstance(e.value, str)}
             if flags & {'-p', '--print'}:
                 offenders.append('%s:%d' % (name, node.lineno))
-    # memory.py IS the seam. The other two stream their output as it arrives
-    # (--output-format stream-json / a live progress pane), which is a different
-    # contract from "give me the finished text", not a second copy of one.
-    waived = ('memory.py', 'claude_md.py', 'plan_execute.py')
+    # memory.py IS the seam. Each of the others has a contract the seam does not
+    # express, rather than a second copy of one it does:
+    #   claude_md / plan_execute  stream their output as it arrives
+    #                             (--output-format stream-json, a live pane)
+    #   loops                     an hour-long unattended iteration that owns its
+    #                             own permission mode, its own quota report and
+    #                             its own journal entry
+    waived = ('memory.py', 'claude_md.py', 'plan_execute.py', 'loops.py')
     offenders = [o for o in offenders if not o.startswith(waived)]
     assert not offenders, ('headless claude spawned outside memory._claude_stdin: '
                            + ', '.join(offenders))

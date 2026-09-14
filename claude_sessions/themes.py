@@ -111,14 +111,15 @@ def ansi_palette(p):
 
 
 # ── palettes ─────────────────────────────────────────────────
-# 29 themes: every main hue family plus four real light themes. The 17 original
+# 32 visible themes (39 entries; 7 are world-only and hidden): every main hue
+# family plus four real light themes. The 17 original
 # names are all kept (re-coloured, never renamed) so no saved settings.json
 # breaks. `motion` is the personality, not a per-theme animation (see above).
 
 PALETTES = {
     # ── cyan ──
     'default': {
-        'label': 'Claudectl', 'family': 'cyan', 'mode': 'dark', 'motion': 'smooth',
+        'label': 'Archeus', 'family': 'cyan', 'mode': 'dark', 'motion': 'smooth',
         'accent': '#7dcfff', 'accent2': '#a78bfa', 'ok': '#3fdd9d',
         'warn': '#f7b955', 'err': '#ff6b81',
         'bg': '#0d1117', 'bg2': '#111827', 'panel': '#161e2e', 'panel2': '#1b2436',
@@ -508,7 +509,7 @@ def visible_palettes():
 # ── skins ────────────────────────────────────────────────────
 """A palette answers "what colours". A skin answers "what IS this app".
 
-The two are orthogonal: any palette renders under any skin, so 29 x 7. Each
+The two are orthogonal: any palette renders under any skin, so 32 x 8. Each
 palette names a default skin that suits its colours, and the user can override.
 
 Skins exist because a palette alone cannot make the app feel like anything — every
@@ -560,7 +561,7 @@ Keys — chassis
                  Which is right: the spacing scale and type scale were tuned
                  once for legibility, and letting a theme scale them by 0.78x or
                  1.2x makes some themes quietly worse laid out than others, felt
-                 rather than seen. One canonical geometry, seven appearances.
+                 rather than seen. One canonical geometry, many appearances.
   topbar         'flat' | 'notch' (clipped corner) | 'rail' (tick ruler beneath)
   arrive         page-arrival timeline, keyed in SKIN_ARRIVE (motion.js). The
                  whole page is choreographed, not each card independently.
@@ -594,6 +595,33 @@ blur, motion:off and stage:off. See the header of stage.js.
 """
 
 SKINS = {
+    # First, because it is the one to reach for when none of the others is what
+    # you want. Every other skin commits to something — a viewport chassis, a
+    # display font, an entrance with a personality — and there was no way to ask
+    # for none of that: the picker's fourth tile is "auto", which resolves to
+    # whichever of HUD/Terminal/Brutalist the palette names, never to nothing.
+    #
+    # So this is the plain one. No chassis, the system UI font at its normal
+    # weight, hairline borders, a modest radius, no bloom and the quietest
+    # `calm` in the set. It reuses the `hud` scene rather than adding a shader:
+    # at calm .14 with bloom off, that field reads as a soft wash, and a look
+    # whose whole point is having no signature should not ship one.
+    #
+    # `op` is .88 and not 1.0 because `tests/test_skins.py` caps it at .9 — a
+    # fully opaque panel hides the stage everywhere but the gutters, which is
+    # how the first background attempt came out looking like it had none.
+    'standard': {
+        'label': 'Standard', 'blurb': 'No chassis, system type, hairline borders. The app, plainly.',
+        'radius': 8, 'border': 1, 'shadow': 'soft',
+        'surface': '', 'edge': 'hair',
+        'font': '"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif',
+        'track': '0', 'caps': 'none',
+        'ease': 'cubic-bezier(.22,1,.36,1)',
+        'enter': 'lift', 'burst': 'brackets',
+        'gauge': {'tick': 'line', 'cap': 'round', 'lw': 1.0, 'glow': .25},
+        'chassis': 'none', 'topbar': 'flat',
+        'arrive': 'lift', 'op': .88, 'stage': 'hud', 'bloom': 0, 'calm': .14, 'flow': 0.5,
+    },
     'hud': {
         # Reworked on direct feedback: "HUD non è male, si può scurire, rendere
         # più simile a terminal ma con forme diverse". So: darker ground (op up,
@@ -612,7 +640,7 @@ SKINS = {
     # ── world skins ──────────────────────────────────────────
     # These are not offered in the skin picker (`world: True`). Each belongs to
     # one WORLD and is worn only as part of it, which is exactly what the three
-    # they replace could not do: Sakura had to look sane under 29 palettes, so
+    # they replace could not do: Sakura had to look sane under every palette, so
     # it committed to nothing and read as a loud wallpaper on weak chrome.
     # "Glass, Mecha e Sakura da buttare."
     'anime': {
@@ -667,7 +695,20 @@ SKINS = {
         'enter': 'lift', 'burst': 'link',
         'gauge': {'tick': 'dot', 'cap': 'round', 'lw': 1.1, 'glow': .5},
         'chassis': 'float', 'topbar': 'flat',
-        'arrive': 'lift', 'op': .58, 'stage': 'graph', 'bloom': .5, 'calm': .40, 'flow': 0.85,
+        # calm at the ceiling test_skin_reach allows, and it is a WORLD that
+        # earns it: the graph scene is an homage to this project's own
+        # architecture graph, its reference image is a black field with
+        # everything on it luminous, and a world owns its palette outright so
+        # it cannot make some other palette overstimulating. The cap itself
+        # stays where it is — it is protecting the mixable skins, which have to
+        # be a ground under 32 palettes they did not choose.
+                # bloom .34, down from .5. The threshold rule this file already
+        # records (0.55, because at 0.2 a neon scene is an undifferentiated
+        # spill) is about WHAT blooms; this is about how much, and the scene it
+        # was tuned against had 120 rods per cluster. It now has 480 shell rods,
+        # 30 frame tubes, 20 spokes and a 480-rod inner web — five times the lit
+        # surface, so the same strength is five times the glow.
+        'arrive': 'lift', 'op': .58, 'stage': 'graph', 'bloom': .34, 'calm': .50, 'flow': 0.85,
     },
     'crt': {
         'label': 'Terminal', 'blurb': 'Retro CRT in a bezel. Curved raster, rolling refresh, phosphor glow.',
@@ -722,7 +763,7 @@ STAGE_SCENES = ('hud', 'crt', 'brutal', 'anime', 'cyber', 'deck', 'graph')
 
 PALETTES x SKINS is orthogonal, and that is right for the classic looks — the
 whole point of Slate-under-Terminal is that you chose both. But orthogonality is
-also why the loud skins failed: a skin that has to look sane under 29 palettes
+also why the loud skins failed: a skin that has to look sane under 32 palettes
 can commit to nothing, so Sakura/Mecha/Glass ended up as loud wallpapers bolted
 onto weak chrome, and were rejected on sight.
 
@@ -792,8 +833,13 @@ DEFAULT_SKIN = {
     'mocha': 'crt', 'forest': 'crt', 'everforest': 'crt', 'ember': 'crt',
     'gruvbox': 'crt', 'ayu': 'crt',
     # light palettes → Brutalist: hard borders survive a pale ground, glow does not
-    'mono-light': 'brutal', 'paper': 'brutal', 'catppuccin-latte': 'brutal',
-    'dawn': 'brutal',
+    'catppuccin-latte': 'brutal', 'dawn': 'brutal',
+    # …except the two achromatic ones, which are Standard. A plain white sheet
+    # with hairline rules is what 'paper' and 'mono-light' already wanted to be,
+    # and it is where the plain skin is most likely to be found — a skin no
+    # palette defaults to is a skin nobody discovers
+    # (test_every_skin_is_worn_by_default_somewhere).
+    'paper': 'standard', 'mono-light': 'standard',
     # the OLED neutrals: Terminal, because a true-black ground with one accent is
     # the look these were authored for and the one both users chose unprompted
     'oled-red': 'crt', 'oled-green': 'crt', 'oled-blue': 'crt',

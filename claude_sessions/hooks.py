@@ -63,6 +63,50 @@ EVENT_MATCHERS = {
 
 EVENTS = set(EVENT_MATCHERS)
 
+#: When each event fires, said the way a person would say it.
+#:
+#: `PreToolUse` is Claude Code's vocabulary, not the reader's, and a hooks
+#: screen that lists nothing but those names cannot be read by someone who has
+#: not already memorised them. The raw name still shows — it is what the
+#: documentation and settings.json use — but the phrase leads.
+#:
+#: A missing key degrades to the raw event name at every call site, so a new
+#: Claude Code event never renders as a blank.
+EVENT_WHEN = {
+    'PreToolUse': 'before Claude runs a tool',
+    'PostToolUse': 'after a tool has run',
+    'PostToolUseFailure': 'after a tool failed',
+    'PostToolBatch': 'after a batch of tools has run',
+    'UserPromptSubmit': 'when you send a message',
+    'UserPromptExpansion': 'when you type a slash command',
+    'Stop': 'when Claude finishes a turn',
+    'StopFailure': 'when a turn ends in an error',
+    'SubagentStart': 'when a subagent starts',
+    'SubagentStop': 'when a subagent finishes',
+    'SessionStart': 'when a session starts',
+    'SessionEnd': 'when a session ends',
+    'Setup': 'on first setup, and on maintenance runs',
+    'Notification': 'when Claude Code notifies you',
+    'MessageDisplay': 'when a message is shown to you',
+    'PreCompact': 'before the context is compacted',
+    'PostCompact': 'after the context is compacted',
+    'InstructionsLoaded': 'after CLAUDE.md and the rules are loaded',
+    'PermissionRequest': 'when Claude asks you for permission',
+    'PermissionDenied': 'when a permission is refused',
+    'ConfigChange': 'when a settings file changes',
+    'CwdChanged': 'when the working directory changes',
+    'DirectoryAdded': 'when a directory joins the session',
+    'WorktreeCreate': 'when a git worktree is created',
+    'WorktreeRemove': 'when a git worktree is removed',
+    'TaskCreated': 'when a task is created',
+    'TaskCompleted': 'when a task completes',
+    'TeammateIdle': 'when a teammate agent goes idle',
+    'FileChanged': 'when a watched file changes',
+    'Elicitation': 'when an MCP server asks you something',
+    'ElicitationResult': 'after you answer an MCP server',
+}
+
+
 def _py_hook(script):
     """Absolute `"<python>" "<claude_sessions/script>"` — runs regardless of the
     hook shell (bash/cmd/pwsh) and doesn't depend on $-expansion."""
@@ -182,7 +226,7 @@ TEMPLATES = {
         'event': 'PostToolUse',
         'entry': {'matcher': 'Bash',
                   'hooks': [{'type': 'command', 'command': _py_hook('logbash_hook.py')}]},
-        'desc': 'Append every Bash command to .claudectl/bash-log.txt',
+        'desc': 'Append every Bash command to .archeus/bash-log.txt',
     },
     'notify-on-stop': {
         'event': 'Stop',
@@ -210,16 +254,21 @@ TEMPLATES = {
         'entry': {'hooks': [{'type': 'command', 'command': _py_hook('concise_hook.py')}]},
         'desc': 'Cut output tokens: no narration, no re-printed code (saves tokens)',
     },
+    'suggest-subagent': {
+        'event': 'UserPromptSubmit',
+        'entry': {'hooks': [{'type': 'command', 'command': _py_hook('agentnudge_hook.py')}]},
+        'desc': 'Name the project subagent that fits your prompt (keyword match, no model call)',
+    },
     'filter-test-output': {
         'event': 'PreToolUse',
         'entry': {'matcher': 'Bash',
                   'hooks': [{'type': 'command', 'command': _py_hook('testfilter_hook.py')}]},
         'desc': 'Pipe pytest/npm test/go test output through a failures-only filter (saves tokens)',
     },
-    # ── lifecycle events claudectl has a specific reason to want ──────
+    # ── lifecycle events archeus has a specific reason to want ──────
     # Two of these replace approximations with the real signal.
     'reinject-after-compact': {
-        # THE one worth having. claudectl already advertises "context-loss
+        # THE one worth having. archeus already advertises "context-loss
         # insurance after /compact", but until PostCompact existed the only
         # available moment was SessionStart — i.e. before the loss, not after
         # it. This fires on the far side of a compaction, when the context has
@@ -229,18 +278,24 @@ TEMPLATES = {
         'desc': 'Re-inject project memory right after /compact discards the context',
     },
     'memory-stale-on-change': {
-        # The scheduler polls every auto_memory_interval seconds and hashes to
-        # decide whether anything changed. FileChanged says so directly, so the
-        # poll stops being the mechanism and becomes the fallback.
-        'event': 'FileChanged',
-        'entry': {'hooks': [{'type': 'command',
-                             'command': _py_hook('worklog_hook.py')}]},
-        'desc': 'Mark project memory stale the moment a file changes (instead of polling)',
+        # This preset had never worked. It was bound to `FileChanged`, whose
+        # matcher is a list of literal FILENAMES to watch (built for `.env`-style
+        # sentinels), not a glob over a codebase — and it invoked worklog_hook,
+        # which does not touch memory at all. PostToolUse on the edit tools is
+        # the signal that actually exists: it fires after every successful edit
+        # and its payload carries the file path.
+        'event': 'PostToolUse',
+        'entry': {'matcher': 'Edit|Write|NotebookEdit',
+                  'hooks': [{'type': 'command',
+                             'command': _py_hook('memdirty_hook.py')}]},
+        'desc': ('Record the files Claude edits, so auto-memory re-extracts just '
+                 'those (edits made outside Claude Code are still caught by the '
+                 'periodic scan)'),
     },
     'log-permission-denials': {
         # feeds the permission-fatigue work: what actually gets denied, rather
         # than what someone guessed would be. --denied writes the STRUCTURED
-        # sidecar (.claudectl/denied.jsonl); without the flag this same script
+        # sidecar (.archeus/denied.jsonl); without the flag this same script
         # is the plain bash log, where a denial was indistinguishable from a
         # success and every non-Bash denial was dropped on the floor.
         'event': 'PermissionDenied',
@@ -499,11 +554,13 @@ _SCRIPT_LABELS = {
     'testfilter_hook.py': 'filter-test-output',
     'guard_hook.py': 'guard/block',
     'logbash_hook.py': 'log-bash-commands',
+    'agentnudge_hook.py': 'suggest-subagent',
+    'memdirty_hook.py': 'memory stale-on-edit',
 }
 
 
 #: `_py_hook` bakes `sys.executable` into the command, and that is
-#: `pythonw.exe` when claudectl runs as a GUI but `python.exe` from a console.
+#: `pythonw.exe` when archeus runs as a GUI but `python.exe` from a console.
 #: The same template installed from the two shells therefore produced two
 #: strings that were not equal — two entries in settings.json, and a row that
 #: never went "installed" because the running process had generated the other
@@ -721,7 +778,7 @@ def _ai_hook(cfgdir=None):
                              'desc': {'type': 'string'}},
               'required': ['event', 'command']}
     data = memory._claude_json(
-        prompt, os.getcwd(), schema, crumbs=('CLAUDECTL', 'HOOK'),
+        prompt, os.getcwd(), schema, crumbs=('ARCHEUS', 'HOOK'),
         label='Generating hook with Claude...')
     if not isinstance(data, dict):
         flash("Claude returned no valid hook", ok=False, secs=1.8)
@@ -732,13 +789,23 @@ def _ai_hook(cfgdir=None):
         flash(f"Invalid hook (event={event or '?'})", ok=False, secs=2)
         return
     matcher = str(data.get('matcher', '')).strip()
-    _cls()
-    print(f"\n  AI-GENERATED HOOK\n")
-    print(f"  Event   : {event}")
-    print(f"  Matcher : {matcher or '(any)'}")
-    print(f"  Command : {command}")
-    print(f"  {data.get('desc', '')}\n")
-    if not confirm("Add this hook?"):
+    # `_pager_confirm`, not `print` + `confirm`: this function is also the GUI's
+    # `hook_ai` job, and there the four prints went to a stdout nobody was
+    # reading while `confirm` blocked in wait_event() forever — the job parked
+    # at 'running' until the six-hour reaper. `_pager_confirm` is one of the
+    # primitives `gui_api._install_bridge` patches, so it is a pager in the
+    # terminal and a real approve/reject gate in the browser, showing the same
+    # text either way.
+    from .claude_md import _pager_confirm
+    preview = '\n'.join([
+        f"Event   : {event}",
+        f"Matcher : {matcher or '(any)'}",
+        f"Command : {command}",
+        '',
+        str(data.get('desc', '')),
+    ])
+    if not _pager_confirm('AI-GENERATED HOOK  — approve to add', preview):
+        flash('Rejected — not added', ok=False, secs=1.4)
         return
     entry = {'hooks': [{'type': 'command', 'command': command}]}
     if matcher:
@@ -764,24 +831,56 @@ def _move(s, event, idx, src_key, dst_key):
     return entry
 
 
+def _move_across(event, index, src_key, dst_key, cfgdir=None):
+    """Move one hook out of `src_key` in every account that has it.
+
+    Installing already fans out (`_hook_targets`, and the GUI says so on the
+    Templates card), and turning one OFF did not — so `notify-on-input-needed`,
+    installed once, sat enabled in all five accounts on this machine and kept
+    firing from the other four after the user disabled it. "The reader narrows,
+    the writer does not" was already the stated rule; the writers here were the
+    two that broke it.
+
+    The index cannot be reused across accounts — the same event holds a
+    different number of entries in each — so `index` only resolves the hook in
+    the account the caller is looking at, and every other account is matched by
+    what the hook actually IS (`_cmd_keys`, interpreter-independent). Passing an
+    explicit `cfgdir` still means that account alone, which is what the GUI's
+    account picker sends.
+    """
+    ref = _load(cfgdir)
+    entries = (ref.get(src_key) or {}).get(event) or []
+    idx = int(index)
+    if not isinstance(entries, list) or idx >= len(entries):
+        return False
+    if cfgdir:
+        if _move(ref, event, idx, src_key, dst_key) is None:
+            return False
+        return _save(ref, cfgdir)
+    keys = _cmd_keys(entries[idx])
+    moved = False
+    for _name, d in account_dirs():
+        s = _load(d)
+        for i, e in enumerate((s.get(src_key) or {}).get(event) or []):
+            if _cmd_keys(e) == keys:
+                _move(s, event, i, src_key, dst_key)
+                moved = _save(s, d) or moved
+                break
+    return moved
+
+
 def set_hook_enabled(event, index, enabled, cfgdir=None):
     """Move one hook between `hooks` and `hooks_disabled`. Returns True when it
     moved. The pure half of the TUI's toggle, so the GUI does not need a second
     implementation of the move."""
-    s = _load(cfgdir)
     src, dst = ('hooks_disabled', 'hooks') if enabled else ('hooks', 'hooks_disabled')
-    if _move(s, event, int(index), src, dst) is None:
-        return False
-    return _save(s, cfgdir)
+    return _move_across(event, index, src, dst, cfgdir)
 
 
 def remove_hook(event, index, enabled=True, cfgdir=None):
     """Delete one hook outright, from either state block."""
-    s = _load(cfgdir)
-    key = 'hooks' if enabled else 'hooks_disabled'
-    if _move(s, event, int(index), key, None) is None:
-        return False
-    return _save(s, cfgdir)
+    return _move_across(event, index, 'hooks' if enabled else 'hooks_disabled',
+                        None, cfgdir)
 
 
 def _toggle_or_remove(sel, cfgdir=None):

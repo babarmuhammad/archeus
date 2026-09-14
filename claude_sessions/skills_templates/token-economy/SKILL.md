@@ -25,5 +25,5 @@ Answer with the fewest tokens that fully do the job. Precision over prose.
 
 Terse for routine/mechanical work. If the task is genuinely complex or safety-relevant, spend the words it needs — economy is the default, not a straitjacket.
 
-<!-- claudectl starter skill. Inspired by the `caveman` token-compression skill
-     (via claudemarketplaces.com) and claudectl's own concise-output hook. -->
+<!-- archeus starter skill. Inspired by the `caveman` token-compression skill
+     (via claudemarketplaces.com) and archeus's own concise-output hook. -->

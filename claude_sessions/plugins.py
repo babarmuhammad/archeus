@@ -2,13 +2,13 @@
 
 A plugin is now the canonical unit of distribution: a versioned bundle shipping
 any of skills, subagents, slash commands, hooks, output styles and MCP servers
-together. claudectl manages every one of those individually and, until this
+together. archeus manages every one of those individually and, until this
 module, could not see the bundle that contained them.
 
-THE PART THAT ONLY CLAUDECTL CAN DO
+THE PART THAT ONLY ARCHEUS CAN DO
 -----------------------------------
 Listing plugins is table stakes — `/plugin` already does it. What no other tool
-is positioned to show is PROVENANCE: claudectl's agent, skill and hook managers
+is positioned to show is PROVENANCE: archeus's agent, skill and hook managers
 present a flat list, so there is no way to tell what you installed deliberately
 from what a bundle brought along. After a few marketplace installs that list is
 a mystery, and the only safe-looking action — delete it — may break a plugin.
@@ -29,12 +29,13 @@ Read from the live files, not from the documentation, which describes a
   ~/.claude/plugins/cache/<mkt>/<plugin>/<v>/  the installed plugin itself
 
 Both files are read defensively and treated as advisory: they belong to Claude
-Code, the shape has already changed once, and claudectl showing a stale row is
-strictly better than claudectl crashing on an unfamiliar key.
+Code, the shape has already changed once, and archeus showing a stale row is
+strictly better than archeus crashing on an unfamiliar key.
 """
 
 import json
 import os
+import re
 
 from . import config as _c
 
@@ -180,15 +181,15 @@ def summary(cfg_dir=None):
 # Claude Code's: it resolves marketplace sources, verifies manifests, handles
 # scopes and updates its own caches. Writing them directly would work until the
 # format moved — which it already has once — and would then corrupt the state of
-# the tool claudectl exists to support.
+# the tool archeus exists to support.
 
 def _claude_cli(args, timeout=120, cfgdir=None):
     """Run `claude <args>` against ONE account.
 
     The env is the whole point. Without it the CLI lands on whatever
-    CLAUDE_CONFIG_DIR claudectl inherited — normally unset, i.e. the default
+    CLAUDE_CONFIG_DIR archeus inherited — normally unset, i.e. the default
     account — while every reader in this module resolves `cfgdir`. Read and
-    write then named different accounts: with claudectl switched to another
+    write then named different accounts: with archeus switched to another
     account the Plugins page listed that account's plugins and Install wrote
     into default.
     """
@@ -204,10 +205,21 @@ def _claude_cli(args, timeout=120, cfgdir=None):
 
 
 def add_marketplace(source, cfgdir=None):
-    """`claude plugin marketplace add <repo|url|path>`."""
+    """`claude plugin marketplace add <repo|url|path>`.
+
+    The three shapes the CLI documents are the three shapes accepted, because
+    this value is fetched by git underneath: a bare `ext::sh -c …` is a real git
+    transport that executes on clone, and a value starting `-` lands in an
+    option position. Neither needs a shell to be a problem.
+    """
+    from . import proc
     source = (source or '').strip()
     if not source:
         return False, 'No source given'
+    if not (re.match(r'^[\w.-]+/[\w.-]+$', source)         # owner/repo
+            or proc.remote_url_ok(source)                  # a git remote URL
+            or os.path.isdir(source)):                     # a local marketplace
+        return False, 'not an owner/repo, a git URL, or a directory that exists'
     return _claude_cli(['plugin', 'marketplace', 'add', source], cfgdir=cfgdir)
 
 

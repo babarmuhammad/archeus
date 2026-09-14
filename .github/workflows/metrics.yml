@@ -1,0 +1,39 @@
+name: metrics
+
+# Refreshes docs/dashboard.md — the public project dashboard. The numbers are
+# fetched here rather than at page-render time so the site stays a static build
+# with no runtime service and no API key.
+
+on:
+  schedule:
+    - cron: '17 4 * * 1'      # Mondays, 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: metrics
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The dashboard reports total and 30-day commit counts; a shallow
+          # clone would report a handful of both.
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python tools/gen_metrics.py
+      - name: Commit if the numbers moved
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add docs/dashboard.md
+          git diff --cached --quiet && echo 'no change' && exit 0
+          git commit -m 'chore: refresh the project dashboard'
+          git push

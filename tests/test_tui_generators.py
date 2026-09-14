@@ -208,3 +208,118 @@ def test_ai_compress_rejected_diff_no_write(monkeypatch, tmp_path):
     monkeypatch.setattr(ui, 'flash', lambda *a, **k: None)
     assert claude_md.ai_compress_claude_md(proj, folder) is False
     assert open(md_path, encoding='utf-8').read() == old
+
+
+# ── the KEEP fence, and prune's safety net ──────────────────
+# The complaint this answers: "I don't want to feel that if I compact or prune
+# I will lose my memory." Compression handed every line of manual prose to the
+# model and put back whatever came out; prune had no backup and, in the GUI, no
+# confirmation at all.
+
+def test_a_fenced_section_survives_a_model_that_drops_it(monkeypatch, tmp_path):
+    """The fence's only promise is that content survives. It is kept even when
+    the model returns output with no trace of the marker."""
+    from claude_sessions import memory, diffview
+    from claude_sessions.config import _KEEP_START, _KEEP_END
+    sb = Sandbox(monkeypatch, tmp_path)
+    _, enc, folder, _ = sb.add_project('alpha', n_sessions=1)
+    proj = str(sb.root / 'work' / 'alpha')
+    md_path = _seed_compress_md(proj, folder)
+    secret = 'the staging DB password rotates every Tuesday at 0400 UTC'
+    text = open(md_path, encoding='utf-8').read()
+    text = text.replace('## Long prose',
+                        f"{_KEEP_START}\n## Do not touch\n{secret}\n{_KEEP_END}\n\n## Long prose")
+    with open(md_path, 'w', encoding='utf-8') as f:
+        f.write(text)
+
+    seen = {}
+
+    def _fake(prompt, *a, **k):
+        seen['prompt'] = prompt
+        # a model that ignores the marker entirely — the worst realistic case
+        return ("# alpha\n\n- run: pytest -q\n- style: terse and short\n"
+                "- package manager: uv\n- never touch the dist/ directory\n")
+
+    monkeypatch.setattr(memory, '_claude_stdin', _fake)
+    monkeypatch.setattr(diffview, 'confirm', lambda *a, **k: True)
+    monkeypatch.setattr(ui, 'flash', lambda *a, **k: None)
+    assert claude_md.ai_compress_claude_md(proj, folder) is True
+
+    assert secret not in seen['prompt'], 'fenced text is never sent to the model'
+    out = open(md_path, encoding='utf-8').read()
+    assert secret in out, 'and it is still in the file afterwards'
+    assert _KEEP_START in out and _KEEP_END in out
+
+
+def test_a_fenced_section_goes_back_where_its_marker_was(monkeypatch, tmp_path):
+    from claude_sessions import memory, diffview
+    from claude_sessions.config import _KEEP_START, _KEEP_END
+    sb = Sandbox(monkeypatch, tmp_path)
+    _, enc, folder, _ = sb.add_project('alpha', n_sessions=1)
+    proj = str(sb.root / 'work' / 'alpha')
+    md_path = _seed_compress_md(proj, folder)
+    keep = f"{_KEEP_START}\nKEEP ME EXACTLY\n{_KEEP_END}"
+    text = open(md_path, encoding='utf-8').read().replace('## Long prose',
+                                                          keep + '\n\n## Long prose')
+    with open(md_path, 'w', encoding='utf-8') as f:
+        f.write(text)
+    monkeypatch.setattr(memory, '_claude_stdin', lambda *a, **k:
+                        "# alpha\n\n@@ARCHEUS_KEEP_0@@\n\n- run: pytest -q here\n"
+                        "- package manager: uv\n- never touch the dist/ directory\n")
+    monkeypatch.setattr(diffview, 'confirm', lambda *a, **k: True)
+    monkeypatch.setattr(ui, 'flash', lambda *a, **k: None)
+    assert claude_md.ai_compress_claude_md(proj, folder) is True
+    out = open(md_path, encoding='utf-8').read()
+    assert 'KEEP ME EXACTLY' in out and '@@ARCHEUS_KEEP_0@@' not in out
+    # placed where the marker was, i.e. before the compressed line
+    assert out.index('KEEP ME EXACTLY') < out.index('- run: pytest -q here')
+
+
+def test_prune_preview_writes_nothing_and_names_what_goes(monkeypatch, tmp_path):
+    from claude_sessions import config
+    sb = Sandbox(monkeypatch, tmp_path)
+    _, enc, folder, _ = sb.add_project('alpha', n_sessions=1)
+    proj = str(sb.root / 'work' / 'alpha')
+    md_path = _seed_compress_md(proj, folder)
+    s = config.load_settings(); s['claude_md_sessions_cap'] = 1; config.save_settings(s)
+    with open(md_path, encoding='utf-8') as f:
+        before = f.read()
+    # two extra old entries the cap will have to drop
+    before = before.replace('- **s** (2 msgs): t',
+                            '- **s** (2 msgs): t\n- **old-one** (1 msgs): x\n'
+                            '- **old-two** (1 msgs): y')
+    with open(md_path, 'w', encoding='utf-8') as f:
+        f.write(before)
+
+    p = claude_md.prune_preview(proj, folder)
+    assert p and p['changed']
+    assert 'old-two' in p['dropped'] or 'old-one' in p['dropped']
+    assert open(md_path, encoding='utf-8').read() == before, 'preview writes nothing'
+
+
+def test_prune_is_reversible_and_restamps_freshness(monkeypatch, tmp_path):
+    from claude_sessions import diffview, workspace
+    sb = Sandbox(monkeypatch, tmp_path)
+    _, enc, folder, _ = sb.add_project('alpha', n_sessions=1)
+    proj = str(sb.root / 'work' / 'alpha')
+    md_path = _seed_compress_md(proj, folder)
+    before = open(md_path, encoding='utf-8').read()
+
+    assert claude_md.prune_claude_md(proj, folder) is not None
+    vs = diffview.versions(proj, folder, 'claude_md')
+    assert vs, 'prune snapshots what it replaced'
+    ok, _m = diffview.restore(proj, folder, 'claude_md', vs[-1]['ts'])
+    assert ok and open(md_path, encoding='utf-8').read() == before
+
+    # and it counts as a freshness baseline, which is why the score used to be
+    # stuck on Stale after the very operation meant to fix it
+    m = workspace.load_manifest(proj, folder)
+    assert 'sessions_at_gen' in (m['operations'].get('prune') or {})
+
+
+def test_prune_on_a_project_with_no_claude_md_is_not_a_crash(monkeypatch, tmp_path):
+    sb = Sandbox(monkeypatch, tmp_path)
+    _, enc, folder, _ = sb.add_project('alpha', n_sessions=1)
+    proj = str(sb.root / 'work' / 'alpha')
+    assert claude_md.prune_claude_md(proj, folder) is None
+    assert claude_md.prune_preview(proj, folder) is None

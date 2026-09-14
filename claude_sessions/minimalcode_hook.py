@@ -6,19 +6,23 @@ Shell-agnostic; never errors. Inspired by Ponytail
 
 import sys
 import json
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Claude Code captures stdout as a PIPE, so CPython picks the locale
 # codepage (cp1252 on Windows) and any non-ASCII character in the payload
 # either mojibakes or raises — silently losing the whole hook output.
-sys.stdout.reconfigure(encoding='utf-8')
+# Guarded: `sys.stdout` is None in a windowed process (pythonw with no
+# console). A hook must degrade to plain output, never die at import.
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except (AttributeError, ValueError, OSError):
+    pass
 
-_RULE = (
-    "Code minimization (claudectl): read/understand fully, then write the LEAST "
-    "code that works. Before writing, stop at the first hit — 1) needed at all? "
-    "(YAGNI) 2) already in this repo? reuse 3) stdlib? 4) native platform feature? "
-    "5) an installed dependency? 6) one line? 7) only then the minimum that works. "
-    "No speculative abstraction or dead scaffolding; keep readability and full safety."
-)
+# the text itself lives in hookrules so the audit can count it
+# without importing this entry point — see that module
+from claude_sessions.hookrules import MINIMAL_CODE as _RULE
 
 
 def main():

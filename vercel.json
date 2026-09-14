@@ -1,0 +1,59 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "python3 -m venv .venv && .venv/bin/pip install -r requirements-docs.txt",
+  "buildCommand": ".venv/bin/python tools/gen_api_docs.py --check && .venv/bin/python -m mkdocs build --strict",
+  "outputDirectory": "site",
+  "redirects": [
+    {
+      "source": "/install",
+      "destination": "/installation/",
+      "permanent": true
+    },
+    {
+      "source": "/install/",
+      "destination": "/installation/",
+      "permanent": true
+    },
+    {
+      "source": "/gui",
+      "destination": "/desktop/",
+      "permanent": true
+    },
+    {
+      "source": "/gui/",
+      "destination": "/desktop/",
+      "permanent": true
+    },
+    {
+      "source": "/graph",
+      "destination": "/architecture/",
+      "permanent": true
+    },
+    {
+      "source": "/graph/",
+      "destination": "/architecture/",
+      "permanent": true
+    },
+    {
+      "source": "/health",
+      "destination": "/projects/",
+      "permanent": true
+    },
+    {
+      "source": "/health/",
+      "destination": "/projects/",
+      "permanent": true
+    },
+    {
+      "source": "/token-economy",
+      "destination": "/usage/",
+      "permanent": true
+    },
+    {
+      "source": "/token-economy/",
+      "destination": "/usage/",
+      "permanent": true
+    }
+  ]
+}

@@ -14,9 +14,14 @@ import json
 # Claude Code captures stdout as a PIPE, so CPython picks the locale
 # codepage (cp1252 on Windows) and any non-ASCII character in the payload
 # either mojibakes or raises — silently losing the whole hook output.
-sys.stdout.reconfigure(encoding='utf-8')
+# Guarded: `sys.stdout` is None in a windowed process (pythonw with no
+# console). A hook must degrade to plain output, never die at import.
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except (AttributeError, ValueError, OSError):
+    pass
 
-MARKER = 'claudectl-testfilter'
+MARKER = 'archeus-testfilter'
 
 _RUNNERS = re.compile(
     r'^\s*(?:'

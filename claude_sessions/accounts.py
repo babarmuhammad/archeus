@@ -1,7 +1,7 @@
 """Multi-account manager — make running two (or more) Claude accounts easy.
 
 Claude Code picks the account from its config dir (CLAUDE_CONFIG_DIR). Each
-account = its own dir with its own login. claudectl stores named accounts, lets
+account = its own dir with its own login. archeus stores named accounts, lets
 you switch the active one, and — the point — **launch a second account in a new
 terminal with one key** so both run at the same time.
 """
@@ -70,9 +70,9 @@ def _sync_accounts():
     d = provision.diff()
     lines = provision.report(d)
     if d['clean']:
-        pager(('CLAUDECTL', 'ACCOUNTS', 'SYNC'), lines, hint='ESC back')
+        pager(('ARCHEUS', 'ACCOUNTS', 'SYNC'), lines, hint='ESC back')
         return
-    key = pager(('CLAUDECTL', 'ACCOUNTS', 'SYNC'), lines,
+    key = pager(('ARCHEUS', 'ACCOUNTS', 'SYNC'), lines,
                 hint='a  apply to every account', extra_keys=('a',))
     if key != 'a':
         return
@@ -86,7 +86,7 @@ def _sync_accounts():
     done = provision.apply(d, review=review)
     out = ['  %s  %-12s %-12s %s' % ('OK ' if ok else 'ERR', acct, kind, detail)
            for acct, kind, detail, ok in done] or ['  Nothing to do.']
-    pager(('CLAUDECTL', 'ACCOUNTS', 'SYNC'), out, hint='ESC back')
+    pager(('ARCHEUS', 'ACCOUNTS', 'SYNC'), out, hint='ESC back')
 
 
 def _add_account(s):
@@ -118,7 +118,7 @@ def _account_actions(s, name):
     from .config import save_settings
     d = '' if name == 'default' else next(
         (a['dir'] for a in s.get('accounts', []) if a.get('name') == name), '')
-    acts = [('Switch active account (this claudectl)', 'switch'),
+    acts = [('Switch active account (this archeus)', 'switch'),
             ('Open in NEW terminal (run in parallel)', 'parallel'),
             ('Log in / re-login here', 'login')]
     if name != 'default':
@@ -129,7 +129,7 @@ def _account_actions(s, name):
     if act == 'switch':
         s['claude_config_dir'] = d
         save_settings(s)
-        flash(f"Active account → {name}. Restart claudectl to fully apply.", secs=2)
+        flash(f"Active account → {name}. Restart archeus to fully apply.", secs=2)
     elif act == 'parallel':
         _open_terminal(d, name)
     elif act == 'login':

@@ -1,101 +1,97 @@
-"""Dev-only: generate claudectl's app icon. NOT a runtime dependency — run
-manually to regenerate:
+"""Dev-only: build every icon archeus ships, from ONE source image.
 
     py tools/make_icon.py
 
-Design (per 2025 app-icon best practice: one dominant element, legible at 16px,
-rounded square, gradient depth, brand colour):
-  - rounded-square tile, deep-navy → near-black vertical gradient
-  - one bold cyan "C" (claudectl) with round caps
-  - three glowing nodes on the arc — a subtle nod to the connections graph
-  - soft outer glow for depth
+The master is `docs/assets/logo.png` — a hand-drawn mark, not a generated one,
+which is why this file no longer draws anything. It replaced a pair of scripts
+that each drew their own variant programmatically: a navy-tile mark for the TUI
+and an inverted bright-tile one for the GUI. Two marks for one product is two
+things to keep in step, and the answer to "which is the logo" was "it depends
+where you are looking", which is not an answer.
 
-Requires Pillow. Writes claudectl.ico (multi-size) at the repo root.
+Written from that one source:
+
+    archeus.ico              the app icon — Qt window, shortcuts, taskbar pin
+    docs/assets/favicon.ico  the documentation site
+    www/public/favicon.ico   the marketing site
+    www/app/favicon.ico      the marketing site, again — and it is not a
+                             duplicate. Next.js's App Router serves
+                             `app/favicon.ico` in preference to
+                             `public/favicon.ico`, so writing only the public
+                             one left the apex serving the OLD mark while every
+                             other surface had the new one, with nothing to
+                             show for it in any diff.
+
+Two things this does to the source, and both matter:
+
+- **Crops to the tile.** The export is 1254px with the artwork off-centre and a
+  soft drop shadow running to the canvas edge. An icon must not carry a baked
+  shadow — every OS draws its own — and an off-centre one looks wrong the
+  moment it sits next to another icon in a taskbar. The crop is taken from the
+  alpha channel at a threshold that keeps the tile and drops the shadow, then
+  padded back to square so the mark stays centred.
+
+- **Saves from the LARGEST frame.** Passing `sizes` alongside a small base
+  silently keeps only 16x16 — a trap this file has carried a comment about
+  since the first icon.
+
+Requires Pillow.
 """
 
-import math
 import os
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image
 
-OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'claudectl.ico')
-SS = 1024
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC = os.path.join(ROOT, 'docs', 'assets', 'logo.png')
 SIZES = [16, 32, 48, 64, 128, 256]
 
-NAVY_TOP = (16, 32, 60)      # #10203c
-NAVY_BOT = (5, 8, 16)        # #050810
-CYAN = (92, 200, 255)        # #5cc8ff
-CYAN_HI = (170, 226, 255)    # highlight
+#: every place the icon has to exist, relative to the repo root.
+#:
+#: The app icon lives INSIDE the package, not at the repo root where it used to
+#: sit. package-data ships it from there, and `gui_qt._icon_path` already looked
+#: alongside the package as its second candidate — so until now every pip and
+#: pipx install ran the desktop window with no icon at all, and only a dev
+#: checkout ever had one. One copy, in the only place that works for both.
+TARGETS = [
+    os.path.join('claude_sessions', 'archeus.ico'),
+    os.path.join('docs', 'assets', 'favicon.ico'),
+    os.path.join('www', 'public', 'favicon.ico'),
+    os.path.join('www', 'app', 'favicon.ico'),
+]
+
+#: alpha at or above this is the tile; below it is the drop shadow. Measured on
+#: the source: the tile edge sits at 250+, the shadow trails off well under 128.
+_TILE_ALPHA = 128
+#: a few pixels of the antialiased edge kept, so the crop is not a hard cut
+_FEATHER = 4
 
 
-def _rounded_mask(size, radius):
-    m = Image.new('L', (size, size), 0)
-    ImageDraw.Draw(m).rounded_rectangle([0, 0, size - 1, size - 1], radius=radius, fill=255)
-    return m
+def master(size=1024):
+    """The source, cropped to its tile, squared and centred."""
+    im = Image.open(SRC).convert('RGBA')
+    solid = im.getchannel('A').point(lambda v: 255 if v >= _TILE_ALPHA else 0)
+    box = solid.getbbox()
+    if not box:
+        raise SystemExit('%s is fully transparent' % SRC)
+    l, t, r, b = box
+    l, t = max(0, l - _FEATHER), max(0, t - _FEATHER)
+    r, b = min(im.width, r + _FEATHER), min(im.height, b + _FEATHER)
+    tile = im.crop((l, t, r, b))
+
+    side = max(tile.size)
+    square = Image.new('RGBA', (side, side), (0, 0, 0, 0))
+    square.alpha_composite(tile, ((side - tile.width) // 2, (side - tile.height) // 2))
+    return square.resize((size, size), Image.LANCZOS)
 
 
-def _gradient(size, top, bot):
-    g = Image.new('RGB', (size, size))
-    px = g.load()
-    for y in range(size):
-        t = y / (size - 1)
-        c = tuple(int(top[i] + (bot[i] - top[i]) * t) for i in range(3))
-        for x in range(size):
-            px[x, y] = c
-    return g
-
-
-def draw_icon():
-    pad = int(SS * 0.04)
-    inner = SS - pad * 2
-    radius = int(SS * 0.22)
-
-    # ── background tile (gradient + rounded mask + faint top sheen) ──
-    base = Image.new('RGBA', (SS, SS), (0, 0, 0, 0))
-    tile = _gradient(inner, NAVY_TOP, NAVY_BOT).convert('RGBA')
-    tile.putalpha(_rounded_mask(inner, radius))
-    sheen = Image.new('RGBA', (inner, inner), (0, 0, 0, 0))
-    ImageDraw.Draw(sheen).rounded_rectangle([0, 0, inner - 1, int(inner * 0.5)],
-                                            radius=radius, fill=(255, 255, 255, 16))
-    tile = Image.alpha_composite(tile, sheen)
-    base.alpha_composite(tile, (pad, pad))
-
-    # ── the "C" mark + nodes, drawn on a transparent layer for glow ──
-    layer = Image.new('RGBA', (SS, SS), (0, 0, 0, 0))
-    d = ImageDraw.Draw(layer)
-    cx = cy = SS / 2
-    R = SS * 0.27
-    w = int(SS * 0.12)                       # stroke width
-    box = [cx - R, cy - R, cx + R, cy + R]
-    a0, a1 = 52, 308                          # open on the right (a "C")
-    d.arc(box, a0, a1, fill=CYAN, width=w)
-    # round caps + endpoint nodes
-    nodes = []
-    for ang in (a0, a1, 180):                 # two caps + left middle
-        nx = cx + R * math.cos(math.radians(ang))
-        ny = cy + R * math.sin(math.radians(ang))
-        nodes.append((nx, ny))
-        d.ellipse([nx - w / 2, ny - w / 2, nx + w / 2, ny + w / 2], fill=CYAN)
-    # bright node cores
-    nr = w * 0.42
-    for (nx, ny) in nodes:
-        d.ellipse([nx - nr, ny - nr, nx + nr, ny + nr], fill=CYAN_HI)
-
-    glow = layer.filter(ImageFilter.GaussianBlur(SS * 0.02))
-    base = Image.alpha_composite(base, glow)
-    base = Image.alpha_composite(base, layer)
-
-    # clip everything to the rounded tile so the glow doesn't bleed past corners
-    full_mask = Image.new('L', (SS, SS), 0)
-    full_mask.paste(_rounded_mask(inner, radius), (pad, pad))
-    base.putalpha(full_mask)
-
-    # Save from the LARGEST frame; PIL downscales to every requested size.
-    # (Passing `sizes` together with a small base silently keeps only 16×16.)
-    big = base.resize((max(SIZES), max(SIZES)), Image.LANCZOS)
-    big.save(OUT, format='ICO', sizes=[(s, s) for s in SIZES])
-    print(f"wrote {OUT}  ({', '.join(str(s) for s in SIZES)})")
+def main():
+    big = master()
+    for rel in TARGETS:
+        out = os.path.join(ROOT, rel)
+        big.save(out, format='ICO', sizes=[(s, s) for s in SIZES])
+        print('wrote %s  (%s)' % (rel, ', '.join(str(s) for s in SIZES)))
 
 
 if __name__ == '__main__':
-    draw_icon()
+    main()

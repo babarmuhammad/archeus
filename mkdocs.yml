@@ -1,12 +1,18 @@
-site_name: claudectl
+site_name: archeus
 site_description: >-
-  The workspace layer for Claude Code — persistent project memory, an interactive
-  architecture graph, MCP server management, and per-project launch control, in a fast
-  terminal UI or a native desktop GUI. Zero runtime dependencies.
-site_url: https://babarmuhammad.github.io/claudectl/
+  The memory and workspace layer for AI coding agents. Persistent per-project memory,
+  every session you have ever had, and control over what the next one costs. Works with
+  Claude Code today, in a fast terminal UI or a native desktop GUI. Zero runtime
+  dependencies.
+# Canonical host. The manual lives on its own subdomain; the apex is the marketing
+# site and is a different deployment entirely. The site is built by Vercel and
+# mirrored on GitHub Pages; both copies emit this URL, so search and answer engines
+# index one of them rather than splitting the same content across two domains.
+# Asset and page links stay relative, which is why one site_url serves both.
+site_url: https://docs.claudectl.space/
 site_author: Babar Muhammad Anas
-repo_url: https://github.com/babarmuhammad/claudectl
-repo_name: babarmuhammad/claudectl
+repo_url: https://github.com/babarmuhammad/archeus
+repo_name: babarmuhammad/archeus
 edit_uri: edit/main/docs/
 copyright: MIT licensed — Copyright &copy; 2026 Babar Muhammad Anas
 
@@ -18,6 +24,9 @@ theme:
   # docs/img holds only tool-generated screenshots (test_demo_fixtures guards
   # that); brand assets live in docs/assets.
   favicon: assets/favicon.ico
+  # The master dark tile, straight from docs/assets — the header logo, the
+  # favicon and the app icon are all the one artwork (brand study 5.1).
+  logo: assets/logo.png
   # No Google Fonts fetch — the GUI itself ships zero CDN requests, and the site
   # holds the same line.
   font: false
@@ -40,6 +49,11 @@ theme:
 extra_css:
   - stylesheets/extra.css
 
+# Emits site/llms-full.txt at build time — the companion to the hand-written
+# docs/llms.txt index. Generated, not committed, so it can never fall behind.
+hooks:
+  - tools/mkdocs_hooks.py
+
 markdown_extensions:
   - admonition
   - attr_list
@@ -58,45 +72,76 @@ markdown_extensions:
   - toc:
       permalink: true
 
-# Grouped into sections (navigation.sections is on above) rather than a flat list:
-# the README used to be the manual and the site a set of include-stubs, so twelve
-# flat entries were enough. Now the detail lives here, and a reader has to be able
-# to find one feature without scrolling one giant page.
+# Sections named after the app's own. The first is the manual, read top to
+# bottom: what it is, how to install it, then one page per surface. The five
+# after it are the five sections of the GUI sidebar and the five submenus of the
+# terminal main menu, carrying the same names in the same order — so a screen
+# and the page describing it are called the same thing, which is the whole
+# reason they were renamed. The last is everything you look something up in
+# rather than read.
+#
+# navigation.sections is on above, so a top-level key renders as a heading in
+# the sidebar rather than a collapsible page.
+#
+# The product pitch is NOT here — it belongs to the marketing site on the apex.
+# compare/credits are the last of it and are parked at the end of Reference
+# until those pages exist there; moving them first would 404 links that are
+# already live.
 nav:
-  - Getting started:
+  - Manual:
       - Home: index.md
-      - Install: install.md
-      - Usage: usage.md
-  - Features:
-      - Overview: features.md
-      - Sessions & search: sessions.md
+      - Getting started: getting-started.md
+      - Installation: installation.md
+      - Quickstart: quickstart.md
+      - Command line: cli.md
+      - Terminal UI: tui.md
+      - Desktop app: desktop.md
+      - Claude Code plugin: plugin.md
+      - Projects: projects.md
+      - Sessions: sessions.md
+      - Troubleshooting: troubleshooting.md
+  - Context:
       - Project memory: memory.md
-      - Architecture graph: graph.md
-      - Model providers: providers.md
-      - Plan → Execute & OmniRoute: plan-execute.md
+      - Architecture graph: architecture.md
+      - MCP servers: mcp.md
+  - Library:
+      - Agents & skills: agents.md
+      - Agent library install: agent-library.md
+      - Hooks: hooks.md
+  - Activity:
+      - Usage & cost: usage.md
+      - Project dashboard: dashboard.md
+  - Accounts:
       - Multiple accounts: accounts.md
       - Context hand-off: context-handoff.md
-      - MCP servers: mcp.md
-      - Agents & skills: agents.md
-      - Hooks: hooks.md
+  - Settings:
+      - Configuration: configuration.md
+      - Model providers: providers.md
+      - Plan → Execute & OmniRoute: plan-execute.md
       - Status line, failover & checkpoints: statusline.md
-      - Desktop GUI: gui.md
-  - Guides:
-      - Token economy: token-economy.md
-      - Project health & auto-fixes: health.md
-      - Installing the agent library: agent-library.md
   - Reference:
-      - Files, layout & encoding: reference.md
       - API reference: api.md
-  - About:
-      - FAQ: faq.md
+      - Files, layout & encoding: reference.md
       - Compare: compare.md
-      - Troubleshooting: troubleshooting.md
-      - Changelog: changelog.md
       - Credits: credits.md
 
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/babarmuhammad/claudectl
-      name: claudectl on GitHub
+      link: https://github.com/babarmuhammad/archeus
+      name: archeus on GitHub
+
+  # schema.org `sameAs` for the author entity, emitted on every page by
+  # overrides/main.html. An unrelated Rust project publishes under this name,
+  # so what identifies THIS archeus is one author corroborated by a set of
+  # profiles that link back. Must stay in step with `PROFILES` in
+  # www/lib/site.ts — both hosts have to assert the same entity or the graph
+  # says there are two of them.
+  author: Babar Muhammad Anas
+  apex: https://claudectl.space
+  profiles:
+    - https://github.com/babarmuhammad
+    - https://www.linkedin.com/in/muhammad-anas-babar-819647240
+    - https://dev.to/muhammad_anasbabar_31256
+    - https://babarmuhammad.hashnode.dev
+    - https://www.instagram.com/muhammad_anas_babar

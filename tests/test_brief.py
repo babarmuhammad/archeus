@@ -26,11 +26,70 @@ def test_work_suggestions_from_signals(monkeypatch, tmp_path):
     assert 'central module' in txts and 'app/engine' in txts
 
 
-def test_work_suggestions_empty(monkeypatch, tmp_path):
+def test_a_bare_project_is_told_how_to_start(monkeypatch, tmp_path):
+    """An untouched project has no lessons and no graph, but it is NOT out of
+    things to say: every point of freshness it is missing is a step it has not
+    taken yet. The list used to fall through to 'no signals yet'."""
     sb = Sandbox(monkeypatch, tmp_path)
     actual, enc, folder, _ = sb.add_project('alpha')
     sug = brief.work_suggestions(actual, folder)
-    assert sug and ('no signals' in sug[0][1] or 'no semantic memory' in ' '.join(t for _s, t in sug))
+    txts = ' '.join(t for _s, t in sug)
+    assert sug
+    assert 'no signals' in txts or 'no semantic memory' in txts \
+        or any(tag == 'stale' for tag, _t in sug)
+    # and every stale line names the remedy, not just the symptom
+    for tag, text in sug:
+        if tag == 'stale':
+            assert '—' in text and 'freshness' in text
+
+
+def test_dismissing_a_scan_finding_is_remembered(monkeypatch, tmp_path):
+    sb = Sandbox(monkeypatch, tmp_path)
+    actual, enc, folder, _ = sb.add_project('alpha')
+    brief.save_scan(actual, folder, [{'kind': 'vuln', 'text': 'cfgdir is not validated anywhere'},
+                                     {'kind': 'idea', 'text': 'add a per-account status column'}])
+    txts = ' '.join(t for _s, t in brief.work_suggestions(actual, folder))
+    assert 'cfgdir is not validated' in txts and 'per-account status' in txts
+
+    brief.dismiss_scan_item(actual, folder, 'cfgdir is not validated anywhere')
+    txts = ' '.join(t for _s, t in brief.work_suggestions(actual, folder))
+    assert 'cfgdir is not validated' not in txts and 'per-account status' in txts
+
+    # a re-scan must not resurrect what you already said no to
+    brief.save_scan(actual, folder, [{'kind': 'vuln', 'text': 'cfgdir is not validated anywhere'}])
+    txts = ' '.join(t for _s, t in brief.work_suggestions(actual, folder))
+    assert 'cfgdir is not validated' not in txts
+
+
+def test_the_work_list_never_calls_claude(monkeypatch, tmp_path):
+    """Rendering is free. `run_scan` is the only path allowed to spend a token,
+    and it is behind a button — the recall hook's lesson, applied to advice."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    actual, enc, folder, _ = sb.add_project('alpha')
+
+    def _boom(*a, **k):
+        raise AssertionError('work_suggestions made a model call')
+
+    monkeypatch.setattr(memory, '_claude_stdin', _boom)
+    brief.work_suggestions(actual, folder)
+
+
+def test_scan_output_is_parsed_leniently_and_tagged_safely(monkeypatch, tmp_path):
+    items = brief.parse_scan(
+        "- bug|gui_api unpacks a None return from prune_claude_md\n"
+        "vuln | cfgdir is joined with a path on forty endpoints\n"
+        "```\n"
+        "nonsense|a kind nobody defined\n"
+        "x\n"
+        "idea|short\n")
+    kinds = [i['kind'] for i in items]
+    texts = ' '.join(i['text'] for i in items)
+    assert 'bug' in kinds and 'vuln' in kinds
+    # an unknown kind keeps its sentence but cannot invent a new tag
+    assert 'idea' in kinds and 'nonsense' not in kinds
+    assert 'prune_claude_md' in texts
+    # too short to be a finding
+    assert 'short' not in texts
 
 
 def test_session_diff_non_git(monkeypatch, tmp_path):

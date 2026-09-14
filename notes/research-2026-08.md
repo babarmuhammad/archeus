@@ -1,4 +1,4 @@
-# claudectl research — 2026-08
+# archeus research — 2026-08
 
 > Note: live `WebSearch` returned no result blocks in this environment (US-only
 > search). Sections below are compiled from the two authoritative Anthropic
@@ -28,7 +28,7 @@
 - Validation errors in managed settings print a summary to stderr in headless `-p` runs instead of an interactive startup dialog. Source: https://code.claude.com/docs/en/settings
 - `CLAUDE_CODE_EFFORT_LEVEL` overrides the effort level for one session; `MAX_THINKING_TOKENS=0` forces thinking off (except Fable 5). Source: https://code.claude.com/docs/en/settings
 - `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` (set via env) cuts Claude Code's non-essential background traffic — the canonical economy switch for programmatically-launched `claude` processes. Source: https://code.claude.com/docs/en/settings
-- Internal claudectl headless calls already run `claude -p --disallowedTools Write,Edit,NotebookEdit,Bash` with a timeout; `--output-format json` wraps the model reply in a result envelope (`"result": "<text>"`), so JSON-parse callers must unwrap `.result` — regex-`{...}` slicing of the envelope mis-parses it. Source: https://code.claude.com/docs/en/settings
+- Internal archeus headless calls already run `claude -p --disallowedTools Write,Edit,NotebookEdit,Bash` with a timeout; `--output-format json` wraps the model reply in a result envelope (`"result": "<text>"`), so JSON-parse callers must unwrap `.result` — regex-`{...}` slicing of the envelope mis-parses it. Source: https://code.claude.com/docs/en/settings
 - `autoCompactEnabled` defaults true and `autoCompactWindow` (100k–1M tokens, overridable via `CLAUDE_CODE_AUTO_COMPACT_WINDOW`) bound conversation growth in long headless runs. Source: https://code.claude.com/docs/en/settings
 
 ## reduce Claude Code token usage CLAUDE.md context size
@@ -39,14 +39,14 @@
 - `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` and `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1` reduce background write/read work for automation-driven accounts. Source: https://code.claude.com/docs/en/settings
 - Haiku 4.5 (bare `claude-haiku-4-5`) remains the cheapest current economy model at $1/$5 per MTok; dated-suffix IDs (`claude-haiku-4-5-20251001`) change nothing on cost and break alias-keyed config lookups. Source: https://platform.claude.com/docs/en/about-claude/models/overview.md
 
-## applies-to-claudectl
+## applies-to-archeus
 
 Findings from the sections above that map to plan Steps 14–18:
 
 - **Step 14 (RULE_MAX_TOKENS 600→400):** rule files are glob-scoped lazy rules injected into sessions; capping them at the generator is the durable lever because `sync_rules` regenerates them on every refresh. Confirmed by the settings docs' "keep injected context small" guidance. Tag: Step 14. Source: https://code.claude.com/docs/en/settings
 - **Step 16 (clip transcripts by turns):** transcripts are user-message content, not the cached system prompt — clipping them at the extractor is a genuine input-token lever (cache doesn't cover them). Tag: Step 16. Source: https://platform.claude.com/docs/en/docs/build-with-claude/prompt-caching
 - **Step 17 (economy model = bare Haiku):** `claude-haiku-4-5` at $1/$5 per MTok is the current cheapest model; the dated ID is not a cost lever and breaks alias-keyed lookups. Tag: Step 17. Source: https://platform.claude.com/docs/en/about-claude/models/overview.md
-- **Step 18 (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`):** the canonical economy env var for programmatically-launched `claude` processes; also worth considering `CLAUDE_CODE_DISABLE_AUTO_MEMORY` and `CLAUDE_CODE_SKIP_PROMPT_HISTORY` for claudectl's own headless runs. Tag: Step 18. Source: https://code.claude.com/docs/en/settings
+- **Step 18 (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`):** the canonical economy env var for programmatically-launched `claude` processes; also worth considering `CLAUDE_CODE_DISABLE_AUTO_MEMORY` and `CLAUDE_CODE_SKIP_PROMPT_HISTORY` for archeus's own headless runs. Tag: Step 18. Source: https://code.claude.com/docs/en/settings
 - **Step 9 (headless bounds):** `--max-turns` caps runaway loops; `--output-format json` must NOT be added to `_parse_json`-based callers because the JSON envelope would be mis-sliced by the `{...}` regex — the docs confirm headless output wraps in a result envelope. Tag: Step 9 (supersedes the flag part). Source: https://code.claude.com/docs/en/settings
 
 Not added as steps: reordering interpolations inside headless user messages is NOT a token lever because Claude Code caches the system prompt + tool definitions, not user-message content.

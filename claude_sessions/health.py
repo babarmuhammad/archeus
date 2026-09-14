@@ -12,6 +12,7 @@ import re
 import json
 
 from . import config as _c
+from . import store
 from .memory import tokens_estimate
 
 CLAUDEMD_TOKEN_WARN = 1500
@@ -55,12 +56,16 @@ def _check_memory(project_path, proj_folder):
     from . import memory as memory_mod
     mem = memory_mod.load_memory(project_path, proj_folder)
     if not mem.get('entities'):
+        # the action, not the terminal's key path: this text is rendered in
+        # the GUI's Project health card too, next to the button that does it
         return [('info', 'no semantic memory yet',
-                 "press m → b to build it (Claude remembers the project)")]
+                 'build memory — Claude reads the project once and remembers it')]
     out = []
     if mem.get('pending_units'):
-        out.append(('warn', f"memory coverage incomplete ({mem['pending_units']} units pending)",
-                    'raise memory_max_calls and rebuild'))
+        # not an error any more: a cycle does what its budget allows and leaves
+        # the rest queued, and with auto-memory on the next cycle takes them
+        out.append(('info', f"{mem['pending_units']} module(s) still queued for memory",
+                    'the next auto cycle takes them — or build memory to finish now'))
     try:
         from .workspace import load_manifest
         man = load_manifest(project_path, proj_folder) or {}
@@ -70,7 +75,7 @@ def _check_memory(project_path, proj_folder):
             head = (_git(['rev-parse', 'HEAD'], project_path) or '').strip()
             if head and base.get('head_at_gen') and head != base['head_at_gen']:
                 out.append(('info', 'memory may be stale (repo HEAD moved since build)',
-                            'press m → b to refresh (incremental, cheap)'))
+                            'rebuild memory to refresh — incremental, cheap'))
     except Exception:
         pass
     return out
@@ -121,13 +126,13 @@ def _check_mcp():
 
 # ── context-loss insurance (session log) ─────────────────────
 
-SESSION_LOG = os.path.join('.claudectl', 'session-log.md')
+SESSION_LOG = os.path.join(store.WORKDIR, 'session-log.md')
 _LOG_MAX_LINES = 400
 
 
 def append_session_log(project_path, proj_folder, sid):
     """Append a 5-line summary of the finished session (goal + files touched)
-    to .claudectl/session-log.md — local, no Claude call. Next session can
+    to .archeus/session-log.md — local, no Claude call. Next session can
     recall what happened even after /compact killed the context."""
     try:
         from .sessions import session_changed_files, get_session_info

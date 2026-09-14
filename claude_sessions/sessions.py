@@ -46,7 +46,7 @@ _ANTHROPIC_ALIASES = {'sonnet', 'opus', 'haiku', 'fable'}
 def _is_anthropic_model(model):
     """True if *model* is a Claude/Anthropic id (or a Claude Code bare alias
     like 'sonnet'/'sonnet-5'). Empty/synthetic ('<...>') ids also count as
-    Anthropic — they carry no omni signal. Used to detect the inverse."""
+    Anthropic — they carry no provider signal. Used to detect the inverse."""
     m = (model or '').strip().lower()
     if not m or m.startswith('<'):
         return True
@@ -55,41 +55,122 @@ def _is_anthropic_model(model):
     return m.split('-', 1)[0] in _ANTHROPIC_ALIASES
 
 
-def _used_omni(stats):
+def _used_provider(stats):
     """True if the session ran (partly) on a non-Anthropic model — the OmniRoute
     free-tier signal. OmniRoute records the *resolved* provider model in the
     transcript under a bare name ('big-pickle', 'deepseek-v4-flash-free',
     'mimo-auto', ...), NOT a slash-namespaced id — so the reliable test is
-    exclusion: anything `_is_anthropic_model` rejects is an omni model. (An
+    exclusion: anything `_is_anthropic_model` rejects is an provider model. (An
     Anthropic model served *through* OmniRoute can't be told apart from a
     direct Anthropic run by id alone, but the tag's job is flagging the
     free-tier models, which are exactly these non-Claude ids.)"""
     return any(not _is_anthropic_model(m) for m in (stats.get('models') or []))
 
 
+#: Appended to every prompt `memory._claude_stdin` sends. `claude -p` writes a
+#: transcript like any other session, so without this archeus's own calls are
+#: indistinguishable from yours.
+HEADLESS_MARK = '<!-- archeus:headless -->'
+
+#: Transcripts written before HEADLESS_MARK existed carry no marker, so the
+#: opening line of each prompt archeus sends is matched too. The list can only
+#: rot by a prompt being reworded, and
+#: `test_the_headless_openers_still_match_the_prompts_we_send` fails when it is.
+HEADLESS_OPENERS = (
+    'You are building a knowledge graph',
+    'You are distilling durable LESSONS',
+    'You are reviewing a software project to produce',
+    'You are a meticulous senior code reviewer',
+    'Compress this CLAUDE.md project-instructions file',
+    'Rewrite the `description` field of these Claude Code subagents',
+)
+
+
+def is_headless_text(text):
+    """True when this user message is archeus prompting Claude, not you."""
+    t = (text or '').lstrip()
+    return HEADLESS_MARK in t or any(t.startswith(p) for p in HEADLESS_OPENERS)
+
+
 _EMPTY_STATS = {
     'preview': '', 'count': 0, 'title': '',
     'usage_by_model': {}, 'models': [],
     'first_ts': None, 'last_ts': None,
-    'branch': '', 'cwd': '', 'api_errors': 0,
+    'branch': '', 'cwd': '', 'api_errors': 0, 'headless': False,
 }
+
+#: Bump when the MEANING of a field changes, not just the set of them.
+#:
+#: The cache key is (mtime_ns, size), and a transcript that is finished never
+#: changes either — so without this, a value written by an older archeus is
+#: served forever. It is not hypothetical: widening `preview` from 65 to 200
+#: characters would have shown the new length only on sessions written after the
+#: upgrade. A field being ADDED is caught automatically by the key-set check in
+#: `_disk_cache_hit` (an entry missing it would KeyError at the first indexed
+#: read); this constant is for the case that check cannot see.
+_STATS_SCHEMA = 2
 
 
 _iso_to_epoch = _t.iso_to_epoch
 
 
+def _disk_cache_hit(jsonl_path, key):
+    """The persistent stats cache, read from the ONE place that owns it.
+
+    This lives here, in the parser, rather than only in `stats
+    .get_session_stats_cached` — which is where it used to live and why it was
+    structurally unreachable on the cold path. `gui.list_sessions` calls
+    `scan_sessions` FIRST, which full-parses every transcript, and only then
+    calls the cached accessor, by which point the accessor can only ever hit the
+    memory cache the parse just warmed. So every GUI restart re-parsed a
+    project's whole corpus (~620 MB for the largest project on this machine) on
+    the request thread: 8 s median, 13.6 s worst, in the event log.
+
+    Deferred import because `stats` imports this module at module level.
+    Returns (hit, stats). Touching only `_load_disk_cache` and the dict it owns
+    keeps this out of `get_session_stats`'s recursion.
+    """
+    try:
+        from . import stats
+        entry = stats._load_disk_cache().get(jsonl_path)
+        if entry and entry.get('key') == list(key) \
+                and isinstance(entry.get('stats'), dict) \
+                and entry['stats'].keys() == _EMPTY_STATS.keys():
+            return True, entry['stats']
+    except Exception:
+        pass
+    return False, None
+
+
+def _disk_cache_store(jsonl_path, key, s):
+    try:
+        from . import stats
+        stats._load_disk_cache()[jsonl_path] = {'key': list(key), 'stats': s}
+        stats._cache_dirty = True
+    except Exception:
+        pass
+
+
 def _parse_session(jsonl_path):
-    """Single-pass parse, cached by (mtime, size). Returns a stats dict:
-    preview, count, title, usage_by_model, models, first_ts, last_ts,
-    branch, cwd, api_errors. JSON-serializable (feeds the disk cache)."""
+    """Single-pass parse, cached by (mtime, size): memory → disk → parse.
+    Returns a stats dict: preview, count, title, usage_by_model, models,
+    first_ts, last_ts, branch, cwd, api_errors. JSON-serializable (which is what
+    lets it feed the disk cache)."""
     try:
         st = os.stat(jsonl_path)
     except OSError:
         return dict(_EMPTY_STATS)
-    key = (st.st_mtime_ns, st.st_size)
+    key = (st.st_mtime_ns, st.st_size, _STATS_SCHEMA)
+    # ponytail: _info_cache is unbounded — every stats dict for every session
+    # ever viewed, held for the life of the process. Bound it if a long-running
+    # GUI's RSS matters; the disk-cache hit below is what stops it filling fast.
     cached = _info_cache.get(jsonl_path)
     if cached and cached[0] == key:
         return cached[1]
+    hit, s = _disk_cache_hit(jsonl_path, key)
+    if hit:
+        _info_cache[jsonl_path] = (key, s)
+        return s
 
     s = dict(_EMPTY_STATS)
     s['usage_by_model'] = {}
@@ -120,8 +201,15 @@ def _parse_session(jsonl_path):
             s['count'] += 1
         if role == 'user':
             for text in _extract_texts(obj):
+                if is_headless_text(text):
+                    s['headless'] = True
                 if _good_text(text):
-                    s['preview'] = text[:65].replace('\n', ' ')   # last good one wins
+                    # 200, not 65: this is what a session row shows when it has
+                    # no AI title and no manual name, and 65 characters was
+                    # already the ceiling before the row lost a quarter of its
+                    # width to the action strip. Both interfaces cut it to fit,
+                    # so the cap is only the ceiling, not the shown length.
+                    s['preview'] = text[:200].replace('\n', ' ')  # last good one wins
                     break
         elif role == 'assistant':
             model = msg.get('model', '')
@@ -139,6 +227,7 @@ def _parse_session(jsonl_path):
                 u['cache_create'] += usage.get('cache_creation_input_tokens', 0) or 0
 
     _info_cache[jsonl_path] = (key, s)
+    _disk_cache_store(jsonl_path, key, s)
     return s
 
 
@@ -292,7 +381,7 @@ def save_add_dirs(proj_folder, dirs):
 
 
 def is_internal_session(jsonl_path):
-    """True if this transcript was spawned by claudectl's own `claude -p` calls
+    """True if this transcript was spawned by archeus's own `claude -p` calls
     (memory build / lesson extraction / ask). Claude Code marks print-mode/SDK
     sessions with entrypoint 'sdk-cli'; interactive ones use 'cli'. These are
     not user conversations — exclude them from the browser and lesson scans."""
@@ -315,7 +404,7 @@ def is_internal_session(jsonl_path):
 
 def scan_sessions(folder):
     """List sessions in a project folder. Returns [(mtime, sid, preview, count)] newest-first.
-    claudectl-internal print-mode sessions (entrypoint sdk-cli) are excluded."""
+    archeus-internal print-mode sessions (entrypoint sdk-cli) are excluded."""
     sessions = []
     if not folder or not os.path.isdir(folder):
         return sessions

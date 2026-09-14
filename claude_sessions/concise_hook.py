@@ -6,19 +6,23 @@ tokens. Shell-agnostic; never errors.
 
 import sys
 import json
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Claude Code captures stdout as a PIPE, so CPython picks the locale
 # codepage (cp1252 on Windows) and any non-ASCII character in the payload
 # either mojibakes or raises — silently losing the whole hook output.
-sys.stdout.reconfigure(encoding='utf-8')
+# Guarded: `sys.stdout` is None in a windowed process (pythonw with no
+# console). A hook must degrade to plain output, never die at import.
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except (AttributeError, ValueError, OSError):
+    pass
 
-_RULE = (
-    "Concise output (claudectl): answer directly — no preamble, no narration of "
-    "what you are about to do, no recap of what you just did. Never re-print "
-    "unchanged code; reference file:line instead. Explain only what was asked, "
-    "at the depth asked. Skip closing summaries when the result is visible from "
-    "the change itself. Prefer editing files over printing their content."
-)
+# the text itself lives in hookrules so the audit can count it
+# without importing this entry point — see that module
+from claude_sessions.hookrules import CONCISE as _RULE
 
 
 def main():

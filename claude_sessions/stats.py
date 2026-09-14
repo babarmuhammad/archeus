@@ -9,13 +9,13 @@ from .config import (COST_PER_MTOK, CACHE_READ_MULT, CACHE_WRITE_MULT,
                      load_settings, projects_dir, config_dir,
                      C_RESET, C_DIM, C_BOLD, C_TITLE)
 from .sessions import (get_session_stats, scan_sessions, format_age, load_name,
-                       _is_anthropic_model, _used_omni)
+                       _is_anthropic_model, _used_provider)
 from . import sessions as _sessions
 from . import config as _c
 from . import render
 from . import store
 
-cache_file = os.path.join(config_dir, 'claudectl-stats-cache.json')
+cache_file = os.path.join(config_dir, 'archeus-stats-cache.json')
 
 _disk_cache  = None    # path -> {'key': [mtime_ns, size], 'stats': {...}}
 _cache_dirty = False
@@ -48,28 +48,16 @@ def save_disk_cache():
 
 
 def get_session_stats_cached(jsonl_path):
-    """Stats dict via in-memory cache → disk cache → full parse."""
-    global _cache_dirty
-    try:
-        st = os.stat(jsonl_path)
-    except OSError:
-        return get_session_stats(jsonl_path)   # returns empty stats
-    key = [st.st_mtime_ns, st.st_size]
+    """Stats dict via in-memory cache → disk cache → full parse.
 
-    mem = _sessions._info_cache.get(jsonl_path)
-    if mem and list(mem[0]) == key:
-        return mem[1]
-
-    disk = _load_disk_cache().get(jsonl_path)
-    if disk and disk.get('key') == key and isinstance(disk.get('stats'), dict):
-        stats = disk['stats']
-        _sessions._info_cache[jsonl_path] = (tuple(key), stats)   # warm memory
-        return stats
-
-    stats = get_session_stats(jsonl_path)
-    _load_disk_cache()[jsonl_path] = {'key': key, 'stats': stats}
-    _cache_dirty = True
-    return stats
+    The ladder itself now lives in `sessions._parse_session`, which is the ONLY
+    thing that parses a transcript — so every caller gets it, including
+    `scan_sessions`, which runs before this function on the cold path and used to
+    make the disk half unreachable. Kept as a name because ~20 call sites and
+    several tests use it, and because it still says something true: this is the
+    accessor you want.
+    """
+    return get_session_stats(jsonl_path)
 
 
 # ── cost estimation ──────────────────────────────────────────
@@ -184,7 +172,7 @@ def iter_all_sessions(entries, title='SCANNING SESSIONS', silent=False):
                 yield (mtime, ppath, enc, f[:-6], stats, cfgdir)
             if not silent:
                 render.render_frame([
-                    render.header('CLAUDECTL', title),
+                    render.header('ARCHEUS', title),
                     '',
                     f"  Scanning project {pi}/{total} — {render.trunc(os.path.basename(ppath) or ppath, 40)}",
                     '',
@@ -239,12 +227,12 @@ def _merge_ubm(dst, src):
             agg[k] += mu.get(k, 0)
 
 
-def _omni_tokens(usage_by_model):
+def _provider_tokens(usage_by_model):
     return sum(sum(mu.values()) for m, mu in (usage_by_model or {}).items()
                if not _is_anthropic_model(m))
 
 
-def _omni_saved(usage_by_model):
+def _provider_saved(usage_by_model):
     """What the free-tier (non-Anthropic) tokens would have cost at Opus rates."""
     total = 0.0
     for m, u in (usage_by_model or {}).items():
@@ -282,7 +270,7 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
 
     # ── live activity, across every account ──
     # What the dashboard's Activity card should have been reading all along. It
-    # was wired to claudectl's own background-job count, which is ~always zero,
+    # was wired to archeus's own background-job count, which is ~always zero,
     # so the card reported the tool's idleness on a dashboard simultaneously
     # showing hundreds of millions of tokens.
     #
@@ -303,28 +291,28 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
         p = proj_b.setdefault(enc, {
             'path': ppath, 'name': os.path.basename(ppath) or ppath, 'enc': enc,
             'cfgdir': cfgdir, 'accounts': [], 'sessions': 0, 'msgs': 0,
-            'tokens': 0, 'omni_tokens': 0, 'omni': False, 'mtime': mtime, 'ubm': {},
+            'tokens': 0, 'provider_tokens': 0, 'provider': False, 'mtime': mtime, 'ubm': {},
             'by_day': {}})
         p['sessions'] += 1
         p['msgs'] += stats.get('count', 0)
         p['tokens'] += tokens
-        p['omni_tokens'] += _omni_tokens(ubm)
-        p['omni'] = p['omni'] or _used_omni(stats)
+        p['provider_tokens'] += _provider_tokens(ubm)
+        p['provider'] = p['provider'] or _used_provider(stats)
         p['mtime'] = max(p['mtime'], mtime)
         if acct not in p['accounts']:
             p['accounts'].append(acct)
         _merge_ubm(p['ubm'], ubm)
         # real last-activity across every account. The launch-history store
-        # (last-session.json) only knows sessions claudectl itself started.
-        # claudectl's own headless one-shots (lesson distilling, memory graph
+        # (last-session.json) only knows sessions archeus itself started.
+        # archeus's own headless one-shots (lesson distilling, memory graph
         # building, title extraction) land in the same transcript store and are
         # always a couple of turns — they are not sessions the user resumes
         if stats.get('count', 0) > 3:
             recent_b.append({'sid': _sid, 'path': ppath, 'encoded': enc, 'cfgdir': cfgdir,
                              'account': acct, 'mtime': mtime, 'msgs': stats.get('count', 0),
                              'title': stats.get('title') or _sid[:8],
-                             'omni': _used_omni(stats)})
-            # same `count > 3` gate as above, and for the same reason: claudectl's
+                             'provider': _used_provider(stats)})
+            # same `count > 3` gate as above, and for the same reason: archeus's
             # own headless one-shots (lesson distilling, graph building, title
             # extraction) land in this transcript store and would otherwise read
             # as "you are working" every time memory refreshed itself
@@ -344,10 +332,10 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
         p['by_day'][day] = p['by_day'].get(day, 0) + tokens
         _merge_ubm(b['ubm'], ubm)
         a = acct_b.setdefault(acct, {'account': acct, 'tokens': 0, 'sessions': 0,
-                                     'omni_tokens': 0, 'ubm': {}})
+                                     'provider_tokens': 0, 'ubm': {}})
         a['tokens'] += tokens
         a['sessions'] += 1
-        a['omni_tokens'] += _omni_tokens(ubm)
+        a['provider_tokens'] += _provider_tokens(ubm)
         _merge_ubm(a['ubm'], ubm)
 
     day_rows = []
@@ -355,11 +343,11 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
         b = day_b[d]
         day_rows.append({'date': d, 'tokens': b['tokens'], 'sessions': b['sessions'],
                          'cost': round(estimate_cost(b['ubm'])[0], 2),
-                         'omni_tokens': _omni_tokens(b['ubm']),
+                         'provider_tokens': _provider_tokens(b['ubm']),
                          'accounts': b['accounts']})
     acct_rows = sorted(
         ({'account': a['account'], 'tokens': a['tokens'], 'sessions': a['sessions'],
-          'omni_tokens': a['omni_tokens'],
+          'provider_tokens': a['provider_tokens'],
           'cost': round(estimate_cost(a['ubm'])[0], 2)} for a in acct_b.values()),
         key=lambda r: r['tokens'], reverse=True)
     proj_rows = []
@@ -387,8 +375,8 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
             'totals': {'tokens': sum(r['tokens'] for r in day_rows),
                        'cost': round(estimate_cost(all_ubm)[0], 2),
                        'sessions': sum(r['sessions'] for r in acct_rows),
-                       'omni_tokens': sum(r['omni_tokens'] for r in acct_rows),
-                       'omni_saved': round(_omni_saved(all_ubm), 2)}}
+                       'provider_tokens': sum(r['provider_tokens'] for r in acct_rows),
+                       'provider_saved': round(_provider_saved(all_ubm), 2)}}
 
 
 def assemble_session_usage(proj_folder):
@@ -512,7 +500,7 @@ def daily_usage_screen(entries):
              f"{C_BOLD}out{C_RESET}", f"{C_BOLD}cache{C_RESET}", f"{C_BOLD}est.${C_RESET}", ''],
             [12, 5, 8, 8, 9, 8, None],
             aligns=['left', 'right', 'right', 'right', 'right', 'right', 'left'])
-        frame = [render.header('CLAUDECTL', 'DAILY USAGE (last 14 days)'), '',
+        frame = [render.header('ARCHEUS', 'DAILY USAGE (last 14 days)'), '',
                  '  ' + head, render.hline()]
         for day, u, cost, n in rows:
             tot = u['in'] + u['out']
@@ -584,7 +572,7 @@ def usage_dashboard(entries):
             [None, 6, 7, 8, 8, 9, 9],
             aligns=['left', 'right', 'right', 'right', 'right', 'right', 'right'])
         total_cost = sum(r[0] for r in proj_rows)
-        frame = [render.header('CLAUDECTL', 'USAGE STATS' + (' (partial)' if partial else '')),
+        frame = [render.header('ARCHEUS', 'USAGE STATS' + (' (partial)' if partial else '')),
                  '', '  ' + head, render.hline()]
         for i, (cost, key, p, exact) in enumerate(proj_rows):
             u = p['usage']
@@ -638,7 +626,7 @@ def project_usage_screen(proj_folder, project_name):
              f"{C_BOLD}in{C_RESET}", f"{C_BOLD}out{C_RESET}", f"{C_BOLD}est.${C_RESET}"],
             [7, None, 6, 8, 8, 8],
             aligns=['left', 'left', 'right', 'right', 'right', 'right'])
-        frame = [render.header('CLAUDECTL', project_name, 'USAGE'),
+        frame = [render.header('ARCHEUS', project_name, 'USAGE'),
                  '', '  ' + head, render.hline()]
         for i, (mtime, name, count, u, cost, exact) in enumerate(sess_rows):
             label = render.cols(

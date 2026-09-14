@@ -1,14 +1,14 @@
 """Claude Code hook — recent-work memory. Two events, one script:
 
   - Stop / SessionEnd : capture the just-finished session (heuristic, token-free)
-                        into <cwd>/.claudectl/memory/worklog.json.
+                        into <cwd>/.archeus/memory/worklog.json.
   - SessionStart      : inject a compact 'Recent work' digest as additionalContext
                         so the new session knows what the last few did.
 
 Opt-in per project via settings project_defaults[<encoded>]['worklog'].
 Never blocks: exit 0 on every failure.
 
-Installed by claudectl (hooks.install_worklog_hook). Inspired by
+Installed by archeus (hooks.install_worklog_hook). Inspired by
 thedotmack/claude-mem.
 """
 
@@ -21,7 +21,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Claude Code captures stdout as a PIPE, so CPython picks the locale
 # codepage (cp1252 on Windows) and any non-ASCII character in the payload
 # either mojibakes or raises — silently losing the whole hook output.
-sys.stdout.reconfigure(encoding='utf-8')
+# Guarded: `sys.stdout` is None in a windowed process (pythonw with no
+# console). A hook must degrade to plain output, never die at import.
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except (AttributeError, ValueError, OSError):
+    pass
 
 
 def _enabled_for(cwd):
@@ -46,8 +51,10 @@ def _capture(cwd, data):
 
 
 def _inject(cwd):
-    # cheap gate before heavy import: no worklog file → no-op
-    if not os.path.isfile(os.path.join(cwd, '.claudectl', 'memory', 'worklog.json')):
+    # cheap gate before heavy import: no worklog file → no-op. Literal on
+    # purpose, same reason as recall_hook: reading store.WORKDIR would import
+    # the package this gate exists to skip. Keep in step with it by hand.
+    if not os.path.isfile(os.path.join(cwd, '.archeus', 'memory', 'worklog.json')):
         return 0
     from claude_sessions import worklog
     digest = worklog.render_digest(cwd)

@@ -12,7 +12,44 @@ import os
 
 from . import config as _c
 
-__all__ = ['projects_root', 'project_folder', 'session_file', 'is_encoded']
+__all__ = ['projects_root', 'project_folder', 'session_file', 'is_encoded',
+           'workdir', 'workfile', 'WORKDIR']
+
+#: what archeus writes into a project it does not own. Defined in config
+#: because `config._ensure_dir` needs it and config may not import store, but
+#: re-exported here because this is the module every path caller already has.
+WORKDIR = _c.WORKDIR
+
+
+def workdir(project_path):
+    """`<project>/.archeus`, CREATED, and marked never-commit.
+
+    Everything archeus parks in someone else's repository goes here, and some
+    of it is sensitive: `bash-log.txt` is every Bash command Claude Code ran in
+    that project (`export TOKEN=…`, `curl -H "Authorization: …"`), and
+    `injected-context.md` is an entire transcript. archeus's own repo has the
+    directory in `.gitignore`; nobody else's does, so the file landed in users'
+    working trees looking like something to commit.
+
+    A `.gitignore` holding `*` ignores the directory's contents including itself,
+    which is the whole fix and costs one write the first time.
+    """
+    d = os.path.join(project_path, WORKDIR)
+    _c._ensure_dir(d)     # one implementation of the marker, see config
+    return d
+
+
+def workfile(project_path, *parts):
+    """`<project>/.archeus/<parts…>` as a PURE join — nothing is created.
+
+    Separate from workdir() because most callers are readers: `conventions`
+    scans other people's projects for a memory graph, the recall hook looks for
+    one, the GUI asks whether one exists. Creating a directory as the side
+    effect of a read would seed `.archeus/` into every folder merely looked
+    at. Writers call workdir() first, or reach the disk through
+    `config.write_atomic`, which creates the parent and marks it.
+    """
+    return os.path.join(project_path, WORKDIR, *parts)
 
 
 def is_encoded(enc):

@@ -72,4 +72,12 @@ def _quarantine(path):
     except OSError:
         dest = ''
     last_corruption[os.path.abspath(path)] = dest
+    # `last_corruption` is in-memory, so the one thing a user needs to know
+    # about — a state file moved aside — used to die with the process.
+    try:
+        from . import events
+        events.record('jsonstore', 'moved a corrupt state file aside',
+                      detail='%s -> %s' % (path, dest or '(move failed)'))
+    except Exception:
+        pass
     return dest

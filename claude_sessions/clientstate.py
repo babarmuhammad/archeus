@@ -1,4 +1,4 @@
-"""Claude Code's own client state, which claudectl had never opened.
+"""Claude Code's own client state, which archeus had never opened.
 
 Four stores, all read-only here:
 
@@ -6,13 +6,13 @@ Four stores, all read-only here:
   cost, token totals, the last session id, lines added/removed, MCP approval
   state, allowed tools. At the top level: `skillUsage`, `pluginUsage` and
   `agentLastUsed`, which are the only record of what is actually being USED
-  versus carried as dead weight — a question claudectl could not answer.
+  versus carried as dead weight — a question archeus could not answer.
 - `~/.claude/history.jsonl` — 1.1 MB of prompt history across every project.
 - `~/.claude/daemon/roster.json` — live background agents.
 - `~/.claude/teams/`, `~/.claude/tasks/` — agent teams.
 
 None of these formats is documented, so every reader here follows the
-`checkpoints.py` discipline: re-derive from what claudectl already knows, match
+`checkpoints.py` discipline: re-derive from what archeus already knows, match
 what is actually on disk, and report `recognised: False` rather than pairing
 records at random. The teams reader especially — the docs say a team is named
 `session-` plus the first 8 characters of the session id, and on the machine
@@ -22,6 +22,7 @@ disagree, so nothing may be built on the documented one.
 """
 
 import os
+import re
 import time
 
 from . import config as _c
@@ -29,7 +30,7 @@ from . import jsonstore
 from . import transcripts
 
 __all__ = ['client_json', 'project_state', 'usage_rollup', 'prompt_history',
-           'daemon_roster', 'teams', 'disk_report']
+           'daemon_roster', 'teams', 'disk_report', 'hook_activity']
 
 
 def _path(name, cfgdir=None):
@@ -39,7 +40,15 @@ def _path(name, cfgdir=None):
 # ── .claude.json ─────────────────────────────────────────────
 
 def client_json(cfgdir=None):
-    return jsonstore.load(_path('.claude.json', cfgdir), expect=dict)
+    # quarantine=False: this file belongs to Claude Code, which rewrites it
+    # while archeus is running. Quarantining is the right answer for a file
+    # archeus OWNS — the next write would otherwise destroy the evidence —
+    # but here an unparseable read most likely means we caught a live write
+    # mid-flight, and renaming the user's `.claude.json` out from under a
+    # running session is a far worse outcome than reading it again next tick.
+    # (Observed: the test suite's real-file guard caught exactly this.)
+    return jsonstore.load(_path('.claude.json', cfgdir), expect=dict,
+                          quarantine=False)
 
 
 def project_state(project_path, cfgdir=None):
@@ -84,6 +93,100 @@ def usage_rollup(cfgdir=None):
 
     return {'skills': rows('skillUsage'), 'plugins': rows('pluginUsage'),
             'agents': rows('agentLastUsed')}
+
+
+# ── what actually reached your sessions ──────────────────────
+#
+# `skillUsage` above answers ONE question: how often did you TYPE `/name`. It is
+# the only thing Claude Code counts, and on this machine it says
+# `caveman:caveman` was used twice, 56 days ago — for a plugin that shapes every
+# single session, every day. Both are true: caveman and ponytail arrive through
+# SessionStart hooks, which touch no counter.
+#
+# The transcripts do record it. A hook run is stored as
+#   {"type":"attachment","attachment":{"type":"hook_success","hookName":…,
+#    "hookEvent":"SessionStart","command":…,"content":…}}
+# so "in how many of your recent sessions did this actually run" is answerable
+# from data archeus already streams — and it is the number the user expects to
+# see next to caveman and ponytail.
+
+#: recomputed at most this often; a walk over recent transcripts is cheap but
+#: not free, and nothing here is on a per-turn path
+ACTIVITY_TTL = 900
+ACTIVITY_SESSIONS = 40
+
+
+def _activity_cache(cfgdir=None):
+    return _path('archeus-activity.json', cfgdir)
+
+
+def hook_activity(cfgdir=None, limit=ACTIVITY_SESSIONS, refresh=False):
+    """{'sessions': N, 'hits': {token: {'sessions': n, 'last_days': d}}}.
+
+    `token` is a lowercased word out of the hook's name or command path, which
+    is what lets a caller ask "did anything called `caveman` run?" without this
+    module knowing what a plugin is.
+
+    Bounded three ways, because this reads real transcripts: the newest `limit`
+    sessions only, a `prefilter` so a line without a hook record is never parsed
+    (the reason `transcripts.iter_json` takes one), and a disk cache with a TTL.
+    """
+    cache = jsonstore.load(_activity_cache(cfgdir), expect=dict)
+    if (not refresh and cache.get('at')
+            and time.time() - float(cache.get('at') or 0) < ACTIVITY_TTL):
+        return {'sessions': cache.get('sessions', 0), 'hits': cache.get('hits', {})}
+
+    from . import store
+    root = store.projects_root(cfgdir)
+    files = []
+    for proj in _listdir(root):
+        d = os.path.join(root, proj)
+        try:
+            for fn in os.listdir(d):
+                if fn.endswith('.jsonl'):
+                    p = os.path.join(d, fn)
+                    files.append((os.path.getmtime(p), p))
+        except OSError:
+            continue
+    files.sort(reverse=True)
+    files = files[:limit]
+
+    now = time.time()
+    hits = {}
+    for mtime, p in files:
+        seen = set()
+        for obj in transcripts.iter_json(p, prefilter='hook_success'):
+            att = obj.get('attachment')
+            if not isinstance(att, dict) or att.get('type') != 'hook_success':
+                continue
+            seen |= _tokens(att)
+        for tok in seen:
+            row = hits.setdefault(tok, {'sessions': 0, 'last': 0})
+            row['sessions'] += 1
+            row['last'] = max(row['last'], mtime)
+    out = {'sessions': len(files),
+           'hits': {t: {'sessions': v['sessions'],
+                        'last_days': int((now - v['last']) // 86400)}
+                    for t, v in hits.items()}}
+    _c.write_json_atomic(_activity_cache(cfgdir),
+                         dict(out, at=now))
+    return out
+
+
+_TOKEN_RE = re.compile(r'[a-z0-9][a-z0-9_-]{2,}')
+#: path noise that would otherwise match everything
+_TOKEN_SKIP = {'claude', 'plugins', 'cache', 'hooks', 'python', 'exe', 'com',
+               'users', 'appdata', 'local', 'programs', 'scripts', 'skills',
+               'sessionstart', 'userpromptsubmit', 'startup', 'true', 'false'}
+
+
+def _tokens(att):
+    """Lowercased words identifying WHAT ran: the hook's name plus the parts of
+    the command path. A plugin's hook lives under a directory named after it,
+    which is what makes this work without parsing anyone's format."""
+    raw = '%s %s' % (att.get('hookName') or '', att.get('command') or '')
+    return {t for t in _TOKEN_RE.findall(raw.lower().replace('\\', '/'))
+            if t not in _TOKEN_SKIP}
 
 
 def _age(now, ms):
@@ -134,7 +237,7 @@ def daemon_roster(cfgdir=None):
     p = _path(os.path.join('daemon', 'roster.json'), cfgdir)
     if not os.path.isfile(p):
         return {'running': False, 'workers': [], 'recognised': False}
-    d = jsonstore.load(p, expect=dict)
+    d = jsonstore.load(p, expect=dict, quarantine=False)
     workers = d.get('workers')
     if not isinstance(workers, dict):
         return {'running': False, 'workers': [], 'recognised': False}
@@ -159,7 +262,8 @@ def teams(cfgdir=None):
     tasks_root = _path('tasks', cfgdir)
     found = []
     for name in _listdir(root):
-        cfg = jsonstore.load(os.path.join(root, name, 'config.json'), expect=dict)
+        cfg = jsonstore.load(os.path.join(root, name, 'config.json'),
+                             expect=dict, quarantine=False)
         members = cfg.get('members')
         found.append({'name': name,
                       'members': members if isinstance(members, list) else [],

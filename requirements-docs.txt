@@ -1,4 +1,4 @@
-# Documentation site only. Deliberately NOT in pyproject.toml — claudectl ships
+# Documentation site only. Deliberately NOT in pyproject.toml — archeus ships
 # zero runtime dependencies, and ruff/build/playwright are installed the same way
 # in their own CI job steps.
 mkdocs-material>=9.5

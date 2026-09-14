@@ -205,7 +205,7 @@ def test_run_dispatches_bg_scan(monkeypatch, tmp_path):
     actual, enc, folder, _ = sb.add_project('alpha', n_sessions=0)
     got = []
     monkeypatch.setattr(main_mod, '_bg_scan_cli', lambda p, f: got.append((p, f)))
-    monkeypatch.setattr(sys, 'argv', ['claudectl', '--bg-scan', actual, folder])
+    monkeypatch.setattr(sys, 'argv', ['archeus', '--bg-scan', actual, folder])
     main_mod.run()
     assert got == [(actual, folder)]
 
@@ -234,7 +234,7 @@ def test_the_cooldown_does_not_swallow_the_first_minute_of_uptime(monkeypatch, t
     sentinel put every spawn inside the 60s cooldown until the machine had been
     up a minute — silent on a developer's box (uptime in hours) and on the
     Windows CI runners, deterministic on a Linux runner (the job starts ~30s
-    after boot) and on claudectl launched from a login shortcut.
+    after boot) and on archeus launched from a login shortcut.
 
     Mutation-verified: restoring the `0` default fails this.
     """

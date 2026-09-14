@@ -17,7 +17,7 @@ def flat(*parts):
 
 def fake_run(monkeypatch, calls):
     """Capture mcp args; return canned (stdout, cancelled)."""
-    def _run(args, label, crumbs=('CLAUDECTL', 'MCP')):
+    def _run(args, label, crumbs=('ARCHEUS', 'MCP')):
         calls.append(list(args))
         return ('ok', False)
     monkeypatch.setattr(mcp_mod, '_mcp_run', _run)

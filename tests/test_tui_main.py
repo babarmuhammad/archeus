@@ -157,8 +157,11 @@ def test_help_screen_roundtrip(monkeypatch, tmp_path):
 def test_settings_screen_roundtrip(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     sb.add_project('alpha')
-    # UP x2 wraps to second-from-last item ('⚙  Settings')
-    keys = flat(UP, UP, ENTER, ESC, ESC)
+    # UP x2 wraps to second-from-last item ('⚙  Settings…'), which is now a
+    # SECTION: it opens a submenu, and the first row of that submenu is the
+    # settings screen itself. Two ENTERs, not one — that extra step is the whole
+    # point of the regrouping and the test says so.
+    keys = flat(UP, UP, ENTER, ENTER, ESC, ESC, ESC)
     cap, _ = run_main(monkeypatch, sb, keys)
     assert 'SETTINGS' in cap.plain
     assert 'Editor' in cap.plain
@@ -191,3 +194,25 @@ def test_esc_clears_filter_before_exit(monkeypatch, tmp_path):
     keys = flat(typed('zzz_nomatch'), ESC, ESC)
     cap, exhausted = run_main(monkeypatch, sb, keys)
     assert not exhausted                       # flow ended by itself (exit)
+
+
+def test_open_by_path_lands_on_the_project_screen(monkeypatch, tmp_path):
+    """Opening a folder is how you reach its sessions, memory and CLAUDE.md —
+    it used to fall straight through into the launch-options flow, so the only
+    thing you could do with a path was start one session in it. Now it goes to
+    the same screen the `__proj_` branch reaches, and launching is a choice made
+    there like anywhere else."""
+    from claude_sessions import ui
+    sb = Sandbox(monkeypatch, tmp_path)
+    sb.add_project('alpha')
+    folder = tmp_path / 'work' / 'newproj'
+    folder.mkdir(parents=True)
+    monkeypatch.setattr(ui, 'path_input', lambda *a, **k: str(folder))
+    # Filter down to the pinned row and ENTER it — the first row of the menu is
+    # a project, so a bare ENTER reaches a sessions screen either way and the
+    # assertions below would hold for the wrong reason.
+    cap, _ = run_main(monkeypatch, sb, flat(typed('by path'), ENTER, ESC, ESC))
+    assert 'SESSIONS' in cap.plain, 'open-by-path did not reach the project screen'
+    assert 'newproj' in cap.plain, 'reached a different project screen'
+    assert 'LAUNCH OPTIONS' not in cap.plain, 'it went straight to a launch again'
+    assert sb.choice_line() is None, 'it launched something'

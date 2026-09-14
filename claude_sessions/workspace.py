@@ -2,9 +2,9 @@
 
 Records where a project's generated context came from (CLAUDE.md, MCP docs,
 sessions, repo state) and whether it is still valid. Written after scaffold,
-AI-analyze, MCP discovery, and launch ops into <project>/.claudectl/
+AI-analyze, MCP discovery, and launch ops into <project>/.archeus/
 workspace-manifest.json (falling back to the encoded ~/.claude/projects folder
-when the working dir is gone or read-only). Surfaced via `claudectl workspace
+when the working dir is gone or read-only). Surfaced via `archeus workspace
 status` and the sessions-menu `w` screen.
 
 The manifest is schema-versioned: _migrate() fills missing keys and preserves
@@ -15,6 +15,7 @@ triggered it.
 
 import os
 import json
+import re
 import time
 import hashlib
 import subprocess
@@ -22,9 +23,10 @@ from datetime import datetime, timezone
 
 from . import config as _c
 from . import render
+from . import store
 
 SCHEMA_VERSION = 1
-MANIFEST_DIR = '.claudectl'
+MANIFEST_DIR = store.WORKDIR
 MANIFEST_NAME = 'workspace-manifest.json'
 IMPORTANT_FILES = ['CLAUDE.md', 'README.md', '.mcp.json', 'pyproject.toml', 'package.json']
 
@@ -32,6 +34,52 @@ IMPORTANT_FILES = ['CLAUDE.md', 'README.md', '.mcp.json', 'pyproject.toml', 'pac
 _WEIGHTS = {
     'manifest': 5, 'claude_md': 25, 'claude_md_fresh': 25,
     'mcp_docs': 15, 'repo': 10, 'sessions': 10, 'conflicts': 10,
+    'claude_md_claims': 5,
+}
+
+#: Operations that regenerate the project's context from live inputs, and so
+#: legitimately re-baseline freshness. The WRITER (update_manifest) and the
+#: READER (_last_gen) must use this one tuple: the original code stamped a
+#: baseline for scaffold/ai_analyze only, while memory-rebuild, compress and
+#: prune rebuild the very same AUTOGEN/SESSIONS blocks from live git. So the
+#: score could never come back off Stale no matter how often memory was rebuilt
+#: — and health._check_memory read an `operations.memory.head_at_gen` that
+#: nothing on earth wrote.
+_BASELINE_OPS = ('scaffold', 'ai_analyze', 'compress', 'memory', 'prune')
+
+#: What each check is CALLED on screen. The name above is an identifier — the
+#: score reads it, the payload keys on it, `_FIXES` looks up by it — and both
+#: surfaces were printing it with its underscores swapped for spaces, so the
+#: Memory tab listed `claude md` and `claude md fresh` as two rows whose names
+#: do not say how they differ. A reader gets a label; the code keeps the name.
+_LABELS = {
+    'manifest': 'Memory built',
+    'claude_md': 'CLAUDE.md exists',
+    'claude_md_fresh': 'CLAUDE.md matches the code',
+    'mcp_docs': 'MCP tools documented',
+    'repo': 'Baselined against this commit',
+    'sessions': 'Sessions folded in',
+    'conflicts': 'README and CLAUDE.md agree',
+    'claude_md_claims': 'Your prose agrees with memory',
+}
+
+#: what clears each stale check. Diagnosis without a remedy is why this screen
+#: got read once and never again.
+#:
+#: It says the ACTION and not the keystroke: this table is read by the terminal
+#: UI and by the GUI, and `(m → b)` is the terminal's key path — printed in the
+#: GUI it sat next to the button that does the same thing.
+_FIXES = {
+    'manifest': 'build memory, or scaffold CLAUDE.md',
+    'claude_md': 'scaffold CLAUDE.md',
+    'claude_md_fresh': 'rebuild memory — cheap and incremental',
+    'mcp_docs': 'analyze the undocumented server(s) from the MCP screen',
+    'repo': 'rebuild memory to re-baseline against this HEAD',
+    'sessions': 'rebuild memory to fold in the new sessions',
+    'conflicts': 'README is newer than CLAUDE.md — re-run analyze',
+    'claude_md_claims': 'one of the two is out of date — rebuild memory if '
+                        'the graph is behind, or edit that sentence in CLAUDE.md '
+                        'yourself; your prose is the one block archeus never rewrites',
 }
 
 
@@ -76,6 +124,16 @@ def _file_meta(path):
         return {'exists': False, 'sha256': '', 'size': 0, 'mtime': 0}
 
 
+def _global_md_paths():
+    """[(account_name, path)] for every account's global CLAUDE.md.
+
+    Derived per call, never cached at import — see the note in _gather_live."""
+    try:
+        return [(name, _c.global_claude_md_for(d)) for name, d in _c.all_config_dirs()]
+    except Exception:
+        return [('default', _c.global_claude_md_for(None))]
+
+
 def _count_tools(md):
     """Heuristic tool count from analyze_mcp_tools markdown."""
     if not md:
@@ -113,6 +171,9 @@ def _empty_manifest():
         'claude_md_files': [],
         'mcp': {'count': 0, 'servers': []},
         'operations': {},
+        #: freshness baseline — see _last_gen. Empty until an op that
+        #: regenerates the project's context has run at least once.
+        'baseline': {},
         'validation': {'checks': [], 'stale': [], 'conflicts': []},
         'freshness_score': 0,
         'safe_to_launch': True,
@@ -169,10 +230,113 @@ def save_manifest(project_path, m, proj_folder=None):
 
 # ── refresh / update ─────────────────────────────────────────
 
+# ── does the prose still agree with the graph? ───────────────
+#
+# CLAUDE.md has two halves and archeus owns exactly one of them. It rewrites
+# AUTOGEN/SESSIONS/MEMORY/AGENTS from live inputs; it must never touch the prose
+# above them, because a tool that silently rewords what you wrote is worse than
+# one that lets it age. The consequence is that the hand-written half is the only
+# part of the file with no freshness signal at all — and it is append-only by
+# habit, so a fact written on line 44 is never read again.
+#
+# This repository's own CLAUDE.md carried "29 palettes x 7 skins" against a
+# themes.py holding 32 and 8, for months, while the memory graph — re-extracted
+# from the same code — said 32. So the oracle already existed; nothing compared
+# the two. That is all this does, with no model call and no subprocess.
+
+#: Words that end a claim. "32 palettes and 4 themed worlds" must register
+#: `palettes: 32`, not tie 32 to every noun in the rest of the sentence.
+_CLAIM_STOP = frozenset(
+    'a an and are as at because by for from in into is of on or over per plus '
+    'that the to under via with x'.split())
+#: Units a text may legitimately restate with a different number — a budget of
+#: 250 tokens here and 600 there is not a contradiction.
+_CLAIM_UNITS = frozenset(
+    'bytes chars characters days entries hours items lines minutes months '
+    'percent pixels seconds times tokens weeks years'.split())
+#: A number, then the words it counts. The lookbehind keeps `1.9.0` and `0.5s`
+#: from being read as claims about whatever follows them.
+_CLAIM_RE = re.compile(r'(?<![\w.])(\d[\d,]*)\s+([a-z][a-z \-]{0,40})')
+#: A sentence carrying one of these is describing what the project USED to be.
+#: This repository's own CLAUDE.md says "an earlier design was 26 generative
+#: canvas renderers … that was deleted", and comparing that against a graph
+#: extracted from the code that replaced it is the single loudest false positive
+#: this check can produce — the prose is correct, and it is history.
+_CLAIM_PAST = re.compile(
+    r'\b(?:was|were|used to|had|earlier|previously|before|old|former|deleted|'
+    r'removed|replaced|dropped|gone|no longer|instead of|rejected)\b', re.I)
+#: Sentence boundaries, plus list items and headings: a markdown bullet is a
+#: sentence for this purpose even when it never reaches a full stop.
+_CLAIM_SPLIT = re.compile(r'(?:[.!?;]\s|\n)')
+
+
+def _claims(text, present_only=False):
+    """`{noun: number}` for every countable claim the text makes exactly once.
+
+    A noun stated with two different numbers is DROPPED rather than guessed at.
+    That single rule is most of what keeps this usable: it is why "32 palettes
+    and 4 themed worlds" contributes `palettes` and `worlds` but not `themed`,
+    and why a page mentioning two different budgets contributes neither.
+
+    Two more filters, both learned from running it on this repository:
+    `present_only` skips sentences written in the past tense (see _CLAIM_PAST),
+    and only PLURAL nouns count — "15 call sites" and "2 because" were both read
+    as claims before that, and a counted thing is essentially always plural."""
+    seen = {}
+    for part in _CLAIM_SPLIT.split(text or ''):
+        if present_only and _CLAIM_PAST.search(part):
+            continue
+        for num, tail in _CLAIM_RE.findall(part):
+            try:
+                n = int(num.replace(',', ''))
+            except ValueError:
+                continue
+            for word in tail.split()[:3]:
+                word = word.strip('-')
+                if word in _CLAIM_STOP:
+                    break
+                if len(word) >= 4 and word.endswith('s') and word not in _CLAIM_UNITS:
+                    seen.setdefault(word, set()).add(n)
+    return {w: next(iter(ns)) for w, ns in seen.items() if len(ns) == 1}
+
+
+def _claim_conflicts(md_text, mem):
+    """`[(noun, what CLAUDE.md says, what memory says)]`, sorted.
+
+    This reports a DISAGREEMENT, not a verdict, and the wording everywhere says
+    so. The graph is usually the fresher of the two — it is re-extracted from the
+    code, while the prose is written once and then only appended to — but it is
+    not a clean oracle: it holds entities extracted in different cycles, so it
+    can contradict itself. On this repository one entity says "29 palettes and 7
+    skins" while a newer one says "32 palettes and 4 themed worlds".
+
+    The ambiguity rule in `_claims` turns that into a MISS rather than a false
+    accusation (`palettes` carries two numbers on the graph side, so it is
+    dropped) — which is the right way round, and the reason the fix text names
+    rebuilding memory first. Resolving it by preferring the newest entity was
+    considered and rejected: `created_at` is when an entity was first seen, not
+    when it was last refreshed, so the tiebreak would be reading a timestamp that
+    does not mean what it would need to mean.
+
+    Only the MANUAL half is read — a generated block disagreeing with the graph
+    is a rebuild, not a contradiction, and would be a permanent false positive."""
+    from .ctxaudit import split_blocks
+    said = _claims(split_blocks(md_text)['manual'], present_only=True)
+    if not said:
+        return []
+    summaries = [e.get('summary') or '' for e in mem.get('entities') or []]
+    for key in ('repo_summaries', 'summaries'):
+        val = mem.get(key)
+        if isinstance(val, dict):
+            summaries += [v for v in val.values() if isinstance(v, str)]
+    known = _claims(' \n'.join(summaries))
+    return sorted((w, said[w], known[w])
+                  for w in said if w in known and said[w] != known[w])
+
+
 def _gather_live(project_path, proj_folder):
     """Cheaply collect the current observable workspace facts."""
     from .claude_md import resolve_memory_files
-    from .sessions import scan_sessions
 
     sha, short, branch = _git_head(project_path) if project_path else ('', '', '')
 
@@ -189,41 +353,90 @@ def _gather_live(project_path, proj_folder):
                 'sha256': _sha256_file(path) if exists else '',
             })
 
+    # None means "not compared", which is a different fact from "compared and
+    # agrees" — most projects have no graph yet, and reporting them Fresh here
+    # would be the same confident overstatement claude_md_fresh already avoids.
+    claim_conflicts = None
+    try:
+        proj = next((c for c in claude_md_files
+                     if c['label'] == 'project' and c['exists']), None)
+        if proj and project_path:
+            from . import memory
+            mem = memory.load_memory(project_path, proj_folder)
+            if mem.get('entities'):
+                with open(proj['path'], encoding='utf-8', errors='ignore') as f:
+                    claim_conflicts = _claim_conflicts(f.read(), mem)
+    except Exception:
+        pass
+
+    # A count and the two extreme mtimes — so this must NOT parse transcripts.
+    # `scan_sessions` also builds a preview and a message count for every file
+    # (1 542 ms over 687 sessions on this repo) and both are discarded here,
+    # which is most of what made a read-only status call take seconds. The
+    # internal-session filter is kept, so `analyzed_count` is still the same
+    # number `update_manifest` baselined.
     sess = {'analyzed_count': 0, 'first_ts': 0, 'last_ts': 0, 'range_days': 0}
-    rows = []
+    stamps = []
     if proj_folder:
-        from .sessions import project_session_folders
+        from .sessions import is_internal_session, project_session_folders
         seen_sids = set()
         for folder in project_session_folders(proj_folder):
-            for r in scan_sessions(folder):
-                if r[1] not in seen_sids:          # dedup by sid across accounts
-                    seen_sids.add(r[1])
-                    rows.append(r)
-        rows.sort(key=lambda r: r[0], reverse=True)
-    if rows:
-        last_ts, first_ts = rows[0][0], rows[-1][0]
-        sess = {'analyzed_count': len(rows), 'first_ts': first_ts, 'last_ts': last_ts,
+            if not os.path.isdir(folder):
+                continue
+            for nm in os.listdir(folder):
+                if not nm.endswith('.jsonl') or nm[:-6] in seen_sids:
+                    continue                       # dedup by sid across accounts
+                p = os.path.join(folder, nm)
+                try:
+                    mtime = os.path.getmtime(p)
+                except OSError:
+                    continue
+                if is_internal_session(p):
+                    continue
+                seen_sids.add(nm[:-6])
+                stamps.append(mtime)
+    if stamps:
+        last_ts, first_ts = max(stamps), min(stamps)
+        sess = {'analyzed_count': len(stamps), 'first_ts': first_ts, 'last_ts': last_ts,
                 'range_days': round(max(0.0, last_ts - first_ts) / 86400, 1)}
 
     # MCP docs live in the global CLAUDE.md (per-server sentinel sections).
     # Freshness = each live server has a section there; tool counts parsed from it.
+    #
+    # Read EVERY account's global CLAUDE.md, not `_c.global_claude_md`. That
+    # module attribute is computed at import from the then-active config dir,
+    # while the writer (mcp.update_global_claude_md_mcp) takes a cfgdir — so
+    # documenting a server under a non-default account wrote a file this reader
+    # never opened, and the check was permanently stale. Fourth instance of the
+    # import-time-binding bug this codebase keeps re-learning.
+    #
+    # Read the cache, never spawn. `mcp.mcp_servers` is filled by a background
+    # thread at import, so reading it is free; `get_mcp_status()` shells out to
+    # `claude mcp list` and took ~3 s — inside a call whose own docstring calls
+    # itself read-only. An empty list is also the legitimate answer for someone
+    # with no servers, so the cache is trusted only once `_mcp_ready` says the
+    # thread finished, the same guard ctxaudit.py:223 already uses.
     servers = []
+    mcp_ready = False
     try:
         from . import mcp
-        cur = mcp.mcp_servers or mcp.get_mcp_status()
-        gtext = ''
-        try:
-            if os.path.isfile(_c.global_claude_md):
-                gtext = open(_c.global_claude_md, encoding='utf-8', errors='ignore').read()
-        except Exception:
-            pass
+        mcp_ready = bool(getattr(mcp, '_mcp_ready', False))
+        cur = list(mcp.mcp_servers) if mcp_ready else []
+        texts = []
+        for _name, d in _global_md_paths():
+            try:
+                if os.path.isfile(d):
+                    texts.append(open(d, encoding='utf-8', errors='ignore').read())
+            except Exception:
+                continue
         for n, s in cur:
             start, end = f'<!-- MCP:{n}:START -->', f'<!-- MCP:{n}:END -->'
-            documented = start in gtext and end in gtext
-            tool_count = 0
-            if documented:
-                seg = gtext[gtext.index(start) + len(start):gtext.index(end)]
-                tool_count = _count_tools(seg)
+            documented, tool_count = False, 0
+            for gtext in texts:
+                if start in gtext and end in gtext:
+                    documented = True
+                    seg = gtext[gtext.index(start) + len(start):gtext.index(end)]
+                    tool_count = max(tool_count, _count_tools(seg))
             servers.append({'name': n, 'status': s,
                             'documented': documented, 'tool_count': tool_count})
     except Exception:
@@ -235,6 +448,8 @@ def _gather_live(project_path, proj_folder):
         'claude_md_files': claude_md_files,
         'sessions': sess,
         'mcp_live': servers,
+        'mcp_ready': mcp_ready,
+        'claim_conflicts': claim_conflicts,
     }
 
 
@@ -251,15 +466,20 @@ def update_manifest(project_path, proj_folder, op, **data):
         m['claude_md_files'] = live['claude_md_files']
         m['sessions'] = live['sessions']
 
-        # MCP snapshot from live status + global-CLAUDE.md documentation
+        # MCP snapshot from live status + global-CLAUDE.md documentation.
+        # Only when the status is actually known: since _gather_live stopped
+        # spawning `claude mcp list`, an update that lands before the background
+        # thread finishes would otherwise overwrite a correct snapshot with
+        # zero servers.
         now = _now_iso()
-        m['mcp'] = {
-            'count': len(live['mcp_live']),
-            'servers': [{'name': s['name'], 'status': s['status'],
-                         'tool_count': s['tool_count'],
-                         'documented_at': now if s['documented'] else ''}
-                        for s in live['mcp_live']],
-        }
+        if live.get('mcp_ready', True):
+            m['mcp'] = {
+                'count': len(live['mcp_live']),
+                'servers': [{'name': s['name'], 'status': s['status'],
+                             'tool_count': s['tool_count'],
+                             'documented_at': now if s['documented'] else ''}
+                            for s in live['mcp_live']],
+            }
 
         # source inputs snapshot
         m['source_inputs'] = _source_inputs(m)
@@ -269,12 +489,23 @@ def update_manifest(project_path, proj_folder, op, **data):
         op_rec.update({k: v for k, v in data.items() if k != 'tool_count'})
         m['operations'][op] = op_rec
 
-        # baseline for freshness: record HEAD + key hashes at generation time
-        if op in ('scaffold', 'ai_analyze'):
-            m['operations'][op]['head_at_gen'] = live['repo']['head_sha']
-            m['operations'][op]['readme_hash'] = (live['file_hashes']
-                                                  .get('README.md', {}).get('sha256', ''))
-            m['operations'][op]['sessions_at_gen'] = live['sessions']['analyzed_count']
+        # Baseline for freshness: HEAD + key hashes at generation time.
+        #
+        # Stored ONCE at the top level, because it describes the project, not
+        # the operation that happened to refresh it. Keeping it per-op meant
+        # picking a winner among several, and ISO timestamps are second-
+        # resolution — two ops in the same second tied, and the tie went to
+        # whichever came first in _BASELINE_OPS rather than to the latest.
+        # Still mirrored onto the op record: health._check_memory reads
+        # operations['memory']['head_at_gen'], and old manifests only have it
+        # there.
+        if op in _BASELINE_OPS:
+            base = {'head_at_gen': live['repo']['head_sha'],
+                    'readme_hash': (live['file_hashes']
+                                    .get('README.md', {}).get('sha256', '')),
+                    'sessions_at_gen': live['sessions']['analyzed_count']}
+            m['operations'][op].update(base)
+            m['baseline'] = dict(base, op=op, last_run=m['operations'][op]['last_run'])
 
         checks, score, safe = _evaluate(m, live)
         m['validation'] = {
@@ -320,9 +551,19 @@ def compute_status(project_path, proj_folder=None):
 
 
 def _last_gen(m):
-    """Most recent of scaffold / ai_analyze op records (the freshness baseline)."""
-    cand = [m['operations'].get(k) for k in ('ai_analyze', 'scaffold')]
-    cand = [c for c in cand if c and c.get('last_run')]
+    """The freshness baseline: what the repo looked like when the project's
+    context was last regenerated.
+
+    Written at the top level by update_manifest. Falls back to the per-op
+    records for manifests written before that existed — `sessions_at_gen` is
+    the marker there, because an op that regenerates nothing (a `launch`) has
+    only `last_run`, and taking that as a baseline would report `fresh` on no
+    evidence at all."""
+    base = m.get('baseline')
+    if isinstance(base, dict) and 'sessions_at_gen' in base:
+        return base
+    cand = [m['operations'].get(k) for k in _BASELINE_OPS]
+    cand = [c for c in cand if c and c.get('last_run') and 'sessions_at_gen' in c]
     if not cand:
         return None
     return max(cand, key=lambda c: c['last_run'])
@@ -333,7 +574,11 @@ def _evaluate(m, live):
     checks = []
 
     def add(name, state, detail, applicable=True):
+        # `label` rides along rather than being looked up per surface: the TUI
+        # and the GUI both render these rows, and a second lookup is a second
+        # chance for one of them to print the identifier instead.
         checks.append({'name': name, 'state': state, 'detail': detail,
+                       'label': _LABELS.get(name, name.replace('_', ' ')),
                        'applicable': applicable})
 
     corrupt = m.get('_corrupt')
@@ -388,8 +633,12 @@ def _evaluate(m, live):
             add('mcp_docs', 'stale', f"undocumented: {', '.join(undoc)}")
         else:
             add('mcp_docs', 'fresh', 'all servers documented')
-    else:
+    elif live.get('mcp_ready', True):
         add('mcp_docs', 'fresh', 'no MCP servers', applicable=False)
+    else:
+        # empty because nothing has been read yet, which is a different fact
+        # from having no servers — say which one it is
+        add('mcp_docs', 'fresh', 'MCP status not read yet', applicable=False)
 
     # sessions: new since generation
     cur_sessions = live['sessions']['analyzed_count']
@@ -416,6 +665,21 @@ def _evaluate(m, live):
     else:
         add('conflicts', 'fresh', 'n/a', applicable=False)
 
+    # claude_md_claims: the hand-written prose vs the graph. This is the only
+    # check about the half of CLAUDE.md archeus may not repair, so its detail
+    # has to carry the whole finding — there is no button that fixes it.
+    conflicts = live.get('claim_conflicts')
+    if not md_exists or conflicts is None:
+        add('claude_md_claims', 'fresh', 'no memory graph to check against',
+            applicable=False)
+    elif conflicts:
+        word, said, known = conflicts[0]
+        more = f' (+{len(conflicts) - 1} more)' if len(conflicts) > 1 else ''
+        add('claude_md_claims', 'stale',
+            f'CLAUDE.md says {said} {word}, memory says {known}{more}')
+    else:
+        add('claude_md_claims', 'fresh', 'prose agrees with memory')
+
     # freshness score over applicable, weighted checks
     total = sum(_WEIGHTS[c['name']] for c in checks if c['applicable'] and c['name'] in _WEIGHTS)
     got = sum(_WEIGHTS[c['name']] for c in checks
@@ -427,15 +691,21 @@ def _evaluate(m, live):
 
 # ── rendering ────────────────────────────────────────────────
 
-_DOTS = {'fresh': '🟢', 'stale': '🟡', 'invalid': '🔴'}
-_WORDS = {'fresh': 'Fresh', 'stale': 'Stale', 'invalid': 'Invalid'}
-_COLORS = lambda: {'fresh': _c.C_OK, 'stale': _c.C_WARN, 'invalid': _c.C_ERR}
+_DOTS = {'fresh': '🟢', 'stale': '🟡', 'invalid': '🔴', 'n/a': '⚪'}
+_WORDS = {'fresh': 'Fresh', 'stale': 'Stale', 'invalid': 'Invalid', 'n/a': 'n/a'}
+_COLORS = lambda: {'fresh': _c.C_OK, 'stale': _c.C_WARN, 'invalid': _c.C_ERR,
+                   'n/a': _c.C_DIM}
 
 
 def _state_of(checks, name):
+    """The display state of a check.
+
+    An `applicable=False` check is excluded from BOTH sides of the score, so
+    painting it 🟡 Stale told the user a warning that contributed nothing to the
+    number underneath it. It reads 'n/a' now, and the dots add up to the score."""
     for c in checks:
         if c['name'] == name:
-            return c['state']
+            return c['state'] if c.get('applicable', True) else 'n/a'
     return 'fresh'
 
 
@@ -458,6 +728,10 @@ def _status_lines(project_path, proj_folder):
     head = repo['head_short'] or '—'
     if repo.get('branch'):
         head = f"{head}  {D}({repo['branch']}){R}"
+    # 'the file is there' and 'the file is current' are two different claims.
+    # When there is no baseline the second one is UNKNOWN, and n/a says so —
+    # reporting Fresh there would be the same confident overstatement as the
+    # permanent Stale this screen used to show, just pointing the other way.
     md_state = _state_of(checks, 'claude_md')
     if md_state == 'fresh':
         md_state = _state_of(checks, 'claude_md_fresh')
@@ -477,6 +751,18 @@ def _status_lines(project_path, proj_folder):
         f"{col['fresh'] if score >= 80 else (col['stale'] if score >= 50 else col['invalid'])}{score}%{R}"
         f"  {render.meter(score, width=20, color=(_c.C_OK if score >= 80 else _c.C_WARN))}",
     ]
+    # every point the score is missing, and the one thing that recovers it
+    todo = [(c['name'], c['detail']) for c in checks
+            if c.get('applicable', True) and c['state'] != 'fresh'
+            and c['name'] in _WEIGHTS]
+    if todo:
+        lines.append('')
+        lines.append(f"  {D}To raise it:{R}")
+        for name, detail in todo:
+            fix = _FIXES.get(name, '')
+            lines.append(f"    {_c.C_WARN}●{R} {detail}"
+                         f"{'  ' + D + '→ ' + fix + R if fix else ''}"
+                         f"  {D}(+{_WEIGHTS[name]}){R}")
     return lines, m, score, safe
 
 
@@ -515,7 +801,7 @@ def workspace_status_screen(project_path, proj_folder=None):
 
     while True:
         lines, m, score, safe = _status_lines(project_path, proj_folder)
-        frame = [render.header('CLAUDECTL', name, 'WORKSPACE'), '', render.hline(), '']
+        frame = [render.header('ARCHEUS', name, 'WORKSPACE'), '', render.hline(), '']
         frame += lines
         # ── project health card (frequent Claude Code problems, auto-checked) ──
         try:

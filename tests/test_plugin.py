@@ -70,6 +70,7 @@ VERSION_COPIES = (
     ('plugin/.claude-plugin/plugin.json', r'"version":\s*"([^"]+)"'),
     ('.claude-plugin/marketplace.json',   r'"version":\s*"([^"]+)"'),
     ('docs/index.md',                     r'"softwareVersion":\s*"([^"]+)"'),
+    ('CITATION.cff',                      r'(?m)^version:\s*(\S+)\s*$'),
 )
 
 
@@ -140,17 +141,17 @@ def test_every_command_declares_a_description():
 
 
 def test_the_commands_say_what_to_do_when_the_cli_is_missing():
-    """They shell out to `claudectl`, which is a separate pip install."""
+    """They shell out to `archeus`, which is a separate pip install."""
     d = os.path.join(PLUGIN, 'commands')
     for n in os.listdir(d):
         text = io.open(os.path.join(d, n), encoding='utf-8').read()
-        assert 'claudectl' in text, n
+        assert 'archeus' in text, n
         assert 'not installed' in text or 'not found' in text, \
             '%s does not handle the CLI being absent' % n
 
 
 def test_the_plugin_ships_no_hooks():
-    """claudectl already installs its own through a manager that places them
+    """archeus already installs its own through a manager that places them
     per account. Two owners for one settings.json entry means installing both
     runs the recall hook twice per prompt, and uninstalling either leaves the
     other behind looking broken. The README says so; this keeps it true."""
@@ -167,6 +168,11 @@ def _claude():
     return get_claude_exe()
 
 
+# The one test in the suite that is MEANT to run Claude's own binary: it asks
+# the real `claude plugin validate` whether these manifests are acceptable, and
+# a stub answering "yes" would be the whole point thrown away. Everything else
+# is blocked from starting Claude by `_no_test_starts_claude` in conftest.
+@pytest.mark.real_process
 @pytest.mark.parametrize('target', ['.', 'plugin'])
 def test_the_claude_cli_validates_both_manifests(target):
     exe = _claude()

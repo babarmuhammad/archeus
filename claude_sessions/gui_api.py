@@ -19,6 +19,7 @@ Two ideas make this thin:
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -39,6 +40,41 @@ class JobCancelled(Exception):
     """Raised inside a job thread when the user cancels."""
 
 
+def _claude_failure_reason(stdout):
+    """The sentence a human needs, out of what `claude -p` printed before it
+    exited non-zero.
+
+    `--output-format json` (which `memory._claude_json` asks for) puts the
+    refusal in `result`, behind ~200 characters of `duration_api_ms`,
+    `stop_reason`, `session_id`, `total_cost_usd` and `usage`. Everything that
+    reports a failure truncates, so what actually reached the user — the job
+    banner, the Logs page, the event log — was a clipped JSON blob with the
+    reason cut off. Twenty of those are sitting in this machine's event log, and
+    every one of them means "You've hit your session limit · resets 2:30am".
+
+    Falls through to the raw text unchanged when stdout is not that envelope
+    (`--print`, a crash, a stack trace), so nothing is hidden.
+    """
+    raw = (stdout or '').strip()
+    if not raw.startswith('{'):
+        return raw
+    try:
+        env = json.loads(raw)
+    except Exception:
+        return raw
+    if not isinstance(env, dict):
+        return raw
+    for key in ('result', 'error', 'message'):
+        v = env.get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+        if isinstance(v, dict):                     # {"error": {"message": ...}}
+            m = v.get('message')
+            if isinstance(m, str) and m.strip():
+                return m.strip()
+    return raw
+
+
 def _run_cancellable(cmd, input_text=None, capture_output=True, text=True,
                      encoding='utf-8', errors='ignore', cwd=None, env=None,
                      timeout=600):
@@ -49,6 +85,12 @@ def _run_cancellable(cmd, input_text=None, capture_output=True, text=True,
     job = getattr(_JOBCTX, 'job', None)
     if job and job.get('cancel_event', threading.Event()).is_set():
         raise JobCancelled
+    # Don't spend an account that has nothing left. A no-op for anything that
+    # isn't `claude … -p`, and a no-op when the usage cache says nothing.
+    from . import quota
+    env, _blocked = quota.preflight(cmd, env)
+    if _blocked:
+        return ''
     try:
         # CREATE_NO_WINDOW: a captured child shows nothing in its console,
         # so the window is pure flicker. See proc.no_window_flags.
@@ -81,18 +123,38 @@ def _run_cancellable(cmd, input_text=None, capture_output=True, text=True,
         # stderr is merged into stdout above, so a failed CLI run looks exactly
         # like a successful one to every caller unless the exit code is checked.
         if proc.returncode:
+            reason = _claude_failure_reason(stdout)
             if job is not None:
-                job['last_subprocess_error'] = {'code': proc.returncode, 'output': stdout}
+                job['last_subprocess_error'] = {'code': proc.returncode, 'output': reason}
+            # The scheduler and the detached memory worker have NO job context,
+            # so `if job is not None` dropped the reason on the floor for
+            # precisely the two callers that run unattended — a rate-limited
+            # account produced six silent failures an hour, reported as
+            # "queued". Record it where any caller can read it.
+            from . import memory as _mem
+            _mem.last_call_error = 'claude exited %s: %s' % (
+                proc.returncode, (reason or '(no output)')[:300])
+            from . import events, quota
+            # the ENVELOPE, not the extracted sentence: a marker could live in a
+            # field the sentence does not carry, and this test is a cheap
+            # substring scan over text we already have in memory
+            quota.note_failure(env, stdout)
+            events.record('subprocess', _mem.last_call_error,
+                          detail=' '.join(str(c) for c in cmd[:2]))
             return ''
         return stdout
     except subprocess.TimeoutExpired:
         try: proc.kill()
         except Exception: pass
+        msg = ('timed out after %ss — upstream may be an unresponsive '
+               'OmniRoute/failover endpoint' % timeout)
         if job is not None:
-            job.setdefault('messages', []).append(
-                {'ok': False, 'text': 'timed out after %ss — upstream may be an '
-                                      'unresponsive OmniRoute/failover endpoint'
-                                      % timeout})
+            job.setdefault('messages', []).append({'ok': False, 'text': msg})
+        # a job's message list is not a record, and the two unattended callers
+        # have no job at all — so the timeout was reaching nothing
+        from . import events
+        events.record('subprocess', msg,
+                      detail=' '.join(str(c) for c in cmd[:2]))
         return ''
     except Exception:
         try: proc.kill()
@@ -138,7 +200,12 @@ def _reap_locked():
     """
     now = time.time()
     for j in list(_JOBS.values()):
-        if j['status'] in ('running', 'awaiting') and now - j['started'] > _STUCK_AFTER:
+        # `beat`, when the job sets one, is the last time it did something. The
+        # reaper exists to catch a thread that died without a terminal status;
+        # the build queue can legitimately run for hours, and reading `started`
+        # alone declared it abandoned while it was mid-extraction.
+        if j['status'] in ('running', 'awaiting') \
+                and now - max(j['started'], j.get('beat') or 0) > _STUCK_AFTER:
             j['status'] = 'error'
             j['error'] = j.get('error') or 'abandoned after %dh' % (_STUCK_AFTER // 3600)
     terminal = [j for j in _JOBS.values() if j['status'] not in ('running', 'awaiting')]
@@ -212,6 +279,16 @@ def start_job(label, fn, inputs=None):
                     'job ended without setting a terminal status'
             job['ended'] = time.time()
             _JOBCTX.job = None
+            # THE place a background job ends, which is why the desktop
+            # notification hangs here rather than on each of the thirty
+            # start_job call sites. It notifies only for work that ran long
+            # enough that the user has probably left the window.
+            try:
+                from . import notify
+                notify.job_finished(job['label'], job['status'],
+                                    job['ended'] - job['started'], job['error'])
+            except Exception:
+                pass
 
     threading.Thread(target=_run, daemon=True).start()
     return jid
@@ -289,7 +366,10 @@ def _jsonable(v):
 # ── UI bridge (installed once; no-op outside job threads) ────
 
 def _install_bridge():
-    from . import ui, diffview, claude_md, hooks
+    # hooks/claude_md are imported here so they are certain to be in sys.modules
+    # before the by-value sweep at the bottom runs — they are the two that were
+    # actually caught holding their own copies.
+    from . import ui, diffview, claude_md, hooks    # noqa: F401 (see the sweep)
 
     _orig_flash = ui.flash
     def flash(msg, ok=True, secs=1.0):
@@ -326,8 +406,6 @@ def _install_bridge():
             return _orig_text_input(prompt, default=default)
         return job['inputs'].pop(0) if job['inputs'] else default
     ui.text_input = text_input
-    # hooks.py imports text_input by value at module top
-    hooks.text_input = text_input
 
     _orig_ui_confirm = ui.confirm
     def ui_confirm(prompt, danger=False):
@@ -336,6 +414,26 @@ def _install_bridge():
             return _orig_ui_confirm(prompt, danger=danger)
         return True     # GUI flows pre-confirm destructive actions client-side
     ui.confirm = ui_confirm
+
+    # ── the by-value copies ──────────────────────────────────────────────
+    # `from .ui import flash, text_input, confirm` binds a SECOND name, and
+    # patching `ui` does not move it: `hooks._ai_hook` hung on the real
+    # `confirm`, and `claude_md`'s `_on_job_thread()` branch hung on the real
+    # `text_input` — the exact job the split was written to un-hang.
+    #
+    # Naming the modules is what has failed every previous time this bug
+    # appeared (`config._spawn_editor`, `hooks.settings_path`), so this does not
+    # name them: it sweeps for the ORIGINAL function object, which is exact —
+    # no list to fall behind, and no false positive. Modules imported after this
+    # point need nothing, because by then `ui.flash` already IS the bridge.
+    swap = {id(_orig_flash): flash, id(_orig_text_input): text_input,
+            id(_orig_ui_confirm): ui_confirm}
+    for m in list(sys.modules.values()):
+        if not getattr(m, '__name__', '').startswith(__package__ + '.'):
+            continue
+        for attr, val in list(vars(m).items()):
+            if id(val) in swap and m is not ui:
+                setattr(m, attr, swap[id(val)])
 
 
 #: how long an approval gate waits before rejecting itself. It was an hour, on
@@ -379,21 +477,46 @@ _sched_started = False
 _sched_stop = threading.Event()
 
 
-def _refresh_project(path, folder, auto_cap=6):
+#: outcome of the last finished background refresh, per project path. The GUI
+#: badge poller watches the scan lock and reads the lock DISAPPEARING as
+#: success — so a crashed cycle, which clears the lock in its `finally`, toasted
+#: "Memory updated" exactly like a successful one. This is where the difference
+#: is recorded. Bounded: one entry per project, replaced each run.
+_LAST_REFRESH = {}
+
+
+def last_refresh(path):
+    return _LAST_REFRESH.get(os.path.abspath(path or ''))
+
+
+def _refresh_project(path, folder, auto_cap=6, cfgdir=None):
     """Run one incremental memory refresh in-process under the scan-lock so the
     badge and /api/memory/active reflect it. Silent (headless Claude calls).
-    Returns True if it actually ran (acquired the lock)."""
+    Returns True if it actually ran (acquired the lock).
+
+    *cfgdir* names the account that pays for it. Without one the call spends
+    whichever account this process resolved, which for a project belonging to
+    another login is the wrong quota and the wrong attribution.
+    """
     from . import memory
     if not memory.acquire_scan_lock(path):
         return False                      # another refresh already in flight
     memory._tls.silent = True
+    key = os.path.abspath(path or '')
     try:
         name = os.path.basename(path.rstrip('\\/')) or path
         # auto_cycle, not refresh_memory: "auto memory" means every memory
         # surface, lessons included. See memory.auto_cycle.
-        memory.auto_cycle(path, folder, name, auto_cap=auto_cap)
-    except Exception:
+        with memory.use_account(_c.account_env(cfgdir) if cfgdir else None):
+            res = memory.auto_cycle(path, folder, name, auto_cap=auto_cap) or {}
+        _LAST_REFRESH[key] = {'ok': True, 'at': time.time(),
+                              'extracted': res.get('extracted', 0),
+                              'lessons': res.get('lessons', 0),
+                              'pending': res.get('pending', 0)}
+    except Exception as e:
         _c.log.exception('gui: memory refresh failed for %s', path)
+        _LAST_REFRESH[key] = {'ok': False, 'at': time.time(),
+                              'error': str(e) or e.__class__.__name__}
     finally:
         memory.clear_scan_lock(path)
     return True
@@ -407,14 +530,220 @@ def _refresh_async(path, folder, auto_cap=6):
                      daemon=True).start()
 
 
+#: how long a "somebody is working" answer is reused. The queue asks before
+#: every project, and a live session does not appear and vanish inside a minute.
+_BUSY_TTL = 15
+_busy_at = 0.0
+_busy_ans = ''
+
+
+def _live_sessions():
+    """How many Claude Code sessions were touched inside stats.LIVE_WINDOW.
+
+    The dashboard measures this too, but through the whole cross-account
+    breakdown — seconds of work, and the queue asks before every project. Only a
+    transcript touched inside the window can be live, and there are normally one
+    or two of those, so finding the candidates by mtime is the cheap half and
+    `stats` is asked about those alone (its per-file answer is cached on
+    mtime+size, so a repeat is free).
+
+    The `count > 3` gate is the exact half, and it is not optional: archeus's
+    own headless calls write transcripts into the same store, so without it the
+    build queue reads its OWN extraction as the machine being busy and pauses
+    itself forever.
+    """
+    from . import stats
+    now = time.time()
+    n = 0
+    for _name, cfg in _c.all_config_dirs():
+        root = _store.projects_root(cfg)
+        try:
+            projects = list(os.scandir(root))
+        except OSError:
+            continue
+        for pd in projects:
+            if not pd.is_dir():
+                continue
+            try:
+                entries = list(os.scandir(pd.path))
+            except OSError:
+                continue
+            for f in entries:
+                if not f.name.endswith('.jsonl'):
+                    continue
+                try:
+                    if now - f.stat().st_mtime >= stats.LIVE_WINDOW:
+                        continue
+                except OSError:
+                    continue
+                try:
+                    if (stats.get_session_stats_cached(f.path) or {}).get('count', 0) > 3:
+                        n += 1
+                except Exception:
+                    pass
+    return n
+
+
+def machine_busy(exclude=''):
+    """Why the build queue should wait, or ''.
+
+    Two signals and both are about the user, not the machine: a job they started
+    and are watching the banner of, and a Claude Code session they are typing
+    in. Spending an account's quota on background extraction while either is
+    true is competing with the work the quota is for.
+    """
+    global _busy_at, _busy_ans
+    with _JOBS_LOCK:
+        for j in _JOBS.values():
+            if j['id'] != exclude and j['status'] in ('running', 'awaiting'):
+                return 'a job is running — %s' % j['label']
+    if time.time() - _busy_at < _BUSY_TTL:
+        return _busy_ans
+    try:
+        n = _live_sessions()
+    except Exception:
+        _c.log.exception('gui: live-session check failed')
+        n = 0                     # fail open: never wedge the queue on a stat
+    _busy_ans = ('a Claude session is live' if n == 1
+                 else '%d Claude sessions are live' % n) if n else ''
+    _busy_at = time.time()
+    return _busy_ans
+
+
+def _queue_order():
+    """Every project, stalest first — cheaply, and without spending anything.
+
+    Read off each graph rather than measured: `pending_units` is a backlog the
+    last cycle already counted and wrote down, a graph with no entities has
+    never been built at all, and `generated_at` is when the rest were last
+    touched. `is_stale()` hashes the whole tree, so it is asked once per project
+    when its turn comes and never in order to sort.
+    """
+    from . import gui, memory
+    rows = []
+    for p in gui.list_projects():
+        if p.get('hidden'):
+            continue
+        try:
+            folder = _store.project_folder(p['primary_cfgdir'], p['encoded'])
+            mem = memory.load_memory(p['path'], folder)
+        except Exception:
+            continue
+        rows.append({'path': p['path'], 'folder': folder,
+                     'name': p.get('name') or p['path'],
+                     'cfgdir': p.get('primary_cfgdir') or '',
+                     'pending': int(mem.get('pending_units') or 0),
+                     'built': bool(mem.get('entities')),
+                     'at': str(mem.get('generated_at') or '')})
+    # most owed first, then never-built, then oldest graph
+    rows.sort(key=lambda r: (-r['pending'], r['built'], r['at']))
+    return rows
+
+
+#: the queue's own pacing. It is not a scheduler: it runs because the user
+#: pressed a button, and it stops when the backlog is empty or they cancel.
+QUEUE_WAIT = 20
+QUEUE_MAX_WAITS = 90          # ~30 minutes of "come back when you are idle"
+#: A sweep that advances nothing already ends the run. This is the other end of
+#: it: every sweep spends real Claude calls, so a project that reports itself
+#: stale however often it is built — a hashing bug, a module that cannot be
+#: extracted — must not be paid for forever. Same reasoning as `auto_cap` and
+#: `headless_budget_usd`, one level up.
+QUEUE_MAX_SWEEPS = 20
+
+
+def build_queue(job=None, cap=6):
+    """Work through every project's module backlog, stalest first, pausing while
+    the user is busy and stopping when there is nothing left to build.
+
+    A job rather than a second scheduler, and that is the whole design: the job
+    banner already gives it progress, a Cancel that kill-trees the running
+    `claude -p`, and a desktop notification at the end. The existing auto-memory
+    scheduler is untouched — it has its own opt-in and its own cadence, and this
+    is the explicit "spend the idle time catching up" the user asked for.
+
+    Sweeps repeat: a project is capped at `cap` units a pass, so one repo with a
+    hundred changed modules cannot starve the rest. A sweep that builds nothing
+    ends the run.
+    """
+    from . import memory, quota, ui
+    jid = (job or {}).get('id', '')
+    done = failed = 0
+    blocked = set()               # accounts that answered "rate limited"
+    waits = 0
+    for _sweep in range(QUEUE_MAX_SWEEPS):
+        rows = [r for r in _queue_order() if r['cfgdir'] not in blocked]
+        if not rows:
+            break
+        built_this_sweep = 0
+        for i, r in enumerate(rows):
+            if job is not None and job['cancel_event'].is_set():
+                raise JobCancelled()
+            why = machine_busy(exclude=jid)
+            while why:
+                if job is not None and job['cancel_event'].is_set():
+                    raise JobCancelled()
+                if waits >= QUEUE_MAX_WAITS:
+                    ui.flash('Stopped waiting — %s' % why)
+                    return {'built': done, 'failed': failed, 'stopped': 'busy'}
+                waits += 1
+                ui.flash('Paused — %s' % why)
+                # the job's own Event, so Cancel is not 20 seconds late
+                if job is not None:
+                    job['cancel_event'].wait(QUEUE_WAIT)
+                else:
+                    time.sleep(QUEUE_WAIT)
+                why = machine_busy(exclude=jid)
+            if r['cfgdir'] in blocked:
+                continue
+            reason = quota.reason(r['cfgdir'] or None)
+            if reason:
+                blocked.add(r['cfgdir'])
+                ui.flash('%s skipped — %s' % (r['name'], reason))
+                continue
+            if not memory.is_stale(r['path'], r['folder']):
+                continue
+            ui.flash('%s (%d/%d) — building modules…' % (r['name'], i + 1, len(rows)))
+            if job is not None:
+                # The 6-hour abandoned-job reaper keys on `started`, and a queue
+                # that is working is not a leak. A beat per project is what tells
+                # the two apart.
+                job['beat'] = time.time()
+            ran = _refresh_project(r['path'], r['folder'], auto_cap=cap,
+                                   cfgdir=r['cfgdir'] or None)
+            if not ran:
+                continue          # somebody else holds this project's scan lock
+            res = _LAST_REFRESH.get(os.path.abspath(r['path'])) or {}
+            if res.get('ok'):
+                done += 1
+                built_this_sweep += 1
+                ui.flash('%s — %d module(s), %d lesson(s)%s'
+                      % (r['name'], res.get('extracted', 0), res.get('lessons', 0),
+                         ', %d still queued' % res['pending'] if res.get('pending') else ''))
+            else:
+                failed += 1
+                err = str(res.get('error') or memory.why_failed(''))
+                ui.flash('%s failed — %s' % (r['name'], err[:120]))
+                # quota.note_failure is NOT called here: _run_cancellable
+                # already latched it, with the env that names the account
+                # this project was built under. Twice would be one place
+                # too many, and this one has only a cfgdir to offer.
+                if quota.is_limit_error(err):
+                    blocked.add(r['cfgdir'])
+        if not built_this_sweep:
+            break                 # nothing left that a pass can advance
+    return {'built': done, 'failed': failed,
+            'accounts_blocked': sorted(a for a in blocked if a)}
+
+
 def _auto_projects():
     """[(path, folder, enc)] for every project opted into auto-memory."""
-    from .config import load_settings
-    from . import gui
-    pd = load_settings().get('project_defaults') or {}
+    from . import gui, memory
     out = []
     for p in gui.list_projects():
-        if (pd.get(p['encoded']) or {}).get('auto_memory'):
+        # memory.auto_enabled is the one answer all three runners ask — this
+        # loop, the TUI's on-open scan and the detached worker
+        if memory.auto_enabled(p['path'], p['encoded']):
             out.append((p['path'],
                         _store.project_folder(p['primary_cfgdir'], p['encoded']),
                         p['encoded']))
@@ -424,46 +753,130 @@ def _auto_projects():
 def _auto_scan_pass():
     """One sweep: refresh each opted-in project whose source changed and that
     isn't already updating. Cheap (hash-only) staleness gate keeps token cost
-    to genuinely-changed projects."""
+    to genuinely-changed projects.
+
+    Returns True when work is still owed — a cycle hit its per-cycle cap, or a
+    project is still stale. That is reported, not acted on: what a pass could
+    not finish waits for the next scheduled one (see `_next_wait`).
+    """
     from . import memory
+    owed = False
+    refreshed = 0
     for path, folder, _enc in _auto_projects():
         try:
             if memory.scan_lock_status(path) is not None:
-                continue                                  # already running
+                owed = True                               # still running
+                continue
             if not memory.is_stale(path, folder):
                 continue                                  # nothing changed
             _refresh_project(path, folder, auto_cap=6)    # blocking, sequential
+            refreshed += 1
+            if memory.is_stale(path, folder):
+                owed = True                               # capped — more to do
         except Exception:
             _c.log.exception('gui: auto-scan pass failed for %s', path)
+    # Only when the pass DID something or still owes work. A heartbeat every
+    # MIN_INTERVAL would burn the event log's cap inside a day and drown the
+    # errors it exists to show.
+    if refreshed or owed:
+        from . import events
+        events.record('scheduler', 'auto-memory pass: %d refreshed%s'
+                      % (refreshed, ', more still owed' if owed else ''),
+                      level='info')
+    return owed
+
+
+#: how long the first pass waits after start — enough for the server/TUI to
+#: settle, short enough that "it updates when I launch archeus" is true.
+#: A module constant so the loop can actually be tested; it had none.
+STARTUP_DELAY = 2
+
+#: floor on the configured cadence, and the module seam a test drives the loop
+#: through — settings cannot express a sub-minute interval, deliberately.
+MIN_INTERVAL = 60
+
+
+def _stamp_file():
+    """Beside archeus.json, which is FIXED under ~/.claude: the schedule is one
+    schedule across every account, so it may not live in an account's cfgdir."""
+    return os.path.join(os.path.dirname(_c.settings_file), 'archeus-automem.stamp')
+
+
+def _last_pass():
+    """When a pass last ran, epoch seconds — 0 when none ever has.
+
+    The file's MTIME is the value; nothing is parsed, so there is no corrupt
+    state to recover from and no schema to version."""
+    try:
+        return os.path.getmtime(_stamp_file())
+    except OSError:
+        return 0.0
+
+
+def _mark_pass():
+    _c.write_atomic(_stamp_file(), '')      # content unused; mtime is the record
+
+
+def _next_wait(owed=False):
+    """Seconds until the next pass. Always the cadence the user configured.
+
+    It used to return a 45s CATCHUP_INTERVAL whenever a pass reported work still
+    owed, on the reasoning that memory should converge rather than sit stale for
+    an hour. That inverted the point of the per-cycle cap: a repo with more
+    changed modules than one cycle can afford was swept every 45 seconds until
+    it caught up, which on several opted-in projects is most of a daily limit
+    inside an hour — and on a rate-limited account it was six *failed*
+    extractions repeating forever. The cap decides how much one pass may spend;
+    the interval decides how often that happens. Nothing else may schedule work.
+
+    `owed` is taken and logged rather than acted on, so "why is my memory still
+    stale" has an answer in the log instead of a silent short-circuit.
+    """
+    from .config import load_settings
+    try:
+        wait = max(MIN_INTERVAL, int(load_settings().get('auto_memory_interval', 3600)))
+    except Exception:
+        wait = 3600
+    if owed:
+        _c.log.info('gui: auto-memory has work left; next pass in %ss '
+                    '(the configured interval — a cycle is capped on purpose)', wait)
+    return wait
 
 
 def start_auto_memory_scheduler():
-    """Daemon thread: one pass on GUI start, then every auto_memory_interval
-    seconds. Started by the real GUI entry points only (never make_server, so
-    tests don't spawn refreshes). Idempotent."""
+    """Daemon thread: one pass every `auto_memory_interval` seconds — never
+    sooner, however much work is left, and the clock SURVIVES the process.
+    Started by the real entry points only (never make_server, so tests don't
+    spawn refreshes). Idempotent."""
     global _sched_started
     if _sched_started:
         return
     _sched_started = True
     import threading
-    from .config import load_settings
     _sched_stop.clear()
 
     def _loop():
+        # The interval is a budget, so it is counted from the last pass and not
+        # from launch: it used to run a pass STARTUP_DELAY seconds after start,
+        # every start, so opening and closing archeus five times in an hour
+        # bought five passes — "it eats their limits to build the memory".
+        # Nothing else changes: a first run has no stamp, so the remainder is
+        # negative and the first pass still happens at STARTUP_DELAY.
         # wait(), not sleep(): server_close() must be able to end this, and a
-        # thread parked in sleep(3600) cannot be told anything
-        if _sched_stop.wait(2):           # let the server settle first
+        # thread parked in sleep(3600) cannot be told anything.
+        due = _last_pass() + _next_wait() - time.time()
+        if _sched_stop.wait(max(STARTUP_DELAY, due)):
             return
         while not _sched_stop.is_set():
+            owed = False
             try:
-                _auto_scan_pass()
+                owed = _auto_scan_pass()
             except Exception:
                 _c.log.exception('gui: auto-memory scheduler tick failed')
-            try:
-                interval = max(60, int(load_settings().get('auto_memory_interval', 3600)))
-            except Exception:
-                interval = 3600
-            _sched_stop.wait(interval)
+            # after the pass, whatever it found: the budget is one pass per
+            # interval, and a pass that found nothing stale still happened
+            _mark_pass()
+            _sched_stop.wait(_next_wait(owed))
 
     threading.Thread(target=_loop, daemon=True).start()
 
@@ -508,7 +921,7 @@ class BadRequest(ValueError):
 
 
 def _cfgdir_ok(v):
-    """An account directory claudectl actually knows about.
+    """An account directory archeus actually knows about.
 
     Unvalidated, this parameter is a filesystem read primitive: it is joined
     with 'projects' and a name on about forty endpoints, so any directory on
@@ -519,14 +932,45 @@ def _cfgdir_ok(v):
                for _n, d in _c.all_config_dirs())
 
 
-#: checked by NAME, wherever they appear. These three are the ones that reach
-#: the filesystem; `path` is deliberately absent, because several endpoints
-#: legitimately take a directory that does not exist yet, and every path that
-#: becomes a subprocess cwd already goes through paths.resolve_dir.
+def _managed_path_ok(v):
+    """Is this somewhere archeus is allowed to DELETE?
+
+    `os.remove(body['file'])` and `shutil.rmtree(body['dir'])` were reachable
+    with any path at all, so `{"dir": "C:\\\\Users\\\\mab"}` was a recursive
+    delete of the home directory. The token gates it, but a guard that only
+    holds while a secret does is one layer, not two.
+
+    Enumerating every root is the wrong shape — project-scoped agents and skills
+    live under an arbitrary project. Both managed locations are recognisable
+    instead: an account config directory (which `_cfgdir_ok` already knows), or
+    anything below a `.claude` / `.archeus` directory, which is where every
+    project-scoped one lives by construction.
+    """
+    p = os.path.normcase(os.path.abspath(v))
+    for _n, d in _c.all_config_dirs():
+        root = os.path.normcase(os.path.abspath(d))
+        if p == root or p.startswith(root + os.sep):
+            return True
+    parts = p.split(os.sep)
+    return '.claude' in parts or _store.WORKDIR in parts
+
+
+#: checked by NAME, wherever they appear. These reach the filesystem; `path` is
+#: deliberately absent, because several endpoints legitimately take a directory
+#: that does not exist yet, and every path that becomes a subprocess cwd already
+#: goes through paths.resolve_dir.
+#:
+#: `target_cfgdir` is here because naming a parameter differently was enough to
+#: skip the check entirely: `api_inject_launch` put its value straight into
+#: CLAUDE_CONFIG_DIR for a spawned `claude`, on the one endpoint whose docstring
+#: says it is validated now. `dir` is deliberately NOT here — `accounts/add`
+#: legitimately names a directory that does not exist yet — so the destructive
+#: `dir` sinks call `_managed_path_ok` themselves.
 PARAM_CHECKS = {
     'enc': lambda v: _store.is_encoded(v),
     'sid': lambda v: _store.is_encoded(v),
     'cfgdir': _cfgdir_ok,
+    'target_cfgdir': _cfgdir_ok,
 }
 
 
@@ -568,9 +1012,9 @@ def call(fn, q=None, body=None):
 #: a real fault and must stay a 500. The list was short by five, which the
 #: endpoint floor found as five separate 500s.
 _REQUEST_PARAMS = frozenset((
-    'enc', 'sid', 'cfgdir', 'path', 'action', 'kind', 'name', 'id',
-    'dir', 'file', 'key', 'event', 'scope', 'text', 'value', 'model', 'task',
-    'url', 'query', 'q',
+    'enc', 'sid', 'cfgdir', 'target_cfgdir', 'path', 'action', 'kind', 'name',
+    'id', 'dir', 'file', 'key', 'event', 'scope', 'text', 'value', 'model',
+    'task', 'url', 'query', 'q', 'ts',
 ))
 
 
@@ -636,20 +1080,46 @@ def api_session_delete(q, body):
 
 
 def api_archived(q, body):
+    """Archived sessions of a project across EVERY account, newest-first.
+
+    This used to resolve exactly one folder — whatever `cfgdir` the client sent,
+    which was always `CUR.primary_cfgdir`, i.e. the first account in
+    `all_config_dirs()` order that has the project (so `default` whenever it has
+    it). Anything archived under another account was invisible, and the rows
+    carried no `account`/`cfgdir` either, so even a visible one could not have
+    been restored to the right place.
+
+    The archive is per-account and per-project (`<cfgdir>/projects/<enc>/archived`),
+    so there is nothing global to read — the walk is the fix. Mirrors
+    `gui.list_sessions` rather than inventing a second shape, and the TUI's
+    archived tab (`session_menu._rescan_archived`) has always merged accounts
+    this way.
+    """
     from .session_menu import _arch_of
-    from .sessions import scan_sessions, load_name, format_age, get_session_stats
-    from .gui import _used_omni
-    folder = _arch_of(_folder(q.get('cfgdir'), q['enc']))
+    from .sessions import (account_folders_for, scan_sessions, load_name,
+                           format_age)
+    from .stats import get_session_stats_cached
+    from .gui import _used_provider
     out = []
-    for mtime, sid, preview, count in scan_sessions(folder):
-        omni = False
-        try:
-            omni = _used_omni(get_session_stats(os.path.join(folder, f'{sid}.jsonl')))
-        except Exception:
-            pass
-        out.append({'sid': sid, 'title': load_name(folder, sid) or '',
-                    'preview': preview, 'age': format_age(mtime).strip(),
-                    'count': count, 'omni': omni})
+    for acct_name, folder in account_folders_for(q['enc']):
+        arch = _arch_of(folder)
+        cfgdir = os.path.dirname(os.path.dirname(folder))
+        for mtime, sid, preview, count in scan_sessions(arch):
+            provider, ai_title = False, ''
+            try:
+                st = get_session_stats_cached(os.path.join(arch, f'{sid}.jsonl'))
+                provider = _used_provider(st)
+                # the AI title, same as a live row. It was already parsed — the
+                # stats dict is being read here anyway — and without it every
+                # archived row fell back to the preview.
+                ai_title = st.get('title') or ''
+            except Exception:
+                pass
+            out.append({'sid': sid, 'title': load_name(arch, sid) or ai_title,
+                        'preview': preview, 'age': format_age(mtime).strip(),
+                        'mtime': mtime, 'count': count, 'account': acct_name,
+                        'cfgdir': cfgdir, 'provider': provider})
+    out.sort(key=lambda r: r['mtime'], reverse=True)
     return {'sessions': out}
 
 
@@ -835,7 +1305,7 @@ def api_dashboard(q, body):
                 for n, s in mcp_mod.get_mcp_status()]
 
     # from the breakdown's own scan of every account's transcripts, not the
-    # last-session.json launch history — that only records sessions claudectl
+    # last-session.json launch history — that only records sessions archeus
     # itself started, so anything opened by `claude` directly never showed up.
     recent = []
     for r in bd.get('recent', []):
@@ -847,7 +1317,7 @@ def api_dashboard(q, body):
                        'title': load_name(pf, r['sid']) or r['title'],
                        'msgs': r['msgs'], 'mtime': int(r['mtime']),
                        'age': format_age(r['mtime']).strip() if r['mtime'] else '',
-                       'omni': bool(r['omni'])})
+                       'provider': bool(r['provider'])})
 
     f_running, f_port = False, None
     try:
@@ -864,7 +1334,7 @@ def api_dashboard(q, body):
                              # single ring. Percentages of five separate quotas
                              # are not summable and must never be added up.
                              'by_account': dict(tday.get('accounts') or {}),
-                             'omni_tokens': tday.get('omni_tokens', 0)},
+                             'provider_tokens': tday.get('provider_tokens', 0)},
                    'wiring': _wiring(),
                    'week': week, 'breakdown': bd, 'days': _DASH_DAYS,
                    # cross-account live sessions + the last 24 HOURS of activity.
@@ -1020,10 +1490,16 @@ def api_hooks_get(q, body):
     per = [(n, dd, hooks._load(dd)) for n, dd in hooks.account_dirs()]
     return {'hooks': out,
             'settings_path': hooks.settings_path_for(cfgdir),
+            # the plain-English phrase for every event, so the screen can lead
+            # with "before Claude runs a tool" instead of `PreToolUse`
+            'events': hooks.EVENT_WHEN,
             'accounts': [{'name': n, 'dir': dd,
                           'count': sum(len(b or []) for b in (a.get('hooks') or {}).values())}
                          for n, dd, a in per],
+            # `event` rides along so the template list can be grouped by WHEN a
+            # hook fires, the same way the installed list is
             'templates': [{'key': k, 'desc': v.get('desc', ''),
+                           'event': v.get('event', ''),
                            'installed': _template_installed(hooks, d, v),
                            'missing': [n for n, _dd, a in per
                                        if not _template_installed(hooks, a, v)]}
@@ -1121,18 +1597,37 @@ def api_agents_library(q, body):
                    'desc': (desc or '')[:140]}
                   for name, desc, model, path in list_library_agents(c)]
         cats.append({'category': c, 'agents': agents})
+    # `own` used to be the active account's user agents plus, only when a
+    # `path` was supplied, that one project's. The global Agents page has no
+    # path, so it listed a fraction of what is installed — and the page that
+    # now offers a machine-wide Sharpen has to show what it is about to touch.
+    from .agents import all_installed, category_of, installed_categories
     mine = []
-    for scope, d in (('user', user_agents_dir()),
-                     ('project', project_agents_dir(q['path']) if q.get('path') else None)):
-        if not d:
-            continue
-        for n, desc, model, path in list_agents(d):
-            mine.append({'name': n, 'desc': (desc or '')[:140], 'model': model,
-                         'path': path, 'scope': scope})
+    if q.get('path'):
+        for scope, d in (('user', user_agents_dir()),
+                         ('project', project_agents_dir(q['path']))):
+            for n, desc, model, path in list_agents(d):
+                mine.append({'name': n, 'desc': (desc or '')[:140], 'model': model,
+                             'path': path, 'scope': scope,
+                             'category': category_of(path)})
+    else:
+        for r in all_installed():
+            if r['scope'] == 'library':
+                continue          # already listed below, by category
+            mine.append({'name': r['name'], 'desc': r['desc'][:140], 'model': '',
+                         'path': r['path'], 'category': r['category'],
+                         'scope': (r['scope'] if not r['project_path'] else
+                                   'project · ' + os.path.basename(r['project_path']))})
     from .agents import KNOWN_TOOLS
     from .config import models
     vals, labels = models()
     return {'categories': cats, 'own': mine,
+            # every category name you can file a new agent under: the library's
+            # folders plus the ones your own agents already use, so the second
+            # agent in an invented category joins it instead of starting
+            # "Reviewers" beside "reviewers"
+            'category_names': sorted(set(list_categories())
+                                     | set(installed_categories())),
             # api_agent_create already accepted `tools` and `model`; the form
             # simply never had anything to offer for them.
             'known_tools': list(KNOWN_TOOLS),
@@ -1150,17 +1645,25 @@ def api_agent_create(q, body):
     d = project_agents_dir(body['path']) if body.get('scope') == 'project' else user_agents_dir()
     os.makedirs(d, exist_ok=True)
     p = os.path.join(d, f"{_slug(body['name'])}.md")
+    # `category` is archeus's own frontmatter key — Claude Code ignores what
+    # it does not recognise, and `write_agent` preserves any key not in its
+    # fixed order, so filing an agent costs nothing at load time.
+    cat = (body.get('category') or '').strip()
     write_agent(p, {'name': body['name'],
                     'description': body.get('description', ''),
                     **({'tools': body['tools']} if body.get('tools') else {}),
-                    **({'model': body['model']} if body.get('model') else {})},
+                    **({'model': body['model']} if body.get('model') else {}),
+                    **({'category': cat} if cat else {})},
                 body.get('body', ''))
     return {'ok': True, 'file': p}
 
 
 def api_agent_delete(q, body):
+    f = body['file']
+    if not f.lower().endswith('.md') or not _managed_path_ok(f):
+        raise BadRequest('not an agent file archeus manages')
     try:
-        os.remove(body['file'])
+        os.remove(f)
         return {'ok': True}
     except Exception as e:
         return {'ok': False, 'error': str(e)}
@@ -1177,8 +1680,14 @@ def api_agents_session_get(q, body):
                          for r, reason, _s in suggest_agents(q['path'], folder)]
         except Exception:
             pass
+    from .agents import usage as _agent_usage, routing_table
     return {'refs': load_session_agents(folder).get('__project__', []),
-            'suggested': suggested, 'limit': SAFE_AGENT_LIMIT}
+            'suggested': suggested, 'limit': SAFE_AGENT_LIMIT,
+            # what Claude Code says it has actually delegated to, and the
+            # delegation table archeus writes into CLAUDE.md so it can
+            'usage': _agent_usage(q.get('cfgdir')),
+            'routing': [{'name': n, 'trigger': t}
+                        for n, t in (routing_table(q['path']) if q.get('path') else [])]}
 
 
 def api_agents_session(q, body):
@@ -1189,7 +1698,8 @@ def api_agents_session(q, body):
     if os.path.isdir(folder):
         save_session_agents(folder, '__project__', refs)
     n = sync_project_agents(body['path'], refs)
-    return {'ok': True, 'active': n}
+    from .agents import routing_table
+    return {'ok': True, 'active': n, 'routed': len(routing_table(body['path']))}
 
 
 def api_health(q, body):
@@ -1222,20 +1732,41 @@ def api_brief(q, body):
     # calls each, and the Tools tab used to pay that on every visit
     diff = brief.session_diff_rows(q['path'], folder,
                                    refresh=q.get('refresh') in ('1', 'true'))
+    from . import memory as _mem
     return {'suggestions': [{'tag': t, 'text': x}
                             for t, x in brief.work_suggestions(q['path'], folder)],
+            # so the card can say how old the AI half of the advice is rather
+            # than presenting a month-old finding as current
+            'scan_at': brief.scan_age(_mem.load_memory(q['path'], folder)),
             # structured, so the GUI can collapse per repo and show counts.
             # `since_last` stays for any client still reading the flat lines.
             'since': diff,
             'since_last': brief.session_diff(q['path'], folder)}
 
 
+def api_brief_dismiss(q, body):
+    """Stop showing one scan finding. Remembered across re-scans."""
+    from . import brief
+    n = brief.dismiss_scan_item(body['path'],
+                                _folder(body.get('cfgdir'), body['enc']),
+                                body.get('text', ''))
+    return {'ok': True, 'dismissed': n}
+
+
 def api_conventions(q, body):
     """Conventions shared across projects, and the global CLAUDE.md block they
-    would become."""
+    would become — plus the candidates that did not qualify, so an empty card
+    can say why it is empty instead of only that it is."""
     from . import conventions
     return {'conventions': conventions.collect_conventions(),
+            'near': conventions.near_misses(),
             'block': conventions.build_block()}
+
+
+def api_conventions_pin(q, body):
+    from . import conventions
+    n = conventions.pin_convention((body or {}).get('text', ''))
+    return {'ok': bool(n), 'pinned': n}
 
 
 def api_conventions_sync(q, body):
@@ -1254,7 +1785,7 @@ def api_client_usage(q, body):
 
 def api_client_project(q, body):
     """Claude Code's own record for one project: cost, tokens, MCP approval
-    state, allowed tools. Distinct from claudectl's own stats, which are
+    state, allowed tools. Distinct from archeus's own stats, which are
     derived from transcripts."""
     from . import clientstate
     st = clientstate.project_state(q['path'], q.get('cfgdir') or None)
@@ -1271,6 +1802,13 @@ def api_background_agents(q, body):
     from . import clientstate
     return {'daemon': clientstate.daemon_roster(q.get('cfgdir') or None),
             'teams': clientstate.teams(q.get('cfgdir') or None)}
+
+
+def api_logs(q, body):
+    """archeus's own event log — what it did and what failed, newest first."""
+    from . import events
+    return {'events': events.read(), 'path': events.path(),
+            'cap': events.MAX_BYTES, 'debug_log': _c.log_file_path()}
 
 
 def api_disk(q, body):
@@ -1292,7 +1830,11 @@ def api_worklog_get(q, body):
     enc = q.get('enc', '')
     on = bool((( load_settings().get('project_defaults') or {}).get(enc) or {}).get('worklog'))
     entries = load_worklog(q['path']) if q.get('path') else []
-    return {'on': on, 'installed': hooks.worklog_hook_installed(),
+    # across_accounts, like the POST beside it. Reading one account made the
+    # toggle look installed while the account actually running the session had
+    # no hook — the same import-frozen-account class of bug, one call short.
+    return {'on': on,
+            'installed': hooks.across_accounts(hooks.worklog_hook_installed),
             'entries': list(reversed(entries))[:10]}
 
 
@@ -1328,14 +1870,17 @@ def api_memory_toggles(q, body):
 
 
 def api_skills_get(q, body):
-    from .skills import list_templates, list_skills, project_skills_dir
-    templates = [{'name': n, 'desc': (d or '')[:160], 'dir': sd, 'source': src}
-                 for n, d, sd, src in list_templates()]
-    project = []
-    if q.get('path'):
-        project = [{'name': n, 'desc': (d or '')[:160], 'dir': sd}
-                   for n, d, sd in list_skills(project_skills_dir(q['path']))]
-    return {'templates': templates, 'project': project}
+    """Every skill Claude Code can load, by scope, with its real usage.
+
+    The old payload was `{templates, project}` — a list of starters plus one
+    project's folder, which said nothing about what is actually active."""
+    from .skills import inventory
+    inv = inventory(q.get('path') or '', q.get('cfgdir'))
+    for rows in ('personal', 'project', 'plugin', 'bundled', 'templates'):
+        for r in inv[rows]:
+            r['desc'] = (r.get('desc') or '')[:160]
+    inv['accounts'] = [{'name': n, 'dir': d} for n, d in _c.all_config_dirs()]
+    return inv
 
 
 def api_skill_read(q, body):
@@ -1344,21 +1889,48 @@ def api_skill_read(q, body):
     return {'meta': meta, 'body': body_txt}
 
 
+def _skill_dest(body):
+    """Where an install or a create lands. `scope` is explicit because there
+    are two real answers and defaulting to the project would put a skill where
+    it only works in one place."""
+    from .skills import personal_dir, project_skills_dir
+    if body.get('scope') == 'project':
+        if not body.get('path'):
+            raise BadRequest('scope=project needs a path')
+        return project_skills_dir(body['path'])
+    return personal_dir(body.get('cfgdir'))
+
+
 def api_skill_install(q, body):
-    from .skills import install_skill
-    dest = install_skill(body.get('dir', ''), body.get('path', ''))
+    """Install into the project, or into the personal scope of every account —
+    see skills.install_personal for why personal means all of them."""
+    from .skills import install_skill, install_personal
+    if body.get('scope') != 'project':
+        done = install_personal(body.get('dir', ''))
+        return {'ok': bool(done), 'dir': done[0][1] if done else '',
+                'accounts': [n for n, _d in done]}
+    dest = install_skill(body.get('dir', ''), _skill_dest(body))
     return {'ok': bool(dest), 'dir': dest}
 
 
 def api_skill_remove(q, body):
-    from .skills import delete_skill
-    return {'ok': delete_skill(body.get('dir', ''))}
+    """Delete a skill folder. A PERSONAL one is removed from every account that
+    has it, unless the caller says otherwise — the mirror of the install
+    fan-out, so "installed everywhere" cannot decay into orphans."""
+    from .skills import delete_skill, delete_personal, personal_accounts
+    d = body.get('dir', '')
+    # this reaches shutil.rmtree, and it used to reach it with any path at all
+    if not _managed_path_ok(d) or not os.path.isfile(os.path.join(d, 'SKILL.md')):
+        raise BadRequest('not a skill directory archeus manages')
+    if body.get('scope') == 'personal' and body.get('all_accounts', True):
+        gone = delete_personal(d)
+        return {'ok': bool(gone), 'accounts': [n for n, _p in gone]}
+    return {'ok': delete_skill(d), 'accounts': personal_accounts(d)}
 
 
 def api_skill_create(q, body):
-    from .skills import write_skill, project_skills_dir, library_dir, _slug
-    base = project_skills_dir(body['path']) if body.get('path') else library_dir()
-    skill_dir = os.path.join(base, _slug(body['name']))
+    from .skills import write_skill, _slug
+    skill_dir = os.path.join(_skill_dest(body), _slug(body['name']))
     meta = {'name': _slug(body['name']), 'description': body.get('description', '')}
     if body.get('tools'):
         meta['allowed-tools'] = body['tools']
@@ -1387,17 +1959,22 @@ def api_global_claude_md_save(q, body):
 
 
 def api_mcp_get(q, body):
+    """The MCP page itself, so `?refresh=1` gets a live probe — the 30s cache
+    exists for /api/dashboard's 10-second poll, not to make this page stale."""
     from .mcp import get_mcp_status
+    refresh = str((q or {}).get('refresh', '')) in ('1', 'true', 'yes')
     return {'servers': [{'name': n, 'status': s}
-                        for n, s in get_mcp_status(q.get('cfgdir'))]}
+                        for n, s in get_mcp_status(q.get('cfgdir'), refresh=refresh)]}
 
 
 def api_skills_library(q, body):
-    """Copy a template or project skill into the user's own library."""
-    from .skills import save_to_library
-    dest = save_to_library(body['dir'])
-    return {'ok': bool(dest), 'dir': dest,
-            'error': '' if dest else 'not a skill folder'}
+    """Copy a template, project or plugin skill into the PERSONAL scope of every
+    account — `<cfgdir>/skills`, which Claude Code loads in every project."""
+    from .skills import install_personal
+    done = install_personal(body['dir'])
+    return {'ok': bool(done), 'dir': done[0][1] if done else '',
+            'accounts': [n for n, _d in done],
+            'error': '' if done else 'not a skill folder'}
 
 
 def api_mcp_detail(q, body):
@@ -1507,8 +2084,15 @@ def api_accounts_terminal(q, body):
 # ── memory suite ─────────────────────────────────────────────
 
 def api_memory_state(q, body):
-    from .memhub import _state
+    """Everything the graph knows about itself: size, reach, spend, queue.
+
+    The graph has always carried relations, module links, eviction names, the
+    reinforcement counters and the outcome of the last automatic cycle. None of
+    it left this handler, so the Memory tab could only ever show entity counts —
+    it could not say what memory costs, what it dropped, or what it is doing."""
+    from .memhub import _state, last_written
     from .lessons import pending_sids
+    from . import hooks, memory, recall as _recall
     folder = _folder(q.get('cfgdir'), q['enc'])
     st = _state(q['path'], folder)
     mem = st['mem']
@@ -1516,19 +2100,105 @@ def api_memory_state(q, body):
         n_unscanned = len(pending_sids(folder, mem))
     except Exception:
         n_unscanned = 0
+    # most-reinforced facts: `hits` drives both recall ranking and the eviction
+    # score, so which entities are actually earning their place is the one thing
+    # that explains why memory looks the way it does.
+    top = sorted((e for e in st['entities'] if e.get('hits')),
+                 key=lambda e: -int(e.get('hits') or 0))[:8]
+    tpl = hooks.TEMPLATES.get('memory-stale-on-change')
+    try:
+        dirty_hook = bool(tpl) and _template_installed(
+            hooks, hooks._load(q.get('cfgdir')), tpl)
+    except Exception:
+        dirty_hook = False
     return {'generated_at': mem.get('generated_at', ''),
             'n_entities': len(st['entities']),
             'n_lessons': len(st['lessons']),
             'n_pending': len(st['pending']),
             'n_unscanned': n_unscanned,
+            'n_relations': len(mem.get('relations') or []),
+            'n_module_edges': len(mem.get('module_edges') or []),
+            'n_modules': len(mem.get('summaries') or {}),
+            'session_counter': int(mem.get('session_counter') or 0),
             'hook_on': st['hook_on'], 'rules_on': st['rules_on'],
+            'auto_on': st['auto_on'],
+            # what the last cycle did and what it cost. `pending_units` and the
+            # cost were both recorded and shown nowhere.
+            'pending_units': int(mem.get('pending_units') or 0),
+            'last_extracted': int(mem.get('last_extracted') or 0),
+            'last_cost_usd': mem.get('last_cost_usd') or 0,
+            'cost_usd_total': mem.get('cost_usd_total') or 0,
+            'cost_history': list(mem.get('cost_history') or []),
+            'auto_updated': mem.get('auto_updated', ''),
+            'auto_last': mem.get('auto_last') or {},
+            # what eviction dropped. Stored specifically so it could be checked.
+            'evicted': int(mem.get('evicted_entities') or 0),
+            'evicted_names': list(mem.get('evicted_names') or []),
+            'top': [{'name': e.get('name', ''), 'hits': int(e.get('hits') or 0),
+                     'module': e.get('module', '')} for e in top],
+            'last_failed': int(mem.get('last_failed') or 0),
+            'last_skipped': int(mem.get('last_skipped') or 0),
+            'last_error': mem.get('last_error') or '',
+            'dirty': memory.dirty_count(q['path']),
+            'dirty_hook': dirty_hook,
+            'hits_pending': _recall.hits_pending(q['path'], folder),
             'budget': (st['settings'] or {}).get('memory_budget', 600),
+            # what a capped cycle actually means for the user: the rest waits
+            # this long. Without it "still queued" has no answer to "until when".
+            'auto_interval': int((st['settings'] or {}).get('auto_memory_interval', 3600)),
+            # "is this stale?" per artifact — epoch seconds, so the wire carries
+            # no formatting decision. Only the artifacts that are exactly one
+            # file are in here; see memhub.last_written for why the CLAUDE.md
+            # blocks deliberately are not.
+            'written': last_written(q['path'], folder),
             'est': st['est']}
 
 
+def api_memory_entity(q, body):
+    """One fact in the graph, in full: what it means and what cites it.
+
+    The "most reinforced" list was names and a hit count — which says a fact
+    matters without ever saying what the fact IS. Everything here is already in
+    graph.json; nothing was reachable from the browser."""
+    from .memory import load_memory
+    mem = load_memory(q['path'], _folder(q.get('cfgdir'), q['enc']))
+    name = q.get('name', '')
+    e = next((x for x in mem.get('entities', []) if x.get('name') == name), None)
+    if not e:
+        return {'found': False, 'name': name}
+    rels = []
+    for r in mem.get('relations', []):
+        if r.get('source') == name:
+            rels.append({'rel': r.get('rel', 'relates'), 'other': r.get('target', ''),
+                         'dir': 'out'})
+        elif r.get('target') == name:
+            rels.append({'rel': r.get('rel', 'relates'), 'other': r.get('source', ''),
+                         'dir': 'in'})
+    unit = f"{e.get('repo', '')}/{e.get('module', '')}"
+    return {'found': True, 'name': name, 'type': e.get('type', ''),
+            'summary': e.get('summary', ''), 'module': e.get('module', ''),
+            'repo': e.get('repo', ''), 'unit': unit,
+            'hits': int(e.get('hits') or 0), 'rank': int(e.get('rank') or 0),
+            'status': e.get('status', ''), 'valid': bool(e.get('valid', True)),
+            'kind': e.get('kind', ''),
+            'created_at': e.get('created_at', ''),
+            'source_files': list(e.get('source_files') or []),
+            'unit_summary': (mem.get('summaries') or {}).get(unit, ''),
+            'relations': rels[:24],
+            # lessons carry the sessions they came from; a code entity has no
+            # session link at all — recall's sidecar records names, not sids —
+            # so say which it is rather than inventing a provenance.
+            'sessions': list(e.get('sids') or ([e['sid']] if e.get('sid') else []))}
+
+
 def api_memory_progress(q, body):
+    """Live progress, and — once the lock clears — HOW the last run ended.
+
+    The poller used to read the lock disappearing as success, which a crashed
+    cycle does in its `finally` exactly like a successful one."""
     from .memory import scan_lock_status
-    return {'progress': scan_lock_status(q['path'])}
+    return {'progress': scan_lock_status(q['path']),
+            'last': last_refresh(q['path'])}
 
 
 def api_memory_autoscan(q, body):
@@ -1536,7 +2206,6 @@ def api_memory_autoscan(q, body):
     refresh ONLY when the project's source has actually changed (cheap
     hash-only `is_stale` check) — so revisiting an up-to-date project neither
     re-scans nor flashes the badge. Returns whether a refresh is now running."""
-    from .config import load_settings
     from . import memory
     path = body.get('path', '')
     folder = _folder(body.get('cfgdir'), body.get('enc', ''))
@@ -1546,9 +2215,14 @@ def api_memory_autoscan(q, body):
     if running:
         return {'running': True, 'stale': True}
     try:
-        st = load_settings()
         force = bool(body.get('force'))
-        on_open = st.get('memory_auto_refresh') == 'open'
+        # `memory.refresh_on_open` is the ONE answer to this question — the TUI
+        # has asked it through that function all along, while this handler
+        # re-derived it from the global setting alone. So the per-project flag
+        # was ignored here: a project opted into background auto-memory spent a
+        # cycle every time it was opened, on top of the scheduled ones, and the
+        # interval the user configured did not bound anything.
+        on_open = memory.refresh_on_open(path, body.get('enc', ''))
         # only refresh when something changed (or the user forced it)
         if (force or on_open) and memory.is_stale(path, folder):
             _refresh_async(path, folder, auto_cap=None if force else 6)
@@ -1587,8 +2261,11 @@ def api_memory_auto_get(q, body):
             pass
         projs.append({'enc': p['encoded'], 'path': p['path'], 'name': p['name'],
                       'auto': auto, 'running': running})
+    # when the next pass is due, so "did closing archeus reset the clock?" is
+    # answered on screen rather than trusted. 0 = at once (no pass has run yet).
     return {'projects': projs,
-            'interval': load_settings().get('auto_memory_interval', 3600)}
+            'interval': load_settings().get('auto_memory_interval', 3600),
+            'next_in': max(0, int(_last_pass() + _next_wait() - time.time()))}
 
 
 def api_memory_auto_set(q, body):
@@ -1608,18 +2285,36 @@ def api_memory_auto_set(q, body):
     return {'ok': True}
 
 
+def api_project_hide(q, body):
+    """Archive a project out of the project lists, or bring it back.
+
+    View-only: no file moves, so the sessions of a hidden project stay resumable
+    and un-hiding costs one settings write. The GUI sidebar and the TUI project
+    menu both read the same flag."""
+    from .config import set_project_hidden
+    set_project_hidden(body['enc'], bool(body.get('hidden', True)))
+    return {'ok': True}
+
+
 def api_lessons_get(q, body):
     from .memory import load_memory
     mem = load_memory(q['path'], _folder(q.get('cfgdir'), q['enc']))
     lessons = [e for e in mem.get('entities', []) if e.get('type') == 'lesson']
     lessons.sort(key=lambda e: (e.get('status') != 'pending',
                                 -e.get('confidence', 0)))
+    from .config import load_settings
     return {'lessons': [{'id': e.get('id'), 'name': e.get('name', ''),
                          'summary': e.get('summary', ''),
                          'status': e.get('status', 'pending'),
                          'kind': e.get('kind', ''),
+                         'last_used': int(e.get('last_used') or 0),
                          'confidence': e.get('confidence', 0)}
-                        for e in lessons]}
+                        for e in lessons],
+            # decay is `counter - last_used > ttl` (lessons.apply_decay), so a
+            # lesson's distance from eviction needs all three numbers. The table
+            # showed confidence, which is not what decides whether it survives.
+            'counter': int(mem.get('session_counter') or 0),
+            'ttl': load_settings().get('memory_lessons_ttl', 30)}
 
 
 def api_lessons_post(q, body):
@@ -1648,16 +2343,138 @@ def api_ctxaudit(q, body):
     return {'items': items, 'total': audit_total(items)}
 
 
+def api_ctxaudit_prune_preview(q, body):
+    """What a prune would remove. The GUI destroyed without asking while the
+    TUI confirmed — same operation, two different contracts."""
+    from .claude_md import prune_preview
+    p = prune_preview(q['path'], _folder(q.get('cfgdir'), q['enc']))
+    if p is None:
+        return {'ok': False, 'error': 'no CLAUDE.md in this project'}
+    return {'ok': True, 'old_tokens': p['old_tokens'], 'new_tokens': p['new_tokens'],
+            'dropped': p['dropped'], 'changed': p['changed']}
+
+
 def api_ctxaudit_prune(q, body):
     from .claude_md import prune_claude_md
-    old_tok, new_tok = prune_claude_md(body['path'],
-                                       _folder(body.get('cfgdir'), body['enc']))
+    res = prune_claude_md(body['path'],
+                          _folder(body.get('cfgdir'), body['enc']))
+    if res is None:                # no CLAUDE.md, or the write failed
+        return {'ok': False, 'error': 'no CLAUDE.md in this project'}
+    old_tok, new_tok = res
     return {'ok': True, 'old_tokens': old_tok, 'new_tokens': new_tok}
+
+
+#: what the History panel offers to roll back. Keys must exist in
+#: diffview.target_path or a restore would have nowhere to write.
+_HISTORY_KEYS = ('claude_md', 'memory_graph', 'system_prompt')
+
+
+def _graph_shape(text):
+    """{entities, relations, lessons} of a serialised graph, or None."""
+    try:
+        g = json.loads(text)
+        ents = g.get('entities') or []
+        return {'entities': sum(1 for e in ents if e.get('type') != 'lesson'),
+                'lessons': sum(1 for e in ents if e.get('type') == 'lesson'),
+                'relations': len(g.get('relations') or [])}
+    except Exception:
+        return None
+
+
+def api_history(q, body):
+    """Every replaced version archeus still holds, newest first.
+
+    `added`/`removed` are LINE counts, which is the right summary for a
+    CLAUDE.md and pure noise for the graph: re-serialising a 300 KB JSON reports
+    "+27808 -27783" whether one fact changed or all of them. For memory_graph
+    the summary is the shape delta instead — entities, relations and lessons
+    before against now — which is the thing you would actually restore for."""
+    from . import diffview
+    from .sessions import format_age
+    folder = _folder(q.get('cfgdir'), q['enc'])
+    keys = []
+    for k in _HISTORY_KEYS:
+        vs = diffview.versions(q['path'], folder, k)
+        out = []
+        for v in vs:
+            row = dict(v, age=format_age(v['ts']))
+            if k == 'memory_graph':
+                row['shape'] = _graph_shape(
+                    diffview.read_version(q['path'], folder, k, v['ts']))
+            out.append(row)
+        cur = None
+        if k == 'memory_graph':
+            p = diffview.target_path(q['path'], folder, k)
+            if p and os.path.isfile(p):
+                cur = _graph_shape(open(p, encoding='utf-8', errors='ignore').read())
+        keys.append({'key': k, 'title': diffview.TITLES.get(k, k),
+                     'now': cur, 'versions': out})
+    return {'keys': keys}
+
+
+def api_history_diff(q, body):
+    from . import diffview
+    folder = _folder(q.get('cfgdir'), q['enc'])
+    key = q['key']
+    if key not in _HISTORY_KEYS:
+        raise BadRequest('unknown history key')
+    old = diffview.read_version(q['path'], folder, key, q['ts'])
+    p = diffview.target_path(q['path'], folder, key)
+    cur = ''
+    if p and os.path.isfile(p):
+        try:
+            cur = open(p, encoding='utf-8', errors='ignore').read()
+        except Exception:
+            cur = ''
+    if key == 'memory_graph':
+        # a line diff of two serialised graphs is thousands of lines of JSON
+        # punctuation. What changed is which FACTS came and went.
+        a, b = _graph_shape(cur), _graph_shape(old)
+        if a is not None and b is not None:
+            names = lambda t: {e.get('name', '') for e in    # noqa: E731
+                               (json.loads(t).get('entities') or [])}
+            try:
+                back, gone = names(old) - names(cur), names(cur) - names(old)
+            except Exception:
+                back, gone = set(), set()
+            lines = [f"--- now: {a['entities']} entities, {a['relations']} relations, "
+                     f"{a['lessons']} lessons",
+                     f"+++ snapshot: {b['entities']} entities, {b['relations']} relations, "
+                     f"{b['lessons']} lessons", '@@ what restoring would change @@']
+            lines += [f"+ {n}" for n in sorted(back)[:60]]
+            lines += [f"- {n}" for n in sorted(gone)[:60]]
+            if len(back) > 60 or len(gone) > 60:
+                lines.append(f"@@ …and {max(0, len(back) - 60) + max(0, len(gone) - 60)} more @@")
+            if not back and not gone:
+                lines.append('  the same facts — only their summaries or counters moved')
+            return {'title': diffview.TITLES.get(key, key), 'diff': lines}
+    # old=current, new=snapshot: the diff reads as "what restoring would do"
+    return {'title': diffview.TITLES.get(key, key),
+            'diff': diffview.unified(cur, old, diffview.TITLES.get(key, key))}
+
+
+def api_history_restore(q, body):
+    from . import diffview
+    if body.get('key') not in _HISTORY_KEYS:
+        raise BadRequest('unknown history key')
+    ok, msg = diffview.restore(body['path'],
+                               _folder(body.get('cfgdir'), body['enc']),
+                               body['key'], body['ts'])
+    return {'ok': ok, 'message': msg} if ok else {'ok': False, 'error': msg}
 
 
 def api_ctxaudit_compact(q, body):
     from .ctxaudit import append_compact_section
     return {'ok': bool(append_compact_section(body['path']))}
+
+
+def api_ctxaudit_protect(q, body):
+    """Fence a section of CLAUDE.md so AI compression can never rewrite it."""
+    from .ctxaudit import protect_section
+    md = os.path.join(body['path'], 'CLAUDE.md')
+    ok = protect_section(md, body.get('text', ''))
+    return {'ok': ok} if ok else {
+        'ok': False, 'error': 'no matching unprotected section found'}
 
 
 def api_deny_scan(q, body):
@@ -1674,32 +2491,81 @@ def api_deny_apply(q, body):
 
 
 def api_workspace_status(q, body):
-    from .workspace import _status_lines
-    lines, _m, score, safe = _status_lines(q['path'],
-                                           _folder(q.get('cfgdir'), q['enc']))
-    from .render import strip_ansi
-    return {'lines': [strip_ansi(l) for l in lines], 'score': score, 'safe': safe}
+    """The freshness checks as DATA, not as pre-rendered terminal lines.
+
+    `_status_lines` is a TUI renderer: it formats emoji dots, a meter bar and
+    `(+25)` weight suffixes into strings, and the GUI then ANSI-stripped them
+    into a `<pre>`. Every check's name, state, weight and detail existed one
+    call further down and none of it could be acted on. `compute_status` is the
+    read-only structured call; `_status_lines` stays for `status_screen`."""
+    from . import workspace
+    m, _live, checks, score, safe = workspace.compute_status(
+        q['path'], _folder(q.get('cfgdir'), q['enc']))
+    return {'checks': [dict(c, weight=workspace._WEIGHTS.get(c['name'], 0))
+                       for c in checks],
+            'score': score, 'safe': safe,
+            'generated_at': (m or {}).get('generated_at', '')}
 
 
 def api_recall_preview(q, body):
     from .recall import retrieve
     from .config import load_settings
     budget = load_settings().get('memory_budget', 600)
+    # log=False: a preview must not reinforce. `hits` is a term in both the
+    # recall ranking and the eviction score, so logging here would let looking
+    # at memory reshape it.
     r = retrieve(q['path'], _folder(q.get('cfgdir'), q['enc']),
-                 q.get('q', ''), budget_tokens=budget)
+                 q.get('q', ''), budget_tokens=budget, log=False)
     return {'context': r.get('text', ''), 'tokens': r.get('tokens', 0),
+            'items': list(r.get('items') or []),
             'empty': r.get('empty', True)}
 
 
 # ── CLAUDE.md, system prompt, memory map ─────────────────────
 
 def api_claude_md_get(q, body):
+    """The file, plus what it is made OF.
+
+    CLAUDE.md is five things stacked in one file — your prose, KEEP-fenced
+    regions, and three machine blocks archeus rewrites — and the GUI showed it
+    as one undifferentiated blob, so which part cost what, and which button
+    regenerated which part, was unknowable. `ctxaudit` already splits it for the
+    token audit; reuse that splitter rather than parsing sentinels again."""
+    from . import ctxaudit
+    from .memory import tokens_estimate
     p = os.path.join(q['path'], 'CLAUDE.md')
     try:
         text = open(p, encoding='utf-8', errors='ignore').read()
     except Exception:
         text = ''
-    return {'text': text, 'exists': bool(text)}
+    b = ctxaudit.split_blocks(text)
+    n_keep = ctxaudit.keep_regions(text)
+    sess = b['sessions']
+    blocks = [
+        {'key': 'manual', 'label': 'Your prose', 'present': bool(b['manual'].strip()),
+         'tokens': tokens_estimate(b['manual'])},
+        {'key': 'keep', 'label': f'Protected ({n_keep} fenced)', 'present': bool(n_keep),
+         'tokens': tokens_estimate(''.join(ctxaudit._KEEP_RE.findall(text)))},
+        {'key': 'autogen', 'label': 'AUTOGEN — repos and commits',
+         'present': bool(b['autogen']), 'tokens': tokens_estimate(b['autogen']),
+         'text': b['autogen']},
+        {'key': 'sessions', 'label': 'SESSIONS — session topics',
+         'present': bool(sess), 'tokens': tokens_estimate(sess), 'text': sess,
+         'entries': sum(1 for l in sess.splitlines() if l.strip().startswith('- '))},
+        {'key': 'memory', 'label': 'MEMORY — the digest archeus builds',
+         'present': bool(b['memory']), 'tokens': tokens_estimate(b['memory']),
+         'text': b['memory']},
+        # Both used to be invisible here and counted as "Your prose" — the one
+        # row that promises archeus never rewrites it. See split_blocks.
+        {'key': 'agents', 'label': 'AGENTS — the subagents installed here',
+         'present': bool(b['agents']), 'tokens': tokens_estimate(b['agents']),
+         'text': b['agents']},
+        {'key': 'loop', 'label': 'LOOP — what the background loop did',
+         'present': bool(b['loop']), 'tokens': tokens_estimate(b['loop']),
+         'text': b['loop']},
+    ]
+    return {'text': text, 'exists': bool(text), 'path': p, 'blocks': blocks,
+            'tokens': tokens_estimate(text)}
 
 
 def api_claude_md_scaffold(q, body):
@@ -1728,6 +2594,7 @@ def api_cc_settings_get(q, body):
                            'group': v[3]}
                        for k, v in ccsettings.SCHEMA.items()},
             'groups': ccsettings.GROUPS,
+            'group_help': ccsettings.GROUP_HELP,
             'accounts': [{'name': n, 'dir': d, 'values': ccsettings.read(d)}
                          for n, d in _c.all_config_dirs()]}
 
@@ -1844,6 +2711,81 @@ def api_loop_md_set(q, body):
     return {'ok': True, 'file': p}
 
 
+def api_loops(q, body):
+    """Loops archeus started, with live state read off the process and the
+    transcript. See loops.py for why there is nothing else to read."""
+    from . import loops
+    return {'loops': loops.listing(_cfg(q)),
+            'registry': loops.registry_path(_cfg(q)),
+            'perms': [{'id': p, 'note': n} for p, n in loops.PERMS],
+            'accounts': [{'name': n, 'dir': d} for n, d in _c.all_config_dirs()],
+            'ttl_days': loops.DEFAULT_TTL // 86400}
+
+
+def api_loop_start(q, body):
+    """Start a loop — in a session, or in the OS scheduler.
+
+    `kind='session'`: a `/loop` is session-scoped, so starting one IS starting a
+    session; it is a normal archeus launch (same account, agents, skills,
+    system prompt, add-dirs) whose first typed message is the command.
+
+    `kind='schedule'`: no session at all. archeus registers a scheduler entry
+    that runs headless `claude -p` on the interval, under the chosen account,
+    and keeps running with archeus closed.
+    """
+    from . import gui as _gui
+    from . import loops
+    b = body or {}
+    path, enc = b.get('path', ''), b.get('enc', '')
+    if not path or not enc:
+        raise BadRequest('missing parameter: path')
+    kind = 'schedule' if b.get('kind') == 'schedule' else 'session'
+    perm = b.get('perm') or 'auto'
+    if perm not in {p for p, _d in loops.PERMS}:
+        raise BadRequest('unknown permission mode: %s' % perm)
+    text = loops.loop_prompt(b.get('interval', ''), b.get('prompt', ''))
+
+    if kind == 'schedule':
+        if not (b.get('interval') or '').strip():
+            # a self-paced loop is a thing Claude decides INSIDE a session; a
+            # scheduler needs a number
+            raise BadRequest('a background loop needs an interval')
+        row = loops.record(path, enc, b.get('cfgdir') or '', b.get('interval', ''),
+                           b.get('prompt', ''), 0, b.get('project_name', ''),
+                           kind='schedule', perm=perm)
+        ok, msg = loops.schedule(row['id'], b.get('interval', ''), b.get('cfgdir') or '')
+        if not ok:
+            loops.forget(row['id'], _cfg(b))
+            return {'ok': False, 'error': msg}
+        return {'ok': True, 'loop': row, 'text': text, 'message': msg}
+
+    opts = dict(b.get('opts') or {})
+    opts.update({'cfgdir': b.get('cfgdir') or '', 'prompt': text})
+    for k in ('effort', 'model', 'perm', 'name', 'worktree', 'agent',
+              'max_thinking', 'subagent_model'):
+        opts.setdefault(k, '')
+    ok, err, pid = _gui.launch_session(path, enc, 'new', opts, want_pid=True)
+    if not ok:
+        return {'ok': False, 'error': err}
+    row = loops.record(path, enc, b.get('cfgdir') or '', b.get('interval', ''),
+                       b.get('prompt', ''), pid, b.get('project_name', ''),
+                       kind='session', perm=perm)
+    return {'ok': True, 'loop': row, 'text': text}
+
+
+def api_loop_stop(q, body):
+    from . import loops
+    b = body or {}
+    if b.get('forget'):
+        loops.forget(b.get('id', ''), _cfg(b))
+        return {'ok': True, 'message': 'Removed from the board'}
+    if b.get('renew'):
+        ok, msg = loops.renew(b.get('id', ''), _cfg(b))
+        return {'ok': ok, 'message': msg}
+    ok, msg = loops.stop(b.get('id', ''), _cfg(b))
+    return {'ok': ok, 'message': msg}
+
+
 def api_system_prompt_get(q, body):
     folder = _folder(q.get('cfgdir'), q['enc'])
     p = os.path.join(folder, 'system-prompt.txt')
@@ -1902,11 +2844,33 @@ def api_path_complete(q, body):
     return {'dirs': dirs, 'more': max(0, len(names) - 12)}
 
 
+def api_quit(q, body):
+    """Close archeus. The only endpoint that ends the process, and it exists
+    for one caller: finishing a staged self-upgrade, which cannot install while
+    the console script it is replacing is the running process.
+
+    The shell registers `gui.QUIT_HOOK`; with none registered there is nothing
+    a request can close, which is also why the endpoint floor's route sweep
+    cannot shut down its own server with this.
+
+    The reply goes out first — quitting inline would close the socket the
+    answer is travelling on, and the SPA would read that as a failure.
+    """
+    from . import gui
+    hook = gui.QUIT_HOOK
+    if not hook:
+        return {'ok': False, 'error': 'no window to close — quit archeus yourself'}
+    threading.Timer(0.4, hook).start()
+    return {'ok': True}
+
+
 def api_open_path(q, body):
-    """Resolve a typed folder into a launchable project — validate it's an
-    existing directory and encode it, exactly like the TUI's __open_path__
-    branch. Returns {ok, path, enc, name} for the launch modal to use with
-    choice='new'."""
+    """Resolve a typed folder into a project — validate it's an existing
+    directory and encode it, exactly like the TUI's __open_path__ branch.
+
+    Returns {ok, path, enc, name}: everything openProject() needs to render the
+    project page for a folder that has no session history yet. Writes nothing.
+    """
     from .paths import encode_component, resolve_dir
     cand = resolve_dir(body.get('path'))
     if not cand:
@@ -1915,23 +2879,27 @@ def api_open_path(q, body):
             'name': os.path.basename(cand) or cand}
 
 
-# ── inject-context & plan-execute ────────────────────────────
-
-def api_inject_sessions(q, body):
-    from .context_inject import find_sessions_across_accounts
-    from .sessions import format_age
-    out = []
-    for acct, folder, sid, mtime, preview, title in \
-            find_sessions_across_accounts(q['path']):
-        out.append({'account': acct, 'folder': folder, 'sid': sid,
-                    'age': format_age(mtime).strip(),
-                    'title': title or preview or sid[:8]})
-    return {'sessions': out}
+# ── hand-off (context injection) & plan-execute ──────────────
+#
+# `/api/inject/sessions` used to live here: it listed every session of the
+# project across every account so a Tools-tab card could offer them in a
+# dropdown. The GUI action is a button on a session ROW now, so the row is the
+# source and there is nothing left to pick — and the list it returned was the
+# same set `/api/sessions` already serves. Deleted rather than left as an
+# unreferenced route: `tests/test_endpoint_floor.py` makes a real request to
+# every entry in these tables, so a dead one is a permanent cost.
 
 
 def api_inject_launch(q, body):
     """Write the context file and launch a new session in a new console
-    under the chosen account (mirror of context_inject.run minus menus)."""
+    under the chosen account (mirror of context_inject.run minus menus).
+
+    The SOURCE session is identified by `cfgdir` + `enc` + `sid`, and the folder
+    derived here. It used to arrive as an absolute `body['folder']` that was
+    joined and read — trusted only because the one caller got it from
+    `/api/inject/sessions`, which is not a check. `cfgdir` goes through
+    `PARAM_CHECKS` -> `_cfgdir_ok`, so it must name an account archeus knows.
+    """
     import subprocess
     from .context_inject import _write_context_file, CTX_FILE
     from .config import get_claude_exe, launch_defaults
@@ -1941,7 +2909,8 @@ def api_inject_launch(q, body):
     path = body['path']
     if not resolve_dir(path):       # becomes a subprocess cwd below
         return {'ok': False, 'error': 'not a directory: %s' % (path or '(empty)')}
-    ctx_path, title = _write_context_file(path, body['folder'], body['sid'],
+    src_folder = _folder(body.get('cfgdir'), body['enc'])
+    ctx_path, title = _write_context_file(path, src_folder, body['sid'],
                                           body.get('account', 'default'))
     exe = get_claude_exe()
     if not exe:
@@ -1979,6 +2948,88 @@ def api_inject_launch(q, body):
 
 # ── job launchers for the AI features ────────────────────────
 
+#: how many unique agents go into one authoring call. A model asked for two
+#: hundred lines in one answer quietly drops some of them; forty comes back
+#: complete. Batching also gives cancellation somewhere to land.
+SHARPEN_BATCH = 40
+
+
+def _sharpen_descriptions(scope, path):
+    """Rewrite agent `description` fields — for one project, or everywhere.
+
+    Everywhere means every account's user-level agents, every project's
+    `.claude/agents`, and the archeus library. Grouped by (name, description)
+    so the SAME agent installed in twelve projects is one question and twelve
+    writes, and one approval gate covers the lot: approving the same rewrite
+    twelve times is not consent, it is attrition.
+    """
+    from . import agents as _ag, memory
+    from .claude_md import _pager_confirm
+
+    if scope == 'project':
+        if not path:
+            raise RuntimeError('No project open')
+        d = _ag.project_agents_dir(path)
+        rows = [{'scope': 'project', 'dir': d, 'project_path': path,
+                 'account': '', 'name': n, 'desc': desc or '', 'path': p}
+                for n, desc, _m, p in _ag.list_agents(d)]
+        if not rows:
+            raise RuntimeError('No agents installed in this project')
+    else:
+        rows = _ag.all_installed()
+        if not rows:
+            raise RuntimeError('No agents installed anywhere')
+
+    groups = _ag.sharpen_groups(rows)
+    keys = sorted(groups)
+    job = getattr(_JOBCTX, 'job', None)
+    new = {}
+    for i in range(0, len(keys), SHARPEN_BATCH):
+        if job is not None and job['cancel_event'].is_set():
+            return {'ok': False, 'cancelled': True}
+        batch = keys[i:i + SHARPEN_BATCH]
+        out = (memory._claude_stdin(_ag.sharpen_prompt(batch),
+                                    cwd=path or '.') or '').strip()
+        new.update(_ag.parse_sharpened(out))
+    if not new:
+        raise RuntimeError('Claude returned nothing usable')
+
+    changed = [(n, d, groups[(n, d)]) for (n, d) in keys
+               if new.get(n) and new[n].strip() != d]
+    if not changed:
+        return {'ok': True, 'updated': [], 'locations': 0}
+
+    preview = '\n\n'.join(
+        '%s  (%d location%s)\n  was: %s\n  now: %s'
+        % (n, len(where), '' if len(where) == 1 else 's', d or '(none)', new[n])
+        for n, d, where in changed)
+    if not _pager_confirm('AGENT DESCRIPTIONS — approve to write', preview):
+        return {'ok': False, 'rejected': True}
+
+    # one pass per directory, then the project-only files once per project —
+    # write_routing_block rewrites CLAUDE.md, so doing it per agent would
+    # rewrite the same file once for every agent in it
+    by_dir, projects = {}, set()
+    for _n, _d, where in changed:
+        for r in where:
+            by_dir.setdefault(r['dir'], {})[r['name']] = new[r['name']]
+            if r['project_path']:
+                projects.add(r['project_path'])
+    updated, locations = set(), 0
+    for d, mapping in by_dir.items():
+        done = _ag.apply_descriptions_dir(d, mapping)
+        updated.update(done)
+        locations += len(done)
+    for p in sorted(projects):
+        try:
+            _ag.write_routing_block(p)
+            _ag.write_agent_index(p)
+        except Exception:
+            _c.log.exception('agents: routing refresh failed for %s', p)
+    return {'ok': True, 'updated': sorted(updated), 'locations': locations,
+            'projects': len(projects)}
+
+
 def api_job_start(q, body):
     kind = body.get('kind', '')
     path = body.get('path', '')
@@ -2000,6 +3051,14 @@ def api_job_start(q, body):
             added, scanned = lessons.scan_sessions(path, folder, pend)
             return {'added': added, 'scanned': scanned}
         jid = start_job('Learning from sessions', _scan)
+    elif kind == 'rules_sync':
+        # rewriting the rule files was reachable only as a SIDE EFFECT of
+        # toggling the rules checkbox off and on again — which is not a thing
+        # anyone would guess, and it is free (no Claude call).
+        from . import memrules, memory
+        jid = start_job('Rebuilding rules', lambda: {
+            'written': len(memrules.sync_rules(path, folder,
+                                               memory.load_memory(path, folder)))})
     elif kind == 'ai_scaffold':
         from .claude_md import ai_scaffold_claude_md
         jid = start_job('AI-analyzing project', lambda: ai_scaffold_claude_md(path, folder))
@@ -2020,13 +3079,87 @@ def api_job_start(q, body):
                     'doc': doc}
         jid = start_job(f'Analyzing MCP {mcp_name}', _an)
     elif kind == 'agent_ai':
-        from .agents import _new_agent_ai
-        jid = start_job('Generating agent', lambda: _new_agent_ai(path or None),
-                        inputs=[body.get('description', '')])
+        # `agents.generate_agent_ai`, NOT `_new_agent_ai`: the latter is the TUI
+        # flow and opens a `menu()`, which no job thread can answer — it blocked
+        # in wait_event() until the six-hour stuck-reaper. `inputs` is gone with
+        # it; the fields arrive as real body parameters now, which also fixes the
+        # description having been fed in as the agent's NAME.
+        from .agents import generate_agent_ai
+        name = (body.get('name') or '').strip()
+        if not name:
+            raise BadRequest('name is required')
+        scope = 'project' if body.get('scope') == 'project' else 'user'
+        jid = start_job(f'Generating agent {name}',
+                        lambda: generate_agent_ai(
+                            name, body.get('description', ''), scope,
+                            path or None, body.get('category', '')))
     elif kind == 'hook_ai':
+        # cfgdir is forwarded: the hooks page has an account selector, and
+        # without it every AI-generated hook landed on the active account no
+        # matter which one you were looking at.
         from .hooks import _ai_hook
-        jid = start_job('Generating hook', lambda: _ai_hook(),
+        cfgdir = body.get('cfgdir') or None
+        jid = start_job('Generating hook', lambda: _ai_hook(cfgdir),
                         inputs=[body.get('description', '')])
+    elif kind == 'work_scan':
+        # One call, findings persisted into the graph. No approval gate: it
+        # writes advice, not code, and gating a read-only suggestion behind a
+        # diff nobody can act on is ceremony rather than safety.
+        from . import brief as _brief
+        folder = _folder(body.get('cfgdir'), body['enc'])
+        jid = start_job('Scanning for work',
+                        lambda: _brief.run_scan(path, folder))
+    elif kind == 'agent_desc_ai':
+        # The one field Claude Code routes on. Rewriting it is the difference
+        # between an agent that is installed and an agent that gets picked —
+        # see the note above agents.write_routing_block.
+        #
+        # `scope` rather than a second job kind: the two differ only in which
+        # directories they collect, and the gate, the parse and the writer are
+        # identical. Defaults to 'all' because the control now lives on the
+        # global Agents page, which has no open project to scope to.
+        from . import agents as _ag
+        scope = body.get('scope') or ('project' if path else 'all')
+        label = ('Sharpening agent descriptions' if scope == 'project'
+                 else 'Sharpening every agent description')
+        jid = start_job(label, lambda: _sharpen_descriptions(scope, path))
+    elif kind == 'loop_ai':
+        # loop.md is the prompt a bare `/loop` runs, over and over, unattended.
+        # It goes through the same approval gate as every other generated file:
+        # a repeating instruction nobody read is the last thing to write blind.
+        from . import memory
+        from .claude_md import _pager_confirm
+        scope = body.get('scope', 'project')
+        goal = body.get('description', '')
+        md_path = _loop_md_path(scope, path, body.get('cfgdir'))
+
+        def _loopmd():
+            prompt = (
+                "Write the body of a Claude Code `loop.md` file.\n\n"
+                "`loop.md` is the default prompt a bare `/loop` runs on every "
+                "iteration, unattended, in this repository. It is plain markdown "
+                "with no frontmatter and no title — write it as if typing the "
+                "prompt directly.\n\n"
+                f"What the user wants the loop to do each iteration:\n{goal}\n\n"
+                "Rules for what you write:\n"
+                "- Give it a clear stopping condition and say what to do when "
+                "there is nothing to do (one line, no work).\n"
+                "- Prefer checks that are cheap to repeat; say what to skip when "
+                "nothing changed.\n"
+                "- Be explicit about anything irreversible: never push, delete or "
+                "release unless the instruction says so.\n"
+                "- Under 25 lines. No preamble, no code fences, no explanation — "
+                "output the file body only.")
+            content = (memory._claude_stdin(prompt, cwd=path or '.') or '').strip()
+            if not content:
+                raise RuntimeError(memory.why_failed())
+            if not _pager_confirm(f'loop.md ({scope}) — approve to write', content):
+                return {'ok': False, 'rejected': True}
+            os.makedirs(os.path.dirname(md_path), exist_ok=True)
+            ok = _c.write_atomic(md_path, content if content.endswith('\n')
+                                 else content + '\n')
+            return {'ok': ok, 'file': md_path, 'text': content}
+        jid = start_job('Writing loop.md', _loopmd)
     elif kind == 'skill_ai':
         from . import skills, memory
         from .claude_md import _pager_confirm
@@ -2037,11 +3170,11 @@ def api_job_start(q, body):
             prompt = skills.build_ai_prompt(sk_name, role, proj)
             content = (memory._claude_stdin(prompt, cwd=path or '.') or '').strip()
             if not content:
-                raise RuntimeError('No output from Claude')
+                raise RuntimeError(memory.why_failed())
             if not _pager_confirm(f'SKILL / {skills._slug(sk_name)} — approve to write',
                                   content):
                 return {'ok': False, 'rejected': True}
-            d = skills.write_skill_raw(proj, sk_name, content)
+            d = skills.write_skill_raw(_skill_dest(body), sk_name, content)
             return {'ok': bool(d), 'dir': d}
         jid = start_job(f'Generating skill {skills._slug(sk_name)}', _skill)
     elif kind == 'sync_accounts':
@@ -2089,7 +3222,7 @@ def api_job_start(q, body):
         effort = body.get('effort', '')
         council = bool(body.get('council'))
         # plan under the same account chosen for execution -- otherwise the
-        # plan call silently runs under whatever account claudectl itself is
+        # plan call silently runs under whatever account archeus itself is
         # active as, regardless of what the user picked in the GUI.
         cfgdir = body.get('account') or ''
         # council must route through the SAME channel the user picked for
@@ -2099,16 +3232,16 @@ def api_job_start(q, body):
         # errors, and optimize_plan_council quietly no-ops the plan back
         # unchanged with no error shown.
         via = body.get('via', 'anthropic')
-        omni_env = provider_env(s, model='_') if via == 'provider' else {}
+        prov_env = provider_env(s, model='_') if via == 'provider' else {}
 
         # Pre-flight: fail fast (~5s) if the endpoint the headless `claude`
         # call will talk to is unreachable, instead of spawning a job that
         # spins for up to plan_timeout_sec. _plan() inherits the process env;
-        # the council (omni_env) may target a different base, so check both.
+        # the council (prov_env) may target a different base, so check both.
         from .plan_execute import check_endpoint
         try:
             check_endpoint(os.environ.get('ANTHROPIC_BASE_URL', ''))
-            check_endpoint((omni_env or {}).get('ANTHROPIC_BASE_URL', ''))
+            check_endpoint((prov_env or {}).get('ANTHROPIC_BASE_URL', ''))
         except RuntimeError as e:
             return {'ok': False, 'error': str(e)}
 
@@ -2118,7 +3251,7 @@ def api_job_start(q, body):
                 raise RuntimeError(_subprocess_error_detail()
                                    or 'Planning failed or produced no output')
             if council:
-                plan = optimize_plan_council(task, plan, path, omni_env=omni_env, cfgdir=cfgdir)
+                plan = optimize_plan_council(task, plan, path, prov_env=prov_env, cfgdir=cfgdir)
             plan_path = write_plan_file(path, task, plan)
             if not plan_path:
                 raise RuntimeError('Could not save plan file')
@@ -2144,17 +3277,17 @@ def api_job_start(q, body):
             import subprocess
             s = load_settings()
             via = body.get('via', 'anthropic')
-            omni_env = provider_env(s, model='_') if via == 'provider' else {}
+            prov_env = provider_env(s, model='_') if via == 'provider' else {}
             # write user-edited plan text before launching
             if plan_text:
                 write_plan_file(path, task, plan_text)
             if body.get('model'):
                 model = body['model']
-            elif omni_env:
+            elif prov_env:
                 model = s.get('provider_exec_model') or omniroute.AUTO_MODEL
             else:
                 model = s.get('exec_model', '')
-            if omni_env:
+            if prov_env:
                 # ONE seam: reachability, daemon start, failover proxy, model
                 # validation and the context advisory all live in
                 # prepare_launch. This used to be forty lines duplicated from
@@ -2162,13 +3295,13 @@ def api_job_start(q, body):
                 from .plan_execute import context_bytes
                 _pv_env, _warn = omniroute.prepare_launch(
                     model, s, ctx_bytes=context_bytes(path, plan_text))
-                omni_env.update(_pv_env)
+                prov_env.update(_pv_env)
                 if _warn:
                     ui.flash(_warn, ok=False, secs=3)
             from .paths import resolve_dir
             if not resolve_dir(path):   # becomes a subprocess cwd below
                 raise RuntimeError('not a directory: %s' % (path or '(empty)'))
-            args, env = build_exec_launch(path, exec_folder, task, model, omni_env, cfgdir)
+            args, env = build_exec_launch(path, exec_folder, task, model, prov_env, cfgdir)
             if not args:
                 raise RuntimeError('claude.exe not found')
             title = f"claude — {os.path.basename(path)}"
@@ -2201,6 +3334,14 @@ def api_job_start(q, body):
                                    or 'Re-plan failed or produced no output')
             return {'plan': revised}
         jid = start_job('Re-planning with feedback', _replan)
+    elif kind == 'memory_queue':
+        def _mq():
+            res = build_queue(_JOBCTX.job)
+            if not res.get('built') and not res.get('failed'):
+                return {'message': 'Every project\'s memory is already current'}
+            return dict(res, message='Built %d project(s), %d failed'
+                        % (res.get('built', 0), res.get('failed', 0)))
+        jid = start_job('Building modules', _mq)
     elif kind == 'claude_update':
         from . import versions
         target = str(body.get('target', '') or '')
@@ -2210,14 +3351,20 @@ def api_job_start(q, body):
                 raise RuntimeError(msg or 'update failed')
             return {'message': msg, 'installed': versions.installed_version()}
         jid = start_job('Updating Claude Code' + (f' to {target}' if target else ''), _cu)
-    elif kind == 'claudectl_update':
+    elif kind == 'archeus_update':
         from . import versions
+        restart = bool(body.get('restart'))
         def _su():
-            ok, msg = versions.update_self()
+            # wait=, because a job that reports "done" the moment a worker was
+            # STARTED reports the wrong thing: pip is where this fails, and its
+            # failure arrived minutes later in a log file with no reader. The
+            # restart path still defers — it has to outlive this process.
+            ok, msg = versions.update_self(restart=restart,
+                                           wait=0 if restart else 300)
             if not ok:
                 raise RuntimeError(msg or 'update failed')
             return {'message': msg}
-        jid = start_job('Updating claudectl', _su)
+        jid = start_job('Updating archeus', _su)
     elif kind == 'plugin_update':
         from . import versions
         key = str(body.get('key', '') or '')
@@ -2240,11 +3387,14 @@ def api_job_start(q, body):
         from . import skills
         from .config import load_settings
         url = body.get('url', '')
-        proj = path or None
+        # the same scope choice every other install makes: personal unless the
+        # caller asked for this project
+        proj = path if body.get('scope') == 'project' else None
+        cfgdir = body.get('cfgdir')
 
         def _install():
             exec_model = load_settings().get('provider_exec_model', '')
-            ok, msg = skills.install_from_git(url, proj, exec_model)
+            ok, msg = skills.install_from_git(url, proj, exec_model, cfgdir)
             if not ok:
                 raise RuntimeError(msg)
             return {'message': msg}
@@ -2359,7 +3509,7 @@ def _memfn(refresh_memory, path, folder, name):
 # the browser gets reloaded.
 
 def api_plan_last(q, body):
-    """Read back <project>/.claudectl/plan-latest.md, split into the task
+    """Read back <project>/.archeus/plan-latest.md, split into the task
     title write_plan_file() stamps on it and the plan body. {'exists': False}
     if there's no saved plan for this project yet."""
     import re
@@ -2548,7 +3698,7 @@ def api_plugins(q, body):
 
 
 def api_versions(q, body):
-    """claudectl and the installed Claude Code against what has been released,
+    """archeus and the installed Claude Code against what has been released,
     every plugin against what its marketplace offers, and the model catalogue
     against what Anthropic currently serves.
 
@@ -2566,7 +3716,7 @@ def api_versions(q, body):
     mst = _mods.status()
     mst['notices'] = _mods.notices()
     return {'claude': versions.status(refresh=refresh),
-            'claudectl': versions.self_status(refresh=refresh),
+            'archeus': versions.self_status(refresh=refresh),
             'models': mst,
             'plugins': versions.plugin_rows()}
 
@@ -2651,7 +3801,7 @@ def api_worktree_merge(q, body):
     """Merge a worktree branch, behind the standard approval gate.
 
     The diff is shown through diffview.confirm — the same path every other
-    destructive write in claudectl takes — so a merge is never something this
+    destructive write in archeus takes — so a merge is never something this
     endpoint decides on its own.
     """
     from . import worktrees, diffview
@@ -2679,16 +3829,38 @@ def _cfg(d):
 
 
 def api_output_styles(q, body):
+    """Every style, WHERE the active one is pinned, and the starters to copy.
+
+    `active_scope` is what the page could not say before: a project's
+    settings.json shadows the account's, so two files can name a style and only
+    one of them is in force."""
     from . import outputstyles
     path = q.get('path') or None
     return {'styles': outputstyles.listing(path, _cfg(q)),
-            'active': outputstyles.current(path, _cfg(q))}
+            'active': outputstyles.current(path, _cfg(q)),
+            'active_scope': outputstyles.active_scope(path, _cfg(q)),
+            'starters': outputstyles.starters(),
+            'user_dir': os.path.join(_c.resolve_config_dir(_cfg(q)), 'output-styles'),
+            'project_dir': (os.path.join(path, '.claude', 'output-styles')
+                            if path else '')}
 
 
 def api_output_style_read(q, body):
     from . import outputstyles
-    return {'body': outputstyles.read(q.get('name', ''), q.get('path') or None,
-                                      _cfg(q))}
+    name = q.get('name', '')
+    return {'body': outputstyles.read(name, q.get('path') or None, _cfg(q)),
+            'builtin': any(n.lower() == name.lower()
+                           for n, _d in outputstyles.BUILTIN)}
+
+
+def api_output_style_install(q, body):
+    """Copy an archeus starter into the user or project scope."""
+    from . import outputstyles
+    b = body or {}
+    ok, msg = outputstyles.install_starter(
+        b.get('name', ''), b.get('path') if b.get('scope') == 'project' else None,
+        _cfg(b))
+    return {'ok': ok, 'message': msg}
 
 
 def api_output_style_select(q, body):
@@ -2843,12 +4015,17 @@ GET_ROUTES = {
     '/api/accounts': api_accounts_get,
     '/api/accounts/sync': api_accounts_sync,
     '/api/memory/state': api_memory_state,
+    '/api/memory/entity': api_memory_entity,
     '/api/memory/progress': api_memory_progress,
     '/api/memory/active': api_memory_active,
     '/api/memory/auto': api_memory_auto_get,
     '/api/lessons': api_lessons_get,
     '/api/ctxaudit': api_ctxaudit,
+    '/api/ctxaudit/prune-preview': api_ctxaudit_prune_preview,
+    '/api/history': api_history,
+    '/api/history/diff': api_history_diff,
     '/api/deny': api_deny_scan,
+    '/api/logs': api_logs,
     '/api/workspace-status': api_workspace_status,
     '/api/recall-preview': api_recall_preview,
     '/api/claude-md': api_claude_md_get,
@@ -2857,7 +4034,6 @@ GET_ROUTES = {
     '/api/extra-paths': api_extra_paths_get,
     '/api/add-dirs': api_add_dirs_get,
     '/api/path-complete': api_path_complete,
-    '/api/inject/sessions': api_inject_sessions,
     '/api/health': api_health,
     '/api/brief': api_brief,
     '/api/conventions': api_conventions,
@@ -2870,6 +4046,7 @@ GET_ROUTES = {
     '/api/background-agents': api_background_agents,
     '/api/disk': api_disk,
     '/api/loop-md': api_loop_md_get,
+    '/api/loops': api_loops,
     '/api/provider/status': api_provider_status,
     '/api/provider/models': api_provider_models,
     '/api/plan/last': api_plan_last,
@@ -2883,6 +4060,7 @@ POST_ROUTES = {
     '/api/session/tags': api_tags_set,
     '/api/memory/autoscan': api_memory_autoscan,
     '/api/memory/auto': api_memory_auto_set,
+    '/api/project/hide': api_project_hide,
     '/api/plugins/marketplace/add': api_plugin_marketplace_add,
     '/api/plugins/marketplace/remove': api_plugin_marketplace_remove,
     '/api/plugins/remove': api_plugin_remove,
@@ -2891,6 +4069,7 @@ POST_ROUTES = {
     '/api/statusline': api_statusline_set,
     '/api/output-style/select': api_output_style_select,
     '/api/output-style/save': api_output_style_save,
+    '/api/output-style/install': api_output_style_install,
     '/api/output-style/delete': api_output_style_delete,
     '/api/hooks/template': api_hooks_template,
     '/api/hooks/remove': api_hooks_remove,
@@ -2912,7 +4091,9 @@ POST_ROUTES = {
     '/api/accounts/terminal': api_accounts_terminal,
     '/api/lessons': api_lessons_post,
     '/api/ctxaudit/prune': api_ctxaudit_prune,
+    '/api/history/restore': api_history_restore,
     '/api/ctxaudit/compact': api_ctxaudit_compact,
+    '/api/ctxaudit/protect': api_ctxaudit_protect,
     '/api/deny/apply': api_deny_apply,
     '/api/claude-md/scaffold': api_claude_md_scaffold,
     '/api/open-editor': api_open_editor,
@@ -2920,12 +4101,17 @@ POST_ROUTES = {
     '/api/extra-paths': api_extra_paths_set,
     '/api/add-dirs': api_add_dirs_set,
     '/api/open-path': api_open_path,
+    '/api/quit': api_quit,
     '/api/health/allowlist': api_health_allowlist,
     '/api/conventions/sync': api_conventions_sync,
+    '/api/conventions/pin': api_conventions_pin,
+    '/api/brief/dismiss': api_brief_dismiss,
     '/api/cc-settings': api_cc_settings_set,
     '/api/automode': api_automode_set,
     '/api/disk/gc': api_disk_gc,
     '/api/loop-md': api_loop_md_set,
+    '/api/loops/start': api_loop_start,
+    '/api/loops/stop': api_loop_stop,
     '/api/inject/launch': api_inject_launch,
     '/api/job': api_job_start,
     '/api/plan/edit': api_plan_edit,   # TUI-only by design: a terminal cannot free-text-edit a plan, so it needs structured Edit/Delete/Insert/Move. The GUI's plan editor is a <textarea> that does all four natively.

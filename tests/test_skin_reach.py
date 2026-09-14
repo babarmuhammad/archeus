@@ -165,7 +165,9 @@ def test_world_palettes_and_skins_stay_out_of_the_classic_pickers():
         assert w['skin'] not in CLASSIC_SKINS, w['skin']
         assert PALETTES[w['palette']].get('hidden'), w['palette']
     # and the classic three are all still offered
-    assert set(CLASSIC_SKINS) == {'hud', 'crt', 'brutal'}
+    # Standard is offered too — the plain one, added because "auto" resolves to
+    # whichever of the other three the palette names and never to nothing
+    assert set(CLASSIC_SKINS) == {'standard', 'hud', 'crt', 'brutal'}
 
 
 def test_no_look_puts_an_effect_on_the_type_itself():
@@ -214,9 +216,23 @@ def test_no_look_may_change_how_big_the_ui_is():
     for name, sk in SKINS.items():
         for dead in ('scale', 'density'):
             assert dead not in sk, f'{name} declares {dead}'
-    # the sizes themselves must still be declared in exactly one place
-    assert '.card h3{font-size:14px}' in _CSS
-    assert '.kpi .kv2{font-size:20px}' in _CSS
+    # …and the sizes are declared in exactly ONE place, which is the assertion
+    # this comment always claimed to be making. It used to check that the
+    # chassis block CONTAINED them, and that block restated six type sizes and
+    # four density values character for character from their base rules — so the
+    # canonical geometry was declared twice and the duplicate, being last in the
+    # file, silently disabled the icon rail's narrow gutters and the 899px
+    # readout size. A second declaration of a canonical value is not a guard,
+    # it is a second thing to keep in step.
+    assert _CSS.count('.card h3{font-size') == 1, \
+        'the heading size is declared twice again'
+    assert 'font-size:14px' in _CSS[_CSS.index('.card h3{font-size'):][:40]
+    assert _CSS.count('.kpi .kv2{font-size:20px') == 1, \
+        'the readout size is declared twice again'
+    # the one place a size may be restated is where it genuinely differs, and
+    # then only under a narrower selector or a media query
+    assert _CSS.count('.kpi .kv2{font-size:17px}') == 1, \
+        'the 899px readout size is gone, or duplicated'
 
 
 # ── form controls ────────────────────────────────────────────
@@ -241,11 +257,40 @@ def test_a_bare_input_cannot_render_as_a_white_browser_default():
 
 def test_the_native_controls_keep_their_own_painting():
     """A range slider or a checkbox restyled as a text field is worse than the
-    default, not better."""
+    default, not better. The checkbox stays excluded here because it has its
+    own painting below, not because it is native."""
     sel = _CSS[_CSS.index('#content input:not([type=range])'):]
     sel = sel[:sel.index('{')]
     for kind in ('range', 'checkbox', 'radio'):
         assert ':not([type=%s])' % kind in sel, kind
+
+
+def test_the_checkbox_is_drawn_by_us_and_its_tick_moves_on_transform_only():
+    """`accent-color` takes ONE colour and paints a native tick, so the
+    checkbox was the one control that ignored the palette and the skin. It is
+    drawn here instead — and the draw has to obey the same compositor contract
+    as everything else: transform/opacity only, geometry in percent so a skin
+    with a 3px border does not push the tick outside a 10px inner box."""
+    block = _CSS[_CSS.index('input[type=checkbox]{'):_CSS.index('.fld textarea{')]
+    assert 'input[type=checkbox]{appearance:none' in _CSS, 'the native control is back'
+    # `accent-color` stays for the range slider only — never on a checkbox
+    for rule in _CSS.split('}'):
+        if 'accent-color' in rule:
+            assert 'type=range' in rule, rule
+    assert 'var(--sk-in-r' in block, 'the box does not take the skin radius'
+    # the two arms draw with scaleX from their own end — nothing else animates
+    assert block.count('scaleX(1)') == 2 and 'transform-origin:left center' in block
+    for prop in ('transition:transform', 'transition-delay'):
+        assert prop in block, prop
+    for paint in ('width .', 'height .', 'clip-path', 'stroke-dashoffset'):
+        assert paint not in block, paint
+    # px geometry breaks under --sk-in-bw:3px (anime); the arms are in percent
+    arms = [r for r in block.split('}') if 'rotate(' in r and 'left:' in r]
+    assert len(arms) == 2, arms
+    for arm in arms:
+        for edge in ('left:', 'top:', 'width:'):
+            val = arm.split(edge, 1)[1].split(';')[0]
+            assert val.endswith('%'), (edge, val)
 
 
 def test_the_tab_row_shares_the_content_column_left_edge():

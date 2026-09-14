@@ -3,7 +3,7 @@ name: release
 # Publishes to PyPI via trusted publishing (OIDC) — no API token is stored
 # anywhere. Register the publisher on PyPI BEFORE pushing the first tag:
 #   https://pypi.org/manage/account/publishing/
-#   owner: babarmuhammad   repo: claudectl
+#   owner: babarmuhammad   repo: archeus
 #   workflow: release.yml  environment: pypi
 #
 # Inert until a v* tag is pushed.
@@ -16,8 +16,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -56,7 +56,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           name: dist

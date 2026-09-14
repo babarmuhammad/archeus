@@ -52,7 +52,7 @@ def test_migration_drops_the_dead_names_so_they_are_not_rewritten_forever():
     s[c._UNKNOWN_KEYS] = {'omniroute_api_key': 'sk-old', 'future_key': 1}
     out, _ = c.migrate_settings(s)
     assert 'omniroute_api_key' not in out[c._UNKNOWN_KEYS]
-    # a key from a NEWER claudectl is not ours to delete
+    # a key from a NEWER archeus is not ours to delete
     assert out[c._UNKNOWN_KEYS]['future_key'] == 1
 
 
@@ -225,7 +225,7 @@ def test_older_choice_lines_still_parse():
     assert opts['provider'] == ''
 
 
-# ── claudectl's OWN headless calls ───────────────────────────────
+# ── archeus's OWN headless calls ───────────────────────────────
 
 def _headless_call(monkeypatch, sb, **settings):
     """Run _claude_stdin in silent mode against a fake exe and return the
@@ -261,7 +261,7 @@ def test_headless_calls_stay_on_anthropic_by_default(monkeypatch, tmp_path):
     args, env = _headless_call(monkeypatch, sb, provider_kind='generic',
                                provider_base_url='http://localhost:11434',
                                provider_exec_model='qwen3-coder:30b')
-    assert env is None                      # inherit claudectl's own environment
+    assert env is None                      # inherit archeus's own environment
     assert args[args.index('--model') + 1] == c._DEFAULT_SETTINGS['extract_model']
 
 

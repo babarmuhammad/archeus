@@ -153,6 +153,30 @@ def test_no_page_can_paint_over_the_one_you_are_on():
         'drawPage does not thread the nav token into the renderer')
 
 
+def test_a_finished_job_cannot_repaint_a_view_you_have_left():
+    """The same bug as the test above, one level up.
+
+    A job outlives navigation on purpose — that is what the inline banner is
+    for — and its completion handler used to call `drawMemory()` /
+    `drawPage('skills')` unconditionally. `paint()`'s NAV_ID check cannot see
+    that: `onDone` starts a NEW render, so the token matches and the write
+    lands. Building memory and walking away put you back on the memory tab
+    minutes later, over whatever you had opened.
+
+    So the refresh moved into the runner as `redraw`, gated on the view the job
+    was started from, and no handler may repaint by hand.
+    """
+    assert 'function viewKey()' in PAGE
+    assert 'function jobRedraw(J,st){' in PAGE
+    assert "if(viewKey()!==J.from)return;" in PAGE
+    # every completion handler in the file: nothing there may draw. The line is
+    # cut at `redraw:` — that half IS the guarded path and is allowed to draw.
+    for m in re.finditer(r'onDone:([^\n]*)', _CODE):
+        body = m.group(1).split('redraw:')[0]
+        assert not re.search(r'\b(drawPage\(|draw[A-Z]\w*\()', body), (
+            'an onDone handler repaints directly — use redraw: %r' % body[:90])
+
+
 def test_the_theme_gallery_does_not_apply_on_hover():
     """Click to select. Hover-preview was unwanted, and expensive with it:
     applyTheme reaches STAGE.setTheme, which disposes and rebuilds the whole
@@ -195,10 +219,17 @@ def test_exactly_one_raf_chain_in_the_app():
     # entered from exactly two places: kick(), and the loop's own tail
     assert PAGE.count('requestAnimationFrame(t => this._loop(t))') == 2
     assert 'A.engine.useDefaultMainLoop = false;' in PAGE
-    # the stage renders from a registered job, never from a loop of its own
+    # the stage renders from a registered job, never from a loop of its own —
+    # and its resize coalescer goes through MO.frame for the same reason, which
+    # this gate is what caught. Comments stripped before the scan, exactly as
+    # test_it_is_frame_capped_and_render_scaled does for devicePixelRatio: the
+    # word has to survive in the note saying why the call is not there.
     stage = PAGE[PAGE.index('const STAGE = {'):PAGE.index('window.STAGE = STAGE;')]
+    stage = re.sub(r'^\s*//.*$', '', re.sub(r'/\*.*?\*/', '', stage, flags=re.S), flags=re.M)
     assert 'requestAnimationFrame' not in stage, 'the stage started its own chain'
     assert 'MO.frame(dt => this._tick(dt))' in stage
+    assert 'MO.frame(() => { _rsz = 0; STAGE.resize(); return false; });' in stage, \
+        'the resize coalescer is not on the one chain'
     # no renderer may start a loop of its own
     for dead in ('function liveLoop', 'function constLoop', 'function moLoop'):
         assert dead not in PAGE, dead
@@ -325,7 +356,7 @@ def test_jobs_run_inline_and_escalate_to_the_modal():
     assert 'function inlineJob(host,kind,params,o)' in PAGE
     assert 'if(!J.modal){J.modal=true;inlineClear(J);}   // escalate' in PAGE
     for kind in ('memory_build', 'review', 'ai_scaffold', 'ai_compress',
-                 'lessons_scan', 'agent_ai', 'skill_ai', 'hook_ai'):
+                 'lessons_scan', 'rules_sync', 'agent_ai', 'skill_ai', 'hook_ai'):
         assert f"inlineJob('#jban','{kind}'" in PAGE, kind
         assert f"runJob('{kind}'" not in PAGE, f'{kind} still opens the modal'
 
@@ -334,3 +365,107 @@ def test_instrument_refit_is_observer_driven():
     """The Qt shell and the 720px transcript drawer both change #content's width
     WITHOUT firing a window resize, so onresize alone leaves gauges mis-sized."""
     assert 'new ResizeObserver(()=>INST.refit())' in PAGE
+
+
+def test_an_unfocused_window_stops_painting_and_leaves_no_hole():
+    """"When I'm on another app it flickers a lot" — three separate causes.
+
+    The rAF chain already parked correctly on blur (`motion.js` refuses to
+    reschedule while `!MO.vis`). What did not stop was CSS, and what was left
+    behind was a hole:
+
+    1. `stage-blur` hides #stage INSTANTLY (`visibility` is not in its
+       transition list) while the two washes fade back over 500ms, and
+       `html.stage-on body` is transparent with no `html{background}` anywhere
+       — so the ground for that half second was the root canvas colour.
+    2. A world's `.ovl-fx` is a full-viewport fixed layer on a 1.1s transform
+       loop, gated only by `mo-off`.
+    3. `.spin` / `.beam` / `.pip` / `.shimmer` / the CRT caret / the four
+       `.ov-*` drifts all keep running: Chromium throttles keyframes when a page
+       is HIDDEN, and a merely-unfocused window is not hidden — least of all
+       under Qt, which reports even a minimised one as visible.
+    """
+    # the class must come from setVis, so it is independent of the stage: STAGE
+    # .blur() returns early with no canvas, so `stage-blur` never appears with
+    # stage:off, a dead GL context, or the static fallback tier
+    assert "classList.toggle('win-blur',!v)" in _CODE, \
+        'setVis does not mark the window unfocused'
+    assert 'html.win-blur body{background:var(--bg)}' in _CSS, \
+        'the blur swap still falls through to the root canvas colour'
+    assert 'html.win-blur .ovl-fx{display:none}' in _CSS, \
+        'a world overlay still animates while the window is in the background'
+    assert 'animation-play-state:paused' in _CSS, \
+        'infinite CSS animations still run while unfocused'
+    # paused, not ended: mo-off's `animation-duration:.01ms;iteration-count:1`
+    # would bring a spinner back stopped
+    assert 'html.win-blur *' in _CSS
+
+
+def test_the_blur_swap_is_debounced_but_the_return_is_not():
+    """Qt fires blur/focus pairs on things that are not really a focus change
+    (a native menu opening, a child window taking focus for a frame). Each pair
+    cost a full background swap plus stopDashboard/startDashboard — an immediate
+    re-fetch and a whole-page repaint. Going away waits; coming back must not,
+    because a delay there is the one you would actually notice.
+
+    The dashboard half was left OUT of the debounce when this was written — the
+    handlers called stopDashboard/startDashboard directly, so every spurious
+    pair still paid the round trip the debounce existed to remove. Both halves
+    live inside setVisSoon now, which is what the docstring above always
+    claimed.
+    """
+    assert 'function setVisSoon(v)' in _CODE
+    assert 'if(v){setVis(true);if(PAGE_===\'home\')startDashboard();return;}' in _CODE, \
+        'focus is delayed too, or the dashboard restart is outside the debounce'
+    assert 'setVis(false);stopDashboard();},150)' in _CODE, \
+        'the dashboard teardown is not debounced with the swap'
+    assert "window.addEventListener('blur',()=>setVisSoon(false))" in _CODE
+    assert "window.addEventListener('focus',()=>setVisSoon(true))" in _CODE
+
+
+def test_a_pending_blur_cannot_fire_on_a_page_that_came_back():
+    """`visibilitychange` calls setVis DIRECTLY, bypassing the timer. A blur that
+    armed the 150ms debounce, followed by the tab becoming visible inside that
+    window, left the timer to run setVis(false) on a focused page — animations
+    paused and the GL surface down, with nothing to clear it until the next
+    focus event. Cancelling inside setVis covers every caller, present and
+    future; cancelling in setVisSoon only covered the two that went through it.
+    """
+    body = _CODE[_CODE.index('function setVis(v)'):]
+    body = body[:body.index('function setVisSoon')]
+    assert 'clearTimeout(_VIS_T)' in body, \
+        'setVis does not cancel a pending debounce'
+    assert body.index('clearTimeout(_VIS_T)') < body.index('_VIS=v'), \
+        'the cancel must happen before the state changes'
+
+
+def test_the_qt_page_background_follows_the_palette():
+    """It was hardcoded to #0d1117 on the reasoning that "the GUI has no light
+    theme". It has four light palettes and six at #050505, and this colour is
+    what shows through both the first paint and the blur swap — so on any of
+    those it WAS the flash rather than the fix."""
+    import inspect
+    import claude_sessions.config as cfg
+    from claude_sessions import gui_qt
+    from claude_sessions.themes import PALETTES, WORLDS
+
+    src = inspect.getsource(gui_qt.run_desktop)
+    assert 'setBackgroundColor(QColor(_page_bg()))' in src
+    # comments stripped for the same reason this module strips them from PAGE:
+    # the comment explaining the old hardcoded value would fail the check
+    code = re.sub(r'^\s*#.*$', '', src, flags=re.M)
+    assert not re.search(r'#[0-9a-fA-F]{6}', code), \
+        'run_desktop names a colour literally again'
+
+    # and it really tracks the setting, including a world's palette override
+    real = cfg.load_settings
+    try:
+        for theme, world, want in (
+                ('paper', '', PALETTES['paper']['bg']),
+                ('oled-red', '', PALETTES['oled-red']['bg']),
+                ('paper', 'graph', PALETTES[WORLDS['graph']['palette']]['bg']),
+                ('no-such-theme', '', PALETTES['default']['bg'])):
+            cfg.load_settings = lambda t=theme, w=world: {'theme': t, 'world': w}
+            assert gui_qt._page_bg() == want, (theme, world)
+    finally:
+        cfg.load_settings = real

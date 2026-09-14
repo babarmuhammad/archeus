@@ -1,4 +1,4 @@
-"""Reusable TUI simulation harness for claudectl tests.
+"""Reusable TUI simulation harness for archeus tests.
 
 Drives interactive screens with a scripted keyboard, captures rendered output
 for assertions, and sandboxes all config/data paths into tmp dirs so tests
@@ -140,7 +140,7 @@ class Sandbox:
         self.projects = self.cfg / 'projects'
         self.projects.mkdir(parents=True)
         self.choice = tmp_path / 'choice.txt'
-        self.settings = tmp_path / 'claudectl.json'
+        self.settings = tmp_path / 'archeus.json'
         self.agents_lib = tmp_path / 'agents-lib'   # empty by default
         self.editor_opened = []
         self._encoded_to_actual = {}
@@ -148,7 +148,7 @@ class Sandbox:
         self._stub_threads()
         self.set_terminal(*terminal)
         monkeypatch.setattr(time, 'sleep', lambda s: None)
-        monkeypatch.setenv('CLAUDECTL_BAT', '1')
+        monkeypatch.setenv('ARCHEUS_BAT', '1')
         # reset caches between tests
         sessions._info_cache.clear()
         stats._disk_cache = None
