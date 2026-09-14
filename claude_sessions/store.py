@@ -11,9 +11,10 @@ value did not come from the encoder — it came from the wire.
 import os
 
 from . import config as _c
+from . import harnesses as _harnesses
 
 __all__ = ['projects_root', 'project_folder', 'session_file', 'transcript_path',
-           'is_encoded',
+           'all_projects', 'is_encoded',
            'workdir', 'workfile', 'WORKDIR']
 
 #: what archeus writes into a project it does not own. Defined in config
@@ -79,11 +80,58 @@ def transcript_path(folder, sid):
     Same answer as session_file() by a different road: that one starts from
     (cfgdir, enc) and validates both, this one is the form every reader actually
     holds, and it had been written out by hand in thirteen places. It is also the
-    join that stops being a join the moment a second harness exists — a Codex
+    join that stopped being a join the moment a second harness existed — a Codex
     thread records an arbitrary rollout path rather than a file named after its
-    id — so it has to be a function before it can be a per-harness one.
+    id — which is why it is a function, and now a per-harness one.
     """
+    return _harnesses.impl('transcript_path',
+                           _harnesses.of_path(folder)['id'])(folder, sid)
+
+
+def _transcript_claude(folder, sid):
     return os.path.join(folder, sid + '.jsonl')
+
+
+def _projects_claude(home):
+    """[(mtime, real path, enc)] — every project this Claude home has.
+
+    The disk is the record here: a project exists because a session folder was
+    created for it. Codex has no such directory, so its answer comes out of the
+    index instead, which is the whole reason this is a descriptor entry.
+    """
+    from . import paths as _paths
+    out = []
+    root = projects_root(home)
+    if not os.path.isdir(root):
+        return out
+    for enc in os.listdir(root):
+        proj = os.path.join(root, enc)
+        if not os.path.isdir(proj):
+            continue
+        actual = _paths.find_actual_path(enc, folder=proj)
+        if actual:
+            out.append((os.path.getmtime(proj), actual, enc))
+    return out
+
+
+def _has_project_claude(home, enc):
+    return os.path.isdir(project_folder(home, enc))
+
+
+def all_projects():
+    """[(mtime, real path, enc, home)] across every harness, newest first.
+
+    One walk. The same twenty lines stood in `gui.list_projects`,
+    `gui_api._entries` and `main.run`, each producing this exact tuple — three
+    places a second harness would have had to be remembered, and the sidebar
+    would have shown Codex's projects while the terminal menu did not.
+    """
+    out = []
+    for _name, home, hid in _harnesses.instances():
+        for mtime, actual, enc in _harnesses.impl('projects', hid)(home):
+            out.append((mtime, actual, enc, home))
+    out.sort(reverse=True)
+    return out
 
 
 def session_file(cfgdir, enc, sid):

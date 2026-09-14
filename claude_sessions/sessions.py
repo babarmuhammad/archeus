@@ -178,7 +178,7 @@ def _parse_session(jsonl_path):
     s['models'] = []
     # which CLI wrote this file decides what its records look like; the parse
     # around it — the cache, the key, the single pass — does not change
-    fold = _harnesses.fold(_harnesses.of_path(jsonl_path)['id'])
+    fold = _harnesses.impl('fold', _harnesses.of_path(jsonl_path)['id'])
     for obj in _t.iter_json(jsonl_path):
         fold(obj, s)
 
@@ -456,7 +456,17 @@ def is_internal_session(jsonl_path):
 
 def scan_sessions(folder):
     """List sessions in a project folder. Returns [(mtime, sid, preview, count)] newest-first.
-    archeus-internal print-mode sessions (entrypoint sdk-cli) are excluded."""
+    archeus-internal print-mode sessions (entrypoint sdk-cli) are excluded.
+
+    The tuple is the contract and the folder is the handle; where the rows come
+    from is the harness's business. Claude Code's are the `.jsonl` files in the
+    folder itself, Codex's are rows in an index that names each transcript
+    somewhere else entirely.
+    """
+    return _harnesses.impl('scan', _harnesses.of_path(folder)['id'])(folder)
+
+
+def _scan_claude(folder):
     sessions = []
     if not folder or not os.path.isdir(folder):
         return sessions
@@ -496,15 +506,18 @@ def read_extra_paths(proj_folder):
 
 
 def account_folders_for(encoded_name):
-    """[(acct_name, folder)] — this project's session folder under EVERY known
-    account that actually has one. encode_component is account-independent, so
-    the same encoded name locates the project everywhere."""
-    from .config import all_config_dirs
+    """[(name, folder)] — this project's session folder under every known home,
+    Claude account or other harness, that actually has the project.
+
+    encode_component is account-independent, so the same encoded name locates
+    the project everywhere. Whether a home HAS it is the harness's to answer:
+    Claude Code's folder existing is the record, while Codex creates archeus's
+    sidecar folder lazily and its absence says nothing.
+    """
     out = []
-    for name, d in all_config_dirs():
-        folder = _store.project_folder(d, encoded_name)
-        if os.path.isdir(folder):
-            out.append((name, folder))
+    for name, home, hid in _harnesses.instances():
+        if _harnesses.impl('has_project', hid)(home, encoded_name):
+            out.append((name, _store.project_folder(home, encoded_name)))
     return out
 
 

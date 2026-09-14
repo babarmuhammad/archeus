@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from harness import Sandbox, make_jsonl
 from claude_sessions import gui
 from claude_sessions import gui_api
+from claude_sessions import paths as paths_mod
 
 
 def _serve(monkeypatch):
@@ -50,7 +51,8 @@ def _seed(sb, monkeypatch):
     folder.mkdir()
     sid = 'aaaa0000-0000-0000-0000-000000000000'
     make_jsonl(str(folder / f'{sid}.jsonl'), title='Fix the bug')
-    monkeypatch.setattr(gui, 'find_actual_path', lambda e, *a, **k: actual if e == enc else None)
+    monkeypatch.setattr(paths_mod, 'find_actual_path',
+                        lambda e, *a, **k: actual if e == enc else None)
     return actual, enc, sid
 
 
@@ -86,9 +88,8 @@ def test_dashboard_breakdown_splits_accounts_and_flags_omni(monkeypatch, tmp_pat
     (second / enc).mkdir()
     _write_today(sb.projects / enc / 'a.jsonl', 'claude-sonnet-4-6')
     _write_today(second / enc / 'b.jsonl', 'big-pickle')       # OmniRoute free tier
-    for mod in ('claude_sessions.gui.find_actual_path',
-                'claude_sessions.paths.find_actual_path'):
-        monkeypatch.setattr(mod, lambda e, *a, **k: actual if e == enc else None)
+    monkeypatch.setattr(paths_mod, 'find_actual_path',
+                        lambda e, *a, **k: actual if e == enc else None)
     srv, base = _serve(monkeypatch)
     try:
         _code, d = _req(f'{base}/api/dashboard')
@@ -128,9 +129,8 @@ def test_dashboard_recent_spans_accounts_and_skips_headless_oneshots(monkeypatch
     make_jsonl(str(sb.projects / enc / 'real-default.jsonl'), n_msgs=12, title='Real work')
     make_jsonl(str(second / enc / 'real-work.jsonl'), n_msgs=12, title='Other account')
     make_jsonl(str(sb.projects / enc / 'oneshot.jsonl'), n_msgs=2, title='Distil lessons')
-    for mod in ('claude_sessions.gui.find_actual_path',
-                'claude_sessions.paths.find_actual_path'):
-        monkeypatch.setattr(mod, lambda e, *a, **k: actual if e == enc else None)
+    monkeypatch.setattr(paths_mod, 'find_actual_path',
+                        lambda e, *a, **k: actual if e == enc else None)
     srv, base = _serve(monkeypatch)
     try:
         _code, d = _req(f'{base}/api/dashboard')

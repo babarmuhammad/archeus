@@ -63,7 +63,6 @@ def _seed(sb, monkeypatch, n=2, enc='X--enc-alpha'):
         sid = f'aaaa{i:04d}-0000-0000-0000-000000000000'
         make_jsonl(str(folder / f'{sid}.jsonl'), title=f'Session {i}')
         sids.append(sid)
-    monkeypatch.setattr(gui, 'find_actual_path', lambda e, *a, **k: actual if e == enc else None)
     import claude_sessions.paths as paths_mod
     monkeypatch.setattr(paths_mod, 'find_actual_path',
                         lambda e, *a, **k: actual if e == enc else None)

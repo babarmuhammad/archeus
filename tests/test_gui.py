@@ -17,6 +17,7 @@ from harness import Sandbox, make_jsonl
 from claude_sessions import gui
 from claude_sessions import main as main_mod
 from claude_sessions import config as config_mod
+from claude_sessions import paths as paths_mod
 
 
 def _serve(monkeypatch):
@@ -49,7 +50,8 @@ def _seed(sb, monkeypatch):
     folder.mkdir()
     sid = 'aaaa0000-0000-0000-0000-000000000000'
     make_jsonl(str(folder / f'{sid}.jsonl'), title='Fix the bug')
-    monkeypatch.setattr(gui, 'find_actual_path', lambda e, *a, **k: actual if e == enc else None)
+    monkeypatch.setattr(paths_mod, 'find_actual_path',
+                        lambda e, *a, **k: actual if e == enc else None)
     return actual, enc, sid
 
 
@@ -79,7 +81,8 @@ def test_sessions_omni_flag(monkeypatch, tmp_path):
                title='Anthropic run', model='claude-sonnet-5')
     make_jsonl(str(folder / 'bbbb0000-0000-0000-0000-000000000000.jsonl'),
                title='Provider run', model='deepseek-v4-flash-free')
-    monkeypatch.setattr(gui, 'find_actual_path', lambda e, *a, **k: actual if e == enc else None)
+    monkeypatch.setattr(paths_mod, 'find_actual_path',
+                        lambda e, *a, **k: actual if e == enc else None)
     by_title = {s['title']: s for s in gui.list_sessions(enc)}
     assert by_title['Provider run']['provider'] is True
     assert by_title['Anthropic run']['provider'] is False

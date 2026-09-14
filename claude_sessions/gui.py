@@ -47,7 +47,6 @@ from . import session_menu as _session_menu
 from .config import (load_settings, save_settings,
                      EFFORTS, PERMS, PERM_LABELS,
                      THINKING_CAPS, THINKING_LABELS)
-from .paths import find_actual_path
 from .sessions import _is_anthropic_model, _used_provider   # noqa: F401 (re-exported)
 from . import store
 
@@ -62,22 +61,11 @@ def all_config_dirs():
 def list_projects():
     """Grouped project rows across all accounts, newest-first.
     [{'path','name','encoded','mtime','accounts':[names],'primary_cfgdir'}]"""
-    entries = []
-    for _acct_name, acct_dir in all_config_dirs():
-        pdir = store.projects_root(acct_dir)
-        if not os.path.isdir(pdir):
-            continue
-        for name in os.listdir(pdir):
-            proj = os.path.join(pdir, name)
-            if not os.path.isdir(proj):
-                continue
-            actual = find_actual_path(name, folder=proj)
-            if not actual:
-                continue
-            entries.append((os.path.getmtime(proj), actual, name, acct_dir))
-
-    order = {d: i for i, (_n, d) in enumerate(all_config_dirs())}
-    names = {d: n for n, d in all_config_dirs()}
+    from . import harnesses
+    entries = store.all_projects()
+    homes = harnesses.instances()
+    order = {d: i for i, (_n, d, _h) in enumerate(homes)}
+    names = {d: n for n, d, _h in homes}
     groups = {}
     for mtime, actual, enc, acct_dir in entries:
         g = groups.setdefault(enc, {'path': actual, 'dirs': set(), 'mtime': mtime})

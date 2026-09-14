@@ -89,12 +89,75 @@ HARNESSES = {
         #: a key in the environment shadows the account login, so the CLI would
         #: authenticate as the key's owner whatever home it was pointed at.
         'env_pops': ('ANTHROPIC_API_KEY',),
+        #: where the binary installs, RELATIVE to the user profile, with `%s`
+        #: for the executable name. Relative and not `~` so the sandbox that
+        #: repoints `_USERPROFILE` actually contains the search — an absolute
+        #: `expanduser` would find the real installation from inside a test.
+        'exe_globs': ('.local/bin/%s',),
         #: one transcript record -> the shared stats dict. Named rather than
         #: inlined in the parser because the record SHAPE is the harness's:
         #: `message.model`, `gitBranch` and `isApiErrorMessage` are Claude
         #: Code's field names, not a universal transcript's.
         'fold': 'sessions._fold_claude',
+        #: the four other answers that are the harness's rather than archeus's,
+        #: resolved the same late way. Each is what its seam calls once the
+        #: file or the home has been placed: listing a project's sessions,
+        #: naming one session's transcript, listing the projects a home knows,
+        #: and answering whether it knows ONE — asked per project, so it may
+        #: not be `enc in projects(home)`.
+        'scan': 'sessions._scan_claude',
+        'transcript_path': 'store._transcript_claude',
+        'projects': 'store._projects_claude',
+        'has_project': 'store._has_project_claude',
         'caps': {},                       # it can do everything; it is the model
+    },
+    'codex': {
+        'id': 'codex',
+        'label': 'Codex',
+        'exe_names': ('codex.exe', 'codex') if os.name == 'nt' else ('codex',),
+        'exe_setting': 'codex_exe',
+        'home_env': 'CODEX_HOME',
+        'home_rel': ('.codex',),
+        #: not CLAUDE.md. Codex reads `AGENTS.md`, and it does not document an
+        #: import syntax, so the memory block is written into it rather than
+        #: referenced from it.
+        'instructions_file': 'AGENTS.md',
+        #: no flag: `codex exec` IS the headless mode, `e` its alias, and
+        #: `review` spends the same quota without being a session at all.
+        'inference_flags': (),
+        'inference_verbs': ('exec', 'e', 'review'),
+        'env_pops': ('OPENAI_API_KEY',),
+        #: Codex installs under a directory named by a hash of the build and
+        #: leaves the previous one in place, so the newest match wins. This is
+        #: the reason `exe()` may never cache: the path changes on every update.
+        'exe_globs': ('.local/bin/%s', 'AppData/Local/OpenAI/Codex/bin/*/%s'),
+        'fold': 'codex.fold',
+        'scan': 'codex.scan',
+        'transcript_path': 'codex.transcript_path',
+        'projects': 'codex.projects',
+        'has_project': 'codex.has_project',
+        #: what archeus cannot do HERE, and why — the reason is what the screen
+        #: prints, so each says which side the gap is on. The first group is
+        #: structural (Codex has no such thing); the second is archeus reading
+        #: and writing Claude Code's file for something Codex keeps elsewhere.
+        'caps': {
+            'output_styles': (False, 'Output styles are a Claude Code feature.'),
+            'client_state':  (False, 'Codex records its own state in SQLite, '
+                                     'not in .claude.json.'),
+            'accounts':      (False, 'archeus manages Claude logins; Codex '
+                                     'keeps one login per CODEX_HOME.'),
+            'usage':         (False, "Codex reports its own rate limits; this "
+                                     "page reads Anthropic's."),
+            'versions':      (False, 'Codex updates itself with `codex update`.'),
+            'mcp':           (False, "Codex keeps its MCP servers in "
+                                     "config.toml, not in Claude Code's."),
+            'plugins':       (False, 'Codex has its own marketplaces; archeus '
+                                     'reads Claude Code\'s.'),
+            'hooks':         (False, "Codex has hooks.json; archeus writes "
+                                     "Claude Code's settings.json."),
+            'agents':        (False, 'Codex keeps subagents in .agents.'),
+            'skills':        (False, 'Codex loads skills from its own roots.'),
+        },
     },
 }
 
@@ -139,12 +202,20 @@ def of_path(path):
     also under its home. Placing the file rather than threading a harness id
     through `_parse_session` and its five callers is what keeps the hot path's
     signature alone.
+
+    Only the OTHER harnesses' homes are compared, and that is a measurement
+    rather than a shortcut: Claude Code is already the answer for anything
+    unplaceable, so asking would add nothing except `all_config_dirs()` — a
+    settings read off disk — to a function `store.transcript_path` calls once
+    per session row.
     """
     if path:
         p = os.path.normcase(os.path.abspath(path))
         best = None
-        for hid, home in _homes():
-            h = os.path.normcase(os.path.abspath(home))
+        for hid in ids():
+            if hid == DEFAULT:
+                continue
+            h = os.path.normcase(os.path.abspath(home_dir(hid)))
             if p.startswith(h + os.sep) and (best is None or len(h) > len(best[1])):
                 best = (hid, h)
         if best:
@@ -152,13 +223,14 @@ def of_path(path):
     return descriptor(DEFAULT)
 
 
-def fold(hid=None):
-    """The record folder for one harness, resolved late.
+def impl(key, hid=None):
+    """The function one harness supplies for *key*, resolved late.
 
-    A dotted name in the table rather than the function itself: `sessions`
-    imports this module, so naming the function here directly would be a cycle.
+    A dotted name in the table rather than the function itself: `sessions` and
+    `store` both import this module, so naming a function here directly would
+    be a cycle.
     """
-    mod, _dot, fn = descriptor(hid)['fold'].partition('.')
+    mod, _dot, fn = descriptor(hid)[key].partition('.')
     import importlib
     return getattr(importlib.import_module('.' + mod, __package__), fn)
 
@@ -200,15 +272,22 @@ def exe(hid=None):
     RESOLVED EVERY TIME, never cached: Codex installs under a hashed directory
     that changes on every update, so a stored absolute path goes stale in
     silence."""
+    import glob as _glob
     import shutil
     d = descriptor(hid)
     override = (_c.load_settings().get(d.get('exe_setting') or '') or '')
     if override and os.path.exists(override):
         return override
     for name in d['exe_names']:
-        default = os.path.join(_c._USERPROFILE, '.local', 'bin', name)
-        if os.path.exists(default):
-            return default
+        found = []
+        for pat in d.get('exe_globs', ()):
+            found += _glob.glob(os.path.normpath(
+                os.path.join(_c._USERPROFILE, pat % name)))
+        if found:
+            # Codex's install directory is named by a hash of the build and the
+            # previous one is left behind, so the newest match is the one that
+            # `codex update` just wrote.
+            return max(found, key=os.path.getmtime)
     for name in d['exe_names']:
         found = shutil.which(name)
         if found:

@@ -1,10 +1,10 @@
 """The harness registry: which agent CLI a config dir belongs to, and what that
 CLI can do.
 
-Only Claude Code is registered at this stage, on purpose — the mechanism ships
-before the thing that needs it, so the harnesses that follow cannot be tempted
-to special-case their way past it. Every gate here is written to hold for a
-registry of three.
+Every gate here is written to hold for a registry of three: the mechanism
+shipped one release before the second harness so that Codex could not
+special-case its way past it. What Codex does with it is in `test_codex.py` —
+this file stays about the registry itself.
 """
 import io
 import os
@@ -277,7 +277,7 @@ def test_a_transcript_is_placed_by_the_home_it_sits_under(monkeypatch, tmp_path)
 def test_the_fold_is_resolved_late():
     """The table names the function rather than holding it: `sessions` imports
     the registry, so pointing at the function directly would be a cycle."""
-    fold = harnesses.fold('claude')
+    fold = harnesses.impl('fold', 'claude')
     assert callable(fold) and fold.__name__ == '_fold_claude'
 
 

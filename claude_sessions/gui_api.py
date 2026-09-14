@@ -890,23 +890,9 @@ def stop_auto_memory_scheduler():
 # ── shared helpers ───────────────────────────────────────────
 
 def _entries():
-    """[(mtime, path, enc, cfgdir)] across accounts — same shape main.run
+    """[(mtime, path, enc, home)] across every harness — same shape main.run
     and the stats screens consume."""
-    from .paths import find_actual_path
-    out = []
-    for _name, acct_dir in _c.all_config_dirs():
-        pdir = _store.projects_root(acct_dir)
-        if not os.path.isdir(pdir):
-            continue
-        for enc in os.listdir(pdir):
-            proj = os.path.join(pdir, enc)
-            if not os.path.isdir(proj):
-                continue
-            actual = find_actual_path(enc, folder=proj)
-            if actual:
-                out.append((os.path.getmtime(proj), actual, enc, acct_dir))
-    out.sort(reverse=True)
-    return out
+    return _store.all_projects()
 
 
 def _folder(cfgdir, enc):

@@ -8,7 +8,6 @@ import subprocess
 from .config import projects_dir, choice_file, config_dir, all_config_dirs
 from .config import C_RESET, C_STAR, C_DIM, C_TITLE, C_BOLD, C_NAME
 from .config import get_claude_exe, load_settings, save_settings
-from .paths import find_actual_path
 from .sessions import (get_session_info, load_recent_sessions, save_last_session,
                        format_age, scan_sessions, load_name, get_session_title)
 from .ui import menu, launch_options_menu, pause, help_screen, settings_menu
@@ -400,24 +399,9 @@ def run():
 
     # ── discover projects ─────────────────────────────────────────
 
-    # Scan every known account's projects dir, not just the active one, so
-    # sessions started under another account stay reachable here.
-    entries = []
-    for _acct_name, acct_dir in all_config_dirs():
-        acct_projects_dir = store.projects_root(acct_dir)
-        if not os.path.exists(acct_projects_dir):
-            continue
-        for name in os.listdir(acct_projects_dir):
-            proj = os.path.join(acct_projects_dir, name)
-            if not os.path.isdir(proj):
-                continue
-            actual = find_actual_path(name, folder=proj)
-            if not actual:
-                continue
-            mtime = os.path.getmtime(proj)
-            entries.append((mtime, actual, name, acct_dir))
-
-    entries.sort(reverse=True)
+    # Every known home, not just the active account, so sessions started under
+    # another account — or under another CLI entirely — stay reachable here.
+    entries = store.all_projects()
 
     if not entries:
         _cls()
