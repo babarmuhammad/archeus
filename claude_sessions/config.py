@@ -823,9 +823,12 @@ def account_env(cfgdir=None):
     environment shadows the account login, so the CLI would authenticate as the
     key's owner no matter which config dir it read.
     """
+    from .harnesses import of
     env = os.environ.copy()
-    env['CLAUDE_CONFIG_DIR'] = resolve_config_dir(cfgdir)
-    env.pop('ANTHROPIC_API_KEY', None)
+    d = of(cfgdir)
+    env[d['home_env']] = resolve_config_dir(cfgdir)
+    for k in d.get('env_pops', ()):
+        env.pop(k, None)
     return env
 
 
@@ -909,21 +912,15 @@ def _spawn_editor(exe, path):
 
 
 def get_claude_exe():
-    """Locate the Claude Code binary. Settings override > default install path
-    > PATH. None if missing. The install path is the same on every platform;
-    only the file extension differs."""
-    override = load_settings().get('claude_exe', '')
-    if override and os.path.exists(override):
-        return override
-    exe = 'claude.exe' if os.name == 'nt' else 'claude'
-    default = os.path.join(_USERPROFILE, '.local', 'bin', exe)
-    if os.path.exists(default):
-        return default
-    for name in (exe, 'claude'):
-        found = shutil.which(name)
-        if found:
-            return found
-    return None
+    """Locate the Claude Code binary. None if missing.
+
+    Thirty-five callers spell it this way and every one of them means Claude
+    Code specifically, so the name stays; the resolution moved to
+    `harnesses.exe`, which does the same three steps for any harness. Imported
+    inside the function because harnesses reads settings from here.
+    """
+    from .harnesses import exe
+    return exe('claude')
 
 # ── ANSI colors ──────────────────────────────────────────────
 C_RESET  = '\033[0m'

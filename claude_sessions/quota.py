@@ -88,21 +88,21 @@ def _cfgdir_of(env):
 
 
 def is_inference(args):
-    """True only for `claude … -p/--print`, i.e. a call that spends quota.
+    """True for a call that spends model quota, whichever harness it names.
 
-    Checked before anything is imported, so a `git` call through a shared
-    runner costs one basename() and never drags `usage` (and with it urllib and
-    ssl) into a caller that must stay import-light.
+    Still an argv test and not a flag on the call: the five wrappers that reach
+    preflight each spawn BOTH inference and management commands — `claude -p`
+    and `claude mcp list` go through the same `ui.run_with_progress` — so the
+    caller does not always know. What was wrong with it was never the sniff; it
+    was that the shape it looked for belonged to one harness and was written
+    here. `harnesses` owns that now, and each descriptor states its own.
+
+    Still cheap enough for the import-light callers: harnesses imports config,
+    which this module already has, and never touches `usage` (and with it
+    urllib and ssl).
     """
-    # ponytail: argv sniff, not a typed call — revisit if a management
-    # subcommand ever grows -p
-    try:
-        first = str(args[0] or '')
-    except (IndexError, TypeError, KeyError):
-        return False
-    if not os.path.basename(first).lower().startswith('claude'):
-        return False
-    return any(a in ('-p', '--print') for a in list(args)[1:])
+    from .harnesses import is_inference as _is
+    return _is(args)
 
 
 def worst_window(cfgdir=None):
