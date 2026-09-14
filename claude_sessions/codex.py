@@ -308,3 +308,47 @@ PERMS = {
     'bypassPermissions': 'never',
     'default': 'on-request',
 }
+
+
+def models(home):
+    """Every model this Codex install has actually been pointed at, newest use
+    first, plus whatever `config.toml` names as the default.
+
+    READ, never invented. The binary carries a dozen `gpt-5.*` strings and a
+    static copy of them would be wrong the first time `codex update` runs — the
+    same reason `checkpoints.py` refuses to decode a store it does not own. What
+    IS reliable is what Codex itself recorded: one row per thread, each naming
+    the model it ran on. A fresh install answers with the config default alone,
+    or with nothing, and the picker is a free-text box either way.
+    """
+    seen = []
+    for r in sorted(_rows(home), key=lambda r: -(r['updated_at_ms'] or 0)):
+        m = (r['model'] or '').strip()
+        if m and m not in seen:
+            seen.append(m)
+    cfg = _config_model(home)
+    if cfg and cfg not in seen:
+        seen.insert(0, cfg)
+    return seen
+
+
+def _config_model(home):
+    """`model = "..."` from config.toml, or ''.
+
+    One regex rather than a TOML parser: the file is another program's, the
+    stdlib's `tomllib` would raise on a shape this version does not know, and
+    the answer is a suggestion in a picker — a miss costs nothing and a crash
+    costs the modal.
+    """
+    import re
+    try:
+        with open(os.path.join(home or '', 'config.toml'),
+                  encoding='utf-8', errors='ignore') as f:
+            head = f.read(65536)
+    except OSError:
+        return ''
+    # top-level only: a `[profiles.x]` section may name its own model, and that
+    # one is not what a bare `codex` run uses
+    top = head.split('\n[', 1)[0]
+    m = re.search(r'(?m)^\s*model\s*=\s*["\']([^"\']+)["\']', top)
+    return m.group(1) if m else ''

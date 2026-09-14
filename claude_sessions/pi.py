@@ -297,3 +297,52 @@ def launch_argv(exe, choice, opts, cwd):
 #: have is dropped rather than rounded — pi then uses its own default, which is
 #: the honest answer to "this CLI does not have that setting".
 THINKING = ('off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max')
+
+
+#: how many recent sessions to read a model out of. A session's model is in its
+#: `model_change` entry, a couple of lines in, so this is cheap — but it is a
+#: file open per session and the list is a picker suggestion, not a report.
+_MODEL_SCAN = 25
+
+
+def models(home):
+    """Every model this pi install has been pointed at, newest first, plus the
+    ids declared in its own `models.json`.
+
+    `pi --list-models` is the real catalogue and it is deliberately not called:
+    it needs the provider to be logged in, and spawning a node CLI to fill a
+    picker is a second of latency on every modal open. What archeus has for
+    free is what pi recorded — and a custom provider the user configured, which
+    is the case `--list-models` would not cover either until they log in.
+    """
+    seen = []
+    files = sorted((f for d in _dirs(home) for f in _files(d)), reverse=True)
+    for _m, p in files[:_MODEL_SCAN]:
+        for obj in _t.iter_json(p, limit=6, max_bytes=65536):
+            mid = obj.get('modelId') if obj.get('type') == 'model_change' else ''
+            if mid and mid not in seen:
+                seen.append(mid)
+    for mid in _declared_models(home):
+        if mid not in seen:
+            seen.append(mid)
+    return seen
+
+
+def _declared_models(home):
+    """Model ids from `<home>/models.json` — how pi is told about Ollama, vLLM
+    or any other OpenAI-compatible server. Its shape is documented
+    (`providers: {name: {models: [{id}]}}`); anything else is read as none."""
+    import json
+    try:
+        with open(os.path.join(home or '', 'models.json'),
+                  encoding='utf-8', errors='ignore') as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return []
+    out = []
+    for prov in (data.get('providers') or {}).values():
+        for m in ((prov or {}).get('models') or []):
+            mid = (m or {}).get('id')
+            if mid:
+                out.append(mid)
+    return out

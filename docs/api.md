@@ -39,6 +39,7 @@ a handler sees them; a missing or malformed one is a 400.
 | `/api/extra-paths` | `api_extra_paths_get` | — |
 | `/api/global-claude-md` | `api_global_claude_md` | The account-global CLAUDE.md Claude reads in every session. |
 | `/api/graph-lite` | `api_graph_lite` | Compact project shape for the ambient motion layer. |
+| `/api/harness/models` | `api_harness_models` | What one CLI can be launched against: its model suggestions, its effort |
 | `/api/health` | `api_health` | Project health — 229 lines of checks that were a README headline and had |
 | `/api/history` | `api_history` | Every replaced version archeus still holds, newest first. |
 | `/api/history/diff` | `api_history_diff` | — |

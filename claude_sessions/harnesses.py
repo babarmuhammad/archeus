@@ -120,6 +120,15 @@ HARNESSES = {
         #: not by translating it.
         'skills_rel': ('skills',),
         'project_skills_rel': ('.claude', 'skills'),
+        #: the effort scale this CLI actually accepts, and where its model list
+        #: comes from. Both are the harness's own: Claude Code's `--effort`
+        #: takes `max` and `ultracode`, which Codex rejects, and a priced
+        #: Anthropic model card means nothing next to `gpt-5.5`. '' is the
+        #: leading 'default' stop in every scale.
+        'efforts': ('', 'low', 'medium', 'high', 'xhigh', 'max', 'ultracode'),
+        #: '' = the live Anthropic catalogue `gui` already ships; anything else
+        #: is a dotted name resolved through `impl`.
+        'models': '',
         'caps': {},                       # it can do everything; it is the model
     },
     'codex': {
@@ -152,6 +161,10 @@ HARNESSES = {
         #: `.agents/skills` is the CROSS-HARNESS convention, which is why
         #: pi names the same directory: one copy in a project serves both.
         'project_skills_rel': ('.agents', 'skills'),
+        #: `minimal` at the bottom and no `max`/`ultracode` — read out of the
+        #: binary's own enum, not assumed from Claude Code's.
+        'efforts': ('', 'minimal', 'low', 'medium', 'high', 'xhigh'),
+        'models': 'codex.models',
         #: what archeus cannot do HERE, and why — the reason is what the screen
         #: prints, so each says which side the gap is on. The first group is
         #: structural (Codex has no such thing); the second is archeus reading
@@ -218,6 +231,10 @@ HARNESSES = {
         'launch_argv': 'pi.launch_argv',
         'skills_rel': ('skills',),
         'project_skills_rel': ('.agents', 'skills'),
+        #: `--thinking` takes a LEVEL, and the scale is its own: `off` at the
+        #: bottom and `max` at the top, with no `ultracode`.
+        'efforts': ('', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'),
+        'models': 'pi.models',
         #: pi's gaps are wider than Codex's and differently shaped: it has no
         #: MCP and no hooks AT ALL (extensions are TypeScript modules it loads
         #: itself). `skills` is not listed because archeus installs into pi's

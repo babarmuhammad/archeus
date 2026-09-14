@@ -10,8 +10,8 @@ description: >-
 
 ⚙ Settings → **Which tools archeus shows**, and the tab strip on **New session**.
 
-archeus began as a workspace layer for Claude Code. It now reads three coding CLIs, and
-the distinction that makes that work is worth stating once:
+archeus began with one coding CLI behind it. It now reads three, and the distinction that
+makes that work is worth stating once:
 
 - a **provider** is an endpoint. [Model providers](providers.md) repoint `ANTHROPIC_BASE_URL`
   and the same `claude` binary talks to a different model.

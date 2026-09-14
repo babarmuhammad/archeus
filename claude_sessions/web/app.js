@@ -6706,6 +6706,10 @@ function setPinMode(on){
   if(on&&!cardVal($('#fModel'))){const [m,e]=frontierRow();cardSet($('#fModel'),m);effortSet(e);}
 }
 function currentModelEffort(){
+  // a non-Claude harness answers from its own two controls: the catalogue the
+  // frontier slider and the model cards are built from is Anthropic's
+  if(targetRow(TARGET).hid!=='claude')
+    return [($('#fOwnModel')||{}).value?.trim()||'',chipVal($('#fOwnEffort'))];
   if($('#fPinModel').checked)return [cardVal($('#fModel')),effortVal()];
   const r=frontierRow();return [r[0],r[1]];
 }
@@ -6717,6 +6721,20 @@ function updateFrontierReadout(){
 }
 function updateHint(){
   const [m,e]=currentModelEffort();
+  /* Every reading below — the advisor, the retired-model list, the effort
+     profile, the permission note, the preset match — is keyed by an Anthropic
+     model id. Under another CLI they all miss, and the ones that miss LOUDLY
+     are the bug: `effort_profiles['xhigh']` is Claude Code's description of
+     Claude Code's xhigh, printed under a Codex session. Say what the target is
+     instead, and stop. */
+  if(targetRow(TARGET).hid!=='claude'){
+    const row=targetRow(TARGET);
+    $('#mHint').className='mhint adv-ok';
+    $('#mHint').textContent=(m||"this CLI's default model")
+      +(e?' · effort '+e:'')+' — '+row.label+' chooses the rest itself.';
+    markPreset();
+    return;
+  }
   const a=((ST.options.advice||{})[m]||{})[e]||['ok',''];
   let lvl=a[0],msg=a[1];
   /* A model you pinned that Anthropic has since retired is still IN the list —
@@ -6880,10 +6898,46 @@ function drawTargets(cfg){
   // the account chips are Claude Code's alone: a Codex or pi home is one login
   $('#fAcctWrap').style.display=
     (cfg.isNew&&row.hid==='claude'&&ST.accounts.length>1)?'':'none';
+  // and so are these two — they are `MAX_THINKING_TOKENS` and
+  // `CLAUDE_CODE_SUBAGENT_MODEL`, environment variables the other builders
+  // never write, so offering them would be offering a setting with no effect
+  for(const id of ['#fThink','#fSub']){
+    const w=$(id)&&$(id).closest('.fld');
+    if(w)w.style.display=row.hid==='claude'?'':'none';
+  }
   $('#fNameWrap').style.display=(cfg.isNew&&tcap('named_session').ok)?'':'none';
   $('#fWtWrap').style.display=(cfg.isNew&&tcap('worktree').ok)?'':'none';
   tfield('#fPermWrap','permission_modes');
   drawLaunchModel(row.provider||'');
+  drawOwnModel(row);
+}
+/* THE MODEL AND THE EFFORT ARE THE TARGET'S OWN. The block above them is
+   Anthropic's catalogue — priced cards, a frontier slider whose stops are
+   (model, effort) pairs an advisor has rated, presets over both — and none of
+   it survives a change of CLI: `--effort max` and `ultracode` are Claude
+   Code's and Codex rejects them, and a dollar-per-MTok row means nothing next
+   to `gpt-5.5`. A backend keeps the catalogue block, because a provider is the
+   same `claude` binary pointed elsewhere; only a different HARNESS swaps it. */
+async function drawOwnModel(row){
+  const own=row.hid!=='claude';
+  const cb=$('#fClaudeBlock'),ob=$('#fOwnBlock'),adv=$('#fPinBlock');
+  if(cb)cb.hidden=own;
+  if(ob)ob.hidden=!own;
+  // the Advanced pin block picks an Anthropic model + effort; under another
+  // CLI its two controls are the ones #fOwnBlock just replaced
+  const pin=$('#fPinModel')&&$('#fPinModel').closest('.pinrow');
+  if(pin)pin.style.display=own?'none':'';
+  if(adv&&own)adv.style.display='none';
+  if(!own)return;
+  const d=await api('/api/harness/models?'+qs({hid:row.hid}));
+  const dl=$('#fOwnModels');
+  if(dl)dl.innerHTML=(d.models||[]).map(m=>`<option value="${esc(m)}">`).join('');
+  const note=$('#fOwnModelNote');
+  if(note)note.textContent=(d.models||[]).length
+    ? '— '+(d.models.length===1?'the one':d.models.length+' this CLI has run; type any other')
+    : '— archeus has not seen this CLI run yet; type a model id';
+  const es=d.efforts||[''];
+  chipsFill($('#fOwnEffort'),es,es.map(e=>e||'default'),'');
 }
 /* the capabilities this form gates on. Named rather than "every off key",
    because the strip's note must not recite gaps about pages the modal has

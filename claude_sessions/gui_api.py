@@ -4030,6 +4030,36 @@ def api_statusline_set(q, body):
     return {'ok': ok, 'message': msg}
 
 
+def api_harness_models(q, body):
+    """What one CLI can be launched against: its model suggestions, its effort
+    scale, and what it last ran on.
+
+    Per harness because both answers are the harness's. `--effort max` and
+    `ultracode` are Claude Code's and Codex rejects them; a priced Anthropic
+    model card means nothing next to `gpt-5.5`. And the models are READ out of
+    each CLI's own state rather than listed here — a static copy goes stale the
+    first time that CLI updates, which is the mistake `checkpoints.py` documents.
+
+    `models` is a suggestion list, never a constraint: the field it fills is
+    free text, so a model archeus has not seen is still reachable.
+    """
+    from . import harnesses as _h
+    hid = str((q or {}).get('hid') or '')
+    d = _h.descriptor(hid)
+    if d['id'] == _h.DEFAULT:
+        # Claude Code's catalogue is live, priced and already in the boot
+        # payload; sending a second copy would be two lists to keep in step.
+        return {'hid': d['id'], 'models': [], 'efforts': list(d['efforts']),
+                'catalogue': True}
+    got = []
+    if d.get('models'):
+        try:
+            got = _h.impl('models', d['id'])(_h.home_dir(d['id'])) or []
+        except Exception:
+            got = []
+    return {'hid': d['id'], 'models': got, 'efforts': list(d['efforts']),
+            'catalogue': False}
+
 GET_ROUTES = {
     '/api/transcript': api_transcript,
     '/api/session/meta': api_session_meta,
@@ -4099,6 +4129,7 @@ GET_ROUTES = {
     '/api/loop-md': api_loop_md_get,
     '/api/loops': api_loops,
     '/api/provider/status': api_provider_status,
+    '/api/harness/models': api_harness_models,
     '/api/provider/models': api_provider_models,
     '/api/plan/last': api_plan_last,
 }

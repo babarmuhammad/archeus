@@ -774,6 +774,18 @@ class H(BaseHTTPRequestHandler):
                 return
             self._raw(*got)
             return
+        # per-harness launch options, answered from the REAL registry: a stub
+        # that invented one effort list would audit a form whose scale can
+        # never be wrong, which is the whole failure this endpoint exists for
+        if p == '/api/harness/models':
+            from urllib.parse import parse_qs as _pq
+            hid = (_pq(self.path.split('?', 1)[-1]).get('hid') or [''])[0]
+            d = _TH_H.descriptor(hid)
+            self._j({'hid': d['id'], 'efforts': list(d['efforts']),
+                     'catalogue': d['id'] == 'claude',
+                     'models': {'codex': ['gpt-5.5', 'gpt-5.4-mini'],
+                                'pi': ['anthropic/claude-sonnet-5']}.get(d['id'], [])})
+            return
         self._j(ROUTES.get(p, {}))
 
     def do_POST(self):
@@ -2110,6 +2122,42 @@ def main():
               != 'none')
         check('a CLI tab hides the Claude account chips',
               pg.evaluate("document.getElementById('fAcctWrap').style.display") == 'none')
+        # -- each CLI brings its own models and its own effort scale --
+        # Everything in the Claude block is Anthropic's: priced model cards, a
+        # frontier slider whose stops are (model, effort) pairs an advisor has
+        # rated, presets over both, and a hint keyed by an Anthropic model id.
+        # Showing that under a Codex session is not a cosmetic mismatch — it
+        # offers `--effort ultracode`, which Codex rejects outright.
+        check('the Anthropic catalogue block is swapped out',
+              pg.evaluate("document.getElementById('fClaudeBlock').hidden") is True
+              and pg.evaluate("document.getElementById('fOwnBlock').hidden") is False)
+        effs = pg.evaluate("[...document.querySelectorAll('#fOwnEffort .chip')]"
+                           ".map(c=>c.dataset.v)")
+        check("pi gets ITS effort scale, not Claude Code's",
+              effs == ['', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+              effs)
+        mods = pg.evaluate("[...document.querySelectorAll('#fOwnModels option')]"
+                           ".map(o=>o.value)")
+        check('…and the models this CLI has actually run',
+              mods == ['anthropic/claude-sonnet-5'], mods)
+        check('the two Claude-only environment settings are gone too',
+              pg.evaluate("document.getElementById('fThink').closest('.fld').style.display")
+              == 'none')
+        pg.evaluate("pickTarget('codex')")
+        pg.wait_for_timeout(500)
+        effs = pg.evaluate("[...document.querySelectorAll('#fOwnEffort .chip')]"
+                           ".map(c=>c.dataset.v)")
+        check('Codex gets a different one again — no max, no ultracode',
+              effs == ['', 'minimal', 'low', 'medium', 'high', 'xhigh'], effs)
+        pg.evaluate("(()=>{const i=document.getElementById('fOwnModel');"
+                    "i.value='gpt-5.4-mini';})();"
+                    "document.querySelector('#fOwnEffort .chip[data-v=\"high\"]').click()")
+        pg.wait_for_timeout(200)
+        check("the launch reads the CLI's own pair, not the frontier slider",
+              pg.evaluate("currentModelEffort()") == ['gpt-5.4-mini', 'high'])
+        check('the hint stops quoting Anthropic advice',
+              'Codex chooses the rest itself'
+              in pg.evaluate("document.getElementById('mHint').textContent"))
         # and a backend is still the same binary, so it keeps everything
         pg.evaluate("pickTarget('provider:p2')")
         pg.wait_for_timeout(700)

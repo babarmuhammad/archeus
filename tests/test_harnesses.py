@@ -610,3 +610,123 @@ def test_every_harness_names_where_its_skills_live():
         'codex': ('.agents', 'skills'),
         'pi': ('.agents', 'skills'),
     }
+
+
+# ── each CLI's own models and options ────────────────────────
+
+def test_every_harness_declares_the_effort_scale_it_accepts():
+    """Not Claude Code's. `--effort max` and `ultracode` are Claude Code's own
+    and Codex rejects them outright; pi's scale is a `--thinking` LEVEL that
+    starts at `off`. Offering the wrong one is not a cosmetic mismatch — it is
+    a flag the CLI refuses."""
+    got = {hid: harnesses.descriptor(hid)['efforts'] for hid in harnesses.ids()}
+    assert got['claude'] == ('', 'low', 'medium', 'high', 'xhigh', 'max', 'ultracode')
+    assert got['codex'] == ('', 'minimal', 'low', 'medium', 'high', 'xhigh')
+    assert got['pi'] == ('', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max')
+    for hid, scale in got.items():
+        assert scale[0] == '', '%s has no default stop' % hid
+        assert len(set(scale)) == len(scale), '%s repeats a level' % hid
+
+
+def test_claude_codes_effort_scale_is_the_one_config_already_had():
+    """Declared in the descriptor now, but it may not become a SECOND copy of
+    the list the launch options, the settings page and the TUI all read."""
+    assert list(harnesses.descriptor('claude')['efforts']) == list(c.EFFORTS)
+
+
+def test_a_model_list_is_read_from_the_cli_never_listed_here(monkeypatch, tmp_path):
+    """The Codex binary carries a dozen `gpt-5.*` strings and a static copy of
+    them is wrong the first time `codex update` runs — the mistake
+    `checkpoints.py` documents. What is reliable is what the CLI itself
+    recorded, and a fresh install honestly answers with nothing."""
+    from harness import Sandbox
+    from claude_sessions import codex, pi
+    sb = Sandbox(monkeypatch, tmp_path)
+    # the VALUES, not the source text: a model id may legitimately appear in a
+    # comment explaining why it is not in the data, which is where the first cut
+    # of this check tripped over its own prose
+    for hid, d in harnesses.HARNESSES.items():
+        assert isinstance(d['models'], str), '%s inlines a model list' % hid
+        assert 'gpt' not in d['models'] and 'claude-' not in d['models'], hid
+    assert codex.models(os.path.join(str(sb.root), 'nothing')) == []
+    assert pi.models(os.path.join(str(sb.root), 'nothing')) == []
+
+
+def test_codex_offers_what_it_has_run_and_what_its_config_names(monkeypatch, tmp_path):
+    import io as _io
+    from harness import Sandbox
+    from claude_sessions import codex
+    from test_codex import codex_home
+    sb = Sandbox(monkeypatch, tmp_path)
+    home = codex_home(sb.root, [('s1', 'C:/w/a', 1, 0)])
+    cfg = os.path.join(home, 'config.toml')
+    _io.open(cfg, 'w', encoding='utf-8').write(
+        'notify = []\nmodel = "gpt-5.5-pro"\n\n'
+        '[profiles.other]\nmodel = "not-the-default"\n')
+    got = codex.models(home)
+    assert got[0] == 'gpt-5.5-pro'          # the config default leads
+    assert 'gpt-5.5' in got                 # …and what it actually ran follows
+
+    # a config whose ONLY `model` sits inside a profile. `-p <name>` layers that
+    # file over the base, so a bare `codex` run does not use it — and this is
+    # the shape that tells the two readings apart: with both keys present the
+    # regex finds the right one first either way.
+    _io.open(cfg, 'w', encoding='utf-8').write(
+        'notify = []\n\n[profiles.other]\nmodel = "not-the-default"\n')
+    assert codex._config_model(home) == ''
+    assert 'not-the-default' not in codex.models(home)
+
+
+def test_pi_offers_what_it_has_run_and_what_its_models_json_declares(monkeypatch, tmp_path):
+    """`pi --list-models` is the real catalogue and is deliberately not called:
+    it needs the provider logged in, and spawning a node CLI to fill a picker is
+    a second of latency on every modal open. A custom provider in `models.json`
+    is the case that command would not cover anyway until you log in."""
+    import io as _io
+    import json as _json
+    from harness import Sandbox
+    from claude_sessions import pi
+    from test_pi import pi_home
+    sb = Sandbox(monkeypatch, tmp_path)
+    home = pi_home(sb.root, [('s1', 'C:/w/a', 1)])
+    _io.open(os.path.join(home, 'models.json'), 'w', encoding='utf-8').write(
+        _json.dumps({'providers': {'ollama': {'models': [{'id': 'qwen2.5-coder:7b'}]}}}))
+    got = pi.models(home)
+    assert got[0] == 'claude-sonnet-4-5'        # what it ran, newest first
+    assert 'qwen2.5-coder:7b' in got            # …then what the user declared
+
+
+def test_a_malformed_config_is_a_miss_not_a_crash(monkeypatch, tmp_path):
+    """Both files belong to another program. The answer fills a picker, so a
+    miss costs nothing and an exception costs the whole modal."""
+    import io as _io
+    from harness import Sandbox
+    from claude_sessions import codex, pi
+    sb = Sandbox(monkeypatch, tmp_path)
+    home = os.path.join(str(sb.root), '.codex')
+    os.makedirs(home, exist_ok=True)
+    _io.open(os.path.join(home, 'config.toml'), 'w', encoding='utf-8').write('{[not toml')
+    assert codex._config_model(home) == ''
+    ph = os.path.join(str(sb.root), '.pi', 'agent')
+    os.makedirs(ph, exist_ok=True)
+    _io.open(os.path.join(ph, 'models.json'), 'w', encoding='utf-8').write('not json')
+    assert pi._declared_models(ph) == []
+
+
+def test_the_endpoint_answers_per_harness(monkeypatch, tmp_path):
+    """One endpoint, asked by harness id, because both halves of the answer are
+    the harness's. Claude Code's catalogue is live, priced and already in the
+    boot payload, so it is NOT sent a second time — two lists to keep in step
+    is the bug `docs/gui-audit.md` was deleted for."""
+    from harness import Sandbox
+    from claude_sessions import gui_api
+    Sandbox(monkeypatch, tmp_path)
+    got = gui_api.call(gui_api.api_harness_models, {'hid': 'claude'})
+    assert got['catalogue'] is True and got['models'] == []
+    assert got['efforts'] == list(c.EFFORTS)
+    for hid in ('codex', 'pi'):
+        got = gui_api.call(gui_api.api_harness_models, {'hid': hid})
+        assert got['catalogue'] is False
+        assert got['efforts'] == list(harnesses.descriptor(hid)['efforts'])
+    # an id from a newer version must not blank the form
+    assert gui_api.call(gui_api.api_harness_models, {'hid': 'wat'})['hid'] == 'claude'

@@ -231,11 +231,24 @@
     <div class="tabs mtabs" id="fTarget"></div>
     <div class="fsub" id="fTargetNote"></div>
     <div>
-      <div class="fld"><label>Quick start</label><div class="presetrow" id="fPresets"></div></div>
-      <div class="fld"><label>Power</label>
-        <input type="range" id="fFrontier" min="0" step="1">
-        <div class="frontends"><span>Cheap &amp; fast</span><span>Max power</span></div>
-        <div class="frontread" id="fFrontRead"></div>
+      <!-- Anthropic's catalogue: priced model cards, a frontier slider whose
+           stops are (model, effort) pairs the advisor rates, and presets over
+           both. None of it means anything for another CLI, so the whole block
+           is swapped for that CLI's own two questions. -->
+      <div id="fClaudeBlock">
+        <div class="fld"><label>Quick start</label><div class="presetrow" id="fPresets"></div></div>
+        <div class="fld"><label>Power</label>
+          <input type="range" id="fFrontier" min="0" step="1">
+          <div class="frontends"><span>Cheap &amp; fast</span><span>Max power</span></div>
+          <div class="frontread" id="fFrontRead"></div>
+        </div>
+      </div>
+      <div id="fOwnBlock" hidden>
+        <div class="fld"><label>Model <span id="fOwnModelNote"></span></label>
+          <input id="fOwnModel" list="fOwnModels" placeholder="leave blank for this CLI's default"
+                 spellcheck="false" autocomplete="off">
+          <datalist id="fOwnModels"></datalist></div>
+        <div class="fld"><label>Effort</label><div class="chips" id="fOwnEffort"></div></div>
       </div>
       <div class="mhint" id="mHint"></div>
       <details class="adv">
