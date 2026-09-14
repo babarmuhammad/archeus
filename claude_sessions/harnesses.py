@@ -159,6 +159,71 @@ HARNESSES = {
             'skills':        (False, 'Codex loads skills from its own roots.'),
         },
     },
+    'pi': {
+        'id': 'pi',
+        'label': 'pi',
+        #: npm installs a `.cmd` shim on Windows and a shebang script beside
+        #: it; `shutil.which` finds whichever the shell would run.
+        'exe_names': ('pi.cmd', 'pi.exe', 'pi') if os.name == 'nt' else ('pi',),
+        'exe_setting': 'pi_exe',
+        'home_env': 'PI_CODING_AGENT_DIR',
+        #: TWO components, unlike the other two: pi's home is `~/.pi/agent`,
+        #: and `~/.pi` holds other things. `home_rel` was always a tuple for
+        #: exactly this.
+        'home_rel': ('.pi', 'agent'),
+        #: pi reads AGENTS.md *and* CLAUDE.md, walking up the tree. AGENTS.md
+        #: is what archeus writes: it is the file pi shares with Codex, so one
+        #: block serves both, and writing CLAUDE.md here would put a second
+        #: copy of the same block in front of Claude Code.
+        'instructions_file': 'AGENTS.md',
+        'inference_flags': ('-p', '--print'),
+        'inference_verbs': (),
+        #: pi resolves a key per provider and the flag is per provider too, so
+        #: there is no single variable to clear the way ANTHROPIC_API_KEY
+        #: shadows a Claude login. Its own `auth.json` under the home is the
+        #: login, and pointing at a home therefore picks one.
+        'env_pops': (),
+        #: npm's global bin. Not `.local/bin`: pi ships as an npm package, and
+        #: `npm prefix -g` is where its shim lands.
+        'exe_globs': ('AppData/Roaming/npm/%s',) if os.name == 'nt' else (
+            '.local/bin/%s', '.npm-global/bin/%s'),
+        'fold': 'pi.fold',
+        'scan': 'pi.scan',
+        'transcript_path': 'pi.transcript_path',
+        'projects': 'pi.projects',
+        'has_project': 'pi.has_project',
+        #: pi's gaps are wider than Codex's and differently shaped: it has no
+        #: MCP and no hooks AT ALL (extensions are TypeScript modules it loads
+        #: itself), but its skills ARE Claude Code's — `~/.claude/skills` is one
+        #: of the roots it discovers, which is why `skills` is not listed here.
+        'caps': {
+            'archive':       (False, 'pi has no archive; a session is deleted '
+                                     'or kept.'),
+            'checkpoints':   (False, 'pi branches inside one session file '
+                                     'instead of snapshotting files.'),
+            'hooks':         (False, 'pi has no hooks; it loads TypeScript '
+                                     'extensions instead.'),
+            'mcp':           (False, 'pi has no MCP client.'),
+            'plugins':       (False, 'pi installs extension packages with '
+                                     '`pi install`, not marketplaces.'),
+            'agents':        (False, 'pi has no subagents.'),
+            'output_styles': (False, 'Output styles are a Claude Code feature.'),
+            'client_state':  (False, 'pi records no equivalent of '
+                                     '.claude.json.'),
+            'accounts':      (False, 'archeus manages Claude logins; pi keeps '
+                                     'one auth.json per home.'),
+            'usage':         (False, "pi bills per provider; this page reads "
+                                     "Anthropic's."),
+            'versions':      (False, 'pi updates itself with `pi update`.'),
+            #: `recall` and `statusline` are NOT declared, though pi has
+            #: neither. Both are already covered — recall by `hooks`, which is
+            #: what runs it — and neither has a surface that could grey: the
+            #: statusline card is per Claude ACCOUNT, and pi never appears on
+            #: it. A capability nothing reads is a promise nothing keeps, which
+            #: `test_a_capability_some_harness_lacks_is_consumed_by_something`
+            #: is there to catch.
+        },
+    },
 }
 
 
@@ -293,6 +358,28 @@ def exe(hid=None):
         if found:
             return found
     return None
+
+
+def instructions_files():
+    """Every instructions file an INSTALLED harness reads, deduped, Claude
+    Code's first.
+
+    The memory digest goes into each of them, which is the whole point of one
+    graph behind three CLIs: the block is archeus's, the graph is the project's,
+    and which binary is about to read it is not the memory layer's business.
+
+    Gated on `instances()` rather than on the table, so a machine with no Codex
+    never grows an `AGENTS.md` it has no reader for. pi reads BOTH files and
+    therefore needs no entry of its own beyond the one it declares — writing a
+    second copy of the same block for it is what a per-harness fan-out would
+    have done.
+    """
+    out = []
+    for _n, _d, hid in instances():
+        f = descriptor(hid)['instructions_file']
+        if f not in out:
+            out.append(f)
+    return out or [descriptor(DEFAULT)['instructions_file']]
 
 
 def cap(hid, key):

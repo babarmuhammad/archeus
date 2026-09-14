@@ -170,8 +170,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _declared_caps():
-    """Every capability key named by a surface: the GUI's NAV and TABS tables
-    and the terminal menu's MAIN_CAPS."""
+    """Every capability key named by a surface: the GUI's NAV and TABS tables,
+    its per-row `capBtn` calls, and the terminal menu's MAIN_CAPS.
+
+    `capBtn` is the third source because not every capability is a PAGE. A
+    harness that cannot archive has a page full of sessions it can still open —
+    the gap is one button on a row, gated on that row's own cfgdir, because a
+    project worked in under two CLIs lists both.
+    """
     import re
     from claude_sessions.main import MAIN_CAPS
     js = io.open(os.path.join(ROOT, 'claude_sessions', 'web', 'app.js'),
@@ -184,6 +190,7 @@ def _declared_caps():
                                re.M | re.S):
             if row.group(1):
                 out.add(row.group(1))
+    out |= set(re.findall(r"capBtn\('([a-z_]+)'", js))
     return out
 
 
@@ -317,3 +324,104 @@ def test_folding_a_claude_record_still_fills_the_same_keys(tmp_path):
     assert s['models'] == ['claude-sonnet-5']
     assert s['usage_by_model']['claude-sonnet-5']['in'] == 3
     assert s['count'] == 1 and s['first_ts'] is not None
+
+
+# ── one memory graph, every instructions file ────────────────
+
+def _installed(monkeypatch, *hids):
+    """Pretend exactly these harnesses have a binary. `instances()` asks
+    `exe()`, which is the whole gate on a home being an installation."""
+    monkeypatch.setattr(harnesses, 'exe', lambda hid=None: 'x' if hid in hids else None)
+    monkeypatch.setattr(c, 'all_config_dirs', lambda: [('default', 'C:/cfg')])
+
+
+def test_only_an_installed_harness_asks_for_its_own_file(monkeypatch):
+    """A machine with no Codex must not grow an `AGENTS.md` it has no reader
+    for. The set follows what is installed, not what the table knows about."""
+    _installed(monkeypatch)
+    assert harnesses.instructions_files() == ['CLAUDE.md']
+    _installed(monkeypatch, 'codex')
+    assert harnesses.instructions_files() == ['CLAUDE.md', 'AGENTS.md']
+
+
+def test_claude_codes_file_stays_first(monkeypatch):
+    """`write_memory_block` returns the FIRST file's (ok, old, new) and
+    `sync_to_claudemd` hands that to `diffview.record` — a diff of three files
+    at once is not a thing that screen can show."""
+    _installed(monkeypatch, 'codex', 'pi')
+    assert harnesses.instructions_files()[0] == 'CLAUDE.md'
+
+
+def test_two_harnesses_reading_one_file_do_not_get_two_copies(monkeypatch):
+    """pi reads AGENTS.md *and* CLAUDE.md, and Codex reads AGENTS.md. A
+    per-harness fan-out would write the same block into AGENTS.md twice — the
+    second call landing on a file that already has both sentinels, which
+    `upsert_block` would replace rather than duplicate, so the bug would have
+    been invisible until the two writers disagreed."""
+    _installed(monkeypatch, 'codex', 'pi')
+    files = harnesses.instructions_files()
+    assert files == sorted(set(files), key=files.index)
+    assert files == ['CLAUDE.md', 'AGENTS.md']
+
+
+def test_the_memory_block_lands_in_every_one_of_them(monkeypatch, tmp_path):
+    """The user-visible claim: one graph behind three CLIs. The digest is
+    archeus's, the graph is the project's, and which binary is about to read it
+    is not the memory layer's business."""
+    from claude_sessions import claude_md
+    _installed(monkeypatch, 'codex', 'pi')
+    proj = str(tmp_path)
+    ok, _old, _new = claude_md.write_memory_block(proj, '- alpha — a thing')
+    assert ok
+    for name in ('CLAUDE.md', 'AGENTS.md'):
+        text = io.open(os.path.join(proj, name), encoding='utf-8').read()
+        assert '- alpha — a thing' in text, name
+        assert c._MEMORY_START in text and c._MEMORY_END in text, name
+
+
+def test_a_second_file_that_cannot_be_written_is_a_failure(monkeypatch, tmp_path):
+    """`ok` is the AND over all of them. Reporting success on the first would
+    leave half the harnesses reading a stale digest with nothing on screen
+    saying so."""
+    from claude_sessions import claude_md
+    _installed(monkeypatch, 'codex')
+    real = c.write_atomic
+    monkeypatch.setattr(c, 'write_atomic',
+                        lambda p, t, *a, **k: False if p.endswith('AGENTS.md')
+                        else real(p, t, *a, **k))
+    ok, _old, _new = claude_md.write_memory_block(str(tmp_path), '- alpha')
+    assert ok is False
+    assert os.path.exists(os.path.join(str(tmp_path), 'CLAUDE.md'))
+
+
+def test_the_block_writer_takes_a_filename_rather_than_being_copied(monkeypatch, tmp_path):
+    """`upsert_block` is the only writer for all three machine-maintained
+    blocks and its seam handling is the fiddly half — a plain slice grows a
+    blank line on every rewrite. A second harness gets one more argument here,
+    never a second copy of this function."""
+    import inspect
+    from claude_sessions import claude_md
+    sig = inspect.signature(claude_md.upsert_block)
+    assert 'filename' in sig.parameters
+    assert sig.parameters['filename'].default == 'CLAUDE.md'
+    # idempotent in the second file too, or the leak comes back one file over
+    _installed(monkeypatch, 'codex')
+    claude_md.write_memory_block(str(tmp_path), '- alpha')
+    first = io.open(os.path.join(str(tmp_path), 'AGENTS.md'), encoding='utf-8').read()
+    claude_md.write_memory_block(str(tmp_path), '- alpha')
+    assert io.open(os.path.join(str(tmp_path), 'AGENTS.md'), encoding='utf-8').read() == first
+
+
+def test_the_routing_table_does_not_follow_the_memory_block(monkeypatch, tmp_path):
+    """Delegation is a Claude Code capability — both other harnesses declare
+    `agents: False`. Writing "delegate with the Agent tool" into AGENTS.md
+    would instruct Codex to use a tool it does not have."""
+    from claude_sessions import agents
+    _installed(monkeypatch, 'codex')
+    os.makedirs(os.path.join(str(tmp_path), '.claude', 'agents'), exist_ok=True)
+    io.open(os.path.join(str(tmp_path), '.claude', 'agents', 'a.md'), 'w',
+            encoding='utf-8').write('---\nname: a\ndescription: does a\n---\nbody\n')
+    agents.write_routing_block(str(tmp_path))
+    assert c._AGENTS_START in io.open(
+        os.path.join(str(tmp_path), 'CLAUDE.md'), encoding='utf-8').read()
+    assert not os.path.exists(os.path.join(str(tmp_path), 'AGENTS.md'))

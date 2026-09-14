@@ -902,6 +902,20 @@ function capSupporters(key){
   return (ST.harnesses||[]).filter(h=>{
     const c=h.caps&&h.caps[key];return !c||c[0];}).map(h=>h.label);
 }
+/* A button the harness behind THIS row may not have. Kept selectable and
+   titled with the reason, exactly as a greyed nav row is: a button that
+   disappears teaches nothing, and one that errors reads as a bug in archeus.
+   `cfgdir` is the SESSION's, not the page's — a project worked in under two
+   CLIs lists both, so the answer is per row. */
+function capBtn(key,cfgdir,onclick,label){
+  const c=capOf(key,cfgdir);
+  return `<button class="btn sm${c.ok?'':' off'}" onclick="${c.ok?onclick:`capWhy(${hesc(key)},${hesc(cfgdir||'')})`}"
+    ${c.ok?'':`title="${esc(c.why)}"`}>${label}</button>`;
+}
+function capWhy(key,cfgdir){
+  const c=capOf(key,cfgdir),on=capSupporters(key);
+  toast((c.why||'Not available here')+(on.length?' Supported on: '+on.join(', ')+'.':''),'err');
+}
 function capCard(key,why){
   const on=capSupporters(key);
   return `<div class="card"><h3>${ic('info')} Not available here</h3>
@@ -2151,10 +2165,10 @@ function seSel(i){
       <button class="btn sm" onclick="viewS(${i})">${ic('doc')} Transcript</button>
       <button class="btn sm" onclick="exportS(${i})">${ic('download')} Export</button>
       <button class="btn sm" onclick="filesS(${i})">${ic('folder')} Changed files</button>
-      <button class="btn sm" onclick="ckptS(${i})">${ic('history')} Checkpoints</button>
+      ${capBtn('checkpoints',s.cfgdir,`ckptS(${i})`,ic('history')+' Checkpoints')}
       <button class="btn sm" onclick="tagS(${i})">${ic('label')} Tags</button>
       <button class="btn sm" onclick="renameS(${i})">Rename</button>
-      <button class="btn sm" onclick="archiveS(${i})">${ic('archive')} Archive</button>
+      ${capBtn('archive',s.cfgdir,`archiveS(${i})`,ic('archive')+' Archive')}
       <button class="btn sm" onclick="forkS(${i})">${ic('fork')} Fork</button>
       <button class="btn sm" onclick="handoffS(${i})"
         title="Start a new chat — in this or another account — seeded with this session's transcript as context">${ic('inject')} Hand off</button></div>

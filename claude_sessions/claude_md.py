@@ -14,6 +14,7 @@ from .config import (W, _AUTOGEN_START, _AUTOGEN_END, _SESSIONS_START, _SESSIONS
 from .config import get_claude_exe, open_in_editor
 from . import config as _cfg
 from . import config as _c
+from . import harnesses as _harnesses
 from .repos import _git      # pins encoding='utf-8' — see repos._git docstring
 from .sessions import get_session_info, get_session_rich_summary, read_extra_paths, format_age
 from .ui import text_input, _cls, wait_event, poll_event
@@ -34,15 +35,18 @@ _MACHINE_BLOCKS = ((_MEMORY_START, _MEMORY_END),
 _AI_ANALYZE_TIMEOUT = 900
 
 
-def upsert_block(project_path, start, end, section):
-    """Insert, replace or REMOVE one sentinel block in <project>/CLAUDE.md,
+def upsert_block(project_path, start, end, section, filename='CLAUDE.md'):
+    """Insert, replace or REMOVE one sentinel block in <project>/<filename>,
     leaving everything else (user prose, AUTOGEN, SESSIONS, other blocks)
     intact. `section` of '' deletes the block. Returns (ok, old, new).
 
-    Extracted because there are now two machine-maintained blocks — the memory
-    digest and the agent routing table — and the seam handling below is the
-    fiddly half nobody wants a second copy of."""
-    md_path = os.path.join(project_path, 'CLAUDE.md')
+    Extracted because there are now three machine-maintained blocks — the memory
+    digest, the agent routing table and the loop journal — and the seam handling
+    below is the fiddly half nobody wants a second copy of. `filename` is a
+    PARAMETER for the same reason: Codex reads `AGENTS.md` and pi reads both, so
+    a second harness needed one more argument here rather than one more copy of
+    this function."""
+    md_path = os.path.join(project_path, filename)
     old = ''
     if os.path.exists(md_path):
         try:
@@ -80,14 +84,33 @@ def upsert_block(project_path, start, end, section):
 
 
 def write_memory_block(project_path, digest):
-    """Insert/replace the ARCHEUS:MEMORY sentinel block in <project>/CLAUDE.md.
-    Returns (ok, old_content, new_content)."""
+    """Insert/replace the ARCHEUS:MEMORY block in every instructions file an
+    installed harness reads. Returns (ok, old, new) for the FIRST of them.
+
+    One graph, one digest, every CLI — the memory layer does not have a Claude
+    Code half and a Codex half, so its delivery may not either. Claude Code's
+    file is first in `instructions_files()`, which is what keeps the return
+    value the one every caller already had: `sync_to_claudemd` hands it to
+    `diffview.record`, and a diff of three files at once is not a thing that
+    screen can show.
+
+    `ok` is the AND over all of them. A second file that could not be written is
+    a real failure — half the harnesses would be reading a stale digest with
+    nothing on screen saying so.
+    """
     note = _c.generated_note("this project's semantic memory graph",
                              "the project's Memory tab -> Build with Claude")
     section = (f"{_MEMORY_START}\n## Project memory (archeus — auto-maintained)\n"
                f"{note}\n\n"
                f"{digest}\n{_MEMORY_END}\n")
-    return upsert_block(project_path, _MEMORY_START, _MEMORY_END, section)
+    first, ok = None, True
+    for name in _harnesses.instructions_files():
+        got = upsert_block(project_path, _MEMORY_START, _MEMORY_END, section,
+                           filename=name)
+        ok = ok and got[0]
+        if first is None:
+            first = got
+    return (ok,) + (first or (True, '', ''))[1:]
 
 
 def _valid_claude_md(text):
