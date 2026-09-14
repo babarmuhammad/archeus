@@ -18,6 +18,7 @@ from .ui import _cls
 from . import render
 from . import store
 from . import config as _c
+from . import harnesses as _harnesses
 
 
 def _workspace_status_cli():
@@ -958,16 +959,13 @@ def build_launch_command(path, encoded_name, choice, opts):
     cfgdir = opts.get('cfgdir') or config_dir
     proj_folder = store.project_folder(cfgdir, encoded_name) if encoded_name else None
 
-    env = os.environ.copy()
-    # Pin the account/config dir explicitly — overrides any ambient
-    # CLAUDE_CONFIG_DIR archeus itself may have been launched under.
-    env['CLAUDE_CONFIG_DIR'] = cfgdir
-    env['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'] = '1'
-    # launch-economy env: cap thinking tokens / route subagents to a cheap model
-    if opts.get('max_thinking'):
-        env['MAX_THINKING_TOKENS'] = str(opts['max_thinking'])
-    if opts.get('subagent_model'):
-        env['CLAUDE_CODE_SUBAGENT_MODEL'] = opts['subagent_model']
+    # Pins the home explicitly — overriding any ambient one archeus itself was
+    # launched under — and pops the key that would shadow that home's login.
+    # Both are per harness, which is why this is `account_env` and not two
+    # lines: `CLAUDE_CONFIG_DIR` means nothing to Codex, and clearing
+    # `ANTHROPIC_API_KEY` for it would be clearing the wrong one.
+    from .config import account_env
+    env = account_env(cfgdir)
     # OpenTelemetry export, if configured. archeus already owns the launch
     # environment, so this is the natural place for it — and it is the step from
     # a personal tool to one a team can point at a shared backend.
@@ -982,6 +980,26 @@ def build_launch_command(path, encoded_name, choice, opts):
 
     if choice == 'terminal':
         return None, env, proj_folder
+
+    # ── which CLI is being launched ───────────────────────────
+    # Everything ABOVE this line is archeus's: the project folder, the extra
+    # PATH, the telemetry, the home. Everything BELOW it is Claude Code's flag
+    # vocabulary, down to the last one — so a second harness gets its own short
+    # builder rather than a branch per flag through a hundred and forty lines.
+    d = _harnesses.of(cfgdir)
+    if d['id'] != _harnesses.DEFAULT:
+        exe = _harnesses.exe(d['id'])
+        if not exe:
+            raise RuntimeError('%s not found' % d['label'])
+        argv = _harnesses.impl('launch_argv', d['id'])(exe, choice, opts, path)
+        return argv, env, proj_folder
+
+    env['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'] = '1'
+    # launch-economy env: cap thinking tokens / route subagents to a cheap model
+    if opts.get('max_thinking'):
+        env['MAX_THINKING_TOKENS'] = str(opts['max_thinking'])
+    if opts.get('subagent_model'):
+        env['CLAUDE_CODE_SUBAGENT_MODEL'] = opts['subagent_model']
 
     claude = get_claude_exe()
     if not claude:

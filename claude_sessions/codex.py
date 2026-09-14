@@ -256,3 +256,55 @@ def _spend(p, s):
         seen = sum(m[k] for m in s['usage_by_model'].values())
         # a resumed rollout can restart the count; never bank a negative
         u[k] += max(0, cum[k] - seen)
+
+
+def launch_argv(exe, choice, opts, cwd):
+    """The argv that opens a Codex session. Codex's own vocabulary, not a
+    translation of Claude Code's — which is why this is here rather than a
+    branch inside `build_launch_command`.
+
+    Every verb is checked against `codex --help` on the installed binary:
+    `resume [SESSION_ID]` with `--last` for the most recent, `fork` the same
+    shape, and a bare `codex` for a new one. There is no `--session-id`, so a
+    new session's id is Codex's to mint and archeus learns it from the index —
+    which is also why nothing is recorded here the way the Claude path records
+    a provider against an id it chose.
+    """
+    args = [exe]
+    if choice == 'continue':
+        args += ['resume', '--last']
+    elif choice.startswith('resume:'):
+        args += ['resume', choice[7:]]
+    elif choice.startswith('resume-named::'):
+        args += ['resume', choice[14:].split('::', 1)[0]]
+    elif choice.startswith('fork:'):
+        args += ['fork', choice[5:]]
+    if opts.get('model'):
+        args += ['-m', opts['model']]
+    # reasoning effort is a CONFIG key here, not a flag: `-c` layers one value
+    # over config.toml, which is the documented way to set it per invocation.
+    if opts.get('effort'):
+        args += ['-c', 'model_reasoning_effort=%s' % opts['effort']]
+    # Claude Code's permission modes and Codex's approval policies are two
+    # vocabularies over the same idea; `PERMS` maps only where the meaning
+    # actually matches, and anything else is left to Codex's own default.
+    perm = PERMS.get(opts.get('perm') or '')
+    if perm:
+        args += ['-a', perm]
+    for extra in (opts.get('add_dirs') or []):
+        args += ['--add-dir', extra]
+    if cwd:
+        args += ['-C', cwd]
+    if opts.get('prompt'):
+        args += [str(opts['prompt'])]
+    return args
+
+
+#: Claude Code permission mode -> Codex approval policy, where the two mean the
+#: same thing. `plan` and `acceptEdits` have no equivalent (Codex's sandbox is
+#: the axis it varies, not the edit gate), so they map to nothing and Codex
+#: keeps its own default rather than being handed the closest-looking value.
+PERMS = {
+    'bypassPermissions': 'never',
+    'default': 'on-request',
+}

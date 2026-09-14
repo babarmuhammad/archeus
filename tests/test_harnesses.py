@@ -171,12 +171,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def _declared_caps():
     """Every capability key named by a surface: the GUI's NAV and TABS tables,
-    its per-row `capBtn` calls, and the terminal menu's MAIN_CAPS.
+    its per-row `capBtn` calls, the launch strip's `LAUNCH_CAPS`, and the
+    terminal menu's MAIN_CAPS.
 
-    `capBtn` is the third source because not every capability is a PAGE. A
-    harness that cannot archive has a page full of sessions it can still open —
-    the gap is one button on a row, gated on that row's own cfgdir, because a
-    project worked in under two CLIs lists both.
+    Four sources because not every capability is a PAGE. A harness that cannot
+    archive has a page full of sessions it can still open — the gap is one
+    button on a row, gated on that row's own cfgdir, because a project worked
+    in under two CLIs lists both. And a harness with no worktree flag has no
+    gap on any page at all: the hole is one field inside the launch form.
     """
     import re
     from claude_sessions.main import MAIN_CAPS
@@ -191,6 +193,8 @@ def _declared_caps():
             if row.group(1):
                 out.add(row.group(1))
     out |= set(re.findall(r"capBtn\('([a-z_]+)'", js))
+    out |= set(re.findall(r"'([a-z_]+)'", re.search(
+        r"const LAUNCH_CAPS=\[(.*?)\];", js, re.S).group(1)))
     return out
 
 
@@ -425,3 +429,102 @@ def test_the_routing_table_does_not_follow_the_memory_block(monkeypatch, tmp_pat
     assert c._AGENTS_START in io.open(
         os.path.join(str(tmp_path), 'CLAUDE.md'), encoding='utf-8').read()
     assert not os.path.exists(os.path.join(str(tmp_path), 'AGENTS.md'))
+
+
+# ── which tool a new session starts on ───────────────────────
+
+def _targets(monkeypatch, settings=None, *installed):
+    _installed(monkeypatch, *installed)
+    monkeypatch.setattr(c, 'load_settings', lambda: dict(settings or {}))
+    return harnesses.launch_targets()
+
+
+def test_the_picker_offers_the_clis_then_the_backends(monkeypatch):
+    """Two axes, one list, and the rows say which is which: a HARNESS is a
+    different binary with a different flag vocabulary, a PROVIDER is the same
+    binary pointed at a different endpoint."""
+    rows = _targets(monkeypatch,
+                    {'providers': [{'id': 'p1', 'name': 'OmniRoute'}]},
+                    'codex', 'pi')
+    assert [r['key'] for r in rows] == ['claude', 'codex', 'pi', 'provider:p1']
+    assert [r['kind'] for r in rows] == ['harness'] * 3 + ['provider']
+    assert [r['label'] for r in rows] == ['Claude Code', 'Codex', 'pi', 'OmniRoute']
+
+
+def test_a_target_decomposes_into_the_two_fields_launch_already_carries(monkeypatch):
+    """No ninth field on `/api/launch`. A harness row names its home, a backend
+    row names its profile, and Claude Code's row leaves `cfgdir` EMPTY because
+    that is the row whose account chips pick the home."""
+    rows = {r['key']: r for r in _targets(
+        monkeypatch, {'providers': [{'id': 'p1', 'name': 'O'}]}, 'codex')}
+    assert rows['claude']['cfgdir'] == '' and rows['claude']['provider'] == ''
+    assert rows['codex']['cfgdir'] == harnesses.home_dir('codex')
+    assert rows['provider:p1']['provider'] == 'p1'
+    assert rows['provider:p1']['hid'] == 'claude'
+    # and the round trip: of(cfgdir) has to place the row back on its harness
+    assert harnesses.of(rows['codex']['cfgdir'])['id'] == 'codex'
+
+
+def test_a_backend_inherits_the_capabilities_of_the_cli_it_rides_on(monkeypatch):
+    """A provider repoints the base URL of the same `claude` binary, so every
+    launch option Claude Code has, it has. Giving it its own capability table
+    would be inventing a second answer to a question already settled."""
+    rows = {r['key']: r for r in _targets(
+        monkeypatch, {'providers': [{'id': 'p1', 'name': 'O'}]})}
+    assert rows['provider:p1']['caps'] == rows['claude']['caps']
+
+
+def test_a_cli_that_is_not_installed_is_not_a_target(monkeypatch):
+    rows = _targets(monkeypatch, {}, 'codex')
+    assert [r['key'] for r in rows] == ['claude', 'codex']
+    assert 'pi' not in [r['key'] for r in _targets(monkeypatch, {})]
+
+
+def test_turning_one_off_hides_it_everywhere(monkeypatch):
+    """The whole claim of the setting. Hiding it from the launch picker and
+    leaving its projects in the sidebar is what makes a switch feel broken —
+    and `instructions_files` has to follow too, or a harness the user switched
+    off keeps getting a memory block written for it."""
+    s = {'harnesses_disabled': ['codex'], 'providers': [{'id': 'p1', 'name': 'O'}]}
+    _installed(monkeypatch, 'codex', 'pi')
+    monkeypatch.setattr(c, 'load_settings', lambda: dict(s))
+    assert [r['key'] for r in harnesses.launch_targets()] == ['claude', 'pi', 'provider:p1']
+    assert 'codex' not in [h for _n, _d, h in harnesses.instances()]
+    assert harnesses.instructions_files() == ['CLAUDE.md', 'AGENTS.md']  # pi still reads it
+    s['harnesses_disabled'] = ['codex', 'pi']
+    assert harnesses.instructions_files() == ['CLAUDE.md']
+
+
+def test_claude_code_can_never_be_switched_off(monkeypatch):
+    """It is not only a harness archeus lists — it is the binary archeus itself
+    shells out to for memory extraction, lessons and every other AI feature. A
+    switch that hid the app's own engine while it kept running would be a
+    setting whose effect nobody could explain."""
+    _installed(monkeypatch, 'codex')
+    monkeypatch.setattr(c, 'load_settings',
+                        lambda: {'harnesses_disabled': ['claude', 'codex']})
+    assert harnesses.disabled() == {'codex'}
+    assert [r['key'] for r in harnesses.launch_targets()] == ['claude']
+    assert 'claude' in [h for _n, _d, h in harnesses.instances()]
+
+
+def test_a_disabled_backend_leaves_the_picker(monkeypatch):
+    rows = _targets(monkeypatch,
+                    {'providers': [{'id': 'p1', 'name': 'O'}, {'id': 'p2', 'name': 'V'}],
+                     'providers_disabled': ['p1']})
+    assert [r['key'] for r in rows] == ['claude', 'provider:p2']
+
+
+def test_the_default_falls_back_to_claude_code_not_to_whatever_sorts_first(monkeypatch):
+    """A machine that had Codex uninstalled should open on the harness it still
+    has. Falling back to `rows[0]` happens to be the same answer today and stops
+    being one the moment the order changes."""
+    _installed(monkeypatch, 'codex')
+    monkeypatch.setattr(c, 'load_settings', lambda: {'launch_default': 'codex'})
+    assert harnesses.default_target() == 'codex'
+    _installed(monkeypatch)                       # Codex uninstalled
+    assert harnesses.default_target() == 'claude'
+    monkeypatch.setattr(c, 'load_settings', lambda: {'launch_default': 'provider:gone'})
+    assert harnesses.default_target() == 'claude'
+    monkeypatch.setattr(c, 'load_settings', lambda: {})
+    assert harnesses.default_target() == 'claude'

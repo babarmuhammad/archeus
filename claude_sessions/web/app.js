@@ -5548,11 +5548,20 @@ const PVINTRO=`<h3>${ic('plug')} Pick a backend</h3>
 const SETTINGS_CARDS={
   settings:o=>`<div class="card"><h3>${ic('bolt')} Defaults</h3>
     <p class="secthint">What the launch modal opens on — you can still change any of it per session, and nothing here touches a session that is already running.</p>
+    ${fld('sTargetDef','Starts on <span>— which CLI or backend a new session opens on</span>')}
     ${fld('sEff','Effort')}${fld('sMod','Model')}${fld('sPerm','Permission mode')}
     ${fld('sThink','Thinking cap')}${fld('sSub','Subagent model')}
     ${fld('sShell','GUI window')}
     <div class="chips" id="sTheme" style="display:none"></div>
     <div class="mrow"><button class="btn" onclick="setSave()">Save</button></div></div>
+  <div class="card"><h3>${ic('group')} Which tools archeus shows</h3>
+    <p class="secthint">archeus found these on this machine. Turning one off hides it
+      <b>everywhere</b> — the launch tabs, the project list, the sessions list and the
+      usage table — not just here, and it stops getting a memory block written for it.
+      Nothing is uninstalled and nothing on disk is touched; switch it back on and its
+      projects come straight back.</p>
+    <div id="sHarnList"></div>
+    <p class="secthint" id="sHarnNote"></p></div>
   <div class="card"><h3>${ic('map')} Plan → Execute</h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Model that writes the plan (runs once, headless) vs the model that executes it interactively. Keep the plan model accurate — the expensive reasoning happens once.</p>
     ${fld('sPlanMod','Plan model')}${fld('sExecMod','Execute model')}
@@ -5698,6 +5707,10 @@ async function pgSettings(nav,part='settings'){
   const mq=$('#mqStart');
   if(mq)mq.onclick=()=>inlineJob('#jban','memory_queue',{},
     {label:'Building modules'});
+  if($('#sTargetDef'))
+    chipsFill($('#sTargetDef'),targets().map(t=>t.key),targets().map(t=>t.label),
+              ST.launch_default||'claude');
+  drawHarnessToggles();
   chipsFill($('#sEff'),o.efforts,null,ST.defaults.effort);
   chipsFill($('#sMod'),o.models,o.model_labels,ST.defaults.model);
   chipsFill($('#sPerm'),o.perms,o.perm_labels,ST.defaults.perm);
@@ -6482,9 +6495,52 @@ async function setSave(){
   await post('/api/settings',{default_effort:chipVal($('#sEff')),default_model:chipVal($('#sMod')),
     default_permission:chipVal($('#sPerm')),default_max_thinking:chipVal($('#sThink')),
     default_subagent_model:chipVal($('#sSub')),gui_shell:chipVal($('#sShell')),
+    launch_default:chipVal($('#sTargetDef')),
     theme:chipVal($('#sTheme'))});
   ST=await api('/api/state');applyTheme(ST.theme);
-  localStorage.setItem('ctl_theme',chipVal($('#sTheme')));toast('Settings saved','ok');
+  localStorage.setItem('ctl_theme',chipVal($('#sTheme'))); toast('Settings saved','ok');
+}
+/* ── which tools archeus shows ──────────────────────────────
+   Every harness in the registry, whether or not its binary is here: one that
+   is not installed says so and offers the install line, because "archeus does
+   not support Codex" and "Codex is not on this machine" look identical when
+   the row simply is not there. */
+function drawHarnessToggles(){
+  const host=$('#sHarnList');if(!host)return;
+  const offH=new Set(ST.harnesses_disabled||[]),offP=new Set(ST.providers_disabled||[]);
+  const rows=(ST.harnesses||[]).map(h=>({
+    key:h.id,label:h.label,kind:'harness',
+    // Claude Code is archeus's own engine — every AI feature shells out to it —
+    // so it is listed and locked rather than quietly missing from the list
+    locked:h.id==='claude',found:h.available,on:!offH.has(h.id)}))
+   .concat((ST.providers||[]).map(p=>({
+     key:p.id,label:p.name||'(unnamed)',kind:'provider',
+     locked:false,found:true,on:!offP.has(p.id)})));
+  host.innerHTML=rows.map(r=>`<div class="kv">
+    <span class="k">${esc(r.label)}${r.kind==='provider'?' <span class="tag">backend</span>':''}</span>
+    <span>${r.found
+      ?(r.locked?'<span class="tag">always on</span>'
+        :`<button class="btn sm${r.on?' pri':''}" onclick="harnToggle(${hesc(r.kind)},${hesc(r.key)},${!r.on})"
+           >${r.on?'shown':'hidden'}</button>`)
+      :'<span class="tag" title="archeus supports it; this machine does not have it">not installed</span>'}</span>
+  </div>`).join('');
+  const missing=rows.filter(r=>!r.found).map(r=>r.label);
+  $('#sHarnNote').textContent=missing.length
+    ?'Not found on this machine: '+missing.join(', ')+'. Install one and it appears here on the next start.'
+    :'';
+}
+async function harnToggle(kind,key,on){
+  const k=kind==='provider'?'providers_disabled':'harnesses_disabled';
+  const cur=new Set(ST[k]||[]);
+  if(on)cur.delete(key);else cur.add(key);
+  await post('/api/settings',{[k]:[...cur]});
+  ST=await api('/api/state');
+  drawHarnessToggles();
+  // the whole point is that it hides everywhere, so the sidebar has to follow
+  // in this tick rather than on the next boot — the /api/state above already
+  // carries the new project list, since that walk is what the toggle changes
+  drawProjects();
+  toast(on?'Shown again':'Hidden everywhere','ok');
 }
 async function setMemLimitsSave(){
   await post('/api/settings',{
@@ -6764,31 +6820,79 @@ function askLaunch(cfg){
   chipsFill($('#fThink'),o.thinking,o.thinking_labels,d.max_thinking);
   chipsFill($('#fSub'),o.models,o.model_labels,d.subagent_model);
   chipsFill($('#fWt'),['','*'],['off','auto'],'');
-  /* Which BACKEND, then which model on it. Two rows, because those are two
-     questions: the backend list is local so it always renders, and only the
-     model half can need the network. It used to be one row of model ids that
-     disappeared entirely when nothing was saved — so a configured backend was
-     unreachable from here. */
-  const provs=ST.providers||[];
-  const pw=$('#fProvWrap'),pmw=$('#fProvModelWrap');
-  pw.style.display=provs.length?'':'none';
-  pmw.style.display='none';
-  if(provs.length){
-    chipsFill($('#fProv'),['',...provs.map(p=>p.id)],
-      ['Anthropic',...provs.map(p=>p.name||'(unnamed)')],
-      ST.provider_active&&provs.some(p=>p.id===ST.provider_active)?'':'',
-      drawLaunchModel);
-    drawLaunchModel('');
-  }
-  $('#fAcctWrap').style.display=(cfg.isNew&&ST.accounts.length>1)?'':'none';
-  $('#fNameWrap').style.display=cfg.isNew?'':'none';
-  $('#fWtWrap').style.display=cfg.isNew?'':'none';
+  /* WHICH TOOL — the tab strip above the form. A resume keeps the target its
+     session already belongs to; there is nothing to choose, because a Codex
+     thread cannot be resumed by pi. A NEW session opens on the saved default. */
+  TARGET=cfg.isNew?(ST.launch_default||'claude'):targetOfCfgdir(cfg.cfgdir);
+  drawTargets(cfg);
   $('#fName').value='';
   if(cfg.isNew&&ST.accounts.length>1)
     chipsFill($('#fAcct'),ST.accounts.map(a=>a.dir),
               ST.accounts.map(a=>a.name),ST.active_cfgdir);
   updateHint();
   $('#ovl').classList.add('show');
+}
+/* ── which tool this session starts on ──────────────────────
+   The target decomposes back into `cfgdir` + `provider`, the two fields
+   /api/launch has always carried, so nothing below this needed a new field. */
+let TARGET='claude';
+const targets=()=>ST.launch_targets||[];
+const targetRow=k=>targets().find(t=>t.key===k)||targets()[0]||
+  {key:'claude',kind:'harness',hid:'claude',cfgdir:'',provider:'',caps:{}};
+/* A session already on disk belongs to whichever home it was recorded under —
+   the row is the source, never the picker. */
+function targetOfCfgdir(cfgdir){
+  const hit=targets().find(t=>t.cfgdir&&cfgdir&&
+    t.cfgdir.toLowerCase()===String(cfgdir).toLowerCase());
+  return hit?hit.key:'claude';
+}
+/* (ok, why) for one control under the CURRENT target. Same table the nav rows
+   read, asked of the target rather than of the page's account — the strip is
+   the thing that just changed. */
+function tcap(key){
+  const c=(targetRow(TARGET).caps||{})[key];
+  return c?{ok:!!c[0],why:c[1]||''}:{ok:true,why:''};
+}
+/* A field the target has no notion of is HIDDEN, not greyed — unlike a nav row.
+   A greyed page still teaches you the app has it; a dead input inside a form
+   you are about to submit just asks a question with no answer. The strip's own
+   note is where the reason goes, so nothing is lost. */
+function tfield(id,key){
+  const el=$(id),c=tcap(key);
+  if(el)el.style.display=c.ok?'':'none';
+  return c;
+}
+function drawTargets(cfg){
+  const strip=$('#fTarget'),note=$('#fTargetNote');
+  if(!strip)return;
+  const rows=targets();
+  /* One target is not a choice — the strip is chrome with nothing to pick, and
+     a machine with only Claude Code installed is the common case. */
+  strip.style.display=(rows.length>1&&cfg.isNew)?'':'none';
+  strip.innerHTML=rows.map(t=>
+    `<div class="tab${t.key===TARGET?' sel':''}" onclick="pickTarget(${hesc(t.key)})"
+      >${esc(t.label)}</div>`).join('');
+  const row=targetRow(TARGET);
+  const missing=Object.keys(row.caps||{}).filter(k=>LAUNCH_CAPS.includes(k)&&!row.caps[k][0]);
+  note.textContent=cfg.isNew&&missing.length
+    ?missing.map(k=>row.caps[k][1]).join(' ')
+    :(row.kind==='provider'?'Runs Claude Code against this backend.':'');
+  // the account chips are Claude Code's alone: a Codex or pi home is one login
+  $('#fAcctWrap').style.display=
+    (cfg.isNew&&row.hid==='claude'&&ST.accounts.length>1)?'':'none';
+  $('#fNameWrap').style.display=(cfg.isNew&&tcap('named_session').ok)?'':'none';
+  $('#fWtWrap').style.display=(cfg.isNew&&tcap('worktree').ok)?'':'none';
+  tfield('#fPermWrap','permission_modes');
+  drawLaunchModel(row.provider||'');
+}
+/* the capabilities this form gates on. Named rather than "every off key",
+   because the strip's note must not recite gaps about pages the modal has
+   nothing to do with — a Codex session's missing MCP is not a launch option. */
+const LAUNCH_CAPS=['permission_modes','named_session','worktree','effort'];
+function pickTarget(k){
+  TARGET=k;
+  drawTargets(PENDING||{isNew:true});
+  updateHint();
 }
 /* The model row follows the backend chip. An OmniRoute profile has a live
    catalogue worth offering; anything else publishes nothing, so the model is
@@ -6830,8 +6934,11 @@ async function doLaunch(){
     perm:chipVal($('#fPerm')),max_thinking:chipVal($('#fThink')),
     subagent_model:chipVal($('#fSub')),
     name:c.isNew?$('#fName').value:'',worktree:c.isNew?chipVal($('#fWt')):'',
-    cfgdir:c.isNew&&ST.accounts.length>1?chipVal($('#fAcct')):(c.cfgdir||''),
-    provider:chipVal($('#fProv')),
+    // the tab decides both: a harness row names its home, a backend row names
+    // its profile, and Claude Code's row leaves cfgdir to the account chips
+    cfgdir:targetRow(TARGET).cfgdir
+      ||(c.isNew&&ST.accounts.length>1?chipVal($('#fAcct')):(c.cfgdir||'')),
+    provider:targetRow(TARGET).provider||'',
     provider_model:launchProviderModel()};
   $('#ovl').classList.remove('show');
   const r=await post('/api/launch',{path:c.path,enc:c.enc,choice:c.choice,opts});

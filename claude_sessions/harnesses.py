@@ -109,6 +109,11 @@ HARNESSES = {
         'transcript_path': 'store._transcript_claude',
         'projects': 'store._projects_claude',
         'has_project': 'store._has_project_claude',
+        #: the ONE harness whose argv is not a descriptor entry, because
+        #: `main.build_launch_command` IS its builder — a hundred and forty
+        #: lines of its flag vocabulary that the dispatch deliberately sits
+        #: below rather than trying to generalise.
+        'launch_argv': 'main.build_launch_command',
         'caps': {},                       # it can do everything; it is the model
     },
     'codex': {
@@ -136,6 +141,7 @@ HARNESSES = {
         'transcript_path': 'codex.transcript_path',
         'projects': 'codex.projects',
         'has_project': 'codex.has_project',
+        'launch_argv': 'codex.launch_argv',
         #: what archeus cannot do HERE, and why — the reason is what the screen
         #: prints, so each says which side the gap is on. The first group is
         #: structural (Codex has no such thing); the second is archeus reading
@@ -157,6 +163,14 @@ HARNESSES = {
                                      "Claude Code's settings.json."),
             'agents':        (False, 'Codex keeps subagents in .agents.'),
             'skills':        (False, 'Codex loads skills from its own roots.'),
+            #: the launch modal's own gaps, checked against `codex --help` on
+            #: the installed binary rather than assumed from Claude Code's
+            #: flags. Codex HAS `-m`, `-a` and a reasoning-effort config key,
+            #: so those three are not here.
+            'named_session': (False, 'Codex names a session afterwards, with '
+                                     '`thread name set`, not at launch.'),
+            'worktree':      (False, 'Codex has no worktree flag; open the '
+                                     'worktree as its own project.'),
         },
     },
     'pi': {
@@ -192,6 +206,7 @@ HARNESSES = {
         'transcript_path': 'pi.transcript_path',
         'projects': 'pi.projects',
         'has_project': 'pi.has_project',
+        'launch_argv': 'pi.launch_argv',
         #: pi's gaps are wider than Codex's and differently shaped: it has no
         #: MCP and no hooks AT ALL (extensions are TypeScript modules it loads
         #: itself), but its skills ARE Claude Code's — `~/.claude/skills` is one
@@ -215,6 +230,14 @@ HARNESSES = {
             'usage':         (False, "pi bills per provider; this page reads "
                                      "Anthropic's."),
             'versions':      (False, 'pi updates itself with `pi update`.'),
+            #: pi HAS `-n` and `--model` and a `--thinking` level, so naming,
+            #: the model and effort all work. What it has no notion of is a
+            #: permission MODE — `--approve` trusts project-local files, which
+            #: is a different question — and a worktree.
+            'permission_modes': (False, 'pi has no permission modes; it asks '
+                                        'per tool call.'),
+            'worktree':      (False, 'pi has no worktree flag; open the '
+                                     'worktree as its own project.'),
             #: `recall` and `statusline` are NOT declared, though pi has
             #: neither. Both are already covered — recall by `hooks`, which is
             #: what runs it — and neither has a surface that could grey: the
@@ -314,21 +337,99 @@ def _homes():
     return out
 
 
+def disabled():
+    """The harness ids the user has switched off, as a set.
+
+    A harness turned off here is off EVERYWHERE — not only in the launch
+    picker, but in the project list, the sessions list, the usage table and the
+    instructions files that get a memory block. Hiding it from one surface and
+    leaving it in the others is what makes a setting feel broken.
+
+    `DEFAULT` can never be in it. Claude Code is not only a harness archeus
+    lists: it is the binary archeus itself shells out to for memory extraction,
+    lessons, CLAUDE.md generation and every other AI feature, so switching it
+    off would hide the app's own engine while it kept running.
+    """
+    got = _c.load_settings().get('harnesses_disabled') or []
+    return {h for h in got if h != DEFAULT}
+
+
 def instances():
-    """[(display name, home dir, harness id)] — every home, every harness.
+    """[(display name, home dir, harness id)] — every home, every harness the
+    machine has and the user has not switched off.
 
     The harness-aware sibling of `config.all_config_dirs()`, which deliberately
     stays Claude-only: every one of ITS callers means "accounts", and fanning a
     Claude-shaped write across a Codex home would write a settings.json that
     Codex never reads.
     """
+    off = disabled()
     out = [(n, d, 'claude') for n, d in _c.all_config_dirs()]
     for hid in ids():
-        if hid == 'claude':
+        if hid == 'claude' or hid in off:
             continue
         if exe(hid):
             out.append((HARNESSES[hid]['label'], home_dir(hid), hid))
     return out
+
+
+def launch_targets():
+    """[{key, kind, label, hid, cfgdir, provider, caps}] — everything a new
+    session can start ON, in the order the picker shows them.
+
+    ONE list for two axes that are genuinely different questions, which is why
+    the rows carry `kind` rather than being two lists: a HARNESS is a different
+    binary with a different flag vocabulary, and a PROVIDER is the same binary
+    pointed at a different endpoint. The target decomposes back into `cfgdir`
+    and `provider` — the two fields `/api/launch` has always carried — so a tab
+    strip over these rows needs no new field on the launch payload at all.
+
+    A Claude account is NOT a row: an account is which login, not which tool,
+    and the modal has had its own account chips since long before there was a
+    second harness. Splitting five accounts into five tabs would bury the
+    question this strip exists to ask.
+    """
+    settings = _c.load_settings()
+    off = disabled()
+    off_p = set(settings.get('providers_disabled') or [])
+    rows = []
+    for hid in ids():
+        if hid in off or (hid != DEFAULT and not exe(hid)):
+            continue
+        # `cfgdir` is what the launch payload carries and `of()` is what turns
+        # it back into a harness, so a non-Claude row names its home here.
+        # Claude Code's stays EMPTY on purpose: that is the row whose account
+        # chips pick the home, and pinning one would override the choice.
+        rows.append({'key': hid, 'kind': 'harness', 'label': descriptor(hid)['label'],
+                     'hid': hid, 'cfgdir': '' if hid == DEFAULT else home_dir(hid),
+                     'provider': '',
+                     'caps': {k: list(cap(hid, k)) for k in CAPS}})
+    for prof in (settings.get('providers') or []):
+        pid = prof.get('id') or ''
+        if not pid or pid in off_p:
+            continue
+        # a provider RIDES on Claude Code — it repoints the base URL of the
+        # same binary — so it inherits that harness's capabilities wholesale.
+        rows.append({'key': 'provider:' + pid, 'kind': 'provider',
+                     'label': prof.get('name') or '(unnamed)',
+                     'hid': DEFAULT, 'cfgdir': '', 'provider': pid,
+                     'caps': {k: list(cap(DEFAULT, k)) for k in CAPS}})
+    return rows
+
+
+def default_target():
+    """The key `launch_targets()` row the picker opens on.
+
+    Claude Code unless the user says otherwise, and it falls back to Claude Code
+    by NAME rather than to `rows[0]` when the saved key names something that is
+    gone. The two are the same answer today — `ids()` puts the default first and
+    nothing filters it out — which is exactly why naming it is worth the
+    characters: a machine that had Codex uninstalled should open on the harness
+    it still has, not on whatever happens to sort first if that order ever
+    changes.
+    """
+    want = (_c.load_settings().get('launch_default') or '').strip()
+    return want if want in [r['key'] for r in launch_targets()] else DEFAULT
 
 
 def exe(hid=None):

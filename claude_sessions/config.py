@@ -139,6 +139,16 @@ _DEFAULT_SETTINGS = {
     'default_effort': '',      # preselected effort in launch options
     'default_model': '',       # preselected model in launch options
     'default_permission': 'auto',  # preselected --permission-mode (see PERMS)
+    'launch_default': '',      # which harnesses.launch_targets() row the launch
+                               # picker opens on. '' = Claude Code, and an id
+                               # that is gone falls back to it rather than to
+                               # whatever sorts first.
+    'harnesses_disabled': [],  # harness ids hidden EVERYWHERE — the launch tabs,
+                               # the project list, the sessions list, the usage
+                               # table, and the instructions files that get a
+                               # memory block. Never contains 'claude': that is
+                               # the binary archeus itself runs.
+    'providers_disabled': [],  # provider profile ids hidden from the launch tabs
     'perm_default_migrated': False,  # one-time '' -> 'auto' flip, see migrate_settings
     'brand_migrated': False,   # one-time move off the previous name, see migrate.py
     'brand_sweep': False,      # one-time rewrite of what that MOVE could not reach:

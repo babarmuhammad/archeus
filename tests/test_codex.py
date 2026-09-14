@@ -450,3 +450,64 @@ def test_codex_spend_reaches_the_usage_table(monkeypatch, tmp_path):
     assert rows[0]['usage']['in'] == 2000
     assert rows[0]['usage']['out'] == 200
     assert 'gpt-5.5' in rows[0]['usage_by_model']
+
+
+# ── launching Codex ──────────────────────────────────────────
+
+def test_the_argv_is_codexs_own_vocabulary(monkeypatch, tmp_path):
+    """Not a translation of Claude Code's. Every verb here is checked against
+    `codex --help` on the installed binary: `resume [SESSION_ID]`, `--last` for
+    the most recent, `fork` the same shape, and a bare `codex` for a new one."""
+    argv = codex.launch_argv('codex.exe', 'new', {}, 'D:/p')
+    assert argv == ['codex.exe', '-C', 'D:/p']
+    assert codex.launch_argv('codex.exe', 'continue', {}, '')[1:] == ['resume', '--last']
+    assert codex.launch_argv('codex.exe', 'resume:abc', {}, '')[1:] == ['resume', 'abc']
+    assert codex.launch_argv('codex.exe', 'fork:abc', {}, '')[1:] == ['fork', 'abc']
+    assert codex.launch_argv('codex.exe', 'resume-named::abc::x', {}, '')[1:] \
+        == ['resume', 'abc']
+
+
+def test_reasoning_effort_is_a_config_key_not_a_flag():
+    """`-c` layers one value over config.toml, which is the documented way to
+    set this per invocation. There is no `--effort`."""
+    argv = codex.launch_argv('codex.exe', 'new', {'effort': 'high'}, '')
+    assert argv[1:3] == ['-c', 'model_reasoning_effort=high']
+
+
+def test_a_permission_mode_with_no_equivalent_is_dropped_not_rounded():
+    """Claude Code's permission modes and Codex's approval policies are two
+    vocabularies over the same idea, and they do not line up. `plan` and
+    `acceptEdits` have no equivalent — Codex varies its SANDBOX, not the edit
+    gate — so Codex keeps its own default rather than being handed the
+    closest-looking value."""
+    assert '-a' in codex.launch_argv('codex.exe', 'new', {'perm': 'default'}, '')
+    for orphan in ('plan', 'acceptEdits', 'auto', ''):
+        assert '-a' not in codex.launch_argv('codex.exe', 'new', {'perm': orphan}, '')
+
+
+def test_the_launch_path_asks_the_harness_for_its_argv(monkeypatch, tmp_path):
+    """The one gate that matters: `build_launch_command` is a hundred and forty
+    lines of Claude Code's flags, and a Codex home must not reach any of them.
+    The dispatch sits below everything harness-neutral — the project folder, the
+    extra PATH, the telemetry, the home — and above the first `claude` flag."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    from claude_sessions import main as main_mod
+    home = codex_home(sb.root, [('s1', 'C:/work/alpha', 1, 0)])
+    args, env, _folder = main_mod.build_launch_command(
+        'C:/work/alpha', codex._enc('C:/work/alpha'), 'resume:s1',
+        {'cfgdir': home, 'effort': 'high', 'model': 'gpt-5.5', 'perm': 'default',
+         'name': 'x', 'worktree': '*'})
+    assert os.path.basename(args[0]).startswith('codex')
+    assert args[1:3] == ['resume', 's1']
+    assert '--session-id' not in args and '--permission-mode' not in args
+    # the home variable is Codex's, and CLAUDE_CONFIG_DIR is not pinned to it
+    assert env['CODEX_HOME'] == home
+    assert env.get('CLAUDE_CONFIG_DIR') != home
+
+
+def test_a_new_codex_session_has_no_id_to_choose(monkeypatch, tmp_path):
+    """Claude Code takes `--session-id`, which is the only way archeus can know
+    a new session's id before a line is written. Codex has no such flag, so the
+    id is Codex's to mint and archeus learns it from the index — which is why
+    nothing is recorded against one here."""
+    assert '--session-id' not in codex.launch_argv('codex.exe', 'new', {}, '')

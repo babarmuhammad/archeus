@@ -259,3 +259,41 @@ def fold(obj, s):
     agg['out'] += u.get('output') or 0
     agg['cache_read'] += u.get('cacheRead') or 0
     agg['cache_create'] += u.get('cacheWrite') or 0
+
+
+def launch_argv(exe, choice, opts, cwd):
+    """The argv that opens a pi session, from `pi --help` on the installed
+    binary (0.85.1).
+
+    pi takes a session by PATH OR PARTIAL UUID on `--session` / `--fork`, so
+    the id archeus already holds is enough for both; `-c` continues the most
+    recent. `cwd` is not a flag here — pi has no `-C`, it works in the process's
+    working directory, which is what `_direct_launch` already sets.
+    """
+    args = [exe]
+    if choice == 'continue':
+        args += ['-c']
+    elif choice.startswith('resume:'):
+        args += ['--session', choice[7:]]
+    elif choice.startswith('resume-named::'):
+        args += ['--session', choice[14:].split('::', 1)[0]]
+    elif choice.startswith('fork:'):
+        args += ['--fork', choice[5:]]
+    if opts.get('model'):
+        args += ['--model', opts['model']]
+    # pi's own scale, not Claude Code's token budget: `--thinking` takes a
+    # LEVEL (off/minimal/low/medium/high/xhigh/max) where `MAX_THINKING_TOKENS`
+    # takes a number. `effort` is the field that already means a level.
+    if opts.get('effort') in THINKING:
+        args += ['--thinking', opts['effort']]
+    if choice == 'new' and opts.get('name'):
+        args += ['-n', opts['name']]
+    if opts.get('prompt'):
+        args += ['--', str(opts['prompt'])]
+    return args
+
+
+#: the levels `--thinking` accepts. An effort archeus offers that pi does not
+#: have is dropped rather than rounded — pi then uses its own default, which is
+#: the honest answer to "this CLI does not have that setting".
+THINKING = ('off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max')

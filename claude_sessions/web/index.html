@@ -224,6 +224,12 @@
   <div class="modal">
     <h3 id="mTitle">New session</h3>
     <div class="sub" id="mSub"></div>
+    <!-- WHICH TOOL, above everything else, because it decides what the rest of
+         the form even means: a Codex session has no worktree and a pi session
+         has no permission mode. Each tab is one `harnesses.launch_targets()`
+         row — the installed CLIs, then each configured backend by name. -->
+    <div class="tabs mtabs" id="fTarget"></div>
+    <div class="fsub" id="fTargetNote"></div>
     <div>
       <div class="fld"><label>Quick start</label><div class="presetrow" id="fPresets"></div></div>
       <div class="fld"><label>Power</label>
@@ -246,15 +252,17 @@
           </div>
         </div>
         <div class="grid2">
-          <div class="fld"><label>Permission mode</label><div class="chips" id="fPerm"></div>
+          <div class="fld" id="fPermWrap"><label>Permission mode</label><div class="chips" id="fPerm"></div>
             <div class="fsub" id="fPermHint"></div></div>
           <div class="fld" id="fAcctWrap"><label>Account</label><div class="chips" id="fAcct"></div></div>
           <div class="fld"><label>Thinking cap</label><div class="chips" id="fThink"></div></div>
           <div class="fld"><label>Subagent model</label><div class="chips" id="fSub"></div></div>
-          <div class="fld" id="fProvWrap"><label>Provider</label><div class="chips" id="fProv"></div>
-            <div style="color:var(--dim);font-size:11px;margin-top:2px">Which backend this session runs on.
-              Agents inherit its model — their <code>model:</code> field is stripped, since a routed backend
-              cannot resolve an Anthropic id</div></div>
+          <!-- the backend's own model list. The backend itself is a TAB now,
+               not a chip row: it was the only setting in this form that
+               changed which tool ran, and it sat six fields down inside a
+               collapsed <details>. Agents inherit its model — their `model:`
+               field is stripped, since a routed backend cannot resolve an
+               Anthropic id. -->
           <div class="fld" id="fProvModelWrap"><label>Model</label><div id="fProvModel"></div></div>
           <div class="fld" id="fWtWrap"><label>Worktree</label><div class="chips" id="fWt"></div></div>
           <div class="fld" id="fNameWrap"><label>Session name</label>

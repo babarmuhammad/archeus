@@ -49,6 +49,7 @@ from .config import (load_settings, save_settings,
                      THINKING_CAPS, THINKING_LABELS)
 from .sessions import _is_anthropic_model, _used_provider   # noqa: F401 (re-exported)
 from . import store
+from . import harnesses as _harnesses
 
 
 def all_config_dirs():
@@ -350,6 +351,14 @@ def state_payload():
         # page needs it before it draws, and a second round trip to learn what
         # to grey out would flash the wrong chrome first.
         'harnesses': _harness_payload(),
+        # Everything a new session can start ON, already in picker order, with
+        # the capability table each target gates its own controls by. Derived in
+        # `harnesses.launch_targets` rather than assembled in the page, because
+        # the terminal UI has to open on the same default.
+        'launch_targets': _harnesses.launch_targets(),
+        'launch_default': _harnesses.default_target(),
+        'harnesses_disabled': list(s.get('harnesses_disabled') or []),
+        'providers_disabled': list(s.get('providers_disabled') or []),
         'theme': s.get('theme', 'default'),
         'motion': _motion_level(s),
         # 0 = never dragged; the CSS default stays in charge

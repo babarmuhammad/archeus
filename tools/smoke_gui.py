@@ -26,6 +26,7 @@ from claude_sessions import gui                       # noqa: E402
 from claude_sessions.gui_html import PAGE, vendor_asset  # noqa: E402
 from claude_sessions import themes as _TH        # noqa: E402
 from claude_sessions import config as _TH_CFG    # noqa: E402
+from claude_sessions import harnesses as _TH_H   # noqa: E402
 
 PORT = 8793
 
@@ -103,6 +104,28 @@ STATE = {
          'failover_quiet': False, 'port': 20131,
          'api_key_set': False, 'gateway_target_api_key_set': False}],
     'provider_active': 'p1', 'headless_provider_id': '',
+    # ── what a new session can start ON ──────────────────────
+    # Built from the REAL registry, not typed out: the launch strip gates each
+    # of its controls on one capability key, so a stub that invents a flat
+    # `caps: {everything: true}` audits a strip whose fields can never be
+    # hidden. Codex and pi are forced present here because a one-row strip is
+    # exactly the case the code hides — the check would pass on nothing.
+    'launch_targets': [
+        {'key': hid, 'kind': 'harness', 'label': _TH_H.descriptor(hid)['label'],
+         'hid': hid, 'cfgdir': '' if hid == 'claude' else '/home/.' + hid,
+         'provider': '',
+         'caps': {k: list(_TH_H.cap(hid, k)) for k in _TH_H.CAPS}}
+        for hid in _TH_H.ids()
+    ] + [
+        {'key': 'provider:p1', 'kind': 'provider', 'label': 'OmniRoute',
+         'hid': 'claude', 'cfgdir': '', 'provider': 'p1',
+         'caps': {k: list(_TH_H.cap('claude', k)) for k in _TH_H.CAPS}},
+        {'key': 'provider:p2', 'kind': 'provider', 'label': 'vLLM box',
+         'hid': 'claude', 'cfgdir': '', 'provider': 'p2',
+         'caps': {k: list(_TH_H.cap('claude', k)) for k in _TH_H.CAPS}},
+    ],
+    'launch_default': 'claude',
+    'harnesses_disabled': [], 'providers_disabled': [],
 }
 _NOW = time.time()
 DASH = {
@@ -2040,27 +2063,64 @@ def main():
               pg.evaluate("!document.getElementById('pvDet')"
                           ".innerHTML.includes('pvDelete()')"))
 
-        # -- the launch modal picks the backend, not just a model --
-        print(NL + '-- launch modal provider --')
+        # -- WHICH TOOL a new session starts on --
+        # The backend used to be a chip row six fields down inside a collapsed
+        # <details>, beside the thinking cap. It was the only control in that
+        # form that changed which TOOL ran, and a second CLI made that
+        # untenable: a Codex session has no worktree and a pi session has no
+        # permission mode, so the answer has to be chosen before the rest of
+        # the form means anything.
+        print(NL + '-- launch modal: which tool --')
         pg.evaluate("go('home')")
         pg.wait_for_timeout(600)
         pg.evaluate("askLaunch({path:'/demo/acme-api',enc:'demo-acme-api',"
                     "choice:'new',isNew:true})")
         pg.wait_for_timeout(900)
-        provs = pg.evaluate(
-            "[...document.querySelectorAll('#fProv .chip')].map(c=>c.dataset.v)")
-        check('Anthropic and every backend are offered at launch',
-              provs == ['', 'p1', 'p2'], provs)
-        check('the model row is hidden while Anthropic is picked',
+        tabs = pg.evaluate("[...document.querySelectorAll('#fTarget .tab')]"
+                           ".map(t=>t.textContent.trim())")
+        check('every CLI and every backend is a tab, named individually',
+              tabs == ['Claude Code', 'Codex', 'pi', 'OmniRoute', 'vLLM box'], tabs)
+        check('it opens on the saved default',
+              pg.evaluate("document.querySelector('#fTarget .tab.sel').textContent.trim()")
+              == 'Claude Code')
+        check('the backend model row is hidden while a CLI is picked',
               pg.evaluate("document.getElementById('fProvModelWrap').style.display")
               == 'none')
-        pg.evaluate("""document.querySelector('#fProv .chip[data-v="p2"]').click()""")
+        # a field the picked CLI has no notion of is HIDDEN, not greyed: a dead
+        # input inside a form you are about to submit asks a question with no
+        # answer, and the strip's own note carries the reason instead
+        pg.evaluate("pickTarget('codex')")
+        pg.wait_for_timeout(300)
+        check('Codex hides the two options it does not have',
+              pg.evaluate("document.getElementById('fNameWrap').style.display")
+              == 'none'
+              and pg.evaluate("document.getElementById('fWtWrap').style.display")
+              == 'none')
+        check('…and says why, rather than leaving a hole',
+              'thread name set' in pg.evaluate(
+                  "document.getElementById('fTargetNote').textContent"))
+        check('Codex keeps the permission mode it DOES have',
+              pg.evaluate("document.getElementById('fPermWrap').style.display") != 'none')
+        pg.evaluate("pickTarget('pi')")
+        pg.wait_for_timeout(300)
+        check('pi hides the permission mode and keeps the name',
+              pg.evaluate("document.getElementById('fPermWrap').style.display")
+              == 'none'
+              and pg.evaluate("document.getElementById('fNameWrap').style.display")
+              != 'none')
+        check('a CLI tab hides the Claude account chips',
+              pg.evaluate("document.getElementById('fAcctWrap').style.display") == 'none')
+        # and a backend is still the same binary, so it keeps everything
+        pg.evaluate("pickTarget('provider:p2')")
         pg.wait_for_timeout(700)
         check('picking a generic backend asks for its model as free text',
               pg.evaluate("!!document.getElementById('fProvModelIn')"))
         check('prefilled with what that backend is configured with',
               pg.evaluate("(document.getElementById('fProvModelIn')||{}).value")
               == 'Qwen3-VL-32B')
+        check('the launch payload decomposes back into cfgdir + provider',
+              pg.evaluate("[targetRow('codex').cfgdir,targetRow('provider:p2').provider,"
+                          "targetRow('claude').cfgdir]") == ['/home/.codex', 'p2', ''])
         pg.evaluate("$('#ovl').classList.remove('show')")
 
         print('\n— narrow window —')

@@ -325,3 +325,61 @@ def test_pi_keeps_the_skills_claude_code_has():
     assert harnesses.cap('pi', 'skills')[0] is True
     for gone in ('mcp', 'hooks', 'agents', 'plugins'):
         assert harnesses.cap('pi', gone)[0] is False, gone
+
+
+# ── launching pi ─────────────────────────────────────────────
+
+def test_the_argv_is_pis_own_vocabulary():
+    """From `pi --help` on the installed binary (0.85.1). pi takes a session by
+    path OR partial uuid on `--session`/`--fork`, so the id archeus already
+    holds is enough for both."""
+    assert pi.launch_argv('pi.cmd', 'new', {}, 'D:/p') == ['pi.cmd']
+    assert pi.launch_argv('pi.cmd', 'continue', {}, '')[1:] == ['-c']
+    assert pi.launch_argv('pi.cmd', 'resume:abc', {}, '')[1:] == ['--session', 'abc']
+    assert pi.launch_argv('pi.cmd', 'fork:abc', {}, '')[1:] == ['--fork', 'abc']
+    assert pi.launch_argv('pi.cmd', 'resume-named::abc::x', {}, '')[1:] \
+        == ['--session', 'abc']
+
+
+def test_the_working_directory_is_not_a_flag():
+    """pi has no `-C`. It works in the process's working directory, which is
+    what `_direct_launch` already sets — passing one would be inventing a flag.
+    """
+    assert 'D:/p' not in pi.launch_argv('pi.cmd', 'new', {}, 'D:/p')
+
+
+def test_effort_becomes_a_thinking_level_and_an_unknown_one_is_dropped():
+    """pi's scale is a LEVEL, not a token budget: off/minimal/low/medium/high/
+    xhigh/max. An effort archeus offers that pi does not have is dropped rather
+    than rounded, so pi uses its own default — the honest answer to "this CLI
+    does not have that setting"."""
+    assert pi.launch_argv('pi.cmd', 'new', {'effort': 'high'}, '')[1:] \
+        == ['--thinking', 'high']
+    for orphan in ('ultrathink', 'auto', ''):
+        assert '--thinking' not in pi.launch_argv('pi.cmd', 'new', {'effort': orphan}, '')
+
+
+def test_a_name_is_only_for_a_new_session():
+    assert pi.launch_argv('pi.cmd', 'new', {'name': 'x'}, '')[1:] == ['-n', 'x']
+    assert '-n' not in pi.launch_argv('pi.cmd', 'resume:a', {'name': 'x'}, '')
+
+
+def test_a_prompt_is_behind_the_option_terminator():
+    """`--` is what stops a prompt beginning with a dash being read as a flag.
+    pi's own help documents it for exactly this."""
+    argv = pi.launch_argv('pi.cmd', 'new', {'prompt': '--not-a-flag'}, '')
+    assert argv[-2:] == ['--', '--not-a-flag']
+
+
+def test_the_launch_path_asks_the_harness_for_its_argv(monkeypatch, tmp_path):
+    sb = Sandbox(monkeypatch, tmp_path)
+    from claude_sessions import main as main_mod
+    home = pi_home(sb.root, [('s1', 'C:/work/alpha', 1)])
+    args, env, _folder = main_mod.build_launch_command(
+        'C:/work/alpha', 'C--work-alpha', 'resume:s1',
+        {'cfgdir': home, 'effort': 'high', 'model': 'anthropic/claude-sonnet-5',
+         'perm': 'default', 'name': 'x', 'worktree': '*'})
+    assert os.path.basename(args[0]).startswith('pi')
+    assert args[1:3] == ['--session', 's1']
+    assert '--permission-mode' not in args and '-w' not in args
+    assert env['PI_CODING_AGENT_DIR'] == home
