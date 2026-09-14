@@ -217,6 +217,16 @@ def repair_commands(cfgdirs=None, moved=None, failed=None):
     the flag was written, and anyone who never had the old name at all. Running
     it unconditionally costs one settings read per account and one `isfile` per
     `.py` argument, on a path that already loads the TUI.
+
+    **It walks Claude accounts only, and that is a measurement rather than an
+    oversight.** A path dies here because archeus WROTE it into a config file;
+    Codex keeps its hooks in `<CODEX_HOME>/hooks.json` behind a trust hash and
+    pi has none at all, and archeus writes to neither — both declare
+    `hooks: (False, …)`, so there is nothing of ours in either file to go
+    stale. The day one of them gains `hooks: True`, this has to learn that
+    file's reader, and
+    `test_the_repair_covers_every_harness_archeus_writes_hooks_for` fails until
+    it does. Extend this; do not write a second repair.
     """
     from . import hooks
     if cfgdirs is None:

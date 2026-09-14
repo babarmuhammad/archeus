@@ -528,3 +528,85 @@ def test_the_default_falls_back_to_claude_code_not_to_whatever_sorts_first(monke
     assert harnesses.default_target() == 'claude'
     monkeypatch.setattr(c, 'load_settings', lambda: {})
     assert harnesses.default_target() == 'claude'
+
+
+# ── a skill reaches every CLI ────────────────────────────────
+
+def _skill(d, name='demo'):
+    import io as _io
+    p = os.path.join(str(d), name)
+    os.makedirs(p, exist_ok=True)
+    _io.open(os.path.join(p, 'SKILL.md'), 'w', encoding='utf-8').write(
+        '---\nname: %s\ndescription: does a thing\n---\n\nbody\n' % name)
+    return p
+
+
+def test_a_personal_skill_lands_in_every_cli_not_just_every_account(monkeypatch, tmp_path):
+    """The fan-out was one axis wide. A skill you wrote is a property of YOU,
+    not of whichever login — or now, whichever CLI — happened to be active when
+    you saved it. Copied, never translated: SKILL.md is the Agent Skills
+    standard and all three read the same file."""
+    from harness import Sandbox
+    from claude_sessions import skills
+    sb = Sandbox(monkeypatch, tmp_path)
+    monkeypatch.setattr(harnesses, 'exe', lambda hid=None: 'x')
+    monkeypatch.setattr(c, 'all_config_dirs', lambda: [('default', str(sb.cfg))])
+    done = skills.install_personal(_skill(tmp_path))
+    assert [n for n, _d in done] == ['default', 'Codex', 'pi']
+    for _n, d in done:
+        assert os.path.isfile(os.path.join(d, 'SKILL.md'))
+    assert skills.personal_accounts(done[0][1]) == ['default', 'Codex', 'pi']
+    # and removing it removes it everywhere, or "installed" becomes "installed
+    # in three places you forgot about"
+    skills.delete_personal(done[0][1])
+    assert skills.personal_accounts(done[0][1]) == []
+
+
+def test_a_project_skill_lands_in_two_directories_not_three(monkeypatch, tmp_path):
+    """`.agents/skills` is the CROSS-HARNESS convention and both Codex and pi
+    read it, so one copy serves both. The deduplication is by PATH rather than
+    by harness, because which harnesses happen to share a directory is theirs
+    to decide, not archeus's to hardcode."""
+    from harness import Sandbox
+    from claude_sessions import skills
+    sb = Sandbox(monkeypatch, tmp_path)
+    monkeypatch.setattr(harnesses, 'exe', lambda hid=None: 'x')
+    monkeypatch.setattr(c, 'all_config_dirs', lambda: [('default', str(sb.cfg))])
+    proj = str(tmp_path / 'proj')
+    os.makedirs(proj, exist_ok=True)
+    got = skills.install_project(_skill(tmp_path), proj)
+    assert [os.path.relpath(d, proj) for d in got] == [
+        os.path.join('.claude', 'skills', 'demo'),
+        os.path.join('.agents', 'skills', 'demo')]
+
+
+def test_a_switched_off_cli_gets_no_skills(monkeypatch, tmp_path):
+    """Off means everywhere, and a skill root is one more everywhere."""
+    from harness import Sandbox
+    from claude_sessions import skills
+    sb = Sandbox(monkeypatch, tmp_path)
+    monkeypatch.setattr(harnesses, 'exe', lambda hid=None: 'x')
+    monkeypatch.setattr(c, 'all_config_dirs', lambda: [('default', str(sb.cfg))])
+    s = c.load_settings()
+    s['harnesses_disabled'] = ['codex', 'pi']
+    c.save_settings(s)
+    assert [n for n, _d in skills.install_personal(_skill(tmp_path))] == ['default']
+    assert len(harnesses.project_skill_roots(str(tmp_path))) == 1
+
+
+def test_every_harness_names_where_its_skills_live():
+    """A descriptor missing one of these is a harness the fan-out silently
+    skips — it would land in `os.path.join(home)` and write into the home
+    itself."""
+    for hid, d in harnesses.HARNESSES.items():
+        for key in ('skills_rel', 'project_skills_rel'):
+            assert d.get(key), '%s has no %s' % (hid, key)
+            assert isinstance(d[key], tuple) and all(d[key]), '%s/%s' % (hid, key)
+    # and each root is the one that CLI actually reads, measured from its own
+    # documentation. The dedupe hides a wrong answer here — pointing pi at
+    # `.claude/skills` still yields two directories, just two wrong ones.
+    assert {hid: d['project_skills_rel'] for hid, d in harnesses.HARNESSES.items()} == {
+        'claude': ('.claude', 'skills'),
+        'codex': ('.agents', 'skills'),
+        'pi': ('.agents', 'skills'),
+    }

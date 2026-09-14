@@ -31,10 +31,15 @@ Code authentication you already have. No API key.
     `POST /v1/messages` — a local Ollama, llama.cpp or vLLM server, OpenRouter, or
     OmniRoute — and it stays a real Claude Code session. See [Model providers](providers.md).
 
-    The other half has not. Driving a harness other than Claude Code is a long-term goal,
-    not a feature. Claude Code is the first surface, not the boundary — but today it is
-    still the only one, and everything documented on this site works against the files
-    Claude Code writes to disk.
+    The other half has started. archeus also reads **OpenAI Codex** and **pi** — their
+    sessions, projects, previews, models and token spend all merge into the same lists,
+    one memory graph is delivered to all three, and any of them can be launched from the
+    same picker. See [More than one CLI](harnesses.md).
+
+    Claude Code is the first surface, not the boundary — and it is no longer the only
+    one. It remains much the deepest of the three, and the comparison table on that page
+    says plainly what each of the others cannot do rather than hiding the gaps. A harness
+    of archeus's own remains a long-term goal, not a feature.
 
 ## The three surfaces
 

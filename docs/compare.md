@@ -71,8 +71,11 @@ Stated plainly, because a comparison page that only lists strengths is not usefu
 - **The memory features cost tokens to build.** Extraction and lesson distillation are
   Claude calls. They are routed to a cheap model and run rarely, but they are not free —
   the saving is on the per-message context you stop paying for.
-- **It drives Claude Code only, today.** Provider-neutral memory and an open harness of
-  its own are a long-term goal, not a feature — nothing else is supported yet.
+- **Claude Code is much the deepest of the three CLIs it drives.** OpenAI Codex and pi are
+  read end to end — sessions, spend, memory, skills, launch — but hooks, MCP, subagents,
+  plugins and checkpoints are Claude Code's alone, for reasons the
+  [comparison table](harnesses.md#what-each-cli-cannot-do-here) states one by one. An open
+  harness of archeus's own is still a long-term goal, not a feature.
 - **It is a young project.** Small user base, and the API surface still moves.
 
 ## When to use which

@@ -661,3 +661,23 @@ def test_the_warning_names_the_stale_env_vars_and_the_old_plugin(monkeypatch,
     _write(str(tmp_path / 'plugins' / 'installed_plugins.json'),
            json.dumps({'version': 2, 'plugins': {}}))
     assert migrate.stale_plugin_warning() == '', 'it warns with nothing installed'
+
+
+def test_the_repair_covers_every_harness_archeus_writes_hooks_for():
+    """`repair_commands` re-points a script path archeus itself WROTE into a
+    config file, and it reads exactly one format: Claude Code's `settings.json`,
+    through `hooks._load`.
+
+    That is complete only while archeus writes hooks nowhere else. Codex keeps
+    its own in `<CODEX_HOME>/hooks.json` behind a trust hash and pi has none at
+    all, so both declare the capability off and there is nothing of ours in
+    either file to go stale. This fails the moment that stops being true —
+    which is the point: the failure mode otherwise is silent, since a dead path
+    in a config nothing repairs simply stops firing with no error anywhere.
+    """
+    from claude_sessions import harnesses
+    writes_hooks = [hid for hid in harnesses.ids()
+                    if harnesses.cap(hid, 'hooks')[0]]
+    assert writes_hooks == ['claude'], (
+        '%s now takes hooks from archeus — teach migrate.repair_commands its '
+        'config reader rather than writing a second repair' % writes_hooks)

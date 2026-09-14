@@ -114,6 +114,12 @@ HARNESSES = {
         #: lines of its flag vocabulary that the dispatch deliberately sits
         #: below rather than trying to generalise.
         'launch_argv': 'main.build_launch_command',
+        #: where a SKILL.md goes, relative to the home and to a project.
+        #: The FORMAT is the same everywhere — the Agent Skills standard —
+        #: so a skill is installed by copying it into each harness's roots,
+        #: not by translating it.
+        'skills_rel': ('skills',),
+        'project_skills_rel': ('.claude', 'skills'),
         'caps': {},                       # it can do everything; it is the model
     },
     'codex': {
@@ -142,6 +148,10 @@ HARNESSES = {
         'projects': 'codex.projects',
         'has_project': 'codex.has_project',
         'launch_argv': 'codex.launch_argv',
+        'skills_rel': ('skills',),
+        #: `.agents/skills` is the CROSS-HARNESS convention, which is why
+        #: pi names the same directory: one copy in a project serves both.
+        'project_skills_rel': ('.agents', 'skills'),
         #: what archeus cannot do HERE, and why — the reason is what the screen
         #: prints, so each says which side the gap is on. The first group is
         #: structural (Codex has no such thing); the second is archeus reading
@@ -162,7 +172,6 @@ HARNESSES = {
             'hooks':         (False, "Codex has hooks.json; archeus writes "
                                      "Claude Code's settings.json."),
             'agents':        (False, 'Codex keeps subagents in .agents.'),
-            'skills':        (False, 'Codex loads skills from its own roots.'),
             #: the launch modal's own gaps, checked against `codex --help` on
             #: the installed binary rather than assumed from Claude Code's
             #: flags. Codex HAS `-m`, `-a` and a reasoning-effort config key,
@@ -207,10 +216,15 @@ HARNESSES = {
         'projects': 'pi.projects',
         'has_project': 'pi.has_project',
         'launch_argv': 'pi.launch_argv',
+        'skills_rel': ('skills',),
+        'project_skills_rel': ('.agents', 'skills'),
         #: pi's gaps are wider than Codex's and differently shaped: it has no
         #: MCP and no hooks AT ALL (extensions are TypeScript modules it loads
-        #: itself), but its skills ARE Claude Code's — `~/.claude/skills` is one
-        #: of the roots it discovers, which is why `skills` is not listed here.
+        #: itself). `skills` is not listed because archeus installs into pi's
+        #: own roots — NOT, as a first reading of its docs suggested, because pi
+        #: reads `~/.claude/skills`: that is opt-in through its settings file,
+        #: and a capability that depends on the user having configured something
+        #: is not one archeus may claim.
         'caps': {
             'archive':       (False, 'pi has no archive; a session is deleted '
                                      'or kept.'),
@@ -415,6 +429,36 @@ def launch_targets():
                      'hid': DEFAULT, 'cfgdir': '', 'provider': pid,
                      'caps': {k: list(cap(DEFAULT, k)) for k in CAPS}})
     return rows
+
+
+def skill_roots():
+    """[(display name, directory)] — the personal skills root of every home an
+    installed, enabled harness has.
+
+    The shape `install_personal` already fanned over, one axis wider: a skill
+    you wrote is a property of YOU, not of whichever login — or now, whichever
+    CLI — happened to be active when you saved it. The format is the same
+    everywhere (the Agent Skills standard), so this is a copy per root rather
+    than a translation.
+    """
+    return [(name, os.path.join(home, *descriptor(hid)['skills_rel']))
+            for name, home, hid in instances()]
+
+
+def project_skill_roots(project_path):
+    """Every directory a project skill has to land in, DEDUPED.
+
+    `.agents/skills` is the cross-harness convention and both Codex and pi read
+    it, so a project with all three installed gets two directories, not three —
+    and the deduplication is by path rather than by harness, because which
+    harnesses happen to share one is theirs to decide.
+    """
+    out = []
+    for _n, _home, hid in instances():
+        d = os.path.join(project_path, *descriptor(hid)['project_skills_rel'])
+        if d not in out:
+            out.append(d)
+    return out
 
 
 def default_target():

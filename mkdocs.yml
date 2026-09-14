@@ -116,6 +116,7 @@ nav:
       - Context hand-off: context-handoff.md
   - Settings:
       - Configuration: configuration.md
+      - More than one CLI: harnesses.md
       - Model providers: providers.md
       - Plan → Execute & OmniRoute: plan-execute.md
       - Status line, failover & checkpoints: statusline.md

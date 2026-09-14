@@ -1891,14 +1891,17 @@ def _skill_dest(body):
 
 def api_skill_install(q, body):
     """Install into the project, or into the personal scope of every account —
-    see skills.install_personal for why personal means all of them."""
-    from .skills import install_skill, install_personal
+    see skills.install_personal for why personal means all of them, and every
+    CLI on the machine besides."""
+    from .skills import install_personal, install_project
     if body.get('scope') != 'project':
         done = install_personal(body.get('dir', ''))
         return {'ok': bool(done), 'dir': done[0][1] if done else '',
                 'accounts': [n for n, _d in done]}
-    dest = install_skill(body.get('dir', ''), _skill_dest(body))
-    return {'ok': bool(dest), 'dir': dest}
+    if not body.get('path'):
+        raise BadRequest('scope=project needs a path')
+    got = install_project(body.get('dir', ''), body['path'])
+    return {'ok': bool(got), 'dir': got[0] if got else '', 'dirs': got}
 
 
 def api_skill_remove(q, body):

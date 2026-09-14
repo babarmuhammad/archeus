@@ -9,6 +9,55 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **archeus reads three coding CLIs, not one.** OpenAI Codex and pi join Claude Code as
+  first-class harnesses: their projects, sessions, previews, turn counts, models, token
+  spend, search and usage all merge into the same lists, with no configuration — archeus
+  looks for each binary and its home, and a CLI it cannot find is simply not offered. A
+  *provider* is an endpoint and a *harness* is the binary itself; the two axes are
+  orthogonal, and the launch picker shows both because they are both answers to "what runs
+  this session". See
+  [More than one CLI](https://babarmuhammad.github.io/archeus/harnesses/).
+
+- **One memory graph behind all three.** A project's memory is the project's, not Claude
+  Code's memory of the project, so the same digest is delivered into every instructions
+  file an installed CLI reads — `CLAUDE.md` for Claude Code, `AGENTS.md` for Codex, and
+  both for pi, which reads either. A machine with no Codex never grows an `AGENTS.md`. The
+  agent routing table deliberately does not follow: delegation is a Claude Code capability,
+  and writing "delegate with the Agent tool" into `AGENTS.md` would instruct Codex to use a
+  tool it does not have.
+
+- **Skills install into every CLI.** `SKILL.md` is the Agent Skills standard and all three
+  read the same file, so a personal skill lands in every account *and* every CLI, and a
+  project skill writes `.claude/skills` and `.agents/skills` — two directories, not three,
+  because `.agents/skills` is the cross-harness convention Codex and pi share.
+
+- **New session opens on a tab strip.** Which CLI or backend a session runs on used to be a
+  chip row six fields down inside a collapsed "Advanced" panel, beside the thinking cap —
+  the only control in that form that changed which *tool* ran. It is now the first question,
+  because it decides what the rest of the form means: a Codex session has no worktree and no
+  name-at-launch, a pi session has no permission mode, and those fields are removed with the
+  reason stated rather than left as dead inputs. The default is Claude Code and is
+  configurable in Settings → Defaults → **Starts on**.
+
+- **A CLI can be switched off, and off means everywhere** — the launch tabs, the project
+  list, the sessions list, the usage table, and the instructions files that get a memory
+  block. Nothing is uninstalled and nothing on disk is touched. Claude Code is listed and
+  locked: it is the binary archeus itself runs for memory extraction, lessons and every
+  other AI feature.
+
+### Fixed
+
+- **A one-shot run in the OS scratch directory is no longer a project.** A `codex exec` or
+  `claude -p` in `%TEMP%` writes the same session state a real project does, and the sidebar
+  grew a tab for a directory that is gone by the next boot.
+
+- **Codex sessions reported zero tokens, and search, usage and the dashboard reported no
+  sessions at all.** The corpus walk listed `*.jsonl` in the project folder, which is where
+  Codex keeps an index rather than a transcript; it goes through the same two seams the
+  sessions list already used. Token spend is read from the rollout's `token_count` events,
+  whose cumulative totals are banked as deltas — summing one per turn multiplies a session's
+  spend by its turn count.
+
 - **Run a session against a local model, OpenRouter or a self-hosted server**, not only
   OmniRoute. archeus could already point a real `claude` session at another backend —
   that is what the OmniRoute support has always been — but the capability was wired to one

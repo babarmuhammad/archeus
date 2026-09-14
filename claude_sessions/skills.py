@@ -46,6 +46,7 @@ from .ui import (menu, text_input, flash, pause, confirm, multiselect,
                  pager, _cls)
 from . import config as _c
 from . import render
+from . import harnesses as _harnesses
 
 # Tools a skill may restrict itself to via `allowed-tools`. Omit to inherit all.
 KNOWN_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep',
@@ -473,9 +474,9 @@ def install_from_git(repo_url, project_path, exec_model='', cfgdir=None):
 
         installed = []
         for name, d in skill_dirs:
-            dest = install_skill(d, project_skills_dir(project_path) if project_path
-                                 else personal_dir(cfgdir))
-            if dest:
+            got = (install_project(d, project_path) if project_path
+                   else [x for _n, x in install_personal(d)])
+            if got:
                 installed.append(name)
 
         agent_count = 0
@@ -499,44 +500,65 @@ def install_from_git(repo_url, project_path, exec_model='', cfgdir=None):
 
 
 def install_personal(src_dir, all_accounts=True):
-    """Install a skill into the personal scope of EVERY account. [(name, dir)].
+    """Install a skill into the personal scope of every account AND every other
+    CLI on the machine. [(name, dir)].
 
-    A skill you wrote is a property of you, not of whichever login happened to
-    be active when you saved it — the same rule the hook fan-out and
-    `sync-accounts` already follow. Without this, "personal" quietly meant "one
-    account", and a skill vanished the moment you switched.
+    A skill you wrote is a property of you, not of whichever login — or now,
+    whichever CLI — happened to be active when you saved it; the same rule the
+    hook fan-out and `sync-accounts` already follow. Without this, "personal"
+    quietly meant "one account", and a skill vanished the moment you switched.
+
+    It is a COPY per root, not a translation: SKILL.md is the Agent Skills
+    standard and all three CLIs read the same file. What differs is only where
+    they look, which is why the roots come out of the descriptor.
     """
     out = []
-    for name, cfgdir in (_c.all_config_dirs() if all_accounts
-                         else [('', _c.config_dir)]):
-        dest = install_skill(src_dir, personal_dir(cfgdir))
+    for name, root in (_harnesses.skill_roots() if all_accounts
+                       else [('', personal_dir())]):
+        dest = install_skill(src_dir, root)
         if dest:
             out.append((name, dest))
     return out
 
 
 def delete_personal(skill_dir, all_accounts=True):
-    """Remove a personal skill from every account that has it. [(name, dir)].
+    """Remove a personal skill from every account and CLI that has it.
+    [(name, dir)].
 
     The other half of the fan-out: installing everywhere and deleting in one
-    place turns "installed" into "installed in four accounts you forgot about".
+    place turns "installed" into "installed in four places you forgot about".
     """
     base = os.path.basename(skill_dir)
     gone = []
-    for name, cfgdir in (_c.all_config_dirs() if all_accounts
-                         else [('', _c.config_dir)]):
-        d = os.path.join(personal_dir(cfgdir), base)
+    for name, root in (_harnesses.skill_roots() if all_accounts
+                       else [('', personal_dir())]):
+        d = os.path.join(root, base)
         if os.path.isdir(d) and delete_skill(d):
             gone.append((name, d))
     return gone
 
 
 def personal_accounts(skill_dir):
-    """Which accounts already have a personal skill by this name — what the
-    confirmation dialog needs in order to say what it is about to do."""
+    """Which accounts and CLIs already have a personal skill by this name —
+    what the confirmation dialog needs in order to say what it is about to do."""
     base = os.path.basename(skill_dir)
-    return [name for name, cfgdir in _c.all_config_dirs()
-            if os.path.isfile(skill_md(os.path.join(personal_dir(cfgdir), base)))]
+    return [name for name, root in _harnesses.skill_roots()
+            if os.path.isfile(skill_md(os.path.join(root, base)))]
+
+
+def install_project(src_dir, project_path):
+    """Install a skill into every project root an installed CLI reads. [dir].
+
+    Deduped by PATH: `.agents/skills` is the cross-harness convention and both
+    Codex and pi read it, so a project with all three installed gets two
+    directories, not three.
+    """
+    out = []
+    for root in _harnesses.project_skill_roots(project_path):
+        dest = install_skill(src_dir, root)
+        if dest:
+            out.append(dest)
+    return out
 
 
 def save_to_library(src_dir, cfgdir=None):
@@ -673,9 +695,9 @@ def _skill_detail(skill_dir, scope, project_path):
         flash("Copied to personal skills" if dest else "Copy failed",
               ok=bool(dest), secs=1.4)
     elif sel == 'project':
-        dest = install_skill(skill_dir, project_skills_dir(project_path))
-        flash(f"Installed → {os.path.basename(dest)}" if dest else "Install failed",
-              ok=bool(dest), secs=1.4)
+        got = install_project(skill_dir, project_path)
+        flash(f"Installed → {os.path.basename(got[0])}" if got else "Install failed",
+              ok=bool(got), secs=1.4)
     elif sel == 'delete':
         if confirm(f"Delete skill '{cmd}' from {scope} skills?", danger=True):
             flash("Deleted" if delete_skill(skill_dir) else "Delete failed",
