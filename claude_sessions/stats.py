@@ -137,7 +137,14 @@ def iter_all_sessions(entries, title='SCANNING SESSIONS', silent=False):
     session of every project. Shows a progress frame; ESC stops early
     (yields partial). entries: [(mtime, actual_path, encoded_name, cfgdir)]
     as built by main.run. silent=True (GUI server threads): no progress
-    frame, no keyboard peeking — a plain data generator."""
+    frame, no keyboard peeking — a plain data generator.
+
+    The rows come from `sessions.scan_sessions` and the file from
+    `store.transcript_path` — the same two seams the sessions list uses — rather
+    than from `*.jsonl` in the folder. This is the function search, usage and the
+    dashboard all read through, so listing the folder itself meant those three
+    saw a Codex thread as no session at all: its transcript is a rollout file
+    somewhere else entirely and its folder holds an index, not a corpus."""
     if not silent:
         from . import ui   # lazy — avoid import cycle
 
@@ -150,9 +157,7 @@ def iter_all_sessions(entries, title='SCANNING SESSIONS', silent=False):
             if stopped:
                 break
             folder = store.project_folder(cfgdir, enc)
-            names = [f for f in (os.listdir(folder) if os.path.isdir(folder) else [])
-                     if f.endswith('.jsonl')]
-            for f in names:
+            for _m, sid, _pv, _c in _sessions.scan_sessions(folder):
                 # peek for ESC; first non-ESC key is preserved for the next
                 # screen and ends the peeking (keeps queued input in order)
                 if peeking:
@@ -163,13 +168,13 @@ def iter_all_sessions(entries, title='SCANNING SESSIONS', silent=False):
                             break
                         ui.push_event(ev)
                         peeking = False
-                fpath = os.path.join(folder, f)
+                fpath = store.transcript_path(folder, sid)
                 try:
                     mtime = os.path.getmtime(fpath)
                 except OSError:
                     continue
                 stats = get_session_stats_cached(fpath)
-                yield (mtime, ppath, enc, f[:-6], stats, cfgdir)
+                yield (mtime, ppath, enc, sid, stats, cfgdir)
             if not silent:
                 render.render_frame([
                     render.header('ARCHEUS', title),

@@ -14,7 +14,7 @@ from . import config as _c
 from . import harnesses as _harnesses
 
 __all__ = ['projects_root', 'project_folder', 'session_file', 'transcript_path',
-           'all_projects', 'is_encoded',
+           'all_projects', 'under_temp', 'is_encoded',
            'workdir', 'workfile', 'WORKDIR']
 
 #: what archeus writes into a project it does not own. Defined in config
@@ -118,6 +118,44 @@ def _has_project_claude(home, enc):
     return os.path.isdir(project_folder(home, enc))
 
 
+def temp_root():
+    """The directory whose contents are never a project, or '' to filter nothing.
+
+    `tempfile.gettempdir()`, and deliberately NOT `config._TEMP`: that one falls
+    back to the user profile when neither TEMP nor TMP is set, so on such a
+    machine filtering by it would hide every project the user has.
+
+    Two answers are refused for the same reason — a filter that cannot be wrong
+    about a scratch directory can still be catastrophically wrong about a real
+    one: a filesystem root, and the user profile itself.
+    """
+    import tempfile
+    try:
+        t = os.path.abspath(tempfile.gettempdir())
+    except Exception:
+        return ''
+    if os.path.dirname(t) == t:
+        return ''
+    if os.path.normcase(t) == os.path.normcase(os.path.abspath(_c._USERPROFILE)):
+        return ''
+    return t
+
+
+def under_temp(path):
+    """True for a project that lives in the OS scratch directory.
+
+    A one-shot run in a temp folder — a probe, a test, `claude -p` against a
+    throwaway tree — writes the same session state a real project does, and
+    every harness then reports it as a workspace. It is not one: the directory
+    is gone by the next boot and nothing there is work anyone returns to.
+    """
+    root = temp_root()
+    if not root or not path:
+        return False
+    p, r = os.path.normcase(os.path.abspath(path)), os.path.normcase(root)
+    return p == r or p.startswith(r + os.sep)
+
+
 def all_projects():
     """[(mtime, real path, enc, home)] across every harness, newest first.
 
@@ -125,10 +163,15 @@ def all_projects():
     `gui_api._entries` and `main.run`, each producing this exact tuple — three
     places a second harness would have had to be remembered, and the sidebar
     would have shown Codex's projects while the terminal menu did not.
+
+    It is also the one place the scratch directory is filtered, for that same
+    reason: the rule is about what a project IS, not about which CLI recorded it.
     """
     out = []
     for _name, home, hid in _harnesses.instances():
         for mtime, actual, enc in _harnesses.impl('projects', hid)(home):
+            if under_temp(actual):
+                continue
             out.append((mtime, actual, enc, home))
     out.sort(reverse=True)
     return out

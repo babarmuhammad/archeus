@@ -188,9 +188,14 @@ def fold(obj, s):
             s['cwd'] = real_cwd(p['cwd'])
     elif kind == 'turn_context':
         # the model is named per TURN, not once per session: a session that
-        # changed model half way through has two, and both belong in the list
+        # changed model half way through has two, and both belong in the list.
+        # Most-recent LAST, because `_spend` attributes a turn's tokens to
+        # `models[-1]` — a session that went A, B, A would otherwise bill the
+        # third stretch to B.
         m = p.get('model')
-        if m and m not in s['models']:
+        if m:
+            if m in s['models']:
+                s['models'].remove(m)
             s['models'].append(m)
         if p.get('cwd') and not s['cwd']:
             s['cwd'] = real_cwd(p['cwd'])
@@ -204,3 +209,50 @@ def fold(obj, s):
                 s['preview'] = txt[:200].replace('\n', ' ')
         elif t == 'error':
             s['api_errors'] += 1
+        elif t == 'token_count':
+            _spend(p, s)
+
+
+#: Codex's five token fields, and what they mean next to Claude Code's four.
+#: `input_tokens` is the WHOLE prompt and `cached_input_tokens` the part of it
+#: that was served from cache — the binary names their difference
+#: `non_cached_input_tokens`, which is what archeus calls `in`. There is no
+#: fourth: a cache WRITE is not billed as its own line by this provider, so
+#: `cache_create` stays 0 rather than being invented out of the difference.
+#: `reasoning_output_tokens` is a subset of `output_tokens`, not a sibling, so
+#: adding it would count the thinking twice.
+def _split(u):
+    u = u or {}
+    cr = u.get('cached_input_tokens') or 0
+    return {'in': max(0, (u.get('input_tokens') or 0) - cr),
+            'out': u.get('output_tokens') or 0,
+            'cache_read': cr, 'cache_create': 0}
+
+
+def _spend(p, s):
+    """A `token_count` event into `usage_by_model`.
+
+    `total_token_usage` is CUMULATIVE for the session, not the turn — summing
+    one event per turn would multiply a session's spend by its turn count. So
+    what is banked is the DELTA against what has already been attributed, which
+    `usage_by_model` itself records: the sum over its models is, by
+    construction, the last total this function saw. That needs no scratch key on
+    `s` — which it could not have, because the disk cache compares a cached
+    entry's keys against `_EMPTY_STATS` and would reject every one carrying an
+    extra field.
+
+    `last_token_usage` is deliberately not the source. It is the right number
+    per turn, but only if exactly one `token_count` fires per turn, and nothing
+    in the schema promises that; a delta against the cumulative figure is
+    correct however many arrive.
+    """
+    cum = _split(((p.get('info') or {}).get('total_token_usage')))
+    if not any(cum.values()):
+        return
+    model = s['models'][-1] if s['models'] else 'codex'
+    u = s['usage_by_model'].setdefault(
+        model, {'in': 0, 'out': 0, 'cache_read': 0, 'cache_create': 0})
+    for k in ('in', 'out', 'cache_read'):
+        seen = sum(m[k] for m in s['usage_by_model'].values())
+        # a resumed rollout can restart the count; never bank a negative
+        u[k] += max(0, cum[k] - seen)

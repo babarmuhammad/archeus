@@ -15,6 +15,7 @@ re-script 600 tests.
 import json
 import os
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -142,6 +143,13 @@ class Sandbox:
         self.choice = tmp_path / 'choice.txt'
         self.settings = tmp_path / 'archeus.json'
         self.agents_lib = tmp_path / 'agents-lib'   # empty by default
+        #: the OS scratch directory, inside the sandbox. A Sandbox that repoints
+        #: HOME and leaves `tempfile` on the real machine temp is a half
+        #: sandbox: pytest's own tmp_path lives UNDER that directory, so
+        #: `store.under_temp` — which is what keeps a one-shot probe run out of
+        #: the project list — answered True for every project a test creates.
+        self.tmp = tmp_path / 'tmp'
+        self.tmp.mkdir()
         self.editor_opened = []
         self._encoded_to_actual = {}
         self._patch_paths()
@@ -168,6 +176,8 @@ class Sandbox:
             # real state database — a test reading live user state, which is the
             # failure `_no_writes_outside_the_sandbox` only covers one half of.
             (config, '_USERPROFILE', str(self.root)),
+            (config, '_TEMP', str(self.tmp)),
+            (tempfile, 'tempdir', str(self.tmp)),
             (config, 'config_dir', cfg), (config, 'projects_dir', prj),
             (config, 'last_session_file', lsf),
             (config, 'settings_file', str(self.settings)),

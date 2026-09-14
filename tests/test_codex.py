@@ -11,18 +11,20 @@ import json
 import os
 import sqlite3
 import sys
+import unittest.mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import harness
 from harness import Sandbox
-from claude_sessions import codex, harnesses, sessions, store
+from claude_sessions import codex, config, harnesses, sessions, store
 
 ROLLOUT_COLS = ('id', 'rollout_path', 'cwd', 'preview', 'first_user_message',
                 'model', 'tokens_used', 'git_branch', 'archived',
                 'updated_at_ms', 'created_at_ms')
 
 
-def _rollout(path, cwd, turns=2, model='gpt-5.5'):
+def _rollout(path, cwd, turns=2, model='gpt-5.5', spend=0):
     """A rollout whose developer preamble is NOT a turn — the distinction the
     count exists for."""
     recs = [
@@ -54,6 +56,9 @@ def _rollout(path, cwd, turns=2, model='gpt-5.5'):
         recs.append({'timestamp': '2026-09-14T22:16:%02d.500Z' % i,
                      'type': 'event_msg',
                      'payload': {'type': 'task_complete', 'turn_id': 't%d' % i}})
+        if spend:
+            recs.append(_usage_rec(spend * (i + 1), 0, spend * (i + 1) // 10,
+                                   '2026-09-14T22:16:%02d.600Z' % i))
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w', encoding='utf-8') as f:
         for r in recs:
@@ -61,7 +66,7 @@ def _rollout(path, cwd, turns=2, model='gpt-5.5'):
     return path
 
 
-def codex_home(root, threads, exe=True):
+def codex_home(root, threads, exe=True, spend=0):
     """A Codex home under *root* holding one state db and its rollouts.
 
     *threads* is [(sid, cwd, turns, archived)]. The binary is written too,
@@ -74,7 +79,8 @@ def codex_home(root, threads, exe=True):
     con.execute('CREATE TABLE threads (%s)' % ', '.join(ROLLOUT_COLS))
     for i, (sid, cwd, turns, archived) in enumerate(threads):
         path = _rollout(os.path.join(home, 'sessions', '2026', '09', '14',
-                                     'rollout-%s.jsonl' % sid), cwd, turns)
+                                     'rollout-%s.jsonl' % sid), cwd, turns,
+                        spend=spend)
         con.execute('INSERT INTO threads VALUES (%s)' % ','.join('?' * len(ROLLOUT_COLS)),
                     (sid, path, cwd, 'ask %d' % i, 'ask %d' % i, 'gpt-5.5', 0,
                      'main', int(archived), 1789416868062 + i, 1789416841547 + i))
@@ -259,3 +265,188 @@ def test_every_project_list_comes_from_the_one_walk():
         src = inspect.getsource(fn)
         assert 'projects_root' not in src, fn.__qualname__
         assert 'all_projects()' in src, fn.__qualname__
+
+
+# ── the scratch directory is not a workspace ──────────────────
+
+def test_a_probe_run_in_the_scratch_directory_is_not_a_project(monkeypatch, tmp_path):
+    r"""The reported symptom, exactly: a one-shot `codex exec` in
+    `%TEMP%\codexprobe` wrote the same session state a real project does, and
+    the sidebar grew a tab for a directory that is gone by the next boot.
+
+    It is filtered in `store.all_projects` and nowhere else — the rule is about
+    what a project IS, not about which CLI recorded it, so a `claude -p` in the
+    same directory has to vanish from the same edit.
+    """
+    sb = Sandbox(monkeypatch, tmp_path)
+    from claude_sessions import gui
+
+    real = str(sb.root / 'work' / 'alpha')
+    probe = str(sb.tmp / 'codexprobe')
+    for d in (real, probe):
+        os.makedirs(d, exist_ok=True)
+
+    # one of each harness, both in the scratch directory, plus a real project
+    codex_home(sb.root, [('s1', probe, 1, 0), ('s2', real, 1, 0)])
+    encs = {}
+    for d in (real, probe):
+        enc = codex._enc(d)
+        encs[enc] = d
+        (sb.projects / enc).mkdir()
+        harness.make_jsonl(str(sb.projects / enc / ('%s.jsonl' % os.path.basename(d))))
+    from claude_sessions import paths as paths_mod
+    monkeypatch.setattr(paths_mod, 'find_actual_path', lambda e, *a, **k: encs.get(e))
+
+    assert store.under_temp(probe) and not store.under_temp(real)
+    assert {p for _m, p, _e, _h in store.all_projects()} == {real}
+    assert [r['path'] for r in gui.list_projects()] == [real]
+
+
+def test_the_scratch_filter_refuses_an_answer_that_would_hide_everything():
+    """A filter that cannot be wrong about a probe directory can still be
+    catastrophically wrong about a real one. `tempfile.gettempdir()` falls back
+    to the working directory, and `config._TEMP` falls back to the user profile
+    when neither TEMP nor TMP is set — filtering by either on such a machine
+    hides every project the user has, with no error anywhere."""
+    import tempfile
+    for bad in (os.path.abspath(os.sep), config._USERPROFILE):
+        with unittest.mock.patch.object(tempfile, 'tempdir', bad):
+            assert store.temp_root() == ''
+            assert not store.under_temp(os.path.join(bad, 'anything'))
+
+
+# ── token spend ──────────────────────────────────────────────
+
+def _usage_rec(total_in, cached, out, ts='2026-09-14T22:16:00.000Z'):
+    """A `token_count` event, in the shape the binary's own type declarations
+    give: `TokenCountEvent {info, rate_limits}`, `TokenUsageInfo
+    {total_token_usage, last_token_usage, model_context_window}`, `TokenUsage
+    {input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens,
+    total_tokens}`."""
+    u = {'input_tokens': total_in, 'cached_input_tokens': cached,
+         'output_tokens': out, 'reasoning_output_tokens': out // 2,
+         'total_tokens': total_in + out}
+    # deliberately NOT the same object as the total. The two are different
+    # numbers in a real rollout, and reading the wrong one is a mistake no
+    # fixture that shares one dict between them can ever show.
+    last = {'input_tokens': 7, 'cached_input_tokens': 3, 'output_tokens': 5,
+            'reasoning_output_tokens': 2, 'total_tokens': 12}
+    return {'timestamp': ts, 'type': 'event_msg',
+            'payload': {'type': 'token_count',
+                        'info': {'total_token_usage': u, 'last_token_usage': last,
+                                 'model_context_window': 258400},
+                        'rate_limits': None}}
+
+
+def _parse(tmp_path, recs, name='rollout-x.jsonl'):
+    p = os.path.join(str(tmp_path), name)
+    with open(p, 'w', encoding='utf-8') as f:
+        for r in recs:
+            f.write(json.dumps(r) + '\n')
+    s = dict(sessions._EMPTY_STATS)
+    s['usage_by_model'], s['models'] = {}, []
+    for r in recs:
+        codex.fold(r, s)
+    return s
+
+
+def test_a_cumulative_total_is_banked_as_a_delta(tmp_path):
+    """`total_token_usage` is the SESSION's running total, not the turn's. One
+    event per turn summed the way Claude Code's per-message usage is summed
+    multiplies a session's spend by its turn count — three turns of a session
+    that spent 300 would have reported 1800."""
+    s = _parse(tmp_path, [
+        {'timestamp': '2026-09-14T22:14:01.100Z', 'type': 'turn_context',
+         'payload': {'model': 'gpt-5.5'}},
+        _usage_rec(100, 40, 20),      # cumulative after turn 1
+        _usage_rec(250, 100, 55),     # after turn 2
+        _usage_rec(400, 160, 90),     # after turn 3
+    ])
+    assert s['usage_by_model'] == {'gpt-5.5': {
+        'in': 240,            # 400 input - 160 cached: the non-cached half
+        'out': 90,
+        'cache_read': 160,
+        'cache_create': 0,    # this provider does not bill a cache write
+    }}
+
+
+def test_reasoning_tokens_are_not_added_a_second_time(tmp_path):
+    """`reasoning_output_tokens` is a SUBSET of `output_tokens`, not a sibling
+    of it — the binary exports `non_cached_input_tokens` as its own metric for
+    input and no such thing for output. Adding it counts the thinking twice."""
+    s = _parse(tmp_path, [_usage_rec(100, 0, 60)])
+    assert s['usage_by_model']['codex']['out'] == 60
+
+
+def test_a_session_that_switched_model_bills_each_one_its_own_stretch(tmp_path):
+    """The model is named per TURN. Attribution follows `models[-1]`, so a
+    session that went A, B, A has to bill the third stretch back to A rather
+    than leaving A at whatever it stood at when B took over."""
+    tc = lambda m: {'timestamp': '2026-09-14T22:14:01.100Z',
+                    'type': 'turn_context', 'payload': {'model': m}}
+    s = _parse(tmp_path, [tc('a'), _usage_rec(100, 0, 10),
+                          tc('b'), _usage_rec(300, 0, 30),
+                          tc('a'), _usage_rec(600, 0, 60)])
+    assert s['models'] == ['b', 'a']
+    assert s['usage_by_model']['a']['in'] == 100 + 300
+    assert s['usage_by_model']['b']['in'] == 200
+    assert sum(u['in'] for u in s['usage_by_model'].values()) == 600
+
+
+def test_the_fold_adds_no_field_the_cache_would_reject(tmp_path):
+    """A delta needs to know what it has already banked, and the obvious place
+    to keep that is a scratch key on `s`. It cannot be: `_disk_cache_hit`
+    compares a cached entry's keys against `_EMPTY_STATS` and would throw away
+    every entry carrying an extra one — silently, forever."""
+    s = _parse(tmp_path, [_usage_rec(100, 40, 20)])
+    assert s.keys() == sessions._EMPTY_STATS.keys()
+
+
+def test_a_rollout_that_restarts_its_count_never_banks_a_negative(tmp_path):
+    s = _parse(tmp_path, [_usage_rec(500, 0, 50), _usage_rec(100, 0, 10)])
+    assert s['usage_by_model']['codex'] == {
+        'in': 500, 'out': 50, 'cache_read': 0, 'cache_create': 0}
+
+
+# ── search, usage and the dashboard ──────────────────────────
+
+def test_the_corpus_walk_finds_a_session_whose_transcript_is_elsewhere(monkeypatch, tmp_path):
+    """`stats.iter_all_sessions` is what search, usage and the dashboard all
+    read through, and it listed `*.jsonl` in the project folder. A Codex thread
+    keeps an index there and its transcript somewhere else entirely, so all
+    three saw a project with no sessions at all — no error, just a zero.
+    """
+    sb = Sandbox(monkeypatch, tmp_path)
+    from claude_sessions import stats as stats_mod
+
+    actual = str(sb.root / 'work' / 'alpha')
+    os.makedirs(actual, exist_ok=True)
+    home = codex_home(sb.root, [('s1', actual, 2, 0)], spend=1000)
+    enc = codex._enc(actual)
+    folder = os.path.join(home, 'projects', enc)
+    os.makedirs(folder, exist_ok=True)
+
+    rows = list(stats_mod.iter_all_sessions([(0, actual, enc, home)], silent=True))
+    assert [r[3] for r in rows] == ['s1']
+    assert rows[0][4]['count'] == 4                      # two exchanges
+    assert rows[0][4]['usage_by_model']['gpt-5.5']['in'] == 2000   # cumulative
+
+
+def test_codex_spend_reaches_the_usage_table(monkeypatch, tmp_path):
+    """The whole point of the two edits above: a Codex project is a row in the
+    usage table with real numbers, not a row reading zero."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    from claude_sessions import stats as stats_mod
+
+    actual = str(sb.root / 'work' / 'alpha')
+    os.makedirs(actual, exist_ok=True)
+    home = codex_home(sb.root, [('s1', actual, 2, 0)], spend=1000)
+    enc = codex._enc(actual)
+    os.makedirs(os.path.join(home, 'projects', enc), exist_ok=True)
+
+    rows = stats_mod.assemble_project_usage([(0, actual, enc, home)])
+    assert len(rows) == 1
+    assert rows[0]['sessions'] == 1
+    assert rows[0]['usage']['in'] == 2000
+    assert rows[0]['usage']['out'] == 200
+    assert 'gpt-5.5' in rows[0]['usage_by_model']
