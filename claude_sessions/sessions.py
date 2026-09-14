@@ -9,6 +9,7 @@ import re
 from .config import BAD_PREFIXES, BAD_CONTAINS, last_session_file, projects_dir, config_dir
 from . import config as _c
 from . import transcripts as _t
+from . import harnesses as _harnesses
 from . import store as _store
 
 
@@ -175,60 +176,74 @@ def _parse_session(jsonl_path):
     s = dict(_EMPTY_STATS)
     s['usage_by_model'] = {}
     s['models'] = []
+    # which CLI wrote this file decides what its records look like; the parse
+    # around it — the cache, the key, the single pass — does not change
+    fold = _harnesses.fold(_harnesses.of_path(jsonl_path)['id'])
     for obj in _t.iter_json(jsonl_path):
-        if obj.get('type') == 'ai-title' and not s['title']:
-            s['title'] = (obj.get('title', '') or obj.get('content', '')).strip()
-
-        ts = obj.get('timestamp')
-        if isinstance(ts, str):
-            ep = _iso_to_epoch(ts)
-            if ep is not None:
-                if s['first_ts'] is None or ep < s['first_ts']:
-                    s['first_ts'] = ep
-                if s['last_ts'] is None or ep > s['last_ts']:
-                    s['last_ts'] = ep
-
-        if obj.get('gitBranch'):
-            s['branch'] = obj['gitBranch']
-        if obj.get('cwd'):
-            s['cwd'] = obj['cwd']
-        if obj.get('isApiErrorMessage'):
-            s['api_errors'] += 1
-
-        msg  = obj.get('message') or {}
-        role = obj.get('role') or msg.get('role', '')
-        if role in ('user', 'assistant'):
-            s['count'] += 1
-        if role == 'user':
-            for text in _extract_texts(obj):
-                if is_headless_text(text):
-                    s['headless'] = True
-                if _good_text(text):
-                    # 200, not 65: this is what a session row shows when it has
-                    # no AI title and no manual name, and 65 characters was
-                    # already the ceiling before the row lost a quarter of its
-                    # width to the action strip. Both interfaces cut it to fit,
-                    # so the cap is only the ceiling, not the shown length.
-                    s['preview'] = text[:200].replace('\n', ' ')  # last good one wins
-                    break
-        elif role == 'assistant':
-            model = msg.get('model', '')
-            if model.startswith('<'):   # '<synthetic>' internal marker
-                model = ''
-            usage = msg.get('usage') or {}
-            if model and model not in s['models']:
-                s['models'].append(model)
-            if usage and model:
-                u = s['usage_by_model'].setdefault(
-                    model, {'in': 0, 'out': 0, 'cache_read': 0, 'cache_create': 0})
-                u['in']           += usage.get('input_tokens', 0) or 0
-                u['out']          += usage.get('output_tokens', 0) or 0
-                u['cache_read']   += usage.get('cache_read_input_tokens', 0) or 0
-                u['cache_create'] += usage.get('cache_creation_input_tokens', 0) or 0
+        fold(obj, s)
 
     _info_cache[jsonl_path] = (key, s)
     _disk_cache_store(jsonl_path, key, s)
     return s
+
+
+def _fold_claude(obj, s):
+    """One record of a Claude Code transcript into the shared stats dict.
+
+    Lifted out of the parser unchanged. Every field name in here is Claude
+    Code's — `message.model`, `gitBranch`, `isApiErrorMessage`, the
+    `<synthetic>` sentinel — which is exactly why it had to stop being the
+    parser's own body: a Codex rollout answers to none of them.
+    """
+    if obj.get('type') == 'ai-title' and not s['title']:
+        s['title'] = (obj.get('title', '') or obj.get('content', '')).strip()
+
+    ts = obj.get('timestamp')
+    if isinstance(ts, str):
+        ep = _iso_to_epoch(ts)
+        if ep is not None:
+            if s['first_ts'] is None or ep < s['first_ts']:
+                s['first_ts'] = ep
+            if s['last_ts'] is None or ep > s['last_ts']:
+                s['last_ts'] = ep
+
+    if obj.get('gitBranch'):
+        s['branch'] = obj['gitBranch']
+    if obj.get('cwd'):
+        s['cwd'] = obj['cwd']
+    if obj.get('isApiErrorMessage'):
+        s['api_errors'] += 1
+
+    msg  = obj.get('message') or {}
+    role = obj.get('role') or msg.get('role', '')
+    if role in ('user', 'assistant'):
+        s['count'] += 1
+    if role == 'user':
+        for text in _extract_texts(obj):
+            if is_headless_text(text):
+                s['headless'] = True
+            if _good_text(text):
+                # 200, not 65: this is what a session row shows when it has
+                # no AI title and no manual name, and 65 characters was
+                # already the ceiling before the row lost a quarter of its
+                # width to the action strip. Both interfaces cut it to fit,
+                # so the cap is only the ceiling, not the shown length.
+                s['preview'] = text[:200].replace('\n', ' ')  # last good one wins
+                break
+    elif role == 'assistant':
+        model = msg.get('model', '')
+        if model.startswith('<'):   # '<synthetic>' internal marker
+            model = ''
+        usage = msg.get('usage') or {}
+        if model and model not in s['models']:
+            s['models'].append(model)
+        if usage and model:
+            u = s['usage_by_model'].setdefault(
+                model, {'in': 0, 'out': 0, 'cache_read': 0, 'cache_create': 0})
+            u['in']           += usage.get('input_tokens', 0) or 0
+            u['out']          += usage.get('output_tokens', 0) or 0
+            u['cache_read']   += usage.get('cache_read_input_tokens', 0) or 0
+            u['cache_create'] += usage.get('cache_creation_input_tokens', 0) or 0
 
 
 def get_session_info(jsonl_path):

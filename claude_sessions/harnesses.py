@@ -89,6 +89,11 @@ HARNESSES = {
         #: a key in the environment shadows the account login, so the CLI would
         #: authenticate as the key's owner whatever home it was pointed at.
         'env_pops': ('ANTHROPIC_API_KEY',),
+        #: one transcript record -> the shared stats dict. Named rather than
+        #: inlined in the parser because the record SHAPE is the harness's:
+        #: `message.model`, `gitBranch` and `isApiErrorMessage` are Claude
+        #: Code's field names, not a universal transcript's.
+        'fold': 'sessions._fold_claude',
         'caps': {},                       # it can do everything; it is the model
     },
 }
@@ -123,6 +128,39 @@ def of(cfgdir=None):
             if os.path.normcase(os.path.abspath(home)) == want:
                 return descriptor(hid)
     return descriptor(DEFAULT)
+
+
+def of_path(path):
+    """The descriptor for whichever harness OWNS this file.
+
+    A transcript is reached as a path far more often than as an account, and
+    every one of them sits under a home — `<home>/projects/<enc>/<sid>.jsonl`
+    for Claude Code, and whatever the rollout column says for Codex, which is
+    also under its home. Placing the file rather than threading a harness id
+    through `_parse_session` and its five callers is what keeps the hot path's
+    signature alone.
+    """
+    if path:
+        p = os.path.normcase(os.path.abspath(path))
+        best = None
+        for hid, home in _homes():
+            h = os.path.normcase(os.path.abspath(home))
+            if p.startswith(h + os.sep) and (best is None or len(h) > len(best[1])):
+                best = (hid, h)
+        if best:
+            return descriptor(best[0])
+    return descriptor(DEFAULT)
+
+
+def fold(hid=None):
+    """The record folder for one harness, resolved late.
+
+    A dotted name in the table rather than the function itself: `sessions`
+    imports this module, so naming the function here directly would be a cycle.
+    """
+    mod, _dot, fn = descriptor(hid)['fold'].partition('.')
+    import importlib
+    return getattr(importlib.import_module('.' + mod, __package__), fn)
 
 
 def _homes():

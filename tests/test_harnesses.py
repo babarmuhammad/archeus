@@ -258,3 +258,62 @@ def test_selecting_it_says_why_instead_of_opening_an_empty_screen(
     ok, why = m._cap_of_row('__mcp__')
     assert not ok and why == 'Fake CLI has no MCP.'
     assert m._cap_of_row('__settings__') == (True, '')
+
+
+# ── placing a transcript, and folding it ─────────────────────
+
+def test_a_transcript_is_placed_by_the_home_it_sits_under(monkeypatch, tmp_path):
+    """A transcript is reached as a PATH far more often than as an account, and
+    every one of them sits under a home. Placing the file is what keeps
+    `_parse_session` and its five callers from growing a harness parameter."""
+    from harness import Sandbox
+    sb = Sandbox(monkeypatch, tmp_path)
+    p = os.path.join(str(sb.projects), 'X--work-proj', 'abc.jsonl')
+    assert harnesses.of_path(p)['id'] == 'claude'
+    assert harnesses.of_path(str(tmp_path / 'elsewhere' / 'x.jsonl'))['id'] == 'claude'
+    assert harnesses.of_path('')['id'] == 'claude'
+
+
+def test_the_fold_is_resolved_late():
+    """The table names the function rather than holding it: `sessions` imports
+    the registry, so pointing at the function directly would be a cycle."""
+    fold = harnesses.fold('claude')
+    assert callable(fold) and fold.__name__ == '_fold_claude'
+
+
+def test_the_parser_no_longer_knows_what_a_record_looks_like():
+    """`_parse_session` owns the cache, the key and the single pass. The field
+    names in a record are the HARNESS's — `message.model`, `gitBranch`,
+    `isApiErrorMessage`, the `<synthetic>` sentinel — and a Codex rollout
+    answers to none of them."""
+    import ast
+    import inspect
+    from claude_sessions import sessions
+    src = inspect.getsource(sessions._parse_session)
+    # record fields only: `usage_by_model` is the shape of the shared stats
+    # dict, which IS the parser's to own
+    for field in ('gitBranch', 'isApiErrorMessage',
+                  'cache_creation_input_tokens', 'ai-title'):
+        assert field not in src, '%s is back in the parser' % field
+    # and the fold still reads them, or this test is measuring nothing
+    fold_src = inspect.getsource(sessions._fold_claude)
+    for field in ('gitBranch', 'isApiErrorMessage', 'ai-title'):
+        assert field in fold_src
+    assert isinstance(ast.parse(fold_src), ast.Module)
+
+
+def test_folding_a_claude_record_still_fills_the_same_keys(tmp_path):
+    """The extraction is a move, not a rewrite: one record in, the same stats
+    dict out."""
+    from claude_sessions import sessions
+    s = dict(sessions._EMPTY_STATS)
+    s['usage_by_model'], s['models'] = {}, []
+    sessions._fold_claude({'type': 'assistant', 'gitBranch': 'main',
+                           'cwd': 'C:/p', 'timestamp': '2026-01-01T00:00:00Z',
+                           'message': {'role': 'assistant', 'model': 'claude-sonnet-5',
+                                       'usage': {'input_tokens': 3,
+                                                 'output_tokens': 4}}}, s)
+    assert s['branch'] == 'main' and s['cwd'] == 'C:/p'
+    assert s['models'] == ['claude-sonnet-5']
+    assert s['usage_by_model']['claude-sonnet-5']['in'] == 3
+    assert s['count'] == 1 and s['first_ts'] is not None
