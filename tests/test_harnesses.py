@@ -6,6 +6,7 @@ before the thing that needs it, so the harnesses that follow cannot be tempted
 to special-case their way past it. Every gate here is written to hold for a
 registry of three.
 """
+import io
 import os
 
 import pytest
@@ -161,3 +162,99 @@ def test_the_shape_of_an_inference_call_is_the_harness_s_to_declare():
     applying."""
     for d in harnesses.HARNESSES.values():
         assert 'inference_flags' in d and 'inference_verbs' in d
+
+
+# ── what consumes a capability ───────────────────────────────
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _declared_caps():
+    """Every capability key named by a surface: the GUI's NAV and TABS tables
+    and the terminal menu's MAIN_CAPS."""
+    import re
+    from claude_sessions.main import MAIN_CAPS
+    js = io.open(os.path.join(ROOT, 'claude_sessions', 'web', 'app.js'),
+                 encoding='utf-8').read()
+    out = set(MAIN_CAPS.values())
+    for tbl in ('NAV', 'TABS'):
+        a = js.index('const %s=[' % tbl)
+        block = js[a:js.index('\n];', a)]
+        for row in re.finditer(r"^  \['[a-z]+',.*?,'([a-z_]*)'\],$", block,
+                               re.M | re.S):
+            if row.group(1):
+                out.add(row.group(1))
+    return out
+
+
+def test_every_capability_a_surface_names_actually_exists():
+    """An unlisted key reads as supported, so a typo in a page table turns the
+    page OFF nowhere and ON everywhere — it would never be noticed."""
+    unknown = _declared_caps() - set(harnesses.CAPS)
+    assert not unknown, 'no such capability: %s' % sorted(unknown)
+
+
+def test_a_capability_some_harness_lacks_is_consumed_by_something():
+    """A capability nothing reads is a promise nothing keeps: the descriptor
+    says the harness cannot do it, and the screen offers it anyway. Only the
+    OFF ones are required to have a consumer — the rest are answers waiting for
+    a question, which is what a registry of one looks like."""
+    declared = _declared_caps()
+    orphans = set()
+    for hid, d in harnesses.HARNESSES.items():
+        for key, (ok, _why) in d['caps'].items():
+            if not ok and key not in declared:
+                orphans.add('%s/%s' % (hid, key))
+    assert not orphans, 'nothing gates these: %s' % sorted(orphans)
+
+
+def test_both_page_tables_declare_the_field_on_every_row():
+    """A ragged table is worse than no table: the missing field reads as '' —
+    available — so the one row that forgot is the one that silently works."""
+    import re
+    js = io.open(os.path.join(ROOT, 'claude_sessions', 'web', 'app.js'),
+                 encoding='utf-8').read()
+    for tbl, n in (('NAV', 7), ('TABS', 5)):
+        a = js.index('const %s=[' % tbl)
+        block = js[a:js.index('\n];', a)]
+        rows = [r for r in re.finditer(r"^  \['[a-z]+',.*?\],$", block,
+                                       re.M | re.S)]
+        assert rows, tbl
+        for r in rows:
+            body = r.group(0).rstrip(',').rstrip(']')
+            assert body.rstrip().endswith("'"), '%s: %s' % (tbl, r.group(0)[:40])
+
+
+# ── the terminal menu dims rather than hides ─────────────────
+
+def _with_fake_harness(monkeypatch, caps):
+    """Register a harness whose home is the active account, so `of(None)`
+    answers it. Nothing is off with one harness registered, and the behaviour
+    under test is what the MENU does with a capability that is."""
+    fake = dict(harnesses.HARNESSES['claude'], id='fake', label='Fake CLI',
+                caps=caps)
+    monkeypatch.setitem(harnesses.HARNESSES, 'fake', fake)
+    monkeypatch.setattr(harnesses, 'of', lambda cfgdir=None: fake)
+    return fake
+
+
+def test_a_row_the_cli_cannot_do_is_dimmed_not_removed(monkeypatch, tmp_path):
+    from harness import Sandbox
+    from claude_sessions import main as m
+    Sandbox(monkeypatch, tmp_path)
+    _with_fake_harness(monkeypatch, {'mcp': (False, 'Fake CLI has no MCP.')})
+    off = m._dim_unavailable('MCP servers', '__mcp__')
+    on = m._dim_unavailable('Settings', '__settings__')
+    assert off != 'MCP servers' and 'MCP servers' in off   # dimmed, still there
+    assert on == 'Settings'
+
+
+def test_selecting_it_says_why_instead_of_opening_an_empty_screen(
+        monkeypatch, tmp_path):
+    from harness import Sandbox
+    from claude_sessions import main as m
+    Sandbox(monkeypatch, tmp_path)
+    _with_fake_harness(monkeypatch, {'mcp': (False, 'Fake CLI has no MCP.')})
+    ok, why = m._cap_of_row('__mcp__')
+    assert not ok and why == 'Fake CLI has no MCP.'
+    assert m._cap_of_row('__settings__') == (True, '')

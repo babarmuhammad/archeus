@@ -2389,3 +2389,12 @@ html.zen .top>#bZen:hover,html.zen .top>#bZen:focus-visible{opacity:1}
   .kpi{gap:var(--sp-3) var(--sp-4)}
   .kpi .kv2{font-size:17px}
 }
+
+/* ── a surface the CLI behind this account does not have ──────────────────────
+   Greyed and still clickable: the page it opens says what is missing and where
+   it does work. A row that vanishes teaches nothing, and a row that errors
+   reads as a bug in archeus. Last in the file, with the other override blocks,
+   for the reason they are all here: a class adds no specificity over the rule
+   it countermands, so source order is the only thing deciding. */
+.tab.off,.nav .it.off{opacity:.45}
+.tab.off:hover,.nav .it.off:hover{opacity:.7}

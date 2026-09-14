@@ -745,32 +745,38 @@ function modalGate(J,gate){
    page is before anyone decided what it should be. Every page still carrying
    it is a page this rehaul has not reached, which is why the count is asserted
    downward rather than merely allowed. */
+/* The SEVENTH field is the capability a page needs — see harnesses.py. It is a
+   fact about the PAGE and not about any one CLI: "Output styles" is output
+   styles whoever implements them. Declared here so a harness that lacks one
+   greys the row and says why, and so the gate can fail a page naming a
+   capability nothing declares — and a capability no page consumes. '' is
+   archeus's own screen, available wherever archeus is. */
 const NAV=[
-  ['globalmd','doc','Global CLAUDE.md','The instructions Claude reads in every session on an account, its loop.md, and the conventions worth promoting into it.',()=>pgGlobalMd,'pile'],
-  ['ostyles','palette','Output styles','Output styles Claude Code can wear, and which one is active.',()=>pgOStyles,'split'],
-  ['mcp','plug','MCP servers','MCP servers: status, detail and the tool documentation they can write into the global CLAUDE.md.',()=>pgMcp,'split'],
-  ['agents','robot','Agents','Subagent definitions: browse the library, write one by hand or have Claude draft it.',()=>pgAgents,'split'],
-  ['skills','ai','Skills','SKILL.md skills — bundled templates, your library, and the ones installed in a project.',()=>pgSkills,'split'],
-  ['hooks','link','Hooks','Claude Code hooks per account: install from a template, enable, disable or remove.',()=>pgHooks,'split'],
-  ['plugins','folder','Plugins','The marketplaces you have registered and every plugin installed from them, with what each one contributes.',()=>pgPlugins,'pile'],
+  ['globalmd','doc','Global CLAUDE.md','The instructions Claude reads in every session on an account, its loop.md, and the conventions worth promoting into it.',()=>pgGlobalMd,'pile',''],
+  ['ostyles','palette','Output styles','Output styles Claude Code can wear, and which one is active.',()=>pgOStyles,'split','output_styles'],
+  ['mcp','plug','MCP servers','MCP servers: status, detail and the tool documentation they can write into the global CLAUDE.md.',()=>pgMcp,'split','mcp'],
+  ['agents','robot','Agents','Subagent definitions: browse the library, write one by hand or have Claude draft it.',()=>pgAgents,'split','agents'],
+  ['skills','ai','Skills','SKILL.md skills — bundled templates, your library, and the ones installed in a project.',()=>pgSkills,'split','skills'],
+  ['hooks','link','Hooks','Claude Code hooks per account: install from a template, enable, disable or remove.',()=>pgHooks,'split','hooks'],
+  ['plugins','folder','Plugins','The marketplaces you have registered and every plugin installed from them, with what each one contributes.',()=>pgPlugins,'pile','plugins'],
   // 'Usage & cost', not 'Usage': the project side has a tab called Usage too,
   // and this is the name the docs page carries — a screen and the page about it
   // should be called the same thing.
-  ['usage','chart','Usage & cost','Token spend and rate limits across every account, by day and by project.',()=>pgUsage,'pile'],
-  ['loops','refresh','Loops','Start a /loop in its own session, watch it fire, end it — and the loop.md that says what a bare /loop does.',()=>pgLoops,'pile'],
-  ['logs','history','Logs','What archeus itself did and why it failed — its own Claude calls, background jobs, the scheduler and the proxy, newest first.',()=>pgLogs,'feed'],
-  ['accounts','group','Accounts','Every Claude login, and the sync that levels them all up to the same provisioning.',()=>pgAccounts,'split'],
-  ['client','ai','Claude Code','What Claude Code records about itself: versions, disk, background agents, its own settings.',()=>pgClient,'pile'],
-  ['settings','bolt','Launch','What every new session starts with — effort, model, permission mode, the window it opens in, and the plan/execute pair.',()=>pgSetLaunch,'form'],
-  ['appearance','palette','Appearance','Palette, skin, world, motion, surface transparency and the background scene.',()=>pgSetAppearance,'form'],
+  ['usage','chart','Usage & cost','Token spend and rate limits across every account, by day and by project.',()=>pgUsage,'pile','usage'],
+  ['loops','refresh','Loops','Start a /loop in its own session, watch it fire, end it — and the loop.md that says what a bare /loop does.',()=>pgLoops,'pile',''],
+  ['logs','history','Logs','What archeus itself did and why it failed — its own Claude calls, background jobs, the scheduler and the proxy, newest first.',()=>pgLogs,'feed',''],
+  ['accounts','group','Accounts','Every Claude login, and the sync that levels them all up to the same provisioning.',()=>pgAccounts,'split','accounts'],
+  ['client','ai','Claude Code','What Claude Code records about itself: versions, disk, background agents, its own settings.',()=>pgClient,'pile','client_state'],
+  ['settings','bolt','Launch','What every new session starts with — effort, model, permission mode, the window it opens in, and the plan/execute pair.',()=>pgSetLaunch,'form',''],
+  ['appearance','palette','Appearance','Palette, skin, world, motion, surface transparency and the background scene.',()=>pgSetAppearance,'form',''],
   // plain '&', never '&amp;': every consumer escapes it (the tab strip, the nav
   // row, the help table), so a pre-escaped label came out as "Paths &amp; limits"
   // on screen. A LABEL is data; the entity goes in the markup, not in the data.
-  ['paths','folder','Paths & limits','Where archeus finds your editor and Claude Code, what its own calls may spend, and what the memory graph may hold.',()=>pgSetPaths,'form'],
-  ['models','ai','Models','The backends your sessions can run against — Anthropic, a local server, OpenRouter or OmniRoute — each with its own model and failover list.',()=>pgSetModels,'split'],
-  ['updates','refresh','Updates','Versions of archeus, Claude Code and the model catalogue — and what archeus checks on its own: updates, notifications, and the auto-memory schedule.',()=>pgSetUpdates,'form'],
-  ['searchp','search','Search','Full-text search over every session transcript on the machine.',()=>pgSearch,'feed'],
-  ['helpp','help','Help','This page: every screen in the app and every key in the terminal UI.',()=>pgHelp,'pile'],
+  ['paths','folder','Paths & limits','Where archeus finds your editor and Claude Code, what its own calls may spend, and what the memory graph may hold.',()=>pgSetPaths,'form',''],
+  ['models','ai','Models','The backends your sessions can run against — Anthropic, a local server, OpenRouter or OmniRoute — each with its own model and failover list.',()=>pgSetModels,'split',''],
+  ['updates','refresh','Updates','Versions of archeus, Claude Code and the model catalogue — and what archeus checks on its own: updates, notifications, and the auto-memory schedule.',()=>pgSetUpdates,'form','versions'],
+  ['searchp','search','Search','Full-text search over every session transcript on the machine.',()=>pgSearch,'feed',''],
+  ['helpp','help','Help','This page: every screen in the app and every key in the terminal UI.',()=>pgHelp,'pile',''],
 ];
 /* [label, icon, blurb, [page ids]] — the sidebar itself. It carries page IDS
    rather than the tuples, so NAV stays the ONE place a page is declared and a
@@ -877,14 +883,41 @@ function bindSideGrips(){
 /* Nav rows carry no gauge. They used to each own an animated canvas, which put
    ~10 looping surfaces in the chrome to encode numbers about pages you weren't
    looking at — the clearest case of motion that cost frames and said nothing. */
+/* ── what the CLI behind this account can do ──────────────────────────────────
+   A capability is [ok, why] and the reason is the whole point: a surface a
+   harness cannot do is shown greyed WITH the reason, never hidden and never
+   faked. An unlisted key is supported, so a page naming a capability nothing
+   declares would read as available — which is what the orphan gate is for. */
+function harnessOf(cfgdir){
+  const want=(cfgdir||ST.active_cfgdir||'').toLowerCase();
+  const hs=ST.harnesses||[];
+  return hs.find(h=>(h.homes||[]).some(x=>(x||'').toLowerCase()===want))||hs[0]||null;
+}
+function capOf(key,cfgdir){
+  if(!key)return{ok:true,why:''};
+  const h=harnessOf(cfgdir),c=h&&h.caps&&h.caps[key];
+  return c?{ok:!!c[0],why:c[1]||''}:{ok:true,why:''};
+}
+function capSupporters(key){
+  return (ST.harnesses||[]).filter(h=>{
+    const c=h.caps&&h.caps[key];return !c||c[0];}).map(h=>h.label);
+}
+function capCard(key,why){
+  const on=capSupporters(key);
+  return `<div class="card"><h3>${ic('info')} Not available here</h3>
+    <p class="secthint">${esc(why||'The CLI this account belongs to does not have this.')}</p>
+    ${on.length?`<p class="secthint">Supported on: ${esc(on.join(', '))}.</p>`:''}</div>`;
+}
 function drawNav(){
   const cur=SEC_OF[PAGE_]||'';
   // clicking the section you are already in keeps the sub-tab you are on:
   // jumping back to the first page of the section you never left is a move you
   // did not ask for
-  $('#nav').innerHTML=SECTIONS.map(([label,icon,blurb,ids])=>
-    `<div class="it${cur===label?' sel':''}" onclick="go(${hesc(ids.includes(PAGE_)?PAGE_:ids[0])})"
-       title="${esc(blurb)}">${ic(icon)} <span>${esc(label)}</span></div>`).join('');
+  $('#nav').innerHTML=SECTIONS.map(([label,icon,blurb,ids])=>{
+    const off=ids.every(id=>!capOf(navCap(id)).ok);
+    return `<div class="it${cur===label?' sel':''}${off?' off':''}"
+       onclick="go(${hesc(ids.includes(PAGE_)?PAGE_:ids[0])})"
+       title="${esc(blurb)}">${ic(icon)} <span>${esc(label)}</span></div>`;}).join('');
 }
 /* ONE writer for both tab strips. A project page has two levels (the four
    groups, then the pages inside one) and a global section has one (its pages,
@@ -892,24 +925,31 @@ function drawNav(){
    second chance for the two rows to disagree about which of them is selected.
    Empty string, not `display:none` on a filled strip — a hidden strip that
    still holds last page's tabs is what the Ctrl+K palette would keep matching. */
-function tabBtn(id,label,sel,fn){
-  return `<div class="tab${sel?' sel':''}" onclick="${fn}(${hesc(id)})">${esc(label)}</div>`;
+function tabBtn(id,label,sel,fn,cap){
+  const c=capOf(cap||'');
+  return `<div class="tab${sel?' sel':''}${c.ok?'':' off'}" onclick="${fn}(${hesc(id)})"
+    ${c.ok?'':`title="${esc(c.why)}"`}>${esc(label)}</div>`;
 }
+function navCap(id){const n=NAV.find(x=>x[0]===id);return n?(n[6]||''):'';}
+function tabCap(id){const t=TABS.find(x=>x[0]===id);return t?(t[4]||''):'';}
 function drawTabStrips(){
   const t=$('#tabs'),s=$('#subtabs');
   let top='',sub='';
   drawPageNote();
   if(PAGE_==='project'){
     const grp=TAB_GROUPS.find(g=>g[1].includes(TAB))||TAB_GROUPS[0];
-    top=TAB_GROUPS.map(([label,ids])=>
-      tabBtn(ids.includes(TAB)?TAB:ids[0],label,grp[0]===label,'openTab')).join('')
+    top=TAB_GROUPS.map(([label,ids])=>{
+      const id=ids.includes(TAB)?TAB:ids[0];
+      // a GROUP is only unavailable when everything in it is
+      const off=ids.every(i=>!capOf(tabCap(i)).ok);
+      return tabBtn(id,label,grp[0]===label,'openTab',off?tabCap(id):'');}).join('')
       +`<div class="tab" onclick="window.open('/graph?${qs({path:CUR.path,enc:CUR.encoded,k:CK})}','_blank')">Graph ${ic('ext')}</div>`;
     if(grp[1].length>1)sub=grp[1].map(id=>
-      tabBtn(id,tabLabel(id),TAB===id,'openTab')).join('');
+      tabBtn(id,tabLabel(id),TAB===id,'openTab',tabCap(id))).join('');
   }else{
     const sec=SECTIONS.find(x=>x[3].includes(PAGE_));
     if(sec&&sec[3].length>1)top=sec[3].map(id=>
-      tabBtn(id,navLabel(id),PAGE_===id,'go')).join('');
+      tabBtn(id,navLabel(id),PAGE_===id,'go',navCap(id))).join('');
   }
   t.innerHTML=top;t.style.display=top?'flex':'none';
   s.innerHTML=sub;s.style.display=sub?'flex':'none';
@@ -1877,16 +1917,18 @@ function goToFullSearch(){PENDING_SEARCH_Q=($('#hqSearch').value||'');go('search
    the help page renders from this array instead of a retyped copy of it. */
 /* [id, label, blurb, ARCHETYPE] — the fourth field is NAV's sixth, for the
    same reason and read by the same `shell()`. */
+/* FIFTH field: the capability this tab needs, exactly as NAV's seventh. */
 const TABS=[
-  ['sessions','Sessions','Every session in this project, across accounts — open, rename, archive, export.','split'],
-  ['memory','Memory','Everything archeus knows about this project and what knowing it costs — the graph, the rules, lessons, spend, and what the last cycle did.','pile'],
-  ['claudemd','CLAUDE.md','The instruction file block by block, what each block costs, the memory map, and every version archeus replaced.','pile'],
-  ['review','Review','Run a code review over the working tree, staged changes or a branch.','feed'],
-  ['audit','Audit','What one turn costs across every surface at once — this project, your account, hooks and MCP — before you spend it.','feed'],
-  ['pusage','Usage','This project\'s token spend over time.','feed'],
-  ['planexec','Plan → Execute','Have one model write a plan, approve or edit it, then have another execute it.','form'],
-  ['worktrees','Repos','Git repos, submodules and linked worktrees under this project.','split'],
-  ['tools','Tools','Architecture, the interactive graph, Claude Code\'s own record of the project, and the loop file.','pile']];
+  ['sessions','Sessions','Every session in this project, across accounts — open, rename, archive, export.','split','sessions'],
+  ['memory','Memory','Everything archeus knows about this project and what knowing it costs — the graph, the rules, lessons, spend, and what the last cycle did.','pile',''],
+  ['claudemd','CLAUDE.md','The instruction file block by block, what each block costs, the memory map, and every version archeus replaced.','pile',''],
+  ['review','Review','Run a code review over the working tree, staged changes or a branch.','feed',''],
+  ['audit','Audit','What one turn costs across every surface at once — this project, your account, hooks and MCP — before you spend it.','feed',''],
+  ['pusage','Usage','This project\'s token spend over time.','feed',''],
+  ['planexec','Plan → Execute','Have one model write a plan, approve or edit it, then have another execute it.','form',''],
+  ['worktrees','Repos','Git repos, submodules and linked worktrees under this project.','split',''],
+  ['tools','Tools','Architecture, the interactive graph, Claude Code\'s own record of the project, and the loop file.','pile',''],
+];
 /* [label, [tab ids]] — the four the project opens on. Nine tabs is the same
    wall the sidebar had: the row wrapped, and the order in it had no argument
    behind it. TABS stays the FLAT leaf list for the same reason NAV does —
@@ -3544,6 +3586,8 @@ async function drawPage(id){
   $('#tpath').textContent='';
   // the token is taken BEFORE the fetches start; each page function drops its
   // write if navigation moved on while it was waiting
+  const need=n[6]||'',c=capOf(need);
+  if(!c.ok){paint(paintNow(LOADING),capCard(need,c.why));return;}
   const nav=paintNow(LOADING);
   await n[4]()(nav);
 }

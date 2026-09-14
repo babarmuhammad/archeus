@@ -110,7 +110,8 @@ _ARCH = _arch_table()
 #: page id -> the function that paints it. NAV names it in its fifth field; the
 #: project tabs are dispatched by `drawProject`, so those four are named here.
 _RENDERER = dict(
-    re.findall(r"\['([a-z]+)',[^\n]*?\(\)=>(\w+),'[a-z]+'\]", _JS))
+    re.findall(r"\['([a-z]+)',[^\n]*?\(\)=>(\w+),'[a-z]+'", _JS))    # stops at the SHAPE: a NAV row now
+    # carries the capability the page needs after it
 _RENDERER.update(sessions='drawSessions', worktrees='drawWorktrees')
 
 #: The shapes `shell()` knows how to write — and the whole set, because a

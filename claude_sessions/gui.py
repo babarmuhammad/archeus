@@ -141,6 +141,27 @@ def list_sessions(encoded):
     return out
 
 
+def _harness_payload():
+    """[{id, label, available, homes, caps}] for every harness archeus knows.
+
+    `caps` is the FULL table, not only what is off: the page gating it drives
+    reads one key by name, and making it look up a default would put the
+    "unlisted means supported" rule in two languages.
+    """
+    from . import harnesses
+    out = []
+    for hid in harnesses.ids():
+        d = harnesses.descriptor(hid)
+        out.append({
+            'id': hid,
+            'label': d['label'],
+            'available': bool(harnesses.exe(hid)),
+            'homes': [home for h, home in harnesses._homes() if h == hid],
+            'caps': {k: list(harnesses.cap(hid, k)) for k in harnesses.CAPS},
+        })
+    return out
+
+
 def theme_palettes():
     """Full GUI palette per theme, straight from the authored hex tables.
 
@@ -336,6 +357,11 @@ def state_payload():
         'providers': [_public_profile(p) for p in _c.provider_profiles(s)],
         'provider_active': s.get('provider_active', ''),
         'headless_provider_id': s.get('headless_provider_id', ''),
+        # Which agent CLI each account belongs to, and what that CLI can do.
+        # Shipped in the boot payload rather than on its own endpoint: every
+        # page needs it before it draws, and a second round trip to learn what
+        # to grey out would flash the wrong chrome first.
+        'harnesses': _harness_payload(),
         'theme': s.get('theme', 'default'),
         'motion': _motion_level(s),
         # 0 = never dragged; the CSS default stays in charge

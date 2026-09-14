@@ -36,6 +36,17 @@ STATE = {
                  {'name': 'acme-web', 'path': '/demo/acme-web', 'encoded': 'demo-acme-web',
                   'accounts': ['teamA'], 'primary_cfgdir': 'w',
                   'auto_memory': False, 'last_active': '1d'}],
+    # what the CLI behind each account can do. The real server derives this
+    # from harnesses.py; here it is spelled out because the point of the checks
+    # below is what the PAGE does with a capability that is off.
+    'harnesses': [{'id': 'claude', 'label': 'Claude Code', 'available': True,
+                   'homes': ['', 'w'],
+                   'caps': {'output_styles': [True, ''], 'mcp': [True, ''],
+                            'agents': [True, ''], 'skills': [True, ''],
+                            'hooks': [True, ''], 'plugins': [True, ''],
+                            'usage': [True, ''], 'accounts': [True, ''],
+                            'client_state': [True, ''], 'versions': [True, ''],
+                            'sessions': [True, '']}}],
     'accounts': [{'name': 'default', 'dir': '', 'active': True},
                  {'name': 'teamA', 'dir': 'w', 'active': False}],
     'recent': [{'project': 'acme-api', 'path': '/demo/acme-api', 'encoded': 'demo-acme-api',
@@ -1935,6 +1946,44 @@ def main():
         check('no burst at motion=subtle',
               pg.evaluate("document.querySelectorAll('.burst').length") == 0)
         pg.evaluate("MO.set('full');ST.world='';ST.skin='';applyTheme(ST.theme);startDashboard()")
+
+        # -- a surface the CLI behind this account does not have --
+        # Nothing is off with one harness registered, so this turns one off in
+        # the page's own state: what is being checked is the PAGE's behaviour,
+        # not the registry's contents.
+        print(NL + '-- unavailable capability --')
+        pg.evaluate("go('ostyles')")
+        pg.wait_for_timeout(600)
+        check('the page paints normally while its capability is on',
+              not pg.evaluate("document.body.innerText.includes"
+                              "('Not available here')"))
+        # TWO harnesses: the one this account belongs to, which cannot do it,
+        # and one that can. "Supported on" is only meaningful with both.
+        pg.evaluate("""(()=>{
+          ST.harnesses=[{id:'t',label:'Test CLI',available:true,
+            homes:[ST.active_cfgdir||''],
+            caps:{output_styles:[false,'Test CLI has no output styles.']}},
+           {id:'claude',label:'Claude Code',available:true,homes:['elsewhere'],
+            caps:{output_styles:[true,'']}}];
+          go('ostyles');})()""")
+        pg.wait_for_timeout(600)
+        txt = pg.evaluate("document.body.innerText")
+        check('an unavailable page says so instead of rendering',
+              'Not available here' in txt)
+        check('and says WHY, which is the whole contract',
+              'Test CLI has no output styles.' in txt)
+        check('and where it does work',
+              'Supported on' in txt and 'Claude Code' in txt)
+        check('the tab row greys the row rather than hiding it',
+              pg.evaluate("[...document.querySelectorAll('#tabs .tab')]"
+                          ".some(t=>t.classList.contains('off'))"))
+        check('a page with no capability of its own is untouched',
+              pg.evaluate("(()=>{go('settings');return true;})()"))
+        pg.wait_for_timeout(600)
+        check('…and still paints',
+              not pg.evaluate("document.body.innerText.includes"
+                              "('Not available here')"))
+        pg.evaluate("ST.harnesses=%s;" % json.dumps(STATE['harnesses']))
 
         # -- the provider card changes shape per backend --
         # The card was OmniRoute-shaped for its whole life: a live catalogue, a

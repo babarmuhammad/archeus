@@ -168,12 +168,45 @@ MAIN_SECTIONS = [
     ('Accounts', ['__accounts__']),
     ('Settings', ['__settings__', '__updates__']),
 ]
+#: menu key -> the capability it needs, pointing INTO MAIN_ACTIONS by key for
+#: the reason MAIN_SECTIONS does: that table stays the one carrying a row's
+#: label and its GUI route, and a fourth column there would be a fourth thing
+#: three unpack sites and a parity gate have to agree about. Same keys as the
+#: GUI's NAV field — `harnesses.CAPS` is where they are declared.
+MAIN_CAPS = {
+    '__mcp__':              'mcp',
+    '__agents__':           'agents',
+    '__skills__':           'skills',
+    '__hooks__':            'hooks',
+    '__updates__':          'versions',
+    '__usage_stats__':      'usage',
+    '__accounts__':         'accounts',
+}
+
+
+def _cap_of_row(key, cfgdir=None):
+    """(ok, why) for a main-menu row on the account in front of the user.
+
+    Dimmed and still selectable, exactly as the GUI greys a nav row: pressing it
+    says what is missing and where it works. A row that disappears teaches
+    nothing, and one that errors reads as a bug in archeus.
+    """
+    from .harnesses import cap, of
+    need = MAIN_CAPS.get(key or '')
+    return cap(of(cfgdir)['id'], need) if need else (True, '')
+
+
 #: rows that stay ON the main menu. The first three act on the project list the
 #: menu is already showing — burying "open a folder" one level down would put a
 #: submenu between the user and the reason they opened archeus — and `?` is the
 #: same door the GUI moved Help to. test_surface_parity fails a MAIN_ACTIONS key
 #: that is in neither this set nor a section.
 MAIN_TOP = ['__open_path__', '__search_all__', '__hidden_projects__', '__help__']
+
+
+def _dim_unavailable(label, key):
+    ok, _why = _cap_of_row(key)
+    return label if ok else f"{C_DIM}{label}{C_RESET}"
 
 
 def run():
@@ -462,7 +495,8 @@ def run():
         rows = (qr_items + [(f"{'─' * W}", None)] + project_items) if qr_items \
             else project_items
         rows = rows + [(f"{'─' * W}", None)] + \
-            [(label, key) for label, key, _route in MAIN_ACTIONS
+            [(_dim_unavailable(label, key), key)
+             for label, key, _route in MAIN_ACTIONS
              if key in MAIN_TOP and key != '__help__'] + \
             [(f"⚙  {label}…", f'__sec_{label}__') for label, _keys in MAIN_SECTIONS] + \
             [(label, key) for label, key, _route in MAIN_ACTIONS
@@ -506,10 +540,20 @@ def run():
             # the history of the menu it used to be, and reading its order back
             # out put `Updates` above `Settings` inside Settings
             labels = {key: lbl for lbl, key, _route in MAIN_ACTIONS}
-            sub_items = [(labels[k], k) for k in keys if k in labels]
+            sub_items = [(_dim_unavailable(labels[k], k), k)
+                         for k in keys if k in labels]
             sel = (sub_items[0][1] if len(sub_items) == 1
                    else menu(sub_items, label.upper()))
             if not sel:
+                continue
+
+        # a row whose capability this account's CLI does not have says so and
+        # goes back, rather than opening a screen that can only be empty
+        if sel:
+            _ok, _why = _cap_of_row(sel)
+            if not _ok:
+                from .ui import flash
+                flash(_why)
                 continue
 
         if sel and sel.startswith('__quickresume_'):
