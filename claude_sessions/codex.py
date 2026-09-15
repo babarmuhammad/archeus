@@ -363,6 +363,85 @@ def catalogue(home=None):
 _UPD_RE = r'updates\s+(\S+)\s+available\s+\(current\s+(\S+)\)'
 
 
+#: one `RateLimitDetails` -> (label, pct, resets_iso), or None.
+#:
+#: The field names are read out of the installed binary's own type metadata
+#: rather than guessed: it declares `used_percent` beside `window_minutes` and
+#: `resets_at`, with `window_duration_mins` and `reset_at` as alternate spellings
+#: in adjacent struct runs. All four are accepted, because which one a build
+#: emits is not something archeus gets to decide — and this is the same posture
+#: `usage._extract_windows` takes toward Anthropic's payload.
+#:
+#: The LABEL comes from the window's own length, not from the key it arrived
+#: under. Codex calls them `primary` and `secondary`, which say nothing to a
+#: reader; 300 minutes is a session window and 10080 is a weekly one, and those
+#: are the two words the rest of this app already prints.
+def _rl_window(d):
+    if not isinstance(d, dict):
+        return None
+    pct = d.get('used_percent')
+    if pct is None:
+        return None
+    try:
+        pct = max(0.0, min(float(pct), 100.0))
+    except (TypeError, ValueError):
+        return None
+    mins = d.get('window_minutes') or d.get('window_duration_mins') or 0
+    try:
+        mins = int(mins)
+    except (TypeError, ValueError):
+        mins = 0
+    label = 'weekly' if mins >= 2880 else 'session' if mins else 'limit'
+    return (label, pct, d.get('resets_at') or d.get('reset_at') or '')
+
+
+def rate_limits(home=None):
+    """[(label, pct, resets_iso)] for this CODEX_HOME, newest rollout wins.
+
+    Codex publishes its windows on the API response and records them in the
+    rollout — there is no endpoint to poll and no subcommand that prints them.
+    `codex doctor` does NOT: checked against the installed 0.142, its sections
+    are Notes / Environment / Configuration / Updates / Connectivity /
+    Background Server and none of them carries a limit. So the transcript is
+    the only source, which also means this is free and offline.
+
+    Returns [] when nothing has been recorded — a fresh install, or a machine
+    whose rollouts predate the field. That is a different answer from "0% used"
+    and the caller must say so rather than drawing an empty bar.
+    """
+    from . import transcripts
+    newest, newest_mt = '', -1
+    root = os.path.join(home or '', 'sessions') if home else ''
+    if not root or not os.path.isdir(root):
+        return []
+    for base, _dirs, files in os.walk(root):
+        for f in files:
+            if not f.endswith('.jsonl'):
+                continue
+            p = os.path.join(base, f)
+            try:
+                mt = os.path.getmtime(p)
+            except OSError:
+                continue
+            if mt > newest_mt:
+                newest, newest_mt = p, mt
+    if not newest:
+        return []
+    # forward pass keeping the LAST hit, with the substring prefilter tested
+    # against the raw line — so a rollout that is mostly tool traffic never pays
+    # a json.loads for a line that cannot contain a limit
+    got = []
+    for obj in transcripts.iter_json(newest, prefilter='rate_limit'):
+        rl = (obj.get('payload') or {}).get('rate_limits') if isinstance(obj, dict) else None
+        if not isinstance(rl, dict):
+            continue
+        wins = [w for w in (_rl_window(rl.get('primary')),
+                            _rl_window(rl.get('secondary'))) if w]
+        if wins:
+            got = wins
+    return got
+
+
 def auth_state(home=None):
     """'ok' | 'missing' | 'unknown' — is this CODEX_HOME logged in?
 

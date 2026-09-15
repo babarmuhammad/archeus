@@ -381,6 +381,13 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
 .uwin.hot .upct{color:var(--err)}
 .uwin .urst{color:var(--dim2);font-family:var(--mono);font-size:var(--fs-micro);
   overflow:hidden;text-overflow:ellipsis}
+/* A CLI with no plan window says so, in the space two windows would have
+   occupied — the same 260px+18px+260px the Claude rows use, so the token count
+   after it still lands on a column the eye is already following. */
+.urow .unote{color:var(--dim2);font-size:var(--fs-micro);width:538px;flex:none;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.urow .utok{color:var(--dim);font-family:var(--mono);font-size:var(--fs-micro);
+  font-variant-numeric:tabular-nums;flex:none}
 /* The strip's padding and the tab's own padding used to STACK, so the first
    tab's label sat 16px right of the page title and the cards below it — the
    one thing on this column that did not share its left edge. The row is inset

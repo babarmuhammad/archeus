@@ -686,3 +686,93 @@ def test_every_preset_names_a_model_the_catalogue_publishes():
     for _n, _b, fields in harnesses.HARNESSES['codex']['presets']:
         assert fields['model'] in known, fields['model']
         assert fields['effort'] in harnesses.HARNESSES['codex']['efforts']
+
+
+# ── the plan windows Codex records in its own rollout ────────
+
+def _rl(pct, mins, at, *, alt=False):
+    """One `RateLimitDetails`.
+
+    The field names are the installed binary's own: its type metadata declares
+    `used_percent` beside `window_minutes` and `resets_at`, with
+    `window_duration_mins` and `reset_at` in adjacent struct runs. `alt` is the
+    second spelling, because which one a build emits is not archeus's to decide.
+    """
+    return ({'used_percent': pct, 'window_duration_mins': mins, 'reset_at': at}
+            if alt else
+            {'used_percent': pct, 'window_minutes': mins, 'resets_at': at})
+
+
+def _rl_rollout(home, *records):
+    d = os.path.join(home, 'sessions', '2026', '09', '15')
+    os.makedirs(d, exist_ok=True)
+    p = os.path.join(d, 'rollout-2026-09-15T10-00-00-aaaa.jsonl')
+    with open(p, 'w', encoding='utf-8') as f:
+        for r in records:
+            f.write(json.dumps(r) + '\n')
+    return p
+
+
+def _rl_event(primary=None, secondary=None):
+    rl = {}
+    if primary:
+        rl['primary'] = primary
+    if secondary:
+        rl['secondary'] = secondary
+    return {'type': 'event_msg',
+            'payload': {'type': 'token_count', 'info': {},
+                        'rate_limits': rl or None}}
+
+
+def test_the_windows_come_from_the_rollout_and_the_last_one_wins(tmp_path):
+    """Codex has no endpoint and no subcommand that prints its limits — checked
+    against the installed 0.142, whose `doctor` reports Notes / Environment /
+    Configuration / Updates / Connectivity / Background Server and no window at
+    all. The rollout is the only source, which also makes this free and offline.
+    """
+    home = str(tmp_path / 'codexhome')
+    _rl_rollout(home,
+             {'type': 'event_msg', 'payload': {'type': 'agent_message'}},
+             _rl_event(_rl(10, 300, '2026-09-15T20:00:00Z'),
+                       _rl(20, 10080, '2026-09-19T09:00:00Z')),
+             {'type': 'event_msg',
+              'payload': {'type': 'token_count', 'rate_limits': None}},
+             _rl_event(_rl(62, 300, '2026-09-15T20:00:00Z'),
+                       _rl(88, 10080, '2026-09-19T09:00:00Z')))
+    assert codex.rate_limits(home) == [
+        ('session', 62.0, '2026-09-15T20:00:00Z'),
+        ('weekly', 88.0, '2026-09-19T09:00:00Z')]
+
+
+def test_the_label_is_the_windows_own_length_not_the_key(tmp_path):
+    """Codex names them `primary` and `secondary`, which say nothing to a
+    reader. 300 minutes is a session window and 10080 is a weekly one, and those
+    are the two words the rest of the app already prints."""
+    home = str(tmp_path / 'h')
+    _rl_rollout(home, _rl_event(_rl(1, 10080, ''), _rl(2, 300, '')))
+    assert [w[0] for w in codex.rate_limits(home)] == ['weekly', 'session']
+
+
+def test_the_other_spelling_of_the_same_fields_is_read(tmp_path):
+    home = str(tmp_path / 'h')
+    _rl_rollout(home, _rl_event(_rl(5, 300, '2026-09-15T20:00:00Z', alt=True)))
+    assert codex.rate_limits(home) == [('session', 5.0, '2026-09-15T20:00:00Z')]
+
+
+def test_no_recorded_window_is_empty_and_never_zero_percent(tmp_path):
+    """The difference the strip has to print. A fresh install has recorded no
+    window, which is not the same answer as a window that is 0% used — and this
+    machine is in exactly that state, so it is the common case rather than an
+    edge one."""
+    home = str(tmp_path / 'h')
+    _rl_rollout(home, {'type': 'event_msg', 'payload': {'type': 'agent_message'}})
+    assert codex.rate_limits(home) == []
+    assert codex.rate_limits(str(tmp_path / 'never-used')) == []
+    assert codex.rate_limits(None) == []
+
+
+def test_a_malformed_window_is_skipped_rather_than_charted(tmp_path):
+    home = str(tmp_path / 'h')
+    _rl_rollout(home, _rl_event({'window_minutes': 300},            # no percentage
+                             _rl('nonsense', 300, '')))
+    assert codex.rate_limits(home) == []

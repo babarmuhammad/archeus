@@ -1222,7 +1222,62 @@ def api_usage_plan(q, body):
     for d, name in names.items():
         if d not in state:
             out.append(row(d, {}, name))
+    out.extend(_harness_plan_rows())
     return {'accounts': out}
+
+
+def _harness_plan_rows():
+    """The strip's rows for the CLIs that are not Claude Code.
+
+    Built HERE rather than by widening `usage._targets()`, and that is the whole
+    of "keep quota.py correct": `_targets` names the accounts the background
+    poller hits with an Anthropic OAuth token, and `quota.worst_window` decides
+    whether archeus's own headless calls may spend by walking the `_acct_state`
+    that poller fills. A Codex home in either would be a request against a
+    directory with no Anthropic login, and a window nothing can refill.
+
+    So each row is assembled from what that CLI actually publishes: Codex
+    records its windows in its own rollout, and pi has none by construction
+    because it bills per provider. Both carry today's spend either way, which is
+    counted out of their transcripts and is real for all three.
+    """
+    from . import stats as _stats
+    from . import usage as usage_mod
+    rows = []
+    off = _harnesses.disabled()
+    for hid in _harnesses.ids():
+        if hid == _harnesses.DEFAULT or hid in off or not _harnesses.exe(hid):
+            continue
+        d = _harnesses.descriptor(hid)
+        # the descriptor key, not the capability: `rate_limits` answers "is
+        # there a reader", which is the question here, while `plan_limits`
+        # answers "does this CLI have windows at all" and gates a page.
+        wins = []
+        if d['rate_limits']:
+            try:
+                wins = _harnesses.impl('rate_limits', hid)(
+                    _harnesses.home_dir(hid))
+            except (KeyError, OSError, ValueError):
+                wins = []
+        status = 'ok' if wins else ('no_window' if d['rate_limits']
+                                    else 'per_provider')
+        try:
+            spent = _stats.today_tokens(hid)
+        except Exception:
+            spent = 0
+        rows.append({
+            'account': d['label'], 'email': '', 'dir': _harnesses.home_dir(hid),
+            'hid': hid, 'status': status,
+            'status_text': (_harnesses.cap(hid, 'plan_limits')[1]
+                            or usage_mod.STATUS_TEXT['per_provider']
+                            if status == 'per_provider'
+                            else usage_mod.STATUS_TEXT.get(status, status)),
+            'stale_secs': None, 'retry_in': None,
+            'plan': '', 'tier': '', 'spend': None, 'today_tokens': spent,
+            'windows': [{'label': l, 'pct': p,
+                         'resets': usage_mod._fmt_reset(r) if r else ''}
+                        for l, p, r in wins]})
+    return rows
 
 
 def api_search_index(q, body):

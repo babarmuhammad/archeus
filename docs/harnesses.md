@@ -83,7 +83,7 @@ reason, and a button on a session row works the same way.
 |---|---|---|---|
 | Sessions, resume, fork | ✅ | ✅ | ✅ |
 | Token spend, by day and project | ✅ | ✅ | ✅ |
-| Plan usage & reset windows | ✅ | — *reported by `codex doctor`, not by an endpoint archeus can read* | — *bills per provider, so there is no one plan window* |
+| Plan usage & reset windows | ✅ *OAuth usage endpoint* | ✅ *read from its own rollout* | — *bills per provider, so there is no single plan window* |
 | Project memory | ✅ | ✅ | ✅ |
 | Skills | ✅ | ✅ | ✅ |
 | Path-scoped rule files | ✅ | — *reads the digest in `AGENTS.md` instead* | — *reads the digest in `AGENTS.md` instead* |
@@ -95,7 +95,7 @@ reason, and a button on a session row works the same way.
 | Hooks | ✅ | — *gated on an undocumented `trusted_hash`* | — *TypeScript extensions instead* |
 | Subagents | ✅ | — *`.agents`, with no CLI to manage them* | — *none* |
 | Output styles | ✅ | — | — |
-| Accounts | ✅ | — *one login per home* | — *one `auth.json` per home* |
+| More than one login | ✅ *one `CLAUDE_CONFIG_DIR` each* | ✅ *one `CODEX_HOME` each* | ✅ *one `PI_CODING_AGENT_DIR` each* |
 | Status line | ✅ | — | — *draws its own* |
 
 Every row is checked against the installed binary, not assumed from the name — and four of
@@ -103,7 +103,13 @@ them changed when that was actually done. `codex mcp list/get/add/remove` is a f
 surface, `codex plugin list` reads every marketplace, and `codex doctor` reports the
 installed version and whether a newer one exists; all three run offline and without a
 login. Token spend was never Claude Code's alone either: every CLI records its usage in
-its own transcripts, and only the *plan window* is Anthropic's.
+its own transcripts.
+
+Two of those rows changed again, for the same reason. The plan window is **not**
+Anthropic's alone: Codex records its own windows in its rollout, and `codex doctor` — which
+this page used to name as the source — prints no limit at all, as its own sections show.
+And a login is a *home* for all three CLIs, selected by one environment variable each, so
+"more than one account" needed no new mechanism in any of them.
 
 **Hooks is the one that survived the check, and it is worth saying why it stays off.**
 Codex's hook contract is byte-identical to Claude Code's — the binary carries the same

@@ -50,9 +50,14 @@ CAPS = {
     #: all three — it was off for two of them only because the page it gated
     #: also carried the rate-limit rail below, which is a different question.
     'usage':            'token spend, by day and by project',
-    #: the plan's own windows and when they reset, read from the account. Only
-    #: Claude Code publishes them where archeus can reach: Codex reports its
-    #: windows in `codex doctor`/`/status` and pi bills per provider.
+    #: the plan's own windows and when they reset. Two sources, because the two
+    #: CLIs that have windows publish them differently: Claude Code's come from
+    #: the OAuth usage endpoint the poller hits, Codex's are recorded in its own
+    #: rollout and are read from there — it has no endpoint and no subcommand
+    #: that prints them. `codex doctor` was named here as the source and DOES
+    #: NOT report limits; checked against the installed 0.142, whose sections
+    #: are Notes / Environment / Configuration / Updates / Connectivity /
+    #: Background Server. pi genuinely has none: it bills per provider.
     'plan_limits':      'plan usage and reset windows',
     'versions':         'install and update the CLI',
     'accounts':         'more than one login',
@@ -176,6 +181,9 @@ HARNESSES = {
         #: 'is this home signed in', resolved through `impl` like `doctor`.
         #: '' = read the OAuth token `usage`/`quota` already read.
         'auth_state': '',
+        #: '' = this harness has no rollout to read windows out of; its source is
+        #: the OAuth poller in `usage.py`.
+        'rate_limits': '',
         'caps': {},                       # it can do everything; it is the model
     },
     'codex': {
@@ -216,6 +224,7 @@ HARNESSES = {
         'doctor': 'codex.doctor',
         'login_argv': ('login',),
         'auth_state': 'codex.auth_state',
+        'rate_limits': 'codex.rate_limits',
         #: three stops over Codex's OWN two scales, and every model id here is
         #: one the catalogue publishes rather than one typed from a blog post.
         #: A preset that names a model this install cannot reach is dropped by
@@ -241,8 +250,6 @@ HARNESSES = {
             #: does not publish is the WINDOW — its rate limits come back on the
             #: API response and `codex doctor` prints the rest, neither of which
             #: is the Anthropic OAuth endpoint the plan rail reads.
-            'plan_limits':   (False, "Codex reports its own limits in `codex "
-                                     "doctor`; this rail reads Anthropic's."),
             #: `mcp`, `plugins` and `versions` are NOT here, and all three were
             #: WRONG rather than cautious — checked against the installed 0.142:
             #: `codex mcp list --json/add/remove` is full CRUD, `codex plugin
@@ -329,7 +336,9 @@ HARNESSES = {
         'doctor': 'pi.doctor',
         #: no login subcommand; `pi` prompts on first use and writes auth.json
         'login_argv': (),
+        #: pi bills per provider, so there is no one window to read.
         'auth_state': 'pi.auth_state',
+        'rate_limits': '',
         #: pi is provider-neutral, so its presets pick a PROVIDER as much as a
         #: model — `provider/id` is the form its own `--model` takes. Whichever
         #: of these the user has a key for survives the catalogue filter; the
@@ -371,8 +380,12 @@ HARNESSES = {
             #: same split as Codex's: `pi.fold` counts tokens, so the spend
             #: cards are real; what pi has no notion of is one PLAN with one
             #: window, because it bills per provider.
-            'plan_limits':   (False, "pi bills per provider, so there is no one "
-                                     "plan window; this rail reads Anthropic's."),
+            #: the sentence no longer mentions "this rail reads Anthropic's":
+            #: Codex publishes windows too now, read out of its rollout, so the
+            #: rail is not Anthropic's alone and the contrast was misleading.
+            #: pi's gap is structural rather than a source archeus cannot reach.
+            'plan_limits':   (False, 'pi bills per provider, so there is no '
+                                     'single plan window to report.'),
             #: `versions` is NOT here: `pi update` is a real command and the
             #: installed version comes back from `pi --version`.
             #: pi HAS `-n` and `--model` and a `--thinking` level, so naming,

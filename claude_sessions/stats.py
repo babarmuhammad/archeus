@@ -541,19 +541,32 @@ def usage_by_day(entries, days=14, silent=False):
     return out
 
 
-def today_tokens():
+def today_tokens(hid=None):
     """Today's total tokens from the disk cache ONLY (no parsing — cheap
-    enough for a main-screen badge)."""
+    enough for a main-screen badge).
+
+    `hid` narrows it to one CLI, placed by the transcript's own path — which is
+    what lets a harness row state a number even where no plan window exists to
+    draw a bar from. None means every CLI, which is what every existing caller
+    meant.
+    """
     from datetime import datetime
     today = datetime.now().strftime('%Y-%m-%d')
     total = 0
-    for _path, rec in _load_disk_cache().items():
+    of_path = None
+    if hid:
+        from .harnesses import of_path as _of_path
+        of_path = _of_path
+    for path, rec in _load_disk_cache().items():
         stats = rec.get('stats') or {}
         ts = stats.get('last_ts')
         try:
-            if ts and datetime.fromtimestamp(ts).strftime('%Y-%m-%d') == today:
-                u = _sum_usage(stats)
-                total += u['in'] + u['out']
+            if not (ts and datetime.fromtimestamp(ts).strftime('%Y-%m-%d') == today):
+                continue
+            if of_path and of_path(path)['id'] != hid:
+                continue
+            u = _sum_usage(stats)
+            total += u['in'] + u['out']
         except Exception:
             continue
     return total

@@ -7569,9 +7569,17 @@ function usageRow(a){
     <span class="upct">${Math.round(w.pct)}%</span>
     <span class="urst">${w.resets?'→ '+esc(w.resets):''}</span>
   </span>`).join('');
+  /* A row with no windows used to be an em-dash, which reads as "broken" on a
+     CLI that simply does not have a plan window. Say which it is: pi bills per
+     provider and never will, Codex records its windows in its own rollout and
+     has not written one yet. Today's spend rides alongside, so a row without a
+     bar still carries a number. */
+  const note=wins?'':`<span class="unote">${esc(a.status_text||'—')}</span>`;
+  const spent=(!wins&&a.today_tokens)
+    ? `<span class="utok">${esc(fmtTok(a.today_tokens))} today</span>`:'';
   return `<div class="urow">
     <span class="uacct" title="${esc(a.email||a.account)}">${esc(a.email||a.account)}</span>
-    ${wins||'<span style="color:var(--dim2)">—</span>'}
+    ${wins||note}${spent}
   </div>`;
 }
 async function drawUsageBar(force){

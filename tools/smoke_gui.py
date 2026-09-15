@@ -177,10 +177,23 @@ DASH = {
              'sparkline': [2, 1, 3]}],
         'totals': {'provider_tokens': 120000, 'provider_saved': 7.5}},
 }
+# The strip carries a row per CLI, and the three rows are deliberately in three
+# DIFFERENT states: Claude Code has windows, Codex has the capability but has
+# recorded none yet (which is what a fresh install looks like, and what this
+# machine is actually in), and pi has none by construction. A stub with only the
+# first would audit the one case that already worked.
 PLAN = {'accounts': [{'account': 'default', 'email': 'demo@example.com', 'plan': 'max',
                       'status': 'ok',
                       'windows': [{'label': 'session', 'pct': 62, 'resets': 'in 3h'},
-                                  {'label': 'weekly', 'pct': 88, 'resets': 'Fri'}]}]}
+                                  {'label': 'weekly', 'pct': 88, 'resets': 'Fri'}]},
+                     {'account': 'Codex', 'email': '', 'hid': 'codex',
+                      'status': 'no_window', 'today_tokens': 48210,
+                      'status_text': 'no plan window recorded yet', 'windows': []},
+                     {'account': 'pi', 'email': '', 'hid': 'pi',
+                      'status': 'per_provider', 'today_tokens': 3400,
+                      'status_text': 'pi bills per provider, so there is no '
+                                     'single plan window to report.',
+                      'windows': []}]}
 ROUTES = {
     '/api/state': STATE, '/api/dashboard': DASH, '/api/usage/plan': PLAN,
     # carries the project list too, and it must be the SAME rows /api/state
@@ -2129,8 +2142,17 @@ def main():
         txt = pg.evaluate("document.body.innerText")
         check('under one CLI the spend cards stay',
               'Daily tokens' in txt and 'Per-project' in txt)
-        check('…and only the plan rail greys, with its reason',
-              'Not available here' in txt and 'codex doctor' in txt)
+        # Codex's rail no longer greys: it DOES have plan windows, recorded in
+        # its own rollout. The reason it used to grey with named `codex doctor`
+        # as the source, and that was wrong — the installed binary's doctor
+        # prints no limits at all.
+        check('a CLI whose windows archeus can read keeps its plan rail',
+              'codex doctor' not in txt, txt[:200])
+        pg.evaluate("pickUsageHarness('pi')")
+        pg.wait_for_timeout(700)
+        txt = pg.evaluate("document.body.innerText")
+        check('…and the one with no plan at all still greys, with its reason',
+              'Not available here' in txt and 'bills per provider' in txt)
         pg.evaluate("USAGE_HID=''")
 
         # -- a shared page whose strip must EXCLUDE a CLI --
@@ -2334,6 +2356,24 @@ def main():
               pg.evaluate("[targetRow('codex').cfgdir,targetRow('provider:p2').provider,"
                           "targetRow('claude').cfgdir]") == ['/home/.codex', 'p2', ''])
         pg.evaluate("$('#ovl').classList.remove('show')")
+
+        # -- the quota strip carries every CLI --
+        # It read only Anthropic's OAuth poller, so a machine with three CLIs
+        # showed one row and the other two were invisible at the top of every
+        # screen. A row with no window used to be an em-dash, which reads as
+        # broken rather than as "this CLI has no plan window".
+        print(NL + '— the usage strip, per CLI —')
+        rows = pg.evaluate("[...document.querySelectorAll('#ubar .urow .uacct')]"
+                           ".map(e=>e.textContent.trim())")
+        check('every CLI has a row, not only the one with an endpoint',
+              'Codex' in rows and 'pi' in rows, rows)
+        bar = pg.evaluate("document.querySelector('#ubar').innerText")
+        check('a CLI with no window says why instead of showing a dash',
+              'no plan window recorded yet' in bar and 'bills per provider' in bar)
+        check('…and still carries what it spent today',
+              '48.2k today' in bar or '48k today' in bar, bar[:200])
+        check('the CLI that does have windows still draws them',
+              pg.evaluate("document.querySelectorAll('#ubar .uwin').length") == 2)
 
         # -- the way back to the dashboard --
         # Every other screen is reachable from the sidebar; the dashboard was

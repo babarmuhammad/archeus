@@ -28,6 +28,11 @@ STATUS_TEXT = {
     'rate_limited': 'rate-limited by the API',
     'no_creds':     'not logged in',
     'error':        'usage unavailable',
+    #: the two a NON-Claude harness answers with. Neither is a failure: they are
+    #: what that CLI's billing actually is, which is why each states the reason
+    #: rather than leaving a bar at 0% for a window nobody has.
+    'no_window':    'no plan window recorded yet',
+    'per_provider': 'bills per provider — no single plan window',
 }
 
 _lock       = threading.Lock()
