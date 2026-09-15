@@ -24,6 +24,16 @@ _KINDS = ('preference', 'correction', 'decision')
 #: is why this feature sat empty.
 MIN_PROJECTS = 2
 MIN_PROJECTS_UNREVIEWED = 3
+#: token overlap above which two lessons are the same rule. `_candidates` and
+#: `pin_convention` MUST agree — pinning is meant to pin exactly what the
+#: clustering counted, and a second copy of this number is how they stop
+#: agreeing.
+CLUSTER_OVERLAP = 0.6
+
+
+def _same_rule(a, b):
+    """True when two summary token sets describe the same convention."""
+    return len(a & b) / (len(a | b) or 1) > CLUSTER_OVERLAP
 
 
 def _iter_project_graphs():
@@ -111,13 +121,7 @@ def _candidates():
             if not summ:
                 continue
             tk = _tokens(summ)
-            hit = None
-            for rec in seen:
-                inter = len(tk & rec[0])
-                union = len(tk | rec[0]) or 1
-                if inter / union > 0.6:
-                    hit = rec
-                    break
+            hit = next((rec for rec in seen if _same_rule(tk, rec[0])), None)
             if hit:
                 hit[2].add(key)
                 hit[3] = hit[3] or status == 'pinned'
@@ -159,13 +163,13 @@ def near_misses(limit=8):
     for r in _candidates():
         if r['promoted']:
             continue
-        need = (MIN_PROJECTS if r['reviewed'] else MIN_PROJECTS_UNREVIEWED) - r['projects']
+        n = r['projects']
+        need = (MIN_PROJECTS if r['reviewed'] else MIN_PROJECTS_UNREVIEWED) - n
+        more = f"needs {need} more, or " if need > 0 else ''
         out.append({
-            'text': r['text'], 'projects': r['projects'],
-            'why': (f"seen in {r['projects']} project"
-                    f"{'' if r['projects'] == 1 else 's'} — "
-                    + (f"needs {need} more, or pin it to promote it now"
-                       if need > 0 else "pin it to promote it now")),
+            'text': r['text'], 'projects': n,
+            'why': f"seen in {n} project{'' if n == 1 else 's'} — "
+                   f"{more}pin it to promote it now",
         })
     return out[:limit]
 
@@ -188,8 +192,7 @@ def pin_convention(text):
             if e.get('type') != 'lesson' or e.get('kind') not in _KINDS:
                 continue
             tk = _tokens(e.get('summary') or '')
-            union = len(tk | want) or 1
-            if len(tk & want) / union > 0.6 and e.get('status') != 'pinned':
+            if _same_rule(tk, want) and e.get('status') != 'pinned':
                 e['status'] = 'pinned'
                 touched = True
                 n += 1
@@ -226,21 +229,20 @@ def sync_to_global(cfgdir=None):
             old = open(global_claude_md, encoding='utf-8', errors='ignore').read()
         except Exception:
             old = ''
+    start, end = old.find(_CONV_START), old.find(_CONV_END)
+    has_block = start >= 0 and end >= 0
     if not block_body:
         # nothing to promote — strip any existing block, leave the rest
-        if _CONV_START in old and _CONV_END in old:
-            new = (old[:old.index(_CONV_START)]
-                   + old[old.index(_CONV_END) + len(_CONV_END):]).rstrip('\n') + '\n'
-        else:
+        if not has_block:
             return False
+        new = (old[:start] + old[end + len(_CONV_END):]).rstrip('\n') + '\n'
     else:
         from .config import generated_note
         note = generated_note('conventions that recur across your projects',
                               "archeus's Global CLAUDE.md page")
         section = f"{_CONV_START}\n{note}\n{block_body}\n{_CONV_END}\n"
-        if _CONV_START in old and _CONV_END in old:
-            new = (old[:old.index(_CONV_START)] + section
-                   + old[old.index(_CONV_END) + len(_CONV_END):])
+        if has_block:
+            new = old[:start] + section + old[end + len(_CONV_END):]
         elif old.strip():
             new = old.rstrip('\n') + '\n\n' + section
         else:
