@@ -3156,8 +3156,6 @@ def api_inject_launch(q, body):
     if not resolve_dir(path):       # becomes a subprocess cwd below
         return {'ok': False, 'error': 'not a directory: %s' % (path or '(empty)')}
     src_folder = _folder(body.get('cfgdir'), body['enc'])
-    ctx_path, title = _write_context_file(path, src_folder, body['sid'],
-                                          body.get('account', 'default'))
     exe = get_claude_exe()
     if not exe:
         return {'ok': False, 'error': 'claude.exe not found'}
@@ -3169,11 +3167,30 @@ def api_inject_launch(q, body):
     extra = read_extra_paths(target_folder)
     if extra:
         env['PATH'] = ';'.join(extra) + ';' + env.get('PATH', '')
-    pointer = (f"Prior conversation context (from the "
-               f"'{body.get('account', 'default')}' account, session '{title}') "
-               f"is saved at {CTX_FILE.replace(os.sep, '/')}. Read it first for "
-               f"background, then continue from where the user picks up.")
-    args = [exe, '--append-system-prompt', pointer]
+    # `resume` is the ROTATION hand-off, and the two triggers want genuinely
+    # different things. You hand off because the CONTEXT filled — and then a
+    # fresh session reading a written-out file is the point, because resuming
+    # would start the new session at the same context pressure that ended the
+    # old one. Or you hand off because the QUOTA ran out, and then nothing about
+    # the conversation is wrong: you want it continued, on another account.
+    #
+    # Claude Code resumes a conversation by ABSOLUTE TRANSCRIPT PATH, and that
+    # is the whole trick — by session id it searches the ACTIVE config dir and
+    # answers "No conversation found with session ID" for another account's
+    # session (measured, both ways). `--fork-session` is not optional: without a
+    # new session id the successor appends to the file it resumed, which lives
+    # in the OTHER account's store.
+    jsonl = _store.transcript_path(src_folder, body['sid'])
+    if body.get('resume') and os.path.isfile(jsonl):
+        args = [exe, '--resume', jsonl, '--fork-session']
+    else:
+        ctx_path, title = _write_context_file(path, src_folder, body['sid'],
+                                              body.get('account', 'default'))
+        pointer = (f"Prior conversation context (from the "
+                   f"'{body.get('account', 'default')}' account, session '{title}') "
+                   f"is saved at {CTX_FILE.replace(os.sep, '/')}. Read it first for "
+                   f"background, then continue from where the user picks up.")
+        args = [exe, '--append-system-prompt', pointer]
     model, perm = launch_defaults(encoded)
     if model:
         args += ['--model', model]
@@ -4450,6 +4467,25 @@ def api_harness_update(q, body):
     return {'ok': bool(ok)}
 
 
+def api_rotate_state(q, body):
+    """Account rotation: which account is live, which is next, and why.
+
+    One read, no network and no subprocess — every field comes from the usage
+    poller's cache, the settings file and two file reads per account — so the
+    quota strip's existing 60-second poll can carry it.
+
+    There is no POST twin, on purpose. The policy is three declared settings
+    (`rotate_mode`, `rotate_threshold`, `rotate_disabled`), so `/api/settings`
+    already accepts them — `gui._SETTING_KEYS` is DERIVED from
+    `_DEFAULT_SETTINGS`. And the transition itself is `/api/inject/launch` with
+    a `target_cfgdir`: the hand-off archeus has always had, pointed at the
+    elected account. A second endpoint would be a second implementation of one
+    of those two.
+    """
+    from . import rotate
+    return rotate.state()
+
+
 GET_ROUTES = {
     '/api/transcript': api_transcript,
     '/api/session/meta': api_session_meta,
@@ -4524,6 +4560,7 @@ GET_ROUTES = {
     '/api/harness/doctor': api_harness_doctor,
     '/api/provider/models': api_provider_models,
     '/api/plan/last': api_plan_last,
+    '/api/rotate/state': api_rotate_state,
 }
 
 POST_ROUTES = {

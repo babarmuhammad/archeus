@@ -229,9 +229,32 @@ ROUTES = {
              'detail': '', 'proj': ''}],
         'path': 'C:/Users/demo/.claude/archeus-events.jsonl',
         'cap': 262144, 'debug_log': 'C:/Temp/archeus.log'},
-    '/api/accounts': {'accounts': [
+    # `has_active` is Claude Code's shape, and it gates two cards on this page —
+    # the quota ring per row, and rotation. A stub without it audits the page
+    # only a Codex or pi login ever sees.
+    '/api/accounts': {'has_active': True, 'label': 'Claude Code', 'hid': 'claude',
+                      'home_env': 'CLAUDE_CONFIG_DIR', 'accounts': [
         {'name': 'default', 'resolved': '~/.claude', 'active': True, 'dir': ''},
         {'name': 'teamA', 'resolved': '~/.claude-teamA', 'active': False, 'dir': 'w'}]},
+    # Rotation in the state the card exists for: the live account spent, another
+    # with room. A stub where nothing has run out renders the quiet branch and
+    # proves none of it.
+    '/api/rotate/state': {
+        'threshold': 98.0, 'mode': 'ask', 'hands_off': False,
+        'headless_quota': 'prompt',
+        'live': '~/.claude', 'live_name': 'default',
+        'next': '~/.claude-teamA', 'next_name': 'teamA', 'rotating': True,
+        'accounts': [
+            {'name': 'default', 'dir': '', 'resolved': '~/.claude', 'pct': 99.2,
+             'window': 'session', 'resets': '15:00', 'enabled': True,
+             'signed_in': True, 'spent': True, 'live': True, 'blocked': ''},
+            {'name': 'teamA', 'dir': 'w', 'resolved': '~/.claude-teamA',
+             'pct': 12.0, 'window': 'session', 'resets': 'Tue 09:00',
+             'enabled': True, 'signed_in': True, 'spent': False, 'live': False,
+             'blocked': ''}],
+        'events': [{'ts': 1755000000, 'lvl': 'info', 'src': 'rotate',
+                    'msg': 'account default -> teamA',
+                    'detail': 'session limit full (resets 15:00)', 'proj': ''}]},
     # Claude Code's own state. Stubbed with CONTENT, not empties: the settings
     # editor is a grid whose column count comes from the account list, and an
     # empty one renders nothing for the overflow audit to look at.
@@ -1337,6 +1360,40 @@ def main():
         # the form's grid at a fraction of the width
         check('the async mount is transparent to the form layout',
               ver.get('flat') and ver.get('wide', 0) > 500, ver)
+        # Rotation: "no JS error" would pass on a card that said nothing, and
+        # the whole point of the card is that it names the account work is about
+        # to move to. The fixture has the live account spent and another with
+        # room, so every branch of it is on screen.
+        # pinned back to Claude Code: an earlier check leaves HARNESS_HID on
+        # whichever CLI it was inspecting, and the account page of a CLI with no
+        # active login has no rotation card by design
+        pg.evaluate("HARNESS_HID='claude';go('accounts')")
+        wait_for("!!document.querySelector('#rotOut .tbl')")
+        rot = pg.evaluate(
+            "(()=>{const c=document.querySelector('#rotOut');return c?{"
+            "card:1,mode:[...c.querySelectorAll('#rotMode .chip')].map(x=>x.textContent.trim()),"
+            "on:(c.querySelector('#rotMode .chip.on')||{}).textContent,"
+            "thr:(c.querySelector('#rotThr')||{}).value,"
+            "next:/next work goes to/.test(c.textContent),"
+            "spent:/spent/.test(c.textContent),"
+            "nan:/NaN/.test(c.textContent),"
+            "boxes:c.querySelectorAll('input[type=checkbox]').length,"
+            "hist:/default -> teamA/.test(c.textContent)}:{card:0};})()")
+        check('the rotation card offers all three modes',
+              rot.get('card') and len(rot.get('mode') or []) == 3
+              and (rot.get('on') or '').startswith('Semi'), rot)
+        check('…and says which account is next, and why',
+              rot.get('next') and rot.get('spent') and rot.get('hist')
+              and rot.get('thr') == '98' and not rot.get('nan'), rot)
+        check('…with one opt-out per login', rot.get('boxes') == 2, rot)
+        # the strip is on every page, so this is also the check that a spent
+        # account is visible without going looking for it
+        strip = pg.evaluate(
+            "(()=>{const u=document.querySelector('#ubar');return u?{"
+            "says:/is out/.test(u.textContent),"
+            "to:/teamA/.test(u.textContent)}:{};})()")
+        check('the quota strip says the account is out and where work goes',
+              strip.get('says') and strip.get('to'), strip)
         pg.evaluate("go('plugins')")
         pg.wait_for_timeout(600)
         pupd = pg.evaluate(

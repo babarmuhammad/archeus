@@ -45,6 +45,10 @@ _OBSERVED_TTL = 900
 
 _observed = {}     # normalised cfgdir -> until_ts
 _decided = {}      # normalised cfgdir -> (choice, until_ts)
+#: the subset of `_observed` whose text named a plan WINDOW rather than a bare
+#: 429. `rotate.spent` reads this one and `_observed` blocks on both, because
+#: they answer different questions — see `is_window_limit`.
+_window_observed = {}
 
 #: substrings that mean "out of quota". Deliberately specific: a bare 'limit'
 #: also matches the budget cap and the turn cap, neither of which is this.
@@ -63,12 +67,36 @@ _LIMIT_MARKERS = ('usage limit', 'rate limit', 'rate_limit', 'ratelimit',
                   'session limit', 'weekly limit',
                   'out of quota', 'quota exceeded', 'too many requests')
 
-#: `429` needs a word boundary, and `quota` needed qualifying. `ui._note_failure`
-#: now hands the model's whole STDOUT to `note_failure`, not a 300-char stderr
-#: latch — so a bare substring scan matched `14290` in a token count and the word
-#: "quota" in any answer that discussed rate limits, and latched the account out
-#: of headless work for fifteen minutes on a successful-looking run.
-_LIMIT_RE = re.compile(r'429')
+#: the markers that name a PLAN WINDOW — the 5-hour or weekly cap that only
+#: time refills. Everything `_LIMIT_MARKERS` has and this does not (a bare 429,
+#: 'rate limit', 'too many requests') is a SHORT rate limit: it clears in
+#: seconds, the right answer is to wait and retry the same account, and
+#: rotating on it would spend a second account's headroom for nothing. The
+#: reference implementation this feature is modelled on makes exactly this
+#: distinction, off the `anthropic-ratelimit-unified-*-status` headers it can
+#: see and archeus cannot — so archeus makes it off the wording instead.
+_WINDOW_MARKERS = ('usage limit', 'session limit', 'weekly limit',
+                   'limit reached', 'limit exceeded',
+                   'out of quota', 'quota exceeded')
+
+#: `429` has to be read as a STATUS, never as a number in prose. `ui._note_failure`
+#: hands `note_failure` the model's whole STDOUT, so a bare substring scan matched
+#: `14290` in a token count and latched the account out of headless work for
+#: fifteen minutes after a run that had nothing wrong with it.
+#:
+#: The obvious repair — a word boundary — is not enough and the suite says so:
+#: `\b429\b` matches "wrote 429 lines to quota.py", which
+#: `test_the_markers_do_not_match_the_models_own_output` forbids. It was also not
+#: what shipped. The pattern here was `re.compile(r'<BS>429<BS>')` with two LITERAL
+#: BACKSPACE bytes where `\b` had been meant — a regex that can never match
+#: anything, so this half of the guard had been dead for its whole life. It looked
+#: fine because every 429 the tests assert on carries 'too many requests' or
+#: 'rate_limit' too, and one of the MARKERS caught it.
+#:
+#: So it matches the shape a status code actually arrives in — `"apiErrorStatus":429`,
+#: `status: 429`, `code=429` — which is the one thing a sentence about a file never
+#: looks like.
+_LIMIT_RE = re.compile(r'(?:status|code)"?\s*[:=]\s*"?429\b')
 
 
 def _norm(d):
@@ -173,6 +201,11 @@ def headroom(exclude=None):
 
     An account with no usable local credentials is dropped without a request:
     `usage._read_token` / `_token_expired` are plain file reads.
+
+    An account the user took out of the rotation is dropped here rather than at
+    the two call sites below, so it is invisible to the picker as well as to the
+    automatic switch — offering an account you have opted out of is offering a
+    choice that was already made.
     """
     ex = _key(exclude) if exclude is not None else None
     out = []
@@ -180,6 +213,8 @@ def headroom(exclude=None):
         from . import usage
         for name, d in _c.all_config_dirs():
             if ex is not None and _norm(d) == ex:
+                continue
+            if not _rotation_allows(d):
                 continue
             if reason(d):
                 continue
@@ -192,9 +227,39 @@ def headroom(exclude=None):
     return out
 
 
+def _rotation_allows(cfgdir):
+    """False only when the user explicitly took this account out of rotation.
+
+    Fails OPEN on any error, including `rotate` not importing: every other
+    predicate in this module does, and a settings read is not a good enough
+    reason to hide an account that has headroom.
+    """
+    try:
+        from . import rotate
+        return rotate.is_enabled(cfgdir)
+    except Exception:
+        return True
+
+
 def is_limit_error(text):
     t = str(text or '').lower()
     return any(m in t for m in _LIMIT_MARKERS) or bool(_LIMIT_RE.search(t))
+
+
+def is_window_limit(text):
+    """True only when the refusal names a plan WINDOW, not a short rate limit.
+
+    `is_limit_error` answers "may this account be spent right now" and a bare
+    429 is a perfectly good reason for no. This answers "has this account run
+    out", which a 429 is NOT a reason for — it clears on its own.
+    """
+    t = str(text or '').lower()
+    return any(m in t for m in _WINDOW_MARKERS)
+
+
+def window_limited(cfgdir=None):
+    """True when this account was recently refused for a full plan window."""
+    return _window_observed.get(_key(cfgdir), 0) > time.time()
 
 
 def note_failure(args, env, text):
@@ -212,7 +277,10 @@ def note_failure(args, env, text):
     d = of_argv(args)
     if d is not None and d['id'] != DEFAULT:
         return
-    _observed[_key(_cfgdir_of(args, env))] = time.time() + _OBSERVED_TTL
+    key = _key(_cfgdir_of(args, env))
+    _observed[key] = time.time() + _OBSERVED_TTL
+    if is_window_limit(text):
+        _window_observed[key] = time.time() + _OBSERVED_TTL
 
 
 def forget(cfgdir=None):
@@ -221,6 +289,7 @@ def forget(cfgdir=None):
     k = _key(cfgdir)
     _observed.pop(k, None)
     _decided.pop(k, None)
+    _window_observed.pop(k, None)
 
 
 def preflight(args, env=None):
@@ -266,22 +335,36 @@ def preflight(args, env=None):
         return _apply(dec[0], env, why)
     choice = _ask(why, headroom(exclude=cfgdir), mode)
     _decided[key] = (choice, time.time() + _DECIDED_TTL)
-    return _apply(choice, env, why)
+    return _apply(choice, env, why, cfgdir)
 
 
-def _apply(choice, env, why):
+def _apply(choice, env, why, cfgdir=None):
     if choice is None:                       # blocked
         _report(why)
         return env, why
     if choice == '':                         # "run anyway"
         return env, ''
+    # The one place an account actually changes, so the one place that records
+    # it. Recording at the call sites instead would be five copies, and the
+    # cached `_decided` path goes through here too — a burst that switches once
+    # and then reuses the decision should be one event, which it is, because
+    # `events.record` dedupes an identical (src, msg) inside its window.
+    _note_rotation(cfgdir, choice, why)
     return _c.account_env(choice), ''
+
+
+def _note_rotation(frm, to, why):
+    try:
+        from . import rotate
+        rotate.note(frm, to, why)
+    except Exception:
+        pass
 
 
 def _ask(why, alts, mode):
     """cfgdir to switch to | '' to run anyway | None to block."""
     if mode == 'auto':
-        return alts[0][1] if alts else None
+        return _pick_auto(alts)
     if _interactive():
         return _ask_tui(why, alts)
     job = _job()
@@ -290,6 +373,25 @@ def _ask(why, alts, mode):
     # Unattended: never prompt, and never quietly drain a second account on a
     # timer. That is exactly the failure the scheduler's own comment describes.
     return None
+
+
+def _pick_auto(alts):
+    """The account an unattended switch should use, or None to block.
+
+    `alts` is already emptiest-first and already excludes what cannot be spent.
+    What this adds is the rotation SWITCH threshold: an account at 99% may be
+    spent but should not be chosen while one at 12% exists. If every candidate
+    is past the threshold the emptiest is still better than blocking — the bar
+    for "may be spent" is `reason()`, and headroom has already cleared it.
+    """
+    if not alts:
+        return None
+    try:
+        from . import rotate
+        fresh = [a for a in alts if not rotate.spent(a[1])]
+    except Exception:
+        fresh = []
+    return (fresh or alts)[0][1]
 
 
 def _interactive():

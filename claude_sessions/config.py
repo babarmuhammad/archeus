@@ -227,6 +227,23 @@ _DEFAULT_SETTINGS = {
     #: Does not apply to a call that is routed at a provider — that one is not
     #: spending this account's quota at all (see quota.preflight).
     'headless_quota': 'prompt',
+    #: account rotation — see rotate.py. 'off' = nothing rotates | 'ask' = new
+    #: work starts on the next account with headroom by itself, and a session
+    #: you are sitting IN is offered the move, one click | 'auto' = the same,
+    #: and the successor session opens on its own. A separate switch from
+    #: `headless_quota` on purpose: that one is what archeus does when its OWN
+    #: call meets a full account; this one is which account new work starts
+    #: under at all.
+    'rotate_mode': 'ask',
+    #: stop CHOOSING an account once its fullest account-wide window is at or
+    #: past this. NOT the block threshold — `quota.LIMIT_PCT` (100) still
+    #: decides whether an account may be spent, and one at 99% still may be.
+    #: Clamped on read in `rotate.threshold()`.
+    'rotate_threshold': 98.0,
+    #: config dirs the user took OUT of the rotation. Opt-out, not opt-in: a
+    #: configured account you must remember to enable is one that sits idle
+    #: while you hit a limit.
+    'rotate_disabled': [],
     'ui_mode': 'tui',              # default interface: 'tui' | 'gui' (desktop app)
     'gui_shell': 'auto',          # GUI window: 'auto' | 'qt' | 'edge' | 'browser'
     #: 'notify' = say so in the banner | 'auto' = also install it on quit |
