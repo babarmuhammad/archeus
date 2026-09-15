@@ -12,6 +12,16 @@ export const FAQ: QA[] = [
     a: 'The memory and workspace layer for AI coding agents. archeus is free and open source, and it sits in front of the agent: you pick a project, see every session you have ever had in it, and launch the next one with the model, effort, permissions and context you intended. It adds persistent project memory, a session archive you can search and tag, MCP server management, an interactive architecture graph and per-turn cost tracking. It drives three coding CLIs — Anthropic’s Claude Code, OpenAI Codex and pi — with Claude Code much the deepest of them. It is a Python package, MIT licensed, with zero runtime dependencies, and it runs as a terminal UI or a desktop GUI over the same engine.',
   },
   {
+    // The old name is still the single biggest query bringing this site
+    // impressions — `claudectl` at position 7.6 and `claude ctl` at position 3,
+    // measured in Search Console — and until this entry existed the site did
+    // not contain the word anywhere. Someone arriving on that query had no
+    // confirmation they were in the right place, and a search engine had no
+    // text tying the two names to one thing.
+    q: 'Is archeus the same as claudectl?',
+    a: 'Yes. claudectl was renamed to archeus in September 2026, at version 2.0. It is the same project, the same author and the same code; the name changed because the tool had stopped being about one CLI. Everything migrates on first run — settings, accounts, per-project launch defaults, the memory graph in each project, snapshots, plans and logs — and nothing is deleted. The `claudectl` command keeps working. If you already have it installed, `pip install -U claudectl` pulls archeus in and carries you over; claudectl 1.9.2 is the final release under the old name and contains no code of its own, only the dependency. New installs should use `pipx install archeus` directly.',
+  },
+  {
     q: 'Where does the name archeus come from, and what is it not?',
     a: 'Archeus is Paracelsus’ name for the vital force that organises living matter — the thing that keeps a body coherent over time, which is what a memory layer does for a codebase. It is not Arceus, the Pokémon, which is spelled with the vowels the other way round and belongs to Nintendo. There is no connection to either. The software called archeus is this one: the Python memory and workspace layer for AI coding agents, installed with pipx install archeus, source at github.com/babarmuhammad/archeus. It is not affiliated with Anthropic.',
   },
