@@ -84,6 +84,23 @@ a push. Google does not participate: it is reached by crawling and by Search
 Console, so there is nothing to run for it. Not on a deploy hook on purpose; 48
 URLs re-submitted on every push is how a host gets its quota cut.
 
+## Measured state, 2026-09-15
+
+Worth keeping because the intuition is wrong in both directions.
+
+| | |
+|---|---|
+| Google | **27 pages indexed, 12 impressions**, 3 "Page with redirect", 3 "Crawled - currently not indexed". Domain property, both sitemaps submitted. |
+| Bing / DuckDuckGo | **zero pages.** `site:claudectl.space` and `site:docs.claudectl.space` return literally nothing, while the pre-rename `github.com/babarmuhammad/claudectl` still returns 6 on DDG and 9 on Bing. |
+| The bare query `archeus` | the Paracelsus term, Nintendo's Arceus, a World of Warcraft item, the OED. Nothing of this project, on any engine. Autocomplete suggests no software term at all. |
+| External links | none written by a human. Two auto-scrapers and one PyPI metadata mirror. DDG returns nothing for the literal string `"claudectl.space"`. |
+
+So Google is NOT the problem and never was — it found the site on its own before
+the sitemaps were submitted. The gap is Bing (which feeds DuckDuckGo and part of
+ChatGPT's search) and the total absence of corroboration. The three redirect
+pages are `http://`, `www.` and a legacy `/install`, all intentional 308s; every
+URL in both sitemaps returns 200 and self-canonicalises.
+
 ## Browser work no script can do
 
 - **Search Console:** `notes/search-console.md`. Use a **Domain** property — a
