@@ -7,6 +7,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`npx archeus` did nothing at all** (npm package 2.4.1; the Python package is
+  unchanged). Under `npx`, npm puts its own generated shim on PATH under the name
+  the launcher then looks up, so it found itself: on Windows that shim is a `.cmd`,
+  which Node will not execute without a shell, and the failure surfaced as exit 1
+  with nothing printed; on macOS and Linux it is a symlink back to the same file,
+  which would have re-entered it forever. The launcher now keeps a real console
+  script — an `.exe` on Windows, anything not resolving inside `node_modules`
+  elsewhere — and falls through to running archeus as a module when the only
+  match is npm's.
+
 ## [2.4.0] - 2026-09-15
 
 ### Added

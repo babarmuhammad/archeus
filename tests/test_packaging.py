@@ -217,21 +217,34 @@ _MANIFESTS = {
 def test_every_packaging_manifest_declares_the_same_version():
     """A release is one number in six files.
 
-    None of these ship code — npm launches the real thing, Docker installs it,
-    the rest are pointers — but a user who sees `archeus 2.1.0` on npm beside
-    `2.4.0` on PyPI has no way to know which is the tool and which is a name.
-    Nothing builds them in CI, so nothing else would ever notice the drift.
+    A user who sees `archeus 2.1.0` on npm beside `2.4.0` on PyPI has no way to
+    know which is the tool and which is a name. Nothing builds these in CI, so
+    nothing else would ever notice the drift.
+
+    npm is the one allowed to be AHEAD, by a patch on the same minor, and only
+    because it is the one manifest that ships code of its own: the launcher is
+    real JavaScript, and a bug in it (2.4.0 ran npm's own shim under `npx` and
+    exited 1 printing nothing) has to be republished under a new number, which
+    npm will not let you reuse. Nothing else here is code — Docker installs the
+    real thing, the rest are pointers — so nothing else has that excuse.
     """
     import re
     here = _version(os.path.join(ROOT, 'pyproject.toml'))
+    npm = os.path.join('packaging', 'npm', 'package.json')
     wrong = []
     for rel, pat in _MANIFESTS.items():
         path = os.path.join(ROOT, rel)
         assert os.path.isfile(path), 'missing packaging manifest: %s' % rel
         m = re.search(pat, open(path, encoding='utf-8').read())
         assert m, 'no version found in %s' % rel
-        if m.group(1) != here:
-            wrong.append('%s says %s' % (rel, m.group(1)))
+        got = m.group(1)
+        if got == here:
+            continue
+        ahead = (rel == npm
+                 and got.split('.')[:2] == here.split('.')[:2]
+                 and int(got.split('.')[2]) > int(here.split('.')[2]))
+        if not ahead:
+            wrong.append('%s says %s' % (rel, got))
     assert not wrong, 'pyproject is %s but %s' % (here, '; '.join(wrong))
 
 
@@ -246,6 +259,28 @@ def test_the_npm_launcher_never_installs_without_saying_so():
     assert 'spawnSync' not in body, \
         'the install path spawns directly instead of going through run(), which prints'
     assert body.count('run(') >= 2, 'no install command is announced'
+
+
+def test_the_npm_launcher_never_runs_its_own_shim():
+    """`npx archeus` puts npm's generated shim on PATH under the name the
+    launcher then looks up, so a bare `where archeus` finds the launcher
+    itself. Executing that is fatal on Windows (`spawnSync` will not run a
+    `.cmd` without `shell:true`, and a null status exits 1 printing nothing —
+    2.4.0 shipped exactly that, so the package's headline command did nothing)
+    and infinite on POSIX, where the shim is a symlink back to the same file.
+
+    The resolution has to reject a node shim and keep a real console script:
+    `.exe` on Windows, and anything not resolving inside `node_modules`
+    elsewhere.
+    """
+    src = open(os.path.join(ROOT, 'packaging', 'npm', 'bin', 'archeus.js'),
+               encoding='utf-8').read()
+    assert "exec('archeus'" not in src, \
+        'the launcher execs the bare name, which under npx is its own shim'
+    body = src[src.index('function commandOnPath('):]
+    body = body[:body.index('\nfunction ')]
+    assert "'.exe'" in body, 'nothing keeps the Windows lookup to a console script'
+    assert 'node_modules' in body, 'nothing rejects an npm shim off PATH'
 
 
 def test_the_shim_pins_a_version_of_this_package_that_is_not_out_yet():

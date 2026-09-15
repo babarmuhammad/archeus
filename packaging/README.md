@@ -123,3 +123,9 @@ Every manifest here except `legacy-name/` carries the same version as
 `pyproject.toml`, and `test_every_packaging_manifest_declares_the_same_version`
 fails when one drifts. A release is one number in several files; a test is
 cheaper than remembering which.
+
+`npm/` is the one allowed to run AHEAD, by a patch on the same minor. It is the
+only manifest here that ships code of its own, and npm will not let a version be
+published twice — so a bug in the launcher alone has to go out under a new
+number without dragging a PyPI release behind it. Everything else is a pointer
+or an install of the real package, and has no such excuse.

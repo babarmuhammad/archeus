@@ -49,6 +49,38 @@ function onPath(cmd) {
 }
 
 /**
+ * The real archeus COMMAND on PATH, or null — never this package's own shim.
+ *
+ * Under `npx archeus`, npm puts its generated shim on PATH under the very name
+ * we are about to look up, so a plain `where archeus` finds US. Running it is
+ * either fatal or infinite: on Windows the shim is `archeus.cmd`, which
+ * spawnSync refuses to execute without `shell:true` (status comes back null,
+ * so the process exited 1 with nothing printed — the whole `npx archeus` case,
+ * which is the reason this package exists); on POSIX it is a symlink back to
+ * this file, which would re-enter it forever.
+ *
+ * So a candidate has to look like a Python console script rather than a node
+ * shim. On Windows that is exactly `.exe` — pip and pipx both write one, and
+ * `.cmd`/`.ps1`/extensionless can only be npm's. Elsewhere the test is that it
+ * does not resolve into a `node_modules` directory, which is where both a
+ * local and a global npm install keep the script a bin symlink points at.
+ */
+function commandOnPath() {
+  const out = capture(WINDOWS ? 'where' : 'which', ['archeus']);
+  if (out === null) return null;
+  for (const line of out.split(/\r?\n/).map(s => s.trim()).filter(Boolean)) {
+    if (WINDOWS) {
+      if (line.toLowerCase().endsWith('.exe')) return line;
+      continue;
+    }
+    let real = line;
+    try { real = require('fs').realpathSync(line); } catch (e) { /* keep line */ }
+    if (!real.split(require('path').sep).includes('node_modules')) return line;
+  }
+  return null;
+}
+
+/**
  * The Python to use, as {cmd, pre}, or null.
  *
  * `py -3` first on Windows: the launcher is what a python.org install puts on
@@ -104,7 +136,8 @@ function install(py) {
 
 function main() {
   const args = process.argv.slice(2);
-  if (onPath('archeus')) exec('archeus', args);
+  const found = commandOnPath();
+  if (found) exec(found, args);
 
   const py = findPython();
   if (!py) {
@@ -117,7 +150,8 @@ function main() {
   if (!importable(py)) {
     process.stderr.write('archeus is not installed yet — installing it now.\n');
     if (!install(py)) process.exit(1);
-    if (onPath('archeus')) exec('archeus', args);
+    const fresh = commandOnPath();
+    if (fresh) exec(fresh, args);
     if (!importable(py)) process.exit(1);
   }
 

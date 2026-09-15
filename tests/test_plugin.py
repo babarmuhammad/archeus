@@ -84,11 +84,16 @@ def test_the_plugin_name_is_kebab_case():
 #: `packaging/legacy-name/pyproject.toml` is deliberately NOT here. It pins a
 #: version nobody has yet, on purpose — that file's own comment explains why —
 #: so it does not track this number and a gate would fight it.
+#:
+#: `packaging/npm/package.json` is not here either, and for a related reason:
+#: it is the one manifest that ships code of its own, so it may run a patch
+#: ahead when the launcher alone needs republishing. That allowance lives in
+#: `test_every_packaging_manifest_declares_the_same_version`, which owns the
+#: packaging manifests — stating it in two gates is two places to keep in step.
 VERSION_COPIES = (
     ('plugin/.claude-plugin/plugin.json', r'"version":\s*"([^"]+)"'),
     ('.claude-plugin/marketplace.json',   r'"version":\s*"([^"]+)"'),
     ('CITATION.cff',                      r'(?m)^version:\s*(\S+)\s*$'),
-    ('packaging/npm/package.json',        r'"version":\s*"([^"]+)"'),
     ('packaging/crates/Cargo.toml',       r'(?m)^version\s*=\s*"([^"]+)"'),
     ('packaging/nuget/archeus.nuspec',    r'<version>([^<]+)</version>'),
     ('packaging/rubygems/archeus.gemspec', r"s\.version\s*=\s*'([^']+)'"),
