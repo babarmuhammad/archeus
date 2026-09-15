@@ -3764,14 +3764,14 @@ async function pgHarness(nav){
       <span class="sp"></span>
       ${upd?`<button class="btn sm" onclick="harnessUpdate(${hesc(hid)})"
         title="Runs this CLI's own updater in a terminal.">${ic('refresh')} Update to ${esc(d.latest)}</button>`:''}</h3>
-      ${d.available?`<table class="tbl">
-        <tr><td>version</td><td class="num">${esc(d.version||'—')}</td></tr>
-        <tr><td>latest</td><td class="num">${esc(d.latest||'—')}</td></tr>
-        <tr><td>signed in</td><td>${d.auth==='ok'?'yes':'no'}</td></tr>
-        <tr><td>binary</td><td><code>${esc(d.exe||'—')}</code></td></tr>
-        <tr><td>home</td><td><code>${esc(d.home||'—')}</code></td></tr>
-        <tr><td>instructions file</td><td><code>${esc(d.instructions_file||'')}</code></td></tr>
-      </table>${notes}`
+      ${d.available?`<div class="kv">
+        <span class="k">version</span><span>${esc(d.version||'—')}</span>
+        <span class="k">latest</span><span>${esc(d.latest||'—')}</span>
+        <span class="k">signed in</span><span>${d.auth==='ok'?'yes':'no'}</span>
+        <span class="k">binary</span><code>${esc(d.exe||'—')}</code>
+        <span class="k">home</span><code>${esc(d.home||'—')}</code>
+        <span class="k">instructions file</span><code>${esc(d.instructions_file||'')}</code>
+      </div>${notes}`
       :`<p class="secthint">archeus looks for <code>${esc((d.exe_names||[]).join('</code>, <code>'))}</code>
          on PATH and in its usual install directory. Install it, or set the path
          on <span class="hlink" onclick="go('paths')">Paths &amp; limits</span>.</p>`}</div>

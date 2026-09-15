@@ -778,6 +778,24 @@ class H(BaseHTTPRequestHandler):
         # per-harness launch options, answered from the REAL registry: a stub
         # that invented one effort list would audit a form whose scale can
         # never be wrong, which is the whole failure this endpoint exists for
+        # Same reasoning as the models route below, and it was falling through
+        # to `{}`: the setup page then had no `cap_labels`, so every row in the
+        # capability list rendered its raw KEY (`client_state`, `budget_cap`)
+        # and both tools audited a page no user sees. `doctor` is the one part
+        # that has to be invented — it shells out to the real binary.
+        if p == '/api/harness/setup':
+            from urllib.parse import parse_qs as _pq
+            hid = (_pq(self.path.split('?', 1)[-1]).get('hid') or [''])[0]
+            d = _TH_H.descriptor(hid)
+            self._j({'hid': d['id'], 'label': d['label'], 'available': True,
+                     'version': '1.2.3', 'latest': '1.2.3', 'auth': 'ok',
+                     'exe': 'C:\\bin\\%s' % d['exe_names'][0],
+                     'home': _TH_H.home_dir(d['id']),
+                     'instructions_file': d['instructions_file'],
+                     'exe_names': list(d['exe_names']), 'notes': [],
+                     'caps': {k: list(_TH_H.cap(d['id'], k)) for k in _TH_H.CAPS},
+                     'cap_labels': dict(_TH_H.CAPS)})
+            return
         if p == '/api/harness/models':
             from urllib.parse import parse_qs as _pq
             hid = (_pq(self.path.split('?', 1)[-1]).get('hid') or [''])[0]

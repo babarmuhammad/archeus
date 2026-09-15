@@ -734,7 +734,9 @@ def main():
             # agents/skills/hooks are three of the densest pages in the app and
             # each groups its rows under a heading now; the overflow audit sees
             # a card that fits, not a list that reads
-            if page in ('plugins', 'ostyles', 'client',
+            # `harness` is here because it is the only page Codex and pi own,
+            # so it is the one place a second CLI's design is visible at all
+            if page in ('plugins', 'ostyles', 'client', 'harness',
                         'agents', 'skills', 'hooks'):
                 pg.screenshot(path=os.path.join(OUT, f'_shot_{page}.png'))
         # ── project tabs ──
