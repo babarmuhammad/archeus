@@ -104,10 +104,10 @@ const PRIVACY: Doc = {
       id: 'donations',
       heading: 'Donations',
       lead:
-        'If you choose to support the project, you do that on Ko-fi, and Ko-fi — not this project — is the one taking the payment.',
+        'If you choose to support the project, you do that on Ko-fi, and the payment is taken there rather than here.',
       blocks: [
         p(
-          'The Support link is an ordinary hyperlink. There is no Ko-fi widget, button script or iframe on these sites, so nothing about Ko-fi loads or runs until you click through. Once you do, you are on Ko-fi’s website and their privacy policy and terms govern what happens there, including your payment details, which never reach this project.',
+          'The Support link is an ordinary hyperlink. There is no Ko-fi widget, button script or iframe on these sites, so nothing about Ko-fi loads or runs until you click through. Once you do, you are on Ko-fi’s website and their privacy policy and terms govern what happens there. Your card details go to their payment provider and never reach this project.',
         ),
         p(
           'What a recipient can see about a supporter is decided by Ko-fi, not here. Read their notice for the current answer rather than taking a description of it on trust.',
@@ -274,7 +274,7 @@ const TERMS: Doc = {
       blocks: [
         p(NO_PERKS),
         p(
-          'Donations are collected by Ko-fi, who process the payment; this project is not the payment processor and never sees your payment details. Giving does not change the licence the software is under, does not create a support contract, does not grant priority on issues or feature requests, and does not extend or alter the warranty disclaimer above, which remains exactly as it is.',
+          'Donations are collected through Ko-fi and handled by its payment provider; your card details never reach this project. Giving does not change the licence the software is under, does not create a support contract, does not grant priority on issues or feature requests, and does not extend or alter the warranty disclaimer above, which remains exactly as it is.',
         ),
         links([
           { label: 'Refund policy', href: legalPath('refunds') },
@@ -344,11 +344,13 @@ const REFUNDS: Doc = {
       heading: 'Refunds',
       blocks: [
         ul([
-          'This project does not issue refunds, and it cannot: it is not the payment processor, holds none of your payment details and has no means of returning a payment it never received.',
-          'Ko-fi processed the payment. A refund request goes to Ko-fi, and whether one is possible is theirs to answer under their own terms and their payment provider’s rules.',
-          'If you donated by mistake, ask them quickly — the sooner a payment is questioned, the more can usually be done about it.',
+          'As a matter of policy no refunds are offered, because nothing was sold. A gift given freely is not an order that can be cancelled.',
+          'A donation made by mistake is a different thing, and it is not treated as final. Write to the address below, or raise it with Ko-fi, and it will be sorted out where the payment provider still allows it.',
+          'Ask quickly. Whether a payment can be reversed at all is decided by Ko-fi and the card or PayPal rules behind it, and every one of those is a clock.',
+          'This project never sees or holds your card details; they stay with the payment provider.',
         ]),
         links([
+          { label: `Email ${SITE.contact}`, href: MAILTO },
           { label: 'Ko-fi terms', href: 'https://more.ko-fi.com/tos' },
           { label: 'Ko-fi help centre', href: 'https://help.ko-fi.com/' },
         ]),
@@ -359,7 +361,7 @@ const REFUNDS: Doc = {
       heading: 'If something went wrong',
       blocks: [
         p(
-          `Write to ${SITE.contact}. There is no refund to authorise at this end, but a real person reads that mailbox and will tell you what is known and point you at the right place, rather than leaving you to guess.`,
+          `Write to ${SITE.contact}. A real person reads that mailbox. A donation made by accident, twice over, or for far more than you meant is worth writing about rather than shrugging at — say what happened and roughly when, and it will either be put right or you will be told plainly why it cannot be.`,
         ),
         links([{ label: `Email ${SITE.contact}`, href: MAILTO }]),
       ],
