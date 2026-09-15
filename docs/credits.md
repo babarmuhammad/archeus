@@ -29,6 +29,7 @@ archeus is built on ideas from the wider Claude Code ecosystem. With thanks:
 - **[VoltAgent/awesome-claude-code-subagents](https://github.com/VoltAgent/awesome-claude-code-subagents)** — the community catalog archeus's [agent library](agent-library.md) mirrors — 150+ agents in 10 categories. All credit for the agents goes to their original authors.
 - **[topoteretes/cognee](https://github.com/topoteretes/cognee)** and **[Aider's repo-map](https://aider.chat/docs/repomap.html)** — graph memory and retrieval budgeting, both reimplemented from scratch in pure stdlib for [project memory](memory.md).
 - **[Ponytail](https://github.com/DietrichGebert/ponytail)** — the code-minimization rule behind one of the bundled [hooks](hooks.md).
+- **[furkankly/zoetrope](https://github.com/furkankly/zoetrope)** (MIT, Furkan Kalaycioglu) — watching a coding-agent session as a live flow graph, with content time kept separate from presentation time, behind the [session flow graph](sessions.md#flow-graph). Behaviour only: no Rust was copied and no crate is vendored.
 
 Bundled starter skills under `claude_sessions/skills_templates/` are original write-ups
 inspired by patterns in these community collections, each credited in-file:

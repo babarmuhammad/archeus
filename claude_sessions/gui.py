@@ -631,6 +631,15 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             self._serve_graph(q)
             return
+        if u.path == '/flow':
+            # Same position as /graph and for the same reason: window.open()
+            # cannot attach the X-Archeus header, so the token rides the query
+            # string and is checked here rather than in _guard().
+            if not self._token_ok(q.get('k')):
+                self._send(403, {'error': 'missing or bad token'})
+                return
+            self._serve_flow(q)
+            return
         if u.path == '/favicon.ico':
             self._serve_icon()
             return
@@ -742,6 +751,53 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, connections.render_html(g, memory=mem).encode('utf-8'),
                        ctype='text/html')
         except Exception as e:
+            self._send(500, {'error': str(e)})
+
+    def _serve_flow(self, q):
+        """One session as a flow graph.
+
+        TWO answers on ONE route: the page, and — when that page's follow poll
+        adds `since=` — the events after that offset as JSON. A separate poll
+        endpoint would mean a second guard to keep in step with this one, and
+        the page is already holding the only credential either would need.
+
+        `_folder` + `transcript_path` is the harness-correct pair (a Codex
+        thread is not a file named after its id), and `cfgdir` is validated
+        against the enumerated homes because here, outside `gui_api.call`,
+        `PARAM_CHECKS` is not doing it for us.
+        """
+        from . import flowgraph, gui_api
+        try:
+            enc, sid = q.get('enc', ''), q.get('sid', '')
+            cfgdir = q.get('cfgdir') or None
+            if not store.is_encoded(enc) or not store.is_encoded(sid):
+                self._send(400, {'error': 'bad enc or sid'})
+                return
+            if cfgdir and not gui_api._cfgdir_ok(cfgdir):
+                self._send(400, {'error': 'unknown config dir'})
+                return
+            path = store.transcript_path(gui_api._folder(cfgdir, enc), sid)
+            if not path or not os.path.isfile(path):
+                self._send(404, {'error': 'no transcript for that session'})
+                return
+            hid = flowgraph.harness_of(path)
+            if 'since' in q:
+                try:
+                    since = max(0, int(q['since']))
+                except ValueError:
+                    since = 0
+                evs, nxt = flowgraph.tail_events(path, since, harness=hid)
+                self._send(200, {'events': evs, 'offset': nxt})
+                return
+            evs, _nxt = flowgraph.tail_events(path, 0, harness=hid)
+            meta = flowgraph.session_meta(path, evs, harness=hid, sid=sid,
+                                          project=q.get('project') or '')
+            self._send(200, flowgraph.render_flow_html(evs, meta, poll='1')
+                       .encode('utf-8'), ctype='text/html')
+        except ValueError as e:
+            self._send(400, {'error': str(e)})
+        except Exception as e:
+            _c.log.exception('gui /flow failed')
             self._send(500, {'error': str(e)})
 
     def do_POST(self):

@@ -25,6 +25,36 @@ across the lot.
 
 The full key map for these actions is on the [Usage](tui.md#key-bindings) page.
 
+## Flow graph
+
+A transcript answers *what was said*. It cannot answer *where the three hours went*, because
+a message list has no shape — a tool call that blocked for 90 seconds looks exactly like one
+that returned instantly.
+
+**Flow** (in a session's detail pane, next to *Transcript*) opens that session as a live flow
+graph in its own window: every prompt, model turn, tool call, result, error and subagent laid
+out on the session's own clock.
+
+- **Tools above the spine, results below**, joined by a line whose slope is how long the call
+  took. A slow tool leans; an instant one is vertical.
+- **Click any node** to inspect it — when, how long since the session started, how long it
+  took, what it acted on, what it spent, and an excerpt.
+- **Play, pause and scrub.** Idle gaps are clamped, so a session that sat waiting for two
+  hours does not spend two hours of screen on nothing, and a twelve-hour session replays in
+  seconds. Speed runs from 1× to *all*.
+- **Follow** a session that is still running: the page polls its transcript once a second and
+  appends what is new.
+- **Zoom** with the wheel, drag to pan. A prompt draws a full-height rule — it is where the
+  session changed direction, and it is how you navigate one.
+
+Works for **Claude Code, Codex and pi** sessions. What each one can show is decided by what
+its file actually records: Claude Code carries tool calls, results and subagent lanes; Codex
+and pi carry prompts, answers, model changes and token spend, plus tool calls where the CLI
+wrote them.
+
+The behaviour is adopted from [zoetrope](https://github.com/furkankly/zoetrope) — see
+[Credits](credits.md).
+
 ## Usage analytics
 
 - **Usage stats dashboard** — tokens (in/out/cache) and estimated cost per project and per session, parsed from local transcripts; cached for instant reopening
