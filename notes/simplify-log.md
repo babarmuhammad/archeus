@@ -172,3 +172,144 @@ in a plain string is a newline written the long way.
 
 The tri-state `key_is_served` return is deliberately printed, the retry branch carries its measured
 justification, and every guard is load-bearing.
+
+### shot_tui.py — 2 proposed, 1 accepted
+
+Accepted: `[k for part in (H.ESC,) for k in part]` flattens a one-element tuple of an already-flat
+list; `list(H.ESC)` is the same value and still a fresh copy. **Rejected**: folding the two
+`run_flow(... ESC ...)[1].text` call sites into a `_drive` helper — two callers do not earn one,
+and the agent said so itself.
+
+### probe_qt.py — 4 proposed, 4 accepted
+
+Accepted: the percentile formula and its clamp were written out twice, once per array; the
+400-entry event cap and the `t0`-relative rounding twice, once per listener; and the 16.7ms vsync
+fallback a second time three lines below the local that already held it. Both embedded scripts
+were syntax-checked with `node --check` after the edit, since nothing in the suite parses them.
+Deliberately left: the neighbouring `{vsync:.1f}` stays raw — it prints the measured value, not
+the fallback — and `_foreground`, the activation block, `--pin` and every verdict branch are the
+measurement contract, not incidental complexity.
+
+### audit_site.py — 2 proposed, 2 accepted
+
+Accepted: `'--www' in argv` decided two things in two places. Accepted: `label` and `path` were
+already concatenated with no separator in both problem strings.
+
+### check_site_seo.py — 2 proposed, 1 accepted
+
+Accepted: the summary line was a generator holding two conditionals and a truthiness filter, to
+assemble a list of at most two items. **Rejected**: dropping the inner `sorted(files)` in
+`_www_pages` because its only caller sorts — that makes the function depend on its caller for a
+property it currently guarantees.
+
+**Fence note:** this file is on Track A's owned list. The change is four lines in a print
+statement, but A will see it at merge.
+
+### mkdocs_hooks.py — 2 proposed, 2 accepted
+
+Accepted: `_sections` filtered on `_plain(body)` and then handed the raw body back, so both
+callers ran `_plain` again on every section they kept; it returns the answer text now. Accepted:
+the fence-skipping accumulator is the `join` that consumed it. The rule that a page which does not
+fit gets NOTHING is untouched — `_faq` still returns `None` with no entries, `_howto` still
+returns `None` below two numbered steps. The unused `config` parameter was deliberately NOT
+removed: the gate calls `_howto(md, page, None)` positionally.
+
+### set_domain.py — 2 proposed, 2 accepted
+
+Accepted: `occurrences` and `skipped_occurrences` were the same seven-line scan over two file
+lists, so a fix to one would have missed the other; both public names survive, because
+`tests/test_site_links.py` calls one and the skip reporting calls the other. Accepted: `rewrite`
+called `occurrences` — reading every tracked file — and then re-read each match, discarding the
+line numbers it had just paid for. The `if txt != src` guard is what keeps `rewrite(CURRENT)` a
+no-op rather than a full-repo touch, and it stays.
+
+### _e2e_migration.py — 2 proposed, 1 accepted
+
+Accepted: `(shutil.copytree if isdir else shutil.copy2)(src, dst)` is a two-line branch written as
+an expression, and `copied.append` duplicated per branch is how a third branch forgets it.
+**Rejected**: folding the two verdict-line scans into one — it changes the order the offending
+lines print in on a failure, and what a failing run prints is behaviour someone reads.
+
+### _mut_migration.py — 2 proposed, 2 accepted
+
+Accepted: the restore in `finally` must use byte-identical flags to the mutation write, or it
+rewrites `migrate.py`'s line endings for the whole file — so it is one function with that reason
+on it. Accepted: the return code was tested twice in opposite directions on consecutive lines. The
+`MUTANTS` anchors are data and are untouched.
+
+### _rename_brand.py — 1 proposed, 1 accepted
+
+Accepted: three loops nested inside a file loop inside a `try`; `substitute()` is the delicate
+held-string round-trip on its own, beside the `HOLD` table the gate already imports from.
+
+### gen_metrics.py — 1 proposed, 1 accepted
+
+Accepted: the `abs_ok` parameter and its branch re-implemented, for one call site, what
+`os.path.join` gives for free — an absolute second argument comes back unchanged. Verified by
+re-reading the facts afterwards: 228 files, 81,644 lines.
+
+**Note for whoever runs it next:** `gen_metrics.py` takes no `--check`; running it WRITES
+`README.md` and `docs/dashboard.md`. It was run once here by mistake and both files were restored
+with `git checkout`. (It also reports the README's test badge as stale against the current suite —
+that is pre-existing on `main`, and `README.md` belongs to Track A.)
+
+### make_gifs.py — 3 proposed, 3 accepted
+
+Accepted: `_build_cage` filled two module-level lists by side effect, so `_DV`/`_DE` were briefly
+and silently wrong at import; it returns them. Accepted: the triangle scan is
+`itertools.combinations` over one named adjacency test instead of three nested ranges repeating
+the same distance comparison — same `i<j<k` order, so vertex indices and draw order do not move,
+and the 42/120 asserts still gate it. Accepted: two `if a in pos and b in pos:` wrappers become
+`continue` guards.
+
+### make_og_card.py — 1 proposed, 1 accepted
+
+Accepted: `OUT = OUTS[0]` has no reader, and the gate redirects the generator by patching `OUTS`,
+so the alias only invited a write to a name the one-source rule left behind.
+
+### optimize_images.py — 3 proposed, 3 accepted
+
+Accepted: `_write` took the `saved` accumulator in and handed it back through a seven-argument
+signature; it returns what it saved. Accepted: `MIRRORS` was a list that `main` re-scanned with an
+equality test to recover a destination `_targets` already had in hand — it is a mapping now, with
+a comment saying one destination per source. Accepted: the `--check` summary re-walked the whole
+tree a second time to print a length. `--check` still reports 34 images optimized.
+
+### shot_gui.py — 2 proposed, 2 accepted
+
+Accepted: `audit_page` spelled out the exact `wait_for_function` predicate that `_rendered`
+already wraps — and the copy that stops gating is the one that reports `clean` for measuring
+nothing. Same selector, same 6000ms settle, same printed line. Accepted: a continuation line whose
+backslash had been lost into thirteen inline spaces.
+
+### smoke_gui.py — 2 proposed, 1 accepted
+
+Accepted: a function-local `import config as _TH_C` duplicated the module-level `_TH_CFG`, leaving
+two names for one object in the file whose whole job is to be trusted. Nothing moved across an
+indentation boundary; the run still counts 319 checks.
+
+**Rejected**: two `check(...)` calls pass a detail argument that is always the empty string
+(`txt[:0]`, `blk['txt'][:0]`) — dead diagnostics that look like a `[:200]` which lost its digits.
+Both lines are inside the `with sync_playwright()` block, which is the one place this pass does
+not touch. Flagged for the owner: the right fix is probably restoring a real `[:200]`, which is a
+change to failure output rather than a simplification.
+
+## Verification
+
+Run over the finished pass, in the worktree:
+
+- `py -m pytest -q` — **2335 passed, 1 skipped**, identical to the baseline.
+- `py -m ruff check claude_sessions tools` — clean. It earned its keep: `F821` caught a missed
+  rename site in `gen_plugin.py` before anything ran.
+- `py tools/smoke_gui.py` — **319 checks, JS errors none, FAILURES none**, exit 0.
+- `py -m mkdocs build --strict` — exit 0.
+- `py tools/gen_api_docs.py --check`, `gen_cluster_spec.py --check`, `gen_plugin.py --check`,
+  `optimize_images.py --check` — all current, so no committed generated file moved.
+- `node --check` on both of `probe_qt.py`'s embedded scripts.
+
+**One thing worth knowing about `smoke_gui.py` in this environment:** it binds a fixed port, and a
+crashed earlier run left a server listening on it. Three runs in a row then failed with
+`ERR_CONNECTION_REFUSED` / `ERR_CONNECTION_RESET` and a different set of checks each time —
+including one that looked exactly like a regression in a stub this pass had edited. The committed
+tree failed the same way, which is what identified it. Kill the stale listener before believing a
+failure here.
