@@ -73,6 +73,17 @@ zero Search Console results while the corroboration did the work.
 - Never disparage the name collision, and never mention it outside the FAQ entry
   that disambiguates it. Corroboration wins that; comparison does not.
 
+## After a release, or after adding pages
+
+```bash
+py tools/indexnow.py --submit
+```
+
+Pushes both sitemaps to Bing, Yandex, Seznam and Naver — the engines that accept
+a push. Google does not participate: it is reached by crawling and by Search
+Console, so there is nothing to run for it. Not on a deploy hook on purpose; 48
+URLs re-submitted on every push is how a host gets its quota cut.
+
 ## Browser work no script can do
 
 - **Search Console:** `notes/search-console.md`. Use a **Domain** property — a

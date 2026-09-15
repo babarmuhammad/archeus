@@ -1,8 +1,18 @@
 # Verifying archeus with Google, Bing and the rest
 
-Neither host is verified. Everything below is a one-time setup done in a browser
-and at a DNS registrar; nothing here is a code change, which is why it is a note
-and not a module.
+Google is verified — the apex carries
+`google-site-verification=hxT-jVsObmiivbY5a5kmAAk6sb7_3mrC5LpY85CuDwU` as a TXT
+record, which is a Domain property and therefore covers `docs.` too. Bing has no
+TXT record of its own and is either imported from Search Console or not set up.
+Everything below is a one-time setup done in a browser and at a DNS registrar;
+nothing here is a code change, which is why it is a note and not a module.
+
+**Verify the record before trusting this paragraph** — it said "neither host is
+verified" for a week after the verification was done:
+
+```
+py -c "import subprocess;print(subprocess.run(['nslookup','-type=TXT','claudectl.space'],capture_output=True,text=True).stdout)"
+```
 
 ## Use a Domain property. Not a URL-prefix one.
 
@@ -75,9 +85,17 @@ instead of waiting for a crawl. One key, one file, one HTTP GET per deploy.
    A sitemap-wide ping is not a thing; it takes a URL list (`POST` with a JSON
    body of up to 10,000 URLs). Google does not participate.
 
-Not wired up yet — it needs a key that is a secret-ish value and a deploy hook on
-two projects, and it is worth nothing until the sites are verified and indexed.
-Do it after the domain move, not before, or the key file moves with the host.
+**Wired up now.** The key is `216da8f491c6498c86010c5bc9089a25`, served from
+`www/public/<key>.txt` and `docs/<key>.txt`, and `tools/indexnow.py` reads each
+host's live sitemap and submits it — dry by default, `--submit` to send. It
+checks the key is actually being served first, because the endpoint answers 202
+and then silently drops everything if it cannot fetch the key afterwards.
+
+It is deliberately NOT on a deploy hook: 48 URLs re-submitted on every push is
+how a host gets its quota cut. Run it after a release, or after adding pages.
+The key file moves with the host, so the domain change has to re-deploy both
+copies — `tools/set_domain.py` does not touch them, since the filename carries
+no hostname.
 
 ## The rest
 
