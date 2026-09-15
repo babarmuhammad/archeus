@@ -24,6 +24,12 @@ summary nobody should be quoting). The manual links to the apex copies from
 `docs/index.md` and `docs/llms.txt` rather than carrying its own — two copies of a
 policy is two policies, and the second one is wrong.
 
+*One deviation from the plan, deliberate:* the plan put the `LEGAL` array in
+`lib/site.ts`. It lives in `lib/legal.ts` with the policies themselves instead —
+`SITE` holds destinations and identity (`kofi`, `contact`, `operator`,
+`operatorCountry` were added there), and the policies are documents. Every
+consumer imports one or the other, not both halves of a split table.
+
 **One new block kind**, `links`, in `lib/content.ts` + `components/doc/Blocks.tsx`
 + `blockText`. A policy has to cite the notices it relies on and no existing block
 could carry a link. It is a block rather than inline markup so the other five

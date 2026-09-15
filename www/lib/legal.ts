@@ -373,7 +373,6 @@ const REFUNDS: Doc = {
         p(
           'If the project ever offered something in return for money — a membership tier, a perk, early access, priority support, anything at all — that would stop being a gift and become a sale. A sale brings a right of withdrawal, a real refund procedure and a good deal else with it. None of that is offered today, and if it ever is, this page and the terms change before it goes live, not after.',
         ),
-        p(`Effective from ${EFFECTIVE_LABEL}.`),
       ],
     },
   ],
