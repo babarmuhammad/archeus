@@ -5782,7 +5782,12 @@ async function drawRotate(){
   if(!$('#rotOut'))return;
   const d=await api('/api/rotate/state').catch(()=>null);
   const el=$('#rotOut');if(!el)return;
-  if(!d){el.innerHTML='<div class="empty">Rotation state unavailable.</div>';return;}
+  /* `accounts`, not truthiness: a route that is not there answers `{}` with a
+     200 in at least one harness, and `{}` is truthy — the card then rendered
+     `Math.round(undefined)` as NaN%. A reply with no roster in it is a reply
+     that cannot say anything about rotation. */
+  if(!d||!Array.isArray(d.accounts)){
+    el.innerHTML='<div class="empty">Rotation state unavailable.</div>';return;}
   ROT=d;
   const modes=[['off','Off','archeus never changes the account for you'],
     ['ask','Semi-automatic','new work starts on the next account; a session you are in is offered the move'],
@@ -7305,7 +7310,7 @@ function askLaunch(cfg){
      stops a session opening on an account that is about to refuse it. The
      sentinel is resolved in doLaunch, not sent: /api/launch takes a cfgdir. */
   if(cfg.isNew&&ST.accounts.length>1){
-    const rot=ROT&&ROT.mode!=='off';
+    const rot=!!(ROT&&ROT.mode&&ROT.mode!=='off');
     chipsFill($('#fAcct'),(rot?['__auto__']:[]).concat(ST.accounts.map(a=>a.dir)),
               (rot?['auto — most headroom']:[]).concat(ST.accounts.map(a=>a.name)),
               rot?'__auto__':ST.active_cfgdir);
@@ -7723,7 +7728,7 @@ let _rotAuto={};
 function rotLive(){return ((ROT&&ROT.accounts)||[]).find(a=>a.live);}
 function rotCanContinue(){return !!(CUR&&CUR.path&&typeof SESS!=='undefined'&&SESS&&SESS.length);}
 function rotLine(){
-  if(!ROT||ROT.mode==='off')return '';
+  if(!ROT||!ROT.mode||ROT.mode==='off')return '';
   const live=rotLive();
   if(!live||!live.spent)return '';
   if(!ROT.rotating)return `<div class="urow"><span class="unote">${esc(live.name)} is out
