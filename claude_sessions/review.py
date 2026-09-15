@@ -179,8 +179,12 @@ def run_review(project_path, proj_folder=None, staged=False, base=None,
             memory._tls.silent = False
     # _claude_json already returns the parsed object (and falls back to the
     # prose recovery itself); parse_findings only has to normalise the shape
-    raw = (out.get('findings') if isinstance(out, dict)
-           else out if isinstance(out, list) else [])
+    if isinstance(out, dict):
+        raw = out.get('findings')
+    elif isinstance(out, list):
+        raw = out
+    else:
+        raw = []
     raw = [f for f in (raw or []) if isinstance(f, dict)]
     kept = [f for f in raw if int(f.get('confidence', 0) or 0) >= min_confidence]
     kept.sort(key=_sev_key)
@@ -245,9 +249,7 @@ def review_cli(argv):
                 min_conf = int(next(it, '80'))
             except Exception:
                 min_conf = None
-        elif a in ('--staged',):
-            pass
-        elif not a.startswith('--'):
+        elif not a.startswith('--'):   # --staged was read before the loop
             path = a
     project_path = os.path.abspath(path or os.getcwd())
     if not os.path.isdir(os.path.join(project_path, '.git')) and \
@@ -258,8 +260,9 @@ def review_cli(argv):
     result = run_review(project_path, None, staged=staged, base=base,
                         min_confidence=min_conf, silent=True)
     from . import render
+    color = _supports_color()
     for ln in render_lines(result):
-        print('  ' + render.strip_ansi(ln) if not _supports_color() else '  ' + ln)
+        print('  ' + (ln if color else render.strip_ansi(ln)))
     return 0
 
 
