@@ -2063,9 +2063,27 @@ def main():
         check('a CLI with no extra screens shows no second strip',
               pg.evaluate("document.querySelector('#subtabs').style.display")
               == 'none')
+        # The page is a `split` now, like every other list-of-one-thing in the
+        # app, so a reason lives in the pane rather than in a third table
+        # column. Gaps sort first, so row 0 IS a gap on any CLI that has one.
+        check('the setup page is a list with a ring, a filter and a pane',
+              pg.evaluate("!!document.querySelector('#content .pghd .iwrap')")
+              and pg.evaluate("!!document.querySelector('#hsQ')")
+              and pg.evaluate("document.querySelectorAll('#content .hrow').length") > 10)
+        check('…and it opens on a gap rather than an empty pane',
+              pg.evaluate("!!document.querySelector('#content .hrow.on')")
+              and 'not here' in pg.evaluate("$('#hsDet').innerText"))
         check('and its gaps are printed with their reasons',
-              'Output styles are a Claude Code feature.'
-              in pg.evaluate("document.body.innerText"))
+              'Output styles are a Claude Code feature.' in pg.evaluate(
+                  "HSCAPS.findIndex(c=>c.k==='output_styles')>=0"
+                  "&&(hsPick(HSCAPS.findIndex(c=>c.k==='output_styles')),"
+                  "$('#hsDet').innerText)"))
+        check('…and names the screen the capability gates',
+              'Output styles' in pg.evaluate("$('#hsDet').innerText"))
+        check('the ring counts what works against the whole table',
+              pg.evaluate("document.querySelector('#content .pghdt b').textContent")
+              .startswith(str(sum(1 for c in pg.evaluate("HSCAPS") if c['works']))))
+        pg.evaluate("hsPick(0)")
 
         # -- usage: every CLI's spend, only Claude's plan windows --
         print(NL + '-- usage, per harness --')

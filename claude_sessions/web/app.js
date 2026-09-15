@@ -767,7 +767,7 @@ const NAV=[
   ['logs','history','Logs','What archeus itself did and why it failed — its own Claude calls, background jobs, the scheduler and the proxy, newest first.',()=>pgLogs,'feed',''],
   ['accounts','group','Accounts','Every Claude login, and the sync that levels them all up to the same provisioning.',()=>pgAccounts,'split','accounts'],
   ['client','ai','Claude Code','What Claude Code records about itself: versions, disk, background agents, its own settings.',()=>pgClient,'pile','client_state'],
-  ['harness','group','Harnesses','Every coding CLI archeus drives — whether it is installed, how it is set up, and the screens only it has.',()=>pgHarness,'pile',''],
+  ['harness','group','Harnesses','Every coding CLI archeus drives — whether it is installed, how it is set up, and the screens only it has.',()=>pgHarness,'split',''],
   ['settings','bolt','Launch','What every new session starts with — effort, model, permission mode, the window it opens in, and the plan/execute pair.',()=>pgSetLaunch,'form',''],
   ['appearance','palette','Appearance','Palette, skin, world, motion, surface transparency and the background scene.',()=>pgSetAppearance,'form',''],
   // plain '&', never '&amp;': every consumer escapes it (the tab strip, the nav
@@ -3732,19 +3732,33 @@ async function drawPage(id){
    capability greys ONE row and says why; here they are all on screen at once,
    which is how you answer "what can this thing actually do" without clicking
    nineteen pages to find out. */
+/* The capability table is a list of one kind of thing with a per-row detail,
+   which is the `split` archetype every other such page in the app already uses
+   — this one was a `pile` of two flat <table class="tbl">, so Codex and pi's
+   only page read as a different application from Claude Code's six. Numerically
+   it is the same page as MCP (N of M work, a ring, a filter, a pane), so it is
+   built the same way rather than a new way. */
+let HSCAPS=[];
+const HSINTRO='<div class="empty">Pick a surface to see whether this CLI has it, why not when it does not, and which screen it drives.</div>';
 async function pgHarness(nav){
   const hid=HARNESS_HID,row=harnessById(hid)||{caps:{}};
   const d=await api('/api/harness/setup?'+qs({hid}));
+  // gaps first: the reason someone opens this page is to find out what is
+  // missing, and an alphabetical list buries that among twenty working rows
   const caps=Object.entries(d.caps||row.caps||{})
     .sort((a,b)=>(a[1][0]?1:0)-(b[1][0]?1:0)||a[0].localeCompare(b[0]));
-  const capRows=caps.map(([k,[ok,why]])=>
-    `<tr><td>${esc((d.cap_labels||{})[k]||k)}</td>
-      <td>${ok?'<span class="tag ok">yes</span>':'<span class="tag">no</span>'}</td>
-      <td style="color:var(--dim)">${esc(why||'')}</td></tr>`).join('');
+  const labels=d.cap_labels||{};
+  const ok=caps.filter(c=>c[1][0]).length;
+  HSCAPS=caps.map(([k,[works,why]])=>({k,works,why,label:labels[k]||k}));
   const upd=d.latest&&d.latest!==d.version;
   const notes=(d.notes||[]).map(n=>`<div class="fsub">${esc(n)}</div>`).join('');
+  const row_=(c,i)=>`<div class="hrow" data-i="${i}"
+      data-f="${esc(c.label+' '+c.k+' '+(c.why||''))}" onclick="hsPick(${i})">
+      <span style="color:${c.works?'var(--ok)':'var(--warn)'}">${ic(c.works?'check':'help')}</span>
+      <span class="info">${esc(c.label)}</span>
+      <span class="tag ${c.works?'ok':''}">${c.works?'yes':'no'}</span></div>`;
   if(!shell(nav,`
-    <div class="card"><h3>${esc(d.label||hid)}
+    <div class="card wide"><h3>${esc(d.label||hid)}
       ${d.available?'<span class="tag ok">installed</span>'
                    :'<span class="tag warn">not installed</span>'}
       <span class="sp"></span>
@@ -3762,10 +3776,43 @@ async function pgHarness(nav){
          on PATH and in its usual install directory. Install it, or set the path
          on <span class="hlink" onclick="go('paths')">Paths &amp; limits</span>.</p>`}</div>
     <div class="card"><h3>What archeus can do here</h3>
-      <p class="secthint">Every surface in the app, and where this CLI has no
-        equivalent, the reason. A gap is the tool's shape, not a missing feature.</p>
-      <table class="tbl"><tr><th>surface</th><th>works</th><th>why not</th></tr>
-        ${capRows}</table></div>`))return;
+      <div class="pghd">
+        ${INST.html('ring','harness',{fmt:'ratio',unit:'/–',sub:'work',label:'surfaces'})}
+        <div class="pghdt"><b>${ok} of ${caps.length}</b> surface${caps.length===1?'':'s'} work under ${esc(d.label||hid)}
+          ${ok===caps.length?'<span class="tag ok">everything</span>'
+            :`<span class="tag warn">${caps.length-ok} gap${caps.length-ok===1?'':'s'}</span>`}
+          <div class="sub">A gap is the tool's shape, not a missing feature — every one has the reason beside it.</div></div>
+      </div>
+      <div class="fld" style="margin:0 0 4px"><input id="hsQ" placeholder="Filter by surface or reason…" spellcheck="false">
+        <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="hsCount"></div></div>
+      <div class="tbody">${HSCAPS.map(row_).join('')}</div></div>
+    <div class="card tdet" id="hsDet">${HSINTRO}</div>`))return;
+  bindFilter('hsQ','.hrow','hsCount');
+  if(HSCAPS.length)hsPick(0);
+  if(caps.length){
+    INST.set('harness',{v:ok/caps.length,tone:ok===caps.length?'ok':ok?'warn':'err'});
+    setRead('harness',ok);
+    setUnit('harness','/'+caps.length);
+  }
+}
+/* One surface, and the half the old table could not say: which SCREEN this
+   capability gates. NAV's seventh field is that capability, so the door is
+   derived rather than written down a second time. */
+function hsPick(i){
+  const c=HSCAPS[i];if(!c)return;
+  document.querySelectorAll('#content .hrow').forEach(el=>
+    el.classList.toggle('on',+el.dataset.i===i));
+  const h=$('#hsDet');if(!h)return;
+  const pages=NAV.filter(n=>n[6]===c.k);
+  const others=capSupporters(c.k).filter(l=>l!==harnessLabel(HARNESS_HID));
+  h.innerHTML=`<h3>${esc(c.label)}
+      <span class="tag ${c.works?'ok':'warn'}">${c.works?'works here':'not here'}</span></h3>
+    ${c.works?`<p style="margin:0 0 10px;font-size:13px;line-height:1.55">archeus drives this through ${esc(harnessLabel(HARNESS_HID))}'s own commands.</p>`
+      :`<p style="margin:0 0 10px;font-size:13px;line-height:1.55">${esc(c.why||'This CLI has no equivalent.')}</p>`}
+    ${pages.length?`<div class="kv"><span>${pages.length===1?'screen':'screens'}</span><span>${pages.map(n=>
+        `<span class="hlink" onclick="go(${hesc(n[0])})">${esc(n[2])}</span>`).join(', ')}</span></div>`:''}
+    ${others.length?`<div class="kv"><span>also on</span><span>${esc(others.join(', '))}</span></div>`:''}
+    <div class="kv"><span>capability</span><code>${esc(c.k)}</code></div>`;
 }
 async function harnessUpdate(hid){
   const r=await post('/api/harness/update',{hid});
