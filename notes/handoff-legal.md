@@ -189,7 +189,7 @@ read comment-stripped source through a `code()` helper, and all three were
 re-verified against a commented-out mutation.
 
 ```
-py -m pytest -q                    ✓  2352 passed, 1 skipped in 283.27s
+py -m pytest -q                    ✓  2352 passed, 1 skipped in 314.51s
 ```
 
 The single warning in that run is pre-existing: `test_plan_execute.py` raises a
