@@ -120,7 +120,7 @@ def repo_facts():
                 if not name.endswith('.py'):
                     continue
                 py += 1
-                text = _read(os.path.join(dirpath, name), abs_ok=True)
+                text = _read(os.path.join(dirpath, name))
                 loc += len(text.splitlines())
                 if name.startswith('test_'):
                     tests += len(re.findall(r'^\s*def test_', text, re.M))
@@ -139,9 +139,10 @@ def repo_facts():
     }
 
 
-def _read(rel, abs_ok=False):
-    path = rel if abs_ok else os.path.join(ROOT, rel)
-    with open(path, encoding='utf-8', errors='ignore') as f:
+def _read(rel):
+    # join returns an absolute second argument unchanged, so a caller may pass
+    # either a repo-relative name or a full path out of os.walk.
+    with open(os.path.join(ROOT, rel), encoding='utf-8', errors='ignore') as f:
         return f.read()
 
 
