@@ -73,10 +73,13 @@ def main():
                 os.makedirs(dst, exist_ok=True)
                 with io.open(os.path.join(dst, 'placeholder'), 'w') as f:
                     f.write('not the real thing')
-                copied.append(name)
-            elif name.startswith('claudectl'):
-                (shutil.copytree if os.path.isdir(src) else shutil.copy2)(src, dst)
-                copied.append(name)
+            elif not name.startswith('claudectl'):
+                continue
+            elif os.path.isdir(src):
+                shutil.copytree(src, dst)
+            else:
+                shutil.copy2(src, dst)
+            copied.append(name)
         # two real project folders, transcripts and all
         pr_src, pr_dst = os.path.join(REAL, 'projects'), os.path.join(home, 'projects')
         os.makedirs(pr_dst, exist_ok=True)
