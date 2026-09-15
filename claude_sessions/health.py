@@ -10,6 +10,7 @@ as pre-launch warnings.
 import os
 import re
 import json
+from collections import Counter
 
 from . import config as _c
 from . import store
@@ -168,13 +169,10 @@ def append_session_log(project_path, proj_folder, sid):
 
 # ── permission allowlist from history ────────────────────────
 
-_TOOL_RE = re.compile(r'"name"\s*:\s*"Bash"')
-
-
 def frequent_bash_commands(proj_folder, min_count=3, top_k=10):
     """Most frequent first-word Bash commands across this project's
     transcripts → allowlist candidates [('git', 42), ...]."""
-    counts = {}
+    counts = Counter()
     if not proj_folder or not os.path.isdir(proj_folder):
         return []
     from . import transcripts
@@ -184,12 +182,11 @@ def frequent_bash_commands(proj_folder, min_count=3, top_k=10):
             for block in (obj.get('message', {}).get('content') or []):
                 if (isinstance(block, dict) and block.get('type') == 'tool_use'
                         and block.get('name') == 'Bash'):
-                    cmd = str((block.get('input') or {}).get('command', '')).strip()
-                    word = cmd.split()[0].lower() if cmd.split() else ''
+                    words = str((block.get('input') or {}).get('command', '')).split()
+                    word = words[0].lower() if words else ''
                     if word and re.fullmatch(r'[a-z0-9_.-]+', word):
-                        counts[word] = counts.get(word, 0) + 1
-    ranked = sorted(counts.items(), key=lambda kv: -kv[1])
-    return [(w, c) for w, c in ranked if c >= min_count][:top_k]
+                        counts[word] += 1
+    return [(w, c) for w, c in counts.most_common() if c >= min_count][:top_k]
 
 
 def propose_allowlist(project_path, proj_folder):
@@ -211,9 +208,7 @@ def propose_allowlist(project_path, proj_folder):
     if not new_rules:
         return 0, 'all frequent commands already allowed'
     proposed = dict(cur)
-    proposed.setdefault('permissions', {})
-    proposed['permissions'] = dict(proposed['permissions'])
-    proposed['permissions']['allow'] = allow + new_rules
+    proposed['permissions'] = {**(cur.get('permissions') or {}), 'allow': allow + new_rules}
     old_text = json.dumps(cur, indent=2) if cur else ''
     new_text = json.dumps(proposed, indent=2)
     from . import diffview
