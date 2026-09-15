@@ -2102,6 +2102,40 @@ def main():
         check('there is no All tab where all-at-once is not a view',
               'All' not in strip, strip)
 
+        # -- the two pages that were cross-harness underneath and could not say so --
+        # `mcp.get_mcp_status` has branched to `codex.mcp_list` since Codex was
+        # registered, and a skill installs into every harness's roots — but both
+        # pages read Claude's account chips and nothing else, so one CLI's
+        # servers and the other's skills were unreachable through the UI.
+        print(NL + '-- strips on the rest of the shared pages --')
+        pg.evaluate("MCPHID='';go('mcp')")
+        pg.wait_for_timeout(700)
+        strip = pg.evaluate("[...document.querySelectorAll('#content .mtabs .tab')]"
+                            ".map(t=>t.textContent.trim())")
+        check('the MCP page carries a harness strip',
+              'Claude Code' in strip and 'Codex' in strip, strip)
+        check('…without pi, which has no MCP client at all',
+              'pi' not in strip, strip)
+        pg.evaluate("pickMcpHarness('codex')")
+        pg.wait_for_timeout(700)
+        check('picking a CLI drops the Claude account chips',
+              pg.evaluate("document.querySelectorAll('#content .chip').length") == 0)
+        pg.evaluate("pickMcpHarness('claude')")
+        pg.wait_for_timeout(500)
+
+        pg.evaluate("SKHID='';go('skills')")
+        pg.wait_for_timeout(700)
+        strip = pg.evaluate("[...document.querySelectorAll('#content .mtabs .tab')]"
+                            ".map(t=>t.textContent.trim())")
+        check('the skills page carries one too, for every CLI',
+              {'Claude Code', 'Codex', 'pi'} <= set(strip), strip)
+        pg.evaluate("pickSkillHarness('codex')")
+        pg.wait_for_timeout(700)
+        check('…and stops offering a scope that is Claude Code\'s own',
+              'built into Claude Code' not in pg.evaluate("document.body.innerText"))
+        pg.evaluate("pickSkillHarness('claude')")
+        pg.wait_for_timeout(500)
+
         # -- the provider card changes shape per backend --
         # The card was OmniRoute-shaped for its whole life: a live catalogue, a
         # provider-health panel and a dashboard button. None of that exists for a

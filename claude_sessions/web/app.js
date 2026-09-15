@@ -4137,19 +4137,36 @@ function gResume(i){const r=window._gmatch[i];
 
 /* which account the MCP page is showing. `claude mcp` honours CLAUDE_CONFIG_DIR,
    so the list, the detail and every add/remove name one account explicitly —
-   the reader and the writer used to be able to disagree about which. */
-let MCPACCT='';
+   the reader and the writer used to be able to disagree about which.
+
+   MCPHID is the same question one axis up. `mcp.get_mcp_status` branches to
+   `codex.mcp_list` and `mcp_cli` picks the binary out of the home, so the
+   server side has answered for Codex since it was registered — this page was
+   simply the only one that could not ask. `cfgdir` carries a HOME here, which
+   is why it works at all: a harness rides on that parameter. */
+let MCPACCT='', MCPHID='';
+function pickMcpHarness(hid){
+  // '' rather than 'claude', so the Claude tab means "whichever account the
+  // chips below are on" and the chips keep working — the harness strip picks a
+  // CLI, and under Claude Code the login is still a second choice.
+  MCPHID=hid==='claude'?'':hid;
+  MCPACCT=MCPHID?((harnessById(MCPHID)||{}).homes||[''])[0]||'':'';
+  drawPage('mcp');
+}
 async function pgMcp(nav){
   /* refresh=1: `get_mcp_status` is cached 30s for the dashboard's 10-second
      poll, and this page is where you come to find out whether a server is
      actually up. */
   const d=await api('/api/mcp?'+qs(Object.assign({refresh:1},MCPACCT?{cfgdir:MCPACCT}:{})));
   const srv=d.servers||[],up=srv.filter(x=>x.status==='ok').length;
-  const accts=(ST.accounts||[]);
+  // the account chips are Claude LOGINS, so they only mean anything under
+  // Claude Code; another harness's home is chosen by the strip above them
+  const accts=MCPHID?[]:(ST.accounts||[]);
   const picker=accts.length>1?`<div class="chips" style="margin-bottom:10px">
       ${accts.map(a=>`<span class="chip${(MCPACCT||'')===(a.dir||'')?' on':''}"
         onclick='mcpAcct(${hesc(a.dir||'')})'>${esc(a.name)}</span>`).join('')}
     </div>`:'';
+  const strip=harnessStrip(MCPHID||'claude','pickMcpHarness','mcp','');
   MCPSRV=srv;
   const row=(x,i)=>`<div class="hrow" data-i="${i}" data-f="${esc(x.name+' '+x.status)}"
       onclick="mcPick(${i})">
@@ -4160,7 +4177,7 @@ async function pgMcp(nav){
     ${srv.length?`<span class="tag${up===srv.length?' ok':' warn'}">${up}/${srv.length} up</span>`:''}
     <span class="sp"></span>
     <button class="btn sm" onclick="mcpAdd()">${ic('add')} Add server</button></h3>
-    ${picker}
+    ${strip}${picker}
     ${srv.length?`<div class="pghd">
       ${INST.html('ring','mcp',{fmt:'ratio',unit:'/–',sub:'up',label:'reachable'})}
       <div class="pghdt"><b>${up} of ${srv.length}</b> server${srv.length===1?'':'s'} responding
@@ -4171,8 +4188,8 @@ async function pgMcp(nav){
     <div class="fld" style="margin:0 0 4px"><input id="mcQ" placeholder="Filter servers…" spellcheck="false">
       <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="mcCount"></div></div>
     <div class="tbody">${srv.map(row).join('')}</div>`
-    :`<div class="empty">Start by adding an MCP server — it gives every session on this account a set of tools it does not otherwise have.</div>`}
-    <p style="color:var(--dim);font-size:12.5px;margin:10px 0 0">Analyzing a server writes its tool documentation into a sentinel block of the account's <b>global CLAUDE.md</b>, which is the <b>Global CLAUDE.md</b> page of this section.</p></div>
+    :`<div class="empty">Start by adding an MCP server — it gives every session on this ${MCPHID?'CLI':'account'} a set of tools it does not otherwise have.</div>`}
+    ${MCPHID?'':`<p style="color:var(--dim);font-size:12.5px;margin:10px 0 0">Analyzing a server writes its tool documentation into a sentinel block of the account's <b>global CLAUDE.md</b>, which is the <b>Global CLAUDE.md</b> page of this section.</p>`}</div>
     <div class="card tdet" id="mcDet">${MCPINTRO}</div>`))return;
   bindFilter('mcQ','.hrow','mcCount');
   // the pane is a 1100px column: leaving it on the invitation while the
@@ -5281,7 +5298,16 @@ async function ckptDiff(sid,file,a,b,cfgdir){
 
    Every row now carries the command you type and its real usage count, straight
    from Claude Code's own skillUsage counters. */
-let SKACCT='',SKSCOPE='all';
+let SKACCT='',SKSCOPE='all',SKHID='';
+/* A skill is the one artifact every CLI reads in the same FORMAT — the Agent
+   Skills standard — so archeus installs one by copying it into each harness's
+   roots rather than by translating it. The page could not say which roots it
+   was looking at, so a skill you had installed everywhere read as Claude-only. */
+function pickSkillHarness(hid){
+  SKHID=hid==='claude'?'':hid;          // see pickMcpHarness: '' keeps the chips
+  SKACCT=SKHID?((harnessById(SKHID)||{}).homes||[''])[0]||'':'';
+  drawPage('skills');
+}
 /* The detail pane's two states, both built at paint time. Rendering them up
    front rather than on click is what keeps skPick() a one-liner: `act(r)` and
    the description need the project context and the account list, and a click
@@ -5294,7 +5320,7 @@ async function pgSkills(nav){
   const path=P?P.path:'';
   await loadProv();          // badge rows a plugin brought in — see provTag
   const d=await api('/api/skills?'+qs(Object.assign(path?{path}:{},SKACCT?{cfgdir:SKACCT}:{})));
-  const accts=d.accounts||[];
+  const accts=SKHID?[]:(d.accounts||[]);   // chips are Claude logins; see pgMcp
   const all=[].concat(d.personal||[],d.project||[],d.plugin||[],d.bundled||[]);
   const n=sc=>sc==='all'?all.length:all.filter(r=>r.scope===sc).length;
 
@@ -5382,9 +5408,10 @@ async function pgSkills(nav){
     <div class="card"><h3>${ic('ai')} Skills
       <span class="tag">${all.length} loadable</span><span class="sp"></span>
       <button class="btn sm" onclick="skAddPane()">${ic('add')} Add a skill</button></h3>
-      ${acctChips}
+      ${harnessStrip(SKHID||'claude','pickSkillHarness','skills','')}${acctChips}
       <div class="chips" style="margin:0 0 8px">${chip('all','all')}${chip('personal','personal — every project')}${
-        path?chip('project','project — '+esc(P.name)):''}${chip('plugin','from a plugin')}${chip('bundled','built into Claude Code')}</div>
+        path?chip('project','project — '+esc(P.name)):''}${chip('plugin','from a plugin')}${
+        SKHID?'':chip('bundled','built into Claude Code')}</div>
       <div class="fld" style="margin:0 0 4px"><input id="skQ" placeholder="Filter by name, description or scope…" spellcheck="false">
         <div style="color:var(--dim2);font-size:12px;margin-top:4px" id="skCount"></div></div>
       <div class="tbody">${all.length?all.map(row).join(''):'<div class="empty">No skills anywhere yet — add one with the button above.</div>'}</div>

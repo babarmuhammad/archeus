@@ -81,8 +81,17 @@ def legacy_library_dir():
     return _c.skills_library_dir
 
 
-def project_skills_dir(project_path):
-    return os.path.join(project_path, '.claude', 'skills')
+def project_skills_dir(project_path, cfgdir=None):
+    """`<project>/.claude/skills` for Claude Code, `<project>/.agents/skills`
+    for the CLIs that read the cross-harness convention.
+
+    The descriptor has carried `project_skills_rel` since Codex was registered
+    and `harnesses.project_skill_roots` already fans an INSTALL over every one
+    of them; this is the reader's half, which had the Claude Code literal
+    written into it and so showed an empty project scope under any other CLI.
+    """
+    from . import harnesses as _h
+    return os.path.join(project_path, *_h.of(cfgdir)['project_skills_rel'])
 
 
 def skill_md(skill_dir):
@@ -181,7 +190,13 @@ def _usage(cfgdir=None):
     This counts explicit invocation and nothing else — see `_activity` for the
     half that explains "caveman: used twice, 56 days ago" on a plugin that runs
     every day."""
-    from . import clientstate
+    from . import clientstate, harnesses as _h
+    # `.claude.json` is Claude Code's own file — `client_state` is declared off
+    # for every other CLI. Showing Claude's typing counts beside a Codex skill
+    # would be attributing one tool's history to another, which is worse than
+    # showing none.
+    if _h.of(cfgdir)['id'] != _h.DEFAULT:
+        return {}
     out = {}
     for _name, d in _c.all_config_dirs():
         try:
@@ -222,7 +237,9 @@ def _activity(cfgdir=None):
     those touch no counter. The transcripts record every hook run, so this is
     measured rather than assumed. Merged across accounts for the same reason the
     counts are."""
-    from . import clientstate
+    from . import clientstate, harnesses as _h
+    if _h.of(cfgdir)['id'] != _h.DEFAULT:   # see _usage: Claude Code's own files
+        return {'of': 0, 'hits': {}}
     hits, total = {}, 0
     for _name, d in _c.all_config_dirs():
         try:
@@ -301,7 +318,7 @@ def inventory(project_path='', cfgdir=None):
                 for name, desc, d in list_skills(pdir)]
     own = {r['command'] for r in personal}
 
-    projdir = project_skills_dir(project_path) if project_path else ''
+    projdir = project_skills_dir(project_path, cfgdir) if project_path else ''
     project = [_row(name, desc, d, 'project', os.path.basename(d), use, act,
                     parse_skill(d)[0], shadowed=os.path.basename(d) in own)
                for name, desc, d in list_skills(projdir)]
@@ -451,7 +468,7 @@ def install_from_git(repo_url, project_path, exec_model='', cfgdir=None):
                     continue
                 skill_dirs.append((name, d))
                 dest_root = os.path.join(
-                    project_skills_dir(project_path) if project_path
+                    project_skills_dir(project_path, cfgdir) if project_path
                     else personal_dir(cfgdir), name)
                 for base, _dirs, files in os.walk(d):
                     for fn in sorted(files):
