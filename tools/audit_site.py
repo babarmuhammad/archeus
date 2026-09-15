@@ -178,12 +178,13 @@ def _walk(page, base, paths, label, problems):
     for path in paths:
         page.goto(base + path, wait_until='load')
         r = page.evaluate(OVERFLOW_JS)
+        where = label + path
         if r['scrollWidth'] > r['innerWidth'] + SLOP:
-            problems.append('%s%s scrolls sideways: %dpx of content in a %dpx viewport'
-                            % (label, path, r['scrollWidth'], r['innerWidth']))
+            problems.append('%s scrolls sideways: %dpx of content in a %dpx viewport'
+                            % (where, r['scrollWidth'], r['innerWidth']))
         for it in r['items']:
-            problems.append('%s%s  <%s class=%r> right=%d vw=%d  %r'
-                            % (label, path, it['tag'], it['cls'], it['right'],
+            problems.append('%s  <%s class=%r> right=%d vw=%d  %r'
+                            % (where, it['tag'], it['cls'], it['right'],
                                it['vw'], it['text']))
 
 
@@ -197,8 +198,9 @@ def main(argv):
         print('needs playwright:\n  pip install playwright\n  playwright install chromium')
         return 1
 
+    want_www = '--www' in argv
     paths = _paths()
-    www_paths = _www_paths() if '--www' in argv else []
+    www_paths = _www_paths() if want_www else []
     httpd, base = _serve(SITE)
     www_proc = www_base = None
     if www_paths:
@@ -227,7 +229,7 @@ def main(argv):
     if len(paths) < PAGE_FLOOR:
         print('only %d docs pages found — the walk is broken, not the site' % len(paths))
         return 1
-    if '--www' in argv and len(www_paths) < WWW_PAGE_FLOOR:
+    if want_www and len(www_paths) < WWW_PAGE_FLOOR:
         print('only %d apex pages found — the sitemap is not being read' % len(www_paths))
         return 1
     if problems:
