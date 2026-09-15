@@ -76,7 +76,7 @@ four branches merge.
 - `claude_sessions/render.py` for markup helpers, `store.py` for paths, `paths.py` for resolving
   a project's real cwd — never decode a project folder name.
 - The `/graph` route is the model for serving an extra page: it is opened with `window.open()`
-  and therefore CANNOT carry the `X-Claudectl` header, which is why it takes the per-run token
+  and therefore CANNOT carry the `X-Archeus` header, which is why it takes the per-run token
   in its query string (`?k=`). Your route does the same. Read `gui._guard` and the security
   bullets in CLAUDE.md before writing the handler — Host allowlist, `Sec-Fetch-Site` in
   (`same-origin`, `none`), and `hmac.compare_digest` fed BYTES.
