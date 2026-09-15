@@ -40,6 +40,24 @@ def read(*parts):
         return fh.read()
 
 
+def code(*parts):
+    """A TypeScript file with its comments removed.
+
+    Asserting a substring against raw source cannot tell live code from a line
+    somebody commented out, and commenting a line out is how wiring actually
+    gets disabled. Mutation-verified: `// ...LEGAL.map(...)` in the sitemap left
+    the raw-text version of this gate green while the policies had silently
+    dropped out of the sitemap.
+
+    Line comments are stripped only where `//` opens the line, which is the shape
+    of a commented-out statement and cannot swallow the `//` in a URL. This is a
+    filter, not a parser, and it does not need to be one.
+    """
+    src = read(*parts)
+    src = re.sub(r'/\*.*?\*/', '', src, flags=re.S)
+    return '\n'.join(ln for ln in src.splitlines() if not ln.lstrip().startswith('//'))
+
+
 @pytest.fixture(scope='module')
 def legal_src():
     return read('www', 'lib', 'legal.ts')
@@ -79,7 +97,7 @@ def test_one_route_renders_every_policy(slugs):
     """
     route = os.path.join(ROOT, 'www', 'app', 'legal', '[slug]', 'page.tsx')
     assert os.path.isfile(route), 'the legal route is gone'
-    src = read('www', 'app', 'legal', '[slug]', 'page.tsx')
+    src = code('www', 'app', 'legal', '[slug]', 'page.tsx')
     assert 'LEGAL.map((d) => ({ slug: d.slug }))' in src
     assert 'export const dynamicParams = false' in src
 
@@ -111,7 +129,7 @@ def test_every_policy_is_linked_from_the_footer(slugs):
     that it still does: a literal list here would drift the first time a policy
     was added, which is the failure this whole arrangement exists to avoid.
     """
-    src = read('www', 'components', 'site', 'Footer.tsx')
+    src = code('www', 'components', 'site', 'Footer.tsx')
     assert "from '@/lib/legal'" in src, 'the footer no longer reads the policy list'
     assert 'LEGAL.map(' in src
     assert 'legalPath(d.slug)' in src
@@ -119,7 +137,7 @@ def test_every_policy_is_linked_from_the_footer(slugs):
 
 def test_every_policy_is_in_the_sitemap(slugs):
     """Same reasoning as the footer, and the same fix: derived, not restated."""
-    src = read('www', 'app', 'sitemap.ts')
+    src = code('www', 'app', 'sitemap.ts')
     assert "from '@/lib/legal'" in src, 'the sitemap no longer reads the policy list'
     assert 'LEGAL.map((d) => legalPath(d.slug))' in src
 
@@ -140,7 +158,7 @@ def test_a_policy_page_names_who_is_responsible_and_how_to_reach_them():
     assert re.search(r"operator: '[^']+'", site)
     assert re.search(r"operatorCountry: '[^']+'", site)
 
-    route = read('www', 'app', 'legal', '[slug]', 'page.tsx')
+    route = code('www', 'app', 'legal', '[slug]', 'page.tsx')
     for token in ('SITE.operator', 'SITE.operatorCountry', 'SITE.contact'):
         assert token in route, f'the policy pages stopped showing {token}'
 
@@ -228,7 +246,7 @@ def test_the_site_reads_the_funding_url_from_one_place():
     where they are cited — moving only the Ko-fi ones into SITE would make the
     rule about which company a link points at rather than about what it means.
     """
-    assert "kofi: '%s'" % KOFI in read('www', 'lib', 'site.ts')
+    assert "kofi: '%s'" % KOFI in code('www', 'lib', 'site.ts')
     strays = []
     for base, dirs, files in os.walk(os.path.join(ROOT, 'www')):
         dirs[:] = [d for d in dirs if d not in ('node_modules', '.next', 'out')]

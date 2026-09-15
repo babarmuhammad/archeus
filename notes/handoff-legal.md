@@ -145,10 +145,42 @@ py -m pytest tests/test_site_legal.py tests/test_site_links.py \
                                    ✓  118 passed
 ```
 
-`npx tsc --noEmit` reports one pre-existing error, `app/layout.tsx(144,50):
-Cannot find name 'LayoutProps'` — a Next-generated global type that only exists
-under `.next/types`, so it resolves during `npm run build` and fails standalone.
-Not introduced here.
+```
+npx tsc --noEmit                   ✓  clean
+```
+
+`tsc` must run **after** a build, not before. `LayoutProps` is a Next-generated
+global that only exists under `.next/types`, so a standalone run in a fresh
+worktree reports `app/layout.tsx(144,50): Cannot find name 'LayoutProps'` and a
+run after `npm run build` is clean. The order in the verify list above is the
+working one.
+
+### The gates were watched failing
+
+A gate nobody has watched fail is not a gate, so each was broken on purpose and
+the named test had to go red, then green again on restore. Twelve of them:
+
+| Broken | Test that caught it |
+|---|---|
+| Footer stops mapping LEGAL (replaced, and commented out) | `test_every_policy_is_linked_from_the_footer` |
+| Sitemap line commented out | `test_every_policy_is_in_the_sitemap` |
+| `generateStaticParams` commented out | `test_one_route_renders_every_policy` |
+| A description cut below 50 characters | `test_every_policy_carries_a_description_a_result_can_show` |
+| A policy dropped from `LEGAL` | `test_the_four_policies_are_all_there` |
+| The terms stop saying donations buy nothing | `test_the_donation_statement_is_on_the_privacy_page_and_the_terms` |
+| One manifest's handle diverges | `test_the_funding_handle_is_the_same_everywhere` |
+| Contact reverts to a `users.noreply` alias | `test_a_policy_page_names_who_is_responsible_and_how_to_reach_them` |
+| A `[package.metadata.funding]` key added to Cargo | `test_the_package_manifests_declare_funding_where_a_registry_reads_it` |
+| The funding URL hardcoded in a component | `test_the_site_reads_the_funding_url_from_one_place` |
+| `docs/privacy.md` created | `test_the_policies_are_published_once_not_mirrored_into_the_manual` |
+| An apex link written with a trailing slash | `test_an_apex_link_has_no_trailing_slash` |
+
+**One of them did not fail, and that was the point of doing this.** Commenting
+out the sitemap's `...LEGAL.map(...)` left the gate green, because a substring
+search cannot tell live code from a line somebody disabled — and commenting a
+line out is exactly how wiring gets turned off. The three wiring assertions now
+read comment-stripped source through a `code()` helper, and all three were
+re-verified against a commented-out mutation.
 
 ```
 py -m pytest -q                    ✓  2352 passed, 1 skipped in 283.27s
