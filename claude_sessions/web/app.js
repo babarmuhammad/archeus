@@ -7760,8 +7760,12 @@ async function rotContinue(auto){
       'Opens a new session in this project under the '+name+" account, seeded with "
       +"this project's most recent conversation. The session you are in now is left "
       +'open — archeus cannot close it for you.')===null)return;
+  /* `resume:true` — rotation continues the CONVERSATION, where the Hand off
+     button starts a fresh one from a written-out file. Different triggers want
+     different things: you hand off because the context filled, you rotate
+     because the quota ran out and there is nothing wrong with the context. */
   const r=await post('/api/inject/launch',{path:CUR.path,enc:CUR.encoded,
-    cfgdir:s.cfgdir,sid:s.sid,account:s.account,target_cfgdir:to});
+    cfgdir:s.cfgdir,sid:s.sid,account:s.account,target_cfgdir:to,resume:true});
   toast(r.ok?(auto?'Account ran out — continued on '+name:'New session launched on '+name)
     :'Failed: '+(r.error||''),r.ok?'ok':'err');
 }

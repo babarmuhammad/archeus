@@ -119,8 +119,11 @@ Related and **not** a bug: `quota.is_limit_error` already matches the real refus
 
 - **A running session cannot change account.** Claude Code reads `CLAUDE_CONFIG_DIR` once. The
   successor session is a new terminal window; archeus cannot close the old one.
-- **The successor gets a written-out transcript, not the live conversation.** It reads
-  `.archeus/injected-context.md` — the existing hand-off. See the experiment below.
+- **The successor starts at the context pressure the old session ended with.** It resumes the
+  real conversation (see the measurement below), so a session that filled its context window
+  hands a full one to the next account. That is the right trade for a QUOTA rotation and the
+  wrong one for a context hand-off, which is why the two stayed separate rather than one
+  replacing the other.
 - **Codex and pi are not rotated.** Their windows are not Anthropic's and there is no headroom
   figure to compare. Provider-routed sessions are deliberately left alone.
 - **Freshness is the usage poller's, 300 s.** The statusline payload already carries
@@ -128,12 +131,31 @@ Related and **not** a bug: `quota.is_limit_error` already matches the real refus
   account — a strictly better signal. Not wired up here because `statusline.py` is outside
   this track's fence and it runs on every turn. Worth a follow-up.
 
-### One experiment left for whoever picks this up
+### The experiment, run — cross-account resume WORKS
 
-`claude --resume <absolute .jsonl path>` is documented, and so is `CLAUDE_CONFIG_DIR`; the
-*combination* is not. If account B can resume account A's transcript by absolute path, the
-successor session keeps the real conversation instead of a written-out file — a one-argv-line
-change to `api_inject_launch`. Ten minutes to test, and it costs nothing if it fails.
+`claude --resume <absolute .jsonl>` is documented and so is `CLAUDE_CONFIG_DIR`; the
+*combination* is not, so it was measured against the real CLI (2.1.273) before anything was
+written. Three runs, `--fork-session` and `--tools ""` throughout so nothing could be
+appended to or written:
+
+| | |
+|---|---|
+| **by absolute path, account B resuming account A** | **works.** `exit=0`, and asked what the user's first message had been it answered `"hi"` — correct, out of A's transcript. The forked session landed in **B's** `projects/`, 52,971 tokens of context created. A's transcript byte-identical. |
+| by session **id**, same pair | `exit=1`, `No conversation found with session ID: 865e780d-…`. An id is searched inside the ACTIVE config dir, so the absolute path is the load-bearing part. |
+| the first run, with `--max-budget-usd 0.20` | `exit=1`, `is_error=true`, empty `result` — **even though the answer had been produced and written**. See below. |
+
+**A resumed session reports CUMULATIVE cost, so `--max-budget-usd` is a trap.**
+`total_cost_usd` came back as `0.5299` on a turn that spent six output tokens: it is the whole
+conversation's spend, carried in with the transcript. The cap compares against that, trips
+immediately, and reports the run as a failure with an empty result. Nothing in archeus hits
+this today — the hand-off launches an interactive session with no `-p` and no cap, and
+`memory._budget_args()` only ever decorates calls that start fresh — but anything that ever
+adds `--resume` to a headless call has to drop the cap with it.
+
+So `api_inject_launch` takes a `resume` flag and rotation sets it; the plain Hand off button
+keeps the written-out context file, for the reason in "what does not work" above. The gate is
+`test_rotation_resumes_the_conversation_and_forks_it`, mutation-verified three ways: dropping
+`--fork-session`, never taking the branch, and always taking it all fail it.
 
 ---
 

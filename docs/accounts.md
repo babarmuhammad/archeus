@@ -48,9 +48,19 @@ Every switch is written to the [Logs](tui.md#logs) page, and the last few show i
 
 Claude Code reads `CLAUDE_CONFIG_DIR` once, when it starts. There is no such thing as moving
 a live session to another account — so "continue on the next account" means a **new** session
-seeded with the old one's transcript, which is the [context hand-off](context-handoff.md)
-archeus has always had, with the account picked for you. The old session is left open;
-archeus cannot close it for you.
+under the other account. The old one is left open; archeus cannot close it for you.
+
+What the new session gets depends on why you moved, and the two reasons want different things:
+
+- **Rotation** — the quota ran out and there is nothing wrong with the conversation, so the
+  successor **resumes it**: `claude --resume <transcript> --fork-session`, which loads the real
+  exchange rather than a summary of it. Forked, so the original account's transcript is never
+  written to. Resuming by session *id* does not cross accounts — Claude Code searches the
+  active config dir and answers "No conversation found" — which is why archeus passes the
+  transcript's absolute path.
+- **[Context hand-off](context-handoff.md)** (the **Hand off** button, `⇧K`) — the context
+  window filled, so a fresh session reading `.archeus/injected-context.md` is the point.
+  Resuming would start the new session at exactly the pressure that ended the old one.
 
 ### It never touches a credential
 

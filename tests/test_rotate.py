@@ -306,6 +306,60 @@ def test_the_state_rows_say_which_account_is_live_and_which_is_out(monkeypatch, 
     assert rows['room']['enabled'] is False and rows['room']['signed_in'] is True
 
 
+# ── the hand-off rotation actually performs ──────────────────
+
+def test_rotation_resumes_the_conversation_and_forks_it(monkeypatch, tmp_path):
+    """Measured against the real CLI before it was written.
+
+    `claude --resume <absolute .jsonl>` under a DIFFERENT `CLAUDE_CONFIG_DIR`
+    loads that conversation and answers from it; by session id the same CLI
+    says "No conversation found with session ID", because an id is searched
+    inside the active config dir. So the absolute path is load-bearing, and so
+    is `--fork-session`: without a new id the successor appends to the file it
+    resumed, which lives in the other account's store.
+
+    The plain Hand off button keeps the written-out context file. A hand-off
+    because the CONTEXT filled wants a fresh session; a rotation because the
+    QUOTA ran out wants the same conversation somewhere else.
+    """
+    from claude_sessions import gui_api, store
+
+    spawned = {}
+
+    def fake_spawn(args, **kw):
+        spawned['args'] = list(args)
+        spawned['kw'] = kw
+        return object(), ''            # (process, error)
+    monkeypatch.setattr(gui_api._proc, 'spawn_terminal', fake_spawn)
+    monkeypatch.setattr(gui_api, 'get_claude_exe', lambda: 'claude.exe',
+                        raising=False)
+
+    cfg = tmp_path / 'acct'
+    proj = tmp_path / 'proj'
+    proj.mkdir()
+    enc = 'D--proj'
+    folder = store.project_folder(str(cfg), enc)
+    os.makedirs(folder, exist_ok=True)
+    sid = '11111111-2222-3333-4444-555555555555'
+    open(store.transcript_path(folder, sid), 'w', encoding='utf-8').write('{}\n')
+    monkeypatch.setattr(gui_api, '_folder', lambda c, e: folder)
+    monkeypatch.setattr(gui_api, '_cfgdir_ok', lambda v: True, raising=False)
+
+    body = {'path': str(proj), 'enc': enc, 'sid': sid, 'cfgdir': str(cfg),
+            'account': 'a', 'target_cfgdir': str(cfg), 'resume': True}
+    gui_api.api_inject_launch({}, dict(body))
+    args = spawned['args']
+    assert args[1:4] == ['--resume', store.transcript_path(folder, sid),
+                         '--fork-session']
+    assert '--append-system-prompt' not in args
+
+    # …and without it, the hand-off that has always shipped
+    spawned.clear()
+    gui_api.api_inject_launch({}, dict(body, resume=False))
+    assert '--resume' not in spawned['args']
+    assert '--append-system-prompt' in spawned['args']
+
+
 # ── the policy that makes this design the safe one ───────────
 
 def test_rotation_never_touches_a_credential():
