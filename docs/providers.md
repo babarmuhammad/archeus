@@ -139,3 +139,15 @@ credentials anywhere but Anthropic.** The provider key is one you supply for thi
 stored in archeus's own settings. Reusing Claude Code subscription OAuth tokens in another
 tool is a Terms of Service violation that Anthropic has actively enforced against other
 projects — archeus does not do it, and will not gain a setting that does.
+
+## Rotation does not apply here
+
+[Automatic account rotation](accounts.md#automatic-rotation) moves work to another **Anthropic
+account** when the one in use fills its window. A session routed at a provider is not spending
+an Anthropic account's quota at all, so it is left alone — switching it would replace the whole
+environment, `ANTHROPIC_BASE_URL` included, and the call would land silently back on Anthropic.
+
+The same reasoning applies to archeus's own Claude calls: `quota.preflight` returns early for
+anything carrying a base URL. If you want a provider-routed session to survive a dead model,
+that is a different mechanism — the [failover proxy](plan-execute.md), which retries the next
+model in the profile's list rather than the next account.

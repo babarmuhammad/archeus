@@ -79,11 +79,14 @@ def _homes_menu(hid):
             dot = f"{_c.C_OK}●{_c.C_RESET}" if active else '○'
             loc = d or '~/.claude'
             tag = f"  {_c.C_OK}(active){_c.C_RESET}" if active else ''
-            items.append((f"{dot} {name}  {_c.C_DIM}{render.trunc(loc, 40)}{_c.C_RESET}{tag}",
+            items.append((f"{dot} {name}  {_c.C_DIM}{render.trunc(loc, 40)}{_c.C_RESET}{tag}"
+                          f"{_rotation_tag(d) if claude else ''}",
                           f'acct:{name}'))
         items += [(f"{'─' * _c.W}", None),
                   (f'＋  Add {"account" if claude else "login"}', '__add__')]
         if claude:
+            items.append((f'⇄  Rotation  {_c.C_DIM}({_rotation_summary()}){_c.C_RESET}',
+                          '__rotate__'))
             items.append(('⇄  Sync accounts  (level every account up)', '__sync__'))
         items.append(('Back', 'back'))
         sel = menu(items, f"{label.upper()}  /  LOGINS")
@@ -91,10 +94,101 @@ def _homes_menu(hid):
             return
         if sel == '__add__':
             _add_account(s, hid)
+        elif sel == '__rotate__':
+            _rotation_menu()
         elif sel == '__sync__':
             _sync_accounts()
         elif sel.startswith('acct:'):
             _account_actions(s, sel[5:], hid, built_in)
+
+
+# ── account rotation ─────────────────────────────────────────
+# The policy lives in rotate.py; this is only its terminal face. Same split
+# skills.py uses: a non-interactive core the GUI's job threads can call, and a
+# thin menu here — `ui.menu` is NOT bridged onto a job thread, so reaching it
+# from one hangs rather than errors.
+
+def _rotation_tag(d):
+    """What a login row says about rotation: how full, and whether it is in."""
+    from . import rotate
+    try:
+        pct = rotate.used_pct(d)
+        out = '' if rotate.is_enabled(d) else f"  {_c.C_DIM}(out of rotation){_c.C_RESET}"
+        if not pct:
+            return out
+        col = _c.C_ERR if rotate.spent(d) else _c.C_DIM
+        return f"  {col}{pct:.0f}%{_c.C_RESET}{out}"
+    except Exception:
+        return ''
+
+
+def _rotation_summary():
+    from . import rotate
+    try:
+        m = rotate.mode()
+        if m == 'off':
+            return 'off'
+        return f"{'automatic' if m == 'auto' else 'semi'}, switch at {rotate.threshold():.0f}%"
+    except Exception:
+        return '?'
+
+
+_MODE_LABELS = (
+    ('off', 'Off — never change the account for me'),
+    ('ask', 'Semi-automatic — start new work elsewhere, ask before moving a live session'),
+    ('auto', 'Fully automatic — also open the successor session by itself'),
+)
+
+
+def _rotation_menu():
+    """Mode, threshold, and which logins take part."""
+    from . import rotate
+    from .config import load_settings, save_settings
+    while True:
+        st = rotate.state()
+        items = [(f"Mode: {_c.C_TITLE}{dict(_MODE_LABELS)[st['mode']]}{_c.C_RESET}", '__mode__'),
+                 (f"Switch away at: {_c.C_TITLE}{st['threshold']:.0f}%{_c.C_RESET}"
+                  f"  {_c.C_DIM}(100% is what blocks a call; this only stops archeus"
+                  f" choosing the account){_c.C_RESET}", '__thr__'),
+                 (f"{'─' * _c.W}", None)]
+        for a in st['accounts']:
+            mark = f"{_c.C_OK}✓{_c.C_RESET}" if a['enabled'] else '·'
+            state = (f"{_c.C_ERR}spent{_c.C_RESET}" if a['spent']
+                     else '' if not a['signed_in'] else f"{_c.C_DIM}{a['pct']:.0f}%{_c.C_RESET}")
+            live = f"  {_c.C_OK}(live){_c.C_RESET}" if a['live'] else ''
+            items.append((f"{mark} {a['name']}  {state}{live}", 'acct:' + a['resolved']))
+        items += [(f"{'─' * _c.W}", None), ('Back', 'back')]
+        sel = menu(items, 'ACCOUNTS  /  ROTATION')
+        if not sel or sel == 'back':
+            return
+        s = load_settings()
+        if sel == '__mode__':
+            pick = menu([(lbl, key) for key, lbl in _MODE_LABELS] + [('Cancel', None)],
+                        'ROTATION  /  MODE')
+            if pick:
+                s['rotate_mode'] = pick
+                save_settings(s)
+        elif sel == '__thr__':
+            v = text_input('Switch away at what percent? (50-100)',
+                           default=f"{st['threshold']:.0f}")
+            try:
+                s['rotate_threshold'] = float(v)
+            except (TypeError, ValueError):
+                flash('Not a number', ok=False, secs=1.4)
+                continue
+            save_settings(s)
+        elif sel.startswith('acct:'):
+            d = sel[5:]
+            # compared through rotate's own normaliser, not `_resolved`: the
+            # list is hand-editable and `~/.claude-work` and `C:\Users\…\
+            # .claude-work` must be the same entry or a toggle adds a duplicate
+            off = [x for x in (s.get('rotate_disabled') or [])
+                   if isinstance(x, str) and rotate._norm(
+                       _c.resolve_config_dir(x)) != rotate._norm(d)]
+            if rotate.is_enabled(d):        # it was in — take it out
+                off.append(d)
+            s['rotate_disabled'] = off
+            save_settings(s)
 
 
 def _sync_accounts():

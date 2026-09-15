@@ -1024,8 +1024,13 @@ def build_launch_command(path, encoded_name, choice, opts):
     can't be found."""
     from .sessions import read_extra_paths, load_add_dirs
 
-    # config dir: from the choice line (bat path) else the module default
-    cfgdir = opts.get('cfgdir') or config_dir
+    # config dir: from the choice line (bat path) else whichever account the
+    # rotation policy elects — which is the active one unless it has run out, so
+    # with rotation off, or nothing spent, this is the module default it always
+    # was. An EXPLICIT cfgdir always wins: picking an account in the launch
+    # window is a decision, not a preference to be second-guessed.
+    from . import rotate
+    cfgdir = opts.get('cfgdir') or rotate.elect()
     proj_folder = store.project_folder(cfgdir, encoded_name) if encoded_name else None
 
     # Pins the home explicitly — overriding any ambient one archeus itself was

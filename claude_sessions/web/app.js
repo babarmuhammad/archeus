@@ -5723,11 +5723,15 @@ async function pgAccounts(nav){
     <p class="secthint">Each login is its own <code>${esc(d.home_env||'CLAUDE_CONFIG_DIR')}</code> — its own credentials${d.has_active?', quota, hooks and plugins. The active one is what a new session opens under.':'. Which one a session opens under is picked in the launch window.'}</p>
     <div class="tbody">${(d.accounts||[]).map(row).join('')}</div></div>
     <div class="card tdet" id="acDet">${ACCTINTRO}</div>
+    ${d.has_active?`<div class="card wide"><h3>${ic('refresh')} Account rotation</h3>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 8px">When the account in use fills its 5-hour or weekly window, the next one with headroom takes over. archeus rotates by launching the <b>unmodified</b> <code>claude</code> binary under each account's own <code>CLAUDE_CONFIG_DIR</code> — it never reads, stores or forwards a credential, so nothing here can log an account out of Claude Code. A running session cannot change account, so continuing means a <b>new</b> session seeded with the old one's transcript.</p>
+      <div id="rotOut"><span class="spin"></span></div></div>`:''}
     ${d.can_sync?`<div class="card wide"><h3>${ic('refresh')} Sync accounts</h3>
       <p style="color:var(--dim);font-size:13px;margin:0 0 8px">What you provision — hooks, plugins, marketplaces, user agents, the global CLAUDE.md — is a property of <b>you</b>, not of whichever account happened to be active. This levels every account up to the union of them all. It only ever <b>adds</b>: an account keeps anything the others do not have, because there is no way to tell a deliberate choice from a gap.</p>
       <div id="syncOut"><span class="spin"></span></div></div>`:''}`))return;
   const cur=ACCTS.findIndex(a=>a.active);
   if(ACCTS.length)acctSel(cur>=0?cur:0);
+  if(d.has_active)drawRotate();
   if(d.can_sync)drawSync();
   for(const a of (d.accounts||[])){
     const q=quotaOf(a.name);
@@ -5770,6 +5774,75 @@ function acctSel(i){
 /* The diff is shown BEFORE anything is written: what reaches four more accounts
    here is hooks and plugins, which run code on every turn. Every plugin install
    still goes through the same review gate the single-account path uses. */
+/* ── the rotation card ──
+   Gated on its host like every other fetching helper on this page: the card is
+   only drawn for Claude Code (`has_active`), so on a Codex or pi login page
+   this must not go looking for numbers that do not exist. */
+async function drawRotate(){
+  if(!$('#rotOut'))return;
+  const d=await api('/api/rotate/state').catch(()=>null);
+  const el=$('#rotOut');if(!el)return;
+  if(!d){el.innerHTML='<div class="empty">Rotation state unavailable.</div>';return;}
+  ROT=d;
+  const modes=[['off','Off','archeus never changes the account for you'],
+    ['ask','Semi-automatic','new work starts on the next account; a session you are in is offered the move'],
+    ['auto','Fully automatic','the same, and the successor session opens on its own']];
+  const rows=(d.accounts||[]).map(a=>`<tr>
+      <td><b>${esc(a.name)}</b>${a.live?' <span class="tag ok">live</span>':''}${
+        !a.signed_in?' <span class="tag warn">not signed in</span>':''}</td>
+      <td class="num">${a.signed_in?Math.round(a.pct)+'%':'—'}</td>
+      <td>${esc(a.window||'')}${a.resets?' <span style="color:var(--dim)">→ '+esc(a.resets)+'</span>':''}</td>
+      <td>${a.spent?'<span class="tag warn">spent</span>':(a.signed_in?'<span class="tag ok">has room</span>':'')}</td>
+      <td><label class="autoline" style="margin:0"><input type="checkbox" ${a.enabled?'checked':''}
+        onchange='rotToggle(${hesc(a.resolved)},this.checked)'><span>in rotation</span></label></td>
+    </tr>`).join('');
+  const evs=(d.events||[]).map(e=>`<div class="lrow"><span class="tag">${
+    esc(new Date((e.ts||0)*1000).toLocaleString())}</span>
+    <div style="font-size:12.5px;color:var(--dim)">${esc(e.msg||'')}${
+      e.detail?' — '+esc(e.detail):''}</div></div>`).join('');
+  el.innerHTML=`<div class="fld"><label>How much of the switch archeus makes itself</label>
+      <div class="chips" id="rotMode"></div>
+      <span style="font-size:12.5px;color:var(--dim)" id="rotModeNote"></span></div>
+    <div class="fld"><label>Switch away at <span>an account stops being chosen for new work
+      once its fullest window reaches this. It can still be spent — 100% is what blocks a
+      call, and this is only what stops archeus picking it.</span></label>
+      <input id="rotThr" type="number" min="50" max="100" step="1" value="${Math.round(d.threshold)}"></div>
+    <div class="fld"><label>When one of archeus's OWN calls meets a full account
+      <span>separate question, separate switch: this one is about the agent, skill, memory
+      and CLAUDE.md calls archeus makes for you.</span></label>
+      <div class="chips" id="rotHq"></div></div>
+    <button class="btn pri" onclick="rotSave()">Save rotation</button>
+    <p style="font-size:12.5px;color:var(--dim);margin:10px 0 4px">Now on <b>${esc(d.live_name)}</b>${
+      d.rotating?` — next work goes to <b>${esc(d.next_name)}</b>`:' — nothing to switch to'}</p>
+    <table class="tbl"><tr><th>account</th><th>used</th><th>window</th><th>state</th><th></th></tr>
+      ${rows}</table>
+    ${evs?`<h4 style="margin:12px 0 4px;font-size:13px">Recent switches</h4>${evs}`
+      :'<p style="font-size:12.5px;color:var(--dim)">No switches recorded yet. Every one is written to the Logs page.</p>'}`;
+  chipsFill($('#rotMode'),modes.map(m=>m[0]),modes.map(m=>m[1]),d.mode,v=>{
+    const m=modes.find(x=>x[0]===v);
+    const n=$('#rotModeNote');if(n)n.textContent=m?m[2]:'';});
+  const n0=modes.find(x=>x[0]===d.mode);
+  if(n0&&$('#rotModeNote'))$('#rotModeNote').textContent=n0[2];
+  chipsFill($('#rotHq'),['prompt','auto','off'],
+    ['Ask me','Switch silently','Run it anyway'],d.headless_quota);
+}
+/* The per-account opt-out is a LIST of config dirs, so it is rebuilt from the
+   checkboxes rather than patched: a toggle that appends without removing is how
+   a disabled account comes back on its own. */
+async function rotToggle(dir,on){
+  const cur=new Set((ROT&&ROT.accounts||[]).filter(a=>!a.enabled).map(a=>a.resolved));
+  if(on)cur.delete(dir);else cur.add(dir);
+  await post('/api/settings',{rotate_disabled:[...cur]});
+  drawRotate();
+}
+async function rotSave(){
+  const thr=parseFloat(($('#rotThr')||{}).value);
+  await post('/api/settings',{rotate_mode:chipVal($('#rotMode')),
+    rotate_threshold:isNaN(thr)?98:thr,
+    headless_quota:chipVal($('#rotHq'))});
+  toast('Rotation saved','ok');
+  drawRotate();
+}
 async function drawSync(){
   const el=$('#syncOut');if(!el)return;
   const d=await api('/api/accounts/sync');
@@ -7226,9 +7299,17 @@ function askLaunch(cfg){
   TARGET=cfg.isNew?(ST.launch_default||'claude'):targetOfCfgdir(cfg.cfgdir);
   drawTargets(cfg);
   $('#fName').value='';
-  if(cfg.isNew&&ST.accounts.length>1)
-    chipsFill($('#fAcct'),ST.accounts.map(a=>a.dir),
-              ST.accounts.map(a=>a.name),ST.active_cfgdir);
+  /* `__auto__` first, and selected by default once rotation is on: picking an
+     account here is a DECISION and always wins, but the common case is not
+     having an opinion — and "whichever one still has room" is the answer that
+     stops a session opening on an account that is about to refuse it. The
+     sentinel is resolved in doLaunch, not sent: /api/launch takes a cfgdir. */
+  if(cfg.isNew&&ST.accounts.length>1){
+    const rot=ROT&&ROT.mode!=='off';
+    chipsFill($('#fAcct'),(rot?['__auto__']:[]).concat(ST.accounts.map(a=>a.dir)),
+              (rot?['auto — most headroom']:[]).concat(ST.accounts.map(a=>a.name)),
+              rot?'__auto__':ST.active_cfgdir);
+  }
   updateHint();
   $('#ovl').classList.add('show');
 }
@@ -7417,6 +7498,12 @@ async function doLaunch(){
       ||(c.isNew&&ST.accounts.length>1?chipVal($('#fAcct')):(c.cfgdir||'')),
     provider:targetRow(TARGET).provider||'',
     provider_model:launchProviderModel()};
+  /* The auto chip resolves HERE rather than on the wire: /api/launch has always
+     taken a config dir, and a sentinel travelling into it would be a second
+     meaning for that field on an endpoint that has no idea rotation exists.
+     An empty answer is the right one too — main.build_launch_command elects the
+     account itself when nothing names one. */
+  if(opts.cfgdir==='__auto__')opts.cfgdir=(ROT&&ROT.next)||'';
   $('#ovl').classList.remove('show');
   const r=await post('/api/launch',{path:c.path,enc:c.enc,choice:c.choice,opts});
   if(r.ok)toast('Launched in a new terminal window','ok');
@@ -7587,13 +7674,20 @@ async function drawUsageBar(force){
   if(document.hidden||!_VIS){_uTimer=setTimeout(drawUsageBar,60000);return;}
   if(force){const b=$('#uRefresh');if(b){b.classList.add('busy');b.innerHTML='<span class="spin"></span>';}}
   try{
-    const d=await api('/api/usage/plan'+(force?'?refresh=1':''));
+    /* Paired with the usage fetch rather than given a timer of its own: the
+       rotation state is derived from exactly the numbers this call returns, and
+       a second cadence for one fact is two chances to disagree about it. */
+    const [d,rot]=await Promise.all([
+      api('/api/usage/plan'+(force?'?refresh=1':'')),
+      api('/api/rotate/state').catch(()=>null)]);
+    if(rot)ROT=rot;
     $('#ubar').innerHTML=`<div class="urow">
       <button class="btn sm" id="uRefresh" title="Refresh usage now"
         onclick="drawUsageBar(true)">${ic('refresh')}</button>
       <div style="flex:1;display:flex;flex-direction:column;gap:2px">
-        ${(d.accounts||[]).map(usageRow).join('')}
+        ${(d.accounts||[]).map(usageRow).join('')}${rotLine()}
       </div></div>`;
+    rotMaybeAuto();
     // a forced refresh only kicks the background poller — come back for it
     _uTimer=setTimeout(drawUsageBar,force?2500:60000);
   }catch(e){
@@ -7602,6 +7696,70 @@ async function drawUsageBar(force){
   }
 }
 
+/* ── account rotation ───────────────────────────────────────
+   Claude Code fixes its account when it starts, so "continue on the next
+   account" is never something that happens inside a running session — it is a
+   successor session, which is the hand-off this app has always had. What
+   rotation adds is the trigger and the target.
+
+   Three modes, and the difference between them is ONE thing: who opens the
+   successor window.
+     off   nothing rotates.
+     ask   new work already starts on the next account by itself; a session you
+           are sitting in is offered the move, one click.
+     auto  the same, and the window opens on its own.
+   Which account NEW work starts under is identical in ask and auto, because
+   starting the next process somewhere else is invisible and opening a terminal
+   is not.
+
+   ROT is filled by drawUsageBar's paired fetch, so nothing here ever fetches —
+   the same discipline the instruments follow. */
+let ROT=null;
+/* one auto hand-off per (project, target account) per page load. An automatic
+   action on a 60-second poll must be idempotent or it opens a window a minute,
+   forever; the key is the pair because moving to a THIRD account later is a
+   different event, not a repeat of this one. */
+let _rotAuto={};
+function rotLive(){return ((ROT&&ROT.accounts)||[]).find(a=>a.live);}
+function rotCanContinue(){return !!(CUR&&CUR.path&&typeof SESS!=='undefined'&&SESS&&SESS.length);}
+function rotLine(){
+  if(!ROT||ROT.mode==='off')return '';
+  const live=rotLive();
+  if(!live||!live.spent)return '';
+  if(!ROT.rotating)return `<div class="urow"><span class="unote">${esc(live.name)} is out
+    — no other account has headroom</span></div>`;
+  return `<div class="urow"><span class="unote">${esc(live.name)} is out — new work starts on
+    <b>${esc(ROT.next_name)}</b></span>
+    ${rotCanContinue()?`<button class="btn sm pri" onclick="rotContinue()"
+      >Continue on ${esc(ROT.next_name)}</button>`:''}
+    <button class="btn sm" onclick="go('accounts')">Rotation</button></div>`;
+}
+function rotMaybeAuto(){
+  if(!ROT||!ROT.hands_off||!ROT.rotating||!rotCanContinue())return;
+  const live=rotLive();
+  if(!live||!live.spent)return;
+  const key=CUR.encoded+':'+ROT.next;
+  if(_rotAuto[key])return;
+  _rotAuto[key]=1;
+  rotContinue(true);
+}
+/* The hand-off itself is `/api/inject/launch` with a target account — the same
+   endpoint the per-session Hand off button posts to. Rotation does not get its
+   own endpoint, because it is not a different action; it is that action with
+   the account chosen for you. The SOURCE is the project's newest session,
+   which is what "the one you are in" means to a process that is not in it. */
+async function rotContinue(auto){
+  if(!ROT||!rotCanContinue())return;
+  const s=SESS[0],to=ROT.next,name=ROT.next_name;
+  if(!auto&&await ask('Continue on '+name,[],
+      'Opens a new session in this project under the '+name+" account, seeded with "
+      +"this project's most recent conversation. The session you are in now is left "
+      +'open — archeus cannot close it for you.')===null)return;
+  const r=await post('/api/inject/launch',{path:CUR.path,enc:CUR.encoded,
+    cfgdir:s.cfgdir,sid:s.sid,account:s.account,target_cfgdir:to});
+  toast(r.ok?(auto?'Account ran out — continued on '+name:'New session launched on '+name)
+    :'Failed: '+(r.error||''),r.ok?'ok':'err');
+}
 /* ── "archeus N is out" strip ──
    Its own element (#updbar), not a row inside #ubar, because drawUsageBar
    rewrites that wholesale every 60s. Never polls: one fetch per session. */

@@ -4380,6 +4380,25 @@ def api_harness_update(q, body):
     return {'ok': bool(ok)}
 
 
+def api_rotate_state(q, body):
+    """Account rotation: which account is live, which is next, and why.
+
+    One read, no network and no subprocess — every field comes from the usage
+    poller's cache, the settings file and two file reads per account — so the
+    quota strip's existing 60-second poll can carry it.
+
+    There is no POST twin, on purpose. The policy is three declared settings
+    (`rotate_mode`, `rotate_threshold`, `rotate_disabled`), so `/api/settings`
+    already accepts them — `gui._SETTING_KEYS` is DERIVED from
+    `_DEFAULT_SETTINGS`. And the transition itself is `/api/inject/launch` with
+    a `target_cfgdir`: the hand-off archeus has always had, pointed at the
+    elected account. A second endpoint would be a second implementation of one
+    of those two.
+    """
+    from . import rotate
+    return rotate.state()
+
+
 GET_ROUTES = {
     '/api/transcript': api_transcript,
     '/api/session/meta': api_session_meta,
@@ -4454,6 +4473,7 @@ GET_ROUTES = {
     '/api/harness/doctor': api_harness_doctor,
     '/api/provider/models': api_provider_models,
     '/api/plan/last': api_plan_last,
+    '/api/rotate/state': api_rotate_state,
 }
 
 POST_ROUTES = {

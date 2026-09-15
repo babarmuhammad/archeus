@@ -74,6 +74,7 @@ a handler sees them; a missing or malformed one is a 400.
 | `/api/provider/models` | `api_provider_models` | Models that can actually serve a session, not the whole routable catalog. |
 | `/api/provider/status` | `api_provider_status` | Reachability plus, for OmniRoute only, its circuit-breaker detail. |
 | `/api/recall-preview` | `api_recall_preview` | — |
+| `/api/rotate/state` | `api_rotate_state` | Account rotation: which account is live, which is next, and why. |
 | `/api/search-index` | `api_search_index` | — |
 | `/api/session/archived` | `api_archived` | Archived sessions of a project across EVERY account, newest-first. |
 | `/api/session/changed-files` | `api_changed_files` | — |
