@@ -111,8 +111,15 @@ def test_no_published_link_points_at_a_host_we_left(host):
 def test_an_apex_link_has_no_trailing_slash(host):
     """The apex is Next.js with the default (no trailing slash), so
     `/features/` is a 308 to `/features`. Seventeen links were written the other
-    way, all of them by someone who had just written a docs link."""
-    pattern = re.compile(r'https://%s/[A-Za-z0-9/_-]*[A-Za-z0-9_-]/' % re.escape(host))
+    way, all of them by someone who had just written a docs link.
+
+    The lookahead is what tells a trailing slash from a path separator. Without
+    it the greedy body backtracks to the FIRST slash it can end on, so the
+    perfectly correct `/legal/privacy` reported as `/legal/` — a defect the gate
+    could only ever invent, because until the policies landed no tracked file
+    named a two-level apex URL and the loose half was never once exercised."""
+    pattern = re.compile(
+        r'https://%s/[A-Za-z0-9/_-]*[A-Za-z0-9_-]/(?![A-Za-z0-9_-])' % re.escape(host))
     bad = []
     for rel, text in _tracked():
         for i, line in enumerate(text.splitlines(), 1):

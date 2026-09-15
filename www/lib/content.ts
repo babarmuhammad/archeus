@@ -11,7 +11,12 @@ export type Block =
   | { kind: 'ul'; items: string[] }
   | { kind: 'dl'; items: { t: string; d: string }[] }
   | { kind: 'code'; text: string; label?: string }
-  | { kind: 'table'; head: string[]; rows: string[][] };
+  | { kind: 'table'; head: string[]; rows: string[][] }
+  /** Named destinations. A policy has to cite the notices it relies on, and a
+   *  paragraph of plain text cannot carry a link — so the citation is its own
+   *  block rather than inline markup every other block kind would then need.
+   *  `/llms-full.txt` serialises it as markdown links. */
+  | { kind: 'links'; items: { label: string; href: string; note?: string }[] };
 
 export type Section = {
   id: string;
@@ -31,11 +36,15 @@ export type Doc = {
   sections: Section[];
 };
 
-const p = (text: string): Block => ({ kind: 'p', text });
-const ul = (items: string[]): Block => ({ kind: 'ul', items });
-const dl = (items: { t: string; d: string }[]): Block => ({ kind: 'dl', items });
-const code = (text: string, label?: string): Block => ({ kind: 'code', text, label });
-const table = (head: string[], rows: string[][]): Block => ({ kind: 'table', head, rows });
+export const p = (text: string): Block => ({ kind: 'p', text });
+export const ul = (items: string[]): Block => ({ kind: 'ul', items });
+export const dl = (items: { t: string; d: string }[]): Block => ({ kind: 'dl', items });
+export const code = (text: string, label?: string): Block => ({ kind: 'code', text, label });
+export const table = (head: string[], rows: string[][]): Block => ({ kind: 'table', head, rows });
+export const links = (items: { label: string; href: string; note?: string }[]): Block => ({
+  kind: 'links',
+  items,
+});
 
 /* ── / ─────────────────────────────────────────────────────────────────────── */
 
@@ -830,6 +839,10 @@ function blockText(b: Block): string {
       return b.items.map((i) => `- ${i}`).join('\n');
     case 'dl':
       return b.items.map((i) => `- ${i.t}: ${i.d}`).join('\n');
+    case 'links':
+      return b.items
+        .map((i) => `- [${i.label}](${i.href})${i.note ? ` — ${i.note}` : ''}`)
+        .join('\n');
     case 'code':
       return [b.label ? `${b.label}:` : null, '```', b.text, '```']
         .filter(Boolean)

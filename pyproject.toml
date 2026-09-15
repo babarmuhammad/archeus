@@ -68,6 +68,8 @@ Repository = "https://github.com/babarmuhammad/archeus"
 Source = "https://github.com/babarmuhammad/archeus"
 Issues = "https://github.com/babarmuhammad/archeus/issues"
 Changelog = "https://claudectl.space/changelog"
+# PyPI renders this one as a "Sponsor this project" link in the sidebar.
+Funding = "https://ko-fi.com/babarmuhammad"
 
 [project.scripts]
 # cli:run, not main:run — main's import chain pulls urllib/ssl/http.client via

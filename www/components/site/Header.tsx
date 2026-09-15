@@ -57,7 +57,7 @@ export function Header() {
 
           <details className="relative md:hidden">
             <summary
-              className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg border border-line text-dim"
+              className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg border border-dim2/70 text-dim"
               aria-label="Menu"
             >
               <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">

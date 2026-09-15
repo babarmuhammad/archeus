@@ -36,6 +36,23 @@ function BlockView({ block }: { block: Block }) {
         </dl>
       );
 
+    case 'links':
+      return (
+        <ul className="space-y-2">
+          {block.items.map((it) => (
+            <li key={it.href} className="text-[0.95rem] leading-[1.7] text-dim">
+              <a
+                href={it.href}
+                className="text-cyan no-underline underline-offset-[3px] hover:underline"
+              >
+                {it.label}
+              </a>
+              {it.note ? <span> — {it.note}</span> : null}
+            </li>
+          ))}
+        </ul>
+      );
+
     case 'code':
       return (
         <figure className="panel-solid overflow-hidden">

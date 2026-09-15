@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { SITE } from '@/lib/site';
+import { LEGAL, legalPath } from '@/lib/legal';
 import { VERSION } from '@/lib/build-data';
 
 const COLUMNS: { title: string; links: { href: string; label: string; ext?: boolean }[] }[] = [
@@ -28,6 +29,7 @@ const COLUMNS: { title: string; links: { href: string; label: string; ext?: bool
       { href: '/community', label: 'Community' },
       { href: '/contributing', label: 'Contributing' },
       { href: '/code-of-conduct', label: 'Code of conduct' },
+      { href: SITE.kofi, label: 'Support on Ko-fi', ext: true },
     ],
   },
   {
@@ -76,15 +78,36 @@ export function Footer() {
           ))}
         </div>
 
-        <div className="hairline mt-12 flex flex-col gap-2 pt-6 text-xs text-dim2 sm:flex-row sm:items-center sm:justify-between">
-          <p>
-            {SITE.license}-licensed · built by{' '}
-            <a href={SITE.authorGithub} className="text-dim no-underline hover:text-text">
-              {SITE.author}
-            </a>
-            {VERSION ? ` · v${VERSION}` : ''}
-          </p>
-          <p>Not affiliated with Anthropic. Claude and Claude Code are their trademarks.</p>
+        {/* The policies get their own row rather than a fifth column: four
+            columns already wrap to two on a phone, and a fifth would have made
+            it three ragged ones. A legal row at the foot is also where a reader
+            looks for them. */}
+        <div className="hairline mt-12 pt-6 text-xs text-dim2">
+          <nav aria-label="Legal">
+            <ul className="flex flex-wrap gap-x-5 gap-y-2">
+              {LEGAL.map((d) => (
+                <li key={d.slug}>
+                  <Link
+                    href={legalPath(d.slug)}
+                    className="text-dim no-underline transition-colors hover:text-text"
+                  >
+                    {d.title}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              {SITE.license}-licensed · built by{' '}
+              <a href={SITE.authorGithub} className="text-dim no-underline hover:text-text">
+                {SITE.author}
+              </a>
+              {VERSION ? ` · v${VERSION}` : ''}
+            </p>
+            <p>Not affiliated with Anthropic. Claude and Claude Code are their trademarks.</p>
+          </div>
         </div>
       </div>
     </footer>

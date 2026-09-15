@@ -83,3 +83,10 @@ That is on [claudectl.space](https://claudectl.space/) — along with the
 [blog](https://claudectl.space/blog), which is where the longer write-ups live:
 why Claude Code forgets a project between sessions, what belongs in CLAUDE.md,
 cutting the per-turn token cost, and running more than one account.
+
+The policies covering both sites live there too, in one copy rather than two:
+[privacy](https://claudectl.space/legal/privacy),
+[terms](https://claudectl.space/legal/terms),
+[cookies](https://claudectl.space/legal/cookies) — there are none — and
+[refunds](https://claudectl.space/legal/refunds). Neither site collects anything
+from you; the privacy page says what the web hosts log anyway, and why.
