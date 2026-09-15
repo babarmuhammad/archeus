@@ -19,10 +19,8 @@ def is_anthropic_model(model):
 # ── Step 6 ──────────────────────────────────────────────────────────────
 def is_provider_model(model):
     """Return True for non-empty, non-synthetic, non-Anthropic model ids."""
-    m = (model or "")
+    m = model or ""
     if m in SYNTHETIC:
-        return False
-    if not m:
         return False
     return not is_anthropic_model(m)
 
@@ -58,6 +56,12 @@ def load_assistant_turns(path):
 
 
 # ── Step 9 ──────────────────────────────────────────────────────────────
+def _reported(model):
+    """A model id that says something about routing — None and synthetic turns
+    do not."""
+    return bool(model) and model not in SYNTHETIC
+
+
 def check_routing(turns):
     """Check that main turns use provider models and agent turns use Sonnet 5."""
     main_violations = []
@@ -67,15 +71,17 @@ def check_routing(turns):
         model = t["model"]
         if t["sidechain"]:
             # Agent/skill turn — must be Sonnet 5
-            if model and model not in SYNTHETIC and not is_sonnet5(model):
+            if _reported(model) and not is_sonnet5(model):
                 agent_violations.append(t)
         else:
             # Main execution turn — must be provider (non-Anthropic)
-            if model and model not in SYNTHETIC and not is_provider_model(model):
+            if _reported(model) and not is_provider_model(model):
                 main_violations.append(t)
 
-    main_models = sorted({t["model"] for t in turns if not t["sidechain"] and t["model"] and t["model"] not in SYNTHETIC})
-    agent_models = sorted({t["model"] for t in turns if t["sidechain"] and t["model"] and t["model"] not in SYNTHETIC})
+    main_models = sorted({t["model"] for t in turns
+                          if not t["sidechain"] and _reported(t["model"])})
+    agent_models = sorted({t["model"] for t in turns
+                           if t["sidechain"] and _reported(t["model"])})
 
     return {
         "main_models": main_models,
@@ -111,12 +117,9 @@ def main():
     for t in result["agent_violations"]:
         print("  - [agent] %s (uuid=%s)" % (t["model"], t["uuid"]))
 
-    if len(result["main_violations"]) == 0 and len(result["agent_violations"]) == 0:
-        print("RESULT: PASS")
-        sys.exit(0)
-    else:
-        print("RESULT: FAIL")
-        sys.exit(1)
+    failed = bool(result["main_violations"] or result["agent_violations"])
+    print("RESULT:", "FAIL" if failed else "PASS")
+    sys.exit(1 if failed else 0)
 
 
 if __name__ == "__main__":
