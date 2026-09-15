@@ -150,12 +150,22 @@ html.sgrip-drag,html.sgrip-drag *{cursor:col-resize !important;user-select:none 
    It used to be a two-line marketing block with 20px of padding above it —
    ~70px of a 280px column permanently parked above the search field the user
    is actually aiming at. */
-.brand{display:flex;align-items:center;gap:10px;height:48px;
+/* A <button>, so the reset comes first: a lockup must not inherit the button
+   ground, border or centred text. Everything below the reset is what .brand
+   looked like as a <div>, unchanged. */
+.brand{display:flex;align-items:center;gap:10px;height:48px;width:auto;
   margin:var(--sp-2) var(--sp-2) var(--sp-1);padding:0 8px;
-  border-radius:var(--r);user-select:none}
-/* It is a WORDMARK now, not a control: no hover ground, no pointer, nothing to
-   open. The account moved to the launch modal's chips and the Accounts page,
-   which is where changing one decides something. */
+  background:none;border:0;color:inherit;font:inherit;text-align:left;
+  border-radius:var(--r);user-select:none;cursor:pointer;
+  transition:background var(--t-f)}
+/* It is a control again, and deliberately a different one. It stopped being one
+   because it opened an ACCOUNT SWITCHER — a second place to change something
+   the launch modal and the Accounts page already decide. Navigation is the
+   thing a lockup is allowed to do, and it was the one door missing: every
+   screen is reachable from the sidebar, and the dashboard was reachable from
+   none of them once you had left it. */
+.brand:hover{background:var(--sk-row-hover,rgba(var(--cyan-rgb),.07))}
+.brand:focus-visible{outline:2px solid var(--cyan);outline-offset:-2px}
 .bwm{height:13px;width:auto;max-width:100%;flex:0 1 auto;display:block;
   overflow:visible}
 /* The tile is the app icon's own ground, and it is FIXED rather than themed —

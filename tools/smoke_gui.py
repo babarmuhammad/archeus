@@ -2082,9 +2082,17 @@ def main():
         check('picking another CLI lands on ITS setup, not the page you left',
               pg.evaluate("PAGE_") == 'harness'
               and pg.evaluate("HARNESS_HID") == 'codex')
-        check('a CLI with no extra screens shows no second strip',
-              pg.evaluate("document.querySelector('#subtabs').style.display")
-              == 'none')
+        # Codex's sub-tabs used to be [Setup] alone, so this asserted the strip
+        # was HIDDEN. Logins are every CLI's now — a home is what carries one
+        # for all three — so the assertion is that it shows exactly the screens
+        # this CLI actually owns, and none of Claude Code's five.
+        subs = pg.evaluate("[...document.querySelectorAll('#subtabs .tab')]"
+                           ".map(t=>t.textContent.trim())")
+        check('a second CLI gets the screens it has, and no more',
+              subs == ['Setup', 'Accounts'], subs)
+        check('…and none of the screens only Claude Code has',
+              not ({'Output styles', 'Agents', 'Hooks', 'Claude Code'} & set(subs)),
+              subs)
         # The page is a `split` now, like every other list-of-one-thing in the
         # app, so a reason lives in the pane rather than in a third table
         # column. Gaps sort first, so row 0 IS a gap on any CLI that has one.
@@ -2326,6 +2334,28 @@ def main():
               pg.evaluate("[targetRow('codex').cfgdir,targetRow('provider:p2').provider,"
                           "targetRow('claude').cfgdir]") == ['/home/.codex', 'p2', ''])
         pg.evaluate("$('#ovl').classList.remove('show')")
+
+        # -- the way back to the dashboard --
+        # Every other screen is reachable from the sidebar; the dashboard was
+        # reachable from none of them once you had left it, and Ctrl+K knew the
+        # word 'home' while nothing on the page did.
+        print(NL + '— the wordmark goes home —')
+        check('the lockup is a real button, not a div with a handler',
+              pg.evaluate("document.querySelector('.brand').tagName") == 'BUTTON'
+              and pg.evaluate("document.querySelector('.brand').tabIndex") >= 0)
+        pg.evaluate("go('settings')")
+        pg.wait_for_timeout(500)
+        pg.click('#bHome')
+        pg.wait_for_timeout(700)
+        check('clicking it from a page returns to the dashboard',
+              pg.evaluate("PAGE_") == 'home')
+        pg.evaluate("openProject(ST.projects[0])")
+        pg.wait_for_timeout(800)
+        pg.click('#bHome')
+        pg.wait_for_timeout(700)
+        check('…and from inside a project, which is the other dead end',
+              pg.evaluate("PAGE_") == 'home'
+              and pg.evaluate("!!document.querySelector('#content .dash')"))
 
         print('\n— narrow window —')
         pg.set_viewport_size({'width': 700, 'height': 900})
