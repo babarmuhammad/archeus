@@ -91,10 +91,12 @@ PNG_FILES = [
 #: and the marketing site reads that byte-for-byte; it used to hold its own
 #: 4.5 MB copy of an older capture, which is two captures to keep in step and
 #: was already out of step.
-MIRRORS = [
-    (os.path.join('docs', 'graph-real.webp'),
-     os.path.join('www', 'public', 'graph-real.webp')),
-]
+#: One destination per source: a second entry for the same source would
+#: replace the first, not add to it.
+MIRRORS = {
+    os.path.join('docs', 'graph-real.webp'):
+        os.path.join('www', 'public', 'graph-real.webp'),
+}
 
 #: Root-mean-square error, 0-255 per channel, above which a rewrite is refused.
 #: Measured on this set: a clean palettization of a UI screenshot scores under 2.
@@ -179,14 +181,15 @@ def _targets():
     for rel in PNG_FILES:
         if os.path.isfile(os.path.join(ROOT, rel)):
             out.append(('png', rel))
-    for src, _ in MIRRORS:
+    for src in MIRRORS:
         if os.path.isfile(os.path.join(ROOT, src)):
             out.append(('mirror', src))
     return out
 
 
-def _write(out_rel, src_rel, data, stale, saved, check, note):
-    """Write a derived file, or retire it when `data` is None."""
+def _write(out_rel, src_rel, data, stale, check, note):
+    """Write a derived file, or retire it when `data` is None. Returns the
+    bytes saved."""
     out = os.path.join(ROOT, out_rel)
     if data is None:
         # WebP lost to the PNG. A stale sibling from an earlier run would be
@@ -196,9 +199,9 @@ def _write(out_rel, src_rel, data, stale, saved, check, note):
             if not check:
                 os.remove(out)
                 print('%-34s removed — the PNG beside it is smaller' % out_rel)
-        return saved
+        return 0
     if os.path.isfile(out) and abs(os.path.getsize(out) - len(data)) <= 1024:
-        return saved
+        return 0
     before = os.path.getsize(os.path.join(ROOT, src_rel))
     stale.append(out_rel)
     if not check:
@@ -206,12 +209,13 @@ def _write(out_rel, src_rel, data, stale, saved, check, note):
             f.write(data)
         print('%-34s %6d -> %6d KB  (%s)'
               % (out_rel, before // 1024, len(data) // 1024, note))
-    return saved + max(0, before - len(data))
+    return max(0, before - len(data))
 
 
 def main(check=False):
     stale, saved = [], 0
-    for kind, rel in _targets():
+    targets = _targets()
+    for kind, rel in targets:
         path = os.path.join(ROOT, rel)
         if kind == 'png':
             data = _optimized_png(path)
@@ -225,14 +229,12 @@ def main(check=False):
                     f.write(data)
                 print('%-34s %6d -> %6d KB' % (rel, before // 1024, len(data) // 1024))
         elif kind == 'webp':
-            saved = _write(rel[:-4] + '.webp', rel, _webp_sibling(path),
-                           stale, saved, check, 'q%d' % WEBP_QUALITY)
+            saved += _write(rel[:-4] + '.webp', rel, _webp_sibling(path),
+                            stale, check, 'q%d' % WEBP_QUALITY)
         else:
             with open(path, 'rb') as f:
                 data = f.read()
-            for src, copy in MIRRORS:
-                if src == rel:
-                    saved = _write(copy, rel, data, stale, saved, check, 'copy of ' + rel)
+            saved += _write(MIRRORS[rel], rel, data, stale, check, 'copy of ' + rel)
 
     if check:
         if stale:
@@ -241,7 +243,7 @@ def main(check=False):
                 print('  ' + rel)
             print('%d KB recoverable' % (saved // 1024))
             return 1
-        print('images optimized: %d checked' % len(_targets()))
+        print('images optimized: %d checked' % len(targets))
         return 0
     print('\n%d rewritten, %d KB saved' % (len(stale), saved // 1024))
     return 0
