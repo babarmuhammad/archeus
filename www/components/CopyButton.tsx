@@ -26,7 +26,7 @@ export function CopyButton({ text, label = 'Copy' }: { text: string; label?: str
       // The visible label is two words that change; the accessible name says
       // what is actually being copied.
       aria-label={`Copy command: ${text}`}
-      className="shrink-0 rounded-md border border-line px-2.5 py-1 text-center font-sans text-[0.7rem] text-dim transition-colors hover:border-cyan/50 hover:text-text"
+      className="shrink-0 rounded-md border border-dim2/70 px-2.5 py-1 text-center font-sans text-[0.7rem] text-dim transition-colors hover:border-cyan/50 hover:text-text"
     >
       {/* Fixed width so the label swap cannot nudge the row it sits in. */}
       <span aria-live="polite" className="inline-block min-w-[3.4rem]">

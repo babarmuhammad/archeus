@@ -151,7 +151,7 @@ export function Cta({
       className={`rounded-lg border px-4 py-2 text-sm no-underline transition-colors ${
         primary
           ? 'border-cyan/45 bg-cyan/10 text-text hover:border-cyan/75'
-          : 'border-line text-dim hover:border-cyan/45 hover:text-text'
+          : 'border-dim2/70 text-dim hover:border-cyan/45 hover:text-text'
       }`}
     >
       {children}
