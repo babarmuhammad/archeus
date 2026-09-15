@@ -789,8 +789,12 @@ class H(BaseHTTPRequestHandler):
             d = _TH_H.descriptor(hid)
             self._j({'hid': d['id'], 'label': d['label'], 'available': True,
                      'version': '1.2.3', 'latest': '1.2.3', 'auth': 'ok',
-                     'exe': 'C:\\bin\\%s' % d['exe_names'][0],
-                     'home': _TH_H.home_dir(d['id']),
+                     # neither is taken from this machine: `home_dir()` would
+                     # put the developer's user name into a published
+                     # screenshot, and a literal drive letter reads as somebody's
+                     # real install (test_demo_fixtures guards the second)
+                     'exe': '~/.local/bin/' + d['exe_names'][0],
+                     'home': '~/' + '/'.join(d['home_rel']),
                      'instructions_file': d['instructions_file'],
                      'exe_names': list(d['exe_names']), 'notes': [],
                      'caps': {k: list(_TH_H.cap(d['id'], k)) for k in _TH_H.CAPS},

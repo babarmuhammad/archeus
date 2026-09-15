@@ -97,21 +97,18 @@ def _spend_of(data):
 
 
 def _targets():
-    """[(name, abs cfgdir)] to poll — the default account plus configured ones,
-    deduped, default first."""
-    s = _c.load_settings()
-    out = [('default', os.path.join(_c._USERPROFILE, '.claude'))]
-    for a in s.get('accounts', []):
-        d = a.get('dir') if isinstance(a, dict) else None
-        if d:
-            out.append((a.get('name') or d, os.path.expanduser(os.path.expandvars(d))))
-    seen, uniq = set(), []
-    for n, d in out:
-        rd = os.path.normcase(os.path.abspath(d))
-        if rd not in seen:
-            seen.add(rd)
-            uniq.append((n, d))
-    return uniq
+    """[(name, cfgdir)] to poll — every CLAUDE account, default first.
+
+    A third copy of `all_config_dirs()`'s dedup lived here and has been deleted
+    rather than widened. Deleting it is what guarantees a Codex or pi home can
+    never reach this module: everything below polls Anthropic's OAuth usage
+    endpoint with a token read out of the directory, and `quota.worst_window`
+    then decides whether archeus's own headless calls may spend by walking the
+    `_acct_state` this fills. A non-Claude home in that dict would be an
+    Anthropic request against a directory that has no Anthropic login, and a
+    window nothing can refill.
+    """
+    return _c.all_config_dirs()
 
 
 def fetch_usage(cfgdir=None):

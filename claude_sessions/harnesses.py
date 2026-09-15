@@ -225,8 +225,6 @@ HARNESSES = {
             'output_styles': (False, 'Output styles are a Claude Code feature.'),
             'client_state':  (False, 'Codex records its own state in SQLite, '
                                      'not in .claude.json.'),
-            'accounts':      (False, 'archeus manages Claude logins; Codex '
-                                     'keeps one login per CODEX_HOME.'),
             #: `usage` is NOT here: `codex.fold` fills the same `usage_by_model`
             #: every other harness does, so the spend cards are real. What Codex
             #: does not publish is the WINDOW — its rate limits come back on the
@@ -356,8 +354,6 @@ HARNESSES = {
                                      'memory digest in AGENTS.md instead.'),
             'client_state':  (False, 'pi records no equivalent of '
                                      '.claude.json.'),
-            'accounts':      (False, 'archeus manages Claude logins; pi keeps '
-                                     'one auth.json per home.'),
             #: same split as Codex's: `pi.fold` counts tokens, so the spend
             #: cards are real; what pi has no notion of is one PLAN with one
             #: window, because it bills per provider.
@@ -426,19 +422,28 @@ def of_path(path):
     through `_parse_session` and its five callers is what keeps the hot path's
     signature alone.
 
-    Only the OTHER harnesses' homes are compared, and that is a measurement
-    rather than a shortcut: Claude Code is already the answer for anything
-    unplaceable, so asking would add nothing except `all_config_dirs()` — a
-    settings read off disk — to a function `store.transcript_path` calls once
-    per session row.
+    Only the OTHER harnesses' homes are compared, and that is still a
+    measurement rather than a shortcut: Claude Code is the answer for anything
+    unplaceable, so naming it would add nothing.
+
+    It walks every home of those harnesses rather than only the built-in one.
+    That costs one settings read on a function `store.transcript_path` calls
+    per session row — but the alternative is that a transcript under a SECOND
+    Codex home is placed as Claude Code's, which gets both its path and its
+    token fold wrong while looking like it worked. The read is also not new to
+    the row: `sessions.account_folders_for` calls `instances()` immediately
+    before, and `_parse_session` opens a whole JSONL immediately after.
+
+    ponytail: one settings read per row. Memoise `_homes()` per request if a
+    very long session list ever measures slow.
     """
     if path:
         p = os.path.normcase(os.path.abspath(path))
         best = None
-        for hid in ids():
+        for hid, home in _homes():
             if hid == DEFAULT:
                 continue
-            h = os.path.normcase(os.path.abspath(home_dir(hid)))
+            h = os.path.normcase(os.path.abspath(home))
             if p.startswith(h + os.sep) and (best is None or len(h) > len(best[1])):
                 best = (hid, h)
         if best:
@@ -458,18 +463,31 @@ def impl(key, hid=None):
     return getattr(importlib.import_module('.' + mod, __package__), fn)
 
 
-def _homes():
-    """[(harness id, home dir)] for every home archeus knows.
+def homes(hid=None):
+    """[(name, home dir)] for ONE harness — its built-in home first, then the
+    extras the user added, deduped by resolved path.
 
-    Claude's come from the accounts list, because an account IS a home there.
-    Other harnesses have exactly one each until something says otherwise.
+    A home is what carries a login, for every one of these CLIs: Claude Code
+    picks one with `CLAUDE_CONFIG_DIR`, Codex with `CODEX_HOME`, pi with
+    `PI_CODING_AGENT_DIR`, and `config.account_env` already writes whichever the
+    descriptor names. So "more than one account" is the same mechanism for all
+    three, and this is the one place that says so.
+
+    The built-in home is named after the harness LABEL rather than 'default',
+    which is what keeps a single-home machine looking exactly as it did: this
+    returns `('Codex', ~/.codex)` today and still will.
     """
-    out = [('claude', d) for _n, d in _c.all_config_dirs()]
-    for hid in ids():
-        if hid == 'claude':
-            continue
-        out.append((hid, home_dir(hid)))
-    return out
+    d = descriptor(hid)
+    if d['id'] == DEFAULT:
+        # via the module, never by value: the test sandbox patches this name
+        return _c.all_config_dirs()
+    return _c.named_dirs(d['label'], home_dir(d['id']),
+                         (_c.load_settings().get('homes') or {}).get(d['id']))
+
+
+def _homes():
+    """[(harness id, home dir)] for every home archeus knows, of every harness."""
+    return [(hid, d) for hid in ids() for _n, d in homes(hid)]
 
 
 def disabled():
@@ -499,12 +517,11 @@ def instances():
     Codex never reads.
     """
     off = disabled()
-    out = [(n, d, 'claude') for n, d in _c.all_config_dirs()]
+    out = []
     for hid in ids():
-        if hid == 'claude' or hid in off:
+        if hid in off or (hid != DEFAULT and not exe(hid)):
             continue
-        if exe(hid):
-            out.append((HARNESSES[hid]['label'], home_dir(hid), hid))
+        out += [(n, d, hid) for n, d in homes(hid)]
     return out
 
 

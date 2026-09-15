@@ -182,6 +182,14 @@ def test_usage_plan_returns_every_configured_account(monkeypatch, tmp_path):
     empty_dir.mkdir()
     with open(sb.settings, 'w', encoding='utf-8') as f:
         json.dump({'accounts': [{'name': 'second', 'dir': str(empty_dir)}]}, f)
+    # The Sandbox pins `all_config_dirs` to the one account it created, and the
+    # poller used to carry its own copy of that list — so this test passed by
+    # walking PAST the pin and reading the settings file itself. There is one
+    # implementation now, which is the point, so the account has to be declared
+    # where the poller will actually look for it.
+    from claude_sessions import config as _cfg
+    monkeypatch.setattr(_cfg, 'all_config_dirs',
+                        lambda: [('default', str(sb.cfg)), ('second', str(empty_dir))])
     srv, base = _serve(monkeypatch)
     try:
         _code, d = _req(f'{base}/api/usage/plan')

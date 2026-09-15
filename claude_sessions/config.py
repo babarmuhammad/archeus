@@ -191,6 +191,15 @@ _DEFAULT_SETTINGS = {
     'review_model': '',                # code-review model ('' = fall back to exec_model)
     'review_min_confidence': 80,       # code-review: drop findings below this (0-100)
     'accounts': [],                    # named Claude accounts: [{'name','dir'}]
+    # extra homes for a NON-Claude harness: hid -> [{'name','dir'}]. Claude's
+    # are `accounts` and its active one is `claude_config_dir`, and keeping the
+    # two keys apart is deliberate: `all_config_dirs()` has ~35 callers and
+    # every one of them means "a Claude login" — `provision.diff`, the OAuth
+    # usage poller, the statusline, every hooks writer. Folding the harnesses
+    # into that key would put a filter in front of all of them, and the day the
+    # filter was wrong a Codex home would become a Claude account in three
+    # places at once. `harnesses.homes(hid)` is the reader.
+    'homes': {},
     'claude_md_sessions_cap': 10,  # SESSIONS block: keep most recent N (0 = unlimited)
     'claude_md_commits': 7,        # AUTOGEN block: git log -N per repo
     'default_max_thinking': '',    # MAX_THINKING_TOKENS env for launches ('' = unset)
@@ -355,7 +364,7 @@ PROFILE_PORT_BASE = 20129
 #: needing a second table nobody remembers to edit.
 INTERNAL_SETTINGS = frozenset({
     '_unknown',                      # the carry-through bucket, not a setting
-    'accounts', 'project_defaults', 'cost_table',
+    'accounts', 'homes', 'project_defaults', 'cost_table',
     'perm_default_migrated', 'provider_keys_migrated', 'provider_profiles_migrated',
     'ui_mode',                       # handled first, validated against two values
     #: carries api_key and gateway_target_api_key INSIDE it, and a base URL plus
@@ -808,13 +817,17 @@ def global_claude_md_for(cfgdir=None):
     return os.path.join(cfgdir, 'CLAUDE.md') if cfgdir else global_claude_md
 
 
-def all_config_dirs():
-    """[(name, dir)] for every known account (default first), deduped by
-    resolved path — so session discovery can see sessions from every account,
-    not just whichever one is currently active."""
-    default = os.path.join(_USERPROFILE, '.claude')
-    candidates = [('default', default)]
-    for a in load_settings().get('accounts', []):
+def named_dirs(default_name, default_dir, entries):
+    """[(name, dir)] — a built-in default first, then the user's, deduped by
+    resolved path.
+
+    The body of `all_config_dirs` with the key it reads taken out, because a
+    second harness's homes want exactly this and a second copy of a dedup rule
+    is a second chance to disagree about what "the same directory" means.
+    `usage._targets` was already a third copy and is now a delegate.
+    """
+    candidates = [(default_name, default_dir)]
+    for a in entries or []:
         if isinstance(a, dict) and a.get('dir'):
             candidates.append((a.get('name', a['dir']),
                                os.path.expanduser(os.path.expandvars(a['dir']))))
@@ -826,6 +839,22 @@ def all_config_dirs():
         seen.add(rp)
         out.append((name, d))
     return out
+
+
+def all_config_dirs():
+    """[(name, dir)] for every known CLAUDE account (default first), deduped by
+    resolved path — so session discovery can see sessions from every account,
+    not just whichever one is currently active.
+
+    Claude Code's, and deliberately only Claude Code's. Roughly thirty-five
+    callers read this and every one of them means a Claude *login*: the hooks
+    writers, `provision.diff`, the statusline, the OAuth usage poller. Another
+    harness's homes live under `settings['homes']` and are read through
+    `harnesses.homes(hid)`; fanning a Claude-shaped write across a Codex home
+    would write a `settings.json` Codex never reads.
+    """
+    return named_dirs('default', os.path.join(_USERPROFILE, '.claude'),
+                      load_settings().get('accounts'))
 
 
 def account_env(cfgdir=None):
