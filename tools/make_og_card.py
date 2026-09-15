@@ -26,7 +26,6 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTS = [os.path.join(ROOT, 'docs', 'assets', 'og-card.png'),
         os.path.join(ROOT, 'www', 'public', 'og-card.png')]
-OUT = OUTS[0]
 #: The banner, READ (never written) — the card composes it, and it is artwork:
 #: the gold lockup, not something this file could regenerate.
 MARK_SRC = os.path.join(ROOT, 'docs', 'assets', 'wordmark.png')

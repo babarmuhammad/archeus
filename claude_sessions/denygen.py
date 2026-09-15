@@ -34,7 +34,7 @@ def scan_heavy(project_path, max_depth=2):
     root = os.path.abspath(project_path or '')
     if not root or not os.path.isdir(root):
         return []
-    out, seen = [], set()
+    out = {}
 
     def _rel(p):
         return os.path.relpath(p, root).replace('\\', '/')
@@ -51,23 +51,21 @@ def scan_heavy(project_path, max_depth=2):
                 if e.name in HEAVY_DIRS:
                     rel = _rel(e.path)
                     pat = f'Read({rel}/**)'
-                    if pat not in seen:
-                        seen.add(pat)
-                        out.append((pat, f'{rel}/ present, {_entry_count(e.path)} entries'))
+                    if pat not in out:
+                        out[pat] = f'{rel}/ present, {_entry_count(e.path)} entries'
                 elif depth < max_depth:
                     _walk(e.path, depth + 1)
             elif e.is_file(follow_symlinks=False) and e.name in LOCK_FILES:
                 pat = f'Read(**/{e.name})'
-                if pat not in seen:
-                    seen.add(pat)
+                if pat not in out:
                     try:
                         kb = os.path.getsize(e.path) // 1024
                     except OSError:
                         kb = 0
-                    out.append((pat, f'{_rel(e.path)} present, {kb} KB'))
+                    out[pat] = f'{_rel(e.path)} present, {kb} KB'
 
     _walk(root, 0)
-    return sorted(out)
+    return sorted(out.items())
 
 
 def merge_deny(project_path, patterns):

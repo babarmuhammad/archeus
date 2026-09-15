@@ -125,6 +125,13 @@ MUTANTS = [
 ]
 
 
+def _write(text):
+    """Both writes — the mutation and the restore — must use the same flags, or
+    the restore rewrites migrate.py's line endings for the whole file."""
+    with io.open(TARGET, 'w', encoding='utf-8', newline='') as f:
+        f.write(text)
+
+
 def main():
     src = io.open(TARGET, encoding='utf-8', newline='').read()
     bad = []
@@ -133,18 +140,16 @@ def main():
             if find not in src:
                 bad.append('%s: anchor not found (migrate.py moved?)' % label)
                 continue
-            with io.open(TARGET, 'w', encoding='utf-8', newline='') as f:
-                f.write(src.replace(find, repl, 1))
+            _write(src.replace(find, repl, 1))
             r = subprocess.run([sys.executable, '-m', 'pytest', '-q',
                                 'tests/test_migration.py'],
                                cwd=ROOT, capture_output=True, text=True)
-            status = 'caught' if r.returncode != 0 else 'MISSED'
-            if r.returncode == 0:
+            caught = r.returncode != 0
+            if not caught:
                 bad.append(label)
-            print('%-8s %s' % (status, label))
+            print('%-8s %s' % ('caught' if caught else 'MISSED', label))
     finally:
-        with io.open(TARGET, 'w', encoding='utf-8', newline='') as f:
-            f.write(src)
+        _write(src)
     if bad:
         print('\nnot covered by any test:')
         for b in bad:

@@ -74,7 +74,7 @@ def main():
             bad = [k for k, v in (seen.get('supports') or {}).items() if not v]
             if seen.get('cardIsContainer') != 'inline-size':
                 bad.append('card is not a container in this engine')
-            print(chr(10) + 'VERDICT:', 'clean' if not bad
+            print('\nVERDICT:', 'clean' if not bad
                   else 'MISSING ' + ', '.join(bad))
             app.quit()
 
@@ -92,11 +92,12 @@ def main():
         # loadFinished means the document loaded, not that the app has booted
         # and fetched its state — poll for what we are about to drive, the same
         # way probe_qt does, rather than guessing an interval.
-        tries = [0]
+        tries = 0
 
         def wait_ready(ok):
-            tries[0] += 1
-            if ok or tries[0] > 60:
+            nonlocal tries
+            tries += 1
+            if ok or tries > 60:
                 QTimer.singleShot(400, open_memory)
             else:
                 QTimer.singleShot(250, lambda: page.runJavaScript(

@@ -10,7 +10,6 @@ when they differ.
     py -3 tools/gen_plugin.py --check    # exit 1 if out of sync
 """
 
-import io
 import os
 import sys
 
@@ -26,18 +25,18 @@ def _templates():
     for name in sorted(os.listdir(SRC)):
         p = os.path.join(SRC, name, 'SKILL.md')
         if os.path.isfile(p):
-            yield name, io.open(p, encoding='utf-8').read().replace('\r\n', '\n')
+            yield name, open(p, encoding='utf-8').read().replace('\r\n', '\n')
 
 
 def _wanted():
     """{relative path: content} — what plugin/skills/ should contain."""
     out = {}
     for name, text in _templates():
-        body = text.split('\n')
+        lines = text.split('\n')
         # the note goes after the frontmatter, which must stay the first thing
-        if body and body[0].strip() == '---':
-            end = body.index('---', 1)
-            text = '\n'.join(body[:end + 1]) + '\n' + NOTE + '\n'.join(body[end + 1:])
+        if lines and lines[0].strip() == '---':
+            end = lines.index('---', 1)
+            text = '\n'.join(lines[:end + 1]) + '\n' + NOTE + '\n'.join(lines[end + 1:])
         else:
             text = NOTE + text
         out[os.path.join(name, 'SKILL.md')] = text
@@ -49,7 +48,7 @@ def _have():
     for root, _dirs, names in os.walk(DST):
         for n in names:
             p = os.path.join(root, n)
-            out[os.path.relpath(p, DST)] = io.open(
+            out[os.path.relpath(p, DST)] = open(
                 p, encoding='utf-8').read().replace('\r\n', '\n')
     return out
 
@@ -68,7 +67,7 @@ def main(argv):
     for rel, text in wanted.items():
         p = os.path.join(DST, rel)
         os.makedirs(os.path.dirname(p), exist_ok=True)
-        with io.open(p, 'w', encoding='utf-8', newline='\n') as f:
+        with open(p, 'w', encoding='utf-8', newline='\n') as f:
             f.write(text)
     for rel in set(_have()) - set(wanted):
         os.remove(os.path.join(DST, rel))

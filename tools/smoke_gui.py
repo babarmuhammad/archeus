@@ -846,15 +846,14 @@ class H(BaseHTTPRequestHandler):
             from urllib.parse import parse_qs as _pq
             hid = (_pq(self.path.split('?', 1)[-1]).get('hid') or [''])[0]
             d = _TH_H.descriptor(hid)
-            from claude_sessions import config as _TH_C
             self._j({'hid': d['id'], 'efforts': list(d['efforts']),
                      'catalogue': d['id'] == 'claude',
                      # the permission and sandbox scales are the CLI's own too,
                      # and a stub that sent neither had the window falling back
                      # to Claude Code's list for every harness — which is the
                      # exact bug these fields exist to fix
-                     'perms': list(d['perms'] or _TH_C.PERMS),
-                     'perm_labels': list(d['perm_labels'] or _TH_C.PERM_LABELS),
+                     'perms': list(d['perms'] or _TH_CFG.PERMS),
+                     'perm_labels': list(d['perm_labels'] or _TH_CFG.PERM_LABELS),
                      'sandboxes': list(d['sandboxes']),
                      'sandbox_labels': list(d['sandbox_labels']),
                      'models': {'codex': ['gpt-5.5', 'gpt-5.4-mini'],

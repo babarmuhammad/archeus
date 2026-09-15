@@ -117,19 +117,13 @@ SAMPLER = """
      inside that window. `t0` is the sampler's own start so the gaps read
      directly, and it is the PAIRS that matter, not the totals. */
   window.__probe.ev = []; window.__probe.t0 = performance.now();
-  for (const k of ['blur', 'focus']) {
-    window.addEventListener(k, () => {
-      if (window.__probe.ev.length < 400) {
-        window.__probe.ev.push(k[0] + Math.round(performance.now() - window.__probe.t0));
-      }
-    });
-  }
-  document.addEventListener('visibilitychange', () => {
+  const mark = tag => {
     if (window.__probe.ev.length < 400) {
-      window.__probe.ev.push((document.hidden ? 'H' : 'V')
-        + Math.round(performance.now() - window.__probe.t0));
+      window.__probe.ev.push(tag + Math.round(performance.now() - window.__probe.t0));
     }
-  });
+  };
+  for (const k of ['blur', 'focus']) window.addEventListener(k, () => mark(k[0]));
+  document.addEventListener('visibilitychange', () => mark(document.hidden ? 'H' : 'V'));
   const orig = STAGE._tick.bind(STAGE);
   STAGE._tick = function (dt) {
     const before = STAGE._Tw;
@@ -148,9 +142,8 @@ SAMPLER = """
 REPORT = """
 (() => {
   const ms = (window.__probe && window.__probe.ms || []).slice().sort((a, b) => a - b);
-  const at = q => ms.length ? ms[Math.min(ms.length - 1, Math.floor(ms.length * q))] : 0;
   const rf = (window.__probe && window.__probe.raf || []).slice().sort((a, b) => a - b);
-  const rat = q => rf.length ? rf[Math.min(rf.length - 1, Math.floor(rf.length * q))] : 0;
+  const pct = (a, q) => a.length ? a[Math.min(a.length - 1, Math.floor(a.length * q))] : 0;
   const r = STAGE._ren, sc = STAGE._sc;
   let ren = 'unknown';
   try {
@@ -190,7 +183,7 @@ REPORT = """
     world: (window.ST || {}).world || '',
     ratio: pr, bufW: Math.round(sz.x * pr), bufH: Math.round(sz.y * pr),
     tri: tri, calls: calls, gpu: gpu, frames: ms.length,
-    p50: at(0.50), p95: at(0.95), worst: ms.length ? ms[ms.length - 1] : 0,
+    p50: pct(ms, 0.50), p95: pct(ms, 0.95), worst: ms.length ? ms[ms.length - 1] : 0,
     // the SNAPPED target, which is what the stage actually aims at: a whole
     // number of vsyncs. Reporting the unsnapped 1/fps compares the machine
     // against an interval no display can produce, which is how the beat this
@@ -204,7 +197,7 @@ REPORT = """
     degraded: STAGE._degraded, budget: STAGE._budget,
     slow: STAGE._slow, strain: STAGE._strain,
     cssW: window.innerWidth, cssH: window.innerHeight,
-    rafP50: rat(0.50), rafP95: rat(0.95), rafN: rf.length,
+    rafP50: pct(rf, 0.50), rafP95: pct(rf, 0.95), rafN: rf.length,
     resizes: window.__probe.resizes, builds: window.__probe.builds,
     sizes: window.__probe.sizes,
     blurs: window.__probe.blurs, hidden: window.__probe.hidden,
@@ -241,7 +234,7 @@ def _render(r, seconds):
           f"energy {r['energy']:.2f}")
     print(f"  interval   p50 {r['p50']:.1f}ms   p95 {r['p95']:.1f}ms   "
           f"worst {r['worst']:.1f}ms   (asked {r['asked']:.1f}ms = "
-          f"{max(1, round(r['asked'] / (r['vsync'] or 16.7)))} vsync @ "
+          f"{max(1, round(r['asked'] / vs))} vsync @ "
           f"{r['vsync']:.1f}ms)")
     print(f"  raf floor  p50 {r['rafP50']:.1f}ms   p95 {r['rafP95']:.1f}ms   "
           f"over {r['rafN']} frames  <- the page, with no stage in it")

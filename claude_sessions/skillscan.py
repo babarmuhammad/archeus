@@ -47,6 +47,11 @@ import re
 #: needs a megabyte of prose is already worth a second look.
 _MAX_BYTES = 400_000
 
+#: zero-width / bidi-override characters. ONE definition: the rule that FLAGS
+#: them and the sanitiser that strips them from the excerpt must never drift,
+#: or the report re-emits the character it just warned about.
+_HIDDEN_CHARS = '[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]'
+
 #: (severity, label, compiled pattern, why it matters)
 #: Ordered most-alarming first; the report keeps this order.
 _RULES = [
@@ -61,7 +66,7 @@ _RULES = [
                 r'(-d|--data|-F|--upload-file|-T)\b'),
      'sends data outward in one command'),
     ('high', 'hidden characters',
-     re.compile('[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]'),
+     re.compile(_HIDDEN_CHARS),
      'zero-width or bidirectional-override characters — text that does not '
      'read the way it renders'),
     # ── code-level ──
@@ -126,8 +131,7 @@ def scan_file(rel, text):
         raw = text[max(0, m.start() - 40):m.start() + 90].replace('\n', ' ')
         # never echo a hidden character back into the report — it would do the
         # same thing to the report that it does to the file
-        excerpt = re.sub(r'[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]',
-                         '\u2423', raw).strip()
+        excerpt = re.sub(_HIDDEN_CHARS, '\u2423', raw).strip()
         out.append((sev, label, why, line, excerpt))
     return out
 

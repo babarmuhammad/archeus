@@ -25,14 +25,16 @@ def strip_ansi(s):
     return _ANSI_RE.sub('', s)
 
 
+def _char_width(ch):
+    """Display columns for one character: combining 0, wide/fullwidth 2, else 1."""
+    if unicodedata.combining(ch):
+        return 0
+    return 2 if unicodedata.east_asian_width(ch) in ('W', 'F') else 1
+
+
 def disp_width(s):
     """Terminal display width: ANSI codes 0, wide/fullwidth 2, combining 0."""
-    width = 0
-    for ch in strip_ansi(s):
-        if unicodedata.combining(ch):
-            continue
-        width += 2 if unicodedata.east_asian_width(ch) in ('W', 'F') else 1
-    return width
+    return sum(_char_width(ch) for ch in strip_ansi(s))
 
 
 def trunc(s, width):
@@ -53,8 +55,7 @@ def trunc(s, width):
             i = m.end()
             continue
         ch = s[i]
-        w = 0 if unicodedata.combining(ch) else \
-            (2 if unicodedata.east_asian_width(ch) in ('W', 'F') else 1)
+        w = _char_width(ch)
         if used + w > limit:
             break
         out.append(ch)
@@ -215,7 +216,7 @@ WORDMARK = 'ARCHEUS'
 def header(*crumbs):
     """Breadcrumb title bar:  ARCHEUS ▸ project ▸ SESSIONS """
     hb = _c.C_HEADER_BG
-    text = '  ' + f' ▸ '.join(f'{C_BOLD}{c}{C_RESET}{hb}' for c in crumbs) + ' '
+    text = '  ' + ' ▸ '.join(f'{C_BOLD}{c}{C_RESET}{hb}' for c in crumbs) + ' '
     w = content_width()
     return f'{hb}{fit(text, w)}{C_RESET}'
 
@@ -264,7 +265,7 @@ def hint_keys(pairs, prefix='', suffix=''):
     tail = f"   {C_DIM}{suffix}{C_RESET}" if suffix else ''
     room = content_width() - disp_width(lead) - disp_width(tail)
 
-    def fit(space):
+    def pack(space):
         parts, used, dropped = [], 0, 0
         for key, label in pairs:
             w = disp_width(key) + 1 + disp_width(label) + (3 if parts else 0)
@@ -275,9 +276,9 @@ def hint_keys(pairs, prefix='', suffix=''):
             used += w
         return parts, dropped
 
-    parts, dropped = fit(room)
+    parts, dropped = pack(room)
     if dropped:                      # the `+n` needs its own room, so refit
-        parts, dropped = fit(room - 5)
+        parts, dropped = pack(room - 5)
         tail = f"   {C_DIM}+{dropped}{C_RESET}" + tail
     return trunc(lead + "   ".join(parts) + tail, content_width())
 

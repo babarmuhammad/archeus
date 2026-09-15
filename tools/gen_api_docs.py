@@ -54,8 +54,7 @@ def render():
     for title, table, local in (
             ('GET', gui_api.GET_ROUTES, gui._LOCAL_GET),
             ('POST', gui_api.POST_ROUTES, gui._LOCAL_POST)):
-        merged = dict(table)
-        merged.update(local)
+        merged = {**table, **local}
         parts.append('## %s\n' % title)
         parts.append('| Route | Handler | What it does |')
         parts.append('|---|---|---|')

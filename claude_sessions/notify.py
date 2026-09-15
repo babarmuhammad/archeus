@@ -53,11 +53,10 @@ def _ps_toast(title, message):
     unregistered id is silently dropped by Windows, and archeus has no
     installer to register one of its own.
     """
-    def q(s):
-        return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    from xml.sax.saxutils import escape
     xml = ('<toast><visual><binding template="ToastText02">'
            '<text id="1">%s</text><text id="2">%s</text>'
-           '</binding></visual></toast>' % (q(title), q(message)))
+           '</binding></visual></toast>' % (escape(str(title)), escape(str(message))))
     script = (
         "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications,"
         " ContentType=WindowsRuntime] > $null;"

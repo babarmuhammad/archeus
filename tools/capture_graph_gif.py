@@ -88,7 +88,7 @@ def main():
             page.wait_for_timeout(interval)
         browser.close()
 
-    os.makedirs(os.path.dirname(os.path.abspath(args.out)) or '.', exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     if args.out.lower().endswith('.webp'):
         # No palette step: WebP compresses between frames, so the colour
         # reduction a GIF needs is pure loss here. The same capture was 5770 KB

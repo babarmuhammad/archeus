@@ -607,8 +607,10 @@ def stale_plugin_warning(cfgdir=None):
     try:
         stale = [p['key'] for p in plugins.installed(cfgdir)
                  if OLD in (p['name'] + p['marketplace'])]
-        stale += [m['name'] for m in plugins.known_marketplaces(cfgdir)
-                  if m['name'] == OLD and not stale]
+        old_markets = [m['name'] for m in plugins.known_marketplaces(cfgdir)
+                       if m['name'] == OLD]
+        if not stale:
+            stale = old_markets
     except Exception:
         return ''
     if not stale:

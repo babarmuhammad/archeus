@@ -16,6 +16,7 @@ published GIF of any size. The script stays as the fallback for a machine with n
 Chromium; if you run it, the output needs a home outside `docs/`.
 """
 
+import itertools
 import math
 import os
 
@@ -63,45 +64,41 @@ _MN = min(math.dist(_IV[i], _IV[j]) for i in range(12) for j in range(i + 1, 12)
 #: the BASE icosahedron's own 30 edges — the small-hull level of detail below.
 _LE = [(i, j) for i in range(12) for j in range(i + 1, 12)
        if math.dist(_IV[i], _IV[j]) < _MN * 1.1]
-_DV, _DE = [], []
-
-
 def _build_cage():
-    mn = _MN
+    verts, edges = [], []
     idx, seen = {}, set()
 
     def put(v):
         k = tuple(round(c, 4) for c in v)
         if k not in idx:
-            idx[k] = len(_DV)
-            _DV.append(v)
+            idx[k] = len(verts)
+            verts.append(v)
         return idx[k]
 
     def edge(a, b):
         k = (min(a, b), max(a, b))
         if k not in seen:
             seen.add(k)
-            _DE.append(k)
+            edges.append(k)
 
     def mid(a, b):
         return _nrm(tuple(a[c] + b[c] for c in range(3)))
 
-    for i in range(12):
-        for j in range(i + 1, 12):
-            if math.dist(_IV[i], _IV[j]) > mn * 1.1:
-                continue
-            for k in range(j + 1, 12):
-                if (math.dist(_IV[i], _IV[k]) > mn * 1.1
-                        or math.dist(_IV[j], _IV[k]) > mn * 1.1):
-                    continue
-                a, b, c = _IV[i], _IV[j], _IV[k]
-                ab, bc, ca = mid(a, b), mid(b, c), mid(c, a)
-                for tri in ((a, ab, ca), (ab, b, bc), (ca, bc, c), (ab, bc, ca)):
-                    p = [put(v) for v in tri]
-                    edge(p[0], p[1]); edge(p[1], p[2]); edge(p[2], p[0])
+    def adjacent(i, j):
+        return math.dist(_IV[i], _IV[j]) < _MN * 1.1
+
+    for i, j, k in itertools.combinations(range(12), 3):
+        if not (adjacent(i, j) and adjacent(i, k) and adjacent(j, k)):
+            continue
+        a, b, c = _IV[i], _IV[j], _IV[k]
+        ab, bc, ca = mid(a, b), mid(b, c), mid(c, a)
+        for tri in ((a, ab, ca), (ab, b, bc), (ca, bc, c), (ab, bc, ca)):
+            p = [put(v) for v in tri]
+            edge(p[0], p[1]); edge(p[1], p[2]); edge(p[2], p[0])
+    return verts, edges
 
 
-_build_cage()
+_DV, _DE = _build_cage()
 assert (len(_DV), len(_DE)) == (42, 120), (len(_DV), len(_DE))
 assert (len(_IV), len(_LE)) == (12, 30), (len(_IV), len(_LE))
 
@@ -214,10 +211,11 @@ def _frame(fi, base, pos):
                    fill=(col[0], col[1], col[2], 16))
     # edges + node halos on the glow layer
     for a, b in EDGES:
-        if a in pos and b in pos:
-            pa, pb = pos[a][:2], pos[b][:2]
-            pts = [_qpt(pa, pb, k / 12) for k in range(13)]
-            gd.line(pts, fill=(150, 190, 255, 60), width=1)
+        if a not in pos or b not in pos:
+            continue
+        pa, pb = pos[a][:2], pos[b][:2]
+        pts = [_qpt(pa, pb, k / 12) for k in range(13)]
+        gd.line(pts, fill=(150, 190, 255, 60), width=1)
     for lbl, (x, y, imp, col) in pos.items():
         r = 6 + imp * 1.6
         halo = int(r * 2.4)
@@ -229,10 +227,11 @@ def _frame(fi, base, pos):
     d = ImageDraw.Draw(img)
     # flow particles
     for ei, (a, b) in enumerate(EDGES):
-        if a in pos and b in pos:
-            t = ((fi / FRAMES) * 1.4 + ei * 0.13) % 1.0
-            px_, py_ = _qpt(pos[a][:2], pos[b][:2], t)
-            d.ellipse([px_ - 2, py_ - 2, px_ + 2, py_ + 2], fill=(210, 235, 255))
+        if a not in pos or b not in pos:
+            continue
+        t = ((fi / FRAMES) * 1.4 + ei * 0.13) % 1.0
+        px_, py_ = _qpt(pos[a][:2], pos[b][:2], t)
+        d.ellipse([px_ - 2, py_ - 2, px_ + 2, py_ + 2], fill=(210, 235, 255))
     # rotating cages + labels
     for lbl, (x, y, imp, col) in pos.items():
         r = 6 + imp * 1.5

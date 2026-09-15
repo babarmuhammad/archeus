@@ -43,14 +43,9 @@ def _value(v):
     return v
 
 
-def payload():
-    return {k: _value(getattr(CS, k)) for k in CS.EXPORTED}
-
-
 def _body():
-    d = payload()
     return '\n'.join(
-        '  %s: %s,' % (k, json.dumps(d[k], separators=(', ', ': ')))
+        '  %s: %s,' % (k, json.dumps(_value(getattr(CS, k)), separators=(', ', ': ')))
         for k in CS.EXPORTED)
 
 

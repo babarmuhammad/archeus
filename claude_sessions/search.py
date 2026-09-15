@@ -2,7 +2,7 @@
 
 import os
 
-from .config import C_RESET, C_DIM, C_SRCH, C_SEL
+from .config import C_RESET, C_DIM, C_SRCH
 from .sessions import load_name, format_age
 from .stats import iter_all_sessions, save_disk_cache
 from . import render
@@ -42,18 +42,14 @@ def global_search(entries):
     from . import ui
 
     # ── index phase (incremental, ESC = partial) ──────────────
-    rows, partial = build_search_index(entries, silent=False)
-    # (mtime, ppath, enc, sid, display_name, haystack, cfgdir) tuples for the
-    # positional accesses below
-    index = [(r['mtime'], r['path'], r['enc'], r['sid'], r['display'],
-              r['haystack'], r['cfgdir']) for r in rows]
+    index, partial = build_search_index(entries, silent=False)
 
     # ── interactive phase ─────────────────────────────────────
     query = ''
     nav = 0
     while True:
         q = query.lower().strip()
-        matches = [r for r in index if all(w in r[5] for w in q.split())] if q else index
+        matches = [r for r in index if all(w in r['haystack'] for w in q.split())] if q else index
         max_rows = max(5, render.frame_height() - 9)
         shown = matches[:max_rows]
         nav = min(nav, max(0, len(shown) - 1))
@@ -61,11 +57,11 @@ def global_search(entries):
         title = 'SEARCH ALL SESSIONS' + (' (partial index)' if partial else '')
         frame = [render.header('ARCHEUS', title), '',
                  f"  {C_SRCH}[ {query}▌ ]{C_RESET}  {C_DIM}{len(matches)} match(es){C_RESET}", '']
-        for i, (mtime, ppath, enc, sid, display, _, _cfgdir) in enumerate(shown):
+        for i, r in enumerate(shown):
             label = render.cols(
-                [os.path.basename(ppath) or ppath,
-                 f"{C_DIM}{format_age(mtime).strip()}{C_RESET}",
-                 display],
+                [r['project'],
+                 f"{C_DIM}{r['age']}{C_RESET}",
+                 r['display']],
                 [18, 7, None])
             frame.append(render.row(label, selected=(i == nav)))
         if len(matches) > len(shown):
@@ -84,8 +80,8 @@ def global_search(entries):
                 return None
         elif ev[0] == 'enter':
             if shown:
-                mtime, ppath, enc, sid, _, _, cfgdir = shown[nav]
-                return ('resume', ppath, enc, sid, cfgdir)
+                r = shown[nav]
+                return ('resume', r['path'], r['enc'], r['sid'], r['cfgdir'])
         elif ev[0] == 'up':
             if shown:
                 nav = (nav - 1) % len(shown)

@@ -521,17 +521,13 @@ def audit_page(pg, label, settle=6000):
     down: the memory tab grew a fourth fetch, went over the fixed 800ms wait,
     and was audited as a spinner for exactly as long as nobody looked at the
     screenshot."""
-    try:
-        pg.wait_for_function(
-            "()=>{const c=document.querySelector('#content');"
-            "return c && !c.querySelector('.spin') && c.querySelector('.card,.slist,.dash');}",
-            timeout=settle)
-    except Exception:
+    if not _rendered(pg, settle):
         print(f'  {label:<11} NEVER RENDERED (still loading after {settle}ms)')
         return False
     bad = pg.evaluate(_rooted(MODAL_JS, PAGE_ROOT))
     ovals = pg.evaluate(_rooted(OVAL_JS, PAGE_ROOT))
-    state = ('OVERFLOW ' + '; '.join(bad)) if bad else             ('OVAL ' + '; '.join(ovals)) if ovals else 'clean'
+    state = ('OVERFLOW ' + '; '.join(bad)) if bad else \
+            ('OVAL ' + '; '.join(ovals)) if ovals else 'clean'
     print(f'  {label:<11} {state}')
     return state == 'clean'
 

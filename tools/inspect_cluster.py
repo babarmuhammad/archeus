@@ -22,8 +22,9 @@ before it can be used is a bench nobody uses.
 """
 import sys, threading, pathlib
 from http.server import ThreadingHTTPServer
-sys.path.insert(0, r"D:\Claude")
-sys.path.insert(0, r"D:\Claude\tools")
+_ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_ROOT))
+sys.path.insert(0, str(_ROOT / 'tools'))
 import smoke_gui                                    # noqa: E402
 from claude_sessions import gui                     # noqa: E402
 from playwright.sync_api import sync_playwright     # noqa: E402
