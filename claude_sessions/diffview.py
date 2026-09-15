@@ -93,7 +93,6 @@ def confirm(old, new, title):
 
     flush_input()
     top = 0
-    pending = None
     while True:
         body = diff_body if mode_diff else full_body
         page = max(4, render.frame_height() - 7)
@@ -117,8 +116,7 @@ def confirm(old, new, title):
                          + ("  (end)" if at_end else "")))
         render.render_frame(frame)
 
-        ev = pending if pending else wait_event()
-        pending = None
+        ev = wait_event()
         if ev[0] == 'up':
             top -= 1
         elif ev[0] == 'down':
@@ -145,6 +143,16 @@ def _candidate_dirs(project_path, proj_folder):
     if proj_folder:
         out.append(os.path.join(proj_folder, _SNAP_SUBDIR))
     return out
+
+
+def _read_text(p):
+    """Snapshot contents, or '' if unreadable. A stale or corrupt snapshot must
+    never raise into the operation that triggered the diff."""
+    try:
+        with open(p, encoding='utf-8', errors='ignore') as f:
+            return f.read()
+    except Exception:
+        return ''
 
 
 def _read_index(d):
@@ -228,10 +236,7 @@ def read_version(project_path, proj_folder, key, ts):
     for d in _candidate_dirs(project_path, proj_folder):
         for vts, p in _version_files(d, key):
             if vts == ts:
-                try:
-                    return open(p, encoding='utf-8', errors='ignore').read()
-                except Exception:
-                    return ''
+                return _read_text(p)
     return ''
 
 
@@ -259,12 +264,7 @@ def restore(project_path, proj_folder, key, ts):
     text = read_version(project_path, proj_folder, key, ts)
     if not text:
         return False, 'that version is no longer on disk'
-    cur = ''
-    if os.path.isfile(p):
-        try:
-            cur = open(p, encoding='utf-8', errors='ignore').read()
-        except Exception:
-            cur = ''
+    cur = _read_text(p) if os.path.isfile(p) else ''
     if cur == text:
         return True, 'already at that version'
     record(project_path, proj_folder, key, cur, text)
@@ -272,10 +272,9 @@ def restore(project_path, proj_folder, key, ts):
         # the graph lives in TWO mirrored locations and load_memory takes
         # whichever it finds first — restoring one of them would leave the
         # other to win the next read
-        import json as _json
         from .memory import save_memory
         try:
-            data = _json.loads(text)
+            data = json.loads(text)
         except ValueError:
             return False, 'that snapshot is not valid JSON'
         return (True, 'restored memory graph') if save_memory(
@@ -290,21 +289,16 @@ def load_prev(project_path, proj_folder, key):
     for d in _candidate_dirs(project_path, proj_folder):
         p = os.path.join(d, f'{key}.prev')
         if os.path.isfile(p):
-            try:
-                return open(p, encoding='utf-8', errors='ignore').read()
-            except Exception:
-                return ''
+            return _read_text(p)
     return ''
 
 
 def last_change(project_path, proj_folder, key):
     """Latest index entry for `key`, or None."""
     for d in _candidate_dirs(project_path, proj_folder):
-        idx = _read_index(d)
-        if idx:
-            for e in reversed(idx):
-                if e.get('key') == key:
-                    return e
+        for e in reversed(_read_index(d)):
+            if e.get('key') == key:
+                return e
     return None
 
 
