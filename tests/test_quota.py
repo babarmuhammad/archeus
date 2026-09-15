@@ -118,7 +118,8 @@ def test_a_seen_limit_error_stops_the_rest_of_the_burst(tmp_path):
     d = str(tmp_path / 'acct')
     env = _c.account_env(d)
     assert quota.preflight([EXE, '-p', 'x'], env)[1] == ''      # cache empty
-    quota.note_failure(env, 'claude exited 1: Claude AI usage limit reached')
+    quota.note_failure([EXE, '-p', 'x'], env,
+                       'claude exited 1: Claude AI usage limit reached')
     assert quota.preflight([EXE, '-p', 'x'], env)[1] != ''
 
 
@@ -367,3 +368,53 @@ def test_a_json_envelope_failure_reports_the_sentence_not_the_blob():
         'Traceback (most recent call last):'
     assert _claude_failure_reason('{not json at all') == '{not json at all'
     assert _claude_failure_reason('') == '' and _claude_failure_reason(None) == ''
+
+
+# ── the guard is per HARNESS, not per CLAUDE_CONFIG_DIR ──────
+
+CODEX = os.path.join('C:', 'bin', 'codex.exe')
+
+
+def test_a_codex_call_is_not_measured_against_a_claude_accounts_headroom(tmp_path):
+    """`account_env` copies os.environ, so a Codex environment carries an
+    ambient CLAUDE_CONFIG_DIR too. Reading that key alone answered with a real,
+    unrelated Claude account — and every window this module knows is that
+    account's, so a full Claude window either blocked the Codex call or swapped
+    its env for `account_env(some Claude account)`, which drops CODEX_HOME and
+    runs it against the wrong home entirely.
+    """
+    d = str(tmp_path / 'acct')
+    env = _c.account_env(d)                       # a Claude account, seen full
+    quota._observed[quota._key(d)] = 9e9
+    assert quota.preflight([EXE, '-p', 'x'], env)[1] != ''    # still guarded
+
+    codex_env = dict(env)
+    codex_env['CODEX_HOME'] = str(tmp_path / 'codexhome')
+    out_env, blocked = quota.preflight([CODEX, 'exec', 'x'], codex_env)
+    assert blocked == ''
+    assert out_env == codex_env                   # byte-identical: nothing swapped
+    assert out_env['CODEX_HOME'] == str(tmp_path / 'codexhome')
+
+
+def test_cfgdir_of_reads_the_home_var_the_argv_names(tmp_path):
+    env = _c.account_env(str(tmp_path / 'acct'))
+    env['CODEX_HOME'] = str(tmp_path / 'codexhome')
+    assert quota._cfgdir_of([EXE, '-p', 'x'], env) == str(tmp_path / 'acct')
+    assert quota._cfgdir_of([CODEX, 'exec', 'x'], env) == str(tmp_path / 'codexhome')
+    assert quota._cfgdir_of(['unknown.exe'], env) is None
+
+
+def test_a_codex_limit_error_latches_no_claude_account(tmp_path):
+    """The mirror of the preflight bug: a Codex 429 used to put the ambient
+    Claude account into `_observed` for fifteen minutes."""
+    d = str(tmp_path / 'acct')
+    env = _c.account_env(d)
+    env['CODEX_HOME'] = str(tmp_path / 'codexhome')
+    quota.note_failure([CODEX, 'exec', 'x'], env,
+                       "You've hit your session limit · resets 2:30am")
+    assert quota._observed == {}
+    assert quota.preflight([EXE, '-p', 'x'], env)[1] == ''
+    # and a real Claude failure still latches
+    quota.note_failure([EXE, '-p', 'x'], env,
+                       "You've hit your session limit · resets 2:30am")
+    assert quota.preflight([EXE, '-p', 'x'], env)[1] != ''

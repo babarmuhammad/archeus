@@ -79,12 +79,21 @@ def _key(cfgdir=None):
     return _norm(_c.resolve_config_dir(cfgdir))
 
 
-def _cfgdir_of(env):
-    """The account a prepared environment points at, or None for the active
-    one. `config.account_env` is the only thing that sets this key."""
-    if isinstance(env, dict):
-        return env.get('CLAUDE_CONFIG_DIR') or None
-    return None
+def _cfgdir_of(args, env):
+    """The home a prepared environment points at, or None for the active one.
+
+    Read through the harness the ARGV names, never through `CLAUDE_CONFIG_DIR`
+    alone: `config.account_env` copies `os.environ`, so that variable is
+    present in a Codex environment too and this answered with a real,
+    unrelated Claude account instead of with nothing. Every window this module
+    knows about is that account's, so the wrong answer here spent one account's
+    headroom deciding another harness's call.
+    """
+    from .harnesses import of_argv
+    d = of_argv(args)
+    if d is None or not isinstance(env, dict):
+        return None
+    return env.get(d['home_env']) or None
 
 
 def is_inference(args):
@@ -188,15 +197,22 @@ def is_limit_error(text):
     return any(m in t for m in _LIMIT_MARKERS) or bool(_LIMIT_RE.search(t))
 
 
-def note_failure(env, text):
+def note_failure(args, env, text):
     """Remember that this account answered with a limit error.
 
     The poller runs at 300s, so on a cold cache the first call of a burst still
     gets through. That one failure is what stops the other five.
+
+    It takes the argv for the same reason `preflight` does: without it a Codex
+    429 latched a CLAUDE account out of headless work for fifteen minutes.
     """
     if not is_limit_error(text):
         return
-    _observed[_key(_cfgdir_of(env))] = time.time() + _OBSERVED_TTL
+    from .harnesses import of_argv, DEFAULT
+    d = of_argv(args)
+    if d is not None and d['id'] != DEFAULT:
+        return
+    _observed[_key(_cfgdir_of(args, env))] = time.time() + _OBSERVED_TTL
 
 
 def forget(cfgdir=None):
@@ -215,6 +231,17 @@ def preflight(args, env=None):
     """
     if not is_inference(args):
         return env, ''
+    # Every window this module can read is Anthropic's — `worst_window` reads
+    # the OAuth usage cache — so for another harness there is no headroom to
+    # offer and nothing to compare against. Blocking would refuse work on a
+    # number that does not describe it, and switching would hand back
+    # `account_env(a Claude account)`, which drops CODEX_HOME entirely and
+    # silently runs the call against the wrong home. `plan_limits` already
+    # states this gap per descriptor; this is the same fact at the guard.
+    from .harnesses import of_argv, DEFAULT
+    _d = of_argv(args)
+    if _d is not None and _d['id'] != DEFAULT:
+        return env, ''
     # A call routed at a provider is not spending THIS account's quota, so
     # neither answer this function can give is right for it: blocking it refuses
     # work that costs the account nothing, and switching account replaces the
@@ -229,7 +256,7 @@ def preflight(args, env=None):
         mode = 'prompt'
     if mode == 'off':
         return env, ''
-    cfgdir = _cfgdir_of(env)
+    cfgdir = _cfgdir_of(args, env)
     why = reason(cfgdir)
     if not why:
         return env, ''

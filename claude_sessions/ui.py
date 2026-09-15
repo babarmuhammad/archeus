@@ -253,7 +253,7 @@ def _note_failure(args, env, code, errs, chunks=()):
         code, (err or out or '(no output)')[:300])
     # the raw text of BOTH streams, for the same reason _run_cancellable passes
     # the envelope: a marker may sit in a field the sentence does not carry
-    quota.note_failure(env, err + '\n' + ''.join(c for c in chunks if c))
+    quota.note_failure(args, env, err + '\n' + ''.join(c for c in chunks if c))
     from . import events
     events.record('subprocess', _m.last_call_error,
                   detail=' '.join(str(a) for a in list(args)[:2]))
