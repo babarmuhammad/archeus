@@ -21,16 +21,57 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, 'tests'))
 
+from claude_sessions import themes as _themes
+
 OUT = os.path.join(ROOT, 'docs', 'img')
 
-#: the 16 ANSI colours, plus the 256-cube, resolved against the GUI palette so
-#: the screenshots match the theme the app actually ships
-BASE16 = [
-    '#1b1f27', '#ff6b81', '#3fdd9d', '#f7b955', '#7dcfff', '#c792ea', '#56d4dd', '#c9d1d9',
-    '#6a7381', '#ff8fa1', '#65e6b4', '#ffcd7a', '#a5e0ff', '#dcb4ff', '#8ae8ef', '#f0f6fc',
-]
-BG = '#0d1117'
-FG = '#c9d1d9'
+#: Which palette the published TUI captures wear. `graph` — the same world the
+#: GUI captures use, so the two halves of one published set are one look rather
+#: than two. It is a hidden palette (a world owns it), which is exactly why it
+#: has to be named here: the picker will never hand it over.
+SHOT_PALETTE = 'graph'
+
+#: the 16 ANSI colours, DERIVED from that palette rather than written down
+#: again. The list used to be sixteen literals copied off the default theme,
+#: which is the shape this repo has been bitten by before: a second spelling of
+#: a canonical value is not a guard, it is a second thing to keep in step, and
+#: nothing would have failed when the palette moved underneath it.
+_P = _themes.PALETTES[SHOT_PALETTE]
+
+
+def _base16(p):
+    """The 16 terminal colours for a palette.
+
+    A palette states surfaces and roles, not an ANSI ramp, so the eight bright
+    slots are the same hues lifted toward white — which is what a terminal's
+    bright half is. `hex_to_x256` is deliberately not used: it never returns
+    0-15 (those are user-configurable in a real terminal), and this is the
+    renderer that has to DRAW them."""
+    def rgb(h):
+        return [int(h[i:i + 2], 16) for i in (1, 3, 5)]
+
+    def hexs(c):
+        return '#%02x%02x%02x' % tuple(int(max(0, min(255, v))) for v in c)
+
+    def lift(h, t=.35):
+        return hexs([v + (255 - v) * t for v in rgb(h)])
+
+    def mix(a, b, t=.5):
+        x, y = rgb(a), rgb(b)
+        return hexs([x[i] + (y[i] - x[i]) * t for i in range(3)])
+
+    # Cyan is the one slot a palette does not state. It is NOT `code`, which is
+    # a code-block ground and comes out near-black; blending the two hues that
+    # bracket it — the ok/teal role and the blue accent — is the derivation that
+    # keeps it a real hue of THIS palette rather than a literal from another.
+    dark = [p['bg2'], p['err'], p['ok'], p['warn'], p['accent'], p['accent2'],
+            mix(p['ok'], p['accent']), p['txt']]
+    return dark + [p['dim']] + [lift(c) for c in dark[1:7]] + [lift(p['txt'], .6)]
+
+
+BASE16 = _base16(_P)
+BG = _P['bg']
+FG = _P['txt']
 
 
 def cube(n):
@@ -232,6 +273,17 @@ def main():
             sb = H.Sandbox(mp, tmp)
             mp.setattr('shutil.get_terminal_size',
                        lambda *a, _c=cols, **k: os.terminal_size((_c, 40)))
+            # The startup warnings read THIS MACHINE, not the fixture, and they
+            # print above the first frame: the capture came out with the
+            # co-installation warning — the old distribution sharing files with
+            # this one — across the top of a published screenshot, which is a
+            # fact about the laptop that shot it. Silenced here rather than in
+            # `main`, because on a real install every one of them is exactly
+            # what the user needs to see.
+            for _w in ('coinstalled_warning', 'stale_env_warning',
+                       'stale_plugin_warning'):
+                mp.setattr('claude_sessions.migrate.' + _w,
+                           lambda *a, **k: '', raising=True)
             text = demoise(drive(H, mp, sb), tmp)
             rows = parse(last_frame(text), width=cols)
             rows = [r for r in rows if any(c.ch != ' ' for c in r)] or rows

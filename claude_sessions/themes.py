@@ -708,7 +708,19 @@ SKINS = {
         # was tuned against had 120 rods per cluster. It now has 480 shell rods,
         # 30 frame tubes, 20 spokes and a 480-rod inner web — five times the lit
         # surface, so the same strength is five times the glow.
-        'arrive': 'lift', 'op': .58, 'stage': 'graph', 'bloom': .34, 'calm': .50, 'flow': 0.85,
+        # op .74, up from .58. Measured on the published captures: a panel at
+        # .58 over a BRIGHT part of the cluster leaves body text washed out
+        # — the sessions detail pane was illegible with a lit cluster behind
+        # it, and the memory page's intro line read through the scene. The
+        # trap is that the dashboard looks fine at .58, because its cards are
+        # dense; the pages that break are the SPARSE ones, where a large
+        # panel has nothing in it but the scene showing through. Per-page
+        # opacity is not the fix and never will be — a page you happen to be
+        # on cannot be a reason for the theme to be a different theme — so the
+        # world carries one value that works on its worst page. At .74 the
+        # cluster still reads through every surface; at .86 it stops being
+        # translucent at all, which is the thing worth having.
+        'arrive': 'lift', 'op': .74, 'stage': 'graph', 'bloom': .34, 'calm': .50, 'flow': 0.85,
     },
     'crt': {
         'label': 'Terminal', 'blurb': 'Retro CRT in a bezel. Curved raster, rolling refresh, phosphor glow.',

@@ -790,6 +790,27 @@ def main():
             pg.set_viewport_size({'width': 1600, 'height': 1000})
             pg.wait_for_timeout(400)
             pg.screenshot(path=os.path.join(OUT, f'_skin_{sk}.png'))
+
+        # ── the published captures, in the graph world ──
+        # What the README and both sites show is a decision, not whatever the
+        # default happened to be: `graph` is the world built from this project's
+        # OWN architecture graph, so the screenshots wear the thing the product
+        # is about. It is a separate pass rather than a world set around the
+        # audit above, because every number that pass prints describes the
+        # default skin and has to keep describing it.
+        print(chr(10) + '— published captures (graph world) —')
+        pg.evaluate("ST.world='graph';applyTheme(ST.theme)")
+        pg.set_viewport_size({'width': 1600, 'height': 1000})
+        pg.evaluate("go('home')")
+        pg.wait_for_timeout(1200)
+        for name, nav in DOC_PAGES:
+            pg.evaluate(nav)
+            # longer than the audit's wait: these are the published frames, and
+            # the stage fades in over ~500ms after a world change
+            pg.wait_for_timeout(1100)
+            pg.screenshot(path=os.path.join(OUT, f'_doc_{name}.png'))
+            print('  ' + name)
+
         pg.evaluate("ST.world='';ST.skin='';applyTheme(ST.theme)")
         br.close()
     srv.shutdown()
@@ -828,15 +849,59 @@ def main():
 #: third-party design material we cannot redistribute — so the handful of shots
 #: that ship are copied into a tracked directory deliberately, by name, rather
 #: than by publishing the whole scratch folder.
+#: name -> how to get there, for the published pass. A project has to be open
+#: before a project TAB means anything, so the order is load-bearing and the
+#: list is a sequence rather than a mapping.
+DOC_PAGES = (
+    ('dash', "go('home')"),
+    ('usage', "go('usage')"),
+    ('client', "go('client')"),
+    ('sessions', "openProject(ST.projects[0]);TAB='sessions';go('project')"),
+    ('memory', "TAB='memory';go('project')"),
+)
+
 DOC_SHOTS = {
-    '_shot_dash.png': 'gui-dashboard.png',
-    '_shot_tab_sessions.png': 'gui-sessions.png',
-    '_shot_tab_memory.png': 'gui-memory.png',
-    '_shot_client.png': 'gui-claude-code.png',
-    '_shot_usage.png': 'gui-usage.png',
+    '_doc_dash.png': 'gui-dashboard.png',
+    '_doc_sessions.png': 'gui-sessions.png',
+    '_doc_memory.png': 'gui-memory.png',
+    '_doc_client.png': 'gui-claude-code.png',
+    '_doc_usage.png': 'gui-usage.png',
+    # The two that exist to SHOW a look rather than a screen, so they stay on
+    # the per-skin pass: the graph world beside a classic skin is the whole
+    # point of the pair, and shooting both in the same world would say nothing.
     '_skin_graph.png': 'gui-skin-graph.png',
     '_skin_crt.png': 'gui-skin-crt.png',
 }
+
+
+#: what a published capture is resampled to on the way out, in CSS pixels wide.
+#: The shots are TAKEN at 1600 because that is the layout worth showing — the
+#: grid has one more column there — and PUBLISHED at 1280 because no page
+#: renders them wider than 900: the manual sets 900, the README's table halves
+#: it. A supersampled 1280 is sharper than a native one and costs 36% fewer
+#: pixels, which is the whole reason this exists: the graph world's stage is a
+#: lit field of several hundred bodies, and PNG cannot compress noise. The same
+#: captures on the old flat background were 180 KB; at 1600 with the stage they
+#: are 790 KB each, and README.md embeds five of them by raw URL, so that is
+#: four megabytes a reader downloads to look at a repository page.
+PUBLISH_W = 1280
+
+
+def _downscale(src, dst):
+    """Resample a capture to PUBLISH_W on the way out. False if Pillow is
+    absent — the copy still happens, just at full size, because a missing
+    optional dependency must not silently publish NOTHING."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return False
+    im = Image.open(src)
+    if im.width <= PUBLISH_W:
+        im.save(dst)
+        return True
+    h = round(im.height * PUBLISH_W / im.width)
+    im.resize((PUBLISH_W, h), Image.LANCZOS).save(dst)
+    return True
 
 
 def export_docs():
@@ -856,7 +921,8 @@ def export_docs():
             if not os.path.isfile(p):
                 print('  MISSING', src)
                 continue
-            shutil.copyfile(p, os.path.join(dest, name))
+            if not _downscale(p, os.path.join(dest, name)):
+                shutil.copyfile(p, os.path.join(dest, name))
             n += 1
         print('exported %d/%d shots → %s' % (n, len(DOC_SHOTS), dest))
 

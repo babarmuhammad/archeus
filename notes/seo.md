@@ -84,6 +84,17 @@ a push. Google does not participate: it is reached by crawling and by Search
 Console, so there is nothing to run for it. Not on a deploy hook on purpose; 48
 URLs re-submitted on every push is how a host gets its quota cut.
 
+## When the app's LOOK changes
+
+The screenshots are published surface, and every one of them is generated — a
+front-end change that does not re-shoot them leaves both sites showing an app
+that no longer exists. `CONTRIBUTING.md` has the commands; the two decisions
+worth knowing here are that the published captures are taken in the **graph
+world**, and that the architecture animation must be captured from a clean
+checkout named `archeus`, never the working tree (it titles the graph after its
+directory and draws whatever is on disk — the published one said "Claude" and
+included a scratch file for a week).
+
 ## Measured state, 2026-09-15
 
 Worth keeping because the intuition is wrong in both directions.

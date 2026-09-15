@@ -74,7 +74,7 @@ session in five minutes.
 
 ![Terminal UI](img/tui-main.png){ width="836" height="477" loading=lazy }
 
-![Desktop app](img/gui-sessions.webp){ width="1600" height="1000" loading=lazy }
+![Desktop app](img/gui-sessions.webp){ width="1280" height="800" loading=lazy }
 
 </div>
 

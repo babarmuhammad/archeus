@@ -58,6 +58,37 @@ first. The full sequence, and what a page owes beyond passing them, is in
 Pillow. All three run in CI — the first two on every push, the third on the weekly
 schedule with the GUI smoke check.
 
+### If you changed how the app LOOKS
+
+Every published screenshot is generated, and a front-end change that does not
+re-shoot them ships a manual showing an app that no longer exists. After a
+change to layout, a skin or world, the stage, the nav, or a TUI screen:
+
+```bash
+py tools/shot_gui.py --docs     # every page + the published set, then export
+py tools/shot_tui.py            # the two terminal frames
+py tools/optimize_images.py     # derive the WebP siblings, re-compress
+```
+
+The architecture animation only needs re-capturing when the graph itself
+changes, and it must be shot from a CLEAN checkout named `archeus` — the
+capture titles the graph after its directory and draws whatever is on disk, so
+one taken in a working tree publishes your scratch files:
+
+```bash
+git worktree add ../archeus HEAD --detach
+py tools/capture_graph_gif.py --project ../archeus --frames 30 --fps 12 \
+    --width 900 --height 520 --out docs/graph-real.webp
+cp docs/graph-real.webp www/public/graph-real.webp
+git worktree remove ../archeus
+```
+
+Two things the tools decide for you, so do not fight them: the published
+captures are taken in the **graph world** (`DOC_PAGES` in `tools/shot_gui.py`),
+and both sites get the same files — `docs/img/` and `www/public/img/` — because
+copying to one and remembering the other by hand is how the site ships a
+release behind the manual.
+
 **Do not hand-edit an image under `docs/img/`.** `tools/shot_gui.py` and
 `tools/shot_tui.py` write the PNGs and `tools/optimize_images.py` derives the WebP the
 manual actually links; `tests/test_demo_fixtures.py` rejects anything else in there.

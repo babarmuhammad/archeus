@@ -32,27 +32,39 @@ DOCS = os.path.join(ROOT, 'docs')
 #: PNG is what README.md embeds for PyPI and the WebP is what the manual links.
 #: www/public/img holds PNG only — next/image negotiates the format per request
 #: there, so a second source file would be re-encoded on the way out.
+#:
+#: docs/img and www/public/img were raised from 3000/2400 when the published
+#: captures moved into the graph world. It is not slack: the stage is a lit
+#: field of several hundred bodies, and PNG cannot compress noise — the same
+#: five screens were 180 KB each on the old flat background and are ~700 KB
+#: now, and resampling them smaller barely moves it (790 → 703 KB at 1280,
+#: measured), because fewer pixels of a noisy image are not fewer colours.
+#: What a READER downloads went DOWN in the same change: every page and the
+#: README link the WebP siblings, which are 66-99 KB. These ceilings are on
+#: masters nothing serves.
 BUDGET_KB = {
-    os.path.join('docs', 'img'): 3000,
+    os.path.join('docs', 'img'): 6000,
     # Nearly all of this is two masters no page serves: the 1254px logo every
     # icon is cut from, and the wordmark, which stays truecolour+alpha because
     # it composites onto three different grounds.
     os.path.join('docs', 'assets'): 1400,
     os.path.join('www', 'public'): 700,
-    os.path.join('www', 'public', 'img'): 2400,
+    os.path.join('www', 'public', 'img'): 5200,
 }
 
 #: The ceiling for one image a reader actually downloads. 600 KB is the
 #: architecture-graph animation at 538 KB plus room to breathe; it was 5770 KB
 #: as a GIF.
 #:
-#: This is deliberately a cap on what is LINKED, not on what is stored. Two
-#: files in the repo are over it and both are masters no page requests:
-#: `docs/assets/logo.png` (1254px, the source every icon is cut from, and
-#: `exclude_docs` keeps it out of the build) and `gui-skin-crt.png` (a CRT skin
-#: is scanline noise, which PNG cannot compress and a palette cannot survive —
-#: the manual links its 77 KB WebP). A cap on storage would have to grant both
-#: an exemption and would then be a list of exemptions.
+#: This is deliberately a cap on what is LINKED, not on what is stored, and the
+#: distinction is what lets the masters be heavy while the pages stay light.
+#: Every screenshot PNG in `docs/img` is now over it and NONE of them is
+#: requested: the manual links the WebP siblings and so does README.md, which
+#: is the change that made the graph-world captures affordable at all. The
+#: other master over it is `docs/assets/logo.png` (1254px, the source every
+#: icon is cut from, kept out of the build by `exclude_docs`). A cap on storage
+#: would have to grant each of them an exemption and would then be a list of
+#: exemptions rather than a rule.
 BIGGEST_LINKED_KB = 600
 
 

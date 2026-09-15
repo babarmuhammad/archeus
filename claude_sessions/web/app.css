@@ -2409,3 +2409,19 @@ html.zen .top>#bZen:hover,html.zen .top>#bZen:focus-visible{opacity:1}
   background:none;border-bottom:1px solid var(--line);
   padding:0;margin:0 0 var(--sp-3);z-index:auto}
 .mtabs .tab{padding:7px 13px;font-size:11.5px}
+
+/* ── the two text surfaces that sit ON the stage ────────────────────────
+   Everything else inside `#content` is in a `.card`, which paints
+   `rgba(var(--panel-rgb),var(--sk-op))` and therefore has a ground of its own.
+   `.pgnote` and `.mtabs` deliberately have none — a page's one-line note and an
+   in-content tab strip are not boxes, and over a quiet gradient that reads
+   exactly right, which is why they were written that way.
+
+   Over a LIT scene it stops reading: measured on the published captures, a
+   bright cluster crossed the harness strip and the Usage page's own tabs came
+   out as `Claude ode`, and the Memory page's note had a node sitting inside a
+   word. A shadow rather than a panel, because a panel would box the two things
+   the layout deliberately leaves unboxed — and it is scoped to `stage-on`, so
+   it exists only where its cause does. Static; no readback, nothing animated. */
+html.stage-on .pgnote,html.stage-on .mtabs .tab{
+  text-shadow:0 1px 3px rgba(0,0,0,.78)}

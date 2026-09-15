@@ -69,9 +69,9 @@ Icons are inline Material SVG — no CDN, no emoji.
 
 <div class="grid" markdown>
 
-![Graph world](img/gui-skin-graph.webp){ width="1600" height="1000" loading=lazy }
+![Graph world](img/gui-skin-graph.webp){ width="1280" height="800" loading=lazy }
 
-![CRT skin](img/gui-skin-crt.webp){ width="1600" height="1000" loading=lazy }
+![CRT skin](img/gui-skin-crt.webp){ width="1280" height="800" loading=lazy }
 
 </div>
 
