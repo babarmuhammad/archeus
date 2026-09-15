@@ -13,10 +13,20 @@ from claude_sessions import worklog, hooks
 
 
 def _transcript(path, title='', first_user='do the thing', edits=('a.py', 'b.py')):
+    """A transcript in the shape Claude Code ACTUALLY writes.
+
+    The fixture used to emit `{'role': 'user', 'content': …}` — a shape Claude
+    Code has never produced — so `summarize_transcript`'s user-message test was
+    green here and false on every real file. Every entry in this repo's own
+    worklog.json had an empty summary as a result. The record below is the real
+    one: `type` at the top level and `role`/`content` nested under `message`.
+    """
     lines = []
     if title:
         lines.append({'type': 'ai-title', 'title': title})
-    lines.append({'role': 'user', 'content': first_user})
+    if first_user:
+        lines.append({'type': 'user',
+                      'message': {'role': 'user', 'content': first_user}})
     content = [{'type': 'tool_use', 'name': 'Edit', 'input': {'file_path': f}}
                for f in edits]
     lines.append({'type': 'assistant', 'message': {'role': 'assistant', 'content': content}})
@@ -33,11 +43,58 @@ def test_summarize_transcript(tmp_path):
     assert files == ['auth.py', 'login.py']
 
 
-def test_summarize_falls_back_to_first_user(tmp_path):
+def test_an_episode_from_a_real_transcript_has_a_task_and_files(tmp_path):
+    """The amnesia test, against the record shape production emits.
+
+    This is the one that failed before the fixture was corrected: a nested
+    `message.content` returned no summary at all.
+    """
     tp = tmp_path / 's.jsonl'
-    _transcript(str(tp), title='', first_user='fix the parser bug', edits=())
+    _transcript(str(tp), title='', first_user='fix the parser bug',
+                edits=('login.py',))
     summary, files = worklog.summarize_transcript(str(tp))
-    assert summary == 'fix the parser bug' and files == []
+    assert summary == 'fix the parser bug'
+    assert files == ['login.py']
+
+
+def test_the_task_is_the_first_message_not_the_last(tmp_path):
+    """`_parse_session` keeps the LAST good user message as a row's preview.
+    An episode wants the task, and the task is what you opened with."""
+    tp = tmp_path / 's.jsonl'
+    with open(tp, 'w', encoding='utf-8') as f:
+        for text in ('add a login page', 'now also add logout'):
+            f.write(json.dumps({'type': 'user',
+                                'message': {'role': 'user', 'content': text}}) + '\n')
+    assert worklog.summarize_transcript(str(tp))[0] == 'add a login page'
+
+
+def test_archeus_own_prompts_are_not_the_task(tmp_path):
+    """A headless call archeus made is not work the user did."""
+    from claude_sessions import sessions
+    tp = tmp_path / 's.jsonl'
+    with open(tp, 'w', encoding='utf-8') as f:
+        for text in (sessions.HEADLESS_MARK + ' extract entities from this module',
+                     'rename the config loader'):
+            f.write(json.dumps({'type': 'user',
+                                'message': {'role': 'user', 'content': text}}) + '\n')
+    assert worklog.summarize_transcript(str(tp))[0] == 'rename the config loader'
+
+
+def test_a_touched_file_keeps_its_module(tmp_path):
+    """A basename has no module in it, and the module is what `recall` scores
+    a path on — so storing basenames threw the signal away before the episode
+    was written."""
+    proj = tmp_path / 'proj'
+    (proj / 'claude_sessions').mkdir(parents=True)
+    tp = tmp_path / 's.jsonl'
+    _transcript(str(tp), title='t',
+                edits=(str(proj / 'claude_sessions' / 'recall.py'),))
+    assert worklog.summarize_transcript(str(tp), str(proj))[1] == \
+        ['claude_sessions/recall.py']
+    # outside the project it degrades to the basename rather than leaking an
+    # absolute path into a file that gets injected into a prompt
+    assert worklog.summarize_transcript(str(tp), str(tmp_path / 'other'))[1] == \
+        ['recall.py']
 
 
 def test_capture_and_ring_buffer(tmp_path):

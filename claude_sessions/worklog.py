@@ -51,15 +51,48 @@ def add_entry(project_path, entry):
 _EDIT_TOOLS = {'Edit', 'Write', 'MultiEdit', 'NotebookEdit'}
 
 
+def _rel(path, root):
+    """A touched file as `module/name.py`, not as a bare basename.
+
+    The basename is what a human reads in the digest, but it is also what
+    `recall` retrieves on — and a basename has no module in it, so every path
+    signal `recall._path_segments` scores was thrown away before the episode
+    was ever stored.
+    """
+    if root:
+        # normcase BEFORE splitting, never after: on Windows it rewrites '/' to
+        # '\', so a prefix test against a slash-joined root compares two
+        # different separators and never matches.
+        r = os.path.normcase(os.path.abspath(root))
+        ap = os.path.abspath(path)
+        if os.path.normcase(ap).startswith(r.rstrip(os.sep) + os.sep):
+            return ap[len(r.rstrip(os.sep)) + 1:].replace('\\', '/')
+    return path.replace('\\', '/').rsplit('/', 1)[-1]
+
+
 def _iter_json(transcript_path):
     from . import transcripts
     return transcripts.iter_json(transcript_path)
 
 
-def summarize_transcript(transcript_path):
+def summarize_transcript(transcript_path, root=''):
     """Return (summary, sorted_files) from a session jsonl. Summary = the
-    AI title if present, else the first user message. Files = paths from
-    Edit/Write tool uses. All best-effort; tolerant of shape variations."""
+    AI title if present, else the first real user message. Files = paths from
+    Edit/Write tool uses, relative to *root*. Tolerant of shape variations.
+
+    The user-message test used to be `obj['role'] == 'user'` with a string
+    `obj['content']`, and a real Claude Code record is
+    `{"type":"user","message":{"role":"user","content":…}}` — no top-level
+    `role`, no top-level `content`. So it was never once true in production and
+    every entry on disk had an empty summary, while the test asserted a shape
+    Claude Code does not emit. `sessions._extract_texts` has handled both all
+    along; this reuses it rather than carrying a third reading of the format.
+
+    The FIRST good message, not the last: `_parse_session` keeps the last one
+    as `preview` because that is the row's best label, but an episode wants the
+    task, and the task is what you opened the session with.
+    """
+    from .sessions import _extract_texts, _good_text, is_headless_text
     title = ''
     first_user = ''
     files = set()
@@ -68,10 +101,14 @@ def summarize_transcript(transcript_path):
             continue
         if obj.get('type') == 'ai-title' and obj.get('title'):
             title = str(obj['title'])
-        if not first_user and obj.get('role') == 'user' and isinstance(obj.get('content'), str):
-            first_user = obj['content']
-        # tool_use blocks live inside assistant message content
         msg = obj.get('message') if isinstance(obj.get('message'), dict) else obj
+        role = obj.get('role') or (msg.get('role', '') if isinstance(msg, dict) else '')
+        if role == 'user' and not first_user:
+            for text in _extract_texts(obj):
+                if _good_text(text) and not is_headless_text(text):
+                    first_user = text
+                    break
+        # tool_use blocks live inside assistant message content
         content = msg.get('content') if isinstance(msg, dict) else None
         if isinstance(content, list):
             for block in content:
@@ -81,7 +118,7 @@ def summarize_transcript(transcript_path):
                     fp = (block.get('input') or {}).get('file_path') \
                         or (block.get('input') or {}).get('notebook_path')
                     if fp:
-                        files.add(os.path.basename(str(fp)))
+                        files.add(_rel(str(fp), root))
     summary = (title or first_user or '').strip().replace('\n', ' ')
     if len(summary) > 120:
         summary = summary[:117] + '…'
@@ -91,7 +128,7 @@ def summarize_transcript(transcript_path):
 def capture_session(project_path, session_id, transcript_path):
     """Record one session's work. Returns the entry, or None if nothing useful
     (no summary and no files touched — don't clutter the log)."""
-    summary, files = summarize_transcript(transcript_path)
+    summary, files = summarize_transcript(transcript_path, project_path)
     if not summary and not files:
         return None
     entry = {'session_id': session_id,
