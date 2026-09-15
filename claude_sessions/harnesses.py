@@ -295,10 +295,15 @@ HARNESSES = {
         #: shadows a Claude login. Its own `auth.json` under the home is the
         #: login, and pointing at a home therefore picks one.
         'env_pops': (),
-        #: npm's global bin. Not `.local/bin`: pi ships as an npm package, and
-        #: `npm prefix -g` is where its shim lands.
-        'exe_globs': ('AppData/Roaming/npm/%s',) if os.name == 'nt' else (
-            '.local/bin/%s', '.npm-global/bin/%s'),
+        #: npm's global bin, on every platform it can be. Not `.local/bin`
+        #: alone: pi ships as an npm package, and `npm prefix -g` is where its
+        #: shim lands — which is `AppData/Roaming/npm` on Windows and one of the
+        #: other two elsewhere. Unbranched for the reason `exe_names` is: the
+        #: fixtures are Windows-shaped, so a branch here meant POSIX could not
+        #: find a binary the test had just written, and the cost of carrying all
+        #: three is one glob that misses.
+        'exe_globs': ('AppData/Roaming/npm/%s',
+                      '.local/bin/%s', '.npm-global/bin/%s'),
         'fold': 'pi.fold',
         'scan': 'pi.scan',
         'transcript_path': 'pi.transcript_path',
@@ -670,7 +675,13 @@ def is_inference(args):
     account-quota guard silently stopped applying.
     """
     try:
-        first = os.path.basename(str(args[0] or '')).lower()
+        # split on BOTH separators, never `os.path.basename`: it splits on the
+        # platform's own, so `C:\…\pi.cmd` was ONE long basename on Linux and
+        # macOS and matched no harness — an inference call that went ungated on
+        # exactly the platforms nobody develops on. `conftest._starts_claude`
+        # carries this same fix and the same comment, which is the tell that it
+        # belongs in the one place both could have called.
+        first = str(args[0] or '').replace('\\', '/').rsplit('/', 1)[-1].lower()
     except (IndexError, TypeError, KeyError):
         return False
     rest = list(args)[1:]

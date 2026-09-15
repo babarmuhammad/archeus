@@ -149,6 +149,79 @@ def test_a_management_subcommand_is_not():
         assert not quota.is_inference(argv)
 
 
+def test_one_argv_gets_one_answer_on_every_platform(monkeypatch):
+    """The quota guard may not depend on which machine is asking.
+
+    It did, twice, and CI was the only thing that noticed — both because the
+    fixtures are Windows-shaped and the developer machine is Windows, so the
+    suite was green here and red on two of five legs. `os.path.basename` splits
+    on the PLATFORM's separator, so a Windows path was one long basename on
+    Linux and matched no harness; and `exe_names` was branched on `os.name`, so
+    `claude.exe` was not a Claude Code binary there. Between them a headless
+    call went UNGATED on POSIX — the failure mode `is_inference` exists to stop.
+
+    This half is BEHAVIOURAL and, on Windows, it cannot tell the two apart —
+    `os.path.basename` splits backslashes here too, so reverting the fix leaves
+    it green. That was the first cut of this test and it guarded nothing. The
+    half that catches it is the source gate below, which forbids the call:
+    simulating POSIX by pointing `os.path` at `posixpath` DID catch it and is
+    not worth it, because `harnesses.os` is the real `os` module and patching
+    it process-wide made eight unrelated tests write to the developer's actual
+    account settings. A gate is not worth a global.
+    """
+    leads = ('C:' + chr(92) + 'x' + chr(92), 'C:/x/', '/usr/bin/', '')
+    for lead in leads:
+        for exe, flag in (('claude.exe', '-p'), ('claude', '--print'),
+                          ('codex.exe', 'exec'), ('pi.cmd', '--print')):
+            assert harnesses.is_inference([lead + exe, flag, 'go']), \
+                '%s%s %s' % (lead, exe, flag)
+        assert not harnesses.is_inference([lead + 'claude', 'mcp', 'list'])
+
+
+def test_nothing_that_places_a_binary_asks_what_platform_this_is():
+    """Every name, every install path, and the argv split, all platform-neutral.
+
+    This is the half that actually catches the two regressions, because both
+    were invisible to a behavioural test running on Windows. Two forbidden
+    shapes, and the reason each is forbidden:
+
+    * `os.name` in the descriptor table. The fixtures are Windows-shaped —
+      they write `codex.exe` and `AppData/Roaming/npm/pi` — so a POSIX-only
+      list meant `exe()` could not find a file the test had just created.
+      Carrying every name everywhere costs one `shutil.which` miss.
+    * `os.path.basename` in `is_inference`. It splits on the PLATFORM's
+      separator, so a Windows path was one long basename on Linux, matched no
+      harness, and a headless call went UNGATED there — the exact failure the
+      function exists to prevent. The both-separator split is the fix and this
+      is what keeps it.
+
+    Source-level on purpose. The behavioural test above cannot see either one
+    from Windows, and the only way to make it see them was to point the real
+    `os.path` at `posixpath`, which broke eight unrelated tests.
+    """
+    import inspect
+    src = inspect.getsource(harnesses)
+    # CODE only: the comments explaining why these are gone name them, and a
+    # gate its own rationale trips is a gate someone deletes.
+    def code_of(text):
+        return [ln.strip() for ln in text.splitlines()
+                if ln.strip() and not ln.strip().startswith('#')]
+
+    table = src[:src.index('def home_dir')]
+    hit = [ln for ln in code_of(table) if 'os.name' in ln]
+    assert not hit, 'a binary lookup is branched on os.name again: %s' % hit
+
+    sniff = inspect.getsource(harnesses.is_inference)
+    hit = [ln for ln in code_of(sniff) if 'os.path.basename' in ln]
+    assert not hit, (
+        'is_inference splits on the platform separator again: %s' % hit)
+
+    for hid in harnesses.ids():
+        names = harnesses.HARNESSES[hid]['exe_names']
+        assert any(n.endswith(('.exe', '.cmd')) for n in names), hid
+        assert any('.' not in n for n in names), hid
+
+
 def test_something_that_is_not_a_harness_at_all_is_not_inference():
     assert not quota.is_inference(['git', '-p', 'log'])
     assert not quota.is_inference([])
