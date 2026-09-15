@@ -2,6 +2,7 @@ import { allPosts } from '@/lib/blog';
 import { CHANGELOG_HTML, VERSION, htmlToText } from '@/lib/build-data';
 import { DOCS, docText } from '@/lib/content';
 import { FAQ } from '@/lib/faq';
+import { LEGAL } from '@/lib/legal';
 import { SITE } from '@/lib/site';
 
 /**
@@ -36,6 +37,10 @@ export function GET() {
 
     // The apex pages, from the same Doc data the pages themselves render.
     ...DOCS.map(docText),
+
+    // The policies, in full and from the same Doc data, because a summary of a
+    // privacy policy is the one summary nobody should be quoting.
+    ...LEGAL.map(docText),
 
     [
       '# Frequently asked questions',

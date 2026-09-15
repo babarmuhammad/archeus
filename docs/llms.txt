@@ -81,6 +81,16 @@ carries them.
 - [Credits](https://docs.claudectl.space/credits/): the projects and ideas archeus builds on.
 - [Blog](https://claudectl.space/blog): longer write-ups — why Claude Code forgets a project between sessions, what belongs in CLAUDE.md and what belongs in path-scoped rules, cutting the per-turn token cost with a bounded index, planning on an expensive model and executing on a free one, running multiple accounts, and what Claude Code writes to disk.
 
+## Legal
+
+One copy of each, on the product site, covering both hosts.
+
+- [Privacy policy](https://claudectl.space/legal/privacy): neither site collects anything — no forms, no analytics, no cookies; what the web hosts log anyway, and on what basis.
+- [Terms](https://claudectl.space/legal/terms): MIT licence, no warranty, and donations that are voluntary and buy nothing.
+- [Cookie policy](https://claudectl.space/legal/cookies): no cookies and no device storage, which is why there is no consent banner.
+- [Refund policy](https://claudectl.space/legal/refunds): a donation is a gift, not a purchase; Ko-fi took the payment and handles refunds.
+- [Support the project](https://ko-fi.com/babarmuhammad): voluntary donations on Ko-fi. No tier, no perk, nothing bought.
+
 ## Optional
 
 - [Full documentation as one file](https://docs.claudectl.space/llms-full.txt): every page above concatenated, for reading without crawling.

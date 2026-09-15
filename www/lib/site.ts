@@ -11,6 +11,18 @@ export const SITE = {
   authorGithub: 'https://github.com/babarmuhammad',
   license: 'MIT',
   ogImage: '/og-card.png',
+  /* The operator of both hosts, named because a policy has to name somebody and
+     a project is not a legal person. `contact` is a real mailbox: the address in
+     CODE_OF_CONDUCT.md is a GitHub users.noreply alias, which is send-only and
+     bounces, so it cannot be the contact route a privacy notice publishes. */
+  operator: 'Babar Muhammad Anas',
+  operatorCountry: 'Italy',
+  contact: 'babarh174@gmail.com',
+  /* Donations only — no tier, perk or benefit, and that is not a detail. The
+     moment a donation buys something it stops being a gift and becomes a
+     consumer supply contract, with a right of withdrawal and a real refund
+     policy behind it. See lib/legal.ts. */
+  kofi: 'https://ko-fi.com/babarmuhammad',
 } as const;
 
 /** Every profile the author controls, for schema.org `sameAs`.

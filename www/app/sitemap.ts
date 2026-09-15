@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { allPosts } from '@/lib/blog';
 import { DOCS } from '@/lib/content';
+import { LEGAL, legalPath } from '@/lib/legal';
 import { NAV, url } from '@/lib/site';
 
 /**
@@ -9,13 +10,16 @@ import { NAV, url } from '@/lib/site';
  * will be a page behind the next time one is added.
  *
  * /code-of-conduct is the one route neither table names — it is rendered from the
- * repository's CODE_OF_CONDUCT.md and appears only in the footer.
+ * repository's CODE_OF_CONDUCT.md and appears only in the footer. The policies
+ * are the same case and come from their own table: a legal page that is in
+ * neither the sitemap nor the footer is not published.
  */
 const APEX = [
   ...new Set([
     '/code-of-conduct',
     ...DOCS.map((d) => `/${d.slug}`), // HOME's slug is '', so this yields '/'
     ...NAV.map((n) => n.href as string),
+    ...LEGAL.map((d) => legalPath(d.slug)),
   ]),
 ];
 

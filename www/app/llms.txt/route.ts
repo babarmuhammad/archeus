@@ -1,5 +1,6 @@
 import { allPosts } from '@/lib/blog';
 import { DOCS, HOME } from '@/lib/content';
+import { LEGAL, legalPath } from '@/lib/legal';
 import { SITE, url } from '@/lib/site';
 
 /**
@@ -69,6 +70,14 @@ export function GET() {
     '## Blog',
     '',
     ...posts.map((p) => link(p.title, url(`/blog/${p.slug}`), oneLine(p.description))),
+    '',
+    '## Legal',
+    '',
+    // Listed because an answer engine asked "does this site track me" should be
+    // able to find the answer without a crawl, and because the answer is an
+    // unusual one: nothing collected, no cookies, no consent banner.
+    ...LEGAL.map((d) => link(d.title, url(legalPath(d.slug)), oneLine(d.description))),
+    link('Support the project', SITE.kofi, 'Voluntary donations on Ko-fi. No tier, no perk, nothing bought.'),
     '',
     '## Optional',
     '',
