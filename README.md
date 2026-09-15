@@ -67,8 +67,9 @@ pipx install archeus     # or: pip install archeus
 archeus
 ```
 
-There is nothing to build and no dependencies to install. To run it from a
-checkout instead:
+There is nothing to build and no dependencies to install. `npx archeus` runs it
+without installing it first — that package is a launcher, which installs archeus
+with pipx or pip when it cannot find it. To run it from a checkout instead:
 
 ```bash
 git clone https://github.com/babarmuhammad/archeus.git

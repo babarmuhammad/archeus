@@ -5,6 +5,8 @@ export const SITE = {
   tagline: 'The memory and workspace layer for AI coding agents.',
   repo: 'https://github.com/babarmuhammad/archeus',
   pypi: 'https://pypi.org/project/archeus/',
+  npm: 'https://www.npmjs.com/package/archeus',
+  rubygems: 'https://rubygems.org/gems/archeus',
   author: 'Babar Muhammad Anas',
   authorGithub: 'https://github.com/babarmuhammad',
   license: 'MIT',

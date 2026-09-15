@@ -52,7 +52,8 @@ python tools/audit_site.py         # every page at 390x844, nothing past the rig
 ```
 
 `check_site_seo.py` and `audit_site.py` read `site/`, so run `mkdocs build --strict`
-first. `audit_site.py` and the two GUI tools need
+first. The full sequence, and what a page owes beyond passing them, is in
+`notes/seo.md`. `audit_site.py` and the two GUI tools need
 `pip install playwright && playwright install chromium`; `optimize_images.py` needs
 Pillow. All three run in CI — the first two on every push, the third on the weekly
 schedule with the GUI smoke check.

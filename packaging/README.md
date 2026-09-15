@@ -25,19 +25,25 @@ of its eight organic search results to an unrelated Rust crate, structurally
 is never granted). Owning the name in the ecosystems that rank is cheaper than
 out-writing them later.
 
-## Availability, checked 2026-09-14
+## Where the name stands, checked 2026-09-15
 
 | | |
 |---|---|
-| npm `archeus` | free |
-| crates.io `archeus` | free |
-| RubyGems / NuGet / Packagist `archeus` | free |
-| PyPI `archeus` | **ours** |
+| PyPI `archeus` | **ours** — 2.4.0 |
+| npm `archeus` | **ours** — 2.4.1 (the launcher runs a patch ahead; see below) |
+| RubyGems `archeus` | **ours** — 2.4.0 |
+| crates.io / NuGet / Packagist `archeus` | free |
 | GitHub user/org `archeus` | **taken** since 2012 by an unrelated account. The repository stays `babarmuhammad/archeus`; there is nothing to claim. |
 | Docker Hub user `archeus` | **taken**, zero repositories. Publish as `babarmuhammad/archeus`. |
 | `archeus.com` `.dev` `.sh` `.io` `.ai` `.app` | all appear unregistered. The documentation domain is still the previous name's and is deliberately held back in `tools/_rename_brand.py` until one is bought. |
 
 ## Publishing
+
+**"Publish the release" means every registry in this table, not just PyPI.** Work
+down the list below, publish each one that has a credential and a toolchain on
+this machine, and report the ones that do not — a registry skipped in silence is
+a name left for somebody else, which is the whole reason this directory exists.
+A registry whose version is already current is done, not skipped.
 
 Order matters in exactly one place: **PyPI first, then `legacy-name/`**, because
 the shim's pin has to be a version the user does not already have. Everything
@@ -78,8 +84,8 @@ node bin/archeus.js --version
 ### Docker Hub
 
 ```bash
-docker build -t babarmuhammad/archeus:2.3.0 -t babarmuhammad/archeus:latest packaging/docker
-docker push babarmuhammad/archeus:2.3.0
+docker build -t babarmuhammad/archeus:2.4.0 -t babarmuhammad/archeus:latest packaging/docker
+docker push babarmuhammad/archeus:2.4.0
 docker push babarmuhammad/archeus:latest
 ```
 
@@ -97,15 +103,20 @@ cargo publish
 ```bash
 cd packaging/rubygems
 gem build archeus.gemspec
-gem push archeus-2.3.0.gem
+gem push archeus-2.4.0.gem
 ```
+
+`gem signin` first, and **answer `y` to "Do you want to customise scopes?"**, then
+enable `push_rubygem`. The default scope is `index_rubygems`, which is read-only:
+accept it and the push fails with `This API key cannot perform the specified
+action on this gem`, which reads like an ownership problem and is not one.
 
 ### NuGet
 
 ```bash
 cd packaging/nuget
 nuget pack archeus.nuspec
-dotnet nuget push archeus.2.3.0.nupkg --source https://api.nuget.org/v3/index.json --api-key <key>
+dotnet nuget push archeus.2.4.0.nupkg --source https://api.nuget.org/v3/index.json --api-key <key>
 ```
 
 ### Packagist

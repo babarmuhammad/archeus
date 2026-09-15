@@ -21,6 +21,8 @@ __pycache__/
 # Build artifacts (python -m build, and the venv the packaging check installs into)
 build/
 dist/
+# `gem build` writes the packed pointer gem beside its gemspec
+packaging/rubygems/*.gem
 *.egg-info/
 .wheeltest/
 .ruff_cache/

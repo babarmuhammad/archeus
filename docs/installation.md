@@ -96,6 +96,28 @@ archeus
 That gives you `archeus`, `archeus --gui`, `archeus review`,
 `archeus recall "<topic>"` and `archeus statusline` from anywhere.
 
+### Without installing it first
+
+```
+npx archeus
+```
+
+You already have npm if you installed Claude Code with it. The npm package is a
+launcher, not a copy of the tool: it runs archeus if it can find it, and if it
+cannot, it prints the exact install command and hands it to pipx (or pip, inside
+a virtualenv or when pipx is missing) before running it. On Windows it also
+covers the common case where pip has installed archeus but its `Scripts`
+directory is not on your PATH — it runs it as a module and tells you which
+directory to add.
+
+### The name on other registries
+
+archeus is a Python package. PyPI carries it, npm carries the launcher above,
+and the entries on [RubyGems](https://rubygems.org/gems/archeus), crates.io and
+NuGet are there to keep the name pointing at this project — each one prints the
+`pipx install archeus` line and exits non-zero rather than pretending to have
+installed anything.
+
 ### Clone and run
 
 ```

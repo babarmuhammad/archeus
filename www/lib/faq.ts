@@ -25,7 +25,7 @@ export const FAQ: QA[] = [
   },
   {
     q: 'How do I install archeus on Windows, macOS or Linux?',
-    a: 'The same command on all three: pipx install archeus (or pip install archeus). It needs Python 3.10 or newer and at least one coding CLI on your PATH — Claude Code, OpenAI Codex or pi. Then run archeus for the terminal UI, or archeus --gui for the desktop app. On Windows the GUI opens in a native window if PyQt6 is installed; everywhere else, and without PyQt6, it opens in your browser.',
+    a: 'The same command on all three: pipx install archeus (or pip install archeus), or npx archeus to run it without installing it first. It needs Python 3.10 or newer and at least one coding CLI on your PATH — Claude Code, OpenAI Codex or pi. Then run archeus for the terminal UI, or archeus --gui for the desktop app. On Windows the GUI opens in a native window if PyQt6 is installed; everywhere else, and without PyQt6, it opens in your browser.',
   },
   {
     q: 'Where does Claude Code store its sessions?',

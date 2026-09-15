@@ -134,7 +134,9 @@ const SITE_LD = {
       maintainer: { '@id': AUTHOR_ID },
       codeRepository: SITE.repo,
       programmingLanguage: 'Python',
-      sameAs: [SITE.repo, SITE.pypi, SITE.docs],
+      // Every registry that carries the name is a corroborating node: the
+      // package on PyPI, the launcher on npm, the pointer gem on RubyGems.
+      sameAs: [SITE.repo, SITE.pypi, SITE.npm, SITE.rubygems, SITE.docs],
     },
   ],
 };

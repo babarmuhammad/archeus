@@ -71,6 +71,8 @@ export function GET() {
     link('llms-full.txt', url('/llms-full.txt'), 'Every page above, the FAQ and the changelog as one plain-text file.'),
     link('Source repository', SITE.repo, 'The code, issues and releases.'),
     link('PyPI package', SITE.pypi, 'Published wheels; install with pipx install archeus.'),
+    link('npm package', SITE.npm, 'A launcher, not a copy: npx archeus runs it, installing it with pipx or pip first if it is missing.'),
+    link('RubyGems package', SITE.rubygems, 'A pointer holding the name; it prints the pipx install line rather than installing anything.'),
     '',
   ].join('\n');
 

@@ -193,10 +193,11 @@ export const HOME: Doc = {
       id: 'get',
       eyebrow: 'Station 06',
       heading: 'Get archeus',
-      lead: 'The memory and workspace layer for AI coding agents. Four ways in, all free, MIT licensed and one line each — and all of them need at least one coding CLI already installed: Claude Code, OpenAI Codex or pi.',
+      lead: 'The memory and workspace layer for AI coding agents. Five ways in, all free, MIT licensed and one line each — and all of them need at least one coding CLI already installed: Claude Code, OpenAI Codex or pi.',
       blocks: [
         code('pipx install archeus\narcheus', 'pipx — recommended'),
         code('pip install archeus', 'pip'),
+        code('npx archeus', 'npx — nothing to install first'),
         code('/plugin marketplace add babarmuhammad/archeus\n/plugin install archeus@archeus', 'Claude Code plugin'),
         p(
           'Or clone the repository and run python claude-sessions.py. There is nothing to build and nothing to install alongside it.',
@@ -464,7 +465,7 @@ export const DOWNLOAD: Doc = {
   slug: 'download',
   title: 'Download archeus',
   description:
-    'Every way to install archeus — pipx, pip, a GitHub release, a git checkout or the Claude Code plugin. Python 3.10+, zero runtime dependencies, MIT licensed.',
+    'Every way to install archeus — pipx, pip, npx, a GitHub release, a checkout or the Claude Code plugin. Python 3.10+, zero dependencies, MIT licensed.',
   intro:
     'archeus is a pure-Python package with no runtime dependencies. Any of these takes one line, and none of them needs an API key — it uses the Claude Code authentication you already have.',
   sections: [
@@ -484,6 +485,17 @@ export const DOWNLOAD: Doc = {
         code('pip install archeus\narcheus'),
         p(
           'Use a virtual environment if you would rather not install into your system Python. The package installs one console script, archeus.',
+        ),
+      ],
+    },
+    {
+      id: 'npx',
+      heading: 'npx — without installing it first',
+      lead: 'You already have npm if you installed Claude Code with it.',
+      blocks: [
+        code('npx archeus'),
+        p(
+          'The npm package is a launcher rather than a copy of the tool: it runs archeus if it can find it, and if it cannot, it prints the exact command and hands the install to pipx — or to pip, inside a virtualenv or when pipx is missing. On Windows it also covers the case where pip has installed archeus but its Scripts directory is not on your PATH: it runs it as a module and tells you which directory to add.',
         ),
       ],
     },
@@ -519,6 +531,7 @@ export const DOWNLOAD: Doc = {
           'Bundled starter skills and 31 hook templates.',
           'The Claude Code plugin manifest, with commands and skills generated from the package so they cannot fall behind it.',
           'A signed source distribution and a wheel on PyPI. Versioning is semantic; the changelog follows Keep a Changelog.',
+          'The npm launcher, and the name on RubyGems, crates.io and NuGet — those three are pointers that print the pipx line rather than installing anything, so the name resolves to this project wherever people look for it.',
         ]),
       ],
     },

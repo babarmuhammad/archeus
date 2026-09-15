@@ -16,8 +16,10 @@ working; there is no API key to obtain and nothing to configure first.
 pipx install archeus     # or: pip install archeus
 ```
 
-That is the whole install — no third-party packages, nothing to compile. Other routes (a
-source checkout, the release page, the plugin) are in [Installation](installation.md).
+That is the whole install — no third-party packages, nothing to compile. If you would
+rather not install it yet, `npx archeus` runs it and offers to install it first. Other
+routes (a source checkout, the release page, the plugin) are in
+[Installation](installation.md).
 
 ## 2. Launch
 
