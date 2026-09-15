@@ -197,9 +197,12 @@ def main(argv):
             problems.append('only %d apex pages checked — expected at least %d'
                             % (len(www), WWW_PAGE_FLOOR))
 
-    print('checked %s' % ' and '.join(
-        x for x in ('%d docs pages' % len(docs) if want_docs else '',
-                    '%d apex pages' % len(www) if want_www else '') if x))
+    counted = []
+    if want_docs:
+        counted.append('%d docs pages' % len(docs))
+    if want_www:
+        counted.append('%d apex pages' % len(www))
+    print('checked %s' % ' and '.join(counted))
     if problems:
         print('\n%d problems:' % len(problems))
         for p in problems:
