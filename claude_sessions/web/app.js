@@ -2282,6 +2282,7 @@ function seSel(i){
     :`<div class="mrow" style="flex-wrap:wrap;justify-content:flex-start">
       <button class="btn sm" onclick="toggleTune(${i})">${ic('settings')} Adjust power</button>
       <button class="btn sm" onclick="viewS(${i})">${ic('doc')} Transcript</button>
+      <button class="btn sm" onclick="flowS(${i})" title="Watch this session as a flow graph — what it did, in what order, and where the time went">${ic('share')} Flow ${ic('ext')}</button>
       <button class="btn sm" onclick="exportS(${i})">${ic('download')} Export</button>
       <button class="btn sm" onclick="filesS(${i})">${ic('folder')} Changed files</button>
       ${capBtn('checkpoints',s.cfgdir,`ckptS(${i})`,ic('history')+' Checkpoints')}
@@ -2389,6 +2390,10 @@ async function exportS(i){const s=SESS[i];
   const r=await post('/api/session/export',{enc:CUR.encoded,
     cfgdir:s.cfgdir||CUR.primary_cfgdir,sid:s.sid,path:CUR.path});
   toast(r.message||(r.ok?'Exported':'Failed'),r.ok?'ok':'err');}
+/* Its own window, like /graph, and for the same reason: a top-level navigation
+   cannot carry the X-Archeus header, so the token rides the query string. */
+function flowS(i){const s=SESS[i];window.open('/flow?'+qs({enc:CUR.encoded,sid:s.sid,
+  cfgdir:s.cfgdir||CUR.primary_cfgdir,project:CUR.name,k:CK}),'_blank');}
 async function viewS(i){const s=SESS[i];
   $('#dTitle').textContent=s.title||s.sid.slice(0,8);
   $('#dBody').innerHTML='<div class="empty"><span class="spin"></span></div>';

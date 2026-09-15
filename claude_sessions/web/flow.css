@@ -1,0 +1,56 @@
+/* The session flow page. Standalone, like the architecture graph: it is served
+   on its own URL with no app.css behind it, so the colours are literal hex and
+   nothing here reads a palette var.
+
+   Only `transform` and `opacity` are ever animated. Everything else — a blur, a
+   filter, a blend mode — forces the compositor to read the surface back, which
+   is what tears the Qt shell. tests/test_flowgraph.py parses this file and
+   fails on any other animated property. */
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:#11131a;color:#cdd6f4;
+  font:13px/1.5 'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;
+  display:flex;flex-direction:column;overflow:hidden}
+
+#top{display:flex;align-items:center;gap:12px;padding:8px 14px;
+  background:#161923;border-bottom:1px solid #262a38;flex:0 0 auto}
+#top b{font-size:14px}
+#top .grow{flex:1}
+#meta{color:#7f849c}
+#top label{color:#7f849c;display:flex;align-items:center;gap:5px}
+#top select,#top button{background:#1e2230;color:#cdd6f4;border:1px solid #313547;
+  border-radius:6px;padding:3px 9px;font:inherit;cursor:pointer}
+#top button:hover,#top select:hover{border-color:#585b70}
+#top button[disabled]{opacity:.45;cursor:default}
+
+#wrap{flex:1;display:flex;min-height:0}
+#c{flex:1;display:block;min-width:0;cursor:grab;touch-action:none}
+#c.drag{cursor:grabbing}
+
+#side{width:320px;flex:0 0 auto;border-left:1px solid #262a38;background:#161923;
+  overflow:auto;padding:12px 14px}
+#side .empty{color:#585b70}
+#side h4{margin:0 0 2px;font-size:13px}
+#side .k{color:#7f849c;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+  margin-top:10px}
+#side pre{white-space:pre-wrap;word-break:break-word;margin:4px 0 0;
+  font:11px/1.45 Consolas,ui-monospace,monospace;color:#a6adc8}
+#side .tag{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;
+  background:#1e2230;border:1px solid #313547}
+
+#bar{display:flex;align-items:center;gap:12px;padding:7px 14px;
+  background:#161923;border-top:1px solid #262a38;flex:0 0 auto}
+#scrub{flex:1;accent-color:#7dcfff}
+#clock{color:#7f849c;font:11px/1 Consolas,ui-monospace,monospace;min-width:150px;
+  text-align:right}
+
+/* The one loop on the page: the live dot, while a follow poll is running. It is
+   opacity and nothing else, and `prefers-reduced-motion` removes it. */
+.live{display:inline-block;width:7px;height:7px;border-radius:50%;background:#94e2d5;
+  margin-right:5px;animation:flowlive 1.6s ease-in-out infinite}
+@keyframes flowlive{0%,100%{opacity:1}50%{opacity:.25}}
+
+@media (prefers-reduced-motion:reduce){
+  .live{animation:none}
+}
