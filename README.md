@@ -22,6 +22,7 @@
   <img alt="Tests" src="https://img.shields.io/badge/tests-2309-brightgreen">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
   <img alt="Claude Code" src="https://img.shields.io/badge/for-Claude%20Code-8A5CF6">
+  <a href="https://ko-fi.com/babarmuhammad"><img alt="Support on Ko-fi" src="https://img.shields.io/badge/support-ko--fi-ff5e5b"></a>
 </p>
 
 <p align="center">
@@ -193,4 +194,5 @@ subagent catalog behind the agent library. Every one is credited, with links, on
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). Free, and always will be — you can [support it on Ko-fi](https://ko-fi.com/babarmuhammad)
+if you like: voluntary, and it buys nothing. [Privacy](https://claudectl.space/legal/privacy) · [Terms](https://claudectl.space/legal/terms)

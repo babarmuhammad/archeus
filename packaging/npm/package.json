@@ -19,6 +19,7 @@
     "directory": "packaging/npm"
   },
   "license": "MIT",
+  "funding": "https://ko-fi.com/babarmuhammad",
   "author": "Babar Muhammad Anas",
   "bin": {
     "archeus": "bin/archeus.js"

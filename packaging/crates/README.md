@@ -13,4 +13,5 @@ costs. Works with Claude Code, OpenAI Codex and pi.
 
 Source, documentation and issues: <https://github.com/babarmuhammad/archeus>
 
-MIT licensed.
+MIT licensed. Support it, if you like, at <https://ko-fi.com/babarmuhammad> —
+voluntary, and it buys nothing.

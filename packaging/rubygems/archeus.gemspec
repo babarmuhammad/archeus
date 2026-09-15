@@ -16,7 +16,8 @@ Gem::Specification.new do |s|
     'documentation_uri' => 'https://docs.claudectl.space',
     'source_code_uri' => 'https://github.com/babarmuhammad/archeus',
     'changelog_uri' => 'https://claudectl.space/changelog',
-    'bug_tracker_uri' => 'https://github.com/babarmuhammad/archeus/issues'
+    'bug_tracker_uri' => 'https://github.com/babarmuhammad/archeus/issues',
+    'funding_uri' => 'https://ko-fi.com/babarmuhammad'
   }
   s.files       = ['bin/archeus', 'README.md']
   s.executables = ['archeus']
