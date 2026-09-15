@@ -100,10 +100,11 @@ def master(size=1024):
     box = solid.getbbox()
     if not box:
         raise SystemExit('%s is fully transparent' % SRC)
-    l, t, r, b = box
-    l, t = max(0, l - _FEATHER), max(0, t - _FEATHER)
-    r, b = min(im.width, r + _FEATHER), min(im.height, b + _FEATHER)
-    tile = im.crop((l, t, r, b))
+    left, top, right, bottom = box
+    left, top = max(0, left - _FEATHER), max(0, top - _FEATHER)
+    right = min(im.width, right + _FEATHER)
+    bottom = min(im.height, bottom + _FEATHER)
+    tile = im.crop((left, top, right, bottom))
 
     side = max(tile.size)
     square = Image.new('RGBA', (side, side), (0, 0, 0, 0))
