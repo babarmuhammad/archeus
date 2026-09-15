@@ -383,3 +383,149 @@ def test_the_launch_path_asks_the_harness_for_its_argv(monkeypatch, tmp_path):
     assert args[1:3] == ['--session', 's1']
     assert '--permission-mode' not in args and '-w' not in args
     assert env['PI_CODING_AGENT_DIR'] == home
+
+
+# ── the catalogue pi ships, which is what fills a fresh install's picker ──────
+
+def _fake_pkg(root, files):
+    """An npm tree shaped like pi's, with a bin shim beside its node_modules.
+
+    Built rather than pointed at the real installation for the reason the whole
+    Sandbox exists: a test that reads the developer's own node_modules passes on
+    this machine and nowhere else, and would have nothing to say when npm
+    changes where it hoists a dependency.
+    """
+    binq = os.path.join(root, 'npm')
+    data = os.path.join(binq, 'node_modules', '@earendil-works', 'pi-ai',
+                        'dist', 'providers', 'data')
+    os.makedirs(data, exist_ok=True)
+    for name, obj in files.items():
+        with open(os.path.join(data, name), 'w', encoding='utf-8') as f:
+            json.dump(obj, f)
+    shim = os.path.join(binq, 'pi.cmd')
+    with open(shim, 'w') as f:
+        f.write('@echo off\n')
+    return shim
+
+
+def _with_pkg(monkeypatch, root, files):
+    shim = _fake_pkg(root, files)
+    monkeypatch.setattr(harnesses, 'exe', lambda hid=None: shim if hid == 'pi' else None)
+    pi._CAT.clear()
+    return shim
+
+
+_TWO = {
+    'openai-codex.json': {'openai-codex-responses': {
+        'gpt-5.5': {'id': 'gpt-5.5', 'name': 'GPT-5.5', 'provider': 'openai-codex',
+                    'cost': {'input': 5, 'output': 30},
+                    'contextWindow': 400000,
+                    'thinkingLevelMap': {'minimal': 'minimal', 'xhigh': 'xhigh'}}}},
+    'google.json': {'google-generative-ai': {
+        'gemini-3.1-flash-lite': {'id': 'gemini-3.1-flash-lite',
+                                  'name': 'Gemini 3.1 Flash Lite',
+                                  'provider': 'google',
+                                  'cost': {'input': 0.25, 'output': 1.5},
+                                  'contextWindow': 1000000,
+                                  'thinkingLevelMap': {'off': None}}}},
+}
+
+
+def test_the_catalogue_is_read_out_of_the_install(monkeypatch, tmp_path):
+    """Not a list typed into this repo. `pi update` rewrites these files, so a
+    static copy would be wrong the first time the user updated — the same
+    argument `models()` makes for reading the CLI's own session history."""
+    _with_pkg(monkeypatch, str(tmp_path), _TWO)
+    rows = {r['id']: r for r in pi.catalogue()}
+    assert set(rows) == {'openai-codex/gpt-5.5', 'google/gemini-3.1-flash-lite'}
+    assert rows['openai-codex/gpt-5.5']['label'] == 'GPT-5.5'
+    assert rows['openai-codex/gpt-5.5']['cost']['input'] == 5
+    assert rows['google/gemini-3.1-flash-lite']['thinking'] == ['off']
+
+
+def test_every_preset_names_a_model_the_catalogue_publishes():
+    """A quick start whose model 404s on the first turn is worse than no button.
+    Checked against the REAL installed catalogue, so this is the gate that fires
+    the day a provider renames an id — which is the only way archeus would ever
+    find out."""
+    known = {r['id'] for r in pi.catalogue()}
+    if not known:
+        return                      # pi not installed here; nothing to check
+    for _name, _blurb, fields in harnesses.HARNESSES['pi']['presets']:
+        assert fields['model'] in known, fields['model']
+        assert fields['effort'] in harnesses.HARNESSES['pi']['efforts']
+
+
+def test_no_install_is_an_empty_catalogue_not_a_crash(monkeypatch):
+    """The model field is free text. With pi absent there are no suggestions,
+    which is a quieter picker and not a broken one."""
+    monkeypatch.setattr(harnesses, 'exe', lambda hid=None: None)
+    pi._CAT.clear()
+    assert pi.catalogue() == []
+    assert pi._data_dir() == ''
+
+
+def test_one_unreadable_provider_file_does_not_lose_the_other_37(
+        monkeypatch, tmp_path):
+    """This tree is npm's, not archeus's, so a bad file there is not the fault
+    `jsonstore` treats a corrupt file of OUR own as — the other providers are
+    still the answer."""
+    shim = _with_pkg(monkeypatch, str(tmp_path), _TWO)
+    data = os.path.join(os.path.dirname(shim), 'node_modules', '@earendil-works',
+                        'pi-ai', 'dist', 'providers', 'data')
+    with open(os.path.join(data, 'broken.json'), 'w') as f:
+        f.write('{not json')
+    pi._CAT.clear()
+    assert len(pi.catalogue()) == 2
+
+
+def test_a_scalar_beside_the_catalogues_is_skipped(monkeypatch, tmp_path):
+    """A provider file's top level is keyed by API name, and at least one ships
+    a schema version alongside. Iterating it as a dict of models raised."""
+    files = dict(_TWO)
+    files['weird.json'] = {'version': 3, 'some-api': {
+        'm1': {'id': 'm1', 'name': 'M1', 'provider': 'weird',
+               'cost': {'input': 1, 'output': 2}}}}
+    _with_pkg(monkeypatch, str(tmp_path), files)
+    assert {r['id'] for r in pi.catalogue()} >= {'weird/m1'}
+
+
+def test_the_catalogue_prices_a_model_no_anthropic_table_knows(
+        monkeypatch, tmp_path):
+    """The point of reading it at all. A gpt-5.5 session counted its tokens
+    correctly and priced them at nothing, because every pattern in
+    COST_PER_MTOK is an Anthropic id."""
+    from claude_sessions import stats
+    _with_pkg(monkeypatch, str(tmp_path), _TWO)
+    stats._HARNESS_RATES.clear()
+    cost, exact = stats.estimate_cost(
+        {'gpt-5.5': {'in': 1_000_000, 'out': 1_000_000,
+                     'cache_read': 0, 'cache_create': 0}})
+    assert exact and cost == 35.0          # 1M x $5 in + 1M x $30 out
+    stats._HARNESS_RATES.clear()
+
+
+def test_a_model_nothing_publishes_a_price_for_stays_unpriced(
+        monkeypatch, tmp_path):
+    """No guess. An opus-tier fallback on a gpt-5.6-luna session would be wrong
+    by a factor of fifty, and `n/a` is the honest cell."""
+    from claude_sessions import stats
+    _with_pkg(monkeypatch, str(tmp_path), _TWO)
+    stats._HARNESS_RATES.clear()
+    cost, exact = stats.estimate_cost(
+        {'some-local-llama': {'in': 1_000_000, 'out': 1_000_000,
+                              'cache_read': 0, 'cache_create': 0}})
+    assert not exact and cost == 0.0
+    assert stats.fmt_cost(cost, exact) == 'n/a'
+    stats._HARNESS_RATES.clear()
+
+
+def test_an_exact_id_beats_a_substring_pattern():
+    """COST_PER_MTOK is matched by SUBSTRING, so merging a thousand catalogue
+    ids into it would let a short key like `gpt-5` claim `gpt-5.6-terra`. The
+    two tables are separate and the exact lookup runs first."""
+    from claude_sessions import stats
+    table = {'sonnet': {'in': 3.0, 'out': 15.0},
+             'claude-sonnet-5': {'in': 1.0, 'out': 2.0}}
+    rates, known = stats._rates_for('claude-sonnet-5', table)
+    assert known and rates['in'] == 1.0            # exact, not the substring

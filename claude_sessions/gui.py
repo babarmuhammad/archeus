@@ -848,7 +848,11 @@ _SETTING_KEYS = tuple(sorted(set(_c._DEFAULT_SETTINGS) - _c.INTERNAL_SETTINGS))
 #: settings that name a file or directory: refused when they do not exist, the
 #: way the TUI refuses them (ui.py), so a save cannot silently pin something
 #: broken and leave every launch failing with no clue why.
+#: Every harness's binary, not only Claude Code's: `harnesses.exe()` reads each
+#: descriptor's `exe_setting` as an override, so a Codex installed somewhere the
+#: globs do not reach was unfindable with no field to say where it is.
 _PATH_SETTINGS = {'editor': 'file', 'claude_exe': 'file',
+                  'codex_exe': 'file', 'pi_exe': 'file',
                   'claude_config_dir': 'dir'}
 
 

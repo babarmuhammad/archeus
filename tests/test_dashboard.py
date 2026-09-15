@@ -378,3 +378,38 @@ def test_wiring_reports_a_statusline_that_will_never_be_drawn(monkeypatch, tmp_p
     s['tui'] = 'fullscreen'
     hooks._save(s, cfgdir)
     assert gui_api._wiring()['accounts'][0]['statusline_hidden'] is False
+
+
+def test_installing_a_second_cli_does_not_report_the_workspace_as_broken(
+        monkeypatch, tmp_path):
+    """`ok`/`total` is a RATIO, so its denominator may only count rows that
+    could ever be in the numerator.
+
+    Hooks and a statusline are Claude Code's settings.json and neither
+    capability is one Codex or pi has, so counting every instance made
+    installing a second CLI drop a fully-wired workspace from 1/1 to 1/2 and the
+    dashboard report it as broken — with nothing failing anywhere, because the
+    test above runs in a sandbox where `harnesses.exe('codex')` is None and the
+    second row therefore never appears. Stubbing `instances()` is what makes the
+    regression visible at all.
+    """
+    _fresh(monkeypatch, tmp_path)
+    from claude_sessions import harnesses, hooks
+    from claude_sessions import config as _cfg
+    _name, cfgdir = list(_cfg.all_config_dirs())[0]
+    s = hooks._load(cfgdir)
+    s['statusLine'] = {'type': 'command', 'command': 'x'}
+    s['tui'] = 'fullscreen'
+    s.setdefault('hooks', {})['UserPromptSubmit'] = [{'hooks': [{'type': 'command',
+                                                                'command': 'x'}]}]
+    hooks._save(s, cfgdir)
+    assert gui_api._wiring() == {**gui_api._wiring(), 'ok': 1, 'total': 1}
+
+    monkeypatch.setattr(harnesses, 'instances', lambda: [
+        ('default', cfgdir, 'claude'),
+        ('Codex', str(tmp_path / 'codex-home'), 'codex'),
+        ('pi', str(tmp_path / 'pi-home'), 'pi')])
+    w = gui_api._wiring()
+    assert w['ok'] == 1 and w['total'] == 1        # still fully wired
+    assert len(w['accounts']) == 3                 # and all three are listed
+    assert [r['hid'] for r in w['accounts']] == ['claude', 'codex', 'pi']

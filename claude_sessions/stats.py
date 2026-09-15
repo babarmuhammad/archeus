@@ -72,14 +72,72 @@ def _cost_table():
     return table
 
 
+#: {exact model id: {in, out}} for every model a non-Claude harness publishes a
+#: price for. SEPARATE from `_cost_table()` and looked up FIRST BY EXACT ID,
+#: which is the whole reason it is a second table: `COST_PER_MTOK` is matched by
+#: SUBSTRING, and merging a thousand catalogue ids into it would make a short
+#: key like `gpt-5` silently claim `gpt-5.6-terra` — and turn every lookup into
+#: a thousand-entry scan per model per session.
+#:
+#: Process-lifetime, because what it reads is a file npm wrote at install time.
+#: Registered in tests/conftest's cache-leak fixture with the other three.
+_HARNESS_RATES = {}
+
+
+def _harness_rates():
+    """Prices for the other CLIs' models, read out of what they ship.
+
+    Codex and pi sessions counted tokens correctly and priced them at nothing,
+    because every pattern in `COST_PER_MTOK` is an Anthropic id — so a month of
+    gpt-5.5 read as `n/a` next to a real token count. pi ships a full priced
+    catalogue (38 providers, `cost` in dollars per MILLION tokens, the same unit
+    this table uses), which covers its own models AND Codex's.
+
+    Nothing is invented here: with no pi installed this is empty and those
+    sessions go on reading `n/a`, which is the honest answer rather than a
+    guess. `_GUESS_RATES` deliberately does not apply — an opus-tier guess on a
+    gpt-5.6-luna session would be wrong by a factor of fifty.
+    """
+    if _HARNESS_RATES:
+        return _HARNESS_RATES
+    from . import harnesses as _h
+    for hid in _h.ids():
+        if not _h.descriptor(hid).get('catalogue'):
+            continue
+        try:
+            rows = _h.impl('catalogue', hid)(_h.home_dir(hid)) or []
+        except Exception:
+            continue
+        for r in rows:
+            c = r.get('cost') or {}
+            if not isinstance(c, dict) or 'input' not in c:
+                continue
+            rates = {'in': float(c.get('input') or 0),
+                     'out': float(c.get('output') or 0)}
+            # both the qualified `provider/id` and the bare id: pi records the
+            # first and Codex the second, for models that are often the same
+            for key in (r['id'], r['id'].split('/', 1)[-1]):
+                _HARNESS_RATES.setdefault(key, rates)
+    return _HARNESS_RATES
+
+
 _FREE_RATES = {'in': 0.0, 'out': 0.0}
 _GUESS_RATES = {'in': 5.0, 'out': 25.0}
 
 
 def _rates_for(model, table):
+    # exact id first, and only then the substring patterns. An exact match
+    # cannot be wrong; a substring one can, so the cheap certain answer goes
+    # ahead of the fuzzy one rather than after it.
+    got = table.get(model)
+    if got:
+        return got, True
     for pattern, rates in table.items():
         if pattern in model:
             return rates, True
+    got = _harness_rates().get(model)
+    if got:
+        return got, True
     if not _is_anthropic_model(model):
         # No price data, NOT "free" -- a routed model may be a paid OpenRouter or
         # self-hosted one. The zero contributes nothing to the total and the
@@ -265,12 +323,24 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
     grand totals. Day/account/total rows are window-scoped; project rows span
     all history, since that list doubles as the recency browser."""
     from datetime import datetime, timedelta
-    from .config import all_config_dirs
+    from . import harnesses as _h
 
     now = datetime.now()
     win = [(now - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days - 1, -1, -1)]
-    acct_of = {d: n for n, d in all_config_dirs()}
-    day_b = {d: {'tokens': 0, 'sessions': 0, 'ubm': {}, 'accounts': {}} for d in win}
+    # BOTH maps from ONE call, above the loop. `instances()` returns
+    # (label, home, hid) and for Claude Code the label IS the account name, so
+    # this replaces the `all_config_dirs()` map rather than sitting beside it —
+    # and it fixes what that map could not answer: a Codex home was not in it,
+    # so every Codex session was attributed to an "account" called `.codex`.
+    #
+    # Built once because `harnesses.of()` reads settings off disk on EVERY call,
+    # and this loop runs once per session on the machine — thousands of times on
+    # a dashboard poll.
+    inst = _h.instances()
+    acct_of = {d: n for n, d, _i in inst}
+    hid_of = {d: i for _n, d, i in inst}
+    day_b = {d: {'tokens': 0, 'sessions': 0, 'ubm': {}, 'accounts': {},
+                 'harnesses': {}} for d in win}
     acct_b, proj_b, recent_b = {}, {}, []
 
     # ── live activity, across every account ──
@@ -290,6 +360,7 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
             break
         mtime, ppath, enc, _sid, stats, cfgdir = item
         acct = acct_of.get(cfgdir) or os.path.basename(cfgdir)
+        hid = hid_of.get(cfgdir) or _h.DEFAULT
         ubm = stats.get('usage_by_model') or {}
         tokens = sum(_sum_usage(stats).values())
 
@@ -334,6 +405,7 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
         b['tokens'] += tokens
         b['sessions'] += 1
         b['accounts'][acct] = b['accounts'].get(acct, 0) + tokens
+        b['harnesses'][hid] = b['harnesses'].get(hid, 0) + tokens
         p['by_day'][day] = p['by_day'].get(day, 0) + tokens
         _merge_ubm(b['ubm'], ubm)
         a = acct_b.setdefault(acct, {'account': acct, 'tokens': 0, 'sessions': 0,
@@ -349,7 +421,8 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
         day_rows.append({'date': d, 'tokens': b['tokens'], 'sessions': b['sessions'],
                          'cost': round(estimate_cost(b['ubm'])[0], 2),
                          'provider_tokens': _provider_tokens(b['ubm']),
-                         'accounts': b['accounts']})
+                         'accounts': b['accounts'],
+                         'harnesses': b['harnesses']})
     acct_rows = sorted(
         ({'account': a['account'], 'tokens': a['tokens'], 'sessions': a['sessions'],
           'provider_tokens': a['provider_tokens'],
@@ -370,6 +443,12 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
         _merge_ubm(all_ubm, a['ubm'])
     recent_b.sort(key=lambda r: r['mtime'], reverse=True)
     return {'days': day_rows, 'accounts': acct_rows, 'projects': proj_rows,
+            # {hid: tokens} over the whole window, summed from the day rows
+            # rather than accumulated twice. Additive in the way `accounts` is
+            # and quota percentages are not: these are token counts from the
+            # same scan, so stacking them in one ring is honest.
+            'harnesses': {h: sum(r['harnesses'].get(h, 0) for r in day_rows)
+                          for r in day_rows for h in r['harnesses']},
             'recent': recent_b[:recent],
             # oldest→newest, so the sparkline reads left-to-right like every
             # other series in the app

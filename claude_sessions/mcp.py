@@ -25,11 +25,20 @@ _status_cache = {}
 
 
 def get_mcp_status(cfgdir=None, refresh=False):
-    """Run 'claude mcp list', return list of (name, status) tuples. Cached 30s.
+    """Run `<cli> mcp list`, return list of (name, status) tuples. Cached 30s.
 
-    cfgdir names the account: `claude mcp` honours CLAUDE_CONFIG_DIR, and
-    without it the list came from whichever account archeus inherited while
-    every other MCP surface resolved the active one."""
+    cfgdir names the account AND the CLI: `claude mcp` honours
+    CLAUDE_CONFIG_DIR, and without it the list came from whichever account
+    archeus inherited while every other MCP surface resolved the active one.
+    `harnesses.of(cfgdir)` turns the same argument into which BINARY to run, so
+    a Codex home answers with Codex's servers rather than with Claude Code's.
+
+    Codex was declared as having no MCP for one release, and that was wrong
+    rather than cautious: `codex mcp list --json` is a full read, offline and
+    unauthenticated, with `get`, `add` and `remove` beside it. It is read here
+    through its `--json` form because the text table masks every env value as
+    `*****` and its column widths move with the content.
+    """
     key = _c.resolve_config_dir(cfgdir)
     hit = _status_cache.get(key)
     if hit and not refresh and time.time() - hit[0] < _STATUS_TTL:
@@ -48,7 +57,22 @@ def get_mcp_status(cfgdir=None, refresh=False):
         _status_cache[key] = (time.time(), [])
         return []
 
-    claude_exe = get_claude_exe()
+    from . import harnesses as _h
+    hid = _h.of(cfgdir)['id']
+    if hid == 'codex':
+        # a different binary, a different answer shape, and the same cache.
+        # `enabled`/`disabled_reason` is what Codex reports instead of a live
+        # connection check, so a disabled server reads 'fail' with its reason
+        # rather than being dropped — the state the user most needs to see.
+        from . import codex
+        try:
+            rows = [(r['name'], 'ok' if r['enabled'] else 'fail')
+                    for r in codex.mcp_list(_c.resolve_config_dir(cfgdir))]
+        except Exception:
+            return miss()
+        _status_cache[key] = (time.time(), list(rows))
+        return rows
+    claude_exe = _h.exe(hid)
     if not claude_exe:
         return miss()
     # Through proc.run, not subprocess directly. It was the last hand-rolled
@@ -214,18 +238,23 @@ MCP_TRANSPORTS = ['stdio', 'http', 'sse']
 
 
 def mcp_cli(args, cfgdir=None, timeout=60):
-    """`claude mcp <args>` against ONE account, no TUI. (ok, output).
+    """`<cli> mcp <args>` against ONE home, no TUI. (ok, output).
 
     The GUI's counterpart to _mcp_run — same account addressing, without the
-    progress screen a request thread cannot draw.
+    progress screen a request thread cannot draw. The binary comes from the
+    home, not from `get_claude_exe`: `codex mcp` takes the same four verbs
+    (`list`, `get`, `add`, `remove`), so the subcommand vocabulary this passes
+    through happens to be shared and only the executable differs.
     """
+    from . import harnesses as _h
     from . import proc
-    exe = get_claude_exe()
+    d = _h.of(cfgdir)
+    exe = _h.exe(d['id'])
     if not exe:
-        return False, 'claude.exe not found'
+        return False, '%s not found' % d['exe_names'][0]
     r = proc.run([exe, 'mcp', *args], env=_c.account_env(cfgdir), timeout=timeout)
     if r is None:
-        return False, 'could not run claude'
+        return False, 'could not run %s' % d['label']
     return r.returncode == 0, ((r.stdout or '') + (r.stderr or '')).strip()
 
 

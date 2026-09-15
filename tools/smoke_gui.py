@@ -2085,6 +2085,23 @@ def main():
               'Not available here' in txt and 'codex doctor' in txt)
         pg.evaluate("USAGE_HID=''")
 
+        # -- a shared page whose strip must EXCLUDE a CLI --
+        # Usage lists every harness because every one records tokens. Plugins
+        # must not list pi, which has no marketplaces at all: a tab whose only
+        # possible content is an empty list reads as "no plugins installed"
+        # rather than as the structural gap the capability table has a sentence
+        # for. This is the check that the strip's filter is real.
+        print(NL + '-- a strip narrowed by capability --')
+        pg.evaluate("PLHID='';go('plugins')")
+        pg.wait_for_timeout(700)
+        strip = pg.evaluate("[...document.querySelectorAll('#content .mtabs .tab')]"
+                            ".map(t=>t.textContent.trim())")
+        check('the plugins strip offers the CLIs that have marketplaces',
+              'Claude Code' in strip and 'Codex' in strip, strip)
+        check('…and not the one that has none', 'pi' not in strip, strip)
+        check('there is no All tab where all-at-once is not a view',
+              'All' not in strip, strip)
+
         # -- the provider card changes shape per backend --
         # The card was OmniRoute-shaped for its whole life: a live catalogue, a
         # provider-health panel and a dashboard button. None of that exists for a

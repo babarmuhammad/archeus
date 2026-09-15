@@ -31,7 +31,7 @@ the same order, and each one opens a submenu:
 | **⚙ Context** | Global CLAUDE.md / MCP Analysis · MCP servers |
 | **⚙ Library** | Agents · Skills · Hooks |
 | **⚙ Activity** | Usage stats · Logs |
-| **⚙ Accounts** | Accounts (switch, run two at once) |
+| **⚙ Harnesses** | Harnesses (which CLIs, and their setup) · Accounts (switch, run two at once) |
 | **⚙ Settings** | Settings · Updates (Claude Code + plugins) |
 
 It used to be fourteen flat rows under the project list, which read as a wall and buried

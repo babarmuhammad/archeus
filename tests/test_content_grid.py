@@ -493,7 +493,7 @@ def test_every_page_declares_a_shape():
     ids = re.findall(r"^\s*\['([a-z]+)'", _JS[_JS.index('const NAV=['):
                                               _JS.index('const SECTIONS=[')],
                      re.M)
-    assert len(ids) == 19, f'expected 19 NAV pages, parsed {len(ids)}'
+    assert len(ids) == 20, f'expected 20 NAV pages, parsed {len(ids)}'
     for page in ids:
         assert _arch(page) in SHAPES, \
             f'{page} declares no archetype (or an unknown one: {_arch(page)!r})'

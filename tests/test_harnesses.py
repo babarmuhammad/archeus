@@ -171,14 +171,23 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def _declared_caps():
     """Every capability key named by a surface: the GUI's NAV and TABS tables,
-    its per-row `capBtn` calls, the launch strip's `LAUNCH_CAPS`, and the
-    terminal menu's MAIN_CAPS.
+    its per-row `capBtn` calls, its in-page `capCard` and `capNote` calls, the
+    launch strip's `LAUNCH_CAPS`, and the terminal menu's MAIN_CAPS.
 
-    Four sources because not every capability is a PAGE. A harness that cannot
+    Six sources because not every capability is a PAGE. A harness that cannot
     archive has a page full of sessions it can still open — the gap is one
     button on a row, gated on that row's own cfgdir, because a project worked
     in under two CLIs lists both. And a harness with no worktree flag has no
     gap on any page at all: the hole is one field inside the launch form.
+
+    The last two were MISSING, and both are how a page greys ONE PART of itself
+    while the rest keeps working — the case a whole-page gate cannot express.
+    `capCard` replaces a card (the Usage page keeps its spend cards for every
+    CLI and greys only the plan rail); `capNote` adds a line saying which CLIs
+    an artefact actually reaches (auto-memory writes one graph, and only Claude
+    Code reads the `.claude/rules/*.md` half of its delivery). A capability
+    consumed either way was invisible here and read as an orphan — a gate that
+    cannot see a real consumer is a gate that argues against the right fix.
     """
     import re
     from claude_sessions.main import MAIN_CAPS
@@ -192,7 +201,7 @@ def _declared_caps():
                                re.M | re.S):
             if row.group(1):
                 out.add(row.group(1))
-    out |= set(re.findall(r"capBtn\('([a-z_]+)'", js))
+    out |= set(re.findall(r"cap(?:Btn|Card|Note)\('([a-z_]+)'", js))
     out |= set(re.findall(r"'([a-z_]+)'", re.search(
         r"const LAUNCH_CAPS=\[(.*?)\];", js, re.S).group(1)))
     return out

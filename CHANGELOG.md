@@ -9,6 +9,70 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A Harnesses page, and a sidebar about the workspace rather than about one CLI.**
+  Five screens only Claude Code has — Accounts, its own client state, output styles,
+  subagents and hooks — moved out of the sidebar and behind a tab for that CLI, beside a
+  new Setup screen per harness: whether it is installed, where, which version, whether an
+  update is waiting, and its full capability table with the reason beside every gap. The
+  pages themselves are unchanged; only which door they sit behind moved. Five greyed rows
+  teach you the app is about one tool.
+
+- **Usage & cost reads every CLI.** A harness strip over the page, and the split is real:
+  daily tokens and per-project spend are counted out of each CLI's own transcripts, which
+  archeus already parses. Only the plan-window rail is Anthropic's, and it greys with its
+  reason instead of switching the whole page off — which is what the old `usage`
+  capability did for Codex and pi, wrongly. The dashboard's `spend today` names which CLI
+  spent it when more than one did.
+
+- **Models and quick-start presets for Codex and pi.** Both were an empty box on a fresh
+  install, because the model list was read only from what the CLI had already run. It now
+  also reads the catalogue each CLI **ships** — pi installs a 1,354-model provider list
+  covering its own models and Codex's — so the picker has suggestions before the first
+  session, labelled *run here* versus *ships with this CLI*. Three presets per CLI over
+  its own two scales, and a preset naming a model the catalogue does not publish is
+  dropped rather than offered.
+
+- **Non-Anthropic sessions are priced.** That same catalogue carries per-model prices, so
+  a `gpt-5.5` or Gemini session shows a cost instead of `n/a`. A model nothing publishes a
+  price for stays unpriced — no guess, because an Opus-tier fallback on a `gpt-5.6-luna`
+  session would be wrong by a factor of fifty.
+
+- **`codex.exe` and `pi` paths in ⚙ Settings → Paths & limits**, beside `claude.exe`, for
+  an install the automatic search cannot reach.
+
+### Changed
+
+- **Three capabilities Codex was declared not to have, it has.** Checked against the
+  installed binary rather than assumed: `codex mcp list/get/add/remove` is a full MCP
+  surface, `codex plugin list` reads every marketplace, and `codex doctor` reports the
+  installed version and whether a newer one exists — all three offline and without a
+  login. The MCP page, the Plugins page and the Updates page answer for Codex now;
+  plugins are read-only there, because installing goes through a marketplace resolver
+  archeus does not own. `codex update` and `pi update` are buttons.
+
+- **Hooks stay unavailable for Codex, with the real reason.** Its hook contract is
+  byte-identical to Claude Code's — the binary carries the same `session_id`,
+  `transcript_path`, `hook_event_name` and `stop_hook_active` payload fields — but every
+  handler in `hooks.json` is gated on an undocumented `trusted_hash` whose mismatch is
+  refused **silently**. A hook archeus installs that never fires and never says so is
+  worse than no hook.
+
+- **Auto-memory says where its two deliveries land.** The digest already reached every
+  installed CLI's instructions file; the path-scoped `.claude/rules/*.md` half only ever
+  reached Claude Code, and nothing said so. That is a declared capability now, the Memory
+  tab names which CLIs read those files, and the CLAUDE.md map lists every instructions
+  file a project loads rather than only Claude Code's.
+
+### Fixed
+
+- **Installing a second CLI no longer reports the workspace as broken.** The dashboard's
+  wiring ring counted hooks and a statusline over *every* CLI home, and neither is
+  something Codex or pi has — so a fully-wired machine dropped from 1/1 to 1/3 the moment
+  a second CLI appeared.
+
+- **A Codex or pi project is no longer attributed to an account called `.codex`.** The
+  spend breakdown resolved account names from Claude Code's account list alone.
+
 - **Structured data on every page of the manual, derived from the page.** All twenty-nine
   pages now carry a `TechArticle` and a `BreadcrumbList`, under the same author, website
   and application `@id`s the marketing site uses — so the two hosts describe one project

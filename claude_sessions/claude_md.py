@@ -154,19 +154,34 @@ def _preserve_machine_blocks(final, existing):
 
 
 def resolve_memory_files(project_path):
-    """Which CLAUDE.md files load for a project, broadest→narrowest, with
-    @import references resolved one level. Returns [(label, path, exists, imports)]."""
+    """Which instructions files load for a project, broadest→narrowest, with
+    @import references resolved one level. Returns [(label, path, exists, imports)].
+
+    Every INSTALLED harness's file, not only Claude Code's. The memory layer
+    already writes the digest into each of them (`write_memory_block` fans out
+    over `instructions_files()`), so a map that showed one was a map of one CLI's
+    session — and on a machine with Codex it was a map that could not explain
+    where the block you were looking at had gone.
+    """
     # every account's global file, not just the active one: the same project
     # opened under another account loads a different `user` CLAUDE.md, and a
     # map that shows one of them is a map of the wrong session.
     accounts = _cfg.all_config_dirs()
     candidates = [('user' if len(accounts) == 1 else 'user (%s)' % name,
                    _cfg.global_claude_md_for(d)) for name, d in accounts]
-    candidates += [
-        ('project',       os.path.join(project_path, 'CLAUDE.md')),
-        ('project/.claude', os.path.join(project_path, '.claude', 'CLAUDE.md')),
-        ('local',         os.path.join(project_path, 'CLAUDE.local.md')),
-    ]
+    # `instructions_files()` is deduped and Claude Code's is first, so with one
+    # harness installed this is exactly the three rows it has always been.
+    for name in _harnesses.instructions_files():
+        stem = os.path.splitext(name)[0]
+        candidates += [
+            ('project' if name == 'CLAUDE.md' else 'project (%s)' % name,
+             os.path.join(project_path, name)),
+            ('project/.claude' if name == 'CLAUDE.md'
+             else 'project/.claude (%s)' % name,
+             os.path.join(project_path, '.claude', name)),
+            ('local' if name == 'CLAUDE.md' else 'local (%s)' % name,
+             os.path.join(project_path, stem + '.local.md')),
+        ]
     out = []
     for label, path in candidates:
         exists = os.path.isfile(path)

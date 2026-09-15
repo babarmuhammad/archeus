@@ -135,6 +135,13 @@ _UNKNOWN_KEYS = '_unknown'
 _DEFAULT_SETTINGS = {
     'editor': '',              # path to preferred text editor ('' = auto-detect)
     'claude_exe': '',          # path to claude.exe ('' = auto-detect)
+    # the other two harnesses' binaries, same shape and same meaning. Declared
+    # here rather than left as undeclared overrides because load_settings only
+    # returns what it knows plus _UNKNOWN_KEYS, and the Paths card renders the
+    # keys the registry names — an unlisted one has no field to be typed into.
+    # harnesses.exe() reads each by its descriptor's `exe_setting`.
+    'codex_exe': '',           # path to codex.exe ('' = auto-detect)
+    'pi_exe': '',              # path to the pi shim ('' = auto-detect)
     'claude_config_dir': '',   # CLAUDE_CONFIG_DIR override ('' = default ~/.claude)
     'default_effort': '',      # preselected effort in launch options
     'default_model': '',       # preselected model in launch options

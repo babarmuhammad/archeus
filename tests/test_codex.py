@@ -511,3 +511,178 @@ def test_a_new_codex_session_has_no_id_to_choose(monkeypatch, tmp_path):
     id is Codex's to mint and archeus learns it from the index — which is why
     nothing is recorded against one here."""
     assert '--session-id' not in codex.launch_argv('codex.exe', 'new', {}, '')
+
+
+# ── doctor, MCP and plugins: three surfaces the caps used to deny ────────────
+#
+# All three were declared False and all three were WRONG rather than cautious.
+# Checked against codex-cli 0.142.0: `codex mcp list --json` is full CRUD,
+# `codex plugin list` reads every marketplace, and `codex doctor` reports the
+# installed version and whether a newer one exists. Each runs offline and
+# unauthenticated. `hooks` was the one that survived the check and stays off.
+
+_DOCTOR = (
+    'Codex Doctor v0.142.0 \u00b7 windows-x86_64\n'
+    '\n'
+    'Notes\n'
+    '   \u2191 updates      0.154.0 available (current 0.142.0)\n'
+    '   \u2717 auth         no Codex credentials were found - Run codex login.\n'
+    '   \u26a0 websocket    Responses WebSocket failed; HTTPS fallback may work.\n'
+    + '\u2500' * 44 + '\n'
+    '\n'
+    'Environment\n'
+    '  \u2713 system       it-IT\n'
+    '  \u2717 auth         no Codex credentials were found \u2014 Run codex login.\n'
+    '  \u26a0 websocket    Responses WebSocket failed; HTTPS fallback may work.\n')
+
+
+class _Ran:
+    """A `proc.run` stand-in scripted by subcommand, so a test never spawns the
+    real binary — and never reads the developer's own ~/.codex. The conftest
+    Popen guard now blocks `codex` by name for the same reason; this is the
+    positive half of it."""
+
+    def __init__(self, **by_verb):
+        self.by_verb = by_verb
+        self.calls = []
+
+    def __call__(self, args, **kw):
+        self.calls.append(list(args))
+        import types
+        verb = ' '.join(str(a) for a in args[1:3])
+        out = self.by_verb.get(verb) or self.by_verb.get(str(args[1]), '')
+        return types.SimpleNamespace(returncode=0, stdout=out, stderr='')
+
+
+def _stub(monkeypatch, runner, exe='codex.exe'):
+    from claude_sessions import proc
+    monkeypatch.setattr(proc, 'run', runner)
+    monkeypatch.setattr(harnesses, 'exe',
+                        lambda hid=None: exe if hid == 'codex' else None)
+
+
+def test_the_doctor_reports_the_version_and_whether_one_is_waiting(monkeypatch):
+    _stub(monkeypatch, _Ran(doctor=_DOCTOR))
+    d = codex.doctor('')
+    assert d['version'] == '0.142.0' and d['latest'] == '0.154.0'
+    assert d['auth'] == 'missing'
+
+
+def test_a_note_is_not_read_twice(monkeypatch):
+    """Codex prints every note in a summary block AND again inside the section
+    it belongs to, with an em-dash where the summary used a hyphen — so they are
+    not even equal as strings and a whole-report scan listed each one twice."""
+    _stub(monkeypatch, _Ran(doctor=_DOCTOR))
+    assert len(codex.doctor('')['notes']) == 3
+
+
+def test_a_doctor_that_cannot_run_is_blanks_not_a_crash(monkeypatch):
+    """`proc.run` answers None when the call timed out, and this reaches a
+    request thread through /api/harness/setup."""
+    from claude_sessions import proc
+    monkeypatch.setattr(proc, 'run', lambda *a, **k: None)
+    monkeypatch.setattr(harnesses, 'exe', lambda hid=None: 'codex.exe')
+    d = codex.doctor('')
+    assert d['version'] == '' and d['latest'] == '' and d['notes'] == []
+
+
+def test_no_codex_is_not_installed_rather_than_empty(monkeypatch):
+    monkeypatch.setattr(harnesses, 'exe', lambda hid=None: None)
+    assert 'not installed' in codex.doctor('')['notes'][0]
+
+
+_MCP_JSON = json.dumps([
+    {'name': 'node_repl', 'enabled': True, 'disabled_reason': None,
+     'transport': {'type': 'stdio', 'command': 'node_repl.exe', 'args': [],
+                   'env': {'OPENAI_API_KEY': 'sk-secret', 'CODEX_HOME': 'C:/x'}}},
+    {'name': 'broken', 'enabled': False, 'disabled_reason': 'bad config',
+     'transport': {'type': 'stdio', 'command': 'x', 'args': [], 'env': {}}},
+])
+
+
+def test_mcp_is_read_from_the_json_form(monkeypatch):
+    """The text table masks every env value as `*****` and its column widths
+    move with the content; `--json` is stable and complete."""
+    _stub(monkeypatch, _Ran(**{'mcp list': _MCP_JSON}))
+    rows = codex.mcp_list('')
+    assert [r['name'] for r in rows] == ['node_repl', 'broken']
+    assert rows[1]['why'] == 'bad config' and not rows[1]['enabled']
+
+
+def test_an_mcp_env_value_never_leaves_the_process(monkeypatch):
+    """An MCP server's env is where its API key lives. Only the KEYS are kept,
+    so a page rendering a list of server names cannot put a credential in the
+    browser."""
+    _stub(monkeypatch, _Ran(**{'mcp list': _MCP_JSON}))
+    rows = codex.mcp_list('')
+    assert rows[0]['env_keys'] == ['CODEX_HOME', 'OPENAI_API_KEY']
+    assert 'sk-secret' not in json.dumps(rows)
+
+
+def test_a_server_name_is_validated_at_the_sink(monkeypatch):
+    """Argv-list form stops the SHELL, not the program: without this a name
+    beginning with a dash reaches `codex mcp remove` as an OPTION."""
+    r = _Ran(**{'mcp remove': ''})
+    _stub(monkeypatch, r)
+    for bad in ('--config', 'a b', '', '../x', 'x' * 80):
+        ok, _why = codex.mcp_remove(bad, '')
+        assert not ok, bad
+    assert not r.calls                        # nothing was ever spawned
+    ok, _msg = codex.mcp_remove('node_repl', '')
+    assert ok and r.calls[0][-2:] == ['--', 'node_repl']
+
+
+_PLUGINS = '\n'.join([
+    'Marketplace `openai-bundled`',
+    'C:/Users/x/.codex/.tmp/openai-bundled/.agents/plugins/marketplace.json',
+    '',
+    'PLUGIN                  STATUS              VERSION       PATH',
+    'browser@openai-bundled  installed, enabled  26.616.81150  C:/x/browser',
+    'chrome@openai-bundled   not installed                     C:/x/chrome',
+    ''])
+
+
+def test_plugins_are_read_per_marketplace(monkeypatch):
+    """`plugin list` has no `--json` (its sibling `mcp list` does), so the text
+    table is parsed — anchored on the two headings Codex prints, and a status
+    that contains its own comma and space ("installed, enabled")."""
+    _stub(monkeypatch, _Ran(**{'plugin list': _PLUGINS}))
+    rows = codex.plugins('')
+    assert [r['name'] for r in rows] == ['browser@openai-bundled',
+                                         'chrome@openai-bundled']
+    assert rows[0]['status'] == 'installed, enabled'
+    assert rows[0]['version'] == '26.616.81150'
+    assert rows[1]['version'] == ''           # not installed: no version column
+    assert rows[0]['marketplace'] == 'openai-bundled'
+    assert rows[0]['manifest'].endswith('marketplace.json')
+
+
+def test_an_unrecognised_plugin_table_yields_nothing_rather_than_guesses(
+        monkeypatch):
+    _stub(monkeypatch, _Ran(**{'plugin list': 'something else entirely\n'}))
+    assert codex.plugins('') == []
+
+
+def test_hooks_stay_off_and_the_reason_names_the_hash():
+    """The one of the four that survived the check. Codex's wire contract is
+    byte-identical to Claude Code's — the binary carries the same
+    session_id/transcript_path/hook_event_name payload names — but every handler
+    in hooks.json is gated on an undocumented `trusted_hash` whose mismatch is
+    refused SILENTLY. A hook archeus writes that never fires and never says so
+    is worse than no hook."""
+    ok, why = harnesses.cap('codex', 'hooks')
+    assert not ok and 'trusted_hash' in why
+    for flipped in ('mcp', 'plugins', 'versions', 'usage'):
+        assert harnesses.cap('codex', flipped)[0], flipped
+
+
+def test_every_preset_names_a_model_the_catalogue_publishes():
+    """A quick start that 404s on the first turn is worse than no button. Run
+    against the REAL catalogue, so this is the gate that fires the day a model
+    id is renamed — which is the only way archeus would find out."""
+    known = {r['id'].split('/', 1)[-1] for r in codex.catalogue()}
+    if not known:
+        return                      # no pi on this machine: no price list
+    for _n, _b, fields in harnesses.HARNESSES['codex']['presets']:
+        assert fields['model'] in known, fields['model']
+        assert fields['effort'] in harnesses.HARNESSES['codex']['efforts']

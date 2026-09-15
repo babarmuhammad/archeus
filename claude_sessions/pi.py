@@ -346,3 +346,148 @@ def _declared_models(home):
             if mid:
                 out.append(mid)
     return out
+
+
+# ── the catalogue pi ships, which is the one thing it did not have to run ────
+#
+# `models()` above answers what this install has USED. On a machine where pi was
+# installed an hour ago that is the empty list, which is exactly the picker the
+# rehaul set out to fix. What pi ALSO has is a full catalogue on disk, inside
+# its own npm package:
+#
+#   <pkg>/node_modules/@earendil-works/pi-ai/dist/providers/data/<provider>.json
+#
+# 38 files, one per provider, each `{apiName: {modelId: {...}}}` with `name`,
+# `cost` in $/MTok, `contextWindow`, `maxTokens` and `thinkingLevelMap`. It is
+# READ, not invented — it versions with the install, so `pi update` updates it —
+# which is the same posture `codex.models` takes toward the threads index and
+# `checkpoints.py` takes toward Claude Code's file-history store.
+#
+# It is deliberately preferred over `pi --list-models`, which is the obvious
+# move and the wrong one: that command needs the provider to be LOGGED IN (it
+# answers `No models available` otherwise, measured), and spawning a node CLI to
+# fill a modal is a second of latency every time it opens.
+
+#: where the package keeps them, relative to whichever node_modules root has it.
+#: npm may hoist `pi-ai` to the top level or nest it under the agent package, so
+#: both are tried — which one you get depends on the npm version that installed.
+_DATA_REL = os.path.join('@earendil-works', 'pi-ai', 'dist', 'providers', 'data')
+
+
+def _data_dir():
+    """The provider-data directory of the installed pi, or ''.
+
+    Resolved from the binary EVERY TIME and never cached as an absolute path:
+    `harnesses.exe` already refuses to cache for Codex's hashed install dir, and
+    an npm prefix moves for the same kind of reason. A miss is '' rather than an
+    error — the model field is free text, so no catalogue means no suggestions,
+    not a broken modal.
+    """
+    from . import harnesses as _h
+    exe = _h.exe('pi')
+    if not exe:
+        return ''
+    # the shim sits in the npm bin directory, whose node_modules is beside it
+    bindir = os.path.dirname(os.path.abspath(exe))
+    roots = (os.path.join(bindir, 'node_modules'),
+             os.path.join(bindir, 'node_modules', '@earendil-works',
+                          'pi-coding-agent', 'node_modules'))
+    for r in roots:
+        d = os.path.join(r, _DATA_REL)
+        if os.path.isdir(d):
+            return d
+    return ''
+
+
+#: parsed catalogue, keyed by the data directory and its newest mtime. The files
+#: only change when npm rewrites them, so this is read once per install rather
+#: than once per modal open — the `(mtime_ns, size)` shape `sessions` already
+#: uses, one directory wide.
+_CAT = {}
+
+
+def catalogue(home=None):
+    """[{id, label, provider, cost, context, thinking}] — every model this pi
+    install could run, whether or not it has.
+
+    `id` is `provider/modelId`, which is the form pi's own `--model` takes, so
+    the value lands in the launch field ready to use. `cost` is the raw
+    `{input, output, cacheRead, cacheWrite}` in dollars per MILLION tokens —
+    kept as the catalogue states it rather than converted here, because the one
+    consumer that prices a session is the place that should own the unit.
+    """
+    import json
+    d = _data_dir()
+    if not d:
+        return []
+    try:
+        files = sorted(f for f in os.listdir(d) if f.endswith('.json'))
+        key = (d, max((os.stat(os.path.join(d, f)).st_mtime_ns for f in files),
+                      default=0), len(files))
+    except OSError:
+        return []
+    got = _CAT.get(key)
+    if got is not None:
+        return got
+    out = []
+    for f in files:
+        try:
+            with open(os.path.join(d, f), encoding='utf-8') as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            # one unreadable provider file is not a broken catalogue: the other
+            # 37 are still the answer. Distinct from jsonstore's policy on OUR
+            # files, where a corrupt read is a fault — this tree is npm's.
+            continue
+        if not isinstance(data, dict):
+            continue
+        for models in data.values():
+            # a provider file's top level is keyed by API name, but some carry a
+            # scalar alongside (a schema version). Only the dicts are catalogues.
+            if not isinstance(models, dict):
+                continue
+            for mid, m in models.items():
+                if not isinstance(m, dict):
+                    continue
+                prov = m.get('provider') or os.path.splitext(f)[0]
+                out.append({
+                    'id': '%s/%s' % (prov, mid),
+                    'label': m.get('name') or mid,
+                    'provider': prov,
+                    'cost': m.get('cost') or {},
+                    'context': m.get('contextWindow') or 0,
+                    'thinking': sorted((m.get('thinkingLevelMap') or {}).keys()),
+                })
+    out.sort(key=lambda r: (r['provider'], r['label']))
+    _CAT.clear()            # one install, one catalogue; never a growing map
+    _CAT[key] = out
+    return out
+
+
+def doctor(home=None):
+    """{version, latest, auth, notes} for the installed pi.
+
+    Deliberately thin next to `codex.doctor`: pi has no such subcommand, so this
+    is `pi --version` plus whether an auth file with anything in it exists.
+    `latest` is left empty — `pi update` is the button, and asking npm what the
+    newest version is would be a network call on a page load.
+    """
+    from . import harnesses as _h
+    from . import proc
+    exe = _h.exe('pi')
+    if not exe:
+        return {'version': '', 'latest': '', 'auth': 'missing',
+                'notes': ['pi is not installed.']}
+    r = proc.run([exe, '--version'], timeout=20)
+    ver = (r.stdout or '').strip().splitlines()[0].strip() if r and r.stdout else ''
+    # auth.json is pi's login. An empty object is the freshly-installed state,
+    # which is a different answer from "no file" only to an installer.
+    import json
+    auth = 'missing'
+    try:
+        with open(os.path.join(home or _h.home_dir('pi'), 'auth.json'),
+                  encoding='utf-8') as f:
+            auth = 'ok' if json.load(f) else 'missing'
+    except (OSError, ValueError):
+        pass
+    return {'version': ver, 'latest': '', 'auth': auth, 'notes': []}

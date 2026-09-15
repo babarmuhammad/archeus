@@ -25,6 +25,7 @@ import time
 import uuid
 
 from . import config as _c
+from . import harnesses as _harnesses
 from . import proc as _proc     # `proc` is a local name for a Popen throughout
 from . import store as _store
 
@@ -889,10 +890,28 @@ def stop_auto_memory_scheduler():
 
 # ── shared helpers ───────────────────────────────────────────
 
-def _entries():
+def _entries(hid=''):
     """[(mtime, path, enc, home)] across every harness — same shape main.run
-    and the stats screens consume."""
-    return _store.all_projects()
+    and the stats screens consume. *hid* narrows it to one CLI's homes.
+
+    THE ONE SEAM. Every spend surface reads the corpus through here — the daily
+    bars, the per-project table, the dashboard's breakdown and the search index
+    — so the harness filter is one parameter on one function rather than a
+    branch in each of them. A home is the right key because that is what a row
+    already carries and what `instances()` already returns: no session needs to
+    be re-placed, and a project worked in under two CLIs correctly appears under
+    each of them rather than being assigned to one.
+
+    '' is every harness, and it is the default: "what did today cost" is a
+    question about the machine, not about one binary.
+    """
+    rows = _store.all_projects()
+    if not hid:
+        return rows
+    want = {os.path.normcase(os.path.abspath(h))
+            for _n, h, i in _harnesses.instances() if i == hid}
+    return [r for r in rows
+            if os.path.normcase(os.path.abspath(r[3] or '')) in want]
 
 
 def _folder(cfgdir, enc):
@@ -1133,7 +1152,8 @@ def api_usage_daily(q, body):
     from .stats import usage_by_day, fmt_tok
     rows = []
     for day, usage, cost, n_sessions in usage_by_day(
-            _entries(), days=int(q.get('days', 14)), silent=True):
+            _entries(q.get('hid') or ''),
+            days=int(q.get('days', 14)), silent=True):
         tot = sum(usage.values())
         rows.append({'day': day, 'tokens': tot, 'tok_fmt': fmt_tok(tot),
                      'cost': round(cost, 2), 'sessions': n_sessions,
@@ -1143,7 +1163,7 @@ def api_usage_daily(q, body):
 
 def api_usage_projects(q, body):
     from .stats import assemble_project_usage
-    return {'projects': assemble_project_usage(_entries())}
+    return {'projects': assemble_project_usage(_entries(q.get('hid') or ''))}
 
 
 def api_usage_project(q, body):
@@ -1216,26 +1236,39 @@ def _wiring():
     from . import hooks
     from . import automode
     rows = []
-    for name, d in _c.all_config_dirs():
-        try:
-            s = hooks._load(d)
-        except Exception:
-            s = {}
+    for name, d, hid in _harnesses.instances():
+        # hooks and a statusline are Claude Code's settings.json, and neither
+        # capability is one the other CLIs have. A non-Claude row is here so the
+        # card can SAY the CLI is installed, not so it can be scored on two
+        # things it structurally cannot have.
+        claude = hid == _harnesses.DEFAULT
+        s = {}
+        if claude:
+            try:
+                s = hooks._load(d)
+            except Exception:
+                s = {}
         n_hooks = sum(len(v) for v in (s.get('hooks') or {}).values()
                       if isinstance(v, list))
         sl = bool(s.get('statusLine'))
         rows.append({
-            'account': name, 'dir': d,
+            'account': name, 'dir': d, 'hid': hid,
             'hooks': n_hooks,
             'statusline': sl,
             # a statusline the classic renderer will never draw is installed and
             # invisible, which looks identical to working from the settings file
             'statusline_hidden': sl and s.get('tui') != 'fullscreen',
-            'mode': automode.default_mode(d) or '',
+            'mode': automode.default_mode(d) if claude else '',
         })
-    ok = sum(1 for r in rows
+    # `ok` over `total` is a RATIO, so its denominator may only count rows that
+    # could ever be in the numerator. Counting every instance made installing
+    # Codex drop a fully-wired workspace from 1/1 to 1/2 and the dashboard
+    # report it as broken — with nothing failing anywhere, because the test that
+    # covers this runs in a sandbox where no second CLI exists.
+    scored = [r for r in rows if r['hid'] == _harnesses.DEFAULT]
+    ok = sum(1 for r in scored
              if r['hooks'] and r['statusline'] and not r['statusline_hidden'])
-    return {'accounts': rows, 'ok': ok, 'total': len(rows)}
+    return {'accounts': rows, 'ok': ok, 'total': len(scored)}
 
 
 def _last_message(st):
@@ -1322,6 +1355,10 @@ def api_dashboard(q, body):
                              # single ring. Percentages of five separate quotas
                              # are not summable and must never be added up.
                              'by_account': dict(tday.get('accounts') or {}),
+                             # and the same split by CLI. Same argument for it
+                             # being summable, a different question: `accounts`
+                             # answers "which login", this answers "which tool".
+                             'by_harness': dict(tday.get('harnesses') or {}),
                              'provider_tokens': tday.get('provider_tokens', 0)},
                    'wiring': _wiring(),
                    'week': week, 'breakdown': bd, 'days': _DASH_DAYS,
@@ -4050,15 +4087,143 @@ def api_harness_models(q, body):
         # Claude Code's catalogue is live, priced and already in the boot
         # payload; sending a second copy would be two lists to keep in step.
         return {'hid': d['id'], 'models': [], 'efforts': list(d['efforts']),
-                'catalogue': True}
+                'catalogue': True, 'cards': [], 'presets': []}
     got = []
     if d.get('models'):
         try:
             got = _h.impl('models', d['id'])(_h.home_dir(d['id'])) or []
         except Exception:
             got = []
+    # `cards` is what this CLI COULD run; `models` is what it HAS. Two lists
+    # rather than one merged one, because the picker labels them differently —
+    # a model you have used is a stronger suggestion than one you have not, and
+    # collapsing them would throw away the only thing that distinguishes them.
+    # `catalogue` stays a BOOLEAN meaning "the boot payload has the cards": it
+    # is asserted by test_the_endpoint_answers_per_harness, and reusing the key
+    # for the rows would have been a silent change of type on a live field.
+    cards = []
+    if d.get('catalogue'):
+        try:
+            cards = _h.impl('catalogue', d['id'])(_h.home_dir(d['id'])) or []
+        except Exception:
+            cards = []
+    # id and label ONLY on the wire. pi's catalogue is 1,354 models across 38
+    # providers and each carries a price table, a context window and a thinking
+    # map — ~300KB of JSON to fill a datalist that shows two strings per row.
+    # The rest of the row is not dropped, it is simply not the browser's: the
+    # one consumer of `cost` is the pricing table in `stats`, which reads the
+    # catalogue directly and server-side.
+    cards = [{'id': c['id'], 'label': c['label']} for c in cards]
+    # a preset naming a model no catalogue publishes is dropped rather than
+    # offered: the whole point of a quick start is that clicking it works, and
+    # an id that 404s on the first turn is worse than no button. With no
+    # catalogue at all (pi not installed, so Codex has no price list) they all
+    # stand — nothing has been contradicted, so nothing is filtered.
+    known = {c['id'] for c in cards} | {c['id'].split('/', 1)[-1] for c in cards}
+    presets = [{'name': n, 'blurb': b, 'fields': f}
+               for n, b, f in (d.get('presets') or ())
+               if not known or (f.get('model') or '') in known]
     return {'hid': d['id'], 'models': got, 'efforts': list(d['efforts']),
-            'catalogue': False}
+            'catalogue': False, 'cards': cards, 'presets': presets}
+
+def api_harness_setup(q, body):
+    """Everything the Harnesses page's Setup tab shows for one CLI.
+
+    One endpoint rather than three because every field on that card comes from
+    the same place — the descriptor plus one `doctor()` — and three round trips
+    to paint one card is three chances for the page to render half-drawn.
+
+    The `doctor` call is a SUBPROCESS, and for Codex a networked one (it checks
+    for an update), so it is cached: opening this tab twice in a minute must not
+    spawn twice, and the Qt shell repaints a page on focus.
+    """
+    from . import harnesses as _h
+    hid = str((q or {}).get('hid') or '')
+    d = _h.descriptor(hid)
+    hid = d['id']
+    exe = _h.exe(hid)
+    out = {'hid': hid, 'label': d['label'], 'available': bool(exe),
+           'exe': exe or '', 'home': _h.home_dir(hid),
+           'exe_names': list(d['exe_names']),
+           'instructions_file': d['instructions_file'],
+           'caps': {k: list(_h.cap(hid, k)) for k in _h.CAPS},
+           'cap_labels': dict(_h.CAPS),
+           'version': '', 'latest': '', 'auth': '', 'notes': []}
+    if exe and d.get('doctor'):
+        try:
+            out.update(_harness_doctor(hid))
+        except Exception:
+            pass
+    elif exe and hid == _h.DEFAULT:
+        # Claude Code has its own updater and its own page; the version it
+        # reports there is the one this card shows, rather than a second reader.
+        from . import versions
+        try:
+            st = versions.status(quiet=True) or {}
+            out.update({'version': st.get('installed') or '',
+                        'latest': st.get('latest') or '',
+                        'auth': 'ok'})
+        except Exception:
+            pass
+    return out
+
+
+#: one `doctor()` per harness per _DOCTOR_TTL. `codex doctor` takes seconds and
+#: reaches the network to ask whether an update exists; this page is repainted
+#: whenever the Qt window regains focus, so an uncached call would spawn it on
+#: every alt-tab. Registered in tests/conftest's cache-leak fixture, like every
+#: other process-global cache in this codebase.
+_DOCTOR_TTL = 300
+_doctor_cache = {}
+
+
+def _harness_doctor(hid):
+    import time as _t
+    got = _doctor_cache.get(hid)
+    if got and _t.time() - got[0] < _DOCTOR_TTL:
+        return got[1]
+    from . import harnesses as _h
+    val = _h.impl('doctor', hid)(_h.home_dir(hid)) or {}
+    _doctor_cache[hid] = (_t.time(), val)
+    return val
+
+
+def api_harness_doctor(q, body):
+    """The doctor block alone, uncached-by-request but served from the same TTL.
+    Its own route because the Setup card is not the only thing that wants to
+    know whether an update is waiting — the Updates page asks too."""
+    from . import harnesses as _h
+    hid = _h.descriptor(str((q or {}).get('hid') or ''))['id']
+    if not _h.exe(hid) or not _h.descriptor(hid).get('doctor'):
+        return {'hid': hid, 'version': '', 'latest': '', 'auth': '', 'notes': []}
+    out = dict(_harness_doctor(hid))
+    out['hid'] = hid
+    return out
+
+
+def api_harness_update(q, body):
+    """Run one CLI's own updater, in a terminal the user can watch.
+
+    `codex update` and `pi update` both rewrite the installation and both can
+    ask a question; neither is a thing to run captured on a request thread with
+    nobody able to answer it. Same posture as `accounts._open_terminal` takes
+    toward `claude login`.
+    """
+    from . import harnesses as _h
+    from . import proc
+    hid = str((body or {}).get('hid') or '')
+    if hid not in _h.HARNESSES:
+        return {'ok': False, 'error': 'no such harness'}
+    if hid == _h.DEFAULT:
+        return {'ok': False, 'error': 'Claude Code updates from the Updates page.'}
+    exe = _h.exe(hid)
+    if not exe:
+        return {'ok': False, 'error': '%s is not installed.' % _h.descriptor(hid)['label']}
+    ok = proc.spawn_terminal([exe, 'update'], env=_c.account_env(_h.home_dir(hid)),
+                             title='%s update' % _h.descriptor(hid)['label'],
+                             keep_open=True)
+    return {'ok': bool(ok)}
+
 
 GET_ROUTES = {
     '/api/transcript': api_transcript,
@@ -4130,11 +4295,14 @@ GET_ROUTES = {
     '/api/loops': api_loops,
     '/api/provider/status': api_provider_status,
     '/api/harness/models': api_harness_models,
+    '/api/harness/setup': api_harness_setup,
+    '/api/harness/doctor': api_harness_doctor,
     '/api/provider/models': api_provider_models,
     '/api/plan/last': api_plan_last,
 }
 
 POST_ROUTES = {
+    '/api/harness/update': api_harness_update,
     '/api/session/export': api_session_export,
     '/api/session/archive': api_session_archive,
     '/api/session/restore': api_session_restore,

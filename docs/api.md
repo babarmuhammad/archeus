@@ -45,7 +45,9 @@ a handler sees them; a missing or malformed one is a 400.
 | `/api/extra-paths` | `api_extra_paths_get` | — |
 | `/api/global-claude-md` | `api_global_claude_md` | The account-global CLAUDE.md Claude reads in every session. |
 | `/api/graph-lite` | `api_graph_lite` | Compact project shape for the ambient motion layer. |
+| `/api/harness/doctor` | `api_harness_doctor` | The doctor block alone, uncached-by-request but served from the same TTL. |
 | `/api/harness/models` | `api_harness_models` | What one CLI can be launched against: its model suggestions, its effort |
+| `/api/harness/setup` | `api_harness_setup` | Everything the Harnesses page's Setup tab shows for one CLI. |
 | `/api/health` | `api_health` | Project health — 229 lines of checks that were a README headline and had |
 | `/api/history` | `api_history` | Every replaced version archeus still holds, newest first. |
 | `/api/history/diff` | `api_history_diff` | — |
@@ -117,6 +119,7 @@ a handler sees them; a missing or malformed one is a 400.
 | `/api/disk/gc` | `api_disk_gc` | — |
 | `/api/extra-paths` | `api_extra_paths_set` | — |
 | `/api/global-claude-md` | `api_global_claude_md_save` | Atomic, because Claude Code reads this file every session. |
+| `/api/harness/update` | `api_harness_update` | Run one CLI's own updater, in a terminal the user can watch. |
 | `/api/health/allowlist` | `api_health_allowlist` | — |
 | `/api/history/restore` | `api_history_restore` | — |
 | `/api/hooks/purge` | `api_hooks_purge` | — |

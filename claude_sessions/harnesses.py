@@ -45,7 +45,15 @@ CAPS = {
     'statusline':       'a status line',
     'output_styles':    'output styles',
     'client_state':     'what the CLI records about itself',
-    'usage':            'account usage and rate limits',
+    #: what was spent, counted out of the CLI's own transcripts. Every harness
+    #: folds tokens into the same `usage_by_model` shape, so this is true for
+    #: all three — it was off for two of them only because the page it gated
+    #: also carried the rate-limit rail below, which is a different question.
+    'usage':            'token spend, by day and by project',
+    #: the plan's own windows and when they reset, read from the account. Only
+    #: Claude Code publishes them where archeus can reach: Codex reports its
+    #: windows in `codex doctor`/`/status` and pi bills per provider.
+    'plan_limits':      'plan usage and reset windows',
     'versions':         'install and update the CLI',
     'accounts':         'more than one login',
     'effort':           'a reasoning-effort setting',
@@ -129,6 +137,20 @@ HARNESSES = {
         #: '' = the live Anthropic catalogue `gui` already ships; anything else
         #: is a dotted name resolved through `impl`.
         'models': '',
+        #: `models` is what this install has RUN; `catalogue` is what it could.
+        #: Two fields because they answer differently on a fresh machine — the
+        #: first is empty and the second is not — and the picker shows both,
+        #: labelled, rather than one list that cannot say where a row came from.
+        #: '' here for the same reason `models` is: `gui` already ships
+        #: Anthropic's priced cards in the boot payload.
+        'catalogue': '',
+        #: '' = `config.LAUNCH_PRESETS`, which is (model, effort) over Anthropic
+        #: ids. Every other harness names its own tuple: a preset is a pair of
+        #: values from THIS CLI's two scales, so it cannot be translated.
+        'presets': (),
+        #: '' = `versions.py`, which is Claude Code's own updater and already a
+        #: page. The others each answer with one subprocess.
+        'doctor': '',
         'caps': {},                       # it can do everything; it is the model
     },
     'codex': {
@@ -165,6 +187,20 @@ HARNESSES = {
         #: binary's own enum, not assumed from Claude Code's.
         'efforts': ('', 'minimal', 'low', 'medium', 'high', 'xhigh'),
         'models': 'codex.models',
+        'catalogue': 'codex.catalogue',
+        'doctor': 'codex.doctor',
+        #: three stops over Codex's OWN two scales, and every model id here is
+        #: one the catalogue publishes rather than one typed from a blog post.
+        #: A preset that names a model this install cannot reach is dropped by
+        #: the picker rather than offered — see `gui_api.api_harness_models`.
+        'presets': (
+            ('Quick', 'Cheap and fast, for a small edit.',
+             {'model': 'gpt-5.6-luna', 'effort': 'low'}),
+            ('Everyday', 'The balance most sessions want.',
+             {'model': 'gpt-5.6-terra', 'effort': 'medium'}),
+            ('Deep', 'Slow and thorough, for a design or a hard bug.',
+             {'model': 'gpt-6-astra', 'effort': 'xhigh'}),
+        ),
         #: what archeus cannot do HERE, and why — the reason is what the screen
         #: prints, so each says which side the gap is on. The first group is
         #: structural (Codex has no such thing); the second is archeus reading
@@ -175,16 +211,40 @@ HARNESSES = {
                                      'not in .claude.json.'),
             'accounts':      (False, 'archeus manages Claude logins; Codex '
                                      'keeps one login per CODEX_HOME.'),
-            'usage':         (False, "Codex reports its own rate limits; this "
-                                     "page reads Anthropic's."),
-            'versions':      (False, 'Codex updates itself with `codex update`.'),
-            'mcp':           (False, "Codex keeps its MCP servers in "
-                                     "config.toml, not in Claude Code's."),
-            'plugins':       (False, 'Codex has its own marketplaces; archeus '
-                                     'reads Claude Code\'s.'),
-            'hooks':         (False, "Codex has hooks.json; archeus writes "
-                                     "Claude Code's settings.json."),
-            'agents':        (False, 'Codex keeps subagents in .agents.'),
+            #: `usage` is NOT here: `codex.fold` fills the same `usage_by_model`
+            #: every other harness does, so the spend cards are real. What Codex
+            #: does not publish is the WINDOW — its rate limits come back on the
+            #: API response and `codex doctor` prints the rest, neither of which
+            #: is the Anthropic OAuth endpoint the plan rail reads.
+            'plan_limits':   (False, "Codex reports its own limits in `codex "
+                                     "doctor`; this rail reads Anthropic's."),
+            #: `mcp`, `plugins` and `versions` are NOT here, and all three were
+            #: WRONG rather than cautious — checked against the installed 0.142:
+            #: `codex mcp list --json/add/remove` is full CRUD, `codex plugin
+            #: list/marketplace` reads every marketplace, and `codex doctor`
+            #: prints `updates X available (current Y)`. All three run offline
+            #: and need no login.
+            #: hooks is the one that survives the check. Codex's wire contract
+            #: is byte-identical to Claude Code's — the binary carries the same
+            #: `session_id`/`transcript_path`/`hook_event_name`/`stop_hook_active`
+            #: payload field names — but every handler in `hooks.json` is gated
+            #: on an undocumented `trusted_hash`, and a wrong one is REFUSED
+            #: SILENTLY. A hook archeus writes that never fires and never says so
+            #: is worse than no hook, so this stays off until the hash is known.
+            'hooks':         (False, 'Codex gates each hook on an undocumented '
+                                     'trusted_hash, and a wrong one fails '
+                                     'silently rather than erroring.'),
+            'agents':        (False, 'Codex keeps subagents in .agents, with no '
+                                     'CLI to manage them.'),
+            #: auto-memory's OTHER delivery. The digest reaches Codex fine —
+            #: `instructions_files()` puts it in AGENTS.md — but the path-scoped
+            #: half does not: `.claude/rules/*.md` with a `globs:` header is
+            #: Claude Code's mechanism, and Codex has no config key for one
+            #: (`model_instructions_file` and `project_doc_fallback_filenames`
+            #: are whole files, not path-scoped). So the rule FILES are written
+            #: for Claude Code and Codex gets the always-on digest instead.
+            'rules':         (False, 'Codex has no path-scoped rules; it reads '
+                                     'the memory digest in AGENTS.md instead.'),
             #: the launch modal's own gaps, checked against `codex --help` on
             #: the installed binary rather than assumed from Claude Code's
             #: flags. Codex HAS `-m`, `-a` and a reasoning-effort config key,
@@ -235,6 +295,20 @@ HARNESSES = {
         #: bottom and `max` at the top, with no `ultracode`.
         'efforts': ('', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'),
         'models': 'pi.models',
+        'catalogue': 'pi.catalogue',
+        'doctor': 'pi.doctor',
+        #: pi is provider-neutral, so its presets pick a PROVIDER as much as a
+        #: model — `provider/id` is the form its own `--model` takes. Whichever
+        #: of these the user has a key for survives the catalogue filter; the
+        #: rest are dropped rather than offered as a login prompt.
+        'presets': (
+            ('Quick', 'Cheap and fast, for a small edit.',
+             {'model': 'google/gemini-3.1-flash-lite', 'effort': 'low'}),
+            ('Everyday', 'The balance most sessions want.',
+             {'model': 'anthropic/claude-sonnet-5', 'effort': 'medium'}),
+            ('Deep', 'Slow and thorough, for a design or a hard bug.',
+             {'model': 'openai/gpt-5.5', 'effort': 'high'}),
+        ),
         #: pi's gaps are wider than Codex's and differently shaped: it has no
         #: MCP and no hooks AT ALL (extensions are TypeScript modules it loads
         #: itself). `skills` is not listed because archeus installs into pi's
@@ -254,13 +328,22 @@ HARNESSES = {
                                      '`pi install`, not marketplaces.'),
             'agents':        (False, 'pi has no subagents.'),
             'output_styles': (False, 'Output styles are a Claude Code feature.'),
+            #: same split as Codex's, and for the same reason: pi walks the tree
+            #: for AGENTS.md and CLAUDE.md, which is a whole file per directory,
+            #: not a rule selected by the path you just opened.
+            'rules':         (False, 'pi has no path-scoped rules; it reads the '
+                                     'memory digest in AGENTS.md instead.'),
             'client_state':  (False, 'pi records no equivalent of '
                                      '.claude.json.'),
             'accounts':      (False, 'archeus manages Claude logins; pi keeps '
                                      'one auth.json per home.'),
-            'usage':         (False, "pi bills per provider; this page reads "
-                                     "Anthropic's."),
-            'versions':      (False, 'pi updates itself with `pi update`.'),
+            #: same split as Codex's: `pi.fold` counts tokens, so the spend
+            #: cards are real; what pi has no notion of is one PLAN with one
+            #: window, because it bills per provider.
+            'plan_limits':   (False, "pi bills per provider, so there is no one "
+                                     "plan window; this rail reads Anthropic's."),
+            #: `versions` is NOT here: `pi update` is a real command and the
+            #: installed version comes back from `pi --version`.
             #: pi HAS `-n` and `--model` and a `--thinking` level, so naming,
             #: the model and effort all work. What it has no notion of is a
             #: permission MODE — `--approve` trusts project-local files, which

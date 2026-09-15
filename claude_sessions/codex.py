@@ -332,6 +332,212 @@ def models(home):
     return seen
 
 
+def catalogue(home=None):
+    """[{id, label, provider, cost, context, thinking}] — every model a Codex
+    install could run, or [].
+
+    Codex publishes no catalogue of its own: there is no `codex models`, the
+    binary carries a dozen `gpt-5.*` strings with no way to tell a live id from
+    a retired one, and `codex doctor` reports the install rather than the menu.
+    What DOES exist, on a machine that also has pi, is pi's shipped provider
+    data — `openai-codex.json` is exactly the eight models Codex offers, with
+    their prices and their reasoning levels, maintained by someone who tracks
+    them and updated by `pi update`.
+
+    Reading another tool's catalogue is unusual enough to say why: the
+    alternative was a list typed into this file, which is the thing `models()`
+    two functions down refuses to do and for the same reason — it would be wrong
+    the first time `codex update` runs, and silently. A borrowed READ that goes
+    stale visibly (the file stops existing when pi is uninstalled) beats an
+    invention that goes stale invisibly. With no pi, this is [] and the launch
+    field is what it always was: free text over whatever Codex has run.
+    """
+    from . import pi as _pi
+    return [r for r in _pi.catalogue() if r['provider'] == 'openai-codex']
+
+
+#: what `codex doctor` prints in its Notes block, and the two lines worth
+#: reading out of it. Anchored on the label rather than the glyph: the status
+#: marks are `✓ ⚠ ✗ ↑` and which one a line gets is Codex's business, while the
+#: label is the thing the report is ABOUT.
+_UPD_RE = r'updates\s+(\S+)\s+available\s+\(current\s+(\S+)\)'
+
+
+def doctor(home=None):
+    """{version, latest, auth, notes} for the installed Codex.
+
+    One subprocess, and it is not a cheap one — `codex doctor` checks for an
+    update, which is a network round trip — so every caller reaches it through a
+    cache or a job, never inline on a request thread. Parsed for the Notes block
+    alone: the sections below it are a page of environment detail that belongs
+    in `notes` verbatim if anywhere, not in fields archeus would have to keep in
+    step with another tool's report format.
+    """
+    import re
+    from . import harnesses as _h
+    from . import proc
+    exe = _h.exe('codex')
+    if not exe:
+        return {'version': '', 'latest': '', 'auth': 'missing',
+                'notes': ['Codex is not installed.']}
+    env = dict(os.environ)
+    if home:
+        env['CODEX_HOME'] = home
+    r = proc.run([exe, 'doctor'], env=env, timeout=90)
+    out = (r.stdout or '') if r else ''
+    ver = latest = ''
+    auth = 'ok'
+    notes = []
+    m = re.search(r'Codex Doctor\s+v(\S+)', out)
+    if m:
+        ver = m.group(1)
+    # the Notes block only. Every note is REPEATED further down inside the
+    # section it belongs to — with an em-dash where the summary used a hyphen,
+    # so they are not even equal as strings — and reading the whole report gave
+    # each one twice. The block ends at the rule Codex draws under it.
+    body = out.split('\nNotes', 1)[-1]
+    body = re.split(r'\n\s*[─-╿]{4,}', body, 1)[0]
+    for line in body.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        m = re.search(_UPD_RE, s)
+        if m:
+            latest = m.group(1)
+            ver = ver or m.group(2)
+        if re.search(r'(?:^|\s)auth(?:\s|$)', s):
+            # the mark is the answer; anything but a tick means "not logged in
+            # or not sure", and the rest of the line says which
+            auth = 'ok' if '✓' in s else 'missing'
+        if s[0] in '✗⚠↑':
+            notes.append(s)
+    return {'version': ver, 'latest': latest, 'auth': auth, 'notes': notes}
+
+
+def mcp_list(home=None):
+    """[{name, enabled, command, args, env_keys, why}] — Codex's MCP servers.
+
+    `codex mcp list --json` is the source and it needs no login, which is what
+    makes this a real surface rather than a config.toml parse: the CLI resolves
+    profiles, marketplace-installed servers and the bundled runtime's own
+    entries, none of which are visible by reading the file.
+
+    ENV VALUES ARE DROPPED and only their keys survive. Codex's own table masks
+    them as `*****` for the obvious reason — an MCP server's env is where its
+    API key lives — and a page that fetched them would be putting a credential
+    into the browser to render a list of names.
+    """
+    import json
+    from . import harnesses as _h
+    from . import proc
+    exe = _h.exe('codex')
+    if not exe:
+        return []
+    env = dict(os.environ)
+    if home:
+        env['CODEX_HOME'] = home
+    r = proc.run([exe, 'mcp', 'list', '--json'], env=env, timeout=45)
+    if r is None or r.returncode:
+        return []
+    try:
+        rows = json.loads(r.stdout or '[]')
+    except ValueError:
+        return []
+    out = []
+    for row in rows if isinstance(rows, list) else []:
+        t = (row or {}).get('transport') or {}
+        out.append({
+            'name': row.get('name') or '',
+            'enabled': bool(row.get('enabled')),
+            'why': row.get('disabled_reason') or '',
+            'kind': t.get('type') or '',
+            'command': t.get('command') or t.get('url') or '',
+            'args': list(t.get('args') or []),
+            'env_keys': sorted((t.get('env') or {}).keys()),
+        })
+    return out
+
+
+#: an MCP server name archeus will pass to `codex mcp remove`. Validated at the
+#: SINK rather than trusted from the wire, the lesson `_managed_path_ok` carries:
+#: the argv-list form stops a shell, and this stops the name being an option.
+_NAME_RE = r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+
+
+def mcp_remove(name, home=None):
+    """Remove one MCP server by name. (ok, message)."""
+    import re
+    from . import harnesses as _h
+    from . import proc
+    if not re.match(_NAME_RE, str(name or '')):
+        return False, 'not a server name: %r' % (name,)
+    exe = _h.exe('codex')
+    if not exe:
+        return False, 'Codex is not installed.'
+    env = dict(os.environ)
+    if home:
+        env['CODEX_HOME'] = home
+    r = proc.run([exe, 'mcp', 'remove', '--', str(name)], env=env, timeout=45)
+    if r is None:
+        return False, 'could not run codex'
+    return (not r.returncode), ((r.stderr or r.stdout or '').strip()
+                                or 'Removed %s.' % name)
+
+
+def plugins(home=None):
+    """[{marketplace, manifest, name, status, version, path}] — what
+    `codex plugin list` reports, read-only.
+
+    Parsed from the text table rather than JSON because this subcommand has no
+    `--json` (its sibling `mcp list` does). The parse is anchored on the two
+    headings Codex prints — a `Marketplace \\`name\\`` line followed by its
+    manifest path, then a PLUGIN/STATUS/VERSION/PATH table — and a shape it does
+    not recognise yields nothing rather than guesses, the same posture `_rows`
+    takes toward a schema it does not know.
+    """
+    import re
+    from . import harnesses as _h
+    from . import proc
+    exe = _h.exe('codex')
+    if not exe:
+        return []
+    env = dict(os.environ)
+    if home:
+        env['CODEX_HOME'] = home
+    r = proc.run([exe, 'plugin', 'list'], env=env, timeout=60)
+    if r is None or r.returncode:
+        return []
+    out, market, manifest, in_table = [], '', '', False
+    for line in (r.stdout or '').splitlines():
+        s = line.rstrip()
+        m = re.match(r'^Marketplace\s+`([^`]+)`', s.strip())
+        if m:
+            market, manifest, in_table = m.group(1), '', False
+            continue
+        if market and not manifest and s.strip() and not s.startswith(' '):
+            manifest = s.strip()
+            continue
+        if s.strip().startswith('PLUGIN'):
+            in_table = True
+            continue
+        if not in_table or not s.strip():
+            continue
+        # name, then a status that may itself contain a comma and a space
+        # ("installed, enabled"), then an optional version, then a path
+        m = re.match(r'^(\S+)\s{2,}(.+?)\s{2,}(\S*)\s{2,}(.+?)\s*$', s)
+        if not m:
+            m = re.match(r'^(\S+)\s{2,}(.+?)\s{2,}(.+?)\s*$', s)
+            if not m:
+                continue
+            name, status, path, version = m.group(1), m.group(2), m.group(3), ''
+        else:
+            name, status, version, path = m.groups()
+        out.append({'marketplace': market, 'manifest': manifest,
+                    'name': name, 'status': status.strip(),
+                    'version': version.strip(), 'path': path.strip()})
+    return out
+
+
 def _config_model(home):
     """`model = "..."` from config.toml, or ''.
 

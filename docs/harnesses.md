@@ -82,22 +82,67 @@ reason, and a button on a session row works the same way.
 | | Claude Code | Codex | pi |
 |---|---|---|---|
 | Sessions, resume, fork | ✅ | ✅ | ✅ |
-| Token spend & usage | ✅ | ✅ | ✅ |
+| Token spend, by day and project | ✅ | ✅ | ✅ |
+| Plan usage & reset windows | ✅ | — *reported by `codex doctor`, not by an endpoint archeus can read* | — *bills per provider, so there is no one plan window* |
 | Project memory | ✅ | ✅ | ✅ |
 | Skills | ✅ | ✅ | ✅ |
+| Path-scoped rule files | ✅ | — *reads the digest in `AGENTS.md` instead* | — *reads the digest in `AGENTS.md` instead* |
 | Archive a session | ✅ | ✅ | — *no archive; a session is kept or deleted* |
+| MCP servers | ✅ | ✅ *`codex mcp`* | — *no MCP client* |
+| Plugins & marketplaces | ✅ | ✅ *read-only* | — *`pi install` packages, not marketplaces* |
+| Install & update the CLI | ✅ | ✅ *`codex update`* | ✅ *`pi update`* |
 | Checkpoints (`/rewind`) | ✅ | — *SQLite, not a file-history store* | — *branches inside one session file* |
-| Hooks | ✅ | — *`hooks.json`, behind a trust hash* | — *TypeScript extensions instead* |
-| MCP servers | ✅ | — *`config.toml`* | — *no MCP client* |
-| Subagents | ✅ | — *`.agents`* | — *none* |
-| Plugins & marketplaces | ✅ | — *its own* | — *`pi install`* |
+| Hooks | ✅ | — *gated on an undocumented `trusted_hash`* | — *TypeScript extensions instead* |
+| Subagents | ✅ | — *`.agents`, with no CLI to manage them* | — *none* |
 | Output styles | ✅ | — | — |
 | Accounts | ✅ | — *one login per home* | — *one `auth.json` per home* |
 | Status line | ✅ | — | — *draws its own* |
 
-The gaps that are archeus reading Claude Code's file for something the other CLI keeps
-elsewhere are marked as such on the page itself, so you can tell "this tool does not have
-it" from "archeus has not got to it yet".
+Every row is checked against the installed binary, not assumed from the name — and four of
+them changed when that was actually done. `codex mcp list/get/add/remove` is a full MCP
+surface, `codex plugin list` reads every marketplace, and `codex doctor` reports the
+installed version and whether a newer one exists; all three run offline and without a
+login. Token spend was never Claude Code's alone either: every CLI records its usage in
+its own transcripts, and only the *plan window* is Anthropic's.
+
+**Hooks is the one that survived the check, and it is worth saying why it stays off.**
+Codex's hook contract is byte-identical to Claude Code's — the binary carries the same
+`session_id`, `transcript_path`, `hook_event_name` and `stop_hook_active` payload fields —
+so writing one would be easy. But every handler in its `hooks.json` is gated on an
+undocumented `trusted_hash`, and a wrong hash is refused **silently**. A hook archeus
+installs that never fires and never says so is worse than no hook at all.
+
+Where a gap is archeus reading Claude Code's file for something the other CLI keeps
+elsewhere, the reason says so on the page itself — so you can tell "this tool does not
+have it" from "archeus has not got to it yet".
+
+## Where each CLI's own screens live
+
+The sidebar carries what more than one CLI has. Everything that is one CLI's own lives
+behind **Harnesses**, under a tab for that CLI: Setup — whether it is installed, where,
+which version, whether an update is waiting and what it can do — plus, for Claude Code,
+Accounts, its own client state, output styles, subagents and hooks.
+
+Five screens moved there rather than staying in the sidebar greyed out for the two CLIs
+that do not have them. A greyed row teaches you the app has the feature; five of them
+teach you the app is about one tool.
+
+## Models and quick starts
+
+Each CLI gets its own model list and its own effort scale, because they are not
+translatable: `--effort max` and `ultracode` are Claude Code's and Codex rejects both, pi's
+scale runs from `off` to `max`, and a priced Anthropic model card means nothing next to
+`gpt-5.5`.
+
+The model field is free text with two sets of suggestions behind it — **run here**, what
+that CLI has actually been pointed at on this machine, and **ships with this CLI**, read
+out of the catalogue it installs. Nothing is typed into archeus: the catalogue versions
+with the CLI, so `pi update` updates it.
+
+That catalogue also carries prices, which is what makes a `gpt-5.5` or Gemini session cost
+something rather than reading `n/a`. A model nothing publishes a price for stays unpriced —
+archeus does not guess, because an Opus-tier fallback on a `gpt-5.6-luna` session would be
+wrong by a factor of fifty.
 
 ## Turning one off
 

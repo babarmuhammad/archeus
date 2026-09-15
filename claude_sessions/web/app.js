@@ -767,6 +767,7 @@ const NAV=[
   ['logs','history','Logs','What archeus itself did and why it failed — its own Claude calls, background jobs, the scheduler and the proxy, newest first.',()=>pgLogs,'feed',''],
   ['accounts','group','Accounts','Every Claude login, and the sync that levels them all up to the same provisioning.',()=>pgAccounts,'split','accounts'],
   ['client','ai','Claude Code','What Claude Code records about itself: versions, disk, background agents, its own settings.',()=>pgClient,'pile','client_state'],
+  ['harness','group','Harnesses','Every coding CLI archeus drives — whether it is installed, how it is set up, and the screens only it has.',()=>pgHarness,'pile',''],
   ['settings','bolt','Launch','What every new session starts with — effort, model, permission mode, the window it opens in, and the plan/execute pair.',()=>pgSetLaunch,'form',''],
   ['appearance','palette','Appearance','Palette, skin, world, motion, surface transparency and the background scene.',()=>pgSetAppearance,'form',''],
   // plain '&', never '&amp;': every consumer escapes it (the tab strip, the nav
@@ -783,11 +784,22 @@ const NAV=[
    page cannot exist twice with two different blurbs. The label is the key: no
    section id, because a section id would have collided with the `settings` and
    `accounts` PAGE ids and a lookup would have silently found the wrong one. */
+/* Five sections, and WHICH pages sit in them is the multi-CLI question.
+   A page is here when it is about something more than one CLI has, and in the
+   Harnesses page when it is one CLI's own — checked against the installed
+   binaries, not assumed from the name. `mcp` and `plugins` looked Claude-only
+   and are not: `codex mcp list/add/remove` and `codex plugin list/marketplace`
+   are full surfaces, so both stay shared and grey for pi alone. The five that
+   moved are the five that survived the check — output styles, subagents,
+   hooks, logins and Claude Code's own state file — and they moved rather than
+   staying greyed because five dead rows in a sidebar is a sidebar about one
+   CLI. `Accounts` BECAME `Harnesses` rather than a sixth section being added:
+   both of its pages were moving into it anyway. */
 const SECTIONS=[
-  ['Context','doc','What Claude reads before you type: the instructions on the account, the style it answers in, and the tools it can reach.',['globalmd','ostyles','mcp']],
-  ['Library','ai','What you install once and every session then uses — subagents, skills, hooks and plugins.',['agents','skills','hooks','plugins']],
+  ['Context','doc','What a CLI reads before you type: the instructions on the account, and the tools it can reach.',['globalmd','mcp']],
+  ['Library','ai','What you install once and every session then uses — skills and plugins.',['skills','plugins']],
   ['Activity','chart','What has been spent and what is running: token spend, loops, and archeus’s own log of what it did.',['usage','loops','logs']],
-  ['Accounts','group','Every Claude login on this machine, and what Claude Code records about itself.',['accounts','client']],
+  ['Harnesses','group','Every coding CLI on this machine — what each can do, how it is set up, and the screens only it has.',['harness']],
   ['Settings','settings','Launch defaults, appearance, paths and limits, models and updates.',['settings','appearance','paths','models','updates']],
 ];
 /* A page in no section, and where you reach it instead. Search left the nav
@@ -796,12 +808,40 @@ const SECTIONS=[
    a row spent on the least-used destination. tests/test_gui.py fails a section
    naming a page that does not exist, and a page in neither a section nor here. */
 const OFFNAV={searchp:'the search box on the home dashboard, and Ctrl+K',
-              helpp:'the ? button at the foot of the sidebar'};
+              helpp:'the ? button at the foot of the sidebar',
+              ostyles:'the Claude Code tab on the Harnesses page',
+              agents:'the Claude Code tab on the Harnesses page',
+              hooks:'the Claude Code tab on the Harnesses page',
+              accounts:'the Claude Code tab on the Harnesses page',
+              client:'the Claude Code tab on the Harnesses page'};
+/* Which pages belong to which CLI, pointing by page ID exactly as SECTIONS
+   does — so NAV stays the ONE place a page is declared, its renderer is never
+   touched by the move, and a page cannot exist twice with two different blurbs.
+   `harness` leads every list because it is that CLI's Setup: the one sub-tab
+   every harness has, and the only one a CLI archeus has no other screen for.
+
+   Only what is THAT CLI's OWN goes here. `mcp`, `plugins`, `usage` and
+   `updates` are shared and stay in the sidebar with a harness dimension inside
+   — listing them per CLI would be three copies of one page, and would lose the
+   cross-account view each of them exists to give. */
+const HARNESS_TABS={
+  claude:['harness','accounts','client','ostyles','agents','hooks'],
+  codex: ['harness'],
+  pi:    ['harness'],
+};
 /* page id → section label. Derived; the reverse direction is what drawNav, the
    sub-tab strip and the page title all need, and computing it three times is
-   three chances to disagree. */
-const SEC_OF=Object.fromEntries(
-  SECTIONS.flatMap(([label,,,ids])=>ids.map(id=>[id,label])));
+   three chances to disagree. A harness sub-page resolves to Harnesses so the
+   sidebar keeps that section lit while you are on one. */
+const SEC_OF=Object.fromEntries([
+  ...SECTIONS.flatMap(([label,,,ids])=>ids.map(id=>[id,label])),
+  ...Object.values(HARNESS_TABS).flat().map(id=>[id,'Harnesses']),
+]);
+/* Which CLI owns a page, or '' for a shared one. The reverse of HARNESS_TABS,
+   derived for the same reason SEC_OF is. `harness` itself is deliberately NOT
+   in it: it is every CLI's Setup, so it has no one owner and the strip decides. */
+const HID_OF=Object.fromEntries(Object.entries(HARNESS_TABS)
+  .flatMap(([hid,ids])=>ids.filter(id=>id!=='harness').map(id=>[id,hid])));
 /* ── sidebar width: drag the grip, and it sticks ──────────────────────────────
    Persisted as a setting, like every other chrome choice, so the Qt shell and a
    browser tab agree. Clamped rather than free: below SIDE_MIN the project paths
@@ -922,6 +962,22 @@ function capCard(key,why){
     <p class="secthint">${esc(why||'The CLI this account belongs to does not have this.')}</p>
     ${on.length?`<p class="secthint">Supported on: ${esc(on.join(', '))}.</p>`:''}</div>`;
 }
+/* A line naming which CLIs a shared artefact actually reaches, for the case
+   neither `capBtn` nor `capCard` covers: the thing is not a button and not a
+   whole page, it is ONE part of a page that lands somewhere for some CLIs and
+   not others. The rule files are the case that needed it — auto-memory writes
+   one graph, and its two deliveries have different reach: every CLI gets the
+   digest in its instructions file, only Claude Code gets `.claude/rules/*.md`.
+   Silent is the failure mode here, not wrong: the files are written either way,
+   so nothing looks broken while half your CLIs never see them. */
+function capNote(key,lead){
+  if((ST.harnesses||[]).length<2)return '';
+  const on=capSupporters(key),off=(ST.harnesses||[])
+    .filter(h=>{const c=h.caps&&h.caps[key];return c&&!c[0];});
+  if(!off.length)return '';
+  return `<p class="secthint">${esc(lead||'Read by')} ${esc(on.join(', ')||'no CLI here')}.
+    ${esc(off[0].caps[key][1])}</p>`;
+}
 function drawNav(){
   const cur=SEC_OF[PAGE_]||'';
   // clicking the section you are already in keeps the sub-tab you are on:
@@ -960,6 +1016,23 @@ function drawTabStrips(){
       +`<div class="tab" onclick="window.open('/graph?${qs({path:CUR.path,enc:CUR.encoded,k:CK})}','_blank')">Graph ${ic('ext')}</div>`;
     if(grp[1].length>1)sub=grp[1].map(id=>
       tabBtn(id,tabLabel(id),TAB===id,'openTab',tabCap(id))).join('');
+  }else if(SEC_OF[PAGE_]==='Harnesses'){
+    /* TWO levels, same shape as a project page: which CLI on top, that CLI's
+       own screens below. The strip is here rather than inside pgHarness for the
+       reason there is only one writer at all — two would be two chances for the
+       rows to disagree about which one is selected — and it means the five
+       pages that moved need no edit: they are painted by their own renderer
+       under a strip they know nothing about. */
+    // landing on a page that BELONGS to a CLI moves the selection to it, so
+    // Setup afterwards means that CLI's setup and not the one you left
+    HARNESS_HID=HID_OF[PAGE_]||HARNESS_HID;
+    const hid=HARNESS_HID;
+    top=installedHids().map(h=>tabBtn(h,harnessLabel(h),h===hid,'pickHarness',''))
+      .join('');
+    const ids=(HARNESS_TABS[hid]||['harness']);
+    if(ids.length>1)sub=ids.map(id=>
+      tabBtn(id,id==='harness'?'Setup':navLabel(id),PAGE_===id,'go',navCap(id)))
+      .join('');
   }else{
     const sec=SECTIONS.find(x=>x[3].includes(PAGE_));
     if(sec&&sec[3].length>1)top=sec[3].map(id=>
@@ -971,6 +1044,30 @@ function drawTabStrips(){
 function navLabel(id){const n=NAV.find(x=>x[0]===id);return n?n[2]:id;}
 function tabLabel(id){const t=TABS.find(x=>x[0]===id);return t?t[1]:id;}
 function openTab(id){TAB=id;drawProject();}
+/* ── which CLI the Harnesses page is showing ──────────────────────────────────
+   Held here rather than in pgHarness because the tab strip is drawn by
+   drawTabStrips, which runs for the five moved pages too — landing on Accounts
+   has to light the Claude Code tab, and HID_OF is what answers that. */
+let HARNESS_HID='claude';
+/* Every CLI archeus knows, INSTALLED ONES FIRST but never hiding the rest: a
+   harness you have not installed is exactly what this page exists to tell you
+   about, and a tab that disappears cannot say "not installed". Switched-off
+   ones ARE hidden — that is a choice you made, and the setting that made it is
+   two clicks away on the Launch page. */
+function installedHids(){
+  const off=new Set(ST.harnesses_disabled||[]);
+  return (ST.harnesses||[]).filter(h=>!off.has(h.id)).map(h=>h.id);
+}
+function harnessLabel(hid){
+  const h=harnessById(hid);
+  return (h?h.label:hid)+(h&&!h.available?' ·':'');
+}
+function pickHarness(hid){
+  HARNESS_HID=hid;
+  // land on the CLI's Setup rather than on whichever page you were reading:
+  // Output styles under Codex is a page that does not exist there
+  go('harness');
+}
 /* The one line under the tabs saying what this page is. Read out of the SAME
    blurb the nav tooltip and the help page render, never typed into a renderer:
    twelve of the nineteen pages opened directly into a table of Claude Code's
@@ -1582,10 +1679,24 @@ function feedDashboard(d,plan){
   setV($('#iQuotaLeg'),spendBy.slice(0,5).map(([n,t])=>
     `<span><i style="background:${acctColor(n)}"></i>${esc(n)} ${fmtTok(t)}</span>`).join(''));
   const roomy=accs.filter(a=>!(a.windows||[]).some(w=>(w.pct||0)>=50)).length;
-  setV($('#iQuotaFoot'),accs.length
+  /* WHICH TOOL spent it, when more than one did. The footer answered the quota
+     question and nothing else, which was the right answer while there was one
+     CLI: with three, "78% of its window" is a fact about one of them and the
+     other two are invisible on a card labelled `spend today`. An account and a
+     harness are different questions — the ring's arcs still split by account,
+     because that is what the quota ceiling belongs to — so this is a line, not
+     a second ring. Shown only when a second CLI actually spent something: on
+     the common machine there is nothing to disambiguate. */
+  const byH=Object.entries((d&&d.today&&d.today.by_harness)||{})
+    .filter(([,t])=>t>0).sort((a,b)=>b[1]-a[1]);
+  const hLine=byH.length>1
+    ?byH.map(([h,t])=>`${esc((harnessById(h)||{}).label||h)} ${fmtTok(t)}`).join(' · ')
+    :'';
+  setV($('#iQuotaFoot'),(accs.length
     ?(hot?`<b>${esc(hot.email||hot.account)}</b> runs out first — ${Math.round(peakWin*100)}% of its window`
         :`${roomy}/${accs.length} account${accs.length>1?'s':''} under 50%`)
-    :(todayTok?'no plan accounts configured':'nothing spent today'));
+    :(todayTok?'no plan accounts configured':'nothing spent today'))
+    +(hLine?`<div class="fsub">${hLine}</div>`:''));
   setV($('#iQuotaN'),(d&&d.today&&d.today.cost)?'$'+(d.today.cost).toFixed(2):'');
 
   if(!d)return;
@@ -2586,6 +2697,7 @@ async function drawMemory(){
         <b>Path-scoped rules</b> — one file per module. Claude loads the one whose
         <code>paths:</code> cover the file it just opened, and no others ·
         ${rules.length} file(s), ~${ruleTok} tok</summary>
+        ${capNote('rules','Written for')}
         <table class="tbl" style="margin:4px 0 8px">
           <tr><th>module</th><th>loads for</th><th>tok</th></tr>
           ${rules.map(r=>`<tr><td>${esc(r.unit||r.file||'')}</td>
@@ -3595,7 +3707,10 @@ async function drawPage(id){
   // screen — the same division the project side already uses (title = project,
   // tab = tab). Printing the page's own label in both places says it twice.
   const sec=SECTIONS.find(x=>x[3].includes(id));
-  $('#ttl').textContent=(sec&&sec[3].length>1)?sec[0]:(n?n[2]:id);
+  // a harness sub-page is a two-level strip, so the title names the section and
+  // the two strips name the CLI and the screen — same division as a project
+  $('#ttl').textContent=SEC_OF[id]==='Harnesses'?'Harnesses'
+    :(sec&&sec[3].length>1)?sec[0]:(n?n[2]:id);
   $('#tpath').textContent='';
   // the token is taken BEFORE the fetches start; each page function drops its
   // write if navigation moved on while it was waiting
@@ -3605,6 +3720,58 @@ async function drawPage(id){
   await n[4]()(nav);
 }
 
+/* ── one CLI's Setup: is it here, where, which version, and what it can do ────
+   ONE renderer parameterised by the selected harness, the way pgSettings is by
+   its sub-page — three copies would be three places to fix the day a fourth CLI
+   is registered. It answers the questions that are the same for every harness
+   and that no other page has a home for: the binary, the home directory, the
+   version and whether an update is waiting, whether it is logged in, and the
+   full capability table with the reason beside every gap.
+
+   The capability table is the payoff of the whole registry. Everywhere else a
+   capability greys ONE row and says why; here they are all on screen at once,
+   which is how you answer "what can this thing actually do" without clicking
+   nineteen pages to find out. */
+async function pgHarness(nav){
+  const hid=HARNESS_HID,row=harnessById(hid)||{caps:{}};
+  const d=await api('/api/harness/setup?'+qs({hid}));
+  const caps=Object.entries(d.caps||row.caps||{})
+    .sort((a,b)=>(a[1][0]?1:0)-(b[1][0]?1:0)||a[0].localeCompare(b[0]));
+  const capRows=caps.map(([k,[ok,why]])=>
+    `<tr><td>${esc((d.cap_labels||{})[k]||k)}</td>
+      <td>${ok?'<span class="tag ok">yes</span>':'<span class="tag">no</span>'}</td>
+      <td style="color:var(--dim)">${esc(why||'')}</td></tr>`).join('');
+  const upd=d.latest&&d.latest!==d.version;
+  const notes=(d.notes||[]).map(n=>`<div class="fsub">${esc(n)}</div>`).join('');
+  if(!shell(nav,`
+    <div class="card"><h3>${esc(d.label||hid)}
+      ${d.available?'<span class="tag ok">installed</span>'
+                   :'<span class="tag warn">not installed</span>'}
+      <span class="sp"></span>
+      ${upd?`<button class="btn sm" onclick="harnessUpdate(${hesc(hid)})"
+        title="Runs this CLI's own updater in a terminal.">${ic('refresh')} Update to ${esc(d.latest)}</button>`:''}</h3>
+      ${d.available?`<table class="tbl">
+        <tr><td>version</td><td class="num">${esc(d.version||'—')}</td></tr>
+        <tr><td>latest</td><td class="num">${esc(d.latest||'—')}</td></tr>
+        <tr><td>signed in</td><td>${d.auth==='ok'?'yes':'no'}</td></tr>
+        <tr><td>binary</td><td><code>${esc(d.exe||'—')}</code></td></tr>
+        <tr><td>home</td><td><code>${esc(d.home||'—')}</code></td></tr>
+        <tr><td>instructions file</td><td><code>${esc(d.instructions_file||'')}</code></td></tr>
+      </table>${notes}`
+      :`<p class="secthint">archeus looks for <code>${esc((d.exe_names||[]).join('</code>, <code>'))}</code>
+         on PATH and in its usual install directory. Install it, or set the path
+         on <span class="hlink" onclick="go('paths')">Paths &amp; limits</span>.</p>`}</div>
+    <div class="card"><h3>What archeus can do here</h3>
+      <p class="secthint">Every surface in the app, and where this CLI has no
+        equivalent, the reason. A gap is the tool's shape, not a missing feature.</p>
+      <table class="tbl"><tr><th>surface</th><th>works</th><th>why not</th></tr>
+        ${capRows}</table></div>`))return;
+}
+async function harnessUpdate(hid){
+  const r=await post('/api/harness/update',{hid});
+  toast(r.ok?'Update started in a new terminal window'
+            :'Update failed: '+(r.error||'unknown'),r.ok?'ok':'err');
+}
 /* Claude Code's OWN state: what it records about itself, which archeus had
    never opened. Read-only except the settings editor and the disk sweep, and
    the sweep reports before it ever deletes. */
@@ -3855,9 +4022,47 @@ async function phSearch(){
     :'<div class="empty">No matching prompts.</div>';
 }
 
+/* ── which CLI's spend you are looking at ─────────────────────────────────────
+   '' is ALL of them, and it is the default: the question "what did today cost"
+   is asked of the machine, not of one binary. The strip narrows it, and the
+   narrowing is real — the daily and per-project cards are counted out of the
+   transcripts each CLI wrote, which `_entries()` already walks for every
+   harness. Only the plan rail is one harness's, and that is a capability
+   (`plan_limits`), not a reason to switch the whole page off. */
+let USAGE_HID='';
+const harnessById=hid=>(ST.harnesses||[]).find(h=>h.id===hid)||null;
+/* Every harness worth a tab: installed, and not switched off in settings.
+   `available` is `harnesses.exe()` server-side, so a CLI the machine does not
+   have never appears — a tab that can only ever be empty is chrome. */
+function usableHarnesses(){
+  const off=new Set(ST.harnesses_disabled||[]);
+  return (ST.harnesses||[]).filter(h=>h.available&&!off.has(h.id));
+}
+/* `cap` narrows the strip to CLIs that can answer the page it sits on, and
+   `allLabel` is what the leftmost tab says — or '' for a page where "all of
+   them at once" is not a thing you can look at.
+
+   The filter is not cosmetic. Usage counts tokens, which every CLI records, so
+   its strip is every CLI. Plugins reads marketplaces, which pi has none of — an
+   unfiltered strip would offer a tab whose only possible content is an empty
+   list, and the page would show it as "no plugins installed" rather than as the
+   structural gap the capability table already has a sentence for. */
+function harnessStrip(cur,onpick,cap,allLabel){
+  const hs=usableHarnesses().filter(h=>!cap||capOf(cap,(h.homes||[''])[0]).ok);
+  // one CLI is not a choice, exactly as the launch modal's target strip decides
+  if(hs.length<2)return '';
+  return `<div class="tabs mtabs">`
+    +(allLabel===''?'':`<div class="tab${cur?'':' sel'}" onclick="${onpick}('')">${esc(allLabel||'All')}</div>`)
+    +hs.map(h=>`<div class="tab${h.id===cur?' sel':''}"
+        onclick="${onpick}(${hesc(h.id)})">${esc(h.label)}</div>`).join('')
+    +`</div>`;
+}
+function pickUsageHarness(hid){USAGE_HID=hid;drawPage('usage');}
 async function pgUsage(nav){
+  const hid=USAGE_HID,q=hid?'&hid='+encodeURIComponent(hid):'';
   const [plan,daily,projects]=await Promise.all([
-    api('/api/usage/plan'),api('/api/usage/daily?days=14'),api('/api/usage/projects')]);
+    api('/api/usage/plan'),api('/api/usage/daily?days=14'+q),
+    api('/api/usage/projects?'+q.slice(1))]);
   const planRows=(plan.accounts||[]).map(a=>{
     const wins=(a.windows||[]).map(w=>{
       const hot=w.pct>=80;
@@ -3880,8 +4085,16 @@ async function pgUsage(nav){
     <td class="num">${p.usage.in}</td><td class="num">${p.usage.out}</td>
     <td class="num">${costCell(p.cost,p.exact)}</td></tr>`).join('');
   const total=(projects.projects||[]).reduce((a,p)=>a+p.cost,0);
+  /* The plan rail is the ONE card that is Anthropic's. Greyed with its reason
+     rather than dropped: a card that vanishes teaches nothing, and the reason
+     ("Codex reports its own limits in `codex doctor`") is where you go next. */
+  const planCap=hid?((harnessById(hid)||{}).caps||{}).plan_limits:null;
+  const planCard=planCap&&!planCap[0]
+    ?capCard('plan_limits',planCap[1])
+    :`<div class="card"><h3>Plan usage by account</h3>${planRows||'<div style="color:var(--dim)">checking…</div>'}</div>`;
   if(!shell(nav,`
-    <div class="card"><h3>Plan usage by account</h3>${planRows||'<div style="color:var(--dim)">checking…</div>'}</div>
+    ${harnessStrip(hid,'pickUsageHarness','usage','All')}
+    ${planCard}
     <div class="card"><h3>Daily tokens (14 days)</h3>
       ${INST.html('spark','daily',{fmt:'tok',unit:'peak day'})}
       ${dRows}</div>
@@ -4480,7 +4693,9 @@ async function pgPlugins(nav){
     return miss.length?`<span class="tag warn" title="missing on ${esc(miss.join(', '))}">${accts.length-miss.length}/${accts.length} accounts</span>`
       :`<span class="tag ok" title="on ${esc((names||[]).join(', '))}">all ${accts.length} accounts</span>`;
   };
-  const picker=accts.length>1?`<div class="chips" style="margin-bottom:10px">
+  // the account chips are CLAUDE CODE's — a Codex home is one login, so under
+  // that tab there is nothing for them to pick between
+  const picker=(accts.length>1&&!d.readonly)?`<div class="chips" style="margin-bottom:10px">
       ${accts.map(a=>`<span class="chip${(PLACCT||'')===(a.dir||'')?' on':''}"
         onclick='plAcct(${hesc(a.dir||'')})'
         title="${a.plugins} plugin(s), ${a.marketplaces} marketplace(s)">${esc(a.name)} <b>${a.plugins}</b></span>`).join('')}
@@ -4490,8 +4705,9 @@ async function pgPlugins(nav){
       <b style="min-width:200px">${esc(m.name)}</b>
       <span class="tag">${esc(m.source||'?')}</span>
       ${accts.length>1?spread(m.on_accounts):''}
-      <span style="flex:1;color:var(--dim);font-size:12px">${esc(m.repo||m.path)}</span>
-      <button class="btn sm danger" onclick='mktRemove(${hesc(m.name)})'>${ic('del')}</button>
+      <span style="flex:1;color:var(--dim);font-size:12px">${esc(m.repo||m.path||'')}</span>
+      ${d.readonly?`<span class="tag">${m.plugins||0} plugin(s)</span>`
+        :`<button class="btn sm danger" onclick='mktRemove(${hesc(m.name)})'>${ic('del')}</button>`}
     </div>`).join('');
   const vrows={};((V||{}).plugins||[]).forEach(r=>{vrows[r.key]=r;});
   const plugs=(d.plugins||[]).map(p=>{
@@ -4510,7 +4726,8 @@ async function pgPlugins(nav){
       ${(accts.length>1&&(p.on_accounts||[]).length<accts.length)
         ?`<button class="btn sm pri" onclick='pluginSpread(${hesc(p.name)},${hesc(p.marketplace)})' title="Install it into the accounts that do not have it">Install everywhere</button>`:''}
       ${vr.outdated?`<button class="btn sm pri" onclick='pluginUpdate(${hesc(p.key)})'>Update</button>`:''}
-      <button class="btn sm danger" onclick='pluginRemove(${hesc(p.key)})'>${ic('del')}</button>
+      ${d.readonly?`<span class="tag">${p.installed?'installed':'available'}</span>`
+        :`<button class="btn sm danger" onclick='pluginRemove(${hesc(p.key)})'>${ic('del')}</button>`}
     </div>`;}).join('');
   /* The three version cards used to open this page. They are on
      Settings ▸ Updates now, with the schedule that checks for them — "what is
@@ -4518,15 +4735,26 @@ async function pgPlugins(nav){
      look", and this page is about marketplaces and what came from them. The
      `/api/versions` fetch stays: a plugin row needs its marketplace's version
      to say `update available`. */
+  /* Codex has marketplaces too — `codex plugin list` reads every one, and its
+     manifests sit at `.agents/plugins/marketplace.json`, the cross-CLI
+     convention archeus already writes project skills into. So this page is
+     shared, and the strip is how you get to the other store. Read-only there:
+     installing mutates another tool's config through a resolver archeus does
+     not own, which is the same line `_claude_cli` already draws for Claude
+     Code's own files. */
+  const ro=!!d.readonly;
   shell(nav,`
+    ${harnessStrip(PLHID||'claude','pickPluginHarness','plugins','')}
     <div class="card wide" id="pluginCard"><h3>${ic('folder')} Installed plugins</h3>
       <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">A plugin bundles skills, subagents, commands, hooks and MCP servers together. The tags say what each one actually placed on disk — the same information the Skills, Agents and Hooks pages now use to mark which of their rows came from a bundle rather than from you.${accts.length>1?' The <b>accounts</b> tag says how many of your logins have it: a plugin is a property of you, not of whichever account happened to be active when you installed it.':''}</p>
       ${picker}
       ${plugs||'<div style="color:var(--dim)">No plugins installed.</div>'}</div>
     <div class="card wide"><h3>Marketplaces <span class="sp"></span>
-      <button class="btn sm" onclick="mktRefresh()">${ic('refresh')} Refresh</button>
-      <button class="btn sm pri" onclick="mktAdd()">${ic('add')} Add marketplace</button></h3>
-      <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">A repo, a URL or a local path. Adding, installing and removing are delegated to the <code>claude</code> CLI: these files belong to Claude Code, the format has already changed once, and writing them directly would corrupt the state of the tool archeus exists to support.</p>
+      ${ro?'':`<button class="btn sm" onclick="mktRefresh()">${ic('refresh')} Refresh</button>
+      <button class="btn sm pri" onclick="mktAdd()">${ic('add')} Add marketplace</button>`}</h3>
+      <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">${ro
+        ?'Read-only here. archeus lists what <code>codex plugin</code> reports and changes none of it: installing goes through a marketplace resolver archeus does not own, and a half-written entry would break the tool rather than this page.'
+        :'A repo, a URL or a local path. Adding, installing and removing are delegated to the <code>claude</code> CLI: these files belong to Claude Code, the format has already changed once, and writing them directly would corrupt the state of the tool archeus exists to support.'}</p>
       ${mkts||'<div style="color:var(--dim)">No marketplaces registered.</div>'}</div>
     <div class="card"><h3>Where they live</h3>
       <div class="kv"><span>plugins dir</span><code>${esc(d.dir||'')}</code></div>
@@ -4636,10 +4864,39 @@ function verCard(V){
    card that is not on screen is exactly the cost the settings split removed. */
 async function drawVersionCards(refresh){
   if(!$('#verMount'))return;
-  const V=await api('/api/versions'+(refresh?'?refresh=1':'')).catch(()=>({}));
+  /* The other CLIs' versions come from their own `doctor`, one request each,
+     and they are fetched WITH the Claude one rather than after it: three cards
+     that appear in sequence read as three page loads. A CLI that is not
+     installed answers with blanks and gets no card — this page is about what
+     you have, and "not installed" is the Harnesses page's sentence to say. */
+  const others=(ST.harnesses||[]).filter(h=>h.id!=='claude'&&h.available);
+  const [V,...docs]=await Promise.all([
+    api('/api/versions'+(refresh?'?refresh=1':'')).catch(()=>({})),
+    ...others.map(h=>api('/api/harness/doctor?'+qs({hid:h.id})).catch(()=>({})))]);
   VER=V||{};
   const host=$('#verMount');if(!host)return;      // navigated away mid-fetch
-  host.innerHTML=selfCard(V)+verCard(V)+modelCard(V);
+  host.innerHTML=selfCard(V)+verCard(V)
+    +others.map((h,i)=>harnessVerCard(h,docs[i]||{})).join('')+modelCard(V);
+}
+/* One CLI's version card, the shape `verCard` has for Claude Code, minus
+   everything archeus cannot do here: it does not install a chosen version and
+   it does not list the releases, because `codex update` and `pi update` take no
+   version argument. What it does have is the same two facts that matter —
+   what is installed, and whether something newer exists. */
+function harnessVerCard(h,d){
+  const upd=d.latest&&d.latest!==d.version;
+  return `<div class="card"><h3>${esc(h.label)}
+    ${upd?'<span class="tag warn">update</span>':'<span class="tag ok">current</span>'}
+    <span class="sp"></span>
+    ${upd?`<button class="btn sm" onclick="harnessUpdate(${hesc(h.id)})"
+      >${ic('refresh')} Update</button>`:''}</h3>
+    <div class="kpi"><div><span class="kl">installed</span>
+      <span class="kv2">${esc(d.version||'—')}</span></div>
+      <div><span class="kl">latest</span>
+      <span class="kv2">${esc(d.latest||'—')}</span></div></div>
+    <p class="secthint">${esc(h.label)} updates itself — archeus runs
+      <code>${esc(h.id)} update</code> in a terminal you can watch, and reads the
+      version back from the CLI rather than from a registry.</p></div>`;
 }
 async function verCheck(){
   const V=await api('/api/versions?refresh=1');VER=V;
@@ -4666,6 +4923,17 @@ function mktRefresh(){
   inlineJob('#pluginCard','marketplace_refresh',{},{redraw:()=>drawPage('plugins')});
 }
 function plAcct(dir){PLACCT=dir;drawPage('plugins');}
+/* Which CLI's plugin store the page is reading. It resolves to a HOME, which is
+   what `cfgdir` has always meant and what the account chips already set — so
+   this strip needs no new field on the endpoint, exactly as the launch modal's
+   target strip needed none on /api/launch. '' is Claude Code, whose home the
+   account chips then choose between. */
+let PLHID='';
+function pickPluginHarness(hid){
+  PLHID=hid;
+  PLACCT=hid?((harnessById(hid)||{}).homes||[''])[0]||'':'';
+  drawPage('plugins');
+}
 /* Adding registers the marketplace on EVERY account — a source you trust is a
    property of you. Removing acts on the one account on screen, because deleting
    from four logins you did not name is a surprise, not a fan-out. */
@@ -5494,11 +5762,13 @@ async function pgHelp(nav){
     `<div class="card"><h3>${ic(icon)} ${esc(grp)}</h3>
      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">${esc(blurb)}</p>
      ${tbl('page',ids.map(pageRow).join(''))}</div>`).join('');
-  // the two pages that are deliberately in no section still have to appear
-  // here, and the row says where they ARE reached — a page missing from its own
-  // help page is how "there is no search any more" gets believed
+  // the pages deliberately in no section still have to appear here, and the row
+  // says where they ARE reached — a page missing from its own help page is how
+  // "there is no search any more" gets believed. It was two; it is seven, since
+  // five screens that only one CLI has moved behind the Harnesses page rather
+  // than sitting greyed in a sidebar for the two that do not.
   const off=`<div class="card"><h3>${ic('search')} Not in the sidebar</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Two screens have a better door than a nav row.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:10px">${Object.keys(OFFNAV).length} screens have a better door than a nav row.</p>
     <table class="tbl"><tr><th>page</th><th>where it is</th></tr>
     ${Object.entries(OFFNAV).map(([id,where])=>
       `<tr data-help-row><td style="white-space:nowrap;color:var(--cyan)">${esc(navLabel(id))}</td><td>${esc(where)}</td></tr>`).join('')}
@@ -5610,6 +5880,16 @@ const SETTINGS_CARDS={
       <input id="sEditor" placeholder="auto-detect (Notepad++, VS Code, notepad)"></div>
     <div class="fld"><label>claude.exe <span style="color:var(--dim2)">— the Claude Code binary</span></label>
       <input id="sClaudeExe" placeholder="auto-detect (~/.local/bin, then PATH)"></div>
+    <!-- One field per CLI, never a pair sharing a row: two binaries are two
+         values, which is the rule test_two_fields_share_a_row_only_when_they_
+         are_one_value states. Both are looked up the way claude.exe is — the
+         descriptor's install globs, then PATH — so blank is the normal state
+         and this is for an install those globs cannot reach.
+         NOTE no backticks in here: this comment is inside a template literal. -->
+    <div class="fld"><label>codex.exe <span style="color:var(--dim2)">— the Codex binary</span></label>
+      <input id="sCodexExe" placeholder="auto-detect (its hashed install dir, then PATH)"></div>
+    <div class="fld"><label>pi <span style="color:var(--dim2)">— the pi binary</span></label>
+      <input id="sPiExe" placeholder="auto-detect (npm global bin, then PATH)"></div>
     <div class="fld"><label>CLAUDE_CONFIG_DIR <span style="color:var(--dim2)">— which account is active</span></label>
       <input id="sCfgDir" placeholder="default: ~/.claude"></div>
     <div class="fld"><label>Budget cap <span style="color:var(--dim2)">— $ per headless call, 0 = no cap</span></label>
@@ -5729,6 +6009,8 @@ async function pgSettings(nav,part='settings'){
       ?'set — leave blank to keep, or type to replace':'leave blank for none';}
   if($('#sEditor'))$('#sEditor').value=ST.editor||'';
   if($('#sClaudeExe'))$('#sClaudeExe').value=ST.claude_exe||'';
+  if($('#sCodexExe'))$('#sCodexExe').value=ST.codex_exe||'';
+  if($('#sPiExe'))$('#sPiExe').value=ST.pi_exe||'';
   if($('#sCfgDir'))$('#sCfgDir').value=ST.claude_config_dir||'';
   if($('#sBudget'))$('#sBudget').value=ST.headless_budget_usd||0;
   if($('#sMemCalls'))$('#sMemCalls').value=ST.memory_max_calls||0;
@@ -6553,6 +6835,8 @@ async function setMemLimitsSave(){
 async function setPathsSave(){
   const r=await post('/api/settings',{editor:$('#sEditor').value.trim(),
     claude_exe:$('#sClaudeExe').value.trim(),
+    codex_exe:$('#sCodexExe').value.trim(),
+    pi_exe:$('#sPiExe').value.trim(),
     claude_config_dir:$('#sCfgDir').value.trim(),
     headless_budget_usd:+($('#sBudget').value||0)});
   if(r&&r.error){toast(r.error,'err');return;}
@@ -6928,15 +7212,56 @@ async function drawOwnModel(row){
   if(pin)pin.style.display=own?'none':'';
   if(adv&&own)adv.style.display='none';
   if(!own)return;
-  const d=await api('/api/harness/models?'+qs({hid:row.hid}));
+  /* Memoised per CLI: pi's catalogue is 1,354 models and ~105KB on the wire,
+     and this runs on every click of the target strip. What it answers changes
+     when the CLI is updated or has run something new — neither of which
+     happens while a modal is open. */
+  let d=OWNMODELS[row.hid];
+  if(!d){d=await api('/api/harness/models?'+qs({hid:row.hid}));OWNMODELS[row.hid]=d;}
+  /* TWO lists, labelled, and the order is the point. `models` is what this CLI
+     has actually run here — the strongest suggestion there is — and `cards` is
+     the catalogue it ships with, which is what makes a FRESH install offer
+     anything at all instead of an empty box. A <datalist> keeps its group
+     headings, so the split survives into the dropdown. */
+  const seen=d.models||[],cards=(d.cards||[]).filter(c=>seen.indexOf(c.id)<0);
   const dl=$('#fOwnModels');
-  if(dl)dl.innerHTML=(d.models||[]).map(m=>`<option value="${esc(m)}">`).join('');
+  if(dl)dl.innerHTML=
+    (seen.length?`<optgroup label="run here">`
+      +seen.map(m=>`<option value="${esc(m)}">`).join('')+`</optgroup>`:'')
+    +(cards.length?`<optgroup label="ships with this CLI">`
+      +cards.map(c=>`<option value="${esc(c.id)}">${esc(c.label)}</option>`).join('')
+      +`</optgroup>`:'');
   const note=$('#fOwnModelNote');
-  if(note)note.textContent=(d.models||[]).length
-    ? '— '+(d.models.length===1?'the one':d.models.length+' this CLI has run; type any other')
+  if(note)note.textContent=seen.length||cards.length
+    ? '— '+[seen.length&&seen.length+' run here',
+            cards.length&&cards.length+' in its catalogue'].filter(Boolean).join(', ')
+      +'; type any other'
     : '— archeus has not seen this CLI run yet; type a model id';
   const es=d.efforts||[''];
   chipsFill($('#fOwnEffort'),es,es.map(e=>e||'default'),'');
+  /* Quick start for a CLI whose models archeus cannot price. The Claude block's
+     presets carry a cost and a SWE score per card; these carry the two values
+     this CLI's own scales take, which is all a preset ever was. */
+  const ph=$('#fOwnPresets');
+  if(ph)ph.innerHTML=(d.presets||[]).map((p,i)=>
+    `<div class="preset" onclick="applyOwnPreset(${i})"><b>${esc(p.name)}</b>`
+    +`<span>${esc(p.blurb)}</span>`
+    +`<span class="pm">${esc(p.fields.model||"this CLI's default")}`
+    +` · ${esc(p.fields.effort||'default')}</span></div>`).join('');
+  const pw=ph&&ph.closest('.fld');
+  if(pw)pw.style.display=(d.presets||[]).length?'':'none';
+}
+//: one answer per CLI, for the life of the page. Not a TTL: what it holds is a
+//: catalogue on disk and a list of models already run, and neither changes
+//: while the app is open.
+const OWNMODELS={};
+function applyOwnPreset(i){
+  const d=OWNMODELS[targetRow(TARGET).hid]||{},p=(d.presets||[])[i];
+  if(!p)return;
+  const m=$('#fOwnModel');
+  if(m)m.value=p.fields.model||'';
+  chipSet($('#fOwnEffort'),p.fields.effort||'');
+  updateHint();
 }
 /* the capabilities this form gates on. Named rather than "every off key",
    because the strip's note must not recite gaps about pages the modal has

@@ -129,6 +129,60 @@ def _hidden_projects_menu(grouped):
         set_project_hidden(sel, sel not in hidden)
 
 
+def _harnesses_screen():
+    """Which coding CLIs are here, and what archeus can do with each.
+
+    The terminal half of the GUI's Harnesses page, and the same two questions:
+    is it installed and where, and which surfaces work under it. The capability
+    table is the point — everywhere else a gap greys one row and says why, and
+    this is the one screen that shows them together.
+
+    A menu of harnesses over a pager per harness, rather than one long dump:
+    three CLIs times twenty-three capabilities is a screen nobody reads.
+    """
+    from . import harnesses as _h
+    from .ui import pager
+    while True:
+        rows = []
+        for hid in _h.ids():
+            d = _h.descriptor(hid)
+            exe = _h.exe(hid)
+            mark = '●' if exe else '○'
+            gaps = sum(1 for k in _h.CAPS if not _h.cap(hid, k)[0])
+            note = (f"{gaps} of {len(_h.CAPS)} surfaces unavailable"
+                    if exe else 'not installed')
+            rows.append((f"{mark}  {d['label']:<14}  {C_DIM}{note}{C_RESET}", hid))
+        sel = menu(rows, 'HARNESSES   (● installed · Enter for detail)')
+        if not sel:
+            return
+        d = _h.descriptor(sel)
+        exe = _h.exe(sel)
+        lines = [f"binary              {exe or '(not found)'}",
+                 f"home                {_h.home_dir(sel)}",
+                 f"instructions file   {d['instructions_file']}",
+                 f"effort scale        {', '.join(e or 'default' for e in d['efforts'])}",
+                 '']
+        if exe and d.get('doctor'):
+            try:
+                doc = _h.impl('doctor', sel)(_h.home_dir(sel)) or {}
+            except Exception:
+                doc = {}
+            if doc.get('version'):
+                lines.insert(0, 'version             %s%s' % (
+                    doc['version'],
+                    '   (%s available)' % doc['latest']
+                    if doc.get('latest') and doc['latest'] != doc['version'] else ''))
+            if doc.get('auth'):
+                lines.insert(1, 'signed in           %s'
+                             % ('yes' if doc['auth'] == 'ok' else 'no'))
+        lines.append('WHAT WORKS HERE')
+        for key, what in sorted(_h.CAPS.items()):
+            ok, why = _h.cap(sel, key)
+            lines.append('  %s %-18s %s' % ('+' if ok else '-', key,
+                                            what if ok else why))
+        pager([d['label']], lines, hint='Esc back')
+
+
 #: the main menu's own rows, hoisted to module scope so a test can read them.
 #: [(label, key, gui_route)] — a blank route means the row has no GUI
 #: counterpart, and `test_every_main_menu_row_has_a_gui_counterpart` requires a
@@ -146,6 +200,7 @@ MAIN_ACTIONS = [
     ('⚙  Updates (Claude Code + plugins)',   '__updates__',          '/api/versions'),
     ('⚙  Global CLAUDE.md  /  MCP Analysis', '__global_claude_md__', '/api/global-claude-md'),
     ('⚙  Accounts (switch / run 2 at once)', '__accounts__',         '/api/accounts'),
+    ('⚙  Harnesses (which CLIs, and their setup)', '__harnesses__',  '/api/harness/setup'),
     ('⚙  Logs (what archeus did, what failed)', '__logs__',        '/api/logs'),
     ('⚙  Settings',                          '__settings__',         '/api/settings'),
     ('?  Help',                              '__help__',             ''),   # the GUI's help page is generated in the browser from SECTIONS/TABS — there is nothing for it to fetch
@@ -161,12 +216,22 @@ MAIN_ACTIONS = [
 #: check a copy. Keyed by LABEL, never by index, for the reason the sidebar's
 #: collapsed set was: reordering the sections must not silently open a
 #: different one.
+#: The five must be the GUI's five, IN ORDER — `test_the_five_sections_are_the_
+#: ones_the_gui_sidebar_has` reads the labels out of the served page rather than
+#: restating them, so this table and `app.js`'s SECTIONS move in one commit.
+#: `Accounts` became `Harnesses` when the GUI's did: a login is one CLI's, so
+#: the question the section answers is "which tool", and "which account" is one
+#: screen inside it. The KEYS are free — the gate compares labels — which is why
+#: the agents and hooks rows can stay under Library here while the GUI puts
+#: their pages behind the Claude Code tab: the TUI has no two-level strip to put
+#: them behind, and inventing one to satisfy a gate that does not ask for it
+#: would be a screen written for a test.
 MAIN_SECTIONS = [
-    ('Context',  ['__global_claude_md__', '__mcp__']),
-    ('Library',  ['__agents__', '__skills__', '__hooks__']),
-    ('Activity', ['__usage_stats__', '__logs__']),
-    ('Accounts', ['__accounts__']),
-    ('Settings', ['__settings__', '__updates__']),
+    ('Context',   ['__global_claude_md__', '__mcp__']),
+    ('Library',   ['__agents__', '__skills__', '__hooks__']),
+    ('Activity',  ['__usage_stats__', '__logs__']),
+    ('Harnesses', ['__harnesses__', '__accounts__']),
+    ('Settings',  ['__settings__', '__updates__']),
 ]
 #: menu key -> the capability it needs, pointing INTO MAIN_ACTIONS by key for
 #: the reason MAIN_SECTIONS does: that table stays the one carrying a row's
@@ -616,6 +681,10 @@ def run():
         elif sel == '__accounts__':
             from .accounts import accounts_menu
             accounts_menu()
+            continue
+
+        elif sel == '__harnesses__':
+            _harnesses_screen()
             continue
 
         elif sel == '__settings__':
