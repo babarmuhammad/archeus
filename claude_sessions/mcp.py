@@ -72,7 +72,14 @@ def get_mcp_status(cfgdir=None, refresh=False):
             return miss()
         _status_cache[key] = (time.time(), list(rows))
         return rows
-    claude_exe = _h.exe(hid)
+    # `get_claude_exe()` for the default harness, NOT `harnesses.exe('claude')`,
+    # even though the first is a delegate to the second. This module imports it
+    # BY VALUE and the MCP tests stub that name — resolving through `harnesses`
+    # instead walked straight past the stub, ran against whatever binary the
+    # developer happens to have installed, and passed locally for that reason
+    # while every CI leg returned an empty list. Same shape as the by-value
+    # bridge-patch lesson: the seam a test owns is the seam to call.
+    claude_exe = get_claude_exe() if hid == _h.DEFAULT else _h.exe(hid)
     if not claude_exe:
         return miss()
     # Through proc.run, not subprocess directly. It was the last hand-rolled
@@ -242,14 +249,16 @@ def mcp_cli(args, cfgdir=None, timeout=60):
 
     The GUI's counterpart to _mcp_run — same account addressing, without the
     progress screen a request thread cannot draw. The binary comes from the
-    home, not from `get_claude_exe`: `codex mcp` takes the same four verbs
-    (`list`, `get`, `add`, `remove`), so the subcommand vocabulary this passes
-    through happens to be shared and only the executable differs.
+    home: `codex mcp` takes the same four verbs (`list`, `get`, `add`,
+    `remove`), so the subcommand vocabulary is shared and only the executable
+    differs. Claude Code's still resolves through the by-value `get_claude_exe`
+    this module imports, because that is the name the tests stub — see
+    `get_mcp_status` above for what bypassing it cost.
     """
     from . import harnesses as _h
     from . import proc
     d = _h.of(cfgdir)
-    exe = _h.exe(d['id'])
+    exe = get_claude_exe() if d['id'] == _h.DEFAULT else _h.exe(d['id'])
     if not exe:
         return False, '%s not found' % d['exe_names'][0]
     r = proc.run([exe, 'mcp', *args], env=_c.account_env(cfgdir), timeout=timeout)

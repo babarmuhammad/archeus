@@ -69,8 +69,24 @@ CAPS = {
 DEFAULT = 'claude'
 
 
+#: EVERY name a CLI's binary can have, on every platform, deliberately NOT
+#: branched on `os.name`.
+#:
+#: The branch cost nothing in production and broke fifteen tests on POSIX: the
+#: suite is written Windows-first (that is the primary platform and the fixtures
+#: say `codex.exe`), so on Linux `exe()` could not find a fixture it had just
+#: written and `is_inference(['C:/x/claude.exe', '-p', …])` answered False for a
+#: call that plainly is one. The same argv got two different answers depending
+#: on which machine asked, which is worse than either answer.
+#:
+#: Unconditional is free. `shutil.which('claude.exe')` on Linux is a miss and
+#: the bare name matches on the next pass, so a real POSIX install resolves
+#: exactly as before — and a file genuinely named `claude.exe` there (a mounted
+#: Windows volume, WSL interop) is one this should find anyway. Same reasoning
+#: as pinning `term.BACKEND` for the POSIX port: keep one shape everywhere
+#: rather than re-scripting the tests that encode it.
 def _claude_exe_names():
-    return ('claude.exe', 'claude') if os.name == 'nt' else ('claude',)
+    return ('claude.exe', 'claude')
 
 
 HARNESSES = {
@@ -156,7 +172,7 @@ HARNESSES = {
     'codex': {
         'id': 'codex',
         'label': 'Codex',
-        'exe_names': ('codex.exe', 'codex') if os.name == 'nt' else ('codex',),
+        'exe_names': ('codex.exe', 'codex'),   # see _claude_exe_names: not branched
         'exe_setting': 'codex_exe',
         'home_env': 'CODEX_HOME',
         'home_rel': ('.codex',),
@@ -260,7 +276,7 @@ HARNESSES = {
         'label': 'pi',
         #: npm installs a `.cmd` shim on Windows and a shebang script beside
         #: it; `shutil.which` finds whichever the shell would run.
-        'exe_names': ('pi.cmd', 'pi.exe', 'pi') if os.name == 'nt' else ('pi',),
+        'exe_names': ('pi.cmd', 'pi.exe', 'pi'),   # see _claude_exe_names
         'exe_setting': 'pi_exe',
         'home_env': 'PI_CODING_AGENT_DIR',
         #: TWO components, unlike the other two: pi's home is `~/.pi/agent`,
