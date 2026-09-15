@@ -81,10 +81,11 @@ def _read(rel):
         return None
 
 
-def occurrences(host=CURRENT):
-    """`{file: [line numbers]}` for every tracked file naming the host."""
+def _named_in(rels, host):
+    """`{file: [line numbers]}` over the given files. One scan, so the tracked
+    list and the skip list can never disagree about what counts as a mention."""
     found = {}
-    for rel in tracked_text_files():
+    for rel in rels:
         src = _read(rel)
         if src is None or host not in src:
             continue
@@ -92,22 +93,24 @@ def occurrences(host=CURRENT):
     return found
 
 
+def occurrences(host=CURRENT):
+    """`{file: [line numbers]}` for every tracked file naming the host."""
+    return _named_in(tracked_text_files(), host)
+
+
 def skipped_occurrences(host=CURRENT):
     """The same, for the files this script refuses to touch."""
-    found = {}
-    for rel in sorted(SKIP):
-        src = _read(rel)
-        if src is not None and host in src:
-            found[rel] = [i for i, line in enumerate(src.splitlines(), 1) if host in line]
-    return found
+    return _named_in(sorted(SKIP), host)
 
 
 def rewrite(new_host, old_host=CURRENT):
     """Swap the host everywhere, and return the files changed."""
     changed = []
-    for rel, _lines in occurrences(old_host).items():
-        path = os.path.join(ROOT, rel.replace('/', os.sep))
+    for rel in tracked_text_files():
         src = _read(rel)
+        if src is None:
+            continue
+        path = os.path.join(ROOT, rel.replace('/', os.sep))
         txt = src.replace(old_host, new_host)
         if txt != src:
             with io.open(path, 'w', encoding='utf-8', newline='') as f:
