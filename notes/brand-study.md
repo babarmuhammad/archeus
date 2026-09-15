@@ -84,7 +84,7 @@ Canonical, verbatim. This is the string `tests/test_brand_copy.py` asserts:
 
 > **The memory and workspace layer for AI coding agents.**
 > Persistent per-project memory, every session you have ever had, and control over what
-> the next one costs. Works with Claude Code today.
+> the next one costs. Works with Claude Code, OpenAI Codex and pi.
 
 Short slots (description fields, taglines) take the first sentence alone:
 
@@ -120,10 +120,31 @@ sentence with no gate is a sentence that becomes three sentences.
 
 ### The clause that does the work
 
-`Works with Claude Code today` is load-bearing in both directions. It is the honest
-statement of the only supported surface, *and* it is what earns the right to say "AI
-coding agents" in the first clause without the sentence becoming a promise. Remove it and
-the pitch is a lie; remove "for AI coding agents" and the product is furniture again.
+The last clause is load-bearing in both directions: it is the honest statement of what
+is actually driven, *and* it is what earns the right to say "AI coding agents" in the
+first clause without the sentence becoming a promise. Remove it and the pitch is a lie;
+remove "for AI coding agents" and the product is furniture again.
+
+### What it used to say, and why it changed
+
+Until 2.4.0 the clause read:
+
+> Persistent per-project memory, every session you have ever had, and control over what
+> the next one costs. **Works with Claude Code today.**
+
+`today` was doing the honest work of a roadmap marker: one CLI was supported, and the
+word admitted it was a snapshot rather than a boundary. 2.4.0 is what the word was
+waiting for — Codex and pi are read end to end, their sessions and spend merge into the
+same lists, and every screen carries a capability table that greys what a given CLI
+cannot do and says why. So the clause names the three.
+
+Naming them rather than saying "three coding CLIs" is deliberate, and it is a search
+decision as much as a copy one: `Codex` and `pi` are the words someone types. The
+measured state when this changed — 71 impressions in 28 days, every one of them for the
+OLD project name or a generic Claude query, none for `archeus` — is the argument for
+spending the clause on terms people search rather than on a count.
+
+The clause it replaced is in `DEAD` now, so it cannot come back by habit.
 
 ---
 

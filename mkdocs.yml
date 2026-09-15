@@ -2,8 +2,8 @@ site_name: archeus
 site_description: >-
   The memory and workspace layer for AI coding agents. Persistent per-project memory,
   every session you have ever had, and control over what the next one costs. Works with
-  Claude Code today, in a fast terminal UI or a native desktop GUI. Zero runtime
-  dependencies.
+  Claude Code, OpenAI Codex and pi, in a fast terminal UI or a native desktop GUI.
+  Zero runtime dependencies.
 # Canonical host. The manual lives on its own subdomain; the apex is the marketing
 # site and is a different deployment entirely. The site is built by Vercel and
 # mirrored on GitHub Pages; both copies emit this URL, so search and answer engines

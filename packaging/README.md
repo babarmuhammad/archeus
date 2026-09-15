@@ -30,7 +30,7 @@ out-writing them later.
 | | |
 |---|---|
 | PyPI `archeus` | **ours** — 2.4.0 |
-| PyPI `claudectl` (the old name) | **ours** — 1.9.2, the shim: no code, `archeus>=2.4.0`, published 2026-09-15 |
+| PyPI, under the old name | **ours** — the shim at 1.9.2: no code, `archeus>=2.4.0`, published 2026-09-15 |
 | npm `archeus` | **ours** — 2.4.1 (the launcher runs a patch ahead; see below) |
 | RubyGems `archeus` | **ours** — 2.4.0 |
 | crates.io / NuGet / Packagist `archeus` | free |
@@ -69,9 +69,9 @@ Set the pin DOWN to the archeus release that just went out, in the built copy
 only — the repo file names the NEXT one, which is what
 `test_the_shim_pins_a_version_that_does_not_exist_yet` asserts. Build it
 somewhere else rather than editing the file, and prove it before uploading: a
-clean venv, `pip install <the wheel>`, then check that `claudectl` and `archeus`
-both run and that `importlib.metadata.files('claudectl')` lists NO
-`claude_sessions` files. That last one is the whole design — a shim that owns
+clean venv, `pip install <the wheel>`, then check that BOTH commands run and
+that `importlib.metadata.files(...)` for the shim lists NO `claude_sessions`
+files. That last one is the whole design — a shim that owns
 those files deletes the real package's copy of them when it is next uninstalled.
 
 Its `project_urls` name the repository and nothing else, deliberately: this file

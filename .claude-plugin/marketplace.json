@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "archeus",
-  "description": "The memory and workspace layer for AI coding agents. Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code today.",
+  "description": "The memory and workspace layer for AI coding agents. Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code, OpenAI Codex and pi.",
   "owner": {
     "name": "Babar Muhammad Anas",
     "url": "https://github.com/babarmuhammad"

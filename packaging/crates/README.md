@@ -9,7 +9,7 @@ pipx install archeus        # or: pip install archeus
 
 The memory and workspace layer for AI coding agents: persistent per-project
 memory, every session you have ever had, and control over what the next one
-costs. Works with Claude Code today.
+costs. Works with Claude Code, OpenAI Codex and pi.
 
 Source, documentation and issues: <https://github.com/babarmuhammad/archeus>
 

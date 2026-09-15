@@ -36,7 +36,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 #: The canonical pitch, verbatim. Short slots use the first sentence alone.
 PITCH = 'The memory and workspace layer for AI coding agents.'
 SUB = ('Persistent per-project memory, every session you have ever had, and '
-       'control over what the next one costs. Works with Claude Code today.')
+       'control over what the next one costs. Works with Claude Code, '
+       'OpenAI Codex and pi.')
 
 #: The pitch without its leading article and trailing period, so it can be
 #: asserted inside running prose ("the Python memory and workspace layer for
@@ -56,6 +57,12 @@ DEAD = (
     'workspace layer for Claude Code',
     'workspace manager for Claude Code',
     'Windows workspace manager',
+    # The clause that named one CLI. It was honest for as long as one CLI
+    # was all there was, and 2.4.0 ended that — Codex and pi are read end
+    # to end, with a capability table per harness. A sentence that says
+    # 'today' about something that changed is the one shape this gate
+    # exists to catch, so it joins the list it used to be the fix for.
+    'Works with Claude Code today',
 )
 
 DEAD_EXEMPT = {

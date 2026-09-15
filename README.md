@@ -12,7 +12,7 @@
 <p align="center">
   <b>The memory and workspace layer for AI coding agents.</b><br>
   Persistent per-project memory, every session you have ever had, and control
-  over what the next one costs. Works with Claude Code today.
+  over what the next one costs. Works with Claude Code, OpenAI Codex and pi.
 </p>
 
 <p align="center">

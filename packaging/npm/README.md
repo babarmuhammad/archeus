@@ -29,7 +29,7 @@ pipx install archeus        # or: pip install archeus
   provider the session talks to.
 - **A terminal UI and a desktop GUI** over the same data.
 
-Works with Claude Code today. Zero runtime dependencies beyond the Python
+Works with Claude Code, OpenAI Codex and pi. Zero runtime dependencies beyond the Python
 standard library.
 
 Site: <https://claudectl.space>  

@@ -13,13 +13,15 @@ export const FAQ: QA[] = [
   },
   {
     // The old name is still the single biggest query bringing this site
-    // impressions — `claudectl` at position 7.6 and `claude ctl` at position 3,
+    // impressions — position 7.6 for it and position 3 for the spaced spelling,
     // measured in Search Console — and until this entry existed the site did
-    // not contain the word anywhere. Someone arriving on that query had no
-    // confirmation they were in the right place, and a search engine had no
-    // text tying the two names to one thing.
+    // not contain that name anywhere. Someone arriving on the query that
+    // brought them had no confirmation they were in the right place, and a
+    // search engine had no sentence tying the two names to one thing. The
+    // mentions below are held by `tools/_rename_brand.py` so a future pass
+    // cannot rewrite them into a sentence that says nothing.
     q: 'Is archeus the same as claudectl?',
-    a: 'Yes. claudectl was renamed to archeus in September 2026, at version 2.0. It is the same project, the same author and the same code; the name changed because the tool had stopped being about one CLI. Everything migrates on first run — settings, accounts, per-project launch defaults, the memory graph in each project, snapshots, plans and logs — and nothing is deleted. The `claudectl` command keeps working. If you already have it installed, `pip install -U claudectl` pulls archeus in and carries you over; claudectl 1.9.2 is the final release under the old name and contains no code of its own, only the dependency. New installs should use `pipx install archeus` directly.',
+    a: 'Yes. claudectl was renamed to archeus at version 2.0, in September 2026. Same project, same author, same code — the name changed because the tool had stopped being about one CLI. Everything migrates the first time you run it: settings, accounts, per-project launch defaults, the memory graph in each project, snapshots, plans and logs. Nothing is deleted, and the old command keeps working. If you already have the old package, pip install -U claudectl pulls archeus in and carries you across; its final release ships no code of its own, only the dependency. New installs should use pipx install archeus directly.',
   },
   {
     q: 'Where does the name archeus come from, and what is it not?',

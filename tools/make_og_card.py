@@ -57,7 +57,7 @@ TAG_W = 600
 BULLETS = ['Persistent per-project memory',
            'Every session you have ever had',
            'Control over what the next one costs',
-           'Works with Claude Code today']
+           'Works with Claude Code, OpenAI Codex and pi']
 
 
 def _vgradient(size, top, bot):

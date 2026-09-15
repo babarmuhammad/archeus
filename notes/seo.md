@@ -91,7 +91,7 @@ Worth keeping because the intuition is wrong in both directions.
 | | |
 |---|---|
 | Google | **27 pages indexed, 12 impressions**, 3 "Page with redirect", 3 "Crawled - currently not indexed". Domain property, both sitemaps submitted. |
-| Bing / DuckDuckGo | **zero pages.** `site:claudectl.space` and `site:docs.claudectl.space` return literally nothing, while the pre-rename `github.com/babarmuhammad/claudectl` still returns 6 on DDG and 9 on Bing. |
+| Bing / DuckDuckGo | **zero pages.** `site:claudectl.space` and `site:docs.claudectl.space` return literally nothing, while the repository under its PRE-RENAME name still returns 6 on DDG and 9 on Bing. |
 | The bare query `archeus` | the Paracelsus term, Nintendo's Arceus, a World of Warcraft item, the OED. Nothing of this project, on any engine. Autocomplete suggests no software term at all. |
 | External links | none written by a human. Two auto-scrapers and one PyPI metadata mirror. DDG returns nothing for the literal string `"claudectl.space"`. |
 

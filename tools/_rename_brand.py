@@ -74,6 +74,16 @@ HOLD = {
     # do have to change — and skipping it turned "Formerly claudectl" into
     # "Formerly archeus", which says nothing at all.
     'Formerly <code>claudectl</code>': '\x00HOLD-FORMERLY\x00',
+    # The site FAQ answers the query that actually brings people here: the old
+    # name outranks the new one and is the largest single source of impressions
+    # this site has (position 7.6, measured). Same argument as the README line
+    # above — `www/lib/faq.ts` is full of the current name and has to stay
+    # renameable, so the three deliberate mentions are held rather than the file
+    # skipped. Rewriting them would turn the answer into "archeus was renamed to
+    # archeus", which answers nobody.
+    'the same as claudectl': '\x00HOLD-FAQ-Q\x00',
+    'claudectl was renamed to archeus': '\x00HOLD-FAQ-A\x00',
+    'pip install -U claudectl': '\x00HOLD-FAQ-UPGRADE\x00',
 }
 
 SUBS = (('claudectl', 'archeus'),

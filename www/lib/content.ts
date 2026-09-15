@@ -46,14 +46,14 @@ export const HOME: Doc = {
   description:
     'Persistent per-project memory, every session you have ever had, and control over what the next one costs. For Claude Code, OpenAI Codex and pi. Zero deps, MIT.',
   intro:
-    'Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code today.',
+    'Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code, OpenAI Codex and pi.',
   sections: [
     {
       id: 'hero',
       eyebrow: 'Station 01',
       heading: 'The memory and workspace layer for AI coding agents.',
       lead:
-        'Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code today — a terminal UI and a desktop GUI over the same engine.',
+        'Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code, OpenAI Codex and pi — a terminal UI and a desktop GUI over the same engine.',
       blocks: [
         code('pipx install archeus', 'install'),
         ul([
