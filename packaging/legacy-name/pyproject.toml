@@ -25,9 +25,19 @@
 # version they do not have forces pip to reinstall archeus in the same
 # transaction, which puts the files back. Pinning a version they already have
 # would satisfy the requirement without reinstalling anything and leave a broken
-# import. So: publish the archeus release FIRST, then this, and keep this pin
-# equal to that release. `test_the_shim_pins_a_version_that_does_not_exist_yet`
-# fails when the two drift into the same number.
+# import.
+#
+# The pin therefore has two states and the difference matters:
+#   · IN THE REPO it names the NEXT archeus release, one ahead of
+#     `pyproject.toml`. That is what
+#     `test_the_shim_pins_a_version_of_this_package_that_is_not_out_yet`
+#     asserts, and cutting a release is what moves it — 2.4.0 became this
+#     release, so the pin went to 2.5.0 in the same commit.
+#   · AT THE MOMENT YOU PUBLISH THIS SHIM you set it DOWN to the archeus
+#     release that just went out, and publish archeus first. A pin naming a
+#     version PyPI does not have yet is a shim nobody can install.
+# This package is not on the release workflow; it is published by hand, rarely,
+# and its own `version` below does not track archeus's at all.
 [build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
@@ -41,7 +51,7 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Babar Muhammad Anas" }]
 keywords = ["claude-code", "archeus", "agent-memory"]
-dependencies = ["archeus>=2.4.0"]
+dependencies = ["archeus>=2.5.0"]
 
 # Only repository links here, deliberately. This file is on the rename script's
 # SKIP list — it has to keep the old name to BE the old name — and a skipped file

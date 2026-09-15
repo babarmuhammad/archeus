@@ -1,6 +1,6 @@
 {
   "name": "archeus",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "The memory and workspace layer for AI coding agents. Persistent per-project memory, every session you have ever had, and control over what the next one costs.",
   "keywords": [
     "claude-code",

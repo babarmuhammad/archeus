@@ -2,7 +2,7 @@
 # RubyGems resolves to the real project rather than to nothing.
 Gem::Specification.new do |s|
   s.name        = 'archeus'
-  s.version     = '2.3.0'
+  s.version     = '2.4.0'
   s.licenses    = ['MIT']
   s.summary     = 'Pointer gem: archeus is a Python tool — install it with `pipx install archeus`.'
   s.description = 'The memory and workspace layer for AI coding agents: ' \

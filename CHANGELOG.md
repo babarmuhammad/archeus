@@ -7,6 +7,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-09-15
+
 ### Added
 
 - **A Harnesses page, and a sidebar about the workspace rather than about one CLI.**
