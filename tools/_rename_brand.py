@@ -101,6 +101,19 @@ def tracked_text_files():
         yield rel
 
 
+def substitute(src):
+    """The rename, with every HELD string parked behind its placeholder first
+    and put back afterwards — so the substitution cannot see it."""
+    txt = src
+    for real, ph in HOLD.items():
+        txt = txt.replace(real, ph)
+    for old, new in SUBS:
+        txt = txt.replace(old, new)
+    for real, ph in HOLD.items():
+        txt = txt.replace(ph, real)
+    return txt
+
+
 def main():
     changed = []
     for rel in tracked_text_files():
@@ -116,13 +129,7 @@ def main():
             continue
         if 'claudectl' not in src.lower():
             continue
-        txt = src
-        for real, ph in HOLD.items():
-            txt = txt.replace(real, ph)
-        for old, new in SUBS:
-            txt = txt.replace(old, new)
-        for real, ph in HOLD.items():
-            txt = txt.replace(ph, real)
+        txt = substitute(src)
         if txt != src:
             with io.open(path, 'w', encoding='utf-8', newline='') as f:
                 f.write(txt)
