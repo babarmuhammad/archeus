@@ -38,7 +38,7 @@ def _transcript(path, title='', first_user='do the thing', edits=('a.py', 'b.py'
 def test_summarize_transcript(tmp_path):
     tp = tmp_path / 's.jsonl'
     _transcript(str(tp), title='Add auth flow', edits=('login.py', 'auth.py'))
-    summary, files = worklog.summarize_transcript(str(tp))
+    summary, files, _marks = worklog.summarize_transcript(str(tp))
     assert summary == 'Add auth flow'
     assert files == ['auth.py', 'login.py']
 
@@ -52,7 +52,7 @@ def test_an_episode_from_a_real_transcript_has_a_task_and_files(tmp_path):
     tp = tmp_path / 's.jsonl'
     _transcript(str(tp), title='', first_user='fix the parser bug',
                 edits=('login.py',))
-    summary, files = worklog.summarize_transcript(str(tp))
+    summary, files, _marks = worklog.summarize_transcript(str(tp))
     assert summary == 'fix the parser bug'
     assert files == ['login.py']
 
@@ -166,3 +166,98 @@ def test_worklog_hook_install_roundtrip(monkeypatch, tmp_path):
     # uninstall
     assert hooks.uninstall_worklog_hook()
     assert not hooks.worklog_hook_installed()
+
+
+# ── what an episode records beyond "it happened" ─────────────
+
+def _rec(kind, **kw):
+    return {'type': kind, 'message': {'role': kw.pop('role', 'assistant'), **kw}}
+
+
+def _with_result(path, *blocks):
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(json.dumps({'type': 'ai-title', 'title': 'do a thing'}) + '\n')
+        f.write(json.dumps({'type': 'assistant',
+                            'message': {'role': 'assistant',
+                                        'content': list(blocks)}}) + '\n')
+
+
+def test_an_episode_records_what_failed(tmp_path):
+    """A log of what was DONE cannot stop the next session walking into the
+    same wall. What went wrong is the half worth the characters."""
+    tp = tmp_path / 's.jsonl'
+    _with_result(str(tp),
+                 {'type': 'tool_use', 'name': 'Edit', 'input': {'file_path': 'a.py'}},
+                 {'type': 'tool_result', 'is_error': True,
+                  'content': 'ModuleNotFoundError: no module named yaml'},
+                 {'type': 'tool_result', 'is_error': False, 'content': 'ok'})
+    _s, _f, marks = worklog.summarize_transcript(str(tp))
+    assert marks['tool_errors'] == 1
+    assert 'ModuleNotFoundError' in marks['last_error']
+    # the LAST result succeeded, and something was edited
+    assert marks['outcome'] == 'ok'
+
+
+def test_a_session_that_ended_on_an_error_says_so(tmp_path):
+    tp = tmp_path / 's.jsonl'
+    _with_result(str(tp),
+                 {'type': 'tool_use', 'name': 'Edit', 'input': {'file_path': 'a.py'}},
+                 {'type': 'tool_result', 'is_error': True, 'content': 'boom'})
+    assert worklog.summarize_transcript(str(tp))[2]['outcome'] == 'error'
+
+
+def test_the_error_text_survives_either_block_shape(tmp_path):
+    tp = tmp_path / 's.jsonl'
+    _with_result(str(tp), {'type': 'tool_result', 'is_error': True,
+                           'content': [{'type': 'text', 'text': 'nested boom'}]})
+    assert 'nested boom' in worklog.summarize_transcript(str(tp))[2]['last_error']
+
+
+def test_the_sessionstart_digest_carries_what_failed_last_time(tmp_path):
+    """The continuity test. A digest that only lists topics is a table of
+    contents; the next session needs the dead end."""
+    proj = tmp_path / 'proj'
+    proj.mkdir()
+    worklog.add_entry(str(proj), {
+        'session_id': 's1', 'ended_at': '2026-09-15T10:00:00Z',
+        'summary': 'wire the parser', 'files': ['p.py'],
+        'outcome': 'error', 'tool_errors': 2, 'last_error': 'boom'})
+    dig = worklog.render_digest(str(proj))
+    assert 'ended on an error' in dig and '2 failed' in dig
+
+
+def test_an_episode_past_its_ttl_is_forgotten(tmp_path):
+    """The staleness test. The ring cap bounds a busy project; the TTL is what
+    expires an episode on one that went quiet, which is where nothing else
+    would ever trim it."""
+    import time as _t
+    proj = tmp_path / 'proj'
+    proj.mkdir()
+    old = _t.strftime('%Y-%m-%dT%H:%M:%SZ',
+                      _t.gmtime(_t.time() - (worklog.TTL_DAYS + 5) * 86400))
+    new = _t.strftime('%Y-%m-%dT%H:%M:%SZ', _t.gmtime())
+    worklog.save_worklog(str(proj), [
+        {'session_id': 'old', 'ended_at': old, 'summary': 'ancient'},
+        {'session_id': 'new', 'ended_at': new, 'summary': 'recent'},
+        {'session_id': 'undated', 'summary': 'written before the field existed'}])
+    assert worklog.apply_ttl(str(proj)) == 1
+    kept = {e['session_id'] for e in worklog.load_worklog(str(proj))}
+    # an undated entry predates the field; that is not the same as being old
+    assert kept == {'new', 'undated'}
+
+
+def test_a_headless_call_is_not_an_episode(tmp_path):
+    """archeus's own `claude -p` calls are it talking to itself. They used to
+    be captured as work the user did."""
+    from claude_sessions import sessions
+    proj = tmp_path / 'proj'
+    proj.mkdir()
+    tp = tmp_path / 'h.jsonl'
+    _transcript(str(tp), title='extract entities', edits=('x.py',))
+    monkey = sessions.get_session_stats
+    try:
+        sessions.get_session_stats = lambda p: {'headless': True}
+        assert worklog.capture_session(str(proj), 'sid', str(tp)) is None
+    finally:
+        sessions.get_session_stats = monkey
+    assert worklog.load_worklog(str(proj)) == []

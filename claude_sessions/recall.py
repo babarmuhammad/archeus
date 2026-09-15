@@ -146,6 +146,55 @@ def _bm25(qtok, etok, idf, floor, elen, avg_len):
     return total
 
 
+#: how many past sessions may ride along with the facts. Two, because this
+#: shares the SAME token budget the entities are cut to — an episode that
+#: displaces three facts is a bad trade, and the playbook's own "top-3 episodes"
+#: assumes a context window rather than a 600-token hook.
+EPISODE_TOP_K = 2
+
+
+def score_episodes(entries, index, query, top_k=EPISODE_TOP_K):
+    """[(score, episode)] — the past sessions most like this prompt.
+
+    Reuses `_bm25` and the entity index's IDF rather than standing up a second
+    scorer. Episodes are ranked only against EACH OTHER, never fused with the
+    entity scores, so borrowing an IDF built from a different corpus is sound:
+    a term missing from it falls to the same floor for every episode.
+
+    Retrieval is what makes an episodic layer worth having. A log that is only
+    replayed newest-first tells you what happened last, which is rarely what
+    the current task is about; this one answers "have I done this before".
+    """
+    if not entries:
+        return []
+    qtok = _tokenize(query)
+    if len(qtok) < MIN_QUERY_SIGNAL:
+        return []
+    idf = index.get('idf') or {}
+    avg = index.get('avg_len') or 1.0
+    floor = 0.05                       # the same floor score_entities applies
+    out = []
+    for e in entries:
+        files = e.get('files') or []
+        # `_path_segments` reads `source_files`/`module`, so an episode is given
+        # to it in that shape rather than teaching it a second one
+        etok = _tokenize(e.get('summary', '')) | _path_segments(
+            {'source_files': files})
+        for f in files:
+            etok |= _tokenize(f)
+        if not etok:
+            continue
+        s = _bm25(qtok, etok, idf, floor, len(etok), avg)
+        # a session that ended badly is the one most worth surfacing: it is the
+        # dead end this prompt might be about to walk back into
+        if e.get('outcome') == 'error':
+            s *= 1.15
+        if s > 0:
+            out.append((s, e))
+    out.sort(key=lambda x: (-x[0], x[1].get('ended_at', '')))
+    return out[:top_k]
+
+
 def score_entities(mem, index, query, path_hints=()):
     """[(score, entity)] descending, non-matching dropped.
 
@@ -258,10 +307,10 @@ def expand_relations(mem, index, seeds, hops=1, decay=0.5):
 _HEADER = "PROJECT MEMORY (archeus) — task-relevant subset:"
 
 
-def render_context(scored, mem, budget_tokens):
+def render_context(scored, mem, budget_tokens, episodes=()):
     """Compact context string cut to budget. Relations only among included
-    entities; approved lessons under their own header."""
-    if not scored:
+    entities; approved lessons and past sessions under their own headers."""
+    if not scored and not episodes:
         return '', 0
     lines = [_HEADER]
     used = tokens_estimate(_HEADER)
@@ -304,6 +353,30 @@ def render_context(scored, mem, budget_tokens):
     if lessons:
         lines.append("LESSONS:")
         lines.extend(lessons)
+    # LAST, so the budget feeds facts before history — and so an episode is the
+    # first thing dropped when the prompt is rich enough to fill it with facts.
+    ep_lines = []
+    for _s, e in episodes:
+        when = (e.get('ended_at') or '')[:10]
+        files = ', '.join((e.get('files') or [])[:3])
+        bad = ''
+        if e.get('outcome') == 'error':
+            bad = ' — ended on an error' + (
+                ': ' + e['last_error'][:60] if e.get('last_error') else '')
+        elif e.get('tool_errors'):
+            bad = ' — %d tool error%s' % (e['tool_errors'],
+                                          '' if e['tool_errors'] == 1 else 's')
+        el = ('~ %s%s%s%s' % (when, ': ' if when else '',
+                              e.get('summary') or '(no summary)', bad)
+              + (' [files: %s]' % files if files else ''))
+        cost = tokens_estimate(el) + 1
+        if used + cost > budget_tokens:
+            continue
+        used += cost
+        ep_lines.append(el)
+    if ep_lines:
+        lines.append("PAST SESSIONS:")
+        lines.extend(ep_lines)
     text = '\n'.join(lines)
     # what was ACTUALLY emitted, so the caller credits reinforcement to the
     # entities Claude saw rather than to everything that merely ranked
@@ -406,7 +479,16 @@ def retrieve(project_path, proj_folder, query, budget_tokens=600, log=True):
         if s > best.get(k, (0, None))[0]:
             best[k] = (s, e)
     ranked = sorted(best.values(), key=lambda x: (-x[0], x[1].get('name', '')))
-    text, toks = render_context(ranked, mem, budget_tokens)
+    # Past sessions ride the SAME budget and are rendered last, so the existing
+    # fit-don't-truncate loop drops them first when it is tight. They are not
+    # entities and must never enter the graph: they would be hit by the
+    # `memory_max_entities` cap and would pollute the IDF of the code corpus.
+    try:
+        from . import worklog
+        eps = score_episodes(worklog.load_worklog(project_path), index, query)
+    except Exception:
+        eps = []
+    text, toks = render_context(ranked, mem, budget_tokens, episodes=eps)
     # Reinforcement: which entities got injected, appended to a sidecar and
     # folded into the graph on the next build.
     #

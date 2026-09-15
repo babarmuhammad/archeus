@@ -769,7 +769,15 @@ def _auto_scan_pass():
                 owed = True                               # still running
                 continue
             if not memory.is_stale(path, folder):
-                continue                                  # nothing changed
+                # NOT `continue`. Everything that expires anything lived
+                # downstream of a refresh — consolidation inside
+                # `_refresh_locked`, lesson decay inside `scan_sessions` and
+                # only `if todo:` — so on a settled project nothing ever expired,
+                # which is exactly backwards: facts go stale BECAUSE nothing
+                # happened. This pass spends no tokens, so it runs on every
+                # opted-in project whether or not there is anything to extract.
+                memory.forget_pass(path, folder)
+                continue
             _refresh_project(path, folder, auto_cap=6)    # blocking, sequential
             refreshed += 1
             if memory.is_stale(path, folder):
@@ -2317,6 +2325,14 @@ def api_memory_state(q, body):
             # what eviction dropped. Stored specifically so it could be checked.
             'evicted': int(mem.get('evicted_entities') or 0),
             'evicted_names': list(mem.get('evicted_names') or []),
+            # two facts about the same thing that do NOT agree. Flagged rather
+            # than auto-resolved: a merge has no "newer" to prefer, because both
+            # came from the same cycle and `created_at` is the FIRST sighting.
+            'conflicts': list(mem.get('conflicts') or []),
+            # and facts nobody has re-confirmed in _STALE_DAYS. A count, never
+            # an eviction: a heuristic may not quietly reshape what recall
+            # returns.
+            'stale': int(mem.get('stale_count') or 0),
             'top': [{'name': e.get('name', ''), 'hits': int(e.get('hits') or 0),
                      'module': e.get('module', '')} for e in top],
             'last_failed': int(mem.get('last_failed') or 0),

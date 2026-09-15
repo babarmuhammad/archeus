@@ -2638,6 +2638,10 @@ async function drawMemory(){
         <div class="chips">${st.top.map(t=>`<span class="chip" style="cursor:pointer" onclick="entDetail(${hesc(t.name)})" title="Recalled into ${t.hits} prompt(s)${t.module?' · '+esc(t.module):''} — click for what it means">${esc(t.name)} <i>${t.hits}</i></span>`).join('')}</div>`:''}
       ${(st.evicted_names||[]).length?`<div class="lbl" style="margin-top:10px" title="When the graph passes its cap, the least-used unpinned facts go. Pinned ones never do.">Dropped to stay under the cap (${st.evicted||0})</div>
         <div class="chips">${st.evicted_names.slice(0,12).map(n=>`<span class="chip">${esc(n)}</span>`).join('')}</div>`:''}
+      ${(st.conflicts||[]).length?`<div class="lbl" style="margin-top:10px" title="Two modules describe the same thing in ways that do not agree. archeus keeps the fuller description and records the other rather than discarding it — there is no way to tell which is right from the outside.">Facts that disagree with themselves (${st.conflicts.length})</div>
+        <div class="chips">${st.conflicts.slice(0,12).map(n=>`<span class="chip warn" style="cursor:pointer" onclick="entDetail(${hesc(n)})">${esc(n)}</span>`).join('')}</div>`:''}
+      ${st.stale?`<div class="lbl" style="margin-top:10px" title="Nothing has re-read the file this fact came from in a long time. It is flagged, never dropped: a guess about staleness must not quietly change what Claude is told.">Not re-confirmed recently</div>
+        <div class="chips"><span class="chip">${st.stale} fact${st.stale===1?'':'s'}</span></div>`:''}
       <div class="lbl" style="margin-top:16px">Keeping it current</div>
       <p style="color:var(--dim);font-size:13px;margin:0 0 10px">Keeping memory current costs Claude calls. One pass every ${every(st.auto_interval)} —
         never sooner, however much is left to do, and counted from the last pass rather than from

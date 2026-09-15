@@ -41,6 +41,12 @@ SURFACE = {
         'auto_interval',
         'pending_units', 'last_cost_usd', 'cost_usd_total', 'cost_history',
         'evicted_names', 'top', 'dirty', 'dirty_hook', 'budget', 'est',
+        # the forgetting pass's two findings. `conflicts` is where two modules
+        # describe the same thing incompatibly — kept and shown rather than
+        # silently resolved by summary length, because a merge has no "newer"
+        # to prefer. `stale` counts facts nobody has re-confirmed; a count and
+        # never an eviction, so a heuristic cannot quietly reshape recall.
+        'conflicts', 'stale',
         # a failed cycle and a capped one both left `pending_units` set, and
         # every consumer worded it "the next cycle takes them" — so six dead
         # calls an hour on a rate-limited account read as progress

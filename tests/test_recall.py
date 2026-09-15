@@ -155,3 +155,58 @@ def test_rule_estimates_carry_their_glob(monkeypatch, tmp_path):
     assert r['file'].startswith('archeus-mem-') and r['tokens'] > 0
     assert r['glob'] and r['glob'] != '**', f"unscoped glob {r['glob']!r}"
     assert r['unit'].startswith('app/'), r['unit']
+
+
+# ── past sessions ride the same budget as the facts ──────────
+
+def _ep(sid, summary, files, **kw):
+    return dict({'session_id': sid, 'ended_at': '2026-09-15T10:00:00Z',
+                 'summary': summary, 'files': files}, **kw)
+
+
+def test_recall_surfaces_the_episode_that_touched_the_same_files(monkeypatch):
+    """The amnesia test, at retrieval. A log that is only replayed
+    newest-first tells you what happened last, which is rarely what the current
+    task is about; this answers "have I done this before"."""
+    index = recall.build_index({'entities': [
+        {'name': 'Parser', 'summary': 'reads the transcript', 'type': 'component',
+         'source_files': ['claude_sessions/parser.py'], 'valid': True}]})
+    eps = [_ep('a', 'rewrite the css grid', ['web/app.css']),
+           _ep('b', 'fix the transcript parser', ['claude_sessions/parser.py'])]
+    got = recall.score_episodes(eps, index, 'the transcript parser is broken')
+    assert got and got[0][1]['session_id'] == 'b'
+
+
+def test_a_session_that_ended_badly_outranks_an_equal_one(monkeypatch):
+    index = recall.build_index({'entities': [
+        {'name': 'X', 'summary': 'x', 'type': 'component', 'valid': True}]})
+    eps = [_ep('ok', 'wire the parser', ['p.py']),
+           _ep('bad', 'wire the parser', ['p.py'], outcome='error',
+               last_error='boom')]
+    got = recall.score_episodes(eps, index, 'wire the parser')
+    assert got[0][1]['session_id'] == 'bad', 'the dead end is the useful one'
+
+
+def test_a_prompt_with_no_signal_retrieves_no_episode():
+    """Same floor the entity scorer has: `the` used to return 33 entities."""
+    index = recall.build_index({'entities': []})
+    assert recall.score_episodes([_ep('a', 'anything', [])], index, 'the') == []
+
+
+def test_episodes_do_not_grow_the_always_on_budget():
+    """They share the SAME budget as the facts and render LAST, so they are
+    dropped first rather than displacing anything."""
+    ents = [(9.0 - i, {'name': 'E%d' % i, 'type': 'component', 'module': 'm',
+                       'summary': 'a fact that is long enough to matter ' * 3})
+            for i in range(20)]
+    eps = [(5.0, _ep('a', 'an episode ' * 10, ['x.py']))]
+    plain, t_plain = recall.render_context(ents, {'relations': []}, 300)
+    withep, t_with = recall.render_context(ents, {'relations': []}, 300,
+                                           episodes=eps)
+    assert t_plain <= 300 and t_with <= 300
+    assert 'PAST SESSIONS:' not in withep, 'facts filled it; history yields'
+    # with room to spare the episode is emitted, after the facts
+    roomy, t_roomy = recall.render_context(ents[:1], {'relations': []}, 600,
+                                           episodes=eps)
+    assert 'PAST SESSIONS:' in roomy and t_roomy <= 600
+    assert roomy.index('PAST SESSIONS:') > roomy.index('E0')

@@ -36,7 +36,20 @@ PER_BATCH_CHARS = 40000  # cap corpus per repo/module Claude call
 MODULE_MAX_FILES = 24    # representative files per module
 MIN_UNIT_FILES = 3       # below this a nested directory folds into its parent
 EXTRACT_TIMEOUT = 300
-_INVALID_CAP = 150       # max invalidated (superseded) facts kept as history
+#: max invalidated (superseded) facts kept as history.
+#:
+#: 40, down from 150. Measured on this project the ring was FULL at 150 and
+#: spanned four days — that is churn, not history. It was 27% of the graph, and
+#: although `recall` never injects an invalid fact, `build_index` still
+#: tokenises every one of them on every prompt. Real history lives in
+#: `.archeus/snapshots/`, which `_snapshot_if_shrinking` writes precisely when
+#: entities are lost.
+_INVALID_CAP = 40
+#: and a fact invalidated longer ago than this is not history either
+_INVALID_TTL_DAYS = 30
+#: a fact nobody has re-confirmed in this long is FLAGGED, never evicted — the
+#: audit reports, and a heuristic is not allowed to reshape retrieval silently
+_STALE_DAYS = 90
 
 
 # ── persistence ──────────────────────────────────────────────
@@ -54,6 +67,8 @@ def _empty():
     return {'schema_version': SCHEMA_VERSION, 'generated_at': '',
             'entities': [], 'relations': [], 'summaries': {}, 'provenance': {},
             'module_edges': [], 'lessons_scanned': {}, 'session_counter': 0,
+            # names whose two descriptions disagree; see _consolidate
+            'conflicts': [], 'stale_count': 0,
             'pending_units': 0, 'repo_summaries': {},
             # lifetime spend. No SCHEMA_VERSION bump needed: _migrate
             # setdefaults every _empty() key onto whatever it loads.
@@ -1182,16 +1197,26 @@ def _refresh_locked(project_path, proj_folder, project_name, auto_cap=None):
             fresh_names.add(name)
             old = prev_touched.pop((unit, name), None)
             if old is not None:                            # fact still true → update
-                old.update({'type': e.get('type', old.get('type', 'concept')),
+                # `confirmed_at` is the LAST time a re-read of this unit still
+                # emitted the fact, which is the only thing that can answer "is
+                # this still true". `created_at` cannot: it is the FIRST
+                # sighting and never moves, so a fact confirmed daily for a year
+                # looks exactly as old as one seen once.
+                old.update({'type': _enum(e.get('type'),
+                                          _TYPES, old.get('type', 'concept')),
                             'summary': e.get('summary', old.get('summary', '')),
-                            'source_files': [rel0], 'valid': True})
+                            'source_files': [rel0], 'valid': True,
+                            'confirmed_at': now})
+                old.pop('stale', None)
                 old.pop('invalidated_at', None)
                 kept.append(old)
             else:
                 kept.append({'id': f"entity:{repo}:{module}:{name}", 'name': name,
-                             'type': e.get('type', 'concept'), 'summary': e.get('summary', ''),
+                             'type': _enum(e.get('type'), _TYPES, 'concept'),
+                             'summary': e.get('summary', ''),
                              'repo': repo, 'module': module, 'source_files': [rel0],
-                             'valid': True, 'created_at': now, 'hits': 0})
+                             'valid': True, 'created_at': now,
+                             'confirmed_at': now, 'hits': 0})
         # prior entities of this unit not re-emitted → invalidated (kept as history)
         for (u, _nm), old in list(prev_touched.items()):
             if u == unit:
@@ -1204,7 +1229,8 @@ def _refresh_locked(project_path, proj_folder, project_name, auto_cap=None):
         for r in ex['relations']:
             if r.get('source') in names and r.get('target') in names:
                 relations.append({'source': r['source'], 'target': r['target'],
-                                  'rel': r.get('rel', 'relates'), 'unit': unit})
+                                  'rel': _enum(r.get('rel'), _RELS, 'relates'),
+                                  'unit': unit})
 
         # checkpoint: persist after EVERY unit (each one cost a Claude call),
         # so an interruption keeps completed work. Entities of touched units
@@ -1286,6 +1312,97 @@ def _refresh_locked(project_path, proj_folder, project_name, auto_cap=None):
     return mem
 
 
+#: the enums GRAPH_SCHEMA already declares. `_claude_json` falls back to
+#: `_parse_json(raw)` when the CLI returns no structured output — a documented,
+#: load-bearing path for an older binary — and that path validates nothing, so
+#: `type` and `rel` accepted whatever the model wrote. Clamping costs two `in`
+#: tests and guarantees the digest's type grouping and the graph renderer's
+#: filters never see a value they have no case for.
+_TYPES = frozenset(GRAPH_SCHEMA['properties']['entities']['items']
+                   ['properties']['type']['enum'])
+_RELS = frozenset(GRAPH_SCHEMA['properties']['relations']['items']
+                  ['properties']['rel']['enum'])
+
+
+def _enum(v, allowed, default):
+    v = (v or '').strip()
+    return v if v in allowed else default
+
+
+def _age_days(iso):
+    """Days since an ISO stamp, or None when it cannot be read."""
+    if not iso:
+        return None
+    try:
+        t = time.strptime(str(iso)[:19], '%Y-%m-%dT%H:%M:%S')
+    except (ValueError, TypeError):
+        return None
+    return max(0.0, (time.time() - time.mktime(t) + time.timezone) / 86400.0)
+
+
+def forget_pass(project_path, proj_folder=None):
+    """Expire, supersede and flag — the three forgetting operations, on a
+    project that did NOT change. Returns a small report.
+
+    This spends no tokens and makes no Claude call, which is what lets it run
+    on every scheduler pass for every opted-in project. That is the whole
+    point: everything else that expires anything hangs off a refresh, so a
+    settled project never forgot anything — and a settled project is precisely
+    where facts go stale.
+
+    It does not evict on staleness. `stale` feeds a counter and the Memory tab;
+    letting a heuristic quietly reshape what recall returns is how a memory
+    system starts lying confidently.
+    """
+    from . import worklog
+    out = {'episodes': 0, 'lessons': 0, 'invalid': 0, 'stale': 0}
+    try:
+        out['episodes'] = worklog.apply_ttl(project_path)
+    except Exception:
+        pass
+    mem = load_memory(project_path, proj_folder)
+    if not mem.get('entities'):
+        return out
+    before = len(mem['entities'])
+    from . import lessons as _lessons
+    try:
+        out['lessons'] = _lessons.apply_decay(mem) or 0
+    except Exception:
+        pass
+    kept, dropped, stale = [], 0, 0
+    for e in mem.get('entities', []):
+        if not e.get('valid', True) and e.get('type') != 'lesson':
+            age = _age_days(e.get('invalidated_at'))
+            if age is not None and age > _INVALID_TTL_DAYS:
+                dropped += 1
+                continue
+        elif e.get('type') != 'lesson':
+            age = _age_days(e.get('confirmed_at') or e.get('created_at'))
+            if age is not None and age > _STALE_DAYS:
+                e['stale'] = True
+                stale += 1
+            else:
+                e.pop('stale', None)
+        kept.append(e)
+    mem['entities'] = kept
+    mem['stale_count'] = stale
+    out['invalid'] = dropped
+    out['stale'] = stale
+    if dropped or out['lessons'] or before != len(kept) or stale:
+        save_memory(project_path, proj_folder, mem)
+    return out
+
+
+def _overlap(a, b):
+    """Jaccard over the two summaries' tokens.
+
+    `lessons._jaccard` is the same function and already delegates to
+    `_tokens` here; importing it back would be a cycle, and it is two lines.
+    """
+    ta, tb = _tokens(a), _tokens(b)
+    return len(ta & tb) / len(ta | tb) if ta | tb else 0.0
+
+
 def _consolidate(mem):
     """Keep the graph bounded and accurate as the project grows — so memory
     cost stays flat (or shrinks) instead of ballooning with the codebase:
@@ -1303,12 +1420,24 @@ def _consolidate(mem):
     invalid = invalid[:_INVALID_CAP]
     reg = [e for e in ents if e.get('type') != 'lesson' and e.get('valid', True)]
 
-    # 1. cross-module merge by normalized name
+    # 1. cross-module merge by normalized name, WITHIN one repo.
+    #
+    #    The key was the name alone, and a workspace holds several repos that
+    #    each legitimately contain a `Claude Code`, a `memory system`, an
+    #    `archeus`. Measured on this project: six entities were merged across
+    #    unrelated repos, and because the merge SUMS `rank`, each of those
+    #    outranked every true fact in recall. That is a retrieval defect, not a
+    #    tidiness one — the wrong facts were being injected.
+    #
+    #    Scoping by repo rather than by module is deliberate: two modules of one
+    #    repo describing the same thing IS the duplicate this merge exists for.
     merged = {}
+    conflicts = []
     for e in reg:
-        key = re.sub(r'\W+', '', (e.get('name') or '').lower())
-        if not key:
+        name = re.sub(r'\W+', '', (e.get('name') or '').lower())
+        if not name:
             continue
+        key = (e.get('repo') or '', name)
         cur = merged.get(key)
         if cur is None:
             e = dict(e)
@@ -1321,11 +1450,24 @@ def _consolidate(mem):
         u = f"{e.get('repo')}/{e.get('module')}"
         if u not in cur['modules']:
             cur['modules'].append(u)
-        if len(e.get('summary', '')) > len(cur.get('summary', '')):
+        # FLAG rather than discard when the two descriptions do not agree.
+        # archeus does not contradict, it silently overwrites — and it resolved
+        # by string LENGTH. Where the evidence is temporal it already
+        # auto-supersedes (a fact a re-read unit did not re-emit is invalidated)
+        # and that ordering is real; here there is no "newer" to prefer, because
+        # both were emitted by the same cycle and `created_at` is the FIRST
+        # sighting. So: auto-supersede where the evidence is temporal, flag
+        # where it is not.
+        a, b = cur.get('summary', ''), e.get('summary', '')
+        if a and b and a != b and _overlap(a, b) < 0.3:
+            cur['conflict'] = {'summary': b, 'module': u}
+            conflicts.append(cur.get('name'))
+        if len(b) > len(a):
             cur['summary'] = e['summary']            # keep the richer summary
         if e.get('status') == 'pinned':
             cur['status'] = 'pinned'                 # a pin survives the merge
     reg = list(merged.values())
+    mem['conflicts'] = sorted(set(conflicts))
 
     # 2. importance cap — score = dependency rank + access reinforcement (hits).
     #    Useful, frequently-recalled knowledge stays; dead knowledge is evicted.

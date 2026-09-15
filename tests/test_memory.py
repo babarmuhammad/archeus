@@ -1053,3 +1053,117 @@ def test_the_dirty_log_can_be_counted_without_draining(monkeypatch, tmp_path):
     assert memory.dirty_count(actual) == 2
     assert memory.dirty_count(actual) == 2, 'counting drained the signal'
     assert memory.drain_dirty(actual)                  # drain is still the remover
+
+
+# ── identity, contradiction and the scheduled forgetting pass ──
+
+def _e2(name, repo, module, summary, **kw):
+    return dict({'name': name, 'repo': repo, 'module': module, 'type': 'service',
+                 'summary': summary, 'valid': True, 'rank': 5, 'hits': 0}, **kw)
+
+
+def test_the_same_name_in_two_repos_is_two_facts():
+    """The merge key was the NAME alone, and a workspace holds several repos
+    that each legitimately contain a `Claude Code` or a `memory system`.
+    Measured on this project, six entities were merged across unrelated repos —
+    and because the merge SUMS rank, every one of them outranked the true facts
+    in recall. That is a retrieval defect, not a tidiness one.
+    """
+    mem = {'entities': [_e2('memory system', 'www', 'lib', 'the site blurb'),
+                        _e2('memory system', 'crates', 'src', 'the crate readme')],
+           'relations': [], 'summaries': {}}
+    memory._consolidate(mem)
+    live = [e for e in mem['entities'] if e.get('type') != 'lesson']
+    assert len(live) == 2, 'two repos, two facts'
+    assert {e['repo'] for e in live} == {'www', 'crates'}
+    assert all(e['rank'] == 5 for e in live), 'and neither inherits the other rank'
+
+
+def test_two_modules_of_one_repo_still_merge():
+    """Scoping by repo rather than by module is the point: two modules of one
+    repo describing the same thing IS the duplicate this merge exists for."""
+    mem = {'entities': [_e2('Parser', 'app', 'a', 'reads the transcript'),
+                        _e2('Parser', 'app', 'b', 'reads the transcript')],
+           'relations': [], 'summaries': {}}
+    memory._consolidate(mem)
+    live = [e for e in mem['entities'] if e.get('type') != 'lesson']
+    assert len(live) == 1 and live[0]['rank'] == 10
+
+
+def test_two_incompatible_summaries_are_flagged_not_silently_merged():
+    """archeus does not contradict — it silently overwrites, and it resolved by
+    string LENGTH. Where the evidence is temporal it already auto-supersedes; a
+    merge has no 'newer' to prefer, so the disagreement is recorded."""
+    mem = {'entities': [
+        _e2('Store', 'app', 'a', 'writes rows to a local sqlite database'),
+        _e2('Store', 'app', 'b', 'an in-memory ring buffer, never persisted')],
+        'relations': [], 'summaries': {}}
+    memory._consolidate(mem)
+    live = [e for e in mem['entities'] if e.get('type') != 'lesson'][0]
+    assert live.get('conflict'), 'the losing description is kept, not discarded'
+    assert mem['conflicts'] == ['Store']
+
+
+def test_two_ways_of_saying_the_same_thing_are_not_a_conflict():
+    mem = {'entities': [_e2('Store', 'app', 'a', 'writes rows to the database'),
+                        _e2('Store', 'app', 'b', 'writes rows to the database now')],
+           'relations': [], 'summaries': {}}
+    memory._consolidate(mem)
+    assert mem['conflicts'] == []
+
+
+def test_an_invented_type_or_relation_is_clamped_to_the_schema():
+    """`_claude_json` falls back to an unvalidated parse when the CLI returns no
+    structured output — a documented, load-bearing path for an older binary —
+    so `type` and `rel` accepted whatever the model wrote."""
+    assert memory._enum('service', memory._TYPES, 'concept') == 'service'
+    assert memory._enum('microservice', memory._TYPES, 'concept') == 'concept'
+    assert memory._enum('uses', memory._RELS, 'relates') == 'uses'
+    assert memory._enum('invokes', memory._RELS, 'relates') == 'relates'
+    assert memory._enum(None, memory._TYPES, 'concept') == 'concept'
+
+
+def test_forgetting_runs_on_a_project_that_did_not_change(tmp_path, monkeypatch):
+    """The structural bug: everything that expires anything hung off a REFRESH,
+    so a settled project never forgot — which is backwards, because facts go
+    stale precisely when nothing is happening."""
+    import time as _t
+    proj = tmp_path / 'proj'
+    (proj / '.archeus' / 'memory').mkdir(parents=True)
+    old = _t.strftime('%Y-%m-%dT%H:%M:%S',
+                      _t.gmtime(_t.time() - 400 * 86400))
+    recent = _t.strftime('%Y-%m-%dT%H:%M:%S', _t.gmtime())
+    mem = memory._empty()
+    mem['entities'] = [
+        _e2('Fresh', 'app', 'm', 'still true', confirmed_at=recent),
+        _e2('Ancient', 'app', 'm', 'nobody has re-read this', created_at=old),
+        _e2('Gone', 'app', 'm', 'superseded long ago', valid=False,
+             invalidated_at=old),
+        _e2('Recent miss', 'app', 'm', 'superseded just now', valid=False,
+             invalidated_at=recent)]
+    memory.save_memory(str(proj), None, mem)
+
+    rep = memory.forget_pass(str(proj), None)
+    got = memory.load_memory(str(proj), None)
+    names = {e['name'] for e in got['entities']}
+    assert 'Gone' not in names, 'an invalidation older than the TTL is not history'
+    assert 'Recent miss' in names, 'a fresh supersession still is'
+    assert rep['invalid'] == 1
+    # a fact nobody has re-confirmed is FLAGGED, never evicted: a heuristic must
+    # not quietly reshape what recall returns
+    flagged = {e['name'] for e in got['entities'] if e.get('stale')}
+    assert flagged == {'Ancient'}
+    assert got['stale_count'] == 1 and 'Fresh' in names
+
+
+def test_the_forgetting_pass_spends_nothing(tmp_path, monkeypatch):
+    """It runs on every scheduler tick for every opted-in project, so a single
+    Claude call in it would be one per project per hour, forever."""
+    proj = tmp_path / 'proj'
+    (proj / '.archeus' / 'memory').mkdir(parents=True)
+    mem = memory._empty()
+    mem['entities'] = [_e2('A', 'app', 'm', 'x')]
+    memory.save_memory(str(proj), None, mem)
+    monkeypatch.setattr(memory, '_claude_stdin', lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError('the forgetting pass made a Claude call')))
+    memory.forget_pass(str(proj), None)
