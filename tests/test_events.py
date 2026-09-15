@@ -173,3 +173,59 @@ def test_an_integer_is_part_of_the_identity_and_must_not_collapse(_log_in_tmp):
     _c.log.warning('memory refresh failed for D:/work/app1')
     _c.log.warning('memory refresh failed for D:/work/app2')
     assert len(events.read()) == 4
+
+
+def test_one_noisy_message_cannot_evict_every_real_error(monkeypatch, tmp_path):
+    """Dropping the oldest half is fair by age and useless by content.
+
+    Measured on this machine: the log held 1,589 events of which 1,270 were a
+    single slow-endpoint warning, so the kept half was also four-fifths that
+    warning — and the 79 real `subprocess` errors it had already pushed out did
+    not come back. The dedupe window stops a burst; nothing stopped a steady
+    drip over two weeks.
+    """
+    p = tmp_path / 'ev.jsonl'
+    monkeypatch.setattr(events, 'path', lambda: str(p))
+    rows = []
+    for i in range(400):
+        rows.append(json.dumps({'ts': i, 'lvl': 'warn', 'src': 'gui',
+                                'msg': 'gui api GET /api/dashboard slow: %d.5s' % i}))
+    for i in range(5):
+        rows.append(json.dumps({'ts': 500 + i, 'lvl': 'error', 'src': 'subprocess',
+                                'msg': 'claude exited 1: session limit %d' % i}))
+    kept = events._thin(rows)
+    srcs = [json.loads(r)['src'] for r in kept]
+    assert srcs.count('subprocess') == 5, 'every real error survives'
+    assert srcs.count('gui') == events._SHAPE_KEEP, 'the drip is capped'
+    # and what survives keeps its order — this reduces a log, it does not
+    # reorder one
+    ts = [json.loads(r)['ts'] for r in kept]
+    assert ts == sorted(ts)
+
+
+def test_thinning_is_per_shape_not_per_source(monkeypatch, tmp_path):
+    """Two endpoints being slow is two facts. Capping by SOURCE would let a
+    noisy one hide a quiet one under the same name."""
+    rows = ([json.dumps({'ts': i, 'lvl': 'warn', 'src': 'gui',
+                         'msg': 'gui api GET /api/dashboard slow: %d.1s' % i})
+             for i in range(200)]
+            + [json.dumps({'ts': 900, 'lvl': 'warn', 'src': 'gui',
+                           'msg': 'gui api GET /api/sessions slow: 9.9s'})])
+    kept = [json.loads(r)['msg'] for r in events._thin(rows)]
+    assert any('/api/sessions' in m for m in kept)
+    assert sum('/api/dashboard' in m for m in kept) == events._SHAPE_KEEP
+
+
+def test_rotation_thins_and_stays_readable(monkeypatch, tmp_path):
+    p = tmp_path / 'ev.jsonl'
+    monkeypatch.setattr(events, 'path', lambda: str(p))
+    monkeypatch.setattr(events, '_DEDUPE_SEC', 0)
+    events._recent.clear()
+    for i in range(4000):
+        events.record('gui', 'gui api GET /api/dashboard slow: %d.5s' % i,
+                      level='warn')
+    events.record('subprocess', 'claude exited 1: the one that matters',
+                  level='error')
+    got = events.read(limit=5000)
+    assert any('the one that matters' in r['msg'] for r in got)
+    assert os.path.getsize(p) <= events.MAX_BYTES

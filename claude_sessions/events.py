@@ -138,9 +138,45 @@ def read(limit=200):
     return list(reversed(out))[:limit]
 
 
+#: how many lines of ONE (src, shape) survive a rotation.
+#:
+#: Dropping the oldest half is fair by age and useless by content: measured on
+#: this machine the log held 1,589 events of which 1,270 were a single
+#: slow-endpoint warning, so the kept half was also four-fifths that warning and
+#: the 79 real subprocess errors it had already evicted did not come back. The
+#: dedupe window stops a burst; nothing stopped a steady drip over two weeks.
+#:
+#: Applied only at rotation, which is rare, so the common append still costs one
+#: getsize and no rewrite.
+_SHAPE_KEEP = 40
+
+
+def _thin(lines):
+    """Keep at most _SHAPE_KEEP of each (src, shape), newest first.
+
+    Order is preserved for what survives — this reduces a log, it does not
+    reorder one.
+    """
+    seen = {}
+    keep = []
+    for raw in reversed(lines):
+        try:
+            o = json.loads(raw)
+            k = (str(o.get('src', '')), _dedupe_shape(str(o.get('msg', ''))))
+        except Exception:
+            k = ('?', raw[:40])
+        n = seen.get(k, 0)
+        if n >= _SHAPE_KEEP:
+            continue
+        seen[k] = n + 1
+        keep.append(raw)
+    keep.reverse()
+    return keep
+
+
 def _rotate(p):
-    """Drop the oldest half once the log passes MAX_BYTES. Size-gated, so the
-    common append costs one getsize and no rewrite."""
+    """Drop the oldest half once the log passes MAX_BYTES, then thin what is
+    left so no single repeated message owns the window."""
     try:
         if os.path.getsize(p) <= MAX_BYTES:
             return
@@ -148,8 +184,14 @@ def _rotate(p):
             f.seek(-_KEEP_BYTES, os.SEEK_END)
             tail = f.read()
         tail = tail.split(b'\n', 1)[1] if b'\n' in tail else tail
+        # bytes in, bytes out. Reading binary and writing TEXT lets Windows
+        # translate the '\n' this joins with into '\r\n' on top of a '\r' the
+        # decoded line already ended with, which leaves a stray carriage return
+        # inside every record and an empty final line.
+        lines = [ln for ln in tail.decode('utf-8', 'ignore').splitlines()
+                 if ln.strip()]
         with open(p, 'wb') as f:
-            f.write(tail)
+            f.write(('\n'.join(_thin(lines)) + '\n').encode('utf-8'))
     except Exception:
         pass
 
