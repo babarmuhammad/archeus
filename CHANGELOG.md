@@ -7,7 +7,73 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Automatic account rotation.** When the account in use fills its 5-hour or weekly
+  window, the next one with headroom takes over — archeus's own Claude calls, scheduled
+  loops and new sessions all start on it. Three modes (Accounts → Account rotation): off,
+  semi-automatic (the default — new work moves by itself, and a session you are in is
+  offered the move) and fully automatic (the successor session opens on its own), plus a
+  switch-away threshold and a per-login opt-out. Every switch is recorded in the Logs.
+  It rotates by launching the unmodified `claude` binary under each account's own
+  `CLAUDE_CONFIG_DIR` and never reads, stores or refreshes a credential, so it cannot log
+  an account out of Claude Code. The successor resumes the conversation itself
+  (`--resume` on the transcript's absolute path, forked), rather than re-typing a summary
+  of it. Codex and pi are deliberately not rotated: their windows are not Anthropic's and
+  there is no headroom figure to compare.
+
+- **Session flow graph** — open any session as a live flow graph (**Flow**, beside
+  *Transcript* in the session detail pane): prompts, model turns, tool calls, results,
+  errors and subagent lanes on the session's own clock, with play/pause, speed, scrub,
+  wheel-zoom and a click-to-inspect panel. Idle gaps are clamped, so a twelve-hour session
+  replays in seconds, and **Follow** appends a session that is still running. Claude Code,
+  Codex and pi. Behaviour adopted from
+  [zoetrope](https://github.com/furkankly/zoetrope) (MIT).
+
+- **Four policy pages on the apex, and an operator who is named.** `/legal/privacy`,
+  `/legal/terms`, `/legal/cookies` and `/legal/refunds`, prerendered from one data table
+  and wired from it into the footer, the sitemap, `/llms.txt` and `/llms-full.txt` — the
+  manual links to those copies rather than carrying a second set, because two copies of a
+  policy is two policies and the second one is wrong.
+
+- **Ko-fi, on six surfaces, from one handle.** A badge and a License line in the README,
+  `.github/FUNDING.yml` (which is what turns on GitHub's Sponsor button), a footer link,
+  and funding metadata in `pyproject.toml`, the npm package and the gemspec. No widget and
+  no Ko-fi JavaScript — an embed would have dragged cookie consent back in, which is
+  exactly the surface those policy pages keep closed.
+
+### Changed
+
+- Removed duplicated definitions across the TUI, the scanners and the tooling: one
+  display-width rule, one hidden-character class, one convention-overlap threshold, one
+  snapshot reader, one render gate. No behaviour change.
+
+- **Three controls are identifiable as controls.** The apex's secondary CTA, the copy
+  button and the mobile menu summary were outlined in `--color-line` at 1.36:1 — under the
+  3:1 that SC 1.4.11 asks of a control boundary, and on the secondary CTA the only thing
+  separating it from body text. They now use a 3.28:1 border; decorative hairlines are
+  unchanged, the distinction being whether the boundary does identifying work.
+
+- **`/about` no longer publishes figures nobody measured.** A stat tile that had no number
+  rendered as `GitHub stars —`, which reads as a claim of none rather than as "not
+  counted"; a tile now survives only if its value carries a digit, and the disclosure line
+  says when the figures were taken.
+
 ### Fixed
+
+- **Half of the rate-limit guard had never worked.** `quota`'s 429 pattern contained two
+  literal backspace bytes where `\b` had been meant, so it could never match; a 429 was
+  only ever caught when the text happened to carry another marker as well. It now matches a
+  status code (`"apiErrorStatus":429`, `status: 429`) without matching a number in prose.
+
+- **`tools/inspect_cluster.py` inspected a hardcoded checkout path** rather than the tree it
+  runs in, so in any other worktree it graded a copy — which is what its own docstring says
+  it exists to avoid.
+
+- **A link gate could not tell a trailing slash from a path separator.**
+  `test_an_apex_link_has_no_trailing_slash` backtracked to the first slash it could end on,
+  so a correct two-level apex URL was reported as a defect. Until the policy pages landed no
+  tracked file named one, so that half of the pattern had never been exercised.
 
 - **`npx archeus` did nothing at all** (npm package 2.4.1; the Python package is
   unchanged). Under `npx`, npm puts its own generated shim on PATH under the name
