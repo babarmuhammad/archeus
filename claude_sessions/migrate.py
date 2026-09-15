@@ -247,6 +247,11 @@ def repair_commands(cfgdirs=None, moved=None, failed=None):
             if not isinstance(entries, list):
                 continue
             for entry in entries:
+                # BEFORE the rewrite: the user's name for this hook is keyed by
+                # its commands, and repointing changes them. Without this the
+                # name is orphaned by a pipx reinstall — silently, and exactly
+                # when someone is least able to tell what happened.
+                was = hooks._cmd_keys(entry)
                 for h in (entry.get('hooks') or []):
                     if not isinstance(h, dict):
                         continue
@@ -255,6 +260,10 @@ def repair_commands(cfgdirs=None, moved=None, failed=None):
                         h['command'] = fixed
                         changed = True
                         moved.append((cfgdir, 'hook -> ' + fixed))
+                try:
+                    hooks.rekey_label(_event, was, hooks._cmd_keys(entry))
+                except Exception:
+                    pass          # a label is never worth failing a repair for
         sl = s.get('statusLine')
         if isinstance(sl, dict):
             # NOT `_repoint`: it rebuilds the interpreter half as

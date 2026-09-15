@@ -122,6 +122,8 @@ a handler sees them; a missing or malformed one is a 400.
 | `/api/harness/update` | `api_harness_update` | Run one CLI's own updater, in a terminal the user can watch. |
 | `/api/health/allowlist` | `api_health_allowlist` | — |
 | `/api/history/restore` | `api_history_restore` | — |
+| `/api/hooks/create` | `api_hooks_create` | Write a hand-authored hook. The third way to get one, and the one that |
+| `/api/hooks/label` | `api_hooks_label` | Rename a hook, or file it under a category. Both are archeus's own |
 | `/api/hooks/purge` | `api_hooks_purge` | — |
 | `/api/hooks/remove` | `api_hooks_remove` | — |
 | `/api/hooks/template` | `api_hooks_template` | — |

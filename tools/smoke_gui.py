@@ -549,9 +549,13 @@ ROUTES = {
     # so an empty stub made it pass without looking at anything
     '/api/hooks': {'hooks': [
         {'event': 'Stop', 'index': 0, 'enabled': True,
-         'label': 'recent-work memory', 'matcher': ''},
+         'label': 'recent-work memory', 'matcher': '',
+         'cat': 'Lifecycle', 'derived': '', 'named': False},
+        # a RENAMED one, so the row's second half is exercised: what the user
+        # called it leads, and what it actually runs still shows beside it
         {'event': 'PreToolUse', 'index': 0, 'enabled': False,
-         'label': 'block-rm-rf', 'matcher': 'Bash'}],
+         'label': 'no dangerous deletes', 'matcher': 'Bash',
+         'cat': 'Safety guardrails', 'derived': 'block-rm-rf', 'named': True}],
         'settings_path': 'C:/x/settings.json',
         'events': {'Stop': 'when Claude finishes a turn',
                    'PreToolUse': 'before Claude runs a tool',
@@ -560,10 +564,12 @@ ROUTES = {
         # two templates on two DIFFERENT events, so the grouped list and its
         # filter are exercised rather than rendered as one degenerate group
         'templates': [
-            {'key': 'block-rm-rf', 'desc': 'Refuse rm -rf', 'event': 'PreToolUse',
+            {'key': 'block-rm-rf', 'desc': 'Refuse a recursive force delete',
+             'event': 'PreToolUse', 'cat': 'Safety guardrails',
              'installed': True, 'missing': []},
             {'key': 'inject-memory', 'desc': 'Inject project memory at startup',
-             'event': 'SessionStart', 'installed': False, 'missing': []}]},
+             'event': 'SessionStart', 'cat': 'Lifecycle',
+             'installed': False, 'missing': []}]},
     # kind '' is Anthropic direct, which is what the stub settings say — the
     # card then renders no model widget at all, and the OmniRoute-only actions
     # stay hidden. Both branches are driven explicitly in the provider block.
@@ -859,6 +865,22 @@ NL = chr(10)
 
 def main():
     from playwright.sync_api import sync_playwright
+    # REFUSE a port someone else is holding. `ThreadingHTTPServer` sets
+    # allow_reuse_address, so a leaked server from an earlier run keeps
+    # answering and this one binds without complaint — every check then runs
+    # against whatever JS that process loaded, which on a stale one is the code
+    # you are trying to test a change to. Six checks passed for the wrong
+    # reason before this was noticed; the same family as the check floor below.
+    import socket
+    probe = socket.socket()
+    try:
+        if probe.connect_ex(('127.0.0.1', PORT)) == 0:
+            print('FAILURES: something is already serving 127.0.0.1:%d — a '
+                  'leaked run would make every check below test ITS code, not '
+                  'yours. Close it and try again.' % PORT)
+            return 1
+    finally:
+        probe.close()
     srv = ThreadingHTTPServer(('127.0.0.1', PORT), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     errs = []
@@ -1877,6 +1899,35 @@ def main():
             ".filter(e=>e.querySelector('.trow')&&e.style.display!=='none').length")
         check('the hook filter narrows the list and drops the empty groups',
               vis_rows == 1 and vis_grps == 1, f'{vis_rows} rows in {vis_grps} groups')
+
+        # -- writing your own, and naming one --
+        # The ready-made list is grouped by FAMILY, not by event: it is browsed
+        # for a job ("stop me force-pushing"), and thirty-one rows under eleven
+        # event names is a table of contents for a vocabulary you do not have.
+        pg.evaluate("(()=>{const i=document.querySelector('#hkQ');"
+                    "i.value='';i.dispatchEvent(new Event('input'));})()")
+        pg.wait_for_timeout(250)
+        heads = pg.evaluate(
+            "[...document.querySelectorAll('#content .fgrp')]"
+            ".filter(e=>e.querySelector('.trow'))"
+            ".map(e=>e.querySelector('.hkwhen').textContent.trim())")
+        check('the ready-made hooks are grouped by what they are FOR',
+              'Safety guardrails' in heads and 'Lifecycle' in heads, heads)
+        check('a category is filterable like everything else on the row',
+              'Safety guardrails' in pg.evaluate(
+                  "document.querySelector('#content .trow').dataset.f"))
+        txt = pg.evaluate("document.body.innerText")
+        check('a renamed hook leads with the name you gave it',
+              'no dangerous deletes' in txt)
+        check('…and still says what it actually runs',
+              'block-rm-rf' in txt)
+        check('there is a way to write one by hand',
+              pg.evaluate("typeof hookNew === 'function'")
+              and 'Write one' in txt)
+        check('…and a way to rename any hook',
+              pg.evaluate("typeof hookName === 'function'")
+              and pg.evaluate(
+                  "!!document.querySelector('#content .hrow [onclick^=\"hookName\"]')"))
 
         pg.evaluate("go('client')")
         pg.wait_for_timeout(900)

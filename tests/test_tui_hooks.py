@@ -58,8 +58,11 @@ def test_remove_hook(monkeypatch, tmp_path):
     sp = _point_settings(monkeypatch, tmp_path)
     json.dump({'hooks': {'Stop': [{'hooks': [{'type': 'command', 'command': 'beep'}]}]}},
               open(sp, 'w', encoding='utf-8'))
-    # row ENTER -> action menu DOWN to Remove -> ENTER -> confirm No->Yes
-    keys = flat(ENTER, DOWN, ENTER, RIGHT, ENTER, ESC)
+    # row ENTER -> action menu -> Remove -> ENTER -> confirm No->Yes.
+    # The action menu is [Toggle, Rename / file it, Remove, Cancel], so Remove
+    # is two DOWNs. These counts are the cost of navigating a TUI by keystroke;
+    # when one changes, the menu changed, and that is worth seeing.
+    keys = flat(ENTER, DOWN, DOWN, ENTER, RIGHT, ENTER, ESC)
     run_flow(monkeypatch, keys, hooks.hooks_menu)
     d = json.load(open(sp, encoding='utf-8'))
     assert not d.get('hooks', {}).get('Stop')
@@ -122,9 +125,9 @@ def test_purge_removes_broken_hooks(monkeypatch, tmp_path):
         'PostToolUse': [{'matcher': 'Edit', 'hooks': [{'type': 'command', 'command': 'prettier --write .'}]}],
         'Stop': [{'hooks': [{'type': 'command', 'command': 'git status -sb'}]}]}},
         open(sp, 'w', encoding='utf-8'))
-    # menu: 3rd action after the 3 hook rows -> nav to "Remove broken", confirm Yes
-    # rows: 3 hooks, sep, Add, AI, Purge, Edit  -> Purge is 6th selectable (idx 5)
-    keys = flat(DOWN, DOWN, DOWN, DOWN, DOWN, ENTER, RIGHT, ENTER, ESC)
+    # rows: 3 hooks, sep, Add, Write one, AI, Purge, Edit
+    #    -> Purge is the 7th selectable (idx 6)
+    keys = flat(DOWN, DOWN, DOWN, DOWN, DOWN, DOWN, ENTER, RIGHT, ENTER, ESC)
     run_flow(monkeypatch, keys, hooks.hooks_menu)
     d = json.load(open(sp, encoding='utf-8'))
     assert 'PreToolUse' not in d.get('hooks', {})            # legacy powershell gone
@@ -163,9 +166,9 @@ def test_ai_hook_generates_and_saves(monkeypatch, tmp_path):
     monkeypatch.setattr(memory, '_claude_stdin', lambda *a, **k: json.dumps({
         'event': 'PostToolUse', 'matcher': 'Edit|Write',
         'command': 'echo done', 'desc': 'demo'}))
-    # AI-generate is the 2nd action on empty menu (Add template, AI-generate, Edit)
-    # type description, ENTER; confirm Add (ENTER)
-    keys = flat(DOWN, ENTER, typed('beep after edits'), ENTER, RIGHT, ENTER, ESC)
+    # empty menu: Add template, Write one yourself, AI-generate, Purge, Edit
+    # -> AI-generate is the 3rd. Type the description, ENTER; confirm Add.
+    keys = flat(DOWN, DOWN, ENTER, typed('beep after edits'), ENTER, RIGHT, ENTER, ESC)
     run_flow(monkeypatch, keys, hooks.hooks_menu)
     d = json.load(open(sp, encoding='utf-8'))
     entry = d['hooks']['PostToolUse'][0]
@@ -438,3 +441,108 @@ def test_naming_an_account_still_means_that_account_alone(monkeypatch, tmp_path)
 
     assert 'Notification' not in json.load(open(sp, encoding='utf-8')).get('hooks', {})
     assert json.load(open(osp, encoding='utf-8'))['hooks']['Notification'] == [NOTIFY]
+
+
+# ── writing your own, naming it, and filing it ───────────────
+
+def test_a_hook_can_be_written_by_hand(monkeypatch, tmp_path):
+    """The third way to get one, and the one that did not exist: you could
+    install a ready-made template, ask Claude to generate one, or hand-edit
+    Claude Code's settings.json."""
+    Sandbox(monkeypatch, tmp_path)
+    cfg = str(tmp_path / 'cfg')
+    ok, err = hooks.add_hook('Stop', 'echo done', '', cfg)
+    assert ok and not err
+    entry = (hooks._load(cfg).get('hooks') or {})['Stop'][0]
+    assert entry['hooks'][0]['command'] == 'echo done'
+    assert 'matcher' not in entry, 'a blank matcher is absent, not empty'
+
+
+def test_a_hand_written_hook_is_refused_twice(monkeypatch, tmp_path):
+    Sandbox(monkeypatch, tmp_path)
+    cfg = str(tmp_path / 'cfg')
+    assert hooks.add_hook('Stop', 'echo done', '', cfg)[0]
+    ok, err = hooks.add_hook('Stop', 'echo done', '', cfg)
+    assert not ok and 'already' in err
+
+
+def test_a_hook_needs_a_real_event_and_a_command(monkeypatch, tmp_path):
+    Sandbox(monkeypatch, tmp_path)
+    cfg = str(tmp_path / 'cfg')
+    assert hooks.add_hook('NotAnEvent', 'echo x', '', cfg) == (
+        False, 'unknown event: NotAnEvent')
+    assert hooks.add_hook('Stop', '   ', '', cfg)[0] is False
+
+
+def test_a_name_the_user_gave_wins_over_the_derived_one(monkeypatch, tmp_path):
+    """One lookup inside `_hook_label` renames a hook on every surface: the two
+    TUI rows, the GUI payload and the installed check all funnel through it."""
+    Sandbox(monkeypatch, tmp_path)
+    tpl = hooks.TEMPLATES['block-sudo']
+    entry = tpl['entry']
+    assert hooks._hook_label(entry, tpl['event']) == 'block-sudo'
+    hooks.set_label(tpl['event'], hooks._cmd_keys(entry), name='no root for you')
+    assert hooks._hook_label(entry, tpl['event']) == 'no root for you'
+    # but what it IS stays reachable: a renamed hook must still be
+    # recognisable, and "is this template installed" must not be answerable
+    # by a name the user typed
+    assert hooks.derived_label(entry, tpl['event']) == 'block-sudo'
+
+
+def test_a_category_falls_back_to_the_templates_family(monkeypatch, tmp_path):
+    Sandbox(monkeypatch, tmp_path)
+    tpl = hooks.TEMPLATES['block-sudo']
+    assert hooks.category_of(tpl['entry'], tpl['event']) == 'Safety guardrails'
+    # a hand-written one is filed under a word, never a blank heading
+    own = {'hooks': [{'type': 'command', 'command': 'echo mine'}]}
+    assert hooks.category_of(own, 'Stop') == hooks.UNFILED
+    hooks.set_label('Stop', hooks._cmd_keys(own), cat='My rules')
+    assert hooks.category_of(own, 'Stop') == 'My rules'
+
+
+def test_every_template_has_a_family():
+    """The five group comments were the only categories, and nothing parsed
+    them. Promoted to a field so the picker can group by what a hook is FOR."""
+    for k, t in hooks.TEMPLATES.items():
+        assert t.get('cat'), k
+
+
+def test_the_key_is_the_event_and_the_commands(monkeypatch, tmp_path):
+    """`_cmd_keys` alone collides four times — one script backs four templates —
+    so the event is load-bearing. This is `provision.py`'s key, reused."""
+    Sandbox(monkeypatch, tmp_path)
+    a = hooks.TEMPLATES['log-bash-commands']
+    b = hooks.TEMPLATES['log-failed-tools']
+    assert hooks._cmd_keys(a['entry']) == hooks._cmd_keys(b['entry'])
+    assert a['event'] != b['event']
+    hooks.set_label(a['event'], hooks._cmd_keys(a['entry']), name='bash log')
+    assert hooks._hook_label(a['entry'], a['event']) == 'bash log'
+    assert hooks._hook_label(b['entry'], b['event']) == 'log-failed-tools'
+
+
+def test_a_name_follows_a_hook_whose_script_path_moved(monkeypatch, tmp_path):
+    """`migrate.repair_commands` runs on EVERY start and re-points a dead
+    script path, which changes `_cmd_keys`. Without a re-key the user's name is
+    orphaned by a pipx reinstall — silently, and exactly when they are least
+    able to tell what happened."""
+    Sandbox(monkeypatch, tmp_path)
+    old = [r'"C:\old\recall_hook.py"']
+    new = [r'"D:\new\recall_hook.py"']
+    hooks.set_label('UserPromptSubmit', old, name='my recall')
+    assert hooks.label_of('UserPromptSubmit', old)['name'] == 'my recall'
+    assert hooks.rekey_label('UserPromptSubmit', old, new)
+    assert hooks.label_of('UserPromptSubmit', old) == {}
+    assert hooks.label_of('UserPromptSubmit', new)['name'] == 'my recall'
+
+
+def test_labels_live_in_archeus_settings_not_claude_codes(monkeypatch, tmp_path):
+    """Claude Code's settings.json belongs to another program. An unrecognised
+    key in a hook entry risks its schema refusing the lot, and finding that out
+    in production costs the user every hook they have."""
+    from claude_sessions import config as _cfg
+    Sandbox(monkeypatch, tmp_path)
+    cfg = str(tmp_path / 'cfg')
+    hooks.add_hook('Stop', 'echo done', '', cfg, name='mine', cat='My rules')
+    raw = json.dumps(hooks._load(cfg))
+    assert 'mine' not in raw and 'My rules' not in raw, raw
+    assert _cfg.load_settings()['hook_labels'], 'it is in archeus.json instead'

@@ -15,6 +15,8 @@ description: >-
     - **Token savers** — `concise-output` trims narration and re-printed code; `filter-test-output` pipes test runs through a failures-only filter before the output enters context.
 
     Plus `run-tests-on-stop`, which runs pytest when Claude finishes a turn. Guards/blocks run as bundled Python (shell-agnostic); formatters no-op when the tool is absent.
+- **Write one yourself** — pick when it fires from the plain-English list, give it a command and an optional matcher, and name it. The third way to get a hook: before this you could install a ready-made one, ask Claude to generate one, or hand-edit `settings.json`.
+- **Name it, and file it** — any hook, including one you wrote by hand or Claude generated, can be renamed and given a category. The name is what every screen shows; what it actually runs stays beside it, so a renamed hook is still recognisable. Both live in archeus's own settings, never in Claude Code's `settings.json` — that file belongs to another program, and an unrecognised key in it risks the whole block being refused.
 - **AI-generate a hook** — describe what you want in plain language; Claude returns a validated hook spec (event + matcher + command) you preview and confirm before it's saved.
 - **Remove broken/legacy hooks** — one action purges hook commands that error under a bash hook shell.
 

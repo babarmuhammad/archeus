@@ -5604,11 +5604,20 @@ function hkWhen(ev){return HKWHEN[ev]||ev||'anywhere';}
    row — the same move that turned the memory tab's 12-row wall into four
    groups. Order follows first appearance, so it is the payload's order and
    never a second list to keep in step. */
-function hkGroup(items,render){
+/* Group rows under headings, in the order the payload gave them — so it is the
+   payload's order and never a second list to keep in step. `keyOf` picks what
+   to group BY and `head` renders the heading, because the two lists on this
+   page group by different things: what is installed is read by when it fires,
+   and what is on offer is browsed by what it is for. */
+function hkGroupBy(items,keyOf,render,head){
   const order=[],by={};
-  items.forEach(it=>{const e=it.event||'';if(!by[e]){by[e]=[];order.push(e);}by[e].push(it);});
-  return order.map(e=>`<div class="fgrp"><div class="hkwhen"><span>${esc(hkWhen(e))}</span>
-      <code>${esc(e)}</code></div>${by[e].map(render).join('')}</div>`).join('');
+  items.forEach(it=>{const k=keyOf(it)||'';if(!by[k]){by[k]=[];order.push(k);}by[k].push(it);});
+  return order.map(k=>`<div class="fgrp"><div class="hkwhen">${
+      head?head(k):`<span>${esc(k)}</span>`}</div>${by[k].map(render).join('')}</div>`).join('');
+}
+function hkGroup(items,render){
+  return hkGroupBy(items,it=>it.event||'',render,
+    e=>`<span>${esc(hkWhen(e))}</span> <code>${esc(e)}</code>`);
 }
 async function pgHooks(nav){
   await loadProv();
@@ -5628,21 +5637,30 @@ async function pgHooks(nav){
       <input type="checkbox" ${h.enabled?'checked':''}
         title="${h.enabled?'Disable':'Enable'} this hook"
         onchange='hookToggle(${hesc(h.event)},${h.index},this.checked)'>
-      <span style="flex:1">${esc(h.label)}${h.enabled?'':' <span style="color:var(--dim2);font-size:11px">(disabled)</span>'}</span>
+      <span style="flex:1">${esc(h.label)}${h.enabled?'':' <span style="color:var(--dim2);font-size:11px">(disabled)</span>'}
+        ${h.derived?`<code style="color:var(--dim2);font-size:11px" title="What it actually runs">${esc(h.derived)}</code>`:''}</span>
       ${h.matcher?`<code style="color:var(--dim2);font-size:11px" title="Only runs for this: ${esc(h.matcher)}">${esc(h.matcher)}</code>`:''}
+      <button class="btn sm" title="Give it a name, or file it under a category"
+        onclick='hookName(${hesc(h.event)},${h.index},${h.enabled?'true':'false'},${hesc(h.label)},${hesc(h.cat||'')})'>${ic('edit')}</button>
       <button class="btn sm danger" onclick='hookRm(${hesc(h.event)},${h.index},${h.enabled?'true':'false'})'>${ic('del')}</button></div>`;
   const active=hkGroup(d.hooks||[],hookRow);
   /* NOT `.hrow`: that class means "an installed hook", and the smoke tool
      counts one checkbox per `.hrow` to prove every hook can be turned off.
      A template is an offer, not a hook — it has nothing to toggle. */
   const tmplRow=t=>`
-    <div class="trow" data-f="${esc(t.key+' '+t.desc+' '+hkWhen(t.event)+' '+t.event)}">
+    <div class="trow" data-f="${esc(t.key+' '+t.desc+' '+hkWhen(t.event)+' '+t.event+' '+(t.cat||''))}">
       <b style="min-width:170px">${esc(t.key)}</b>
       <span style="flex:1;color:var(--dim);font-size:12px">${esc(t.desc)}</span>
       ${skew(t.missing)}
       ${t.installed&&!(t.missing||[]).length?`<span class="tag ok">${ic('check')} installed</span>`
         :`<button class="btn sm" onclick='hookAdd(${hesc(t.key)})'>${ic('add')} Install</button>`}</div>`;
-  const tmpl=hkGroup(d.templates||[],tmplRow);
+  /* Grouped by FAMILY, not by event: the ready-made list is something you
+     browse for a job ("stop me force-pushing"), and thirty-one rows under
+     eleven event names is a table of contents for a vocabulary you do not have
+     yet. The installed list stays grouped by when it fires, because that is
+     what you are checking there. */
+  const tmpl=hkGroupBy(d.templates||[],t=>t.cat||'Other',tmplRow,
+                       c=>`<span>${esc(c)}</span>`);
   const picker=accts.length>1?`<div class="chips" style="margin-bottom:10px">
       ${accts.map(a=>`<span class="chip${(HKACCT||'')===(a.dir||'')?' on':''}"
         onclick='hookAcct(${hesc(a.dir||'')})'>${esc(a.name)} <b>${a.count}</b></span>`).join('')}
@@ -5651,6 +5669,7 @@ async function pgHooks(nav){
     <div class="card"><h3>${ic('link')} Hooks <span class="sp"></span>
       <button class="btn sm" onclick="hookEditFile()">${ic('edit')} Edit settings.json</button>
       <button class="btn sm" onclick="hookPurge()">${ic('del')} Purge broken</button>
+      <button class="btn sm" onclick="hookNew()">${ic('add')} Write one</button>
       <button class="btn sm" onclick="hookAI()">${ic('ai')} Have Claude write one</button></h3>
       <p class="secthint">A hook is a command <b>your machine</b> runs at a fixed moment — before a tool, after an edit, when a session starts. It is not a suggestion Claude may ignore: it always runs, and a hook that exits with an error can refuse the action outright. Each heading below says when its hooks fire.</p>
       ${picker}
@@ -5683,6 +5702,35 @@ async function hookRm(event,index,enabled){
   toast('Removed','ok');drawPage('hooks');}
 async function hookPurge(){const r=await post('/api/hooks/purge',{});
   toast(`Purged ${r.removed} broken hook(s)`,'ok');drawPage('hooks');}
+/* The third way to get a hook, and the one that did not exist: you could
+   install a ready-made one, ask Claude to write one, or hand-edit Claude Code's
+   settings.json. Writing your own through the UI was not an option — which also
+   meant there was nothing of your own to name or file. */
+async function hookNew(){
+  const evs=Object.keys(HKWHEN||{});
+  const v=await ask('Write a hook',[
+    // [value, label] pairs, and the label leads with the plain-English phrase:
+    // `PreToolUse` is Claude Code's vocabulary, not the reader's
+    {label:'When it fires',type:'select',
+     options:evs.map(e=>[e,`${HKWHEN[e]||e}  (${e})`])},
+    {label:'Command to run'},
+    {label:'Only for (matcher — blank = always)'},
+    {label:'Name it (optional)'}]);
+  if(v===null||!v[1].trim())return;
+  const r=await post('/api/hooks/create',{event:v[0],command:v[1].trim(),
+    matcher:v[2].trim(),name:v[3].trim(),cfgdir:HKACCT||undefined});
+  toast(r.ok?'Hook added':(r.error||'Failed'),r.ok?'ok':'err');
+  if(r.ok)drawPage('hooks');
+}
+async function hookName(event,index,enabled,cur,cat){
+  const v=await ask('Name this hook',[{label:'Name',value:cur},
+    {label:'Category',value:cat}]);
+  if(v===null)return;
+  const r=await post('/api/hooks/label',{event,index,enabled,
+    name:v[0].trim(),cat:v[1].trim(),cfgdir:HKACCT||undefined});
+  toast(r.ok?'Saved':(r.error||'Failed'),r.ok?'ok':'err');
+  if(r.ok)drawPage('hooks');
+}
 async function hookAI(){
   const v=await ask('AI-generate hook',[{label:'What should the hook do?',type:'textarea'}]);
   if(v===null||!v[0].trim())return;

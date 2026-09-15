@@ -145,12 +145,14 @@ def _fmt(bin_name, cmd):
 TEMPLATES = {
     # ── formatting / quality ──────────────────────────────────
     'prettier-on-edit': {
+        'cat': 'Formatting',
         'event': 'PostToolUse',
         'entry': {'matcher': 'Edit|Write|MultiEdit',
                   'hooks': [{'type': 'command', 'command': _fmt('prettier', 'prettier --write .')}]},
         'desc': 'Prettier-format the project after every edit',
     },
     'ruff-format-python': {
+        'cat': 'Formatting',
         'event': 'PostToolUse',
         'entry': {'matcher': 'Edit|Write|MultiEdit',
                   'hooks': [{'type': 'command',
@@ -158,30 +160,37 @@ TEMPLATES = {
         'desc': 'Ruff format + autofix Python after edits',
     },
     'eslint-fix-on-edit': {
+        'cat': 'Formatting',
         'event': 'PostToolUse',
         'entry': {'matcher': 'Edit|Write|MultiEdit',
                   'hooks': [{'type': 'command', 'command': _fmt('eslint', 'eslint --fix .')}]},
         'desc': 'ESLint --fix after every edit',
     },
     'gofmt-on-edit': {
+        'cat': 'Formatting',
         'event': 'PostToolUse',
         'entry': {'matcher': 'Edit|Write|MultiEdit',
                   'hooks': [{'type': 'command', 'command': _fmt('gofmt', 'gofmt -w .')}]},
         'desc': 'gofmt the project after edits',
     },
     'run-tests-on-stop': {
+        # not Formatting, though it sits under that heading: it runs the suite.
+        # docs/hooks.md already calls it out as the one that fits no family.
+        'cat': 'Tests',
         'event': 'Stop',
         'entry': {'hooks': [{'type': 'command', 'command': _fmt('pytest', 'pytest -q')}]},
         'desc': 'Run pytest when Claude finishes a turn',
     },
     # ── safety / guardrails (exit 2 blocks the tool) ──────────
     'block-rm-rf': {
+        'cat': 'Safety guardrails',
         'event': 'PreToolUse',
         'entry': {'matcher': 'Bash',
                   'hooks': [{'type': 'command', 'command': _guard('command', 'rm\\s+-rf', 'rm -rf blocked')}]},
         'desc': 'Block rm -rf commands',
     },
     'block-git-reset-hard': {
+        'cat': 'Safety guardrails',
         'event': 'PreToolUse',
         'entry': {'matcher': 'Bash',
                   'hooks': [{'type': 'command',
@@ -189,6 +198,7 @@ TEMPLATES = {
         'desc': 'Block git reset --hard',
     },
     'block-force-push': {
+        'cat': 'Safety guardrails',
         'event': 'PreToolUse',
         'entry': {'matcher': 'Bash',
                   'hooks': [{'type': 'command',
@@ -196,24 +206,28 @@ TEMPLATES = {
         'desc': 'Block git push --force',
     },
     'block-sudo': {
+        'cat': 'Safety guardrails',
         'event': 'PreToolUse',
         'entry': {'matcher': 'Bash',
                   'hooks': [{'type': 'command', 'command': _guard('command', '\\bsudo\\b', 'sudo blocked')}]},
         'desc': 'Block sudo commands',
     },
     'block-curl': {
+        'cat': 'Safety guardrails',
         'event': 'PreToolUse',
         'entry': {'matcher': 'Bash',
                   'hooks': [{'type': 'command', 'command': _guard('command', '\\bcurl\\b', 'curl blocked')}]},
         'desc': 'Block bash curl commands',
     },
     'protect-env-read': {
+        'cat': 'Safety guardrails',
         'event': 'PreToolUse',
         'entry': {'matcher': 'Read',
                   'hooks': [{'type': 'command', 'command': _guard('file_path', '\\.env', 'refusing to read .env')}]},
         'desc': 'Block reading .env files (secrets)',
     },
     'protect-secret-write': {
+        'cat': 'Safety guardrails',
         'event': 'PreToolUse',
         'entry': {'matcher': 'Write|Edit|MultiEdit',
                   'hooks': [{'type': 'command',
@@ -223,43 +237,51 @@ TEMPLATES = {
     },
     # ── audit / notifications / context ───────────────────────
     'log-bash-commands': {
+        'cat': 'Audit & notifications',
         'event': 'PostToolUse',
         'entry': {'matcher': 'Bash',
                   'hooks': [{'type': 'command', 'command': _py_hook('logbash_hook.py')}]},
         'desc': 'Append every Bash command to .archeus/bash-log.txt',
     },
     'notify-on-stop': {
+        'cat': 'Audit & notifications',
         'event': 'Stop',
         'entry': {'hooks': [{'type': 'command', 'command': _beep(1)}]},
         'desc': 'Beep when Claude finishes a turn',
     },
     'notify-on-input-needed': {
+        'cat': 'Audit & notifications',
         'event': 'Notification',
         'entry': {'hooks': [{'type': 'command', 'command': _beep(2)}]},
         'desc': 'Double-beep when Claude needs your input',
     },
     'session-start-git-status': {
+        'cat': 'Audit & notifications',
         'event': 'SessionStart',
         'entry': {'hooks': [{'type': 'command', 'command': 'git status -sb'}]},
         'desc': 'Inject git branch + status at session start',
     },
     'minimal-code': {
+        'cat': 'Audit & notifications',
         'event': 'SessionStart',
         'entry': {'hooks': [{'type': 'command', 'command': _py_hook('minimalcode_hook.py')}]},
         'desc': 'Inject a compact code-minimization rule each session (anti over-engineering)',
     },
     # ── token savers ──────────────────────────────────────────
     'concise-output': {
+        'cat': 'Token savers',
         'event': 'SessionStart',
         'entry': {'hooks': [{'type': 'command', 'command': _py_hook('concise_hook.py')}]},
         'desc': 'Cut output tokens: no narration, no re-printed code (saves tokens)',
     },
     'suggest-subagent': {
+        'cat': 'Token savers',
         'event': 'UserPromptSubmit',
         'entry': {'hooks': [{'type': 'command', 'command': _py_hook('agentnudge_hook.py')}]},
         'desc': 'Name the project subagent that fits your prompt (keyword match, no model call)',
     },
     'filter-test-output': {
+        'cat': 'Token savers',
         'event': 'PreToolUse',
         'entry': {'matcher': 'Bash',
                   'hooks': [{'type': 'command', 'command': _py_hook('testfilter_hook.py')}]},
@@ -268,6 +290,7 @@ TEMPLATES = {
     # ── lifecycle events archeus has a specific reason to want ──────
     # Two of these replace approximations with the real signal.
     'reinject-after-compact': {
+        'cat': 'Lifecycle',
         # THE one worth having. archeus already advertises "context-loss
         # insurance after /compact", but until PostCompact existed the only
         # available moment was SessionStart — i.e. before the loss, not after
@@ -278,6 +301,7 @@ TEMPLATES = {
         'desc': 'Re-inject project memory right after /compact discards the context',
     },
     'memory-stale-on-change': {
+        'cat': 'Lifecycle',
         # This preset had never worked. It was bound to `FileChanged`, whose
         # matcher is a list of literal FILENAMES to watch (built for `.env`-style
         # sentinels), not a glob over a codebase — and it invoked worklog_hook,
@@ -293,6 +317,7 @@ TEMPLATES = {
                  'periodic scan)'),
     },
     'log-permission-denials': {
+        'cat': 'Lifecycle',
         # feeds the permission-fatigue work: what actually gets denied, rather
         # than what someone guessed would be. --denied writes the STRUCTURED
         # sidecar (.archeus/denied.jsonl); without the flag this same script
@@ -305,12 +330,14 @@ TEMPLATES = {
                 'allowlist and auto-mode proposals learn from real ones',
     },
     'notify-on-subagent-finish': {
+        'cat': 'Lifecycle',
         'event': 'SubagentStop',
         'entry': {'hooks': [{'type': 'command',
                              'command': 'echo "subagent finished"'}]},
         'desc': 'Print a line when a subagent finishes (swap the command for your notifier)',
     },
     'learn-on-session-end': {
+        'cat': 'Lifecycle',
         # the natural trigger for the auto-memory cycle: a session that just
         # ended is a session worth mining
         'event': 'SessionEnd',
@@ -318,6 +345,7 @@ TEMPLATES = {
         'desc': 'Record the session on exit so auto-memory has it to learn from',
     },
     'log-failed-tools': {
+        'cat': 'Lifecycle',
         # a turn that failed is the one worth reading back later, and it is
         # exactly what PostToolUse cannot see
         'event': 'PostToolUseFailure',
@@ -325,11 +353,13 @@ TEMPLATES = {
         'desc': 'Record every tool failure alongside the bash log',
     },
     'log-failed-turns': {
+        'cat': 'Lifecycle',
         'event': 'StopFailure',
         'entry': {'hooks': [{'type': 'command', 'command': _py_hook('logbash_hook.py')}]},
         'desc': 'Record turns that ended in failure rather than completion',
     },
     'audit-loaded-context': {
+        'cat': 'Lifecycle',
         # pairs with the Context Weight Audit: that screen ESTIMATES what will
         # load, this says what actually did
         'event': 'InstructionsLoaded',
@@ -337,16 +367,19 @@ TEMPLATES = {
         'desc': 'Record what context actually loaded (pairs with the context audit)',
     },
     'notify-config-change': {
+        'cat': 'Lifecycle',
         'event': 'ConfigChange',
         'entry': {'hooks': [{'type': 'command', 'command': _beep(1)}]},
         'desc': 'Beep when something changes settings.json under you',
     },
     'memory-stale-on-cwd-change': {
+        'cat': 'Lifecycle',
         'event': 'CwdChanged',
         'entry': {'hooks': [{'type': 'command', 'command': _py_hook('worklog_hook.py')}]},
         'desc': 'Re-evaluate project memory when the session changes directory',
     },
     'notify-teammate-idle': {
+        'cat': 'Lifecycle',
         'event': 'TeammateIdle',
         'entry': {'hooks': [{'type': 'command', 'command': _beep(2)}]},
         'desc': 'Double-beep when an agent teammate goes idle and needs work',
@@ -593,6 +626,22 @@ def _hook_label(entry, event=None):
     run the same script at different moments. Without it a match is only
     accepted when exactly one template owns that command.
     """
+    # A name the USER gave it wins over everything derived. Read here rather
+    # than at the call sites because all four of them — the two TUI rows, the
+    # GUI payload and the installed check — already funnel through this one
+    # function, so one lookup renames a hook everywhere it appears.
+    own = (label_of(event, _cmd_keys(entry)) or {}).get('name')
+    return own or derived_label(entry, event)
+
+
+def derived_label(entry, event=None):
+    """What a hook IS, ignoring any name the user gave it.
+
+    Kept reachable on its own because a renamed hook still has to be
+    recognisable as the template or script it runs — and because
+    `_template_installed` asks "is THIS template present", which a user's name
+    must not be able to answer yes or no to.
+    """
     cmds = _cmd_keys(entry)
     if cmds:
         same = [k for k, t in TEMPLATES.items()
@@ -608,6 +657,92 @@ def _hook_label(entry, event=None):
             return name
     snippet = (raw[0] if raw else '').strip()
     return (snippet[:44] + '…') if len(snippet) > 45 else (snippet or '(empty)')
+
+
+# ── the name and category a user gave a hook ─────────────────
+#
+# In archeus's OWN settings, never in Claude Code's `settings.json`. That file
+# belongs to another program: archeus already read-modify-writes it for hooks,
+# permissions and outputStyle, and adding a key Claude Code did not define risks
+# its schema refusing the lot. Finding that out in production costs the user
+# every hook they have.
+#
+# The key is `(event, commands)` — the same one `provision.py` already builds to
+# decide whether two accounts hold the same hook, and the same one `_move_across`
+# matches on. It survives the interpreter changing (`_PYEXE` strips it) and the
+# matcher being edited, and `event` is load-bearing: `_cmd_keys` alone collides
+# four times across the templates, because one script backs four of them.
+
+#: a word, not an empty string, because it is a heading the reader sees —
+#: the same rule `agents.NO_CATEGORY` states.
+UNFILED = 'Your own'
+
+
+def _label_key(event, cmds):
+    return '%s\x00%s' % (event or '', '\x00'.join(cmds or ()))
+
+
+def _labels():
+    return dict(_c.load_settings().get('hook_labels') or {})
+
+
+def label_of(event, cmds):
+    """{'name', 'cat'} for one hook, or {}."""
+    got = _labels().get(_label_key(event, cmds))
+    return dict(got) if isinstance(got, dict) else {}
+
+
+def set_label(event, cmds, name=None, cat=None):
+    """Name and/or file one hook. Either field empty clears it; a row with
+    nothing left in it is dropped rather than kept as an empty dict."""
+    s = _c.load_settings()
+    labels = dict(s.get('hook_labels') or {})
+    k = _label_key(event, cmds)
+    row = dict(labels.get(k) or {})
+    if name is not None:
+        row['name'] = name.strip()
+    if cat is not None:
+        row['cat'] = cat.strip()
+    row = {kk: vv for kk, vv in row.items() if vv}
+    if row:
+        labels[k] = row
+    else:
+        labels.pop(k, None)
+    s['hook_labels'] = labels
+    return _c.save_settings(s)
+
+
+def rekey_label(event, old_cmds, new_cmds):
+    """Follow a hook whose command was rewritten.
+
+    `migrate.repair_commands` runs on EVERY start and re-points a dead script
+    path at this installation, which changes `_cmd_keys` and would otherwise
+    orphan the name the user gave it — silently, and exactly when a user has
+    just reinstalled and is least able to tell what happened.
+    """
+    if old_cmds == new_cmds:
+        return False
+    row = label_of(event, old_cmds)
+    if not row:
+        return False
+    s = _c.load_settings()
+    labels = dict(s.get('hook_labels') or {})
+    labels.pop(_label_key(event, old_cmds), None)
+    labels[_label_key(event, new_cmds)] = row
+    s['hook_labels'] = labels
+    return _c.save_settings(s)
+
+
+def category_of(entry, event=None):
+    """Which family a hook belongs to: the user's, else its template's."""
+    cmds = _cmd_keys(entry)
+    own = (label_of(event, cmds) or {}).get('cat')
+    if own:
+        return own
+    for k, t in TEMPLATES.items():
+        if _cmd_keys(t['entry']) == cmds and (event is None or t['event'] == event):
+            return t.get('cat') or UNFILED
+    return UNFILED
 
 
 def _pick_targets(prompt):
@@ -648,6 +783,7 @@ def hooks_menu(scope=None, cfgdir=None):
             items.append((f"{_c.C_DIM}(no hooks configured){_c.C_RESET}", None))
         items += [(f"{'─' * W}", None),
                   ('＋  Add from template', '__tpl__'),
+                  ('✍  Write one yourself', '__new__'),
                   ('✨  AI-generate a hook (Claude)', '__ai__'),
                   ('🧹  Remove broken/legacy hooks', '__purge__'),
                   ('📝  Edit settings.json', '__edit__')]
@@ -669,6 +805,8 @@ def hooks_menu(scope=None, cfgdir=None):
                 cfgdir = pick
         elif sel == '__tpl__':
             _add_template(cfgdir)
+        elif sel == '__new__':
+            _new_hook(cfgdir)
         elif sel == '__ai__':
             _ai_hook(cfgdir)
         elif sel == '__purge__':
@@ -877,22 +1015,98 @@ def set_hook_enabled(event, index, enabled, cfgdir=None):
     return _move_across(event, index, src, dst, cfgdir)
 
 
+def add_hook(event, command, matcher='', cfgdir=None, name='', cat=''):
+    """Write one hand-authored hook. Returns (ok, error).
+
+    The third way to get a hook, and the one that did not exist: you could
+    install a ready-made template, ask Claude to generate one, or hand-edit
+    Claude Code's settings.json. Writing your own through the UI was not an
+    option, which also meant there was nothing to rename or file.
+
+    Non-interactive on purpose — no menu, no confirm — so a GUI job thread can
+    call it. The interactive wrapper is `_new_hook`; the split is the one
+    `skills.py` already demonstrates and that `tests/test_job_thread_reach.py`
+    exists to enforce.
+    """
+    event, command = (event or '').strip(), (command or '').strip()
+    if event not in EVENTS:
+        return False, 'unknown event: %s' % (event or '(blank)')
+    if not command:
+        return False, 'a hook needs a command'
+    entry = {'hooks': [{'type': 'command', 'command': command}]}
+    if (matcher or '').strip():
+        entry['matcher'] = matcher.strip()
+    want = _cmd_keys(entry)
+    targets = [(None, cfgdir)] if cfgdir else account_dirs()
+    wrote = False
+    for _n, d in targets:
+        s = _load(d)
+        # the disabled block counts too: adding a second enabled copy beside one
+        # the user turned off is the duplicate the template guard already refuses
+        if any(_cmd_keys(e) == want for k in HOOK_STATE_KEYS
+               for e in ((s.get(k) or {}).get(event) or [])):
+            continue
+        s.setdefault('hooks', {}).setdefault(event, []).append(dict(entry))
+        wrote = _save(s, d) or wrote
+    if not wrote:
+        return False, 'that hook is already installed'
+    if name or cat:
+        set_label(event, want, name=name or None, cat=cat or None)
+    return True, ''
+
+
 def remove_hook(event, index, enabled=True, cfgdir=None):
     """Delete one hook outright, from either state block."""
     return _move_across(event, index, 'hooks' if enabled else 'hooks_disabled',
                         None, cfgdir)
 
 
+def _new_hook(cfgdir=None):
+    """The interactive half of `add_hook` — menus and prompts here, the write
+    over there, so a GUI job thread can reach the writer without a TUI
+    primitive it cannot answer."""
+    evs = sorted(EVENTS)
+    event = menu([(f"{EVENT_WHEN.get(e, e)}   {_c.C_DIM}{e}{_c.C_RESET}", e)
+                  for e in evs], "WHEN SHOULD IT FIRE")
+    if not event:
+        return
+    command = text_input("Command to run:")
+    if not command:
+        return
+    want = EVENT_MATCHERS.get(event, '')
+    matcher = text_input(f"Only for ({want}) — blank for always:") if want else ''
+    name = text_input("Name it (optional):")
+    ok, err = add_hook(event, command, matcher or '', cfgdir, name=name or '')
+    flash("Hook added" if ok else (err or "Write failed"), ok=ok, secs=1.8)
+
+
 def _toggle_or_remove(sel, cfgdir=None):
     state, event, idx = sel.split(':')
     idx = int(idx)
     act = menu([('Toggle enabled/disabled', 'toggle'),
+                ('Rename / file it', 'label'),
                 ('Remove', 'remove'), ('Cancel', 'cancel')], "HOOK")
-    if act not in ('toggle', 'remove'):
+    if act not in ('toggle', 'label', 'remove'):
         return
     if act == 'toggle':
         flash("Toggled" if set_hook_enabled(event, idx, state == 'off', cfgdir)
               else "Write failed")
+        return
+    if act == 'label':
+        d = _load(cfgdir)
+        block = (d.get('hooks' if state == 'on' else 'hooks_disabled')
+                 or {}).get(event) or []
+        if idx >= len(block):
+            return
+        entry = block[idx]
+        cmds = _cmd_keys(entry)
+        cur = label_of(event, cmds)
+        name = text_input("Name:", default=cur.get('name')
+                          or _hook_label(entry, event))
+        cat = text_input("Category:", default=cur.get('cat')
+                         or category_of(entry, event))
+        set_label(event, cmds, name=name or '', cat=cat or '')
+        flash("Saved", secs=1.2)
         return
     if not confirm("Remove this hook?", danger=True):
         return

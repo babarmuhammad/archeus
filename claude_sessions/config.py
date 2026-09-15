@@ -200,6 +200,13 @@ _DEFAULT_SETTINGS = {
     # filter was wrong a Codex home would become a Claude account in three
     # places at once. `harnesses.homes(hid)` is the reader.
     'homes': {},
+    #: hook identity -> {'name','cat'}: what the USER called a hook and where
+    #: they filed it. Here rather than in Claude Code's settings.json, which is
+    #: another program's file — an unrecognised key in a hook entry risks its
+    #: schema refusing the lot, and archeus already read-modify-writes that file
+    #: for hooks, permissions and outputStyle. Keyed by (event, commands), the
+    #: same identity provision.py and hooks._move_across already match on.
+    'hook_labels': {},
     'claude_md_sessions_cap': 10,  # SESSIONS block: keep most recent N (0 = unlimited)
     'claude_md_commits': 7,        # AUTOGEN block: git log -N per repo
     'default_max_thinking': '',    # MAX_THINKING_TOKENS env for launches ('' = unset)
@@ -364,7 +371,7 @@ PROFILE_PORT_BASE = 20129
 #: needing a second table nobody remembers to edit.
 INTERNAL_SETTINGS = frozenset({
     '_unknown',                      # the carry-through bucket, not a setting
-    'accounts', 'homes', 'project_defaults', 'cost_table',
+    'accounts', 'homes', 'hook_labels', 'project_defaults', 'cost_table',
     'perm_default_migrated', 'provider_keys_migrated', 'provider_profiles_migrated',
     'ui_mode',                       # handled first, validated against two values
     #: carries api_key and gateway_target_api_key INSIDE it, and a base URL plus

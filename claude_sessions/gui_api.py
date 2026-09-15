@@ -1583,9 +1583,18 @@ def api_hooks_get(q, body):
     for key in hooks.HOOK_STATE_KEYS:
         for event, block in (d.get(key) or {}).items():
             for i, entry in enumerate(block if isinstance(block, list) else []):
+                cmds = hooks._cmd_keys(entry)
+                own = hooks.label_of(event, cmds)
                 out.append({'event': event, 'index': i,
                             'enabled': key == 'hooks',
                             'label': hooks._hook_label(entry, event),
+                            # what it IS, beside what the user CALLED it: a
+                            # renamed hook still has to be recognisable as the
+                            # template or script it runs
+                            'derived': hooks.derived_label(entry, event)
+                            if own.get('name') else '',
+                            'named': bool(own.get('name')),
+                            'cat': hooks.category_of(entry, event),
                             'matcher': entry.get('matcher', '')})
     # per-account view, the shape statusline.per_account() already uses for
     # exactly this question: which accounts are missing what.
@@ -1602,6 +1611,7 @@ def api_hooks_get(q, body):
             # hook fires, the same way the installed list is
             'templates': [{'key': k, 'desc': v.get('desc', ''),
                            'event': v.get('event', ''),
+                           'cat': v.get('cat') or hooks.UNFILED,
                            'installed': _template_installed(hooks, d, v),
                            'missing': [n for n, _dd, a in per
                                        if not _template_installed(hooks, a, v)]}
@@ -1647,6 +1657,33 @@ def api_hooks_toggle(q, body):
     ok = hooks.set_hook_enabled(body['event'], body['index'],
                                 bool(body.get('enabled')), body.get('cfgdir'))
     return {'ok': ok, 'error': '' if ok else 'not found'}
+
+
+def api_hooks_create(q, body):
+    """Write a hand-authored hook. The third way to get one, and the one that
+    did not exist: template, AI, or hand-edit settings.json."""
+    from . import hooks
+    ok, err = hooks.add_hook(body.get('event', ''), body.get('command', ''),
+                             body.get('matcher', ''), body.get('cfgdir'),
+                             name=body.get('name', ''), cat=body.get('cat', ''))
+    return {'ok': ok, 'error': err}
+
+
+def api_hooks_label(q, body):
+    """Rename a hook, or file it under a category. Both are archeus's own
+    metadata and never touch Claude Code's settings.json."""
+    from . import hooks
+    d = hooks._load(body.get('cfgdir'))
+    event = body.get('event', '')
+    block = (d.get('hooks' if body.get('enabled', True) is not False
+                    else 'hooks_disabled') or {}).get(event) or []
+    try:
+        entry = block[int(body.get('index'))]
+    except (IndexError, ValueError, TypeError):
+        return {'ok': False, 'error': 'not found'}
+    hooks.set_label(event, hooks._cmd_keys(entry),
+                    name=body.get('name'), cat=body.get('cat'))
+    return {'ok': True, 'error': ''}
 
 
 def api_hooks_remove(q, body):
@@ -4510,6 +4547,8 @@ POST_ROUTES = {
     '/api/output-style/install': api_output_style_install,
     '/api/output-style/delete': api_output_style_delete,
     '/api/hooks/template': api_hooks_template,
+    '/api/hooks/create': api_hooks_create,
+    '/api/hooks/label': api_hooks_label,
     '/api/hooks/remove': api_hooks_remove,
     '/api/hooks/toggle': api_hooks_toggle,
     '/api/hooks/purge': api_hooks_purge,
