@@ -88,12 +88,7 @@ def _plain(md):
 
     Fences are unwrapped rather than dropped: for `"claude.exe not found"` the
     command IS the answer, and an answer that omits it is worse than no markup."""
-    lines, out = md.splitlines(), []
-    for line in lines:
-        if _FENCE.match(line):
-            continue
-        out.append(line)
-    text = '\n'.join(out)
+    text = '\n'.join(line for line in md.splitlines() if not _FENCE.match(line))
     for pattern, sub in _INLINE:
         text = pattern.sub(sub, text)
     text = ' '.join(text.split())
@@ -103,17 +98,21 @@ def _plain(md):
 
 
 def _sections(md):
-    """`[(heading, body)]` for every `##` in a page, in order."""
+    """`[(heading, answer text)]` for every `##` in a page, in order.
+
+    The body is flattened here rather than by each caller, so `_plain` runs once
+    per section instead of once for the emptiness test and again for the text."""
     parts = re.split(r'^##\s+(.+?)\s*$', _strip_front_matter(md), flags=re.M)
     heads, bodies = parts[1::2], parts[2::2]
-    return [(h.strip().strip('"'), b) for h, b in zip(heads, bodies) if _plain(b)]
+    pairs = [(h.strip().strip('"'), _plain(b)) for h, b in zip(heads, bodies)]
+    return [(head, answer) for head, answer in pairs if answer]
 
 
 def _faq(md, page):
     """A FAQPage whose questions are the page's own headings."""
     entries = [{'@type': 'Question', 'name': head,
-                'acceptedAnswer': {'@type': 'Answer', 'text': _plain(body)}}
-               for head, body in _sections(md)]
+                'acceptedAnswer': {'@type': 'Answer', 'text': answer}}
+               for head, answer in _sections(md)]
     if not entries:
         return None
     return {'@context': 'https://schema.org', '@type': 'FAQPage',
@@ -129,12 +128,12 @@ def _howto(md, page, config):
     A page that opts in without numbering its headings gets nothing rather than a
     HowTo claiming its topics are steps."""
     steps = []
-    for head, body in _sections(md):
+    for head, answer in _sections(md):
         m = re.match(r'(\d+)[.)]\s+(.*)', head)
         if not m:
             continue
         steps.append({'@type': 'HowToStep', 'position': int(m.group(1)),
-                      'name': m.group(2), 'text': _plain(body),
+                      'name': m.group(2), 'text': answer,
                       'url': '%s#%s' % (page.canonical_url or '',
                                         re.sub(r'[^a-z0-9]+', '-', head.lower()).strip('-'))})
     if len(steps) < 2:
