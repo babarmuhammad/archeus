@@ -2060,12 +2060,78 @@ def _lines(v):
     return [x.strip() for x in (v or []) if str(x).strip()]
 
 
+def _hid_of(q, body=None):
+    """Which CLI an accounts request is about. Absent means Claude Code, so
+    every caller written before this stays correct."""
+    hid = (body or {}).get('hid') or (q or {}).get('hid') or _harnesses.DEFAULT
+    return _harnesses.descriptor(hid)['id']
+
+
 def api_accounts_get(q, body):
+    """The logins of ONE harness.
+
+    Claude Code keeps its own shape — `_accounts` returns a synthetic `default`
+    row whose dir is `''`, meaning "whichever ~/.claude is", and both the TUI
+    and this endpoint's `resolved` field depend on that. The others have no
+    ACTIVE home (see the note on `switch` below), so every row is just a home.
+    """
     from .accounts import _accounts, _resolved
     from .config import load_settings
-    return {'accounts': [{'name': n, 'dir': d, 'resolved': _resolved(d),
-                          'active': a}
-                         for n, d, a in _accounts(load_settings())]}
+    hid = _hid_of(q, body)
+    d = _harnesses.descriptor(hid)
+    if hid == _harnesses.DEFAULT:
+        rows = [{'name': n, 'dir': dd, 'resolved': _resolved(dd), 'active': a,
+                 'removable': n != 'default'}
+                for n, dd, a in _accounts(load_settings())]
+    else:
+        built_in = _harnesses.home_dir(hid)
+        # the built-in home cannot be removed for the same reason Claude's
+        # `default` cannot: it is where the CLI looks when nothing says otherwise
+        rows = [{'name': n, 'dir': dd, 'resolved': dd, 'active': False,
+                 'removable': dd != built_in}
+                for n, dd in _harnesses.homes(hid)]
+    for r in rows:
+        r['auth'] = _harnesses.auth_state(r['resolved'])
+    return {'hid': hid, 'label': d['label'], 'home_env': d['home_env'],
+            # the two things the page must not offer for a CLI that has neither
+            'has_active': hid == _harnesses.DEFAULT,
+            'can_sync': hid == _harnesses.DEFAULT,
+            'accounts': rows}
+
+
+def _harness_homes_post(s, hid, act, name, body):
+    """add / rename / remove for a NON-Claude harness, in settings['homes']."""
+    homes = dict(s.get('homes') or {})
+    rows = [dict(r) for r in (homes.get(hid) or []) if isinstance(r, dict)]
+    if act == 'add':
+        d = body.get('dir') or os.path.join(
+            _c._USERPROFILE, '.%s-%s' % (hid, name))
+        os.makedirs(os.path.expanduser(os.path.expandvars(d)), exist_ok=True)
+        rows = [r for r in rows if r.get('name') != name]
+        rows.append({'name': name, 'dir': d})
+    elif act == 'rename':
+        new = body.get('new', '')
+        if not new or new == _harnesses.descriptor(hid)['label'] or any(
+                r.get('name') == new for r in rows):
+            return {'ok': False, 'error': 'name unavailable'}
+        for r in rows:
+            if r.get('name') == name:
+                r['name'] = new
+    elif act == 'remove':
+        rows = [r for r in rows if r.get('name') != name]
+    else:
+        # `switch` lands here. Claude Code needs an active account because
+        # archeus's OWN headless calls resolve one — the statusline, memory
+        # extraction, provisioning all read `config.config_dir`. Archeus makes
+        # no self-directed Codex or pi call: every subprocess it spawns for
+        # them already takes a home. So which home a SESSION opens under is the
+        # launch modal's question, and there is nothing here to switch.
+        return {'ok': False,
+                'error': '%s has no active login — pick the home in the launch '
+                         'window instead.' % _harnesses.descriptor(hid)['label']}
+    homes[hid] = rows
+    s['homes'] = homes
+    return {'ok': True}
 
 
 def api_accounts_post(q, body):
@@ -2073,6 +2139,13 @@ def api_accounts_post(q, body):
     from .accounts import _resolved
     s = load_settings()
     act, name = body.get('action'), body.get('name', '')
+    hid = _hid_of(q, body)
+    if hid != _harnesses.DEFAULT:
+        r = _harness_homes_post(s, hid, act, name, body)
+        if not r.get('ok'):
+            return r
+        save_settings(s)
+        return r
     if act == 'add':
         d = body.get('dir') or os.path.join(_c._USERPROFILE, f'.claude-{name}')
         os.makedirs(_resolved(d), exist_ok=True)
@@ -2102,7 +2175,14 @@ def api_accounts_post(q, body):
 
 
 def api_accounts_sync(q, body):
-    """The per-account provisioning diff — read-only, nothing is written."""
+    """The per-account provisioning diff — read-only, nothing is written.
+
+    CLAUDE ACCOUNTS only, and it stays that way: it compares hooks, plugins,
+    marketplaces, agents, the statusline and the global CLAUDE.md, and a Codex
+    or pi home has an equivalent of almost none of them. The page hides the card
+    rather than greying it, because a capability minted for one card is a
+    promise four surfaces would have to keep.
+    """
     from . import provision
     d = provision.diff()
     return {'clean': d['clean'], 'accounts': d['accounts'],
@@ -2110,16 +2190,22 @@ def api_accounts_sync(q, body):
 
 
 def api_accounts_terminal(q, body):
-    """login / parallel — spawn a terminal for the account (argv-list form)."""
-    import subprocess
+    """Open this CLI in a terminal on one home — the login flow for all three.
+
+    archeus creates and pins the home and never touches a credential: Claude
+    Code wants you to type /login, `codex login` runs its own browser flow, pi
+    prompts on first use and writes its own auth.json. `account_env` sets
+    whichever home variable the descriptor names.
+    """
     from .accounts import _env_for
-    from .config import get_claude_exe
-    exe = get_claude_exe()
-    if not exe:
-        return {'ok': False, 'error': 'claude.exe not found'}
-    name = body.get('name', 'claude')
-    p, err = _proc.spawn_terminal([exe], env=_env_for(body.get('dir', '')),
-                                  title=f'claude [{name}]')
+    hid = _hid_of(q, body)
+    argv = _harnesses.login_argv(hid)
+    if not argv:
+        return {'ok': False,
+                'error': '%s not found' % _harnesses.descriptor(hid)['label']}
+    name = body.get('name') or _harnesses.descriptor(hid)['label']
+    p, err = _proc.spawn_terminal(argv, env=_env_for(body.get('dir', ''), hid),
+                                  title='%s [%s]' % (hid, name))
     return {'ok': bool(p), 'error': err} if err else {'ok': True}
 
 

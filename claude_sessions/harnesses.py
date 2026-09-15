@@ -167,6 +167,15 @@ HARNESSES = {
         #: '' = `versions.py`, which is Claude Code's own updater and already a
         #: page. The others each answer with one subprocess.
         'doctor': '',
+        #: what to run to sign a home in, after the exe. Claude Code has no
+        #: login SUBCOMMAND — you start it and type /login — so an empty
+        #: tuple is 'just open the CLI there', which is what the accounts
+        #: manager already did. A tuple rather than three functions because
+        #: the difference between these CLIs is one argument.
+        'login_argv': (),
+        #: 'is this home signed in', resolved through `impl` like `doctor`.
+        #: '' = read the OAuth token `usage`/`quota` already read.
+        'auth_state': '',
         'caps': {},                       # it can do everything; it is the model
     },
     'codex': {
@@ -205,6 +214,8 @@ HARNESSES = {
         'models': 'codex.models',
         'catalogue': 'codex.catalogue',
         'doctor': 'codex.doctor',
+        'login_argv': ('login',),
+        'auth_state': 'codex.auth_state',
         #: three stops over Codex's OWN two scales, and every model id here is
         #: one the catalogue publishes rather than one typed from a blog post.
         #: A preset that names a model this install cannot reach is dropped by
@@ -316,6 +327,9 @@ HARNESSES = {
         'models': 'pi.models',
         'catalogue': 'pi.catalogue',
         'doctor': 'pi.doctor',
+        #: no login subcommand; `pi` prompts on first use and writes auth.json
+        'login_argv': (),
+        'auth_state': 'pi.auth_state',
         #: pi is provider-neutral, so its presets pick a PROVIDER as much as a
         #: model — `provider/id` is the form its own `--model` takes. Whichever
         #: of these the user has a key for survives the catalogue filter; the
@@ -581,6 +595,35 @@ def skill_roots():
     """
     return [(name, os.path.join(home, *descriptor(hid)['skills_rel']))
             for name, home, hid in instances()]
+
+
+def auth_state(cfgdir=None):
+    """'ok' | 'missing' | 'unknown' — is THIS home signed in?
+
+    Per home rather than per harness, because that is the question the accounts
+    list asks once per row. Claude Code's answer is the OAuth token `quota`
+    already reads, which is a file read and not a request — the rule that
+    archeus never writes `.credentials.json` and never refreshes a token holds
+    here too.
+    """
+    d = of(cfgdir)
+    if d['auth_state']:
+        return impl('auth_state', d['id'])(_c.resolve_config_dir(cfgdir))
+    from . import usage
+    try:
+        if not usage._read_token(cfgdir):
+            return 'missing'
+        return 'expired' if usage._token_expired(cfgdir) else 'ok'
+    except Exception:
+        return 'unknown'
+
+
+def login_argv(hid=None):
+    """The argv that signs a home in. The home itself comes from
+    `config.account_env`, which already writes the right variable."""
+    d = descriptor(hid)
+    exe_path = exe(d['id'])
+    return ([exe_path] + list(d['login_argv'])) if exe_path else []
 
 
 def managed_dir_names():

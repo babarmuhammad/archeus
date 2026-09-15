@@ -363,6 +363,32 @@ def catalogue(home=None):
 _UPD_RE = r'updates\s+(\S+)\s+available\s+\(current\s+(\S+)\)'
 
 
+def auth_state(home=None):
+    """'ok' | 'missing' | 'unknown' — is this CODEX_HOME logged in?
+
+    `codex login status` and not `doctor`, which answers the same question as a
+    side effect: doctor checks for an update, so it is a network round trip and
+    every caller reaches it through a cache. This is offline and measured at
+    ~60ms, which is what makes it affordable once per home on a page that lists
+    them all.
+    """
+    from . import harnesses as _h
+    from . import proc
+    exe = _h.exe('codex')
+    if not exe:
+        return 'missing'
+    env = dict(os.environ)
+    if home:
+        env['CODEX_HOME'] = home
+    r = proc.run([exe, 'login', 'status'], env=env, timeout=20)
+    if r is None:
+        return 'unknown'
+    out = ((r.stdout or '') + (r.stderr or '')).strip().lower()
+    if not out:
+        return 'unknown'
+    return 'missing' if 'not logged in' in out else 'ok'
+
+
 def doctor(home=None):
     """{version, latest, auth, notes} for the installed Codex.
 

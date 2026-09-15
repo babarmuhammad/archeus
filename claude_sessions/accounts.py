@@ -33,31 +33,68 @@ def _resolved(d):
     return os.path.expanduser(os.path.expandvars(d)) if d else _default_dir()
 
 
+def _pick_harness():
+    """Which CLI's logins to manage, asked only when there is a choice.
+
+    The same rule the launch target strip and `harnessStrip` use: one CLI is
+    not a choice, so a single-harness machine sees exactly the menu it always
+    saw.
+    """
+    from . import harnesses
+    hids = [h for h in harnesses.ids()
+            if h == harnesses.DEFAULT
+            or (h not in harnesses.disabled() and harnesses.exe(h))]
+    if len(hids) < 2:
+        return hids[0] if hids else harnesses.DEFAULT
+    items = [(f"{harnesses.descriptor(h)['label']}  "
+              f"{_c.C_DIM}{len(harnesses.homes(h))} login"
+              f"{'' if len(harnesses.homes(h)) == 1 else 's'}{_c.C_RESET}", h)
+             for h in hids]
+    items.append(('Back', None))
+    return menu(items, "LOGINS  /  which CLI")
+
+
 def accounts_menu():
-    from .config import load_settings, save_settings
+    from . import harnesses
+    hid = _pick_harness()
+    if hid:
+        _homes_menu(hid)
+
+
+def _homes_menu(hid):
+    from . import harnesses
+    from .config import load_settings
+    label = harnesses.descriptor(hid)['label']
+    claude = hid == harnesses.DEFAULT
     while True:
         s = load_settings()
-        accts = _accounts(s)
+        # Claude Code keeps its own reader: its rows carry an ACTIVE flag and a
+        # synthetic default whose dir is '', and both the switch action and the
+        # GUI's `resolved` field are written against that shape.
+        rows = (_accounts(s) if claude
+                else [(n, d, False) for n, d in harnesses.homes(hid)])
+        built_in = '' if claude else harnesses.home_dir(hid)
         items = []
-        for name, d, active in accts:
+        for name, d, active in rows:
             dot = f"{_c.C_OK}●{_c.C_RESET}" if active else '○'
             loc = d or '~/.claude'
             tag = f"  {_c.C_OK}(active){_c.C_RESET}" if active else ''
             items.append((f"{dot} {name}  {_c.C_DIM}{render.trunc(loc, 40)}{_c.C_RESET}{tag}",
                           f'acct:{name}'))
         items += [(f"{'─' * _c.W}", None),
-                  ('＋  Add account', '__add__'),
-                  ('⇄  Sync accounts  (level every account up)', '__sync__'),
-                  ('Back', 'back')]
-        sel = menu(items, "CLAUDE ACCOUNTS")
+                  (f'＋  Add {"account" if claude else "login"}', '__add__')]
+        if claude:
+            items.append(('⇄  Sync accounts  (level every account up)', '__sync__'))
+        items.append(('Back', 'back'))
+        sel = menu(items, f"{label.upper()}  /  LOGINS")
         if not sel or sel == 'back':
             return
         if sel == '__add__':
-            _add_account(s)
+            _add_account(s, hid)
         elif sel == '__sync__':
             _sync_accounts()
         elif sel.startswith('acct:'):
-            _account_actions(s, sel[5:])
+            _account_actions(s, sel[5:], hid, built_in)
 
 
 def _sync_accounts():
@@ -89,13 +126,18 @@ def _sync_accounts():
     pager(('ARCHEUS', 'ACCOUNTS', 'SYNC'), out, hint='ESC back')
 
 
-def _add_account(s):
+def _add_account(s, hid=None):
+    from . import harnesses
     from .config import save_settings
-    name = text_input("Account name (e.g. work, personal):")
+    hid = harnesses.descriptor(hid)['id']
+    claude = hid == harnesses.DEFAULT
+    label = harnesses.descriptor(hid)['label']
+    name = text_input("Login name (e.g. work, personal):")
     if not name:
         return
-    default_dir = os.path.join(_c._USERPROFILE, f'.claude-{name}')
-    d = text_input("Config dir for this account:", default=default_dir)
+    stem = '.claude' if claude else '.' + hid
+    d = text_input(f"{harnesses.descriptor(hid)['home_env']} for this login:",
+                   default=os.path.join(_c._USERPROFILE, f'{stem}-{name}'))
     if not d:
         return
     rd = _resolved(d)
@@ -104,86 +146,136 @@ def _add_account(s):
     except Exception as e:
         flash(f"Could not create dir: {e}", ok=False, secs=2)
         return
-    accts = [a for a in s.get('accounts', []) if a.get('name') != name]
-    accts.append({'name': name, 'dir': d})
-    s['accounts'] = accts
-    save_settings(s)
-    if confirm(f"Log in to '{name}' now? (opens claude for /login)"):
-        _login(d)
+    if claude:
+        accts = [a for a in s.get('accounts', []) if a.get('name') != name]
+        accts.append({'name': name, 'dir': d})
+        s['accounts'] = accts
     else:
-        flash(f"Account '{name}' added — log in later from its row", secs=1.6)
+        homes = dict(s.get('homes') or {})
+        rows = [r for r in (homes.get(hid) or [])
+                if isinstance(r, dict) and r.get('name') != name]
+        rows.append({'name': name, 'dir': d})
+        homes[hid] = rows
+        s['homes'] = homes
+    save_settings(s)
+    if confirm(f"Log in to '{name}' now? (opens {label})"):
+        _login(d, hid)
+    else:
+        flash(f"Login '{name}' added — sign in later from its row", secs=1.6)
 
 
-def _account_actions(s, name):
+def _account_actions(s, name, hid=None, built_in=''):
+    from . import harnesses
     from .config import save_settings
-    d = '' if name == 'default' else next(
-        (a['dir'] for a in s.get('accounts', []) if a.get('name') == name), '')
-    acts = [('Switch active account (this archeus)', 'switch'),
-            ('Open in NEW terminal (run in parallel)', 'parallel'),
-            ('Log in / re-login here', 'login')]
-    if name != 'default':
+    hid = harnesses.descriptor(hid)['id']
+    claude = hid == harnesses.DEFAULT
+    if claude:
+        d = '' if name == 'default' else next(
+            (a['dir'] for a in s.get('accounts', []) if a.get('name') == name), '')
+        removable = name != 'default'
+    else:
+        d = next((dd for n, dd in harnesses.homes(hid) if n == name), '')
+        removable = d != built_in
+    acts = []
+    # Only Claude Code has an ACTIVE login, because only Claude Code is a CLI
+    # archeus itself calls — the statusline, memory extraction and provisioning
+    # all resolve `config.config_dir`. Every Codex and pi subprocess archeus
+    # spawns already takes a home, so which one a SESSION uses is the launch
+    # window's question and there is nothing here to switch.
+    if claude:
+        acts.append(('Switch active account (this archeus)', 'switch'))
+    acts += [('Open in NEW terminal (run in parallel)', 'parallel'),
+             ('Log in / re-login here', 'login')]
+    if removable:
         acts.append(('Rename', 'rename'))
         acts.append(('Remove from list', 'remove'))
     acts.append(('Cancel', 'cancel'))
-    act = menu(acts, f"ACCOUNT  /  {name}")
+    act = menu(acts, f"LOGIN  /  {name}")
     if act == 'switch':
         s['claude_config_dir'] = d
         save_settings(s)
         flash(f"Active account → {name}. Restart archeus to fully apply.", secs=2)
     elif act == 'parallel':
-        _open_terminal(d, name)
+        _open_terminal(d, name, hid)
     elif act == 'login':
-        _login(d)
+        _login(d, hid)
     elif act == 'rename':
-        new = text_input("New account name:", default=name)
-        if new and new != name:
-            if any(a.get('name') == new for a in s.get('accounts', [])) or new == 'default':
-                flash(f"Name '{new}' already in use", ok=False, secs=1.8)
-            else:
-                for a in s.get('accounts', []):
-                    if a.get('name') == name:
-                        a['name'] = new
-                save_settings(s)
-                flash(f"Renamed '{name}' → '{new}' (config dir unchanged)", secs=1.8)
-    elif act == 'remove':
-        s['accounts'] = [a for a in s.get('accounts', []) if a.get('name') != name]
-        if os.path.expanduser(s.get('claude_config_dir', '')) == os.path.expanduser(d):
-            s['claude_config_dir'] = ''
+        new = text_input("New login name:", default=name)
+        if not new or new == name:
+            return
+        taken = ([a.get('name') for a in s.get('accounts', [])] + ['default']
+                 if claude else [n for n, _dd in harnesses.homes(hid)])
+        if new in taken:
+            flash(f"Name '{new}' already in use", ok=False, secs=1.8)
+            return
+        if claude:
+            for a in s.get('accounts', []):
+                if a.get('name') == name:
+                    a['name'] = new
+        else:
+            homes = dict(s.get('homes') or {})
+            for r in (homes.get(hid) or []):
+                if isinstance(r, dict) and r.get('name') == name:
+                    r['name'] = new
+            s['homes'] = homes
         save_settings(s)
-        flash(f"Removed '{name}' (its config dir on disk is untouched)", secs=1.8)
+        flash(f"Renamed '{name}' → '{new}' (its directory is unchanged)", secs=1.8)
+    elif act == 'remove':
+        if claude:
+            s['accounts'] = [a for a in s.get('accounts', []) if a.get('name') != name]
+            if os.path.expanduser(s.get('claude_config_dir', '')) == os.path.expanduser(d):
+                s['claude_config_dir'] = ''
+        else:
+            homes = dict(s.get('homes') or {})
+            homes[hid] = [r for r in (homes.get(hid) or [])
+                          if isinstance(r, dict) and r.get('name') != name]
+            s['homes'] = homes
+        save_settings(s)
+        flash(f"Removed '{name}' (its directory on disk is untouched)", secs=1.8)
 
 
 #: alias — the implementation moved to config.py so the GUI can install a
 #: plugin into one account without importing the TUI (accounts.py imports ui).
-def _env_for(d):
-    return _c.account_env(_resolved(d))   # '' means the DEFAULT account, not the active one
+def _env_for(d, hid=None):
+    """'' means the DEFAULT home of *hid*, not the active one."""
+    from . import harnesses
+    resolved = _resolved(d) if hid in (None, harnesses.DEFAULT) else (
+        d or harnesses.home_dir(hid))
+    return _c.account_env(resolved)
 
 
-def _login(d):
-    exe = _c.get_claude_exe()
-    if not exe:
-        flash("claude.exe not found", ok=False, secs=1.6)
+def _login(d, hid=None):
+    from . import harnesses
+    argv = harnesses.login_argv(hid)
+    label = harnesses.descriptor(hid)['label']
+    if not argv:
+        flash(f"{label} not found", ok=False, secs=1.6)
         return
     _cls()
-    print(f"\n  Opening claude under {_resolved(d)}")
-    print(f"  Use /login to sign in, then exit to return.\n")
+    print(f"\n  Opening {label} under {_resolved(d) if hid in (None, harnesses.DEFAULT) else d}")
+    # Claude Code has no login subcommand — you start it and type /login —
+    # while `codex login` is the whole flow and exits on its own.
+    print("  Use /login to sign in, then exit to return.\n" if not argv[1:]
+          else "  Follow the sign-in, then close this when it is done.\n")
     try:
-        subprocess.call([exe], env=_env_for(d))
+        subprocess.call(argv, env=_env_for(d, hid))
     except Exception as e:
         print(f"\n  Failed: {e}")
         pause("\n  Press Enter…")
 
 
-def _open_terminal(d, name):
-    """Launch claude for this account in a NEW terminal window so it runs
+def _open_terminal(d, name, hid=None):
+    """Launch this CLI for one home in a NEW terminal window so it runs
     alongside the current one (the easy 'two accounts at once')."""
-    exe = _c.get_claude_exe()
-    if not exe:
-        flash("claude.exe not found", ok=False, secs=1.6)
+    from . import harnesses, proc
+    argv = harnesses.login_argv(hid)
+    label = harnesses.descriptor(hid)['label']
+    if not argv:
+        flash(f"{label} not found", ok=False, secs=1.6)
         return
-    from . import proc
-    _p, err = proc.spawn_terminal([exe], env=_env_for(d), title=f'claude [{name}]')
+    _p, err = proc.spawn_terminal(argv, env=_env_for(d, hid),
+                                  title=f'{label} [{name}]')
     if err:
         flash(f"Could not open terminal: {err}", ok=False, secs=2)
     else:
-        flash(f"Opened a new terminal running claude as '{name}'", secs=1.8)
+        flash(f"Opened a new terminal running {label} as '{name}'", secs=1.8)

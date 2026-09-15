@@ -464,6 +464,26 @@ def catalogue(home=None):
     return out
 
 
+def auth_state(home=None):
+    """'ok' | 'missing' — is this PI_CODING_AGENT_DIR logged in?
+
+    A file read, because pi has no subcommand that answers it: `pi auth check`
+    requires `--provider` or `--model`, so it asks whether ONE provider is
+    reachable rather than whether this home has a login at all.
+
+    An empty object is the freshly-installed state, which is a different answer
+    from "no file" only to an installer.
+    """
+    import json
+    from . import harnesses as _h
+    try:
+        with open(os.path.join(home or _h.home_dir('pi'), 'auth.json'),
+                  encoding='utf-8') as f:
+            return 'ok' if json.load(f) else 'missing'
+    except (OSError, ValueError):
+        return 'missing'
+
+
 def doctor(home=None):
     """{version, latest, auth, notes} for the installed pi.
 
@@ -480,14 +500,4 @@ def doctor(home=None):
                 'notes': ['pi is not installed.']}
     r = proc.run([exe, '--version'], timeout=20)
     ver = (r.stdout or '').strip().splitlines()[0].strip() if r and r.stdout else ''
-    # auth.json is pi's login. An empty object is the freshly-installed state,
-    # which is a different answer from "no file" only to an installer.
-    import json
-    auth = 'missing'
-    try:
-        with open(os.path.join(home or _h.home_dir('pi'), 'auth.json'),
-                  encoding='utf-8') as f:
-            auth = 'ok' if json.load(f) else 'missing'
-    except (OSError, ValueError):
-        pass
-    return {'version': ver, 'latest': '', 'auth': auth, 'notes': []}
+    return {'version': ver, 'latest': '', 'auth': auth_state(home), 'notes': []}

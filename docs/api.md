@@ -20,7 +20,7 @@ a handler sees them; a missing or malformed one is a 400.
 
 | Route | Handler | What it does |
 |---|---|---|
-| `/api/accounts` | `api_accounts_get` | — |
+| `/api/accounts` | `api_accounts_get` | The logins of ONE harness. |
 | `/api/accounts/sync` | `api_accounts_sync` | The per-account provisioning diff — read-only, nothing is written. |
 | `/api/add-dirs` | `api_add_dirs_get` | — |
 | `/api/agents/library` | `api_agents_library` | — |
@@ -101,7 +101,7 @@ a handler sees them; a missing or malformed one is a 400.
 | Route | Handler | What it does |
 |---|---|---|
 | `/api/accounts/action` | `api_accounts_post` | — |
-| `/api/accounts/terminal` | `api_accounts_terminal` | login / parallel — spawn a terminal for the account (argv-list form). |
+| `/api/accounts/terminal` | `api_accounts_terminal` | Open this CLI in a terminal on one home — the login flow for all three. |
 | `/api/add-dirs` | `api_add_dirs_set` | — |
 | `/api/agents/create` | `api_agent_create` | — |
 | `/api/agents/delete` | `api_agent_delete` | — |

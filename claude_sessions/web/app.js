@@ -812,7 +812,7 @@ const OFFNAV={searchp:'the search box on the home dashboard, and Ctrl+K',
               ostyles:'the Claude Code tab on the Harnesses page',
               agents:'the Claude Code tab on the Harnesses page',
               hooks:'the Claude Code tab on the Harnesses page',
-              accounts:'the Claude Code tab on the Harnesses page',
+              accounts:'the Accounts tab of any CLI on the Harnesses page',
               client:'the Claude Code tab on the Harnesses page'};
 /* Which pages belong to which CLI, pointing by page ID exactly as SECTIONS
    does — so NAV stays the ONE place a page is declared, its renderer is never
@@ -826,8 +826,10 @@ const OFFNAV={searchp:'the search box on the home dashboard, and Ctrl+K',
    cross-account view each of them exists to give. */
 const HARNESS_TABS={
   claude:['harness','accounts','client','ostyles','agents','hooks'],
-  codex: ['harness'],
-  pi:    ['harness'],
+  // Accounts is no longer Claude Code's alone: a home is what carries a login
+  // for all three, and each CLI names the variable that picks one.
+  codex: ['harness','accounts'],
+  pi:    ['harness','accounts'],
 };
 /* page id → section label. Derived; the reverse direction is what drawNav, the
    sub-tab strip and the page title all need, and computing it three times is
@@ -840,8 +842,15 @@ const SEC_OF=Object.fromEntries([
 /* Which CLI owns a page, or '' for a shared one. The reverse of HARNESS_TABS,
    derived for the same reason SEC_OF is. `harness` itself is deliberately NOT
    in it: it is every CLI's Setup, so it has no one owner and the strip decides. */
+/* Only pages exactly ONE CLI owns. `harness` is every CLI's Setup and
+   `accounts` is now every CLI's logins, so neither can answer "which CLI is
+   this page" — and `Object.fromEntries` would have silently answered with
+   whichever list came last, pinning the Accounts tab to pi. Derived by counting
+   rather than by a second exclusion list, so the next shared sub-tab needs no
+   edit here. */
 const HID_OF=Object.fromEntries(Object.entries(HARNESS_TABS)
-  .flatMap(([hid,ids])=>ids.filter(id=>id!=='harness').map(id=>[id,hid])));
+  .flatMap(([hid,ids])=>ids.map(id=>[id,hid]))
+  .filter(([id])=>Object.values(HARNESS_TABS).filter(ids=>ids.includes(id)).length===1));
 /* ── sidebar width: drag the grip, and it sticks ──────────────────────────────
    Persisted as a setting, like every other chrome choice, so the Qt shell and a
    browser tab agree. Clamped rather than free: below SIDE_MIN the project paths
@@ -5684,35 +5693,42 @@ async function pgAccounts(nav){
   // /api/usage/plan is server-cached, so pairing it with the account list costs
   // nothing and lets every row carry its own quota ring instead of sending you
   // to the dashboard to find out which account is the one that's nearly full
-  const [d,plan]=await Promise.all([api('/api/accounts'),
+  const hid=HARNESS_HID||'claude';
+  const [d,plan]=await Promise.all([api('/api/accounts?'+qs({hid})),
     api('/api/usage/plan').catch(()=>({}))]);
   const pw=(plan.accounts||[]);
   const quotaOf=name=>{
+    // Anthropic's windows, so only Claude's rows can have one. For the others
+    // the ring is not greyed but ABSENT: `plan_limits` already says why on the
+    // Setup page, and a ring with no arcs is chrome pretending to be a reading.
+    if(!d.has_active)return null;
     const a=pw.find(x=>x.account===name);
     if(!a)return null;
     const wins=(a.windows||[]).map(w=>(w.pct||0)/100);
     return wins.length?Math.max(...wins):null;
   };
-  ACCTS=(d.accounts||[]);ACCTPLAN=pw;
+  ACCTS=(d.accounts||[]);ACCTPLAN=pw;ACCTHID=hid;
+  const authTag=a=>a.auth==='ok'?'<span class="tag ok">signed in</span>'
+    :a.auth==='expired'?'<span class="tag warn">expired</span>'
+    :a.auth==='missing'?'<span class="tag warn">not signed in</span>':'';
   const row=(a,i)=>`<div class="hrow${a.active?' on':''}" data-i="${i}"
       data-f="${esc(a.name+' '+a.resolved)}" onclick="acctSel(${i})">
       <span class="dot${a.active?' pip':''}" style="background:${a.active?'var(--ok)':'var(--dim2)'};color:var(--ok)"></span>
       <span class="info">${esc(a.name)}</span>
-      ${a.active?'<span class="tag ok">active</span>':''}
-      ${quotaOf(a.name)==null?'<span class="aq dim2">no usage yet</span>'
-        :INST.html('ring','acct:'+a.name,{fmt:'pct'})}</div>`;
-  if(!shell(nav,`<div class="card"><h3>Claude accounts
+      ${a.active?'<span class="tag ok">active</span>':''}${authTag(a)}
+      ${quotaOf(a.name)==null?'':INST.html('ring','acct:'+a.name,{fmt:'pct'})}</div>`;
+  if(!shell(nav,`<div class="card"><h3>${esc(d.label||'Claude Code')} logins
     <span class="tag">${(d.accounts||[]).length}</span><span class="sp"></span>
-    <button class="btn sm" onclick="acctAdd()">${ic('add')} Add account</button></h3>
-    <p class="secthint">Each account is its own <code>CLAUDE_CONFIG_DIR</code> — its own login, quota, hooks and plugins. The active one is what a new session opens under.</p>
+    <button class="btn sm" onclick="acctAdd()">${ic('add')} Add login</button></h3>
+    <p class="secthint">Each login is its own <code>${esc(d.home_env||'CLAUDE_CONFIG_DIR')}</code> — its own credentials${d.has_active?', quota, hooks and plugins. The active one is what a new session opens under.':'. Which one a session opens under is picked in the launch window.'}</p>
     <div class="tbody">${(d.accounts||[]).map(row).join('')}</div></div>
     <div class="card tdet" id="acDet">${ACCTINTRO}</div>
-    <div class="card wide"><h3>${ic('refresh')} Sync accounts</h3>
+    ${d.can_sync?`<div class="card wide"><h3>${ic('refresh')} Sync accounts</h3>
       <p style="color:var(--dim);font-size:13px;margin:0 0 8px">What you provision — hooks, plugins, marketplaces, user agents, the global CLAUDE.md — is a property of <b>you</b>, not of whichever account happened to be active. This levels every account up to the union of them all. It only ever <b>adds</b>: an account keeps anything the others do not have, because there is no way to tell a deliberate choice from a gap.</p>
-      <div id="syncOut"><span class="spin"></span></div></div>`))return;
+      <div id="syncOut"><span class="spin"></span></div></div>`:''}`))return;
   const cur=ACCTS.findIndex(a=>a.active);
   if(ACCTS.length)acctSel(cur>=0?cur:0);
-  drawSync();
+  if(d.can_sync)drawSync();
   for(const a of (d.accounts||[])){
     const q=quotaOf(a.name);
     if(q==null)continue;
@@ -5727,8 +5743,8 @@ async function pgAccounts(nav){
 /* One account, everything you can do to it. The row used to carry all four
    actions at its right edge with the name at `flex:1`, so on a wide window it
    was a name, two thousand pixels of nothing, and then the controls. */
-let ACCTS=[],ACCTPLAN=[];
-const ACCTINTRO='<div class="empty">Pick an account to switch to it, open a terminal under it, rename it or remove it.</div>';
+let ACCTS=[],ACCTPLAN=[],ACCTHID='claude';
+const ACCTINTRO='<div class="empty">Pick a login to open a terminal under it, sign in, rename it or remove it.</div>';
 function acctSel(i){
   const a=ACCTS[i];if(!a)return;
   document.querySelectorAll('#content .hrow').forEach(el=>
@@ -5738,12 +5754,15 @@ function acctSel(i){
   const wins=(p&&p.windows||[]);
   h.innerHTML=`<h3>${esc(a.name)}
     ${a.active?'<span class="tag ok">active</span>':''}<span class="sp"></span>
-    ${a.active?'':`<button class="btn sm pri" onclick='acctAct("switch",${hesc(a.name)})'>Switch to it</button>`}
-    <button class="btn sm" onclick='acctTerm(${hesc(a.name)},${hesc(a.dir)})'>${ic('terminal')} Open terminal</button>
-    ${a.name!=='default'?`<button class="btn sm" onclick='acctRename(${hesc(a.name)})'>Rename</button>
+    ${(a.active||!ACCTPLAN.length&&ACCTHID!=='claude')?'':(ACCTHID==='claude'
+      ?`<button class="btn sm pri" onclick='acctAct("switch",${hesc(a.name)})'>Switch to it</button>`:'')}
+    <button class="btn sm" onclick='acctTerm(${hesc(a.name)},${hesc(a.dir)})'>${ic('terminal')} ${a.auth==='ok'?'Open terminal':'Log in here'}</button>
+    ${a.removable!==false?`<button class="btn sm" onclick='acctRename(${hesc(a.name)})'>Rename</button>
       <button class="btn sm danger" onclick='acctAct("remove",${hesc(a.name)})'>${ic('del')} Remove</button>`:''}</h3>
-    <div class="kv"><span class="k">Config dir</span><span><code>${esc(a.resolved||'')}</code></span></div>
-    ${wins.length?`<table class="tbl"><tr><th>window</th><th>used</th><th>resets</th></tr>
+    <div class="kv"><span class="k">Home</span><span><code>${esc(a.resolved||'')}</code></span>
+      <span class="k">Signed in</span><span>${a.auth==='ok'?'yes':a.auth==='expired'?'token expired':a.auth==='missing'?'no':'unknown'}</span></div>
+    ${ACCTHID!=='claude'?`<p class="secthint" style="margin:10px 0 0">${esc(harnessLabel(ACCTHID))} has no active login — which home a session opens under is picked in the launch window.</p>`
+    :wins.length?`<table class="tbl"><tr><th>window</th><th>used</th><th>resets</th></tr>
       ${wins.map(w=>`<tr><td>${esc(w.label||w.name||'')}</td>
         <td class="num">${Math.round(w.pct||0)}%</td><td>${esc(w.resets||'')}</td></tr>`).join('')}</table>`
       :'<div class="empty">No usage recorded for this account yet.</div>'}`;
@@ -5792,32 +5811,38 @@ async function syncApply(){
       toast(r.clean?'Nothing to do':`Synced ${(r.done||[]).length} item(s)`,'ok');},
     redraw:()=>drawPage('accounts')});
 }
+/* every write names the CLI: `hid` absent means Claude Code, so nothing that
+   called these before this page grew a second axis changed meaning. */
 async function acctAdd(){
-  const v=await ask('Add account',[{label:'Name (e.g. work, personal)'},
-    {label:'Config dir (blank = ~/.claude-<name>)'}]);
+  const lbl=harnessLabel(ACCTHID);
+  const v=await ask('Add a '+lbl+' login',[{label:'Name (e.g. work, personal)'},
+    {label:'Home directory (blank = a new one beside the default)'}]);
   if(v===null||!v[0].trim())return;
-  const r=await post('/api/accounts/action',{action:'add',name:v[0].trim(),dir:v[1].trim()});
-  toast(r.ok?'Account added — open a terminal on it to /login':'Failed','ok');
+  const r=await post('/api/accounts/action',
+    {action:'add',name:v[0].trim(),dir:v[1].trim(),hid:ACCTHID});
+  toast(r.ok?'Added — open a terminal on it to sign in':(r.error||'Failed'),r.ok?'ok':'err');
   ST=await api('/api/state');drawPage('accounts');
 }
 async function acctAct(action,name){
-  if(action==='remove'&&!await confirmBox(`Remove account '${name}' from the list?`,
-    'Its config dir on disk is untouched.'))return;
-  const r=await post('/api/accounts/action',{action,name});
+  if(action==='remove'&&!await confirmBox(`Remove '${name}' from the list?`,
+    'Its directory on disk is untouched.'))return;
+  const r=await post('/api/accounts/action',{action,name,hid:ACCTHID});
   toast(r.ok?(action==='switch'?'Active account switched (restart to fully apply)':'Done')
     :(r.error||'Failed'),r.ok?'ok':'err');
   ST=await api('/api/state');drawPage('accounts');
 }
 async function acctRename(name){
-  const v=await ask('Rename account',[{label:'New name',value:name}]);
+  const v=await ask('Rename login',[{label:'New name',value:name}]);
   if(v===null||!v[0].trim()||v[0]===name)return;
-  const r=await post('/api/accounts/action',{action:'rename',name,new:v[0].trim()});
+  const r=await post('/api/accounts/action',
+    {action:'rename',name,new:v[0].trim(),hid:ACCTHID});
   toast(r.ok?'Renamed':(r.error||'Failed'),r.ok?'ok':'err');
   ST=await api('/api/state');drawPage('accounts');
 }
 async function acctTerm(name,dir){
-  const r=await post('/api/accounts/terminal',{name,dir});
-  toast(r.ok?`Terminal opened as '${name}' — use /login if needed`:'Failed','ok');
+  const r=await post('/api/accounts/terminal',{name,dir,hid:ACCTHID});
+  toast(r.ok?`Terminal opened as '${name}' — sign in there if needed`
+           :(r.error||'Failed'),r.ok?'ok':'err');
 }
 
 /* GENERATED from SECTIONS, NAV, TAB_GROUPS, TABS and the TUI's own ACTIONS
