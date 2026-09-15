@@ -303,7 +303,7 @@ def _main_screen(H, mp, sb):
     for n in ('acme-api', 'acme-web', 'checkout-service', 'design-system'):
         sb.add_project(n, n_sessions=3)
     from claude_sessions import main as main_mod
-    cap = H.run_flow(mp, [k for part in (H.ESC,) for k in part], lambda: _catch(main_mod.run))[1]
+    cap = H.run_flow(mp, list(H.ESC), lambda: _catch(main_mod.run))[1]
     return cap.text
 
 
@@ -314,7 +314,7 @@ def _sessions_screen(H, mp, sb):
     from claude_sessions.sessions import scan_sessions
     from claude_sessions.session_menu import sessions_menu
     rows = scan_sessions(folder)
-    cap = H.run_flow(mp, [k for part in (H.ESC,) for k in part],
+    cap = H.run_flow(mp, list(H.ESC),
                      lambda: _catch(sessions_menu, rows, folder, 'acme-api',
                                     actual))[1]
     return cap.text
