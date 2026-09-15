@@ -1,5 +1,16 @@
-# Project-specific Claude context (private)
+# Project-specific agent context (private, and machine-generated in part).
+# Two files because archeus writes the memory digest into whichever instructions
+# file each installed CLI reads: CLAUDE.md for Claude Code, AGENTS.md for Codex
+# and pi. They are the same artefact for different readers.
 CLAUDE.md
+# ANCHORED, unlike the line above, and the asymmetry is deliberate:
+#   · `www/AGENTS.md` is written by `next dev` and is TRACKED — its own text
+#     says to commit it — so a bare pattern here would shadow a real file.
+#   · `core.ignorecase = true` on Windows, so a bare `AGENTS.md` would also
+#     match `docs/agents.md`, which is a published page of the manual.
+# `CLAUDE.md` stays unanchored because `www/CLAUDE.md` is archeus's too and is
+# already ignored by it; anchoring that one would quietly un-ignore it.
+/AGENTS.md
 
 # Python
 __pycache__/
