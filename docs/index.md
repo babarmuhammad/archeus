@@ -17,14 +17,15 @@ New here? [Getting started](getting-started.md) explains what archeus is and whi
 three surfaces you want. In a hurry? [Quickstart](quickstart.md) is install to first
 session in five minutes.
 
-!!! info "Looking for the Rust `archeus`?"
+!!! info "Which archeus is this?"
 
-    Two independent open-source projects use this name. **This** one is the Python
-    memory and workspace layer for AI coding agents — `pipx install archeus`, source at
-    [github.com/babarmuhammad/archeus](https://github.com/babarmuhammad/archeus),
-    published on [PyPI](https://pypi.org/project/archeus/). The other is a Rust agent
-    orchestrator by a different author, published on crates.io. They are unrelated, and
-    neither is affiliated with Anthropic.
+    The Python memory and workspace layer for AI coding agents — `pipx install archeus`,
+    source at [github.com/babarmuhammad/archeus](https://github.com/babarmuhammad/archeus),
+    published on [PyPI](https://pypi.org/project/archeus/). The word itself is
+    Paracelsus' name for the vital force that organises living matter, which is why a
+    search for it also finds dictionaries and alchemy. It is **not** *Arceus*, Nintendo's
+    Pokemon, which is spelled with the vowels the other way round. archeus is not
+    affiliated with, endorsed by, or supported by Anthropic.
 
 ## Install & first run
 

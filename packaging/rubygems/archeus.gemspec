@@ -12,7 +12,10 @@ Gem::Specification.new do |s|
   s.authors     = ['Babar Muhammad Anas']
   s.homepage    = 'https://github.com/babarmuhammad/archeus'
   s.metadata    = {
+    'homepage_uri' => 'https://claudectl.space',
+    'documentation_uri' => 'https://docs.claudectl.space',
     'source_code_uri' => 'https://github.com/babarmuhammad/archeus',
+    'changelog_uri' => 'https://claudectl.space/changelog',
     'bug_tracker_uri' => 'https://github.com/babarmuhammad/archeus/issues'
   }
   s.files       = ['bin/archeus', 'README.md']

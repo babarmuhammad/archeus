@@ -31,6 +31,7 @@ because it fetches the key afterwards, out of band.
 import json
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -89,13 +90,23 @@ def main(argv):
         if not go:
             print('  would submit; pass --submit to do it')
             continue
-        try:
-            status, text = submit(host, urls)
-            print('  submitted: HTTP %s %s' % (status, text.strip()))
-        except urllib.error.HTTPError as e:
-            print('  REFUSED: HTTP %s %s'
-                  % (e.code, e.read().decode('utf-8', 'replace')[:200]))
-            bad += 1
+        # One retry, because a 5xx here is the endpoint being busy rather than
+        # the submission being wrong — measured: the second host answered 503
+        # with an HTML error page and took the identical payload 20s later.
+        for attempt in (1, 2):
+            try:
+                status, text = submit(host, urls)
+                print('  submitted: HTTP %s %s' % (status, text.strip()))
+                break
+            except urllib.error.HTTPError as e:
+                body = e.read().decode('utf-8', 'replace')[:200]
+                if e.code >= 500 and attempt == 1:
+                    print('  HTTP %s, retrying in 20s' % e.code)
+                    time.sleep(20)
+                    continue
+                print('  REFUSED: HTTP %s %s' % (e.code, body))
+                bad += 1
+                break
     return 1 if bad else 0
 
 

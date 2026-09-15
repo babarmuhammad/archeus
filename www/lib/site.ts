@@ -15,11 +15,13 @@ export const SITE = {
 
 /** Every profile the author controls, for schema.org `sameAs`.
  *
- *  This is the disambiguation mechanism, not decoration: an unrelated Rust
- *  project publishes under the same name, so the thing that tells a search
- *  engine which "archeus" this is, is one entity corroborated by a set of
- *  profiles that all link back here. Add a URL only once it exists AND links
- *  to claudectl.space — a dead or one-way profile weakens the graph.
+ *  This is the disambiguation mechanism, not decoration. The name is a
+ *  dictionary word — Paracelsus' term — and it sits one vowel from Nintendo's
+ *  Arceus, so a search for it returns encyclopedias and a Pokemon and nothing
+ *  of this project (measured, every engine). What tells a search engine which
+ *  "archeus" this is, is one entity corroborated by a set of profiles that all
+ *  link back here. Add a URL only once it exists AND links to claudectl.space —
+ *  a dead or one-way profile weakens the graph.
  *
  *  Deliberately absent: the Reddit account. It is pseudonymous and shares no
  *  string with the name or the project, so it corroborates nothing, and

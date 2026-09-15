@@ -32,6 +32,9 @@ pipx install archeus        # or: pip install archeus
 Works with Claude Code today. Zero runtime dependencies beyond the Python
 standard library.
 
-Source, documentation and issues: <https://github.com/babarmuhammad/archeus>
+Site: <https://claudectl.space>  
+Manual: <https://docs.claudectl.space>  
+Source and issues: <https://github.com/babarmuhammad/archeus>  
+Python package: <https://pypi.org/project/archeus/>
 
 MIT licensed.

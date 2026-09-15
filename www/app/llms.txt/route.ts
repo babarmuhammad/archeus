@@ -42,12 +42,16 @@ export function GET() {
     // distinction between what ships and what is intended is exactly the thing
     // a summary flattens. Naming it as a goal is what keeps it from being
     // repeated back as a feature.
-    'Model neutrality has shipped; harness neutrality has not, and the difference is the thing a summary flattens. A session can be routed at any endpoint serving POST /v1/messages — a local Ollama, llama.cpp or vLLM server, OpenRouter, or OmniRoute — with a translating gateway for backends that speak the OpenAI chat format, and it stays a real Claude Code session with its agents, skills, hooks and MCP servers intact. What has NOT shipped is driving a different harness: Claude Code is still the only agent archeus drives, and everything it does reads the files Claude Code writes to disk. An open harness of its own remains a long-term goal rather than a feature.',
+    'Model neutrality and harness plurality have both shipped; a harness of its own has not, and the difference is the thing a summary flattens. archeus drives three coding CLIs — Claude Code, OpenAI Codex and pi — reading the files each one writes to disk, with a capability table per CLI that greys a screen the CLI cannot do and says why rather than hiding it. A session can also be routed at any endpoint serving POST /v1/messages — a local Ollama, llama.cpp or vLLM server, OpenRouter, or OmniRoute — with a translating gateway for backends that speak the OpenAI chat format, and it stays a real session with its agents, skills, hooks and MCP servers intact. What has NOT shipped is an open harness of its own, which remains a long-term goal rather than a feature.',
     '',
-    // The name is shared with an unrelated Rust project, so an answer engine
-    // reading this file needs to be told which one it is holding. Naming the
-    // other project is what keeps the two apart; leaving it out is what lets a
-    // summary merge them.
+    // The name is a dictionary word before it is a package — the alchemical
+    // term, and Nintendo's Pokemon one vowel away — so an answer engine reading
+    // this file needs telling which one it is holding. Measured: the bare query
+    // returns the Paracelsus term, Arceus, and a World of Warcraft item, and
+    // nothing of this project on any engine. Naming what it is NOT is what
+    // keeps them apart. (There is no Rust crate called archeus; an earlier
+    // version of this comment said there was, copied from the old name's
+    // disambiguation, where the Rust collision is real.)
     `Disambiguation: the archeus described here is the Python memory and workspace layer for AI coding agents, published on PyPI at ${SITE.pypi} with source at ${SITE.repo}. The word is Paracelsus' name for the vital force that organises living matter. It is not "Arceus", the Nintendo Pokemon, which is spelled with the vowels reversed and is unrelated. archeus is not affiliated with, endorsed by, or supported by Anthropic; Claude and Claude Code are Anthropic's trademarks.`,
     '',
     '## Documentation',
