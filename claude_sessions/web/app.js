@@ -745,43 +745,61 @@ function modalGate(J,gate){
    page is before anyone decided what it should be. Every page still carrying
    it is a page this rehaul has not reached, which is why the count is asserted
    downward rather than merely allowed. */
+/* The SEVENTH field is the capability a page needs — see harnesses.py. It is a
+   fact about the PAGE and not about any one CLI: "Output styles" is output
+   styles whoever implements them. Declared here so a harness that lacks one
+   greys the row and says why, and so the gate can fail a page naming a
+   capability nothing declares — and a capability no page consumes. '' is
+   archeus's own screen, available wherever archeus is. */
 const NAV=[
-  ['globalmd','doc','Global CLAUDE.md','The instructions Claude reads in every session on an account, its loop.md, and the conventions worth promoting into it.',()=>pgGlobalMd,'pile'],
-  ['ostyles','palette','Output styles','Output styles Claude Code can wear, and which one is active.',()=>pgOStyles,'split'],
-  ['mcp','plug','MCP servers','MCP servers: status, detail and the tool documentation they can write into the global CLAUDE.md.',()=>pgMcp,'split'],
-  ['agents','robot','Agents','Subagent definitions: browse the library, write one by hand or have Claude draft it.',()=>pgAgents,'split'],
-  ['skills','ai','Skills','SKILL.md skills — bundled templates, your library, and the ones installed in a project.',()=>pgSkills,'split'],
-  ['hooks','link','Hooks','Claude Code hooks per account: install from a template, enable, disable or remove.',()=>pgHooks,'split'],
-  ['plugins','folder','Plugins','The marketplaces you have registered and every plugin installed from them, with what each one contributes.',()=>pgPlugins,'pile'],
+  ['globalmd','doc','Global CLAUDE.md','The instructions Claude reads in every session on an account, its loop.md, and the conventions worth promoting into it.',()=>pgGlobalMd,'pile',''],
+  ['ostyles','palette','Output styles','Output styles Claude Code can wear, and which one is active.',()=>pgOStyles,'split','output_styles'],
+  ['mcp','plug','MCP servers','MCP servers: status, detail and the tool documentation they can write into the global CLAUDE.md.',()=>pgMcp,'split','mcp'],
+  ['agents','robot','Agents','Subagent definitions: browse the library, write one by hand or have Claude draft it.',()=>pgAgents,'split','agents'],
+  ['skills','ai','Skills','SKILL.md skills — bundled templates, your library, and the ones installed in a project.',()=>pgSkills,'split','skills'],
+  ['hooks','link','Hooks','Claude Code hooks per account: install from a template, enable, disable or remove.',()=>pgHooks,'split','hooks'],
+  ['plugins','folder','Plugins','The marketplaces you have registered and every plugin installed from them, with what each one contributes.',()=>pgPlugins,'pile','plugins'],
   // 'Usage & cost', not 'Usage': the project side has a tab called Usage too,
   // and this is the name the docs page carries — a screen and the page about it
   // should be called the same thing.
-  ['usage','chart','Usage & cost','Token spend and rate limits across every account, by day and by project.',()=>pgUsage,'pile'],
-  ['loops','refresh','Loops','Start a /loop in its own session, watch it fire, end it — and the loop.md that says what a bare /loop does.',()=>pgLoops,'pile'],
-  ['logs','history','Logs','What archeus itself did and why it failed — its own Claude calls, background jobs, the scheduler and the proxy, newest first.',()=>pgLogs,'feed'],
-  ['accounts','group','Accounts','Every Claude login, and the sync that levels them all up to the same provisioning.',()=>pgAccounts,'split'],
-  ['client','ai','Claude Code','What Claude Code records about itself: versions, disk, background agents, its own settings.',()=>pgClient,'pile'],
-  ['settings','bolt','Launch','What every new session starts with — effort, model, permission mode, the window it opens in, and the plan/execute pair.',()=>pgSetLaunch,'form'],
-  ['appearance','palette','Appearance','Palette, skin, world, motion, surface transparency and the background scene.',()=>pgSetAppearance,'form'],
+  ['usage','chart','Usage & cost','Token spend and rate limits across every account, by day and by project.',()=>pgUsage,'pile','usage'],
+  ['loops','refresh','Loops','Start a /loop in its own session, watch it fire, end it — and the loop.md that says what a bare /loop does.',()=>pgLoops,'pile',''],
+  ['logs','history','Logs','What archeus itself did and why it failed — its own Claude calls, background jobs, the scheduler and the proxy, newest first.',()=>pgLogs,'feed',''],
+  ['accounts','group','Accounts','Every Claude login, and the sync that levels them all up to the same provisioning.',()=>pgAccounts,'split','accounts'],
+  ['client','ai','Claude Code','What Claude Code records about itself: versions, disk, background agents, its own settings.',()=>pgClient,'pile','client_state'],
+  ['harness','group','Harnesses','Every coding CLI archeus drives — whether it is installed, how it is set up, and the screens only it has.',()=>pgHarness,'pile',''],
+  ['settings','bolt','Launch','What every new session starts with — effort, model, permission mode, the window it opens in, and the plan/execute pair.',()=>pgSetLaunch,'form',''],
+  ['appearance','palette','Appearance','Palette, skin, world, motion, surface transparency and the background scene.',()=>pgSetAppearance,'form',''],
   // plain '&', never '&amp;': every consumer escapes it (the tab strip, the nav
   // row, the help table), so a pre-escaped label came out as "Paths &amp; limits"
   // on screen. A LABEL is data; the entity goes in the markup, not in the data.
-  ['paths','folder','Paths & limits','Where archeus finds your editor and Claude Code, what its own calls may spend, and what the memory graph may hold.',()=>pgSetPaths,'form'],
-  ['models','ai','Models','Free execution through OmniRoute, and the failover list that retries the next model when a turn dies.',()=>pgSetModels,'form'],
-  ['updates','refresh','Updates','Versions of archeus, Claude Code and the model catalogue — and what archeus checks on its own: updates, notifications, and the auto-memory schedule.',()=>pgSetUpdates,'form'],
-  ['searchp','search','Search','Full-text search over every session transcript on the machine.',()=>pgSearch,'feed'],
-  ['helpp','help','Help','This page: every screen in the app and every key in the terminal UI.',()=>pgHelp,'pile'],
+  ['paths','folder','Paths & limits','Where archeus finds your editor and Claude Code, what its own calls may spend, and what the memory graph may hold.',()=>pgSetPaths,'form',''],
+  ['models','ai','Models','The backends your sessions can run against — Anthropic, a local server, OpenRouter or OmniRoute — each with its own model and failover list.',()=>pgSetModels,'split',''],
+  ['updates','refresh','Updates','Versions of archeus, Claude Code and the model catalogue — and what archeus checks on its own: updates, notifications, and the auto-memory schedule.',()=>pgSetUpdates,'form','versions'],
+  ['searchp','search','Search','Full-text search over every session transcript on the machine.',()=>pgSearch,'feed',''],
+  ['helpp','help','Help','This page: every screen in the app and every key in the terminal UI.',()=>pgHelp,'pile',''],
 ];
 /* [label, icon, blurb, [page ids]] — the sidebar itself. It carries page IDS
    rather than the tuples, so NAV stays the ONE place a page is declared and a
    page cannot exist twice with two different blurbs. The label is the key: no
    section id, because a section id would have collided with the `settings` and
    `accounts` PAGE ids and a lookup would have silently found the wrong one. */
+/* Five sections, and WHICH pages sit in them is the multi-CLI question.
+   A page is here when it is about something more than one CLI has, and in the
+   Harnesses page when it is one CLI's own — checked against the installed
+   binaries, not assumed from the name. `mcp` and `plugins` looked Claude-only
+   and are not: `codex mcp list/add/remove` and `codex plugin list/marketplace`
+   are full surfaces, so both stay shared and grey for pi alone. The five that
+   moved are the five that survived the check — output styles, subagents,
+   hooks, logins and Claude Code's own state file — and they moved rather than
+   staying greyed because five dead rows in a sidebar is a sidebar about one
+   CLI. `Accounts` BECAME `Harnesses` rather than a sixth section being added:
+   both of its pages were moving into it anyway. */
 const SECTIONS=[
-  ['Context','doc','What Claude reads before you type: the instructions on the account, the style it answers in, and the tools it can reach.',['globalmd','ostyles','mcp']],
-  ['Library','ai','What you install once and every session then uses — subagents, skills, hooks and plugins.',['agents','skills','hooks','plugins']],
+  ['Context','doc','What a CLI reads before you type: the instructions on the account, and the tools it can reach.',['globalmd','mcp']],
+  ['Library','ai','What you install once and every session then uses — skills and plugins.',['skills','plugins']],
   ['Activity','chart','What has been spent and what is running: token spend, loops, and archeus’s own log of what it did.',['usage','loops','logs']],
-  ['Accounts','group','Every Claude login on this machine, and what Claude Code records about itself.',['accounts','client']],
+  ['Harnesses','group','Every coding CLI on this machine — what each can do, how it is set up, and the screens only it has.',['harness']],
   ['Settings','settings','Launch defaults, appearance, paths and limits, models and updates.',['settings','appearance','paths','models','updates']],
 ];
 /* A page in no section, and where you reach it instead. Search left the nav
@@ -790,12 +808,40 @@ const SECTIONS=[
    a row spent on the least-used destination. tests/test_gui.py fails a section
    naming a page that does not exist, and a page in neither a section nor here. */
 const OFFNAV={searchp:'the search box on the home dashboard, and Ctrl+K',
-              helpp:'the ? button at the foot of the sidebar'};
+              helpp:'the ? button at the foot of the sidebar',
+              ostyles:'the Claude Code tab on the Harnesses page',
+              agents:'the Claude Code tab on the Harnesses page',
+              hooks:'the Claude Code tab on the Harnesses page',
+              accounts:'the Claude Code tab on the Harnesses page',
+              client:'the Claude Code tab on the Harnesses page'};
+/* Which pages belong to which CLI, pointing by page ID exactly as SECTIONS
+   does — so NAV stays the ONE place a page is declared, its renderer is never
+   touched by the move, and a page cannot exist twice with two different blurbs.
+   `harness` leads every list because it is that CLI's Setup: the one sub-tab
+   every harness has, and the only one a CLI archeus has no other screen for.
+
+   Only what is THAT CLI's OWN goes here. `mcp`, `plugins`, `usage` and
+   `updates` are shared and stay in the sidebar with a harness dimension inside
+   — listing them per CLI would be three copies of one page, and would lose the
+   cross-account view each of them exists to give. */
+const HARNESS_TABS={
+  claude:['harness','accounts','client','ostyles','agents','hooks'],
+  codex: ['harness'],
+  pi:    ['harness'],
+};
 /* page id → section label. Derived; the reverse direction is what drawNav, the
    sub-tab strip and the page title all need, and computing it three times is
-   three chances to disagree. */
-const SEC_OF=Object.fromEntries(
-  SECTIONS.flatMap(([label,,,ids])=>ids.map(id=>[id,label])));
+   three chances to disagree. A harness sub-page resolves to Harnesses so the
+   sidebar keeps that section lit while you are on one. */
+const SEC_OF=Object.fromEntries([
+  ...SECTIONS.flatMap(([label,,,ids])=>ids.map(id=>[id,label])),
+  ...Object.values(HARNESS_TABS).flat().map(id=>[id,'Harnesses']),
+]);
+/* Which CLI owns a page, or '' for a shared one. The reverse of HARNESS_TABS,
+   derived for the same reason SEC_OF is. `harness` itself is deliberately NOT
+   in it: it is every CLI's Setup, so it has no one owner and the strip decides. */
+const HID_OF=Object.fromEntries(Object.entries(HARNESS_TABS)
+  .flatMap(([hid,ids])=>ids.filter(id=>id!=='harness').map(id=>[id,hid])));
 /* ── sidebar width: drag the grip, and it sticks ──────────────────────────────
    Persisted as a setting, like every other chrome choice, so the Qt shell and a
    browser tab agree. Clamped rather than free: below SIDE_MIN the project paths
@@ -877,14 +923,71 @@ function bindSideGrips(){
 /* Nav rows carry no gauge. They used to each own an animated canvas, which put
    ~10 looping surfaces in the chrome to encode numbers about pages you weren't
    looking at — the clearest case of motion that cost frames and said nothing. */
+/* ── what the CLI behind this account can do ──────────────────────────────────
+   A capability is [ok, why] and the reason is the whole point: a surface a
+   harness cannot do is shown greyed WITH the reason, never hidden and never
+   faked. An unlisted key is supported, so a page naming a capability nothing
+   declares would read as available — which is what the orphan gate is for. */
+function harnessOf(cfgdir){
+  const want=(cfgdir||ST.active_cfgdir||'').toLowerCase();
+  const hs=ST.harnesses||[];
+  return hs.find(h=>(h.homes||[]).some(x=>(x||'').toLowerCase()===want))||hs[0]||null;
+}
+function capOf(key,cfgdir){
+  if(!key)return{ok:true,why:''};
+  const h=harnessOf(cfgdir),c=h&&h.caps&&h.caps[key];
+  return c?{ok:!!c[0],why:c[1]||''}:{ok:true,why:''};
+}
+function capSupporters(key){
+  return (ST.harnesses||[]).filter(h=>{
+    const c=h.caps&&h.caps[key];return !c||c[0];}).map(h=>h.label);
+}
+/* A button the harness behind THIS row may not have. Kept selectable and
+   titled with the reason, exactly as a greyed nav row is: a button that
+   disappears teaches nothing, and one that errors reads as a bug in archeus.
+   `cfgdir` is the SESSION's, not the page's — a project worked in under two
+   CLIs lists both, so the answer is per row. */
+function capBtn(key,cfgdir,onclick,label){
+  const c=capOf(key,cfgdir);
+  return `<button class="btn sm${c.ok?'':' off'}" onclick="${c.ok?onclick:`capWhy(${hesc(key)},${hesc(cfgdir||'')})`}"
+    ${c.ok?'':`title="${esc(c.why)}"`}>${label}</button>`;
+}
+function capWhy(key,cfgdir){
+  const c=capOf(key,cfgdir),on=capSupporters(key);
+  toast((c.why||'Not available here')+(on.length?' Supported on: '+on.join(', ')+'.':''),'err');
+}
+function capCard(key,why){
+  const on=capSupporters(key);
+  return `<div class="card"><h3>${ic('info')} Not available here</h3>
+    <p class="secthint">${esc(why||'The CLI this account belongs to does not have this.')}</p>
+    ${on.length?`<p class="secthint">Supported on: ${esc(on.join(', '))}.</p>`:''}</div>`;
+}
+/* A line naming which CLIs a shared artefact actually reaches, for the case
+   neither `capBtn` nor `capCard` covers: the thing is not a button and not a
+   whole page, it is ONE part of a page that lands somewhere for some CLIs and
+   not others. The rule files are the case that needed it — auto-memory writes
+   one graph, and its two deliveries have different reach: every CLI gets the
+   digest in its instructions file, only Claude Code gets `.claude/rules/*.md`.
+   Silent is the failure mode here, not wrong: the files are written either way,
+   so nothing looks broken while half your CLIs never see them. */
+function capNote(key,lead){
+  if((ST.harnesses||[]).length<2)return '';
+  const on=capSupporters(key),off=(ST.harnesses||[])
+    .filter(h=>{const c=h.caps&&h.caps[key];return c&&!c[0];});
+  if(!off.length)return '';
+  return `<p class="secthint">${esc(lead||'Read by')} ${esc(on.join(', ')||'no CLI here')}.
+    ${esc(off[0].caps[key][1])}</p>`;
+}
 function drawNav(){
   const cur=SEC_OF[PAGE_]||'';
   // clicking the section you are already in keeps the sub-tab you are on:
   // jumping back to the first page of the section you never left is a move you
   // did not ask for
-  $('#nav').innerHTML=SECTIONS.map(([label,icon,blurb,ids])=>
-    `<div class="it${cur===label?' sel':''}" onclick="go(${hesc(ids.includes(PAGE_)?PAGE_:ids[0])})"
-       title="${esc(blurb)}">${ic(icon)} <span>${esc(label)}</span></div>`).join('');
+  $('#nav').innerHTML=SECTIONS.map(([label,icon,blurb,ids])=>{
+    const off=ids.every(id=>!capOf(navCap(id)).ok);
+    return `<div class="it${cur===label?' sel':''}${off?' off':''}"
+       onclick="go(${hesc(ids.includes(PAGE_)?PAGE_:ids[0])})"
+       title="${esc(blurb)}">${ic(icon)} <span>${esc(label)}</span></div>`;}).join('');
 }
 /* ONE writer for both tab strips. A project page has two levels (the four
    groups, then the pages inside one) and a global section has one (its pages,
@@ -892,24 +995,48 @@ function drawNav(){
    second chance for the two rows to disagree about which of them is selected.
    Empty string, not `display:none` on a filled strip — a hidden strip that
    still holds last page's tabs is what the Ctrl+K palette would keep matching. */
-function tabBtn(id,label,sel,fn){
-  return `<div class="tab${sel?' sel':''}" onclick="${fn}(${hesc(id)})">${esc(label)}</div>`;
+function tabBtn(id,label,sel,fn,cap){
+  const c=capOf(cap||'');
+  return `<div class="tab${sel?' sel':''}${c.ok?'':' off'}" onclick="${fn}(${hesc(id)})"
+    ${c.ok?'':`title="${esc(c.why)}"`}>${esc(label)}</div>`;
 }
+function navCap(id){const n=NAV.find(x=>x[0]===id);return n?(n[6]||''):'';}
+function tabCap(id){const t=TABS.find(x=>x[0]===id);return t?(t[4]||''):'';}
 function drawTabStrips(){
   const t=$('#tabs'),s=$('#subtabs');
   let top='',sub='';
   drawPageNote();
   if(PAGE_==='project'){
     const grp=TAB_GROUPS.find(g=>g[1].includes(TAB))||TAB_GROUPS[0];
-    top=TAB_GROUPS.map(([label,ids])=>
-      tabBtn(ids.includes(TAB)?TAB:ids[0],label,grp[0]===label,'openTab')).join('')
+    top=TAB_GROUPS.map(([label,ids])=>{
+      const id=ids.includes(TAB)?TAB:ids[0];
+      // a GROUP is only unavailable when everything in it is
+      const off=ids.every(i=>!capOf(tabCap(i)).ok);
+      return tabBtn(id,label,grp[0]===label,'openTab',off?tabCap(id):'');}).join('')
       +`<div class="tab" onclick="window.open('/graph?${qs({path:CUR.path,enc:CUR.encoded,k:CK})}','_blank')">Graph ${ic('ext')}</div>`;
     if(grp[1].length>1)sub=grp[1].map(id=>
-      tabBtn(id,tabLabel(id),TAB===id,'openTab')).join('');
+      tabBtn(id,tabLabel(id),TAB===id,'openTab',tabCap(id))).join('');
+  }else if(SEC_OF[PAGE_]==='Harnesses'){
+    /* TWO levels, same shape as a project page: which CLI on top, that CLI's
+       own screens below. The strip is here rather than inside pgHarness for the
+       reason there is only one writer at all — two would be two chances for the
+       rows to disagree about which one is selected — and it means the five
+       pages that moved need no edit: they are painted by their own renderer
+       under a strip they know nothing about. */
+    // landing on a page that BELONGS to a CLI moves the selection to it, so
+    // Setup afterwards means that CLI's setup and not the one you left
+    HARNESS_HID=HID_OF[PAGE_]||HARNESS_HID;
+    const hid=HARNESS_HID;
+    top=installedHids().map(h=>tabBtn(h,harnessLabel(h),h===hid,'pickHarness',''))
+      .join('');
+    const ids=(HARNESS_TABS[hid]||['harness']);
+    if(ids.length>1)sub=ids.map(id=>
+      tabBtn(id,id==='harness'?'Setup':navLabel(id),PAGE_===id,'go',navCap(id)))
+      .join('');
   }else{
     const sec=SECTIONS.find(x=>x[3].includes(PAGE_));
     if(sec&&sec[3].length>1)top=sec[3].map(id=>
-      tabBtn(id,navLabel(id),PAGE_===id,'go')).join('');
+      tabBtn(id,navLabel(id),PAGE_===id,'go',navCap(id))).join('');
   }
   t.innerHTML=top;t.style.display=top?'flex':'none';
   s.innerHTML=sub;s.style.display=sub?'flex':'none';
@@ -917,6 +1044,30 @@ function drawTabStrips(){
 function navLabel(id){const n=NAV.find(x=>x[0]===id);return n?n[2]:id;}
 function tabLabel(id){const t=TABS.find(x=>x[0]===id);return t?t[1]:id;}
 function openTab(id){TAB=id;drawProject();}
+/* ── which CLI the Harnesses page is showing ──────────────────────────────────
+   Held here rather than in pgHarness because the tab strip is drawn by
+   drawTabStrips, which runs for the five moved pages too — landing on Accounts
+   has to light the Claude Code tab, and HID_OF is what answers that. */
+let HARNESS_HID='claude';
+/* Every CLI archeus knows, INSTALLED ONES FIRST but never hiding the rest: a
+   harness you have not installed is exactly what this page exists to tell you
+   about, and a tab that disappears cannot say "not installed". Switched-off
+   ones ARE hidden — that is a choice you made, and the setting that made it is
+   two clicks away on the Launch page. */
+function installedHids(){
+  const off=new Set(ST.harnesses_disabled||[]);
+  return (ST.harnesses||[]).filter(h=>!off.has(h.id)).map(h=>h.id);
+}
+function harnessLabel(hid){
+  const h=harnessById(hid);
+  return (h?h.label:hid)+(h&&!h.available?' ·':'');
+}
+function pickHarness(hid){
+  HARNESS_HID=hid;
+  // land on the CLI's Setup rather than on whichever page you were reading:
+  // Output styles under Codex is a page that does not exist there
+  go('harness');
+}
 /* The one line under the tabs saying what this page is. Read out of the SAME
    blurb the nav tooltip and the help page render, never typed into a renderer:
    twelve of the nineteen pages opened directly into a table of Claude Code's
@@ -954,7 +1105,6 @@ function drawProjects(){
   const list=ST.projects.filter(p=>(SHOW_HIDDEN||!p.hidden)&&(!q
     ||p.name.toLowerCase().includes(q)||p.path.toLowerCase().includes(q)));
   drawHiddenToggle();
-  drawBrand();
   MO.patch(box,list,p=>p.encoded,p=>{
     // Account chips are flex:none, so with three of them they claimed the whole
     // row and the project NAME shrank to a single character ("Claude" rendered
@@ -1335,12 +1485,12 @@ function tokenChart(days,accounts){
     if(other>0){const top=y(acc+other),bot=y(acc);
       segs+=`<rect class="seg" x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}"
         height="${Math.max(1,bot-top-2).toFixed(1)}" rx="${Math.min(bw/2,3).toFixed(1)}" fill="var(--dim2)"><title>${esc(r.date)} · other: ${fmtTok(other)} tok</title></rect>`;}
-    // omni tokens cut across accounts, so they can't be another stack segment —
+    // provider tokens cut across accounts, so they can't be another stack segment —
     // hatch the free share up from the baseline over whatever it was spent on
-    const om=Math.min(r.omni_tokens||0,r.tokens||0);
+    const om=Math.min(r.provider_tokens||0,r.tokens||0);
     if(om>0){const top=y(om),hh=Math.max(1,y(0)-top);
       const box=`x="${x.toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${hh.toFixed(1)}" rx="2"`;
-      segs+=`<rect class="omnibg" ${box}/><rect class="omni" ${box}><title>${esc(r.date)} · omni (free): ${fmtTok(om)} of ${fmtTok(r.tokens||0)} tok</title></rect>`;}
+      segs+=`<rect class="providerbg" ${box}/><rect class="provider" ${box}><title>${esc(r.date)} · provider (free): ${fmtTok(om)} of ${fmtTok(r.tokens||0)} tok</title></rect>`;}
     const today=i===rows.length-1;
     const tick=(i%step===0||today||i===0)
       ?`<text class="${today?'now':''}" x="${(x+bw/2).toFixed(1)}" y="${H-6}" text-anchor="middle">${today?'today':esc(r.date.slice(5))}</text>`:'';
@@ -1348,14 +1498,14 @@ function tokenChart(days,accounts){
       ?`<text class="big" x="${(x+bw/2).toFixed(1)}" y="${(y(r.tokens)-5).toFixed(1)}" text-anchor="middle">${fmtTok(r.tokens)}</text>`:'';
     return segs+tick+lab;
   }).join('');
-  const anyOmni=rows.some(r=>(r.omni_tokens||0)>0);
+  const anyProvider=rows.some(r=>(r.provider_tokens||0)>0);
   const legend=names.map(n=>`<span><i class="dot" style="background:${acctColor(n)}"></i>${esc(n)}</span>`).join('')
-    +(anyOmni?`<span title="Ran on OmniRoute — free tier, not billed"><i class="dot omnikey"></i>omni · free</span>`:'')
+    +(anyProvider?`<span title="Ran on OmniRoute — free tier, not billed"><i class="dot providerkey"></i>provider · free</span>`:'')
     +`<span class="sp"></span>`
     +[7,14,30].map(n=>`<span class="chip${CHART_DAYS===n?' on':''}" onclick="setChartDays(${n})">${n}d</span>`).join('');
   return `<div class="lg">${legend}</div>
-    <svg class="tcsvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Tokens per day, stacked by account, free-tier omni share hatched">
-      <defs><pattern id="omnihatch" width="5" height="5" patternUnits="userSpaceOnUse"
+    <svg class="tcsvg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Tokens per day, stacked by account, free-tier provider share hatched">
+      <defs><pattern id="providerhatch" width="5" height="5" patternUnits="userSpaceOnUse"
         patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5"/></pattern></defs>
       <line class="gl" x1="${PL}" y1="${PT}" x2="${W}" y2="${PT}"/>
       <text x="${PL-6}" y="${PT+3}" text-anchor="end">${max?fmtTok(max):''}</text>
@@ -1529,10 +1679,24 @@ function feedDashboard(d,plan){
   setV($('#iQuotaLeg'),spendBy.slice(0,5).map(([n,t])=>
     `<span><i style="background:${acctColor(n)}"></i>${esc(n)} ${fmtTok(t)}</span>`).join(''));
   const roomy=accs.filter(a=>!(a.windows||[]).some(w=>(w.pct||0)>=50)).length;
-  setV($('#iQuotaFoot'),accs.length
+  /* WHICH TOOL spent it, when more than one did. The footer answered the quota
+     question and nothing else, which was the right answer while there was one
+     CLI: with three, "78% of its window" is a fact about one of them and the
+     other two are invisible on a card labelled `spend today`. An account and a
+     harness are different questions — the ring's arcs still split by account,
+     because that is what the quota ceiling belongs to — so this is a line, not
+     a second ring. Shown only when a second CLI actually spent something: on
+     the common machine there is nothing to disambiguate. */
+  const byH=Object.entries((d&&d.today&&d.today.by_harness)||{})
+    .filter(([,t])=>t>0).sort((a,b)=>b[1]-a[1]);
+  const hLine=byH.length>1
+    ?byH.map(([h,t])=>`${esc((harnessById(h)||{}).label||h)} ${fmtTok(t)}`).join(' · ')
+    :'';
+  setV($('#iQuotaFoot'),(accs.length
     ?(hot?`<b>${esc(hot.email||hot.account)}</b> runs out first — ${Math.round(peakWin*100)}% of its window`
         :`${roomy}/${accs.length} account${accs.length>1?'s':''} under 50%`)
-    :(todayTok?'no plan accounts configured':'nothing spent today'));
+    :(todayTok?'no plan accounts configured':'nothing spent today'))
+    +(hLine?`<div class="fsub">${hLine}</div>`:''));
   setV($('#iQuotaN'),(d&&d.today&&d.today.cost)?'$'+(d.today.cost).toFixed(2):'');
 
   if(!d)return;
@@ -1554,15 +1718,15 @@ function feedDashboard(d,plan){
   const wk=(d.week||[]).filter(r=>r.tokens>0);
   const wkAvg=wk.length?wk.reduce((n,r)=>n+r.tokens,0)/wk.length:0;
   const ratio=wkAvg?today/wkAvg:0;
-  const omniT=(d.today||{}).omni_tokens||0;
+  const provT=(d.today||{}).provider_tokens||0;
   // .ifoot is one clipped line — the long form lives in the tooltip
   setV($('#iBurnFoot'),
     `<span title="${esc(`${fmtTok(today)} so far today, on track for ${fmtTok(proj)} by midnight`
       + (ratio ? `. That is ${ratio.toFixed(1)}x your 7-day average.` : '')
-      + (omniT ? ` ${fmtTok(omniT)} of it ran on free-tier models.` : ''))}">`
+      + (provT ? ` ${fmtTok(provT)} of it ran on free-tier models.` : ''))}">`
     +`<b>${fmtTok(proj)}</b> by midnight`
     +(ratio?` · <b>${ratio.toFixed(1)}×</b> 7-day avg`:'')
-    +(omniT?` · ${fmtTok(omniT)} free`:'')+'</span>');
+    +(provT?` · ${fmtTok(provT)} free`:'')+'</span>');
 
   /* ── Tooling → is the workspace actually wired up ──────────────────────────
      MCP reachability alone answered a narrow question. The card now counts
@@ -1690,7 +1854,7 @@ function setUnit(key,txt){
 function projectRowHtml(p){
   return `<div class="info"><b>${esc(p.name)}</b>
       ${(p.accounts||[]).map(a=>`<span class="dot" title="${esc(a)}" style="width:7px;height:7px;background:${acctColor(a)}"></span>`).join('')}
-      ${p.omni?OMNI_TAG:''}</div>
+      ${p.provider?PROVIDER_TAG:''}</div>
     <span class="num">${fmtTok(p.tokens||0)} · $${(p.cost||0).toFixed(2)}</span>
     <span class="num">${esc(p.age||'')}</span>`;
 }
@@ -1698,11 +1862,11 @@ function recentRowHtml(r){
   return `<div class="info"><b>${esc(r.project)}</b>
       <span style="color:var(--dim)">${esc(r.title)} · ${r.msgs} msgs</span></div>
     ${r.account&&r.account!=='default'?`<span class="tag acct" style="color:${acctColor(r.account)}">${esc(r.account)}</span>`:''}
-    ${r.omni?OMNI_TAG:''}
+    ${r.provider?PROVIDER_TAG:''}
     <span class="num">${esc(r.age||'')}</span>
     <button class="btn sm" data-sid="${esc(r.sid)}">Resume</button>`;
 }
-const OMNI_TAG='<span class="tag acct" style="color:var(--violet)" title="Ran on OmniRoute (free-tier model)">omni</span>';
+const PROVIDER_TAG='<span class="tag acct" style="color:var(--violet)" title="Ran on OmniRoute (free-tier model)">provider</span>';
 let DASH_RECENT=[];
 /* keyed by session id, not row index: the recent list reorders between polls, so
    an index captured at render time could resume a different session than the one
@@ -1726,7 +1890,7 @@ function kpiHtml(d,bd){
     +stat(wtok,'tok','7d tok')
     +stat(wcost,'usd','7d est. cost','API-rate estimate, cache-aware; OmniRoute models count as free')
     +stat(t.sessions||0,'int','sessions today')
-    +stat(tot.omni_tokens||0,'tok','omni tok',`free-tier tokens over ${d.days||30}d — about $${(tot.omni_saved||0).toFixed(2)} of Opus-rate work`)
+    +stat(tot.provider_tokens||0,'tok','provider tok',`free-tier tokens over ${d.days||30}d — about $${(tot.provider_saved||0).toFixed(2)} of Opus-rate work`)
     +`<span class="sp"></span>`
     +`<span class="fresh">${age==null?'':'updated '+age+'s ago'}</span>`;
 }
@@ -1877,16 +2041,18 @@ function goToFullSearch(){PENDING_SEARCH_Q=($('#hqSearch').value||'');go('search
    the help page renders from this array instead of a retyped copy of it. */
 /* [id, label, blurb, ARCHETYPE] — the fourth field is NAV's sixth, for the
    same reason and read by the same `shell()`. */
+/* FIFTH field: the capability this tab needs, exactly as NAV's seventh. */
 const TABS=[
-  ['sessions','Sessions','Every session in this project, across accounts — open, rename, archive, export.','split'],
-  ['memory','Memory','Everything archeus knows about this project and what knowing it costs — the graph, the rules, lessons, spend, and what the last cycle did.','pile'],
-  ['claudemd','CLAUDE.md','The instruction file block by block, what each block costs, the memory map, and every version archeus replaced.','pile'],
-  ['review','Review','Run a code review over the working tree, staged changes or a branch.','feed'],
-  ['audit','Audit','What one turn costs across every surface at once — this project, your account, hooks and MCP — before you spend it.','feed'],
-  ['pusage','Usage','This project\'s token spend over time.','feed'],
-  ['planexec','Plan → Execute','Have one model write a plan, approve or edit it, then have another execute it.','form'],
-  ['worktrees','Repos','Git repos, submodules and linked worktrees under this project.','split'],
-  ['tools','Tools','Architecture, the interactive graph, Claude Code\'s own record of the project, and the loop file.','pile']];
+  ['sessions','Sessions','Every session in this project, across accounts — open, rename, archive, export.','split','sessions'],
+  ['memory','Memory','Everything archeus knows about this project and what knowing it costs — the graph, the rules, lessons, spend, and what the last cycle did.','pile',''],
+  ['claudemd','CLAUDE.md','The instruction file block by block, what each block costs, the memory map, and every version archeus replaced.','pile',''],
+  ['review','Review','Run a code review over the working tree, staged changes or a branch.','feed',''],
+  ['audit','Audit','What one turn costs across every surface at once — this project, your account, hooks and MCP — before you spend it.','feed',''],
+  ['pusage','Usage','This project\'s token spend over time.','feed',''],
+  ['planexec','Plan → Execute','Have one model write a plan, approve or edit it, then have another execute it.','form',''],
+  ['worktrees','Repos','Git repos, submodules and linked worktrees under this project.','split',''],
+  ['tools','Tools','Architecture, the interactive graph, Claude Code\'s own record of the project, and the loop file.','pile',''],
+];
 /* [label, [tab ids]] — the four the project opens on. Nine tabs is the same
    wall the sidebar had: the row wrapped, and the order in it had no argument
    behind it. TABS stays the FLAT leaf list for the same reason NAV does —
@@ -2056,7 +2222,7 @@ async function drawSessions(archived){
         <div class="meta"><span>${esc(s.age)} ago</span><span>${s.count} msgs</span>
           ${s.tokens?`<span>${esc(s.tokens)} tok</span>`:''}
           ${s.account&&s.account!=='default'?`<span class="tag acct" style="color:${acctColor(s.account)}">${esc(s.account)}</span>`:''}
-          ${s.omni?`<span class="tag acct" style="color:var(--violet)" title="Executed via OmniRoute (free-tier model)">omni</span>`:''}</div>
+          ${s.provider?`<span class="tag acct" style="color:var(--violet)" title="Executed via OmniRoute (free-tier model)">provider</span>`:''}</div>
       </div>
       <button class="btn sm pri" onclick="event.stopPropagation();${archived?`restoreS(${i})`:`resumeS(${i})`}">${archived?'Restore':'Resume'}</button>
       </div>`;};
@@ -2100,7 +2266,7 @@ function seSel(i){
     <div class="kv"><span class="k">Age</span><span>${esc(s.age)} ago</span>
       <span class="k">Messages</span><span>${s.count}</span>
       ${s.tokens?`<span class="k">Tokens</span><span>${esc(s.tokens)}</span>`:''}
-      <span class="k">Account</span><span>${esc(s.account||'default')}${s.omni?' <span class="tag acct" style="color:var(--violet)">omni</span>':''}</span>
+      <span class="k">Account</span><span>${esc(s.account||'default')}${s.provider?' <span class="tag acct" style="color:var(--violet)">provider</span>':''}</span>
       <span class="k">Session id</span><span><code>${esc(s.sid)}</code></span></div>
     ${SESSARCH?`<div class="mrow" style="flex-wrap:wrap">
       <button class="btn sm danger" onclick="deleteS(${i},true)">${ic('del')} Delete</button></div>`
@@ -2109,10 +2275,10 @@ function seSel(i){
       <button class="btn sm" onclick="viewS(${i})">${ic('doc')} Transcript</button>
       <button class="btn sm" onclick="exportS(${i})">${ic('download')} Export</button>
       <button class="btn sm" onclick="filesS(${i})">${ic('folder')} Changed files</button>
-      <button class="btn sm" onclick="ckptS(${i})">${ic('history')} Checkpoints</button>
+      ${capBtn('checkpoints',s.cfgdir,`ckptS(${i})`,ic('history')+' Checkpoints')}
       <button class="btn sm" onclick="tagS(${i})">${ic('label')} Tags</button>
       <button class="btn sm" onclick="renameS(${i})">Rename</button>
-      <button class="btn sm" onclick="archiveS(${i})">${ic('archive')} Archive</button>
+      ${capBtn('archive',s.cfgdir,`archiveS(${i})`,ic('archive')+' Archive')}
       <button class="btn sm" onclick="forkS(${i})">${ic('fork')} Fork</button>
       <button class="btn sm" onclick="handoffS(${i})"
         title="Start a new chat — in this or another account — seeded with this session's transcript as context">${ic('inject')} Hand off</button></div>
@@ -2531,6 +2697,7 @@ async function drawMemory(){
         <b>Path-scoped rules</b> — one file per module. Claude loads the one whose
         <code>paths:</code> cover the file it just opened, and no others ·
         ${rules.length} file(s), ~${ruleTok} tok</summary>
+        ${capNote('rules','Written for')}
         <table class="tbl" style="margin:4px 0 8px">
           <tr><th>module</th><th>loads for</th><th>tok</th></tr>
           ${rules.map(r=>`<tr><td>${esc(r.unit||r.file||'')}</td>
@@ -2925,7 +3092,7 @@ async function drawProjUsage(){
   const rows=(d.sessions||[]).map(r=>`
     <tr><td>${esc(r.age)}</td><td>${esc(r.name)} ${r.account&&r.account!=='default'?`<span class="tag">${esc(r.account)}</span>`:''}</td>
     <td class="num">${r.msgs}</td><td class="num">${fmtTok(r.usage.in)}</td>
-    <td class="num">${fmtTok(r.usage.out)}</td><td class="num">${r.exact?'':'~'}$${r.cost.toFixed(2)}</td></tr>`).join('');
+    <td class="num">${fmtTok(r.usage.out)}</td><td class="num">${costCell(r.cost,r.exact)}</td></tr>`).join('');
   shell(nav,`<div class="card"><h3>Per-session usage</h3>
     <p class="secthint">Every session of this project, oldest cost first. The estimate is at published API rates — a useful gauge of consumption even on a subscription, where nothing is billed per token.</p>
     ${rows?`<table class="tbl"><tr><th>age</th><th>session</th><th>msgs</th>
@@ -3220,7 +3387,7 @@ function peJobDone(result){
     if(onPage)peShowPlan(result.plan);
   }else if(PE.kind==='plan_launch'){
     PE.plan=null;   // launch actually succeeded -- now safe to consume
-    toast(`Execute session launched — ${esc(result.model||'')} via ${result.via==='omniroute'?'OmniRoute':'Anthropic'}`,'ok');
+    toast(`Execute session launched — ${esc(result.model||'')} via ${result.via==='provider'?'Provider':'Anthropic'}`,'ok');
   }
 }
 async function peCancel(){
@@ -3289,7 +3456,7 @@ function drawPlanExec(){
       <div class="grid2">${fld('pePlan','Plan model')}${fld('peEff','Plan effort')}</div>
       <div class="fld"><label>Execute via</label><div class="chips" id="peVia">
         <span class="chip on" data-v="anthropic">Anthropic</span>
-        <span class="chip" data-v="omniroute">OmniRoute (free)</span></div></div>
+        <span class="chip" data-v="provider">Provider</span></div></div>
       <div id="peExecWrap"></div>
       <div class="fld"><label>Model council</label><div class="chips" id="peCouncil">
         <span class="chip" data-v="1">Optimize plan with council</span></div>
@@ -3333,7 +3500,7 @@ function drawPlanExec(){
   if(savedCfg&&savedCfg.via){
     chipSet($('#peVia'),savedCfg.via);
     peViaChange();
-    if(savedCfg.via!=='omniroute')chipSet($('#peExec'),savedCfg.execModel||'');
+    if(savedCfg.via!=='provider')chipSet($('#peExec'),savedCfg.execModel||'');
   }
   if(savedCfg&&ST.accounts.length>1)chipSet($('#peAcct'),savedCfg.account||'');
   // Restore any in-flight or just-finished plan work when returning to the tab:
@@ -3374,7 +3541,7 @@ function peUseExisting(){
 function peViaChange(){
   const via=chipVal($('#peVia'));
   const wrap=$('#peExecWrap');
-  if(via==='omniroute'){
+  if(via==='provider'){
     wrap.innerHTML=`<div style="color:var(--dim);font-size:12px;margin:2px 0 8px">
       Best free model auto-selected by OmniRoute, with automatic fallback. Endpoint configured under
       <span style="color:var(--cyan);cursor:pointer" onclick="go('settings')">Settings</span>.</div>`;
@@ -3540,14 +3707,71 @@ async function drawPage(id){
   // screen — the same division the project side already uses (title = project,
   // tab = tab). Printing the page's own label in both places says it twice.
   const sec=SECTIONS.find(x=>x[3].includes(id));
-  $('#ttl').textContent=(sec&&sec[3].length>1)?sec[0]:(n?n[2]:id);
+  // a harness sub-page is a two-level strip, so the title names the section and
+  // the two strips name the CLI and the screen — same division as a project
+  $('#ttl').textContent=SEC_OF[id]==='Harnesses'?'Harnesses'
+    :(sec&&sec[3].length>1)?sec[0]:(n?n[2]:id);
   $('#tpath').textContent='';
   // the token is taken BEFORE the fetches start; each page function drops its
   // write if navigation moved on while it was waiting
+  const need=n[6]||'',c=capOf(need);
+  if(!c.ok){paint(paintNow(LOADING),capCard(need,c.why));return;}
   const nav=paintNow(LOADING);
   await n[4]()(nav);
 }
 
+/* ── one CLI's Setup: is it here, where, which version, and what it can do ────
+   ONE renderer parameterised by the selected harness, the way pgSettings is by
+   its sub-page — three copies would be three places to fix the day a fourth CLI
+   is registered. It answers the questions that are the same for every harness
+   and that no other page has a home for: the binary, the home directory, the
+   version and whether an update is waiting, whether it is logged in, and the
+   full capability table with the reason beside every gap.
+
+   The capability table is the payoff of the whole registry. Everywhere else a
+   capability greys ONE row and says why; here they are all on screen at once,
+   which is how you answer "what can this thing actually do" without clicking
+   nineteen pages to find out. */
+async function pgHarness(nav){
+  const hid=HARNESS_HID,row=harnessById(hid)||{caps:{}};
+  const d=await api('/api/harness/setup?'+qs({hid}));
+  const caps=Object.entries(d.caps||row.caps||{})
+    .sort((a,b)=>(a[1][0]?1:0)-(b[1][0]?1:0)||a[0].localeCompare(b[0]));
+  const capRows=caps.map(([k,[ok,why]])=>
+    `<tr><td>${esc((d.cap_labels||{})[k]||k)}</td>
+      <td>${ok?'<span class="tag ok">yes</span>':'<span class="tag">no</span>'}</td>
+      <td style="color:var(--dim)">${esc(why||'')}</td></tr>`).join('');
+  const upd=d.latest&&d.latest!==d.version;
+  const notes=(d.notes||[]).map(n=>`<div class="fsub">${esc(n)}</div>`).join('');
+  if(!shell(nav,`
+    <div class="card"><h3>${esc(d.label||hid)}
+      ${d.available?'<span class="tag ok">installed</span>'
+                   :'<span class="tag warn">not installed</span>'}
+      <span class="sp"></span>
+      ${upd?`<button class="btn sm" onclick="harnessUpdate(${hesc(hid)})"
+        title="Runs this CLI's own updater in a terminal.">${ic('refresh')} Update to ${esc(d.latest)}</button>`:''}</h3>
+      ${d.available?`<table class="tbl">
+        <tr><td>version</td><td class="num">${esc(d.version||'—')}</td></tr>
+        <tr><td>latest</td><td class="num">${esc(d.latest||'—')}</td></tr>
+        <tr><td>signed in</td><td>${d.auth==='ok'?'yes':'no'}</td></tr>
+        <tr><td>binary</td><td><code>${esc(d.exe||'—')}</code></td></tr>
+        <tr><td>home</td><td><code>${esc(d.home||'—')}</code></td></tr>
+        <tr><td>instructions file</td><td><code>${esc(d.instructions_file||'')}</code></td></tr>
+      </table>${notes}`
+      :`<p class="secthint">archeus looks for <code>${esc((d.exe_names||[]).join('</code>, <code>'))}</code>
+         on PATH and in its usual install directory. Install it, or set the path
+         on <span class="hlink" onclick="go('paths')">Paths &amp; limits</span>.</p>`}</div>
+    <div class="card"><h3>What archeus can do here</h3>
+      <p class="secthint">Every surface in the app, and where this CLI has no
+        equivalent, the reason. A gap is the tool's shape, not a missing feature.</p>
+      <table class="tbl"><tr><th>surface</th><th>works</th><th>why not</th></tr>
+        ${capRows}</table></div>`))return;
+}
+async function harnessUpdate(hid){
+  const r=await post('/api/harness/update',{hid});
+  toast(r.ok?'Update started in a new terminal window'
+            :'Update failed: '+(r.error||'unknown'),r.ok?'ok':'err');
+}
 /* Claude Code's OWN state: what it records about itself, which archeus had
    never opened. Read-only except the settings editor and the disk sweep, and
    the sweep reports before it ever deletes. */
@@ -3798,9 +4022,47 @@ async function phSearch(){
     :'<div class="empty">No matching prompts.</div>';
 }
 
+/* ── which CLI's spend you are looking at ─────────────────────────────────────
+   '' is ALL of them, and it is the default: the question "what did today cost"
+   is asked of the machine, not of one binary. The strip narrows it, and the
+   narrowing is real — the daily and per-project cards are counted out of the
+   transcripts each CLI wrote, which `_entries()` already walks for every
+   harness. Only the plan rail is one harness's, and that is a capability
+   (`plan_limits`), not a reason to switch the whole page off. */
+let USAGE_HID='';
+const harnessById=hid=>(ST.harnesses||[]).find(h=>h.id===hid)||null;
+/* Every harness worth a tab: installed, and not switched off in settings.
+   `available` is `harnesses.exe()` server-side, so a CLI the machine does not
+   have never appears — a tab that can only ever be empty is chrome. */
+function usableHarnesses(){
+  const off=new Set(ST.harnesses_disabled||[]);
+  return (ST.harnesses||[]).filter(h=>h.available&&!off.has(h.id));
+}
+/* `cap` narrows the strip to CLIs that can answer the page it sits on, and
+   `allLabel` is what the leftmost tab says — or '' for a page where "all of
+   them at once" is not a thing you can look at.
+
+   The filter is not cosmetic. Usage counts tokens, which every CLI records, so
+   its strip is every CLI. Plugins reads marketplaces, which pi has none of — an
+   unfiltered strip would offer a tab whose only possible content is an empty
+   list, and the page would show it as "no plugins installed" rather than as the
+   structural gap the capability table already has a sentence for. */
+function harnessStrip(cur,onpick,cap,allLabel){
+  const hs=usableHarnesses().filter(h=>!cap||capOf(cap,(h.homes||[''])[0]).ok);
+  // one CLI is not a choice, exactly as the launch modal's target strip decides
+  if(hs.length<2)return '';
+  return `<div class="tabs mtabs">`
+    +(allLabel===''?'':`<div class="tab${cur?'':' sel'}" onclick="${onpick}('')">${esc(allLabel||'All')}</div>`)
+    +hs.map(h=>`<div class="tab${h.id===cur?' sel':''}"
+        onclick="${onpick}(${hesc(h.id)})">${esc(h.label)}</div>`).join('')
+    +`</div>`;
+}
+function pickUsageHarness(hid){USAGE_HID=hid;drawPage('usage');}
 async function pgUsage(nav){
+  const hid=USAGE_HID,q=hid?'&hid='+encodeURIComponent(hid):'';
   const [plan,daily,projects]=await Promise.all([
-    api('/api/usage/plan'),api('/api/usage/daily?days=14'),api('/api/usage/projects')]);
+    api('/api/usage/plan'),api('/api/usage/daily?days=14'+q),
+    api('/api/usage/projects?'+q.slice(1))]);
   const planRows=(plan.accounts||[]).map(a=>{
     const wins=(a.windows||[]).map(w=>{
       const hot=w.pct>=80;
@@ -3821,10 +4083,18 @@ async function pgUsage(nav){
   const pRows=(projects.projects||[]).map(p=>`
     <tr><td>${esc(p.name)}</td><td class="num">${p.sessions}</td><td class="num">${p.msgs}</td>
     <td class="num">${p.usage.in}</td><td class="num">${p.usage.out}</td>
-    <td class="num">${p.exact?'':'~'}$${p.cost.toFixed(2)}</td></tr>`).join('');
+    <td class="num">${costCell(p.cost,p.exact)}</td></tr>`).join('');
   const total=(projects.projects||[]).reduce((a,p)=>a+p.cost,0);
+  /* The plan rail is the ONE card that is Anthropic's. Greyed with its reason
+     rather than dropped: a card that vanishes teaches nothing, and the reason
+     ("Codex reports its own limits in `codex doctor`") is where you go next. */
+  const planCap=hid?((harnessById(hid)||{}).caps||{}).plan_limits:null;
+  const planCard=planCap&&!planCap[0]
+    ?capCard('plan_limits',planCap[1])
+    :`<div class="card"><h3>Plan usage by account</h3>${planRows||'<div style="color:var(--dim)">checking…</div>'}</div>`;
   if(!shell(nav,`
-    <div class="card"><h3>Plan usage by account</h3>${planRows||'<div style="color:var(--dim)">checking…</div>'}</div>
+    ${harnessStrip(hid,'pickUsageHarness','usage','All')}
+    ${planCard}
     <div class="card"><h3>Daily tokens (14 days)</h3>
       ${INST.html('spark','daily',{fmt:'tok',unit:'peak day'})}
       ${dRows}</div>
@@ -4423,7 +4693,9 @@ async function pgPlugins(nav){
     return miss.length?`<span class="tag warn" title="missing on ${esc(miss.join(', '))}">${accts.length-miss.length}/${accts.length} accounts</span>`
       :`<span class="tag ok" title="on ${esc((names||[]).join(', '))}">all ${accts.length} accounts</span>`;
   };
-  const picker=accts.length>1?`<div class="chips" style="margin-bottom:10px">
+  // the account chips are CLAUDE CODE's — a Codex home is one login, so under
+  // that tab there is nothing for them to pick between
+  const picker=(accts.length>1&&!d.readonly)?`<div class="chips" style="margin-bottom:10px">
       ${accts.map(a=>`<span class="chip${(PLACCT||'')===(a.dir||'')?' on':''}"
         onclick='plAcct(${hesc(a.dir||'')})'
         title="${a.plugins} plugin(s), ${a.marketplaces} marketplace(s)">${esc(a.name)} <b>${a.plugins}</b></span>`).join('')}
@@ -4433,8 +4705,9 @@ async function pgPlugins(nav){
       <b style="min-width:200px">${esc(m.name)}</b>
       <span class="tag">${esc(m.source||'?')}</span>
       ${accts.length>1?spread(m.on_accounts):''}
-      <span style="flex:1;color:var(--dim);font-size:12px">${esc(m.repo||m.path)}</span>
-      <button class="btn sm danger" onclick='mktRemove(${hesc(m.name)})'>${ic('del')}</button>
+      <span style="flex:1;color:var(--dim);font-size:12px">${esc(m.repo||m.path||'')}</span>
+      ${d.readonly?`<span class="tag">${m.plugins||0} plugin(s)</span>`
+        :`<button class="btn sm danger" onclick='mktRemove(${hesc(m.name)})'>${ic('del')}</button>`}
     </div>`).join('');
   const vrows={};((V||{}).plugins||[]).forEach(r=>{vrows[r.key]=r;});
   const plugs=(d.plugins||[]).map(p=>{
@@ -4453,7 +4726,8 @@ async function pgPlugins(nav){
       ${(accts.length>1&&(p.on_accounts||[]).length<accts.length)
         ?`<button class="btn sm pri" onclick='pluginSpread(${hesc(p.name)},${hesc(p.marketplace)})' title="Install it into the accounts that do not have it">Install everywhere</button>`:''}
       ${vr.outdated?`<button class="btn sm pri" onclick='pluginUpdate(${hesc(p.key)})'>Update</button>`:''}
-      <button class="btn sm danger" onclick='pluginRemove(${hesc(p.key)})'>${ic('del')}</button>
+      ${d.readonly?`<span class="tag">${p.installed?'installed':'available'}</span>`
+        :`<button class="btn sm danger" onclick='pluginRemove(${hesc(p.key)})'>${ic('del')}</button>`}
     </div>`;}).join('');
   /* The three version cards used to open this page. They are on
      Settings ▸ Updates now, with the schedule that checks for them — "what is
@@ -4461,15 +4735,26 @@ async function pgPlugins(nav){
      look", and this page is about marketplaces and what came from them. The
      `/api/versions` fetch stays: a plugin row needs its marketplace's version
      to say `update available`. */
+  /* Codex has marketplaces too — `codex plugin list` reads every one, and its
+     manifests sit at `.agents/plugins/marketplace.json`, the cross-CLI
+     convention archeus already writes project skills into. So this page is
+     shared, and the strip is how you get to the other store. Read-only there:
+     installing mutates another tool's config through a resolver archeus does
+     not own, which is the same line `_claude_cli` already draws for Claude
+     Code's own files. */
+  const ro=!!d.readonly;
   shell(nav,`
+    ${harnessStrip(PLHID||'claude','pickPluginHarness','plugins','')}
     <div class="card wide" id="pluginCard"><h3>${ic('folder')} Installed plugins</h3>
       <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">A plugin bundles skills, subagents, commands, hooks and MCP servers together. The tags say what each one actually placed on disk — the same information the Skills, Agents and Hooks pages now use to mark which of their rows came from a bundle rather than from you.${accts.length>1?' The <b>accounts</b> tag says how many of your logins have it: a plugin is a property of you, not of whichever account happened to be active when you installed it.':''}</p>
       ${picker}
       ${plugs||'<div style="color:var(--dim)">No plugins installed.</div>'}</div>
     <div class="card wide"><h3>Marketplaces <span class="sp"></span>
-      <button class="btn sm" onclick="mktRefresh()">${ic('refresh')} Refresh</button>
-      <button class="btn sm pri" onclick="mktAdd()">${ic('add')} Add marketplace</button></h3>
-      <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">A repo, a URL or a local path. Adding, installing and removing are delegated to the <code>claude</code> CLI: these files belong to Claude Code, the format has already changed once, and writing them directly would corrupt the state of the tool archeus exists to support.</p>
+      ${ro?'':`<button class="btn sm" onclick="mktRefresh()">${ic('refresh')} Refresh</button>
+      <button class="btn sm pri" onclick="mktAdd()">${ic('add')} Add marketplace</button>`}</h3>
+      <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">${ro
+        ?'Read-only here. archeus lists what <code>codex plugin</code> reports and changes none of it: installing goes through a marketplace resolver archeus does not own, and a half-written entry would break the tool rather than this page.'
+        :'A repo, a URL or a local path. Adding, installing and removing are delegated to the <code>claude</code> CLI: these files belong to Claude Code, the format has already changed once, and writing them directly would corrupt the state of the tool archeus exists to support.'}</p>
       ${mkts||'<div style="color:var(--dim)">No marketplaces registered.</div>'}</div>
     <div class="card"><h3>Where they live</h3>
       <div class="kv"><span>plugins dir</span><code>${esc(d.dir||'')}</code></div>
@@ -4579,10 +4864,39 @@ function verCard(V){
    card that is not on screen is exactly the cost the settings split removed. */
 async function drawVersionCards(refresh){
   if(!$('#verMount'))return;
-  const V=await api('/api/versions'+(refresh?'?refresh=1':'')).catch(()=>({}));
+  /* The other CLIs' versions come from their own `doctor`, one request each,
+     and they are fetched WITH the Claude one rather than after it: three cards
+     that appear in sequence read as three page loads. A CLI that is not
+     installed answers with blanks and gets no card — this page is about what
+     you have, and "not installed" is the Harnesses page's sentence to say. */
+  const others=(ST.harnesses||[]).filter(h=>h.id!=='claude'&&h.available);
+  const [V,...docs]=await Promise.all([
+    api('/api/versions'+(refresh?'?refresh=1':'')).catch(()=>({})),
+    ...others.map(h=>api('/api/harness/doctor?'+qs({hid:h.id})).catch(()=>({})))]);
   VER=V||{};
   const host=$('#verMount');if(!host)return;      // navigated away mid-fetch
-  host.innerHTML=selfCard(V)+verCard(V)+modelCard(V);
+  host.innerHTML=selfCard(V)+verCard(V)
+    +others.map((h,i)=>harnessVerCard(h,docs[i]||{})).join('')+modelCard(V);
+}
+/* One CLI's version card, the shape `verCard` has for Claude Code, minus
+   everything archeus cannot do here: it does not install a chosen version and
+   it does not list the releases, because `codex update` and `pi update` take no
+   version argument. What it does have is the same two facts that matter —
+   what is installed, and whether something newer exists. */
+function harnessVerCard(h,d){
+  const upd=d.latest&&d.latest!==d.version;
+  return `<div class="card"><h3>${esc(h.label)}
+    ${upd?'<span class="tag warn">update</span>':'<span class="tag ok">current</span>'}
+    <span class="sp"></span>
+    ${upd?`<button class="btn sm" onclick="harnessUpdate(${hesc(h.id)})"
+      >${ic('refresh')} Update</button>`:''}</h3>
+    <div class="kpi"><div><span class="kl">installed</span>
+      <span class="kv2">${esc(d.version||'—')}</span></div>
+      <div><span class="kl">latest</span>
+      <span class="kv2">${esc(d.latest||'—')}</span></div></div>
+    <p class="secthint">${esc(h.label)} updates itself — archeus runs
+      <code>${esc(h.id)} update</code> in a terminal you can watch, and reads the
+      version back from the CLI rather than from a registry.</p></div>`;
 }
 async function verCheck(){
   const V=await api('/api/versions?refresh=1');VER=V;
@@ -4609,6 +4923,17 @@ function mktRefresh(){
   inlineJob('#pluginCard','marketplace_refresh',{},{redraw:()=>drawPage('plugins')});
 }
 function plAcct(dir){PLACCT=dir;drawPage('plugins');}
+/* Which CLI's plugin store the page is reading. It resolves to a HOME, which is
+   what `cfgdir` has always meant and what the account chips already set — so
+   this strip needs no new field on the endpoint, exactly as the launch modal's
+   target strip needed none on /api/launch. '' is Claude Code, whose home the
+   account chips then choose between. */
+let PLHID='';
+function pickPluginHarness(hid){
+  PLHID=hid;
+  PLACCT=hid?((harnessById(hid)||{}).homes||[''])[0]||'':'';
+  drawPage('plugins');
+}
 /* Adding registers the marketplace on EVERY account — a source you trust is a
    property of you. Removing acts on the one account on screen, because deleting
    from four logins you did not name is a surprise, not a fan-out. */
@@ -5437,11 +5762,13 @@ async function pgHelp(nav){
     `<div class="card"><h3>${ic(icon)} ${esc(grp)}</h3>
      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">${esc(blurb)}</p>
      ${tbl('page',ids.map(pageRow).join(''))}</div>`).join('');
-  // the two pages that are deliberately in no section still have to appear
-  // here, and the row says where they ARE reached — a page missing from its own
-  // help page is how "there is no search any more" gets believed
+  // the pages deliberately in no section still have to appear here, and the row
+  // says where they ARE reached — a page missing from its own help page is how
+  // "there is no search any more" gets believed. It was two; it is seven, since
+  // five screens that only one CLI has moved behind the Harnesses page rather
+  // than sitting greyed in a sidebar for the two that do not.
   const off=`<div class="card"><h3>${ic('search')} Not in the sidebar</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Two screens have a better door than a nav row.</p>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:10px">${Object.keys(OFFNAV).length} screens have a better door than a nav row.</p>
     <table class="tbl"><tr><th>page</th><th>where it is</th></tr>
     ${Object.entries(OFFNAV).map(([id,where])=>
       `<tr data-help-row><td style="white-space:nowrap;color:var(--cyan)">${esc(navLabel(id))}</td><td>${esc(where)}</td></tr>`).join('')}
@@ -5483,14 +5810,27 @@ async function pgHelp(nav){
    control it touches is looked up and guarded — one that is not on this
    sub-page is simply not written to. Splitting the WIRING as well would have
    been five copies of the same twenty lines. */
+const PVINTRO=`<h3>${ic('plug')} Pick a backend</h3>
+  <p class="secthint">Choose one on the left to edit its URL, model, gateway and failover list — or add
+  another. With none configured every session runs on your Anthropic account, which is the default and
+  costs nothing to keep.</p>`;
 const SETTINGS_CARDS={
   settings:o=>`<div class="card"><h3>${ic('bolt')} Defaults</h3>
     <p class="secthint">What the launch modal opens on — you can still change any of it per session, and nothing here touches a session that is already running.</p>
+    ${fld('sTargetDef','Starts on <span>— which CLI or backend a new session opens on</span>')}
     ${fld('sEff','Effort')}${fld('sMod','Model')}${fld('sPerm','Permission mode')}
     ${fld('sThink','Thinking cap')}${fld('sSub','Subagent model')}
     ${fld('sShell','GUI window')}
     <div class="chips" id="sTheme" style="display:none"></div>
     <div class="mrow"><button class="btn" onclick="setSave()">Save</button></div></div>
+  <div class="card"><h3>${ic('group')} Which tools archeus shows</h3>
+    <p class="secthint">archeus found these on this machine. Turning one off hides it
+      <b>everywhere</b> — the launch tabs, the project list, the sessions list and the
+      usage table — not just here, and it stops getting a memory block written for it.
+      Nothing is uninstalled and nothing on disk is touched; switch it back on and its
+      projects come straight back.</p>
+    <div id="sHarnList"></div>
+    <p class="secthint" id="sHarnNote"></p></div>
   <div class="card"><h3>${ic('map')} Plan → Execute</h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Model that writes the plan (runs once, headless) vs the model that executes it interactively. Keep the plan model accurate — the expensive reasoning happens once.</p>
     ${fld('sPlanMod','Plan model')}${fld('sExecMod','Execute model')}
@@ -5540,6 +5880,16 @@ const SETTINGS_CARDS={
       <input id="sEditor" placeholder="auto-detect (Notepad++, VS Code, notepad)"></div>
     <div class="fld"><label>claude.exe <span style="color:var(--dim2)">— the Claude Code binary</span></label>
       <input id="sClaudeExe" placeholder="auto-detect (~/.local/bin, then PATH)"></div>
+    <!-- One field per CLI, never a pair sharing a row: two binaries are two
+         values, which is the rule test_two_fields_share_a_row_only_when_they_
+         are_one_value states. Both are looked up the way claude.exe is — the
+         descriptor's install globs, then PATH — so blank is the normal state
+         and this is for an install those globs cannot reach.
+         NOTE no backticks in here: this comment is inside a template literal. -->
+    <div class="fld"><label>codex.exe <span style="color:var(--dim2)">— the Codex binary</span></label>
+      <input id="sCodexExe" placeholder="auto-detect (its hashed install dir, then PATH)"></div>
+    <div class="fld"><label>pi <span style="color:var(--dim2)">— the pi binary</span></label>
+      <input id="sPiExe" placeholder="auto-detect (npm global bin, then PATH)"></div>
     <div class="fld"><label>CLAUDE_CONFIG_DIR <span style="color:var(--dim2)">— which account is active</span></label>
       <input id="sCfgDir" placeholder="default: ~/.claude"></div>
     <div class="fld"><label>Budget cap <span style="color:var(--dim2)">— $ per headless call, 0 = no cap</span></label>
@@ -5576,60 +5926,24 @@ const SETTINGS_CARDS={
       <input id="sOtelHdr" placeholder="leave blank for none"></div>
     <div class="mrow"><button class="btn" onclick="setOtelSave()">Save</button></div></div>
 `,
-  models:o=>`  <div class="card"><h3>${ic('plug')} Free execution — OmniRoute <span class="sp"></span>
-      <span id="orDot" class="tag">checking…</span></h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Route the <b>execute</b> half of Plan → Execute through a local
+  /* A LIST, because there is more than one backend now. Same shape the Accounts
+     page uses and for the same reason — a named connection you switch between —
+     so the detail pane is built in JS (pvSel) rather than being a sixth static
+     template that would have to know every field twice. */
+  models:o=>`<div class="card"><h3>${ic('plug')} Model providers
+    <span class="tag" id="pvCount"></span><span class="sp"></span>
+    <button class="btn sm" onclick="pvAdd()">${ic('add')} Add provider</button></h3>
+    <p class="secthint">Run sessions against something other than your Anthropic account — a local
+      <b>Ollama / llama.cpp / vLLM</b> server, <b>OpenRouter</b>, a self-hosted box, or a local
       <a href="https://github.com/diegosouzapw/OmniRoute" target="_blank" rel="noopener"
-         style="color:var(--cyan);text-decoration:none">OmniRoute</a> proxy — auto-starts in the background the
-      moment a Plan → Execute task runs, no terminal to babysit. Planning always stays on your real Anthropic
-      account; only execution runs through it, and it's still a real, full <code>claude</code> session with this
-      project's usual agents/skills/system-prompt.</p>
-    <p id="orNeedsProvider" style="color:var(--warn);font-size:12px;margin-bottom:8px;display:none">
-      OmniRoute's own per-connection status shows nothing passing below — but that check can be stale/wrong
-      (confirmed: it reported a genuinely working no-auth connection as broken). Use <b>Send a live test</b> to know
-      for real. If that also fails: adding a provider is dashboard-only right now (OmniRoute's CLI add commands
-      crash on this platform — confirmed upstream bug). First run <code>omniroute setup --password &lt;yours&gt;</code>
-      once if you haven't set a dashboard password, then open the dashboard below → Providers → Add Provider → try
-      a free one (Pollinations, Puter, DuckDuckGo AI Chat…).</p>
-    <div id="orConns" style="margin-bottom:8px"></div>
-    <div class="grid2">
-    <div class="fld"><label>Base URL</label><input id="orUrl" placeholder="http://localhost:20128"></div>
-    <div class="fld"><label>API key</label><input id="orKey" type="password"
-        placeholder="${ST.omniroute_has_key?'set — leave blank to keep':'leave blank if none needed'}"></div>
-    </div>
-    <div id="orModWrap"></div>
-    <div id="orLiveResult" style="color:var(--dim);font-size:12.5px;margin:4px 0"></div>
-    <div class="mrow">
-      <button class="btn sm" onclick="orRefresh()">${ic('refresh')} Refresh</button>
-      <button class="btn sm" onclick="orLiveTest()">${ic('bolt')} Send a live test</button>
-      <button class="btn sm" onclick="orProbe()" title="Sends a few real requests to find working models. Each one is a billed request — on free tiers repeated runs will exhaust the key, so this stops as soon as it finds enough. The proxy then refines the list from real sessions at no cost.">${ic('check')} Find working models</button>
-      <button class="btn sm" onclick="orDashboard()">${ic('ext')} Open OmniRoute dashboard</button>
-      <span class="sp"></span>
-      <button class="btn" onclick="orSave()">Save</button></div>
-    <div id="orProbeOut" style="font-size:12.5px;margin-top:6px"></div>
-
-    <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
-    <h3 style="font-size:14px;margin:0 0 6px">${ic('refresh')} Model failover
-      <span class="sp"></span><span id="foDot" class="tag">off</span></h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code retries a failed turn against the
-      <b>same</b> model ~10× with backoff, so a model that has been dropped upstream (<code>401 not supported</code>)
-      or whose provider rejects a tool schema (<code>400</code>) makes a session look frozen. List fallback models
-      below and archeus runs its own local proxy that retries the <b>next</b> one whenever a turn fails before any
-      output reaches the session. Leave the list empty to disable.</p>
-    <div class="fld"><label>Fallback models <span style="color:var(--dim2)">— one per line, tried in order after the model you selected</span></label>
-      <textarea id="foModels" rows="4" spellcheck="false"
-        placeholder="auto/coding:free&#10;auto/best-coding&#10;auto/fast"></textarea></div>
-    <div class="fld"><label>Proxy port</label><input id="foPort" placeholder="20129"></div>
-    <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-      <input type="checkbox" id="foQuiet"> Hide the proxy console window</label>
-        <div style="color:var(--dim);font-size:12px;margin-top:4px">The window logs every turn — which model was
-          tried, what failed, what served it. It doubles as live plan-execution progress. Hiding it keeps the log
-          at <code>~/.claude/failover.log</code>.</div></div>
-    <div id="foResult" style="color:var(--dim);font-size:12.5px;margin:4px 0"></div>
-    <div class="mrow">
-      <button class="btn sm" onclick="foStop()">${ic('close')} Stop proxy</button>
-      <span class="sp"></span>
-      <button class="btn" onclick="foSave()">Save failover</button></div></div>
+         style="color:var(--cyan);text-decoration:none">OmniRoute</a> proxy. Each one keeps its own
+      URL, key, model and failover list, and you pick which to use when you start a session.
+      A backend must speak <code>POST /v1/messages</code>.
+      <a href="#" onclick="go('helpp');return false" style="color:var(--cyan);text-decoration:none">What stops working</a>.</p>
+    <div class="tbody" id="pvList"><span class="spin"></span></div></div>
+  <!-- painted, not empty: prune() removes a card with no content after every
+       paint, so an empty detail pane is deleted before pvDetail() can fill it -->
+  <div class="card tdet" id="pvDet">${PVINTRO}</div>
 `,
   /* `#verMount` is `display:contents` (app.css), so the three cards it holds
      are laid out by `.form` as if they were written here — which is what lets
@@ -5672,6 +5986,10 @@ async function pgSettings(nav,part='settings'){
   const mq=$('#mqStart');
   if(mq)mq.onclick=()=>inlineJob('#jban','memory_queue',{},
     {label:'Building modules'});
+  if($('#sTargetDef'))
+    chipsFill($('#sTargetDef'),targets().map(t=>t.key),targets().map(t=>t.label),
+              ST.launch_default||'claude');
+  drawHarnessToggles();
   chipsFill($('#sEff'),o.efforts,null,ST.defaults.effort);
   chipsFill($('#sMod'),o.models,o.model_labels,ST.defaults.model);
   chipsFill($('#sPerm'),o.perms,o.perm_labels,ST.defaults.perm);
@@ -5691,6 +6009,8 @@ async function pgSettings(nav,part='settings'){
       ?'set — leave blank to keep, or type to replace':'leave blank for none';}
   if($('#sEditor'))$('#sEditor').value=ST.editor||'';
   if($('#sClaudeExe'))$('#sClaudeExe').value=ST.claude_exe||'';
+  if($('#sCodexExe'))$('#sCodexExe').value=ST.codex_exe||'';
+  if($('#sPiExe'))$('#sPiExe').value=ST.pi_exe||'';
   if($('#sCfgDir'))$('#sCfgDir').value=ST.claude_config_dir||'';
   if($('#sBudget'))$('#sBudget').value=ST.headless_budget_usd||0;
   if($('#sMemCalls'))$('#sMemCalls').value=ST.memory_max_calls||0;
@@ -5719,19 +6039,17 @@ async function pgSettings(nav,part='settings'){
   drawThemeGallery();
   chipsFill($('#sPlanMod'),o.models,o.model_labels,ST.plan_model||'');
   chipsFill($('#sExecMod'),o.models,o.model_labels,ST.exec_model||'');
-  // Guarded by their own card, not written blind: these four are the only
-  // reads on this page that were not, and with the page split into five parts
-  // four of them are absent four times out of five. The three calls below each
-  // make a request, so they are gated on their host too — a fetch for a card
-  // that is not on screen is the cost the split was supposed to remove.
-  if($('#orUrl')){
-    $('#orUrl').value=ST.omniroute_base_url||'';
-    $('#foModels').value=(ST.failover_models||[]).join('\n');
-    $('#foPort').value=ST.failover_port||20129;
-    $('#foQuiet').checked=!!ST.failover_quiet;
-    foDot();
-    orRefresh();
-  }
+  // Guarded by their own card, not written blind: these are the only reads on
+  // this page that were not, and with the page split into five parts they are
+  // absent four times out of five. The calls below each make a request, so they
+  // are gated on their host too — a fetch for a card that is not on screen is
+  // the cost the split was supposed to remove.
+  //
+  // The provider card fills itself from ST.providers and renders its own
+  // detail pane, so the gate is the list it draws into. Everything inside the
+  // pane is written by pvDetail(), which is also what re-wires its chip groups
+  // after each render.
+  if($('#pvList'))drawProviders();
   if($('#amList'))drawAutoMemList();
   if($('#verMount'))drawVersionCards();
 }
@@ -5983,15 +6301,276 @@ async function setPlanExecSave(){
    exhausted — server-side, invisible to the claude client. That's "auto"
    below; specific model ids are only for manually pinning one. ── */
 const OR_AUTO='auto/coding';
+
+/* ── model providers: a list, and the one currently open ──
+   PV is the profile being edited. Held rather than re-read from ST on every
+   keystroke because the form is a draft until Save — and read back from the
+   server after, so what the card shows is what the daemons will load. */
+let PV=null;
+function pvList(){return ST.providers||[];}
+function pvRow(p){
+  const act=p.id===ST.provider_active, cur=PV&&PV.id===p.id;
+  const tags=[act?'<span class="tag ok">default</span>':'',
+    p.id===ST.headless_provider_id?'<span class="tag">archeus’s own calls</span>':'',
+    (p.failover_models||[]).length?`<span class="tag">${(p.failover_models||[]).length} fallback${(p.failover_models||[]).length>1?'s':''}</span>`:''
+  ].filter(Boolean).join(' ');
+  return `<div class="hrow${cur?' on':''}" onclick="pvSel(${hesc(p.id)})">
+    <span class="dot" style="background:${act?'var(--ok)':'var(--dim2)'}"></span>
+    <span class="info">${esc(p.name||'(unnamed)')}
+      <span style="color:var(--dim)">${esc(p.kind==='omniroute'?'OmniRoute':(p.base_url||''))}</span></span>
+    ${tags}</div>`;
+}
+function drawProviders(){
+  const box=$('#pvList');if(!box)return;
+  const list=pvList();
+  const n=$('#pvCount');if(n)n.textContent=list.length;
+  box.innerHTML=list.length?list.map(pvRow).join('')
+    :'<div class="empty">No provider yet — every session runs on your Anthropic account.</div>';
+  /* Drop the selection only when the thing it POINTED AT is gone — a draft
+     from pvAdd() has id:'' by design and matched nothing, so the old test threw
+     away the form it had just opened. And arrive on something live: landing on
+     "no provider selected" beside a list of them makes the page look inert and
+     leaves every control on it absent. */
+  if(PV&&PV.id&&!list.some(p=>p.id===PV.id))PV=null;
+  pvDetail();
+}
+function pvSel(id){PV=pvList().find(p=>p.id===id)||null;drawProviders();orRefresh();}
+function pvAdd(){
+  /* A draft with no id: /api/provider/save creates one, and only then does it
+     get a port. Nothing is written until Save, so an abandoned Add leaves
+     nothing behind. */
+  PV={id:'',name:'',kind:'generic',base_url:'',model:'',context_tokens:0,
+      tool_search:false,gateway_kind:'',gateway_target_base_url:'',
+      failover_models:[],failover_quiet:false,api_key_set:false,
+      gateway_target_api_key_set:false};
+  drawProviders();
+}
+function pvDetail(){
+  const d=$('#pvDet');if(!d)return;
+  if(!PV){
+    d.innerHTML=`<h3>${ic('plug')} No provider selected</h3>
+      <p class="secthint">Pick one on the left to edit it, or add another. With none configured
+      every session runs on your Anthropic account, which is the default and costs nothing to keep.</p>`;
+    return;
+  }
+  const om=PV.kind==='omniroute';
+  d.innerHTML=`<h3>${ic('plug')} ${esc(PV.name||'New provider')}
+      <span class="sp"></span><span id="orDot" class="tag">${PV.id?'checking…':'not saved yet'}</span></h3>
+    <div class="fld"><label>Name</label><input id="pvName" placeholder="e.g. vLLM box"
+      value="${esc(PV.name||'')}"></div>
+    <div class="fld"><label>Backend</label>
+      <div class="chips" id="pvKind">
+        <span class="chip${om?'':' on'}" data-v="generic">Anthropic-shaped server</span>
+        <span class="chip${om?' on':''}" data-v="omniroute">OmniRoute</span></div></div>
+    <div class="grid2">
+      <div class="fld"><label>Base URL</label><input id="orUrl"
+        placeholder="${om?'http://localhost:20128':'http://localhost:8000'}"
+        value="${esc(PV.base_url||'')}"></div>
+      <div class="fld"><label>API key</label><input id="orKey" type="password"
+        placeholder="${PV.api_key_set?'set — leave blank to keep':'leave blank if none needed'}"></div>
+    </div>
+    <div id="orModWrap"></div>
+    <div class="fld"><label>Context window (tokens) <span style="color:var(--dim2)">— used only to warn you before a launch. Not probed: most <code>/v1/models</code> responses omit it, and a number made up here is worse than none.</span></label>
+      <input id="pvCtx" type="number" min="0" placeholder="0 = unknown"
+        value="${PV.context_tokens||''}"></div>
+    <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="pvTools" style="width:auto;margin:0"${PV.tool_search?' checked':''}> Re-enable MCP tool search</label>
+      <div style="color:var(--dim);font-size:12px;margin-top:4px">Claude Code turns tool search off on any
+        non-Anthropic endpoint. Re-enabling it only works if your backend forwards
+        <code>tool_reference</code> blocks — if it does not, the turn fails outright, which is why this is
+        your assertion rather than something a backend setting implies.</div></div>
+
+    <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
+    <div class="fld"><label>Translating gateway <span style="color:var(--dim);font-weight:normal">— for a backend that only speaks OpenAI Chat Completions (LM Studio, most bare local servers)</span></label>
+      <div class="chips" id="gwKind">
+        <span class="chip${PV.gateway_kind?'':' on'}" data-v="">Off</span>
+        <span class="chip${PV.gateway_kind?' on':''}" data-v="openai">OpenAI-shaped upstream</span></div></div>
+    <div class="grid2">
+      <div class="fld"><label>Gateway target URL</label><input id="gwUrl"
+        placeholder="http://localhost:1234/v1" value="${esc(PV.gateway_target_base_url||'')}"></div>
+      <div class="fld"><label>Gateway target key</label><input id="gwKey" type="password"
+        placeholder="${PV.gateway_target_api_key_set?'set — leave blank to keep':'leave blank if none needed'}"></div>
+    </div>
+    <div id="gwRow" style="display:none;align-items:center;gap:8px;margin:2px 0 8px">
+      <span id="gwDot" class="tag">—</span>
+      <button class="btn sm" onclick="gwStart()">${ic('bolt')} Start now</button>
+      <button class="btn sm" onclick="gwStop()">${ic('x')} Stop</button>
+      <span style="color:var(--dim);font-size:12px">Runs in its own console window — that window is the log.</span>
+    </div>
+
+    <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
+    <h3 style="font-size:14px;margin:0 0 6px">${ic('refresh')} Model failover
+      <span class="sp"></span><span id="foDot" class="tag">off</span></h3>
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Claude Code retries a failed turn against the
+      <b>same</b> model ~10× with backoff, so a model dropped upstream (<code>401 not supported</code>) or whose
+      provider rejects a tool schema (<code>400</code>) makes a session look frozen. archeus runs a proxy
+      <b>for this backend</b> that retries the <b>next</b> candidate whenever a turn fails before any output
+      reaches the session. The ids below only mean anything to this backend, which is why the list lives here
+      and not in one global setting.</p>
+    <div class="fld"><label>Fallback models <span style="color:var(--dim2)">— one per line, tried in order after the model you selected</span></label>
+      <textarea id="foModels" rows="3" spellcheck="false">${esc((PV.failover_models||[]).join('\n'))}</textarea></div>
+    <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="foQuiet"${PV.failover_quiet?' checked':''}> Hide the proxy console window</label>
+      <div style="color:var(--dim);font-size:12px;margin-top:4px">The window logs every turn — which model was
+        tried, what failed, what served it. Hiding it keeps the log at <code>~/.claude/failover.log</code>.
+        ${PV.port?`This backend uses port <code>${PV.port}</code> (its gateway: <code>${PV.port+1}</code>).`:''}</div></div>
+
+    <div style="border-top:1px solid var(--line);margin:14px 0 10px"></div>
+    <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="pvDefault" style="width:auto;margin:0"${PV.id===ST.provider_active?' checked':''}> Use as the default backend</label>
+      <div style="color:var(--dim);font-size:12px;margin-top:4px">What Plan → Execute and the failover screen
+        act on when nothing names a backend. A session still picks its own at launch.</div></div>
+    <div class="fld"><label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="pvHeadless" style="width:auto;margin:0"${PV.id===ST.headless_provider_id?' checked':''}> Run archeus’s own calls here</label>
+      <div style="color:var(--dim);font-size:12px;margin-top:4px">Memory extraction, lessons, code review and
+        the CLAUDE.md / agent / skill / hook generators run on Anthropic unless you say otherwise — they are
+        unattended, so moving them costs money you did not watch being spent. Turned on, they use this
+        backend’s model instead of <code>${esc(ST.extract_model||'the economy model')}</code>.</div></div>
+
+    <p id="orNeedsProvider" class="orOnly" style="color:var(--warn);font-size:12px;margin-bottom:8px;display:none">
+      OmniRoute’s own per-connection status shows nothing passing below — but that check can be stale/wrong
+      (confirmed: it reported a genuinely working no-auth connection as broken). Use <b>Send a live test</b> to know
+      for real. Adding a provider is dashboard-only right now (OmniRoute’s CLI add commands crash on this
+      platform — confirmed upstream bug). Run <code>omniroute setup --password &lt;yours&gt;</code> once if you
+      have not set a dashboard password, then open the dashboard below → Providers → Add Provider.</p>
+    <div id="orConns" style="margin-bottom:8px"></div>
+    <div id="orLiveResult" style="color:var(--dim);font-size:12.5px;margin:4px 0"></div>
+    <div class="mrow">
+      <button class="btn sm" onclick="orRefresh()">${ic('refresh')} Refresh</button>
+      <button class="btn sm" onclick="orLiveTest()">${ic('bolt')} Send a live test</button>
+      <button class="btn sm orOnly" onclick="orProbe()" title="Sends a few real requests to find working models. Each one is a billed request — on free tiers repeated runs will exhaust the key, so this stops as soon as it finds enough.">${ic('check')} Find working models</button>
+      <button class="btn sm orOnly" onclick="orDashboard()">${ic('ext')} Open OmniRoute dashboard</button>
+      <span class="sp"></span>
+      ${PV.id?`<button class="btn sm" onclick="pvDelete()">${ic('trash')} Delete</button>`:''}
+      <button class="btn pri" onclick="pvSave()">Save</button></div>
+    <div id="orProbeOut" style="font-size:12.5px;margin-top:6px"></div>`;
+  pickOne($('#pvKind'),v=>{PV.kind=v;pvDetail();});
+  pickOne($('#gwKind'),v=>{PV.gateway_kind=v;pvDetail();});
+  foDot();
+  if(PV.id){orRefresh();}
+  else{
+    /* an unsaved draft has nothing on the server to ask about, and an
+       OmniRoute catalogue needs a URL that has been stored. Show the free
+       text field so the model can be typed before the first Save. */
+    const w=$('#orModWrap');
+    if(w)w.innerHTML=orExecModelInput(PV.model);
+  }
+}
+async function pvSave(){
+  const body={id:PV.id||'',name:$('#pvName').value,kind:chipVal($('#pvKind')),
+    base_url:$('#orUrl').value,model:orExecModel(),
+    context_tokens:parseInt($('#pvCtx').value||'0',10)||0,
+    tool_search:$('#pvTools').checked,
+    gateway_kind:chipVal($('#gwKind')),
+    gateway_target_base_url:$('#gwUrl').value,
+    failover_models:$('#foModels').value,
+    failover_quiet:$('#foQuiet').checked};
+  if($('#orKey').value)body.api_key=$('#orKey').value;
+  if($('#gwKey').value)body.gateway_target_api_key=$('#gwKey').value;
+  const r=await post('/api/provider/save',body);
+  if(r.error){toast('Not saved: '+r.error,'err');return;}
+  /* which backend is the default, and which one archeus spends on itself, are
+     whole-installation settings rather than fields of a profile — so they go
+     through /api/settings, keyed by the id the save just returned. */
+  await post('/api/settings',{
+    provider_active:$('#pvDefault').checked?r.id
+      :(ST.provider_active===r.id?'':ST.provider_active),
+    headless_provider_id:$('#pvHeadless').checked?r.id
+      :(ST.headless_provider_id===r.id?'':ST.headless_provider_id)});
+  ST=await api('/api/state');
+  PV=pvList().find(p=>p.id===r.id)||null;
+  drawProviders();
+  toast('Provider saved','ok');
+}
+async function pvDelete(){
+  if(!PV||!PV.id)return;
+  await post('/api/provider/delete',{id:PV.id});
+  ST=await api('/api/state');
+  PV=null;
+  drawProviders();
+  toast('Provider removed','ok');
+}
 function orExecModel(){
+  const free=$('#pvModel');
+  if(free)return free.value.trim();
+  if(!$('#sOrAuto')&&!$('#sOrPin'))return (PV&&PV.model)||'';
   return chipVal($('#sOrAuto'))||chipVal($('#sOrPin'))||OR_AUTO;
 }
+function orExecModelInput(cur){
+  /* A generic Anthropic-shaped server publishes no catalogue, so the model is
+     free text. Rendering a chip list here would mean inventing its contents --
+     the same reason the TUI falls back to a prompt for this kind. */
+  return `<div class="fld"><label>Model id</label>
+    <input id="pvModel" placeholder="e.g. qwen3-coder:30b" value="${esc(cur||'')}">
+    <div style="color:var(--dim);font-size:12px;margin-top:4px">Exactly what your backend calls it.
+      Nothing validates this against a catalogue, because there isn't one.</div></div>`;
+}
+function gwRender(gw){
+  const row=$('#gwRow'),dot=$('#gwDot');
+  if(!row||!dot)return;
+  if(!gw||!gw.kind){row.style.display='none';return;}
+  row.style.display='flex';
+  if(gw.error){dot.textContent=gw.error;dot.className='tag err';return;}
+  dot.textContent=gw.running?('gateway running → '+(gw.target||'')):'gateway not running';
+  dot.className='tag '+(gw.running?'ok':'warn');
+}
+function pvJob(kind,body,after){
+  /* every provider job names the profile its button belongs to — the settings
+     page shows them all, and "the active one" would act on the wrong backend */
+  runJob(kind,Object.assign({provider_id:(PV&&PV.id)||''},body||{}),after);
+}
+function gwStart(){pvJob('gateway_ensure',{},st=>{
+  toast((st.result&&st.result.message)||'started',(st.result&&st.result.ok)?'ok':'err');orRefresh();});}
+function gwStop(){pvJob('gateway_stop',{},st=>{
+  toast((st.result&&st.result.message)||'stopped','ok');orRefresh();});}
 async function orRefresh(){
   const dot=$('#orDot');if(!dot)return;
   dot.textContent='checking…';dot.className='tag';
-  const st=await api('/api/omniroute/status');
+  const st=await api('/api/provider/status?'+qs({id:(PV&&PV.id)||''}));
   const warn=$('#orNeedsProvider');
   const conns=$('#orConns');
+  gwRender(st.gateway);
+  /* SHAPE follows the chip you just clicked; STATUS follows what the server has
+     saved. They differ between clicking a backend and pressing Save, and taking
+     the server's answer for both meant the card ignored the click entirely --
+     you picked "Anthropic-shaped server" and were still looking at OmniRoute. */
+  const pick=$('#pvKind');
+  const kind=pick?(chipVal(pick)||''):(st.kind||'');
+  const saved=(kind===(st.kind||''));
+  // OmniRoute-only affordances: its dashboard, and the probe that spends real
+  // quota against its catalogue. Neither means anything for a server the user
+  // runs themselves.
+  document.querySelectorAll('.orOnly').forEach(el=>{
+    el.style.display=(kind==='omniroute')?'':'none';});
+  if(st.missing){
+    /* the server has no such profile — a draft that has not been saved, or one
+       deleted in another window. Never fall back to the active backend: this
+       card would then be reporting a backend the user is not looking at. */
+    dot.textContent='not saved yet';dot.className='tag';
+    if(warn)warn.style.display='none';
+    if(conns)conns.innerHTML='';
+    return;
+  }
+  if(kind!=='omniroute'){
+    /* Reachability is the only signal that exists here -- no catalogue, no
+       provider-health endpoint. Showing the OmniRoute panel would report a
+       working Ollama as "0 providers connected". */
+    dot.textContent=!saved?'save to check':(st.reachable?'reachable':'not reachable');
+    dot.className='tag '+(!saved?'':(st.reachable?'ok':'warn'));
+    if(warn)warn.style.display='none';
+    if(conns)conns.innerHTML='';
+    const w=$('#orModWrap');
+    if(w)w.innerHTML=orExecModelInput(st.exec_model);
+    return;
+  }
+  if(!saved){
+    dot.textContent='save to check';dot.className='tag';
+    if(warn)warn.style.display='none';
+    const w=$('#orModWrap');
+    if(w)w.innerHTML='<div style="color:var(--dim);font-size:13px;margin:6px 0">'+
+      'Save to load this backend\'s model catalogue.</div>';
+    return;
+  }
   if(!st.reachable){
     dot.textContent='not running';dot.className='tag warn';
     if(warn)warn.style.display='none';
@@ -6031,9 +6610,12 @@ async function orRefresh(){
       <span style="color:var(--dim)">${esc(l.reason||'')}${mins?` · ${mins} min left`:''}</span></div>`;
   });
   if(conns)conns.innerHTML=html||'<div style="color:var(--dim);font-size:12.5px">No providers connected yet.</div>';
-  const m=await api('/api/omniroute/models');
+  // ?id=, like every other provider endpoint: /api/provider/models reads the
+  // profile by id and a missing one is a 400, so the catalogue silently never
+  // arrived and the model picker was never built.
+  const m=await api('/api/provider/models?'+qs({id:(PV&&PV.id)||''}));
   const wrap=$('#orModWrap');if(!wrap)return;
-  const cur=ST.omniroute_exec_model||OR_AUTO;
+  const cur=(PV&&PV.model)||OR_AUTO;
   // Only models on a configured, non-tripped provider that can actually run a
   // session. The full catalog lists every routable id regardless of whether a
   // provider backing it is connected, so offering it invites picking a model
@@ -6066,7 +6648,7 @@ async function orRefresh(){
     $('#sOrAuto').querySelectorAll('.chip').forEach(x=>x.classList.remove('on'))));
 }
 function orTestConn(id){
-  runJob('omniroute_test_connection',{conn_id:id},st=>{
+  pvJob('provider_test_connection',{conn_id:id},st=>{
     const r=st.result||{};
     // this self-check can be wrong either way -- report it as informational,
     // never as a verdict (that's what "Send a live test" is for)
@@ -6077,7 +6659,7 @@ function orTestConn(id){
 function orLiveTest(){
   const model=orExecModel();
   $('#orLiveResult').textContent='Sending a real request through '+model+'…';
-  runJob('omniroute_live_test',{model},st=>{
+  pvJob('provider_live_test',{model},st=>{
     const r=st.result||{};
     $('#orLiveResult').innerHTML=r.ok
       ?`<span style="color:var(--ok)">${ic('check')} Works — ${esc(r.message||'')}</span>`
@@ -6086,22 +6668,13 @@ function orLiveTest(){
   });
 }
 async function orStart(){
-  runJob('omniroute_ensure',{},st=>{
+  pvJob('provider_ensure',{},st=>{
     toast(st.result&&st.result.ok?'OmniRoute started':'Could not start — check it\'s installed','ok');
     orRefresh();
   });
 }
 function orDashboard(){
   window.open(($('#orUrl').value||'http://localhost:20128'),'_blank');
-}
-async function orSave(){
-  const body={omniroute_base_url:$('#orUrl').value,omniroute_exec_model:orExecModel()};
-  if($('#orKey').value)body.omniroute_api_key=$('#orKey').value;
-  await post('/api/settings',body);
-  ST=await api('/api/state');
-  $('#orKey').value='';
-  toast('OmniRoute settings saved','ok');
-  orRefresh();
 }
 
 /* Probe every candidate with a real request. The catalog and the health endpoint
@@ -6112,7 +6685,7 @@ let ORPROBE=[];
 function orProbe(full){
   const out=$('#orProbeOut');
   out.innerHTML=`<span style="color:var(--dim)">Probing with real requests — stops as soon as 4 answer, ${full?'re-testing everything (spends more quota)':'skipping models already known dead'}, ${full?'240':'45'}s ceiling…</span>`;
-  runJob('omniroute_probe',full?{full:true,want:0,budget:240}:{},st=>{
+  pvJob('provider_probe',full?{full:true,want:0,budget:240}:{},st=>{
     const r=st.result||{};ORPROBE=r.results||[];
     if(!ORPROBE.length){out.innerHTML='<span style="color:var(--dim)">Nothing to probe.</span>';return;}
     // A timeout is not a verdict on the model -- it means the probe budget
@@ -6150,33 +6723,20 @@ async function orUseWorking(){
   const ids=ORPROBE.filter(x=>x.ok).map(x=>x.id).slice(0,8);
   if(!ids.length)return;
   $('#foModels').value=ids.join('\n');
-  await foSave();
+  await pvSave();
   toast('Failover list set from the models that actually answered','ok');
 }
 
 /* ── model failover (archeus's own proxy — see failover.py) ── */
 function foDot(){
   const d=$('#foDot');if(!d)return;
-  const n=(ST.failover_models||[]).length;
+  const n=((PV&&PV.failover_models)||[]).length;
   d.textContent=n?`${n} fallback${n>1?'s':''}`:'off';
   d.style.color=n?'var(--ok)':'var(--dim)';
   d.style.borderColor='currentColor';d.style.background='transparent';
 }
-async function foSave(){
-  const models=$('#foModels').value.split('\n').map(s=>s.trim()).filter(Boolean).slice(0,8);
-  const port=parseInt($('#foPort').value,10)||20129;
-  await post('/api/settings',
-    {failover_models:models,failover_port:port,failover_quiet:$('#foQuiet').checked});
-  ST=await api('/api/state');
-  $('#foModels').value=(ST.failover_models||[]).join('\n');
-  foDot();
-  $('#foResult').innerHTML=models.length
-    ?`<span style="color:var(--ok)">${ic('check')} Failover on — the proxy starts with your next Plan → Execute run.</span>`
-    :`<span style="color:var(--dim)">Failover off — sessions go straight to OmniRoute.</span>`;
-  toast('Failover settings saved','ok');
-}
 function foStop(){
-  runJob('failover_stop',{},st=>{
+  pvJob('failover_stop',{},st=>{
     const r=st.result||{};
     $('#foResult').textContent=r.message||'stopped';
     toast(r.ok?'Failover proxy stopped':'Could not stop the proxy','ok');
@@ -6216,9 +6776,52 @@ async function setSave(){
   await post('/api/settings',{default_effort:chipVal($('#sEff')),default_model:chipVal($('#sMod')),
     default_permission:chipVal($('#sPerm')),default_max_thinking:chipVal($('#sThink')),
     default_subagent_model:chipVal($('#sSub')),gui_shell:chipVal($('#sShell')),
+    launch_default:chipVal($('#sTargetDef')),
     theme:chipVal($('#sTheme'))});
   ST=await api('/api/state');applyTheme(ST.theme);
-  localStorage.setItem('ctl_theme',chipVal($('#sTheme')));toast('Settings saved','ok');
+  localStorage.setItem('ctl_theme',chipVal($('#sTheme'))); toast('Settings saved','ok');
+}
+/* ── which tools archeus shows ──────────────────────────────
+   Every harness in the registry, whether or not its binary is here: one that
+   is not installed says so and offers the install line, because "archeus does
+   not support Codex" and "Codex is not on this machine" look identical when
+   the row simply is not there. */
+function drawHarnessToggles(){
+  const host=$('#sHarnList');if(!host)return;
+  const offH=new Set(ST.harnesses_disabled||[]),offP=new Set(ST.providers_disabled||[]);
+  const rows=(ST.harnesses||[]).map(h=>({
+    key:h.id,label:h.label,kind:'harness',
+    // Claude Code is archeus's own engine — every AI feature shells out to it —
+    // so it is listed and locked rather than quietly missing from the list
+    locked:h.id==='claude',found:h.available,on:!offH.has(h.id)}))
+   .concat((ST.providers||[]).map(p=>({
+     key:p.id,label:p.name||'(unnamed)',kind:'provider',
+     locked:false,found:true,on:!offP.has(p.id)})));
+  host.innerHTML=rows.map(r=>`<div class="kv">
+    <span class="k">${esc(r.label)}${r.kind==='provider'?' <span class="tag">backend</span>':''}</span>
+    <span>${r.found
+      ?(r.locked?'<span class="tag">always on</span>'
+        :`<button class="btn sm${r.on?' pri':''}" onclick="harnToggle(${hesc(r.kind)},${hesc(r.key)},${!r.on})"
+           >${r.on?'shown':'hidden'}</button>`)
+      :'<span class="tag" title="archeus supports it; this machine does not have it">not installed</span>'}</span>
+  </div>`).join('');
+  const missing=rows.filter(r=>!r.found).map(r=>r.label);
+  $('#sHarnNote').textContent=missing.length
+    ?'Not found on this machine: '+missing.join(', ')+'. Install one and it appears here on the next start.'
+    :'';
+}
+async function harnToggle(kind,key,on){
+  const k=kind==='provider'?'providers_disabled':'harnesses_disabled';
+  const cur=new Set(ST[k]||[]);
+  if(on)cur.delete(key);else cur.add(key);
+  await post('/api/settings',{[k]:[...cur]});
+  ST=await api('/api/state');
+  drawHarnessToggles();
+  // the whole point is that it hides everywhere, so the sidebar has to follow
+  // in this tick rather than on the next boot — the /api/state above already
+  // carries the new project list, since that walk is what the toggle changes
+  drawProjects();
+  toast(on?'Shown again':'Hidden everywhere','ok');
 }
 async function setMemLimitsSave(){
   await post('/api/settings',{
@@ -6232,6 +6835,8 @@ async function setMemLimitsSave(){
 async function setPathsSave(){
   const r=await post('/api/settings',{editor:$('#sEditor').value.trim(),
     claude_exe:$('#sClaudeExe').value.trim(),
+    codex_exe:$('#sCodexExe').value.trim(),
+    pi_exe:$('#sPiExe').value.trim(),
     claude_config_dir:$('#sCfgDir').value.trim(),
     headless_budget_usd:+($('#sBudget').value||0)});
   if(r&&r.error){toast(r.error,'err');return;}
@@ -6325,6 +6930,18 @@ function chipsFill(el,vals,labels,cur,onpick){
     el.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));
     c.classList.add('on');if(onpick)onpick(c.dataset.v);});
 }
+/* A zero total that is ALSO inexact means nothing in the rollup had price
+   data -- not that it was free. Quoting `~$0.00` told a paid OpenRouter or
+   self-hosted user their spend was approximately nothing. */
+function costCell(cost,exact){return (!exact&&!cost)?'n/a':((exact?'':'~')+'$'+(cost||0).toFixed(2));}
+function pickOne(box,after){
+  if(!box)return;
+  box.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>{
+    box.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));
+    c.classList.add('on');
+    if(after)setTimeout(after,0);
+  }));
+}
 function chipVal(el){if(!el)return '';const c=el.querySelector('.chip.on');return c?c.dataset.v:'';}
 function chipSet(el,v){if(!el)return;el.querySelectorAll('.chip').forEach(c=>
   c.classList.toggle('on',c.dataset.v===v));}
@@ -6372,6 +6989,10 @@ function setPinMode(on){
   if(on&&!cardVal($('#fModel'))){const [m,e]=frontierRow();cardSet($('#fModel'),m);effortSet(e);}
 }
 function currentModelEffort(){
+  // a non-Claude harness answers from its own two controls: the catalogue the
+  // frontier slider and the model cards are built from is Anthropic's
+  if(targetRow(TARGET).hid!=='claude')
+    return [($('#fOwnModel')||{}).value?.trim()||'',chipVal($('#fOwnEffort'))];
   if($('#fPinModel').checked)return [cardVal($('#fModel')),effortVal()];
   const r=frontierRow();return [r[0],r[1]];
 }
@@ -6383,6 +7004,20 @@ function updateFrontierReadout(){
 }
 function updateHint(){
   const [m,e]=currentModelEffort();
+  /* Every reading below — the advisor, the retired-model list, the effort
+     profile, the permission note, the preset match — is keyed by an Anthropic
+     model id. Under another CLI they all miss, and the ones that miss LOUDLY
+     are the bug: `effort_profiles['xhigh']` is Claude Code's description of
+     Claude Code's xhigh, printed under a Codex session. Say what the target is
+     instead, and stop. */
+  if(targetRow(TARGET).hid!=='claude'){
+    const row=targetRow(TARGET);
+    $('#mHint').className='mhint adv-ok';
+    $('#mHint').textContent=(m||"this CLI's default model")
+      +(e?' · effort '+e:'')+' — '+row.label+' chooses the rest itself.';
+    markPreset();
+    return;
+  }
   const a=((ST.options.advice||{})[m]||{})[e]||['ok',''];
   let lvl=a[0],msg=a[1];
   /* A model you pinned that Anthropic has since retired is still IN the list —
@@ -6486,26 +7121,189 @@ function askLaunch(cfg){
   chipsFill($('#fThink'),o.thinking,o.thinking_labels,d.max_thinking);
   chipsFill($('#fSub'),o.models,o.model_labels,d.subagent_model);
   chipsFill($('#fWt'),['','*'],['off','auto'],'');
-  // OmniRoute: fetch available models and show the section only if reachable
-  const orWrap=$('#fOmniWrap');orWrap.style.display='none';
-  api('/api/omniroute/models').then(m=>{
-    const models=m&&m.models||[];
-    if(!models.length)return;
-    const cur=ST.omniroute_exec_model||'';
-    const vals=['',...models];
-    const lbls=['off (use Anthropic API)',...models.map(id=>id==='auto/coding'?'auto/coding (dynamic)':id)];
-    chipsFill($('#fOmni'),vals,lbls,cur);
-    orWrap.style.display='';
-  }).catch(()=>{});
-  $('#fAcctWrap').style.display=(cfg.isNew&&ST.accounts.length>1)?'':'none';
-  $('#fNameWrap').style.display=cfg.isNew?'':'none';
-  $('#fWtWrap').style.display=cfg.isNew?'':'none';
+  /* WHICH TOOL — the tab strip above the form. A resume keeps the target its
+     session already belongs to; there is nothing to choose, because a Codex
+     thread cannot be resumed by pi. A NEW session opens on the saved default. */
+  TARGET=cfg.isNew?(ST.launch_default||'claude'):targetOfCfgdir(cfg.cfgdir);
+  drawTargets(cfg);
   $('#fName').value='';
   if(cfg.isNew&&ST.accounts.length>1)
     chipsFill($('#fAcct'),ST.accounts.map(a=>a.dir),
               ST.accounts.map(a=>a.name),ST.active_cfgdir);
   updateHint();
   $('#ovl').classList.add('show');
+}
+/* ── which tool this session starts on ──────────────────────
+   The target decomposes back into `cfgdir` + `provider`, the two fields
+   /api/launch has always carried, so nothing below this needed a new field. */
+let TARGET='claude';
+const targets=()=>ST.launch_targets||[];
+const targetRow=k=>targets().find(t=>t.key===k)||targets()[0]||
+  {key:'claude',kind:'harness',hid:'claude',cfgdir:'',provider:'',caps:{}};
+/* A session already on disk belongs to whichever home it was recorded under —
+   the row is the source, never the picker. */
+function targetOfCfgdir(cfgdir){
+  const hit=targets().find(t=>t.cfgdir&&cfgdir&&
+    t.cfgdir.toLowerCase()===String(cfgdir).toLowerCase());
+  return hit?hit.key:'claude';
+}
+/* (ok, why) for one control under the CURRENT target. Same table the nav rows
+   read, asked of the target rather than of the page's account — the strip is
+   the thing that just changed. */
+function tcap(key){
+  const c=(targetRow(TARGET).caps||{})[key];
+  return c?{ok:!!c[0],why:c[1]||''}:{ok:true,why:''};
+}
+/* A field the target has no notion of is HIDDEN, not greyed — unlike a nav row.
+   A greyed page still teaches you the app has it; a dead input inside a form
+   you are about to submit just asks a question with no answer. The strip's own
+   note is where the reason goes, so nothing is lost. */
+function tfield(id,key){
+  const el=$(id),c=tcap(key);
+  if(el)el.style.display=c.ok?'':'none';
+  return c;
+}
+function drawTargets(cfg){
+  const strip=$('#fTarget'),note=$('#fTargetNote');
+  if(!strip)return;
+  const rows=targets();
+  /* One target is not a choice — the strip is chrome with nothing to pick, and
+     a machine with only Claude Code installed is the common case. */
+  strip.style.display=(rows.length>1&&cfg.isNew)?'':'none';
+  strip.innerHTML=rows.map(t=>
+    `<div class="tab${t.key===TARGET?' sel':''}" onclick="pickTarget(${hesc(t.key)})"
+      >${esc(t.label)}</div>`).join('');
+  const row=targetRow(TARGET);
+  const missing=Object.keys(row.caps||{}).filter(k=>LAUNCH_CAPS.includes(k)&&!row.caps[k][0]);
+  note.textContent=cfg.isNew&&missing.length
+    ?missing.map(k=>row.caps[k][1]).join(' ')
+    :(row.kind==='provider'?'Runs Claude Code against this backend.':'');
+  // the account chips are Claude Code's alone: a Codex or pi home is one login
+  $('#fAcctWrap').style.display=
+    (cfg.isNew&&row.hid==='claude'&&ST.accounts.length>1)?'':'none';
+  // and so are these two — they are `MAX_THINKING_TOKENS` and
+  // `CLAUDE_CODE_SUBAGENT_MODEL`, environment variables the other builders
+  // never write, so offering them would be offering a setting with no effect
+  for(const id of ['#fThink','#fSub']){
+    const w=$(id)&&$(id).closest('.fld');
+    if(w)w.style.display=row.hid==='claude'?'':'none';
+  }
+  $('#fNameWrap').style.display=(cfg.isNew&&tcap('named_session').ok)?'':'none';
+  $('#fWtWrap').style.display=(cfg.isNew&&tcap('worktree').ok)?'':'none';
+  tfield('#fPermWrap','permission_modes');
+  drawLaunchModel(row.provider||'');
+  drawOwnModel(row);
+}
+/* THE MODEL AND THE EFFORT ARE THE TARGET'S OWN. The block above them is
+   Anthropic's catalogue — priced cards, a frontier slider whose stops are
+   (model, effort) pairs an advisor has rated, presets over both — and none of
+   it survives a change of CLI: `--effort max` and `ultracode` are Claude
+   Code's and Codex rejects them, and a dollar-per-MTok row means nothing next
+   to `gpt-5.5`. A backend keeps the catalogue block, because a provider is the
+   same `claude` binary pointed elsewhere; only a different HARNESS swaps it. */
+async function drawOwnModel(row){
+  const own=row.hid!=='claude';
+  const cb=$('#fClaudeBlock'),ob=$('#fOwnBlock'),adv=$('#fPinBlock');
+  if(cb)cb.hidden=own;
+  if(ob)ob.hidden=!own;
+  // the Advanced pin block picks an Anthropic model + effort; under another
+  // CLI its two controls are the ones #fOwnBlock just replaced
+  const pin=$('#fPinModel')&&$('#fPinModel').closest('.pinrow');
+  if(pin)pin.style.display=own?'none':'';
+  if(adv&&own)adv.style.display='none';
+  if(!own)return;
+  /* Memoised per CLI: pi's catalogue is 1,354 models and ~105KB on the wire,
+     and this runs on every click of the target strip. What it answers changes
+     when the CLI is updated or has run something new — neither of which
+     happens while a modal is open. */
+  let d=OWNMODELS[row.hid];
+  if(!d){d=await api('/api/harness/models?'+qs({hid:row.hid}));OWNMODELS[row.hid]=d;}
+  /* TWO lists, labelled, and the order is the point. `models` is what this CLI
+     has actually run here — the strongest suggestion there is — and `cards` is
+     the catalogue it ships with, which is what makes a FRESH install offer
+     anything at all instead of an empty box. A <datalist> keeps its group
+     headings, so the split survives into the dropdown. */
+  const seen=d.models||[],cards=(d.cards||[]).filter(c=>seen.indexOf(c.id)<0);
+  const dl=$('#fOwnModels');
+  if(dl)dl.innerHTML=
+    (seen.length?`<optgroup label="run here">`
+      +seen.map(m=>`<option value="${esc(m)}">`).join('')+`</optgroup>`:'')
+    +(cards.length?`<optgroup label="ships with this CLI">`
+      +cards.map(c=>`<option value="${esc(c.id)}">${esc(c.label)}</option>`).join('')
+      +`</optgroup>`:'');
+  const note=$('#fOwnModelNote');
+  if(note)note.textContent=seen.length||cards.length
+    ? '— '+[seen.length&&seen.length+' run here',
+            cards.length&&cards.length+' in its catalogue'].filter(Boolean).join(', ')
+      +'; type any other'
+    : '— archeus has not seen this CLI run yet; type a model id';
+  const es=d.efforts||[''];
+  chipsFill($('#fOwnEffort'),es,es.map(e=>e||'default'),'');
+  /* Quick start for a CLI whose models archeus cannot price. The Claude block's
+     presets carry a cost and a SWE score per card; these carry the two values
+     this CLI's own scales take, which is all a preset ever was. */
+  const ph=$('#fOwnPresets');
+  if(ph)ph.innerHTML=(d.presets||[]).map((p,i)=>
+    `<div class="preset" onclick="applyOwnPreset(${i})"><b>${esc(p.name)}</b>`
+    +`<span>${esc(p.blurb)}</span>`
+    +`<span class="pm">${esc(p.fields.model||"this CLI's default")}`
+    +` · ${esc(p.fields.effort||'default')}</span></div>`).join('');
+  const pw=ph&&ph.closest('.fld');
+  if(pw)pw.style.display=(d.presets||[]).length?'':'none';
+}
+//: one answer per CLI, for the life of the page. Not a TTL: what it holds is a
+//: catalogue on disk and a list of models already run, and neither changes
+//: while the app is open.
+const OWNMODELS={};
+function applyOwnPreset(i){
+  const d=OWNMODELS[targetRow(TARGET).hid]||{},p=(d.presets||[])[i];
+  if(!p)return;
+  const m=$('#fOwnModel');
+  if(m)m.value=p.fields.model||'';
+  chipSet($('#fOwnEffort'),p.fields.effort||'');
+  updateHint();
+}
+/* the capabilities this form gates on. Named rather than "every off key",
+   because the strip's note must not recite gaps about pages the modal has
+   nothing to do with — a Codex session's missing MCP is not a launch option. */
+const LAUNCH_CAPS=['permission_modes','named_session','worktree','effort'];
+function pickTarget(k){
+  TARGET=k;
+  drawTargets(PENDING||{isNew:true});
+  updateHint();
+}
+/* The model row follows the backend chip. An OmniRoute profile has a live
+   catalogue worth offering; anything else publishes nothing, so the model is
+   free text defaulted to what the profile is configured with — inventing a list
+   would be offering ids that 401 on the first turn. */
+async function drawLaunchModel(pid){
+  const box=$('#fProvModel'),wrap=$('#fProvModelWrap');
+  if(!box||!wrap)return;
+  const prof=(ST.providers||[]).find(p=>p.id===pid);
+  if(!prof){wrap.style.display='none';box.innerHTML='';return;}
+  wrap.style.display='';
+  if(prof.kind!=='omniroute'){
+    box.innerHTML=`<input id="fProvModelIn" placeholder="e.g. qwen3-coder:30b"
+      value="${esc(prof.model||'')}">`;
+    return;
+  }
+  box.innerHTML='<span class="spin"></span>';
+  let m={};
+  try{m=await api('/api/provider/models?'+qs({id:pid}));}catch(e){m={};}
+  const ids=(m.models||[]);
+  if(!ids.length){
+    box.innerHTML=`<input id="fProvModelIn" placeholder="model id"
+      value="${esc(prof.model||'')}">`;
+    return;
+  }
+  box.innerHTML='<div class="chips" id="fProvChips"></div>';
+  chipsFill($('#fProvChips'),ids,ids.map(id=>(m.labels||{})[id]||id),
+            prof.model||ids[0]);
+}
+function launchProviderModel(){
+  const free=$('#fProvModelIn');
+  if(free)return free.value.trim();
+  return chipVal($('#fProvChips'));
 }
 async function doLaunch(){
   const c=PENDING;if(!c)return;
@@ -6514,8 +7312,12 @@ async function doLaunch(){
     perm:chipVal($('#fPerm')),max_thinking:chipVal($('#fThink')),
     subagent_model:chipVal($('#fSub')),
     name:c.isNew?$('#fName').value:'',worktree:c.isNew?chipVal($('#fWt')):'',
-    cfgdir:c.isNew&&ST.accounts.length>1?chipVal($('#fAcct')):(c.cfgdir||''),
-    omniroute:chipVal($('#fOmni'))};
+    // the tab decides both: a harness row names its home, a backend row names
+    // its profile, and Claude Code's row leaves cfgdir to the account chips
+    cfgdir:targetRow(TARGET).cfgdir
+      ||(c.isNew&&ST.accounts.length>1?chipVal($('#fAcct')):(c.cfgdir||'')),
+    provider:targetRow(TARGET).provider||'',
+    provider_model:launchProviderModel()};
   $('#ovl').classList.remove('show');
   const r=await post('/api/launch',{path:c.path,enc:c.enc,choice:c.choice,opts});
   if(r.ok)toast('Launched in a new terminal window','ok');
@@ -6639,70 +7441,24 @@ $('#bHelp').onclick=()=>go('helpp');
    It carried a logo, the product name and a tagline. The tagline is gone: it is
    a website device — its audience is someone who does not yet know what the
    thing is, and nobody reading this sidebar is that person — and it failed the
-   differentiation test besides (every coding-agent tool could print it, no
-   product claims the opposite). What every current app puts in this slot is the
-   switchable CONTEXT with a line of state under it: shadcn's sidebar header
-   ships as a team switcher with the plan underneath, Notion switches
-   workspaces, Linear the workspace, GitLab the current context, Figma the
-   account.
+/* THE SIDEBAR HEADER IS THE WORDMARK, and it opens nothing.
 
-   Ours is the Claude Code ACCOUNT, and it had no home before this: it was
-   reachable only from inside the launch modal, on the one branch where you were
-   starting a new session. Switching here sets the default for every launch.
+   It was the account switcher — the shadcn/Notion/Linear convention of putting
+   the switchable context in the sidebar header with a line of state under it.
+   That convention earns its place in an app whose header is the only chrome it
+   has. It stopped earning it here: the account is already a chip row inside the
+   launch modal, where picking one decides what is about to happen, and a page
+   of its own under Accounts. Two controls for one setting is two chances for
+   them to disagree about which account is current, and the one in the header
+   was the one you had to open to find out what it said.
 
-   The chevron and the menu appear only with more than one account. A control
-   that opens nothing is worse than no control, so with a single account this is
-   what it has always been — a row you click to go home — and it says archeus,
-   because "default" is not a name anyone chose. */
-function drawBrand(){
-  const b=$('#brandName'),s=$('#brandSub'),ch=$('#brandChev');
-  if(!b)return;
-  const accs=ST.accounts||[];
-  const multi=accs.length>1;
-  // fall back to the FIRST account, not to the product name: with several
-  // accounts configured, a row that says archeus is hiding the one piece of
-  // state it exists to show. active_cfgdir can legitimately name none of them
-  // — it is restored from localStorage and an account can be removed.
-  const act=accs.find(a=>a.dir===ST.active_cfgdir)||(multi?accs[0]:null);
-  b.textContent=act?act.name:'archeus';
-  // the second line is a MEASUREMENT, never a descriptor: how much workspace
-  // there is and how much of it is awake. Both numbers are already in hand —
-  // no fetch, the same rule INST.set() and the stage follow.
-  const projs=(ST.projects||[]).filter(p=>SHOW_HIDDEN||!p.hidden).length;
-  const live=ACTIVE_MEM.size;
-  s.textContent=projs
-    ?`${projs} project${projs===1?'':'s'}${live?` · ${live} active`:''}`
-    :'no projects yet';
-  ch.hidden=!multi;
-  if(multi&&!ch.innerHTML)ch.innerHTML=ic('unfold');
-  $('.brand').setAttribute('aria-haspopup',multi?'menu':'false');
-}
-function acctMenu(open){
-  const m=$('#acctMenu');if(!m)return;
-  const row=$('.brand');
-  if(open===false||!m.hidden){m.hidden=true;row.classList.remove('open');return;}
-  m.innerHTML=(ST.accounts||[]).map(a=>
-    `<button data-dir=${hesc(a.dir)}><span class="adot" style="background:${acctColor(a.name)}"></span>`
-    +`<span class="an">${esc(a.name)}</span>`
-    +(a.dir===ST.active_cfgdir?`<span class="amark">${ic('check')}</span>`:'')
-    +`</button>`).join('');
-  m.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{
-    ST.active_cfgdir=btn.dataset.dir;
-    localStorage.setItem('ctl_account',ST.active_cfgdir);
-    acctMenu(false);drawBrand();
-    toast('Default account: '+($('#brandName').textContent),'ok');
-  });
-  m.hidden=false;row.classList.add('open');
-}
-$('.brand').onclick=e=>{
-  // the chevron is the switcher; the rest of the row is still "go home", which
-  // is what it did before and what people will have in their fingers
-  if((ST.accounts||[]).length>1&&e.target.closest('.bchev'))return acctMenu();
-  acctMenu(false);go('home');
-};
-document.addEventListener('click',e=>{
-  if(!e.target.closest('.brand')&&!e.target.closest('#acctMenu'))acctMenu(false);
-});
+   What is left is drawn in `index.html` and needs no JS at all: the mark and
+   the wordmark, one lockup, no state. `drawBrand` is gone with it, along with
+   the click handler that made the whole row a second route home — the nav
+   already has one, and a header that navigates on click is a surprise in a
+   sidebar full of rows that do.
+
+   The `.acctmenu` rules stay in app.css: the Accounts page reuses them. */
 
 /* ── all-accounts usage banner (mirrors the TUI's grid) ── */
 let _uTimer=null;
@@ -6799,8 +7555,17 @@ async function pollActiveMem(){
   try{
     const d=await api('/api/memory/active');
     const next=new Set(d.active||[]);
-    const changed=next.size!==ACTIVE_MEM.size||[...next].some(p=>!ACTIVE_MEM.has(p));
+    let changed=next.size!==ACTIVE_MEM.size||[...next].some(p=>!ACTIVE_MEM.has(p));
     ACTIVE_MEM=next;
+    /* The project list itself, not just the scan locks. ST.projects came from
+       /api/state at boot and NOTHING re-read it, so a project that appeared
+       while the app was open — opened by path and then launched into, or worked
+       on from a terminal — was missing from the sidebar until a reload. The
+       rows arrive on a poll that was already walking every project, so this is
+       a comparison, not a request. */
+    if(d.projects&&JSON.stringify(d.projects)!==JSON.stringify(ST.projects)){
+      ST.projects=d.projects;changed=true;
+    }
     if(changed)drawProjects();
   }catch(e){}
 }

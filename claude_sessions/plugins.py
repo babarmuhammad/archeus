@@ -166,14 +166,45 @@ def provenance_index(cfg_dir=None):
 
 
 def summary(cfg_dir=None):
-    """One payload for the GUI: marketplaces, installs, and what each ships."""
+    """One payload for the GUI: marketplaces, installs, and what each ships.
+
+    Per HOME, and the home decides which CLI is asked. Codex has its own
+    marketplaces — `codex plugin list` reads every one of them and their
+    manifests sit at `<source>/.agents/plugins/marketplace.json`, the same
+    `.agents` convention archeus already writes project skills into — so the
+    page that was declared meaningless there answers with real rows.
+
+    `readonly` is the one field that differs. Claude Code's plugins are
+    installed and removed from here; Codex's are listed only, because install
+    mutates another tool's config through a marketplace resolver archeus does
+    not own. The flag is on the payload rather than inferred in the browser so
+    there is one answer to "can I press this", not two.
+    """
+    from . import harnesses as _h
+    if _h.of(cfg_dir)['id'] == 'codex':
+        from . import codex
+        rows, seen = [], {}
+        for p in codex.plugins(_c.resolve_config_dir(cfg_dir)):
+            name = p['name'].split('@', 1)[0]
+            seen.setdefault(p['marketplace'],
+                            {'name': p['marketplace'], 'source': p['manifest'],
+                             'plugins': 0})
+            seen[p['marketplace']]['plugins'] += 1
+            rows.append({'key': p['name'], 'name': name,
+                         'marketplace': p['marketplace'],
+                         'version': p['version'], 'path': p['path'],
+                         'enabled': 'enabled' in p['status'],
+                         'installed': 'not installed' not in p['status'],
+                         'provides': {}, 'missing': False})
+        return {'marketplaces': list(seen.values()), 'plugins': rows,
+                'dir': _c.resolve_config_dir(cfg_dir), 'readonly': True}
     mkts = known_marketplaces(cfg_dir)
     inst = installed(cfg_dir)
     for p in inst:
         p['provides'] = contents(p['path'])
         p['missing'] = not (p['path'] and os.path.isdir(p['path']))
     return {'marketplaces': mkts, 'plugins': inst,
-            'dir': plugins_dir(cfg_dir)}
+            'dir': plugins_dir(cfg_dir), 'readonly': False}
 
 
 # ── mutations ────────────────────────────────────────────────

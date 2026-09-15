@@ -9,6 +9,7 @@ from datetime import datetime
 from .config import C_RESET, C_DIM, C_BOLD, C_ACCENT, C_OK
 from .config import open_in_editor
 from .sessions import load_name
+from . import store
 from . import render
 from . import transcripts as _t
 
@@ -131,7 +132,7 @@ def show_metadata(proj_folder, sid, project_name):
     """Standalone metadata panel (hotkey 'i')."""
     from .stats import get_session_stats_cached
     from .ui import pager
-    jsonl = os.path.join(proj_folder, f"{sid}.jsonl")
+    jsonl = store.transcript_path(proj_folder, sid)
     stats = get_session_stats_cached(jsonl)
     name  = load_name(proj_folder, sid)
     pager(('ARCHEUS', project_name, 'SESSION INFO'), metadata_lines(stats, name, sid))
@@ -145,7 +146,7 @@ def view_transcript(proj_folder, sid, project_name, project_path):
     from .stats import get_session_stats_cached
     from .ui import pager, flash
 
-    jsonl = os.path.join(proj_folder, f"{sid}.jsonl")
+    jsonl = store.transcript_path(proj_folder, sid)
     msgs  = iter_transcript(jsonl)
     stats = get_session_stats_cached(jsonl)
     name  = load_name(proj_folder, sid)
@@ -204,7 +205,7 @@ def export_transcript(proj_folder, sid, project_path):
     """Write the session as markdown next to the project. Returns (ok, message)."""
     from .stats import get_session_stats_cached
 
-    jsonl = os.path.join(proj_folder, f"{sid}.jsonl")
+    jsonl = store.transcript_path(proj_folder, sid)
     msgs  = iter_transcript(jsonl)
     stats = get_session_stats_cached(jsonl)
     name  = load_name(proj_folder, sid)

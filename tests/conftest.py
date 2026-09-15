@@ -144,11 +144,22 @@ class _Sink:
         return iter(())
 
 
-#: argv entries that mean "this starts Claude, or starts something whose whole
-#: job is to start Claude". Matched on the BASENAME of every argument, not just
-#: the executable, because a terminal spawn is `cmd /c start … claude …` and a
-#: detached worker is `python -m claude_sessions --bg-scan`.
-_CLAUDE_EXE = {'claude', 'claude.exe', 'claude.cmd', 'claude.bat'}
+#: argv entries that mean "this starts an agent CLI, or starts something whose
+#: whole job is to start one". Matched on the BASENAME of every argument, not
+#: just the executable, because a terminal spawn is `cmd /c start … claude …`
+#: and a detached worker is `python -m claude_sessions --bg-scan`.
+#:
+#: Codex and pi are here for the reason Claude is, one axis wider. The original
+#: lesson was that a test opening the sessions screen spawned a detached
+#: `claude -p` that outlived the run, spent quota and wrote a transcript into
+#: the REAL project list. `codex.doctor`, `codex.mcp_list`, `codex.plugins` and
+#: `pi.doctor` are the same hazard in a new costume: each reads the developer's
+#: OWN `~/.codex` / `~/.pi`, `codex doctor` makes a network call to check for an
+#: update, and `codex mcp remove` MUTATES another tool's config. A test must
+#: reach all four through a stub.
+_CLAUDE_EXE = {'claude', 'claude.exe', 'claude.cmd', 'claude.bat',
+               'codex', 'codex.exe',
+               'pi', 'pi.exe', 'pi.cmd'}
 _CLAUDE_FLAG = {'--bg-scan', '--failover-serve'}
 
 
@@ -344,21 +355,33 @@ def _no_writes_outside_the_sandbox(monkeypatch, tmp_path_factory):
 
 @pytest.fixture(autouse=True)
 def _no_process_global_cache_leaks_between_tests():
-    """Two caches live for the life of the process on purpose, and both would
+    """Five caches live for the life of the process on purpose, and each would
     otherwise make a test's result depend on which test ran before it.
 
     `mcp._status_cache` holds `claude mcp list` for 30s (that subprocess is 1.7s
     and /api/dashboard polls every 10s). `paths._path_cache` holds resolved —
-    and, since it also caches misses, UNRESOLVED — project folders. Autouse
-    rather than in `Sandbox`, because the tests that hit these are exactly the
-    ones that never build one.
+    and, since it also caches misses, UNRESOLVED — project folders. `pi._CAT`
+    holds the parsed provider catalogue read out of pi's npm package, which is
+    keyed on a directory a Sandbox repoints. `gui_api._doctor_cache` holds
+    `codex doctor` for 5 minutes, which is a subprocess AND a network call.
+    `stats._HARNESS_RATES` holds the prices read out of that same catalogue, and
+    an EMPTY one is a legitimate state — no pi installed, so a gpt-5.x session
+    honestly reads `n/a` — which a leaked full one would hide.
+    Autouse rather than in `Sandbox`, because the tests that hit these are
+    exactly the ones that never build one.
+
+    THIS FIXTURE IS THE REGISTRY. A process-global cache that is not listed here
+    is a test-order dependency waiting to be blamed on something else, so a new
+    one is added in the same commit that introduces it.
     """
-    from claude_sessions import mcp, paths
-    mcp._status_cache.clear()
-    paths._path_cache.clear()
+    from claude_sessions import gui_api, mcp, paths, pi, stats
+    caches = (mcp._status_cache, paths._path_cache, pi._CAT,
+              gui_api._doctor_cache, stats._HARNESS_RATES)
+    for c in caches:
+        c.clear()
     yield
-    mcp._status_cache.clear()
-    paths._path_cache.clear()
+    for c in caches:
+        c.clear()
 
 
 @pytest.fixture(autouse=True)

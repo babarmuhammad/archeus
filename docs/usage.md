@@ -1,8 +1,6 @@
 ---
 description: >-
-  How archeus reduces the per-turn context cost of Claude Code — a bounded always-on
-  index, path-scoped rules, task-scoped injection, the context weight audit, deny rules and
-  economy model routing.
+  How archeus cuts the per-turn context cost of Claude Code: a bounded always-on index, path-scoped rules, task-scoped injection and the context weight audit.
 ---
 
 # Usage & cost

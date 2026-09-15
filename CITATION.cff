@@ -11,7 +11,7 @@ authors:
     website: 'https://claudectl.space'
 repository-code: 'https://github.com/babarmuhammad/archeus'
 url: 'https://claudectl.space'
-version: 2.3.0
+version: 2.4.0
 date-released: 2026-09-11
 abstract: >-
   A memory and workspace layer for AI coding agents, driving Anthropic's Claude

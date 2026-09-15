@@ -66,11 +66,33 @@ def test_the_plugin_name_is_kebab_case():
 #: the docs page require literally. A release bumps ALL of them — the plugin
 #: manifest was missed once and the release commit went red on six CI jobs with
 #: the tag already pushed.
+#: `docs/index.md` was here, carrying the version inside a hand-written JSON-LD
+#: block — and it sat at 1.6.0 through a 1.7.0 release, which is why this gate
+#: exists at all. That block is gone: `overrides/main.html` emits the same
+#: `SoftwareApplication` node for every docs page now, under the apex's `@id`,
+#: and it states no version. The marketing site's node does, read from
+#: pyproject at build time by `www/lib/build-data.ts` — so the two hosts still
+#: describe one application and only the one that can compute the number says
+#: it. A copy removed is better than a copy gated.
+#: The five under `packaging/` are a registry each, and every one of them was
+#: UNGATED for the whole life of that tree — five hand-maintained copies of a
+#: number `pyproject.toml` already states, which is the shape this gate exists
+#: to catch and had simply never been widened to cover. A stale one does not
+#: fail a build: it publishes a package whose manifest claims a version that is
+#: not the version, to a registry that will not let it be republished.
+#:
+#: `packaging/legacy-name/pyproject.toml` is deliberately NOT here. It pins a
+#: version nobody has yet, on purpose — that file's own comment explains why —
+#: so it does not track this number and a gate would fight it.
 VERSION_COPIES = (
     ('plugin/.claude-plugin/plugin.json', r'"version":\s*"([^"]+)"'),
     ('.claude-plugin/marketplace.json',   r'"version":\s*"([^"]+)"'),
-    ('docs/index.md',                     r'"softwareVersion":\s*"([^"]+)"'),
     ('CITATION.cff',                      r'(?m)^version:\s*(\S+)\s*$'),
+    ('packaging/npm/package.json',        r'"version":\s*"([^"]+)"'),
+    ('packaging/crates/Cargo.toml',       r'(?m)^version\s*=\s*"([^"]+)"'),
+    ('packaging/nuget/archeus.nuspec',    r'<version>([^<]+)</version>'),
+    ('packaging/rubygems/archeus.gemspec', r"s\.version\s*=\s*'([^']+)'"),
+    ('packaging/docker/Dockerfile',       r'(?m)^ARG ARCHEUS_VERSION=(\S+)\s*$'),
 )
 
 

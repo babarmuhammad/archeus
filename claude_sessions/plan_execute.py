@@ -230,13 +230,13 @@ def _plan(task, plan_model, cwd, effort='', cfgdir=''):
     return result
 
 
-def _headless(model, prompt, cwd, omni_env=None, cfgdir=''):
+def _headless(model, prompt, cwd, prov_env=None, cfgdir='', prof=None):
     """One-shot headless call to `model` -- same plain-subprocess pattern
     _plan() uses for the silent/background path, minus the progress bar
     (council voices run back-to-back, not worth a renderer each).
 
-    omni_env: same ANTHROPIC_BASE_URL/AUTH_TOKEN override _plan()'s exec half
-    already supports (config.omniroute_env()) -- routes council calls through
+    prov_env: same ANTHROPIC_BASE_URL/AUTH_TOKEN override _plan()'s exec half
+    already supports (config.provider_env()) -- routes council calls through
     the free-tier proxy too when it's configured, since a council is N extra
     calls per plan and that's exactly where the extra cost shows up.
 
@@ -264,14 +264,27 @@ def _headless(model, prompt, cwd, omni_env=None, cfgdir=''):
     env = os.environ.copy()
     if cfgdir:
         env['CLAUDE_CONFIG_DIR'] = cfgdir
-    if omni_env:
-        env.update(omni_env)
+    if prov_env:
+        env.update(prov_env)
         # Council voices bypass the failover proxy on purpose: they are short
         # blocking calls, optimize_plan_council() already degrades to the
         # unmodified plan when they fail, and they run BEFORE the exec launch
         # starts the proxy -- so routing them through it would just silently
         # disable the council whenever failover is configured.
-        _direct = _c.load_settings().get('omniroute_base_url') or ''
+        #
+        # The GATEWAY is not the same kind of hop and is NOT bypassed: it is the
+        # thing that speaks the Anthropic Messages API, and the OpenAI-shaped
+        # host behind it cannot answer `claude` at all. Skipping it would not
+        # degrade the council, it would guarantee it never works.
+        # THIS session's profile, passed in — not the globally active one. The
+        # council must speak to the same backend the plan will be executed on,
+        # or the plan is optimised by one model and carried out by another with
+        # both reported as "Provider".
+        prof_ = prof or _c.active_provider()
+        if (prof_ or {}).get('gateway_kind'):
+            from . import gateway
+            gateway.ensure_running(prof_)
+        _direct = _c.provider_upstream(prof_)
         if _direct:
             env['ANTHROPIC_BASE_URL'] = _direct
     from .gui_api import _run_cancellable
@@ -293,10 +306,11 @@ COUNCIL_MODELS = ['claude-sonnet-5', 'claude-opus-5', 'claude-haiku-4-5']
 OMNI_COUNCIL_MODELS = ['auto/best-reasoning', 'auto/best-coding', 'auto/best-fast']
 
 
-def optimize_plan_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''):
+def optimize_plan_council(task, plan, cwd, models=None, prov_env=None, cfgdir='',
+                          prof=None):
     """Fan the draft plan out to a small council of OTHER models for critique,
     then synthesize one improved plan. Disabled callers simply never call
-    this -- zero extra token cost. Routes through OmniRoute (omni_env) when
+    this -- zero extra token cost. Routes through OmniRoute (prov_env) when
     configured, same free-tier proxy the exec half already uses, so a
     council doesn't have to mean N extra paid Anthropic calls. Returns the
     original plan unchanged if: the plan is too short to bother, fewer than
@@ -305,7 +319,7 @@ def optimize_plan_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''
     if not plan or len(plan) < 40:
         return plan
     roster, seen = [], set()
-    for m in (models or (OMNI_COUNCIL_MODELS if omni_env else COUNCIL_MODELS)):
+    for m in (models or (OMNI_COUNCIL_MODELS if prov_env else COUNCIL_MODELS)):
         if m and m not in seen:
             seen.add(m)
             roster.append(m)
@@ -320,7 +334,7 @@ def optimize_plan_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''
     )
     critiques = []
     for m in roster:
-        out = _headless(m, critique_prompt, cwd, omni_env, cfgdir)
+        out = _headless(m, critique_prompt, cwd, prov_env, cfgdir, prof)
         if out:
             critiques.append((m, out))
     if not critiques:
@@ -335,7 +349,7 @@ def optimize_plan_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''
         f"\n\nTASK:\n{task}\n\nDRAFT PLAN:\n{plan}\n\n"
         + "\n\n".join(f"CRITIQUE ({m}):\n{c}" for m, c in critiques)
     )
-    merged = _headless(roster[0], synth_prompt, cwd, omni_env, cfgdir)
+    merged = _headless(roster[0], synth_prompt, cwd, prov_env, cfgdir, prof)
     return merged or plan
 
 
@@ -372,7 +386,27 @@ def replan_from_plan(plan_text, feedback, plan_model, cwd, effort='', cfgdir='')
     return revised
 
 
-def build_exec_launch(project_path, proj_folder, task, exec_model, omni_env=None, cfgdir=''):
+def context_bytes(project_path, plan):
+    """Rough size of the always-on context the exec session will carry.
+    Measurement only — whether that is too much is omniroute.context_warning's
+    call, because only it knows the target model's window."""
+    n = 0
+    try:
+        md = os.path.join(project_path, 'CLAUDE.md')
+        if os.path.isfile(md):
+            n += os.path.getsize(md)
+        rules = os.path.join(project_path, '.claude', 'rules')
+        if os.path.isdir(rules):
+            for f in os.listdir(rules):
+                fp = os.path.join(rules, f)
+                if f.endswith('.md') and os.path.isfile(fp):
+                    n += os.path.getsize(fp)
+    except OSError:
+        pass
+    return n + len(plan or '') * 3
+
+
+def build_exec_launch(project_path, proj_folder, task, exec_model, prov_env=None, cfgdir=''):
     """Assemble (args, env) for the Plan→Execute *execute* session — the ONE
     place both the TUI (run(), below) and the GUI (gui_api's `plan_launch`
     job kind) build this, so they can't drift apart.
@@ -407,8 +441,8 @@ def build_exec_launch(project_path, proj_folder, task, exec_model, omni_env=None
     extra = read_extra_paths(proj_folder)
     if extra:
         env['PATH'] = ';'.join(extra) + ';' + env.get('PATH', '')
-    if omni_env:
-        env.update(omni_env)
+    if prov_env:
+        env.update(prov_env)
 
     pointer = (f"An approved implementation plan for this task is saved at "
                f"{PLAN_FILE.replace(os.sep, '/')}. Read it first, then execute it "
@@ -516,11 +550,12 @@ def run(project_path, proj_folder, project_name, plan=None, per_step=False, shou
 
     s = load_settings()
     plan_model = s.get('plan_model', 'claude-opus-5')
-    omni_env = _c.omniroute_env(s)
-    if omni_env:
+    prof = _c.active_provider(s)
+    prov_env = _c.provider_env(prof)
+    if prov_env:
         from . import omniroute
-        exec_model = s.get('omniroute_exec_model') or omniroute.AUTO_MODEL
-        exec_via = 'OmniRoute (free tier)'
+        exec_model = prof.get('model') or omniroute.AUTO_MODEL
+        exec_via = prof.get('name') or prof.get('base_url') or 'provider'
     else:
         exec_model = s.get('exec_model', 'claude-sonnet-5')
         exec_via = 'Anthropic'
@@ -560,10 +595,11 @@ def run(project_path, proj_folder, project_name, plan=None, per_step=False, shou
 
         if council_enabled:
             _cls()
-            via_note = ' via OmniRoute (free tier)' if omni_env else ''
-            roster = OMNI_COUNCIL_MODELS if omni_env else COUNCIL_MODELS
+            via_note = ' via OmniRoute (free tier)' if prov_env else ''
+            roster = OMNI_COUNCIL_MODELS if prov_env else COUNCIL_MODELS
             print(f"\n  Optimizing plan with model council ({', '.join(roster)}){via_note}...\n")
-            plan = optimize_plan_council(task, plan, project_path, omni_env=omni_env, cfgdir=cfgdir)
+            plan = optimize_plan_council(task, plan, project_path, prov_env=prov_env,
+                                         cfgdir=cfgdir, prof=prof)
 
     # per-step approval: show each step and let user approve/skip
     if per_step and plan:
@@ -598,52 +634,23 @@ def run(project_path, proj_folder, project_name, plan=None, per_step=False, shou
     if should_cancel and should_cancel():
         return False
 
-    if omni_env:
+    if prov_env:
         from . import omniroute
-        ok, msg = omniroute.ensure_running(s.get('omniroute_base_url', ''))
-        if not ok:
-            flash(f"OmniRoute: {msg}", ok=False, secs=2.5)
-            return False
-        # omni_env already points ANTHROPIC_BASE_URL at archeus's own failover
-        # proxy when candidates are configured; it must be up before launching.
-        from . import failover
-        if failover.enabled(s):
-            fok, fmsg = failover.ensure_running(s)
-            if not fok:
-                flash(f"Failover proxy: {fmsg}", ok=False, secs=3)
-                return False
-        # catch a stale/renamed omniroute_exec_model here, before launching --
-        # otherwise the exec session opens fine and only fails once `claude`
-        # itself tries the model, deep inside the new terminal with no easy
-        # path back to fix the setting.
-        if exec_model != omniroute.AUTO_MODEL:
-            available = [mid for mid, _lbl in omniroute.list_models(
-                s.get('omniroute_base_url', ''), s.get('omniroute_api_key', ''))]
-            if available and exec_model not in available:
-                flash(f"OmniRoute: exec model '{exec_model}' is no longer available — "
-                      "pick a new one in Settings or switch to Auto", ok=False, secs=3)
-                return False
-        # context-window warning: free-tier OmniRoute models can have small
-        # context windows — warn when CLAUDE.md + rules + plan are large
+        # Every check the hand-rolled block above used to do — daemon up,
+        # failover proxy up, model still in the catalogue, context-window
+        # advisory — now lives in prepare_launch, which is the seam an
+        # interactive launch goes through too.
         try:
-            _ctx_size = 0
-            _claude_md = os.path.join(project_path, 'CLAUDE.md')
-            if os.path.isfile(_claude_md):
-                _ctx_size += os.path.getsize(_claude_md)
-            _rules_dir = os.path.join(project_path, '.claude', 'rules')
-            if os.path.isdir(_rules_dir):
-                for _f in os.listdir(_rules_dir):
-                    _fp = os.path.join(_rules_dir, _f)
-                    if os.path.isfile(_fp) and _f.endswith('.md'):
-                        _ctx_size += os.path.getsize(_fp)
-            _ctx_size += len(plan or '') * 3  # rough: plan char → bytes
-            if _ctx_size // 4 > 8000:
-                flash(f"OmniRoute: CLAUDE.md + rules + plan ≈ {_ctx_size // 4 // 1000}k tokens — "
-                      "small-context model may degrade", ok=False, secs=3)
-        except Exception:
-            pass  # size check is advisory, never block
+            _pv_env, warn = omniroute.prepare_launch(
+                exec_model, prof, ctx_bytes=context_bytes(project_path, plan))
+        except (RuntimeError, ValueError) as e:
+            flash(str(e), ok=False, secs=3)
+            return False
+        prov_env.update(_pv_env)
+        if warn:
+            flash(warn, ok=False, secs=3)
 
-    args, env = build_exec_launch(project_path, proj_folder, task, exec_model, omni_env, cfgdir)
+    args, env = build_exec_launch(project_path, proj_folder, task, exec_model, prov_env, cfgdir)
     if not args:
         flash("claude.exe not found", ok=False, secs=1.8)
         return False

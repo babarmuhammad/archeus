@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import Sandbox, run_flow, typed, UP, DOWN, RIGHT, ENTER, ESC
 
-from claude_sessions import agents
+from claude_sessions import agents, memory
 
 
 def flat(*parts):
@@ -418,7 +418,6 @@ def test_new_ai_agent(monkeypatch, tmp_path):
     category is frontmatter now, exactly as `agents.category_of` documents and as
     the manual GUI path (`api_agent_create`) already did.
     """
-    from claude_sessions import memory
     sb = Sandbox(monkeypatch, tmp_path)
     _seed(sb, '01-core', 'x')
     monkeypatch.setattr(agents, 'get_claude_exe', lambda: r'C:\fake.exe')
@@ -441,7 +440,6 @@ def test_the_ai_agent_prompt_goes_over_stdin_with_the_shared_guards(monkeypatch,
     `_build_ai_context` can push it past that), no cwd, no HEADLESS_MARK so the
     call was listed back as one of your own session topics, no `--max-turns` and
     no `--max-budget-usd`. Every one of those comes free from the shared seam."""
-    from claude_sessions import memory
     Sandbox(monkeypatch, tmp_path)
     seen = {}
 

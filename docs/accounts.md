@@ -1,8 +1,6 @@
 ---
 description: >-
-  Run two or more Claude accounts side by side — named config dirs, per-launch account
-  selection, merged project rows, cross-account context injection and account-accurate
-  memory.
+  Run two or more Claude accounts side by side — named config dirs, per-launch account selection, merged project rows and cross-account context injection.
 ---
 
 # Multiple Claude accounts

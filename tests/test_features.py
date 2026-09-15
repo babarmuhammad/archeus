@@ -18,7 +18,7 @@ OPTS = {'effort': '', 'model': '', 'perm': '', 'name': '', 'worktree': ''}
 
 def test_choice_line_v5_sentinels():
     line = build_choice_line(r'D:\proj', 'D--proj', 'new', dict(OPTS))
-    assert line == rf'v6|D:\proj|D--proj|new|-|-|-|-|-|{config_dir}|-|-|-|-'
+    assert line == rf'v8|D:\proj|D--proj|new|-|-|-|-|-|{config_dir}|-|-|-|-|-|-'
 
 
 def test_choice_line_empty_effort_set_model():
@@ -34,7 +34,7 @@ def test_choice_line_full():
     o = dict(OPTS, effort='high', model='fable-5', perm='plan',
              name='My Sess', worktree='*', agent='reviewer', agents_json='')
     line = build_choice_line(r'D:\p', 'D--p', 'new', o)
-    assert line == rf'v6|D:\p|D--p|new|high|fable-5|plan|My Sess|*|{config_dir}|reviewer|-|-|-'
+    assert line == rf'v8|D:\p|D--p|new|high|fable-5|plan|My Sess|*|{config_dir}|reviewer|-|-|-|-|-'
 
 
 def test_choice_line_per_launch_account():
@@ -126,11 +126,23 @@ def test_estimate_cost_unknown_model_flagged():
 
 
 def test_estimate_cost_omni_is_free():
-    """OmniRoute free-tier models must not be billed at the Opus guess rate."""
+    """OmniRoute free-tier models must not be billed at the Opus guess rate.
+
+    The cost is the invariant; `exact` is only how we knew. It used to be False
+    here because nothing published a rate for `big-pickle` and the zero was a
+    refusal to guess — `fmt_cost` rendered `n/a`. A harness catalogue on this
+    machine changes that: pi ships opencode's price list, which states
+    `cost: {input: 0, output: 0}` for this model, and 113 of its 1,354 models
+    say the same. A publisher saying a model is free is a PRICE, not an absence
+    of one, so the cell reads `0.00` rather than `n/a` — and `exact` follows
+    whichever it is, which is why this assertion is written against the lookup
+    instead of pinned to a literal.
+    """
+    from claude_sessions.stats import _harness_rates
     cost, exact = estimate_cost({'big-pickle': {'in': 1_000_000, 'out': 1_000_000,
                                                 'cache_read': 0, 'cache_create': 0}})
-    assert cost == 0.0
-    assert exact is False       # still flagged: no published rate for it
+    assert cost == 0.0          # never the Opus guess — that is the invariant
+    assert exact is ('big-pickle' in _harness_rates())
 
 
 def test_fmt_tok():

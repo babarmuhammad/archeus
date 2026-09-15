@@ -9,6 +9,7 @@ import re
 from .config import BAD_PREFIXES, BAD_CONTAINS, last_session_file, projects_dir, config_dir
 from . import config as _c
 from . import transcripts as _t
+from . import harnesses as _harnesses
 from . import store as _store
 
 
@@ -46,7 +47,7 @@ _ANTHROPIC_ALIASES = {'sonnet', 'opus', 'haiku', 'fable'}
 def _is_anthropic_model(model):
     """True if *model* is a Claude/Anthropic id (or a Claude Code bare alias
     like 'sonnet'/'sonnet-5'). Empty/synthetic ('<...>') ids also count as
-    Anthropic — they carry no omni signal. Used to detect the inverse."""
+    Anthropic — they carry no provider signal. Used to detect the inverse."""
     m = (model or '').strip().lower()
     if not m or m.startswith('<'):
         return True
@@ -55,12 +56,12 @@ def _is_anthropic_model(model):
     return m.split('-', 1)[0] in _ANTHROPIC_ALIASES
 
 
-def _used_omni(stats):
+def _used_provider(stats):
     """True if the session ran (partly) on a non-Anthropic model — the OmniRoute
     free-tier signal. OmniRoute records the *resolved* provider model in the
     transcript under a bare name ('big-pickle', 'deepseek-v4-flash-free',
     'mimo-auto', ...), NOT a slash-namespaced id — so the reliable test is
-    exclusion: anything `_is_anthropic_model` rejects is an omni model. (An
+    exclusion: anything `_is_anthropic_model` rejects is an provider model. (An
     Anthropic model served *through* OmniRoute can't be told apart from a
     direct Anthropic run by id alone, but the tag's job is flagging the
     free-tier models, which are exactly these non-Claude ids.)"""
@@ -175,60 +176,74 @@ def _parse_session(jsonl_path):
     s = dict(_EMPTY_STATS)
     s['usage_by_model'] = {}
     s['models'] = []
+    # which CLI wrote this file decides what its records look like; the parse
+    # around it — the cache, the key, the single pass — does not change
+    fold = _harnesses.impl('fold', _harnesses.of_path(jsonl_path)['id'])
     for obj in _t.iter_json(jsonl_path):
-        if obj.get('type') == 'ai-title' and not s['title']:
-            s['title'] = (obj.get('title', '') or obj.get('content', '')).strip()
-
-        ts = obj.get('timestamp')
-        if isinstance(ts, str):
-            ep = _iso_to_epoch(ts)
-            if ep is not None:
-                if s['first_ts'] is None or ep < s['first_ts']:
-                    s['first_ts'] = ep
-                if s['last_ts'] is None or ep > s['last_ts']:
-                    s['last_ts'] = ep
-
-        if obj.get('gitBranch'):
-            s['branch'] = obj['gitBranch']
-        if obj.get('cwd'):
-            s['cwd'] = obj['cwd']
-        if obj.get('isApiErrorMessage'):
-            s['api_errors'] += 1
-
-        msg  = obj.get('message') or {}
-        role = obj.get('role') or msg.get('role', '')
-        if role in ('user', 'assistant'):
-            s['count'] += 1
-        if role == 'user':
-            for text in _extract_texts(obj):
-                if is_headless_text(text):
-                    s['headless'] = True
-                if _good_text(text):
-                    # 200, not 65: this is what a session row shows when it has
-                    # no AI title and no manual name, and 65 characters was
-                    # already the ceiling before the row lost a quarter of its
-                    # width to the action strip. Both interfaces cut it to fit,
-                    # so the cap is only the ceiling, not the shown length.
-                    s['preview'] = text[:200].replace('\n', ' ')  # last good one wins
-                    break
-        elif role == 'assistant':
-            model = msg.get('model', '')
-            if model.startswith('<'):   # '<synthetic>' internal marker
-                model = ''
-            usage = msg.get('usage') or {}
-            if model and model not in s['models']:
-                s['models'].append(model)
-            if usage and model:
-                u = s['usage_by_model'].setdefault(
-                    model, {'in': 0, 'out': 0, 'cache_read': 0, 'cache_create': 0})
-                u['in']           += usage.get('input_tokens', 0) or 0
-                u['out']          += usage.get('output_tokens', 0) or 0
-                u['cache_read']   += usage.get('cache_read_input_tokens', 0) or 0
-                u['cache_create'] += usage.get('cache_creation_input_tokens', 0) or 0
+        fold(obj, s)
 
     _info_cache[jsonl_path] = (key, s)
     _disk_cache_store(jsonl_path, key, s)
     return s
+
+
+def _fold_claude(obj, s):
+    """One record of a Claude Code transcript into the shared stats dict.
+
+    Lifted out of the parser unchanged. Every field name in here is Claude
+    Code's — `message.model`, `gitBranch`, `isApiErrorMessage`, the
+    `<synthetic>` sentinel — which is exactly why it had to stop being the
+    parser's own body: a Codex rollout answers to none of them.
+    """
+    if obj.get('type') == 'ai-title' and not s['title']:
+        s['title'] = (obj.get('title', '') or obj.get('content', '')).strip()
+
+    ts = obj.get('timestamp')
+    if isinstance(ts, str):
+        ep = _iso_to_epoch(ts)
+        if ep is not None:
+            if s['first_ts'] is None or ep < s['first_ts']:
+                s['first_ts'] = ep
+            if s['last_ts'] is None or ep > s['last_ts']:
+                s['last_ts'] = ep
+
+    if obj.get('gitBranch'):
+        s['branch'] = obj['gitBranch']
+    if obj.get('cwd'):
+        s['cwd'] = obj['cwd']
+    if obj.get('isApiErrorMessage'):
+        s['api_errors'] += 1
+
+    msg  = obj.get('message') or {}
+    role = obj.get('role') or msg.get('role', '')
+    if role in ('user', 'assistant'):
+        s['count'] += 1
+    if role == 'user':
+        for text in _extract_texts(obj):
+            if is_headless_text(text):
+                s['headless'] = True
+            if _good_text(text):
+                # 200, not 65: this is what a session row shows when it has
+                # no AI title and no manual name, and 65 characters was
+                # already the ceiling before the row lost a quarter of its
+                # width to the action strip. Both interfaces cut it to fit,
+                # so the cap is only the ceiling, not the shown length.
+                s['preview'] = text[:200].replace('\n', ' ')  # last good one wins
+                break
+    elif role == 'assistant':
+        model = msg.get('model', '')
+        if model.startswith('<'):   # '<synthetic>' internal marker
+            model = ''
+        usage = msg.get('usage') or {}
+        if model and model not in s['models']:
+            s['models'].append(model)
+        if usage and model:
+            u = s['usage_by_model'].setdefault(
+                model, {'in': 0, 'out': 0, 'cache_read': 0, 'cache_create': 0})
+            u['in']           += usage.get('input_tokens', 0) or 0
+            u['out']          += usage.get('output_tokens', 0) or 0
+            u['cache_read']   += usage.get('cache_read_input_tokens', 0) or 0
+            u['cache_create'] += usage.get('cache_creation_input_tokens', 0) or 0
 
 
 def get_session_info(jsonl_path):
@@ -364,6 +379,43 @@ def save_session_agents(proj_folder, key, refs):
         os.path.join(proj_folder, 'session-agents.json'), data)
 
 
+def load_session_providers(proj_folder):
+    """session-providers.json: {sid: provider profile id}. '' is a RECORD, not a
+    gap — it means "this one was launched on Anthropic direct"."""
+    try:
+        with open(os.path.join(proj_folder, 'session-providers.json'),
+                  encoding='utf-8') as f:
+            d = json.load(f)
+            return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_session_provider(proj_folder, sid, pid):
+    """Write down which backend a session was launched on."""
+    data = load_session_providers(proj_folder)
+    data[sid] = pid or ''
+    return _c.write_json_atomic(
+        os.path.join(proj_folder, 'session-providers.json'), data)
+
+
+def resolve_provider(rec, sid, stats):
+    """Did this session run on a provider backend rather than Anthropic direct?
+
+    The RECORD wins: archeus writes the profile id at launch, so for anything it
+    started this is a fact. _used_provider stays underneath for sessions archeus
+    did not launch and for those it launched before the record existed — there
+    the model ids are the only signal, and they cannot tell an Anthropic model
+    served THROUGH a provider from a direct run.
+
+    *rec* is passed in rather than read here: the callers list a whole folder and
+    would otherwise re-read the same small file once per row.
+    """
+    if sid in rec:
+        return bool(rec[sid])
+    return _used_provider(stats)
+
+
 def load_add_dirs(proj_folder):
     """Per-project --add-dir entries from add-dirs.txt."""
     if not proj_folder:
@@ -404,7 +456,17 @@ def is_internal_session(jsonl_path):
 
 def scan_sessions(folder):
     """List sessions in a project folder. Returns [(mtime, sid, preview, count)] newest-first.
-    archeus-internal print-mode sessions (entrypoint sdk-cli) are excluded."""
+    archeus-internal print-mode sessions (entrypoint sdk-cli) are excluded.
+
+    The tuple is the contract and the folder is the handle; where the rows come
+    from is the harness's business. Claude Code's are the `.jsonl` files in the
+    folder itself, Codex's are rows in an index that names each transcript
+    somewhere else entirely.
+    """
+    return _harnesses.impl('scan', _harnesses.of_path(folder)['id'])(folder)
+
+
+def _scan_claude(folder):
     sessions = []
     if not folder or not os.path.isdir(folder):
         return sessions
@@ -444,15 +506,18 @@ def read_extra_paths(proj_folder):
 
 
 def account_folders_for(encoded_name):
-    """[(acct_name, folder)] — this project's session folder under EVERY known
-    account that actually has one. encode_component is account-independent, so
-    the same encoded name locates the project everywhere."""
-    from .config import all_config_dirs
+    """[(name, folder)] — this project's session folder under every known home,
+    Claude account or other harness, that actually has the project.
+
+    encode_component is account-independent, so the same encoded name locates
+    the project everywhere. Whether a home HAS it is the harness's to answer:
+    Claude Code's folder existing is the record, while Codex creates archeus's
+    sidecar folder lazily and its absence says nothing.
+    """
     out = []
-    for name, d in all_config_dirs():
-        folder = _store.project_folder(d, encoded_name)
-        if os.path.isdir(folder):
-            out.append((name, folder))
+    for name, home, hid in _harnesses.instances():
+        if _harnesses.impl('has_project', hid)(home, encoded_name):
+            out.append((name, _store.project_folder(home, encoded_name)))
     return out
 
 

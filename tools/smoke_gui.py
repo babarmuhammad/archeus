@@ -26,6 +26,7 @@ from claude_sessions import gui                       # noqa: E402
 from claude_sessions.gui_html import PAGE, vendor_asset  # noqa: E402
 from claude_sessions import themes as _TH        # noqa: E402
 from claude_sessions import config as _TH_CFG    # noqa: E402
+from claude_sessions import harnesses as _TH_H   # noqa: E402
 
 PORT = 8793
 
@@ -36,6 +37,18 @@ STATE = {
                  {'name': 'acme-web', 'path': '/demo/acme-web', 'encoded': 'demo-acme-web',
                   'accounts': ['teamA'], 'primary_cfgdir': 'w',
                   'auto_memory': False, 'last_active': '1d'}],
+    # what the CLI behind each account can do. DERIVED from the real registry
+    # rather than spelled out — a hand-typed stub was one harness, and a strip
+    # that shows a choice only when there are two renders as nothing at all at
+    # one, so the Harnesses page and the Usage page's harness tabs would both
+    # have been walked with their strips switched off. The same argument the
+    # permission and effort lists below already make: a one-item stub audits a
+    # control that cannot wrap, cannot overflow and cannot be wrong.
+    'harnesses': [{'id': hid, 'label': _TH_H.descriptor(hid)['label'],
+                   'available': True,
+                   'homes': ['', 'w'] if hid == 'claude' else ['/home/.' + hid],
+                   'caps': {k: list(_TH_H.cap(hid, k)) for k in _TH_H.CAPS}}
+                  for hid in _TH_H.ids()],
     'accounts': [{'name': 'default', 'dir': '', 'active': True},
                  {'name': 'teamA', 'dir': 'w', 'active': False}],
     'recent': [{'project': 'acme-api', 'path': '/demo/acme-api', 'encoded': 'demo-acme-api',
@@ -76,9 +89,44 @@ STATE = {
     'classic_skins': list(_TH.CLASSIC_SKINS),
     'world': '',
     'plan_model': '', 'exec_model': '', 'extract_model': '',
-    'omniroute_base_url': '', 'omniroute_has_key': False,
-    'omniroute_exec_model': '', 'failover_models': [], 'failover_port': 20129,
-    'failover_quiet': False,
+    # two backends, because the whole point of the card is that there is more
+    # than one — and the launch modal offers them beside Anthropic
+    'providers': [
+        {'id': 'p1', 'name': 'OmniRoute', 'kind': 'omniroute',
+         'base_url': 'http://localhost:20128', 'model': 'auto/coding',
+         'context_tokens': 0, 'tool_search': False, 'gateway_kind': '',
+         'gateway_target_base_url': '', 'failover_models': ['auto/fast'],
+         'failover_quiet': False, 'port': 20129,
+         'api_key_set': True, 'gateway_target_api_key_set': False},
+        {'id': 'p2', 'name': 'vLLM box', 'kind': 'generic',
+         'base_url': 'http://10.0.0.5:8000', 'model': 'Qwen3-VL-32B',
+         'context_tokens': 32768, 'tool_search': False, 'gateway_kind': '',
+         'gateway_target_base_url': '', 'failover_models': [],
+         'failover_quiet': False, 'port': 20131,
+         'api_key_set': False, 'gateway_target_api_key_set': False}],
+    'provider_active': 'p1', 'headless_provider_id': '',
+    # ── what a new session can start ON ──────────────────────
+    # Built from the REAL registry, not typed out: the launch strip gates each
+    # of its controls on one capability key, so a stub that invents a flat
+    # `caps: {everything: true}` audits a strip whose fields can never be
+    # hidden. Codex and pi are forced present here because a one-row strip is
+    # exactly the case the code hides — the check would pass on nothing.
+    'launch_targets': [
+        {'key': hid, 'kind': 'harness', 'label': _TH_H.descriptor(hid)['label'],
+         'hid': hid, 'cfgdir': '' if hid == 'claude' else '/home/.' + hid,
+         'provider': '',
+         'caps': {k: list(_TH_H.cap(hid, k)) for k in _TH_H.CAPS}}
+        for hid in _TH_H.ids()
+    ] + [
+        {'key': 'provider:p1', 'kind': 'provider', 'label': 'OmniRoute',
+         'hid': 'claude', 'cfgdir': '', 'provider': 'p1',
+         'caps': {k: list(_TH_H.cap('claude', k)) for k in _TH_H.CAPS}},
+        {'key': 'provider:p2', 'kind': 'provider', 'label': 'vLLM box',
+         'hid': 'claude', 'cfgdir': '', 'provider': 'p2',
+         'caps': {k: list(_TH_H.cap('claude', k)) for k in _TH_H.CAPS}},
+    ],
+    'launch_default': 'claude',
+    'harnesses_disabled': [], 'providers_disabled': [],
 }
 _NOW = time.time()
 DASH = {
@@ -87,7 +135,7 @@ DASH = {
     # each account's quota % is a share of its OWN window and they do not add.
     'today': {'tokens': 412000, 'sessions': 7, 'cost': 28.0,
               'by_account': {'default': 240000, 'teamA': 130000, 'teamB': 42000},
-              'omni_tokens': 60000},
+              'provider_tokens': 60000},
     'days': 30, 'generated_at': _NOW,
     'week': [{'tokens': 300000}] * 7,
     # a finished job and a failed one, so the Activity drawer has all three
@@ -114,20 +162,20 @@ DASH = {
     'failover': {'running': True, 'port': 20129},
     'recent': [{'project': 'acme-api', 'title': 'a session', 'msgs': 12, 'sid': 's1',
                 'age': '2m', 'path': '/demo/acme-api', 'encoded': 'demo-acme-api',
-                'cfgdir': '', 'account': 'default', 'omni': True}],
+                'cfgdir': '', 'account': 'default', 'provider': True}],
     'breakdown': {
         'days': [{'date': '2026-08-%02d' % (i + 1), 'tokens': 100000 + i * 9000,
-                  'cost': i * 0.4, 'omni_tokens': i * 3000,
+                  'cost': i * 0.4, 'provider_tokens': i * 3000,
                   'accounts': {'default': 100000 + i * 9000}} for i in range(14)],
         'accounts': [{'account': 'default'}],
         'projects': [
             {'name': 'acme-api', 'enc': 'demo-acme-api', 'tokens': 900000, 'cost': 4.2,
              'age': '2m', 'mtime': _NOW, 'accounts': ['default', 'teamA'],
-             'omni': True, 'sparkline': [1, 4, 2, 7, 3, 9, 5]},
+             'provider': True, 'sparkline': [1, 4, 2, 7, 3, 9, 5]},
             {'name': 'acme-web', 'enc': 'demo-acme-web', 'tokens': 300000, 'cost': 1.1,
              'age': '1d', 'mtime': _NOW - 90000, 'accounts': ['teamA'],
              'sparkline': [2, 1, 3]}],
-        'totals': {'omni_tokens': 120000, 'omni_saved': 7.5}},
+        'totals': {'provider_tokens': 120000, 'provider_saved': 7.5}},
 }
 PLAN = {'accounts': [{'account': 'default', 'email': 'demo@example.com', 'plan': 'max',
                       'status': 'ok',
@@ -135,7 +183,11 @@ PLAN = {'accounts': [{'account': 'default', 'email': 'demo@example.com', 'plan':
                                   {'label': 'weekly', 'pct': 88, 'resets': 'Fri'}]}]}
 ROUTES = {
     '/api/state': STATE, '/api/dashboard': DASH, '/api/usage/plan': PLAN,
-    '/api/memory/active': {'active': ['/demo/acme-api']},
+    # carries the project list too, and it must be the SAME rows /api/state
+    # served: the poll swaps ST.projects wholesale, so a stub that disagreed
+    # would make the sidebar flip between two lists every five seconds.
+    '/api/memory/active': {'active': ['/demo/acme-api'],
+                           'projects': STATE['projects']},
     '/api/search-index': {'rows': []},
     '/api/mcp': {'servers': [{'name': 'ide', 'status': 'ok'},
                              {'name': 'asana', 'status': 'down'}]},
@@ -237,23 +289,23 @@ ROUTES = {
         {'sid': 'a1b2c3d4', 'title': 'retry storm on the payments upstream',
          'preview': 'the gateway retried every 200ms and stampeded',
          'age': '12m', 'mtime': _NOW - 720, 'count': 84, 'account': 'default',
-         'cfgdir': '', 'tokens': '412k', 'omni': False},
+         'cfgdir': '', 'tokens': '412k', 'provider': False},
         {'sid': 'b2c3d4e5', 'title': 'move invoice totals to integer cents',
          'preview': 'a float total drifted by a cent across the rollup',
          'age': '3h', 'mtime': _NOW - 10800, 'count': 61, 'account': 'default',
-         'cfgdir': '', 'tokens': '288k', 'omni': False},
+         'cfgdir': '', 'tokens': '288k', 'provider': False},
         {'sid': 'c3d4e5f6', 'title': 'split the checkout handler',
          'preview': 'one function did validation, pricing and dispatch',
          'age': '1d', 'mtime': _NOW - 86400, 'count': 137, 'account': 'teamA',
-         'cfgdir': 'w', 'tokens': '910k', 'omni': True},
+         'cfgdir': 'w', 'tokens': '910k', 'provider': True},
         {'sid': 'd4e5f6a7', 'title': 'add the migration gate to deploy',
          'preview': 'a deploy went out ahead of its schema change',
          'age': '2d', 'mtime': _NOW - 172800, 'count': 42, 'account': 'default',
-         'cfgdir': '', 'tokens': '156k', 'omni': False},
+         'cfgdir': '', 'tokens': '156k', 'provider': False},
         {'sid': 'e5f6a7b8', 'title': 'cache the search index warm-up',
          'preview': 'cold start took 9s on every deploy',
          'age': '4d', 'mtime': _NOW - 345600, 'count': 25, 'account': 'teamA',
-         'cfgdir': 'w', 'tokens': '77k', 'omni': True}]},
+         'cfgdir': 'w', 'tokens': '77k', 'provider': True}]},
     # The memory tab is the headline feature, so the demo workspace has a
     # memory: an empty one screenshots as an advert for nothing.
     # `est` here was invented — {coverage,modules,tokens,budget} against a real
@@ -499,7 +551,22 @@ ROUTES = {
              'installed': True, 'missing': []},
             {'key': 'inject-memory', 'desc': 'Inject project memory at startup',
              'event': 'SessionStart', 'installed': False, 'missing': []}]},
-    '/api/omniroute/status': {'ok': False}, '/api/failover/status': {'running': False},
+    # kind '' is Anthropic direct, which is what the stub settings say — the
+    # card then renders no model widget at all, and the OmniRoute-only actions
+    # stay hidden. Both branches are driven explicitly in the provider block.
+    # reachable: the catalogue is only fetched for a backend that answers, so a
+    # False here made 'its own catalogue' unprovable in the fixture rather than
+    # in the app
+    '/api/provider/status': {'ok': True, 'kind': 'omniroute', 'reachable': True,
+                             'exec_model': 'auto/coding', 'providers': [],
+                             'lockouts': [], 'connections': [], 'model_count': 0,
+                             'usable_count': 0,
+                             'gateway': {'kind': '', 'target': '', 'running': False}},
+    '/api/provider/models': {'models': ['auto/coding'],
+                             'labels': {'auto/coding': 'auto/coding (dynamic router)'},
+                             'usable': [], 'excluded': {}, 'filtered': True,
+                             'kind': 'omniroute'},
+    '/api/failover/status': {'running': False},
     '/api/memory/auto-list': {'projects': []},
     '/api/memory/auto': {'projects': [], 'interval': 3600, 'next_in': 2400},
     # one job, already finished. The stub had no job route at all, so every
@@ -708,15 +775,42 @@ class H(BaseHTTPRequestHandler):
                 return
             self._raw(*got)
             return
+        # per-harness launch options, answered from the REAL registry: a stub
+        # that invented one effort list would audit a form whose scale can
+        # never be wrong, which is the whole failure this endpoint exists for
+        if p == '/api/harness/models':
+            from urllib.parse import parse_qs as _pq
+            hid = (_pq(self.path.split('?', 1)[-1]).get('hid') or [''])[0]
+            d = _TH_H.descriptor(hid)
+            self._j({'hid': d['id'], 'efforts': list(d['efforts']),
+                     'catalogue': d['id'] == 'claude',
+                     'models': {'codex': ['gpt-5.5', 'gpt-5.4-mini'],
+                                'pi': ['anthropic/claude-sonnet-5']}.get(d['id'], [])})
+            return
         self._j(ROUTES.get(p, {}))
 
     def do_POST(self):
         n = int(self.headers.get('Content-Length') or 0)
-        self.rfile.read(n)
+        raw = self.rfile.read(n)
+        path = self.path.split('?')[0]
+        # Hiding a project has to STICK, because /api/memory/active re-sends the
+        # project list every five seconds and the SPA swaps it in wholesale — a
+        # stub that forgot the flag would revert the row mid-check and report a
+        # bug in the app that only exists in the fixture.
+        if path == '/api/project/hide':
+            try:
+                b = json.loads(raw or b'{}')
+                for p in STATE['projects']:
+                    if p['encoded'] == b.get('enc'):
+                        p['hidden'] = bool(b.get('hidden'))
+            except Exception:
+                pass
         # /api/job answers with a job id so the client enters the poll loop and
         # reaches jobFinish; anything else keeps the bare ack it always sent.
-        self._j({'ok': True, 'job': 'j1'}
-                if self.path.split('?')[0] == '/api/job' else {'ok': True})
+        self._j({'ok': True, 'job': 'j1'} if path == '/api/job' else {'ok': True})
+
+
+NL = chr(10)
 
 
 def main():
@@ -1674,7 +1768,6 @@ def main():
                            ('paths', ('sEditor', 'sClaudeExe', 'sCfgDir',
                                       'sBudget', 'sMemCalls', 'sExtract')),
                            ('appearance', ('sMotion', 'sStage', 'sSurf')),
-                           ('models', ('orUrl', 'foModels', 'foPort')),
                            ('updates', ('sUpd', 'sNotif', 'amInt', 'mqStart'))):
             pg.evaluate(f"go('{page}')")
             pg.wait_for_timeout(900)
@@ -1890,6 +1983,276 @@ def main():
               pg.evaluate("document.querySelectorAll('.burst').length") == 0)
         pg.evaluate("MO.set('full');ST.world='';ST.skin='';applyTheme(ST.theme);startDashboard()")
 
+        # -- a surface the CLI behind this account does not have --
+        # Nothing is off with one harness registered, so this turns one off in
+        # the page's own state: what is being checked is the PAGE's behaviour,
+        # not the registry's contents.
+        print(NL + '-- unavailable capability --')
+        pg.evaluate("go('ostyles')")
+        pg.wait_for_timeout(600)
+        check('the page paints normally while its capability is on',
+              not pg.evaluate("document.body.innerText.includes"
+                              "('Not available here')"))
+        # TWO harnesses: the one this account belongs to, which cannot do it,
+        # and one that can. "Supported on" is only meaningful with both.
+        pg.evaluate("""(()=>{
+          ST.harnesses=[{id:'t',label:'Test CLI',available:true,
+            homes:[ST.active_cfgdir||''],
+            caps:{output_styles:[false,'Test CLI has no output styles.']}},
+           {id:'claude',label:'Claude Code',available:true,homes:['elsewhere'],
+            caps:{output_styles:[true,'']}}];
+          go('ostyles');})()""")
+        pg.wait_for_timeout(600)
+        txt = pg.evaluate("document.body.innerText")
+        check('an unavailable page says so instead of rendering',
+              'Not available here' in txt)
+        check('and says WHY, which is the whole contract',
+              'Test CLI has no output styles.' in txt)
+        check('and where it does work',
+              'Supported on' in txt and 'Claude Code' in txt)
+        # `#subtabs`, not `#tabs`: Output styles moved behind the Harnesses
+        # page, where the FIRST strip is which CLI and the second is its screens.
+        # Both are named, because which strip a page's row lives in is the thing
+        # this rehaul moved and a selector pinned to one would pass for the
+        # wrong reason the next time it moves back.
+        check('the tab row greys the row rather than hiding it',
+              pg.evaluate("[...document.querySelectorAll("
+                          "'#tabs .tab, #subtabs .tab')]"
+                          ".some(t=>t.classList.contains('off'))"))
+        check('a page with no capability of its own is untouched',
+              pg.evaluate("(()=>{go('settings');return true;})()"))
+        pg.wait_for_timeout(600)
+        check('…and still paints',
+              not pg.evaluate("document.body.innerText.includes"
+                              "('Not available here')"))
+        pg.evaluate("ST.harnesses=%s;" % json.dumps(STATE['harnesses']))
+
+        # -- the Harnesses page: two strips, and one CLI's own screens --
+        # The five pages that left the sidebar are reached HERE and nowhere
+        # else, so this is the check that they are reachable at all: OFFNAV
+        # names the door in prose and no gate can read prose.
+        print(NL + '-- harnesses page --')
+        pg.evaluate("go('harness')")
+        pg.wait_for_timeout(700)
+        tabs = pg.evaluate("[...document.querySelectorAll('#tabs .tab')]"
+                           ".map(t=>t.textContent.trim())")
+        check('every registered CLI is a tab, installed or not', len(tabs) >= 3, tabs)
+        subs = pg.evaluate("[...document.querySelectorAll('#subtabs .tab')]"
+                           ".map(t=>t.textContent.trim())")
+        check("Claude Code's own screens are its sub-tabs",
+              'Setup' in subs and 'Accounts' in subs and 'Output styles' in subs,
+              subs)
+        txt = pg.evaluate("document.body.innerText")
+        check('the setup card says what the CLI can do, with the reason',
+              'What archeus can do here' in txt)
+        # the five moved pages: landing on one must light its CLI, or pressing
+        # Setup afterwards would open a different harness's setup
+        pg.evaluate("go('accounts')")
+        pg.wait_for_timeout(600)
+        check('a moved page still paints under the harness strip',
+              pg.evaluate("!!document.querySelector('#subtabs .tab.sel')")
+              and pg.evaluate("document.querySelector('#ttl').textContent")
+              == 'Harnesses')
+        check('…and it lights the CLI it belongs to',
+              pg.evaluate("HARNESS_HID") == 'claude')
+        pg.evaluate("pickHarness('codex')")
+        pg.wait_for_timeout(700)
+        check('picking another CLI lands on ITS setup, not the page you left',
+              pg.evaluate("PAGE_") == 'harness'
+              and pg.evaluate("HARNESS_HID") == 'codex')
+        check('a CLI with no extra screens shows no second strip',
+              pg.evaluate("document.querySelector('#subtabs').style.display")
+              == 'none')
+        check('and its gaps are printed with their reasons',
+              'Output styles are a Claude Code feature.'
+              in pg.evaluate("document.body.innerText"))
+
+        # -- usage: every CLI's spend, only Claude's plan windows --
+        print(NL + '-- usage, per harness --')
+        pg.evaluate("USAGE_HID='';go('usage')")
+        pg.wait_for_timeout(700)
+        check('the usage page carries a harness strip',
+              pg.evaluate("[...document.querySelectorAll('#content .mtabs .tab')]"
+                          ".map(t=>t.textContent.trim())")[:1] == ['All'])
+        check('…and the plan rail is there for all of them',
+              'Plan usage by account' in pg.evaluate("document.body.innerText"))
+        pg.evaluate("pickUsageHarness('codex')")
+        pg.wait_for_timeout(700)
+        txt = pg.evaluate("document.body.innerText")
+        check('under one CLI the spend cards stay',
+              'Daily tokens' in txt and 'Per-project' in txt)
+        check('…and only the plan rail greys, with its reason',
+              'Not available here' in txt and 'codex doctor' in txt)
+        pg.evaluate("USAGE_HID=''")
+
+        # -- a shared page whose strip must EXCLUDE a CLI --
+        # Usage lists every harness because every one records tokens. Plugins
+        # must not list pi, which has no marketplaces at all: a tab whose only
+        # possible content is an empty list reads as "no plugins installed"
+        # rather than as the structural gap the capability table has a sentence
+        # for. This is the check that the strip's filter is real.
+        print(NL + '-- a strip narrowed by capability --')
+        pg.evaluate("PLHID='';go('plugins')")
+        pg.wait_for_timeout(700)
+        strip = pg.evaluate("[...document.querySelectorAll('#content .mtabs .tab')]"
+                            ".map(t=>t.textContent.trim())")
+        check('the plugins strip offers the CLIs that have marketplaces',
+              'Claude Code' in strip and 'Codex' in strip, strip)
+        check('…and not the one that has none', 'pi' not in strip, strip)
+        check('there is no All tab where all-at-once is not a view',
+              'All' not in strip, strip)
+
+        # -- the provider card changes shape per backend --
+        # The card was OmniRoute-shaped for its whole life: a live catalogue, a
+        # provider-health panel and a dashboard button. None of that exists for a
+        # server the user runs themselves, and rendering it anyway reported a
+        # working Ollama as "0 providers connected".
+        print(NL + '-- provider card --')
+        # 'models', not 'settings': the settings page is five sub-pages and this
+        # card lives on that one.
+        pg.evaluate("go('models')")
+        pg.wait_for_timeout(700)
+        rows = pg.evaluate("document.querySelectorAll('#pvList .hrow').length")
+        check('every configured backend is listed', rows == 2, rows)
+        check('nothing is selected until you pick one',
+              pg.evaluate("!document.getElementById('pvName')"))
+
+        pg.evaluate("document.querySelectorAll('#pvList .hrow')[1].click()")
+        pg.wait_for_timeout(700)
+        for cid in ('pvName', 'pvKind', 'gwKind', 'gwUrl', 'gwKey', 'pvCtx',
+                    'pvTools', 'pvHeadless', 'pvDefault', 'orUrl', 'orKey',
+                    'gwRow', 'foModels', 'foQuiet'):
+            check('control #' + cid + ' exists',
+                  pg.evaluate("!!document.getElementById('" + cid + "')"))
+        kinds = pg.evaluate(
+            "[...document.querySelectorAll('#pvKind .chip')].map(c=>c.dataset.v)")
+        check('both backend kinds are offered',
+              kinds == ['generic', 'omniroute'], kinds)
+        gws = pg.evaluate(
+            "[...document.querySelectorAll('#gwKind .chip')].map(c=>c.dataset.v)")
+        check('gateway kinds offered', gws == ['', 'openai'], gws)
+        check('the generic backend gets a free-text model input',
+              pg.evaluate("!!document.getElementById('pvModel')"))
+        check('OmniRoute-only actions hidden for a generic backend',
+              pg.evaluate("[...document.querySelectorAll('.orOnly')]"
+                          ".every(e=>e.style.display==='none')"))
+        check('its own failover list, not a global one',
+              pg.evaluate("document.getElementById('foModels').value") == '')
+
+        pg.evaluate("document.querySelectorAll('#pvList .hrow')[0].click()")
+        pg.wait_for_timeout(900)
+        check('the other backend brings its own failover list',
+              pg.evaluate("document.getElementById('foModels').value") == 'auto/fast')
+        check('and its own catalogue',
+              pg.evaluate("!!document.getElementById('sOrAuto')"))
+
+        pg.evaluate("pvAdd()")
+        pg.wait_for_timeout(300)
+        check('adding one opens an empty draft',
+              pg.evaluate("document.getElementById('pvName').value") == '')
+        # the pane, not the body: app.js is inlined into the page, so the whole
+        # source -- pvDelete() included -- is inside document.body.innerHTML and
+        # this could never have passed
+        check('a draft has nothing to delete yet',
+              pg.evaluate("!document.getElementById('pvDet')"
+                          ".innerHTML.includes('pvDelete()')"))
+
+        # -- WHICH TOOL a new session starts on --
+        # The backend used to be a chip row six fields down inside a collapsed
+        # <details>, beside the thinking cap. It was the only control in that
+        # form that changed which TOOL ran, and a second CLI made that
+        # untenable: a Codex session has no worktree and a pi session has no
+        # permission mode, so the answer has to be chosen before the rest of
+        # the form means anything.
+        print(NL + '-- launch modal: which tool --')
+        pg.evaluate("go('home')")
+        pg.wait_for_timeout(600)
+        pg.evaluate("askLaunch({path:'/demo/acme-api',enc:'demo-acme-api',"
+                    "choice:'new',isNew:true})")
+        pg.wait_for_timeout(900)
+        tabs = pg.evaluate("[...document.querySelectorAll('#fTarget .tab')]"
+                           ".map(t=>t.textContent.trim())")
+        check('every CLI and every backend is a tab, named individually',
+              tabs == ['Claude Code', 'Codex', 'pi', 'OmniRoute', 'vLLM box'], tabs)
+        check('it opens on the saved default',
+              pg.evaluate("document.querySelector('#fTarget .tab.sel').textContent.trim()")
+              == 'Claude Code')
+        check('the backend model row is hidden while a CLI is picked',
+              pg.evaluate("document.getElementById('fProvModelWrap').style.display")
+              == 'none')
+        # a field the picked CLI has no notion of is HIDDEN, not greyed: a dead
+        # input inside a form you are about to submit asks a question with no
+        # answer, and the strip's own note carries the reason instead
+        pg.evaluate("pickTarget('codex')")
+        pg.wait_for_timeout(300)
+        check('Codex hides the two options it does not have',
+              pg.evaluate("document.getElementById('fNameWrap').style.display")
+              == 'none'
+              and pg.evaluate("document.getElementById('fWtWrap').style.display")
+              == 'none')
+        check('…and says why, rather than leaving a hole',
+              'thread name set' in pg.evaluate(
+                  "document.getElementById('fTargetNote').textContent"))
+        check('Codex keeps the permission mode it DOES have',
+              pg.evaluate("document.getElementById('fPermWrap').style.display") != 'none')
+        pg.evaluate("pickTarget('pi')")
+        pg.wait_for_timeout(300)
+        check('pi hides the permission mode and keeps the name',
+              pg.evaluate("document.getElementById('fPermWrap').style.display")
+              == 'none'
+              and pg.evaluate("document.getElementById('fNameWrap').style.display")
+              != 'none')
+        check('a CLI tab hides the Claude account chips',
+              pg.evaluate("document.getElementById('fAcctWrap').style.display") == 'none')
+        # -- each CLI brings its own models and its own effort scale --
+        # Everything in the Claude block is Anthropic's: priced model cards, a
+        # frontier slider whose stops are (model, effort) pairs an advisor has
+        # rated, presets over both, and a hint keyed by an Anthropic model id.
+        # Showing that under a Codex session is not a cosmetic mismatch — it
+        # offers `--effort ultracode`, which Codex rejects outright.
+        check('the Anthropic catalogue block is swapped out',
+              pg.evaluate("document.getElementById('fClaudeBlock').hidden") is True
+              and pg.evaluate("document.getElementById('fOwnBlock').hidden") is False)
+        effs = pg.evaluate("[...document.querySelectorAll('#fOwnEffort .chip')]"
+                           ".map(c=>c.dataset.v)")
+        check("pi gets ITS effort scale, not Claude Code's",
+              effs == ['', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+              effs)
+        mods = pg.evaluate("[...document.querySelectorAll('#fOwnModels option')]"
+                           ".map(o=>o.value)")
+        check('…and the models this CLI has actually run',
+              mods == ['anthropic/claude-sonnet-5'], mods)
+        check('the two Claude-only environment settings are gone too',
+              pg.evaluate("document.getElementById('fThink').closest('.fld').style.display")
+              == 'none')
+        pg.evaluate("pickTarget('codex')")
+        pg.wait_for_timeout(500)
+        effs = pg.evaluate("[...document.querySelectorAll('#fOwnEffort .chip')]"
+                           ".map(c=>c.dataset.v)")
+        check('Codex gets a different one again — no max, no ultracode',
+              effs == ['', 'minimal', 'low', 'medium', 'high', 'xhigh'], effs)
+        pg.evaluate("(()=>{const i=document.getElementById('fOwnModel');"
+                    "i.value='gpt-5.4-mini';})();"
+                    "document.querySelector('#fOwnEffort .chip[data-v=\"high\"]').click()")
+        pg.wait_for_timeout(200)
+        check("the launch reads the CLI's own pair, not the frontier slider",
+              pg.evaluate("currentModelEffort()") == ['gpt-5.4-mini', 'high'])
+        check('the hint stops quoting Anthropic advice',
+              'Codex chooses the rest itself'
+              in pg.evaluate("document.getElementById('mHint').textContent"))
+        # and a backend is still the same binary, so it keeps everything
+        pg.evaluate("pickTarget('provider:p2')")
+        pg.wait_for_timeout(700)
+        check('picking a generic backend asks for its model as free text',
+              pg.evaluate("!!document.getElementById('fProvModelIn')"))
+        check('prefilled with what that backend is configured with',
+              pg.evaluate("(document.getElementById('fProvModelIn')||{}).value")
+              == 'Qwen3-VL-32B')
+        check('the launch payload decomposes back into cfgdir + provider',
+              pg.evaluate("[targetRow('codex').cfgdir,targetRow('provider:p2').provider,"
+                          "targetRow('claude').cfgdir]") == ['/home/.codex', 'p2', ''])
+        pg.evaluate("$('#ovl').classList.remove('show')")
+
         print('\n— narrow window —')
         pg.set_viewport_size({'width': 700, 'height': 900})
         pg.wait_for_timeout(800)
@@ -1977,7 +2340,7 @@ def main():
     # "FAILURES: none" every time. A floor on the number of checks executed is
     # the cheapest thing that would have caught it.
     # And a floor that never moves stops being a floor: it rises with the suite.
-    FLOOR = 175
+    FLOOR = 280
     if len(ran) < FLOOR:
         fails.append(f'only {len(ran)} checks ran, expected >= {FLOOR} — '
                      'part of this suite is not executing')

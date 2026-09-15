@@ -1,7 +1,6 @@
 ---
 description: >-
-  The Claude Code status line archeus renders, the local failover proxy that retries a
-  dead model instead of hanging, and the read-only view of Claude Code's checkpoint store.
+  The Claude Code status line archeus renders, the failover proxy that retries a dead model instead of hanging, and a read-only view of the checkpoint store.
 ---
 
 # Status line, failover & checkpoints
@@ -32,7 +31,7 @@ schema the backing provider rejects, makes a session look frozen forever — not
 tries a different model, because Claude Code has no such concept.
 
 archeus's failover proxy sits between `claude.exe` and the
-[OmniRoute](plan-execute.md#free-execution-via-omniroute) upstream. It forwards bytes
+[configured provider](providers.md) upstream. It forwards bytes
 verbatim and, when a turn errors **before any response body byte has reached the client**,
 rewrites the request's `model` and tries the next candidate. Request-level retry *is*
 per-turn failover, because every turn is its own request. The routing log is the point — the

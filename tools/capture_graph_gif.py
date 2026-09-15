@@ -1,21 +1,25 @@
-"""Capture the REAL architecture-graph HTML render to an animated GIF.
+"""Capture the REAL architecture-graph HTML render to an animated WebP.
 
 Unlike tools/make_gifs.py (a hand-drawn preview), this drives a headless
 Chromium over the actual connections-graph.html and screenshots the live
-animated canvas frame by frame, then assembles a GIF. Run it on YOUR machine.
+animated canvas frame by frame, then assembles the animation. Run it on YOUR
+machine.
 
 Setup (once):
     pip install playwright pillow
     playwright install chromium
 
 Usage:
-    py tools/capture_graph_gif.py --project . --frames 48 --out docs/graph-real.gif
+    py tools/capture_graph_gif.py --project . --frames 48
     py tools/capture_graph_gif.py --html "D:\\repos\\.archeus\\connections-graph.html"
 
 Notes:
   --project builds/uses that project's graph (defaults to the current dir).
   --html captures an existing rendered graph HTML directly.
-  Bigger --frames / --width = smoother + heavier GIF. Trim with --fps / --width.
+  Bigger --frames / --width = smoother + heavier output. Trim with --fps / --width.
+  --out decides the format: .webp (default) or .gif. GIF is 10x the bytes for
+  the same frames and nothing published points at one any more; the switch is
+  kept only because --colors is meaningless without it.
 """
 
 import argparse
@@ -36,12 +40,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--project', default='.')
     ap.add_argument('--html', default='')
-    ap.add_argument('--out', default=os.path.join('docs', 'graph-real.gif'))
+    ap.add_argument('--out', default=os.path.join('docs', 'graph-real.webp'))
     ap.add_argument('--frames', type=int, default=48)
     ap.add_argument('--fps', type=int, default=15)
     ap.add_argument('--width', type=int, default=1200)
     ap.add_argument('--height', type=int, default=680)
-    ap.add_argument('--colors', type=int, default=96, help='GIF palette size (smaller = lighter)')
+    ap.add_argument('--colors', type=int, default=96, help='GIF palette size (smaller = lighter); ignored for .webp')
     ap.add_argument('--settle-ms', type=int, default=2000,
                     help='wait before capture so the layout settles')
     ap.add_argument('--expand-all', action='store_true',
@@ -84,11 +88,19 @@ def main():
             page.wait_for_timeout(interval)
         browser.close()
 
-    frames = [f.quantize(colors=args.colors, method=Image.MEDIANCUT,
-                         dither=Image.Dither.NONE) for f in frames]
     os.makedirs(os.path.dirname(os.path.abspath(args.out)) or '.', exist_ok=True)
-    frames[0].save(args.out, save_all=True, append_images=frames[1:],
-                   duration=interval, loop=0, optimize=True, disposal=2)
+    if args.out.lower().endswith('.webp'):
+        # No palette step: WebP compresses between frames, so the colour
+        # reduction a GIF needs is pure loss here. The same capture was 5770 KB
+        # as a 96-colour GIF and 538 KB as WebP, and it is the largest paint on
+        # two published pages.
+        frames[0].save(args.out, 'WEBP', save_all=True, append_images=frames[1:],
+                       duration=interval, loop=0, quality=60, method=6)
+    else:
+        frames = [f.quantize(colors=args.colors, method=Image.MEDIANCUT,
+                             dither=Image.Dither.NONE) for f in frames]
+        frames[0].save(args.out, save_all=True, append_images=frames[1:],
+                       duration=interval, loop=0, optimize=True, disposal=2)
     print(f"wrote {args.out}  ({os.path.getsize(args.out) // 1024} KB, {len(frames)} frames)")
 
 

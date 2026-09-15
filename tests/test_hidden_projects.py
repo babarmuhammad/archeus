@@ -30,8 +30,10 @@ def flat(*parts):
 
 
 def _by_enc(monkeypatch, mapping):
-    """gui imports find_actual_path by value, and it cannot walk a fake tree."""
-    monkeypatch.setattr(gui, 'find_actual_path',
+    """The one project walk reads paths.find_actual_path, and it cannot walk a
+    fake tree."""
+    from claude_sessions import paths as paths_mod
+    monkeypatch.setattr(paths_mod, 'find_actual_path',
                         lambda e, *a, **k: mapping.get(e))
 
 

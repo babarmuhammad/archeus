@@ -1,7 +1,6 @@
 ---
 description: >-
-  Every archeus command — the UI launchers, workspace status, recall, review,
-  sync-accounts, the status line renderer and the failover proxy — and the flags each takes.
+  Every archeus command — UI launchers, workspace status, recall, review, sync-accounts, the status line renderer and the failover proxy — and their flags.
 ---
 
 # Command line

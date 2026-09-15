@@ -1,8 +1,6 @@
 ---
 description: >-
-  The memory and workspace layer for AI coding agents. What archeus is, the three surfaces
-  it offers — terminal UI, desktop app and Claude Code plugin — and which page of the
-  manual to read next.
+  What archeus is, the three surfaces it offers — terminal UI, desktop app and Claude Code plugin — and which page of the manual to read next.
 ---
 
 # Getting started
@@ -27,10 +25,19 @@ Code authentication you already have. No API key.
 
 !!! note "Where this is going"
 
-    A long-term goal, not a feature, and none of it ships today: provider-neutral memory,
-    then an open harness of its own. Claude Code is the first surface, not the boundary.
-    Everything documented on this site works against the files Claude Code writes to disk,
-    and nothing else is supported yet.
+    Half of it has arrived: a session can be routed at any endpoint serving
+    `POST /v1/messages` — a local Ollama, llama.cpp or vLLM server, OpenRouter, or
+    OmniRoute — and it stays a real Claude Code session. See [Model providers](providers.md).
+
+    The other half has started. archeus also reads **OpenAI Codex** and **pi** — their
+    sessions, projects, previews, models and token spend all merge into the same lists,
+    one memory graph is delivered to all three, and any of them can be launched from the
+    same picker. See [More than one CLI](harnesses.md).
+
+    Claude Code is the first surface, not the boundary — and it is no longer the only
+    one. It remains much the deepest of the three, and the comparison table on that page
+    says plainly what each of the others cannot do rather than hiding the gaps. A harness
+    of archeus's own remains a long-term goal, not a feature.
 
 ## The three surfaces
 

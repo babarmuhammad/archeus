@@ -14,6 +14,7 @@ from .config import (W, _AUTOGEN_START, _AUTOGEN_END, _SESSIONS_START, _SESSIONS
 from .config import get_claude_exe, open_in_editor
 from . import config as _cfg
 from . import config as _c
+from . import harnesses as _harnesses
 from .repos import _git      # pins encoding='utf-8' — see repos._git docstring
 from .sessions import get_session_info, get_session_rich_summary, read_extra_paths, format_age
 from .ui import text_input, _cls, wait_event, poll_event
@@ -34,15 +35,18 @@ _MACHINE_BLOCKS = ((_MEMORY_START, _MEMORY_END),
 _AI_ANALYZE_TIMEOUT = 900
 
 
-def upsert_block(project_path, start, end, section):
-    """Insert, replace or REMOVE one sentinel block in <project>/CLAUDE.md,
+def upsert_block(project_path, start, end, section, filename='CLAUDE.md'):
+    """Insert, replace or REMOVE one sentinel block in <project>/<filename>,
     leaving everything else (user prose, AUTOGEN, SESSIONS, other blocks)
     intact. `section` of '' deletes the block. Returns (ok, old, new).
 
-    Extracted because there are now two machine-maintained blocks — the memory
-    digest and the agent routing table — and the seam handling below is the
-    fiddly half nobody wants a second copy of."""
-    md_path = os.path.join(project_path, 'CLAUDE.md')
+    Extracted because there are now three machine-maintained blocks — the memory
+    digest, the agent routing table and the loop journal — and the seam handling
+    below is the fiddly half nobody wants a second copy of. `filename` is a
+    PARAMETER for the same reason: Codex reads `AGENTS.md` and pi reads both, so
+    a second harness needed one more argument here rather than one more copy of
+    this function."""
+    md_path = os.path.join(project_path, filename)
     old = ''
     if os.path.exists(md_path):
         try:
@@ -70,23 +74,43 @@ def upsert_block(project_path, start, end, section):
         new = f"# {name}\n\n{section}"
     if new == old:
         return True, old, new
-    try:
-        with open(md_path, 'w', encoding='utf-8') as f:
-            f.write(new)
-        return True, old, new
-    except Exception:
+    # write_atomic, like every other writer of this file (`prune_claude_md`,
+    # `scaffold_claude_md`): Claude Code parses CLAUDE.md on every turn, and a
+    # plain open(,'w') that dies partway leaves it half a file. This was the last
+    # holdout, and it is the writer for all three machine-maintained blocks.
+    if not _c.write_atomic(md_path, new):
         return False, old, old
+    return True, old, new
 
 
 def write_memory_block(project_path, digest):
-    """Insert/replace the ARCHEUS:MEMORY sentinel block in <project>/CLAUDE.md.
-    Returns (ok, old_content, new_content)."""
+    """Insert/replace the ARCHEUS:MEMORY block in every instructions file an
+    installed harness reads. Returns (ok, old, new) for the FIRST of them.
+
+    One graph, one digest, every CLI — the memory layer does not have a Claude
+    Code half and a Codex half, so its delivery may not either. Claude Code's
+    file is first in `instructions_files()`, which is what keeps the return
+    value the one every caller already had: `sync_to_claudemd` hands it to
+    `diffview.record`, and a diff of three files at once is not a thing that
+    screen can show.
+
+    `ok` is the AND over all of them. A second file that could not be written is
+    a real failure — half the harnesses would be reading a stale digest with
+    nothing on screen saying so.
+    """
     note = _c.generated_note("this project's semantic memory graph",
                              "the project's Memory tab -> Build with Claude")
     section = (f"{_MEMORY_START}\n## Project memory (archeus — auto-maintained)\n"
                f"{note}\n\n"
                f"{digest}\n{_MEMORY_END}\n")
-    return upsert_block(project_path, _MEMORY_START, _MEMORY_END, section)
+    first, ok = None, True
+    for name in _harnesses.instructions_files():
+        got = upsert_block(project_path, _MEMORY_START, _MEMORY_END, section,
+                           filename=name)
+        ok = ok and got[0]
+        if first is None:
+            first = got
+    return (ok,) + (first or (True, '', ''))[1:]
 
 
 def _valid_claude_md(text):
@@ -130,19 +154,34 @@ def _preserve_machine_blocks(final, existing):
 
 
 def resolve_memory_files(project_path):
-    """Which CLAUDE.md files load for a project, broadest→narrowest, with
-    @import references resolved one level. Returns [(label, path, exists, imports)]."""
+    """Which instructions files load for a project, broadest→narrowest, with
+    @import references resolved one level. Returns [(label, path, exists, imports)].
+
+    Every INSTALLED harness's file, not only Claude Code's. The memory layer
+    already writes the digest into each of them (`write_memory_block` fans out
+    over `instructions_files()`), so a map that showed one was a map of one CLI's
+    session — and on a machine with Codex it was a map that could not explain
+    where the block you were looking at had gone.
+    """
     # every account's global file, not just the active one: the same project
     # opened under another account loads a different `user` CLAUDE.md, and a
     # map that shows one of them is a map of the wrong session.
     accounts = _cfg.all_config_dirs()
     candidates = [('user' if len(accounts) == 1 else 'user (%s)' % name,
                    _cfg.global_claude_md_for(d)) for name, d in accounts]
-    candidates += [
-        ('project',       os.path.join(project_path, 'CLAUDE.md')),
-        ('project/.claude', os.path.join(project_path, '.claude', 'CLAUDE.md')),
-        ('local',         os.path.join(project_path, 'CLAUDE.local.md')),
-    ]
+    # `instructions_files()` is deduped and Claude Code's is first, so with one
+    # harness installed this is exactly the three rows it has always been.
+    for name in _harnesses.instructions_files():
+        stem = os.path.splitext(name)[0]
+        candidates += [
+            ('project' if name == 'CLAUDE.md' else 'project (%s)' % name,
+             os.path.join(project_path, name)),
+            ('project/.claude' if name == 'CLAUDE.md'
+             else 'project/.claude (%s)' % name,
+             os.path.join(project_path, '.claude', name)),
+            ('local' if name == 'CLAUDE.md' else 'local (%s)' % name,
+             os.path.join(project_path, stem + '.local.md')),
+        ]
     out = []
     for label, path in candidates:
         exists = os.path.isfile(path)

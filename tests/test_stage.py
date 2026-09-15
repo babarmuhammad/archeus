@@ -426,9 +426,10 @@ def test_vendor_is_served_not_inlined():
     # above the page and failed the next edit for the wrong reason; 650KB was
     # spent by the hull-faces pass and the brightness slider; 740KB was spent
     # by the cluster spokes and the five-section navigation together, and
-    # tripped 239 bytes over. At 800KB against a ~740KB page, an inlined anime
-    # lands at ~858KB and still fails.
-    assert len(PAGE) < 800_000, f'page is {len(PAGE)} bytes — is a library inlined?'
+    # tripped 239 bytes over; 800KB was spent by the provider card, and tripped
+    # 1,910 bytes over. At 880KB against an ~802KB page, an inlined anime lands
+    # at ~920KB and still fails.
+    assert len(PAGE) < 880_000, f'page is {len(PAGE)} bytes — is a library inlined?'
     assert 'const STAGE = {' in PAGE, 'stage.js must stay in the bundle'
 
 

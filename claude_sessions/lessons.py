@@ -15,6 +15,7 @@ import json
 
 from . import memory
 from . import config as _c
+from . import store
 
 TAIL_MSGS = 30
 TAIL_CHARS = 30000
@@ -35,10 +36,10 @@ def _all_folders(proj_folder):
 def _sid_path(proj_folder, sid):
     """Resolve a sid to the account folder its transcript actually lives in."""
     for f in _all_folders(proj_folder):
-        p = os.path.join(f, sid + '.jsonl')
+        p = store.transcript_path(f, sid)
         if os.path.isfile(p):
             return p
-    return os.path.join(proj_folder, sid + '.jsonl')
+    return store.transcript_path(proj_folder, sid)
 
 
 def pending_sids(proj_folder, mem):

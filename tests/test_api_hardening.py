@@ -144,13 +144,19 @@ def test_every_job_carries_its_own_lock():
 
 def test_a_job_stuck_running_forever_is_reaped():
     """Only terminal jobs were trimmed, so a job whose thread died without
-    setting a terminal status stayed in the registry forever."""
+    setting a terminal status stayed in the registry forever.
+
+    Built through `new_job`, not by hand. These two tests LEAVE their rows in
+    the global registry, so a hand-built dict missing a key is read later by
+    whatever asks for job status next — which surfaced as an intermittent
+    `KeyError: 'result'` from /api/dashboard, in a different file, depending on
+    collection order. That is the third time this exact shape has gone stale,
+    and it is what the factory exists for.
+    """
     with gui_api._JOBS_LOCK:
         gui_api._JOBS.clear()
-        gui_api._JOBS['zombie'] = {
-            'id': 'zombie', 'status': 'running', 'label': 'z', 'messages': [],
-            'error': '', 'started': time.time() - gui_api._STUCK_AFTER - 1,
-            'lock': threading.RLock()}
+        gui_api._JOBS['zombie'] = gui_api.new_job(
+            'z', jid='zombie', started=time.time() - gui_api._STUCK_AFTER - 1)
         gui_api._reap_locked()
         assert gui_api._JOBS['zombie']['status'] == 'error'
 
@@ -159,9 +165,8 @@ def test_terminal_jobs_are_trimmed_to_a_ceiling():
     with gui_api._JOBS_LOCK:
         gui_api._JOBS.clear()
         for i in range(gui_api._KEEP_TERMINAL + 20):
-            gui_api._JOBS['j%d' % i] = {
-                'id': 'j%d' % i, 'status': 'done', 'label': 'x', 'messages': [],
-                'error': '', 'started': time.time() - i, 'lock': threading.RLock()}
+            gui_api._JOBS['j%d' % i] = gui_api.new_job(
+                'x', jid='j%d' % i, status='done', started=time.time() - i)
         gui_api._reap_locked()
         assert len(gui_api._JOBS) == gui_api._KEEP_TERMINAL
 

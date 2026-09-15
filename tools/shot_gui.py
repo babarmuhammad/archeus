@@ -50,7 +50,7 @@ _PROJ = [('acme-api', 4199000, 'now', ['default', 'teamA']),
          ('scratchpad', 2000, '9d', ['default'])]
 sg.DASH['breakdown']['projects'] = [
     {'name': n, 'enc': n.lower(), 'tokens': t, 'cost': t / 2e5, 'age': a,
-     'mtime': _N - i * 4000, 'accounts': acc, 'omni': i % 3 == 0,
+     'mtime': _N - i * 4000, 'accounts': acc, 'provider': i % 3 == 0,
      'sparkline': [(i * j) % 9 + 1 for j in range(7)]}
     for i, (n, t, a, acc) in enumerate(_PROJ)]
 sg.DASH['mcp'] = [{'name': 'server-%d' % i, 'running': i == 0} for i in range(10)]

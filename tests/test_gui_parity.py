@@ -63,7 +63,6 @@ def _seed(sb, monkeypatch, n=2, enc='X--enc-alpha'):
         sid = f'aaaa{i:04d}-0000-0000-0000-000000000000'
         make_jsonl(str(folder / f'{sid}.jsonl'), title=f'Session {i}')
         sids.append(sid)
-    monkeypatch.setattr(gui, 'find_actual_path', lambda e, *a, **k: actual if e == enc else None)
     import claude_sessions.paths as paths_mod
     monkeypatch.setattr(paths_mod, 'find_actual_path',
                         lambda e, *a, **k: actual if e == enc else None)
@@ -501,6 +500,41 @@ def test_memory_active_reports_locked_project(monkeypatch, tmp_path):
         srv.shutdown()
 
 
+def test_the_project_list_reaches_the_sidebar_after_boot(monkeypatch, tmp_path):
+    """`ST.projects` is read once from /api/state and the SPA had nothing that
+    re-read it — so a project that appeared WHILE the app was open (opened by
+    path and then launched into, or worked on from a terminal) stayed missing
+    from the sidebar until a reload.
+
+    This poll already walked every project to ask each for its scan lock, so it
+    carries the list: the fix is a field on a request that was being made
+    anyway, which is why both halves are checked here — a payload nothing reads
+    is as dead as a reader with no payload.
+    """
+    import io
+    import os as _os
+    sb = Sandbox(monkeypatch, tmp_path)
+    actual, enc, folder, sids = _seed(sb, monkeypatch)
+    srv, base = _serve()
+    try:
+        code, d = _req(base + '/api/memory/active')
+        assert code == 200
+        assert [p['path'] for p in d['projects']] == [
+            p['path'] for p in gui.list_projects()]
+        assert actual in [p['path'] for p in d['projects']]
+    finally:
+        srv.shutdown()
+
+    js = io.open(_os.path.join(_os.path.dirname(_os.path.dirname(
+        _os.path.abspath(__file__))), 'claude_sessions', 'web', 'app.js'),
+        encoding='utf-8').read()
+    poll = js[js.index('async function pollActiveMem('):]
+    poll = poll[:poll.index('\n}')]
+    assert 'ST.projects=d.projects' in poll, \
+        'the poll carries the project list and the SPA ignores it'
+    assert 'drawProjects()' in poll
+
+
 def test_claude_md_scaffold_and_system_prompt(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     actual, enc, folder, sids = _seed(sb, monkeypatch)
@@ -615,7 +649,8 @@ def test_job_plan_make_with_council(monkeypatch, tmp_path):
     from claude_sessions import plan_execute
     monkeypatch.setattr(plan_execute, '_plan', lambda task, m, cwd, effort='', cfgdir='': 'draft plan')
     seen = {}
-    def fake_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''):
+    def fake_council(task, plan, cwd, models=None, prov_env=None, cfgdir='',
+                     prof=None):
         seen['called'] = (task, plan)
         return 'council-optimized plan'
     monkeypatch.setattr(plan_execute, 'optimize_plan_council', fake_council)
@@ -692,9 +727,9 @@ def test_job_plan_make_surfaces_real_subprocess_error(monkeypatch, tmp_path):
         srv.shutdown()
 
 
-def test_job_plan_make_council_ignores_stale_omniroute_default(monkeypatch, tmp_path):
+def test_job_plan_make_council_ignores_stale_provider_default(monkeypatch, tmp_path):
     # regression: council used to always route through the account-wide
-    # omniroute_exec_model default regardless of the 'via' the user picked
+    # provider_exec_model default regardless of the 'via' the user picked
     # for THIS plan -- a stale/unreachable default silently killed every
     # council call (via _headless's own failure swallowing) with no error
     # surfaced. Council must follow the request's own 'via', same as
@@ -703,13 +738,14 @@ def test_job_plan_make_council_ignores_stale_omniroute_default(monkeypatch, tmp_
     actual, enc, folder, sids = _seed(sb, monkeypatch)
     from claude_sessions import plan_execute, config as cfg
     s = cfg.load_settings()
-    s['omniroute_exec_model'] = 'auto/coding'
-    s['omniroute_base_url'] = 'http://127.0.0.1:1'
+    s['provider_exec_model'] = 'auto/coding'
+    s['provider_base_url'] = 'http://127.0.0.1:1'
     cfg.save_settings(s)
     monkeypatch.setattr(plan_execute, '_plan', lambda task, m, cwd, effort='', cfgdir='': 'draft plan')
     seen = {}
-    def fake_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''):
-        seen['omni_env'] = omni_env
+    def fake_council(task, plan, cwd, models=None, prov_env=None, cfgdir='',
+                     prof=None):
+        seen['prov_env'] = prov_env
         return 'council-optimized plan'
     monkeypatch.setattr(plan_execute, 'optimize_plan_council', fake_council)
     srv, base = _serve()
@@ -721,25 +757,28 @@ def test_job_plan_make_council_ignores_stale_omniroute_default(monkeypatch, tmp_
         jid = d['job']
         st = _wait_job(base, jid, 'done', 'error')
         assert st['status'] == 'done'
-        assert seen['omni_env'] == {}
+        assert seen['prov_env'] == {}
     finally:
         srv.shutdown()
 
 
-def test_job_plan_make_council_uses_omniroute_when_via_selected(monkeypatch, tmp_path):
+def test_job_plan_make_council_uses_the_provider_when_via_selected(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     actual, enc, folder, sids = _seed(sb, monkeypatch)
     from claude_sessions import plan_execute, config as cfg
     s = cfg.load_settings()
-    s['omniroute_exec_model'] = 'auto/coding'
-    s['omniroute_base_url'] = 'http://localhost:20128'
-    s['omniroute_api_key'] = 'secret'
+    prof = cfg.new_profile(id='p1', name='OmniRoute', kind='omniroute',
+                           model='auto/coding', base_url='http://localhost:20128',
+                           api_key='secret', port=20129)
+    s['providers'] = [prof]
+    s['provider_active'] = 'p1'
     cfg.save_settings(s)
     monkeypatch.setattr(plan_execute, '_plan', lambda task, m, cwd, effort='', cfgdir='': 'draft plan')
     monkeypatch.setattr(plan_execute, 'check_endpoint', lambda *a, **k: None)
     seen = {}
-    def fake_council(task, plan, cwd, models=None, omni_env=None, cfgdir=''):
-        seen['omni_env'] = omni_env
+    def fake_council(task, plan, cwd, models=None, prov_env=None, cfgdir='',
+                     prof=None):
+        seen['prov_env'] = prov_env
         return 'council-optimized plan'
     monkeypatch.setattr(plan_execute, 'optimize_plan_council', fake_council)
     srv, base = _serve()
@@ -747,13 +786,14 @@ def test_job_plan_make_council_uses_omniroute_when_via_selected(monkeypatch, tmp
         code, d = _req(base + '/api/job',
                        {'kind': 'plan_make', 'path': actual, 'enc': enc,
                         'cfgdir': str(sb.cfg), 'task': 'do a thing', 'council': True,
-                        'via': 'omniroute'})
+                        'via': 'provider'})
         jid = d['job']
         st = _wait_job(base, jid, 'done', 'error')
         assert st['status'] == 'done'
-        assert seen['omni_env'] == {'ANTHROPIC_BASE_URL': 'http://localhost:20128',
+        assert seen['prov_env'] == {'ANTHROPIC_BASE_URL': 'http://localhost:20128',
                                      'ANTHROPIC_AUTH_TOKEN': 'secret',
-                                     'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1'}
+                                     'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
+                                     'CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING': '1'}
     finally:
         srv.shutdown()
 

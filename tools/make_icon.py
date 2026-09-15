@@ -13,14 +13,26 @@ Written from that one source:
 
     archeus.ico              the app icon — Qt window, shortcuts, taskbar pin
     docs/assets/favicon.ico  the documentation site
-    www/public/favicon.ico   the marketing site
-    www/app/favicon.ico      the marketing site, again — and it is not a
-                             duplicate. Next.js's App Router serves
+    www/app/favicon.ico      the marketing site. Next.js's App Router serves
                              `app/favicon.ico` in preference to
-                             `public/favicon.ico`, so writing only the public
-                             one left the apex serving the OLD mark while every
-                             other surface had the new one, with nothing to
-                             show for it in any diff.
+                             `public/favicon.ico`, so a copy in `public/` is
+                             never requested — it was 115 KB shipped on every
+                             deploy for nothing, and is gone.
+    www/app/apple-icon.png   180px, the iOS home-screen icon. A file-convention
+                             name, so Next emits the `apple-touch-icon` link
+                             itself and no metadata entry has to name it.
+    www/public/icon-192.png  the two sizes `app/manifest.ts` declares. An ICO in
+    www/public/icon-512.png  a web manifest is legal and useless: Android reads
+                             PNG, and the ICO it was pointed at held one 256px
+                             frame inside 115 KB.
+    docs/assets/logo-256.png the MkDocs header logo, which renders about 30px
+                             tall. It used to be the 1254px master — 998 KB on
+                             every page of the manual.
+
+**A favicon does not need a 256px frame.** The ICO carried 16/32/48/64/128/256
+everywhere, which is right for the app icon (Windows draws shortcuts and the
+taskbar from the large frames) and is most of 115 KB for a 16px browser tab.
+`SIZES` is per target now.
 
 Two things this does to the source, and both matter:
 
@@ -44,9 +56,16 @@ from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, 'docs', 'assets', 'logo.png')
-SIZES = [16, 32, 48, 64, 128, 256]
 
-#: every place the icon has to exist, relative to the repo root.
+#: the app icon: Windows draws a shortcut, a taskbar pin and an Alt-Tab card
+#: from different frames, so it needs all of them.
+APP_SIZES = [16, 32, 48, 64, 128, 256]
+#: a favicon is drawn at 16 and, on a retina tab or a bookmark bar, at 32 or 48.
+#: Nothing asks a favicon for 256.
+FAVICON_SIZES = [16, 32, 48]
+
+#: every place the icon has to exist, relative to the repo root, with the ICO
+#: frames each one actually needs.
 #:
 #: The app icon lives INSIDE the package, not at the repo root where it used to
 #: sit. package-data ships it from there, and `gui_qt._icon_path` already looked
@@ -54,10 +73,17 @@ SIZES = [16, 32, 48, 64, 128, 256]
 #: pipx install ran the desktop window with no icon at all, and only a dev
 #: checkout ever had one. One copy, in the only place that works for both.
 TARGETS = [
-    os.path.join('claude_sessions', 'archeus.ico'),
-    os.path.join('docs', 'assets', 'favicon.ico'),
-    os.path.join('www', 'public', 'favicon.ico'),
-    os.path.join('www', 'app', 'favicon.ico'),
+    (os.path.join('claude_sessions', 'archeus.ico'), APP_SIZES),
+    (os.path.join('docs', 'assets', 'favicon.ico'), FAVICON_SIZES),
+    (os.path.join('www', 'app', 'favicon.ico'), FAVICON_SIZES),
+]
+
+#: PNG icons, `(path, pixel size)`. Each is written from the same master.
+PNG_TARGETS = [
+    (os.path.join('www', 'app', 'apple-icon.png'), 180),
+    (os.path.join('www', 'public', 'icon-192.png'), 192),
+    (os.path.join('www', 'public', 'icon-512.png'), 512),
+    (os.path.join('docs', 'assets', 'logo-256.png'), 256),
 ]
 
 #: alpha at or above this is the tile; below it is the drop shadow. Measured on
@@ -87,10 +113,15 @@ def master(size=1024):
 
 def main():
     big = master()
-    for rel in TARGETS:
+    for rel, sizes in TARGETS:
         out = os.path.join(ROOT, rel)
-        big.save(out, format='ICO', sizes=[(s, s) for s in SIZES])
-        print('wrote %s  (%s)' % (rel, ', '.join(str(s) for s in SIZES)))
+        big.save(out, format='ICO', sizes=[(s, s) for s in sizes])
+        print('wrote %s  (%s)  %d KB'
+              % (rel, ', '.join(str(s) for s in sizes), os.path.getsize(out) // 1024))
+    for rel, size in PNG_TARGETS:
+        out = os.path.join(ROOT, rel)
+        big.resize((size, size), Image.LANCZOS).save(out, format='PNG', optimize=True)
+        print('wrote %s  (%dpx)  %d KB' % (rel, size, os.path.getsize(out) // 1024))
 
 
 if __name__ == '__main__':

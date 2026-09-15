@@ -17,7 +17,7 @@ def is_anthropic_model(model):
 
 
 # ── Step 6 ──────────────────────────────────────────────────────────────
-def is_omni_model(model):
+def is_provider_model(model):
     """Return True for non-empty, non-synthetic, non-Anthropic model ids."""
     m = (model or "")
     if m in SYNTHETIC:
@@ -59,7 +59,7 @@ def load_assistant_turns(path):
 
 # ── Step 9 ──────────────────────────────────────────────────────────────
 def check_routing(turns):
-    """Check that main turns use omni models and agent turns use Sonnet 5."""
+    """Check that main turns use provider models and agent turns use Sonnet 5."""
     main_violations = []
     agent_violations = []
 
@@ -70,8 +70,8 @@ def check_routing(turns):
             if model and model not in SYNTHETIC and not is_sonnet5(model):
                 agent_violations.append(t)
         else:
-            # Main execution turn — must be omni (non-Anthropic)
-            if model and model not in SYNTHETIC and not is_omni_model(model):
+            # Main execution turn — must be provider (non-Anthropic)
+            if model and model not in SYNTHETIC and not is_provider_model(model):
                 main_violations.append(t)
 
     main_models = sorted({t["model"] for t in turns if not t["sidechain"] and t["model"] and t["model"] not in SYNTHETIC})

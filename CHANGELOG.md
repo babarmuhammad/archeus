@@ -5,6 +5,298 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [2.4.0] - 2026-09-15
+
+### Added
+
+- **A Harnesses page, and a sidebar about the workspace rather than about one CLI.**
+  Five screens only Claude Code has — Accounts, its own client state, output styles,
+  subagents and hooks — moved out of the sidebar and behind a tab for that CLI, beside a
+  new Setup screen per harness: whether it is installed, where, which version, whether an
+  update is waiting, and its full capability table with the reason beside every gap. The
+  pages themselves are unchanged; only which door they sit behind moved. Five greyed rows
+  teach you the app is about one tool.
+
+- **Usage & cost reads every CLI.** A harness strip over the page, and the split is real:
+  daily tokens and per-project spend are counted out of each CLI's own transcripts, which
+  archeus already parses. Only the plan-window rail is Anthropic's, and it greys with its
+  reason instead of switching the whole page off — which is what the old `usage`
+  capability did for Codex and pi, wrongly. The dashboard's `spend today` names which CLI
+  spent it when more than one did.
+
+- **Models and quick-start presets for Codex and pi.** Both were an empty box on a fresh
+  install, because the model list was read only from what the CLI had already run. It now
+  also reads the catalogue each CLI **ships** — pi installs a 1,354-model provider list
+  covering its own models and Codex's — so the picker has suggestions before the first
+  session, labelled *run here* versus *ships with this CLI*. Three presets per CLI over
+  its own two scales, and a preset naming a model the catalogue does not publish is
+  dropped rather than offered.
+
+- **Non-Anthropic sessions are priced.** That same catalogue carries per-model prices, so
+  a `gpt-5.5` or Gemini session shows a cost instead of `n/a`. A model nothing publishes a
+  price for stays unpriced — no guess, because an Opus-tier fallback on a `gpt-5.6-luna`
+  session would be wrong by a factor of fifty.
+
+- **`codex.exe` and `pi` paths in ⚙ Settings → Paths & limits**, beside `claude.exe`, for
+  an install the automatic search cannot reach.
+
+### Changed
+
+- **Three capabilities Codex was declared not to have, it has.** Checked against the
+  installed binary rather than assumed: `codex mcp list/get/add/remove` is a full MCP
+  surface, `codex plugin list` reads every marketplace, and `codex doctor` reports the
+  installed version and whether a newer one exists — all three offline and without a
+  login. The MCP page, the Plugins page and the Updates page answer for Codex now;
+  plugins are read-only there, because installing goes through a marketplace resolver
+  archeus does not own. `codex update` and `pi update` are buttons.
+
+- **Hooks stay unavailable for Codex, with the real reason.** Its hook contract is
+  byte-identical to Claude Code's — the binary carries the same `session_id`,
+  `transcript_path`, `hook_event_name` and `stop_hook_active` payload fields — but every
+  handler in `hooks.json` is gated on an undocumented `trusted_hash` whose mismatch is
+  refused **silently**. A hook archeus installs that never fires and never says so is
+  worse than no hook.
+
+- **Auto-memory says where its two deliveries land.** The digest already reached every
+  installed CLI's instructions file; the path-scoped `.claude/rules/*.md` half only ever
+  reached Claude Code, and nothing said so. That is a declared capability now, the Memory
+  tab names which CLIs read those files, and the CLAUDE.md map lists every instructions
+  file a project loads rather than only Claude Code's.
+
+### Fixed
+
+- **Installing a second CLI no longer reports the workspace as broken.** The dashboard's
+  wiring ring counted hooks and a statusline over *every* CLI home, and neither is
+  something Codex or pi has — so a fully-wired machine dropped from 1/1 to 1/3 the moment
+  a second CLI appeared.
+
+- **A Codex or pi project is no longer attributed to an account called `.codex`.** The
+  spend breakdown resolved account names from Claude Code's account list alone.
+
+- **Structured data on every page of the manual, derived from the page.** All twenty-nine
+  pages now carry a `TechArticle` and a `BreadcrumbList`, under the same author, website
+  and application `@id`s the marketing site uses — so the two hosts describe one project
+  rather than two that share a name. Troubleshooting additionally emits a `FAQPage` and
+  Quickstart a `HowTo`, both **built from the page's own headings** at build time rather
+  than written beside it: the questions an answer engine quotes are the exact symptom
+  strings and error messages the page already displays. Previously one page in
+  twenty-nine opted into any structured data at all.
+
+- **`tools/optimize_images.py`, `tools/check_site_seo.py` and `tools/audit_site.py`.**
+  Respectively: every published image at the size it should be; the built HTML checked
+  for titles, canonicals, descriptions, social cards, JSON-LD and image dimensions; and
+  every page loaded at 390x844 with a failure on anything past the right edge. The first
+  two run in CI on every push, the third on the weekly schedule.
+
+- **`tools/set_domain.py`** — moves both published sites to a new domain in one command,
+  with `notes/domain-change.md` for the parts no script can do (DNS, the Vercel projects,
+  GitHub Pages, the Search Console change of address, and the 301s that have to stay up
+  for a year). `notes/search-console.md` covers verification.
+
+### Changed
+
+- **Both sites are about 10 MB lighter.** The architecture-graph animation is written as
+  animated WebP instead of GIF — the same 30 frames at 538 KB instead of 5770 KB — and it
+  is the largest paint on two pages. The manual's screenshots get a WebP derivative where
+  it beats the PNG (Desktop app went from 1470 KB of images to 227 KB); the PNG stays as
+  the master, because that is what the README embeds and what PyPI renders. The docs
+  header logo was the 1254px master at 998 KB on every page and is now a 256px
+  derivative; the favicon carried a 256px frame and now stops at 48.
+
+- **Images in the manual declare their intrinsic size and load lazily**, so the text under
+  them no longer moves when they arrive.
+
+- **Explicit crawler rules on both hosts**, including `Google-Extended` and
+  `Applebot-Extended` — the two agents for which "no rule" reads as a refusal rather than
+  as the default. Preview deployments are excluded from indexing.
+
+- **HSTS, `X-Content-Type-Options` and `Referrer-Policy` on both sites.** Not `preload`,
+  deliberately: that list is effectively permanent and a domain move is pending.
+
+- Nineteen pages had a meta description longer than a search result renders; all are
+  rewritten to fit. `docs/api.md` had none at all and fell back to the site-wide one.
+
+- The FAQ page's twenty-three questions are headings now. The page emitted a twenty-three
+  entry `FAQPage` while the only headings in its markup were the four in the footer.
+
+- PyPI can filter this package by Python version: the classifiers named `3` and no minor.
+
+### Fixed
+
+- **Seventeen internal links redirected before they arrived.** The apex serves `/features`
+  and the manual serves `/installation/`; links written with the other site's convention
+  cost a 308 each. Two links pointed at the pre-domain GitHub Pages host.
+
+- **A `.grid` override made three pages of the manual scroll sideways on a phone.** A bare
+  `minmax(20rem, 1fr)` is a floor the track cannot go under; Material's own rule clamps it
+  with `min(100%, …)` and this one did not carry that across. Found by measuring, not by
+  looking.
+
+- `app/apple-icon.png` was built and routed but never linked: naming `icons` in the root
+  metadata replaces Next's file-convention detection rather than adding to it. The web
+  manifest pointed at an ICO for a size the file no longer contains.
+
+- **archeus reads three coding CLIs, not one.** OpenAI Codex and pi join Claude Code as
+  first-class harnesses: their projects, sessions, previews, turn counts, models, token
+  spend, search and usage all merge into the same lists, with no configuration — archeus
+  looks for each binary and its home, and a CLI it cannot find is simply not offered. A
+  *provider* is an endpoint and a *harness* is the binary itself; the two axes are
+  orthogonal, and the launch picker shows both because they are both answers to "what runs
+  this session". See
+  [More than one CLI](https://github.com/babarmuhammad/archeus/blob/main/docs/harnesses.md).
+
+- **One memory graph behind all three.** A project's memory is the project's, not Claude
+  Code's memory of the project, so the same digest is delivered into every instructions
+  file an installed CLI reads — `CLAUDE.md` for Claude Code, `AGENTS.md` for Codex, and
+  both for pi, which reads either. A machine with no Codex never grows an `AGENTS.md`. The
+  agent routing table deliberately does not follow: delegation is a Claude Code capability,
+  and writing "delegate with the Agent tool" into `AGENTS.md` would instruct Codex to use a
+  tool it does not have.
+
+- **Skills install into every CLI.** `SKILL.md` is the Agent Skills standard and all three
+  read the same file, so a personal skill lands in every account *and* every CLI, and a
+  project skill writes `.claude/skills` and `.agents/skills` — two directories, not three,
+  because `.agents/skills` is the cross-harness convention Codex and pi share.
+
+- **New session opens on a tab strip.** Which CLI or backend a session runs on used to be a
+  chip row six fields down inside a collapsed "Advanced" panel, beside the thinking cap —
+  the only control in that form that changed which *tool* ran. It is now the first question,
+  because it decides what the rest of the form means: a Codex session has no worktree and no
+  name-at-launch, a pi session has no permission mode, and those fields are removed with the
+  reason stated rather than left as dead inputs. The default is Claude Code and is
+  configurable in Settings → Defaults → **Starts on**.
+
+- **A CLI can be switched off, and off means everywhere** — the launch tabs, the project
+  list, the sessions list, the usage table, and the instructions files that get a memory
+  block. Nothing is uninstalled and nothing on disk is touched. Claude Code is listed and
+  locked: it is the binary archeus itself runs for memory extraction, lessons and every
+  other AI feature.
+
+### Fixed
+
+- **A one-shot run in the OS scratch directory is no longer a project.** A `codex exec` or
+  `claude -p` in `%TEMP%` writes the same session state a real project does, and the sidebar
+  grew a tab for a directory that is gone by the next boot.
+
+- **Codex sessions reported zero tokens, and search, usage and the dashboard reported no
+  sessions at all.** The corpus walk listed `*.jsonl` in the project folder, which is where
+  Codex keeps an index rather than a transcript; it goes through the same two seams the
+  sessions list already used. Token spend is read from the rollout's `token_count` events,
+  whose cumulative totals are banked as deltas — summing one per turn multiplies a session's
+  spend by its turn count.
+
+- **Run a session against a local model, OpenRouter or a self-hosted server**, not only
+  OmniRoute. archeus could already point a real `claude` session at another backend —
+  that is what the OmniRoute support has always been — but the capability was wired to one
+  product name, so an Ollama, vLLM or llama.cpp server speaking the same protocol was
+  unreachable. Settings → **Model provider** now takes any endpoint that serves
+  `POST /v1/messages`. Sessions keep their agents, skills, hooks, MCP servers, slash
+  commands and checkpoints, because none of those ever talk to the model API. See
+  [Model providers](https://github.com/babarmuhammad/archeus/blob/main/docs/providers.md) for the list of
+  what a backend swap genuinely costs — subagents, prompt caching, extended thinking and
+  `web_search` are affected, and three of the four cannot be fixed from outside Claude Code.
+
+- **Every session picks its own backend.** One backend at a time was a real constraint, not a
+  screen limitation: the failover and gateway proxies re-read the settings on every request, so
+  two live backends would have handed one session's credential to the other's upstream. Backends
+  are now **named profiles** — Settings → **Models** lists them, each with its own URL, key,
+  model, context window, translating gateway and failover list — and each one owns its own pair
+  of ports, so its proxies are pinned to it at spawn and can no longer resolve to a neighbour.
+  The launch modal and the terminal picker both offer the list, so one project can run on a local
+  vLLM while the next runs on OmniRoute and a third on your Anthropic account. Your existing
+  backend is carried across into a profile on first start, keeping its key, URL, model and
+  failover list; nothing is lost and nothing needs re-entering.
+
+- **Run archeus's own Claude calls on the configured provider too.** Memory extraction,
+  lesson distillation, code review and the CLAUDE.md / agent / skill / hook / system-prompt
+  generators always went to Anthropic, whatever the provider card said — they are the
+  cheapest, highest-volume calls archeus makes and the best fit for a local model. Opt in
+  with **Run archeus's own calls here too**; off by default, because these run unattended
+  and moving them changes which account is billed. An unreachable backend fails the call
+  rather than quietly falling back to the account you routed away from.
+
+### Fixed
+
+- **The upgrade from the previous name is finished.** The rename moved everything that was a
+  path and nothing that was not, and the one repair it did ship ran exactly once — at the one
+  moment when nothing was broken yet. Four things came out of that, and every one of them was
+  measured on a real machine rather than reasoned about:
+    - **Hooks and the statusline are repaired on every start**, not once during the migration.
+      They record an absolute path into the environment that installed them, and everything
+      that kills such a path — uninstalling the old package from its own pipx venv, moving or
+      re-cloning a checkout, rebuilding a virtualenv — happens *after* the migration has run
+      and closed its flag. Only a path that no longer exists and names one of archeus's own
+      scripts is rewritten; a hook you wrote by hand, or a fork running from a checkout, is
+      left alone. The statusline is rebuilt with the windowless interpreter it was installed
+      with, so the repair does not start flashing a console window once per conversation turn.
+    - **A duplicated memory block in `CLAUDE.md` is removed.** The sentinel comments around the
+      generated memory, agent-routing and loop blocks carry the tool's name, so after the
+      rename nothing could find the old ones and every build appended a second block beside
+      the first — which then went into every session, for ever, saying whatever it said the
+      day the rename landed. A block the new name has since rewritten is dropped; a block with
+      no successor is renamed in place, so the next build updates it instead of duplicating it
+      too. A half-written pair is left alone, and the `KEEP` fence around your own prose is
+      always renamed and never removed — until it was, the compression pass could not see it.
+    - **Scheduled loops are re-registered.** A scheduler entry is a name, not a path, so the
+      registry moved and the Task Scheduler / cron entry did not: the loop read as unscheduled
+      in the UI while the old entry went on firing, into an interpreter that may since have
+      been deleted. The old entry is removed and the loop re-registered, which rebuilds its
+      command line at the same time.
+    - **`CLAUDECTL_*` environment variables and a plugin still installed under the old id are
+      reported on startup.** Both have been silently doing nothing since the rename, and
+      neither is archeus's to edit: one lives in your shell profile, the other in caches that
+      only the `claude` CLI may write.
+- **`CLAUDE.md` is written atomically.** The writer for all three machine-maintained blocks was
+  the last one still using a plain truncating write, and Claude Code parses that file on every
+  turn — a write that died partway left it half a file.
+- **Adding a backend threw away the form it had just opened.** A new profile has no id until it
+  is saved — that is what keeps an abandoned Add from leaving anything behind — but the list
+  redraw dropped any selection whose id was not in the list, which is every draft. The pane blanked
+  the moment it appeared.
+- **The model catalogue never loaded.** Backends are per-profile now and the catalogue endpoint
+  takes the profile id; the page was still asking for it without one, so the request was refused
+  and the model picker was simply never built. The card offered a free-text box where it should
+  have offered the live list.
+- **Stopping the failover proxy did nothing at all.** The button raised a `TypeError` on the
+  background thread — it asked to stop "the" proxy, from before there was one per backend — where
+  nothing logs it, so the job neither finished nor reported. The last call site missed in that
+  conversion.
+- **An image sent through the translating gateway is now reported.** Anything that is not text, a
+  tool call or a tool result had no branch in the translation and left the request in silence, so
+  a vision model behind the gateway stopped seeing the picture with nothing said anywhere. It is
+  still dropped — translating it is a larger change — but the proxy console now says so, once per
+  kind of block, exactly as it already did for prompt caching.
+- **Which backend a session ran on is written down at launch** instead of guessed afterwards from
+  the model ids in its transcript. That guess cannot tell an Anthropic model served *through* a
+  provider from a direct run, and said so in its own source. A new session's id is archeus's to
+  choose, so the answer is recorded before the first line is written; sessions started elsewhere
+  still fall back to the guess.
+- **Four generators bypassed the one headless-call helper.** Authoring an agent, a skill or a
+  system prompt, and analysing an MCP server, each rebuilt the same `claude --print` command
+  by hand — so none of them honoured the `--max-budget-usd` cap, and all four passed the whole
+  prompt as a command-line argument, which is the Windows length limit the shared helper exists
+  to avoid. They call it now, and a test fails a fifth copy.
+- **Subagents kept a model id a routed backend cannot resolve.** The frontmatter-stripping
+  that makes agents work on a non-Anthropic model was a parameter three of its four callers
+  never passed, so agents synced from the GUI or accepted from a suggestion still carried
+  `model: claude-…` and 401'd. It is derived from the active provider now instead of being
+  asked of each caller.
+- **A routed model's cost read as `~$0.00`.** There are no published rates for one, which
+  is not the same as it being free — a paid OpenRouter or self-hosted model was reported as
+  approximately nothing. It shows `n/a`; a session mixing Anthropic and routed models still
+  quotes the part that is known.
+- **Extended thinking no longer fails the whole turn on a non-Anthropic backend.** Claude
+  Code sends the adaptive-thinking field unconditionally and an upstream that does not know
+  it answers 400, so it is disabled automatically whenever a provider is configured.
+
+### Changed
+
+- The `omniroute_base_url` / `omniroute_api_key` / `omniroute_exec_model` settings are now
+  `provider_*`, with `provider_kind` choosing between OmniRoute's managed daemon and a
+  server you already run. Existing settings are migrated on first start.
+
 ## [2.3.0] - 2026-09-11
 
 ### Changed

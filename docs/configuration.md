@@ -1,8 +1,6 @@
 ---
 description: >-
-  Every file archeus reads and writes — per-project files under ~/.claude/projects and in
-  the working directory, the global CLAUDE.md, its own settings file, and the repository
-  layout.
+  Every file archeus reads and writes: per-project files under ~/.claude/projects, files in the working directory, the global CLAUDE.md and its own settings.
 ---
 
 # Configuration

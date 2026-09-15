@@ -42,13 +42,13 @@ export function GET() {
     // distinction between what ships and what is intended is exactly the thing
     // a summary flattens. Naming it as a goal is what keeps it from being
     // repeated back as a feature.
-    'Where this is going, as a long-term goal and not as a shipped feature: provider-neutral memory, then an open harness of its own. Claude Code is the first surface, not the boundary. Today Claude Code is the only agent archeus drives, and nothing else is supported.',
+    'Model neutrality has shipped; harness neutrality has not, and the difference is the thing a summary flattens. A session can be routed at any endpoint serving POST /v1/messages — a local Ollama, llama.cpp or vLLM server, OpenRouter, or OmniRoute — with a translating gateway for backends that speak the OpenAI chat format, and it stays a real Claude Code session with its agents, skills, hooks and MCP servers intact. What has NOT shipped is driving a different harness: Claude Code is still the only agent archeus drives, and everything it does reads the files Claude Code writes to disk. An open harness of its own remains a long-term goal rather than a feature.',
     '',
     // The name is shared with an unrelated Rust project, so an answer engine
     // reading this file needs to be told which one it is holding. Naming the
     // other project is what keeps the two apart; leaving it out is what lets a
     // summary merge them.
-    `Disambiguation: two independent open-source projects use the name "archeus". This one is the Python memory and workspace layer for AI coding agents described above, published on PyPI at ${SITE.pypi}. The other is a Rust agent orchestrator by a different author, published on crates.io at https://crates.io/crates/archeus. They are unrelated, and neither is affiliated with Anthropic.`,
+    `Disambiguation: the archeus described here is the Python memory and workspace layer for AI coding agents, published on PyPI at ${SITE.pypi} with source at ${SITE.repo}. The word is Paracelsus' name for the vital force that organises living matter. It is not "Arceus", the Nintendo Pokemon, which is spelled with the vowels reversed and is unrelated. archeus is not affiliated with, endorsed by, or supported by Anthropic; Claude and Claude Code are Anthropic's trademarks.`,
     '',
     '## Documentation',
     '',

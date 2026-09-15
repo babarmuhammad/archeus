@@ -1,37 +1,7 @@
 ---
 title: archeus documentation
 description: >-
-  The archeus manual — installing it, the terminal UI, the desktop app, the Claude Code
-  plugin, configuration, project memory, the architecture graph and what a turn costs.
-jsonld: |
-  {
-    "@context": "https://schema.org",
-    "@type": "TechArticle",
-    "name": "archeus documentation",
-    "description": "The memory and workspace layer for AI coding agents. The complete archeus manual.",
-    "url": "https://docs.claudectl.space/",
-    "author": {"@type": "Person", "name": "Babar Muhammad Anas"},
-    "about": {
-      "@type": "SoftwareApplication",
-      "@id": "https://claudectl.space/#software",
-      "name": "archeus",
-      "alternateName": ["archeus (Python)", "archeus for Claude Code", "archeus agent memory"],
-      "identifier": "archeus",
-      "sameAs": [
-        "https://github.com/babarmuhammad/archeus",
-        "https://pypi.org/project/archeus/",
-        "https://docs.claudectl.space/"
-      ],
-      "applicationCategory": "DeveloperApplication",
-      "operatingSystem": "Windows, macOS, Linux",
-      "softwareVersion": "2.3.0",
-      "url": "https://claudectl.space/",
-      "codeRepository": "https://github.com/babarmuhammad/archeus",
-      "programmingLanguage": "Python",
-      "license": "https://opensource.org/licenses/MIT",
-      "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}
-    }
-  }
+  The archeus manual — installing it, the terminal UI, the desktop app, the Claude Code plugin, project memory, the architecture graph and what a turn costs.
 ---
 
 # archeus documentation
@@ -90,7 +60,7 @@ session in five minutes.
 | | |
 |---|---|
 | [API reference](api.md) | the local HTTP API the desktop app is built on, generated from the route tables |
-| [Download](https://claudectl.space/download/) | every way to get it, what a release contains, versioning |
+| [Download](https://claudectl.space/download) | every way to get it, what a release contains, versioning |
 | [Multiple accounts](accounts.md) · [Context hand-off](context-handoff.md) | more than one Claude account, and moving a session between them |
 | [MCP servers](mcp.md) · [Agents & skills](agents.md) · [Hooks](hooks.md) | Claude Code integration |
 | [Plan → Execute](plan-execute.md) · [Status line & failover](statusline.md) | model routing and what runs per turn |
@@ -101,11 +71,14 @@ session in five minutes.
 
 <div class="grid" markdown>
 
-![Terminal UI](img/tui-main.png)
+![Terminal UI](img/tui-main.png){ width="836" height="477" loading=lazy }
 
-![Desktop app](img/gui-sessions.png)
+![Desktop app](img/gui-sessions.webp){ width="1600" height="1000" loading=lazy }
 
 </div>
 
 Looking for the product pitch, the feature tour or the comparison instead?
-That is on [claudectl.space](https://claudectl.space/).
+That is on [claudectl.space](https://claudectl.space/) — along with the
+[blog](https://claudectl.space/blog), which is where the longer write-ups live:
+why Claude Code forgets a project between sessions, what belongs in CLAUDE.md,
+cutting the per-turn token cost, and running more than one account.

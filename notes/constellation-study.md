@@ -217,7 +217,8 @@ and the geometry swap has no business retuning it.
 ## Derived assets
 
 `tools/make_gifs.py` (`_dodec` → `_cluster`, regenerate `docs/graph.gif`),
-`tools/capture_graph_gif.py` (re-capture `graph-real.gif` into docs and `www/public`),
+`tools/capture_graph_gif.py` (re-capture `graph-real.webp` into docs; `tools/optimize_images.py`
+mirrors it into `www/public`),
 `docs/architecture.md` (it describes "rotating dodecahedra" in prose), and the Graph
 skin screenshots from `tools/shot_gui.py` that README, docs and the site all embed.
 

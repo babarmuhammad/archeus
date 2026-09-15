@@ -45,7 +45,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: url(`/blog/${post.slug}`),
       // No wall clock: the post's own date is the only honest lastModified, and
       // it keeps the sitemap byte-identical between two builds of one commit.
-      lastModified: post.date,
+      lastModified: post.updated,
       changeFrequency: 'yearly' as const,
       priority: 0.7,
     })),

@@ -48,26 +48,39 @@ def _doc_pages():
     return out
 
 
-def test_every_snippet_a_page_pulls_in_resolves():
+def test_no_page_uses_an_include_the_build_cannot_expand():
     """A page including `--8<-- "FILE:section"` renders EMPTY when the marker
-    moves — no error, no broken link, nothing for --strict to catch.
+    moves — no error, no broken link, nothing for --strict to catch. The older
+    form of this test walked the includes and checked each source resolved.
 
-    This used to assert the source was always README.md, back when the README WAS
-    the site and every page was a nine-line include stub. That direction is
-    inverted now (the pages hold the content and the README points at them), so
-    the gate is stated against whatever file an include actually names —
-    today only docs/changelog.md, pulling the root CHANGELOG.md."""
-    for rel in _doc_pages():
-        for src, section in re.findall(r'--8<--\s+"([^":]+)(?::([\w-]+))?"',
-                                       _read(os.path.join(DOCS, rel))):
-            path = os.path.join(ROOT, src.replace('/', os.sep))
-            assert os.path.isfile(path), '%s includes missing %s' % (rel, src)
-            if section:
-                text = _read(path)
-                assert '[start:%s]' % section in text, \
-                    '%s wants %s:%s — no start marker' % (rel, src, section)
-                assert '[end:%s]' % section in text, \
-                    '%s wants %s:%s — no end marker' % (rel, src, section)
+    It stopped walking anything: docs/changelog.md and docs/code-of-conduct.md
+    were the only pages that ever held a marker, both moved to the apex site,
+    and the test then passed by iterating an empty set — which is the failure
+    mode tools/smoke_gui.py already taught this repo to distrust. So
+    `pymdownx.snippets` came out of mkdocs.yml with them, and the gate inverted:
+    a marker written into a page where the extension is not configured renders
+    as literal `--8<--` text in the published manual.
+
+    Both halves are asserted, so re-adding the feature means re-adding both."""
+    configured = 'pymdownx.snippets' in _read(os.path.join(ROOT, 'mkdocs.yml'))
+    used = {rel for rel in _doc_pages()
+            if re.search(r'--8<--\s+"', _read(os.path.join(DOCS, rel)))}
+    if configured:
+        for rel in used:
+            for src, section in re.findall(r'--8<--\s+"([^":]+)(?::([\w-]+))?"',
+                                           _read(os.path.join(DOCS, rel))):
+                path = os.path.join(ROOT, src.replace('/', os.sep))
+                assert os.path.isfile(path), '%s includes missing %s' % (rel, src)
+                if section:
+                    text = _read(path)
+                    assert '[start:%s]' % section in text, \
+                        '%s wants %s:%s — no start marker' % (rel, src, section)
+                    assert '[end:%s]' % section in text, \
+                        '%s wants %s:%s — no end marker' % (rel, src, section)
+    else:
+        assert not used, (
+            'these pages use an `--8<--` include but pymdownx.snippets is not in '
+            'mkdocs.yml, so it will publish as literal text: %s' % sorted(used))
 
 
 # The H2s that moved out to their own pages. A reader who lands on the repo should
@@ -397,3 +410,124 @@ def test_the_banner_is_artwork_the_card_only_reads(tmp_path):
     assert im.mode == 'RGBA', im.mode
     lo, _hi = im.getchannel('A').getextrema()
     assert lo == 0, 'the banner has no transparent ground'
+
+
+# --- structured data -------------------------------------------------------
+
+#: Pages that opt into a type richer than TechArticle, and the key that does it.
+#: `tools/mkdocs_hooks.py` derives the block from the page's own headings rather
+#: than reading one written beside it — see that module's docstring.
+RICH_SCHEMA = {
+    'troubleshooting.md': 'faq_from_headings',
+    'quickstart.md': 'howto_from_headings',
+}
+
+
+def test_every_docs_page_gets_structured_data_without_asking_for_it():
+    """This used to be opt-in — a `jsonld:` front-matter key — and exactly ONE
+    of twenty-nine pages ever opted in. The manual is the content an answer
+    engine actually wants, and it was the least marked-up surface either site
+    had while the marketing pages carried five schema types each.
+
+    The fix is that the template emits the graph for every page, so the gate is
+    against the template rather than against a count of pages that remembered.
+    All five nodes are named: dropping one is a silent downgrade that no build
+    and no link check would notice."""
+    tpl = _read(os.path.join(ROOT, 'overrides', 'main.html'))
+    for node in ('"@type": "Person"', '"@type": "WebSite"',
+                 '"@type": "SoftwareApplication"', '"@type": "TechArticle"',
+                 '"@type": "BreadcrumbList"'):
+        assert node in tpl, 'overrides/main.html no longer emits %s' % node
+    assert 'page.meta.jsonld' in tpl, \
+        'the per-page override door is gone; the two rich pages emit nothing'
+
+
+def test_the_two_hosts_assert_one_entity_not_two():
+    """An unrelated Rust project publishes under this name, so what identifies
+    THIS archeus is one author and one application corroborated from both hosts.
+    That only works if both name the same `@id` — two hosts each minting their
+    own is two entities that happen to share a spelling."""
+    tpl = _read(os.path.join(ROOT, 'overrides', 'main.html'))
+    site_ts = _read(os.path.join(ROOT, 'www', 'lib', 'site.ts'))
+    layout = _read(os.path.join(ROOT, 'www', 'app', 'layout.tsx'))
+    for fragment in ('#author', '#website', '#software'):
+        assert fragment in tpl, 'the docs template stopped naming %s' % fragment
+        assert fragment in layout, 'the apex layout stopped naming %s' % fragment
+    assert 'config.extra.apex' in tpl, \
+        'the docs @ids no longer point at the apex, so they mint a second entity'
+    # And the profile list, which is the corroboration itself.
+    mk = _read(os.path.join(ROOT, 'mkdocs.yml'))
+    for url in re.findall(r"'(https://(?:www\.)?(?:linkedin|dev|instagram|github)[^']*)'",
+                          site_ts.split('export const NAV')[0]):
+        assert url in mk, 'in www PROFILES but not in mkdocs.yml extra.profiles: %s' % url
+
+
+def test_a_page_that_claims_a_richer_type_still_declares_it():
+    for name, key in RICH_SCHEMA.items():
+        text = _read(os.path.join(DOCS, name))
+        assert key in text.split('\n---\n', 1)[0], \
+            '%s no longer opts into %s' % (name, key)
+
+
+def _hooks():
+    """tools/mkdocs_hooks.py, loaded without mkdocs. Its derivation helpers are
+    pure regex over markdown, which is the whole reason they can be gated from
+    the `test` job that installs only pytest."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        'mkhooks', os.path.join(ROOT, 'tools', 'mkdocs_hooks.py'))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class _FakePage:
+    """Enough of a MkDocs Page for the derivation helpers."""
+    def __init__(self, title, meta):
+        self.title, self.meta = title, meta
+        self.canonical_url = SITE_URL + 'x/'
+
+
+def test_the_rich_pages_actually_produce_the_schema_they_ask_for():
+    """The opt-in key is not the gate — the OUTPUT is. Both helpers return None
+    rather than guess when a page does not fit the shape, which is correct and
+    silent: docs/installation.md opted into `howto_from_headings`, its headings
+    are `Requirements` / `Setup` / `Windows shortcuts` rather than a numbered
+    sequence, and it produced no HowTo at all. Nothing said so. A page can lose
+    its structured data by being edited, so run the real derivation and count
+    what comes out."""
+    hooks = _hooks()
+    faq = hooks._faq(_read(os.path.join(DOCS, 'troubleshooting.md')),
+                     _FakePage('Troubleshooting', {}))
+    assert faq and len(faq['mainEntity']) >= 5,         'troubleshooting.md asks for a FAQPage and yields %s' % (faq and len(faq['mainEntity']))
+    for q in faq['mainEntity']:
+        answer = q['acceptedAnswer']['text']
+        assert len(answer) > 80, 'answer for %r is %d chars' % (q['name'], len(answer))
+        assert '](' not in answer and '```' not in answer,             'raw markdown leaked into the answer for %r' % q['name']
+
+    page = _FakePage('Quickstart', {'description': 'x'})
+    howto = hooks._howto(_read(os.path.join(DOCS, 'quickstart.md')), page, None)
+    assert howto and len(howto['step']) >= 4,         'quickstart.md asks for a HowTo and yields %s' % (howto and len(howto['step']))
+    assert [s['position'] for s in howto['step']] ==         sorted(s['position'] for s in howto['step']), 'HowTo steps are out of order'
+
+
+def test_a_page_that_does_not_fit_the_shape_gets_nothing_rather_than_a_guess():
+    """The other half of the same rule, stated against the page that taught it.
+    A HowTo whose steps are `Requirements`, `Setup`, `Windows shortcuts` is a
+    lie about the page, and a lie in structured data is worse than silence —
+    Google penalises markup that does not match the content."""
+    hooks = _hooks()
+    page = _FakePage('Installation', {'description': 'x'})
+    assert hooks._howto(_read(os.path.join(DOCS, 'installation.md')), page, None) is None
+    assert 'howto_from_headings' not in _read(os.path.join(DOCS, 'installation.md')),         'installation.md asks for a HowTo it cannot produce'
+
+
+def test_the_troubleshooting_headings_stay_the_strings_people_search():
+    """These become FAQPage questions verbatim, which is the whole reason they
+    are written as symptoms and quoted error text rather than as topics. A
+    heading rewritten to `Rendering issues` is a question nobody asks."""
+    text = _read(os.path.join(DOCS, 'troubleshooting.md'))
+    heads = re.findall(r'^##\s+(.+?)\s*$', text, re.M)
+    assert len(heads) >= 5, heads
+    quoted = [h for h in heads if h.startswith('"')]
+    assert quoted, 'no troubleshooting heading quotes an actual error string'

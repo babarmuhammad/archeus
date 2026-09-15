@@ -361,6 +361,47 @@ def _budget_args():
     return ['--max-budget-usd', f'{cap:g}'] if cap > 0 else []
 
 
+def _provider_headless(model):
+    """(env, model) for one of archeus's OWN headless calls when the user has
+    named a provider profile for them, else (None, model).
+
+    Its own setting (`headless_provider_id`) rather than whatever a session was
+    last launched on: these run unattended, from a hook and from background
+    threads, so the backend they spend has to be chosen once and deliberately.
+
+    Routed through `omniroute.prepare_launch`, the same seam an interactive
+    launch uses — so the gateway gets started, the failover proxy gets started,
+    and an unreachable backend fails here with a reason instead of returning an
+    empty answer that reads as "the model said nothing".
+
+    The model is replaced, not kept: `extract_model()` names an Anthropic model
+    that a local backend cannot resolve, so a routed call has to ask for the
+    profile's own model id.  Raises whatever prepare_launch raises."""
+    from .config import load_settings, provider_profile
+    s = load_settings()
+    prof = provider_profile(s.get('headless_provider_id') or '', s)
+    if not prof:
+        return None, model
+    pm = (prof.get('model') or '').strip()
+    if not pm:
+        return None, model
+    from . import omniroute
+    # On top of the thread's account env, not os.environ: the account still
+    # decides CLAUDE_CONFIG_DIR (where the transcript lands, which MCP servers
+    # load), and only the model endpoint moves.
+    env = dict(getattr(_tls, 'env', None) or os.environ)
+    env.update(omniroute.prepare_launch(pm, prof)[0])
+    return env, pm
+
+
+#: True when the LAST _claude_stdin call ended because the user pressed ESC,
+#: rather than because the model returned nothing. Same shape as
+#: `last_call_cost` below and for the same reason: the callers that care about
+#: the distinction are few, and widening the return type would touch every
+#: caller that does not.
+last_call_cancelled = False
+
+
 def use_account(env):
     """Context manager: every headless Claude call on THIS thread spends the
     account described by *env*, until the block ends.
@@ -408,7 +449,8 @@ def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
     always-on CLAUDE.md tokens to describe archeus talking to itself. This is
     the one seam every headless call passes through, so marking here is both
     complete and impossible to forget at a new call site."""
-    global last_call_error
+    global last_call_error, last_call_cancelled
+    last_call_cancelled = False
     from .config import get_claude_exe
     from .sessions import HEADLESS_MARK
     last_call_error = ''
@@ -421,6 +463,24 @@ def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
     prompt = (prompt or '') + '\n\n' + HEADLESS_MARK
     args = [exe, '-p', '--max-turns', '20', '--disallowedTools', 'Write,Edit,NotebookEdit,Bash']
     m = extract_model() if model is None else (model or '').strip()
+    try:
+        env, m = _provider_headless(m)
+    except Exception as e:
+        # backend down, gateway refused to start, model not in the catalogue —
+        # all of which are the user's setting being wrong, so say so instead of
+        # silently spending the Anthropic account they routed away from.
+        if not getattr(_tls, 'silent', False):
+            try:
+                from .ui import flash
+                flash(f'Provider unavailable: {e}', ok=False, secs=1.8)
+            except Exception:
+                pass
+        return ''
+    # Not routed: fall back to the account this thread was told to spend. Both
+    # branches below take the same `env`, which is also what gives the
+    # FOREGROUND path an account at all — it used to pass none.
+    if env is None:
+        env = getattr(_tls, 'env', None)
     if m:
         args += ['--model', m]
     args += _budget_args()
@@ -428,13 +488,13 @@ def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
     if getattr(_tls, 'silent', False):
         from .gui_api import _run_cancellable
         try:
-            return _run_cancellable(args, input_text=prompt, cwd=cwd, timeout=timeout,
-                                    env=getattr(_tls, 'env', None))
+            return _run_cancellable(args, input_text=prompt, cwd=cwd, timeout=timeout, env=env)
         except Exception:
             return ''
     from .ui import run_with_progress_stdin
-    out, _cancelled = run_with_progress_stdin(
-        args, prompt, crumbs, label, timeout=timeout, cwd=cwd)
+    out, cancelled = run_with_progress_stdin(
+        args, prompt, crumbs, label, timeout=timeout, cwd=cwd, env=env)
+    last_call_cancelled = bool(cancelled)
     return out or ''
 
 

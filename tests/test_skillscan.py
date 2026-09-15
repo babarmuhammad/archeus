@@ -207,5 +207,10 @@ def test_the_gate_runs_through_the_shared_confirm(tmp_path):
     installer = inspect.getsource(
         __import__('claude_sessions.skills', fromlist=['x']).install_from_git)
     assert 'skillscan.review_gate' in installer
-    # and it must be reached before any write
-    assert installer.index('review_gate') < installer.index('install_skill(d,')
+    # and it must be reached before any write — named by PREFIX rather than by
+    # one call, because the project half became its own fan-out the moment a
+    # skill had to land in more than one CLI's roots, and a gate that pins one
+    # literal stops watching the write it was written for
+    first = min(i for i in (installer.find('install_project('),
+                            installer.find('install_personal(')) if i >= 0)
+    assert installer.index('review_gate') < first

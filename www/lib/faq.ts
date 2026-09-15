@@ -9,11 +9,11 @@ export type QA = { q: string; a: string };
 export const FAQ: QA[] = [
   {
     q: 'What is archeus?',
-    a: 'The memory and workspace layer for AI coding agents. archeus is free and open source, and it sits in front of the agent: you pick a project, see every session you have ever had in it, and launch the next one with the model, effort, permissions and context you intended. It adds persistent project memory, a session archive you can search and tag, MCP server management, an interactive architecture graph and per-turn cost tracking. Anthropic’s Claude Code CLI is the agent it drives today. It is a Python package, MIT licensed, with zero runtime dependencies, and it runs as a terminal UI or a desktop GUI over the same engine.',
+    a: 'The memory and workspace layer for AI coding agents. archeus is free and open source, and it sits in front of the agent: you pick a project, see every session you have ever had in it, and launch the next one with the model, effort, permissions and context you intended. It adds persistent project memory, a session archive you can search and tag, MCP server management, an interactive architecture graph and per-turn cost tracking. It drives three coding CLIs — Anthropic’s Claude Code, OpenAI Codex and pi — with Claude Code much the deepest of them. It is a Python package, MIT licensed, with zero runtime dependencies, and it runs as a terminal UI or a desktop GUI over the same engine.',
   },
   {
-    q: 'Is this the same as the Rust archeus?',
-    a: 'No. There are two independent open-source projects using the name archeus. This one is the Python memory and workspace layer for AI coding agents — install it with pipx install archeus, source at github.com/babarmuhammad/archeus, documentation at docs.claudectl.space. The other is a Rust agent orchestrator by a different author, published on crates.io. They are unrelated projects and neither is affiliated with Anthropic.',
+    q: 'Where does the name archeus come from, and what is it not?',
+    a: 'Archeus is Paracelsus’ name for the vital force that organises living matter — the thing that keeps a body coherent over time, which is what a memory layer does for a codebase. It is not Arceus, the Pokémon, which is spelled with the vowels the other way round and belongs to Nintendo. There is no connection to either. The software called archeus is this one: the Python memory and workspace layer for AI coding agents, installed with pipx install archeus, source at github.com/babarmuhammad/archeus. It is not affiliated with Anthropic.',
   },
   {
     q: 'Is archeus made by Anthropic?',
@@ -21,11 +21,11 @@ export const FAQ: QA[] = [
   },
   {
     q: 'Does archeus need an API key?',
-    a: 'No. It never talks to the Claude API on its own account — it launches the Claude Code CLI, which uses the login you already have, and it reads the transcripts and settings Claude Code writes to disk. There is nothing to configure and no subscription. Everything runs on your machine, and the desktop GUI is served on loopback only.',
+    a: 'Not by default. Out of the box it launches the CLI you already have — Claude Code, Codex or pi — using the login that CLI already holds, and it reads the transcripts and settings each one writes to disk — there is nothing to configure and no subscription. A key is only involved if you deliberately point a session somewhere else: archeus can route a session at a local model server, OpenRouter, OmniRoute or anything that serves POST /v1/messages, and that endpoint’s credentials are yours to supply. Everything runs on your machine either way, and the desktop GUI is served on loopback only.',
   },
   {
     q: 'How do I install archeus on Windows, macOS or Linux?',
-    a: 'The same command on all three: pipx install archeus (or pip install archeus). It needs Python 3.10 or newer and the Claude Code CLI on your PATH. Then run archeus for the terminal UI, or archeus --gui for the desktop app. On Windows the GUI opens in a native window if PyQt6 is installed; everywhere else, and without PyQt6, it opens in your browser.',
+    a: 'The same command on all three: pipx install archeus (or pip install archeus). It needs Python 3.10 or newer and at least one coding CLI on your PATH — Claude Code, OpenAI Codex or pi. Then run archeus for the terminal UI, or archeus --gui for the desktop app. On Windows the GUI opens in a native window if PyQt6 is installed; everywhere else, and without PyQt6, it opens in your browser.',
   },
   {
     q: 'Where does Claude Code store its sessions?',
@@ -93,7 +93,11 @@ export const FAQ: QA[] = [
   },
   {
     q: 'Does archeus work with coding agents other than Claude Code?',
-    a: 'Not today. Claude Code is the only agent archeus drives, and everything it does reads the files Claude Code writes to disk. Provider-neutral memory, and then an open harness of its own, is the long-term direction — a goal, not a feature, and not something you can use yet. Claude Code is the first surface, not the boundary.',
+    a: 'Yes — OpenAI Codex and pi, with nothing to configure: archeus looks for each CLI’s binary and its home directory, and one it cannot find is simply not offered. Their projects, sessions, previews, models and token spend merge into the same lists, one memory graph is delivered to all three (CLAUDE.md for Claude Code, AGENTS.md for Codex, both for pi), skills install into every one of them, and any of them can be launched from the same picker — each with its own model list and its own effort scale. Claude Code is much the deepest of the three: hooks, MCP servers, subagents, plugins, output styles and checkpoints are its alone, and every one of those screens says which CLI cannot do it and why rather than hiding the gap. The other half of the goal shipped earlier: a session can run against a local server, OpenRouter, OmniRoute or any endpoint that serves POST /v1/messages. Claude Code is the first surface, not the boundary, and it is no longer the only one — a harness of archeus’ own remains a long-term goal.',
+  },
+  {
+    q: 'Can I run archeus against a local model, or something other than Anthropic?',
+    a: 'Yes. Settings → Model provider takes any endpoint that serves POST /v1/messages — Ollama, llama.cpp, vLLM or another self-hosted server on your own machine, OpenRouter, or OmniRoute’s free tier — and a translating gateway handles backends that speak the OpenAI chat format instead. The session is still a real Claude Code session, so agents, skills, hooks, MCP servers, slash commands and checkpoints all keep working; what a backend swap genuinely costs is subagents, prompt caching, extended thinking and web_search, and that is written down rather than glossed. archeus’ own internal Claude calls — memory extraction, lesson distillation, review, the generators — can be routed there too, but that is opt-in and off by default, because they run unattended and moving them changes which account is billed.',
   },
 ];
 

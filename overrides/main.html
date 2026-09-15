@@ -1,36 +1,152 @@
 {% extends "base.html" %}
 
 {#
-  Two things Material does not emit on its own:
+  Three things Material does not emit on its own:
+
   - Open Graph / Twitter card tags (its `social` plugin would, but that pulls
     cairosvg + Pillow into the docs toolchain for one static image).
-  - JSON-LD, which is what answer engines read. Pages opt in with a `jsonld:`
-    front-matter key; pages without one emit nothing.
+  - JSON-LD, which is what answer engines read.
+  - The link between this host and the apex. They are two deployments of one
+    project, and nothing in the HTML said so.
+
+  The JSON-LD below is ONE `@graph` on every page, not a per-page opt-in. It
+  used to be: pages declared a `jsonld:` front-matter key and exactly one of
+  twenty-nine ever did, so the manual — the content an answer engine actually
+  wants — was the least marked-up surface either site had. `jsonld:` survives
+  for a page that has something RICHER to say (a HowTo, a FAQPage); it is no
+  longer the only way to say anything.
+
+  The `@id`s are the apex's, deliberately. `#author`, `#website` and `#software`
+  are the same three nodes www/app/layout.tsx emits, so a crawler merges the two
+  hosts into one entity instead of two sites that happen to share a name — which
+  matters here because an unrelated Rust project also publishes as archeus.
 #}
 {% block extrahead %}
   {{ super() }}
   {% set title = page.meta.title if page and page.meta and page.meta.title else (page.title ~ " - " ~ config.site_name if page and page.title and not page.is_homepage else config.site_name) %}
   {% set desc = page.meta.description if page and page.meta and page.meta.description else config.site_description %}
   {% set image = config.site_url ~ "assets/og-card.png" %}
-  <meta property="og:type" content="website">
+  {% set canonical = page.canonical_url if page else config.site_url %}
+  {% set author_id = config.extra.apex ~ "/#author" %}
+  {% set site_id = config.extra.apex ~ "/#website" %}
+  {% set software_id = config.extra.apex ~ "/#software" %}
+  {#
+    A manual page is an article, not a website. The homepage is the site.
+  #}
+  <meta property="og:type" content="{{ "website" if page and page.is_homepage else "article" }}">
   <meta property="og:site_name" content="{{ config.site_name }}">
   <meta property="og:title" content="{{ title }}">
   <meta property="og:description" content="{{ desc }}">
-  <meta property="og:url" content="{{ page.canonical_url if page else config.site_url }}">
+  <meta property="og:url" content="{{ canonical }}">
   <meta property="og:image" content="{{ image }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="{{ config.site_name }} — {{ config.site_description|truncate(110) }}">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="{{ title }}">
   <meta name="twitter:description" content="{{ desc }}">
   <meta name="twitter:image" content="{{ image }}">
+  <meta name="author" content="{{ config.extra.author }}">
   {#
-    The author entity, on every docs page. The apex site asserts the same
-    Person @id with the same sameAs list (www/lib/site.ts PROFILES); saying it
-    on both hosts is what merges docs.claudectl.space and claudectl.space into
-    one entity rather than two sites that happen to share a name — which
-    matters here because an unrelated Rust project also publishes as archeus.
-    The @id is the APEX url on purpose: one entity, named from one place.
+    The apex is the product site and this is its manual. `rel=me` on the author
+    profiles is the same corroboration the sameAs list makes, in the form a
+    non-JSON-LD consumer reads.
   #}
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"Person","@id":"{{ config.extra.apex }}/#author","name":"{{ config.extra.author }}","url":"{{ config.extra.apex }}","sameAs":[{% for p in config.extra.profiles %}"{{ p }}"{% if not loop.last %},{% endif %}{% endfor %}]}</script>
+  {% for p in config.extra.profiles %}
+  <link rel="me" href="{{ p }}">
+  {% endfor %}
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Person",
+        "@id": {{ author_id|tojson }},
+        "name": {{ config.extra.author|tojson }},
+        "url": {{ config.extra.apex|tojson }},
+        "sameAs": [{% for p in config.extra.profiles %}{{ p|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]
+      },
+      {
+        "@type": "WebSite",
+        "@id": {{ (config.site_url ~ "#website")|tojson }},
+        "name": {{ (config.site_name ~ " documentation")|tojson }},
+        "url": {{ config.site_url|tojson }},
+        "description": {{ config.site_description.split()|join(" ")|tojson }},
+        "inLanguage": "en",
+        "isPartOf": {"@id": {{ site_id|tojson }}},
+        "publisher": {"@id": {{ author_id|tojson }}}
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": {{ software_id|tojson }},
+        "name": {{ config.site_name|tojson }},
+        "alternateName": ["archeus (Python)", "archeus for Claude Code", "archeus agent memory"],
+        "identifier": "archeus",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Windows, macOS, Linux",
+        "programmingLanguage": "Python",
+        "url": {{ (config.extra.apex ~ "/")|tojson }},
+        "codeRepository": {{ config.repo_url|tojson }},
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+        "author": {"@id": {{ author_id|tojson }}},
+        "maintainer": {"@id": {{ author_id|tojson }}},
+        "sameAs": [
+          {{ config.repo_url|tojson }},
+          "https://pypi.org/project/archeus/",
+          {{ config.site_url|tojson }}
+        ]
+      }{% if page %},
+      {
+        "@type": "TechArticle",
+        "@id": {{ (canonical ~ "#article")|tojson }},
+        "headline": {{ (page.title or config.site_name)|tojson }},
+        "name": {{ (page.title or config.site_name)|tojson }},
+        "description": {{ desc.split()|join(" ")|tojson }},
+        "url": {{ canonical|tojson }},
+        "mainEntityOfPage": {{ canonical|tojson }},
+        "inLanguage": "en",
+        "isPartOf": {"@id": {{ (config.site_url ~ "#website")|tojson }}},
+        "about": {"@id": {{ software_id|tojson }}},
+        "author": {"@id": {{ author_id|tojson }}},
+        "publisher": {"@id": {{ author_id|tojson }}},
+        "image": {{ image|tojson }},
+        "isAccessibleForFree": true,
+        "proficiencyLevel": "Beginner"{% if page.meta and page.meta.updated %},
+        "dateModified": {{ page.meta.updated|tojson }}{% endif %}
+      },
+      {#
+        Two levels only. A nav SECTION ("Manual", "Reference") is a heading in
+        the sidebar, not a page, so it has no URL — and a BreadcrumbList item
+        without one is invalid rather than merely thin. Home plus the page is
+        the whole truth about this hierarchy.
+      #}
+      {
+        "@type": "BreadcrumbList",
+        "@id": {{ (canonical ~ "#breadcrumb")|tojson }},
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": {{ config.site_name|tojson }},
+            "item": {{ config.site_url|tojson }}
+          }{% if not page.is_homepage %},
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": {{ (page.title or "")|tojson }},
+            "item": {{ canonical|tojson }}
+          }{% endif %}
+        ]
+      }{% endif %}
+    ]
+  }</script>
+  {#
+    A page with something richer to say than "this is a manual page" declares it
+    itself: `jsonld:` in the front matter, emitted as its own block. Used by the
+    two install walkthroughs (HowTo) and by Troubleshooting (FAQPage), which is
+    the surface an answer engine quotes most and was marked up as prose.
+  #}
   {% if page and page.meta and page.meta.jsonld %}
   <script type="application/ld+json">{{ page.meta.jsonld }}</script>
   {% endif %}

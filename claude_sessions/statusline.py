@@ -435,6 +435,17 @@ def blockers(cfgdir=None):
                     'the installed command uses `-m claude_sessions`, which only '
                     'resolves when the session runs inside the archeus '
                     'checkout — reinstall to point it at an absolute path'))
+    # `is_installed` asks only whether the command NAMES this package, so an
+    # entry pointing into an environment that has since been deleted — a pipx
+    # venv, a moved checkout — reports itself installed and prints nothing, on
+    # every turn, for ever. `migrate.repair_commands` re-points it on the next
+    # start; until then this is the difference between "installed" and "working".
+    from .migrate import _PY_ARG          # one owner for "the script in a command"
+    dead = [a or b for a, b in _PY_ARG.findall(cmd) if not os.path.isfile(a or b)]
+    if dead:
+        out.append(('dead-command',
+                    'the installed command points at %s, which no longer exists '
+                    '— start archeus once to repair it, or reinstall' % dead[0]))
     # The classic renderer simply does not draw a statusLine, and nothing says
     # so: an account can be correctly installed and permanently blank.
     if s.get('tui') != 'fullscreen':

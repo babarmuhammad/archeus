@@ -1,0 +1,31 @@
+{
+    "_comment": [
+        "A pointer package. archeus is a Python program; this exists so the name",
+        "on Packagist resolves to the real project rather than to nothing.",
+        "",
+        "Packagist publishes from the ROOT of a git repository, so this file",
+        "cannot be submitted from here: it has to be the composer.json of a",
+        "small repository of its own (babarmuhammad/archeus-packagist or",
+        "similar). Putting it at the root of the main repository instead would",
+        "make every PHP tool that walks a checkout believe this is a PHP project.",
+        "See packaging/README.md."
+    ],
+    "name": "babarmuhammad/archeus",
+    "description": "Pointer package: archeus is a Python tool - install it with `pipx install archeus`. The memory and workspace layer for AI coding agents.",
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://github.com/babarmuhammad/archeus",
+    "keywords": ["claude-code", "ai-agents", "agent-memory", "cli", "developer-tools"],
+    "authors": [
+        {
+            "name": "Babar Muhammad Anas"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/babarmuhammad/archeus/issues",
+        "source": "https://github.com/babarmuhammad/archeus"
+    },
+    "require": {
+        "php": ">=7.4"
+    }
+}

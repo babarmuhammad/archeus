@@ -10,10 +10,11 @@ on:
       - 'docs/**'
       - 'overrides/**'
       - 'mkdocs.yml'
-      - 'README.md'
-      - 'CHANGELOG.md'
-      # Included by docs/code-of-conduct.md, the same way CHANGELOG.md is.
-      - 'CODE_OF_CONDUCT.md'
+      # README.md, CHANGELOG.md and CODE_OF_CONDUCT.md are NOT here. They were,
+      # back when docs/changelog.md and docs/code-of-conduct.md pulled them in
+      # with `--8<--`; those pages live on the apex site now and no page under
+      # docs/ reads a file outside it, so a README edit redeploying the manual
+      # only produced a deploy with an identical output.
       - 'requirements-docs.txt'
       - 'tools/mkdocs_hooks.py'
       - '.github/workflows/pages.yml'

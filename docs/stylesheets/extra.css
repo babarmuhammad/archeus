@@ -42,10 +42,20 @@
   background: var(--ctl-panel);
 }
 
-/* Two-up screenshot pairs on the landing page. */
+/* Two-up screenshot pairs on the landing page.
+ *
+ * `min(100%, 20rem)`, never a bare `20rem`. A bare minimum is a FLOOR the track
+ * cannot go below, so on a 390px phone a 320px track plus the gap plus the
+ * content padding was 26px wider than the viewport and three pages scrolled
+ * sideways — the home page, Desktop app and Getting started. Material's own
+ * `.grid` rule is `minmax(min(100%, 16rem), 1fr)` for exactly this reason, and
+ * this block overrode it without carrying the clamp across.
+ *
+ * Measured by `py tools/audit_site.py`, which is what found it: every page at
+ * 390x844, reporting any box past the right edge. */
 .md-typeset .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
   gap: 1rem;
 }
 

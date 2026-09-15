@@ -1,8 +1,6 @@
 ---
 description: >-
-  Start a fresh Claude Code session seeded with a previous session's transcript — including
-  one that belongs to a different account. The way to carry work forward when the context
-  window fills up or an account hits its limit.
+  Start a fresh Claude Code session seeded with a previous session's transcript, including one from a different account — for a full context window or a hit limit.
 ---
 
 # Context hand-off between sessions

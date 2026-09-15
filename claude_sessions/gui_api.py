@@ -25,6 +25,7 @@ import time
 import uuid
 
 from . import config as _c
+from . import harnesses as _harnesses
 from . import proc as _proc     # `proc` is a local name for a Popen throughout
 from . import store as _store
 
@@ -889,24 +890,28 @@ def stop_auto_memory_scheduler():
 
 # ── shared helpers ───────────────────────────────────────────
 
-def _entries():
-    """[(mtime, path, enc, cfgdir)] across accounts — same shape main.run
-    and the stats screens consume."""
-    from .paths import find_actual_path
-    out = []
-    for _name, acct_dir in _c.all_config_dirs():
-        pdir = _store.projects_root(acct_dir)
-        if not os.path.isdir(pdir):
-            continue
-        for enc in os.listdir(pdir):
-            proj = os.path.join(pdir, enc)
-            if not os.path.isdir(proj):
-                continue
-            actual = find_actual_path(enc, folder=proj)
-            if actual:
-                out.append((os.path.getmtime(proj), actual, enc, acct_dir))
-    out.sort(reverse=True)
-    return out
+def _entries(hid=''):
+    """[(mtime, path, enc, home)] across every harness — same shape main.run
+    and the stats screens consume. *hid* narrows it to one CLI's homes.
+
+    THE ONE SEAM. Every spend surface reads the corpus through here — the daily
+    bars, the per-project table, the dashboard's breakdown and the search index
+    — so the harness filter is one parameter on one function rather than a
+    branch in each of them. A home is the right key because that is what a row
+    already carries and what `instances()` already returns: no session needs to
+    be re-placed, and a project worked in under two CLIs correctly appears under
+    each of them rather than being assigned to one.
+
+    '' is every harness, and it is the default: "what did today cost" is a
+    question about the machine, not about one binary.
+    """
+    rows = _store.all_projects()
+    if not hid:
+        return rows
+    want = {os.path.normcase(os.path.abspath(h))
+            for _n, h, i in _harnesses.instances() if i == hid}
+    return [r for r in rows
+            if os.path.normcase(os.path.abspath(r[3] or '')) in want]
 
 
 def _folder(cfgdir, enc):
@@ -1037,7 +1042,7 @@ def api_session_meta(q, body):
     from .stats import get_session_stats_cached
     from .sessions import load_name
     folder = _folder(q.get('cfgdir'), q['enc'])
-    jsonl = os.path.join(folder, f"{q['sid']}.jsonl")
+    jsonl = _store.transcript_path(folder, q['sid'])
     stats = get_session_stats_cached(jsonl)
     return {'lines': metadata_lines(stats, load_name(folder, q['sid']),
                                     q['sid'], plain=True)}
@@ -1052,7 +1057,7 @@ def api_session_export(q, body):
 
 def api_changed_files(q, body):
     from .sessions import session_changed_files
-    jsonl = os.path.join(_folder(q.get('cfgdir'), q['enc']), f"{q['sid']}.jsonl")
+    jsonl = _store.transcript_path(_folder(q.get('cfgdir'), q['enc']), q['sid'])
     return {'files': session_changed_files(jsonl)}
 
 
@@ -1097,18 +1102,20 @@ def api_archived(q, body):
     """
     from .session_menu import _arch_of
     from .sessions import (account_folders_for, scan_sessions, load_name,
-                           format_age)
+                           format_age, load_session_providers, resolve_provider)
     from .stats import get_session_stats_cached
-    from .gui import _used_omni
     out = []
     for acct_name, folder in account_folders_for(q['enc']):
         arch = _arch_of(folder)
         cfgdir = os.path.dirname(os.path.dirname(folder))
+        # the record lives beside the LIVE sessions: archiving moves the
+        # transcript into a subfolder, not the note about how it was launched
+        rec = load_session_providers(folder)
         for mtime, sid, preview, count in scan_sessions(arch):
-            omni, ai_title = False, ''
+            provider, ai_title = False, ''
             try:
-                st = get_session_stats_cached(os.path.join(arch, f'{sid}.jsonl'))
-                omni = _used_omni(st)
+                st = get_session_stats_cached(_store.transcript_path(arch, sid))
+                provider = resolve_provider(rec, sid, st)
                 # the AI title, same as a live row. It was already parsed — the
                 # stats dict is being read here anyway — and without it every
                 # archived row fell back to the preview.
@@ -1118,7 +1125,7 @@ def api_archived(q, body):
             out.append({'sid': sid, 'title': load_name(arch, sid) or ai_title,
                         'preview': preview, 'age': format_age(mtime).strip(),
                         'mtime': mtime, 'count': count, 'account': acct_name,
-                        'cfgdir': cfgdir, 'omni': omni})
+                        'cfgdir': cfgdir, 'provider': provider})
     out.sort(key=lambda r: r['mtime'], reverse=True)
     return {'sessions': out}
 
@@ -1145,7 +1152,8 @@ def api_usage_daily(q, body):
     from .stats import usage_by_day, fmt_tok
     rows = []
     for day, usage, cost, n_sessions in usage_by_day(
-            _entries(), days=int(q.get('days', 14)), silent=True):
+            _entries(q.get('hid') or ''),
+            days=int(q.get('days', 14)), silent=True):
         tot = sum(usage.values())
         rows.append({'day': day, 'tokens': tot, 'tok_fmt': fmt_tok(tot),
                      'cost': round(cost, 2), 'sessions': n_sessions,
@@ -1155,7 +1163,7 @@ def api_usage_daily(q, body):
 
 def api_usage_projects(q, body):
     from .stats import assemble_project_usage
-    return {'projects': assemble_project_usage(_entries())}
+    return {'projects': assemble_project_usage(_entries(q.get('hid') or ''))}
 
 
 def api_usage_project(q, body):
@@ -1228,26 +1236,39 @@ def _wiring():
     from . import hooks
     from . import automode
     rows = []
-    for name, d in _c.all_config_dirs():
-        try:
-            s = hooks._load(d)
-        except Exception:
-            s = {}
+    for name, d, hid in _harnesses.instances():
+        # hooks and a statusline are Claude Code's settings.json, and neither
+        # capability is one the other CLIs have. A non-Claude row is here so the
+        # card can SAY the CLI is installed, not so it can be scored on two
+        # things it structurally cannot have.
+        claude = hid == _harnesses.DEFAULT
+        s = {}
+        if claude:
+            try:
+                s = hooks._load(d)
+            except Exception:
+                s = {}
         n_hooks = sum(len(v) for v in (s.get('hooks') or {}).values()
                       if isinstance(v, list))
         sl = bool(s.get('statusLine'))
         rows.append({
-            'account': name, 'dir': d,
+            'account': name, 'dir': d, 'hid': hid,
             'hooks': n_hooks,
             'statusline': sl,
             # a statusline the classic renderer will never draw is installed and
             # invisible, which looks identical to working from the settings file
             'statusline_hidden': sl and s.get('tui') != 'fullscreen',
-            'mode': automode.default_mode(d) or '',
+            'mode': automode.default_mode(d) if claude else '',
         })
-    ok = sum(1 for r in rows
+    # `ok` over `total` is a RATIO, so its denominator may only count rows that
+    # could ever be in the numerator. Counting every instance made installing
+    # Codex drop a fully-wired workspace from 1/1 to 1/2 and the dashboard
+    # report it as broken — with nothing failing anywhere, because the test that
+    # covers this runs in a sandbox where no second CLI exists.
+    scored = [r for r in rows if r['hid'] == _harnesses.DEFAULT]
+    ok = sum(1 for r in scored
              if r['hooks'] and r['statusline'] and not r['statusline_hidden'])
-    return {'accounts': rows, 'ok': ok, 'total': len(rows)}
+    return {'accounts': rows, 'ok': ok, 'total': len(scored)}
 
 
 def _last_message(st):
@@ -1317,7 +1338,7 @@ def api_dashboard(q, body):
                        'title': load_name(pf, r['sid']) or r['title'],
                        'msgs': r['msgs'], 'mtime': int(r['mtime']),
                        'age': format_age(r['mtime']).strip() if r['mtime'] else '',
-                       'omni': bool(r['omni'])})
+                       'provider': bool(r['provider'])})
 
     f_running, f_port = False, None
     try:
@@ -1334,7 +1355,11 @@ def api_dashboard(q, body):
                              # single ring. Percentages of five separate quotas
                              # are not summable and must never be added up.
                              'by_account': dict(tday.get('accounts') or {}),
-                             'omni_tokens': tday.get('omni_tokens', 0)},
+                             # and the same split by CLI. Same argument for it
+                             # being summable, a different question: `accounts`
+                             # answers "which login", this answers "which tool".
+                             'by_harness': dict(tday.get('harnesses') or {}),
+                             'provider_tokens': tday.get('provider_tokens', 0)},
                    'wiring': _wiring(),
                    'week': week, 'breakdown': bd, 'days': _DASH_DAYS,
                    # cross-account live sessions + the last 24 HOURS of activity.
@@ -1903,14 +1928,17 @@ def _skill_dest(body):
 
 def api_skill_install(q, body):
     """Install into the project, or into the personal scope of every account —
-    see skills.install_personal for why personal means all of them."""
-    from .skills import install_skill, install_personal
+    see skills.install_personal for why personal means all of them, and every
+    CLI on the machine besides."""
+    from .skills import install_personal, install_project
     if body.get('scope') != 'project':
         done = install_personal(body.get('dir', ''))
         return {'ok': bool(done), 'dir': done[0][1] if done else '',
                 'accounts': [n for n, _d in done]}
-    dest = install_skill(body.get('dir', ''), _skill_dest(body))
-    return {'ok': bool(dest), 'dir': dest}
+    if not body.get('path'):
+        raise BadRequest('scope=project needs a path')
+    got = install_project(body.get('dir', ''), body['path'])
+    return {'ok': bool(got), 'dir': got[0] if got else '', 'dirs': got}
 
 
 def api_skill_remove(q, body):
@@ -2233,17 +2261,27 @@ def api_memory_autoscan(q, body):
 
 
 def api_memory_active(q, body):
-    """Project paths whose memory is being refreshed right now (scan-lock held)
-    — lets the sidebar show which projects are updating, tab-independent."""
+    """The project list, plus which of them are refreshing their memory right
+    now (scan-lock held) — so the sidebar can show both, tab-independent.
+
+    The list rides along because this handler ALREADY builds it: it walked every
+    project to ask each one for its lock, and then returned one field. The SPA
+    reads `projects` once at boot from /api/state and had nothing that re-read
+    it — not the launch, not window focus, not the heartbeat — so a project you
+    opened by path and then launched a session in stayed missing from the
+    sidebar until a reload. Sending what was computed anyway costs no extra
+    walk and no extra round-trip.
+    """
     from . import memory, gui
+    projs = gui.list_projects()
     active = []
-    for p in gui.list_projects():
+    for p in projs:
         try:
             if memory.scan_lock_status(p['path']) is not None:
                 active.append(p['path'])
         except Exception:
             pass
-    return {'active': active}
+    return {'active': active, 'projects': projs}
 
 
 def api_memory_auto_get(q, body):
@@ -3030,6 +3068,50 @@ def _sharpen_descriptions(scope, path):
             'projects': len(projects)}
 
 
+def _via_profile(body):
+    """The provider a Plan -> Execute run uses, or None for Anthropic.
+
+    `via` used to be the two-valued string 'anthropic' | 'provider', which could
+    only ever mean "the one configured backend". It carries a profile id now;
+    the old literal still resolves, to the active profile, so a page held open
+    across the upgrade does not launch at something nobody chose.
+    """
+    from .config import active_provider, provider_profile
+    via = str(body.get('via') or '')
+    if not via or via == 'anthropic':
+        return None
+    if via == 'provider':
+        return active_provider()
+    return provider_profile(via)
+
+
+def _job_profile(body):
+    """The provider profile a job button belongs to.
+
+    `id` rather than "the active one": the settings page shows every profile and
+    each row's buttons act on ITS backend. Falls back to the active profile only
+    when the caller named none, which is what the pages that have one backend in
+    view (Plan -> Execute) send.
+    """
+    from .config import active_provider, provider_profile
+    pid = str(body.get('provider_id') or '')
+    return provider_profile(pid) if pid else active_provider()
+
+
+def _job_daemon_profile(body):
+    """_job_profile for a job that starts or stops a per-profile DAEMON.
+
+    `None` is a legitimate answer from _job_profile — it means Anthropic direct,
+    which has no proxy to start or stop — but proxy_base derives its lock file
+    and marker from `prof['id']`, so handing it None raises TypeError on the job
+    thread, where nothing logs it and the job simply never finishes.
+    """
+    prof = _job_profile(body)
+    if not prof:
+        raise RuntimeError('no provider profile selected')
+    return prof
+
+
 def api_job_start(q, body):
     kind = body.get('kind', '')
     path = body.get('path', '')
@@ -3215,7 +3297,7 @@ def api_job_start(q, body):
                         lambda: run_review(path, folder, staged=staged, base=base))
     elif kind == 'plan_make':
         from .plan_execute import _plan, write_plan_file, optimize_plan_council
-        from .config import load_settings, omniroute_env
+        from .config import load_settings, provider_env
         s = load_settings()
         model = body.get('model') or s.get('plan_model', '')
         task = body.get('task', '')
@@ -3225,23 +3307,23 @@ def api_job_start(q, body):
         # plan call silently runs under whatever account archeus itself is
         # active as, regardless of what the user picked in the GUI.
         cfgdir = body.get('account') or ''
-        # council must route through the SAME channel the user picked for
-        # execution (body['via']), not the account-wide default setting --
-        # else a stale omniroute_exec_model default silently routes every
-        # council call at an unreachable proxy, _headless swallows the
-        # errors, and optimize_plan_council quietly no-ops the plan back
-        # unchanged with no error shown.
-        via = body.get('via', 'anthropic')
-        omni_env = omniroute_env(s, model='_') if via == 'omniroute' else {}
+        # council must route through the SAME backend the user picked for
+        # execution (body['via'] is a PROFILE ID now), not the account-wide
+        # default -- else a stale default silently routes every council call at
+        # the wrong upstream, _headless swallows the errors, and
+        # optimize_plan_council quietly no-ops the plan back unchanged with no
+        # error shown.
+        prof = _via_profile(body)
+        prov_env = provider_env(prof, model='_') if prof else {}
 
         # Pre-flight: fail fast (~5s) if the endpoint the headless `claude`
         # call will talk to is unreachable, instead of spawning a job that
         # spins for up to plan_timeout_sec. _plan() inherits the process env;
-        # the council (omni_env) may target a different base, so check both.
+        # the council (prov_env) may target a different base, so check both.
         from .plan_execute import check_endpoint
         try:
             check_endpoint(os.environ.get('ANTHROPIC_BASE_URL', ''))
-            check_endpoint((omni_env or {}).get('ANTHROPIC_BASE_URL', ''))
+            check_endpoint((prov_env or {}).get('ANTHROPIC_BASE_URL', ''))
         except RuntimeError as e:
             return {'ok': False, 'error': str(e)}
 
@@ -3251,7 +3333,8 @@ def api_job_start(q, body):
                 raise RuntimeError(_subprocess_error_detail()
                                    or 'Planning failed or produced no output')
             if council:
-                plan = optimize_plan_council(task, plan, path, omni_env=omni_env, cfgdir=cfgdir)
+                plan = optimize_plan_council(task, plan, path, prov_env=prov_env,
+                                             cfgdir=cfgdir, prof=prof)
             plan_path = write_plan_file(path, task, plan)
             if not plan_path:
                 raise RuntimeError('Could not save plan file')
@@ -3262,7 +3345,7 @@ def api_job_start(q, body):
         # waiver: compared against the account picked for execution, to decide
         # whether a cfgdir override is needed. The ACTIVE account is the right
         # baseline for that comparison.
-        from .config import load_settings, omniroute_env, config_dir
+        from .config import load_settings, provider_env, config_dir
         from . import omniroute, ui
         task = body.get('task', '')
         plan_text = body.get('plan_text', '')
@@ -3276,72 +3359,39 @@ def api_job_start(q, body):
         def _launch():
             import subprocess
             s = load_settings()
-            via = body.get('via', 'anthropic')
-            omni_env = omniroute_env(s, model='_') if via == 'omniroute' else {}
+            prof = _via_profile(body)
+            prov_env = provider_env(prof, model='_') if prof else {}
             # write user-edited plan text before launching
             if plan_text:
                 write_plan_file(path, task, plan_text)
-            if omni_env:
-                ok, msg = omniroute.ensure_running(s.get('omniroute_base_url', ''))
-                ui.flash(f'OmniRoute: {msg}', ok=ok)
-                if not ok:
-                    raise RuntimeError(msg)
-                # catch a stale/renamed omniroute_exec_model here, before
-                # launching -- otherwise the exec session opens fine and only
-                # fails once `claude` itself tries the model, deep inside the
-                # new terminal with no easy path back to fix the setting.
-                _exec_model_check = body.get('model') or s.get('omniroute_exec_model') or omniroute.AUTO_MODEL
-                if _exec_model_check != omniroute.AUTO_MODEL:
-                    available = [mid for mid, _lbl in omniroute.list_models(
-                        s.get('omniroute_base_url', ''), s.get('omniroute_api_key', ''))]
-                    if available and _exec_model_check not in available:
-                        raise RuntimeError(
-                            f"OmniRoute: exec model '{_exec_model_check}' is no longer available — "
-                            "pick a new one in Settings or switch to Auto")
-                # omniroute_env() already repointed ANTHROPIC_BASE_URL at the
-                # failover proxy when candidates are configured, so it has to be
-                # up before claude is handed that URL.
-                from . import failover
-                if failover.enabled(s):
-                    _fok, _fmsg = failover.ensure_running(s)
-                    ui.flash(f'Failover proxy: {_fmsg}', ok=_fok)
-                    if not _fok:
-                        raise RuntimeError(_fmsg)
-                # context-window warning for free-tier OmniRoute models
-                try:
-                    _ctx = 0
-                    _md = os.path.join(path, 'CLAUDE.md') if path else ''
-                    if _md and os.path.isfile(_md):
-                        _ctx += os.path.getsize(_md)
-                    _rd = os.path.join(path, '.claude', 'rules') if path else ''
-                    if _rd and os.path.isdir(_rd):
-                        for _f in os.listdir(_rd):
-                            _fp = os.path.join(_rd, _f)
-                            if os.path.isfile(_fp) and _f.endswith('.md'):
-                                _ctx += os.path.getsize(_fp)
-                    _ctx += len(plan_text or '') * 3
-                    if _ctx // 4 > 8000:
-                        ui.flash(f"OmniRoute: CLAUDE.md + rules + plan ≈ {_ctx // 4 // 1000}k tokens — "
-                                 "small-context model may degrade", ok=False, secs=3)
-                except Exception:
-                    pass
             if body.get('model'):
                 model = body['model']
-            elif omni_env:
-                model = s.get('omniroute_exec_model') or omniroute.AUTO_MODEL
+            elif prov_env:
+                model = prof.get('model') or omniroute.AUTO_MODEL
             else:
                 model = s.get('exec_model', '')
+            if prov_env:
+                # ONE seam: reachability, daemon start, failover proxy, model
+                # validation and the context advisory all live in
+                # prepare_launch. This used to be forty lines duplicated from
+                # plan_execute.run(), and the two copies had already drifted.
+                from .plan_execute import context_bytes
+                _pv_env, _warn = omniroute.prepare_launch(
+                    model, prof, ctx_bytes=context_bytes(path, plan_text))
+                prov_env.update(_pv_env)
+                if _warn:
+                    ui.flash(_warn, ok=False, secs=3)
             from .paths import resolve_dir
             if not resolve_dir(path):   # becomes a subprocess cwd below
                 raise RuntimeError('not a directory: %s' % (path or '(empty)'))
-            args, env = build_exec_launch(path, exec_folder, task, model, omni_env, cfgdir)
+            args, env = build_exec_launch(path, exec_folder, task, model, prov_env, cfgdir)
             if not args:
                 raise RuntimeError('claude.exe not found')
             title = f"claude — {os.path.basename(path)}"
             _p, err = _proc.spawn_terminal(args, cwd=path, env=env, title=title)
             if err:
                 raise RuntimeError(err)
-            return {'model': model, 'via': via}
+            return {'model': model, 'via': (prof or {}).get('name') or 'Anthropic'}
         jid = start_job('Launching execute session' + (' (per-step)' if per_step else ''), _launch)
     elif kind == 'plan_replan':
         from .plan_execute import replan_from_plan
@@ -3426,28 +3476,41 @@ def api_job_start(q, body):
         cfgdir = body.get('cfgdir')
 
         def _install():
-            exec_model = load_settings().get('omniroute_exec_model', '')
+            from .config import active_provider
+            exec_model = (active_provider() or {}).get('model', '')
             ok, msg = skills.install_from_git(url, proj, exec_model, cfgdir)
             if not ok:
                 raise RuntimeError(msg)
             return {'message': msg}
         jid = start_job(f'Installing from {url}', _install)
-    elif kind == 'omniroute_ensure':
+    elif kind == 'gateway_ensure':
+        from . import gateway
+
+        def _gwup():
+            ok, msg = gateway.ensure_running(_job_daemon_profile(body))
+            return {'ok': ok, 'message': msg}
+        jid = start_job('Starting gateway', _gwup)
+    elif kind == 'gateway_stop':
+        from . import gateway
+
+        def _gwdown():
+            ok, msg = gateway.stop_running(_job_daemon_profile(body))
+            return {'ok': ok, 'message': msg}
+        jid = start_job('Stopping gateway', _gwdown)
+    elif kind == 'provider_ensure':
         from . import omniroute
-        from .config import load_settings
 
         def _ensure():
-            s = load_settings()
-            ok, msg = omniroute.ensure_running(s.get('omniroute_base_url', ''))
+            prof = _job_profile(body)
+            ok, msg = omniroute.ensure_running((prof or {}).get('base_url', ''))
             return {'ok': ok, 'message': msg}
         jid = start_job('Starting OmniRoute', _ensure)
-    elif kind == 'omniroute_probe':
+    elif kind == 'provider_probe':
         from . import omniroute
-        from .config import load_settings
 
         def _probe():
-            s = load_settings()
-            base, key = s.get('omniroute_base_url', ''), s.get('omniroute_api_key', '')
+            prof = _job_profile(body) or {}
+            base, key = prof.get('base_url', ''), prof.get('api_key', '')
             ids = body.get('models') or []
             if not ids:
                 usable, autos, _ex = omniroute.usable_models(base, key)
@@ -3476,10 +3539,10 @@ def api_job_start(q, body):
         from . import failover
 
         def _fstop():
-            ok, msg = failover.stop_running()
+            ok, msg = failover.stop_running(_job_daemon_profile(body))
             return {'ok': ok, 'message': msg}
         jid = start_job('Stopping failover proxy', _fstop)
-    elif kind == 'omniroute_test_connection':
+    elif kind == 'provider_test_connection':
         from . import omniroute
         conn_id = body.get('conn_id', '')
 
@@ -3487,15 +3550,14 @@ def api_job_start(q, body):
             ok, msg = omniroute.cli_test_connection(conn_id)
             return {'ok': ok, 'message': msg}
         jid = start_job(f'Testing {conn_id}', _test)
-    elif kind == 'omniroute_live_test':
+    elif kind == 'provider_live_test':
         from . import omniroute
-        from .config import load_settings
         model = body.get('model') or omniroute.AUTO_MODEL
 
         def _live():
-            s = load_settings()
+            prof = _job_profile(body) or {}
             ok, used, msg = omniroute.test_live(
-                s.get('omniroute_base_url', ''), model, s.get('omniroute_api_key', ''))
+                prof.get('base_url', ''), model, prof.get('api_key', ''))
             return {'ok': ok, 'model_used': used, 'message': msg}
         jid = start_job(f'Sending a real test request via {model}', _live)
     else:
@@ -3555,11 +3617,39 @@ def api_plan_last(q, body):
 # proxy speaking the Anthropic Messages API natively — never returns the raw
 # api_key to the frontend, status/models only.
 
-def api_omniroute_status(q, body):
-    from . import omniroute
-    from .config import load_settings
-    s = load_settings()
-    base, key = s.get('omniroute_base_url', ''), s.get('omniroute_api_key', '')
+def api_provider_status(q, body):
+    """Reachability plus, for OmniRoute only, its circuit-breaker detail.
+
+    Branching on kind is not a shortcut — a generic Anthropic-shaped server has
+    no /v1/models catalogue and no provider-health endpoint, so the OmniRoute
+    path would report a perfectly working Ollama as "not running". A plain
+    reachability dot is the honest amount of signal available."""
+    from . import gateway, omniroute
+    from .config import gateway_port_of, provider_profile
+    prof = provider_profile(str(q.get('id') or ''))
+    if not prof:
+        return {'kind': '', 'gateway': {'kind': '', 'target': ''}, 'reachable': False,
+                'exec_model': '', 'providers': [], 'lockouts': [], 'connections': [],
+                'model_count': 0, 'usable_count': 0, 'missing': True}
+    kind = prof.get('kind') or ''
+    gw = {'kind': prof.get('gateway_kind') or '',
+          'target': prof.get('gateway_target_base_url') or ''}
+    if gw['kind']:
+        gw['error'] = gateway.target_error(gw['target'])
+        gw['running'] = gateway._daemon(prof).is_ready(gateway_port_of(prof))
+    if kind != 'omniroute':
+        base = prof.get('base_url', '')
+        return {'kind': kind, 'gateway': gw,
+                'exec_model': prof.get('model', ''),
+                # With a gateway in front, the reachable thing IS the gateway --
+                # the OpenAI-shaped host behind it cannot answer a probe shaped
+                # like this one.
+                'reachable': bool(gw.get('running')) if gw['kind']
+                             else (bool(base) and omniroute.is_reachable(
+                                 base, prof.get('api_key', ''))),
+                'providers': [], 'lockouts': [], 'connections': [],
+                'model_count': 0, 'usable_count': 0}
+    base, key = prof.get('base_url', ''), prof.get('api_key', '')
     # ONE concurrent fetch of both payloads, then everything is derived locally.
     # Each OmniRoute round trip costs ~2s on a loaded instance, so the previous
     # five serial calls made this handler a ~13s page stall.
@@ -3567,6 +3657,9 @@ def api_omniroute_status(q, body):
     summary = h.get('summary') or {}
     usable, _autos, _ex = omniroute.classify_models(entries, h)
     return {
+        'kind': kind,
+        'gateway': gw,
+        'exec_model': prof.get('model', ''),
         'reachable': bool(entries or h.get('providers')),
         'model_count': len(entries),
         'configured': summary.get('configuredCount', 0),
@@ -3581,7 +3674,7 @@ def api_omniroute_status(q, body):
     }
 
 
-def api_omniroute_models(q, body):
+def api_provider_models(q, body):
     """Models that can actually serve a session, not the whole routable catalog.
 
     Each entry's own ``owned_by`` is cross-referenced against live providerHealth
@@ -3594,10 +3687,24 @@ def api_omniroute_models(q, body):
     ``all=1`` returns the unfiltered catalog for the user who wants to see it.
     """
     from . import omniroute
-    from .config import load_settings
-    s = load_settings()
-    base = s.get('omniroute_base_url', '')
-    key = s.get('omniroute_api_key', '')
+    from .config import provider_profile
+    prof = provider_profile(str(q.get('id') or ''))
+    if not prof:
+        return {'models': [], 'labels': {}, 'usable': [], 'excluded': {},
+                'filtered': False, 'kind': '', 'missing': True}
+    base = prof.get('base_url', '')
+    key = prof.get('api_key', '')
+
+    if (prof.get('kind') or '') != 'omniroute':
+        # No catalogue exists for a generic Anthropic-shaped server or an
+        # OpenAI-shaped host behind the gateway. Offer the model the user
+        # configured and nothing else -- inventing a list here would be offering
+        # ids that 401 on the first turn, which is the exact failure the
+        # OmniRoute filtering below exists to prevent.
+        cur = prof.get('model', '')
+        return {'models': [cur] if cur else [], 'labels': {cur: cur} if cur else {},
+                'usable': [], 'excluded': {}, 'filtered': False,
+                'kind': prof.get('kind') or ''}
 
     entries, h = omniroute.fetch_both(base, key)
 
@@ -3881,7 +3988,7 @@ def api_checkpoints(q, body):
     """
     from . import checkpoints
     folder = _folder(q.get('cfgdir'), q['enc'])
-    jsonl = os.path.join(folder, f"{q['sid']}.jsonl")
+    jsonl = _store.transcript_path(folder, q['sid'])
     cfgdir = os.path.dirname(os.path.dirname(folder))
     try:
         return checkpoints.history(q['sid'], jsonl, cfgdir)
@@ -3960,6 +4067,164 @@ def api_statusline_set(q, body):
     return {'ok': ok, 'message': msg}
 
 
+def api_harness_models(q, body):
+    """What one CLI can be launched against: its model suggestions, its effort
+    scale, and what it last ran on.
+
+    Per harness because both answers are the harness's. `--effort max` and
+    `ultracode` are Claude Code's and Codex rejects them; a priced Anthropic
+    model card means nothing next to `gpt-5.5`. And the models are READ out of
+    each CLI's own state rather than listed here — a static copy goes stale the
+    first time that CLI updates, which is the mistake `checkpoints.py` documents.
+
+    `models` is a suggestion list, never a constraint: the field it fills is
+    free text, so a model archeus has not seen is still reachable.
+    """
+    from . import harnesses as _h
+    hid = str((q or {}).get('hid') or '')
+    d = _h.descriptor(hid)
+    if d['id'] == _h.DEFAULT:
+        # Claude Code's catalogue is live, priced and already in the boot
+        # payload; sending a second copy would be two lists to keep in step.
+        return {'hid': d['id'], 'models': [], 'efforts': list(d['efforts']),
+                'catalogue': True, 'cards': [], 'presets': []}
+    got = []
+    if d.get('models'):
+        try:
+            got = _h.impl('models', d['id'])(_h.home_dir(d['id'])) or []
+        except Exception:
+            got = []
+    # `cards` is what this CLI COULD run; `models` is what it HAS. Two lists
+    # rather than one merged one, because the picker labels them differently —
+    # a model you have used is a stronger suggestion than one you have not, and
+    # collapsing them would throw away the only thing that distinguishes them.
+    # `catalogue` stays a BOOLEAN meaning "the boot payload has the cards": it
+    # is asserted by test_the_endpoint_answers_per_harness, and reusing the key
+    # for the rows would have been a silent change of type on a live field.
+    cards = []
+    if d.get('catalogue'):
+        try:
+            cards = _h.impl('catalogue', d['id'])(_h.home_dir(d['id'])) or []
+        except Exception:
+            cards = []
+    # id and label ONLY on the wire. pi's catalogue is 1,354 models across 38
+    # providers and each carries a price table, a context window and a thinking
+    # map — ~300KB of JSON to fill a datalist that shows two strings per row.
+    # The rest of the row is not dropped, it is simply not the browser's: the
+    # one consumer of `cost` is the pricing table in `stats`, which reads the
+    # catalogue directly and server-side.
+    cards = [{'id': c['id'], 'label': c['label']} for c in cards]
+    # a preset naming a model no catalogue publishes is dropped rather than
+    # offered: the whole point of a quick start is that clicking it works, and
+    # an id that 404s on the first turn is worse than no button. With no
+    # catalogue at all (pi not installed, so Codex has no price list) they all
+    # stand — nothing has been contradicted, so nothing is filtered.
+    known = {c['id'] for c in cards} | {c['id'].split('/', 1)[-1] for c in cards}
+    presets = [{'name': n, 'blurb': b, 'fields': f}
+               for n, b, f in (d.get('presets') or ())
+               if not known or (f.get('model') or '') in known]
+    return {'hid': d['id'], 'models': got, 'efforts': list(d['efforts']),
+            'catalogue': False, 'cards': cards, 'presets': presets}
+
+def api_harness_setup(q, body):
+    """Everything the Harnesses page's Setup tab shows for one CLI.
+
+    One endpoint rather than three because every field on that card comes from
+    the same place — the descriptor plus one `doctor()` — and three round trips
+    to paint one card is three chances for the page to render half-drawn.
+
+    The `doctor` call is a SUBPROCESS, and for Codex a networked one (it checks
+    for an update), so it is cached: opening this tab twice in a minute must not
+    spawn twice, and the Qt shell repaints a page on focus.
+    """
+    from . import harnesses as _h
+    hid = str((q or {}).get('hid') or '')
+    d = _h.descriptor(hid)
+    hid = d['id']
+    exe = _h.exe(hid)
+    out = {'hid': hid, 'label': d['label'], 'available': bool(exe),
+           'exe': exe or '', 'home': _h.home_dir(hid),
+           'exe_names': list(d['exe_names']),
+           'instructions_file': d['instructions_file'],
+           'caps': {k: list(_h.cap(hid, k)) for k in _h.CAPS},
+           'cap_labels': dict(_h.CAPS),
+           'version': '', 'latest': '', 'auth': '', 'notes': []}
+    if exe and d.get('doctor'):
+        try:
+            out.update(_harness_doctor(hid))
+        except Exception:
+            pass
+    elif exe and hid == _h.DEFAULT:
+        # Claude Code has its own updater and its own page; the version it
+        # reports there is the one this card shows, rather than a second reader.
+        from . import versions
+        try:
+            st = versions.status(quiet=True) or {}
+            out.update({'version': st.get('installed') or '',
+                        'latest': st.get('latest') or '',
+                        'auth': 'ok'})
+        except Exception:
+            pass
+    return out
+
+
+#: one `doctor()` per harness per _DOCTOR_TTL. `codex doctor` takes seconds and
+#: reaches the network to ask whether an update exists; this page is repainted
+#: whenever the Qt window regains focus, so an uncached call would spawn it on
+#: every alt-tab. Registered in tests/conftest's cache-leak fixture, like every
+#: other process-global cache in this codebase.
+_DOCTOR_TTL = 300
+_doctor_cache = {}
+
+
+def _harness_doctor(hid):
+    import time as _t
+    got = _doctor_cache.get(hid)
+    if got and _t.time() - got[0] < _DOCTOR_TTL:
+        return got[1]
+    from . import harnesses as _h
+    val = _h.impl('doctor', hid)(_h.home_dir(hid)) or {}
+    _doctor_cache[hid] = (_t.time(), val)
+    return val
+
+
+def api_harness_doctor(q, body):
+    """The doctor block alone, uncached-by-request but served from the same TTL.
+    Its own route because the Setup card is not the only thing that wants to
+    know whether an update is waiting — the Updates page asks too."""
+    from . import harnesses as _h
+    hid = _h.descriptor(str((q or {}).get('hid') or ''))['id']
+    if not _h.exe(hid) or not _h.descriptor(hid).get('doctor'):
+        return {'hid': hid, 'version': '', 'latest': '', 'auth': '', 'notes': []}
+    out = dict(_harness_doctor(hid))
+    out['hid'] = hid
+    return out
+
+
+def api_harness_update(q, body):
+    """Run one CLI's own updater, in a terminal the user can watch.
+
+    `codex update` and `pi update` both rewrite the installation and both can
+    ask a question; neither is a thing to run captured on a request thread with
+    nobody able to answer it. Same posture as `accounts._open_terminal` takes
+    toward `claude login`.
+    """
+    from . import harnesses as _h
+    from . import proc
+    hid = str((body or {}).get('hid') or '')
+    if hid not in _h.HARNESSES:
+        return {'ok': False, 'error': 'no such harness'}
+    if hid == _h.DEFAULT:
+        return {'ok': False, 'error': 'Claude Code updates from the Updates page.'}
+    exe = _h.exe(hid)
+    if not exe:
+        return {'ok': False, 'error': '%s is not installed.' % _h.descriptor(hid)['label']}
+    ok = proc.spawn_terminal([exe, 'update'], env=_c.account_env(_h.home_dir(hid)),
+                             title='%s update' % _h.descriptor(hid)['label'],
+                             keep_open=True)
+    return {'ok': bool(ok)}
+
+
 GET_ROUTES = {
     '/api/transcript': api_transcript,
     '/api/session/meta': api_session_meta,
@@ -4028,12 +4293,16 @@ GET_ROUTES = {
     '/api/disk': api_disk,
     '/api/loop-md': api_loop_md_get,
     '/api/loops': api_loops,
-    '/api/omniroute/status': api_omniroute_status,
-    '/api/omniroute/models': api_omniroute_models,
+    '/api/provider/status': api_provider_status,
+    '/api/harness/models': api_harness_models,
+    '/api/harness/setup': api_harness_setup,
+    '/api/harness/doctor': api_harness_doctor,
+    '/api/provider/models': api_provider_models,
     '/api/plan/last': api_plan_last,
 }
 
 POST_ROUTES = {
+    '/api/harness/update': api_harness_update,
     '/api/session/export': api_session_export,
     '/api/session/archive': api_session_archive,
     '/api/session/restore': api_session_restore,

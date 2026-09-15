@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from claude_sessions import claude_md, main as main_mod, system_prompt, ui
+from claude_sessions import claude_md, config as _c, main as main_mod, system_prompt, ui
 
 
 # ── failover parity: it was GUI-only ─────────────────────────
@@ -13,23 +13,36 @@ from claude_sessions import claude_md, main as main_mod, system_prompt, ui
 def test_the_tui_can_reach_every_failover_setting():
     """The proxy had three settings, a start/stop, and a GUI panel — and no TUI
     entry point at all, so a TUI-only user could not tell it existed.
-    tests/test_gui_parity.py holds the line in the other direction."""
+    tests/test_gui_parity.py holds the line in the other direction.
+
+    The port is no longer editable here and that is the point: it belongs to the
+    profile, is allocated once so two backends cannot collide, and moving it
+    under a live session would strand it."""
     src = open(ui.__file__, encoding='utf-8').read()
     body = src[src.index('def _failover_menu'):src.index('def settings_menu')]
-    for key in ('failover_models', 'failover_port', 'failover_quiet',
-                'ensure_running', 'stop_running'):
+    for key in ('failover_models', 'failover_quiet', 'ensure_running',
+                'stop_running', 'active_provider'):
         assert key in body, key
     # and it is reachable from the settings menu, not just defined
     assert "_failover_menu()" in src
     assert "'failover'" in src[src.index('def settings_menu'):]
 
 
+def _lbl(**over):
+    prof = _c.new_profile(id='p1', name='OmniRoute', port=20130, **over)
+    return ui._failover_label({'providers': [prof], 'provider_active': 'p1'})
+
+
 def test_the_failover_label_reports_off_when_no_models():
-    assert ui._failover_label({}) == 'off'
-    assert ui._failover_label({'failover_models': ['', '  ']}) == 'off'
-    lbl = ui._failover_label({'failover_models': ['a', 'b'], 'failover_port': 20130})
+    assert ui._failover_label({'providers': []}) == 'no provider'
+    assert _lbl() == 'off'
+    assert _lbl(failover_models=['', '  ']) == 'off'
+    lbl = _lbl(failover_models=['a', 'b'])
     assert '2 fallbacks' in lbl and '20130' in lbl
-    assert '1 fallback ' in ui._failover_label({'failover_models': ['a']})
+    # the backend is named, because a list of model ids only means anything
+    # against the one that serves them
+    assert 'OmniRoute' in lbl
+    assert '1 fallback ' in _lbl(failover_models=['a'])
 
 
 # ── pager keybinding precedence ──────────────────────────────

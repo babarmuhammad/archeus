@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from harness import Sandbox, make_jsonl
 from claude_sessions import gui
 from claude_sessions import gui_api
+from claude_sessions import paths as paths_mod
 
 
 def _serve(monkeypatch):
@@ -50,7 +51,8 @@ def _seed(sb, monkeypatch):
     folder.mkdir()
     sid = 'aaaa0000-0000-0000-0000-000000000000'
     make_jsonl(str(folder / f'{sid}.jsonl'), title='Fix the bug')
-    monkeypatch.setattr(gui, 'find_actual_path', lambda e, *a, **k: actual if e == enc else None)
+    monkeypatch.setattr(paths_mod, 'find_actual_path',
+                        lambda e, *a, **k: actual if e == enc else None)
     return actual, enc, sid
 
 
@@ -86,27 +88,26 @@ def test_dashboard_breakdown_splits_accounts_and_flags_omni(monkeypatch, tmp_pat
     (second / enc).mkdir()
     _write_today(sb.projects / enc / 'a.jsonl', 'claude-sonnet-4-6')
     _write_today(second / enc / 'b.jsonl', 'big-pickle')       # OmniRoute free tier
-    for mod in ('claude_sessions.gui.find_actual_path',
-                'claude_sessions.paths.find_actual_path'):
-        monkeypatch.setattr(mod, lambda e, *a, **k: actual if e == enc else None)
+    monkeypatch.setattr(paths_mod, 'find_actual_path',
+                        lambda e, *a, **k: actual if e == enc else None)
     srv, base = _serve(monkeypatch)
     try:
         _code, d = _req(f'{base}/api/dashboard')
         bd = d['breakdown']
         accts = {a['account']: a for a in bd['accounts']}
         assert set(accts) == {'default', 'work'}
-        assert accts['work']['omni_tokens'] > 0
+        assert accts['work']['provider_tokens'] > 0
         assert accts['work']['cost'] == 0.0            # free-tier model costs nothing
-        assert accts['default']['omni_tokens'] == 0
+        assert accts['default']['provider_tokens'] == 0
         assert accts['default']['cost'] > 0
         today = bd['days'][-1]
         assert today['tokens'] > 0
         assert sum(today['accounts'].values()) == today['tokens']
         assert set(today['accounts']) == {'default', 'work'}
         proj = bd['projects'][0]
-        assert proj['omni'] is True
+        assert proj['provider'] is True
         assert sorted(proj['accounts']) == ['default', 'work']
-        assert bd['totals']['omni_saved'] > 0          # what OmniRoute avoided
+        assert bd['totals']['provider_saved'] > 0          # what OmniRoute avoided
     finally:
         srv.shutdown()
 
@@ -128,9 +129,8 @@ def test_dashboard_recent_spans_accounts_and_skips_headless_oneshots(monkeypatch
     make_jsonl(str(sb.projects / enc / 'real-default.jsonl'), n_msgs=12, title='Real work')
     make_jsonl(str(second / enc / 'real-work.jsonl'), n_msgs=12, title='Other account')
     make_jsonl(str(sb.projects / enc / 'oneshot.jsonl'), n_msgs=2, title='Distil lessons')
-    for mod in ('claude_sessions.gui.find_actual_path',
-                'claude_sessions.paths.find_actual_path'):
-        monkeypatch.setattr(mod, lambda e, *a, **k: actual if e == enc else None)
+    monkeypatch.setattr(paths_mod, 'find_actual_path',
+                        lambda e, *a, **k: actual if e == enc else None)
     srv, base = _serve(monkeypatch)
     try:
         _code, d = _req(f'{base}/api/dashboard')
@@ -378,3 +378,38 @@ def test_wiring_reports_a_statusline_that_will_never_be_drawn(monkeypatch, tmp_p
     s['tui'] = 'fullscreen'
     hooks._save(s, cfgdir)
     assert gui_api._wiring()['accounts'][0]['statusline_hidden'] is False
+
+
+def test_installing_a_second_cli_does_not_report_the_workspace_as_broken(
+        monkeypatch, tmp_path):
+    """`ok`/`total` is a RATIO, so its denominator may only count rows that
+    could ever be in the numerator.
+
+    Hooks and a statusline are Claude Code's settings.json and neither
+    capability is one Codex or pi has, so counting every instance made
+    installing a second CLI drop a fully-wired workspace from 1/1 to 1/2 and the
+    dashboard report it as broken — with nothing failing anywhere, because the
+    test above runs in a sandbox where `harnesses.exe('codex')` is None and the
+    second row therefore never appears. Stubbing `instances()` is what makes the
+    regression visible at all.
+    """
+    _fresh(monkeypatch, tmp_path)
+    from claude_sessions import harnesses, hooks
+    from claude_sessions import config as _cfg
+    _name, cfgdir = list(_cfg.all_config_dirs())[0]
+    s = hooks._load(cfgdir)
+    s['statusLine'] = {'type': 'command', 'command': 'x'}
+    s['tui'] = 'fullscreen'
+    s.setdefault('hooks', {})['UserPromptSubmit'] = [{'hooks': [{'type': 'command',
+                                                                'command': 'x'}]}]
+    hooks._save(s, cfgdir)
+    assert gui_api._wiring() == {**gui_api._wiring(), 'ok': 1, 'total': 1}
+
+    monkeypatch.setattr(harnesses, 'instances', lambda: [
+        ('default', cfgdir, 'claude'),
+        ('Codex', str(tmp_path / 'codex-home'), 'codex'),
+        ('pi', str(tmp_path / 'pi-home'), 'pi')])
+    w = gui_api._wiring()
+    assert w['ok'] == 1 and w['total'] == 1        # still fully wired
+    assert len(w['accounts']) == 3                 # and all three are listed
+    assert [r['hid'] for r in w['accounts']] == ['claude', 'codex', 'pi']

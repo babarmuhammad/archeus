@@ -54,12 +54,26 @@ export const metadata: Metadata = {
     images: [url(SITE.ogImage)],
   },
   robots: { index: true, follow: true },
-  icons: { icon: '/favicon.ico' },
+  // No `icons` key. Naming one here REPLACES Next's file-convention detection,
+  // so `app/apple-icon.png` was built and routed but never linked — and
+  // `/favicon.ico` was emitted twice, once by each mechanism. The convention
+  // covers app/favicon.ico and app/apple-icon.png on its own; the PNG sizes a
+  // web manifest wants are declared in app/manifest.ts, which is where an
+  // installer looks for them.
   // Feed discovery. A reader (and several crawlers) look for this link before
   // they look for anything else on the page.
   alternates: {
     canonical: SITE.url,
-    types: { 'application/rss+xml': [{ url: url('/blog/rss.xml'), title: `${SITE.name} blog` }] },
+    types: {
+      'application/rss+xml': [{ url: url('/blog/rss.xml'), title: `${SITE.name} blog` }],
+      // llms.txt was reachable only from a footer anchor, which is the one place
+      // a crawler that reads the head and stops will never look. It is the file
+      // an answer engine quotes, so it gets the same treatment as the feed.
+      'text/plain': [
+        { url: url('/llms.txt'), title: `${SITE.name} for language models` },
+        { url: url('/llms-full.txt'), title: `${SITE.name} — the whole site as text` },
+      ],
+    },
   },
 };
 

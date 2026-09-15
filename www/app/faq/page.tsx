@@ -7,7 +7,7 @@ import { Spine } from '@/components/site/Spine';
 export const metadata = meta({
   title: 'Frequently asked questions',
   description:
-    'What archeus is, how to install it, where Claude Code keeps its sessions, how archeus cuts token usage and handles multiple accounts — and how it differs from /resume. Answered plainly.',
+    'What archeus is, how to install it, where Claude Code keeps its sessions, how it cuts token usage, and how it differs from /resume. Answered plainly.',
   path: '/faq',
 });
 
@@ -59,8 +59,15 @@ export default function FaqPage() {
             weight: a.length,
             node: (
             <details className="panel group px-5 py-4">
+              {/* The question is an h2, not a span. This page renders 23
+                  questions and emits a 23-entry FAQPage JSON-LD, and until now
+                  the only headings in its DOM were the four in the footer — so
+                  the structured data described a hierarchy the page did not
+                  have. A heading inside <summary> is valid HTML and changes
+                  nothing visually; the font size and weight are the same
+                  declarations they were on the span. */}
               <summary className="flex cursor-pointer list-none items-start justify-between gap-4 text-[0.98rem] font-semibold leading-[1.5] text-text [&::-webkit-details-marker]:hidden">
-                <span>{q}</span>
+                <h2 className="text-[0.98rem] font-semibold leading-[1.5]">{q}</h2>
                 <svg
                   viewBox="0 0 24 24"
                   aria-hidden="true"

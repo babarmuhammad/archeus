@@ -1,8 +1,6 @@
 ---
 description: >-
-  The agent library, per-project subagent selection, adaptive suggestions, AI-generated
-  agents, and the skills manager — everything archeus does with Claude Code subagents and
-  SKILL.md files.
+  The Claude Code agent library, per-project subagent selection, AI-generated agents, and the skills manager for SKILL.md files.
 ---
 
 # Agents & skills

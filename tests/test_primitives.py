@@ -121,6 +121,46 @@ def test_no_module_hand_builds_a_project_folder():
     assert not offenders, 'hand-built projects join: ' + ', '.join(offenders)
 
 
+def test_no_module_hand_builds_a_transcript_path():
+    """`join(<folder>, <sid> + '.jsonl')` is store.transcript_path's job.
+
+    Thirteen copies is not a style complaint: it is the one join that stops
+    being a join once a second harness exists. A Codex thread records an
+    arbitrary rollout path rather than a file named after its id, so every one
+    of these is a site that would have to learn about harnesses separately.
+    """
+    def _is_jsonl(node):
+        # a DYNAMIC name only. archeus's own `denied.jsonl` and
+        # `archeus-events.jsonl` are literal filenames it owns outright; what
+        # this is about is a path built out of a session id.
+        if isinstance(node, ast.JoinedStr):
+            return any(isinstance(v, ast.Constant)
+                       and str(v.value).endswith('.jsonl') for v in node.values)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            return _is_jsonl(node.right)
+        return False
+
+    offenders = []
+    for name, src in _modules():
+        if name == 'store.py':                    # the one implementation
+            continue
+        for node in ast.walk(ast.parse(src)):
+            if not (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == 'join'):
+                continue
+            if any(_is_jsonl(a) for a in node.args):
+                offenders.append('%s:%d' % (name, node.lineno))
+    assert not offenders, 'hand-built transcript path: ' + ', '.join(offenders)
+
+
+def test_transcript_path_and_session_file_agree():
+    """Two roads to one answer is two chances to disagree about the extension."""
+    folder = store.project_folder('C:/cfg', 'X--work-proj')
+    assert store.transcript_path(folder, 'abc') == \
+        store.session_file('C:/cfg', 'X--work-proj', 'abc')
+
+
 # ── jsonstore ────────────────────────────────────────────────
 
 def test_absent_file_is_the_default(tmp_path):
@@ -210,8 +250,10 @@ def test_no_module_spawns_a_terminal_directly():
                             and any(isinstance(e, ast.Constant) and e.value == 'start'
                                     for e in arg.elts)):
                         offenders.append('%s:%d cmd /c start' % (name, node.lineno))
-    # failover spawns its own detached proxy console and documents why
-    offenders = [o for o in offenders if not o.startswith('failover.py')]
+    # proxy_base spawns the detached proxy consoles and documents why: they must
+    # outlive archeus, and the routing log IS the feature. ONE spawn shared by
+    # both daemons (failover, gateway) — which is the point this gate is making.
+    offenders = [o for o in offenders if not o.startswith('proxy_base.py')]
     assert not offenders, 'terminal spawned outside proc.py: ' + ', '.join(offenders)
 
 
@@ -281,3 +323,30 @@ def test_the_debug_dump_into_temp_is_gone():
     unguarded os.environ['TEMP'] and never closed on the error path."""
     src = io.open(os.path.join(SRC, 'claude_md.py'), encoding='utf-8').read()
     assert 'ai_analyze_debug' not in src
+
+
+def test_no_module_builds_its_own_headless_claude_call():
+    """Four modules hand-rolled `claude --print <prompt>` instead of calling
+    memory._claude_stdin. Each was a place the provider env, the
+    --max-budget-usd cap and the Windows command-line length limit had to be
+    remembered separately -- and none of the four remembered any of them."""
+    offenders = []
+    for name, src in _modules():
+        for node in ast.walk(ast.parse(src)):
+            if not (isinstance(node, ast.List) and node.elts):
+                continue
+            flags = {e.value for e in node.elts
+                     if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+            if flags & {'-p', '--print'}:
+                offenders.append('%s:%d' % (name, node.lineno))
+    # memory.py IS the seam. Each of the others has a contract the seam does not
+    # express, rather than a second copy of one it does:
+    #   claude_md / plan_execute  stream their output as it arrives
+    #                             (--output-format stream-json, a live pane)
+    #   loops                     an hour-long unattended iteration that owns its
+    #                             own permission mode, its own quota report and
+    #                             its own journal entry
+    waived = ('memory.py', 'claude_md.py', 'plan_execute.py', 'loops.py')
+    offenders = [o for o in offenders if not o.startswith(waived)]
+    assert not offenders, ('headless claude spawned outside memory._claude_stdin: '
+                           + ', '.join(offenders))

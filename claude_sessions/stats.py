@@ -9,7 +9,7 @@ from .config import (COST_PER_MTOK, CACHE_READ_MULT, CACHE_WRITE_MULT,
                      load_settings, projects_dir, config_dir,
                      C_RESET, C_DIM, C_BOLD, C_TITLE)
 from .sessions import (get_session_stats, scan_sessions, format_age, load_name,
-                       _is_anthropic_model, _used_omni)
+                       _is_anthropic_model, _used_provider)
 from . import sessions as _sessions
 from . import config as _c
 from . import render
@@ -72,21 +72,92 @@ def _cost_table():
     return table
 
 
+#: {exact model id: {in, out}} for every model a non-Claude harness publishes a
+#: price for. SEPARATE from `_cost_table()` and looked up FIRST BY EXACT ID,
+#: which is the whole reason it is a second table: `COST_PER_MTOK` is matched by
+#: SUBSTRING, and merging a thousand catalogue ids into it would make a short
+#: key like `gpt-5` silently claim `gpt-5.6-terra` — and turn every lookup into
+#: a thousand-entry scan per model per session.
+#:
+#: Process-lifetime, because what it reads is a file npm wrote at install time.
+#: Registered in tests/conftest's cache-leak fixture with the other three.
+_HARNESS_RATES = {}
+
+
+def _harness_rates():
+    """Prices for the other CLIs' models, read out of what they ship.
+
+    Codex and pi sessions counted tokens correctly and priced them at nothing,
+    because every pattern in `COST_PER_MTOK` is an Anthropic id — so a month of
+    gpt-5.5 read as `n/a` next to a real token count. pi ships a full priced
+    catalogue (38 providers, `cost` in dollars per MILLION tokens, the same unit
+    this table uses), which covers its own models AND Codex's.
+
+    Nothing is invented here: with no pi installed this is empty and those
+    sessions go on reading `n/a`, which is the honest answer rather than a
+    guess. `_GUESS_RATES` deliberately does not apply — an opus-tier guess on a
+    gpt-5.6-luna session would be wrong by a factor of fifty.
+    """
+    if _HARNESS_RATES:
+        return _HARNESS_RATES
+    from . import harnesses as _h
+    for hid in _h.ids():
+        if not _h.descriptor(hid).get('catalogue'):
+            continue
+        try:
+            rows = _h.impl('catalogue', hid)(_h.home_dir(hid)) or []
+        except Exception:
+            continue
+        for r in rows:
+            c = r.get('cost') or {}
+            if not isinstance(c, dict) or 'input' not in c:
+                continue
+            rates = {'in': float(c.get('input') or 0),
+                     'out': float(c.get('output') or 0)}
+            # both the qualified `provider/id` and the bare id: pi records the
+            # first and Codex the second, for models that are often the same
+            for key in (r['id'], r['id'].split('/', 1)[-1]):
+                _HARNESS_RATES.setdefault(key, rates)
+    return _HARNESS_RATES
+
+
 _FREE_RATES = {'in': 0.0, 'out': 0.0}
 _GUESS_RATES = {'in': 5.0, 'out': 25.0}
 
 
 def _rates_for(model, table):
+    # exact id first, and only then the substring patterns. An exact match
+    # cannot be wrong; a substring one can, so the cheap certain answer goes
+    # ahead of the fuzzy one rather than after it.
+    got = table.get(model)
+    if got:
+        return got, True
     for pattern, rates in table.items():
         if pattern in model:
             return rates, True
+    got = _harness_rates().get(model)
+    if got:
+        return got, True
     if not _is_anthropic_model(model):
-        return _FREE_RATES, False        # OmniRoute free-tier model: costs nothing
+        # No price data, NOT "free" -- a routed model may be a paid OpenRouter or
+        # self-hosted one. The zero contributes nothing to the total and the
+        # False makes fmt_cost say so rather than quote a number.
+        return _FREE_RATES, False
     return _GUESS_RATES, False           # unknown Claude id: opus-tier guess
 
 
+def fmt_cost(cost, exact):
+    """Cost cell text. A zero total that is ALSO inexact means every model in the
+    rollup was unpriced, not that the work was free -- rendering it as `~0.00`
+    told a paid OpenRouter/vLLM user their spend was approximately nothing."""
+    if not exact and not cost:
+        return 'n/a'
+    return f"{'~' if not exact else ''}{cost:.2f}"
+
+
 def estimate_cost(usage_by_model):
-    """Returns (usd: float, exact: bool). exact=False if any model rate was guessed."""
+    """Returns (usd: float, exact: bool). exact=False if any model rate was guessed
+    OR had no price data at all -- see fmt_cost for how the two are told apart."""
     table = _cost_table()
     total = 0.0
     exact = True
@@ -124,7 +195,14 @@ def iter_all_sessions(entries, title='SCANNING SESSIONS', silent=False):
     session of every project. Shows a progress frame; ESC stops early
     (yields partial). entries: [(mtime, actual_path, encoded_name, cfgdir)]
     as built by main.run. silent=True (GUI server threads): no progress
-    frame, no keyboard peeking — a plain data generator."""
+    frame, no keyboard peeking — a plain data generator.
+
+    The rows come from `sessions.scan_sessions` and the file from
+    `store.transcript_path` — the same two seams the sessions list uses — rather
+    than from `*.jsonl` in the folder. This is the function search, usage and the
+    dashboard all read through, so listing the folder itself meant those three
+    saw a Codex thread as no session at all: its transcript is a rollout file
+    somewhere else entirely and its folder holds an index, not a corpus."""
     if not silent:
         from . import ui   # lazy — avoid import cycle
 
@@ -137,9 +215,7 @@ def iter_all_sessions(entries, title='SCANNING SESSIONS', silent=False):
             if stopped:
                 break
             folder = store.project_folder(cfgdir, enc)
-            names = [f for f in (os.listdir(folder) if os.path.isdir(folder) else [])
-                     if f.endswith('.jsonl')]
-            for f in names:
+            for _m, sid, _pv, _c in _sessions.scan_sessions(folder):
                 # peek for ESC; first non-ESC key is preserved for the next
                 # screen and ends the peeking (keeps queued input in order)
                 if peeking:
@@ -150,13 +226,13 @@ def iter_all_sessions(entries, title='SCANNING SESSIONS', silent=False):
                             break
                         ui.push_event(ev)
                         peeking = False
-                fpath = os.path.join(folder, f)
+                fpath = store.transcript_path(folder, sid)
                 try:
                     mtime = os.path.getmtime(fpath)
                 except OSError:
                     continue
                 stats = get_session_stats_cached(fpath)
-                yield (mtime, ppath, enc, f[:-6], stats, cfgdir)
+                yield (mtime, ppath, enc, sid, stats, cfgdir)
             if not silent:
                 render.render_frame([
                     render.header('ARCHEUS', title),
@@ -214,12 +290,12 @@ def _merge_ubm(dst, src):
             agg[k] += mu.get(k, 0)
 
 
-def _omni_tokens(usage_by_model):
+def _provider_tokens(usage_by_model):
     return sum(sum(mu.values()) for m, mu in (usage_by_model or {}).items()
                if not _is_anthropic_model(m))
 
 
-def _omni_saved(usage_by_model):
+def _provider_saved(usage_by_model):
     """What the free-tier (non-Anthropic) tokens would have cost at Opus rates."""
     total = 0.0
     for m, u in (usage_by_model or {}).items():
@@ -247,12 +323,24 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
     grand totals. Day/account/total rows are window-scoped; project rows span
     all history, since that list doubles as the recency browser."""
     from datetime import datetime, timedelta
-    from .config import all_config_dirs
+    from . import harnesses as _h
 
     now = datetime.now()
     win = [(now - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days - 1, -1, -1)]
-    acct_of = {d: n for n, d in all_config_dirs()}
-    day_b = {d: {'tokens': 0, 'sessions': 0, 'ubm': {}, 'accounts': {}} for d in win}
+    # BOTH maps from ONE call, above the loop. `instances()` returns
+    # (label, home, hid) and for Claude Code the label IS the account name, so
+    # this replaces the `all_config_dirs()` map rather than sitting beside it —
+    # and it fixes what that map could not answer: a Codex home was not in it,
+    # so every Codex session was attributed to an "account" called `.codex`.
+    #
+    # Built once because `harnesses.of()` reads settings off disk on EVERY call,
+    # and this loop runs once per session on the machine — thousands of times on
+    # a dashboard poll.
+    inst = _h.instances()
+    acct_of = {d: n for n, d, _i in inst}
+    hid_of = {d: i for _n, d, i in inst}
+    day_b = {d: {'tokens': 0, 'sessions': 0, 'ubm': {}, 'accounts': {},
+                 'harnesses': {}} for d in win}
     acct_b, proj_b, recent_b = {}, {}, []
 
     # ── live activity, across every account ──
@@ -272,19 +360,20 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
             break
         mtime, ppath, enc, _sid, stats, cfgdir = item
         acct = acct_of.get(cfgdir) or os.path.basename(cfgdir)
+        hid = hid_of.get(cfgdir) or _h.DEFAULT
         ubm = stats.get('usage_by_model') or {}
         tokens = sum(_sum_usage(stats).values())
 
         p = proj_b.setdefault(enc, {
             'path': ppath, 'name': os.path.basename(ppath) or ppath, 'enc': enc,
             'cfgdir': cfgdir, 'accounts': [], 'sessions': 0, 'msgs': 0,
-            'tokens': 0, 'omni_tokens': 0, 'omni': False, 'mtime': mtime, 'ubm': {},
+            'tokens': 0, 'provider_tokens': 0, 'provider': False, 'mtime': mtime, 'ubm': {},
             'by_day': {}})
         p['sessions'] += 1
         p['msgs'] += stats.get('count', 0)
         p['tokens'] += tokens
-        p['omni_tokens'] += _omni_tokens(ubm)
-        p['omni'] = p['omni'] or _used_omni(stats)
+        p['provider_tokens'] += _provider_tokens(ubm)
+        p['provider'] = p['provider'] or _used_provider(stats)
         p['mtime'] = max(p['mtime'], mtime)
         if acct not in p['accounts']:
             p['accounts'].append(acct)
@@ -298,7 +387,7 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
             recent_b.append({'sid': _sid, 'path': ppath, 'encoded': enc, 'cfgdir': cfgdir,
                              'account': acct, 'mtime': mtime, 'msgs': stats.get('count', 0),
                              'title': stats.get('title') or _sid[:8],
-                             'omni': _used_omni(stats)})
+                             'provider': _used_provider(stats)})
             # same `count > 3` gate as above, and for the same reason: archeus's
             # own headless one-shots (lesson distilling, graph building, title
             # extraction) land in this transcript store and would otherwise read
@@ -316,13 +405,14 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
         b['tokens'] += tokens
         b['sessions'] += 1
         b['accounts'][acct] = b['accounts'].get(acct, 0) + tokens
+        b['harnesses'][hid] = b['harnesses'].get(hid, 0) + tokens
         p['by_day'][day] = p['by_day'].get(day, 0) + tokens
         _merge_ubm(b['ubm'], ubm)
         a = acct_b.setdefault(acct, {'account': acct, 'tokens': 0, 'sessions': 0,
-                                     'omni_tokens': 0, 'ubm': {}})
+                                     'provider_tokens': 0, 'ubm': {}})
         a['tokens'] += tokens
         a['sessions'] += 1
-        a['omni_tokens'] += _omni_tokens(ubm)
+        a['provider_tokens'] += _provider_tokens(ubm)
         _merge_ubm(a['ubm'], ubm)
 
     day_rows = []
@@ -330,11 +420,12 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
         b = day_b[d]
         day_rows.append({'date': d, 'tokens': b['tokens'], 'sessions': b['sessions'],
                          'cost': round(estimate_cost(b['ubm'])[0], 2),
-                         'omni_tokens': _omni_tokens(b['ubm']),
-                         'accounts': b['accounts']})
+                         'provider_tokens': _provider_tokens(b['ubm']),
+                         'accounts': b['accounts'],
+                         'harnesses': b['harnesses']})
     acct_rows = sorted(
         ({'account': a['account'], 'tokens': a['tokens'], 'sessions': a['sessions'],
-          'omni_tokens': a['omni_tokens'],
+          'provider_tokens': a['provider_tokens'],
           'cost': round(estimate_cost(a['ubm'])[0], 2)} for a in acct_b.values()),
         key=lambda r: r['tokens'], reverse=True)
     proj_rows = []
@@ -352,6 +443,12 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
         _merge_ubm(all_ubm, a['ubm'])
     recent_b.sort(key=lambda r: r['mtime'], reverse=True)
     return {'days': day_rows, 'accounts': acct_rows, 'projects': proj_rows,
+            # {hid: tokens} over the whole window, summed from the day rows
+            # rather than accumulated twice. Additive in the way `accounts` is
+            # and quota percentages are not: these are token counts from the
+            # same scan, so stacking them in one ring is honest.
+            'harnesses': {h: sum(r['harnesses'].get(h, 0) for r in day_rows)
+                          for r in day_rows for h in r['harnesses']},
             'recent': recent_b[:recent],
             # oldest→newest, so the sparkline reads left-to-right like every
             # other series in the app
@@ -362,8 +459,8 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
             'totals': {'tokens': sum(r['tokens'] for r in day_rows),
                        'cost': round(estimate_cost(all_ubm)[0], 2),
                        'sessions': sum(r['sessions'] for r in acct_rows),
-                       'omni_tokens': sum(r['omni_tokens'] for r in acct_rows),
-                       'omni_saved': round(_omni_saved(all_ubm), 2)}}
+                       'provider_tokens': sum(r['provider_tokens'] for r in acct_rows),
+                       'provider_saved': round(_provider_saved(all_ubm), 2)}}
 
 
 def assemble_session_usage(proj_folder):
@@ -387,7 +484,7 @@ def assemble_session_usage(proj_folder):
             if sid in seen_sids:
                 continue
             seen_sids.add(sid)
-            stats = get_session_stats_cached(os.path.join(folder, f"{sid}.jsonl"))
+            stats = get_session_stats_cached(store.transcript_path(folder, sid))
             cost, exact = estimate_cost(stats.get('usage_by_model'))
             u = _sum_usage(stats)
             name = load_name(folder, sid) or stats.get('title') or preview or sid[:8]
@@ -567,7 +664,7 @@ def usage_dashboard(entries):
                 [os.path.basename(p['path']) or p['path'], str(p['sessions']),
                  str(p['msgs']), fmt_tok(u['in']), fmt_tok(u['out']),
                  fmt_tok(u['cache_read']),
-                 f"{'~' if not exact else ''}{cost:.2f}"],
+                 fmt_cost(cost, exact)],
                 [None, 6, 7, 8, 8, 9, 9],
                 aligns=['left', 'right', 'right', 'right', 'right', 'right', 'right'])
             frame.append(render.row(label, selected=(i == nav)))
@@ -619,7 +716,7 @@ def project_usage_screen(proj_folder, project_name):
             label = render.cols(
                 [format_age(mtime).strip(), name, str(count),
                  fmt_tok(u['in']), fmt_tok(u['out']),
-                 f"{'~' if not exact else ''}{cost:.2f}"],
+                 fmt_cost(cost, exact)],
                 [7, None, 6, 8, 8, 8],
                 aligns=['left', 'left', 'right', 'right', 'right', 'right'])
             frame.append(render.row(label, selected=(i == nav)))

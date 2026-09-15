@@ -5,7 +5,8 @@
 <h1 align="center">archeus</h1>
 
 <p align="center">
-  <sub><i>Formerly <code>claudectl</code>. Everything migrates on first run — settings, memory graphs and per-project state. Nothing is deleted.</i></sub>
+  <sub><i>Formerly <code>claudectl</code>. Everything migrates on first run — settings, memory graphs and per-project state. Nothing is deleted.<br>
+  The name is Paracelsus' term for the force that keeps living matter coherent. Not <i>Arceus</i>, which is Nintendo's and spelled the other way round.</i></sub>
 </p>
 
 <p align="center">
@@ -18,7 +19,7 @@
   <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-0078D6">
   <img alt="Dependencies" src="https://img.shields.io/badge/runtime%20deps-zero%20(stdlib)-brightgreen">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-2035-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-2309-brightgreen">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
   <img alt="Claude Code" src="https://img.shields.io/badge/for-Claude%20Code-8A5CF6">
 </p>
@@ -35,10 +36,6 @@
     <a href="https://www.linkedin.com/in/muhammad-anas-babar-819647240">LinkedIn</a> ·
     <a href="https://dev.to/muhammad_anasbabar_31256">dev.to</a>
   </sub>
-</p>
-
-<p align="center">
-  <sub><i>Not the Rust <code>archeus</code>. Two independent projects share this name; this one is the Python memory and workspace layer for AI coding agents.</i></sub>
 </p>
 
 <p align="center">
@@ -124,7 +121,7 @@ The terminal UI is the same tool, keyboard-first:
 </p>
 
 <p align="center">
-  <img alt="Architecture graph" src="https://raw.githubusercontent.com/babarmuhammad/archeus/main/docs/graph-real.gif" width="820">
+  <img alt="Architecture graph" src="https://raw.githubusercontent.com/babarmuhammad/archeus/main/docs/graph-real.webp" width="820" loading="lazy">
   <br><sub><b>The architecture graph</b> — every module and its dependencies,
   expandable down to single files (Python · C/C++ · C# · JS/TS).</sub>
 </p>
@@ -155,10 +152,10 @@ Without archeus, a big project either starves the agent (no context) or floods i
 
 ## Where this is going
 
-A long-term goal, not a feature list, and none of it ships today:
-provider-neutral memory, then an open harness of its own. Claude Code is the
-first surface, not the boundary. What works right now is exactly what is
-claimed above — everything runs against the files Claude Code writes to disk.
+Half has arrived: a session can be routed at any endpoint serving
+`POST /v1/messages` — local Ollama, llama.cpp, vLLM, OpenRouter — with agents,
+skills, hooks and MCP intact. Driving another harness is the other half and a
+long-term goal, not a feature: Claude Code is the first surface, not the boundary.
 
 ---
 
@@ -181,10 +178,10 @@ The full manual lives at **[docs.claudectl.space](https://docs.claudectl.space/)
 | [API reference](https://docs.claudectl.space/api/) | the local HTTP API the GUI is built on |
 | [Troubleshooting](https://docs.claudectl.space/troubleshooting/) | when something does not work |
 
-Product pages — [Features](https://claudectl.space/features/) ·
-[Compare](https://docs.claudectl.space/compare/) · [FAQ](https://claudectl.space/faq/) ·
-[Download](https://claudectl.space/download/) ·
-[Changelog](https://claudectl.space/changelog/) — are on [claudectl.space](https://claudectl.space/).
+Product pages — [Features](https://claudectl.space/features) ·
+[Compare](https://docs.claudectl.space/compare/) · [FAQ](https://claudectl.space/faq) ·
+[Download](https://claudectl.space/download) ·
+[Changelog](https://claudectl.space/changelog) — are on [claudectl.space](https://claudectl.space/).
 
 ## Credits
 

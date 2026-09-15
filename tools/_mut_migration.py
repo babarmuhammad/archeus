@@ -59,14 +59,69 @@ MUTANTS = [
      "OLD = 'claudectl'",
      "OLD = 'archeus'"),
     ("hook and statusLine paths are never re-pointed",
-     "    _repair_commands(cfgdirs, moved, failed)",
-     "    pass"),
+     "    _rfixed, _rfailed = repair_commands(cfgdirs)",
+     "    _rfixed, _rfailed = [], []"),
     ("a command the user wrote by hand is rewritten too",
      "        if os.path.isfile(raw):\n            continue",
      "        if False:\n            continue"),
     ("the interpreter is left pointing into the old environment",
      "    return f'\"{sys.executable}\" {tail}' if tail != out.strip() else out",
      "    return out"),
+    # ── the second pass ──────────────────────────────────────
+    ("the repair is one-shot again, so it only ever runs when nothing is broken",
+     "def repair_commands(cfgdirs=None, moved=None, failed=None):",
+     "def repair_commands(cfgdirs=None, moved=None, failed=None):\n"
+     "    if not pending():\n        return [], []"),
+    ("the statusline is repaired with the console interpreter",
+     "                from . import statusline\n"
+     "                sl['command'] = statusline._command()",
+     "                sl['command'] = _repoint(cur, pkg_dir)"),
+    ("a superseded block is renamed instead of dropped, so there are two",
+     "        if (text.count(start) == text.count(end) > 0\n"
+     "                and (_NEW_TAG + name + ':START -->') in text):",
+     "        if False:"),
+    ("every old block is dropped, including the one with no successor",
+     "                and (_NEW_TAG + name + ':START -->') in text):",
+     "                and True):"),
+    ("a half-written pair is renamed, which poisons every later write",
+     "        if new.count(start) == new.count(end) > 0:",
+     "        if True:"),
+    ("the KEEP fence is left invisible to the thing that protects it",
+     "_SENTINEL_BLOCKS = _UNIQUE_BLOCKS + ('KEEP',)",
+     "_SENTINEL_BLOCKS = _UNIQUE_BLOCKS"),
+    # the anchor carries the line after it because `repair_commands` resolves
+    # its default the same way and comes FIRST in the file — mutating that one
+    # instead is a mutant no test can see, which is what the first run reported
+    ("the sweep reads the settings file it has already moved away from",
+     "        cfgdirs = [d for _name, d in _c.all_config_dirs()]\n"
+     "    for cfgdir in cfgdirs:",
+     "        cfgdirs = _old_config_dirs()\n"
+     "    for cfgdir in cfgdirs:"),
+    ("the sweep gate is the one that is already closed everywhere",
+     "    if not sweep_pending():",
+     "    if not pending():"),
+    ("the sweep flag is written even after a failure",
+     "    if failed:\n        return\n    s = _c.load_settings()\n"
+     "    s[SWEEP_FLAG] = True",
+     "    s = _c.load_settings()\n    s[SWEEP_FLAG] = True"),
+    ("a machine that never had the old name is walked anyway",
+     "    if _c.load_settings().get('migrated_from') != OLD:",
+     "    if False:"),
+    ("the old scheduler entry is left in place, still firing",
+     "            proc.run(['schtasks', '/delete', '/tn', tn, '/f'], timeout=30)",
+     "            pass"),
+    ("the loop is unscheduled and never registered again",
+     "        ok, msg = loops.schedule(r['id'], r.get('interval') or '', cfgdir)",
+     "        ok, msg = True, 'skipped'"),
+    ("the old cron line survives every rewrite",
+     "        keep = [ln for ln in lines if OLD_TASK_PREFIX not in ln]",
+     "        keep = list(lines)"),
+    ("the stale env vars are enumerated rather than shape-matched",
+     "    names = sorted(k for k in os.environ if k.startswith(OLD.upper() + '_'))",
+     "    names = [k for k in ('%s_BAT' % OLD.upper(),) if k in os.environ]"),
+    ("the old plugin install is never reported",
+     "    if not stale:\n        return ''",
+     "    return ''\n    if not stale:\n        return ''"),
 ]
 
 

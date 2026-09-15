@@ -192,8 +192,8 @@ def render(r, x):
     p.append('')
     # Absolute, because both pages live on the apex marketing site — a relative
     # link would name a docs page that does not exist and fail --strict.
-    p.append('[Download](https://claudectl.space/download/) · '
-             '[Changelog](https://claudectl.space/changelog/)\n')
+    p.append('[Download](https://claudectl.space/download) · '
+             '[Changelog](https://claudectl.space/changelog)\n')
 
     p.append('## Downloads\n')
     p.append('From [pypistats.org](https://pypistats.org/packages/%s), mirrors excluded.\n' % PKG)

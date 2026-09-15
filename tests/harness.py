@@ -15,6 +15,7 @@ re-script 600 tests.
 import json
 import os
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -142,6 +143,13 @@ class Sandbox:
         self.choice = tmp_path / 'choice.txt'
         self.settings = tmp_path / 'archeus.json'
         self.agents_lib = tmp_path / 'agents-lib'   # empty by default
+        #: the OS scratch directory, inside the sandbox. A Sandbox that repoints
+        #: HOME and leaves `tempfile` on the real machine temp is a half
+        #: sandbox: pytest's own tmp_path lives UNDER that directory, so
+        #: `store.under_temp` — which is what keeps a one-shot probe run out of
+        #: the project list — answered True for every project a test creates.
+        self.tmp = tmp_path / 'tmp'
+        self.tmp.mkdir()
         self.editor_opened = []
         self._encoded_to_actual = {}
         self._patch_paths()
@@ -162,6 +170,14 @@ class Sandbox:
         cfg, prj = str(self.cfg), str(self.projects)
         lsf = os.path.join(prj, 'last-session.json')
         for mod, attr, val in [
+            # a harness resolves its home and its binary off the user profile,
+            # at call time and by design. A sandbox that leaves this pointing at
+            # the real one lists the user's own Codex projects and opens their
+            # real state database — a test reading live user state, which is the
+            # failure `_no_writes_outside_the_sandbox` only covers one half of.
+            (config, '_USERPROFILE', str(self.root)),
+            (config, '_TEMP', str(self.tmp)),
+            (tempfile, 'tempdir', str(self.tmp)),
             (config, 'config_dir', cfg), (config, 'projects_dir', prj),
             (config, 'last_session_file', lsf),
             (config, 'settings_file', str(self.settings)),
@@ -188,8 +204,12 @@ class Sandbox:
         # is exercised separately, not by every sandboxed TUI test
         self.mp.setattr(config, 'all_config_dirs', lambda: [('default', cfg)])
         self.mp.setattr(main_mod, 'all_config_dirs', lambda: [('default', cfg)])
-        # find_actual_path can't walk fake drives — resolve via registry
-        self.mp.setattr(main_mod, 'find_actual_path',
+        # find_actual_path can't walk fake drives — resolve via registry.
+        # Patched on `paths`, which is where the one project walk reads it:
+        # patching a by-value import in `main` stopped reaching the walk the
+        # moment `store.all_projects` became the only one.
+        import claude_sessions.paths as paths_mod
+        self.mp.setattr(paths_mod, 'find_actual_path',
                         lambda enc, *a, **k: self._encoded_to_actual.get(enc))
         self.mp.setattr(config, 'open_in_editor',
                         lambda p: (self.editor_opened.append(p), True)[1])

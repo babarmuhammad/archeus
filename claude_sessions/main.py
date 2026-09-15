@@ -8,7 +8,6 @@ import subprocess
 from .config import projects_dir, choice_file, config_dir, all_config_dirs
 from .config import C_RESET, C_STAR, C_DIM, C_TITLE, C_BOLD, C_NAME
 from .config import get_claude_exe, load_settings, save_settings
-from .paths import find_actual_path
 from .sessions import (get_session_info, load_recent_sessions, save_last_session,
                        format_age, scan_sessions, load_name, get_session_title)
 from .ui import menu, launch_options_menu, pause, help_screen, settings_menu
@@ -18,6 +17,8 @@ from .usage import usage_status_line
 from .ui import _cls
 from . import render
 from . import store
+from . import config as _c
+from . import harnesses as _harnesses
 
 
 def _workspace_status_cli():
@@ -128,6 +129,60 @@ def _hidden_projects_menu(grouped):
         set_project_hidden(sel, sel not in hidden)
 
 
+def _harnesses_screen():
+    """Which coding CLIs are here, and what archeus can do with each.
+
+    The terminal half of the GUI's Harnesses page, and the same two questions:
+    is it installed and where, and which surfaces work under it. The capability
+    table is the point — everywhere else a gap greys one row and says why, and
+    this is the one screen that shows them together.
+
+    A menu of harnesses over a pager per harness, rather than one long dump:
+    three CLIs times twenty-three capabilities is a screen nobody reads.
+    """
+    from . import harnesses as _h
+    from .ui import pager
+    while True:
+        rows = []
+        for hid in _h.ids():
+            d = _h.descriptor(hid)
+            exe = _h.exe(hid)
+            mark = '●' if exe else '○'
+            gaps = sum(1 for k in _h.CAPS if not _h.cap(hid, k)[0])
+            note = (f"{gaps} of {len(_h.CAPS)} surfaces unavailable"
+                    if exe else 'not installed')
+            rows.append((f"{mark}  {d['label']:<14}  {C_DIM}{note}{C_RESET}", hid))
+        sel = menu(rows, 'HARNESSES   (● installed · Enter for detail)')
+        if not sel:
+            return
+        d = _h.descriptor(sel)
+        exe = _h.exe(sel)
+        lines = [f"binary              {exe or '(not found)'}",
+                 f"home                {_h.home_dir(sel)}",
+                 f"instructions file   {d['instructions_file']}",
+                 f"effort scale        {', '.join(e or 'default' for e in d['efforts'])}",
+                 '']
+        if exe and d.get('doctor'):
+            try:
+                doc = _h.impl('doctor', sel)(_h.home_dir(sel)) or {}
+            except Exception:
+                doc = {}
+            if doc.get('version'):
+                lines.insert(0, 'version             %s%s' % (
+                    doc['version'],
+                    '   (%s available)' % doc['latest']
+                    if doc.get('latest') and doc['latest'] != doc['version'] else ''))
+            if doc.get('auth'):
+                lines.insert(1, 'signed in           %s'
+                             % ('yes' if doc['auth'] == 'ok' else 'no'))
+        lines.append('WHAT WORKS HERE')
+        for key, what in sorted(_h.CAPS.items()):
+            ok, why = _h.cap(sel, key)
+            lines.append('  %s %-18s %s' % ('+' if ok else '-', key,
+                                            what if ok else why))
+        pager([d['label']], lines, hint='Esc back')
+
+
 #: the main menu's own rows, hoisted to module scope so a test can read them.
 #: [(label, key, gui_route)] — a blank route means the row has no GUI
 #: counterpart, and `test_every_main_menu_row_has_a_gui_counterpart` requires a
@@ -145,6 +200,7 @@ MAIN_ACTIONS = [
     ('⚙  Updates (Claude Code + plugins)',   '__updates__',          '/api/versions'),
     ('⚙  Global CLAUDE.md  /  MCP Analysis', '__global_claude_md__', '/api/global-claude-md'),
     ('⚙  Accounts (switch / run 2 at once)', '__accounts__',         '/api/accounts'),
+    ('⚙  Harnesses (which CLIs, and their setup)', '__harnesses__',  '/api/harness/setup'),
     ('⚙  Logs (what archeus did, what failed)', '__logs__',        '/api/logs'),
     ('⚙  Settings',                          '__settings__',         '/api/settings'),
     ('?  Help',                              '__help__',             ''),   # the GUI's help page is generated in the browser from SECTIONS/TABS — there is nothing for it to fetch
@@ -160,19 +216,62 @@ MAIN_ACTIONS = [
 #: check a copy. Keyed by LABEL, never by index, for the reason the sidebar's
 #: collapsed set was: reordering the sections must not silently open a
 #: different one.
+#: The five must be the GUI's five, IN ORDER — `test_the_five_sections_are_the_
+#: ones_the_gui_sidebar_has` reads the labels out of the served page rather than
+#: restating them, so this table and `app.js`'s SECTIONS move in one commit.
+#: `Accounts` became `Harnesses` when the GUI's did: a login is one CLI's, so
+#: the question the section answers is "which tool", and "which account" is one
+#: screen inside it. The KEYS are free — the gate compares labels — which is why
+#: the agents and hooks rows can stay under Library here while the GUI puts
+#: their pages behind the Claude Code tab: the TUI has no two-level strip to put
+#: them behind, and inventing one to satisfy a gate that does not ask for it
+#: would be a screen written for a test.
 MAIN_SECTIONS = [
-    ('Context',  ['__global_claude_md__', '__mcp__']),
-    ('Library',  ['__agents__', '__skills__', '__hooks__']),
-    ('Activity', ['__usage_stats__', '__logs__']),
-    ('Accounts', ['__accounts__']),
-    ('Settings', ['__settings__', '__updates__']),
+    ('Context',   ['__global_claude_md__', '__mcp__']),
+    ('Library',   ['__agents__', '__skills__', '__hooks__']),
+    ('Activity',  ['__usage_stats__', '__logs__']),
+    ('Harnesses', ['__harnesses__', '__accounts__']),
+    ('Settings',  ['__settings__', '__updates__']),
 ]
+#: menu key -> the capability it needs, pointing INTO MAIN_ACTIONS by key for
+#: the reason MAIN_SECTIONS does: that table stays the one carrying a row's
+#: label and its GUI route, and a fourth column there would be a fourth thing
+#: three unpack sites and a parity gate have to agree about. Same keys as the
+#: GUI's NAV field — `harnesses.CAPS` is where they are declared.
+MAIN_CAPS = {
+    '__mcp__':              'mcp',
+    '__agents__':           'agents',
+    '__skills__':           'skills',
+    '__hooks__':            'hooks',
+    '__updates__':          'versions',
+    '__usage_stats__':      'usage',
+    '__accounts__':         'accounts',
+}
+
+
+def _cap_of_row(key, cfgdir=None):
+    """(ok, why) for a main-menu row on the account in front of the user.
+
+    Dimmed and still selectable, exactly as the GUI greys a nav row: pressing it
+    says what is missing and where it works. A row that disappears teaches
+    nothing, and one that errors reads as a bug in archeus.
+    """
+    from .harnesses import cap, of
+    need = MAIN_CAPS.get(key or '')
+    return cap(of(cfgdir)['id'], need) if need else (True, '')
+
+
 #: rows that stay ON the main menu. The first three act on the project list the
 #: menu is already showing — burying "open a folder" one level down would put a
 #: submenu between the user and the reason they opened archeus — and `?` is the
 #: same door the GUI moved Help to. test_surface_parity fails a MAIN_ACTIONS key
 #: that is in neither this set nor a section.
 MAIN_TOP = ['__open_path__', '__search_all__', '__hidden_projects__', '__help__']
+
+
+def _dim_unavailable(label, key):
+    ok, _why = _cap_of_row(key)
+    return label if ok else f"{C_DIM}{label}{C_RESET}"
 
 
 def run():
@@ -214,14 +313,24 @@ def run():
         _bg_scan_cli(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else '')
         return
     # detached model-failover proxy (spawned by failover.ensure_running)
+    # argv[3] is the provider profile the daemon serves — passed at spawn rather
+    # than looked up, because this branch runs BEFORE migrate_settings below and
+    # may be reading a settings file that predates the profile list.
     if len(sys.argv) >= 2 and sys.argv[1] == '--failover-serve':
         from .failover import serve_cli
-        sys.exit(serve_cli(sys.argv[2] if len(sys.argv) > 2 else 0))
+        sys.exit(serve_cli(sys.argv[2] if len(sys.argv) > 2 else 0,
+                           sys.argv[3] if len(sys.argv) > 3 else ''))
+    # detached translating gateway (spawned by gateway.ensure_running)
+    if len(sys.argv) >= 2 and sys.argv[1] == '--gateway-serve':
+        from .gateway import serve_cli as _gw
+        sys.exit(_gw(sys.argv[2] if len(sys.argv) > 2 else 0,
+                     sys.argv[3] if len(sys.argv) > 3 else ''))
     if len(sys.argv) >= 2 and sys.argv[1] == '--failover-stop':
+        from .config import provider_profiles
         from .failover import stop_running
-        ok, msg = stop_running()
-        print(msg)
-        sys.exit(0 if ok else 1)
+        msgs = [stop_running(p)[1] for p in provider_profiles()]
+        print('; '.join(msgs) if msgs else 'no provider profiles configured')
+        sys.exit(0)
 
     # ── one-time settings migrations ──────────────────────────────
     # HERE, below every scriptable dispatch above: `archeus statusline` runs
@@ -238,11 +347,32 @@ def run():
                 from .config import log as _log
                 _log.warning('rename migration left %d item(s) behind: %s',
                              len(_failed), _failed[0][0])
-        # Printed rather than logged, and printed EVERY start until it is acted
-        # on: the action it names is the difference between a working install
-        # and one that deletes itself on the user's next tidy-up.
-        _warn = _migrate.coinstalled_warning()
-        if _warn:
+        # UNGATED, and that is the fix rather than an oversight: a hook or a
+        # statusline records an absolute path into the environment that installed
+        # it, and everything that kills those paths — uninstalling the previous
+        # package from its own pipx venv, a renamed checkout, a rebuilt
+        # environment — happens AFTER the migration has run and closed its flag.
+        # Repairing only during the migration meant repairing at the one moment
+        # when nothing was broken yet.
+        _migrate.repair_commands()
+        # the second pass: what the path move could not reach. It carries its own
+        # flag and returns immediately once that is set, so this is one settings
+        # read on every later start.
+        _swept, _sfailed = _migrate.sweep()
+        if _sfailed:
+            from .config import log as _log
+            _log.warning('rename sweep left %d item(s) behind: %s',
+                         len(_sfailed), _sfailed[0][0])
+        # Printed rather than logged, and printed EVERY start until each is acted
+        # on: what they name is the difference between a working install and one
+        # that deletes itself on the user's next tidy-up — and, for the other two,
+        # a setting or a plugin that has silently done nothing since the rename.
+        # They live HERE rather than inside the one-time sweep because a notice
+        # printed once, during a migration nobody is watching, is not a notice.
+        for _warn in (_migrate.coinstalled_warning(), _migrate.stale_env_warning(),
+                      _migrate.stale_plugin_warning()):
+            if not _warn:
+                continue
             # `from .config import C_RESET` HERE would make C_RESET a local of
             # run(), which every nested closure below then resolves from this
             # scope instead of the module — unbound on every start where this
@@ -335,24 +465,9 @@ def run():
 
     # ── discover projects ─────────────────────────────────────────
 
-    # Scan every known account's projects dir, not just the active one, so
-    # sessions started under another account stay reachable here.
-    entries = []
-    for _acct_name, acct_dir in all_config_dirs():
-        acct_projects_dir = store.projects_root(acct_dir)
-        if not os.path.exists(acct_projects_dir):
-            continue
-        for name in os.listdir(acct_projects_dir):
-            proj = os.path.join(acct_projects_dir, name)
-            if not os.path.isdir(proj):
-                continue
-            actual = find_actual_path(name, folder=proj)
-            if not actual:
-                continue
-            mtime = os.path.getmtime(proj)
-            entries.append((mtime, actual, name, acct_dir))
-
-    entries.sort(reverse=True)
+    # Every known home, not just the active account, so sessions started under
+    # another account — or under another CLI entirely — stay reachable here.
+    entries = store.all_projects()
 
     if not entries:
         _cls()
@@ -411,7 +526,7 @@ def run():
             sid        = sess['session_id']
             _enc       = sess.get('encoded_name', '')
             pf         = store.project_folder(sess.get('cfgdir'), _enc) if _enc else ''
-            jsonl      = os.path.join(pf, f"{sid}.jsonl")
+            jsonl      = store.transcript_path(pf, sid)
             # Session name: manual rename > AI transcript title > preview > id.
             lr_name    = (load_name(pf, sid) or get_session_title(jsonl)
                           or sess.get('preview', '') or sid[:8] + '…')
@@ -430,7 +545,8 @@ def run():
         rows = (qr_items + [(f"{'─' * W}", None)] + project_items) if qr_items \
             else project_items
         rows = rows + [(f"{'─' * W}", None)] + \
-            [(label, key) for label, key, _route in MAIN_ACTIONS
+            [(_dim_unavailable(label, key), key)
+             for label, key, _route in MAIN_ACTIONS
              if key in MAIN_TOP and key != '__help__'] + \
             [(f"⚙  {label}…", f'__sec_{label}__') for label, _keys in MAIN_SECTIONS] + \
             [(label, key) for label, key, _route in MAIN_ACTIONS
@@ -444,7 +560,7 @@ def run():
 
     _EMPTY_OPTS = {'effort': '', 'model': '', 'perm': '', 'name': '', 'worktree': '',
                    'agent': '', 'cfgdir': '', 'max_thinking': '', 'subagent_model': '',
-                   'omniroute': ''}
+                   'provider': '', 'provider_model': ''}
     path = encoded_name = proj_folder = choice = None
     opts = dict(_EMPTY_OPTS)
 
@@ -474,10 +590,20 @@ def run():
             # the history of the menu it used to be, and reading its order back
             # out put `Updates` above `Settings` inside Settings
             labels = {key: lbl for lbl, key, _route in MAIN_ACTIONS}
-            sub_items = [(labels[k], k) for k in keys if k in labels]
+            sub_items = [(_dim_unavailable(labels[k], k), k)
+                         for k in keys if k in labels]
             sel = (sub_items[0][1] if len(sub_items) == 1
                    else menu(sub_items, label.upper()))
             if not sel:
+                continue
+
+        # a row whose capability this account's CLI does not have says so and
+        # goes back, rather than opening a screen that can only be empty
+        if sel:
+            _ok, _why = _cap_of_row(sel)
+            if not _ok:
+                from .ui import flash
+                flash(_why)
                 continue
 
         if sel and sel.startswith('__quickresume_'):
@@ -555,6 +681,10 @@ def run():
         elif sel == '__accounts__':
             from .accounts import accounts_menu
             accounts_menu()
+            continue
+
+        elif sel == '__harnesses__':
+            _harnesses_screen()
             continue
 
         elif sel == '__settings__':
@@ -657,7 +787,7 @@ def run():
         # the selection already matches. Inline --agents is avoided because its
         # JSON overruns the Windows command line for real agents.
         sync_project_agents(path, chosen_refs,
-                            omniroute=opts.get('omniroute'))
+                            routed=bool(opts.get('provider')))
         # Remember per-project launch choices
         if encoded_name:
             settings.setdefault('project_defaults', {})[encoded_name] = {
@@ -667,26 +797,22 @@ def run():
                 'subagent_model': opts.get('subagent_model', ''),
             }
             save_settings(settings)
-        # ── OmniRoute standalone session (optional) ──────────────
-        # Only offer OmniRoute if its base_url is explicitly configured
-        # (different from the default placeholder). This prevents the TUI
-        # from trying to reach localhost:20128 in test or fresh-install
-        # environments where no OmniRoute daemon exists.
-        _or_base = settings.get('omniroute_base_url', '')
-        if _or_base and _or_base != 'http://localhost:20128':
-            try:
-                from . import omniroute as _om
-                _models = _om.list_models(_or_base, settings.get('omniroute_api_key', ''))
-                if _models:
-                    from .omniroute import AUTO_MODEL
-                    _om_opts = [('○  off (use Anthropic API)', '')]
-                    _om_opts += [(f'◉  auto/coding (dynamic router)', AUTO_MODEL)]
-                    _om_opts += [(f'●  {lbl}', mid) for mid, lbl in _models]
-                    _om_pick = menu(_om_opts, "OMNIROUTE  (free-tier execution)")
-                    if _om_pick is not None:
-                        opts['omniroute'] = _om_pick
-            except Exception:
-                pass   # daemon not reachable or not installed — silently skip
+        # ── which backend this session runs on ───────────────────
+        # The profile list is LOCAL, so offering it reaches nothing and cannot
+        # fail. Only the second step — a live OmniRoute catalogue — can, and it
+        # is the only part inside a try. The whole block used to be, so an
+        # unreachable backend made the picker vanish and the session opened on
+        # Anthropic with nothing anywhere saying so.
+        _profs = _c.provider_profiles(settings)
+        if _profs:
+            _pv_opts = [('○  Anthropic (your account)', '')]
+            _pv_opts += [('●  %s  %s' % (p['name'], p.get('model') or ''), p['id'])
+                         for p in _profs]
+            _pid = menu(_pv_opts, "PROVIDER")
+            if _pid:
+                opts['provider'] = _pid
+                prof = _c.provider_profile(_pid, settings)
+                opts['provider_model'] = _pick_provider_model(prof)
         break
 
     if choice == 'terminal':
@@ -695,7 +821,8 @@ def run():
     opts.setdefault('agents_json', '')
     opts.setdefault('max_thinking', '')
     opts.setdefault('subagent_model', '')
-    opts.setdefault('omniroute', '')
+    opts.setdefault('provider', '')
+    opts.setdefault('provider_model', '')
 
     # Persist last session for quick-resume (resume/fork only)
     if choice and choice not in ('terminal', 'new', 'continue'):
@@ -762,35 +889,93 @@ def run():
         _direct_launch(path, encoded_name, choice, opts)
 
 
+def _pick_provider_model(prof):
+    """The model id for a session on *prof*, or its configured default.
+
+    The two kinds get different pickers because they have different amounts of
+    truth available: OmniRoute publishes a live catalogue, a generic
+    Anthropic-shaped server publishes nothing, so offering a menu there would
+    mean inventing its contents.
+
+    Only the catalogue fetch can fail, and failing it falls back to the
+    profile's own model rather than to Anthropic — the user has already said
+    which backend they want by this point."""
+    if not prof:
+        return ''
+    default = prof.get('model') or ''
+    if (prof.get('kind') or '') != 'omniroute':
+        from .ui import text_input
+        return text_input('Model id', default) or default
+    try:
+        from . import omniroute as _om
+        models = _om.list_models(prof.get('base_url', ''), prof.get('api_key', ''))
+    except Exception:
+        models = []
+    if not models:
+        return default
+    from . import omniroute as _om
+    opts = [('◉  auto/coding (dynamic router)', _om.AUTO_MODEL)]
+    opts += [(f'●  {lbl}', mid) for mid, lbl in models]
+    return menu(opts, 'MODEL  /  %s' % prof['name']) or default
+
+
 def build_choice_line(path, encoded_name, choice, opts):
-    """v6 choice-file line. Sentinel '-' for empty fields: cmd's for /f
+    """v8 choice-file line. Sentinel '-' for empty fields: cmd's for /f
     collapses consecutive delimiters, which silently shifted fields in the
     old 5-field format. v3 added config_dir; v4 the --agent name; v5 a path
     to a temp JSON file of selected subagents (--agents); v6 the launch-economy
-    env values (MAX_THINKING_TOKENS, CLAUDE_CODE_SUBAGENT_MODEL)."""
+    env values (MAX_THINKING_TOKENS, CLAUDE_CODE_SUBAGENT_MODEL); v7 the routed
+    model; v8 splits that into the PROFILE and the model within it.
+
+    Each of v7 and v8 exists because a field was genuinely missing, not for
+    symmetry: the bat launcher round-trips the whole launch through this line,
+    so a pick the line cannot carry is silently dropped and the session runs on
+    Anthropic while the picker said otherwise. v7 carried a model id and no
+    backend identity, which is the same hole one level up."""
     def sv(x):
         return str(x).replace('|', '') if x else '-'
-    return '|'.join(['v6', path, encoded_name or '-', choice,
+    return '|'.join(['v8', path, encoded_name or '-', choice,
                      sv(opts['effort']), sv(opts['model']), sv(opts['perm']),
                      sv(opts['name']), sv(opts['worktree']),
                      sv(opts.get('cfgdir') or config_dir),
                      sv(opts.get('agent', '')), sv(opts.get('agents_json', '')),
                      sv(opts.get('max_thinking', '')),
-                     sv(opts.get('subagent_model', ''))])
+                     sv(opts.get('subagent_model', '')),
+                     sv(opts.get('provider', '')),
+                     sv(opts.get('provider_model', ''))])
 
 
 def parse_choice_line(line):
     """Parse any choice-file version → (path, encoded_name, choice, opts).
     opts always has effort/model/perm/name/worktree/agent/agents_json/cfgdir
-    + max_thinking/subagent_model."""
+    + max_thinking/subagent_model/provider."""
     t = line.rstrip('\r\n').split('|')
     def g(i):
         v = t[i] if i < len(t) else ''
         return '' if v == '-' else v
     opts = {'effort': '', 'model': '', 'perm': '', 'name': '',
             'worktree': '', 'agent': '', 'agents_json': '', 'cfgdir': '',
-            'max_thinking': '', 'subagent_model': ''}
-    if t and t[0] == 'v6':
+            'max_thinking': '', 'subagent_model': '', 'provider': '',
+            'provider_model': ''}
+    if t and t[0] == 'v8':
+        path, enc, choice = g(1), g(2), g(3)
+        opts.update(effort=g(4), model=g(5), perm=g(6), name=g(7),
+                    worktree=g(8), cfgdir=g(9), agent=g(10), agents_json=g(11),
+                    max_thinking=g(12), subagent_model=g(13), provider=g(14),
+                    provider_model=g(15))
+    elif t and t[0] == 'v7':
+        # field 14 was a MODEL id, with no backend named. Read it as the model
+        # on the active profile: that is what it meant when it was written, and
+        # a v7 line can be sitting in %TEMP% at the moment of upgrade.
+        path, enc, choice = g(1), g(2), g(3)
+        opts.update(effort=g(4), model=g(5), perm=g(6), name=g(7),
+                    worktree=g(8), cfgdir=g(9), agent=g(10), agents_json=g(11),
+                    max_thinking=g(12), subagent_model=g(13),
+                    provider_model=g(14))
+        if opts['provider_model']:
+            _act = _c.active_provider()
+            opts['provider'] = _act['id'] if _act else ''
+    elif t and t[0] == 'v6':
         path, enc, choice = g(1), g(2), g(3)
         opts.update(effort=g(4), model=g(5), perm=g(6), name=g(7),
                     worktree=g(8), cfgdir=g(9), agent=g(10), agents_json=g(11),
@@ -843,16 +1028,13 @@ def build_launch_command(path, encoded_name, choice, opts):
     cfgdir = opts.get('cfgdir') or config_dir
     proj_folder = store.project_folder(cfgdir, encoded_name) if encoded_name else None
 
-    env = os.environ.copy()
-    # Pin the account/config dir explicitly — overrides any ambient
-    # CLAUDE_CONFIG_DIR archeus itself may have been launched under.
-    env['CLAUDE_CONFIG_DIR'] = cfgdir
-    env['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'] = '1'
-    # launch-economy env: cap thinking tokens / route subagents to a cheap model
-    if opts.get('max_thinking'):
-        env['MAX_THINKING_TOKENS'] = str(opts['max_thinking'])
-    if opts.get('subagent_model'):
-        env['CLAUDE_CODE_SUBAGENT_MODEL'] = opts['subagent_model']
+    # Pins the home explicitly — overriding any ambient one archeus itself was
+    # launched under — and pops the key that would shadow that home's login.
+    # Both are per harness, which is why this is `account_env` and not two
+    # lines: `CLAUDE_CONFIG_DIR` means nothing to Codex, and clearing
+    # `ANTHROPIC_API_KEY` for it would be clearing the wrong one.
+    from .config import account_env
+    env = account_env(cfgdir)
     # OpenTelemetry export, if configured. archeus already owns the launch
     # environment, so this is the natural place for it — and it is the step from
     # a personal tool to one a team can point at a shared backend.
@@ -867,6 +1049,26 @@ def build_launch_command(path, encoded_name, choice, opts):
 
     if choice == 'terminal':
         return None, env, proj_folder
+
+    # ── which CLI is being launched ───────────────────────────
+    # Everything ABOVE this line is archeus's: the project folder, the extra
+    # PATH, the telemetry, the home. Everything BELOW it is Claude Code's flag
+    # vocabulary, down to the last one — so a second harness gets its own short
+    # builder rather than a branch per flag through a hundred and forty lines.
+    d = _harnesses.of(cfgdir)
+    if d['id'] != _harnesses.DEFAULT:
+        exe = _harnesses.exe(d['id'])
+        if not exe:
+            raise RuntimeError('%s not found' % d['label'])
+        argv = _harnesses.impl('launch_argv', d['id'])(exe, choice, opts, path)
+        return argv, env, proj_folder
+
+    env['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'] = '1'
+    # launch-economy env: cap thinking tokens / route subagents to a cheap model
+    if opts.get('max_thinking'):
+        env['MAX_THINKING_TOKENS'] = str(opts['max_thinking'])
+    if opts.get('subagent_model'):
+        env['CLAUDE_CODE_SUBAGENT_MODEL'] = opts['subagent_model']
 
     claude = get_claude_exe()
     if not claude:
@@ -885,25 +1087,53 @@ def build_launch_command(path, encoded_name, choice, opts):
 
     if opts['effort']:
         args += ['--effort', opts['effort']]
-    if opts['model']:
-        args += ['--model', opts['model']]
-    # OmniRoute free-tier session: merge env overrides + use selected model.
-    # CLAUDE_CODE_SUBAGENT_MODEL is set in omniroute_env() so agents/skills
-    # always run on a capable Anthropic model (Sonnet 5), even when the main
-    # session uses a free-tier model that may lack tool_use or have small context.
-    omniroute_model = opts.get('omniroute', '')
-    if omniroute_model:
+    # Routed session: merge this PROFILE's env overrides + use the picked model.
+    # The profile is resolved from the id the picker chose, never from whatever
+    # is globally active — two sessions may be running on two backends.
+    prof = _c.provider_profile(opts.get('provider', ''), settings)
+    provider_model = (opts.get('provider_model') or
+                      (prof or {}).get('model') or '') if prof else ''
+    if prof:
         from .omniroute import prepare_launch
-        env.update(prepare_launch(omniroute_model))
-        args += ['--model', omniroute_model]
-    # `auto` is dropped where the classifier cannot run — with OmniRoute in
-    # play the model is whatever the free-tier catalog served, and the
-    # classifier is a SEPARATE request that would go to the same base URL. The
-    # model check reads the OmniRoute model when there is one, because that is
-    # the model the session will actually be on.
+        pv_env, _warn = prepare_launch(provider_model, prof)
+        env.update(pv_env)
+    # ONE --model flag. The provider's model wins when there is one: it names a
+    # model that backend serves, while opts['model'] is an Anthropic id the
+    # backend cannot resolve. Both used to be emitted and the right one won only
+    # because Claude Code's parser takes the later occurrence.
+    launch_model = provider_model or opts['model']
+    if launch_model:
+        args += ['--model', launch_model]
+    # Which backend a session ran on is RECORDED, not inferred. _used_provider
+    # reads it back off the transcript's model ids, which cannot tell an
+    # Anthropic model served THROUGH a provider from a direct run — sessions.py
+    # says so itself. We know the answer here.
+    #
+    # A new session's id is ours to choose (`--session-id`), which is the only
+    # way to have one before Claude Code has written a line; a resume keeps the
+    # id it is resuming. A fork mints its own and `-c` picks one we have not
+    # seen, so those two keep falling back to the inference.
+    launched_sid = ''
+    if choice == 'new':
+        import uuid
+        launched_sid = str(uuid.uuid4())
+        args += ['--session-id', launched_sid]
+    elif choice.startswith('resume:'):
+        launched_sid = choice[7:]
+    elif choice.startswith('resume-named::'):
+        launched_sid = choice[14:].split('::', 1)[0]
+    if launched_sid and proj_folder:
+        from .sessions import save_session_provider
+        save_session_provider(proj_folder, launched_sid,
+                              prof['id'] if prof else '')
+    # `auto` is dropped where the classifier cannot run — with a provider in
+    # play the model is whatever that backend served, and the classifier is a
+    # SEPARATE request that would go to the same base URL. The model check reads
+    # the provider model when there is one, because that is the model the
+    # session will actually be on.
     from .config import effective_perm
-    perm = effective_perm(opts['perm'], omniroute_model or opts['model'],
-                          omniroute_model)
+    perm = effective_perm(opts['perm'], provider_model or opts['model'],
+                          provider_model)
     if perm:
         args += ['--permission-mode', perm]
     # Model fallback chain for an overloaded primary. Unrelated to failover.py,

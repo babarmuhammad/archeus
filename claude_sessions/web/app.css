@@ -150,17 +150,14 @@ html.sgrip-drag,html.sgrip-drag *{cursor:col-resize !important;user-select:none 
    It used to be a two-line marketing block with 20px of padding above it —
    ~70px of a 280px column permanently parked above the search field the user
    is actually aiming at. */
-.brand{display:flex;align-items:center;gap:var(--sp-2);height:48px;
+.brand{display:flex;align-items:center;gap:10px;height:48px;
   margin:var(--sp-2) var(--sp-2) var(--sp-1);padding:0 8px;
-  border-radius:var(--r);cursor:pointer;user-select:none;
-  transition:background var(--t-f)}
-.brand:hover{background:var(--sk-row-hover,rgba(var(--cyan-rgb),.07))}
-.brand.open{background:rgba(var(--cyan-rgb),.11)}
-.brand .bl{min-width:0;flex:1}
-/* the chevron renders only when the row actually opens something: one that
-   opens nothing is worse than none at all */
-.bchev{margin-left:auto;flex:0 0 auto;color:var(--dim2);line-height:0}
-.bchev svg{width:15px;height:15px;display:block}
+  border-radius:var(--r);user-select:none}
+/* It is a WORDMARK now, not a control: no hover ground, no pointer, nothing to
+   open. The account moved to the launch modal's chips and the Accounts page,
+   which is where changing one decides something. */
+.bwm{height:13px;width:auto;max-width:100%;flex:0 1 auto;display:block;
+  overflow:visible}
 /* The tile is the app icon's own ground, and it is FIXED rather than themed —
    see the long note in index.html. It is deliberately not `--code` or any
    other palette surface: four palettes are light and six are near-black OLED,
@@ -179,20 +176,13 @@ html.sgrip-drag,html.sgrip-drag *{cursor:col-resize !important;user-select:none 
 .brand:hover .logo{transform:scale(1.05);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.1),
     inset 0 0 0 1px rgba(226,166,62,.32),0 3px 14px rgba(0,0,0,.45)}
-/* Body foreground, NOT the accent. The accent version was faithful to the OG
-   card — but a card is a banner and this is chrome, and the rule chrome follows
-   is the one Linear moved to deliberately: the accent appears on the mark, on
-   focus rings and on a few intentional states, never decoratively. Spending it
-   on a permanently-visible label leaves nothing to say "this is live" with.
-   14px/500 and 12px are shadcn's sidebar header sizes; both truncate, because
-   an account name and a project count are both arbitrary-length. */
-.brand b{display:block;font-size:14px;font-weight:500;letter-spacing:-.01em;
-  color:var(--txt);line-height:1.25;overflow:hidden;text-overflow:ellipsis;
-  white-space:nowrap}
-.brand small{display:block;color:var(--dim2);font-size:12px;font-weight:400;
-  line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The wordmark is the one place the accent is spent decoratively, and that is
+   the exception a mark IS: it is the same gradient the glyph beside it takes,
+   so the two read as one lockup rather than as an icon with a label. */
 /* The account menu opens under the row, not over the page: it is a sidebar
-   control and the sidebar is where its result applies. */
+   control and the sidebar is where its result applies.
+   ponytail: kept for the Accounts page's own picker, which reuses these rules;
+   the sidebar no longer renders one. */
 .acctmenu{margin:0 var(--sp-2) var(--sp-2);padding:4px;border-radius:var(--r);
   background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow-md)}
 .acctmenu button{display:flex;align-items:center;gap:8px;width:100%;
@@ -822,14 +812,14 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
 /* columns grow from the baseline, staggered left→right — one gesture that says
    "this data just arrived". transform on an SVG rect is compositor-only, and
    nth-child delays avoid a per-rect inline style or a JS animation per bar. */
-.tchart .seg,.tchart .omni,.tchart .omnibg{transform-origin:center bottom;
+.tchart .seg,.tchart .provider,.tchart .providerbg{transform-origin:center bottom;
   animation:tcgrow .42s cubic-bezier(.22,1,.36,1) both}
 .tchart .seg:nth-child(4n+2){animation-delay:.04s}
 .tchart .seg:nth-child(4n+3){animation-delay:.08s}
 .tchart .seg:nth-child(4n){animation-delay:.12s}
 @keyframes tcgrow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
-html.mo-off .tchart .seg,html.mo-off .tchart .omni,
-html.mo-off .tchart .omnibg{animation:none}
+html.mo-off .tchart .seg,html.mo-off .tchart .provider,
+html.mo-off .tchart .providerbg{animation:none}
 /* hovering a column dims its neighbours instead of the column itself: reading
    one day means suppressing the other thirteen, not fading the thing you want */
 .tchart .seg{transition:opacity var(--t-f)}
@@ -838,10 +828,10 @@ html.mo-off .tchart .omnibg{animation:none}
 /* free-tier share: hatched over whatever account paid-stack it sits on. The
    backing rect knocks the account colour down first, otherwise the hatch reads
    as a blend of the two instead of its own state. */
-.tchart #omnihatch line{stroke:var(--violet);stroke-width:2.4}
-.tchart .omnibg{fill:var(--code)}
-.tchart .omni{fill:url(#omnihatch);stroke:var(--violet);stroke-width:1.2}
-.tchart .lg .omnikey{border-radius:2px;background:var(--code);
+.tchart #providerhatch line{stroke:var(--violet);stroke-width:2.4}
+.tchart .providerbg{fill:var(--code)}
+.tchart .provider{fill:url(#providerhatch);stroke:var(--violet);stroke-width:1.2}
+.tchart .lg .providerkey{border-radius:2px;background:var(--code);
   background-image:repeating-linear-gradient(45deg,
     var(--violet) 0 2px,transparent 2px 4px);border:1px solid var(--violet)}
 .tchart .none{fill:var(--dim2);font-size:11px;font-family:inherit}
@@ -1672,7 +1662,9 @@ html.mo-off *,html.mo-off *::before,html.mo-off *::after{
 @media(max-width:1099px){
   .app{grid-template-columns:64px 1fr}
   .sgrip,.hgrip{display:none}   /* the rail has one width; nothing to drag */
-  .brand small,.brand div>b,.search,.openp,.side .foot span{display:none}
+  /* the wordmark goes; the mark beside it is the app icon and stays, which is
+     what every icon rail does with a lockup that no longer fits */
+  .bwm,.search,.openp,.side .foot span{display:none}
   .brand{justify-content:center;padding:14px 0 10px}
   .plist{padding:2px 6px}
   .proj .pt,.proj .tag{display:none}
@@ -2389,3 +2381,31 @@ html.zen .top>#bZen:hover,html.zen .top>#bZen:focus-visible{opacity:1}
   .kpi{gap:var(--sp-3) var(--sp-4)}
   .kpi .kv2{font-size:17px}
 }
+
+/* ── a surface the CLI behind this account does not have ──────────────────────
+   Greyed and still clickable: the page it opens says what is missing and where
+   it does work. A row that vanishes teaches nothing, and a row that errors
+   reads as a bug in archeus. Last in the file, with the other override blocks,
+   for the reason they are all here: a class adds no specificity over the rule
+   it countermands, so source order is the only thing deciding. */
+.tab.off,.nav .it.off{opacity:.45}
+.tab.off:hover,.nav .it.off:hover{opacity:.7}
+
+/* ── a tab strip INSIDE the content, not around it ────────────────────────────
+   `.tabs` is chrome: it sits under the topbar, spans the viewport and paints a
+   bar. Two strips are not chrome — the launch modal's "which CLI" row and the
+   Usage page's — and dropping a bare `.tabs` into either place inherits the
+   full-width bar AND, on the page, becomes one grid item in `#content`'s
+   auto-fit track: a tab row the width of a card with the rest of the row dark,
+   which is exactly the `dead cell` shape `tools/shot_gui.py` fails a run for.
+
+   `.mtabs` is the in-content variant: span the row, drop the bar, keep the
+   selected-tab treatment `.tab.sel` already gives. It has been on the launch
+   modal's `#fTarget` since that strip shipped with NO rule behind it at all —
+   the class was written and never defined — so this is the rule both callers
+   were always missing. Last in the file with the other overrides: it
+   countermands `.tabs`, which is declared 2000 lines above it. */
+.mtabs{grid-column:1/-1;column-span:all;
+  background:none;border-bottom:1px solid var(--line);
+  padding:0;margin:0 0 var(--sp-3);z-index:auto}
+.mtabs .tab{padding:7px 13px;font-size:11.5px}

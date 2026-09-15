@@ -110,7 +110,8 @@ _ARCH = _arch_table()
 #: page id -> the function that paints it. NAV names it in its fifth field; the
 #: project tabs are dispatched by `drawProject`, so those four are named here.
 _RENDERER = dict(
-    re.findall(r"\['([a-z]+)',[^\n]*?\(\)=>(\w+),'[a-z]+'\]", _JS))
+    re.findall(r"\['([a-z]+)',[^\n]*?\(\)=>(\w+),'[a-z]+'", _JS))    # stops at the SHAPE: a NAV row now
+    # carries the capability the page needs after it
 _RENDERER.update(sessions='drawSessions', worktrees='drawWorktrees')
 
 #: The shapes `shell()` knows how to write — and the whole set, because a
@@ -492,7 +493,7 @@ def test_every_page_declares_a_shape():
     ids = re.findall(r"^\s*\['([a-z]+)'", _JS[_JS.index('const NAV=['):
                                               _JS.index('const SECTIONS=[')],
                      re.M)
-    assert len(ids) == 19, f'expected 19 NAV pages, parsed {len(ids)}'
+    assert len(ids) == 20, f'expected 20 NAV pages, parsed {len(ids)}'
     for page in ids:
         assert _arch(page) in SHAPES, \
             f'{page} declares no archetype (or an unknown one: {_arch(page)!r})'
@@ -541,15 +542,33 @@ def test_a_designed_layout_is_never_a_pile():
         assert arch in SHAPES, f'{page}: {arch!r}'
     # a list of one kind of thing, and what you picked out of it
     for page in ('agents', 'skills', 'mcp', 'hooks', 'ostyles', 'accounts',
-                 'worktrees', 'sessions'):
+                 'worktrees', 'sessions', 'models'):
         assert _arch(page) == 'split', f'{page} stopped being a list + detail'
     # one homogeneous list, the whole width of the page
     for page in ('logs', 'searchp', 'review', 'pusage', 'audit'):
         assert _arch(page) == 'feed', f'{page} stopped being a feed'
     # controls, and Primer's Don't: never flowed into columns
-    for page in ('settings', 'appearance', 'paths', 'models', 'updates',
+    for page in ('settings', 'appearance', 'paths', 'updates',
                  'planexec'):
         assert _arch(page) == 'form', f'{page} is a form and must not be a pile'
+
+
+def _renderer_markup(page):
+    """The markup a page paints, following a settings sub-page to its template.
+
+    `pgSetModels` and its four siblings are one-line delegates into
+    SETTINGS_CARDS — reading only the function body would find no cards at all
+    and report a page that paints two as painting none.
+    """
+    fn = _RENDERER[page]
+    body = _JS[_JS.index('function ' + fn + '('):]
+    body = body[:body.index(chr(10) + '}' + chr(10))]
+    m = re.search(r"pgSettings\(nav,\s*'(\w+)'\)", body)
+    if not m:
+        return body
+    cards = _JS[_JS.index('const SETTINGS_CARDS={'):_JS.index('function pgSetLaunch')]
+    part = cards[cards.index('  %s:o=>' % m.group(1)):]
+    return part[:part.index(chr(10) + '`,' + chr(10))]
 
 
 def test_a_split_page_fills_both_of_its_columns():
@@ -565,10 +584,8 @@ def test_a_split_page_fills_both_of_its_columns():
     have installed beside what you could install — so the pair is asserted, not
     the class."""
     for page in ('agents', 'skills', 'mcp', 'hooks', 'ostyles', 'accounts',
-                 'worktrees', 'sessions'):
-        fn = _RENDERER[page]
-        body = _JS[_JS.index('function ' + fn + '('):]
-        body = body[:body.index(chr(10) + '}' + chr(10))]
+                 'worktrees', 'sessions', 'models'):
+        body = _renderer_markup(page)
         assert body.count('class="card') >= 2, \
             f'{page} is a split that paints one card — half the page is dark'
         assert 'class="tbody"' in body, f'{page}: the list is not in a scroller'
@@ -682,17 +699,25 @@ def test_two_fields_share_a_row_only_when_they_are_one_value():
 
     What is left is the case the rule allows: a pair that is one value, where
     splitting them would be the odd thing. Counted rather than listed, because
-    the count is the claim — a sixth pair on a settings page is the
-    regression."""
-    block = _JS[_JS.index('const SETTINGS_CARDS={'):_JS.index('function pgSetLaunch')]
-    assert block.count('class="grid2"') == 2, \
+    the count is the claim — a fourth pair on a settings page is the regression.
+
+    The three: an OTel endpoint beside its protocol, the provider's base URL
+    beside its key, the gateway target's URL beside its key. An endpoint and the
+    credential that opens it are one value; the provider card's context-window
+    field is NOT, which is why it sits on its own row beneath them."""
+    # the provider detail is a settings pane too — it is rendered by JS
+    # rather than being a sixth static template, and the rule is about what
+    # the user sees, not about which function emitted it
+    block = (_JS[_JS.index('const SETTINGS_CARDS={'):_JS.index('function pgSetLaunch')]
+             + _JS[_JS.index('function pvDetail('):_JS.index('async function pvSave(')])
+    assert block.count('class="grid2"') == 3, \
         'a settings pair that is not one value'
-    # an exporter's endpoint and its protocol; a proxy's URL and its key
-    for want in ('<label>Endpoint', '<label>Base URL'):
+    # an exporter's endpoint and its protocol; a backend's URL and its key, twice
+    for want in ('<label>Endpoint', '<label>Base URL', '<label>Gateway target URL'):
         assert want in block, want
     # and the two outside the settings pages, for the same reason: a model and
     # the effort it runs at, an interval and the prompt it fires
-    assert _JS.count('class="grid2"') == 4, 'a new side-by-side pair appeared'
+    assert _JS.count('class="grid2"') == 5, 'a new side-by-side pair appeared'
 
 
 def test_the_app_chrome_does_not_claim_to_stick():

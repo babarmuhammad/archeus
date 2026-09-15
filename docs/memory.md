@@ -1,8 +1,6 @@
 ---
 description: >-
-  archeus's task-scoped, token-budgeted project memory — a semantic graph of your codebase
-  injected through three surfaces, bounded as the project grows, and learning durable
-  lessons from every session.
+  archeus's task-scoped, token-budgeted project memory: a semantic graph of your codebase, bounded as the project grows, learning lessons from every session.
 ---
 
 # Project memory

@@ -20,7 +20,18 @@ packages — it is pure Python standard library.
 
 archeus is the same project under a new name. Everything you have is kept.
 
-**Uninstall the old package first, then install the new one — in that order.**
+**The one-line upgrade**, if `claudectl` is all you have installed:
+
+```
+pip install -U claudectl        # or: pipx upgrade claudectl
+archeus
+```
+
+`claudectl 1.9.2` ships no code — it exists only to depend on archeus, so
+upgrading it installs archeus and keeps the `claudectl` command working.
+
+**If you already have both installed, uninstall the old one first, then install
+the new one — in that order.**
 
 ```
 pipx uninstall claudectl && pipx install archeus     # or the pip equivalents
@@ -48,11 +59,30 @@ start rather than skipped. It runs once and reports what it did.
 
 **Hooks and the statusline need nothing from you.** They record a path to a
 script rather than the command name, so an in-place upgrade leaves them
-working; if you moved environments (pipx builds a new one), the first run
-re-points them at the new install.
+working. If the environment they point at goes away — pipx builds a new one,
+you move or re-clone a checkout, you rebuild a venv — archeus re-points them at
+the current install on its next start, every start, not only during the
+migration. Only a path that no longer exists *and* names one of its own scripts
+is ever rewritten; anything you wrote by hand is left alone.
 
-The last release under the old name is `claudectl 1.9.1`, which exists only to
-tell you the project moved.
+**Two things it reports rather than fixes**, because neither is archeus's to
+edit: environment variables you set under the old name (`CLAUDECTL_*` are
+`ARCHEUS_*` now and the old spellings are read nowhere), and the Claude Code
+plugin, whose id moved with everything else:
+
+```
+/plugin uninstall claudectl@claudectl
+/plugin marketplace add babarmuhammad/archeus
+/plugin install archeus@archeus
+```
+
+**Your `CLAUDE.md` files are tidied once.** The memory, agent-routing and loop
+blocks are marked with sentinel comments carrying the old name; a block that has
+since been rewritten under the new one is removed, and a block that has not is
+renamed in place so the next build updates it instead of appending a second copy
+beside it. Your own prose is never touched.
+
+The last release under the old name is `claudectl 1.9.2`.
 
 ## Setup
 

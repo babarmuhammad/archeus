@@ -35,7 +35,6 @@ fetch — no new dependency.
 
 import json
 import shutil
-import subprocess
 import time
 import urllib.request
 import urllib.error
@@ -50,37 +49,95 @@ import urllib.error
 AUTO_MODEL = 'auto/coding'
 
 
-def prepare_launch(model):
-    """Ensure the OmniRoute daemon is up, validate *model*, and return env
-    overrides for a ``claude`` launch routed through OmniRoute.  Raises
-    ``ValueError`` for an unknown model (except ``auto/coding``, which is
-    passed through unvalidated — OmniRoute resolves it server-side).
+def prepare_launch(model, prof, ctx_bytes=0):
+    """THE seam every routed launch goes through: bring *prof*'s backend up,
+    prove the model is real, and return the env overrides for a ``claude``
+    launch.
 
-    The returned dict is ready to ``env.update()``; callers must merge it on
-    top of a full ``os.environ.copy()`` so that ``CLAUDE_CONFIG_DIR`` and the
-    rest of the account env survive into the child process."""
-    from .config import load_settings, omniroute_env
-    s = load_settings()
-    base_url = s.get('omniroute_base_url', '')
-    api_key = s.get('omniroute_api_key', '')
-    ok, msg = ensure_running(base_url)
-    if not ok:
-        raise RuntimeError(f'OmniRoute: {msg}')
-    # omniroute_env() has already pointed ANTHROPIC_BASE_URL at archeus's own
+    Takes the PROFILE, never the settings dict. The profile is chosen once — in
+    the launch modal, in the TUI picker, or as the active one — and carried from
+    there, so nothing downstream can re-derive a different backend from whatever
+    happens to be globally current when it asks.
+
+    Raises ``RuntimeError`` when a backend cannot be reached and ``ValueError``
+    for a model the backend does not serve.  Both are raised BEFORE the session
+    opens, deliberately: otherwise the terminal launches fine and only fails
+    once `claude` itself tries the model, deep inside a new console with no
+    path back to the setting that was wrong.
+
+    Branches on the profile's ``kind``:
+
+    * ``omniroute`` — auto-start the npm daemon and validate against the live
+      ``/v1/models`` catalogue (``auto/coding`` passes unvalidated; OmniRoute
+      resolves it server-side).
+    * ``generic``  — any already-running Anthropic-shaped server. There is no
+      catalogue to validate against, so the model id is taken on trust and only
+      reachability is checked. Do NOT auto-start anything here: the whole point
+      of the kind is that the user already runs the server.
+
+    *ctx_bytes* is the CLAUDE.md + rules + plan payload the session will carry;
+    passing it enables the small-context advisory (returned, not raised — it is
+    never a reason to block a launch).
+
+    Returns ``(env, warning)``. The env is ready to ``env.update()``; callers
+    must merge it on top of a full ``os.environ.copy()`` so ``CLAUDE_CONFIG_DIR``
+    and the rest of the account env survive into the child."""
+    from .config import provider_env
+    if not prof:
+        return {}, ''
+    kind = prof.get('kind') or ''
+    base_url = prof.get('base_url', '')
+    api_key = prof.get('api_key', '')
+    if kind == 'omniroute':
+        ok, msg = ensure_running(base_url)
+        if not ok:
+            raise RuntimeError(f'OmniRoute: {msg}')
+    elif not prof.get('gateway_kind') and not is_reachable(base_url, api_key):
+        # With a gateway in front, `base_url` names an OpenAI-shaped host that
+        # cannot answer /v1/models — probing it would fail every time and block
+        # a working setup. The gateway's own startup check covers that hop.
+        raise RuntimeError(f'Provider not reachable at {base_url or "(unset)"}')
+    if prof.get('gateway_kind'):
+        from . import gateway
+        gok, gmsg = gateway.ensure_running(prof)
+        if not gok:
+            raise RuntimeError(f'Gateway: {gmsg}')
+    # provider_env() has already pointed ANTHROPIC_BASE_URL at this profile's own
     # failover proxy when candidates are configured, so it must actually be up —
     # fail the launch rather than hand claude a dead base URL.
     from . import failover
-    if failover.enabled(s):
-        fok, fmsg = failover.ensure_running(s)
+    if failover.enabled(prof):
+        fok, fmsg = failover.ensure_running(prof)
         if not fok:
             raise RuntimeError(f'Failover proxy: {fmsg}')
-    env = {k: v for k, v in omniroute_env(s).items() if v}
-    if model and model != AUTO_MODEL:
+    env = {k: v for k, v in provider_env(prof, model=model or '_').items() if v}
+    if kind == 'omniroute' and model and model != AUTO_MODEL:
         available = [mid for mid, _lbl in list_models(base_url, api_key)]
-        if model not in available:
-            raise ValueError(f"OmniRoute model '{model}' not available. "
+        if available and model not in available:
+            raise ValueError(f"Model '{model}' is no longer available. "
                              f"Choose from: {available}")
-    return env
+    return env, context_warning(prof, ctx_bytes)
+
+
+def context_warning(prof, ctx_bytes):
+    """Advisory string, or '' — never a launch blocker.
+
+    Claude Code's own system prompt is 10k+ tokens BEFORE any project context,
+    which is why the floor is added rather than measuring the payload alone: a
+    default Ollama context of 4096 is already over budget with an empty repo,
+    and a check that only weighed CLAUDE.md would call that fine."""
+    if not ctx_bytes or not prof:
+        return ''
+    est = 10000 + ctx_bytes // 4
+    window = int(prof.get('context_tokens') or 0)
+    if window:
+        if est > window * 0.6:
+            return (f"~{est // 1000}k tokens of context against a "
+                    f"{window // 1000}k window — the model may degrade")
+    elif est > 18000:
+        return (f"~{est // 1000}k tokens of context — if this is a local model, "
+                "raise its context length (num_ctx on Ollama)")
+    return ''
 
 
 def _get(base_url, path, api_key, timeout=5):

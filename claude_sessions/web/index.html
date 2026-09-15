@@ -124,25 +124,41 @@
           </g>
         </svg>
       </div>
-      <!-- The second line is STATE, never a descriptor. It carried
-           "memory & workspace for AI agents" — a tagline, which is a website
-           device: its audience is someone who does not yet know what the thing
-           is, and nobody reading this sidebar is that person. They installed
-           it, launched it, and are looking at their own projects. It also fails
-           the differentiation test outright: every coding-agent tool shipping
-           could print it verbatim, and no product claims the opposite.
+      <!-- THE WORDMARK, and nothing else. This slot held the account switcher —
+           the shadcn/Notion/Linear convention of putting the switchable context
+           in the sidebar header — and that is a good convention for an app whose
+           header is its only chrome. It is not this one: the account is a chip
+           row inside the launch modal, where it decides something, and a whole
+           page of its own under Accounts. Two places to change an account was
+           one too many, and the one in the header was the one that had to be
+           opened to find out what it said.
 
-           What goes here instead is the convention every current app follows —
-           shadcn's sidebar header, Notion, Linear, GitLab, Figma all put the
-           switchable CONTEXT in this slot, with a second line that is data (a
-           plan, an email, a branch). Ours is the Claude Code account, which was
-           previously reachable only from inside the launch modal. Filled in by
-           drawBrand(); the markup carries no copy of its own. -->
-      <div class="bl"><b id="brandName">archeus</b><small id="brandSub"></small></div>
-      <span class="bchev" id="brandChev" hidden></span>
+           Drawn rather than served: the GUI is self-contained and offline, and
+           an inline path stays crisp at any DPI and takes the palette's own
+           gradient instead of a baked-in one. The letterforms are outlines, not
+           a font — nothing here may depend on a face being installed. -->
+      <svg class="bwm" viewBox="0 0 104 15" aria-hidden="true" fill="url(#lgA)"
+           preserveAspectRatio="xMinYMid meet">
+        <!-- A R C H E U S, drawn as a thin geometric capital run at 15 units
+             tall, letter-spaced the way the wordmark is. -->
+        <path d="M6.2 0h1.5l6.2 15h-1.7l-1.75-4.3H3.45L1.7 15H0zM4 9.3h6l-3-7.4z"/>
+        <path d="M19 0h5.6c2.9 0 4.7 1.7 4.7 4.3 0 2.1-1.2 3.6-3.2 4.1L30 15h-1.8
+                 l-3.7-6.4h-3.9V15H19zm1.6 1.5v5.7h3.9c2 0 3.2-1.1 3.2-2.9
+                 0-1.8-1.2-2.8-3.2-2.8z"/>
+        <path d="M42.4-.2c2.6 0 4.7 1 6 2.6l-1.2 1c-1.1-1.3-2.8-2.1-4.8-2.1
+                 -3.6 0-6.1 2.5-6.1 6.2s2.5 6.2 6.1 6.2c2 0 3.7-.8 4.8-2.1l1.2 1
+                 c-1.3 1.6-3.4 2.6-6 2.6-4.5 0-7.7-3.2-7.7-7.7S37.9-.2 42.4-.2z"/>
+        <path d="M54.6 0h1.6v6.5h8.6V0h1.6v15h-1.6V8H56.2v7h-1.6z"/>
+        <path d="M73.4 0h9.8v1.5H75v5h7.5V8H75v5.5h8.4V15h-10z"/>
+        <path d="M89.2 0h1.6v9c0 3 1.7 4.7 4.5 4.7s4.5-1.7 4.5-4.7V0h1.6v9.1
+                 c0 3.8-2.4 6.1-6.1 6.1s-6.1-2.3-6.1-6.1z"/>
+        <path d="M109 15.2c-2.3 0-4.2-.8-5.4-2.1l1-1.2c1.1 1.2 2.7 1.8 4.5 1.8
+                 2.2 0 3.6-1 3.6-2.6 0-1.5-1-2.2-3.6-2.8-3.2-.7-4.8-1.7-4.8-4.1
+                 0-2.5 2-4.2 5-4.2 2.1 0 3.8.7 5 1.9l-1 1.2c-1-1-2.4-1.6-4-1.6
+                 -2 0-3.4 1-3.4 2.6 0 1.4 1 2.1 3.6 2.7 3.2.7 4.8 1.8 4.8 4.2
+                 0 2.6-2 4.2-5.3 4.2z"/>
+      </svg>
     </div>
-    <!-- the account menu, anchored under the row. Empty until opened. -->
-    <div class="acctmenu" id="acctMenu" hidden></div>
     <div class="search"><input id="q" placeholder="Filter projects…"></div>
     <button class="btn sm openp" id="bOpenPath">＋ Open project by path…</button>
     <!-- only appears once something IS hidden: an always-on row would be a
@@ -224,12 +240,37 @@
   <div class="modal">
     <h3 id="mTitle">New session</h3>
     <div class="sub" id="mSub"></div>
+    <!-- WHICH TOOL, above everything else, because it decides what the rest of
+         the form even means: a Codex session has no worktree and a pi session
+         has no permission mode. Each tab is one `harnesses.launch_targets()`
+         row — the installed CLIs, then each configured backend by name. -->
+    <div class="tabs mtabs" id="fTarget"></div>
+    <div class="fsub" id="fTargetNote"></div>
     <div>
-      <div class="fld"><label>Quick start</label><div class="presetrow" id="fPresets"></div></div>
-      <div class="fld"><label>Power</label>
-        <input type="range" id="fFrontier" min="0" step="1">
-        <div class="frontends"><span>Cheap &amp; fast</span><span>Max power</span></div>
-        <div class="frontread" id="fFrontRead"></div>
+      <!-- Anthropic's catalogue: priced model cards, a frontier slider whose
+           stops are (model, effort) pairs the advisor rates, and presets over
+           both. None of it means anything for another CLI, so the whole block
+           is swapped for that CLI's own two questions. -->
+      <div id="fClaudeBlock">
+        <div class="fld"><label>Quick start</label><div class="presetrow" id="fPresets"></div></div>
+        <div class="fld"><label>Power</label>
+          <input type="range" id="fFrontier" min="0" step="1">
+          <div class="frontends"><span>Cheap &amp; fast</span><span>Max power</span></div>
+          <div class="frontread" id="fFrontRead"></div>
+        </div>
+      </div>
+      <div id="fOwnBlock" hidden>
+        <!-- The same three questions the Claude block asks, in this CLI's own
+             vocabulary: a quick start over ITS scales, its model list, and the
+             effort levels its binary actually accepts. Nothing here is priced,
+             because archeus has no price for a model it did not sell. -->
+        <div class="fld"><label>Quick start</label>
+          <div class="presetrow" id="fOwnPresets"></div></div>
+        <div class="fld"><label>Model <span id="fOwnModelNote"></span></label>
+          <input id="fOwnModel" list="fOwnModels" placeholder="leave blank for this CLI's default"
+                 spellcheck="false" autocomplete="off">
+          <datalist id="fOwnModels"></datalist></div>
+        <div class="fld"><label>Effort</label><div class="chips" id="fOwnEffort"></div></div>
       </div>
       <div class="mhint" id="mHint"></div>
       <details class="adv">
@@ -246,13 +287,18 @@
           </div>
         </div>
         <div class="grid2">
-          <div class="fld"><label>Permission mode</label><div class="chips" id="fPerm"></div>
+          <div class="fld" id="fPermWrap"><label>Permission mode</label><div class="chips" id="fPerm"></div>
             <div class="fsub" id="fPermHint"></div></div>
           <div class="fld" id="fAcctWrap"><label>Account</label><div class="chips" id="fAcct"></div></div>
           <div class="fld"><label>Thinking cap</label><div class="chips" id="fThink"></div></div>
           <div class="fld"><label>Subagent model</label><div class="chips" id="fSub"></div></div>
-          <div class="fld" id="fOmniWrap"><label>OmniRoute (free tier)</label><div class="chips" id="fOmni"></div>
-            <div style="color:var(--dim);font-size:11px;margin-top:2px">Agents &amp; skills auto-use Sonnet 5</div></div>
+          <!-- the backend's own model list. The backend itself is a TAB now,
+               not a chip row: it was the only setting in this form that
+               changed which tool ran, and it sat six fields down inside a
+               collapsed <details>. Agents inherit its model — their `model:`
+               field is stripped, since a routed backend cannot resolve an
+               Anthropic id. -->
+          <div class="fld" id="fProvModelWrap"><label>Model</label><div id="fProvModel"></div></div>
           <div class="fld" id="fWtWrap"><label>Worktree</label><div class="chips" id="fWt"></div></div>
           <div class="fld" id="fNameWrap"><label>Session name</label>
             <input id="fName" placeholder="optional"></div>
