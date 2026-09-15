@@ -139,7 +139,7 @@ def _run_cancellable(cmd, input_text=None, capture_output=True, text=True,
             # the ENVELOPE, not the extracted sentence: a marker could live in a
             # field the sentence does not carry, and this test is a cheap
             # substring scan over text we already have in memory
-            quota.note_failure(env, stdout)
+            quota.note_failure(cmd, env, stdout)
             events.record('subprocess', _mem.last_call_error,
                           detail=' '.join(str(c) for c in cmd[:2]))
             return ''
@@ -926,15 +926,30 @@ class BadRequest(ValueError):
 
 
 def _cfgdir_ok(v):
-    """An account directory archeus actually knows about.
+    """A HOME archeus actually knows about — any harness's, not only Claude's.
 
     Unvalidated, this parameter is a filesystem read primitive: it is joined
     with 'projects' and a name on about forty endpoints, so any directory on
     the machine could be walked by asking for it.
+
+    It enumerated `all_config_dirs()` — Claude accounts only — while the GUI
+    sends a harness home here: the Codex tab on the Plugins page sets `cfgdir`
+    to `~/.codex` and 400d on every click, with a `plugins.summary` underneath
+    it that is fully Codex-aware and was unreachable. `_homes()` is the same
+    list one axis wider (it still contains every Claude account), so this stays
+    an equality test against an enumerated set — never a prefix, never path
+    arithmetic.
+
+    ponytail: widening means ~40 endpoints accept a Codex home, and a few of
+    them write Claude-shaped files (`hooks.settings_path_for` would produce
+    `<CODEX_HOME>/settings.json`). That is wrong-but-inert, in a directory the
+    user owns, and gating it is the capability table's job — `hooks`,
+    `output_styles` and `client_state` are already off for Codex. Per-handler
+    `_claude_only()` guards if one of them ever writes something that matters.
     """
     want = os.path.normcase(os.path.abspath(v))
     return any(os.path.normcase(os.path.abspath(d)) == want
-               for _n, d in _c.all_config_dirs())
+               for _hid, d in _harnesses._homes())
 
 
 def _managed_path_ok(v):
@@ -947,17 +962,16 @@ def _managed_path_ok(v):
 
     Enumerating every root is the wrong shape — project-scoped agents and skills
     live under an arbitrary project. Both managed locations are recognisable
-    instead: an account config directory (which `_cfgdir_ok` already knows), or
-    anything below a `.claude` / `.archeus` directory, which is where every
-    project-scoped one lives by construction.
+    instead: a harness home (which `_cfgdir_ok` already knows), or anything
+    below one of the directory names a harness declares for project-scoped
+    artifacts, which is where every project-scoped one lives by construction.
     """
     p = os.path.normcase(os.path.abspath(v))
-    for _n, d in _c.all_config_dirs():
+    for _hid, d in _harnesses._homes():
         root = os.path.normcase(os.path.abspath(d))
         if p == root or p.startswith(root + os.sep):
             return True
-    parts = p.split(os.sep)
-    return '.claude' in parts or _store.WORKDIR in parts
+    return bool(set(p.split(os.sep)) & _harnesses.managed_dir_names())
 
 
 #: checked by NAME, wherever they appear. These reach the filesystem; `path` is

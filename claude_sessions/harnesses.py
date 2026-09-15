@@ -566,6 +566,19 @@ def skill_roots():
             for name, home, hid in instances()]
 
 
+def managed_dir_names():
+    """The directory names that mark a path as archeus-managed.
+
+    DERIVED from the registry rather than written out, because the literal
+    `'.claude'` that stood here was the whole list and `.agents` — which BOTH
+    Codex and pi declare for project-scoped skills — was missing, so a
+    project-scoped Codex skill could not be deleted. A fourth CLI registering
+    its own needs no edit here.
+    """
+    return ({d['project_skills_rel'][0] for d in HARNESSES.values()}
+            | {_c.WORKDIR})
+
+
 def project_skill_roots(project_path):
     """Every directory a project skill has to land in, DEDUPED.
 
@@ -662,6 +675,34 @@ def home_env(cfgdir=None):
     return {d['home_env']: _c.resolve_config_dir(cfgdir)}
 
 
+def of_argv(args):
+    """The descriptor for the binary this argv names, or None.
+
+    Split out of `is_inference` because "which harness is this call" and "does
+    this call spend quota" are two questions and only the second one was
+    answerable: `quota` had to read `CLAUDE_CONFIG_DIR` out of a prepared env to
+    guess the account, and that variable is AMBIENT — `account_env` copies
+    `os.environ` — so a Codex call resolved to a real, unrelated Claude account
+    rather than to nothing.
+    """
+    try:
+        # split on BOTH separators, never `os.path.basename`: it splits on the
+        # platform's own, so `C:\…\pi.cmd` was ONE long basename on Linux and
+        # macOS and matched no harness — an inference call that went ungated on
+        # exactly the platforms nobody develops on. `conftest._starts_claude`
+        # carries this same fix and the same comment, which is the tell that it
+        # belongs in the one place both could have called.
+        first = str(args[0] or '').replace('\\', '/').rsplit('/', 1)[-1].lower()
+    except (IndexError, TypeError, KeyError):
+        return None
+    for hid in ids():
+        d = HARNESSES[hid]
+        if any(first == n.lower() or first == os.path.splitext(n)[0].lower()
+               for n in d['exe_names']):
+            return d
+    return None
+
+
 def is_inference(args):
     """True if this argv spends model quota, for whichever harness it names.
 
@@ -674,23 +715,10 @@ def is_inference(args):
     a second harness this answered False for every inference call and the
     account-quota guard silently stopped applying.
     """
-    try:
-        # split on BOTH separators, never `os.path.basename`: it splits on the
-        # platform's own, so `C:\…\pi.cmd` was ONE long basename on Linux and
-        # macOS and matched no harness — an inference call that went ungated on
-        # exactly the platforms nobody develops on. `conftest._starts_claude`
-        # carries this same fix and the same comment, which is the tell that it
-        # belongs in the one place both could have called.
-        first = str(args[0] or '').replace('\\', '/').rsplit('/', 1)[-1].lower()
-    except (IndexError, TypeError, KeyError):
+    d = of_argv(args)
+    if d is None:
         return False
     rest = list(args)[1:]
-    for hid in ids():
-        d = HARNESSES[hid]
-        if not any(first == n.lower() or first == os.path.splitext(n)[0].lower()
-                   for n in d['exe_names']):
-            continue
-        if any(a in d.get('inference_flags', ()) for a in rest):
-            return True
-        return bool(rest) and rest[0] in d.get('inference_verbs', ())
-    return False
+    if any(a in d.get('inference_flags', ()) for a in rest):
+        return True
+    return bool(rest) and rest[0] in d.get('inference_verbs', ())
