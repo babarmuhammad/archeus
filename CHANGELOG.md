@@ -9,6 +9,69 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Structured data on every page of the manual, derived from the page.** All twenty-nine
+  pages now carry a `TechArticle` and a `BreadcrumbList`, under the same author, website
+  and application `@id`s the marketing site uses — so the two hosts describe one project
+  rather than two that share a name. Troubleshooting additionally emits a `FAQPage` and
+  Quickstart a `HowTo`, both **built from the page's own headings** at build time rather
+  than written beside it: the questions an answer engine quotes are the exact symptom
+  strings and error messages the page already displays. Previously one page in
+  twenty-nine opted into any structured data at all.
+
+- **`tools/optimize_images.py`, `tools/check_site_seo.py` and `tools/audit_site.py`.**
+  Respectively: every published image at the size it should be; the built HTML checked
+  for titles, canonicals, descriptions, social cards, JSON-LD and image dimensions; and
+  every page loaded at 390x844 with a failure on anything past the right edge. The first
+  two run in CI on every push, the third on the weekly schedule.
+
+- **`tools/set_domain.py`** — moves both published sites to a new domain in one command,
+  with `notes/domain-change.md` for the parts no script can do (DNS, the Vercel projects,
+  GitHub Pages, the Search Console change of address, and the 301s that have to stay up
+  for a year). `notes/search-console.md` covers verification.
+
+### Changed
+
+- **Both sites are about 10 MB lighter.** The architecture-graph animation is written as
+  animated WebP instead of GIF — the same 30 frames at 538 KB instead of 5770 KB — and it
+  is the largest paint on two pages. The manual's screenshots get a WebP derivative where
+  it beats the PNG (Desktop app went from 1470 KB of images to 227 KB); the PNG stays as
+  the master, because that is what the README embeds and what PyPI renders. The docs
+  header logo was the 1254px master at 998 KB on every page and is now a 256px
+  derivative; the favicon carried a 256px frame and now stops at 48.
+
+- **Images in the manual declare their intrinsic size and load lazily**, so the text under
+  them no longer moves when they arrive.
+
+- **Explicit crawler rules on both hosts**, including `Google-Extended` and
+  `Applebot-Extended` — the two agents for which "no rule" reads as a refusal rather than
+  as the default. Preview deployments are excluded from indexing.
+
+- **HSTS, `X-Content-Type-Options` and `Referrer-Policy` on both sites.** Not `preload`,
+  deliberately: that list is effectively permanent and a domain move is pending.
+
+- Nineteen pages had a meta description longer than a search result renders; all are
+  rewritten to fit. `docs/api.md` had none at all and fell back to the site-wide one.
+
+- The FAQ page's twenty-three questions are headings now. The page emitted a twenty-three
+  entry `FAQPage` while the only headings in its markup were the four in the footer.
+
+- PyPI can filter this package by Python version: the classifiers named `3` and no minor.
+
+### Fixed
+
+- **Seventeen internal links redirected before they arrived.** The apex serves `/features`
+  and the manual serves `/installation/`; links written with the other site's convention
+  cost a 308 each. Two links pointed at the pre-domain GitHub Pages host.
+
+- **A `.grid` override made three pages of the manual scroll sideways on a phone.** A bare
+  `minmax(20rem, 1fr)` is a floor the track cannot go under; Material's own rule clamps it
+  with `min(100%, …)` and this one did not carry that across. Found by measuring, not by
+  looking.
+
+- `app/apple-icon.png` was built and routed but never linked: naming `icons` in the root
+  metadata replaces Next's file-convention detection rather than adding to it. The web
+  manifest pointed at an ICO for a size the file no longer contains.
+
 - **archeus reads three coding CLIs, not one.** OpenAI Codex and pi join Claude Code as
   first-class harnesses: their projects, sessions, previews, turn counts, models, token
   spend, search and usage all merge into the same lists, with no configuration — archeus
@@ -16,7 +79,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   *provider* is an endpoint and a *harness* is the binary itself; the two axes are
   orthogonal, and the launch picker shows both because they are both answers to "what runs
   this session". See
-  [More than one CLI](https://babarmuhammad.github.io/archeus/harnesses/).
+  [More than one CLI](https://github.com/babarmuhammad/archeus/blob/main/docs/harnesses.md).
 
 - **One memory graph behind all three.** A project's memory is the project's, not Claude
   Code's memory of the project, so the same digest is delivered into every instructions
@@ -65,7 +128,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unreachable. Settings → **Model provider** now takes any endpoint that serves
   `POST /v1/messages`. Sessions keep their agents, skills, hooks, MCP servers, slash
   commands and checkpoints, because none of those ever talk to the model API. See
-  [Model providers](https://babarmuhammad.github.io/archeus/providers/) for the list of
+  [Model providers](https://github.com/babarmuhammad/archeus/blob/main/docs/providers.md) for the list of
   what a backend swap genuinely costs — subagents, prompt caching, extended thinking and
   `web_search` are affected, and three of the four cannot be fixed from outside Claude Code.
 

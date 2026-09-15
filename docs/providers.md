@@ -1,9 +1,7 @@
 ---
 title: Model providers — local models, OpenRouter, self-hosted
 description: >-
-  Run archeus sessions against a local Ollama, llama.cpp or vLLM server, OpenRouter,
-  OmniRoute or a self-hosted box — what keeps working, what degrades, and what cannot work
-  at all.
+  Run archeus sessions against a local Ollama, llama.cpp or vLLM server, OpenRouter or OmniRoute — what keeps working, what degrades, and what cannot work.
 ---
 
 # Model providers

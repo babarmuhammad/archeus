@@ -2,6 +2,7 @@
 description: >-
   Common archeus problems and their fixes — missing claude.exe, editors that don't open,
   crashes, missing projects, wrong account, stale usage stats.
+faq_from_headings: true
 ---
 
 # Troubleshooting
@@ -128,4 +129,4 @@ Repos board to refresh it.
 | `~/.claude/failover.log` | The local failover proxy's requests, when it is running |
 
 Still stuck? [Open an issue](https://github.com/babarmuhammad/archeus/issues) — and check
-the [FAQ](https://claudectl.space/faq/) first.
+the [FAQ](https://claudectl.space/faq) first.

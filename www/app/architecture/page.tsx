@@ -42,9 +42,13 @@ export default function ArchitecturePage() {
         after={{
           graph: (
             <Shot
-              src="/graph-real.gif"
+              src="/graph-real.webp"
               width={800}
               height={460}
+              // Next cannot optimize an animated image in any format, so this
+              // ships exactly as it sits in public/ — which is why the source
+              // is animated WebP and not the 4.6 MB GIF it used to be. Same 30
+              // frames, 508 KB, and this is the page's largest paint.
               unoptimized
               sizes="(min-width: 936px) 856px, 100vw"
               alt="The archeus architecture graph expanding from repository level down to individual files, with dependency edges between modules."

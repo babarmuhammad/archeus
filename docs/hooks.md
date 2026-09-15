@@ -1,8 +1,6 @@
 ---
 description: >-
-  archeus's hooks manager — 31 ready-made Claude Code hook templates (formatting, safety
-  guardrails, failure logging, notifications, memory freshness, context injection, token
-  savers), AI-generated hooks, and repair of broken ones.
+  archeus's hooks manager: 31 ready-made Claude Code hook templates — formatting, guardrails, logging, memory freshness, context injection — plus repair.
 ---
 
 # Hooks

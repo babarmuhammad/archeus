@@ -1,4 +1,58 @@
+# The manual for archeus — https://docs.claudectl.space/
+#
+# Everything here is public and meant to be quoted. Two plain-text summaries of
+# the whole site exist for anything that would rather read one file than crawl
+# thirty:
+#
+#   https://docs.claudectl.space/llms.txt        the index
+#   https://docs.claudectl.space/llms-full.txt   every page, as one file
+#
+# The named groups below are not decoration. `User-agent: *` already allows all
+# of them, but Google-Extended and Applebot-Extended treat "no rule for me" as a
+# different answer from "a rule for me that allows it" — they are the opt-in for
+# Gemini/AI Overviews and for Apple Intelligence. The rest are listed so this
+# file states the policy rather than implying it.
+#
+# Kept in step with the apex site's robots (www/app/robots.ts) by
+# tests/test_robots.py.
+
 User-agent: *
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: CCBot
 Allow: /
 
 Sitemap: https://docs.claudectl.space/sitemap.xml

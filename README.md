@@ -19,7 +19,7 @@
   <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-0078D6">
   <img alt="Dependencies" src="https://img.shields.io/badge/runtime%20deps-zero%20(stdlib)-brightgreen">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-2145-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-2309-brightgreen">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
   <img alt="Claude Code" src="https://img.shields.io/badge/for-Claude%20Code-8A5CF6">
 </p>
@@ -121,7 +121,7 @@ The terminal UI is the same tool, keyboard-first:
 </p>
 
 <p align="center">
-  <img alt="Architecture graph" src="https://raw.githubusercontent.com/babarmuhammad/archeus/main/docs/graph-real.gif" width="820">
+  <img alt="Architecture graph" src="https://raw.githubusercontent.com/babarmuhammad/archeus/main/docs/graph-real.webp" width="820" loading="lazy">
   <br><sub><b>The architecture graph</b> — every module and its dependencies,
   expandable down to single files (Python · C/C++ · C# · JS/TS).</sub>
 </p>
@@ -178,10 +178,10 @@ The full manual lives at **[docs.claudectl.space](https://docs.claudectl.space/)
 | [API reference](https://docs.claudectl.space/api/) | the local HTTP API the GUI is built on |
 | [Troubleshooting](https://docs.claudectl.space/troubleshooting/) | when something does not work |
 
-Product pages — [Features](https://claudectl.space/features/) ·
-[Compare](https://docs.claudectl.space/compare/) · [FAQ](https://claudectl.space/faq/) ·
-[Download](https://claudectl.space/download/) ·
-[Changelog](https://claudectl.space/changelog/) — are on [claudectl.space](https://claudectl.space/).
+Product pages — [Features](https://claudectl.space/features) ·
+[Compare](https://docs.claudectl.space/compare/) · [FAQ](https://claudectl.space/faq) ·
+[Download](https://claudectl.space/download) ·
+[Changelog](https://claudectl.space/changelog) — are on [claudectl.space](https://claudectl.space/).
 
 ## Credits
 

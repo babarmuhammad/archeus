@@ -74,6 +74,16 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r requirements-docs.txt
       - run: mkdocs build --strict
+      # Everything in tests/ reads source files so it can ride the `test` job,
+      # which installs only pytest. This reads the BUILT html: a Jinja
+      # expression that evaluates to empty, a description that falls back to
+      # the site-wide one, an <img> with no dimensions. None of those exist
+      # until the site is built, and all three had shipped.
+      - run: python tools/check_site_seo.py
+      # Pillow only; the screenshots and the graph capture are checked here
+      # rather than in `test` for the same reason.
+      - run: python -m pip install pillow
+      - run: python tools/optimize_images.py --check
 
   package:
     runs-on: windows-latest
@@ -157,9 +167,18 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: www/package-lock.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+      # The same built-HTML check the docs job runs, against the other site.
+      # It found four descriptions too long to render in a search result and a
+      # page with two <h1> elements — neither of which `next build` reports.
+      # Reads .next/server/app; stdlib only, so nothing to install.
+      - run: python tools/check_site_seo.py --www
+        working-directory: .
 
   gui-smoke:
     # Scheduled only — needs a Chromium download and a software GL stack.
@@ -172,3 +191,21 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install playwright && python -m playwright install chromium
       - run: python tools/smoke_gui.py
+
+  mobile:
+    # Scheduled only, for the same reason as gui-smoke: a Chromium download.
+    # Every page of the manual at 390x844, failing on anything past the right
+    # edge. It found a real one on its first run — a `.grid` override with a
+    # bare `minmax(20rem, 1fr)` instead of `min(100%, 20rem)`, which made three
+    # pages scroll sideways on a phone and was invisible to every other gate.
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-docs.txt playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m mkdocs build --strict
+      - run: python tools/audit_site.py

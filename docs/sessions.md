@@ -1,8 +1,6 @@
 ---
 description: >-
-  Browse, search, tag, fork, resume, archive and export every Claude Code session across
-  every project — plus usage analytics, per-project launch control and quality-of-life
-  features.
+  Browse, search, tag, fork, resume, archive and export every Claude Code session across every project, with usage analytics and per-project launch control.
 ---
 
 # Sessions & search

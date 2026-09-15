@@ -1,8 +1,6 @@
 ---
 description: >-
-  The memory and workspace layer for AI coding agents. What archeus is, the three surfaces
-  it offers — terminal UI, desktop app and Claude Code plugin — and which page of the
-  manual to read next.
+  What archeus is, the three surfaces it offers — terminal UI, desktop app and Claude Code plugin — and which page of the manual to read next.
 ---
 
 # Getting started

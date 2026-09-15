@@ -16,13 +16,13 @@ itself — do not edit by hand. Refreshed weekly by `.github/workflows/metrics.y
 | | |
 |---|---|
 | Version in this repository | **2.3.0** |
-| Published on PyPI | 2.3.0 |
-| Latest upload | 2026-09-11 |
-| Releases to date | 5 |
+| Published on PyPI | not yet published |
+| Latest upload | — |
+| Releases to date | — |
 | License | MIT |
 | Runtime dependencies | **0** |
 
-[Download](https://claudectl.space/download/) · [Changelog](https://claudectl.space/changelog/)
+[Download](https://claudectl.space/download) · [Changelog](https://claudectl.space/changelog)
 
 ## Downloads
 
@@ -30,29 +30,29 @@ From [pypistats.org](https://pypistats.org/packages/archeus), mirrors excluded.
 
 | Last day | Last week | Last month |
 |---|---|---|
-| 2 | 520 | 520 |
+| — | — | — |
 
 ## Repository
 
 | | |
 |---|---|
-| Stars | 9 |
-| Forks | 2 |
-| Open issues and pull requests | 0 |
-| First commit | 2026-06-11 |
-| Last push | 2026-09-14 |
+| Stars | — |
+| Forks | — |
+| Open issues and pull requests | — |
+| First commit | — |
+| Last push | — |
 
 ## Codebase
 
 | | |
 |---|---|
-| Python files | 213 |
-| Lines of Python | 73,385 |
-| Tests | 2,145 |
-| Documentation pages | 29 |
-| Commits | 186 |
-| Commits in the last 30 days | 87 |
+| Python files | 226 |
+| Lines of Python | 79,868 |
+| Tests | 2,309 |
+| Documentation pages | 30 |
+| Commits | 198 |
+| Commits in the last 30 days | 99 |
 
 Tests run on Windows, macOS and Linux across the supported Python versions on every push — see [CI](https://github.com/babarmuhammad/archeus/actions).
 
-*Generated 2026-09-14 18:00 UTC.*
+*Generated 2026-09-15 00:40 UTC.*

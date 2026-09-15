@@ -1,8 +1,6 @@
 ---
 description: >-
-  Per-project health checks and auto-fixes, plus workspace status — the provenance and
-  freshness manifest that says whether the context archeus generated still matches the
-  repo it came from.
+  Per-project health checks and auto-fixes, plus the freshness manifest that says whether the context archeus generated still matches the repo it came from.
 ---
 
 # Projects

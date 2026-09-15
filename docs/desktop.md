@@ -12,7 +12,7 @@ Everything the terminal UI does, as a native desktop app — full feature parity
 locally (loopback-only, works offline). No Python dependencies; the browser bundle vendors
 three.js and anime.js (both MIT, served from `/vendor/`, never a CDN).
 
-![archeus dashboard](img/gui-dashboard.png){ width="900" }
+![archeus dashboard](img/gui-dashboard.webp){ width="900" height="562" loading=lazy }
 
 - **Shells** — PyQt6 native window if installed, else an Edge app-mode window, else the browser (`gui_shell` setting: auto / qt / edge / browser). The bottom-left toggle (or `ui_mode`) picks which interface starts by default; `--tui`/`--gui` always override.
 - **Open project by path** — type or complete any folder and it opens as a project
@@ -69,9 +69,9 @@ Icons are inline Material SVG — no CDN, no emoji.
 
 <div class="grid" markdown>
 
-![Graph world](img/gui-skin-graph.png)
+![Graph world](img/gui-skin-graph.webp){ width="1600" height="1000" loading=lazy }
 
-![CRT skin](img/gui-skin-crt.png)
+![CRT skin](img/gui-skin-crt.webp){ width="1600" height="1000" loading=lazy }
 
 </div>
 

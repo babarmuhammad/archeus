@@ -94,10 +94,21 @@ def test_the_demo_workspace_uses_demo_account_names():
 
 def test_the_published_screenshots_are_the_generated_ones():
     """docs/img is what the README shows; it must hold only files the two
-    screenshot tools produce, so nothing hand-dropped ships by accident."""
+    screenshot tools produce, so nothing hand-dropped ships by accident.
+
+    `.webp` is allowed alongside `.png` because `tools/optimize_images.py`
+    derives one from the other — the manual links the WebP (a quarter of the
+    bytes, served raw by MkDocs) while the README keeps the PNG, which is what
+    PyPI renders. Allowing the extension does NOT weaken the gate: a WebP with
+    no PNG beside it is not a derivative of anything, so it is rejected by the
+    second assertion rather than waved through by the first."""
     d = os.path.join(ROOT, 'docs', 'img')
     if not os.path.isdir(d):
         return
-    allowed = re.compile(r'^(gui|tui)-[a-z0-9-]+\.png$')
-    bad = [n for n in os.listdir(d) if not allowed.match(n)]
+    allowed = re.compile(r'^(gui|tui)-[a-z0-9-]+\.(png|webp)$')
+    names = os.listdir(d)
+    bad = [n for n in names if not allowed.match(n)]
     assert not bad, 'unexpected files in docs/img: %s' % bad
+    orphans = [n for n in names
+               if n.endswith('.webp') and n[:-5] + '.png' not in names]
+    assert not orphans, 'webp with no generated png beside it: %s' % orphans

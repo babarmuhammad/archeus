@@ -33,8 +33,22 @@ classifiers = [
     "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
+    # The per-minor entries are what PyPI's "Programming Language" facet filters
+    # on — `:: 3` alone puts the package in no version bucket at all, so a search
+    # narrowed to 3.12 does not find it. They must match requires-python, which
+    # `test_the_python_classifiers_match_requires_python` asserts rather than
+    # trusting, in both directions: a gap, or a version claimed and not supported.
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3 :: Only",
     "Topic :: Software Development",
     "Topic :: Utilities",
+    # No `Typing :: Typed`. It tells every type checker to look for a `py.typed`
+    # marker in the installed package, and this one ships none — a classifier is
+    # a machine-readable claim, not a keyword.
 ]
 
 # PyPI renders these as the sidebar links, and they are also the strongest

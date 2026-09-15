@@ -7,6 +7,13 @@ small example structure (archeus's own module names; no user data).
     py tools/make_gifs.py
 
 Requires Pillow. Writes docs/graph.gif.
+
+**Nothing published links it.** `tools/capture_graph_gif.py` captures the real
+graph and is what both sites show; this hand-drawn version was superseded and its
+output was deleted, because a 1.5 MB file inside `docs_dir` ships on every deploy
+whether or not a page names it — and `tests/test_image_budget.py` now fails on a
+published GIF of any size. The script stays as the fallback for a machine with no
+Chromium; if you run it, the output needs a home outside `docs/`.
 """
 
 import math

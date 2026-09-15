@@ -1,9 +1,7 @@
 ---
 title: archeus vs bare Claude Code — alternatives compared
 description: >-
-  The memory and workspace layer for AI coding agents, compared honestly against bare
-  Claude Code, /resume, manual CLAUDE.md maintenance and terminal multiplexers —
-  including what archeus does not do.
+  archeus compared honestly against bare Claude Code, /resume, hand-maintained CLAUDE.md and terminal multiplexers — including what it does not do.
 ---
 
 # archeus compared
@@ -88,4 +86,4 @@ Stated plainly, because a comparison page that only lists strengths is not usefu
   stopped wanting to pay for** → archeus.
 
 [Install](installation.md){ .md-button .md-button--primary }
-[Features](https://claudectl.space/features/){ .md-button }
+[Features](https://claudectl.space/features){ .md-button }

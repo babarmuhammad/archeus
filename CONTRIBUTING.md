@@ -42,7 +42,24 @@ python tools/smoke_gui.py        # mounts, paints every page, parks the frame lo
 python tools/shot_gui.py         # screenshots plus an overflow audit
 ```
 
-Both need `pip install playwright && playwright install chromium`.
+If you changed the documentation site, a screenshot, or anything either published
+site serves:
+
+```bash
+python tools/check_site_seo.py     # the BUILT html: titles, canonicals, JSON-LD, images
+python tools/optimize_images.py --check
+python tools/audit_site.py         # every page at 390x844, nothing past the right edge
+```
+
+`check_site_seo.py` and `audit_site.py` read `site/`, so run `mkdocs build --strict`
+first. `audit_site.py` and the two GUI tools need
+`pip install playwright && playwright install chromium`; `optimize_images.py` needs
+Pillow. All three run in CI — the first two on every push, the third on the weekly
+schedule with the GUI smoke check.
+
+**Do not hand-edit an image under `docs/img/`.** `tools/shot_gui.py` and
+`tools/shot_tui.py` write the PNGs and `tools/optimize_images.py` derives the WebP the
+manual actually links; `tests/test_demo_fixtures.py` rejects anything else in there.
 
 ## What the project cares about
 

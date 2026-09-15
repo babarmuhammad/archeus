@@ -1,7 +1,6 @@
 ---
 description: >-
-  The Claude Code status line archeus renders, the local failover proxy that retries a
-  dead model instead of hanging, and the read-only view of Claude Code's checkpoint store.
+  The Claude Code status line archeus renders, the failover proxy that retries a dead model instead of hanging, and a read-only view of the checkpoint store.
 ---
 
 # Status line, failover & checkpoints

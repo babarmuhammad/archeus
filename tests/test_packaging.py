@@ -269,3 +269,39 @@ def test_the_shim_pins_a_version_of_this_package_that_is_not_out_yet():
     assert _tuple(pin) > _tuple(here), (
         'the shim pins archeus>=%s and this tree is already %s — publishing it '
         'would not reinstall the shared files it deletes' % (pin, here))
+
+
+def test_the_python_classifiers_match_requires_python():
+    """PyPI's "Programming Language" facet filters on the per-minor classifiers.
+    `Programming Language :: Python :: 3` alone puts the package in no version
+    bucket, so narrowing a search to 3.12 does not find it — and the list is
+    hand-written, so it drifts from requires-python silently the first time a
+    version is added to the CI matrix.
+
+    Also asserts the reverse: a classifier claiming a version this package does
+    not support is a package that fails to install for whoever believed it."""
+    import re
+    with open(os.path.join(ROOT, 'pyproject.toml'), encoding='utf-8') as f:
+        text = f.read()
+    floor = re.search(r'requires-python\s*=\s*">=3\.(\d+)"', text)
+    assert floor, 'requires-python is no longer a simple >=3.x floor'
+    claimed = {int(m) for m in re.findall(
+        r'"Programming Language :: Python :: 3\.(\d+)"', text)}
+    assert claimed, 'no per-minor Python classifier — PyPI cannot filter on version'
+    assert min(claimed) == int(floor.group(1)), (
+        'classifiers start at 3.%d but requires-python says >=3.%s'
+        % (min(claimed), floor.group(1)))
+    assert claimed == set(range(min(claimed), max(claimed) + 1)), \
+        'the classifier list has a gap: %s' % sorted(claimed)
+
+
+def test_no_classifier_claims_something_the_package_does_not_ship():
+    """A classifier is a machine-readable claim, not a keyword. `Typing :: Typed`
+    tells every type checker to look for a `py.typed` marker in the installed
+    package; without one it is a claim that fails at the point someone relies
+    on it."""
+    with open(os.path.join(ROOT, 'pyproject.toml'), encoding='utf-8') as f:
+        text = f.read()
+    if '"Typing :: Typed"' in text:
+        assert os.path.isfile(os.path.join(ROOT, 'claude_sessions', 'py.typed')), \
+            'the Typed classifier is there but claude_sessions/py.typed is not'

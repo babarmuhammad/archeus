@@ -18,6 +18,14 @@ copyright: MIT licensed — Copyright &copy; 2026 Babar Muhammad Anas
 
 docs_dir: docs
 
+# The master artwork lives in docs/assets because tools/make_icon.py derives the
+# favicon, the app icon, the header logo and the manifest icons from it, and one
+# source for a mark is the whole point (brand study 5.1). It is 1254px and 998 KB
+# and NOTHING on the site links it — `theme.logo` is the 256px derivative — so
+# publishing it put a megabyte into every deploy that no reader ever requests.
+exclude_docs: |
+  assets/logo.png
+
 theme:
   name: material
   custom_dir: overrides
@@ -26,7 +34,9 @@ theme:
   favicon: assets/favicon.ico
   # The master dark tile, straight from docs/assets — the header logo, the
   # favicon and the app icon are all the one artwork (brand study 5.1).
-  logo: assets/logo.png
+  # The 256px derivative, not the 1254px master: this draws about 30px tall in
+  # the header of every page, and the master was 998 KB of it.
+  logo: assets/logo-256.png
   # No Google Fonts fetch — the GUI itself ships zero CDN requests, and the site
   # holds the same line.
   font: false
@@ -63,12 +73,13 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true
-  - pymdownx.snippets:
-      # README.md and CHANGELOG.md live at the repo root, one level above docs_dir.
-      # check_paths makes a moved/renamed source a build failure instead of a
-      # silently empty page.
-      base_path: ['.']
-      check_paths: true
+  # No `pymdownx.snippets`. It was here for docs/changelog.md and
+  # docs/code-of-conduct.md, which pulled the root CHANGELOG.md and
+  # CODE_OF_CONDUCT.md; both pages moved to the apex marketing site and neither
+  # file exists, so no page has held an `--8<--` marker for some time. Config
+  # for a feature nothing uses is a claim the repo cannot back —
+  # `test_no_page_uses_an_include_the_build_cannot_expand` fails the build if a
+  # marker comes back without the extension.
   - toc:
       permalink: true
 

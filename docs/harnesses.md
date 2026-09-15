@@ -1,9 +1,7 @@
 ---
 title: More than one CLI — Claude Code, Codex and pi
 description: >-
-  archeus reads the sessions, projects and token spend of Claude Code, OpenAI Codex and
-  pi, delivers one memory graph to all three, and launches any of them — with every
-  screen saying plainly what a given CLI cannot do.
+  archeus reads the sessions, projects and token spend of Claude Code, OpenAI Codex and pi, gives all three one memory graph, and launches any of them.
 ---
 
 # More than one CLI

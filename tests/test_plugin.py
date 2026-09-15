@@ -66,10 +66,17 @@ def test_the_plugin_name_is_kebab_case():
 #: the docs page require literally. A release bumps ALL of them — the plugin
 #: manifest was missed once and the release commit went red on six CI jobs with
 #: the tag already pushed.
+#: `docs/index.md` was here, carrying the version inside a hand-written JSON-LD
+#: block — and it sat at 1.6.0 through a 1.7.0 release, which is why this gate
+#: exists at all. That block is gone: `overrides/main.html` emits the same
+#: `SoftwareApplication` node for every docs page now, under the apex's `@id`,
+#: and it states no version. The marketing site's node does, read from
+#: pyproject at build time by `www/lib/build-data.ts` — so the two hosts still
+#: describe one application and only the one that can compute the number says
+#: it. A copy removed is better than a copy gated.
 VERSION_COPIES = (
     ('plugin/.claude-plugin/plugin.json', r'"version":\s*"([^"]+)"'),
     ('.claude-plugin/marketplace.json',   r'"version":\s*"([^"]+)"'),
-    ('docs/index.md',                     r'"softwareVersion":\s*"([^"]+)"'),
     ('CITATION.cff',                      r'(?m)^version:\s*(\S+)\s*$'),
 )
 

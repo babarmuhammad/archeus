@@ -44,7 +44,7 @@ export const HOME: Doc = {
   title: 'archeus — the memory and workspace layer for AI coding agents',
   h1: 'The memory and workspace layer for AI coding agents.',
   description:
-    'The memory and workspace layer for AI coding agents. Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code today, and with OpenAI Codex and pi beside it: a searchable session archive, an interactive architecture graph, MCP management and per-project launch control. Pure Python standard library, zero runtime dependencies, MIT.',
+    'Persistent per-project memory, every session you have ever had, and control over what the next one costs. For Claude Code, OpenAI Codex and pi. Zero deps, MIT.',
   intro:
     'Persistent per-project memory, every session you have ever had, and control over what the next one costs. Works with Claude Code today.',
   sections: [
@@ -212,7 +212,7 @@ export const FEATURES: Doc = {
   slug: 'features',
   title: 'Features',
   description:
-    'Everything archeus does — sessions and search, project memory, the architecture graph, Plan to Execute, multiple accounts, MCP servers, agents, hooks, the status line and the desktop GUI.',
+    'Everything archeus does: sessions and search, project memory, the architecture graph, Plan to Execute, multiple accounts, MCP servers, agents and the desktop GUI.',
   intro:
     'Everything archeus does, grouped. It is one engine behind two interfaces: a keyboard-first terminal UI and a desktop GUI with full parity.',
   sections: [
@@ -548,7 +548,7 @@ export const ARCHITECTURE: Doc = {
   slug: 'architecture',
   title: 'Architecture',
   description:
-    'How archeus is built — the connections engine, the memory graph, the job runner, the local HTTP API behind the GUI, and the interactive dependency graph it draws of your own project.',
+    'How archeus is built: the connections engine, the memory graph, the job runner, the local HTTP API behind the GUI, and the dependency graph it draws of your project.',
   intro:
     'archeus is one engine with two front ends. Everything below runs locally, on the standard library, against files Claude Code already writes.',
   sections: [

@@ -51,7 +51,11 @@ export default async function PostPage({ params }: Props) {
       headline: post.title,
       description: post.description,
       datePublished: post.date,
-      dateModified: post.date,
+      // `post.updated` falls back to `post.date`, so this is unchanged until a
+      // post carries an `updated:` key — which is the point. It used to be
+      // `post.date` literally, and a dateModified that always equals
+      // datePublished is a claim nobody made.
+      dateModified: post.updated,
       author: { '@type': 'Person', name: post.author, url: SITE.authorGithub },
       publisher: { '@type': 'Person', name: SITE.author, url: SITE.authorGithub },
       mainEntityOfPage: { '@type': 'WebPage', '@id': canonical },

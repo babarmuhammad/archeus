@@ -1,7 +1,7 @@
 ---
 description: >-
-  Install archeus, launch it, pick a project and start your first session — the
-  five-minute path from nothing to a Claude Code session that already knows the codebase.
+  Install archeus, launch it, pick a project, start a first session — five minutes from nothing to a Claude Code session that knows the codebase.
+howto_from_headings: true
 ---
 
 # Quickstart
@@ -36,7 +36,7 @@ override it for one run.
 
 ## 3. Pick a project
 
-![archeus TUI — project picker](img/tui-main.png)
+![archeus TUI — project picker](img/tui-main.png){ width="836" height="477" loading=lazy }
 
 The list is every folder Claude Code has ever opened, most recent first. **Type to filter**
 it live, then `ENTER`.

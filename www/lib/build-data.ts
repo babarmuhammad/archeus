@@ -101,7 +101,15 @@ export function renderRepoMarkdown(rel: string): string | null {
   if (src === null) return null;
   // Drop the leading H1 — every page supplies its own, and two would be wrong
   // for both the outline and the screen reader.
-  return md.render(src.replace(/^#\s+.+\n/, ''));
+  //
+  // `[^\n]*` and an optional `\r`, not `.+\n`. In JavaScript `.` does not match
+  // a carriage return — `\r` is a line terminator to the regex engine — so the
+  // old pattern silently did nothing on any file checked out with CRLF endings.
+  // On this Windows working tree that was CONTRIBUTING.md and not the other two,
+  // so `/contributing` shipped with two `<h1>` elements while `/changelog` and
+  // `/code-of-conduct` were fine, and the difference was the checkout rather
+  // than anything in the code. Found by tools/check_site_seo.py.
+  return md.render(src.replace(/^#[^\n]*\r?\n/, ''));
 }
 
 export const CHANGELOG_HTML = renderRepoMarkdown('CHANGELOG.md');

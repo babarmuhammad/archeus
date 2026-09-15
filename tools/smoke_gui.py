@@ -37,17 +37,18 @@ STATE = {
                  {'name': 'acme-web', 'path': '/demo/acme-web', 'encoded': 'demo-acme-web',
                   'accounts': ['teamA'], 'primary_cfgdir': 'w',
                   'auto_memory': False, 'last_active': '1d'}],
-    # what the CLI behind each account can do. The real server derives this
-    # from harnesses.py; here it is spelled out because the point of the checks
-    # below is what the PAGE does with a capability that is off.
-    'harnesses': [{'id': 'claude', 'label': 'Claude Code', 'available': True,
-                   'homes': ['', 'w'],
-                   'caps': {'output_styles': [True, ''], 'mcp': [True, ''],
-                            'agents': [True, ''], 'skills': [True, ''],
-                            'hooks': [True, ''], 'plugins': [True, ''],
-                            'usage': [True, ''], 'accounts': [True, ''],
-                            'client_state': [True, ''], 'versions': [True, ''],
-                            'sessions': [True, '']}}],
+    # what the CLI behind each account can do. DERIVED from the real registry
+    # rather than spelled out — a hand-typed stub was one harness, and a strip
+    # that shows a choice only when there are two renders as nothing at all at
+    # one, so the Harnesses page and the Usage page's harness tabs would both
+    # have been walked with their strips switched off. The same argument the
+    # permission and effort lists below already make: a one-item stub audits a
+    # control that cannot wrap, cannot overflow and cannot be wrong.
+    'harnesses': [{'id': hid, 'label': _TH_H.descriptor(hid)['label'],
+                   'available': True,
+                   'homes': ['', 'w'] if hid == 'claude' else ['/home/.' + hid],
+                   'caps': {k: list(_TH_H.cap(hid, k)) for k in _TH_H.CAPS}}
+                  for hid in _TH_H.ids()],
     'accounts': [{'name': 'default', 'dir': '', 'active': True},
                  {'name': 'teamA', 'dir': 'w', 'active': False}],
     'recent': [{'project': 'acme-api', 'path': '/demo/acme-api', 'encoded': 'demo-acme-api',
@@ -2009,8 +2010,14 @@ def main():
               'Test CLI has no output styles.' in txt)
         check('and where it does work',
               'Supported on' in txt and 'Claude Code' in txt)
+        # `#subtabs`, not `#tabs`: Output styles moved behind the Harnesses
+        # page, where the FIRST strip is which CLI and the second is its screens.
+        # Both are named, because which strip a page's row lives in is the thing
+        # this rehaul moved and a selector pinned to one would pass for the
+        # wrong reason the next time it moves back.
         check('the tab row greys the row rather than hiding it',
-              pg.evaluate("[...document.querySelectorAll('#tabs .tab')]"
+              pg.evaluate("[...document.querySelectorAll("
+                          "'#tabs .tab, #subtabs .tab')]"
                           ".some(t=>t.classList.contains('off'))"))
         check('a page with no capability of its own is untouched',
               pg.evaluate("(()=>{go('settings');return true;})()"))
@@ -2019,6 +2026,64 @@ def main():
               not pg.evaluate("document.body.innerText.includes"
                               "('Not available here')"))
         pg.evaluate("ST.harnesses=%s;" % json.dumps(STATE['harnesses']))
+
+        # -- the Harnesses page: two strips, and one CLI's own screens --
+        # The five pages that left the sidebar are reached HERE and nowhere
+        # else, so this is the check that they are reachable at all: OFFNAV
+        # names the door in prose and no gate can read prose.
+        print(NL + '-- harnesses page --')
+        pg.evaluate("go('harness')")
+        pg.wait_for_timeout(700)
+        tabs = pg.evaluate("[...document.querySelectorAll('#tabs .tab')]"
+                           ".map(t=>t.textContent.trim())")
+        check('every registered CLI is a tab, installed or not', len(tabs) >= 3, tabs)
+        subs = pg.evaluate("[...document.querySelectorAll('#subtabs .tab')]"
+                           ".map(t=>t.textContent.trim())")
+        check("Claude Code's own screens are its sub-tabs",
+              'Setup' in subs and 'Accounts' in subs and 'Output styles' in subs,
+              subs)
+        txt = pg.evaluate("document.body.innerText")
+        check('the setup card says what the CLI can do, with the reason',
+              'What archeus can do here' in txt)
+        # the five moved pages: landing on one must light its CLI, or pressing
+        # Setup afterwards would open a different harness's setup
+        pg.evaluate("go('accounts')")
+        pg.wait_for_timeout(600)
+        check('a moved page still paints under the harness strip',
+              pg.evaluate("!!document.querySelector('#subtabs .tab.sel')")
+              and pg.evaluate("document.querySelector('#ttl').textContent")
+              == 'Harnesses')
+        check('…and it lights the CLI it belongs to',
+              pg.evaluate("HARNESS_HID") == 'claude')
+        pg.evaluate("pickHarness('codex')")
+        pg.wait_for_timeout(700)
+        check('picking another CLI lands on ITS setup, not the page you left',
+              pg.evaluate("PAGE_") == 'harness'
+              and pg.evaluate("HARNESS_HID") == 'codex')
+        check('a CLI with no extra screens shows no second strip',
+              pg.evaluate("document.querySelector('#subtabs').style.display")
+              == 'none')
+        check('and its gaps are printed with their reasons',
+              'Output styles are a Claude Code feature.'
+              in pg.evaluate("document.body.innerText"))
+
+        # -- usage: every CLI's spend, only Claude's plan windows --
+        print(NL + '-- usage, per harness --')
+        pg.evaluate("USAGE_HID='';go('usage')")
+        pg.wait_for_timeout(700)
+        check('the usage page carries a harness strip',
+              pg.evaluate("[...document.querySelectorAll('#content .mtabs .tab')]"
+                          ".map(t=>t.textContent.trim())")[:1] == ['All'])
+        check('…and the plan rail is there for all of them',
+              'Plan usage by account' in pg.evaluate("document.body.innerText"))
+        pg.evaluate("pickUsageHarness('codex')")
+        pg.wait_for_timeout(700)
+        txt = pg.evaluate("document.body.innerText")
+        check('under one CLI the spend cards stay',
+              'Daily tokens' in txt and 'Per-project' in txt)
+        check('…and only the plan rail greys, with its reason',
+              'Not available here' in txt and 'codex doctor' in txt)
+        pg.evaluate("USAGE_HID=''")
 
         # -- the provider card changes shape per backend --
         # The card was OmniRoute-shaped for its whole life: a live catalogue, a
@@ -2258,7 +2323,7 @@ def main():
     # "FAILURES: none" every time. A floor on the number of checks executed is
     # the cheapest thing that would have caught it.
     # And a floor that never moves stops being a floor: it rises with the suite.
-    FLOOR = 190
+    FLOOR = 280
     if len(ran) < FLOOR:
         fails.append(f'only {len(ran)} checks ran, expected >= {FLOOR} — '
                      'part of this suite is not executing')

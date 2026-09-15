@@ -1,8 +1,6 @@
 ---
 description: >-
-  Plan with an accurate model, execute with a cheap or free one — archeus's Plan to
-  Execute flow, plus the full OmniRoute setup, troubleshooting and standalone free-tier
-  sessions.
+  Plan with an accurate model, execute with a cheap or free one — archeus's Plan to Execute flow, plus OmniRoute setup and free-tier standalone sessions.
 ---
 
 # Plan → Execute & OmniRoute

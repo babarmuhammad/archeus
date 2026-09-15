@@ -14,7 +14,7 @@ description: >-
 On launch, archeus shows all projects Claude Code has ever opened, sorted by most recently
 used.
 
-![archeus TUI — project picker](img/tui-main.png)
+![archeus TUI — project picker](img/tui-main.png){ width="836" height="477" loading=lazy }
 
 - Quick-resume items appear at the top (★ = most recent session, ☆ = older sessions). These are the 5 most recently used sessions across all projects; selecting one resumes that exact session without navigating into the project's list.
 - All other projects follow, sorted by recency — type to filter live
@@ -196,7 +196,7 @@ Edits apply from the next iteration.
 
 ### Sessions screen (session list for a project)
 
-![archeus TUI — sessions](img/tui-sessions.png)
+![archeus TUI — sessions](img/tui-sessions.png){ width="836" height="456" loading=lazy }
 
 Grouped the way the `/` palette and the `?` help screen group them — the same four
 buckets the desktop app puts its project tabs in. The keys themselves have not changed and

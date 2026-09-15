@@ -4,6 +4,19 @@
   "installCommand": "python3 -m venv .venv && .venv/bin/pip install -r requirements-docs.txt",
   "buildCommand": ".venv/bin/python tools/gen_api_docs.py --check && .venv/bin/python -m mkdocs build --strict",
   "outputDirectory": "site",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains"
+        },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
+    }
+  ],
   "redirects": [
     {
       "source": "/install",

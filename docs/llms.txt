@@ -56,7 +56,7 @@ Anthropic.
 ## Reference
 
 - [API reference](https://docs.claudectl.space/api/): the local HTTP API the desktop app is built on, generated from the route tables.
-- [Download](https://claudectl.space/download/): every way to get it — PyPI, the GitHub release page, the Claude Code plugin marketplace, a source checkout — what each release contains and the versioning policy.
+- [Download](https://claudectl.space/download): every way to get it — PyPI, the GitHub release page, the Claude Code plugin marketplace, a source checkout — what each release contains and the versioning policy.
 - [Project dashboard](https://docs.claudectl.space/dashboard/): release version, PyPI download counts, stars, test count, source size and commit activity.
 - [Multiple accounts](https://docs.claudectl.space/accounts/): running two or more Claude accounts, per-launch account selection, cross-account context injection.
 - [Context hand-off](https://docs.claudectl.space/context-handoff/): starting a new session seeded with a previous session's transcript, optionally under a different account — for when the context window fills up or an account hits its rate limit.
@@ -67,18 +67,19 @@ Anthropic.
 - [Plan to Execute and OmniRoute](https://docs.claudectl.space/plan-execute/): plan on an accurate model, execute on a cheap or free one; OmniRoute setup and troubleshooting.
 - [Status line, failover and checkpoints](https://docs.claudectl.space/statusline/): the per-turn status line, the model failover proxy, the read-only checkpoint view.
 - [Files, layout and encoding](https://docs.claudectl.space/reference/): CLAUDE.md auto-generation and how Claude Code encodes project paths into folder names.
-- [Code of conduct](https://claudectl.space/code-of-conduct/): the Contributor Covenant this project follows.
+- [Code of conduct](https://claudectl.space/code-of-conduct): the Contributor Covenant this project follows.
 
 ## Moving to the product site
 
 These pages are still served here and will move to https://claudectl.space/ once that site
 carries them.
 
-- [Features overview](https://claudectl.space/features/): one page per feature area.
-- [FAQ](https://claudectl.space/faq/): platform support, dependencies, multiple accounts, how it differs from /resume.
+- [Features overview](https://claudectl.space/features): one page per feature area.
+- [FAQ](https://claudectl.space/faq): platform support, dependencies, multiple accounts, how it differs from /resume.
 - [Compare](https://docs.claudectl.space/compare/): honest comparison against bare Claude Code, hand-written CLAUDE.md and terminal multiplexers, including what archeus does not do.
-- [Changelog](https://claudectl.space/changelog/): release history.
+- [Changelog](https://claudectl.space/changelog): release history.
 - [Credits](https://docs.claudectl.space/credits/): the projects and ideas archeus builds on.
+- [Blog](https://claudectl.space/blog): longer write-ups — why Claude Code forgets a project between sessions, what belongs in CLAUDE.md and what belongs in path-scoped rules, cutting the per-turn token cost with a bounded index, planning on an expensive model and executing on a free one, running multiple accounts, and what Claude Code writes to disk.
 
 ## Optional
 
