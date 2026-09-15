@@ -817,8 +817,17 @@ class H(BaseHTTPRequestHandler):
             from urllib.parse import parse_qs as _pq
             hid = (_pq(self.path.split('?', 1)[-1]).get('hid') or [''])[0]
             d = _TH_H.descriptor(hid)
+            from claude_sessions import config as _TH_C
             self._j({'hid': d['id'], 'efforts': list(d['efforts']),
                      'catalogue': d['id'] == 'claude',
+                     # the permission and sandbox scales are the CLI's own too,
+                     # and a stub that sent neither had the window falling back
+                     # to Claude Code's list for every harness — which is the
+                     # exact bug these fields exist to fix
+                     'perms': list(d['perms'] or _TH_C.PERMS),
+                     'perm_labels': list(d['perm_labels'] or _TH_C.PERM_LABELS),
+                     'sandboxes': list(d['sandboxes']),
+                     'sandbox_labels': list(d['sandbox_labels']),
                      'models': {'codex': ['gpt-5.5', 'gpt-5.4-mini'],
                                 'pi': ['anthropic/claude-sonnet-5']}.get(d['id'], [])})
             return
@@ -2344,6 +2353,33 @@ def main():
         check('the hint stops quoting Anthropic advice',
               'Codex chooses the rest itself'
               in pg.evaluate("document.getElementById('mHint').textContent"))
+        # The approval chips are the CLI's OWN vocabulary. They were
+        # `config.PERMS` for every harness, so under Codex the window offered
+        # Claude Code's seven modes and `codex.PERMS` maps two of them — pick
+        # `plan` and you got a session that ignored it, silently.
+        perms = pg.evaluate("[...document.querySelectorAll('#fPerm .chip')]"
+                            ".map(c=>c.dataset.v)")
+        check("the approval chips are Codex's own four, not Claude Code's seven",
+              perms == ['', 'untrusted', 'on-request', 'never'], perms)
+        check('…and the label says what Codex calls it',
+              pg.evaluate("document.getElementById('fPermLbl').textContent")
+              == 'Approval policy')
+        sand = pg.evaluate("[...document.querySelectorAll('#fSand .chip')]"
+                           ".map(c=>c.dataset.v)")
+        check('the sandbox is offered as its own axis',
+              sand == ['', 'read-only', 'workspace-write', 'danger-full-access'], sand)
+        # Measured rather than assumed: under pi the Advanced grid still holds
+        # Model, Effort and Name, because pi has --model, --thinking and -n. So
+        # the drawer is never empty for any CLI and the "hide it when every
+        # field is gone" branch this block was written for was dead code.
+        pg.evaluate("pickTarget('claude')")
+        pg.wait_for_timeout(700)
+        perms = pg.evaluate("[...document.querySelectorAll('#fPerm .chip')]"
+                            ".map(c=>c.dataset.v)")
+        check('switching back to Claude Code restores ITS modes',
+              'plan' in perms and 'untrusted' not in perms, perms)
+        pg.evaluate("pickTarget('codex')")
+        pg.wait_for_timeout(700)
         # and a backend is still the same binary, so it keeps everything
         pg.evaluate("pickTarget('provider:p2')")
         pg.wait_for_timeout(700)

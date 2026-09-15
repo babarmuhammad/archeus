@@ -63,6 +63,11 @@ CAPS = {
     'accounts':         'more than one login',
     'effort':           'a reasoning-effort setting',
     'permission_modes': 'permission modes',
+    #: Codex's second axis. It is NOT the permission mode wearing another
+    #: name: `-a` says when the model must ASK, `-s` says what a command may
+    #: touch when it does not, and a Codex user changes the second far more
+    #: often. Claude Code folds both into the permission mode.
+    'sandbox':          'a filesystem sandbox level',
     'named_session':    'naming a session at launch',
     'worktree':         'launching into a git worktree',
     'budget_cap':       'a spend cap on one call',
@@ -184,7 +189,18 @@ HARNESSES = {
         #: '' = this harness has no rollout to read windows out of; its source is
         #: the OAuth poller in `usage.py`.
         'rate_limits': '',
-        'caps': {},                       # it can do everything; it is the model
+        #: '' = `config.PERMS` / `PERM_LABELS`, which are Claude Code's own.
+        #: A permission vocabulary cannot be translated between CLIs, for the
+        #: same reason `efforts` could not: `plan` has no Codex equivalent and
+        #: `untrusted` has no Claude one.
+        'perms': (), 'perm_labels': (),
+        'sandboxes': (), 'sandbox_labels': (),
+        #: the ONE thing Claude Code has no separate control for: its
+        #: permission mode decides both when to ask and what a command may
+        #: touch, where Codex splits the two across -a and -s.
+        'caps': {'sandbox': (False, "Claude Code's permission mode covers "
+                                    'this; it has no separate sandbox '
+                                    'level.')},
     },
     'codex': {
         'id': 'codex',
@@ -225,6 +241,15 @@ HARNESSES = {
         'login_argv': ('login',),
         'auth_state': 'codex.auth_state',
         'rate_limits': 'codex.rate_limits',
+        #: read out of `codex --help` on the installed 0.142, not mapped from
+        #: Claude Code's. `on-failure` is offered by the binary and NOT here:
+        #: its own help marks it DEPRECATED and says to prefer on-request.
+        'perms': ('', 'untrusted', 'on-request', 'never'),
+        'perm_labels': ('Codex default', 'trusted commands only',
+                        'the model decides when to ask', 'never ask'),
+        'sandboxes': ('', 'read-only', 'workspace-write', 'danger-full-access'),
+        'sandbox_labels': ('Codex default', 'read only', 'write in the workspace',
+                           'no sandbox'),
         #: three stops over Codex's OWN two scales, and every model id here is
         #: one the catalogue publishes rather than one typed from a blog post.
         #: A preset that names a model this install cannot reach is dropped by
@@ -339,6 +364,8 @@ HARNESSES = {
         #: pi bills per provider, so there is no one window to read.
         'auth_state': 'pi.auth_state',
         'rate_limits': '',
+        'perms': (), 'perm_labels': (),
+        'sandboxes': (), 'sandbox_labels': (),
         #: pi is provider-neutral, so its presets pick a PROVIDER as much as a
         #: model — `provider/id` is the form its own `--model` takes. Whichever
         #: of these the user has a key for survives the catalogue filter; the
@@ -370,6 +397,8 @@ HARNESSES = {
                                      '`pi install`, not marketplaces.'),
             'agents':        (False, 'pi has no subagents.'),
             'output_styles': (False, 'Output styles are a Claude Code feature.'),
+            'sandbox':       (False, 'pi has no sandbox flag; it asks per tool '
+                                     'call instead.'),
             #: same split as Codex's, and for the same reason: pi walks the tree
             #: for AGENTS.md and CLAUDE.md, which is a whole file per directory,
             #: not a rule selected by the path you just opened.

@@ -6087,8 +6087,9 @@ async function pgSettings(nav,part='settings'){
     {label:'Building modules'});
   if($('#sTargetDef'))
     chipsFill($('#sTargetDef'),targets().map(t=>t.key),targets().map(t=>t.label),
-              ST.launch_default||'claude');
+              ST.launch_default||'claude',()=>noteLaunchDefaults());
   drawHarnessToggles();
+  noteLaunchDefaults();
   chipsFill($('#sEff'),o.efforts,null,ST.defaults.effort);
   chipsFill($('#sMod'),o.models,o.model_labels,ST.defaults.model);
   chipsFill($('#sPerm'),o.perms,o.perm_labels,ST.defaults.perm);
@@ -7290,6 +7291,7 @@ function drawTargets(cfg){
   $('#fNameWrap').style.display=(cfg.isNew&&tcap('named_session').ok)?'':'none';
   $('#fWtWrap').style.display=(cfg.isNew&&tcap('worktree').ok)?'':'none';
   tfield('#fPermWrap','permission_modes');
+  tfield('#fSandWrap','sandbox');
   drawLaunchModel(row.provider||'');
   drawOwnModel(row);
 }
@@ -7310,7 +7312,9 @@ async function drawOwnModel(row){
   const pin=$('#fPinModel')&&$('#fPinModel').closest('.pinrow');
   if(pin)pin.style.display=own?'none':'';
   if(adv&&own)adv.style.display='none';
-  if(!own)return;
+  // BEFORE the early return, so switching back to Claude Code restores its own
+  // modes rather than leaving the last CLI's on screen
+  if(!own){fillPermScale(null);return;}
   /* Memoised per CLI: pi's catalogue is 1,354 models and ~105KB on the wire,
      and this runs on every click of the target strip. What it answers changes
      when the CLI is updated or has run something new — neither of which
@@ -7349,6 +7353,48 @@ async function drawOwnModel(row){
     +` · ${esc(p.fields.effort||'default')}</span></div>`).join('');
   const pw=ph&&ph.closest('.fld');
   if(pw)pw.style.display=(d.presets||[]).length?'':'none';
+  fillPermScale(d);
+}
+/* The permission chips are the CLI's OWN vocabulary. They were `config.PERMS`
+   for every harness, so under Codex the window offered Claude Code's seven
+   modes — of which it maps two. Picking `plan` gave you a session that ignored
+   it, silently, which is the same class of bug as an effort scale that offers
+   `ultracode` to a CLI that rejects it. '' means "archeus's default list",
+   which is Claude Code's. */
+/* The four chips under "Starts on" are Anthropic's vocabulary — an effort
+   scale with `ultracode` in it, priced model ids, Claude Code's permission
+   modes — and the launch window ignores every one of them once the target is
+   another CLI, which chose its own. Offering a setting that cannot apply is
+   worse than not offering it, so they are hidden with the reason rather than
+   left to look configured. */
+function noteLaunchDefaults(){
+  const key=chipVal($('#sTargetDef'))||ST.launch_default||'claude';
+  const row=(ST.launch_targets||[]).find(t=>t.key===key);
+  const own=!!row&&row.hid!=='claude';
+  for(const id of ['#sEff','#sMod','#sPerm','#sThink','#sSub']){
+    const w=$(id)&&$(id).closest('.fld');
+    if(w)w.style.display=own?'none':'';
+  }
+  let n=$('#sTargetNote');
+  const host=$('#sTargetDef')&&$('#sTargetDef').closest('.fld');
+  if(!n&&host){n=document.createElement('div');n.id='sTargetNote';n.className='fsub';
+    host.appendChild(n);}
+  if(n)n.textContent=own
+    ?`${row.label} has its own model, effort and approval scales — set a quick start for it in the launch window.`
+    :'';
+}
+function fillPermScale(d){
+  const o=ST.options||{};
+  const ps=(d&&d.perms&&d.perms.length)?d.perms:(o.perms||['']),
+        pl=(d&&d.perm_labels&&d.perm_labels.length)?d.perm_labels:(o.perm_labels||ps);
+  // keep the saved default only when THIS CLI's scale contains it; otherwise
+  // its own first stop, which is always "whatever the CLI does by itself"
+  const want=(ST.defaults||{}).perm||'';
+  chipsFill($('#fPerm'),ps,pl,ps.indexOf(want)>=0?want:ps[0],()=>updateHint());
+  const lbl=$('#fPermLbl');
+  if(lbl)lbl.textContent=(d&&d.hid&&d.hid!=='claude')?'Approval policy':'Permission mode';
+  const sb=(d&&d.sandboxes)||[];
+  chipsFill($('#fSand'),sb,(d&&d.sandbox_labels)||sb,sb[0]||'');
 }
 //: one answer per CLI, for the life of the page. Not a TTL: what it holds is a
 //: catalogue on disk and a list of models already run, and neither changes
@@ -7365,7 +7411,7 @@ function applyOwnPreset(i){
 /* the capabilities this form gates on. Named rather than "every off key",
    because the strip's note must not recite gaps about pages the modal has
    nothing to do with — a Codex session's missing MCP is not a launch option. */
-const LAUNCH_CAPS=['permission_modes','named_session','worktree','effort'];
+const LAUNCH_CAPS=['permission_modes','sandbox','named_session','worktree','effort'];
 function pickTarget(k){
   TARGET=k;
   drawTargets(PENDING||{isNew:true});
@@ -7408,7 +7454,8 @@ async function doLaunch(){
   const c=PENDING;if(!c)return;
   const [model,effort]=currentModelEffort();
   const opts={effort,model,
-    perm:chipVal($('#fPerm')),max_thinking:chipVal($('#fThink')),
+    perm:chipVal($('#fPerm')),sandbox:chipVal($('#fSand')),
+    max_thinking:chipVal($('#fThink')),
     subagent_model:chipVal($('#fSub')),
     name:c.isNew?$('#fName').value:'',worktree:c.isNew?chipVal($('#fWt')):'',
     // the tab decides both: a harness row names its home, a backend row names

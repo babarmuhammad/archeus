@@ -4241,8 +4241,8 @@ def api_harness_models(q, body):
     if d['id'] == _h.DEFAULT:
         # Claude Code's catalogue is live, priced and already in the boot
         # payload; sending a second copy would be two lists to keep in step.
-        return {'hid': d['id'], 'models': [], 'efforts': list(d['efforts']),
-                'catalogue': True, 'cards': [], 'presets': []}
+        return dict(_launch_vocab(d), models=[], catalogue=True,
+                    cards=[], presets=[])
     got = []
     if d.get('models'):
         try:
@@ -4278,8 +4278,25 @@ def api_harness_models(q, body):
     presets = [{'name': n, 'blurb': b, 'fields': f}
                for n, b, f in (d.get('presets') or ())
                if not known or (f.get('model') or '') in known]
-    return {'hid': d['id'], 'models': got, 'efforts': list(d['efforts']),
-            'catalogue': False, 'cards': cards, 'presets': presets}
+    return dict(_launch_vocab(d), models=got, catalogue=False,
+                cards=cards, presets=presets)
+
+
+def _launch_vocab(d):
+    """The scales one CLI's launch window offers, all of them the CLI's own.
+
+    A permission vocabulary can no more be translated between two CLIs than an
+    effort scale can: `plan` has no Codex equivalent and `untrusted` has no
+    Claude one, so the window was offering Claude Code's seven modes under
+    Codex and silently dropping the two that do not map. '' means "this
+    harness uses archeus's default list", which is Claude Code's own.
+    """
+    from . import config as _cfg
+    return {'hid': d['id'], 'efforts': list(d['efforts']),
+            'perms': list(d['perms'] or _cfg.PERMS),
+            'perm_labels': list(d['perm_labels'] or _cfg.PERM_LABELS),
+            'sandboxes': list(d['sandboxes']),
+            'sandbox_labels': list(d['sandbox_labels'])}
 
 def api_harness_setup(q, body):
     """Everything the Harnesses page's Setup tab shows for one CLI.

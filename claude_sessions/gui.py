@@ -814,7 +814,7 @@ def _api_launch(q, body):
     # posted it and this line dropped it — the session opened on Anthropic with
     # the picker having said otherwise. Same failure the bat launcher had for
     # its own reason (no field in the choice line); two paths, one symptom.
-    opts = {'effort': '', 'model': '', 'perm': '', 'name': '',
+    opts = {'effort': '', 'model': '', 'perm': '', 'sandbox': '', 'name': '',
             'worktree': '', 'agent': '', 'agents_json': '', 'cfgdir': '',
             'max_thinking': '', 'subagent_model': '',
             'provider': '', 'provider_model': ''}

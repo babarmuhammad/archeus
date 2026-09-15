@@ -776,3 +776,40 @@ def test_a_malformed_window_is_skipped_rather_than_charted(tmp_path):
     _rl_rollout(home, _rl_event({'window_minutes': 300},            # no percentage
                              _rl('nonsense', 300, '')))
     assert codex.rate_limits(home) == []
+
+
+# ── the launch window's two axes, in Codex's own vocabulary ──
+
+def test_codex_gets_its_own_approval_policy_not_claude_codes():
+    """The window offered `config.PERMS` to every CLI, so under Codex it listed
+    Claude Code's seven modes — of which `PERMS` maps two. Picking `plan` gave
+    you a session that ignored it, silently. Codex's own four come from
+    `codex --help` on the installed binary."""
+    args = codex.launch_argv('codex.exe', 'new', {'perm': 'on-request'}, '')
+    assert ['-a', 'on-request'] == args[args.index('-a'):args.index('-a') + 2]
+    # a Claude mode saved earlier still translates where the meaning matches
+    args = codex.launch_argv('codex.exe', 'new', {'perm': 'bypassPermissions'}, '')
+    assert 'never' in args
+    # and one that has NO Codex equivalent falls through to Codex's default
+    # rather than being approximated by something the user did not pick
+    for mode in ('plan', 'acceptEdits'):
+        assert '-a' not in codex.launch_argv('codex.exe', 'new', {'perm': mode}, '')
+
+
+def test_the_sandbox_is_a_second_axis_not_a_second_name_for_the_first():
+    args = codex.launch_argv('codex.exe', 'new',
+                             {'perm': 'never', 'sandbox': 'workspace-write'}, '')
+    assert ['-s', 'workspace-write'] == args[args.index('-s'):args.index('-s') + 2]
+    assert '-a' in args, 'the two are independent; one must not replace the other'
+    assert '-s' not in codex.launch_argv('codex.exe', 'new', {}, '')
+
+
+def test_a_projects_extra_directories_reach_codex():
+    """`codex.launch_argv` has read `opts['add_dirs']` since it was written and
+    nothing ever set it: `load_add_dirs` ran a hundred lines BELOW the harness
+    dispatch in `build_launch_command`, so a project's extra directories
+    applied under Claude Code and vanished under Codex without a word."""
+    args = codex.launch_argv('codex.exe', 'new',
+                             {'add_dirs': ['D:/lib', 'D:/shared']}, '')
+    assert args.count('--add-dir') == 2
+    assert 'D:/lib' in args and 'D:/shared' in args

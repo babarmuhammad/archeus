@@ -285,12 +285,22 @@ def launch_argv(exe, choice, opts, cwd):
     # over config.toml, which is the documented way to set it per invocation.
     if opts.get('effort'):
         args += ['-c', 'model_reasoning_effort=%s' % opts['effort']]
-    # Claude Code's permission modes and Codex's approval policies are two
-    # vocabularies over the same idea; `PERMS` maps only where the meaning
-    # actually matches, and anything else is left to Codex's own default.
-    perm = PERMS.get(opts.get('perm') or '')
+    # The launch window offers Codex's OWN policies now, so the common case is
+    # a value that is already one and passes through untouched. `PERMS` stays
+    # as the translation for the other direction: a project default or a bat
+    # choice-line saved while the row was Claude Code's still carries a Claude
+    # mode, and `plan`/`acceptEdits` have no Codex equivalent to map to — those
+    # fall through to Codex's own default rather than being approximated.
+    want = opts.get('perm') or ''
+    perm = want if want in _CODEX_PERMS else PERMS.get(want)
     if perm:
         args += ['-a', perm]
+    # The second axis, and the one a Codex user actually changes: `-a` says
+    # WHEN the model must ask, `-s` says what a command may touch when it does
+    # not. Claude Code folds both into the permission mode, which is why this
+    # has no counterpart there.
+    if opts.get('sandbox'):
+        args += ['-s', opts['sandbox']]
     for extra in (opts.get('add_dirs') or []):
         args += ['--add-dir', extra]
     if cwd:
@@ -304,10 +314,20 @@ def launch_argv(exe, choice, opts, cwd):
 #: same thing. `plan` and `acceptEdits` have no equivalent (Codex's sandbox is
 #: the axis it varies, not the edit gate), so they map to nothing and Codex
 #: keeps its own default rather than being handed the closest-looking value.
+#: Claude Code's permission mode -> Codex's approval policy, for the values
+#: where the meaning actually matches. `plan` and `acceptEdits` are deliberately
+#: absent: Codex has nothing that means either, and approximating them would
+#: silently run a session under a policy the user did not choose.
 PERMS = {
     'bypassPermissions': 'never',
     'default': 'on-request',
 }
+
+#: what `-a` itself accepts, from `codex --help` on the installed 0.142. Used to
+#: recognise a value that is ALREADY Codex's own and needs no translation.
+#: `on-failure` is accepted by the binary and not offered by archeus — its own
+#: help marks it DEPRECATED.
+_CODEX_PERMS = {'untrusted', 'on-failure', 'on-request', 'never'}
 
 
 def models(home):

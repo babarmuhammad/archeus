@@ -38,10 +38,30 @@ def test_a_capability_that_is_off_says_why():
 
 
 def test_an_unlisted_capability_is_supported():
-    """A descriptor lists what it CANNOT do. Claude Code lists nothing, so
-    nothing about it may read as missing."""
+    """A descriptor lists what it CANNOT do, so anything unlisted is supported.
+
+    Claude Code used to list NOTHING, and this asserted that directly. It is
+    the reference implementation for every surface archeus built against it,
+    which made "Claude Code can do everything" true by construction — until a
+    capability arrived that is genuinely another CLI's. `sandbox` is Codex's
+    second axis: `-a` decides when the model must ask and `-s` decides what a
+    command may touch when it does not, while Claude Code folds both into the
+    permission mode and has no separate level. Declaring that is more honest
+    than leaving the field on screen with nothing in it.
+
+    So the invariant is the one that was always the point — an unlisted key
+    reads as supported — rather than the count of what Claude Code lists.
+    """
+    listed = harnesses.HARNESSES['claude']['caps']
     for key in harnesses.CAPS:
+        if key in listed:
+            ok, why = harnesses.cap('claude', key)
+            assert not ok and why.strip(), key
+            continue
         assert harnesses.cap('claude', key) == (True, '')
+    assert set(listed) == {'sandbox'}, (
+        'Claude Code is the reference implementation: a NEW gap here is a '
+        'design decision, not a detail. Say why in the descriptor and here.')
 
 
 def test_asking_about_a_capability_that_does_not_exist_is_an_error():

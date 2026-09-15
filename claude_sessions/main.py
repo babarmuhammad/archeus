@@ -1055,6 +1055,19 @@ def build_launch_command(path, encoded_name, choice, opts):
     # PATH, the telemetry, the home. Everything BELOW it is Claude Code's flag
     # vocabulary, down to the last one — so a second harness gets its own short
     # builder rather than a branch per flag through a hundred and forty lines.
+    #
+    # The project's extra directories are archeus's too, and they were on the
+    # wrong side of it: `load_add_dirs` ran a hundred lines below this return,
+    # so `codex.launch_argv` read an `add_dirs` nothing ever set. A project's
+    # extra dirs applied under Claude Code and vanished under Codex, silently.
+    # The same argument covers the per-project system prompt, which pi takes as
+    # `--append-system-prompt`.
+    opts = dict(opts)
+    opts.setdefault('add_dirs',
+                    [x for x in load_add_dirs(proj_folder) if os.path.isdir(x)])
+    _sp = os.path.join(proj_folder, 'system-prompt.txt') if proj_folder else ''
+    if _sp and os.path.exists(_sp):
+        opts.setdefault('system_prompt_file', _sp)
     d = _harnesses.of(cfgdir)
     if d['id'] != _harnesses.DEFAULT:
         exe = _harnesses.exe(d['id'])
@@ -1156,12 +1169,11 @@ def build_launch_command(path, encoded_name, choice, opts):
             args += ['-w']
         elif opts['worktree']:
             args += ['-w', opts['worktree']]
-    sp_file = os.path.join(proj_folder, 'system-prompt.txt') if proj_folder else ''
-    if sp_file and os.path.exists(sp_file):
-        args += ['--system-prompt-file', sp_file]
-    add_dirs = [d for d in load_add_dirs(proj_folder) if os.path.isdir(d)]
-    if add_dirs:
-        args += ['--add-dir', *add_dirs]
+    # both resolved above the harness dispatch, so every CLI gets them
+    if opts.get('system_prompt_file'):
+        args += ['--system-prompt-file', opts['system_prompt_file']]
+    if opts.get('add_dirs'):
+        args += ['--add-dir', *opts['add_dirs']]
     # An opening message for an INTERACTIVE session — `claude "<text>"` submits
     # it as the first turn and leaves you in the session. It is last because it
     # is the CLI's positional argument, and it is the whole mechanism behind

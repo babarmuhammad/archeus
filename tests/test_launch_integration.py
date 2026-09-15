@@ -298,3 +298,41 @@ def test_v5_line_parses_without_economy(monkeypatch, tmp_path):
     assert (p, enc, choice) == ('C:/proj', 'ENC', 'new')
     assert got['max_thinking'] == '' and got['subagent_model'] == ''
     assert got['effort'] == 'high'
+
+
+# ── what a PROJECT configures reaches every CLI, not only Claude Code ──
+
+def test_a_projects_extra_dirs_and_prompt_survive_the_harness_dispatch(
+        monkeypatch, tmp_path):
+    """`build_launch_command` resolves the project's extra directories and its
+    system prompt from `proj_folder`, and both were resolved a hundred lines
+    BELOW the point where it hands off to a non-Claude builder. So
+    `codex.launch_argv` read an `add_dirs` nothing ever set, and a project's
+    configuration silently applied under one CLI and not the others.
+
+    Asserted at `build_launch_command` rather than in `codex.py`, because the
+    bug was never in the builder — it was which side of the dispatch the value
+    was computed on.
+    """
+    sb = Sandbox(monkeypatch, tmp_path)
+    enc = 'X--proj'
+    folder = sb.projects / enc
+    folder.mkdir(exist_ok=True)
+    extra = str(sb.root)                       # must exist: the filter drops it otherwise
+    (folder / 'add-dirs.txt').write_text(extra, encoding='utf-8')
+    (folder / 'system-prompt.txt').write_text('sp', encoding='utf-8')
+
+    seen = {}
+
+    def fake_argv(exe, choice, opts, cwd):
+        seen.update(opts)
+        return [exe]
+
+    monkeypatch.setattr(main_mod._harnesses, 'exe', lambda hid=None: 'codex.exe')
+    monkeypatch.setattr(main_mod._harnesses, 'impl',
+                        lambda key, hid=None: fake_argv)
+    monkeypatch.setattr(main_mod._harnesses, 'of',
+                        lambda cfgdir=None: main_mod._harnesses.descriptor('codex'))
+    main_mod.build_launch_command(str(sb.root), enc, 'new', dict(OPTS0))
+    assert seen.get('add_dirs') == [extra]
+    assert seen.get('system_prompt_file', '').endswith('system-prompt.txt')

@@ -295,8 +295,14 @@
           </div>
         </div>
         <div class="grid2">
-          <div class="fld" id="fPermWrap"><label>Permission mode</label><div class="chips" id="fPerm"></div>
+          <div class="fld" id="fPermWrap"><label id="fPermLbl">Permission mode</label><div class="chips" id="fPerm"></div>
             <div class="fsub" id="fPermHint"></div></div>
+          <!-- Codex's second axis, and the one its users actually change: `-a`
+               says WHEN the model must ask, `-s` says what a command may touch
+               when it does not. Claude Code folds both into the permission
+               mode, so this field is gated on the `sandbox` capability and is
+               absent — with the reason on the Setup page — everywhere else. -->
+          <div class="fld" id="fSandWrap"><label>Sandbox</label><div class="chips" id="fSand"></div></div>
           <div class="fld" id="fAcctWrap"><label>Account</label><div class="chips" id="fAcct"></div></div>
           <div class="fld"><label>Thinking cap</label><div class="chips" id="fThink"></div></div>
           <div class="fld"><label>Subagent model</label><div class="chips" id="fSub"></div></div>

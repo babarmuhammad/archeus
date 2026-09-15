@@ -288,6 +288,12 @@ def launch_argv(exe, choice, opts, cwd):
         args += ['--thinking', opts['effort']]
     if choice == 'new' and opts.get('name'):
         args += ['-n', opts['name']]
+    # the per-project system prompt, which archeus resolves above the harness
+    # dispatch. pi APPENDS rather than replacing — `--append-system-prompt` —
+    # which is the honest mapping: Claude Code's `--system-prompt-file` swaps
+    # the whole prompt out, and pi has no equivalent of that.
+    if opts.get('system_prompt_file'):
+        args += ['--append-system-prompt', opts['system_prompt_file']]
     if opts.get('prompt'):
         args += ['--', str(opts['prompt'])]
     return args
