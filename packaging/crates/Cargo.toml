@@ -6,7 +6,7 @@
 # happening twice.
 [package]
 name = "archeus"
-version = "2.4.0"
+version = "2.5.0"
 edition = "2021"
 rust-version = "1.70"
 license = "MIT"

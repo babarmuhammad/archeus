@@ -5,7 +5,7 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.5.0] - 2026-09-16
 
 ### Added
 
@@ -91,17 +91,66 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   manual links to those copies rather than carrying a second set, because two copies of a
   policy is two policies and the second one is wrong.
 
+- **A support page on the apex, at `/support`.** "Why is there a donate button on a free
+  MIT project" is a fair question and a footer link cannot answer it, so the footer now
+  points at a page that does: what a donation buys (nothing — no tier, no perk, no
+  sponsor-only build), what it does not change, and the ways of helping that cost nothing.
+  It does not restate the refund policy; it links to it. Still an ordinary hyperlink out
+  to Ko-fi — no widget, no iframe, no script — so nothing of theirs loads until you follow
+  it, which is what keeps the cookie policy able to say there is nothing to consent to.
+
 - **Ko-fi, on six surfaces, from one handle.** A badge and a License line in the README,
   `.github/FUNDING.yml` (which is what turns on GitHub's Sponsor button), a footer link,
   and funding metadata in `pyproject.toml`, the npm package and the gemspec. No widget and
   no Ko-fi JavaScript — an embed would have dragged cookie consent back in, which is
   exactly the surface those policy pages keep closed.
 
+- **Memory has an episodic layer, and a quiet project now forgets.** Alongside the facts
+  it already kept, memory records what each session was *like* — its tool errors, the last
+  error text, an outcome, the duration, the branch and the tokens — all read in the pass
+  that was already running, so nothing here spends a token. Retrieval is what makes it
+  worth having: `score_episodes` reuses the existing BM25 and IDF to answer "have I done
+  this before", ranks a session that ended badly slightly higher because the dead end is
+  the useful one, and renders LAST inside the same 600-token budget, so it is the first
+  thing dropped when the prompt is already rich in facts. The ring holds 50 with a 60-day
+  TTL.
+
+  Forgetting used to hang off a refresh — consolidation, lesson decay and invalidation
+  all ran only when something had changed, which is backwards, because facts go stale
+  precisely when nothing is happening. `forget_pass` runs on the scheduler's quiet branch
+  instead: episodes and lessons past their TTL, invalidations older than 30 days, and a
+  staleness flag on anything not re-confirmed in 90 days. Staleness is flagged and
+  counted, never evicted — a heuristic that quietly reshapes what recall returns is how a
+  memory system starts lying confidently.
+
+  Two retrieval defects went with it. Entities merged on **name alone**, so a workspace
+  holding several repos that each legitimately contain a `Claude Code` or a `memory
+  system` merged them across repositories — and the merge SUMS rank, so each fused entity
+  outranked every true fact. Merging is scoped by repo now. And where two descriptions
+  disagreed, the loser was silently overwritten by string length; a contradiction
+  auto-supersedes where the evidence is temporal and is **recorded** where it is not.
+
+- **Write a hook by hand, name it, and file it.** Installing a ready-made template, asking
+  Claude to generate one, or hand-editing Claude Code's `settings.json` were the three
+  ways in; writing one yourself is the fourth. A hook can also carry a name and a
+  category, which live in archeus's own settings and never in Claude Code's — that file
+  belongs to another program, and an unrecognised key in a hook entry risks its schema
+  refusing the lot. The identity is `(event, commands)`, the same one the account
+  provisioner already uses to decide whether two accounts hold the same hook.
+
 ### Changed
 
 - Removed duplicated definitions across the TUI, the scanners and the tooling: one
   display-width rule, one hidden-character class, one convention-overlap threshold, one
   snapshot reader, one render gate. No behaviour change.
+
+- **The event log no longer lets one repeated warning evict every real error.** Measured on
+  a real log: 1,589 events, of which 1,270 were a single slow-endpoint warning and 79 were
+  `claude exited 1` failures the ring had already pushed out. The dedupe window stops a
+  burst; nothing stopped a steady drip over two weeks. Rotation now thins what it keeps —
+  at most 40 lines of any one `(source, shape)`, newest first — which on that log keeps
+  every quota warning and every subprocess error at half the bytes. Applied only when the
+  log rotates, so the common append is still one `getsize` and no rewrite.
 
 - **Three controls are identifiable as controls.** The apex's secondary CTA, the copy
   button and the mobile menu summary were outlined in `--color-line` at 1.36:1 — under the
