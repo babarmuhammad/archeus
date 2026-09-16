@@ -6,6 +6,8 @@
  * means adding a Doc here; nothing else has to be kept in sync by hand.
  */
 
+import { SITE } from './site';
+
 export type Block =
   | { kind: 'p'; text: string }
   | { kind: 'ul'; items: string[] }
@@ -824,9 +826,80 @@ export const CONTRIBUTING: Doc = {
   ],
 };
 
+/* ── /support ──────────────────────────────────────────────────────────────── */
+
+/* A page rather than a bare link, because "why is there a donate button on a
+   free MIT project" is a fair question and a footer link cannot answer it. The
+   terms of a donation are NOT restated here — /legal/refunds owns them, and two
+   copies of a policy is two policies. This page links to it. */
+
+export const SUPPORT: Doc = {
+  slug: 'support',
+  title: 'Support archeus',
+  description:
+    'archeus is free, MIT-licensed and has no paid tier. If it saves you time you can put something in the tip jar on Ko-fi — it buys nothing, deliberately.',
+  h1: 'Support archeus',
+  intro:
+    'The tool is free and stays free. A donation is a thank-you, not a purchase — and the things that help most cost nothing at all.',
+  sections: [
+    {
+      id: 'donate',
+      heading: 'The tip jar',
+      lead:
+        'Donations go through Ko-fi. There is no widget on this page and no Ko-fi script runs here — the link below is an ordinary hyperlink, and nothing of theirs loads until you follow it.',
+      blocks: [
+        p(
+          'They buy nothing, and that is the design rather than an oversight. There is no tier, no perk, no member role, no private channel, no early access and no name in a credits file. Nothing about the software, the roadmap or the answer you get on an issue changes because you did or did not give.',
+        ),
+        p(
+          'The moment a donation buys something it stops being a gift and becomes a consumer supply contract, with a right of withdrawal and a real refund policy behind it. Keeping it a gift is what keeps this page three paragraphs long.',
+        ),
+        links([
+          { label: 'The project on Ko-fi', href: SITE.kofi, note: 'One-off or monthly, any amount.' },
+          {
+            label: 'Donations and refunds',
+            href: '/legal/refunds',
+            note: 'What a donation does and does not entitle you to, and what happens to one made by mistake.',
+          },
+        ]),
+      ],
+    },
+    {
+      id: 'free',
+      heading: 'What it does not change',
+      blocks: [
+        ul([
+          'The licence stays MIT, for everybody, with no sponsor-only build and no feature held back behind a tier.',
+          'There is no telemetry to switch off and no account to make: archeus runs entirely on your machine, against the CLI you already have.',
+          'There are no runtime dependencies to pay for. The cost of this project is time, not infrastructure.',
+        ]),
+      ],
+    },
+    {
+      id: 'free-help',
+      heading: 'Ways to help that cost nothing',
+      lead:
+        'Money is the least useful thing you can send. A project nobody can find is a project nobody uses, and a bug nobody reports is a bug that stays.',
+      blocks: [
+        ul([
+          'Report what broke. A transcript, the version and what you expected beats a star.',
+          'Say what is missing. The sharpest features here started as somebody describing a workflow that did not fit.',
+          'Tell somebody. The name is one vowel from a Pokémon and shares a crates.io entry with an unrelated Rust tool, so a post that names what this one actually does is worth more than it sounds.',
+          'Send a pull request. The setup is one clone and one command, and the test suite says what a change owes.',
+        ]),
+        links([
+          { label: 'Report a bug', href: `${SITE.repo}/issues/new` },
+          { label: 'Discussions', href: `${SITE.repo}/discussions` },
+          { label: 'Contributing', href: '/contributing' },
+        ]),
+      ],
+    },
+  ],
+};
+
 /** Every apex page, in the order /llms.txt lists them. */
 export const DOCS: Doc[] = [
-  HOME, FEATURES, DOWNLOAD, ARCHITECTURE, COMMUNITY, ABOUT, CONTRIBUTING,
+  HOME, FEATURES, DOWNLOAD, ARCHITECTURE, COMMUNITY, ABOUT, CONTRIBUTING, SUPPORT,
 ];
 
 /* ── plain text, for /llms-full.txt ─────────────────────────────────────────── */

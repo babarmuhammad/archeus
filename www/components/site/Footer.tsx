@@ -29,7 +29,9 @@ const COLUMNS: { title: string; links: { href: string; label: string; ext?: bool
       { href: '/community', label: 'Community' },
       { href: '/contributing', label: 'Contributing' },
       { href: '/code-of-conduct', label: 'Code of conduct' },
-      { href: SITE.kofi, label: 'Support on Ko-fi', ext: true },
+      /* The page, not the tip jar: "why is there a donate button on a free MIT
+         project" is a fair question, and a footer link cannot answer it. */
+      { href: '/support', label: 'Support' },
     ],
   },
   {
