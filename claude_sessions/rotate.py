@@ -217,6 +217,148 @@ def elect(current=None):
     return cur
 
 
+def recently_offered(sid):
+    """True while this session's last offer is still inside the cool-down.
+
+    The stamp itself lives in `quota`, beside `_decided`, whose comment already
+    describes exactly this — one answer covers a burst. It is also why this
+    module still writes nothing: `test_rotation_never_touches_a_credential`
+    keeps rotation free of any store at all, and a cool-down is not a good
+    enough reason to be the first exception to that.
+    """
+    from . import quota
+    return quota.offered_recently(sid)
+
+
+def offer(path, transcript, sid, why=''):
+    """What archeus does when the session you are IN has run out. (acted, msg).
+
+    ONE implementation for both triggers, because `ask` and `auto` are a policy
+    and a policy with two implementations is two policies. The statusline sees
+    the window fill BEFORE it is spent; `limit_hook.py` is told by Claude Code
+    that a turn has already died on it. Neither is a better moment than the
+    other and both want exactly this.
+
+    `off` does nothing at all — including no notification, which is what the
+    user asked for by turning it off.
+    """
+    if not enabled():
+        return False, ''
+    to = elect()
+    if _norm(to) == _norm(_c.resolve_config_dir(None)):
+        _log('%s is out and nothing else has headroom' % name_of(None), why)
+        return False, 'no other account has headroom'
+    if recently_offered(sid):
+        return False, 'already offered'
+    from . import quota
+    quota.mark_offered(sid)
+    name = name_of(to)
+    if not hands_off():
+        # `ask` cannot open a window, so the whole of it is reaching the user
+        # somewhere they are actually looking. A terminal that has just refused
+        # a turn is not that place: Claude Code discards a StopFailure hook's
+        # output entirely, and a statusline is a row you have stopped reading by
+        # the time it matters.
+        _notify('%s has run out' % name_of(None),
+                'Continue on %s — the rotation card has the button.' % name)
+        _log('%s is out — offered %s' % (name_of(None), name), why)
+        return False, 'offered %s' % name
+    ok, err = continue_session(path, transcript, to)
+    note(None, to, why)
+    _notify('Continued on %s' % name,
+            'archeus opened a successor session under %s.' % name if ok
+            else 'Could not open it: %s' % (err or '?'))
+    return bool(ok), (err or ('continued on %s' % name))
+
+
+def _log(msg, why=''):
+    """One line in archeus's own event log.
+
+    Here rather than in `limit_hook.py`: a hook is on a per-turn path and every
+    writer to that log is an archeus-owned process (`test_no_hook_writes_an_event`).
+    `note()` already covers the rotation itself; this covers the two outcomes
+    that are NOT a rotation, which are the ones somebody asking "why did nothing
+    happen" actually needs.
+    """
+    try:
+        from . import events
+        return events.record('rotate', msg, level='warn', detail=str(why or '')[:200])
+    except Exception:
+        return False
+
+
+def _notify(title, message):
+    try:
+        from . import notify
+        if notify.enabled():
+            notify.send(title, message)
+    except Exception:
+        pass
+
+
+def continue_session(path, transcript, to=None, encoded=None):
+    """Open a successor session under another account, continuing `transcript`.
+
+    The one thing a running session cannot do for itself. Claude Code resumes by
+    ABSOLUTE TRANSCRIPT PATH — by session id it searches the ACTIVE config dir
+    and answers "No conversation found" for another account's session — and
+    `--fork-session` is not optional, or the successor appends to a file that
+    lives in the account it just left. Both of those are `main`'s `fork:` choice,
+    which is why this builds no argv of its own: `gui.launch_session` applies the
+    project's model, permission mode, system prompt and extra directories too,
+    and a second copy of that decoration is a second thing to keep in step.
+
+    Returns (ok, error).
+    """
+    from . import gui
+    from .paths import encode_component
+    to = _c.resolve_config_dir(to or elect())
+    if not transcript or not os.path.isfile(transcript):
+        return False, 'no transcript to continue'
+    opts = dict(_launch_opts(), cfgdir=to)
+    return gui.launch_session(path, encoded or encode_component(os.path.abspath(path)),
+                              'fork:' + transcript, opts)
+
+
+def _launch_opts():
+    """The empty launch options `build_launch_command` indexes directly.
+
+    Read out of `main.parse_choice_line` rather than restated: it indexes
+    `opts['effort']` and five more with a bare subscript, so a dict that is
+    merely "close enough" is a KeyError at spawn time and nowhere else.
+    """
+    from .main import parse_choice_line
+    return parse_choice_line('')[3]
+
+
+#: the hook that makes rotation reach a session you are SITTING IN. Everything
+#: else here runs at a spawn point archeus owns; a live Claude Code session is
+#: not one, and its limit is announced by Claude Code and nobody else.
+def ensure_hook():
+    """Install the StopFailure hook while rotation is on, remove it when off.
+
+    No switch of its own: the mode chip already says how much archeus does for
+    you, and a second toggle for the mechanism that implements it is a second
+    thing to get out of step with it. Fans out across accounts, because the hook
+    is a property of the USER — the account it must fire in is by definition the
+    one that ran out.
+    """
+    try:
+        from . import hooks
+        fn = hooks.install_limit_hook if enabled() else hooks.uninstall_limit_hook
+        return hooks.across_accounts(fn)
+    except Exception:
+        return {}
+
+
+def hook_installed():
+    try:
+        from . import hooks
+        return hooks.across_accounts(hooks.limit_hook_installed)
+    except Exception:
+        return {}
+
+
 def note(frm, to, why=''):
     """Record one rotation in archeus's own event log.
 
@@ -264,6 +406,9 @@ def state():
     nxt = elect()
     return {'threshold': threshold(), 'mode': mode(),
             'hands_off': hands_off(),
+            #: which accounts carry the StopFailure hook. A policy that cannot
+            #: see the event it exists for is worth saying out loud.
+            'hook': hook_installed(),
             #: the OTHER quota switch, shown beside this one because it is the
             #: one question this feature does not answer: what archeus does
             #: when its OWN call meets a full account (prompt | auto | off).

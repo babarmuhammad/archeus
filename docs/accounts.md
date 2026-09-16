@@ -44,6 +44,29 @@ Two more controls sit beside the mode:
 
 Every switch is written to the [Logs](tui.md#logs) page, and the last few show in the card.
 
+### What notices, and when
+
+Rotation reaches every point where archeus itself starts a Claude process. A session you are
+already **sitting in** is not one of those — archeus is not in it, and only Claude Code knows
+its window has filled. Two things watch for you, and neither polls:
+
+- **The status line**, on every turn. Claude Code hands it this account's own 5-hour and
+  weekly percentages, so the moment one crosses *Switch away at* the row says
+  `96% — continue on work2`, or opens the successor by itself in **Fully automatic**. This is
+  the half that fires *before* you are stuck: by the time a turn is refused the conversation
+  has already stopped.
+- **A `StopFailure` hook**, when a turn does end on a limit. It marks the account spent for
+  every archeus process on the machine — so a status line, a running GUI and archeus's own
+  Claude calls all stop choosing it — and then applies your mode.
+
+The hook is installed and removed by the **mode** setting; there is no separate switch for it,
+and the rotation card says which logins carry it. With rotation **Off**, neither fires.
+
+An offer is not repeated for ten minutes, per session. Both triggers fire repeatedly by
+nature — the status line runs every turn, and a refused turn is often retried — and without
+that window, *Semi-automatic* would be a notification a minute and *Fully automatic* a window
+a minute.
+
 ### A running session cannot change account
 
 Claude Code reads `CLAUDE_CONFIG_DIR` once, when it starts. There is no such thing as moving

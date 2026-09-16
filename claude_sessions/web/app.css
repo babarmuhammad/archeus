@@ -674,6 +674,7 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
     "i1       i2       i3       i4"
     "acct     acct     chart    chart"
     "b2       b2       b2       b2"
+    "flow     flow     flow     flow"
     "continue continue recent   recent"
     "b3       b3       b3       b3"
     "projects projects projects projects"}
@@ -696,6 +697,7 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
    goes under the footer, not between the gauge and its label. */
 .d-i1,.d-i2,.d-i3,.d-i4{align-self:stretch}
 .d-acct{grid-area:acct}
+.d-flow{grid-area:flow}
 .d-chart{grid-area:chart}
 .d-projects{grid-area:projects}
 .d-continue{grid-area:continue}
@@ -713,10 +715,10 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
    moved the content edge by up to 240px with no @media noticing. */
 @container page (max-width:950px){.dash{grid-template-columns:repeat(2,1fr);
   grid-template-areas:"b1 b1""i1 i2""i3 i4""acct acct""chart chart"
-    "b2 b2""continue continue""recent recent""b3 b3""projects projects"}}
+    "b2 b2""flow flow""continue continue""recent recent""b3 b3""projects projects"}}
 @container page (max-width:620px){.dash{grid-template-columns:1fr;
   grid-template-areas:"b1""i1""i2""i3""i4""acct""chart"
-    "b2""continue""recent""b3""projects"}}
+    "b2""flow""continue""recent""b3""projects"}}
 
 /* running-job list under the activity gauge. :empty matters — an idle workspace
    renders no rows, and the container's own margin was enough to make the activity
@@ -865,6 +867,26 @@ html.mo-off .tchart .providerbg{animation:none}
 .hs{color:var(--dim);font-size:13.5px;margin-top:1px}
 .hrow{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line)}
 .hrow .info{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ── a live session row ──
+   Five things compete for one line: who, what it is doing, the shape of what it
+   just did, how big it is, and the way in. The identity block and the strip are
+   the two that may shrink, and the strip has a floor because a track narrower
+   than its own ticks is a smear — below it the row wraps instead, which is why
+   this is `flex-wrap` and not a breakpoint (a dashboard card is 300-1200px wide
+   depending on the window AND the dragged sidebar, so no @media can see it). */
+.llist .lrow{flex-wrap:wrap;row-gap:6px}
+.linfo{flex:2 1 180px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ltitle{color:var(--dim);margin-left:6px}
+.ltrail{flex:3 1 220px;min-width:140px}
+/* The strip is the one instrument with no readout and no label, so it does not
+   need .iwrap's column layout — it needs to BE the height of a row. */
+.ltrail .iwrap{height:26px;width:100%}
+.ltrail .inst{height:26px;width:100%}
+.lbusy{display:inline-flex;align-items:center;gap:4px;color:var(--warn);
+  font-family:var(--mono);font-size:11.5px;white-space:nowrap;max-width:190px;
+  overflow:hidden;text-overflow:ellipsis}
+.lbusy svg{width:13px;height:13px;flex:none}
+.lidle{color:var(--dim2);font-size:11.5px;white-space:nowrap}
 /* An offer, not an installed hook — see the note at `tmplRow`. Lighter than
    `.hrow` on purpose: nothing here is live yet. */
 .trow{display:flex;align-items:center;gap:10px;padding:5px 0}

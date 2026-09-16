@@ -315,6 +315,11 @@ def _provider_saved(usage_by_model):
 #: flickers to zero mid-conversation, which is the failure it exists to avoid.
 LIVE_WINDOW = 600
 
+#: How many live sessions are named. `total` stays a true count; this is the
+#: list a surface can actually draw, and a screen that shows twenty strips is
+#: not a glance. Newest first, so the cap drops the stalest.
+LIVE_MAX = 8
+
 
 def assemble_breakdown(entries, days=14, silent=True, recent=6):
     """Everything the home dashboard shows, from ONE transcript scan:
@@ -354,6 +359,7 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
     now_ts = now.timestamp()
     hour_b = [0] * 24                       # sessions touched, per hour, last 24h
     live_by_acct = {}                       # sessions touched within LIVE_WINDOW
+    live_b = []                             # …and which ones they are
 
     for item in iter_all_sessions(entries, 'DASHBOARD', silent=silent):
         if item is None:
@@ -384,10 +390,11 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
         # building, title extraction) land in the same transcript store and are
         # always a couple of turns — they are not sessions the user resumes
         if stats.get('count', 0) > 3:
-            recent_b.append({'sid': _sid, 'path': ppath, 'encoded': enc, 'cfgdir': cfgdir,
-                             'account': acct, 'mtime': mtime, 'msgs': stats.get('count', 0),
-                             'title': stats.get('title') or _sid[:8],
-                             'provider': _used_provider(stats)})
+            row = {'sid': _sid, 'path': ppath, 'encoded': enc, 'cfgdir': cfgdir,
+                   'account': acct, 'mtime': mtime, 'msgs': stats.get('count', 0),
+                   'title': stats.get('title') or _sid[:8],
+                   'provider': _used_provider(stats)}
+            recent_b.append(row)
             # same `count > 3` gate as above, and for the same reason: archeus's
             # own headless one-shots (lesson distilling, graph building, title
             # extraction) land in this transcript store and would otherwise read
@@ -397,6 +404,10 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
                 hour_b[min(23, int(age // 3600))] += 1
             if 0 <= age < LIVE_WINDOW:
                 live_by_acct[acct] = live_by_acct.get(acct, 0) + 1
+                # the same row, under the same condition. The count and the list
+                # cannot disagree about what "live" means because there is one
+                # test for it — and the dashboard asks BOTH questions.
+                live_b.append(row)
 
         day = _day_of(stats, mtime)
         if day not in day_b:
@@ -455,6 +466,8 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
             'hours': list(reversed(hour_b)),
             'live': {'total': sum(live_by_acct.values()),
                      'by_account': live_by_acct,
+                     'sessions': sorted(live_b, key=lambda r: r['mtime'],
+                                        reverse=True)[:LIVE_MAX],
                      'window': LIVE_WINDOW},
             'totals': {'tokens': sum(r['tokens'] for r in day_rows),
                        'cost': round(estimate_cost(all_ubm)[0], 2),

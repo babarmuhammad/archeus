@@ -103,6 +103,121 @@ def _norm(d):
     return os.path.normcase(os.path.abspath(d or ''))
 
 
+#: `_observed` lives in ONE process, and the process that meets a limit is
+#: usually not the one that has to act on it: Claude Code refuses a turn in your
+#: terminal, and the GUI polling from its own process goes on offering that
+#: account work for the rest of the window. Anything that saw a refusal writes
+#: it here and everything reads it, so an observation outlives the observer.
+#:
+#: Beside the settings file for the same reason that one is there: a limit
+#: belongs to the ACCOUNT, and the file is keyed by config dir, so it must not
+#: itself live inside whichever account happens to be active.
+#: A FUNCTION, not a constant: `_c.settings_file` is a module attribute the
+#: test sandbox (and a future settings move) rebinds, and a constant derived
+#: from mutable state is a cache with no invalidation.
+def latch_file():
+    return os.path.join(os.path.dirname(_c.settings_file), 'archeus-limits.json')
+
+#: `reason()` is called once per account inside `headroom()` and once per
+#: spawned subprocess, so the file is read at most this often. Short enough that
+#: a hook's write is seen by a GUI already running, long enough that a burst of
+#: preflights is one read.
+_LATCH_TTL = 2.0
+_latch = (0.0, {})
+
+
+def _latch_read():
+    global _latch
+    now = time.time()
+    if now - _latch[0] < _LATCH_TTL:
+        return _latch[1]
+    try:
+        from . import jsonstore
+        d = jsonstore.load(latch_file(), default={}, expect=dict)
+    except Exception:
+        d = {}
+    _latch = (now, d if isinstance(d, dict) else {})
+    return _latch[1]
+
+
+def _latch_get(key):
+    """(until_ts, was_a_window_limit) for one account, (0, False) when clean."""
+    e = _latch_read().get(key)
+    if not isinstance(e, dict):
+        return (0.0, False)
+    try:
+        return (float(e.get('until') or 0), bool(e.get('window')))
+    except (TypeError, ValueError):
+        return (0.0, False)
+
+
+#: `_decided`, but across processes and keyed by SESSION rather than account.
+#: Both triggers that can act on a live session fire repeatedly by nature — the
+#: statusline runs on every turn and Claude Code re-refuses every retry — so
+#: without this, an offer is a notification a minute and a hand-off is a
+#: terminal window a minute.
+#:
+#: A cool-down rather than a once-per-session flag, deliberately: Claude Code
+#: CANCELS a statusline that is still running when the next update arrives, so
+#: a hand-off can be lost between the stamp and the spawn. Ten minutes later the
+#: account is still full and the next turn tries again, which a permanent flag
+#: would have made impossible.
+OFFER_COOLDOWN = 600
+
+
+def _offer_stamp(sid):
+    from . import store
+    root = store.temp_root() or _c._TEMP
+    return os.path.join(root, 'archeus-rotate-%s.stamp' % (str(sid or 'nosid'))[:64])
+
+
+def offered_recently(sid):
+    """True while this session's last offer is still inside the cool-down."""
+    try:
+        return time.time() - os.path.getmtime(_offer_stamp(sid)) < OFFER_COOLDOWN
+    except OSError:
+        return False
+
+
+def mark_offered(sid):
+    try:
+        _c.write_atomic(_offer_stamp(sid), '')
+        return True
+    except Exception:
+        return False
+
+
+def note_limit(cfgdir=None, window=True, ttl=None):
+    """Record that THIS account was refused for quota, for every process.
+
+    Public because the observer is not always a subprocess archeus spawned:
+    `limit_hook.py` is told by Claude Code itself that a turn ended in
+    `rate_limit`, and that is the observation that matters most — it is the one
+    a live session produces, which nothing else here can see.
+    """
+    global _latch
+    key = _key(cfgdir)
+    until = time.time() + (ttl or _OBSERVED_TTL)
+    _observed[key] = until
+    if window:
+        _window_observed[key] = until
+    try:
+        from . import jsonstore
+        d = dict(_latch_read())
+        # expired entries are dropped on the way past rather than by a sweep:
+        # this file is written only when an account is refused, so a pass here
+        # is the only pass it will ever get.
+        now = time.time()
+        d = {k: v for k, v in d.items()
+             if isinstance(v, dict) and (v.get('until') or 0) > now}
+        d[key] = {'until': until, 'window': bool(window)}
+        _c.write_json_atomic(latch_file(), d)
+        _latch = (0.0, {})          # our own next read must see the write
+        return True
+    except Exception:
+        return False
+
+
 def _key(cfgdir=None):
     return _norm(_c.resolve_config_dir(cfgdir))
 
@@ -183,6 +298,8 @@ def reason(cfgdir=None):
     know, which is the same answer)."""
     if _observed.get(_key(cfgdir), 0) > time.time():
         return 'account rate-limited by Claude'
+    if _latch_get(_key(cfgdir))[0] > time.time():
+        return 'account rate-limited by Claude'
     pct, label, reset = worst_window(cfgdir)
     if pct < LIMIT_PCT:
         return ''
@@ -259,7 +376,11 @@ def is_window_limit(text):
 
 def window_limited(cfgdir=None):
     """True when this account was recently refused for a full plan window."""
-    return _window_observed.get(_key(cfgdir), 0) > time.time()
+    key = _key(cfgdir)
+    if _window_observed.get(key, 0) > time.time():
+        return True
+    until, window = _latch_get(key)
+    return bool(window and until > time.time())
 
 
 def note_failure(args, env, text):
@@ -277,19 +398,44 @@ def note_failure(args, env, text):
     d = of_argv(args)
     if d is not None and d['id'] != DEFAULT:
         return
-    key = _key(_cfgdir_of(args, env))
-    _observed[key] = time.time() + _OBSERVED_TTL
-    if is_window_limit(text):
-        _window_observed[key] = time.time() + _OBSERVED_TTL
+    note_limit(_cfgdir_of(args, env), window=is_window_limit(text))
 
 
 def forget(cfgdir=None):
     """Drop the cached decision and observation for an account (tests, and the
     settings screen after the user changes the policy)."""
+    global _latch
     k = _key(cfgdir)
     _observed.pop(k, None)
     _decided.pop(k, None)
     _window_observed.pop(k, None)
+    try:
+        d = dict(_latch_read())
+        if d.pop(k, None) is not None:
+            _c.write_json_atomic(latch_file(), d)
+        _latch = (0.0, {})
+    except Exception:
+        pass
+
+
+def reset():
+    """Forget EVERY account, in memory and on disk.
+
+    The observation now has two homes — a dict per process and one file every
+    process reads — and two ways to clear one fact is one way to leave half of
+    it behind. Exactly that happened the moment the file appeared: three test
+    fixtures clearing the dicts by hand went on passing while the latched file
+    leaked an account from one test into the next.
+    """
+    global _latch
+    _observed.clear()
+    _decided.clear()
+    _window_observed.clear()
+    _latch = (0.0, {})
+    try:
+        os.remove(latch_file())
+    except OSError:
+        pass
 
 
 def preflight(args, env=None):

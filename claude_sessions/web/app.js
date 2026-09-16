@@ -1392,6 +1392,9 @@ function drawHome(){
       <div class="tchart" id="dashChart">${MO.skel(2,40)}</div></section>
 
     <div class="dband d-b2"><span>Work</span></div>
+    <section class="card d-flow spot"><div class="lbl">Live sessions
+      <span id="dashLiveN" style="color:var(--dim2)"></span></div>
+      <div class="dlist llist" id="dashLive">${MO.skel(2)}</div></section>
     <section class="card d-continue spot lift" id="dashContinue">${continueTileHtml(ST.recent||[])}</section>
     <section class="card d-recent spot"><div class="lbl">Recent sessions</div>
       <div class="fld"><input id="hqSearch" placeholder="Search every session…"></div>
@@ -1529,9 +1532,15 @@ async function refreshDashboard(){
   if(DASH_ABORT)DASH_ABORT.abort();
   const ac=DASH_ABORT=new AbortController();
   let d=null,plan=null;
+  let live=null;
+  // Three fetches, but the live strip is caught SEPARATELY: Promise.all rejects
+  // as a whole, so folding it into the pair below would let one endpoint blank
+  // the entire dashboard.
+  const liveP=api('/api/flow/live',{signal:ac.signal}).catch(()=>null);
   try{[d,plan]=await Promise.all([api('/api/dashboard',{signal:ac.signal}),
                                  api('/api/usage/plan',{signal:ac.signal})]);}
   catch(e){if(e.name==='AbortError')return;d=null;}
+  live=await liveP;
   // The poll outlives the page. Same lesson as NAV_ID and paint(), in a timer
   // rather than a renderer: everything below writes into elements that only
   // exist on home, and navigating away while the fetch was in flight left it
@@ -1567,6 +1576,7 @@ async function refreshDashboard(){
       setV($('#dashContinue'),continueTileHtml(ST.recent));
     DASH_RECENT=d.recent||[];
   }
+  if(live)renderLive(live);
   if(plan){
     setV($('#dashAcct'),(plan.accounts||[]).map(acctCard).join('')
       ||'<div style="color:var(--dim2)">no accounts configured</div>');
@@ -1876,6 +1886,89 @@ function recentRowHtml(r){
     <button class="btn sm" data-sid="${esc(r.sid)}">Resume</button>`;
 }
 const PROVIDER_TAG='<span class="tag acct" style="color:var(--violet)" title="Ran on OmniRoute (free-tier model)">provider</span>';
+/* ── live sessions, as flow ──
+   One row per session being worked in right now: who is on it, what it is doing
+   this second, the shape of what it has just done, and a way into the full
+   graph. The strip is an instrument (`trail`), so it is fed from this fetch and
+   never issues one of its own.
+
+   Deliberately a LIST and not N graphs on one canvas. zoetrope — the tool this
+   adopts — was sent exactly that (a fleet of tailers drawing every live session
+   at once) and its maintainer declined it: several trees do not fit at a
+   readable size, so you end up zoomed into one anyway, while the fleet pays for
+   the parse continuously. A row that says what a session is doing, and opens
+   the real graph on click, is the part that survives that objection. */
+/* Only the STABLE half of a row is markup. What a session is doing and how big
+   it has got change on every poll, and MO.patch rewrites a row's innerHTML the
+   moment its markup differs — which would destroy and re-create the strip's
+   canvas each time, re-mounting the instrument and replaying its wipe. So the
+   volatile fields are written into placeholders afterwards, and only when they
+   actually changed: the same rule the job modal already follows. */
+/* ONE writer for the card, called by the dashboard poll and by nothing else in
+   production — but callable, which is what lets `tools/smoke_gui.py` drive it
+   with real rows. The stub workspace has no session recent enough to be live, so
+   a check that only looked at what the server returned was asserting on the
+   empty state and would have passed with the strips wired to nothing. */
+function renderLive(live){
+  const host=$('#dashLive');if(!host)return;
+  const rows=live.sessions||[];
+  const here=new Set(rows.map(s=>s.sid));
+  for(const old of DASH_LIVE)if(!here.has(old.sid))INST.drop('live:'+old.sid);
+  DASH_LIVE=rows;
+  setV($('#dashLiveN'),rows.length?`· ${live.total||rows.length}`:'');
+  if(rows.length){
+    /* `setV` caches the last html it wrote on the element, and `MO.patch`
+       replaces the children without touching that cache. So a card that went
+       empty -> rows -> empty saw `setV` compare the new empty state against the
+       empty state it wrote BEFORE the rows, decide nothing had changed, and
+       leave the rows on screen forever. Dropping the cache here is the fix; it
+       is the same trap as the job modal's `__plLabel`, in the other direction. */
+    host.__v=null;
+    MO.patch(host,rows,s=>s.sid,liveRowHtml,'hrow lrow');
+    // MO.patch stamps the key it reconciled by, so the volatile write finds its
+    // own row without a second selector to keep in step
+    const by={};for(const el of host.children)by[el.__mokey]=el;
+    for(const s of rows)if(by[s.sid])liveRowUpdate(by[s.sid],s);
+    // mount after the patch: a row created by it carries a canvas nothing has
+    // registered yet, and a feed pushed before mount is dropped
+    INST.mount(host);
+    for(const s of rows)INST.set('live:'+s.sid,{events:s.events||[],colors:live.colors||{}});
+  }
+  else setV(host,`<div class="empty">Nothing running. A session appears here while it is being worked in — within ${Math.round((live.window||600)/60)} minutes of its last turn.</div>`);
+  if(!host.__bound){host.__bound=1;
+    host.addEventListener('click',ev=>{
+      const b=ev.target.closest('button[data-flow]');
+      if(b)dashFlowSid(b.dataset.flow);});}
+}
+function liveRowHtml(s){
+  return `<div class="linfo"><b>${esc(s.project)}</b>
+      <span class="ltitle">${esc(s.title)}</span></div>
+    <span class="dot" title="${esc(s.account)}" style="background:${acctColor(s.account)}"></span>
+    ${s.harness&&s.harness!=='claude'?`<span class="tag">${esc(s.harness)}</span>`:''}
+    <span class="lstate"></span>
+    <div class="ltrail">${INST.html('trail','live:'+s.sid,{noread:1,
+      title:'Recent events — prompt, model turn, tool call, result, error. Click through for the full flow graph.'})}</div>
+    <span class="num"></span>
+    <button class="btn sm" data-flow="${esc(s.sid)}">${ic('share')} Flow ${ic('ext')}</button>`;
+}
+function liveRowUpdate(row,s){
+  const state=row.querySelector('.lstate'),num=row.querySelector('.num');
+  const html=s.busy
+    ?`<span class="lbusy" title="An unanswered call — this is what the session is waiting on">${ic('bolt')}${esc(s.busy)}</span>`
+    :`<span class="lidle">idle ${esc(s.age||'')}</span>`;
+  if(state&&state.__v!==html){state.__v=html;state.innerHTML=html;}
+  const n=`${s.msgs} msgs`;
+  if(num&&num.__v!==n){num.__v=n;num.textContent=n;}
+}
+let DASH_LIVE=[];
+/* Same reason dashResumeSid keys by id: the live list reorders on every poll,
+   so an index captured at render time opens whichever session has since taken
+   that row. */
+function dashFlowSid(sid){
+  const s=DASH_LIVE.find(x=>x.sid===sid);if(!s)return;
+  window.open('/flow?'+qs({enc:s.encoded,sid:s.sid,cfgdir:s.cfgdir,
+    project:s.project,k:CK}),'_blank');
+}
 let DASH_RECENT=[];
 /* keyed by session id, not row index: the recent list reorders between polls, so
    an index captured at render time could resume a different session than the one
@@ -5876,6 +5969,7 @@ async function drawRotate(){
     <button class="btn pri" onclick="rotSave()">Save rotation</button>
     <p style="font-size:12.5px;color:var(--dim);margin:10px 0 4px">Now on <b>${esc(d.live_name)}</b>${
       d.rotating?` — next work goes to <b>${esc(d.next_name)}</b>`:' — nothing to switch to'}</p>
+    ${rotTrigger(d)}
     <table class="tbl"><tr><th>account</th><th>used</th><th>window</th><th>state</th><th></th></tr>
       ${rows}</table>
     ${evs?`<h4 style="margin:12px 0 4px;font-size:13px">Recent switches</h4>${evs}`
@@ -5887,6 +5981,23 @@ async function drawRotate(){
   if(n0&&$('#rotModeNote'))$('#rotModeNote').textContent=n0[2];
   chipsFill($('#rotHq'),['prompt','auto','off'],
     ['Ask me','Switch silently','Run it anyway'],d.headless_quota);
+}
+/* Whether the thing that NOTICES a full account is actually installed.
+   A running Claude Code session cannot be moved and archeus is not in it, so
+   rotation reaches a live session through one Claude Code hook and nothing
+   else — a policy whose trigger is missing is a policy that never fires, and
+   that was the whole bug. No toggle: the mode chip above installs and removes
+   it, so this is a report, not a second switch. */
+function rotTrigger(d){
+  if(d.mode==='off')return '<p style="font-size:12.5px;color:var(--dim)">Rotation is off — archeus will not change the account for you.</p>';
+  const h=d.hook||{},names=Object.keys(h),miss=names.filter(n=>!h[n]);
+  if(!names.length)return '';
+  return miss.length
+    ? `<p style="font-size:12.5px;color:var(--warn)">The limit trigger is missing on ${
+        miss.map(esc).join(', ')} — save rotation to install it.</p>`
+    : `<p style="font-size:12.5px;color:var(--dim)">A session that hits its limit ${
+        d.hands_off?'moves to the next account by itself':'offers you the move'} — on all ${
+        names.length} login${names.length>1?'s':''}.</p>`;
 }
 /* The per-account opt-out is a LIST of config dirs, so it is rebuilt from the
    checkboxes rather than patched: a toggle that appends without removing is how

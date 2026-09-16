@@ -268,6 +268,69 @@ def _limit_bits(data):
     return out
 
 
+#: no configured switch threshold can be lower than this (`rotate._MIN_THRESHOLD`),
+#: so below it nothing here can possibly have an opinion — and the check costs
+#: not one import. Stated as a literal rather than imported for exactly that
+#: reason, and asserted against the real constant by the tests.
+_ROTATE_FLOOR = 50.0
+
+
+def _live_pct(data):
+    """The fullest ACCOUNT-WIDE window of the account running THIS session.
+
+    The freshest reading of it anywhere in archeus, and the cheapest: the usage
+    poller costs an OAuth request on a background thread and is up to 300s
+    stale, while Claude Code puts the same numbers on stdin every turn for
+    nothing. `spend_limit` is deliberately not one of them — it is a gateway's
+    budget, not a plan window, and it can read above 100.
+    """
+    worst = 0.0
+    rl = data.get('rate_limits') or {}
+    for key in ('five_hour', 'seven_day'):
+        pct = (rl.get(key) or {}).get('used_percentage')
+        if isinstance(pct, (int, float)) and not isinstance(pct, bool):
+            worst = max(worst, float(pct))
+    return worst
+
+
+def _rotate_bit(data):
+    """Say — and in `auto` do — something BEFORE the window actually runs out.
+
+    This is the half of rotation that `limit_hook.py` cannot be: by the time
+    Claude Code refuses a turn the conversation has already stopped. The
+    statusline sees the same account's percentage climbing on every turn, for
+    free, and the user's switch threshold is the line it is climbing towards.
+
+    Both the cost rules of this module hold. Below the floor it imports nothing
+    at all; above it, the only settings read is one `all_config_dirs` already
+    does for `_account_bit`. And the hand-off itself is behind
+    `rotate.offer`'s cool-down, so a statusline that Claude Code cancels and
+    re-runs three times in a turn is still one window.
+    """
+    try:
+        pct = _live_pct(data)
+        if pct < _ROTATE_FLOOR:
+            return ''
+        from . import rotate
+        if not rotate.enabled() or pct < rotate.threshold():
+            return ''
+        to = rotate.elect()
+        if rotate._norm(to) == rotate._norm(_c.resolve_config_dir(None)):
+            return f'{_c.C_ERR}{int(pct)}% — no account with headroom{_c.C_RESET}'
+        name = rotate.name_of(to)
+        # ACTING is `auto` only, and it is safe to be here: `offer` writes its
+        # stamp before it spawns, so the worst a cancelled statusline can do is
+        # lose one hand-off and retry ten minutes later.
+        if rotate.hands_off() and not rotate.recently_offered(data.get('session_id')):
+            rotate.offer(data.get('cwd') or '', data.get('transcript_path') or '',
+                         str(data.get('session_id') or ''),
+                         why='%d%% of the window' % int(pct))
+            return f'{_c.C_ERR}{int(pct)}% — moving to {name}{_c.C_RESET}'
+        return f'{_c.C_ERR}{int(pct)}% — continue on {name}{_c.C_RESET}'
+    except Exception:
+        return ''
+
+
 def _mode_bit(data):
     """Anything unusual about how this session is configured. Empty on a normal
     session, which is the point — it costs nothing when there is nothing to say.
@@ -347,7 +410,10 @@ def render_rows(data):
         except Exception:
             pass
     cols = _cols()
-    row1 = _fit([model, _account_bit(), git, _mode_bit(data), subs], cols)
+    # FIRST, because `_fit` drops from the right and this is the one segment
+    # that says the session is about to stop working.
+    row1 = _fit([_rotate_bit(data), model, _account_bit(), git,
+                 _mode_bit(data), subs], cols)
     row2 = _fit([_context_bit(data), *_limit_bits(data), mem_bit, les_bit,
                  _cost_bit(data)], cols)
     return [r for r in (row1, row2) if r]

@@ -54,6 +54,36 @@ function iRgba(hex, a) {
   return `rgba(${INST.rgb(hex)},${a})`;
 }
 function iClamp(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+/* The event palette is authored ONCE, in Python, for the standalone flow page —
+   which is always dark, so every hue sits at 70-85% lightness. The dashboard is
+   not: ten of the shipped palettes are light or OLED, and #f9e2af on a white
+   card is 1.2:1. So the HUE is the shared vocabulary (a tool is the same yellow
+   on both surfaces) and the LIGHTNESS is a per-mode transform, rather than a
+   second colour table to keep in step with the first. Same argument ACCT_RAMP
+   already makes: a categorical scale is tuned per ground, not generated. */
+const iShadeCache = {};
+function iShade(hex, mode) {
+  const k = hex + mode;
+  if (iShadeCache[k]) return iShadeCache[k];
+  const n = parseInt(String(hex).slice(1), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let hh = 0;
+  if (d) {
+    if (mx === r) hh = ((g - b) / d + (g < b ? 6 : 0));
+    else if (mx === g) hh = (b - r) / d + 2;
+    else hh = (r - g) / d + 4;
+    hh *= 60;
+  }
+  const l = (mx + mn) / 2;
+  const s = d ? d / (1 - Math.abs(2 * l - 1)) : 0;
+  // 38% on a light ground clears 4.5:1 against every light panel in the set;
+  // dark grounds keep the authored value, so nothing changes on the 22 themes
+  // the flow page was tuned against.
+  const L = mode === 'light' ? Math.min(l, 0.38) : l;
+  return (iShadeCache[k] = `hsl(${hh.toFixed(0)} ${(s * 100).toFixed(0)}% ${(L * 100).toFixed(0)}%)`);
+}
 /* normalise a series to 0..1 against its own max — every instrument shows a
    shape relative to the caller's own history, never an absolute scale */
 function iNorm(arr) {
@@ -170,6 +200,11 @@ const INST = {
     this.wake();
   },
   feed(key) { return this.feeds[key] || {}; },
+  /* A feed outlives its gauge on purpose — a page renderer sets before it
+     mounts. That is fine for the fixed keys ('quota', 'burn', …) and a slow
+     leak for a key made from a session id, which only ever grows: the caller
+     that knows an id has gone says so. */
+  drop(key) { delete this.feeds[key]; },
 
   /* ── scheduler ──
      wake() registers the shared job; the job retires itself once every gauge
@@ -516,6 +551,62 @@ const IKIND = {
       c.fillStyle = iRgba(col, 0.30 + heat * 0.55);
       c.beginPath(); c.arc(x, y, r, 0, TAU2); c.fill();
     });
+    return moving;
+  },
+
+  /* ── trail: one live session's recent flow, as typed ticks ──
+     The glance half of the session flow graph. The full graph (/flow) lays
+     events on a CLAMPED CLOCK, because there it has a whole window and you are
+     asking where the time went. Here the question is different — "what is this
+     session doing" — and the answer wants every recent event visible, so the
+     axis is the event INDEX. 160 ticks across ~320px is 2px each: a burst of
+     tool calls reads as a dense band and a stalled session as a short one,
+     which a time axis would flatten into a blob and a margin of nothing.
+
+     Type is the only channel, and it is the SAME type vocabulary the big graph
+     uses, so the strip teaches the page you click through to. Errors are drawn
+     full height over a shorter baseline rather than in a louder colour: a red
+     that has to win against 32 palettes is a red that shouts on all of them.
+
+     Nothing loops. The track wipes in once when the card arrives and the job
+     retires — a session being busy is not a reason to spend a frame every 33ms
+     saying so, and a poll that appends three events simply draws them. */
+  trail(c, w, h, D, S, P, dt) {
+    const evs = D.events || [];
+    if (!evs.length) {
+      c.strokeStyle = iRgba(P.line, 0.7);
+      c.setLineDash([3, 4]);
+      c.strokeRect(1, h / 2 - 5, w - 2, 10);
+      c.setLineDash([]);
+      return false;
+    }
+    const { v: grow, moving } = iSettle(S, 'g', 1, dt);
+    const colors = D.colors || {};
+    const mode = (P && P.mode) || 'dark';
+    const n = evs.length;
+    const bw = w / n;
+    const tw = Math.max(1, Math.min(bw - 0.6, 6));
+    const base = h * 0.34, full = h * 0.86;
+    // the baseline reads as "this is a track", so a gap in it is legible as a
+    // gap rather than as the end of the data
+    c.fillStyle = iRgba(P.line, 0.55);
+    c.fillRect(0, h / 2 - 0.5, w, 1);
+    for (let i = 0; i < n; i++) {
+      const e = evs[i];
+      const loud = e.type === 'error' || e.type === 'compact';
+      // a wipe in reading order, oldest first — the order the session ran in
+      const a = iClamp(grow * n - i);
+      if (a <= 0) continue;
+      const th = (loud ? full : base + (e.type === 'tool' || e.type === 'spawn'
+        ? h * 0.22 : 0)) * (0.35 + a * 0.65);
+      // an unknown type takes the palette's own accent, never a literal: a
+      // second copy of the event palette is a second thing to keep in step
+      c.fillStyle = iShade(colors[e.type] || P.accent, mode);
+      c.globalAlpha = loud ? 1 : 0.82;
+      const x = i * bw + (bw - tw) / 2;
+      c.fillRect(x, (h - th) / 2, tw, th);
+    }
+    c.globalAlpha = 1;
     return moving;
   },
 };

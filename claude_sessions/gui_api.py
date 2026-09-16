@@ -1452,6 +1452,99 @@ def api_dashboard(q, body):
     return _dash_cache
 
 
+# ── live sessions, as flow ───────────────────────────────────
+
+#: Events kept per live session. A dashboard strip is ~320 CSS px wide, so past
+#: this a tick is thinner than a pixel and the answer is to open the session —
+#: which is what clicking the row does.
+_STRIP_EVENTS = 160
+
+#: path -> ((mtime_ns, size), row). A live session's signature changes every
+#: turn, so this is not a way to avoid the parse; it is what stops two polls
+#: inside one turn — and the second tab — paying for it twice.
+_flow_live_cache = {}
+_FLOW_CACHE_CAP = 64
+
+
+def _strip_of(path, hid):
+    """The tail of one session's flow, bounded in memory as well as in payload.
+
+    `build_events` is a generator and must be consumed as one: these files reach
+    60 MB here and a `list()` of a big one would sit in the response thread's
+    memory for as long as the deque it was about to be truncated into. The deque
+    costs `_STRIP_EVENTS` events for a file of any size.
+
+    Only four fields survive. A full event carries up to TEXT_CAP characters of
+    `text`, and eight sessions x 160 events of that is half a megabyte of
+    payload for a row of coloured ticks that renders none of it.
+    """
+    from collections import deque
+    from . import flowgraph
+    tail = deque(flowgraph.build_events(path, harness=hid), maxlen=_STRIP_EVENTS)
+    return [{'t': e.get('t') or 0, 'type': e['type'],
+             'name': e.get('name') or '', 'dur': e.get('dur') or 0}
+            for e in tail]
+
+
+def api_flow_live(q, body):
+    """Every session being worked in right now, each with the tail of its flow.
+
+    The dashboard asks two questions about one set — how many are live, and what
+    are they doing — so WHICH sessions are live is answered once, in
+    `stats.assemble_breakdown`, and read here off the dashboard's own cached
+    payload. A second scan would be a second definition of "live" and a second
+    pass over every transcript on the machine.
+
+    The reference this adopts (zoetrope) refused to draw several session graphs
+    on one canvas — they do not fit at a readable size, and a fleet of pollers
+    pays for the parse continuously. So this is a LIST: one row per session, the
+    shape of its recent activity, and a click through to the single-session
+    graph that already exists. Nothing here polls on its own; it is fetched by
+    the dashboard's existing loop.
+    """
+    from . import flowgraph
+    from .sessions import format_age
+    live = (api_dashboard({}, None).get('live') or {})
+    rows = []
+    for r in live.get('sessions') or []:
+        path = _store.transcript_path(_folder(r['cfgdir'], r['encoded']), r['sid'])
+        if not path or not os.path.isfile(path):
+            continue
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        sig = (st.st_mtime_ns, st.st_size)
+        hit = _flow_live_cache.get(path)
+        if hit and hit[0] == sig:
+            events = hit[1]
+        else:
+            hid = flowgraph.harness_of(path)
+            events = _strip_of(path, hid)
+            if len(_flow_live_cache) >= _FLOW_CACHE_CAP:
+                _flow_live_cache.clear()
+            _flow_live_cache[path] = (sig, events)
+        last = events[-1] if events else None
+        rows.append({
+            'sid': r['sid'], 'encoded': r['encoded'], 'cfgdir': r['cfgdir'],
+            'account': r['account'], 'path': r['path'],
+            'project': os.path.basename(r['path']) or r['path'],
+            'title': r['title'], 'msgs': r['msgs'], 'mtime': int(r['mtime']),
+            'age': format_age(r['mtime']).strip() if r['mtime'] else '',
+            'harness': flowgraph.harness_of(path),
+            'events': events,
+            # An unanswered call is the one thing a glance is for: a tool at the
+            # end of the file has not come back yet, so the row can say what the
+            # session is blocked on rather than what it last finished.
+            'busy': (last['name'] or last['type']) if last and
+                    last['type'] in ('tool', 'spawn') else '',
+            'since': last['t'] if last else 0,
+        })
+    return {'sessions': rows, 'total': live.get('total', 0),
+            'window': live.get('window', 0), 'colors': flowgraph.EVENT_COLORS,
+            'generated_at': int(time.time())}
+
+
 # ── ambient motion feed ──────────────────────────────────────
 
 _GLITE_TTL = 60
@@ -4561,6 +4654,7 @@ GET_ROUTES = {
     '/api/provider/models': api_provider_models,
     '/api/plan/last': api_plan_last,
     '/api/rotate/state': api_rotate_state,
+    '/api/flow/live': api_flow_live,
 }
 
 POST_ROUTES = {

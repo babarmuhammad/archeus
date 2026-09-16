@@ -355,6 +355,13 @@ def run():
         # Repairing only during the migration meant repairing at the one moment
         # when nothing was broken yet.
         _migrate.repair_commands()
+        # Rotation's StopFailure hook, for the same reason the repair above is
+        # ungated: the default mode is `ask`, so the hook belongs on every
+        # machine that has not turned rotation off — including the ones that
+        # were installed before it existed. It is one settings.json read per
+        # account and a write only when something is actually missing.
+        from . import rotate as _rotate
+        _rotate.ensure_hook()
         # the second pass: what the path move could not reach. It carries its own
         # flag and returns immediately once that is set, so this is one settings
         # read on every later start.

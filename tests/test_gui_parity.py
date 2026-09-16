@@ -1069,11 +1069,13 @@ def test_gui_home_dashboard_zones_and_recent_age(monkeypatch, tmp_path):
                            PAGE.index('const ARCH_WRAP=') + 200], \
         'the shell cannot write the dash wrapper'
     for zone in ('d-i1', 'd-i2', 'd-i3', 'd-i4', 'd-acct', 'd-chart',
-                 'd-projects', 'd-continue', 'd-recent'):
+                 'd-projects', 'd-continue', 'd-recent', 'd-flow'):
         assert f'card {zone}' in PAGE or f' {zone} ' in PAGE, zone
         assert f'.{zone}{{grid-area:' in PAGE, f'{zone} has no grid area'
     # d-live is gone: the "System" tile was a text dump of jobs/mcp/failover, now
-    # read off the tooling and activity gauges
+    # read off the tooling and activity gauges. The live-SESSION strip that
+    # arrived later is `d-flow` and not a revival of it — a name with a gate on
+    # it is not a name to reuse for something else.
     assert 'd-live' not in PAGE
     assert 'function continueTileHtml' in PAGE and 'function projectRowHtml' in PAGE
     assert 'function tokenChart' in PAGE and 'function acctCard' in PAGE

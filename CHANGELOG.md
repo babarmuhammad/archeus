@@ -22,6 +22,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   of it. Codex and pi are deliberately not rotated: their windows are not Anthropic's and
   there is no headroom figure to compare.
 
+  Two things watch a session you are **sitting in**, which is the one case archeus is not
+  itself present for. The **status line** reads this account's own 5-hour and weekly
+  percentages off Claude Code on every turn, so the row says `96% — continue on work2` as
+  soon as one crosses the switch threshold — before the window is spent, rather than after
+  a turn has already been refused — and in fully automatic it opens the successor itself.
+  A **`StopFailure` hook** catches the turn that does die on a limit: it records the
+  refusal where every archeus process can read it, so a running GUI and archeus's own
+  Claude calls stop choosing that account too, and then applies your mode. The hook is
+  installed and removed by the mode setting, and the rotation card says which logins carry
+  it. An offer is not repeated for ten minutes per session, because both triggers fire
+  repeatedly by nature.
+
+- **Live sessions on the dashboard.** One row per session being worked in right now — the
+  project, who is on it, what it is blocked on this second, and the shape of its recent
+  activity as a strip of coloured ticks, with a click through to the full flow graph. It
+  rides the dashboard's existing poll rather than opening a second one, and "live" is
+  decided in one place, so the count and the list cannot disagree. Deliberately a list and
+  not several graphs on one canvas: zoetrope was sent exactly that and declined it, because
+  several trees do not fit at a readable size and a fleet of tailers pays for the parse
+  continuously.
+
 - **Session flow graph** — open any session as a live flow graph (**Flow**, beside
   *Transcript* in the session detail pane): prompts, model turns, tool calls, results,
   errors and subagent lanes on the session's own clock, with play/pause, speed, scrub,

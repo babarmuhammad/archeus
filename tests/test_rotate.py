@@ -42,9 +42,7 @@ def _account(tmp_path, name, pct, logged_in=True):
 
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch, tmp_path):
-    quota._observed.clear()
-    quota._decided.clear()
-    quota._window_observed.clear()
+    quota.reset()
     monkeypatch.setattr(events, 'path', lambda: str(tmp_path / 'events.jsonl'))
     events._recent.clear()
     monkeypatch.setattr(usage, '_acct_state', {}, raising=False)

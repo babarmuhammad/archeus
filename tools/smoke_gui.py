@@ -1022,6 +1022,28 @@ def main():
         rows = pg.evaluate("document.querySelectorAll('#dashProjects .hrow').length")
         check('project rows reconciled', rows == 2, f'{rows} rows')
 
+        # The live-session strip. A card still showing its skeleton has not
+        # failed in any way a string test can see: its fetch is caught
+        # SEPARATELY so one endpoint cannot blank the whole dashboard, and the
+        # price of that is a card that can go quiet on its own. So the check is
+        # that it RESOLVED — to rows or to the empty state, never to the
+        # skeleton it was painted with.
+        flow = pg.evaluate("(()=>{const h=document.querySelector('#dashLive');if(!h)return 'missing';if(h.querySelector('.sk'))return 'still loading';const n=h.querySelectorAll('.lrow').length;return n?('rows:'+n):(h.querySelector('.empty')?'empty':'blank');})()")
+        check('the live-session card resolved',
+              flow == 'empty' or flow.startswith('rows:'), flow)
+        # …and every strip it drew is a REGISTERED instrument. A canvas whose
+        # key was never fed is a canvas nothing ever paints, which looks
+        # exactly like an idle session.
+        # Driven through the page's own renderer with real rows: the stub
+        # workspace has nothing recent enough to be live, so the check above
+        # only ever sees the empty state and would pass with every strip
+        # wired to nothing.
+        seeded = pg.evaluate("(()=>{const ev=t=>({t:Date.now()/1000,type:t,name:t,dur:1});renderLive({total:2,window:600,colors:{prompt:'#7dcfff',tool:'#bb9af7'},sessions:[{sid:'s-one',encoded:'E',cfgdir:'C',account:'teamA',path:'/p/one',project:'one',title:'t',msgs:12,mtime:1,age:'2m',harness:'claude',busy:'Bash',since:1,events:[ev('prompt'),ev('tool')]},{sid:'s-two',encoded:'E',cfgdir:'C',account:'teamB',path:'/p/two',project:'two',title:'t',msgs:5,mtime:1,age:'4m',harness:'claude',busy:'',since:1,events:[ev('prompt')]}]});const h=document.querySelector('#dashLive');return [h.querySelectorAll('.lrow').length,h.querySelectorAll('.ltrail canvas').length,[...h.querySelectorAll('.iwrap')].filter(w=>!(INST.feed(w.dataset.k).events||[]).length).length,h.querySelector('.lbusy')?h.querySelector('.lbusy').textContent.trim():'',h.querySelectorAll('button[data-flow]').length];})()")
+        check('live rows draw a fed strip each', seeded == [2, 2, 0, 'Bash', 2], seeded)
+        gone = pg.evaluate("(()=>{renderLive({total:0,window:600,sessions:[]});return [document.querySelectorAll('#dashLive .lrow').length,!!INST.feed('live:s-one').events];})()")
+        check('a session that stops being live drops its feed',
+              gone == [0, False], gone)
+
         # Activity reads LIVE SESSIONS across accounts, not archeus's own jobs.
         # It used to read the latter and so sat at 0 on a busy workspace.
         foot = pg.evaluate("document.querySelector('#iJobsFoot').textContent")

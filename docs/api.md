@@ -43,6 +43,7 @@ a handler sees them; a missing or malformed one is a 400.
 | `/api/deny` | `api_deny_scan` | — |
 | `/api/disk` | `api_disk` | — |
 | `/api/extra-paths` | `api_extra_paths_get` | — |
+| `/api/flow/live` | `api_flow_live` | Every session being worked in right now, each with the tail of its flow. |
 | `/api/global-claude-md` | `api_global_claude_md` | The account-global CLAUDE.md Claude reads in every session. |
 | `/api/graph-lite` | `api_graph_lite` | Compact project shape for the ambient motion layer. |
 | `/api/harness/doctor` | `api_harness_doctor` | The doctor block alone, uncached-by-request but served from the same TTL. |

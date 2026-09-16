@@ -168,6 +168,7 @@ def _rotation_menu():
             if pick:
                 s['rotate_mode'] = pick
                 save_settings(s)
+                rotate.ensure_hook()
         elif sel == '__thr__':
             v = text_input('Switch away at what percent? (50-100)',
                            default=f"{st['threshold']:.0f}")

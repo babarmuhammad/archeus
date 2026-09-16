@@ -521,6 +521,78 @@ def worklog_hook_installed(cfgdir=None):
     return False
 
 
+# ── account rotation: StopFailure on a rate limit ────────────
+#
+# The one archeus hook that is not about memory. Every other place rotation
+# reaches is a process archeus spawns; a Claude Code session you are SITTING IN
+# is not one of those, and Claude Code is the only thing that knows its turn
+# just died on a limit. `StopFailure` with the `rate_limit` matcher IS that
+# event, and it had no hook on it — which is the whole reason a full account in
+# a terminal produced silence.
+_LIMIT_MATCHER = 'rate_limit'
+
+
+def _limit_hook_command():
+    import sys
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'limit_hook.py')
+    return f'"{sys.executable}" "{script}"'
+
+
+def install_limit_hook(cfgdir=None):
+    """Idempotently install (or repair) the rotation hook. True when present."""
+    s = _load(cfgdir)
+    entries = s.setdefault('hooks', {}).setdefault('StopFailure', [])
+    if not isinstance(entries, list):
+        return False
+    cmd = _limit_hook_command()
+    for entry in entries:
+        for h in (entry.get('hooks') or []):
+            if 'limit_hook.py' in str(h.get('command', '')):
+                # a stale interpreter or checkout path is a repair, not a second
+                # entry — the same rule `install_memory_hook` follows, and the
+                # matcher is repaired with it so a hand-edit cannot silence the
+                # hook while every surface still reports it installed.
+                if h.get('command') != cmd or entry.get('matcher') != _LIMIT_MATCHER:
+                    h['command'] = cmd
+                    h['timeout'] = 20
+                    entry['matcher'] = _LIMIT_MATCHER
+                    return _save(s, cfgdir)
+                return True
+    entries.append({'matcher': _LIMIT_MATCHER,
+                    # 20s, not the 5 the recall hook takes: in `auto` this spawns
+                    # a terminal, and a hook killed half way through that is a
+                    # window that never opens.
+                    'hooks': [{'type': 'command', 'command': cmd, 'timeout': 20}]})
+    return _save(s, cfgdir)
+
+
+def uninstall_limit_hook(cfgdir=None):
+    s = _load(cfgdir)
+    entries = (s.get('hooks') or {}).get('StopFailure')
+    if not isinstance(entries, list):
+        return True
+    changed = False
+    for entry in list(entries):
+        hs = entry.get('hooks') or []
+        kept = [h for h in hs if 'limit_hook.py' not in str(h.get('command', ''))]
+        if len(kept) != len(hs):
+            changed = True
+            if kept:
+                entry['hooks'] = kept
+            else:
+                entries.remove(entry)
+    if changed and not entries:
+        s['hooks'].pop('StopFailure', None)
+    return _save(s, cfgdir) if changed else True
+
+
+def limit_hook_installed(cfgdir=None):
+    entries = (_load(cfgdir).get('hooks') or {}).get('StopFailure') or []
+    return any('limit_hook.py' in str(h.get('command', ''))
+               for e in entries if isinstance(e, dict)
+               for h in (e.get('hooks') or []))
+
+
 def settings_path_for(cfgdir=None):
     """The settings.json of ONE account — the active one when cfgdir is None.
 
@@ -589,6 +661,7 @@ _SCRIPT_LABELS = {
     'logbash_hook.py': 'log-bash-commands',
     'agentnudge_hook.py': 'suggest-subagent',
     'memdirty_hook.py': 'memory stale-on-edit',
+    'limit_hook.py': 'account rotation on limit',
 }
 
 

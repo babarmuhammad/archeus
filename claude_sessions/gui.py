@@ -961,6 +961,12 @@ def _api_settings(q, body):
     # blanked by a settings-save round-trip that omits it because the frontend
     # never receives the raw key back to resubmit
     save_settings(s)
+    # The rotation mode chip IS the switch for the StopFailure hook — a second
+    # toggle for the mechanism that implements a policy is a second thing to get
+    # out of step with it.
+    if 'rotate_mode' in body:
+        from . import rotate
+        rotate.ensure_hook()
     return {'ok': True}
 
 

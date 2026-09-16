@@ -33,8 +33,7 @@ def _data(*windows):
 
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch, tmp_path):
-    quota._observed.clear()
-    quota._decided.clear()
+    quota.reset()
     memory.last_call_error = ''
     monkeypatch.setattr(events, 'path',
                         lambda: str(tmp_path / 'events.jsonl'))
