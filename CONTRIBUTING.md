@@ -51,6 +51,20 @@ python tools/optimize_images.py --check
 python tools/audit_site.py         # every page at 390x844, nothing past the right edge
 ```
 
+If you changed anything under `www/` — a component, a page, `lib/` — the apex has
+its own two, and CI runs both:
+
+```bash
+cd www && npm run lint     # eslint, including the react-hooks rules
+cd www && npm run build    # the type check, and it prerenders every route
+```
+
+`npm run lint` is the one easy to forget, because `npm run build` passes without
+it: a `useEffect` that calls `setState` in its body type-checks, prerenders and
+renders correctly, and is rejected by `react-hooks/set-state-in-effect` — which
+is right, and the fix (`useSyncExternalStore` for anything that is really an
+external store) is usually simpler than what it replaces.
+
 `check_site_seo.py` and `audit_site.py` read `site/`, so run `mkdocs build --strict`
 first. The full sequence, and what a page owes beyond passing them, is in
 `notes/seo.md`. `audit_site.py` and the two GUI tools need

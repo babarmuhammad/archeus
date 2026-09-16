@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import Image from 'next/image';
 import { TOUR_LONG, TOUR_SHORT, type TourStep } from '@/lib/tour';
 
@@ -75,40 +75,46 @@ function shotFor(s: TourStep) {
   return SHOTS[s.tab] || SHOTS[s.page];
 }
 
+/* The step lives in the URL HASH and nowhere else.
+ *
+ * Not `useState` plus an effect that reads the hash on mount: that is a
+ * setState inside an effect body, which `react-hooks/set-state-in-effect`
+ * rejects, and it is right to — the hash is an external store, and React has
+ * `useSyncExternalStore` for exactly this shape. One source of truth means a
+ * link into the middle of the tour opens there, the two never drift, and there
+ * is no server/client mismatch to reconcile by hand.
+ *
+ * `location.hash = …`, deliberately, rather than `replaceState`: it fires
+ * `hashchange` (so the store updates) AND it pushes a history entry, so the
+ * back button walks the tour backwards, which is the first thing people try.
+ */
+function subscribe(onChange: () => void) {
+  window.addEventListener('hashchange', onChange);
+  return () => window.removeEventListener('hashchange', onChange);
+}
+
+/** '' on the server: the hash is never sent, so there is nothing to render from
+ *  and step one is the honest prerender. */
+const serverHash = () => '';
+
+function parseHash(hash: string): { which: 'short' | 'long'; i: number } {
+  const m = /^#(short|long)(?:-(\d+))?$/.exec(hash || '');
+  if (!m) return { which: 'short', i: 0 };
+  const which = m[1] as 'short' | 'long';
+  const max = TOURS[which].steps.length - 1;
+  return { which, i: Math.max(0, Math.min(max, Number(m[2] || 1) - 1)) };
+}
+
 export function TourPlayer() {
-  const [which, setWhich] = useState<'short' | 'long'>('short');
-  const [i, setI] = useState(0);
+  const hash = useSyncExternalStore(subscribe, () => window.location.hash, serverHash);
+  const { which, i } = parseHash(hash);
   const steps = TOURS[which].steps;
   const step = steps[Math.min(i, steps.length - 1)];
 
-  /* The hash is the source of truth for WHICH step, so a link into the middle of
-     the tour opens there and Back walks it in reverse. Read once on mount and
-     then on every `hashchange`, because the browser fires that for its own
-     navigation too and a component that only wrote the hash would drift from it. */
-  const read = useCallback(() => {
-    const m = /^#(short|long)(?:-(\d+))?$/.exec(window.location.hash || '');
-    if (!m) return;
-    const w = m[1] as 'short' | 'long';
-    setWhich(w);
-    setI(Math.max(0, Math.min(TOURS[w].steps.length - 1, Number(m[2] || 1) - 1)));
+  const goto = useCallback((w: 'short' | 'long', n: number) => {
+    const at = Math.max(0, Math.min(TOURS[w].steps.length - 1, n));
+    window.location.hash = `#${w}-${at + 1}`;
   }, []);
-
-  useEffect(() => {
-    read();
-    window.addEventListener('hashchange', read);
-    return () => window.removeEventListener('hashchange', read);
-  }, [read]);
-
-  const goto = useCallback(
-    (w: 'short' | 'long', n: number) => {
-      const max = TOURS[w].steps.length - 1;
-      const at = Math.max(0, Math.min(max, n));
-      setWhich(w);
-      setI(at);
-      history.replaceState(null, '', `#${w}-${at + 1}`);
-    },
-    [],
-  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
