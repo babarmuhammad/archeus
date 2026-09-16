@@ -15,6 +15,8 @@ Claude-shaped writer in the codebase.
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from harness import Sandbox
@@ -55,7 +57,26 @@ def test_the_built_in_home_is_named_after_the_cli(monkeypatch, tmp_path):
 
 
 def test_a_home_named_twice_is_one_home(monkeypatch, tmp_path):
-    """Same dedup rule as the accounts list, because it is the same function."""
+    """Same dedup rule as the accounts list, because it is the same function.
+
+    The second spelling is a redundant `.` component, not a case change: the
+    normaliser is `normcase(abspath(...))`, and on POSIX `normcase` is the
+    identity because two spellings that differ in case ARE two directories
+    there. Asserting the upper-case form was asserting a Windows fact on every
+    platform, and it failed on macOS and Linux for the whole life of the test.
+    """
+    Sandbox(monkeypatch, tmp_path)
+    s = _c.load_settings()
+    base = _h.home_dir('codex')
+    s['homes'] = {'codex': [{'name': 'again', 'dir': base},
+                            {'name': 'again too',
+                             'dir': os.path.join(base, '.', '')}]}
+    _c.save_settings(s)
+    assert len(_h.homes('codex')) == 1
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='case-insensitive paths are a Windows fact')
+def test_on_windows_a_home_spelled_in_caps_is_the_same_home(monkeypatch, tmp_path):
     Sandbox(monkeypatch, tmp_path)
     s = _c.load_settings()
     s['homes'] = {'codex': [{'name': 'again', 'dir': _h.home_dir('codex')},

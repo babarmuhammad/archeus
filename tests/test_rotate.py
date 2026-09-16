@@ -329,8 +329,13 @@ def test_rotation_resumes_the_conversation_and_forks_it(monkeypatch, tmp_path):
         spawned['kw'] = kw
         return object(), ''            # (process, error)
     monkeypatch.setattr(gui_api._proc, 'spawn_terminal', fake_spawn)
-    monkeypatch.setattr(gui_api, 'get_claude_exe', lambda: 'claude.exe',
-                        raising=False)
+    # `config.get_claude_exe`, NOT `gui_api.get_claude_exe`: the endpoint does
+    # `from .config import get_claude_exe` inside the function, so a name bound
+    # on this module is never consulted — and `raising=False` cheerfully created
+    # it. On a machine with Claude Code installed the real lookup succeeded and
+    # the test passed for the wrong reason; every CI runner has no claude on
+    # PATH, so the endpoint returned early and this failed on all five.
+    monkeypatch.setattr(_c, 'get_claude_exe', lambda: 'claude.exe')
 
     cfg = tmp_path / 'acct'
     proj = tmp_path / 'proj'
