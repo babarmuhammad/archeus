@@ -149,6 +149,20 @@ def parse(text, width=100):
 
 
 def paint(rows, path, cols=100, pad=18):
+    """Render `rows` and write a PNG. Returns (width, height)."""
+    img = render_image(rows, cols=cols, pad=pad)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    img.save(path)
+    return img.size
+
+
+def render_image(rows, cols=100, pad=18):
+    """The frame as a PIL image.
+
+    Split out of `paint` so the tour recorder can assemble frames without a
+    second painter: a recording whose colours came from somewhere else would
+    not be a recording of this interface.
+    """
     from PIL import Image, ImageDraw, ImageFont
 
     def font(name, size):
@@ -195,9 +209,7 @@ def paint(rows, path, cols=100, pad=18):
             if cell.ch != ' ':
                 d.text((px, py + 2), cell.ch, font=pick(cell),
                        fill=cell.fg or FG)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    img.save(path)
-    return w, h
+    return img
 
 
 def capture(build):
@@ -257,6 +269,100 @@ def shot(name, cols=100):
     return deco
 
 
+def record_tour(which='short', hold=2.6, out=''):
+    """The terminal tour as an animated WebP — the TUI half of the video guide.
+
+    One frame per step, held. There is nothing to interpolate: a terminal frame
+    is a grid of characters that changes all at once, so a higher rate would be
+    the same picture repeated. The GUI recorder freezes its background for
+    exactly the same saving; here it comes free.
+
+    It drives the REAL screen (`ui.tour_screen`) through the same fake keyboard
+    the test suite uses, so what is recorded is the interface rather than a
+    mock-up of it — the argument `shot_tui` is built on.
+    """
+    import tempfile
+    from pathlib import Path
+    from _pytest.monkeypatch import MonkeyPatch
+    from PIL import Image
+
+    import harness as H
+    from claude_sessions import tour as _tour
+
+    steps = _tour.steps(which)
+    out = out or os.path.join(OUT, 'tour-tui-%s.webp' % which)
+    frames = []
+    for i in range(len(steps)):
+        mp = MonkeyPatch()
+        tmp = Path(tempfile.mkdtemp(prefix='archeus-tour-'))
+        try:
+            H.Sandbox(mp, tmp)
+            mp.setattr('shutil.get_terminal_size',
+                       lambda *a, **k: os.terminal_size((100, 40)))
+            # i RIGHT presses land on step i, then ESC leaves. Driving the real
+            # screen rather than formatting the step here is the point: a
+            # recorder that laid out its own frame would record a layout nobody
+            # ships.
+            # One run per step, opened AT that step, rather than one run
+            # pressing → i times: `render` clears the screen once and diff-writes
+            # after that, so a multi-frame run captures every frame stacked on
+            # top of each other and `last_frame` has nothing to split on.
+            #
+            # NOT through `_catch`: a screen that raises must stop the recording
+            # rather than be captured mid-frame. It swallowed a real
+            # `ValueError` here and the tool cheerfully announced seven frames
+            # of step one — the same shape as the smoke tool that ran no checks
+            # and printed no failures.
+            cap = H.run_flow(mp, list(H.ESC),
+                             lambda _i=i: _ui_tour(which, _i))[1]
+            text = demoise(cap.text, tmp)
+            rows = parse(last_frame(text), width=100)
+            rows = [r for r in rows if any(c.ch != ' ' for c in r)] or rows
+            frames.append(render_image(rows, cols=100))
+        finally:
+            mp.undo()
+    if not frames:
+        print('no frames')
+        return 1
+    # A floor on what it recorded, for the reason `smoke_gui.check()` has one:
+    # the only output of this tool is a file that looks fine. Seven identical
+    # frames IS the failure it hit — the encoder collapses them and the result
+    # is a still image announced as an animation.
+    distinct = len({f.tobytes() for f in frames})
+    if distinct < len(frames):
+        print('only %d distinct frames out of %d — the screen did not advance'
+              % (distinct, len(frames)))
+        return 1
+    # every frame the same size, or the encoder refuses the sequence: a step
+    # with a shorter body is a shorter frame
+    w = max(f.width for f in frames)
+    h = max(f.height for f in frames)
+    frames = [f if f.size == (w, h) else _pad_to(f, w, h) for f in frames]
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    frames[0].save(out, 'WEBP', save_all=True, append_images=frames[1:],
+                   duration=int(hold * 1000), loop=0, quality=72, method=6)
+    print('wrote %s  (%d KB, %d frames)'
+          % (out, os.path.getsize(out) // 1024, len(frames)))
+    import shutil as _sh
+    www = os.path.join(ROOT, 'www', 'public', 'img')
+    os.makedirs(www, exist_ok=True)
+    _sh.copy2(out, os.path.join(www, os.path.basename(out)))
+    print('       -> %s' % os.path.join(www, os.path.basename(out)))
+    return 0
+
+
+def _pad_to(img, w, h):
+    from PIL import Image
+    out = Image.new('RGB', (w, h), BG)
+    out.paste(img, (0, 0))
+    return out
+
+
+def _ui_tour(which, start=0):
+    from claude_sessions import ui
+    return ui.tour_screen(which, start)
+
+
 def main():
     import pytest  # noqa: F401  (harness imports it indirectly)
     from _pytest.monkeypatch import MonkeyPatch
@@ -264,6 +370,13 @@ def main():
     from pathlib import Path
 
     import harness as H
+
+    if '--tour' in sys.argv:
+        which = 'short'
+        if '--which' in sys.argv:
+            which = sys.argv[sys.argv.index('--which') + 1]
+        import harness  # noqa: F401  (sys.path already has tests/)
+        return record_tour(which)
 
     total = 0
     for name, cols, drive in SHOTS:

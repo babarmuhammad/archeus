@@ -1545,6 +1545,26 @@ def api_flow_live(q, body):
             'generated_at': int(time.time())}
 
 
+# ── the guided tour ─────────────────────────────────
+
+
+def api_tour(q, body):
+    """The steps of one tour, from the one place they are written.
+
+    An endpoint rather than a constant substituted into the page: the long tour
+    is ~9KB of prose, the page string is already the thing three tests measure,
+    and nobody who does not open the tour should pay for it. It is fetched once
+    per tour and held for the session on the browser side.
+    """
+    from . import tour
+    which = (q.get('which') or 'short').strip().lower()
+    return {'which': which if which in tour.names() else 'short',
+            'tours': tour.names(),
+            'site': tour.SITE_TOUR,
+            'steps': [dict(st, docs_url=tour.docs_url(st))
+                      for st in tour.steps(which)]}
+
+
 # ── ambient motion feed ──────────────────────────────────────
 
 _GLITE_TTL = 60
@@ -4655,6 +4675,7 @@ GET_ROUTES = {
     '/api/plan/last': api_plan_last,
     '/api/rotate/state': api_rotate_state,
     '/api/flow/live': api_flow_live,
+    '/api/tour': api_tour,
 }
 
 POST_ROUTES = {

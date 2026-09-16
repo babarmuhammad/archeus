@@ -375,10 +375,20 @@ def test_auto_opens_one_successor_however_often_it_is_asked(monkeypatch, tmp_pat
 def test_the_cooldown_expires_so_a_lost_handoff_is_retried(monkeypatch, tmp_path):
     """Claude Code CANCELS a statusline that is still running when the next
     update arrives, so a hand-off can be lost between the stamp and the spawn.
-    A once-per-session flag would make that permanent."""
+    A once-per-session flag would make that permanent.
+
+    The stamp is BACKDATED rather than the window set to zero. A zero window
+    compares `now - mtime < 0`, and a filesystem that rounds a timestamp up by a
+    millisecond makes that difference negative — which reads as "just offered"
+    and failed on Windows/3.10 only, while passing everywhere this was written.
+    Never assert on how precisely the machine records a moment.
+    """
     assert quota.OFFER_COOLDOWN >= 60
-    monkeypatch.setattr(quota, 'OFFER_COOLDOWN', 0)
     quota.mark_offered('S6')
+    assert quota.offered_recently('S6')
+    stamp = quota._offer_stamp('S6')
+    old = os.path.getmtime(stamp) - quota.OFFER_COOLDOWN - 5
+    os.utime(stamp, (old, old))
     assert not quota.offered_recently('S6')
 
 

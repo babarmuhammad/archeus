@@ -87,6 +87,7 @@ a handler sees them; a missing or malformed one is a 400.
 | `/api/state` | `_api_state` | — |
 | `/api/statusline` | `api_statusline` | Install state plus a live preview rendered from real numbers. |
 | `/api/system-prompt` | `api_system_prompt_get` | — |
+| `/api/tour` | `api_tour` | The steps of one tour, from the one place they are written. |
 | `/api/transcript` | `api_transcript` | — |
 | `/api/usage/daily` | `api_usage_daily` | — |
 | `/api/usage/plan` | `api_usage_plan` | — |

@@ -70,6 +70,23 @@ py tools/shot_tui.py            # the two terminal frames
 py tools/optimize_images.py     # derive the WebP siblings, re-compress
 ```
 
+The guided tour is recorded the same way, and for the same reason — it is the
+real app driven through the real steps, so it goes stale exactly when a screen
+does. Re-record after a change to the nav, the dashboard, or the tour itself:
+
+```bash
+py tools/capture_tour.py        # the desktop app, as animated WebP
+py tools/shot_tui.py --tour     # the same steps in the terminal
+```
+
+Both publish to `docs/img/` and `www/public/img/`. The recorder freezes the
+background scene: WebP compresses between frames, so a moving background makes
+every frame unique and the file is what a screen recording costs (860 KB
+against 154 KB, measured). Pass `--live-motion` if you want the scene, and
+check the image budget afterwards. Only the SHORT tour is published — a
+thirty-seven step slideshow is not something anyone watches, and the long one
+is walkable on the website instead.
+
 The architecture animation only needs re-capturing when the graph itself
 changes, and it must be shot from a CLEAN checkout named `archeus` — the
 capture titles the graph after its directory and draws whatever is on disk, so

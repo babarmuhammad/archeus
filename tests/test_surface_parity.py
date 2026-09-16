@@ -34,7 +34,18 @@ APP_JS = os.path.join(ROOT, 'claude_sessions', 'web', 'app.js')
 
 
 def _js():
-    return io.open(APP_JS, encoding='utf-8').read()
+    """Every file the page is built from, in the order it concatenates them.
+
+    Derived from `gui_html._JS` rather than pinned to app.js: the SPA has been
+    several files since motion/instruments/stage, and the day one of them
+    fetched — tour.js does — this read the wrong half of the application and
+    reported a live route as uncalled. Same rule as the page list coming from
+    NAV: a gate over "the front end" has to be given the front end.
+    """
+    from claude_sessions import gui_html
+    web = os.path.join(ROOT, 'claude_sessions', 'web')
+    return chr(10).join(io.open(os.path.join(web, n), encoding='utf-8').read()
+                        for n in gui_html._JS)
 
 
 #: comments are prose, not behaviour. Scanning them found `hook_on` inside the

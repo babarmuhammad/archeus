@@ -101,14 +101,24 @@ def test_the_published_screenshots_are_the_generated_ones():
     bytes, served raw by MkDocs) while the README keeps the PNG, which is what
     PyPI renders. Allowing the extension does NOT weaken the gate: a WebP with
     no PNG beside it is not a derivative of anything, so it is rejected by the
-    second assertion rather than waved through by the first."""
+    second assertion rather than waved through by the first.
+
+    The `tour-*` recordings are the one shape that is a WebP with NO png: they
+    are animations, and a PNG of an animation is one frame of it. They are
+    still generated — `tools/capture_tour.py` and `tools/shot_tui.py --tour` —
+    which is what this gate is actually about, so they are named rather than
+    the orphan rule being dropped for everything."""
     d = os.path.join(ROOT, 'docs', 'img')
     if not os.path.isdir(d):
         return
     allowed = re.compile(r'^(gui|tui)-[a-z0-9-]+\.(png|webp)$')
+    #: the animated guides. An animation has no PNG master, so it is exempt from
+    #: the orphan rule below — by NAME, not by extension.
+    animated = re.compile(r'^tour-(gui|tui)-[a-z]+\.webp$')
     names = os.listdir(d)
-    bad = [n for n in names if not allowed.match(n)]
+    bad = [n for n in names if not (allowed.match(n) or animated.match(n))]
     assert not bad, 'unexpected files in docs/img: %s' % bad
     orphans = [n for n in names
-               if n.endswith('.webp') and n[:-5] + '.png' not in names]
+               if n.endswith('.webp') and not animated.match(n)
+               and n[:-5] + '.png' not in names]
     assert not orphans, 'webp with no generated png beside it: %s' % orphans

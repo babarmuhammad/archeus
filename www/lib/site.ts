@@ -48,6 +48,7 @@ export const PROFILES = [
 ] as const;
 
 export const NAV = [
+  { href: '/getting-started', label: 'Getting started' },
   { href: '/features', label: 'Features' },
   { href: '/download', label: 'Download' },
   { href: '/architecture', label: 'Architecture' },

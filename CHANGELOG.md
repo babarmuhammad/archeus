@@ -34,6 +34,32 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it. An offer is not repeated for ten minutes per session, because both triggers fire
   repeatedly by nature.
 
+- **A guided tour, in the app and on the web.** Two tours of the same product:
+  the first five minutes, ending with a session launched, and every function
+  archeus has with what each one is for. In the desktop app it is a coach-mark
+  that opens the screen it is describing and rings it — never a dialog over the
+  thing it explains — reached from **?** → *Guided tour*. In the terminal UI it
+  is a screen of its own, **Getting started** on the main menu, which prints the
+  key that reaches each thing from there. And on the apex, at `/getting-started`,
+  it is walkable with the screenshots for anyone who has not installed anything
+  yet.
+
+  The steps are written once, in `claude_sessions/tour.py`, and
+  `tools/gen_tour.py` carries them to the website — a product with three
+  interfaces and three explanations of itself has three products. What the
+  narrative is NOT is a copy of the tables that already declare every screen: a
+  blurb says what a screen shows, a step has to say when you would reach for it.
+  `tests/test_tour.py` fails when a step names a page, tab or manual page that
+  does not exist, and when a screen the app has appears in no step at all —
+  which is how a feature ends up being discovered two years after it shipped.
+
+- **The tour records itself.** `py tools/capture_tour.py` drives the real app
+  through the real steps in a real browser and writes an animated WebP;
+  `py tools/shot_tui.py --tour` does the same for the terminal. Both publish to
+  the manual and the apex. It is a generated artefact like every screenshot,
+  so it is re-recordable with one command when a screen moves, rather than a
+  video that quietly stops matching the product.
+
 - **Live sessions on the dashboard.** One row per session being worked in right now — the
   project, who is on it, what it is blocked on this second, and the shape of its recent
   activity as a strip of coloured ticks, with a click through to the full flow graph. It

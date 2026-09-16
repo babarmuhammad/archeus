@@ -23,6 +23,22 @@ Concretely, that is four jobs:
 It is pure Python standard library with zero runtime dependencies, and it uses the Claude
 Code authentication you already have. No API key.
 
+## The guided tour
+
+Both surfaces ship a tour of themselves, and it is the fastest way through everything
+below. In the desktop app it runs as an overlay that opens each screen as it describes
+it — the **?** at the foot of the sidebar, then **Guided tour**. In the terminal UI it is
+**Getting started** on the main menu. Two lengths: the first five minutes, and every
+function archeus has with what each one is for.
+
+![The guided tour running in the desktop app, opening each screen as it describes it.](img/tour-gui-short.webp){ width="1152" height="720" loading=lazy }
+
+![The same tour in the terminal UI, one step per screen.](img/tour-tui-short.webp){ width="836" height="246" loading=lazy }
+
+You can also walk it in the browser, with the screenshots, at
+[claudectl.space/getting-started](https://claudectl.space/getting-started) — same steps,
+same words, no install required.
+
 !!! note "Where this is going"
 
     Half of it has arrived: a session can be routed at any endpoint serving

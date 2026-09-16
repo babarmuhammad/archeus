@@ -28,7 +28,12 @@ def _read(name):
 #: stage.js/motion.js both degrade gracefully when they never arrive.
 #: cluster-spec.js is GENERATED (tools/gen_cluster_spec.py) and defines
 #: CLUSTER, which stage.js reads at build time, so it leads.
-_JS = ("cluster-spec.js", "motion.js", "instruments.js", "stage.js", "app.js")
+#: tour.js AFTER app.js: it calls `go`, `openTab`, `api` and `SEC_OF`, all of
+#: which app.js declares with `let`/`function` in the same script scope, and
+#: a `let` read from above its declaration is a temporal-dead-zone error
+#: rather than an undefined. Nothing runs it at boot, so order is enough.
+_JS = ("cluster-spec.js", "motion.js", "instruments.js", "stage.js", "app.js",
+       "tour.js")
 
 
 def _scan_vendor():

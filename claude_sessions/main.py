@@ -10,7 +10,7 @@ from .config import C_RESET, C_STAR, C_DIM, C_TITLE, C_BOLD, C_NAME
 from .config import get_claude_exe, load_settings, save_settings
 from .sessions import (get_session_info, load_recent_sessions, save_last_session,
                        format_age, scan_sessions, load_name, get_session_title)
-from .ui import menu, launch_options_menu, pause, help_screen, settings_menu
+from .ui import menu, launch_options_menu, pause, help_screen, settings_menu, tour_screen
 from .session_menu import sessions_menu
 from .mcp import mcp_status_line, global_claude_md_menu, mcp_servers, mcp_manager_menu
 from .usage import usage_status_line
@@ -204,6 +204,7 @@ MAIN_ACTIONS = [
     ('⚙  Logs (what archeus did, what failed)', '__logs__',        '/api/logs'),
     ('⚙  Settings',                          '__settings__',         '/api/settings'),
     ('?  Help',                              '__help__',             ''),   # the GUI's help page is generated in the browser from SECTIONS/TABS — there is nothing for it to fetch
+    ('🎓  Getting started (guided tour)', '__tour__',         ''),   # the steps are a constant in tour.py, read straight by this screen and by the GUI's /api/tour — there is nothing here to fetch
 ]
 
 #: the same five sections the GUI sidebar has, as [(label, [keys])] pointing
@@ -266,7 +267,8 @@ def _cap_of_row(key, cfgdir=None):
 #: submenu between the user and the reason they opened archeus — and `?` is the
 #: same door the GUI moved Help to. test_surface_parity fails a MAIN_ACTIONS key
 #: that is in neither this set nor a section.
-MAIN_TOP = ['__open_path__', '__search_all__', '__hidden_projects__', '__help__']
+MAIN_TOP = ['__open_path__', '__search_all__', '__hidden_projects__',
+            '__tour__', '__help__']
 
 
 def _dim_unavailable(label, key):
@@ -709,6 +711,16 @@ def run():
 
         elif sel == '__help__':
             help_screen()
+            continue
+
+        elif sel == '__tour__':
+            from . import tour as _tour
+            pick = menu([('The first five minutes  (%d steps)' % len(_tour.SHORT), 'short'),
+                         ('Every function, and what it is for  (%d steps)' % len(_tour.LONG), 'long'),
+                         ('Back', None)],
+                        'GETTING STARTED')
+            if pick:
+                tour_screen(pick)
             continue
 
         elif sel and sel.startswith('__proj_'):

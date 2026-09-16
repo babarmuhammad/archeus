@@ -859,6 +859,17 @@ class H(BaseHTTPRequestHandler):
                      'models': {'codex': ['gpt-5.5', 'gpt-5.4-mini'],
                                 'pi': ['anthropic/claude-sonnet-5']}.get(d['id'], [])})
             return
+        # the guided tour, answered by the REAL handler. It is a pure function
+        # of a constant in `tour.py`, so a stub copy would be a second script
+        # for the tour and the recorder would film words nobody ships. Same
+        # reasoning as /api/harness/setup above.
+        if p == '/api/tour':
+            from urllib.parse import parse_qs as _pq
+            from claude_sessions.gui_api import api_tour
+            self._j(api_tour(
+                {'which': (_pq(self.path.split('?', 1)[-1]).get('which') or [''])[0]},
+                None))
+            return
         self._j(ROUTES.get(p, {}))
 
     def do_POST(self):
@@ -1063,6 +1074,22 @@ def main():
           return nlive+'|'+byAcct;})()""")
         check('and names every account when they are',
               live == '3|teamA 2 · teamB', live)
+        # ── the guided tour ──
+        # A tour that points at nothing still renders perfectly, which is why
+        # this checks the RING as well as the card: the target is resolved by
+        # a data attribute, and losing that attribute is a silent failure on
+        # every step at once.
+        print(chr(10) + '— guided tour —')
+        started = pg.evaluate("(async()=>{await TOUR.start('short');await new Promise(r=>setTimeout(r,250));const h=document.querySelector('#tour');return [!h.hidden, !!h.querySelector('.tcard'),document.querySelectorAll('.tspot').length,(h.querySelector('h4')||{}).textContent||'',TOUR.steps.length];})()")
+        check('the tour opens, rings its target and names the step',
+              started[:3] == [True, True, 1] and bool(started[3]) and started[4] >= 5,
+              started)
+        moved = pg.evaluate("(async()=>{TOUR.next();await new Promise(r=>setTimeout(r,300));const h=document.querySelector('#tour');return [(h.querySelector('.tstep')||{}).textContent||'',document.querySelectorAll('.tspot').length];})()")
+        check('and moves on, keeping exactly one ring',
+              moved[0].strip().startswith('2 /') and moved[1] == 1, moved)
+        stopped = pg.evaluate("(()=>{TOUR.stop();return [document.querySelector('#tour').hidden,document.querySelectorAll('.tspot').length];})()")
+        check('and leaves nothing behind when it stops', stopped == [True, 0], stopped)
+
         print('\n— the background stage —')
         vend = pg.evaluate("[!!window.THREE, !!window.ANI, !!window.THREE_POST]")
         check('vendored three/anime/postprocessing loaded', vend == [True, True, True], vend)

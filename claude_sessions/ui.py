@@ -789,6 +789,73 @@ def _session_key_lines(cols=HELP_COLS):
     return out
 
 
+def tour_screen(which='short', start=0):
+    """The guided tour, one step per frame. ← → move, ESC leaves.
+
+    The SAME words the GUI overlay shows and the website prints, out of
+    `tour.py`, because a product with two interfaces and two explanations of
+    itself has two products. What differs is only what a surface can offer: the
+    GUI navigates to the screen a step is about, this prints the key that
+    reaches it here, and both point at the manual for the detail.
+    """
+    from . import render
+    from . import tour as _tour
+    steps = _tour.steps(which)
+    if not steps:
+        return
+    # ONCE, before the loop, exactly as `help_screen` does it. Flushing on every
+    # frame throws away anything already typed, so holding → moved one step and
+    # the recorder in `shot_tui.py --tour` captured seven copies of step one —
+    # which is also what type-ahead feels like on a real terminal.
+    flush_input()
+    # `start` is where it opens. The GUI overlay remembers the step you left on
+    # and so should this; it is also what lets `shot_tui.py --tour` capture one
+    # step per run, which is the only way to get a CLEAN frame out of this
+    # screen — the renderer clears once and then diff-writes, so a capture that
+    # pressed → six times contains all seven frames stacked.
+    i = max(0, min(len(steps) - 1, int(start or 0)))
+    while True:
+        st = steps[i]
+        w = max(40, render.content_width() - 6)
+        # textwrap, like transcript.py's pager: `render` has `trunc`/`fit` for a
+        # line that must not exceed a column, and nothing that reflows a
+        # paragraph, which is what a body of three sentences needs.
+        import textwrap
+        body = textwrap.wrap(st['body'], w) or ['']
+        frame = [
+            render.header(WORDMARK, 'GETTING STARTED'),
+            '',
+            f"  {C_DIM}step {i + 1} of {len(steps)}{C_RESET}",
+            f"  {C_BOLD}{st['title']}{C_RESET}",
+            '',
+        ] + [f"    {ln}" for ln in body] + ['']
+        if st['key']:
+            frame.append(f"    {C_GREEN}press {st['key']}{C_RESET}{C_DIM}  — reaches this from the main screen{C_RESET}")
+        if st['docs']:
+            frame.append(f"    {C_DIM}{_tour.docs_url(st)}{C_RESET}")
+        frame += [
+            '',
+            f"  {C_DIM}The same tour, with the screens: {_tour.SITE_TOUR}{C_RESET}",
+            '',
+            render.hint_keys([('→ / ENTER', 'next'), ('←', 'back'),
+                              ('ESC', 'done')]),
+        ]
+        render.render_frame(frame)
+        # `wait_event()[0]`, like every other screen: the tuple is not always a
+        # pair — a resize is `('resize',)` — so unpacking two names raises on the
+        # first terminal resize, which is a screen that dies when you drag a
+        # window edge.
+        ev = wait_event()[0]
+        if ev in ('esc',):
+            return
+        if ev in ('right', 'enter'):
+            if i + 1 >= len(steps):
+                return
+            i += 1
+        elif ev == 'left' and i:
+            i -= 1
+
+
 def help_screen():
     """Static hotkey reference. ENTER/ESC returns."""
     frame = [

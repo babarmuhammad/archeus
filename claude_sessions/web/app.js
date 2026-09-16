@@ -994,7 +994,10 @@ function drawNav(){
   // did not ask for
   $('#nav').innerHTML=SECTIONS.map(([label,icon,blurb,ids])=>{
     const off=ids.every(id=>!capOf(navCap(id)).ok);
-    return `<div class="it${cur===label?' sel':''}${off?' off':''}"
+    /* `data-nav` is what the guided tour rings. An attribute, not the label
+       text: a tour that finds its target by matching what is printed breaks on
+       the first rename, silently, and points at nothing. */
+    return `<div class="it${cur===label?' sel':''}${off?' off':''}" data-nav="${esc(label)}"
        onclick="go(${hesc(ids.includes(PAGE_)?PAGE_:ids[0])})"
        title="${esc(blurb)}">${ic(icon)} <span>${esc(label)}</span></div>`;}).join('');
 }
@@ -1006,7 +1009,8 @@ function drawNav(){
    still holds last page's tabs is what the Ctrl+K palette would keep matching. */
 function tabBtn(id,label,sel,fn,cap){
   const c=capOf(cap||'');
-  return `<div class="tab${sel?' sel':''}${c.ok?'':' off'}" onclick="${fn}(${hesc(id)})"
+  return `<div class="tab${sel?' sel':''}${c.ok?'':' off'}" data-tab="${esc(id)}"
+    onclick="${fn}(${hesc(id)})"
     ${c.ok?'':`title="${esc(c.why)}"`}>${esc(label)}</div>`;
 }
 function navCap(id){const n=NAV.find(x=>x[0]===id);return n?(n[6]||''):'';}
@@ -6099,6 +6103,24 @@ async function acctTerm(name,dir){
    JavaScript in the same scope as the arrays, so there is no staleness window
    at all. Every row carries data-help-row so the smoke test can count them
    against NAV.length + TABS.length. */
+/* The two ways in. On the Help page because that is the page ABOUT the
+   application — and `pgHelp` already renders every screen and every key from
+   the same tables, so the tour is the walkable version of what is already
+   there. `TOUR` is defined in tour.js, which the bundle concatenates after
+   this file, so it is referenced only from a handler and never at boot. */
+function tourCardHtml(){
+  return `<div class="card"><h3>${ic('play')} Guided tour</h3>
+    <p style="color:var(--dim);font-size:13px;margin:0 0 10px">A tour of the app,
+      IN the app: each step opens the screen it is about and points at it.
+      The short one is the first five minutes and ends with a session launched;
+      the long one is every function archeus has and what each is for.
+      <span class="tkey">\u2192</span> and <span class="tkey">\u2190</span> move,
+      <span class="tkey">Esc</span> stops.</p>
+    <div class="trow" style="justify-content:flex-start">
+      <button class="btn pri" onclick="TOUR.start('short')">Take the 5-minute tour</button>
+      <button class="btn" onclick="TOUR.start('long')">Every function</button>
+    </div></div>`;
+}
 async function pgHelp(nav){
   const row=(where,what)=>`<tr data-help-row><td style="white-space:nowrap;color:var(--cyan)">${esc(where)}</td><td>${esc(what)}</td></tr>`;
   const tbl=(head,rows)=>`<table class="tbl"><tr><th>${head}</th><th>what it is for</th></tr>${rows}</table>`;
@@ -6123,6 +6145,7 @@ async function pgHelp(nav){
   // workspace (thirteen projects make the first card 656px, two make it 200),
   // so which one is "the tall one" is not something the markup can know
   shell(nav,`
+    ${tourCardHtml()}
     <div class="card"><h3>${ic('help')} Projects</h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Pick a project in the sidebar; these are its four tabs and the pages inside them.</p>
     ${TAB_GROUPS.map(([label,ids])=>
