@@ -25,16 +25,23 @@ of its eight organic search results to an unrelated Rust crate, structurally
 is never granted). Owning the name in the ecosystems that rank is cheaper than
 out-writing them later.
 
-## Where the name stands, checked 2026-09-15
+## Where the name stands, checked 2026-09-16
+
+Every version below was read back from the registry's own API, never from what a
+publish command printed — `npx archeus` was published broken once and the publish
+said `+ archeus@2.4.1` either way. npm is also the one that lies about *timing*:
+`npm publish` prints the new version and then serves the old one for several
+minutes, so a check run straight afterwards reports the release missing.
 
 | | |
 |---|---|
-| PyPI `archeus` | **ours** — 2.4.0 |
-| PyPI, under the old name | **ours** — the shim at 1.9.2: no code, `archeus>=2.4.0`, published 2026-09-15 |
-| npm `archeus` | **ours** — 2.4.1 (the launcher runs a patch ahead; see below) |
-| RubyGems `archeus` | **ours** — 2.4.0 |
-| crates.io / NuGet / Packagist `archeus` | free |
+| PyPI `archeus` | **ours** — 2.5.0, published by CI on the tag (trusted publishing, `release.yml`) |
+| PyPI, under the old name | **ours** — the shim at 1.9.2: no code, `archeus>=2.4.0`, published 2026-09-15. **Done, not pending** — see below |
+| npm `archeus` | **ours** — 2.5.0, back in step with `pyproject.toml` after the 2.4.1 launcher fix |
+| RubyGems `archeus` | **ours** — 2.5.0 |
+| crates.io / NuGet / Packagist `archeus` | free, and still unclaimed — no toolchain on the release machine for any of the three (no `cargo`, no `nuget.exe`, and Packagist needs a repository of its own plus a web form) |
 | GitHub user/org `archeus` | **taken** since 2012 by an unrelated account. The repository stays `babarmuhammad/archeus`; there is nothing to claim. |
+| Docker Hub `babarmuhammad/archeus` | **no image published yet.** There is no `babarmuhammad` account on Docker Hub, and the daemon was not running on the release machine. |
 | Docker Hub user `archeus` | **taken**, zero repositories. Publish as `babarmuhammad/archeus`. |
 | `archeus.com` `.dev` `.sh` `.io` `.ai` `.app` | all appear unregistered. The documentation domain is still the previous name's and is deliberately held back in `tools/_rename_brand.py` until one is bought. |
 
@@ -46,18 +53,31 @@ this machine, and report the ones that do not — a registry skipped in silence 
 a name left for somebody else, which is the whole reason this directory exists.
 A registry whose version is already current is done, not skipped.
 
-Order matters in exactly one place: **PyPI first, then `legacy-name/`**, because
-the shim's pin has to be a version the user does not already have. Everything
-else is independent.
+Order matters in exactly one place, and only if `legacy-name/` is ever published
+again: **PyPI first, then the shim**, because the shim's pin has to be a version
+the user does not already have. Everything else is independent.
 
 ### PyPI — the real package
 
+**Do not upload this by hand.** `.github/workflows/release.yml` publishes it on
+any `v*` tag, over trusted publishing (OIDC), and cuts the GitHub release with
+the wheel and sdist attached. A local `twine upload` races that job for a version
+number PyPI will never hand back.
+
 ```bash
-python -m build
-python -m twine upload dist/*
+git tag -a v<version> -m "Release <version>" && git push origin v<version>
+gh run watch                       # the workflow checks the tag against pyproject first
 ```
 
+Then read the version back out of PyPI rather than off the workflow's log.
+
 ### PyPI — the final release under the previous name
+
+**This one is already out and stays out: 1.9.2, pinning `archeus>=2.4.0`.** It is
+the FINAL release under that name, so a release here is not a step in the
+ordinary run — the published pin already forces anyone installing it onto a
+current archeus, which is the whole job. Republish only if the mechanism below
+has to change, and then it needs a new shim version of its own.
 
 ```bash
 cd packaging/legacy-name
