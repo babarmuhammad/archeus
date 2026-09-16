@@ -34,6 +34,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it. An offer is not repeated for ten minutes per session, because both triggers fire
   repeatedly by nature.
 
+  One subtlety worth naming, because it made the pre-emptive half inert on a real
+  machine: `elect()` is deliberately STICKY — it keeps the account in hand until that
+  account is spent — and it decides that from the usage poller's cache, which a status
+  line process has never filled. So it answered with the very account it was being asked
+  to leave, and the row read "no account with headroom" beside five idle logins. Leaving
+  is now a separate question (`rotate.next_account`) from starting, which is what the two
+  callers that have already decided to leave actually mean.
+
 - **A guided tour, in the app and on the web.** Two tours of the same product:
   the first five minutes, ending with a session launched, and every function
   archeus has with what each one is for. In the desktop app it is a coach-mark

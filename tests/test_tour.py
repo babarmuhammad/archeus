@@ -214,17 +214,38 @@ def test_the_website_page_is_in_the_nav_and_built_from_the_generated_copy():
     assert 'TOUR_SHORT.map' in page
 
 
+def _webp_frames(path):
+    """Animation frames in a WebP, counted from the container.
+
+    Stdlib, deliberately: Pillow is a developer dependency here (the recorders
+    need it) and CI installs only what the suite needs, so a `from PIL import`
+    turned this gate into a skip on five of six runners — a gate that is absent
+    exactly where nobody is watching. A RIFF file is a chunk list, and an
+    animation is one `ANMF` chunk per frame.
+    """
+    raw = io.open(path, 'rb').read()
+    assert raw[:4] == b'RIFF' and raw[8:12] == b'WEBP', path
+    n, i = 0, 12
+    while i + 8 <= len(raw):
+        tag = raw[i:i + 4]
+        size = int.from_bytes(raw[i + 4:i + 8], 'little')
+        if tag == b'ANMF':
+            n += 1
+            i += 8 + 16                      # ANMF holds sub-chunks; walk into it
+            continue
+        i += 8 + size + (size & 1)           # chunks are padded to even length
+    return n
+
+
 @pytest.mark.parametrize('rel', ['tour-gui-short.webp', 'tour-tui-short.webp'])
 def test_the_recorded_guide_is_published_to_both_hosts_and_moves(rel):
     """A recording announced as an animation that is one frame is the failure
     the recorder itself hit: the screen never advanced and nothing said so."""
-    from PIL import Image, ImageSequence
     for host in (os.path.join(ROOT, 'docs', 'img'),
                  os.path.join(ROOT, 'www', 'public', 'img')):
         p = os.path.join(host, rel)
         assert os.path.isfile(p), p
-    im = Image.open(os.path.join(ROOT, 'docs', 'img', rel))
-    frames = sum(1 for _ in ImageSequence.Iterator(im))
+    frames = _webp_frames(os.path.join(ROOT, 'docs', 'img', rel))
     assert frames >= len(tour.SHORT), '%s has %d frames for %d steps' % (
         rel, frames, len(tour.SHORT))
 

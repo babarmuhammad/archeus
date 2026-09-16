@@ -32,7 +32,7 @@ export const TOUR_SHORT: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "index",
-    "docsUrl": "https://claudectl.space/docs/index/"
+    "docsUrl": "https://docs.claudectl.space/index/"
   },
   {
     "id": "dashboard",
@@ -42,7 +42,7 @@ export const TOUR_SHORT: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "dashboard",
-    "docsUrl": "https://claudectl.space/docs/dashboard/"
+    "docsUrl": "https://docs.claudectl.space/dashboard/"
   },
   {
     "id": "projects",
@@ -52,7 +52,7 @@ export const TOUR_SHORT: TourStep[] = [
     "tab": "",
     "key": "Enter",
     "docs": "projects",
-    "docsUrl": "https://claudectl.space/docs/projects/"
+    "docsUrl": "https://docs.claudectl.space/projects/"
   },
   {
     "id": "sessions",
@@ -62,7 +62,7 @@ export const TOUR_SHORT: TourStep[] = [
     "tab": "sessions",
     "key": "s",
     "docs": "sessions",
-    "docsUrl": "https://claudectl.space/docs/sessions/"
+    "docsUrl": "https://docs.claudectl.space/sessions/"
   },
   {
     "id": "memory",
@@ -72,7 +72,7 @@ export const TOUR_SHORT: TourStep[] = [
     "tab": "memory",
     "key": "m",
     "docs": "memory",
-    "docsUrl": "https://claudectl.space/docs/memory/"
+    "docsUrl": "https://docs.claudectl.space/memory/"
   },
   {
     "id": "launch",
@@ -82,7 +82,7 @@ export const TOUR_SHORT: TourStep[] = [
     "tab": "",
     "key": "n",
     "docs": "configuration",
-    "docsUrl": "https://claudectl.space/docs/configuration/"
+    "docsUrl": "https://docs.claudectl.space/configuration/"
   },
   {
     "id": "go",
@@ -92,7 +92,7 @@ export const TOUR_SHORT: TourStep[] = [
     "tab": "",
     "key": "n",
     "docs": "quickstart",
-    "docsUrl": "https://claudectl.space/docs/quickstart/"
+    "docsUrl": "https://docs.claudectl.space/quickstart/"
   }
 ];
 
@@ -105,7 +105,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "index",
-    "docsUrl": "https://claudectl.space/docs/index/"
+    "docsUrl": "https://docs.claudectl.space/index/"
   },
   {
     "id": "long-dashboard",
@@ -115,7 +115,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "dashboard",
-    "docsUrl": "https://claudectl.space/docs/dashboard/"
+    "docsUrl": "https://docs.claudectl.space/dashboard/"
   },
   {
     "id": "long-live",
@@ -125,7 +125,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "dashboard",
-    "docsUrl": "https://claudectl.space/docs/dashboard/"
+    "docsUrl": "https://docs.claudectl.space/dashboard/"
   },
   {
     "id": "long-sessions",
@@ -135,7 +135,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "sessions",
     "key": "s",
     "docs": "sessions",
-    "docsUrl": "https://claudectl.space/docs/sessions/"
+    "docsUrl": "https://docs.claudectl.space/sessions/"
   },
   {
     "id": "long-flow",
@@ -145,7 +145,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "sessions",
     "key": "",
     "docs": "sessions",
-    "docsUrl": "https://claudectl.space/docs/sessions/"
+    "docsUrl": "https://docs.claudectl.space/sessions/"
   },
   {
     "id": "long-memory",
@@ -155,7 +155,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "memory",
     "key": "m",
     "docs": "memory",
-    "docsUrl": "https://claudectl.space/docs/memory/"
+    "docsUrl": "https://docs.claudectl.space/memory/"
   },
   {
     "id": "long-lessons",
@@ -165,7 +165,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "memory",
     "key": "",
     "docs": "memory",
-    "docsUrl": "https://claudectl.space/docs/memory/"
+    "docsUrl": "https://docs.claudectl.space/memory/"
   },
   {
     "id": "long-claudemd",
@@ -175,7 +175,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "claudemd",
     "key": "",
     "docs": "memory",
-    "docsUrl": "https://claudectl.space/docs/memory/"
+    "docsUrl": "https://docs.claudectl.space/memory/"
   },
   {
     "id": "long-audit",
@@ -185,7 +185,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "audit",
     "key": "",
     "docs": "usage",
-    "docsUrl": "https://claudectl.space/docs/usage/"
+    "docsUrl": "https://docs.claudectl.space/usage/"
   },
   {
     "id": "long-review",
@@ -195,7 +195,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "review",
     "key": "",
     "docs": "plan-execute",
-    "docsUrl": "https://claudectl.space/docs/plan-execute/"
+    "docsUrl": "https://docs.claudectl.space/plan-execute/"
   },
   {
     "id": "long-planexec",
@@ -205,7 +205,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "planexec",
     "key": "",
     "docs": "plan-execute",
-    "docsUrl": "https://claudectl.space/docs/plan-execute/"
+    "docsUrl": "https://docs.claudectl.space/plan-execute/"
   },
   {
     "id": "long-pusage",
@@ -215,7 +215,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "pusage",
     "key": "",
     "docs": "usage",
-    "docsUrl": "https://claudectl.space/docs/usage/"
+    "docsUrl": "https://docs.claudectl.space/usage/"
   },
   {
     "id": "long-repos",
@@ -225,7 +225,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "worktrees",
     "key": "",
     "docs": "projects",
-    "docsUrl": "https://claudectl.space/docs/projects/"
+    "docsUrl": "https://docs.claudectl.space/projects/"
   },
   {
     "id": "long-tools",
@@ -235,7 +235,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "tools",
     "key": "",
     "docs": "architecture",
-    "docsUrl": "https://claudectl.space/docs/architecture/"
+    "docsUrl": "https://docs.claudectl.space/architecture/"
   },
   {
     "id": "long-globalmd",
@@ -245,7 +245,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "g",
     "docs": "memory",
-    "docsUrl": "https://claudectl.space/docs/memory/"
+    "docsUrl": "https://docs.claudectl.space/memory/"
   },
   {
     "id": "long-agents",
@@ -255,7 +255,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "a",
     "docs": "agents",
-    "docsUrl": "https://claudectl.space/docs/agents/"
+    "docsUrl": "https://docs.claudectl.space/agents/"
   },
   {
     "id": "long-skills",
@@ -265,7 +265,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "agent-library",
-    "docsUrl": "https://claudectl.space/docs/agent-library/"
+    "docsUrl": "https://docs.claudectl.space/agent-library/"
   },
   {
     "id": "long-hooks",
@@ -275,7 +275,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "h",
     "docs": "hooks",
-    "docsUrl": "https://claudectl.space/docs/hooks/"
+    "docsUrl": "https://docs.claudectl.space/hooks/"
   },
   {
     "id": "long-mcp",
@@ -285,7 +285,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "c",
     "docs": "mcp",
-    "docsUrl": "https://claudectl.space/docs/mcp/"
+    "docsUrl": "https://docs.claudectl.space/mcp/"
   },
   {
     "id": "long-plugins",
@@ -295,7 +295,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "plugin",
-    "docsUrl": "https://claudectl.space/docs/plugin/"
+    "docsUrl": "https://docs.claudectl.space/plugin/"
   },
   {
     "id": "long-ostyles",
@@ -305,7 +305,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "configuration",
-    "docsUrl": "https://claudectl.space/docs/configuration/"
+    "docsUrl": "https://docs.claudectl.space/configuration/"
   },
   {
     "id": "long-usage",
@@ -315,7 +315,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "u",
     "docs": "usage",
-    "docsUrl": "https://claudectl.space/docs/usage/"
+    "docsUrl": "https://docs.claudectl.space/usage/"
   },
   {
     "id": "long-accounts",
@@ -325,7 +325,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "accounts",
-    "docsUrl": "https://claudectl.space/docs/accounts/"
+    "docsUrl": "https://docs.claudectl.space/accounts/"
   },
   {
     "id": "long-rotation",
@@ -335,7 +335,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "accounts",
-    "docsUrl": "https://claudectl.space/docs/accounts/"
+    "docsUrl": "https://docs.claudectl.space/accounts/"
   },
   {
     "id": "long-models",
@@ -345,7 +345,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "providers",
-    "docsUrl": "https://claudectl.space/docs/providers/"
+    "docsUrl": "https://docs.claudectl.space/providers/"
   },
   {
     "id": "long-loops",
@@ -355,7 +355,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "configuration",
-    "docsUrl": "https://claudectl.space/docs/configuration/"
+    "docsUrl": "https://docs.claudectl.space/configuration/"
   },
   {
     "id": "long-statusline",
@@ -365,7 +365,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "statusline",
-    "docsUrl": "https://claudectl.space/docs/statusline/"
+    "docsUrl": "https://docs.claudectl.space/statusline/"
   },
   {
     "id": "long-harness",
@@ -375,7 +375,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "harnesses",
-    "docsUrl": "https://claudectl.space/docs/harnesses/"
+    "docsUrl": "https://docs.claudectl.space/harnesses/"
   },
   {
     "id": "long-client",
@@ -385,7 +385,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "troubleshooting",
-    "docsUrl": "https://claudectl.space/docs/troubleshooting/"
+    "docsUrl": "https://docs.claudectl.space/troubleshooting/"
   },
   {
     "id": "long-handoff",
@@ -395,7 +395,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "K",
     "docs": "context-handoff",
-    "docsUrl": "https://claudectl.space/docs/context-handoff/"
+    "docsUrl": "https://docs.claudectl.space/context-handoff/"
   },
   {
     "id": "long-search",
@@ -405,7 +405,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "sessions",
-    "docsUrl": "https://claudectl.space/docs/sessions/"
+    "docsUrl": "https://docs.claudectl.space/sessions/"
   },
   {
     "id": "long-logs",
@@ -415,7 +415,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "troubleshooting",
-    "docsUrl": "https://claudectl.space/docs/troubleshooting/"
+    "docsUrl": "https://docs.claudectl.space/troubleshooting/"
   },
   {
     "id": "long-paths",
@@ -425,7 +425,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "configuration",
-    "docsUrl": "https://claudectl.space/docs/configuration/"
+    "docsUrl": "https://docs.claudectl.space/configuration/"
   },
   {
     "id": "long-appearance",
@@ -435,7 +435,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "desktop",
-    "docsUrl": "https://claudectl.space/docs/desktop/"
+    "docsUrl": "https://docs.claudectl.space/desktop/"
   },
   {
     "id": "long-updates",
@@ -445,7 +445,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "installation",
-    "docsUrl": "https://claudectl.space/docs/installation/"
+    "docsUrl": "https://docs.claudectl.space/installation/"
   },
   {
     "id": "long-tui",
@@ -455,7 +455,7 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "?",
     "docs": "tui",
-    "docsUrl": "https://claudectl.space/docs/tui/"
+    "docsUrl": "https://docs.claudectl.space/tui/"
   },
   {
     "id": "long-plugin",
@@ -465,8 +465,8 @@ export const TOUR_LONG: TourStep[] = [
     "tab": "",
     "key": "",
     "docs": "plugin",
-    "docsUrl": "https://claudectl.space/docs/plugin/"
+    "docsUrl": "https://docs.claudectl.space/plugin/"
   }
 ];
 
-export const DOCS_BASE = "https://claudectl.space/docs";
+export const DOCS_BASE = "https://docs.claudectl.space";

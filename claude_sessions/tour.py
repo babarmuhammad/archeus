@@ -40,7 +40,14 @@ to a screen that is not there is worse than no tour.
 
 #: Where the manual lives. The tour links it rather than restating it: a second
 #: copy of an explanation is a second explanation, and the second one is wrong.
-DOCS_BASE = 'https://claudectl.space/docs'
+#:
+#: The two hosts have OPPOSITE URL shapes and this had both of them wrong at
+#: once. The manual is MkDocs on its own subdomain and serves directory URLs, so
+#: it is `docs.<host>/memory/` with the trailing slash; the apex is Next.js with
+#: no trailing slash. Written as `<host>/docs/memory/` the links were a 404 on a
+#: path the apex does not serve, which nothing in the app could have reported —
+#: `tests/test_site_links.py` catches it, and only once the file is tracked.
+DOCS_BASE = 'https://docs.claudectl.space'
 SITE_TOUR = 'https://claudectl.space/getting-started'
 
 
@@ -343,5 +350,9 @@ def names():
 
 
 def docs_url(step):
-    """The manual page a step points at, or '' when it points nowhere."""
+    """The manual page a step points at, or '' when it points nowhere.
+
+    Trailing slash: MkDocs publishes directory URLs, so the form without it is a
+    redirect before it arrives.
+    """
     return '%s/%s/' % (DOCS_BASE, step['docs']) if step.get('docs') else ''

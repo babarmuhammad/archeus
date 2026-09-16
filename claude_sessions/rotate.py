@@ -244,8 +244,10 @@ def offer(path, transcript, sid, why=''):
     """
     if not enabled():
         return False, ''
-    to = elect()
-    if _norm(to) == _norm(_c.resolve_config_dir(None)):
+    # `next_account`, not `elect`: every caller of this function has already
+    # established that the account in hand should be left, and `elect` is sticky.
+    to = next_account()
+    if not to:
         _log('%s is out and nothing else has headroom' % name_of(None), why)
         return False, 'no other account has headroom'
     if recently_offered(sid):
@@ -357,6 +359,27 @@ def hook_installed():
         return hooks.across_accounts(hooks.limit_hook_installed)
     except Exception:
         return {}
+
+
+def next_account(exclude=None):
+    """The config dir work should move TO, or '' when there is nowhere to go.
+
+    `elect()` is sticky on purpose — it keeps the account in hand until that
+    account is spent — and that is wrong for every caller who has ALREADY
+    decided to leave. The statusline is the case that proves it: it reads this
+    account's 96% straight off Claude Code's payload, but `elect()` re-derives
+    "is the current account spent" from the usage poller's cache, which a
+    statusline process has never filled. So it answered with the account it was
+    being asked to leave, and the row read "no account with headroom" on a
+    machine with five idle logins.
+
+    Two questions, two functions: `elect` answers "where should the next process
+    start", this answers "where should this work go INSTEAD".
+    """
+    cur = _c.resolve_config_dir(exclude)
+    for _name, d, _pct in candidates(exclude=cur):
+        return _c.resolve_config_dir(d)
+    return ''
 
 
 def note(frm, to, why=''):

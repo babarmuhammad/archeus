@@ -314,8 +314,13 @@ def _rotate_bit(data):
         from . import rotate
         if not rotate.enabled() or pct < rotate.threshold():
             return ''
-        to = rotate.elect()
-        if rotate._norm(to) == rotate._norm(_c.resolve_config_dir(None)):
+        # `next_account`, never `elect`: the percentage that got us here came off
+        # the PAYLOAD, and `elect` would decide whether to move by consulting the
+        # usage poller's cache — which a statusline process has never filled, so
+        # it answered with the very account being left and this row said "no
+        # account with headroom" beside five idle logins.
+        to = rotate.next_account()
+        if not to:
             return f'{_c.C_ERR}{int(pct)}% — no account with headroom{_c.C_RESET}'
         name = rotate.name_of(to)
         # ACTING is `auto` only, and it is safe to be here: `offer` writes its

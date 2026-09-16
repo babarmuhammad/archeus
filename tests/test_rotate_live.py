@@ -272,6 +272,79 @@ def test_at_the_threshold_the_statusline_names_the_next_account(monkeypatch, tmp
     assert bit == '95% — continue on b'
 
 
+def test_the_payload_is_believed_over_a_cold_usage_cache(monkeypatch, tmp_path):
+    """The bug that only a real run found, and the reason `next_account` exists.
+
+    A statusline process has never run the usage poller, so `worst_window` reads
+    0% for every account. `elect()` is STICKY — it keeps the account in hand
+    until the cache says that account is spent — so it answered with the very
+    account being left, and the row read "no account with headroom" on a machine
+    with five idle logins. The percentage that got us here came off the payload;
+    the decision has to be made from it too.
+    """
+    a = str(tmp_path / 'a')
+    b = str(tmp_path / 'b')
+    for d in (a, b):
+        os.makedirs(d, exist_ok=True)
+        io.open(os.path.join(d, '.credentials.json'), 'w', encoding='utf-8').write(
+            json.dumps({'claudeAiOauth': {'accessToken': 'tok',
+                                          'expiresAt': 9999999999000}}))
+    # …and NOTHING in the usage cache. That is the state this runs in.
+    _settings(monkeypatch, [a, b], rotate_mode='ask', rotate_threshold=95)
+    _live(monkeypatch, a)
+    assert not rotate.spent(a), 'the cache knows nothing, which is a pass'
+    assert rotate.elect() == a, 'elect is sticky — that is what it is for'
+    assert rotate.next_account() == b, 'and this is the other question'
+    bit = statusline.plain(statusline._rotate_bit(
+        {'rate_limits': {'five_hour': {'used_percentage': 96}},
+         'session_id': 'S11', 'cwd': str(tmp_path)}))
+    assert bit == '96% — continue on b'
+
+
+def test_next_account_never_answers_with_the_one_being_left(monkeypatch, tmp_path):
+    """`candidates()` is ordered emptiest-first, and the account you are leaving
+    is very often the emptiest one the CACHE knows about — a statusline process
+    has polled nobody, so every account reads 0%. Without the exclusion this
+    answers "move to where you already are", which is a rotation that never
+    rotates and reports success."""
+    a, b = _account(tmp_path, 'a', 0), _account(tmp_path, 'b', 40)
+    _settings(monkeypatch, [a, b], rotate_mode='ask', rotate_threshold=95)
+    _live(monkeypatch, a)
+    assert rotate.next_account() == b
+    assert rotate.next_account(exclude=b) == a
+    # The statement of the rule, and the only form of it a mutation cannot slip
+    # past: with the live account the ONLY candidate there is nowhere to go, so
+    # the answer is nothing. Without the exclusion it is 'move to where you
+    # already are' — which every caller would then act on as a successful
+    # rotation. (The two assertions above happen to survive that mutation,
+    # because `candidates()` is ordered by the usage cache and the order can put
+    # the right answer first by luck.)
+    _settings(monkeypatch, [a], rotate_mode='ask', rotate_threshold=95)
+    assert rotate.candidates() and rotate.candidates()[0][1] == a
+    assert rotate.next_account() == ''
+
+
+def test_offer_moves_on_a_cold_cache_too(monkeypatch, tmp_path):
+    """`offer` is reached from the statusline as well as from the hook, and only
+    the hook latches the account first. Through `elect()` it decided from the
+    usage cache — empty in both of those processes — and answered 'no other
+    account has headroom' with an idle login sitting right there."""
+    a = str(tmp_path / 'a')
+    b = str(tmp_path / 'b')
+    for d in (a, b):
+        os.makedirs(d, exist_ok=True)
+        io.open(os.path.join(d, '.credentials.json'), 'w', encoding='utf-8').write(
+            json.dumps({'claudeAiOauth': {'accessToken': 'tok',
+                                          'expiresAt': 9999999999000}}))
+    _settings(monkeypatch, [a, b], rotate_mode='ask')
+    _live(monkeypatch, a)
+    told = {}
+    monkeypatch.setattr(rotate, '_notify', lambda t, m: told.update(t=t, m=m))
+    acted, msg = rotate.offer(str(tmp_path), '', 'S12')
+    assert msg == 'offered b', msg
+    assert not acted and 'b' in told['m']
+
+
 def test_with_nowhere_to_go_it_says_so_rather_than_nothing(monkeypatch, tmp_path):
     a = _account(tmp_path, 'a', 96)
     _settings(monkeypatch, [a], rotate_mode='ask', rotate_threshold=95)
