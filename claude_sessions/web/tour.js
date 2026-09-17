@@ -1,9 +1,16 @@
 /* ── the guided tour ──────────────────────────────────────────
    A coach-mark, not a modal. The point of a tour of an application is to be
    IN the application while it is explained, so this navigates to the screen a
-   step is about, rings the thing it is pointing at, and docks a card in the
-   corner. A full-screen dialog explaining a screen you cannot see is a manual
-   with extra steps.
+   step is about, rings the thing it is pointing at, and puts the card BESIDE
+   it. A full-screen dialog explaining a screen you cannot see is a manual with
+   extra steps.
+
+   The card used to be docked in the bottom-right corner by CSS, with no
+   placement code at all. That made a ring and its explanation two unrelated
+   things on opposite sides of the window, thirty-seven times over — the reader
+   had to re-find the glowing element after every sentence. `_place` is the
+   whole fix and it is deliberately dumb: measure the target, pick the side with
+   room, clamp to the viewport.
 
    The steps are not here. `claude_sessions/tour.py` is the one place the
    narrative is written, because the terminal UI prints the same words and
@@ -47,14 +54,21 @@ const TOUR = {
     this.on = true;
     this._seen(which + ':running');
     document.addEventListener('keydown', this._key);
+    /* The card is placed against a rect, so anything that moves the rect has to
+       re-place it. Both are passive and both are removed in stop() — a listener
+       that outlives the tour is a listener nobody will think to look for. */
+    addEventListener('resize', this._follow, { passive: true });
+    addEventListener('scroll', this._follow, { passive: true, capture: true });
     this.show();
   },
 
   stop(done) {
     this.on = false;
     this._ring(null);
-    const h = $('#tour'); if (h) { h.hidden = true; h.innerHTML = ''; }
+    const h = $('#tour'); if (h) { h.hidden = true; h.innerHTML = ''; h.style.transform = ''; }
     document.removeEventListener('keydown', this._key);
+    removeEventListener('resize', this._follow, { passive: true });
+    removeEventListener('scroll', this._follow, { passive: true, capture: true });
     this._seen(done ? this.which + ':done' : this.which + ':' + this.i);
   },
 
@@ -66,6 +80,40 @@ const TOUR = {
     if (e.key === 'Escape') { TOUR.stop(); e.preventDefault(); }
     else if (e.key === 'ArrowRight') { TOUR.next(); e.preventDefault(); }
     else if (e.key === 'ArrowLeft') { TOUR.back(); e.preventDefault(); }
+  },
+
+  /* Named, so removeEventListener can find it again. Re-reads the ring rather
+     than caching a node: the thing it points at is re-rendered by half the
+     screens in this app. */
+  _follow() {
+    if (TOUR.on) TOUR._place(document.querySelector('.tspot'));
+  },
+
+  /* Beside the target, on the side with room. The card is 360px of fixed-
+     position box and the target is anything from a 28px sidebar row to a tab,
+     so there is no one right side — try right, then left, then below, then take
+     whichever the clamp can fit. Written as a transform so the move stays on
+     the compositor; see the #tour block in app.css. */
+  _place(el) {
+    const h = $('#tour'); if (!h || h.hidden) return;
+    const GAP = 14, EDGE = 16;
+    const vw = innerWidth, vh = innerHeight;
+    // narrow windows dock the card in CSS; placing it there fights the rule
+    if (vw <= 620) { h.style.transform = ''; return; }
+    const c = h.getBoundingClientRect();
+    const w = c.width || 360, ht = c.height || 220;
+    if (!el) {            // no target on this step: the old corner
+      h.style.transform = `translate3d(${Math.round(vw - w - EDGE)}px,${Math.round(vh - ht - EDGE)}px,0)`;
+      return;
+    }
+    const r = el.getBoundingClientRect();
+    let x = r.right + GAP;
+    if (x + w > vw - EDGE) x = r.left - GAP - w;          // flip to the left
+    if (x < EDGE) { x = Math.min(r.left, vw - w - EDGE); } // no room either side
+    let y = r.top + r.height / 2 - ht / 2;                 // centred on the target
+    if (x <= r.right && x + w >= r.left) y = r.bottom + GAP;  // stacked, not beside
+    y = Math.max(EDGE, Math.min(y, vh - ht - EDGE));
+    h.style.transform = `translate3d(${Math.round(Math.max(EDGE, x))}px,${Math.round(y)}px,0)`;
   },
 
   /* The ring is a class on the real element, so it follows the element through
@@ -99,8 +147,15 @@ const TOUR = {
       openTab(s.tab);
     }
     await new Promise(r => setTimeout(r, 0));
-    this._ring(this._target(s));
+    const el = this._target(s);
+    /* PAINT first: the card is placed against its own height, and an unpainted
+       card has none. Then ring, then place — and bring the target into view
+       first, because a card beside something off screen is a card off screen. */
     this.paint(s);
+    this._ring(el);
+    if (el) el.scrollIntoView({ block: 'nearest', inline: 'nearest',
+      behavior: document.documentElement.classList.contains('mo-off') ? 'auto' : 'smooth' });
+    this._place(el);
   },
 
   paint(s) {

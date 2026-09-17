@@ -38,7 +38,7 @@ from .system_prompt import edit_system_prompt
 #:           key, while the palette is a menu with room to spare. Ask
 #:           `ui.help_blurb_budget()` for the number; test_parity_gate.py fails
 #:           a blurb that would truncate.
-#:   bucket  which of the project's four tabs this key belongs under — the same
+#:   bucket  which of the project's four tab GROUPS this key belongs under — the same
 #:           four the GUI groups its project tabs into, plus `Help` for the two
 #:           discovery surfaces themselves. It groups the `/` palette and the
 #:           help grid; `scope` still drives the one-line hint bar, which is a
@@ -47,15 +47,15 @@ from .system_prompt import edit_system_prompt
 #:           reason the blurb is: a second list keyed by the same keys is a
 #:           second thing to forget when a key is added.
 ACTIONS = [
-    ('v', 'view',           'session', '/api/transcript',            'View transcript (/ to search)', 'Sessions'),
-    ('r', 'rename',         'session', '/api/rename',                'Rename session', 'Sessions'),
-    ('f', 'fork',           'session', '/api/launch',                'Fork session', 'Sessions'),  # choice='fork:<sid>'
-    ('t', 'tag',            'session', '/api/session/tags',          'Tag session', 'Sessions'),
-    ('d', 'archive',        'session', '/api/session/archive',       'Archive / delete session', 'Sessions'),
-    ('e', 'export',         'session', '/api/session/export',        'Export to markdown', 'Sessions'),
-    ('i', 'info',           'session', '/api/session/meta',          'Session info: tokens, cost', 'Sessions'),
-    ('F', 'files',          'session', '/api/session/changed-files', 'Changed files', 'Sessions'),
-    ('A', 'archived',       'session', '/api/session/archived',      'Archived sessions view', 'Sessions'),
+    ('v', 'view',           'session', '/api/transcript',            'View transcript (/ to search)', 'Session'),
+    ('r', 'rename',         'session', '/api/rename',                'Rename session', 'Session'),
+    ('f', 'fork',           'session', '/api/launch',                'Fork session', 'Session'),  # choice='fork:<sid>'
+    ('t', 'tag',            'session', '/api/session/tags',          'Tag session', 'Session'),
+    ('d', 'archive',        'session', '/api/session/archive',       'Archive / delete session', 'Session'),
+    ('e', 'export',         'session', '/api/session/export',        'Export to markdown', 'Session'),
+    ('i', 'info',           'session', '/api/session/meta',          'Session info: tokens, cost', 'Session'),
+    ('F', 'files',          'session', '/api/session/changed-files', 'Changed files', 'Session'),
+    ('A', 'archived',       'session', '/api/session/archived',      'Archived sessions view', 'Session'),
     ('m', 'memory',         'project', '/api/memory/state',          'Memory hub: build, ask, preview', 'Context'),
     ('g', 'agents',         'project', '/api/agents/session',        'Project agents', 'Project'),
     ('n', 'graph',          'project', '/api/graph-lite',            'Architecture + memory graph', 'Project'),
@@ -70,7 +70,7 @@ ACTIONS = [
     # button on a session row, so the row IS the source and there is no
     # source-picker step. The TUI's own ⇧K still opens the picker (a terminal
     # list has no per-row buttons), which is why the key and blurb are unchanged.
-    ('K', 'hand off',       'session', '/api/inject/launch',         'Hand this chat to a new one', 'Sessions'),
+    ('K', 'hand off',       'session', '/api/inject/launch',         'Hand this chat to a new one', 'Session'),
     ('W', 'ctx audit',      'project', '/api/ctxaudit',              'Context weight audit (tokens)', 'Context'),
     # ── in the palette and in help, but not in the hint bar: that bar is one
     #    line wide, and these are the half that is reached less often.
@@ -88,7 +88,7 @@ ACTIONS = [
 
 #: actions reachable only from the archived view
 ARCHIVED_ACTIONS = [
-    ('d', 'restore/delete', 'session', '/api/session/restore', 'Restore or delete', 'Sessions'),
+    ('d', 'restore/delete', 'session', '/api/session/restore', 'Restore or delete', 'Session'),
 ]
 
 

@@ -268,7 +268,7 @@ SPACE_JS = """(()=>{
      puts `display:contents` rows between the grid and its cells, so its
      children are not its items, and a gallery's last row is short by
      construction. */
-  document.querySelectorAll('#content,.dash,.tpane,.cols3,.grid2').forEach(g=>{
+  document.querySelectorAll('#content,.dash,.tpane,.cols2,.cols3,.grid2').forEach(g=>{
     const st=getComputedStyle(g);
     if(st.display!=='grid')return;
     const tracks=st.gridTemplateColumns.trim().split(/\\s+/)
@@ -317,11 +317,30 @@ SPACE_JS = """(()=>{
     kids.forEach(e => {const b = box(e);
       if (b.width >= p.clientWidth - 2) {runs.push([]); return;}
       runs[runs.length - 1].push(b);});
+    /* How many columns this pile HAS. `columns:<width>` does not shrink to the
+       number of items: the used count is how many fit, so a run that fills
+       fewer leaves the rest of its own height blank. That is a grid's `dead
+       cell` said in multicol, and NOTHING here could see it — a run of one
+       card was skipped by `run.length < 2` and then again by `cols.size < 2`,
+       so 828x770px of background beside the Memory tab's first card passed
+       every audit this file has ever run. */
+    const ps = getComputedStyle(p);
+    const cwid = parseFloat(ps.columnWidth) || 0;
+    const cgap = parseFloat(ps.columnGap) || 0;
+    const fit = cwid ? Math.max(1, Math.floor((p.clientWidth + cgap) / (cwid + cgap))) : 1;
     runs.forEach(run => {
-      if (run.length < 2) return;
+      if (!run.length) return;
       const cols = new Map();
       run.forEach(b => {const k = Math.round(b.left / 8);
         if (!cols.has(k)) cols.set(k, []); cols.get(k).push(b);});
+      const rtop = Math.min(...run.map(b => b.top));
+      const rh = Math.max(...run.map(b => b.bottom)) - rtop;
+      const empty = fit - cols.size;
+      if (empty > 0 && (empty / fit) * rh > 260)
+        out.push('pile run of ' + run.length + ' fills ' + cols.size + ' of '
+          + fit + ' columns — ' + Math.round((empty / fit) * p.clientWidth) + 'x'
+          + Math.round(rh) + 'px empty');
+      if (run.length < 2) return;
       if (cols.size < 2) return;
       const spans = [...cols.values()].map(bs =>
         Math.max(...bs.map(b => b.bottom)) - Math.min(...bs.map(b => b.top)));
@@ -376,6 +395,63 @@ SPACE_JS = """(()=>{
       -parseFloat(st.borderBottomWidth||0);
     const slack=floor-Math.max(...kids.map(b=>b.bottom));
     if(slack>40)out.push('card '+cn(c)+' has '+Math.round(slack)+'px of empty floor');
+    /* The SAME question sideways, and nothing here could ask it. Every metric
+       above measures height, so a card twice as wide as anything in it reads as
+       clean: giving the Memory tab's first card `column-span:all` moved 794px of
+       background from beside the card to inside it and the audit went on saying
+       `clean`. Measured against the WIDEST child, because a capped paragraph
+       beside a full-width table is a measure, not a hole — this fires only when
+       EVERYTHING in the card stops short of it. */
+    /* The same question sideways, and nothing here could ask it: every metric
+       above measures HEIGHT, so a card twice as wide as its contents reads as
+       clean. Five version cards on Updates were 1587px bands holding about
+       500px of content each, and giving the Memory tab's first card
+       `column-span:all` moved 794px of background from beside the card to
+       inside it — both passed every audit in this file.
+
+       Three things this had to learn, each of which made a first cut useless:
+
+       INK, not boxes. A `.kv` row stretches to the full width and puts a
+       six-character value at 170px, so a box check sees a full-width child and
+       reports nothing.
+
+       PER BAND, not per card. A card heading is also its button bar, so the top
+       line of ink reaches the right edge of almost every card in the app and a
+       single `max(right)` reads 0px of slack on a card that is empty below the
+       header. The card is banded and each band asked separately; the median
+       band is what gets reported, so one full-width row cannot vouch for twenty
+       empty ones.
+
+       A READING MEASURE IS NOT A HOLE. `#content p{max-width:88ch}` is
+       deliberate — a paragraph at its own cap is doing what it was told, so its
+       bands are credited to the card's edge rather than counted short. */
+    /* An ANNOTATED form card is two columns by design — a sentence on the left,
+       the controls on the right — so a card that happens to have one button
+       looks identical to a broken one from here and there is nothing to do
+       about it in that card. What holds those pages instead is `.form`'s own
+       width cap and the overflow audit above. */
+    if(c.parentElement&&c.parentElement.classList.contains('form'))return;
+    const inner=box(c).right-parseFloat(st.paddingRight||0)
+      -parseFloat(st.borderRightWidth||0);
+    const rr=document.createRange();rr.selectNodeContents(c);
+    const ink=[...rr.getClientRects()].filter(r=>r.width>0&&r.height>0)
+      .map(r=>({top:r.top,bottom:r.bottom,right:r.right}));
+    c.querySelectorAll('img,canvas,svg,input,select,textarea,button,.chip,.tag')
+      .forEach(e=>{const r=box(e);if(r.width>0&&r.height>0)ink.push(r);});
+    [...c.querySelectorAll('*')].forEach(e=>{
+      const m=getComputedStyle(e).maxWidth,r=box(e);
+      if(m!=='none'&&r.height>0&&Math.abs(parseFloat(m)-r.width)<=2)
+        ink.push({top:r.top,bottom:r.bottom,right:inner});});
+    const BAND=24,bands=new Map();
+    ink.forEach(r=>{for(let k=Math.floor(r.top/BAND);k<=Math.floor((r.bottom-1)/BAND);k++)
+      bands.set(k,Math.max(bands.get(k)||0,r.right));});
+    if(bands.size>=6){
+      const short=[...bands.values()].map(x=>inner-x).sort((x,y)=>x-y);
+      const hs=short[Math.floor(short.length/2)];
+      if(hs>200&&hs>(box(c).width*0.2))
+        out.push('card '+cn(c)+' is '+Math.round(hs)+'px wider than the ink in it '
+          +'(median of '+bands.size+' bands)');
+    }
   });
   /* A cell's BOX is as tall as its row, so measuring that says only "some
      other column in this row is tall" — the first cut of this check reported
@@ -386,6 +462,20 @@ SPACE_JS = """(()=>{
   document.querySelectorAll('#content .tbl').forEach(t=>{
     if(getComputedStyle(t).display!=='table')return;   /* stacked mode is block */
     seen.push('table');
+    /* A header must stand over its own column. `.tbl .num{text-align:right}`
+       was only ever written on cells, so `tokens` sat at the LEFT of a column
+       whose figures ended 250px to its right — nothing here could see that,
+       because a misplaced header overflows nothing and wastes no space. The
+       column is numeric when every body cell in it says so, which is the same
+       rule tblStack derives the header's class from. */
+    const trs=[...t.querySelectorAll('tr')],hd=trs.shift();
+    if(hd)[...hd.children].forEach((th,i)=>{
+      const cells=trs.map(tr=>tr.children[i]).filter(Boolean);
+      if(!cells.length||!cells.every(td=>td.classList.contains('num')))return;
+      const a=getComputedStyle(th).textAlign,b=getComputedStyle(cells[0]).textAlign;
+      if(a!==b)out.push('table header '+JSON.stringify(th.textContent.trim())
+        +' is '+a+' over a '+b+'-aligned column');
+    });
     const blocky=td=>[...td.children].some(k=>{
       const d=getComputedStyle(k).display;
       return d==='block'||d==='flex'||d==='grid'||d==='table';});

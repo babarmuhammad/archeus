@@ -7,14 +7,21 @@ import type { Block, Doc, Section } from '@/lib/content';
  * typography and /llms-full.txt (generated from the same Doc) cannot drift from
  * what a human reads.
  */
+/* Prose is capped at max-w-3xl, the same measure the lead above it already
+   used. Without it a paragraph ran the full max-w-4xl column — 856px, about
+   102 characters — under a lead that stopped 114px short of it, so the two
+   ended on different right edges in the same column and the body was past any
+   reasonable measure. A table, a code block or a definition grid still gets the
+   whole column: those want the width, and prose is the only thing that does
+   not. */
 function BlockView({ block }: { block: Block }) {
   switch (block.kind) {
     case 'p':
-      return <p className="text-[0.98rem] leading-[1.75] text-dim">{block.text}</p>;
+      return <p className="max-w-3xl text-[0.98rem] leading-[1.75] text-dim">{block.text}</p>;
 
     case 'ul':
       return (
-        <ul className="space-y-2">
+        <ul className="max-w-3xl space-y-2">
           {block.items.map((it) => (
             <li key={it} className="flex gap-3 text-[0.95rem] leading-[1.7] text-dim">
               <span aria-hidden="true" className="mt-[0.6em] h-1 w-1 shrink-0 rounded-full bg-cyan/70" />
@@ -38,7 +45,7 @@ function BlockView({ block }: { block: Block }) {
 
     case 'links':
       return (
-        <ul className="space-y-2">
+        <ul className="max-w-3xl space-y-2">
           {block.items.map((it) => (
             <li key={it.href} className="text-[0.95rem] leading-[1.7] text-dim">
               <a

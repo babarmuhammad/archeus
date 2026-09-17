@@ -1,4 +1,5 @@
-"""Load every published page on a phone and fail if anything sticks out.
+"""Load every published page on a phone, a tablet and a desktop, and fail if
+anything sticks out of the viewport or any line of prose runs too long.
 
     py -m mkdocs build --strict && py tools/audit_site.py
     py tools/audit_site.py --www          # also the marketing site (needs a build)
@@ -37,9 +38,80 @@ SITE = os.path.join(ROOT, 'site')
 #: that a failure here is a failure everywhere.
 VIEWPORT = {'width': 390, 'height': 844}
 
+#: ...except that it is NOT a failure everywhere, which is how the site header
+#: scrolled sideways from 768 to 895px for as long as this file has existed. A
+#: phone gets the disclosure menu and a desktop has room for the full nav; the
+#: tablet band is the only width where the whole bar is laid out inline in a
+#: viewport too narrow for it, so it is the one width a 390px probe cannot see.
+#: 768x1024 is the iPad portrait viewport and the `md` breakpoint exactly.
+TABLET = {'width': 768, 'height': 1024}
+
 #: Sub-pixel layout rounding puts a full-bleed element a hair over the viewport
 #: on most pages. 2px is below anything a reader can see and above the noise.
 SLOP = 2
+
+#: The width the prose measure is judged at. Neither of the other two can see
+#: it: a phone and a tablet column are narrow enough that any measure fits, and
+#: the failure is a line that gets LONGER as the viewport does.
+DESKTOP = {'width': 1440, 'height': 900}
+
+#: The longest line of prose either site may set, in characters.
+#:
+#: Typographic practice is 45-75 for a single column and the frontend brief this
+#: site was built to says under 80. This is not that number: it is a CEILING
+#: over what the sites actually set, so a page that drifts past every other page
+#: fails and a page merely at the site's own measure does not. What it caught on
+#: its first run: `.spine-zigzag` set its copy column to 54rem — 100 characters,
+#: on /support, /changelog, /contributing, /code-of-conduct and every blog post
+#: — while the four other spine layouts held theirs between 44 and 52rem; and
+#: `BlockView`'s paragraph had no cap at all, so on the legal pages it ran the
+#: full max-w-4xl column at 102 characters UNDER a lead that stopped 114px short
+#: of it. Two right edges in one column is the visible half of the same bug.
+#:
+#: mkdocs-material's own content column measures 93 here and is not ours to
+#: argue with, which is what sets the number.
+MAX_MEASURE_CH = 96
+
+#: Prose shorter than this is a label, a caption or a stub; its width says
+#: nothing about how the page reads.
+MEASURE_MIN_CHARS = 160
+
+#: Every paragraph and list item wider than the ceiling, measured with the
+#: element's OWN font rather than an assumed advance — the two sites set
+#: different faces at different sizes, and a 0.5em guess is out by a fifth.
+#:
+#: An element with block-level children is skipped: a `<li>` that contains a
+#: whole section is a container whose width is a layout fact, not a measure.
+MEASURE_JS = """
+() => {
+  const out = [];
+  const cv = document.createElement('canvas').getContext('2d');
+  const blocky = e => [...e.children].some(k => {
+    const d = getComputedStyle(k).display;
+    return d === 'block' || d === 'flex' || d === 'grid' || d === 'table' || d === 'list-item';
+  });
+  for (const el of document.querySelectorAll('main p, main li, article p, article li')) {
+    const txt = (el.textContent || '').trim();
+    if (txt.length < MIN_CHARS || blocky(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) continue;
+    cv.font = cs.fontSize + ' ' + cs.fontFamily;
+    const adv = cv.measureText('0').width || parseFloat(cs.fontSize) * 0.5;
+    const ch = Math.round(r.width / adv);
+    if (ch > MAX_CH) out.push({ch, w: Math.round(r.width),
+      cls: (el.className && el.className.toString().slice(0, 44)) || el.tagName.toLowerCase(),
+      text: txt.slice(0, 46)});
+  }
+  return {probed: document.querySelectorAll('main p, main li, article p, article li').length,
+          items: out.slice(0, 4)};
+}
+""".replace('MIN_CHARS', str(MEASURE_MIN_CHARS)).replace('MAX_CH', str(MAX_MEASURE_CH))
+
+#: A run that probes fewer paragraphs than this measured nothing and should say
+#: so rather than printing "clean" — the lesson tools/smoke_gui.py carries.
+MEASURE_FLOOR = 400
 
 #: A site with fewer pages than this means the walk broke, not that the manual
 #: shrank. Same floor discipline as tools/smoke_gui.py, which once printed
@@ -174,6 +246,21 @@ def _serve_www():
     return None, ''
 
 
+#: filled by _measure(); a run that probed fewer than MEASURE_FLOOR says so.
+MEASURED = [0]
+
+
+def _measure(page, base, paths, label, problems):
+    """Does the prose stay inside a readable measure at desktop width?"""
+    for path in paths:
+        page.goto(base + path, wait_until='load')
+        r = page.evaluate(MEASURE_JS)
+        MEASURED[0] += r['probed']
+        for it in r['items']:
+            problems.append('%s%s  %dch (%dpx) <%s> %r'
+                            % (label, path, it['ch'], it['w'], it['cls'], it['text']))
+
+
 def _walk(page, base, paths, label, problems):
     for path in paths:
         page.goto(base + path, wait_until='load')
@@ -213,11 +300,19 @@ def main(argv):
         with sync_playwright() as p:
             browser = p.chromium.launch(args=['--use-angle=swiftshader',
                                               '--enable-unsafe-swiftshader'])
-            page = browser.new_page(viewport=VIEWPORT, device_scale_factor=3,
-                                    is_mobile=True, has_touch=True)
-            _walk(page, base, paths, 'docs', problems)
+            for vp, mobile in ((VIEWPORT, True), (TABLET, False)):
+                page = browser.new_page(viewport=vp, device_scale_factor=2,
+                                        is_mobile=mobile, has_touch=mobile)
+                tag = '%dpx ' % vp['width']
+                _walk(page, base, paths, tag + 'docs', problems)
+                if www_base:
+                    _walk(page, www_base, www_paths, tag + 'www', problems)
+                page.close()
+            page = browser.new_page(viewport=DESKTOP)
+            _measure(page, base, paths, 'docs', problems)
             if www_base:
-                _walk(page, www_base, www_paths, 'www', problems)
+                _measure(page, www_base, www_paths, 'www', problems)
+            page.close()
             browser.close()
     finally:
         httpd.shutdown()
@@ -225,19 +320,25 @@ def main(argv):
             www_proc.kill()
 
     total = len(paths) + len(www_paths)
-    print('checked %d pages at %dx%d' % (total, VIEWPORT['width'], VIEWPORT['height']))
+    print('checked %d pages at %dx%d and %dx%d, and %d paragraphs at %dpx'
+          % (total, VIEWPORT['width'], VIEWPORT['height'],
+             TABLET['width'], TABLET['height'], MEASURED[0], DESKTOP['width']))
     if len(paths) < PAGE_FLOOR:
         print('only %d docs pages found — the walk is broken, not the site' % len(paths))
         return 1
     if want_www and len(www_paths) < WWW_PAGE_FLOOR:
         print('only %d apex pages found — the sitemap is not being read' % len(www_paths))
         return 1
+    if MEASURED[0] < MEASURE_FLOOR:
+        print('only %d paragraphs measured — the probe found nothing to read'
+              % MEASURED[0])
+        return 1
     if problems:
         print('\n%d problems:' % len(problems))
         for prob in problems:
             print('  ' + prob)
         return 1
-    print('nothing overflows')
+    print('nothing overflows, nothing runs past %dch' % MAX_MEASURE_CH)
     return 0
 
 

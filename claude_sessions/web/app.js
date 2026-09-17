@@ -104,6 +104,13 @@ function prune(){
      feed   one homogeneous full-width list under a page-level toolbar
      form   controls, single column, stacked — never flowed into columns
      pile   N independent sections, balanced by multicol
+     cols   TWO columns the page decides, each a `.cstack` of cards
+
+   `cols` is the one shape whose renderer emits structure of its own, and that
+   is the whole difference from `pile`: multicol BALANCES, so which card lands
+   in which column is decided by the heights of the cards, which are data. A
+   page where the left column means "what you set" and the right means "what
+   the project tells you" cannot be expressed that way at all.
 
    There was a sixth, `grid`: the un-designed default, a bag of cards dropped
    into #content's auto-fit grid, which is what a page was before anyone
@@ -112,7 +119,7 @@ function prune(){
    by accident, and the whole point of the field is that the choice is made in
    the table. A page naming a shape this map does not have gets no wrapper and
    fails `test_every_page_declares_a_shape`. */
-const ARCH_WRAP={dash:'dash',split:'tpane',feed:'feed',form:'form',pile:'pile'};
+const ARCH_WRAP={dash:'dash',split:'tpane',feed:'feed',form:'form',pile:'pile',cols:'cols2'};
 /* The CURRENT page's archetype. Read at paint time rather than passed in,
    because the one thing a renderer must not be able to do is claim a shape its
    table entry does not declare. */
@@ -1271,28 +1278,61 @@ function bindFilter(inputSel,rowSel,countId,extra){
 /* Copy each table's header text onto its cells so the narrow-window stacked
    layout can label them (see the .tbl @media rule). Done in JS because the
    header text lives in <th> and CSS can't reach across to it — and done once at
-   mount rather than in 20 renderers' markup. */
+   mount rather than in 20 renderers' markup.
+
+   The same pass gives a numeric column's HEADER the `.num` its cells already
+   carry. `.tbl .num{text-align:right}` had only ever been written on `<td>`, so
+   `tokens` sat at the left of a column whose figures were right-aligned 250px
+   away — the header was over a different part of the page from its own numbers,
+   on the context audit, the session and project usage tables and four others.
+   Three tables had been fixed by hand, which is what proves this cannot be
+   markup: a header typed in one renderer is a header the next one forgets. It
+   is DERIVED from the cells — a column is numeric when its body cells say so —
+   so it cannot fall out of step with them. */
 function tblStack(root){
   (root||document).querySelectorAll('table.tbl').forEach(t=>{
     if(t.__stk)return;t.__stk=1;
-    const hs=[...t.querySelectorAll('tr')].shift();
+    const rows=[...t.querySelectorAll('tr')];
+    const hs=rows.shift();
     if(!hs)return;
     const labels=[...hs.children].map(c=>c.textContent.trim());
     if(!labels.length)return;
-    t.querySelectorAll('tr').forEach(tr=>{
-      if(tr===hs)return;
+    rows.forEach(tr=>{
       [...tr.children].forEach((td,i)=>{
         if(labels[i]&&!td.dataset.th)td.dataset.th=labels[i];});
     });
+    /* A column is numeric when EVERY body cell in it is: one `.num` among
+       several plain cells is a row that happens to hold a figure, not a column
+       of them, and right-aligning the header over the rest would be worse than
+       leaving it. */
+    [...hs.children].forEach((th,i)=>{
+      const cells=rows.map(tr=>tr.children[i]).filter(Boolean);
+      if(cells.length&&cells.every(td=>td.classList.contains('num')))
+        th.classList.add('num');
+    });
   });
 }
-let __mntQ=null;
+let __mntQ=null,__tblQ=null;
 function watchContent(){
   const el=$('#content');if(!el||!window.MutationObserver)return;
   new MutationObserver(()=>{
     if(__mntQ)return;                      // coalesce a burst into one pass
     __mntQ=Promise.resolve().then(()=>{__mntQ=null;mounted();});
   }).observe(el,{childList:true});
+  /* A SECOND observer, over the subtree, and it runs tblStack ONLY.
+     Almost every renderer paints a card and then fills an inner host from a
+     fetch, which is a subtree change: `mounted()` never saw those tables, so
+     they got neither the stacked-mode labels nor the right-aligned header a
+     numeric column owes its figures — the rotation table on Accounts was
+     rendering `used` at the left of a column of percentages. Running the whole
+     of `mounted()` here is what the first observer deliberately does not do
+     (MO.patch appending rows must not retrigger a page-wide remount and its
+     arrival animation), and tblStack is safe to call on anything: `__stk`
+     makes a table it has already seen a no-op. */
+  new MutationObserver(()=>{
+    if(__tblQ)return;
+    __tblQ=Promise.resolve().then(()=>{__tblQ=null;tblStack(el);});
+  }).observe(el,{childList:true,subtree:true});
 }
 
 /* ── command palette (Ctrl+K) — navigates the real NAV/TABS route list ── */
@@ -2152,12 +2192,12 @@ const TABS=[
   ['sessions','Sessions','Every session in this project, across accounts — open, rename, archive, export.','split','sessions'],
   ['memory','Memory','Everything archeus knows about this project and what knowing it costs — the graph, the rules, lessons, spend, and what the last cycle did.','pile',''],
   ['claudemd','CLAUDE.md','The instruction file block by block, what each block costs, the memory map, and every version archeus replaced.','pile',''],
-  ['review','Review','Run a code review over the working tree, staged changes or a branch.','feed',''],
-  ['audit','Audit','What one turn costs across every surface at once — this project, your account, hooks and MCP — before you spend it.','feed',''],
+  ['review','Code Review','Run a code review over the working tree, staged changes or a branch.','feed',''],
+  ['audit','Audit','What one turn costs across every surface at once — this project, your account, hooks and MCP — plus the health of what archeus wrote and what Claude Code records.','feed',''],
   ['pusage','Usage','This project\'s token spend over time.','feed',''],
   ['planexec','Plan → Execute','Have one model write a plan, approve or edit it, then have another execute it.','form',''],
   ['worktrees','Repos','Git repos, submodules and linked worktrees under this project.','split',''],
-  ['tools','Tools','Architecture, the interactive graph, Claude Code\'s own record of the project, and the loop file.','pile',''],
+  ['tools','Tools','What this project launches with — its agents, its extra directories and PATH — beside what it has actually been doing.','cols',''],
 ];
 /* [label, [tab ids]] — the four the project opens on. Nine tabs is the same
    wall the sidebar had: the row wrapped, and the order in it had no argument
@@ -2165,14 +2205,14 @@ const TABS=[
    drawProject dispatches off it, pgHelp renders from it, and smoke_gui.py and
    shot_gui.py walk `TABS.map(t => t[0])` to render every one of them. */
 const TAB_GROUPS=[
-  ['Sessions',['sessions']],
-  // Audit leads: it is the page that answers "what does one turn cost", which
-  // is the question the group is named after, and it was the LAST of nine tabs.
-  // Coming back to the group from elsewhere keeps the sub-tab you were on, so
-  // this decides the first visit only.
-  ['Context',['audit','memory','claudemd']],
-  ['Actions',['review','planexec']],
-  ['Project',['pusage','worktrees','tools']],
+  ['Session',['sessions']],
+  // Each group leads with the tab it is opened for, not with the tab that
+  // explains the group's name. Coming back to a group keeps the sub-tab you
+  // were last on, so the order here decides the FIRST visit only — which is
+  // exactly the visit where guessing wrong costs a click.
+  ['Context',['memory','claudemd','audit']],
+  ['Project',['tools','pusage','worktrees']],
+  ['Actions',['planexec','review']],
 ];
 /* The project a project-scoped setting targets from a GLOBAL page.
 
@@ -2769,6 +2809,29 @@ async function drawMemory(){
         <span class="hlink" onclick="go('hooks')">Install it</span></div>`}
       <div id="memProg"></div>
     </div>
+    <div class="card"><h3>What it learned <span class="sp"></span>
+      <button class="btn sm" onclick="inlineJob('#jban','lessons_scan',C(),{label:'Learning from sessions',redraw:()=>drawMemory()})">${ic('school')} Learn from sessions${st.n_unscanned?` <span class="tag warn">${st.n_unscanned} new</span>`:''}</button>
+      <button class="btn sm" onclick="lessonAct('','approve_all')">${ic('check')} Approve all pending</button></h3>
+      <p style="color:var(--dim);font-size:13px;margin:0 0 10px">What this project learned the hard way, read back out of your past sessions — a bug and its
+        fix, a decision and why, something you corrected. Approved ones are injected when relevant;
+        one nobody uses for ${ttl} sessions is dropped, unless you pin it.</p>
+      <div id="memLessons">${lesRows?`<table class="tbl"><tr><th>status</th><th>lesson</th><th>conf</th>
+        <th title="Sessions of disuse left before it is dropped.">left</th><th></th></tr>${lesRows}</table>`
+        :'<div class="empty">No lessons yet.</div>'}</div>
+      <div class="lbl" style="margin-top:16px">Recent work</div>
+      <p style="color:var(--dim);font-size:12px;margin:0 0 8px">A token-free log of what each session changed, injected into the next session on start (claude-mem style).</p>
+      <label class="autoline" style="margin-top:0" title="On session end, record a one-line summary + files touched; inject the last few on the next SessionStart.">
+        <input type="checkbox" id="wlOn" ${wl.on?'checked':''} onchange="toggleWorklog(this.checked)">
+        <span>${ic('school')} Track recent work for this project</span></label>
+      ${wlMissing.length?`<div style="margin-top:8px"><span class="tag warn">hook missing on ${esc(wlMissing.join(', '))}</span>
+        <span style="color:var(--dim);font-size:12px">— sessions under that account record nothing.</span>
+        <span class="hlink" onclick="go('hooks')">Fix</span></div>`:''}
+      <div id="memWork">${(wl.entries||[]).length?`<table class="tbl" style="margin-top:10px"><tr><th>when</th><th>summary</th><th>files</th></tr>`
+        +wl.entries.map(e=>`<tr${e.session_id?` style="cursor:pointer" onclick="openWorkSession(${hesc(e.session_id)})" title="Open this session"`:''}>
+          <td style="white-space:nowrap;color:var(--dim)">${stamp(e.ended_at)}</td>
+          <td>${esc(e.summary||'')}</td>
+          <td style="color:var(--dim);font-size:12px">${esc((e.files||[]).join(', '))}</td></tr>`).join('')
+        +`</table>`:'<div class="empty">No sessions recorded yet.</div>'}</div></div>
     <div class="card"><h3>What a session costs <span class="sp"></span>
       <button class="btn sm" onclick="inlineJob('#jban','rules_sync',C(),{label:'Rebuilding rules',redraw:()=>drawMemory()})" title="Rewrite the path-scoped rule files from the current graph. Free — no Claude call.">${ic('refresh')} Rebuild rules</button></h3>
       <p style="color:var(--dim);font-size:13px;margin:0 0 8px">You write the prose in CLAUDE.md. archeus writes everything below it, and every
@@ -2831,36 +2894,14 @@ async function drawMemory(){
         What archeus keeps for itself, so it knows what to rebuild and can undo it</summary>
       ${invTable(stored.join(''))}
       </details></div></div>
-    <div class="card"><h3>What it learned <span class="sp"></span>
-      <button class="btn sm" onclick="inlineJob('#jban','lessons_scan',C(),{label:'Learning from sessions',redraw:()=>drawMemory()})">${ic('school')} Learn from sessions${st.n_unscanned?` <span class="tag warn">${st.n_unscanned} new</span>`:''}</button>
-      <button class="btn sm" onclick="lessonAct('','approve_all')">${ic('check')} Approve all pending</button></h3>
-      <p style="color:var(--dim);font-size:13px;margin:0 0 10px">What this project learned the hard way, read back out of your past sessions — a bug and its
-        fix, a decision and why, something you corrected. Approved ones are injected when relevant;
-        one nobody uses for ${ttl} sessions is dropped, unless you pin it.</p>
-      <div id="memLessons">${lesRows?`<table class="tbl"><tr><th>status</th><th>lesson</th><th>conf</th>
-        <th title="Sessions of disuse left before it is dropped.">left</th><th></th></tr>${lesRows}</table>`
-        :'<div class="empty">No lessons yet.</div>'}</div>
-      <div class="lbl" style="margin-top:16px">Recent work</div>
-      <p style="color:var(--dim);font-size:12px;margin:0 0 8px">A token-free log of what each session changed, injected into the next session on start (claude-mem style).</p>
-      <label class="autoline" style="margin-top:0" title="On session end, record a one-line summary + files touched; inject the last few on the next SessionStart.">
-        <input type="checkbox" id="wlOn" ${wl.on?'checked':''} onchange="toggleWorklog(this.checked)">
-        <span>${ic('school')} Track recent work for this project</span></label>
-      ${wlMissing.length?`<div style="margin-top:8px"><span class="tag warn">hook missing on ${esc(wlMissing.join(', '))}</span>
-        <span style="color:var(--dim);font-size:12px">— sessions under that account record nothing.</span>
-        <span class="hlink" onclick="go('hooks')">Fix</span></div>`:''}
-      <div id="memWork">${(wl.entries||[]).length?`<table class="tbl" style="margin-top:10px"><tr><th>when</th><th>summary</th><th>files</th></tr>`
-        +wl.entries.map(e=>`<tr${e.session_id?` style="cursor:pointer" onclick="openWorkSession(${hesc(e.session_id)})" title="Open this session"`:''}>
-          <td style="white-space:nowrap;color:var(--dim)">${stamp(e.ended_at)}</td>
-          <td>${esc(e.summary||'')}</td>
-          <td style="color:var(--dim);font-size:12px">${esc((e.files||[]).join(', '))}</td></tr>`).join('')
-        +`</table>`:'<div class="empty">No sessions recorded yet.</div>'}</div></div>
     <div class="card"><h3>Freshness &amp; history <span class="sp"></span><span id="wsHead"></span></h3>
       <p style="color:var(--dim);font-size:13px;margin:0 0 10px">How much of what archeus generated still matches the code as it is now. Each row is worth
         the points beside it; clearing one raises the score.</p>
       <div id="wsBox"><span class="spin"></span></div>
       <div class="lbl" style="margin-top:12px">History</div>
       <p style="color:var(--dim);font-size:12px;margin:0 0 6px">Every graph archeus replaced. Eviction and rebuild both snapshot what they were about to overwrite, and restoring is itself snapshotted.</p>
-      <div id="histOut"><span class="spin"></span></div></div>`);
+      <div id="histOut"><span class="spin"></span></div></div>
+`);
   INST.set('memory',{v:cover,tone:cover>=.6?'ok':cover>=.25?null:'warn'});
   setRead('memory',cover*100);
   const hist=(st.cost_history||[]);
@@ -3015,7 +3056,13 @@ async function drawClaudeMd(){
   const [md,mm]=await Promise.all([api('/api/claude-md?'+qs(c)),
                                    api('/api/memory-map?'+qs(c))]);
   const blocks=md.blocks||[];
+  const manual=(blocks.find(b=>b.key==='manual')||{}).text||'';
   if(!shell(nav,`
+    ${md.exists?`<div class="card"><h3>${ic('edit')} Your prose <span class="sp"></span>
+      <span style="color:var(--dim2);font-size:12px">~${(blocks.find(b=>b.key==='manual')||{}).tokens||0} tok</span>
+      <button class="btn pri sm" onclick="cmSave()">Save</button></h3>
+      <p class="secthint">The half of the file you own. Everything archeus generates is left out of this box and put back untouched when you save, so there is nothing here you can break. Fenced <code>KEEP</code> regions are yours too and travel with your text.</p>
+      <textarea id="cmText" style="min-height:280px;font-family:var(--mono)">${esc(manual)}</textarea></div>`:''}
     <div class="card"><h3>CLAUDE.md — block by block <span class="sp"></span>
       <button class="btn sm" onclick="cmScaffold()">${ic('doc')} Scaffold</button>
       <button class="btn sm" onclick="inlineJob('#jban','ai_scaffold',C(),{label:'AI-analyzing project',redraw:()=>drawClaudeMd()})">${ic('ai')} AI analyze</button>
@@ -3037,7 +3084,7 @@ async function drawClaudeMd(){
             <div class="agdesc">${esc(w[0])}</div></div>
           <span class="num" style="min-width:70px;color:var(--dim2)">~${b.tokens||0} tok</span>
           ${f?`<button class="btn sm" title="${esc(f[2])}" onclick="${f[1]}">${esc(f[0])}</button>`:''}
-        </div>${b.text?`<details style="margin:0 0 6px 12px"><summary style="cursor:pointer;color:var(--dim2);font-size:12px">show</summary>
+        </div>${b.text&&b.key!=='manual'?`<details style="margin:0 0 6px 12px"><summary style="cursor:pointer;color:var(--dim2);font-size:12px">show</summary>
           <div class="diff">${esc(b.text).split('\n').map(l=>`<div>${l}</div>`).join('')}</div></details>`:''}`;}).join('')}</div>
       <p style="color:var(--dim);font-size:12px;margin:10px 0 0">
         <b>~${md.tokens||0} tok</b> of this file is read on every turn of every session in this project.
@@ -3074,6 +3121,14 @@ async function drawClaudeMd(){
 }
 async function cmScaffold(){
   await post('/api/claude-md/scaffold',C());toast('Scaffolded','ok');drawClaudeMd();}
+/* Sends the prose and nothing else. The server reassembles the file, so this
+   cannot post a whole CLAUDE.md over the generated blocks even by accident —
+   and the redraw is what shows the new version in the History card below. */
+async function cmSave(){
+  const t=$('#cmText');if(!t)return;
+  const r=await post('/api/claude-md',{...C(),text:t.value});
+  toast(r.ok?'Saved':(r.error||'Write failed'),r.ok?'ok':'err');
+  if(r.ok)drawClaudeMd();}
 /* Prune drops session entries past the cap. The TUI has always confirmed; the
    GUI destroyed silently. Same operation, so same contract — and the preview
    names what goes, because a token delta is not something you can check. */
@@ -3130,7 +3185,42 @@ async function drawAudit(){
       ${(deny.patterns||[]).map(p=>`<div style="display:flex;gap:10px;padding:2px 0">
         <code style="color:var(--cyan)">${esc(p.pattern)}</code>
         <span style="color:var(--dim);font-size:12px">${esc(p.why)}</span></div>`).join('')
-      ||'<div class="empty">Nothing heavy found.</div>'}</div>`))return;
+      ||'<div class="empty">Nothing heavy found.</div>'}</div>
+    <div class="card"><h3>${ic('check')} Project health</h3>
+      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Whether this project's context is in a state Claude can use: is the memory current, is CLAUDE.md a sensible size, is anything archeus wrote missing. Each row carries the button that fixes it.</p>
+      <div id="hOut"><span class="spin"></span></div></div>
+    <div class="card"><h3>${ic('ai')} Claude Code's own record</h3>
+      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">What Claude Code itself has stored about this project in <code>.claude.json</code> — not archeus's numbers.</p>
+      <div id="ccProj"><span class="spin"></span></div></div>`))return;
+  api('/api/health?'+qs(c)).then(d=>{const h=$('#hOut');if(!h)return;
+    const iss=(d.issues||[]);
+    h.innerHTML=iss.length
+      ?iss.map(i=>`<div class="lrow"><span class="tag ${i.severity==='warn'?'warn':''}">${esc(i.severity)}</span>
+          <div><b>${esc(i.message)}</b><div style="color:var(--dim);font-size:12px">${esc(i.hint||'')}</div></div></div>`).join('')
+      :'<div class="empty">No issues found.</div>';});
+  /* Read the keys Claude Code actually writes — camelCase, and every number is
+     about its LAST session, not a lifetime total. Naming them otherwise is the
+     mistake CLAUDE.md records for `context_used_pct`: a field nobody sends. */
+  api('/api/client/project?'+qs(Object.assign({path:CUR.path},c))).then(d=>{
+    const b=$('#ccProj');if(!b)return;
+    const st=d.state||{};
+    const mins=v=>v?Math.round(v/60000)+' min':null;
+    const rows=[
+      ['Last session',st.lastSessionId?String(st.lastSessionId).slice(0,8):null],
+      ['Last cost',st.lastCost!=null?'$'+(+st.lastCost).toFixed(2):null],
+      ['Last duration',mins(st.lastDuration)],
+      ['Lines added / removed',(st.lastLinesAdded!=null||st.lastLinesRemoved!=null)
+        ?`+${st.lastLinesAdded||0} / -${st.lastLinesRemoved||0}`:null],
+      ['Tokens in / out',(st.lastTotalInputTokens!=null||st.lastTotalOutputTokens!=null)
+        ?`${st.lastTotalInputTokens||0} / ${st.lastTotalOutputTokens||0}`:null],
+      ['Allowed tools',(st.allowedTools||[]).join(', ')],
+      ['MCP servers enabled',(st.enabledMcpjsonServers||[]).join(', ')],
+      ['MCP servers disabled',(st.disabledMcpjsonServers||[]).join(', ')],
+      ['Trust dialog accepted',st.hasTrustDialogAccepted==null?null:(st.hasTrustDialogAccepted?'yes':'no')],
+    ].filter(([,v])=>v!==null&&v!==undefined&&v!=='');
+    b.innerHTML=(d.known&&rows.length)?`<div class="kv">${rows.map(([k,v])=>
+      `<span class="k">${esc(k)}</span><span>${esc(String(v))}</span>`).join('')}</div>`
+      :'<div class="empty">Claude Code has recorded nothing for this project yet.</div>';});
 }
 async function cmProtect(){
   const v=await ask('Protect a section of CLAUDE.md',
@@ -3216,77 +3306,49 @@ async function drawProjUsage(){
 }
 
 /* tools tab */
+/* The two columns are the page's argument: on the left what this project
+   LAUNCHES with, which you set and archeus obeys; on the right what it has been
+   DOING, which archeus reads and you only act on. Health and Claude Code's own
+   record went to Audit with the rest of the read-only diagnostics, and
+   Architecture went with the `Graph` button in the tab strip, which was already
+   the door people used. */
 function drawTools(){
   shellNow(`
-    <div class="card"><h3>${ic('check')} Project health</h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Whether this project's context is in a state Claude can use: is the memory current, is CLAUDE.md a sensible size, is anything archeus wrote missing. Each row carries the button that fixes it.</p>
-      <div id="hOut"><span class="spin"></span></div></div>
-    <div class="card"><h3>${ic('ai')} What to work on <span class="sp"></span>
-      <button class="btn sm" title="One Claude call over the memory graph, recorded lessons and recent diff — returns bugs, vulnerabilities, slow paths and functions worth building. Findings are stored, so this list stays instant afterwards."
-        onclick="inlineJob('#jban','work_scan',C(),{label:'Scanning for work',onDone:st=>toast(((st.result||{}).items||[]).length+' finding(s)','ok'),redraw:()=>drawBrief()})">${ic('ai')} Find work</button></h3>
-      <p style="color:var(--dim);font-size:12px;margin:2px 0 8px">Free signals — stale context, TODO markers, deferred shortcuts, untested modules — are always listed. Press <b>Find work</b> to add what a model can see that a grep cannot.</p>
-      <div id="bOut"><span class="spin"></span></div></div>
-    <div class="card"><h3>${ic('map')} Architecture <span class="sp"></span>
-      <button class="btn sm" onclick="archRefresh()">${ic('refresh')} Rebuild</button>
-      <button class="btn sm" onclick="window.open('/graph?${qs({path:CUR.path,enc:CUR.encoded,k:CK})}','_blank')">Graph ${ic('ext')}</button></h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">What archeus read to build its memory of this project: how much code there is, in which languages, and what it depends on. <b>Graph</b> opens the interactive map in its own window.</p>
-      <div id="archOut"><span class="spin"></span></div></div>
-    <div class="card"><h3>${ic('ai')} Claude Code's own record</h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">What Claude Code itself has stored about this project in <code>.claude.json</code> — not archeus's numbers.</p>
-      <div id="ccProj"><span class="spin"></span></div></div>
-    <div class="card"><h3>${ic('robot')} Project agents</h3><div id="agSel"></div></div>
-    <div class="card"><h3>${ic('terminal')} Extra PATH entries</h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Directories prepended to PATH for every launch of this project.</p>
-      <div id="xpaths"></div>
-      <div class="mrow"><button class="btn sm" onclick="dirAdd('xpaths')">${ic('add')} Add entry</button>
-        <button class="btn pri sm" onclick="savePaths()">Save</button></div></div>
-    <div class="card"><h3>${ic('newfolder')} Add directories</h3>
-      <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Extra working directories passed as <code>--add-dir</code> on every launch.</p>
-      <div id="xdirs"></div>
-      <div class="mrow"><button class="btn sm" onclick="dirAdd('xdirs')">${ic('add')} Add directory</button>
-        <button class="btn pri sm" onclick="saveDirs()">Save</button></div></div>`);
+    <div class="cstack">
+      <div class="card"><h3>${ic('robot')} Project agents</h3><div id="agSel"></div></div>
+      <div class="card"><h3>${ic('newfolder')} Add directories</h3>
+        <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Extra working directories passed as <code>--add-dir</code> on every launch.</p>
+        <div id="xdirs"></div>
+        <div class="mrow"><button class="btn sm" onclick="dirAdd('xdirs')">${ic('add')} Add directory</button>
+          <button class="btn pri sm" onclick="saveDirs()">Save</button></div></div>
+      <div class="card"><h3>${ic('terminal')} Extra PATH entries</h3>
+        <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Directories prepended to PATH for every launch of this project.</p>
+        <div id="xpaths"></div>
+        <div class="mrow"><button class="btn sm" onclick="dirAdd('xpaths')">${ic('add')} Add entry</button>
+          <button class="btn pri sm" onclick="savePaths()">Save</button></div></div>
+    </div>
+    <div class="cstack">
+      <div class="card"><h3>${ic('terminal')} Most-run commands <span class="sp"></span>
+        <button class="btn sm" onclick="allowlistApply()">Add to permissions</button></h3>
+        <p style="color:var(--dim);font-size:13px;margin-bottom:10px">Allowlist candidates, taken from what this project actually ran.</p>
+        <div id="cmdOut"><span class="spin"></span></div></div>
+      <div class="card"><h3>${ic('ai')} What to work on <span class="sp"></span>
+        <button class="btn sm" title="One Claude call over the memory graph, recorded lessons and recent diff — returns bugs, vulnerabilities, slow paths and functions worth building. Findings are stored, so this list stays instant afterwards."
+          onclick="inlineJob('#jban','work_scan',C(),{label:'Scanning for work',onDone:st=>toast(((st.result||{}).items||[]).length+' finding(s)','ok'),redraw:()=>drawBrief()})">${ic('ai')} Find work</button></h3>
+        <p style="color:var(--dim);font-size:12px;margin:2px 0 8px">Free signals — stale context, TODO markers, deferred shortcuts, untested modules — are always listed. Press <b>Find work</b> to add what a model can see that a grep cannot.</p>
+        <div id="bOut"><span class="spin"></span></div></div>
+    </div>`);
   drawAgentPicker();
-  drawArch(false);
-  /* Read the keys Claude Code actually writes — camelCase, and every number is
-     about its LAST session, not a lifetime total. Naming them otherwise is the
-     mistake CLAUDE.md records for `context_used_pct`: a field nobody sends. */
-  api('/api/client/project?'+qs(Object.assign({path:CUR.path},C()))).then(d=>{
-    const b=$('#ccProj');if(!b)return;
-    const st=d.state||{};
-    const mins=v=>v?Math.round(v/60000)+' min':null;
-    const rows=[
-      ['Last session',st.lastSessionId?String(st.lastSessionId).slice(0,8):null],
-      ['Last cost',st.lastCost!=null?'$'+(+st.lastCost).toFixed(2):null],
-      ['Last duration',mins(st.lastDuration)],
-      ['Lines added / removed',(st.lastLinesAdded!=null||st.lastLinesRemoved!=null)
-        ?`+${st.lastLinesAdded||0} / -${st.lastLinesRemoved||0}`:null],
-      ['Tokens in / out',(st.lastTotalInputTokens!=null||st.lastTotalOutputTokens!=null)
-        ?`${st.lastTotalInputTokens||0} / ${st.lastTotalOutputTokens||0}`:null],
-      ['Allowed tools',(st.allowedTools||[]).join(', ')],
-      ['MCP servers enabled',(st.enabledMcpjsonServers||[]).join(', ')],
-      ['MCP servers disabled',(st.disabledMcpjsonServers||[]).join(', ')],
-      ['Trust dialog accepted',st.hasTrustDialogAccepted==null?null:(st.hasTrustDialogAccepted?'yes':'no')],
-    ].filter(([,v])=>v!==null&&v!==undefined&&v!=='');
-    b.innerHTML=(d.known&&rows.length)?`<div class="kv">${rows.map(([k,v])=>
-      `<span class="k">${esc(k)}</span><span>${esc(String(v))}</span>`).join('')}</div>`
-      :'<div class="empty">Claude Code has recorded nothing for this project yet.</div>';});
   api('/api/extra-paths?'+qs(C())).then(d=>dirRows('xpaths',d.paths||[]));
   api('/api/add-dirs?'+qs(C())).then(d=>dirRows('xdirs',d.dirs||[]));
-  api('/api/health?'+qs(C())).then(d=>{const h=$('#hOut');if(!h)return;
-    const iss=(d.issues||[]),bash=(d.bash||[]);
-    h.innerHTML=(iss.length
-      ?iss.map(i=>`<div class="lrow"><span class="tag ${i.severity==='warn'?'warn':''}">${esc(i.severity)}</span>
-          <div><b>${esc(i.message)}</b><div style="color:var(--dim);font-size:12px">${esc(i.hint||'')}</div></div></div>`).join('')
-      :'<div class="empty">No issues found.</div>')
-      // one chip per command with its count, instead of a dot-separated run of
-      // monospace text that reads as a single unbreakable line
-      +(bash.length?`<div class="sect">
-        <div class="secth"><h4>Most-run commands</h4>
-          <button class="btn sm" onclick="allowlistApply()">Add to permissions</button></div>
-        <div class="secthint">Allowlist candidates, taken from what this project actually ran.</div>
-        <div class="cmdchips">${bash.map(b=>
-          `<span class="cmdchip"><b>${esc(b.command)}</b><i>${+b.count}</i></span>`).join('')}</div>
-        </div>`:'');});
+  // one chip per command with its count, instead of a dot-separated run of
+  // monospace text that reads as a single unbreakable line
+  api('/api/health?'+qs(C())).then(d=>{const h=$('#cmdOut');if(!h)return;
+    const bash=(d.bash||[]);
+    h.innerHTML=bash.length
+      ?`<div class="cmdchips">${bash.map(b=>
+          `<span class="cmdchip"><b>${esc(b.command)}</b><i>${+b.count}</i></span>`).join('')}</div>`
+      :'<div class="empty">Nothing run from this project yet.</div>';});
   drawBrief();
 }
 /* tags that mean "something is wrong" get the warn colour; the rest are
@@ -3312,29 +3374,6 @@ async function drawBrief(){
 async function briefDismiss(text){
   await post('/api/brief/dismiss',{...C(),text});drawBrief();
 }
-function archRefresh(){drawArch(true);}
-async function drawArch(force){
-  const el=$('#archOut');if(!el)return;
-  el.innerHTML='<span class="spin"></span>';
-  const d=await api('/api/graph-lite?'+qs(Object.assign({},C(),{path:CUR.path},
-    force?{refresh:'1'}:{})));
-  if(!$('#archOut'))return;
-  /* connections._language_breakdown returns sorted `counts.items()` — a LIST of
-     [name, count] pairs, not an object. Object.entries over an array yields
-     index/value, which rendered as "Python,171 0". */
-  const raw=d.languages||[];
-  const langs=Array.isArray(raw)?raw:Object.entries(raw);
-  const nums=[['Files',d.files],['Dirs',d.dirs],['Repos',d.repos],['Dependencies',d.deps]];
-  const tops=(d.top_repos||[]);
-  $('#archOut').innerHTML=`<div class="kv">
-      ${nums.map(([k,v])=>`<span class="k">${k}</span><span>${(+v)||0}</span>`).join('')}
-      <span class="k">Languages</span><span>${langs.length
-        ?esc(langs.slice(0,6).map(([name,count])=>`${name} ${count}`).join('   ')):'?'}</span></div>
-    ${d.truncated?'<div class="tag warn" style="margin-top:8px">large project — capped for display (the whole tree is still cached)</div>':''}
-    ${tops.length?`<table class="tbl" style="margin-top:10px"><tr><th>top project</th><th class="num">files</th><th class="num">deps</th></tr>
-      ${tops.map(r=>`<tr><td>${esc(r.label)}</td><td class="num">${r.files}</td><td class="num">${r.deps}</td></tr>`).join('')}</table>`:''}`;
-}
-
 /* "Since your last session" was a single pre-wrapped blob of every commit in
    every sub-repo — on a workspace of 8 repos it was most of the page and told
    you nothing at a glance. One collapsible row per repo, summarised by counts,
@@ -4966,8 +5005,8 @@ function selfCard(V){
     <div class="kv"><span>installed</span><code>${esc(c.installed||'unknown')}</code></div>
     <div class="kv"><span>latest on PyPI</span><code>${esc(c.latest||'?')}</code></div>
     <div class="kv"><span>install mode</span><code>${esc(c.mode||'?')}</code>
-      ${c.mode==='checkout'?'<span style="color:var(--dim2);font-size:12px">a git checkout — update it with <code>git pull</code>, not with pip</span>'
-        :'<span style="color:var(--dim2);font-size:12px">the upgrade installs in the background with archeus still open; the running app keeps the version it started on, so restart to use the new one — <b>Restart now</b> does both at once</span>'}</div>
+      ${c.mode==='checkout'?'<span class="kvnote">a git checkout — update it with <code>git pull</code>, not with pip</span>'
+        :'<span class="kvnote">the upgrade installs in the background with archeus still open; the running app keeps the version it started on, so restart to use the new one — <b>Restart now</b> does both at once</span>'}</div>
     </div>`;
 }
 /* Same job, same truth, as the `#updbar` strip — and it must report what the
@@ -5006,8 +5045,8 @@ function modelCard(V){
     </h3>
     <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">Read from Anthropic with the login Claude&nbsp;Code already holds, once a day, so a model released this week reaches the launch picker without an archeus release. When it cannot be read, the picker falls back to the list shipped with this version — never to an empty one.</p>
     ${m.live?`<div class="kv"><span>catalogue</span><code>${m.count} models across ${m.families} families</code>
-      <span style="color:var(--dim2);font-size:12px">checked ${esc(when)}</span></div>`
-      :'<div class="kv"><span>catalogue</span><code>not fetched</code><span style="color:var(--dim2);font-size:12px">a logged-out account, no network, or auto-update set to off</span></div>'}
+      <span class="kvnote">checked ${esc(when)}</span></div>`
+      :'<div class="kv"><span>catalogue</span><code>not fetched</code><span class="kvnote">a logged-out account, no network, or auto-update set to off</span></div>'}
     ${notes.map(n=>`<div class="hrow"><span class="tag warn">retired</span>
       <span style="flex:1;font-size:12.5px">${esc(n)}</span></div>`).join('')}
     </div>`;
@@ -5031,9 +5070,9 @@ function verCard(V){
     <div class="kv"><span>installed</span><code>${esc(c.installed||'unknown')}</code></div>
     <div class="kv"><span>latest / stable</span><code>${esc(c.latest||'?')} / ${esc(c.stable||'?')}</code></div>
     <div class="kv"><span>channel</span><code>${esc(c.channel||'latest')}</code>
-      <span style="color:var(--dim2);font-size:12px">autoUpdatesChannel — what an unpinned update follows</span></div>
+      <span class="kvnote">autoUpdatesChannel — what an unpinned update follows</span></div>
     <div class="kv"><span>install mode</span><code>${esc(c.mode||'?')}</code>
-      ${c.mode==='npm'?'<span style="color:var(--dim2);font-size:12px">npm owns this binary — archeus will not install the native build over it</span>':''}</div>
+      ${c.mode==='npm'?'<span class="kvnote">npm owns this binary — archeus will not install the native build over it</span>':''}</div>
     <div class="hrow" style="margin-top:8px">
       <button class="btn sm" onclick="verPick()">Install a specific version…</button>
       ${locals?`<span style="color:var(--dim2);font-size:12px">on disk:</span> ${locals}`:''}

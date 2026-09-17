@@ -16,7 +16,8 @@ one-off browser work nothing in the repository can do.
 py -m mkdocs build --strict          # resolves relative links; writes site/
 cd www && npm run build && cd ..     # type-checks and prerenders; writes www/.next
 py tools/check_site_seo.py --docs --www
-py tools/audit_site.py               # every page at 390x844, nothing past the right edge
+py tools/audit_site.py               # every page at 390x844 and 768x1024, nothing past the right edge;
+                                     # every paragraph at 1440px, nothing past 96ch
 py tools/optimize_images.py --check
 py -m pytest tests/test_site_links.py tests/test_docs_site.py -q
 ```

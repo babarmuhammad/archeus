@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { NAV, SITE } from '@/lib/site';
+import { CoffeeCup } from './CoffeeCup';
 import { Mark } from './Mark';
 
 /**
@@ -29,7 +30,13 @@ export function Header() {
           </span>
         </Link>
 
-        <nav className="hidden flex-1 items-center gap-5 text-sm md:flex">
+        {/* The links appear at `lg`, not `md`. Six of them are 627px wide, and
+            beside the wordmark, Docs, the donation button and GitHub that is
+            996px of header in a 768px tablet — the bar scrolled sideways from
+            768 to 895px before the donation button existed and to 995 after it.
+            Below `lg` the same links are in the disclosure menu, which is why
+            this is a breakpoint and not a cut. */}
+        <nav className="hidden flex-1 items-center gap-5 text-sm lg:flex">
           {NAV.map((item) => (
             <Link
               key={item.href}
@@ -41,12 +48,27 @@ export function Header() {
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-3 md:ml-0">
+        <div className="ml-auto flex items-center gap-3 lg:ml-0">
           <a
             href={SITE.docs}
             className="hidden text-sm text-dim no-underline transition-colors hover:text-text sm:inline"
           >
             Docs
+          </a>
+          {/* The donation link lives here rather than on /support, which is a
+              footer page nobody arrives at. A plain link, never a Ko-fi widget:
+              their embed loads a script and would drag cookie consent back onto
+              a site that has none.
+
+              It is the one warm, filled control in a header of blue text links,
+              which is the whole of its emphasis — see --color-kofi. */}
+          <a
+            href={SITE.kofi}
+            rel="noopener"
+            className="hidden items-center gap-2 rounded-lg bg-kofi px-3 py-1.5 text-sm font-medium text-kofi-ink no-underline transition-colors hover:bg-kofi-hover sm:inline-flex"
+          >
+            <CoffeeCup className="h-4 w-4" />
+            Buy me a Coffee
           </a>
           <a
             href={SITE.repo}
@@ -55,7 +77,7 @@ export function Header() {
             GitHub
           </a>
 
-          <details className="relative md:hidden">
+          <details className="relative lg:hidden">
             <summary
               className="flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg border border-dim2/70 text-dim"
               aria-label="Menu"
@@ -85,6 +107,14 @@ export function Header() {
                 className="rounded-md px-3 py-2 text-sm text-dim no-underline hover:bg-panel2 hover:text-text"
               >
                 Documentation
+              </a>
+              <a
+                href={SITE.kofi}
+                rel="noopener"
+                className="mt-1 flex items-center gap-2 rounded-md bg-kofi px-3 py-2 text-sm font-medium text-kofi-ink no-underline"
+              >
+                <CoffeeCup className="h-4 w-4" />
+                Buy me a Coffee
               </a>
             </div>
           </details>

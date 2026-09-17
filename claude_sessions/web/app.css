@@ -502,15 +502,32 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
 /* multicol has no row gap, so the separation is the card's own margin — and
    `break-inside` is what stops a card being sliced across the column break */
 .pile>*{break-inside:avoid;margin:0 0 var(--sp-3)}
-/* the same two exceptions the grid has, said the way multicol says them:
-   furniture spans, and so does a card whose content needs the width */
+/* Furniture spans, and so does a card that IS the page. `.card:has(.tbl
+   th:nth-child(4))` — the grid's twin of this rule, and the reason a four-column
+   table gets two tracks there — is deliberately NOT here any more.
+
+   In a grid a span costs one row's worth of tracks. In a pile it ends the
+   balanced run above it, and a run holding one card fills one column and leaves
+   every other column of its own height blank: 828x770px of background beside
+   the Memory tab's first card, the moment the lessons card (five columns) moved
+   up the page. Which card spans is DATA, so no ordering fixes it for every
+   project. And the width was not needed: the same lessons table in an 828px
+   column clears the `cramped` probe, which is calibrated against a real
+   photograph of a column too narrow for its own content, and the page it is on
+   went from 2187px tall to 1489px by not spanning. `tools/shot_gui.py` fails a
+   pile run that cannot fill its columns, so a card that DOES need the width
+   says so with `.wide` and takes the run break knowingly. */
 .pile>*:not(.card),
 .pile>.card.wide,
-.pile>.card:has(.tbl th:nth-child(4)),
 .pile>.card:has(.cctable){column-span:all}
 /* a spanning element ends one balanced run and starts another, so it needs the
    margin on both sides or the run below it touches it */
 .pile>.card.wide,.pile>*:not(.card){margin-top:0}
+/* There is no rule giving a lone card in a run the full width, and that was
+   tried: the card fills the width and its own stacked sections do not, so the
+   hole moves from beside the card to inside it. A pile whose runs cannot fill
+   its columns has either a span it does not need — see above — or wants `cols`,
+   two columns the renderer decides. The probe fails the run either way. */
 
 /* ── list + detail ──
    A long list of one kind of thing, and what you picked out of it. The Library
@@ -571,6 +588,27 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
   .tpane .tdet{max-height:none;overflow:visible}
   .tpane .tbody{max-height:none}}
 
+/* ── two columns the PAGE decides ──
+   A pile balances, so which card lands in which column is decided by how tall
+   the cards happen to be — and a card's height is data. That is right for N
+   independent sections and wrong the moment the two columns MEAN something:
+   Tools is what this project launches with on the left, what it has been doing
+   on the right, and a reader who has to hunt for the boundary is reading two
+   lists rather than one comparison.
+
+   So the renderer emits the columns — one `.cstack` each — and they are the
+   grid's only children. Same two-track shape as `.tpane`, but even: neither
+   column is the subordinate of the other, which is the whole difference from a
+   list + detail.
+
+   It collapses at the same 860px of CONTENT `.tpane` does, and for the same
+   reason: below that a second column is narrower than the controls in it. */
+.cols2{display:grid;gap:var(--sp-3);align-items:start;
+  grid-template-columns:repeat(2,minmax(0,1fr))}
+.cstack{display:flex;flex-direction:column;gap:var(--sp-3);min-width:0}
+.cstack>.card{margin-bottom:0;max-width:none;min-width:0}
+@container page (max-width:860px){.cols2{grid-template-columns:1fr}}
+
 /* ── a feed: one homogeneous list, the whole width of the page ──
    A resource index — log lines, search hits, review findings, a day-by-day
    spend table — is one kind of thing repeated, and every design system says
@@ -603,10 +641,28 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
    `dense` is load-bearing: the header and its description are forced into
    column 1 and take rows 1 and 2, so without it the first control would start
    at row 2 and the top-right cell would be empty. */
-.form{display:flex;flex-direction:column;gap:var(--sp-3)}
+/* A FORM HAS A MAXIMUM USEFUL WIDTH, and past it the card is background.
+   The annotation column is clamped at 300px, so on a 1920px window a card was
+   1587px wide holding a 300px ribbon of prose beside a button — the Statusline
+   card's ten-line description ran down a narrow column with 1225px empty next
+   to it, and at 2560px that was 1889px empty. Nothing was wrong with the cards;
+   the page simply had more width than a form can spend, which is the same fact
+   `#content p{max-width:88ch}` states about a sentence. 1240px keeps the
+   annotation at its clamped 300 and still leaves ~900 for the widest control,
+   which is more than any input here needs.
+
+   Left-aligned, not centred: the page note above and the tab strip above that
+   both start at the content's left edge, and a form that drifts to the middle
+   of the window stops lining up with them. */
+.form{display:flex;flex-direction:column;gap:var(--sp-3);max-width:1240px}
 .form>.card{margin-bottom:0;max-width:none;min-width:0;
   display:grid;grid-auto-flow:row dense;column-gap:var(--sp-6);
-  grid-template-columns:minmax(0,clamp(180px,24%,300px)) minmax(0,1fr);
+  /* 42ch, not 300px: the block above says the width goes to the explanation,
+     and at 300px it did not — the Statusline description ran ten lines down a
+     ribbon while its control column sat empty. A reading measure is the right
+     cap for a column that holds a sentence, and it is written in `ch` for the
+     same reason the download note on the site is. */
+  grid-template-columns:minmax(0,clamp(180px,34%,42ch)) minmax(0,1fr);
   align-content:start}
 .form>.card>*{grid-column:2}
 /* the FIRST heading only, and the FIRST paragraph — a later one is a footnote
@@ -642,13 +698,19 @@ html.mo-off .btn:hover,html.mo-off .btn:active{transform:none}
    section and not the page, and six primary Saves down one page is six things
    all claiming to be the thing to press.) */
 .form .mrow{justify-content:flex-start;flex-wrap:wrap}
-/* An async MOUNT is not a section. `display:contents` takes the wrapper out of
-   the box tree so the cards it fills stand as the form's own children, which is
-   what lets the three version cards keep the self-contained builders they had
-   on the page they came from instead of becoming static templates here. They
-   are kv rows and buttons, not labelled fields, so they do not want the
-   annotation column — only the card's own geometry and spacing. */
-.form>#verMount{display:contents}
+/* An async MOUNT is not a section, and the five cards it fills are not fields.
+   They are kv rows and buttons, so they do not want the form's annotation
+   column — but they were `display:contents` over plain block cards, which made
+   each of them a 1587px band holding about 500px of content. Over a thousand
+   pixels of background per card, five cards deep, and every probe in
+   tools/shot_gui.py said `clean`, because all of them measured height.
+
+   They are what the rest of the app calls a set of independent sections, so
+   they get the shape the rest of the app gives those: the same auto-fit track
+   floor `#content` and `.pile` are built on, from the same token, so these
+   break to two and three columns at the same width everything else does. */
+.form>#verMount{display:grid;gap:var(--sp-3);align-items:start;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,var(--card-min,560px)),1fr))}
 .form>#verMount>.card{margin-bottom:0;max-width:none;min-width:0}
 /* 720px of CONTENT: below it the annotation cannot hold a sentence and the
    controls cannot hold a value, so the two columns become one and the
@@ -1016,6 +1078,11 @@ html.mo-off .tchart .providerbg{animation:none}
   gap:8px;flex-wrap:wrap;row-gap:6px}
 .card h3 .sp{flex:1}
 .kv{display:grid;grid-template-columns:170px 1fr;gap:4px 14px;font-size:13px}
+/* A `.kv` is a list of PAIRS, and a note about a value is not a third member of
+   one: with `grid-auto-flow:row` it wrapped into the next row's LABEL cell, so
+   the sentence explaining what `install mode: pip` means was set 165px wide in
+   a 1587px card. It belongs beside the value it explains. */
+.kv>.kvnote{grid-column:2;color:var(--dim2);font-size:12px}
 .kv .k{color:var(--dim)}
 table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .tbl th{color:var(--dim);text-align:left;font-weight:600;font-size:11px;
@@ -2466,16 +2533,25 @@ html.stage-on .pgnote,html.stage-on .mtabs .tab{
   text-shadow:0 1px 3px rgba(0,0,0,.78)}
 
 /* ── guided tour ──
-   A card docked bottom-right, and a ring on whatever the step is pointing at.
-   Never a dimming layer over the app: the step is ABOUT the screen behind it,
-   so hiding that screen defeats the whole thing.
+   A card BESIDE whatever the step is pointing at, and a ring on it. Never a
+   dimming layer over the app: the step is ABOUT the screen behind it, so hiding
+   that screen defeats the whole thing.
 
-   Both animations are transform/opacity only, and the ring is a box-shadow that
-   is SET rather than transitioned — the compositor contract in CLAUDE.md is not
-   a style rule, it is what stops the Qt surface tearing, and a feature whose job
-   is to draw the eye is the last one to break it. */
-#tour{position:fixed;right:var(--sp4);bottom:var(--sp4);z-index:60;
-  width:360px;max-width:calc(100vw - 2*var(--sp4));pointer-events:none}
+   The card used to be docked in the bottom-right corner, which made every step
+   a sentence in one place about a ring somewhere else — the reader's eye had to
+   carry the text across the window to whatever was glowing, on all 37 steps of
+   the long tour. `tour.js` places it now, so this only says where it starts:
+   the corner, which is still where a step with no target lands.
+
+   Placement is written as a `transform`, not as `left`/`top`, so the card is
+   moved on the compositor and `tourIn` stays transform/opacity only. Both
+   animations obey that, and the ring is a box-shadow that is SET rather than
+   transitioned — the compositor contract in CLAUDE.md is not a style rule, it
+   is what stops the Qt surface tearing, and a feature whose job is to draw the
+   eye is the last one to break it. */
+#tour{position:fixed;left:0;top:0;z-index:60;
+  width:360px;max-width:calc(100vw - 2*var(--sp4));pointer-events:none;
+  will-change:transform}
 #tour[hidden]{display:none}
 .tcard{pointer-events:auto;background:var(--panel);border:1px solid var(--accent);
   border-radius:var(--r-lg);padding:14px 16px;box-shadow:var(--shadow-lg);
@@ -2508,4 +2584,7 @@ html.mo-off .tprog i{transition:none}
    QtWebEngine Chromium version this project does not pin. */
 .tspot{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm);
   box-shadow:0 0 0 6px rgba(var(--cyan-rgb),.22)}
-@media (max-width:620px){#tour{left:var(--sp4);width:auto}}
+/* Narrow: nothing has room beside it, so the card goes back to being docked —
+   `tour.js` reads this same width and stops placing rather than fighting it. */
+@media (max-width:620px){#tour{width:auto;transform:none!important;
+  left:var(--sp4);right:var(--sp4);top:auto;bottom:var(--sp4)}}

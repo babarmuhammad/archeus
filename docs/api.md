@@ -112,6 +112,7 @@ a handler sees them; a missing or malformed one is a 400.
 | `/api/automode` | `api_automode_set` | Set the starting mode and/or the environment entries for ONE account. |
 | `/api/brief/dismiss` | `api_brief_dismiss` | Stop showing one scan finding. Remembered across re-scans. |
 | `/api/cc-settings` | `api_cc_settings_set` | — |
+| `/api/claude-md` | `api_claude_md_save` | Save the hand-written half of a project's CLAUDE.md. |
 | `/api/claude-md/scaffold` | `api_claude_md_scaffold` | — |
 | `/api/conventions/pin` | `api_conventions_pin` | — |
 | `/api/conventions/sync` | `api_conventions_sync` | — |

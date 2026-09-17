@@ -116,7 +116,10 @@ export default function DownloadPage() {
             <CommandCard key={c.id} label={c.label} command={c.command} />
           ))}
         </div>
-        <p className="mt-4 text-[0.85rem] text-dim2">
+        {/* Capped in `ch`, not in rem: this note is set at 0.85rem, so the
+            max-w-3xl the body prose uses is 105 characters here and 88 there.
+            A measure is a count of characters, so it is written as one. */}
+        <p className="mt-4 max-w-[88ch] text-[0.85rem] text-dim2">
           Python 3.10 or newer, no runtime dependencies, and no API key — archeus uses the
           Claude Code authentication you already have. Every tagged build is also on the{' '}
           <a

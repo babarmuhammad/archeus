@@ -5,6 +5,85 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **A project opens on four tab groups instead of nine tabs, and each group leads with
+  the tab it is opened for.** Session, then Context (Memory, CLAUDE.md, Audit), Project
+  (Tools, Usage, Repos) and Actions (Plan → Execute, Code Review). `Review` is called
+  `Code Review`, which is what it does. Coming back to a group keeps the sub-tab you were
+  last on, so the order decides the first visit only — which is the visit where guessing
+  wrong costs a click.
+
+- **The pages lead with what people came for.** Tools is two columns the page decides:
+  on the left what the project *launches* with (its agents, its extra directories, its
+  extra PATH), on the right what it has *been doing* (most-run commands, what to work
+  on). Memory opens on what archeus knows, then on what it learned. The read-only
+  diagnostics — project health and Claude Code's own record of the project — moved to
+  Audit, where the rest of them already were, and the Architecture card went with the
+  **Graph** button in the tab strip, which was already the door people used.
+
+- **The apex site's header carries the donation link.** A warm caramel *Buy me a Coffee*
+  button — a plain link, never a Ko-fi widget, whose embed would drag cookie consent back
+  onto a site that has none — and the only control on the site that is not blue. `/support`
+  keeps the explanation and has dropped its own duplicate call to action.
+
+### Added
+
+- **CLAUDE.md is editable from the GUI, and only the half you wrote.** The project's
+  CLAUDE.md tab opens on a *Your prose* box holding the manual block and nothing else:
+  everything archeus generates is left out of it and put back untouched on save, so the
+  editor cannot overwrite a generated block even by accident.
+
+### Fixed
+
+- **The Memory tab left a whole column empty beside its first card.** A pile balances
+  its cards across columns, but a card that takes the full width ends the balanced run
+  above it — and the lessons card took the full width because its table has five
+  columns. With it second on the page, the run above held one card and filled one column
+  of two, leaving 828x770px of background beside it. A pile no longer gives a wide table
+  the full width: the same table reads fine in an 828px column, and the page is 1489px
+  tall instead of 2187. `tools/shot_gui.py` now fails a pile run that cannot fill its
+  columns, and measures horizontal emptiness as well as vertical — every check it had
+  measured height, so a card twice as wide as its contents was reported as clean.
+
+- **The settings pages were mostly background on a wide window.** The annotated form
+  puts an explanation on the left and the controls on the right, but the explanation was
+  capped at 300px however wide the window got — so a ten-line description ran down a
+  ribbon with 1225px empty beside it, and 1889px at 2560. The form is capped at a width
+  it can use and the explanation gets a reading measure. The five version cards on
+  Updates were full-width blocks holding about 500px of content each and are now a grid
+  like every other set of independent cards, and the sentence explaining `install mode`
+  is beside the value instead of 165px wide under it.
+
+- **The home page said the same thing twice.** The hero printed the site's one-line
+  intro and the first station's lead one under the other, in two sizes; they are the
+  same sentence with twenty more words on the end. It prints the longer one.
+
+- **The longest prose on the site was 102 characters a line.** The `zigzag` layout —
+  /support, /changelog, /contributing, /code of conduct and every blog post — set its
+  copy column to 54rem while the four other layouts held theirs between 44 and 52, and
+  body paragraphs on the legal pages had no cap at all: they ran the full column width
+  under a lead that stopped 114px short of them, so the two ended on different right
+  edges. One measure now, about 88 characters, and `tools/audit_site.py` measures every
+  paragraph on both sites at desktop width and fails past 96.
+
+- **A numeric column's header did not stand over its own numbers.** `text-align:right`
+  had only ever been written on the cells, so `tokens` sat at the left of a column whose
+  figures ended 250px to its right — on the context audit, both usage tables, the lessons
+  table, disk and rotation. The header takes its alignment from its cells now rather than
+  from whatever the renderer remembered to type. The same pass gives the narrow-window
+  stacked layout its labels, and it had never run on a table filled by a fetch after the
+  page was painted, which was most of them.
+
+- **The site header scrolled sideways between 768 and 895px.** Six nav links are 627px
+  wide, which is more header than a tablet has once the wordmark, Docs and GitHub are
+  beside them; the links now appear at `lg` rather than `md`, and below that they are in
+  the disclosure menu they were always in on a phone. `tools/audit_site.py` checks
+  768x1024 as well as 390x844 now — a phone gets the menu and a desktop has the room, so
+  the tablet band is the one width a phone-only probe could never see.
+
 ## [2.5.0] - 2026-09-16
 
 ### Added
