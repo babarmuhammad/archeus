@@ -116,7 +116,7 @@ _RENDERER.update(sessions='drawSessions', worktrees='drawWorktrees')
 
 #: The shapes `shell()` knows how to write — and the whole set, because a
 #: page naming anything else gets no wrapper at all.
-SHAPES = ('dash', 'split', 'feed', 'form', 'pile')
+SHAPES = ('dash', 'split', 'feed', 'form', 'pile', 'cols')
 
 
 def _arch(page):
@@ -444,9 +444,12 @@ def test_every_container_query_names_a_container():
 def test_a_card_whose_content_needs_the_row_takes_the_row():
     """Instead of a hand-maintained list of `.wide` literals, which is exactly
     the kind of copy this file exists to distrust: a five-column table and the
-    settings matrix are wide by construction, so they say so themselves."""
+    settings matrix are wide by construction, so they say so themselves.
+
+    The FOUR-COLUMN case is a grid rule only, and that asymmetry is the subject
+    of the test below it."""
+    assert '.content>.card:has(.tbl th:nth-child(4))' in _CSS
     for host in ('.content>', '.pile>'):
-        assert f'{host}.card:has(.tbl th:nth-child(4))' in _CSS
         assert f'{host}.card:has(.cctable)' in _CSS
 
 
@@ -518,8 +521,11 @@ def test_the_shell_is_the_only_thing_that_writes_a_layout_wrapper():
     dashboard's own `.dash`, all three of which existed while it passed."""
     assert 'function shellNow(html){return paintNow(shellWrap(html));}' in _JS
     assert 'function shell(nav,html){return paint(nav,shellWrap(html));}' in _JS
-    # the wrapper class appears exactly once each: inside ARCH_WRAP
-    for shape in ('pile', 'dash', 'tpane'):
+    # the wrapper class appears exactly once each: inside ARCH_WRAP.
+    # `cols2` is here and `cstack` is NOT: the wrapper is the shell's, the two
+    # column stacks inside it are the renderer's own content structure — which
+    # is the one thing that distinguishes `cols` from every other shape.
+    for shape in ('pile', 'dash', 'tpane', 'cols2'):
         assert f'class="{shape}"' not in _JS, \
             f'a renderer is hand-writing the {shape} wrapper — use shell()'
     assert _JS.count('ARCH_WRAP=') == 1 and _JS.count('function shellWrap(') == 1
@@ -811,16 +817,34 @@ def test_the_space_probe_measures_the_thing_and_not_an_artefact_of_it():
 # the file, and passing, the whole time it existed.
 
 
+#: The one card the grid gives the whole row and the pile does NOT give the
+#: whole width, and the reason it is a literal rather than a symmetry.
+#:
+#: A span costs a row of tracks in a grid and nothing else. In a pile it ENDS
+#: the balanced run above it, and a run holding one card fills one column and
+#: leaves every other column of its own height blank — 828x770px of background
+#: beside the Memory tab's first card, which is what a user photographed. Which
+#: card spans is DATA (how many columns a table happens to have), so no ordering
+#: of a pile fixes it for every project.
+#:
+#: And the width turned out not to be needed: the same five-column lessons table
+#: in an 828px column clears the `cramped` probe in tools/shot_gui.py — which is
+#: calibrated against a photograph of a column genuinely too narrow for its own
+#: content, not guessed — and the page went from 2187px tall to 1489px by not
+#: spanning. A card that DOES need the width in a pile says `.wide` and takes
+#: the run break knowingly.
+PILE_DOES_NOT_SPAN = {'.card:has(.tbl th:nth-child(4))'}
+
+
 def test_a_card_that_cannot_share_a_row_cannot_share_a_column_either():
     """The grid and the pile are two layouts for the same cards, so the cards
-    that take the whole row in one have to take the whole width in the other.
-    Miss one and a six-column table quietly becomes 560px wide on the pages
-    that are piles — the exact bug the grid rule was written to stop, moved one
-    layout over and invisible because nothing throws.
+    that take the whole row in one take the whole width in the other — except
+    for the one argued case above, which has to stay exactly one case.
 
     Compared as SETS rather than asserted by name: the point is that adding a
     case to one layout and forgetting the other fails, which a list of literals
-    could not tell you."""
+    could not tell you. A SECOND divergence fails here too, which is what stops
+    the exception becoming a habit."""
     def spanners(prop, prefix):
         out = set()
         for m in re.finditer(r'([^{}]+)\{[^{}]*' + re.escape(prop) + r'[;}]', _CSS):
@@ -833,7 +857,12 @@ def test_a_card_that_cannot_share_a_row_cannot_share_a_column_either():
     grid = spanners('grid-column:1/-1', '.content>')
     pile = spanners('column-span:all', '.pile>')
     assert grid, 'no full-row cards found — the selector shape moved'
-    assert grid == pile, f'grid spans {grid - pile} but the pile does not'
+    assert PILE_DOES_NOT_SPAN <= grid, \
+        f'{PILE_DOES_NOT_SPAN - grid} is not a grid spanner, so the exception is stale'
+    assert grid - pile == PILE_DOES_NOT_SPAN, \
+        (f'grid spans {grid - pile} but the pile does not — only '
+         f'{PILE_DOES_NOT_SPAN} is argued for')
+    assert not pile - grid, f'the pile spans {pile - grid} and the grid does not'
 
 
 def test_the_space_audit_can_fail_and_knows_when_it_measured_nothing():

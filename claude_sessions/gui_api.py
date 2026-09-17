@@ -2901,8 +2901,11 @@ def api_claude_md_get(q, body):
     n_keep = ctxaudit.keep_regions(text)
     sess = b['sessions']
     blocks = [
+        # the ONE block that carries its text for an editor rather than for a
+        # reader: it is the only half of the file the user owns, so it is the
+        # only half POST /api/claude-md will take back.
         {'key': 'manual', 'label': 'Your prose', 'present': bool(b['manual'].strip()),
-         'tokens': tokens_estimate(b['manual'])},
+         'tokens': tokens_estimate(b['manual']), 'text': b['manual']},
         {'key': 'keep', 'label': f'Protected ({n_keep} fenced)', 'present': bool(n_keep),
          'tokens': tokens_estimate(''.join(ctxaudit._KEEP_RE.findall(text)))},
         {'key': 'autogen', 'label': 'AUTOGEN — repos and commits',
@@ -2925,6 +2928,19 @@ def api_claude_md_get(q, body):
     ]
     return {'text': text, 'exists': bool(text), 'path': p, 'blocks': blocks,
             'tokens': tokens_estimate(text)}
+
+
+def api_claude_md_save(q, body):
+    """Save the hand-written half of a project's CLAUDE.md.
+
+    Takes only `manual` — the generated blocks are re-derived and carried
+    across by `claude_md.set_manual_prose`, so an editor that shows the user
+    their own prose cannot be used to erase archeus's. Same path as the GET for
+    the same reason `/api/global-claude-md` is: one name for one file."""
+    from .claude_md import set_manual_prose
+    ok, err = set_manual_prose(body['path'], _folder(body.get('cfgdir'), body['enc']),
+                               body.get('text', ''))
+    return {'ok': ok, 'error': err}
 
 
 def api_claude_md_scaffold(q, body):
@@ -4621,7 +4637,10 @@ GET_ROUTES = {
     '/api/checkpoints': api_checkpoints,
     '/api/checkpoint/diff': api_checkpoint_diff,
     '/api/worktree/diff': api_worktree_diff,
-    '/api/graph-lite': api_graph_lite,
+    # the graph is its own window (`/graph`, opened from the project tab strip)
+    # and the TUI's `n` key; a card restating the same numbers on the Tools tab
+    # was a second, worse door to it
+    '/api/graph-lite': api_graph_lite,   # served to /graph and the TUI, not the SPA
     '/api/hooks': api_hooks_get,
     '/api/agents/library': api_agents_library,
     '/api/agents/read': api_agent_read,
@@ -4724,6 +4743,7 @@ POST_ROUTES = {
     '/api/ctxaudit/compact': api_ctxaudit_compact,
     '/api/ctxaudit/protect': api_ctxaudit_protect,
     '/api/deny/apply': api_deny_apply,
+    '/api/claude-md': api_claude_md_save,
     '/api/claude-md/scaffold': api_claude_md_scaffold,
     '/api/open-editor': api_open_editor,
     '/api/system-prompt': api_system_prompt_set,

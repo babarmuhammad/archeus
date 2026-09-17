@@ -547,6 +547,79 @@ def _valid_compressed(text):
         r"(?i)^\W*(i'll|i will|i've|here(?: is|'s)|sure|okay|certainly|edit pending)", t)
 
 
+def assemble_with_manual(manual, existing, project_path, proj_folder=None):
+    """Put `manual` back into a CLAUDE.md, rebuilding what archeus owns.
+
+    The manual half is the only thing a caller may replace. AUTOGEN and SESSIONS
+    are re-derived, MEMORY/AGENTS/LOOP are carried across verbatim, and the
+    AI:ANALYZED marker survives if it was there — so a caller that hands us an
+    empty string deletes the user's prose and nothing else."""
+    autogen_content = _build_autogen_block(project_path, proj_folder)
+    new_autogen = f"{_AUTOGEN_START}\n{autogen_content}{_AUTOGEN_END}\n"
+    sessions_content = _build_sessions_block(proj_folder, _parse_existing_sessions(existing))
+    new_sessions = (f"{_SESSIONS_START}\n{sessions_content}{_SESSIONS_END}\n"
+                    if sessions_content else '')
+    final = replace_machine_blocks((manual or '').rstrip('\n') + '\n',
+                                   new_autogen, new_sessions)
+    final = _preserve_machine_blocks(final, existing)
+    if _AI_MARKER in existing and _AI_MARKER not in final:
+        lines = final.split('\n')
+        insert_at = 1
+        for i, ln in enumerate(lines[:5]):
+            if ln.strip().startswith('# '):
+                insert_at = i + 1
+                break
+        lines.insert(insert_at, _AI_MARKER)
+        final = '\n'.join(lines)
+    return final
+
+
+def write_claude_md(md_path, existing, final, project_path, proj_folder, reason):
+    """Back up, write atomically, record the version, stamp the manifest.
+
+    One writer for the file Claude Code parses on every turn: a backup BEFORE
+    overwriting and an atomic write in both cases, because a half-written
+    CLAUDE.md breaks the user's whole session rather than just archeus. The
+    .bak is the last-ditch copy; `diffview.record` is the browsable history the
+    History card and its restore button read."""
+    from . import diffview
+    if not (_cfg.write_atomic(md_path + '.bak', existing)
+            and _cfg.write_atomic(md_path, final)):
+        return False
+    try:
+        diffview.record(project_path, proj_folder, 'claude_md', existing, final)
+    except Exception:
+        pass
+    try:
+        from . import workspace
+        workspace.update_manifest(project_path, proj_folder, reason)
+    except Exception:
+        pass
+    return True
+
+
+def set_manual_prose(project_path, proj_folder=None, text=''):
+    """Replace ONLY the hand-written half of a project's CLAUDE.md.
+
+    What the GUI's prose editor saves. ARCHEUS:KEEP fences live inside the
+    manual half, so they round-trip verbatim and this is the one surface where
+    moving them is a legitimate edit. Returns (ok, error)."""
+    md_path = os.path.join(project_path, 'CLAUDE.md')
+    try:
+        existing = open(md_path, encoding='utf-8', errors='ignore').read()
+    except Exception:
+        existing = ''
+    if not existing.strip():
+        return False, 'no CLAUDE.md yet — scaffold one first'
+    final = assemble_with_manual(text, existing, project_path, proj_folder)
+    if final == existing:
+        return True, ''
+    if not write_claude_md(md_path, existing, final, project_path, proj_folder,
+                           'prose'):
+        return False, 'write failed — CLAUDE.md untouched'
+    return True, ''
+
+
 def ai_compress_claude_md(project_path, proj_folder=None):
     """Rewrite the MANUAL content of CLAUDE.md into a lean lookup-table style
     (target < 500 tok) with one Claude call — CLAUDE.md rides in the context on
@@ -596,23 +669,7 @@ def ai_compress_claude_md(project_path, proj_folder=None):
         return False
     compressed = _fence_in(compressed, kept)
 
-    autogen_content = _build_autogen_block(project_path, proj_folder)
-    new_autogen = f"{_AUTOGEN_START}\n{autogen_content}{_AUTOGEN_END}\n"
-    sessions_content = _build_sessions_block(proj_folder, _parse_existing_sessions(existing))
-    new_sessions = (f"{_SESSIONS_START}\n{sessions_content}{_SESSIONS_END}\n"
-                    if sessions_content else '')
-    final = replace_machine_blocks(compressed.rstrip('\n') + '\n',
-                                   new_autogen, new_sessions)
-    final = _preserve_machine_blocks(final, existing)
-    if _AI_MARKER in existing and _AI_MARKER not in final:
-        lines = final.split('\n')
-        insert_at = 1
-        for i, ln in enumerate(lines[:5]):
-            if ln.strip().startswith('# '):
-                insert_at = i + 1
-                break
-        lines.insert(insert_at, _AI_MARKER)
-        final = '\n'.join(lines)
+    final = assemble_with_manual(compressed, existing, project_path, proj_folder)
 
     old_tok, new_tok = tokens_estimate(existing), tokens_estimate(final)
     from . import diffview
@@ -620,23 +677,10 @@ def ai_compress_claude_md(project_path, proj_folder=None):
                             f"COMPRESS {old_tok}→{new_tok} tok  /  {name}"):
         flash("Rejected — CLAUDE.md not written", ok=False, secs=1.4)
         return False
-    # backup BEFORE overwriting, and atomically in both cases: Claude Code
-    # parses CLAUDE.md on every turn, so a half-written file breaks the user's
-    # whole session. The .bak is the last-ditch copy; diffview.record below is
-    # the browsable history.
-    if not (_cfg.write_atomic(md_path + '.bak', existing)
-            and _cfg.write_atomic(md_path, final)):
+    if not write_claude_md(md_path, existing, final, project_path, proj_folder,
+                           'compress'):
         flash("Write failed — CLAUDE.md untouched", ok=False, secs=2)
         return False
-    try:
-        diffview.record(project_path, proj_folder, 'claude_md', existing, final)
-    except Exception:
-        pass
-    try:
-        from . import workspace
-        workspace.update_manifest(project_path, proj_folder, 'compress')
-    except Exception:
-        pass
     flash(f"CLAUDE.md compressed: ~{old_tok} → ~{new_tok} tok (backup: CLAUDE.md.bak)",
           ok=True, secs=2)
     return True

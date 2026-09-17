@@ -839,8 +839,11 @@ export const SUPPORT: Doc = {
   description:
     'archeus is free, MIT-licensed and has no paid tier. If it saves you time you can put something in the tip jar on Ko-fi — it buys nothing, deliberately.',
   h1: 'Support archeus',
+  /* One sentence. The Buy me a Coffee button in the header is the call to
+     action now, so this page has stopped being the door and gone back to being
+     the explanation — which is what it was written for. */
   intro:
-    'The tool is free and stays free. A donation is a thank-you, not a purchase — and the things that help most cost nothing at all.',
+    'A donation here is a thank-you, not a purchase, and the things that help most cost nothing at all.',
   sections: [
     {
       id: 'donate',

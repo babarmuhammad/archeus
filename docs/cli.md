@@ -72,7 +72,7 @@ archeus review --branch main        # the whole branch against a base
 archeus review --min-confidence 90 [PATH]
 ```
 
-Also available as `⇧R` in the sessions menu and on the desktop app's Review tab.
+Also available as `⇧R` in the sessions menu and on the desktop app's Code Review tab.
 
 ## `sync-accounts`
 

@@ -27,7 +27,7 @@ export const TOUR_SHORT: TourStep[] = [
   {
     "id": "what",
     "title": "What archeus is",
-    "body": "archeus is the workspace layer around your coding CLI. Your projects stop being a stream of chats and become workspaces that remember: per-project memory, every session you have ever had, and control over what the next one costs. It drives Claude Code, OpenAI Codex and pi, and it never replaces them \u2014 it launches the real binary.",
+    "body": "The workspace layer around your coding CLI: per-project memory, every session you have had, and control over what the next one costs.",
     "page": "home",
     "tab": "",
     "key": "",
@@ -37,7 +37,7 @@ export const TOUR_SHORT: TourStep[] = [
   {
     "id": "dashboard",
     "title": "The dashboard",
-    "body": "One screen for the state of everything: quota and burn as gauges, what is running right now, your projects by recent spend, and the session you were last in. Start here when you sit down \u2014 the Continue tile usually knows what you want before you do.",
+    "body": "One screen for quota, today's burn, what is running now, and the session to continue.",
     "page": "home",
     "tab": "",
     "key": "",
@@ -47,7 +47,7 @@ export const TOUR_SHORT: TourStep[] = [
   {
     "id": "projects",
     "title": "Open a project",
-    "body": "A project is a directory archeus has seen a session in. Picking one opens its own set of tabs \u2014 its sessions, its memory, its CLAUDE.md, its spend. Nothing is configured to make a directory a project; run a session in it once and it is one.",
+    "body": "A directory archeus has seen a session in, opened as its own workspace of tabs.",
     "page": "home",
     "tab": "",
     "key": "Enter",
@@ -57,7 +57,7 @@ export const TOUR_SHORT: TourStep[] = [
   {
     "id": "sessions",
     "title": "Every session you have had",
-    "body": "Resume, rename, archive or export any conversation in the project, across every account. This is the reason archeus exists: a transcript you cannot find is a transcript you paid for twice.",
+    "body": "Resume, rename, archive or export any conversation in this project, across every account.",
     "page": "",
     "tab": "sessions",
     "key": "s",
@@ -67,7 +67,7 @@ export const TOUR_SHORT: TourStep[] = [
   {
     "id": "memory",
     "title": "Memory that survives the session",
-    "body": "archeus builds a semantic graph of the project \u2014 its modules, its services, the lessons it has learned \u2014 and injects the task-relevant part into every new session. Build it once from the Memory tab and it keeps itself current on a schedule.",
+    "body": "A graph of the project that archeus injects into every new session and refreshes on a schedule.",
     "page": "",
     "tab": "memory",
     "key": "m",
@@ -77,7 +77,7 @@ export const TOUR_SHORT: TourStep[] = [
   {
     "id": "launch",
     "title": "Decide what a session costs",
-    "body": "Model, effort, permission mode, thinking budget and which account it runs under are all decided before the window opens. The same choices can be pinned per project, so the expensive project and the cheap one do not get the same defaults by accident.",
+    "body": "Model, effort, permission mode and account are all decided before the window opens, and can be pinned per project.",
     "page": "settings",
     "tab": "",
     "key": "n",
@@ -87,7 +87,7 @@ export const TOUR_SHORT: TourStep[] = [
   {
     "id": "go",
     "title": "Launch one",
-    "body": "Pick a project and start a session. archeus opens the unmodified CLI in its own window with your choices applied, the memory digest injected and the status line reporting context, spend and quota as you work.",
+    "body": "archeus opens the real CLI with your choices applied, the memory digest injected and the status line running.",
     "page": "home",
     "tab": "",
     "key": "n",
@@ -100,7 +100,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-what",
     "title": "What archeus is",
-    "body": "The memory and workspace layer for AI coding agents. It sits beside Claude Code, Codex and pi rather than in front of them \u2014 it launches the real binary with your settings, reads what those tools record, and adds the three things none of them keep: memory per project, a history you can search, and a budget you can see.",
+    "body": "The memory and workspace layer beside Claude Code, Codex and pi: it launches the real binary, never replaces it.",
     "page": "home",
     "tab": "",
     "key": "",
@@ -110,7 +110,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-dashboard",
     "title": "Dashboard",
-    "body": "Quota, today's burn, tooling health and live activity as four gauges, over the sessions running right now, your projects and the one to continue. Use it as the answer to \"where was I\" and \"what is this costing me\" without opening anything.",
+    "body": "Quota, burn, tooling health and live activity as four gauges, over your projects and the session to continue.",
     "page": "home",
     "tab": "",
     "key": "",
@@ -120,7 +120,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-live",
     "title": "Live sessions",
-    "body": "Every session being worked in at this moment, one row each: the project, who is on it, what tool call it is blocked on this second, and the shape of its recent activity as coloured ticks. For watching several agents at once \u2014 click a row for the full flow graph.",
+    "body": "Every session being worked in right now, one row each, showing what tool call it is blocked on.",
     "page": "home",
     "tab": "",
     "key": "",
@@ -130,7 +130,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-sessions",
     "title": "Sessions",
-    "body": "Every conversation in this project, across every account: resume it, fork it, rename it, archive it, export it to Markdown, or replay it as a flow graph. Use rename early \u2014 a session called \"continue\" is a session you will never find again.",
+    "body": "Every conversation in this project, across every account: resume, fork, rename, archive, export or replay it.",
     "page": "",
     "tab": "sessions",
     "key": "s",
@@ -140,7 +140,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-flow",
     "title": "Flow graph",
-    "body": "A session replayed on its own clock: prompts, model turns, tool calls, results, errors and subagent lanes, with play, scrub and zoom. Idle gaps are clamped, so a twelve-hour session plays in seconds. Use it to see where a run actually spent its time.",
+    "body": "A session replayed on its own clock with idle gaps clamped, so a twelve-hour run plays in seconds.",
     "page": "",
     "tab": "sessions",
     "key": "",
@@ -150,7 +150,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-memory",
     "title": "Memory",
-    "body": "A semantic graph of the project \u2014 entities, relations and lessons \u2014 built by Claude and injected into every new session as a compact digest, with `archeus recall \"<topic>\"` for the detail. It is what stops every session starting by re-reading the same eight files.",
+    "body": "A graph of the project's entities, relations and lessons, injected into every new session as a compact digest.",
     "page": "",
     "tab": "memory",
     "key": "m",
@@ -160,7 +160,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-lessons",
     "title": "Lessons",
-    "body": "What went wrong and what fixed it, mined out of your own transcripts and held for review before anything is written. Approve one and it joins the memory graph, so the next session in that project starts already knowing it.",
+    "body": "What went wrong and what fixed it, mined from your transcripts and held for review before anything is written.",
     "page": "",
     "tab": "memory",
     "key": "",
@@ -170,7 +170,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-claudemd",
     "title": "CLAUDE.md",
-    "body": "The instruction file block by block, what each block costs in tokens, which blocks archeus maintains, and every version it has replaced. Use it when the file has grown past the point where anyone reads it \u2014 the cost column is the argument.",
+    "body": "The instruction file block by block, what each block costs, and an editor for the half you wrote.",
     "page": "",
     "tab": "claudemd",
     "key": "",
@@ -180,7 +180,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-audit",
     "title": "Context audit",
-    "body": "What ONE turn costs across every surface at once: this project's CLAUDE.md, your global one, the memory digest, the hooks, the MCP tool definitions. Run it before you wonder why a short question cost so much.",
+    "body": "What one turn costs across every surface at once, plus this project's health and what the CLI records.",
     "page": "",
     "tab": "audit",
     "key": "",
@@ -189,8 +189,8 @@ export const TOUR_LONG: TourStep[] = [
   },
   {
     "id": "long-review",
-    "title": "Review",
-    "body": "A code review over the working tree, the staged changes or a branch, run by Claude with the project's own memory in scope. For the pass you want before a commit, not instead of one.",
+    "title": "Code Review",
+    "body": "A code review over the working tree, staged changes or a branch, with the project's memory in scope.",
     "page": "",
     "tab": "review",
     "key": "",
@@ -200,7 +200,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-planexec",
     "title": "Plan \u2192 Execute",
-    "body": "One model writes a plan, you approve or edit it, another executes it step by step with a gate between. For work too big for one turn, where the expensive mistake is the plan rather than the code.",
+    "body": "One model writes a plan you approve or edit, another executes it step by step with a gate between.",
     "page": "",
     "tab": "planexec",
     "key": "",
@@ -210,7 +210,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-pusage",
     "title": "This project's spend",
-    "body": "The same token history as the account-wide page, narrowed to one project and one timeline. It is the number to bring to the question nobody can answer from a monthly total \u2014 whether the work this repository needs is worth what it costs to do it here.",
+    "body": "The same token history as the account-wide page, narrowed to one project and one timeline.",
     "page": "",
     "tab": "pusage",
     "key": "",
@@ -220,7 +220,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-repos",
     "title": "Repos",
-    "body": "Every git repo, submodule and linked worktree under the project, with branch, dirty count and ahead/behind, read from `.git` without spawning git. For a workspace that is a parent of repositories rather than a repository.",
+    "body": "Every git repo, submodule and linked worktree under the project, with branch and dirty count, read without spawning git.",
     "page": "",
     "tab": "worktrees",
     "key": "",
@@ -230,17 +230,17 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-tools",
     "title": "Tools",
-    "body": "The architecture graph of the project as an interactive cluster, Claude Code's own record of it, and the loop file. The graph is worth opening once per project: it is the shape of the codebase as archeus understands it, which is also what it injects.",
+    "body": "What this project launches with \u2014 its agents, directories and PATH \u2014 beside the commands it has actually run.",
     "page": "",
     "tab": "tools",
     "key": "",
-    "docs": "architecture",
-    "docsUrl": "https://docs.claudectl.space/architecture/"
+    "docs": "configuration",
+    "docsUrl": "https://docs.claudectl.space/configuration/"
   },
   {
     "id": "long-globalmd",
     "title": "Global CLAUDE.md",
-    "body": "The instructions read in every session on an account, with the conventions archeus has noticed in your projects offered for promotion into it. For the rules that are about YOU rather than about one codebase.",
+    "body": "The instructions read in every session on an account, with conventions from your projects offered for promotion into it.",
     "page": "globalmd",
     "tab": "",
     "key": "g",
@@ -250,7 +250,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-agents",
     "title": "Agents",
-    "body": "Subagent definitions \u2014 browse the library, write one by hand, or have Claude draft one from a description. A good subagent is a specialist you delegate to; the description field is what decides whether it is ever picked.",
+    "body": "Subagent definitions you browse, write by hand or have Claude draft; the description decides whether one is ever picked.",
     "page": "agents",
     "tab": "",
     "key": "a",
@@ -260,7 +260,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-skills",
     "title": "Skills",
-    "body": "SKILL.md skills: the bundled starters, your own library and the ones installed in a project. A skill is a procedure you want followed the same way every time \u2014 a release runbook, a review checklist.",
+    "body": "A procedure you want followed the same way every time: a release runbook, a review checklist, a house style.",
     "page": "skills",
     "tab": "",
     "key": "",
@@ -270,7 +270,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-hooks",
     "title": "Hooks",
-    "body": "Claude Code hooks per account, from a template or your own: block a command, format on write, inject context at session start. archeus installs its own three here too, and can repair them when a path moves.",
+    "body": "Claude Code hooks per account: block a command, format on write, inject context when a session starts.",
     "page": "hooks",
     "tab": "",
     "key": "h",
@@ -280,7 +280,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-mcp",
     "title": "MCP servers",
-    "body": "Every MCP server configured, its status, and the tool documentation it can write into your global CLAUDE.md. Worth auditing: an MCP server you forgot about is tool definitions in every single turn.",
+    "body": "Every MCP server configured and its status; one you forgot about is tool definitions in every single turn.",
     "page": "mcp",
     "tab": "",
     "key": "c",
@@ -290,7 +290,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-plugins",
     "title": "Plugins",
-    "body": "The marketplaces you have registered and every plugin installed from them, with what each one contributes. Every install goes through a review gate first \u2014 a plugin is code that runs in your sessions.",
+    "body": "The marketplaces you registered and every plugin installed from them, each through a review gate before it runs.",
     "page": "plugins",
     "tab": "",
     "key": "",
@@ -300,7 +300,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-ostyles",
     "title": "Output styles",
-    "body": "The output styles Claude Code can wear, and which is active. A style changes how answers are written, not what the model is; it is the cheapest way to stop fighting the tone.",
+    "body": "Output styles change how answers are written, not which model writes them, and it is the cheapest tone fix.",
     "page": "ostyles",
     "tab": "",
     "key": "",
@@ -310,7 +310,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-usage",
     "title": "Usage & cost",
-    "body": "Token spend and rate limits across every account, by day, by project and by model, with the plan windows as they actually stand. The question it answers is which project is expensive, which is rarely the one you would guess.",
+    "body": "Token spend and rate limits across every account, by day, project and model, with the plan windows as they stand.",
     "page": "usage",
     "tab": "",
     "key": "u",
@@ -320,7 +320,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-accounts",
     "title": "Accounts",
-    "body": "Every login, each with its own config directory, credentials, quota, hooks and plugins. Add a second one and a full 5-hour window stops being the end of the afternoon.",
+    "body": "Every login with its own config directory, credentials, quota, hooks and plugins, switchable per launch.",
     "page": "accounts",
     "tab": "",
     "key": "",
@@ -330,7 +330,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-rotation",
     "title": "Account rotation",
-    "body": "When the account in use fills its window, the next one with headroom takes over \u2014 new work by itself, and a session you are sitting in either offered the move or moved for you. The status line warns before the window is spent; a hook catches it if you are already stuck.",
+    "body": "When the account in use fills its window, the next one with headroom takes over instead of stopping you.",
     "page": "accounts",
     "tab": "",
     "key": "",
@@ -340,7 +340,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-models",
     "title": "Models & providers",
-    "body": "The backends a session can run against \u2014 Anthropic, a local server, OpenRouter or OmniRoute \u2014 each with its own model and failover list. For routing the cheap work somewhere cheap without changing how you work.",
+    "body": "The backends a session can run against \u2014 Anthropic, a local server, OpenRouter or OmniRoute \u2014 each with its own failover list.",
     "page": "models",
     "tab": "",
     "key": "",
@@ -350,7 +350,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-loops",
     "title": "Loops",
-    "body": "Start a `/loop` in its own session, watch it fire on its schedule, and end it. For the recurring job that does not need you: a nightly review, a metrics refresh.",
+    "body": "Start a recurring job in its own session, watch it fire on schedule, and end it when you are done.",
     "page": "loops",
     "tab": "",
     "key": "",
@@ -360,7 +360,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-statusline",
     "title": "Status line",
-    "body": "Model, account, git state, context pressure, memory age, spend and both plan windows, on two lines under your prompt, on every turn. It is the one surface that tells you a session is going wrong while there is still time to do something.",
+    "body": "Model, account, git state, context pressure, memory age and both plan windows, under your prompt on every turn.",
     "page": "updates",
     "tab": "",
     "key": "",
@@ -370,7 +370,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-harness",
     "title": "Harnesses",
-    "body": "Every coding CLI archeus drives \u2014 whether it is installed, how it is configured, and the screens only it has. One project list, one memory graph, three CLIs: a Codex session and a Claude session in the same directory are the same workspace.",
+    "body": "One project list and one memory graph across three CLIs, so a Codex and a Claude session share a workspace.",
     "page": "harness",
     "tab": "",
     "key": "",
@@ -380,7 +380,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-client",
     "title": "Claude Code's own record",
-    "body": "What the CLI keeps about itself: versions, how much disk its transcripts and caches have taken, the background agents it is running, and its own settings. Read-only, and the first place to look when the tool disagrees with what you think you configured.",
+    "body": "What the CLI keeps about itself: versions, disk used, background agents and its own settings, all read-only.",
     "page": "client",
     "tab": "",
     "key": "",
@@ -390,7 +390,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-handoff",
     "title": "Context hand-off",
-    "body": "When the context window fills, hand the conversation to a fresh session \u2014 optionally under another account \u2014 seeded with what it needs rather than with the whole transcript. The successor starts clear instead of starting where the last one ran out of room.",
+    "body": "Hand a full conversation to a fresh session, optionally under another account, seeded with what it needs.",
     "page": "home",
     "tab": "",
     "key": "K",
@@ -400,7 +400,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-search",
     "title": "Search",
-    "body": "Full-text search across every transcript on the machine, every account and every CLI. For \"I solved this three weeks ago and I cannot remember where\".",
+    "body": "Full-text search across every transcript on the machine, every account and every CLI.",
     "page": "searchp",
     "tab": "",
     "key": "",
@@ -410,7 +410,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-logs",
     "title": "Logs",
-    "body": "What archeus itself did and why it failed \u2014 its own Claude calls, background jobs, the scheduler, the proxy. The first place to look when something did not happen, which is harder to notice than something that broke.",
+    "body": "What archeus itself did and why it failed: its own Claude calls, background jobs, the scheduler and the proxy.",
     "page": "logs",
     "tab": "",
     "key": "",
@@ -420,7 +420,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-paths",
     "title": "Paths & limits",
-    "body": "Where archeus finds your editor and your CLIs, what its own Claude calls may spend, and how large the memory graph may grow. The spend cap is the one to set on day one.",
+    "body": "Where archeus finds your editor and CLIs, what its own Claude calls may spend, and how large memory may grow.",
     "page": "paths",
     "tab": "",
     "key": "",
@@ -430,7 +430,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-appearance",
     "title": "Appearance",
-    "body": "Thirty-two palettes, eight skins and four worlds \u2014 a palette answers \"what colours\", a skin answers \"what is this application\". Motion and the background scene both have an off switch, and both honour `prefers-reduced-motion`.",
+    "body": "Thirty-two palettes, eight skins and four worlds, with an off switch for motion and for the background scene.",
     "page": "appearance",
     "tab": "",
     "key": "",
@@ -440,7 +440,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-updates",
     "title": "Updates & schedules",
-    "body": "Versions of archeus, of your CLIs and of the model catalogue, plus what archeus does on its own: update checks, notifications and the auto-memory schedule. Auto-memory is the setting that makes memory something you stop thinking about.",
+    "body": "Versions of archeus, your CLIs and the model catalogue, plus the update checks and auto-memory schedule it runs alone.",
     "page": "updates",
     "tab": "",
     "key": "",
@@ -450,7 +450,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-tui",
     "title": "The terminal UI",
-    "body": "Everything here exists in the terminal too \u2014 `archeus` with no arguments \u2014 and the two are kept in parity by a test rather than by intention. Press `?` there for every key.",
+    "body": "Everything here exists in the terminal too, kept in parity by a test rather than by intention.",
     "page": "helpp",
     "tab": "",
     "key": "?",
@@ -460,7 +460,7 @@ export const TOUR_LONG: TourStep[] = [
   {
     "id": "long-plugin",
     "title": "The plugin",
-    "body": "archeus also installs as a Claude Code plugin, so a session can reach its own project's memory and history without leaving the terminal. It ships no hooks on purpose \u2014 the hook manager already owns those, and one settings entry with two owners is a bug waiting to happen.",
+    "body": "archeus installs as a Claude Code plugin as well, so a session can reach its own project's memory and history.",
     "page": "plugins",
     "tab": "",
     "key": "",

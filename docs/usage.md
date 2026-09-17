@@ -86,5 +86,5 @@ For free execution rather than cheap, see
 ## Related workflow features
 
 - **Skills** — `.claude/skills/<name>/SKILL.md` files load on demand instead of bloating `CLAUDE.md`. See [Agents & skills](agents.md#skills).
-- **Code review** — `archeus review [--staged] [--branch <base>]` reviews your working diff against your `CLAUDE.md` rules + learned memory lessons and reports **confidence-scored** findings (only ≥80% shown). Also on the project **Review** tab (GUI) and the `⇧R` key in the session menu.
+- **Code review** — `archeus review [--staged] [--branch <base>]` reviews your working diff against your `CLAUDE.md` rules + learned memory lessons and reports **confidence-scored** findings (only ≥80% shown). Also on the project **Code Review** tab (GUI) and the `⇧R` key in the session menu.
 - **Recent-work memory** — a token-free one-line summary per session, injected as a compact digest on the next `SessionStart`. See [Project memory](memory.md#recent-work-memory).

@@ -26,6 +26,15 @@
   --color-cyan: #7dcfff;
   --color-violet: #9d7bff;
 
+  /* The one warm colour on the site, and it is deliberately the only one: the
+     donation link is the single thing in the header that is not navigation, so
+     it is the single thing that is not blue. Caramel over a near-black ink —
+     13.4:1, which clears the text floor and the 3:1 the button's own edge owes
+     under WCAG 1.4.11 without needing a border at all. */
+  --color-kofi: #f2d9b0;
+  --color-kofi-hover: #ffe9c6;
+  --color-kofi-ink: #2a1c0c;
+
   --font-sans: "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
   --font-mono: Consolas, "Cascadia Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -529,7 +538,7 @@ html.journey-on .shot-fallback {
      empty half to work with. The column moves right instead and the solids run
      down the left, alternating in and out so the chain between them zig-zags. */
   .spine-zigzag {
-    max-width: 80rem;
+    max-width: 74rem;
   }
   .spine-zigzag .spine-row {
     /* A wide slot column with a narrow slot in it: the alternation between
@@ -543,7 +552,12 @@ html.journey-on .shot-fallback {
   }
   .spine-zigzag .spine-copy {
     grid-column: 3;
-    max-width: 54rem;
+    /* 48rem, not the 54rem this shipped as. Every other layout here holds its
+       copy between 44 and 52rem; 54rem measured 100 characters a line, which is
+       the widest prose on either site and well past the ~80 this typography is
+       set for. The container came in with it so the column keeps its place on
+       the page rather than leaving the extra space on the right. */
+    max-width: 48rem;
   }
   .spine-zigzag .spine-slot {
     grid-column: 1;

@@ -48,7 +48,8 @@ site serves:
 ```bash
 python tools/check_site_seo.py     # the BUILT html: titles, canonicals, JSON-LD, images
 python tools/optimize_images.py --check
-python tools/audit_site.py         # every page at 390x844, nothing past the right edge
+python tools/audit_site.py         # every page at 390x844 and 768x1024, nothing past the right edge;
+                                   # every paragraph at 1440px, nothing past 96ch
 ```
 
 If you changed anything under `www/` — a component, a page, `lib/` — the apex has

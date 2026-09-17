@@ -27,11 +27,11 @@ export default function SupportPage() {
         title={SUPPORT.h1 ?? SUPPORT.title}
         lead={SUPPORT.intro}
       >
-        {/* A plain link, never an embed: a Ko-fi widget would load their script
-            and drag cookie consent back onto a site that has none. */}
-        <Cta href={SITE.kofi} primary>
-          Donate on Ko-fi
-        </Cta>
+        {/* No Donate button here: it is in the site header, on every page. A
+            second one at the top of the page that explains the first is the
+            call to action competing with its own rationale. The Ko-fi link is
+            still in the prose below, where someone who read the argument
+            finds it. */}
         <Cta href={`${SITE.repo}/issues/new`}>Report a bug</Cta>
         <Cta href="/contributing">Contributing</Cta>
         <Cta href="/legal/refunds">Donations and refunds</Cta>

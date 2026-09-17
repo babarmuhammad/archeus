@@ -1398,16 +1398,20 @@ def main():
             "rollback:/2\\.1\\.232/.test(c.textContent),"
             "self:!!document.querySelector('#selfCard'),"
             "models:!!document.querySelector('#modelCard'),"
-            "flat:getComputedStyle(m).display==='contents',"
+            "rows:(()=>{const b=[...m.children].map(e=>Math.round("
+            "e.getBoundingClientRect().top));return b.length-new Set(b).size;})(),"
             "wide:Math.round(c.getBoundingClientRect().width)}:{card:0};})()")
         check('the version cards are on Settings > Updates',
               ver.get('card') and ver.get('behind') and ver.get('latest')
               and ver.get('rollback') and ver.get('self') and ver.get('models'),
               ver)
-        # a mount that kept its own box would leave the cards in one column of
-        # the form's grid at a fraction of the width
-        check('the async mount is transparent to the form layout',
-              ver.get('flat') and ver.get('wide', 0) > 500, ver)
+        # These are five independent cards, not five fields, and they used to be
+        # full-width blocks holding about 500px of content each. The outcome is
+        # what is checked rather than the mechanism: at least two of them share a
+        # row, and each is wide enough to be a card rather than a column of the
+        # form's annotated grid.
+        check('the version cards lay themselves out instead of stacking full width',
+              ver.get('rows', 0) >= 1 and ver.get('wide', 0) > 500, ver)
         # Rotation: "no JS error" would pass on a card that said nothing, and
         # the whole point of the card is that it names the account work is about
         # to move to. The fixture has the live account spent and another with

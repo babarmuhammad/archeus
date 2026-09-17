@@ -42,6 +42,15 @@ DOCS = os.path.join(ROOT, 'docs')
 #: What a READER downloads went DOWN in the same change: every page and the
 #: README link the WebP siblings, which are 66-99 KB. These ceilings are on
 #: masters nothing serves.
+#:
+#: www/public/img was raised 5200 -> 5600 because 5200 was the size of one
+#: capture run rather than a ceiling over it. The published shots are taken of
+#: a LIVE scene — several hundred lit bodies whose positions differ every run —
+#: and PNG cannot compress noise, so the same screen re-shot unchanged moves by
+#: tens of KB in either direction (measured on one re-shoot: usage +52 KB,
+#: memory -62 KB, everything else within 7). A ceiling inside that variance
+#: fails on a re-shoot that changed nothing, which is the failure this file's
+#: own docstring warns about.
 BUDGET_KB = {
     os.path.join('docs', 'img'): 6000,
     # Nearly all of this is two masters no page serves: the 1254px logo every
@@ -49,7 +58,7 @@ BUDGET_KB = {
     # it composites onto three different grounds.
     os.path.join('docs', 'assets'): 1400,
     os.path.join('www', 'public'): 700,
-    os.path.join('www', 'public', 'img'): 5200,
+    os.path.join('www', 'public', 'img'): 5600,
 }
 
 #: The ceiling for one image a reader actually downloads. 600 KB is the

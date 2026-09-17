@@ -130,14 +130,14 @@ function Hero({ section }: { section: Section }) {
             {HOME.h1 ?? HOME.title}
           </h1>
 
-          {HOME.intro ? (
-            <p className="mt-5 max-w-2xl text-pretty text-[1.1rem] leading-[1.6] text-dim">
-              {HOME.intro}
-            </p>
-          ) : null}
-          {section.lead ? (
-            <p className="mt-3 max-w-2xl text-pretty text-[0.97rem] leading-[1.7] text-dim">
-              {section.lead}
+          {/* ONE paragraph. `HOME.intro` and this station's `lead` are the same
+              sentence — the lead carries twenty more words on the end — and the
+              hero printed both, one under the other, in two sizes. `intro` is
+              still what the metadata, the sitemap and llms.txt read; the page
+              shows the longer of the two and nothing else. */}
+          {section.lead ?? HOME.intro ? (
+            <p className="mt-5 max-w-2xl text-pretty text-[1.05rem] leading-[1.65] text-dim">
+              {section.lead ?? HOME.intro}
             </p>
           ) : null}
 

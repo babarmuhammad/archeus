@@ -98,13 +98,19 @@ def test_the_long_tour_covers_every_project_tab():
     assert not missing, 'project tabs no tour step mentions: %s' % sorted(missing)
 
 
-def test_every_step_says_what_the_thing_is_FOR():
-    """The whole reason this file is not generated from `NAV`'s blurbs. A blurb
-    says what a screen shows; a step has to say when you would reach for it, and
-    two sentences is the floor for that."""
-    thin = [(w, s['id']) for w, s in ALL_STEPS
-            if len(s['body'].split()) < 25 or s['body'].count('.') < 2]
-    assert not thin, 'steps that only restate the screen name: %s' % thin
+def test_every_step_is_one_short_sentence():
+    """A coach-mark is read standing up, beside the thing it points at.
+
+    This was the opposite assertion — a 25-word MINIMUM and two sentences — and
+    it did exactly what a floor does: every body grew to clear it, and the tour
+    became 37 paragraphs nobody finished. The ceiling is the gate now, because
+    "short" that is only hoped for is "long" one edit later. The small floor
+    stays so a step cannot degenerate into the screen's own name, and the depth
+    that no longer fits is what each step's `docs` link is for."""
+    bad = [(w, s['id'], len(s['body'].split()), s['body'].count('.'))
+           for w, s in ALL_STEPS
+           if not 6 <= len(s['body'].split()) <= 25 or s['body'].count('.') != 1]
+    assert not bad, 'steps that are not one sentence of 6-25 words: %s' % bad
 
 
 def test_a_step_id_is_unique_within_its_tour():
