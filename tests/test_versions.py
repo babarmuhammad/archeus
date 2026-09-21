@@ -146,7 +146,7 @@ def test_no_target_updates_and_a_target_installs(monkeypatch, tmp_path):
     Sandbox(monkeypatch, tmp_path)
     _exe(monkeypatch)
     seen = []
-    monkeypatch.setattr(plugins, '_claude_cli',
+    monkeypatch.setattr(plugins, '_run',
                         lambda args, timeout=120, **kw: (seen.append(args) or (True, 'ok')))
     v.update_claude('')
     v.update_claude('2.1.240')
@@ -157,7 +157,7 @@ def test_stable_and_latest_are_valid_targets(monkeypatch, tmp_path):
     Sandbox(monkeypatch, tmp_path)
     _exe(monkeypatch)
     seen = []
-    monkeypatch.setattr(plugins, '_claude_cli',
+    monkeypatch.setattr(plugins, '_run',
                         lambda args, timeout=120, **kw: (seen.append(args) or (True, 'ok')))
     assert v.update_claude('stable')[0]
     assert seen[-1] == ['install', 'stable']
@@ -169,7 +169,7 @@ def test_junk_is_never_passed_to_the_installer(monkeypatch, tmp_path):
     Sandbox(monkeypatch, tmp_path)
     _exe(monkeypatch)
     called = []
-    monkeypatch.setattr(plugins, '_claude_cli',
+    monkeypatch.setattr(plugins, '_run',
                         lambda args, timeout=120: (called.append(args) or (True, '')))
     ok, msg = v.update_claude('2.1.240 && del *')
     assert ok is False and 'not a version' in msg
@@ -183,7 +183,7 @@ def test_an_npm_install_is_reported_not_overwritten(monkeypatch, tmp_path):
     Sandbox(monkeypatch, tmp_path)
     _exe(monkeypatch, 'C:/Users/x/AppData/Roaming/npm/claude.cmd')
     called = []
-    monkeypatch.setattr(plugins, '_claude_cli',
+    monkeypatch.setattr(plugins, '_run',
                         lambda args, timeout=120: (called.append(args) or (True, '')))
     ok, msg = v.update_claude('')
     assert ok is False and 'npm install -g' in msg
@@ -301,23 +301,27 @@ def test_the_official_catalogue_pins_by_sha(monkeypatch, tmp_path):
 
 def test_updating_a_plugin_accepts_no_tty(monkeypatch, tmp_path):
     """-y is not optional: without a TTY the CLI refuses rather than prompting,
-    and a job that waits on a prompt nobody can answer just times out."""
+    and a job that waits on a prompt nobody can answer just times out.
+
+    It sits before the argument because that is the form the CLI's own usage
+    line documents (`plugin update [options] <plugin>`), checked against the
+    installed binary rather than assumed."""
     Sandbox(monkeypatch, tmp_path)
     seen = []
-    monkeypatch.setattr(plugins, '_claude_cli',
+    monkeypatch.setattr(plugins, '_run',
                         lambda args, timeout=120, **kw: (seen.append(args) or (True, 'ok')))
-    v.update_plugin('demo@mkt')
-    assert seen == [['plugin', 'update', 'demo@mkt', '-y']]
-    assert v.update_plugin('')[0] is False
+    plugins.update_plugin('demo@mkt')
+    assert seen == [['plugin', 'update', '-y', 'demo@mkt']]
+    assert plugins.update_plugin('')[0] is False
 
 
 def test_refreshing_marketplaces_can_name_one_or_all(monkeypatch, tmp_path):
     Sandbox(monkeypatch, tmp_path)
     seen = []
-    monkeypatch.setattr(plugins, '_claude_cli',
+    monkeypatch.setattr(plugins, '_run',
                         lambda args, timeout=120, **kw: (seen.append(args) or (True, '')))
-    v.update_marketplaces()
-    v.update_marketplaces('mkt')
+    plugins.update_marketplaces()
+    plugins.update_marketplaces('mkt')
     assert seen == [['plugin', 'marketplace', 'update'],
                     ['plugin', 'marketplace', 'update', 'mkt']]
 
@@ -780,9 +784,10 @@ def _screen(monkeypatch, tmp_path, keys, upd=None, plug=None, sst=None, self_upd
     Sandbox(monkeypatch, tmp_path)
     monkeypatch.setattr(v, 'status', lambda refresh=False: dict(_ST))
     monkeypatch.setattr(v, 'self_status', lambda refresh=False: dict(sst or _SST))
-    monkeypatch.setattr(v, 'plugin_rows', lambda: [dict(r) for r in _ROWS])
+    monkeypatch.setattr(v, 'plugin_rows', lambda cfg_dir=None: [dict(r) for r in _ROWS])
     monkeypatch.setattr(v, 'update_claude', upd or (lambda t='': (True, 'ok')))
-    monkeypatch.setattr(v, 'update_plugin', plug or (lambda k: (True, 'ok')))
+    monkeypatch.setattr(plugins, 'update_plugin',
+                        plug or (lambda k, cfgdir=None: (True, 'ok')))
     monkeypatch.setattr(v, 'update_self', self_upd or (lambda: (True, 'ok')))
     return run_flow(monkeypatch, keys, v.updates_menu)
 
@@ -835,7 +840,7 @@ def test_a_plugin_row_updates_that_plugin(monkeypatch, tmp_path):
     # check, update, install-specific, roll back 2.1.232, then the plugin row
     keys = [*DOWN, *DOWN, *DOWN, *DOWN, *ENTER, b'y', *ESC]
     _screen(monkeypatch, tmp_path, keys,
-            plug=lambda k: (seen.append(k) or (True, 'updated')))
+            plug=lambda k, cfgdir=None: (seen.append(k) or (True, 'updated')))
     assert seen == ['demo@mkt']
 
 

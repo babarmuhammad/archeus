@@ -106,14 +106,82 @@ def test_corrupt_state_files_do_not_crash_the_page(tmp_path):
     assert plugins.provenance_index(str(tmp_path / 'cfg')) == {}
 
 
-def test_mutations_go_through_the_claude_cli():
-    """Not reimplemented. Claude Code resolves sources, validates manifests and
-    owns these caches; writing them directly would work until the format moved,
-    which it already has."""
+def test_every_mutation_goes_through_the_one_cli_seam():
+    """Not reimplemented, and not six copies of "find the binary" either. The
+    CLI resolves sources, validates manifests and owns these caches; writing
+    them directly would work until the format moved, which it already has. All
+    six go through `_cli`, which is the only place a verb and a binary are
+    chosen."""
     import inspect
     for fn in (plugins.add_marketplace, plugins.remove_marketplace,
-               plugins.install_plugin, plugins.remove_plugin):
-        assert '_claude_cli' in inspect.getsource(fn), fn.__name__
+               plugins.update_marketplaces, plugins.install_plugin,
+               plugins.remove_plugin, plugins.update_plugin):
+        src = inspect.getsource(fn)
+        assert '_cli(' in src, fn.__name__
+        assert 'get_claude_exe' not in src and 'proc.run' not in src, fn.__name__
+
+
+def test_every_harness_with_plugins_has_the_verbs_for_them():
+    """The capability table says which CLIs have marketplaces; PLUGIN_VERBS says
+    what each one calls the operations. A harness in one and not the other is a
+    page with no commands behind it, or commands reachable from no page."""
+    from claude_sessions import harnesses as h
+    for hid in h.ids():
+        has_page = h.cap(hid, 'plugins')[0]
+        assert has_page == (hid in plugins.PLUGIN_VERBS), hid
+    # and the one asymmetry, which is a measurement and not an oversight:
+    # Codex documents plugin add/list/remove and no per-plugin upgrade, so
+    # archeus draws no Update button there rather than shelling out to a verb
+    # that does not exist.
+    assert 'update' in plugins.PLUGIN_VERBS['claude']
+    assert 'update' not in plugins.PLUGIN_VERBS['codex']
+
+
+def test_a_name_cannot_land_in_an_option_position(monkeypatch):
+    """These take a free-text value from a box now. A value starting `-` is an
+    option to the CLI whether or not a shell is involved — the same reasoning
+    `add_marketplace` already applied to a git source."""
+    called = []
+    monkeypatch.setattr(plugins, '_run',
+                        lambda *a, **k: (called.append(a) or (True, '')))
+    for bad in ('-rf', '--json', '../x', 'a b', 'ext::sh -c id', ''):
+        for fn in (plugins.install_plugin, plugins.remove_plugin,
+                   plugins.update_plugin, plugins.remove_marketplace):
+            ok, msg = fn(bad)
+            assert ok is False and msg, (fn.__name__, bad)
+    assert called == [], 'a rejected name still reached a subprocess'
+
+
+def test_every_recommendation_can_actually_be_installed(tmp_path):
+    """A recommendation whose marketplace archeus cannot add is a dead row: the
+    install fails with "no such plugin" and the page offers no way out."""
+    for hid, rows in plugins.RECOMMENDED.items():
+        assert hid in plugins.PLUGIN_VERBS, hid
+        for name, mkt, why in rows:
+            assert mkt in plugins.RECOMMENDED_SOURCES, (name, mkt)
+            assert why.endswith('.'), name
+    cfg = _plugin_tree(tmp_path)
+    got = {r['name']: r for r in plugins.recommendations(cfg)}
+    assert got, 'the default harness must have a starting set'
+    # nothing in the set is installed in this tree, and nothing claims to be
+    assert not any(r['installed'] for r in got.values())
+    assert not any(r['registered'] for r in got.values())
+    assert all(r['source'] for r in got.values())
+
+
+def test_a_recommendation_already_installed_says_so(tmp_path):
+    """The flag is joined against what is on disk, not against the table — a
+    curated row that says Install for something you already have is the one
+    thing that makes the card untrustworthy."""
+    cfg = _plugin_tree(tmp_path)
+    name, mkt, _why = plugins.RECOMMENDED['claude'][0]
+    root = tmp_path / 'cfg' / 'plugins'
+    doc = json.loads((root / 'installed_plugins.json').read_text(encoding='utf-8'))
+    doc['plugins']['%s@%s' % (name, mkt)] = [{'scope': 'user', 'version': '1'}]
+    (root / 'installed_plugins.json').write_text(json.dumps(doc), encoding='utf-8')
+    got = {r['name']: r for r in plugins.recommendations(cfg)}
+    assert got[name]['installed'] is True
+    assert sum(1 for r in got.values() if r['installed']) == 1
 
 
 def test_plugin_install_is_reviewed_like_any_other_third_party_bundle():

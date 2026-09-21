@@ -52,9 +52,12 @@ from . import jsonstore
 from . import plugins
 from . import proc
 
+#: `update_plugin` and `update_marketplaces` are NOT here: they are plugin
+#: mutations and live in `plugins.py` beside the other four, behind the one CLI
+#: seam that knows which binary and which verb this home takes. What stays is
+#: the READ half — `plugin_rows` compares, it does not write.
 __all__ = ['installed_version', 'install_mode', 'local_versions', 'released',
-           'status', 'update_claude', 'plugin_rows', 'update_plugin',
-           'update_marketplaces', 'updates_menu',
+           'status', 'update_claude', 'plugin_rows', 'updates_menu',
            'self_installed', 'self_install_mode', 'self_released',
            'self_status', 'update_self', 'update_notice', 'console_scripts',
            'start_background_check', 'update_on_quit']
@@ -209,8 +212,11 @@ def update_claude(target=''):
     if target and not re.match(r'^(stable|latest|\d+\.\d+\.\d+[\w.+-]*)$', target):
         return False, 'not a version: %s' % target[:40]
     args = ['install', target] if target else ['update']
-    # a download plus a binary swap; the 120s default is not enough
-    return plugins._claude_cli(args, timeout=900)
+    # a download plus a binary swap; the 120s default is not enough.
+    # `_run` and not `_cli`: this is not a plugin operation and has no verb in
+    # the table — it is Claude Code updating its own binary, and `cfgdir=None`
+    # resolves to Claude Code, which is the only harness this function is about.
+    return plugins._run(args, timeout=900)
 
 
 # ── archeus itself ─────────────────────────────────────────
@@ -557,9 +563,14 @@ def _last_update_error():
 
 # ── plugins ──────────────────────────────────────
 
-def plugin_rows():
+def plugin_rows(cfg_dir=None):
     """[{key,name,marketplace,version,available,outdated,scope,ref}] —
     every installed plugin joined to what its marketplace currently offers.
+
+    Per ACCOUNT, because both halves of the comparison are: the installs come
+    from that home's `installed_plugins.json` and the offers from that home's
+    marketplace clones. Reading the default account's answer while the page
+    showed another one put an `update available` badge on the wrong row.
 
     Read entirely off disk, deliberately, and that is the whole finding here:
 
@@ -575,9 +586,9 @@ def plugin_rows():
     `outdated` is None when the marketplace says nothing comparable, because
     "no answer" and "up to date" are different answers.
     """
-    entries = _marketplace_entries()
+    entries = _marketplace_entries(cfg_dir)
     rows = []
-    for p in plugins.installed():
+    for p in plugins.installed(cfg_dir):
         e = entries.get(p['key']) or {}
         avail, ref = _entry_version(e)
         cur = p['version'] or p['sha']
@@ -670,22 +681,6 @@ def _same_version(cur, avail, sha=''):
     return False
 
 
-def update_plugin(key, cfgdir=None):
-    """`claude plugin update <key> -y`. There is no version target: the
-    marketplace entry decides what latest is, and -y is required off a TTY."""
-    key = (key or '').strip()
-    if not key:
-        return False, 'No plugin given'
-    return plugins._claude_cli(['plugin', 'update', key, '-y'], timeout=600,
-                               cfgdir=cfgdir)
-
-
-def update_marketplaces(name='', cfgdir=None):
-    """Refresh marketplace metadata — what makes an `available` version move."""
-    args = ['plugin', 'marketplace', 'update'] + ([name] if name else [])
-    return plugins._claude_cli(args, timeout=600, cfgdir=cfgdir)
-
-
 # ── the screen ───────────────────────────────────────────────
 
 def _row(st):
@@ -775,7 +770,7 @@ def updates_menu():
         if not rows:
             items.append((f"{_c.C_DIM}(no plugins installed){_c.C_RESET}", None))
         items += [(f"{'─' * W}", None),
-                  ('↻  Refresh every marketplace', '__mkt__')]
+                  ('↻  Update every marketplace', '__mkt__')]
         items.append((f"{'─' * W}", None))
         items.append((_c.C_NAME + 'Models       ' + _c.C_RESET + _models_row(mst), None))
         for note in mnotes:
@@ -796,9 +791,9 @@ def updates_menu():
             n = len(r.get('models') or [])
             flash(r.get('error') or f'{n} models', ok=not r.get('error'), secs=3)
         elif sel == '__mkt__':
-            flash('Refreshing marketplaces…', secs=0.4)
-            ok, msg = update_marketplaces()
-            flash(msg or ('Refreshed' if ok else 'Failed'), ok=ok, secs=2.5)
+            flash('Updating every marketplace…', secs=0.4)
+            ok, msg = plugins.update_marketplaces()
+            flash(msg or ('Updated' if ok else 'Failed'), ok=ok, secs=2.5)
         elif sel == '__latest__':
             _run_claude_update('')
         elif sel == '__pin__':
@@ -811,7 +806,7 @@ def updates_menu():
             key = sel.split(':', 1)[1]
             if confirm(f'Update {key} to what its marketplace offers?'):
                 flash(f'Updating {key}…', secs=0.4)
-                ok, msg = update_plugin(key)
+                ok, msg = plugins.update_plugin(key)
                 flash(msg or ('Updated — restart Claude Code to apply'
                               if ok else 'Failed'), ok=ok, secs=3)
 

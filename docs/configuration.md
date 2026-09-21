@@ -147,7 +147,7 @@ per-project file for exactly that reason.
     ├── skills.py           # skills manager + bundled starter templates
     ├── skillscan.py        # static risk scan of a skill before installing it
     ├── hooks.py            # hooks template / toggle / remove
-    ├── plugins.py          # plugin marketplaces + installs (shells out to `claude`)
+    ├── plugins.py          # plugin marketplaces + installs (shells out to the CLI)
     ├── outputstyles.py     # output-style browse / save / select
     ├── statusline.py       # `archeus statusline` — renders the Claude Code status line
     ├── accounts.py         # multiple CLAUDE_CONFIG_DIR accounts

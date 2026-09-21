@@ -363,7 +363,7 @@ def test_every_claude_cli_call_names_an_account():
     from claude_sessions import plugins, mcp
     for src, name in ((io.open(plugins.__file__, encoding='utf-8').read(), 'plugins'),
                       (io.open(mcp.__file__, encoding='utf-8').read(), 'mcp')):
-        runner = src[src.index('def _claude_cli(' if name == 'plugins'
+        runner = src[src.index('def _run(' if name == 'plugins'
                                else 'def mcp_cli('):]
         runner = runner[:runner.index('\n\n\ndef ')]
         assert 'account_env(' in runner, (

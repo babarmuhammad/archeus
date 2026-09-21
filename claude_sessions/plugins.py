@@ -31,6 +31,14 @@ Read from the live files, not from the documentation, which describes a
 Both files are read defensively and treated as advisory: they belong to Claude
 Code, the shape has already changed once, and archeus showing a stale row is
 strictly better than archeus crashing on an unfamiliar key.
+
+TWO CLIs, ONE TABLE
+-------------------
+Codex has the same surface under different words — `plugin add` for install,
+`plugin remove` for uninstall, `plugin marketplace upgrade` for update — so
+three of the six operations differ and three do not, which no single rule
+predicts. `PLUGIN_VERBS` is that table and `_cli` is the only place a binary and
+a verb are chosen; a harness rides on `cfgdir`, exactly as everywhere else.
 """
 
 import json
@@ -43,6 +51,77 @@ from . import config as _c
 #: the UI lists them in.
 KINDS = (('skills', 'skill'), ('agents', 'agent'),
          ('commands', 'command'), ('hooks', 'hook'))
+
+#: what each CLI calls the six plugin operations. VERBS only — the arguments are
+#: the same shape everywhere (a source, a `plugin@marketplace` id, a marketplace
+#: name), which is why this is a table and not six functions per harness.
+#:
+#: An ABSENT key is a command that CLI does not have. Codex has no per-plugin
+#: upgrade — its reference documents `plugin add`, `plugin list` and
+#: `plugin remove` and nothing else — so archeus draws no Update button there
+#: rather than shelling out to a verb that does not exist and reporting the
+#: CLI's usage error as a failed update. That is also why this is a table rather
+#: than a string substitution: the two CLIs disagree on three of the six words
+#: (`update`/`upgrade`, `install`/`add`, `uninstall`/`remove`) and agree on the
+#: rest, which no single rule predicts.
+PLUGIN_VERBS = {
+    'claude': {'mkt_add': ('plugin', 'marketplace', 'add'),
+               'mkt_update': ('plugin', 'marketplace', 'update'),
+               'mkt_remove': ('plugin', 'marketplace', 'remove'),
+               'install': ('plugin', 'install'),
+               'remove': ('plugin', 'uninstall'),
+               # -y rides in the verb because it is not an argument: it is part
+               # of what "update" means off a TTY, where the CLI cannot ask.
+               'update': ('plugin', 'update', '-y')},
+    'codex':  {'mkt_add': ('plugin', 'marketplace', 'add'),
+               'mkt_update': ('plugin', 'marketplace', 'upgrade'),
+               'mkt_remove': ('plugin', 'marketplace', 'remove'),
+               'install': ('plugin', 'add'),
+               'remove': ('plugin', 'remove')},
+}
+
+#: A short starting set, per harness. Editorial and deliberately SHORT: the
+#: official marketplace carries nearly three hundred plugins, and a page that
+#: lists them all is a catalogue rather than a recommendation.
+#:
+#: Each row says why ARCHEUS recommends it. The plugin's own description is read
+#: live from the marketplace manifest when the marketplace is registered, so
+#: this table never restates one and cannot drift from it.
+#:
+#: `claude-md-management` is deliberately NOT here although it is first-party
+#: and good: archeus's own CLAUDE.md tab writes that file, and two tools
+#: rewriting one file is the conflict, not a gap.
+RECOMMENDED = {
+    'claude': (
+        ('code-review', 'claude-plugins-official',
+         'Reviews a diff or a PR with several specialised agents.'),
+        ('code-simplifier', 'claude-plugins-official',
+         'Cuts a change back to what it needs to be.'),
+        ('commit-commands', 'claude-plugins-official',
+         'commit, push and open a PR as one step.'),
+        ('security-guidance', 'claude-plugins-official',
+         'Warns on a risky edit as it is made.'),
+        ('frontend-design', 'claude-plugins-official',
+         'Front-end work that comes out looking designed.'),
+        ('claude-code-setup', 'claude-plugins-official',
+         'Reads a codebase and proposes the hooks and commands it wants.'),
+        ('codex', 'openai-codex',
+         'Delegate a review or a task to Codex from inside Claude Code.'),
+    ),
+    #: EMPTY on purpose, and that is a fact about Codex rather than a gap:
+    #: `codex plugin list` reports every plugin its marketplaces OFFER, not only
+    #: the installed ones, so the list above already IS the catalogue. The card
+    #: says so rather than rendering blank.
+    'codex': (),
+}
+
+#: the source each recommended marketplace is added FROM, so a row whose
+#: marketplace is not registered yet can offer "add it, then install" in one
+#: press instead of failing at install with "no such plugin".
+RECOMMENDED_SOURCES = {
+    'claude-plugins-official': 'anthropics/claude-plugins-official',
+    'openai-codex': 'openai/codex-plugin-cc',
+}
 
 #: filenames that live alongside a plugin's content without being content
 _NOT_CONTENT = {'readme', 'license', 'licence', 'package', 'package-lock',
@@ -174,14 +253,16 @@ def summary(cfg_dir=None):
     `.agents` convention archeus already writes project skills into — so the
     page that was declared meaningless there answers with real rows.
 
-    `readonly` is the one field that differs. Claude Code's plugins are
-    installed and removed from here; Codex's are listed only, because install
-    mutates another tool's config through a marketplace resolver archeus does
-    not own. The flag is on the payload rather than inferred in the browser so
-    there is one answer to "can I press this", not two.
+    `can` is the one field that differs, and it is the verb table rather than a
+    judgement: it lists the operations THIS CLI has a command for, so the page
+    hides exactly the buttons that would have nothing to run. Codex has no
+    per-plugin upgrade and so gets no Update button; it has every other verb,
+    which is why the page is no longer read-only there.
     """
     from . import harnesses as _h
-    if _h.of(cfg_dir)['id'] == 'codex':
+    d = _h.of(cfg_dir)
+    can = sorted(PLUGIN_VERBS.get(d['id']) or {})
+    if d['id'] == 'codex':
         from . import codex
         rows, seen = [], {}
         for p in codex.plugins(_c.resolve_config_dir(cfg_dir)):
@@ -190,53 +271,117 @@ def summary(cfg_dir=None):
                             {'name': p['marketplace'], 'source': p['manifest'],
                              'plugins': 0})
             seen[p['marketplace']]['plugins'] += 1
-            rows.append({'key': p['name'], 'name': name,
+            # `name@marketplace` is the stable id both `plugin add` and
+            # `plugin remove` document, and the PLUGIN column is a bare name —
+            # so the key is BUILT rather than taken, or every mutation would
+            # name a plugin without saying which marketplace it came from.
+            rows.append({'key': '%s@%s' % (name, p['marketplace']), 'name': name,
                          'marketplace': p['marketplace'],
                          'version': p['version'], 'path': p['path'],
                          'enabled': 'enabled' in p['status'],
                          'installed': 'not installed' not in p['status'],
                          'provides': {}, 'missing': False})
         return {'marketplaces': list(seen.values()), 'plugins': rows,
-                'dir': _c.resolve_config_dir(cfg_dir), 'readonly': True}
+                'dir': _c.resolve_config_dir(cfg_dir),
+                'readonly': not can, 'can': can}
     mkts = known_marketplaces(cfg_dir)
     inst = installed(cfg_dir)
     for p in inst:
         p['provides'] = contents(p['path'])
         p['missing'] = not (p['path'] and os.path.isdir(p['path']))
     return {'marketplaces': mkts, 'plugins': inst,
-            'dir': plugins_dir(cfg_dir), 'readonly': False}
+            'dir': plugins_dir(cfg_dir), 'readonly': not can, 'can': can}
+
+
+def recommendations(cfg_dir=None):
+    """[{name, marketplace, why, source, desc, installed, registered}] — the
+    curated starting set for whichever CLI owns this home.
+
+    A fresh account has one registered marketplace with hundreds of plugins in
+    it and nothing saying which few are worth having. This is that answer, and
+    it is deliberately a handful.
+
+    `desc` is read from the marketplace's OWN manifest when the marketplace is
+    on disk, so this never carries a second copy of a description to keep in
+    step; `why` is archeus's reason for the row and is the only editorial text
+    here. A row whose marketplace is not registered carries its `source`, so the
+    UI can offer to add it rather than failing at install with "no such plugin".
+    """
+    from . import harnesses as _h
+    from . import versions
+    hid = _h.of(cfg_dir)['id']
+    have = {p['key'] for p in installed(cfg_dir)}
+    known = {m['name'] for m in known_marketplaces(cfg_dir)}
+    entries = versions._marketplace_entries(cfg_dir)
+    out = []
+    for name, mkt, why in RECOMMENDED.get(hid) or ():
+        key = '%s@%s' % (name, mkt)
+        out.append({'name': name, 'marketplace': mkt, 'why': why,
+                    'source': RECOMMENDED_SOURCES.get(mkt, ''),
+                    'desc': str((entries.get(key) or {}).get('description', ''))[:200],
+                    'installed': key in have, 'registered': mkt in known})
+    return out
 
 
 # ── mutations ────────────────────────────────────────────────
-# Delegated to the `claude` CLI rather than reimplemented. These files are
-# Claude Code's: it resolves marketplace sources, verifies manifests, handles
-# scopes and updates its own caches. Writing them directly would work until the
-# format moved — which it already has once — and would then corrupt the state of
-# the tool archeus exists to support.
+# Delegated to the CLI rather than reimplemented. These files are the CLI's: it
+# resolves marketplace sources, verifies manifests, handles scopes and updates
+# its own caches. Writing them directly would work until the format moved —
+# which it already has once — and would then corrupt the state of the tool
+# archeus exists to support.
 
-def _claude_cli(args, timeout=120, cfgdir=None):
-    """Run `claude <args>` against ONE account.
+#: a plugin id (`name` or `name@marketplace`) and a marketplace name, as the
+#: argument of a command. NOT a politeness check: these values come from a text
+#: box now, and a value starting `-` lands in an option position whether or not
+#: a shell is involved — the same reason `add_marketplace` validates its source.
+_ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]*(@[A-Za-z0-9][A-Za-z0-9._-]*)?$')
 
-    The env is the whole point. Without it the CLI lands on whatever
-    CLAUDE_CONFIG_DIR archeus inherited — normally unset, i.e. the default
-    account — while every reader in this module resolves `cfgdir`. Read and
-    write then named different accounts: with archeus switched to another
-    account the Plugins page listed that account's plugins and Install wrote
-    into default.
+
+def _run(argv, timeout=120, cfgdir=None):
+    """Run WHICHEVER CLI owns this home, with a ready argv.
+
+    The binary is resolved per harness (`harnesses.exe`) rather than assumed to
+    be Claude Code's: a harness rides on `cfgdir` everywhere else in archeus and
+    this is no exception.
+
+    The env is the other half and is the whole reason this is one function.
+    Without it the CLI lands on whatever home archeus inherited — normally
+    unset, i.e. the default account — while every reader in this module resolves
+    `cfgdir`. Read and write then named different accounts: with archeus
+    switched to another account the Plugins page listed that account's plugins
+    and Install wrote into default.
     """
+    from . import harnesses as _h
     from . import proc
-    exe = _c.get_claude_exe()
+    d = _h.of(cfgdir)
+    exe = _h.exe(d['id'])
     if not exe:
-        return False, 'claude.exe not found'
-    r = proc.run([exe] + list(args), env=_c.account_env(cfgdir), timeout=timeout)
+        return False, '%s not found' % d['exe_names'][0]
+    r = proc.run([exe] + list(argv), env=_c.account_env(cfgdir), timeout=timeout)
     if r is None:
-        return False, 'could not run claude'
+        return False, 'could not run %s' % d['id']
     out = ((r.stdout or '') + (r.stderr or '')).strip()
     return r.returncode == 0, out[:400]
 
 
+def _cli(op, args, cfgdir=None, timeout=120):
+    """One plugin operation, in the vocabulary of the CLI that owns this home.
+
+    The verb comes from `PLUGIN_VERBS` and an op that is not in it is REFUSED
+    here rather than sent: a CLI asked for a subcommand it does not have answers
+    with its usage text and a non-zero exit, which the UI would report as a
+    failed update instead of as a command that never existed.
+    """
+    from . import harnesses as _h
+    d = _h.of(cfgdir)
+    verb = (PLUGIN_VERBS.get(d['id']) or {}).get(op)
+    if not verb:
+        return False, '%s has no %s command' % (d['label'], op.replace('_', ' '))
+    return _run(list(verb) + list(args), timeout=timeout, cfgdir=cfgdir)
+
+
 def add_marketplace(source, cfgdir=None):
-    """`claude plugin marketplace add <repo|url|path>`.
+    """`<cli> plugin marketplace add <repo|url|path>`.
 
     The three shapes the CLI documents are the three shapes accepted, because
     this value is fetched by git underneath: a bare `ext::sh -c …` is a real git
@@ -251,27 +396,62 @@ def add_marketplace(source, cfgdir=None):
             or proc.remote_url_ok(source)                  # a git remote URL
             or os.path.isdir(source)):                     # a local marketplace
         return False, 'not an owner/repo, a git URL, or a directory that exists'
-    return _claude_cli(['plugin', 'marketplace', 'add', source], cfgdir=cfgdir)
+    return _cli('mkt_add', [source], cfgdir=cfgdir)
 
 
 def remove_marketplace(name, cfgdir=None):
-    return _claude_cli(['plugin', 'marketplace', 'remove', name], cfgdir=cfgdir)
+    name = (name or '').strip()
+    if not _ID.match(name):
+        return False, 'not a marketplace name'
+    return _cli('mkt_remove', [name], cfgdir=cfgdir)
+
+
+def update_marketplaces(name='', cfgdir=None):
+    """Fetch every registered marketplace from its source again — what makes a
+    plugin's `available` version move.
+
+    No name means all of them, which both CLIs document. It lives here rather
+    than in `versions.py` because it is a plugin MUTATION: the version module
+    reads and compares, this writes a clone.
+    """
+    name = (name or '').strip()
+    if name and not _ID.match(name):
+        return False, 'not a marketplace name'
+    return _cli('mkt_update', [name] if name else [], cfgdir=cfgdir, timeout=600)
 
 
 def install_plugin(name, marketplace='', cfgdir=None):
-    """Install, after the same review gate third-party skills go through.
+    """Install one plugin by its `name@marketplace` id.
 
     A plugin ships agents and hooks straight into the auto-discovery surfaces,
-    so it is the same exposure as `install_from_git` with more moving parts.
-    The gate runs on the MARKETPLACE CLONE, which is already on disk — so the
-    contents are reviewable before anything is installed from them.
+    so it is the same exposure as `install_from_git` with more moving parts —
+    which is what `review_plugin` is for on the paths that can draw a screen.
     """
-    spec = f'{name}@{marketplace}' if marketplace else name
-    return _claude_cli(['plugin', 'install', spec], cfgdir=cfgdir)
+    spec = f'{name}@{marketplace}' if marketplace else (name or '')
+    spec = spec.strip()
+    if not _ID.match(spec):
+        return False, 'not a plugin name — use name or name@marketplace'
+    return _cli('install', [spec], cfgdir=cfgdir)
 
 
 def remove_plugin(key, cfgdir=None):
-    return _claude_cli(['plugin', 'uninstall', key], cfgdir=cfgdir)
+    key = (key or '').strip()
+    if not _ID.match(key):
+        return False, 'not a plugin name — use name or name@marketplace'
+    return _cli('remove', [key], cfgdir=cfgdir)
+
+
+def update_plugin(key, cfgdir=None):
+    """Move one plugin to whatever its marketplace now offers.
+
+    There is no version target: the marketplace entry decides what latest is.
+    Claude Code alone has this — see PLUGIN_VERBS — so on any other CLI this
+    answers with the verb table's refusal rather than a subprocess.
+    """
+    key = (key or '').strip()
+    if not _ID.match(key):
+        return False, 'not a plugin name — use name or name@marketplace'
+    return _cli('update', [key], cfgdir=cfgdir, timeout=600)
 
 
 def review_plugin(name, marketplace, cfg_dir=None):

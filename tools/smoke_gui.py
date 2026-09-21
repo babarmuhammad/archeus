@@ -616,12 +616,29 @@ ROUTES = {
     # that runs onDone and clears the inline banner — was unreachable.
     '/api/job/j1': {'status': 'done', 'label': 'Staging the archeus upgrade',
                     'messages': [], 'elapsed': 1, 'result': {}},
+    # `can` is the verb table the page reads to decide which buttons exist, so
+    # the stub carries the full Claude Code set; the recommendations are one of
+    # each state — installed, ready to install, and one whose marketplace is not
+    # registered yet and therefore offers to add it first.
     '/api/plugins': {'dir': 'C:/x/plugins', 'marketplaces': [
         {'name': 'official', 'source': 'github', 'repo': 'anthropics/claude-plugins',
          'path': 'C:/x/mkt'}],
+        'can': ['install', 'mkt_add', 'mkt_remove', 'mkt_update', 'remove', 'update'],
         'plugins': [{'name': 'demo', 'key': 'demo@official', 'marketplace': 'official',
                      'version': '1.0', 'missing': False,
-                     'provides': {'skill': ['a', 'b'], 'hook': ['h']}}]},
+                     'provides': {'skill': ['a', 'b'], 'hook': ['h']}}],
+        'recommended': [
+            {'name': 'demo', 'marketplace': 'official', 'why': 'Already yours.',
+             'source': 'anthropics/claude-plugins', 'desc': 'a demo plugin',
+             'installed': True, 'registered': True},
+            {'name': 'code-review', 'marketplace': 'official',
+             'why': 'Reviews a diff or a PR with several specialised agents.',
+             'source': 'anthropics/claude-plugins', 'desc': 'multi-agent review',
+             'installed': False, 'registered': True},
+            {'name': 'codex', 'marketplace': 'openai-codex',
+             'why': 'Delegate a review or a task to Codex from inside Claude Code.',
+             'source': 'openai/codex-plugin-cc', 'desc': '',
+             'installed': False, 'registered': False}]},
     '/api/plugins/provenance': {'provenance': {'skill': {'a': 'demo@official'}}},
     # one plugin behind its marketplace and a Claude Code two releases behind:
     # the update buttons only exist in that state, so the stub has to be in it.
@@ -1454,6 +1471,42 @@ def main():
         check('an outdated plugin offers an update', pupd == 1, pupd)
         check('the version cards left the plugins page',
               pg.evaluate("!document.querySelector('#verCard')"))
+        # -- the four things the page could not do --
+        # Listing is table stakes; these are the actions. Each is a BUTTON the
+        # page either draws or does not, and the one that broke before was the
+        # marketplace button's LABEL: the job behind it has always fetched every
+        # marketplace from its source, and calling that "Refresh" described the
+        # one thing it is not.
+        check('installing a plugin by name is reachable',
+              pg.evaluate("[...document.querySelectorAll('#pluginCard button')]"
+                          ".some(b=>/Install plugin/.test(b.textContent))"))
+        mkb = pg.evaluate(
+            "[...document.querySelectorAll('.card h3')]"
+            ".filter(h=>/Marketplaces/.test(h.textContent))"
+            ".flatMap(h=>[...h.querySelectorAll('button')]).map(b=>b.textContent.trim())")
+        check('the marketplace button says Update, not Refresh',
+              any('Update' in b for b in mkb) and not any('Refresh' in b for b in mkb),
+              mkb)
+        rec = pg.evaluate(
+            "(()=>{const c=document.querySelector('#recCard');if(!c)return{};return{"
+            "rows:c.querySelectorAll('.hrow').length,"
+            "done:/installed/.test(c.textContent),"
+            "add:[...c.querySelectorAll('button')].map(b=>b.textContent.trim())};})()")
+        check('the recommended set offers what you do not have',
+              rec.get('rows') == 3 and rec.get('done')
+              and rec.get('add') == ['Install', 'Add marketplace + install'], rec)
+        # and the uninstall sentence, which was read as a threat to the user's
+        # own work: it counts the plugin's OWN contents off the row's provides
+        # and says out loud that project files are not in that list.
+        ask = pg.evaluate(
+            "(()=>{let t='',s='';window.__ask=ask;ask=(a,b,c)=>{t=a;s=c;"
+            "return Promise.resolve(null)};"
+            "pluginRemove('demo@official',{skill:['a','b'],hook:['h']},'default');"
+            "ask=window.__ask;return {t,s};})()")
+        check('uninstall names what it removes and what it does not',
+              '2 skills and 1 hook' in ask.get('s', '')
+              and 'default' in ask.get('s', '')
+              and 'Your own files are untouched' in ask.get('s', ''), ask)
 
         # ── the update strip, through the job that borrows it ──
         # "Update now" starts an inline job whose HOST IS THE STRIP, so the

@@ -3803,23 +3803,29 @@ def api_job_start(q, body):
             return {'message': msg}
         jid = start_job('Updating archeus', _su)
     elif kind == 'plugin_update':
-        from . import versions
+        from . import plugins as plugins_mod
         key = str(body.get('key', '') or '')
+        # the account the PAGE is showing, not the active one: a plugin is
+        # installed per home, and updating whichever home archeus happened to be
+        # switched to is the read/write split `_cli` exists to close.
+        pcfg = body.get('cfgdir') or None
         def _pu():
-            ok, msg = versions.update_plugin(key)
+            ok, msg = plugins_mod.update_plugin(key, cfgdir=pcfg)
             if not ok:
                 raise RuntimeError(msg or 'update failed')
             return {'message': msg}
         jid = start_job(f'Updating {key}', _pu)
     elif kind == 'marketplace_refresh':
-        from . import versions
+        from . import plugins as plugins_mod
         mkt = str(body.get('name', '') or '')
+        mcfg = body.get('cfgdir') or None
         def _mr():
-            ok, msg = versions.update_marketplaces(mkt)
+            ok, msg = plugins_mod.update_marketplaces(mkt, cfgdir=mcfg)
             if not ok:
-                raise RuntimeError(msg or 'refresh failed')
+                raise RuntimeError(msg or 'update failed')
             return {'message': msg}
-        jid = start_job('Refreshing marketplaces', _mr)
+        jid = start_job('Updating every marketplace' if not mkt
+                        else f'Updating {mkt}', _mr)
     elif kind == 'skill_git_install':
         from . import skills
         from .config import load_settings
@@ -4117,11 +4123,21 @@ def api_plugins(q, body):
     The per-account half is the point: a plugin the user installed is a property
     of THEM, and this page reported only whichever account was active, so four
     of five accounts having nothing was invisible from here.
+
+    The accounts are THIS HARNESS's homes, not `all_config_dirs()` — that one is
+    deliberately Claude-only, so under the Codex tab it reported Claude logins as
+    the spread of a Codex plugin. `harnesses.homes('claude')` IS
+    `all_config_dirs()`, so nothing moves for Claude Code.
+
+    ponytail: one `codex plugin list` per Codex home on that tab. Fine at the one
+    or two homes a Codex user has; revisit if that ever grows.
     """
+    from . import harnesses as _h
     from . import plugins
     cfgdir = q.get('cfgdir')
     out = plugins.summary(cfgdir)
-    per = [(n, d, plugins.summary(d)) for n, d in _c.all_config_dirs()]
+    out['recommended'] = plugins.recommendations(cfgdir)
+    per = [(n, d, plugins.summary(d)) for n, d in _h.homes(_h.of(cfgdir)['id'])]
     out['accounts'] = [{'name': n, 'dir': d,
                         'plugins': len(a['plugins']),
                         'marketplaces': len(a['marketplaces'])}
@@ -4160,7 +4176,10 @@ def api_versions(q, body):
     return {'claude': versions.status(refresh=refresh),
             'archeus': versions.self_status(refresh=refresh),
             'models': mst,
-            'plugins': versions.plugin_rows()}
+            # per account: the installs and the marketplace clones BOTH belong
+            # to one home, so a page showing another account was reading the
+            # default account's answer and badging the wrong rows.
+            'plugins': versions.plugin_rows((q or {}).get('cfgdir'))}
 
 
 def api_provenance(q, body):
@@ -4187,10 +4206,16 @@ def _plugin_targets(body):
 
 
 def api_plugin_marketplace_add(q, body):
+    """Register a marketplace on every account by default.
+
+    Through `_plugin_targets`, the shape `api_plugin_install` already had: an
+    explicit `cfgdir` WINS over the fan-out. The old form ignored it and always
+    walked `all_config_dirs()`, which for a Codex home would have registered a
+    Codex marketplace on five Claude logins.
+    """
     from . import plugins
     b = body or {}
-    targets = _c.all_config_dirs() if b.get('scope', 'all') == 'all' \
-        else _plugin_targets(b)
+    targets = _plugin_targets(dict(b, scope=b.get('scope', 'all')))
     done, errs = [], []
     for name, d in targets:
         ok, msg = plugins.add_marketplace(b.get('source', ''), cfgdir=d)
@@ -4208,7 +4233,17 @@ def api_plugin_marketplace_remove(q, body):
 
 
 def api_plugin_install(q, body):
-    """Install into every account by default, each behind the review gate."""
+    """Install into every account by default — what you install is yours, not
+    the active account's.
+
+    NOT behind `plugins.review_plugin`, and that is deliberate rather than an
+    omission: the gate ends in `diffview.confirm`, which is only bridged on a
+    JOB thread — calling it from a request handler blocks in `ui.wait_event()`
+    with no keypress coming and the request never returns. The browser asks
+    before it posts, and `claude plugin install` refuses a marketplace-declared
+    command off a TTY on its own. `provision.apply` passes the real gate,
+    because a job thread can draw it.
+    """
     from . import plugins
     b = body or {}
     name, mkt = b.get('name', ''), b.get('marketplace', '')
