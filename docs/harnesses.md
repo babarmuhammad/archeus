@@ -89,7 +89,7 @@ reason, and a button on a session row works the same way.
 | Path-scoped rule files | ✅ | — *reads the digest in `AGENTS.md` instead* | — *reads the digest in `AGENTS.md` instead* |
 | Archive a session | ✅ | ✅ | — *no archive; a session is kept or deleted* |
 | MCP servers | ✅ | ✅ *`codex mcp`* | — *no MCP client* |
-| Plugins & marketplaces | ✅ | ✅ *read-only* | — *`pi install` packages, not marketplaces* |
+| Plugins & marketplaces | ✅ | ✅ *no per-plugin update* | — *`pi install` packages, not marketplaces* |
 | Install & update the CLI | ✅ | ✅ *`codex update`* | ✅ *`pi update`* |
 | Checkpoints (`/rewind`) | ✅ | — *SQLite, not a file-history store* | — *branches inside one session file* |
 | Hooks | ✅ | — *gated on an undocumented `trusted_hash`* | — *TypeScript extensions instead* |
@@ -104,6 +104,14 @@ surface, `codex plugin list` reads every marketplace, and `codex doctor` reports
 installed version and whether a newer one exists; all three run offline and without a
 login. Token spend was never Claude Code's alone either: every CLI records its usage in
 its own transcripts.
+
+The plugins row changed a second time, and it is a vocabulary difference rather than a
+capability one: Codex calls the same operations by different names — `plugin add` where
+Claude Code says `install`, `plugin remove` where it says `uninstall`, and
+`plugin marketplace upgrade` where it says `update`. archeus keeps one table of those
+verbs, so the Plugins page adds, installs and removes under either CLI. The one thing
+Codex genuinely has no command for is upgrading a single installed plugin, so that button
+is simply not drawn there.
 
 Two of those rows changed again, for the same reason. The plan window is **not**
 Anthropic's alone: Codex records its own windows in its rollout, and `codex doctor` — which

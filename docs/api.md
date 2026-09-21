@@ -151,8 +151,8 @@ a handler sees them; a missing or malformed one is a 400.
 | `/api/output-style/save` | `api_output_style_save` | — |
 | `/api/output-style/select` | `api_output_style_select` | — |
 | `/api/plan/edit` | `api_plan_edit` | — |
-| `/api/plugins/install` | `api_plugin_install` | Install into every account by default, each behind the review gate. |
-| `/api/plugins/marketplace/add` | `api_plugin_marketplace_add` | — |
+| `/api/plugins/install` | `api_plugin_install` | Install into every account by default — what you install is yours, not |
+| `/api/plugins/marketplace/add` | `api_plugin_marketplace_add` | Register a marketplace on every account by default. |
 | `/api/plugins/marketplace/remove` | `api_plugin_marketplace_remove` | — |
 | `/api/plugins/remove` | `api_plugin_remove` | — |
 | `/api/project/hide` | `api_project_hide` | Archive a project out of the project lists, or bring it back. |

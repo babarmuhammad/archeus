@@ -4898,11 +4898,25 @@ async function agDel(path){
    obvious action on something unrecognised (delete it) can break a plugin. */
 /* which account the plugin page is showing. '' = the active one. */
 let PLACCT='';
+/* the last payload this page rendered. Held so the install box can complete a
+   `name@marketplace` from what is on screen without a second request — the same
+   discipline `INST.set()` follows: a control reads what the renderer already
+   fetched rather than fetching its own copy. */
+let PLDATA=null;
 async function pgPlugins(nav){
-  const [d,V]=await Promise.all([api('/api/plugins?'+qs(PLACCT?{cfgdir:PLACCT}:{})),
-                                api('/api/versions').catch(()=>({}))]);
-  VER=V||{};
+  /* BOTH requests carry the account, because both answers are per-home: the
+     installs come from one `installed_plugins.json` and the "update available"
+     comparison from that same home's marketplace clones. `/api/versions` used
+     to be asked without one, so every badge on the page was the DEFAULT
+     account's the moment a different chip was selected. */
+  const acq=qs(PLACCT?{cfgdir:PLACCT}:{});
+  const [d,V]=await Promise.all([api('/api/plugins?'+acq),
+                                api('/api/versions?'+acq).catch(()=>({}))]);
+  VER=V||{};PLDATA=d;
   const accts=(d.accounts||[]);
+  const can=d.can||[];
+  const acctName=(accts.find(a=>(a.dir||'')===(PLACCT||''))||{}).name
+                 ||(accts[0]||{}).name||'this account';
   /* The confirmation that a plugin reached every account. It only ever showed
      whichever account was active, so four of five having nothing at all was
      invisible from the one page that exists to answer this. */
@@ -4943,10 +4957,25 @@ async function pgPlugins(nav){
       <span style="flex:1">${gives||'<span style="color:var(--dim2);font-size:12px">ships nothing archeus reads</span>'}</span>
       ${(accts.length>1&&(p.on_accounts||[]).length<accts.length)
         ?`<button class="btn sm pri" onclick='pluginSpread(${hesc(p.name)},${hesc(p.marketplace)})' title="Install it into the accounts that do not have it">Install everywhere</button>`:''}
-      ${vr.outdated?`<button class="btn sm pri" onclick='pluginUpdate(${hesc(p.key)})'>Update</button>`:''}
+      ${(vr.outdated&&can.includes('update'))
+        ?`<button class="btn sm pri" onclick='pluginUpdate(${hesc(p.key)})'>Update</button>`:''}
       ${d.readonly?`<span class="tag">${p.installed?'installed':'available'}</span>`
-        :`<button class="btn sm danger" onclick='pluginRemove(${hesc(p.key)})'>${ic('del')}</button>`}
+        /* a CLI that lists what its marketplaces OFFER (Codex does) has rows
+           that are not installed yet, and the button on those is Install. */
+        :(p.installed===false
+          ?`<button class="btn sm pri" onclick='pluginInstall(${hesc(p.name)},${hesc(p.marketplace)})'>Install</button>`
+          :`<button class="btn sm danger" title="Uninstall"
+              onclick='pluginRemove(${hesc(p.key)},${hesc(p.provides||{})},${hesc(acctName)})'>${ic('del')}</button>`)}
     </div>`;}).join('');
+  const recs=(d.recommended||[]).map(r=>`
+    <div class="hrow">
+      <b style="min-width:180px">${esc(r.name)}</b>
+      <span class="tag" title="${esc(r.registered?'registered':'not registered yet — '+(r.source||''))}">${esc(r.marketplace)}</span>
+      <span style="flex:1;font-size:12.5px"${r.desc?` title="${esc(r.desc)}"`:''}>${esc(r.why)}</span>
+      ${r.installed?'<span class="tag ok">installed</span>'
+        :`<button class="btn sm pri" onclick='recInstall(${hesc(r)})'
+           >${r.registered?'Install':'Add marketplace + install'}</button>`}
+    </div>`).join('');
   /* The three version cards used to open this page. They are on
      Settings ▸ Updates now, with the schedule that checks for them — "what is
      installed and is it current" is the same question as "how often do you
@@ -4956,23 +4985,44 @@ async function pgPlugins(nav){
   /* Codex has marketplaces too — `codex plugin list` reads every one, and its
      manifests sit at `.agents/plugins/marketplace.json`, the cross-CLI
      convention archeus already writes project skills into. So this page is
-     shared, and the strip is how you get to the other store. Read-only there:
-     installing mutates another tool's config through a resolver archeus does
-     not own, which is the same line `_claude_cli` already draws for Claude
-     Code's own files. */
+     shared, and the strip is how you get to the other store.
+
+     It used to be READ-ONLY there, on the reasoning that installing mutates
+     another tool's config. That was never the real obstacle — the obstacle was
+     that archeus only knew one CLI's WORDS. Codex says `plugin add` for
+     install, `plugin remove` for uninstall and `plugin marketplace upgrade` for
+     update; three of six differ and no rule predicts which. `PLUGIN_VERBS` is
+     that table, `d.can` is what it answered for this home, and the one command
+     Codex genuinely lacks — upgrading a single installed plugin — is the one
+     button that is not drawn. Every other mutation still goes through the CLI
+     itself, which is the line that always mattered. */
   const ro=!!d.readonly;
+  const cli=esc((harnessById(PLHID||'claude')||{}).label||'Claude Code');
+  /* the CLI's own word for it, from the same table the mutation uses — Codex
+     calls this `upgrade` and saying `update` on its button would be naming a
+     command it does not have. */
+  const mktVerb=PLHID==='codex'?'codex plugin marketplace upgrade'
+                               :'claude plugin marketplace update';
   shell(nav,`
     ${harnessStrip(PLHID||'claude','pickPluginHarness','plugins','')}
-    <div class="card wide" id="pluginCard"><h3>${ic('folder')} Installed plugins</h3>
+    <div class="card wide" id="pluginCard"><h3>${ic('folder')} Installed plugins
+      <span class="sp"></span>
+      ${ro?'':`<button class="btn sm pri" onclick="pluginAdd()">${ic('add')} Install plugin</button>`}</h3>
       <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">A plugin bundles skills, subagents, commands, hooks and MCP servers together. The tags say what each one actually placed on disk — the same information the Skills, Agents and Hooks pages now use to mark which of their rows came from a bundle rather than from you.${accts.length>1?' The <b>accounts</b> tag says how many of your logins have it: a plugin is a property of you, not of whichever account happened to be active when you installed it.':''}</p>
       ${picker}
       ${plugs||'<div style="color:var(--dim)">No plugins installed.</div>'}</div>
+    <div class="card wide" id="recCard"><h3>${ic('ai')} Recommended</h3>
+      <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">${recs
+        ?`A short starting set for ${cli}, not a catalogue: your marketplaces offer hundreds and these are the few worth having on a fresh account. Hover a row for the plugin's own description.`
+        :`${cli} lists every plugin its marketplaces <b>offer</b> above, not only the ones you have — the rows marked <b>available</b> are the catalogue, so there is nothing for archeus to shortlist here.`}</p>
+      ${recs}</div>
     <div class="card wide"><h3>Marketplaces <span class="sp"></span>
-      ${ro?'':`<button class="btn sm" onclick="mktRefresh()">${ic('refresh')} Refresh</button>
+      ${ro?'':`${can.includes('mkt_update')?`<button class="btn sm" onclick="mktUpdate()"
+        title="Runs ${esc(mktVerb)} — fetches every registered marketplace from its source, on ${esc(acctName)}">${ic('refresh')} Update</button>`:''}
       <button class="btn sm pri" onclick="mktAdd()">${ic('add')} Add marketplace</button>`}</h3>
       <p style="color:var(--dim);font-size:12.5px;margin:0 0 8px">${ro
-        ?'Read-only here. archeus lists what <code>codex plugin</code> reports and changes none of it: installing goes through a marketplace resolver archeus does not own, and a half-written entry would break the tool rather than this page.'
-        :'A repo, a URL or a local path. Adding, installing and removing are delegated to the <code>claude</code> CLI: these files belong to Claude Code, the format has already changed once, and writing them directly would corrupt the state of the tool archeus exists to support.'}</p>
+        ?`Read-only here: archeus has no command table for ${cli}'s plugins, so it lists what the CLI reports and changes none of it.`
+        :`A repo, a URL or a local path. Adding, installing and removing are delegated to the <code>${esc(PLHID||'claude')}</code> CLI: these files belong to it, the format has already changed once, and writing them directly would corrupt the state of the tool archeus exists to support. <b>Update</b> fetches every registered marketplace from its source again, which is what moves a plugin's <i>available</i> version.`}</p>
       ${mkts||'<div style="color:var(--dim)">No marketplaces registered.</div>'}</div>
     <div class="card"><h3>Where they live</h3>
       <div class="kv"><span>plugins dir</span><code>${esc(d.dir||'')}</code></div>
@@ -5135,10 +5185,23 @@ function claudeUpdate(target){
             {redraw:()=>drawVersionCards()});
 }
 function pluginUpdate(key){
-  inlineJob('#pluginCard','plugin_update',{key},{redraw:()=>drawPage('plugins')});
+  inlineJob('#pluginCard','plugin_update',{key,cfgdir:PLACCT||undefined},
+            {redraw:()=>drawPage('plugins')});
 }
-function mktRefresh(){
-  inlineJob('#pluginCard','marketplace_refresh',{},{redraw:()=>drawPage('plugins')});
+/* Named `mktUpdate` and not `mktRefresh` because that is what it does and has
+   always done: `plugin marketplace update` with no name FETCHES every
+   registered marketplace from its source. "Refresh" described a re-read of
+   what was already on disk, which is the one thing it is not. */
+function mktUpdate(){
+  inlineJob('#pluginCard','marketplace_refresh',{cfgdir:PLACCT||undefined},
+            {redraw:()=>drawPage('plugins')});
+}
+/* Which home a plugin mutation names. Claude Code fans out — what you install
+   is a property of YOU, not of whichever login was active — and any other CLI
+   has one login per home, so the home on screen IS the target and there is
+   nothing to fan out to. */
+function plTarget(){
+  return PLHID?{cfgdir:PLACCT||undefined}:{scope:'all'};
 }
 function plAcct(dir){PLACCT=dir;drawPage('plugins');}
 /* Which CLI's plugin store the page is reading. It resolves to a HOME, which is
@@ -5157,16 +5220,55 @@ function pickPluginHarness(hid){
    from four logins you did not name is a surprise, not a fan-out. */
 async function mktAdd(){
   const v=await ask('Add marketplace',[{k:'src',label:'Repo, URL or path',ph:'owner/repo'}],
-    'Claude Code fetches and validates the manifest. It is registered on every account.');
+    'The CLI fetches and validates the manifest before it is registered.');
   if(!v||!v[0])return;
-  const r=await post('/api/plugins/marketplace/add',{source:v[0],scope:'all'});
+  const r=await post('/api/plugins/marketplace/add',{source:v[0],...plTarget()});
   toast(r.message||(r.ok?'Added':'Failed'),r.ok?'ok':'err');drawPage('plugins');
 }
 async function mktRemove(name){
   if(!await confirmBox('Remove marketplace '+name+'?',
-    'Only from the account shown above.'))return;
+    'Nothing already installed from it is removed — this only stops it being a '
+    +'source for new installs and updates.'))return;
   const r=await post('/api/plugins/marketplace/remove',{name,cfgdir:PLACCT||undefined});
   toast(r.message||'',r.ok?'ok':'err');drawPage('plugins');
+}
+/* Install one plugin you can name — the page's equivalent of
+   `/plugin install <name>`. The datalist is the recommended set plus the
+   marketplaces on screen, so `name@marketplace` can be completed rather than
+   remembered; anything else may still be typed. */
+async function pluginAdd(){
+  const d=PLDATA||{};
+  const names=(d.recommended||[]).filter(r=>!r.installed)
+    .map(r=>r.name+'@'+r.marketplace)
+    .concat((d.plugins||[]).filter(p=>p.installed===false).map(p=>p.key));
+  const v=await ask('Install a plugin',
+    [{k:'id',label:'Plugin',ph:'name or name@marketplace',list:names}],
+    'A plugin ships agents, hooks and MCP servers straight into the '
+    +'auto-discovery surfaces, so install one only from a source you would give '
+    +'your shell to. Without a marketplace the CLI searches every one you have '
+    +'registered.');
+  if(!v||!v[0])return;
+  const [name,marketplace='']=v[0].trim().split('@');
+  if(!name)return;
+  await pluginInstall(name,marketplace);
+}
+async function pluginInstall(name,marketplace){
+  const r=await post('/api/plugins/install',{name,marketplace,...plTarget()});
+  toast(r.message||(r.ok?'Installed':'Failed'),r.ok?'ok':'err');drawPage('plugins');
+}
+/* One press for a recommendation whose marketplace is not registered yet:
+   register it, then install. Two requests rather than an endpoint that does
+   both, because "add a source" and "install from it" are separately useful and
+   the failure of the first has to be readable on its own. */
+async function recInstall(r){
+  if(!r.registered){
+    if(!await confirmBox('Add the '+r.marketplace+' marketplace?',
+      r.source+' — it is fetched and validated by the CLI, then '+r.name
+      +' is installed from it.'))return;
+    const a=await post('/api/plugins/marketplace/add',{source:r.source,...plTarget()});
+    if(!a.ok){toast(a.message||'Failed','err');return;}
+  }
+  await pluginInstall(r.name,r.marketplace);
 }
 async function pluginSpread(name,marketplace){
   if(!await confirmBox(`Install ${name} into every account?`,
@@ -5175,9 +5277,20 @@ async function pluginSpread(name,marketplace){
   const r=await post('/api/plugins/install',{name,marketplace,scope:'all'});
   toast(r.message||(r.ok?'Installed':'Failed'),r.ok?'ok':'err');drawPage('plugins');
 }
-async function pluginRemove(key){
-  if(!await confirmBox('Uninstall '+key+'? Anything it contributed goes with it.',
-    'Only from the account shown above.'))return;
+/* The sentence has to name what is actually removed. "Anything it contributed
+   goes with it" was read as the code the plugin WROTE IN YOUR PROJECTS — which
+   uninstalling never touches — so it now counts the plugin's own skills,
+   agents, commands and hooks off the same `provides` the row already shows, and
+   says out loud that your files are not in that list. */
+async function pluginRemove(key,provides,account){
+  const parts=Object.entries(provides||{})
+    .map(([k,v])=>v.length+' '+k+(v.length===1?'':'s'));
+  const what=parts.length
+    ?'Removes the plugin and the '+parts.join(', ').replace(/, ([^,]*)$/,' and $1')
+      +' it placed on '+account+'.'
+    :'Removes the plugin from '+account+'.';
+  if(!await confirmBox('Uninstall '+key+'?',
+    what+' Your own files are untouched — nothing it wrote in a project is deleted.'))return;
   const r=await post('/api/plugins/remove',{key,cfgdir:PLACCT||undefined});
   toast(r.message||'',r.ok?'ok':'err');drawPage('plugins');
 }

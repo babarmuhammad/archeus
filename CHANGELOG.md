@@ -5,6 +5,45 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Install a plugin you can name.** The Plugins page had no equivalent of
+  `/plugin install <name>`: the only install buttons were for a plugin another account
+  already had. There is one now, completing `name@marketplace` from what is on screen,
+  and it registers on every account the way adding a marketplace already did.
+
+- **A Recommended card with a short starting set.** A fresh account has an official
+  marketplace with hundreds of plugins in it and nothing saying which few are worth
+  having. The card names six, with one line each on why, and offers to register the
+  marketplace first for a recommendation that comes from one you do not have yet.
+
+- **The Plugins page works under Codex.** It was read-only there, which turned out to be
+  a vocabulary gap rather than a real one: Codex says `plugin add`, `plugin remove` and
+  `plugin marketplace upgrade` where Claude Code says `install`, `uninstall` and `update`.
+  archeus keeps one table of those verbs now. The only button missing under Codex is
+  updating a single installed plugin, because Codex has no such command.
+
+### Changed
+
+- **The marketplace button says *Update*, not *Refresh*.** It always fetched every
+  registered marketplace from its source — which is what moves a plugin's *available*
+  version — and "Refresh" described a re-read of what was already on disk. It also acts
+  on the account the page is showing rather than whichever one happened to be active.
+
+- **Uninstalling a plugin says what it actually removes.** The old wording —
+  *"Anything it contributed goes with it"* — read as a threat to the code the plugin had
+  written in your projects. It now counts the plugin's own skills, agents, commands and
+  hooks, names the account, and says plainly that your own files are untouched.
+
+### Fixed
+
+- **The "update available" badges belonged to the wrong account.** Both halves of that
+  comparison are per-login — the installs and the marketplace clones — and the page asked
+  for them without naming one, so it showed the default account's answer whenever another
+  account was selected.
+
 ## [2.6.0] - 2026-09-17
 
 ### Changed
