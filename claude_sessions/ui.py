@@ -1470,9 +1470,10 @@ def launch_options_menu(project_name, defaults=None, is_new=False, agents=None,
 
     def _apply_preset(i):
         nonlocal model_idx, effort_idx, think_idx, sub_idx
-        if not (0 <= i < len(_c.LAUNCH_PRESETS)):
+        presets = _c.launch_presets()
+        if not (0 <= i < len(presets)):
             return
-        name, _desc, f = _c.LAUNCH_PRESETS[i]
+        name, _desc, f = presets[i]
         if f.get('model') in MODELS:            model_idx  = MODELS.index(f['model'])
         if f.get('effort') in EFFORTS:          effort_idx = EFFORTS.index(f['effort'])
         if f.get('max_thinking') in THINKING_CAPS:   think_idx = THINKING_CAPS.index(f['max_thinking'])

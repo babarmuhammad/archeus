@@ -313,9 +313,9 @@ def state_payload():
             'perm_notes': {p: {m: list(_c.perm_note(p, m)) for m in _models}
                            for p in PERMS},
             'thinking': THINKING_CAPS, 'thinking_labels': THINKING_LABELS,
-            'model_cards': _c.model_card_rows(),
+            'model_cards': _c.model_card_rows(*_models),
             'effort_profiles': _c.EFFORT_PROFILES,
-            'presets': [[n, d, f] for n, d, f in _c.LAUNCH_PRESETS],
+            'presets': [[n, d, f] for n, d, f in _c.launch_presets()],
             'advice': {m: {e: list(_c.advise(m, e)) for e in EFFORTS} for m in _models},
             # ids, not sentences: the launch picker asks only whether the
             # one model in front of you is still offered.

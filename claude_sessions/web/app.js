@@ -2090,8 +2090,11 @@ function toggleHomeTune(){
 }
 function updateHomeTuneReadout(){
   const sl=$('#hqFrontier'),rows=ST.options.frontier||[];
-  const [_mid,eff,lbl,cost,swe,note]=rows[+sl.value]||rows[rows.length-1]||['','','','','',''];
-  $('#hqFrontRead').innerHTML=`<b>${esc(lbl)} · ${esc(eff)}</b>`
+  $('#hqFrontRead').innerHTML=frontReadHtml(rows[+sl.value]||rows[rows.length-1]);
+}
+function frontReadHtml(row){
+  const [_mid,eff,lbl,cost,swe,note]=row||['','','','','',''];
+  return `<b>${esc(lbl)} · ${esc(eff||'default')}</b>`
     +`<div class="fsub">${esc(swe)} SWE · ${esc(cost)}</div>`
     +`<div class="fsub" style="font-family:inherit">${esc(note)}</div>`;
 }
@@ -2481,10 +2484,7 @@ function updateRowTuneReadout(i){
   const el=$('#rowtune-'+i);if(!el)return;
   const sl=el.querySelector('.rtfrontier');
   const rows=ST.options.frontier||[];
-  const [_mid,eff,lbl,cost,swe,note]=rows[+sl.value]||rows[rows.length-1]||['','','','','',''];
-  el.querySelector('.rtread').innerHTML=`<b>${esc(lbl)} · ${esc(eff)}</b>`
-    +`<div class="fsub">${esc(swe)} SWE · ${esc(cost)}</div>`
-    +`<div class="fsub" style="font-family:inherit">${esc(note)}</div>`;
+  el.querySelector('.rtread').innerHTML=frontReadHtml(rows[+sl.value]||rows[rows.length-1]);
 }
 function resumeTuned(i){
   const s=SESS[i];
@@ -7517,11 +7517,18 @@ function currentModelEffort(){
   if($('#fPinModel').checked)return [cardVal($('#fModel')),effortVal()];
   const r=frontierRow();return [r[0],r[1]];
 }
+/* Pinned, the readout names the PINNED pick. It printed the slider's stop
+   regardless, so choosing opus-5-5 from the cards left the preset's model
+   written under the Power bar — the model that would NOT launch. */
 function updateFrontierReadout(){
-  const [mid,eff,lbl,cost,swe,note]=frontierRow();
-  $('#fFrontRead').innerHTML=`<b>${esc(lbl)} · ${esc(eff)}</b>`
-    +`<div class="fsub">${esc(swe)} SWE · ${esc(cost)}</div>`
-    +`<div class="fsub" style="font-family:inherit">${esc(note)}</div>`;
+  let row=frontierRow();
+  if($('#fPinModel').checked){
+    const [m,e]=currentModelEffort(),fi=frontierIndexFor(m,e);
+    if(fi>=0)$('#fFrontier').value=fi;
+    const mc=(ST.options.model_cards||[]).find(r=>r[0]===m)||[m,m||'default','','','','—'];
+    row=[m,e,mc[1],mc[2],mc[5],(((ST.options.advice||{})[m]||{})[e]||['',''])[1]];
+  }
+  $('#fFrontRead').innerHTML=frontReadHtml(row);
 }
 function updateHint(){
   const [m,e]=currentModelEffort();

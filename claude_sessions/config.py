@@ -1204,6 +1204,28 @@ def models(*extra):
     return ids, labels
 
 
+def current_model(model):
+    """The picker's model in `model`'s family, else `model` unchanged.
+
+    LAUNCH_PRESETS and MODEL_EFFORT_FRONTIER name a GENERATION ('claude-opus-5')
+    and the roster holds only the newest per family, so once opus-5-5 shipped
+    those ids matched no model card: a preset selected nothing and the Power
+    slider kept offering the old model. Resolve them here, at read time."""
+    from . import models as _m
+    fam = _m.family(model)
+    for mid in models()[0]:
+        if mid and _m.family(mid) == fam:
+            return mid
+    return model
+
+
+def launch_presets():
+    """LAUNCH_PRESETS with every model id resolved to the current roster."""
+    return [(n, d, {k: current_model(v) if k in ('model', 'subagent_model') else v
+                    for k, v in f.items()})
+            for n, d, f in LAUNCH_PRESETS]
+
+
 def model_label(model):
     """The short label for one id ('claude-sonnet-5' -> 'sonnet-5')."""
     ids, labels = models(model)
@@ -1253,15 +1275,17 @@ def swe_str(model):
     return f"{prof['swe']}%"
 
 
-def model_card_rows():
+def model_card_rows(*extra):
     """[(model_id, label, cost_bar, cap_bar, best_for, swe_str)] for the roster.
 
     A model the catalogue lists but nobody has profiled gets a row with empty
     bars rather than no row at all — visible-and-unprofiled beats absent, which
-    is the whole reason the live catalogue is worth having.
+    is the whole reason the live catalogue is worth having. `extra` is the same
+    as `models()`'s: a saved pin the roster has moved past still gets a card,
+    or the GUI would open with no card selected and launch the account default.
     """
     rows = []
-    ids, labels = models()
+    ids, labels = models(*extra)
     for mid, label in zip(ids, labels):
         if not mid:
             continue
@@ -1278,22 +1302,27 @@ def advise(model, effort):
     eff = effort or ''
     ei = EFFORTS.index(eff) if eff in EFFORTS else 0    # 0 default,1 low,2 med,3 high,4 xhigh,5 max
     if not profile(model):
-        return ('tip', 'Pick a model — Sonnet 5 · high is the recommended default.')
-    if model == 'claude-opus-5' and ei in (1, 2):
-        return ('tip', 'Opus is underused at this effort — Sonnet 5 · high gives ~similar quality at ~60% less cost.')
-    if model == 'claude-sonnet-5' and ei >= 4:
-        return ('warn', 'Sonnet at xhigh burns heavy reasoning tokens — can cost more than Opus 5 · high for similar quality. Use Opus · high or Sonnet · high.')
-    if model == 'claude-fable-5' and ei < 4:
-        return ('tip', 'Fable is the priciest tier — Opus 5 · xhigh handles almost everything at half the cost.')
-    if model == 'claude-haiku-4-5' and ei >= 3:
-        return ('warn', "Haiku isn't built for deep reasoning — switch to Sonnet 5 for hard tasks.")
+        return ('tip', 'Pick a model — Sonnet · high is the recommended default.')
+    # Keyed by FAMILY, like profile(): matching exact ids went silent the day
+    # opus-5-5 replaced opus-5 in the roster, and the prose names no version
+    # for the same reason.
+    from . import models as _m
+    fam = _m.family(model)
+    if fam == 'opus' and ei in (1, 2):
+        return ('tip', 'Opus is underused at this effort — Sonnet · high gives ~similar quality at ~60% less cost.')
+    if fam == 'sonnet' and ei >= 4:
+        return ('warn', 'Sonnet at xhigh burns heavy reasoning tokens — can cost more than Opus · high for similar quality. Use Opus · high or Sonnet · high.')
+    if fam == 'fable' and ei < 4:
+        return ('tip', 'Fable is the priciest tier — Opus · xhigh handles almost everything at half the cost.')
+    if fam == 'haiku' and ei >= 3:
+        return ('warn', "Haiku isn't built for deep reasoning — switch to Sonnet for hard tasks.")
     good = {
-        'claude-haiku-4-5': 'Cheapest & fastest — great for bulk, simple edits, and subagents.',
-        'claude-sonnet-5':  'Best default — ~90% of coding at Opus quality; high ≈ Opus low.',
-        'claude-opus-5':    'Top accuracy tier — deep refactor & hard debugging; xhigh is the coding sweet spot.',
-        'claude-fable-5':   'Maximum capability for the hardest, longest-horizon work.',
+        'haiku':  'Cheapest & fastest — great for bulk, simple edits, and subagents.',
+        'sonnet': 'Best default — ~90% of coding at Opus quality; high ≈ Opus low.',
+        'opus':   'Top accuracy tier — deep refactor & hard debugging; xhigh is the coding sweet spot.',
+        'fable':  'Maximum capability for the hardest, longest-horizon work.',
     }
-    return ('ok', good.get(model, ''))
+    return ('ok', good.get(fam, ''))
 
 
 def otel_env(s=None):
@@ -1431,6 +1460,7 @@ def frontier_rows():
     stop, cheap→max-power, for the GUI's single frontier slider."""
     rows = []
     for mid, eff in MODEL_EFFORT_FRONTIER:
+        mid = current_model(mid)
         _level, note = advise(mid, eff)
         rows.append((mid, eff, model_label(mid),
                      cost_bar(mid), swe_str(mid), note))
@@ -1439,7 +1469,7 @@ def frontier_rows():
 
 def active_preset(opts):
     """Name of the preset whose fields all match opts, else None."""
-    for name, _desc, fields in LAUNCH_PRESETS:
+    for name, _desc, fields in launch_presets():
         if all((opts.get(k) or '') == v for k, v in fields.items()):
             return name
     return None

@@ -577,3 +577,29 @@ def test_the_updates_row_says_when_the_picker_is_on_the_bundled_list(monkeypatch
     row = versions._models_row(m.status())
     assert '5 from Anthropic' in row and '4 families' in row
     assert 'bundled' not in row
+
+
+def test_a_point_release_moves_the_presets_the_power_slider_and_the_advice(monkeypatch, tmp_path):
+    """opus-5-5 shipped and the roster replaced opus-5 with it, but the presets,
+    the Power slider's stops and advise() all named 'claude-opus-5' exactly — so
+    the Deep reasoning preset selected no model card, the slider still offered
+    opus-5, and opus-5-5 got no advice at all."""
+    Sandbox(monkeypatch, tmp_path)
+    _cache(monkeypatch, tmp_path)
+    _logged_in(monkeypatch)
+    _api(monkeypatch, data=_DATA + [_model('claude-opus-5-5', '2026-09-21T00:00:00Z')])
+    m.fetch(refresh=True)
+
+    ids, _labels = config_mod.models()
+    assert 'claude-opus-5-5' in ids and 'claude-opus-5' not in ids
+    for _n, _d, f in config_mod.launch_presets():
+        assert f['model'] in ids, f'a preset names {f["model"]}, which no card offers'
+    deep = dict((n, f) for n, _d, f in config_mod.launch_presets())['Deep reasoning']
+    assert config_mod.active_preset(dict(deep)) == 'Deep reasoning'
+    stops = {r[0] for r in config_mod.frontier_rows()}
+    assert 'claude-opus-5-5' in stops and 'claude-opus-5' not in stops
+    assert config_mod.advise('claude-opus-5-5', 'low')[0] == 'tip'
+    assert config_mod.advise('claude-opus-5-5', 'xhigh') == config_mod.advise('claude-opus-5', 'xhigh')
+    # a saved pin on the old generation still gets a card to be selected by
+    cards = [r[0] for r in config_mod.model_card_rows('claude-opus-5')]
+    assert 'claude-opus-5' in cards and 'claude-opus-5-5' in cards

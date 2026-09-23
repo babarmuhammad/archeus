@@ -44,6 +44,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   for them without naming one, so it showed the default account's answer whenever another
   account was selected.
 
+- **A new model release no longer breaks the launch window.** When Opus 5.5 and Fable 5.1
+  reached the model list, the quick-start presets, the Power slider and Adjust power went on
+  naming Opus 5 and Fable 5. Picking the Deep reasoning preset selected no model, and pinning
+  Opus 5.5 left the preset's model printed under the Power bar. The presets and slider stops
+  now follow the newest model in each family, the advice covers new versions, and the readout
+  under the slider shows the model you pinned.
+
 ## [2.6.0] - 2026-09-17
 
 ### Changed

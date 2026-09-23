@@ -18,7 +18,7 @@ def test_cap_bar():
 
 def test_advisor_flags_suboptimal_and_confirms_good():
     lvl, msg = c.advise('claude-opus-5', 'low')
-    assert lvl == 'tip' and 'Sonnet 5' in msg           # names the better option
+    assert lvl == 'tip' and 'Sonnet' in msg           # names the better option
     assert c.advise('claude-sonnet-5', 'xhigh')[0] == 'warn'
     assert 'Opus' in c.advise('claude-sonnet-5', 'xhigh')[1]
     assert c.advise('claude-haiku-4-5', 'max')[0] == 'warn'

@@ -177,7 +177,7 @@ def test_advisor_warns_on_bad_combo(monkeypatch, tmp_path):
                 UP, RIGHT,                    # back to effort, -> low
                 ESC)
     _, cap = run_menu(monkeypatch, keys)
-    assert 'Sonnet 5' in cap.plain and 'tip:' in cap.plain    # advises the cheaper equivalent
+    assert 'Sonnet · high' in cap.plain and 'tip:' in cap.plain    # advises the cheaper equivalent
 
 
 def test_guide_overlay_and_no_emoji(monkeypatch, tmp_path):
