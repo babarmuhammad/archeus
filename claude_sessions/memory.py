@@ -467,7 +467,7 @@ def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
     global last_call_error, last_call_cancelled
     last_call_cancelled = False
     from .config import get_claude_exe
-    from .sessions import HEADLESS_MARK
+    from .llmcall import build_headless_args
     last_call_error = ''
     exe = get_claude_exe()
     if not exe:
@@ -475,8 +475,6 @@ def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
         from . import events
         events.record('memory', last_call_error)
         return ''
-    prompt = (prompt or '') + '\n\n' + HEADLESS_MARK
-    args = [exe, '-p', '--max-turns', '20', '--disallowedTools', 'Write,Edit,NotebookEdit,Bash']
     m = extract_model() if model is None else (model or '').strip()
     try:
         env, m = _provider_headless(m)
@@ -496,10 +494,8 @@ def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
     # FOREGROUND path an account at all — it used to pass none.
     if env is None:
         env = getattr(_tls, 'env', None)
-    if m:
-        args += ['--model', m]
-    args += _budget_args()
-    args += list(extra_args)
+    # the argv and the HEADLESS_MARK live in the UI-free llmcall seam
+    args, prompt = build_headless_args(exe, prompt, m, _budget_args(), extra_args)
     if getattr(_tls, 'silent', False):
         from .gui_api import _run_cancellable
         try:

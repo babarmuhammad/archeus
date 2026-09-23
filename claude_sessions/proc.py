@@ -15,7 +15,7 @@ import time
 
 __all__ = ['run', 'git', 'pid_alive', 'kill_tree', 'spawn_terminal',
            'spawn_detached', 'wait_and_run', 'python_exe', 'new_console_flags',
-           'no_window_flags', 'WINDOWS']
+           'no_window_flags', 'WINDOWS', 'process_create_time', 'kill_pid_tree']
 
 WINDOWS = os.name == 'nt'
 
@@ -137,7 +137,94 @@ def pid_alive(pid):
         return None
 
 
-def spawn_detached(argv, *, cwd=None, env=None, log=None):
+def process_create_time(pid):
+    """When process *pid* was created, as an opaque comparable value, or None
+    when it does not exist or cannot be read.
+
+    A PID alone does not name a process: the OS reuses them, so a PID recorded
+    before a restart can belong to a stranger by the time it is used. The pair
+    (pid, create time) does. Only equality between two readings of the same
+    platform is meaningful — the value is not a timestamp to display.
+    """
+    try:
+        pid = int(pid)
+    except Exception:
+        return None
+    if pid <= 0:
+        return None
+    if WINDOWS:
+        try:
+            import ctypes
+            from ctypes import wintypes
+            k32 = ctypes.windll.kernel32
+            h = k32.OpenProcess(0x1000, False, pid)   # QUERY_LIMITED_INFORMATION
+            if not h:
+                return None
+            try:
+                code = ctypes.c_ulong()
+                if not k32.GetExitCodeProcess(h, ctypes.byref(code)) or code.value != 259:
+                    return None                        # exited: nothing to match
+                t = [wintypes.FILETIME() for _ in range(4)]
+                if not k32.GetProcessTimes(h, *[ctypes.byref(x) for x in t]):
+                    return None
+                return (t[0].dwHighDateTime << 32) | t[0].dwLowDateTime
+            finally:
+                k32.CloseHandle(h)
+        except Exception:
+            return None
+    try:
+        with open('/proc/%d/stat' % pid, encoding='utf-8', errors='replace') as f:
+            # field 22 (starttime); split after the ')' that ends comm, which
+            # may itself contain spaces or parentheses
+            return int(f.read().rsplit(')', 1)[1].split()[19])
+    except Exception:
+        pass
+    try:                                              # macOS / BSD: no /proc
+        # `-p<pid>` attached: a bare '-p' element is what the headless-claude
+        # spawn gate (test_primitives) looks for, and this is not one
+        r = subprocess.run(['ps', '-o', 'lstart=', '-p%d' % pid],
+                           capture_output=True, text=True, timeout=5,
+                           creationflags=no_window_flags)
+        return r.stdout.strip() or None
+    except Exception:
+        return None
+
+
+def kill_pid_tree(pid, create_time):
+    """Kill process *pid* and everything it spawned — only if it is still the
+    process that was created at *create_time*. Returns True when a kill was
+    issued, False when it was refused (unknown/None create time, no such
+    process, or a PID that now belongs to a different process).
+
+    The counterpart of `kill_tree` for a process this interpreter did not
+    start, or started before a restart: there is no Popen to ask, only a
+    recorded (pid, create time) pair.
+    """
+    # ponytail: the check and the kill are two steps, so a PID recycled in the
+    # microseconds between them is not caught; closing that needs a handle-based
+    # kill of the whole tree (Job Objects on Windows).
+    if create_time is None:
+        return False
+    current = process_create_time(pid)
+    if current is None or current != create_time:
+        return False
+    pid = int(pid)
+    try:
+        if WINDOWS:
+            r = subprocess.run(['taskkill', '/F', '/T', '/PID', str(pid)],
+                               capture_output=True, creationflags=no_window_flags)
+            return r.returncode == 0
+        if os.getpgid(pid) == pid:
+            # it leads its own group (spawn_detached's start_new_session)
+            os.killpg(pid, 15)
+        else:
+            os.kill(pid, 15)
+        return True
+    except Exception:
+        return False
+
+
+def spawn_detached(argv, *, cwd=None, env=None, log=None, stdin_path=None):
     """Start *argv* with no console and no tie to this process.
 
     Returns (Popen|None, error) — the same shape as spawn_terminal, because
@@ -150,7 +237,16 @@ def spawn_detached(argv, *, cwd=None, env=None, log=None):
     *log* is a file to append the output to, since a detached child has
     nowhere else to put it and its failure is the only record of why an
     upgrade did not happen.
+
+    *stdin_path* is a file the child reads as its stdin (a headless `claude -p`
+    takes its prompt there). Default: no stdin, as before.
     """
+    source = subprocess.DEVNULL
+    if stdin_path:
+        try:
+            source = open(stdin_path, 'rb')
+        except Exception as e:
+            return None, str(e)
     sink = subprocess.DEVNULL
     if log:
         try:
@@ -158,7 +254,7 @@ def spawn_detached(argv, *, cwd=None, env=None, log=None):
             sink = open(log, 'ab')
         except Exception:
             sink = subprocess.DEVNULL
-    kw = {'cwd': cwd, 'env': env, 'stdin': subprocess.DEVNULL,
+    kw ={'cwd': cwd, 'env': env, 'stdin': source,
           'stdout': sink, 'stderr': subprocess.STDOUT}
     if WINDOWS:
         kw['creationflags'] = detached_flags
@@ -169,11 +265,12 @@ def spawn_detached(argv, *, cwd=None, env=None, log=None):
     except Exception as e:
         return None, str(e)
     finally:
-        if sink is not subprocess.DEVNULL:
-            try:
-                sink.close()          # the child holds its own handle now
-            except Exception:
-                pass
+        for f in (sink, source):
+            if f is not subprocess.DEVNULL:
+                try:
+                    f.close()         # the child holds its own handle now
+                except Exception:
+                    pass
 
 
 def python_exe():
