@@ -33,7 +33,9 @@ other is a bug.
    promoted by the user (spec §8: "inferred assumptions must remain distinguishable").
 5. **IDs.** ULIDs (time-sortable, 26 chars, generated in stdlib from `time` + `secrets`),
    prefixed by kind: `msn_…`, `tsk_…`, `exe_…`. Events use an integer sequence (the SSE
-   cursor) plus a ULID.
+   cursor) plus a ULID. One prefix names one kind (`archeus/core/domain/ids.py`). Credentials
+   are not ids: token prefixes (`dev_`, `node_`, `hook_` — api-and-realtime §5.3) are a
+   separate namespace that shares no prefix with any id, so `exe_…` is always an Execution.
 6. **Versioned rows.** Every entity table has `version INTEGER` (optimistic concurrency —
    commands carry `expected_version`), `created_at`, `updated_at`, and where deletion is
    user-visible, `archived_at` (soft delete).
@@ -252,6 +254,13 @@ An executable unit in the plan's DAG.
 | `max_attempts` | default 2 |
 | `estimate` | relative weight for progress |
 | `state` | Task machine |
+| `integration_state` | Integration machine (state-machines §13): the merge-back of this task's worktree branch into the mission branch. NULL when `workspace_mode = in_place`. Arrives with the machine in P13 |
+
+**Integration is not an entity.** It is a lifecycle *of a task* — a task has at most one
+merge-back, and its CONFLICT blocks that task — so it is a second state column on Task, the
+same pattern as `Repository.architecture_state`. (The other use of the word, a *harness
+integration* such as the recall hook or `.claude/rules` files, is a capability of a Harness,
+configured under Resources, not a row.)
 
 ### 7.4 Execution — one concrete attempt
 

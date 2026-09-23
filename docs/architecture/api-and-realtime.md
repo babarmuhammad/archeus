@@ -176,8 +176,12 @@ user runs.
    off by default and can be granted from the desktop.
 4. Redeem is rate-limited (5 attempts/min per IP-hash, 20/day per code window).
 
-Tokens are typed (`dev_…`, `node_…`, `exe_…`) and verified with `hmac.compare_digest` on bytes.
-Execution tokens are minted per execution with scopes report/checkpoint/request_approval and die
+Tokens are typed (`dev_…` device, `node_…` node, `hook_…` execution hook token) and verified
+with `hmac.compare_digest` on bytes. Token prefixes are a namespace of their own, disjoint from
+entity-id prefixes: `exe_…` is always an Execution **id**, never a credential (both tables live
+in `archeus/core/domain/ids.py`, and a test fails if they overlap).
+Execution hook tokens (`hook_…`, delivered as `ARCHEUS_HOOK_TOKEN`) are minted per execution with
+scopes report/checkpoint/request_approval and die
 with the execution.
 
 ### 5.4 Notifications

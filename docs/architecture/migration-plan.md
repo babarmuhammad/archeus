@@ -215,7 +215,13 @@ keep modules marked REUSE.
 
 Every phase that touches user data is additive until P22: V1 reads legacy stores and writes only
 `ARCHEUS_HOME` (target-architecture §5.1) plus the two shared files of §5. Rolling back = stop
-using V1; delete the `ARCHEUS_HOME` directory to reset. **Never** delete `~/.archeus/`: that is
-a legacy per-project workdir. After cutover,
+using V1 (stop Core first). To reset V1, remove only the V1-owned entries of
+target-architecture §5.1 — `archeus.db` and its `-wal`/`-shm` files, `artifacts/`, `backups/`,
+`logs/`, `run/` and `worktrees/` (remove its worktrees with `git worktree remove` first, so the
+repositories do not keep stale entries). Only V1's entries are ever removed, by name: the
+`ARCHEUS_HOME` directory as a whole is **never** deleted, because the legacy Qt shell keeps its
+`cache/` there. **Never** delete `~/.archeus/` either: that is a legacy per-project workdir. The
+two shared files of §5 are not reset: they belong to the legacy functions that write them.
+After cutover,
 `archeus migrate --export-legacy` re-emits legacy formats (graph.json, lessons) from V1 knowledge
 for 90 days.

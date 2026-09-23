@@ -491,7 +491,8 @@ stateDiagram-v2
     ABANDONED --> [*]
 ```
 
-Only Core merges (executions have no rights to the main branch). CONFLICT sets the owning task
+The machine is held on `Task.integration_state` (domain-model §7.3), not on an entity of its
+own. Only Core merges (executions have no rights to the main branch). CONFLICT sets the owning task
 BLOCKED and creates a follow-up `code_change` task "resolve conflict" in the same plan.
 `git_commit` on the main branch and `git_push` are separate action classes evaluated by policy
 at MERGING time.

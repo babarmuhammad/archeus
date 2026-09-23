@@ -160,10 +160,6 @@ no vector store in V1 (ADR-0012, ADR-0013).
   validated against JSON schemas in `core/brain/schemas/`, then applied as commands by Core.
   The brain's principal can *propose*; it can never approve. Brain calls are **tool-less
   structured calls** (§31.4): they need the ADR-0021 gate but not P9; until P10 the account is
-  chosen by legacy `rotate.elect()` + `quota.reason()`. Brain calls are **tool-less
-  structured calls** (§31.4): they need the ADR-0021 gate but not P9; until P10 the account is
-  chosen by legacy `rotate.elect()` + `quota.reason()`. Brain calls are **tool-less
-  structured calls** (§31.4): they need the ADR-0021 gate but not P9; until P10 the account is
   chosen by legacy `rotate.elect()` + `quota.reason()`.
 - Progress is computed from the task DAG weighted by estimates — never reported by an agent.
 
@@ -334,7 +330,7 @@ pool, leader-tab stream sharing.
 
 | Concern | Design |
 |---|---|
-| Authentication | device tokens (typed `dev_`/`node_`/`exe_`, 256-bit, hashed at rest, `hmac.compare_digest` on bytes); local token via 0600 discovery file; pairing with 2-minute single-use rate-limited codes shown only in a local session |
+| Authentication | device tokens (typed `dev_`/`node_`/`hook_`; token prefixes never reuse an entity-id prefix; 256-bit, hashed at rest, `hmac.compare_digest` on bytes); local token via 0600 discovery file; pairing with 2-minute single-use rate-limited codes shown only in a local session |
 | Authorization | Principal scopes (observe/control/approve/admin; propose for brain; report/checkpoint/request_approval for executions); route table declares the required scope per route |
 | Transport | loopback by default; remote only via HTTPS tunnel; Host/Origin allowlist includes paired hostnames only; fetch-metadata allowlist for browsers; never trust source address; tokens never in query strings |
 | Web | strict CSP `script-src 'self'`, no inline handlers; agent output rendered as text or sanitised markdown; approval cards show canonical actions, never model prose alone |
@@ -484,10 +480,6 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 **P3 — State machines**
 - Depends: P2. New: `transition()`, guards, all machines of state-machines.md. Guards that
   consult policy, router or verification (e.g. `plan_auto_approved`) call the P1 ports, so they
-  run against the stubs until P9/P10/P13 replace them. Guards that
-  consult policy, router or verification (e.g. `plan_auto_approved`) call the P1 ports, so they
-  run against the stubs until P9/P10/P13 replace them. Guards that
-  consult policy, router or verification (e.g. `plan_auto_approved`) call the P1 ports, so they
   run against the stubs until P9/P10/P13 replace them.
 - Tests: every edge allowed, every non-edge rejected (generated), guards pure.
 - Acceptance: illegal transitions return 422 with machine/from/to.
@@ -532,8 +524,6 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 **P6 — Knowledge and learning**
 - Depends: P5. New: `knowledge/*` (items, relations, promote, forget, ingest), learning pass
   consumer; meeting import. Decision-candidate extraction from notes is a tool-less structured
-  call (§31.4); tests use the scripted brain. Decision-candidate extraction from notes is a tool-less structured
-  call (§31.4); tests use the scripted brain. Decision-candidate extraction from notes is a tool-less structured
   call (§31.4); tests use the scripted brain.
 - Tests: supersession chains, corroboration gating, forget dry-run, idempotent import.
 - Acceptance: S8, S9 pass.
@@ -695,36 +685,14 @@ Rules:
   intended subscription workflow is not allowed, the architecture stays as it is and the
   accounts used for both real classes are API-key/provider accounts; subscription accounts
   remain available for the user's own interactive and manual sessions.
-
-### 31.4 Model-call classes and the provider-terms gate
-
-| Class | What it is | Allowed from | Gate | Account before P10 | Controls |
-|---|---|---|---|---|---|
-| **Fake / scripted** | fake harness subprocess, scripted brain, stub verifier/review | P1 | none — unrestricted for architecture and acceptance testing | n/a | never spawns a real CLI (the test guard in `conftest.py` still blocks real `claude`) |
-| **Tool-less structured call** | one headless `claude -p` (or provider) call with a JSON schema: brain, planner, inspection model pass, decision extraction, review judge | the phase that needs it (P4 optional, P6, P7) | **ADR-0021 must be passed first** | legacy `rotate.elect()` + `quota.reason()`; recorded as a pre-router RouteDecision | only through the P0.5 `llmcall` runner: write tools disallowed (`Write,Edit,NotebookEdit,Bash`), `--max-turns`, budget args, `HEADLESS_MARK`, quota latch on failure |
-| **Tool-using agent execution** | a harness running a task with tools in a workdir | **P11, after P9** | ADR-0021 **and** the real policy engine (the adapter registry refuses real adapters while policy is the stub) | router (P10) | capability removal, policy hook/sandbox, approvals |
-
-Rules:
-- P0.5–P3.5 make no real model call and proceed without the provider-terms gate.
-- Nothing assumes subscription-account automation is permitted. If ADR-0021 concludes the
-  intended subscription workflow is not allowed, the architecture stays as it is and the
-  accounts used for both real classes are API-key/provider accounts; subscription accounts
-  remain available for the user's own interactive and manual sessions.
-
-### 31.4 Model-call classes and the provider-terms gate
-
-| Class | What it is | Allowed from | Gate | Account before P10 | Controls |
-|---|---|---|---|---|---|
-| **Fake / scripted** | fake harness subprocess, scripted brain, stub verifier/review | P1 | none — unrestricted for architecture and acceptance testing | n/a | never spawns a real CLI (the test guard in `conftest.py` still blocks real `claude`) |
-| **Tool-less structured call** | one headless `claude -p` (or provider) call with a JSON schema: brain, planner, inspection model pass, decision extraction, review judge | the phase that needs it (P4 optional, P6, P7) | **ADR-0021 must be passed first** | legacy `rotate.elect()` + `quota.reason()`; recorded as a pre-router RouteDecision | only through the P0.5 `llmcall` runner: write tools disallowed (`Write,Edit,NotebookEdit,Bash`), `--max-turns`, budget args, `HEADLESS_MARK`, quota latch on failure |
-| **Tool-using agent execution** | a harness running a task with tools in a workdir | **P11, after P9** | ADR-0021 **and** the real policy engine (the adapter registry refuses real adapters while policy is the stub) | router (P10) | capability removal, policy hook/sandbox, approvals |
-
-Rules:
-- P0.5–P3.5 make no real model call and proceed without the provider-terms gate.
-- Nothing assumes subscription-account automation is permitted. If ADR-0021 concludes the
-  intended subscription workflow is not allowed, the architecture stays as it is and the
-  accounts used for both real classes are API-key/provider accounts; subscription accounts
-  remain available for the user's own interactive and manual sessions.
+- The adapter-registry check ("refuses real adapters while policy is the stub") is a
+  **lifecycle safety gate, not a security or trust boundary**. It fails closed: only the
+  `FakeHarness` class itself is admitted, a policy counts as real only when it declares
+  `is_stub = False` exactly, and the check runs at registration and on every lookup. But
+  `is_stub` is a declaration by code in this repository, so the gate stops a phase from wiring
+  up a real adapter early by mistake; it cannot stop code that lies. Whether an action is
+  allowed is decided by the P9 Policy engine, with capability removal
+  ([execution-architecture.md §2](execution-architecture.md)) as the primary enforcement.
 
 ## 32. Risks
 
@@ -928,6 +896,11 @@ reused module; reads of `memory`, `gui_api`, `quota`, `proc`, `connections`, the
 | L5 | LOW | "replies stream in" vs ids-only events | replies arrive as whole messages in V1 (ui-architecture §4.1) |
 | L6 | LOW | rotation threshold mapped to allocation 98 vs default 80 | import sets allocation 80 and records the old threshold for review (migration-plan §4) |
 | L7 | LOW | "every entity" vs "defer fields" in P1 | every entity with minimal fields (§31.1 P1) |
+| C1 | LOW | P1 checkpoint: the correction patch inserted four passages three times (§11 brain paragraph, P3 guard sentence, P6 extraction sentence, §31.4) | duplicates removed; text unchanged |
+| C2 | MEDIUM | P1 checkpoint: `exe_` named both the Execution id and the execution token | execution tokens are `hook_…` (the existing `ARCHEUS_HOOK_TOKEN`); token prefixes are a namespace disjoint from id prefixes (domain-model §1, api-and-realtime §5.3, `ids.TOKEN_PREFIXES`) |
+| C3 | MEDIUM | P1 checkpoint: the legacy Qt shell's cache already lives in `%LOCALAPPDATA%\Archeus`; "delete `ARCHEUS_HOME`" would have deleted it | per-entry ownership table (target-architecture §5.1); reset removes V1 entries by name (migration-plan §7) |
+| C4 | LOW | P1 checkpoint: the stub-policy adapter gate could be read as a security boundary | stated as a lifecycle safety gate; authority is the P9 engine plus capability removal (§31.4) |
+| C5 | LOW | P1 checkpoint: the Integration machine had no host entity | it is `Task.integration_state`, not an entity (domain-model §7.3, state-machines §13) |
 
 No phase, technology or feature was added; P3.5 gained the minimal local node it always
 implicitly needed to run the fake harness, taken from P11's scope.

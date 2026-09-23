@@ -34,6 +34,48 @@ def _package_data_globs():
     return re.findall(r'"([^"]+)"', body)
 
 
+def _declared_packages():
+    import re
+    text = open(os.path.join(ROOT, 'pyproject.toml'), encoding='utf-8').read()
+    body = text[text.index('[tool.setuptools]'):]
+    body = body[body.index('packages = ['):]
+    return re.findall(r'"([^"]+)"', body[:body.index(']') + 1])
+
+
+def test_the_declared_packages_are_exactly_the_packages_on_disk():
+    """`packages` does not recurse, so an `archeus` subpackage missing from the
+    list imports fine from the source tree and is simply absent from the wheel
+    — the skills_templates failure again, one level up. The other direction
+    catches a listed package that was renamed or deleted."""
+    on_disk = set()
+    for top in ('claude_sessions', 'archeus'):
+        for d, subdirs, files in os.walk(os.path.join(ROOT, top)):
+            subdirs[:] = [s for s in subdirs if s != '__pycache__']
+            if '__init__.py' in files:
+                on_disk.add(os.path.relpath(d, ROOT).replace(os.sep, '.'))
+    assert set(_declared_packages()) == on_disk
+
+
+def test_the_v1_package_imports_in_a_clean_interpreter():
+    """Nothing about `archeus` may depend on having been imported after the
+    legacy UI, or on the cwd: a fresh interpreter run from elsewhere imports
+    every declared V1 module, and none of them loads the legacy UI stack."""
+    mods = ['archeus.core.domain.' + m for m in
+            ('ids', 'states', 'values', 'actions', 'entities', 'events')]
+    mods += ['archeus.core.ports', 'archeus.infra.paths', 'archeus.harnesses.base',
+             'archeus.harnesses.fake', 'archeus.harnesses.registry']
+    probe = ('import sys; sys.path.insert(0, %r)\n' % ROOT
+             + ''.join('import %s\n' % m for m in mods)
+             + "bad = [m for m in ('claude_sessions.ui', 'claude_sessions.gui_api', "
+               "'claude_sessions.main', 'claude_sessions.gui') if m in sys.modules]\n"
+               "print(bad)")
+    r = subprocess.run([sys.executable, '-c', probe], capture_output=True, text=True,
+                       encoding='utf-8', errors='ignore', timeout=60,
+                       cwd=os.path.dirname(ROOT))
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == '[]', r.stdout
+
+
 def test_every_declared_glob_matches_at_least_one_file():
     """A glob that matches nothing is invisible: the build succeeds, the wheel is
     just missing the data."""

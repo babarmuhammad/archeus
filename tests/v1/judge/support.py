@@ -1,0 +1,104 @@
+"""Helpers the judge scenarios share. Contract-level only: they use a
+`CoreClient` and the rig, never Core internals."""
+
+import time
+
+
+def wait_for(fn, timeout=30.0, interval=0.05):
+    """Poll *fn* until it returns something truthy; fail the test on timeout."""
+    deadline = time.monotonic() + timeout
+    while True:
+        got = fn()
+        if got:
+            return got
+        if time.monotonic() > deadline:
+            raise AssertionError('timed out after %.0fs waiting for %s'
+                                 % (timeout, getattr(fn, '__name__', fn)))
+        time.sleep(interval)
+
+
+def wait_state(client, mission_id, state, timeout=30.0):
+    def reached():
+        m = client.get_mission(mission_id)
+        return m if m['state'] == state else None
+    reached.__name__ = 'mission %s -> %s' % (mission_id, state)
+    return wait_for(reached, timeout)
+
+
+def events_of(client, type_, after=0):
+    return [e for e in client.events(after) if e['type'] == type_]
+
+
+def mission_states(client, mission_id):
+    """The `to` of every mission.state_changed for one mission, in order."""
+    return [e['payload']['to'] for e in events_of(client, 'mission.state_changed')
+            if e['subject']['id'] == mission_id]
+
+
+class Rig:
+    """What a scenario controls besides Core: the fake harness's scripts, fake
+    usage and fake time, and Core's own process (testing-strategy §1.1 fixtures).
+
+    P1 declares it; `TempCore` (P3.5) and the phases that need each lever give
+    it bodies. Until then every lever fails loudly, like `InProcessClient`.
+    """
+
+    def _pending(self, what, phase):
+        raise NotImplementedError('judge rig: %s arrives with %s' % (what, phase))
+
+    def script_harness(self, task_key, steps):
+        """Make the fake harness run *steps* (fake_agent.py format) for a task."""
+        self._pending('scripted fake harness runs', 'TempCore (P3.5)')
+
+    def usage(self, account_id, window, utilisation_pct):
+        """Report provider usage for an account (FakeUsageFeed)."""
+        self._pending('the fake usage feed', 'P10')
+
+    def advance(self, seconds):
+        """Move fake time forward (FakeClock)."""
+        self._pending('the fake clock', 'P10')
+
+    def restart_core(self, *, kill=True):
+        """Kill (or stop) Core and start it again on the same ARCHEUS_HOME."""
+        self._pending('Core restarts', 'P2')
+
+    def fixture_repo(self, name):
+        """A throwaway git repository from tests/v1/fixtures/repos/<name>."""
+        self._pending('fixture repositories', 'P4')
+
+    def device(self, name, scopes):
+        """A paired device's own client (its token, its scopes)."""
+        self._pending('paired devices', 'P15')
+
+    def revoke(self, device):
+        self._pending('device revocation', 'P15')
+
+    def principal_client(self, kind):
+        """A client acting as a non-user principal (brain, execution, …)."""
+        self._pending('principal-scoped clients', 'P9')
+
+    def estop_without_core(self):
+        """Run `archeus estop` with Core stopped."""
+        self._pending('the Core-less e-stop', 'P11')
+
+    def http_get(self, path):
+        self._pending('raw HTTP access', 'P3.5')
+
+    def device_token(self):
+        self._pending('device tokens', 'P3.5')
+
+    def gui(self):
+        """The SPA driven by Playwright against this Core."""
+        self._pending('the SPA driver', 'P16')
+
+    def tui(self):
+        self._pending('the TUI driver', 'P17')
+
+    def cli(self, *argv):
+        self._pending('the V1 CLI', 'P3.5')
+
+    def fixture_legacy_home(self, name):
+        self._pending('fixture legacy homes', 'P22')
+
+    def import_legacy(self, legacy_home):
+        self._pending('the legacy importer', 'P22')

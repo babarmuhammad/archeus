@@ -187,6 +187,34 @@ V1's home is resolved by `archeus.infra.paths.archeus_home()` at call time:
 Every path written `<ARCHEUS_HOME>/…` in these documents means this directory. Core passes
 `ARCHEUS_HOME` to every execution it starts so hooks find the STOP sentinel without Core.
 
+**Ownership inside `<ARCHEUS_HOME>`.** The directory is not V1's alone. The legacy Qt desktop
+shell (`claude_sessions/gui_qt.py`) calls `setApplicationName('archeus')`, so Qt's per-user
+locations for it resolve to the same place: on Windows Qt keeps its cache in
+`%LOCALAPPDATA%\archeus\cache`, which NTFS (case-insensitive) makes the same directory as
+`%LOCALAPPDATA%\Archeus` — observed on the development machine holding Qt's
+`qtpipelinecache-*`; on Linux Qt's app-data location is `~/.local/share/archeus`, the V1 default
+itself. (On macOS Qt caches under `~/Library/Caches/archeus`, outside the V1 home.) Ownership is
+therefore declared per entry, once, in `archeus/infra/paths.py` (`V1_OWNED`, `QT_OWNED`), and a
+test keeps this table, that declaration and every `<ARCHEUS_HOME>/…` path in these documents in
+step:
+
+| Entry | Owner | Contents |
+|---|---|---|
+| `archeus.db` (+ `archeus.db-wal`, `archeus.db-shm`) | V1 | the database (P2) |
+| `artifacts/` | V1 | content-addressed blobs (P2) |
+| `backups/` | V1 | database backups (P2) |
+| `logs/` | V1 | Core diagnostics, `core.log` (plan §28) |
+| `run/` | V1 | liveness, process registry, per-execution files, STOP (path contract from P1) |
+| `worktrees/` | V1 | node-computed task worktrees (P11) |
+| `cache/` | legacy Qt shell | Qt/QtWebEngine pipeline and shader cache (exists today) |
+| `QtWebEngine/` | legacy Qt shell | persistent web-profile storage, if the shell ever persists a profile |
+
+Nothing is shared: no entry is written by both. Anything not listed is not V1's. Rules: V1
+creates only its own entries; V1 never writes, moves or deletes a legacy entry; and **no V1
+code, tool or instruction deletes `<ARCHEUS_HOME>` as a whole** — a reset removes V1's entries
+by name (migration-plan §7). The Qt cache stays where it is: moving it would change legacy
+behaviour for no V1 benefit, and the two sets of names do not overlap.
+
 | Store | Technology | Contents | Truth for |
 |---|---|---|---|
 | `<ARCHEUS_HOME>/archeus.db` | SQLite WAL, `PRAGMA user_version` migrations | all entities of domain-model.md, `events`, `consumer_cursors`, `consumer_effects`, `idempotency_keys` | current state, history, knowledge |

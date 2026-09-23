@@ -110,6 +110,10 @@ jobs:
           & $py -c "import claude_sessions.skills as s, glob, os, sys; d=s.bundled_templates_dir(); n=len(glob.glob(os.path.join(d,'*','SKILL.md'))); print('templates:', n, d); sys.exit(0 if n >= 8 else 1)"
           & $py -c "import claude_sessions.gui_html as g, sys; sys.exit(0 if len(g.PAGE) > 10000 and g.VENDOR_FILES else 1)"
           if ($LASTEXITCODE -ne 0) { throw 'the wheel is missing shipped data files' }
+          # the V1 package: every subpackage is listed by hand in pyproject, and
+          # the fake harness's agent is a script the adapter runs by path
+          & $py -c "import os, sys, archeus.core.ports, archeus.infra.paths, archeus.harnesses.registry, archeus.harnesses.fake as f; sys.exit(0 if os.path.isfile(f.AGENT) else 1)"
+          if ($LASTEXITCODE -ne 0) { throw 'the wheel is missing the archeus package' }
 
       # The one command a fresh install types. Run from the INSTALLED console
       # script, not from the source tree: the point is that the released

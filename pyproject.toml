@@ -81,7 +81,19 @@ dev = ["pytest"]
 gui = ["PyQt6", "PyQt6-WebEngine"]   # optional native desktop shell (gui_qt.py)
 
 [tool.setuptools]
-packages = ["claude_sessions"]
+# Listed, not discovered: `find` would also pick up tests/, tools/, www/ and
+# anything else with an __init__.py, and what ships must not depend on what
+# happens to be in the tree. `archeus` is the V1 package (ADR-0001), growing
+# beside the legacy one; every subpackage is named because `packages` does not
+# recurse. test_packaging.py fails when this list and the tree disagree.
+packages = [
+    "claude_sessions",
+    "archeus",
+    "archeus.core",
+    "archeus.core.domain",
+    "archeus.harnesses",
+    "archeus.infra",
+]
 
 [tool.setuptools.package-data]
 # The GUI is served from source files, not generated — they have to ship.
