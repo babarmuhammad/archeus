@@ -267,7 +267,7 @@ def test_worklog_endpoints(monkeypatch, tmp_path):
     actual, enc, folder, sids = _seed(sb, monkeypatch)
     # seed a worklog entry on disk
     from claude_sessions import worklog
-    worklog.add_entry(actual, {'session_id': 's1', 'ended_at': '2026-07-20T10:00:00Z',
+    worklog.add_entry(actual, {'session_id': 's1', 'ended_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                                'summary': 'did work', 'files': ['a.py']})
     srv, base = _serve()
     try:

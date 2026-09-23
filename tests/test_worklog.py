@@ -5,6 +5,7 @@ and the hook installer round-trip.
 import json
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -136,7 +137,7 @@ def test_render_digest_budget(tmp_path):
     proj.mkdir()
     for i in range(6):
         worklog.add_entry(str(proj), {'session_id': f's{i}',
-                                      'ended_at': '2026-07-20T10:00:00Z',
+                                      'ended_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                                       'summary': f'work {i}', 'files': ['x.py']})
     dig = worklog.render_digest(str(proj))
     assert dig.startswith('## Recent work')
@@ -219,7 +220,7 @@ def test_the_sessionstart_digest_carries_what_failed_last_time(tmp_path):
     proj = tmp_path / 'proj'
     proj.mkdir()
     worklog.add_entry(str(proj), {
-        'session_id': 's1', 'ended_at': '2026-09-15T10:00:00Z',
+        'session_id': 's1', 'ended_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         'summary': 'wire the parser', 'files': ['p.py'],
         'outcome': 'error', 'tool_errors': 2, 'last_error': 'boom'})
     dig = worklog.render_digest(str(proj))
