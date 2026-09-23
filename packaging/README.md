@@ -116,8 +116,8 @@ node bin/archeus.js --version
 ### Docker Hub
 
 ```bash
-docker build -t babarmuhammad/archeus:2.6.0 -t babarmuhammad/archeus:latest packaging/docker
-docker push babarmuhammad/archeus:2.6.0
+docker build -t babarmuhammad/archeus:2.7.0 -t babarmuhammad/archeus:latest packaging/docker
+docker push babarmuhammad/archeus:2.7.0
 docker push babarmuhammad/archeus:latest
 ```
 
@@ -135,7 +135,7 @@ cargo publish
 ```bash
 cd packaging/rubygems
 gem build archeus.gemspec
-gem push archeus-2.6.0.gem
+gem push archeus-2.7.0.gem
 ```
 
 `gem signin` first, and **answer `y` to "Do you want to customise scopes?"**, then
@@ -148,7 +148,7 @@ action on this gem`, which reads like an ownership problem and is not one.
 ```bash
 cd packaging/nuget
 nuget pack archeus.nuspec
-dotnet nuget push archeus.2.6.0.nupkg --source https://api.nuget.org/v3/index.json --api-key <key>
+dotnet nuget push archeus.2.7.0.nupkg --source https://api.nuget.org/v3/index.json --api-key <key>
 ```
 
 ### Packagist

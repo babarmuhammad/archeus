@@ -51,7 +51,7 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Babar Muhammad Anas" }]
 keywords = ["claude-code", "archeus", "agent-memory"]
-dependencies = ["archeus>=2.7.0"]
+dependencies = ["archeus>=2.8.0"]
 
 # Only repository links here, deliberately. This file is on the rename script's
 # SKIP list — it has to keep the old name to BE the old name — and a skipped file
