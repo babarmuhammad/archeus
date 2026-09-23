@@ -50,8 +50,8 @@ legacy module as is) · **REPLACE** (V1 has a different design; legacy stays unt
 | `config.account_env`, `all_config_dirs`, `get_config_dir` (env > setting > default) | REUSE AS-IS | exact env construction for an account | `node` env builder |
 | `accounts.py` (TUI account manager) | REPLACE | UI-only module (menus); V1 account management is API + SPA | Control → Resources |
 | `rotate.elect`, `candidates`, `used_pct`, `continue_session`, `offer` | EXTRACT | sticky election → router *affinity*; `continue_session` → checkpoint hand-off; `offer` → approval card | `routing/`, `execution/handoff.py` |
-| `quota.is_limit_error`, `is_window_limit`, `note_failure`, `worst_window`, `headroom` | REUSE WITH REFACTOR | pure detection/measurement is reused; `preflight`'s prompting (`_ask_tui`, `_ask_gui`, `_job`) is **not** — V1 asks through Approvals | `routing/allocation.py` |
-| `usage.fetch_usage` + background poller | REUSE WITH REFACTOR | fetch reused; the poller becomes a Core consumer writing UsageSnapshots; rendering helpers stay legacy | `routing/usage.py` |
+| `quota.is_limit_error`, `is_window_limit`, `note_failure`, `note_limit`, `reason` | REUSE AS-IS | detection and the shared latch are reused unchanged; `worst_window` is **not** used by the router (it reports unknown usage as 0); `preflight`'s prompting (`_ask_tui`, `_ask_gui`, `_job`) is not reused — V1 asks through Approvals | `routing/allocation.py`, `infra/llm` |
+| `usage.fetch_usage` + background poller | REUSE WITH REFACTOR | fetch reused; P10 preparation adds a public helper returning `(windows, observed_at, status)` from the poller state and `_extract_windows`; the poller runs inside Core and feeds UsageSnapshots; rendering helpers stay legacy | `routing/usage.py` |
 | `models.roster`, `family`, `config.current_model`, `MODEL_EFFORT_FRONTIER`, presets, `advise` | REUSE AS-IS | newest-model-following and effort frontier feed ModelOffers and planner tiers | `routing/`, `planning/` |
 | `limit_hook.py` (StopFailure → rotation offer) | REPLACE | V1 detects limits from the execution stream/exit and re-routes in Core | `execution/manager.py` |
 | `failover.py`, `gateway.py`, `proxy_base.py`, `omniroute.py` | REUSE AS-IS | provider proxies become *accounts* of kind `provider_proxy`; their guard layering (Host, fetch-metadata reject, bearer) is already right | Resources |
@@ -61,14 +61,14 @@ legacy module as is) · **REPLACE** (V1 has a different design; legacy stays unt
 
 | Current | Class | Reason | V1 home |
 |---|---|---|---|
-| `main.build_launch_command` (pure argv/env builder) | REUSE AS-IS | interactive attach + manual sessions | claude_code adapter (interactive) |
+| `main.build_launch_command` (pure argv/env builder) | REUSE WITH REFACTOR | the function is reusable as-is, but `main` imports the whole TUI; P11 preparation moves it (and its helpers) into a UI-free module re-exported from `main` | claude_code adapter (interactive) |
 | `main.py` TUI loop, `ui.py`, `session_menu.py`, `render.py` | REMOVE (at retirement); `render.py` REUSE | legacy TUI; V1 TUI is a new API client; `render.py` ANSI helpers and `term.py` reused | `cli/tui` |
 | `term.py` (the one POSIX/Windows key seam) | REUSE AS-IS | exactly the seam the V1 TUI needs | `cli/tui` |
 | `sessions.py`, `stats.py` (scan, parse, cost cache) | REUSE WITH REFACTOR | needed for importing history and for manual-session tracking; the stats cache ladder stays | `legacy/importers`, claude_code adapter |
 | `transcript.py`, `flowgraph.py` | REUSE AS-IS | execution tail/inspection views | adapter `inspect()` |
 | `plan_execute.py` (`_plan`, `edit_plan`, `optimize_plan_council`, `build_exec_launch`, `run`) | EXTRACT | prompts, council idea and `build_exec_launch` inform the planner and interactive hand-off; the TUI `run()` and file-based plan are replaced by Mission/Plan/Task | `planning/`, `execution/` |
 | `gui_api` job runtime (`start_job`, `_JOBS`, `_run_cancellable`, `_gate`, `_install_bridge`) | REPLACE | threads + monkeypatched TUI prompts cannot survive restarts, cannot be audited, and tie domain code to UI; V1 uses Executions, Approvals and outbox consumers | `execution`, `policy/approvals` |
-| `memory._claude_stdin` / `_claude_json` (headless structured call, `HEADLESS_MARK`) | EXTRACT | the brain's call runner; drop the UI branch (`ui.run_with_progress_stdin` vs `_run_cancellable`) and the thread-local job context | `infra/llm/runner.py`, `brain/calls.py` |
+| `memory._claude_stdin` / `_claude_json` (headless structured call, `HEADLESS_MARK`) + the process core of `gui_api._run_cancellable` | EXTRACT (P0.5) | into the UI-free `claude_sessions/llmcall.py`; the legacy functions become wrappers with unchanged behaviour. Core must never import `gui_api`: importing it runs `_install_bridge()`, which monkeypatches `ui` in the importing process | `infra/llm/runner.py` wraps `llmcall`; `brain/calls.py` |
 | `context_inject.py` (cross-account transcript hand-off) | REUSE WITH REFACTOR | injection mechanism reused; payload becomes the Core-derived checkpoint instead of a transcript dump | `execution/handoff.py` |
 | `checkpoints.py` (read-only file-history view) | REUSE AS-IS | useful evidence in the inspector (what files the session touched) | inspector |
 | `worktrees.py` | REUSE WITH REFACTOR | node-computed paths outside the repo; board logic reused for manual sessions | `node/worktrees.py` |
@@ -101,7 +101,7 @@ legacy module as is) · **REPLACE** (V1 has a different design; legacy stays unt
 | Current | Class | Reason | V1 home |
 |---|---|---|---|
 | `repos.find_git_repos` (depth 4, submodule/worktree classifier), `state()` cache, `head_branch` | REUSE AS-IS | exactly the repository registration + cheap change detection V1 needs | `world/inspection.py` |
-| `connections.build_hierarchy` (import graph: Python AST, C/C#/JS/TS regex) | REUSE WITH REFACTOR | the deterministic module graph (EXTRACTED edges); split graph building from its inline HTML renderer | `world/inspection.py` |
+| `connections.build_hierarchy` (import graph: Python AST, C/C#/JS/TS regex) | REUSE AS-IS | the deterministic module graph (EXTRACTED edges); the module is already importable without UI, so it is **not** split; it writes the shared `connections-cache.json` (§5) | `world/inspection.py` |
 | `connections.render_html`, `/graph` page | REMOVE (at retirement) | replaced by the World graph view | `clients/app/src/graph` |
 | `cluster_spec.py` + generated JS/TS | REUSE for the website only | visual geometry for the site and legacy stage; the V1 client does not use the cluster scene | www |
 | Project, Person, Organization, Meeting, Decision, System, Idea objects | NEW | | `world/`, `knowledge/` |
@@ -126,20 +126,25 @@ legacy module as is) · **REPLACE** (V1 has a different design; legacy stays unt
 | `gui_qt.py` shell | REUSE WITH REFACTOR | attach to/start Core via discovery file; load the V1 SPA; keep GPU-on policy and background colour handling | desktop shell |
 | `tools/smoke_gui.py`, `tools/shot_gui.py`, `tools/shot_tui.py` | REUSE WITH REFACTOR | point at the V1 SPA; keep floors and mutation-verified audits | `tools/` |
 
-## 3. P0.5 seams (the only legacy edits before V1 code exists)
+## 3. Legacy seams (the only legacy edits, and when they happen)
 
-Narrow on purpose: extract pure functions V1 imports; do **not** restructure code that is
-retiring.
+Narrow on purpose: extract or add what V1 needs; do **not** restructure code that is retiring.
+Verified before writing this table: `memory`, `quota`, `connections`, `proc`, `repos`, `recall`,
+`rotate`, `usage`, `models`, `harnesses` all import without loading `ui`, `gui_api` or `main`;
+`main`, `claude_md`, `hooks` and `system_prompt` load `ui` at import.
 
-| Seam | Change | Why |
-|---|---|---|
-| `proc` | add `process_create_time(pid)` and `kill_if_same(pid, create_time)` | process registry + safe kill |
-| `memory._claude_json` | split the call runner (`spawn, schema, capture, cancel via an Event param`) from the UI branch; legacy callers keep their current wrapper | the brain needs a runner with no `ui`/`gui_api` imports |
-| `quota` | move `preflight`'s decision part into a pure `assess(cfgdir) -> (ok, reason, alternatives)`; legacy `preflight` calls it and keeps prompting | router allocation step |
-| `connections` | separate `build_hierarchy` from HTML rendering (module split, re-exported) | inspection imports without the template |
+| Phase | Seam | Change | Why |
+|---|---|---|---|
+| P0.5 | headless runner | new UI-free `claude_sessions/llmcall.py`: `build_headless_args(prompt, model, extra_args) -> (args, env, prompt)` (moved from `memory._claude_stdin`: `HEADLESS_MARK`, `--max-turns 20`, `--disallowedTools Write,Edit,NotebookEdit,Bash`, provider env, budget args) and `run_headless(args, prompt, *, cwd, env, timeout, cancel: threading.Event) -> (rc, stdout, error)` (moved from `gui_api._run_cancellable`: Popen with stdin, watcher that `proc.kill_tree`s on cancel/timeout, on non-zero exit `quota.note_failure` + `events.record`). `_run_cancellable` keeps `quota.preflight` and `_JOBCTX` and calls `run_headless`; `_claude_stdin` keeps its foreground progress UI, `_tls`, `last_call_error`, `last_call_cancelled` | the silent path imports `gui_api`, whose import runs `_install_bridge()` |
+| P0.5 | process control | `proc.process_create_time(pid)`; `proc.kill_pid_tree(pid, create_time)` (no-op returning False when the create time differs); `spawn_detached(..., stdin_path=None)` (default keeps `DEVNULL`) | registry, safe kill, prompt-on-stdin for detached processes |
+| P0.5 | hook environment guard | `recall_hook`, `worklog_hook`, `memdirty_hook`: return immediately when `ARCHEUS_EXECUTION_ID` is set; `limit_hook`: keep `quota.note_limit`, skip `rotate.offer` | account-level hooks fire in every session on that account, including V1 executions |
+| P3.5 | CLI dispatch | `claude_sessions/cli.py` routes the reserved verbs `core`, `status`, `approve`, `pause`, `route`, `estop`, `pair` to `archeus.cli.main` (lazy import after the statusline check); all other verbs unchanged | today unknown verbs fall through to `main.run` |
+| P10 prep | usage snapshot | public `usage` helper `windows_snapshot(cfgdir) -> (windows, observed_at, status)` over the existing poller state and `_extract_windows` | the router must distinguish unknown from 0% |
+| P11 prep | launch builder | move `build_launch_command` and its helpers to a UI-free module re-exported from `main` (patch targets in tests checked first) | `main` imports the TUI |
 
-Not done: splitting `gui_api`, removing `_install_bridge`, moving the auto-memory scheduler. They
-retire with the legacy app; editing them is risk without V1 value.
+Not done: splitting `connections` (unnecessary; risky under this repo's import-by-value bug
+class), a `quota.assess` refactor (wrong primitive), splitting `gui_api`, removing
+`_install_bridge`, moving the auto-memory scheduler. They retire with the legacy app.
 
 ## 4. Data migration (P22)
 
@@ -148,7 +153,7 @@ fresh `archeus.db`; re-running updates, never duplicates.
 
 | Legacy data | V1 entity | Mapping |
 |---|---|---|
-| Accounts (`settings['accounts']`), homes (`settings['homes']`), provider profiles | Account (+ ResourcePolicy defaults from rotation settings: `rotate_threshold` → allocation 98 → user reviews) | `auth_kind` by harness/profile |
+| Accounts (`settings['accounts']`), homes (`settings['homes']`), provider profiles | Account + ResourcePolicy with the V1 defaults (allocation 80, reserve 10); the legacy `rotate_threshold` (default 98) is recorded on the import report for the user to review, not copied into allocation | `auth_kind` by harness/profile |
 | Encoded project folders across all accounts | Project (`legacy_enc[]`, `root_paths` from transcript `cwd`, as `paths.find_actual_path` does) | one project per real path, not per account |
 | Git repos under projects | Repository + first RepositoryInspection | via `repos.find_git_repos` |
 | `graph.json` entities/relations | KnowledgeItem type ENTITY + Relation | `valid=False` → EXPIRED; `stale` flag kept; relations EXTRACTED when from module edges, INFERRED otherwise; `status: pinned` → pinned |
@@ -172,6 +177,9 @@ fresh `archeus.db`; re-running updates, never duplicates.
 | Hooks in harness `settings.json` | legacy (hook manager) | never edits global settings; V1 executions get hooks via per-execution settings | V1 owns; one installer |
 | Accounts/homes settings | legacy | reads | V1 DB is source; legacy settings mirrored read-only for the legacy app until removal |
 | Transcripts | harness | reads | reads |
+| `<project>/.archeus/connections-cache.json` | **shared** | written through `connections.build_hierarchy` (same function, same atomic write, deterministic content) | shared |
+| `~/.claude/archeus-limits.json` (rate-limit latch) | **shared** | read and written through `quota.note_limit` / `reason` so both apps agree an account is limited | shared |
+| Legacy account hooks (`recall`, `worklog`, `memdirty`, `limit`) | legacy | stand down inside V1 executions via `ARCHEUS_EXECUTION_ID` (P0.5 guard); `limit_hook` still records the shared latch | V1 owns hook installation |
 
 V1 executions are tagged (`HEADLESS_MARK`, `ARCHEUS_EXECUTION_ID`) so legacy session lists and
 auto-memory skip them.
@@ -206,6 +214,8 @@ keep modules marked REUSE.
 ## 7. Rollback
 
 Every phase that touches user data is additive until P22: V1 reads legacy stores and writes only
-`~/.archeus/`. Rolling back = stop using V1; delete `~/.archeus/` to reset. After cutover,
+`ARCHEUS_HOME` (target-architecture §5.1) plus the two shared files of §5. Rolling back = stop
+using V1; delete the `ARCHEUS_HOME` directory to reset. **Never** delete `~/.archeus/`: that is
+a legacy per-project workdir. After cutover,
 `archeus migrate --export-legacy` re-emits legacy formats (graph.json, lessons) from V1 knowledge
 for 90 days.

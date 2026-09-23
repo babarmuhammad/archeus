@@ -52,6 +52,15 @@ clients/app/
   rule). Everything else is CSS transitions on transform/opacity.
 - Build: `npm ci && npm run build` in `release.yml` before the wheel; the wheel ships only
   `archeus/api/static/*`; a packaging test asserts no `node_modules`, sources or maps ship.
+- Toolchain: Node is a **build-time** dependency only (the Node LTS the website already builds
+  with, pinned in `clients/app/package.json` `engines` and `.nvmrc`). `archeus/api/static/` is
+  generated and gitignored; a fresh clone runs `npm ci && npm run build` in `clients/app/` once
+  before opening the V1 UI, and Core serves a plain "SPA not built" page (not an error) when the
+  directory is empty. CI: a `v1-client` job (from P3.5) runs `npm ci`, `npm run build`, the
+  generated-client freshness check and the Playwright skeleton test; the Python `test` job stays
+  Node-free.
+- Authentication: the SPA obtains its device token through the local launch-code bootstrap
+  ([api-and-realtime.md §5.1](api-and-realtime.md)) or, on a phone, through pairing.
 
 ## 3. Navigation model
 
@@ -87,8 +96,10 @@ mobile · TUI.
 - **Actions:** type intent/control verb; act on cards; dismiss digest; open any object.
 - **Core:** `GET /v1/now`, conversation queries, `POST /v1/conversations/{id}/messages`,
   `/v1/now/ack`; events `mission.*`, `message.created`, `approval.*`.
-- **Interaction:** composer always focused on arrival (desktop); replies stream in as message
-  rows with cards; the thread links replies to objects.
+- **Interaction:** composer always focused on arrival (desktop); while Archeus works the
+  message area shows specific progress text, and the reply arrives as a **whole message** row
+  with cards when `message.created` fires (events are ids-only, so V1 does not stream reply
+  tokens); the thread links replies to objects.
 - **Desktop:** wireframe A.1. **Mobile:** digest + happening now + composer; conversation below.
   **TUI:** screen `1`, conversation in a scroll pane, `:` command line.
 

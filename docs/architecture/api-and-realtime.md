@@ -42,7 +42,7 @@ mobile (ADR-0010). Push beyond ntfy is **DEFERRED**.
 | Resources | `/v1/harnesses`, `/v1/accounts`, `/v1/accounts/{id}/usage`, `/v1/models`, `/v1/route-decisions/{id}` | `accounts/register|disable|reauth`, `resource-policies/{account}` (priority/allocation/budgets), `/v1/route/preview` |
 | Policy | `/v1/policies?scope=`, `/v1/policy-decisions/{id}`, `/v1/policies/simulate` | `policies/set`, `profiles/apply` |
 | Automations | `/v1/automations`, `/v1/automations/{id}/runs` | `create`, `enable`, `disable`, `archive`, `run-now` |
-| Devices / Nodes | `/v1/devices`, `/v1/nodes` | `pair/start` (local only), `pair/redeem`, `devices/{id}/revoke`, `estop`, `rearm` |
+| Devices / Nodes | `/v1/devices`, `/v1/nodes` | `launch/code` (local token only), `launch/redeem` (loopback only), `pair/start` (local only), `pair/redeem`, `devices/{id}/revoke`, `estop`, `rearm` |
 | Events | `/v1/events?after=&limit=` (paged catch-up), `/v1/events/stream` (SSE) | — |
 | Hooks (execution scope only) | — | `/v1/hook/evaluate`, `/v1/hook/report`, `/v1/hook/checkpoint`, `/v1/hook/request-approval` |
 | System | `/v1/health`, `/v1/version` | `/v1/estop` (all executions), `/v1/rearm` |
@@ -132,9 +132,19 @@ nightly outbox consumer.
 
 ### 5.1 Local
 
-- Core binds `127.0.0.1:<port>` by default. `~/.archeus/run/core.json` (0600) holds the port.
-  The desktop shell and CLI read a **local device token** from `~/.archeus/run/local-token`
-  (0600, created at first start). Loopback is **not** trusted by itself (lesson: DNS rebinding):
+- Core binds `127.0.0.1:<port>` by default. `<ARCHEUS_HOME>/run/core.json` (0600) holds the port.
+  The CLI and TUI read a **local device token** from `<ARCHEUS_HOME>/run/local-token` (0600,
+  created at first start).
+- **Browser/SPA bootstrap (launch code).** A page cannot read that file, and the strict CSP
+  forbids injecting a token into inline script. So whoever opens the SPA locally (the desktop
+  shell, `archeus core --open`, the legacy GUI's "Open V1" link) first asks Core — authenticated
+  with the local token — for a **launch code** (random, single use, 60 s TTL) and opens
+  `http://127.0.0.1:<port>/#launch=<code>`. The fragment never reaches the server or its logs.
+  The SPA reads it, calls `POST /v1/devices/launch/redeem {code}` (accepted only from loopback
+  with a loopback Host header) and receives a device token for a `desktop`/`web` device, stores
+  it in IndexedDB, and immediately removes the fragment with `history.replaceState`. A reused or
+  expired code gets `401`; the SPA then shows "Open Archeus from the desktop app or run
+  `archeus core --open`". Remote devices never use this path; they pair (§5.3). Loopback is **not** trusted by itself (lesson: DNS rebinding):
   Host header allowlist + token, always.
 - Fetch-metadata allowlist (`Sec-Fetch-Site` ∈ same-origin/none) for browser requests, as today's
   `gui._fetch_metadata_ok`. Strict CSP: `default-src 'self'; script-src 'self'; connect-src 'self';

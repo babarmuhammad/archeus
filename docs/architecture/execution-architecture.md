@@ -31,7 +31,7 @@ Before spawn, the manager builds the environment from the task's evaluated polic
 | Network | Codex: network access off unless `web` is ALLOW. Claude Code: `WebFetch`/`WebSearch` removed from allowed tools unless `web` is ALLOW; Bash network cannot be blocked by Archeus → tasks whose policy denies network are routed only to `sandbox` harnesses (router §3) |
 | Tools | Claude Code `--allowedTools` / `--disallowedTools` derived from action classes (e.g. no `Bash` for a pure `document` task) |
 | Limits | `--max-turns` from task size; `--max-budget-usd` where the harness supports it; wall-clock timeout per task kind |
-| Tagging | `ARCHEUS_EXECUTION_ID`, `ARCHEUS_CORE_URL`, `ARCHEUS_HOOK_TOKEN` (execution-scoped, report/checkpoint/request_approval only) and the legacy `HEADLESS_MARK` so today's session lists and auto-memory skip these transcripts |
+| Tagging | `ARCHEUS_EXECUTION_ID`, `ARCHEUS_HOME`, `ARCHEUS_CORE_URL`, `ARCHEUS_HOOK_TOKEN` (execution-scoped, report/checkpoint/request_approval only) and the legacy `HEADLESS_MARK` so today's session lists and auto-memory skip these transcripts. `ARCHEUS_EXECUTION_ID` also makes the legacy account hooks stand down (P0.5 hook guard): `recall_hook`, `worklog_hook`, `memdirty_hook` skip; `limit_hook` records the shared latch but does not offer rotation |
 
 ## 3. Harness adapter contract
 
@@ -54,8 +54,8 @@ class HarnessAdapter(Protocol):
     def collect_result(self, handle) -> ExecutionResult: ...    # exit, summary, usage, artifacts, session ref
 ```
 
-`ExecutionSpec` = `{task_contract, prompt (stable prefix + variable suffix), workdir, env,
-model, effort, limits, allowed_tools, resume_ref?, hook_settings}`. `ExecutionResult` =
+`ExecutionSpec` = `{execution_id, task_contract, prompt (stable prefix + variable suffix),
+workdir, env, model, effort, limits, allowed_tools, resume_ref?, hook_settings}`. `ExecutionResult` =
 `{exit_reason, reported_summary, usage, session_ref, transcript_path, files_changed?}` — the
 reported summary is **never** the completion signal (verification is).
 
@@ -70,6 +70,25 @@ reported summary is **never** the completion signal (verification is).
 Hooks are installed **per execution** through the settings file passed at start, not by editing
 the user's global `settings.json`, so V1 executions never collide with legacy hook ownership
 (ADR-0019).
+
+### 3.1 Process I/O contract (frozen in P1, same for every adapter including `fake`)
+
+All files live in `<ARCHEUS_HOME>/run/exec/<execution_id>/`:
+
+| File | Written by | Purpose |
+|---|---|---|
+| `spawning` | spawner, **before** the process is created | marker `{execution_id, attempt, at}`; its presence without `ended` means "a process may exist" |
+| `prompt.txt` | spawner | the prompt; the process reads it as **stdin** (`proc.spawn_detached(..., stdin_path=)`), which avoids command-line length limits and survives Core restarts |
+| `stream.jsonl` | the process (stdout and stderr redirected) | the normalised event stream Core **tails**; never a pipe, so a restarted Core can re-attach |
+| `pid.json` | spawner, immediately after creation | `{pid, create_time}`; also appended to `run/processes.jsonl` |
+| `ended` | Core, when the exit is observed | `{exit_code, at}` tombstone |
+
+Spawn rule (idempotent under outbox re-delivery): if `spawning` exists without `ended`, the
+spawner **does not spawn again**; it hands the execution to reconciliation, which adopts the
+process named by `pid.json` (pid and create time match and `stream.jsonl` is still growing) or,
+when `pid.json` is missing (crash between creation and recording), marks the execution LOST,
+kills any process that match the recorded argv in the execution's workdir if one can be
+identified, and never re-spawns into the same worktree without a new attempt number.
 
 ## 4. Process lifecycle
 
@@ -94,16 +113,18 @@ sequenceDiagram
     W-->>M: task → VERIFYING
 ```
 
-- **Registry.** `~/.archeus/run/processes.jsonl` lines `{execution_id, pid, create_time, argv0,
+- **Registry.** `<ARCHEUS_HOME>/run/processes.jsonl` lines `{execution_id, pid, create_time, argv0,
   started_at}`; tombstoned on exit. It exists so `archeus estop` and boot reconciliation work
-  without the database.
+  without the database. Per-execution files (§3.1) carry the spawning marker and the stream.
 - **Boot reconciliation.** For every execution in STARTING/RUNNING/PAUSING/LOST: check pid +
   `create_time` (Windows: `GetProcessTimes` via `ctypes`; POSIX: `/proc/<pid>/stat` or `ps`).
-  Alive and the stream file still growing → adopt (re-attach the stream reader). Dead → derive a
-  checkpoint, mark ENDED_ERROR or LOST → task retry per policy. INTENT with no process →
-  ABANDONED.
-- **Stop.** `stop` → hook halt flag (graceful, ≤ `grace_s`) → `proc.kill_tree` by pid after
-  verifying `create_time` (never kill a recycled PID).
+  Alive and `stream.jsonl` still growing → adopt (resume tailing from the last offset Core
+  recorded). Dead → derive a
+  checkpoint, mark ENDED_ERROR or LOST → task retry per policy. INTENT rows follow the
+  spawning-marker rule of §3.1 (no marker → ABANDONED; marker without `pid.json` → LOST;
+  marker with `pid.json` → adopt or kill).
+- **Stop.** `stop` → hook halt flag (graceful, ≤ `grace_s`) → `proc.kill_pid_tree(pid,
+  create_time)` (P0.5 seam; refuses a recycled PID).
 - **Pause.** cooperative (state-machines §4). The mission shows "pausing…" until every execution
   reports PAUSED or escalates to stop at `pause_timeout`.
 
@@ -156,7 +177,9 @@ pause-timeout stop, failure, user request "continue in a fresh session".
 
 **Context pressure signal** (headless): after each assistant message in stream-json,
 `pressure = (usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens)
-/ model.context_window` (window from `models.roster`). Backstops: the PreCompact hook fires →
+/ model.context_window` (window from the live catalogue's `max_input_tokens` via `models`;
+when the catalogue is unreachable, a bundled per-family fallback table, and if the model is
+unknown the smallest window in that table, so pressure is over- rather than under-estimated). Backstops: the PreCompact hook fires →
 treat as pressure 0.9; a `compact_boundary` event → record that compaction happened (the
 execution continues; the checkpoint is still derived at the next boundary). Bounded tasks and
 `--max-turns` keep pressure rare — hand-off is the exception path, not the design.
@@ -170,7 +193,7 @@ already full:
 | completed_steps | task graph + events |
 | files_changed | `git diff --stat` + diff artifact in the workdir |
 | verification | latest Verification rows |
-| decisions | `report_decision` calls the agent made through the execution-scoped API during the run, plus DECISION items created in the mission |
+| decisions | V1: every line of the agent's output that begins with `DECISION:` (the task contract instructs the agent to state decisions that way), parsed from `stream.jsonl` by the adapter, plus DECISION items Core created in the mission. An execution-scoped decision API is not in V1 |
 | open_problems | failing checks, hook denials, last error |
 | next_action | planner's next step for the task; if unknown, "continue the task from the diff" |
 | relevant_context_refs | context package ids used, re-assembled for the next execution |
@@ -187,7 +210,7 @@ has 83k tokens" (spec §17).
 ## 7. Worktrees and merge-back
 
 - Code-change tasks run in a worktree at a **node-computed path**:
-  `~/.archeus/worktrees/<project-slug>/<mission-id>/<task-key>` (outside the repository, as
+  `<ARCHEUS_HOME>/worktrees/<project-slug>/<mission-id>/<task-key>` (outside the repository, as
   Vicoa does), branch `archeus/<mission-id>/<task-key>`. Removal is allowed only for paths the
   node created *and* `git worktree list` confirms (reuses `worktrees.py` helpers and the
   `.git`-is-a-file classifier from `repos.py`).
@@ -228,11 +251,23 @@ nodes (a second PC, a server) — specified now so V1 code does not assume local
 
 Two paths, both documented in the UI:
 
-1. **Core running:** "Stop everything" (desktop, phone, CLI `archeus pause all --now`) → all
-   executions STOPPING; automations DISABLED; new routing refused until the user re-arms.
+1. **Core running:** "Stop everything" (desktop, phone, CLI `archeus pause all --now`) → Core
+   writes the STOP sentinel, moves all executions to STOPPING, disables automations and refuses
+   new routing until the user re-arms.
 2. **Core down or unreachable:** `archeus estop` (or the desktop shell's tray item, which runs
-   the same code) writes `~/.archeus/run/STOP` — the fail-closed hook halts every Archeus
-   execution at its next tool call — and kills every live process in `processes.jsonl` whose
-   create_time matches. Remote stop from a phone needs Core running; the docs and the pairing
-   screen say so plainly. Worst case with Core down is bounded by capability removal (no push, no
-   deploy) and the STOP sentinel.
+   the same code, dispatched without starting Core) writes `<ARCHEUS_HOME>/run/STOP` and kills
+   every live process in `processes.jsonl` whose create_time matches (`kill_pid_tree`).
+
+Semantics:
+- **Hook-enforced harnesses** (Claude Code): the policy hook checks the sentinel first, using
+  the `ARCHEUS_HOME` the execution was started with, so it halts at the next tool call even with
+  Core down.
+- **Sandbox harnesses** (Codex) have no per-call hook: the sentinel cannot reach them; they are
+  stopped only by the registry kill.
+- **The sentinel persists.** Core starting with `STOP` present comes up **disarmed**: it
+  reconciles and reports, but starts no execution, fires no automation and refuses routing until
+  an explicit `rearm` from a user device with the `control` scope, which deletes the sentinel
+  and records an event.
+- Remote stop from a phone needs Core running; the docs and the pairing screen say so plainly.
+  Worst case with Core down is bounded by capability removal (no push, no deploy), the sentinel
+  (hook harnesses) and the registry kill (all harnesses).

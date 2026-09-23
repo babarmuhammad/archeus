@@ -84,12 +84,14 @@ flowchart TB
 ## 3. Package layout
 
 A **new top-level import package `archeus/`** lives beside `claude_sessions/` (strangler fig,
-ADR-0001). It also ends the hazard where the current distribution and its predecessor install
-the same `claude_sessions` import package (uninstalling one deletes the other).
+ADR-0001). New code therefore does not add to the hazard where the current distribution and its
+predecessor install the same `claude_sessions` import package; the legacy package keeps that
+hazard until it retires.
 
 ```text
 archeus/
 ├── core/
+│   ├── ports.py           Policy/Router/Brain/Verifier/Review/Node interfaces + P1 stubs
 │   ├── domain/            entities.py  values.py  states.py (all machines, one table)
 │   │                      events.py (event type registry)  actions.py (action classes)
 │   │                      ids.py (ULID)
@@ -107,6 +109,7 @@ archeus/
 │   ├── automation/        matcher.py  scheduler.py  guard.py
 │   └── brain/             calls.py (structured-output runner)  schemas/ (JSON schemas)
 ├── infra/
+│   ├── paths.py           ARCHEUS_HOME resolver (a function, never an import-time constant)
 │   ├── db/                connection.py  writer.py  migrations/NNNN_*.sql  backup.py
 │   ├── eventlog/          outbox.py  consumers.py  retention.py
 │   ├── artifacts/         store.py (sha256 addressing)
@@ -152,8 +155,8 @@ functions whose current form reaches into UI modules (see [migration-plan.md §3
 
 | Process | Started by | Lifetime | Notes |
 |---|---|---|---|
-| **Archeus Core** (`archeus core`) | desktop shell, autostart entry, or CLI | long-lived; survives GUI close | single-instance lock `~/.archeus/run/core.lock`; writes `~/.archeus/run/core.json` `{pid, port, started_at}` (0600) for local discovery |
-| Desktop shell (`archeus gui`) | user | while window open | Qt shell (existing `gui_qt.py` lineage) that attaches to Core via `core.json`, starting Core if absent; pairs itself as the local desktop device automatically |
+| **Archeus Core** (`archeus core`) | desktop shell, autostart entry, or CLI | long-lived; survives GUI close | single-instance lock `<ARCHEUS_HOME>/run/core.lock`; writes `<ARCHEUS_HOME>/run/core.json` `{pid, port, started_at}` (0600) for local discovery |
+| Desktop shell (`archeus gui`) | user | while window open | Qt shell (existing `gui_qt.py` lineage) that attaches to Core via `core.json`, starting Core if absent; obtains its device token through the local launch-code bootstrap (api-and-realtime §5.1) |
 | Harness processes | Execution Manager via node supervisor | per execution | detached so a Core restart does not kill work; adopted or killed at boot |
 | Brain calls | `infra/llm/runner` | seconds–minutes | headless, `HEADLESS_MARK`-tagged, output schema enforced |
 | `archeus estop` | user, any time | seconds | reads `run/processes.jsonl`, writes `run/STOP`, kills by pid+create_time; needs no Core |
@@ -166,11 +169,29 @@ heartbeat interval; the local node goes GRACE → executions become LOST → rec
 
 ## 5. Data architecture
 
+### 5.1 `ARCHEUS_HOME`
+
+`~/.archeus/` cannot be the V1 home: it is already the legacy per-project workdir of any
+project rooted at the home directory (verified on the development machine: it holds
+`session-log.md` and `workspace-manifest.json`), legacy code writes `bash-log.txt` and memory
+files there, and `gui_api._managed_path_ok` permits deletion below any `.archeus` directory.
+V1's home is resolved by `archeus.infra.paths.archeus_home()` at call time:
+
+| Order | Source |
+|---|---|
+| 1 | `ARCHEUS_HOME` environment variable (tests always set it to a temp directory) |
+| 2 | Windows: `%LOCALAPPDATA%\Archeus` |
+| 3 | macOS: `~/Library/Application Support/Archeus` |
+| 4 | Linux/other POSIX: `$XDG_DATA_HOME/archeus`, else `~/.local/share/archeus` |
+
+Every path written `<ARCHEUS_HOME>/…` in these documents means this directory. Core passes
+`ARCHEUS_HOME` to every execution it starts so hooks find the STOP sentinel without Core.
+
 | Store | Technology | Contents | Truth for |
 |---|---|---|---|
-| `~/.archeus/archeus.db` | SQLite WAL, `PRAGMA user_version` migrations | all entities of domain-model.md, `events`, `consumer_cursors`, `consumer_effects`, `idempotency_keys` | current state, history, knowledge |
-| `~/.archeus/artifacts/` | files, sha256-addressed | transcripts copies, reports, diffs, checkpoints, imported notes, verifier logs | large content |
-| `~/.archeus/run/` | files | `core.json`, `core.lock`, `processes.jsonl`, `STOP` | liveness + e-stop without Core |
+| `<ARCHEUS_HOME>/archeus.db` | SQLite WAL, `PRAGMA user_version` migrations | all entities of domain-model.md, `events`, `consumer_cursors`, `consumer_effects`, `idempotency_keys` | current state, history, knowledge |
+| `<ARCHEUS_HOME>/artifacts/` | files, sha256-addressed | transcripts copies, reports, diffs, checkpoints, imported notes, verifier logs | large content |
+| `<ARCHEUS_HOME>/run/` | files | `core.json`, `core.lock`, `processes.jsonl`, `STOP` | liveness + e-stop without Core |
 | Harness homes (`~/.claude*`, `CODEX_HOME`) | owned by the harness | provider transcripts, credentials | never written by Core except hook/settings installation through the existing atomic read-modify-write helpers |
 | Legacy stores (`~/.claude/archeus.json`, `<project>/.archeus/memory/graph.json`, …) | JSON | today's app state | owned by legacy until cutover (ADR-0019); V1 imports read-only snapshots |
 
@@ -181,10 +202,17 @@ needs (2–3 hop neighbourhoods). Graph DB and vector store are DEFERRED behind 
 
 Schema rules: every table has `id`, `version`, `created_at`, `updated_at`; JSON columns are
 validated by the command handler (not the DB); indices on `(workspace_id, project_id, state)`
-for list queries; `events(seq)` is the realtime cursor.
+for list queries; `events(seq)` is the realtime cursor. Portability: Core refuses to start on
+SQLite older than 3.31, and the schema uses neither `RETURNING` nor `STRICT` tables.
+
+Two legacy files are written by V1 on purpose, through the legacy functions that already own
+them: `<project>/.archeus/connections-cache.json` (by `connections.build_hierarchy` during
+inspection — deterministic, atomic) and `~/.claude/archeus-limits.json` (by
+`quota.note_limit`, the cross-process rate-limit latch both apps must agree on). See
+migration-plan §5.
 
 Backups: before every migration and daily, `sqlite3.Connection.backup()` to
-`~/.archeus/backups/archeus-YYYYMMDD.db`, keep 7.
+`<ARCHEUS_HOME>/backups/archeus-YYYYMMDD.db`, keep 7.
 
 ## 6. The operating loop mapped to modules
 

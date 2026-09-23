@@ -81,10 +81,13 @@ provider's number to itself, and the number lags. So allocation is defined as a 
 observed window**, not a share of a pie:
 
 ```text
-effective_ceiling(account) = allocation_pct − reserve_pct
-worst(account)             = max over windows of utilisation_pct   (quota.worst_window today)
-can_start(account)         = worst(account) + projected(task) < effective_ceiling(account)
-must_halt(execution)       = worst(account) ≥ allocation_pct        (checked on each usage refresh)
+effective_ceiling(account)    = allocation_pct − reserve_pct
+ceiling(account, kind)        = effective_ceiling(account)                       if kind = brain
+                              = effective_ceiling(account) − brain_reserve_pct   if kind ∈ {task, review}
+worst(account)                = max over windows of utilisation_pct, from the latest UsageSnapshot
+                                (unknown ≠ 0: see allocation_known below)
+can_start(account, kind, s)   = worst(account) + projected(s) < ceiling(account, kind)
+must_halt(execution)          = worst(account) ≥ allocation_pct        (checked on each usage refresh)
 ```
 
 - `projected(task)` is a small conservative bump by task size band (S 1%, M 3%, L 8% of the 5 h
@@ -101,9 +104,13 @@ must_halt(execution)       = worst(account) ≥ allocation_pct        (checked o
   `allocation_known = false`. They are governed by **ledger budgets** (`tokens_per_day`,
   `cost_per_day`, `concurrency`). An account with `allocation_known = false` and no budgets is
   eligible **only as a fallback**, and only when its `fallback` is `allow`.
-- `brain_reserve_pct`: the brain may use up to `effective_ceiling`; tasks may use up to
-  `effective_ceiling − brain_reserve_pct`. Archeus can therefore always still *think* (and
-  explain it is out of capacity) when task capacity is gone.
+- `brain_reserve_pct` is what the two `ceiling` cases express: the brain may use up to
+  `effective_ceiling`, tasks and reviews up to `effective_ceiling − brain_reserve_pct`.
+  Archeus can therefore always still *think* (and explain it is out of capacity) when task
+  capacity is gone. `projected(s)` is 0 for a brain call.
+- The legacy `quota.worst_window` is **not** used: it returns 0 when usage is unknown ("not
+  known is a pass"), which would read as an empty account. The P10 preparation seam exposes
+  `(windows, observed_at, status)` instead.
 
 Example: Account A P1 100%, B P2 80%, C P3 50% (the spec's example), reserve 10 each:
 

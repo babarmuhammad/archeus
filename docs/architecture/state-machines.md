@@ -179,6 +179,7 @@ stateDiagram-v2
     [*] --> INTENT
     INTENT --> STARTING: spawn
     INTENT --> ABANDONED: spawn_failed
+    INTENT --> LOST: spawn_unconfirmed
     STARTING --> RUNNING: first_output
     STARTING --> LOST: start_timeout
     RUNNING --> AWAITING_APPROVAL: hook_asked
@@ -206,9 +207,13 @@ stateDiagram-v2
 ```
 
 - **INTENT is committed before spawn.** The row (with the planned argv, workdir and account)
-  exists before any process does; the outbox consumer spawns and records `{pid, create_time}` in
-  both the DB and the on-disk process registry (`~/.archeus/run/processes.jsonl`). A crash
-  between commit and spawn leaves an INTENT row that boot reconciliation moves to ABANDONED.
+  exists before any process does; the outbox consumer writes the **spawning marker**, spawns,
+  and records `{pid, create_time}` in the execution's `pid.json`, the on-disk registry
+  (`<ARCHEUS_HOME>/run/processes.jsonl`) and the DB (process I/O contract:
+  execution-architecture §3.1). Boot reconciliation of an INTENT row: no spawning marker →
+  `spawn_failed` → ABANDONED (nothing was started); marker present but no `pid.json` →
+  `spawn_unconfirmed` → LOST (a process may exist; it is never spawned again under the same
+  attempt); marker and `pid.json` present → adopted like a RUNNING execution.
 - **Pause is cooperative** (Windows has no SIGSTOP; a headless agent cannot be frozen and
   thawed safely). `pause_requested` sets a flag the PreToolUse hook reads; at the next tool call
   the hook returns halt (`continue:false`). The adapter's `pause()` then records the provider
@@ -372,7 +377,8 @@ stateDiagram-v2
     DISABLED --> UNVERIFIED: user_enables
 ```
 
-- `near_ceiling`: observed utilisation ≥ `allocation_pct − reserve_pct − 5` (router §4).
+- `near_ceiling`: observed utilisation ≥ `ceiling(account, task) − 5`, i.e.
+  `allocation_pct − reserve_pct − brain_reserve_pct − 5` (router §4).
 - `window_exhausted`: provider says so (`quota.is_limit_error` / `is_window_limit` on a failure,
   or usage ≥ 100%). `limited_until = resets_at`.
 - DEGRADED/OPEN is a circuit breaker adapted from Munder Difflin's `breaker.ts`: move **at most

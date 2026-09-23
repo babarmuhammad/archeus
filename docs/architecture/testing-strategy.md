@@ -14,17 +14,39 @@ refactor. It also carries this repository's rules: a gate nobody has watched fai
 | Property | `tests/v1/unit/` (stdlib `random` with fixed seeds; no Hypothesis dependency) | router invariants, policy precedence, DAG validation, approval hash binding | every commit |
 | Integration | `tests/v1/integration/` | writer + outbox + consumers on a temp SQLite; migrations; boot reconciliation with real child processes; SSE replay | every commit |
 | Contract | `tests/v1/contract/` | harness adapters against recorded streams (fixtures) **and**, opt-in (`-m real_harness`), against the real CLI with a sandbox account; API route table ↔ generated client ↔ docs | fixtures every commit; real weekly/manual |
-| Judge (acceptance) | `tests/v1/judge/` | the scenarios of §2 end-to-end through HTTP + SSE against a Core using the **fake harness** and fake usage/clock | every commit |
+| Judge (acceptance) | `tests/v1/judge/` | the scenarios of §2 end-to-end through `CoreClient` (§1.1: in-process until P3.5, then HTTP + SSE) against a Core using the **fake harness** and fake usage/clock | every commit |
 | E2E UI | `tests/v1/e2e/` (Playwright, as `tools/smoke_gui.py` today) | SPA flows against the judge's Core fixture: every destination, inspector tab, approval flow; overflow/dead-space audit; animation loop parks | CI + before release |
 | TUI | `tests/v1/tui/` | TUI screens driven by scripted keys through `term.py`'s patched backend (today's `tests/harness.py` pattern) | every commit |
 | Design gates | `tests/v1/design/` | contrast over tokens × themes, keyframe properties, no backdrop-filter, container-query rule, tokens regenerated, CSP/no inline script | every commit |
 | Legacy suite | `tests/` (existing ~1,300 tests) | unchanged; guards the P0.5 seam edits and the legacy app until retirement | every commit |
 
-Fixtures: `FakeHarness` (scripted: emits tool calls, usage, limit errors, crashes, pressure),
+### 1.1 The `CoreClient` contract and phase-tagged scenarios
+
+The judge never imports Core internals and cannot wait for HTTP (P3.5) to be written, so P1
+freezes `tests/v1/judge/client.py`: a `CoreClient` protocol with exactly the operations the
+scenarios use — `submit_message`, `create_mission`, `get_mission`, `list_missions`,
+`decide_approval`, `pause`, `resume`, `stop`, `route_why`, `status`, `digest`, `ack`,
+`import_meeting`, `register_account`, `set_resource_policy`, `events(after_seq)` — mirroring the
+command/query surface of api-and-realtime §2. Two bindings: `InProcessClient` (P1–P3, calls the
+application layer directly) and `HttpClient` (P3.5 onward, HTTP + SSE). Every scenario runs
+against both once HTTP exists.
+
+Tags are per **test function**, not per file: a scenario file holds one function per
+sub-behaviour, and each function that cannot pass yet is `@pytest.mark.xfail(strict=True,
+reason="phase:P<n>")`, where `P<n>` is the phase that makes *that function* pass. This is how a
+phase acceptance that names part of a scenario ("S4 (routing part)", "G1 at the persistence
+level") is met while the rest of the scenario stays pending. `test_traceability.py` fails when a
+tag names a phase outside the row's range in §2, or when the last function of a row is tagged
+with anything other than the row's last phase; `strict` makes a function that starts passing
+early fail until its marker is removed. A row is green when all its functions pass.
+
+Fixtures: `FakeHarness` (a real subprocess following the process I/O contract, scripted: emits
+tool calls, usage, `DECISION:` lines, limit errors, crashes, pressure),
 `FakeUsageFeed` (drives window utilisation over fake time), `FakeClock`, `FakeNotifier`,
 `TempCore` (Core on a free port with a temp home), `SSEClient` (stdlib) with Last-Event-ID.
 Like today's `conftest.py`, a guard fails any test that would spawn a real `claude`/`codex`
-process unless marked `real_harness`, and no test writes outside its temp home.
+process unless marked `real_harness`, and no test writes outside its temp home: every V1 test
+sets `ARCHEUS_HOME` to a temp directory (the resolver reads it at call time).
 
 ## 2. Traceability — every acceptance source → phase → test
 
@@ -35,6 +57,7 @@ them so nothing is tested twice under different names or missed.
 
 | ID | Requirement | Also covers | Judge test (`tests/v1/judge/`) | Phases |
 |---|---|---|---|---|
+| SK | Walking skeleton: create mission → stub plan/policy → fake execution subprocess → stub verification/review → COMPLETED, observed over SSE and in the SPA | — | `test_skeleton_vertical_slice.py` | P3.5 |
 | S1 | Simple coding mission end-to-end | SP1–7, SP11–13, IP-B (part) | `test_s01_simple_mission.py` | P7–P13 |
 | S2 | Long-running mission across multiple sessions | SP9, SP10, IP-D, G "resume after handoff" | `test_s02_long_mission_handoffs.py` (fake pressure at task 3 and 6) | P11–P12 |
 | S3 | Multiple accounts/models registered; router respects priority | SP7, SP8, IP-C, G "routing deterministic and explainable" | `test_s03_multi_account_routing.py` | P10 |
@@ -84,7 +107,8 @@ exist or if a judge test is not listed — the table cannot drift from the suite
   repo does today.
 - The E2E UI run counts checks and fails below a floor (starting floor = number of destinations
   × inspector tabs + approval flow steps).
-- The judge suite asserts it ran ≥ 23 scenario tests (the table rows).
+- The judge suite asserts it collected at least as many scenario tests as the §2 table has
+  rows; the floor is derived from the table, never typed as a number.
 
 ## 5. CI
 

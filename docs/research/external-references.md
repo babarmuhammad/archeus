@@ -114,7 +114,7 @@ Nothing was cloned, built or run; repositories were read through the GitHub API 
 | # | Observation | Evidence | Area | Status |
 |---|---|---|---|---|
 | 1 | Six steps: map + rules, stress-test rules, translate, compile, run, match behaviour | [V] README | Process | adapted to phases |
-| 2 | Feasibility report first; "don't migrate" is valid; three committed calls with file evidence | [V] `prompts/00-feasibility.md` | Process | adopted (P0 gate) |
+| 2 | Feasibility report first; "don't migrate" is valid; three committed calls with file evidence | [V] `prompts/00-feasibility.md` | Process | adopted (P0 feasibility review; the provider-terms gate sits before the first real model call — ADR-0021) |
 | 3 | "No judge, no exit condition": a parity judge through the public surface, validated against deliberately broken code | [V] README, 00b | Testing | adopted (judge in P1, mutation-verified) |
 | 4 | **Redesigning:** rulebook becomes a design document; bakeoff invalid → adversarial review of the design + disposable full runs; unit of work = module/subsystem; behaviour matching still works | [V] README "If you're redesigning" | Process | adopted (these docs; red-team; walking skeleton; subsystem phases) |
 | 5 | Fix the process, not the code; a failure seen three times is a rule bug | [V] README, skill | Process, Task machine | adopted |

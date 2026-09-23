@@ -137,8 +137,7 @@ Rule enforced in the application layer, not the UI: **only `user_device` princip
 A paired client. Fields: `id`, `principal_id`, `name`, `platform` (desktop | web | ios | android
 | tui), `scopes[]`, `token_hash` (SHA-256 of the device token; the token itself is shown once),
 `paired_at`, `last_seen_at`, `last_seen_event_seq`, `state` (PAIRING | ACTIVE | REVOKED),
-`push` (optional ntfy topic / desktop). The local desktop shell is a device too; it pairs
-automatically through the local discovery file (see [api-and-realtime.md §5](api-and-realtime.md)).
+`push` (optional ntfy topic / desktop). The local desktop shell and a locally opened browser are devices too; they obtain their token through the local launch-code bootstrap (see [api-and-realtime.md §5.1](api-and-realtime.md)).
 
 ---
 
@@ -300,7 +299,7 @@ is history; promotion into a PREFERENCE or LESSON is an explicit step (candidate
 
 ### 7.9 Artifact
 Content-addressed blob: `sha256`, `media_type`, `size`, `path` (under
-`~/.archeus/artifacts/ab/cd/<sha>`), `produced_by` (`{kind,id}`), `label`. Transcripts,
+`<ARCHEUS_HOME>/artifacts/ab/cd/<sha>`), `produced_by` (`{kind,id}`), `label`. Transcripts,
 reports, diffs, rendered checkpoints, meeting notes and screenshots are artifacts. Artifacts
 are immutable; "editing" produces a new artifact.
 

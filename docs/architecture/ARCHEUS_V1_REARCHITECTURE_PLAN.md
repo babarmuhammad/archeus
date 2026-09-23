@@ -123,7 +123,7 @@ discovery file, runs with the GUI closed, optional autostart, sleep → GRACE �
 
 ## 8. Target data architecture
 
-[target-architecture.md §5](target-architecture.md): `~/.archeus/archeus.db` (SQLite WAL,
+[target-architecture.md §5](target-architecture.md): `<ARCHEUS_HOME>/archeus.db` (SQLite WAL,
 `user_version` migrations, daily + pre-migration backups), content-addressed artifacts,
 `run/` for liveness and e-stop. Harness homes and legacy stores are read, not owned (ADR-0019).
 
@@ -158,7 +158,13 @@ no vector store in V1 (ADR-0012, ADR-0013).
 - **The brain** (ADR-0006): Core-side structured-output calls through the router (brain is a
   routed consumer with `brain_reserve_pct`), stable prompt prefixes for cache hits, outputs
   validated against JSON schemas in `core/brain/schemas/`, then applied as commands by Core.
-  The brain's principal can *propose*; it can never approve.
+  The brain's principal can *propose*; it can never approve. Brain calls are **tool-less
+  structured calls** (§31.4): they need the ADR-0021 gate but not P9; until P10 the account is
+  chosen by legacy `rotate.elect()` + `quota.reason()`. Brain calls are **tool-less
+  structured calls** (§31.4): they need the ADR-0021 gate but not P9; until P10 the account is
+  chosen by legacy `rotate.elect()` + `quota.reason()`. Brain calls are **tool-less
+  structured calls** (§31.4): they need the ADR-0021 gate but not P9; until P10 the account is
+  chosen by legacy `rotate.elect()` + `quota.reason()`.
 - Progress is computed from the task DAG weighted by estimates — never reported by an agent.
 
 ## 12. Planning architecture
@@ -361,7 +367,7 @@ Everything is reconstructable from the event log plus decision records:
 Metrics derived nightly into a `metrics_daily` table (missions completed/failed, median time to
 complete, approvals per mission, fallback rate, verification failure rate, cost per mission
 band, context tokens per task kind) and shown in Control → About → Health. Diagnostics (Core
-crashes, consumer errors) go to `~/.archeus/logs/core.log` with rotation; the `archeus doctor`
+crashes, consumer errors) go to `<ARCHEUS_HOME>/logs/core.log` with rotation; the `archeus doctor`
 command checks DB integrity, consumer lag, stuck executions, hook installation.
 
 ## 29. Migration
@@ -381,72 +387,140 @@ Sequencing changes from the source plan (0–24), each justified:
 
 | Change | Why |
 |---|---|
-| **P0.5 Seams** inserted, deliberately narrow | V1 must import working logic (process control, structured model call, quota assessment, import graph) without dragging in UI modules; restructuring retiring code has no V1 value |
+| **P0.5 Seams** inserted, deliberately narrow | the reused modules are already UI-free *at import*; the coupling is at call time (the headless runner reaches `gui_api`, whose import runs `_install_bridge()`), plus two process-control gaps and legacy hooks that would fire inside V1 executions. Restructuring retiring code has no V1 value |
 | Judge + fake harness + frozen adapter contract **in P1** | migration-kit rule: no judge, no exit condition; everything after P1 is measured against it |
 | Security basics (principals, tokens, audit) **in P2** instead of P20 | identity and audit are properties of every row; retrofitting them is a rewrite |
 | **P3.5 API + SSE + walking skeleton** added | a disposable end-to-end run (the migration kit's substitute for a bakeoff in redesigns) that makes every later phase visible; skeleton uses the fake harness only |
-| **Policy (P9) gates real adapters** | no real harness may run before the policy engine and capability removal exist |
-| Brain as structured-output calls (P7), not an MCP server | P7 would otherwise depend on the execution stack (P11); calls go through the router seam with a fixed account until P10 |
+| **Policy (P9) gates real tool-using execution** | no real agent with tools may run before the policy engine and capability removal exist; enforced in code (the adapter registry refuses real adapters while policy is the P1 stub). Tool-less structured calls are a separate class (§31.4) |
+| Brain as structured-output calls (P7), not an MCP server | P7 would otherwise depend on the execution stack (P11); until P10 the account comes from legacy `rotate.elect()` + `quota.reason()` (§31.4) |
+| **Provider-terms gate (ADR-0021) moved** from P0 to *immediately before the first real headless model call* | P0.5–P3.5 make no real model call; the architecture supports API-key accounts regardless of the answer |
 | P20 = hardening, P21 = observability *views* | the mechanisms exist from P2 (events, decisions); these phases add breaker drills, secrets review, trace UI and metrics |
 
 ### 31.1 Phase table
 
 Every phase ends at a gate: evidence produced, acceptance met, sign-off = starting the next
-phase. Legacy tests stay green in every phase.
+phase. Legacy tests stay green in every phase. "Sx passes" in a phase means the judge functions
+tagged with that phase pass; "part" means some of the scenario's functions do, per the
+per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 
-**P0 — Archaeology, feasibility and research** · *done in this planning phase, except the gate
-item below*
+**P0 — Archaeology, feasibility and research** · *done*
 - Objective: understand the current product and references; decide whether V1 proceeds.
-- Deliverables: this document set; ADRs; external references.
-- Gate: user sign-off on this plan **and** the subscription-terms question (ADR-0021).
-- Risk: building an agent that uses subscription accounts headlessly in a way the provider does
-  not permit → the design must run unchanged with API-key accounts.
+- Deliverables: this document set; ADRs; external references; the readiness review and its
+  corrections (Appendix D).
+- Gate: user sign-off on this plan (given). The provider-terms question (ADR-0021) is **not** a
+  P0 gate any more: it gates the first real headless model call (§31.4).
+- Risk: using subscription accounts headlessly in a way the provider does not permit → nothing
+  assumes it is permitted; if it is not, the same architecture runs on API-key/provider accounts.
 
-**P0.5 — Seams**
-- Depends: P0. Affected: `proc`, `memory`, `quota`, `connections` (migration-plan §3).
-- New: none (functions added to legacy modules; re-exports).
-- Tests: existing suite green; new unit tests for each extracted function; mutation check that
-  legacy callers still route through the extracted function.
-- Acceptance: `archeus/` can import the four seams without importing `ui`, `gui_api` or `main`
-  (an import-graph test asserts it).
+**P0.5 — Seams (legacy edits only; `archeus/` does not exist yet)**
+- Depends: P0. Seams (detail and exact contracts in [migration-plan.md §3](migration-plan.md)):
+  1. **Headless runner** — new UI-free module `claude_sessions/llmcall.py` holding the process
+     core of `gui_api._run_cancellable` (spawn with the prompt on stdin, cancel via an `Event`,
+     `proc.kill_tree` on cancel/timeout, capture, on non-zero exit `quota.note_failure` +
+     `events.record` + the error text) and the argument builder from `memory._claude_stdin`
+     (`HEADLESS_MARK`, `--max-turns`, disallowed write tools, budget args, provider env).
+     `_run_cancellable` and `_claude_stdin` become thin wrappers with unchanged behaviour
+     (preflight, `_JOBCTX` cancel, foreground progress UI, `last_call_error`, `why_failed`).
+  2. **Process control** — additive functions in `proc`: `process_create_time(pid)`,
+     `kill_pid_tree(pid, create_time)` (refuses when the create time does not match), and a
+     `stdin_path=` parameter on `spawn_detached` (today it forces `stdin=DEVNULL`, and headless
+     `claude -p` takes its prompt on stdin).
+  3. **Hook environment guard** — `recall_hook`, `worklog_hook`, `memdirty_hook` return
+     immediately when `ARCHEUS_EXECUTION_ID` is set; `limit_hook` still calls
+     `quota.note_limit` (the shared latch is wanted) but skips `rotate.offer` (which could open a
+     successor session for a V1 execution). All other behaviour unchanged when the variable is
+     absent.
+- Not in P0.5 (moved): usage-snapshot seam → P10 preparation; `build_launch_command`
+  extraction → P11 preparation; `cli.py` dispatch → P3.5. **Dropped:** splitting `connections`
+  (it is already importable without UI; a split risks the import-by-value bug class) and
+  `quota.assess` (`worst_window` reports unknown usage as 0, which is the wrong primitive for
+  the router).
+- Tests: existing suite green; unit tests per seam; mutation checks (legacy wrappers must route
+  through `llmcall`; each hook must skip under the variable and only then).
+- Acceptance: importing `claude_sessions.llmcall` and `claude_sessions.proc` in a fresh
+  interpreter loads none of `claude_sessions.ui`, `.gui_api`, `.main`, `.gui` (an import-graph
+  test asserts it); all four hook scripts behave identically when `ARCHEUS_EXECUTION_ID` is
+  absent.
 
 **P1 — Domain model, contracts and the judge**
-- Depends: P0.5. New: `archeus/core/domain/*` (entities, values, states table, events registry,
-  action classes, ids), `harnesses/base.py` (frozen contract), `harnesses/fake.py`,
-  `tests/v1/judge/*` (all scenarios written, failing/xfail), `tests/v1/unit/test_state_tables.py`.
-- Tests: invariants, serialisation, state-table ↔ diagram parity, fake-harness scripts.
-- Acceptance: every entity of domain-model.md exists as a dataclass with validation; the judge
-  runs and reports N scenarios pending; the adapter contract has a docstring spec and a fake.
-- Risks: over-modelling → rule: fields not needed by a judge scenario are deferred.
+- Depends: P0.5. New:
+  - packaging: `archeus/__init__.py`; `pyproject.toml` `packages` gains `archeus` (and its
+    subpackages); `tests/test_packaging.py` updated accordingly.
+  - `archeus/core/domain/*` (ids, states table, entities, action classes, events registry).
+  - `archeus/infra/paths.py` — the **`ARCHEUS_HOME` resolver**
+    ([target-architecture.md §5.1](target-architecture.md)), a function, never an import-time
+    constant.
+  - `archeus/core/ports.py` — interfaces for Policy, Router, Brain, Verifier, Review and Node,
+    plus **stubs**: allow-all policy (`is_stub = True`), fixed-candidate router, scripted brain,
+    auto-pass verifier, auto-accept review. The adapter registry **refuses any non-fake adapter
+    while the policy implementation is a stub** — the P9 gate as code, not convention.
+  - `archeus/harnesses/base.py` — the adapter contract, frozen, including the process I/O
+    contract ([execution-architecture.md §3.1](execution-architecture.md)): stdin file, JSONL
+    stream file, spawning marker. `archeus/harnesses/fake.py` — the fake harness is a **real
+    subprocess** (a Python script driven by a scenario file) so registry, stream-tailing and
+    reconciliation paths are exercised from the start.
+  - `tests/v1/judge/` — the `CoreClient` contract and every scenario written against it, each
+    marked `xfail` with the phase that will make it pass
+    ([testing-strategy.md §1.1](testing-strategy.md)); `test_traceability.py`;
+    `test_skeleton_vertical_slice.py` (xfail until P3.5); `tests/v1/unit/test_state_tables.py`.
+- Tests: invariants, serialisation, state-table ↔ diagram parity, fake-harness subprocess
+  scripts, stub guard (registering a real adapter with the stub policy raises).
+- Acceptance: every entity of domain-model.md exists as a dataclass with validation and the
+  **minimal fields the judge scenarios need** (other fields arrive with the phase that uses
+  them); the judge runs and reports every scenario as xfail with a phase tag; the fake harness
+  runs as a subprocess against the frozen contract.
 
 **P2 — Persistence, event log, identity basics**
 - Depends: P1. New: `infra/db` (connection, writer thread with futures + idempotency, migrations
   `0001_init.sql`, backup), `infra/eventlog` (outbox, consumer cursors/effects, retention),
   `infra/artifacts`, Principal/Device/token tables, audit fields.
 - Tests: crash-safety (kill between write and consumer), idempotent re-delivery, optimistic
-  concurrency conflicts, migration + backup, writer throughput (≥ 500 commands/s on the dev box).
+  concurrency conflicts, migration + backup, writer throughput (≥ 500 commands/s on the dev box),
+  startup refuses SQLite older than 3.31 and the schema uses neither `RETURNING` nor `STRICT`
+  (the dev box has 3.37.2; older Linux builds exist).
 - Acceptance: G1 and G4 judge tests pass at the persistence level.
 - Risks: SQLite contention → single writer by design; readers `query_only`.
 
 **P3 — State machines**
-- Depends: P2. New: `transition()`, guards, all machines of state-machines.md.
+- Depends: P2. New: `transition()`, guards, all machines of state-machines.md. Guards that
+  consult policy, router or verification (e.g. `plan_auto_approved`) call the P1 ports, so they
+  run against the stubs until P9/P10/P13 replace them. Guards that
+  consult policy, router or verification (e.g. `plan_auto_approved`) call the P1 ports, so they
+  run against the stubs until P9/P10/P13 replace them. Guards that
+  consult policy, router or verification (e.g. `plan_auto_approved`) call the P1 ports, so they
+  run against the stubs until P9/P10/P13 replace them.
 - Tests: every edge allowed, every non-edge rejected (generated), guards pure.
 - Acceptance: illegal transitions return 422 with machine/from/to.
 
 **P3.5 — API, SSE, walking skeleton**
-- Depends: P3. New: `api/server.py` (pools), `api/routes.py`, `api/sse.py`, `api/auth.py` (local
-  token, host/origin, CSP), `cli/main.py` (`core`, `status`), minimal SPA shell (Now + Work
-  lists), generated API doc + TS client, Core lifecycle (lock, discovery file).
-- Flow: create mission via API → fake plan → fake execution → events → SPA updates.
+- Depends: P3. New: `api/server.py` (separate request and stream pools), `api/routes.py`,
+  `api/sse.py`, `api/auth.py` (Host/Origin allowlist, CSP, **local launch-code bootstrap** —
+  [api-and-realtime.md §5.1](api-and-realtime.md)), `cli/main.py` (`core`, `status`), Core
+  lifecycle (single-instance lock and discovery file under `ARCHEUS_HOME`), the HTTP binding of
+  `CoreClient`, generated API doc + TS client, a minimal **local node** (supervisor + process
+  registry + stream tailing, enough to run the fake harness subprocess; real adapters, worktrees
+  and `archeus estop` arrive in P11), and the minimal SPA (Now + Work lists) with its Node build
+  and CI job ([ui-architecture.md §2](ui-architecture.md)).
+- Legacy edit: `claude_sessions/cli.py` dispatches the reserved V1 verbs (`core`, `status`,
+  `approve`, `pause`, `route`, `estop`, `pair`) to `archeus.cli.main` with a lazy import placed
+  **after** the statusline fast path; every existing verb keeps its current route.
+- Flow: `CoreClient.create_mission` (a command; no intent parsing, no brain) → stub brain plan →
+  stub policy auto-approves → task → fake execution subprocess (JSONL stream) → stub verification
+  and review → COMPLETED; every transition observed over SSE and rendered by the SPA.
 - Tests: SSE replay with Last-Event-ID, 410 resync, pool isolation (streams cannot starve
-  commands), CSP headers, generated artefacts fresh.
-- Acceptance: skeleton demo recorded; judge S1 passes with fake brain + fake harness.
+  commands), CSP headers, launch-code single use and expiry, generated artefacts fresh, Core
+  killed mid-execution → restart → the fake execution is adopted or reconciled.
+- Acceptance: **`tests/v1/judge/test_skeleton_vertical_slice.py` passes** (it is *not* S1: S1
+  needs the real brain, policy, router, verification and review and stays xfail until P13);
+  skeleton demo recorded.
 
 **P4 — World model and repository inspection**
 - Depends: P3.5. New: `world/projects.py`, `world/inspection.py` (reusing `repos`,
   `connections`), `world/drift.py`, `world/digest.py`; architecture constraints.
 - Tests: fixture repos (Python, TS, submodule, worktree), drift positive/negative per
   constraint kind, cheap HEAD check.
+- The optional model pass of inspection is a tool-less structured call (§31.4): disabled until
+  the ADR-0021 gate is passed; the deterministic pass alone must satisfy the acceptance.
 - Acceptance: S7, S13 (deterministic part), S14 pass.
 
 **P5 — Context engine**
@@ -457,16 +531,22 @@ item below*
 
 **P6 — Knowledge and learning**
 - Depends: P5. New: `knowledge/*` (items, relations, promote, forget, ingest), learning pass
-  consumer; meeting import.
+  consumer; meeting import. Decision-candidate extraction from notes is a tool-less structured
+  call (§31.4); tests use the scripted brain. Decision-candidate extraction from notes is a tool-less structured
+  call (§31.4); tests use the scripted brain. Decision-candidate extraction from notes is a tool-less structured
+  call (§31.4); tests use the scripted brain.
 - Tests: supersession chains, corroboration gating, forget dry-run, idempotent import.
 - Acceptance: S8, S9 pass.
 
 **P7 — Intent, brain, mission engine**
-- Depends: P6. New: `application/grammar.py`, `missions/intent.py`, `brain/calls.py`
-  (runner from P0.5 seam, fixed account until P10), schemas, challenge logic, mission service.
+- Depends: P6. New: `application/grammar.py`, `missions/intent.py`, `brain/calls.py` (on the
+  P0.5 `llmcall` runner; account from legacy `rotate.elect()` + `quota.reason()` until P10),
+  schemas, challenge logic, mission service. **The ADR-0021 gate must be passed before the first
+  real brain call**; until then P7 runs on the scripted brain and recorded fixtures.
 - Tests: grammar table tests (every control verb, no model call), schema validation failures
   handled (retry once, then ask the user), challenge on conflicting knowledge.
-- Acceptance: S15, SP3 pass; S1 passes with the real brain against a recorded fixture.
+- Acceptance: S15, SP3 pass (scripted brain); S1's intent-to-plan function passes on recorded
+  brain responses (S1 as a whole stays xfail until P13).
 
 **P8 — Plan engine**
 - Depends: P7. New: `planning/*`.
@@ -482,14 +562,21 @@ item below*
 - Acceptance: S5, G6 (policy part) pass. **Gate:** real adapters may be enabled after this.
 
 **P10 — Resource Router**
-- Depends: P9. New: `routing/*`; UsageSnapshot consumer (reusing `usage.fetch_usage`), ledger.
+- Depends: P9. Preparation seam (legacy, additive): a public `usage` helper returning
+  `(windows, observed_at, status)` per account from the existing poller state and
+  `_extract_windows`, so "unknown" is distinguishable from 0%. New: `routing/*`; UsageSnapshot
+  consumer (reusing `usage.fetch_usage`), ledger.
 - Tests: property tests (never exceed ceiling at start, DENY never selected, replay equality),
   fake usage feed scenarios.
 - Acceptance: S3, S4 (routing part), S12 pass.
 
 **P11 — Execution orchestrator**
-- Depends: P10. New: `execution/manager.py`, `node/*` (supervisor, registry, worktrees, estop),
-  `harnesses/claude_code` (headless + policy hook + pressure), `harnesses/codex`.
+- Depends: P10. Preparation seam (legacy): move `main.build_launch_command` and its helpers
+  into a UI-free module re-exported from `main` (today `main` imports the TUI), used by the
+  interactive-attach path. New: `execution/manager.py`, `node/*` completed (worktrees, estop,
+  real-adapter supervision), `harnesses/claude_code` (headless + policy hook + pressure),
+  `harnesses/codex`; the real policy implementation replaces the stub, which unlocks real
+  adapters in the registry.
 - Tests: contract tests on recorded streams; reconciliation with real child processes (a Python
   stub CLI); PID-reuse safety; cooperative pause; stop; e-stop without Core.
 - Acceptance: S1 and S5 pass against the **real** Claude Code adapter in the opt-in contract
@@ -594,11 +681,56 @@ flowchart LR
 P4–P6 and P16's static parts can overlap once P3.5 is in; the table above is the dependency
 order, not a staffing plan.
 
+### 31.4 Model-call classes and the provider-terms gate
+
+| Class | What it is | Allowed from | Gate | Account before P10 | Controls |
+|---|---|---|---|---|---|
+| **Fake / scripted** | fake harness subprocess, scripted brain, stub verifier/review | P1 | none — unrestricted for architecture and acceptance testing | n/a | never spawns a real CLI (the test guard in `conftest.py` still blocks real `claude`) |
+| **Tool-less structured call** | one headless `claude -p` (or provider) call with a JSON schema: brain, planner, inspection model pass, decision extraction, review judge | the phase that needs it (P4 optional, P6, P7) | **ADR-0021 must be passed first** | legacy `rotate.elect()` + `quota.reason()`; recorded as a pre-router RouteDecision | only through the P0.5 `llmcall` runner: write tools disallowed (`Write,Edit,NotebookEdit,Bash`), `--max-turns`, budget args, `HEADLESS_MARK`, quota latch on failure |
+| **Tool-using agent execution** | a harness running a task with tools in a workdir | **P11, after P9** | ADR-0021 **and** the real policy engine (the adapter registry refuses real adapters while policy is the stub) | router (P10) | capability removal, policy hook/sandbox, approvals |
+
+Rules:
+- P0.5–P3.5 make no real model call and proceed without the provider-terms gate.
+- Nothing assumes subscription-account automation is permitted. If ADR-0021 concludes the
+  intended subscription workflow is not allowed, the architecture stays as it is and the
+  accounts used for both real classes are API-key/provider accounts; subscription accounts
+  remain available for the user's own interactive and manual sessions.
+
+### 31.4 Model-call classes and the provider-terms gate
+
+| Class | What it is | Allowed from | Gate | Account before P10 | Controls |
+|---|---|---|---|---|---|
+| **Fake / scripted** | fake harness subprocess, scripted brain, stub verifier/review | P1 | none — unrestricted for architecture and acceptance testing | n/a | never spawns a real CLI (the test guard in `conftest.py` still blocks real `claude`) |
+| **Tool-less structured call** | one headless `claude -p` (or provider) call with a JSON schema: brain, planner, inspection model pass, decision extraction, review judge | the phase that needs it (P4 optional, P6, P7) | **ADR-0021 must be passed first** | legacy `rotate.elect()` + `quota.reason()`; recorded as a pre-router RouteDecision | only through the P0.5 `llmcall` runner: write tools disallowed (`Write,Edit,NotebookEdit,Bash`), `--max-turns`, budget args, `HEADLESS_MARK`, quota latch on failure |
+| **Tool-using agent execution** | a harness running a task with tools in a workdir | **P11, after P9** | ADR-0021 **and** the real policy engine (the adapter registry refuses real adapters while policy is the stub) | router (P10) | capability removal, policy hook/sandbox, approvals |
+
+Rules:
+- P0.5–P3.5 make no real model call and proceed without the provider-terms gate.
+- Nothing assumes subscription-account automation is permitted. If ADR-0021 concludes the
+  intended subscription workflow is not allowed, the architecture stays as it is and the
+  accounts used for both real classes are API-key/provider accounts; subscription accounts
+  remain available for the user's own interactive and manual sessions.
+
+### 31.4 Model-call classes and the provider-terms gate
+
+| Class | What it is | Allowed from | Gate | Account before P10 | Controls |
+|---|---|---|---|---|---|
+| **Fake / scripted** | fake harness subprocess, scripted brain, stub verifier/review | P1 | none — unrestricted for architecture and acceptance testing | n/a | never spawns a real CLI (the test guard in `conftest.py` still blocks real `claude`) |
+| **Tool-less structured call** | one headless `claude -p` (or provider) call with a JSON schema: brain, planner, inspection model pass, decision extraction, review judge | the phase that needs it (P4 optional, P6, P7) | **ADR-0021 must be passed first** | legacy `rotate.elect()` + `quota.reason()`; recorded as a pre-router RouteDecision | only through the P0.5 `llmcall` runner: write tools disallowed (`Write,Edit,NotebookEdit,Bash`), `--max-turns`, budget args, `HEADLESS_MARK`, quota latch on failure |
+| **Tool-using agent execution** | a harness running a task with tools in a workdir | **P11, after P9** | ADR-0021 **and** the real policy engine (the adapter registry refuses real adapters while policy is the stub) | router (P10) | capability removal, policy hook/sandbox, approvals |
+
+Rules:
+- P0.5–P3.5 make no real model call and proceed without the provider-terms gate.
+- Nothing assumes subscription-account automation is permitted. If ADR-0021 concludes the
+  intended subscription workflow is not allowed, the architecture stays as it is and the
+  accounts used for both real classes are API-key/provider accounts; subscription accounts
+  remain available for the user's own interactive and manual sessions.
+
 ## 32. Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Provider terms do not allow headless automated use / multi-subscription rotation | unknown | high | P0 gate (ADR-0021); API-key accounts supported unchanged; router is provider-neutral |
+| Provider terms do not allow headless automated use / multi-subscription rotation | unknown | high | gate before the first real headless model call (ADR-0021, §31.4); nothing assumes permission; API-key/provider accounts supported unchanged; router is provider-neutral |
 | Harness CLI flags or stream formats change | high | medium | adapter contract tests on recorded streams; version pinning; `MISCONFIGURED` state |
 | Hook bypass inside agent shells | medium | high | capability removal is primary; Core-only push/deploy; unclassified exec = strictest |
 | stdlib HTTP server limits (HTTP/1.1, threads) | medium | medium | separate SSE pool, leader-tab stream, single user by design; revisit only if measured |
@@ -613,7 +745,7 @@ order, not a staffing plan.
 
 | # | Question | Status | Owner | Needed by |
 |---|---|---|---|---|
-| Q1 | Provider terms for automated headless use of subscription accounts and rotation across several subscriptions | OPEN (ADR-0021) | user | P0 gate |
+| Q1 | Provider terms for automated headless use of subscription accounts and rotation across several subscriptions | OPEN (ADR-0021) | user | before the first real headless model call (P4 optional model pass, P6 extraction or P7 brain, whichever comes first) |
 | Q2 | Remote access via Tailscale Serve as the documented default | PROPOSED (ADR-0010) | user | P15 |
 | Q3 | ntfy as the default push channel (vs a native wrapper later) | PROPOSED | user | P15 |
 | Q4 | SPA libraries (TanStack Query, React Router) | PROPOSED | engineering | P3.5 |
@@ -765,3 +897,37 @@ without it the link between what Archeus said and what it did disappears.
 Known limitations: exact harness CLI flags are verified in P11 contract tests (execution §3);
 provider terms (Q1) are unresolved; the source documents are gitignored, so readers on other
 clones rely on the summaries here.
+
+## Appendix D — Implementation-readiness corrections (2026-09-23)
+
+A readiness review before P0.5 checked this plan against the code (import probes of every
+reused module; reads of `memory`, `gui_api`, `quota`, `proc`, `connections`, the hook scripts,
+`cli.py`, `pyproject.toml` and the home directory). Findings and the corrections applied:
+
+| # | Sev. | Finding | Correction (where) |
+|---|---|---|---|
+| B1 | BLOCKER | P0 gated all work on the open provider-terms question | gate moved to before the first real headless model call; call classes defined (§31.1 P0, §31.4, ADR-0021) — approved by the user |
+| H1 | HIGH | P3.5 acceptance "S1 passes" needed P7–P13 subsystems | P3.5 acceptance is `test_skeleton_vertical_slice.py`; S1 stays xfail until P13 (§31.1, testing-strategy §2) |
+| H2 | HIGH | judge written in P1 against an API that exists only in P3.5 | `CoreClient` contract + phase-tagged xfail in P1; in-process then HTTP binding (testing-strategy §1.1) |
+| H3 | HIGH | "P9 before real harness" was convention; real model calls earlier had no rules | call classes (§31.4); registry refuses real adapters while policy is the stub (P1 ports) |
+| H4 | HIGH | legacy account hooks fire inside V1 executions; `limit_hook` could open a duplicate successor session | hook environment guard in P0.5 (migration-plan §3, ADR-0019) |
+| H5 | HIGH | `~/.archeus/` is already a legacy per-project workdir (home-directory project) and deletable by legacy code | `ARCHEUS_HOME` resolved per platform (target-architecture §5.1); rollback text fixed (migration-plan §7) |
+| H6 | HIGH | a browser SPA could not obtain the local token | local launch-code bootstrap in the URL fragment (api-and-realtime §5.1) |
+| H7 | HIGH | crash between spawn and registry write could orphan and duplicate an agent; no stream to re-adopt; `spawn_detached` forces empty stdin | spawning marker, JSONL stream file, stdin file (execution-architecture §3.1, §4); `stdin_path` in the P0.5 proc seam |
+| H8 | HIGH | P0.5 seams targeted modules already UI-free at import; missed `gui_api` import side effect, `build_launch_command` in `main`, CLI dispatch | P0.5 rewritten; `connections` split and `quota.assess` dropped; usage seam → P10, launch builder → P11, CLI → P3.5 |
+| M1 | MEDIUM | router ceiling formulas disagreed | one formula per subject kind (resource-router §4, state-machines §9) |
+| M2 | MEDIUM | `worst_window` reports unknown usage as 0 | public usage snapshot helper in P10 preparation |
+| M3 | MEDIUM | checkpoint "decisions" had no source | `DECISION:` lines parsed from the stream (execution-architecture §6) |
+| M4 | MEDIUM | e-stop semantics incomplete | sentinel persistence, re-arm, hook home discovery, Codex path (execution-architecture §10) |
+| M5 | MEDIUM | packaging and SPA toolchain unplanned | P1 packaging; Node build/CI (ui-architecture §2) |
+| M6 | MEDIUM | V1 legitimately writes two legacy files the ownership table said it never writes | shared ownership of `connections-cache.json` and `archeus-limits.json` (migration-plan §5, ADR-0019) |
+| L1 | LOW | judge floor 23 vs table rows | floor = number of traceability rows, derived (testing-strategy §4) |
+| L2 | LOW | SQLite features vary by build | min 3.31, no `RETURNING`/`STRICT` (P2) |
+| L3 | LOW | context window unknown when catalogue unreachable | fallback table (execution-architecture §6) |
+| L4 | LOW | claim that V1 "ends" the shared-import-package hazard | reworded (target-architecture §3, ADR-0001) |
+| L5 | LOW | "replies stream in" vs ids-only events | replies arrive as whole messages in V1 (ui-architecture §4.1) |
+| L6 | LOW | rotation threshold mapped to allocation 98 vs default 80 | import sets allocation 80 and records the old threshold for review (migration-plan §4) |
+| L7 | LOW | "every entity" vs "defer fields" in P1 | every entity with minimal fields (§31.1 P1) |
+
+No phase, technology or feature was added; P3.5 gained the minimal local node it always
+implicitly needed to run the fake harness, taken from P11's scope.

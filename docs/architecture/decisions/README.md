@@ -24,4 +24,4 @@ Internal documents (excluded from the published manual). Status values: DECIDED,
 | [0018](ADR-0018.md) | Internal architecture and design documents live under docs/ but are excluded from the manual | DECIDED |
 | [0019](ADR-0019.md) | Data ownership during the strangler period | DECIDED |
 | [0020](ADR-0020.md) | Automation as event/schedule/condition/state triggers creating missions under policy | DECIDED |
-| [0021](ADR-0021.md) | Feasibility gate: provider terms for automated headless use of subscription accounts | OPEN |
+| [0021](ADR-0021.md) | Provider-terms gate before the first real headless model call | OPEN |

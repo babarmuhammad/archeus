@@ -200,7 +200,9 @@ Until cutover the legacy hook stays the owner (ADR-0019).
    keyed by extractor version so extractor fixes invalidate it; the inspection manifest is
    written only on success.
 4. Model pass (optional, policy class `spend`): summarise modules whose hash changed (today's
-   `memory` unit extraction), INFERRED edges.
+   `memory` unit extraction), INFERRED edges. It is a **tool-less structured call**
+   (rearchitecture plan §31.4): disabled until the ADR-0021 gate is passed, and the
+   deterministic pass alone must be enough for drift detection.
 5. Diff vs previous inspection → `diff_from_previous` (modules added/removed, dependency changes,
    new frameworks, changed commands, changed agent config).
 6. **Drift check** against CONFIRMED ARCHITECTURE / DECISION items that declare constraints in a
@@ -236,7 +238,7 @@ first import fixture.
 Import path (V1 slice): drop or pick a markdown/text file (or paste) → `knowledge.ingest`:
 creates a Meeting (date parsed from the file or asked), an artifact for the notes, Person links
 for recognised attendees (EXTRACTED when matching known handles, else AMBIGUOUS), and DECISION
-*candidates* extracted by a brain call. When a later message says "use the notes from Monday's
+*candidates* extracted by a brain call (a tool-less structured call, plan §31.4). When a later message says "use the notes from Monday's
 meeting", intent resolution finds the Meeting by date/project, pins it into the mission's
 context scope, and the context package cites it with its reason.
 
