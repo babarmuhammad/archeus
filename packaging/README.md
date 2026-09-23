@@ -35,13 +35,13 @@ minutes, so a check run straight afterwards reports the release missing.
 
 | | |
 |---|---|
-| PyPI `archeus` | **ours** — 2.6.0, published by CI on the tag (trusted publishing, `release.yml`) |
+| PyPI `archeus` | **ours** — 2.7.0, published by CI on the tag (trusted publishing, `release.yml`) |
 | PyPI, under the old name | **ours** — the shim at 1.9.2: no code, `archeus>=2.4.0`, published 2026-09-15. **Done, not pending** — see below |
-| npm `archeus` | **ours** — 2.6.0. It served 2.5.0 for about a minute after the publish, as it always does; `npx archeus@2.6.0 --version` ran end to end once it caught up |
-| RubyGems `archeus` | **ours** — 2.6.0 |
-| crates.io / NuGet / Packagist `archeus` | free, and still unclaimed — no toolchain on the release machine for any of the three (no `cargo`, no `nuget.exe`, and Packagist needs a repository of its own plus a web form). Checked again at 2.6.0: unchanged |
+| npm `archeus` | **ours** — 2.7.0. It serves the previous version for a minute or so after a publish, as it always does; `npx archeus@2.7.0 --version` ran end to end once it caught up |
+| RubyGems `archeus` | **ours** — 2.7.0 |
+| crates.io / NuGet / Packagist `archeus` | free, and still unclaimed — no toolchain on the release machine for any of the three (no `cargo`, no `nuget.exe`, and Packagist needs a repository of its own plus a web form). Checked again at 2.7.0: unchanged |
 | GitHub user/org `archeus` | **taken** since 2012 by an unrelated account. The repository stays `babarmuhammad/archeus`; there is nothing to claim. |
-| Docker Hub `babarmuhammad/archeus` | **no image published yet.** There is no `babarmuhammad` account on Docker Hub, and the daemon is still not running on the release machine — `docker version` returns no server at 2.6.0 either. |
+| Docker Hub `babarmuhammad/archeus` | **no image published yet.** There is no `babarmuhammad` account on Docker Hub, and the daemon is still not running on the release machine — `docker version` returns no server at 2.7.0 either. |
 | Docker Hub user `archeus` | **taken**, zero repositories. Publish as `babarmuhammad/archeus`. |
 | `archeus.com` `.dev` `.sh` `.io` `.ai` `.app` | all appear unregistered. The documentation domain is still the previous name's and is deliberately held back in `tools/_rename_brand.py` until one is bought. |
 
