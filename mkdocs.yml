@@ -25,6 +25,12 @@ docs_dir: docs
 # publishing it put a megabyte into every deploy that no reader ever requests.
 exclude_docs: |
   assets/logo.png
+  # Internal engineering documents (the V1 blueprint and its research). They
+  # live beside the manual so the repo has one docs tree, but are not pages;
+  # tests/test_docs_site.py reads this block and exempts them from the nav gate.
+  /architecture/
+  /design/
+  /research/
 
 theme:
   name: material

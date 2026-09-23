@@ -1,0 +1,95 @@
+# Archeus V1 — Testing Strategy
+
+Status: **DECIDED**. Methodology follows the Anthropic code-migration kit's rule: **no judge, no
+exit condition** — the acceptance judge is written before the code it judges (P1), runs against
+the public surface (API + event stream), and never imports internals, so it survives every
+refactor. It also carries this repository's rules: a gate nobody has watched fail is not a gate
+(mutation-verify), and any tool whose output is "passed" needs a floor on how much it checked.
+
+## 1. Test layers
+
+| Layer | Location | What | Runs |
+|---|---|---|---|
+| Unit | `tests/v1/unit/` | pure functions: state tables, guards, policy evaluation, router ordering, context scoring, grammar, digest grouping, canonicalisation of actions | every commit, < 30 s |
+| Property | `tests/v1/unit/` (stdlib `random` with fixed seeds; no Hypothesis dependency) | router invariants, policy precedence, DAG validation, approval hash binding | every commit |
+| Integration | `tests/v1/integration/` | writer + outbox + consumers on a temp SQLite; migrations; boot reconciliation with real child processes; SSE replay | every commit |
+| Contract | `tests/v1/contract/` | harness adapters against recorded streams (fixtures) **and**, opt-in (`-m real_harness`), against the real CLI with a sandbox account; API route table ↔ generated client ↔ docs | fixtures every commit; real weekly/manual |
+| Judge (acceptance) | `tests/v1/judge/` | the scenarios of §2 end-to-end through HTTP + SSE against a Core using the **fake harness** and fake usage/clock | every commit |
+| E2E UI | `tests/v1/e2e/` (Playwright, as `tools/smoke_gui.py` today) | SPA flows against the judge's Core fixture: every destination, inspector tab, approval flow; overflow/dead-space audit; animation loop parks | CI + before release |
+| TUI | `tests/v1/tui/` | TUI screens driven by scripted keys through `term.py`'s patched backend (today's `tests/harness.py` pattern) | every commit |
+| Design gates | `tests/v1/design/` | contrast over tokens × themes, keyframe properties, no backdrop-filter, container-query rule, tokens regenerated, CSP/no inline script | every commit |
+| Legacy suite | `tests/` (existing ~1,300 tests) | unchanged; guards the P0.5 seam edits and the legacy app until retirement | every commit |
+
+Fixtures: `FakeHarness` (scripted: emits tool calls, usage, limit errors, crashes, pressure),
+`FakeUsageFeed` (drives window utilisation over fake time), `FakeClock`, `FakeNotifier`,
+`TempCore` (Core on a free port with a temp home), `SSEClient` (stdlib) with Last-Event-ID.
+Like today's `conftest.py`, a guard fails any test that would spawn a real `claude`/`codex`
+process unless marked `real_harness`, and no test writes outside its temp home.
+
+## 2. Traceability — every acceptance source → phase → test
+
+Four sources define "V1 works": the prompt's 15 acceptance scenarios (**S**), the implementation
+plan's scenarios A–G (**IP**), the specification's 18 acceptance criteria (**SP**) and the
+release gate (**G**, implementation plan Phase 24 + PDF §32). They overlap; this table merges
+them so nothing is tested twice under different names or missed.
+
+| ID | Requirement | Also covers | Judge test (`tests/v1/judge/`) | Phases |
+|---|---|---|---|---|
+| S1 | Simple coding mission end-to-end | SP1–7, SP11–13, IP-B (part) | `test_s01_simple_mission.py` | P7–P13 |
+| S2 | Long-running mission across multiple sessions | SP9, SP10, IP-D, G "resume after handoff" | `test_s02_long_mission_handoffs.py` (fake pressure at task 3 and 6) | P11–P12 |
+| S3 | Multiple accounts/models registered; router respects priority | SP7, SP8, IP-C, G "routing deterministic and explainable" | `test_s03_multi_account_routing.py` | P10 |
+| S4 | Quota exhaustion → policy-controlled fallback; allocation ceilings never exceeded at start; halt at boundary on crossing | IP-C, G "priority/allocation work" | `test_s04_limit_and_fallback.py` (fallback allow / ask / deny variants) | P10–P12 |
+| S5 | Human approval (plan and mid-execution action) | SP6, G "policies enforced" | `test_s05_approvals.py` (single-use, expiry, supersede on replan, idempotent decide, step-up) | P9 |
+| S6 | Verification failure → replan (budget 2 → BLOCKED) | SP11, SP12, G "verification exists" | `test_s06_verify_fail_replan.py` | P13, P8 |
+| S7 | Repository reinspection and architecture drift | IP-G, G "repository re-inspection works" | `test_s07_drift.py` (fixture repo, commit that violates a constraint) | P4 |
+| S8 | Meeting notes used as context | SP2 | `test_s08_meeting_context.py` (import → mention → package cites it with reason) | P5–P6 |
+| S9 | Feedback becomes durable knowledge; supersession | SP14 | `test_s09_feedback_to_knowledge.py` | P6 |
+| S10 | Event triggers automation (model added → documentation) with loop guard | SP15, IP-F, G "event-driven automation exists" | `test_s10_automation.py` (+ `test_s10b_loop_guard.py`: self-triggering automation escalates at depth 3, suspends after 3) | P14 |
+| S11 | Mobile control: observe, pause, resume, approve from a paired device | SP16, SP17, IP-E, G "remote control works" | `test_s11_remote_control.py` (device token over the remote host allowlist; pause is cooperative) | P15 |
+| S12 | Explain why a resource was selected | SP18 | `test_s12_route_why.py` (answer generated from the RouteDecision, no model call; replay equality) | P10 |
+| S13 | Ask current state across projects | SP13 | `test_s13_status.py` (deterministic status without brain; brain summary links every claim) | P4, P7 |
+| S14 | "What changed while I was away?" — per-user cursor, cleared on any device | — | `test_s14_digest.py` | P4, P15 |
+| S15 | Idea → mission | IP-A | `test_s15_idea_to_mission.py` | P7 |
+| SP3 | Archeus challenges or clarifies when necessary | — | `test_sp03_challenge.py` (conflicting DECISION in context → Challenge block, mission BLOCKED until choice) | P7 |
+| G1 | Domain state persistent; mission independent of any session | SP9 | `test_g01_restart_survival.py` (kill Core mid-mission; restart; reconcile; continue) | P2–P3, P11 |
+| G2 | Context selection explainable and provenance-aware | — | `test_g02_context_package.py` | P5 |
+| G3 | GUI/TUI/web/mobile use one backend model | SP17 | `test_g03_one_model.py` (same mission observed via SPA e2e, TUI script, CLI) | P16–P19 |
+| G4 | Audit trail exists | — | `test_g04_audit.py` (every transition has an event with actor + reason; approvals immutable) | P2 |
+| G5 | Emergency stop exists (with and without Core) | — | `test_g05_estop.py` (STOP sentinel halts fake executions; `archeus estop` kills by pid+create_time with Core down) | P11, P20 |
+| G6 | Security: approval boundaries and destructive-action controls | — | `test_g06_security.py` (DENY not overridable downward; execution scope cannot create missions; brain cannot approve; token in query string rejected; revoked device stream closed) | P9, P15, P20 |
+| G7 | Harness adapters normalised and replaceable | — | `tests/v1/contract/test_adapter_contract.py` over fake + claude_code + codex fixtures | P11 |
+| G8 | Legacy data migration tested | — | `test_g08_legacy_import.py` (fixture legacy home → idempotent import → counts/mappings) | P22 |
+
+`tests/v1/judge/test_traceability.py` parses this table and fails if a listed test file does not
+exist or if a judge test is not listed — the table cannot drift from the suite.
+
+## 3. Focus areas the prompt calls out
+
+| Area | Tests that must exist |
+|---|---|
+| Policy boundaries | precedence (GLOBAL→ACTION), locked rules, ALLOW_WITHIN_BOUNDARY path/branch/cost boundaries, `unclassified` exec treated as strictest, fail-closed hook when Core unreachable (Archeus executions) vs fail-open (interactive) |
+| Account quotas | ceiling at start, halt on crossing, stale-usage penalty, `allocation_known=false` budget path, brain reserve |
+| Fallback | allow/ask/deny; never silent; affinity dropped only on resource-attributable failure |
+| Session hand-off | pressure computation from recorded usage; checkpoint content derived from diff/verification/decisions; mission/task state unchanged across hand-off; account change always creates a new session |
+| Failure recovery | Core crash between INTENT commit and spawn → ABANDONED; crash mid-execution → adopt or kill; PID reuse does not kill a stranger (create_time mismatch) |
+| Stale knowledge | superseded items excluded; stale items labelled and down-ranked; expired lesson revalidates |
+| Architecture drift | each constraint kind has a positive and a negative fixture; prose-only constraints reported as uncheckable |
+| Automation loops | depth cap escalates; rate limit; suspension; claim-and-advance never double-fires under concurrent ticks |
+| Human approvals | replay (same action twice → second needs a new approval), expiry, superseded on replan, idempotent double-tap from two devices |
+
+## 4. Mutation verification and floors
+
+- Every gate in `tests/v1/design/` and every judge test is mutation-checked once when written
+  (break the rule it guards, watch it fail, record the mutation in the test's docstring), as the
+  repo does today.
+- The E2E UI run counts checks and fails below a floor (starting floor = number of destinations
+  × inspector tabs + approval flow steps).
+- The judge suite asserts it ran ≥ 23 scenario tests (the table rows).
+
+## 5. CI
+
+- Existing `test` job unchanged (legacy suite; installs only pytest).
+- New `v1` job: `py -m pytest tests/v1 -q` (stdlib + pytest only), then `npm ci && npm run build
+  && npx playwright test` for the SPA (Node only in CI and release, never at runtime).
+- Contract tests against real harnesses: manual/weekly workflow with sandbox accounts; never on
+  pull requests (quota and secrets).

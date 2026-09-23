@@ -38,13 +38,25 @@ def _nav_pages():
     return set(re.findall(r':\s*([\w./-]+\.md)\s*$', _mkdocs(), re.M))
 
 
+def _excluded_dirs():
+    """Directory entries (`/name/`) of mkdocs.yml's `exclude_docs` block. mkdocs
+    builds none of them, so they are not pages and owe the nav nothing."""
+    block = re.search(r'^exclude_docs: \|\n((?:[ \t]+.*\n)+)', _mkdocs(), re.M)
+    lines = [l.strip() for l in block.group(1).splitlines()] if block else []
+    return tuple(l.strip('/') + '/' for l in lines
+                 if l.startswith('/') and l.endswith('/'))
+
+
 def _doc_pages():
     out = set()
+    skip = _excluded_dirs()
     for dirpath, _dirs, files in os.walk(DOCS):
         for name in files:
             if name.endswith('.md'):
                 rel = os.path.relpath(os.path.join(dirpath, name), DOCS)
-                out.add(rel.replace(os.sep, '/'))
+                rel = rel.replace(os.sep, '/')
+                if not rel.startswith(skip):
+                    out.add(rel)
     return out
 
 
