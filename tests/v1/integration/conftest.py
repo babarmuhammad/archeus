@@ -41,3 +41,38 @@ def migrations_dir(tmp_path):
     d.mkdir()
     shutil.copy(os.path.join(migrate.MIGRATIONS_DIR, '0001_init.sql'), d)
     return d
+
+
+class FakeClock:
+    """An injectable monotonic clock (launch-code TTLs)."""
+
+    def __init__(self, now=1000.0):
+        self.now = now
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+@pytest.fixture
+def clock():
+    return FakeClock()
+
+
+@pytest.fixture
+def tc(archeus_home, clock, request):
+    """The real Core runtime on a free port (TempCore, thread mode). A test
+    tunes it with `@pytest.mark.core(heartbeat_s=…, static_dir=…)`."""
+    from v1.judge.http import TempCore
+    mark = request.node.get_closest_marker('core')
+    kw = dict(mark.kwargs) if mark else {}
+    kw.setdefault('launch_clock', clock)
+    core = TempCore(archeus_home, **kw).start()
+    yield core
+    core.stop()
+
+
+def pytest_configure(config):
+    config.addinivalue_line('markers', 'core(**kw): Core runtime options for the tc fixture')

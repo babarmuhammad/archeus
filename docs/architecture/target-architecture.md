@@ -155,7 +155,7 @@ functions whose current form reaches into UI modules (see [migration-plan.md §3
 
 | Process | Started by | Lifetime | Notes |
 |---|---|---|---|
-| **Archeus Core** (`archeus core`) | desktop shell, autostart entry, or CLI | long-lived; survives GUI close | single-instance lock `<ARCHEUS_HOME>/run/core.lock`; writes `<ARCHEUS_HOME>/run/core.json` `{pid, port, started_at}` (0600) for local discovery |
+| **Archeus Core** (`archeus core`) | desktop shell, autostart entry, or CLI | long-lived; survives GUI close | single-instance lock `<ARCHEUS_HOME>/run/core.lock` (an OS lock, released when the process dies); writes `<ARCHEUS_HOME>/run/core.json` `{pid, create_time, port, started_at, version, schema}` for local discovery, trusted only while the lock is held and the pid is alive with that creation time |
 | Desktop shell (`archeus gui`) | user | while window open | Qt shell (existing `gui_qt.py` lineage) that attaches to Core via `core.json`, starting Core if absent; obtains its device token through the local launch-code bootstrap (api-and-realtime §5.1) |
 | Harness processes | Execution Manager via node supervisor | per execution | detached so a Core restart does not kill work; adopted or killed at boot |
 | Brain calls | `infra/llm/runner` | seconds–minutes | headless, `HEADLESS_MARK`-tagged, output schema enforced |
@@ -219,7 +219,7 @@ behaviour for no V1 benefit, and the two sets of names do not overlap.
 |---|---|---|---|
 | `<ARCHEUS_HOME>/archeus.db` | SQLite WAL, `PRAGMA user_version` migrations | all entities of domain-model.md, `events`, `consumer_cursors`, `consumer_effects`, `idempotency_keys` | current state, history, knowledge |
 | `<ARCHEUS_HOME>/artifacts/` | files, sha256-addressed | transcripts copies, reports, diffs, checkpoints, imported notes, verifier logs | large content |
-| `<ARCHEUS_HOME>/run/` | files | `core.json`, `core.lock`, `processes.jsonl`, `STOP` | liveness + e-stop without Core |
+| `<ARCHEUS_HOME>/run/` | files | `core.json`, `core.lock`, `local-token`, `processes.jsonl` (P11), `STOP` | liveness + e-stop without Core |
 | Harness homes (`~/.claude*`, `CODEX_HOME`) | owned by the harness | provider transcripts, credentials | never written by Core except hook/settings installation through the existing atomic read-modify-write helpers |
 | Legacy stores (`~/.claude/archeus.json`, `<project>/.archeus/memory/graph.json`, …) | JSON | today's app state | owned by legacy until cutover (ADR-0019); V1 imports read-only snapshots |
 

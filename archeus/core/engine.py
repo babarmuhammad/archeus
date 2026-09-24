@@ -204,6 +204,29 @@ class Engine:
         del self._running[e.id]
         return 'finish_execution'
 
+    def reconcile_orphans(self):
+        """Reconcile every non-terminal execution this engine did not start,
+        whatever state its mission is in — the boot sweep (p3.5b §18.1): at
+        boot that is all of them, so an orphan under a PAUSED or otherwise
+        settled mission is not left running until someone steps it. Each goes
+        through the one `_reconcile`. One that fails does not stop the others
+        from being reconciled; the first failure is raised after the sweep, so
+        the caller still fails stop. Returns the reconciled execution ids."""
+        with self.db.read() as r:
+            orphans = [x.entity for x in rows.where(r, entities.Execution)
+                       if x.entity.state not in _ENDED and x.entity.id not in self._running]
+        done, failed = [], None
+        for e in orphans:
+            try:
+                self._reconcile(e)
+            except Exception as err:
+                failed = failed or err
+            else:
+                done.append(e.id)
+        if failed is not None:
+            raise failed
+        return done
+
     def _reconcile(self, e):
         """An execution nobody is watching: kill its process if one exists (pid
         + creation time, so a recycled pid is refused), tombstone it, record."""

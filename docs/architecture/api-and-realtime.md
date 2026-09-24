@@ -13,7 +13,9 @@ mobile (ADR-0010). Push beyond ntfy is **DEFERRED**.
    client ever reconstructs state from event payloads, so a missed or reordered event cannot
    produce a wrong screen — only a late one.
 3. **One route table.** `archeus/api/routes.py` is a flat list of
-   `(method, path, handler, required_scope, idempotent, rate_limit)`. Documentation
+   `(method, path, handler, required_scope, idempotent, request_schema, response_schema)`
+   (P3.5b: the two schema columns type the generated client and let the route boundary check a
+   body's shape; there is no rate-limit column until a route needs one). Documentation
    (`docs/architecture/api-reference.md`, generated in P3.5) and the SPA's typed client
    (`clients/app/src/api/generated.ts`) are generated from it; a test fails when either is stale
    (same pattern as today's `tools/gen_api_docs.py`).
@@ -23,9 +25,14 @@ mobile (ADR-0010). Push beyond ntfy is **DEFERRED**.
    `404`, `409 version_conflict` (returns current version), `410 cursor_expired`, `422
    invalid_transition` (names machine/from/to and the trigger), `422 guard_failed` (the edge
    exists but its guard refused: names machine/from/to/trigger, the guard and its reason —
-   state-machines §0), `423 policy_denied` (includes PolicyDecision id),
-   `429`, `503 core_starting`. Never a bare 500 for a client mistake (lesson from today's
-   endpoint floor).
+   state-machines §0), `423 policy_denied` (`{task, action_class, decision, reason}`; the
+   PolicyDecision id is added as a new field once P9 persists decisions, and is absent — not
+   null — until then), `429`, `503 core_starting`. Never a bare 500 for a client mistake
+   (lesson from today's endpoint floor). P3.5b adds `401 token_in_url`, `401
+   invalid_launch_code`, `403 host_not_allowed`, `403 cross_site`, `405 method_not_allowed`,
+   `413 payload_too_large`, `429 too_many_streams`, `503 busy` (with `Retry-After`) and `503
+   core_stopping`; the full table is p3.5b-design-gate.md §5.5 and the generated
+   [api-reference.md](api-reference.md) lists every route.
 
 ## 2. Resource surface (conceptual)
 
@@ -132,7 +139,12 @@ The cursor contract (`seq` in `Last-Event-ID` or `?after=`), implemented by
   token never appears in a URL.
 - Frames: `id: <seq>\nevent: <type>\ndata: {"subject":…,"scope":…}\n\n`; heartbeat comment
   `: hb\n\n` every 15 s (detects half-open sockets on Windows); client reconnects with
-  `Last-Event-ID` → Core replays from `events` where `seq > id`, filtered by the device's scope.
+  `Last-Event-ID` → Core replays from `events` where `seq > id` (P3.5b: `observe` sees every
+  event; per-device filtering arrives with paired devices). A cursor is validated before the
+  stream starts (400 malformed, 410 pruned/ahead); **no cursor means live from the head**, what a
+  client does after a resync. A stream that falls behind retention mid-way receives `event:
+  cursor_expired` and is closed — it never skips silently; Core shutting down sends `event:
+  shutdown`.
 - **Separate pools.** `api/server.py` keeps request threads (bounded, e.g. 32) and SSE streams
   (bounded, e.g. 8, max 2 per device) apart, so long-lived streams never starve commands — the
   current `gui.py` has a single 32-slot semaphore that SSE would exhaust.
@@ -148,16 +160,24 @@ The cursor contract (`seq` in `Last-Event-ID` or `?after=`), implemented by
 
 ### 5.1 Local
 
-- Core binds `127.0.0.1:<port>` by default. `<ARCHEUS_HOME>/run/core.json` (0600) holds the port.
-  The CLI and TUI read a **local device token** from `<ARCHEUS_HOME>/run/local-token` (0600,
-  created at first start).
+- Core binds `127.0.0.1:7337`, and the one accepted origin is `http://127.0.0.1:7337`
+  (`localhost` is deliberately not a second name for it: a second origin would mean a second
+  stored token and a second stream leader). The port is fixed because the browser origin
+  includes it. `<ARCHEUS_HOME>/run/core.json` (`{pid, create_time, port, started_at, version,
+  schema}`, not secret) is trusted only while `run/core.lock` is held and its pid is alive with
+  its recorded creation time. The CLI and TUI read a **local device token** from
+  `<ARCHEUS_HOME>/run/local-token`, created at first start: `0600` on POSIX, where Core refuses
+  to start with looser modes; on Windows the default home inherits the user-profile ACL, and a
+  home outside the profile gets a warning — it is not isolated the way POSIX `0600` is (DPAPI is
+  the upgrade path).
 - **Browser/SPA bootstrap (launch code).** A page cannot read that file, and the strict CSP
   forbids injecting a token into inline script. So whoever opens the SPA locally (the desktop
   shell, `archeus core --open`, the legacy GUI's "Open V1" link) first asks Core — authenticated
   with the local token — for a **launch code** (random, single use, 60 s TTL) and opens
   `http://127.0.0.1:<port>/#launch=<code>`. The fragment never reaches the server or its logs.
   The SPA reads it, calls `POST /v1/devices/launch/redeem {code}` (accepted only from loopback
-  with a loopback Host header) and receives a device token for a `desktop`/`web` device, stores
+  with a loopback Host header) and receives a device token for a `desktop`/`web` device — with
+  the `observe` scope only, because the P3.5b SPA is read-only — stores
   it in IndexedDB, and immediately removes the fragment with `history.replaceState`. A reused or
   expired code gets `401`; the SPA then shows "Open Archeus from the desktop app or run
   `archeus core --open`". Remote devices never use this path; they pair (§5.3). Loopback is **not** trusted by itself (lesson: DNS rebinding):

@@ -1,9 +1,11 @@
 """Queries: read-only views over one snapshot (`Database.read()`)."""
 
+import json
+
 from ...infra.db import rows
 from ...infra.db.writer import NotFound
 from ...infra.eventlog import outbox
-from ..domain import entities
+from ..domain import entities, states
 
 
 def view(row):
@@ -19,9 +21,34 @@ def get_mission(conn, mission_id):
     return view(row)
 
 
-def list_missions(conn):
-    """Every mission, oldest first."""
-    return [view(r) for r in rows.where(conn, entities.Mission)]
+def list_missions(conn, state=None):
+    """Every mission, oldest first; only those in *state* when it is given."""
+    if state is not None and state not in states.states('mission'):
+        raise ValueError('%r is not a mission state' % (state,))
+    eq = {} if state is None else {'state': state}
+    return [view(r) for r in rows.where(conn, entities.Mission, **eq)]
+
+
+def system_principal(conn):
+    """The oldest `system` principal (the engine's actor), or None."""
+    return next((r.entity.id for r in rows.where(conn, entities.Principal)
+                 if r.entity.kind == 'system'), None)
+
+
+def credential(conn, token_hash):
+    """The device a token hash belongs to: `{principal_id, device_id, scopes,
+    expires_at, revoked_at, device_state}`, or None. Judging it (revoked,
+    expired, inactive) is the caller's."""
+    t = conn.execute("SELECT * FROM tokens WHERE token_hash = ? AND kind = 'device'",
+                     (token_hash,)).fetchone()
+    if t is None:
+        return None
+    dev = rows.where(conn, entities.Device, principal_id=t['principal_id'])
+    return {'token_hash': t['token_hash'], 'principal_id': t['principal_id'],
+            'device_id': dev[0].entity.id if dev else None,
+            'device_state': dev[0].entity.state if dev else None,
+            'scopes': tuple(json.loads(t['scopes'])), 'expires_at': t['expires_at'],
+            'revoked_at': t['revoked_at']}
 
 
 def events(conn, after_seq=0, *, limit=None):

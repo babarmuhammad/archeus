@@ -17,15 +17,18 @@ Bindings:
 """
 
 import inspect
+import os
 from typing import Optional, Protocol, Sequence, runtime_checkable
 
 from archeus.core import engine, ports
 from archeus.core.application import commands, queries, work
 from archeus.core.application.lifecycle import GuardFailed, IllegalTrigger
+from archeus.core.application.work import PolicyDenied
 from archeus.core.domain import ids
 from archeus.core.domain.values import Ref
 from archeus.harnesses.fake import FakeHarness
 from archeus.harnesses.registry import AdapterRegistry
+from archeus.infra import discovery, paths
 from archeus.infra.db import Database, connection
 from archeus.infra.db.writer import (IdempotencyConflict, InvalidTransition, NotFound,
                                      VersionConflict)
@@ -87,8 +90,8 @@ OPERATIONS = tuple(name for name in CoreClient.__dict__
 def _pending(op):
     def method(self, *args, **kwargs):
         raise NotImplementedError(
-            'CoreClient.%s: not implemented in the in-process binding yet; it '
-            'arrives with the phase that owns it' % op)
+            'CoreClient.%s: not implemented in this binding yet; it arrives with '
+            'the phase that owns it' % op)
     method.__name__ = op
     return method
 
@@ -107,12 +110,14 @@ class InProcessClient:
     P3.5: Core runs the walking-skeleton engine (archeus/core/engine.py) on the
     stub ports and the fake harness. In process there is no Core loop, so the
     engine is pumped by `_idle()` — a scenario waiting for a state is exactly
-    the moment Core would be working.
+    the moment Core would be working. It hosts an engine, so it takes the
+    home's core.lock exactly as the Core runtime does: two engine hosts on one
+    home fail loudly instead of reconciling each other's children (p3.5b A1).
     """
 
     def __init__(self, home):
         self.home = str(home)
-        self._db = None
+        self._db = self._lock = None
         self._engine = None
         self._principal = self._system = None
         # the stub ports every phase runs on until P9/P10/P13 swap them
@@ -123,6 +128,9 @@ class InProcessClient:
 
     def _core(self):
         if self._db is None:
+            assert (os.path.normcase(os.path.abspath(paths.archeus_home()))
+                    == os.path.normcase(os.path.abspath(self.home))), 'the lock is per home'
+            self._lock = discovery.acquire()
             self._db = Database.open(connection.db_path(self.home))
             if self._principal is None:
                 self._principal = self._db.writer.execute(commands.register_principal, {
@@ -163,6 +171,10 @@ class InProcessClient:
             if isinstance(e, IllegalTrigger):
                 detail['trigger'] = e.trigger
             raise CoreClientError(422, 'invalid_transition', detail) from e
+        except PolicyDenied as e:               # D3: no decision id until P9 persists one
+            raise CoreClientError(423, 'policy_denied', {
+                'task': e.task_key, 'action_class': e.decision.action.action_class,
+                'decision': e.decision.decision, 'reason': e.decision.reason}) from e
         except IdempotencyConflict as e:
             raise CoreClientError(400, 'invalid_request', {'field': 'idempotency_key',
                                                            'why': str(e)}) from e
@@ -178,17 +190,17 @@ class InProcessClient:
                     if m['state'] not in engine.SETTLED]
         return not any([self._engine.step(mid)['changed'] for mid in live])
 
-    def close(self):
+    def close(self, *, drain=True):
         if self._db is not None:
-            self._db.close()
-            self._db = self._engine = None
+            self._db.close(drain=drain)
+            self._db = self._engine = None      # its processes are orphans now
+            self._lock.release()
+            self._lock = None
 
     def _restart(self, *, kill=True):
         """Core stops (kill: queued commands are dropped) and starts again on
         the same home."""
-        if self._db is not None:
-            self._db.close(drain=not kill)
-            self._db = self._engine = None      # its processes are orphans now
+        self.close(drain=not kill)
         self._core()
 
     # ── the contract ──
@@ -208,6 +220,17 @@ class InProcessClient:
         def read():
             with self._core().read() as conn:
                 return queries.get_mission(conn, mission_id)
+        return self._call(read)
+
+    def list_missions(self, *, state: Optional[str] = None,
+                      project_id: Optional[str] = None) -> list:
+        if project_id is not None:
+            raise NotImplementedError('CoreClient.list_missions: a project filter arrives '
+                                      'with projects (P4)')
+
+        def read():
+            with self._core().read() as conn:
+                return queries.list_missions(conn, state)
         return self._call(read)
 
     def _control(self, verb, target):
@@ -230,9 +253,9 @@ class InProcessClient:
         return self._call(read)
 
 
-#: Operations with a real body in the in-process binding (P2: G1, G4; P3: the
-#: mission control verbs).
-IMPLEMENTED = ('create_mission', 'get_mission', 'events', 'pause', 'resume')
+#: Operations with a real body in both bindings (P2: G1, G4; P3: the mission
+#: control verbs; P3.5: listing missions, which the SPA's two lists read).
+IMPLEMENTED = ('create_mission', 'get_mission', 'list_missions', 'events', 'pause', 'resume')
 
 # Every other operation is declared and fails loudly. Later phases replace these
 # with real bodies one by one; tests/v1/contract/test_core_client.py keeps every

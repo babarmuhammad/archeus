@@ -330,7 +330,9 @@ pool, leader-tab stream sharing.
 
 | Concern | Design |
 |---|---|
-| Authentication | device tokens (typed `dev_`/`node_`/`hook_`; token prefixes never reuse an entity-id prefix; 256-bit, hashed at rest, `hmac.compare_digest` on bytes); local token via 0600 discovery file; pairing with 2-minute single-use rate-limited codes shown only in a local session |
+| Authentication | device tokens (typed `dev_`/`node_`/`hook_`; token prefixes never reuse an entity-id prefix; 256-bit, hashed at rest, `hmac.compare_digest` on bytes); local token in `run/local-token` (POSIX `0600`, Core refuses looser modes; on Windows the
+default home inherits the user-profile ACL and a home outside it gets a warning — DPAPI is the
+upgrade path); pairing with 2-minute single-use rate-limited codes shown only in a local session |
 | Authorization | Principal scopes (observe/control/approve/admin; propose for brain; report/checkpoint/request_approval for executions); route table declares the required scope per route |
 | Transport | loopback by default; remote only via HTTPS tunnel; Host/Origin allowlist includes paired hostnames only; fetch-metadata allowlist for browsers; never trust source address; tokens never in query strings |
 | Web | strict CSP `script-src 'self'`, no inline handlers; agent output rendered as text or sanitised markdown; approval cards show canonical actions, never model prose alone |
@@ -514,8 +516,10 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   `api/sse.py`, `api/auth.py` (Host/Origin allowlist, CSP, **local launch-code bootstrap** —
   [api-and-realtime.md §5.1](api-and-realtime.md)), `cli/main.py` (`core`, `status`), Core
   lifecycle (single-instance lock and discovery file under `ARCHEUS_HOME`), the HTTP binding of
-  `CoreClient`, generated API doc + TS client, a minimal **local node** (supervisor + process
-  registry + stream tailing, enough to run the fake harness subprocess; real adapters, worktrees
+  `CoreClient`, generated API doc + TS client, a minimal **local node** — the Core-hosted
+  engine thread, the existing adapter registry and process I/O files, and a boot reconciliation
+  sweep over the database (p3.5b-design-gate.md §18.1; the process registry, live stream
+  tailing and adoption are P11's, the execution stream route P16's; real adapters, worktrees
   and `archeus estop` arrive in P11), and the minimal SPA (Now + Work lists) with its Node build
   and CI job ([ui-architecture.md §2](ui-architecture.md)).
 - Legacy edit: `claude_sessions/cli.py` dispatches the reserved V1 verbs (`core`, `status`,
@@ -530,10 +534,10 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Acceptance: **`tests/v1/judge/test_skeleton_vertical_slice.py` passes** (it is *not* S1: S1
   needs the real brain, policy, router, verification and review and stays xfail until P13);
   skeleton demo recorded.
-- **As built so far — the in-process walking skeleton only.** P3.5 was split: the vertical
-  slice first, in process, with no HTTP, SSE, auth, CLI, SPA or TS client. Those, the HTTP
-  binding of `CoreClient`, the Core lock/discovery file and the node supervisor with its
-  process registry are **still open** under this entry.
+- **As built — P3.5a (the in-process walking skeleton) and P3.5b (the service).** P3.5 was
+  split: the vertical slice first, in process; then P3.5b, designed and decided in
+  [p3.5b-design-gate.md](p3.5b-design-gate.md), made it reachable from outside the Core
+  process (the P3.5b bullet at the end of this entry). The notes below are P3.5a's.
   - Durable work: migration `0002_work.sql` persists **Plan, Task, Execution, Verification,
     Review** (the P1 entities, with minimal fields added: `Mission.success_criteria`,
     `Plan.summary`/`estimated_cost`, `Task.failure_class`, the Execution's harness, pid,
@@ -599,6 +603,19 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
     `MissionFacts.review`). Remaining unguarded mission edges are legal by name and lead
     nowhere a guard protects (`approve` only from APPROVAL_REQUIRED, which only a decided plan
     reaches); who may fire them is P9.
+  - **P3.5b (the service), as built.** `archeus/api/` (one route table with request and
+    response schemas, the `ThreadingHTTPServer` with separate request and stream pools, SSE,
+    device-token authentication with coarse route scopes, the Host / fetch-metadata allowlists
+    and security headers, in-memory launch codes), `archeus/core/runtime.py` (lock → database →
+    local token → engine thread → HTTP → `core.json`, stopped in reverse; one engine, parked per
+    mission version, lost races skipped, any other failure exits 3), `archeus/infra/discovery.py`
+    (`core.lock`, `core.json`, `local-token`), `archeus/cli/main.py` (`core`, `status`, five
+    deferred verbs), `Engine.reconcile_orphans()` (the boot sweep, over the one `_reconcile`),
+    the writer's commit notification, `device.state_changed`, the `register_device` /
+    `revoke_device` commands, the HTTP judge binding (`tests/v1/judge/http.py`, every scenario
+    on both bindings), the SPA in `clients/app/` built into the wheel, and the generated
+    `api-reference.md` and `generated.ts` (`tools/gen_api_docs.py`). No real model call; the
+    registry, adoption, live tailing, e-stop, pairing, approvals and routing stay in P9–P16.
 
 **P4 — World model and repository inspection**
 - Depends: P3.5. New: `world/projects.py`, `world/inspection.py` (reusing `repos`,
@@ -685,10 +702,11 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Acceptance: S10, S10b pass.
 
 **P15 — Presence, pairing, remote, mobile**
-- Depends: P14 (and P3.5). New: pairing routes, device scopes enforcement, remote host
+- Depends: P14 (and P3.5). New: pairing routes, scope enforcement for *paired* devices (local
+  credentials' route scopes, revocation and token-in-query rejection are P3.5b's), remote host
   allowlist, ntfy notifier, PWA manifest + service worker (offline shell only), mobile layouts.
-- Tests: pairing expiry/rate limits, revoked device stream closes, token-in-query rejected,
-  PWA install on Android/iOS (manual checklist), ntfy payload contains no secrets.
+- Tests: pairing expiry/rate limits, a paired device's revoked stream closes, PWA install on
+  Android/iOS (manual checklist), ntfy payload contains no secrets.
 - Acceptance: S11, S14 (cross-device) pass.
 
 **P16 — GUI information architecture**
@@ -810,7 +828,7 @@ Rules:
 | Q1 | Provider terms for automated headless use of subscription accounts and rotation across several subscriptions | OPEN (ADR-0021) | user | before the first real headless model call (P4 optional model pass, P6 extraction or P7 brain, whichever comes first) |
 | Q2 | Remote access via Tailscale Serve as the documented default | PROPOSED (ADR-0010) | user | P15 |
 | Q3 | ntfy as the default push channel (vs a native wrapper later) | PROPOSED | user | P15 |
-| Q4 | SPA libraries (TanStack Query, React Router) | PROPOSED | engineering | P3.5 |
+| Q4 | SPA libraries (TanStack Query, React Router) | PROPOSED | engineering | P16 (the P3.5b SPA uses neither: p3.5b-design-gate.md D1) |
 | Q5 | Exact hex values of the design tokens | PROPOSED | design review | P16 |
 | Q6 | Voice channel in V1? | OPEN (research D1) | user | P16 |
 | Q7 | Legacy worlds as a "Classic" appearance? | OPEN (research D3) | user | P16 |

@@ -49,6 +49,39 @@ def create_mission(tx, *, actor, title, objective, project_id=None,
     return {'id': m.id, 'state': m.state, 'version': row.version, 'seq': e.seq}
 
 
+# ── devices and their tokens (P3.5b local auth) ──────────────────────────
+
+def register_device(tx, *, actor, name, platform, token_hash, scopes, expires_at=None):
+    """A user device with its first credential, in one transaction: a
+    `user_device` principal holding *scopes*, its Device (PAIRING -> ACTIVE by
+    `code_redeemed`) and the `tokens` row. Only the token's sha256 arrives here:
+    the token itself never enters a command, its arguments or its response.
+    *actor* is who vouched for the device (Core's system principal for the local
+    token, the minting device for a launch code). Deciding who may do that is
+    the caller's (a route scope); nothing here checks it."""
+    if not (isinstance(token_hash, str) and entities._HEX64.fullmatch(token_hash)):
+        raise ValueError('token_hash is a sha256 hex digest')
+    p = entities.Principal(id=ids.new_id('principal'), kind='user_device', scopes=tuple(scopes))
+    tx.insert(p, actor=actor)
+    tx.append(new_event('principal.created', Ref('principal', p.id), actor,
+                        payload={'kind': p.kind, 'scopes': list(p.scopes)}))
+    d = entities.Device(id=ids.new_id('device'), principal_id=p.id, name=name, platform=platform)
+    tx.insert(d, actor=actor)
+    row, e = lifecycle.fire(tx, entities.Device, d.id, 'code_redeemed', actor=actor,
+                            reason='a %s device was issued its token' % platform)
+    tx.insert_token(token_hash=token_hash, kind='device', principal_id=p.id, scopes=p.scopes,
+                    actor=actor, expires_at=expires_at)
+    return {'device_id': d.id, 'principal_id': p.id, 'state': row.entity.state,
+            'version': row.version, 'seq': e.seq}
+
+
+def revoke_device(tx, *, actor, device_id, reason='revoked on request'):
+    """ACTIVE -> REVOKED, and every token of its principal revoked with it."""
+    row, e = lifecycle.fire(tx, entities.Device, device_id, 'revoke', actor=actor, reason=reason)
+    tx.revoke_tokens(row.entity.principal_id)
+    return _result(row, [e])
+
+
 # ── mission lifecycle (state-machines §2) ──────────────────────────────────
 
 #: The cost band a plan may reach and still be approved without asking.

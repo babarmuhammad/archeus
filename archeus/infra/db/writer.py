@@ -111,6 +111,21 @@ class Tx:
         Entity state goes through insert()/transition(), never through here."""
         return self.conn.execute(sql, params)
 
+    def insert_token(self, *, token_hash, kind, principal_id, scopes, actor, expires_at=None):
+        """A credential row (api-and-realtime §5.3). Only the token's sha256
+        ever reaches the database; the token itself is never an argument here."""
+        self.conn.execute(
+            'INSERT INTO tokens (token_hash, kind, principal_id, scopes, created_at, '
+            'created_by, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (token_hash, kind, principal_id, json.dumps(list(scopes)), self.now, actor.id,
+             expires_at))
+
+    def revoke_tokens(self, principal_id):
+        """Revoke every live credential of a principal; returns how many."""
+        return self.conn.execute(
+            'UPDATE tokens SET revoked_at = ? WHERE principal_id = ? AND revoked_at IS NULL',
+            (self.now, principal_id)).rowcount
+
     def get(self, cls, entity_id):
         return rows.get(self.conn, cls, entity_id)
 
@@ -237,6 +252,10 @@ class Writer:
         self._ready = threading.Event()
         self._error = None
         self.committed = self.failed = 0
+        # commit notification (api-and-realtime §4): readers — SSE streams, the
+        # engine loop — wait here instead of polling the head
+        self._commits = threading.Condition()
+        self.commit_count = 0
         self._thread = threading.Thread(target=self._run, args=(open_conn,),
                                         name='archeus-writer', daemon=True)
         self._thread.start()
@@ -265,6 +284,24 @@ class Writer:
 
     def execute(self, command, kwargs=None, *, idempotency_key=None, timeout=None):
         return self.submit(command, kwargs, idempotency_key=idempotency_key).result(timeout)
+
+    def wait_commit(self, seen, timeout, until=None):
+        """Block until a command that wrote something commits after *seen* (a
+        `commit_count` read earlier), *until()* is true, or *timeout* passes.
+        Returns `commit_count` now. Read the count BEFORE reading the rows it
+        guards, so a commit landing in between is never slept through; *until*
+        is re-checked under the lock `wake()` takes, so a flag set before a
+        `wake()` is never slept through either."""
+        with self._commits:
+            self._commits.wait_for(lambda: self.commit_count != seen or (until and until()),
+                                   timeout)
+            return self.commit_count
+
+    def wake(self):
+        """Wake every waiter so it re-checks its `until` (a stream being closed,
+        a stop). Set the flag first, then wake."""
+        with self._commits:
+            self._commits.notify_all()
 
     def close(self, *, drain=True, timeout=30):
         """Stop accepting commands. drain=True runs what is queued first;
@@ -338,6 +375,13 @@ class Writer:
             if conn.in_transaction:
                 conn.execute('ROLLBACK')
             raise
+        # after COMMIT, so a woken reader sees the rows; never on a rollback or
+        # a replay; and not for a command that wrote nothing, or an engine
+        # pass of no-op commands would wake the engine that ran them
+        if tx.mutated or tx.events:
+            with self._commits:
+                self.commit_count += 1
+                self._commits.notify_all()
         return json.loads(response)
 
     @staticmethod

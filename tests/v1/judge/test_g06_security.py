@@ -33,6 +33,5 @@ def test_revoking_a_device_closes_its_live_stream(client, rig):
     assert stream.closed()
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P20")
 def test_a_token_in_the_query_string_is_rejected(client, rig):
     assert rig.http_get('/v1/now?token=' + rig.device_token()).status == 401

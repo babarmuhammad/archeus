@@ -3,6 +3,8 @@
 
 import time
 
+import pytest
+
 #: Set by the judge's `client` fixture to the binding's `_idle()`: True when
 #: nothing in the Core under test can change state on its own, so waiting for a
 #: change can only time out. Until an engine runs (P3.5) that is always the
@@ -60,7 +62,8 @@ class Rig:
 
     def script_harness(self, task_key, steps):
         """Make the fake harness run *steps* (fake_agent.py format) for a task."""
-        self._pending('scripted fake harness runs', 'TempCore (P3.5)')
+        self._pending('scripting the fake harness per scenario', 'the first phase whose '
+                      'scenario needs it (P9)')
 
     def usage(self, account_id, window, utilisation_pct):
         """Report provider usage for an account (FakeUsageFeed)."""
@@ -98,10 +101,15 @@ class Rig:
         self._pending('the Core-less e-stop', 'P11')
 
     def http_get(self, path):
-        self._pending('raw HTTP access', 'P3.5')
+        """A raw authenticated GET; only the HTTP binding has a wire to send it on."""
+        if not hasattr(self.client, '_http_get'):
+            pytest.skip('raw HTTP exists only over the http binding')
+        return self.client._http_get(path)
 
     def device_token(self):
-        self._pending('device tokens', 'P3.5')
+        if not hasattr(self.client, 'token'):
+            pytest.skip('device tokens exist only over the http binding')
+        return self.client.token
 
     def gui(self):
         """The SPA driven by Playwright against this Core."""

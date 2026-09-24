@@ -89,6 +89,8 @@ gui = ["PyQt6", "PyQt6-WebEngine"]   # optional native desktop shell (gui_qt.py)
 packages = [
     "claude_sessions",
     "archeus",
+    "archeus.api",
+    "archeus.cli",
     "archeus.core",
     "archeus.core.application",
     "archeus.core.domain",
@@ -118,6 +120,11 @@ claude_sessions = [
 # The V1 schema: migrations are .sql files, not a package, so they ship only
 # because this names them (test_packaging checks it matches every one).
 "archeus.infra.db" = ["migrations/*.sql"]
+# The V1 SPA, BUILT from clients/app (Vite writes it here; it is git-ignored by
+# archeus/api/.gitignore). A glob that matches nothing is silent, so CI builds
+# the SPA before `python -m build` and the package job checks the installed
+# wheel: index.html plus every asset it references, and no maps or sources.
+"archeus.api" = ["static/*", "static/assets/*"]
 
 [tool.ruff]
 line-length = 100

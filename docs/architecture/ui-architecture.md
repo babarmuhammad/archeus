@@ -10,7 +10,7 @@ language: [../design/ARCHEUS_V1_DESIGN_SYSTEM.md](../design/ARCHEUS_V1_DESIGN_SY
 | | Desktop GUI | Web | Mobile | TUI / CLI |
 |---|---|---|---|---|
 | Code | the SPA in the Qt shell (existing `gui_qt.py` lineage; Edge `--app` / browser fallback kept) | the same SPA in a browser | the same SPA installed as a PWA over HTTPS | Python (`archeus/cli`) |
-| Auth | local device token via discovery file | local token (localhost) or device token | device token from pairing | local device token |
+| Auth | device token from a local launch code (the shell cannot hand a page the local token) | device token from a local launch code | device token from pairing | local device token (`run/local-token`) |
 | Transport | HTTP + SSE | HTTP + SSE | HTTPS (tunnel) + SSE | HTTP + SSE (TUI), HTTP only (CLI) |
 | Business logic | none | none | none | none |
 
@@ -44,6 +44,9 @@ clients/app/
 └── vite.config.ts             outputs to ../../archeus/api/static
 ```
 
+- P3.5b ships the minimal SPA of this structure: two lists (Now, Work), `api/generated.ts`,
+  `api/stream.ts` (Web Locks leader + `BroadcastChannel`) and `api/transport.ts`, with no router
+  and no query library — both are Q4, decided with P16's surfaces (p3.5b-design-gate.md D1).
 - Stack: TypeScript + React 19 + Vite (DECIDED). Data layer: **TanStack Query** for the cache
   with event-driven invalidation (PROPOSED — it does exactly "cache by key, invalidate by
   subject"; a hand-rolled cache would be reinvented). Routing: a small router (React Router)

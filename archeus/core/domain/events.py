@@ -45,6 +45,7 @@ TYPES = (
     ('account.health_changed', 'account', 'user', True, 'an account moved health state'),
     ('harness.state_changed', 'harness', 'user', False, 'a harness appeared, vanished or broke'),
     ('node.state_changed', 'execution_node', 'user', False, 'a node went online/grace/offline'),
+    ('device.state_changed', 'device', 'system', False, 'a device moved state (redeemed, revoked)'),
     ('device.stream_opened', 'device', 'system', False, 'a device opened the event stream'),
     ('device.stream_closed', 'device', 'system', False, 'a device closed the event stream'),
     ('principal.created', 'principal', 'system', False, 'an actor was registered'),

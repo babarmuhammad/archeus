@@ -870,6 +870,64 @@ def test_an_orphan_whose_process_is_gone_ends_lost_and_nothing_is_killed(archeus
             stranger.wait()
 
 
+def test_the_boot_sweep_reconciles_every_orphan_whatever_its_mission_is_doing(core):
+    """Engine.reconcile_orphans (p3.5b §18.1): every non-terminal execution a
+    NEW engine did not start, through the one `_reconcile` — including one
+    under a PAUSED mission, which no engine step would ever reach. A failure
+    on one orphan does not leave the others running; it is raised after."""
+    from claude_sessions import proc
+    core.scenarios['work'] = [{'sleep': 60}]
+    first, second = core.mission(), core.mission()
+    for mid in (first, second):
+        core.until(mid, lambda m: m.state == 'EXECUTING')
+        core.until(mid, lambda m, mid=mid: [e for e in core.all(entities.Execution,
+                                                                 mission_id=mid)
+                                   if e.state == 'STARTING'])
+    core.do(core.missions.pause, mission_id=first)
+    live = {e.id: (e.pid, e.create_time) for e in core.all(entities.Execution)}
+    assert len(live) == 2 and all(proc.process_create_time(p) == c for p, c in live.values())
+
+    fresh = core.build_engine()             # a restarted Core: none of these are its own
+    real, calls = fresh._reconcile, []
+
+    def flaky(e):
+        calls.append(e.id)
+        if len(calls) == 1:
+            raise RuntimeError('the first orphan fails')
+        return real(e)
+    fresh._reconcile = flaky
+    with pytest.raises(RuntimeError, match='the first orphan fails'):
+        fresh.reconcile_orphans()
+    assert len(calls) == 2, 'a failing orphan stopped the sweep'
+    failed_id, done_id = calls
+    assert core.row(entities.Execution, done_id).entity.state == 'ENDED_KILLED'
+    assert core.row(entities.Execution, failed_id).entity.state == 'STARTING'
+
+    fresh._reconcile = real
+    assert fresh.reconcile_orphans() == [failed_id]         # the rest, on the next sweep
+    assert fresh.reconcile_orphans() == []
+    for pid, ctime in live.values():
+        deadline = time.monotonic() + 10
+        while proc.process_create_time(pid) == ctime and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert proc.process_create_time(pid) != ctime
+    assert core.row(entities.Mission, first).entity.state == 'PAUSED'      # never moved
+    assert {e.exit_reason for e in core.all(entities.Execution)} == {'lost'}
+
+
+def test_the_boot_sweep_leaves_the_executions_its_own_engine_started(core):
+    core.scenarios['work'] = [{'sleep': 60}]
+    mid = core.mission()
+    core.until(mid, lambda m: [e for e in core.all(entities.Execution) if e.state == 'STARTING'])
+    try:
+        assert core.engine.reconcile_orphans() == []
+        (e,) = core.all(entities.Execution)
+        assert e.state == 'STARTING'
+    finally:
+        adapter, handle = core.engine._running[e.id]
+        adapter.stop(handle, grace_s=0)
+
+
 def test_core_killed_between_intent_and_spawn_abandons_the_attempt(archeus_home):
     died = _die(archeus_home, 'intent')
     assert died['state'] == 'INTENT' and died['pid'] is None

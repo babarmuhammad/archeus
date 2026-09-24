@@ -82,12 +82,57 @@ def test_the_v1_package_imports_in_a_clean_interpreter():
     assert r.stdout.strip() == '[]', r.stdout
 
 
+def _every_package_data():
+    """{package: [globs]} for every `[tool.setuptools.package-data]` entry."""
+    import re
+    text = open(os.path.join(ROOT, 'pyproject.toml'), encoding='utf-8').read()
+    body = text[text.index('[tool.setuptools.package-data]'):]
+    body = body[body.index('\n') + 1:]
+    body = body[:body.index('\n[')] if '\n[' in body else body
+    out = {}
+    for m in re.finditer(r'(?ms)^"?([\w.]+)"? = \[(.*?)\]', body):
+        out[m.group(1)] = re.findall(r'"([^"]+)"', m.group(2))
+    return out
+
+
+#: Globs whose files are BUILT, not tracked: the V1 SPA (p3.5b design gate
+#: §18.2), which Vite writes into archeus/api/static before `python -m build`.
+#: The Node-free test job cannot build it, so these may match nothing here —
+#: and only these: every one must be git-ignored (so it can never be hiding a
+#: hand-written file that failed to match), and the package job then requires
+#: them to match in the INSTALLED wheel (tools/check_wheel.py).
+GENERATED_GLOBS = {'archeus.api': ('static/*', 'static/assets/*')}
+
+
 def test_every_declared_glob_matches_at_least_one_file():
     """A glob that matches nothing is invisible: the build succeeds, the wheel is
     just missing the data."""
-    empty = [pat for pat in _package_data_globs()
-             if not glob(os.path.join(PKG, pat.replace('/', os.sep)))]
+    empty = []
+    for pkg, pats in _every_package_data().items():
+        base = os.path.join(ROOT, *pkg.split('.'))
+        for pat in pats:
+            if pat in GENERATED_GLOBS.get(pkg, ()):
+                continue
+            if not glob(os.path.join(base, pat.replace('/', os.sep))):
+                empty.append('%s: %s' % (pkg, pat))
     assert not empty, 'package-data patterns matching no files: %s' % empty
+
+
+def test_the_generated_glob_exemption_is_exactly_the_ignored_spa_output():
+    declared = _every_package_data()
+    assert set(GENERATED_GLOBS) == {'archeus.api'}
+    for pkg, pats in GENERATED_GLOBS.items():
+        assert tuple(declared[pkg]) == pats, 'the exemption and pyproject disagree'
+        probes = ['/'.join(pkg.split('.') + [p.replace('*', 'probe.js')]) for p in pats]
+        r = subprocess.run(['git', 'check-ignore', '--no-index'] + probes, cwd=ROOT,
+                           capture_output=True, text=True, encoding='utf-8',
+                           errors='ignore', timeout=60)
+        assert set(r.stdout.split()) == set(probes), 'a generated glob is not git-ignored'
+    # the ignore is scoped to its own directory, never a root rule
+    assert open(os.path.join(ROOT, 'archeus', 'api', '.gitignore')).read().split() == [
+        '/static/']
+    assert open(os.path.join(ROOT, 'clients', 'app', '.gitignore')).read().split() == [
+        '/node_modules/']
 
 
 def test_the_bundled_skill_templates_are_covered_by_a_glob():

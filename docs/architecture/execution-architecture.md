@@ -80,7 +80,7 @@ All files live in `<ARCHEUS_HOME>/run/exec/<execution_id>/`:
 | `spawning` | spawner, **before** the process is created | marker `{execution_id, attempt, at}`; its presence without `ended` means "a process may exist" |
 | `prompt.txt` | spawner | the prompt; the process reads it as **stdin** (`proc.spawn_detached(..., stdin_path=)`), which avoids command-line length limits and survives Core restarts |
 | `stream.jsonl` | the process (stdout and stderr redirected) | the normalised event stream Core **tails**; never a pipe, so a restarted Core can re-attach |
-| `pid.json` | spawner, immediately after creation | `{pid, create_time}`; also appended to `run/processes.jsonl` |
+| `pid.json` | spawner, immediately after creation | `{pid, create_time}`; the append to `run/processes.jsonl` is P11's supervisor (p3.5b-design-gate.md A36: no code before P11 writes it) |
 | `ended` | Core, when the exit is observed | `{exit_code, at}` tombstone |
 
 Spawn rule (idempotent under outbox re-delivery): if `spawning` exists without `ended`, the
@@ -116,7 +116,13 @@ sequenceDiagram
 - **Registry.** `<ARCHEUS_HOME>/run/processes.jsonl` lines `{execution_id, pid, create_time, argv0,
   started_at}`; tombstoned on exit. It exists so `archeus estop` and boot reconciliation work
   without the database. Per-execution files (§3.1) carry the spawning marker and the stream.
-- **Boot reconciliation.** For every execution in STARTING/RUNNING/PAUSING/LOST: check pid +
+  **P11** — until then nothing writes it (p3.5b-design-gate.md §18.1).
+- **Boot reconciliation.** *P3.5b* runs the kill-and-retry half of this at every Core start
+  (`Engine.reconcile_orphans()`, over the database and the per-execution files, whatever state
+  the mission is in): a live orphan is killed by pid + `create_time`; a recycled pid is treated
+  as the process having exited and nothing is killed; the attempt ends LOST → ENDED_KILLED (or
+  ABANDONED) and the task retries. The adopt branch, live tailing and the registry below are
+  **P11**. For every execution in STARTING/RUNNING/PAUSING/LOST: check pid +
   `create_time` (Windows: `GetProcessTimes` via `ctypes`; POSIX: `/proc/<pid>/stat` or `ps`).
   Alive and `stream.jsonl` still growing → adopt (resume tailing from the last offset Core
   recorded). Dead → derive a

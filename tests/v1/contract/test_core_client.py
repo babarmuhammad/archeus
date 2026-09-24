@@ -7,8 +7,16 @@ import inspect
 import pytest
 
 from v1.judge.client import IMPLEMENTED, OPERATIONS, CoreClient, CoreClientError, InProcessClient
+from v1.judge.http import HttpClient
 
-BINDINGS = (InProcessClient,)
+BINDINGS = (InProcessClient, HttpClient)
+
+
+def _make(binding, tmp_path):
+    """A binding object that is never used to reach a Core."""
+    if binding is HttpClient:
+        return HttpClient('http://127.0.0.1:1', 'dev_unused')
+    return binding(tmp_path)
 
 #: The operations testing-strategy §1.1 freezes. Adding one is a contract
 #: change: it goes in the document first.
@@ -24,17 +32,66 @@ def test_the_contract_is_exactly_the_documented_operations():
 
 @pytest.mark.parametrize('binding', BINDINGS)
 def test_each_binding_matches_the_protocol(binding, tmp_path):
-    client = binding(tmp_path)
+    client = _make(binding, tmp_path)
     assert isinstance(client, CoreClient)
     for op in OPERATIONS:
         assert inspect.signature(getattr(binding, op)) == inspect.signature(
             getattr(CoreClient, op)), op
 
 
+@pytest.mark.parametrize('binding', BINDINGS)
 @pytest.mark.parametrize('op', [op for op in OPERATIONS if op not in IMPLEMENTED])
-def test_an_unimplemented_operation_fails_loudly(op, tmp_path):
+def test_an_unimplemented_operation_fails_loudly(op, binding, tmp_path):
     with pytest.raises(NotImplementedError, match=op):
-        getattr(InProcessClient(tmp_path), op)('x')
+        getattr(_make(binding, tmp_path), op)('x')
+
+
+def test_both_bindings_implement_the_same_operations_for_real():
+    """IMPLEMENTED is one tuple for both: an op with a body in one binding and
+    a pending stub in the other would split what a scenario proves."""
+    for binding in BINDINGS:
+        for op in IMPLEMENTED:
+            assert getattr(binding, op).__name__ == op
+            assert '_pending' not in getattr(binding, op).__qualname__, (binding, op)
+
+
+def _errors():
+    """Every application error both bindings can meet, one instance each."""
+    from archeus.core.application import errors
+    from archeus.core.domain.actions import Action
+    from archeus.core.domain.entities import PolicyDecision
+    from archeus.core.domain.guards import GuardResult
+    from archeus.core.domain import ids
+    decision = PolicyDecision(id=ids.new_id('policy_decision'), decision='DENY',
+                              action=Action(action_class='write_repo', target='task:work'),
+                              reason='locked')
+    return [
+        errors.NotFound('msn_x'),
+        errors.CursorExpired(1, 'pruned', 5, 9),
+        errors.VersionConflict('msn_x', 1, 2),
+        errors.GuardFailed('mission', 'EXECUTING', 'VERIFYING', 'all_tasks_done',
+                           GuardResult('all_tasks_done', False, 'not done')),
+        errors.InvalidTransition('mission', 'CREATED', 'PAUSED'),
+        errors.IllegalTrigger('mission', 'CREATED', 'pause'),
+        errors.IdempotencyConflict('key reused'),
+        errors.PolicyDenied(decision, 'work'),
+        ValueError('bad'),
+    ]
+
+
+@pytest.mark.parametrize('err', _errors(), ids=lambda e: type(e).__name__)
+def test_both_bindings_give_every_error_the_same_status_and_code(err, tmp_path):
+    from archeus.api.server import translate
+
+    def boom():
+        raise err
+    with pytest.raises(CoreClientError) as got:
+        InProcessClient(tmp_path)._call(boom)
+    status, code, detail, _h = translate(err)
+    assert (got.value.status, got.value.code) == (status, code)
+    if code == 'policy_denied':           # D3: the P3.5b shape, and no decision id
+        assert detail == got.value.detail == {'task': 'work', 'action_class': 'write_repo',
+                                              'decision': 'DENY', 'reason': 'locked'}
 
 
 @pytest.fixture

@@ -104,3 +104,37 @@ def test_the_help_says_where_the_state_lives(monkeypatch, capsys):
     out = _run(monkeypatch, capsys, ['--help'])
     for expected in ('archeus.json', 'CLAUDE_CONFIG_DIR', '.archeus/memory'):
         assert expected in out, expected
+
+
+def _probe(argv, stdin=''):
+    import subprocess
+    code = ('import sys\n'
+            'sys.argv = %r\n'
+            'from claude_sessions import cli\n'
+            'try:\n'
+            '    cli.run()\n'
+            'except SystemExit as e:\n'
+            '    rc = e.code\n'
+            'print(sorted(m for m in sys.modules if m == "archeus" or m.startswith("archeus.")),'
+            ' file=sys.stderr)\n'
+            'sys.exit(rc)\n' % (argv,))
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return subprocess.run([sys.executable, '-c', code], input=stdin, capture_output=True,
+                          text=True, encoding='utf-8', errors='ignore', timeout=60, cwd=root)
+
+
+def test_the_statusline_path_never_imports_the_v1_package():
+    """J2 (p3.5b design gate §8): the V1 dispatch sits AFTER the statusline
+    branch and imports lazily, so a conversation turn never pays for it. A
+    structural check, not a timing one, so it is deterministic on CI."""
+    r = _probe(['archeus', 'statusline'], stdin='{}')
+    assert r.stderr.strip().splitlines()[-1] == '[]', r.stderr
+
+
+def test_a_deferred_v1_verb_imports_only_its_dispatcher():
+    """J3: `archeus approve` imports nothing beyond the standard library and
+    the V1 CLI module itself — no Core, no database, no HTTP client."""
+    r = _probe(['archeus', 'approve'])
+    assert r.returncode == 2
+    assert 'archeus approve is not available yet (arrives with P9); nothing was done' in r.stderr
+    assert r.stderr.strip().splitlines()[-1] == "['archeus', 'archeus.cli', 'archeus.cli.main']"

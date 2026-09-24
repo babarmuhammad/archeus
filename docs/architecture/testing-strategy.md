@@ -79,7 +79,7 @@ them so nothing is tested twice under different names or missed.
 | G3 | GUI/TUI/web/mobile use one backend model | SP17 | `test_g03_one_model.py` (same mission observed via SPA e2e, TUI script, CLI) | P16–P19 |
 | G4 | Audit trail exists | — | `test_g04_audit.py` (every transition has an event with actor + reason; approvals immutable) | P2 |
 | G5 | Emergency stop exists (with and without Core) | — | `test_g05_estop.py` (STOP sentinel halts fake executions; `archeus estop` kills by pid+create_time with Core down) | P11, P20 |
-| G6 | Security: approval boundaries and destructive-action controls | — | `test_g06_security.py` (DENY not overridable downward; execution scope cannot create missions; brain cannot approve; token in query string rejected; revoked device stream closed) | P9, P15, P20 |
+| G6 | Security: approval boundaries and destructive-action controls | — | `test_g06_security.py` (DENY not overridable downward; execution scope cannot create missions; brain cannot approve; token in query string rejected; revoked device stream closed) | P3.5, P9, P15 |
 | G7 | Harness adapters normalised and replaceable | — | `tests/v1/contract/test_adapter_contract.py` over fake + claude_code + codex fixtures | P11 |
 | G8 | Legacy data migration tested | — | `test_g08_legacy_import.py` (fixture legacy home → idempotent import → counts/mappings) | P22 |
 
