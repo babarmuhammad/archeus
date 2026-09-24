@@ -217,12 +217,13 @@ a deterministic grammar and never need a model (ADR-0006).
 | `id`, `workspace_id`, `project_id?` | |
 | `title`, `objective`, `desired_outcome` | objective = what; desired_outcome = how we'll know |
 | `requirements[]`, `constraints[]` | each `{text, origin: explicit|inferred, source_ref}` |
-| `success_criteria[]` | each `{text, check: automatic|human, verifier?}` |
+| `success_criteria[]` | each `{text, check: automatic|human, verifier?, origin: explicit|inferred}` — inferred when the plan supplied them because the mission had none |
 | `context_scope` | levels allowed (L0–L4), extra refs pinned by the user, refs excluded |
 | `dependencies[]` | other missions/decisions this waits on |
 | `priority` | integer; user-set; reprioritize = command |
-| `max_replans` | default 2; `replan_budget_exhausted` (state-machines §2) |
-| `held_from?` | the state the mission was in when it entered BLOCKED/PAUSED; `resume` reads it (state-machines §2) |
+| `max_replans` | default 2: replans allowed after the initial plan (0 = none); `replan_budget_exhausted` (state-machines §2) |
+| `held_from?` | the state the mission was in when it entered BLOCKED/PAUSED; `resume` and the `redispatch` guard read it (state-machines §2) |
+| `decided_plan_version?` | the `plan_version` the mission last decided (auto-approved or sent for approval); both plan-decision guards refuse that plan again (state-machines §2) |
 | `autonomy_profile` | named policy overlay (e.g. `careful`, `standard`, `autonomous`) — see policy |
 | `resource_preferences` | optional per-mission routing overrides (preferred accounts, forbidden harnesses, cost ceiling) |
 | `verification_strategy`, `review_strategy` | chosen at planning; editable |
@@ -241,6 +242,9 @@ mission — distinct from the row's optimistic-concurrency `version`), `summary`
 `risks[]`, `approval_points[]` (task ids / action classes that will need ASK), `rollback`,
 `estimated_cost` (bands, never precise — migration-kit rule), `state` (DRAFT → PROPOSED →
 APPROVED → SUPERSEDED / REJECTED), `authored_by` (brain principal + model used).
+*As built (P3.5):* the plan lifecycle has no declared edges, so a plan stays DRAFT and is the
+versioned strategy attached to its mission; the mission's states carry approval and
+supersession.
 
 ### 7.3 Task
 An executable unit in the plan's DAG.
@@ -255,6 +259,7 @@ An executable unit in the plan's DAG.
 | `action_classes[]` | policy classes it will exercise (write_repo, exec, web, …) |
 | `workspace_mode` | in_place / worktree (default for code_change) |
 | `max_attempts` | default 2 |
+| `failure_class` | why the task FAILED (`execution`, `verification`, …; policy / credential / human are not retryable); written with the move to FAILED, read by `task_failed_retryable` |
 | `estimate` | relative weight for progress |
 | `state` | Task machine |
 | `integration_state` | Integration machine (state-machines §13): the merge-back of this task's worktree branch into the mission branch. NULL when `workspace_mode = in_place`. Arrives with the machine in P13 |
@@ -278,7 +283,7 @@ configured under Resources, not a row.)
 | `workdir` | real path or worktree path |
 | `process` | `{pid, create_time, registry_path}` — pid **plus creation time** guards against PID reuse |
 | `state` | Execution machine |
-| `started_at`, `ended_at`, `exit_reason` | |
+| `started_at`, `ended_at`, `exit_reason` | `exit_reason`: ok / error / killed / lost / abandoned, with `exit_code` and the harness's reported summary (never the completion signal) |
 | `usage` | tokens in/out/cache, cost where known |
 | `context_pressure` | last computed ratio (continuity §) |
 | `adapter_state` | opaque JSON owned by the harness adapter |
@@ -301,8 +306,8 @@ account_change / pause / failure), `objective`, `completed_steps[]`, `current_st
 
 | Entity | Fields |
 |---|---|
-| **Verification** | `task_id` or `mission_id`, `verifier` (code / research / document / presentation / automation / generic_human), `checks[]` (`{name, command?, result, output_artifact_id}`), `state`, `independent` (bool) |
-| **Review** | `mission_id`, `reviewer` (brain on a different model/account, or user), `independent` (false when no different resource was free), `requirements_met[]`, `requirements_missing[]`, `risks[]`, `regressions[]`, `follow_up[]`, `verdict` (accept / changes_requested / reject), `state` |
+| **Verification** | `task_id` or `mission_id`, `verifier` (code / research / document / presentation / automation / generic_human), `checks[]` (`{name, command?, result, output_artifact_id}`), `state`, `independent` (bool), `plan_id` (the plan in force when it ran — it counts for that plan only, so a replan is verified afresh), `criterion` (for a mission: which success criterion) |
+| **Review** | `mission_id`, `reviewer` (brain on a different model/account, or user), `independent` (false when no different resource was free), `requirements_met[]`, `requirements_missing[]`, `risks[]`, `regressions[]`, `follow_up[]`, `verdict` (accept / changes_requested / reject), `state`, `plan_id` (the plan whose result was reviewed) |
 
 ### 7.8 Feedback
 `subject` (`{kind,id}` — message, mission, plan, route decision, knowledge item), `signal`

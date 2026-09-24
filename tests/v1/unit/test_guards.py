@@ -81,6 +81,39 @@ def test_plan_auto_approved(facts, ok):
     assert guards.plan_auto_approved(_mission(), facts).passed is ok
 
 
+@pytest.mark.parametrize('facts, ok, why', [
+    (_decided(('t1', 'read', 'ASK')), True, 'policy says ASK'),
+    (dataclasses.replace(_decided(('t1', 'read', 'ALLOW')), cost_within_ceiling=False), True,
+     'not under the auto-approve ceiling'),
+    (dataclasses.replace(_decided(('t1', 'read', 'ALLOW')), cost_within_ceiling=None), True,
+     'no estimated cost band'),
+    (_decided(('t1', 'read', 'ALLOW')), False, 'nothing to ask'),
+    (_decided(('t1', 'read', 'ASK'), ('t1', 'deploy', 'DENY')), False,
+     'policy denies deploy on task t1: not a question for approval'),
+    (dataclasses.replace(_decided(('t1', 'read', 'ASK')), plan_version=None), False,
+     'no active plan'),
+    (dataclasses.replace(_decided(('t1', 'read', 'ASK')), tasks=()), False, 'no active plan'),
+])
+def test_plan_needs_approval_only_when_there_is_a_question(facts, ok, why):
+    got = guards.plan_needs_approval(_mission(), facts)
+    assert got.passed is ok and why in got.reason
+
+
+@pytest.mark.parametrize('guard', [guards.plan_auto_approved, guards.plan_needs_approval])
+def test_a_plan_already_decided_is_never_decided_again(guard):
+    """REPLANNING (or PLANNING after request_changes) with the old plan still in
+    force: both decisions refuse until a newer plan is proposed."""
+    facts = {guards.plan_auto_approved: _decided(('t1', 'read', 'ALLOW')),
+             guards.plan_needs_approval: _decided(('t1', 'read', 'ASK'))}[guard]
+    for decided, ok in ((None, True), (1, False), (3, False)):
+        got = guard(_mission(decided_plan_version=decided),
+                    dataclasses.replace(facts, plan_version=1 if decided != 3 else 3))
+        assert got.passed is ok, (decided, got.reason)
+        if not ok:
+            assert 'already decided' in got.reason
+    assert guard(_mission(decided_plan_version=1), dataclasses.replace(facts, plan_version=2)).passed
+
+
 @pytest.mark.parametrize('tasks, ok', [
     ((_task('SUCCEEDED'), _task('SKIPPED', key='t2')), True),
     ((_task('SUCCEEDED'), _task('PENDING', kind='human', key='h')), True),   # human excluded

@@ -12,6 +12,7 @@ stub port without touching a caller.
 
 from dataclasses import replace
 
+from ...infra.db import rows
 from ..domain import entities, guards, ids, states
 from ..domain.actions import Action
 from ..domain.events import new_event
@@ -36,9 +37,11 @@ def register_principal(tx, *, kind, scopes=()):
 
 
 def create_mission(tx, *, actor, title, objective, project_id=None,
-                   workspace_id=ids.GLOBAL_WORKSPACE):
+                   workspace_id=ids.GLOBAL_WORKSPACE, success_criteria=(), max_replans=2):
     m = entities.Mission(id=ids.new_id('mission'), workspace_id=workspace_id,
-                         project_id=project_id, title=title, objective=objective)
+                         project_id=project_id, title=title, objective=objective,
+                         success_criteria=tuple(dict(c) for c in success_criteria),
+                         max_replans=max_replans)
     row = tx.insert(m, actor=actor)
     e = tx.append(new_event('mission.created', Ref('mission', m.id), actor,
                             payload={'title': title}, workspace=workspace_id,
@@ -48,12 +51,49 @@ def create_mission(tx, *, actor, title, objective, project_id=None,
 
 # ── mission lifecycle (state-machines §2) ──────────────────────────────────
 
+#: The cost band a plan may reach and still be approved without asking.
+# ponytail: one ceiling for every mission; P10 reads it from the mission's
+# resource preferences (`max_cost_band`, resource-router §2)
+AUTO_APPROVE_CEILING = 'medium'
+
+
+def active_plan(conn, mission_id):
+    """The plan in force: the mission's highest `plan_version` (a replan is a
+    new row, never an edit), or None before the first proposal. *conn* is a
+    transaction's or a read snapshot's connection."""
+    plans = rows.where(conn, entities.Plan, mission_id=mission_id)
+    return max(plans, key=lambda r: r.entity.plan_version, default=None)
+
+
 def persisted_facts(tx, row):
-    """The guard snapshot from what the database holds. Plans, tasks and
-    verifications get their tables with the phases that create them (P3.5 on),
-    so today a mission has no active plan and every guard that needs one
-    refuses: fail closed, never a vacuous pass."""
-    return guards.MissionFacts()
+    """The guard snapshot from what the database holds (P3.5): the active
+    plan's tasks with their attempt counts, the mission's success criteria with
+    the latest verification of each UNDER THAT PLAN, and whether the plan's cost
+    band is under the ceiling. Whatever is missing stays unknown, so the guards
+    that need it refuse: fail closed, never a vacuous pass."""
+    m = row.entity
+    plan = active_plan(tx.conn, m.id)
+    checked = {}
+    if plan is not None:
+        for v in tx.where(entities.Verification, plan_id=plan.entity.id):
+            if v.entity.subject == Ref('mission', m.id):
+                checked[v.entity.criterion] = v.entity.state     # oldest first: latest wins
+    criteria = tuple(guards.CriterionFact(c['check'], checked.get(i))
+                     for i, c in enumerate(m.success_criteria))
+    if plan is None:
+        return guards.MissionFacts(criteria=criteria)
+    tasks = tuple(
+        guards.TaskFact(t.key, t.kind, t.state, t.action_classes,
+                        attempts=len(tx.where(entities.Execution, task_id=t.id)),
+                        max_attempts=t.max_attempts, failure_class=t.failure_class)
+        for t in (r.entity for r in tx.where(entities.Task, plan_id=plan.entity.id)))
+    band = plan.entity.estimated_cost
+    reviews = tx.where(entities.Review, plan_id=plan.entity.id)
+    return guards.MissionFacts(
+        plan_version=plan.entity.plan_version, tasks=tasks, criteria=criteria,
+        review=reviews[-1].entity.state if reviews else None,
+        cost_within_ceiling=None if band is None else (
+            entities.COST_BANDS.index(band) <= entities.COST_BANDS.index(AUTO_APPROVE_CEILING)))
 
 
 #: `advance`: the exits each decision point tries, in this order; the first
@@ -66,9 +106,11 @@ DECISIONS = {
 }
 #: `resume` goes back to execution only from where an approved plan was in
 #: force; from anywhere else the mission starts over from understanding.
-PLAN_IN_FORCE = ('EXECUTING', 'VERIFYING')
+PLAN_IN_FORCE = guards.PLAN_IN_FORCE
 #: Entering one of these records `Mission.held_from`, which `resume` reads.
 HOLDS = ('BLOCKED', 'PAUSED')
+#: Taking one of these records `Mission.decided_plan_version`, which both read.
+PLAN_DECISIONS = ('plan_auto_approved', 'plan_needs_approval')
 
 
 def _record_hold(row, to):
@@ -79,10 +121,6 @@ def _record_hold(row, to):
     if row.entity.state == 'RESUMED':
         return {'held_from': None}
     return None
-
-
-def _criterion_failed(f):
-    return any(c.check == 'automatic' and c.verification == 'FAILED' for c in f.criteria)
 
 
 def _result(row, events=(), considered=None):
@@ -125,11 +163,25 @@ class Missions:
                        declared_by=actor.kind if declared and actor is not None else None)
 
     def _fire(self, tx, mission_id, trigger, *, actor, reason, expected_version=None,
-              facts=None):
+              facts=None, extra=None):
+        """The ONE place a mission moves (a scan in test_skeleton keeps it so):
+        every mission transition records `held_from` and `decided_plan_version`
+        here, so no path can take a plan decision without recording it."""
+        given = facts or (lambda row: self.snapshot(tx, row, actor, declared=True))
+        judged = []
+
+        def facts_of(row):          # gathered by the guard, after the version check
+            judged.append(given(row) if callable(given) else given)
+            return judged[-1]
+
+        def fields(row, to):
+            out = dict(extra or {}, **(_record_hold(row, to) or {}))
+            if trigger in PLAN_DECISIONS:   # the plan the guard judged is the one decided
+                out['decided_plan_version'] = judged[-1].plan_version
+            return out or None
         return lifecycle.fire(
             tx, entities.Mission, mission_id, trigger, actor=actor, reason=reason,
-            expected_version=expected_version, fields=_record_hold,
-            facts=facts or (lambda row: self.snapshot(tx, row, actor, declared=True)))
+            expected_version=expected_version, fields=fields, facts=facts_of)
 
     # ── actions ──
 
@@ -139,6 +191,13 @@ class Missions:
         user device firing `unrecoverable` declares the failure)."""
         row, e = self._fire(tx, mission_id, trigger, actor=actor, reason=reason,
                             expected_version=expected_version)
+        return _result(row, [e])
+
+    def reasoned(self, tx, *, actor, mission_id, reason, success_criteria=None):
+        """REASONING -> PLANNING with the plan just proposed; a mission without
+        success criteria takes the plan's (`inferred`) in the same move."""
+        extra = None if success_criteria is None else {'success_criteria': success_criteria}
+        row, e = self._fire(tx, mission_id, 'reasoned', actor=actor, reason=reason, extra=extra)
         return _result(row, [e])
 
     def pause(self, tx, *, actor, mission_id, reason='paused on request',
@@ -188,8 +247,10 @@ class Missions:
 
     def accept(self, tx, *, actor, mission_id, reason='accepted on review',
                expected_version=None):
-        """REVIEWING -> COMPLETED. REVIEWING is reachable only through the
-        `verified` guard, so nothing completes without verification."""
+        """REVIEWING -> COMPLETED, guarded by `accepted`: the latest review of the
+        plan in force must accept it (a human overrides a verdict by recording
+        their own review, `work.record_review`). REVIEWING is reachable only
+        through `verified`, so nothing completes unverified or unreviewed."""
         row, e = self._fire(tx, mission_id, 'accepted', actor=actor, reason=reason,
                             expected_version=expected_version)
         return _result(row, [e])
@@ -204,18 +265,11 @@ class Missions:
             raise lifecycle.VersionConflict(mission_id, expected_version, row.version)
         state, considered, f = row.entity.state, [], None
         for trigger in DECISIONS.get(state, ()):
-            _to, g = lifecycle.resolve('mission', state, trigger)
-            if g is not None:
-                f = f or self.snapshot(tx, row, actor)
-                verdict = guards.evaluate('mission', trigger, row.entity, f,
-                                          version=row.version)
-                ok, why = verdict.passed, verdict.reason
-            elif trigger == 'verification_failed':
-                f = f or self.snapshot(tx, row, actor)
-                ok = _criterion_failed(f)
-                why = 'an automatic criterion failed' if ok else 'no automatic criterion failed'
-            else:                                   # the unconditional fallback
-                ok, why = True, '; '.join(c['reason'] for c in considered) or trigger
+            # every decision exit is a guarded edge: advance holds no legality
+            # of its own, it only chooses the order (a test keeps it so)
+            f = f or self.snapshot(tx, row, actor)
+            verdict = guards.evaluate('mission', trigger, row.entity, f, version=row.version)
+            ok, why = verdict.passed, verdict.reason
             considered.append({'trigger': trigger, 'taken': ok, 'reason': why})
             if ok:
                 row, e = self._fire(tx, mission_id, trigger, actor=actor,

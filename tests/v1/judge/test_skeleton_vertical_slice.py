@@ -7,12 +7,9 @@ event stream. It is NOT S1: S1 needs the real brain, policy, router,
 verification and review.
 """
 
-import pytest
-
 from .support import events_of, mission_states, wait_state
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P3.5")
 def test_a_mission_runs_to_completed_on_stubs_and_the_fake_harness(client):
     m = client.create_mission(title='Skeleton', objective='Prove the vertical slice')
     assert m['state'] == 'CREATED'
@@ -24,7 +21,6 @@ def test_a_mission_runs_to_completed_on_stubs_and_the_fake_harness(client):
     assert all(e['payload'].get('pid') for e in started)
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P3.5")
 def test_every_transition_is_observed_on_the_event_stream(client):
     m = client.create_mission(title='Skeleton', objective='Observe it')
     wait_state(client, m['id'], 'COMPLETED')

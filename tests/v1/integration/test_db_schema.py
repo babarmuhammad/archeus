@@ -35,7 +35,8 @@ def test_importing_the_persistence_modules_creates_nothing(tmp_path):
              'import archeus.infra.db, archeus.infra.eventlog.outbox, '
              'archeus.infra.eventlog.consumers, archeus.infra.eventlog.retention, '
              'archeus.infra.artifacts.store, archeus.core.application.commands, '
-             'archeus.core.application.queries\n' % ROOT)
+             'archeus.core.application.queries, archeus.core.application.work, '
+             'archeus.core.engine\n' % ROOT)
     r = subprocess.run([sys.executable, '-c', probe], capture_output=True, text=True,
                        env=dict(os.environ, ARCHEUS_HOME=str(home)), timeout=60)
     assert r.returncode == 0, r.stderr
@@ -124,10 +125,11 @@ def test_only_two_modules_open_sqlite_and_only_writer_commands_write_sql():
 
 def test_a_fresh_database_reaches_the_current_schema(db):
     with db.read() as r:
-        assert migrate.version(r) == migrate.migrations()[-1][0] == 1
+        assert migrate.version(r) == migrate.migrations()[-1][0] == 2
         tables = {x[0] for x in r.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {'principals', 'devices', 'tokens', 'missions', 'events', 'consumer_cursors',
-            'consumer_effects', 'idempotency_keys'} <= tables
+            'consumer_effects', 'idempotency_keys',
+            'plans', 'tasks', 'executions', 'verifications', 'reviews'} <= tables
 
 
 def test_every_persisted_entity_table_has_the_row_shape(db):

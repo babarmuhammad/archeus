@@ -8,7 +8,7 @@ Commands return dicts shaped like the API's responses; `events(after_seq)`
 returns envelopes (api-and-realtime §3.1).
 
 Bindings:
-- `InProcessClient` (P1–P3) calls the application layer directly. An
+- `InProcessClient` (P1–P3.5) calls the application layer directly. An
   operation whose phase has not arrived raises `NotImplementedError` — loudly,
   never a silent `None` a scenario could mistake for an answer — so each judge
   function that needs it is an expected failure tagged with its phase.
@@ -19,11 +19,13 @@ Bindings:
 import inspect
 from typing import Optional, Protocol, Sequence, runtime_checkable
 
-from archeus.core import ports
-from archeus.core.application import commands, queries
+from archeus.core import engine, ports
+from archeus.core.application import commands, queries, work
 from archeus.core.application.lifecycle import GuardFailed, IllegalTrigger
 from archeus.core.domain import ids
 from archeus.core.domain.values import Ref
+from archeus.harnesses.fake import FakeHarness
+from archeus.harnesses.registry import AdapterRegistry
 from archeus.infra.db import Database, connection
 from archeus.infra.db.writer import (IdempotencyConflict, InvalidTransition, NotFound,
                                      VersionConflict)
@@ -92,22 +94,30 @@ def _pending(op):
 
 
 class InProcessClient:
-    """The P1–P3 binding: a Core in this process, on an ARCHEUS_HOME.
+    """The P1–P3.5 binding: a Core in this process, on an ARCHEUS_HOME.
 
-    P2 implements the operations its acceptance needs (`IMPLEMENTED`) over the
-    database and the application layer; every other one still fails loudly.
-    The client registers itself as a `user_device` principal on first use and
-    keeps that identity across `_restart()`, as a paired device would. That
-    self-registration is a P2 bootstrap only; the HTTP binding (P3.5) gets its
-    principal from the auth layer instead (commands.register_principal).
+    It implements the operations the passing scenarios need (`IMPLEMENTED`)
+    over the database and the application layer; every other one still fails
+    loudly. The client registers itself as a `user_device` principal on first
+    use and keeps that identity across `_restart()`, as a paired device would;
+    Core's engine acts as its own `system` principal. Both registrations are
+    bootstraps only: the HTTP binding gets its principal from the auth layer
+    (commands.register_principal).
+
+    P3.5: Core runs the walking-skeleton engine (archeus/core/engine.py) on the
+    stub ports and the fake harness. In process there is no Core loop, so the
+    engine is pumped by `_idle()` — a scenario waiting for a state is exactly
+    the moment Core would be working.
     """
 
     def __init__(self, home):
         self.home = str(home)
         self._db = None
-        self._principal = None
-        # P3: the mission lifecycle on the P1 stub policy; P9 swaps the port
-        self._missions = commands.Missions(policy=ports.AllowAllPolicy())
+        self._engine = None
+        self._principal = self._system = None
+        # the stub ports every phase runs on until P9/P10/P13 swap them
+        self._policy = ports.AllowAllPolicy()
+        self._missions = commands.Missions(policy=self._policy)
 
     # ── binding plumbing (not part of the contract) ──
 
@@ -118,6 +128,16 @@ class InProcessClient:
                 self._principal = self._db.writer.execute(commands.register_principal, {
                     'kind': 'user_device',
                     'scopes': ('observe', 'control', 'approve', 'admin')})['id']
+                self._system = self._db.writer.execute(commands.register_principal, {
+                    'kind': 'system', 'scopes': ('system',)})['id']
+            registry = AdapterRegistry(self._policy)
+            registry.register(FakeHarness())
+            self._engine = engine.Engine(
+                self._db, actor=Ref('system', self._system),
+                work=work.Work(missions=self._missions,
+                               router=ports.FixedCandidateRouter('fake')),
+                brain=ports.FixedPlanBrain(engine.SKELETON_PLAN), registry=registry,
+                verifier=ports.ScriptedVerifier(), reviewer=ports.ScriptedReview())
         return self._db
 
     def _actor(self):
@@ -150,21 +170,25 @@ class InProcessClient:
             raise CoreClientError(400, 'invalid_request', {'why': str(e)}) from e
 
     def _idle(self):
-        """Nothing here runs in the background: state changes only when a
-        command is issued. The engine that advances missions arrives in P3.5."""
-        return True
+        """One engine step for every mission that is not settled; True when
+        none of them changed — then nothing in this Core can change on its own."""
+        db = self._core()
+        with db.read() as conn:
+            live = [m['id'] for m in queries.list_missions(conn)
+                    if m['state'] not in engine.SETTLED]
+        return not any([self._engine.step(mid)['changed'] for mid in live])
 
     def close(self):
         if self._db is not None:
             self._db.close()
-            self._db = None
+            self._db = self._engine = None
 
     def _restart(self, *, kill=True):
         """Core stops (kill: queued commands are dropped) and starts again on
         the same home."""
         if self._db is not None:
             self._db.close(drain=not kill)
-            self._db = None
+            self._db = self._engine = None      # its processes are orphans now
         self._core()
 
     # ── the contract ──
@@ -173,13 +197,11 @@ class InProcessClient:
                        project_id: Optional[str] = None,
                        success_criteria: Sequence[dict] = (),
                        idempotency_key: Optional[str] = None) -> dict:
-        if success_criteria:
-            raise NotImplementedError('CoreClient.create_mission: success criteria '
-                                      'arrive with the plan engine')
         return self._call(lambda: self._core().writer.execute(
             commands.create_mission,
             {'actor': self._actor(), 'title': title, 'objective': objective,
-             'project_id': project_id},
+             'project_id': project_id,
+             'success_criteria': [dict(c) for c in success_criteria]},
             idempotency_key=idempotency_key))
 
     def get_mission(self, mission_id: str) -> dict:

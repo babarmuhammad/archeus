@@ -68,7 +68,8 @@ def test_the_v1_package_imports_in_a_clean_interpreter():
              'archeus.infra.db', 'archeus.infra.db.backup', 'archeus.infra.eventlog.outbox',
              'archeus.infra.eventlog.consumers', 'archeus.infra.eventlog.retention',
              'archeus.infra.artifacts.store', 'archeus.core.application.commands',
-             'archeus.core.application.queries']
+             'archeus.core.application.queries', 'archeus.core.application.work',
+             'archeus.core.engine']
     probe = ('import sys; sys.path.insert(0, %r)\n' % ROOT
              + ''.join('import %s\n' % m for m in mods)
              + "bad = [m for m in ('claude_sessions.ui', 'claude_sessions.gui_api', "

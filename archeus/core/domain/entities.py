@@ -365,6 +365,9 @@ class Intent(Entity):
 
 # ── work (domain-model §7) ──────────────────────────────────────────────────
 
+CRITERION_CHECKS = ('automatic', 'human')
+COST_BANDS = ('low', 'medium', 'high')      # bands, never precise (domain-model §7.2)
+
 @entity
 class Mission(Entity):
     _ID = 'mission'
@@ -384,11 +387,28 @@ class Mission(Entity):
     # `resume` reads it (current state, never the event log, which retention
     # may prune)
     held_from: str = None
+    # the plan_version the mission last decided (auto-approved or sent for
+    # approval), recorded with that move: the plan gate never decides the same
+    # plan twice, so REPLANNING (or PLANNING after request_changes) needs a new one
+    decided_plan_version: int = None
+    # each {text, check: automatic|human, origin: explicit|inferred}; the
+    # `verified` guard reads their verifications (state-machines §2)
+    success_criteria: tuple = ()
     state: str = None
 
     def _check(self):
         if self.held_from is not None and self.held_from not in states.states('mission'):
             raise ValueError('Mission.held_from is not a mission state: %r' % self.held_from)
+        v = self.decided_plan_version
+        if v is not None and not (isinstance(v, int) and not isinstance(v, bool) and v >= 1):
+            raise ValueError('Mission.decided_plan_version is a plan_version >= 1: %r' % (v,))
+        for c in self.success_criteria:
+            if not (isinstance(c, dict) and isinstance(c.get('text'), str) and c['text'].strip()
+                    and c.get('check') in CRITERION_CHECKS
+                    and c.get('origin', 'explicit') in ORIGINS
+                    and set(c) <= {'text', 'check', 'origin'}):
+                raise ValueError('a success criterion is {text, check: automatic|human, '
+                                 'origin?}: %r' % (c,))
 
 
 @entity
@@ -396,6 +416,7 @@ class Plan(Entity):
     _ID = 'plan'
     _STATE = ('state', 'plan')
     _REFS = {'mission_id': 'mission'}
+    _CHOICES = {'estimated_cost': COST_BANDS}
     _MIN1 = ('plan_version',)
     id: str
     mission_id: str
@@ -403,6 +424,8 @@ class Plan(Entity):
     # `action_hash` binds approvals to — not the row's optimistic-concurrency
     # `version`, which the P2 schema owns for every table
     plan_version: int = 1
+    summary: str = ''
+    estimated_cost: str = None
     state: str = None
 
 
@@ -427,6 +450,8 @@ class Task(Entity):
     depends_on: tuple = ()
     action_classes: tuple = ()
     max_attempts: int = 2
+    # why the task FAILED, set with that move (`task_failed_retryable` reads it)
+    failure_class: str = None
     state: str = None
 
     def _check(self):
@@ -443,10 +468,18 @@ class Execution(Entity):
     _STATE = ('state', 'execution')
     _REFS = {'task_id': 'task', 'mission_id': 'mission'}
     _MIN1 = ('attempt',)
+    _CHOICES = {'exit_reason': ('ok', 'error', 'killed', 'lost', 'abandoned')}
     id: str
     task_id: str
     mission_id: str
     attempt: int = 1
+    harness_id: str = None
+    # the process (pid + creation time guards against PID reuse) and its end
+    pid: int = None
+    create_time: object = None
+    exit_reason: str = None
+    exit_code: int = None
+    summary: str = ''           # reported by the harness; never the completion signal
     state: str = None
 
 
@@ -480,15 +513,26 @@ class Verification(Entity):
     _STATE = ('state', 'verification')
     _CHOICES = {'verifier': ('code', 'research', 'document', 'presentation',
                              'automation', 'generic_human')}
+    _REFS = {'plan_id': 'plan'}
     id: str
     subject: Ref
     verifier: str
     independent: bool = False
+    # the plan in force when it ran: a verification counts for that plan only
+    plan_id: str = None
+    # for a mission: the index of the success criterion it checks
+    criterion: int = None
     state: str = None
 
     def _check(self):
         if self.subject.kind not in ('task', 'mission'):
             raise ValueError('a verification is of a task or a mission')
+        if (self.criterion is not None) != (self.subject.kind == 'mission'):
+            raise ValueError('a mission verification names its criterion; a task one does not')
+        if self.criterion is not None and not (
+                isinstance(self.criterion, int) and not isinstance(self.criterion, bool)
+                and self.criterion >= 0):
+            raise ValueError('Verification.criterion is an index >= 0: %r' % (self.criterion,))
 
 
 @entity
@@ -497,12 +541,13 @@ class Review(Entity):
     _STATE = ('state', 'review')
     _TEXT = ('reviewer',)
     _CHOICES = {'verdict': ('accept', 'changes_requested', 'reject')}
-    _REFS = {'mission_id': 'mission'}
+    _REFS = {'mission_id': 'mission', 'plan_id': 'plan'}
     id: str
     mission_id: str
     reviewer: str
     independent: bool = False
     verdict: str = None
+    plan_id: str = None         # the plan whose result was reviewed
     state: str = None
 
 

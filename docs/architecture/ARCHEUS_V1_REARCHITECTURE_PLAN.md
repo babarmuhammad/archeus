@@ -498,6 +498,7 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   that needs one refuses (fail closed) and a mission cannot pass `all_tasks_done`; tests script
   the snapshot. **Deferred, deliberately open:** which phase persists Plan, Task, Verification
   and success criteria (P3.5's skeleton needs Task at the latest) — until then no real facts.
+  *Resolved in P3.5:* the walking skeleton persists all four and `persisted_facts` reads them.
 - P2 stays generic: `Tx.transition` gained `proof=` (a generic `states.TransitionProof`,
   checked against the P1 table) and `fields=` (other entity fields in the same row write).
   P2 owns no guard definition and no mission behaviour (state-machines §0, tested by a scan of
@@ -529,6 +530,75 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Acceptance: **`tests/v1/judge/test_skeleton_vertical_slice.py` passes** (it is *not* S1: S1
   needs the real brain, policy, router, verification and review and stays xfail until P13);
   skeleton demo recorded.
+- **As built so far — the in-process walking skeleton only.** P3.5 was split: the vertical
+  slice first, in process, with no HTTP, SSE, auth, CLI, SPA or TS client. Those, the HTTP
+  binding of `CoreClient`, the Core lock/discovery file and the node supervisor with its
+  process registry are **still open** under this entry.
+  - Durable work: migration `0002_work.sql` persists **Plan, Task, Execution, Verification,
+    Review** (the P1 entities, with minimal fields added: `Mission.success_criteria`,
+    `Plan.summary`/`estimated_cost`, `Task.failure_class`, the Execution's harness, pid,
+    creation time and end, `Verification.plan_id`/`criterion`, `Review.plan_id`). No new
+    entity, no new machine.
+  - Commands: `core/application/work.py` (`Work`) — propose a plan and decide it, ready and
+    dispatch tasks, record a spawn, an exit, a reconciliation, a task's checks, a mission's
+    criteria and a review. Each is one writer transaction; mission moves go through
+    `commands.Missions`, every other move through `lifecycle.fire`. `commands.persisted_facts`
+    now reads the guard snapshot from these rows (a verification counts only for the plan it
+    ran under).
+  - Engine: `core/engine.py` runs one mission step by step (stub steps to REASONING → brain
+    plan → plan gate → dispatch → fake execution → task checks → mission criteria → review);
+    side effects happen between commands, never inside one. It will split into
+    `planning.planner`, `execution.manager` and `verification` when those phases arrive.
+  - Stubs (`core/ports.py`): `FixedPolicy` (ALLOW/ASK/DENY), `FixedPlanBrain`,
+    `ScriptedVerifier`, `ScriptedReview`; the resource seam is the P1 `FixedCandidateRouter`
+    through `AdapterRegistry` (a task never names a harness).
+  - Policy is consulted through the port, never by actor kind. ASK → APPROVAL_REQUIRED (a
+    human `approve`). DENY → `propose_plan` / `dispatch_task` refuse with `PolicyDenied` before
+    writing anything: no plan, task, execution or approval, mission state unchanged; `advance`
+    never answers a DENY with `plan_needs_approval`. In EXECUTING the existing `unrecoverable`
+    edge ends a mission whose policy turned to DENY.
+  - `max_replans` = replans allowed after the initial plan; the budget is judged on the plan
+    being replaced, before the brain is asked for a new one.
+  - Restart: an execution nobody is watching is reconciled — its process killed by pid +
+    creation time, the attempt ended ABANDONED (never spawned) or LOST → ENDED_KILLED, and
+    the task retried with a new execution. Adoption of a live process is P11's.
+  - The judge's `InProcessClient` pumps the engine from `_idle()`; `test_skeleton_vertical_
+    slice.py` passes in process. Tests: `tests/v1/integration/test_skeleton.py` (real child
+    processes killed at exact points for the restart cases).
+  - **Checkpoint decisions** (no state machine was changed for any of them):
+    (1) *accepted* — Plan has no declared edges and stays DRAFT: the versioned strategy
+    attached to the mission, which owns lifecycle progression; (2) *accepted* — Review
+    REJECTED is a review result, not a mission move; the mission stays in REVIEWING until an
+    explicit `request_changes` or a human's own accepting review (`work.record_review`, which
+    `accept` requires since the third checkpoint), and never completes from a rejection; (3) *fixed* —
+    the replan budget was judged on the newly proposed plan (one replan too few); it is now
+    judged on the plan in force, so `max_replans` counts replans after the initial plan;
+    (4) *fixed* — DENY no longer becomes APPROVAL_REQUIRED (see above); (5) *deferred to P9* —
+    a decision taken at automatic plan approval is not bound to an action hash or policy
+    version, so a policy that turns to ASK before dispatch is not asked again, and a denial
+    leaves no durable PolicyDecision row (only the typed error) — so driving a denied mission
+    again repeats its reasoning (the brain is asked again) until P9 persists decisions;
+    (6) *deferred to P10* — the
+    auto-approve ceiling is the fixed P3.5 fixture `AUTO_APPROVE_CEILING = 'medium'`, not the
+    mission's resource preferences.
+  - **Lifecycle integrity (second checkpoint), P3 changes made explicit:** `plan_needs_approval`
+    is now a guarded edge of the P1 table (`states._GUARDED`, guard in `guards.py`): a newer
+    plan, no DENY, something to ask. Both plan-decision guards refuse the plan recorded in the
+    new `Mission.decided_plan_version`, so neither `advance` nor a trigger fired by name can
+    re-decide the plan a REPLANNING mission is replacing (the same holds for PLANNING after
+    `request_changes`). `Missions._fire` is the single path for mission moves; `advance` lost
+    its P3.5 DENY special case because the guard now carries that rule.
+  - **Adversarial lifecycle review (third checkpoint)** found four direct-call bypasses the
+    engine never takes, each proven by a probe and now refused: (1) REVIEWING → COMPLETED by
+    `accepted` with no review → `accepted` is a guarded edge (an accepting review of the plan
+    in force); (2) `unblock` + `redispatch` from a hold before any plan → EXECUTING with no
+    plan → `redispatch` is guarded by `held_from`; (3) `verification_failed` with nothing
+    failed → guarded (and `advance` lost the private copy of that condition, so every exit
+    it takes is a table guard); (4) `dispatch_task` of a READY task from a superseded plan →
+    refused. The three new guards are P3 table changes (`states._GUARDED`, `guards.py`,
+    `MissionFacts.review`). Remaining unguarded mission edges are legal by name and lead
+    nowhere a guard protects (`approve` only from APPROVAL_REQUIRED, which only a decided plan
+    reaches); who may fire them is P9.
 
 **P4 — World model and repository inspection**
 - Depends: P3.5. New: `world/projects.py`, `world/inspection.py` (reusing `repos`,

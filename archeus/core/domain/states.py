@@ -324,9 +324,10 @@ _EDGES = {
 #: Triggers whose edge is guarded (state-machines §2 guard table, §5 approve).
 #: Each is a pure function of the entity plus a read-only snapshot in guards.py.
 _GUARDED = {
-    'mission': {'plan_auto_approved', 'all_tasks_done', 'verified',
+    'mission': {'plan_auto_approved', 'plan_needs_approval', 'all_tasks_done', 'verified',
                 'awaiting_human_acceptance', 'replan_budget_exhausted',
-                'task_failed_retryable', 'unrecoverable'},
+                'task_failed_retryable', 'unrecoverable', 'verification_failed',
+                'redispatch', 'accepted'},
     'approval': {'approve'},
 }
 

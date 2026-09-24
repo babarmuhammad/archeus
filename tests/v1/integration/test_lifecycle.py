@@ -1,6 +1,7 @@
 """P3: the mission lifecycle on a real database — guards, actions, orchestration,
 concurrency and atomicity, all through the P2 writer (state-machines §0, §2)."""
 
+import dataclasses
 import threading
 from collections import deque
 
@@ -21,6 +22,11 @@ PLAN = dict(plan_version=1, cost_within_ceiling=True,
 #: facts under which each mission guard passes (and nothing else is implied)
 PASSING = {
     'plan_auto_approved': MissionFacts(**PLAN),
+    # something to ask: the cost band is over the ceiling (the port says ALLOW)
+    'plan_needs_approval': MissionFacts(**dict(PLAN, cost_within_ceiling=False)),
+    'verification_failed': MissionFacts(criteria=(CriterionFact(A, 'FAILED'),)),
+    'accepted': MissionFacts(review='ACCEPTED'),
+    # `redispatch` reads the mission's own held_from, not the facts
     'all_tasks_done': MissionFacts(plan_version=1,
                                    tasks=(TaskFact('t1', 'code_change', 'SUCCEEDED'),)),
     'verified': MissionFacts(criteria=(CriterionFact(A, 'PASSED'),)),
@@ -99,10 +105,16 @@ def _fire(run, facts, mid, trigger, **kw):
     return run('fire', mid, trigger=trigger, reason='test: %s' % trigger, **kw)
 
 
+#: RESUMED held from EXECUTING, so both of its exits are legal from there.
+PRE_PLAN_RESUMED = ('start', 'needs_clarification', 'unblock')
+
+
 def _paths():
-    """Shortest trigger path from CREATED to every mission state."""
+    """Shortest trigger path from CREATED to every mission state. `redispatch`
+    is left out of the search: it is legal only when the mission was held
+    with a plan in force, and the shortest route to RESUMED holds it before one."""
     edges = [(f, to, t) for f, to, t, _g in states.edges('mission')
-             if t and f != states.START and to != states.END]
+             if t and t != 'redispatch' and f != states.START and to != states.END]
     paths, todo = {'CREATED': ()}, deque(['CREATED'])
     while todo:
         s = todo.popleft()
@@ -110,6 +122,7 @@ def _paths():
             if f == s and to not in paths:
                 paths[to] = paths[s] + (t,)
                 todo.append(to)
+    paths['RESUMED'] = paths['PAUSED'] + ('resume',)
     return paths
 
 
@@ -117,6 +130,16 @@ PATHS = _paths()
 EDGES = [(f, to, t) for f, to, t, _g in states.edges('mission')
          if t and f != states.START and to != states.END]
 TRIGGERS = sorted({t for _f, _to, t in EDGES})
+
+
+def test_advance_holds_no_legality_of_its_own():
+    """Every exit `advance` may take is a guarded edge, and none of them lands
+    in EXECUTING or COMPLETED: advancing chooses an order, it never licenses."""
+    for state, triggers in commands.DECISIONS.items():
+        for t in triggers:
+            to, g = lifecycle.resolve('mission', state, t)
+            assert g == t and ('mission', t) in guards.GUARDS, (state, t)
+            assert to not in ('EXECUTING', 'COMPLETED'), (state, t)
 
 
 def test_every_mission_state_is_reachable():
@@ -138,7 +161,12 @@ def test_every_mission_edge_is_taken_through_the_writer(db, run, facts, new_miss
     mid = _at(run, facts, new_mission, frm)
     assert _state(db, mid)[0] == frm
     before = _state(db, mid)[1]
-    got = _fire(run, facts, mid, trigger)
+    if frm == 'REPLANNING' and trigger in commands.PLAN_DECISIONS:
+        # the plan in force was decided on the way here: decide a replacement
+        facts.now = dataclasses.replace(PASSING[trigger], plan_version=2)
+        got = run('fire', mid, trigger=trigger, reason='test: %s' % trigger)
+    else:
+        got = _fire(run, facts, mid, trigger)
     assert (got['state'], got['version']) == (to, before + 1)
     last = _changes(db, mid)[-1]
     assert (last['from'], last['to'], last['trigger']) == (frm, to, trigger)
@@ -168,7 +196,12 @@ def test_every_non_edge_is_refused_and_changes_nothing(db, run, facts, new_missi
 def test_a_failed_guard_is_not_an_invalid_transition_and_writes_nothing(
         db, run, facts, new_mission, trigger):
     frm = next(f for f, _to, t in EDGES if t == trigger)
-    mid = _at(run, facts, new_mission, frm)
+    if trigger == 'redispatch':                       # it reads held_from: hold before a plan
+        mid = new_mission()['id']
+        for t in PRE_PLAN_RESUMED:
+            _fire(run, facts, mid, t)
+    else:
+        mid = _at(run, facts, new_mission, frm)
     before = _snapshot(db, mid)
     facts.now = MissionFacts()                        # the world allows nothing
     engine = Ref('system', ids.new_id('principal'))   # not a user: declares nothing
@@ -240,8 +273,11 @@ def test_a_guard_is_judged_on_the_version_it_lets_through(db, actor, run, facts,
 
     def stale_then_move(tx, *, actor, mission_id):
         proof = _proof(mission_id, tx.get(entities.Mission, mission_id).version)
+        v = tx.get(entities.Mission, mission_id).version
         tx.transition(entities.Mission, mission_id, 'APPROVAL_REQUIRED', actor=actor,
-                      reason='someone else moved first')
+                      reason='someone else moved first',
+                      proof=_proof(mission_id, v, to='APPROVAL_REQUIRED',
+                                   trigger='plan_needs_approval', guard='plan_needs_approval'))
         tx.transition(entities.Mission, mission_id, 'PLANNING', actor=actor, reason='back')
         tx.transition(entities.Mission, mission_id, 'APPROVED', actor=actor, reason='stale',
                       proof=proof)
@@ -384,6 +420,12 @@ def test_the_normal_lifecycle_runs_to_completed_only_through_verification_and_re
     assert run('advance', mid)['state'] == 'VERIFYING'
     facts.now = MissionFacts(criteria=(CriterionFact(A, 'PASSED'),))
     assert run('advance', mid)['state'] == 'REVIEWING'
+    with pytest.raises(lifecycle.GuardFailed, match='no accepting review'):
+        run('accept', mid)                            # verified is not reviewed
+    facts.now = MissionFacts(review='REJECTED')
+    with pytest.raises(lifecycle.GuardFailed, match='the latest is REJECTED'):
+        run('accept', mid)
+    facts.now = PASSING['accepted']
     done = run('accept', mid)
     assert done['state'] == 'COMPLETED'
     trail = [(c['from'], c['trigger']) for c in _changes(db, mid)]
@@ -414,22 +456,18 @@ def test_verification_is_not_review(db, run, facts, new_mission):
 
 
 def test_on_the_persisted_snapshot_nothing_passes_a_plan_guard(db, actor, new_mission):
-    """Production facts in P3: no plans or tasks exist yet, so every guard that
-    needs them refuses (fail closed) and the mission waits for approval."""
+    """With no plan persisted, both plan decisions refuse (fail closed): the
+    mission stays in PLANNING — it is not sent for approval of nothing."""
     live = commands.Missions(policy=ports.AllowAllPolicy())
     mid = new_mission()['id']
     for t in ('start', 'understood', 'context_ready', 'reasoned'):
         db.writer.execute(live.fire, {'actor': actor, 'mission_id': mid, 'trigger': t,
                                       'reason': 'r'})
     got = db.writer.execute(live.advance, {'actor': actor, 'mission_id': mid})
-    assert got['state'] == 'APPROVAL_REQUIRED'
-    assert got['considered'][0] == {'trigger': 'plan_auto_approved', 'taken': False,
-                                    'reason': 'no active plan with tasks'}
-    for t in ('approve', 'dispatch'):
-        db.writer.execute(live.fire, {'actor': actor, 'mission_id': mid, 'trigger': t,
-                                      'reason': 'r'})
-    assert db.writer.execute(live.advance, {'actor': actor, 'mission_id': mid})['state'] == \
-        'EXECUTING'
+    assert (got['state'], got['changed']) == ('PLANNING', False)
+    assert got['considered'] == [
+        {'trigger': t, 'taken': False, 'reason': 'no active plan with tasks'}
+        for t in ('plan_auto_approved', 'plan_needs_approval')]
 
 
 def test_pause_and_resume_return_to_execution(db, run, facts, new_mission):
@@ -554,9 +592,11 @@ def test_plan_approval_asks_the_policy_port_for_every_action_class(db, actor, fa
 
 
 @pytest.mark.parametrize('decision, state', [('ASK', 'APPROVAL_REQUIRED'),
-                                             ('DENY', 'APPROVAL_REQUIRED')])
-def test_a_policy_that_does_not_allow_sends_the_plan_for_approval(db, actor, facts,
-                                                                   new_mission, decision, state):
+                                             ('DENY', 'PLANNING')])
+def test_ask_sends_the_plan_for_approval_and_deny_does_not(db, actor, facts,
+                                                           new_mission, decision, state):
+    """ASK is a question for a human; DENY is not (P3.5 checkpoint decision):
+    a denied plan never becomes an approval request and the mission stays put."""
     ms = commands.Missions(policy=SpyPolicy(decision), facts=facts)
     mid = new_mission()['id']
     for t in ('start', 'understood', 'context_ready', 'reasoned'):
@@ -570,6 +610,25 @@ def test_a_policy_that_does_not_allow_sends_the_plan_for_approval(db, actor, fac
     assert _snapshot(db, mid) == before
     got = db.writer.execute(ms.advance, {'actor': actor, 'mission_id': mid})
     assert got['state'] == state
+    if decision == 'DENY':
+        assert not got['changed'] and _snapshot(db, mid) == before
+        assert got['considered'][-1] == {
+            'trigger': 'plan_needs_approval', 'taken': False,
+            'reason': 'policy denies write_repo on task t1: not a question for approval'}
+        # fired by name the edge refuses too: the guard, not the orchestration, says no
+        with pytest.raises(lifecycle.GuardFailed, match='not a question for approval'):
+            db.writer.execute(ms.fire, {'actor': actor, 'mission_id': mid,
+                                        'trigger': 'plan_needs_approval', 'reason': 'r'})
+        assert _snapshot(db, mid) == before
+    else:                   # sent back: the same plan (v1) is never decided again
+        db.writer.execute(ms.fire, {'actor': actor, 'mission_id': mid,
+                                    'trigger': 'request_changes', 'reason': 'r'})
+        back = db.writer.execute(ms.advance, {'actor': actor, 'mission_id': mid})
+        assert (back['state'], back['changed']) == ('PLANNING', False)
+        assert all('already decided' in c['reason'] for c in back['considered'])
+        facts.now = MissionFacts(**dict(PLAN, plan_version=2))       # a new proposal
+        assert db.writer.execute(ms.advance, {'actor': actor, 'mission_id': mid})['state'] \
+            == 'APPROVAL_REQUIRED'
 
 
 def test_a_denied_action_during_execution_is_unrecoverable(db, actor, facts, new_mission):
@@ -672,6 +731,7 @@ def test_no_actor_kind_is_refused_or_privileged_by_the_state_machine(db, facts, 
         facts.now = PASSING.get(t, facts.now)
         db.writer.execute(ms.fire, {'actor': who, 'mission_id': mid, 'trigger': t,
                                     'reason': 'r'})
+    facts.now = PASSING['accepted']
     assert db.writer.execute(ms.accept, {'actor': who, 'mission_id': mid})['state'] == \
         'COMPLETED'
 

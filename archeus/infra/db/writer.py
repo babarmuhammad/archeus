@@ -114,6 +114,9 @@ class Tx:
     def get(self, cls, entity_id):
         return rows.get(self.conn, cls, entity_id)
 
+    def where(self, cls, **eq):
+        return rows.where(self.conn, cls, **eq)
+
     def insert(self, entity, *, actor):
         """A new entity row at version 1. `actor` is the causing principal."""
         if not ids.is_id(actor.id, 'principal'):

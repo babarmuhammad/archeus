@@ -19,6 +19,11 @@ def get_mission(conn, mission_id):
     return view(row)
 
 
+def list_missions(conn):
+    """Every mission, oldest first."""
+    return [view(r) for r in rows.where(conn, entities.Mission)]
+
+
 def events(conn, after_seq=0, *, limit=None):
     """Envelopes after *after_seq*; every one when *limit* is None (paged)."""
     out, cursor = [], after_seq

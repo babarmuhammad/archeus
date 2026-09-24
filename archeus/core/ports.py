@@ -5,10 +5,16 @@ Callers are written against these Protocols, so P9 (policy), P10 (router), P7
 caller. The stubs are deliberately dumb and say so: they exist so the walking
 skeleton and the judge have something to call, not as first drafts.
 
-`Node` has no stub: the minimal local node arrives in P3.5, and until then
-nothing runs executions except the fake adapter's tests.
+`Node` has no stub: the P3.5 walking skeleton (archeus/core/engine.py) drives
+the fake harness through the adapter registry directly; the node contract gets
+its local implementation with the execution manager (P11).
+
+The second group of stubs (P3.5) is what the walking skeleton runs on: a policy
+that answers one fixed decision, a brain that proposes one fixed plan, and a
+verifier and a reviewer whose verdicts a test scripts. Each is deterministic.
 """
 
+import copy
 from typing import Mapping, Optional, Protocol, runtime_checkable
 
 from .domain import entities, ids
@@ -114,3 +120,64 @@ class AutoAcceptReview:
         return entities.Review(id=ids.new_id('review'), mission_id=mission.id,
                                reviewer='stub', independent=False, verdict='accept',
                                state='ACCEPTED')
+
+
+# ── P3.5 walking-skeleton stubs ─────────────────────────────────────────────
+
+class FixedPolicy:
+    """One decision for every action, or per action class (`by_class`). A stub
+    (`is_stub = True`): it keeps real adapters out exactly as AllowAllPolicy does."""
+    is_stub = True
+
+    def __init__(self, decision='ALLOW', by_class=None):
+        self.decision, self.by_class = decision, dict(by_class or {})
+
+    def evaluate(self, action, ctx):
+        d = self.by_class.get(action.action_class, self.decision)
+        return entities.PolicyDecision(
+            id=ids.new_id('policy_decision'), action=action, decision=d,
+            reason='stub policy (P3.5): %s for %s' % (d, action.action_class))
+
+
+class FixedPlanBrain:
+    """Answers `plan.v1` with the same plan every time (a fresh copy); any
+    other schema is an error, never an invented answer."""
+
+    def __init__(self, plan):
+        self.plan = plan
+        self.calls = []
+
+    def call(self, schema, prompt, *, context=None):
+        self.calls.append((schema, prompt))
+        if schema != 'plan.v1':
+            raise LookupError('the plan brain answers plan.v1 only, not %s' % schema)
+        return copy.deepcopy(self.plan)
+
+
+class ScriptedVerifier:
+    """PASSED, unless the subject's id is in `failing` (a set the test edits)."""
+
+    def __init__(self, failing=(), verifier='code'):
+        self.failing, self.verifier = set(failing), verifier
+
+    def verify(self, subject):
+        return entities.Verification(
+            id=ids.new_id('verification'), subject=subject, verifier=self.verifier,
+            criterion=0 if subject.kind == 'mission' else None,
+            state='FAILED' if subject.id in self.failing else 'PASSED')
+
+
+REVIEW_END = {'accept': 'ACCEPTED', 'changes_requested': 'CHANGES_REQUESTED',
+              'reject': 'REJECTED'}
+
+
+class ScriptedReview:
+    """`accept`, unless `verdicts[mission_id]` says otherwise (the test edits it)."""
+
+    def __init__(self, verdicts=None):
+        self.verdicts = dict(verdicts or {})
+
+    def review(self, mission):
+        v = self.verdicts.get(mission.id, 'accept')
+        return entities.Review(id=ids.new_id('review'), mission_id=mission.id,
+                               reviewer='stub', verdict=v, state=REVIEW_END[v])

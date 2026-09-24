@@ -19,6 +19,11 @@ TABLES = {
     entities.Principal: 'principals',
     entities.Device: 'devices',
     entities.Mission: 'missions',
+    entities.Plan: 'plans',
+    entities.Task: 'tasks',
+    entities.Execution: 'executions',
+    entities.Verification: 'verifications',
+    entities.Review: 'reviews',
 }
 
 #: Row metadata, never entity fields: optimistic-concurrency version, timestamps,
@@ -70,3 +75,15 @@ def get(conn, cls, entity_id):
     record = conn.execute('SELECT * FROM %s WHERE id = ?' % table(cls),
                           (entity_id,)).fetchone()
     return None if record is None else decode(cls, record)
+
+
+def where(conn, cls, **eq):
+    """Every row of *cls* whose promoted columns equal *eq*, oldest first."""
+    name = table(cls)
+    unknown = set(eq) - set(columns(conn, name))
+    if unknown:
+        raise LookupError('%s has no column %s' % (name, sorted(unknown)))
+    sql = 'SELECT * FROM %s' % name
+    if eq:
+        sql += ' WHERE ' + ' AND '.join('%s = ?' % c for c in eq)
+    return [decode(cls, r) for r in conn.execute(sql + ' ORDER BY rowid', tuple(eq.values()))]

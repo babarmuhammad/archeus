@@ -136,16 +136,21 @@ stateDiagram-v2
 
 | Guard / rule | Definition |
 |---|---|
-| `plan_auto_approved` | the policy engine evaluates every task's `action_classes` under the mission's scope chain and all are ALLOW or ALLOW_WITHIN_BOUNDARY, **and** the plan's estimated cost band is under the mission's auto-approve ceiling |
+| `plan_auto_approved` | the policy engine evaluates every task's `action_classes` under the mission's scope chain and all are ALLOW or ALLOW_WITHIN_BOUNDARY, **and** the plan's estimated cost band is under the mission's auto-approve ceiling, **and** the plan in force is newer than `mission.decided_plan_version` |
 | `all_tasks_done` | every non-`human` task is SUCCEEDED or SKIPPED |
 | `verified` | every mission-level success criterion with `check: automatic` has a PASSED verification (at least one such criterion exists), and no `check: human` criterion is still open — an open one is `awaiting_human_acceptance`, which must not be skipped |
 | `awaiting_human_acceptance` | a criterion with `check: human` (GenericVerifier) is open; an Attention item is created. Mission shows `blocked_reason = "waiting for your acceptance"`, which the UI renders as *needs you*, not as failure |
-| `replan_budget_exhausted` | `plan_version - 1 >= mission.max_replans` (default 2) |
+| `replan_budget_exhausted` | `plan_version - 1 >= mission.max_replans` (default 2), judged on the plan **in force** — the one being replaced — before a new plan is proposed. `max_replans` is the number of replans allowed after the initial plan: 0 refuses the first replan, 2 allows two and refuses the third |
 | `task_failed_retryable` | a task FAILED after `max_attempts` and the failure class is not policy/credential/human |
 | `unrecoverable` | policy DENY on a required action, missing capability with no resource, or user-declared failure |
+| `verification_failed` | an automatic criterion has a FAILED verification of the plan in force (guarded since the P3.5 adversarial review: fired by name with nothing failed it was a free replan) |
+| `redispatch` | `mission.held_from` is EXECUTING or VERIFYING — an approved plan is in force. Held from anywhere else the mission starts over with `redispatch_before_plan` (guarded since the P3.5 adversarial review: `unblock` + `redispatch` by name reached EXECUTING with no plan) |
+| `accepted` | the latest Review of the plan in force is ACCEPTED. A human overrides a verdict by recording their own review, never by firing the edge (guarded since the P3.5 adversarial review: REVIEWING completed with no review at all) |
+| `plan_needs_approval` | a guarded edge since P3.5: the plan in force is newer than `mission.decided_plan_version`, no action class is DENY (a denial is not a question for a human), and there is something to ask — an ASK, or a cost band not known to be under the ceiling. With nothing to ask it refuses, so the two plan decisions never both pass |
+| plan freshness | taking `plan_auto_approved` or `plan_needs_approval` records the judged `plan_version` in `mission.decided_plan_version`; neither guard passes for that plan again. So REPLANNING, or PLANNING after `request_changes`, cannot re-decide the plan it is replacing — `advance` or a trigger fired by name alike — until a newer plan is proposed |
 | `pause` | cooperative: tasks move to PAUSED as their executions reach the next tool boundary; mission shows PAUSED immediately and "pausing N executions…" until they settle |
 
-`plan_auto_approved`, `all_tasks_done` and `replan_budget_exhausted` refuse when the mission has
+`plan_auto_approved`, `plan_needs_approval`, `all_tasks_done` and `replan_budget_exhausted` refuse when the mission has
 no active plan (with tasks); `unrecoverable` from a user device is the user's declaration, from
 any other principal it needs a DENY or a missing capability.
 
@@ -160,10 +165,40 @@ anything `changed`.
 | `resume` | PAUSED → `resume`, BLOCKED → `unblock`, then out of RESUMED in the same transaction: `redispatch` if the mission was held from EXECUTING or VERIFYING (an approved plan in force), `redispatch_before_plan` otherwise — read from `Mission.held_from`, recorded with the move into the hold and cleared on the way out of RESUMED. It is current state, not history, so event retention cannot change the answer; a hold with no record is refused, never guessed. |
 | `cancel` | the edge into CANCELLED from the current state (`cancel`, or `reject` in APPROVAL_REQUIRED). EXECUTING has none: pause first. |
 | `request_changes` | APPROVAL_REQUIRED → PLANNING, or a review verdict overridden: REVIEWING → REPLANNING. |
-| `accept` | REVIEWING → COMPLETED. REVIEWING is reachable only through `verified`, so an execution reporting success never completes a mission. |
+| `accept` | REVIEWING → COMPLETED, guarded by `accepted` (an accepting review of the plan in force). REVIEWING is reachable only through `verified`, so nothing completes unverified or unreviewed. |
 | `pause`, `fire` | `pause`; any trigger by name (what the engine and later phases call). |
 
 Which principal may take which action is policy (P9), not the state machine.
+
+**The walking skeleton (P3.5, as built)** drives these actions from `archeus/core/engine.py`, one
+writer command per step: `start`, `understood`, `context_ready` (stub steps until the intent and
+context engines exist) → a proposed plan recorded with `reasoned` and its decision
+(`plan_auto_approved`, else `plan_needs_approval`) in one transaction — from REPLANNING the
+budget is judged first, on the plan being replaced → `dispatch` → per task `deps_satisfied`,
+`dispatch`, `routed`, then the execution and the task's checks → `advance` out of EXECUTING → the
+mission criteria recorded with `advance` out of VERIFYING → the review recorded with `accept` or
+`request_changes`. The engine itself changes no edge and adds no guard: the four guards P3.5
+added (`plan_needs_approval`, `verification_failed`, `redispatch`, `accepted`) are P3 table
+changes in `states.py` and `guards.py`.
+
+- **One path for a mission move.** Every mission transition goes through `Missions._fire`:
+  table legality → guard on the persisted facts → `TransitionProof` → `Tx.transition`, recording
+  `held_from` and `decided_plan_version` on the way (a scan in `test_skeleton.py` keeps it the
+  only caller). Policy authorization of who may fire a trigger stays P9's and is not in P3.
+- **ASK vs DENY.** ASK → APPROVAL_REQUIRED, a human `approve`. DENY → the command is refused
+  (`PolicyDenied`, `423 policy_denied`) before anything is written: no plan, task or execution
+  row, no approval request, the mission's state and version unchanged. No approval overrides a
+  DENY: one that appears after approval is refused at dispatch, and in EXECUTING the existing
+  `unrecoverable` edge ends the mission.
+- **Plan** has no declared edges: it stays DRAFT and is the versioned strategy attached to the
+  mission; the mission owns lifecycle progression (approval and supersession are its states).
+- **Review REJECTED** is a review result, not a mission move: the mission stays in REVIEWING until
+  an explicit `request_changes`, or a human's own accepting review (`work.record_review`), which
+  `accept` then requires. A rejection never completes.
+- **`advance` holds no legality of its own.** Every exit it may take is a guarded edge; it only
+  chooses the order (`test_advance_holds_no_legality_of_its_own`).
+- **Only the plan in force runs.** `dispatch_task` refuses a task of a superseded plan, so a
+  READY task left behind by an earlier plan can never start after a replan.
 
 **Session rotation never changes mission state.** An execution handing off (Execution §4) keeps
 its task RUNNING and its mission EXECUTING.
@@ -277,6 +312,11 @@ stateDiagram-v2
   `adopted` (pid + create_time match a live process that is still writing its stream) or
   `reconciled_kill`.
 - ENDED_OK does not mean the task succeeded — the task goes to VERIFYING.
+- **As built in P3.5**, reconciliation does not adopt: an execution no running Core is watching
+  has its process killed (pid + creation time) and ends ABANDONED (never spawned) or
+  LOST → ENDED_KILLED (`spawn_unconfirmed` / `start_timeout` / `heartbeat_missing`, then
+  `reconciled_kill`), and its task retries with a new execution. Adoption (`LOST → RUNNING`) is
+  the execution manager's (P11).
 
 ---
 

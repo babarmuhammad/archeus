@@ -21,6 +21,9 @@ from dataclasses import dataclass
 AUTO_OK = ('ALLOW', 'ALLOW_WITHIN_BOUNDARY')
 #: Failure classes a replan cannot fix (`task_failed_retryable`).
 NOT_RETRYABLE = ('policy', 'credential', 'human')
+#: States with an approved plan in force: a mission held from one of them may
+#: go straight back to EXECUTING (`redispatch`); from anywhere else it may not.
+PLAN_IN_FORCE = ('EXECUTING', 'VERIFYING')
 
 
 @dataclass(frozen=True)
@@ -67,6 +70,7 @@ class MissionFacts:
     missing_capability: bool = False
     policy: tuple = ()
     declared_by: str = None
+    review: str = None                  # state of the latest review of the plan in force
 
 
 @dataclass(frozen=True)
@@ -84,9 +88,23 @@ def _r(name, passed, reason):
 
 # ── mission (state-machines §2) ─────────────────────────────────────────────
 
+def _already_decided(mission, f):
+    """The plan in force was decided before (the plan a REPLANNING mission is
+    replacing, or one sent back with request_changes): it is never decided again."""
+    return (mission.decided_plan_version is not None
+            and f.plan_version <= mission.decided_plan_version)
+
+
+def _stale(name, f):
+    return _r(name, False, 'plan v%d was already decided; the mission needs a new plan'
+              % f.plan_version)
+
+
 def plan_auto_approved(mission, f):
     if f.plan_version is None or not f.tasks:
         return _r('plan_auto_approved', False, 'no active plan with tasks')
+    if _already_decided(mission, f):
+        return _stale('plan_auto_approved', f)
     asked = [(k, c, d) for k, c, d in f.policy if d not in AUTO_OK]
     if asked:
         k, c, d = asked[0]
@@ -97,6 +115,31 @@ def plan_auto_approved(mission, f):
                   if f.cost_within_ceiling is False else 'no estimated cost band')
     return _r('plan_auto_approved', True,
               'every action class is allowed and the cost band is under the ceiling')
+
+
+def plan_needs_approval(mission, f):
+    """A new plan with something a human must answer: an ASK, or a cost band
+    that is not (known to be) under the ceiling. A DENY is not a question — no
+    approval can make a denied action permitted."""
+    if f.plan_version is None or not f.tasks:
+        return _r('plan_needs_approval', False, 'no active plan with tasks')
+    denied = [(k, c) for k, c, d in f.policy if d == 'DENY']
+    if denied:
+        return _r('plan_needs_approval', False,
+                  'policy denies %s on task %s: not a question for approval' % denied[0][::-1])
+    if _already_decided(mission, f):
+        return _stale('plan_needs_approval', f)
+    asked = [(k, c, d) for k, c, d in f.policy if d not in AUTO_OK]
+    if asked:
+        k, c, d = asked[0]
+        return _r('plan_needs_approval', True, 'policy says %s for %s on task %s' % (d, c, k))
+    if f.cost_within_ceiling is not True:
+        return _r('plan_needs_approval', True,
+                  'the estimated cost band is not under the auto-approve ceiling'
+                  if f.cost_within_ceiling is False else 'no estimated cost band')
+    return _r('plan_needs_approval', False,
+              'nothing to ask: every action class is allowed and the cost band is under '
+              'the ceiling')
 
 
 def all_tasks_done(mission, f):
@@ -147,6 +190,28 @@ def task_failed_retryable(mission, f):
     return _r('task_failed_retryable', False, 'no task failed retryably')
 
 
+def verification_failed(mission, f):
+    failed = [c for c in f.criteria if c.check == 'automatic' and c.verification == 'FAILED']
+    if failed:
+        return _r('verification_failed', True, 'an automatic criterion failed')
+    return _r('verification_failed', False, 'no automatic criterion failed')
+
+
+def redispatch(mission, f):
+    if mission.held_from in PLAN_IN_FORCE:
+        return _r('redispatch', True, 'held from %s with an approved plan in force'
+                  % mission.held_from)
+    return _r('redispatch', False, 'held from %s: no approved plan is in force; the mission '
+              'starts over (redispatch_before_plan)' % mission.held_from)
+
+
+def accepted(mission, f):
+    if f.review == 'ACCEPTED':
+        return _r('accepted', True, 'the latest review of the plan in force accepts it')
+    return _r('accepted', False, 'no accepting review of the plan in force'
+              + ('' if f.review is None else ' (the latest is %s)' % f.review))
+
+
 def unrecoverable(mission, f):
     denied = [(k, c) for k, c, d in f.policy if d == 'DENY']
     if denied:
@@ -173,12 +238,16 @@ def approve(approval, f):
 #: (machine, trigger) -> guard. Exactly the guarded edges of states.TABLE.
 GUARDS = {
     ('mission', 'plan_auto_approved'): plan_auto_approved,
+    ('mission', 'plan_needs_approval'): plan_needs_approval,
     ('mission', 'all_tasks_done'): all_tasks_done,
     ('mission', 'verified'): verified,
     ('mission', 'awaiting_human_acceptance'): awaiting_human_acceptance,
     ('mission', 'replan_budget_exhausted'): replan_budget_exhausted,
     ('mission', 'task_failed_retryable'): task_failed_retryable,
     ('mission', 'unrecoverable'): unrecoverable,
+    ('mission', 'verification_failed'): verification_failed,
+    ('mission', 'redispatch'): redispatch,
+    ('mission', 'accepted'): accepted,
     ('approval', 'approve'): approve,
 }
 
