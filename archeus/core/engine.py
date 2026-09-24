@@ -212,9 +212,12 @@ class Engine:
         pid = base.read_json(paths.pid)
         ended = os.path.exists(paths.ended)
         if pid is not None:
-            self.registry.get(e.harness_id).stop(
-                base.ProcessHandle(e.id, pid['pid'], pid['create_time'], paths.dir),
-                grace_s=0.0)
+            try:
+                self.registry.get(e.harness_id).stop(
+                    base.ProcessHandle(e.id, pid['pid'], pid['create_time'], paths.dir),
+                    grace_s=0.0)
+            except base.StopRefused:
+                pass    # the pid was recycled: our process has exited, the live one is not ours
         if marker and not ended:
             base.mark_ended(paths, None, reconciled=True)
         # a marker with a tombstone and no pid.json is a spawn that failed

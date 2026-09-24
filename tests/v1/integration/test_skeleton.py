@@ -828,6 +828,48 @@ def test_core_killed_mid_execution_reconciles_and_the_mission_completes(archeus_
         core.close()
 
 
+@pytest.mark.parametrize('pid_now', ['dead', 'recycled'])
+def test_an_orphan_whose_process_is_gone_ends_lost_and_nothing_is_killed(archeus_home, pid_now):
+    """The recorded process has exited by the time a new Core reconciles. Its
+    pid is either free, or recycled by a stranger: the adapter refuses to stop
+    a stranger (StopRefused), which reconciliation reads as 'ours is gone'."""
+    from claude_sessions import proc
+    died = _die(archeus_home, 'spawned')
+    paths = ExecPaths(died['execution'])
+    pid = json.load(open(paths.pid))
+    assert proc.kill_pid_tree(pid['pid'], pid['create_time'])
+    deadline = time.monotonic() + 10
+    while _alive(pid['pid'], pid['create_time']) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not _alive(pid['pid'], pid['create_time'])
+
+    stranger = None
+    if pid_now == 'recycled':
+        stranger = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+        with open(paths.pid, 'w') as f:        # the orphan's pid, now someone else's
+            json.dump({'pid': stranger.pid, 'create_time': pid['create_time']}, f)
+    core = Core()
+    try:
+        out = core.engine.run(died['mission'])
+        assert (out['state'], out['stop']) == ('COMPLETED', 'completed')
+        if stranger is not None:
+            assert stranger.poll() is None, 'reconciliation killed a recycled pid'
+        first, second = core.all(entities.Execution)
+        assert (first.state, first.exit_reason) == ('ENDED_KILLED', 'lost')
+        assert (second.attempt, second.state) == (2, 'ENDED_OK')
+        moves = [(e['payload']['from'], e['payload']['trigger'])
+                 for e in of(core.events(), 'execution.state_changed')
+                 if e['subject']['id'] == first.id]
+        assert moves == [('INTENT', 'spawn'), ('STARTING', 'start_timeout'),
+                         ('LOST', 'reconciled_kill')]
+        assert os.path.exists(paths.ended)
+    finally:
+        core.close()
+        if stranger is not None:
+            stranger.kill()
+            stranger.wait()
+
+
 def test_core_killed_between_intent_and_spawn_abandons_the_attempt(archeus_home):
     died = _die(archeus_home, 'intent')
     assert died['state'] == 'INTENT' and died['pid'] is None
