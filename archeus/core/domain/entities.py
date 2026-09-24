@@ -6,8 +6,9 @@ deliberately thin: identity, scope, lifecycle state and the few fields that
 define what the thing IS. `version`, timestamps and provenance columns are rows
 of the P2 schema, not of this module.
 
-Entities are frozen: a state change will be a new value produced by P3's
-`transition()`, never an attribute assignment. Validation is declarative (class
+Entities are frozen: a state change is a new value produced by the P2
+persistence primitive `Tx.transition()` (which P3's guarded, application-level
+transition calls), never an attribute assignment. Validation is declarative (class
 variables read by `Entity.__post_init__`) so a new entity is a field list, not
 a new copy of the checks. `Event` lives in events.py beside its type registry.
 """
@@ -385,10 +386,13 @@ class Plan(Entity):
     _ID = 'plan'
     _STATE = ('state', 'plan')
     _REFS = {'mission_id': 'mission'}
-    _MIN1 = ('version',)
+    _MIN1 = ('plan_version',)
     id: str
     mission_id: str
-    version: int = 1
+    # the plan's own number within its mission (1, 2, … per replan), which
+    # `action_hash` binds approvals to — not the row's optimistic-concurrency
+    # `version`, which the P2 schema owns for every table
+    plan_version: int = 1
     state: str = None
 
 

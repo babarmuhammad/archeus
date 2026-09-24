@@ -469,7 +469,11 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 **P2 — Persistence, event log, identity basics**
 - Depends: P1. New: `infra/db` (connection, writer thread with futures + idempotency, migrations
   `0001_init.sql`, backup), `infra/eventlog` (outbox, consumer cursors/effects, retention),
-  `infra/artifacts`, Principal/Device/token tables, audit fields.
+  `infra/artifacts`, Principal/Device/token tables, audit fields, and the **transactional
+  transition primitive** (`Tx.transition`): check `expected_version`, check the edge against the
+  P1 state table, assign the state, bump `version`, append `<machine>.state_changed` with a
+  required reason — one transaction. It refuses guarded edges; it is persistence, not the
+  lifecycle layer.
 - Tests: crash-safety (kill between write and consumer), idempotent re-delivery, optimistic
   concurrency conflicts, migration + backup, writer throughput (≥ 500 commands/s on the dev box),
   startup refuses SQLite older than 3.31 and the schema uses neither `RETURNING` nor `STRICT`
@@ -478,7 +482,10 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Risks: SQLite contention → single writer by design; readers `query_only`.
 
 **P3 — State machines**
-- Depends: P2. New: `transition()`, guards, all machines of state-machines.md. Guards that
+- Depends: P2. New: the application-level `transition()` built on P2's primitive — guarded
+  transition semantics, action semantics, policy interaction and lifecycle orchestration — plus
+  guards and all machines of state-machines.md. The P2 primitive stays the only writer of
+  `state` and never grows guards, policy or orchestration of its own. Guards that
   consult policy, router or verification (e.g. `plan_auto_approved`) call the P1 ports, so they
   run against the stubs until P9/P10/P13 replace them.
 - Tests: every edge allowed, every non-edge rejected (generated), guards pure.
@@ -901,6 +908,13 @@ reused module; reads of `memory`, `gui_api`, `quota`, `proc`, `connections`, the
 | C3 | MEDIUM | P1 checkpoint: the legacy Qt shell's cache already lives in `%LOCALAPPDATA%\Archeus`; "delete `ARCHEUS_HOME`" would have deleted it | per-entry ownership table (target-architecture §5.1); reset removes V1 entries by name (migration-plan §7) |
 | C4 | LOW | P1 checkpoint: the stub-policy adapter gate could be read as a security boundary | stated as a lifecycle safety gate; authority is the P9 engine plus capability removal (§31.4) |
 | C5 | LOW | P1 checkpoint: the Integration machine had no host entity | it is `Task.integration_state`, not an entity (domain-model §7.3, state-machines §13) |
+| C6 | MEDIUM | P2 checkpoint: the pre-migration backup reused the daily name and could replace that day's daily backup | its own name, `migration-archeus-vA-to-vB-YYYYMMDD-HHMMSS[-N].db`, created without ever overwriting (hard link from the finished temp copy); daily retention never matches it (target-architecture §5) |
+| C7 | MEDIUM | P2 checkpoint: `transition()` was placed in P3 by this plan and in P2 by the P2 requirements | split by layer: P2 owns the transactional primitive (version check, table edge, state, version bump, event, reason, one transaction); P3 owns guards, action semantics, policy and lifecycle orchestration on top of it (§31.1 P2/P3) |
+| C8 | MEDIUM | P2 checkpoint: the event actor could be read as a principal id (domain-model) or an execution id (the api-and-realtime example showed `exe_…`) | the actor is always the causing principal: `actor.id` is a `prn_…` id, validated by `Event` and by the writer for `created_by`; execution provenance goes in `subject`, `cause_chain` or the payload. Stored as `actor_kind` + `actor_id` (domain-model §9.5 `actor_principal_id`) |
+| C9 | LOW | P2 checkpoint: `Plan.version` collided with the row's optimistic-concurrency `version` | the domain field is `plan_version`; `version` means the row's concurrency version everywhere. A test walks every entity for clashes with the row metadata; the one remaining clash (`KnowledgeItem.body` vs the `body` column) is refused by the codec and belongs to the phase that persists knowledge |
+| C10 | LOW | P2 checkpoint: the cursor contract named only the stale case | malformed → `400`; behind retention or ahead of the highest assigned seq → `410 cursor_expired` (api-and-realtime §3.4) |
+| C11 | LOW | P2 checkpoint: the in-process client registers its own principal | a P2 **bootstrap** only, so persistence can run; who may register a principal is decided by the auth/policy layer (P3.5 local bootstrap, P9 policy) |
+| C12 | LOW | P2 checkpoint: the 500 commands/s floor was asserted on whatever machine ran CI | 500/s stays the architectural target, asserted on a developer machine; on CI (`CI` set) the test asserts a 200/s regression floor, best of three batches, because hosted runners' fsync cost is not ours to set |
 
 No phase, technology or feature was added; P3.5 gained the minimal local node it always
 implicitly needed to run the fake harness, taken from P11's scope.

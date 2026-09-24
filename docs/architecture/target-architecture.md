@@ -239,8 +239,39 @@ inspection — deterministic, atomic) and `~/.claude/archeus-limits.json` (by
 `quota.note_limit`, the cross-process rate-limit latch both apps must agree on). See
 migration-plan §5.
 
-Backups: before every migration and daily, `sqlite3.Connection.backup()` to
-`<ARCHEUS_HOME>/backups/archeus-YYYYMMDD.db`, keep 7.
+Backups: `sqlite3.Connection.backup()` into `<ARCHEUS_HOME>/backups/`, two kinds with disjoint
+names:
+
+- **daily** — `archeus-YYYYMMDD.db`, keep 7. Retention deletes only files matching exactly that
+  name, never anything else in the folder.
+- **pre-migration** — `migration-archeus-vA-to-vB-YYYYMMDD-HHMMSS[-N].db` (`A` the schema the
+  database had, `B` the one it is migrating to), taken before the first migration statement
+  runs. It is created without ever replacing a file (a hard link from the finished temp copy;
+  a taken name moves on to `-1`, `-2`, …), daily retention never matches it, and nothing
+  deletes it: it stays until the user removes it. If it cannot be written, no migration runs; if
+  a migration fails, it is still there.
+
+A restore materialises a backup as a new file and refuses to overwrite an existing one.
+
+### 5.2 Persistence semantics (as built in P2)
+
+| Concern | Rule | Where |
+|---|---|---|
+| Ownership | The schema is `archeus/infra/db/migrations/NNNN_*.sql`, nothing else. One writer thread owns the only write connection; application commands (`archeus/core/application/`) are its only callers. Every other connection is `query_only`. A test fails if any other module opens SQLite (`backup.py` opens only backup files) or holds `INSERT`/`UPDATE`/`DELETE` outside a writer command. | `infra/db/writer.py`, `infra/db/connection.py` |
+| Transaction | A command runs inside one `BEGIN IMMEDIATE`: its entity rows, the events recording them and its idempotency key commit together or not at all. A command that changes entity state without appending an event is rolled back. `submit()` resolves only after `COMMIT`, so an acknowledged command is durable (`synchronous=FULL`). | `Writer._one` |
+| Rows | Entity tables share one shape: `id`, promoted columns (scope, state, foreign keys), `version`, `created_at`/`updated_at`, `created_by`/`updated_by` (the acting principal), and `body` (the remaining fields as JSON). A field is stored once. P2 persists `principals`, `devices`, `tokens` (hashes only) and `missions`. | `infra/db/rows.py` |
+| State | Only `Tx.transition()` assigns state. It is the **persistence primitive**: it checks the edge against the P1 state table (which stays authoritative), honours `expected_version` (a mismatch is `409 version_conflict`), requires a reason, bumps `version`, and appends `<machine>.state_changed` with `{from, to, trigger, reason}` — one transaction. Guards, action semantics, policy interaction and lifecycle orchestration are P3's application layer on top of it; until then guarded edges are refused. | `Tx.transition` |
+| Actor | Every event's `actor` and every row's `created_by`/`updated_by` is the **principal** that caused the change (`prn_…`; domain-model §9.5 `actor_principal_id` is stored as `actor_kind` + `actor_id`). An execution, device or node id is never an actor: execution provenance goes in `subject`, `cause_chain` or the payload. `Event` and `Tx.insert` refuse a non-principal id. | `events.py`, `Tx.insert` |
+| Principals | In P2 the in-process client registers its own `user_device` principal on first use. That is a **bootstrap** so persistence can run, not the security model: who may register or authorise a principal is decided by the auth layer (P3.5 local bootstrap) and policy (P9). | `commands.register_principal` |
+| Sequence | `events.seq` is `INTEGER PRIMARY KEY AUTOINCREMENT`, assigned by SQLite inside the command's transaction: monotonic, never reused (even after retention), and a rollback consumes none. With one writer, commit order is seq order, so "everything after N" is always a complete answer. | `0001_init.sql` |
+| Outbox | The `events` table *is* the outbox; there is no second queue. Consumers read it by seq after commit. | `infra/eventlog/` |
+| Cursors | `events_after(n)` returns committed events with `seq > n`, oldest first, pages of ≤ 1000, from one read snapshot. A malformed cursor (not an integer ≥ 0) is `ValueError` → `400`. A cursor below the retained floor (`pruned`) or above the highest seq ever assigned (`ahead` — a restored backup or a reset home) raises `CursorExpired` → `410 cursor_expired` → snapshot resync (api-and-realtime §3.4). | `outbox.py` |
+| Consumers | Per consumer: run the handler outside any transaction, commit `(consumer, seq)` to `consumer_effects`, then advance `consumer_cursors` (forward only). A crash before the effect row re-runs the handler (at-least-once: handlers are idempotent in what they do outside the database); a crash after it does not. | `consumers.py` |
+| Idempotency | A key is global and lives 24 h. A repeat of the same command with the same arguments (actor included) returns the stored response and writes nothing; the same key with a different command, arguments or actor is refused (`IdempotencyConflict`), never treated as the first request. | `Writer._recall` |
+| Retention | Removes a *prefix* of the log older than 180 days, never past the slowest consumer cursor, plus idempotency keys past 24 h. Keeping an open mission's events longer arrives with the mission lifecycle. | `retention.py` |
+| Recovery | Migrations are forward-only, one transaction each (`user_version` set inside it); a newer schema is refused; a failed migration is reported, never answered by recreating the file. The first migration of an existing database is preceded by a pre-migration backup under its own never-overwriting name (§5 above). `restore()` materialises a backup as a new file and refuses to overwrite. | `migrate.py`, `backup.py` |
+| Throughput | Architectural target: ≥ 500 commands/s through the writer with `synchronous=FULL` (measured on the dev box: ~1150/s pipelined, ~950/s sequential). The test asserts 500/s on a developer machine and a 200/s regression floor on CI (`CI` set), best of three batches: hosted runners' fsync cost is outside the code's control, and 200/s still catches a structural regression (a connection or a thread hand-off per command, a lost transaction boundary) that costs several times the budget. | `test_writer.py` |
+| Artifacts | Blobs only in P2: `artifacts/ab/cd/<sha256>`, written by temp-file + rename and verified on read. The `Artifact` row arrives with the first phase that records one. | `infra/artifacts/store.py` |
 
 ## 6. The operating loop mapped to modules
 

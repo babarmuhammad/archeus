@@ -7,8 +7,13 @@ an edge here is missing from the diagrams. `START`/`END` are the diagrams'
 `[*]`: an edge from START names a machine's initial state, an unlabelled edge
 to END marks a terminal one.
 
-P1 declares the edges; P3 adds `transition()`, which is the only thing that
-will ever assign a state, and the guard functions the names below refer to.
+P1 declares the edges, and this table stays authoritative. P2's
+`Tx.transition()` (archeus/infra/db/writer.py) is the persistence primitive and
+the only thing that assigns a state: it checks the edge here, the expected
+version and the reason, and commits the state, the version bump and the
+`<machine>.state_changed` event together. It refuses guarded edges. P3 builds
+the application-level transition on top of it — the guard functions the names
+below refer to, action semantics, policy interaction, lifecycle orchestration.
 """
 
 START = END = '[*]'

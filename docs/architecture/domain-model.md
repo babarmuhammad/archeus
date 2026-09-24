@@ -234,7 +234,8 @@ a deterministic grammar and never need a model (ADR-0006).
 
 ### 7.2 Plan
 Immutable once approved; a replan creates a new version (`plan_version` increments,
-`supersedes_plan_id`). Fields: `mission_id`, `version`, `summary`, `assumptions[]` (origin-tagged),
+`supersedes_plan_id`). Fields: `mission_id`, `plan_version` (the plan's number within its
+mission — distinct from the row's optimistic-concurrency `version`), `summary`, `assumptions[]` (origin-tagged),
 `risks[]`, `approval_points[]` (task ids / action classes that will need ASK), `rollback`,
 `estimated_cost` (bands, never precise — migration-kit rule), `state` (DRAFT → PROPOSED →
 APPROVED → SUPERSEDED / REJECTED), `authored_by` (brain principal + model used).

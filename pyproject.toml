@@ -90,9 +90,13 @@ packages = [
     "claude_sessions",
     "archeus",
     "archeus.core",
+    "archeus.core.application",
     "archeus.core.domain",
     "archeus.harnesses",
     "archeus.infra",
+    "archeus.infra.artifacts",
+    "archeus.infra.db",
+    "archeus.infra.eventlog",
 ]
 
 [tool.setuptools.package-data]
@@ -111,6 +115,9 @@ claude_sessions = [
     # and only a dev checkout ever had one.
     "*.ico",
 ]
+# The V1 schema: migrations are .sql files, not a package, so they ship only
+# because this names them (test_packaging checks it matches every one).
+"archeus.infra.db" = ["migrations/*.sql"]
 
 [tool.ruff]
 line-length = 100

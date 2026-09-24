@@ -6,7 +6,6 @@ import pytest
 from .support import wait_state
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P2")
 def test_a_mission_survives_a_core_restart(client, rig):
     m = client.create_mission(title='Durable', objective='Outlive the process')
     history = client.events(0)

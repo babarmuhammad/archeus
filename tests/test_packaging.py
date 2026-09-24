@@ -63,7 +63,11 @@ def test_the_v1_package_imports_in_a_clean_interpreter():
     mods = ['archeus.core.domain.' + m for m in
             ('ids', 'states', 'values', 'actions', 'entities', 'events')]
     mods += ['archeus.core.ports', 'archeus.infra.paths', 'archeus.harnesses.base',
-             'archeus.harnesses.fake', 'archeus.harnesses.registry']
+             'archeus.harnesses.fake', 'archeus.harnesses.registry',
+             'archeus.infra.db', 'archeus.infra.db.backup', 'archeus.infra.eventlog.outbox',
+             'archeus.infra.eventlog.consumers', 'archeus.infra.eventlog.retention',
+             'archeus.infra.artifacts.store', 'archeus.core.application.commands',
+             'archeus.core.application.queries']
     probe = ('import sys; sys.path.insert(0, %r)\n' % ROOT
              + ''.join('import %s\n' % m for m in mods)
              + "bad = [m for m in ('claude_sessions.ui', 'claude_sessions.gui_api', "
@@ -93,6 +97,24 @@ def test_the_bundled_skill_templates_are_covered_by_a_glob():
         covered.update(glob(os.path.join(PKG, pat.replace('/', os.sep))))
     missing = [p for p in on_disk if p not in covered]
     assert not missing, 'templates that would not ship: %s' % missing
+
+
+def test_every_v1_migration_is_covered_by_package_data():
+    """The schema is .sql files in a directory that is not a package, so they
+    ship only if package-data names them — and a wheel without them opens a
+    database with no tables. Every migration on disk must match the glob."""
+    import re
+    text = open(os.path.join(ROOT, 'pyproject.toml'), encoding='utf-8').read()
+    body = text[text.index('[tool.setuptools.package-data]'):]
+    line = re.search(r'^"archeus\.infra\.db" = \[(.*)\]$', body, re.M)
+    assert line, 'archeus.infra.db declares no package-data'
+    base = os.path.join(ROOT, 'archeus', 'infra', 'db')
+    covered = set()
+    for pat in re.findall(r'"([^"]+)"', line.group(1)):
+        covered.update(glob(os.path.join(base, pat.replace('/', os.sep))))
+    on_disk = set(glob(os.path.join(base, 'migrations', '*.sql')))
+    assert on_disk, 'no migrations on disk'
+    assert on_disk <= covered, 'migrations that would not ship: %s' % sorted(on_disk - covered)
 
 
 def test_the_plugin_bundle_is_tracked_by_git():

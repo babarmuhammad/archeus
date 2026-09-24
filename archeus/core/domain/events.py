@@ -41,6 +41,7 @@ TYPES = (
     ('node.state_changed', 'execution_node', 'user', False, 'a node went online/grace/offline'),
     ('device.stream_opened', 'device', 'system', False, 'a device opened the event stream'),
     ('device.stream_closed', 'device', 'system', False, 'a device closed the event stream'),
+    ('principal.created', 'principal', 'system', False, 'an actor was registered'),
     ('legacy.worklog', 'project', 'system', False, 'a legacy worklog entry, imported as history'),
 )
 
@@ -61,7 +62,12 @@ class Event:
     id: str
     type: str
     at: str
-    actor: Ref                  # kind is a principal kind
+    # The principal that caused this (domain-model §9.5 `actor_principal_id`):
+    # `actor.id` is always a `prn_…` id and `actor.kind` that principal's kind.
+    # An execution acts through its own principal; the execution id itself
+    # (`exe_…`) is provenance, and belongs in `subject`, `cause_chain` or the
+    # payload — never here.
+    actor: Ref
     subject: Ref
     workspace: str = ids.GLOBAL_WORKSPACE
     project: str = None
@@ -89,6 +95,8 @@ class Event:
             problems.append('%s is about a %s, not a %s' % (self.type, row[1], self.subject.kind))
         if self.actor.kind not in PRINCIPAL_SCOPES:
             problems.append('actor kind %r is not a principal kind' % self.actor.kind)
+        if not ids.is_id(self.actor.id, 'principal'):
+            problems.append('actor id %r is not a principal id' % self.actor.id)
         if self.visibility not in VISIBILITIES:
             problems.append('visibility must be user or system')
         if len(self.cause_chain) > MAX_CAUSE_CHAIN:

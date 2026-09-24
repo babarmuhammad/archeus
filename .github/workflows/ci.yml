@@ -114,6 +114,9 @@ jobs:
           # the fake harness's agent is a script the adapter runs by path
           & $py -c "import os, sys, archeus.core.ports, archeus.infra.paths, archeus.harnesses.registry, archeus.harnesses.fake as f; sys.exit(0 if os.path.isfile(f.AGENT) else 1)"
           if ($LASTEXITCODE -ne 0) { throw 'the wheel is missing the archeus package' }
+          # the V1 schema is .sql package-data: without it a database opens with no tables
+          & $py -c "import sys, archeus.infra.db.migrate as m, archeus.infra.eventlog.consumers, archeus.core.application.commands; sys.exit(0 if m.migrations() else 1)"
+          if ($LASTEXITCODE -ne 0) { throw 'the wheel is missing the V1 migrations' }
 
       # The one command a fresh install types. Run from the INSTALLED console
       # script, not from the source tree: the point is that the released

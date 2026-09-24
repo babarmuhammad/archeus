@@ -6,7 +6,7 @@ import inspect
 
 import pytest
 
-from v1.judge.client import OPERATIONS, CoreClient, CoreClientError, InProcessClient
+from v1.judge.client import IMPLEMENTED, OPERATIONS, CoreClient, CoreClientError, InProcessClient
 
 BINDINGS = (InProcessClient,)
 
@@ -31,7 +31,7 @@ def test_each_binding_matches_the_protocol(binding, tmp_path):
             getattr(CoreClient, op)), op
 
 
-@pytest.mark.parametrize('op', OPERATIONS)
+@pytest.mark.parametrize('op', [op for op in OPERATIONS if op not in IMPLEMENTED])
 def test_an_unimplemented_operation_fails_loudly(op, tmp_path):
     with pytest.raises(NotImplementedError, match=op):
         getattr(InProcessClient(tmp_path), op)('x')

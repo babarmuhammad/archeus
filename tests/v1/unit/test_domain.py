@@ -252,7 +252,7 @@ def test_an_approval_hash_binds_the_action_and_both_versions():
 
 def _event(**kw):
     kw.setdefault('subject', Ref('mission', ids.new_id('mission')))
-    kw.setdefault('actor', Ref('user_device', ids.new_id('device')))
+    kw.setdefault('actor', Ref('user_device', ids.new_id('principal')))
     return events.new_event(kw.pop('type', 'mission.state_changed'),
                             payload=kw.pop('payload', {'from': 'CREATED', 'to': 'UNDERSTANDING'}),
                             **kw)
@@ -280,6 +280,8 @@ def test_the_registry_declares_each_type_once_with_a_known_subject():
     dict(type='mission.learned'),                                  # unregistered
     dict(subject=Ref('task', 'tsk_x')),                            # wrong subject kind
     dict(actor=Ref('robot', 'x')),                                 # not a principal kind
+    dict(actor=Ref('execution', ids.new_id('execution'))),         # exe_ is not a principal
+    dict(actor=Ref('user_device', ids.new_id('device'))),          # nor is a device id
     dict(cause_chain=[ids.new_ulid() for _ in range(17)]),         # chain too long
     dict(cause_chain=['msn_notanevent']),
     dict(payload={'when': object()}),                              # not JSON

@@ -11,7 +11,11 @@ Status: **DECIDED**. Entities are defined in [domain-model.md](domain-model.md).
   "one declaration, everything derived" rule).
 - **One mutator.** `transition(entity, to, *, actor, reason, cause)` validates the edge, runs the
   guard, bumps `version`, writes the row and appends the event in one transaction. Nothing else
-  assigns `state`.
+  assigns `state`. Two layers: the **persistence primitive** (`Tx.transition`, P2) checks
+  `expected_version` and the edge against the table, assigns the state, bumps `version` and
+  appends `<machine>.state_changed` with its required reason, atomically, and refuses guarded
+  edges; the **application layer** (P3) owns guards, action semantics, policy interaction and
+  lifecycle orchestration, and reaches the database only through the primitive.
 - **Guards are pure functions** of the entity plus a read-only snapshot. They never call a
   model or a process. A guard that needs a side effect is a bug; the side effect belongs in an
   outbox consumer reacting to the event.

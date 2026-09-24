@@ -3,6 +3,12 @@
 
 import time
 
+#: Set by the judge's `client` fixture to the binding's `_idle()`: True when
+#: nothing in the Core under test can change state on its own, so waiting for a
+#: change can only time out. Until an engine runs (P3.5) that is always the
+#: case, and a wait fails at once as "not built yet" instead of after 30 s.
+idle = None
+
 
 def wait_for(fn, timeout=30.0, interval=0.05):
     """Poll *fn* until it returns something truthy; fail the test on timeout."""
@@ -11,6 +17,9 @@ def wait_for(fn, timeout=30.0, interval=0.05):
         got = fn()
         if got:
             return got
+        if idle is not None and idle():
+            raise NotImplementedError('waiting for %s, but nothing in this Core advances '
+                                      'state on its own yet' % getattr(fn, '__name__', fn))
         if time.monotonic() > deadline:
             raise AssertionError('timed out after %.0fs waiting for %s'
                                  % (timeout, getattr(fn, '__name__', fn)))
@@ -43,6 +52,9 @@ class Rig:
     it bodies. Until then every lever fails loudly, like `InProcessClient`.
     """
 
+    def __init__(self, client=None):
+        self.client = client
+
     def _pending(self, what, phase):
         raise NotImplementedError('judge rig: %s arrives with %s' % (what, phase))
 
@@ -59,8 +71,12 @@ class Rig:
         self._pending('the fake clock', 'P10')
 
     def restart_core(self, *, kill=True):
-        """Kill (or stop) Core and start it again on the same ARCHEUS_HOME."""
-        self._pending('Core restarts', 'P2')
+        """Kill (or stop) Core and start it again on the same ARCHEUS_HOME.
+        In-process, a kill drops queued commands and closes without draining;
+        a real process kill is tests/v1/integration's (a child process)."""
+        if not hasattr(self.client, '_restart'):
+            self._pending('Core restarts for this binding', 'P3.5')
+        self.client._restart(kill=kill)
 
     def fixture_repo(self, name):
         """A throwaway git repository from tests/v1/fixtures/repos/<name>."""

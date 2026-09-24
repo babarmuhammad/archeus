@@ -61,7 +61,7 @@ response.
   "id": "01JC8Z…",
   "type": "mission.state_changed",
   "at": "2026-09-23T14:02:11.412Z",
-  "actor": {"kind": "execution", "id": "exe_…"},
+  "actor": {"kind": "execution", "id": "prn_…"},
   "cause_chain": ["01JC8Y…", "01JC8X…"],
   "subject": {"kind": "mission", "id": "msn_…"},
   "scope": {"workspace": "ws_…", "project": "prj_…"},
@@ -69,6 +69,12 @@ response.
   "payload": {"from": "EXECUTING", "to": "BLOCKED", "reason": "allocation reached on all eligible accounts"}
 }
 ```
+
+`actor` is the **principal that caused the event** (domain-model §9.5 `actor_principal_id`):
+`actor.id` is always a `prn_…` principal id and `actor.kind` that principal's kind. An
+execution acts through its own principal; the `exe_…` id is provenance and appears as the
+`subject`, in `cause_chain` or in the payload, never as the actor. Stored as `actor_kind` +
+`actor_id` in `events`; `Event` refuses any other id.
 
 ### 3.2 Event type registry
 
@@ -105,9 +111,17 @@ reply is a message row; the stream says `message.created`). Execution output str
 ### 3.4 Retention
 
 Events kept 180 days (configurable); events referenced by an open mission are kept until the
-mission closes + 30 days. A client asking to resume from a `seq` older than retention gets
-`410 cursor_expired` and does a snapshot resync (re-query its screens). Retention runs as a
-nightly outbox consumer.
+mission closes + 30 days. Retention runs as a nightly outbox consumer.
+
+The cursor contract (`seq` in `Last-Event-ID` or `?after=`), implemented by
+`archeus/infra/eventlog/outbox.py` in P2 and mapped to HTTP in P3.5:
+
+| Cursor | Answer |
+|---|---|
+| not a non-negative integer | `400 invalid_request` |
+| behind retention (older than the oldest retained event) | `410 cursor_expired` → snapshot resync (re-query its screens) |
+| ahead of the highest `seq` ever assigned (a restored backup, a reset home) | `410 cursor_expired` → snapshot resync |
+| otherwise | committed events with `seq > cursor`, oldest first, pages of ≤ 1000, all from one read snapshot |
 
 ## 4. SSE transport (stdlib)
 
