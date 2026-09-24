@@ -472,8 +472,8 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   `infra/artifacts`, Principal/Device/token tables, audit fields, and the **transactional
   transition primitive** (`Tx.transition`): check `expected_version`, check the edge against the
   P1 state table, assign the state, bump `version`, append `<machine>.state_changed` with a
-  required reason — one transaction. It refuses guarded edges; it is persistence, not the
-  lifecycle layer.
+  required reason — one transaction. It refuses a guarded edge without a matching P3 transition
+  proof; it is persistence, not the lifecycle layer.
 - Tests: crash-safety (kill between write and consumer), idempotent re-delivery, optimistic
   concurrency conflicts, migration + backup, writer throughput (≥ 500 commands/s on the dev box),
   startup refuses SQLite older than 3.31 and the schema uses neither `RETURNING` nor `STRICT`
@@ -490,6 +490,23 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   run against the stubs until P9/P10/P13 replace them.
 - Tests: every edge allowed, every non-edge rejected (generated), guards pure.
 - Acceptance: illegal transitions return 422 with machine/from/to.
+- As built: guards in `core/domain/guards.py`, the transition in `core/application/lifecycle.py`,
+  mission actions (`advance`, `pause`, `resume`, `cancel`, `request_changes`, `accept`, `fire`)
+  in `commands.Missions` (state-machines §2 "Orchestration").
+- **P3 proves the lifecycle semantics, not a production lifecycle.** No new tables: the guard
+  snapshot is a `facts(tx, row)` seam, and in production it has no active plan, so every guard
+  that needs one refuses (fail closed) and a mission cannot pass `all_tasks_done`; tests script
+  the snapshot. **Deferred, deliberately open:** which phase persists Plan, Task, Verification
+  and success criteria (P3.5's skeleton needs Task at the latest) — until then no real facts.
+- P2 stays generic: `Tx.transition` gained `proof=` (a generic `states.TransitionProof`,
+  checked against the P1 table) and `fields=` (other entity fields in the same row write).
+  P2 owns no guard definition and no mission behaviour (state-machines §0, tested by a scan of
+  `archeus/infra/`). Mission gained `max_replans` and `held_from`.
+- P3 acceptance is carried by the in-process contract tests (`422 invalid_transition` naming
+  machine/from/to, `422 guard_failed`); no judge scenario is tagged P3, and none was invented.
+- Still deferred: who may fire which trigger (P9; P3 decides legality only), the persisted
+  Approval machine (P9), `KnowledgeItem.body` vs the row's `body` (the phase that persists
+  knowledge; the collision test stays).
 
 **P3.5 — API, SSE, walking skeleton**
 - Depends: P3. New: `api/server.py` (separate request and stream pools), `api/routes.py`,

@@ -11,12 +11,33 @@ P1 declares the edges, and this table stays authoritative. P2's
 `Tx.transition()` (archeus/infra/db/writer.py) is the persistence primitive and
 the only thing that assigns a state: it checks the edge here, the expected
 version and the reason, and commits the state, the version bump and the
-`<machine>.state_changed` event together. It refuses guarded edges. P3 builds
+`<machine>.state_changed` event together. It refuses a guarded edge unless a
+`TransitionProof` (below) for that edge, row and version comes with it. P3 builds
 the application-level transition on top of it — the guard functions the names
 below refer to, action semantics, policy interaction, lifecycle orchestration.
 """
 
+from dataclasses import dataclass
+
 START = END = '[*]'
+
+
+@dataclass(frozen=True)
+class TransitionProof:
+    """The application layer's statement that ONE edge may be taken on ONE row
+    at ONE version: built after the edge's guard (if any) passed, and checked
+    field by field by the persistence primitive against the row it changes.
+    Generic on purpose — it names an edge of this table, never a guard's
+    meaning — so the primitive can refuse an unproven guarded edge without
+    knowing any machine's semantics. `guard` is the table's guard name for the
+    edge (None when unguarded) and `guard_reason` why it passed."""
+    entity_id: str
+    version: int
+    frm: str
+    to: str
+    trigger: str
+    guard: str = None
+    guard_reason: str = None
 
 #: Machines in the order their diagrams appear in state-machines.md.
 MACHINES = (
@@ -301,7 +322,7 @@ _EDGES = {
 }
 
 #: Triggers whose edge is guarded (state-machines §2 guard table, §5 approve).
-#: P3 implements each as a pure function of the entity plus a read-only snapshot.
+#: Each is a pure function of the entity plus a read-only snapshot in guards.py.
 _GUARDED = {
     'mission': {'plan_auto_approved', 'all_tasks_done', 'verified',
                 'awaiting_human_acceptance', 'replan_budget_exhausted',

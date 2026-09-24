@@ -61,7 +61,8 @@ def test_the_v1_package_imports_in_a_clean_interpreter():
     legacy UI, or on the cwd: a fresh interpreter run from elsewhere imports
     every declared V1 module, and none of them loads the legacy UI stack."""
     mods = ['archeus.core.domain.' + m for m in
-            ('ids', 'states', 'values', 'actions', 'entities', 'events')]
+            ('ids', 'states', 'values', 'actions', 'entities', 'events', 'guards')]
+    mods += ['archeus.core.application.lifecycle']
     mods += ['archeus.core.ports', 'archeus.infra.paths', 'archeus.harnesses.base',
              'archeus.harnesses.fake', 'archeus.harnesses.registry',
              'archeus.infra.db', 'archeus.infra.db.backup', 'archeus.infra.eventlog.outbox',

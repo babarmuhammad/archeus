@@ -221,6 +221,8 @@ a deterministic grammar and never need a model (ADR-0006).
 | `context_scope` | levels allowed (L0–L4), extra refs pinned by the user, refs excluded |
 | `dependencies[]` | other missions/decisions this waits on |
 | `priority` | integer; user-set; reprioritize = command |
+| `max_replans` | default 2; `replan_budget_exhausted` (state-machines §2) |
+| `held_from?` | the state the mission was in when it entered BLOCKED/PAUSED; `resume` reads it (state-machines §2) |
 | `autonomy_profile` | named policy overlay (e.g. `careful`, `standard`, `autonomous`) — see policy |
 | `resource_preferences` | optional per-mission routing overrides (preferred accounts, forbidden harnesses, cost ceiling) |
 | `verification_strategy`, `review_strategy` | chosen at planning; editable |

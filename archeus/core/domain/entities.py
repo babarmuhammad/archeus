@@ -371,6 +371,7 @@ class Mission(Entity):
     _STATE = ('state', 'mission')
     _TEXT = ('title', 'objective')
     _CHOICES = {'origin': ('conversation', 'idea', 'automation', 'legacy_import')}
+    _NONNEG = ('max_replans',)
     id: str
     workspace_id: str
     title: str
@@ -378,7 +379,16 @@ class Mission(Entity):
     origin: str = 'conversation'
     project_id: str = None
     priority: int = 0
+    max_replans: int = 2            # `replan_budget_exhausted` (state-machines §2)
+    # the state the mission was in when it last entered BLOCKED or PAUSED;
+    # `resume` reads it (current state, never the event log, which retention
+    # may prune)
+    held_from: str = None
     state: str = None
+
+    def _check(self):
+        if self.held_from is not None and self.held_from not in states.states('mission'):
+            raise ValueError('Mission.held_from is not a mission state: %r' % self.held_from)
 
 
 @entity

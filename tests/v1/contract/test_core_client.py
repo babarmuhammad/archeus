@@ -37,6 +37,57 @@ def test_an_unimplemented_operation_fails_loudly(op, tmp_path):
         getattr(InProcessClient(tmp_path), op)('x')
 
 
+@pytest.fixture
+def client(archeus_home):
+    c = InProcessClient(archeus_home)
+    yield c
+    c.close()
+
+
+def test_an_illegal_transition_is_422_naming_machine_from_and_to(client):
+    """plan §31.1 P3 acceptance, at the contract level (the HTTP status in P3.5)."""
+    m = client.create_mission(title='t', objective='o')
+    before = client.events(0)
+    with pytest.raises(CoreClientError) as err:
+        client.pause(m['id'])                       # CREATED has no pause edge
+    e = err.value
+    assert (e.status, e.code) == (422, 'invalid_transition')
+    assert e.detail == {'machine': 'mission', 'from': 'CREATED', 'to': 'PAUSED',
+                        'trigger': 'pause'}
+    with pytest.raises(CoreClientError) as err:
+        client.resume(m['id'])
+    assert (err.value.status, err.value.detail['to']) == (422, 'RESUMED')
+    assert client.events(0) == before and client.get_mission(m['id'])['version'] == 1
+
+
+def test_a_refused_guard_is_422_guard_failed_not_invalid_transition(client):
+    from archeus.core.application.lifecycle import GuardFailed
+    from archeus.core.domain.guards import GuardResult
+    from archeus.infra.db.writer import VersionConflict
+
+    def refused():
+        raise GuardFailed('mission', 'EXECUTING', 'VERIFYING', 'all_tasks_done',
+                          GuardResult('all_tasks_done', False, 'tasks not done: t1'))
+    with pytest.raises(CoreClientError) as err:
+        client._call(refused)
+    assert (err.value.status, err.value.code) == (422, 'guard_failed')
+    assert err.value.detail == {'machine': 'mission', 'from': 'EXECUTING', 'to': 'VERIFYING',
+                                'trigger': 'all_tasks_done', 'guard': 'all_tasks_done',
+                                'reason': 'tasks not done: t1'}
+
+    def stale():
+        raise VersionConflict('msn_x', 1, 2)
+    with pytest.raises(CoreClientError) as err:
+        client._call(stale)
+    assert (err.value.status, err.value.code, err.value.detail) == (409, 'version_conflict',
+                                                                     {'current': 2})
+
+
+def test_control_verbs_reach_only_missions_until_p11(client):
+    with pytest.raises(NotImplementedError, match='P11'):
+        client.pause('exe_01J0000000000000000000000Z')
+
+
 def test_errors_carry_status_and_code():
     e = CoreClientError(422, 'invalid_transition', {'machine': 'mission'})
     assert (e.status, e.code, e.detail['machine']) == (422, 'invalid_transition', 'mission')

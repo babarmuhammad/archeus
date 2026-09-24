@@ -21,7 +21,9 @@ mobile (ADR-0010). Push beyond ntfy is **DEFERRED**.
    same wheel always matches.
 5. **Errors are typed:** `400 invalid_request` (names the field), `401`, `403 scope_required`,
    `404`, `409 version_conflict` (returns current version), `410 cursor_expired`, `422
-   invalid_transition` (names machine/from/to), `423 policy_denied` (includes PolicyDecision id),
+   invalid_transition` (names machine/from/to and the trigger), `422 guard_failed` (the edge
+   exists but its guard refused: names machine/from/to/trigger, the guard and its reason —
+   state-machines §0), `423 policy_denied` (includes PolicyDecision id),
    `429`, `503 core_starting`. Never a bare 500 for a client mistake (lesson from today's
    endpoint floor).
 

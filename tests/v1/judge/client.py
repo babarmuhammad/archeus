@@ -19,10 +19,14 @@ Bindings:
 import inspect
 from typing import Optional, Protocol, Sequence, runtime_checkable
 
+from archeus.core import ports
 from archeus.core.application import commands, queries
+from archeus.core.application.lifecycle import GuardFailed, IllegalTrigger
+from archeus.core.domain import ids
 from archeus.core.domain.values import Ref
 from archeus.infra.db import Database, connection
-from archeus.infra.db.writer import IdempotencyConflict, NotFound
+from archeus.infra.db.writer import (IdempotencyConflict, InvalidTransition, NotFound,
+                                     VersionConflict)
 from archeus.infra.eventlog.outbox import CursorExpired
 
 
@@ -102,6 +106,8 @@ class InProcessClient:
         self.home = str(home)
         self._db = None
         self._principal = None
+        # P3: the mission lifecycle on the P1 stub policy; P9 swaps the port
+        self._missions = commands.Missions(policy=ports.AllowAllPolicy())
 
     # ── binding plumbing (not part of the contract) ──
 
@@ -126,6 +132,17 @@ class InProcessClient:
             raise CoreClientError(404, 'not_found', {'id': str(e)}) from e
         except CursorExpired as e:
             raise CoreClientError(410, 'cursor_expired', {'reason': e.reason}) from e
+        except VersionConflict as e:
+            raise CoreClientError(409, 'version_conflict', {'current': e.current}) from e
+        except GuardFailed as e:
+            raise CoreClientError(422, 'guard_failed', {
+                'machine': e.machine, 'from': e.frm, 'to': e.to, 'trigger': e.trigger,
+                'guard': e.result.guard, 'reason': e.result.reason}) from e
+        except InvalidTransition as e:          # before ValueError: it is one
+            detail = {'machine': e.machine, 'from': e.frm, 'to': e.to}
+            if isinstance(e, IllegalTrigger):
+                detail['trigger'] = e.trigger
+            raise CoreClientError(422, 'invalid_transition', detail) from e
         except IdempotencyConflict as e:
             raise CoreClientError(400, 'invalid_request', {'field': 'idempotency_key',
                                                            'why': str(e)}) from e
@@ -171,6 +188,19 @@ class InProcessClient:
                 return queries.get_mission(conn, mission_id)
         return self._call(read)
 
+    def _control(self, verb, target):
+        if ids.kind_of(target) != 'mission':
+            raise NotImplementedError('CoreClient.%s: only mission targets until the '
+                                      'execution orchestrator (P11)' % verb)
+        return self._call(lambda: self._core().writer.execute(
+            getattr(self._missions, verb), {'actor': self._actor(), 'mission_id': target}))
+
+    def pause(self, target: str) -> dict:
+        return self._control('pause', target)
+
+    def resume(self, target: str) -> dict:
+        return self._control('resume', target)
+
     def events(self, after_seq: int = 0, *, limit: Optional[int] = None) -> list:
         def read():
             with self._core().read() as conn:
@@ -178,8 +208,9 @@ class InProcessClient:
         return self._call(read)
 
 
-#: Operations with a real body in the in-process binding (P2: G1, G4).
-IMPLEMENTED = ('create_mission', 'get_mission', 'events')
+#: Operations with a real body in the in-process binding (P2: G1, G4; P3: the
+#: mission control verbs).
+IMPLEMENTED = ('create_mission', 'get_mission', 'events', 'pause', 'resume')
 
 # Every other operation is declared and fails loudly. Later phases replace these
 # with real bodies one by one; tests/v1/contract/test_core_client.py keeps every

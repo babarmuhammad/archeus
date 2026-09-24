@@ -20,8 +20,9 @@ Invariants this module enforces rather than documents:
   the P1 state table (state-machines §0). It is the PERSISTENCE primitive —
   version check, edge check, state, version bump, event, reason, one
   transaction. Guards, action semantics, policy and lifecycle orchestration are
-  P3's application layer, built on top of it, never added here; until then
-  guarded edges are refused.
+  the application layer's (core/application/lifecycle.py), never added here; a
+  guarded edge is taken only with that layer's `states.TransitionProof` for the
+  exact edge, row and version being changed.
 """
 
 import dataclasses
@@ -142,11 +143,22 @@ class Tx:
         return stored
 
     def transition(self, cls, entity_id, to, *, actor, reason, cause=(),
-                   expected_version=None):
+                   expected_version=None, proof=None, fields=None):
         """Move an entity along one edge of its state machine: validate the
         edge, bump `version`, write the row and append `<machine>.state_changed`
         — all in this transaction. Returns (Row, Event). `actor` is the causing
-        principal. The persistence half only: P3 calls this after its guards."""
+        principal. The persistence half only: the application layer
+        (core/application/lifecycle.py) evaluates guards and calls this.
+
+        `proof` (a `states.TransitionProof`) names the edge and binds it to this
+        row: its entity, version, from, to and trigger must match, and its
+        guard must be the table's guard for that trigger. A guarded edge is
+        taken only with a matching proof, so a guard can neither be skipped
+        nor reused on a row that changed after it was judged. This module never
+        evaluates a guard and knows no machine's meaning — only the table.
+
+        `fields` sets other fields of the entity in the same row write (never
+        its state), validated by the entity like any other value."""
         if not cls._STATE:
             raise TypeError('%s has no state machine' % cls.__name__)
         if not (isinstance(reason, str) and reason.strip()):
@@ -165,11 +177,27 @@ class Tx:
                  if f == frm and dest == to and t is not None]
         if not edges:
             raise InvalidTransition(machine, frm, to)
-        free = [t for t, g in edges if g is None]
-        if not free:
-            raise InvalidTransition(machine, frm, to,
-                                    'guarded by %s, and guards arrive in P3' % edges[0][1])
-        entity = dataclasses.replace(row.entity, **{field: to})
+        if proof is not None:
+            if not isinstance(proof, states.TransitionProof):
+                raise InvalidTransition(machine, frm, to, 'proof is not a TransitionProof')
+            match = [(t, g) for t, g in edges if t == proof.trigger and g == proof.guard]
+            if not match or (proof.entity_id, proof.version, proof.frm, proof.to) != (
+                    entity_id, row.version, frm, to):
+                raise InvalidTransition(machine, frm, to,
+                                        'the proof is for another edge, row or version '
+                                        '(this row is at version %d)' % row.version)
+            taken, g = match[0]
+        else:
+            free = [(t, g) for t, g in edges if g is None]
+            taken, g = (free or edges)[0]
+            if g is not None:
+                raise InvalidTransition(machine, frm, to,
+                                        'guarded by %s: needs a transition proof for this '
+                                        'row at version %d' % (g, row.version))
+        extra = dict(fields or {})
+        if set(extra) & {field, 'id'}:
+            raise ValueError('fields may not set the id or the state; the edge does')
+        entity = dataclasses.replace(row.entity, **dict(extra, **{field: to}))
         name = rows.table(cls)
         promoted, body = rows.encode(entity, rows.columns(self.conn, name))
         promoted.pop('id')
@@ -181,9 +209,12 @@ class Tx:
         if cur.rowcount != 1:                    # unreachable with one writer
             raise VersionConflict(entity_id, row.version, None)
         self.mutated = True
+        payload = {'from': frm, 'to': to, 'trigger': taken, 'reason': reason}
+        if g is not None:
+            payload['guard'] = {'name': g, 'reason': proof.guard_reason}
         event = self.append(ev.new_event(
             etype, Ref(ids.kind_of(entity_id), entity_id), actor,
-            payload={'from': frm, 'to': to, 'trigger': free[0], 'reason': reason},
+            payload=payload,
             workspace=getattr(entity, 'workspace_id', ids.GLOBAL_WORKSPACE),
             project=getattr(entity, 'project_id', None), cause_chain=cause))
         return (rows.Row(entity, row.version + 1, row.created_at, self.now,

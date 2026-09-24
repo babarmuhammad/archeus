@@ -13,12 +13,36 @@ Status: **DECIDED**. Entities are defined in [domain-model.md](domain-model.md).
   guard, bumps `version`, writes the row and appends the event in one transaction. Nothing else
   assigns `state`. Two layers: the **persistence primitive** (`Tx.transition`, P2) checks
   `expected_version` and the edge against the table, assigns the state, bumps `version` and
-  appends `<machine>.state_changed` with its required reason, atomically, and refuses guarded
-  edges; the **application layer** (P3) owns guards, action semantics, policy interaction and
+  appends `<machine>.state_changed` with its required reason, atomically, and refuses a guarded
+  edge without a matching transition proof; the **application layer** (P3) owns guards, action semantics, policy interaction and
   lifecycle orchestration, and reaches the database only through the primitive.
 - **Guards are pure functions** of the entity plus a read-only snapshot. They never call a
   model or a process. A guard that needs a side effect is a bug; the side effect belongs in an
-  outbox consumer reacting to the event.
+  outbox consumer reacting to the event. They live in `archeus/core/domain/guards.py` (`GUARDS`
+  holds exactly the guarded edges of the table). The application layer gathers the snapshot —
+  including any Policy port decisions — inside the writer transaction that commits the move.
+  Guards **fail closed**: an unknown fact (no active plan, no success criteria, no cost band)
+  refuses.
+- **The P2/P3 boundary.** P3 turns a passed guard into a `states.TransitionProof` — entity id,
+  version, from, to, trigger, and the table's guard name for that trigger — and the P2
+  primitive checks every field against the row it is changing and the P1 table. That is all
+  persistence knows: `archeus/infra/` imports no guard, no application module and no machine's
+  meaning (a test scans it). So a guard can be neither skipped nor judged on a stale row, and
+  guard definitions and mission behaviour stay out of P2. The primitive also takes `fields`,
+  other fields of the entity written in the same row write (never the state).
+- **Legality is not authority.** P3 answers whether a trigger is legal from the current state.
+  Whether a principal may *ask* for it is authorisation — route scopes (P3.5) and policy (P9) —
+  and no P3 rule refuses or privileges an actor kind. The one policy call P3 makes is the Policy
+  port evaluating a plan's action classes, with the acting principal in its context so P9 can
+  decide on it. The two actor rules in guards are domain meaning, not permission: `unrecoverable`
+  treats a user device's request as a declaration, and `approve` is defined (§5) by who decides.
+- **Two refusals, never one.** A trigger with no edge from the current state is an *invalid
+  transition* (`422 invalid_transition`, naming machine/from/to and the trigger); an edge whose
+  guard refuses is a *failed guard* (`422 guard_failed`, naming the guard and its reason). Both
+  write nothing. A stale `expected_version` is `409 version_conflict`, checked before the guard.
+- **Actions name triggers.** A caller asks for a trigger (`pause`, `verified`, …), not a
+  destination; `(machine, from, trigger)` has one destination (a unit test keeps it so). A
+  trigger into `[*]` removes the row and is not a state change (`code_expired`).
 - **Terminal states are terminal.** Retrying a FAILED execution creates a new Execution row;
   replanning a mission creates a new Plan version. History is never rewritten.
 - **Human intervention** is modelled as triggers with `actor.kind == user_device` — the same
@@ -114,12 +138,32 @@ stateDiagram-v2
 |---|---|
 | `plan_auto_approved` | the policy engine evaluates every task's `action_classes` under the mission's scope chain and all are ALLOW or ALLOW_WITHIN_BOUNDARY, **and** the plan's estimated cost band is under the mission's auto-approve ceiling |
 | `all_tasks_done` | every non-`human` task is SUCCEEDED or SKIPPED |
-| `verified` | every mission-level success criterion with `check: automatic` has a PASSED verification |
+| `verified` | every mission-level success criterion with `check: automatic` has a PASSED verification (at least one such criterion exists), and no `check: human` criterion is still open — an open one is `awaiting_human_acceptance`, which must not be skipped |
 | `awaiting_human_acceptance` | a criterion with `check: human` (GenericVerifier) is open; an Attention item is created. Mission shows `blocked_reason = "waiting for your acceptance"`, which the UI renders as *needs you*, not as failure |
 | `replan_budget_exhausted` | `plan_version - 1 >= mission.max_replans` (default 2) |
 | `task_failed_retryable` | a task FAILED after `max_attempts` and the failure class is not policy/credential/human |
 | `unrecoverable` | policy DENY on a required action, missing capability with no resource, or user-declared failure |
 | `pause` | cooperative: tasks move to PAUSED as their executions reach the next tool boundary; mission shows PAUSED immediately and "pausing N executions…" until they settle |
+
+`plan_auto_approved`, `all_tasks_done` and `replan_budget_exhausted` refuse when the mission has
+no active plan (with tasks); `unrecoverable` from a user device is the user's declaration, from
+any other principal it needs a DENY or a missing capability.
+
+**Orchestration** (`Missions` in `archeus/core/application/commands.py`) is deterministic and
+changes state only through the triggers above. The `advance` order is domain behaviour, declared
+once as `commands.DECISIONS`; a test keeps this table equal to it. Every response says whether
+anything `changed`.
+
+| Action | Rule |
+|---|---|
+| `advance` | at a decision point, take the first exit the facts allow, in this order — PLANNING: `plan_auto_approved`, `plan_needs_approval`; REPLANNING: `replan_budget_exhausted`, `plan_auto_approved`, `plan_needs_approval`; EXECUTING: `unrecoverable`, `task_failed_retryable`, `all_tasks_done`; VERIFYING: `verification_failed` (an automatic criterion FAILED), `awaiting_human_acceptance`, `verified`. Anywhere else, or when no exit is allowed yet, nothing changes. It is the engine's step, not a declaration (`unrecoverable` is judged without the actor). The response lists every exit considered and why. |
+| `resume` | PAUSED → `resume`, BLOCKED → `unblock`, then out of RESUMED in the same transaction: `redispatch` if the mission was held from EXECUTING or VERIFYING (an approved plan in force), `redispatch_before_plan` otherwise — read from `Mission.held_from`, recorded with the move into the hold and cleared on the way out of RESUMED. It is current state, not history, so event retention cannot change the answer; a hold with no record is refused, never guessed. |
+| `cancel` | the edge into CANCELLED from the current state (`cancel`, or `reject` in APPROVAL_REQUIRED). EXECUTING has none: pause first. |
+| `request_changes` | APPROVAL_REQUIRED → PLANNING, or a review verdict overridden: REVIEWING → REPLANNING. |
+| `accept` | REVIEWING → COMPLETED. REVIEWING is reachable only through `verified`, so an execution reporting success never completes a mission. |
+| `pause`, `fire` | `pause`; any trigger by name (what the engine and later phases call). |
+
+Which principal may take which action is policy (P9), not the state machine.
 
 **Session rotation never changes mission state.** An execution handing off (Execution §4) keeps
 its task RUNNING and its mission EXECUTING.

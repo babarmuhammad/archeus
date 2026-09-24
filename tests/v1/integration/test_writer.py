@@ -255,7 +255,7 @@ def test_a_valid_transition_bumps_the_version_and_records_the_edge(db, new_missi
 @pytest.mark.parametrize('path, to, why', [
     ((), 'EXECUTING', 'no such edge'),                                   # skips the machine
     (('UNDERSTANDING', 'CONTEXT_GATHERING', 'REASONING', 'PLANNING'), 'APPROVED',
-     'guards arrive in P3'),                                             # guarded edge
+     'needs a transition proof'),                                        # guarded edge
     (('UNDERSTANDING', 'CONTEXT_GATHERING', 'REASONING', 'PLANNING', 'CANCELLED'), 'CREATED',
      'no such edge'),                                                    # out of a terminal
 ])
