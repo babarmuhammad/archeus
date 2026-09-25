@@ -190,6 +190,7 @@ jobs:
         env:
           ARCHEUS_E2E: '1'
         run: |
+          set -o pipefail
           python -m pytest tests/v1/e2e -v | tee e2e.txt
           grep -Eq '[1-9][0-9]* passed' e2e.txt
 
