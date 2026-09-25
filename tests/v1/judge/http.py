@@ -384,7 +384,35 @@ class CoreProcess:
             if info and info['pid'] == self.proc.pid:
                 return info
             time.sleep(0.05)
-        raise AssertionError('Core did not start:\n' + self.output())
+        raise AssertionError('Core did not start:\n%s\n%s' % (self._diagnose(), self.output()))
+
+    def _diagnose(self):
+        """What wait_ready could see when it gave up (on timeout only)."""
+        from claude_sessions import proc
+        path = discovery.core_json_path()
+        try:
+            with open(path, encoding='utf-8', errors='replace') as f:
+                raw = f.read()
+        except OSError as e:
+            raw = '<%s>' % e
+        info = discovery.read_core_json()
+        pid = info and info['pid']
+        lines = ['core.json: %s (exists: %s)' % (path, os.path.exists(path)),
+                 'core.json raw: %r' % raw[:500],
+                 'child pid %s, poll %r, alive %r, create_time %r' % (
+                     self.proc.pid, self.proc.poll(), proc.pid_alive(self.proc.pid),
+                     proc.process_create_time(self.proc.pid)),
+                 'test pid %s, sys.executable %s' % (os.getpid(), sys.executable),
+                 'lock held: %r' % discovery.lock_is_held()]
+        if pid is not None:
+            lines.append('recorded pid %s: alive %r, create_time now %r, recorded %r' % (
+                pid, proc.pid_alive(pid), proc.process_create_time(pid), info['create_time']))
+        if not sys.platform.startswith('win'):
+            r = subprocess.run(['ps', '-A', '-o', 'pid=,ppid=,stat=,command='],
+                               capture_output=True, text=True, timeout=10)
+            lines += ['ps: ' + l.strip() for l in r.stdout.splitlines()
+                      if l.split()[:2] and self.proc.pid in (int(l.split()[0]), int(l.split()[1]))]
+        return '\n'.join(lines)
 
     def kill(self):
         self.proc.kill()

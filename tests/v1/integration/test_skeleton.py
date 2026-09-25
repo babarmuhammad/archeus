@@ -848,12 +848,14 @@ def test_an_orphan_whose_process_is_gone_ends_lost_and_nothing_is_killed(archeus
         stranger = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
         with open(paths.pid, 'w') as f:        # the orphan's pid, now someone else's
             json.dump({'pid': stranger.pid, 'create_time': pid['create_time']}, f)
+        seen = 'recorded %r, the stranger\'s own %r' % (
+            pid['create_time'], proc.process_create_time(stranger.pid))
     core = Core()
     try:
         out = core.engine.run(died['mission'])
         assert (out['state'], out['stop']) == ('COMPLETED', 'completed')
         if stranger is not None:
-            assert stranger.poll() is None, 'reconciliation killed a recycled pid'
+            assert stranger.poll() is None, 'reconciliation killed a recycled pid: ' + seen
         first, second = core.all(entities.Execution)
         assert (first.state, first.exit_reason) == ('ENDED_KILLED', 'lost')
         assert (second.attempt, second.state) == (2, 'ENDED_OK')
