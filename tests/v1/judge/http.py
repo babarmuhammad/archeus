@@ -15,6 +15,7 @@
 import http.client
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -303,6 +304,9 @@ class TempCore:
 
 
 CHILD = r'''
+import faulthandler, signal
+if hasattr(signal, 'SIGUSR1'):      # wait_ready's timeout asks for every thread's stack
+    faulthandler.register(signal.SIGUSR1, all_threads=True)
 import json, os, sys
 sys.path.insert(0, %(root)r)
 cfg = json.loads(sys.argv[1])
@@ -412,6 +416,17 @@ class CoreProcess:
                                capture_output=True, text=True, timeout=10)
             lines += ['ps: ' + l.strip() for l in r.stdout.splitlines()
                       if l.split()[:2] and self.proc.pid in (int(l.split()[0]), int(l.split()[1]))]
+            if self.proc.poll() is None:
+                # the child's faulthandler writes every thread's stack into its
+                # output; wait (bounded) for the dump so output() below has it
+                os.kill(self.proc.pid, signal.SIGUSR1)
+                end, before = time.monotonic() + 5, None
+                while time.monotonic() < end:
+                    now = self.output()
+                    if 'most recent call first' in now and now == before:
+                        break                   # the dump has stopped growing
+                    before = now
+                    time.sleep(0.05)
         return '\n'.join(lines)
 
     def kill(self):
