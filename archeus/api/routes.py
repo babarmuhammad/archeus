@@ -16,7 +16,10 @@ those are the application layer's, and P9's.
 P4 adds the world (p4-design-gate §10): status, projects, constraints,
 inspections and the digest. P5 adds the context package and its preview
 (p5-design-gate §6): the preview is a POST because it carries a request, and it
-writes nothing, so it takes no idempotency key.
+writes nothing, so it takes no idempotency key. P6 adds knowledge (its
+lifecycle, forget, feedback), meeting import (admin: it reads a file), the
+route decisions of Archeus's own calls, and the provider-terms answer
+(ADR-0021; admin, and only the user may give it) (p6-design-gate §9).
 
 Deliberately absent (a test pins the table): cancel, accept, request-changes,
 approvals (P9), executions and routing (P10, P11), `/v1/now` and the execution
@@ -29,7 +32,11 @@ import re
 from collections import namedtuple
 
 from ..core.application import commands, queries, world
+from ..core.application import calls as own_calls
+from ..core.application import knowledge
 from ..core.context import assemble as context
+from ..core.knowledge import ingest
+from ..harnesses.calls import real_callers
 from ..core.world import digest as world_digest
 from ..core.world import status as world_status
 from . import auth, schemas
@@ -205,6 +212,89 @@ def preview_context(req):
         return 200, context.assemble(conn, b['subject']['kind'], b['subject']['id'], **kw)
 
 
+def list_knowledge(req):
+    with req.api.db.read() as conn:
+        return 200, {'knowledge': queries.list_knowledge(
+            conn, _one(req.query, 'project'), _one(req.query, 'state'), _one(req.query, 'type'))}
+
+
+def get_knowledge(req):
+    with req.api.db.read() as conn:
+        return 200, queries.get_knowledge(conn, req.params['id'])
+
+
+def _move(req):
+    kw = {'knowledge_item_id': req.params['id']}
+    for k in ('reason', 'expected_version'):
+        if req.body.get(k) is not None:
+            kw[k] = req.body[k]
+    return kw
+
+
+def confirm_knowledge(req):
+    return 200, req.run(knowledge.confirm, _move(req))
+
+
+def reject_knowledge(req):
+    return 200, req.run(knowledge.reject, _move(req))
+
+
+def retract_knowledge(req):
+    return 200, req.run(knowledge.retract, _move(req))
+
+
+def supersede_knowledge(req):
+    return 200, req.run(knowledge.supersede, {'knowledge_item_id': req.params['id'],
+                                              'title': req.body['title'],
+                                              'text': req.body.get('text') or ''})
+
+
+def forget_knowledge(req):
+    b = req.body
+    return 200, req.run(knowledge.forget, {
+        'selector': b['selector'], 'mode': b.get('mode') or 'retract',
+        'dry_run': True if b.get('dry_run') is None else b['dry_run']})
+
+
+def record_feedback(req):
+    b = req.body
+    return 200, req.run(knowledge.record_feedback, {
+        'subject': b['subject'], 'signal': b['signal'], 'text': b.get('text') or '',
+        'promote': b.get('promote')})
+
+
+def import_meeting(req):
+    b = req.body
+    n = ingest.read_notes(b['path'], b.get('held_at'))
+    return 200, req.run(knowledge.import_meeting, {
+        'name': n['name'], 'held_at': n['held_at'], 'notes_sha256': n['sha256'],
+        'notes_size': n['size'], 'imported_from': n['path'], 'project_id': b.get('project_id')})
+
+
+def list_route_decisions(req):
+    with req.api.db.read() as conn:
+        return 200, {'route_decisions': queries.route_decisions(
+            conn, _one(req.query, 'source'), _one(req.query, 'purpose'))}
+
+
+def get_route_decision(req):
+    with req.api.db.read() as conn:
+        return 200, queries.get_route_decision(conn, req.params['id'])
+
+
+def list_provider_terms(req):
+    with req.api.db.read() as conn:
+        return 200, {'provider_terms': queries.provider_terms(
+            conn, [c.id for c in real_callers()])}
+
+
+def decide_provider_terms(req):
+    b = req.body
+    return 200, req.run(own_calls.decide_provider_terms, {
+        'harness_id': req.params['id'], 'headless': b['headless'],
+        'rotation': b.get('rotation'), 'note': b.get('note') or ''})
+
+
 def revoke_device(req):
     out = req.run(commands.revoke_device, {'device_id': req.params['id']})
     req.api.sse.close_device(req.params['id'])          # before we answer (§3 D2)
@@ -249,12 +339,40 @@ ROUTES = (
           'ContextPackage'),
     Route('POST', '/v1/context/preview', preview_context, 'observe', None,
           schemas.CONTEXT_PREVIEW, 'ContextPreview'),
+    # ── knowledge and own calls (P6) ──
+    Route('GET', '/v1/knowledge', list_knowledge, 'observe', None, None, 'KnowledgeList'),
+    Route('GET', '/v1/knowledge/{id}', get_knowledge, 'observe', None, None,
+          'KnowledgeDetail'),
+    Route('POST', '/v1/knowledge/{id}/confirm', confirm_knowledge, 'control', 'required',
+          schemas.KNOWLEDGE_MOVE, 'KnowledgeChanged'),
+    Route('POST', '/v1/knowledge/{id}/reject', reject_knowledge, 'control', 'required',
+          schemas.KNOWLEDGE_MOVE, 'KnowledgeChanged'),
+    Route('POST', '/v1/knowledge/{id}/retract', retract_knowledge, 'control', 'required',
+          schemas.KNOWLEDGE_MOVE, 'KnowledgeChanged'),
+    Route('POST', '/v1/knowledge/{id}/supersede', supersede_knowledge, 'control', 'required',
+          schemas.SUPERSEDE, 'KnowledgeChanged'),
+    Route('POST', '/v1/knowledge/forget', forget_knowledge, 'control', 'required',
+          schemas.FORGET, 'Forgotten'),
+    Route('POST', '/v1/feedback', record_feedback, 'control', 'required', schemas.FEEDBACK,
+          'FeedbackRecorded'),
+    Route('POST', '/v1/meetings/import', import_meeting, 'admin', 'required',
+          schemas.IMPORT_MEETING, 'MeetingImported'),
+    Route('GET', '/v1/route-decisions', list_route_decisions, 'observe', None, None,
+          'RouteDecisionList'),
+    Route('GET', '/v1/route-decisions/{id}', get_route_decision, 'observe', None, None,
+          'RouteDecision'),
+    Route('GET', '/v1/provider-terms', list_provider_terms, 'observe', None, None,
+          'ProviderTermsList'),
+    Route('POST', '/v1/provider-terms/{id}', decide_provider_terms, 'admin', 'required',
+          schemas.PROVIDER_TERMS, 'ProviderTermsDecided'),
 )
 
 #: The query parameters each GET route reads (for the docs and the client).
 QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),
          '/v1/events/stream': ('after',), '/v1/status': ('project',),
-         '/v1/repositories/{id}/inspections': ('limit',)}
+         '/v1/repositories/{id}/inspections': ('limit',),
+         '/v1/knowledge': ('project', 'state', 'type'),
+         '/v1/route-decisions': ('source', 'purpose')}
 
 STREAM = '/v1/events/stream'
 

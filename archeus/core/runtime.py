@@ -45,7 +45,11 @@ from ..infra.db import Database
 from ..infra.eventlog import outbox
 from . import engine, ports as P
 from .application import commands, errors, queries, work
+from ..harnesses.calls import real_callers
+from .calls import OwnCalls
 from .domain.values import Ref
+from .knowledge.passes import Passes
+from .knowledge.worker import Knowledge
 from .world.worker import World
 
 DEFAULT_PORT = 7337
@@ -84,6 +88,10 @@ class Ports:
     reviewer: object = field(default_factory=P.ScriptedReview)
     route: str = 'fake'
     scenarios: dict = field(default_factory=dict)
+    # Archeus's own calls (P6, ADR-0022): the adapters offered for them (None:
+    # the real ones, each gated by ADR-0021) and the own-call preference.
+    callers: list = None
+    preference: object = field(default_factory=P.LegacyOwnCallPreference)
 
     @property
     def stub(self):
@@ -177,18 +185,18 @@ class EngineLoop:
 
 
 class WorldLoop:
-    """The `archeus-world` thread: the boot sweep, then passes. It waits on
-    the writer's commit notification with the poll interval as its timeout,
-    and `wake()` (called by `World.pending()` when it finds due work) ends a
-    wait early."""
+    """A worker thread: the boot sweep, then passes — `archeus-world` (P4) and
+    `archeus-knowledge` (P6). It waits on the writer's commit notification with
+    the poll interval as its timeout, and `wake()` (called by the worker's
+    `pending()` when it finds due work) ends a wait early."""
 
-    def __init__(self, world, db, *, poll_s=WORLD_POLL_S, on_fail=None):
+    def __init__(self, world, db, *, poll_s=WORLD_POLL_S, on_fail=None, name='archeus-world'):
         self.world, self.db, self.poll_s, self.on_fail = world, db, poll_s, on_fail
-        self.state = 'starting'
+        self.name, self.state = name, 'starting'
         self._stop, self._wake = threading.Event(), threading.Event()
         world.on_wake = self.wake
         world.stopping = self._stop.is_set
-        self._thread = threading.Thread(target=self._run, name='archeus-world', daemon=True)
+        self._thread = threading.Thread(target=self._run, name=name, daemon=True)
 
     def start(self):
         self._thread.start()
@@ -213,7 +221,8 @@ class WorldLoop:
             self.state = 'reconciling'
             swept = self.world.sweep()
             if swept:
-                log.info('failed %d inspection(s) a previous Core left running', len(swept))
+                log.info('%s: failed %d item(s) a previous Core left running', self.name,
+                         len(swept))
             while not self._stop.is_set():
                 seen = self.db.writer.commit_count
                 self.state = 'running'
@@ -236,7 +245,7 @@ class WorldLoop:
 
     def _failed(self):
         self.state = 'failed'
-        log.exception('the world thread failed; Core stops (exit 3)')
+        log.exception('the %s thread failed; Core stops (exit 3)', self.name)
         if self.on_fail:
             self.on_fail()
 
@@ -250,6 +259,7 @@ class Core:
         self.launch_clock, self.lock_retry_s = launch_clock, lock_retry_s
         self.static_dir, self.world_poll_s = static_dir, world_poll_s
         self.lock = self.db = self.loop = self.world = self.api = self.server = None
+        self.knowledge = None
         self.warning = None
         self.exit_code = 0
         self._done = threading.Event()
@@ -298,6 +308,16 @@ class Core:
         self.world = WorldLoop(World(self.db, actor=self.system), self.db,
                                poll_s=self.world_poll_s, on_fail=self._engine_failed)
         self.world.start()
+        callers = self.ports.callers
+        own = OwnCalls(self.db, actor=self.system,
+                       callers=real_callers() if callers is None else callers,
+                       preference=self.ports.preference)
+        self.knowledge = WorldLoop(Knowledge(self.db, actor=self.system,
+                                             passes=Passes(self.db, actor=self.system,
+                                                           calls=own)),
+                                   self.db, poll_s=self.world_poll_s,
+                                   on_fail=self._engine_failed, name='archeus-knowledge')
+        self.knowledge.start()
 
         self.api = server.Api(db=self.db, missions=self.missions, port=self.port,
                               health=self.health, version=VERSION,
@@ -346,7 +366,8 @@ class Core:
         return {'core': {'pid': os.getpid(), 'started_at': self.started_at,
                          'version': VERSION, 'schema': self.schema,
                          'ports': 'stub' if self.ports.stub else 'real'},
-                'engine': self.loop.status(), 'world': self.world.status()}
+                'engine': self.loop.status(), 'world': self.world.status(),
+                'knowledge': self.knowledge.status()}
 
     def launch_url(self):
         """A fresh launch code in the URL fragment (never sent to the server)."""
@@ -378,6 +399,8 @@ class Core:
             self.server.shutdown()
             self.server.server_close()
             self.server = None
+        if self.knowledge is not None:
+            self.knowledge.stop()
         if self.world is not None:
             self.world.stop()
         if self.loop is not None:

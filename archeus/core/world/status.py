@@ -66,13 +66,36 @@ def status(conn, project_id=None):
             if m['project_id'] == p.entity.id:
                 counts[m['state']] = counts.get(m['state'], 0) + 1
         out_projects.append({'id': p.entity.id, 'name': p.entity.name, 'state': p.entity.state,
-                             'repositories': repos, 'missions': counts})
+                             'repositories': repos, 'missions': counts,
+                             'knowledge_pass': knowledge_pass(conn, p.entity.id)})
     return {'source': 'deterministic', 'as_of_seq': outbox.head(conn),
             'projects': out_projects, 'missions': unsettled + settled,
             'drift': drift, 'unchecked': unchecked,
             'unknown_project': [] if project_id is not None else sorted(
                 m['id'] for m in missions
                 if m['project_id'] is not None and m['project_id'] not in known)}
+
+
+def knowledge_pass(conn, project_id):
+    """The project's initial knowledge pass (P6, K3), derived from the rows:
+    `queued` once a repository has a COMPLETED inspection and no pass has
+    started; then the state of its latest RouteDecision's outcome (`running`
+    while the call is open). None before any inspection completed. Whatever
+    it says, the project itself is unaffected: a failed or gated pass never
+    fails a project (plan P6)."""
+    passes = [r.entity for r in rows.where(conn, entities.RouteDecision,
+                                           purpose='knowledge_extraction', project_id=project_id)
+              if r.entity.source is not None and r.entity.source.kind == 'repository_inspection']
+    if passes:
+        d = passes[-1]
+        o = d.outcome or {}
+        return {'state': o.get('state', 'running'), 'route_decision_id': d.id,
+                'items': o.get('items', 0), 'reason': o.get('reason')}
+    for r in rows.where(conn, entities.Repository, project_id=project_id):
+        if any(i.entity.state == 'COMPLETED' for i in rows.where(
+                conn, entities.RepositoryInspection, repository_id=r.entity.id)):
+            return {'state': 'queued', 'route_decision_id': None, 'items': 0, 'reason': None}
+    return None
 
 
 def project(conn, project_id):

@@ -70,7 +70,10 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
                 if isinstance(n, ast.Call) and ast.unparse(n.func) == 'req.run']
     targets = sorted({ast.unparse(n.args[0]) for n in handlers})
     assert targets == ['commands.create_mission', 'commands.register_device',
-                       'commands.revoke_device', 'req.api.missions.pause',
+                       'commands.revoke_device', 'knowledge.confirm', 'knowledge.forget',
+                       'knowledge.import_meeting', 'knowledge.record_feedback',
+                       'knowledge.reject', 'knowledge.retract', 'knowledge.supersede',
+                       'own_calls.decide_provider_terms', 'req.api.missions.pause',
                        'req.api.missions.resume', 'world.ack_digest',
                        'world.create_project', 'world.declare_constraint'], targets
 
@@ -125,17 +128,38 @@ P5 = {
     ('POST', '/v1/context/preview', 'observe', None),
 }
 
+#: P6's rows (p6-design-gate §9): the knowledge lifecycle is control; meeting
+#: import reads a file on the machine and the provider-terms answer is the
+#: user's own, so both are admin (P4 D7's reasoning).
+P6 = {
+    ('GET', '/v1/knowledge', 'observe', None), ('GET', '/v1/knowledge/{id}', 'observe', None),
+    ('POST', '/v1/knowledge/{id}/confirm', 'control', 'required'),
+    ('POST', '/v1/knowledge/{id}/reject', 'control', 'required'),
+    ('POST', '/v1/knowledge/{id}/retract', 'control', 'required'),
+    ('POST', '/v1/knowledge/{id}/supersede', 'control', 'required'),
+    ('POST', '/v1/knowledge/forget', 'control', 'required'),
+    ('POST', '/v1/feedback', 'control', 'required'),
+    ('POST', '/v1/meetings/import', 'admin', 'required'),
+    ('GET', '/v1/route-decisions', 'observe', None),
+    ('GET', '/v1/route-decisions/{id}', 'observe', None),
+    ('GET', '/v1/provider-terms', 'observe', None),
+    ('POST', '/v1/provider-terms/{id}', 'admin', 'required'),
+}
 
-def test_the_route_table_is_exactly_the_p35b_p4_and_p5_tables():
+
+def test_the_route_table_is_exactly_the_p35b_p4_p5_and_p6_tables():
     """L2: nothing from P9 (approve), P10 (route), P11 (executions, stop,
     estop, hooks), P15 (pair, device list) or P16 (/v1/now, the execution
     stream) — a later phase adds its rows with its own tests."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
-    assert got == EXPECTED | P4 | P5
-    assert len(routes.ROUTES) == len(EXPECTED | P4 | P5)
-    for word in ('approv', 'route', 'execution', 'estop', 'stop', 'pair', 'now', 'hook',
-                 'cancel', 'accept', 'account', 'graph', 'knowledge', 'attention'):
+    assert got == EXPECTED | P4 | P5 | P6
+    assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6)
+    for word in ('approv', 'route/', 'execution', 'estop', 'stop', 'pair', '/now', 'hook',
+                 'cancel', 'accept', 'account', 'graph', 'attention'):
         assert not [r.path for r in routes.ROUTES if word in r.path], word
+    # the only `route` paths are own-call decisions (P6), never the P10 router
+    assert {r.path for r in routes.ROUTES if 'route' in r.path} == {
+        '/v1/route-decisions', '/v1/route-decisions/{id}'}
     assert not [r.path for r in routes.ROUTES if r.path.endswith('/inspect')]
 
 

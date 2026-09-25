@@ -159,3 +159,74 @@ def run_headless(cmd, input_text=None, *, cwd=None, env=None, timeout=600,
         done.set()
         if t is not None:
             t.join(timeout=2)
+
+
+def parse_json(text):
+    """Recover JSON from model prose: the path for a harness asked for its
+    shape in the prompt, and the fallback for one whose schema flag was
+    ignored.
+
+    Tries the whole (de-fenced) text first, because a well-behaved answer needs
+    no surgery, and only then slices to the outermost object or array. The
+    array case matters: bracket-slicing a two-element array on '{'..'}' yields
+    '{...}, {...}', which is not JSON, so a list-shaped answer used to come back
+    as None from here even though it parsed perfectly as-is.
+    """
+    if not text:
+        return None
+    t = text.strip()
+    if '```' in t:                       # strip code fences
+        import re
+        m = re.search(r'```(?:json)?\s*(.*?)```', t, re.S)
+        if m:
+            t = m.group(1).strip()
+    for cand in (t, _slice_between(t, '{', '}'), _slice_between(t, '[', ']')):
+        if not cand:
+            continue
+        try:
+            return json.loads(cand)
+        except Exception:
+            continue
+    return None
+
+
+def _slice_between(t, open_ch, close_ch):
+    """The outermost open_ch..close_ch span, or '' when there isn't one."""
+    if open_ch not in t or close_ch not in t:
+        return ''
+    i, j = t.index(open_ch), t.rindex(close_ch)
+    return t[i:j + 1] if j > i else ''
+
+
+def unwrap_structured(raw):
+    """(parsed, cost_usd) from `claude -p --output-format json --json-schema`.
+
+    The envelope's `structured_output` when it carries one; otherwise its text
+    `result` recovered as prose, because Claude Code before v2.1.205 silently
+    ignored a schema it considered invalid; otherwise the raw text itself."""
+    cost = None
+    try:
+        env = json.loads((raw or '').strip())
+    except Exception:
+        env = None
+    if isinstance(env, dict):
+        c = env.get('total_cost_usd')
+        cost = float(c) if isinstance(c, (int, float)) and not isinstance(c, bool) else None
+        if isinstance(env.get('structured_output'), (dict, list)):
+            return env['structured_output'], cost
+        if isinstance(env.get('result'), str):
+            return parse_json(env['result']), cost
+    return parse_json(raw), cost
+
+
+def budget_args():
+    """`--max-budget-usd`, when the user has set a cap. A timeout bounds how
+    LONG one of archeus's own calls may run; this bounds what it may spend,
+    and subagent spend counts toward the same cap. Claude Code's flag: the
+    claude_code adapter's own-call argv carries it, no other harness does."""
+    try:
+        from .config import load_settings
+        cap = float(load_settings().get('headless_budget_usd') or 0)
+    except Exception:
+        return []
+    return ['--max-budget-usd', f'{cap:g}'] if cap > 0 else []

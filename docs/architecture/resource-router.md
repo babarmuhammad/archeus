@@ -65,7 +65,9 @@ class but keeps its own `review` subject and ceiling). Their requirement is
 it never eliminates a harness for lacking a schema flag. `preferred`/`forbidden` for this
 subject come from the user's own-call choice (global or workspace scope; legacy
 `headless_harness` / `headless_harness_model`), a preference unless the user marks it required,
-in which case it is a constraint. A model is eligible only as an offer of the candidate account,
+in which case it is a constraint (**as built, P6:** the legacy setting has no "required" flag, so
+before the router it is a preference only, and a provider-terms answer that is not `permitted`
+eliminates a real harness at its own election step). A model is eligible only as an offer of the candidate account,
 in that harness's vocabulary; an unknown tier or context window (a local model) counts as the
 smallest, so a requirement's minimum excludes it rather than trusting it.
 

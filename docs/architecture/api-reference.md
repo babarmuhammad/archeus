@@ -42,6 +42,19 @@ given trigger on a given subject is decided in the application layer (P9), never
 | POST | `/v1/digest/ack` | control | — | — | `AckDigestRequest` | `Acked` |
 | GET | `/v1/context/{id}` | observe | — | — | — | `ContextPackage` |
 | POST | `/v1/context/preview` | observe | — | — | `PreviewContextRequest` | `ContextPreview` |
+| GET | `/v1/knowledge` | observe | — | `project`, `state`, `type` | — | `KnowledgeList` |
+| GET | `/v1/knowledge/{id}` | observe | — | — | — | `KnowledgeDetail` |
+| POST | `/v1/knowledge/{id}/confirm` | control | required | — | `ConfirmKnowledgeRequest` | `KnowledgeChanged` |
+| POST | `/v1/knowledge/{id}/reject` | control | required | — | `RejectKnowledgeRequest` | `KnowledgeChanged` |
+| POST | `/v1/knowledge/{id}/retract` | control | required | — | `RetractKnowledgeRequest` | `KnowledgeChanged` |
+| POST | `/v1/knowledge/{id}/supersede` | control | required | — | `SupersedeKnowledgeRequest` | `KnowledgeChanged` |
+| POST | `/v1/knowledge/forget` | control | required | — | `ForgetKnowledgeRequest` | `Forgotten` |
+| POST | `/v1/feedback` | control | required | — | `RecordFeedbackRequest` | `FeedbackRecorded` |
+| POST | `/v1/meetings/import` | admin | required | — | `ImportMeetingRequest` | `MeetingImported` |
+| GET | `/v1/route-decisions` | observe | — | `source`, `purpose` | — | `RouteDecisionList` |
+| GET | `/v1/route-decisions/{id}` | observe | — | — | — | `RouteDecision` |
+| GET | `/v1/provider-terms` | observe | — | — | — | `ProviderTermsList` |
+| POST | `/v1/provider-terms/{id}` | admin | required | — | `DecideProviderTermsRequest` | `ProviderTermsDecided` |
 
 A launch-code device holds `observe`; the local token holds `observe control approve admin`.
 
@@ -268,6 +281,16 @@ interface EventPage {
 }
 ```
 
+### `FeedbackRecorded`
+
+```ts
+interface FeedbackRecorded {
+  feedback_id: string;
+  promoted: KnowledgeItem | null;
+  seq: number;
+}
+```
+
 ### `Finding`
 
 ```ts
@@ -280,6 +303,17 @@ interface Finding {
   violations: string[][];
   violation_count: number;
   [field: string]: unknown;
+}
+```
+
+### `Forgotten`
+
+```ts
+interface Forgotten {
+  dry_run: boolean;
+  mode: 'retract' | 'purge';
+  changes: Record<string, unknown>[];
+  changed: boolean;
 }
 ```
 
@@ -300,6 +334,10 @@ interface Health {
     parked: number;
   };
   world: {
+    state: 'starting' | 'reconciling' | 'running' | 'idle' | 'failed' | 'stopped';
+    pending: number;
+  };
+  knowledge: {
     state: 'starting' | 'reconciling' | 'running' | 'idle' | 'failed' | 'stopped';
     pending: number;
   };
@@ -330,6 +368,28 @@ interface InspectionList {
 }
 ```
 
+### `KnowledgeChanged`
+
+```ts
+interface KnowledgeChanged {
+  knowledge_item: KnowledgeItem;
+  changed: boolean;
+  [field: string]: unknown;
+}
+```
+
+### `KnowledgeDetail`
+
+```ts
+interface KnowledgeDetail {
+  id: string;
+  state: string;
+  chain: string[];
+  relations: Record<string, unknown>[];
+  [field: string]: unknown;
+}
+```
+
 ### `KnowledgeItem`
 
 ```ts
@@ -344,12 +404,42 @@ interface KnowledgeItem {
 }
 ```
 
+### `KnowledgeList`
+
+```ts
+interface KnowledgeList {
+  knowledge: KnowledgeItem[];
+}
+```
+
 ### `LaunchCode`
 
 ```ts
 interface LaunchCode {
   code: string;
   expires_in: number;
+}
+```
+
+### `Meeting`
+
+```ts
+interface Meeting {
+  id: string;
+  name: string;
+  held_at: string;
+  project_id: string | null;
+  notes_artifact_id?: string | null;
+  [field: string]: unknown;
+}
+```
+
+### `MeetingImported`
+
+```ts
+interface MeetingImported {
+  meeting: Meeting;
+  changed: boolean;
 }
 ```
 
@@ -409,6 +499,34 @@ interface ProjectList {
 }
 ```
 
+### `ProviderTerms`
+
+```ts
+interface ProviderTerms {
+  id: string;
+  headless: 'unknown' | 'permitted' | 'refused';
+  rotation: 'unknown' | 'permitted' | 'refused';
+  note?: string;
+  [field: string]: unknown;
+}
+```
+
+### `ProviderTermsDecided`
+
+```ts
+interface ProviderTermsDecided {
+  provider_terms: ProviderTerms;
+}
+```
+
+### `ProviderTermsList`
+
+```ts
+interface ProviderTermsList {
+  provider_terms: ProviderTerms[];
+}
+```
+
 ### `Redeemed`
 
 ```ts
@@ -432,6 +550,30 @@ interface Repository {
   findings?: Finding[];
   version: number;
   [field: string]: unknown;
+}
+```
+
+### `RouteDecision`
+
+```ts
+interface RouteDecision {
+  id: string;
+  purpose?: string | null;
+  decided_by?: string | null;
+  selected: string | null;
+  model?: string | null;
+  candidates: Record<string, unknown>[];
+  explanation: string;
+  outcome: Record<string, unknown> | null;
+  [field: string]: unknown;
+}
+```
+
+### `RouteDecisionList`
+
+```ts
+interface RouteDecisionList {
+  route_decisions: RouteDecision[];
 }
 ```
 
@@ -588,5 +730,98 @@ interface PreviewContextRequest {
   query?: string | null;
   levels?: Array<'L0' | 'L1' | 'L2' | 'L3' | 'L4'> | null;
   limit_tokens?: number | null;
+}
+```
+
+### `ConfirmKnowledgeRequest`
+
+```ts
+interface ConfirmKnowledgeRequest {
+  reason?: string | null;
+  expected_version?: number | null;
+  idempotency_key: string;
+}
+```
+
+### `RejectKnowledgeRequest`
+
+```ts
+interface RejectKnowledgeRequest {
+  reason?: string | null;
+  expected_version?: number | null;
+  idempotency_key: string;
+}
+```
+
+### `RetractKnowledgeRequest`
+
+```ts
+interface RetractKnowledgeRequest {
+  reason?: string | null;
+  expected_version?: number | null;
+  idempotency_key: string;
+}
+```
+
+### `SupersedeKnowledgeRequest`
+
+```ts
+interface SupersedeKnowledgeRequest {
+  title: string;
+  text?: string | null;
+  idempotency_key: string;
+}
+```
+
+### `ForgetKnowledgeRequest`
+
+```ts
+interface ForgetKnowledgeRequest {
+  selector: Record<string, unknown>;
+  mode?: 'retract' | 'purge' | null;
+  dry_run?: boolean | null;
+  idempotency_key: string;
+}
+```
+
+### `RecordFeedbackRequest`
+
+```ts
+interface RecordFeedbackRequest {
+  subject: {
+    kind: string;
+    id: string;
+  };
+  signal: 'positive' | 'negative' | 'correction';
+  text?: string | null;
+  promote?: {
+    type: 'PREFERENCE' | 'LESSON';
+    title: string;
+    text?: string | null;
+    supersedes_id?: string | null;
+  } | null;
+  idempotency_key: string;
+}
+```
+
+### `ImportMeetingRequest`
+
+```ts
+interface ImportMeetingRequest {
+  path: string;
+  project_id?: string | null;
+  held_at?: string | null;
+  idempotency_key: string;
+}
+```
+
+### `DecideProviderTermsRequest`
+
+```ts
+interface DecideProviderTermsRequest {
+  headless: 'unknown' | 'permitted' | 'refused';
+  rotation?: 'unknown' | 'permitted' | 'refused' | null;
+  note?: string | null;
+  idempotency_key: string;
 }
 ```

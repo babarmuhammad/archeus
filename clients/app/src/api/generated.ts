@@ -160,6 +160,12 @@ export interface EventPage {
   events: Event[];
 }
 
+export interface FeedbackRecorded {
+  feedback_id: string;
+  promoted: KnowledgeItem | null;
+  seq: number;
+}
+
 export interface Finding {
   constraint_id: string;
   constraint: string;
@@ -169,6 +175,13 @@ export interface Finding {
   violations: string[][];
   violation_count: number;
   [field: string]: unknown;
+}
+
+export interface Forgotten {
+  dry_run: boolean;
+  mode: 'retract' | 'purge';
+  changes: Record<string, unknown>[];
+  changed: boolean;
 }
 
 export interface Health {
@@ -185,6 +198,10 @@ export interface Health {
     parked: number;
   };
   world: {
+    state: 'starting' | 'reconciling' | 'running' | 'idle' | 'failed' | 'stopped';
+    pending: number;
+  };
+  knowledge: {
     state: 'starting' | 'reconciling' | 'running' | 'idle' | 'failed' | 'stopped';
     pending: number;
   };
@@ -206,6 +223,20 @@ export interface InspectionList {
   inspections: Inspection[];
 }
 
+export interface KnowledgeChanged {
+  knowledge_item: KnowledgeItem;
+  changed: boolean;
+  [field: string]: unknown;
+}
+
+export interface KnowledgeDetail {
+  id: string;
+  state: string;
+  chain: string[];
+  relations: Record<string, unknown>[];
+  [field: string]: unknown;
+}
+
 export interface KnowledgeItem {
   id: string;
   type: string;
@@ -216,9 +247,27 @@ export interface KnowledgeItem {
   [field: string]: unknown;
 }
 
+export interface KnowledgeList {
+  knowledge: KnowledgeItem[];
+}
+
 export interface LaunchCode {
   code: string;
   expires_in: number;
+}
+
+export interface Meeting {
+  id: string;
+  name: string;
+  held_at: string;
+  project_id: string | null;
+  notes_artifact_id?: string | null;
+  [field: string]: unknown;
+}
+
+export interface MeetingImported {
+  meeting: Meeting;
+  changed: boolean;
 }
 
 export interface Mission {
@@ -257,6 +306,22 @@ export interface ProjectList {
   projects: Project[];
 }
 
+export interface ProviderTerms {
+  id: string;
+  headless: 'unknown' | 'permitted' | 'refused';
+  rotation: 'unknown' | 'permitted' | 'refused';
+  note?: string;
+  [field: string]: unknown;
+}
+
+export interface ProviderTermsDecided {
+  provider_terms: ProviderTerms;
+}
+
+export interface ProviderTermsList {
+  provider_terms: ProviderTerms[];
+}
+
 export interface Redeemed {
   device_id: string;
   token: string;
@@ -273,6 +338,22 @@ export interface Repository {
   findings?: Finding[];
   version: number;
   [field: string]: unknown;
+}
+
+export interface RouteDecision {
+  id: string;
+  purpose?: string | null;
+  decided_by?: string | null;
+  selected: string | null;
+  model?: string | null;
+  candidates: Record<string, unknown>[];
+  explanation: string;
+  outcome: Record<string, unknown> | null;
+  [field: string]: unknown;
+}
+
+export interface RouteDecisionList {
+  route_decisions: RouteDecision[];
 }
 
 export interface Scope {
@@ -367,6 +448,67 @@ export interface PreviewContextRequest {
   limit_tokens?: number | null;
 }
 
+export interface ConfirmKnowledgeRequest {
+  reason?: string | null;
+  expected_version?: number | null;
+  idempotency_key: string;
+}
+
+export interface RejectKnowledgeRequest {
+  reason?: string | null;
+  expected_version?: number | null;
+  idempotency_key: string;
+}
+
+export interface RetractKnowledgeRequest {
+  reason?: string | null;
+  expected_version?: number | null;
+  idempotency_key: string;
+}
+
+export interface SupersedeKnowledgeRequest {
+  title: string;
+  text?: string | null;
+  idempotency_key: string;
+}
+
+export interface ForgetKnowledgeRequest {
+  selector: Record<string, unknown>;
+  mode?: 'retract' | 'purge' | null;
+  dry_run?: boolean | null;
+  idempotency_key: string;
+}
+
+export interface RecordFeedbackRequest {
+  subject: {
+    kind: string;
+    id: string;
+  };
+  signal: 'positive' | 'negative' | 'correction';
+  text?: string | null;
+  promote?: {
+    type: 'PREFERENCE' | 'LESSON';
+    title: string;
+    text?: string | null;
+    supersedes_id?: string | null;
+  } | null;
+  idempotency_key: string;
+}
+
+export interface ImportMeetingRequest {
+  path: string;
+  project_id?: string | null;
+  held_at?: string | null;
+  idempotency_key: string;
+}
+
+export interface DecideProviderTermsRequest {
+  headless: 'unknown' | 'permitted' | 'refused';
+  rotation?: 'unknown' | 'permitted' | 'refused' | null;
+  note?: string | null;
+  idempotency_key: string;
+}
+
 export type Method = 'GET' | 'POST';
 export type Send = <T>(method: Method, path: string, body?: unknown) => Promise<T>;
 
@@ -421,4 +563,30 @@ export const api = {
     send<ContextPackage>('GET', '/v1/context/' + encodeURIComponent(id)),
   previewContext: (send: Send, body: PreviewContextRequest) =>
     send<ContextPreview>('POST', '/v1/context/preview', body),
+  listKnowledge: (send: Send, query: { project?: string; state?: KnowledgeItem['state']; type?: string } = {}) =>
+    send<KnowledgeList>('GET', '/v1/knowledge' + qs(query)),
+  getKnowledge: (send: Send, id: string) =>
+    send<KnowledgeDetail>('GET', '/v1/knowledge/' + encodeURIComponent(id)),
+  confirmKnowledge: (send: Send, id: string, body: ConfirmKnowledgeRequest) =>
+    send<KnowledgeChanged>('POST', '/v1/knowledge/' + encodeURIComponent(id) + '/confirm', body),
+  rejectKnowledge: (send: Send, id: string, body: RejectKnowledgeRequest) =>
+    send<KnowledgeChanged>('POST', '/v1/knowledge/' + encodeURIComponent(id) + '/reject', body),
+  retractKnowledge: (send: Send, id: string, body: RetractKnowledgeRequest) =>
+    send<KnowledgeChanged>('POST', '/v1/knowledge/' + encodeURIComponent(id) + '/retract', body),
+  supersedeKnowledge: (send: Send, id: string, body: SupersedeKnowledgeRequest) =>
+    send<KnowledgeChanged>('POST', '/v1/knowledge/' + encodeURIComponent(id) + '/supersede', body),
+  forgetKnowledge: (send: Send, body: ForgetKnowledgeRequest) =>
+    send<Forgotten>('POST', '/v1/knowledge/forget', body),
+  recordFeedback: (send: Send, body: RecordFeedbackRequest) =>
+    send<FeedbackRecorded>('POST', '/v1/feedback', body),
+  importMeeting: (send: Send, body: ImportMeetingRequest) =>
+    send<MeetingImported>('POST', '/v1/meetings/import', body),
+  listRouteDecisions: (send: Send, query: { source?: string; purpose?: string } = {}) =>
+    send<RouteDecisionList>('GET', '/v1/route-decisions' + qs(query)),
+  getRouteDecision: (send: Send, id: string) =>
+    send<RouteDecision>('GET', '/v1/route-decisions/' + encodeURIComponent(id)),
+  listProviderTerms: (send: Send) =>
+    send<ProviderTermsList>('GET', '/v1/provider-terms'),
+  decideProviderTerms: (send: Send, id: string, body: DecideProviderTermsRequest) =>
+    send<ProviderTermsDecided>('POST', '/v1/provider-terms/' + encodeURIComponent(id), body),
 };

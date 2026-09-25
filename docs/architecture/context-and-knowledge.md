@@ -143,6 +143,17 @@ Sources of observations and what they may produce:
 | Meeting-note import | Meeting, Decision candidates, Person links | Meeting yes; decisions no |
 | Legacy memory graph | ENTITY + relations | per legacy confidence (migration-plan §4) |
 
+**As built (P6, p6-design-gate §6–§8):** every model-derived item is CANDIDATE with origin
+`inferred`, citing its source, the RouteDecision of the call (harness, account, model) and the
+ContextPackage it was given. Repository inspection produces knowledge only through the model pass
+(ENTITY candidates, INFERRED relations); the deterministic facts stay P4 state, which the context
+engine reads at L1 (D6). A LESSON auto-confirms only when `learned_from` links it to two distinct
+missions under the same normalised title — equality, never similarity — and model confidence is
+never an input (D4). Feedback promotes to a CANDIDATE (never auto-confirmed); deciding that a
+message *is* feedback is intent (P7), which is also where §3's "explicit statement auto-confirms"
+meets S9. `contradicts` is an INFERRED relation from a new item to one the call was shown; it
+never changes a state. Consolidation, backup → verify → swap and usage decay are not in P6.
+
 **Supersession:** a new item with the same `(type, scope, subject anchor)` and conflicting body
 proposes `supersedes_id`; confirming it sets the old one SUPERSEDED with `valid_until`. Nothing
 is deleted by supersession. "Remember that I don't want this architecture" becomes a DECISION

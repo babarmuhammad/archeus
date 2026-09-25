@@ -31,6 +31,12 @@ TABLES = {
     entities.KnowledgeItem: 'knowledge_items',
     entities.Artifact: 'artifacts',
     entities.ContextPackage: 'context_packages',
+    entities.Relation: 'relations',
+    entities.Meeting: 'meetings',
+    entities.Feedback: 'feedback',
+    entities.RouteDecision: 'route_decisions',
+    entities.UsageLedger: 'usage_ledger',
+    entities.ProviderTerms: 'provider_terms',
 }
 
 #: Row metadata, never entity fields: optimistic-concurrency version, timestamps,

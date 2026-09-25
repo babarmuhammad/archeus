@@ -21,11 +21,16 @@ import time
 #: and exit 2, so no script ever sees a verb change from "opened the TUI" to
 #: something else.
 DEFERRED = {'approve': 'P9', 'pause': 'P11', 'route': 'P10', 'estop': 'P11', 'pair': 'P15'}
-VERBS = ('core', 'status') + tuple(DEFERRED)
+VERBS = ('core', 'status', 'terms') + tuple(DEFERRED)
 
 USAGE = """usage: archeus core [--open]    run Archeus Core in the foreground (Ctrl+C stops it)
        archeus status           is Core running? (exit 0 yes, 1 no, 2 discovery failed,
-                                3 its engine failed)"""
+                                3 its engine failed)
+       archeus terms            the provider-terms answers (ADR-0021)
+       archeus terms <harness> permit|refuse [--rotation permit|refuse]
+                                answer it: may Archeus make automated headless calls on
+                                this harness's accounts (and rotate across several)?"""
+_TERMS = {'permit': 'permitted', 'refuse': 'refused'}
 
 
 def main(argv):
@@ -38,6 +43,11 @@ def main(argv):
         return core(open_browser='--open' in args)
     if verb == 'status' and not args:
         return status()
+    if verb == 'terms' and not args:
+        return terms()
+    if (verb == 'terms' and len(args) in (2, 4) and args[1] in _TERMS
+            and (len(args) == 2 or (args[2] == '--rotation' and args[3] in _TERMS))):
+        return terms(args[0], _TERMS[args[1]], _TERMS[args[3]] if len(args) == 4 else None)
     print(USAGE, file=sys.stderr)
     return 2
 
@@ -58,14 +68,15 @@ def core(*, open_browser=False):
     return runtime.run(port=runtime.DEFAULT_PORT, open_browser=open_browser)
 
 
-def _get(info, method, path):
+def _get(info, method, path, body=None):
     import urllib.request
     from ..infra import discovery
     token = discovery.read_local_token()
     if token is None:
         return None
+    data = json.dumps(body or {}).encode() if method == 'POST' else None
     req = urllib.request.Request('http://127.0.0.1:%d%s' % (info['port'], path), method=method,
-                                 data=b'{}' if method == 'POST' else None,
+                                 data=data,
                                  headers={'Authorization': 'Bearer ' + token,
                                           'Content-Type': 'application/json'})
     try:
@@ -81,6 +92,36 @@ def _launch_code(info):
         print('could not get a launch code from Core on port %d' % info['port'], file=sys.stderr)
         return None
     return out['code']
+
+
+def terms(harness=None, headless=None, rotation=None):
+    """List the provider-terms answers, or give one (ADR-0021). Only this
+    command, or the admin route it calls, ever changes one: nothing in Core
+    assumes an answer, and `unknown` blocks every real call as `refused` does."""
+    from ..infra import discovery
+    state, info = discovery.discover()
+    if state != 'running':
+        print('Core is not running: start it with `archeus core`', file=sys.stderr)
+        return 1
+    if harness is None:
+        out = _get(info, 'GET', '/v1/provider-terms')
+        if out is None:
+            print('Core did not answer', file=sys.stderr)
+            return 2
+        for t in out['provider_terms']:
+            print('%-14s headless %-9s rotation %s' % (t['id'], t['headless'], t['rotation']))
+        return 0
+    import os
+    body = {'headless': headless, 'idempotency_key': os.urandom(16).hex()}
+    if rotation is not None:
+        body['rotation'] = rotation
+    out = _get(info, 'POST', '/v1/provider-terms/%s' % harness, body)
+    if out is None:
+        print('Core refused the answer for %s' % harness, file=sys.stderr)
+        return 2
+    t = out['provider_terms']
+    print('%s: headless %s, rotation %s' % (t['id'], t['headless'], t['rotation']))
+    return 0
 
 
 def status():

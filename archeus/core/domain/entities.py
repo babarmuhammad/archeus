@@ -20,7 +20,7 @@ from typing import ClassVar
 
 from . import ids, states
 from .actions import ACTION_CLASSES, DECISIONS, Action
-from .values import ORIGINS, PRINCIPAL_SCOPES, Ref
+from .values import ORIGINS, PRINCIPAL_SCOPES, SOURCE_KINDS, Ref
 
 _HEX64 = re.compile(r'[0-9a-f]{64}')
 
@@ -299,6 +299,8 @@ class Idea(Entity):
 
 @entity
 class Meeting(Entity):
+    """Imported meeting notes (context-and-knowledge §8). The notes are an
+    artifact; attendees are person ids, empty until P6+ knows any people."""
     _ID = 'meeting'
     _TEXT = ('name', 'held_at')
     id: str
@@ -306,26 +308,42 @@ class Meeting(Entity):
     name: str
     held_at: str
     project_id: str = None
+    notes_artifact_id: str = None
+    imported_from: str = None
+    attendees: tuple = ()
+
+    def _check(self):
+        if self.notes_artifact_id is not None and not _HEX64.fullmatch(self.notes_artifact_id):
+            raise ValueError('Meeting.notes_artifact_id is an artifact sha256')
 
 
 @entity
 class Decision(Entity):
     _ID = 'decision'
     _TEXT = ('statement',)
-    _CHOICES = {'status': ('active', 'superseded', 'reversed')}
-    _REFS = {'supersedes_id': 'decision'}
+    _CHOICES = {'status': ('active', 'superseded', 'reversed'),
+                'source_kind': ('meeting', 'mission', 'conversation')}
+    _REFS = {'supersedes_id': 'decision', 'knowledge_item_id': 'knowledge_item'}
     id: str
     workspace_id: str
     statement: str
     status: str = 'active'
     project_id: str = None
     supersedes_id: str = None
+    rationale: str = ''
+    decided_at: str = None
+    source_kind: str = None
+    source_ref: Ref = None
+    # its mirror: "every decision is mirrored as a DECISION knowledge item"
+    knowledge_item_id: str = None
 
 
 # ── knowledge (domain-model §5) ─────────────────────────────────────────────
 
 KNOWLEDGE_TYPES = ('FACT', 'DECISION', 'LESSON', 'PREFERENCE', 'STANDARD',
                    'ARCHITECTURE', 'REFERENCE', 'ENTITY')
+#: A relation's confidence tier (domain-model §5.2): labels, not probabilities.
+CONFIDENCE_TIERS = ('EXTRACTED', 'INFERRED', 'AMBIGUOUS')
 RELATIONS = ('contains', 'depends_on', 'uses', 'calls', 'implements', 'mentions',
              'decided_in', 'constrains', 'motivated', 'produced', 'learned_from',
              'supersedes', 'contradicts', 'blocks', 'relates_to', 'owns', 'attended')
@@ -338,7 +356,8 @@ class KnowledgeItem(Entity):
     _STATE = ('state', 'knowledge_item')
     _TEXT = ('title',)
     _CHOICES = {'type': KNOWLEDGE_TYPES, 'origin': ORIGINS}
-    _REFS = {'supersedes_id': 'knowledge_item'}
+    _REFS = {'supersedes_id': 'knowledge_item', 'superseded_by_id': 'knowledge_item',
+             'route_decision_id': 'route_decision', 'context_package_id': 'context_package'}
     id: str
     workspace_id: str
     type: str
@@ -349,8 +368,27 @@ class KnowledgeItem(Entity):
     supersedes_id: str = None
     state: str = None
     constraint: dict = None
+    # provenance (domain-model §5.1): what produced it, from what, and when. A
+    # model-derived item also names the RouteDecision of the call (its harness,
+    # account and model) and the ContextPackage the call was given (P6).
+    source_kind: str = None
+    source_ref: Ref = None
+    observed_at: str = None
+    confidence: float = None
+    route_decision_id: str = None
+    context_package_id: str = None
+    valid_until: str = None
+    superseded_by_id: str = None
+    anchors: tuple = ()
+    purged: bool = False
 
     def _check(self):
+        if self.source_kind is not None and self.source_kind not in SOURCE_KINDS:
+            raise ValueError('KnowledgeItem.source_kind must be one of %s' % (SOURCE_KINDS,))
+        c = self.confidence
+        if c is not None and not (isinstance(c, (int, float)) and not isinstance(c, bool)
+                                  and 0 <= c <= 1):
+            raise ValueError('KnowledgeItem.confidence is a number in 0..1')
         if len(self.text.encode('utf-8')) > BODY_MAX_BYTES:
             raise ValueError('knowledge text is over %d bytes; longer material is an '
                              'artifact' % BODY_MAX_BYTES)
@@ -411,14 +449,31 @@ def check_constraint(c):
 
 @entity
 class Relation(Entity):
+    """`(src_kind, src_id) -rel-> (dst_kind, dst_id)` (domain-model §5.2), flat
+    so both ends are indexed columns. A relation never changes the state of
+    either end: `contradicts` is evidence for a person to judge, not a
+    supersession (P5's constraint conflicts are a separate, deterministic
+    thing that needs no relation)."""
     _ID = 'relation'
-    _CHOICES = {'rel': RELATIONS,
-                'confidence_tier': ('EXTRACTED', 'INFERRED', 'AMBIGUOUS')}
+    _TEXT = ('src_kind', 'src_id', 'dst_kind', 'dst_id')
+    _CHOICES = {'rel': RELATIONS, 'confidence_tier': CONFIDENCE_TIERS}
+    _REFS = {'route_decision_id': 'route_decision'}
     id: str
-    src: Ref
+    src_kind: str
+    src_id: str
     rel: str
-    dst: Ref
+    dst_kind: str
+    dst_id: str
     confidence_tier: str = 'EXTRACTED'
+    project_id: str = None
+    source_kind: str = None
+    source_ref: Ref = None
+    route_decision_id: str = None
+    valid_until: str = None
+
+    def _check(self):
+        if self.source_kind is not None and self.source_kind not in SOURCE_KINDS:
+            raise ValueError('Relation.source_kind must be one of %s' % (SOURCE_KINDS,))
 
 
 # ── conversation and intent (domain-model §6) ───────────────────────────────
@@ -654,12 +709,19 @@ class Review(Entity):
 
 @entity
 class Feedback(Entity):
+    """History (domain-model §7.8): promoting it into a PREFERENCE or LESSON is
+    an explicit step that yields a CANDIDATE."""
     _ID = 'feedback'
     _CHOICES = {'signal': ('positive', 'negative', 'correction')}
+    _REFS = {'principal_id': 'principal', 'promoted_knowledge_id': 'knowledge_item'}
     id: str
     subject: Ref
     signal: str
     text: str = ''
+    workspace_id: str = None
+    project_id: str = None
+    principal_id: str = None
+    promoted_knowledge_id: str = None
 
 
 @entity
@@ -712,6 +774,28 @@ class ContextPackage(Entity):
 
 
 # ── resources (domain-model §8) ─────────────────────────────────────────────
+
+#: What one of Archeus's own calls is for (resource-router §3; ADR-0022).
+CALL_PURPOSES = ('knowledge_extraction', 'lesson', 'generation', 'brain', 'planner')
+#: A provider-terms answer (ADR-0021).
+TERMS = ('unknown', 'permitted', 'refused')
+
+
+@entity
+class ProviderTerms(Entity):
+    """The user's ADR-0021 answer for one harness: may Archeus make real
+    automated headless calls on its accounts, and rotate across several
+    subscriptions of it. `unknown` is the default and blocks exactly as
+    `refused` does; only an explicit decision by the user changes it."""
+    _CHOICES = {'headless': TERMS, 'rotation': TERMS}
+    id: str                     # the harness id
+    headless: str = 'unknown'
+    rotation: str = 'unknown'
+    note: str = ''
+
+    def _check(self):
+        if not _HARNESS_ID.fullmatch(self.id):
+            raise ValueError('ProviderTerms.id is a harness id: %r' % self.id)
 
 _HARNESS_ID = re.compile(r'[a-z][a-z0-9_]*(:[A-Za-z0-9_.-]+)?')
 
@@ -805,23 +889,55 @@ class UsageSnapshot(Entity):
 
 @entity
 class UsageLedger(Entity):
+    """What Archeus itself consumed. A row for one of Archeus's own calls has
+    no execution: it carries its `route_decision_id` instead (ADR-0022), and
+    before P10 persists accounts, the account is the harness home it ran on."""
     _ID = 'usage_ledger'
-    _REFS = {'execution_id': 'execution', 'account_id': 'account'}
-    _NONNEG = ('tokens_in', 'tokens_out')
+    _REFS = {'execution_id': 'execution', 'account_id': 'account',
+             'route_decision_id': 'route_decision'}
+    _NONNEG = ('tokens_in', 'tokens_out', 'cache_read', 'cache_write')
     id: str
-    execution_id: str
-    account_id: str
+    execution_id: str = None
+    route_decision_id: str = None
+    account_id: str = None
+    account_ref: str = None
     tokens_in: int = 0
     tokens_out: int = 0
+    cache_read: int = 0
+    cache_write: int = 0
+    cost_usd: float = None
+
+    def _check(self):
+        if (self.execution_id is None) == (self.route_decision_id is None):
+            raise ValueError('a usage row belongs to an execution or to a route decision, '
+                             'exactly one')
 
 
 @entity
 class RouteDecision(Entity):
+    """One routing decision (domain-model §8.6). For Archeus's own calls the
+    subject is `archeus_call` with its purpose (ADR-0022) and, before P10, the
+    pre-router election made it (`source`: what the call is about). `outcome`
+    is written once, when the call ended; everything else never changes."""
     _ID = 'route_decision'
+    _CHOICES = {'purpose': CALL_PURPOSES, 'decided_by': ('pre_router', 'router')}
+    _REFS = {'context_package_id': 'context_package'}
     id: str
     subject: Ref
     selected: str = None          # None: no candidate survived (blocked / ask)
     explanation: str = ''
+    purpose: str = None
+    decided_by: str = None
+    workspace_id: str = None
+    project_id: str = None
+    source: Ref = None
+    requirements: dict = None
+    candidates: tuple = ()
+    account_ref: str = None
+    model: str = None
+    input_snapshot: dict = None
+    context_package_id: str = None
+    outcome: dict = None
 
 
 @entity

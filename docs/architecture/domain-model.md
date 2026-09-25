@@ -183,9 +183,16 @@ columns, `state` (ACTIVE | ARCHIVED unless noted), `version`, timestamps.
 | `hits`, `last_used_at`, `useful_count`, `useless_count` | usage signals (feedback reinforcement is DEFERRED past the V1 slice; the columns exist from P6) |
 | `pinned` | exempt from eviction and decay |
 
+**As built (P6):** provenance is `source_kind`, `source_ref`, `observed_at`, `confidence`
+(present, never filled by a P6 pass), `route_decision_id` (the call that produced it: harness,
+account, model), `context_package_id` (what that call was shown); `valid_until`,
+`superseded_by_id`, `anchors`, `purged` (a forget-purge tombstone). `stale_after`, `hits`,
+`last_used_at`, `useful_count`, `useless_count` and `pinned` are not yet persisted.
+
 ### 5.2 Relation
 `(id, src_kind, src_id, rel, dst_kind, dst_id, confidence_tier, source_kind, source_ref,
-created_at, valid_until)`.
+created_at, valid_until)`, plus `project_id` and `route_decision_id` for a model-derived one (P6).
+A relation never changes the state of either end.
 
 - `rel` vocabulary (closed set, extendable by migration): `contains`, `depends_on`, `uses`,
   `calls`, `implements`, `mentions`, `decided_in`, `constrains`, `motivated`, `produced`,
@@ -398,6 +405,9 @@ brain, planner, knowledge extraction, lesson, generation; ADR-0022), `requiremen
 `candidates[]` each `{resource, eliminated_at_step, reason}`, `selected`, `input_snapshot`
 (usage + age, health, policy version, ledger totals), `policy_decision_id`, `fallback_from?`,
 `explanation` (generated text, derived from the structured fields, never free-authored).
+As built for own calls (P6): `purpose`, `decided_by` (`pre_router` until P10), `source` (what the
+call is about), `account_ref` / `model`, `context_package_id`, and `outcome` — written once when
+the call ends, the only field that ever changes.
 
 ### 8.7 ExecutionNode
 A machine that can run executions. `id`, `name`, `platform`, `kind` (local / remote),
@@ -406,6 +416,11 @@ A machine that can run executions. `id`, `name`, `platform`, `kind` (local / rem
 (ADR-0008).
 
 ---
+
+
+### 8.8 ProviderTerms (P6, ADR-0021)
+One per harness id: `headless` and `rotation`, each `unknown | permitted | refused`, and a
+`note`. No row is `unknown`, which blocks a real call as `refused` does; only the user writes it.
 
 ## 9. Control
 

@@ -37,6 +37,21 @@ def register_principal(tx, *, kind, scopes=()):
     return {'id': p.id, 'version': 1, 'seq': e.seq}
 
 
+def record_context_package(tx, *, actor, subject_kind, subject_id, query=None):
+    """Assemble a context package from this transaction's own snapshot and
+    record it: the one place a ContextPackage is built (P5). A mission's
+    `context_ready` move records one for the mission; a knowledge pass records
+    one for the project it reads, so every item it produces can cite it (P6)."""
+    body = context.assemble(tx.conn, subject_kind, subject_id, query=query)
+    pkg = entities.ContextPackage(id=ids.new_id('context_package'), **body)
+    tx.insert(pkg, actor=actor)
+    tx.append(new_event('context_package.created', Ref('context_package', pkg.id), actor,
+                        payload={'subject': {'kind': subject_kind, 'id': subject_id},
+                                 'items': len(pkg.items),
+                                 'used_tokens': pkg.budget['used_tokens']},
+                        workspace=pkg.workspace_id, project=pkg.project_id))
+    return pkg
+
 def create_mission(tx, *, actor, title, objective, project_id=None,
                    workspace_id=ids.GLOBAL_WORKSPACE, success_criteria=(), max_replans=2):
     if project_id is not None and tx.get(entities.Project, project_id) is None:
@@ -234,14 +249,8 @@ class Missions:
         (P5). Assembled from this transaction's own snapshot, so the package
         says exactly what the rows said when it was recorded; inserted once and
         never edited; linked from the mission in the same move."""
-        body = context.assemble(tx.conn, 'mission', mission_id)
-        pkg = entities.ContextPackage(id=ids.new_id('context_package'), **body)
-        tx.insert(pkg, actor=actor)
-        tx.append(new_event('context_package.created', Ref('context_package', pkg.id), actor,
-                            payload={'subject': {'kind': 'mission', 'id': mission_id},
-                                     'items': len(pkg.items),
-                                     'used_tokens': pkg.budget['used_tokens']},
-                            workspace=pkg.workspace_id, project=pkg.project_id))
+        pkg = record_context_package(tx, actor=actor, subject_kind='mission',
+                                     subject_id=mission_id)
         row, e = self._fire(tx, mission_id, 'context_ready', actor=actor,
                             reason='context package %s assembled (%d items)' % (
                                 pkg.id, len(pkg.items)),

@@ -30,6 +30,11 @@ from archeus.core.domain.values import Ref
 from archeus.core.world import digest as world_digest
 from archeus.core.world import status as world_status
 from archeus.core.world.worker import World
+from archeus.core.calls import OwnCalls
+from archeus.core.knowledge import ingest
+from archeus.core.knowledge.passes import Passes
+from archeus.core.knowledge.worker import Knowledge
+from archeus.harnesses.calls import real_callers
 from archeus.harnesses.fake import FakeHarness
 from archeus.harnesses.registry import AdapterRegistry
 from archeus.infra import discovery, paths
@@ -79,6 +84,8 @@ class CoreClient(Protocol):
                            kind: Optional[str] = None, spec: Optional[dict] = None,
                            idempotency_key: Optional[str] = None) -> dict: ...
     def import_meeting(self, path: str, *, project_id: Optional[str] = None) -> dict: ...
+    def list_knowledge(self, *, project_id: Optional[str] = None,
+                       state: Optional[str] = None) -> list: ...
     def register_account(self, *, harness_id: str, label: str, auth_kind: str,
                          home_ref: Optional[str] = None) -> dict: ...
     def set_resource_policy(self, account_id: str, *, priority: Optional[int] = None,
@@ -124,12 +131,15 @@ class InProcessClient:
     home fail loudly instead of reconciling each other's children (p3.5b A1).
     """
 
-    def __init__(self, home):
+    def __init__(self, home, *, callers=None, preference=None):
         self.home = str(home)
         self._db = self._lock = None
         self._engine = None
         self._principal = self._system = None
-        self._world = None
+        self._world = self._knowledge = None
+        # P6: the own-call adapters and preference (the rig names fakes; None is
+        # the real adapters, each gated by ADR-0021, as the Core runtime has)
+        self._callers, self._preference = callers, preference
         # the stub ports every phase runs on until P9/P10/P13 swap them
         self._policy = ports.AllowAllPolicy()
         self._missions = commands.Missions(policy=self._policy)
@@ -159,6 +169,15 @@ class InProcessClient:
             # the world worker, pumped by `_idle` as the engine is (P4)
             self._world = World(self._db, actor=Ref('system', self._system))
             self._world.sweep()
+            # the knowledge worker, likewise (P6)
+            own = OwnCalls(self._db, actor=Ref('system', self._system),
+                           callers=real_callers() if self._callers is None else self._callers,
+                           preference=self._preference or ports.LegacyOwnCallPreference())
+            self._knowledge = Knowledge(self._db, actor=Ref('system', self._system),
+                                        passes=Passes(self._db, actor=Ref('system',
+                                                                          self._system),
+                                                      calls=own))
+            self._knowledge.sweep()
         return self._db
 
     def _actor(self):
@@ -205,12 +224,14 @@ class InProcessClient:
             live = [m['id'] for m in queries.list_missions(conn)
                     if m['state'] not in engine.SETTLED]
         stepped = any([self._engine.step(mid)['changed'] for mid in live])
-        return not (self._world.pass_once()['changed'] or stepped)
+        worked = self._world.pass_once()['changed']
+        learned = self._knowledge.pass_once()['changed']
+        return not (worked or learned or stepped)
 
     def close(self, *, drain=True):
         if self._db is not None:
             self._db.close(drain=drain)
-            self._db = self._engine = self._world = None   # its processes are orphans now
+            self._db = self._engine = self._world = self._knowledge = None   # orphans now
             self._lock.release()
             self._lock = None
 
@@ -298,11 +319,33 @@ class InProcessClient:
     def ack(self, up_to_seq: int) -> dict:
         return self._run(world.ack_digest, {'up_to_seq': up_to_seq})
 
+    # ── knowledge and own calls (P6) ──
+
+    def import_meeting(self, path: str, *, project_id: Optional[str] = None) -> dict:
+        return self._call(lambda: ingest.import_file(self._core(), self._actor(), path,
+                                                     project_id))['meeting']
+
+    def list_knowledge(self, *, project_id: Optional[str] = None,
+                       state: Optional[str] = None) -> list:
+        return self._read(queries.list_knowledge, project_id, state)
+
+    def route_why(self, subject_id: str) -> dict:
+        """A route decision by its id, or the latest one about *subject_id*."""
+        def read(conn):
+            if ids.kind_of(subject_id) == 'route_decision':
+                return queries.get_route_decision(conn, subject_id)
+            got = queries.route_decisions(conn, subject_id)
+            if not got:
+                raise NotFound(subject_id)
+            return queries.get_route_decision(conn, got[-1]['id'])
+        return self._read(read)
+
 
 #: Operations with a real body in both bindings (P2: G1, G4; P3: the mission
 #: control verbs; P3.5: listing missions, which the SPA's two lists read).
 IMPLEMENTED = ('create_mission', 'get_mission', 'list_missions', 'events', 'pause', 'resume',
-               'create_project', 'declare_constraint', 'status', 'digest', 'ack')
+               'create_project', 'declare_constraint', 'status', 'digest', 'ack',
+               'import_meeting', 'list_knowledge', 'route_why')
 
 # Every other operation is declared and fails loudly. Later phases replace these
 # with real bodies one by one; tests/v1/contract/test_core_client.py keeps every

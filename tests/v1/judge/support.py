@@ -116,6 +116,17 @@ def mission_states(client, mission_id):
             if e['subject']['id'] == mission_id]
 
 
+def knowledge_pass(client, project_id):
+    """The project's initial knowledge pass once it has ended (P6, K1-K3)."""
+    def ended():
+        (p,) = [x for x in client.status(project_id=project_id)['projects']
+                if x['id'] == project_id]
+        kp = p['knowledge_pass']
+        return kp if kp and kp['state'] not in ('queued', 'running') else None
+    ended.__name__ = 'the knowledge pass of %s to end' % project_id
+    return wait_for(ended)
+
+
 class Rig:
     """What a scenario controls besides Core: the fake harness's scripts, fake
     usage and fake time, and Core's own process (testing-strategy §1.1 fixtures).

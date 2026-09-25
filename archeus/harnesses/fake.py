@@ -7,13 +7,19 @@ task contract's `fake_scenario` list (see fake_agent.py for the step format).
 
 It needs no account, no network and no model: fake/scripted calls are the one
 model-call class that is unrestricted (plan §31.4).
+
+`FakeCaller` is the scripted half for Archeus's own calls (ADR-0022): an
+in-process adapter answering `call()` from a script per purpose, declaring
+`native` or `prompted` structured output, `headless` or not, installed or not,
+under any id — so a second or third harness is a constructor argument, never a
+domain change (testing-strategy §6).
 """
 
 import json
 import os
 import sys
 
-from claude_sessions import proc
+from claude_sessions import llmcall, proc
 
 from . import base
 
@@ -108,3 +114,59 @@ class FakeHarness:
             reported_summary=results[-1].get('summary', '') if results else '',
             usage=usage[-1] if usage else {},
             transcript_path=os.path.join(handle.exec_dir, 'stream.jsonl'))
+
+
+class FakeCaller:
+    """A scripted `headless` harness for own calls.
+
+    `replies` maps a purpose (or `*`) to a list of replies, each consumed in
+    turn, the last one repeating: `{'parsed': obj}` (answered as structured
+    data natively, or as prose around the JSON when `structured='prompted'`),
+    `{'text': '...'}` (a prompted answer verbatim, to script malformed output),
+    or `{'error': <CallResult error>, 'detail': ...}`. `sent` records every
+    (spec, effective prompt) it was given."""
+
+    def __init__(self, id='fake', *, headless=True, structured='native', installed=True,
+                 replies=None, models=('fake-model',)):
+        self.id, self.headless, self.structured = id, headless, structured
+        self.installed, self.models = installed, tuple(models)
+        self._replies = {k: list(v) for k, v in (replies or {}).items()}
+        self.sent = []
+
+    def discover(self):
+        return base.HarnessInfo(self.id, self.installed, '1', sys.executable)
+
+    def capabilities(self, account=None):
+        caps = {'headless', 'structured_output'} if self.headless else {'interactive'}
+        return base.Capabilities(frozenset(caps), 'none', self.models,
+                                 structured_output=self.structured if self.headless else None)
+
+    def account(self, *, rotation):
+        return base.AccountRef('fake:%s' % self.id), ''
+
+    def call(self, spec):
+        prompt = spec.prompt
+        if spec.schema is not None and self.structured == 'prompted':
+            prompt = base.prompted(prompt, spec.schema)
+        self.sent.append((spec, prompt))
+        queue = self._replies.get(spec.purpose) or self._replies.get('*') or [
+            {'error': 'failed', 'detail': 'no scripted reply for %s' % spec.purpose}]
+        reply = queue.pop(0) if len(queue) > 1 else queue[0]
+        if 'error' in reply:
+            return base.CallResult(error=reply['error'], detail=reply.get('detail', ''))
+        usage = dict(reply.get('usage') or {'tokens_in': 10, 'tokens_out': 5})
+        if 'text' in reply:
+            return base.CallResult(text=reply['text'], parsed=llmcall.parse_json(reply['text']),
+                                   usage=usage)
+        if self.structured == 'native':
+            return base.CallResult(text=json.dumps(reply['parsed']), parsed=reply['parsed'],
+                                   usage=usage)
+        text = 'Here is the result:\n```json\n%s\n```' % json.dumps(reply['parsed'])
+        return base.CallResult(text=text, parsed=llmcall.parse_json(text), usage=usage)
+
+
+def is_fake_caller(adapter):
+    """The provider-terms gate (ADR-0021) exempts scripted adapters, decided by
+    class identity like the registry's gate: an `id = 'fake'` on another class,
+    or a subclass, is a real adapter and is gated."""
+    return type(adapter) is FakeCaller

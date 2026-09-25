@@ -14,7 +14,8 @@ it into TypeScript types and the API reference. A shape written twice drifts.
 """
 
 from ..core.context.levels import LEVELS, STORES
-from ..core.domain import entities, states
+from ..core.domain import entities, shapes, states
+from ..core.domain.shapes import Invalid  # noqa: F401 (re-exported)
 from ..core.domain.values import ORIGINS
 
 KEY = {'type': 'string'}
@@ -82,8 +83,12 @@ TYPES = {
         'world': {'type': 'object', 'properties': {
             'state': {'type': 'string', 'enum': ['starting', 'reconciling', 'running', 'idle',
                                                  'failed', 'stopped']},
+            'pending': {'type': 'integer'}}, 'required': ['state', 'pending']},
+        'knowledge': {'type': 'object', 'properties': {
+            'state': {'type': 'string', 'enum': ['starting', 'reconciling', 'running', 'idle',
+                                                 'failed', 'stopped']},
             'pending': {'type': 'integer'}}, 'required': ['state', 'pending']}},
-        'required': ['core', 'engine', 'world']},
+        'required': ['core', 'engine', 'world', 'knowledge']},
     'Version': {'type': 'object', 'properties': {'version': {'type': 'string'},
                                                  'api': {'type': 'string'}},
                 'required': ['version', 'api']},
@@ -232,6 +237,55 @@ TYPES = {
         'conflicts': {'type': 'array', 'items': {'ref': 'ContextConflict'}}},
         'required': ['id', 'version', 'created_at', 'subject_kind', 'subject_id', 'as_of_seq',
                      'budget', 'items', 'excluded', 'conflicts']},
+    'KnowledgeList': {'type': 'object', 'properties': {
+        'knowledge': {'type': 'array', 'items': {'ref': 'KnowledgeItem'}}},
+        'required': ['knowledge']},
+    'KnowledgeDetail': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'state': {'type': 'string'},
+        'chain': {'type': 'array', 'items': {'type': 'string'}},
+        'relations': {'type': 'array', 'items': {'type': 'object'}}},
+        'required': ['id', 'state', 'chain', 'relations']},
+    'KnowledgeChanged': {'type': 'object', 'open': True, 'properties': {
+        'knowledge_item': {'ref': 'KnowledgeItem'}, 'changed': {'type': 'boolean'}},
+        'required': ['knowledge_item', 'changed']},
+    'Forgotten': {'type': 'object', 'properties': {
+        'dry_run': {'type': 'boolean'}, 'mode': {'type': 'string', 'enum': ['retract', 'purge']},
+        'changes': {'type': 'array', 'items': {'type': 'object'}},
+        'changed': {'type': 'boolean'}}, 'required': ['dry_run', 'mode', 'changes', 'changed']},
+    'FeedbackRecorded': {'type': 'object', 'properties': {
+        'feedback_id': {'type': 'string'},
+        'promoted': {'ref': 'KnowledgeItem', 'nullable': True}, 'seq': {'type': 'integer'}},
+        'required': ['feedback_id', 'promoted', 'seq']},
+    'Meeting': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'name': {'type': 'string'}, 'held_at': {'type': 'string'},
+        'project_id': {'type': 'string', 'nullable': True},
+        'notes_artifact_id': {'type': 'string', 'nullable': True}},
+        'required': ['id', 'name', 'held_at', 'project_id']},
+    'MeetingImported': {'type': 'object', 'properties': {
+        'meeting': {'ref': 'Meeting'}, 'changed': {'type': 'boolean'}},
+        'required': ['meeting', 'changed']},
+    'RouteDecision': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'purpose': {'type': 'string', 'nullable': True},
+        'decided_by': {'type': 'string', 'nullable': True},
+        'selected': {'type': 'string', 'nullable': True},
+        'model': {'type': 'string', 'nullable': True},
+        'candidates': {'type': 'array', 'items': {'type': 'object'}},
+        'explanation': {'type': 'string'},
+        'outcome': {'type': 'object', 'nullable': True}},
+        'required': ['id', 'selected', 'candidates', 'explanation', 'outcome']},
+    'RouteDecisionList': {'type': 'object', 'properties': {
+        'route_decisions': {'type': 'array', 'items': {'ref': 'RouteDecision'}}},
+        'required': ['route_decisions']},
+    'ProviderTerms': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'},
+        'headless': {'type': 'string', 'enum': list(entities.TERMS)},
+        'rotation': {'type': 'string', 'enum': list(entities.TERMS)},
+        'note': {'type': 'string'}}, 'required': ['id', 'headless', 'rotation']},
+    'ProviderTermsList': {'type': 'object', 'properties': {
+        'provider_terms': {'type': 'array', 'items': {'ref': 'ProviderTerms'}}},
+        'required': ['provider_terms']},
+    'ProviderTermsDecided': {'type': 'object', 'properties': {
+        'provider_terms': {'ref': 'ProviderTerms'}}, 'required': ['provider_terms']},
     'ApiError': {'type': 'object', 'properties': {'error': {'type': 'string'},
                                                'detail': {'type': 'object'}},
               'required': ['error', 'detail']},
@@ -264,48 +318,44 @@ CONTEXT_PREVIEW = {'type': 'object', 'properties': {
                'items': {'type': 'string', 'enum': list(LEVELS)}},
     'limit_tokens': {'type': 'integer', 'nullable': True}},
     'required': ['subject']}
+KNOWLEDGE_MOVE = {'type': 'object', 'properties': {
+    'reason': {'type': 'string', 'nullable': True},
+    'expected_version': {'type': 'integer', 'nullable': True}, 'idempotency_key': KEY},
+    'required': ['idempotency_key']}
+SUPERSEDE = {'type': 'object', 'properties': {
+    'title': {'type': 'string'}, 'text': {'type': 'string', 'nullable': True},
+    'idempotency_key': KEY}, 'required': ['title', 'idempotency_key']}
+FORGET = {'type': 'object', 'properties': {
+    'selector': {'type': 'object'},
+    'mode': {'type': 'string', 'nullable': True, 'enum': ['retract', 'purge']},
+    'dry_run': {'type': 'boolean', 'nullable': True}, 'idempotency_key': KEY},
+    'required': ['selector', 'idempotency_key']}
+FEEDBACK = {'type': 'object', 'properties': {
+    'subject': {'type': 'object', 'properties': {'kind': {'type': 'string'},
+                                                 'id': {'type': 'string'}},
+                'required': ['kind', 'id']},
+    'signal': {'type': 'string', 'enum': ['positive', 'negative', 'correction']},
+    'text': {'type': 'string', 'nullable': True},
+    'promote': {'type': 'object', 'nullable': True, 'properties': {
+        'type': {'type': 'string', 'enum': ['PREFERENCE', 'LESSON']},
+        'title': {'type': 'string'}, 'text': {'type': 'string', 'nullable': True},
+        'supersedes_id': {'type': 'string', 'nullable': True}}, 'required': ['type', 'title']},
+    'idempotency_key': KEY}, 'required': ['subject', 'signal', 'idempotency_key']}
+IMPORT_MEETING = {'type': 'object', 'properties': {
+    'path': {'type': 'string'}, 'project_id': {'type': 'string', 'nullable': True},
+    'held_at': {'type': 'string', 'nullable': True}, 'idempotency_key': KEY},
+    'required': ['path', 'idempotency_key']}
+PROVIDER_TERMS = {'type': 'object', 'properties': {
+    'headless': {'type': 'string', 'enum': list(entities.TERMS)},
+    'rotation': {'type': 'string', 'nullable': True, 'enum': list(entities.TERMS)},
+    'note': {'type': 'string', 'nullable': True}, 'idempotency_key': KEY},
+    'required': ['headless', 'idempotency_key']}
 REDEEM = {'type': 'object', 'properties': {
     'code': {'type': 'string'}, 'platform': {'type': 'string', 'enum': ['web', 'desktop']}},
     'required': ['code', 'platform']}
 
 
-class Invalid(ValueError):
-    def __init__(self, field, why):
-        super().__init__('%s: %s' % (field or 'body', why))
-        self.field, self.why = field, why
-
-
-_PY = {'string': str, 'integer': int, 'number': (int, float), 'boolean': bool, 'array': list,
-       'object': dict}
-
-
 def validate(value, schema, field=None):
-    """Raise Invalid(field, why) when *value* does not have *schema*'s shape."""
-    if 'ref' in schema:
-        return validate(value, TYPES[schema['ref']], field)
-    if value is None:
-        if schema.get('nullable'):
-            return
-        raise Invalid(field, 'is required' if field else 'a JSON object is required')
-    t = schema['type']
-    ok = isinstance(value, _PY[t]) and not (t in ('integer', 'number')
-                                            and isinstance(value, bool))
-    if not ok:
-        raise Invalid(field, 'must be %s %s' % ('an' if t[0] in 'aeiou' else 'a', t))
-    if 'enum' in schema and value not in schema['enum']:
-        raise Invalid(field, 'must be one of %s' % ', '.join(map(str, schema['enum'])))
-    if t == 'array':
-        for i, item in enumerate(value):
-            validate(item, schema['items'], '%s[%d]' % (field, i))
-    if t == 'object' and 'properties' in schema:
-        props = schema['properties']
-        for name in schema.get('required', ()):
-            if name not in value:
-                raise Invalid(name if field is None else '%s.%s' % (field, name), 'is required')
-        for name, v in value.items():
-            sub = name if field is None else '%s.%s' % (field, name)
-            if name not in props:
-                if schema.get('open'):
-                    continue
-                raise Invalid(sub, 'is not a known field')
-            validate(v, props[name], sub)
+    """Raise Invalid(field, why) when *value* does not have *schema*'s shape;
+    a `ref` names one of this module's TYPES."""
+    return shapes.validate(value, schema, field, types=TYPES)

@@ -113,7 +113,7 @@ def print_version():
 #: The V1 verbs (archeus/cli/main.py VERBS, which a test keeps equal): Core and
 #: its liveness, plus the verbs reserved for later phases. Spelled out here so
 #: the dispatch imports nothing until one of them is typed.
-V1_VERBS = ('core', 'status', 'approve', 'pause', 'route', 'estop', 'pair')
+V1_VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair')
 
 
 def run():

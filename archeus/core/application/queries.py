@@ -75,3 +75,72 @@ def events(conn, after_seq=0, *, limit=None):
         if limit is not None or len(page) < outbox.MAX_LIMIT:
             return out
         cursor = page[-1].seq
+
+
+# ── knowledge and own calls (P6) ────────────────────────────────────────────
+
+def list_knowledge(conn, project_id=None, state=None, type=None):
+    """Knowledge items, oldest first; filtered by project, state and type."""
+    if state is not None and state not in states.states('knowledge_item'):
+        raise ValueError('%r is not a knowledge state' % (state,))
+    if type is not None and type not in entities.KNOWLEDGE_TYPES:
+        raise ValueError('%r is not a knowledge type' % (type,))
+    eq = {k: v for k, v in (('project_id', project_id), ('state', state), ('type', type))
+          if v is not None}
+    return [view(r) for r in rows.where(conn, entities.KnowledgeItem, **eq)]
+
+
+def get_knowledge(conn, knowledge_item_id):
+    """One item with its supersession chain (oldest first) and its relations."""
+    row = rows.get(conn, entities.KnowledgeItem, knowledge_item_id)
+    if row is None:
+        raise NotFound(knowledge_item_id)
+    chain, cur = [], row.entity
+    while cur.supersedes_id is not None:                 # back to the first
+        prev = rows.get(conn, entities.KnowledgeItem, cur.supersedes_id)
+        if prev is None:
+            break
+        chain.insert(0, prev.entity.id)
+        cur = prev.entity
+    cur = row.entity
+    after = []
+    while cur.superseded_by_id is not None:
+        nxt = rows.get(conn, entities.KnowledgeItem, cur.superseded_by_id)
+        if nxt is None:
+            break
+        after.append(nxt.entity.id)
+        cur = nxt.entity
+    rels = [view(r) for r in rows.where(conn, entities.Relation, src_kind='knowledge_item',
+                                        src_id=knowledge_item_id)]
+    rels += [view(r) for r in rows.where(conn, entities.Relation, dst_kind='knowledge_item',
+                                         dst_id=knowledge_item_id)]
+    return dict(view(row), chain=chain + [knowledge_item_id] + after, relations=rels)
+
+
+def get_route_decision(conn, route_decision_id):
+    row = rows.get(conn, entities.RouteDecision, route_decision_id)
+    if row is None:
+        raise NotFound(route_decision_id)
+    usage = [view(r) for r in rows.where(conn, entities.UsageLedger,
+                                         route_decision_id=route_decision_id)]
+    return dict(view(row), usage=usage)
+
+
+def route_decisions(conn, source_id=None, purpose=None):
+    """Route decisions, oldest first; those about *source_id* when given."""
+    eq = {} if purpose is None else {'purpose': purpose}
+    got = rows.where(conn, entities.RouteDecision, **eq)
+    if source_id is not None:
+        got = [r for r in got if r.entity.source is not None and r.entity.source.id == source_id]
+    return [view(r) for r in got]
+
+
+def provider_terms(conn, harness_ids=()):
+    """Every ADR-0021 answer given, plus `unknown` for each named harness that
+    has none (no row IS the unknown answer)."""
+    have = {r.entity.id: view(r) for r in rows.where(conn, entities.ProviderTerms)}
+    for h in harness_ids:
+        have.setdefault(h, {'id': h, 'headless': 'unknown', 'rotation': 'unknown', 'note': '',
+                            'version': 0, 'created_at': None, 'updated_at': None})
+    return [have[k] for k in sorted(have)]
+

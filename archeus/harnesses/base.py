@@ -45,9 +45,14 @@ class HarnessInfo:
 
 @dataclass(frozen=True)
 class Capabilities:
-    capabilities: frozenset             # code_edit, shell, web, mcp, structured_output, …
+    capabilities: frozenset             # code_edit, shell, web, mcp, headless, interactive, …
     enforcement: str                    # hook | sandbox | none
     models: tuple = ()
+    # how a `headless` adapter asks for a schema (ADR-0022): `native` (a flag of
+    # the harness) or `prompted` (the schema in the prompt). Core validates the
+    # result either way, so neither is preferred and neither is required.
+    structured_output: Optional[str] = None
+    efforts: tuple = ()                 # the levels it accepts, in its own scale
 
 
 @dataclass(frozen=True)
@@ -71,6 +76,45 @@ class ExecutionSpec:
     allowed_tools: tuple = ()
     resume_ref: Optional[str] = None
     hook_settings: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class CallSpec:
+    """One of Archeus's own calls (execution-architecture §3, ADR-0022): tool-less,
+    read-only and ephemeral. `model` is in the target harness's vocabulary or
+    None (its own default); `schema` is what Core will validate the result
+    against, and the adapter decides how to ask for it."""
+    route_decision_id: str
+    purpose: str
+    prompt: str                         # stable prefix + variable suffix
+    workdir: str
+    account: AccountRef
+    schema: Optional[Mapping] = None
+    model: Optional[str] = None
+    limits: Mapping = field(default_factory=dict)       # timeout_s
+
+
+@dataclass(frozen=True)
+class CallResult:
+    """What one call produced. `error` is None on success, else one of
+    `unavailable` (no binary), `model_unavailable`, `timeout`, `failed`; the
+    reason is in `detail`. `parsed` is the adapter's reading of the answer and
+    is not trusted: Core validates it."""
+    text: str = ''
+    parsed: object = None
+    usage: Mapping = field(default_factory=dict)
+    error: Optional[str] = None
+    detail: str = ''
+
+
+CALL_ERRORS = ('unavailable', 'model_unavailable', 'timeout', 'failed')
+
+
+def prompted(prompt, schema):
+    """The prompt a `prompted` adapter sends: the task, then the shape in words
+    (the wording the current product uses for pi, main 94b90f9)."""
+    return (prompt + '\n\nAnswer with ONLY one JSON object, no prose and no code fence, '
+            'matching this JSON Schema:\n' + json.dumps(schema, sort_keys=True))
 
 
 @dataclass(frozen=True)

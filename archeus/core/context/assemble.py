@@ -14,9 +14,10 @@ No model, no harness, no router and no execution is reachable from here
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from itertools import combinations
 
+from ...infra.artifacts import store as artifacts
 from ...infra.db import rows
 from ...infra.db.writer import NotFound
 from ...infra.eventlog import outbox
@@ -32,7 +33,8 @@ _NOT_CONFIRMED = {'CANDIDATE': 'not confirmed (a candidate)', 'RETRACTED': 'retr
 
 
 def _when(stamp):
-    return datetime.fromisoformat(stamp.replace('Z', '+00:00'))
+    t = datetime.fromisoformat(stamp.replace('Z', '+00:00'))
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)    # a bare date is UTC
 
 
 def _cand(ref, level, store, type_, source_kind, source_ref, observed_at, text, authority,
@@ -58,7 +60,7 @@ def _knowledge(conn, workspace_id, project_id, out, excluded):
             continue                                    # out of scope: never a candidate
         ref = {'kind': 'knowledge_item', 'id': k.id, 'version': r.version}
         if k.state == 'SUPERSEDED':
-            by = superseding.get(k.id)
+            by = k.superseded_by_id or superseding.get(k.id)
             excluded.append({'ref': ref, 'level': level, 'freshness': 'superseded',
                              'reason': 'superseded by %s' % by if by else 'superseded'})
             continue
@@ -70,9 +72,50 @@ def _knowledge(conn, workspace_id, project_id, out, excluded):
                      else 'confirmed' if k.type in _DECIDING else 'inferred')
         text = ' '.join([k.title, k.text] + ([json.dumps(k.constraint, sort_keys=True)]
                                              if k.constraint else []))
+        reason = 'CONFIRMED %s, %s' % (k.type, scope)
+        moved = _moved_past(conn, k.source_ref)
+        if moved:
+            reason += '; stale: %s' % moved
         out.append(_cand(ref, level, 'knowledge', k.type, 'knowledge_item', k.id, r.created_at,
-                         text, authority, 'CONFIRMED %s, %s' % (k.type, scope),
+                         text, authority, reason, stale=bool(moved),
                          constraint=k.constraint, created_at=r.created_at))
+
+
+def _moved_past(conn, source_ref):
+    """Why an item read from a repository inspection no longer describes the
+    repository (P6: its repository moved past the revision it was read at), or
+    ''. Revision-level, not per file: an item cites its inspection, not the
+    files the model looked at."""
+    if source_ref is None or source_ref.kind != 'repository_inspection':
+        return ''
+    i = rows.get(conn, entities.RepositoryInspection, source_ref.id)
+    if i is None:
+        return ''
+    repo = rows.get(conn, entities.Repository, i.entity.repository_id).entity
+    if repo.last_revision is not None and repo.last_revision != i.entity.revision:
+        return 'read at %s, the repository is at %s' % (i.entity.revision, repo.last_revision)
+    return ''
+
+
+def _meetings(conn, workspace_id, project_id, out):
+    """Meetings in the subject's scope, at L2 (context-and-knowledge §2.1:
+    meetings linked to the mission): the project's, or the workspace's when
+    neither names a project. Their notes are what makes them relevant."""
+    for r in rows.where(conn, entities.Meeting):         # `= NULL` matches nothing in SQL
+        m = r.entity
+        if m.project_id != project_id or (
+                project_id is None and m.workspace_id not in (workspace_id, ids.GLOBAL_WORKSPACE)):
+            continue
+        notes = ''
+        if m.notes_artifact_id:
+            try:
+                notes = artifacts.get(m.notes_artifact_id).decode('utf-8', 'replace')
+            except OSError:
+                notes = ''
+        out.append(_cand({'kind': 'meeting', 'id': m.id, 'version': r.version}, 'L2', 'state',
+                         'MEETING', 'meeting', m.id, m.held_at, '%s\n%s' % (m.name, notes),
+                         'explicit', 'meeting "%s" held %s, imported by you' % (
+                             m.name, m.held_at[:10])))
 
 
 def _project(conn, project_id, out, missing):
@@ -176,6 +219,7 @@ def gather(conn, subject_kind, subject_id):
     if project_id is not None:
         _project(conn, project_id, cands, missing)
         _history(conn, project_id, subject_id, as_of_at, cands)
+    _meetings(conn, workspace_id, project_id, cands)
     _knowledge(conn, workspace_id, project_id, cands, excluded)
     return {'workspace_id': workspace_id, 'project_id': project_id, 'query': query,
             'as_of_seq': as_of_seq, 'as_of_at': as_of_at, 'candidates': cands,

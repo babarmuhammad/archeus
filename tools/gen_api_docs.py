@@ -141,7 +141,10 @@ def _api_routes(routes):
 
 
 QUERY_TYPES = {'state': "Mission['state']", 'after': 'number', 'limit': 'number',
-               'project': 'string'}
+               'project': 'string', 'type': 'string', 'source': 'string',
+               'purpose': 'string',
+               # a parameter named like another route's is typed by its own route
+               ('/v1/knowledge', 'state'): "KnowledgeItem['state']"}
 
 
 def render_v1_client():
@@ -187,7 +190,7 @@ def render_v1_client():
         query = routes.QUERY.get(r.path) if r.method == 'GET' else None
         if query:
             params.append('query: { %s } = {}' % '; '.join(
-                '%s?: %s' % (n, QUERY_TYPES[n]) for n in query))
+                '%s?: %s' % (n, QUERY_TYPES.get((r.path, n)) or QUERY_TYPES[n]) for n in query))
             path += ' + qs(query)'
         body = ''
         if r.request_schema is not None:

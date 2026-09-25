@@ -60,7 +60,11 @@ class HarnessAdapter(Protocol):
 schema?, limits}` and `CallResult` = `{text, parsed?, usage, error?}`. The adapter keeps the call
 read-only and ephemeral in its own flags and requests the schema natively or in the prompt
 (`Capabilities.structured_output = native | prompted`); Core validates `parsed` against the
-schema either way (ADR-0006). A call has no Session and no Execution.
+schema either way (ADR-0006). A call has no Session and no Execution. **As built (P6):**
+`CallSpec = {route_decision_id, purpose, prompt, workdir, account, schema?, model?, limits}`,
+`CallResult = {text, parsed?, usage, error?, detail}` with `error` one of `unavailable`,
+`model_unavailable`, `timeout`, `failed`; the real `call()` adapters live in
+`archeus/harnesses/calls.py`, outside the P1 registry, and have no `start()`.
 
 **Vocabulary belongs to the harness** (ADR-0022): `model` is an id the target account offers
 (ModelOffer) and `effort` a level the adapter declares in `Capabilities.efforts`. Core never passes

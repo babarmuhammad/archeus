@@ -666,6 +666,20 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   ADR-0021, never fails the project (the legacy setup job crashed after building memory).
 - Tests: supersession chains, corroboration gating, forget dry-run, idempotent import.
 - Acceptance: S8, S9 pass; K1–K3 (testing-strategy §6).
+  - **P6, as built** (p6-design-gate.md). `archeus/core/calls.py` (`archeus_call`: the
+    pre-router election over installed `headless` adapters, the RouteDecision committed before
+    the call, the provider-terms gate re-checked immediately before the spawn, Core validation
+    with one retry), `core/application/{calls,knowledge}.py`, `core/knowledge/{passes,worker,
+    ingest}.py` (three passes — the knowledge pass on a project's first COMPLETED inspection,
+    decisions from imported notes, lessons when a mission ends — consumed from the outbox),
+    `harnesses/calls.py` (claude_code and pi `call()` on `llmcall.run_headless`, gated),
+    `FakeCaller`, migration `0005_knowledge.sql` (relations, meetings, feedback, route decisions,
+    usage ledger, provider terms), 13 routes, `archeus terms`. Everything a call produces is
+    CANDIDATE with provenance (source, RouteDecision, ContextPackage); a lesson confirms itself
+    only when two distinct missions corroborate it. **ADR-0021 stays OPEN**: its mechanism is a
+    per-harness ProviderTerms answer only the user gives, `unknown` by default, so P6 ships making
+    no real call. S8, K1–K3 pass (K1's router function stays P10); **S9 moved to P7** (D1: its
+    judge is driven by intent). Deviations: p6-design-gate §12.
 
 **P7 — Intent, brain, mission engine**
 - Depends: P6. New: `application/grammar.py`, `missions/intent.py`, `brain/calls.py` (on the

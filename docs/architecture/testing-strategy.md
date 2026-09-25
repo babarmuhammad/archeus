@@ -26,11 +26,12 @@ The judge never imports Core internals and cannot wait for HTTP (P3.5) to be wri
 freezes `tests/v1/judge/client.py`: a `CoreClient` protocol with exactly the operations the
 scenarios use — `submit_message`, `create_mission`, `get_mission`, `list_missions`,
 `decide_approval`, `pause`, `resume`, `stop`, `route_why`, `status`, `digest`, `ack`,
-`create_project`, `declare_constraint`, `import_meeting`, `register_account`,
+`create_project`, `declare_constraint`, `import_meeting`, `list_knowledge`, `register_account`,
 `set_resource_policy`, `events(after_seq)` — mirroring the command/query surface of
 api-and-realtime §2. (`create_project` and `declare_constraint` were added in P4, D1 of
 p4-design-gate.md: the S7 rig registers its fixture repository and constraint through the
-contract, never through Core internals.) Two bindings: `InProcessClient` (P1–P3, calls the
+contract, never through Core internals. `list_knowledge` was added in P6, D8 of
+p6-design-gate.md: K1–K3 judge what a pass produced through the contract.) Two bindings: `InProcessClient` (P1–P3, calls the
 application layer directly) and `HttpClient` (P3.5 onward, HTTP + SSE). Every scenario runs
 against both once HTTP exists.
 
@@ -69,7 +70,7 @@ them so nothing is tested twice under different names or missed.
 | S6 | Verification failure → replan (budget 2 → BLOCKED) | SP11, SP12, G "verification exists" | `test_s06_verify_fail_replan.py` | P13, P8 |
 | S7 | Repository reinspection and architecture drift | IP-G, G "repository re-inspection works" | `test_s07_drift.py` (fixture repo, commit that violates a constraint) | P4 |
 | S8 | Meeting notes used as context | SP2 | `test_s08_meeting_context.py` (import → mention → package cites it with reason) | P5–P6 |
-| S9 | Feedback becomes durable knowledge; supersession | SP14 | `test_s09_feedback_to_knowledge.py` | P6 |
+| S9 | Feedback becomes durable knowledge; supersession | SP14 | `test_s09_feedback_to_knowledge.py` (driven through `submit_message`: which message is feedback, and which preference it supersedes, is intent — P7; P6 builds the promotion and supersession it lands on, p6-design-gate D1) | P7 |
 | S10 | Event triggers automation (model added → documentation) with loop guard | SP15, IP-F, G "event-driven automation exists" | `test_s10_automation.py` (+ `test_s10b_loop_guard.py`: self-triggering automation escalates at depth 3, suspends after 3) | P14 |
 | S11 | Mobile control: observe, pause, resume, approve from a paired device | SP16, SP17, IP-E, G "remote control works" | `test_s11_remote_control.py` (device token over the remote host allowlist; pause is cooperative) | P15 |
 | S12 | Explain why a resource was selected | SP18 | `test_s12_route_why.py` (answer generated from the RouteDecision, no model call; replay equality) | P10 |
@@ -79,6 +80,9 @@ them so nothing is tested twice under different names or missed.
 | SP3 | Archeus challenges or clarifies when necessary | — | `test_sp03_challenge.py` (conflicting DECISION in context → Challenge block, mission BLOCKED until choice) | P7 |
 | G1 | Domain state persistent; mission independent of any session | SP9 | `test_g01_restart_survival.py` (kill Core mid-mission; restart; reconcile; continue) | P2–P3, P11 |
 | G2 | Context selection explainable and provenance-aware | — | `test_g02_context_package.py` | P5 |
+| K1 | Knowledge builds with no Claude Code installed | ADR-0022 | `test_k01_knowledge_without_claude.py` (fake `headless` harnesses only; a harness not declaring `headless` never elected; your choice honoured; the RouteDecision records the election and its rejected candidates) | P6, P10 |
+| K2 | Structured extraction across mechanisms | ADR-0006, ADR-0022 | `test_k02_structured_extraction.py` (native and prompted both valid; invalid retried once, then no knowledge; provenance names harness and model) | P6 |
+| K3 | Project setup completes after the knowledge pass | plan P6 | `test_k03_project_setup.py` (success, failure, gated by ADR-0021: the project stays usable; the result is a count) | P6 |
 | G3 | GUI/TUI/web/mobile use one backend model | SP17 | `test_g03_one_model.py` (same mission observed via SPA e2e, TUI script, CLI) | P16–P19 |
 | G4 | Audit trail exists | — | `test_g04_audit.py` (every transition has an event with actor + reason; approvals immutable) | P2 |
 | G5 | Emergency stop exists (with and without Core) | — | `test_g05_estop.py` (STOP sentinel halts fake executions; `archeus estop` kills by pid+create_time with Core down) | P11, P20 |
@@ -132,7 +136,8 @@ exist or if a judge test is not listed — the table cannot drift from the suite
 
 Required by the 2.8.0 behaviour of the current product (commits `94b90f9`, `26f983b`). Each
 moves into the §2 table, with its strict-xfail judge file, at its phase's design gate — not
-before, so §2 stays exactly what the judge collects. All run on fake harnesses: a second fake
+before, so §2 stays exactly what the judge collects. **K1–K3 moved into §2 with P6**
+(p6-design-gate §10); R1 and H1 are still scheduled here. All run on fake harnesses: a second fake
 harness id added without any domain change is how "a new harness needs no new entity" is proven.
 
 | ID | Scenario | Asserts | Phase |

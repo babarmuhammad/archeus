@@ -107,8 +107,9 @@ def _sample(cls):
                               title='retry once'),
         E.ContextPackage: dict(id=i('context_package'), workspace_id=_ws(),
                                subject_kind='mission', subject_id=i('mission')),
-        E.Relation: dict(id=i('relation'), src=ref, rel='depends_on',
-                         dst=Ref('task', i('task'))),
+        E.Relation: dict(id=i('relation'), src_kind=ref.kind, src_id=ref.id, rel='depends_on',
+                         dst_kind='task', dst_id=i('task')),
+        E.ProviderTerms: dict(id='claude_code'),
         E.Conversation: dict(id=i('conversation'), kind='primary'),
         E.Message: dict(id=i('message'), conversation_id=i('conversation'), author='user',
                         text='hi'),
@@ -272,7 +273,7 @@ def test_an_event_has_the_envelope_of_api_section_3_1():
 
 
 def test_the_registry_declares_each_type_once_with_a_known_subject():
-    kinds = set(ids.PREFIXES) | {'harness', 'model'}
+    kinds = set(ids.PREFIXES) | {'harness', 'model', 'provider_terms'}
     for type_, subject, vis, notify, desc in events.TYPES:
         assert subject in kinds and vis in events.VISIBILITIES
         assert isinstance(notify, bool) and desc

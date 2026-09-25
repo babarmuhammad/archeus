@@ -15,6 +15,7 @@ verifier and a reviewer whose verdicts a test scripts. Each is deterministic.
 """
 
 import copy
+from dataclasses import dataclass
 from typing import Mapping, Optional, Protocol, runtime_checkable
 
 from .domain import entities, ids
@@ -181,3 +182,56 @@ class ScriptedReview:
         v = self.verdicts.get(mission.id, 'accept')
         return entities.Review(id=ids.new_id('review'), mission_id=mission.id,
                                reviewer='stub', verdict=v, state=REVIEW_END[v])
+
+
+# ── own-call preference (ADR-0022) ──────────────────────────────────────────
+
+@dataclass(frozen=True)
+class OwnCallPreference:
+    """The user's choice of harness and model for Archeus's own calls: a
+    routing preference for subject `archeus_call` (resource-router §3).
+    `harness` is a V1 harness id or None (no choice). `model` is in THAT
+    harness's vocabulary; `claude_model` is the economy model Claude Code's own
+    calls use (legacy `extract_model`) whichever harness was chosen."""
+    harness: Optional[str] = None
+    model: Optional[str] = None
+    claude_model: Optional[str] = None
+
+    def model_for(self, harness_id):
+        """The model to send *harness_id*, or None for its own default. A model
+        set for another harness is dropped, never translated (ADR-0022)."""
+        if harness_id == 'claude_code':
+            return self.claude_model or None
+        if self.harness in (None, harness_id):
+            return self.model or None
+        return None
+
+
+#: legacy harness ids -> V1 harness ids
+LEGACY_HARNESS_IDS = {'claude': 'claude_code'}
+
+
+class LegacyOwnCallPreference:
+    """Reads the current product's settings each time (plan §31.4: imported at
+    migration, P22, and read here until then): `headless_harness`,
+    `headless_harness_model` and `extract_model`. One source, never copied."""
+
+    def get(self):
+        from claude_sessions.config import load_settings
+        s = load_settings()
+        raw = (s.get('headless_harness') or '').strip()
+        return OwnCallPreference(
+            harness=LEGACY_HARNESS_IDS.get(raw, raw) or None,
+            model=(s.get('headless_harness_model') or '').strip() or None,
+            claude_model=(s.get('extract_model') or '').strip() or None)
+
+
+class FixedOwnCallPreference:
+    """A preference a test or a rig states."""
+
+    def __init__(self, harness=None, model=None, claude_model=None):
+        self.value = OwnCallPreference(harness, model, claude_model)
+
+    def get(self):
+        return self.value
+

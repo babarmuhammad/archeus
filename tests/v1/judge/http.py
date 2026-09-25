@@ -98,6 +98,9 @@ class HttpClient:
         engine, world = health['engine'], health['world']
         if engine['state'] != 'idle' or world['state'] != 'idle' or world['pending']:
             return False
+        knowledge = health['knowledge']         # P6: every event it has not consumed
+        if knowledge['state'] != 'idle' or knowledge['pending']:
+            return False
         return not self._call('GET', '/v1/events?after=%d&limit=1'
                               % engine['observed_seq'])['events']
 
@@ -177,6 +180,28 @@ class HttpClient:
 
     def ack(self, up_to_seq: int) -> dict:
         return self._call('POST', '/v1/digest/ack', {'up_to_seq': up_to_seq})
+
+    # ── knowledge and own calls (P6) ──
+
+    def import_meeting(self, path: str, *, project_id: Optional[str] = None) -> dict:
+        body = {'path': path, 'idempotency_key': ids.new_ulid()}
+        if project_id is not None:
+            body['project_id'] = project_id
+        return self._call('POST', '/v1/meetings/import', body)['meeting']
+
+    def list_knowledge(self, *, project_id: Optional[str] = None,
+                       state: Optional[str] = None) -> list:
+        q = '&'.join('%s=%s' % kv for kv in (('project', project_id), ('state', state))
+                     if kv[1] is not None)
+        return self._call('GET', '/v1/knowledge' + ('?' + q if q else ''))['knowledge']
+
+    def route_why(self, subject_id: str) -> dict:
+        if subject_id.startswith('rte_'):
+            return self._call('GET', '/v1/route-decisions/%s' % subject_id)
+        got = self._call('GET', '/v1/route-decisions?source=%s' % subject_id)['route_decisions']
+        if not got:
+            raise CoreClientError(404, 'not_found', {'id': subject_id})
+        return self._call('GET', '/v1/route-decisions/%s' % got[-1]['id'])
 
 
 for _op in OPERATIONS:
@@ -284,7 +309,7 @@ class TempCore:
 
     def stop(self, *, kill=False):
         if self.core is not None:
-            loops = (self.core.world, self.core.loop)
+            loops = (self.core.knowledge, self.core.world, self.core.loop)
             self.core.stop(drain=not kill)
             for loop in loops:
                 if loop is not None:
