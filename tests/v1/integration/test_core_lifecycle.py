@@ -119,6 +119,22 @@ def test_a_held_lock_with_garbage_discovery_sends_nothing(archeus_home, capsys, 
 
 # ── G4 port in use ──
 
+def test_binding_the_port_does_no_reverse_dns_lookup(monkeypatch):
+    """HTTPServer.server_bind resolves getfqdn('127.0.0.1') for a CGI-only
+    server_name; on macOS CI that reverse lookup outlived Core's 30 s start."""
+    from archeus.api import server
+
+    def lookup(*a):
+        raise AssertionError('binding did a reverse DNS lookup')
+    monkeypatch.setattr(socket, 'getfqdn', lookup)
+    s = server.Server(None, 0)
+    try:
+        port = s.socket.getsockname()[1]
+        assert port and (s.server_name, s.server_port) == ('127.0.0.1', port)
+    finally:
+        s.server_close()
+
+
 def test_a_port_in_use_exits_2_names_it_and_writes_no_core_json(archeus_home):
     squatter = socket.socket()
     squatter.bind(('127.0.0.1', 0))

@@ -26,6 +26,7 @@ import logging
 import os
 import secrets
 import socket
+import socketserver
 import sys
 import threading
 import time
@@ -351,4 +352,8 @@ class Server(ThreadingHTTPServer):
     def server_bind(self):
         if sys.platform.startswith('win'):
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        super().server_bind()
+        # TCPServer's bind, not HTTPServer's: that one then resolves
+        # getfqdn('127.0.0.1') for a CGI-only server_name, a reverse DNS
+        # lookup that stalled Core startup on macOS for over 30 s
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = '127.0.0.1', self.server_address[1]
