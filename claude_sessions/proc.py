@@ -128,7 +128,7 @@ def pid_alive(pid):
             return None                               # unknown → age decides
     try:
         os.kill(pid, 0)
-        return True
+        return not _zombie(pid)
     except ProcessLookupError:
         return False
     except PermissionError:
@@ -172,6 +172,8 @@ def process_create_time(pid):
                 k32.CloseHandle(h)
         except Exception:
             return None
+    if _zombie(pid):
+        return None                                   # exited: nothing to match
     try:
         with open('/proc/%d/stat' % pid, encoding='utf-8', errors='replace') as f:
             # field 22 (starttime); split after the ')' that ends comm, which
@@ -188,6 +190,25 @@ def process_create_time(pid):
         return r.stdout.strip() or None
     except Exception:
         return None
+
+
+def _zombie(pid):
+    """POSIX: exited, but not yet reaped by its parent. It still answers
+    `kill(pid, 0)` and keeps its start time, like the exited process an open
+    Windows handle keeps — which the Windows branches above already treat as
+    gone. Its pid cannot be reused until it is reaped."""
+    try:
+        with open('/proc/%d/stat' % pid, encoding='utf-8', errors='replace') as f:
+            return f.read().rsplit(')', 1)[1].split()[0] == 'Z'
+    except OSError:
+        pass
+    try:                                              # macOS / BSD: no /proc
+        r = subprocess.run(['ps', '-o', 'stat=', '-p%d' % pid],
+                           capture_output=True, text=True, timeout=5,
+                           creationflags=no_window_flags)
+        return r.stdout.strip().startswith('Z')
+    except Exception:
+        return False
 
 
 def kill_pid_tree(pid, create_time):
