@@ -75,6 +75,17 @@ def test_a_body_over_one_mebibyte_is_413_unread(tc):
     assert _err(r) == (413, 'payload_too_large', {})
 
 
+def test_a_refused_oversized_body_is_drained_so_the_413_arrives(tc, unread_at_finish):
+    """The body is never parsed, but the socket is read to the end before it
+    closes (a lingering close): closing it with the body unread sends RST, and
+    under load the client got WinError 10053 instead of the 413."""
+    done, unread = unread_at_finish
+    r = tc.http('POST', '/v1/missions', raw=b'{' + b' ' * (2 << 20) + b'}')
+    assert done.wait(15)
+    assert unread == [0], 'the server closed with the body unread'
+    assert _err(r) == (413, 'payload_too_large', {})
+
+
 def test_a_full_request_pool_is_503_busy_with_retry_after(tc, monkeypatch):
     import threading
     monkeypatch.setattr(tc.core.api, 'requests', threading.BoundedSemaphore(1))

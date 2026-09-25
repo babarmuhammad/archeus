@@ -39,6 +39,11 @@ from .routes import Refused
 from .schemas import Invalid, validate
 
 MAX_BODY = 1 << 20
+#: After refusing a body it will not read, the server keeps reading (and
+#: discarding) this long and this much before it closes, so the refusal is
+#: received instead of a reset (a socket closed with unread data sends RST).
+LINGER_S = 2.0
+LINGER_BYTES = 16 << 20
 REQUEST_SLOTS = 32
 COMMAND_TIMEOUT_S = 30.0
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
@@ -243,6 +248,7 @@ class Handler(BaseHTTPRequestHandler):
     def _serve(self):
         started = time.monotonic()
         self._status, self.principal, self.body, self.token_hash = None, None, {}, None
+        self._unread = False
         self.api = self.server.api
         self.peer = self.client_address
         template, slot = '-', None
@@ -265,9 +271,10 @@ class Handler(BaseHTTPRequestHandler):
             if 'token' in self.query or 'access_token' in self.query:
                 raise Refused(401, 'token_in_url')
             if length is None:
+                self.close_connection = self._unread = True
                 raise Invalid('Content-Length', 'is not a number')
             if length > MAX_BODY:
-                self.close_connection = True
+                self.close_connection = self._unread = True
                 raise Refused(413, 'payload_too_large')
             route, self.params = routes.match(self.command, url.path)
             template = route.path
@@ -300,6 +307,25 @@ class Handler(BaseHTTPRequestHandler):
             log.info('%s %s %s %.0fms %s', self.command, template, self._status,
                      (time.monotonic() - started) * 1000,
                      (self.principal or {}).get('device_id') or '-')
+            if self._unread:
+                self._linger()
+
+    def _linger(self):
+        """A lingering close: the answer is sent, so stop writing and read
+        what the client is still sending until it stops, LINGER_S passes or
+        LINGER_BYTES have gone by. Bounded both ways, so a client that sends
+        forever costs at most that."""
+        deadline, left = time.monotonic() + LINGER_S, LINGER_BYTES
+        try:
+            self.connection.shutdown(socket.SHUT_WR)
+            while left > 0 and time.monotonic() < deadline:
+                self.connection.settimeout(max(0.01, deadline - time.monotonic()))
+                chunk = self.rfile.read1(65536)
+                if not chunk:
+                    return
+                left -= len(chunk)
+        except OSError:
+            pass
 
     do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = do_HEAD = do_OPTIONS = _serve
 

@@ -6,13 +6,12 @@ runs, so each one also checks that nothing was written."""
 import json
 import os
 import secrets
-import socket
 import sqlite3
 import threading
 
 import pytest
 
-from archeus.api import auth, server
+from archeus.api import auth
 from archeus.core.application import commands
 from archeus.infra import discovery, paths
 from archeus.infra.db import connection
@@ -76,26 +75,14 @@ def test_a_foreign_host_cannot_create_anything(tc):
     ('/v1/missions', {'Host': 'evil.example'}, (403, 'host_not_allowed')),
     ('/v1/missions', {'Sec-Fetch-Site': 'cross-site'}, (403, 'cross_site')),
     ('/v1/missions?token=x', {}, (401, 'token_in_url'))])
-def test_an_early_refusal_of_a_post_is_answered_not_reset(tc, monkeypatch, path, headers,
+def test_an_early_refusal_of_a_post_is_answered_not_reset(tc, unread_at_finish, path, headers,
                                                           refusal):
     """Refused before routing, the body must still be read: a socket closed with
     its body unread sends RST, and the client gets a reset (WinError 10053)
     instead of the response. Whether the client sees that reset is a race, so
     the invariant is checked where it holds — nothing unread when the server
     closes the socket — as well as by the response arriving."""
-    done, unread, real = threading.Event(), [], server.Handler.finish
-
-    def finish(self):
-        if self.command == 'POST':          # nothing reads the socket after this
-            self.connection.setblocking(False)
-            try:
-                unread.append(len(self.connection.recv(1 << 20, socket.MSG_PEEK)))
-            except BlockingIOError:
-                unread.append(0)
-            self.connection.setblocking(True)
-            done.set()
-        real(self)
-    monkeypatch.setattr(server.Handler, 'finish', finish)
+    done, unread = unread_at_finish
     body = json.dumps({'title': 't', 'objective': 'o' * (512 << 10),
                        'idempotency_key': 'k'}).encode()
 
