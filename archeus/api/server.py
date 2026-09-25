@@ -339,8 +339,10 @@ class Handler(BaseHTTPRequestHandler):
 class Server(ThreadingHTTPServer):
     daemon_threads = True
     # SO_REUSEADDR on Windows lets a second socket bind a port already in use,
-    # which would hide a collision and invite a squatter: exclusive instead
-    allow_reuse_address = False
+    # which would hide a collision and invite a squatter: exclusive instead.
+    # On POSIX it only lets a restart bind past the last run's TIME_WAIT
+    # connections; a live listener still refuses it.
+    allow_reuse_address = not sys.platform.startswith('win')
 
     def __init__(self, api, port):
         self.api = api
