@@ -235,8 +235,8 @@ def test_c15_preview_writes_nothing_and_a_recorded_package_is_readable(tc, fixtu
     pid, _rid = _register(tc, fixture_repo, [NO_CORE_API])
     _wait(lambda: tc.http('GET', '/v1/health').json()['world']['pending'] == 0,
           what='the world to settle')
-    head = lambda: tc.http('GET', '/v1/events?limit=1000').json()['events'][-1]['seq']  # noqa
-    before = head()
+    events = lambda: tc.http('GET', '/v1/events?limit=1000').json()['events']  # noqa: E731
+    before = events()[-1]['seq']
     r = tc.http('POST', '/v1/context/preview',
                 body={'subject': {'kind': 'project', 'id': pid}, 'query': 'core api',
                       'levels': ['L1'], 'limit_tokens': 500})
@@ -244,7 +244,12 @@ def test_c15_preview_writes_nothing_and_a_recorded_package_is_readable(tc, fixtu
     pkg = r.json()
     assert pkg['levels'] == ['L1'] and pkg['budget']['limit_tokens'] == 500
     assert all(i['reason'] and i['source_kind'] for i in pkg['items'])
-    assert head() == before
+    # The world worker (Core's system principal) may still append after
+    # `pending` reads 0; the preview writes nothing of its own, so nothing new
+    # is by the device that asked, and no package was recorded.
+    after = [e for e in events() if e['seq'] > before]
+    assert all(e['actor']['kind'] == 'system' for e in after), after
+    assert not [e for e in after if e['type'] == 'context_package.created']
 
     mid = tc.http('POST', '/v1/missions', body={'title': 'M', 'objective': 'o', 'project_id': pid,
                                                 'idempotency_key': 'm1'}).json()['id']
