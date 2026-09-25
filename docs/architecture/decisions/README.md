@@ -25,3 +25,5 @@ Internal documents (excluded from the published manual). Status values: DECIDED,
 | [0019](ADR-0019.md) | Data ownership during the strangler period | DECIDED |
 | [0020](ADR-0020.md) | Automation as event/schedule/condition/state triggers creating missions under policy | DECIDED |
 | [0021](ADR-0021.md) | Provider-terms gate before the first real headless model call | OPEN |
+| [0022](ADR-0022.md) | Archeus's own model calls run on any capable harness | DECIDED |
+| [0023](ADR-0023.md) | A user's own session resumes and hands off through its harness | DECIDED |

@@ -57,13 +57,25 @@ requirements:
   max_cost_band: medium
 ```
 
+**Archeus's own calls** (ADR-0022) are subject `archeus_call` with a `purpose`
+(knowledge_extraction, lesson, generation, brain, planner; the review judge is the same call
+class but keeps its own `review` subject and ceiling). Their requirement is
+`capabilities: [headless]` and, when a schema is asked, `structured_output: true`, which every
+`headless` harness satisfies — natively or in the prompt — because Core validates the result;
+it never eliminates a harness for lacking a schema flag. `preferred`/`forbidden` for this
+subject come from the user's own-call choice (global or workspace scope; legacy
+`headless_harness` / `headless_harness_model`), a preference unless the user marks it required,
+in which case it is a constraint. A model is eligible only as an offer of the candidate account,
+in that harness's vocabulary; an unknown tier or context window (a local model) counts as the
+smallest, so a requirement's minimum excludes it rather than trusting it.
+
 Every harness declares `enforcement`:
 
 | Value | Meaning | V1 harnesses |
 |---|---|---|
 | `hook` | Archeus can intercept each tool call and deny/halt (PreToolUse-style) | claude_code |
 | `sandbox` | Harness enforces filesystem/network boundaries itself; Archeus sets them at start | codex (`workspace-write`, network off unless `web` is allowed) |
-| `none` | No interception possible | pi, generic_cli (DEFERRED) |
+| `none` | No interception possible | pi, generic_cli (tool-using execution DEFERRED; `archeus_call` is read-only by construction, so enforcement does not apply to it — ADR-0022) |
 
 **Eligibility rule:** a harness with `enforcement: none` is eligible only if *every* action class
 in the requirement evaluates to ALLOW (not ASK, not ALLOW_WITHIN_BOUNDARY) under the task's
@@ -82,7 +94,7 @@ observed window**, not a share of a pie:
 
 ```text
 effective_ceiling(account)    = allocation_pct − reserve_pct
-ceiling(account, kind)        = effective_ceiling(account)                       if kind = brain
+ceiling(account, kind)        = effective_ceiling(account)                       if kind = archeus_call (brain and every other own call)
                               = effective_ceiling(account) − brain_reserve_pct   if kind ∈ {task, review}
 worst(account)                = max over windows of utilisation_pct, from the latest UsageSnapshot
                                 (unknown ≠ 0: see allocation_known below)

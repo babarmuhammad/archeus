@@ -52,7 +52,21 @@ class HarnessAdapter(Protocol):
     def status(self, handle) -> ProcStatus: ...
     def handoff(self, checkpoint: Checkpoint) -> ExecutionSpec: ...   # render checkpoint into next start
     def collect_result(self, handle) -> ExecutionResult: ...    # exit, summary, usage, artifacts, session ref
+    # added in P6 (ADR-0022), only on adapters declaring `headless`:
+    def call(self, spec: CallSpec) -> CallResult: ...           # one tool-less, ephemeral, read-only call
 ```
+
+`CallSpec` = `{route_decision_id, prompt (stable prefix + variable suffix), workdir, env, model,
+schema?, limits}` and `CallResult` = `{text, parsed?, usage, error?}`. The adapter keeps the call
+read-only and ephemeral in its own flags and requests the schema natively or in the prompt
+(`Capabilities.structured_output = native | prompted`); Core validates `parsed` against the
+schema either way (ADR-0006). A call has no Session and no Execution.
+
+**Vocabulary belongs to the harness** (ADR-0022): `model` is an id the target account offers
+(ModelOffer) and `effort` a level the adapter declares in `Capabilities.efforts`. Core never passes
+another harness's model or effort, or a default made for one; a value the target does not know
+is dropped, never translated (a bare Claude id sent to pi is refused as ambiguous across
+providers).
 
 `ExecutionSpec` = `{execution_id, task_contract, prompt (stable prefix + variable suffix),
 workdir, env, model, effort, limits, allowed_tools, resume_ref?, hook_settings}`. `ExecutionResult` =
@@ -65,7 +79,7 @@ reported summary is **never** the completion signal (verification is).
 | `claude_code` | `claude -p --output-format stream-json --verbose --session-id <uuid> --model … --effort … --max-turns … --settings <per-execution settings file with the policy hook>` | stream-json (assistant/tool events, `usage`, `compact_boundary`) | `--resume <session uuid>` | hook (PreToolUse, PreCompact) |
 | `claude_code` interactive | existing `main.build_launch_command` + `proc.spawn_terminal` | transcript tail | n/a | hook in fail-open mode (user's own session) |
 | `codex` | `codex exec --json --sandbox workspace-write -m …` | JSON events | `codex exec resume <id>` | sandbox |
-| `pi` (DEFERRED) | RPC mode | JSON | yes | none |
+| `pi` | `call()`: `pi -p --no-session --tools read,grep,find,ls --model <provider/id>` (ADR-0022); user sessions: its launch argv; tool-using execution DEFERRED (RPC mode) | JSON | `--session` of the recorded session | none |
 
 Hooks are installed **per execution** through the settings file passed at start, not by editing
 the user's global `settings.json`, so V1 executions never collide with legacy hook ownership
@@ -212,6 +226,17 @@ the dump with the checkpoint, reusing the injection mechanism).
 unless the trigger was an account problem) → new Execution with `handoff_from`. Mission and task
 states do not change. The user sees "Dashboard implementation is continuing", not "session 19
 has 83k tokens" (spec §17).
+
+**User-session hand-off and resume** (ADR-0023, P11–P12). A user's own session (mode
+`interactive_attached` / `manual`) resumes through its own harness's adapter from what its
+Session recorded — never with another harness's model, effort or defaults. Handing it to another
+harness or account: the user picks the target among installed `interactive` harnesses (the
+source's own harness first); Core renders the hand-off artifact (the checkpoint when the session
+belongs to a mission; transcript-derived when it does not, the stated exception to ADR-0004); the
+target adapter's `handoff()` delivers it through a channel that harness has (a system-prompt
+flag, or an opening message pointing at the artifact — the one channel every supported CLI shares); a new Session records `handoff_from_session_id`; the
+source Session is left as it was; `session.handed_off` is written. `.archeus/injected-context.md`
+is the legacy delivery of this, not the contract.
 
 ## 7. Worktrees and merge-back
 

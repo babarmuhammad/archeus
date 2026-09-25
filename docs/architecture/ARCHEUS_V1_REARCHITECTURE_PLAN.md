@@ -645,8 +645,14 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Depends: P5. New: `knowledge/*` (items, relations, promote, forget, ingest), learning pass
   consumer; meeting import. Decision-candidate extraction from notes is a tool-less structured
   call (§31.4); tests use the scripted brain.
+- The inspection model pass (legacy memory building) and lesson extraction are the first real
+  tool-less calls, so they are harness-generic from their first line (ADR-0022): the adapter
+  `call()`, the pre-router election, native or prompted structured output, Core validation.
+  A project's first COMPLETED inspection queues its initial knowledge pass; the project is
+  usable from its deterministic assessment (P4) and the pass's failure, or its being gated by
+  ADR-0021, never fails the project (the legacy setup job crashed after building memory).
 - Tests: supersession chains, corroboration gating, forget dry-run, idempotent import.
-- Acceptance: S8, S9 pass.
+- Acceptance: S8, S9 pass; K1–K3 (testing-strategy §6).
 
 **P7 — Intent, brain, mission engine**
 - Depends: P6. New: `application/grammar.py`, `missions/intent.py`, `brain/calls.py` (on the
@@ -678,7 +684,11 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   consumer (reusing `usage.fetch_usage`), ledger.
 - Tests: property tests (never exceed ceiling at start, DENY never selected, replay equality),
   fake usage feed scenarios.
-- Acceptance: S3, S4 (routing part), S12 pass.
+- The router replaces ADR-0022's pre-router election for subject `archeus_call`: the user's
+  harness/model choice becomes a preference (or a constraint when marked required), model
+  offers come from each adapter in its own vocabulary, and a call's usage is ledgered against
+  its RouteDecision.
+- Acceptance: S3, S4 (routing part), S12 pass; K1 re-run through the router.
 
 **P11 — Execution orchestrator**
 - Depends: P10. Preparation seam (legacy): move `main.build_launch_command` and its helpers
@@ -689,15 +699,22 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   adapters in the registry.
 - Tests: contract tests on recorded streams; reconciliation with real child processes (a Python
   stub CLI); PID-reuse safety; cooperative pause; stop; e-stop without Core.
+- User sessions (modes `interactive_attached`, `manual`) launch and resume through their own
+  harness's adapter from what their Session recorded (ADR-0023); a pi adapter covers `call()`
+  and user sessions (its tool-using execution stays deferred, `enforcement: none`).
 - Acceptance: S1 and S5 pass against the **real** Claude Code adapter in the opt-in contract
-  suite; G5, G7 pass.
+  suite; G5, G7 pass; R1 (testing-strategy §6).
 - Risks: CLI flag drift → adapters pin tested versions and report `MISCONFIGURED` on mismatch.
 
 **P12 — Session and context continuity**
 - Depends: P11. New: `execution/checkpoint.py`, `execution/handoff.py`.
+- Session hand-off (ADR-0023) beside checkpoint hand-off: a user's session to any installed
+  `interactive` harness, the source Session unchanged, a new Session with
+  `handoff_from_session_id`, a `session.handed_off` event; the artifact is the checkpoint
+  inside a mission and transcript-derived outside one.
 - Tests: pressure from recorded usage, PreCompact backstop, account-change hand-off creates a new
   session, mission state unchanged.
-- Acceptance: S2, S4 (hand-off part) pass.
+- Acceptance: S2, S4 (hand-off part) pass; H1 (testing-strategy §6).
 
 **P13 — Verification and review**
 - Depends: P12. New: `verification/*`, integration (merge-back) machine.
@@ -797,7 +814,7 @@ order, not a staffing plan.
 | Class | What it is | Allowed from | Gate | Account before P10 | Controls |
 |---|---|---|---|---|---|
 | **Fake / scripted** | fake harness subprocess, scripted brain, stub verifier/review | P1 | none — unrestricted for architecture and acceptance testing | n/a | never spawns a real CLI (the test guard in `conftest.py` still blocks real `claude`) |
-| **Tool-less structured call** | one headless `claude -p` (or provider) call with a JSON schema: brain, planner, inspection model pass, decision extraction, review judge | the phase that needs it (P4 optional, P6, P7) | **ADR-0021 must be passed first** | legacy `rotate.elect()` + `quota.reason()`; recorded as a pre-router RouteDecision | only through the P0.5 `llmcall` runner: write tools disallowed (`Write,Edit,NotebookEdit,Bash`), `--max-turns`, budget args, `HEADLESS_MARK`, quota latch on failure |
+| **Tool-less structured call** | one headless call on **any harness declaring `headless`** (ADR-0022), with a JSON schema: brain, planner, inspection model pass, knowledge and lesson extraction, generation, decision extraction, review judge | the phase that needs it (P6, P7) | **ADR-0021 must be passed first** | ADR-0022's pre-router election (the user's choice if installed and `headless`, else Claude Code if installed, else the first installed `headless` harness; for Claude Code the account is legacy `rotate.elect()` + `quota.reason()`); recorded as a pre-router RouteDecision | only through the adapter's `call()` on the P0.5 `llmcall` runner: read-only in the harness's own flags (Claude Code: `--disallowedTools Write,Edit,NotebookEdit,Bash`; pi: `--tools read,grep,find,ls`), ephemeral (no user-visible session: `HEADLESS_MARK` / `--no-session`), `--max-turns` and budget args where the harness has them, quota latch on failure, and Core-side schema validation whether the schema was asked natively or in the prompt |
 | **Tool-using agent execution** | a harness running a task with tools in a workdir | **P11, after P9** | ADR-0021 **and** the real policy engine (the adapter registry refuses real adapters while policy is the stub) | router (P10) | capability removal, policy hook/sandbox, approvals |
 
 Rules:
@@ -814,6 +831,13 @@ Rules:
   up a real adapter early by mistake; it cannot stop code that lies. Whether an action is
   allowed is decided by the P9 Policy engine, with capability removal
   ([execution-architecture.md §2](execution-architecture.md)) as the primary enforcement.
+- That gate is about **tool-using execution**: it refuses a real adapter's `start()` while
+  policy is the stub. A real adapter's `call()` (ADR-0022) is admitted once ADR-0021 is
+  passed, because a tool-less structured call is read-only and ephemeral by construction and
+  is the class P6 and P7 need before P9.
+- The user's harness and model for Archeus's own calls (legacy `headless_harness`,
+  `headless_harness_model`) is a preference for subject `archeus_call`, imported at migration
+  (migration-plan §4) and read by the pre-router election until P10 and by the router after.
 
 ## 32. Risks
 

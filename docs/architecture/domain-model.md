@@ -292,9 +292,11 @@ configured under Resources, not a row.)
 ### 7.5 Session
 Infrastructure. A provider conversation that one or more executions ran inside.
 `harness_id`, `account_id`, `provider_session_ref` (e.g. Claude session UUID), `transcript_path`,
-`started_at`, `last_active_at`, `state` (OPEN / CLOSED / LOST). **A session is bound to its
-account** (a Claude session lives under one config dir), which is why an account change always
-goes through a checkpoint hand-off to a *new* session.
+`started_at`, `last_active_at`, `state` (OPEN / CLOSED / LOST), `model` and `effort` as the
+harness recorded them (in its own vocabulary; what a resume reopens on — ADR-0023),
+`handoff_from_session_id?`. **A session is bound to its account** (a Claude session lives under
+one config dir), which is why an account change always goes through a checkpoint hand-off to a
+*new* session — and a hand-off never changes the source session.
 
 ### 7.6 Checkpoint
 Core-derived mission state for hand-off (execution-architecture §6).
@@ -328,9 +330,12 @@ are immutable; "editing" produces a new artifact.
 ### 8.1 Harness
 A coding-agent runtime. `id` (`claude_code`, `codex`, `pi`, `generic_cli:<name>`),
 `installed_version`, `executable`, `capabilities` (code_edit, shell, web, mcp, long_context,
-structured_output, resume, headless, interactive), `enforcement` (**hook** | **sandbox** |
-**none** — how policy can be enforced inside it; resource-router §3), `state` (AVAILABLE /
-MISSING / MISCONFIGURED). Mirrors today's `harnesses.HARNESSES` descriptors.
+structured_output, resume, headless, interactive), `structured_output` mechanism (**native** |
+**prompted** — ADR-0022), `efforts` (the effort/thinking levels it accepts, its own scale),
+`enforcement` (**hook** | **sandbox** | **none** — how policy can be enforced inside it;
+resource-router §3), `state` (AVAILABLE / MISSING / MISCONFIGURED). Mirrors today's
+`harnesses.HARNESSES` descriptors. A new harness is a new adapter declaring these; no domain
+entity changes.
 
 ### 8.2 Account
 An authenticated instance of a harness: one Claude config dir, one Codex home, one API key.
@@ -349,7 +354,10 @@ An authenticated instance of a harness: one Claude config dir, one Codex home, o
 `Model` is a capability definition independent of accounts: `id` (e.g. `claude-opus-5-5`),
 `family`, `context_window`, `strengths` tags, `tier` (large / mid / small). `ModelOffer` says an
 account can use a model: `(account_id, model_id, available, discovered_at)`. The newest-model-
-following logic of `config.current_model()` / `models.roster()` produces offers.
+following logic of `config.current_model()` / `models.roster()` produces offers for Claude Code;
+every other adapter reports its own (`Capabilities.models`). A model id is **that harness's
+vocabulary** (`claude-opus-5-5`; pi's `provider/id`, locally hosted models included) and is valid
+only as an offer of the account it runs on; tier and context window may be unknown (ADR-0022).
 
 ### 8.4 ResourcePolicy (priority + allocation)
 
@@ -369,9 +377,12 @@ following logic of `config.current_model()` / `models.roster()` produces offers.
 rollout_file). `UsageLedger`: what Archeus itself consumed (`execution_id`, `account_id`,
 `tokens_in`, `tokens_out`, `cache_read`, `cache_write`, `cost_usd?`, `at`). Snapshots are
 *observed truth*; the ledger is *attributable truth*. The router uses both (resource-router §4).
+A row for one of Archeus's own calls, which has no execution, carries its `route_decision_id`
+instead (ADR-0022).
 
 ### 8.6 RouteDecision
-Persisted for every routing call: `subject` (task / brain call / review), `requirements`,
+Persisted for every routing call: `subject` (task / review / `archeus_call` with its `purpose` —
+brain, planner, knowledge extraction, lesson, generation; ADR-0022), `requirements`,
 `candidates[]` each `{resource, eliminated_at_step, reason}`, `selected`, `input_snapshot`
 (usage + age, health, policy version, ledger totals), `policy_decision_id`, `fallback_from?`,
 `explanation` (generated text, derived from the structured fields, never free-authored).

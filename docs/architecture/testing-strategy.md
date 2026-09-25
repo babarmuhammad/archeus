@@ -127,3 +127,18 @@ exist or if a judge test is not listed — the table cannot drift from the suite
   test fails there by the runner's fsync cost, not by a regression. The floor, the writer and the
   WAL/FULL-sync pragmas stay as they are: lowering any of them to make the runner pass would
   measure the runner instead of Archeus.
+
+## 6. Scheduled scenarios (current-product parity, ADR-0022 / ADR-0023)
+
+Required by the 2.8.0 behaviour of the current product (commits `94b90f9`, `26f983b`). Each
+moves into the §2 table, with its strict-xfail judge file, at its phase's design gate — not
+before, so §2 stays exactly what the judge collects. All run on fake harnesses: a second fake
+harness id added without any domain change is how "a new harness needs no new entity" is proven.
+
+| ID | Scenario | Asserts | Phase |
+|---|---|---|---|
+| K1 | Knowledge builds with no Claude Code installed | only a fake `headless` harness is installed → the knowledge pass runs on it; a harness not declaring `headless` is never elected; the user's own-call choice (harness + model) is honoured when installed and capable; the RouteDecision records the election and its rejected candidates | P6 (election), P10 (router) |
+| K2 | Structured extraction across mechanisms | a `native` and a `prompted` adapter both yield items that pass Core's schema validation; invalid prompted output is retried once, then asks (ADR-0006); provenance names harness and model | P6 |
+| K3 | Project setup completes after the knowledge pass | create project → deterministic assessment → initial knowledge pass queued; the project stays usable when the pass fails or is gated by ADR-0021, and its result is counted, never assumed a collection | P6 |
+| R1 | A session resumes on its own harness's configuration | parametrised over two harnesses: the resume argv carries the session's recorded model and effort in that harness's vocabulary, and never another harness's model, effort or defaults | P11 |
+| H1 | Cross-harness session hand-off | parametrised source → target over two harnesses: the artifact carries the required context, the target adapter delivers it, a new Session has `handoff_from_session_id`, the source Session is unchanged, `session.handed_off` is recorded | P12 |

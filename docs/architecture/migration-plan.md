@@ -69,7 +69,9 @@ legacy module as is) · **REPLACE** (V1 has a different design; legacy stays unt
 | `plan_execute.py` (`_plan`, `edit_plan`, `optimize_plan_council`, `build_exec_launch`, `run`) | EXTRACT | prompts, council idea and `build_exec_launch` inform the planner and interactive hand-off; the TUI `run()` and file-based plan are replaced by Mission/Plan/Task | `planning/`, `execution/` |
 | `gui_api` job runtime (`start_job`, `_JOBS`, `_run_cancellable`, `_gate`, `_install_bridge`) | REPLACE | threads + monkeypatched TUI prompts cannot survive restarts, cannot be audited, and tie domain code to UI; V1 uses Executions, Approvals and outbox consumers | `execution`, `policy/approvals` |
 | `memory._claude_stdin` / `_claude_json` (headless structured call, `HEADLESS_MARK`) + the process core of `gui_api._run_cancellable` | EXTRACT (P0.5) | into the UI-free `claude_sessions/llmcall.py`; the legacy functions become wrappers with unchanged behaviour. Core must never import `gui_api`: importing it runs `_install_bridge()`, which monkeypatches `ui` in the importing process | `infra/llm/runner.py` wraps `llmcall`; `brain/calls.py` |
-| `context_inject.py` (cross-account transcript hand-off) | REUSE WITH REFACTOR | injection mechanism reused; payload becomes the Core-derived checkpoint instead of a transcript dump | `execution/handoff.py` |
+| `context_inject.py` (cross-account and, since 2.8.0, cross-harness transcript hand-off) | REUSE WITH REFACTOR | injection mechanism reused; inside a mission the payload becomes the Core-derived checkpoint, outside one it stays transcript-derived (ADR-0023); the target is any installed `interactive` harness | `execution/handoff.py` |
+| `memory.headless_harness`, harness `headless_argv` (pi), `_claude_json`'s prompted-schema branch (2.8.0) | EXTRACT | the harness switch for Archeus's own calls becomes adapter `call()` + the pre-router election (ADR-0022); pi's argv is the pi adapter's `call()` | `harnesses/*`, `infra/llm/runner.py` |
+| `main.build_launch_command`'s drop of another harness's model/effort (2.8.0) | REUSE | the vocabulary rule (ADR-0022) the adapters' `resume` and launch keep | adapters |
 | `checkpoints.py` (read-only file-history view) | REUSE AS-IS | useful evidence in the inspector (what files the session touched) | inspector |
 | `worktrees.py` | REUSE WITH REFACTOR | node-computed paths outside the repo; board logic reused for manual sessions | `node/worktrees.py` |
 | `loops.py` (session loops, OS-scheduled loops) | REPLACE | a loop is an Automation (schedule trigger + mission template) with policy; OS schedulers are replaced by Core's scheduler (autostart keeps Core alive) | `automation` |
@@ -165,6 +167,7 @@ fresh `archeus.db`; re-running updates, never duplicates.
 | Loops registry | Automation (DISABLED; user re-enables under V1 policy) | cron → schedule trigger |
 | Project system prompts, CLAUDE.md user fences (KEEP) | STANDARD knowledge (explicit) | |
 | Launch settings (model, effort, permission mode) | project/global defaults + policy profile suggestion | |
+| Own-call CLI and model (`headless_harness`, `headless_harness_model`, `extract_model`) | `archeus_call` routing preference, global scope (ADR-0022) | a preference, not a constraint, unless the user marks it required |
 | Themes | Appearance thread tint (nearest that passes the ΔE gate) | |
 | Events log (`archeus-events.jsonl`) | not migrated (diagnostic) | |
 
@@ -190,7 +193,11 @@ The legacy app retires when **every** row is checked against the V1 build (the "
 legacy surface — a capability checklist, since behaviour parity with a redesigned product is not
 the goal):
 
-- [ ] launch / resume / fork / attach a session in any project on any account (manual sessions)
+- [ ] launch / resume / fork / attach a session in any project on any account (manual sessions),
+      each harness on its own recorded model and effort (ADR-0023)
+- [ ] hand a session off to any installed harness, the source session left intact (ADR-0023)
+- [ ] memory/knowledge built with only a non-Claude harness installed, on the harness and model
+      the user chose for Archeus's own calls (ADR-0022)
 - [ ] account rotation on limit (router fallback) with notification
 - [ ] usage per account and window visible (Resources)
 - [ ] per-project memory injected into interactive sessions (context package via hook)
