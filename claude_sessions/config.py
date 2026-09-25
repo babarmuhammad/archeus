@@ -315,6 +315,13 @@ _DEFAULT_SETTINGS = {
     #: threads, so moving them to a different model — and a different bill — has
     #: to be asked for once, not inherited from whatever you last launched.
     'headless_provider_id': '',
+    #: which CLI runs those same calls: '' = Claude Code when it is installed,
+    #: otherwise the first installed harness that can (pi) — so a machine with
+    #: only pi and a local model builds memory with nothing to configure.
+    'headless_harness': '',
+    #: the model for that CLI when it is not Claude Code ('' = its own default).
+    #: Separate from extract_model, whose Claude default pi cannot resolve.
+    'headless_harness_model': '',
     'provider_profiles_migrated': False,  # flat keys -> one profile, see migrate_settings
     'provider_keys_migrated': False,      # one-time omniroute_* rename, see migrate_settings
 }

@@ -145,6 +145,8 @@ def _harness_payload():
             'id': hid,
             'label': d['label'],
             'available': bool(harnesses.exe(hid)),
+            # can it run archeus's own headless calls (memory, lessons, gen)
+            'headless': hid == harnesses.DEFAULT or bool(d.get('headless_argv')),
             'homes': [home for h, home in harnesses._homes() if h == hid],
             'caps': {k: list(harnesses.cap(hid, k)) for k in harnesses.CAPS},
         })
@@ -346,6 +348,8 @@ def state_payload():
         'providers': [_public_profile(p) for p in _c.provider_profiles(s)],
         'provider_active': s.get('provider_active', ''),
         'headless_provider_id': s.get('headless_provider_id', ''),
+        'headless_harness': s.get('headless_harness', ''),
+        'headless_harness_model': s.get('headless_harness_model', ''),
         # Which agent CLI each account belongs to, and what that CLI can do.
         # Shipped in the boot payload rather than on its own endpoint: every
         # page needs it before it draws, and a second round trip to learn what

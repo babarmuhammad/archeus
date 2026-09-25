@@ -299,6 +299,15 @@ def launch_argv(exe, choice, opts, cwd):
     return args
 
 
+def headless_argv(exe, model=''):
+    """One of archeus's own calls: print mode, prompt on stdin (pi reads piped
+    stdin), read-only tools — the same fence Claude Code's `--disallowedTools
+    Write,Edit,NotebookEdit,Bash` puts up — and `--no-session`, so memory
+    extraction is not listed back to the user as a session they had."""
+    args = [exe, '-p', '--no-session', '--tools', 'read,grep,find,ls']
+    return args + (['--model', model] if model else [])
+
+
 #: the levels `--thinking` accepts. An effort archeus offers that pi does not
 #: have is dropped rather than rounded — pi then uses its own default, which is
 #: the honest answer to "this CLI does not have that setting".

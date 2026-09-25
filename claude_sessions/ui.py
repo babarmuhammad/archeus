@@ -1106,6 +1106,8 @@ def settings_menu():
             (f"Think cap   :  {think}   {C_DIM}(MAX_THINKING_TOKENS — save tokens){C_RESET}", 'default_max_thinking'),
             (f"Subagent mdl:  {submod}   {C_DIM}(CLAUDE_CODE_SUBAGENT_MODEL){C_RESET}", 'default_subagent_model'),
             (f"Economy mdl :  {xmod}   {C_DIM}(archeus's own memory/gen calls — cuts cost){C_RESET}", 'extract_model'),
+            (f"Own-call CLI:  {s.get('headless_harness') or 'auto'}   {C_DIM}(Claude Code or pi runs those calls){C_RESET}", 'headless_harness'),
+            (f"Own-call mdl:  {s.get('headless_harness_model') or 'default'}   {C_DIM}(model when that CLI is not Claude Code){C_RESET}", 'headless_harness_model'),
             (f"Auto mode   :  {_automode_label()}   {C_DIM}(classifier config, per account){C_RESET}", 'automode'),
             (f"Budget cap  :  {_budget_label(s)}   {C_DIM}(--max-budget-usd on archeus's own calls){C_RESET}", 'headless_budget_usd'),
             (f"Theme       :  {theme}", 'theme'),
@@ -1197,6 +1199,24 @@ def settings_menu():
                         f"{sel.replace('_', ' ').upper()}")
             if pick is not None:
                 s[sel] = '' if pick == '__default__' else pick
+                save_settings(s)
+                flash("Saved")
+        elif sel == 'headless_harness':
+            from . import harnesses as _h
+            hs = [h for h in _h.ids() if h == _h.DEFAULT
+                  or (_h.descriptor(h).get('headless_argv') and _h.exe(h))]
+            pick = menu([('auto  (Claude Code if installed, else pi)', '__auto__')]
+                        + [(_h.descriptor(h)['label'], h) for h in hs],
+                        "CLI FOR ARCHEUS'S OWN CALLS")
+            if pick is not None:
+                s['headless_harness'] = '' if pick == '__auto__' else pick
+                save_settings(s)
+                flash("Saved")
+        elif sel == 'headless_harness_model':
+            v = text_input("Model for that CLI, e.g. provider/model (blank = its default):",
+                           default=s.get('headless_harness_model', ''))
+            if v is not None:
+                s['headless_harness_model'] = v.strip()
                 save_settings(s)
                 flash("Saved")
         elif sel == 'extract_model':

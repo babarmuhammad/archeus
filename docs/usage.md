@@ -80,6 +80,11 @@ archeus's own internal Claude calls (memory extraction, lessons, CLAUDE.md / age
 / skill generation) default to **Haiku** to cut cost, while your actual coding sessions keep
 whatever model you choose. Change it in **⚙ Settings → Economy model** (`extract_model`).
 
+The same card picks **which CLI** runs those calls (`headless_harness`). On *auto* that is
+Claude Code when it is installed, otherwise pi, so a machine with only pi and a local model
+builds memory with nothing to configure. For pi, name the model as pi does, for example
+`provider/model` (`headless_harness_model`), or leave it empty to use pi's own default.
+
 For free execution rather than cheap, see
 [Plan → Execute & OmniRoute](plan-execute.md).
 

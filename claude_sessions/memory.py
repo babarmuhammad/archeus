@@ -446,6 +446,23 @@ def use_account(env):
     return _held()
 
 
+def headless_harness():
+    """Which CLI runs archeus's own calls: the setting when it names one that
+    can, else Claude Code when it is installed, else the first installed
+    harness that can — a machine with only pi builds memory unconfigured."""
+    from . import harnesses as _h
+    from .config import load_settings, get_claude_exe
+    off = _h.disabled()
+    able = [h for h in _h.ids() if h == _h.DEFAULT
+            or (_h.descriptor(h).get('headless_argv') and h not in off)]
+    want = (load_settings().get('headless_harness') or '').strip()
+    if want in able:
+        return want
+    if get_claude_exe():
+        return _h.DEFAULT
+    return next((h for h in able if h != _h.DEFAULT and _h.exe(h)), _h.DEFAULT)
+
+
 def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
                   crumbs=('ARCHEUS', 'MEMORY'), label='Working with Claude...',
                   model=None, extra_args=()):
@@ -469,37 +486,58 @@ def _claude_stdin(prompt, cwd, timeout=EXTRACT_TIMEOUT,
     from .config import get_claude_exe
     from .sessions import HEADLESS_MARK
     last_call_error = ''
-    exe = get_claude_exe()
-    if not exe:
-        last_call_error = 'the claude executable was not found'
-        from . import events
-        events.record('memory', last_call_error)
-        return ''
     prompt = (prompt or '') + '\n\n' + HEADLESS_MARK
-    args = [exe, '-p', '--max-turns', '20', '--disallowedTools', 'Write,Edit,NotebookEdit,Bash']
-    m = extract_model() if model is None else (model or '').strip()
-    try:
-        env, m = _provider_headless(m)
-    except Exception as e:
-        # backend down, gateway refused to start, model not in the catalogue —
-        # all of which are the user's setting being wrong, so say so instead of
-        # silently spending the Anthropic account they routed away from.
-        if not getattr(_tls, 'silent', False):
-            try:
-                from .ui import flash
-                flash(f'Provider unavailable: {e}', ok=False, secs=1.8)
-            except Exception:
-                pass
-        return ''
-    # Not routed: fall back to the account this thread was told to spend. Both
-    # branches below take the same `env`, which is also what gives the
-    # FOREGROUND path an account at all — it used to pass none.
-    if env is None:
-        env = getattr(_tls, 'env', None)
-    if m:
-        args += ['--model', m]
-    args += _budget_args()
-    args += list(extra_args)
+    from . import harnesses as _h
+    hid = headless_harness()
+    if hid != _h.DEFAULT:
+        # Another CLI. `model` and `extra_args` are Claude Code's vocabulary
+        # (an Anthropic id, the JSON-schema flags), so neither is passed on —
+        # the model is the one chosen for this CLI, and `_claude_json` asks for
+        # its shape in the prompt instead.
+        d = _h.descriptor(hid)
+        exe = _h.exe(hid)
+        if not exe:
+            last_call_error = '%s was not found' % d['label']
+            from . import events
+            events.record('memory', last_call_error)
+            return ''
+        from .config import load_settings, account_env
+        m = (load_settings().get('headless_harness_model') or '').strip()
+        args = _h.impl('headless_argv', hid)(exe, m)
+        env = account_env(_h.home_dir(hid))
+    else:
+        exe = get_claude_exe()
+        if not exe:
+            last_call_error = ('the claude executable was not found — install '
+                               'Claude Code or pi, or pick the CLI for '
+                               "archeus's own calls in Settings")
+            from . import events
+            events.record('memory', last_call_error)
+            return ''
+        args = [exe, '-p', '--max-turns', '20', '--disallowedTools', 'Write,Edit,NotebookEdit,Bash']
+        m = extract_model() if model is None else (model or '').strip()
+        try:
+            env, m = _provider_headless(m)
+        except Exception as e:
+            # backend down, gateway refused to start, model not in the catalogue —
+            # all of which are the user's setting being wrong, so say so instead of
+            # silently spending the Anthropic account they routed away from.
+            if not getattr(_tls, 'silent', False):
+                try:
+                    from .ui import flash
+                    flash(f'Provider unavailable: {e}', ok=False, secs=1.8)
+                except Exception:
+                    pass
+            return ''
+        # Not routed: fall back to the account this thread was told to spend. Both
+        # branches below take the same `env`, which is also what gives the
+        # FOREGROUND path an account at all — it used to pass none.
+        if env is None:
+            env = getattr(_tls, 'env', None)
+        if m:
+            args += ['--model', m]
+        args += _budget_args()
+        args += list(extra_args)
     if getattr(_tls, 'silent', False):
         from .gui_api import _run_cancellable
         try:
@@ -548,6 +586,15 @@ def _claude_json(prompt, cwd, schema, **kw):
     """
     global last_call_cost
     last_call_cost = None
+    from .harnesses import DEFAULT
+    if headless_harness() != DEFAULT:
+        # no schema flag outside Claude Code: ask for the shape in words and
+        # take the prose-recovery path that was already the fallback
+        raw = _claude_stdin(
+            prompt + '\n\nAnswer with ONLY one JSON object, no prose and no '
+            'code fence, matching this JSON Schema:\n' + json.dumps(schema),
+            cwd, **kw)
+        return _parse_json(raw) if raw else None
     raw = _claude_stdin(prompt, cwd, extra_args=(
         '--output-format', 'json', '--json-schema', json.dumps(schema)), **kw)
     if not raw:

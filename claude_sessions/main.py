@@ -1097,6 +1097,17 @@ def build_launch_command(path, encoded_name, choice, opts):
         exe = _harnesses.exe(d['id'])
         if not exe:
             raise RuntimeError('%s not found' % d['label'])
+        # Quick resume (GUI and TUI) sends Claude Code's DEFAULT model and
+        # effort. This CLI cannot resolve a bare Claude id — pi answers `Model
+        # "claude-opus-5" is ambiguous across providers` and exits, which is
+        # what "resuming a pi session does nothing" was — and `max`/`ultracode`
+        # are not Codex levels. `provider/id` stays: that is pi's own form.
+        from .sessions import _is_anthropic_model
+        m = opts.get('model') or ''
+        if '/' not in m and _is_anthropic_model(m):
+            opts['model'] = ''
+        if opts.get('effort') not in d['efforts']:
+            opts['effort'] = ''
         argv = _harnesses.impl('launch_argv', d['id'])(exe, choice, opts, path)
         return argv, env, proj_folder
 

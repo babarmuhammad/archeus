@@ -529,3 +529,149 @@ def test_an_exact_id_beats_a_substring_pattern():
              'claude-sonnet-5': {'in': 1.0, 'out': 2.0}}
     rates, known = stats._rates_for('claude-sonnet-5', table)
     assert known and rates['in'] == 1.0            # exact, not the substring
+
+
+# ── a machine with only pi and a local model ─────────────────────────────────
+
+def _settings(sb, **kw):
+    from claude_sessions import config
+    s = dict(config._DEFAULT_SETTINGS)
+    s.update(kw)
+    sb.settings.write_text(json.dumps(s), encoding='utf-8')
+
+
+def test_a_quick_resume_does_not_hand_pi_claude_defaults(monkeypatch, tmp_path):
+    """Quick resume sends Claude Code's default model and effort. pi cannot
+    resolve a bare Claude id (`Model "claude-opus-5" is ambiguous across
+    providers`) and exits, so the session never reopened."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    from claude_sessions import main as main_mod
+    home = pi_home(sb.root, [('s1', 'C:/work/alpha', 1)])
+    args, _env, _f = main_mod.build_launch_command(
+        'C:/work/alpha', 'C--work-alpha', 'resume:s1',
+        {'cfgdir': home, 'effort': 'ultracode', 'model': 'claude-opus-5'})
+    assert '--model' not in args and '--thinking' not in args
+    # pi's own provider/id form is a real choice and survives
+    args, _env, _f = main_mod.build_launch_command(
+        'C:/work/alpha', 'C--work-alpha', 'resume:s1',
+        {'cfgdir': home, 'effort': 'high', 'model': 'spark/qwen3.8'})
+    assert args[args.index('--model') + 1] == 'spark/qwen3.8'
+    assert args[args.index('--thinking') + 1] == 'high'
+
+
+def _headless(monkeypatch, fn, *a, **kw):
+    from claude_sessions import memory, gui_api
+    seen = {}
+
+    def fake(args, **k):
+        seen['args'], seen['input'], seen['env'] = args, k.get('input_text'), k.get('env')
+        return seen.get('reply', '')
+    monkeypatch.setattr(gui_api, '_run_cancellable', fake)
+    memory._tls.silent = True
+    try:
+        seen['out'] = fn(*a, **kw)
+    finally:
+        memory._tls.silent = False
+    return seen
+
+
+def test_memory_runs_on_pi_when_claude_is_not_installed(monkeypatch, tmp_path):
+    sb = Sandbox(monkeypatch, tmp_path)
+    from claude_sessions import config, memory
+    home = pi_home(sb.root)
+    monkeypatch.setattr(config, 'get_claude_exe', lambda: None)
+    _settings(sb, headless_harness_model='spark/qwen3.8')
+    assert memory.headless_harness() == 'pi'
+    seen = _headless(monkeypatch, memory._claude_stdin, 'hello', cwd='.',
+                     model='claude-haiku-4-5', extra_args=('--json-schema', '{}'))
+    args = seen['args']
+    assert os.path.basename(args[0]).startswith('pi')
+    assert args[1:] == ['-p', '--no-session', '--tools', 'read,grep,find,ls',
+                        '--model', 'spark/qwen3.8']
+    assert seen['input'].startswith('hello')
+    assert seen['env']['PI_CODING_AGENT_DIR'] == home
+
+
+def test_an_explicit_choice_beats_an_installed_claude(monkeypatch, tmp_path):
+    sb = Sandbox(monkeypatch, tmp_path)
+    from claude_sessions import config, memory
+    pi_home(sb.root)
+    monkeypatch.setattr(config, 'get_claude_exe', lambda: r'C:\fake\claude.exe')
+    assert memory.headless_harness() == 'claude'
+    _settings(sb, headless_harness='pi')
+    assert memory.headless_harness() == 'pi'
+
+
+def test_nothing_installed_says_so(monkeypatch, tmp_path):
+    sb = Sandbox(monkeypatch, tmp_path)
+    from claude_sessions import config, memory
+    monkeypatch.setattr(config, 'get_claude_exe', lambda: None)
+    monkeypatch.setattr(harnesses, 'exe', lambda hid=None: None)
+    _settings(sb, headless_harness='pi')
+    seen = _headless(monkeypatch, memory._claude_stdin, 'hello', cwd='.')
+    assert seen['out'] == '' and 'args' not in seen
+    assert 'pi' in memory.why_failed()
+
+
+def test_structured_calls_on_pi_ask_for_the_shape_in_words(monkeypatch, tmp_path):
+    sb = Sandbox(monkeypatch, tmp_path)
+    from claude_sessions import config, memory, gui_api
+    pi_home(sb.root)
+    monkeypatch.setattr(config, 'get_claude_exe', lambda: None)
+    _settings(sb)
+    sent = {}
+    monkeypatch.setattr(gui_api, '_run_cancellable', lambda args, **k: (
+        sent.update(args=args, prompt=k['input_text']),
+        'Here you go:\n{"entities": [{"name": "x"}]}')[1])
+    memory._tls.silent = True
+    try:
+        got = memory._claude_json('extract', '.', {'type': 'object', 'title': 'GRAPH'})
+    finally:
+        memory._tls.silent = False
+    assert got == {'entities': [{'name': 'x'}]}
+    assert '"title": "GRAPH"' in sent['prompt']
+    assert '--json-schema' not in sent['args']
+
+
+def test_a_hand_off_to_pi_launches_pi_with_the_pointer(monkeypatch, tmp_path):
+    sb = Sandbox(monkeypatch, tmp_path)
+    from claude_sessions import config, gui_api, proc
+    from claude_sessions.paths import encode_component
+    from harness import make_jsonl
+    home = pi_home(sb.root)
+    actual = str(tmp_path / 'work' / 'alpha')
+    os.makedirs(actual, exist_ok=True)
+    enc = encode_component(actual)
+    folder = os.path.join(str(sb.projects), enc)
+    os.makedirs(folder, exist_ok=True)
+    sid = 'aaaa0000-0000-0000-0000-000000000000'
+    make_jsonl(os.path.join(folder, sid + '.jsonl'), title='Fix the bug')
+    monkeypatch.setattr(config, 'get_claude_exe', lambda: None)
+    spawned = []
+    monkeypatch.setattr(proc, 'spawn_terminal',
+                        lambda args, **k: (spawned.append((args, k)), (object(), ''))[1])
+    r = gui_api.api_inject_launch({}, {'path': actual, 'enc': enc, 'cfgdir': str(sb.cfg),
+                                       'sid': sid, 'account': 'default',
+                                       'target_cfgdir': home})
+    assert r == {'ok': True}
+    args, k = spawned[0]
+    assert os.path.basename(args[0]).startswith('pi')
+    assert args[-2] == '--' and 'injected-context.md' in args[-1]
+    assert k['env']['PI_CODING_AGENT_DIR'] == home
+    assert os.path.isfile(os.path.join(actual, '.archeus', 'injected-context.md'))
+
+
+def test_project_setup_reports_a_count_not_a_crash(monkeypatch, tmp_path):
+    """`_memfn` already counts the entities; `len()` of that int was the
+    `TypeError: object of type 'int' has no len()` the setup job died on."""
+    Sandbox(monkeypatch, tmp_path)
+    from claude_sessions import gui_api, memory, claude_md
+    monkeypatch.setattr(claude_md, 'scaffold_claude_md', lambda p, f: True)
+    monkeypatch.setattr(memory, 'refresh_memory',
+                        lambda p, f, n: {'entities': [{'name': 'a'}, {'name': 'b'}]})
+    ran = {}
+    monkeypatch.setattr(gui_api, 'start_job',
+                        lambda label, fn: ran.setdefault('r', fn()) and 'j1')
+    gui_api.api_job_start({}, {'kind': 'project_setup', 'path': str(tmp_path),
+                               'folder': str(tmp_path), 'name': 'p'})
+    assert ran['r'] == {'claude_md': True, 'entities': 2}
