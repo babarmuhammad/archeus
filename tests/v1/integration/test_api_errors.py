@@ -10,7 +10,9 @@ import pytest
 
 from archeus.api import routes
 from archeus.core.application import errors
+from archeus.core.engine import SETTLED
 from v1.judge.http import SSEClient, request
+from v1.judge.support import wait_for
 
 
 def _err(r):
@@ -40,9 +42,13 @@ def test_client_mistakes_are_typed_4xx(tc):
         assert _err(tc.http(method, path)) == want, path
     r = tc.http('GET', '/v1/missions?state=NOPE')
     assert _err(r)[:2] == (400, 'invalid_request')
+    # the engine drives the mission meanwhile, and `from` is its state when the
+    # command ran: refuse from a settled state, which nothing moves (PAUSED
+    # excepted: resume is legal there)
+    settled = wait_for(lambda: (s := _state(tc, mid)) in SETTLED and s != 'PAUSED' and s)
     r = tc.http('POST', '/v1/missions/%s/resume' % mid, body={'idempotency_key': 'r'})
     assert _err(r) == (422, 'invalid_transition', {
-        'machine': 'mission', 'from': _state(tc, mid), 'to': 'RESUMED', 'trigger': 'resume'})
+        'machine': 'mission', 'from': settled, 'to': 'RESUMED', 'trigger': 'resume'})
     r = tc.http('POST', '/v1/devices/dvc_nope/revoke', body={'idempotency_key': 'v'})
     assert _err(r)[:2] == (404, 'not_found')
 
