@@ -87,6 +87,9 @@ def wait_for(fn, timeout=30.0, interval=0.05):
         if got:
             return got
         if idle is not None and idle():
+            got = fn()      # read before idle(): what finished in between shows only now
+            if got:
+                return got
             raise NotImplementedError('waiting for %s, but nothing in this Core advances '
                                       'state on its own yet' % getattr(fn, '__name__', fn))
         if time.monotonic() > deadline:
