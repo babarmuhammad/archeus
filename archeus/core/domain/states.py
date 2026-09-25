@@ -273,7 +273,11 @@ _EDGES = {
     'architecture': (
         (_S, 'UNKNOWN', None),
         ('UNKNOWN', 'CONSISTENT', 'first_inspection'),
+        ('UNKNOWN', 'DRIFTED', 'first_inspection_drift'),
         ('CONSISTENT', 'STALE', 'revision_moved'),
+        ('DRIFTED', 'STALE', 'revision_moved'),
+        ('CONSISTENT', 'STALE', 'constraints_changed'),
+        ('DRIFTED', 'STALE', 'constraints_changed'),
         ('STALE', 'CONSISTENT', 'reinspected_no_drift'),
         ('STALE', 'DRIFTED', 'reinspected_drift'),
         ('DRIFTED', 'CONSISTENT', 'architecture_updated'),
@@ -329,6 +333,9 @@ _GUARDED = {
                 'task_failed_retryable', 'unrecoverable', 'verification_failed',
                 'redispatch', 'accepted'},
     'approval': {'approve'},
+    # an assessment is taken only as far as the findings it records allow
+    'architecture': {'first_inspection', 'first_inspection_drift', 'reinspected_no_drift',
+                     'reinspected_drift'},
 }
 
 TABLE = tuple(

@@ -145,6 +145,34 @@ class Tx:
         self.mutated = True
         return rows.Row(entity, 1, self.now, self.now, actor.id, actor.id)
 
+    def update(self, cls, entity_id, fields, *, actor, expected_version=None):
+        """Change fields of an entity row other than its id and its state
+        (version + 1). State moves only along an edge (`transition`); this is
+        for what is not a lifecycle — a stateless entity's cursor. The caller
+        appends the event that records it, as for every mutation."""
+        row = self.get(cls, entity_id)
+        if row is None:
+            raise NotFound(entity_id)
+        if expected_version is not None and expected_version != row.version:
+            raise VersionConflict(entity_id, expected_version, row.version)
+        forbidden = {'id'} | ({cls._STATE[0]} if cls._STATE else set())
+        if set(fields) & forbidden:
+            raise ValueError('update may not set the id or the state; an edge does')
+        entity = dataclasses.replace(row.entity, **fields)
+        name = rows.table(cls)
+        promoted, body = rows.encode(entity, rows.columns(self.conn, name))
+        promoted.pop('id')
+        sets = dict(promoted, body=body, updated_at=self.now, updated_by=actor.id)
+        cur = self.conn.execute(
+            'UPDATE %s SET %s, version = version + 1 WHERE id = ? AND version = ?' % (
+                name, ', '.join('%s = ?' % c for c in sets)),
+            (*sets.values(), entity_id, row.version))
+        if cur.rowcount != 1:                    # unreachable with one writer
+            raise VersionConflict(entity_id, row.version, None)
+        self.mutated = True
+        return rows.Row(entity, row.version + 1, row.created_at, self.now, row.created_by,
+                        actor.id)
+
     def append(self, event):
         """Record an event; SQLite assigns its seq. Returns the event with it."""
         if event.seq is not None:

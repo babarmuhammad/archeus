@@ -154,7 +154,7 @@ columns, `state` (ACTIVE | ARCHIVED unless noted), `version`, timestamps.
 | **Organization** | A company/team the user deals with. | `kind` (employer, client, community) |
 | **Person** | Someone relevant to projects. | `organization_id?`, `handles` (json: email, github), `role`. Contact data is optional and never sent to a model unless a mission needs it (policy class `personal_data`). |
 | **Project** | The main unit of work. Replaces today's "project = Claude Code project folder". | `root_paths[]` (a project can span several dirs), `legacy_enc[]` (today's encoded folder names, for migration), `status_line` (one sentence of current state, maintained by Archeus), `health` (on_track / at_risk / blocked / idle), `priority` |
-| **Repository** | A git repository belonging to a project. | `path`, `remote_url`, `kind` (repo / submodule / worktree — the `.git` gitdir classifier from `repos.py`), `default_branch`, `last_inspection_id` |
+| **Repository** | A git repository belonging to a project. | `path`, `path_key` (its real, case-folded path: unique per workspace), `remote_url`, `kind` (repo / submodule / worktree — the `.git` gitdir classifier from `repos.py`), `default_branch`, `last_inspection_id`, and the current drift assessment: `last_revision`, `findings[]`, `evaluated_against` (the constraint-set token) and `evaluated_constraints[]` (knowledge item id, version) — an assessment is state, so it lives here and not on an inspection |
 | **RepositoryInspection** | One inspection of a repository at a revision ("Codebase" in the spec is *a repository at a revision*, i.e. this row). | `revision` (HEAD SHA), `inspected_at`, `languages`, `frameworks`, `dependencies`, `docs[]`, `agent_config` (CLAUDE.md/AGENTS.md/.claude), `modules` (from `connections.build_hierarchy`), `test_commands`, `build_commands`, `findings[]`, `confidence`, `diff_from_previous` |
 | **System** | A running thing a project owns (service, DB, deployment target). | `kind`, `environment` (dev/staging/prod — drives policy), `endpoints` |
 | **Idea** | A captured, not-yet-committed thought. First-class so it can be explored before becoming work. | `text`, `state` (Idea machine), `explorations[]` (artifact ids), `promoted_mission_id?` |
@@ -171,7 +171,8 @@ columns, `state` (ACTIVE | ARCHIVED unless noted), `version`, timestamps.
 |---|---|
 | `id`, `workspace_id`, `project_id?` | scope; `scope_level` derived: global / workspace / project / module |
 | `type` | FACT, DECISION, LESSON, PREFERENCE, STANDARD, ARCHITECTURE, REFERENCE, ENTITY (a code/world entity summary imported from the memory graph) |
-| `title`, `body` | body ≤ 2 KB; longer material is an artifact referenced by `artifact_id` |
+| `title`, `body` | body ≤ 2 KB; longer material is an artifact referenced by `artifact_id`. The entity field is named `text`: `body` is the row codec's JSON column (resolved when P4 persisted the table) |
+| `constraint` | `{kind, spec}` on an ARCHITECTURE or DECISION item that declares a checkable architecture constraint (context-and-knowledge §6); `null` for prose |
 | `origin` | explicit (user said it) / inferred |
 | provenance | `source_kind`, `source_ref`, `observed_at`, `confidence` |
 | `state` | CANDIDATE → CONFIRMED → SUPERSEDED / RETRACTED / EXPIRED (see state-machines §11) |

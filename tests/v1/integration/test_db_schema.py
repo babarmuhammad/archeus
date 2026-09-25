@@ -125,11 +125,13 @@ def test_only_two_modules_open_sqlite_and_only_writer_commands_write_sql():
 
 def test_a_fresh_database_reaches_the_current_schema(db):
     with db.read() as r:
-        assert migrate.version(r) == migrate.migrations()[-1][0] == 2
+        assert migrate.version(r) == migrate.migrations()[-1][0] == 3
         tables = {x[0] for x in r.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {'principals', 'devices', 'tokens', 'missions', 'events', 'consumer_cursors',
             'consumer_effects', 'idempotency_keys',
-            'plans', 'tasks', 'executions', 'verifications', 'reviews'} <= tables
+            'plans', 'tasks', 'executions', 'verifications', 'reviews',
+            'users', 'projects', 'repositories', 'repository_inspections',
+            'knowledge_items'} <= tables
 
 
 def test_every_persisted_entity_table_has_the_row_shape(db):
@@ -146,14 +148,13 @@ def test_every_persisted_entity_table_has_the_row_shape(db):
 def test_no_entity_field_can_collide_with_row_metadata():
     """Checked for EVERY entity, not only the persisted ones, so a clash is
     found before the entity gets a table (Plan's own number is `plan_version`).
-    One clash is known and must be resolved by the phase that persists it —
-    `rows.encode` refuses to write it until then."""
+    The one known clash, KnowledgeItem's `body`, was resolved when P4 gave it
+    a table: the field is `text` (domain-model §5.1)."""
     from archeus.core.domain import entities
-    known = {'KnowledgeItem': {'body'}}          # its text vs the codec's body column
     clashes = {cls.__name__: set(cls.__dataclass_fields__) & (set(rows.META) | {'body'})
                for cls in entities.ENTITIES}
-    assert {k: v for k, v in clashes.items() if v} == known
-    assert entities.KnowledgeItem not in rows.TABLES
+    assert {k: v for k, v in clashes.items() if v} == {}
+    assert entities.KnowledgeItem in rows.TABLES
     assert 'plan_version' in entities.Plan.__dataclass_fields__
 
 

@@ -24,6 +24,12 @@ TABLES = {
     entities.Execution: 'executions',
     entities.Verification: 'verifications',
     entities.Review: 'reviews',
+    entities.User: 'users',
+    entities.Project: 'projects',
+    entities.Repository: 'repositories',
+    entities.RepositoryInspection: 'repository_inspections',
+    entities.KnowledgeItem: 'knowledge_items',
+    entities.Artifact: 'artifacts',
 }
 
 #: Row metadata, never entity fields: optimistic-concurrency version, timestamps,

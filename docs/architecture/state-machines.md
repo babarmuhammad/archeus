@@ -494,7 +494,11 @@ stateDiagram-v2
 stateDiagram-v2
     [*] --> UNKNOWN
     UNKNOWN --> CONSISTENT: first_inspection
+    UNKNOWN --> DRIFTED: first_inspection_drift
     CONSISTENT --> STALE: revision_moved
+    DRIFTED --> STALE: revision_moved
+    CONSISTENT --> STALE: constraints_changed
+    DRIFTED --> STALE: constraints_changed
     STALE --> CONSISTENT: reinspected_no_drift
     STALE --> DRIFTED: reinspected_drift
     DRIFTED --> CONSISTENT: architecture_updated
@@ -504,10 +508,19 @@ stateDiagram-v2
 
 The second machine is `Repository.architecture_state`. `revision_moved`: HEAD SHA differs from
 the last inspection's `revision` (checked cheaply from `.git/HEAD`, as `statusline` already
-does). `reinspected_drift`: the new inspection's module graph or dependency set violates a
-CONFIRMED ARCHITECTURE/DECISION item (context-and-knowledge §6). The drift proposal lands in
-Attention with three actions: update the architecture knowledge, accept as intended change, or
-create a mission to fix the code.
+does). `constraints_changed`: a constraint was declared for the repository's project, so the
+current assessment was made against a different set. `reinspected_drift`: the new inspection's
+module graph or dependency set violates a CONFIRMED ARCHITECTURE/DECISION item
+(context-and-knowledge §6). A drifted repository is left by a fix (`revision_moved`, then a
+clean re-inspection) as well as by the drift proposal, which lands in Attention with three
+actions: update the architecture knowledge, accept as intended change, or create a mission to
+fix the code (P6; not fired before).
+
+The four assessment edges (`first_inspection`, `first_inspection_drift`,
+`reinspected_no_drift`, `reinspected_drift`) are guarded (p4-design-gate §5): each is taken
+only on a COMPLETED inspection of this repository (whose revision is the one recorded), and only
+when its findings say what the edge says — so no path can record drift that the findings do not
+show, or its absence when they do.
 
 ---
 

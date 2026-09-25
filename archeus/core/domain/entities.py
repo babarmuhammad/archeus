@@ -123,8 +123,10 @@ def entity(cls):
 class User(Entity):
     _ID = 'user'
     _TEXT = ('display_name',)
+    _NONNEG = ('last_ack_event_seq',)
     id: str
     display_name: str
+    last_ack_event_seq: int = 0
 
 
 @entity
@@ -198,35 +200,77 @@ class Person(Entity):
 class Project(Entity):
     _ID = 'project'
     _TEXT = ('name',)
+    _CHOICES = {'state': ('ACTIVE', 'ARCHIVED')}
     id: str
     workspace_id: str
     name: str
     root_paths: tuple = ()
+    state: str = 'ACTIVE'
 
 
 @entity
 class Repository(Entity):
+    """A git working tree of a project. `path_key` is its identity on this
+    machine (the real, case-folded path). The drift assessment is current
+    state, so it lives here, not on an inspection: `findings` were evaluated
+    against exactly `evaluated_constraints` (knowledge item id, version) on the
+    observation `last_inspection_id` of revision `last_revision`, and the
+    `architecture` machine's guards bind the state to those findings."""
     _ID = 'repository'
     _STATE = ('architecture_state', 'architecture')
-    _TEXT = ('path',)
+    _TEXT = ('path', 'path_key')
     _CHOICES = {'kind': ('repo', 'submodule', 'worktree')}
+    _REFS = {'last_inspection_id': 'repository_inspection'}
     id: str
     workspace_id: str
     project_id: str
     path: str
+    path_key: str
     kind: str = 'repo'
     architecture_state: str = None
+    last_inspection_id: str = None
+    last_revision: str = None
+    default_branch: str = None
+    findings: tuple = ()
+    evaluated_against: str = None
+    evaluated_constraints: tuple = ()
 
 
 @entity
 class RepositoryInspection(Entity):
+    """One observation of one repository at one revision by one extractor
+    version (domain-model §4). The module graph and dependencies it read are
+    the artifact `payload_sha256`; the row keeps what a query shows. `attempts`
+    counts the failures that count against the retry cap (p4-design-gate §11)."""
     _ID = 'repository_inspection'
     _STATE = ('state', 'repository_inspection')
     _REFS = {'repository_id': 'repository'}
+    _NONNEG = ('extractor_version', 'attempts')
     id: str
     repository_id: str
+    extractor_version: int
     revision: str = None
     state: str = None
+    attempts: int = 0
+    inspected_at: str = None
+    dirty: bool = None
+    complete: bool = None
+    languages: tuple = ()
+    dependencies: tuple = ()
+    frameworks: tuple = ()
+    docs: tuple = ()
+    agent_config: tuple = ()
+    test_commands: tuple = ()
+    build_commands: tuple = ()
+    notes: tuple = ()
+    payload_sha256: str = None
+    diff_from_previous: dict = None
+    failure: str = None
+    failed_at: str = None
+
+    def _check(self):
+        if self.payload_sha256 is not None and not _HEX64.fullmatch(self.payload_sha256):
+            raise ValueError('payload_sha256 is a sha256 hex digest')
 
 
 @entity
@@ -299,16 +343,70 @@ class KnowledgeItem(Entity):
     workspace_id: str
     type: str
     title: str
-    body: str = ''
+    text: str = ''          # domain-model's `body`: that name is the row codec's column
     origin: str = 'inferred'
     project_id: str = None
     supersedes_id: str = None
     state: str = None
+    constraint: dict = None
 
     def _check(self):
-        if len(self.body.encode('utf-8')) > BODY_MAX_BYTES:
-            raise ValueError('knowledge body is over %d bytes; longer material is an '
+        if len(self.text.encode('utf-8')) > BODY_MAX_BYTES:
+            raise ValueError('knowledge text is over %d bytes; longer material is an '
                              'artifact' % BODY_MAX_BYTES)
+        if self.constraint is not None:
+            if self.type not in ('ARCHITECTURE', 'DECISION'):
+                raise ValueError('only an ARCHITECTURE or DECISION item carries a constraint')
+            check_constraint(self.constraint)
+
+
+#: The checkable constraint kinds (context-and-knowledge §6). `doc_matches_code`
+#: is accepted and reported as uncheckable: it has no deterministic definition.
+CONSTRAINT_SPECS = {
+    'forbid_dependency': {'from': str, 'to': str},
+    'require_layering': {'layers': list},
+    'module_exists': {'path': str},
+    'framework_pinned': {'package': str, 'version': (str, type(None))},
+    'doc_matches_code': {'doc': str, 'code': str},
+}
+
+
+def check_glob(pattern):
+    """A repository-relative, `/`-separated pattern that cannot leave the
+    repository: no drive, no leading `/`, no backslash, no `..` segment."""
+    if not (isinstance(pattern, str) and pattern.strip()):
+        raise ValueError('a path pattern is a non-empty string')
+    if (pattern.startswith('/') or '\\' in pattern or re.match(r'[A-Za-z]:', pattern)
+            or '..' in pattern.split('/')):
+        raise ValueError('%r must be relative to the repository, with / separators and '
+                         'no ..' % pattern)
+
+
+def check_constraint(c):
+    """`{kind, spec}`: a known kind and exactly its spec keys, typed."""
+    if not isinstance(c, dict) or set(c) != {'kind', 'spec'}:
+        raise ValueError('a constraint is {kind, spec}')
+    want = CONSTRAINT_SPECS.get(c['kind'])
+    if want is None:
+        raise ValueError('unknown constraint kind %r (known: %s)'
+                         % (c['kind'], ', '.join(CONSTRAINT_SPECS)))
+    spec = c['spec']
+    required = {k for k, t in want.items() if not (isinstance(t, tuple) and type(None) in t)}
+    if not isinstance(spec, dict) or not required <= set(spec) <= set(want):
+        raise ValueError('a %s spec has exactly %s' % (c['kind'], ', '.join(sorted(want))))
+    for k, t in want.items():
+        if k in spec and not isinstance(spec[k], t):
+            raise ValueError('%s.%s has the wrong type' % (c['kind'], k))
+    if c['kind'] == 'require_layering':
+        if len(spec['layers']) < 2:
+            raise ValueError('require_layering needs at least two layers')
+        for g in spec['layers']:
+            check_glob(g)
+    for k in ('from', 'to', 'path', 'doc', 'code'):
+        if k in spec:
+            check_glob(spec[k])
+    if c['kind'] == 'framework_pinned' and not spec['package'].strip():
+        raise ValueError('framework_pinned needs a package name')
 
 
 @entity

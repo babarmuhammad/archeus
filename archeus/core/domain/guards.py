@@ -235,6 +235,53 @@ def approve(approval, f):
     return _r('approve', True, 'approved by a user device for this exact action')
 
 
+# ── architecture (state-machines §10) ───────────────────────────────────────
+
+@dataclass(frozen=True)
+class ArchitectureFacts:
+    """The assessment a repository is being moved to: the inspection it was
+    evaluated on (whose repository, in which state) and whether any finding is
+    `violated`. The revision recorded is that inspection's own, so it cannot
+    disagree with it. Gathered from the rows inside the moving transaction."""
+    inspection_repository_id: str = None
+    inspection_state: str = None
+    violated: bool = None
+
+    @classmethod
+    def of(cls, inspection, violated):
+        return cls(inspection.repository_id, inspection.state, violated)
+
+
+def _assessed(name, repo, f, drift):
+    if f.inspection_repository_id != repo.id:
+        return _r(name, False, 'the assessment is not of an inspection of this repository')
+    if f.inspection_state != 'COMPLETED':
+        return _r(name, False, 'the inspection it rests on is %s, not COMPLETED'
+                  % f.inspection_state)
+    if f.violated is None:
+        return _r(name, False, 'no findings were evaluated')
+    if f.violated != drift:
+        return _r(name, False, 'a constraint is violated' if f.violated
+                  else 'no constraint is violated')
+    return _r(name, True, 'constraints violated' if drift else 'no constraint violated')
+
+
+def first_inspection(repo, f):
+    return _assessed('first_inspection', repo, f, False)
+
+
+def first_inspection_drift(repo, f):
+    return _assessed('first_inspection_drift', repo, f, True)
+
+
+def reinspected_no_drift(repo, f):
+    return _assessed('reinspected_no_drift', repo, f, False)
+
+
+def reinspected_drift(repo, f):
+    return _assessed('reinspected_drift', repo, f, True)
+
+
 #: (machine, trigger) -> guard. Exactly the guarded edges of states.TABLE.
 GUARDS = {
     ('mission', 'plan_auto_approved'): plan_auto_approved,
@@ -249,6 +296,10 @@ GUARDS = {
     ('mission', 'redispatch'): redispatch,
     ('mission', 'accepted'): accepted,
     ('approval', 'approve'): approve,
+    ('architecture', 'first_inspection'): first_inspection,
+    ('architecture', 'first_inspection_drift'): first_inspection_drift,
+    ('architecture', 'reinspected_no_drift'): reinspected_no_drift,
+    ('architecture', 'reinspected_drift'): reinspected_drift,
 }
 
 
