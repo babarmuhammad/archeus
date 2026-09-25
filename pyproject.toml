@@ -93,6 +93,7 @@ packages = [
     "archeus.cli",
     "archeus.core",
     "archeus.core.application",
+    "archeus.core.context",
     "archeus.core.domain",
     "archeus.core.world",
     "archeus.harnesses",
@@ -100,6 +101,7 @@ packages = [
     "archeus.infra.artifacts",
     "archeus.infra.db",
     "archeus.infra.eventlog",
+    "archeus.infra.search",
 ]
 
 [tool.setuptools.package-data]

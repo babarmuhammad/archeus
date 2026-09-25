@@ -118,14 +118,21 @@ P4 = {
     ('GET', '/v1/digest', 'observe', None), ('POST', '/v1/digest/ack', 'control', None),
 }
 
+#: P5's rows (p5-design-gate §6): a read and a preview that writes nothing, so
+#: both are observe and neither takes an idempotency key.
+P5 = {
+    ('GET', '/v1/context/{id}', 'observe', None),
+    ('POST', '/v1/context/preview', 'observe', None),
+}
 
-def test_the_route_table_is_exactly_the_p35b_and_p4_tables():
+
+def test_the_route_table_is_exactly_the_p35b_p4_and_p5_tables():
     """L2: nothing from P9 (approve), P10 (route), P11 (executions, stop,
     estop, hooks), P15 (pair, device list) or P16 (/v1/now, the execution
     stream) — a later phase adds its rows with its own tests."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
-    assert got == EXPECTED | P4
-    assert len(routes.ROUTES) == len(EXPECTED | P4)
+    assert got == EXPECTED | P4 | P5
+    assert len(routes.ROUTES) == len(EXPECTED | P4 | P5)
     for word in ('approv', 'route', 'execution', 'estop', 'stop', 'pair', 'now', 'hook',
                  'cancel', 'accept', 'account', 'graph', 'knowledge', 'attention'):
         assert not [r.path for r in routes.ROUTES if word in r.path], word

@@ -13,6 +13,7 @@ stub port without touching a caller.
 from dataclasses import replace
 
 from ...infra.db import rows
+from ..context import assemble as context
 from ..domain import entities, guards, ids, states
 from ..domain.actions import Action
 from ..domain.events import new_event
@@ -227,6 +228,26 @@ class Missions:
         row, e = self._fire(tx, mission_id, trigger, actor=actor, reason=reason,
                             expected_version=expected_version)
         return _result(row, [e])
+
+    def context_ready(self, tx, *, actor, mission_id, expected_version=None):
+        """CONTEXT_GATHERING -> REASONING with the mission's context package
+        (P5). Assembled from this transaction's own snapshot, so the package
+        says exactly what the rows said when it was recorded; inserted once and
+        never edited; linked from the mission in the same move."""
+        body = context.assemble(tx.conn, 'mission', mission_id)
+        pkg = entities.ContextPackage(id=ids.new_id('context_package'), **body)
+        tx.insert(pkg, actor=actor)
+        tx.append(new_event('context_package.created', Ref('context_package', pkg.id), actor,
+                            payload={'subject': {'kind': 'mission', 'id': mission_id},
+                                     'items': len(pkg.items),
+                                     'used_tokens': pkg.budget['used_tokens']},
+                            workspace=pkg.workspace_id, project=pkg.project_id))
+        row, e = self._fire(tx, mission_id, 'context_ready', actor=actor,
+                            reason='context package %s assembled (%d items)' % (
+                                pkg.id, len(pkg.items)),
+                            expected_version=expected_version,
+                            extra={'context_package_id': pkg.id})
+        return dict(_result(row, [e]), context_package_id=pkg.id)
 
     def reasoned(self, tx, *, actor, mission_id, reason, success_criteria=None):
         """REASONING -> PLANNING with the plan just proposed; a mission without

@@ -32,6 +32,83 @@ export interface ConstraintDeclared {
   stale: string[];
 }
 
+export interface ContextBudget {
+  limit_tokens: number;
+  used_tokens: number;
+  levels: Record<string, unknown>;
+}
+
+export interface ContextConflict {
+  items: string[];
+  preferred: string;
+  kind: string;
+  reason: string;
+}
+
+export interface ContextExcluded {
+  ref: ContextRef;
+  level: 'L0' | 'L1' | 'L2' | 'L3' | 'L4';
+  freshness: 'current' | 'stale' | 'superseded';
+  reason: string;
+}
+
+export interface ContextItem {
+  ref: ContextRef;
+  level: 'L0' | 'L1' | 'L2' | 'L3' | 'L4';
+  store: 'state' | 'knowledge' | 'history';
+  type: string;
+  source_kind: string;
+  source_ref: string;
+  observed_at: string | null;
+  freshness: 'current' | 'stale';
+  relevance: number;
+  signals: Record<string, unknown>;
+  reason: string;
+  tokens: number;
+  conflicts_with: string[];
+}
+
+export interface ContextPackage {
+  id: string;
+  version: number;
+  created_at: string;
+  subject_kind: string;
+  subject_id: string;
+  as_of_seq: number;
+  budget: ContextBudget;
+  items: ContextItem[];
+  excluded: ContextExcluded[];
+  conflicts: ContextConflict[];
+  [field: string]: unknown;
+}
+
+export interface ContextPreview {
+  subject_kind: 'mission' | 'project';
+  subject_id: string;
+  workspace_id: string;
+  project_id: string | null;
+  as_of_seq: number;
+  as_of_at: string | null;
+  query: string;
+  levels: Array<'L0' | 'L1' | 'L2' | 'L3' | 'L4'>;
+  budget: ContextBudget;
+  scoring: Record<string, unknown>;
+  items: ContextItem[];
+  excluded: ContextExcluded[];
+  conflicts: ContextConflict[];
+  assumptions: string[];
+  missing_information: string[];
+  [field: string]: unknown;
+}
+
+export interface ContextRef {
+  kind: string;
+  id: string;
+  version?: number;
+  seq?: number;
+  [field: string]: unknown;
+}
+
 export interface Created {
   id: string;
   state: string;
@@ -280,6 +357,16 @@ export interface AckDigestRequest {
   up_to_seq: number;
 }
 
+export interface PreviewContextRequest {
+  subject: {
+    kind: 'mission' | 'project';
+    id: string;
+  };
+  query?: string | null;
+  levels?: Array<'L0' | 'L1' | 'L2' | 'L3' | 'L4'> | null;
+  limit_tokens?: number | null;
+}
+
 export type Method = 'GET' | 'POST';
 export type Send = <T>(method: Method, path: string, body?: unknown) => Promise<T>;
 
@@ -330,4 +417,8 @@ export const api = {
     send<Digest>('GET', '/v1/digest'),
   ackDigest: (send: Send, body: AckDigestRequest) =>
     send<Acked>('POST', '/v1/digest/ack', body),
+  getContextPackage: (send: Send, id: string) =>
+    send<ContextPackage>('GET', '/v1/context/' + encodeURIComponent(id)),
+  previewContext: (send: Send, body: PreviewContextRequest) =>
+    send<ContextPreview>('POST', '/v1/context/preview', body),
 };

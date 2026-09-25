@@ -30,6 +30,7 @@ TABLES = {
     entities.RepositoryInspection: 'repository_inspections',
     entities.KnowledgeItem: 'knowledge_items',
     entities.Artifact: 'artifacts',
+    entities.ContextPackage: 'context_packages',
 }
 
 #: Row metadata, never entity fields: optimistic-concurrency version, timestamps,

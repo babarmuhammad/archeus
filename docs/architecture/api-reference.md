@@ -40,6 +40,8 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/v1/repositories/{id}/inspections` | observe | — | `limit` | — | `InspectionList` |
 | GET | `/v1/digest` | observe | — | — | — | `Digest` |
 | POST | `/v1/digest/ack` | control | — | — | `AckDigestRequest` | `Acked` |
+| GET | `/v1/context/{id}` | observe | — | — | — | `ContextPackage` |
+| POST | `/v1/context/preview` | observe | — | — | `PreviewContextRequest` | `ContextPreview` |
 
 A launch-code device holds `observe`; the local token holds `observe control approve admin`.
 
@@ -83,6 +85,111 @@ interface ConstraintDeclared {
   knowledge_item: KnowledgeItem;
   changed: boolean;
   stale: string[];
+}
+```
+
+### `ContextBudget`
+
+```ts
+interface ContextBudget {
+  limit_tokens: number;
+  used_tokens: number;
+  levels: Record<string, unknown>;
+}
+```
+
+### `ContextConflict`
+
+```ts
+interface ContextConflict {
+  items: string[];
+  preferred: string;
+  kind: string;
+  reason: string;
+}
+```
+
+### `ContextExcluded`
+
+```ts
+interface ContextExcluded {
+  ref: ContextRef;
+  level: 'L0' | 'L1' | 'L2' | 'L3' | 'L4';
+  freshness: 'current' | 'stale' | 'superseded';
+  reason: string;
+}
+```
+
+### `ContextItem`
+
+```ts
+interface ContextItem {
+  ref: ContextRef;
+  level: 'L0' | 'L1' | 'L2' | 'L3' | 'L4';
+  store: 'state' | 'knowledge' | 'history';
+  type: string;
+  source_kind: string;
+  source_ref: string;
+  observed_at: string | null;
+  freshness: 'current' | 'stale';
+  relevance: number;
+  signals: Record<string, unknown>;
+  reason: string;
+  tokens: number;
+  conflicts_with: string[];
+}
+```
+
+### `ContextPackage`
+
+```ts
+interface ContextPackage {
+  id: string;
+  version: number;
+  created_at: string;
+  subject_kind: string;
+  subject_id: string;
+  as_of_seq: number;
+  budget: ContextBudget;
+  items: ContextItem[];
+  excluded: ContextExcluded[];
+  conflicts: ContextConflict[];
+  [field: string]: unknown;
+}
+```
+
+### `ContextPreview`
+
+```ts
+interface ContextPreview {
+  subject_kind: 'mission' | 'project';
+  subject_id: string;
+  workspace_id: string;
+  project_id: string | null;
+  as_of_seq: number;
+  as_of_at: string | null;
+  query: string;
+  levels: Array<'L0' | 'L1' | 'L2' | 'L3' | 'L4'>;
+  budget: ContextBudget;
+  scoring: Record<string, unknown>;
+  items: ContextItem[];
+  excluded: ContextExcluded[];
+  conflicts: ContextConflict[];
+  assumptions: string[];
+  missing_information: string[];
+  [field: string]: unknown;
+}
+```
+
+### `ContextRef`
+
+```ts
+interface ContextRef {
+  kind: string;
+  id: string;
+  version?: number;
+  seq?: number;
+  [field: string]: unknown;
 }
 ```
 
@@ -467,5 +574,19 @@ interface DeclareConstraintRequest {
 ```ts
 interface AckDigestRequest {
   up_to_seq: number;
+}
+```
+
+### `PreviewContextRequest`
+
+```ts
+interface PreviewContextRequest {
+  subject: {
+    kind: 'mission' | 'project';
+    id: string;
+  };
+  query?: string | null;
+  levels?: Array<'L0' | 'L1' | 'L2' | 'L3' | 'L4'> | null;
+  limit_tokens?: number | null;
 }
 ```

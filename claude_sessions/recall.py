@@ -10,47 +10,17 @@ UserPromptSubmit hook where latency matters.
 
 import os
 import re
-import math
 import json
 
 from . import memory
-
-
-def tokens_estimate(text):
-    return max(1, len(text or '') // 4)
-
-
-_WORD = re.compile(r'[a-z0-9]+')
-_CAMEL = re.compile(r'(?<=[a-z0-9])(?=[A-Z])')
-
-
-def _tokenize(s):
-    """Word set incl. camelCase/snake_case splits: 'UserPromptHook' →
-    {userprompthook, user, prompt, hook}."""
-    if not s:
-        return set()
-    out = set(_WORD.findall(s.lower()))
-    for part in _CAMEL.sub(' ', s).replace('_', ' ').split():
-        out.update(_WORD.findall(part.lower()))
-    return out
+from .lexical import (BM25_B, BM25_K1, STOPWORDS, query_tokens,  # noqa: F401
+                      tokens_estimate)
+from .lexical import bm25 as _bm25
+from .lexical import idf as _idf
+from .lexical import tokenize as _tokenize
 
 
 # ── index ────────────────────────────────────────────────────
-
-#: Words that carry no retrieval signal. The IDF below already pushes a
-#: ubiquitous term to zero, but a stoplist is what stops a two-word prompt made
-#: entirely of them from scoring at all — and English stopwords are not
-#: project-specific, so nothing is lost by naming them.
-STOPWORDS = frozenset("""
-a an the this that these those and or but not is are was were be been being am
-do does did doing have has had having will would shall should can could may
-might must of in on at to from by for with about into over after before under
-above then than so if it its it's as at i me my we our you your he she they them
-what which who whom how why when where all any both each few more most other
-some such only own same too very just now here there
-one two three thing things way ways get gets got let lets please ok okay yes
-sure thanks again really actually simply basically stuff something anything
-""".split())
 
 #: how many top-scoring tokens a query needs before memory is injected at all.
 #: "the" used to return 33 entities.
@@ -77,13 +47,7 @@ def build_index(mem):
         for tok in t:
             df[tok] = df.get(tok, 0) + 1
     n = max(1, n)
-    # Proper BM25 IDF. The old `log(1 + n/df)` never reaches zero — it is
-    # >= log(2) ~ 0.69 even for a token present in EVERY entity — and the only
-    # gate downstream was `score > 0`, so `idf('the')` measured 2.08 on the live
-    # graph and the query "the" alone returned 33 entities. This form goes
-    # negative for a term more than half the corpus contains, which is what
-    # makes "does this word distinguish anything" answerable at all.
-    idf = {tok: math.log(1 + (n - c + 0.5) / (c + 0.5)) for tok, c in df.items()}
+    idf = _idf(df, n)          # proper BM25 IDF; see lexical.idf
 
     rel_adj = {}
     for r in mem.get('relations', []):
@@ -116,34 +80,12 @@ def _path_segments(e):
     return segs
 
 
-#: BM25 term-saturation and length-normalisation constants (the standard pair).
-BM25_K1 = 1.2
-BM25_B = 0.75
 #: Reciprocal-rank-fusion smoothing. 60 is the value from Cormack et al.; it
 #: decides how sharply the top of each ranker outweighs its tail.
 RRF_K = 60.0
 #: per-signal weight in the fusion. Relative only — RRF combines POSITIONS, so
 #: these never have to be commensurable the way the old added scores did.
 RRF_WEIGHTS = {'lexical': 1.0, 'path': 0.8, 'rank': 0.35, 'lesson': 0.5}
-
-
-def query_tokens(query):
-    """Tokens worth retrieving on — content words only."""
-    return {t for t in _tokenize(query) if t not in STOPWORDS and len(t) > 1}
-
-
-def _bm25(qtok, etok, idf, floor, elen, avg_len):
-    """Sum of BM25 term scores. Presence-only (no term frequency): an entity is
-    a name plus one sentence, so a term occurs once or not at all.
-
-    `floor` keeps a common-but-meaningful term contributing a little rather than
-    nothing — it ranks below a rare term without vanishing."""
-    total = 0.0
-    denom_len = BM25_K1 * (1 - BM25_B + BM25_B * (elen / (avg_len or 1.0)))
-    for t in qtok & etok:
-        w = max(idf.get(t, 0.0), floor)
-        total += w * (BM25_K1 + 1) / (1.0 + denom_len)
-    return total
 
 
 #: how many past sessions may ride along with the facts. Two, because this

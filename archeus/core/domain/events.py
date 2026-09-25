@@ -49,6 +49,8 @@ TYPES = (
     ('knowledge_item.state_changed', 'knowledge_item', 'user', False,
      'a knowledge item moved state (confirmed, superseded, retracted)'),
     ('user.digest_acked', 'user', 'system', False, 'the digest was acknowledged up to a seq'),
+    ('context_package.created', 'context_package', 'system', False,
+     'a context package was assembled and recorded (payload: subject, items, used_tokens)'),
     ('repository.file_added', 'repository', 'user', False, 'a file appeared in a repository'),
     ('repository.model_added', 'repository', 'user', False, 'inspection found a new model/schema file'),
     ('catalog.model_released', 'model', 'user', False, 'a provider released a new model'),

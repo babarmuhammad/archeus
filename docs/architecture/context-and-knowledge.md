@@ -101,8 +101,17 @@ context_package:
       reason: superseded by kn_d
 ```
 
-The package is stored (as an artifact + row) and linked from the execution, so the *Why* tab can
-answer **"I included this because …"** and "what did you not include and why".
+The package is stored and linked, so the *Why* tab can answer **"I included this because …"**
+and "what did you not include and why". **As built (P5, p5-design-gate §3–§4):** the shape is the
+G2 judge's — `items[].source_kind`/`source_ref`, `budget.{limit_tokens, used_tokens, levels}` —
+rather than the illustration above; items are references carrying the row version read, never
+copies; a package is one immutable `context_packages` row written by the mission's
+`context_ready` move and linked by `Mission.context_package_id` (the execution link is P11's);
+the rendered text artifact arrives with its first consumer, the P7 brain call. The weight
+table is `levels.WEIGHTS` (lex 1.0, auth 1.0, rec 0.5, stale 0.5; anchor, link, conf, useless 0
+until their inputs exist), recency is linear over the 7-day temporal window measured from the
+snapshot's last event, and P5's conflicts are between checkable constraints only (prose
+contradiction is a P6 `contradicts` relation).
 
 ## 3. Knowledge lifecycle
 

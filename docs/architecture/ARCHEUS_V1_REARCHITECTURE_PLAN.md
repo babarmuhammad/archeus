@@ -640,6 +640,19 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Tests: budgeting per level, reasons present for every item, superseded excluded, stale
   labelled, conflicts detected, deterministic ordering.
 - Acceptance: G2 passes; context preview endpoint.
+  - **P5, as built** (p5-design-gate.md). `archeus/core/context/` (`levels.py` — the levels,
+    budget shares, the §2.2 weight table and authority; `assemble.py` — `gather()` from one read
+    snapshot, pure `select()`: freshness, relevance, checkable-constraint conflicts, per-level
+    budgets), `archeus/infra/search/bm25.py` over the new model-free legacy seam
+    `claude_sessions/lexical.py` (moved out of `recall`, which imports it back), migration
+    `0004_context.sql` and the immutable `ContextPackage`, recorded with
+    `context_package.created` by `Missions.context_ready` — which replaces the engine's
+    CONTEXT_GATHERING stub and sets `Mission.context_package_id` — and `GET /v1/context/{id}`,
+    `POST /v1/context/preview` (observe, writes nothing). G2 passes on both bindings. Decisions
+    (D1–D4 accepted): the formula with lex 1.0, auth 1.0, rec 0.5, stale 0.5 and the other
+    terms at 0 until their inputs exist; a row and no rendered artifact until P7; conflicts
+    only between checkable constraints, the newer preferred and nothing moved state. No model,
+    harness, router or execution is reachable from the context path (import-closure test).
 
 **P6 — Knowledge and learning**
 - Depends: P5. New: `knowledge/*` (items, relations, promote, forget, ingest), learning pass

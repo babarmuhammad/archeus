@@ -6,13 +6,14 @@ it (domain validation stays in the entities), and tools/gen_api_docs.py turns
 it into TypeScript types and the API reference. A shape written twice drifts.
 
     {'type': 'object', 'properties': {...}, 'required': [...]}  (no extra keys)
-    {'type': 'string' | 'integer' | 'boolean', 'enum'?: [...]}
+    {'type': 'string' | 'integer' | 'number' | 'boolean', 'enum'?: [...]}
     {'type': 'array', 'items': <schema>}
     {'ref': '<name in TYPES>'}          a named type
     'nullable': True                    also accepts null
     {'type': 'object'} with no properties: any JSON object
 """
 
+from ..core.context.levels import LEVELS, STORES
 from ..core.domain import entities, states
 from ..core.domain.values import ORIGINS
 
@@ -178,6 +179,59 @@ TYPES = {
     'Acked': {'type': 'object', 'properties': {
         'up_to_seq': {'type': 'integer'}, 'changed': {'type': 'boolean'}},
         'required': ['up_to_seq', 'changed']},
+    'ContextRef': {'type': 'object', 'open': True, 'properties': {
+        'kind': {'type': 'string'}, 'id': {'type': 'string'},
+        'version': {'type': 'integer'}, 'seq': {'type': 'integer'}},
+        'required': ['kind', 'id']},
+    'ContextItem': {'type': 'object', 'properties': {
+        'ref': {'ref': 'ContextRef'}, 'level': {'type': 'string', 'enum': list(LEVELS)},
+        'store': {'type': 'string', 'enum': list(STORES)}, 'type': {'type': 'string'},
+        'source_kind': {'type': 'string'}, 'source_ref': {'type': 'string'},
+        'observed_at': {'type': 'string', 'nullable': True},
+        'freshness': {'type': 'string', 'enum': ['current', 'stale']},
+        'relevance': {'type': 'number'}, 'signals': {'type': 'object'},
+        'reason': {'type': 'string'}, 'tokens': {'type': 'integer'},
+        'conflicts_with': {'type': 'array', 'items': {'type': 'string'}}},
+        'required': ['ref', 'level', 'store', 'type', 'source_kind', 'source_ref',
+                     'observed_at', 'freshness', 'relevance', 'signals', 'reason', 'tokens',
+                     'conflicts_with']},
+    'ContextExcluded': {'type': 'object', 'properties': {
+        'ref': {'ref': 'ContextRef'}, 'level': {'type': 'string', 'enum': list(LEVELS)},
+        'freshness': {'type': 'string', 'enum': ['current', 'stale', 'superseded']},
+        'reason': {'type': 'string'}}, 'required': ['ref', 'level', 'freshness', 'reason']},
+    'ContextConflict': {'type': 'object', 'properties': {
+        'items': {'type': 'array', 'items': {'type': 'string'}},
+        'preferred': {'type': 'string'}, 'kind': {'type': 'string'},
+        'reason': {'type': 'string'}}, 'required': ['items', 'preferred', 'kind', 'reason']},
+    'ContextBudget': {'type': 'object', 'properties': {
+        'limit_tokens': {'type': 'integer'}, 'used_tokens': {'type': 'integer'},
+        'levels': {'type': 'object'}}, 'required': ['limit_tokens', 'used_tokens', 'levels']},
+    'ContextPreview': {'type': 'object', 'open': True, 'properties': {
+        'subject_kind': {'type': 'string', 'enum': list(entities.CONTEXT_SUBJECTS)},
+        'subject_id': {'type': 'string'}, 'workspace_id': {'type': 'string'},
+        'project_id': {'type': 'string', 'nullable': True},
+        'as_of_seq': {'type': 'integer'}, 'as_of_at': {'type': 'string', 'nullable': True},
+        'query': {'type': 'string'},
+        'levels': {'type': 'array', 'items': {'type': 'string', 'enum': list(LEVELS)}},
+        'budget': {'ref': 'ContextBudget'}, 'scoring': {'type': 'object'},
+        'items': {'type': 'array', 'items': {'ref': 'ContextItem'}},
+        'excluded': {'type': 'array', 'items': {'ref': 'ContextExcluded'}},
+        'conflicts': {'type': 'array', 'items': {'ref': 'ContextConflict'}},
+        'assumptions': {'type': 'array', 'items': {'type': 'string'}},
+        'missing_information': {'type': 'array', 'items': {'type': 'string'}}},
+        'required': ['subject_kind', 'subject_id', 'workspace_id', 'project_id', 'as_of_seq',
+                     'as_of_at', 'query', 'levels', 'budget', 'scoring', 'items', 'excluded',
+                     'conflicts', 'assumptions', 'missing_information']},
+    'ContextPackage': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'version': {'type': 'integer'},
+        'created_at': {'type': 'string'}, 'subject_kind': {'type': 'string'},
+        'subject_id': {'type': 'string'}, 'as_of_seq': {'type': 'integer'},
+        'budget': {'ref': 'ContextBudget'},
+        'items': {'type': 'array', 'items': {'ref': 'ContextItem'}},
+        'excluded': {'type': 'array', 'items': {'ref': 'ContextExcluded'}},
+        'conflicts': {'type': 'array', 'items': {'ref': 'ContextConflict'}}},
+        'required': ['id', 'version', 'created_at', 'subject_kind', 'subject_id', 'as_of_seq',
+                     'budget', 'items', 'excluded', 'conflicts']},
     'ApiError': {'type': 'object', 'properties': {'error': {'type': 'string'},
                                                'detail': {'type': 'object'}},
               'required': ['error', 'detail']},
@@ -201,6 +255,15 @@ DECLARE_CONSTRAINT = {'type': 'object', 'properties': {
     'required': ['statement', 'idempotency_key']}
 ACK = {'type': 'object', 'properties': {'up_to_seq': {'type': 'integer'}},
        'required': ['up_to_seq']}
+CONTEXT_PREVIEW = {'type': 'object', 'properties': {
+    'subject': {'type': 'object', 'properties': {
+        'kind': {'type': 'string', 'enum': list(entities.CONTEXT_SUBJECTS)},
+        'id': {'type': 'string'}}, 'required': ['kind', 'id']},
+    'query': {'type': 'string', 'nullable': True},
+    'levels': {'type': 'array', 'nullable': True,
+               'items': {'type': 'string', 'enum': list(LEVELS)}},
+    'limit_tokens': {'type': 'integer', 'nullable': True}},
+    'required': ['subject']}
 REDEEM = {'type': 'object', 'properties': {
     'code': {'type': 'string'}, 'platform': {'type': 'string', 'enum': ['web', 'desktop']}},
     'required': ['code', 'platform']}
@@ -212,7 +275,8 @@ class Invalid(ValueError):
         self.field, self.why = field, why
 
 
-_PY = {'string': str, 'integer': int, 'boolean': bool, 'array': list, 'object': dict}
+_PY = {'string': str, 'integer': int, 'number': (int, float), 'boolean': bool, 'array': list,
+       'object': dict}
 
 
 def validate(value, schema, field=None):
@@ -224,7 +288,8 @@ def validate(value, schema, field=None):
             return
         raise Invalid(field, 'is required' if field else 'a JSON object is required')
     t = schema['type']
-    ok = isinstance(value, _PY[t]) and not (t == 'integer' and isinstance(value, bool))
+    ok = isinstance(value, _PY[t]) and not (t in ('integer', 'number')
+                                            and isinstance(value, bool))
     if not ok:
         raise Invalid(field, 'must be %s %s' % ('an' if t[0] in 'aeiou' else 'a', t))
     if 'enum' in schema and value not in schema['enum']:

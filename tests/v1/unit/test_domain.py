@@ -105,6 +105,8 @@ def _sample(cls):
         E.Decision: dict(id=i('decision'), workspace_id=_ws(), statement='dark-first'),
         E.KnowledgeItem: dict(id=i('knowledge_item'), workspace_id=_ws(), type='LESSON',
                               title='retry once'),
+        E.ContextPackage: dict(id=i('context_package'), workspace_id=_ws(),
+                               subject_kind='mission', subject_id=i('mission')),
         E.Relation: dict(id=i('relation'), src=ref, rel='depends_on',
                          dst=Ref('task', i('task'))),
         E.Conversation: dict(id=i('conversation'), kind='primary'),

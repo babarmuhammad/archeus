@@ -194,6 +194,17 @@ created_at, valid_until)`.
   **INFERRED** (model-derived), **AMBIGUOUS** (model unsure → surfaced in Attention as a
   knowledge proposal). Adopted from Graphify; tiers are labels, not probabilities.
 
+### 5.3 ContextPackage
+What the context engine selected for one subject, and why (context-and-knowledge §2.3;
+p5-design-gate §3). `subject_kind` (mission / project), `subject_id`, `workspace_id`,
+`project_id?`, `as_of_seq` and `as_of_at` (the snapshot's last event), `query`, `levels`,
+`budget` (limit and used tokens, per level), `scoring` (the weights it was ranked with),
+`items[]` (each a reference with its row version, level, store, type, provenance, freshness,
+relevance, signals, reason, tokens, `conflicts_with`), `excluded[]` (reference, level, freshness,
+reason), `conflicts[]`, `assumptions[]`, `missing_information[]`. **Immutable**: no state machine,
+written once, never edited; a new assembly is a new package. A preview is the same shape and is
+never persisted.
+
 ---
 
 ## 6. Conversation and intent
@@ -219,7 +230,8 @@ a deterministic grammar and never need a model (ADR-0006).
 | `title`, `objective`, `desired_outcome` | objective = what; desired_outcome = how we'll know |
 | `requirements[]`, `constraints[]` | each `{text, origin: explicit|inferred, source_ref}` |
 | `success_criteria[]` | each `{text, check: automatic|human, verifier?, origin: explicit|inferred}` — inferred when the plan supplied them because the mission had none |
-| `context_scope` | levels allowed (L0–L4), extra refs pinned by the user, refs excluded |
+| `context_scope` | levels allowed (L0–L4), extra refs pinned by the user, refs excluded (P7: set by intent; not persisted before it) |
+| `context_package_id?` | the ContextPackage its `context_ready` move recorded (§5.3; P5) |
 | `dependencies[]` | other missions/decisions this waits on |
 | `priority` | integer; user-set; reprioritize = command |
 | `max_replans` | default 2: replans allowed after the initial plan (0 = none); `replan_budget_exhausted` (state-machines §2) |

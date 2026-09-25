@@ -14,7 +14,9 @@ entity itself, never evaluates policy and never branches on an actor's kind:
 those are the application layer's, and P9's.
 
 P4 adds the world (p4-design-gate §10): status, projects, constraints,
-inspections and the digest.
+inspections and the digest. P5 adds the context package and its preview
+(p5-design-gate §6): the preview is a POST because it carries a request, and it
+writes nothing, so it takes no idempotency key.
 
 Deliberately absent (a test pins the table): cancel, accept, request-changes,
 approvals (P9), executions and routing (P10, P11), `/v1/now` and the execution
@@ -27,6 +29,7 @@ import re
 from collections import namedtuple
 
 from ..core.application import commands, queries, world
+from ..core.context import assemble as context
 from ..core.world import digest as world_digest
 from ..core.world import status as world_status
 from . import auth, schemas
@@ -188,6 +191,20 @@ def ack_digest(req):
     return 200, req.run(world.ack_digest, {'up_to_seq': req.body['up_to_seq']}, keyed=False)
 
 
+def get_context_package(req):
+    with req.api.db.read() as conn:
+        return 200, queries.get_context_package(conn, req.params['id'])
+
+
+def preview_context(req):
+    b = req.body
+    kw = {k: b[k] for k in ('query', 'levels', 'limit_tokens') if b.get(k) is not None}
+    if 'limit_tokens' in kw and kw['limit_tokens'] < 1:
+        raise Invalid('limit_tokens', 'is an integer >= 1')
+    with req.api.db.read() as conn:
+        return 200, context.assemble(conn, b['subject']['kind'], b['subject']['id'], **kw)
+
+
 def revoke_device(req):
     out = req.run(commands.revoke_device, {'device_id': req.params['id']})
     req.api.sse.close_device(req.params['id'])          # before we answer (§3 D2)
@@ -227,6 +244,11 @@ ROUTES = (
           'InspectionList'),
     Route('GET', '/v1/digest', digest, 'observe', None, None, 'Digest'),
     Route('POST', '/v1/digest/ack', ack_digest, 'control', None, schemas.ACK, 'Acked'),
+    # ── context (P5) ──
+    Route('GET', '/v1/context/{id}', get_context_package, 'observe', None, None,
+          'ContextPackage'),
+    Route('POST', '/v1/context/preview', preview_context, 'observe', None,
+          schemas.CONTEXT_PREVIEW, 'ContextPreview'),
 )
 
 #: The query parameters each GET route reads (for the docs and the client).

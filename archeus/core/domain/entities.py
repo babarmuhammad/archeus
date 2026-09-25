@@ -473,6 +473,7 @@ class Mission(Entity):
     _TEXT = ('title', 'objective')
     _CHOICES = {'origin': ('conversation', 'idea', 'automation', 'legacy_import')}
     _NONNEG = ('max_replans',)
+    _REFS = {'context_package_id': 'context_package'}
     id: str
     workspace_id: str
     title: str
@@ -492,6 +493,8 @@ class Mission(Entity):
     # each {text, check: automatic|human, origin: explicit|inferred}; the
     # `verified` guard reads their verifications (state-machines §2)
     success_criteria: tuple = ()
+    # the package the mission's `context_ready` move recorded (P5)
+    context_package_id: str = None
     state: str = None
 
     def _check(self):
@@ -671,6 +674,41 @@ class Artifact(Entity):
     def _check(self):
         if not _HEX64.fullmatch(self.id):
             raise ValueError('an artifact id is its lowercase hex sha256')
+
+
+#: What a context package can be assembled for (p5-design-gate §3).
+CONTEXT_SUBJECTS = ('mission', 'project')
+
+
+@entity
+class ContextPackage(Entity):
+    """An assembled context package (context-and-knowledge §2.3). Immutable: no
+    state machine and no command that edits it; a new assembly is a new row.
+    Items are references with provenance and reasons, never copies of what they
+    point at (the rendering is its first consumer's, P7)."""
+    _ID = 'context_package'
+    _CHOICES = {'subject_kind': CONTEXT_SUBJECTS}
+    _NONNEG = ('as_of_seq',)
+    id: str
+    workspace_id: str
+    subject_kind: str
+    subject_id: str
+    project_id: str = None
+    as_of_seq: int = 0
+    as_of_at: str = None
+    query: str = ''
+    levels: tuple = ()
+    budget: dict = None
+    scoring: dict = None
+    items: tuple = ()
+    excluded: tuple = ()
+    conflicts: tuple = ()
+    assumptions: tuple = ()
+    missing_information: tuple = ()
+
+    def _check(self):
+        if not ids.is_id(self.subject_id, self.subject_kind):
+            raise ValueError('ContextPackage.subject_id is not a %s id' % self.subject_kind)
 
 
 # ── resources (domain-model §8) ─────────────────────────────────────────────

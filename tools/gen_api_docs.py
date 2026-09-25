@@ -105,7 +105,7 @@ def _ts(schema, indent):
         t = schema['ref']
     elif schema['type'] == 'string':
         t = ' | '.join("'%s'" % v for v in schema['enum']) if 'enum' in schema else 'string'
-    elif schema['type'] == 'integer':
+    elif schema['type'] in ('integer', 'number'):
         t = 'number'
     elif schema['type'] == 'boolean':
         t = 'boolean'

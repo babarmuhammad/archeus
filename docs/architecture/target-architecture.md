@@ -99,7 +99,7 @@ archeus/
 │   │                      handlers/ (one module per area; the only callers of the writer)
 │   ├── missions/          intent.py  mission_service.py  progress.py
 │   ├── planning/          planner.py (brain prompts + validation)  dag.py
-│   ├── context/           assemble.py  levels.py  budget.py  explain.py
+│   ├── context/           assemble.py  levels.py   (P5: budgeting and reasons live in assemble)
 │   ├── knowledge/         items.py  relations.py  promote.py  forget.py  ingest.py
 │   ├── world/             projects.py  inspection.py  drift.py  digest.py (since-you-left)
 │   ├── policy/            engine.py  rules.py  approvals.py  profiles.py

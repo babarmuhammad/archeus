@@ -15,9 +15,19 @@ def view(row):
 
 
 def get_mission(conn, mission_id):
+    """One mission, with the context package its `context_ready` move
+    recorded (None before it has one)."""
     row = rows.get(conn, entities.Mission, mission_id)
     if row is None:
         raise NotFound(mission_id)
+    pid = row.entity.context_package_id
+    return dict(view(row), context_package=None if pid is None else get_context_package(conn, pid))
+
+
+def get_context_package(conn, package_id):
+    row = rows.get(conn, entities.ContextPackage, package_id)
+    if row is None:
+        raise NotFound(package_id)
     return view(row)
 
 

@@ -2,7 +2,8 @@
 takes a mission from CREATED to a settled state over the real application
 commands, the real database and the fake harness's real subprocess.
 
-    CREATED -> UNDERSTANDING -> CONTEXT_GATHERING -> REASONING      stub steps
+    CREATED -> UNDERSTANDING                                        stub steps
+    CONTEXT_GATHERING -> context_ready: the context package (P5) -> REASONING
     brain `plan.v1` -> Work.propose_plan -> PLANNING -> plan gate (Policy port)
         -> APPROVED | APPROVAL_REQUIRED on ASK (stops: a human decides)
         | DENY: nothing written, state unchanged (stops: `policy_denied`)
@@ -25,7 +26,7 @@ its process is killed by pid + creation time and the attempt ends LOST or
 ABANDONED; the task retries with a new execution.
 
 The stubs it runs on are the ports' (archeus/core/ports.py). Deliberately not
-here: intent and context (the three stub steps), the real planner (P7),
+here: intent (the two stub steps), the real planner (P7),
 approvals bound to action hashes (P9), routing and accounts (P10), the
 execution manager and node — adoption, pause, stop, timeouts, hand-off, the
 process registry (P11) — and real verifiers and review (P13).
@@ -42,10 +43,9 @@ from .application.work import PolicyDenied
 from .domain import entities, states
 from .domain.values import Ref
 
-#: The unguarded steps the walking skeleton takes for engines that do not
-#: exist yet (intent P4, context P6, reasoning P7).
-STUB_STEPS = {'CREATED': 'start', 'UNDERSTANDING': 'understood',
-              'CONTEXT_GATHERING': 'context_ready'}
+#: The unguarded steps the walking skeleton takes for an engine that does not
+#: exist yet (intent, P7). CONTEXT_GATHERING is the context engine's (P5).
+STUB_STEPS = {'CREATED': 'start', 'UNDERSTANDING': 'understood'}
 
 #: States the engine has nothing to do in: ended, or waiting for a human.
 SETTLED = ('COMPLETED', 'CANCELLED', 'FAILED', 'BLOCKED', 'PAUSED', 'APPROVAL_REQUIRED')
@@ -122,6 +122,9 @@ class Engine:
             self._do(self.missions.fire, mission_id=m.id, trigger=trigger,
                      reason='walking skeleton: %s without its engine (not built yet)' % trigger)
             return trigger
+        if m.state == 'CONTEXT_GATHERING':
+            self._do(self.missions.context_ready, mission_id=m.id)
+            return 'context_ready'
         if m.state in ('REASONING', 'PLANNING', 'REPLANNING'):
             if m.state == 'REPLANNING' and self._do(self.work.replan_budget_spent,
                                                     mission_id=m.id):
