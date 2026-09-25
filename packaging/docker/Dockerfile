@@ -22,7 +22,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
-ARG ARCHEUS_VERSION=2.7.0
+ARG ARCHEUS_VERSION=2.8.0
 RUN pip install --no-cache-dir "archeus==${ARCHEUS_VERSION}"
 
 LABEL org.opencontainers.image.title="archeus" \

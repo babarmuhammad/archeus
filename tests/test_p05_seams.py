@@ -89,6 +89,32 @@ def test_memory_headless_call_routes_through_the_seam(monkeypatch):
     assert seen['kw']['input_text'] == 'P\n\n' + HEADLESS_MARK
 
 
+def test_another_harness_builds_its_argv_through_the_seam_too(monkeypatch):
+    """ADR-0022: an own call on a non-Claude harness is still one seam. Its argv
+    comes from the harness descriptor via llmcall, in its own vocabulary: no
+    Claude model id, budget or schema flag crosses over."""
+    from claude_sessions import config, harnesses
+    from claude_sessions.sessions import HEADLESS_MARK
+    seen = {}
+    monkeypatch.setattr(memory, 'headless_harness', lambda: 'pi')
+    monkeypatch.setattr(harnesses, 'exe', lambda hid=None: 'pi.exe')
+    monkeypatch.setattr(config, 'load_settings',
+                        lambda: {'headless_harness_model': 'spark/qwen3.8'})
+    monkeypatch.setattr(gui_api, '_run_cancellable',
+                        lambda args, **kw: seen.update(args=args, kw=kw) or 'ok')
+    monkeypatch.setattr(memory._tls, 'silent', True, raising=False)
+    calls = []
+    real = llmcall.build_headless_args
+    monkeypatch.setattr(llmcall, 'build_headless_args',
+                        lambda *a, **k: calls.append(k) or real(*a, **k))
+    assert memory._claude_stdin('P', '/cwd', model='claude-haiku-4-5',
+                                extra_args=('--json-schema', '{}')) == 'ok'
+    assert calls == [{'harness': 'pi'}]
+    assert seen['args'] == ['pi.exe', '-p', '--no-session', '--tools', 'read,grep,find,ls',
+                            '--model', 'spark/qwen3.8']
+    assert seen['kw']['input_text'] == 'P\n\n' + HEADLESS_MARK
+
+
 def test_run_headless_success_and_failure_records(monkeypatch):
     noted, recorded = [], []
     from claude_sessions import events, quota

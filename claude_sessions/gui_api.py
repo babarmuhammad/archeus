@@ -3216,11 +3216,26 @@ def api_inject_launch(q, body):
     if not resolve_dir(path):       # becomes a subprocess cwd below
         return {'ok': False, 'error': 'not a directory: %s' % (path or '(empty)')}
     src_folder = _folder(body.get('cfgdir'), body['enc'])
+    target_dir = body.get('target_cfgdir') or _c.config_dir
+    encoded = encode_component(path)
+    if _harnesses.of(target_dir)['id'] != _harnesses.DEFAULT:
+        # Another CLI: the written-out transcript is the only bridge there is,
+        # and the launch goes through the harness-aware builder. The pointer is
+        # the OPENING MESSAGE rather than a system prompt because that is the
+        # one channel pi and Codex both have.
+        acct = body.get('account', 'default')
+        _ctx, title = _write_context_file(path, src_folder, body['sid'], acct)
+        pointer = (f"Prior conversation context (from the '{acct}' account, "
+                   f"session '{title}') is saved at "
+                   f"{CTX_FILE.replace(os.sep, '/')}. Read it first for "
+                   f"background, then wait for the user to pick up.")
+        from . import gui as _gui
+        ok, err = _gui.launch_session(path, encoded, 'new',
+                                      {'cfgdir': target_dir, 'prompt': pointer})
+        return {'ok': True} if ok else {'ok': False, 'error': err}
     exe = get_claude_exe()
     if not exe:
         return {'ok': False, 'error': 'claude.exe not found'}
-    target_dir = body.get('target_cfgdir') or _c.config_dir
-    encoded = encode_component(path)
     target_folder = _store.project_folder(target_dir, encoded)
     env = os.environ.copy()
     env['CLAUDE_CONFIG_DIR'] = target_dir
@@ -3572,7 +3587,7 @@ def api_job_start(q, body):
             wrote = scaffold_claude_md(path, folder)
             mem = _memfn(refresh_memory, path, folder, name)
             return {'claude_md': bool(wrote),
-                    'entities': len((mem or {}).get('entities', []))}
+                    'entities': (mem or {}).get('entities', 0)}
         jid = start_job(f'Setting up {name}', _setup)
     elif kind == 'review':
         from .review import run_review

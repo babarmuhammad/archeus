@@ -33,18 +33,27 @@ DISALLOWED_TOOLS = 'Write,Edit,NotebookEdit,Bash'
 Result = namedtuple('Result', 'returncode stdout reason error timed_out')
 
 
-def build_headless_args(exe, prompt, model='', budget_args=(), extra_args=()):
+def build_headless_args(exe, prompt, model='', budget_args=(), extra_args=(), harness=None):
     """(argv, stdin_text) for one headless call.
+
+    *harness* None is Claude Code. Any other id is a CLI whose descriptor names
+    a `headless_argv` (read-only, ephemeral in its own flags); it gets *model*
+    in its own vocabulary, and never *budget_args*/*extra_args*, which are
+    Claude Code flags.
 
     The prompt leaves with `sessions.HEADLESS_MARK` appended: `claude -p`
     writes a transcript like any session, and the mark is how session lists
     and auto-memory recognise archeus talking to itself."""
     from .sessions import HEADLESS_MARK
-    args = [exe, '-p', '--max-turns', MAX_TURNS, '--disallowedTools', DISALLOWED_TOOLS]
-    if model:
-        args += ['--model', model]
-    args += list(budget_args)
-    args += list(extra_args)
+    if harness is not None:
+        from . import harnesses
+        args = harnesses.impl('headless_argv', harness)(exe, model)
+    else:
+        args = [exe, '-p', '--max-turns', MAX_TURNS, '--disallowedTools', DISALLOWED_TOOLS]
+        if model:
+            args += ['--model', model]
+        args += list(budget_args)
+        args += list(extra_args)
     return args, (prompt or '') + '\n\n' + HEADLESS_MARK
 
 

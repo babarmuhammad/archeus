@@ -347,7 +347,9 @@ def test_no_module_builds_its_own_headless_claude_call():
     #   loops                     an hour-long unattended iteration that owns its
     #                             own permission mode, its own quota report and
     #                             its own journal entry
-    waived = ('llmcall.py', 'claude_md.py', 'plan_execute.py', 'loops.py')
+    #   pi                        `headless_argv` is the seam's own argv for a
+    #                             non-Claude CLI, called only from llmcall
+    waived = ('llmcall.py', 'claude_md.py', 'plan_execute.py', 'loops.py', 'pi.py')
     offenders = [o for o in offenders if not o.startswith(waived)]
     assert not offenders, ('headless claude spawned outside memory._claude_stdin: '
                            + ', '.join(offenders))

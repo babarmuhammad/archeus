@@ -5,6 +5,39 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] - 2026-09-25
+
+### Added
+
+- **Choose which CLI and model archeus uses for its own calls.** Memory extraction,
+  lessons and the CLAUDE.md, agent and skill generators used to run on `claude -p`
+  and nothing else. The Economy model card in Settings, and the TUI settings menu, now
+  pick the CLI too: Claude Code or pi, with the model named the way pi names it
+  (`provider/model`), local models included. On *auto*, archeus uses Claude Code when
+  it is installed and pi when it is not, so a machine with only pi builds memory without
+  configuring anything. pi runs these calls with read-only tools and without saving a
+  session, so they do not show up in your pi session list.
+
+### Fixed
+
+- **Resuming a pi session works.** One-click resume sent Claude Code's default model to
+  every session, and pi refused to open one with `Model "claude-opus-5" is ambiguous
+  across providers`. A resumed pi or Codex session now reopens on the model and thinking
+  level it recorded, and a Claude model id or effort level that another CLI cannot use is
+  never passed to it.
+
+- **Building memory with only pi installed.** It failed with *"the claude executable was
+  not found"*. It now runs on pi (see Added).
+
+- **Setting up a project no longer fails at the last step.** The job built memory and then
+  crashed on `TypeError: object of type 'int' has no len()` while reporting how many
+  entities it had found.
+
+- **Hand-off works with pi.** Both the session-row button and the TUI listed only Claude
+  accounts as targets and always started `claude`. They now list every installed CLI,
+  put the source session's own CLI first, and start pi with the conversation written to
+  `.archeus/injected-context.md` and a first message pointing at it.
+
 ## [2.7.0] - 2026-09-23
 
 ### Added

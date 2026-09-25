@@ -2452,6 +2452,10 @@ function defaultModelEffort(){
 }
 async function doQuickLaunch(cfg,model,effort){
   const d=ST.defaults;
+  /* the defaults are Claude Code's; another CLI's session records its own model
+     and level, and a Claude id makes pi refuse to open it at all */
+  const h=cfg.cfgdir&&harnessOf(cfg.cfgdir);
+  if(h&&h.id!=='claude'){model='';effort='';}
   const opts={effort,model,perm:d.perm||'',max_thinking:d.max_thinking||'',
     subagent_model:d.subagent_model||'',name:'',worktree:'',cfgdir:cfg.cfgdir||''};
   const r=await post('/api/launch',{path:cfg.path,enc:cfg.enc,choice:cfg.choice,opts});
@@ -3442,9 +3446,15 @@ async function saveDirs(){
    named after the thing rather than after a new word. */
 async function handoffS(i){
   const s=SESS[i];
+  /* every CLI's home, not Claude accounts alone — the written-out transcript is
+     what crosses from Claude Code to pi. The session's own home first, so a
+     pi-only machine does not default to a Claude account it cannot run. */
+  const opts=ST.accounts.map(a=>[a.dir,a.name]).concat((ST.launch_targets||[])
+    .filter(t=>t.kind==='harness'&&t.hid!=='claude').map(t=>[t.cfgdir,t.label]));
+  const own=(s.cfgdir||'').toLowerCase();
+  opts.sort((a,b)=>((b[0]||'').toLowerCase()===own)-((a[0]||'').toLowerCase()===own));
   const v=await ask('Hand off — '+(s.title||s.sid.slice(0,8)),
-    [{label:'Start the new chat under account',type:'select',
-      options:ST.accounts.map(a=>[a.dir,a.name])}],
+    [{label:'Start the new chat under account',type:'select',options:opts}],
     "A new chat opens in this project, seeded with this session's transcript as "
     +'context. The transcript is written to .archeus/injected-context.md and '
     +'the new session is told to read it first.');
@@ -6426,8 +6436,11 @@ const SETTINGS_CARDS={
     <div class="fld"><label>Learn lessons from sessions</label><div class="chips" id="sMemLessons"></div></div>
     <div class="mrow"><button class="btn" onclick="setMemLimitsSave()">Save</button></div></div>
   <div class="card"><h3>Economy model</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Model used for archeus's <b>own</b> internal Claude calls — memory extraction, lessons, CLAUDE.md / agent / hook / skill generation. Defaults to Haiku to cut cost. Your actual coding sessions are unaffected. <i>default</i> = your account's model.</p>
-    ${fld('sExtract','Economy model')}
+    <p style="color:var(--dim);font-size:13px;margin-bottom:8px">Which CLI and model run archeus's <b>own</b> internal calls — memory extraction, lessons, CLAUDE.md / agent / hook / skill generation. On Claude Code it defaults to Haiku to cut cost; on pi it uses the model you name, local ones included. Your actual coding sessions are unaffected. <i>default</i> = your account's model.</p>
+    ${fld('sOwnCli','CLI for these calls <span>— auto = Claude Code when installed, otherwise pi</span>')}
+    <div id="sExtractWrap">${fld('sExtract','Economy model')}</div>
+    <div class="fld" id="sOwnModelWrap" style="display:none"><label>Model <span>— as that CLI names it, e.g. <code>provider/model</code>; empty = its own default</span></label>
+      <input id="sOwnModel" list="sOwnModelList" placeholder="that CLI's default"><datalist id="sOwnModelList"></datalist></div>
     <div class="mrow"><button class="btn" onclick="setExtractSave()">Save</button></div></div>
   <div class="card"><h3>${ic('doc')} Statusline <span class="sp"></span>
       <span class="tag" id="slDot">checking…</span></h3>
@@ -6543,6 +6556,13 @@ async function pgSettings(nav,part='settings'){
     ST.memory_lessons||'prompt');
   if($('#slDot'))slRefresh();
   chipsFill($('#sExtract'),o.models,o.model_labels,ST.extract_model||'');
+  if($('#sOwnCli')){
+    const hs=(ST.harnesses||[]).filter(h=>h.headless&&(h.available||h.id==='claude'));
+    chipsFill($('#sOwnCli'),[''].concat(hs.map(h=>h.id)),['auto'].concat(hs.map(h=>h.label)),
+      ST.headless_harness||'',ownCliShow);
+    $('#sOwnModel').value=ST.headless_harness_model||'';
+    ownCliShow(ST.headless_harness||'');
+  }
   chipsFill($('#sShell'),['auto','qt','edge','browser'],
     ['auto (Qt → Edge → browser)','Qt native window','Edge app window','browser tab'],
     ST.gui_shell||'auto');
@@ -7429,9 +7449,28 @@ async function slToggle(){
   const r=await post('/api/statusline',{action:d.installed?'remove':'install'});
   toast(r.message||'',r.ok?'ok':'err');slRefresh();
 }
+/* Claude Code takes the economy-model chips; any other CLI takes a free-text id,
+   suggested from what that CLI has run and its own catalogue. `auto` shows
+   the one auto would pick. */
+async function ownCliShow(hid){
+  const eff=hid||((ST.harnesses||[]).find(h=>h.id==='claude'&&h.available)?'claude'
+    :((ST.harnesses||[]).find(h=>h.headless&&h.available)||{id:'claude'}).id);
+  const other=eff!=='claude';
+  $('#sExtractWrap').style.display=other?'none':'';
+  $('#sOwnModelWrap').style.display=other?'':'none';
+  if(!other)return;
+  let d=OWNMODELS[eff];
+  if(!d){d=await api('/api/harness/models?'+qs({hid:eff}));OWNMODELS[eff]=d;}
+  const dl=$('#sOwnModelList');if(!dl)return;
+  const ids=[...new Set((d.models||[]).concat((d.cards||[]).map(c=>c.id)))];
+  dl.innerHTML=ids.map(x=>`<option value="${esc(x)}">`).join('');
+}
 async function setExtractSave(){
-  await post('/api/settings',{extract_model:chipVal($('#sExtract'))});
-  ST.extract_model=chipVal($('#sExtract'));toast('Economy model saved','ok');
+  const b={extract_model:chipVal($('#sExtract'))};
+  if($('#sOwnCli')){b.headless_harness=chipVal($('#sOwnCli'));
+    b.headless_harness_model=$('#sOwnModel').value.trim();}
+  await post('/api/settings',b);
+  Object.assign(ST,b);toast('Saved','ok');
 }
 
 /* ── launch modal (chips, not <select> — native dropdowns flicker under

@@ -80,10 +80,12 @@ def _pick_target_account(proj_folder):
     current project's account; only prompts when >1 account exists.
     Returns (acct_dir, acct_name) or (None, None) if cancelled."""
     from .ui import menu
-    from .config import all_config_dirs
+    from . import harnesses
 
     current = os.path.normcase(os.path.abspath(_account_dir_of(proj_folder)))
-    accts = list(all_config_dirs())
+    # every home of every installed CLI, not Claude accounts alone: the file
+    # hand-off is exactly what crosses from Claude Code to pi
+    accts = [(n, d) for n, d, _hid in harnesses.instances()]
     if len(accts) <= 1:
         d = _account_dir_of(proj_folder)
         return d, _account_name_for(d)
@@ -131,6 +133,30 @@ def run(project_path, proj_folder, project_name):
     target_folder = store.project_folder(target_dir, encoded)
 
     ctx_path, title = _write_context_file(project_path, folder, sid, acct_name)
+
+    from . import harnesses
+    if harnesses.of(target_dir)['id'] != harnesses.DEFAULT:
+        # another CLI: same file, the pointer as the opening message (the one
+        # channel pi and Codex both have), argv from the harness's own builder
+        from .main import build_launch_command
+        pointer = (f"Prior conversation context (from the '{acct_name}' account, "
+                   f"session '{title}') is saved at "
+                   f"{CTX_FILE.replace(os.sep, '/')}. Read it first for "
+                   f"background, then wait for the user to pick up.")
+        try:
+            args, env, _pf = build_launch_command(
+                project_path, encoded, 'new', {'cfgdir': target_dir, 'prompt': pointer})
+        except RuntimeError as e:
+            flash(str(e), ok=False, secs=1.8)
+            return False
+        _cls()
+        print(f"  Context: {ctx_path}")
+        print(f"  {'-' * 42}\n")
+        try:
+            subprocess.call(args, cwd=project_path, env=env)
+        except Exception as e:
+            print(f"\n  Launch failed: {e}")
+        return True
 
     exe = get_claude_exe()
     if not exe:
