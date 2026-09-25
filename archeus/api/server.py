@@ -297,6 +297,10 @@ class Handler(BaseHTTPRequestHandler):
             out = route.handler(self)
             if out is not None:
                 self._respond(*out)
+        except concurrent.futures.TimeoutError as e:
+            # a command timing out, not the client: an OSError since 3.11
+            if self._status is None:
+                self._refuse(*translate(e))
         except OSError:
             pass                                # a stream's client went away
         except Exception as e:
