@@ -174,6 +174,8 @@ def process_create_time(pid):
             return None
     if _zombie(pid):
         return None                                   # exited: nothing to match
+    if sys.platform == 'darwin':
+        return _darwin_start_time(pid)
     try:
         with open('/proc/%d/stat' % pid, encoding='utf-8', errors='replace') as f:
             # field 22 (starttime); split after the ')' that ends comm, which
@@ -181,13 +183,47 @@ def process_create_time(pid):
             return int(f.read().rsplit(')', 1)[1].split()[19])
     except Exception:
         pass
-    try:                                              # macOS / BSD: no /proc
+    try:                                              # other BSDs: no /proc
         # `-p<pid>` attached: a bare '-p' element is what the headless-claude
         # spawn gate (test_primitives) looks for, and this is not one
         r = subprocess.run(['ps', '-o', 'lstart=', '-p%d' % pid],
                            capture_output=True, text=True, timeout=5,
                            creationflags=no_window_flags)
         return r.stdout.strip() or None
+    except Exception:
+        return None
+
+
+_libproc = None
+
+
+def _darwin_start_time(pid):
+    """macOS: microseconds since the epoch at which *pid* started, from
+    libproc's PROC_PIDTBSDINFO, or None. `ps -o lstart` has whole-second
+    resolution, so two processes started in the same second — an orphan and
+    the stranger now holding its recycled pid — read the same there."""
+    global _libproc
+    try:
+        if _libproc is None:
+            import ctypes
+
+            class BsdInfo(ctypes.Structure):          # struct proc_bsdinfo, <sys/proc_info.h>
+                _fields_ = [('ids', ctypes.c_uint32 * 12),       # pbi_flags … rfu_1
+                            ('comm', ctypes.c_char * 16), ('name', ctypes.c_char * 32),
+                            ('counts', ctypes.c_uint32 * 5),     # pbi_nfiles … e_tpgid
+                            ('nice', ctypes.c_int32),
+                            ('start_tvsec', ctypes.c_uint64), ('start_tvusec', ctypes.c_uint64)]
+            lib = ctypes.CDLL('/usr/lib/libproc.dylib')
+            lib.proc_pidinfo.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64,
+                                         ctypes.POINTER(BsdInfo), ctypes.c_int]
+            lib.proc_pidinfo.restype = ctypes.c_int
+            _libproc = (lib, BsdInfo, ctypes)
+        lib, BsdInfo, ctypes = _libproc
+        info = BsdInfo()
+        size = ctypes.sizeof(info)
+        if lib.proc_pidinfo(pid, 3, 0, ctypes.byref(info), size) != size:   # 3 = PROC_PIDTBSDINFO
+            return None                               # gone, or not ours to read
+        return info.start_tvsec * 1000000 + info.start_tvusec
     except Exception:
         return None
 

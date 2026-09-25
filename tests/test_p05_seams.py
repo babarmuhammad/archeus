@@ -201,6 +201,29 @@ def test_create_time_names_one_process():
     assert proc.process_create_time('x') is None
 
 
+@pytest.mark.skipif(sys.platform != 'darwin', reason='the libproc start time is macOS-only')
+def test_two_processes_started_in_the_same_second_have_different_create_times():
+    """`ps -o lstart` read whole seconds, so on macOS a stranger started in
+    the same second as the orphan whose pid it now holds looked like it — and
+    was killed. The libproc start time is in microseconds."""
+    for _ in range(10):
+        a, b = (subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+                for _ in range(2))
+        try:
+            ca, cb = proc.process_create_time(a.pid), proc.process_create_time(b.pid)
+            assert isinstance(ca, int) and isinstance(cb, int), (ca, cb)
+            assert abs(ca / 1e6 - time.time()) < 60          # microseconds since the epoch
+            assert proc.process_create_time(a.pid) == ca     # stable across readings
+            if ca // 1000000 == cb // 1000000:
+                assert ca != cb
+                return
+        finally:
+            for p in (a, b):
+                p.kill()
+                p.wait()
+    pytest.fail('no two processes started within one second in ten tries')
+
+
 def test_kill_pid_tree_refuses_a_mismatch_and_kills_a_match(tmp_path):
     """A recorded (pid, create time) only kills the process it recorded — and
     then the whole tree, including a grandchild."""
