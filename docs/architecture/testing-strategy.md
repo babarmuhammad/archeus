@@ -120,3 +120,10 @@ exist or if a judge test is not listed — the table cannot drift from the suite
   && npx playwright test` for the SPA (Node only in CI and release, never at runtime).
 - Contract tests against real harnesses: manual/weekly workflow with sandbox accounts; never on
   pull requests (quota and secrets).
+- Known runner limitation: `test_writer_throughput_is_at_least_500_commands_per_second`. 500/s
+  is the target on a developer machine and CI asserts a 200/s regression floor (plan C12). The
+  hosted Windows runners measured 68–154 commands/s across the P4 CI runs, with the writer
+  unchanged and the same commit passing on one Python version and failing on the next, so the
+  test fails there by the runner's fsync cost, not by a regression. The floor, the writer and the
+  WAL/FULL-sync pragmas stay as they are: lowering any of them to make the runner pass would
+  measure the runner instead of Archeus.
