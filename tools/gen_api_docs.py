@@ -140,7 +140,8 @@ def _api_routes(routes):
     return [r for r in routes.ROUTES if r.path.startswith('/v1/')]
 
 
-QUERY_TYPES = {'state': "Mission['state']", 'after': 'number', 'limit': 'number'}
+QUERY_TYPES = {'state': "Mission['state']", 'after': 'number', 'limit': 'number',
+               'project': 'string'}
 
 
 def render_v1_client():

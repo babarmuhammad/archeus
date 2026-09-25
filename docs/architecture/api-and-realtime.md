@@ -38,14 +38,14 @@ mobile (ADR-0010). Push beyond ntfy is **DEFERRED**.
 
 | Area | Queries (GET) | Commands (POST) |
 |---|---|---|
-| Presence | `/v1/now` (digest + active + attention summary), `/v1/activity?since=` | `/v1/now/ack` |
+| Presence | `/v1/digest` (P4), `/v1/now` (digest + active + attention summary, P16 — it embeds the digest query), `/v1/activity?since=` | `/v1/digest/ack` (P4; the monotone per-user cursor) |
 | Conversation | `/v1/conversations/{id}/messages?before=` | `/v1/conversations/{id}/messages` (user turn → intent pipeline; returns message id; reply arrives via events) |
 | Intent | `/v1/intents/{id}` | `/v1/intents/{id}/clarify` |
 | Missions | `/v1/missions?state=&project=`, `/v1/missions/{id}`, `/{id}/plan`, `/{id}/tasks`, `/{id}/timeline`, `/{id}/why` | `create`, `pause`, `resume`, `cancel`, `reprioritize`, `request-changes`, `accept`, `feedback` |
 | Plans | `/v1/plans/{id}` | `/v1/plans/{id}/edit` (creates new version) |
 | Tasks / Executions | `/v1/tasks/{id}`, `/v1/executions/{id}`, `/v1/executions/{id}/stream?from=` (tail of normalised events), `/v1/executions/{id}/checkpoints` | `stop`, `retry`, `handoff` |
 | Approvals / Attention | `/v1/attention` (approvals, blockers, acceptance items, knowledge & drift proposals), `/v1/approvals/{id}` | `/v1/approvals/{id}/decide` `{decision, note, step_up?, idempotency_key}` |
-| World | `/v1/projects`, `/v1/projects/{id}`, `/v1/world/graph?focus=&depth=`, `/v1/repositories/{id}/inspections`, `/v1/meetings`, `/v1/decisions`, `/v1/ideas`, `/v1/people` | `projects/create|archive`, `repositories/{id}/inspect`, `meetings/import`, `ideas/capture|promote|park` |
+| World | `/v1/status` (P4, deterministic), `/v1/projects`, `/v1/projects/{id}`, `/v1/world/graph?focus=&depth=`, `/v1/repositories/{id}/inspections`, `/v1/meetings`, `/v1/decisions`, `/v1/ideas`, `/v1/people` | `projects/create|archive` (`POST /v1/projects`, admin, P4), `projects/{id}/constraints` (P4), `repositories/{id}/inspect`, `meetings/import`, `ideas/capture|promote|park` |
 | Knowledge | `/v1/knowledge?type=&scope=&q=`, `/v1/knowledge/{id}` (with supersession chain) | `confirm`, `retract`, `supersede`, `pin`, `forget` (dry-run default) |
 | Context | `/v1/context/{package_id}` | `/v1/context/preview` (assemble without executing) |
 | Resources | `/v1/harnesses`, `/v1/accounts`, `/v1/accounts/{id}/usage`, `/v1/models`, `/v1/route-decisions/{id}` | `accounts/register|disable|reauth`, `resource-policies/{account}` (priority/allocation/budgets), `/v1/route/preview` |

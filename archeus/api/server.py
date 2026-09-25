@@ -129,6 +129,8 @@ def translate(e):
         return 404, 'not_found', {'id': str(e.args[0]) if e.args else None}, {}
     if isinstance(e, errors.CursorExpired):
         return 410, 'cursor_expired', {'reason': e.reason, 'floor': e.floor, 'head': e.head}, {}
+    if isinstance(e, errors.Conflict):
+        return 409, 'conflict', dict(e.detail, why=str(e)), {}
     if isinstance(e, errors.IdempotencyConflict):
         return 400, 'invalid_request', {'field': 'idempotency_key', 'why': str(e)}, {}
     if isinstance(e, (errors.WriterBusy, concurrent.futures.TimeoutError)):

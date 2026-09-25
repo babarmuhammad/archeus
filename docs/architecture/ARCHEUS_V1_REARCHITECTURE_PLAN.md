@@ -625,6 +625,15 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - The optional model pass of inspection is a tool-less structured call (§31.4): disabled until
   the ADR-0021 gate is passed; the deterministic pass alone must satisfy the acceptance.
 - Acceptance: S7, S13 (deterministic part), S14 pass.
+  - **P4, as built** (p4-design-gate.md). `archeus/core/world/` (`inspection.py` — HEAD from
+    `.git` alone, discovery, the deterministic pass over the reused `connections` graph;
+    `drift.py`; `status.py`; `digest.py`; `worker.py`), `archeus/core/application/world.py` (the
+    world commands), migration `0003_world.sql` (users, projects, repositories, inspections,
+    knowledge items), the four guarded `architecture` edges, seven event types, eight routes, the
+    `archeus-world` thread (after the engine; exit 3 on its own failure) and `health.world`, whose
+    `pending` also wakes the worker so the judge's idle signal never reports a commit the worker has
+    not seen. `CoreClient` gained `create_project` and `declare_constraint` (D1). No model call
+    (D2); the model pass moves to P6.
 
 **P5 — Context engine**
 - Depends: P4. New: `context/*`, `infra/search/bm25.py` (reusing `recall`).

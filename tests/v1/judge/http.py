@@ -89,9 +89,13 @@ class HttpClient:
 
     def _idle(self):
         """Core is idle when its engine's last pass made no progress AND saw
-        the head there is now: nothing committed since can be waiting on it."""
-        engine = self._call('GET', '/v1/health')['engine']
-        if engine['state'] != 'idle':
+        the head there is now — nothing committed since can be waiting on it —
+        and its world worker has nothing due (P4): `pending` is computed from
+        the repositories as they are on disk at this request, so a commit the
+        worker has not noticed yet is pending work, never idleness."""
+        health = self._call('GET', '/v1/health')
+        engine, world = health['engine'], health['world']
+        if engine['state'] != 'idle' or world['state'] != 'idle' or world['pending']:
             return False
         return not self._call('GET', '/v1/events?after=%d&limit=1'
                               % engine['observed_seq'])['events']
@@ -119,11 +123,9 @@ class HttpClient:
 
     def list_missions(self, *, state: Optional[str] = None,
                       project_id: Optional[str] = None) -> list:
-        if project_id is not None:
-            raise NotImplementedError('CoreClient.list_missions: a project filter arrives '
-                                      'with projects (P4)')
-        q = '' if state is None else '?state=%s' % state
-        return self._call('GET', '/v1/missions' + q)['missions']
+        q = '&'.join('%s=%s' % kv for kv in (('state', state), ('project', project_id))
+                     if kv[1] is not None)
+        return self._call('GET', '/v1/missions' + ('?' + q if q else ''))['missions']
 
     def _control(self, verb, target):
         if ids.kind_of(target) != 'mission':
@@ -149,6 +151,31 @@ class HttpClient:
             if len(page) < 1000:
                 return out
             cursor = page[-1]['seq']
+
+    # ── the world (P4) ──
+
+    def create_project(self, *, name: str, root_paths: Sequence[str],
+                       idempotency_key: Optional[str] = None) -> dict:
+        return self._call('POST', '/v1/projects', {
+            'name': name, 'root_paths': list(root_paths),
+            'idempotency_key': idempotency_key or ids.new_ulid()})
+
+    def declare_constraint(self, *, project_id: str, statement: str,
+                           kind: Optional[str] = None, spec: Optional[dict] = None,
+                           idempotency_key: Optional[str] = None) -> dict:
+        return self._call('POST', '/v1/projects/%s/constraints' % project_id, {
+            'statement': statement, 'kind': kind, 'spec': spec,
+            'idempotency_key': idempotency_key or ids.new_ulid()})
+
+    def status(self, *, project_id: Optional[str] = None) -> dict:
+        return self._call('GET', '/v1/status' + ('' if project_id is None
+                                                 else '?project=%s' % project_id))
+
+    def digest(self) -> dict:
+        return self._call('GET', '/v1/digest')
+
+    def ack(self, up_to_seq: int) -> dict:
+        return self._call('POST', '/v1/digest/ack', {'up_to_seq': up_to_seq})
 
 
 for _op in OPERATIONS:
@@ -256,10 +283,11 @@ class TempCore:
 
     def stop(self, *, kill=False):
         if self.core is not None:
-            loop = self.core.loop
+            loops = (self.core.world, self.core.loop)
             self.core.stop(drain=not kill)
-            if loop is not None:
-                loop.join(10)
+            for loop in loops:
+                if loop is not None:
+                    loop.join(10)
             self.core = None
 
     def restart(self, *, kill=True):
@@ -295,6 +323,15 @@ if cfg.get('hold_sweep'):           # the sweep waits for the test to open this 
             time.sleep(0.02)
         return sweep(self)
     engine.Engine.reconcile_orphans = held
+if cfg.get('hold_inspection'):     # a walk waits for the test to open this gate
+    from archeus.core.world import inspection as _inspection
+    _walk = _inspection.inspect
+    def held_walk(path):
+        while not os.path.exists(cfg['hold_inspection']):
+            import time
+            time.sleep(0.02)
+        return _walk(path)
+    _inspection.inspect = held_walk
 ports = runtime.Ports(scenarios=cfg.get('scenarios') or {})
 if cfg.get('brain_fails'):
     class Broken:

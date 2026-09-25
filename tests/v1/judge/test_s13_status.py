@@ -4,7 +4,6 @@ with no brain, and a brain summary whose every claim links to an object."""
 import pytest
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P4")
 def test_status_is_answered_without_the_brain(client):
     client.create_mission(title='One', objective='Something')
     st = client.status()

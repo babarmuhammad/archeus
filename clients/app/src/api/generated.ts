@@ -7,6 +7,11 @@ export const SETTLED: readonly string[] = ['COMPLETED', 'CANCELLED', 'FAILED', '
 export const SCOPES = ['observe', 'control', 'approve', 'admin'] as const;
 export const STREAM_PATH = '/v1/events/stream';
 
+export interface Acked {
+  up_to_seq: number;
+  changed: boolean;
+}
+
 export interface ApiError {
   error: string;
   detail: Record<string, unknown>;
@@ -21,6 +26,12 @@ export interface CommandResult {
   transitions: Transition[];
 }
 
+export interface ConstraintDeclared {
+  knowledge_item: KnowledgeItem;
+  changed: boolean;
+  stale: string[];
+}
+
 export interface Created {
   id: string;
   state: string;
@@ -32,6 +43,24 @@ export interface Criterion {
   text: string;
   check: 'automatic' | 'human';
   origin?: 'explicit' | 'inferred';
+}
+
+export interface Digest {
+  from_seq: number;
+  up_to_seq: number;
+  count: number;
+  groups: DigestGroup[];
+  truncated: boolean;
+}
+
+export interface DigestGroup {
+  ref: Subject;
+  headline: 'needs_you' | 'drift_found' | 'failed' | 'completed' | 'drift_cleared' | 'progressed';
+  count: number;
+  first_seq: number;
+  last_seq: number;
+  project_id: string | null;
+  types: string[];
 }
 
 export interface Event {
@@ -54,6 +83,17 @@ export interface EventPage {
   events: Event[];
 }
 
+export interface Finding {
+  constraint_id: string;
+  constraint: string;
+  kind: 'doc_matches_code' | 'forbid_dependency' | 'framework_pinned' | 'module_exists' | 'require_layering' | null;
+  status: 'violated' | 'satisfied' | 'unchecked';
+  reason: string | null;
+  violations: string[][];
+  violation_count: number;
+  [field: string]: unknown;
+}
+
 export interface Health {
   core: {
     pid: number;
@@ -67,6 +107,36 @@ export interface Health {
     observed_seq: number;
     parked: number;
   };
+  world: {
+    state: 'starting' | 'reconciling' | 'running' | 'idle' | 'failed' | 'stopped';
+    pending: number;
+  };
+}
+
+export interface Inspection {
+  id: string;
+  repository_id: string;
+  revision: string | null;
+  extractor_version: number;
+  state: 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  attempts: number;
+  failure?: string | null;
+  version: number;
+  [field: string]: unknown;
+}
+
+export interface InspectionList {
+  inspections: Inspection[];
+}
+
+export interface KnowledgeItem {
+  id: string;
+  type: string;
+  title: string;
+  state: 'CANDIDATE' | 'CONFIRMED' | 'RETRACTED' | 'SUPERSEDED' | 'EXPIRED';
+  constraint?: Record<string, unknown> | null;
+  version: number;
+  [field: string]: unknown;
 }
 
 export interface LaunchCode {
@@ -91,14 +161,56 @@ export interface MissionList {
   missions: Mission[];
 }
 
+export interface Project {
+  id: string;
+  name: string;
+  state: 'ACTIVE' | 'ARCHIVED';
+  root_paths: string[];
+  repositories?: Repository[];
+  version: number;
+  [field: string]: unknown;
+}
+
+export interface ProjectCreated {
+  project: Project;
+  repositories: Repository[];
+}
+
+export interface ProjectList {
+  projects: Project[];
+}
+
 export interface Redeemed {
   device_id: string;
   token: string;
 }
 
+export interface Repository {
+  id: string;
+  project_id: string;
+  path: string;
+  kind: 'repo' | 'submodule' | 'worktree';
+  architecture_state: 'UNKNOWN' | 'CONSISTENT' | 'DRIFTED' | 'STALE';
+  last_revision?: string | null;
+  last_inspection_id?: string | null;
+  findings?: Finding[];
+  version: number;
+  [field: string]: unknown;
+}
+
 export interface Scope {
   workspace: string;
   project: string | null;
+}
+
+export interface Status {
+  source: 'deterministic';
+  as_of_seq: number;
+  projects: Record<string, unknown>[];
+  missions: Mission[];
+  drift: Finding[];
+  unchecked: Finding[];
+  unknown_project: string[];
 }
 
 export interface StreamFrame {
@@ -151,6 +263,23 @@ export interface RevokeDeviceRequest {
   idempotency_key: string;
 }
 
+export interface CreateProjectRequest {
+  name: string;
+  root_paths: string[];
+  idempotency_key: string;
+}
+
+export interface DeclareConstraintRequest {
+  statement: string;
+  kind?: 'doc_matches_code' | 'forbid_dependency' | 'framework_pinned' | 'module_exists' | 'require_layering' | null;
+  spec?: Record<string, unknown> | null;
+  idempotency_key: string;
+}
+
+export interface AckDigestRequest {
+  up_to_seq: number;
+}
+
 export type Method = 'GET' | 'POST';
 export type Send = <T>(method: Method, path: string, body?: unknown) => Promise<T>;
 
@@ -167,7 +296,7 @@ export const api = {
     send<Health>('GET', '/v1/health'),
   version: (send: Send) =>
     send<Version>('GET', '/v1/version'),
-  listMissions: (send: Send, query: { state?: Mission['state'] } = {}) =>
+  listMissions: (send: Send, query: { state?: Mission['state']; project?: string } = {}) =>
     send<MissionList>('GET', '/v1/missions' + qs(query)),
   getMission: (send: Send, id: string) =>
     send<Mission>('GET', '/v1/missions/' + encodeURIComponent(id)),
@@ -185,4 +314,20 @@ export const api = {
     send<Redeemed>('POST', '/v1/devices/launch/redeem', body),
   revokeDevice: (send: Send, id: string, body: RevokeDeviceRequest) =>
     send<CommandResult>('POST', '/v1/devices/' + encodeURIComponent(id) + '/revoke', body),
+  status: (send: Send, query: { project?: string } = {}) =>
+    send<Status>('GET', '/v1/status' + qs(query)),
+  listProjects: (send: Send) =>
+    send<ProjectList>('GET', '/v1/projects'),
+  getProject: (send: Send, id: string) =>
+    send<Project>('GET', '/v1/projects/' + encodeURIComponent(id)),
+  createProject: (send: Send, body: CreateProjectRequest) =>
+    send<ProjectCreated>('POST', '/v1/projects', body),
+  declareConstraint: (send: Send, id: string, body: DeclareConstraintRequest) =>
+    send<ConstraintDeclared>('POST', '/v1/projects/' + encodeURIComponent(id) + '/constraints', body),
+  listInspections: (send: Send, id: string, query: { limit?: number } = {}) =>
+    send<InspectionList>('GET', '/v1/repositories/' + encodeURIComponent(id) + '/inspections' + qs(query)),
+  digest: (send: Send) =>
+    send<Digest>('GET', '/v1/digest'),
+  ackDigest: (send: Send, body: AckDigestRequest) =>
+    send<Acked>('POST', '/v1/digest/ack', body),
 };

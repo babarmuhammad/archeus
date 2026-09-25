@@ -94,6 +94,7 @@ packages = [
     "archeus.core",
     "archeus.core.application",
     "archeus.core.domain",
+    "archeus.core.world",
     "archeus.harnesses",
     "archeus.infra",
     "archeus.infra.artifacts",

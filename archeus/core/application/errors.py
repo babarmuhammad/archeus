@@ -7,6 +7,7 @@ from ...infra.db.writer import (IdempotencyConflict, InvalidTransition, NotFound
 from ...infra.eventlog.outbox import CursorExpired  # noqa: F401
 from .lifecycle import GuardFailed, IllegalTrigger  # noqa: F401
 from .work import PolicyDenied  # noqa: F401
+from .world import Conflict  # noqa: F401
 
 #: A command refused because another command moved its row first: the engine
 #: treats these as a lost race (p3.5b §3 D4), never as a failure.

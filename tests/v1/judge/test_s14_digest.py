@@ -3,7 +3,6 @@
 import pytest
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P4")
 def test_the_digest_lists_what_happened_since_the_last_ack(client):
     before = client.digest()
     client.ack(before['up_to_seq'])

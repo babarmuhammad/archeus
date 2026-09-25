@@ -21,11 +21,15 @@ import os
 from typing import Optional, Protocol, Sequence, runtime_checkable
 
 from archeus.core import engine, ports
-from archeus.core.application import commands, queries, work
+from archeus.core.application import commands, queries, work, world
 from archeus.core.application.lifecycle import GuardFailed, IllegalTrigger
 from archeus.core.application.work import PolicyDenied
+from archeus.core.application.world import Conflict
 from archeus.core.domain import ids
 from archeus.core.domain.values import Ref
+from archeus.core.world import digest as world_digest
+from archeus.core.world import status as world_status
+from archeus.core.world.worker import World
 from archeus.harnesses.fake import FakeHarness
 from archeus.harnesses.registry import AdapterRegistry
 from archeus.infra import discovery, paths
@@ -69,6 +73,11 @@ class CoreClient(Protocol):
     def digest(self) -> dict: ...
     def ack(self, up_to_seq: int) -> dict: ...
     # ── world, resources ──
+    def create_project(self, *, name: str, root_paths: Sequence[str],
+                       idempotency_key: Optional[str] = None) -> dict: ...
+    def declare_constraint(self, *, project_id: str, statement: str,
+                           kind: Optional[str] = None, spec: Optional[dict] = None,
+                           idempotency_key: Optional[str] = None) -> dict: ...
     def import_meeting(self, path: str, *, project_id: Optional[str] = None) -> dict: ...
     def register_account(self, *, harness_id: str, label: str, auth_kind: str,
                          home_ref: Optional[str] = None) -> dict: ...
@@ -120,6 +129,7 @@ class InProcessClient:
         self._db = self._lock = None
         self._engine = None
         self._principal = self._system = None
+        self._world = None
         # the stub ports every phase runs on until P9/P10/P13 swap them
         self._policy = ports.AllowAllPolicy()
         self._missions = commands.Missions(policy=self._policy)
@@ -146,6 +156,9 @@ class InProcessClient:
                                router=ports.FixedCandidateRouter('fake')),
                 brain=ports.FixedPlanBrain(engine.SKELETON_PLAN), registry=registry,
                 verifier=ports.ScriptedVerifier(), reviewer=ports.ScriptedReview())
+            # the world worker, pumped by `_idle` as the engine is (P4)
+            self._world = World(self._db, actor=Ref('system', self._system))
+            self._world.sweep()
         return self._db
 
     def _actor(self):
@@ -158,6 +171,8 @@ class InProcessClient:
             return fn()
         except NotFound as e:
             raise CoreClientError(404, 'not_found', {'id': str(e)}) from e
+        except Conflict as e:
+            raise CoreClientError(409, 'conflict', dict(e.detail, why=str(e))) from e
         except CursorExpired as e:
             raise CoreClientError(410, 'cursor_expired', {'reason': e.reason}) from e
         except VersionConflict as e:
@@ -182,18 +197,20 @@ class InProcessClient:
             raise CoreClientError(400, 'invalid_request', {'why': str(e)}) from e
 
     def _idle(self):
-        """One engine step for every mission that is not settled; True when
-        none of them changed — then nothing in this Core can change on its own."""
+        """One engine step for every mission that is not settled and one world
+        pass; True when neither changed anything — then nothing in this Core
+        can change on its own."""
         db = self._core()
         with db.read() as conn:
             live = [m['id'] for m in queries.list_missions(conn)
                     if m['state'] not in engine.SETTLED]
-        return not any([self._engine.step(mid)['changed'] for mid in live])
+        stepped = any([self._engine.step(mid)['changed'] for mid in live])
+        return not (self._world.pass_once()['changed'] or stepped)
 
     def close(self, *, drain=True):
         if self._db is not None:
             self._db.close(drain=drain)
-            self._db = self._engine = None      # its processes are orphans now
+            self._db = self._engine = self._world = None   # its processes are orphans now
             self._lock.release()
             self._lock = None
 
@@ -224,13 +241,9 @@ class InProcessClient:
 
     def list_missions(self, *, state: Optional[str] = None,
                       project_id: Optional[str] = None) -> list:
-        if project_id is not None:
-            raise NotImplementedError('CoreClient.list_missions: a project filter arrives '
-                                      'with projects (P4)')
-
         def read():
             with self._core().read() as conn:
-                return queries.list_missions(conn, state)
+                return queries.list_missions(conn, state, project_id)
         return self._call(read)
 
     def _control(self, verb, target):
@@ -252,10 +265,44 @@ class InProcessClient:
                 return queries.events(conn, after_seq, limit=limit)
         return self._call(read)
 
+    # ── the world (P4) ──
+
+    def _read(self, fn, *args):
+        def read():
+            with self._core().read() as conn:
+                return fn(conn, *args)
+        return self._call(read)
+
+    def _run(self, command, kwargs, idempotency_key=None):
+        return self._call(lambda: self._core().writer.execute(
+            command, dict(kwargs, actor=self._actor()), idempotency_key=idempotency_key))
+
+    def create_project(self, *, name: str, root_paths: Sequence[str],
+                       idempotency_key: Optional[str] = None) -> dict:
+        return self._run(world.create_project, {'name': name, 'root_paths': list(root_paths)},
+                         idempotency_key)
+
+    def declare_constraint(self, *, project_id: str, statement: str,
+                           kind: Optional[str] = None, spec: Optional[dict] = None,
+                           idempotency_key: Optional[str] = None) -> dict:
+        return self._run(world.declare_constraint, {
+            'project_id': project_id, 'statement': statement, 'kind': kind, 'spec': spec},
+            idempotency_key)
+
+    def status(self, *, project_id: Optional[str] = None) -> dict:
+        return self._read(world_status.status, project_id)
+
+    def digest(self) -> dict:
+        return self._read(world_digest.digest)
+
+    def ack(self, up_to_seq: int) -> dict:
+        return self._run(world.ack_digest, {'up_to_seq': up_to_seq})
+
 
 #: Operations with a real body in both bindings (P2: G1, G4; P3: the mission
 #: control verbs; P3.5: listing missions, which the SPA's two lists read).
-IMPLEMENTED = ('create_mission', 'get_mission', 'list_missions', 'events', 'pause', 'resume')
+IMPLEMENTED = ('create_mission', 'get_mission', 'list_missions', 'events', 'pause', 'resume',
+               'create_project', 'declare_constraint', 'status', 'digest', 'ack')
 
 # Every other operation is declared and fails loudly. Later phases replace these
 # with real bodies one by one; tests/v1/contract/test_core_client.py keeps every

@@ -22,7 +22,8 @@ def _make(binding, tmp_path):
 #: change: it goes in the document first.
 DOCUMENTED = ('submit_message', 'create_mission', 'get_mission', 'list_missions',
               'decide_approval', 'pause', 'resume', 'stop', 'route_why', 'status',
-              'digest', 'ack', 'import_meeting', 'register_account',
+              'digest', 'ack', 'create_project', 'declare_constraint', 'import_meeting',
+              'register_account',
               'set_resource_policy', 'events')
 
 

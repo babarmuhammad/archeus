@@ -22,7 +22,7 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/assets/*` | none | — | — | — | the built SPA |
 | GET | `/v1/health` | observe | — | — | — | `Health` |
 | GET | `/v1/version` | observe | — | — | — | `Version` |
-| GET | `/v1/missions` | observe | — | `state` | — | `MissionList` |
+| GET | `/v1/missions` | observe | — | `state`, `project` | — | `MissionList` |
 | GET | `/v1/missions/{id}` | observe | — | — | — | `Mission` |
 | POST | `/v1/missions` | control | required | — | `CreateMissionRequest` | `Created` |
 | POST | `/v1/missions/{id}/pause` | control | required | — | `PauseMissionRequest` | `CommandResult` |
@@ -32,10 +32,27 @@ given trigger on a given subject is decided in the application layer (P9), never
 | POST | `/v1/devices/launch/code` | admin | exempt | — | `LaunchCodeRequest` | `LaunchCode` |
 | POST | `/v1/devices/launch/redeem` | none | exempt | — | `LaunchRedeemRequest` | `Redeemed` |
 | POST | `/v1/devices/{id}/revoke` | admin | required | — | `RevokeDeviceRequest` | `CommandResult` |
+| GET | `/v1/status` | observe | — | `project` | — | `Status` |
+| GET | `/v1/projects` | observe | — | — | — | `ProjectList` |
+| GET | `/v1/projects/{id}` | observe | — | — | — | `Project` |
+| POST | `/v1/projects` | admin | required | — | `CreateProjectRequest` | `ProjectCreated` |
+| POST | `/v1/projects/{id}/constraints` | control | required | — | `DeclareConstraintRequest` | `ConstraintDeclared` |
+| GET | `/v1/repositories/{id}/inspections` | observe | — | `limit` | — | `InspectionList` |
+| GET | `/v1/digest` | observe | — | — | — | `Digest` |
+| POST | `/v1/digest/ack` | control | — | — | `AckDigestRequest` | `Acked` |
 
 A launch-code device holds `observe`; the local token holds `observe control approve admin`.
 
 ## Types
+
+### `Acked`
+
+```ts
+interface Acked {
+  up_to_seq: number;
+  changed: boolean;
+}
+```
 
 ### `ApiError`
 
@@ -59,6 +76,16 @@ interface CommandResult {
 }
 ```
 
+### `ConstraintDeclared`
+
+```ts
+interface ConstraintDeclared {
+  knowledge_item: KnowledgeItem;
+  changed: boolean;
+  stale: string[];
+}
+```
+
 ### `Created`
 
 ```ts
@@ -77,6 +104,32 @@ interface Criterion {
   text: string;
   check: 'automatic' | 'human';
   origin?: 'explicit' | 'inferred';
+}
+```
+
+### `Digest`
+
+```ts
+interface Digest {
+  from_seq: number;
+  up_to_seq: number;
+  count: number;
+  groups: DigestGroup[];
+  truncated: boolean;
+}
+```
+
+### `DigestGroup`
+
+```ts
+interface DigestGroup {
+  ref: Subject;
+  headline: 'needs_you' | 'drift_found' | 'failed' | 'completed' | 'drift_cleared' | 'progressed';
+  count: number;
+  first_seq: number;
+  last_seq: number;
+  project_id: string | null;
+  types: string[];
 }
 ```
 
@@ -108,6 +161,21 @@ interface EventPage {
 }
 ```
 
+### `Finding`
+
+```ts
+interface Finding {
+  constraint_id: string;
+  constraint: string;
+  kind: 'doc_matches_code' | 'forbid_dependency' | 'framework_pinned' | 'module_exists' | 'require_layering' | null;
+  status: 'violated' | 'satisfied' | 'unchecked';
+  reason: string | null;
+  violations: string[][];
+  violation_count: number;
+  [field: string]: unknown;
+}
+```
+
 ### `Health`
 
 ```ts
@@ -124,6 +192,48 @@ interface Health {
     observed_seq: number;
     parked: number;
   };
+  world: {
+    state: 'starting' | 'reconciling' | 'running' | 'idle' | 'failed' | 'stopped';
+    pending: number;
+  };
+}
+```
+
+### `Inspection`
+
+```ts
+interface Inspection {
+  id: string;
+  repository_id: string;
+  revision: string | null;
+  extractor_version: number;
+  state: 'SCHEDULED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  attempts: number;
+  failure?: string | null;
+  version: number;
+  [field: string]: unknown;
+}
+```
+
+### `InspectionList`
+
+```ts
+interface InspectionList {
+  inspections: Inspection[];
+}
+```
+
+### `KnowledgeItem`
+
+```ts
+interface KnowledgeItem {
+  id: string;
+  type: string;
+  title: string;
+  state: 'CANDIDATE' | 'CONFIRMED' | 'RETRACTED' | 'SUPERSEDED' | 'EXPIRED';
+  constraint?: Record<string, unknown> | null;
+  version: number;
+  [field: string]: unknown;
 }
 ```
 
@@ -161,6 +271,37 @@ interface MissionList {
 }
 ```
 
+### `Project`
+
+```ts
+interface Project {
+  id: string;
+  name: string;
+  state: 'ACTIVE' | 'ARCHIVED';
+  root_paths: string[];
+  repositories?: Repository[];
+  version: number;
+  [field: string]: unknown;
+}
+```
+
+### `ProjectCreated`
+
+```ts
+interface ProjectCreated {
+  project: Project;
+  repositories: Repository[];
+}
+```
+
+### `ProjectList`
+
+```ts
+interface ProjectList {
+  projects: Project[];
+}
+```
+
 ### `Redeemed`
 
 ```ts
@@ -170,12 +311,43 @@ interface Redeemed {
 }
 ```
 
+### `Repository`
+
+```ts
+interface Repository {
+  id: string;
+  project_id: string;
+  path: string;
+  kind: 'repo' | 'submodule' | 'worktree';
+  architecture_state: 'UNKNOWN' | 'CONSISTENT' | 'DRIFTED' | 'STALE';
+  last_revision?: string | null;
+  last_inspection_id?: string | null;
+  findings?: Finding[];
+  version: number;
+  [field: string]: unknown;
+}
+```
+
 ### `Scope`
 
 ```ts
 interface Scope {
   workspace: string;
   project: string | null;
+}
+```
+
+### `Status`
+
+```ts
+interface Status {
+  source: 'deterministic';
+  as_of_seq: number;
+  projects: Record<string, unknown>[];
+  missions: Mission[];
+  drift: Finding[];
+  unchecked: Finding[];
+  unknown_project: string[];
 }
 ```
 
@@ -266,5 +438,34 @@ interface LaunchRedeemRequest {
 ```ts
 interface RevokeDeviceRequest {
   idempotency_key: string;
+}
+```
+
+### `CreateProjectRequest`
+
+```ts
+interface CreateProjectRequest {
+  name: string;
+  root_paths: string[];
+  idempotency_key: string;
+}
+```
+
+### `DeclareConstraintRequest`
+
+```ts
+interface DeclareConstraintRequest {
+  statement: string;
+  kind?: 'doc_matches_code' | 'forbid_dependency' | 'framework_pinned' | 'module_exists' | 'require_layering' | null;
+  spec?: Record<string, unknown> | null;
+  idempotency_key: string;
+}
+```
+
+### `AckDigestRequest`
+
+```ts
+interface AckDigestRequest {
+  up_to_seq: number;
 }
 ```

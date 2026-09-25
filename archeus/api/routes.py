@@ -13,15 +13,22 @@ A handler only ever runs one application command through the writer
 entity itself, never evaluates policy and never branches on an actor's kind:
 those are the application layer's, and P9's.
 
+P4 adds the world (p4-design-gate §10): status, projects, constraints,
+inspections and the digest.
+
 Deliberately absent (a test pins the table): cancel, accept, request-changes,
 approvals (P9), executions and routing (P10, P11), `/v1/now` and the execution
-stream (P16), pairing and a device list (P15), `/v1/status` (P4), hooks (P11).
+stream (P16), pairing and a device list (P15), hooks (P11), a manual
+re-inspect (the world worker covers it), `/v1/world/graph` (P18) and the rest
+of knowledge (P6).
 """
 
 import re
 from collections import namedtuple
 
-from ..core.application import commands, queries
+from ..core.application import commands, queries, world
+from ..core.world import digest as world_digest
+from ..core.world import status as world_status
 from . import auth, schemas
 from .schemas import Invalid
 
@@ -74,7 +81,8 @@ def version(req):
 
 def list_missions(req):
     with req.api.db.read() as conn:
-        return 200, {'missions': queries.list_missions(conn, _one(req.query, 'state'))}
+        return 200, {'missions': queries.list_missions(conn, _one(req.query, 'state'),
+                                                       _one(req.query, 'project'))}
 
 
 def get_mission(req):
@@ -135,6 +143,51 @@ def launch_redeem(req):
     return 200, {'device_id': out['device_id'], 'token': token}
 
 
+def status(req):
+    with req.api.db.read() as conn:
+        return 200, world_status.status(conn, _one(req.query, 'project'))
+
+
+def list_projects(req):
+    with req.api.db.read() as conn:
+        return 200, {'projects': world_status.projects(conn)}
+
+
+def get_project(req):
+    with req.api.db.read() as conn:
+        return 200, world_status.project(conn, req.params['id'])
+
+
+def create_project(req):
+    return 200, req.run(world.create_project, {'name': req.body['name'],
+                                               'root_paths': req.body['root_paths']})
+
+
+def declare_constraint(req):
+    b = req.body
+    return 200, req.run(world.declare_constraint, {
+        'project_id': req.params['id'], 'statement': b['statement'],
+        'kind': b.get('kind'), 'spec': b.get('spec')})
+
+
+def list_inspections(req):
+    raw = _one(req.query, 'limit')
+    limit = 50 if raw is None else _cursor(raw, 'limit')
+    if not 1 <= limit <= 500:
+        raise Invalid('limit', 'is 1..500')
+    with req.api.db.read() as conn:
+        return 200, {'inspections': world_status.inspections(conn, req.params['id'], limit)}
+
+
+def digest(req):
+    with req.api.db.read() as conn:
+        return 200, world_digest.digest(conn)
+
+
+def ack_digest(req):
+    return 200, req.run(world.ack_digest, {'up_to_seq': req.body['up_to_seq']}, keyed=False)
+
+
 def revoke_device(req):
     out = req.run(commands.revoke_device, {'device_id': req.params['id']})
     req.api.sse.close_device(req.params['id'])          # before we answer (§3 D2)
@@ -162,11 +215,24 @@ ROUTES = (
           'Redeemed'),
     Route('POST', '/v1/devices/{id}/revoke', revoke_device, 'admin', 'required', schemas.KEYED,
           'CommandResult'),
+    # ── the world (P4) ──
+    Route('GET', '/v1/status', status, 'observe', None, None, 'Status'),
+    Route('GET', '/v1/projects', list_projects, 'observe', None, None, 'ProjectList'),
+    Route('GET', '/v1/projects/{id}', get_project, 'observe', None, None, 'Project'),
+    Route('POST', '/v1/projects', create_project, 'admin', 'required', schemas.CREATE_PROJECT,
+          'ProjectCreated'),
+    Route('POST', '/v1/projects/{id}/constraints', declare_constraint, 'control', 'required',
+          schemas.DECLARE_CONSTRAINT, 'ConstraintDeclared'),
+    Route('GET', '/v1/repositories/{id}/inspections', list_inspections, 'observe', None, None,
+          'InspectionList'),
+    Route('GET', '/v1/digest', digest, 'observe', None, None, 'Digest'),
+    Route('POST', '/v1/digest/ack', ack_digest, 'control', None, schemas.ACK, 'Acked'),
 )
 
 #: The query parameters each GET route reads (for the docs and the client).
-QUERY = {'/v1/missions': ('state',), '/v1/events': ('after', 'limit'),
-         '/v1/events/stream': ('after',)}
+QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),
+         '/v1/events/stream': ('after',), '/v1/status': ('project',),
+         '/v1/repositories/{id}/inspections': ('limit',)}
 
 STREAM = '/v1/events/stream'
 

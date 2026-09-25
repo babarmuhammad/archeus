@@ -7,8 +7,9 @@ Start, in this order; stop in the reverse:
     2 open the database (starts the writer thread)
     3 ensure the local token (run/local-token, hash in `tokens`)
     4 start the engine thread: the boot reconciliation sweep, then the loop
-    5 bind HTTP on 127.0.0.1:<port>
-    6 write run/core.json
+    5 start the world thread: the inspection sweep, then the loop (P4)
+    6 bind HTTP on 127.0.0.1:<port>
+    7 write run/core.json
 
 One Engine per Core, built here and only here (and by the in-process judge
 binding, which takes the same lock). It is never re-created inside a process:
@@ -19,6 +20,11 @@ parked mission is stepped again only once some command has moved it. A lost
 race with an HTTP command (IllegalTrigger, GuardFailed, VersionConflict) is
 logged and skipped; any other exception fails Core (exit 3). Nothing here
 runs inside a transaction: every change is one writer command.
+
+The world worker (P4) is the same shape: one per Core, a failing repository is
+a FAILED inspection, and any other exception fails Core (exit 3). It passes
+every WORLD_POLL_S seconds, on every commit, and whenever `pending()` finds
+due work (a health check does), so nothing waits a poll interval to be seen.
 """
 
 import logging
@@ -40,9 +46,11 @@ from ..infra.eventlog import outbox
 from . import engine, ports as P
 from .application import commands, errors, queries, work
 from .domain.values import Ref
+from .world.worker import World
 
 DEFAULT_PORT = 7337
 IDLE_S = 1.0
+WORLD_POLL_S = 10.0         # D6
 
 log = logging.getLogger('archeus.core')
 
@@ -168,14 +176,80 @@ class EngineLoop:
         writer.wait_commit(seen, self.idle_s, until=self._stop.is_set)
 
 
+class WorldLoop:
+    """The `archeus-world` thread: the boot sweep, then passes. It waits on
+    the writer's commit notification with the poll interval as its timeout,
+    and `wake()` (called by `World.pending()` when it finds due work) ends a
+    wait early."""
+
+    def __init__(self, world, db, *, poll_s=WORLD_POLL_S, on_fail=None):
+        self.world, self.db, self.poll_s, self.on_fail = world, db, poll_s, on_fail
+        self.state = 'starting'
+        self._stop, self._wake = threading.Event(), threading.Event()
+        world.on_wake = self.wake
+        world.stopping = self._stop.is_set
+        self._thread = threading.Thread(target=self._run, name='archeus-world', daemon=True)
+
+    def start(self):
+        self._thread.start()
+
+    def wake(self):
+        self._wake.set()
+        self.db.writer.wake()
+
+    def stop(self):
+        self._stop.set()
+        self.db.writer.wake()
+
+    def join(self, timeout):
+        self._thread.join(timeout)
+
+    def status(self):
+        pending = self.world.pending() if self.state in ('idle', 'running') else 0
+        return {'state': self.state, 'pending': pending}
+
+    def _run(self):
+        try:
+            self.state = 'reconciling'
+            swept = self.world.sweep()
+            if swept:
+                log.info('failed %d inspection(s) a previous Core left running', len(swept))
+            while not self._stop.is_set():
+                seen = self.db.writer.commit_count
+                self.state = 'running'
+                if self.world.pass_once()['changed']:
+                    continue
+                self.state = 'idle'
+                self.db.writer.wait_commit(
+                    seen, self.poll_s, until=lambda: self._stop.is_set() or self._wake.is_set())
+                self._wake.clear()
+            self.state = 'stopped'
+        except errors.WriterClosed:
+            self.state = 'stopped'
+            if not self._stop.is_set():
+                self._failed()
+        except Exception:
+            if self._stop.is_set():
+                self.state = 'stopped'
+            else:
+                self._failed()
+
+    def _failed(self):
+        self.state = 'failed'
+        log.exception('the world thread failed; Core stops (exit 3)')
+        if self.on_fail:
+            self.on_fail()
+
+
 class Core:
     def __init__(self, *, port=DEFAULT_PORT, ports=None, heartbeat_s=15.0, idle_s=IDLE_S,
-                 launch_clock=time.monotonic, lock_retry_s=2.0, static_dir=server.STATIC_DIR):
+                 launch_clock=time.monotonic, lock_retry_s=2.0, static_dir=server.STATIC_DIR,
+                 world_poll_s=WORLD_POLL_S):
         self.port, self.ports = port, ports or Ports()
         self.heartbeat_s, self.idle_s = heartbeat_s, idle_s
         self.launch_clock, self.lock_retry_s = launch_clock, lock_retry_s
-        self.static_dir = static_dir
-        self.lock = self.db = self.loop = self.api = self.server = None
+        self.static_dir, self.world_poll_s = static_dir, world_poll_s
+        self.lock = self.db = self.loop = self.world = self.api = self.server = None
         self.warning = None
         self.exit_code = 0
         self._done = threading.Event()
@@ -221,6 +295,9 @@ class Core:
             reviewer=self.ports.reviewer, scenarios=self.ports.scenarios)
         self.loop = EngineLoop(eng, self.db, idle_s=self.idle_s, on_fail=self._engine_failed)
         self.loop.start()
+        self.world = WorldLoop(World(self.db, actor=self.system), self.db,
+                               poll_s=self.world_poll_s, on_fail=self._engine_failed)
+        self.world.start()
 
         self.api = server.Api(db=self.db, missions=self.missions, port=self.port,
                               health=self.health, version=VERSION,
@@ -269,7 +346,7 @@ class Core:
         return {'core': {'pid': os.getpid(), 'started_at': self.started_at,
                          'version': VERSION, 'schema': self.schema,
                          'ports': 'stub' if self.ports.stub else 'real'},
-                'engine': self.loop.status()}
+                'engine': self.loop.status(), 'world': self.world.status()}
 
     def launch_url(self):
         """A fresh launch code in the URL fragment (never sent to the server)."""
@@ -301,6 +378,8 @@ class Core:
             self.server.shutdown()
             self.server.server_close()
             self.server = None
+        if self.world is not None:
+            self.world.stop()
         if self.loop is not None:
             self.loop.stop()
         if self.db is not None:
@@ -321,7 +400,7 @@ class Core:
 def run(*, port=DEFAULT_PORT, ports=None, open_browser=False, out=None, err=None):
     """`archeus core` in the foreground. Exit codes: 0 stopped cleanly, 1
     another Core holds the lock (or Core refused to start), 2 the port is in
-    use, 3 the engine failed."""
+    use, 3 the engine or the world worker failed."""
     out, err = out or sys.stdout, err or sys.stderr
     core = Core(port=port, ports=ports)
     try:

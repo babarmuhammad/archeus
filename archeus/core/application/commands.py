@@ -38,6 +38,8 @@ def register_principal(tx, *, kind, scopes=()):
 
 def create_mission(tx, *, actor, title, objective, project_id=None,
                    workspace_id=ids.GLOBAL_WORKSPACE, success_criteria=(), max_replans=2):
+    if project_id is not None and tx.get(entities.Project, project_id) is None:
+        raise lifecycle.NotFound(project_id)     # a mission names a registered project (P4)
     m = entities.Mission(id=ids.new_id('mission'), workspace_id=workspace_id,
                          project_id=project_id, title=title, objective=objective,
                          success_criteria=tuple(dict(c) for c in success_criteria),

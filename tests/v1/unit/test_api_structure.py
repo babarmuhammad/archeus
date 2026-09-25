@@ -71,7 +71,8 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
     targets = sorted({ast.unparse(n.args[0]) for n in handlers})
     assert targets == ['commands.create_mission', 'commands.register_device',
                        'commands.revoke_device', 'req.api.missions.pause',
-                       'req.api.missions.resume'], targets
+                       'req.api.missions.resume', 'world.ack_digest',
+                       'world.create_project', 'world.declare_constraint'], targets
 
 
 def test_the_api_never_decides_policy_or_branches_on_an_actors_kind():
@@ -106,17 +107,29 @@ EXPECTED = {
     ('POST', '/v1/devices/{id}/revoke', 'admin', 'required'),
 }
 
+#: P4's rows (p4-design-gate §10). `create_project` is admin (D7: it gives Core
+#: filesystem reach); the digest ack is monotone, so it needs no key.
+P4 = {
+    ('GET', '/v1/status', 'observe', None),
+    ('GET', '/v1/projects', 'observe', None), ('GET', '/v1/projects/{id}', 'observe', None),
+    ('POST', '/v1/projects', 'admin', 'required'),
+    ('POST', '/v1/projects/{id}/constraints', 'control', 'required'),
+    ('GET', '/v1/repositories/{id}/inspections', 'observe', None),
+    ('GET', '/v1/digest', 'observe', None), ('POST', '/v1/digest/ack', 'control', None),
+}
 
-def test_the_route_table_is_exactly_the_p35b_table():
+
+def test_the_route_table_is_exactly_the_p35b_and_p4_tables():
     """L2: nothing from P9 (approve), P10 (route), P11 (executions, stop,
     estop, hooks), P15 (pair, device list) or P16 (/v1/now, the execution
     stream) — a later phase adds its rows with its own tests."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
-    assert got == EXPECTED
-    assert len(routes.ROUTES) == len(EXPECTED)
+    assert got == EXPECTED | P4
+    assert len(routes.ROUTES) == len(EXPECTED | P4)
     for word in ('approv', 'route', 'execution', 'estop', 'stop', 'pair', 'now', 'hook',
-                 'status', 'cancel', 'accept', 'account'):
+                 'cancel', 'accept', 'account', 'graph', 'knowledge', 'attention'):
         assert not [r.path for r in routes.ROUTES if word in r.path], word
+    assert not [r.path for r in routes.ROUTES if r.path.endswith('/inspect')]
 
 
 def test_every_scope_is_a_coarse_credential_scope_and_approve_has_no_route():

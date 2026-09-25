@@ -1,9 +1,76 @@
 """Helpers the judge scenarios share. Contract-level only: they use a
 `CoreClient` and the rig, never Core internals."""
 
+import json
+import os
+import shutil
+import subprocess
+import tempfile
 import time
 
 import pytest
+
+from archeus.infra import paths
+
+FIXTURES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        'fixtures', 'repos')
+#: A fixture commit is the same bytes on every machine: no user config, no
+#: signing, a fixed identity.
+GIT_ENV = {'GIT_AUTHOR_NAME': 'judge', 'GIT_AUTHOR_EMAIL': 'judge@example.invalid',
+           'GIT_COMMITTER_NAME': 'judge', 'GIT_COMMITTER_EMAIL': 'judge@example.invalid',
+           'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': os.devnull}
+
+
+class FixtureRepo:
+    """A real git repository a scenario commits to."""
+
+    def __init__(self, path):
+        self.path = path
+        self.project_id = self.repository_id = None
+
+    @classmethod
+    def create(cls, name, parent):
+        """A new repository in *parent* holding fixtures/repos/<name> (all
+        of it but `constraints.json`), committed once."""
+        dest = tempfile.mkdtemp(prefix=name + '-', dir=parent)
+        shutil.copytree(os.path.join(FIXTURES, name), dest, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns('constraints.json'))
+        repo = cls(dest)
+        repo.git('-c', 'init.defaultBranch=main', 'init', '-q')
+        repo.commit('fixture %s' % name, {})
+        return repo
+
+    @staticmethod
+    def constraints(name):
+        """The fixture's declared constraints (CoreClient kwargs), if any."""
+        spec = os.path.join(FIXTURES, name, 'constraints.json')
+        if not os.path.isfile(spec):
+            return []
+        with open(spec, encoding='utf-8') as f:
+            return json.load(f)
+
+    def git(self, *args):
+        return subprocess.run(['git', '-c', 'commit.gpgsign=false', *args], cwd=self.path,
+                              check=True, capture_output=True, text=True,
+                              env=dict(os.environ, **GIT_ENV)).stdout
+
+    def head(self):
+        return self.git('rev-parse', 'HEAD').strip()
+
+    def commit(self, message, files):
+        """Write *files* ({relative path: text, or None to delete}) and commit
+        everything; returns the new HEAD."""
+        for rel, text in files.items():
+            p = os.path.join(self.path, *rel.split('/'))
+            if text is None:
+                os.remove(p)
+                continue
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(text)
+        self.git('add', '-A')
+        self.git('commit', '-q', '--allow-empty', '-m', message)
+        return self.head()
 
 #: Set by the judge's `client` fixture to the binding's `_idle()`: True when
 #: nothing in the Core under test can change state on its own, so waiting for a
@@ -82,8 +149,30 @@ class Rig:
         self.client._restart(kill=kill)
 
     def fixture_repo(self, name):
-        """A throwaway git repository from tests/v1/fixtures/repos/<name>."""
-        self._pending('fixture repositories', 'P4')
+        """A throwaway git repository from tests/v1/fixtures/repos/<name>,
+        registered as a project through the contract (`create_project`, then
+        `declare_constraint` for each entry of its `constraints.json`), and
+        returned only once Core has assessed its first revision — so a
+        scenario always starts from an evaluated baseline."""
+        repo = FixtureRepo.create(name, os.path.dirname(paths.archeus_home()))
+        project = self.client.create_project(name=name, root_paths=[repo.path])
+        repo.project_id = project['project']['id']
+        repo.repository_id = project['repositories'][0]['id']
+        for c in FixtureRepo.constraints(name):
+            self.client.declare_constraint(project_id=repo.project_id, **c)
+        self.assessed(repo)
+        return repo
+
+    def assessed(self, repo):
+        """Wait until *repo*'s assessment is of its current HEAD."""
+        def done():
+            st = self.client.status(project_id=repo.project_id)
+            (r,) = [x for p in st['projects'] for x in p['repositories']
+                    if x['id'] == repo.repository_id]
+            return (r['architecture_state'] in ('CONSISTENT', 'DRIFTED')
+                    and r['last_revision'] == repo.head())
+        done.__name__ = 'the assessment of %s at HEAD' % repo.path
+        return wait_for(done)
 
     def device(self, name, scopes):
         """A paired device's own client (its token, its scopes)."""

@@ -21,11 +21,16 @@ def get_mission(conn, mission_id):
     return view(row)
 
 
-def list_missions(conn, state=None):
-    """Every mission, oldest first; only those in *state* when it is given."""
+def list_missions(conn, state=None, project_id=None):
+    """Every mission, oldest first; only those in *state*, and of *project_id*,
+    when given (an unknown project is NotFound, not an empty list)."""
     if state is not None and state not in states.states('mission'):
         raise ValueError('%r is not a mission state' % (state,))
     eq = {} if state is None else {'state': state}
+    if project_id is not None:
+        if rows.get(conn, entities.Project, project_id) is None:
+            raise NotFound(project_id)
+        eq['project_id'] = project_id
     return [view(r) for r in rows.where(conn, entities.Mission, **eq)]
 
 

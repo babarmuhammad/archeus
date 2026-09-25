@@ -26,8 +26,11 @@ The judge never imports Core internals and cannot wait for HTTP (P3.5) to be wri
 freezes `tests/v1/judge/client.py`: a `CoreClient` protocol with exactly the operations the
 scenarios use — `submit_message`, `create_mission`, `get_mission`, `list_missions`,
 `decide_approval`, `pause`, `resume`, `stop`, `route_why`, `status`, `digest`, `ack`,
-`import_meeting`, `register_account`, `set_resource_policy`, `events(after_seq)` — mirroring the
-command/query surface of api-and-realtime §2. Two bindings: `InProcessClient` (P1–P3, calls the
+`create_project`, `declare_constraint`, `import_meeting`, `register_account`,
+`set_resource_policy`, `events(after_seq)` — mirroring the command/query surface of
+api-and-realtime §2. (`create_project` and `declare_constraint` were added in P4, D1 of
+p4-design-gate.md: the S7 rig registers its fixture repository and constraint through the
+contract, never through Core internals.) Two bindings: `InProcessClient` (P1–P3, calls the
 application layer directly) and `HttpClient` (P3.5 onward, HTTP + SSE). Every scenario runs
 against both once HTTP exists.
 
