@@ -27,13 +27,14 @@ NO_CORE_API = {'statement': 'core must not import api', 'kind': 'forbid_dependen
 
 
 class Clock:
-    """Wall time that a test moves forward: `failed_at` is the writer's clock."""
+    """Wall time that a test moves forward: `failed_at` is the writer's real
+    clock, so this one keeps pace with it and adds only what the test skips."""
 
     def __init__(self):
-        self.now = time.time()
+        self.skipped = 0.0
 
     def __call__(self):
-        return self.now
+        return time.time() + self.skipped
 
 
 class Harness:
@@ -313,10 +314,10 @@ def test_w17_a_missing_repository_fails_with_capped_backoff_and_blocks_no_one(h)
     h.pump()
     assert h.inspections(gone.repository_id)[-1].attempts == 1           # not due yet
     for n in (2, 3):
-        h.clock.now += backoff(n - 1) + 1
+        h.clock.skipped += backoff(n - 1) + 1
         h.pump()
         assert h.inspections(gone.repository_id)[-1].attempts == n
-    h.clock.now += 10 ** 6
+    h.clock.skipped += 10 ** 6
     assert h.world.pending() == 0
     h.pump()
     assert h.inspections(gone.repository_id)[-1].attempts == 3
