@@ -209,6 +209,7 @@ export interface Health {
   };
   knowledge: Worker;
   intent: Worker;
+  plan: Worker;
 }
 
 export interface Idea {
@@ -328,11 +329,44 @@ export interface Mission {
   version: number;
   created_at: string;
   updated_at: string;
+  plan_id?: string | null;
+  plan_version?: number | null;
+  planning_blocked?: Record<string, unknown> | null;
   [field: string]: unknown;
 }
 
 export interface MissionList {
   missions: Mission[];
+}
+
+export interface MissionPlan {
+  mission_id: string;
+  plan: Plan | null;
+  versions: PlanVersionRef[];
+}
+
+export interface Plan {
+  id: string;
+  mission_id: string;
+  plan_version: number;
+  state: 'APPROVED' | 'DRAFT' | 'PROPOSED' | 'REJECTED' | 'SUPERSEDED';
+  estimated_cost?: 'low' | 'medium' | 'high' | null;
+  supersedes_plan_id?: string | null;
+  digest?: string | null;
+  tasks: Task[];
+  waves: string[][];
+  serialised?: Record<string, unknown>[];
+  current: boolean;
+  current_why: string;
+  [field: string]: unknown;
+}
+
+export interface PlanVersionRef {
+  id: string;
+  plan_version: number;
+  state: 'APPROVED' | 'DRAFT' | 'PROPOSED' | 'REJECTED' | 'SUPERSEDED';
+  supersedes_plan_id: string | null;
+  digest: string | null;
 }
 
 export interface Project {
@@ -434,6 +468,17 @@ export interface StreamFrame {
 export interface Subject {
   kind: string;
   id: string;
+}
+
+export interface Task {
+  id: string;
+  key: string;
+  title: string;
+  kind: 'code_change' | 'research' | 'document' | 'presentation' | 'inspection' | 'verification' | 'human';
+  state: 'AWAITING_APPROVAL' | 'BLOCKED' | 'CANCELLED' | 'FAILED' | 'PAUSED' | 'PENDING' | 'READY' | 'ROUTING' | 'RUNNING' | 'SKIPPED' | 'SUCCEEDED' | 'VERIFYING';
+  depends_on: string[];
+  acceptance: Record<string, unknown>[];
+  [field: string]: unknown;
 }
 
 export interface Transition {
@@ -602,6 +647,10 @@ export const api = {
     send<MissionList>('GET', '/v1/missions' + qs(query)),
   getMission: (send: Send, id: string) =>
     send<Mission>('GET', '/v1/missions/' + encodeURIComponent(id)),
+  getMissionPlan: (send: Send, id: string) =>
+    send<MissionPlan>('GET', '/v1/missions/' + encodeURIComponent(id) + '/plan'),
+  getPlan: (send: Send, id: string) =>
+    send<Plan>('GET', '/v1/plans/' + encodeURIComponent(id)),
   createMission: (send: Send, body: CreateMissionRequest) =>
     send<Created>('POST', '/v1/missions', body),
   pauseMission: (send: Send, id: string, body: PauseMissionRequest) =>

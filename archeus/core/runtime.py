@@ -25,6 +25,10 @@ The intent worker (P7, `archeus-intent`) reads every user message: the
 control grammar, else one brain call through `archeus_call`, applied by one
 command. It is the knowledge worker's shape and shares its OwnCalls.
 
+The planning worker (P8, `archeus-plan`) runs one planning round per event
+that starts one: one planner call through `archeus_call`, recorded by one
+command. It runs only when no stub brain is given — one planner per Core.
+
 The world worker (P4) is the same shape: one per Core, a failing repository is
 a FAILED inspection, and any other exception fails Core (exit 3). It passes
 every WORLD_POLL_S seconds, on every commit, and whenever `pending()` finds
@@ -56,6 +60,8 @@ from .application.conversation import Conversations
 from .knowledge.passes import Passes
 from .knowledge.worker import Knowledge
 from .missions.intent import Intents
+from .application.planning import Planning
+from .planning.worker import Planner
 from .world.worker import World
 
 DEFAULT_PORT = 7337
@@ -89,7 +95,9 @@ class Ports:
     """The ports Core runs on. P3.5b runs only stubs and the fake harness; the
     real ones arrive with P7 (brain), P9 (policy), P10 (router), P13."""
     policy: object = field(default_factory=P.AllowAllPolicy)
-    brain: object = field(default_factory=lambda: P.FixedPlanBrain(engine.SKELETON_PLAN))
+    # None: the planning worker plans through `archeus_call` (P8, D5); a stub
+    # `plan.v1` port makes the engine plan instead (the P3.5 tests)
+    brain: object = None
     verifier: object = field(default_factory=P.ScriptedVerifier)
     reviewer: object = field(default_factory=P.ScriptedReview)
     route: str = 'fake'
@@ -270,7 +278,7 @@ class Core:
         self.launch_clock, self.lock_retry_s = launch_clock, lock_retry_s
         self.static_dir, self.world_poll_s = static_dir, world_poll_s
         self.lock = self.db = self.loop = self.world = self.api = self.server = None
-        self.knowledge = self.intent = None
+        self.knowledge = self.intent = self.plan = None
         self.warning = None
         self.exit_code = 0
         self._done = threading.Event()
@@ -336,6 +344,12 @@ class Core:
                                 self.db, poll_s=self.world_poll_s,
                                 on_fail=self._engine_failed, name='archeus-intent')
         self.intent.start()
+        if self.ports.brain is None:        # one planner: the worker, or the stub engine
+            self.plan = WorldLoop(Planner(self.db, actor=self.system, calls=own,
+                                          planning=Planning(work=eng.work)),
+                                  self.db, poll_s=self.world_poll_s,
+                                  on_fail=self._engine_failed, name='archeus-plan')
+            self.plan.start()
 
         self.api = server.Api(db=self.db, missions=self.missions,
                               conversations=self.conversations, port=self.port,
@@ -386,7 +400,9 @@ class Core:
                          'version': VERSION, 'schema': self.schema,
                          'ports': 'stub' if self.ports.stub else 'real'},
                 'engine': self.loop.status(), 'world': self.world.status(),
-                'knowledge': self.knowledge.status(), 'intent': self.intent.status()}
+                'knowledge': self.knowledge.status(), 'intent': self.intent.status(),
+                'plan': self.plan.status() if self.plan is not None
+                else {'state': 'idle', 'pending': 0}}
 
     def launch_url(self):
         """A fresh launch code in the URL fragment (never sent to the server)."""
@@ -418,6 +434,8 @@ class Core:
             self.server.shutdown()
             self.server.server_close()
             self.server = None
+        if self.plan is not None:
+            self.plan.stop()
         if self.intent is not None:
             self.intent.stop()
         if self.knowledge is not None:

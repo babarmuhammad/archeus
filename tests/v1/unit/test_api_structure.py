@@ -159,15 +159,22 @@ P7 = {
     ('POST', '/v1/intents/{id}/clarify', 'control', 'required'),
     ('GET', '/v1/ideas', 'observe', None),
 }
+#: P8 reads only: planning is the worker's, and no route edits or runs a plan
+P8 = {
+    ('GET', '/v1/missions/{id}/plan', 'observe', None),
+    ('GET', '/v1/plans/{id}', 'observe', None),
+}
 
 
-def test_the_route_table_is_exactly_the_p35b_p4_p5_p6_and_p7_tables():
+def test_the_route_table_is_exactly_the_p35b_p4_p5_p6_p7_and_p8_tables():
     """L2: nothing from P9 (approve), P10 (route), P11 (executions, stop,
     estop, hooks), P15 (pair, device list) or P16 (/v1/now, the execution
     stream) — a later phase adds its rows with its own tests."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
-    assert got == EXPECTED | P4 | P5 | P6 | P7
-    assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6 | P7)
+    assert got == EXPECTED | P4 | P5 | P6 | P7 | P8
+    assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6 | P7 | P8)
+    # E7: no plan route takes a command (no execution control from P8)
+    assert not [r for r in routes.ROUTES if 'plan' in r.path and r.method != 'GET']
     for word in ('approv', 'route/', 'execution', 'estop', 'stop', 'pair', '/now', 'hook',
                  'cancel', 'accept', 'account', 'graph', 'attention'):
         assert not [r.path for r in routes.ROUTES if word in r.path], word

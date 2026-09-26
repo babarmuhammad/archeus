@@ -98,6 +98,7 @@ packages = [
     "archeus.core.domain",
     "archeus.core.knowledge",
     "archeus.core.missions",
+    "archeus.core.planning",
     "archeus.core.world",
     "archeus.harnesses",
     "archeus.infra",

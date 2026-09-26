@@ -1,5 +1,5 @@
 {
-  "_about": "The judge's scripted brain (plan P7: 'the scripted brain and recorded fixtures'; p7-design-gate D8). Each entry answers any prompt containing `when`, first match in order, so a more specific entry comes before one whose text it contains. Handles (p1, m1, i1, k1, u1) are the ones the intent prompt gives the context package's items; Core validates every one. Nothing here is Core logic: a recording is what a model would have said.",
+  "_about": "The judge's scripted brain (plan P7: 'the scripted brain and recorded fixtures'; p7-design-gate D8). Each entry answers any prompt containing `when`, first match in order, so a more specific entry comes before one whose text it contains. Handles (p1, m1, i1, k1, u1) are the ones the intent prompt gives the context package's items; Core validates every one. Nothing here is Core logic: a recording is what a model would have said. The `planner` list (P8) answers plan.v1: an entry with `when` answers the mission whose prompt contains it, and the entry without one answers every other mission with a one-task plan. Task ids are the model's own labels (Core keys the tasks t1..tN), r1/c1 the mission's requirement and constraint handles; Core validates every plan.",
   "brain": [
     {"when": "The message:\nActually, use four spaces, not tabs.",
      "parsed": {"kind": "preference", "confidence": 0.9,
@@ -39,5 +39,36 @@
   "knowledge_extraction": [
     {"when": "DECISION: the core never talks to the database directly.",
      "parsed": {"decisions": [{"statement": "The core never talks to the database directly"}]}}
+  ],
+  "planner": [
+    {"when": "Objective: The command-line interface accepts --version",
+     "parsed": {"summary": "Add the flag, then cover it with a test.", "confidence": 0.8,
+                "tasks": [
+                  {"id": "flag", "title": "Add the --version flag", "kind": "code_change",
+                   "objective": "Make the CLI accept --version and print the installed version.",
+                   "expected_output": "the CLI change", "boundaries": ["only the CLI entry point"],
+                   "action_classes": ["read", "write_repo"], "capabilities_required": ["code_edit"],
+                   "touches": ["archeus/cli/**"], "serves": ["r1", "r2"],
+                   "acceptance": [{"text": "--version prints the installed version", "check": "automatic"}],
+                   "estimate": 1, "min_model_tier": "mid"},
+                  {"id": "test", "title": "Test the --version flag", "kind": "code_change",
+                   "objective": "Add a test that runs the CLI with --version.",
+                   "expected_output": "a passing test", "depends_on": ["flag"],
+                   "action_classes": ["read", "write_repo", "exec"],
+                   "capabilities_required": ["code_edit", "shell"],
+                   "touches": ["tests/cli/**"], "serves": ["r1"],
+                   "inputs": [{"from_task": "flag", "what": "the flag it tests"}],
+                   "acceptance": [{"text": "the test passes", "check": "automatic"}],
+                   "estimate": 1, "min_model_tier": "small"}],
+                "assumptions": [{"text": "the version comes from the installed package metadata"}],
+                "success_criteria": [{"text": "the result passes its automatic check", "check": "automatic"}]}},
+    {"parsed": {"summary": "One step: do what the mission asks.", "confidence": 0.6,
+                "tasks": [{"id": "do", "title": "Do the work", "kind": "code_change",
+                           "objective": "Carry out the mission objective.",
+                           "expected_output": "the change the mission asks for",
+                           "action_classes": ["write_repo"],
+                           "acceptance": [{"text": "the change does what the mission asks", "check": "automatic"}],
+                           "estimate": 1, "min_model_tier": "mid"}],
+                "success_criteria": [{"text": "the result passes its automatic check", "check": "automatic"}]}}
   ]
 }

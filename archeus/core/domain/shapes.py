@@ -24,6 +24,8 @@ _PY = {'string': str, 'integer': int, 'number': (int, float), 'boolean': bool, '
 
 def validate(value, schema, field=None, types=None):
     """Raise Invalid(field, why) when *value* does not have *schema*'s shape."""
+    if value is None and schema.get('nullable'):       # also a nullable named type
+        return
     if 'ref' in schema:
         return validate(value, (types or {})[schema['ref']], field, types)
     if value is None:

@@ -6,6 +6,7 @@ from ...infra.db import rows
 from ...infra.db.writer import NotFound
 from ...infra.eventlog import outbox
 from ..domain import entities, states
+from .commands import active_plan
 
 
 def view(row):
@@ -16,12 +17,16 @@ def view(row):
 
 def get_mission(conn, mission_id):
     """One mission, with the context package its `context_ready` move
-    recorded (None before it has one)."""
+    recorded (None before it has one) and the plan in force (P8): its id and
+    `plan_version`, derived from the plans and never stored twice."""
     row = rows.get(conn, entities.Mission, mission_id)
     if row is None:
         raise NotFound(mission_id)
     pid = row.entity.context_package_id
-    return dict(view(row), context_package=None if pid is None else get_context_package(conn, pid))
+    plan = active_plan(conn, mission_id)
+    return dict(view(row), context_package=None if pid is None else get_context_package(conn, pid),
+                plan_id=None if plan is None else plan.entity.id,
+                plan_version=None if plan is None else plan.entity.plan_version)
 
 
 def get_context_package(conn, package_id):
@@ -202,3 +207,37 @@ def list_ideas(conn, state=None):
         raise ValueError('%r is not an idea state' % (state,))
     eq = {} if state is None else {'state': state}
     return [view(r) for r in rows.where(conn, entities.Idea, **eq)]
+
+
+# ── plans (P8) ──────────────────────────────────────────────────────────────
+
+def get_plan(conn, plan_id):
+    """One exact PlanVersion with its tasks (by key), the parallel waves derived
+    from its graph, and whether what it was planned from is still current."""
+    from ..planning import planner, validate
+    row = rows.get(conn, entities.Plan, plan_id)
+    if row is None:
+        raise NotFound(plan_id)
+    p = row.entity
+    tasks = sorted((view(t) for t in rows.where(conn, entities.Task, plan_id=p.id)),
+                   key=lambda t: int(t['key'][1:]) if t['key'][1:].isdigit() else t['key'])
+    current, why = True, 'planned without a recorded context package'
+    if p.context_package_id is not None:
+        mission = rows.get(conn, entities.Mission, p.mission_id).entity
+        current, why = planner.currency(conn, mission, p.context_package_id)
+    return dict(view(row), tasks=tasks, waves=validate.waves(tasks),
+                current=current, current_why=why)
+
+
+def mission_plan(conn, mission_id):
+    """The plan in force (None before the first) and every version, oldest first."""
+    if rows.get(conn, entities.Mission, mission_id) is None:
+        raise NotFound(mission_id)
+    versions = sorted(rows.where(conn, entities.Plan, mission_id=mission_id),
+                      key=lambda r: r.entity.plan_version)
+    return {'mission_id': mission_id,
+            'plan': get_plan(conn, versions[-1].entity.id) if versions else None,
+            'versions': [{'id': r.entity.id, 'plan_version': r.entity.plan_version,
+                          'state': r.entity.state,
+                          'supersedes_plan_id': r.entity.supersedes_plan_id,
+                          'digest': r.entity.digest} for r in versions]}

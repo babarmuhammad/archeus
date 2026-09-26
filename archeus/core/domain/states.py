@@ -41,7 +41,7 @@ class TransitionProof:
 
 #: Machines in the order their diagrams appear in state-machines.md.
 MACHINES = (
-    'idea', 'mission', 'task', 'execution', 'approval', 'verification',
+    'idea', 'mission', 'plan', 'task', 'execution', 'approval', 'verification',
     'review', 'automation', 'automation_run', 'account_health',
     'repository_inspection', 'architecture', 'knowledge_item', 'device',
     'execution_node', 'integration',
@@ -113,6 +113,20 @@ _EDGES = {
         ('FAILED', 'CANCELLED', 'cancel'),
         ('COMPLETED', _E, None),
         ('CANCELLED', _E, None),
+    ),
+    # One row is one immutable PlanVersion (p8-design-gate D1, D2). DRAFT is
+    # transient: a version is inserted and takes `ready` in the same
+    # transaction. PROPOSED = structurally valid and ready for the POLICY stage,
+    # never approved or executable; `approved` and `rejected` are P9's.
+    'plan': (
+        (_S, 'DRAFT', None),
+        ('DRAFT', 'PROPOSED', 'ready'),
+        ('PROPOSED', 'APPROVED', 'approved'),
+        ('PROPOSED', 'REJECTED', 'rejected'),
+        ('PROPOSED', 'SUPERSEDED', 'superseded'),
+        ('APPROVED', 'SUPERSEDED', 'superseded'),
+        ('SUPERSEDED', _E, None),
+        ('REJECTED', _E, None),
     ),
     'task': (
         (_S, 'PENDING', None),
@@ -332,6 +346,8 @@ _GUARDED = {
                 'awaiting_human_acceptance', 'replan_budget_exhausted',
                 'task_failed_retryable', 'unrecoverable', 'verification_failed',
                 'redispatch', 'accepted'},
+    # a plan version is ready only as far as Core's validator allows (P8)
+    'plan': {'ready'},
     'approval': {'approve'},
     # an assessment is taken only as far as the findings it records allow
     'architecture': {'first_inspection', 'first_inspection_drift', 'reinspected_no_drift',
@@ -345,7 +361,6 @@ TABLE = tuple(
 #: States of entities whose lifecycle state-machines.md does not diagram. They
 #: are validated as sets; their edges are not declared yet (see the P1 report).
 STATE_SETS = {
-    'plan': ('DRAFT', 'PROPOSED', 'APPROVED', 'SUPERSEDED', 'REJECTED'),
     'session': ('OPEN', 'CLOSED', 'LOST'),
     'harness': ('AVAILABLE', 'MISSING', 'MISCONFIGURED'),
 }

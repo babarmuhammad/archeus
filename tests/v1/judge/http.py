@@ -24,7 +24,7 @@ import urllib.error
 import urllib.request
 from typing import Optional, Sequence
 
-from archeus.core import runtime
+from archeus.core import engine, ports, runtime
 from archeus.core.domain import ids
 from archeus.infra import discovery
 
@@ -98,7 +98,7 @@ class HttpClient:
         engine, world = health['engine'], health['world']
         if engine['state'] != 'idle' or world['state'] != 'idle' or world['pending']:
             return False
-        for worker in ('knowledge', 'intent'):  # P6, P7: every event not yet consumed
+        for worker in ('knowledge', 'intent', 'plan'):  # P6-P8: every event not yet consumed
             if health[worker]['state'] != 'idle' or health[worker]['pending']:
                 return False
         return not self._call('GET', '/v1/events?after=%d&limit=1'
@@ -106,6 +106,13 @@ class HttpClient:
 
     def _restart(self, *, kill=True):
         self.core.restart(kill=kill)
+
+    def _script(self, task_key, steps):
+        """The rig's `script_harness`: the in-process Core's engine reads this
+        map (Ports.scenarios) when it starts a task; it survives a restart."""
+        if not isinstance(self.core, TempCore):
+            raise NotImplementedError('scripting the fake harness of a Core process')
+        self.core.kw['ports'].scenarios[task_key] = steps
 
     def close(self):
         if self.core is not None:
@@ -311,9 +318,15 @@ class SSEClient:
 
 
 class TempCore:
-    """The real Core runtime in this process, on the test's ARCHEUS_HOME."""
+    """The real Core runtime in this process, on the test's ARCHEUS_HOME.
+
+    Without `ports` it runs the P3.5 stub brain (the engine plans the skeleton
+    plan), which is what the service tests measure; a caller that passes
+    `ports` gets exactly those — the judge's pass the recorded brain, so its
+    missions are planned by the planning worker through `archeus_call` (P8)."""
 
     def __init__(self, home, *, port=None, **kw):
+        kw.setdefault('ports', runtime.Ports(brain=ports.FixedPlanBrain(engine.SKELETON_PLAN)))
         self.home, self.port, self.kw = str(home), port or free_port(), kw
         self.core = None
 
@@ -332,7 +345,7 @@ class TempCore:
 
     def stop(self, *, kill=False):
         if self.core is not None:
-            loops = (self.core.knowledge, self.core.world, self.core.loop)
+            loops = (self.core.plan, self.core.knowledge, self.core.world, self.core.loop)
             self.core.stop(drain=not kill)
             for loop in loops:
                 if loop is not None:
@@ -384,7 +397,9 @@ if cfg.get('hold_inspection'):     # a walk waits for the test to open this gate
             time.sleep(0.02)
         return _walk(path)
     _inspection.inspect = held_walk
-ports = runtime.Ports(scenarios=cfg.get('scenarios') or {})
+from archeus.core import ports as P
+ports = runtime.Ports(scenarios=cfg.get('scenarios') or {},
+                      brain=P.FixedPlanBrain(engine.SKELETON_PLAN))
 if cfg.get('brain_fails'):
     class Broken:
         def call(self, *a, **k):

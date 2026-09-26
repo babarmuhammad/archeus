@@ -125,7 +125,7 @@ def test_only_two_modules_open_sqlite_and_only_writer_commands_write_sql():
 
 def test_a_fresh_database_reaches_the_current_schema(db):
     with db.read() as r:
-        assert migrate.version(r) == migrate.migrations()[-1][0] == 6
+        assert migrate.version(r) == migrate.migrations()[-1][0] == 7
         tables = {x[0] for x in r.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {'principals', 'devices', 'tokens', 'missions', 'events', 'consumer_cursors',
             'consumer_effects', 'idempotency_keys',

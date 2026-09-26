@@ -287,6 +287,14 @@ class Missions:
         row, e = self._fire(tx, mission_id, 'reasoned', actor=actor, reason=reason, extra=extra)
         return _result(row, [e])
 
+    def challenge(self, tx, *, actor, mission_id, reason, planning_blocked):
+        """REASONING -> BLOCKED (`challenge_raised`) with why planning could not
+        record a plan (P8, p8-design-gate D6): the mission-level challenge the P7
+        gate deferred to the planner. Leaving it is the explicit `resume`."""
+        row, e = self._fire(tx, mission_id, 'challenge_raised', actor=actor, reason=reason,
+                            extra={'planning_blocked': dict(planning_blocked)})
+        return _result(row, [e])
+
     def pause(self, tx, *, actor, mission_id, reason='paused on request',
               expected_version=None):
         row, e = self._fire(tx, mission_id, 'pause', actor=actor, reason=reason,

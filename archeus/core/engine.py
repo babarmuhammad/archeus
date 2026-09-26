@@ -4,7 +4,9 @@ commands, the real database and the fake harness's real subprocess.
 
     CREATED -> start -> UNDERSTANDING -> understood (from its intent, P7)
     CONTEXT_GATHERING -> context_ready: the context package (P5) -> REASONING
-    brain `plan.v1` -> Work.propose_plan -> PLANNING -> plan gate (Policy port)
+    REASONING | PLANNING | REPLANNING: the planning worker's (P8, core/planning/);
+    only with an injected stub `brain`: brain `plan.v1` -> Work.propose_plan
+        -> PLANNING -> plan gate (Policy port)
         -> APPROVED | APPROVAL_REQUIRED on ASK (stops: a human decides)
         | DENY: nothing written, state unchanged (stops: `policy_denied`)
     REPLANNING: replan budget judged first -> BLOCKED, or a new plan as above
@@ -26,7 +28,8 @@ its process is killed by pid + creation time and the attempt ends LOST or
 ABANDONED; the task retries with a new execution.
 
 The stubs it runs on are the ports' (archeus/core/ports.py). Deliberately not
-here: intent (the intent worker, core/missions/intent.py, P7), the real planner (P8),
+here: intent (the intent worker, core/missions/intent.py, P7), planning (the planning
+worker, core/planning/worker.py, P8 — the engine plans only through an injected stub),
 approvals bound to action hashes (P9), routing and accounts (P10), the
 execution manager and node — adoption, pause, stop, timeouts, hand-off, the
 process registry (P11) — and real verifiers and review (P13).
@@ -56,9 +59,9 @@ STOPS = dict({s: s.lower() for s in SETTLED}, REVIEWING='review_rejected',
 #: The stub brain's plan: one task on the fake harness, one automatic criterion.
 SKELETON_PLAN = {
     'summary': 'walking skeleton: one task on the fake harness',
-    'estimated_cost': 'low',
     'tasks': [{'key': 'work', 'title': 'Do the work', 'kind': 'code_change',
-               'action_classes': ['write_repo']}],
+               'action_classes': ['write_repo'],
+               'acceptance': [{'text': 'the work is done', 'check': 'automatic'}]}],
     'success_criteria': [{'text': 'the result passes its automatic check',
                           'check': 'automatic'}],
 }
@@ -71,8 +74,9 @@ _ENDED = states.terminal('execution')
 class Engine:
     """Drives missions on one open Database as the principal `actor`.
 
-    `work` is `work.Work` (its `missions` carries the Policy port), `brain`,
-    `verifier` and `reviewer` are ports, `registry` the adapter registry,
+    `work` is `work.Work` (its `missions` carries the Policy port), `brain`
+    (a stub `plan.v1` port, or None when the planning worker plans), `verifier`
+    and `reviewer` are ports, `registry` the adapter registry,
     `scenarios` maps a task key to the fake agent's steps."""
 
     def __init__(self, db, *, actor, work, brain, registry, verifier, reviewer,
@@ -128,6 +132,8 @@ class Engine:
             self._do(self.missions.context_ready, mission_id=m.id)
             return 'context_ready'
         if m.state in ('REASONING', 'PLANNING', 'REPLANNING'):
+            if self.brain is None:
+                return None     # the planning worker's (P8): nothing for the engine to do
             if m.state == 'REPLANNING' and self._do(self.work.replan_budget_spent,
                                                     mission_id=m.id):
                 return 'replan_budget_exhausted'        # judged before asking the brain

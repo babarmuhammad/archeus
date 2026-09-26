@@ -8,7 +8,7 @@ import os
 
 import pytest
 
-from archeus.core import ports
+from archeus.core import engine, ports
 from archeus.core.application import calls as C
 from archeus.core.application import commands, lifecycle, queries
 from archeus.core.application import knowledge as K
@@ -430,7 +430,8 @@ def test_n24_a_lesson_confirms_itself_only_when_two_missions_corroborate_it(arch
                           'outcome': 'worked'}]}
     c = InProcessClient(archeus_home, callers=[fake(lesson=[
         {'parsed': lesson}, {'parsed': other}, {'parsed': lesson}])],
-        preference=ports.FixedOwnCallPreference())
+        preference=ports.FixedOwnCallPreference(),
+        brain=ports.FixedPlanBrain(engine.SKELETON_PLAN))      # about lessons, not planning
 
     def finish(title):
         mid = c.create_mission(title=title, objective='o')['id']

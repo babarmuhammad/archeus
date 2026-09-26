@@ -274,7 +274,18 @@ mission — distinct from the row's optimistic-concurrency `version`), `summary`
 APPROVED → SUPERSEDED / REJECTED), `authored_by` (brain principal + model used).
 *As built (P3.5):* the plan lifecycle has no declared edges, so a plan stays DRAFT and is the
 versioned strategy attached to its mission; the mission's states carry approval and
-supersession.
+supersession. *As built (P8, p8-design-gate D1-D3, D9, D12):* one row is one immutable
+**PlanVersion** — the mission is its lineage, `supersedes_plan_id` its parent, `round_seq` the
+planning round it came from (`(mission_id, round_seq)` UNIQUE), `digest` the sha256 of its
+content, and every field but `state` is frozen (`Entity._FROZEN`, refused by the writer). The
+machine (state-machines §2.1) is DRAFT (transient) → PROPOSED (validated, **ready for the
+policy stage — never approved**) → SUPERSEDED; APPROVED/REJECTED are P9's. Only a plan Core's
+validator passed is recorded; `estimated_cost` is computed by Core (`Σ tier weight × estimate`,
+low ≤ 6, medium ≤ 20, else high); `inputs`/`coverage` record the requirements it planned
+against and which tasks serve each; `assumptions` are always origin inferred; `serialised`
+lists the dependencies Core added between parallel tasks whose `touches` may overlap, so the
+planner's own edges are exactly the rest. A round that cannot plan records
+`Mission.planning_blocked` instead of a version.
 
 ### 7.3 Task
 An executable unit in the plan's DAG.
@@ -293,6 +304,7 @@ An executable unit in the plan's DAG.
 | `estimate` | relative weight for progress |
 | `state` | Task machine |
 | `integration_state` | Integration machine (state-machines §13): the merge-back of this task's worktree branch into the mission branch. NULL when `workspace_mode = in_place`. Arrives with the machine in P13 |
+| P8 contract fields | `objective`, `expected_output`, `boundaries[]`, `capabilities_required[]`, `min_model_tier`, `touches[]`, `inputs[]`, `refs[]` (canonical `{kind, id}`), `serves[]` (requirement handles), `acceptance[]` (`{text, check}`; at least one for a non-`human` task, all `human` for a human one); `key` is `t1…tN`, assigned by Core in dependency order; the contract is frozen with its version (p8-design-gate §7.1) |
 
 **Integration is not an entity.** It is a lifecycle *of a task* — a task has at most one
 merge-back, and its CONFLICT blocks that task — so it is a second state column on Task, the

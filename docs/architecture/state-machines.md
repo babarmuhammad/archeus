@@ -209,12 +209,53 @@ or the explicit title and objective). A mission exists only once its intent is u
 unchallenged, so `needs_clarification` and `challenge_raised` are not taken in P7 — a
 clarification or challenge happens before any mission (p7-design-gate §6).
 
+**P8, as built.** Planning moved out of the engine into the planning worker (p8-design-gate
+D5): a planning round starts on every move into REASONING, PLANNING or REPLANNING (and when the
+mission's inputs change while it waits in one), and records a PlanVersion through
+`Work.propose_plan`, whose decision tail — `reasoned`, then `plan_auto_approved` or
+`plan_needs_approval` over the Policy port — is unchanged and runs in the same transaction (D4).
+REPLANNING judges the budget before the planner is asked. A first plan that needs the user takes
+the existing `REASONING → BLOCKED: challenge_raised`, with `Mission.planning_blocked`; leaving it
+is the explicit `resume`. PLANNING and REPLANNING gained **no** edge to BLOCKED — a BLOCKED
+mission resumes through `redispatch_before_plan` and REASONING, which never judges the replan
+budget — so there a blocked round waits in place with `planning_blocked` (D6).
+
 **Session rotation never changes mission state.** An execution handing off (Execution §4) keeps
 its task RUNNING and its mission EXECUTING.
 
 **Learning is not a state.** After COMPLETED, an outbox consumer runs the learning pass
 (lessons, preferences, architecture updates) and sets `mission.learned_at`. A failed or skipped
 learning pass never reopens a mission. This resolves the spec's `COMPLETED → LEARNED`.
+
+### 2.1 Plan (P8)
+
+One row is one immutable **PlanVersion** (p8-design-gate D1, D2). The five states are
+domain-model §7.2's; P8 declared their edges.
+
+```mermaid
+stateDiagram-v2
+    [*] --> DRAFT
+    DRAFT --> PROPOSED: ready
+    PROPOSED --> APPROVED: approved
+    PROPOSED --> REJECTED: rejected
+    PROPOSED --> SUPERSEDED: superseded
+    APPROVED --> SUPERSEDED: superseded
+    SUPERSEDED --> [*]
+    REJECTED --> [*]
+```
+
+- **DRAFT is transient.** A version is inserted DRAFT and takes `ready` in the same transaction;
+  only a plan Core's validator passed is ever recorded, so no DRAFT row is visible.
+- `ready` is **guarded**: the validator found no problem in this version and its content matches
+  the digest recorded with it. **PROPOSED means structurally valid, validated and ready for the
+  policy stage.** It does not mean approved, authorised, user-approved or executable.
+- `superseded` is taken by the version in force in the same transaction that makes the next one
+  PROPOSED.
+- `approved` and `rejected` belong to **P9** (authorisation). No P8 code fires them; until P9, a
+  mission the P3 stub gate approves has a PROPOSED plan, because no real policy approved it.
+- The mission owns lifecycle progression: no plan move changes the mission, and no mission move
+  is derived from a plan state. Every field of a version but its state is frozen at insert
+  (`Entity._FROZEN`, enforced by the writer).
 
 ---
 

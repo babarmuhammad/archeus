@@ -93,6 +93,16 @@ def request_hash(name, kwargs):
     return hashlib.sha256(blob.encode('utf-8')).hexdigest()
 
 
+def _refuse_frozen(cls, fields):
+    """A field the entity declares frozen (`_FROZEN`) is fixed at insert: a
+    recorded PlanVersion, a task's dispatch contract. Persistence reads only the
+    list of names, never what the entity means."""
+    frozen = set(fields) & cls.frozen_fields()
+    if frozen:
+        raise ValueError('%s fields are frozen once recorded: %s'
+                         % (cls.__name__, sorted(frozen)))
+
+
 def _commit(conn):
     conn.execute('COMMIT')
 
@@ -158,6 +168,7 @@ class Tx:
         forbidden = {'id'} | ({cls._STATE[0]} if cls._STATE else set())
         if set(fields) & forbidden:
             raise ValueError('update may not set the id or the state; an edge does')
+        _refuse_frozen(cls, fields)
         entity = dataclasses.replace(row.entity, **fields)
         name = rows.table(cls)
         promoted, body = rows.encode(entity, rows.columns(self.conn, name))
@@ -243,6 +254,7 @@ class Tx:
         extra = dict(fields or {})
         if set(extra) & {field, 'id'}:
             raise ValueError('fields may not set the id or the state; the edge does')
+        _refuse_frozen(cls, extra)
         entity = dataclasses.replace(row.entity, **dict(extra, **{field: to}))
         name = rows.table(cls)
         promoted, body = rows.encode(entity, rows.columns(self.conn, name))

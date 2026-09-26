@@ -42,7 +42,7 @@ mobile (ADR-0010). Push beyond ntfy is **DEFERRED**.
 | Conversation | `/v1/conversations/{id}/messages?before=` — P7: `?after=`, and `primary` names the primary conversation | `/v1/conversations/{id}/messages` (user turn → intent pipeline; returns message id; reply arrives via events) — P7, with `in_reply_to` |
 | Intent | `/v1/intents/{id}` (P7) | `/v1/intents/{id}/clarify` (P7: `{choice: proceed\|drop}` for a challenge, or `{text}` answering a clarification) |
 | Missions | `/v1/missions?state=&project=`, `/v1/missions/{id}`, `/{id}/plan`, `/{id}/tasks`, `/{id}/timeline`, `/{id}/why` | `create`, `pause`, `resume`, `cancel`, `reprioritize`, `request-changes`, `accept`, `feedback` |
-| Plans | `/v1/plans/{id}` | `/v1/plans/{id}/edit` (creates new version) |
+| Plans | `/v1/plans/{id}` — P8: one exact version with its tasks, `waves` and currency; `/v1/missions/{id}/plan` the version in force and every version | `/v1/plans/{id}/edit` (creates new version) — deferred to P16 (p8-design-gate D15) |
 | Tasks / Executions | `/v1/tasks/{id}`, `/v1/executions/{id}`, `/v1/executions/{id}/stream?from=` (tail of normalised events), `/v1/executions/{id}/checkpoints` | `stop`, `retry`, `handoff` |
 | Approvals / Attention | `/v1/attention` (approvals, blockers, acceptance items, knowledge & drift proposals), `/v1/approvals/{id}` | `/v1/approvals/{id}/decide` `{decision, note, step_up?, idempotency_key}` |
 | World | `/v1/status` (P4, deterministic), `/v1/projects`, `/v1/projects/{id}`, `/v1/world/graph?focus=&depth=`, `/v1/repositories/{id}/inspections`, `/v1/meetings`, `/v1/decisions`, `/v1/ideas` (P7, `?state`), `/v1/people` | `projects/create|archive` (`POST /v1/projects`, admin, P4), `projects/{id}/constraints` (P4), `repositories/{id}/inspect`, `meetings/import`, `ideas/capture|promote|park` |
@@ -111,6 +111,12 @@ Design rule (PDF §19): events describe durable facts; consumers decide what the
 P7 registers `idea.created`, `idea.state_changed` and `mission.updated` (a continuation added
 requirements or constraints) and nothing else: an intent, a clarification and a challenge are
 rows recorded by the reply's `message.created`, whose cards say which (p7-design-gate D6).
+
+P8 registers `plan.state_changed` (the plan machine's moves, which the writer requires) and
+nothing else. `plan.created` carries the version's lineage and provenance (`supersedes_plan_id`,
+`round_seq`, `digest`, `route_decision_id`, `context_package_id`); a blocked planning round is
+`mission.state_changed` (`challenge_raised`) or `mission.updated` (`planning_blocked`) plus the
+question's `message.created` (p8-design-gate §18).
 
 ### 3.3 What is event-driven
 

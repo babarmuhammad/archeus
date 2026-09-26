@@ -142,9 +142,12 @@ class Rig:
         raise NotImplementedError('judge rig: %s arrives with %s' % (what, phase))
 
     def script_harness(self, task_key, steps):
-        """Make the fake harness run *steps* (fake_agent.py format) for a task."""
-        self._pending('scripting the fake harness per scenario', 'the first phase whose '
-                      'scenario needs it (P9)')
+        """Make the fake harness run *steps* (fake_agent.py format) for the task
+        keyed *task_key* (`t1`, `t2`, … — Core keys a plan's tasks, P8). Given a
+        body in P8, the first phase whose scenario (S6) needs it."""
+        if not hasattr(self.client, '_script'):
+            self._pending('scripting the fake harness for this binding', 'P8')
+        self.client._script(task_key, list(steps))
 
     def usage(self, account_id, window, utilisation_pct):
         """Report provider usage for an account (FakeUsageFeed)."""

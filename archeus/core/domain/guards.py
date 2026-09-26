@@ -74,6 +74,15 @@ class MissionFacts:
 
 
 @dataclass(frozen=True)
+class PlanFacts:
+    """What the plan `ready` guard reads (P8): the problems Core's validator
+    found in this version (empty: none) and the digest of its content as
+    recomputed from the row, which must equal the digest recorded with it."""
+    problems: tuple = ()
+    digest: str = None
+
+
+@dataclass(frozen=True)
 class ApprovalFacts:
     """What the `approve` guard reads: the deciding principal and the command."""
     actor_kind: str
@@ -223,6 +232,17 @@ def unrecoverable(mission, f):
     return _r('unrecoverable', False, 'nothing makes the mission unrecoverable')
 
 
+# ── plan (state-machines §2.1, P8) ──────────────────────────────────────────
+
+def ready(plan, f):
+    """Structurally valid and ready for the policy stage — never approved."""
+    if f.problems:
+        return _r('ready', False, 'the plan is not valid: %s' % '; '.join(f.problems[:5]))
+    if not plan.digest or plan.digest != f.digest:
+        return _r('ready', False, 'the plan content does not match its recorded digest')
+    return _r('ready', True, 'Core validated the plan; it is ready for the policy stage')
+
+
 # ── approval (state-machines §5) ────────────────────────────────────────────
 
 def approve(approval, f):
@@ -295,6 +315,7 @@ GUARDS = {
     ('mission', 'verification_failed'): verification_failed,
     ('mission', 'redispatch'): redispatch,
     ('mission', 'accepted'): accepted,
+    ('plan', 'ready'): ready,
     ('approval', 'approve'): approve,
     ('architecture', 'first_inspection'): first_inspection,
     ('architecture', 'first_inspection_drift'): first_inspection_drift,

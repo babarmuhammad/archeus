@@ -70,7 +70,7 @@ them so nothing is tested twice under different names or missed.
 | S3 | Multiple accounts/models registered; router respects priority | SP7, SP8, IP-C, G "routing deterministic and explainable" | `test_s03_multi_account_routing.py` | P10 |
 | S4 | Quota exhaustion → policy-controlled fallback; allocation ceilings never exceeded at start; halt at boundary on crossing | IP-C, G "priority/allocation work" | `test_s04_limit_and_fallback.py` (fallback allow / ask / deny variants) | P10–P12 |
 | S5 | Human approval (plan and mid-execution action) | SP6, G "policies enforced" | `test_s05_approvals.py` (single-use, expiry, supersede on replan, idempotent decide, step-up) | P9 |
-| S6 | Verification failure → replan (budget 2 → BLOCKED) | SP11, SP12, G "verification exists" | `test_s06_verify_fail_replan.py` | P13, P8 |
+| S6 | Verification failure → replan (budget 2 → BLOCKED) | SP11, SP12, G "verification exists" | `test_s06_verify_fail_replan.py` (P8: a failed task replans into a new plan version; the verification-driven functions stay P13, p8-design-gate D13) | P13, P8 |
 | S7 | Repository reinspection and architecture drift | IP-G, G "repository re-inspection works" | `test_s07_drift.py` (fixture repo, commit that violates a constraint) | P4 |
 | S8 | Meeting notes used as context | SP2 | `test_s08_meeting_context.py` (import → mention → package cites it with reason) | P5–P6 |
 | S9 | Feedback becomes durable knowledge; supersession | SP14 | `test_s09_feedback_to_knowledge.py` (driven through `submit_message`: which message is feedback, and which preference it supersedes, is intent — P7; P6 builds the promotion and supersession it lands on, p6-design-gate D1) | P7 |

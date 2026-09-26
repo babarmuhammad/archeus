@@ -26,6 +26,8 @@ TYPES = (
     ('idea.created', 'idea', 'user', False, 'an idea was captured'),
     ('idea.state_changed', 'idea', 'user', False, 'an idea moved state (payload: from, to, reason)'),
     ('plan.created', 'plan', 'user', False, 'a plan version was proposed'),
+    ('plan.state_changed', 'plan', 'user', False,
+     'a plan version moved state (ready for policy, superseded; approved/rejected are P9)'),
     ('task.created', 'task', 'user', False, 'a task of a plan was created'),
     ('task.state_changed', 'task', 'user', False, 'a task moved state'),
     ('execution.intent', 'execution', 'system', False, 'an execution was committed before spawn'),

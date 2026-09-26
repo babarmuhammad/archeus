@@ -23,6 +23,8 @@ from .actions import ACTION_CLASSES, DECISIONS, Action
 from .values import ORIGINS, PRINCIPAL_SCOPES, SOURCE_KINDS, Ref
 
 _HEX64 = re.compile(r'[0-9a-f]{64}')
+#: `_FROZEN` value meaning every field except the state
+FROZEN_ALL = ('*',)
 
 
 class Entity:
@@ -35,6 +37,8 @@ class Entity:
     _CHOICES  {field: allowed values}
     _REFS     {field: id kind or tuple of kinds} for foreign keys
     _NONNEG   integer fields that must be >= 0 (`_MIN1` for >= 1)
+    _FROZEN   fields fixed once the row exists: `Tx.update` and a transition's
+              `fields` refuse them (FROZEN_ALL: every field but the state)
     None passes every check when it is the field's default (optional field).
     """
     _ID: ClassVar = None
@@ -44,6 +48,14 @@ class Entity:
     _REFS: ClassVar = {}
     _NONNEG: ClassVar = ()
     _MIN1: ClassVar = ()
+    _FROZEN: ClassVar = ()
+
+    @classmethod
+    def frozen_fields(cls):
+        """The names no write after the insert may change (P8, p8-design-gate D12)."""
+        if cls._FROZEN == FROZEN_ALL:
+            return {f.name for f in fields(cls)} - {cls._STATE[0] if cls._STATE else None}
+        return set(cls._FROZEN)
 
     def __post_init__(self):
         name = type(self).__name__
@@ -595,6 +607,8 @@ class Intent(Entity):
 # ── work (domain-model §7) ──────────────────────────────────────────────────
 
 CRITERION_CHECKS = ('automatic', 'human')
+#: why a planning round recorded no plan (Mission.planning_blocked, P8)
+PLANNING_BLOCKS = ('clarification', 'challenge', 'call')
 COST_BANDS = ('low', 'medium', 'high')      # bands, never precise (domain-model §7.2)
 
 @entity
@@ -634,9 +648,16 @@ class Mission(Entity):
     success_criteria: tuple = ()
     # the package the mission's `context_ready` move recorded (P5)
     context_package_id: str = None
+    # why planning could not record a plan (P8, p8-design-gate §10): {kind:
+    # clarification|challenge|call, round_seq, ...}; cleared when a version is recorded
+    planning_blocked: dict = None
     state: str = None
 
     def _check(self):
+        b = self.planning_blocked
+        if b is not None and not (isinstance(b, dict) and b.get('kind') in PLANNING_BLOCKS):
+            raise ValueError('Mission.planning_blocked is {kind: %s, ...}: %r'
+                             % ('|'.join(PLANNING_BLOCKS), b))
         if self.held_from is not None and self.held_from not in states.states('mission'):
             raise ValueError('Mission.held_from is not a mission state: %r' % self.held_from)
         v = self.decided_plan_version
@@ -659,11 +680,16 @@ class Mission(Entity):
 
 @entity
 class Plan(Entity):
+    """One immutable PlanVersion (p8-design-gate D1): every field but the state
+    is fixed at insert, and a replan is a new row. PROPOSED means validated and
+    ready for the policy stage — not approved, authorised or executable."""
     _ID = 'plan'
     _STATE = ('state', 'plan')
-    _REFS = {'mission_id': 'mission'}
+    _REFS = {'mission_id': 'mission', 'supersedes_plan_id': 'plan',
+             'route_decision_id': 'route_decision', 'context_package_id': 'context_package'}
     _CHOICES = {'estimated_cost': COST_BANDS}
     _MIN1 = ('plan_version',)
+    _FROZEN = FROZEN_ALL
     id: str
     mission_id: str
     # the plan's own number within its mission (1, 2, … per replan), which
@@ -671,12 +697,51 @@ class Plan(Entity):
     # `version`, which the P2 schema owns for every table
     plan_version: int = 1
     summary: str = ''
+    # the band Core computed (planning.validate.cost_band), never the model's
     estimated_cost: str = None
+    # P8 provenance and content: the version it replaced, the planning round
+    # (the seq of the event that started it; None on the stub path), the call
+    # and the context package it came from, and the sha256 of its content
+    supersedes_plan_id: str = None
+    round_seq: int = None
+    route_decision_id: str = None
+    context_package_id: str = None
+    digest: str = None
+    # what it planned against: the mission's requirements and constraints as
+    # {handle, text, origin}, and which tasks serve each requirement
+    inputs: tuple = ()
+    coverage: tuple = ()
+    # the planner's gap-filling, always origin inferred, and its non-blocking questions
+    assumptions: tuple = ()
+    questions: tuple = ()
+    risks: tuple = ()
+    rollback: str = None
+    refs: tuple = ()
+    # dependencies Core added (D8): {task, after, because}; the model's are the rest
+    serialised: tuple = ()
     state: str = None
+
+    def _check(self):
+        if self.digest is not None and not _HEX64.fullmatch(self.digest):
+            raise ValueError('Plan.digest is a sha256 hex digest')
+        if self.round_seq is not None and not (isinstance(self.round_seq, int)
+                                               and self.round_seq >= 1):
+            raise ValueError('Plan.round_seq is an event seq >= 1')
+        for a in self.assumptions:
+            if not (isinstance(a, dict) and a.get('origin') == 'inferred'
+                    and isinstance(a.get('text'), str) and a['text'].strip()):
+                raise ValueError('a plan assumption is {text, origin: inferred}: %r' % (a,))
+        for s in self.serialised:
+            if not (isinstance(s, dict) and set(s) == {'task', 'after', 'because'}):
+                raise ValueError('a serialisation edge is {task, after, because}: %r' % (s,))
 
 
 TASK_KINDS = ('code_change', 'research', 'document', 'presentation', 'inspection',
               'verification', 'human')
+#: what a task may need of a resource (resource-router §3)
+CAPABILITIES = ('code_edit', 'shell', 'web', 'long_context', 'vision')
+MODEL_TIERS = ('small', 'mid', 'large')
+WORKSPACE_MODES = ('in_place', 'worktree')
 
 
 @entity
@@ -684,9 +749,15 @@ class Task(Entity):
     _ID = 'task'
     _STATE = ('state', 'task')
     _TEXT = ('key', 'title')
-    _CHOICES = {'kind': TASK_KINDS}
+    _CHOICES = {'kind': TASK_KINDS, 'min_model_tier': MODEL_TIERS,
+                'workspace_mode': WORKSPACE_MODES}
     _REFS = {'plan_id': 'plan', 'mission_id': 'mission'}
-    _MIN1 = ('max_attempts',)
+    _MIN1 = ('max_attempts', 'estimate')
+    # the dispatch contract is part of the plan version it belongs to (D12)
+    _FROZEN = ('plan_id', 'mission_id', 'key', 'title', 'kind', 'depends_on',
+               'action_classes', 'max_attempts', 'objective', 'expected_output',
+               'boundaries', 'capabilities_required', 'min_model_tier', 'workspace_mode',
+               'touches', 'inputs', 'refs', 'serves', 'acceptance', 'estimate')
     id: str
     plan_id: str
     mission_id: str
@@ -696,6 +767,23 @@ class Task(Entity):
     depends_on: tuple = ()
     action_classes: tuple = ()
     max_attempts: int = 2
+    # the four-part dispatch contract (domain-model §7.3): objective, expected
+    # output, allowed action classes (above) and boundaries
+    objective: str = ''
+    expected_output: str = ''
+    boundaries: tuple = ()
+    capabilities_required: tuple = ()
+    min_model_tier: str = None
+    workspace_mode: str = None
+    touches: tuple = ()
+    # {from_task: key, what} or {ref: {kind, id}, what}
+    inputs: tuple = ()
+    refs: tuple = ()
+    # the mission requirement handles (r1, …) this task covers
+    serves: tuple = ()
+    # each {text, check: automatic|human}
+    acceptance: tuple = ()
+    estimate: int = 1
     # why the task FAILED, set with that move (`task_failed_retryable` reads it)
     failure_class: str = None
     state: str = None
@@ -706,6 +794,18 @@ class Task(Entity):
             raise ValueError('unknown action classes: %s' % sorted(unknown))
         if self.key in self.depends_on:
             raise ValueError('a task cannot depend on itself')
+        unknown = set(self.capabilities_required) - set(CAPABILITIES)
+        if unknown:
+            raise ValueError('unknown capabilities: %s' % sorted(unknown))
+        if not 1 <= self.estimate <= 5:
+            raise ValueError('Task.estimate is 1-5: %r' % self.estimate)
+        for c in self.acceptance:
+            if not (isinstance(c, dict) and set(c) == {'text', 'check'}
+                    and isinstance(c['text'], str) and c['text'].strip()
+                    and c['check'] in CRITERION_CHECKS):
+                raise ValueError('an acceptance criterion is {text, check}: %r' % (c,))
+        for r in self.refs:
+            check_ref(r, 'a task ref')
 
 
 @entity

@@ -30,13 +30,20 @@ automatic approval is not asked again here (domain-model §9.3).
 """
 
 import time
+from dataclasses import replace
 
-from ..domain import entities, ids
+from ..domain import entities, guards, ids
 from ..domain.actions import Action
 from ..domain.events import new_event
 from ..domain.values import Ref
+from ..planning import validate
 from . import lifecycle
 from .commands import active_plan
+
+#: the task fields a plan spec may carry (its dispatch contract, P8 §7.1)
+_TASK_CONTRACT = frozenset(entities.Task.frozen_fields()) - {'plan_id', 'mission_id'}
+#: the plan's own lists, copied as proposed (never derived by Core)
+_PLAN_LISTS = ('inputs', 'coverage', 'assumptions', 'questions', 'risks', 'refs')
 
 #: Task states after which its dependants may start.
 DONE = ('SUCCEEDED', 'SKIPPED')
@@ -89,50 +96,88 @@ class Work:
 
     # ── plan ──
 
-    def propose_plan(self, tx, *, actor, mission_id, plan):
-        """Record a proposed plan (the brain's `plan.v1`) as the next plan
-        version with its tasks, then take the mission's decision on it — all in
-        one transaction, so a plan is never left undecided. From REASONING the
-        mission first moves to PLANNING (`reasoned`); a mission that has no
-        success criteria takes the plan's, marked `inferred`.
+    def propose_plan(self, tx, *, actor, mission_id, plan, round_seq=None,
+                     route_decision_id=None, context_package_id=None, explicit=(), asked=()):
+        """Record a proposed plan as the next PlanVersion with its tasks, then
+        take the mission's decision on it — all in one transaction, so a plan is
+        never left undecided. From REASONING the mission first moves to PLANNING
+        (`reasoned`); a mission that has no success criteria takes the plan's,
+        marked `inferred`.
 
         From REPLANNING the replan budget is judged FIRST, on the plan still in
         force (the one being replaced): `max_replans` counts replans after the
         initial plan, so the guard's `plan_version - 1` is the replans already
         used. Over budget, the mission goes BLOCKED and no plan is recorded.
-        A plan the policy DENIES is refused before anything is written."""
+        A plan the policy DENIES is refused before anything is written.
+
+        P8 (p8-design-gate §5-§7, §11): Core's validator judges the tasks first
+        (a plan that fails it is refused, nothing written); Core computes the
+        cost band and adds the serialisation edges (recorded in `serialised`);
+        the version is inserted DRAFT and takes the guarded `ready` edge to
+        PROPOSED — ready for the POLICY stage, never approved here — and the
+        version it replaces is SUPERSEDED in the same transaction. The decision
+        that follows is the P3 plan gate's, over the Policy port, unchanged.
+        `explicit`/`asked` are the requirement handles the planner's coverage
+        is judged on (D16); the planner's provenance comes with it."""
         m = lifecycle.load(tx, entities.Mission, mission_id)
         _require('mission', m, ('REASONING', 'PLANNING', 'REPLANNING'), 'propose_plan')
         if m.entity.state == 'REPLANNING':
             spent = self.replan_budget_spent(tx, actor=actor, mission_id=mission_id)
             if spent is not None:
                 return {'plan_id': None, 'plan_version': None, 'mission': spent}
-        for spec in plan.get('tasks') or ():
+        if 'estimated_cost' in plan:
+            raise ValueError('a plan does not state its cost band: Core computes it (D9)')
+        specs = [dict(s, depends_on=tuple(s.get('depends_on', ()))) for s in plan.get('tasks') or ()]
+        criteria = m.entity.success_criteria or tuple(plan.get('success_criteria') or ())
+        found = validate.problems(specs, criteria=criteria, explicit=explicit, asked=asked)
+        if found:
+            raise ValueError('the plan is not valid: %s' % '; '.join(found))
+        specs, serialised = validate.serialise(validate.order(specs))
+        for spec in specs:
             self._refuse_denied(m.entity, actor, spec['key'], spec.get('action_classes', ()))
         prev = active_plan(tx.conn, mission_id)
-        p = entities.Plan(id=ids.new_id('plan'), mission_id=mission_id,
-                          plan_version=1 if prev is None else prev.entity.plan_version + 1,
-                          summary=plan.get('summary', ''),
-                          estimated_cost=plan.get('estimated_cost'))
+        pid = ids.new_id('plan')
+        tasks = [entities.Task(
+            id=ids.new_id('task'), plan_id=pid, mission_id=mission_id,
+            **{k: v for k, v in spec.items() if k in _TASK_CONTRACT}) for spec in specs]
+        p = entities.Plan(
+            id=pid, mission_id=mission_id,
+            plan_version=1 if prev is None else prev.entity.plan_version + 1,
+            summary=plan.get('summary', ''), estimated_cost=validate.cost_band(specs),
+            supersedes_plan_id=None if prev is None else prev.entity.id, round_seq=round_seq,
+            route_decision_id=route_decision_id, context_package_id=context_package_id,
+            serialised=tuple(serialised),
+            **{k: tuple(plan.get(k) or ()) for k in _PLAN_LISTS},
+            rollback=plan.get('rollback'))
+        p = replace(p, digest=validate.digest(p, tasks))
         tx.insert(p, actor=actor)
-        self._event(tx, 'plan.created', Ref('plan', p.id), actor, m.entity,
-                    {'mission_id': mission_id, 'plan_version': p.plan_version})
-        keys = []
-        for spec in plan.get('tasks') or ():
-            t = entities.Task(id=ids.new_id('task'), plan_id=p.id, mission_id=mission_id,
-                              key=spec['key'], title=spec['title'], kind=spec['kind'],
-                              depends_on=tuple(spec.get('depends_on', ())),
-                              action_classes=tuple(spec.get('action_classes', ())),
-                              max_attempts=spec.get('max_attempts', 2))
-            if t.key in keys or not set(t.depends_on) <= set(keys):
-                raise ValueError('task %r repeats a key or depends on a task not planned '
-                                 'before it' % t.key)
+        self._event(tx, 'plan.created', Ref('plan', p.id), actor, m.entity, {
+            'mission_id': mission_id, 'plan_version': p.plan_version,
+            'supersedes_plan_id': p.supersedes_plan_id, 'round_seq': round_seq,
+            'digest': p.digest, 'route_decision_id': route_decision_id,
+            'context_package_id': context_package_id, 'tasks': len(tasks),
+            'serialised': len(serialised)})
+        for t in tasks:
             tx.insert(t, actor=actor)
             self._event(tx, 'task.created', Ref('task', t.id), actor, m.entity,
                         {'plan_id': p.id, 'key': t.key})
-            keys.append(t.key)
-        if not keys:
-            raise ValueError('a plan has at least one task')
+
+        def judged(row):            # re-read and re-judged from the rows just written
+            stored = [r.entity for r in tx.where(entities.Task, plan_id=row.entity.id)]
+            again = validate.problems([t.to_dict() for t in stored], criteria=criteria,
+                                      explicit=explicit, asked=asked)
+            return guards.PlanFacts(problems=tuple(again),
+                                    digest=validate.digest(row.entity, stored))
+        lifecycle.fire(tx, entities.Plan, p.id, 'ready', actor=actor, facts=judged,
+                       reason='plan v%d validated by Core: ready for the policy stage'
+                       % p.plan_version)
+        if prev is not None and prev.entity.state in ('PROPOSED', 'APPROVED'):
+            lifecycle.fire(tx, entities.Plan, prev.entity.id, 'superseded', actor=actor,
+                           reason='replaced by plan v%d' % p.plan_version)
+        if m.entity.planning_blocked is not None:
+            tx.update(entities.Mission, mission_id, {'planning_blocked': None}, actor=actor)
+            self._event(tx, 'mission.updated', Ref('mission', mission_id), actor, m.entity,
+                        {'fields': ['planning_blocked'], 'cleared': True, 'plan_id': p.id})
         if m.entity.state == 'REASONING':
             inferred = None
             if not m.entity.success_criteria and plan.get('success_criteria'):
@@ -149,7 +194,8 @@ class Work:
         except lifecycle.GuardFailed as e:
             decided = self.missions.fire(tx, actor=actor, mission_id=mission_id,
                                          trigger='plan_needs_approval', reason=e.result.reason)
-        return {'plan_id': p.id, 'plan_version': p.plan_version, 'mission': decided}
+        return {'plan_id': p.id, 'plan_version': p.plan_version, 'digest': p.digest,
+                'mission': decided}
 
     def replan_budget_spent(self, tx, *, actor, mission_id):
         """REPLANNING -> BLOCKED if the replan budget is spent (judged on the plan

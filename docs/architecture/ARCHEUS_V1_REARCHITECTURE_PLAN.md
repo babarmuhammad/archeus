@@ -180,6 +180,12 @@ no vector store in V1 (ADR-0012, ADR-0013).
   (state-machines §2) and marks approval points on tasks that will ASK at action time.
 - Editing a plan creates a new version; approvals of old versions are SUPERSEDED.
 - Replanning receives: previous plan, failing evidence, checkpoints, review verdict; budget 2.
+- *As built (P8, p8-design-gate):* the planner is `archeus_call(purpose planner, plan.v1)` run
+  by the `archeus-plan` outbox worker; Core's validator is the call's own check, so a plan that
+  breaks the contract never leaves the call. The decision on a recorded plan stays the P3 gate's
+  over the Policy port, in the same transaction (D4); policy pre-evaluation, approval points and
+  the supersession of approvals are P9's (D14); the planner's `large` tier is recorded, enforced
+  in P10. Checkpoints join the replan inputs in P12.
 
 ## 13. Policy architecture
 
@@ -713,6 +719,19 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Tests: DAG validation, serialisation of overlapping `touches`, versioning, supersession of
   approvals, cost bands.
 - Acceptance: plans for all judge scenarios validate; S6 replan path passes with the fake harness.
+  - **P8, as built** (p8-design-gate.md). `core/planning/{validate,planner,worker}.py` (Core's
+    validator, `plan.v1` with handles and resolution, the `archeus-plan` outbox worker),
+    `core/application/planning.py` (`apply`/`hold`/`note`, each one command with the call's end),
+    `Work.propose_plan` on the validator and the plan machine, `Missions.challenge`
+    (REASONING → BLOCKED), the plan machine's edges (state-machines §2.1), `Entity._FROZEN`
+    enforced by the writer, migration `0007_planning.sql` (`round_seq` UNIQUE per mission,
+    `supersedes_plan_id`, the state backfill), `plan.state_changed`, two GET routes,
+    `health.plan`, the mission view's `plan_id`/`plan_version`/`planning_blocked`, the judge's
+    `planner` recordings and `rig.script_harness`. The engine plans only with an injected stub
+    brain; the runtime and the judge plan through `archeus_call`, so with the real adapters and
+    ADR-0021 unanswered a mission waits in REASONING, `gated`. No plan reaches APPROVED; no task
+    moves; no execution starts. S6's P8 function passes (D13); "supersession of approvals"
+    moved to P9 (D14). Deviations: p8-design-gate §25.
 
 **P9 — Policy and autonomy**
 - Depends: P8. New: `policy/*` (engine, rules, profiles, approvals, simulate), hook evaluate

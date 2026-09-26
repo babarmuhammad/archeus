@@ -24,6 +24,8 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/v1/version` | observe | — | — | — | `Version` |
 | GET | `/v1/missions` | observe | — | `state`, `project` | — | `MissionList` |
 | GET | `/v1/missions/{id}` | observe | — | — | — | `Mission` |
+| GET | `/v1/missions/{id}/plan` | observe | — | — | — | `MissionPlan` |
+| GET | `/v1/plans/{id}` | observe | — | — | — | `Plan` |
 | POST | `/v1/missions` | control | required | — | `CreateMissionRequest` | `Created` |
 | POST | `/v1/missions/{id}/pause` | control | required | — | `PauseMissionRequest` | `CommandResult` |
 | POST | `/v1/missions/{id}/resume` | control | required | — | `ResumeMissionRequest` | `CommandResult` |
@@ -354,6 +356,7 @@ interface Health {
   };
   knowledge: Worker;
   intent: Worker;
+  plan: Worker;
 }
 ```
 
@@ -537,6 +540,9 @@ interface Mission {
   version: number;
   created_at: string;
   updated_at: string;
+  plan_id?: string | null;
+  plan_version?: number | null;
+  planning_blocked?: Record<string, unknown> | null;
   [field: string]: unknown;
 }
 ```
@@ -546,6 +552,48 @@ interface Mission {
 ```ts
 interface MissionList {
   missions: Mission[];
+}
+```
+
+### `MissionPlan`
+
+```ts
+interface MissionPlan {
+  mission_id: string;
+  plan: Plan | null;
+  versions: PlanVersionRef[];
+}
+```
+
+### `Plan`
+
+```ts
+interface Plan {
+  id: string;
+  mission_id: string;
+  plan_version: number;
+  state: 'APPROVED' | 'DRAFT' | 'PROPOSED' | 'REJECTED' | 'SUPERSEDED';
+  estimated_cost?: 'low' | 'medium' | 'high' | null;
+  supersedes_plan_id?: string | null;
+  digest?: string | null;
+  tasks: Task[];
+  waves: string[][];
+  serialised?: Record<string, unknown>[];
+  current: boolean;
+  current_why: string;
+  [field: string]: unknown;
+}
+```
+
+### `PlanVersionRef`
+
+```ts
+interface PlanVersionRef {
+  id: string;
+  plan_version: number;
+  state: 'APPROVED' | 'DRAFT' | 'PROPOSED' | 'REJECTED' | 'SUPERSEDED';
+  supersedes_plan_id: string | null;
+  digest: string | null;
 }
 ```
 
@@ -707,6 +755,21 @@ interface StreamFrame {
 interface Subject {
   kind: string;
   id: string;
+}
+```
+
+### `Task`
+
+```ts
+interface Task {
+  id: string;
+  key: string;
+  title: string;
+  kind: 'code_change' | 'research' | 'document' | 'presentation' | 'inspection' | 'verification' | 'human';
+  state: 'AWAITING_APPROVAL' | 'BLOCKED' | 'CANCELLED' | 'FAILED' | 'PAUSED' | 'PENDING' | 'READY' | 'ROUTING' | 'RUNNING' | 'SKIPPED' | 'SUCCEEDED' | 'VERIFYING';
+  depends_on: string[];
+  acceptance: Record<string, unknown>[];
+  [field: string]: unknown;
 }
 ```
 

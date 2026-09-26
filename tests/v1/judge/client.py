@@ -35,6 +35,8 @@ from archeus.core.knowledge import ingest
 from archeus.core.knowledge.passes import Passes
 from archeus.core.knowledge.worker import Knowledge
 from archeus.core.missions.intent import Intents
+from archeus.core.application.planning import Planning
+from archeus.core.planning.worker import Planner
 from archeus.harnesses.calls import real_callers
 from archeus.harnesses.fake import FakeHarness
 from archeus.harnesses.registry import AdapterRegistry
@@ -132,15 +134,20 @@ class InProcessClient:
     home fail loudly instead of reconciling each other's children (p3.5b A1).
     """
 
-    def __init__(self, home, *, callers=None, preference=None):
+    def __init__(self, home, *, callers=None, preference=None, brain=None):
         self.home = str(home)
         self._db = self._lock = None
         self._engine = None
         self._principal = self._system = None
-        self._world = self._knowledge = self._intents = None
+        self._world = self._knowledge = self._intents = self._plans = None
+        # the fake agent's script per task key (the rig's `script_harness`)
+        self._scenarios = {}
         # P6: the own-call adapters and preference (the rig names fakes; None is
         # the real adapters, each gated by ADR-0021, as the Core runtime has)
         self._callers, self._preference = callers, preference
+        # P8: None plans through the planning worker; a stub `plan.v1` port makes
+        # the engine plan instead (a test about something else), never both
+        self._brain = brain
         # the stub ports every phase runs on until P9/P10/P13 swap them
         self._policy = ports.AllowAllPolicy()
         self._missions = commands.Missions(policy=self._policy)
@@ -165,7 +172,7 @@ class InProcessClient:
                 self._db, actor=Ref('system', self._system),
                 work=work.Work(missions=self._missions,
                                router=ports.FixedCandidateRouter('fake')),
-                brain=ports.FixedPlanBrain(engine.SKELETON_PLAN), registry=registry,
+                brain=self._brain, registry=registry, scenarios=self._scenarios,
                 verifier=ports.ScriptedVerifier(), reviewer=ports.ScriptedReview())
             # the world worker, pumped by `_idle` as the engine is (P4)
             self._world = World(self._db, actor=Ref('system', self._system))
@@ -184,6 +191,10 @@ class InProcessClient:
             self._conversations = conversation.Conversations(missions=self._missions)
             self._intents = Intents(self._db, actor=Ref('system', self._system), calls=own,
                                     conversations=self._conversations)
+            # the planning worker, likewise (P8): the engine plans nothing itself
+            self._plans = None if self._brain is not None else Planner(
+                self._db, actor=Ref('system', self._system), calls=own,
+                planning=Planning(work=self._engine.work))
         return self._db
 
     def _actor(self):
@@ -233,15 +244,20 @@ class InProcessClient:
         worked = self._world.pass_once()['changed']
         learned = self._knowledge.pass_once()['changed']
         read = self._intents.pass_once()['changed']
-        return not (worked or learned or read or stepped)
+        planned = self._plans is not None and self._plans.pass_once()['changed']
+        return not (worked or learned or read or planned or stepped)
 
     def close(self, *, drain=True):
         if self._db is not None:
             self._db.close(drain=drain)
             self._db = self._engine = self._world = self._knowledge = None   # orphans now
-            self._intents = None
+            self._intents = self._plans = None
             self._lock.release()
             self._lock = None
+
+    def _script(self, task_key, steps):
+        """The rig's `script_harness`: the engine's scenario map, by task key."""
+        self._scenarios[task_key] = steps
 
     def _restart(self, *, kill=True):
         """Core stops (kill: queued commands are dropped) and starts again on

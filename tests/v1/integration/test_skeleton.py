@@ -29,6 +29,7 @@ from .conftest import ROOT
 
 AUTO = {'text': 'the result passes its automatic check', 'check': 'automatic'}
 HUMAN = {'text': 'the user likes it', 'check': 'human'}
+ACCEPT = [{'text': 'it is done', 'check': 'automatic'}]
 
 
 class SpyPolicy(ports.FixedPolicy):
@@ -339,7 +340,9 @@ def test_a_human_approval_does_not_override_a_later_deny(archeus_home):
 
 
 def test_a_plan_over_the_cost_ceiling_needs_approval(core):
-    core.brain.plan = dict(engine.SKELETON_PLAN, estimated_cost='high')
+    big = dict(engine.SKELETON_PLAN['tasks'][0], min_model_tier='large', estimate=5)
+    core.brain.plan = dict(engine.SKELETON_PLAN, tasks=[      # Core's band: 40 -> high (D9)
+        big, dict(big, key='more', title='Do more', depends_on=['work'])])
     out = core.engine.run(core.mission())
     assert out['state'] == 'APPROVAL_REQUIRED' and core.all(entities.Execution) == []
 
@@ -541,7 +544,7 @@ def test_a_rejected_plan_writes_nothing(core):
     core.until(mid, lambda m: m.state == 'REASONING')
     head = core.events()[-1]['seq']
     bad = dict(engine.SKELETON_PLAN, tasks=[engine.SKELETON_PLAN['tasks'][0]] * 2)
-    with pytest.raises(ValueError, match='repeats a key'):
+    with pytest.raises(ValueError, match='labels repeat'):
         core.do(core.work.propose_plan, mission_id=mid, plan=bad)
     assert core.events()[-1]['seq'] == head
     assert core.all(entities.Plan) == [] and core.all(entities.Task) == []
@@ -686,9 +689,10 @@ def test_ready_tasks_reads_only_the_plan_in_force(core):
     """Plan v1 ran to the end and failed verification; plan v2 has the same keys.
     v1's SUCCEEDED `a` must not satisfy v2's `b`: only v2's `a` becomes READY."""
     core.brain = ports.FixedPlanBrain({
-        'summary': 'two steps', 'estimated_cost': 'low',
-        'tasks': [{'key': 'a', 'title': 'A', 'kind': 'code_change'},
-                  {'key': 'b', 'title': 'B', 'kind': 'code_change', 'depends_on': ['a']}]})
+        'summary': 'two steps',
+        'tasks': [{'key': 'a', 'title': 'A', 'kind': 'code_change', 'acceptance': ACCEPT},
+                  {'key': 'b', 'title': 'B', 'kind': 'code_change', 'depends_on': ['a'],
+                   'acceptance': ACCEPT}]})
     core.engine = core.build_engine()
     mid = core.mission()
     core.verifier.failing.add(mid)

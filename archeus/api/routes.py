@@ -22,7 +22,9 @@ route decisions of Archeus's own calls, and the provider-terms answer
 (ADR-0021; admin, and only the user may give it) (p6-design-gate §9). P7 adds
 the conversation (a posted message is read by the intent worker; the reply
 arrives as `message.created`), the intents, the challenge choice and the ideas
-(p7-design-gate §9).
+(p7-design-gate §9). P8 adds two reads: a mission's plan (the version in force
+and every version) and one exact plan version — no command: planning is the
+planning worker's, and editing a plan is P16's (p8-design-gate §19).
 
 Deliberately absent (a test pins the table): cancel, accept, request-changes,
 approvals (P9), executions and routing (P10, P11), `/v1/now` and the execution
@@ -101,6 +103,16 @@ def list_missions(req):
 def get_mission(req):
     with req.api.db.read() as conn:
         return 200, queries.get_mission(conn, req.params['id'])
+
+
+def get_mission_plan(req):
+    with req.api.db.read() as conn:
+        return 200, queries.mission_plan(conn, req.params['id'])
+
+
+def get_plan(req):
+    with req.api.db.read() as conn:
+        return 200, queries.get_plan(conn, req.params['id'])
 
 
 def create_mission(req):
@@ -354,6 +366,9 @@ ROUTES = (
     Route('GET', '/v1/version', version, 'observe', None, None, 'Version'),
     Route('GET', '/v1/missions', list_missions, 'observe', None, None, 'MissionList'),
     Route('GET', '/v1/missions/{id}', get_mission, 'observe', None, None, 'Mission'),
+    Route('GET', '/v1/missions/{id}/plan', get_mission_plan, 'observe', None, None,
+          'MissionPlan'),
+    Route('GET', '/v1/plans/{id}', get_plan, 'observe', None, None, 'Plan'),
     Route('POST', '/v1/missions', create_mission, 'control', 'required',
           schemas.CREATE_MISSION, 'Created'),
     Route('POST', '/v1/missions/{id}/pause', pause_mission, 'control', 'required',
