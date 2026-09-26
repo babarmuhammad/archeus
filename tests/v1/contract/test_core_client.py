@@ -24,7 +24,9 @@ DOCUMENTED = ('submit_message', 'create_mission', 'get_mission', 'list_missions'
               'decide_approval', 'pause', 'resume', 'stop', 'route_why', 'status',
               'digest', 'ack', 'create_project', 'declare_constraint', 'import_meeting',
               'list_knowledge', 'register_account',
-              'set_resource_policy', 'events')
+              'set_resource_policy', 'events',
+              # P9 D21 (testing-strategy §1.1): G6 sets a rule it then cannot loosen
+              'set_policy_rule')
 
 
 def test_the_contract_is_exactly_the_documented_operations():

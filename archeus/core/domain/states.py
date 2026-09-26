@@ -348,8 +348,9 @@ _GUARDED = {
                 'awaiting_human_acceptance', 'replan_budget_exhausted',
                 'task_failed_retryable', 'unrecoverable', 'verification_failed',
                 'redispatch', 'accepted',
-                # P9: blocked only by a recorded denial (p9-design-gate D11)
-                'plan_denied'},
+                # P9: approved only by a real authorisation; blocked only by a
+                # recorded denial (p9-design-gate D10, D11)
+                'approve', 'plan_denied'},
     # a plan version is ready only as far as Core's validator allows (P8)
     'plan': {'ready'},
     'approval': {'approve'},

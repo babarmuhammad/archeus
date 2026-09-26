@@ -353,6 +353,75 @@ def list_ideas(req):
         return 200, {'ideas': queries.list_ideas(conn, _one(req.query, 'state'))}
 
 
+# ── policy and approvals (P9, p9-design-gate §18) ──
+
+def get_policies(req):
+    with req.api.db.read() as conn:
+        return 200, queries.policies(conn)
+
+
+def create_rule(req):
+    b = req.body
+    return 200, req.run(req.api.authorization.create_rule, {
+        k: b.get(k) for k in ('scope_level', 'scope_ref', 'action_class', 'decision', 'locked',
+                              'match', 'boundary', 'expires_at', 'supersedes_rule_id')}
+        | {'outside': b.get('outside') or 'ASK', 'note': b.get('note') or ''})
+
+
+def retire_rule(req):
+    return 200, req.run(req.api.authorization.retire_rule, {'rule_id': req.params['id']})
+
+
+def set_profile(req):
+    b = req.body
+    return 200, req.run(req.api.authorization.set_profile, {
+        'scope': b['scope'], 'profile': b['profile'], 'mission_id': b.get('mission_id')})
+
+
+def simulate_policy(req):
+    b = req.body
+    with req.api.db.read() as conn:
+        return 200, req.api.authorization.simulate(
+            conn, now=queries._now(), action=b['action'], mission_id=b.get('mission_id'),
+            task_id=b.get('task_id'), stage=b.get('stage') or 'plan',
+            extra_rules=b.get('extra_rules') or ())
+
+
+def list_policy_decisions(req):
+    with req.api.db.read() as conn:
+        return 200, {'policy_decisions': queries.list_policy_decisions(
+            conn, _one(req.query, 'mission'), _one(req.query, 'stage'))}
+
+
+def get_policy_decision(req):
+    with req.api.db.read() as conn:
+        return 200, queries.get_policy_decision(conn, req.params['id'])
+
+
+def list_approvals(req):
+    with req.api.db.read() as conn:
+        return 200, {'approvals': queries.list_approvals(
+            conn, _one(req.query, 'state'), _one(req.query, 'mission'))}
+
+
+def get_approval(req):
+    with req.api.db.read() as conn:
+        return 200, queries.get_approval(conn, req.params['id'])
+
+
+def decide_approval(req):
+    """The client echoes the `action_hash` it displayed (X02). A DENY found at
+    approve time is recorded and answered `423 policy_denied`."""
+    b = req.body
+    out = req.run(req.api.authorization.decide, {
+        'approval_id': req.params['id'], 'decision': b['decision'],
+        'action_hash': b['action_hash'], 'note': b.get('note'), 'step_up': b.get('step_up'),
+        'expected_version': b.get('expected_version')})
+    if out.get('denied'):
+        raise Refused(423, 'policy_denied', dict(out['denied'], approval_id=out['approval_id']))
+    return 200, out
+
+
 def revoke_device(req):
     out = req.run(commands.revoke_device, {'device_id': req.params['id']})
     req.api.sse.close_device(req.params['id'])          # before we answer (§3 D2)
@@ -435,6 +504,23 @@ ROUTES = (
     Route('POST', '/v1/intents/{id}/clarify', clarify_intent, 'control', 'required',
           schemas.CLARIFY, 'Replied'),
     Route('GET', '/v1/ideas', list_ideas, 'observe', None, None, 'IdeaList'),
+    Route('GET', '/v1/policies', get_policies, 'observe', None, None, 'Policies'),
+    Route('POST', '/v1/policies/rules', create_rule, 'admin', 'required',
+          schemas.CREATE_RULE, 'RuleWritten'),
+    Route('POST', '/v1/policies/rules/{id}/retire', retire_rule, 'admin', 'required',
+          schemas.KEYED, 'RuleWritten'),
+    Route('POST', '/v1/policies/profile', set_profile, 'admin', 'required',
+          schemas.SET_PROFILE, 'ProfileSet'),
+    Route('POST', '/v1/policies/simulate', simulate_policy, 'observe', None, schemas.SIMULATE,
+          'Simulation'),
+    Route('GET', '/v1/policy-decisions', list_policy_decisions, 'observe', None, None,
+          'PolicyDecisionList'),
+    Route('GET', '/v1/policy-decisions/{id}', get_policy_decision, 'observe', None, None,
+          'PolicyDecision'),
+    Route('GET', '/v1/approvals', list_approvals, 'observe', None, None, 'ApprovalList'),
+    Route('GET', '/v1/approvals/{id}', get_approval, 'observe', None, None, 'Approval'),
+    Route('POST', '/v1/approvals/{id}/decide', decide_approval, 'approve', 'required',
+          schemas.DECIDE, 'Decided'),
 )
 
 #: The query parameters each GET route reads (for the docs and the client).
@@ -443,7 +529,8 @@ QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),
          '/v1/repositories/{id}/inspections': ('limit',),
          '/v1/knowledge': ('project', 'state', 'type'),
          '/v1/route-decisions': ('source', 'purpose'),
-         '/v1/conversations/{id}/messages': ('after',), '/v1/ideas': ('state',)}
+         '/v1/conversations/{id}/messages': ('after',), '/v1/ideas': ('state',),
+         '/v1/policy-decisions': ('mission', 'stage'), '/v1/approvals': ('state', 'mission')}
 
 STREAM = '/v1/events/stream'
 

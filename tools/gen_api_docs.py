@@ -144,7 +144,9 @@ QUERY_TYPES = {'state': "Mission['state']", 'after': 'number', 'limit': 'number'
                'project': 'string', 'type': 'string', 'source': 'string',
                'purpose': 'string',
                # a parameter named like another route's is typed by its own route
-               ('/v1/knowledge', 'state'): "KnowledgeItem['state']"}
+               'mission': 'string', 'stage': 'string',
+               ('/v1/knowledge', 'state'): "KnowledgeItem['state']",
+               ('/v1/approvals', 'state'): "Approval['state']"}
 
 
 def render_v1_client():

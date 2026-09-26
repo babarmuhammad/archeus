@@ -5,6 +5,7 @@ reaches into the lifecycle, the writer or the work module for them."""
 from ...infra.db.writer import (IdempotencyConflict, InvalidTransition, NotFound,  # noqa: F401
                                 VersionConflict, WriterBusy, WriterClosed)
 from ...infra.eventlog.outbox import CursorExpired  # noqa: F401
+from .authorization import NotEligible, NotPermitted  # noqa: F401
 from .lifecycle import GuardFailed, IllegalTrigger  # noqa: F401
 from .work import PolicyDenied  # noqa: F401
 from .world import Conflict  # noqa: F401

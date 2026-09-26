@@ -84,17 +84,24 @@ class Planner:
                 return self.plan(e.subject.id, e.seq, why)
             if e.type == 'provider_terms.decided':
                 return ';'.join(self._retry_gated(e.seq)) or 'no round waits on the terms'
+            if e.type in ('policy_rule.created', 'policy_rule.retired', 'user.updated'):
+                return (';'.join(self._retry_gated(e.seq, kind='policy'))
+                        or 'no round waits on the policy')
             return ''
         except Exception as x:          # this event's failure, never the worker's death
             log.exception('planning for event %d failed', e.seq)
             return 'error: %s: %s' % (type(x).__name__, x)
 
-    def _retry_gated(self, seq):
+    def _retry_gated(self, seq, kind='call'):
+        """Plan again every mission waiting in a planning state on *kind*: a
+        gated call when the terms are answered (P8), a policy denial when the
+        policy changes (P9 D24)."""
         with self.db.read() as conn:
             waiting = [r.entity.id for r in rows.where(conn, entities.Mission)
                        if r.entity.state in PLANNING_STATES
-                       and (r.entity.planning_blocked or {}).get('kind') == 'call']
-        return [self.plan(mid, seq, 'the provider terms were answered') for mid in waiting]
+                       and (r.entity.planning_blocked or {}).get('kind') == kind]
+        why = 'the provider terms were answered' if kind == 'call' else 'the policy changed'
+        return [self.plan(mid, seq, why) for mid in waiting]
 
     def plan(self, mission_id, round_seq, why):
         """One planning round; returns what it did."""
@@ -143,9 +150,10 @@ class Planner:
                            **base)
             return 'plan:%s' % (out.get('plan_version') or out.get('why'))
         except PolicyDenied as e:
-            # refused before anything was written (P3.5); persisting it is P9's
-            self._end(c, 'ok', reason='not recorded: %s' % e, called=called)
-            return 'policy_denied'
+            # refused before anything was written (P3.5); the denial itself is
+            # recorded, with the call's end, by the command answering it (P9 D12)
+            out = self._do(self.planning.deny, called=called, specs=e.specs or [], **base)
+            return 'policy_denied:%s' % (out.get('policy_decision_id') or out.get('why'))
         except Exception as e:
             self._end(c, 'failed', reason='could not record the plan: %s: %s'
                       % (type(e).__name__, e), called=called)

@@ -92,7 +92,7 @@ def test_status_finds_a_running_core_and_reports_not_running_without_a_socket(
         assert code == 0, out
         assert 'Core: running (pid %d, port %d' % (core.proc.pid, core.port) in out
         assert 'engine idle' in out or 'engine running' in out
-        assert 'ports stub' in out
+        assert 'ports real' in out            # the policy engine is real since P9 (D20)
     finally:
         core.kill()
     code, out = _status(capsys, monkeypatch, allow_socket=False)

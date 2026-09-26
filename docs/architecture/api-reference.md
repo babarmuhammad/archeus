@@ -62,6 +62,16 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/v1/intents/{id}` | observe | — | — | — | `Intent` |
 | POST | `/v1/intents/{id}/clarify` | control | required | — | `ClarifyIntentRequest` | `Replied` |
 | GET | `/v1/ideas` | observe | — | `state` | — | `IdeaList` |
+| GET | `/v1/policies` | observe | — | — | — | `Policies` |
+| POST | `/v1/policies/rules` | admin | required | — | `CreateRuleRequest` | `RuleWritten` |
+| POST | `/v1/policies/rules/{id}/retire` | admin | required | — | `RetireRuleRequest` | `RuleWritten` |
+| POST | `/v1/policies/profile` | admin | required | — | `SetProfileRequest` | `ProfileSet` |
+| POST | `/v1/policies/simulate` | observe | — | — | `SimulatePolicyRequest` | `Simulation` |
+| GET | `/v1/policy-decisions` | observe | — | `mission`, `stage` | — | `PolicyDecisionList` |
+| GET | `/v1/policy-decisions/{id}` | observe | — | — | — | `PolicyDecision` |
+| GET | `/v1/approvals` | observe | — | `state`, `mission` | — | `ApprovalList` |
+| GET | `/v1/approvals/{id}` | observe | — | — | — | `Approval` |
+| POST | `/v1/approvals/{id}/decide` | approve | required | — | `DecideApprovalRequest` | `Decided` |
 
 A launch-code device holds `observe`; the local token holds `observe control approve admin`.
 
@@ -82,6 +92,34 @@ interface Acked {
 interface ApiError {
   error: string;
   detail: Record<string, unknown>;
+}
+```
+
+### `Approval`
+
+```ts
+interface Approval {
+  id: string;
+  kind: string;
+  state: 'APPROVED' | 'CONSUMED' | 'EXPIRED' | 'PENDING' | 'REJECTED' | 'SUPERSEDED';
+  action_hash: string;
+  mission_id: string;
+  plan_id: string;
+  presented: Record<string, unknown>;
+  expires_at: string;
+  step_up?: boolean;
+  eligible: boolean;
+  eligible_why?: string | null;
+  version: number;
+  [field: string]: unknown;
+}
+```
+
+### `ApprovalList`
+
+```ts
+interface ApprovalList {
+  approvals: Approval[];
 }
 ```
 
@@ -244,6 +282,19 @@ interface Criterion {
 }
 ```
 
+### `Decided`
+
+```ts
+interface Decided {
+  approval_id: string;
+  state: string;
+  decision?: string | null;
+  changed: boolean;
+  version: number;
+  [field: string]: unknown;
+}
+```
+
 ### `Digest`
 
 ```ts
@@ -357,6 +408,7 @@ interface Health {
   knowledge: Worker;
   intent: Worker;
   plan: Worker;
+  policy: Worker;
 }
 ```
 
@@ -597,6 +649,67 @@ interface PlanVersionRef {
 }
 ```
 
+### `Policies`
+
+```ts
+interface Policies {
+  builtin: Record<string, unknown>[];
+  profiles: Record<string, unknown>;
+  profiles_version?: number;
+  rules: PolicyRule[];
+  user_profile: 'careful' | 'standard' | 'autonomous';
+  policy_version: string;
+  [field: string]: unknown;
+}
+```
+
+### `PolicyDecision`
+
+```ts
+interface PolicyDecision {
+  id: string;
+  stage: string;
+  decision: string;
+  outcome?: string | null;
+  reason: string;
+  items: Record<string, unknown>[];
+  policy_version?: string | null;
+  [field: string]: unknown;
+}
+```
+
+### `PolicyDecisionList`
+
+```ts
+interface PolicyDecisionList {
+  policy_decisions: PolicyDecision[];
+}
+```
+
+### `PolicyRule`
+
+```ts
+interface PolicyRule {
+  id: string;
+  scope_level: string;
+  action_class: string;
+  decision: string;
+  revision: number;
+  retired_at?: string | null;
+  [field: string]: unknown;
+}
+```
+
+### `ProfileSet`
+
+```ts
+interface ProfileSet {
+  scope: string;
+  profile: string | null;
+  [field: string]: unknown;
+}
+```
+
 ### `Project`
 
 ```ts
@@ -717,12 +830,33 @@ interface RouteDecisionList {
 }
 ```
 
+### `RuleWritten`
+
+```ts
+interface RuleWritten {
+  id: string;
+  version: number;
+  [field: string]: unknown;
+}
+```
+
 ### `Scope`
 
 ```ts
 interface Scope {
   workspace: string;
   project: string | null;
+}
+```
+
+### `Simulation`
+
+```ts
+interface Simulation {
+  decision: string;
+  reason: string;
+  simulated: boolean;
+  [field: string]: unknown;
 }
 ```
 
@@ -1007,6 +1141,69 @@ interface PostMessageRequest {
 interface ClarifyIntentRequest {
   choice?: 'proceed' | 'drop' | null;
   text?: string | null;
+  idempotency_key: string;
+}
+```
+
+### `CreateRuleRequest`
+
+```ts
+interface CreateRuleRequest {
+  scope_level: 'USER' | 'WORKSPACE' | 'PROJECT' | 'MISSION' | 'TASK';
+  scope_ref?: string | null;
+  action_class: 'read' | 'web' | 'write_repo' | 'exec' | 'git_commit' | 'git_push' | 'deploy' | 'external_comm' | 'destructive' | 'spend' | 'personal_data' | 'install' | 'credential';
+  decision: 'ALLOW' | 'ASK' | 'ALLOW_WITHIN_BOUNDARY' | 'DENY';
+  locked?: boolean | null;
+  match?: Record<string, unknown> | null;
+  boundary?: Record<string, unknown> | null;
+  outside?: 'ASK' | 'DENY' | null;
+  expires_at?: string | null;
+  note?: string | null;
+  supersedes_rule_id?: string | null;
+  idempotency_key: string;
+}
+```
+
+### `RetireRuleRequest`
+
+```ts
+interface RetireRuleRequest {
+  idempotency_key: string;
+}
+```
+
+### `SetProfileRequest`
+
+```ts
+interface SetProfileRequest {
+  scope: 'user' | 'mission';
+  mission_id?: string | null;
+  profile: 'careful' | 'standard' | 'autonomous' | null;
+  idempotency_key: string;
+}
+```
+
+### `SimulatePolicyRequest`
+
+```ts
+interface SimulatePolicyRequest {
+  action: Record<string, unknown>;
+  mission_id?: string | null;
+  task_id?: string | null;
+  stage?: 'plan' | 'dispatch' | 'action' | null;
+  extra_rules?: Record<string, unknown>[] | null;
+}
+```
+
+### `DecideApprovalRequest`
+
+```ts
+interface DecideApprovalRequest {
+  decision: 'approve' | 'reject' | 'request_changes';
+  action_hash: string;
+  note?: string | null;
+  step_up?: string | null;
+  expected_version?: number | null;
   idempotency_key: string;
 }
 ```

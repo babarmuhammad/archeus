@@ -75,6 +75,9 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
                        'knowledge.import_meeting', 'knowledge.record_feedback',
                        'knowledge.reject', 'knowledge.retract', 'knowledge.supersede',
                        'own_calls.decide_provider_terms',
+                       'req.api.authorization.create_rule', 'req.api.authorization.decide',
+                       'req.api.authorization.retire_rule',
+                       'req.api.authorization.set_profile',
                        'req.api.conversations.choose', 'req.api.missions.pause',
                        'req.api.missions.resume', 'world.ack_digest',
                        'world.create_project', 'world.declare_constraint'], targets
@@ -166,17 +169,32 @@ P8 = {
 }
 
 
-def test_the_route_table_is_exactly_the_p35b_p4_p5_p6_p7_and_p8_tables():
-    """L2: nothing from P9 (approve), P10 (route), P11 (executions, stop,
-    estop, hooks), P15 (pair, device list) or P16 (/v1/now, the execution
-    stream) — a later phase adds its rows with its own tests."""
+#: P9 (p9-design-gate §18): policy inspection and administration, approvals
+P9 = {
+    ('GET', '/v1/policies', 'observe', None),
+    ('POST', '/v1/policies/rules', 'admin', 'required'),
+    ('POST', '/v1/policies/rules/{id}/retire', 'admin', 'required'),
+    ('POST', '/v1/policies/profile', 'admin', 'required'),
+    ('POST', '/v1/policies/simulate', 'observe', None),
+    ('GET', '/v1/policy-decisions', 'observe', None),
+    ('GET', '/v1/policy-decisions/{id}', 'observe', None),
+    ('GET', '/v1/approvals', 'observe', None),
+    ('GET', '/v1/approvals/{id}', 'observe', None),
+    ('POST', '/v1/approvals/{id}/decide', 'approve', 'required'),
+}
+
+
+def test_the_route_table_is_exactly_the_p35b_to_p9_tables():
+    """L2, and P9's E4: nothing from P10 (route), P11 (executions, stop,
+    estop, hooks), P14 (automations), P15 (pair, device list) or P16 (/v1/now,
+    the execution stream) — a later phase adds its rows with its own tests."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
-    assert got == EXPECTED | P4 | P5 | P6 | P7 | P8
-    assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6 | P7 | P8)
+    assert got == EXPECTED | P4 | P5 | P6 | P7 | P8 | P9
+    assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6 | P7 | P8 | P9)
     # E7: no plan route takes a command (no execution control from P8)
     assert not [r for r in routes.ROUTES if 'plan' in r.path and r.method != 'GET']
-    for word in ('approv', 'route/', 'execution', 'estop', 'stop', 'pair', '/now', 'hook',
-                 'cancel', 'accept', 'account', 'graph', 'attention'):
+    for word in ('route/', 'execution', 'estop', 'stop', 'pair', '/now', 'hook', 'dispatch',
+                 'cancel', 'accept', 'account', 'graph', 'attention', 'automation'):
         assert not [r.path for r in routes.ROUTES if word in r.path], word
     # the only `route` paths are own-call decisions (P6), never the P10 router
     assert {r.path for r in routes.ROUTES if 'route' in r.path} == {
@@ -184,9 +202,11 @@ def test_the_route_table_is_exactly_the_p35b_p4_p5_p6_p7_and_p8_tables():
     assert not [r.path for r in routes.ROUTES if r.path.endswith('/inspect')]
 
 
-def test_every_scope_is_a_coarse_credential_scope_and_approve_has_no_route():
+def test_every_scope_is_a_coarse_credential_scope_and_approve_is_only_deciding():
     assert {r.scope for r in routes.ROUTES} <= set(auth.SCOPES) | {None}
-    assert 'approve' not in {r.scope for r in routes.ROUTES}
+    # P9: the approve scope reaches exactly one route, the decision
+    assert [r.path for r in routes.ROUTES if r.scope == 'approve'] == [
+        '/v1/approvals/{id}/decide']
     assert auth.LAUNCH_SCOPES == ('observe',)
     public = {r.path for r in routes.ROUTES if r.scope is None}
     assert public == {'/', '/assets/*', '/v1/devices/launch/redeem'}

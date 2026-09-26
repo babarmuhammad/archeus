@@ -17,6 +17,26 @@ export interface ApiError {
   detail: Record<string, unknown>;
 }
 
+export interface Approval {
+  id: string;
+  kind: string;
+  state: 'APPROVED' | 'CONSUMED' | 'EXPIRED' | 'PENDING' | 'REJECTED' | 'SUPERSEDED';
+  action_hash: string;
+  mission_id: string;
+  plan_id: string;
+  presented: Record<string, unknown>;
+  expires_at: string;
+  step_up?: boolean;
+  eligible: boolean;
+  eligible_why?: string | null;
+  version: number;
+  [field: string]: unknown;
+}
+
+export interface ApprovalList {
+  approvals: Approval[];
+}
+
 export interface Card {
   type: 'mission_proposal' | 'plan' | 'approval' | 'route_explanation' | 'diff' | 'verification' | 'digest' | 'mission' | 'idea' | 'challenge' | 'clarification' | 'knowledge' | 'status';
   ref: Subject;
@@ -128,6 +148,15 @@ export interface Criterion {
   origin?: 'explicit' | 'inferred';
 }
 
+export interface Decided {
+  approval_id: string;
+  state: string;
+  decision?: string | null;
+  changed: boolean;
+  version: number;
+  [field: string]: unknown;
+}
+
 export interface Digest {
   from_seq: number;
   up_to_seq: number;
@@ -210,6 +239,7 @@ export interface Health {
   knowledge: Worker;
   intent: Worker;
   plan: Worker;
+  policy: Worker;
 }
 
 export interface Idea {
@@ -369,6 +399,47 @@ export interface PlanVersionRef {
   digest: string | null;
 }
 
+export interface Policies {
+  builtin: Record<string, unknown>[];
+  profiles: Record<string, unknown>;
+  profiles_version?: number;
+  rules: PolicyRule[];
+  user_profile: 'careful' | 'standard' | 'autonomous';
+  policy_version: string;
+  [field: string]: unknown;
+}
+
+export interface PolicyDecision {
+  id: string;
+  stage: string;
+  decision: string;
+  outcome?: string | null;
+  reason: string;
+  items: Record<string, unknown>[];
+  policy_version?: string | null;
+  [field: string]: unknown;
+}
+
+export interface PolicyDecisionList {
+  policy_decisions: PolicyDecision[];
+}
+
+export interface PolicyRule {
+  id: string;
+  scope_level: string;
+  action_class: string;
+  decision: string;
+  revision: number;
+  retired_at?: string | null;
+  [field: string]: unknown;
+}
+
+export interface ProfileSet {
+  scope: string;
+  profile: string | null;
+  [field: string]: unknown;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -445,9 +516,22 @@ export interface RouteDecisionList {
   route_decisions: RouteDecision[];
 }
 
+export interface RuleWritten {
+  id: string;
+  version: number;
+  [field: string]: unknown;
+}
+
 export interface Scope {
   workspace: string;
   project: string | null;
+}
+
+export interface Simulation {
+  decision: string;
+  reason: string;
+  simulated: boolean;
+  [field: string]: unknown;
 }
 
 export interface Status {
@@ -627,6 +711,49 @@ export interface ClarifyIntentRequest {
   idempotency_key: string;
 }
 
+export interface CreateRuleRequest {
+  scope_level: 'USER' | 'WORKSPACE' | 'PROJECT' | 'MISSION' | 'TASK';
+  scope_ref?: string | null;
+  action_class: 'read' | 'web' | 'write_repo' | 'exec' | 'git_commit' | 'git_push' | 'deploy' | 'external_comm' | 'destructive' | 'spend' | 'personal_data' | 'install' | 'credential';
+  decision: 'ALLOW' | 'ASK' | 'ALLOW_WITHIN_BOUNDARY' | 'DENY';
+  locked?: boolean | null;
+  match?: Record<string, unknown> | null;
+  boundary?: Record<string, unknown> | null;
+  outside?: 'ASK' | 'DENY' | null;
+  expires_at?: string | null;
+  note?: string | null;
+  supersedes_rule_id?: string | null;
+  idempotency_key: string;
+}
+
+export interface RetireRuleRequest {
+  idempotency_key: string;
+}
+
+export interface SetProfileRequest {
+  scope: 'user' | 'mission';
+  mission_id?: string | null;
+  profile: 'careful' | 'standard' | 'autonomous' | null;
+  idempotency_key: string;
+}
+
+export interface SimulatePolicyRequest {
+  action: Record<string, unknown>;
+  mission_id?: string | null;
+  task_id?: string | null;
+  stage?: 'plan' | 'dispatch' | 'action' | null;
+  extra_rules?: Record<string, unknown>[] | null;
+}
+
+export interface DecideApprovalRequest {
+  decision: 'approve' | 'reject' | 'request_changes';
+  action_hash: string;
+  note?: string | null;
+  step_up?: string | null;
+  expected_version?: number | null;
+  idempotency_key: string;
+}
+
 export type Method = 'GET' | 'POST';
 export type Send = <T>(method: Method, path: string, body?: unknown) => Promise<T>;
 
@@ -721,4 +848,24 @@ export const api = {
     send<Replied>('POST', '/v1/intents/' + encodeURIComponent(id) + '/clarify', body),
   listIdeas: (send: Send, query: { state?: Mission['state'] } = {}) =>
     send<IdeaList>('GET', '/v1/ideas' + qs(query)),
+  getPolicies: (send: Send) =>
+    send<Policies>('GET', '/v1/policies'),
+  createRule: (send: Send, body: CreateRuleRequest) =>
+    send<RuleWritten>('POST', '/v1/policies/rules', body),
+  retireRule: (send: Send, id: string, body: RetireRuleRequest) =>
+    send<RuleWritten>('POST', '/v1/policies/rules/' + encodeURIComponent(id) + '/retire', body),
+  setProfile: (send: Send, body: SetProfileRequest) =>
+    send<ProfileSet>('POST', '/v1/policies/profile', body),
+  simulatePolicy: (send: Send, body: SimulatePolicyRequest) =>
+    send<Simulation>('POST', '/v1/policies/simulate', body),
+  listPolicyDecisions: (send: Send, query: { mission?: string; stage?: string } = {}) =>
+    send<PolicyDecisionList>('GET', '/v1/policy-decisions' + qs(query)),
+  getPolicyDecision: (send: Send, id: string) =>
+    send<PolicyDecision>('GET', '/v1/policy-decisions/' + encodeURIComponent(id)),
+  listApprovals: (send: Send, query: { state?: Approval['state']; mission?: string } = {}) =>
+    send<ApprovalList>('GET', '/v1/approvals' + qs(query)),
+  getApproval: (send: Send, id: string) =>
+    send<Approval>('GET', '/v1/approvals/' + encodeURIComponent(id)),
+  decideApproval: (send: Send, id: string, body: DecideApprovalRequest) =>
+    send<Decided>('POST', '/v1/approvals/' + encodeURIComponent(id) + '/decide', body),
 };

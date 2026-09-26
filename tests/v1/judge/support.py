@@ -199,8 +199,9 @@ class Rig:
         self._pending('device revocation', 'P15')
 
     def principal_client(self, kind):
-        """A client acting as a non-user principal (brain, execution, …)."""
-        self._pending('principal-scoped clients', 'P9')
+        """A client acting as a non-user principal (brain, execution, …),
+        on the same Core (P9)."""
+        return self.client._principal_client(kind)
 
     def estop_without_core(self):
         """Run `archeus estop` with Core stopped."""

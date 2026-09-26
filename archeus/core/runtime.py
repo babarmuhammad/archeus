@@ -63,6 +63,9 @@ from .missions.intent import Intents
 from .application.planning import Planning
 from .planning.worker import Planner
 from .world.worker import World
+from .application.authorization import Authorization
+from .policy.engine import PolicyEngine
+from .policy.worker import Expiry
 
 DEFAULT_PORT = 7337
 IDLE_S = 1.0
@@ -92,9 +95,10 @@ class RefuseStart(RuntimeError):
 
 @dataclass
 class Ports:
-    """The ports Core runs on. P3.5b runs only stubs and the fake harness; the
-    real ones arrive with P7 (brain), P9 (policy), P10 (router), P13."""
-    policy: object = field(default_factory=P.AllowAllPolicy)
+    """The ports Core runs on. The policy is the real engine (P9, D20); the
+    router, verifier and reviewer are still stubs until P10 and P13, and the
+    only harness registered for execution is the fake one until P11."""
+    policy: object = field(default_factory=PolicyEngine)
     # None: the planning worker plans through `archeus_call` (P8, D5); a stub
     # `plan.v1` port makes the engine plan instead (the P3.5 tests)
     brain: object = None
@@ -278,7 +282,7 @@ class Core:
         self.launch_clock, self.lock_retry_s = launch_clock, lock_retry_s
         self.static_dir, self.world_poll_s = static_dir, world_poll_s
         self.lock = self.db = self.loop = self.world = self.api = self.server = None
-        self.knowledge = self.intent = self.plan = None
+        self.knowledge = self.intent = self.plan = self.policy = None
         self.warning = None
         self.exit_code = 0
         self._done = threading.Event()
@@ -351,7 +355,12 @@ class Core:
                                   on_fail=self._engine_failed, name='archeus-plan')
             self.plan.start()
 
+        self.policy = WorldLoop(Expiry(self.db, actor=self.system), self.db,
+                                poll_s=self.world_poll_s, on_fail=self._engine_failed,
+                                name='archeus-policy')
+        self.policy.start()
         self.api = server.Api(db=self.db, missions=self.missions,
+                              authorization=Authorization(missions=self.missions),
                               conversations=self.conversations, port=self.port,
                               health=self.health, version=VERSION,
                               heartbeat_s=self.heartbeat_s, launch_clock=self.launch_clock,
@@ -402,6 +411,8 @@ class Core:
                 'engine': self.loop.status(), 'world': self.world.status(),
                 'knowledge': self.knowledge.status(), 'intent': self.intent.status(),
                 'plan': self.plan.status() if self.plan is not None
+                else {'state': 'idle', 'pending': 0},
+                'policy': self.policy.status() if self.policy is not None
                 else {'state': 'idle', 'pending': 0}}
 
     def launch_url(self):
@@ -434,6 +445,8 @@ class Core:
             self.server.shutdown()
             self.server.server_close()
             self.server = None
+        if self.policy is not None:
+            self.policy.stop()
         if self.plan is not None:
             self.plan.stop()
         if self.intent is not None:

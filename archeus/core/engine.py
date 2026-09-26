@@ -42,6 +42,7 @@ from ..harnesses import base
 from ..infra.db import rows
 from ..infra.paths import ExecPaths
 from .application.commands import active_plan
+from .application import authorization
 from .application.work import PolicyDenied
 from .domain import entities, states
 from .domain.values import Ref
@@ -112,13 +113,24 @@ class Engine:
         (when nothing changed) says why, by the state the mission waits in."""
         try:
             did = self._step(self._mission(mission_id))
-        except PolicyDenied as e:           # refused before any write: nothing moved
-            return {'mission_id': mission_id, 'changed': False, 'did': None,
-                    'state': self._mission(mission_id).state, 'stop': 'policy_denied',
-                    'denied': str(e)}
-        state = self._mission(mission_id).state
+        except PolicyDenied as e:           # refused before any write (P3.5)
+            recorded = None
+            if e.specs is not None:         # a plan: the denial itself is recorded (P9 D12)
+                recorded = self._do(authorization.record_plan_denial,
+                                    policy=self.work.policy, missions=self.missions,
+                                    mission_id=mission_id, specs=e.specs)
+            state, changed = self._mission(mission_id).state, bool(recorded and
+                                                                   recorded['recorded'])
+            return {'mission_id': mission_id, 'changed': changed,
+                    'did': 'plan_denied' if changed else None, 'state': state,
+                    'stop': None if changed else 'policy_denied', 'denied': str(e),
+                    'recorded': recorded}
+        m = self._mission(mission_id)
+        stop = STOPS.get(m.state, 'waiting')
+        if (m.planning_blocked or {}).get('kind') == 'policy':
+            stop = 'policy_denied'          # waits in place on a recorded denial (P9)
         return {'mission_id': mission_id, 'changed': did is not None, 'did': did,
-                'state': state, 'stop': None if did else STOPS.get(state, 'waiting')}
+                'state': m.state, 'stop': None if did else stop}
 
     def _step(self, m):
         if m.state == 'CREATED':
@@ -134,6 +146,8 @@ class Engine:
         if m.state in ('REASONING', 'PLANNING', 'REPLANNING'):
             if self.brain is None:
                 return None     # the planning worker's (P8): nothing for the engine to do
+            if (m.planning_blocked or {}).get('kind') == 'policy':
+                return None     # denied (P9): a policy change or the user moves it on
             if m.state == 'REPLANNING' and self._do(self.work.replan_budget_spent,
                                                     mission_id=m.id):
                 return 'replan_budget_exhausted'        # judged before asking the brain
@@ -183,7 +197,8 @@ class Engine:
         out = self._do(self.work.dispatch_task, task_id=t.id)
         eid = out['execution_id']
         if eid is None:
-            return 'no_route'
+            # P9: not covered -> the mission was blocked on an approval
+            return 'awaiting_approval' if out.get('authorization') else 'no_route'
         adapter = self.registry.get(out['harness_id'])
         spec = base.ExecutionSpec(
             execution_id=eid, prompt='%s\n\n%s\n' % (m.objective, t.title),

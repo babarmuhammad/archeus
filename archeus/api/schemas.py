@@ -89,8 +89,8 @@ TYPES = {
                                                  'failed', 'stopped']},
             'pending': {'type': 'integer'}}, 'required': ['state', 'pending']},
         'knowledge': {'ref': 'Worker'}, 'intent': {'ref': 'Worker'},
-        'plan': {'ref': 'Worker'}},
-        'required': ['core', 'engine', 'world', 'knowledge', 'intent', 'plan']},
+        'plan': {'ref': 'Worker'}, 'policy': {'ref': 'Worker'}},
+        'required': ['core', 'engine', 'world', 'knowledge', 'intent', 'plan', 'policy']},
     'Worker': {'type': 'object', 'properties': {
         'state': {'type': 'string', 'enum': ['starting', 'reconciling', 'running', 'idle',
                                              'failed', 'stopped']},
@@ -361,6 +361,55 @@ TYPES = {
         'mission_id': {'type': 'string'}, 'plan': {'ref': 'Plan', 'nullable': True},
         'versions': {'type': 'array', 'items': {'ref': 'PlanVersionRef'}}},
         'required': ['mission_id', 'plan', 'versions']},
+    # ── policy and approvals (P9, p9-design-gate §18) ──
+    'Policies': {'type': 'object', 'open': True, 'properties': {
+        'builtin': {'type': 'array', 'items': {'type': 'object'}},
+        'profiles': {'type': 'object'}, 'profiles_version': {'type': 'integer'},
+        'rules': {'type': 'array', 'items': {'ref': 'PolicyRule'}},
+        'user_profile': {'type': 'string', 'enum': list(entities.AUTONOMY_PROFILES)},
+        'policy_version': {'type': 'string'}},
+        'required': ['builtin', 'profiles', 'rules', 'user_profile', 'policy_version']},
+    'PolicyRule': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'scope_level': {'type': 'string'},
+        'action_class': {'type': 'string'}, 'decision': {'type': 'string'},
+        'revision': {'type': 'integer'}, 'retired_at': {'type': 'string', 'nullable': True}},
+        'required': ['id', 'scope_level', 'action_class', 'decision', 'revision']},
+    'RuleWritten': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'version': {'type': 'integer'}},
+        'required': ['id', 'version']},
+    'ProfileSet': {'type': 'object', 'open': True, 'properties': {
+        'scope': {'type': 'string'}, 'profile': {'type': 'string', 'nullable': True}},
+        'required': ['scope', 'profile']},
+    'Simulation': {'type': 'object', 'open': True, 'properties': {
+        'decision': {'type': 'string'}, 'reason': {'type': 'string'},
+        'simulated': {'type': 'boolean'}}, 'required': ['decision', 'reason', 'simulated']},
+    'PolicyDecision': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'stage': {'type': 'string'}, 'decision': {'type': 'string'},
+        'outcome': {'type': 'string', 'nullable': True}, 'reason': {'type': 'string'},
+        'items': {'type': 'array', 'items': {'type': 'object'}},
+        'policy_version': {'type': 'string', 'nullable': True}},
+        'required': ['id', 'stage', 'decision', 'reason', 'items']},
+    'PolicyDecisionList': {'type': 'object', 'properties': {
+        'policy_decisions': {'type': 'array', 'items': {'ref': 'PolicyDecision'}}},
+        'required': ['policy_decisions']},
+    'Approval': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'kind': {'type': 'string'},
+        'state': {'type': 'string', 'enum': sorted(states.states('approval'))},
+        'action_hash': {'type': 'string'}, 'mission_id': {'type': 'string'},
+        'plan_id': {'type': 'string'}, 'presented': {'type': 'object'},
+        'expires_at': {'type': 'string'}, 'step_up': {'type': 'boolean'},
+        'eligible': {'type': 'boolean'}, 'eligible_why': {'type': 'string', 'nullable': True},
+        'version': {'type': 'integer'}},
+        'required': ['id', 'kind', 'state', 'action_hash', 'mission_id', 'plan_id',
+                     'presented', 'expires_at', 'eligible', 'version']},
+    'ApprovalList': {'type': 'object', 'properties': {
+        'approvals': {'type': 'array', 'items': {'ref': 'Approval'}}},
+        'required': ['approvals']},
+    'Decided': {'type': 'object', 'open': True, 'properties': {
+        'approval_id': {'type': 'string'}, 'state': {'type': 'string'},
+        'decision': {'type': 'string', 'nullable': True}, 'changed': {'type': 'boolean'},
+        'version': {'type': 'integer'}},
+        'required': ['approval_id', 'state', 'changed', 'version']},
     'ApiError': {'type': 'object', 'properties': {'error': {'type': 'string'},
                                                'detail': {'type': 'object'}},
               'required': ['error', 'detail']},
@@ -433,6 +482,36 @@ PROVIDER_TERMS = {'type': 'object', 'properties': {
     'rotation': {'type': 'string', 'nullable': True, 'enum': list(entities.TERMS)},
     'note': {'type': 'string', 'nullable': True}, 'idempotency_key': KEY},
     'required': ['headless', 'idempotency_key']}
+_OBJ = {'type': 'object', 'nullable': True}
+CREATE_RULE = {'type': 'object', 'properties': {
+    'scope_level': {'type': 'string', 'enum': list(entities.SCOPE_LEVELS[1:])},
+    'scope_ref': {'type': 'string', 'nullable': True},
+    'action_class': {'type': 'string', 'enum': list(entities.ACTION_CLASSES)},
+    'decision': {'type': 'string', 'enum': list(entities.DECISIONS)},
+    'locked': {'type': 'boolean', 'nullable': True}, 'match': _OBJ, 'boundary': _OBJ,
+    'outside': {'type': 'string', 'nullable': True, 'enum': ['ASK', 'DENY']},
+    'expires_at': {'type': 'string', 'nullable': True},
+    'note': {'type': 'string', 'nullable': True},
+    'supersedes_rule_id': {'type': 'string', 'nullable': True}, 'idempotency_key': KEY},
+    'required': ['scope_level', 'action_class', 'decision', 'idempotency_key']}
+SET_PROFILE = {'type': 'object', 'properties': {
+    'scope': {'type': 'string', 'enum': ['user', 'mission']},
+    'mission_id': {'type': 'string', 'nullable': True},
+    'profile': {'type': 'string', 'nullable': True,
+                'enum': list(entities.AUTONOMY_PROFILES)}, 'idempotency_key': KEY},
+    'required': ['scope', 'profile', 'idempotency_key']}
+SIMULATE = {'type': 'object', 'properties': {
+    'action': {'type': 'object'}, 'mission_id': {'type': 'string', 'nullable': True},
+    'task_id': {'type': 'string', 'nullable': True},
+    'stage': {'type': 'string', 'nullable': True, 'enum': list(entities.POLICY_STAGES)},
+    'extra_rules': {'type': 'array', 'nullable': True, 'items': {'type': 'object'}}},
+    'required': ['action']}
+DECIDE = {'type': 'object', 'properties': {
+    'decision': {'type': 'string', 'enum': ['approve', 'reject', 'request_changes']},
+    'action_hash': {'type': 'string'}, 'note': {'type': 'string', 'nullable': True},
+    'step_up': {'type': 'string', 'nullable': True},
+    'expected_version': {'type': 'integer', 'nullable': True}, 'idempotency_key': KEY},
+    'required': ['decision', 'action_hash', 'idempotency_key']}
 REDEEM = {'type': 'object', 'properties': {
     'code': {'type': 'string'}, 'platform': {'type': 'string', 'enum': ['web', 'desktop']}},
     'required': ['code', 'platform']}

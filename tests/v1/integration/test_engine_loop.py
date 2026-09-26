@@ -50,18 +50,19 @@ def test_a_denied_mission_parks_instead_of_asking_the_brain_forever(archeus_home
         policy=P.FixedPolicy('DENY'), brain=brain)).start()
     try:
         mid = _mission(tc)
-        _wait(lambda: _engine(tc)['state'] == 'idle' and _engine(tc)['parked'] == 1,
-              what='parked')
+        # P9 (D11, D12): the denial is recorded and the mission BLOCKED for it —
+        # settled, so the engine has nothing more to ask the brain about
+        _wait(lambda: _engine(tc)['state'] == 'idle' and _state(tc, mid) == 'BLOCKED',
+              what='blocked on the denial')
         asked = brain.calls
         time.sleep(1.0)                          # twenty idle wake-ups at 0.05 s
         assert brain.calls == asked <= 2, 'the engine re-asks a denied mission'
-        assert _state(tc, mid) == 'REASONING'    # DENY writes nothing and moves nothing
         assert _engine(tc)['state'] == 'idle'
-        # another mission's commits wake the engine; the parked one stays parked
+        # another mission's commits wake the engine; the blocked one stays blocked
         other = _mission(tc, 'other')
-        _wait(lambda: _engine(tc)['parked'] == 2, what='the second one parked')
+        _wait(lambda: _state(tc, other) == 'BLOCKED', what='the second one blocked')
         time.sleep(0.5)
-        assert brain.calls == asked * 2 and _state(tc, other) == 'REASONING'
+        assert brain.calls == asked * 2 and _state(tc, mid) == 'BLOCKED'
     finally:
         tc.stop()
 

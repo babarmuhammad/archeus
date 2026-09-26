@@ -195,14 +195,16 @@ def matches(r, action):
 
 
 def check_boundary(boundary, action, stage):
-    """{checked, deferred, outside}: which predicates hold, which the plan
-    stage cannot know yet (enforced later), and which do not hold."""
+    """{checked, deferred, outside}: which predicates hold, which a
+    plan-level item cannot know yet (enforced at the action stage), and which
+    do not hold. The plan and dispatch stages judge the same plan-level items,
+    so both defer; only the action stage demands every predicate."""
     out = {'checked': [], 'deferred': [], 'outside': []}
     for key in sorted(boundary):
         allowed = boundary[key]
         vals = _values(action, key)
         if not vals:
-            out['deferred' if stage == 'plan' else 'outside'].append(key)
+            out['deferred' if stage != 'action' else 'outside'].append(key)
             continue
         if key == 'paths':
             ok = all(any(inside(v, a) for a in allowed) for v in vals)

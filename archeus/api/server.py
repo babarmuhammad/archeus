@@ -119,8 +119,14 @@ def translate(e):
         if isinstance(e, errors.IllegalTrigger):
             detail['trigger'] = e.trigger
         return 422, 'invalid_transition', detail, {}
+    if isinstance(e, errors.NotPermitted):
+        return 403, 'not_permitted', {'why': str(e)}, {}
+    if isinstance(e, errors.NotEligible):
+        return 409, 'approval_not_eligible', {'approval_id': e.approval_id, 'why': e.why,
+                                              'detail': e.detail}, {}
     if isinstance(e, errors.PolicyDenied):
-        # no policy_decision_id: P9 persists decisions and adds it then (D3)
+        # refused before anything was written: the decision that answers it
+        # (a plan's denial, a dispatch's `unrecoverable`) is recorded by P9
         d = e.decision
         return 423, 'policy_denied', {'task': e.task_key, 'action_class': d.action.action_class,
                                       'decision': d.decision, 'reason': d.reason}, {}
@@ -150,10 +156,12 @@ class Api:
     the Policy port), the launch codes, the streams and Core's health."""
 
     def __init__(self, *, db, missions, port, health, version, conversations=None,
+                 authorization=None,
                  heartbeat_s=15.0, launch_clock=time.monotonic, static_dir=STATIC_DIR,
                  command_timeout=COMMAND_TIMEOUT_S):
         self.db, self.missions, self.health, self.version = db, missions, health, version
         self.conversations = conversations
+        self.authorization = authorization
         self.origin = auth.Origin(port)
         self.launch = auth.LaunchCodes(clock=launch_clock)
         self.static = Static(static_dir)

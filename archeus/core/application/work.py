@@ -24,9 +24,13 @@ are different answers and never share a path:
 - ASK: the plan gate (`Missions.snapshot`, P3) refuses `plan_auto_approved` and
   the mission waits in APPROVAL_REQUIRED for a human `approve`.
 
-Deferred to P9: a PolicyDecision row recording a denial, and binding a decision
-to the exact action and policy version — a policy that turns to ASK after an
-automatic approval is not asked again here (domain-model §9.3).
+P9 (p9-design-gate §11, §12): a refusal still writes nothing, and the denial
+is recorded by the command that responds to it (`authorization.
+record_plan_denial` for the plan gate; `unrecoverable` for a dispatch).
+`dispatch_task` asks `authorization.check_dispatch` whether this task of this
+exact version may run under the CURRENT policy: an ASK nothing covers blocks
+the mission and asks for the task, so a policy that turns to ASK after an
+automatic approval is asked again.
 """
 
 import time
@@ -37,7 +41,7 @@ from ..domain.actions import Action
 from ..domain.events import new_event
 from ..domain.values import Ref
 from ..planning import validate
-from . import lifecycle
+from . import authorization, lifecycle
 from .commands import active_plan
 
 #: the task fields a plan spec may carry (its dispatch contract, P8 §7.1)
@@ -58,10 +62,12 @@ class PolicyDenied(PermissionError):
     """The Policy port DENIED an action class a task needs (`423 policy_denied`).
     Raised before anything is written, so the transaction commits nothing."""
 
-    def __init__(self, decision, task_key):
+    def __init__(self, decision, task_key, specs=None):
         super().__init__('policy denies %s on task %s: %s'
                          % (decision.action.action_class, task_key, decision.reason))
-        self.decision, self.task_key = decision, task_key
+        # the validated task specs of a refused plan, for the command that
+        # records the denial (P9 D12); None for a refused dispatch
+        self.decision, self.task_key, self.specs = decision, task_key, specs
 
 
 def _require(machine, row, states, verb):
@@ -85,14 +91,17 @@ class Work:
         return lifecycle.fire(tx, cls, entity_id, trigger, actor=actor, reason=reason,
                               fields=fields)[0]
 
-    def _refuse_denied(self, mission, actor, key, action_classes, **ctx):
-        """Raise PolicyDenied if the policy DENIES any of *action_classes*."""
-        ctx = dict(ctx, mission_id=mission.id, workspace_id=mission.workspace_id,
-                   project_id=mission.project_id, actor={'kind': actor.kind, 'id': actor.id})
-        for c in action_classes:
-            d = self.policy.evaluate(Action(action_class=c, target='task:%s' % key), ctx)
-            if d.decision == 'DENY':
-                raise PolicyDenied(d, key)
+    def _refuse_denied(self, tx, mission, actor, specs):
+        """Raise PolicyDenied if the policy DENIES any item (declared or
+        implied, P9 §3.3) of any task of a proposed plan."""
+        items, _ctx = authorization.first_denial(self.policy, tx.conn, mission, specs,
+                                                 now=tx.now, actor=actor)
+        for r in items:
+            if r['decision'] == 'DENY':
+                raise PolicyDenied(entities.PolicyDecision(
+                    id=ids.new_id('policy_decision'), decision='DENY', reason=r['reason'],
+                    action=Action(action_class=r['class'], target='task:%s' % r['task'])),
+                    r['task'], specs=[dict(s) for s in specs])
 
     # ── plan ──
 
@@ -133,8 +142,7 @@ class Work:
         if found:
             raise ValueError('the plan is not valid: %s' % '; '.join(found))
         specs, serialised = validate.serialise(validate.order(specs))
-        for spec in specs:
-            self._refuse_denied(m.entity, actor, spec['key'], spec.get('action_classes', ()))
+        self._refuse_denied(tx, m.entity, actor, specs)
         prev = active_plan(tx.conn, mission_id)
         pid = ids.new_id('plan')
         tasks = [entities.Task(
@@ -174,6 +182,10 @@ class Work:
         if prev is not None and prev.entity.state in ('PROPOSED', 'APPROVED'):
             lifecycle.fire(tx, entities.Plan, prev.entity.id, 'superseded', actor=actor,
                            reason='replaced by plan v%d' % p.plan_version)
+        if prev is not None:
+            # P9 D14: nothing an approval covers carries to the next version
+            authorization.supersede_for(tx, actor=actor, plan_id=prev.entity.id,
+                                        replaced_by=p.plan_version)
         if m.entity.planning_blocked is not None:
             tx.update(entities.Mission, mission_id, {'planning_blocked': None}, actor=actor)
             self._event(tx, 'mission.updated', Ref('mission', mission_id), actor, m.entity,
@@ -231,10 +243,15 @@ class Work:
         if m.state != 'EXECUTING':
             raise lifecycle.IllegalTrigger('task', t.state, 'dispatch',
                                            'the mission is %s, not EXECUTING' % m.state)
-        if t.plan_id != active_plan(tx.conn, m.id).entity.id:
+        plan = active_plan(tx.conn, m.id).entity
+        if t.plan_id != plan.id:
             raise lifecycle.IllegalTrigger('task', t.state, 'dispatch',
                                            'the task belongs to a superseded plan')
-        self._refuse_denied(m, actor, t.key, t.action_classes, task_id=t.id)
+        auth = authorization.check_dispatch(tx, actor=actor, policy=self.policy,
+                                            missions=self.missions, mission=m, plan=plan, task=t)
+        if auth['outcome'] != 'covered':
+            return {'task_id': task_id, 'execution_id': None, 'state': t.state,
+                    'authorization': auth}
         self._fire(tx, entities.Task, task_id, 'dispatch', actor, 'dispatched')
         route = self.router.route(Ref('task', task_id), time.time() if now is None else now)
         if route.selected is None:

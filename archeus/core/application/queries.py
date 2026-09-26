@@ -24,9 +24,12 @@ def get_mission(conn, mission_id):
         raise NotFound(mission_id)
     pid = row.entity.context_package_id
     plan = active_plan(conn, mission_id)
+    pending = [r.entity.id for r in rows.where(conn, entities.Approval, mission_id=mission_id)
+               if r.entity.state == 'PENDING']
     return dict(view(row), context_package=None if pid is None else get_context_package(conn, pid),
                 plan_id=None if plan is None else plan.entity.id,
-                plan_version=None if plan is None else plan.entity.plan_version)
+                plan_version=None if plan is None else plan.entity.plan_version,
+                pending_approval_id=pending[-1] if pending else None)
 
 
 def get_context_package(conn, package_id):
@@ -225,8 +228,17 @@ def get_plan(conn, plan_id):
     if p.context_package_id is not None:
         mission = rows.get(conn, entities.Mission, p.mission_id).entity
         current, why = planner.currency(conn, mission, p.context_package_id)
+    # P9 (§10.2): `current` keeps P8's meaning (context currency); these say
+    # whether this exact version can be authorised now
+    from . import authorization
+    in_force = (p.state in ('PROPOSED', 'APPROVED')
+                and active_plan(conn, p.mission_id).entity.id == p.id)
+    whole = authorization.intact(conn, p)
+    eligible_why = ('not in force' if not in_force else 'its content does not match its digest'
+                    if not whole else None if current else why)
     return dict(view(row), tasks=tasks, waves=validate.waves(tasks),
-                current=current, current_why=why)
+                current=current, current_why=why, in_force=in_force,
+                eligible=eligible_why is None, eligible_why=eligible_why)
 
 
 def mission_plan(conn, mission_id):
@@ -241,3 +253,63 @@ def mission_plan(conn, mission_id):
                           'state': r.entity.state,
                           'supersedes_plan_id': r.entity.supersedes_plan_id,
                           'digest': r.entity.digest} for r in versions]}
+
+
+# ── policy and approvals (P9) ───────────────────────────────────────────────
+
+def _now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
+
+def approval_view(conn, row, now=None):
+    from . import authorization
+    a = row.entity
+    bad = (None if a.state != 'PENDING'
+           else authorization.ineligible(conn, a, now=now or _now()))
+    return dict(view(row), eligible=a.state == 'PENDING' and bad is None,
+                eligible_why=None if bad is None else bad[0],
+                eligible_detail=None if bad is None else bad[1])
+
+
+def get_approval(conn, approval_id, now=None):
+    row = rows.get(conn, entities.Approval, approval_id)
+    if row is None:
+        raise NotFound(approval_id)
+    return approval_view(conn, row, now)
+
+
+def list_approvals(conn, state=None, mission_id=None, now=None):
+    if state is not None and state not in states.states('approval'):
+        raise ValueError('%r is not an approval state' % (state,))
+    eq = {k: v for k, v in (('state', state), ('mission_id', mission_id)) if v is not None}
+    return [approval_view(conn, r, now) for r in rows.where(conn, entities.Approval, **eq)]
+
+
+def get_policy_decision(conn, decision_id):
+    row = rows.get(conn, entities.PolicyDecision, decision_id)
+    if row is None:
+        raise NotFound(decision_id)
+    return view(row)
+
+
+def list_policy_decisions(conn, mission_id=None, stage=None):
+    if stage is not None and stage not in entities.POLICY_STAGES:
+        raise ValueError('%r is not a policy stage' % (stage,))
+    eq = {k: v for k, v in (('mission_id', mission_id), ('stage', stage)) if v is not None}
+    return [view(r) for r in rows.where(conn, entities.PolicyDecision, **eq)]
+
+
+def policies(conn):
+    """The policy in force: Core's own rules, the profiles, the user's rules
+    (retired ones kept, marked), the user's default profile and the version."""
+    from ..policy import rules as R
+    from . import authorization
+    u = authorization.owner(conn)
+    user = [view(r) for r in rows.where(conn, entities.PolicyRule)]
+    return {'builtin': R.builtin(), 'profiles': {
+        name: {c: {'decision': d, 'boundary': b} for c, (d, b) in table.items()}
+        for name, table in R.PROFILES.items()},
+        'profiles_version': R.PROFILES_VERSION, 'rules': user,
+        'user_profile': u.autonomy_profile if u else 'standard',
+        'policy_version': authorization.policy_version(authorization.user_rules(conn))}

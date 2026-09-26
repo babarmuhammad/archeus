@@ -25,8 +25,8 @@ from ..domain import entities
 from ..domain.events import new_event
 from ..domain.values import Ref
 from ..planning import planner
+from . import authorization, lifecycle
 from . import calls as C
-from . import lifecycle
 from .conversation import primary, _message
 
 #: the mission states a planning round runs in
@@ -110,6 +110,21 @@ class Planning:
             _block(tx, actor, m, blocked)
         _end(tx, actor, called, 'ok', planned=False, blocked=block['kind'])
         return {'recorded': False, 'blocked': block['kind']}
+
+    def deny(self, tx, *, actor, mission_id, during, round_seq, called, specs):
+        """A plan the policy DENIED (P9 D12): no plan, task or approval was
+        written; the denial itself is recorded and the mission blocked for it
+        (`authorization.record_plan_denial`), with the call's end."""
+        m = lifecycle.load(tx, entities.Mission, mission_id).entity
+        stale = _stale(tx, m, during, round_seq, called['context_package_id'])
+        if stale:
+            _end(tx, actor, called, 'failed', reason='stale: %s' % stale)
+            return {'recorded': False, 'why': stale}
+        out = authorization.record_plan_denial(tx, actor=actor, policy=self.work.policy,
+                                               missions=self.missions, mission_id=mission_id,
+                                               specs=specs, round_seq=round_seq)
+        _end(tx, actor, called, 'ok', planned=False, denied=out.get('policy_decision_id'))
+        return dict(out, planned=False)
 
     def note(self, tx, *, actor, mission_id, during, round_seq, outcome, detail='',
              route_decision_id=None):

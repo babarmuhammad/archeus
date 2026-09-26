@@ -165,9 +165,12 @@ def test_U_B2_a_path_that_leaves_the_workspace_is_outside(path):
     assert ev(act('write_repo', paths=[path]), deny_out)['decision'] == 'DENY'
 
 
-def test_U_B3_outside_the_plan_stage_an_absent_attribute_is_outside():
-    r = ev(act('git_commit'), stage='dispatch', task_classes=('git_commit',))
+def test_U_B3_at_the_action_stage_an_absent_attribute_is_outside():
+    r = ev(act('git_commit'), stage='action', task_classes=('git_commit',))
     assert r['decision'] == 'ASK' and r['checks']['outside'] == ['branches']
+    # dispatch judges the same plan-level item the plan gate did: it defers
+    d = ev(act('git_commit'), stage='dispatch', task_classes=('git_commit',))
+    assert d['decision'] == 'ALLOW_WITHIN_BOUNDARY' and d['checks']['deferred'] == ['branches']
 
 
 def test_U_B4_every_awb_in_effect_must_hold():

@@ -115,14 +115,21 @@ def make(db, tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def no_plan_is_ever_approved(db):
-    """E6: whatever a test does, P8 never takes a plan to APPROVED or REJECTED."""
+def no_plan_is_approved_by_planning(db):
+    """E6: whatever a test does, planning itself never takes a plan to APPROVED
+    or REJECTED. Since P9 the plan gate does, and only with a recorded policy
+    decision of exactly that plan (p9-design-gate §12.1): an APPROVED plan
+    without one is a plan approved by something other than authorisation."""
     yield
     with db.read() as conn:
         moved = [e for e in queries.events(conn, 0) if e['type'] == 'plan.state_changed']
-        states = {r.entity.state for r in rows.where(conn, entities.Plan)}
-    assert {e['payload']['to'] for e in moved} <= {'PROPOSED', 'SUPERSEDED'}
-    assert states <= {'PROPOSED', 'SUPERSEDED'}
+        decided = {(d.entity.plan_id, d.entity.outcome)
+                   for d in rows.where(conn, entities.PolicyDecision)}
+    assert {e['payload']['to'] for e in moved} <= {'PROPOSED', 'SUPERSEDED', 'APPROVED'}
+    for e in moved:
+        if e['payload']['to'] == 'APPROVED':
+            assert ({(e['subject']['id'], 'auto_approved'), (e['subject']['id'], 'approved')}
+                    & decided), e
 
 
 def _with_requirements(r):
@@ -399,7 +406,9 @@ def test_i16_i17_a_failing_task_replans_until_the_budget_blocks_before_any_call(
     r.settle()
     m = r.m(mid)
     assert [p.plan_version for p in r.plans(mid)] == [1, 2, 3]
-    assert [p.state for p in r.plans(mid)] == ['SUPERSEDED', 'SUPERSEDED', 'PROPOSED']
+    # the last is decided by the plan gate like every version (P9 §12.1)
+    assert [p.state for p in r.plans(mid)][:2] == ['SUPERSEDED', 'SUPERSEDED']
+    assert r.plans(mid)[2].state in ('PROPOSED', 'APPROVED')
     assert (m.state, m.held_from) == ('BLOCKED', 'REPLANNING')
     assert len(r.rds()) == 3                  # the refused fourth plan was never asked for
     assert 'failed: execution' in f.sent[1][1]
@@ -508,8 +517,11 @@ def test_i25_a_planning_round_starts_nothing(make):
     for cls in (entities.Execution, entities.Verification, entities.Review):
         assert r.all(cls) == []
     assert {rd.purpose for rd in r.all(entities.RouteDecision)} == {'planner'}
-    assert r.m(mid).state == 'APPROVED'       # the P3 stub gate decided the MISSION
-    assert p.state == 'PROPOSED'              # the plan itself is only ready for policy
+    assert r.m(mid).state == 'APPROVED'       # the P3 gate decided the MISSION...
+    # ...and, since P9, authorised the plan with a recorded decision (§12.1)
+    assert p.state == 'APPROVED'
+    (d,) = r.all(entities.PolicyDecision)
+    assert (d.plan_id, d.outcome, d.plan_digest) == (p.id, 'auto_approved', p.digest)
 
 
 def test_i26_a_recorded_version_is_preserved_exactly(make, db):
@@ -538,3 +550,32 @@ def test_i26_a_recorded_version_is_preserved_exactly(make, db):
     assert r.plans(mid)[0] == v1 and r.tasks(v1.id) == t1
     with pytest.raises(Exception):
         r.sys(r.work.dispatch_task, task_id=t1[0].id)       # a superseded version never runs
+
+
+def test_i27_p9_a_denied_plan_is_recorded_and_a_policy_change_plans_again(make):
+    """P9 (D12, D24): the planning worker records a denial with the call's end
+    and the mission waits in PLANNING with `planning_blocked.kind == policy`;
+    a policy change starts a new round, as the provider terms do for a gated call."""
+    r = make([fake(ONE)], policy='ASK')
+    mid = r.mission()
+    r.settle()
+    assert r.m(mid).state == 'APPROVAL_REQUIRED'
+    r.missions.policy.decision = 'DENY'
+    r.run(r.missions.request_changes, mission_id=mid, reason='again')
+    r.settle()
+    m = r.m(mid)
+    assert m.state == 'PLANNING' and m.planning_blocked['kind'] == 'policy'
+    assert len(r.plans(mid)) == 1
+    (d,) = [x for x in r.all(entities.PolicyDecision) if x.outcome == 'denied']
+    assert m.planning_blocked['policy_decision_id'] == d.id
+    assert r.rds()[-1].outcome['state'] == 'ok' and r.rds()[-1].outcome['denied'] == d.id
+    r.missions.policy.decision = 'ALLOW'
+
+    def changed(tx, *, actor):
+        tx.append(new_event('policy_rule.created', Ref('policy_rule', ids.new_id('policy_rule')),
+                            actor, payload={'before': None, 'after': {}}))
+    r.sys(changed)
+    r.settle()
+    assert [p.plan_version for p in r.plans(mid)] == [1, 2]
+    assert r.plans(mid)[1].state == 'APPROVED' and r.m(mid).planning_blocked is None
+    assert r.m(mid).state == 'COMPLETED'           # the engine ran it once authorised

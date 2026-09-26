@@ -18,7 +18,7 @@ from ..domain import entities, guards, ids, states
 from ..domain.actions import Action
 from ..domain.events import new_event
 from ..domain.values import Ref
-from . import lifecycle
+from . import authorization, lifecycle
 
 
 def register_principal(tx, *, kind, scopes=()):
@@ -200,17 +200,31 @@ class Missions:
         is passed to the Policy port as context — deciding what it may do is
         the port's job (P9), never this layer's. `declared` marks an explicit
         request (not the engine's `advance`), which is all `unrecoverable`
-        reads of the actor."""
+        reads of the actor.
+
+        P9: every task is judged on its declared and implied items, in the
+        context `authorization.context` gathers from this transaction; the
+        evaluations ride on the facts (`evaluated`), so what a plan decision
+        records is exactly what its guard judged; `plan_approval` is the state
+        of the approval of exactly the plan in force (hash recomputed)."""
         f = self.facts(tx, row)
         m = row.entity
-        ctx = {'mission_id': m.id, 'workspace_id': m.workspace_id,
-               'project_id': m.project_id, 'plan_version': f.plan_version,
-               'actor': None if actor is None else {'kind': actor.kind, 'id': actor.id}}
-        decided = tuple(
-            (t.key, c, self.policy.evaluate(Action(action_class=c, target='task:%s' % t.key),
-                                            ctx).decision)
-            for t in f.tasks for c in t.action_classes)
-        return replace(f, policy=decided,
+        prow = active_plan(tx.conn, m.id)
+        plan = None if prow is None else prow.entity
+        by_key = ({} if plan is None else
+                  {t.entity.key: t.entity for t in tx.where(entities.Task, plan_id=plan.id)})
+        evaluated = []
+        for tf in f.tasks:
+            t = by_key.get(tf.key)
+            got, _ctx = authorization.evaluate_task(
+                self.policy, tx.conn, m, tf.key, tf.action_classes, now=tx.now, task=t,
+                capabilities=() if t is None else t.capabilities_required,
+                touches=() if t is None else t.touches, actor=actor, plan=plan)
+            evaluated += got
+        decided = tuple((r['task'], r['class'], r['decision']) for r in evaluated)
+        approval = (f.plan_approval if f.plan_approval is not None
+                    else authorization.plan_approval_state(tx.conn, plan))
+        return replace(f, policy=decided, evaluated=tuple(evaluated), plan_approval=approval,
                        declared_by=actor.kind if declared and actor is not None else None)
 
     def _fire(self, tx, mission_id, trigger, *, actor, reason, expected_version=None,
@@ -230,9 +244,17 @@ class Missions:
             if trigger in PLAN_DECISIONS:   # the plan the guard judged is the one decided
                 out['decided_plan_version'] = judged[-1].plan_version
             return out or None
-        return lifecycle.fire(
+        moved = lifecycle.fire(
             tx, entities.Mission, mission_id, trigger, actor=actor, reason=reason,
             expected_version=expected_version, fields=fields, facts=facts_of)
+        if judged and trigger in PLAN_DECISIONS:
+            # P9 (§12.1): the evaluation this guard judged is the one recorded
+            authorization.record_plan_decision(tx, actor=actor, mission=moved[0].entity,
+                                               trigger=trigger, facts=judged[-1])
+        elif judged and trigger == 'unrecoverable':
+            authorization.record_unrecoverable(tx, actor=actor, mission=moved[0].entity,
+                                               facts=judged[-1])
+        return moved
 
     # ── actions ──
 
@@ -329,9 +351,12 @@ class Missions:
                expected_version=None):
         """The edge into CANCELLED from where the mission is: `cancel`, or
         `reject` for a plan awaiting approval. EXECUTING has none: pause first."""
-        return self._by_state(tx, mission_id, 'cancel', actor=actor, reason=reason,
-                              expected_version=expected_version,
-                              pick=lambda to, t: to == 'CANCELLED')
+        out = self._by_state(tx, mission_id, 'cancel', actor=actor, reason=reason,
+                             expected_version=expected_version,
+                             pick=lambda to, t: to == 'CANCELLED')
+        authorization.withdraw(tx, actor=actor, mission_id=mission_id,
+                               reason='the mission was cancelled: %s' % reason)
+        return out
 
     def request_changes(self, tx, *, actor, mission_id, reason, expected_version=None):
         """A plan sent back (APPROVAL_REQUIRED -> PLANNING), or a review

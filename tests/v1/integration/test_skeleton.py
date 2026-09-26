@@ -17,7 +17,7 @@ import time
 import pytest
 
 from archeus.core import engine, ports
-from archeus.core.application import commands, lifecycle, queries, work
+from archeus.core.application import authorization, commands, lifecycle, queries, work
 from archeus.core.domain import entities, ids
 from archeus.core.domain.values import Ref
 from archeus.harnesses.fake import FakeHarness
@@ -78,6 +78,18 @@ class Core:
     def do(self, command, key=None, **kw):
         return self.db.writer.execute(command, dict(kw, actor=kw.pop('actor', self.user)),
                                       idempotency_key=key)
+
+    def pending(self, mid):
+        (a,) = [x for x in self.all(entities.Approval, mission_id=mid) if x.state == 'PENDING']
+        return a
+
+    def decide(self, mid, decision='approve', key=None):
+        """A user device decides the mission's pending approval (P9), echoing
+        the hash it was shown."""
+        a = self.pending(mid)
+        return self.do(authorization.decide, key=key, policy=self.policy,
+                       missions=self.missions, approval_id=a.id, decision=decision,
+                       action_hash=a.action_hash)
 
     def until(self, mid, pred, limit=100):
         """Step the engine until pred(mission row) holds (or fail)."""
@@ -274,38 +286,45 @@ def test_ask_stops_at_approval_required_and_nothing_runs(archeus_home):
         assert core.all(entities.Execution) == []
         assert [t.state for t in core.all(entities.Task)] == ['PENDING']
         assert not [e for e in core.events() if e['type'].startswith('execution.')]
+        # the edge fired by name approves nothing (P9 D10): only an approval does
+        with pytest.raises(lifecycle.GuardFailed, match='no approval of plan v1'):
+            core.do(core.missions.fire, mission_id=mid, trigger='approve', reason='looks fine')
         # a human approves the plan: ASK was the plan gate's question, now answered
-        core.do(core.missions.fire, mission_id=mid, trigger='approve', reason='looks fine')
+        assert core.decide(mid)['mission']['state'] == 'APPROVED'
+        assert core.all(entities.Plan)[0].state == 'APPROVED'
         assert core.engine.run(mid)['state'] == 'COMPLETED'
     finally:
         core.close()
 
 
 def test_deny_is_refused_without_an_approval_request_or_any_write(archeus_home):
-    """DENY is not ASK: no APPROVAL_REQUIRED, no plan, task or execution row, no
-    event, and the mission is exactly where it was (same state, same version)."""
+    """DENY is not ASK: no APPROVAL_REQUIRED, no plan, task, execution or
+    approval row. The command refuses before writing (P3.5); the denial itself
+    is recorded by the command that answers it, and the mission is blocked for
+    it — `plan_denied`, never a challenge (P9 D11, D12)."""
     core = Core(policy=SpyPolicy(by_class={'write_repo': 'DENY'}))
     try:
         mid = core.mission()
         core.until(mid, lambda m: m.state == 'REASONING')
-        before, head = core.row(entities.Mission, mid), core.events()[-1]['seq']
+        with pytest.raises(work.PolicyDenied) as denied:       # the command itself refuses
+            core.do(core.work.propose_plan, actor=core.system, mission_id=mid,
+                    plan=engine.SKELETON_PLAN)
+        assert 'policy denies write_repo on task work' in str(denied.value)
+        assert core.row(entities.Mission, mid).entity.state == 'REASONING'
         out = core.engine.run(mid)
-        assert (out['state'], out['stop'], out['changed']) == ('REASONING', 'policy_denied',
-                                                               False)
-        assert 'policy denies write_repo on task work' in out['denied']
-        after = core.row(entities.Mission, mid)
-        assert (after.entity.state, after.version) == (before.entity.state, before.version)
-        assert core.events()[-1]['seq'] == head
-        for cls in (entities.Plan, entities.Task, entities.Execution):
+        assert (out['state'], out['stop']) == ('BLOCKED', 'policy_denied')
+        m = core.row(entities.Mission, mid).entity
+        (d,) = core.all(entities.PolicyDecision)
+        assert (d.decision, d.outcome, d.stage, d.mission_id) == ('DENY', 'denied', 'plan', mid)
+        assert m.planning_blocked['kind'] == 'policy'
+        assert m.planning_blocked['policy_decision_id'] == d.id
+        assert of(core.events(), 'mission.state_changed')[-1]['payload']['trigger'] ==             'plan_denied'
+        for cls in (entities.Plan, entities.Task, entities.Execution, entities.Approval):
             assert core.all(cls) == []
         assert 'APPROVAL_REQUIRED' not in mission_path(core.events(), mid)
         assert not of(core.events(), 'approval.requested')
         with pytest.raises(lifecycle.IllegalTrigger):          # nothing to approve
             core.do(core.missions.fire, mission_id=mid, trigger='approve', reason='override')
-        with pytest.raises(work.PolicyDenied):                 # the command itself refuses
-            core.do(core.work.propose_plan, actor=core.system, mission_id=mid,
-                    plan=engine.SKELETON_PLAN)
-        assert core.events()[-1]['seq'] == head
     finally:
         core.close()
 
@@ -318,7 +337,7 @@ def test_a_human_approval_does_not_override_a_later_deny(archeus_home):
     try:
         mid = core.mission()
         assert core.engine.run(mid)['state'] == 'APPROVAL_REQUIRED'
-        core.do(core.missions.fire, mission_id=mid, trigger='approve', reason='ship it')
+        core.decide(mid)
         core.policy.decision = 'DENY'
         core.do(core.missions.fire, mission_id=mid, trigger='dispatch', reason='go')
         core.do(core.work.ready_tasks, mission_id=mid)

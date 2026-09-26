@@ -36,6 +36,7 @@ PASSING = {
                                                           attempts=2, max_attempts=2),)),
     'unrecoverable': MissionFacts(missing_capability=True),
     # P9: a real authorisation of the plan in force; a recorded policy denial
+    'approve': MissionFacts(plan_version=1, plan_approval='APPROVED'),
     'plan_denied': MissionFacts(denial='pdc_recorded'),
 }
 
@@ -739,12 +740,19 @@ def test_no_actor_kind_is_refused_or_privileged_by_the_state_machine(db, facts, 
 
 
 def test_the_policy_port_is_the_only_policy_call(db):
+    """One place asks the Policy port: `authorization.judge` (P9, which every
+    gate reaches through `authorization`); commands and work ask it nowhere."""
     import ast
-    src = open(commands.__file__, encoding='utf-8').read()
-    calls = [n for n in ast.walk(ast.parse(src))
-             if isinstance(n, ast.Attribute) and n.attr == 'evaluate'
-             and isinstance(n.value, ast.Attribute) and n.value.attr == 'policy']
-    assert len(calls) == 1
+    from archeus.core.application import authorization, work
+
+    def calls(mod):
+        src = open(mod.__file__, encoding='utf-8').read()
+        return [n for n in ast.walk(ast.parse(src))
+                if isinstance(n, ast.Attribute) and n.attr == 'evaluate'
+                and isinstance(n.value, (ast.Attribute, ast.Name))
+                and getattr(n.value, 'attr', getattr(n.value, 'id', None)) == 'policy']
+    assert len(calls(authorization)) == 1
+    assert calls(commands) == [] and calls(work) == []
     lsrc = open(lifecycle.__file__, encoding='utf-8').read()
     assert 'policy' not in lsrc.replace('policy (P9)', '')
 

@@ -16,17 +16,19 @@ Bindings:
   against both bindings.
 """
 
+import copy
 import inspect
 import os
 from typing import Optional, Protocol, Sequence, runtime_checkable
 
 from archeus.core import engine, ports
-from archeus.core.application import commands, conversation, queries, work, world
+from archeus.core.application import (authorization, commands, conversation, queries, work,
+                                      world)
 from archeus.core.application.lifecycle import GuardFailed, IllegalTrigger
 from archeus.core.application.work import PolicyDenied
 from archeus.core.application.world import Conflict
 from archeus.core.domain import ids
-from archeus.core.domain.values import Ref
+from archeus.core.domain.values import PRINCIPAL_SCOPES, Ref
 from archeus.core.world import digest as world_digest
 from archeus.core.world import status as world_status
 from archeus.core.world.worker import World
@@ -37,6 +39,8 @@ from archeus.core.knowledge.worker import Knowledge
 from archeus.core.missions.intent import Intents
 from archeus.core.application.planning import Planning
 from archeus.core.planning.worker import Planner
+from archeus.core.policy.engine import PolicyEngine
+from archeus.core.policy.worker import Expiry
 from archeus.harnesses.calls import real_callers
 from archeus.harnesses.fake import FakeHarness
 from archeus.harnesses.registry import AdapterRegistry
@@ -71,6 +75,11 @@ class CoreClient(Protocol):
     # ── control ──
     def decide_approval(self, approval_id: str, decision: str, *,
                         note: Optional[str] = None, step_up: Optional[str] = None,
+                        idempotency_key: Optional[str] = None) -> dict: ...
+    def set_policy_rule(self, *, scope_level: str, action_class: str, decision: str,
+                        scope_ref: Optional[str] = None, locked: Optional[bool] = None,
+                        match: Optional[dict] = None, boundary: Optional[dict] = None,
+                        outside: Optional[str] = None,
                         idempotency_key: Optional[str] = None) -> dict: ...
     def pause(self, target: str) -> dict: ...
     def resume(self, target: str) -> dict: ...
@@ -148,9 +157,12 @@ class InProcessClient:
         # P8: None plans through the planning worker; a stub `plan.v1` port makes
         # the engine plan instead (a test about something else), never both
         self._brain = brain
-        # the stub ports every phase runs on until P9/P10/P13 swap them
-        self._policy = ports.AllowAllPolicy()
+        # the real policy engine (P9, D21); the router, verifier and reviewer
+        # are still the stubs until P10/P13 swap them
+        self._policy = PolicyEngine()
         self._missions = commands.Missions(policy=self._policy)
+        self._authz = authorization.Authorization(missions=self._missions)
+        self._kind = 'user_device'
 
     # ── binding plumbing (not part of the contract) ──
 
@@ -192,6 +204,8 @@ class InProcessClient:
             self._intents = Intents(self._db, actor=Ref('system', self._system), calls=own,
                                     conversations=self._conversations)
             # the planning worker, likewise (P8): the engine plans nothing itself
+            # the policy worker's expiry, likewise (P9)
+            self._expiry = Expiry(self._db, actor=Ref('system', self._system))
             self._plans = None if self._brain is not None else Planner(
                 self._db, actor=Ref('system', self._system), calls=own,
                 planning=Planning(work=self._engine.work))
@@ -199,7 +213,17 @@ class InProcessClient:
 
     def _actor(self):
         self._core()
-        return Ref('user_device', self._principal)
+        return Ref(self._kind, self._principal)
+
+    def _principal_client(self, kind):
+        """A client acting as a non-user principal on the same Core (the rig's
+        `principal_client`): it shares this Core and holds that kind's scopes."""
+        other = copy.copy(self)
+        other._principal = self._core().writer.execute(commands.register_principal, {
+            'kind': kind, 'scopes': PRINCIPAL_SCOPES[kind]})['id']
+        other._kind = kind
+        other.close = lambda **_kw: None
+        return other
 
     def _call(self, fn):
         """Run *fn*, translating Core errors into the API's typed errors."""
@@ -222,7 +246,12 @@ class InProcessClient:
             if isinstance(e, IllegalTrigger):
                 detail['trigger'] = e.trigger
             raise CoreClientError(422, 'invalid_transition', detail) from e
-        except PolicyDenied as e:               # D3: no decision id until P9 persists one
+        except authorization.NotPermitted as e:
+            raise CoreClientError(403, 'not_permitted', {'why': str(e)}) from e
+        except authorization.NotEligible as e:
+            raise CoreClientError(409, 'approval_not_eligible', {
+                'approval_id': e.approval_id, 'why': e.why, 'detail': e.detail}) from e
+        except PolicyDenied as e:               # recorded by the command answering it (P9)
             raise CoreClientError(423, 'policy_denied', {
                 'task': e.task_key, 'action_class': e.decision.action.action_class,
                 'decision': e.decision.decision, 'reason': e.decision.reason}) from e
@@ -245,7 +274,8 @@ class InProcessClient:
         learned = self._knowledge.pass_once()['changed']
         read = self._intents.pass_once()['changed']
         planned = self._plans is not None and self._plans.pass_once()['changed']
-        return not (worked or learned or read or planned or stepped)
+        expired = self._expiry.pass_once()['changed']
+        return not (worked or learned or read or planned or stepped or expired)
 
     def close(self, *, drain=True):
         if self._db is not None:
@@ -300,6 +330,33 @@ class InProcessClient:
 
     def pause(self, target: str) -> dict:
         return self._control('pause', target)
+
+    # ── approvals and policy (P9) ──
+
+    def decide_approval(self, approval_id: str, decision: str, *,
+                        note: Optional[str] = None, step_up: Optional[str] = None,
+                        idempotency_key: Optional[str] = None) -> dict:
+        """Decide an approval as a client would: read what it presents, then
+        send the decision with the `action_hash` it was shown (X02)."""
+        shown = self._read(queries.get_approval, approval_id)
+        out = self._run(self._authz.decide, {
+            'approval_id': approval_id, 'decision': decision,
+            'action_hash': shown['action_hash'], 'note': note, 'step_up': step_up},
+            idempotency_key)
+        if out.get('denied'):
+            raise CoreClientError(423, 'policy_denied', dict(out['denied'],
+                                                             approval_id=approval_id))
+        return out
+
+    def set_policy_rule(self, *, scope_level: str, action_class: str, decision: str,
+                        scope_ref: Optional[str] = None, locked: Optional[bool] = None,
+                        match: Optional[dict] = None, boundary: Optional[dict] = None,
+                        outside: Optional[str] = None,
+                        idempotency_key: Optional[str] = None) -> dict:
+        return self._run(self._authz.create_rule, {
+            'scope_level': scope_level, 'scope_ref': scope_ref, 'action_class': action_class,
+            'decision': decision, 'locked': locked, 'match': match, 'boundary': boundary,
+            'outside': outside or 'ASK'}, idempotency_key)
 
     def resume(self, target: str) -> dict:
         return self._control('resume', target)
@@ -395,7 +452,8 @@ class InProcessClient:
 #: control verbs; P3.5: listing missions, which the SPA's two lists read).
 IMPLEMENTED = ('create_mission', 'get_mission', 'list_missions', 'events', 'pause', 'resume',
                'create_project', 'declare_constraint', 'status', 'digest', 'ack',
-               'import_meeting', 'list_knowledge', 'route_why', 'submit_message')
+               'import_meeting', 'list_knowledge', 'route_why', 'submit_message',
+               'decide_approval', 'set_policy_rule')
 
 # Every other operation is declared and fails loudly. Later phases replace these
 # with real bodies one by one; tests/v1/contract/test_core_client.py keeps every

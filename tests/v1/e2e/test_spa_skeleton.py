@@ -97,8 +97,9 @@ def test_launch_now_work_and_live_updates_through_the_stream(browser, core):
     assert '#' not in page.url and code not in page.url           # the fragment is gone
     token = page.evaluate(READ_TOKEN)
     assert token and token.startswith('dev_')
-    page.get_by_text('walking skeleton: fake harness, stub policy').wait_for()
-    assert page.get_by_text('Nothing is in progress.').is_visible()
+    page.get_by_text('Nothing is in progress.').wait_for()
+    # the stub-policy banner is gone: the policy is the real engine since P9 (D20)
+    assert page.get_by_text('walking skeleton: fake harness, stub policy').count() == 0
 
     # the device the launch made is read-only, and the page offers no command
     r = request(core.base_url, 'POST', '/v1/missions', token=token,

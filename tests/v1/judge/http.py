@@ -24,14 +24,34 @@ import urllib.error
 import urllib.request
 from typing import Optional, Sequence
 
+from archeus.api import auth
 from archeus.core import engine, ports, runtime
-from archeus.core.domain import ids
+from archeus.core.application import lifecycle
+from archeus.core.domain import entities, ids
+from archeus.core.domain.values import PRINCIPAL_SCOPES, Ref
 from archeus.infra import discovery
 
 from .client import IMPLEMENTED, OPERATIONS, CoreClient, CoreClientError, _pending
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
+
+
+def _issue_principal(tx, *, kind, token_hash):
+    """A principal of *kind* with that kind's scopes, a device and a token for
+    it: only what `auth.live` needs to read a credential (the judge's rig)."""
+    p = entities.Principal(id=ids.new_id('principal'), kind=kind,
+                           scopes=PRINCIPAL_SCOPES[kind])
+    actor = Ref(kind, p.id)
+    tx.insert(p, actor=actor)
+    d = entities.Device(id=ids.new_id('device'), principal_id=p.id, name=kind,
+                        platform='desktop')
+    tx.insert(d, actor=actor)
+    lifecycle.fire(tx, entities.Device, d.id, 'code_redeemed', actor=actor,
+                   reason='the judge issued a %s credential' % kind)
+    tx.insert_token(token_hash=token_hash, kind='device', principal_id=p.id,
+                    scopes=p.scopes, actor=actor)
+    return {'principal_id': p.id}
 
 
 def free_port():
@@ -147,6 +167,39 @@ class HttpClient:
 
     def pause(self, target: str) -> dict:
         return self._control('pause', target)
+
+    # ── approvals and policy (P9) ──
+
+    def decide_approval(self, approval_id: str, decision: str, *,
+                        note: Optional[str] = None, step_up: Optional[str] = None,
+                        idempotency_key: Optional[str] = None) -> dict:
+        """GET what the approval presents, then POST the decision with the
+        `action_hash` it showed (a client sends what it displayed, X02)."""
+        shown = self._call('GET', '/v1/approvals/%s' % approval_id)
+        return self._call('POST', '/v1/approvals/%s/decide' % approval_id, {
+            'decision': decision, 'action_hash': shown['action_hash'], 'note': note,
+            'step_up': step_up, 'idempotency_key': idempotency_key or ids.new_ulid()})
+
+    def set_policy_rule(self, *, scope_level: str, action_class: str, decision: str,
+                        scope_ref: Optional[str] = None, locked: Optional[bool] = None,
+                        match: Optional[dict] = None, boundary: Optional[dict] = None,
+                        outside: Optional[str] = None,
+                        idempotency_key: Optional[str] = None) -> dict:
+        return self._call('POST', '/v1/policies/rules', {
+            'scope_level': scope_level, 'scope_ref': scope_ref, 'action_class': action_class,
+            'decision': decision, 'locked': locked, 'match': match, 'boundary': boundary,
+            'outside': outside, 'idempotency_key': idempotency_key or ids.new_ulid()})
+
+    def _principal_client(self, kind):
+        """A client holding a credential of a non-user principal (the rig's
+        `principal_client`), issued through this Core's own writer — a test
+        fixture, never a route: no route issues a brain a credential."""
+        if not isinstance(self.core, TempCore):
+            raise NotImplementedError('a principal client of a Core process')
+        token = auth.new_token()
+        self.core.core.db.writer.execute(_issue_principal, {
+            'kind': kind, 'token_hash': auth.token_hash(token)})
+        return HttpClient(self.base, token)
 
     def resume(self, target: str) -> dict:
         return self._control('resume', target)

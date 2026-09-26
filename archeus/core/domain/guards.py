@@ -342,6 +342,7 @@ GUARDS = {
     ('mission', 'verification_failed'): verification_failed,
     ('mission', 'redispatch'): redispatch,
     ('mission', 'accepted'): accepted,
+    ('mission', 'approve'): approve_mission,
     ('mission', 'plan_denied'): plan_denied,
     ('plan', 'ready'): ready,
     ('approval', 'approve'): approve,

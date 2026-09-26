@@ -278,6 +278,7 @@ def test_no_state_is_set_outside_the_p2_primitive():
 ])
 def test_a_mission_is_approved_only_on_a_real_authorisation(facts, ok):
     assert guards.approve_mission(_mission(), facts).passed is ok
+    assert guards.GUARDS[('mission', 'approve')] is guards.approve_mission
 
 
 @pytest.mark.parametrize('facts, ok', [
