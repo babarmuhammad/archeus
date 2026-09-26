@@ -44,6 +44,9 @@ TABLES = {
     entities.PolicyRule: 'policy_rules',
     entities.PolicyDecision: 'policy_decisions',
     entities.Approval: 'approvals',
+    entities.Account: 'accounts',
+    entities.ResourcePolicy: 'resource_policies',
+    entities.UsageSnapshot: 'usage_snapshots',
 }
 
 #: Row metadata, never entity fields: optimistic-concurrency version, timestamps,

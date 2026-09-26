@@ -20,8 +20,10 @@ ACTION_CLASSES = (
 #: The four policy decisions, used everywhere (state-machines §0).
 DECISIONS = ('ALLOW', 'ASK', 'ALLOW_WITHIN_BOUNDARY', 'DENY')
 
-#: What an approval or a decision can be about (p9-design-gate §8.1).
-APPROVAL_KINDS = ('plan', 'task', 'action')
+#: What an approval or a decision can be about (p9-design-gate §8.1). `route`
+#: (P10, resource-router §7) is consent to run one task on a fallback account
+#: whose policy says `ask`: it authorises no action.
+APPROVAL_KINDS = ('plan', 'task', 'action', 'route')
 #: The identity an authorisation is bound to (§7.2): exactly these keys.
 BINDING_KEYS = ('mission_id', 'plan_id', 'plan_version', 'plan_digest', 'task_id',
                 'task_key', 'execution_id')

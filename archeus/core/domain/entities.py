@@ -616,6 +616,10 @@ CRITERION_CHECKS = ('automatic', 'human')
 #: why a planning round recorded no plan (Mission.planning_blocked, P8)
 PLANNING_BLOCKS = ('clarification', 'challenge', 'call', 'policy')
 COST_BANDS = ('low', 'medium', 'high')      # bands, never precise (domain-model §7.2)
+#: A mission's resource preferences (P10): four id lists, then the plan
+#: gate's auto-approve ceiling and when they were set.
+RESOURCE_PREFERENCE_KEYS = ('preferred_accounts', 'preferred_harnesses', 'forbidden_accounts',
+                            'forbidden_harnesses', 'max_cost_band', 'since')
 
 @entity
 class Mission(Entity):
@@ -661,9 +665,24 @@ class Mission(Entity):
     planning_blocked: dict = None
     # the profile expanded at MISSION level (P9 §5); None inherits the user's
     autonomy_profile: str = None
+    # the mission's own resource choices (resource-router §3, §10 D; P10):
+    # RESOURCE_PREFERENCE_KEYS. `since` is when they were set: the mission's
+    # earlier placement no longer counts as affinity (§5)
+    resource_preferences: dict = None
     state: str = None
 
     def _check(self):
+        rp = self.resource_preferences
+        if rp is not None:
+            if not isinstance(rp, dict) or set(rp) - set(RESOURCE_PREFERENCE_KEYS):
+                raise ValueError('Mission.resource_preferences holds only %s: %r'
+                                 % (RESOURCE_PREFERENCE_KEYS, rp))
+            if rp.get('max_cost_band') not in (None,) + COST_BANDS:
+                raise ValueError('max_cost_band is one of %s' % (COST_BANDS,))
+            for k in RESOURCE_PREFERENCE_KEYS[:4]:
+                if not (isinstance(rp.get(k, ()), (list, tuple))
+                        and all(isinstance(x, str) and x for x in rp.get(k, ()))):
+                    raise ValueError('Mission.resource_preferences[%r] is a list of ids' % k)
         b = self.planning_blocked
         if b is not None and not (isinstance(b, dict) and b.get('kind') in PLANNING_BLOCKS):
             raise ValueError('Mission.planning_blocked is {kind: %s, ...}: %r'
@@ -822,7 +841,8 @@ class Task(Entity):
 class Execution(Entity):
     _ID = 'execution'
     _STATE = ('state', 'execution')
-    _REFS = {'task_id': 'task', 'mission_id': 'mission'}
+    _REFS = {'task_id': 'task', 'mission_id': 'mission', 'route_decision_id': 'route_decision',
+             'account_id': 'account'}
     _MIN1 = ('attempt',)
     _CHOICES = {'exit_reason': ('ok', 'error', 'killed', 'lost', 'abandoned')}
     id: str
@@ -830,6 +850,12 @@ class Execution(Entity):
     mission_id: str
     attempt: int = 1
     harness_id: str = None
+    # where it runs and why (P10): the decision, and its choice denormalised
+    # for queries; `account_id` None is the harness's own account
+    route_decision_id: str = None
+    account_id: str = None
+    model: str = None
+    effort: str = None
     # the process (pid + creation time guards against PID reuse) and its end
     pid: int = None
     create_time: object = None
@@ -979,6 +1005,10 @@ class ContextPackage(Entity):
 CALL_PURPOSES = ('knowledge_extraction', 'lesson', 'generation', 'brain', 'planner')
 #: A provider-terms answer (ADR-0021).
 TERMS = ('unknown', 'permitted', 'refused')
+#: How an account authenticates (domain-model §8.2).
+AUTH_KINDS = ('subscription_oauth', 'api_key', 'provider_proxy')
+#: The provider windows a usage snapshot reports (domain-model §8.5).
+USAGE_WINDOWS = ('5h', '7d', 'monthly')
 
 
 @entity
@@ -1015,17 +1045,27 @@ class Harness(Entity):
 
 @entity
 class Account(Entity):
+    """An authenticated instance of a harness (domain-model §8.2): one config
+    dir, one home, one API key. `node_id` None is the local node, the only one
+    V1 has (ADR-0008). `home_ref` is opaque to Core except for display and for
+    the adapter that runs on it."""
     _ID = 'account'
     _STATE = ('health', 'account_health')
     _TEXT = ('harness_id', 'label')
-    _CHOICES = {'auth_kind': ('subscription_oauth', 'api_key', 'provider_proxy')}
+    _CHOICES = {'auth_kind': AUTH_KINDS}
     _REFS = {'node_id': 'execution_node'}
+    _FROZEN = ('harness_id', 'auth_kind', 'node_id')
     id: str
     harness_id: str
     label: str
     auth_kind: str
-    node_id: str
+    node_id: str = None
+    home_ref: str = None
     health: str = None
+
+    def _check(self):
+        if not _HARNESS_ID.fullmatch(self.harness_id):
+            raise ValueError('Account.harness_id is a harness id: %r' % self.harness_id)
 
 
 @entity
@@ -1048,13 +1088,22 @@ class ModelOffer(Entity):
     available: bool = True
 
 
+#: What a ResourcePolicy's `budgets` may hold (resource-router §4: the ledger
+#: governs an account with no readable window).
+BUDGET_KEYS = ('tokens_per_day', 'cost_per_day', 'concurrency')
+
+
 @entity
 class ResourcePolicy(Entity):
+    """Priority and allocation of one account (domain-model §8.4). Allocation
+    is a CEILING on the provider-reported window, never a share Archeus must
+    use (resource-router §4)."""
     _ID = 'resource_policy'
     _CHOICES = {'fallback': ('allow', 'ask', 'deny')}
     _REFS = {'account_id': 'account'}
     _NONNEG = ('allocation_pct', 'reserve_pct', 'brain_reserve_pct')
     _MIN1 = ('priority',)
+    _FROZEN = ('account_id',)
     id: str
     account_id: str
     priority: int = 1
@@ -1062,25 +1111,43 @@ class ResourcePolicy(Entity):
     reserve_pct: int = 0
     brain_reserve_pct: int = 0
     fallback: str = 'ask'
+    budgets: dict = None
+    project_allow: tuple = ()
+    project_deny: tuple = ()
 
     def _check(self):
         if self.allocation_pct > 100:
             raise ValueError('allocation_pct is a share of the provider window (<= 100)')
         if self.reserve_pct + self.brain_reserve_pct > self.allocation_pct:
             raise ValueError('reserves exceed the allocation: nothing would ever route here')
+        for k, v in (self.budgets or {}).items():
+            if k not in BUDGET_KEYS or isinstance(v, bool) or not (
+                    isinstance(v, (int, float)) and v >= 0):
+                raise ValueError('a budget is one of %s, a number >= 0: %r' % (BUDGET_KEYS,
+                                                                            {k: v}))
+        for p in self.project_allow + self.project_deny:
+            if not ids.is_id(p, 'project'):
+                raise ValueError('a project restriction names a project id: %r' % (p,))
 
 
 @entity
 class UsageSnapshot(Entity):
+    """What the provider reported for one window of one account, when (observed
+    truth, domain-model §8.5). `scripted` is the fake usage feed's, as a
+    FakeCaller is scripted: unrestricted for testing."""
     _ID = 'usage_snapshot'
-    _CHOICES = {'window': ('5h', '7d', 'monthly'),
-                'source': ('usage_api', 'rate_limit_headers', 'rollout_file')}
+    _CHOICES = {'window': USAGE_WINDOWS,
+                'source': ('usage_api', 'rate_limit_headers', 'rollout_file', 'scripted')}
     _REFS = {'account_id': 'account'}
+    _TEXT = ('observed_at',)
+    _FROZEN = FROZEN_ALL
     id: str
     account_id: str
     window: str
     utilisation_pct: float
     source: str
+    observed_at: str
+    resets_at: str = None
 
     def _check(self):
         if not (isinstance(self.utilisation_pct, (int, float)) and self.utilisation_pct >= 0):
@@ -1089,13 +1156,16 @@ class UsageSnapshot(Entity):
 
 @entity
 class UsageLedger(Entity):
-    """What Archeus itself consumed. A row for one of Archeus's own calls has
-    no execution: it carries its `route_decision_id` instead (ADR-0022), and
-    before P10 persists accounts, the account is the harness home it ran on."""
+    """What Archeus itself consumed, attributable to the RouteDecision that
+    chose where it ran (P10): every row names it. A row for one of Archeus's
+    own calls has no execution (ADR-0022); an execution's row names both. The
+    account is the registered one when the decision chose one, else
+    `account_ref` names the harness's own account it ran on."""
     _ID = 'usage_ledger'
     _REFS = {'execution_id': 'execution', 'account_id': 'account',
              'route_decision_id': 'route_decision'}
     _NONNEG = ('tokens_in', 'tokens_out', 'cache_read', 'cache_write')
+    _FROZEN = FROZEN_ALL
     id: str
     execution_id: str = None
     route_decision_id: str = None
@@ -1108,23 +1178,40 @@ class UsageLedger(Entity):
     cost_usd: float = None
 
     def _check(self):
-        if (self.execution_id is None) == (self.route_decision_id is None):
-            raise ValueError('a usage row belongs to an execution or to a route decision, '
-                             'exactly one')
+        if self.route_decision_id is None:
+            raise ValueError('a usage row belongs to the route decision that chose where it '
+                             'ran')
+
+
+#: How a routing decision ended (resource-router §5, §7).
+ROUTE_RESULTS = ('selected', 'fallback', 'ask', 'blocked')
 
 
 @entity
 class RouteDecision(Entity):
-    """One routing decision (domain-model §8.6). For Archeus's own calls the
-    subject is `archeus_call` with its purpose (ADR-0022) and, before P10, the
-    pre-router election made it (`source`: what the call is about). `outcome`
-    is written once, when the call ended; everything else never changes."""
+    """One routing decision (domain-model §8.6): what was asked
+    (`requirements`), everything it was decided from (`input_snapshot`, which
+    replays it), every candidate with the step that eliminated it, and the
+    (harness, account, model) chosen. Subjects: `archeus_call` with its purpose
+    (ADR-0022) and `task` (an authorised task, `policy_decision_id` the P9
+    decision that authorised it). `outcome` — how an own call ended — is
+    written once; every other field is frozen: a later decision is a new row."""
     _ID = 'route_decision'
-    _CHOICES = {'purpose': CALL_PURPOSES, 'decided_by': ('pre_router', 'router')}
-    _REFS = {'context_package_id': 'context_package'}
+    _CHOICES = {'purpose': CALL_PURPOSES, 'decided_by': ('pre_router', 'router'),
+                'result': ROUTE_RESULTS}
+    _REFS = {'context_package_id': 'context_package', 'mission_id': 'mission',
+             'task_id': 'task', 'account_id': 'account',
+             'policy_decision_id': 'policy_decision'}
+    _FROZEN = ('subject', 'selected', 'explanation', 'purpose', 'decided_by', 'workspace_id',
+               'project_id', 'source', 'requirements', 'candidates', 'account_ref', 'model',
+               'input_snapshot', 'context_package_id', 'mission_id', 'task_id', 'harness_id',
+               'account_id', 'effort', 'result', 'fallback_from', 'policy_decision_id',
+               'unblock_at')
     id: str
     subject: Ref
-    selected: str = None          # None: no candidate survived (blocked / ask)
+    # the chosen resource at its most specific level: the registered account's
+    # id, else the harness id (its own account, `account_ref`); None: nothing
+    selected: str = None
     explanation: str = ''
     purpose: str = None
     decided_by: str = None
@@ -1138,6 +1225,15 @@ class RouteDecision(Entity):
     input_snapshot: dict = None
     context_package_id: str = None
     outcome: dict = None
+    mission_id: str = None
+    task_id: str = None
+    harness_id: str = None
+    account_id: str = None
+    effort: str = None
+    result: str = None
+    fallback_from: tuple = ()
+    policy_decision_id: str = None
+    unblock_at: str = None
 
 
 @entity
