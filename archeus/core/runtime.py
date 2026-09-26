@@ -156,7 +156,6 @@ class EngineLoop:
     def _pass(self):
         writer = self.db.writer
         seen = writer.commit_count
-        self.state = 'running'
         with self.db.read() as conn:
             head = outbox.head(conn)
             live = [(m['id'], m['version']) for m in queries.list_missions(conn)
@@ -167,6 +166,12 @@ class EngineLoop:
                 return
             if self.parked.get(mid) == version:
                 continue
+            # `running` only while a mission is stepped: a pass that re-reads
+            # parked missions and finds nothing to do is still idle (health
+            # sampled it as running on one idle wake-up in five once P7 added
+            # a worker thread). The idle signal stays safe: `observed_seq`
+            # moves only at the end of a pass, so an unseen commit is not idle.
+            self.state = 'running'
             try:
                 out = self.engine.step(mid)
             except errors.LOST_RACE as e:
