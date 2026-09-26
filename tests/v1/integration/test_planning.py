@@ -215,7 +215,7 @@ def test_i05_an_explicit_requirement_no_task_serves_is_invalid(make):
 
 
 def test_i06_an_ambiguous_requirement_is_asked_and_the_first_plan_waits_blocked(make):
-    ask = answer(questions=[{'question': 'Which CLI, archeus or claudectl?',
+    ask = answer(questions=[{'question': 'Which CLI, the core or the client?',
                              'blocking': True, 'about': 'r1'}])
     served = answer(task('do', serves=['r1']))
     r = make([fake(ask, served, brain=[('Add a --version flag to the CLI', WORK)])])
@@ -225,7 +225,7 @@ def test_i06_an_ambiguous_requirement_is_asked_and_the_first_plan_waits_blocked(
     assert r.plans(mid) == []
     assert (m.state, m.held_from, m.planning_blocked['kind']) == (
         'BLOCKED', 'REASONING', 'clarification')
-    assert m.planning_blocked['questions'] == ['Which CLI, archeus or claudectl?']
+    assert m.planning_blocked['questions'] == ['Which CLI, the core or the client?']
     (last,) = [x for x in r.all(entities.Message) if x.author == 'archeus'
                and x.cards and x.cards[0]['type'] == 'clarification'
                and x.cards[0]['ref'] == {'kind': 'mission', 'id': mid}]
