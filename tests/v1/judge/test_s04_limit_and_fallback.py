@@ -14,7 +14,6 @@ def _two_accounts(client, fallback):
     return a, b
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P10")
 def test_no_execution_starts_on_an_account_at_its_ceiling(client, rig):
     a, b = _two_accounts(client, 'allow')
     rig.usage(a['id'], '5h', 71)            # ceiling = 80 - 10 = 70
@@ -24,7 +23,6 @@ def test_no_execution_starts_on_an_account_at_its_ceiling(client, rig):
                for e in events_of(client, 'execution.started'))
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P10")
 @pytest.mark.parametrize('fallback,expect', [('allow', 'COMPLETED'),
                                              ('ask', 'approval'),
                                              ('deny', 'BLOCKED')])

@@ -253,6 +253,15 @@ def evaluate(action, ctx) -> PolicyDecision:
 restrictions → health → allocation (ceiling semantics, stale-usage penalty, budgets when the
 window is unknown, brain reserve) → ordering (affinity, preference, priority, tier fit, health,
 cost, latency) → persisted, replayable, explainable decision → fallback only as policy allows.
+- *As built (P10, p10-design-gate.md):* `core/routing/router.py` is a pure function of
+  (requirements, snapshot) over every (harness, account) candidate, eliminating by installed,
+  headless, capability, model, enforcement, provider terms, restriction, health and allocation,
+  and ordering by affinity, preference, priority, tier fit, closeness to the ceiling and id; cost
+  and latency are not keys until an adapter reports them. `core/application/resources.py` builds
+  the snapshot, records the decision and routes a task only on a current `covered` P9 dispatch
+  decision; an `ask` fallback becomes a `route` approval decided through P9. Own calls route
+  through the same function (the P6 election is gone). Usage is read from feeds in memory,
+  recorded as UsageSnapshots, and every UsageLedger row names its RouteDecision.
 
 ## 15. Execution architecture
 
@@ -774,6 +783,18 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   offers come from each adapter in its own vocabulary, and a call's usage is ledgered against
   its RouteDecision.
 - Acceptance: S3, S4 (routing part), S12 pass; K1 re-run through the router.
+  - **P10, as built** (p10-design-gate.md, D1–D15). `core/routing/{router,usage}.py`,
+    `core/application/resources.py`, migration `0009_resources.sql` (accounts,
+    resource_policies, usage_snapshots; decisions gain mission and task, the ledger gains the
+    account), the `usage.windows_snapshot` seam, four event types, six routes. The router is
+    pure and every decision replays from its own record; a task reaches it only with a current
+    `covered` P9 dispatch decision, checked again inside the routing command; `ask` is a `route`
+    approval requested by the dispatch command and decided by a user device through P9; a
+    blocked task blocks its mission and a resume routes it again. Own calls replace the P6
+    election; provider terms are checked at election and again before the adapter, for both
+    subjects. `max_cost_band` in the mission's resources is the plan gate's ceiling (the P9
+    deferral). S3, S4's routing functions, S12 and K1 pass on both bindings; S4's mid-run
+    crossing is P12's. Nothing spawns beyond the fake harness. Deviations: p10-design-gate §21.
 
 **P11 — Execution orchestrator**
 - Depends: P10. Preparation seam (legacy): move `main.build_launch_command` and its helpers

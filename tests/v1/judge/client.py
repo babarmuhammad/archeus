@@ -22,8 +22,8 @@ import os
 from typing import Optional, Protocol, Sequence, runtime_checkable
 
 from archeus.core import engine, ports
-from archeus.core.application import (authorization, commands, conversation, queries, work,
-                                      world)
+from archeus.core.application import (authorization, commands, conversation, queries,
+                                      resources, work, world)
 from archeus.core.application.lifecycle import GuardFailed, IllegalTrigger
 from archeus.core.application.work import PolicyDenied
 from archeus.core.application.world import Conflict
@@ -41,6 +41,7 @@ from archeus.core.application.planning import Planning
 from archeus.core.planning.worker import Planner
 from archeus.core.policy.engine import PolicyEngine
 from archeus.core.policy.worker import Expiry
+from archeus.core.routing.usage import FakeUsageFeed
 from archeus.harnesses.calls import real_callers
 from archeus.harnesses.fake import FakeHarness
 from archeus.harnesses.registry import AdapterRegistry
@@ -143,7 +144,7 @@ class InProcessClient:
     home fail loudly instead of reconciling each other's children (p3.5b A1).
     """
 
-    def __init__(self, home, *, callers=None, preference=None, brain=None):
+    def __init__(self, home, *, callers=None, preference=None, brain=None, usage=None):
         self.home = str(home)
         self._db = self._lock = None
         self._engine = None
@@ -157,9 +158,11 @@ class InProcessClient:
         # P8: None plans through the planning worker; a stub `plan.v1` port makes
         # the engine plan instead (a test about something else), never both
         self._brain = brain
-        # the real policy engine (P9, D21); the router, verifier and reviewer
-        # are still the stubs until P10/P13 swap them
+        # the real policy engine (P9, D21) and the real resource router (P10)
+        # over the scripted usage feed (the rig's `usage`); the verifier and
+        # reviewer are still the stubs until P13 swaps them
         self._policy = PolicyEngine()
+        self._usage = usage or FakeUsageFeed()
         self._missions = commands.Missions(policy=self._policy)
         self._authz = authorization.Authorization(missions=self._missions)
         self._kind = 'user_device'
@@ -180,19 +183,21 @@ class InProcessClient:
                     'kind': 'system', 'scopes': ('system',)})['id']
             registry = AdapterRegistry(self._policy)
             registry.register(FakeHarness())
+            callers = real_callers() if self._callers is None else self._callers
+            self._resources = resources.Resources(registry=registry, callers=callers)
             self._engine = engine.Engine(
                 self._db, actor=Ref('system', self._system),
                 work=work.Work(missions=self._missions,
-                               router=ports.FixedCandidateRouter('fake')),
+                               router=resources.ResourceRouter(registry, self._usage)),
                 brain=self._brain, registry=registry, scenarios=self._scenarios,
                 verifier=ports.ScriptedVerifier(), reviewer=ports.ScriptedReview())
             # the world worker, pumped by `_idle` as the engine is (P4)
             self._world = World(self._db, actor=Ref('system', self._system))
             self._world.sweep()
             # the knowledge worker, likewise (P6)
-            own = OwnCalls(self._db, actor=Ref('system', self._system),
-                           callers=real_callers() if self._callers is None else self._callers,
-                           preference=self._preference or ports.LegacyOwnCallPreference())
+            own = OwnCalls(self._db, actor=Ref('system', self._system), callers=callers,
+                           preference=self._preference or ports.LegacyOwnCallPreference(),
+                           usage=self._usage)
             self._knowledge = Knowledge(self._db, actor=Ref('system', self._system),
                                         passes=Passes(self._db, actor=Ref('system',
                                                                           self._system),
@@ -288,6 +293,10 @@ class InProcessClient:
     def _script(self, task_key, steps):
         """The rig's `script_harness`: the engine's scenario map, by task key."""
         self._scenarios[task_key] = steps
+
+    def _report_usage(self, account_id, window, pct):
+        """The rig's `usage`: what the scripted feed says this account is at."""
+        self._usage.set(account_id, window, pct)
 
     def _restart(self, *, kill=True):
         """Core stops (kill: queued commands are dropped) and starts again on
@@ -437,15 +446,39 @@ class InProcessClient:
         return self._read(queries.list_knowledge, project_id, state)
 
     def route_why(self, subject_id: str) -> dict:
-        """A route decision by its id, or the latest one about *subject_id*."""
+        """A route decision by its id, or the latest one about *subject_id*
+        — for a mission, the latest that routed its work (a task), before any
+        of Archeus's own calls about it."""
         def read(conn):
             if ids.kind_of(subject_id) == 'route_decision':
                 return queries.get_route_decision(conn, subject_id)
             got = queries.route_decisions(conn, subject_id)
             if not got:
                 raise NotFound(subject_id)
-            return queries.get_route_decision(conn, got[-1]['id'])
+            work_ = [d for d in got if d['subject']['kind'] == 'task']
+            return queries.get_route_decision(conn, (work_ or got)[-1]['id'])
         return self._read(read)
+
+    # ── resources (P10) ──
+
+    def register_account(self, *, harness_id: str, label: str, auth_kind: str,
+                         home_ref: Optional[str] = None) -> dict:
+        self._core()
+        probe = self._resources.probe(harness_id, home_ref)
+        return self._run(resources.register_account, {
+            'harness_id': harness_id, 'label': label, 'auth_kind': auth_kind,
+            'home_ref': home_ref, 'auth': probe})
+
+    def set_resource_policy(self, account_id: str, *, priority: Optional[int] = None,
+                            allocation_pct: Optional[int] = None,
+                            reserve_pct: Optional[int] = None,
+                            brain_reserve_pct: Optional[int] = None,
+                            fallback: Optional[str] = None,
+                            expected_version: Optional[int] = None) -> dict:
+        return self._run(resources.set_resource_policy, {
+            'account_id': account_id, 'priority': priority, 'allocation_pct': allocation_pct,
+            'reserve_pct': reserve_pct, 'brain_reserve_pct': brain_reserve_pct,
+            'fallback': fallback, 'expected_version': expected_version})
 
 
 #: Operations with a real body in both bindings (P2: G1, G4; P3: the mission
@@ -453,7 +486,8 @@ class InProcessClient:
 IMPLEMENTED = ('create_mission', 'get_mission', 'list_missions', 'events', 'pause', 'resume',
                'create_project', 'declare_constraint', 'status', 'digest', 'ack',
                'import_meeting', 'list_knowledge', 'route_why', 'submit_message',
-               'decide_approval', 'set_policy_rule')
+               'decide_approval', 'set_policy_rule', 'register_account',
+               'set_resource_policy')
 
 # Every other operation is declared and fails loudly. Later phases replace these
 # with real bodies one by one; tests/v1/contract/test_core_client.py keeps every

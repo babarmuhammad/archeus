@@ -430,6 +430,16 @@ brain, planner, knowledge extraction, lesson, generation; ADR-0022), `requiremen
 As built for own calls (P6): `purpose`, `decided_by` (`pre_router` until P10), `source` (what the
 call is about), `account_ref` / `model`, `context_package_id`, and `outcome` — written once when
 the call ends, the only field that ever changes.
+*As built (P10, p10-design-gate §5):* subjects `archeus_call` and `task` (an authorised task,
+`policy_decision_id` its P9 dispatch decision); `harness_id`, `account_id` | `account_ref`,
+`model`, `effort`, `result` (selected | fallback | ask | blocked), `fallback_from`, `unblock_at`,
+`mission_id`, `task_id`; `decided_by` is `router` (`pre_router` stays valid for P6 rows). Every
+field is frozen but `outcome`; `input_snapshot` + `requirements` replay the decision. Accounts
+carry `home_ref` (opaque to Core); a ResourcePolicy adds `budgets` and `project_allow` /
+`project_deny`; a UsageSnapshot is frozen with `observed_at` / `resets_at`; every UsageLedger
+row names its RouteDecision and account; an Execution names its decision, account, model and
+effort; `Mission.resource_preferences` holds the mission's preferred and forbidden accounts and
+harnesses and its `max_cost_band`.
 
 ### 8.7 ExecutionNode
 A machine that can run executions. `id`, `name`, `platform`, `kind` (local / remote),

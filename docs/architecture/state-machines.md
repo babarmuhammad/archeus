@@ -311,6 +311,11 @@ stateDiagram-v2
   `reason = rule_bug` and Attention gets a "this looks like a process problem" item instead of a
   fourth retry.
 - `human` tasks skip ROUTING: READY → AWAITING_APPROVAL (the Attention item *is* the task).
+- *As built (P10, p10-design-gate §9):* `no_eligible_resource` also blocks the mission with the
+  decision's explanation; resuming the mission unblocks the task and it routes again.
+  `route_needs_approval` requests a PENDING `route` approval (consent to run on a fallback
+  account whose policy says `ask`); approving it fires `approved` and resumes the mission,
+  rejecting it fires `rejected`. No transition was added.
 
 ---
 
@@ -542,6 +547,11 @@ stateDiagram-v2
   permits fallback.
 - The machine lives on Account; Harness has a simpler AVAILABLE/MISSING/MISCONFIGURED state set
   by discovery.
+- *As built (P10):* only `auth_ok` / `auth_failed` (the adapter's probe, made before the
+  registering command) and `user_disables` / `user_enables` are fired. `near_ceiling`,
+  `window_exhausted` and `reset_time_passed` are computed by the router from each decision's own
+  snapshot (so a decision replays); the limit-error and breaker moves come with execution
+  failures in P11 (p10-design-gate §21.1).
 
 ---
 

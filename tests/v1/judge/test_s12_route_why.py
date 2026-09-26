@@ -1,12 +1,9 @@
 """S12 — explain why a resource was selected (SP18): the answer is generated
 from the persisted RouteDecision, with no model call, and replays equal."""
 
-import pytest
-
 from .support import wait_state
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P10")
 def test_route_why_names_the_selected_account_and_the_reason(client):
     a = client.register_account(harness_id='fake', label='Work', auth_kind='api_key')
     client.set_resource_policy(a['id'], priority=1)
@@ -17,7 +14,6 @@ def test_route_why_names_the_selected_account_and_the_reason(client):
     assert 'priority' in why['explanation'] and 'Work' in why['explanation']
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P10")
 def test_asking_twice_gives_the_same_answer(client):
     a = client.register_account(harness_id='fake', label='Work', auth_kind='api_key')
     client.set_resource_policy(a['id'], priority=1)

@@ -127,6 +127,12 @@ class HttpClient:
     def _restart(self, *, kill=True):
         self.core.restart(kill=kill)
 
+    def _report_usage(self, account_id, window, pct):
+        """The rig's `usage`: the scripted feed the in-process Core reads."""
+        if not isinstance(self.core, TempCore):
+            raise NotImplementedError('reporting usage to a Core process')
+        self.core.kw['ports'].usage.set(account_id, window, pct)
+
     def _script(self, task_key, steps):
         """The rig's `script_harness`: the in-process Core's engine reads this
         map (Ports.scenarios) when it starts a task; it survives a restart."""
@@ -284,7 +290,30 @@ class HttpClient:
         got = self._call('GET', '/v1/route-decisions?source=%s' % subject_id)['route_decisions']
         if not got:
             raise CoreClientError(404, 'not_found', {'id': subject_id})
-        return self._call('GET', '/v1/route-decisions/%s' % got[-1]['id'])
+        work = [d for d in got if d['subject']['kind'] == 'task']
+        return self._call('GET', '/v1/route-decisions/%s' % (work or got)[-1]['id'])
+
+    # ── resources (P10) ──
+
+    def register_account(self, *, harness_id: str, label: str, auth_kind: str,
+                         home_ref: Optional[str] = None) -> dict:
+        return self._call('POST', '/v1/accounts', {
+            'harness_id': harness_id, 'label': label, 'auth_kind': auth_kind,
+            'home_ref': home_ref, 'idempotency_key': ids.new_ulid()})
+
+    def set_resource_policy(self, account_id: str, *, priority: Optional[int] = None,
+                            allocation_pct: Optional[int] = None,
+                            reserve_pct: Optional[int] = None,
+                            brain_reserve_pct: Optional[int] = None,
+                            fallback: Optional[str] = None,
+                            expected_version: Optional[int] = None) -> dict:
+        body = {k: v for k, v in (('priority', priority), ('allocation_pct', allocation_pct),
+                                  ('reserve_pct', reserve_pct),
+                                  ('brain_reserve_pct', brain_reserve_pct),
+                                  ('fallback', fallback),
+                                  ('expected_version', expected_version)) if v is not None}
+        return self._call('POST', '/v1/resource-policies/%s' % account_id,
+                          dict(body, idempotency_key=ids.new_ulid()))
 
 
 for _op in OPERATIONS:

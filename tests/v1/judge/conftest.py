@@ -18,6 +18,7 @@ import os
 import pytest
 
 from archeus.core import ports, runtime
+from archeus.core.routing.usage import FakeUsageFeed
 from archeus.harnesses.fake import FakeCaller
 
 from .client import InProcessClient
@@ -45,7 +46,8 @@ def client(request, archeus_home, monkeypatch):
     if request.param == 'inprocess':
         c = InProcessClient(archeus_home, callers=[recorded_brain()])
     elif request.param == 'http':
-        c = TempCore(archeus_home, ports=runtime.Ports(callers=[recorded_brain()])
+        c = TempCore(archeus_home, ports=runtime.Ports(callers=[recorded_brain()],
+                                                       usage=FakeUsageFeed())
                      ).start().client()
     else:
         raise AssertionError('unknown binding %r' % request.param)
@@ -82,8 +84,8 @@ def own_calls(request, archeus_home, monkeypatch):
         if request.param == 'inprocess':
             c = InProcessClient(archeus_home, callers=callers, preference=pref)
         else:
-            c = TempCore(archeus_home, ports=runtime.Ports(callers=callers,
-                                                           preference=pref)).start().client()
+            c = TempCore(archeus_home, ports=runtime.Ports(
+                callers=callers, preference=pref, usage=FakeUsageFeed())).start().client()
         monkeypatch.setattr(support, 'idle', c._idle)
         made.append(c)
         return c, Rig(c)

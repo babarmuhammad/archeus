@@ -150,8 +150,11 @@ class Rig:
         self.client._script(task_key, list(steps))
 
     def usage(self, account_id, window, utilisation_pct):
-        """Report provider usage for an account (FakeUsageFeed)."""
-        self._pending('the fake usage feed', 'P10')
+        """Report provider usage for an account (FakeUsageFeed, P10): what the
+        scripted feed the Core under test reads says from now on."""
+        if not hasattr(self.client, '_report_usage'):
+            self._pending('the fake usage feed for this binding', 'P10')
+        self.client._report_usage(account_id, window, utilisation_pct)
 
     def advance(self, seconds):
         """Move fake time forward (FakeClock)."""

@@ -48,7 +48,7 @@ mobile (ADR-0010). Push beyond ntfy is **DEFERRED**.
 | World | `/v1/status` (P4, deterministic), `/v1/projects`, `/v1/projects/{id}`, `/v1/world/graph?focus=&depth=`, `/v1/repositories/{id}/inspections`, `/v1/meetings`, `/v1/decisions`, `/v1/ideas` (P7, `?state`), `/v1/people` | `projects/create|archive` (`POST /v1/projects`, admin, P4), `projects/{id}/constraints` (P4), `repositories/{id}/inspect`, `meetings/import`, `ideas/capture|promote|park` |
 | Knowledge | `/v1/knowledge?type=&scope=&q=`, `/v1/knowledge/{id}` (with supersession chain) — P6: `?project&state&type` | `confirm`, `retract`, `supersede`, `pin`, `forget` (dry-run default) — P6: all but `pin`, plus `reject` and `/v1/feedback` |
 | Context | `/v1/context/{package_id}` (P5; also embedded in `/v1/missions/{id}` as `context_package`) | `/v1/context/preview` (P5, observe, writes nothing: assemble without recording) |
-| Resources | `/v1/harnesses`, `/v1/accounts`, `/v1/accounts/{id}/usage`, `/v1/models`, `/v1/route-decisions/{id}` (P6, with `?source&purpose` listing), `/v1/provider-terms` (P6) | `accounts/register|disable|reauth`, `resource-policies/{account}` (priority/allocation/budgets), `/v1/route/preview`, `/v1/provider-terms/{harness}` (P6, admin: the ADR-0021 answer) |
+| Resources | `/v1/harnesses`, `/v1/accounts`, `/v1/accounts/{id}/usage`, `/v1/models`, `/v1/route-decisions/{id}` (P6, with `?source&purpose` listing), `/v1/provider-terms` (P6) | `accounts/register|disable|reauth`, `resource-policies/{account}` (priority/allocation/budgets), `/v1/route/preview`, `/v1/provider-terms/{harness}` (P6, admin: the ADR-0021 answer) (*as built, P10:* `GET /v1/harnesses`, `GET /v1/accounts` (with policy and latest usage); admin `POST /v1/accounts`, `POST /v1/accounts/{id}/state`, `POST /v1/resource-policies/{id}`, `POST /v1/missions/{id}/resources`; no `/usage`, `/v1/models` or preview yet) |
 | Policy | `/v1/policies?scope=`, `/v1/policy-decisions/{id}`, `/v1/policies/simulate` | `policies/set`, `profiles/apply` (*as built, P9:* `GET /v1/policies`, `GET /v1/policy-decisions`, `GET /v1/policy-decisions/{id}`, `POST /v1/policies/simulate`; admin `POST /v1/policies/rules`, `POST /v1/policies/rules/{id}/retire`, `POST /v1/policies/profile`) |
 | Approvals (P9) | `/v1/approvals?state=&mission=`, `/v1/approvals/{id}` (with `eligible`) | `approvals/{id}/decide` (scope `approve`; `approve`, `reject`, `request_changes`, echoing `action_hash`) |
 | Automations | `/v1/automations`, `/v1/automations/{id}/runs` | `create`, `enable`, `disable`, `archive`, `run-now` |
@@ -119,6 +119,12 @@ profile), and nothing else: an approval granted, rejected, expired, superseded o
 `approval.state_changed` with its trigger; a plan approved or rejected is `plan.state_changed`; a
 denied mission is `mission.state_changed` (`plan_denied`) or `mission.updated`
 (`planning_blocked`) (p9-design-gate §16).
+
+P10 registers `account.registered`, `account_health.state_changed` (the account machine's moves),
+`resource_policy.updated` and `usage.observed` (system visibility), and nothing else: a decision
+is `route.decided` (now with its result, harness, account, task and mission), a mission's
+resources are `mission.updated`, and a fallback's `route` approval is P9's `approval.requested`
+/ `approval.state_changed` (p10-design-gate §11).
 
 P8 registers `plan.state_changed` (the plan machine's moves, which the writer requires) and
 nothing else. `plan.created` carries the version's lineage and provenance (`supersedes_plan_id`,
