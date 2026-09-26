@@ -37,6 +37,10 @@ TABLES = {
     entities.RouteDecision: 'route_decisions',
     entities.UsageLedger: 'usage_ledger',
     entities.ProviderTerms: 'provider_terms',
+    entities.Conversation: 'conversations',
+    entities.Message: 'messages',
+    entities.Intent: 'intents',
+    entities.Idea: 'ideas',
 }
 
 #: Row metadata, never entity fields: optimistic-concurrency version, timestamps,

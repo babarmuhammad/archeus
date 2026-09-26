@@ -123,8 +123,10 @@ class FakeCaller:
     turn, the last one repeating: `{'parsed': obj}` (answered as structured
     data natively, or as prose around the JSON when `structured='prompted'`),
     `{'text': '...'}` (a prompted answer verbatim, to script malformed output),
-    or `{'error': <CallResult error>, 'detail': ...}`. `sent` records every
-    (spec, effective prompt) it was given."""
+    or `{'error': <CallResult error>, 'detail': ...}`. A reply with `when` is a
+    recording: it answers (and keeps answering) any prompt containing that
+    text, the first match in order winning; replies without one are the queue.
+    `sent` records every (spec, effective prompt) it was given."""
 
     def __init__(self, id='fake', *, headless=True, structured='native', installed=True,
                  replies=None, models=('fake-model',)):
@@ -149,9 +151,15 @@ class FakeCaller:
         if spec.schema is not None and self.structured == 'prompted':
             prompt = base.prompted(prompt, spec.schema)
         self.sent.append((spec, prompt))
-        queue = self._replies.get(spec.purpose) or self._replies.get('*') or [
-            {'error': 'failed', 'detail': 'no scripted reply for %s' % spec.purpose}]
-        reply = queue.pop(0) if len(queue) > 1 else queue[0]
+        queue = self._replies.get(spec.purpose) or self._replies.get('*') or []
+        recorded = [r for r in queue if 'when' in r]
+        reply = next((r for r in recorded if r['when'] in spec.prompt), None)
+        if reply is None:
+            if recorded:        # a recording file: only its queue-less entries are a queue
+                queue = [r for r in queue if 'when' not in r]
+            queue = queue or [
+                {'error': 'failed', 'detail': 'no scripted reply for %s' % spec.purpose}]
+            reply = queue.pop(0) if len(queue) > 1 else queue[0]
         if 'error' in reply:
             return base.CallResult(error=reply['error'], detail=reply.get('detail', ''))
         usage = dict(reply.get('usage') or {'tokens_in': 10, 'tokens_out': 5})

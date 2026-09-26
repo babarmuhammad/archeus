@@ -1,0 +1,43 @@
+{
+  "_about": "The judge's scripted brain (plan P7: 'the scripted brain and recorded fixtures'; p7-design-gate D8). Each entry answers any prompt containing `when`, first match in order, so a more specific entry comes before one whose text it contains. Handles (p1, m1, i1, k1, u1) are the ones the intent prompt gives the context package's items; Core validates every one. Nothing here is Core logic: a recording is what a model would have said.",
+  "brain": [
+    {"when": "The message:\nActually, use four spaces, not tabs.",
+     "parsed": {"kind": "preference", "confidence": 0.9,
+                "feedback": {"signal": "correction", "title": "Indent with four spaces",
+                             "promote": "PREFERENCE", "supersedes": "u1"}}},
+    {"when": "The message:\nUse tabs.",
+     "parsed": {"kind": "preference", "confidence": 0.8,
+                "feedback": {"signal": "positive", "title": "Indent with tabs",
+                             "promote": "PREFERENCE"}}},
+    {"when": "The message:\nFrom now on, always write commit messages in English.",
+     "parsed": {"kind": "preference", "confidence": 0.9,
+                "feedback": {"signal": "positive", "title": "Write commit messages in English",
+                             "promote": "PREFERENCE"}}},
+    {"when": "The message:\nAdd a --version flag to the CLI",
+     "parsed": {"kind": "new_work", "confidence": 0.85,
+                "title": "Add a --version flag to the CLI",
+                "objective": "The command-line interface accepts --version and prints the version.",
+                "requirements": [{"text": "a --version flag on the CLI", "origin": "explicit"},
+                                 {"text": "it prints the installed version", "origin": "inferred"}]}},
+    {"when": "The message:\nWhat is going on across my projects?",
+     "parsed": {"kind": "question", "confidence": 0.9,
+                "answer": [{"text": "One mission is open: \"One\".", "refs": ["m1"]}]}},
+    {"when": "The message:\nMake the weekly digest idea a mission.",
+     "parsed": {"kind": "new_work", "confidence": 0.9, "target": "i1",
+                "title": "Weekly digest email",
+                "objective": "Send a weekly email digest of what Archeus did."}},
+    {"when": "The message:\nIdea: a weekly digest email of what Archeus did.",
+     "parsed": {"kind": "idea", "confidence": 0.9, "title": "Weekly digest email",
+                "objective": "A weekly email digest of what Archeus did."}},
+    {"when": "The message:\nHave the core query SQLite directly for speed.",
+     "parsed": {"kind": "new_work", "confidence": 0.8,
+                "title": "Have the core query SQLite directly",
+                "objective": "The core queries SQLite directly, for speed.",
+                "requirements": [{"text": "the core queries SQLite directly", "origin": "explicit"}],
+                "conflicts": [{"ref": "k1", "why": "the decision is that the core never talks to the database directly"}]}}
+  ],
+  "knowledge_extraction": [
+    {"when": "DECISION: the core never talks to the database directly.",
+     "parsed": {"decisions": [{"statement": "The core never talks to the database directly"}]}}
+  ]
+}

@@ -2,7 +2,7 @@
 takes a mission from CREATED to a settled state over the real application
 commands, the real database and the fake harness's real subprocess.
 
-    CREATED -> UNDERSTANDING                                        stub steps
+    CREATED -> start -> UNDERSTANDING -> understood (from its intent, P7)
     CONTEXT_GATHERING -> context_ready: the context package (P5) -> REASONING
     brain `plan.v1` -> Work.propose_plan -> PLANNING -> plan gate (Policy port)
         -> APPROVED | APPROVAL_REQUIRED on ASK (stops: a human decides)
@@ -26,7 +26,7 @@ its process is killed by pid + creation time and the attempt ends LOST or
 ABANDONED; the task retries with a new execution.
 
 The stubs it runs on are the ports' (archeus/core/ports.py). Deliberately not
-here: intent (the two stub steps), the real planner (P7),
+here: intent (the intent worker, core/missions/intent.py, P7), the real planner (P8),
 approvals bound to action hashes (P9), routing and accounts (P10), the
 execution manager and node — adoption, pause, stop, timeouts, hand-off, the
 process registry (P11) — and real verifiers and review (P13).
@@ -43,9 +43,9 @@ from .application.work import PolicyDenied
 from .domain import entities, states
 from .domain.values import Ref
 
-#: The unguarded steps the walking skeleton takes for an engine that does not
-#: exist yet (intent, P7). CONTEXT_GATHERING is the context engine's (P5).
-STUB_STEPS = {'CREATED': 'start', 'UNDERSTANDING': 'understood'}
+#: A mission starts as soon as it exists: whether the user must confirm it
+#: first is the autonomy profile's (P9), and the P1 policy stub never asks.
+START = 'start'
 
 #: States the engine has nothing to do in: ended, or waiting for a human.
 SETTLED = ('COMPLETED', 'CANCELLED', 'FAILED', 'BLOCKED', 'PAUSED', 'APPROVAL_REQUIRED')
@@ -117,11 +117,13 @@ class Engine:
                 'state': state, 'stop': None if did else STOPS.get(state, 'waiting')}
 
     def _step(self, m):
-        if m.state in STUB_STEPS:
-            trigger = STUB_STEPS[m.state]
-            self._do(self.missions.fire, mission_id=m.id, trigger=trigger,
-                     reason='walking skeleton: %s without its engine (not built yet)' % trigger)
-            return trigger
+        if m.state == 'CREATED':
+            self._do(self.missions.fire, mission_id=m.id, trigger=START,
+                     reason='Archeus starts on the mission')
+            return START
+        if m.state == 'UNDERSTANDING':
+            self._do(self.missions.understand, mission_id=m.id)     # from its intent (P7)
+            return 'understood'
         if m.state == 'CONTEXT_GATHERING':
             self._do(self.missions.context_ready, mission_id=m.id)
             return 'context_ready'

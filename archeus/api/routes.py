@@ -19,7 +19,10 @@ inspections and the digest. P5 adds the context package and its preview
 writes nothing, so it takes no idempotency key. P6 adds knowledge (its
 lifecycle, forget, feedback), meeting import (admin: it reads a file), the
 route decisions of Archeus's own calls, and the provider-terms answer
-(ADR-0021; admin, and only the user may give it) (p6-design-gate §9).
+(ADR-0021; admin, and only the user may give it) (p6-design-gate §9). P7 adds
+the conversation (a posted message is read by the intent worker; the reply
+arrives as `message.created`), the intents, the challenge choice and the ideas
+(p7-design-gate §9).
 
 Deliberately absent (a test pins the table): cancel, accept, request-changes,
 approvals (P9), executions and routing (P10, P11), `/v1/now` and the execution
@@ -33,7 +36,7 @@ from collections import namedtuple
 
 from ..core.application import commands, queries, world
 from ..core.application import calls as own_calls
-from ..core.application import knowledge
+from ..core.application import conversation, knowledge
 from ..core.context import assemble as context
 from ..core.knowledge import ingest
 from ..harnesses.calls import real_callers
@@ -265,7 +268,8 @@ def record_feedback(req):
 
 def import_meeting(req):
     b = req.body
-    n = ingest.read_notes(b['path'], b.get('held_at'))
+    n = ingest.read_notes(b['path'], b.get('held_at'),
+                          allow_undated=b.get('allow_undated') is True)
     return 200, req.run(knowledge.import_meeting, {
         'name': n['name'], 'held_at': n['held_at'], 'notes_sha256': n['sha256'],
         'notes_size': n['size'], 'imported_from': n['path'], 'project_id': b.get('project_id')})
@@ -293,6 +297,48 @@ def decide_provider_terms(req):
     return 200, req.run(own_calls.decide_provider_terms, {
         'harness_id': req.params['id'], 'headless': b['headless'],
         'rotation': b.get('rotation'), 'note': b.get('note') or ''})
+
+
+def list_messages(req):
+    with req.api.db.read() as conn:
+        return 200, {'messages': queries.messages(conn, req.params['id'],
+                                                  _one(req.query, 'after'))}
+
+
+def post_message(req):
+    b = req.body
+    return 200, req.run(conversation.post_message, {
+        'text': b['text'], 'conversation_id': req.params['id'],
+        'in_reply_to': b.get('in_reply_to')})
+
+
+def get_intent(req):
+    with req.api.db.read() as conn:
+        return 200, queries.get_intent(conn, req.params['id'])
+
+
+def clarify_intent(req):
+    """A challenge's choice (`proceed` | `drop`), or the answer to a
+    clarification as `text` — posted as a reply to the question, which the
+    intent worker reads with the question in view."""
+    b = req.body
+    if (b.get('choice') is None) == (b.get('text') is None):
+        raise Invalid('choice', 'give exactly one of choice and text')
+    if b.get('choice') is not None:
+        return 200, req.run(req.api.conversations.choose, {'intent_id': req.params['id'],
+                                                           'choice': b['choice']})
+    with req.api.db.read() as conn:
+        asked = queries.question_of(conn, req.params['id'])
+    out = req.run(conversation.post_message, {
+        'text': b['text'], 'conversation_id': asked['conversation_id'],
+        'in_reply_to': asked['id']})
+    return 200, {'reply_id': None, 'intent_id': None, 'resolution': None,
+                 'message_id': out['message_id']}
+
+
+def list_ideas(req):
+    with req.api.db.read() as conn:
+        return 200, {'ideas': queries.list_ideas(conn, _one(req.query, 'state'))}
 
 
 def revoke_device(req):
@@ -365,6 +411,15 @@ ROUTES = (
           'ProviderTermsList'),
     Route('POST', '/v1/provider-terms/{id}', decide_provider_terms, 'admin', 'required',
           schemas.PROVIDER_TERMS, 'ProviderTermsDecided'),
+    # P7: conversation and intent (p7-design-gate §9)
+    Route('GET', '/v1/conversations/{id}/messages', list_messages, 'observe', None, None,
+          'MessageList'),
+    Route('POST', '/v1/conversations/{id}/messages', post_message, 'control', 'required',
+          schemas.POST_MESSAGE, 'MessagePosted'),
+    Route('GET', '/v1/intents/{id}', get_intent, 'observe', None, None, 'Intent'),
+    Route('POST', '/v1/intents/{id}/clarify', clarify_intent, 'control', 'required',
+          schemas.CLARIFY, 'Replied'),
+    Route('GET', '/v1/ideas', list_ideas, 'observe', None, None, 'IdeaList'),
 )
 
 #: The query parameters each GET route reads (for the docs and the client).
@@ -372,7 +427,8 @@ QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),
          '/v1/events/stream': ('after',), '/v1/status': ('project',),
          '/v1/repositories/{id}/inspections': ('limit',),
          '/v1/knowledge': ('project', 'state', 'type'),
-         '/v1/route-decisions': ('source', 'purpose')}
+         '/v1/route-decisions': ('source', 'purpose'),
+         '/v1/conversations/{id}/messages': ('after',), '/v1/ideas': ('state',)}
 
 STREAM = '/v1/events/stream'
 

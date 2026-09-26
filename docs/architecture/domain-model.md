@@ -157,8 +157,8 @@ columns, `state` (ACTIVE | ARCHIVED unless noted), `version`, timestamps.
 | **Repository** | A git repository belonging to a project. | `path`, `path_key` (its real, case-folded path: unique per workspace), `remote_url`, `kind` (repo / submodule / worktree — the `.git` gitdir classifier from `repos.py`), `default_branch`, `last_inspection_id`, and the current drift assessment: `last_revision`, `findings[]`, `evaluated_against` (the constraint-set token) and `evaluated_constraints[]` (knowledge item id, version) — an assessment is state, so it lives here and not on an inspection |
 | **RepositoryInspection** | One inspection of a repository at a revision ("Codebase" in the spec is *a repository at a revision*, i.e. this row). | `revision` (HEAD SHA), `inspected_at`, `languages`, `frameworks`, `dependencies`, `docs[]`, `agent_config` (CLAUDE.md/AGENTS.md/.claude), `modules` (from `connections.build_hierarchy`), `test_commands`, `build_commands`, `findings[]`, `confidence`, `diff_from_previous` |
 | **System** | A running thing a project owns (service, DB, deployment target). | `kind`, `environment` (dev/staging/prod — drives policy), `endpoints` |
-| **Idea** | A captured, not-yet-committed thought. First-class so it can be explored before becoming work. | `text`, `state` (Idea machine), `explorations[]` (artifact ids), `promoted_mission_id?` |
-| **Meeting** | A meeting whose notes are context. | `held_at`, `attendees[]` (person ids), `notes_artifact_id`, `imported_from` (file path) |
+| **Idea** | A captured, not-yet-committed thought. First-class so it can be explored before becoming work. | `text`, `state` (Idea machine), `explorations[]` (artifact ids), `promoted_mission_id?`; as built (P7): `title`, `origin_message_id`, no `explorations` yet |
+| **Meeting** | A meeting whose notes are context. | `held_at` (empty for undated notes imported on opt-in, until the user gives it — P7), `attendees[]` (person ids), `notes_artifact_id`, `imported_from` (file path) |
 | **Decision** | A choice that constrains future work. | `statement`, `rationale`, `decided_at`, `decided_by` (person/user), `status` (active / superseded / reversed), `supersedes_id?`, `source` (meeting / mission / conversation). Every decision is mirrored as a DECISION knowledge item so context retrieval has one index. |
 
 ---
@@ -203,7 +203,8 @@ A relation never changes the state of either end.
 
 ### 5.3 ContextPackage
 What the context engine selected for one subject, and why (context-and-knowledge §2.3;
-p5-design-gate §3). `subject_kind` (mission / project), `subject_id`, `workspace_id`,
+p5-design-gate §3). `subject_kind` (mission / project / message — the last since P7, for
+reading a message's intent), `subject_id`, `workspace_id`,
 `project_id?`, `as_of_seq` and `as_of_at` (the snapshot's last event), `query`, `levels`,
 `budget` (limit and used tokens, per level), `scoring` (the weights it was ranked with),
 `items[]` (each a reference with its row version, level, store, type, provenance, freshness,
@@ -224,6 +225,15 @@ never persisted.
 
 Control verbs (pause, resume, stop, approve, reject, reprioritize, status, route-why) are parsed by
 a deterministic grammar and never need a model (ADR-0006).
+
+**As built (P7, p7-design-gate §4–§5):** Message also has `in_reply_to`, `intent_id` and
+`principal_id`; a card is `{type, ref, ...}` and a link `{ref}`, and card types add `mission`,
+`idea`, `challenge`, `clarification`, `knowledge` and `status`. Intent also has `via` (grammar /
+brain), `workspace_id`, `project_id`, `conflicts`, `reason`, `proposal` (the validated,
+resolved reading a challenge choice is applied from), `route_decision_id`,
+`context_package_id` and `answers_intent_id`; one message has at most one intent (unique). A
+clarification and a challenge are `clarification_requested` with their card. Every turn is in
+the primary conversation; per-mission threads are P16's.
 
 ---
 

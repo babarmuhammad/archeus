@@ -21,6 +21,10 @@ race with an HTTP command (IllegalTrigger, GuardFailed, VersionConflict) is
 logged and skipped; any other exception fails Core (exit 3). Nothing here
 runs inside a transaction: every change is one writer command.
 
+The intent worker (P7, `archeus-intent`) reads every user message: the
+control grammar, else one brain call through `archeus_call`, applied by one
+command. It is the knowledge worker's shape and shares its OwnCalls.
+
 The world worker (P4) is the same shape: one per Core, a failing repository is
 a FAILED inspection, and any other exception fails Core (exit 3). It passes
 every WORLD_POLL_S seconds, on every commit, and whenever `pending()` finds
@@ -48,8 +52,10 @@ from .application import commands, errors, queries, work
 from ..harnesses.calls import real_callers
 from .calls import OwnCalls
 from .domain.values import Ref
+from .application.conversation import Conversations
 from .knowledge.passes import Passes
 from .knowledge.worker import Knowledge
+from .missions.intent import Intents
 from .world.worker import World
 
 DEFAULT_PORT = 7337
@@ -185,8 +191,8 @@ class EngineLoop:
 
 
 class WorldLoop:
-    """A worker thread: the boot sweep, then passes — `archeus-world` (P4) and
-    `archeus-knowledge` (P6). It waits on the writer's commit notification with
+    """A worker thread: the boot sweep, then passes — `archeus-world` (P4),
+    `archeus-knowledge` (P6) and `archeus-intent` (P7). It waits on the writer's commit notification with
     the poll interval as its timeout, and `wake()` (called by the worker's
     `pending()` when it finds due work) ends a wait early."""
 
@@ -259,7 +265,7 @@ class Core:
         self.launch_clock, self.lock_retry_s = launch_clock, lock_retry_s
         self.static_dir, self.world_poll_s = static_dir, world_poll_s
         self.lock = self.db = self.loop = self.world = self.api = self.server = None
-        self.knowledge = None
+        self.knowledge = self.intent = None
         self.warning = None
         self.exit_code = 0
         self._done = threading.Event()
@@ -318,8 +324,16 @@ class Core:
                                    self.db, poll_s=self.world_poll_s,
                                    on_fail=self._engine_failed, name='archeus-knowledge')
         self.knowledge.start()
+        self.conversations = Conversations(missions=self.missions)
+        self.intent = WorldLoop(Intents(self.db, actor=self.system, calls=own,
+                                        conversations=self.conversations,
+                                        after='knowledge'),
+                                self.db, poll_s=self.world_poll_s,
+                                on_fail=self._engine_failed, name='archeus-intent')
+        self.intent.start()
 
-        self.api = server.Api(db=self.db, missions=self.missions, port=self.port,
+        self.api = server.Api(db=self.db, missions=self.missions,
+                              conversations=self.conversations, port=self.port,
                               health=self.health, version=VERSION,
                               heartbeat_s=self.heartbeat_s, launch_clock=self.launch_clock,
                               static_dir=self.static_dir)
@@ -367,7 +381,7 @@ class Core:
                          'version': VERSION, 'schema': self.schema,
                          'ports': 'stub' if self.ports.stub else 'real'},
                 'engine': self.loop.status(), 'world': self.world.status(),
-                'knowledge': self.knowledge.status()}
+                'knowledge': self.knowledge.status(), 'intent': self.intent.status()}
 
     def launch_url(self):
         """A fresh launch code in the URL fragment (never sent to the server)."""
@@ -399,6 +413,8 @@ class Core:
             self.server.shutdown()
             self.server.server_close()
             self.server = None
+        if self.intent is not None:
+            self.intent.stop()
         if self.knowledge is not None:
             self.knowledge.stop()
         if self.world is not None:

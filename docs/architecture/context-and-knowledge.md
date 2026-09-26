@@ -74,6 +74,13 @@ authority: explicit user item 1.0 > CONFIRMED decision/standard 0.9 > EXTRACTED 
 per-level shares above, rendered as a subgraph text block like Graphify's token-budgeted
 `_subgraph_to_text`.
 
+**As built (P7, p7-design-gate D5, D1):** a third subject, `message`, is what the brain reads
+intent against: L0 the message and its conversation's earlier turns, L1 the workspace's projects,
+L2 open missions, live ideas, meetings and every project's CONFIRMED deciding items and
+preferences, L4 global knowledge. Only for a message, a DECISION candidate imported from notes
+is a candidate too, at the `candidate` authority and labelled not confirmed; the mission and
+project subjects keep P5's rule that candidates are excluded.
+
 ### 2.3 The context package
 
 ```yaml
@@ -153,6 +160,13 @@ never an input (D4). Feedback promotes to a CANDIDATE (never auto-confirmed); de
 message *is* feedback is intent (P7), which is also where §3's "explicit statement auto-confirms"
 meets S9. `contradicts` is an INFERRED relation from a new item to one the call was shown; it
 never changes a state. Consolidation, backup → verify → swap and usage decay are not in P6.
+
+**As built (P7, p7-design-gate §5, §8):** the grammar's `remember …` is the explicit statement
+this table's first row means: a PREFERENCE, origin explicit, CONFIRMED at once. A model's reading
+of a preference or feedback (S9) is only ever a CANDIDATE through `record_feedback`. A promoted
+candidate may name the live item it replaces, CANDIDATE or CONFIRMED; confirming it supersedes a
+CONFIRMED predecessor as below, and rejects a CANDIDATE one (`replaced before it was confirmed`,
+with `superseded_by_id`) — a candidate is never SUPERSEDED and never authoritative.
 
 **Supersession:** a new item with the same `(type, scope, subject anchor)` and conflicting body
 proposes `supersedes_id`; confirming it sets the old one SUPERSEDED with `valid_until`. Nothing
@@ -261,6 +275,10 @@ for recognised attendees (EXTRACTED when matching known handles, else AMBIGUOUS)
 *candidates* extracted by a brain call (a tool-less structured call, plan §31.4). When a later message says "use the notes from Monday's
 meeting", intent resolution finds the Meeting by date/project, pins it into the mission's
 context scope, and the context package cites it with its reason.
+
+**As built (P7, p7-design-gate D2):** notes with no date are imported only when the import path
+opts in (`allow_undated`): the meeting has no `held_at` — never a guessed one — and Archeus asks
+for the date in the primary conversation; the reply to that question dates it.
 
 ## 9. Since-you-left digest (Scenario 14)
 

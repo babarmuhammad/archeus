@@ -287,13 +287,19 @@ class System(Entity):
 
 @entity
 class Idea(Entity):
+    """A captured, not-yet-committed thought (domain-model §4). Promotion
+    creates a Mission (origin idea) and records it here (P7)."""
     _ID = 'idea'
     _STATE = ('state', 'idea')
     _TEXT = ('text',)
+    _REFS = {'origin_message_id': 'message', 'promoted_mission_id': 'mission'}
     id: str
     workspace_id: str
     text: str
+    title: str = ''
     project_id: str = None
+    origin_message_id: str = None
+    promoted_mission_id: str = None
     state: str = None
 
 
@@ -306,7 +312,9 @@ class Meeting(Entity):
     id: str
     workspace_id: str
     name: str
-    held_at: str
+    # None when the notes carry no date (P7: imported undated, and Archeus
+    # asks for it); never guessed from the clock or the file
+    held_at: str = None
     project_id: str = None
     notes_artifact_id: str = None
     imported_from: str = None
@@ -492,28 +500,96 @@ class Conversation(Entity):
             raise ValueError('a mission thread names its mission; the primary one does not')
 
 
+#: A reply card's type (domain-model §6): a typed, live reference to a domain
+#: object. P7 adds the ones its replies carry (mission, idea, challenge,
+#: clarification, knowledge, status) to the documented set.
+CARD_TYPES = ('mission_proposal', 'plan', 'approval', 'route_explanation', 'diff',
+              'verification', 'digest', 'mission', 'idea', 'challenge', 'clarification',
+              'knowledge', 'status')
+
+
+def check_ref(r, what):
+    """`{kind, id}`, the id of that kind when the kind has an id prefix."""
+    if not (isinstance(r, dict) and set(r) == {'kind', 'id'} and isinstance(r['kind'], str)
+            and r['kind'] and isinstance(r['id'], str) and r['id']
+            and (r['kind'] not in ids.PREFIXES or ids.is_id(r['id'], r['kind']))):
+        raise ValueError('%s is a {kind, id} reference: %r' % (what, r))
+
+
 @entity
 class Message(Entity):
+    """One turn (domain-model §6). `cards` are `{type, ref, ...}` references to
+    what the turn produced; `links` the world objects it touched (`{ref, ...}`)."""
     _ID = 'message'
     _CHOICES = {'author': ('user', 'archeus', 'system')}
-    _REFS = {'conversation_id': 'conversation'}
+    _REFS = {'conversation_id': 'conversation', 'in_reply_to': 'message',
+             'intent_id': 'intent', 'principal_id': 'principal'}
     id: str
     conversation_id: str
     author: str
     text: str = ''
+    in_reply_to: str = None
+    cards: tuple = ()
+    links: tuple = ()
+    intent_id: str = None
+    principal_id: str = None
+
+    def _check(self):
+        for c in self.cards:
+            if not (isinstance(c, dict) and c.get('type') in CARD_TYPES):
+                raise ValueError('a card is {type, ref, ...} with a type in %s: %r'
+                                 % (CARD_TYPES, c))
+            check_ref(c.get('ref'), 'a card ref')
+        for link in self.links:
+            if not isinstance(link, dict):
+                raise ValueError('a link is {ref, ...}: %r' % (link,))
+            check_ref(link.get('ref'), 'a link ref')
+
+
+INTENT_KINDS = ('control_verb', 'question', 'new_work', 'continue_work', 'feedback',
+                'preference', 'idea')
+RESOLUTIONS = ('answered', 'mission_created', 'mission_updated', 'clarification_requested',
+               'declined')
 
 
 @entity
 class Intent(Entity):
+    """What the user wants, read from one message (domain-model §6). `via` says
+    who read it: the deterministic grammar, or a brain call (whose
+    RouteDecision and ContextPackage it cites). `proposal` is the validated,
+    Core-resolved reading a challenge choice or a clarification is applied
+    from, so a choice never needs a second model call."""
     _ID = 'intent'
     _TEXT = ('utterance',)
-    _CHOICES = {'kind': ('control_verb', 'question', 'new_work', 'continue_work',
-                         'feedback', 'preference', 'idea')}
-    _REFS = {'message_id': 'message'}
+    _CHOICES = {'kind': INTENT_KINDS, 'resolution': RESOLUTIONS,
+                'via': ('grammar', 'brain')}
+    _REFS = {'message_id': 'message', 'route_decision_id': 'route_decision',
+             'context_package_id': 'context_package', 'answers_intent_id': 'intent'}
     id: str
     message_id: str
     utterance: str
     kind: str
+    via: str = 'brain'
+    workspace_id: str = ids.GLOBAL_WORKSPACE
+    project_id: str = None
+    target_refs: tuple = ()
+    ambiguities: tuple = ()
+    conflicts: tuple = ()
+    confidence: float = None
+    resolution: str = None
+    reason: str = ''
+    proposal: dict = None
+    route_decision_id: str = None
+    context_package_id: str = None
+    answers_intent_id: str = None
+
+    def _check(self):
+        for r in self.target_refs:
+            check_ref(r, 'Intent.target_refs')
+        c = self.confidence
+        if c is not None and not (isinstance(c, (int, float)) and not isinstance(c, bool)
+                                  and 0 <= c <= 1):
+            raise ValueError('Intent.confidence is a number in 0..1')
 
 
 # ── work (domain-model §7) ──────────────────────────────────────────────────
@@ -528,12 +604,20 @@ class Mission(Entity):
     _TEXT = ('title', 'objective')
     _CHOICES = {'origin': ('conversation', 'idea', 'automation', 'legacy_import')}
     _NONNEG = ('max_replans',)
-    _REFS = {'context_package_id': 'context_package'}
+    _REFS = {'context_package_id': 'context_package',
+             'origin_ref': ('message', 'idea', 'automation_run')}
     id: str
     workspace_id: str
     title: str
     objective: str
     origin: str = 'conversation'
+    # the message, idea or automation run it came from (domain-model §7.1)
+    origin_ref: str = None
+    desired_outcome: str = ''
+    # each {text, origin: explicit|inferred, source_ref?}: what the user asked
+    # for, kept apart from what Archeus inferred (P7)
+    requirements: tuple = ()
+    constraints: tuple = ()
     project_id: str = None
     priority: int = 0
     max_replans: int = 2            # `replan_budget_exhausted` (state-machines §2)
@@ -565,6 +649,12 @@ class Mission(Entity):
                     and set(c) <= {'text', 'check', 'origin'}):
                 raise ValueError('a success criterion is {text, check: automatic|human, '
                                  'origin?}: %r' % (c,))
+        for c in self.requirements + self.constraints:
+            if not (isinstance(c, dict) and isinstance(c.get('text'), str) and c['text'].strip()
+                    and c.get('origin') in ORIGINS
+                    and set(c) <= {'text', 'origin', 'source_ref'}):
+                raise ValueError('a requirement or constraint is {text, origin: '
+                                 'explicit|inferred, source_ref?}: %r' % (c,))
 
 
 @entity
@@ -739,7 +829,7 @@ class Artifact(Entity):
 
 
 #: What a context package can be assembled for (p5-design-gate §3).
-CONTEXT_SUBJECTS = ('mission', 'project')
+CONTEXT_SUBJECTS = ('mission', 'project', 'message')
 
 
 @entity

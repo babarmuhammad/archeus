@@ -87,6 +87,9 @@ stateDiagram-v2
 - `explore` runs research executions under the idea (they are tasks of a lightweight
   "exploration" mission with `kind=research`, which keeps routing/policy uniform).
 - LEARNED is an **Idea** state only. Missions do not have a LEARNED state (see §2).
+- *As built (P7):* an idea is captured from a message (`idea.created`); made into a mission it
+  takes the diagram's shortcuts only — `clarify`, `plan`, `promote` from CAPTURED — and follows
+  its mission through `mission_completed` / `mission_cancelled`, consumed from the outbox.
 
 ---
 
@@ -199,6 +202,12 @@ changes in `states.py` and `guards.py`.
   chooses the order (`test_advance_holds_no_legality_of_its_own`).
 - **Only the plan in force runs.** `dispatch_task` refuses a task of a superseded plan, so a
   READY task left behind by an earlier plan can never start after a replan.
+
+**P7, as built.** The UNDERSTANDING stub is gone: `Missions.understand` takes `understood`
+with the reason naming where the understanding came from (the message and its intent, the idea,
+or the explicit title and objective). A mission exists only once its intent is understood and
+unchallenged, so `needs_clarification` and `challenge_raised` are not taken in P7 — a
+clarification or challenge happens before any mission (p7-design-gate §6).
 
 **Session rotation never changes mission state.** An execution handing off (Execution §4) keeps
 its task RUNNING and its mission EXECUTING.

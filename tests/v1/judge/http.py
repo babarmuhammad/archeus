@@ -98,9 +98,9 @@ class HttpClient:
         engine, world = health['engine'], health['world']
         if engine['state'] != 'idle' or world['state'] != 'idle' or world['pending']:
             return False
-        knowledge = health['knowledge']         # P6: every event it has not consumed
-        if knowledge['state'] != 'idle' or knowledge['pending']:
-            return False
+        for worker in ('knowledge', 'intent'):  # P6, P7: every event not yet consumed
+            if health[worker]['state'] != 'idle' or health[worker]['pending']:
+                return False
         return not self._call('GET', '/v1/events?after=%d&limit=1'
                               % engine['observed_seq'])['events']
 
@@ -183,8 +183,31 @@ class HttpClient:
 
     # ── knowledge and own calls (P6) ──
 
+    def submit_message(self, text: str, *, conversation_id: Optional[str] = None,
+                       idempotency_key: Optional[str] = None) -> dict:
+        """POST the turn; the reply arrives as a message (api-and-realtime §2),
+        read back once it exists and Core has settled what the turn set in
+        motion (the in-process binding's contract)."""
+        cid = conversation_id or 'primary'
+        posted = self._call('POST', '/v1/conversations/%s/messages' % cid, {
+            'text': text, 'idempotency_key': idempotency_key or ids.new_ulid()})
+        mid = posted['message_id']
+        deadline = time.monotonic() + 60
+        while True:
+            got = [m for m in self._call('GET', '/v1/conversations/%s/messages?after=%s'
+                                         % (posted['conversation_id'], mid))['messages']
+                   if m['in_reply_to'] == mid and m['author'] == 'archeus']
+            if got:
+                while not self._idle() and time.monotonic() < deadline + 60:
+                    time.sleep(0.05)
+                return dict(got[0], message_id=mid)
+            if time.monotonic() > deadline:
+                raise AssertionError('no reply to message %s within 60s' % mid)
+            time.sleep(0.05)
+
     def import_meeting(self, path: str, *, project_id: Optional[str] = None) -> dict:
-        body = {'path': path, 'idempotency_key': ids.new_ulid()}
+        # the import path opts in to undated notes (P7 D2): imported, then asked
+        body = {'path': path, 'allow_undated': True, 'idempotency_key': ids.new_ulid()}
         if project_id is not None:
             body['project_id'] = project_id
         return self._call('POST', '/v1/meetings/import', body)['meeting']

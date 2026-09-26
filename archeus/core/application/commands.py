@@ -258,6 +258,28 @@ class Missions:
                             extra={'context_package_id': pkg.id})
         return dict(_result(row, [e]), context_package_id=pkg.id)
 
+    def understand(self, tx, *, actor, mission_id, expected_version=None):
+        """UNDERSTANDING -> CONTEXT_GATHERING (P7). A mission is created only
+        once its intent is understood (the intent pipeline asks first when it is
+        not), so this records where the understanding came from: the message
+        and intent it was read from, the idea it was promoted from, or the
+        explicit title and objective it was created with. `needs_clarification`
+        is therefore never taken here (p7-design-gate §6)."""
+        m = lifecycle.load(tx, entities.Mission, mission_id).entity
+        read = []
+        if m.origin == 'conversation' and m.origin_ref:
+            read = [r.entity for r in tx.where(entities.Intent, message_id=m.origin_ref)]
+        if read:
+            why = 'understood from message %s (intent %s, read by the %s)' % (
+                m.origin_ref, read[0].id, read[0].via)
+        elif m.origin == 'idea' and m.origin_ref:
+            why = 'understood from idea %s, which you made into this mission' % m.origin_ref
+        else:
+            why = 'understood from its explicit title and objective'
+        row, e = self._fire(tx, mission_id, 'understood', actor=actor, reason=why,
+                            expected_version=expected_version)
+        return _result(row, [e])
+
     def reasoned(self, tx, *, actor, mission_id, reason, success_criteria=None):
         """REASONING -> PLANNING with the plan just proposed; a mission without
         success criteria takes the plan's (`inferred`) in the same move."""

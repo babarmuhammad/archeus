@@ -21,7 +21,7 @@ import os
 from typing import Optional, Protocol, Sequence, runtime_checkable
 
 from archeus.core import engine, ports
-from archeus.core.application import commands, queries, work, world
+from archeus.core.application import commands, conversation, queries, work, world
 from archeus.core.application.lifecycle import GuardFailed, IllegalTrigger
 from archeus.core.application.work import PolicyDenied
 from archeus.core.application.world import Conflict
@@ -34,6 +34,7 @@ from archeus.core.calls import OwnCalls
 from archeus.core.knowledge import ingest
 from archeus.core.knowledge.passes import Passes
 from archeus.core.knowledge.worker import Knowledge
+from archeus.core.missions.intent import Intents
 from archeus.harnesses.calls import real_callers
 from archeus.harnesses.fake import FakeHarness
 from archeus.harnesses.registry import AdapterRegistry
@@ -136,7 +137,7 @@ class InProcessClient:
         self._db = self._lock = None
         self._engine = None
         self._principal = self._system = None
-        self._world = self._knowledge = None
+        self._world = self._knowledge = self._intents = None
         # P6: the own-call adapters and preference (the rig names fakes; None is
         # the real adapters, each gated by ADR-0021, as the Core runtime has)
         self._callers, self._preference = callers, preference
@@ -178,6 +179,11 @@ class InProcessClient:
                                                                           self._system),
                                                       calls=own))
             self._knowledge.sweep()
+            # the intent worker, likewise (P7); pumped after the knowledge
+            # worker, so a message is read against what was learned before it
+            self._conversations = conversation.Conversations(missions=self._missions)
+            self._intents = Intents(self._db, actor=Ref('system', self._system), calls=own,
+                                    conversations=self._conversations)
         return self._db
 
     def _actor(self):
@@ -226,12 +232,14 @@ class InProcessClient:
         stepped = any([self._engine.step(mid)['changed'] for mid in live])
         worked = self._world.pass_once()['changed']
         learned = self._knowledge.pass_once()['changed']
-        return not (worked or learned or stepped)
+        read = self._intents.pass_once()['changed']
+        return not (worked or learned or read or stepped)
 
     def close(self, *, drain=True):
         if self._db is not None:
             self._db.close(drain=drain)
             self._db = self._engine = self._world = self._knowledge = None   # orphans now
+            self._intents = None
             self._lock.release()
             self._lock = None
 
@@ -286,6 +294,31 @@ class InProcessClient:
                 return queries.events(conn, after_seq, limit=limit)
         return self._call(read)
 
+    # ── conversation (P7) ──
+
+    def submit_message(self, text: str, *, conversation_id: Optional[str] = None,
+                       idempotency_key: Optional[str] = None) -> dict:
+        """Post the turn, wait for Archeus's reply — the intent worker's,
+        pumped by `_idle` — and return it (`message_id` is the posted turn)
+        once Core has settled what the turn set in motion, as a person reading
+        the reply would see it."""
+        posted = self._run(conversation.post_message,
+                           {'text': text, 'conversation_id': conversation_id},
+                           idempotency_key)
+
+        def reply():
+            got = self._read(queries.reply_to, posted['message_id'])
+            return got and dict(got, message_id=posted['message_id'])
+        while True:
+            got = reply()
+            if got:
+                while not self._idle():
+                    pass
+                return got
+            if self._idle() and not reply():
+                raise NotImplementedError('message %s was posted and nothing read it'
+                                          % posted['message_id'])
+
     # ── the world (P4) ──
 
     def _read(self, fn, *args):
@@ -322,8 +355,9 @@ class InProcessClient:
     # ── knowledge and own calls (P6) ──
 
     def import_meeting(self, path: str, *, project_id: Optional[str] = None) -> dict:
+        # the import path opts in to undated notes (P7 D2): imported, then asked
         return self._call(lambda: ingest.import_file(self._core(), self._actor(), path,
-                                                     project_id))['meeting']
+                                                     project_id, allow_undated=True))['meeting']
 
     def list_knowledge(self, *, project_id: Optional[str] = None,
                        state: Optional[str] = None) -> list:
@@ -345,7 +379,7 @@ class InProcessClient:
 #: control verbs; P3.5: listing missions, which the SPA's two lists read).
 IMPLEMENTED = ('create_mission', 'get_mission', 'list_missions', 'events', 'pause', 'resume',
                'create_project', 'declare_constraint', 'status', 'digest', 'ack',
-               'import_meeting', 'list_knowledge', 'route_why')
+               'import_meeting', 'list_knowledge', 'route_why', 'submit_message')
 
 # Every other operation is declared and fails loudly. Later phases replace these
 # with real bodies one by one; tests/v1/contract/test_core_client.py keeps every

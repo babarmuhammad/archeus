@@ -17,6 +17,12 @@ export interface ApiError {
   detail: Record<string, unknown>;
 }
 
+export interface Card {
+  type: 'mission_proposal' | 'plan' | 'approval' | 'route_explanation' | 'diff' | 'verification' | 'digest' | 'mission' | 'idea' | 'challenge' | 'clarification' | 'knowledge' | 'status';
+  ref: Subject;
+  [field: string]: unknown;
+}
+
 export interface CommandResult {
   id: string;
   state: string;
@@ -83,7 +89,7 @@ export interface ContextPackage {
 }
 
 export interface ContextPreview {
-  subject_kind: 'mission' | 'project';
+  subject_kind: 'mission' | 'project' | 'message';
   subject_id: string;
   workspace_id: string;
   project_id: string | null;
@@ -201,10 +207,21 @@ export interface Health {
     state: 'starting' | 'reconciling' | 'running' | 'idle' | 'failed' | 'stopped';
     pending: number;
   };
-  knowledge: {
-    state: 'starting' | 'reconciling' | 'running' | 'idle' | 'failed' | 'stopped';
-    pending: number;
-  };
+  knowledge: Worker;
+  intent: Worker;
+}
+
+export interface Idea {
+  id: string;
+  state: 'CAPTURED' | 'COMPLETED' | 'CONCEPT' | 'DISCARDED' | 'EXPLORED' | 'IMPLEMENTING' | 'LEARNED' | 'PARKED' | 'PLANNED' | 'SCHEDULED' | 'UNDERSTOOD' | 'VALIDATED';
+  text: string;
+  title?: string;
+  promoted_mission_id?: string | null;
+  [field: string]: unknown;
+}
+
+export interface IdeaList {
+  ideas: Idea[];
 }
 
 export interface Inspection {
@@ -221,6 +238,15 @@ export interface Inspection {
 
 export interface InspectionList {
   inspections: Inspection[];
+}
+
+export interface Intent {
+  id: string;
+  message_id: string;
+  kind: 'control_verb' | 'question' | 'new_work' | 'continue_work' | 'feedback' | 'preference' | 'idea';
+  via: 'grammar' | 'brain';
+  resolution: 'answered' | 'mission_created' | 'mission_updated' | 'clarification_requested' | 'declined' | null;
+  [field: string]: unknown;
 }
 
 export interface KnowledgeChanged {
@@ -259,7 +285,7 @@ export interface LaunchCode {
 export interface Meeting {
   id: string;
   name: string;
-  held_at: string;
+  held_at: string | null;
   project_id: string | null;
   notes_artifact_id?: string | null;
   [field: string]: unknown;
@@ -268,6 +294,28 @@ export interface Meeting {
 export interface MeetingImported {
   meeting: Meeting;
   changed: boolean;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  author: 'user' | 'archeus' | 'system';
+  text: string;
+  in_reply_to: string | null;
+  cards: Card[];
+  links: Record<string, unknown>[];
+  intent_id?: string | null;
+  [field: string]: unknown;
+}
+
+export interface MessageList {
+  messages: Message[];
+}
+
+export interface MessagePosted {
+  message_id: string;
+  conversation_id: string;
+  seq: number;
 }
 
 export interface Mission {
@@ -325,6 +373,13 @@ export interface ProviderTermsList {
 export interface Redeemed {
   device_id: string;
   token: string;
+}
+
+export interface Replied {
+  reply_id?: string | null;
+  intent_id?: string | null;
+  resolution?: string | null;
+  [field: string]: unknown;
 }
 
 export interface Repository {
@@ -393,6 +448,11 @@ export interface Version {
   api: string;
 }
 
+export interface Worker {
+  state: 'starting' | 'reconciling' | 'running' | 'idle' | 'failed' | 'stopped';
+  pending: number;
+}
+
 export interface CreateMissionRequest {
   title: string;
   objective: string;
@@ -440,7 +500,7 @@ export interface AckDigestRequest {
 
 export interface PreviewContextRequest {
   subject: {
-    kind: 'mission' | 'project';
+    kind: 'mission' | 'project' | 'message';
     id: string;
   };
   query?: string | null;
@@ -499,6 +559,7 @@ export interface ImportMeetingRequest {
   path: string;
   project_id?: string | null;
   held_at?: string | null;
+  allow_undated?: boolean | null;
   idempotency_key: string;
 }
 
@@ -506,6 +567,18 @@ export interface DecideProviderTermsRequest {
   headless: 'unknown' | 'permitted' | 'refused';
   rotation?: 'unknown' | 'permitted' | 'refused' | null;
   note?: string | null;
+  idempotency_key: string;
+}
+
+export interface PostMessageRequest {
+  text: string;
+  in_reply_to?: string | null;
+  idempotency_key: string;
+}
+
+export interface ClarifyIntentRequest {
+  choice?: 'proceed' | 'drop' | null;
+  text?: string | null;
   idempotency_key: string;
 }
 
@@ -589,4 +662,14 @@ export const api = {
     send<ProviderTermsList>('GET', '/v1/provider-terms'),
   decideProviderTerms: (send: Send, id: string, body: DecideProviderTermsRequest) =>
     send<ProviderTermsDecided>('POST', '/v1/provider-terms/' + encodeURIComponent(id), body),
+  listMessages: (send: Send, id: string, query: { after?: number } = {}) =>
+    send<MessageList>('GET', '/v1/conversations/' + encodeURIComponent(id) + '/messages' + qs(query)),
+  postMessage: (send: Send, id: string, body: PostMessageRequest) =>
+    send<MessagePosted>('POST', '/v1/conversations/' + encodeURIComponent(id) + '/messages', body),
+  getIntent: (send: Send, id: string) =>
+    send<Intent>('GET', '/v1/intents/' + encodeURIComponent(id)),
+  clarifyIntent: (send: Send, id: string, body: ClarifyIntentRequest) =>
+    send<Replied>('POST', '/v1/intents/' + encodeURIComponent(id) + '/clarify', body),
+  listIdeas: (send: Send, query: { state?: Mission['state'] } = {}) =>
+    send<IdeaList>('GET', '/v1/ideas' + qs(query)),
 };

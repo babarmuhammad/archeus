@@ -198,8 +198,9 @@ class Passes:
         c = self.calls.run(purpose='knowledge_extraction',
                            source={'kind': 'meeting', 'id': m.id},
                            workspace_id=m.workspace_id, project_id=m.project_id,
-                           prompt=DECISIONS_PREFIX + 'Meeting: %s, held %s\n\n%s' % (
-                               m.name, m.held_at, notes),
+                           prompt=DECISIONS_PREFIX + 'Meeting: %s, %s\n\n%s' % (
+                               m.name, 'held %s' % m.held_at if m.held_at else 'undated',
+                               notes),
                            schema=DECISIONS_SCHEMA, check=check_decisions,
                            workdir=paths.archeus_home(),
                            context_package_id=pkg_id)

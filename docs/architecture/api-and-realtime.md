@@ -39,13 +39,13 @@ mobile (ADR-0010). Push beyond ntfy is **DEFERRED**.
 | Area | Queries (GET) | Commands (POST) |
 |---|---|---|
 | Presence | `/v1/digest` (P4), `/v1/now` (digest + active + attention summary, P16 — it embeds the digest query), `/v1/activity?since=` | `/v1/digest/ack` (P4; the monotone per-user cursor) |
-| Conversation | `/v1/conversations/{id}/messages?before=` | `/v1/conversations/{id}/messages` (user turn → intent pipeline; returns message id; reply arrives via events) |
-| Intent | `/v1/intents/{id}` | `/v1/intents/{id}/clarify` |
+| Conversation | `/v1/conversations/{id}/messages?before=` — P7: `?after=`, and `primary` names the primary conversation | `/v1/conversations/{id}/messages` (user turn → intent pipeline; returns message id; reply arrives via events) — P7, with `in_reply_to` |
+| Intent | `/v1/intents/{id}` (P7) | `/v1/intents/{id}/clarify` (P7: `{choice: proceed\|drop}` for a challenge, or `{text}` answering a clarification) |
 | Missions | `/v1/missions?state=&project=`, `/v1/missions/{id}`, `/{id}/plan`, `/{id}/tasks`, `/{id}/timeline`, `/{id}/why` | `create`, `pause`, `resume`, `cancel`, `reprioritize`, `request-changes`, `accept`, `feedback` |
 | Plans | `/v1/plans/{id}` | `/v1/plans/{id}/edit` (creates new version) |
 | Tasks / Executions | `/v1/tasks/{id}`, `/v1/executions/{id}`, `/v1/executions/{id}/stream?from=` (tail of normalised events), `/v1/executions/{id}/checkpoints` | `stop`, `retry`, `handoff` |
 | Approvals / Attention | `/v1/attention` (approvals, blockers, acceptance items, knowledge & drift proposals), `/v1/approvals/{id}` | `/v1/approvals/{id}/decide` `{decision, note, step_up?, idempotency_key}` |
-| World | `/v1/status` (P4, deterministic), `/v1/projects`, `/v1/projects/{id}`, `/v1/world/graph?focus=&depth=`, `/v1/repositories/{id}/inspections`, `/v1/meetings`, `/v1/decisions`, `/v1/ideas`, `/v1/people` | `projects/create|archive` (`POST /v1/projects`, admin, P4), `projects/{id}/constraints` (P4), `repositories/{id}/inspect`, `meetings/import`, `ideas/capture|promote|park` |
+| World | `/v1/status` (P4, deterministic), `/v1/projects`, `/v1/projects/{id}`, `/v1/world/graph?focus=&depth=`, `/v1/repositories/{id}/inspections`, `/v1/meetings`, `/v1/decisions`, `/v1/ideas` (P7, `?state`), `/v1/people` | `projects/create|archive` (`POST /v1/projects`, admin, P4), `projects/{id}/constraints` (P4), `repositories/{id}/inspect`, `meetings/import`, `ideas/capture|promote|park` |
 | Knowledge | `/v1/knowledge?type=&scope=&q=`, `/v1/knowledge/{id}` (with supersession chain) — P6: `?project&state&type` | `confirm`, `retract`, `supersede`, `pin`, `forget` (dry-run default) — P6: all but `pin`, plus `reject` and `/v1/feedback` |
 | Context | `/v1/context/{package_id}` (P5; also embedded in `/v1/missions/{id}` as `context_package`) | `/v1/context/preview` (P5, observe, writes nothing: assemble without recording) |
 | Resources | `/v1/harnesses`, `/v1/accounts`, `/v1/accounts/{id}/usage`, `/v1/models`, `/v1/route-decisions/{id}` (P6, with `?source&purpose` listing), `/v1/provider-terms` (P6) | `accounts/register|disable|reauth`, `resource-policies/{account}` (priority/allocation/budgets), `/v1/route/preview`, `/v1/provider-terms/{harness}` (P6, admin: the ADR-0021 answer) |
@@ -107,6 +107,10 @@ notify_default, description)`. The spec's events map as:
 | DEVICE_CONNECTED / DISCONNECTED | `device.stream_opened` / `device.stream_closed` (visibility system) |
 
 Design rule (PDF §19): events describe durable facts; consumers decide what they mean.
+
+P7 registers `idea.created`, `idea.state_changed` and `mission.updated` (a continuation added
+requirements or constraints) and nothing else: an intent, a clarification and a challenge are
+rows recorded by the reply's `message.created`, whose cards say which (p7-design-gate D6).
 
 ### 3.3 What is event-driven
 

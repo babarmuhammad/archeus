@@ -31,7 +31,10 @@ scenarios use — `submit_message`, `create_mission`, `get_mission`, `list_missi
 api-and-realtime §2. (`create_project` and `declare_constraint` were added in P4, D1 of
 p4-design-gate.md: the S7 rig registers its fixture repository and constraint through the
 contract, never through Core internals. `list_knowledge` was added in P6, D8 of
-p6-design-gate.md: K1–K3 judge what a pass produced through the contract.) Two bindings: `InProcessClient` (P1–P3, calls the
+p6-design-gate.md: K1–K3 judge what a pass produced through the contract. `submit_message`
+is implemented in both bindings in P7: it posts the turn and returns Archeus's reply once Core
+has settled what the turn set in motion; the judge's default Core is offered a recorded brain,
+p7-design-gate D8.) Two bindings: `InProcessClient` (P1–P3, calls the
 application layer directly) and `HttpClient` (P3.5 onward, HTTP + SSE). Every scenario runs
 against both once HTTP exists.
 

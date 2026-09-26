@@ -4,7 +4,16 @@
 pumped in this process) and, since P3.5, `http` (the real Core runtime on a
 free port, spoken to over HTTP) — every scenario runs against both. The
 rig drives the same Core the client talks to (restarts), so it is built on it.
+
+Since P7 the default Core's own calls are offered one scripted harness, the
+recorded brain (`recorded_brain()`): the plan's "scripted brain and recorded
+fixtures" (p7-design-gate D8). It answers the scenarios' messages and notes
+from tests/v1/fixtures/brain/recordings.json and fails every other call, which
+is how a pass no scenario scripts ends (`failed`, instead of P6's `gated`).
 """
+
+import json
+import os
 
 import pytest
 
@@ -17,14 +26,27 @@ from . import support
 from .support import Rig
 
 BINDINGS = ('inprocess', 'http')
+RECORDINGS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          'fixtures', 'brain', 'recordings.json')
+
+
+def recorded_brain():
+    """A FakeCaller replaying the recordings (exempt from ADR-0021 by class, as
+    every scripted adapter is): a harness that declares `headless` and answers
+    natively."""
+    with open(RECORDINGS, encoding='utf-8') as f:
+        rec = json.load(f)
+    return FakeCaller('fake_brain', replies={k: v for k, v in rec.items()
+                                             if not k.startswith('_')})
 
 
 @pytest.fixture(params=BINDINGS)
 def client(request, archeus_home, monkeypatch):
     if request.param == 'inprocess':
-        c = InProcessClient(archeus_home)
+        c = InProcessClient(archeus_home, callers=[recorded_brain()])
     elif request.param == 'http':
-        c = TempCore(archeus_home).start().client()
+        c = TempCore(archeus_home, ports=runtime.Ports(callers=[recorded_brain()])
+                     ).start().client()
     else:
         raise AssertionError('unknown binding %r' % request.param)
     monkeypatch.setattr(support, 'idle', c._idle)

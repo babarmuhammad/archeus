@@ -144,3 +144,61 @@ def provider_terms(conn, harness_ids=()):
                             'version': 0, 'created_at': None, 'updated_at': None})
     return [have[k] for k in sorted(have)]
 
+
+
+# ── conversation, intent, ideas (P7) ────────────────────────────────────────
+
+def _conversation(conn, conversation_id):
+    """A conversation id, or `primary` for the primary one (None before any
+    message was written)."""
+    if conversation_id == 'primary':
+        got = rows.where(conn, entities.Conversation, kind='primary')
+        return got[0].entity.id if got else None
+    if rows.get(conn, entities.Conversation, conversation_id) is None:
+        raise NotFound(conversation_id)
+    return conversation_id
+
+
+def messages(conn, conversation_id, after=None):
+    """A conversation's messages, oldest first; those after message *after*."""
+    cid = _conversation(conn, conversation_id)
+    if cid is None:
+        return []
+    got = [view(r) for r in rows.where(conn, entities.Message, conversation_id=cid)]
+    if after is not None:
+        idx = [i for i, m in enumerate(got) if m['id'] == after]
+        if not idx:
+            raise NotFound(after)
+        got = got[idx[0] + 1:]
+    return got
+
+
+def reply_to(conn, message_id):
+    """Archeus's reply to a message, or None while it is still being read."""
+    got = rows.where(conn, entities.Message, in_reply_to=message_id)
+    got = [r for r in got if r.entity.author == 'archeus']
+    return view(got[0]) if got else None
+
+
+def get_intent(conn, intent_id):
+    row = rows.get(conn, entities.Intent, intent_id)
+    if row is None:
+        raise NotFound(intent_id)
+    return view(row)
+
+
+def question_of(conn, intent_id):
+    """The reply that asked the user about an intent (its clarification or
+    challenge card), as a message view."""
+    it = get_intent(conn, intent_id)
+    reply = reply_to(conn, it['message_id'])
+    if reply is None or it['resolution'] != 'clarification_requested':
+        raise ValueError('intent %s is not waiting for an answer' % intent_id)
+    return reply
+
+
+def list_ideas(conn, state=None):
+    if state is not None and state not in states.states('idea'):
+        raise ValueError('%r is not an idea state' % (state,))
+    eq = {} if state is None else {'state': state}
+    return [view(r) for r in rows.where(conn, entities.Idea, **eq)]

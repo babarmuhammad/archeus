@@ -22,6 +22,8 @@ FEEDBACK_SUBJECTS = ('message', 'mission', 'plan', 'route_decision', 'knowledge_
 PROMOTABLE = ('PREFERENCE', 'LESSON')
 #: distinct missions a LESSON needs before it confirms itself (§3)
 CORROBORATION = 2
+#: why a CANDIDATE predecessor leaves when its replacement is confirmed (P7 D4)
+REPLACED = 'replaced before it was confirmed'
 
 
 def key(title):
@@ -78,24 +80,32 @@ def _load(tx, knowledge_item_id):
 
 def confirm(tx, *, actor, knowledge_item_id, reason='confirmed by the user',
             expected_version=None):
-    """CANDIDATE -> CONFIRMED. An item that supersedes another sets the older
-    one SUPERSEDED in the same move (valid_until, superseded_by_id); the older
-    must itself be CONFIRMED, since only a confirmed item can be superseded."""
+    """CANDIDATE -> CONFIRMED. An item that supersedes a CONFIRMED one sets it
+    SUPERSEDED in the same move (valid_until, superseded_by_id): only a
+    confirmed item can be superseded. One that replaces a predecessor still a
+    CANDIDATE (P7, p7-design-gate D4) rejects it instead — it was replaced
+    before it was confirmed, so it never becomes authoritative and is never
+    SUPERSEDED — and keeps the chain (superseded_by_id, the `supersedes`
+    relation). A predecessor that is no longer live refuses the confirm."""
     row = _load(tx, knowledge_item_id)
     old = row.entity.supersedes_id
-    if old is not None and _load(tx, old).entity.state != 'CONFIRMED':
-        raise ValueError('%s supersedes %s, which is not CONFIRMED' % (knowledge_item_id, old))
+    was = None if old is None else _load(tx, old).entity.state
+    if old is not None and was not in ('CONFIRMED', 'CANDIDATE'):
+        raise ValueError('%s supersedes %s, which is %s' % (knowledge_item_id, old, was))
     krow, e = lifecycle.fire(tx, entities.KnowledgeItem, knowledge_item_id, 'confirm',
                              actor=actor, reason=reason, expected_version=expected_version)
     moved = [e]
     if old is not None:
-        _r, e2 = lifecycle.fire(tx, entities.KnowledgeItem, old, 'superseded', actor=actor,
-                                reason='superseded by %s' % knowledge_item_id,
-                                fields={'valid_until': tx.now,
-                                        'superseded_by_id': knowledge_item_id})
+        trigger, why = (('superseded', 'superseded by %s' % knowledge_item_id)
+                        if was == 'CONFIRMED' else
+                        ('reject', '%s by %s' % (REPLACED, knowledge_item_id)))
+        _r, e2 = lifecycle.fire(tx, entities.KnowledgeItem, old, trigger, actor=actor,
+                                reason=why, fields={'valid_until': tx.now,
+                                                    'superseded_by_id': knowledge_item_id})
         moved.append(e2)
     return {'knowledge_item': view(krow), 'changed': True,
-            'superseded': old, 'seq': moved[-1].seq}
+            'superseded': old if was == 'CONFIRMED' else None,
+            'replaced': old if was == 'CANDIDATE' else None, 'seq': moved[-1].seq}
 
 
 def reject(tx, *, actor, knowledge_item_id, reason='rejected by the user',
@@ -186,7 +196,10 @@ def forget(tx, *, actor, selector, mode='retract', dry_run=True):
 def record_feedback(tx, *, actor, subject, signal, text='', promote=None):
     """Feedback is history. With `promote` it is also the explicit step that
     proposes a PREFERENCE or LESSON: a CANDIDATE (§3: feedback never
-    auto-confirms), optionally superseding a CONFIRMED item once confirmed."""
+    auto-confirms), optionally naming the live item (CONFIRMED, or since P7 a
+    CANDIDATE) it replaces — linked `supersedes` now, and taking effect only
+    when the new candidate is confirmed (`confirm`). Neither item changes state
+    here, and neither is promoted."""
     subject = Ref(**subject)
     if subject.kind not in FEEDBACK_SUBJECTS:
         raise ValueError('feedback is about one of %s' % (FEEDBACK_SUBJECTS,))
@@ -205,8 +218,8 @@ def record_feedback(tx, *, actor, subject, signal, text='', promote=None):
         if promote.get('type') not in PROMOTABLE:
             raise ValueError('feedback promotes into one of %s' % (PROMOTABLE,))
         sup = promote.get('supersedes_id')
-        if sup is not None and _load(tx, sup).entity.state != 'CONFIRMED':
-            raise ValueError('%s is not CONFIRMED, so nothing can supersede it' % sup)
+        if sup is not None and _load(tx, sup).entity.state not in ('CONFIRMED', 'CANDIDATE'):
+            raise ValueError('%s is no longer live, so nothing can supersede it' % sup)
         promoted = new_item(tx, actor=actor, workspace_id=workspace, project_id=project,
                             type=promote['type'], title=promote['title'],
                             text=promote.get('text', ''), origin='explicit',
@@ -214,6 +227,10 @@ def record_feedback(tx, *, actor, subject, signal, text='', promote=None):
                             source_ref=Ref('feedback', fb.id))
         fb = entities.Feedback(**dict(fb.to_dict(), subject=subject,
                                       promoted_knowledge_id=promoted.id))
+        if sup is not None:
+            relate(tx, actor=actor, src=('knowledge_item', promoted.id), rel='supersedes',
+                   dst=('knowledge_item', sup), tier='EXTRACTED', project_id=project,
+                   source_kind='user', source_ref=Ref('feedback', fb.id))
     tx.insert(fb, actor=actor)
     krow = None if promoted is None else tx.get(entities.KnowledgeItem, promoted.id)
     e = tx.append(new_event('feedback.received', Ref('feedback', fb.id), actor,
@@ -230,7 +247,10 @@ def record_feedback(tx, *, actor, subject, signal, text='', promote=None):
 def import_meeting(tx, *, actor, name, held_at, notes_sha256, notes_size, imported_from,
                    project_id=None):
     """A Meeting over notes already in the artifact store. Importing the same
-    notes into the same scope again returns the meeting there (idempotent)."""
+    notes into the same scope again returns the meeting there (idempotent).
+    `held_at` None is notes that carry no date, imported only when the import
+    path opted in (P7 D2): the meeting stays undated and Archeus asks for the
+    date in the primary conversation, in this transaction."""
     workspace = ids.GLOBAL_WORKSPACE
     if project_id is not None:
         workspace = lifecycle.load(tx, entities.Project, project_id).entity.workspace_id
@@ -247,6 +267,9 @@ def import_meeting(tx, *, actor, name, held_at, notes_sha256, notes_size, import
     tx.append(new_event('meeting.imported', Ref('meeting', m.id), actor,
                         payload={'name': name, 'held_at': held_at}, workspace=workspace,
                         project=project_id))
+    if held_at is None:
+        from .conversation import ask_meeting_date
+        ask_meeting_date(tx, actor=actor, meeting_id=m.id, name=name)
     return {'meeting': view(tx.get(entities.Meeting, m.id)), 'changed': True}
 
 

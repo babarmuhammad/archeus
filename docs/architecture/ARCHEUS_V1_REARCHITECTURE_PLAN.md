@@ -152,7 +152,10 @@ no vector store in V1 (ADR-0012, ADR-0013).
      a confidence.
   3. Ambiguity above threshold or a **conflict with CONFIRMED knowledge** → a Challenge block
      (the user chooses) instead of a mission. Archeus is expected to disagree when evidence
-     disagrees (spec principle 15).
+     disagrees (spec principle 15). *As built (P7, p7-design-gate D1, D11):* "above threshold"
+     is an ambiguity the reading marks **material** (confidence is recorded, never decides), and
+     the challenge also rests on a DECISION **candidate** imported from meeting notes — labelled
+     not confirmed, and never confirmed by being challenged on.
   4. new_work → Mission in CREATED with explicit/inferred requirements separated; the mission
      card asks for confirmation unless the autonomy profile allows auto-start for this scope.
 - **The brain** (ADR-0006): Core-side structured-output calls through the router (brain is a
@@ -690,6 +693,20 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   handled (retry once, then ask the user), challenge on conflicting knowledge.
 - Acceptance: S15, SP3 pass (scripted brain); S1's intent-to-plan function passes on recorded
   brain responses (S1 as a whole stays xfail until P13).
+  - **P7, as built** (p7-design-gate.md). `core/application/grammar.py` (control verbs, no
+    model), `core/brain/intent.py` (`intent.v1`, handles, Core's checks and resolution),
+    `core/missions/intent.py` (the `archeus-intent` outbox consumer), `core/application/
+    conversation.py` (every decision, deterministic, one command), `Missions.understand` (the
+    engine's UNDERSTANDING stub replaced), the P5 subject `message`, migration
+    `0006_conversation.sql` (conversations, messages, intents with a UNIQUE `message_id`,
+    ideas), `idea.created`, `idea.state_changed`, `mission.updated`, five routes and
+    `health.intent`. The brain call is P6's `archeus_call` (purpose `brain`), unchanged: any
+    `headless` harness, the ADR-0021 gate re-checked before the spawn — so with the real adapters
+    P7 makes no real call until the user answers. S1 (first two functions), S9, S13, S15 and SP3
+    pass on both bindings on the judge's recorded FakeCaller (D8); S1's stub-satisfied P13
+    function lost its marker and a new strict `phase:P13` function keeps the row pending (D3).
+    No plan, task, execution, policy or routing decision is made. Deviations:
+    p7-design-gate §13.
 
 **P8 — Plan engine**
 - Depends: P7. New: `planning/*`.

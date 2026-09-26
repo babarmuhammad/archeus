@@ -2,10 +2,7 @@
 with a CONFIRMED decision yields a Challenge, and no mission runs until the
 user chooses."""
 
-import pytest
 
-
-@pytest.mark.xfail(strict=True, reason="phase:P7")
 def test_a_request_against_a_confirmed_decision_is_challenged(client, tmp_path):
     notes = tmp_path / 'arch-review.md'
     notes.write_text('DECISION: the core never talks to the database directly.\n',

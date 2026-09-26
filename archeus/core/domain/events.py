@@ -21,6 +21,10 @@ TYPES = (
     # (type, subject_kind, visibility, notify_default, description)
     ('mission.created', 'mission', 'user', False, 'a mission row was created'),
     ('mission.state_changed', 'mission', 'user', False, 'a mission moved state (payload: from, to, reason)'),
+    ('mission.updated', 'mission', 'user', False,
+     'a mission\'s requirements or constraints changed (payload: the fields and what was added)'),
+    ('idea.created', 'idea', 'user', False, 'an idea was captured'),
+    ('idea.state_changed', 'idea', 'user', False, 'an idea moved state (payload: from, to, reason)'),
     ('plan.created', 'plan', 'user', False, 'a plan version was proposed'),
     ('task.created', 'task', 'user', False, 'a task of a plan was created'),
     ('task.state_changed', 'task', 'user', False, 'a task moved state'),

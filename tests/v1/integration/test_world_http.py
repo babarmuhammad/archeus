@@ -128,7 +128,8 @@ def test_w27_the_world_imports_no_model_runner_router_or_brain():
             mod = getattr(n, 'module', None) or ''
             for name in names + [mod]:
                 assert not any(b in name.split('.') for b in banned), (path, name)
-    assert not os.path.exists(os.path.join(ROOT, 'archeus', 'core', 'brain'))
+    # P7 built the brain (archeus/core/brain): the world still reaches none of it
+    assert os.path.isdir(os.path.join(ROOT, 'archeus', 'core', 'brain'))
 
 
 # ── W28 scopes ──

@@ -84,11 +84,12 @@ TYPES = {
             'state': {'type': 'string', 'enum': ['starting', 'reconciling', 'running', 'idle',
                                                  'failed', 'stopped']},
             'pending': {'type': 'integer'}}, 'required': ['state', 'pending']},
-        'knowledge': {'type': 'object', 'properties': {
-            'state': {'type': 'string', 'enum': ['starting', 'reconciling', 'running', 'idle',
-                                                 'failed', 'stopped']},
-            'pending': {'type': 'integer'}}, 'required': ['state', 'pending']}},
-        'required': ['core', 'engine', 'world', 'knowledge']},
+        'knowledge': {'ref': 'Worker'}, 'intent': {'ref': 'Worker'}},
+        'required': ['core', 'engine', 'world', 'knowledge', 'intent']},
+    'Worker': {'type': 'object', 'properties': {
+        'state': {'type': 'string', 'enum': ['starting', 'reconciling', 'running', 'idle',
+                                             'failed', 'stopped']},
+        'pending': {'type': 'integer'}}, 'required': ['state', 'pending']},
     'Version': {'type': 'object', 'properties': {'version': {'type': 'string'},
                                                  'api': {'type': 'string'}},
                 'required': ['version', 'api']},
@@ -257,7 +258,8 @@ TYPES = {
         'promoted': {'ref': 'KnowledgeItem', 'nullable': True}, 'seq': {'type': 'integer'}},
         'required': ['feedback_id', 'promoted', 'seq']},
     'Meeting': {'type': 'object', 'open': True, 'properties': {
-        'id': {'type': 'string'}, 'name': {'type': 'string'}, 'held_at': {'type': 'string'},
+        'id': {'type': 'string'}, 'name': {'type': 'string'},
+        'held_at': {'type': 'string', 'nullable': True},
         'project_id': {'type': 'string', 'nullable': True},
         'notes_artifact_id': {'type': 'string', 'nullable': True}},
         'required': ['id', 'name', 'held_at', 'project_id']},
@@ -286,6 +288,43 @@ TYPES = {
         'required': ['provider_terms']},
     'ProviderTermsDecided': {'type': 'object', 'properties': {
         'provider_terms': {'ref': 'ProviderTerms'}}, 'required': ['provider_terms']},
+    # ── conversation and intent (P7, p7-design-gate §9) ──
+    'Card': {'type': 'object', 'open': True, 'properties': {
+        'type': {'type': 'string', 'enum': list(entities.CARD_TYPES)},
+        'ref': {'ref': 'Subject'}}, 'required': ['type', 'ref']},
+    'Message': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'conversation_id': {'type': 'string'},
+        'author': {'type': 'string', 'enum': ['user', 'archeus', 'system']},
+        'text': {'type': 'string'}, 'in_reply_to': {'type': 'string', 'nullable': True},
+        'cards': {'type': 'array', 'items': {'ref': 'Card'}},
+        'links': {'type': 'array', 'items': {'type': 'object'}},
+        'intent_id': {'type': 'string', 'nullable': True}},
+        'required': ['id', 'conversation_id', 'author', 'text', 'in_reply_to', 'cards',
+                     'links']},
+    'MessageList': {'type': 'object', 'properties': {
+        'messages': {'type': 'array', 'items': {'ref': 'Message'}}}, 'required': ['messages']},
+    'MessagePosted': {'type': 'object', 'properties': {
+        'message_id': {'type': 'string'}, 'conversation_id': {'type': 'string'},
+        'seq': {'type': 'integer'}}, 'required': ['message_id', 'conversation_id', 'seq']},
+    'Intent': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'message_id': {'type': 'string'},
+        'kind': {'type': 'string', 'enum': list(entities.INTENT_KINDS)},
+        'via': {'type': 'string', 'enum': ['grammar', 'brain']},
+        'resolution': {'type': 'string', 'nullable': True,
+                       'enum': list(entities.RESOLUTIONS)}},
+        'required': ['id', 'message_id', 'kind', 'via', 'resolution']},
+    'Replied': {'type': 'object', 'open': True, 'properties': {
+        'reply_id': {'type': 'string', 'nullable': True},
+        'intent_id': {'type': 'string', 'nullable': True},
+        'resolution': {'type': 'string', 'nullable': True}}, 'required': []},
+    'Idea': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'state': {'type': 'string',
+                                            'enum': sorted(states.states('idea'))},
+        'text': {'type': 'string'}, 'title': {'type': 'string'},
+        'promoted_mission_id': {'type': 'string', 'nullable': True}},
+        'required': ['id', 'state', 'text']},
+    'IdeaList': {'type': 'object', 'properties': {
+        'ideas': {'type': 'array', 'items': {'ref': 'Idea'}}}, 'required': ['ideas']},
     'ApiError': {'type': 'object', 'properties': {'error': {'type': 'string'},
                                                'detail': {'type': 'object'}},
               'required': ['error', 'detail']},
@@ -343,8 +382,16 @@ FEEDBACK = {'type': 'object', 'properties': {
     'idempotency_key': KEY}, 'required': ['subject', 'signal', 'idempotency_key']}
 IMPORT_MEETING = {'type': 'object', 'properties': {
     'path': {'type': 'string'}, 'project_id': {'type': 'string', 'nullable': True},
-    'held_at': {'type': 'string', 'nullable': True}, 'idempotency_key': KEY},
+    'held_at': {'type': 'string', 'nullable': True},
+    'allow_undated': {'type': 'boolean', 'nullable': True}, 'idempotency_key': KEY},
     'required': ['path', 'idempotency_key']}
+POST_MESSAGE = {'type': 'object', 'properties': {
+    'text': {'type': 'string'}, 'in_reply_to': {'type': 'string', 'nullable': True},
+    'idempotency_key': KEY}, 'required': ['text', 'idempotency_key']}
+CLARIFY = {'type': 'object', 'properties': {
+    'choice': {'type': 'string', 'nullable': True, 'enum': ['proceed', 'drop']},
+    'text': {'type': 'string', 'nullable': True}, 'idempotency_key': KEY},
+    'required': ['idempotency_key']}
 PROVIDER_TERMS = {'type': 'object', 'properties': {
     'headless': {'type': 'string', 'enum': list(entities.TERMS)},
     'rotation': {'type': 'string', 'nullable': True, 'enum': list(entities.TERMS)},

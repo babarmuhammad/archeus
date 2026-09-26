@@ -70,10 +70,12 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
                 if isinstance(n, ast.Call) and ast.unparse(n.func) == 'req.run']
     targets = sorted({ast.unparse(n.args[0]) for n in handlers})
     assert targets == ['commands.create_mission', 'commands.register_device',
-                       'commands.revoke_device', 'knowledge.confirm', 'knowledge.forget',
+                       'commands.revoke_device', 'conversation.post_message',
+                       'knowledge.confirm', 'knowledge.forget',
                        'knowledge.import_meeting', 'knowledge.record_feedback',
                        'knowledge.reject', 'knowledge.retract', 'knowledge.supersede',
-                       'own_calls.decide_provider_terms', 'req.api.missions.pause',
+                       'own_calls.decide_provider_terms',
+                       'req.api.conversations.choose', 'req.api.missions.pause',
                        'req.api.missions.resume', 'world.ack_digest',
                        'world.create_project', 'world.declare_constraint'], targets
 
@@ -147,13 +149,25 @@ P6 = {
 }
 
 
-def test_the_route_table_is_exactly_the_p35b_p4_p5_and_p6_tables():
+#: P7's rows (p7-design-gate §9): a posted message is a control command whose
+#: reply arrives as `message.created`; the challenge choice (or a clarification's
+#: answer) is control too; intents and ideas are reads.
+P7 = {
+    ('GET', '/v1/conversations/{id}/messages', 'observe', None),
+    ('POST', '/v1/conversations/{id}/messages', 'control', 'required'),
+    ('GET', '/v1/intents/{id}', 'observe', None),
+    ('POST', '/v1/intents/{id}/clarify', 'control', 'required'),
+    ('GET', '/v1/ideas', 'observe', None),
+}
+
+
+def test_the_route_table_is_exactly_the_p35b_p4_p5_p6_and_p7_tables():
     """L2: nothing from P9 (approve), P10 (route), P11 (executions, stop,
     estop, hooks), P15 (pair, device list) or P16 (/v1/now, the execution
     stream) — a later phase adds its rows with its own tests."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
-    assert got == EXPECTED | P4 | P5 | P6
-    assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6)
+    assert got == EXPECTED | P4 | P5 | P6 | P7
+    assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6 | P7)
     for word in ('approv', 'route/', 'execution', 'estop', 'stop', 'pair', '/now', 'hook',
                  'cancel', 'accept', 'account', 'graph', 'attention'):
         assert not [r.path for r in routes.ROUTES if word in r.path], word

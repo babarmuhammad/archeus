@@ -22,12 +22,17 @@ from ...infra.db import rows
 from ...infra.db.writer import NotFound
 from ...infra.eventlog import outbox
 from ...infra.search import bm25
-from ..domain import entities, events, ids
+from ..domain import entities, events, ids, states
 from . import levels as P
 from claude_sessions.lexical import tokens_estimate
 
 _KNOWLEDGE_LEVEL = {'LESSON': 'L3', 'PREFERENCE': 'L4'}       # every other project type: L1
 _DECIDING = ('ARCHITECTURE', 'DECISION', 'STANDARD')
+#: What a request may be challenged against (P7 D1): CONFIRMED items of these
+#: types, and DECISION candidates imported from meeting notes.
+CHALLENGEABLE = _DECIDING + ('PREFERENCE',)
+#: How many earlier turns of its conversation a message's package considers.
+RECENT_TURNS = 12
 _NOT_CONFIRMED = {'CANDIDATE': 'not confirmed (a candidate)', 'RETRACTED': 'retracted',
                   'EXPIRED': 'expired (its validity ended)'}
 
@@ -46,7 +51,14 @@ def _cand(ref, level, store, type_, source_kind, source_ref, observed_at, text, 
 
 # ── gather: one read snapshot ──────────────────────────────────────────────
 
-def _knowledge(conn, workspace_id, project_id, out, excluded):
+def _knowledge(conn, workspace_id, project_id, out, excluded, message=False):
+    """In-scope knowledge. For a message (P7) the scope is the workspace: its
+    global items at L4, and every project's CONFIRMED deciding items and
+    preferences at L2 (a request may be about any project; relevance and the
+    budget decide). A DECISION candidate imported from notes is then a
+    candidate too, at the `candidate` authority and labelled not confirmed
+    (D1): a request may be challenged against it, and it is never presented
+    as confirmed. Everything else keeps P5's rules."""
     every = rows.where(conn, entities.KnowledgeItem)
     superseding = {r.entity.supersedes_id: r.entity.id for r in every
                    if r.entity.supersedes_id and r.entity.state == 'CONFIRMED'}
@@ -54,6 +66,8 @@ def _knowledge(conn, workspace_id, project_id, out, excluded):
         k = r.entity
         if k.project_id is None and k.workspace_id in (workspace_id, ids.GLOBAL_WORKSPACE):
             level, scope = 'L4', 'global'
+        elif message and k.type in CHALLENGEABLE and k.workspace_id == workspace_id:
+            level, scope = 'L2', "project %s's" % k.project_id
         elif project_id is not None and k.project_id == project_id:
             level, scope = _KNOWLEDGE_LEVEL.get(k.type, 'L1'), 'this project\'s'
         else:
@@ -63,6 +77,14 @@ def _knowledge(conn, workspace_id, project_id, out, excluded):
             by = k.superseded_by_id or superseding.get(k.id)
             excluded.append({'ref': ref, 'level': level, 'freshness': 'superseded',
                              'reason': 'superseded by %s' % by if by else 'superseded'})
+            continue
+        if (message and k.state == 'CANDIDATE' and k.type == 'DECISION'
+                and k.source_kind == 'import'):
+            src = k.source_ref.id if k.source_ref is not None else 'notes'
+            out.append(_cand(ref, level, 'knowledge', k.type, 'knowledge_item', k.id,
+                             r.created_at, ' '.join([k.title, k.text]), 'candidate',
+                             'DECISION candidate from meeting %s, %s: not confirmed' % (
+                                 src, scope), state=k.state, created_at=r.created_at))
             continue
         if k.state != 'CONFIRMED':
             excluded.append({'ref': ref, 'level': level, 'freshness': 'current',
@@ -77,7 +99,7 @@ def _knowledge(conn, workspace_id, project_id, out, excluded):
         if moved:
             reason += '; stale: %s' % moved
         out.append(_cand(ref, level, 'knowledge', k.type, 'knowledge_item', k.id, r.created_at,
-                         text, authority, reason, stale=bool(moved),
+                         text, authority, reason, stale=bool(moved), state=k.state,
                          constraint=k.constraint, created_at=r.created_at))
 
 
@@ -112,10 +134,11 @@ def _meetings(conn, workspace_id, project_id, out):
                 notes = artifacts.get(m.notes_artifact_id).decode('utf-8', 'replace')
             except OSError:
                 notes = ''
+        held = 'held %s' % m.held_at[:10] if m.held_at else 'undated'
         out.append(_cand({'kind': 'meeting', 'id': m.id, 'version': r.version}, 'L2', 'state',
-                         'MEETING', 'meeting', m.id, m.held_at, '%s\n%s' % (m.name, notes),
-                         'explicit', 'meeting "%s" held %s, imported by you' % (
-                             m.name, m.held_at[:10])))
+                         'MEETING', 'meeting', m.id, m.held_at or r.created_at,
+                         '%s\n%s' % (m.name, notes), 'explicit',
+                         'meeting "%s" %s, imported by you' % (m.name, held)))
 
 
 def _project(conn, project_id, out, missing):
@@ -185,6 +208,52 @@ def _history(conn, project_id, subject_id, as_of_at, out):
                                                                 P.HISTORY_WINDOW_DAYS)))
 
 
+def _message(conn, mrow, out, missing):
+    """A message's own candidates (P7): the message (L0), the earlier turns of
+    its conversation with what each produced (L0), the workspace's projects to
+    resolve names against (L1), and its open missions and live ideas (L2)."""
+    m = mrow.entity
+    out.append(_cand({'kind': 'message', 'id': m.id, 'version': mrow.version}, 'L0', 'state',
+                     'MESSAGE', 'message', m.id, mrow.created_at, m.text, 'explicit',
+                     'the message being interpreted'))
+    turns = [r for r in rows.where(conn, entities.Message, conversation_id=m.conversation_id)
+             if r.entity.id != m.id and r.created_at <= mrow.created_at][-RECENT_TURNS:]
+    for r in turns:
+        t = r.entity
+        made = ', '.join('%s %s' % (c['type'], c['ref']['id']) for c in t.cards)
+        out.append(_cand({'kind': 'message', 'id': t.id, 'version': r.version}, 'L0', 'state',
+                         'MESSAGE', 'message', t.id, r.created_at,
+                         '%s: %s%s' % (t.author, t.text, ' [%s]' % made if made else ''),
+                         'explicit', 'an earlier turn of this conversation (%s)' % t.author))
+    for r in rows.where(conn, entities.Project):
+        p = r.entity
+        if p.state != 'ACTIVE':
+            continue
+        repos = [x.entity.path for x in rows.where(conn, entities.Repository, project_id=p.id)]
+        out.append(_cand({'kind': 'project', 'id': p.id, 'version': r.version}, 'L1', 'state',
+                         'PROJECT', 'project', p.id, r.updated_at,
+                         '\n'.join([p.name] + list(p.root_paths) + repos), 'explicit',
+                         'a project in this workspace'))
+    terminal = states.terminal('mission')
+    for r in rows.where(conn, entities.Mission):
+        x = r.entity
+        if x.state in terminal:
+            continue
+        out.append(_cand({'kind': 'mission', 'id': x.id, 'version': r.version}, 'L2', 'state',
+                         'MISSION', 'mission', x.id, r.updated_at,
+                         '\n'.join([x.title, x.objective, x.state]), 'explicit',
+                         'an open mission (%s)' % x.state))
+    for r in rows.where(conn, entities.Idea):
+        x = r.entity
+        if x.state in ('DISCARDED', 'COMPLETED', 'LEARNED'):
+            continue
+        out.append(_cand({'kind': 'idea', 'id': x.id, 'version': r.version}, 'L2', 'state',
+                         'IDEA', 'idea', x.id, r.created_at, '\n'.join([x.title, x.text]),
+                         'explicit', 'an idea you captured (%s)' % x.state))
+    if not any(c['type'] == 'PROJECT' for c in out):
+        missing.append('no project is registered, so nothing can be resolved to one')
+
+
 def snapshot(conn):
     """(as_of_seq, as_of_at): the last event this snapshot contains."""
     r = conn.execute('SELECT at FROM events ORDER BY seq DESC LIMIT 1').fetchone()
@@ -209,6 +278,18 @@ def gather(conn, subject_kind, subject_id):
         if project_id is None:
             missing.append('the mission names no project, so there is no project, related '
                            'or project-history context (L1-L3)')
+    elif subject_kind == 'message':
+        mrow = rows.get(conn, entities.Message, subject_id)
+        if mrow is None:
+            raise NotFound(subject_id)
+        workspace_id, project_id = ids.GLOBAL_WORKSPACE, None
+        query = mrow.entity.text
+        _message(conn, mrow, cands, missing)
+        _meetings(conn, workspace_id, None, cands)
+        _knowledge(conn, workspace_id, None, cands, excluded, message=True)
+        return {'workspace_id': workspace_id, 'project_id': None, 'query': query,
+                'as_of_seq': as_of_seq, 'as_of_at': as_of_at, 'candidates': cands,
+                'excluded': excluded, 'missing_information': missing}
     elif subject_kind == 'project':
         prow = rows.get(conn, entities.Project, subject_id)
         if prow is None:

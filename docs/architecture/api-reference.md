@@ -55,6 +55,11 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/v1/route-decisions/{id}` | observe | — | — | — | `RouteDecision` |
 | GET | `/v1/provider-terms` | observe | — | — | — | `ProviderTermsList` |
 | POST | `/v1/provider-terms/{id}` | admin | required | — | `DecideProviderTermsRequest` | `ProviderTermsDecided` |
+| GET | `/v1/conversations/{id}/messages` | observe | — | `after` | — | `MessageList` |
+| POST | `/v1/conversations/{id}/messages` | control | required | — | `PostMessageRequest` | `MessagePosted` |
+| GET | `/v1/intents/{id}` | observe | — | — | — | `Intent` |
+| POST | `/v1/intents/{id}/clarify` | control | required | — | `ClarifyIntentRequest` | `Replied` |
+| GET | `/v1/ideas` | observe | — | `state` | — | `IdeaList` |
 
 A launch-code device holds `observe`; the local token holds `observe control approve admin`.
 
@@ -75,6 +80,16 @@ interface Acked {
 interface ApiError {
   error: string;
   detail: Record<string, unknown>;
+}
+```
+
+### `Card`
+
+```ts
+interface Card {
+  type: 'mission_proposal' | 'plan' | 'approval' | 'route_explanation' | 'diff' | 'verification' | 'digest' | 'mission' | 'idea' | 'challenge' | 'clarification' | 'knowledge' | 'status';
+  ref: Subject;
+  [field: string]: unknown;
 }
 ```
 
@@ -175,7 +190,7 @@ interface ContextPackage {
 
 ```ts
 interface ContextPreview {
-  subject_kind: 'mission' | 'project';
+  subject_kind: 'mission' | 'project' | 'message';
   subject_id: string;
   workspace_id: string;
   project_id: string | null;
@@ -337,10 +352,29 @@ interface Health {
     state: 'starting' | 'reconciling' | 'running' | 'idle' | 'failed' | 'stopped';
     pending: number;
   };
-  knowledge: {
-    state: 'starting' | 'reconciling' | 'running' | 'idle' | 'failed' | 'stopped';
-    pending: number;
-  };
+  knowledge: Worker;
+  intent: Worker;
+}
+```
+
+### `Idea`
+
+```ts
+interface Idea {
+  id: string;
+  state: 'CAPTURED' | 'COMPLETED' | 'CONCEPT' | 'DISCARDED' | 'EXPLORED' | 'IMPLEMENTING' | 'LEARNED' | 'PARKED' | 'PLANNED' | 'SCHEDULED' | 'UNDERSTOOD' | 'VALIDATED';
+  text: string;
+  title?: string;
+  promoted_mission_id?: string | null;
+  [field: string]: unknown;
+}
+```
+
+### `IdeaList`
+
+```ts
+interface IdeaList {
+  ideas: Idea[];
 }
 ```
 
@@ -365,6 +399,19 @@ interface Inspection {
 ```ts
 interface InspectionList {
   inspections: Inspection[];
+}
+```
+
+### `Intent`
+
+```ts
+interface Intent {
+  id: string;
+  message_id: string;
+  kind: 'control_verb' | 'question' | 'new_work' | 'continue_work' | 'feedback' | 'preference' | 'idea';
+  via: 'grammar' | 'brain';
+  resolution: 'answered' | 'mission_created' | 'mission_updated' | 'clarification_requested' | 'declined' | null;
+  [field: string]: unknown;
 }
 ```
 
@@ -427,7 +474,7 @@ interface LaunchCode {
 interface Meeting {
   id: string;
   name: string;
-  held_at: string;
+  held_at: string | null;
   project_id: string | null;
   notes_artifact_id?: string | null;
   [field: string]: unknown;
@@ -440,6 +487,40 @@ interface Meeting {
 interface MeetingImported {
   meeting: Meeting;
   changed: boolean;
+}
+```
+
+### `Message`
+
+```ts
+interface Message {
+  id: string;
+  conversation_id: string;
+  author: 'user' | 'archeus' | 'system';
+  text: string;
+  in_reply_to: string | null;
+  cards: Card[];
+  links: Record<string, unknown>[];
+  intent_id?: string | null;
+  [field: string]: unknown;
+}
+```
+
+### `MessageList`
+
+```ts
+interface MessageList {
+  messages: Message[];
+}
+```
+
+### `MessagePosted`
+
+```ts
+interface MessagePosted {
+  message_id: string;
+  conversation_id: string;
+  seq: number;
 }
 ```
 
@@ -533,6 +614,17 @@ interface ProviderTermsList {
 interface Redeemed {
   device_id: string;
   token: string;
+}
+```
+
+### `Replied`
+
+```ts
+interface Replied {
+  reply_id?: string | null;
+  intent_id?: string | null;
+  resolution?: string | null;
+  [field: string]: unknown;
 }
 ```
 
@@ -638,6 +730,15 @@ interface Version {
 }
 ```
 
+### `Worker`
+
+```ts
+interface Worker {
+  state: 'starting' | 'reconciling' | 'running' | 'idle' | 'failed' | 'stopped';
+  pending: number;
+}
+```
+
 ### `CreateMissionRequest`
 
 ```ts
@@ -724,7 +825,7 @@ interface AckDigestRequest {
 ```ts
 interface PreviewContextRequest {
   subject: {
-    kind: 'mission' | 'project';
+    kind: 'mission' | 'project' | 'message';
     id: string;
   };
   query?: string | null;
@@ -811,6 +912,7 @@ interface ImportMeetingRequest {
   path: string;
   project_id?: string | null;
   held_at?: string | null;
+  allow_undated?: boolean | null;
   idempotency_key: string;
 }
 ```
@@ -822,6 +924,26 @@ interface DecideProviderTermsRequest {
   headless: 'unknown' | 'permitted' | 'refused';
   rotation?: 'unknown' | 'permitted' | 'refused' | null;
   note?: string | null;
+  idempotency_key: string;
+}
+```
+
+### `PostMessageRequest`
+
+```ts
+interface PostMessageRequest {
+  text: string;
+  in_reply_to?: string | null;
+  idempotency_key: string;
+}
+```
+
+### `ClarifyIntentRequest`
+
+```ts
+interface ClarifyIntentRequest {
+  choice?: 'proceed' | 'drop' | null;
+  text?: string | null;
   idempotency_key: string;
 }
 ```
