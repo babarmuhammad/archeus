@@ -812,6 +812,20 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Acceptance: S1 and S5 pass against the **real** Claude Code adapter in the opt-in contract
   suite; G5, G7 pass; R1 (testing-strategy §6).
 - Risks: CLI flag drift → adapters pin tested versions and report `MISCONFIGURED` on mismatch.
+  - **P11, as built** (p11-design-gate.md, D1–D31). An `ExecutionManager` on its own thread owns
+    every process from spawn to end; the engine only dispatches and admits. `node/local.py` is
+    the node contract (process registry, kill by pid plus creation time, control flags, the
+    e-stop sentinel, the per-execution hook mailbox, worktrees); `harnesses/hook.py` is the
+    PreToolUse hook the fake agent and Claude Code both run, failing closed; every tool call is
+    canonicalised (`core/execution/canonical.py`) and judged by P9's action stage, with branch,
+    host and workdir checked at every request. An execution is bound to its exact plan, digest,
+    task and dispatch decision at every spawn, resume and hook request; a resume asks P9 and
+    P10 again. Restart adopts a live process by identity or reconciles it; a vanished process is
+    never success. Six routes, `archeus pause` and `archeus estop`. G1, G5, G6, S5 and G7's
+    Claude Code function pass on both bindings; the real-adapter S1/S5 run is opt-in. **Moved:**
+    R1 and user sessions to P12 (D29); the Codex adapter to P20 (D30); the pi adapter and the
+    `build_launch_command` seam with them, since both serve user sessions. No migration.
+    Deviations: p11-design-gate §28.
 
 **P12 — Session and context continuity**
 - Depends: P11. New: `execution/checkpoint.py`, `execution/handoff.py`.

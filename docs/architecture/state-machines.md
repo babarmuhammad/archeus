@@ -339,6 +339,12 @@ stateDiagram-v2
     RUNNING --> HANDING_OFF: pressure_or_account_change
     HANDING_OFF --> ENDED_HANDOFF: checkpoint_written
     RUNNING --> STOPPING: stop
+    STARTING --> STOPPING: stop
+    PAUSING --> STOPPING: stop
+    PAUSING --> ENDED_OK: exited_success
+    PAUSING --> ENDED_ERROR: exited_error
+    PAUSED --> ENDED_KILLED: discarded
+    AWAITING_APPROVAL --> ENDED_KILLED: discarded
     STOPPING --> ENDED_KILLED: process_gone
     RUNNING --> ENDED_OK: exited_success
     RUNNING --> ENDED_ERROR: exited_error

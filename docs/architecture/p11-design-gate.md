@@ -1,7 +1,7 @@
 # P11 design gate: the execution orchestrator
 
-Status: **FROZEN (P11), not yet implemented.** Written 2026-09-26 on the P10 baseline
-(`2101e07`), **before any P11 code**; the as-built record and its deviations will be §27. Items are
+Status: **FROZEN (P11), implemented; as built in §28.** Written 2026-09-26 on the P10 baseline
+(`2101e07`), **before any P11 code**; the as-built record and its deviations are §28. Items are
 marked as in the earlier gates:
 
 - **[spec]** already specified by the V1 architecture (plan, domain model, state machines, ADRs);
@@ -838,4 +838,68 @@ pairing, automation).
 
 ## 28. As built
 
-To be written when P11 is implemented: commits, deviations from this gate, results.
+**What landed.** `core/execution/{manager,canonical}.py`, `core/application/executions.py`,
+`node/local.py`, `harnesses/hook.py`, `harnesses/claude_code/adapter.py`; the engine now only
+dispatches and admits (§16), the manager runs on its own `archeus-exec` thread (D1), and the
+runtime registers its execution adapters through `Ports.executors` (D27). Six routes and the
+`archeus pause` / `archeus estop` verbs (§21). G1 (adoption), G5 (`stop('all')`), G6 (the
+action-stage deny), S5 (single-use action approval) and G7's Claude Code function pass on both
+bindings.
+
+**Deviations from this gate.**
+
+1. **No migration.** §20.1 promoted `plan_id` and `workdir` to columns. Every new field lives in
+   the row's JSON body instead: the admission check (§16) reads a mission's executions, which
+   is already an indexed query, and nothing else filters on either field. `Account.limited_until`
+   is a body field for the same reason.
+2. **Command names** (§20.3) are the ones the code reads as: `record_process` (was
+   `record_spawn`), `record_end` (`record_exit`), `pause_work`, `pause_timed_out`, `refuse`
+   (`discard`, which also covers an INTENT that never spawned), `adopted`, `lost`,
+   `account_limited`, `accounts_tick` (the breaker) and `approval_answered`. `Work.record_spawn`
+   and `Work.record_exit` survive as thin delegates to them, so there is one implementation; the
+   P3.5 `Work.reconcile` is gone, replaced by the manager's adopt-or-reconcile.
+3. **Three events beyond §20.2**: `execution.prepared`, `execution.hook` and `execution.halted`.
+   The writer requires an event for every mutation, and these three commands change a row
+   without moving its state.
+4. **Task branches are `archeus/<mission-id>.<task-key>`**, one segment, not the
+   `archeus/<mission-id>/<task-key>` of §17: P9's profiles bound commits to `archeus/*`, and
+   `*` never crosses a `/`, so the two-segment name was a branch no profile could ever allow.
+5. **Worktrees are never removed by P11.** §17 removed one for an execution that ended
+   ABANDONED. A task's attempts share one worktree path and branch, so removing it after a
+   later attempt was abandoned would discard an earlier attempt's work, and the next attempt's
+   `worktree add -b` would then fail on the branch left behind. Removal is P13's, with
+   merge-back.
+6. **G5 waits for `execution.started`**, not for the mission to be EXECUTING: EXECUTING now
+   precedes the first dispatch (D7), so the old wait raced the spawn.
+7. **Charging (D9) gained two rules.** A resource or auth failure on a harness's OWN account
+   (one with no registered Account) is charged, because no breaker can see that account and
+   an uncharged end there would retry forever. A halt that Core did not ask for (the hook
+   failed closed) is charged for the same reason.
+8. **The opt-in real-adapter suite** is `tests/v1/integration/test_claude_code_live.py`
+   (`ARCHEUS_REAL_HARNESS=1`), not a contract-suite file, because it needs the integration rig's
+   database fixture. It has not been run: it spends real quota. The recorded stream G7 reads was
+   made from ONE real headless call (Haiku, one turn, no tools, about $0.12), stripped of the
+   recording machine's hook output, thinking text and tool inventory.
+9. **Restart semantics changed for P3.5's tests.** P3.5 killed a live process at boot and
+   retried the task; §15.3 adopts it. The five P3.5 restart tests, P9's E7 and P10's B8 ("only
+   the fake harness is registered") were migrated with the reason written in each.
+10. **Two plan items this gate did not name went with D29.** The plan's P11 lists a pi adapter
+    for user sessions and the `main.build_launch_command` preparation seam for the
+    interactive-attach path. Both exist only to serve user sessions, which D29 moved to P12,
+    so both are P12's too; P11 builds neither.
+
+**Defects found while building it, all fixed with a test.** `binding()` accepted a SUPERSEDED
+plan that was still the highest version; resuming a mission while disarmed let `advance` read
+P9's e-stop DENY as the mission's failure (the engine now does not advance live missions while
+disarmed); two concurrent hooks could take the same request number (`_reserve` now takes the
+number with an exclusive lock file); `git push origin :branch` was not classed as destructive;
+the endpoint-floor fuzz exhausted Windows' ephemeral ports once P10's routes were added (D31).
+
+**Mutation.** `tools/mutate_p11.py`: 30 mutants, one per §24.3 invariant, all killed. Three
+needed a test of their own rather than a different safeguard: `E14` (nothing starts while
+disarmed), `S07` (a resume asks P9 again), and E10's `Blunt` adapter, which proves the node's
+own identity check and not only the adapter's. Two model an acknowledging command rather than a
+new edge (X19, X20): the state table is the last guard against a duplicate end or stop, and
+what those mutants measure is that the command refuses instead of answering as if it had
+worked. P9's suite (36) and P10's (36) still kill everything; P10's R30, R33 and R36 were
+retargeted to where P11 moved the code they guard.
