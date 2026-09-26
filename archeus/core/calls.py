@@ -19,9 +19,11 @@ Nothing here knows a harness by name. The pre-router election P6 shipped
 replaced it (plan §31.1 P10), and it has no rule naming a harness.
 """
 
+import os
 from collections import namedtuple
 
 from ..harnesses.fake import is_fake_caller
+from ..infra.paths import stop_sentinel
 from .routing import router as R
 from .routing.usage import NoUsageFeed
 from .application import calls as C
@@ -93,6 +95,9 @@ class OwnCalls:
             self._end(rd, state, reason=why)
             return Called(rd, state, None, None, why, 0, None)
         adapter = next(a for a in self.callers if a.id == d['harness_id'])
+        if os.path.exists(stop_sentinel()):             # disarmed (P11 §13): nothing runs
+            self._end(rd, 'unavailable', reason='emergency stop')
+            return Called(rd, 'unavailable', None, None, 'emergency stop', 0, None)
         if not is_fake_caller(adapter):
             with self.db.read() as conn:                # immediately before the spawn
                 now = _terms_state(C.terms(conn), adapter.id)

@@ -11,8 +11,9 @@ commands, the real database and the fake harness's real subprocess.
         | DENY: nothing written, state unchanged (stops: `policy_denied`)
     REPLANNING: replan budget judged first -> BLOCKED, or a new plan as above
     APPROVED -> dispatch -> EXECUTING
-    each task: deps_satisfied -> dispatch_task (Policy port, Router port, INTENT)
-        -> adapter.start -> record_spawn -> wait -> record_exit -> verifier
+    each task: deps_satisfied -> admission (P11 §16) -> dispatch_task (P9, P10,
+        INTENT); the execution manager (core/execution/manager.py) spawns,
+        watches and records it; ENDED_OK -> VERIFYING -> verifier
         -> record_task_verification -> SUCCEEDED | retry | FAILED
     EXECUTING advance -> VERIFYING | REPLANNING | FAILED
     verifier per automatic criterion -> verify_mission -> REVIEWING | REPLANNING | BLOCKED
@@ -38,14 +39,16 @@ process registry (P11) — and real verifiers and review (P13).
 import os
 import time
 
-from ..harnesses import base
 from ..infra.db import rows
-from ..infra.paths import ExecPaths
 from .application.commands import active_plan
-from .application import authorization, resources
+from .application import authorization
 from .application.work import PolicyDenied
 from .domain import entities, states
 from .domain.values import Ref
+from .execution.manager import ExecutionManager
+
+#: at most this many live executions per mission (p11-design-gate §16)
+MISSION_PARALLEL = 3
 
 #: A mission starts as soon as it exists: whether the user must confirm it
 #: first is the autonomy profile's (P9), and the P1 policy stub never asks.
@@ -72,6 +75,24 @@ DEFAULT_SCENARIO = [{'emit': {'type': 'result', 'summary': 'done'}}]
 _ENDED = states.terminal('execution')
 
 
+def _conflict(t, other):
+    """Two tasks of one project that may not run at once (§16): either in
+    place, either without `touches`, or touches that overlap."""
+    if 'in_place' in (t.workspace_mode, other.workspace_mode) or not t.touches \
+            or not other.touches:
+        return True
+    return any(_overlap(a, b) for a in t.touches for b in other.touches)
+
+
+def _overlap(a, b):
+    def base(g):
+        g = g.replace('\\', '/')
+        cut = min([g.index(c) for c in '*?[' if c in g] or [len(g)])
+        return g[:cut].rstrip('/')
+    x, y = base(a), base(b)
+    return not x or not y or x == y or x.startswith(y + '/') or y.startswith(x + '/')
+
+
 class Engine:
     """Drives missions on one open Database as the principal `actor`.
 
@@ -81,14 +102,17 @@ class Engine:
     `scenarios` maps a task key to the fake agent's steps."""
 
     def __init__(self, db, *, actor, work, brain, registry, verifier, reviewer,
-                 scenarios=None, poll=0.02):
+                 scenarios=None, poll=0.02, usage=None, manager=None):
         self.db, self.actor, self.work = db, actor, work
         self.missions = work.missions
         self.brain, self.registry = brain, registry
         self.verifier, self.reviewer = verifier, reviewer
         self.scenarios = {} if scenarios is None else scenarios
         self.poll = poll
-        self._running = {}      # execution id -> (adapter, handle): processes WE started
+        # every process is the execution manager's (P11): this engine dispatches
+        self.manager = manager or ExecutionManager(db, actor=actor, registry=registry,
+                                                   work=work, usage=usage,
+                                                   scenarios=self.scenarios)
 
     def _do(self, command, **kwargs):
         return self.db.writer.execute(command, dict(kwargs, actor=self.actor))
@@ -100,13 +124,33 @@ class Engine:
             raise LookupError(mission_id)
         return row.entity
 
-    def run(self, mission_id, *, max_steps=200):
-        """Step until nothing changes; the last step's report says why."""
-        for _ in range(max_steps):
+    def run(self, mission_id, *, max_steps=200, timeout=60.0):
+        """Step until nothing changes; the last step's report says why. The
+        synchronous driver (tests, tools): it also runs the execution manager's
+        pass and waits while one of the mission's processes is running, which
+        the Core runtime does on its own thread (P11)."""
+        deadline, steps = time.monotonic() + timeout, 0
+        while steps < max_steps:
             out = self.step(mission_id)
-            if not out['changed']:
+            if out['changed']:
+                steps += 1
+                continue
+            if self.manager.tick():
+                continue
+            if not self._busy(mission_id):
                 return out
+            if time.monotonic() > deadline:
+                raise RuntimeError('mission %s: its executions ran past %.0fs'
+                                   % (mission_id, timeout))
+            time.sleep(self.poll)
         raise RuntimeError('mission %s did not settle in %d steps' % (mission_id, max_steps))
+
+    def _busy(self, mission_id):
+        """Does the mission have a process running, or an execution about to?"""
+        with self.db.read() as r:
+            return any(x.entity.state in ('INTENT', 'STARTING', 'RUNNING', 'PAUSING',
+                                          'STOPPING')
+                       for x in rows.where(r, entities.Execution, mission_id=mission_id))
 
     def step(self, mission_id):
         """One unit of progress: {'changed', 'did', 'state', 'stop'}. `stop`
@@ -133,6 +177,12 @@ class Engine:
                 'state': m.state, 'stop': None if did else stop}
 
     def _step(self, m):
+        if m.state in ('APPROVED', 'RESUMED', 'EXECUTING', 'VERIFYING', 'REVIEWING') \
+                and self.manager.node.disarmed():
+            # disarmed (P11 §13): nothing dispatches, resumes or advances until a
+            # user device re-arms — P9 would deny every action, and a denial read
+            # as a mission's failure is exactly what an e-stop must not cause
+            return None
         if m.state == 'CREATED':
             self._do(self.missions.fire, mission_id=m.id, trigger=START,
                      reason='Archeus starts on the mission')
@@ -170,13 +220,11 @@ class Engine:
     # ── executing ──
 
     def _execute(self, m):
+        """Verify, advance, release tasks, and dispatch what admission allows.
+        Processes are the execution manager's; this never waits for one."""
         with self.db.read() as r:
-            executions = rows.where(r, entities.Execution, mission_id=m.id)
             plan = active_plan(r, m.id)
             tasks = [t.entity for t in rows.where(r, entities.Task, plan_id=plan.entity.id)]
-        for e in (x.entity for x in executions):
-            if e.state not in _ENDED:
-                return self._finish(e) if e.id in self._running else self._reconcile(e)
         for t in tasks:
             if t.state == 'VERIFYING':
                 v = self.verifier.verify(Ref('task', t.id))
@@ -188,104 +236,45 @@ class Engine:
         if self._do(self.work.ready_tasks, mission_id=m.id)['ready']:
             return 'ready_tasks'
         for t in tasks:
-            if t.state == 'READY':
+            if t.state == 'READY' and self._admit(m, t):
                 return self._start(m, t)
         return None
 
+    def _admit(self, m, t):
+        """Admission (p11-design-gate §16): not disarmed, under the mission's
+        parallelism, and no workspace conflict with live work of the project."""
+        if self.manager.node.disarmed():
+            return False
+        with self.db.read() as r:
+            live = [x.entity for x in rows.where(r, entities.Execution)
+                    if x.entity.state not in _ENDED]
+            mine = [x for x in live if x.mission_id == m.id]
+            if len(mine) >= MISSION_PARALLEL:
+                return False
+            if m.project_id is None:
+                return True
+            others = []
+            for x in live:
+                xm = rows.get(r, entities.Mission, x.mission_id).entity
+                if xm.project_id == m.project_id:
+                    others.append(rows.get(r, entities.Task, x.task_id).entity)
+        return not any(_conflict(t, o) for o in others)
+
     def _start(self, m, t):
-        """Commit INTENT, then spawn (outside any transaction), then record it."""
+        """Commit the dispatch (P9, P10, INTENT); the manager spawns it."""
         out = self._do(self.work.dispatch_task, task_id=t.id)
-        eid = out['execution_id']
-        if eid is None:
+        if out['execution_id'] is None:
             # P9: not covered, or P10: a fallback asks -> the mission was blocked
             # on an approval; P10: nothing could run -> blocked
             return ('awaiting_approval' if out.get('authorization') or out.get('approval_id')
                     else 'no_route')
-        adapter = self.registry.get(out['harness_id'])
-        with self.db.read() as r:           # ADR-0021, immediately before the adapter runs
-            permitted = resources.terms_permit(r, adapter)
-        if not permitted:
-            return self._reconcile(self._execution(eid))      # nothing was spawned
-        spec = base.ExecutionSpec(
-            execution_id=eid, prompt='%s\n\n%s\n' % (m.objective, t.title),
-            workdir=ExecPaths(eid).dir, attempt=out['attempt'], model=out.get('model'),
-            effort=out.get('effort'),
-            task_contract={'key': t.key, 'kind': t.kind,
-                           'action_classes': list(t.action_classes),
-                           'fake_scenario': self.scenarios.get(t.key, DEFAULT_SCENARIO)})
-        try:
-            handle = adapter.start(spec)
-        except base.SpawnFailed:
-            return self._reconcile(self._execution(eid))
-        self._running[eid] = (adapter, handle)
-        self._do(self.work.record_spawn, execution_id=eid, pid=handle.pid,
-                 create_time=handle.create_time)
-        return 'start_execution'
-
-    def _finish(self, e):
-        """Wait for a process this engine started, then record how it ended.
-        ponytail: blocks until the process exits — pause, stop and timeouts are
-        the execution manager's (P11)."""
-        adapter, handle = self._running[e.id]
-        while adapter.status(handle).state == 'running':
-            time.sleep(self.poll)
-        result = adapter.collect_result(handle)
-        base.mark_ended(ExecPaths(e.id), result.exit_code)
-        self._do(self.work.record_exit, execution_id=e.id, exit_reason=result.exit_reason,
-                 exit_code=result.exit_code, summary=result.reported_summary,
-                 output=bool(adapter.inspect(handle).events), usage=dict(result.usage or {}))
-        del self._running[e.id]
-        return 'finish_execution'
+        return 'dispatch_task'
 
     def reconcile_orphans(self):
-        """Reconcile every non-terminal execution this engine did not start,
-        whatever state its mission is in — the boot sweep (p3.5b §18.1): at
-        boot that is all of them, so an orphan under a PAUSED or otherwise
-        settled mission is not left running until someone steps it. Each goes
-        through the one `_reconcile`. One that fails does not stop the others
-        from being reconciled; the first failure is raised after the sweep, so
-        the caller still fails stop. Returns the reconciled execution ids."""
-        with self.db.read() as r:
-            orphans = [x.entity for x in rows.where(r, entities.Execution)
-                       if x.entity.state not in _ENDED and x.entity.id not in self._running]
-        done, failed = [], None
-        for e in orphans:
-            try:
-                self._reconcile(e)
-            except Exception as err:
-                failed = failed or err
-            else:
-                done.append(e.id)
-        if failed is not None:
-            raise failed
-        return done
-
-    def _reconcile(self, e):
-        """An execution nobody is watching: kill its process if one exists (pid
-        + creation time, so a recycled pid is refused), tombstone it, record."""
-        paths = ExecPaths(e.id)
-        marker = os.path.exists(paths.spawning)
-        pid = base.read_json(paths.pid)
-        ended = os.path.exists(paths.ended)
-        if pid is not None:
-            try:
-                self.registry.get(e.harness_id).stop(
-                    base.ProcessHandle(e.id, pid['pid'], pid['create_time'], paths.dir),
-                    grace_s=0.0)
-            except base.StopRefused:
-                pass    # the pid was recycled: our process has exited, the live one is not ours
-        if marker and not ended:
-            base.mark_ended(paths, None, reconciled=True)
-        # a marker with a tombstone and no pid.json is a spawn that failed
-        # before any process existed (base.spawn)
-        self._do(self.work.reconcile, execution_id=e.id,
-                 spawned=marker and (pid is not None or not ended))
-        self._running.pop(e.id, None)
-        return 'reconcile_execution'
-
-    def _execution(self, eid):
-        with self.db.read() as r:
-            return rows.get(r, entities.Execution, eid).entity
+        """The boot sweep (p3.5b §18.1), P11's adopt-or-reconcile: every
+        non-terminal execution a previous Core left, whatever its mission's
+        state. Returns the execution ids it examined."""
+        return self.manager.boot()
 
     # ── verifying, reviewing ──
 

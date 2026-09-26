@@ -99,8 +99,10 @@ class RefuseStart(RuntimeError):
 class Ports:
     """The ports Core runs on. The policy is the real engine (P9, D20) and the
     router the real resource router (P10), over `usage`, the usage feed; the
-    verifier and reviewer are still stubs until P13, and the only harness
-    registered for execution is the fake one until P11."""
+    verifier and reviewer are still stubs until P13. `executors` are the
+    execution adapters (P11, p11-design-gate §23): None is the real ones (Claude
+    Code, behind the P9 registry gate, ADR-0021 terms and P10's enforcement
+    step); a test passes `[FakeHarness()]`."""
     policy: object = field(default_factory=PolicyEngine)
     # None: the planning worker plans through `archeus_call` (P8, D5); a stub
     # `plan.v1` port makes the engine plan instead (the P3.5 tests)
@@ -115,6 +117,7 @@ class Ports:
     # the real ones, each gated by ADR-0021) and the own-call preference.
     callers: list = None
     preference: object = field(default_factory=P.LegacyOwnCallPreference)
+    executors: list = None
 
     @property
     def stub(self):
@@ -175,8 +178,10 @@ class EngineLoop:
         seen = writer.commit_count
         with self.db.read() as conn:
             head = outbox.head(conn)
-            live = [(m['id'], m['version']) for m in queries.list_missions(conn)
-                    if m['state'] not in engine.SETTLED]
+            # parked on the mission's version AND its tasks' and executions'
+            # (P11 D28): an execution ending must wake the mission it belongs to
+            live = [(m['id'], (m['version'], _stamp(conn, m['id'])))
+                    for m in queries.list_missions(conn) if m['state'] not in engine.SETTLED]
         progressed = False
         for mid, version in live:
             if self._stop.is_set():
@@ -210,6 +215,75 @@ class EngineLoop:
             return
         self.observed_seq, self.state = head, 'idle'
         writer.wait_commit(seen, self.idle_s, until=self._stop.is_set)
+
+
+def _stamp(conn, mission_id):
+    return tuple(conn.execute('SELECT COUNT(*), COALESCE(SUM(version), 0) FROM %s '
+                              'WHERE mission_id = ?' % t, (mission_id,)).fetchone()
+                 for t in ('tasks', 'executions'))
+
+
+def paths_disarmed():
+    return os.path.exists(paths.stop_sentinel())
+
+
+def real_executors():
+    """The execution adapters a Core offers when its ports name none (P11)."""
+    from ..harnesses.claude_code.adapter import ClaudeCodeAdapter
+    return [ClaudeCodeAdapter()]
+
+
+class ExecLoop:
+    """`archeus-exec` (P11): the execution manager's pass, every EXEC_S, once
+    the engine's boot sweep has adopted or reconciled what a previous Core left.
+    A pass never waits for a process."""
+    EXEC_S = 0.05
+
+    def __init__(self, manager, db, *, on_fail=None):
+        self.manager, self.db, self.on_fail = manager, db, on_fail
+        self.state, self.observed_seq = 'starting', 0
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name='archeus-exec', daemon=True)
+
+    def start(self):
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+
+    def join(self, timeout):
+        self._thread.join(timeout)
+
+    def status(self):
+        """`live`: processes being watched — work that advances on its own."""
+        return {'state': self.state, 'live': len(self.manager._procs),
+                'observed_seq': self.observed_seq}
+
+    def _run(self):
+        try:
+            while not self.manager.booted and not self._stop.is_set():
+                time.sleep(self.EXEC_S)
+            while not self._stop.is_set():
+                with self.db.read() as conn:
+                    head = outbox.head(conn)
+                if self.manager.tick():
+                    self.state = 'running'
+                else:
+                    self.state, self.observed_seq = 'idle', head
+                    self._stop.wait(self.EXEC_S)
+            self.state = 'stopped'
+        except errors.WriterClosed:
+            self.state = 'stopped'
+            if not self._stop.is_set() and self.on_fail:
+                self.on_fail()
+        except Exception:
+            if self._stop.is_set():
+                self.state = 'stopped'
+                return
+            self.state = 'failed'
+            log.exception('the execution thread failed; Core stops (exit 3)')
+            if self.on_fail:
+                self.on_fail()
 
 
 class WorldLoop:
@@ -288,6 +362,7 @@ class Core:
         self.static_dir, self.world_poll_s = static_dir, world_poll_s
         self.lock = self.db = self.loop = self.world = self.api = self.server = None
         self.knowledge = self.intent = self.plan = self.policy = None
+        self.exec = self.manager = None
         self.warning = None
         self.exit_code = 0
         self._done = threading.Event()
@@ -324,15 +399,21 @@ class Core:
 
         self.missions = commands.Missions(policy=self.ports.policy)
         registry = AdapterRegistry(self.ports.policy)
-        registry.register(FakeHarness())
+        for adapter in (real_executors() if self.ports.executors is None
+                        else self.ports.executors):
+            registry.register(adapter)
         eng = engine.Engine(
             self.db, actor=self.system,
             work=work.Work(missions=self.missions,
                            router=ResourceRouter(registry, self.ports.usage)),
             brain=self.ports.brain, registry=registry, verifier=self.ports.verifier,
-            reviewer=self.ports.reviewer, scenarios=self.ports.scenarios)
+            reviewer=self.ports.reviewer, scenarios=self.ports.scenarios,
+            usage=self.ports.usage)
+        self.manager = eng.manager
         self.loop = EngineLoop(eng, self.db, idle_s=self.idle_s, on_fail=self._engine_failed)
         self.loop.start()
+        self.exec = ExecLoop(eng.manager, self.db, on_fail=self._engine_failed)
+        self.exec.start()
         self.world = WorldLoop(World(self.db, actor=self.system), self.db,
                                poll_s=self.world_poll_s, on_fail=self._engine_failed)
         self.world.start()
@@ -415,6 +496,7 @@ class Core:
                          'version': VERSION, 'schema': self.schema,
                          'ports': 'stub' if self.ports.stub else 'real'},
                 'engine': self.loop.status(), 'world': self.world.status(),
+                'exec': self.exec.status(), 'armed': not paths_disarmed(),
                 'knowledge': self.knowledge.status(), 'intent': self.intent.status(),
                 'plan': self.plan.status() if self.plan is not None
                 else {'state': 'idle', 'pending': 0},
@@ -461,6 +543,8 @@ class Core:
             self.knowledge.stop()
         if self.world is not None:
             self.world.stop()
+        if self.exec is not None:
+            self.exec.stop()
         if self.loop is not None:
             self.loop.stop()
         if self.db is not None:

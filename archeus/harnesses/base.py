@@ -79,13 +79,21 @@ class ExecutionSpec:
     workdir: str
     attempt: int = 1
     task_contract: Mapping = field(default_factory=dict)
+    # merged over the parent's environment; a None value REMOVES the variable
+    # (capability removal, p11-design-gate §18)
     env: Mapping = field(default_factory=dict)
     model: Optional[str] = None
     effort: Optional[str] = None
     limits: Mapping = field(default_factory=dict)
     allowed_tools: tuple = ()
     resume_ref: Optional[str] = None
-    hook_settings: Optional[str] = None
+    # the hook command (an argv list, P11): how the adapter installs it is its own
+    # business (Claude Code: a --settings file; the fake agent: an env variable)
+    hook_settings: Optional[tuple] = None
+    # P11: the process number within the execution (1: its first spawn; a resume
+    # is the next) and the account it runs on
+    process_seq: int = 1
+    account: Optional['AccountRef'] = None
 
 
 @dataclass(frozen=True)
@@ -164,6 +172,12 @@ class ExecutionResult:
     session_ref: Optional[str] = None
     transcript_path: Optional[str] = None
     files_changed: Optional[tuple] = None
+    # P11 (p11-design-gate §9.1): who owns the end (resource | task | auth | limit),
+    # whether the hook halted the process (a pause, an ASK, a stop flag), and the
+    # adapter's opaque state for a resume (a provider session, a scripted step)
+    failure: Optional[str] = None
+    halted: bool = False
+    adapter_state: Optional[Mapping] = None
 
 
 @runtime_checkable
@@ -178,7 +192,7 @@ class HarnessAdapter(Protocol):
     def pause(self, handle: ProcessHandle) -> PauseResult: ...
     def resume(self, spec: ExecutionSpec, state: Mapping) -> ProcessHandle: ...
     def stop(self, handle: ProcessHandle, *, grace_s: float) -> None: ...
-    def inspect(self, handle: ProcessHandle) -> Snapshot: ...
+    def inspect(self, handle: ProcessHandle, offset: int = 0) -> Snapshot: ...
     def status(self, handle: ProcessHandle) -> ProcStatus: ...
     def handoff(self, checkpoint) -> ExecutionSpec: ...
     def collect_result(self, handle: ProcessHandle) -> ExecutionResult: ...
@@ -215,6 +229,11 @@ def read_json(path):
         return None
 
 
+def halted_path(exec_dir):
+    """`halted.json`: written by the hook when it halts the process (P11)."""
+    return os.path.join(exec_dir, 'halted.json')
+
+
 def spawn(spec, argv):
     """Start *argv* for *spec* under the process I/O contract.
 
@@ -222,17 +241,38 @@ def spawn(spec, argv):
     the process (its exit code); everything durable is in the handle and the
     files. The child's environment carries `ARCHEUS_EXECUTION_ID` (which makes
     the legacy account hooks stand down — the P0.5 guard) and `ARCHEUS_HOME`.
+
+    Process 1 of an execution needs no marker yet (a marker means a process may
+    exist). Process k > 1 (a resume, P11) needs the marker of process k - 1 AND
+    its `ended` tombstone — proof the last one is gone — and replaces both, so
+    one execution never has two processes at once. The stream is appended to.
     """
     paths = ExecPaths(spec.execution_id)
-    if os.path.exists(paths.spawning):
-        raise AlreadySpawned(spec.execution_id)
+    seq = spec.process_seq
+    if seq <= 1:
+        if os.path.exists(paths.spawning):
+            raise AlreadySpawned(spec.execution_id)
+    else:
+        last = read_json(paths.spawning) or {}
+        if last.get('process_seq', 1) != seq - 1 or not os.path.exists(paths.ended):
+            raise AlreadySpawned('%s: process %d may still be running'
+                                 % (spec.execution_id, seq - 1))
     os.makedirs(paths.dir, exist_ok=True)
-    _write_json(paths.spawning, {'execution_id': spec.execution_id,
-                                 'attempt': spec.attempt, 'at': time.time()})
+    _write_json(paths.spawning, {'execution_id': spec.execution_id, 'attempt': spec.attempt,
+                                 'process_seq': seq, 'at': time.time()})
+    for stale in (paths.ended, halted_path(paths.dir)):
+        try:
+            os.remove(stale)
+        except FileNotFoundError:
+            pass
     if not config.write_atomic(paths.prompt, spec.prompt):
         raise OSError('could not write %s' % paths.prompt)
     env = dict(os.environ)
-    env.update(spec.env)
+    for k, v in spec.env.items():
+        if v is None:
+            env.pop(k, None)
+        else:
+            env[k] = v
     env['ARCHEUS_EXECUTION_ID'] = spec.execution_id
     env['ARCHEUS_HOME'] = archeus_home()
     child, err = proc.spawn_detached(list(argv), cwd=spec.workdir, env=env,
@@ -243,7 +283,7 @@ def spawn(spec, argv):
         mark_ended(paths, None, error=err)
         raise SpawnFailed(err)
     create_time = proc.process_create_time(child.pid)
-    _write_json(paths.pid, {'pid': child.pid, 'create_time': create_time})
+    _write_json(paths.pid, {'pid': child.pid, 'create_time': create_time, 'process_seq': seq})
     return ProcessHandle(spec.execution_id, child.pid, create_time, paths.dir), child
 
 

@@ -52,7 +52,6 @@ _PLAN_LISTS = ('inputs', 'coverage', 'assumptions', 'questions', 'risks', 'refs'
 #: Task states after which its dependants may start.
 DONE = ('SUCCEEDED', 'SKIPPED')
 #: What an end of an execution means for its process record.
-_EXIT = {'ok': 'exited_success', 'error': 'exited_error'}
 _VERDICT = {'PASSED': 'all_checks_pass', 'FAILED': 'a_check_fails'}
 _REVIEW = {'accept': 'verdict_accept', 'changes_requested': 'verdict_changes',
            'reject': 'verdict_reject'}
@@ -289,7 +288,10 @@ class Work:
                                attempt=len(tx.where(entities.Execution, task_id=task_id)) + 1,
                                harness_id=route.harness_id or route.selected,
                                route_decision_id=rd, account_id=route.account_id,
-                               model=route.model, effort=route.effort)
+                               model=route.model, effort=route.effort,
+                               # the binding it may run under (P11, p11-design-gate §7)
+                               plan_id=plan.id, plan_digest=plan.digest,
+                               policy_decision_id=auth.get('policy_decision_id'))
         tx.insert(e, actor=actor)
         ev = self._event(tx, 'execution.intent', Ref('execution', e.id), actor, m,
                          {'task_id': task_id, 'attempt': e.attempt, 'harness_id': e.harness_id,
@@ -298,103 +300,37 @@ class Work:
                 'harness_id': e.harness_id, 'account_id': e.account_id, 'model': e.model,
                 'effort': e.effort, 'route_decision_id': rd, 'seq': ev.seq}
 
-    def _task_after(self, tx, actor, execution, ok, failure_class='execution'):
-        """The task's response to its execution ending (one transaction with it)."""
-        t = lifecycle.load(tx, entities.Task, execution.task_id).entity
-        if ok:
-            return self._fire(tx, entities.Task, t.id, 'execution_succeeded', actor,
-                              'execution %s ended ok; verifying' % execution.id)
-        return self._failed(tx, actor, t, 'execution_failed_retry', 'execution_failed_final',
-                            failure_class, 'execution %s did not succeed' % execution.id)
-
     def _failed(self, tx, actor, t, retry, final, failure_class, why):
-        """Retry while attempts remain (a retry is a new Execution), else FAILED."""
-        if len(tx.where(entities.Execution, task_id=t.id)) < t.max_attempts:
-            return self._fire(tx, entities.Task, t.id, retry, actor, why + '; retrying')
-        return self._fire(tx, entities.Task, t.id, final, actor,
-                          why + '; %d attempts used' % t.max_attempts,
-                          {'failure_class': failure_class})
+        """Retry while charged attempts remain (a retry is a new Execution),
+        else FAILED — P3.5's rule with P11's count (D9)."""
+        from .executions import charged_failure
+        return charged_failure(tx, actor, t, retry, final, failure_class, why)
 
-    # ── executions ──
+    # ── executions: the P3.5 entry points, over P11's one implementation ──
 
     def record_spawn(self, tx, *, actor, execution_id, pid, create_time):
-        """INTENT -> STARTING: the process exists (pid + creation time)."""
-        e = self._fire(tx, entities.Execution, execution_id, 'spawn', actor,
-                       'process %d started' % pid,
-                       {'pid': pid, 'create_time': create_time}).entity
-        m = lifecycle.load(tx, entities.Mission, e.mission_id).entity
-        ev = self._event(tx, 'execution.started', Ref('execution', e.id), actor, m,
-                         {'pid': pid, 'create_time': create_time, 'task_id': e.task_id,
-                          'attempt': e.attempt, 'harness_id': e.harness_id,
-                          'account_id': e.account_id, 'model': e.model})
-        return {'execution_id': e.id, 'state': e.state, 'seq': ev.seq}
+        """INTENT -> STARTING: the process exists. The P3.5 call, for a caller
+        that spawned without `executions.prepare_process` (a test that reports
+        the process itself): it is process 1 of the execution."""
+        from . import executions
+        e = lifecycle.load(tx, entities.Execution, execution_id).entity
+        if e.process_seq == 0:
+            tx.update(entities.Execution, e.id, {'process_seq': 1}, actor=actor)
+        return executions.record_process(tx, actor=actor, execution_id=execution_id, pid=pid,
+                                         create_time=create_time, process_seq=1)
 
     def record_exit(self, tx, *, actor, execution_id, exit_reason, exit_code, summary='',
                     output=True, usage=None):
-        """The process exited: STARTING -> RUNNING (it wrote output) -> ENDED_OK |
-        ENDED_ERROR, `execution.ended`, and the task's response, in one
-        transaction. ENDED_OK sends the task to VERIFYING — never to SUCCEEDED.
-        A second report of the same end is an invalid transition: nothing changes."""
-        if exit_reason not in _EXIT:
+        """The process exited (`executions.record_end`): ENDED_OK sends the task
+        to VERIFYING — never to SUCCEEDED. A second report of the same end is an
+        invalid transition: nothing changes."""
+        from . import executions
+        if exit_reason not in ('ok', 'error'):
             raise ValueError('exit_reason is ok or error, not %r' % (exit_reason,))
-        row = lifecycle.load(tx, entities.Execution, execution_id)
-        if row.entity.state == 'STARTING':
-            if not output:
-                return self._lost(tx, actor, row.entity, 'the process exited without output')
-            self._fire(tx, entities.Execution, execution_id, 'first_output', actor,
-                       'the process wrote output')
-        e = self._fire(tx, entities.Execution, execution_id, _EXIT[exit_reason], actor,
-                       'exit code %s' % exit_code,
-                       {'exit_reason': exit_reason, 'exit_code': exit_code,
-                        'summary': summary}).entity
-        if usage and e.route_decision_id is not None:
-            # attributable truth (P10): what it consumed, against where it was routed
-            u = {k: usage[k] for k in ('tokens_in', 'tokens_out', 'cache_read', 'cache_write',
-                                       'cost_usd') if isinstance(usage.get(k), (int, float))
-                 and not isinstance(usage.get(k), bool)}
-            tx.insert(entities.UsageLedger(id=ids.new_id('usage_ledger'), execution_id=e.id,
-                                           route_decision_id=e.route_decision_id,
-                                           account_id=e.account_id, **u), actor=actor)
-        return self._ended(tx, actor, e, exit_reason == 'ok')
-
-    def _ended(self, tx, actor, e, ok):
-        m = lifecycle.load(tx, entities.Mission, e.mission_id).entity
-        ev = self._event(tx, 'execution.ended', Ref('execution', e.id), actor, m,
-                         {'exit_reason': e.exit_reason, 'exit_code': e.exit_code,
-                          'task_id': e.task_id, 'attempt': e.attempt})
-        t = self._task_after(tx, actor, e, ok).entity
-        return {'execution_id': e.id, 'state': e.state, 'task_state': t.state, 'seq': ev.seq}
-
-    #: How reconciliation reaches LOST from each live state (state-machines §4).
-    _TO_LOST = {'INTENT': 'spawn_unconfirmed', 'STARTING': 'start_timeout',
-                'RUNNING': 'heartbeat_missing'}
-
-    def _lost(self, tx, actor, e, why):
-        if e.state != 'LOST':
-            self._fire(tx, entities.Execution, e.id, self._TO_LOST[e.state], actor, why)
-        e = self._fire(tx, entities.Execution, e.id, 'reconciled_kill', actor, why,
-                       {'exit_reason': 'lost'}).entity
-        return self._ended(tx, actor, e, False)
-
-    def reconcile(self, tx, *, actor, execution_id, spawned):
-        """An execution no running Core is watching (it was started by a Core
-        that died). The caller has already killed its process, if any, by pid +
-        creation time. INTENT that never spawned -> ABANDONED; anything else ->
-        LOST -> ENDED_KILLED. Either way the attempt is over and the task
-        retries with a NEW execution or fails; a process is never re-attached or
-        re-spawned under the same attempt (adoption is the execution manager's,
-        P11)."""
-        row = lifecycle.load(tx, entities.Execution, execution_id)
-        e = row.entity
-        if e.state == 'INTENT' and not spawned:
-            e = self._fire(tx, entities.Execution, execution_id, 'spawn_failed', actor,
-                           'no process was started', {'exit_reason': 'abandoned'}).entity
-            t = self._task_after(tx, actor, e, False)
-            return {'execution_id': e.id, 'state': e.state, 'task_state': t.entity.state}
-        if e.state not in self._TO_LOST and e.state != 'LOST':
-            raise lifecycle.IllegalTrigger('execution', e.state, 'reconcile',
-                                           'the execution has already ended')
-        return self._lost(tx, actor, e, 'Core restarted; nothing was watching this process')
+        code = 0 if exit_reason == 'ok' else (exit_code if exit_code not in (0, None) else 1)
+        return executions.record_end(tx, actor=actor, execution_id=execution_id,
+                                     exit_code=code, summary=summary, usage=usage,
+                                     output=output)
 
     # ── verification and review ──
 

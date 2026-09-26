@@ -300,9 +300,14 @@ def _affinity(conn, mission):
     """Where the mission's work last ran (§5 step 1), unless the user set its
     resources since (that clears affinity)."""
     since = (mission.resource_preferences or {}).get('since') or ''
+    # an execution stopped by its resource (a ceiling, a limit, the breaker) drops
+    # the affinity to it (resource-router §7; P11 D10): it must not route straight back
+    dropped = {r.entity.route_decision_id for r in rows.where(
+        conn, entities.Execution, mission_id=mission.id)
+        if r.entity.stop_reason in ('ceiling', 'limit', 'breaker')}
     got = [r for r in rows.where(conn, entities.RouteDecision, mission_id=mission.id)
            if r.entity.subject.kind == 'task' and r.entity.result in ('selected', 'fallback')
-           and r.created_at > since]
+           and r.created_at > since and r.entity.id not in dropped]
     if not got:
         return None
     rd = got[-1].entity

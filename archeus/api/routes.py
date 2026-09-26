@@ -38,7 +38,7 @@ from collections import namedtuple
 
 from ..core.application import commands, queries, world
 from ..core.application import calls as own_calls
-from ..core.application import conversation, knowledge, resources
+from ..core.application import conversation, executions, knowledge, resources
 from ..core.context import assemble as context
 from ..core.knowledge import ingest
 from ..harnesses.calls import real_callers
@@ -355,6 +355,41 @@ def set_mission_resources(req):
                                           'max_cost_band') if b.get(k) is not None}})
 
 
+def get_execution(req):
+    with req.api.db.read() as conn:
+        return 200, executions.view(conn, req.params['id'])
+
+
+def list_task_executions(req):
+    with req.api.db.read() as conn:
+        return 200, {'executions': executions.of_task(conn, req.params['id'])}
+
+
+def stop_execution(req):
+    return 200, req.run(req.api.executions.stop_execution,
+                        {'execution_id': req.params['id']})
+
+
+def stop_mission(req):
+    return 200, req.run(req.api.executions.stop_mission, {'mission_id': req.params['id']})
+
+
+def estop(req):
+    """The sentinel first (every hook halts on it even if Core dies next), then
+    the record; the execution thread kills every live process by identity."""
+    from ..node.local import LocalNode
+    LocalNode.engage_estop()
+    out = req.run(req.api.executions.estop, {})
+    return 200, dict(out, armed=False)
+
+
+def rearm(req):
+    from ..node.local import LocalNode
+    out = req.run(req.api.executions.rearm, {})
+    LocalNode.clear_estop()
+    return 200, out
+
+
 def list_messages(req):
     with req.api.db.read() as conn:
         return 200, {'messages': queries.messages(conn, req.params['id'],
@@ -550,6 +585,16 @@ ROUTES = (
           schemas.RESOURCE_POLICY, 'ResourcePolicy'),
     Route('POST', '/v1/missions/{id}/resources', set_mission_resources, 'admin', 'required',
           schemas.MISSION_RESOURCES, 'Mission'),
+    # P11: executions (p11-design-gate §21)
+    Route('GET', '/v1/executions/{id}', get_execution, 'observe', None, None, 'Execution'),
+    Route('GET', '/v1/tasks/{id}/executions', list_task_executions, 'observe', None, None,
+          'ExecutionList'),
+    Route('POST', '/v1/executions/{id}/stop', stop_execution, 'control', 'required',
+          schemas.KEYED, 'ExecutionStopped'),
+    Route('POST', '/v1/missions/{id}/stop', stop_mission, 'control', 'required',
+          schemas.KEYED, 'MissionStopped'),
+    Route('POST', '/v1/estop', estop, 'control', 'required', schemas.KEYED, 'Estopped'),
+    Route('POST', '/v1/rearm', rearm, 'control', 'required', schemas.KEYED, 'Rearmed'),
     # P7: conversation and intent (p7-design-gate §9)
     Route('GET', '/v1/conversations/{id}/messages', list_messages, 'observe', None, None,
           'MessageList'),

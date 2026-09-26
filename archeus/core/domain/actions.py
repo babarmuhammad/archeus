@@ -44,6 +44,10 @@ class Action:
     # project-relative globs the action touches (a plan-level item: its task's
     # `touches`); None when unknown (p9-design-gate §3.3)
     paths: tuple = None
+    # the branch and host the action names, known only at the action stage
+    # (P11, p11-design-gate D16); None when it names none
+    branch: str = None
+    host: str = None
 
     def __post_init__(self):
         if self.action_class not in ACTION_CLASSES:
@@ -56,7 +60,7 @@ class Action:
 
     def canonical_dict(self):
         body = {'class': self.action_class, 'target': self.target}
-        for k in ('argv', 'diff_hash', 'environment', 'paths'):
+        for k in ('argv', 'diff_hash', 'environment', 'paths', 'branch', 'host'):
             v = getattr(self, k)
             if v is not None:
                 body[k] = list(v) if k in ('argv', 'paths') else v

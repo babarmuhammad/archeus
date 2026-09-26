@@ -320,6 +320,36 @@ TYPES = {
     'HarnessList': {'type': 'object', 'properties': {
         'harnesses': {'type': 'array', 'items': {'ref': 'Harness'}}},
         'required': ['harnesses']},
+    # ── executions (P11, p11-design-gate §21) ──
+    'Execution': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'task_id': {'type': 'string'},
+        'mission_id': {'type': 'string'}, 'attempt': {'type': 'integer'},
+        'state': {'type': 'string', 'enum': sorted(states.states('execution'))},
+        'harness_id': {'type': 'string', 'nullable': True},
+        'account_id': {'type': 'string', 'nullable': True},
+        'pid': {'type': 'integer', 'nullable': True},
+        'process_seq': {'type': 'integer'}, 'stream_offset': {'type': 'integer'},
+        'usage': {'type': 'object', 'nullable': True},
+        'stop_reason': {'type': 'string', 'nullable': True},
+        'exit_reason': {'type': 'string', 'nullable': True},
+        'charged': {'type': 'boolean', 'nullable': True}, 'version': {'type': 'integer'}},
+        'required': ['id', 'task_id', 'mission_id', 'attempt', 'state', 'process_seq',
+                     'stream_offset', 'version']},
+    'ExecutionList': {'type': 'object', 'properties': {
+        'executions': {'type': 'array', 'items': {'ref': 'Execution'}}},
+        'required': ['executions']},
+    'ExecutionStopped': {'type': 'object', 'open': True, 'properties': {
+        'execution_id': {'type': 'string'}, 'state': {'type': 'string'}},
+        'required': ['execution_id', 'state']},
+    'MissionStopped': {'type': 'object', 'properties': {
+        'mission_id': {'type': 'string'},
+        'stopped': {'type': 'array', 'items': {'type': 'string'}}},
+        'required': ['mission_id', 'stopped']},
+    'Estopped': {'type': 'object', 'properties': {
+        'stopped': {'type': 'array', 'items': {'type': 'string'}},
+        'armed': {'type': 'boolean'}}, 'required': ['stopped', 'armed']},
+    'Rearmed': {'type': 'object', 'properties': {'armed': {'type': 'boolean'}},
+                'required': ['armed']},
     'ProviderTermsDecided': {'type': 'object', 'properties': {
         'provider_terms': {'ref': 'ProviderTerms'}}, 'required': ['provider_terms']},
     # ── conversation and intent (P7, p7-design-gate §9) ──

@@ -63,6 +63,12 @@ given trigger on a given subject is decided in the application layer (P9), never
 | POST | `/v1/accounts/{id}/state` | admin | required | — | `SetAccountStateRequest` | `Account` |
 | POST | `/v1/resource-policies/{id}` | admin | required | — | `SetResourcePolicyRequest` | `ResourcePolicy` |
 | POST | `/v1/missions/{id}/resources` | admin | required | — | `SetMissionResourcesRequest` | `Mission` |
+| GET | `/v1/executions/{id}` | observe | — | — | — | `Execution` |
+| GET | `/v1/tasks/{id}/executions` | observe | — | — | — | `ExecutionList` |
+| POST | `/v1/executions/{id}/stop` | control | required | — | `StopExecutionRequest` | `ExecutionStopped` |
+| POST | `/v1/missions/{id}/stop` | control | required | — | `StopMissionRequest` | `MissionStopped` |
+| POST | `/v1/estop` | control | required | — | `EstopRequest` | `Estopped` |
+| POST | `/v1/rearm` | control | required | — | `RearmRequest` | `Rearmed` |
 | GET | `/v1/conversations/{id}/messages` | observe | — | `after` | — | `MessageList` |
 | POST | `/v1/conversations/{id}/messages` | control | required | — | `PostMessageRequest` | `MessagePosted` |
 | GET | `/v1/intents/{id}` | observe | — | — | — | `Intent` |
@@ -351,6 +357,15 @@ interface DigestGroup {
 }
 ```
 
+### `Estopped`
+
+```ts
+interface Estopped {
+  stopped: string[];
+  armed: boolean;
+}
+```
+
 ### `Event`
 
 ```ts
@@ -376,6 +391,47 @@ interface Event {
 ```ts
 interface EventPage {
   events: Event[];
+}
+```
+
+### `Execution`
+
+```ts
+interface Execution {
+  id: string;
+  task_id: string;
+  mission_id: string;
+  attempt: number;
+  state: 'ABANDONED' | 'AWAITING_APPROVAL' | 'ENDED_ERROR' | 'ENDED_HANDOFF' | 'ENDED_KILLED' | 'ENDED_OK' | 'ENDED_REJECTED' | 'HANDING_OFF' | 'INTENT' | 'LOST' | 'PAUSED' | 'PAUSING' | 'RUNNING' | 'STARTING' | 'STOPPING';
+  harness_id?: string | null;
+  account_id?: string | null;
+  pid?: number | null;
+  process_seq: number;
+  stream_offset: number;
+  usage?: Record<string, unknown> | null;
+  stop_reason?: string | null;
+  exit_reason?: string | null;
+  charged?: boolean | null;
+  version: number;
+  [field: string]: unknown;
+}
+```
+
+### `ExecutionList`
+
+```ts
+interface ExecutionList {
+  executions: Execution[];
+}
+```
+
+### `ExecutionStopped`
+
+```ts
+interface ExecutionStopped {
+  execution_id: string;
+  state: string;
+  [field: string]: unknown;
 }
 ```
 
@@ -671,6 +727,15 @@ interface MissionPlan {
 }
 ```
 
+### `MissionStopped`
+
+```ts
+interface MissionStopped {
+  mission_id: string;
+  stopped: string[];
+}
+```
+
 ### `Plan`
 
 ```ts
@@ -820,6 +885,14 @@ interface ProviderTermsDecided {
 ```ts
 interface ProviderTermsList {
   provider_terms: ProviderTerms[];
+}
+```
+
+### `Rearmed`
+
+```ts
+interface Rearmed {
+  armed: boolean;
 }
 ```
 
@@ -1243,6 +1316,38 @@ interface SetMissionResourcesRequest {
   forbidden_accounts?: string[] | null;
   forbidden_harnesses?: string[] | null;
   max_cost_band?: 'low' | 'medium' | 'high' | null;
+  idempotency_key: string;
+}
+```
+
+### `StopExecutionRequest`
+
+```ts
+interface StopExecutionRequest {
+  idempotency_key: string;
+}
+```
+
+### `StopMissionRequest`
+
+```ts
+interface StopMissionRequest {
+  idempotency_key: string;
+}
+```
+
+### `EstopRequest`
+
+```ts
+interface EstopRequest {
+  idempotency_key: string;
+}
+```
+
+### `RearmRequest`
+
+```ts
+interface RearmRequest {
   idempotency_key: string;
 }
 ```

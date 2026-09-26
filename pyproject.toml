@@ -96,6 +96,7 @@ packages = [
     "archeus.core.brain",
     "archeus.core.context",
     "archeus.core.domain",
+    "archeus.core.execution",
     "archeus.core.knowledge",
     "archeus.core.missions",
     "archeus.core.planning",
@@ -103,11 +104,13 @@ packages = [
     "archeus.core.routing",
     "archeus.core.world",
     "archeus.harnesses",
+    "archeus.harnesses.claude_code",
     "archeus.infra",
     "archeus.infra.artifacts",
     "archeus.infra.db",
     "archeus.infra.eventlog",
     "archeus.infra.search",
+    "archeus.node",
 ]
 
 [tool.setuptools.package-data]

@@ -172,7 +172,11 @@ def _values(action, key):
         return list(action.paths) if action.paths else None
     if key == 'command_glob':
         return [' '.join(action.argv)] if action.argv else None
-    return None     # branch, host, cost band: only the action stage knows them (P11)
+    if key in ('branch_glob', 'branches'):
+        return None if action.branch is None else [action.branch]
+    if key in ('host_glob', 'hosts'):
+        return None if action.host is None else [action.host]
+    return None     # cost band: never an action's (a plan's band is judged at the gate)
 
 
 def matches(r, action):

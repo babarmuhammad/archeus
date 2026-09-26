@@ -771,6 +771,11 @@ TASK_KINDS = ('code_change', 'research', 'document', 'presentation', 'inspection
 CAPABILITIES = ('code_edit', 'shell', 'web', 'long_context', 'vision')
 MODEL_TIERS = ('small', 'mid', 'large')
 WORKSPACE_MODES = ('in_place', 'worktree')
+#: Why an execution was stopped (P11, p11-design-gate §20.1).
+STOP_REASONS = ('user', 'estop', 'ceiling', 'limit', 'breaker', 'pause_timeout', 'cancel',
+                'binding', 'disarmed')
+#: How an adapter classifies an end (p11-design-gate §9.1): who owns it.
+FAILURES = ('resource', 'task', 'auth', 'limit')
 
 
 @entity
@@ -842,9 +847,11 @@ class Execution(Entity):
     _ID = 'execution'
     _STATE = ('state', 'execution')
     _REFS = {'task_id': 'task', 'mission_id': 'mission', 'route_decision_id': 'route_decision',
-             'account_id': 'account'}
+             'account_id': 'account', 'plan_id': 'plan', 'policy_decision_id': 'policy_decision'}
     _MIN1 = ('attempt',)
-    _CHOICES = {'exit_reason': ('ok', 'error', 'killed', 'lost', 'abandoned')}
+    _CHOICES = {'exit_reason': ('ok', 'error', 'killed', 'lost', 'abandoned', 'rejected'),
+                'stop_reason': STOP_REASONS, 'failure': FAILURES}
+    _NONNEG = ('process_seq', 'hook_seq', 'stream_offset')
     id: str
     task_id: str
     mission_id: str
@@ -862,6 +869,28 @@ class Execution(Entity):
     exit_reason: str = None
     exit_code: int = None
     summary: str = ''           # reported by the harness; never the completion signal
+    # P11 (p11-design-gate §6, §7, §20): the binding it was dispatched under,
+    # where it runs, its processes (the row holds the current one; history is
+    # the registry and one `execution.started` per process), the hook's token
+    # hash and last served request, the stream offset Core has read to, the
+    # latest cumulative usage, the adapter's opaque state, and how it ended
+    plan_id: str = None
+    plan_digest: str = None
+    policy_decision_id: str = None
+    workdir: str = None
+    branch: str = None
+    process_seq: int = 0
+    hook_token_hash: str = None
+    hook_seq: int = 0
+    stream_offset: int = 0
+    usage: dict = None
+    adapter_state: dict = None
+    stop_reason: str = None
+    failure: str = None
+    # False: an end the task does not own (a stop, a resource) spends no attempt (D9)
+    charged: bool = None
+    started_at: str = None
+    ended_at: str = None
     state: str = None
 
 
@@ -1061,6 +1090,8 @@ class Account(Entity):
     auth_kind: str
     node_id: str = None
     home_ref: str = None
+    # LIMITED until this instant (P11: a provider limit, state-machines §9)
+    limited_until: str = None
     health: str = None
 
     def _check(self):

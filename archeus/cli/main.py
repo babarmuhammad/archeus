@@ -21,7 +21,7 @@ import time
 #: Verbs whose behaviour belongs to a later phase: they do nothing, say so,
 #: and exit 2, so no script ever sees a verb change from "opened the TUI" to
 #: something else.
-DEFERRED = {'approve': 'P9', 'pause': 'P11', 'estop': 'P11', 'pair': 'P15'}
+DEFERRED = {'approve': 'P9', 'pair': 'P15'}
 VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair')
 
 USAGE = """usage: archeus core [--open]    run Archeus Core in the foreground (Ctrl+C stops it)
@@ -32,7 +32,12 @@ USAGE = """usage: archeus core [--open]    run Archeus Core in the foreground (C
                                 answer it: may Archeus make automated headless calls on
                                 this harness's accounts (and rotate across several)?
        archeus route why <id>   why a resource was chosen: a route decision, or the latest
-                                one about a task, mission or other subject (P10)"""
+                                one about a task, mission or other subject (P10)
+       archeus pause <mission-id>
+                                pause a mission: its executions halt at their next tool call
+       archeus pause all --now  the emergency stop (as `archeus estop`)
+       archeus estop            stop every execution now; Core stays disarmed until
+                                a user device re-arms it (P11; with Core down: P20)"""
 _TERMS = {'permit': 'permitted', 'refuse': 'refused'}
 
 
@@ -53,6 +58,10 @@ def main(argv):
         return terms(args[0], _TERMS[args[1]], _TERMS[args[3]] if len(args) == 4 else None)
     if verb == 'route' and len(args) == 2 and args[0] == 'why':
         return route_why(args[1])
+    if (verb == 'estop' and not args) or (verb == 'pause' and args == ['all', '--now']):
+        return estop()
+    if verb == 'pause' and len(args) == 1 and args[0] != 'all':
+        return pause(args[0])
     print(USAGE, file=sys.stderr)
     return 2
 
@@ -149,6 +158,48 @@ def route_why(ref):
         print('no route decision for %s' % ref, file=sys.stderr)
         return 2
     print('%s (%s): %s' % (d['id'], d.get('result') or 'selected', d['explanation']))
+    return 0
+
+
+def _core_or_say():
+    from ..infra import discovery
+    state, info = discovery.discover()
+    if state != 'running':
+        return None
+    return info
+
+
+def estop():
+    """The e-stop with Core running (execution-architecture §10 path 1). With
+    Core down the registry kill is P20's; nothing is attempted."""
+    import os
+    info = _core_or_say()
+    if info is None:
+        print('Core is not running: the e-stop without Core arrives with P20; start Core '
+              'with `archeus core` or stop the processes yourself', file=sys.stderr)
+        return 2
+    out = _get(info, 'POST', '/v1/estop', {'idempotency_key': os.urandom(16).hex()})
+    if out is None:
+        print('Core did not accept the e-stop', file=sys.stderr)
+        return 2
+    print('emergency stop: %d execution(s) stopped; Core is disarmed until re-armed'
+          % len(out['stopped']))
+    return 0
+
+
+def pause(mission_id):
+    import os
+    from urllib.parse import quote
+    info = _core_or_say()
+    if info is None:
+        print('Core is not running: start it with `archeus core`', file=sys.stderr)
+        return 1
+    out = _get(info, 'POST', '/v1/missions/%s/pause' % quote(mission_id, safe=''),
+               {'idempotency_key': os.urandom(16).hex()})
+    if out is None:
+        print('Core refused to pause %s' % mission_id, file=sys.stderr)
+        return 2
+    print('%s: %s (its executions halt at their next tool call)' % (mission_id, out['state']))
     return 0
 
 

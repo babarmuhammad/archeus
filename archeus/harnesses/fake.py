@@ -18,6 +18,7 @@ domain change (testing-strategy §6).
 import json
 import os
 import sys
+from dataclasses import replace
 
 from claude_sessions import llmcall, proc
 
@@ -25,7 +26,7 @@ from . import base
 
 AGENT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fake_agent.py')
 
-_NOT_YET = 'the fake harness does not simulate %s until P11 (pause/resume/hand-off)'
+_NOT_YET = 'the fake harness does not simulate %s until P12 (hand-off)'
 
 
 #: the model a fake harness offers unless told otherwise: a known `large`
@@ -41,7 +42,7 @@ class FakeHarness:
     id = 'fake'
 
     def __init__(self, id=None, *, capabilities=('code_edit', 'shell', 'structured_output',
-                                                  'headless'),
+                                                  'headless', 'resume'),
                  models=(FAKE_MODEL,), enforcement='hook', efforts=()):
         if id is not None:
             self.id = id
@@ -62,9 +63,13 @@ class FakeHarness:
 
     def start(self, spec):
         steps = list(spec.task_contract.get('fake_scenario', ()))
-        argv = [sys.executable, AGENT, json.dumps(steps)]
+        argv = [sys.executable, AGENT, json.dumps(steps), str(int(spec.resume_ref or 0))]
+        if spec.hook_settings:
+            spec = replace(spec, env=dict(spec.env, ARCHEUS_HOOK_CMD=json.dumps(
+                list(spec.hook_settings))))
         handle, child = base.spawn(spec, argv)
         self._children[spec.execution_id] = child
+        self._stopped.discard(spec.execution_id)
         return handle
 
     def send(self, handle, message):
@@ -72,17 +77,19 @@ class FakeHarness:
                                   'stdin file')
 
     def pause(self, handle):
-        raise NotImplementedError(_NOT_YET % 'pause')
+        # cooperative: the PAUSE flag is read by the hook at the next tool call
+        return base.PauseResult(halted=False)
 
     def resume(self, spec, state):
-        raise NotImplementedError(_NOT_YET % 'resume')
+        """Run the scenario again from the step the last process halted at."""
+        return self.start(replace(spec, resume_ref=str((state or {}).get('step', 0))))
 
     def handoff(self, checkpoint):
         raise NotImplementedError(_NOT_YET % 'hand-off')
 
     def status(self, handle):
         child = self._children.get(handle.execution_id)
-        if child is not None:
+        if child is not None and child.pid == handle.pid:
             code = child.poll()
             return base.ProcStatus('running' if code is None else 'exited', code)
         # not ours (a restarted Core): the pid only counts if it is still the
@@ -92,10 +99,15 @@ class FakeHarness:
         if alive:
             return base.ProcStatus('running')
         ended = base.read_json(os.path.join(handle.exec_dir, 'ended')) or {}
-        return base.ProcStatus('exited', ended.get('exit_code'))
+        code = ended.get('exit_code')
+        if code is None:            # the agent's own last word (a Core that did not start it)
+            code = next((e.get('code') for e in reversed(self.inspect(handle).events)
+                         if e.get('type') == 'exit'), None)
+        return base.ProcStatus('exited', code)
 
-    def inspect(self, handle):
-        events, offset = base.read_stream(os.path.join(handle.exec_dir, 'stream.jsonl'))
+    def inspect(self, handle, offset=0):
+        events, offset = base.read_stream(os.path.join(handle.exec_dir, 'stream.jsonl'),
+                                          offset)
         return base.Snapshot(tuple(events), offset)
 
     def stop(self, handle, *, grace_s=0.0):
@@ -118,8 +130,19 @@ class FakeHarness:
         if st.state == 'running':
             raise RuntimeError('execution %s is still running' % handle.execution_id)
         events = self.inspect(handle).events
+        # this process's events: everything after its own `started`
+        last = max((i for i, e in enumerate(events) if e.get('type') == 'started'), default=0)
+        events = events[last:]
         results = [e for e in events if e.get('type') == 'result']
         usage = [e['usage'] for e in events if isinstance(e.get('usage'), dict)]
+        failure = None
+        for e in events:
+            if e.get('type') == 'limit':
+                failure = 'limit'
+            elif e.get('type') == 'error' and e.get('kind') in ('resource', 'auth', 'task'):
+                failure = e['kind']
+        halt = next((e for e in reversed(events) if e.get('type') == 'halted'), None)
+        halted = os.path.exists(base.halted_path(handle.exec_dir))
         if handle.execution_id in self._stopped:
             reason = 'killed'
         else:
@@ -128,7 +151,9 @@ class FakeHarness:
             exit_reason=reason, exit_code=st.exit_code,
             reported_summary=results[-1].get('summary', '') if results else '',
             usage=usage[-1] if usage else {},
-            transcript_path=os.path.join(handle.exec_dir, 'stream.jsonl'))
+            transcript_path=os.path.join(handle.exec_dir, 'stream.jsonl'),
+            failure=failure, halted=halted,
+            adapter_state={'step': halt['at']} if halt is not None else None)
 
 
 class FakeCaller:

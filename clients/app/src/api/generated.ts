@@ -191,6 +191,11 @@ export interface DigestGroup {
   types: string[];
 }
 
+export interface Estopped {
+  stopped: string[];
+  armed: boolean;
+}
+
 export interface Event {
   seq: number;
   id: string;
@@ -209,6 +214,35 @@ export interface Event {
 
 export interface EventPage {
   events: Event[];
+}
+
+export interface Execution {
+  id: string;
+  task_id: string;
+  mission_id: string;
+  attempt: number;
+  state: 'ABANDONED' | 'AWAITING_APPROVAL' | 'ENDED_ERROR' | 'ENDED_HANDOFF' | 'ENDED_KILLED' | 'ENDED_OK' | 'ENDED_REJECTED' | 'HANDING_OFF' | 'INTENT' | 'LOST' | 'PAUSED' | 'PAUSING' | 'RUNNING' | 'STARTING' | 'STOPPING';
+  harness_id?: string | null;
+  account_id?: string | null;
+  pid?: number | null;
+  process_seq: number;
+  stream_offset: number;
+  usage?: Record<string, unknown> | null;
+  stop_reason?: string | null;
+  exit_reason?: string | null;
+  charged?: boolean | null;
+  version: number;
+  [field: string]: unknown;
+}
+
+export interface ExecutionList {
+  executions: Execution[];
+}
+
+export interface ExecutionStopped {
+  execution_id: string;
+  state: string;
+  [field: string]: unknown;
 }
 
 export interface FeedbackRecorded {
@@ -407,6 +441,11 @@ export interface MissionPlan {
   versions: PlanVersionRef[];
 }
 
+export interface MissionStopped {
+  mission_id: string;
+  stopped: string[];
+}
+
 export interface Plan {
   id: string;
   mission_id: string;
@@ -505,6 +544,10 @@ export interface ProviderTermsDecided {
 
 export interface ProviderTermsList {
   provider_terms: ProviderTerms[];
+}
+
+export interface Rearmed {
+  armed: boolean;
 }
 
 export interface Redeemed {
@@ -779,6 +822,22 @@ export interface SetMissionResourcesRequest {
   idempotency_key: string;
 }
 
+export interface StopExecutionRequest {
+  idempotency_key: string;
+}
+
+export interface StopMissionRequest {
+  idempotency_key: string;
+}
+
+export interface EstopRequest {
+  idempotency_key: string;
+}
+
+export interface RearmRequest {
+  idempotency_key: string;
+}
+
 export interface PostMessageRequest {
   text: string;
   in_reply_to?: string | null;
@@ -930,6 +989,18 @@ export const api = {
     send<ResourcePolicy>('POST', '/v1/resource-policies/' + encodeURIComponent(id), body),
   setMissionResources: (send: Send, id: string, body: SetMissionResourcesRequest) =>
     send<Mission>('POST', '/v1/missions/' + encodeURIComponent(id) + '/resources', body),
+  getExecution: (send: Send, id: string) =>
+    send<Execution>('GET', '/v1/executions/' + encodeURIComponent(id)),
+  listTaskExecutions: (send: Send, id: string) =>
+    send<ExecutionList>('GET', '/v1/tasks/' + encodeURIComponent(id) + '/executions'),
+  stopExecution: (send: Send, id: string, body: StopExecutionRequest) =>
+    send<ExecutionStopped>('POST', '/v1/executions/' + encodeURIComponent(id) + '/stop', body),
+  stopMission: (send: Send, id: string, body: StopMissionRequest) =>
+    send<MissionStopped>('POST', '/v1/missions/' + encodeURIComponent(id) + '/stop', body),
+  estop: (send: Send, body: EstopRequest) =>
+    send<Estopped>('POST', '/v1/estop', body),
+  rearm: (send: Send, body: RearmRequest) =>
+    send<Rearmed>('POST', '/v1/rearm', body),
   listMessages: (send: Send, id: string, query: { after?: number } = {}) =>
     send<MessageList>('GET', '/v1/conversations/' + encodeURIComponent(id) + '/messages' + qs(query)),
   postMessage: (send: Send, id: string, body: PostMessageRequest) =>
