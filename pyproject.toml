@@ -81,7 +81,34 @@ dev = ["pytest"]
 gui = ["PyQt6", "PyQt6-WebEngine"]   # optional native desktop shell (gui_qt.py)
 
 [tool.setuptools]
-packages = ["claude_sessions"]
+# Listed, not discovered: `find` would also pick up tests/, tools/, www/ and
+# anything else with an __init__.py, and what ships must not depend on what
+# happens to be in the tree. `archeus` is the V1 package (ADR-0001), growing
+# beside the legacy one; every subpackage is named because `packages` does not
+# recurse. test_packaging.py fails when this list and the tree disagree.
+packages = [
+    "claude_sessions",
+    "archeus",
+    "archeus.api",
+    "archeus.cli",
+    "archeus.core",
+    "archeus.core.application",
+    "archeus.core.brain",
+    "archeus.core.context",
+    "archeus.core.domain",
+    "archeus.core.knowledge",
+    "archeus.core.missions",
+    "archeus.core.planning",
+    "archeus.core.policy",
+    "archeus.core.routing",
+    "archeus.core.world",
+    "archeus.harnesses",
+    "archeus.infra",
+    "archeus.infra.artifacts",
+    "archeus.infra.db",
+    "archeus.infra.eventlog",
+    "archeus.infra.search",
+]
 
 [tool.setuptools.package-data]
 # The GUI is served from source files, not generated — they have to ship.
@@ -99,6 +126,14 @@ claude_sessions = [
     # and only a dev checkout ever had one.
     "*.ico",
 ]
+# The V1 schema: migrations are .sql files, not a package, so they ship only
+# because this names them (test_packaging checks it matches every one).
+"archeus.infra.db" = ["migrations/*.sql"]
+# The V1 SPA, BUILT from clients/app (Vite writes it here; it is git-ignored by
+# archeus/api/.gitignore). A glob that matches nothing is silent, so CI builds
+# the SPA before `python -m build` and the package job checks the installed
+# wheel: index.html plus every asset it references, and no maps or sources.
+"archeus.api" = ["static/*", "static/assets/*"]
 
 [tool.ruff]
 line-length = 100

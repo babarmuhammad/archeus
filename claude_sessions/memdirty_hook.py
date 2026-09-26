@@ -69,6 +69,11 @@ def record(cwd, path):
 
 
 def main():
+    # An Archeus V1 execution runs on the same account, so this account-level
+    # hook fires inside it too. V1 assembles that execution's context and
+    # records its history itself; stand down (P0.5 hook guard).
+    if os.environ.get('ARCHEUS_EXECUTION_ID'):
+        return 0
     try:
         data = json.load(sys.stdin)
     except Exception:

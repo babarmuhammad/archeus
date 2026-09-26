@@ -1,0 +1,551 @@
+# Archeus V1 — Domain Model
+
+Status: **DECIDED** unless a section says otherwise. Companion documents:
+[state-machines.md](state-machines.md) (every lifecycle below),
+[target-architecture.md](target-architecture.md) (where each entity lives in code),
+[resource-router.md](resource-router.md), [context-and-knowledge.md](context-and-knowledge.md).
+
+This document is the single definition of Archeus V1's nouns. Other documents link here
+instead of redefining an entity. If two documents disagree about a field, this one wins and the
+other is a bug.
+
+---
+
+## 1. Modelling rules
+
+1. **Three kinds of truth, never merged.**
+   - *Current state* lives in entity tables (`missions.state`, `accounts.health`, …). It answers
+     "what is true now".
+   - *History* is the append-only `events` table. It answers "what happened, when, caused by
+     whom". Every state change writes an event in the same transaction as the change.
+   - *Knowledge* is `knowledge_items` + `relations`. It answers "what stays useful". Knowledge
+     is never inferred from history implicitly: something must *promote* it (see
+     [context-and-knowledge.md §4](context-and-knowledge.md)).
+2. **Explicit state.** Every mutable entity has a `state` column whose values and transitions
+   are defined once in `archeus/core/domain/states.py` (a flat table: `(machine, from, to,
+   trigger, guard)`). No code sets `state` directly; it calls `transition()`, which validates
+   the edge, stamps actor and reason, and emits the event.
+3. **Provenance on anything Archeus did not get from the user directly.** Columns
+   `source_kind` (user | brain | execution | inspection | import | automation | legacy),
+   `source_ref` (id or URL), `observed_at`, `confidence` (0–1, or a named tier where noted).
+4. **Inferred ≠ explicit.** Mission requirements, plan assumptions and knowledge carry
+   `origin: explicit | inferred`. The UI shows inferred items differently and they can be
+   promoted by the user (spec §8: "inferred assumptions must remain distinguishable").
+5. **IDs.** ULIDs (time-sortable, 26 chars, generated in stdlib from `time` + `secrets`),
+   prefixed by kind: `msn_…`, `tsk_…`, `exe_…`. Events use an integer sequence (the SSE
+   cursor) plus a ULID. One prefix names one kind (`archeus/core/domain/ids.py`). Credentials
+   are not ids: token prefixes (`dev_`, `node_`, `hook_` — api-and-realtime §5.3) are a
+   separate namespace that shares no prefix with any id, so `exe_…` is always an Execution.
+6. **Versioned rows.** Every entity table has `version INTEGER` (optimistic concurrency —
+   commands carry `expected_version`), `created_at`, `updated_at`, and where deletion is
+   user-visible, `archived_at` (soft delete).
+7. **No provider concepts in the domain.** "Claude session id", "CODEX_HOME", "--resume" live
+   in harness adapters and in opaque `adapter_state` JSON columns, never in domain fields.
+8. **Scope is a pair.** Every scoped row carries `workspace_id` and nullable `project_id`.
+   `project_id = NULL` means workspace-wide. Global rows use the reserved workspace `ws_global`.
+
+---
+
+## 2. Entity map
+
+```mermaid
+erDiagram
+    USER ||--o{ DEVICE : pairs
+    USER ||--|| IDENTITY : has
+    USER ||--o{ PRINCIPAL : "acts as"
+    DEVICE ||--|| PRINCIPAL : "is a"
+    WORKSPACE ||--o{ PROJECT : contains
+    WORKSPACE ||--o{ PERSON : knows
+    ORGANIZATION ||--o{ PERSON : employs
+    PROJECT ||--o{ REPOSITORY : "has"
+    REPOSITORY ||--o{ REPOSITORY_INSPECTION : "inspected as"
+    PROJECT ||--o{ SYSTEM : runs
+    PROJECT ||--o{ MISSION : owns
+    PROJECT ||--o{ IDEA : collects
+    PROJECT ||--o{ MEETING : holds
+    MEETING ||--o{ DECISION : produces
+    DECISION ||--o{ KNOWLEDGE_ITEM : "recorded as"
+    CONVERSATION ||--o{ MESSAGE : contains
+    MESSAGE ||--o| INTENT : expresses
+    INTENT ||--o| MISSION : becomes
+    IDEA ||--o| MISSION : "promoted to"
+    MISSION ||--o{ PLAN : "versioned by"
+    PLAN ||--o{ TASK : defines
+    TASK ||--o{ EXECUTION : "attempted by"
+    EXECUTION }o--|| SESSION : "runs in"
+    EXECUTION ||--o{ CHECKPOINT : writes
+    EXECUTION ||--o| ROUTE_DECISION : "routed by"
+    SESSION }o--|| ACCOUNT : "authenticated as"
+    ACCOUNT }o--|| HARNESS : "belongs to"
+    ACCOUNT ||--o{ MODEL_OFFER : offers
+    MODEL_OFFER }o--|| MODEL : "of"
+    ACCOUNT ||--o| RESOURCE_POLICY : "governed by"
+    ACCOUNT ||--o{ USAGE_SNAPSHOT : reports
+    EXECUTION ||--o{ USAGE_LEDGER : consumes
+    EXECUTION }o--|| EXECUTION_NODE : "runs on"
+    TASK ||--o{ VERIFICATION : "verified by"
+    MISSION ||--o{ REVIEW : "reviewed by"
+    MISSION ||--o{ APPROVAL : "gated by"
+    EXECUTION ||--o{ APPROVAL : "gated by"
+    POLICY_RULE ||--o{ POLICY_DECISION : "matched in"
+    AUTOMATION ||--o{ AUTOMATION_RUN : fires
+    AUTOMATION_RUN ||--o| MISSION : creates
+    EVENT }o--o| AUTOMATION_RUN : triggers
+    FEEDBACK }o--|| MISSION : "about"
+    FEEDBACK ||--o| KNOWLEDGE_ITEM : "promoted to"
+    ARTIFACT }o--|| EXECUTION : "produced by"
+    RELATION }o--|| KNOWLEDGE_ITEM : links
+```
+
+The `RELATION` table is generic: any two addressable objects (`kind`, `id`) can be related, so
+"Meeting → Decision → Architecture → Mission" and "Failed execution → Lesson → future context"
+are rows, not schema. The ER diagram shows only the structural (foreign-key) relationships.
+
+---
+
+## 3. Identity, principals and devices
+
+### 3.1 User
+The human owner. V1 is **single-user per Core** (multi-user is DEFERRED; every table still
+carries `workspace_id`, so adding members later is additive).
+
+| Field | Notes |
+|---|---|
+| `id`, `display_name`, `created_at` | |
+| `last_ack_event_seq` | Per-user acknowledged cursor for "what changed while I was away". Advances only when the user dismisses the digest on *any* device. |
+
+### 3.2 Identity
+What makes this Archeus "mine": owner, default workspace, working-style preferences,
+notification preferences, default autonomy profile. Durable learned preferences are **not**
+stored here — they are `knowledge_items` of type PREFERENCE with scope `global`, so they have
+provenance and can be superseded. Identity only points at the active ones.
+
+### 3.3 Principal
+Every actor that can cause an event. Every event carries `actor_principal_id`.
+
+| `kind` | Examples | Scopes it can hold |
+|---|---|---|
+| `user_device` | Desktop GUI, phone, TUI | `observe`, `control`, `approve`, `admin` (per device) |
+| `brain` | Archeus's own reasoning calls | `propose` (create missions/plans in PROPOSED state, suggest routes). **Never `approve`.** |
+| `execution` | A running agent | `report`, `checkpoint`, `request_approval`. Cannot create missions. |
+| `automation` | A fired automation | `create_mission` from its template only, within its policy |
+| `node` | An execution node daemon | `node_report` (heartbeat, process events, results) |
+| `system` | Core internals (scheduler, reconciler) | `system` |
+
+Rule enforced in the application layer, not the UI: **only `user_device` principals with the
+`approve` scope can move an Approval to APPROVED.**
+
+### 3.4 Device
+A paired client. Fields: `id`, `principal_id`, `name`, `platform` (desktop | web | ios | android
+| tui), `scopes[]`, `token_hash` (SHA-256 of the device token; the token itself is shown once),
+`paired_at`, `last_seen_at`, `last_seen_event_seq`, `state` (PAIRING | ACTIVE | REVOKED),
+`push` (optional ntfy topic / desktop). The local desktop shell and a locally opened browser are devices too; they obtain their token through the local launch-code bootstrap (see [api-and-realtime.md §5.1](api-and-realtime.md)).
+
+---
+
+## 4. World entities
+
+All world entities share: `id`, `workspace_id`, `project_id?`, `name`, `summary`, provenance
+columns, `state` (ACTIVE | ARCHIVED unless noted), `version`, timestamps.
+
+| Entity | Purpose | Notable fields |
+|---|---|---|
+| **Workspace** | A top-level context boundary (e.g. "Work", "Personal"). Policies and routing preferences can be set per workspace. | `name`, `default_policy_profile` |
+| **Organization** | A company/team the user deals with. | `kind` (employer, client, community) |
+| **Person** | Someone relevant to projects. | `organization_id?`, `handles` (json: email, github), `role`. Contact data is optional and never sent to a model unless a mission needs it (policy class `personal_data`). |
+| **Project** | The main unit of work. Replaces today's "project = Claude Code project folder". | `root_paths[]` (a project can span several dirs), `legacy_enc[]` (today's encoded folder names, for migration), `status_line` (one sentence of current state, maintained by Archeus), `health` (on_track / at_risk / blocked / idle), `priority` |
+| **Repository** | A git repository belonging to a project. | `path`, `path_key` (its real, case-folded path: unique per workspace), `remote_url`, `kind` (repo / submodule / worktree — the `.git` gitdir classifier from `repos.py`), `default_branch`, `last_inspection_id`, and the current drift assessment: `last_revision`, `findings[]`, `evaluated_against` (the constraint-set token) and `evaluated_constraints[]` (knowledge item id, version) — an assessment is state, so it lives here and not on an inspection |
+| **RepositoryInspection** | One inspection of a repository at a revision ("Codebase" in the spec is *a repository at a revision*, i.e. this row). | `revision` (HEAD SHA), `inspected_at`, `languages`, `frameworks`, `dependencies`, `docs[]`, `agent_config` (CLAUDE.md/AGENTS.md/.claude), `modules` (from `connections.build_hierarchy`), `test_commands`, `build_commands`, `findings[]`, `confidence`, `diff_from_previous` |
+| **System** | A running thing a project owns (service, DB, deployment target). | `kind`, `environment` (dev/staging/prod — drives policy), `endpoints` |
+| **Idea** | A captured, not-yet-committed thought. First-class so it can be explored before becoming work. | `text`, `state` (Idea machine), `explorations[]` (artifact ids), `promoted_mission_id?`; as built (P7): `title`, `origin_message_id`, no `explorations` yet |
+| **Meeting** | A meeting whose notes are context. | `held_at` (empty for undated notes imported on opt-in, until the user gives it — P7), `attendees[]` (person ids), `notes_artifact_id`, `imported_from` (file path) |
+| **Decision** | A choice that constrains future work. | `statement`, `rationale`, `decided_at`, `decided_by` (person/user), `status` (active / superseded / reversed), `supersedes_id?`, `source` (meeting / mission / conversation). Every decision is mirrored as a DECISION knowledge item so context retrieval has one index. |
+
+---
+
+## 5. Knowledge
+
+### 5.1 KnowledgeItem
+
+| Field | Notes |
+|---|---|
+| `id`, `workspace_id`, `project_id?` | scope; `scope_level` derived: global / workspace / project / module |
+| `type` | FACT, DECISION, LESSON, PREFERENCE, STANDARD, ARCHITECTURE, REFERENCE, ENTITY (a code/world entity summary imported from the memory graph) |
+| `title`, `body` | body ≤ 2 KB; longer material is an artifact referenced by `artifact_id`. The entity field is named `text`: `body` is the row codec's JSON column (resolved when P4 persisted the table) |
+| `constraint` | `{kind, spec}` on an ARCHITECTURE or DECISION item that declares a checkable architecture constraint (context-and-knowledge §6); `null` for prose |
+| `origin` | explicit (user said it) / inferred |
+| provenance | `source_kind`, `source_ref`, `observed_at`, `confidence` |
+| `state` | CANDIDATE → CONFIRMED → SUPERSEDED / RETRACTED / EXPIRED (see state-machines §11) |
+| `valid_from`, `valid_until` | validity window; `valid_until` set when superseded |
+| `supersedes_id`, `superseded_by_id` | explicit chain — never delete a superseded item |
+| `stale_after` | decay policy: absolute date or `null`; a FACT observed from a repo inspection goes stale when the repository's revision moves past the files it cites |
+| `anchors[]` | file globs / module ids / entity ids the item is about (used for path matching like today's `.claude/rules` globs) |
+| `hits`, `last_used_at`, `useful_count`, `useless_count` | usage signals (feedback reinforcement is DEFERRED past the V1 slice; the columns exist from P6) |
+| `pinned` | exempt from eviction and decay |
+
+**As built (P6):** provenance is `source_kind`, `source_ref`, `observed_at`, `confidence`
+(present, never filled by a P6 pass), `route_decision_id` (the call that produced it: harness,
+account, model), `context_package_id` (what that call was shown); `valid_until`,
+`superseded_by_id`, `anchors`, `purged` (a forget-purge tombstone). `stale_after`, `hits`,
+`last_used_at`, `useful_count`, `useless_count` and `pinned` are not yet persisted.
+
+### 5.2 Relation
+`(id, src_kind, src_id, rel, dst_kind, dst_id, confidence_tier, source_kind, source_ref,
+created_at, valid_until)`, plus `project_id` and `route_decision_id` for a model-derived one (P6).
+A relation never changes the state of either end.
+
+- `rel` vocabulary (closed set, extendable by migration): `contains`, `depends_on`, `uses`,
+  `calls`, `implements`, `mentions`, `decided_in`, `constrains`, `motivated`, `produced`,
+  `learned_from`, `supersedes`, `contradicts`, `blocks`, `relates_to`, `owns`, `attended`.
+- `confidence_tier`: **EXTRACTED** (deterministic: AST/import graph, explicit user link),
+  **INFERRED** (model-derived), **AMBIGUOUS** (model unsure → surfaced in Attention as a
+  knowledge proposal). Adopted from Graphify; tiers are labels, not probabilities.
+
+### 5.3 ContextPackage
+What the context engine selected for one subject, and why (context-and-knowledge §2.3;
+p5-design-gate §3). `subject_kind` (mission / project / message — the last since P7, for
+reading a message's intent), `subject_id`, `workspace_id`,
+`project_id?`, `as_of_seq` and `as_of_at` (the snapshot's last event), `query`, `levels`,
+`budget` (limit and used tokens, per level), `scoring` (the weights it was ranked with),
+`items[]` (each a reference with its row version, level, store, type, provenance, freshness,
+relevance, signals, reason, tokens, `conflicts_with`), `excluded[]` (reference, level, freshness,
+reason), `conflicts[]`, `assumptions[]`, `missing_information[]`. **Immutable**: no state machine,
+written once, never edited; a new assembly is a new package. A preview is the same shape and is
+never persisted.
+
+---
+
+## 6. Conversation and intent
+
+| Entity | Purpose | Fields |
+|---|---|---|
+| **Conversation** | A thread with Archeus. Exactly one `primary` conversation per user (the Now surface) plus one `mission` thread per mission. | `kind` (primary / mission), `mission_id?`, `last_message_at` |
+| **Message** | One turn. | `conversation_id`, `author` (user / archeus / system), `principal_id`, `text`, `cards[]` (typed references: `{type: mission_proposal|plan|approval|route_explanation|diff|verification|digest, ref: {kind,id}}`), `links[]` (world objects the message touched — drives the *thread* visual), `in_reply_to?` |
+| **Intent** | What the user wants, extracted from a message. | `message_id`, `utterance`, `kind` (control_verb / question / new_work / continue_work / feedback / preference / idea), `target_refs[]`, `ambiguities[]`, `confidence`, `resolution` (answered / mission_created / mission_updated / clarification_requested / declined) |
+
+Control verbs (pause, resume, stop, approve, reject, reprioritize, status, route-why) are parsed by
+a deterministic grammar and never need a model (ADR-0006).
+
+**As built (P7, p7-design-gate §4–§5):** Message also has `in_reply_to`, `intent_id` and
+`principal_id`; a card is `{type, ref, ...}` and a link `{ref}`, and card types add `mission`,
+`idea`, `challenge`, `clarification`, `knowledge` and `status`. Intent also has `via` (grammar /
+brain), `workspace_id`, `project_id`, `conflicts`, `reason`, `proposal` (the validated,
+resolved reading a challenge choice is applied from), `route_decision_id`,
+`context_package_id` and `answers_intent_id`; one message has at most one intent (unique). A
+clarification and a challenge are `clarification_requested` with their card. Every turn is in
+the primary conversation; per-mission threads are P16's.
+
+---
+
+## 7. Work
+
+### 7.1 Mission — the outcome Archeus owns
+
+| Field | Notes |
+|---|---|
+| `id`, `workspace_id`, `project_id?` | |
+| `title`, `objective`, `desired_outcome` | objective = what; desired_outcome = how we'll know |
+| `requirements[]`, `constraints[]` | each `{text, origin: explicit|inferred, source_ref}` |
+| `success_criteria[]` | each `{text, check: automatic|human, verifier?, origin: explicit|inferred}` — inferred when the plan supplied them because the mission had none |
+| `context_scope` | levels allowed (L0–L4), extra refs pinned by the user, refs excluded (P7: set by intent; not persisted before it) |
+| `context_package_id?` | the ContextPackage its `context_ready` move recorded (§5.3; P5) |
+| `dependencies[]` | other missions/decisions this waits on |
+| `priority` | integer; user-set; reprioritize = command |
+| `max_replans` | default 2: replans allowed after the initial plan (0 = none); `replan_budget_exhausted` (state-machines §2) |
+| `held_from?` | the state the mission was in when it entered BLOCKED/PAUSED; `resume` and the `redispatch` guard read it (state-machines §2) |
+| `decided_plan_version?` | the `plan_version` the mission last decided (auto-approved or sent for approval); both plan-decision guards refuse that plan again (state-machines §2) |
+| `autonomy_profile` | named policy overlay (e.g. `careful`, `standard`, `autonomous`) — see policy |
+| `resource_preferences` | optional per-mission routing overrides (preferred accounts, forbidden harnesses, cost ceiling) |
+| `verification_strategy`, `review_strategy` | chosen at planning; editable |
+| `state` | Mission machine (state-machines §2) |
+| `active_plan_id` | current Plan version |
+| `origin` | conversation / idea / automation / legacy_import |
+| `origin_ref` | message id / idea id / automation_run id |
+| `progress` | 0–1, computed from task graph (weighted by task estimates), never typed by an agent |
+| `learned_at` | set when the learning pass has run; **learning is not a mission state** |
+| `blocked_reason?`, `paused_by?` | |
+
+### 7.2 Plan
+Immutable once approved; a replan creates a new version (`plan_version` increments,
+`supersedes_plan_id`). Fields: `mission_id`, `plan_version` (the plan's number within its
+mission — distinct from the row's optimistic-concurrency `version`), `summary`, `assumptions[]` (origin-tagged),
+`risks[]`, `approval_points[]` (task ids / action classes that will need ASK), `rollback`,
+`estimated_cost` (bands, never precise — migration-kit rule), `state` (DRAFT → PROPOSED →
+APPROVED → SUPERSEDED / REJECTED), `authored_by` (brain principal + model used).
+*As built (P3.5):* the plan lifecycle has no declared edges, so a plan stays DRAFT and is the
+versioned strategy attached to its mission; the mission's states carry approval and
+supersession. *As built (P8, p8-design-gate D1-D3, D9, D12):* one row is one immutable
+**PlanVersion** — the mission is its lineage, `supersedes_plan_id` its parent, `round_seq` the
+planning round it came from (`(mission_id, round_seq)` UNIQUE), `digest` the sha256 of its
+content, and every field but `state` is frozen (`Entity._FROZEN`, refused by the writer). The
+machine (state-machines §2.1) is DRAFT (transient) → PROPOSED (validated, **ready for the
+policy stage — never approved**) → SUPERSEDED; APPROVED/REJECTED are P9's. Only a plan Core's
+validator passed is recorded; `estimated_cost` is computed by Core (`Σ tier weight × estimate`,
+low ≤ 6, medium ≤ 20, else high); `inputs`/`coverage` record the requirements it planned
+against and which tasks serve each; `assumptions` are always origin inferred; `serialised`
+lists the dependencies Core added between parallel tasks whose `touches` may overlap, so the
+planner's own edges are exactly the rest. A round that cannot plan records
+`Mission.planning_blocked` instead of a version.
+
+### 7.3 Task
+An executable unit in the plan's DAG.
+
+| Field | Notes |
+|---|---|
+| `plan_id`, `mission_id`, `key` (stable within plan) | |
+| `title`, `instructions` | the 4-part dispatch contract (from Munder Difflin): **objective, expected output, allowed tools/action classes, boundaries** |
+| `depends_on[]` | task keys; DAG validated at plan approval |
+| `kind` | code_change / research / document / presentation / inspection / verification / human |
+| `capabilities_required` | e.g. `{code_edit, shell, web, long_context, vision}` |
+| `action_classes[]` | policy classes it will exercise (write_repo, exec, web, …) |
+| `workspace_mode` | in_place / worktree (default for code_change) |
+| `max_attempts` | default 2 |
+| `failure_class` | why the task FAILED (`execution`, `verification`, …; policy / credential / human are not retryable); written with the move to FAILED, read by `task_failed_retryable` |
+| `estimate` | relative weight for progress |
+| `state` | Task machine |
+| `integration_state` | Integration machine (state-machines §13): the merge-back of this task's worktree branch into the mission branch. NULL when `workspace_mode = in_place`. Arrives with the machine in P13 |
+| P8 contract fields | `objective`, `expected_output`, `boundaries[]`, `capabilities_required[]`, `min_model_tier`, `touches[]`, `inputs[]`, `refs[]` (canonical `{kind, id}`), `serves[]` (requirement handles), `acceptance[]` (`{text, check}`; at least one for a non-`human` task, all `human` for a human one); `key` is `t1…tN`, assigned by Core in dependency order; the contract is frozen with its version (p8-design-gate §7.1) |
+
+**Integration is not an entity.** It is a lifecycle *of a task* — a task has at most one
+merge-back, and its CONFLICT blocks that task — so it is a second state column on Task, the
+same pattern as `Repository.architecture_state`. (The other use of the word, a *harness
+integration* such as the recall hook or `.claude/rules` files, is a capability of a Harness,
+configured under Resources, not a row.)
+
+### 7.4 Execution — one concrete attempt
+
+| Field | Notes |
+|---|---|
+| `task_id`, `mission_id`, `attempt` | |
+| `route_decision_id` | why this harness/account/model |
+| `harness_id`, `account_id`, `model_id` | denormalised for queries |
+| `session_id` | the Session row (provider session identity lives in its `adapter_state`) |
+| `node_id` | where it runs (V1: always the local node) |
+| `mode` | headless / interactive_attached (user launched it themselves) / manual (user session tracked, not driven) |
+| `workdir` | real path or worktree path |
+| `process` | `{pid, create_time, registry_path}` — pid **plus creation time** guards against PID reuse |
+| `state` | Execution machine |
+| `started_at`, `ended_at`, `exit_reason` | `exit_reason`: ok / error / killed / lost / abandoned, with `exit_code` and the harness's reported summary (never the completion signal) |
+| `usage` | tokens in/out/cache, cost where known |
+| `context_pressure` | last computed ratio (continuity §) |
+| `adapter_state` | opaque JSON owned by the harness adapter |
+
+### 7.5 Session
+Infrastructure. A provider conversation that one or more executions ran inside.
+`harness_id`, `account_id`, `provider_session_ref` (e.g. Claude session UUID), `transcript_path`,
+`started_at`, `last_active_at`, `state` (OPEN / CLOSED / LOST), `model` and `effort` as the
+harness recorded them (in its own vocabulary; what a resume reopens on — ADR-0023),
+`handoff_from_session_id?`. **A session is bound to its account** (a Claude session lives under
+one config dir), which is why an account change always goes through a checkpoint hand-off to a
+*new* session — and a hand-off never changes the source session.
+
+### 7.6 Checkpoint
+Core-derived mission state for hand-off (execution-architecture §6).
+`execution_id`, `mission_id`, `task_id`, `created_at`, `trigger` (task_boundary / pressure /
+account_change / pause / failure), `objective`, `completed_steps[]`, `current_step`,
+`decisions[]`, `open_problems[]`, `files_changed[]` (from git diff), `verification[]`,
+`next_action`, `relevant_context_refs[]`, `artifact_id` (rendered markdown).
+
+### 7.7 Verification and Review
+
+| Entity | Fields |
+|---|---|
+| **Verification** | `task_id` or `mission_id`, `verifier` (code / research / document / presentation / automation / generic_human), `checks[]` (`{name, command?, result, output_artifact_id}`), `state`, `independent` (bool), `plan_id` (the plan in force when it ran — it counts for that plan only, so a replan is verified afresh), `criterion` (for a mission: which success criterion) |
+| **Review** | `mission_id`, `reviewer` (brain on a different model/account, or user), `independent` (false when no different resource was free), `requirements_met[]`, `requirements_missing[]`, `risks[]`, `regressions[]`, `follow_up[]`, `verdict` (accept / changes_requested / reject), `state`, `plan_id` (the plan whose result was reviewed) |
+
+### 7.8 Feedback
+`subject` (`{kind,id}` — message, mission, plan, route decision, knowledge item), `signal`
+(positive / negative / correction), `text`, `principal_id`, `promoted_knowledge_id?`. Feedback
+is history; promotion into a PREFERENCE or LESSON is an explicit step (candidate → confirmed).
+
+### 7.9 Artifact
+Content-addressed blob: `sha256`, `media_type`, `size`, `path` (under
+`<ARCHEUS_HOME>/artifacts/ab/cd/<sha>`), `produced_by` (`{kind,id}`), `label`. Transcripts,
+reports, diffs, rendered checkpoints, meeting notes and screenshots are artifacts. Artifacts
+are immutable; "editing" produces a new artifact.
+
+---
+
+## 8. Resources
+
+### 8.1 Harness
+A coding-agent runtime. `id` (`claude_code`, `codex`, `pi`, `generic_cli:<name>`),
+`installed_version`, `executable`, `capabilities` (code_edit, shell, web, mcp, long_context,
+structured_output, resume, headless, interactive), `structured_output` mechanism (**native** |
+**prompted** — ADR-0022), `efforts` (the effort/thinking levels it accepts, its own scale),
+`enforcement` (**hook** | **sandbox** | **none** — how policy can be enforced inside it;
+resource-router §3), `state` (AVAILABLE / MISSING / MISCONFIGURED). Mirrors today's
+`harnesses.HARNESSES` descriptors. A new harness is a new adapter declaring these; no domain
+entity changes.
+
+### 8.2 Account
+An authenticated instance of a harness: one Claude config dir, one Codex home, one API key.
+
+| Field | Notes |
+|---|---|
+| `harness_id`, `label` | |
+| `auth_kind` | subscription_oauth / api_key / provider_proxy |
+| `node_id` | **accounts are node-bound**: credentials never leave the node that holds them |
+| `home_ref` | the config dir (opaque to Core except for display) |
+| `health` | Account health machine (state-machines §9) |
+| `limited_until?` | reset time when a window is exhausted |
+| `resource_policy_id` | priority + allocation |
+
+### 8.3 Model and ModelOffer
+`Model` is a capability definition independent of accounts: `id` (e.g. `claude-opus-5-5`),
+`family`, `context_window`, `strengths` tags, `tier` (large / mid / small). `ModelOffer` says an
+account can use a model: `(account_id, model_id, available, discovered_at)`. The newest-model-
+following logic of `config.current_model()` / `models.roster()` produces offers for Claude Code;
+every other adapter reports its own (`Capabilities.models`). A model id is **that harness's
+vocabulary** (`claude-opus-5-5`; pi's `provider/id`, locally hosted models included) and is valid
+only as an offer of the account it runs on; tier and context window may be unknown (ADR-0022).
+
+### 8.4 ResourcePolicy (priority + allocation)
+
+| Field | Meaning |
+|---|---|
+| `priority` | integer, 1 = most preferred. Ordering only. |
+| `allocation_pct` | ceiling on the provider's reported window utilisation that Archeus may drive the account to (resource-router §4) |
+| `reserve_pct` | headroom kept for the user's own interactive use |
+| `budgets` | optional `{tokens_per_day, cost_per_day, cost_per_month, concurrency, hours}` enforced from the usage ledger |
+| `project_allow[]`, `project_deny[]` | project restrictions |
+| `fallback` | allow / ask / deny — may the router fall back *to* this account without asking |
+| `brain_reserve_pct` | share reserved for Archeus's own reasoning calls |
+
+### 8.5 UsageSnapshot and UsageLedger
+`UsageSnapshot`: what the provider reports (`account_id`, `window` 5h/7d/monthly,
+`utilisation_pct`, `resets_at`, `observed_at`, `source` usage_api / rate_limit_headers /
+rollout_file). `UsageLedger`: what Archeus itself consumed (`execution_id`, `account_id`,
+`tokens_in`, `tokens_out`, `cache_read`, `cache_write`, `cost_usd?`, `at`). Snapshots are
+*observed truth*; the ledger is *attributable truth*. The router uses both (resource-router §4).
+A row for one of Archeus's own calls, which has no execution, carries its `route_decision_id`
+instead (ADR-0022).
+
+### 8.6 RouteDecision
+Persisted for every routing call: `subject` (task / review / `archeus_call` with its `purpose` —
+brain, planner, knowledge extraction, lesson, generation; ADR-0022), `requirements`,
+`candidates[]` each `{resource, eliminated_at_step, reason}`, `selected`, `input_snapshot`
+(usage + age, health, policy version, ledger totals), `policy_decision_id`, `fallback_from?`,
+`explanation` (generated text, derived from the structured fields, never free-authored).
+As built for own calls (P6): `purpose`, `decided_by` (`pre_router` until P10), `source` (what the
+call is about), `account_ref` / `model`, `context_package_id`, and `outcome` — written once when
+the call ends, the only field that ever changes.
+*As built (P10, p10-design-gate §5):* subjects `archeus_call` and `task` (an authorised task,
+`policy_decision_id` its P9 dispatch decision); `harness_id`, `account_id` | `account_ref`,
+`model`, `effort`, `result` (selected | fallback | ask | blocked), `fallback_from`, `unblock_at`,
+`mission_id`, `task_id`; `decided_by` is `router` (`pre_router` stays valid for P6 rows). Every
+field is frozen but `outcome`; `input_snapshot` + `requirements` replay the decision. Accounts
+carry `home_ref` (opaque to Core); a ResourcePolicy adds `budgets` and `project_allow` /
+`project_deny`; a UsageSnapshot is frozen with `observed_at` / `resets_at`; every UsageLedger
+row names its RouteDecision and account; an Execution names its decision, account, model and
+effort; `Mission.resource_preferences` holds the mission's preferred and forbidden accounts and
+harnesses and its `max_cost_band`.
+
+### 8.7 ExecutionNode
+A machine that can run executions. `id`, `name`, `platform`, `kind` (local / remote),
+`state` (ONLINE / GRACE / OFFLINE / RETIRED), `last_heartbeat_at`, `capabilities`,
+`harnesses[]`, `token_hash` (remote only). V1 ships only the `local` node, in-process
+(ADR-0008).
+
+---
+
+
+### 8.8 ProviderTerms (P6, ADR-0021)
+One per harness id: `headless` and `rotation`, each `unknown | permitted | refused`, and a
+`note`. No row is `unknown`, which blocks a real call as `refused` does; only the user writes it.
+
+## 9. Control
+
+### 9.1 PolicyRule
+
+| Field | Notes |
+|---|---|
+| `scope_level` | GLOBAL / USER / WORKSPACE / PROJECT / MISSION / TASK |
+| `scope_ref` | id at that level |
+| `action_class` | read, web, write_repo, exec, git_commit, git_push, deploy, external_comm, destructive, spend, personal_data, install, credential (closed list; extended by migration) |
+| `match` | optional predicate: `{environment: prod, path_glob, command_glob, host_glob, max_cost_usd}` |
+| `decision` | ALLOW / ASK / ALLOW_WITHIN_BOUNDARY / DENY |
+| `boundary` | for ALLOW_WITHIN_BOUNDARY: `{paths[], branches[], max_files, max_cost_usd, hosts[], time_window}` |
+| `locked` | when true, lower scopes cannot loosen it (DENY is always locked) |
+| `version`, `author_principal_id`, `note` | policies are versioned; every change is an event |
+
+### 9.2 PolicyDecision
+Recorded for every ASK/DENY and sampled ALLOW (all ALLOWs inside a mission are recorded; ALLOWs
+for Archeus's internal reads are counted, not recorded individually). Fields: `action`
+(canonical: `{class, target, argv?, diff_hash?}`), `context` (mission/task/execution/principal),
+`matched_rules[]` (in precedence order), `decision`, `boundary`, `policy_version`, `reason`
+(generated from the matched rules), `approval_id?`.
+
+*As built (P9, p9-design-gate §4.3, §9):* rules are immutable revisions (`revision`,
+`supersedes_rule_id`, `retired_at` written once), with `match`, `boundary` + `outside`,
+`expires_at` and `source`; GLOBAL rules are Core's own and never rows. A PolicyDecision is one
+evaluation, frozen whole (`FROZEN_ALL`): `stage` (plan, dispatch, action), `outcome`, per-item
+results with the rules that decided them, `matched_rules` (full snapshots), `policy_version`,
+`engine_version`, the binding and its `action_hash`. A later evaluation is a new decision; an
+old one keeps saying what its policy said.
+
+### 9.3 Approval
+
+| Field | Notes |
+|---|---|
+| `subject` | plan / action / automation enable / knowledge promotion / merge |
+| `action_hash` | SHA-256 of the canonical action + `policy_version` + `plan_version` — the approval is valid for **exactly this** action |
+| `requested_by` | principal |
+| `presented` | canonical rendering (argv, target, diff hash, files) — never model prose alone |
+| `step_up` | true for destructive/deploy → device must re-confirm (biometric/OS prompt on mobile PWA via WebAuthn is DEFERRED; V1 step-up = re-enter the device PIN set at pairing) |
+| `expires_at` | default 24 h for plans, 2 h for mid-execution actions |
+| `decided_by`, `decided_at`, `decision_note` | |
+| `state` | Approval machine (PENDING → APPROVED/REJECTED/EXPIRED/SUPERSEDED; APPROVED → CONSUMED) |
+| `idempotency_key` | of the deciding command — a double-tap on a phone is one decision |
+
+*As built (P9, p9-design-gate §7, §8):* `kind` plan / task / action; `action_hash` is the
+identity of exactly what is authorised — kind, mission, plan id, version and digest, task,
+execution and canonical items — and the policy version is recorded beside it (`policy_version`),
+never in it (D7); `items` are what it covers, exactly; `presented` is built by Core from rows.
+Content is frozen at insert; `decision`, `decided_by`, `decided_at`, `decision_note` are written
+once by the deciding move. Plan and task approvals are reusable for their version's lifetime and
+never CONSUMED; action approvals are single-use. The idempotency key is the writer's, not a
+field. `User.autonomy_profile` (default `standard`) and `Mission.autonomy_profile` are the
+profiles expanded at USER and MISSION level (D5, D26).
+
+### 9.4 Automation and AutomationRun
+Automation: `name`, `trigger` (`{kind: event|schedule|condition|state, pattern|cron|predicate}`),
+`conditions[]`, `mission_template` (objective template, task hints, verification), `policy`
+(overlay applied to missions it creates), `notify`, `max_depth` (cause-chain cap, default 3),
+`rate_limit` (default 6/hour), `state`. AutomationRun: `automation_id`, `triggering_event_seq`,
+`cause_chain[]`, `claimed_at`, `state`, `mission_id?`, `skip_reason?`.
+
+### 9.5 Event
+See [api-and-realtime.md §3](api-and-realtime.md) for the envelope. Core columns:
+`seq` (INTEGER PRIMARY KEY — the cursor), `id` (ULID), `type` (`mission.state_changed`,
+`task.completed`, `account.limit_reached`, …), `at`, `actor_principal_id`, `cause_chain` (list of
+event ids, ≤ 16), `subject_kind`, `subject_id`, `workspace_id`, `project_id?`, `payload` (JSON,
+small; big things are artifacts), `visibility` (user / system — system events are not shown in
+activity feeds but are kept for audit).
+
+---
+
+## 10. Ownership and audit
+
+| Entity group | Written by | Audit requirement |
+|---|---|---|
+| Identity, Device, PolicyRule, ResourcePolicy | user_device principals only | every change → event with before/after |
+| World entities | user, brain (proposed), inspection, import | provenance mandatory for non-user writes |
+| Knowledge | promotion pipeline only | supersession chain never broken; RETRACTED keeps the row |
+| Mission, Plan, Task | application commands (brain proposes, user approves per policy) | every transition → event with actor + reason |
+| Execution, Session, Checkpoint | Execution Manager, node reports | process registry mirrored on disk for e-stop |
+| Approval | requester creates; user_device decides | immutable after decision; consumption recorded |
+| RouteDecision, PolicyDecision | router / policy engine | immutable |
+| Events | the writer thread, same transaction as the change | append-only; retention per api-and-realtime §3.4 |
+
+---
+
+## 11. Mapping from today's data
+
+Full table in [migration-plan.md §4](migration-plan.md). Summary: encoded project folders →
+Project (+`legacy_enc`); memory `graph.json` entities → KnowledgeItem type ENTITY with
+EXTRACTED/INFERRED relations; lessons → LESSON (pending → CANDIDATE, approved/pinned →
+CONFIRMED); worklog → events of type `legacy.worklog` (history, not knowledge); accounts +
+homes → Account; `settings['providers']` → Harness `generic`/proxy accounts; plan-latest.md →
+an imported Mission in COMPLETED or PAUSED with one Plan; loops → Automations (disabled until
+the user re-enables them under V1 policy).

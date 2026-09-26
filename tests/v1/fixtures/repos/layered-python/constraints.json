@@ -1,0 +1,4 @@
+[
+  {"statement": "core must not import api", "kind": "forbid_dependency",
+   "spec": {"from": "app/core/**", "to": "app/api/**"}}
+]
