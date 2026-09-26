@@ -29,7 +29,6 @@ def test_a_plan_that_asks_waits_for_the_user_and_then_runs(client, rig):
     wait_state(client, m['id'], 'EXECUTING')
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P11")
 def test_an_approval_is_single_use(client, rig):
     rig.script_harness('t1', [{'emit': {'type': 'tool', 'name': 'Bash',
                                         'input': 'git push origin main'}}] * 2)

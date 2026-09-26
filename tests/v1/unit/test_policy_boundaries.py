@@ -8,6 +8,8 @@ import ast
 import os
 
 from archeus.core.domain import states
+import pytest
+
 from archeus.harnesses.fake import FakeHarness
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -76,12 +78,22 @@ def test_E3_no_resource_is_read_or_bound_by_policy():
                     rel, n.attr)
 
 
-def test_E7_the_runtime_registers_only_the_fake_harness_for_execution():
+def test_E7_the_runtime_registers_its_executors_behind_the_policy_gate():
+    """P9 kept the runtime on the fake harness; P11 (p11-design-gate §23, D27)
+    registers exactly `Ports.executors`, whose default is the real adapters —
+    and the registry still refuses a real adapter unless the policy is real."""
+    from archeus.core import runtime
+    from archeus.harnesses.claude_code.adapter import ClaudeCodeAdapter
+    from archeus.harnesses.registry import AdapterRegistry, PolicyStubError
+    from archeus.core.ports import FixedPolicy
     src = open(os.path.join(ROOT, 'archeus/core/runtime.py'), encoding='utf-8').read()
-    registered = [n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Call)
-                  and isinstance(n.func, ast.Attribute) and n.func.attr == 'register']
-    assert [ast.unparse(c.args[0]) for c in registered] == ['FakeHarness()']
-    assert FakeHarness.id == 'fake'
+    registered = [ast.unparse(n.args[0]) for n in ast.walk(ast.parse(src))
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                  and n.func.attr == 'register']
+    assert registered == ['adapter']                   # the loop over the executors
+    assert [type(a) for a in runtime.real_executors()] == [ClaudeCodeAdapter]
+    with pytest.raises(PolicyStubError):
+        AdapterRegistry(FixedPolicy()).register(ClaudeCodeAdapter())
 
 
 def test_E8_policy_never_reads_provider_terms():

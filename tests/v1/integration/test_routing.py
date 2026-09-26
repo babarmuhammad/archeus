@@ -276,7 +276,8 @@ def test_I_T2_terms_revoked_between_routing_and_the_adapter_block_the_start(db, 
     r.work.dispatch_task = dispatch_then_revoke
     eng = engine.Engine(db, actor=r.system, work=r.work, brain=None, registry=r.registry,
                         verifier=ports.ScriptedVerifier(), reviewer=ports.ScriptedReview())
-    assert eng.step(mid)['did'] == 'reconcile_execution'
+    assert eng.step(mid)['did'] == 'dispatch_task'
+    assert eng.manager.tick()                              # P11: the manager's spawn
     assert started == []                                   # the second check held
     (e,) = r.all(entities.Execution)
     assert e.state not in ('STARTING', 'RUNNING') and r.rds()[0].result == 'selected'

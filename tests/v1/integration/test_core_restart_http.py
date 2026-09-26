@@ -1,7 +1,12 @@
-"""Core killed mid-execution, restarted, reconciled — all observed over HTTP
-(p3.5b design gate §10 H1–H4, §18.1). A restart reconciles and never adopts:
-the old attempt ends before the task gets a new one, and at no instant are two
-executions of one task live."""
+"""Core killed mid-execution, restarted — all observed over HTTP (p3.5b design
+gate §10 H1–H4, §18.1; P11 p11-design-gate §15.3).
+
+P3.5b reconciled and never adopted: the orphan was killed and the task ran
+again. P11 replaces that with adopt-or-reconcile, which the P3.5b gate
+scheduled (§4.9 of the P11 gate): a live orphan is ADOPTED — its process runs
+to its end once, the new Core tails its stream and records its exit. What both
+phases keep, and these tests still prove: at no instant are two executions of
+one task live, and seq never goes backwards."""
 
 import os
 import time
@@ -11,6 +16,8 @@ from claude_sessions import proc
 from v1.judge.http import CoreProcess
 
 SLOW = {'work': [{'sleep': 60}]}
+#: long enough to outlive the first Core, short enough to finish under the second
+ADOPTABLE = {'work': [{'emit': {'type': 'working'}}, {'sleep': 4}]}
 
 
 def _wait(pred, timeout=30, what='condition'):
@@ -69,8 +76,8 @@ def _never_two_live(events):
             live[task_of[e['subject']['id']]].discard(e['subject']['id'])
 
 
-def test_core_killed_mid_execution_reconciles_over_http_and_the_mission_completes(archeus_home):
-    first = CoreProcess(archeus_home, scenarios=SLOW).start()
+def test_core_killed_mid_execution_adopts_over_http_and_the_mission_completes(archeus_home):
+    first = CoreProcess(archeus_home, scenarios=ADOPTABLE).start()
     mid = _create(first)
     old, pid, ctime = _started(first)
     assert _alive(pid, ctime)
@@ -82,23 +89,26 @@ def test_core_killed_mid_execution_reconciles_over_http_and_the_mission_complete
     try:
         done = _wait(lambda: _mission(again, mid)['state'] == 'COMPLETED', 60, 'COMPLETED')
         assert done
-        _wait(lambda: not _alive(pid, ctime), 10, 'the orphan to die')
-        assert _moves(again, old)[-1] == ('LOST', 'ENDED_KILLED')
-        ended = [e for e in _events(again, 'execution.ended') if e['subject']['id'] == old]
-        assert ended[0]['payload']['exit_reason'] == 'lost'
+        adopted = [e for e in _events(again, 'execution.adopted') if e['subject']['id'] == old]
+        assert adopted and adopted[0]['payload']['pid'] == pid
+        assert _moves(again, old)[-1] == ('RUNNING', 'ENDED_OK')      # it ran once, to its end
         attempts = [e['payload']['attempt'] for e in _events(again, 'execution.intent')]
-        assert attempts == [1, 2]
+        assert attempts == [1]
         _never_two_live(_events(again))                                     # H2
-        # H4: reconciliation reads no registry and no output stream
-        assert not os.path.exists(os.path.join(paths.run_dir(), 'processes.jsonl'))
-        assert not os.path.exists(audit), open(audit).read()
+        # P11: the registry exists (the Core-less e-stop needs it), and adoption
+        # tails the orphan's stream from the offset the dead Core recorded
+        assert os.path.exists(os.path.join(paths.run_dir(), 'processes.jsonl'))
+        assert os.path.exists(audit)
     finally:
         again.kill()
 
 
-def test_the_boot_sweep_reconciles_an_orphan_under_a_paused_mission(archeus_home):
+def test_the_boot_sweep_reaches_an_orphan_under_a_paused_mission(archeus_home):
     """H3 / A35: PAUSED is settled, so the engine never steps it; only the boot
-    sweep reaches its orphan — before any resume, without moving the mission."""
+    sweep reaches its orphan — before any resume, without moving the mission.
+    P11: the sweep adopts it and, the mission being paused, asks it to pause;
+    with no tool boundary the pause times out into a stop (uncharged), and the
+    resume runs the task again."""
     first = CoreProcess(archeus_home, scenarios=SLOW).start()
     mid = _create(first)
     old, pid, ctime = _started(first)
@@ -107,16 +117,17 @@ def test_the_boot_sweep_reconciles_an_orphan_under_a_paused_mission(archeus_home
     first.kill()
 
     gate = os.path.join(str(archeus_home), 'sweep-gate')
-    again = CoreProcess(archeus_home, hold_sweep=gate).start()
+    again = CoreProcess(archeus_home, hold_sweep=gate, pause_timeout=1.0).start()
     try:
         health = again.http('GET', '/v1/health').json()['engine']
         assert health['state'] == 'reconciling'
         assert _alive(pid, ctime)
         open(gate, 'w').close()
-        _wait(lambda: again.http('GET', '/v1/health').json()['engine']['state'] == 'idle',
-              what='idle after the sweep')
-        assert _moves(again, old)[-1] == ('LOST', 'ENDED_KILLED')
-        assert not _alive(pid, ctime)
+        _wait(lambda: _moves(again, old) and _moves(again, old)[-1] == ('STOPPING',
+                                                                         'ENDED_KILLED'),
+              30, 'the paused orphan stopped')
+        assert ('RUNNING', 'PAUSING') in _moves(again, old)
+        _wait(lambda: not _alive(pid, ctime), 10, 'the orphan to die')
         assert _mission(again, mid)['state'] == 'PAUSED'                # not moved
         assert [e['payload']['attempt'] for e in _events(again, 'execution.intent')] == [1]
 
@@ -125,7 +136,6 @@ def test_the_boot_sweep_reconciles_an_orphan_under_a_paused_mission(archeus_home
         _wait(lambda: _mission(again, mid)['state'] == 'COMPLETED', 60, 'COMPLETED')
         assert [e['payload']['attempt'] for e in _events(again, 'execution.intent')] == [1, 2]
         _never_two_live(_events(again))
-        assert not os.path.exists(os.path.join(paths.run_dir(), 'processes.jsonl'))
     finally:
         again.kill()
 

@@ -18,7 +18,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RT = 'archeus/core/routing/router.py'
 RES = 'archeus/core/application/resources.py'
 WORK = 'archeus/core/application/work.py'
-ENG = 'archeus/core/engine.py'
+MGR = 'archeus/core/execution/manager.py'
+EXE = 'archeus/core/application/executions.py'
 CALLS = 'archeus/core/calls.py'
 ENT = 'archeus/core/domain/entities.py'
 U = 'tests/v1/unit/test_routing_units.py'
@@ -170,9 +171,10 @@ MUTATIONS = [
      "        if not is_fake_caller(adapter):\n            with self.db.read() as conn:",
      "        if False:\n            with self.db.read() as conn:",
      [I + '::test_I_T3_an_own_call_is_checked_again_before_its_spawn']),
-    ('R30', 'the execution terms re-check removed', ENG,
-     "        if not permitted:\n            return self._reconcile",
-     "        if False:\n            return self._reconcile",
+    # P11 moved the re-check into the execution manager, immediately before the spawn
+    ('R30', 'the execution terms re-check removed', MGR,
+     "        if not permitted:\n            self._do(X.refuse",
+     "        if False:\n            self._do(X.refuse",
      [I + '::test_I_T2_terms_revoked_between_routing_and_the_adapter_block_the_start']),
     ('R31', 'a historical routing decision mutable', ENT,
      "    _FROZEN = ('subject', 'selected', 'explanation',",
@@ -184,9 +186,10 @@ MUTATIONS = [
      "belongs",
      "        if False:\n            raise ValueError('a usage row belongs",
      [B + '::test_B10_a_router_decision_is_frozen_but_for_an_own_calls_outcome']),
-    ('R33', 'an execution\'s usage not ledgered against its decision', WORK,
-     "        if usage and e.route_decision_id is not None:",
-     "        if False:",
+    # P11 moved the ledger write into the execution's end (executions._ended)
+    ('R33', 'an execution\'s usage not ledgered against its decision', EXE,
+     "    if u and e.route_decision_id is not None:",
+     "    if False:",
      [I + '::test_I_U1_an_executions_usage_points_at_its_route_decision_and_counts_for_budgets']),
     ('R34', 'an own call run on a different account than decided', CALLS,
      "        account = base.AccountRef(d['account_id'] or d['account_ref'], acct.get('home_ref'))",
@@ -198,8 +201,8 @@ MUTATIONS = [
      [I + '::test_I_F4_nothing_eligible_blocks_the_mission_and_a_resume_routes_again',
       S4 + '::test_fallback_follows_the_account_policy']),
     ('R36', 'affinity never cleared by the mission\'s own resources', RES,
-     "           and r.created_at > since]",
-     "           ]",
+     "           and r.created_at > since and r.entity.id not in dropped]",
+     "           and r.entity.id not in dropped]",
      [I + '::test_I_R3_a_mission_stays_where_it_runs_until_its_resources_are_set']),
 ]
 

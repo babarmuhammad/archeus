@@ -5,11 +5,12 @@ import pytest
 from .support import events_of, wait_for, wait_state
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P11")
 def test_stop_everything_halts_running_fake_executions(client, rig):
     rig.script_harness('t1', [{'sleep': 30}])
-    m = client.create_mission(title='Runaway', objective='Needs stopping')
-    wait_state(client, m['id'], 'EXECUTING')
+    client.create_mission(title='Runaway', objective='Needs stopping')
+    # P11 (p11-design-gate §28): EXECUTING precedes the first dispatch, so wait for
+    # the process itself, as G1's adoption function does
+    wait_for(lambda: events_of(client, 'execution.started'))
     client.stop('all')
     ended = wait_for(lambda: events_of(client, 'execution.ended'))
     assert ended[0]['payload']['exit_reason'] == 'killed'

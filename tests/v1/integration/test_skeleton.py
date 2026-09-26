@@ -91,13 +91,20 @@ class Core:
                        missions=self.missions, approval_id=a.id, decision=decision,
                        action_hash=a.action_hash)
 
-    def until(self, mid, pred, limit=100):
-        """Step the engine until pred(mission row) holds (or fail)."""
-        for _ in range(limit):
+    def until(self, mid, pred, limit=100, timeout=30):
+        """Step the engine until pred(mission row) holds (or fail). P11: the
+        execution manager's pass is pumped too, and a running process is waited
+        for, as the Core runtime's `archeus-exec` thread would."""
+        deadline, steps = time.monotonic() + timeout, 0
+        while steps < limit:
             if pred(self.row(entities.Mission, mid).entity):
                 return
-            if not self.engine.step(mid)['changed']:
+            if self.engine.step(mid)['changed'] or self.engine.manager.tick():
+                steps += 1
+                continue
+            if not self.engine._busy(mid) or time.monotonic() > deadline:
                 break
+            time.sleep(0.01)
         assert pred(self.row(entities.Mission, mid).entity), self.row(entities.Mission, mid)
 
     def row(self, cls, eid):
@@ -581,7 +588,7 @@ def test_the_same_command_twice_changes_nothing_twice(core):
 
     core.until(a, lambda m: [e for e in core.all(entities.Execution) if e.state == 'STARTING'])
     (exe,) = core.all(entities.Execution)
-    core.engine._running.clear()                          # we report the end ourselves
+    core.engine.manager._procs.clear()                    # we report the end ourselves
     end = dict(execution_id=exe.id, exit_reason='ok', exit_code=0, output=True)
     first = core.do(core.work.record_exit, key='exit-1', actor=core.system, **end)
     head = core.events()[-1]['seq']
@@ -614,7 +621,7 @@ def test_duplicate_execution_ends_racing_leave_one_end(core):
     mid = core.mission()
     core.until(mid, lambda m: [e for e in core.all(entities.Execution) if e.state == 'STARTING'])
     (exe,) = core.all(entities.Execution)
-    core.engine._running.clear()
+    core.engine.manager._procs.clear()
     barrier, out = threading.Barrier(2), []
 
     def end():
@@ -789,7 +796,7 @@ from v1.integration.test_skeleton import Core
 from archeus.core.domain import entities
 
 mode = sys.argv[1]
-core = Core(scenarios={'work': [{'sleep': 60}]})
+core = Core(scenarios={'work': [{'emit': {'type': 'working'}}, {'sleep': 3}]})
 mid = core.mission()
 core.until(mid, lambda m: m.state == 'EXECUTING')
 core.until(mid, lambda m: [t for t in core.all(entities.Task) if t.state == 'READY'])
@@ -797,7 +804,8 @@ core.until(mid, lambda m: [t for t in core.all(entities.Task) if t.state == 'REA
 if mode == 'intent':
     core.do(core.work.dispatch_task, actor=core.system, task_id=task.id)
 else:
-    assert core.engine.step(mid)['did'] == 'start_execution'
+    assert core.engine.step(mid)['did'] == 'dispatch_task'
+    assert core.engine.manager.tick()           # P11: the manager spawns it
 (exe,) = core.all(entities.Execution)
 print(json.dumps({'mission': mid, 'execution': exe.id, 'state': exe.state, 'pid': exe.pid}),
       flush=True)
@@ -819,7 +827,10 @@ def _alive(pid, create_time):
     return proc.process_create_time(pid) == create_time
 
 
-def test_core_killed_mid_execution_reconciles_and_the_mission_completes(archeus_home):
+def test_core_killed_mid_execution_adopts_and_the_mission_completes(archeus_home):
+    """P3.5 killed the orphan and ran the task again; P11 ADOPTS it (p11-design-gate
+    §15.3, which P3.5b scheduled): the process runs once, to its own end, and the
+    new Core records that end."""
     died = _die(archeus_home, 'spawned')
     assert died['state'] == 'STARTING' and died['pid']
     paths = ExecPaths(died['execution'])
@@ -837,18 +848,15 @@ def test_core_killed_mid_execution_reconciles_and_the_mission_completes(archeus_
 
         out = core.engine.run(m.id)
         assert (out['state'], out['stop']) == ('COMPLETED', 'completed')
-        deadline = time.monotonic() + 10
-        while _alive(pid['pid'], pid['create_time']) and time.monotonic() < deadline:
-            time.sleep(0.05)
-        assert not _alive(pid['pid'], pid['create_time']), 'the orphan was not killed'
-        first, second = core.all(entities.Execution)
-        assert (first.state, first.exit_reason) == ('ENDED_KILLED', 'lost')
-        assert (second.attempt, second.state) == (2, 'ENDED_OK')
+        (only,) = core.all(entities.Execution)                # the task ran once
+        assert (only.id, only.state, only.exit_reason) == (exe.id, 'ENDED_OK', 'ok')
+        assert [e['payload']['pid'] for e in of(core.events(), 'execution.adopted')] == [
+            pid['pid']]
         moves = [(e['payload']['from'], e['payload']['trigger'])
                  for e in of(core.events(), 'execution.state_changed')
-                 if e['subject']['id'] == first.id]
-        assert moves == [('INTENT', 'spawn'), ('STARTING', 'start_timeout'),
-                         ('LOST', 'reconciled_kill')]
+                 if e['subject']['id'] == only.id]
+        assert moves == [('INTENT', 'spawn'), ('STARTING', 'first_output'),
+                         ('RUNNING', 'exited_success')]
         assert os.path.exists(paths.ended)
     finally:
         core.close()
@@ -898,11 +906,12 @@ def test_an_orphan_whose_process_is_gone_ends_lost_and_nothing_is_killed(archeus
             stranger.wait()
 
 
-def test_the_boot_sweep_reconciles_every_orphan_whatever_its_mission_is_doing(core):
+def test_the_boot_sweep_reaches_every_orphan_whatever_its_mission_is_doing(core):
     """Engine.reconcile_orphans (p3.5b §18.1): every non-terminal execution a
-    NEW engine did not start, through the one `_reconcile` — including one
+    NEW engine did not start, through the one `_reconcile_one` — including one
     under a PAUSED mission, which no engine step would ever reach. A failure
-    on one orphan does not leave the others running; it is raised after."""
+    on one orphan does not leave the others unexamined; it is raised after.
+    P11: a live orphan is adopted, not killed (p11-design-gate §15.3)."""
     from claude_sessions import proc
     core.scenarios['work'] = [{'sleep': 60}]
     first, second = core.mission(), core.mission()
@@ -916,31 +925,32 @@ def test_the_boot_sweep_reconciles_every_orphan_whatever_its_mission_is_doing(co
     assert len(live) == 2 and all(proc.process_create_time(p) == c for p, c in live.values())
 
     fresh = core.build_engine()             # a restarted Core: none of these are its own
-    real, calls = fresh._reconcile, []
+    real, calls = fresh.manager._reconcile_one, []
 
-    def flaky(e):
+    def flaky(e, disarmed):
         calls.append(e.id)
         if len(calls) == 1:
             raise RuntimeError('the first orphan fails')
-        return real(e)
-    fresh._reconcile = flaky
-    with pytest.raises(RuntimeError, match='the first orphan fails'):
-        fresh.reconcile_orphans()
-    assert len(calls) == 2, 'a failing orphan stopped the sweep'
-    failed_id, done_id = calls
-    assert core.row(entities.Execution, done_id).entity.state == 'ENDED_KILLED'
-    assert core.row(entities.Execution, failed_id).entity.state == 'STARTING'
+        return real(e, disarmed)
+    fresh.manager._reconcile_one = flaky
+    try:
+        with pytest.raises(RuntimeError, match='the first orphan fails'):
+            fresh.reconcile_orphans()
+        assert len(calls) == 2, 'a failing orphan stopped the sweep'
+        failed_id, done_id = calls
+        assert done_id in fresh.manager._procs                      # adopted
+        assert failed_id not in fresh.manager._procs
 
-    fresh._reconcile = real
-    assert fresh.reconcile_orphans() == [failed_id]         # the rest, on the next sweep
-    assert fresh.reconcile_orphans() == []
-    for pid, ctime in live.values():
-        deadline = time.monotonic() + 10
-        while proc.process_create_time(pid) == ctime and time.monotonic() < deadline:
-            time.sleep(0.05)
-        assert proc.process_create_time(pid) != ctime
-    assert core.row(entities.Mission, first).entity.state == 'PAUSED'      # never moved
-    assert {e.exit_reason for e in core.all(entities.Execution)} == {'lost'}
+        fresh.manager._reconcile_one = real
+        assert fresh.reconcile_orphans() == [failed_id]         # the rest, on the next sweep
+        assert fresh.reconcile_orphans() == []
+        for pid, ctime in live.values():
+            assert proc.process_create_time(pid) == ctime       # adoption kills nothing
+        assert {e['subject']['id'] for e in of(core.events(), 'execution.adopted')} == set(live)
+        assert core.row(entities.Mission, first).entity.state == 'PAUSED'      # never moved
+    finally:
+        for pid, ctime in live.values():
+            proc.kill_pid_tree(pid, ctime)
 
 
 def test_the_boot_sweep_leaves_the_executions_its_own_engine_started(core):
@@ -952,20 +962,23 @@ def test_the_boot_sweep_leaves_the_executions_its_own_engine_started(core):
         (e,) = core.all(entities.Execution)
         assert e.state == 'STARTING'
     finally:
-        adapter, handle = core.engine._running[e.id]
-        adapter.stop(handle, grace_s=0)
+        p = core.engine.manager._procs[e.id]
+        p['adapter'].stop(p['handle'], grace_s=0)
 
 
-def test_core_killed_between_intent_and_spawn_abandons_the_attempt(archeus_home):
+def test_core_killed_between_intent_and_spawn_starts_the_committed_attempt(archeus_home):
+    """P3.5 abandoned an INTENT row a dead Core left and dispatched again. In
+    P11 an INTENT row with no process prepared (`process_seq` 0) has never had a
+    process — nothing prepared it, so no marker can exist — and the next Core's
+    manager simply starts it: the attempt it committed runs, once."""
     died = _die(archeus_home, 'intent')
     assert died['state'] == 'INTENT' and died['pid'] is None
     assert not os.path.exists(ExecPaths(died['execution']).spawning)
     core = Core()
     try:
         assert core.engine.run(died['mission'])['state'] == 'COMPLETED'
-        first, second = core.all(entities.Execution)
-        assert (first.state, first.exit_reason) == ('ABANDONED', 'abandoned')
-        assert (second.attempt, second.state) == (2, 'ENDED_OK')
+        (only,) = core.all(entities.Execution)
+        assert (only.id, only.attempt, only.state) == (died['execution'], 1, 'ENDED_OK')
     finally:
         core.close()
 

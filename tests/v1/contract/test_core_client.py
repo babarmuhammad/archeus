@@ -143,8 +143,10 @@ def test_a_refused_guard_is_422_guard_failed_not_invalid_transition(client):
                                                                      {'current': 2})
 
 
-def test_control_verbs_reach_only_missions_until_p11(client):
-    with pytest.raises(NotImplementedError, match='P11'):
+def test_pause_reaches_missions_only(client):
+    """P11 (p11-design-gate §13): a pause is a mission's, its executions halt at
+    their next tool boundary; an execution is stopped, never paused alone."""
+    with pytest.raises(NotImplementedError, match='a mission target'):
         client.pause('exe_01J0000000000000000000000Z')
 
 

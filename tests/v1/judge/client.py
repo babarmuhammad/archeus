@@ -190,7 +190,11 @@ class InProcessClient:
                 work=work.Work(missions=self._missions,
                                router=resources.ResourceRouter(registry, self._usage)),
                 brain=self._brain, registry=registry, scenarios=self._scenarios,
-                verifier=ports.ScriptedVerifier(), reviewer=ports.ScriptedReview())
+                verifier=ports.ScriptedVerifier(), reviewer=ports.ScriptedReview(),
+                usage=self._usage)
+            # P11: adopt or reconcile what a previous Core left, as the runtime's
+            # boot sweep does, before anything is stepped
+            self._engine.manager.boot()
             # the world worker, pumped by `_idle` as the engine is (P4)
             self._world = World(self._db, actor=Ref('system', self._system))
             self._world.sweep()
@@ -275,12 +279,14 @@ class InProcessClient:
             live = [m['id'] for m in queries.list_missions(conn)
                     if m['state'] not in engine.SETTLED]
         stepped = any([self._engine.step(mid)['changed'] for mid in live])
+        # the execution thread's pass (P11); a watched process advances on its own
+        ran = bool(self._engine.manager.tick()) or bool(self._engine.manager._procs)
         worked = self._world.pass_once()['changed']
         learned = self._knowledge.pass_once()['changed']
         read = self._intents.pass_once()['changed']
         planned = self._plans is not None and self._plans.pass_once()['changed']
         expired = self._expiry.pass_once()['changed']
-        return not (worked or learned or read or planned or stepped or expired)
+        return not (worked or learned or read or planned or stepped or expired or ran)
 
     def close(self, *, drain=True):
         if self._db is not None:
@@ -332,10 +338,27 @@ class InProcessClient:
 
     def _control(self, verb, target):
         if ids.kind_of(target) != 'mission':
-            raise NotImplementedError('CoreClient.%s: only mission targets until the '
-                                      'execution orchestrator (P11)' % verb)
+            raise NotImplementedError('CoreClient.%s: a mission target' % verb)
         return self._call(lambda: self._core().writer.execute(
             getattr(self._missions, verb), {'actor': self._actor(), 'mission_id': target}))
+
+    def stop(self, target: str) -> dict:
+        """P11 (p11-design-gate §13): `all` is the e-stop (the sentinel first),
+        a mission stops its executions, an execution stops alone."""
+        from archeus.core.application.executions import Executions
+        from archeus.node.local import LocalNode
+        x = Executions(missions=self._missions)
+        if target == 'all':
+            LocalNode.engage_estop()
+            cmd, kw = x.estop, {}
+        elif ids.kind_of(target) == 'mission':
+            cmd, kw = x.stop_mission, {'mission_id': target}
+        elif ids.kind_of(target) == 'execution':
+            cmd, kw = x.stop_execution, {'execution_id': target}
+        else:
+            raise CoreClientError(400, 'invalid_request', {'why': 'unknown target'})
+        return self._call(lambda: self._core().writer.execute(
+            cmd, dict(kw, actor=self._actor())))
 
     def pause(self, target: str) -> dict:
         return self._control('pause', target)
@@ -487,7 +510,7 @@ IMPLEMENTED = ('create_mission', 'get_mission', 'list_missions', 'events', 'paus
                'create_project', 'declare_constraint', 'status', 'digest', 'ack',
                'import_meeting', 'list_knowledge', 'route_why', 'submit_message',
                'decide_approval', 'set_policy_rule', 'register_account',
-               'set_resource_policy')
+               'set_resource_policy', 'stop')
 
 # Every other operation is declared and fails loudly. Later phases replace these
 # with real bodies one by one; tests/v1/contract/test_core_client.py keeps every
@@ -498,4 +521,5 @@ for _op in OPERATIONS:
     _stub = _pending(_op)
     _stub.__signature__ = inspect.signature(getattr(CoreClient, _op))
     setattr(InProcessClient, _op, _stub)
-del _op, _stub
+del _op
+globals().pop('_stub', None)       # none left once every operation is built

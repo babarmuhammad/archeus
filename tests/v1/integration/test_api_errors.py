@@ -135,6 +135,11 @@ PATH_JUNK = ['x', 'msn_', '..', '%00', 'msn_' + 'A' * 300, '%E2%98%83']
 
 @pytest.mark.parametrize('route', routes.ROUTES, ids=lambda r: '%s %s' % (r.method, r.path))
 def test_no_input_to_any_route_is_a_500(tc, route):
+    """Every authenticated input of the matrix, on every route. A request with
+    no token is refused at step 6, before its body (step 8) — so the tokenless
+    half is sent once per path instead of `queries x bodies` times (p11-design-gate
+    D31: the matrix had grown past Windows' ephemeral-port budget); the order it
+    relies on is asserted by the next test."""
     rnd = random.Random(route.path)
     paths = [route.path]
     if '{id}' in route.path:
@@ -144,9 +149,9 @@ def test_no_input_to_any_route_is_a_500(tc, route):
     queries = ['', '?after=-5', '?after=99999999999999999999', '?limit=x', '?state=%00',
                '?after=1&after=x', '?' + ''.join(rnd.choice('&=%x') for _ in range(20))]
     for path in paths:
-        for q in queries:
-            for raw in (JUNK if route.method == 'POST' else [None]):
-                for token in (tc.token, None):
+        for i, q in enumerate(queries):
+            for j, raw in enumerate(JUNK if route.method == 'POST' else [None]):
+                for token in ((tc.token, None) if i == j == 0 else (tc.token,)):
                     if route.path == routes.STREAM:          # a 200 here streams forever
                         s = SSEClient(tc.base_url, token, after=q[len('?after='):] if
                                       q.startswith('?after=') else None)
@@ -156,3 +161,12 @@ def test_no_input_to_any_route_is_a_500(tc, route):
                         status = request(tc.base_url, route.method, path + q, raw=raw,
                                          token=token).status
                     assert status < 500, (route.method, path + q, raw, status)
+
+
+def test_a_request_without_a_token_is_refused_before_its_body_is_read(tc):
+    """D31's assumption, held: whatever the body and query, no token is 401 —
+    never a 400 about the body, never a 500 — on a keyed command route."""
+    for q in ('', '?after=-5', '?%00=%'):
+        for raw in JUNK:
+            r = request(tc.base_url, 'POST', '/v1/missions' + q, raw=raw, token=None)
+            assert r.status == 401, (q, raw, r.status)

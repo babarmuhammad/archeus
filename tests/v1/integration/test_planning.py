@@ -8,6 +8,8 @@ Every test also passes E6 (the autouse `no_plan_is_ever_approved`): across the
 suite no plan version reaches APPROVED or REJECTED — that is P9's.
 """
 
+import time
+
 import pytest
 
 from archeus.core import engine, ports
@@ -75,8 +77,12 @@ class Rig(IRig):
                 moved |= self.planner.pass_once()['changed']
             live = [m.id for m in self.all(entities.Mission) if m.state not in engine.SETTLED]
             stepped = any([self.engine.step(mid)['changed'] for mid in live])
-            if not (moved or stepped):
-                return
+            # P11: the execution manager's pass, and a running process waited for
+            ran = self.engine.manager.tick()
+            if not (moved or stepped or ran):
+                if not any(self.engine._busy(mid) for mid in live):
+                    return
+                time.sleep(0.01)
         raise AssertionError('did not settle')
 
     def mission(self, title='Ship it', objective='Ship the thing.', **kw):

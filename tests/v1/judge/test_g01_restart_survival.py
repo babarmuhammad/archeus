@@ -30,7 +30,6 @@ def test_a_restart_mid_execution_reconciles_and_the_mission_continues(client, ri
     wait_state(client, m['id'], 'COMPLETED', timeout=90)
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P11")
 def test_a_restart_mid_execution_adopts_the_live_process(client, rig):
     """P3.5 kills an orphan and retries its task; P11's execution manager adopts
     a process that is still alive, so the task runs exactly once."""

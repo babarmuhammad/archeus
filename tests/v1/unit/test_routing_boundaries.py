@@ -114,16 +114,28 @@ def test_B6_a_snapshot_reports_capabilities_as_declared_never_more():
     assert (off['installed'], off['capabilities'], off['models']) == (False, [], [])
 
 
-def test_B8_core_registers_only_the_fake_harness_for_execution():
-    """P11 owns real execution adapters: the runtime's registry is the fake one."""
-    tree = _tree('archeus/core/runtime.py')
-    regs = [ast.unparse(n.args[0]) for n in ast.walk(tree) if isinstance(n, ast.Call)
-            and isinstance(n.func, ast.Attribute) and n.func.attr == 'register']
-    assert regs == ['FakeHarness()']
+def test_B8_core_registers_its_executors_behind_the_policy_gate():
+    """P9 kept the runtime on the fake harness; P11 (p11-design-gate §23, D27)
+    registers exactly `Ports.executors`, whose default is the real adapters —
+    and the registry still refuses a real adapter unless the policy is real."""
+    from archeus.core import runtime
+    from archeus.harnesses.claude_code.adapter import ClaudeCodeAdapter
+    from archeus.harnesses.registry import AdapterRegistry, PolicyStubError
+    from archeus.core.ports import FixedPolicy
+    src = open(os.path.join(ROOT, 'archeus/core/runtime.py'), encoding='utf-8').read()
+    registered = [ast.unparse(n.args[0]) for n in ast.walk(ast.parse(src))
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                  and n.func.attr == 'register']
+    assert registered == ['adapter']                   # the loop over the executors
+    assert [type(a) for a in runtime.real_executors()] == [ClaudeCodeAdapter]
+    with pytest.raises(PolicyStubError):
+        AdapterRegistry(FixedPolicy()).register(ClaudeCodeAdapter())
 
 
 def test_B9_no_later_phase_module_exists_yet():
-    for rel in ('archeus/core/execution', 'archeus/node', 'archeus/harnesses/claude_code',
+    # P11 (p11-design-gate §26) creates core/execution, node and the Claude Code
+    # adapter; what stays later is P12's continuity and the deferred Codex adapter
+    for rel in ('archeus/core/execution/checkpoint.py', 'archeus/core/execution/handoff.py',
                 'archeus/harnesses/codex'):
         assert not os.path.exists(os.path.join(ROOT, rel)), rel
 

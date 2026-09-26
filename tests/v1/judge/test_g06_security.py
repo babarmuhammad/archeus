@@ -13,7 +13,6 @@ from .client import CoreClientError
 from .support import events_of, wait_for
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P11")
 def test_a_locked_deny_cannot_be_loosened_by_a_narrower_scope(client, rig):
     rig.script_harness('t1', [{'emit': {'type': 'tool', 'name': 'Bash',
                                         'input': 'terraform destroy -auto-approve'}}])

@@ -71,7 +71,9 @@ def test_a_run_follows_the_process_io_contract(tmp_path, archeus_home):
     marker = base.read_json(paths.spawning)
     assert marker['execution_id'] == spec.execution_id and marker['attempt'] == 1
     assert open(paths.prompt, encoding='utf-8').read() == spec.prompt
-    assert base.read_json(paths.pid) == {'pid': handle.pid, 'create_time': handle.create_time}
+    # P11 (p11-design-gate §15.1): pid.json names which process of the execution it is
+    assert base.read_json(paths.pid) == {'pid': handle.pid, 'create_time': handle.create_time,
+                                         'process_seq': 1}
 
     st = _wait_exit(fake, handle)
     assert st.exit_code == 0
@@ -100,7 +102,10 @@ def test_a_crash_is_an_error_exit_with_its_output_kept(tmp_path):
     assert _wait_exit(fake, handle).exit_code == 3
     result = fake.collect_result(handle)
     assert result.exit_reason == 'error'
-    assert fake.inspect(handle).events[-1] == {'type': 'error', 'error': 'rate_limit'}
+    # the output is kept, and (P11) the agent's last line says how it ended, for
+    # a Core that did not start it and so cannot ask the OS
+    assert list(fake.inspect(handle).events[-2:]) == [{'type': 'error', 'error': 'rate_limit'},
+                                                {'type': 'exit', 'code': 3}]
 
 
 def test_stop_kills_a_running_execution(tmp_path):
@@ -191,15 +196,40 @@ def test_the_fake_agent_is_stdlib_only():
     assert imported <= set(sys.stdlib_module_names), imported
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P11")
-def test_the_claude_code_adapter_normalises_a_recorded_stream():
-    from archeus.harnesses.claude_code import adapter          # noqa: F401  (P11)
+def test_the_claude_code_adapter_normalises_a_recorded_stream(tmp_path):
+    """G7 (P11): a real `claude -p --output-format stream-json --verbose` run,
+    recorded once (and stripped of the recording machine's hook output and
+    inventory), read through the adapter exactly as a live execution is."""
+    import shutil
+    from archeus.harnesses.claude_code import adapter
     fixture = os.path.join(os.path.dirname(__file__), 'fixtures', 'claude_code_stream.jsonl')
-    assert json.loads(open(fixture, encoding='utf-8').readline())
+    raw = [json.loads(line) for line in open(fixture, encoding='utf-8')]
+    events = [ev for r in raw for ev in adapter.normalise(r)]
+    types = [ev['type'] for ev in events]
+    assert types[0] == 'system' and 'assistant' in types and types[-1] == 'result'
+    assert [ev['text'] for ev in events if ev['type'] == 'assistant'] == ['ok']
+    result = events[-1]
+    assert (result['summary'], result['is_error']) == ('ok', False)
+    assert result['usage']['input_tokens'] == 9 and result['usage']['total_cost_usd'] > 0
+    assert 'limit' not in types                        # a warning is not a refusal
+    # the adapter's own reading of a finished execution directory
+    d = tmp_path / 'exec'
+    d.mkdir()
+    shutil.copy(fixture, str(d / 'stream.jsonl'))
+    handle = base.ProcessHandle('exe_01J00000000000000000000000', 2 ** 22 + 7, 'gone', str(d))
+    got = adapter.ClaudeCodeAdapter().collect_result(handle)
+    assert (got.exit_reason, got.exit_code, got.failure, got.halted) == ('ok', 0, None, False)
+    assert got.adapter_state == {'session': raw[0]['session_id']}
+    # a refusal for a limit, as the provider words it, is recognised
+    refused = {'type': 'result', 'subtype': 'error_during_execution', 'is_error': True,
+               'result': "You've hit your session limit · resets 2:30am (Europe/Rome)"}
+    assert [e['type'] for e in adapter.normalise(refused)] == ['limit', 'result']
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P11")
+@pytest.mark.xfail(strict=True, reason="phase:P20")
 def test_the_codex_adapter_normalises_a_recorded_stream():
+    """Deferred (p11-design-gate D30): no Codex install and no recording to
+    write it against."""
     from archeus.harnesses.codex import adapter                # noqa: F401  (P11)
     fixture = os.path.join(os.path.dirname(__file__), 'fixtures', 'codex_stream.jsonl')
     assert json.loads(open(fixture, encoding='utf-8').readline())

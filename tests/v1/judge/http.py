@@ -25,6 +25,7 @@ import urllib.request
 from typing import Optional, Sequence
 
 from archeus.api import auth
+from archeus.harnesses.fake import FakeHarness
 from archeus.core import engine, ports, runtime
 from archeus.core.application import lifecycle
 from archeus.core.domain import entities, ids
@@ -115,14 +116,16 @@ class HttpClient:
         the repositories as they are on disk at this request, so a commit the
         worker has not noticed yet is pending work, never idleness."""
         health = self._call('GET', '/v1/health')
-        engine, world = health['engine'], health['world']
+        engine, world, ex = health['engine'], health['world'], health['exec']
         if engine['state'] != 'idle' or world['state'] != 'idle' or world['pending']:
+            return False
+        if ex['state'] != 'idle' or ex['live']:     # P11: a process advances on its own
             return False
         for worker in ('knowledge', 'intent', 'plan'):  # P6-P8: every event not yet consumed
             if health[worker]['state'] != 'idle' or health[worker]['pending']:
                 return False
         return not self._call('GET', '/v1/events?after=%d&limit=1'
-                              % engine['observed_seq'])['events']
+                              % min(engine['observed_seq'], ex['observed_seq']))['events']
 
     def _restart(self, *, kill=True):
         self.core.restart(kill=kill)
@@ -166,10 +169,17 @@ class HttpClient:
 
     def _control(self, verb, target):
         if ids.kind_of(target) != 'mission':
-            raise NotImplementedError('CoreClient.%s: only mission targets until the '
-                                      'execution orchestrator (P11)' % verb)
+            raise NotImplementedError('CoreClient.%s: a mission target' % verb)
         return self._call('POST', '/v1/missions/%s/%s' % (target, verb),
                           {'idempotency_key': ids.new_ulid()})
+
+    def stop(self, target: str) -> dict:
+        key = {'idempotency_key': ids.new_ulid()}
+        if target == 'all':
+            return self._call('POST', '/v1/estop', key)
+        if ids.kind_of(target) == 'mission':
+            return self._call('POST', '/v1/missions/%s/stop' % target, key)
+        return self._call('POST', '/v1/executions/%s/stop' % target, key)
 
     def pause(self, target: str) -> dict:
         return self._control('pause', target)
@@ -321,7 +331,8 @@ for _op in OPERATIONS:
         _stub = _pending(_op)
         _stub.__signature__ = __import__('inspect').signature(getattr(CoreClient, _op))
         setattr(HttpClient, _op, _stub)
-del _op, _stub
+del _op
+globals().pop('_stub', None)       # none left once every operation is built
 
 
 class SSEClient:
@@ -409,6 +420,10 @@ class TempCore:
 
     def __init__(self, home, *, port=None, **kw):
         kw.setdefault('ports', runtime.Ports(brain=ports.FixedPlanBrain(engine.SKELETON_PLAN)))
+        if kw['ports'].executors is None:
+            # a test Core executes on the fake harness unless it names its
+            # executors (P11: the runtime's default is the real adapters)
+            kw['ports'].executors = [FakeHarness()]
         self.home, self.port, self.kw = str(home), port or free_port(), kw
         self.core = None
 
@@ -480,8 +495,12 @@ if cfg.get('hold_inspection'):     # a walk waits for the test to open this gate
         return _walk(path)
     _inspection.inspect = held_walk
 from archeus.core import ports as P
+from archeus.harnesses.fake import FakeHarness
+if cfg.get('pause_timeout') is not None:   # a short pause timeout for the test (P11)
+    from archeus.core.execution import manager as _manager
+    _manager.PAUSE_TIMEOUT_S = cfg['pause_timeout']
 ports = runtime.Ports(scenarios=cfg.get('scenarios') or {},
-                      brain=P.FixedPlanBrain(engine.SKELETON_PLAN))
+                      brain=P.FixedPlanBrain(engine.SKELETON_PLAN), executors=[FakeHarness()])
 if cfg.get('brain_fails'):
     class Broken:
         def call(self, *a, **k):
