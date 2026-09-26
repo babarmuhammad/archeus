@@ -250,6 +250,10 @@ The engine reads the terms again after the decision and before `adapter.start()`
 `GET /v1/route-decisions[/{id}]` (P6) serves both subjects; `?source=` matches the subject too.
 Every resource command is a user device's; the brain and the system get 403 from the command.
 
+CLI: `archeus route why <id>` (the verb p3.5b §3 reserved for P10) prints the explanation of a
+RouteDecision by its id, or of the latest decision about a task, mission or other subject; it
+reads over HTTP like `archeus terms` and never makes a model call.
+
 ## 11. Events
 
 Four new types (§5): `account.registered`, `account_health.state_changed` (the machine's moves,
@@ -321,7 +325,8 @@ account, policy or usage never rewrites why something ran where it did.
   writes no policy row), I-F fallback and the route approval, I-T provider terms at the adapter
   (both subjects), I-H immutable history and replay, I-U usage attribution and observation, I-R
   registration, health, continuity, the mission's resources, tier blocks.
-- `tests/v1/integration/test_routing_http.py` — H01–H07 over HTTP on the real runtime.
+- `tests/v1/integration/test_routing_http.py` — H01–H08 over HTTP on the real runtime (H08:
+  `archeus route why`).
 
 ## 18. Phase-boundary tests — `tests/v1/unit/test_routing_boundaries.py`
 
@@ -365,6 +370,7 @@ Commits (on `archeus-v1-rearchitecture`):
 2. archeus: P10 resource router
 3. archeus: P10 routing in dispatch and own calls, usage, runtime and API
 4. tests: P10 judge, boundaries and mutation suite; docs (this record)
+5. archeus: P10 `archeus route why` (the reserved CLI verb, found missing at the end)
 
 ### 21.1 Deviations
 
@@ -390,5 +396,7 @@ Commits (on `archeus-v1-rearchitecture`):
   error-storm breaker, the real adapters' usage reports, effort chosen by the planner.
 - **P12:** S4's crossing-the-ceiling function.
 - **P16:** the route-approval card and the resources UI.
+- The CLI verb `archeus approve` is still reserved as "arrives with P9" although P9 shipped the
+  HTTP routes without it; not changed here (it is P9's, and P16 owns approval UX).
 
 **DESIGN_GATE = IMPLEMENTED.**

@@ -110,6 +110,25 @@ def test_H06_a_task_is_routed_to_the_registered_account_and_the_decision_is_read
     assert 'priority-1' in one['explanation'] and one['input_snapshot']['accounts']
 
 
+def test_H08_the_cli_says_why_from_the_persisted_decision(core, capsys):
+    """`archeus route why` (p3.5b gate: `route why` is P10's): by decision id,
+    or by what it is about; an unknown id sends nothing back and exits 2."""
+    from archeus.cli import main as cli
+    mid = _post(core, '/v1/missions', {'title': 'Why', 'objective': 'o'}).json()['id']
+    _wait(lambda: core.http('GET', '/v1/missions/%s' % mid).json()['state'] == 'COMPLETED',
+          'mission completed')
+    got = core.http('GET', '/v1/route-decisions?source=%s' % mid).json()['route_decisions']
+    (rd,) = [d for d in got if d['subject']['kind'] == 'task']
+    capsys.readouterr()
+    assert cli.main(['route', 'why', rd['id']]) == 0
+    by_id = capsys.readouterr().out.strip()
+    assert by_id == '%s (selected): %s' % (rd['id'], rd['explanation'])
+    assert cli.main(['route', 'why', rd['subject']['id']]) == 0     # the task: its latest
+    assert capsys.readouterr().out.strip() == by_id
+    assert cli.main(['route', 'why', ids.new_id('route_decision')]) == 2
+    assert cli.main(['route', 'maybe']) == 2                        # usage
+
+
 def test_H07_a_missions_resources_are_admin_and_validated(core):
     mid = _post(core, '/v1/missions', {'title': 'R', 'objective': 'o'}).json()['id']
     got = _post(core, '/v1/missions/%s/resources' % mid, {'max_cost_band': 'high',

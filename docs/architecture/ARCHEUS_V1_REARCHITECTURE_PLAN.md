@@ -786,7 +786,8 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   - **P10, as built** (p10-design-gate.md, D1–D15). `core/routing/{router,usage}.py`,
     `core/application/resources.py`, migration `0009_resources.sql` (accounts,
     resource_policies, usage_snapshots; decisions gain mission and task, the ledger gains the
-    account), the `usage.windows_snapshot` seam, four event types, six routes. The router is
+    account), the `usage.windows_snapshot` seam, four event types, six routes and the
+    `archeus route why` verb. The router is
     pure and every decision replays from its own record; a task reaches it only with a current
     `covered` P9 dispatch decision, checked again inside the routing command; `ask` is a `route`
     approval requested by the dispatch command and decided by a user device through P9; a

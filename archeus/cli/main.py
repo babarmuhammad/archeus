@@ -1,4 +1,5 @@
-"""`archeus core | status` and the reserved V1 verbs (p3.5b design gate §3 D6, §8).
+"""`archeus core | status | terms | route why` and the reserved V1 verbs (p3.5b design
+gate §3 D6, §8).
 
 `claude_sessions/cli.py` sends these verbs here with a lazy import placed
 after the statusline fast path, so a conversation turn never pays for them.
@@ -20,8 +21,8 @@ import time
 #: Verbs whose behaviour belongs to a later phase: they do nothing, say so,
 #: and exit 2, so no script ever sees a verb change from "opened the TUI" to
 #: something else.
-DEFERRED = {'approve': 'P9', 'pause': 'P11', 'route': 'P10', 'estop': 'P11', 'pair': 'P15'}
-VERBS = ('core', 'status', 'terms') + tuple(DEFERRED)
+DEFERRED = {'approve': 'P9', 'pause': 'P11', 'estop': 'P11', 'pair': 'P15'}
+VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair')
 
 USAGE = """usage: archeus core [--open]    run Archeus Core in the foreground (Ctrl+C stops it)
        archeus status           is Core running? (exit 0 yes, 1 no, 2 discovery failed,
@@ -29,7 +30,9 @@ USAGE = """usage: archeus core [--open]    run Archeus Core in the foreground (C
        archeus terms            the provider-terms answers (ADR-0021)
        archeus terms <harness> permit|refuse [--rotation permit|refuse]
                                 answer it: may Archeus make automated headless calls on
-                                this harness's accounts (and rotate across several)?"""
+                                this harness's accounts (and rotate across several)?
+       archeus route why <id>   why a resource was chosen: a route decision, or the latest
+                                one about a task, mission or other subject (P10)"""
 _TERMS = {'permit': 'permitted', 'refuse': 'refused'}
 
 
@@ -48,6 +51,8 @@ def main(argv):
     if (verb == 'terms' and len(args) in (2, 4) and args[1] in _TERMS
             and (len(args) == 2 or (args[2] == '--rotation' and args[3] in _TERMS))):
         return terms(args[0], _TERMS[args[1]], _TERMS[args[3]] if len(args) == 4 else None)
+    if verb == 'route' and len(args) == 2 and args[0] == 'why':
+        return route_why(args[1])
     print(USAGE, file=sys.stderr)
     return 2
 
@@ -121,6 +126,29 @@ def terms(harness=None, headless=None, rotation=None):
         return 2
     t = out['provider_terms']
     print('%s: headless %s, rotation %s' % (t['id'], t['headless'], t['rotation']))
+    return 0
+
+
+def route_why(ref):
+    """The explanation Core generated from a persisted RouteDecision (no model
+    call; resource-router §8): *ref* is its id, or the id of what it is about,
+    whose latest decision is shown."""
+    from urllib.parse import quote
+    from ..core.domain import ids
+    from ..infra import discovery
+    state, info = discovery.discover()
+    if state != 'running':
+        print('Core is not running: start it with `archeus core`', file=sys.stderr)
+        return 1
+    if ids.is_id(ref, 'route_decision'):
+        d = _get(info, 'GET', '/v1/route-decisions/%s' % quote(ref, safe=''))
+    else:
+        got = _get(info, 'GET', '/v1/route-decisions?source=%s' % quote(ref, safe=''))
+        d = got['route_decisions'][-1] if got and got['route_decisions'] else None
+    if d is None:
+        print('no route decision for %s' % ref, file=sys.stderr)
+        return 2
+    print('%s (%s): %s' % (d['id'], d.get('result') or 'selected', d['explanation']))
     return 0
 
 
