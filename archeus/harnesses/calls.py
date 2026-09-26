@@ -59,7 +59,13 @@ class ClaudeCodeCaller:
     def capabilities(self, account=None):
         return base.Capabilities(
             frozenset({'headless', 'structured_output', 'interactive', 'resume', 'code_edit',
-                       'shell'}), 'hook', (), structured_output='native')
+                       'shell'}), 'hook', claude_models(), structured_output='native')
+
+    def authenticate(self, account):
+        """Cheap, no inference: the home holds a Claude login."""
+        from claude_sessions import usage
+        ok = bool(usage._creds(account.home_ref))
+        return base.AuthStatus(ok, '' if ok else 'no Claude login in %s' % account.home_ref)
 
     def account(self, *, rotation):
         """(AccountRef, why-not): legacy `rotate.elect()` when rotation across
@@ -107,7 +113,12 @@ class PiCaller:
 
     def capabilities(self, account=None):
         return base.Capabilities(frozenset({'headless', 'structured_output', 'interactive'}),
-                                 'none', (), structured_output='prompted')
+                                 'none', pi_models(), structured_output='prompted')
+
+    def authenticate(self, account):
+        import os
+        ok = bool(account.home_ref) and os.path.isdir(account.home_ref)
+        return base.AuthStatus(ok, '' if ok else 'no pi home at %s' % account.home_ref)
 
     def account(self, *, rotation):
         from claude_sessions import harnesses
@@ -127,6 +138,38 @@ class PiCaller:
             return _failed(r)
         return base.CallResult(text=r.stdout,
                                parsed=llmcall.parse_json(r.stdout) if spec.schema else None)
+
+
+#: Claude model families by tier (resource-router §5 tier fit: plan authoring
+#: and review large, well-specified implementation mid, mechanical small)
+CLAUDE_TIERS = {'haiku': 'small', 'sonnet': 'mid', 'opus': 'large', 'fable': 'large'}
+
+
+def claude_models():
+    """Claude Code's offers, in its own vocabulary: the family aliases it
+    accepts as `--model`, and the newest id of each family from the cached
+    catalogue (a disk read, `models.roster`)."""
+    from claude_sessions import models
+    out = [base.ModelInfo(f, t) for f, t in CLAUDE_TIERS.items()]
+    for r in models.roster():
+        t = CLAUDE_TIERS.get(r.get('family'))
+        if t is not None and r.get('id'):
+            out.append(base.ModelInfo(models.alias(r['id']), t))
+    return tuple(out)
+
+
+def pi_models():
+    """pi's offers, in its own vocabulary (`provider/id`): what this install
+    has run and declared, and its catalogue with each context window. pi
+    states no tier, so every one is unknown — the smallest (ADR-0022)."""
+    from claude_sessions import harnesses, pi
+    try:
+        ctx = {c['id']: c.get('context') for c in pi.catalogue() if c.get('id')}
+        ids_ = list(dict.fromkeys(list(pi.models(harnesses.home_dir('pi'))) + list(ctx)))
+    except Exception:          # an unreadable pi state offers nothing, never crashes routing
+        return ()
+    return tuple(base.ModelInfo(m, None, ctx.get(m) if isinstance(ctx.get(m), int) else None)
+                 for m in ids_)
 
 
 def real_callers():

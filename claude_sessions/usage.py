@@ -238,6 +238,27 @@ def refresh_now():
         _poll_account(name, d, active)
 
 
+def windows_snapshot(cfgdir=None, *, poll=False):
+    """(windows, observed_at, status) for one account, from the poller's cache:
+    `windows` is [(label, pct, resets_at)] as `_extract_windows` reads them,
+    `observed_at` the epoch of the last good fetch (None: never), `status` the
+    poller's last answer ('unknown' before it polled this account). Unlike
+    `quota.worst_window`, nothing unknown is reported as 0%: the V1 router
+    must tell an empty window from one nobody read (archeus P10 seam).
+    `poll=True` starts the background poller if it is not running yet."""
+    if poll:
+        _ensure_started()
+    want = os.path.normcase(os.path.abspath(cfgdir or _c.config_dir))
+    with _lock:
+        st = next((dict(v) for k, v in _acct_state.items()
+                   if os.path.normcase(os.path.abspath(k)) == want), None)
+    if not st:
+        return [], None, 'unknown'
+    data = st.get('data')
+    return (_extract_windows(data) if data else []), st.get('fetched_at'), \
+        st.get('status') or 'unknown'
+
+
 def _fmt_reset(iso):
     """ISO timestamp → short local time ('14:30' today, else 'Tue 09:00')."""
     try:

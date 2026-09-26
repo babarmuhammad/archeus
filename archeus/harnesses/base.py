@@ -44,10 +44,20 @@ class HarnessInfo:
 
 
 @dataclass(frozen=True)
+class ModelInfo:
+    """A model an account can run, in its harness's vocabulary (domain-model
+    §8.3). `tier` / `context_window` None: unknown, which the router counts as
+    the smallest (ADR-0022) — a requirement's minimum excludes it."""
+    id: str
+    tier: Optional[str] = None          # small | mid | large
+    context_window: Optional[int] = None
+
+
+@dataclass(frozen=True)
 class Capabilities:
     capabilities: frozenset             # code_edit, shell, web, mcp, headless, interactive, …
     enforcement: str                    # hook | sandbox | none
-    models: tuple = ()
+    models: tuple = ()                  # model ids (tier unknown) or ModelInfo
     # how a `headless` adapter asks for a schema (ADR-0022): `native` (a flag of
     # the harness) or `prompted` (the schema in the prompt). Core validates the
     # result either way, so neither is preferred and neither is required.

@@ -28,10 +28,25 @@ AGENT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fake_agent.py'
 _NOT_YET = 'the fake harness does not simulate %s until P11 (pause/resume/hand-off)'
 
 
+#: the model a fake harness offers unless told otherwise: a known `large`
+#: tier, so every tier requirement is met (P10)
+FAKE_MODEL = base.ModelInfo('fake-model', 'large', 200000)
+
+
 class FakeHarness:
+    """`id`, `capabilities`, `models`, `enforcement` and `efforts` are
+    constructor arguments, so a second fake harness for routing is an instance,
+    never a new class: the registry's gate and the provider-terms exemption
+    both decide "fake" by class identity."""
     id = 'fake'
 
-    def __init__(self):
+    def __init__(self, id=None, *, capabilities=('code_edit', 'shell', 'structured_output',
+                                                  'headless'),
+                 models=(FAKE_MODEL,), enforcement='hook', efforts=()):
+        if id is not None:
+            self.id = id
+        self._caps, self._models = frozenset(capabilities), tuple(models)
+        self._enforcement, self._efforts = enforcement, tuple(efforts)
         self._children = {}     # execution_id -> Popen, for exit codes of what we started
         self._stopped = set()
 
@@ -39,8 +54,8 @@ class FakeHarness:
         return base.HarnessInfo(self.id, True, '1', sys.executable)
 
     def capabilities(self, account):
-        return base.Capabilities(frozenset({'code_edit', 'shell', 'structured_output',
-                                            'headless'}), 'hook', ('fake-model',))
+        return base.Capabilities(self._caps, self._enforcement, self._models,
+                                 efforts=self._efforts)
 
     def authenticate(self, account):
         return base.AuthStatus(True, 'fake accounts need no login')
@@ -129,9 +144,10 @@ class FakeCaller:
     `sent` records every (spec, effective prompt) it was given."""
 
     def __init__(self, id='fake', *, headless=True, structured='native', installed=True,
-                 replies=None, models=('fake-model',)):
+                 replies=None, models=(FAKE_MODEL,), efforts=(), auth_ok=True):
         self.id, self.headless, self.structured = id, headless, structured
         self.installed, self.models = installed, tuple(models)
+        self.efforts, self.auth_ok = tuple(efforts), auth_ok
         self._replies = {k: list(v) for k, v in (replies or {}).items()}
         self.sent = []
 
@@ -141,10 +157,14 @@ class FakeCaller:
     def capabilities(self, account=None):
         caps = {'headless', 'structured_output'} if self.headless else {'interactive'}
         return base.Capabilities(frozenset(caps), 'none', self.models,
-                                 structured_output=self.structured if self.headless else None)
+                                 structured_output=self.structured if self.headless else None,
+                                 efforts=self.efforts)
 
     def account(self, *, rotation):
         return base.AccountRef('fake:%s' % self.id), ''
+
+    def authenticate(self, account):
+        return base.AuthStatus(self.auth_ok, 'scripted')
 
     def call(self, spec):
         prompt = spec.prompt
