@@ -71,6 +71,14 @@ class MissionFacts:
     policy: tuple = ()
     declared_by: str = None
     review: str = None                  # state of the latest review of the plan in force
+    # P9: the state of the plan approval whose action_hash equals the one
+    # recomputed for the plan in force (None: there is none), the DENY this
+    # transaction recorded for the mission's plan (a policy decision id), and
+    # the per-item evaluations the policy part was built from (not read by
+    # any guard: what the plan gate records is exactly what it judged)
+    plan_approval: str = None
+    denial: str = None
+    evaluated: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -232,6 +240,25 @@ def unrecoverable(mission, f):
     return _r('unrecoverable', False, 'nothing makes the mission unrecoverable')
 
 
+def approve_mission(mission, f):
+    """APPROVAL_REQUIRED -> APPROVED only on a real authorisation (P9 D10):
+    an APPROVED approval of exactly the plan in force (hash recomputed)."""
+    if f.plan_version is None:
+        return _r('approve', False, 'no active plan')
+    if f.plan_approval != 'APPROVED':
+        return _r('approve', False, 'no approval of plan v%d is APPROVED (%s)'
+                  % (f.plan_version, f.plan_approval or 'none requested'))
+    return _r('approve', True, 'plan v%d approved by a user device' % f.plan_version)
+
+
+def plan_denied(mission, f):
+    """REASONING -> BLOCKED because policy DENIES the plan (P9 D11) — never
+    because it is ambiguous or challenged: it needs the recorded denial."""
+    if not f.denial:
+        return _r('plan_denied', False, 'no policy denial is recorded for this plan')
+    return _r('plan_denied', True, 'policy denies the plan (decision %s)' % f.denial)
+
+
 # ── plan (state-machines §2.1, P8) ──────────────────────────────────────────
 
 def ready(plan, f):
@@ -315,6 +342,7 @@ GUARDS = {
     ('mission', 'verification_failed'): verification_failed,
     ('mission', 'redispatch'): redispatch,
     ('mission', 'accepted'): accepted,
+    ('mission', 'plan_denied'): plan_denied,
     ('plan', 'ready'): ready,
     ('approval', 'approve'): approve,
     ('architecture', 'first_inspection'): first_inspection,

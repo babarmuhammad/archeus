@@ -41,6 +41,9 @@ TABLES = {
     entities.Message: 'messages',
     entities.Intent: 'intents',
     entities.Idea: 'ideas',
+    entities.PolicyRule: 'policy_rules',
+    entities.PolicyDecision: 'policy_decisions',
+    entities.Approval: 'approvals',
 }
 
 #: Row metadata, never entity fields: optimistic-concurrency version, timestamps,

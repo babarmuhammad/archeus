@@ -74,6 +74,13 @@ def run_dir():
     return os.path.join(archeus_home(), 'run')
 
 
+def stop_sentinel():
+    """`<ARCHEUS_HOME>/run/STOP` — the e-stop sentinel (execution-architecture
+    §10). P9 only reads whether it exists (every policy decision is DENY while
+    it does); writing and clearing it is the e-stop's (P11)."""
+    return os.path.join(run_dir(), 'STOP')
+
+
 def processes_registry():
     """`<ARCHEUS_HOME>/run/processes.jsonl` — every spawned process, for e-stop
     and boot reconciliation without the database."""

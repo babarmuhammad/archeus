@@ -19,12 +19,15 @@ from dataclasses import dataclass, fields
 from typing import ClassVar
 
 from . import ids, states
-from .actions import ACTION_CLASSES, DECISIONS, Action
+from .actions import (ACTION_CLASSES, APPROVAL_KINDS, BOUNDARY_KEYS, DECISIONS, MATCH_KEYS,
+                      Action)
 from .values import ORIGINS, PRINCIPAL_SCOPES, SOURCE_KINDS, Ref
 
 _HEX64 = re.compile(r'[0-9a-f]{64}')
 #: `_FROZEN` value meaning every field except the state
 FROZEN_ALL = ('*',)
+#: Autonomy profiles, loosest last (p9-design-gate §5, D5)
+AUTONOMY_PROFILES = ('careful', 'standard', 'autonomous')
 
 
 class Entity:
@@ -135,10 +138,13 @@ def entity(cls):
 class User(Entity):
     _ID = 'user'
     _TEXT = ('display_name',)
+    _CHOICES = {'autonomy_profile': AUTONOMY_PROFILES}
     _NONNEG = ('last_ack_event_seq',)
     id: str
     display_name: str
     last_ack_event_seq: int = 0
+    # the user's default autonomy: the profile expanded at USER level (P9 §5)
+    autonomy_profile: str = 'standard'
 
 
 @entity
@@ -608,7 +614,7 @@ class Intent(Entity):
 
 CRITERION_CHECKS = ('automatic', 'human')
 #: why a planning round recorded no plan (Mission.planning_blocked, P8)
-PLANNING_BLOCKS = ('clarification', 'challenge', 'call')
+PLANNING_BLOCKS = ('clarification', 'challenge', 'call', 'policy')
 COST_BANDS = ('low', 'medium', 'high')      # bands, never precise (domain-model §7.2)
 
 @entity
@@ -616,7 +622,8 @@ class Mission(Entity):
     _ID = 'mission'
     _STATE = ('state', 'mission')
     _TEXT = ('title', 'objective')
-    _CHOICES = {'origin': ('conversation', 'idea', 'automation', 'legacy_import')}
+    _CHOICES = {'origin': ('conversation', 'idea', 'automation', 'legacy_import'),
+                'autonomy_profile': AUTONOMY_PROFILES}
     _NONNEG = ('max_replans',)
     _REFS = {'context_package_id': 'context_package',
              'origin_ref': ('message', 'idea', 'automation_run')}
@@ -649,8 +656,11 @@ class Mission(Entity):
     # the package the mission's `context_ready` move recorded (P5)
     context_package_id: str = None
     # why planning could not record a plan (P8, p8-design-gate §10): {kind:
-    # clarification|challenge|call, round_seq, ...}; cleared when a version is recorded
+    # clarification|challenge|call|policy, round_seq, ...}; cleared when a
+    # version is recorded. `policy` (P9): a DENY, never a question of meaning
     planning_blocked: dict = None
+    # the profile expanded at MISSION level (P9 §5); None inherits the user's
+    autonomy_profile: str = None
     state: str = None
 
     def _check(self):
@@ -1144,53 +1154,150 @@ class ExecutionNode(Entity):
 
 # ── control (domain-model §9) ───────────────────────────────────────────────
 
+#: Rule levels (p9-design-gate §4.1, D1). ACTION is an approval scope, never a
+#: rule's: the most specific "rule" is a valid approval of the exact action.
 SCOPE_LEVELS = ('GLOBAL', 'USER', 'WORKSPACE', 'PROJECT', 'MISSION', 'TASK')
+POLICY_STAGES = ('plan', 'dispatch', 'action')
+RULE_SOURCES = ('builtin', 'profile', 'user')
 
 
 @entity
 class PolicyRule(Entity):
+    """One immutable rule revision (p9-design-gate §4.3, D17): a change is a
+    retirement plus the next revision; only `retired_at` is ever written after
+    the insert. GLOBAL is Core's own (built-in and profile rules, in code)."""
     _ID = 'policy_rule'
     _CHOICES = {'scope_level': SCOPE_LEVELS, 'action_class': ACTION_CLASSES,
-                'decision': DECISIONS}
+                'decision': DECISIONS, 'outside': ('ASK', 'DENY'), 'source': RULE_SOURCES}
+    _REFS = {'supersedes_rule_id': 'policy_rule'}
+    _MIN1 = ('revision',)
+    _FROZEN = ('scope_level', 'action_class', 'decision', 'scope_ref', 'locked', 'match',
+               'boundary', 'outside', 'expires_at', 'source', 'note', 'revision',
+               'supersedes_rule_id')
     id: str
     scope_level: str
     action_class: str
     decision: str
     scope_ref: str = None
     locked: bool = None           # None -> derived: DENY is always locked
+    # when it applies (§6.1) and, for ALLOW_WITHIN_BOUNDARY, its limits (§6.2)
+    match: dict = None
+    boundary: dict = None
+    outside: str = 'ASK'
+    expires_at: str = None        # a temporary rule is ignored after it
+    source: str = 'user'
+    note: str = ''
+    revision: int = 1
+    supersedes_rule_id: str = None
+    retired_at: str = None
 
     def _check(self):
         if self.locked is None:
             self._set('locked', self.decision == 'DENY')
         if self.decision == 'DENY' and not self.locked:
             raise ValueError('DENY is always locked')
+        if (self.scope_level == 'GLOBAL') != (self.scope_ref is None):
+            raise ValueError('a GLOBAL rule has no scope_ref; every other level names one')
+        if self.scope_level == 'GLOBAL' and self.source == 'user':
+            raise ValueError('GLOBAL rules are Core\'s own; a user rule starts at USER')
+        if self.match is not None and not (isinstance(self.match, dict)
+                                           and set(self.match) <= set(MATCH_KEYS)):
+            raise ValueError('PolicyRule.match keys are %s: %r' % (MATCH_KEYS, self.match))
+        if self.boundary is not None:
+            if self.decision != 'ALLOW_WITHIN_BOUNDARY':
+                raise ValueError('only ALLOW_WITHIN_BOUNDARY has a boundary')
+            if not (isinstance(self.boundary, dict) and self.boundary
+                    and set(self.boundary) <= set(BOUNDARY_KEYS)):
+                raise ValueError('PolicyRule.boundary keys are %s: %r'
+                                 % (BOUNDARY_KEYS, self.boundary))
+        elif self.decision == 'ALLOW_WITHIN_BOUNDARY':
+            raise ValueError('ALLOW_WITHIN_BOUNDARY needs a boundary')
 
 
 @entity
 class PolicyDecision(Entity):
+    """One evaluation, recorded with the move it justifies (p9-design-gate §9).
+    Immutable: when policy changes a later evaluation is a NEW decision; this
+    one keeps saying what was decided under the policy of its time."""
     _ID = 'policy_decision'
-    _CHOICES = {'decision': DECISIONS}
+    _CHOICES = {'decision': DECISIONS, 'stage': POLICY_STAGES}
+    _REFS = {'mission_id': 'mission', 'plan_id': 'plan', 'task_id': 'task',
+             'execution_id': 'execution', 'approval_id': 'approval'}
+    _FROZEN = FROZEN_ALL
     id: str
-    action: Action
     decision: str
+    action: Action = None         # the one action of an action-stage decision
     reason: str = ''
+    stage: str = None
+    subject: Ref = None
+    mission_id: str = None
+    plan_id: str = None
+    plan_version: int = None
+    plan_digest: str = None
+    task_id: str = None
+    execution_id: str = None
+    action_hash: str = None
+    # plan: auto_approved | needs_approval | denied; dispatch: covered | asked
+    # | denied; action: allow | ask | deny
+    outcome: str = None
+    items: tuple = ()             # per item: decision, rules, boundary, checks, …
+    matched_rules: tuple = ()     # full rule snapshots, in precedence order
+    cost: dict = None
+    profiles: dict = None
+    estop: bool = False
+    principal: dict = None
+    policy_version: str = None
+    engine_version: str = None
+    approval_id: str = None
 
 
 @entity
 class Approval(Entity):
+    """A decision a user device makes about one exact identity (§8). Its
+    content is frozen at insert; the decision fields are written once, by the
+    deciding transition."""
     _ID = 'approval'
     _STATE = ('state', 'approval')
-    _REFS = {'requested_by': 'principal'}
+    _REFS = {'requested_by': 'principal', 'mission_id': 'mission', 'plan_id': 'plan',
+             'task_id': 'task', 'execution_id': 'execution',
+             'policy_decision_id': 'policy_decision', 'decided_by': 'principal',
+             'decided_policy_decision_id': 'policy_decision'}
+    _CHOICES = {'kind': APPROVAL_KINDS,
+                'decision': ('approve', 'reject', 'request_changes')}
+    _FROZEN = ('kind', 'subject', 'action_hash', 'requested_by', 'step_up', 'mission_id',
+               'plan_id', 'plan_version', 'plan_digest', 'task_id', 'execution_id',
+               'presented', 'items', 'expires_at', 'policy_decision_id', 'policy_version')
     id: str
     subject: Ref
     action_hash: str
     requested_by: str
     step_up: bool = False
+    kind: str = None              # None -> the subject's kind
+    mission_id: str = None
+    plan_id: str = None
+    plan_version: int = None
+    plan_digest: str = None
+    task_id: str = None
+    execution_id: str = None
+    presented: dict = None
+    items: tuple = ()             # what it covers, exactly (§8.4)
+    expires_at: str = None
+    policy_decision_id: str = None
+    policy_version: str = None
+    decision: str = None
+    decided_by: str = None
+    decided_at: str = None
+    decision_note: str = None
+    decided_policy_decision_id: str = None
     state: str = None
 
     def _check(self):
         if not (isinstance(self.action_hash, str) and _HEX64.fullmatch(self.action_hash)):
             raise ValueError('action_hash is the hex sha256 of the canonical action')
+        if self.kind is None:
+            self._set('kind', self.subject.kind)
+        if self.kind not in APPROVAL_KINDS:
+            raise ValueError('Approval.kind is one of %s: %r' % (APPROVAL_KINDS, self.kind))
 
 
 @entity

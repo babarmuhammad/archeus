@@ -88,7 +88,8 @@ def test_guards_name_edges_that_exist():
     assert {g for m, *_rest, g in states.TABLE if m == 'mission' and g} == {
         'plan_auto_approved', 'plan_needs_approval', 'all_tasks_done', 'verified',
         'awaiting_human_acceptance', 'verification_failed', 'redispatch', 'accepted',
-        'replan_budget_exhausted', 'task_failed_retryable', 'unrecoverable'}
+        'replan_budget_exhausted', 'task_failed_retryable', 'unrecoverable',
+        'plan_denied'}                # P9: a recorded denial
 
 
 def test_initial_and_terminal_helpers():

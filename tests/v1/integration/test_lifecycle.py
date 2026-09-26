@@ -35,6 +35,8 @@ PASSING = {
     'task_failed_retryable': MissionFacts(tasks=(TaskFact('t1', 'code_change', 'FAILED',
                                                           attempts=2, max_attempts=2),)),
     'unrecoverable': MissionFacts(missing_capability=True),
+    # P9: a real authorisation of the plan in force; a recorded policy denial
+    'plan_denied': MissionFacts(denial='pdc_recorded'),
 }
 
 

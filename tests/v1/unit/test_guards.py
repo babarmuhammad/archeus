@@ -265,3 +265,24 @@ def test_no_state_is_set_outside_the_p2_primitive():
             assert 'UPDATE ' not in src and 'INSERT ' not in src, name
             assert "replace(row.entity" not in src and 'state=' not in src.replace(
                 'state=None', ''), name
+
+
+# ── P9: the mission's `approve` and `plan_denied` (p9-design-gate D10, D11) ──
+
+@pytest.mark.parametrize('facts, ok', [
+    (MissionFacts(plan_version=1, plan_approval='APPROVED'), True),
+    (MissionFacts(plan_version=1, plan_approval='PENDING'), False),
+    (MissionFacts(plan_version=1, plan_approval='SUPERSEDED'), False),
+    (MissionFacts(plan_version=1), False),                  # fired by name, nothing approved
+    (MissionFacts(plan_approval='APPROVED'), False),        # no plan in force
+])
+def test_a_mission_is_approved_only_on_a_real_authorisation(facts, ok):
+    assert guards.approve_mission(_mission(), facts).passed is ok
+
+
+@pytest.mark.parametrize('facts, ok', [
+    (MissionFacts(denial='pdc_x'), True),
+    (MissionFacts(), False),                                # a challenge is not a denial
+])
+def test_a_mission_is_blocked_as_denied_only_on_a_recorded_denial(facts, ok):
+    assert guards.plan_denied(_mission(), facts).passed is ok

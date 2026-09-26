@@ -104,6 +104,7 @@ stateDiagram-v2
     CONTEXT_GATHERING --> REASONING: context_ready
     REASONING --> PLANNING: reasoned
     REASONING --> BLOCKED: challenge_raised
+    REASONING --> BLOCKED: plan_denied
     PLANNING --> APPROVAL_REQUIRED: plan_needs_approval
     PLANNING --> APPROVED: plan_auto_approved
     PLANNING --> CANCELLED: cancel

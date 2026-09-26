@@ -82,6 +82,8 @@ _EDGES = {
         ('CONTEXT_GATHERING', 'REASONING', 'context_ready'),
         ('REASONING', 'PLANNING', 'reasoned'),
         ('REASONING', 'BLOCKED', 'challenge_raised'),
+        # a policy DENY of the plan (P9, p9-design-gate D11): never a challenge
+        ('REASONING', 'BLOCKED', 'plan_denied'),
         ('PLANNING', 'APPROVAL_REQUIRED', 'plan_needs_approval'),
         ('PLANNING', 'APPROVED', 'plan_auto_approved'),
         ('PLANNING', 'CANCELLED', 'cancel'),
@@ -345,7 +347,9 @@ _GUARDED = {
     'mission': {'plan_auto_approved', 'plan_needs_approval', 'all_tasks_done', 'verified',
                 'awaiting_human_acceptance', 'replan_budget_exhausted',
                 'task_failed_retryable', 'unrecoverable', 'verification_failed',
-                'redispatch', 'accepted'},
+                'redispatch', 'accepted',
+                # P9: blocked only by a recorded denial (p9-design-gate D11)
+                'plan_denied'},
     # a plan version is ready only as far as Core's validator allows (P8)
     'plan': {'ready'},
     'approval': {'approve'},

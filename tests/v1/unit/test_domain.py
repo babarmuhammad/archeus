@@ -142,10 +142,11 @@ def _sample(cls):
         E.RouteDecision: dict(id=i('route_decision'), subject=ref),
         E.ExecutionNode: dict(id=i('execution_node'), name='this-pc'),
         E.PolicyRule: dict(id=i('policy_rule'), scope_level='GLOBAL', action_class='deploy',
-                           decision='ASK'),
+                           decision='ASK', source='builtin'),
         E.PolicyDecision: dict(id=i('policy_decision'), action=action, decision='ALLOW'),
         E.Approval: dict(id=i('approval'), subject=Ref('plan', i('plan')),
-                         action_hash=actions.action_hash(action, 1, 1),
+                         action_hash=actions.action_hash('plan', _bind(), [
+                             actions.item('t1', action)]),
                          requested_by=i('principal')),
         E.Automation: dict(id=i('automation'), workspace_id=_ws(), name='docs on new model'),
         E.AutomationRun: dict(id=i('automation_run'), automation_id=i('automation'),
@@ -223,7 +224,7 @@ def test_invalid_values_are_refused(cls, bad):
 
 def test_a_deny_rule_is_locked_without_being_told():
     rule = E.PolicyRule(id=ids.new_id('policy_rule'), scope_level='GLOBAL',
-                        action_class='destructive', decision='DENY')
+                        action_class='destructive', decision='DENY', source='builtin')
     assert rule.locked is True
     assert _sample(E.PolicyRule).locked is False
 
@@ -237,18 +238,50 @@ def test_the_action_vocabulary_is_the_closed_list_of_plan_section_13():
     assert actions.DECISIONS == ('ALLOW', 'ASK', 'ALLOW_WITHIN_BOUNDARY', 'DENY')
 
 
-def test_an_approval_hash_binds_the_action_and_both_versions():
+def _bind(**kw):
+    b = dict(mission_id='msn_a', plan_id='pln_a', plan_version=2, plan_digest='d' * 64)
+    b.update(kw)
+    return actions.binding(**b)
+
+
+def test_an_approval_hash_binds_the_exact_identity_and_not_the_policy():
+    """p9-design-gate §7.2, D7 (U-H1, U-H2). Every binding field, the kind and
+    each item change the hash; the policy version is not an input at all — it
+    is recorded beside the hash and re-evaluated at every use."""
     push = actions.Action(action_class='git_push', target='origin/main',
                           argv=['git', 'push', 'origin', 'main'])
     same = actions.Action(argv=('git', 'push', 'origin', 'main'), target='origin/main',
                           action_class='git_push')
-    h = actions.action_hash(push, 3, 1)
-    assert h == actions.action_hash(same, 3, 1) and len(h) == 64
-    assert h != actions.action_hash(push, 4, 1)            # policy changed
-    assert h != actions.action_hash(push, 3, 2)            # plan replaced
-    assert h != actions.action_hash(dataclasses.replace(push, target='origin/dev'), 3, 1)
+    h = actions.action_hash('action', _bind(), [actions.item('t1', push)])
+    assert h == actions.action_hash('action', _bind(), [actions.item('t1', same)])
+    assert len(h) == 64
+    for change in (dict(mission_id='msn_b'),            # plan v2 of ANOTHER mission
+                   dict(plan_id='pln_b'), dict(plan_version=3),
+                   dict(plan_digest='e' * 64),
+                   dict(task_id='tsk_x'), dict(task_key='t2'),
+                   dict(execution_id='exe_x')):
+        assert h != actions.action_hash('action', _bind(**change),
+                                        [actions.item('t1', push)]), change
+    assert h != actions.action_hash('task', _bind(), [actions.item('t1', push)])
+    assert h != actions.action_hash('action', _bind(), [actions.item('t2', push)])
+    assert h != actions.action_hash('action', _bind(), [
+        actions.item('t1', dataclasses.replace(push, target='origin/dev'))])
+    items = [actions.item('t1', push), actions.item('t2', same)]
+    assert (actions.action_hash('plan', _bind(), items)
+            == actions.action_hash('plan', _bind(), items[::-1]))     # order-free
+    with pytest.raises(ValueError):
+        actions.action_hash('plan', dict(_bind(), policy_version=7), items)
+    with pytest.raises(ValueError):
+        actions.action_hash('plan', _bind(plan_digest=None), items)
     with pytest.raises(ValueError):
         actions.Action(action_class='teleport', target='x')
+
+
+def test_paths_are_part_of_the_canonical_action_only_when_known():
+    a = actions.Action(action_class='write_repo', target='task:t1')
+    assert 'paths' not in a.canonical()
+    b = actions.Action(action_class='write_repo', target='task:t1', paths=['src/**'])
+    assert b.canonical_dict()['paths'] == ['src/**'] and a.canonical() != b.canonical()
 
 # ── events ──────────────────────────────────────────────────────────────────
 
