@@ -135,12 +135,22 @@ def get_route_decision(conn, route_decision_id):
 
 
 def route_decisions(conn, source_id=None, purpose=None):
-    """Route decisions, oldest first; those about *source_id* when given."""
+    """Route decisions, oldest first; those about *source_id* when given (what
+    the decision is about, or its subject: a task's decisions are found by the
+    task and by its mission)."""
     eq = {} if purpose is None else {'purpose': purpose}
     got = rows.where(conn, entities.RouteDecision, **eq)
     if source_id is not None:
-        got = [r for r in got if r.entity.source is not None and r.entity.source.id == source_id]
+        got = [r for r in got if source_id in (r.entity.subject.id, r.entity.source
+                                               and r.entity.source.id)]
     return [view(r) for r in got]
+
+
+def get_account(conn, account_id):
+    row = rows.get(conn, entities.Account, account_id)
+    if row is None:
+        raise NotFound(account_id)
+    return view(row)
 
 
 def provider_terms(conn, harness_ids=()):

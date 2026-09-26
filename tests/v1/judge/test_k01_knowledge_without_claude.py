@@ -4,8 +4,6 @@ does not declare `headless` is never elected, and your own-call choice is
 honoured when it is installed and capable. The RouteDecision records the
 election and every rejected candidate."""
 
-import pytest
-
 from .support import knowledge_pass
 
 ENTITIES = {'entities': [
@@ -28,7 +26,7 @@ def test_the_pass_runs_on_a_harness_that_is_not_claude_code(own_calls):
     assert sorted(i['title'] for i in items if i['type'] == 'ENTITY') == ['api', 'core']
     rd = client.route_why(kp['route_decision_id'])
     assert (rd['selected'], rd['decided_by'], rd['purpose']) == (
-        'fake_local', 'pre_router', 'knowledge_extraction')
+        'fake_local', 'router', 'knowledge_extraction')
     assert 'claude_code' not in {c['resource'] for c in rd['candidates']}
 
 
@@ -52,7 +50,7 @@ def test_with_no_capable_harness_the_pass_is_unavailable_and_nothing_is_learned(
 
 
 def test_your_choice_is_honoured_with_its_own_model_when_installed_and_capable(own_calls):
-    client, rig = own_calls([local('fake_a'), local('fake_b')],
+    client, rig = own_calls([local('fake_a'), local('fake_b', models=['spark/qwen3.8'])],
                             preference={'harness': 'fake_b', 'model': 'spark/qwen3.8'})
     repo = rig.fixture_repo('layered-python')
     rd = client.route_why(knowledge_pass(client, repo.project_id)['route_decision_id'])
@@ -69,7 +67,6 @@ def test_a_choice_that_is_not_installed_falls_back_and_drops_its_model(own_calls
     assert (rd['selected'], rd['model']) == ('fake_a', None)      # never translated
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P10")
 def test_the_router_not_the_pre_router_election_decides(own_calls):
     client, rig = own_calls([local()])
     repo = rig.fixture_repo('layered-python')

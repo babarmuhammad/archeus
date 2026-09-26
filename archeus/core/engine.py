@@ -42,7 +42,7 @@ from ..harnesses import base
 from ..infra.db import rows
 from ..infra.paths import ExecPaths
 from .application.commands import active_plan
-from .application import authorization
+from .application import authorization, resources
 from .application.work import PolicyDenied
 from .domain import entities, states
 from .domain.values import Ref
@@ -197,12 +197,19 @@ class Engine:
         out = self._do(self.work.dispatch_task, task_id=t.id)
         eid = out['execution_id']
         if eid is None:
-            # P9: not covered -> the mission was blocked on an approval
-            return 'awaiting_approval' if out.get('authorization') else 'no_route'
+            # P9: not covered, or P10: a fallback asks -> the mission was blocked
+            # on an approval; P10: nothing could run -> blocked
+            return ('awaiting_approval' if out.get('authorization') or out.get('approval_id')
+                    else 'no_route')
         adapter = self.registry.get(out['harness_id'])
+        with self.db.read() as r:           # ADR-0021, immediately before the adapter runs
+            permitted = resources.terms_permit(r, adapter)
+        if not permitted:
+            return self._reconcile(self._execution(eid))      # nothing was spawned
         spec = base.ExecutionSpec(
             execution_id=eid, prompt='%s\n\n%s\n' % (m.objective, t.title),
-            workdir=ExecPaths(eid).dir, attempt=out['attempt'],
+            workdir=ExecPaths(eid).dir, attempt=out['attempt'], model=out.get('model'),
+            effort=out.get('effort'),
             task_contract={'key': t.key, 'kind': t.kind,
                            'action_classes': list(t.action_classes),
                            'fake_scenario': self.scenarios.get(t.key, DEFAULT_SCENARIO)})
@@ -226,7 +233,7 @@ class Engine:
         base.mark_ended(ExecPaths(e.id), result.exit_code)
         self._do(self.work.record_exit, execution_id=e.id, exit_reason=result.exit_reason,
                  exit_code=result.exit_code, summary=result.reported_summary,
-                 output=bool(adapter.inspect(handle).events))
+                 output=bool(adapter.inspect(handle).events), usage=dict(result.usage or {}))
         del self._running[e.id]
         return 'finish_execution'
 

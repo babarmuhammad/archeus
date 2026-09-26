@@ -100,6 +100,7 @@ packages = [
     "archeus.core.missions",
     "archeus.core.planning",
     "archeus.core.policy",
+    "archeus.core.routing",
     "archeus.core.world",
     "archeus.harnesses",
     "archeus.infra",

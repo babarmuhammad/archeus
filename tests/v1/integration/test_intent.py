@@ -14,7 +14,7 @@ from archeus.core.knowledge import ingest
 from archeus.core.missions.intent import CONSUMER, Intents
 from archeus.harnesses.fake import FakeCaller
 from archeus.infra.db import rows
-from v1.integration.test_knowledge import Real, Rig as KRig
+from v1.integration.test_knowledge import Real, Rig as KRig, open_call
 
 MS = commands.Missions(policy=ports.AllowAllPolicy())
 
@@ -415,11 +415,8 @@ def test_i20_a_reading_whose_mission_ended_meanwhile_asks_instead(make):
     m = r.run(commands.create_mission, title='Old', objective='o')
     r.run(MS.cancel, mission_id=m['id'])
     posted = r.run(post_message, text='more for Old')
-    rd = r.run(lambda tx, actor: __import__('archeus.core.application.calls',
-                                            fromlist=['x']).decide_route(
-        tx, actor=actor, purpose='brain', source={'kind': 'message', 'id': posted['message_id']},
-        workspace_id=ids.GLOBAL_WORKSPACE, project_id=None, selected='fake', account_ref=None,
-        model=None, candidates=[], requirements={}, input_snapshot={}, explanation='t'))
+    rd = r.run(open_call, purpose='brain',
+               source={'kind': 'message', 'id': posted['message_id']})
     proposal = {'kind': 'continue_work', 'target': {'kind': 'mission', 'id': m['id']},
                 'project': None, 'mentions': [], 'conflicts': [], 'ambiguities': [],
                 'requirements': [{'text': 'x', 'origin': 'explicit'}], 'constraints': [],
@@ -461,11 +458,8 @@ def test_i22_a_continuation_updates_exactly_the_mission_it_names(make):
     old = r.run(commands.create_mission, title='Older', objective='o')['id']
     new = r.run(commands.create_mission, title='Newer', objective='o')['id']
     posted = r.run(post_message, text='more for the older one')
-    rd = r.run(lambda tx, actor: __import__('archeus.core.application.calls',
-                                            fromlist=['x']).decide_route(
-        tx, actor=actor, purpose='brain', source={'kind': 'message', 'id': posted['message_id']},
-        workspace_id=ids.GLOBAL_WORKSPACE, project_id=None, selected='fake', account_ref=None,
-        model=None, candidates=[], requirements={}, input_snapshot={}, explanation='t'))
+    rd = r.run(open_call, purpose='brain',
+               source={'kind': 'message', 'id': posted['message_id']})
     proposal = {'kind': 'continue_work', 'target': {'kind': 'mission', 'id': old},
                 'project': None, 'mentions': [], 'conflicts': [], 'ambiguities': [],
                 'requirements': [{'text': 'x', 'origin': 'explicit'}], 'constraints': [],

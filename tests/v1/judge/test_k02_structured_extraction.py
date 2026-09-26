@@ -45,8 +45,9 @@ def test_invalid_twice_fails_the_call_and_learns_nothing(own_calls):
 
 
 def test_every_item_names_the_harness_and_model_that_produced_it(own_calls):
-    client, rig = own_calls([{'id': 'fake_prompted', 'structured': 'prompted', 'replies': {
-        'knowledge_extraction': [{'parsed': GOOD}]}}],
+    client, rig = own_calls([{'id': 'fake_prompted', 'structured': 'prompted',
+                              'models': ['local/llama'], 'replies': {
+                                  'knowledge_extraction': [{'parsed': GOOD}]}}],
         preference={'harness': 'fake_prompted', 'model': 'local/llama'})
     repo = rig.fixture_repo('layered-python')
     knowledge_pass(client, repo.project_id)

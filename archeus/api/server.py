@@ -156,12 +156,13 @@ class Api:
     the Policy port), the launch codes, the streams and Core's health."""
 
     def __init__(self, *, db, missions, port, health, version, conversations=None,
-                 authorization=None,
+                 authorization=None, resources=None,
                  heartbeat_s=15.0, launch_clock=time.monotonic, static_dir=STATIC_DIR,
                  command_timeout=COMMAND_TIMEOUT_S):
         self.db, self.missions, self.health, self.version = db, missions, health, version
         self.conversations = conversations
         self.authorization = authorization
+        self.resources = resources
         self.origin = auth.Origin(port)
         self.launch = auth.LaunchCodes(clock=launch_clock)
         self.static = Static(static_dir)

@@ -102,10 +102,14 @@ def revoke_device(tx, *, actor, device_id, reason='revoked on request'):
 
 # ── mission lifecycle (state-machines §2) ──────────────────────────────────
 
-#: The cost band a plan may reach and still be approved without asking.
-# ponytail: one ceiling for every mission; P10 reads it from the mission's
-# resource preferences (`max_cost_band`, resource-router §2)
+#: The cost band a plan may reach and still be approved without asking, unless
+#: the mission's resource preferences say otherwise (P10, resource-router §3
+#: `max_cost_band`; set only by a user device).
 AUTO_APPROVE_CEILING = 'medium'
+
+
+def auto_approve_ceiling(mission):
+    return (mission.resource_preferences or {}).get('max_cost_band') or AUTO_APPROVE_CEILING
 
 
 def active_plan(conn, mission_id):
@@ -144,7 +148,8 @@ def persisted_facts(tx, row):
         plan_version=plan.entity.plan_version, tasks=tasks, criteria=criteria,
         review=reviews[-1].entity.state if reviews else None,
         cost_within_ceiling=None if band is None else (
-            entities.COST_BANDS.index(band) <= entities.COST_BANDS.index(AUTO_APPROVE_CEILING)))
+            entities.COST_BANDS.index(band)
+            <= entities.COST_BANDS.index(auto_approve_ceiling(m))))
 
 
 #: `advance`: the exits each decision point tries, in this order; the first

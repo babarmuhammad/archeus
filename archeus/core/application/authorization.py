@@ -340,14 +340,15 @@ def record_plan_decision(tx, *, actor, mission, trigger, facts):
     APPROVED within policy, or an Approval requested. A decision on scripted
     facts with no such plan in the database (the P3 lifecycle tests) has
     nothing real to authorise and records nothing."""
-    from .commands import AUTO_APPROVE_CEILING, active_plan
+    from .commands import active_plan, auto_approve_ceiling
+    ceiling = auto_approve_ceiling(mission)
     prow = active_plan(tx.conn, mission.id)
     if prow is None or prow.entity.plan_version != facts.plan_version or not prow.entity.digest:
         return None
     plan, items = prow.entity, list(facts.evaluated)
     h = plan_hash(tx.conn, plan)
     ctx = context(tx.conn, mission, stage='plan', now=tx.now, actor=actor, plan=plan)
-    cost = {'band': plan.estimated_cost, 'ceiling': AUTO_APPROVE_CEILING,
+    cost = {'band': plan.estimated_cost, 'ceiling': ceiling,
             'within': facts.cost_within_ceiling}
     auto = trigger == 'plan_auto_approved'
     d = record(tx, actor=actor, stage='plan', mission=mission, plan=plan,
@@ -356,7 +357,7 @@ def record_plan_decision(tx, *, actor, mission, trigger, facts):
                reason=('plan v%d is within policy' % plan.plan_version) if auto else
                '; '.join([i['reason'] for i in items if i['decision'] == 'ASK'] or
                          ['the cost band %s is not known to be under the ceiling %s'
-                          % (plan.estimated_cost, AUTO_APPROVE_CEILING)]))
+                          % (plan.estimated_cost, ceiling)]))
     if auto:
         lifecycle.fire(tx, entities.Plan, plan.id, 'approved', actor=actor,
                        reason='plan v%d approved within policy (decision %s)'
@@ -367,7 +368,7 @@ def record_plan_decision(tx, *, actor, mission, trigger, facts):
                       h=h, decision_id=d.id, ctx=ctx,
                       why=[i['reason'] for i in asked] or [
                           'the cost band %s is not under the auto-approve ceiling %s'
-                          % (plan.estimated_cost, AUTO_APPROVE_CEILING)])
+                          % (plan.estimated_cost, ceiling)])
     return {'decision_id': d.id, 'approval_id': a.id}
 
 
@@ -523,6 +524,10 @@ def _awaiting(conn, a, mission):
         return mission.state == 'APPROVAL_REQUIRED'
     if a.kind == 'task':
         return mission.state == 'BLOCKED' and mission.held_from == 'EXECUTING'
+    if a.kind == 'route':
+        t = rows.get(conn, entities.Task, a.task_id)
+        return (mission.state == 'BLOCKED' and mission.held_from == 'EXECUTING'
+                and t is not None and t.entity.state == 'AWAITING_APPROVAL')
     e = rows.get(conn, entities.Execution, a.execution_id)
     return e is not None and e.entity.state not in ('ENDED_OK', 'ENDED_ERROR', 'ENDED_KILLED',
                                                     'ENDED_HANDOFF', 'ENDED_REJECTED',
@@ -601,6 +606,9 @@ def decide(tx, *, actor, policy, missions, approval_id, decision, action_hash, n
                                              else 'rejected by a user device'),
                              fields=_decided(tx, actor, decision, note))
     out = None
+    if kind == 'route':
+        lifecycle.fire(tx, entities.Task, task.id, 'rejected', actor=actor,
+                       reason='approval %s: running on the fallback account was rejected' % a.id)
     if kind == 'plan':
         lifecycle.fire(tx, entities.Plan, plan.id, 'rejected', actor=actor,
                        reason='approval %s: %s' % (a.id, decision))
@@ -623,6 +631,8 @@ def _decided(tx, actor, decision, note, decision_id=None):
 
 def _approve(tx, actor, policy, missions, row, mission, plan, task, proof, note, given):
     a = row.entity
+    if a.kind == 'route':
+        return _approve_route(tx, actor, missions, row, mission, task, proof, note, given)
     items = []
     if a.kind == 'action':                  # the one action it is for, judged again
         ctx = context(tx.conn, mission, stage='action', now=tx.now, task=task, actor=actor,
@@ -668,6 +678,25 @@ def _approve(tx, actor, policy, missions, row, mission, plan, task, proof, note,
     elif a.kind == 'task':
         out = missions.resume(tx, actor=actor, mission_id=mission.id,
                               reason='task %s approved (approval %s)' % (task.key, a.id))
+    return _answer(tx, row, mission=out)
+
+
+def _approve_route(tx, actor, missions, row, mission, task, proof, note, given):
+    """A route approval covers no action, so there is nothing to judge now: the
+    task returns to READY and its next dispatch is judged by P9 and routed
+    again, where this approval lets the router use the fallback account."""
+    a = row.entity
+    f = guards.ApprovalFacts(actor.kind, tuple(rows.get(tx.conn, entities.Principal,
+                                                        actor.id).entity.scopes),
+                             given, step_up_valid=_step_up_valid(tx, actor, proof))
+    row, _e = lifecycle.fire(tx, entities.Approval, a.id, 'approve', actor=actor, facts=f,
+                             reason=note or 'approved by a user device',
+                             fields=_decided(tx, actor, 'approve', note))
+    lifecycle.fire(tx, entities.Task, task.id, 'approved', actor=actor,
+                   reason='running on the fallback account approved (approval %s)' % a.id)
+    out = missions.resume(tx, actor=actor, mission_id=mission.id,
+                          reason='task %s may run on the fallback account (approval %s)'
+                          % (task.key, a.id))
     return _answer(tx, row, mission=out)
 
 

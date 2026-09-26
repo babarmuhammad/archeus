@@ -33,9 +33,11 @@ class Policy(Protocol):
 
 @runtime_checkable
 class Router(Protocol):
-    """Deterministic resource selection (resource-router §5)."""
+    """Deterministic resource selection (resource-router §5). `context` is what
+    the caller's transaction holds (P10: `tx`, `actor`, the P9 `authorization`,
+    `mission`, `plan`, `task`); a router that needs none of it ignores it."""
 
-    def route(self, subject: Ref, now: float) -> entities.RouteDecision: ...
+    def route(self, subject: Ref, now: float, **context) -> entities.RouteDecision: ...
 
 
 @runtime_checkable
@@ -87,7 +89,7 @@ class FixedCandidateRouter:
     def __init__(self, selected):
         self.selected = selected
 
-    def route(self, subject, now):
+    def route(self, subject, now, **_context):
         return entities.RouteDecision(
             id=ids.new_id('route_decision'), subject=subject, selected=self.selected,
             explanation='stub router (P1): the only candidate is %s' % self.selected)

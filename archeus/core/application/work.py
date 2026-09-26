@@ -41,7 +41,7 @@ from ..domain.actions import Action
 from ..domain.events import new_event
 from ..domain.values import Ref
 from ..planning import validate
-from . import authorization, lifecycle
+from . import authorization, lifecycle, resources
 from .commands import active_plan
 
 #: the task fields a plan spec may carry (its dispatch contract, P8 §7.1)
@@ -231,7 +231,13 @@ class Work:
                  and set(r.entity.depends_on) <= done]
         for tid in ready:
             self._fire(tx, entities.Task, tid, 'deps_satisfied', actor, 'dependencies done')
-        return {'ready': ready}
+        # a task routing blocked blocked its mission too (P10): the mission is
+        # EXECUTING again only because it was resumed, so the task routes again
+        blocked = [r.entity.id for r in tasks if r.entity.state == 'BLOCKED']
+        for tid in blocked:
+            self._fire(tx, entities.Task, tid, 'unblock', actor,
+                       'the mission was resumed: routing again')
+        return {'ready': ready + blocked}
 
     def dispatch_task(self, tx, *, actor, task_id, now=None):
         """READY -> ROUTING -> RUNNING and a new Execution in INTENT, committed
@@ -253,21 +259,44 @@ class Work:
             return {'task_id': task_id, 'execution_id': None, 'state': t.state,
                     'authorization': auth}
         self._fire(tx, entities.Task, task_id, 'dispatch', actor, 'dispatched')
-        route = self.router.route(Ref('task', task_id), time.time() if now is None else now)
-        if route.selected is None:
-            self._fire(tx, entities.Task, task_id, 'no_eligible_resource', actor,
-                       route.explanation or 'no eligible resource')
-            return {'task_id': task_id, 'execution_id': None, 'state': 'BLOCKED'}
+        # P10: only an authorised task reaches the router, which checks that
+        # authorisation again and records its decision in this transaction
+        route = self.router.route(Ref('task', task_id), time.time() if now is None else now,
+                                  tx=tx, actor=actor, authorization=auth, mission=m,
+                                  plan=plan, task=t)
+        result = route.result or ('selected' if route.selected else 'blocked')
+        rd = route.id if route.decided_by == 'router' else None
+        if result == 'ask':
+            self._fire(tx, entities.Task, task_id, 'route_needs_approval', actor,
+                       route.explanation)
+            a, _new = resources.request_route(tx, actor=actor, mission=m, plan=plan,
+                                              task=t, route=route)
+            self.missions._fire(tx, m.id, 'block', actor=actor,
+                                reason='waiting for your approval to run task %s on %s '
+                                '(approval %s)' % (t.key, route.account_id or route.account_ref,
+                                                   a.id))
+            return {'task_id': task_id, 'execution_id': None, 'state': 'AWAITING_APPROVAL',
+                    'route_decision_id': rd, 'approval_id': a.id}
+        if result == 'blocked':
+            why = route.explanation or 'no eligible resource'
+            self._fire(tx, entities.Task, task_id, 'no_eligible_resource', actor, why)
+            self.missions._fire(tx, m.id, 'block', actor=actor, reason=why)
+            return {'task_id': task_id, 'execution_id': None, 'state': 'BLOCKED',
+                    'route_decision_id': rd}
         self._fire(tx, entities.Task, task_id, 'routed', actor,
                    route.explanation or 'routed to %s' % route.selected)
         e = entities.Execution(id=ids.new_id('execution'), task_id=task_id, mission_id=m.id,
                                attempt=len(tx.where(entities.Execution, task_id=task_id)) + 1,
-                               harness_id=route.selected)
+                               harness_id=route.harness_id or route.selected,
+                               route_decision_id=rd, account_id=route.account_id,
+                               model=route.model, effort=route.effort)
         tx.insert(e, actor=actor)
         ev = self._event(tx, 'execution.intent', Ref('execution', e.id), actor, m,
-                         {'task_id': task_id, 'attempt': e.attempt, 'harness_id': e.harness_id})
+                         {'task_id': task_id, 'attempt': e.attempt, 'harness_id': e.harness_id,
+                          'account_id': e.account_id, 'route_decision_id': rd})
         return {'task_id': task_id, 'execution_id': e.id, 'attempt': e.attempt,
-                'harness_id': e.harness_id, 'seq': ev.seq}
+                'harness_id': e.harness_id, 'account_id': e.account_id, 'model': e.model,
+                'effort': e.effort, 'route_decision_id': rd, 'seq': ev.seq}
 
     def _task_after(self, tx, actor, execution, ok, failure_class='execution'):
         """The task's response to its execution ending (one transaction with it)."""
@@ -296,11 +325,12 @@ class Work:
         m = lifecycle.load(tx, entities.Mission, e.mission_id).entity
         ev = self._event(tx, 'execution.started', Ref('execution', e.id), actor, m,
                          {'pid': pid, 'create_time': create_time, 'task_id': e.task_id,
-                          'attempt': e.attempt})
+                          'attempt': e.attempt, 'harness_id': e.harness_id,
+                          'account_id': e.account_id, 'model': e.model})
         return {'execution_id': e.id, 'state': e.state, 'seq': ev.seq}
 
     def record_exit(self, tx, *, actor, execution_id, exit_reason, exit_code, summary='',
-                    output=True):
+                    output=True, usage=None):
         """The process exited: STARTING -> RUNNING (it wrote output) -> ENDED_OK |
         ENDED_ERROR, `execution.ended`, and the task's response, in one
         transaction. ENDED_OK sends the task to VERIFYING — never to SUCCEEDED.
@@ -317,6 +347,14 @@ class Work:
                        'exit code %s' % exit_code,
                        {'exit_reason': exit_reason, 'exit_code': exit_code,
                         'summary': summary}).entity
+        if usage and e.route_decision_id is not None:
+            # attributable truth (P10): what it consumed, against where it was routed
+            u = {k: usage[k] for k in ('tokens_in', 'tokens_out', 'cache_read', 'cache_write',
+                                       'cost_usd') if isinstance(usage.get(k), (int, float))
+                 and not isinstance(usage.get(k), bool)}
+            tx.insert(entities.UsageLedger(id=ids.new_id('usage_ledger'), execution_id=e.id,
+                                           route_decision_id=e.route_decision_id,
+                                           account_id=e.account_id, **u), actor=actor)
         return self._ended(tx, actor, e, exit_reason == 'ok')
 
     def _ended(self, tx, actor, e, ok):

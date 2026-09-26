@@ -79,7 +79,10 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
                        'req.api.authorization.retire_rule',
                        'req.api.authorization.set_profile',
                        'req.api.conversations.choose', 'req.api.missions.pause',
-                       'req.api.missions.resume', 'world.ack_digest',
+                       'req.api.missions.resume',
+                       'resources.register_account', 'resources.set_account_enabled',
+                       'resources.set_mission_resources', 'resources.set_resource_policy',
+                       'world.ack_digest',
                        'world.create_project', 'world.declare_constraint'], targets
 
 
@@ -182,21 +185,34 @@ P9 = {
     ('GET', '/v1/approvals/{id}', 'observe', None),
     ('POST', '/v1/approvals/{id}/decide', 'approve', 'required'),
 }
+#: P10 (p10-design-gate §10): harnesses and accounts read, every resource
+#: change admin-only; no route runs, previews or overrides a routing decision
+P10 = {
+    ('GET', '/v1/harnesses', 'observe', None),
+    ('GET', '/v1/accounts', 'observe', None),
+    ('POST', '/v1/accounts', 'admin', 'required'),
+    ('POST', '/v1/accounts/{id}/state', 'admin', 'required'),
+    ('POST', '/v1/resource-policies/{id}', 'admin', 'required'),
+    ('POST', '/v1/missions/{id}/resources', 'admin', 'required'),
+}
 
 
-def test_the_route_table_is_exactly_the_p35b_to_p9_tables():
-    """L2, and P9's E4: nothing from P10 (route), P11 (executions, stop,
+def test_the_route_table_is_exactly_the_p35b_to_p10_tables():
+    """L2, and P9's E4 / P10's boundary: nothing from P11 (executions, stop,
     estop, hooks), P14 (automations), P15 (pair, device list) or P16 (/v1/now,
     the execution stream) — a later phase adds its rows with its own tests."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
-    assert got == EXPECTED | P4 | P5 | P6 | P7 | P8 | P9
-    assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6 | P7 | P8 | P9)
+    assert got == EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10
+    assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10)
     # E7: no plan route takes a command (no execution control from P8)
     assert not [r for r in routes.ROUTES if 'plan' in r.path and r.method != 'GET']
     for word in ('route/', 'execution', 'estop', 'stop', 'pair', '/now', 'hook', 'dispatch',
-                 'cancel', 'accept', 'account', 'graph', 'attention', 'automation'):
+                 'cancel', 'accept', 'graph', 'attention', 'automation'):
         assert not [r.path for r in routes.ROUTES if word in r.path], word
-    # the only `route` paths are own-call decisions (P6), never the P10 router
+    # P10: every resource change is admin; reading them is observe
+    assert {r.scope for r in routes.ROUTES if ('account' in r.path or 'resource' in r.path)
+            and r.method == 'POST'} == {'admin'}
+    # the only `route` paths read decisions: none routes, previews or overrides
     assert {r.path for r in routes.ROUTES if 'route' in r.path} == {
         '/v1/route-decisions', '/v1/route-decisions/{id}'}
     assert not [r.path for r in routes.ROUTES if r.path.endswith('/inspect')]

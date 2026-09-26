@@ -13,11 +13,14 @@ from archeus.core.application import calls as C
 from archeus.core.application import commands, lifecycle, queries
 from archeus.core.application import knowledge as K
 from archeus.core.calls import OwnCalls
-from archeus.core.domain import entities
+from archeus.core.domain import entities, ids
+from archeus.core.domain.events import new_event
+from archeus.core.domain.values import Ref
 from archeus.core.knowledge import ingest
 from archeus.core.knowledge.passes import Passes
 from archeus.core.knowledge.worker import CONSUMER, Knowledge
 from archeus.core.world import status as world_status
+from archeus.harnesses import base
 from archeus.harnesses import calls as real
 from archeus.harnesses.fake import FakeCaller
 from archeus.infra.db import rows
@@ -148,6 +151,8 @@ def test_n05_a_real_adapter_passes_the_gate_and_its_argv_is_the_harness_own(make
     seen = []
     monkeypatch.setattr(harnesses, 'exe', lambda hid=None: 'C:/x/pi.exe')
     monkeypatch.setattr(harnesses, 'disabled', lambda: set())
+    # P10: the model must be one pi offers (its own vocabulary)
+    monkeypatch.setattr(real, 'pi_models', lambda: (base.ModelInfo('spark/qwen3.8'),))
     import json
     monkeypatch.setattr(llmcall, 'run_headless', lambda cmd, stdin=None, **kw: (
         seen.append((cmd, stdin)), llmcall.Result(0, 'ok ' + json.dumps(GOOD), '', '', False))[1])
@@ -165,7 +170,9 @@ def test_n05_a_real_adapter_passes_the_gate_and_its_argv_is_the_harness_own(make
 # ── N06–N08 provenance, no execution, usage ──
 
 def test_n06_every_learned_item_says_where_it_came_from_and_what_made_it(make):
-    r = make([fake('fake_local', 'prompted')], ports.FixedOwnCallPreference(model='local/m'))
+    local = fake('fake_local', 'prompted')
+    local.models = ('local/m',)             # P10: a preferred model must be an offer
+    r = make([local], ports.FixedOwnCallPreference(model='local/m'))
     repo = project(r)
     items = r.items(project_id=repo.project_id, type='ENTITY')
     assert sorted(i.title for i in items) == ['api', 'core']
@@ -179,8 +186,9 @@ def test_n06_every_learned_item_says_where_it_came_from_and_what_made_it(make):
         assert i.context_package_id == rd['context_package_id'] is not None
         assert i.confidence is None                    # never invented
     assert (rd['selected'], rd['model'], rd['decided_by']) == ('fake_local', 'local/m',
-                                                              'pre_router')
-    assert rd['account_ref'] is None and rd['outcome']['account_ref'] == 'fake:fake_local'
+                                                              'router')
+    # P10: the decision names the account it chose; the outcome, the one it ran on
+    assert rd['account_ref'] == rd['outcome']['account_ref'] == 'fake:fake_local'
     pkg = r.read(queries.get_context_package, rd['context_package_id'])
     assert (pkg['subject_kind'], pkg['subject_id']) == ('project', repo.project_id)
 
@@ -314,13 +322,24 @@ def test_n17_a_result_that_cannot_be_recorded_leaves_nothing_and_ends_the_call(m
     assert r.items(type='ENTITY') == []                          # the transaction rolled back
 
 
+def open_call(tx, *, actor, purpose, source):
+    """A committed own-call decision with no outcome yet, as `OwnCalls.run`
+    leaves one before its adapter runs."""
+    rd = entities.RouteDecision(id=ids.new_id('route_decision'),
+                                subject=Ref('archeus_call', purpose), purpose=purpose,
+                                decided_by='router', source=Ref(**source), selected='fake',
+                                harness_id='fake', result='selected')
+    tx.insert(rd, actor=actor)
+    tx.append(new_event('route.decided', Ref('route_decision', rd.id), actor,
+                        payload={'purpose': purpose, 'selected': 'fake'}))
+    return {'route_decision_id': rd.id}
+
+
 def test_n18_a_call_left_open_by_a_dead_core_is_ended_at_the_next_start(make):
     r = make([fake()])
-    rd = r.db.writer.execute(C.decide_route, {
-        'actor': r.system, 'purpose': 'lesson', 'source': {'kind': 'mission', 'id': 'msn_x'},
-        'workspace_id': 'ws_global', 'project_id': None, 'selected': 'fake',
-        'account_ref': None, 'model': None, 'candidates': [], 'requirements': {},
-        'input_snapshot': {}, 'explanation': 'x'})['route_decision_id']
+    rd = r.db.writer.execute(open_call, {
+        'actor': r.system, 'purpose': 'lesson',
+        'source': {'kind': 'mission', 'id': 'msn_x'}})['route_decision_id']
     assert r.knowledge.sweep() == [rd]
     assert r.read(queries.get_route_decision, rd)['outcome'] == {'state': 'failed',
                                                                  'reason': 'core_restarted'}

@@ -38,7 +38,7 @@ from collections import namedtuple
 
 from ..core.application import commands, queries, world
 from ..core.application import calls as own_calls
-from ..core.application import conversation, knowledge
+from ..core.application import conversation, knowledge, resources
 from ..core.context import assemble as context
 from ..core.knowledge import ingest
 from ..harnesses.calls import real_callers
@@ -311,6 +311,50 @@ def decide_provider_terms(req):
         'rotation': b.get('rotation'), 'note': b.get('note') or ''})
 
 
+def list_accounts(req):
+    with req.api.db.read() as conn:
+        return 200, {'accounts': resources.accounts(conn)}
+
+
+def register_account(req):
+    """The adapter probes the login first (outside any transaction); the
+    command records the account and the probe's answer."""
+    b = req.body
+    probe = req.api.resources.probe(b['harness_id'], b.get('home_ref'))
+    return 200, req.run(resources.register_account, {
+        'harness_id': b['harness_id'], 'label': b['label'], 'auth_kind': b['auth_kind'],
+        'home_ref': b.get('home_ref'), 'auth': probe})
+
+
+def set_account_state(req):
+    b = req.body
+    with req.api.db.read() as conn:
+        a = queries.get_account(conn, req.params['id'])
+    probe = req.api.resources.probe(a['harness_id'], a['home_ref']) if b['enabled'] else None
+    return 200, req.run(resources.set_account_enabled, {
+        'account_id': req.params['id'], 'enabled': b['enabled'], 'auth': probe})
+
+
+def set_resource_policy(req):
+    b = req.body
+    return 200, req.run(resources.set_resource_policy, dict(
+        {k: b.get(k) for k in resources.POLICY_FIELDS},
+        account_id=req.params['id'], expected_version=b.get('expected_version')))
+
+
+def list_harnesses(req):
+    return 200, {'harnesses': req.api.resources.harnesses()}
+
+
+def set_mission_resources(req):
+    b = req.body
+    return 200, req.run(resources.set_mission_resources, {
+        'mission_id': req.params['id'],
+        'preferences': {k: b[k] for k in ('preferred_accounts', 'preferred_harnesses',
+                                          'forbidden_accounts', 'forbidden_harnesses',
+                                          'max_cost_band') if b.get(k) is not None}})
+
+
 def list_messages(req):
     with req.api.db.read() as conn:
         return 200, {'messages': queries.messages(conn, req.params['id'],
@@ -495,6 +539,17 @@ ROUTES = (
           'ProviderTermsList'),
     Route('POST', '/v1/provider-terms/{id}', decide_provider_terms, 'admin', 'required',
           schemas.PROVIDER_TERMS, 'ProviderTermsDecided'),
+    # P10: resources and routing (p10-design-gate §10)
+    Route('GET', '/v1/harnesses', list_harnesses, 'observe', None, None, 'HarnessList'),
+    Route('GET', '/v1/accounts', list_accounts, 'observe', None, None, 'AccountList'),
+    Route('POST', '/v1/accounts', register_account, 'admin', 'required',
+          schemas.REGISTER_ACCOUNT, 'Account'),
+    Route('POST', '/v1/accounts/{id}/state', set_account_state, 'admin', 'required',
+          schemas.ACCOUNT_STATE, 'Account'),
+    Route('POST', '/v1/resource-policies/{id}', set_resource_policy, 'admin', 'required',
+          schemas.RESOURCE_POLICY, 'ResourcePolicy'),
+    Route('POST', '/v1/missions/{id}/resources', set_mission_resources, 'admin', 'required',
+          schemas.MISSION_RESOURCES, 'Mission'),
     # P7: conversation and intent (p7-design-gate §9)
     Route('GET', '/v1/conversations/{id}/messages', list_messages, 'observe', None, None,
           'MessageList'),

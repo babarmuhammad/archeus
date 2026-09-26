@@ -57,6 +57,12 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/v1/route-decisions/{id}` | observe | — | — | — | `RouteDecision` |
 | GET | `/v1/provider-terms` | observe | — | — | — | `ProviderTermsList` |
 | POST | `/v1/provider-terms/{id}` | admin | required | — | `DecideProviderTermsRequest` | `ProviderTermsDecided` |
+| GET | `/v1/harnesses` | observe | — | — | — | `HarnessList` |
+| GET | `/v1/accounts` | observe | — | — | — | `AccountList` |
+| POST | `/v1/accounts` | admin | required | — | `RegisterAccountRequest` | `Account` |
+| POST | `/v1/accounts/{id}/state` | admin | required | — | `SetAccountStateRequest` | `Account` |
+| POST | `/v1/resource-policies/{id}` | admin | required | — | `SetResourcePolicyRequest` | `ResourcePolicy` |
+| POST | `/v1/missions/{id}/resources` | admin | required | — | `SetMissionResourcesRequest` | `Mission` |
 | GET | `/v1/conversations/{id}/messages` | observe | — | `after` | — | `MessageList` |
 | POST | `/v1/conversations/{id}/messages` | control | required | — | `PostMessageRequest` | `MessagePosted` |
 | GET | `/v1/intents/{id}` | observe | — | — | — | `Intent` |
@@ -76,6 +82,30 @@ given trigger on a given subject is decided in the application layer (P9), never
 A launch-code device holds `observe`; the local token holds `observe control approve admin`.
 
 ## Types
+
+### `Account`
+
+```ts
+interface Account {
+  id: string;
+  harness_id: string;
+  label: string;
+  auth_kind: 'subscription_oauth' | 'api_key' | 'provider_proxy';
+  health: 'AVAILABLE' | 'CONSTRAINED' | 'DEGRADED' | 'DISABLED' | 'LIMITED' | 'OPEN' | 'UNAUTHENTICATED' | 'UNVERIFIED';
+  resource_policy: ResourcePolicy;
+  usage: Record<string, unknown> | null;
+  version: number;
+  [field: string]: unknown;
+}
+```
+
+### `AccountList`
+
+```ts
+interface AccountList {
+  accounts: Account[];
+}
+```
 
 ### `Acked`
 
@@ -382,6 +412,30 @@ interface Forgotten {
   mode: 'retract' | 'purge';
   changes: Record<string, unknown>[];
   changed: boolean;
+}
+```
+
+### `Harness`
+
+```ts
+interface Harness {
+  id: string;
+  installed: boolean;
+  capabilities: string[];
+  enforcement?: string | null;
+  structured_output?: string | null;
+  models: Record<string, unknown>[];
+  execution: boolean;
+  calls: boolean;
+  [field: string]: unknown;
+}
+```
+
+### `HarnessList`
+
+```ts
+interface HarnessList {
+  harnesses: Harness[];
 }
 ```
 
@@ -806,6 +860,23 @@ interface Repository {
 }
 ```
 
+### `ResourcePolicy`
+
+```ts
+interface ResourcePolicy {
+  id: string;
+  account_id: string;
+  priority: number;
+  allocation_pct: number;
+  reserve_pct: number;
+  brain_reserve_pct: number;
+  fallback: 'allow' | 'ask' | 'deny';
+  budgets?: Record<string, unknown> | null;
+  version: number;
+  [field: string]: unknown;
+}
+```
+
 ### `RouteDecision`
 
 ```ts
@@ -1121,6 +1192,57 @@ interface DecideProviderTermsRequest {
   headless: 'unknown' | 'permitted' | 'refused';
   rotation?: 'unknown' | 'permitted' | 'refused' | null;
   note?: string | null;
+  idempotency_key: string;
+}
+```
+
+### `RegisterAccountRequest`
+
+```ts
+interface RegisterAccountRequest {
+  harness_id: string;
+  label: string;
+  auth_kind: 'subscription_oauth' | 'api_key' | 'provider_proxy';
+  home_ref?: string | null;
+  idempotency_key: string;
+}
+```
+
+### `SetAccountStateRequest`
+
+```ts
+interface SetAccountStateRequest {
+  enabled: boolean;
+  idempotency_key: string;
+}
+```
+
+### `SetResourcePolicyRequest`
+
+```ts
+interface SetResourcePolicyRequest {
+  priority?: number | null;
+  allocation_pct?: number | null;
+  reserve_pct?: number | null;
+  brain_reserve_pct?: number | null;
+  fallback?: 'allow' | 'ask' | 'deny' | null;
+  budgets?: Record<string, unknown> | null;
+  project_allow?: string[] | null;
+  project_deny?: string[] | null;
+  expected_version?: number | null;
+  idempotency_key: string;
+}
+```
+
+### `SetMissionResourcesRequest`
+
+```ts
+interface SetMissionResourcesRequest {
+  preferred_accounts?: string[] | null;
+  preferred_harnesses?: string[] | null;
+  forbidden_accounts?: string[] | null;
+  forbidden_harnesses?: string[] | null;
+  max_cost_band?: 'low' | 'medium' | 'high' | null;
   idempotency_key: string;
 }
 ```

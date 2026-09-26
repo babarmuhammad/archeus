@@ -367,10 +367,13 @@ def test_a_plan_over_the_cost_ceiling_needs_approval(core):
 
 
 def test_no_eligible_resource_blocks_the_task_without_an_execution(archeus_home):
+    """P10: routing blocked blocks the mission with it (resource-router §7:
+    "task BLOCKED with the earliest limited_until as the unblock time"), which
+    waits for the user instead of sitting in EXECUTING with nothing to do."""
     core = Core(router=None)
     try:
         out = core.engine.run(core.mission())
-        assert (out['state'], out['stop']) == ('EXECUTING', 'task_blocked')
+        assert (out['state'], out['stop']) == ('BLOCKED', 'blocked')
         assert [t.state for t in core.all(entities.Task)] == ['BLOCKED']
         assert core.all(entities.Execution) == []
     finally:

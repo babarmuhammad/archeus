@@ -14,6 +14,8 @@ import pytest
 from archeus.core import calls as K
 from archeus.core import ports
 from archeus.core.application import knowledge as AK
+from archeus.core.application import resources
+from archeus.core.routing import router
 from archeus.core.domain import entities, shapes
 from archeus.core.knowledge import passes
 from archeus.harnesses import base
@@ -29,16 +31,27 @@ class Real(FakeCaller):
 
 
 def terms(**states):
-    return {h: entities.ProviderTerms(id=h, headless=v) for h, v in states.items()}
+    return {h: {'headless': v, 'rotation': 'unknown'} for h, v in states.items()}
 
 
 def picked(callers, terms_=None, pref=NONE):
-    a, cands, why, gated = K.elect(callers, terms_ or {}, pref)
-    return (None if a is None else a.id), {c['resource']: c['eliminated_at_step']
-                                           for c in cands}, gated
+    """P10: the router over the own-call snapshot (the pre-router election is
+    gone). Returns (harness or None, {resource: step}, gated)."""
+    hs = [resources.harness_view(a, is_fake_caller(a)) for a in sorted(callers,
+                                                                      key=lambda a: a.id)]
+    accts = [{'id': None, 'ref': 'fake:%s' % h['id'], 'harness': h['id'], 'label': h['id'],
+              'registered': False, 'why_not': None, 'policy': None, 'usage': None}
+             for h in hs if h['installed'] and 'headless' in h['capabilities']]
+    req = {'subject': 'archeus_call', 'capabilities': ['headless'], 'structured_output': True,
+           'models': {}, 'preferred': {'harnesses': [pref.harness] if pref.harness else []}}
+    d = router.route(req, {'harnesses': hs, 'accounts': accts, 'terms': terms_ or {}})
+    gated = d['result'] == 'blocked' and any(c['eliminated_at_step'] == 'provider_terms'
+                                             for c in d['candidates'])
+    return d['harness_id'] if d['selected'] else None, {
+        c['resource']: c['eliminated_at_step'] for c in d['candidates']}, gated
 
 
-# ── L01–L05 the election ──
+# ── L01–L05 routing an own call (P6's election, now the router's, P10) ──
 
 def test_l01_only_installed_headless_harnesses_are_eligible():
     got = picked([FakeCaller('b'), FakeCaller('a', installed=False),
@@ -46,20 +59,19 @@ def test_l01_only_installed_headless_harnesses_are_eligible():
     assert got == ('b', {'a': 'installed', 'b': None, 'c': 'headless'}, False)
 
 
-def test_l02_your_choice_then_claude_code_then_the_first_by_id():
+def test_l02_your_choice_then_the_first_by_id_and_no_harness_by_name():
+    """P10: the pre-router's "else Claude Code" rule is gone — the router has no
+    rule naming a harness (ADR-0022: it replaced the pre-router election)."""
     fakes = [FakeCaller('zeta'), FakeCaller('claude_code'), FakeCaller('alpha')]
     assert picked(fakes, pref=ports.OwnCallPreference(harness='zeta'))[0] == 'zeta'
-    assert picked(fakes)[0] == 'claude_code'
-    assert picked([FakeCaller('zeta'), FakeCaller('alpha')])[0] == 'alpha'
-    assert picked(fakes, pref=ports.OwnCallPreference(harness='missing'))[0] == 'claude_code'
-    _a, cands, _w, _g = K.elect(fakes, {}, NONE)
-    assert {c['resource']: c['eliminated_at_step'] for c in cands} == {
-        'alpha': 'election', 'claude_code': None, 'zeta': 'election'}
+    assert picked(fakes)[0] == 'alpha'
+    assert picked(fakes, pref=ports.OwnCallPreference(harness='missing'))[0] == 'alpha'
+    assert picked(fakes)[1] == {'alpha': None, 'claude_code': 'election', 'zeta': 'election'}
 
 
 def test_l03_a_real_adapter_needs_permitted_terms_and_a_fake_never_does():
-    """ADR-0021. Mutation: dropping the `is_fake_caller` exemption fails the
-    fake row; dropping the terms check fails the real rows."""
+    """ADR-0021. Mutation: dropping the scripted exemption fails the fake row;
+    dropping the terms check fails the real rows."""
     assert picked([Real('pi')]) == (None, {'pi': 'provider_terms'}, True)
     assert picked([Real('pi')], terms(pi='refused'))[1] == {'pi': 'provider_terms'}
     assert picked([Real('pi')], terms(pi='permitted'))[0] == 'pi'
@@ -94,11 +106,16 @@ def test_l06_the_legacy_setting_is_read_and_mapped(monkeypatch):
 
 
 def test_l07_the_explanation_is_generated_from_the_record():
-    _a, cands, why, _g = K.elect([FakeCaller('b'), FakeCaller('a', headless=False)], {}, NONE)
-    assert K.explain('b', None, why, cands) == (
-        'Used b (its default model) because the first installed harness that can make the '
-        'call. Not used: a: does not declare headless (it cannot make a tool-less call).')
-    assert K.explain(None, None, None, []).startswith('No harness could make this call.')
+    hs = [resources.harness_view(a, True) for a in (FakeCaller('a', headless=False),
+                                                     FakeCaller('b'))]
+    req = {'subject': 'archeus_call', 'capabilities': ['headless'], 'models': {}}
+    d = router.route(req, {'harnesses': hs, 'accounts': [
+        {'id': None, 'ref': 'fake:b', 'harness': 'b', 'label': 'b', 'registered': False}]})
+    assert router.explain(d, req) == (
+        "I used b (b, its default model) because it is b's own account. Not used: a — does "
+        "not declare headless (it cannot make a tool-less call).")
+    assert router.explain(router.route(req, {'harnesses': []}), req).startswith(
+        'Nothing could run this')
 
 
 # ── L08–L10 knowledge identity and Core's checks ──

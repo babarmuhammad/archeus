@@ -64,6 +64,8 @@ from .application.planning import Planning
 from .planning.worker import Planner
 from .world.worker import World
 from .application.authorization import Authorization
+from .application.resources import ResourceRouter, Resources
+from .routing.usage import LegacyUsageFeed
 from .policy.engine import PolicyEngine
 from .policy.worker import Expiry
 
@@ -95,16 +97,19 @@ class RefuseStart(RuntimeError):
 
 @dataclass
 class Ports:
-    """The ports Core runs on. The policy is the real engine (P9, D20); the
-    router, verifier and reviewer are still stubs until P10 and P13, and the
-    only harness registered for execution is the fake one until P11."""
+    """The ports Core runs on. The policy is the real engine (P9, D20) and the
+    router the real resource router (P10), over `usage`, the usage feed; the
+    verifier and reviewer are still stubs until P13, and the only harness
+    registered for execution is the fake one until P11."""
     policy: object = field(default_factory=PolicyEngine)
     # None: the planning worker plans through `archeus_call` (P8, D5); a stub
     # `plan.v1` port makes the engine plan instead (the P3.5 tests)
     brain: object = None
     verifier: object = field(default_factory=P.ScriptedVerifier)
     reviewer: object = field(default_factory=P.ScriptedReview)
-    route: str = 'fake'
+    # P10: the provider usage the router reads (the legacy poller for Claude
+    # Code accounts; a test passes a FakeUsageFeed)
+    usage: object = field(default_factory=LegacyUsageFeed)
     scenarios: dict = field(default_factory=dict)
     # Archeus's own calls (P6, ADR-0022): the adapters offered for them (None:
     # the real ones, each gated by ADR-0021) and the own-call preference.
@@ -323,7 +328,7 @@ class Core:
         eng = engine.Engine(
             self.db, actor=self.system,
             work=work.Work(missions=self.missions,
-                           router=P.FixedCandidateRouter(self.ports.route)),
+                           router=ResourceRouter(registry, self.ports.usage)),
             brain=self.ports.brain, registry=registry, verifier=self.ports.verifier,
             reviewer=self.ports.reviewer, scenarios=self.ports.scenarios)
         self.loop = EngineLoop(eng, self.db, idle_s=self.idle_s, on_fail=self._engine_failed)
@@ -332,9 +337,9 @@ class Core:
                                poll_s=self.world_poll_s, on_fail=self._engine_failed)
         self.world.start()
         callers = self.ports.callers
-        own = OwnCalls(self.db, actor=self.system,
-                       callers=real_callers() if callers is None else callers,
-                       preference=self.ports.preference)
+        self.callers = real_callers() if callers is None else callers
+        own = OwnCalls(self.db, actor=self.system, callers=self.callers,
+                       preference=self.ports.preference, usage=self.ports.usage)
         self.knowledge = WorldLoop(Knowledge(self.db, actor=self.system,
                                              passes=Passes(self.db, actor=self.system,
                                                            calls=own)),
@@ -361,6 +366,7 @@ class Core:
         self.policy.start()
         self.api = server.Api(db=self.db, missions=self.missions,
                               authorization=Authorization(missions=self.missions),
+                              resources=Resources(registry=registry, callers=self.callers),
                               conversations=self.conversations, port=self.port,
                               health=self.health, version=VERSION,
                               heartbeat_s=self.heartbeat_s, launch_clock=self.launch_clock,

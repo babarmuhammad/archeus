@@ -291,6 +291,35 @@ TYPES = {
     'ProviderTermsList': {'type': 'object', 'properties': {
         'provider_terms': {'type': 'array', 'items': {'ref': 'ProviderTerms'}}},
         'required': ['provider_terms']},
+    'ResourcePolicy': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'account_id': {'type': 'string'},
+        'priority': {'type': 'integer'}, 'allocation_pct': {'type': 'integer'},
+        'reserve_pct': {'type': 'integer'}, 'brain_reserve_pct': {'type': 'integer'},
+        'fallback': {'type': 'string', 'enum': ['allow', 'ask', 'deny']},
+        'budgets': {'type': 'object', 'nullable': True}, 'version': {'type': 'integer'}},
+        'required': ['id', 'account_id', 'priority', 'allocation_pct', 'reserve_pct',
+                     'brain_reserve_pct', 'fallback', 'version']},
+    'Account': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'harness_id': {'type': 'string'}, 'label': {'type': 'string'},
+        'auth_kind': {'type': 'string', 'enum': list(entities.AUTH_KINDS)},
+        'health': {'type': 'string', 'enum': sorted(states.states('account_health'))},
+        'resource_policy': {'ref': 'ResourcePolicy'},
+        'usage': {'type': 'object', 'nullable': True}, 'version': {'type': 'integer'}},
+        'required': ['id', 'harness_id', 'label', 'auth_kind', 'health', 'resource_policy',
+                     'usage', 'version']},
+    'AccountList': {'type': 'object', 'properties': {
+        'accounts': {'type': 'array', 'items': {'ref': 'Account'}}}, 'required': ['accounts']},
+    'Harness': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'installed': {'type': 'boolean'},
+        'capabilities': {'type': 'array', 'items': {'type': 'string'}},
+        'enforcement': {'type': 'string', 'nullable': True},
+        'structured_output': {'type': 'string', 'nullable': True},
+        'models': {'type': 'array', 'items': {'type': 'object'}},
+        'execution': {'type': 'boolean'}, 'calls': {'type': 'boolean'}},
+        'required': ['id', 'installed', 'capabilities', 'models', 'execution', 'calls']},
+    'HarnessList': {'type': 'object', 'properties': {
+        'harnesses': {'type': 'array', 'items': {'ref': 'Harness'}}},
+        'required': ['harnesses']},
     'ProviderTermsDecided': {'type': 'object', 'properties': {
         'provider_terms': {'ref': 'ProviderTerms'}}, 'required': ['provider_terms']},
     # ── conversation and intent (P7, p7-design-gate §9) ──
@@ -512,6 +541,28 @@ DECIDE = {'type': 'object', 'properties': {
     'step_up': {'type': 'string', 'nullable': True},
     'expected_version': {'type': 'integer', 'nullable': True}, 'idempotency_key': KEY},
     'required': ['decision', 'action_hash', 'idempotency_key']}
+_IDS = {'type': 'array', 'nullable': True, 'items': {'type': 'string'}}
+REGISTER_ACCOUNT = {'type': 'object', 'properties': {
+    'harness_id': {'type': 'string'}, 'label': {'type': 'string'},
+    'auth_kind': {'type': 'string', 'enum': list(entities.AUTH_KINDS)},
+    'home_ref': {'type': 'string', 'nullable': True}, 'idempotency_key': KEY},
+    'required': ['harness_id', 'label', 'auth_kind', 'idempotency_key']}
+ACCOUNT_STATE = {'type': 'object', 'properties': {
+    'enabled': {'type': 'boolean'}, 'idempotency_key': KEY},
+    'required': ['enabled', 'idempotency_key']}
+_INT = {'type': 'integer', 'nullable': True}
+RESOURCE_POLICY = {'type': 'object', 'properties': {
+    'priority': _INT, 'allocation_pct': _INT, 'reserve_pct': _INT, 'brain_reserve_pct': _INT,
+    'fallback': {'type': 'string', 'nullable': True, 'enum': ['allow', 'ask', 'deny']},
+    'budgets': {'type': 'object', 'nullable': True}, 'project_allow': _IDS,
+    'project_deny': _IDS, 'expected_version': _INT, 'idempotency_key': KEY},
+    'required': ['idempotency_key']}
+MISSION_RESOURCES = {'type': 'object', 'properties': {
+    'preferred_accounts': _IDS, 'preferred_harnesses': _IDS, 'forbidden_accounts': _IDS,
+    'forbidden_harnesses': _IDS,
+    'max_cost_band': {'type': 'string', 'nullable': True, 'enum': list(entities.COST_BANDS)},
+    'idempotency_key': KEY},
+    'required': ['idempotency_key']}
 REDEEM = {'type': 'object', 'properties': {
     'code': {'type': 'string'}, 'platform': {'type': 'string', 'enum': ['web', 'desktop']}},
     'required': ['code', 'platform']}

@@ -17,24 +17,6 @@ from .queries import view
 OUTCOMES = ('ok', 'gated', 'unavailable', 'model_unavailable', 'timeout', 'failed', 'invalid')
 
 
-def decide_route(tx, *, actor, purpose, source, workspace_id, project_id, selected,
-                 account_ref, model, candidates, requirements, input_snapshot, explanation,
-                 context_package_id=None):
-    rd = entities.RouteDecision(
-        id=ids.new_id('route_decision'), subject=Ref('archeus_call', purpose), purpose=purpose,
-        decided_by='pre_router', workspace_id=workspace_id, project_id=project_id,
-        source=Ref(**source), selected=selected, account_ref=account_ref, model=model,
-        candidates=tuple(candidates), requirements=requirements,
-        input_snapshot=input_snapshot, explanation=explanation,
-        context_package_id=context_package_id)
-    tx.insert(rd, actor=actor)
-    tx.append(new_event('route.decided', Ref('route_decision', rd.id), actor,
-                        payload={'purpose': purpose, 'selected': selected, 'model': model,
-                                 'source': dict(source)},
-                        workspace=workspace_id, project=project_id))
-    return {'route_decision_id': rd.id}
-
-
 def end_call(tx, *, actor, route_decision_id, outcome, usage=None):
     """Write the outcome (once) and, when the call ran, its usage row."""
     row = tx.get(entities.RouteDecision, route_decision_id)
@@ -51,6 +33,7 @@ def end_call(tx, *, actor, route_decision_id, outcome, usage=None):
                                    'cost_usd') if usage.get(k) is not None}
         tx.insert(entities.UsageLedger(id=ids.new_id('usage_ledger'),
                                        route_decision_id=route_decision_id,
+                                       account_id=row.entity.account_id,
                                        account_ref=outcome.get('account_ref')
                                        or row.entity.account_ref, **u), actor=actor)
     rd = row.entity

@@ -1,28 +1,31 @@
 """`archeus_call`: one of Archeus's own tool-less structured calls (ADR-0022,
-plan §31.4; p6-design-gate §5).
+plan §31.4; p6-design-gate §5, p10-design-gate §8).
 
     caller states what it needs  (purpose, prompt, schema, source)
-      -> pre-router election     (installed, `headless`, provider terms; then
-                                  the user's choice, else Claude Code, else the
-                                  first installed `headless` harness)
+      -> the router              (P10: every own-call adapter and account,
+                                  eliminated by capability, model, provider
+                                  terms, health and allocation; ordered by
+                                  preference, priority and tier fit)
       -> RouteDecision committed (before anything runs)
       -> provider-terms re-check (immediately before the spawn, ADR-0021)
-      -> the harness's account   (its own rule: rotate/quota for Claude Code)
-      -> adapter.call()          (native or prompted structured output)
+      -> adapter.call()          (native or prompted structured output, on the
+                                  account and model the decision chose)
       -> Core validation         (the schema, then the caller's own checks;
                                   retried once, ADR-0006)
       -> the caller records the result and ends the call in one command
 
-Nothing here knows a harness by name except the election's documented
-Claude Code rule. No P10 router: the election is the pre-router one, and its
-RouteDecision says so (`decided_by: pre_router`).
+Nothing here knows a harness by name. The pre-router election P6 shipped
+(the user's choice, else Claude Code, else the first) is gone: the router
+replaced it (plan §31.1 P10), and it has no rule naming a harness.
 """
 
-import dataclasses
 from collections import namedtuple
 
 from ..harnesses.fake import is_fake_caller
+from .routing import router as R
+from .routing.usage import NoUsageFeed
 from .application import calls as C
+from .application import resources
 from .domain import shapes
 
 #: What `run()` returns. `state` is 'ok' or an outcome state `run()` already
@@ -33,6 +36,10 @@ DEFAULT_TIMEOUT_S = 600
 #: Invalid structured output is retried once, then the call fails (ADR-0006:
 #: "retry once, then ask"; the asking surface is P7/P16).
 ATTEMPTS = 2
+#: The model tier a purpose needs (plan §12: a plan error replicates into every
+#: task, so the planner runs on a `large` model); a purpose not named has no
+#: minimum. Enforced by the router's `model` step (P10).
+CALL_TIERS = {'planner': 'large'}
 
 
 def _terms_state(terms, harness_id):
@@ -40,60 +47,16 @@ def _terms_state(terms, harness_id):
     return 'unknown' if t is None else t.headless
 
 
-def elect(callers, terms, preference):
-    """(selected adapter or None, candidates, why, gated): pure, deterministic
-    in the adapters' ids. `gated` is True when nothing was selected and at
-    least one otherwise-eligible harness was stopped by the provider terms."""
-    cands, eligible = [], []
-    for a in sorted(callers, key=lambda a: a.id):
-        info, caps = a.discover(), a.capabilities(None)
-        if not info.installed:
-            step, why = 'installed', 'not installed'
-        elif 'headless' not in caps.capabilities:
-            step, why = 'headless', 'does not declare headless (it cannot make a tool-less call)'
-        elif not is_fake_caller(a) and _terms_state(terms, a.id) != 'permitted':
-            step, why = 'provider_terms', 'provider terms %s (ADR-0021): no real call until ' \
-                'you permit automated headless use' % _terms_state(terms, a.id)
-        else:
-            step, why = None, None
-            eligible.append(a)
-        cands.append({'resource': a.id, 'eliminated_at_step': step, 'reason': why,
-                      'structured_output': caps.structured_output})
-    ids_ = [a.id for a in eligible]
-    if preference.harness in ids_:
-        pick, why = preference.harness, 'your choice for Archeus\'s own calls'
-    elif 'claude_code' in ids_:
-        pick, why = 'claude_code', 'Claude Code is installed (no usable choice of yours)'
-    elif ids_:
-        pick, why = ids_[0], 'the first installed harness that can make the call'
-    else:
-        pick, why = None, None
-    for c in cands:
-        if c['eliminated_at_step'] is None and c['resource'] != pick:
-            c['eliminated_at_step'], c['reason'] = 'election', 'not elected: %s was' % pick
-    gated = pick is None and any(c['eliminated_at_step'] == 'provider_terms' for c in cands)
-    return next((a for a in eligible if a.id == pick), None), cands, why, gated
-
-
-def explain(selected, model, why, candidates):
-    """The explanation, generated from the record (resource-router §8)."""
-    others = ['%s: %s' % (c['resource'], c['reason']) for c in candidates
-              if c['resource'] != selected]
-    if selected is None:
-        head = 'No harness could make this call.'
-    else:
-        head = 'Used %s (%s) because %s.' % (selected, model or 'its default model', why)
-    return head + ('' if not others else ' Not used: ' + '; '.join(others) + '.')
-
-
 class OwnCalls:
     """Runs own calls for one Core: `callers` are the own-call adapters (fake
     in tests, `harnesses.calls.real_callers()` in production), `preference` the
     own-call preference port."""
 
-    def __init__(self, db, *, actor, callers, preference, timeout_s=DEFAULT_TIMEOUT_S):
+    def __init__(self, db, *, actor, callers, preference, timeout_s=DEFAULT_TIMEOUT_S,
+                 usage=None):
         self.db, self.actor, self.callers = db, actor, list(callers)
         self.preference, self.timeout_s = preference, timeout_s
+        self.usage = usage or NoUsageFeed()
 
     def _do(self, command, **kw):
         return self.db.writer.execute(command, dict(kw, actor=self.actor))
@@ -107,38 +70,40 @@ class OwnCalls:
         """Route and make one call. `check(parsed)` is the caller's own
         validation beyond the schema: a list of problems, empty when it holds."""
         with self.db.read() as conn:
-            terms = C.terms(conn)
-        pref = self.preference.get()
-        adapter, cands, why, gated = elect(self.callers, terms, pref)
-        model = None if adapter is None else pref.model_for(adapter.id)
-        rd = self._do(C.decide_route, purpose=purpose, source=dict(source),
-                      workspace_id=workspace_id, project_id=project_id,
-                      selected=None if adapter is None else adapter.id, account_ref=None,
-                      model=model, candidates=cands,
-                      requirements={'capabilities': ['headless'],
-                                    'structured_output': schema is not None},
-                      input_snapshot={'preference': dataclasses.asdict(pref),
-                                      'terms': {k: v.headless for k, v in sorted(terms.items())}},
-                      explanation=explain(None if adapter is None else adapter.id, model, why,
-                                          cands),
+            req, snap, readings = resources.call_snapshot(
+                conn, callers=self.callers, feed=self.usage, preference=self.preference.get(),
+                purpose=purpose, schema=schema, project_id=project_id,
+                min_tier=CALL_TIERS.get(purpose))
+        d = R.route(req, snap)
+        rd = self._do(resources.record_call_route, purpose=purpose, source=dict(source),
+                      workspace_id=workspace_id, project_id=project_id, requirements=req,
+                      snapshot=snap, decision=d, readings=readings,
                       context_package_id=context_package_id)['route_decision_id']
-        if adapter is None:
+        if d['result'] not in ('selected', 'fallback'):
+            gated = d['result'] == 'blocked' and any(
+                c['eliminated_at_step'] == 'provider_terms' for c in d['candidates'])
             state = 'gated' if gated else 'unavailable'
-            self._end(rd, state, reason='no eligible harness')
-            return Called(rd, state, None, None, 'no eligible harness', 0, None)
+            # the reason of the candidate that got furthest: the most specific why-not
+            far = max(d['candidates'], default=None,
+                      key=lambda c: R.STEPS.index(c['eliminated_at_step']))
+            why = ('the only account left needs your approval, which an own call never asks'
+                   if d['result'] == 'ask' else far['reason'] if far is not None
+                   and far['eliminated_at_step'] in ('health', 'allocation')
+                   else 'no eligible harness')
+            self._end(rd, state, reason=why)
+            return Called(rd, state, None, None, why, 0, None)
+        adapter = next(a for a in self.callers if a.id == d['harness_id'])
         if not is_fake_caller(adapter):
             with self.db.read() as conn:                # immediately before the spawn
                 now = _terms_state(C.terms(conn), adapter.id)
             if now != 'permitted':
                 self._end(rd, 'gated', reason='provider terms %s' % now)
                 return Called(rd, 'gated', None, None, 'provider terms %s' % now, 0, None)
-        rotation = (terms.get(adapter.id) is not None
-                    and terms[adapter.id].rotation == 'permitted')
-        account, why_not = adapter.account(rotation=rotation)
-        if why_not:
-            self._end(rd, 'unavailable', reason=why_not, account_ref=account.account_id)
-            return Called(rd, 'unavailable', None, None, why_not, 0, account.account_id)
+        acct = next(a for a in snap['accounts'] if a['harness'] == d['harness_id']
+                    and (a['id'] or a['ref']) == (d['account_id'] or d['account_ref']))
+        model = d['model']
         from ..harnesses import base
+        account = base.AccountRef(d['account_id'] or d['account_ref'], acct.get('home_ref'))
         spec = base.CallSpec(route_decision_id=rd, purpose=purpose, prompt=prompt,
                              workdir=workdir, account=account, schema=schema, model=model,
                              limits={'timeout_s': self.timeout_s})
