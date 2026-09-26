@@ -237,6 +237,15 @@ def evaluate(action, ctx) -> PolicyDecision:
 - **Audit:** every ASK/DENY and every mission-scoped ALLOW produces a PolicyDecision; policies
   are versioned and every change is an event; `POST /v1/policies/simulate` answers "what would
   happen if…" without acting.
+- *As built (P9, p9-design-gate.md):* `core/policy/` (the pure engine and its rules, profiles
+  and predicates) and `core/application/authorization.py` (records, approvals, checks). Rules
+  are GLOBAL…TASK; the ACTION level is approvals only. `action_hash` is the identity of the exact
+  thing authorised — kind, mission, plan id, version and digest, task, execution, canonical
+  items — and never contains the policy version, which every decision and approval records and
+  every use re-evaluates (D7). Unknown attributes match only restrictive rules; boundaries are a
+  closed predicate vocabulary, deferred at the plan and dispatch stages for what a plan-level
+  item cannot carry and strict at the action stage. The hook evaluate route and its caller are
+  P11's; the action stage's command exists and is tested.
 
 ## 14. Resource Router
 
@@ -739,6 +748,19 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Tests: precedence/lock property tests, approval replay/expiry/supersede/idempotency,
   unclassified exec, e-stop deny.
 - Acceptance: S5, G6 (policy part) pass. **Gate:** real adapters may be enabled after this.
+  - **P9, as built** (p9-design-gate.md, D1–D26). `core/policy/{rules,engine,worker}.py`,
+    `core/application/authorization.py`, migration `0008_policy.sql` (policy_rules,
+    policy_decisions, approvals; at most one live approval per identity), the mission's
+    guarded `approve` and the new guarded `REASONING → BLOCKED: plan_denied`, the plan's
+    `approved`/`rejected` first fired, five event types, ten routes, the `archeus-policy`
+    worker and `health.policy`. The plan gate records what its guard judged and approves the
+    plan within policy or asks; a DENY writes no plan, task or approval and the denial itself
+    is recorded; approvals end with their version in the same transaction; dispatch
+    re-evaluates and asks for the task when nothing covers an ASK. The runtime's policy is the
+    real engine (`is_stub = False`) and only the fake harness is registered until P11. S5 (three
+    functions and a new one), G6's brain function and a new plan-gate function pass on both
+    bindings; S5's single-use and G6's mid-execution deny are P11's (D21). Nothing routes,
+    spawns, executes, verifies or reviews. Deviations: p9-design-gate §29.
 
 **P10 — Resource Router**
 - Depends: P9. Preparation seam (legacy, additive): a public `usage` helper returning

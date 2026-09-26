@@ -18,6 +18,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 U = 'tests/v1/unit/test_policy_units.py'
 ENG = 'archeus/core/policy/engine.py'
 RUL = 'archeus/core/policy/rules.py'
+AUTH = 'archeus/core/application/authorization.py'
+I = 'tests/v1/integration/test_policy.py'
+PL = 'tests/v1/integration/test_planning.py'
+B = 'tests/v1/unit/test_policy_boundaries.py'
+UD = 'tests/v1/unit/test_domain.py'
+S5 = 'tests/v1/judge/test_s05_approvals.py'
+G6 = 'tests/v1/judge/test_g06_security.py'
 
 MUTATIONS = [
     # ── the pure engine (commit 2) ──
@@ -80,6 +87,113 @@ MUTATIONS = [
     ('M32', 'relative-path check removed', RUL,
      "    if not _relative(path):\n        return False\n", "",
      [U + '::test_U_B2_a_path_that_leaves_the_workspace_is_outside']),
+    # ── authorisation (commit 3) ──
+    ('M02', 'the plan gate treats ASK as allowed', 'archeus/core/domain/guards.py',
+     "AUTO_OK = ('ALLOW', 'ALLOW_WITHIN_BOUNDARY')",
+     "AUTO_OK = ('ALLOW', 'ALLOW_WITHIN_BOUNDARY', 'ASK')",
+     [I + '::test_I_G2_an_ask_waits_for_one_approval_of_exactly_this_plan']),
+    ('M08', 'a stale plan accepted', AUTH,
+     "    if approve and a.kind == 'plan':\n", "    if False:\n",
+     [I + '::test_I_A10_a_stale_plan_is_never_approved_but_can_be_refused']),
+    ('M09', 'an old plan approval reused (supersession removed)',
+     'archeus/core/application/work.py',
+     "            authorization.supersede_for(tx, actor=actor, plan_id=prev.entity.id,\n"
+     "                                        replaced_by=p.plan_version)\n",
+     "            pass\n",
+     [I + '::test_I_A07_an_approved_plans_approval_ends_with_it']),
+    ('M10', 'action_hash ignored when deciding', AUTH,
+     "    if given != a.action_hash:\n", "    if False:\n",
+     [I + '::test_I_A05_a_hash_mismatch_writes_nothing']),
+    ('M11', 'plan.digest removed from the action identity', 'archeus/core/domain/actions.py',
+     "    return {'mission_id': mission_id, 'plan_id': plan_id, 'plan_version': plan_version,\n"
+     "            'plan_digest': plan_digest,",
+     "    return {'mission_id': mission_id, 'plan_id': plan_id, 'plan_version': plan_version,\n"
+     "            'plan_digest': 'x' if plan_digest else plan_digest,",
+     [UD + '::test_an_approval_hash_binds_the_exact_identity_and_not_the_policy']),
+    ('M12', 'a single-use approval replayed', AUTH,
+     "            lifecycle.fire(tx, entities.Approval, a.id, 'action_executed', actor=actor,\n"
+     "                           reason='used once by execution %s' % execution_id)\n", "",
+     [I + '::test_I_A14_an_action_approval_is_single_use']),
+    ('M13', 'approval scope widened (coverage not by exact item)', AUTH,
+     "    return want in [dict(x) for x in a.items] and (a.step_up or not step_up)",
+     "    return a.step_up or not step_up",
+     [I + '::test_approval_coverage_is_the_exact_item_and_its_step_up']),
+    ('M14', 'an expired approval accepted', AUTH,
+     "    if a.expires_at <= now:\n        return 'expired'",
+     "    if False:\n        return 'expired'",
+     [I + '::test_I_A11_an_expired_approval_covers_nothing_and_is_swept']),
+    # a task approval is found by its task's own hash AND covers only its own
+    # items, so no single edit lets another task through (I-D2 proves the
+    # behaviour); this mutant removes the task from the identity itself
+    ('M15', 'the task dropped from the action identity', 'archeus/core/domain/actions.py',
+     "            'plan_digest': plan_digest, 'task_id': task_id, 'task_key': task_key,",
+     "            'plan_digest': plan_digest, 'task_id': None, 'task_key': None,",
+     [UD + '::test_an_approval_hash_binds_the_exact_identity_and_not_the_policy']),
+    ('M16', 'a different plan version accepted', 'archeus/core/domain/actions.py',
+     "    return {'mission_id': mission_id, 'plan_id': plan_id, 'plan_version': plan_version,",
+     "    return {'mission_id': mission_id, 'plan_id': 'p', 'plan_version': 1,",
+     [UD + '::test_an_approval_hash_binds_the_exact_identity_and_not_the_policy',
+      I + '::test_I_A04_an_approval_never_covers_another_missions_same_plan']),
+    ('M17', 'a policy decision changed after recording', 'archeus/core/domain/entities.py',
+     "    _REFS = {'mission_id': 'mission', 'plan_id': 'plan', 'task_id': 'task',\n"
+     "             'execution_id': 'execution', 'approval_id': 'approval'}\n"
+     "    _FROZEN = FROZEN_ALL\n",
+     "    _REFS = {'mission_id': 'mission', 'plan_id': 'plan', 'task_id': 'task',\n"
+     "             'execution_id': 'execution', 'approval_id': 'approval'}\n"
+     "    _FROZEN = ()\n",
+     [I + '::test_rules_are_revised_never_edited_and_the_old_decision_keeps_its_policy']),
+    ('M18', 'P10 routing invoked from authorisation', AUTH,
+     "def check_dispatch(tx, *, actor, policy, missions, mission, plan, task):\n",
+     "def check_dispatch(tx, *, actor, policy, missions, mission, plan, task):\n"
+     "    missions.router.route(None, 0) if hasattr(missions, 'router') else None\n",
+     [B + '::test_E2_policy_never_routes_spawns_executes_verifies_or_reviews']),
+    ('M19', 'P11 execution invoked from authorisation', AUTH,
+     "def evaluate_action(tx, *, actor, policy, execution_id, action, unclassified=False):\n",
+     "def evaluate_action(tx, *, actor, policy, execution_id, action, unclassified=False):\n"
+     "    import archeus.harnesses.fake as _f\n"
+     "    _f.FakeHarness().start if False else None\n",
+     [B + '::test_E1_policy_imports_no_later_phase_resource_or_process_module']),
+    ('M22', 'the principal check removed', AUTH,
+     "    _principal(tx, actor, 'approve')\n", "",
+     [I + '::test_I_A15_only_a_user_device_with_approve_decides',
+      G6 + '::test_the_brain_principal_can_never_approve']),
+    ('M25', 'at most one live approval per identity (index dropped)',
+     'archeus/infra/db/migrations/0008_policy.sql',
+     "CREATE UNIQUE INDEX approvals_live ON approvals (action_hash)\n",
+     "CREATE INDEX approvals_live ON approvals (action_hash)\n",
+     [I + '::test_I_A12b_the_database_refuses_a_second_live_approval_of_one_identity']),
+    ('M26', 'the mission approve edge unguarded', 'archeus/core/domain/guards.py',
+     "    ('mission', 'approve'): approve_mission,\n", "",
+     [I + '::test_I_A18_the_mission_approve_edge_by_name_approves_nothing']),
+    ('M27', 'a plan denial not recorded', AUTH,
+     "    denied = [i for i in items if i['decision'] == 'DENY']\n    if not denied:\n"
+     "        return {'recorded': False, 'why': 'the policy no longer denies this plan'}",
+     "    denied = [i for i in items if i['decision'] == 'DENY']\n    if True:\n"
+     "        return {'recorded': False, 'why': 'the policy no longer denies this plan'}",
+     [I + '::test_I_G3_a_denied_first_plan_blocks_as_denied_and_writes_no_plan',
+      PL + '::test_i27_p9_a_denied_plan_is_recorded_and_a_policy_change_plans_again']),
+    ('M28b', 'step-up not checked when deciding', 'archeus/core/domain/guards.py',
+     "    if approval.step_up and not f.step_up_valid:\n", "    if False:\n",
+     [I + '::test_I_A19_a_paired_device_cannot_step_up_before_P15']),
+    ('M29', 'dispatch stops re-evaluating', AUTH,
+     "    if whole and (plan_ok or task_granted) and not uncovered:\n",
+     "    if whole:\n",
+     [I + '::test_I_D2_a_policy_turned_ask_after_auto_approval_asks_for_the_task']),
+    ('M30', 'the recorded result differs from the judged one', AUTH,
+     "    plan, items = prow.entity, list(facts.evaluated)\n",
+     "    plan, items = prow.entity, [dict(i, decision='ALLOW') for i in facts.evaluated]\n",
+     [I + '::test_I_G2_an_ask_waits_for_one_approval_of_exactly_this_plan']),
+    ('M33', 'a DENY approvable at decide time', AUTH,
+     "    denied = [i for i in items if i['decision'] == 'DENY']\n    if denied:\n"
+     "        d = record(tx, actor=actor, stage=stage,",
+     "    denied = [i for i in items if i['decision'] == 'DENY']\n    if False:\n"
+     "        d = record(tx, actor=actor, stage=stage,",
+     [I + '::test_I_A17_a_deny_is_never_approvable']),
+    ('M34', 'a superseded plan still eligible', AUTH,
+     "    if plan is None or plan.id != a.plan_id or plan.state not in ('PROPOSED', 'APPROVED'):\n"
+     "        return 'superseded'",
+     "    if plan is None:\n        return 'superseded'",
+     [I + '::test_I_A08b_a_pending_approval_of_a_version_no_longer_in_force_is_ineligible']),
 ]
 
 

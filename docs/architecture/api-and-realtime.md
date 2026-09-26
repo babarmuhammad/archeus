@@ -49,7 +49,8 @@ mobile (ADR-0010). Push beyond ntfy is **DEFERRED**.
 | Knowledge | `/v1/knowledge?type=&scope=&q=`, `/v1/knowledge/{id}` (with supersession chain) — P6: `?project&state&type` | `confirm`, `retract`, `supersede`, `pin`, `forget` (dry-run default) — P6: all but `pin`, plus `reject` and `/v1/feedback` |
 | Context | `/v1/context/{package_id}` (P5; also embedded in `/v1/missions/{id}` as `context_package`) | `/v1/context/preview` (P5, observe, writes nothing: assemble without recording) |
 | Resources | `/v1/harnesses`, `/v1/accounts`, `/v1/accounts/{id}/usage`, `/v1/models`, `/v1/route-decisions/{id}` (P6, with `?source&purpose` listing), `/v1/provider-terms` (P6) | `accounts/register|disable|reauth`, `resource-policies/{account}` (priority/allocation/budgets), `/v1/route/preview`, `/v1/provider-terms/{harness}` (P6, admin: the ADR-0021 answer) |
-| Policy | `/v1/policies?scope=`, `/v1/policy-decisions/{id}`, `/v1/policies/simulate` | `policies/set`, `profiles/apply` |
+| Policy | `/v1/policies?scope=`, `/v1/policy-decisions/{id}`, `/v1/policies/simulate` | `policies/set`, `profiles/apply` (*as built, P9:* `GET /v1/policies`, `GET /v1/policy-decisions`, `GET /v1/policy-decisions/{id}`, `POST /v1/policies/simulate`; admin `POST /v1/policies/rules`, `POST /v1/policies/rules/{id}/retire`, `POST /v1/policies/profile`) |
+| Approvals (P9) | `/v1/approvals?state=&mission=`, `/v1/approvals/{id}` (with `eligible`) | `approvals/{id}/decide` (scope `approve`; `approve`, `reject`, `request_changes`, echoing `action_hash`) |
 | Automations | `/v1/automations`, `/v1/automations/{id}/runs` | `create`, `enable`, `disable`, `archive`, `run-now` |
 | Devices / Nodes | `/v1/devices`, `/v1/nodes` | `launch/code` (local token only), `launch/redeem` (loopback only), `pair/start` (local only), `pair/redeem`, `devices/{id}/revoke`, `estop`, `rearm` |
 | Events | `/v1/events?after=&limit=` (paged catch-up), `/v1/events/stream` (SSE) | — |
@@ -111,6 +112,13 @@ Design rule (PDF §19): events describe durable facts; consumers decide what the
 P7 registers `idea.created`, `idea.state_changed` and `mission.updated` (a continuation added
 requirements or constraints) and nothing else: an intent, a clarification and a challenge are
 rows recorded by the reply's `message.created`, whose cards say which (p7-design-gate D6).
+
+P9 registers `approval.state_changed` (the Approval machine's moves), `policy_rule.created`,
+`policy_rule.retired`, `policy_decision.created` and `user.updated` (the owner's default autonomy
+profile), and nothing else: an approval granted, rejected, expired, superseded or consumed is
+`approval.state_changed` with its trigger; a plan approved or rejected is `plan.state_changed`; a
+denied mission is `mission.state_changed` (`plan_denied`) or `mission.updated`
+(`planning_blocked`) (p9-design-gate §16).
 
 P8 registers `plan.state_changed` (the plan machine's moves, which the writer requires) and
 nothing else. `plan.created` carries the version's lineage and provenance (`supersedes_plan_id`,

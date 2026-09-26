@@ -360,6 +360,22 @@ def test_I_A08_supersession_ends_every_live_approval_of_the_version(r):
     assert r.one(entities.Approval).state == 'SUPERSEDED'
 
 
+def test_I_A08b_a_pending_approval_of_a_version_no_longer_in_force_is_ineligible(r):
+    """Supersession ends a version's approvals in its own transaction; the
+    eligibility check is the second layer, for a version that left force by any
+    other path (here: moved directly, as a bug or a race would)."""
+    mid = r.mission()
+    r.propose(mid, task('t1', 'deploy'))
+    a = r.pending(mid)
+    r.do(lambda tx, actor: lifecycle.fire(tx, entities.Plan, a.plan_id, 'superseded',
+                                          actor=actor, reason='test'))
+    with r.db.read() as conn:
+        assert queries.get_approval(conn, a.id)['eligible_why'] == 'superseded'
+    with pytest.raises(NotEligible) as e:
+        r.decide(a)
+    assert e.value.why == 'superseded'
+
+
 def test_I_A09_a_task_approval_covers_its_task_only(r):
     mid = r.mission()
     r.propose(mid, task('t1', 'install'), task('t2', 'install', depends_on=['t1']))

@@ -1,7 +1,8 @@
 # P9 design gate: policy, autonomy and authorization
 
-Status: **DESIGN GATE — READY FOR APPROVAL. Not implemented; no code written.** Written
-2026-09-26 against `e2f2184` (P8 accepted). Every item is marked with where it comes from:
+Status: **IMPLEMENTED (P9).** Written 2026-09-26 against `e2f2184` (P8 accepted); the decision
+pass approved D1–D26 with binding clarifications (§26); the as-built record and its deviations
+are §29. Every item is marked with where it comes from:
 
 - **[spec]** already specified by the V1 architecture (plan, domain model, state machines, ADRs);
 - **[clar]** a clarification of an existing contract that the documents leave open, or that the
@@ -1056,7 +1057,30 @@ paths:
 | 24 P8 regression | §24 |
 | 25 implementation plan | §28 |
 
-## 26. Decision pass — requires your approval
+## 26. Decision pass
+
+**Outcome: D1–D26 approved**, with these binding clarifications:
+
+- **D7:** `policy_version` stays out of `action_hash`. `action_hash` is the identity of the exact
+  action being authorised; `policy_version` identifies the policy a decision was made under and
+  is recorded separately. Excluding it must not permit replay across policy changes: every use
+  of an approval re-checks the exact hash, plan id/version/digest, scope, the policy in force,
+  the relevant rules, the autonomy boundary, expiry and every other invalidation condition, and
+  re-evaluates rather than trusting the old approval.
+- **D9:** context freshness is an approval-time condition; dispatch re-checks the current
+  authorisation and action validity without requiring the historical context package to stay
+  fresh, so a mission's own legitimate world changes never invalidate its later dispatches.
+- **D10:** no command reaches APPROVED by naming the edge; only a real P9 authorisation does.
+- **D11:** a policy DENY is not a clarification or challenge; ambiguity, missing information and
+  authorisation denial stay distinct.
+- **D12:** a DENY creates no plan, task, execution or approval, but the denial itself is always
+  persisted — an auditable historical fact.
+- **D21:** execution-dependent S5/G6 behaviour moves to P11 without weakening P11; the new P9
+  tests test authorisation directly.
+- **Historical invariant:** policy decisions are immutable records; a later evaluation under a
+  changed policy is a new decision, and an old one is never rewritten.
+
+The table below is the decision pass as proposed:
 
 | # | Decision | Kind | Recommendation |
 |---|---|---|---|
@@ -1168,7 +1192,85 @@ Plus a separate commit for any test-race fix found on the way (the P7/P8 precede
 
 ---
 
-**P9 DESIGN GATE STATUS: READY FOR APPROVAL.** It needs your decision on D1–D26 — above all D7
-(policy version out of the hash), D9 (dispatch does not re-judge context currency), D10 and D11
-(the two mission-table changes), D12 (denials recorded by the responding command) and D21 (the
-judge edits).
+## 29. As built
+
+Implemented in the order of §28, in the four commits it names:
+
+1. `df56497` archeus: P9 policy domain and storage
+2. `542403a` archeus: P9 policy engine
+3. `2bd1852` archeus: P9 authorization, approvals, runtime and API
+4. tests: P9 judge, boundaries and mutation suite; docs (this record)
+
+Files: `archeus/core/policy/{__init__,rules,engine,worker}.py`,
+`archeus/core/application/authorization.py`, migration `0008_policy.sql`, and the changes §28
+lists; tests `tests/v1/unit/test_policy_units.py` (U-R, U-B, U-P, property and replay tests),
+`tests/v1/unit/test_policy_boundaries.py` (E1–E3, E7, E8, E10, the trigger-ownership scan),
+`tests/v1/integration/test_policy.py` (I-G, I-A, I-D, I-P, I-S, with E6's spy on every test),
+`tests/v1/integration/test_policy_http.py` (H01–H05), `test_planning.py::test_i27_*` (the
+planning worker's denial and policy-change round); the mutation suite is `tools/mutate_p9.py`
+(36 mutants).
+
+### 29.1 Deviations from this gate
+
+1. **Dispatch defers what a plan-level item cannot carry (§6.2).** The gate made the dispatch
+   stage as strict as the action stage. Dispatch re-judges the same plan-level items the plan
+   gate judged — a task's declared paths, never a branch or host — so under that rule every
+   Standard `git_commit` and every task without `touches` asked again at its first dispatch.
+   The plan and dispatch stages defer; the action stage (P11) demands every predicate. This is
+   D9's clarification applied to boundaries: dispatch re-checks authorisation and action
+   validity, not facts only the action will have.
+2. **The mission's `approve` guard landed in commit 3, not commit 1**, with the authorisation
+   that satisfies it; two P3.5 tests that approved by firing the edge by name are exactly the
+   bypass D10 closes, so commit 1 could not carry the guard and stay green.
+3. **A fifth event type, `user.updated`**, records the owner's default autonomy profile (§16
+   named "a `user` event with the field named" without registering it).
+4. **A denial of a plan that was never recorded has no `action_hash`.** No plan identity exists
+   to bind (D12 writes no plan); the decision names the mission, its round and every judged
+   item.
+5. **Step-up locality:** a principal counts as local unless one of its devices is a paired
+   platform (`ios`, `android`), so a local principal with no device row (the in-process client)
+   satisfies step-up exactly as the local token does before P15.
+6. **E1 allows `planning.planner` and `planning.validate`**, for `currency` and `digest` (P8's
+   functions, reused rather than copied); it still refuses the planning worker, `archeus_call`
+   and every later-phase package.
+7. **Mutations:** M13 (coverage widened) is killed by a direct test of `_covers`, because a task
+   approval is found by its own task's hash *and* covers only its own items — no single edit
+   lets another task through, which I-D2 proves behaviourally; M15 therefore removes the task
+   from the identity itself; M34 (a version no longer in force still eligible) is the second
+   layer behind same-transaction supersession and is killed by I-A08b, which moves a plan out of
+   force by another path. M30 is "the recorded result differs from the judged one".
+8. **Integration scenarios covered at the unit level:** a project restriction (I-P1) and a task
+   rule that does not survive a replan (I-P2) are chain properties of the pure engine (U-R4,
+   U-R5; task ids are per version by construction); provider terms (I-T1/T2) are E8's static
+   proof plus the unchanged K1–K3 and P6 gate tests.
+9. **The SPA's stub banner** ("walking skeleton: fake harness, stub policy") no longer shows,
+   because `health.core.ports` reports the policy port and it is real; the e2e test asserts
+   its absence. The SPA itself is unchanged.
+10. **The engine's stop is `policy_denied`** for a mission waiting on a recorded denial, in any
+    state, so the P3.5 stop vocabulary survives the new BLOCKED.
+
+### 29.2 Results
+
+- Full suite (legacy and V1): see the P9 report; the docs-nav test is deselected because of the
+  user's untracked `docs/pi-sessions.md` (as in P8), and writer throughput is run separately.
+- Judge (both bindings): 89 passed, 60 expected failures (P8: 77 / 68).
+- Mutation suite: 36 / 36 killed.
+- Ruff, SPA `tsc`, MkDocs `--strict`: clean.
+
+### 29.3 Remaining concerns (for later phases)
+
+- **P11:** the hook's `POST /v1/hook/evaluate` and hook tokens call `Authorization.
+  evaluate_action`; the execution's `hook_asked` / `resume_approved` moves and the task's
+  `action_needs_approval` are P11's. The canonicaliser supplies `branch`, `host`, `argv` and
+  `unclassified`, which the action stage then demands.
+- **P10:** the router's policy and enforcement steps read the decision record (per-item decision
+  and boundary); the auto-approve ceiling is still P3.5's fixture.
+- **P15:** step-up proofs for paired devices.
+- **P16:** approval cards, the chat verbs `approve` / `reject`, confirming a mission before
+  `start` under `careful`.
+- A mission whose replan is denied waits in REPLANNING, which has no `cancel` edge (§27.9).
+- Plan approvals expire only while PENDING; an expired one leaves its mission in
+  APPROVAL_REQUIRED until the user requests changes or cancels (no automatic replan, no model
+  call spent).
+
+**DESIGN_GATE = IMPLEMENTED.**

@@ -466,6 +466,14 @@ for Archeus's internal reads are counted, not recorded individually). Fields: `a
 `matched_rules[]` (in precedence order), `decision`, `boundary`, `policy_version`, `reason`
 (generated from the matched rules), `approval_id?`.
 
+*As built (P9, p9-design-gate §4.3, §9):* rules are immutable revisions (`revision`,
+`supersedes_rule_id`, `retired_at` written once), with `match`, `boundary` + `outside`,
+`expires_at` and `source`; GLOBAL rules are Core's own and never rows. A PolicyDecision is one
+evaluation, frozen whole (`FROZEN_ALL`): `stage` (plan, dispatch, action), `outcome`, per-item
+results with the rules that decided them, `matched_rules` (full snapshots), `policy_version`,
+`engine_version`, the binding and its `action_hash`. A later evaluation is a new decision; an
+old one keeps saying what its policy said.
+
 ### 9.3 Approval
 
 | Field | Notes |
@@ -479,6 +487,16 @@ for Archeus's internal reads are counted, not recorded individually). Fields: `a
 | `decided_by`, `decided_at`, `decision_note` | |
 | `state` | Approval machine (PENDING → APPROVED/REJECTED/EXPIRED/SUPERSEDED; APPROVED → CONSUMED) |
 | `idempotency_key` | of the deciding command — a double-tap on a phone is one decision |
+
+*As built (P9, p9-design-gate §7, §8):* `kind` plan / task / action; `action_hash` is the
+identity of exactly what is authorised — kind, mission, plan id, version and digest, task,
+execution and canonical items — and the policy version is recorded beside it (`policy_version`),
+never in it (D7); `items` are what it covers, exactly; `presented` is built by Core from rows.
+Content is frozen at insert; `decision`, `decided_by`, `decided_at`, `decision_note` are written
+once by the deciding move. Plan and task approvals are reusable for their version's lifetime and
+never CONSUMED; action approvals are single-use. The idempotency key is the writer's, not a
+field. `User.autonomy_profile` (default `standard`) and `Mission.autonomy_profile` are the
+profiles expanded at USER and MISSION level (D5, D26).
 
 ### 9.4 Automation and AutomationRun
 Automation: `name`, `trigger` (`{kind: event|schedule|condition|state, pattern|cron|predicate}`),

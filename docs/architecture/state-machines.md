@@ -210,6 +210,14 @@ or the explicit title and objective). A mission exists only once its intent is u
 unchallenged, so `needs_clarification` and `challenge_raised` are not taken in P7 — a
 clarification or challenge happens before any mission (p7-design-gate §6).
 
+**P9, as built** (p9-design-gate D10–D13). `approve` (APPROVAL_REQUIRED → APPROVED) is guarded:
+the plan in force has an APPROVED approval whose `action_hash` equals the one recomputed from its
+rows, which only `Authorization.decide` produces — fired by name it approves nothing. `REASONING →
+BLOCKED: plan_denied` is new and guarded by a policy denial recorded in the same transaction; it
+is never a challenge. A denied plan in PLANNING or REPLANNING waits in place with
+`planning_blocked.kind == policy` (P8 D6), and a policy change plans it again. A dispatch whose
+ASK nothing covers takes the existing `block` and resumes when the task's approval is approved.
+
 **P8, as built.** Planning moved out of the engine into the planning worker (p8-design-gate
 D5): a planning round starts on every move into REASONING, PLANNING or REPLANNING (and when the
 mission's inputs change while it waits in one), and records a PlanVersion through
@@ -395,6 +403,14 @@ stateDiagram-v2
   approval, returns ALLOW once and consumes it. A second identical action needs a new approval
   (single-use; replay-safe).
 - `plan_replaced`: a replan supersedes every approval tied to the old `plan_version`.
+- *As built (P9):* `approve`, `reject` and `request_changes` are one command
+  (`Authorization.decide`) that echoes the displayed `action_hash`; a plan approval moves its
+  plan (`approved` / `rejected`) and its mission (`approve`, `reject`, `request_changes`) in the
+  same transaction, a task approval resumes its mission. `plan_replaced` is fired in the
+  transaction that supersedes the version; `ttl_elapsed` by the `archeus-policy` sweep (and
+  judged at every decision and use); `action_executed` on the first covered use of an action
+  approval. An APPROVED plan or task approval never expires and is never CONSUMED. A cancelled
+  mission's pending approvals are rejected by the system.
 - Deciding commands are idempotent by `idempotency_key`: a repeated approve returns the existing
   decision.
 
