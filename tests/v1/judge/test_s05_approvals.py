@@ -19,7 +19,10 @@ def _first_approval(client):
     return wait_for(lambda: events_of(client, 'approval.requested'))[0]['subject']['id']
 
 
-def test_a_plan_that_asks_waits_for_the_user_and_then_runs(client):
+def test_a_plan_that_asks_waits_for_the_user_and_then_runs(client, rig):
+    # the task holds for a moment, so EXECUTING is a state a client can see
+    # rather than one a fast machine passes between two polls (CI, macOS)
+    rig.script_harness('t1', [{'sleep': 2}])
     m = client.create_mission(title='Deploy', objective='Ship to prod')
     wait_state(client, m['id'], 'APPROVAL_REQUIRED')
     client.decide_approval(_first_approval(client), 'approve', idempotency_key='k1')
