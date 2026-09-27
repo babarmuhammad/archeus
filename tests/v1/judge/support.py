@@ -107,7 +107,27 @@ def wait_state(client, mission_id, state, timeout=30.0):
         return wait_for(reached, timeout)
     except (AssertionError, NotImplementedError) as err:
         # say where everything stopped: a CI failure is otherwise read blind
-        raise type(err)('%s; last states: %s' % (err, _last_states(client))) from None
+        raise type(err)('%s; last states: %s%s' % (err, _last_states(client),
+                                                    _core_threads(client))) from None
+
+
+def _core_threads(client):
+    """For a Core running in this process (the http binding): its health and
+    where each of its threads is, so a Core that went quiet says why."""
+    if getattr(client, 'core', None) is None:
+        return ''
+    import sys
+    import threading
+    import traceback
+    names = {t.ident: t.name for t in threading.enumerate()}
+    stacks = ['%s:\n%s' % (names.get(ident), ''.join(traceback.format_stack(frame)[-6:]))
+              for ident, frame in sys._current_frames().items()
+              if str(names.get(ident, '')).startswith('archeus')]
+    try:
+        health = client._call('GET', '/v1/health')
+    except Exception as e:
+        health = repr(e)
+    return '; health: %s\n%s' % (health, '\n'.join(stacks))
 
 
 def _last_states(client):
