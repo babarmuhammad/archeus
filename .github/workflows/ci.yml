@@ -50,16 +50,22 @@ jobs:
       # then alone again after it: separates the runner from what ran before.
       # continue-on-error: these extra runs can neither fail nor pass the job;
       # the gate is the full-suite step, unchanged.
+      # PYTEST_ADDOPTS (Windows only): pytest's basetemp, which holds every test
+      # database, on RUNNER_TEMP (D:) instead of %TEMP% (C:). Run 36318248029
+      # measured C: fsync at 1.7-6.7 ms p50 and D: at 0.10-0.30 ms; nothing
+      # else about the tests changes.
       - name: 'Diagnostic: P2 throughput alone, before the suite'
         continue-on-error: true
         env:
           ARCHEUS_CI_DIAG: ${{ runner.temp }}/diag-pre.jsonl
           ARCHEUS_CI_JOB: ${{ matrix.os }}-py${{ matrix.python-version }}-pre
+          PYTEST_ADDOPTS: ${{ runner.os == 'Windows' && format('--basetemp={0}/pytest-tmp', runner.temp) || '' }}
         run: python -m pytest tests/v1/integration/test_writer.py::test_writer_throughput_is_at_least_500_commands_per_second -v -p no:cacheprovider
       - name: Run tests
         env:
           ARCHEUS_CI_DIAG: ${{ runner.temp }}/diag-suite.jsonl
           ARCHEUS_CI_JOB: ${{ matrix.os }}-py${{ matrix.python-version }}-suite
+          PYTEST_ADDOPTS: ${{ runner.os == 'Windows' && format('--basetemp={0}/pytest-tmp', runner.temp) || '' }}
         run: python -m pytest tests/ -v --durations=30
       - name: 'Diagnostic: P2 throughput alone, after the suite'
         if: ${{ !cancelled() }}
@@ -67,6 +73,7 @@ jobs:
         env:
           ARCHEUS_CI_DIAG: ${{ runner.temp }}/diag-post.jsonl
           ARCHEUS_CI_JOB: ${{ matrix.os }}-py${{ matrix.python-version }}-post
+          PYTEST_ADDOPTS: ${{ runner.os == 'Windows' && format('--basetemp={0}/pytest-tmp', runner.temp) || '' }}
         run: python -m pytest tests/v1/integration/test_writer.py::test_writer_throughput_is_at_least_500_commands_per_second -v -p no:cacheprovider
       - name: 'Diagnostic: summary'
         if: ${{ !cancelled() }}
