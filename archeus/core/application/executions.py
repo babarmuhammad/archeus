@@ -272,13 +272,17 @@ def _finish(tx, actor, e, facts):
     return e
 
 
-def _ended(tx, actor, e, usage, facts=None):
+def _ledger(tx, actor, e, usage):
     u = _usage(usage) or _usage(e.usage)
     if u and e.route_decision_id is not None:
         # attributable truth (P10): once per execution, against where it was routed
         tx.insert(entities.UsageLedger(id=ids.new_id('usage_ledger'), execution_id=e.id,
                                        route_decision_id=e.route_decision_id,
                                        account_id=e.account_id, **u), actor=actor)
+
+
+def _ended(tx, actor, e, usage, facts=None):
+    _ledger(tx, actor, e, usage)
     e = _finish(tx, actor, e, facts)
     _event(tx, 'execution.ended', e, actor, _end_payload(e))
     return _respond(tx, actor, e, 'execution %s ended (%s)' % (e.id, e.exit_reason))
@@ -476,11 +480,7 @@ def record_handoff(tx, *, actor, policy, missions, router, execution_id, now, ex
               {'exit_reason': 'handoff', 'exit_code': exit_code, 'charged': False,
                'ended_at': _now_iso(), 'hook_token_hash': None,
                'adapter_state': dict(adapter_state) if adapter_state else e.adapter_state})
-    u = _usage(usage) or _usage(e.usage)
-    if u and e.route_decision_id is not None:
-        tx.insert(entities.UsageLedger(id=ids.new_id('usage_ledger'), execution_id=e.id,
-                                       route_decision_id=e.route_decision_id,
-                                       account_id=e.account_id, **u), actor=actor)
+    _ledger(tx, actor, e, usage)
     e = _finish(tx, actor, e, facts)
     _event(tx, 'execution.ended', e, actor, _end_payload(e))
     nxt = continue_task(tx, actor=actor, policy=policy, missions=missions, router=router,

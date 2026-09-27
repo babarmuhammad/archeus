@@ -121,6 +121,9 @@ class Ports:
     # P12: the session adapters (p12-design-gate §13.3); None is the real ones
     # (Claude Code, pi), a test passes fakes. Nothing is launched but on request.
     sessions: list = None
+    # where a user's session terminal is opened (anything with `open_terminal`);
+    # None is the local node. A test passes a recorder: nothing is opened.
+    terminal: object = None
 
     @property
     def stub(self):
@@ -452,7 +455,8 @@ class Core:
         from ..harnesses.sessions import real_session_adapters
         from ..node.local import LocalNode
         self.sessions = SessionService(
-            self.db, system=self.system, node=LocalNode(),
+            self.db, system=self.system,
+            node=LocalNode() if self.ports.terminal is None else self.ports.terminal,
             adapters=real_session_adapters() if self.ports.sessions is None
             else self.ports.sessions)
         try:        # D21: a launch a previous Core was asked for is expired, never replayed
