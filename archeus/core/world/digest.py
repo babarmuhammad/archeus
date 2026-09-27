@@ -52,9 +52,15 @@ def _headline(conn, kind, entity_id, events, was_drifted=False):
     return 'progressed'
 
 
-def digest(conn):
-    user = owner(conn)
-    cursor = user.entity.last_ack_event_seq if user else 0
+def digest(conn, *, since=None, project_id=None, mission_id=None):
+    """The owner's digest, or (P12, p12-design-gate D14) a session's: the
+    changes after *since* instead of the owner's cursor, and — when a mission or
+    a project is named — only the groups about that mission or of that project."""
+    if since is None:
+        user = owner(conn)
+        cursor = user.entity.last_ack_event_seq if user else 0
+    else:
+        cursor = since
     head, low = outbox.head(conn), outbox.floor(conn)
     start = max(cursor, low)
     groups, left_drift = {}, set()
@@ -69,6 +75,10 @@ def digest(conn):
         mid = _mission_of(conn, kind, eid)
         if mid is not None:
             kind, eid = 'mission', mid
+        if (mission_id or project_id) and not (
+                (mission_id and (kind, eid) == ('mission', mission_id))
+                or (project_id and e.project == project_id)):
+            continue
         groups.setdefault((kind, eid), []).append(e)
     out = []
     for (kind, eid), evs in groups.items():

@@ -418,6 +418,44 @@ def _fresh(c):
     return 'stale' if c['stale'] else 'current'
 
 
+#: what never makes a package stale: bookkeeping about sessions and packages
+#: themselves (a resume records both, and must not stale what it just recorded)
+_NOT_NEWS = ('session.', 'context_package.', 'checkpoint.')
+_OF_MISSION = {'plan': entities.Plan, 'task': entities.Task, 'execution': entities.Execution,
+               'approval': entities.Approval, 'verification': entities.Verification}
+
+
+def fresh(conn, package):
+    """Whether *package* still describes its scope (p12-design-gate §11.2): no
+    user-visible event after its snapshot is of its project, of its mission's
+    work, or of the workspace's knowledge. Conservative on purpose — anything in
+    scope makes it stale — and a snapshot older than the retained log cannot
+    be proven fresh. Read-only."""
+    if package.as_of_seq < outbox.floor(conn):
+        return False
+    for r in conn.execute("SELECT * FROM events WHERE seq > ? AND visibility = 'user' "
+                          "AND workspace_id = ? ORDER BY seq",
+                          (package.as_of_seq, package.workspace_id)):
+        e = outbox.decode(r)
+        if e.type.startswith(_NOT_NEWS):
+            continue
+        if package.project_id is not None and e.project == package.project_id:
+            return False
+        if e.type.split('.')[0] in ('knowledge_item', 'decision', 'meeting'):
+            return False
+        if package.subject_kind == 'mission' and _mission_of(conn, e) == package.subject_id:
+            return False
+    return True
+
+
+def _mission_of(conn, e):
+    if e.subject.kind == 'mission':
+        return e.subject.id
+    cls = _OF_MISSION.get(e.subject.kind)
+    row = rows.get(conn, cls, e.subject.id) if cls else None
+    return getattr(row.entity, 'mission_id', None) if row else None
+
+
 def assemble(conn, subject_kind, subject_id, *, query=None, levels=P.LEVELS,
              limit_tokens=P.DEFAULT_BUDGET_TOKENS):
     """A context package, without an id: read, scored and budgeted, never
