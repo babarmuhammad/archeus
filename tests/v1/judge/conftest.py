@@ -43,13 +43,19 @@ def recorded_brain():
 
 @pytest.fixture(params=BINDINGS)
 def client(request, archeus_home, monkeypatch):
+    # P13: every judge Core reviews through the `review` own call (the recorded
+    # brain answers it); a scenario marked `real_verification` also verifies
+    # with the verification worker instead of the scripted stub
+    real = request.node.get_closest_marker('real_verification') is not None
     if request.param == 'inprocess':
-        c = InProcessClient(archeus_home, callers=[recorded_brain()])
+        c = InProcessClient(archeus_home, callers=[recorded_brain()], real_verification=real,
+                            real_review=True)
     elif request.param == 'http':
-        c = TempCore(archeus_home, ports=runtime.Ports(
-            callers=[recorded_brain()], usage=FakeUsageFeed(),
-            sessions=support.session_adapters(),
-            terminal=support.JudgeTerminal(archeus_home))).start().client()
+        c = TempCore(archeus_home, real_verification=real, real_review=True,
+                     ports=runtime.Ports(
+                         callers=[recorded_brain()], usage=FakeUsageFeed(),
+                         sessions=support.session_adapters(),
+                         terminal=support.JudgeTerminal(archeus_home))).start().client()
     else:
         raise AssertionError('unknown binding %r' % request.param)
     monkeypatch.setattr(support, 'idle', c._idle)
@@ -93,3 +99,8 @@ def own_calls(request, archeus_home, monkeypatch):
     yield make
     for c in made:
         c.close()
+
+
+def pytest_configure(config):
+    config.addinivalue_line('markers', 'real_verification: this judge Core verifies with the '
+                                       'P13 verification worker, not the scripted stub')

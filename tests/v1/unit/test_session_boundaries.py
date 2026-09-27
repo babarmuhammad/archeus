@@ -90,7 +90,8 @@ def test_Y6_the_context_engine_gained_no_session_subject():
 
 
 def test_Y7_no_later_phase_module_exists_yet():
-    for rel in ('archeus/core/verification', 'archeus/core/execution/integration.py',
+    # archeus/core/verification is P13's and exists since P13 (p13-design-gate)
+    for rel in ('archeus/core/execution/integration.py',
                 'archeus/core/automation', 'archeus/api/pairing.py', 'archeus/harnesses/codex',
                 'archeus/node/remote.py'):
         assert not os.path.exists(os.path.join(ROOT, rel)), rel

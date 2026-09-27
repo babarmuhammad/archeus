@@ -1,7 +1,7 @@
 # P13 design gate: verification, review and merge-back
 
 Status: **FROZEN (P13), before any P13 code.** Written 2026-09-27 on the P12/G01 baseline
-(`e4197bd`, CI run 36331184385 green). The as-built record and its deviations will be §33.
+(`e4197bd`, CI run 36331184385 green). The as-built record and its deviations are §33.
 Items are marked as in the earlier gates:
 
 - **[spec]** already specified by the V1 architecture (plan, domain model, state machines, ADRs);
@@ -793,7 +793,7 @@ Each breaks one safety property; each must be caught.
 | Z06 | the record accepts a superseded plan's task | V13 |
 | Z07 | one automatic criterion skipped by the mission verification | V05 |
 | Z08 | ERROR treated as PASSED | V12 |
-| Z09 | a second verdict for a decided row creates a second logical result | V07 |
+| Z09 | a second verdict for a decided row creates a second logical result (as built: §33 item 7) | V07 |
 | Z10 | verifier failure becomes task failure (ERROR fires `checks_failed_*`) | V12 |
 | Z11 | a REJECTED review completes the mission | review test |
 | Z12 | the boot sweep leaves RUNNING rows alone | V08 |
@@ -894,4 +894,48 @@ Each breaks one safety property; each must be caught.
 
 ## 33. As built
 
-(Filled at the end of P13.)
+**What landed.** The Verification and Review machines fired from `core/application/verification.py`
+(start, record, retry, hold, decide, sweep, begin/record/retry/abandon merge,
+`note_integration_head`, record/user review); `Task.integration_state` as a secondary machine
+column (D22) in the entity base, writer and lifecycle; the `task_verified` guard and
+`all_tasks_done`'s integration condition; `core/verification/{evidence,reviewer,worker}.py`
+(`archeus-verify`, started by the runtime and stopped with it); the node's bounded check runner
+and git helpers; task worktrees forking from the mission branch (D12); the six routes of §21 and
+the generated API reference and client; the fake agent writing a file for an allowed `Write`
+call. V01–V03, V05, V06, V11, V14, V15, S6's two P13 functions and S1's independent review pass
+on both bindings; V04, V07–V10, V12, V13, the merge conflict and abandon, the verified-SHA merge,
+the rejecting review and the superseded plan in `tests/v1/integration/test_verification.py`;
+M01–M06 in `tests/v1/integration/test_provenance.py`; the pure parts in
+`tests/v1/unit/test_verification_units.py`. `tools/mutate_p13.py`: 16/16 killed.
+
+**Deviations from this gate.**
+
+1. **A rejected human criterion replans**, as a failed automatic one does (`verification_failed`),
+   instead of blocking again: a decided criterion is decided, and blocking on it would ask the
+   same question twice.
+2. **Mission rows are recorded while the mission is BLOCKED out of VERIFYING** waiting on a human
+   criterion (`mission_open`): the engine may take `awaiting_human_acceptance` between the
+   worker's transactions, and the rows are bound by plan and revision, not by the mission's state.
+3. **An automatic criterion with nothing deterministic to run is decided by a human first**
+   (GenericVerifier), before any check, rather than recorded ERROR and retried: no command means
+   no outcome check can exist, which is not a fault that a retry could clear.
+4. **The router's `forbidden` set also matches a harness's own `account_ref`**, since an
+   unregistered account has no id and could otherwise never be excluded from a review (P10).
+5. **A branch moved while its criteria were checked is noted in the verdict's own transaction.**
+   §11 had the worker notice a move only before verifying. V04 found the window after: the
+   worker records PASSED at the old head, the engine judges it before the worker's next pass, and
+   the mission reaches REVIEWING on evidence about a revision no longer there. `record` now takes
+   the head the worker read after the commands ran and notes a move with the verdict, so no
+   judgement sees one without the other. A move after that transaction is the user's own commit
+   after verification, like a push after CI: the mission records the head it verified.
+6. **Two CLI verbs, not three**: `archeus verify <mission>` lists verifications and reviews, and
+   `archeus decide` takes a verification id (accept/reject) or a mission id
+   (accept/changes/reject, the user's review). The three functions of §21 are all there.
+7. **Z09 names the second-result path that exists.** PASSED and FAILED are terminal in the
+   machine and `record` refuses a row that is not RUNNING, so a decided row cannot take a second
+   verdict at all; the mutation that yields a second logical result is a new row for a task that
+   already left VERIFYING with its verdict (`_task_lineage`'s state check), caught by V07.
+8. **A defect found on the way (the G01 class again).** A parked mission never woke after the
+   worker recorded a mission criterion: a verification row moves no task and no execution, and the
+   engine's wake-up stamp counted only those. The stamp now includes verification and review
+   rows (`runtime.py`).

@@ -123,15 +123,17 @@ def active_plan(conn, mission_id):
 def persisted_facts(tx, row):
     """The guard snapshot from what the database holds (P3.5): the active
     plan's tasks with their attempt counts, the mission's success criteria with
-    the latest verification of each UNDER THAT PLAN, and whether the plan's cost
-    band is under the ceiling. Whatever is missing stays unknown, so the guards
-    that need it refuse: fail closed, never a vacuous pass."""
+    the latest verification of each UNDER THAT PLAN AT THE MISSION BRANCH'S
+    RECORDED HEAD (P13 D10: one of another revision is stale), and whether the
+    plan's cost band is under the ceiling. Whatever is missing stays unknown, so
+    the guards that need it refuse: fail closed, never a vacuous pass."""
     m = row.entity
     plan = active_plan(tx.conn, m.id)
     checked = {}
     if plan is not None:
         for v in tx.where(entities.Verification, plan_id=plan.entity.id):
-            if v.entity.subject == Ref('mission', m.id):
+            if (v.entity.subject == Ref('mission', m.id)
+                    and v.entity.revision == m.integration_head):
                 checked[v.entity.criterion] = v.entity.state     # oldest first: latest wins
     criteria = tuple(guards.CriterionFact(c['check'], checked.get(i))
                      for i, c in enumerate(m.success_criteria))
@@ -140,7 +142,8 @@ def persisted_facts(tx, row):
     tasks = tuple(
         guards.TaskFact(t.key, t.kind, t.state, t.action_classes,
                         attempts=len(tx.where(entities.Execution, task_id=t.id)),
-                        max_attempts=t.max_attempts, failure_class=t.failure_class)
+                        max_attempts=t.max_attempts, failure_class=t.failure_class,
+                        integration=t.integration_state)
         for t in (r.entity for r in tx.where(entities.Task, plan_id=plan.entity.id)))
     band = plan.entity.estimated_cost
     reviews = tx.where(entities.Review, plan_id=plan.entity.id)

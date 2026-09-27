@@ -38,7 +38,10 @@ p7-design-gate D8. P12 added the session and checkpoint operations — `register
 `launch_session`, `get_session`, `list_sessions`, `session_brief`, `resume_session`,
 `handoff_session`, `link_session`, `close_session`, `checkpoints`, `handoff_execution`
 (p12-design-gate §19, §21): C1–C14, H1 and R1 judge continuity through the contract, on two
-fake session harnesses and a terminal that records instead of opening.) Two bindings: `InProcessClient` (P1–P3, calls the
+fake session harnesses and a terminal that records instead of opening. P13 added
+`verifications`, `decide_verification`, `reviews`, `review` and `abandon_integration`
+(p13-design-gate §21): V01–V15 judge what was verified, decided and reviewed through the
+contract; nothing in it writes evidence.) Two bindings: `InProcessClient` (P1–P3, calls the
 application layer directly) and `HttpClient` (P3.5 onward, HTTP + SSE). Every scenario runs
 against both once HTTP exists.
 
@@ -74,7 +77,7 @@ them so nothing is tested twice under different names or missed.
 | S3 | Multiple accounts/models registered; router respects priority | SP7, SP8, IP-C, G "routing deterministic and explainable" | `test_s03_multi_account_routing.py` (P10: both functions; unit and property tests in `tests/v1/unit/test_routing_units.py`) | P10 |
 | S4 | Quota exhaustion → policy-controlled fallback; allocation ceilings never exceeded at start; halt at boundary on crossing | IP-C, G "priority/allocation work" | `test_s04_limit_and_fallback.py` (fallback allow / ask / deny variants; P10: the ceiling at start and the three fallback variants, the mid-run crossing is P12's) | P10–P12 |
 | S5 | Human approval (plan and mid-execution action) | SP6, G "policies enforced" | `test_s05_approvals.py` (P9: a plan that asks, idempotent decide, a decided approval stays decided, no carry to the next plan version; single-use of a mid-execution action approval is P11's, p9-design-gate D21; expiry and step-up in `tests/v1/integration/test_policy.py`) | P9, P11 |
-| S6 | Verification failure → replan (budget 2 → BLOCKED) | SP11, SP12, G "verification exists" | `test_s06_verify_fail_replan.py` (P8: a failed task replans into a new plan version; the verification-driven functions stay P13, p8-design-gate D13) | P13, P8 |
+| S6 | Verification failure → replan (budget 2 → BLOCKED) | SP11, SP12, G "verification exists" | `test_s06_verify_fail_replan.py` (P8: a failed task replans into a new plan version; P13: the verification-driven functions, on a fixture repository whose tests fail, p13-design-gate D20) | P13, P8 |
 | S7 | Repository reinspection and architecture drift | IP-G, G "repository re-inspection works" | `test_s07_drift.py` (fixture repo, commit that violates a constraint) | P4 |
 | S8 | Meeting notes used as context | SP2 | `test_s08_meeting_context.py` (import → mention → package cites it with reason) | P5–P6 |
 | S9 | Feedback becomes durable knowledge; supersession | SP14 | `test_s09_feedback_to_knowledge.py` (driven through `submit_message`: which message is feedback, and which preference it supersedes, is intent — P7; P6 builds the promotion and supersession it lands on, p6-design-gate D1) | P7 |
@@ -106,6 +109,8 @@ them so nothing is tested twice under different names or missed.
 | C14 | Missing context is reported, never invented; nothing to hand over is refused | — | `test_c03_session_handoff.py` | P12 |
 | H1 | Cross-harness session hand-off (moved from §6 by the P12 gate) | ADR-0023 | `test_h01_r01_session_harnesses.py` | P12 |
 | R1 | A session resumes on its own harness's configuration (moved from §6 by the P12 gate) | ADR-0023 | `test_h01_r01_session_harnesses.py` | P12 |
+| V1 | The outcome is verified from evidence Core observed, never from an exit code: a wrong change fails (V01/V14), a right one is merged into the mission branch and reviewed (V02/V15), nothing to run waits for you (V03), a failing criterion replans (V05), tests passing with no change fail (V11) | SP11, SP12, p13-design-gate §24 (V04, V07–V10, V12, V13, M01–M06 in `tests/v1/integration/test_verification.py` and `test_provenance.py`) | `test_v01_outcome_verification.py` | P13 |
+| V6 | A retried task is verified on the attempt that ended it, never on an earlier one | p13-design-gate §10 | `test_v06_attempts.py` | P13 |
 | G3 | GUI/TUI/web/mobile use one backend model | SP17 | `test_g03_one_model.py` (same mission observed via SPA e2e, TUI script, CLI) | P16–P19 |
 | G4 | Audit trail exists | — | `test_g04_audit.py` (every transition has an event with actor + reason; approvals immutable) | P2 |
 | G5 | Emergency stop exists (with and without Core) | — | `test_g05_estop.py` (STOP sentinel halts fake executions; `archeus estop` kills by pid+create_time with Core down) | P11, P20 |

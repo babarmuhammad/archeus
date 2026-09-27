@@ -76,7 +76,7 @@ def check(machine, row, trigger, facts):
     """(to, GuardResult or None) for *trigger* on *row*, raising IllegalTrigger
     or GuardFailed. Writes nothing. *facts* may be a callable `facts(row)`, so
     a snapshot is gathered only for an edge that has a guard to read it."""
-    field = row.entity._STATE[0]
+    field = row.entity.machine_field(machine)[0]
     frm = getattr(row.entity, field)
     to, g = resolve(machine, frm, trigger)
     if g is None:
@@ -90,7 +90,7 @@ def check(machine, row, trigger, facts):
 
 
 def fire(tx, cls, entity_id, trigger, *, actor, reason, facts=None,
-         expected_version=None, cause=(), fields=None):
+         expected_version=None, cause=(), fields=None, machine=None):
     """Take the *trigger* edge of *entity_id*'s machine. *facts* is the guard
     snapshot, or a callable building it from the row (only used when the edge
     is guarded). *fields* — a dict, or `fields(row, to)` — are other fields of
@@ -99,7 +99,7 @@ def fire(tx, cls, entity_id, trigger, *, actor, reason, facts=None,
         raise TypeError('%s has no state machine' % cls.__name__)
     if not (isinstance(reason, str) and reason.strip()):
         raise ValueError('a transition needs a reason (the audit trail)')
-    field, machine = cls._STATE
+    field, machine = cls.machine_field(machine)
     row = load(tx, cls, entity_id)
     if expected_version is not None and expected_version != row.version:
         raise VersionConflict(entity_id, expected_version, row.version)
@@ -110,4 +110,5 @@ def fire(tx, cls, entity_id, trigger, *, actor, reason, facts=None,
     if callable(fields):
         fields = fields(row, to)
     return tx.transition(cls, entity_id, to, actor=actor, reason=reason, cause=cause,
-                         expected_version=row.version, proof=proof, fields=fields)
+                         expected_version=row.version, proof=proof, fields=fields,
+                         machine=machine)

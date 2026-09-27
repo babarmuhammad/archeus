@@ -124,6 +124,10 @@ def translate(e):
     if isinstance(e, errors.NotEligible):
         return 409, 'approval_not_eligible', {'approval_id': e.approval_id, 'why': e.why,
                                               'detail': e.detail}, {}
+    if isinstance(e, errors.LineageRefused):
+        # P13: a verification, merge or review whose lineage is not the one
+        # durable state holds (p13-design-gate §20)
+        return 422, 'refused', {'why': str(e)}, {}
     if isinstance(e, errors.PolicyDenied):
         # refused before anything was written: the decision that answers it
         # (a plan's denial, a dispatch's `unrecoverable`) is recorded by P9
@@ -169,6 +173,9 @@ class Api:
         self.executions = executions
         # P12: the session service (the launcher and the adapters around each command)
         self.sessions = sessions
+        # P13: the user's decisions on verifications and reviews
+        from ..core.application.verification import Decisions
+        self.decisions = Decisions(missions)
         self.origin = auth.Origin(port)
         self.launch = auth.LaunchCodes(clock=launch_clock)
         self.static = Static(static_dir)

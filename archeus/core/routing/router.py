@@ -211,7 +211,10 @@ def _restriction(c, req, snap):
     for kind, what in (('required', 'is not the one you required'),
                        ('forbidden', 'is forbidden for this work')):
         hs, accs = _ids(req.get(kind), 'harnesses'), _ids(req.get(kind), 'accounts')
-        hit_h, hit_a = c['harness'] in hs, c['account'] in accs
+        # an unregistered account (a harness's own) is named by its ref (P13:
+        # the review call forbids the accounts that executed the work)
+        hit_h = c['harness'] in hs
+        hit_a = c['account'] in accs or (c['account'] is None and c['account_ref'] in accs)
         if kind == 'required' and ((hs and not hit_h) or (accs and not hit_a)):
             return what
         if kind == 'forbidden' and (hit_h or hit_a):

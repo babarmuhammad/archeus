@@ -122,7 +122,9 @@ class HttpClient:
             return False
         if ex['state'] != 'idle' or ex['live']:     # P11: a process advances on its own
             return False
-        for worker in ('knowledge', 'intent', 'plan'):  # P6-P8: every event not yet consumed
+        # P6-P8: every event not yet consumed; P13: every verification, merge
+        # or review due, and none in flight
+        for worker in ('knowledge', 'intent', 'plan', 'verify'):
             if health[worker]['state'] != 'idle' or health[worker]['pending']:
                 return False
         return not self._call('GET', '/v1/events?after=%d&limit=1'
@@ -370,6 +372,29 @@ class HttpClient:
         return self._call('POST', '/v1/executions/%s/handoff' % quote(execution_id, safe=''),
                           self._body())
 
+    # ── verification and review (P13) ──
+
+    def verifications(self, mission_id: str) -> list:
+        return self._call('GET', '/v1/missions/%s/verifications'
+                          % quote(mission_id, safe=''))['verifications']
+
+    def decide_verification(self, verification_id: str, decision: str, *,
+                            note: Optional[str] = None) -> dict:
+        return self._call('POST', '/v1/verifications/%s/decide' % quote(verification_id, safe=''),
+                          self._body(decision=decision, note=note))
+
+    def reviews(self, mission_id: str) -> list:
+        return self._call('GET', '/v1/missions/%s/reviews'
+                          % quote(mission_id, safe=''))['reviews']
+
+    def review(self, mission_id: str, verdict: str, *, note: Optional[str] = None) -> dict:
+        return self._call('POST', '/v1/missions/%s/review' % quote(mission_id, safe=''),
+                          self._body(verdict=verdict, note=note))
+
+    def abandon_integration(self, task_id: str, *, reason: Optional[str] = None) -> dict:
+        return self._call('POST', '/v1/tasks/%s/integration/abandon' % quote(task_id, safe=''),
+                          self._body(reason=reason))
+
     # ── resources (P10) ──
 
     def register_account(self, *, harness_id: str, label: str, auth_kind: str,
@@ -485,12 +510,19 @@ class TempCore:
     `ports` gets exactly those — the judge's pass the recorded brain, so its
     missions are planned by the planning worker through `archeus_call` (P8)."""
 
-    def __init__(self, home, *, port=None, **kw):
+    def __init__(self, home, *, port=None, real_verification=False, real_review=False, **kw):
         kw.setdefault('ports', runtime.Ports(brain=ports.FixedPlanBrain(engine.SKELETON_PLAN)))
         if kw['ports'].executors is None:
             # a test Core executes on the fake harness unless it names its
             # executors (P11: the runtime's default is the real adapters)
             kw['ports'].executors = [FakeHarness()]
+        if not real_verification:
+            # and verifies and reviews on the scripted stubs unless it asks for
+            # the verification worker (P13: the runtime's default)
+            if kw['ports'].verifier is None:
+                kw['ports'].verifier = ports.ScriptedVerifier()
+        if not (real_verification or real_review) and kw['ports'].reviewer is None:
+            kw['ports'].reviewer = ports.ScriptedReview()
         self.home, self.port, self.kw = str(home), port or free_port(), kw
         self.core = None
 
@@ -509,7 +541,8 @@ class TempCore:
 
     def stop(self, *, kill=False):
         if self.core is not None:
-            loops = (self.core.plan, self.core.knowledge, self.core.world, self.core.loop)
+            loops = (self.core.plan, self.core.knowledge, self.core.world, self.core.loop,
+                     self.core.verify)
             self.core.stop(drain=not kill)
             for loop in loops:
                 if loop is not None:
@@ -568,6 +601,8 @@ if cfg.get('pause_timeout') is not None:   # a short pause timeout for the test 
     _manager.PAUSE_TIMEOUT_S = cfg['pause_timeout']
 ports = runtime.Ports(scenarios=cfg.get('scenarios') or {},
                       brain=P.FixedPlanBrain(engine.SKELETON_PLAN), executors=[FakeHarness()])
+if not cfg.get('real_verification'):  # P13: a test Core keeps the stubs unless asked
+    ports.verifier, ports.reviewer = P.ScriptedVerifier(), P.ScriptedReview()
 if cfg.get('brain_fails'):
     class Broken:
         def call(self, *a, **k):

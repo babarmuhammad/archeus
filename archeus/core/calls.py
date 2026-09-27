@@ -68,14 +68,16 @@ class OwnCalls:
                  usage=usage)
 
     def run(self, *, purpose, source, workspace_id, project_id, prompt, schema, check,
-            workdir, context_package_id=None):
+            workdir, context_package_id=None, forbidden=None):
         """Route and make one call. `check(parsed)` is the caller's own
-        validation beyond the schema: a list of problems, empty when it holds."""
+        validation beyond the schema: a list of problems, empty when it holds.
+        `forbidden` ({harnesses, accounts}) keeps resources out of the election
+        (P13: a review is routed away from the accounts that did the work)."""
         with self.db.read() as conn:
             req, snap, readings = resources.call_snapshot(
                 conn, callers=self.callers, feed=self.usage, preference=self.preference.get(),
                 purpose=purpose, schema=schema, project_id=project_id,
-                min_tier=CALL_TIERS.get(purpose))
+                min_tier=CALL_TIERS.get(purpose), forbidden=forbidden)
         d = R.route(req, snap)
         rd = self._do(resources.record_call_route, purpose=purpose, source=dict(source),
                       workspace_id=workspace_id, project_id=project_id, requirements=req,

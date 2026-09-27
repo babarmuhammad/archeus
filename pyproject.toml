@@ -103,6 +103,7 @@ packages = [
     "archeus.core.policy",
     "archeus.core.routing",
     "archeus.core.sessions",
+    "archeus.core.verification",
     "archeus.core.world",
     "archeus.harnesses",
     "archeus.harnesses.claude_code",

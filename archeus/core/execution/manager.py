@@ -38,6 +38,12 @@ log = logging.getLogger('archeus.execution')
 HOOK = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
     __file__)))), 'harnesses', 'hook.py')
 _ENDED = states.terminal('execution')
+
+
+def mission_branch(mission_id):
+    """The mission branch a task's verified result is merged into (P13 §12.1);
+    a task branch is `archeus/<mission-id>.<task-key>` beside it."""
+    return 'archeus/%s' % mission_id
 #: stops that do not wait for a boundary
 _NOW = ('estop', 'limit', 'disarmed', 'breaker')
 PROGRESS_S = 1.0
@@ -275,7 +281,11 @@ class ExecutionManager:
             want = 'archeus/%s.%s' % (m.id, t.key)
             from ...infra.paths import archeus_home
             path = os.path.join(archeus_home(), 'worktrees', m.project_id, m.id, t.key)
-            return self.node.add_worktree(root, path, want), want
+            # P13 (p13-design-gate D12): once the mission branch holds a merged
+            # result, a later task starts from it, so it sees what it depends on
+            mission = mission_branch(m.id)
+            base = mission if self.node.branch_exists(root, mission) else 'HEAD'
+            return self.node.add_worktree(root, path, want, base=base), want
         return root, branch
 
     # ── watching a live process ──

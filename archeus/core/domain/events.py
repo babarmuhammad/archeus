@@ -74,6 +74,8 @@ TYPES = (
     ('verification.state_changed', 'verification', 'user', False, 'a verification moved state'),
     ('review.requested', 'review', 'user', False, 'a mission result awaits review'),
     ('review.state_changed', 'review', 'user', False, 'a review moved state (its verdict)'),
+    ('integration.state_changed', 'task', 'user', False,
+     "a task's merge-back into the mission branch moved (payload: from, to, reason)"),
     ('feedback.received', 'feedback', 'user', False, 'the user gave feedback'),
     ('decision.created', 'decision', 'user', False, 'a decision was recorded'),
     ('meeting.imported', 'meeting', 'user', False, 'meeting notes were imported'),

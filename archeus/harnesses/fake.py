@@ -66,6 +66,9 @@ class FakeHarness:
             # a continuation after a hand-off (p12-design-gate D18): a step marked
             # `fresh_only` (the pressure that caused the hand-off) is not repeated
             steps = [x for x in steps if not x.get('fresh_only')]
+        # a step marked `attempt: n` runs only in the task's n-th attempt (P13:
+        # a first attempt that fails and a second that is right)
+        steps = [x for x in steps if x.get('attempt') in (None, spec.attempt)]
         argv = [sys.executable, AGENT, json.dumps(steps), str(int(spec.resume_ref or 0))]
         if spec.hook_settings:
             spec = replace(spec, env=dict(spec.env, ARCHEUS_HOOK_CMD=json.dumps(

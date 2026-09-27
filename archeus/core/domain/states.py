@@ -352,7 +352,7 @@ _EDGES = {
         ('OFFLINE', 'RETIRED', 'retire'),
     ),
     # Task.integration_state: a second lifecycle of a task, not an entity
-    # (domain-model §7.3); the column arrives with the merge-back in P13
+    # (domain-model §7.3), held on the row as a secondary machine (P13 D22)
     'integration': (
         (_S, 'PENDING', None),
         ('PENDING', 'MERGING', 'task_verified'),
@@ -381,6 +381,8 @@ _GUARDED = {
     # an assessment is taken only as far as the findings it records allow
     'architecture': {'first_inspection', 'first_inspection_drift', 'reinspected_no_drift',
                      'reinspected_drift'},
+    # only the revision a passing verification checked is merged (P13 D10)
+    'integration': {'task_verified'},
 }
 
 TABLE = tuple(

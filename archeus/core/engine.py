@@ -33,7 +33,9 @@ here: intent (the intent worker, core/missions/intent.py, P7), planning (the pla
 worker, core/planning/worker.py, P8 — the engine plans only through an injected stub),
 approvals bound to action hashes (P9), routing and accounts (P10), the
 execution manager and node — adoption, pause, stop, timeouts, hand-off, the
-process registry (P11) — and real verifiers and review (P13).
+process registry (P11) — and real verification, merge-back and review (the
+verification worker, core/verification/worker.py, P13 — the engine verifies and
+reviews only through injected stubs, and otherwise only judges what it recorded).
 """
 
 import os
@@ -98,7 +100,8 @@ class Engine:
 
     `work` is `work.Work` (its `missions` carries the Policy port), `brain`
     (a stub `plan.v1` port, or None when the planning worker plans), `verifier`
-    and `reviewer` are ports, `registry` the adapter registry,
+    and `reviewer` stub ports, or None when the verification worker verifies
+    and reviews (P13 D15), `registry` the adapter registry,
     `scenarios` maps a task key to the fake agent's steps."""
 
     def __init__(self, db, *, actor, work, brain, registry, verifier, reviewer,
@@ -212,9 +215,14 @@ class Engine:
         if m.state == 'EXECUTING':
             return self._execute(m)
         if m.state == 'VERIFYING':
+            if self.verifier is None:
+                # the verification worker records the criteria (P13 D15); the
+                # engine only judges them
+                return 'advance' if self._do(self.missions.advance,
+                                             mission_id=m.id)['changed'] else None
             return self._verify_mission(m)
         if m.state == 'REVIEWING':
-            return self._review(m)
+            return None if self.reviewer is None else self._review(m)
         return None
 
     # ── executing ──
@@ -226,7 +234,7 @@ class Engine:
             plan = active_plan(r, m.id)
             tasks = [t.entity for t in rows.where(r, entities.Task, plan_id=plan.entity.id)]
         for t in tasks:
-            if t.state == 'VERIFYING':
+            if t.state == 'VERIFYING' and self.verifier is not None:
                 v = self.verifier.verify(Ref('task', t.id))
                 self._do(self.work.record_task_verification, task_id=t.id, verdict=v.state,
                          verifier=v.verifier, independent=v.independent)

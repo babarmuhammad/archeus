@@ -24,6 +24,11 @@ from ..infra.paths import ExecPaths, processes_registry, run_dir, stop_sentinel
 
 #: control flags the hook reads (P11 PAUSE/STOP; P12 HANDOFF, p12-design-gate §10.1)
 FLAGS = ('PAUSE', 'STOP', 'HANDOFF')
+#: Core's own git identity for the snapshot commit and merges (P13 §12), set per
+#: command so the user's configuration is never read or changed
+CORE_GIT_NAME, CORE_GIT_EMAIL = 'Archeus', 'archeus@localhost'
+#: the tail of a check's output kept as evidence (p13-design-gate §8.2)
+CHECK_OUTPUT_KEEP = 256 * 1024
 
 
 class LocalNode:
@@ -237,13 +242,14 @@ class LocalNode:
     # ── worktrees (§17) ──
 
     @staticmethod
-    def add_worktree(root, path, branch):
-        """`git worktree add -b <branch> <path>` from HEAD of *root*. Returns the
-        path, or raises OSError with git's reason."""
+    def add_worktree(root, path, branch, base='HEAD'):
+        """`git worktree add -b <branch> <path> <base>` in *root* (P13 D12: a
+        task forks from the mission branch once it exists). Returns the path,
+        or raises OSError with git's reason."""
         if os.path.isdir(path):
             return path             # this execution's own, made before a restart
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        r = proc.run(['git', 'worktree', 'add', '-b', branch, '--', path, 'HEAD'], cwd=root,
+        r = proc.run(['git', 'worktree', 'add', '-b', branch, '--', path, base], cwd=root,
                      timeout=60)
         if r is None or r.returncode != 0:
             raise OSError('git worktree add failed: %s' % ((r.stderr or r.stdout or '').strip()
@@ -260,3 +266,138 @@ class LocalNode:
         if listed:
             proc.git(['worktree', 'remove', '--force', '--', path], root, timeout=60)
         return listed
+
+    # ── verification and merge-back (P13, p13-design-gate §8, §12) ──
+
+    @staticmethod
+    def git_head(workdir):
+        """The commit HEAD names in *workdir*, or None (not a repository)."""
+        if not workdir or not os.path.isdir(workdir):
+            return None
+        out = (proc.git(['rev-parse', '--verify', '-q', 'HEAD'], workdir) or '').strip()
+        return out or None
+
+    @staticmethod
+    def git_resolve(root, rev):
+        out = (proc.git(['rev-parse', '--verify', '-q', rev + '^{commit}'], root) or '').strip()
+        return out or None
+
+    @staticmethod
+    def git_dirty(workdir, *, tracked_only=False):
+        """Uncommitted changes in *workdir* (untracked files too, unless
+        *tracked_only*); None when git cannot tell."""
+        args = ['status', '--porcelain=v1'] + (['--untracked-files=no'] if tracked_only else [])
+        out = proc.git(args, workdir)
+        return None if out is None else bool(out.strip())
+
+    @staticmethod
+    def git_snapshot(workdir, message):
+        """Commit everything *workdir* holds uncommitted, as Archeus (§12.2).
+        Returns the new HEAD, or raises OSError."""
+        ident = ['-c', 'user.name=' + CORE_GIT_NAME, '-c', 'user.email=' + CORE_GIT_EMAIL,
+                 '-c', 'commit.gpgsign=false']
+        for args in (['add', '-A'], ident + ['commit', '-q', '--no-verify', '-m', message]):
+            r = proc.run(['git'] + args, cwd=workdir, timeout=60)
+            if r is None or r.returncode != 0:
+                raise OSError('git %s failed: %s' % (args[-1] if args[0] == 'add' else 'commit',
+                                                    (r.stderr or r.stdout or '').strip()
+                                                    if r is not None else 'no git'))
+        return LocalNode.git_head(workdir)
+
+    @staticmethod
+    def git_merge_base(root, a, b):
+        out = (proc.git(['merge-base', a, b], root) or '').strip()
+        return out or None
+
+    @staticmethod
+    def git_is_ancestor(root, a, b):
+        r = proc.run(['git', 'merge-base', '--is-ancestor', a, b], cwd=root, timeout=15)
+        return r is not None and r.returncode == 0
+
+    @staticmethod
+    def git_numstat(root, base, rev):
+        """[(added, deleted, path)] of base..rev; None when git cannot tell."""
+        out = proc.git(['diff', '--numstat', base, rev, '--'], root, timeout=60)
+        if out is None:
+            return None
+        rows = []
+        for line in out.splitlines():
+            parts = line.split('\t', 2)
+            if len(parts) == 3:
+                rows.append((parts[0], parts[1], parts[2]))
+        return rows
+
+    @staticmethod
+    def branch_exists(root, branch):
+        return LocalNode.git_resolve(root, 'refs/heads/' + branch) is not None
+
+    @staticmethod
+    def mission_worktree(root, path, branch, base):
+        """The mission branch's Core-owned worktree: *branch* at *path*, created
+        from *base* the first time (§12.1). Returns the path or raises OSError."""
+        if os.path.isdir(path):
+            return path
+        if LocalNode.branch_exists(root, branch):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            r = proc.run(['git', 'worktree', 'add', '--', path, branch], cwd=root, timeout=60)
+            if r is None or r.returncode != 0:
+                raise OSError('git worktree add failed: %s'
+                              % ((r.stderr or r.stdout or '').strip() if r else 'no git'))
+            return path
+        return LocalNode.add_worktree(root, path, branch, base=base)
+
+    @staticmethod
+    def git_merge(workdir, rev, message):
+        """Merge commit *rev* into the branch checked out in *workdir* as Archeus
+        (§12.4): ('merged', head) or ('conflict', paths); a conflict is aborted
+        and the branch left as it was. Raises OSError when git cannot run."""
+        ident = ['-c', 'user.name=' + CORE_GIT_NAME, '-c', 'user.email=' + CORE_GIT_EMAIL,
+                 '-c', 'commit.gpgsign=false']
+        r = proc.run(['git'] + ident + ['merge', '--no-ff', '--no-edit', '-m', message, rev],
+                     cwd=workdir, timeout=120)
+        if r is None:
+            raise OSError('git merge could not run')
+        if r.returncode == 0:
+            return 'merged', LocalNode.git_head(workdir)
+        paths = (proc.git(['diff', '--name-only', '--diff-filter=U'], workdir) or '').split()
+        proc.run(['git', 'merge', '--abort'], cwd=workdir, timeout=60)
+        if not paths:
+            raise OSError('git merge failed: %s' % (r.stderr or r.stdout or '').strip())
+        return 'conflict', paths
+
+    @staticmethod
+    def run_check(workdir, argv, *, timeout, out_path, keep=CHECK_OUTPUT_KEEP):
+        """Run one verification command in *workdir* (§8.3), its output streamed
+        to *out_path*. Returns {exit_code, duration_ms, error, output (the last
+        *keep* bytes), output_bytes, truncated}. `error` is set when it could not
+        run or did not finish (a verifier fault, never the work's)."""
+        import subprocess
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        # the project's own commands, not Core's: nothing of a pytest that may be
+        # running Core (a test) leaks into them
+        env = {k: v for k, v in os.environ.items() if not k.startswith('PYTEST_')}
+        env.update(PYTHONDONTWRITEBYTECODE='1', GIT_TERMINAL_PROMPT='0')
+        t0 = time.monotonic()
+        with open(out_path, 'wb') as out:
+            try:
+                child = subprocess.Popen(argv, cwd=workdir, env=env, stdout=out,
+                                         stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                         creationflags=proc.no_window_flags,
+                                         start_new_session=os.name != 'nt')
+            except OSError as e:
+                return {'exit_code': None, 'duration_ms': 0, 'error': 'could not run: %s' % e,
+                        'output': b'', 'output_bytes': 0, 'truncated': False}
+            error = None
+            try:
+                child.wait(timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill_tree(child)
+                child.wait(30)
+                error = 'timed out after %ds' % timeout
+        size = os.path.getsize(out_path)
+        with open(out_path, 'rb') as f:
+            f.seek(max(0, size - keep))
+            tail = f.read()
+        return {'exit_code': None if error else child.returncode,
+                'duration_ms': int((time.monotonic() - t0) * 1000), 'error': error,
+                'output': tail, 'output_bytes': size, 'truncated': size > keep}

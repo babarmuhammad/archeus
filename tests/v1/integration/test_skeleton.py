@@ -669,7 +669,7 @@ def test_verification_failed_needs_a_failed_criterion(core):
     mid = core.mission()
     core.until(mid, lambda m: m.state == 'VERIFYING')
     before, head = core.row(entities.Mission, mid), core.events()[-1]['seq']
-    with pytest.raises(lifecycle.GuardFailed, match='no automatic criterion failed'):
+    with pytest.raises(lifecycle.GuardFailed, match='no criterion failed'):
         core.do(core.missions.fire, mission_id=mid, trigger='verification_failed', reason='x')
     after = core.row(entities.Mission, mid)
     assert (after.entity.state, after.version) == ('VERIFYING', before.version)

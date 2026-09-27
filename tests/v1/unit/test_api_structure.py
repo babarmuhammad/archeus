@@ -79,13 +79,16 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
                        'req.api.authorization.create_rule', 'req.api.authorization.decide',
                        'req.api.authorization.retire_rule',
                        'req.api.authorization.set_profile',
-                       'req.api.conversations.choose', 'req.api.executions.estop',
+                       'req.api.conversations.choose',
+                       'req.api.decisions.decide', 'req.api.decisions.review',
+                       'req.api.executions.estop',
                        'req.api.executions.rearm', 'req.api.executions.stop_execution',
                        'req.api.executions.stop_mission', 'req.api.missions.pause',
                        'req.api.missions.resume',
                        'resources.register_account', 'resources.set_account_enabled',
                        'resources.set_mission_resources', 'resources.set_resource_policy',
                        'sessions.close', 'sessions.link',
+                       'verification.abandon_integration',
                        'world.ack_digest',
                        'world.create_project', 'world.declare_constraint'], targets
 
@@ -224,17 +227,31 @@ P12 = {
     ('GET', '/v1/executions/{id}/checkpoints', 'observe', None),
     ('POST', '/v1/executions/{id}/handoff', 'control', 'required'),
 }
+#: P13 (p13-design-gate §21): reads, the two human decisions, one abandon; no
+#: route takes checks, a revision or a verdict
+P13 = {
+    ('GET', '/v1/missions/{id}/verifications', 'observe', None),
+    ('GET', '/v1/verifications/{id}', 'observe', None),
+    ('POST', '/v1/verifications/{id}/decide', 'approve', 'required'),
+    ('GET', '/v1/missions/{id}/reviews', 'observe', None),
+    ('POST', '/v1/missions/{id}/review', 'approve', 'required'),
+    ('POST', '/v1/tasks/{id}/integration/abandon', 'control', 'required'),
+}
 
 
-def test_the_route_table_is_exactly_the_p35b_to_p12_tables():
-    """L2, and P9's E4 / P10's / P11's / P12's boundary: no `retry` (P12 did not
-    build it, p12-design-gate D17), nothing from P14 (automations), P15 (pair,
-    device list) or P16 (/v1/now, the execution stream), and no hook route — a
-    later phase adds its rows with its own tests."""
+def test_the_route_table_is_exactly_the_p35b_to_p13_tables():
+    """L2, and P9's E4 / P10's / P11's / P12's / P13's boundary: no `retry` (P12
+    did not build it, p12-design-gate D17), nothing from P14 (automations), P15
+    (pair, device list) or P16 (/v1/now, the execution stream), and no hook route
+    — a later phase adds its rows with its own tests."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
-    assert got == EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12
+    assert got == EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12 | P13
     assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11
-                                     | P12)
+                                     | P12 | P13)
+    # P13: nothing records evidence or a verdict over HTTP
+    for r in routes.ROUTES:
+        if 'verification' in r.path and r.method == 'POST':
+            assert r.path.endswith('/decide'), r.path
     # E7: no plan route takes a command (no execution control from P8)
     assert not [r for r in routes.ROUTES if 'plan' in r.path and r.method != 'GET']
     for word in ('route/', 'pair', '/now', 'hook', 'dispatch', 'stream?', '/retry',
@@ -258,9 +275,11 @@ def test_the_route_table_is_exactly_the_p35b_to_p12_tables():
 
 def test_every_scope_is_a_coarse_credential_scope_and_approve_is_only_deciding():
     assert {r.scope for r in routes.ROUTES} <= set(auth.SCOPES) | {None}
-    # P9: the approve scope reaches exactly one route, the decision
+    # P9: the approve scope reaches only decisions — an approval's, and P13's two
+    # human decisions (a verification waiting on you, your own review)
     assert [r.path for r in routes.ROUTES if r.scope == 'approve'] == [
-        '/v1/approvals/{id}/decide']
+        '/v1/approvals/{id}/decide', '/v1/verifications/{id}/decide',
+        '/v1/missions/{id}/review']
     assert auth.LAUNCH_SCOPES == ('observe',)
     public = {r.path for r in routes.ROUTES if r.scope is None}
     assert public == {'/', '/assets/*', '/v1/devices/launch/redeem'}

@@ -19,7 +19,9 @@ hook first: when `ARCHEUS_HOOK_CMD` names one (a JSON argv) the agent runs it
 exactly as Claude Code runs a PreToolUse command — the call as JSON on stdin,
 the decision as JSON on stdout (p11-design-gate §10.6). `allow` emits the
 event; `deny` emits `tool_denied` and exits 3 (a script cannot adapt); a halt
-emits `halted` with the step to resume at and exits 0.
+emits `halted` with the step to resume at and exits 0. An allowed `Write` call
+(`input: {file_path, content}`) writes that file in the workdir (P13: the
+verifier judges the workspace, not the report).
 
 Falling off the end of the scenario exits 0. The last line is always
 `{"type": "exit", "code": n}`, so a Core that did not start the process (and
@@ -54,6 +56,19 @@ def hook(cmd, event):
     return 'halt', 'the hook gave no decision'
 
 
+def write(spec):
+    """An allowed Write tool call writes its file, relative to the workdir (the
+    process's cwd), as a real agent's would: what P13 verifies is the
+    workspace, never what the agent said it did."""
+    path, content = spec.get('file_path'), spec.get('content', '')
+    if not isinstance(path, str) or not isinstance(content, str):
+        return
+    full = os.path.join(os.getcwd(), path)
+    os.makedirs(os.path.dirname(full) or '.', exist_ok=True)
+    with open(full, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(content)
+
+
 def main(argv):
     steps = json.loads(argv[1]) if len(argv) > 1 else []
     start = int(argv[2]) if len(argv) > 2 else 0
@@ -86,6 +101,8 @@ def main(argv):
                 if kind == 'deny':
                     emit({'type': 'tool_denied', 'name': ev.get('name'), 'reason': reason})
                     return done(3)
+            if isinstance(ev, dict) and ev.get('type') == 'tool' and ev.get('name') == 'Write':
+                write(ev.get('input') or {})
             emit(ev)
         elif 'sleep' in step:
             time.sleep(float(step['sleep']))

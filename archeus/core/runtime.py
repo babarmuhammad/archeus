@@ -98,8 +98,9 @@ class RefuseStart(RuntimeError):
 @dataclass
 class Ports:
     """The ports Core runs on. The policy is the real engine (P9, D20) and the
-    router the real resource router (P10), over `usage`, the usage feed; the
-    verifier and reviewer are still stubs until P13. `executors` are the
+    router the real resource router (P10), over `usage`, the usage feed.
+    `verifier` and `reviewer` None are the verification worker (P13, D15): a
+    stub port makes the engine verify or review instead. `executors` are the
     execution adapters (P11, p11-design-gate §23): None is the real ones (Claude
     Code, behind the P9 registry gate, ADR-0021 terms and P10's enforcement
     step); a test passes `[FakeHarness()]`."""
@@ -107,8 +108,8 @@ class Ports:
     # None: the planning worker plans through `archeus_call` (P8, D5); a stub
     # `plan.v1` port makes the engine plan instead (the P3.5 tests)
     brain: object = None
-    verifier: object = field(default_factory=P.ScriptedVerifier)
-    reviewer: object = field(default_factory=P.ScriptedReview)
+    verifier: object = None
+    reviewer: object = None
     # P10: the provider usage the router reads (the legacy poller for Claude
     # Code accounts; a test passes a FakeUsageFeed)
     usage: object = field(default_factory=LegacyUsageFeed)
@@ -224,9 +225,17 @@ class EngineLoop:
 
 
 def _stamp(conn, mission_id):
-    return tuple(conn.execute('SELECT COUNT(*), COALESCE(SUM(version), 0) FROM %s '
-                              'WHERE mission_id = ?' % t, (mission_id,)).fetchone()
-                 for t in ('tasks', 'executions'))
+    """What wakes a parked mission besides its own version: its tasks and
+    executions (P11 D28), and its verifications and reviews (P13 — a criterion
+    recorded by the verification worker moves no task, yet the mission's
+    `advance` must judge it)."""
+    rows_ = [conn.execute('SELECT COUNT(*), COALESCE(SUM(version), 0) FROM %s '
+                          'WHERE mission_id = ?' % t, (mission_id,)).fetchone()
+             for t in ('tasks', 'executions', 'reviews')]
+    rows_.append(conn.execute(
+        'SELECT COUNT(*), COALESCE(SUM(v.version), 0) FROM verifications v '
+        'JOIN plans p ON p.id = v.plan_id WHERE p.mission_id = ?', (mission_id,)).fetchone())
+    return tuple(rows_)
 
 
 def paths_disarmed():
@@ -369,7 +378,7 @@ class Core:
         self.launch_clock, self.lock_retry_s = launch_clock, lock_retry_s
         self.static_dir, self.world_poll_s = static_dir, world_poll_s
         self.lock = self.db = self.loop = self.world = self.api = self.server = None
-        self.knowledge = self.intent = self.plan = self.policy = None
+        self.knowledge = self.intent = self.plan = self.policy = self.verify = None
         self.exec = self.manager = None
         self.warning = None
         self.exit_code = 0
@@ -448,6 +457,15 @@ class Core:
                                   self.db, poll_s=self.world_poll_s,
                                   on_fail=self._engine_failed, name='archeus-plan')
             self.plan.start()
+        if self.ports.verifier is None or self.ports.reviewer is None:
+            from .verification.worker import VerifyWorker
+            self.verify = WorldLoop(
+                VerifyWorker(self.db, actor=self.system, missions=self.missions,
+                             calls=own if self.ports.reviewer is None else None,
+                             verify=self.ports.verifier is None),
+                self.db, poll_s=self.world_poll_s, on_fail=self._engine_failed,
+                name='archeus-verify')
+            self.verify.start()
 
         self.policy = WorldLoop(Expiry(self.db, actor=self.system), self.db,
                                 poll_s=self.world_poll_s, on_fail=self._engine_failed,
@@ -522,6 +540,8 @@ class Core:
                 'plan': self.plan.status() if self.plan is not None
                 else {'state': 'idle', 'pending': 0},
                 'policy': self.policy.status() if self.policy is not None
+                else {'state': 'idle', 'pending': 0},
+                'verify': self.verify.status() if self.verify is not None
                 else {'state': 'idle', 'pending': 0}}
 
     def launch_url(self):
@@ -558,6 +578,8 @@ class Core:
             self.policy.stop()
         if self.plan is not None:
             self.plan.stop()
+        if self.verify is not None:
+            self.verify.stop()
         if self.intent is not None:
             self.intent.stop()
         if self.knowledge is not None:

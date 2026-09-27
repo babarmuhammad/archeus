@@ -94,6 +94,12 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/v1/approvals` | observe | — | `state`, `mission` | — | `ApprovalList` |
 | GET | `/v1/approvals/{id}` | observe | — | — | — | `Approval` |
 | POST | `/v1/approvals/{id}/decide` | approve | required | — | `DecideApprovalRequest` | `Decided` |
+| GET | `/v1/missions/{id}/verifications` | observe | — | — | — | `VerificationList` |
+| GET | `/v1/verifications/{id}` | observe | — | — | — | `Verification` |
+| POST | `/v1/verifications/{id}/decide` | approve | required | — | `DecideVerificationRequest` | `VerificationDecided` |
+| GET | `/v1/missions/{id}/reviews` | observe | — | — | — | `ReviewList` |
+| POST | `/v1/missions/{id}/review` | approve | required | — | `ReviewMissionRequest` | `ReviewRecorded` |
+| POST | `/v1/tasks/{id}/integration/abandon` | control | required | — | `AbandonIntegrationRequest` | `IntegrationAbandoned` |
 
 A launch-code device holds `observe`; the local token holds `observe control approve admin`.
 
@@ -175,6 +181,20 @@ interface ApprovalList {
 interface Card {
   type: 'mission_proposal' | 'plan' | 'approval' | 'route_explanation' | 'diff' | 'verification' | 'digest' | 'mission' | 'idea' | 'challenge' | 'clarification' | 'knowledge' | 'status';
   ref: Subject;
+  [field: string]: unknown;
+}
+```
+
+### `Check`
+
+```ts
+interface Check {
+  name: string;
+  kind: 'command' | 'git';
+  result: 'pass' | 'fail' | 'error';
+  exit_code?: number | null;
+  output_sha256?: string | null;
+  detail?: string | null;
   [field: string]: unknown;
 }
 ```
@@ -599,6 +619,15 @@ interface InspectionList {
 }
 ```
 
+### `IntegrationAbandoned`
+
+```ts
+interface IntegrationAbandoned {
+  task_id: string;
+  integration_state: string;
+}
+```
+
 ### `Intent`
 
 ```ts
@@ -737,6 +766,8 @@ interface Mission {
   plan_id?: string | null;
   plan_version?: number | null;
   planning_blocked?: Record<string, unknown> | null;
+  integration_branch?: string;
+  integration_head?: string | null;
   [field: string]: unknown;
 }
 ```
@@ -982,6 +1013,41 @@ interface ResourcePolicy {
 }
 ```
 
+### `Review`
+
+```ts
+interface Review {
+  id: string;
+  mission_id: string;
+  state: 'ACCEPTED' | 'CHANGES_REQUESTED' | 'IN_REVIEW' | 'PENDING' | 'REJECTED';
+  reviewer: string;
+  independent: boolean;
+  verdict?: string | null;
+  plan_id?: string;
+  [field: string]: unknown;
+}
+```
+
+### `ReviewList`
+
+```ts
+interface ReviewList {
+  mission_id: string;
+  reviews: Review[];
+}
+```
+
+### `ReviewRecorded`
+
+```ts
+interface ReviewRecorded {
+  review_id: string;
+  verdict: string;
+  independent: boolean;
+  [field: string]: unknown;
+}
+```
+
 ### `RouteDecision`
 
 ```ts
@@ -1135,6 +1201,7 @@ interface Task {
   state: 'AWAITING_APPROVAL' | 'BLOCKED' | 'CANCELLED' | 'FAILED' | 'PAUSED' | 'PENDING' | 'READY' | 'ROUTING' | 'RUNNING' | 'SKIPPED' | 'SUCCEEDED' | 'VERIFYING';
   depends_on: string[];
   acceptance: Record<string, unknown>[];
+  integration_state?: 'ABANDONED' | 'CONFLICT' | 'MERGED' | 'MERGING' | 'PENDING' | null;
   [field: string]: unknown;
 }
 ```
@@ -1147,6 +1214,45 @@ interface Transition {
   to: string;
   trigger: string;
   seq: number;
+}
+```
+
+### `Verification`
+
+```ts
+interface Verification {
+  id: string;
+  state: 'AWAITING_HUMAN' | 'ERROR' | 'FAILED' | 'PASSED' | 'PENDING' | 'RUNNING';
+  subject: Record<string, unknown>;
+  verifier: string;
+  plan_id?: string;
+  criterion?: number | null;
+  execution_id?: string | null;
+  revision?: string | null;
+  checks: Check[];
+  criteria: Record<string, unknown>[];
+  performed_by?: Record<string, unknown> | null;
+  decided_by?: string | null;
+  [field: string]: unknown;
+}
+```
+
+### `VerificationDecided`
+
+```ts
+interface VerificationDecided {
+  verification_id: string;
+  state: string;
+  resumed: boolean;
+}
+```
+
+### `VerificationList`
+
+```ts
+interface VerificationList {
+  mission_id: string;
+  verifications: Verification[];
 }
 ```
 
@@ -1588,6 +1694,37 @@ interface DecideApprovalRequest {
   note?: string | null;
   step_up?: string | null;
   expected_version?: number | null;
+  idempotency_key: string;
+}
+```
+
+### `DecideVerificationRequest`
+
+```ts
+interface DecideVerificationRequest {
+  decision: 'accept' | 'reject';
+  note?: string | null;
+  idempotency_key: string;
+}
+```
+
+### `ReviewMissionRequest`
+
+```ts
+interface ReviewMissionRequest {
+  verdict: 'accept' | 'changes_requested' | 'reject';
+  note?: string | null;
+  requirements_met?: string[] | null;
+  requirements_missing?: string[] | null;
+  idempotency_key: string;
+}
+```
+
+### `AbandonIntegrationRequest`
+
+```ts
+interface AbandonIntegrationRequest {
+  reason?: string | null;
   idempotency_key: string;
 }
 ```

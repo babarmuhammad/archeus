@@ -59,6 +59,16 @@ export interface Card {
   [field: string]: unknown;
 }
 
+export interface Check {
+  name: string;
+  kind: 'command' | 'git';
+  result: 'pass' | 'fail' | 'error';
+  exit_code?: number | null;
+  output_sha256?: string | null;
+  detail?: string | null;
+  [field: string]: unknown;
+}
+
 export interface Checkpoint {
   id: string;
   execution_id: string;
@@ -351,6 +361,11 @@ export interface InspectionList {
   inspections: Inspection[];
 }
 
+export interface IntegrationAbandoned {
+  task_id: string;
+  integration_state: string;
+}
+
 export interface Intent {
   id: string;
   message_id: string;
@@ -442,6 +457,8 @@ export interface Mission {
   plan_id?: string | null;
   plan_version?: number | null;
   planning_blocked?: Record<string, unknown> | null;
+  integration_branch?: string;
+  integration_head?: string | null;
   [field: string]: unknown;
 }
 
@@ -602,6 +619,29 @@ export interface ResourcePolicy {
   [field: string]: unknown;
 }
 
+export interface Review {
+  id: string;
+  mission_id: string;
+  state: 'ACCEPTED' | 'CHANGES_REQUESTED' | 'IN_REVIEW' | 'PENDING' | 'REJECTED';
+  reviewer: string;
+  independent: boolean;
+  verdict?: string | null;
+  plan_id?: string;
+  [field: string]: unknown;
+}
+
+export interface ReviewList {
+  mission_id: string;
+  reviews: Review[];
+}
+
+export interface ReviewRecorded {
+  review_id: string;
+  verdict: string;
+  independent: boolean;
+  [field: string]: unknown;
+}
+
 export interface RouteDecision {
   id: string;
   purpose?: string | null;
@@ -704,6 +744,7 @@ export interface Task {
   state: 'AWAITING_APPROVAL' | 'BLOCKED' | 'CANCELLED' | 'FAILED' | 'PAUSED' | 'PENDING' | 'READY' | 'ROUTING' | 'RUNNING' | 'SKIPPED' | 'SUCCEEDED' | 'VERIFYING';
   depends_on: string[];
   acceptance: Record<string, unknown>[];
+  integration_state?: 'ABANDONED' | 'CONFLICT' | 'MERGED' | 'MERGING' | 'PENDING' | null;
   [field: string]: unknown;
 }
 
@@ -712,6 +753,33 @@ export interface Transition {
   to: string;
   trigger: string;
   seq: number;
+}
+
+export interface Verification {
+  id: string;
+  state: 'AWAITING_HUMAN' | 'ERROR' | 'FAILED' | 'PASSED' | 'PENDING' | 'RUNNING';
+  subject: Record<string, unknown>;
+  verifier: string;
+  plan_id?: string;
+  criterion?: number | null;
+  execution_id?: string | null;
+  revision?: string | null;
+  checks: Check[];
+  criteria: Record<string, unknown>[];
+  performed_by?: Record<string, unknown> | null;
+  decided_by?: string | null;
+  [field: string]: unknown;
+}
+
+export interface VerificationDecided {
+  verification_id: string;
+  state: string;
+  resumed: boolean;
+}
+
+export interface VerificationList {
+  mission_id: string;
+  verifications: Verification[];
 }
 
 export interface Version {
@@ -992,6 +1060,25 @@ export interface DecideApprovalRequest {
   idempotency_key: string;
 }
 
+export interface DecideVerificationRequest {
+  decision: 'accept' | 'reject';
+  note?: string | null;
+  idempotency_key: string;
+}
+
+export interface ReviewMissionRequest {
+  verdict: 'accept' | 'changes_requested' | 'reject';
+  note?: string | null;
+  requirements_met?: string[] | null;
+  requirements_missing?: string[] | null;
+  idempotency_key: string;
+}
+
+export interface AbandonIntegrationRequest {
+  reason?: string | null;
+  idempotency_key: string;
+}
+
 export type Method = 'GET' | 'POST';
 export type Send = <T>(method: Method, path: string, body?: unknown) => Promise<T>;
 
@@ -1150,4 +1237,16 @@ export const api = {
     send<Approval>('GET', '/v1/approvals/' + encodeURIComponent(id)),
   decideApproval: (send: Send, id: string, body: DecideApprovalRequest) =>
     send<Decided>('POST', '/v1/approvals/' + encodeURIComponent(id) + '/decide', body),
+  listVerifications: (send: Send, id: string) =>
+    send<VerificationList>('GET', '/v1/missions/' + encodeURIComponent(id) + '/verifications'),
+  getVerification: (send: Send, id: string) =>
+    send<Verification>('GET', '/v1/verifications/' + encodeURIComponent(id)),
+  decideVerification: (send: Send, id: string, body: DecideVerificationRequest) =>
+    send<VerificationDecided>('POST', '/v1/verifications/' + encodeURIComponent(id) + '/decide', body),
+  listReviews: (send: Send, id: string) =>
+    send<ReviewList>('GET', '/v1/missions/' + encodeURIComponent(id) + '/reviews'),
+  reviewMission: (send: Send, id: string, body: ReviewMissionRequest) =>
+    send<ReviewRecorded>('POST', '/v1/missions/' + encodeURIComponent(id) + '/review', body),
+  abandonIntegration: (send: Send, id: string, body: AbandonIntegrationRequest) =>
+    send<IntegrationAbandoned>('POST', '/v1/tasks/' + encodeURIComponent(id) + '/integration/abandon', body),
 };

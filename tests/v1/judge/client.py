@@ -23,7 +23,8 @@ from typing import Optional, Protocol, Sequence, runtime_checkable
 
 from archeus.core import engine, ports
 from archeus.core.application import (authorization, commands, conversation, executions,
-                                      queries, resources, sessions, work, world)
+                                      queries, resources, sessions, verification, work,
+                                      world)
 from archeus.core.sessions.service import SessionService
 from archeus.core.application.lifecycle import GuardFailed, IllegalTrigger
 from archeus.core.application.work import PolicyDenied
@@ -130,6 +131,13 @@ class CoreClient(Protocol):
     def close_session(self, session_id: str) -> dict: ...
     def checkpoints(self, execution_id: str) -> list: ...
     def handoff_execution(self, execution_id: str) -> dict: ...
+    # ── verification and review (P13) ──
+    def verifications(self, mission_id: str) -> list: ...
+    def decide_verification(self, verification_id: str, decision: str, *,
+                            note: Optional[str] = None) -> dict: ...
+    def reviews(self, mission_id: str) -> list: ...
+    def review(self, mission_id: str, verdict: str, *, note: Optional[str] = None) -> dict: ...
+    def abandon_integration(self, task_id: str, *, reason: Optional[str] = None) -> dict: ...
     # ── the event stream ──
     def events(self, after_seq: int = 0, *, limit: Optional[int] = None) -> list: ...
 
@@ -167,7 +175,8 @@ class InProcessClient:
     home fail loudly instead of reconciling each other's children (p3.5b A1).
     """
 
-    def __init__(self, home, *, callers=None, preference=None, brain=None, usage=None):
+    def __init__(self, home, *, callers=None, preference=None, brain=None, usage=None,
+                 real_verification=False, real_review=False):
         self.home = str(home)
         self._db = self._lock = None
         self._engine = None
@@ -182,8 +191,12 @@ class InProcessClient:
         # the engine plan instead (a test about something else), never both
         self._brain = brain
         # the real policy engine (P9, D21) and the real resource router (P10)
-        # over the scripted usage feed (the rig's `usage`); the verifier and
-        # reviewer are still the stubs until P13 swaps them
+        # over the scripted usage feed (the rig's `usage`). P13: the verifier and
+        # reviewer are the scripted stubs unless the caller asks for the
+        # verification worker's (the judge asks for its review always)
+        self._real_verification = real_verification
+        self._real_review = real_verification or real_review
+        self._verify = None
         self._policy = PolicyEngine()
         self._usage = usage or FakeUsageFeed()
         self._missions = commands.Missions(policy=self._policy)
@@ -213,7 +226,8 @@ class InProcessClient:
                 work=work.Work(missions=self._missions,
                                router=resources.ResourceRouter(registry, self._usage)),
                 brain=self._brain, registry=registry, scenarios=self._scenarios,
-                verifier=ports.ScriptedVerifier(), reviewer=ports.ScriptedReview(),
+                verifier=None if self._real_verification else ports.ScriptedVerifier(),
+                reviewer=None if self._real_review else ports.ScriptedReview(),
                 usage=self._usage)
             # P11: adopt or reconcile what a previous Core left, as the runtime's
             # boot sweep does, before anything is stepped
@@ -248,6 +262,13 @@ class InProcessClient:
             self._plans = None if self._brain is not None else Planner(
                 self._db, actor=Ref('system', self._system), calls=own,
                 planning=Planning(work=self._engine.work))
+            # the verification worker (P13), pumped likewise; its boot sweep first
+            from archeus.core.verification.worker import VerifyWorker
+            self._verify = VerifyWorker(self._db, actor=Ref('system', self._system),
+                                        missions=self._missions,
+                                        calls=own if self._real_review else None,
+                                        verify=self._real_verification, timeout_s=60)
+            self._verify.sweep()
         return self._db
 
     def _actor(self):
@@ -297,6 +318,8 @@ class InProcessClient:
         except IdempotencyConflict as e:
             raise CoreClientError(400, 'invalid_request', {'field': 'idempotency_key',
                                                            'why': str(e)}) from e
+        except verification.Refused as e:       # P13, before ValueError: it is one
+            raise CoreClientError(422, 'refused', {'why': str(e)}) from e
         except ValueError as e:
             raise CoreClientError(400, 'invalid_request', {'why': str(e)}) from e
 
@@ -316,13 +339,15 @@ class InProcessClient:
         read = self._intents.pass_once()['changed']
         planned = self._plans is not None and self._plans.pass_once()['changed']
         expired = self._expiry.pass_once()['changed']
-        return not (worked or learned or read or planned or stepped or expired or ran)
+        verified = self._verify.pass_once()['changed']
+        return not (worked or learned or read or planned or stepped or expired or ran
+                    or verified)
 
     def close(self, *, drain=True):
         if self._db is not None:
             self._db.close(drain=drain)
             self._db = self._engine = self._world = self._knowledge = None   # orphans now
-            self._intents = self._plans = None
+            self._intents = self._plans = self._verify = None
             self._lock.release()
             self._lock = None
 
@@ -602,6 +627,28 @@ class InProcessClient:
         return self._run(executions.handoff_execution, {'execution_id': execution_id},
                          ids.new_ulid())
 
+    # ── verification and review (P13) ──
+
+    def verifications(self, mission_id: str) -> list:
+        return self._read(queries.list_verifications, mission_id)['verifications']
+
+    def decide_verification(self, verification_id: str, decision: str, *,
+                            note: Optional[str] = None) -> dict:
+        return self._run(verification.Decisions(self._missions).decide, {
+            'verification_id': verification_id, 'decision': decision, 'note': note or ''},
+            ids.new_ulid())
+
+    def reviews(self, mission_id: str) -> list:
+        return self._read(queries.list_reviews, mission_id)['reviews']
+
+    def review(self, mission_id: str, verdict: str, *, note: Optional[str] = None) -> dict:
+        return self._run(verification.Decisions(self._missions).review, {
+            'mission_id': mission_id, 'verdict': verdict, 'note': note or ''}, ids.new_ulid())
+
+    def abandon_integration(self, task_id: str, *, reason: Optional[str] = None) -> dict:
+        return self._run(verification.abandon_integration,
+                         {'task_id': task_id, 'reason': reason or ''}, ids.new_ulid())
+
 
 #: Operations with a real body in both bindings (P2: G1, G4; P3: the mission
 #: control verbs; P3.5: listing missions, which the SPA's two lists read).
@@ -613,7 +660,10 @@ IMPLEMENTED = ('create_mission', 'get_mission', 'list_missions', 'events', 'paus
                # P12
                'register_session', 'launch_session', 'get_session', 'list_sessions',
                'session_brief', 'resume_session', 'handoff_session', 'link_session',
-               'close_session', 'checkpoints', 'handoff_execution')
+               'close_session', 'checkpoints', 'handoff_execution',
+               # P13
+               'verifications', 'decide_verification', 'reviews', 'review',
+               'abandon_integration')
 
 # Every other operation is declared and fails loudly. Later phases replace these
 # with real bodies one by one; tests/v1/contract/test_core_client.py keeps every

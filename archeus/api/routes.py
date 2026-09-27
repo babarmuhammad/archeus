@@ -26,11 +26,17 @@ arrives as `message.created`), the intents, the challenge choice and the ideas
 and every version) and one exact plan version — no command: planning is the
 planning worker's, and editing a plan is P16's (p8-design-gate §19).
 
+P13 adds verification and review (p13-design-gate §21): a mission's
+verifications and reviews, one verification with its evidence's availability,
+a user device's decision on what waits on a human, a user's review of a
+REVIEWING mission, and abandoning a conflicting merge. No route accepts checks,
+a revision or a verdict: only the verification worker records those.
+
 Deliberately absent (a test pins the table): cancel, accept, request-changes,
 approvals (P9), executions and routing (P10, P11), `/v1/now` and the execution
 stream (P16), pairing and a device list (P15), hooks (P11), a manual
 re-inspect (the world worker covers it), `/v1/world/graph` (P18) and the rest
-of knowledge (P6).
+of knowledge (P6). A user accepts a result by reviewing it (P13).
 """
 
 import re
@@ -40,6 +46,7 @@ from ..core.application import commands, queries, world
 from ..core.application import calls as own_calls
 from ..core.application import conversation, executions, knowledge, resources
 from ..core.application import sessions
+from ..core.application import verification
 from ..core.context import assemble as context
 from ..core.knowledge import ingest
 from ..harnesses.calls import real_callers
@@ -574,6 +581,43 @@ def decide_approval(req):
     return 200, out
 
 
+def list_verifications(req):
+    with req.api.db.read() as conn:
+        return 200, queries.list_verifications(conn, req.params['id'])
+
+
+def get_verification(req):
+    with req.api.db.read() as conn:
+        return 200, queries.get_verification(conn, req.params['id'])
+
+
+def decide_verification(req):
+    b = req.body
+    return 200, req.run(req.api.decisions.decide, {
+        'verification_id': req.params['id'], 'decision': b['decision'],
+        'note': b.get('note') or ''})
+
+
+def list_reviews(req):
+    with req.api.db.read() as conn:
+        return 200, queries.list_reviews(conn, req.params['id'])
+
+
+def review_mission(req):
+    """A user's own review (state-machines §7: the user overrides a verdict by
+    recording a second review)."""
+    b = req.body
+    return 200, req.run(req.api.decisions.review, {
+        'mission_id': req.params['id'], 'verdict': b['verdict'], 'note': b.get('note') or '',
+        'requirements_met': b.get('requirements_met') or [],
+        'requirements_missing': b.get('requirements_missing') or []})
+
+
+def abandon_integration(req):
+    return 200, req.run(verification.abandon_integration, {
+        'task_id': req.params['id'], 'reason': (req.body or {}).get('reason') or ''})
+
+
 def revoke_device(req):
     out = req.run(commands.revoke_device, {'device_id': req.params['id']})
     req.api.sse.close_device(req.params['id'])          # before we answer (§3 D2)
@@ -713,6 +757,19 @@ ROUTES = (
     Route('GET', '/v1/approvals/{id}', get_approval, 'observe', None, None, 'Approval'),
     Route('POST', '/v1/approvals/{id}/decide', decide_approval, 'approve', 'required',
           schemas.DECIDE, 'Decided'),
+    # P13: verification and review (p13-design-gate §21)
+    Route('GET', '/v1/missions/{id}/verifications', list_verifications, 'observe', None, None,
+          'VerificationList'),
+    Route('GET', '/v1/verifications/{id}', get_verification, 'observe', None, None,
+          'Verification'),
+    Route('POST', '/v1/verifications/{id}/decide', decide_verification, 'approve', 'required',
+          schemas.DECIDE_VERIFICATION, 'VerificationDecided'),
+    Route('GET', '/v1/missions/{id}/reviews', list_reviews, 'observe', None, None,
+          'ReviewList'),
+    Route('POST', '/v1/missions/{id}/review', review_mission, 'approve', 'required',
+          schemas.USER_REVIEW, 'ReviewRecorded'),
+    Route('POST', '/v1/tasks/{id}/integration/abandon', abandon_integration, 'control',
+          'required', schemas.ABANDON_INTEGRATION, 'IntegrationAbandoned'),
 )
 
 #: The query parameters each GET route reads (for the docs and the client).

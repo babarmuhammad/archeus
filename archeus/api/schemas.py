@@ -37,7 +37,10 @@ TYPES = {
         # the plan in force (P8), on the single-mission view
         'plan_id': {'type': 'string', 'nullable': True},
         'plan_version': {'type': 'integer', 'nullable': True},
-        'planning_blocked': {'type': 'object', 'nullable': True}},
+        'planning_blocked': {'type': 'object', 'nullable': True},
+        # P13: the mission branch and its head as Core last recorded it
+        'integration_branch': {'type': 'string'},
+        'integration_head': {'type': 'string', 'nullable': True}},
         'required': ['id', 'state', 'title', 'objective', 'version', 'created_at',
                      'updated_at']},
     'Transition': {'type': 'object', 'properties': {
@@ -431,8 +434,54 @@ TYPES = {
         'kind': {'type': 'string', 'enum': list(entities.TASK_KINDS)},
         'state': {'type': 'string', 'enum': sorted(states.states('task'))},
         'depends_on': {'type': 'array', 'items': {'type': 'string'}},
-        'acceptance': {'type': 'array', 'items': {'type': 'object'}}},
+        'acceptance': {'type': 'array', 'items': {'type': 'object'}},
+        'integration_state': {'type': 'string', 'nullable': True,
+                              'enum': sorted(states.states('integration'))}},
         'required': ['id', 'key', 'title', 'kind', 'state', 'depends_on', 'acceptance']},
+    # P13 (p13-design-gate §21)
+    'Check': {'type': 'object', 'open': True, 'properties': {
+        'name': {'type': 'string'}, 'kind': {'type': 'string', 'enum': list(entities.CHECK_KINDS)},
+        'result': {'type': 'string', 'enum': list(entities.CHECK_RESULTS)},
+        'exit_code': {'type': 'integer', 'nullable': True},
+        'output_sha256': {'type': 'string', 'nullable': True},
+        'detail': {'type': 'string', 'nullable': True}},
+        'required': ['name', 'kind', 'result']},
+    'Verification': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'},
+        'state': {'type': 'string', 'enum': sorted(states.states('verification'))},
+        'subject': {'type': 'object'}, 'verifier': {'type': 'string'},
+        'plan_id': {'type': 'string'}, 'criterion': {'type': 'integer', 'nullable': True},
+        'execution_id': {'type': 'string', 'nullable': True},
+        'revision': {'type': 'string', 'nullable': True},
+        'checks': {'type': 'array', 'items': {'ref': 'Check'}},
+        'criteria': {'type': 'array', 'items': {'type': 'object'}},
+        'performed_by': {'type': 'object', 'nullable': True},
+        'decided_by': {'type': 'string', 'nullable': True}},
+        'required': ['id', 'state', 'subject', 'verifier', 'checks', 'criteria']},
+    'VerificationList': {'type': 'object', 'properties': {
+        'mission_id': {'type': 'string'},
+        'verifications': {'type': 'array', 'items': {'ref': 'Verification'}}},
+        'required': ['mission_id', 'verifications']},
+    'VerificationDecided': {'type': 'object', 'properties': {
+        'verification_id': {'type': 'string'}, 'state': {'type': 'string'},
+        'resumed': {'type': 'boolean'}}, 'required': ['verification_id', 'state', 'resumed']},
+    'Review': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'mission_id': {'type': 'string'},
+        'state': {'type': 'string', 'enum': sorted(states.states('review'))},
+        'reviewer': {'type': 'string'}, 'independent': {'type': 'boolean'},
+        'verdict': {'type': 'string', 'nullable': True}, 'plan_id': {'type': 'string'}},
+        'required': ['id', 'mission_id', 'state', 'reviewer', 'independent']},
+    'ReviewList': {'type': 'object', 'properties': {
+        'mission_id': {'type': 'string'},
+        'reviews': {'type': 'array', 'items': {'ref': 'Review'}}},
+        'required': ['mission_id', 'reviews']},
+    'ReviewRecorded': {'type': 'object', 'open': True, 'properties': {
+        'review_id': {'type': 'string'}, 'verdict': {'type': 'string'},
+        'independent': {'type': 'boolean'}},
+        'required': ['review_id', 'verdict', 'independent']},
+    'IntegrationAbandoned': {'type': 'object', 'properties': {
+        'task_id': {'type': 'string'}, 'integration_state': {'type': 'string'}},
+        'required': ['task_id', 'integration_state']},
     'Plan': {'type': 'object', 'open': True, 'properties': {
         'id': {'type': 'string'}, 'mission_id': {'type': 'string'},
         'plan_version': {'type': 'integer'},
@@ -609,6 +658,20 @@ DECIDE = {'type': 'object', 'properties': {
     'expected_version': {'type': 'integer', 'nullable': True}, 'idempotency_key': KEY},
     'required': ['decision', 'action_hash', 'idempotency_key']}
 _IDS = {'type': 'array', 'nullable': True, 'items': {'type': 'string'}}
+# P13 (p13-design-gate §21)
+DECIDE_VERIFICATION = {'type': 'object', 'properties': {
+    'decision': {'type': 'string', 'enum': ['accept', 'reject']},
+    'note': {'type': 'string', 'nullable': True}, 'idempotency_key': KEY},
+    'required': ['decision', 'idempotency_key']}
+_TEXTS = {'type': 'array', 'nullable': True, 'items': {'type': 'string'}}
+USER_REVIEW = {'type': 'object', 'properties': {
+    'verdict': {'type': 'string', 'enum': ['accept', 'changes_requested', 'reject']},
+    'note': {'type': 'string', 'nullable': True}, 'requirements_met': _TEXTS,
+    'requirements_missing': _TEXTS, 'idempotency_key': KEY},
+    'required': ['verdict', 'idempotency_key']}
+ABANDON_INTEGRATION = {'type': 'object', 'properties': {
+    'reason': {'type': 'string', 'nullable': True}, 'idempotency_key': KEY},
+    'required': ['idempotency_key']}
 REGISTER_ACCOUNT = {'type': 'object', 'properties': {
     'harness_id': {'type': 'string'}, 'label': {'type': 'string'},
     'auth_kind': {'type': 'string', 'enum': list(entities.AUTH_KINDS)},

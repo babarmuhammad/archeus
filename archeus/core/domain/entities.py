@@ -42,6 +42,8 @@ class Entity:
     _NONNEG   integer fields that must be >= 0 (`_MIN1` for >= 1)
     _FROZEN   fields fixed once the row exists: `Tx.update` and a transition's
               `fields` refuse them (FROZEN_ALL: every field but the state)
+    _MACHINES {machine: field} for a second lifecycle held on the row (P13 D22,
+              Task.integration_state): None until started, moved only by its edges
     None passes every check when it is the field's default (optional field).
     """
     _ID: ClassVar = None
@@ -52,6 +54,19 @@ class Entity:
     _NONNEG: ClassVar = ()
     _MIN1: ClassVar = ()
     _FROZEN: ClassVar = ()
+    _MACHINES: ClassVar = {}
+
+    @classmethod
+    def machine_field(cls, machine=None):
+        """(field, machine) of the main machine, or of the secondary *machine*."""
+        if machine is None or (cls._STATE and machine == cls._STATE[1]):
+            return cls._STATE
+        return cls._MACHINES[machine], machine
+
+    @classmethod
+    def state_fields(cls):
+        """Every field only a transition may move."""
+        return ({cls._STATE[0]} if cls._STATE else set()) | set(cls._MACHINES.values())
 
     @classmethod
     def frozen_fields(cls):
@@ -84,6 +99,9 @@ class Entity:
             if getattr(self, field) is None:
                 self._set(field, states.initial(machine))
             if getattr(self, field) not in states.states(machine):
+                bad(field, 'is not a %s state' % machine)
+        for machine, field in self._MACHINES.items():
+            if getattr(self, field) not in (None,) + states.states(machine):
                 bad(field, 'is not a %s state' % machine)
         for field in self._TEXT:
             v = getattr(self, field)
@@ -669,6 +687,11 @@ class Mission(Entity):
     # RESOURCE_PREFERENCE_KEYS. `since` is when they were set: the mission's
     # earlier placement no longer counts as affinity (§5)
     resource_preferences: dict = None
+    # P13 (p13-design-gate §11, §12): the mission branch `archeus/<id>` — the
+    # commit it was forked from, and its head as Core last recorded it; mission
+    # verifications count only at this head
+    integration_base: str = None
+    integration_head: str = None
     state: str = None
 
     def _check(self):
@@ -785,6 +808,7 @@ FAILURES = ('resource', 'task', 'auth', 'limit')
 class Task(Entity):
     _ID = 'task'
     _STATE = ('state', 'task')
+    _MACHINES = {'integration': 'integration_state'}
     _TEXT = ('key', 'title')
     _CHOICES = {'kind': TASK_KINDS, 'min_model_tier': MODEL_TIERS,
                 'workspace_mode': WORKSPACE_MODES}
@@ -823,6 +847,11 @@ class Task(Entity):
     estimate: int = 1
     # why the task FAILED, set with that move (`task_failed_retryable` reads it)
     failure_class: str = None
+    # P13 (state-machines §13): the merge-back of a worktree task's verified
+    # revision into the mission branch; None for an in-place task
+    integration_state: str = None
+    merged_revision: str = None
+    conflicts: tuple = ()
     state: str = None
 
     def _check(self):
@@ -1000,6 +1029,13 @@ class Checkpoint(Entity):
     usage: dict = None
 
 
+#: P13 evidence vocabulary (p13-design-gate §8)
+CHECK_KINDS = ('command', 'git')
+CHECK_RESULTS = ('pass', 'fail', 'error')
+CRITERION_RESULTS = ('satisfied', 'failed', 'unknown')
+REVIEW_LISTS = ('requirements_met', 'requirements_missing', 'risks', 'regressions', 'follow_up')
+
+
 @entity
 class Verification(Entity):
     _ID = 'verification'
@@ -1007,6 +1043,9 @@ class Verification(Entity):
     _CHOICES = {'verifier': ('code', 'research', 'document', 'presentation',
                              'automation', 'generic_human')}
     _REFS = {'plan_id': 'plan'}
+    # what it is bound to (p13-design-gate §8.2, §9): fixed when it starts
+    _FROZEN = ('subject', 'verifier', 'plan_id', 'criterion', 'execution_id', 'revision',
+               'base_revision', 'workspace', 'performed_by', 'verifier_version')
     id: str
     subject: Ref
     verifier: str
@@ -1015,6 +1054,29 @@ class Verification(Entity):
     plan_id: str = None
     # for a mission: the index of the success criterion it checks
     criterion: int = None
+    # P13: the execution whose end moved the task to VERIFYING (task rows only)
+    execution_id: str = None
+    # the commit observed (after the snapshot commit), or None: no repository
+    revision: str = None
+    base_revision: str = None
+    workspace: str = None
+    # the verified execution's routed identity, copied from its rows (§22)
+    performed_by: dict = None
+    verifier_version: str = None
+    # each {name, kind: command|git, argv?, result: pass|fail|error, exit_code?,
+    # duration_ms?, output_sha256?, output_bytes?, truncated?, detail}
+    checks: tuple = ()
+    # each {index, text, check: automatic|human, result: satisfied|failed|unknown}
+    criteria: tuple = ()
+    # the stream's reported model against the routed one (§22)
+    provenance: dict = None
+    # ERROR outcomes of this row, the last reason, and whether it holds the mission
+    errors: int = 0
+    error: str = None
+    holds_mission: bool = False
+    # a human's decision (AWAITING_HUMAN): the principal and their note
+    decided_by: str = None
+    note: str = None
     state: str = None
 
     def _check(self):
@@ -1026,6 +1088,25 @@ class Verification(Entity):
                 isinstance(self.criterion, int) and not isinstance(self.criterion, bool)
                 and self.criterion >= 0):
             raise ValueError('Verification.criterion is an index >= 0: %r' % (self.criterion,))
+        if self.execution_id is not None and (self.subject.kind != 'task'
+                                              or not ids.is_id(self.execution_id, 'execution')):
+            raise ValueError('Verification.execution_id is an execution of a task subject')
+        for c in self.checks:
+            if not (isinstance(c, dict) and isinstance(c.get('name'), str)
+                    and c.get('kind') in CHECK_KINDS and c.get('result') in CHECK_RESULTS):
+                raise ValueError('a check is {name, kind: %s, result: %s, ...}: %r'
+                                 % ('|'.join(CHECK_KINDS), '|'.join(CHECK_RESULTS), c))
+            sha = c.get('output_sha256')
+            if sha is not None and not _HEX64.fullmatch(sha):
+                raise ValueError('a check output is a sha256 artifact id: %r' % (sha,))
+        for c in self.criteria:
+            if not (isinstance(c, dict) and c.get('result') in CRITERION_RESULTS
+                    and c.get('check') in CRITERION_CHECKS):
+                raise ValueError('a criterion reading is {index, text, check, result: %s}: %r'
+                                 % ('|'.join(CRITERION_RESULTS), c))
+        if not (isinstance(self.errors, int) and not isinstance(self.errors, bool)
+                and self.errors >= 0):
+            raise ValueError('Verification.errors is an integer >= 0')
 
 
 @entity
@@ -1034,14 +1115,32 @@ class Review(Entity):
     _STATE = ('state', 'review')
     _TEXT = ('reviewer',)
     _CHOICES = {'verdict': ('accept', 'changes_requested', 'reject')}
-    _REFS = {'mission_id': 'mission', 'plan_id': 'plan'}
+    _REFS = {'mission_id': 'mission', 'plan_id': 'plan', 'route_decision_id': 'route_decision',
+             'principal_id': 'principal'}
     id: str
     mission_id: str
     reviewer: str
     independent: bool = False
     verdict: str = None
     plan_id: str = None         # the plan whose result was reviewed
+    # P13 (domain-model §7.7): what the reviewer found, each a list of strings
+    requirements_met: tuple = ()
+    requirements_missing: tuple = ()
+    risks: tuple = ()
+    regressions: tuple = ()
+    follow_up: tuple = ()
+    summary: str = ''
+    # a model review: its own call's decision and the resource it ran on; a
+    # user review: the principal (p13-design-gate §14.4)
+    route_decision_id: str = None
+    reviewer_resource: dict = None
+    principal_id: str = None
     state: str = None
+
+    def _check(self):
+        for k in REVIEW_LISTS:
+            if not all(isinstance(x, str) for x in getattr(self, k)):
+                raise ValueError('Review.%s is a list of strings' % k)
 
 
 @entity
@@ -1113,7 +1212,7 @@ class ContextPackage(Entity):
 # ── resources (domain-model §8) ─────────────────────────────────────────────
 
 #: What one of Archeus's own calls is for (resource-router §3; ADR-0022).
-CALL_PURPOSES = ('knowledge_extraction', 'lesson', 'generation', 'brain', 'planner')
+CALL_PURPOSES = ('knowledge_extraction', 'lesson', 'generation', 'brain', 'planner', 'review')
 #: A provider-terms answer (ADR-0021).
 TERMS = ('unknown', 'permitted', 'refused')
 #: How an account authenticates (domain-model §8.2).

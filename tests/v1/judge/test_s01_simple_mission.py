@@ -2,11 +2,10 @@
 
 The second function passes since P7 on the P3.5 stub verifier and reviewer,
 which is all it asks, so its marker came off (p7-design-gate D3). What only P13
-gives — a review independent of the work it reviews — is the third function,
-which keeps the row pending until P13.
+gives — a review independent of the work it reviews — is the third function; it
+passes since P13, whose reviewer is the `review` own call routed away from the
+account that did the work (p13-design-gate §14.3), so its marker came off too.
 """
-
-import pytest
 
 from .support import events_of, mission_states, wait_for, wait_state
 
@@ -28,7 +27,6 @@ def test_the_mission_completes_only_after_verification_and_review(client):
     assert events_of(client, 'review.requested')
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P13")
 def test_the_review_is_independent_of_the_work_it_reviews(client):
     """The P3.5 stub reviewer is `stub` and never independent; P13's reviewer is
     the brain on another model or account, or the user, and says so on the

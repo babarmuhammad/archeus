@@ -165,7 +165,7 @@ class Tx:
             raise NotFound(entity_id)
         if expected_version is not None and expected_version != row.version:
             raise VersionConflict(entity_id, expected_version, row.version)
-        forbidden = {'id'} | ({cls._STATE[0]} if cls._STATE else set())
+        forbidden = {'id'} | cls.state_fields()
         if set(fields) & forbidden:
             raise ValueError('update may not set the id or the state; an edge does')
         _refuse_frozen(cls, fields)
@@ -200,7 +200,7 @@ class Tx:
         return stored
 
     def transition(self, cls, entity_id, to, *, actor, reason, cause=(),
-                   expected_version=None, proof=None, fields=None):
+                   expected_version=None, proof=None, fields=None, machine=None):
         """Move an entity along one edge of its state machine: validate the
         edge, bump `version`, write the row and append `<machine>.state_changed`
         — all in this transaction. Returns (Row, Event). `actor` is the causing
@@ -215,12 +215,15 @@ class Tx:
         evaluates a guard and knows no machine's meaning — only the table.
 
         `fields` sets other fields of the entity in the same row write (never
-        its state), validated by the entity like any other value."""
+        its state), validated by the entity like any other value; the one
+        exception is starting a secondary machine (`_MACHINES`) at its initial
+        state. `machine` names a secondary machine of the entity; None is its
+        main one."""
         if not cls._STATE:
             raise TypeError('%s has no state machine' % cls.__name__)
         if not (isinstance(reason, str) and reason.strip()):
             raise ValueError('a transition needs a reason (the audit trail)')
-        field, machine = cls._STATE
+        field, machine = cls.machine_field(machine)
         etype = '%s.state_changed' % machine
         if etype not in ev.REGISTRY:
             raise LookupError('no event type registered for %s transitions' % machine)
@@ -254,6 +257,12 @@ class Tx:
         extra = dict(fields or {})
         if set(extra) & {field, 'id'}:
             raise ValueError('fields may not set the id or the state; the edge does')
+        of_field = {f: m for m, f in cls._MACHINES.items()}
+        for f in set(extra) & (cls.state_fields() - {field}):
+            if (f not in of_field or getattr(row.entity, f) is not None
+                    or extra[f] != states.initial(of_field[f])):
+                raise ValueError('fields may only start a secondary machine at its initial '
+                                 'state, never move one: %s' % f)
         _refuse_frozen(cls, extra)
         entity = dataclasses.replace(row.entity, **dict(extra, **{field: to}))
         name = rows.table(cls)

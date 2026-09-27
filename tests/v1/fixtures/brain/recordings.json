@@ -1,5 +1,5 @@
 {
-  "_about": "The judge's scripted brain (plan P7: 'the scripted brain and recorded fixtures'; p7-design-gate D8). Each entry answers any prompt containing `when`, first match in order, so a more specific entry comes before one whose text it contains. Handles (p1, m1, i1, k1, u1) are the ones the intent prompt gives the context package's items; Core validates every one. Nothing here is Core logic: a recording is what a model would have said. The `planner` list (P8) answers plan.v1: an entry with `when` answers the mission whose prompt contains it, and the entry without one answers every other mission with a one-task plan. Task ids are the model's own labels (Core keys the tasks t1..tN), r1/c1 the mission's requirement and constraint handles; Core validates every plan.",
+  "_about": "The judge's scripted brain (plan P7: 'the scripted brain and recorded fixtures'; p7-design-gate D8). Each entry answers any prompt containing `when`, first match in order, so a more specific entry comes before one whose text it contains. Handles (p1, m1, i1, k1, u1) are the ones the intent prompt gives the context package's items; Core validates every one. Nothing here is Core logic: a recording is what a model would have said. The `planner` list (P8) answers plan.v1: an entry with `when` answers the mission whose prompt contains it, and the entry without one answers every other mission with a one-task plan. The `review` list (P13) answers review.v1: its one entry, without `when`, accepts every mission. Task ids are the model's own labels (Core keys the tasks t1..tN), r1/c1 the mission's requirement and constraint handles; Core validates every plan.",
   "brain": [
     {"when": "The message:\nActually, use four spaces, not tabs.",
      "parsed": {"kind": "preference", "confidence": 0.9,
@@ -107,5 +107,10 @@
                            "acceptance": [{"text": "the change does what the mission asks", "check": "automatic"}],
                            "estimate": 1, "min_model_tier": "mid"}],
                 "success_criteria": [{"text": "the result passes its automatic check", "check": "automatic"}]}}
+  ],
+  "review": [
+    {"parsed": {"verdict": "accept", "summary": "The result does what the mission asks.",
+                "requirements_met": ["the mission objective"], "requirements_missing": [],
+                "risks": [], "regressions": [], "follow_up": []}}
   ]
 }

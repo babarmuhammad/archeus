@@ -47,6 +47,8 @@ class TaskFact:
     attempts: int = 0
     max_attempts: int = 2
     failure_class: str = None       # set when the task FAILED
+    # P13: the merge-back of a worktree task (None: in place, nothing to merge)
+    integration: str = None
 
 
 @dataclass(frozen=True)
@@ -79,6 +81,17 @@ class MissionFacts:
     plan_approval: str = None
     denial: str = None
     evaluated: tuple = ()
+
+
+@dataclass(frozen=True)
+class IntegrationFacts:
+    """What `task_verified` reads (P13, p13-design-gate §12.3): the task's
+    state, whether its plan is in force, the revision of its latest PASSED
+    verification of that plan (None: none), and the revision about to merge."""
+    task_state: str = None
+    plan_in_force: bool = False
+    verified_revision: str = None
+    revision: str = None
 
 
 @dataclass(frozen=True)
@@ -166,6 +179,12 @@ def all_tasks_done(mission, f):
              if t.kind != 'human' and t.state not in ('SUCCEEDED', 'SKIPPED')]
     if open_:
         return _r('all_tasks_done', False, 'tasks not done: %s' % ', '.join(open_))
+    # P13 (D11): mission verification runs on the mission branch, so every
+    # worktree task's verified result must be merged there (or abandoned)
+    unmerged = [t.key for t in f.tasks
+                if t.integration is not None and t.integration not in ('MERGED', 'ABANDONED')]
+    if unmerged:
+        return _r('all_tasks_done', False, 'results not merged yet: %s' % ', '.join(unmerged))
     return _r('all_tasks_done', True, 'every non-human task succeeded or was skipped')
 
 
@@ -184,9 +203,13 @@ def verified(mission, f):
 
 
 def awaiting_human_acceptance(mission, f):
-    if any(c.check == 'human' and c.verification != 'PASSED' for c in f.criteria):
+    # P13: a human criterion is open until decided (a rejection is decided: it
+    # is `verification_failed`), and an automatic one the verifier could not
+    # decide waits on a human too (GenericVerifier, p13-design-gate §6)
+    if any((c.check == 'human' and c.verification in (None, 'AWAITING_HUMAN', 'PENDING'))
+           or c.verification == 'AWAITING_HUMAN' for c in f.criteria):
         return _r('awaiting_human_acceptance', True, 'waiting for your acceptance')
-    return _r('awaiting_human_acceptance', False, 'no human criterion is open')
+    return _r('awaiting_human_acceptance', False, 'no criterion waits on a human')
 
 
 def replan_budget_exhausted(mission, f):
@@ -208,10 +231,13 @@ def task_failed_retryable(mission, f):
 
 
 def verification_failed(mission, f):
-    failed = [c for c in f.criteria if c.check == 'automatic' and c.verification == 'FAILED']
+    # P13: a criterion a human rejected has failed as surely as one a check did
+    failed = [c for c in f.criteria if c.verification == 'FAILED']
     if failed:
-        return _r('verification_failed', True, 'an automatic criterion failed')
-    return _r('verification_failed', False, 'no automatic criterion failed')
+        return _r('verification_failed', True, '%s criterion failed'
+                  % ('an automatic' if any(c.check == 'automatic' for c in failed)
+                     else 'a human'))
+    return _r('verification_failed', False, 'no criterion failed')
 
 
 def redispatch(mission, f):
@@ -329,6 +355,21 @@ def reinspected_drift(repo, f):
     return _assessed('reinspected_drift', repo, f, True)
 
 
+def task_verified(task, f):
+    """Integration PENDING -> MERGING: only the revision a PASSED verification
+    of the plan in force checked may be merged (P13 D10, D11)."""
+    if f.task_state != 'SUCCEEDED':
+        return _r('task_verified', False, 'the task is %s, not SUCCEEDED' % f.task_state)
+    if not f.plan_in_force:
+        return _r('task_verified', False, "the task's plan is not in force")
+    if f.verified_revision is None:
+        return _r('task_verified', False, 'no passing verification of the plan in force')
+    if f.revision != f.verified_revision:
+        return _r('task_verified', False, 'revision %s is not the verified %s'
+                  % (f.revision, f.verified_revision))
+    return _r('task_verified', True, 'merging the verified revision %s' % f.revision)
+
+
 #: (machine, trigger) -> guard. Exactly the guarded edges of states.TABLE.
 GUARDS = {
     ('mission', 'plan_auto_approved'): plan_auto_approved,
@@ -350,6 +391,7 @@ GUARDS = {
     ('architecture', 'first_inspection_drift'): first_inspection_drift,
     ('architecture', 'reinspected_no_drift'): reinspected_no_drift,
     ('architecture', 'reinspected_drift'): reinspected_drift,
+    ('integration', 'task_verified'): task_verified,
 }
 
 

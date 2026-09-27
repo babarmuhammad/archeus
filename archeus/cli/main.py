@@ -23,7 +23,7 @@ import time
 #: something else.
 DEFERRED = {'approve': 'P9', 'pair': 'P15'}
 VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair',
-         'sessions', 'resume', 'handoff')
+         'sessions', 'resume', 'handoff', 'verify', 'decide')
 
 USAGE = """usage: archeus core [--open]    run Archeus Core in the foreground (Ctrl+C stops it)
        archeus status           is Core running? (exit 0 yes, 1 no, 2 discovery failed,
@@ -46,7 +46,14 @@ USAGE = """usage: archeus core [--open]    run Archeus Core in the foreground (C
                                 since it was last used
        archeus handoff <session> --to <harness> [--account A] [--model M] [--effort E]
                                 continue a session in a new one on another harness or
-                                account, from what Archeus hands over"""
+                                account, from what Archeus hands over
+       archeus verify <mission> how a mission's work was verified and reviewed: every
+                                check, its evidence, and what waits on you (P13)
+       archeus decide <verification> accept|reject [--note N]
+                                decide a verification that waits on you
+       archeus decide <mission> accept|changes|reject [--note N]
+                                review a mission's result yourself (your review is the
+                                latest, so it overrides the model's)"""
 _TERMS = {'permit': 'permitted', 'refuse': 'refused'}
 
 
@@ -71,6 +78,10 @@ def main(argv):
         return estop()
     if verb == 'pause' and len(args) == 1 and args[0] != 'all':
         return pause(args[0])
+    if verb == 'verify' and len(args) == 1:
+        return verify(args[0])
+    if verb == 'decide' and len(args) in (2, 4) and (len(args) == 2 or args[2] == '--note'):
+        return decide(args[0], args[1], args[3] if len(args) == 4 else '')
     opts = _flags(args[1:] if verb in ('resume', 'handoff') else args)
     if verb == 'sessions' and opts is not None and set(opts) <= {'project', 'mission'}:
         return sessions(opts)
@@ -217,6 +228,65 @@ def pause(mission_id):
         print('Core refused to pause %s' % mission_id, file=sys.stderr)
         return 2
     print('%s: %s (its executions halt at their next tool call)' % (mission_id, out['state']))
+    return 0
+
+
+def verify(mission_id):
+    """Every verification of the mission and its reviews (P13 §21)."""
+    from urllib.parse import quote
+    info = _running()
+    if info is None:
+        return 1
+    m = quote(mission_id, safe='')
+    vs = _get(info, 'GET', '/v1/missions/%s/verifications' % m)
+    rs = _get(info, 'GET', '/v1/missions/%s/reviews' % m)
+    if vs is None or rs is None:
+        print('Core does not know mission %s' % mission_id, file=sys.stderr)
+        return 2
+    for v in vs['verifications']:
+        s = v['subject']
+        what = ('criterion %d' % v['criterion'] if s['kind'] == 'mission'
+                else 'task %s' % s['id'])
+        print('%s  %-14s %-13s %s at %s%s' % (
+            v['id'], v['state'], v['verifier'], what, (v.get('revision') or '-')[:12],
+            '  (waits on you)' if v['state'] == 'AWAITING_HUMAN' else ''))
+        for c in v['checks']:
+            print('    %-5s %s%s' % (c['result'], c['name'],
+                                     ' — %s' % c['detail'] if c.get('detail') else ''))
+    for r in rs['reviews']:
+        print('%s  %-17s review by %s%s: %s' % (
+            r['id'], r['state'], r['reviewer'], '' if r['independent'] else ' (not independent)',
+            r.get('summary') or r.get('verdict') or ''))
+    if not vs['verifications'] and not rs['reviews']:
+        print('nothing verified yet')
+    return 0
+
+
+_REVIEW_VERDICTS = {'accept': 'accept', 'changes': 'changes_requested', 'reject': 'reject'}
+
+
+def decide(target, verdict, note=''):
+    """A verification that waits on you (ver_…), or your own review of a
+    mission in review (msn_…)."""
+    import os
+    from urllib.parse import quote
+    info = _running()
+    if info is None:
+        return 1
+    key = {'idempotency_key': os.urandom(16).hex(), 'note': note or None}
+    t = quote(target, safe='')
+    if target.startswith('ver_') and verdict in ('accept', 'reject'):
+        out = _get(info, 'POST', '/v1/verifications/%s/decide' % t, dict(key, decision=verdict))
+    elif target.startswith('msn_') and verdict in _REVIEW_VERDICTS:
+        out = _get(info, 'POST', '/v1/missions/%s/review' % t,
+                   dict(key, verdict=_REVIEW_VERDICTS[verdict]))
+    else:
+        print(USAGE, file=sys.stderr)
+        return 2
+    if out is None:
+        print('Core refused: %s is not waiting for that decision' % target, file=sys.stderr)
+        return 2
+    print('%s: %s' % (target, out.get('state') or out.get('verdict')))
     return 0
 
 

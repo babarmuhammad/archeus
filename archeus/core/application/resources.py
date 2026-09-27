@@ -236,7 +236,7 @@ def _registered(conn, harness_ids, feed, now):
 
 
 def call_snapshot(conn, *, callers, feed, preference, purpose, schema, project_id, min_tier,
-                  now=None):
+                  now=None, forbidden=None):
     """(requirements, snapshot, readings) for one of Archeus's own calls
     (ADR-0022): every own-call adapter; a harness with no registered account
     offers its own, as its adapter names it (P6), with the adapter's reason
@@ -267,7 +267,8 @@ def call_snapshot(conn, *, callers, feed, preference, purpose, schema, project_i
            'model_required': False, 'effort': None, 'effort_required': False,
            'preferred': {'harnesses': [preference.harness] if preference.harness else [],
                          'accounts': []},
-           'forbidden': {}, 'required': {}, 'size': None, 'policy': None}
+           'forbidden': {k: sorted(v) for k, v in (forbidden or {}).items() if v},
+           'required': {}, 'size': None, 'policy': None}
     snap = {'now': _iso(now), 'harnesses': hs, 'accounts': accounts, 'terms': terms,
             'affinity': None, 'approved_fallbacks': []}
     return req, snap, readings

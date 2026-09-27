@@ -859,6 +859,21 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Tests: verifier ERROR vs FAILED, human acceptance path, independent flag, merge conflict →
   BLOCKED + follow-up task.
 - Acceptance: S6 passes end-to-end; S1 completes only after verification + review.
+  - **P13, as built** (p13-design-gate.md, D1–D22). A process that exits 0 is evidence, never
+    success: the verification worker (`archeus-verify`) runs the commands P4's inspection found
+    in the task's workspace, stores their output as artifacts, and records a Verification bound
+    to the task, the plan in force, the execution whose end moved the task to VERIFYING and the
+    revision it checked; every command re-derives that lineage and refuses a mismatch, and no
+    route writes evidence. FAILED retries or fails the task, ERROR is retried once and then the
+    mission waits for you with the reason, and nothing deterministic to run waits for your
+    acceptance. A worktree task's result is committed, and exactly the verified SHA is merged
+    into the mission branch `archeus/<mission>` (a conflict blocks the mission; you abandon or
+    resolve it); later tasks fork from that branch, and the mission's criteria are verified
+    there, counted only at the head Core recorded. An independent review (an own call routed
+    away from the executing accounts, or your own) completes the mission. Six routes,
+    `archeus verify` and `archeus decide`. S6, S1, V01–V15 and M01–M06 pass; 16/16 mutations
+    killed. The mission branch is not merged into your working branch and nothing is pushed
+    (D14). Deviations: p13-design-gate §33.
 
 **P14 — Event bus and automation**
 - Depends: P13. New: `automation/*`, templates, simulation.

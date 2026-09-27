@@ -1,6 +1,7 @@
 """Queries: read-only views over one snapshot (`Database.read()`)."""
 
 import json
+import os
 
 from ...infra.db import rows
 from ...infra.db.writer import NotFound
@@ -29,7 +30,53 @@ def get_mission(conn, mission_id):
     return dict(view(row), context_package=None if pid is None else get_context_package(conn, pid),
                 plan_id=None if plan is None else plan.entity.id,
                 plan_version=None if plan is None else plan.entity.plan_version,
-                pending_approval_id=pending[-1] if pending else None)
+                pending_approval_id=pending[-1] if pending else None,
+                # P13 (p13-design-gate §21): where the result is merged
+                integration_branch='archeus/%s' % mission_id)
+
+
+# ── verification and review (P13, p13-design-gate §21) ─────────────────────
+
+def _of_mission(conn, mission_id):
+    tasks = {r.entity.id for r in rows.where(conn, entities.Task, mission_id=mission_id)}
+    plans = {r.entity.id for r in rows.where(conn, entities.Plan, mission_id=mission_id)}
+    return tasks, plans
+
+
+def list_verifications(conn, mission_id):
+    """Every Verification of the mission — its tasks' and its criteria' — oldest first."""
+    if rows.get(conn, entities.Mission, mission_id) is None:
+        raise NotFound(mission_id)
+    tasks, plans = _of_mission(conn, mission_id)
+    out = []
+    for pid in plans:
+        for r in rows.where(conn, entities.Verification, plan_id=pid):
+            s = r.entity.subject
+            if (s.kind == 'mission' and s.id == mission_id) or (s.kind == 'task' and s.id in tasks):
+                out.append(view(r))
+    return {'mission_id': mission_id,
+            'verifications': sorted(out, key=lambda v: (v['created_at'], v['id']))}
+
+
+def get_verification(conn, verification_id):
+    """One Verification, and whether each check's evidence is still in the store."""
+    from ...infra.artifacts import store
+    row = rows.get(conn, entities.Verification, verification_id)
+    if row is None:
+        raise NotFound(verification_id)
+    out = view(row)
+    out['evidence'] = [{'check': c['name'], 'output_sha256': c.get('output_sha256'),
+                        'available': c.get('output_sha256') is not None
+                        and os.path.exists(store.path_for(c['output_sha256']))}
+                       for c in row.entity.checks]
+    return out
+
+
+def list_reviews(conn, mission_id):
+    if rows.get(conn, entities.Mission, mission_id) is None:
+        raise NotFound(mission_id)
+    rs = rows.where(conn, entities.Review, mission_id=mission_id)
+    return {'mission_id': mission_id, 'reviews': [view(r) for r in rs]}
 
 
 def get_context_package(conn, package_id):

@@ -7,6 +7,7 @@ from ...infra.db.writer import (IdempotencyConflict, InvalidTransition, NotFound
 from ...infra.eventlog.outbox import CursorExpired  # noqa: F401
 from .authorization import NotEligible, NotPermitted  # noqa: F401
 from .lifecycle import GuardFailed, IllegalTrigger  # noqa: F401
+from .verification import Refused as LineageRefused  # noqa: F401
 from .work import PolicyDenied  # noqa: F401
 from .world import Conflict  # noqa: F401
 
