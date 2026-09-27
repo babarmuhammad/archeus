@@ -925,3 +925,58 @@ alone and at the end of the whole contract + integration run in one process, giv
 commands/s on both commits (with the same leftover threads); P11's passing CI run spent 6.4–7.5 s
 on that test, about 200–235 commands/s, already at the floor. The runners are the variable, and
 the floor was not lowered.
+
+**Correction to the paragraph above: the floor was the runner's C: drive, and a controlled run
+proved it.** "The runners are the variable" was right and not yet evidence. Instrumenting CI
+(`tests/ci_diag.py`, off unless `ARCHEUS_CI_DIAG` names a file; `tools/ci_diag.py` summarises
+it) settled it in two runs:
+
+- **Before P12 too.** Rebuilt from the timestamps GitHub puts on every log line, the P2 test
+  failed on Windows in 42 of 64 jobs from P4 (`4a31f1f`) to P11. P11's 4/4 green run was the
+  exception. In every job the legacy tests (no V1 database) took 291–387 s; the jobs that
+  failed P2 had V1 integration at a median 3.9× Ubuntu's time against 2.6× for those that
+  passed.
+- **Run 36318248029 (diagnosis).** pytest's basetemp, and so every test database, lives under
+  `%TEMP%` on C:. fsync there measured 1.7–6.7 ms p50 (p95 up to 39 ms), against 0.10–0.30 ms
+  on D: (`RUNNER_TEMP`); a raw SQLite commit under the writer's own pragmas, with no Archeus
+  code, tracked C:'s fsync, and the writer's rate followed it (1.8 ms → 294/s, 3.5 ms → 183/s,
+  7 ms → 70–95/s). The P2 test alone on a fresh runner failed on two of four jobs. The CPU probe
+  did not move; one Python process was alive at the test; P12's new files launched 31 of about
+  2,600 processes and started executions in milliseconds.
+- **Run 36321061552 (controlled).** The only change: `--basetemp` on `RUNNER_TEMP` for the
+  Windows jobs. P2 in the suite went from 67–96 to **1,213–1,580 commands/s** on all four
+  (fresh runner 1,223–1,504, after the suite 1,189–1,453); SQLite commit p50 0.25–0.34 ms; V1
+  integration from 623–773 s to 247–271 s (Ubuntu 199 s); the P12 files from 94–190 s to
+  37–43 s; the Windows jobs from 24–31 min to 12–13 min. The floor, the loop, the command count
+  and SQLite's settings are unchanged, and the location is now the CI configuration.
+  (`8e20099` tried it through `PYTEST_ADDOPTS`, which pytest shell-splits: the path lost its
+  backslashes and every test errored at setup, so that run measured nothing.)
+
+14. **A race since P11 that Windows CI surfaced three ways: the tail offset read after the
+    spawn.** `_spawn` took a process's starting offset as its stream's size *after*
+    `node.spawn()` returned, so whatever the child wrote in between counted as already read.
+    E23 (and T14 the run before) timed out STARTING: the diagnostic caught the stream holding
+    `started` and `working`, 223 bytes, with the process alive for 30 s — the agent was not
+    silent, the manager had skipped its output and saw nothing new. S2 `[http]` counted one
+    hand-off of two: t3's usage report was its first output, it was skipped, and the tool call
+    after it was allowed instead of handing off. Item 13's fix was real and a different race;
+    this one is why S2 failed again after it. The offset is now read before the spawn. E83
+    (first output) and E84 (pressure hands off) hold `spawn()`'s return until the child's line is
+    in its stream, as does an S2 variant on both judge bindings (through a rig lever, since a
+    judge scenario may not import Core); each fails without the fix, and the judge variant
+    reproduces S2's exact `assert 1 == 2`. Mutants X31 (P11) and Y26 (P12).
+15. **E50 was a race against the scheduler, not a test of admission.** It proves a mission's
+    second independent task starts while the first is live, but its agents slept one second and
+    exited, so a slow second spawn (933 ms, then 1,189 ms to first output) let the first end
+    first and the test timed out with both ENDED_OK. Both agents now run until the rig's cleanup
+    kills them, so they are RUNNING together unless admission serialises them; mutant X32 (at
+    most one live execution per mission) is caught.
+16. **Two intermittent failures outside P12, found on the faster runner.** C15 (P6) asserted a
+    preview writes nothing while the knowledge pass a new project triggers could still record a
+    package: it now waits for the world and knowledge workers to have consumed every event. G01's
+    adopt test failed on macOS and Windows 3.14 in the controlled run with "nothing in this Core
+    advances"; fifteen local variants of the restart pass, so no cause is claimed. The judge's
+    `wait_state` now reports the last state of every mission, task and execution when it fails.
+
+**Mutation after these.** P12 26/26 (Y26 added), P11 32/32 (X31, X32), P10 37/37, P9 36/36,
+P8 22/22.

@@ -850,7 +850,9 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
     rebuilt when stale. Duplicate requests are idempotent by request id; a restarted Core opens no
     terminal. Ten routes, `archeus sessions / resume / handoff`, `build_launch_command` in a
     UI-free module. S2, S4's hand-off, C1–C14, H1 and R1 pass on both bindings; `retry` is not
-    built (D17). `.archeus/injected-context.md` is legacy. Deviations: p12-design-gate §31.
+    built (D17). `.archeus/injected-context.md` is legacy. Closing P12 fixed a P11 race (a
+    process's stream offset read after its spawn skipped its first output) and moved the Windows
+    CI test databases to D:, where the P2 floor holds unchanged. Deviations: p12-design-gate §31.
 
 **P13 — Verification and review**
 - Depends: P12. New: `verification/*`, integration (merge-back) machine.
