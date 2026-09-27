@@ -181,6 +181,10 @@ MUTATIONS = [
      "self._procs[e.id] = self._fresh(adapter, handle, seq, self._offset(e), None)")],
      [I + '::test_E83_output_written_before_the_spawn_returns_is_first_output',
       I + '::test_E84_pressure_written_before_the_spawn_returns_still_hands_off']),
+    ('X32', 'independent tasks of a mission serialised', [('archeus/core/engine.py',
+     "            if len(mine) >= MISSION_PARALLEL:",
+     "            if len(mine) >= 1:")],
+     [I + '::test_E50_independent_tasks_run_at_the_same_time']),
 ]
 
 

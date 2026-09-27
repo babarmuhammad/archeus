@@ -734,8 +734,12 @@ def test_E49_the_hook_halts_on_the_estop_sentinel_without_asking_core(archeus_ho
 # ── parallel ──────────────────────────────────────────────────────────────────
 
 def test_E50_independent_tasks_run_at_the_same_time(x):
-    x.scenarios.update({'a': [{'emit': {'type': 'working'}}, {'sleep': 1.0}, DONE],
-                        'b': [{'emit': {'type': 'working'}}, {'sleep': 1.0}, DONE]})
+    """Admission lets the second independent task start while the first is
+    still live. Neither agent ends on its own (the rig's cleanup kills both),
+    so the two are RUNNING together unless admission serialises them — a
+    one-second agent made this a race against a slow second spawn instead."""
+    held = [{'emit': {'type': 'working'}}, {'sleep': 60}]
+    x.scenarios.update({'a': held, 'b': held})
     mid = x.ready(task('a', 'write_repo'), task('b', 'write_repo'))
     x.drive(mid, lambda: len([e for e in x.all(entities.Execution, mission_id=mid)
                               if e.state == 'RUNNING']) == 2)
