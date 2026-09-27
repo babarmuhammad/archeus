@@ -50,7 +50,8 @@ class HarnessAdapter(Protocol):
     def stop(self, handle, *, grace_s: float) -> None: ...
     def inspect(self, handle) -> Snapshot: ...                  # tail of stream, usage so far, pressure
     def status(self, handle) -> ProcStatus: ...
-    def handoff(self, checkpoint: Checkpoint) -> ExecutionSpec: ...   # render checkpoint into next start
+    # (no handoff(): P12 builds a continuation as an ordinary INTENT whose prompt
+    #  ends with the checkpoint's rendering — p12-design-gate D19)
     def collect_result(self, handle) -> ExecutionResult: ...    # exit, summary, usage, artifacts, session ref
     # added in P6 (ADR-0022), only on adapters declaring `headless`:
     def call(self, spec: CallSpec) -> CallResult: ...           # one tool-less, ephemeral, read-only call
@@ -230,6 +231,15 @@ the dump with the checkpoint, reusing the injection mechanism).
 unless the trigger was an account problem) → new Execution with `handoff_from`. Mission and task
 states do not change. The user sees "Dashboard implementation is continuing", not "session 19
 has 83k tokens" (spec §17).
+
+**As built (P12, p12-design-gate §31).** Every end of an execution that ran derives one
+Checkpoint in the transaction of the end; a hand-off (pressure ≥ 0.75 or the PreCompact backstop,
+a provider limit, a ceiling crossing, or the user) halts at the next tool call on the node's
+`HANDOFF` flag, ends ENDED_HANDOFF uncharged, and creates the continuation through P9
+`check_dispatch` and P10 `route` in the same transaction — `attempt + 1` rather than "attempt
+unchanged" (`UNIQUE (task_id, attempt)`), charged attempts only counting against the budget.
+User sessions have their own adapter protocol (`harnesses/sessions.py`: `locate`, `launch_argv`,
+`turns`, `find`) over `claude_sessions.launch.build_launch_command`.
 
 **User-session hand-off and resume** (ADR-0023, P11–P12). A user's own session (mode
 `interactive_attached` / `manual`) resumes through its own harness's adapter from what its

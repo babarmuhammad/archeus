@@ -1,7 +1,7 @@
 # P12 design gate: session and context continuity
 
-Status: **FROZEN (P12), not yet implemented.** Written 2026-09-27 on the P11 baseline
-(`d8b5a3d`), **before any P12 code**; the as-built record and its deviations will be §31. Items are
+Status: **FROZEN (P12), implemented; as built in §31.** Written 2026-09-27 on the P11 baseline
+(`d8b5a3d`), **before any P12 code**; the as-built record and its deviations are §31. Items are
 marked as in the earlier gates:
 
 - **[spec]** already specified by the V1 architecture (plan, domain model, state machines, ADRs);
@@ -848,4 +848,64 @@ list).
 
 ## 31. As built
 
-To be written when P12 is implemented: commits, deviations from this gate, results.
+**What landed.** Migration `0010_sessions.sql` (sessions, checkpoints); the Session machine and
+the four HANDING_OFF edges (§7, D20); `core/application/sessions.py` (the session commands),
+`core/sessions/{continuity,render,service}.py`, `harnesses/sessions.py` (Claude Code, pi and fake
+session adapters), `core/execution/{checkpoint,handoff}.py`, the HANDING_OFF branch of the
+execution manager, the ten routes and three CLI verbs of §19; `build_launch_command` moved to
+`claude_sessions/launch.py`. S2's first function, S4's third, C1–C14, H1 and R1 pass on both
+bindings.
+
+**Deviations from this gate.**
+
+1. **`last_resume_request` is `last_request`.** domain-model §1 rule 7 keeps "resume" (a provider
+   flag) out of entity field names, and `test_no_entity_carries_a_provider_concept` holds it.
+2. **`session.resumed` and `session.linked` are `system` events**, and freshness (§11.2) also
+   skips `session.*`, `context_package.*` and `checkpoint.*`. A resume records a package and then
+   its own event; counted as news, every resume would stale the package it had just recorded, and
+   the owner's digest would report a user's own resume back to them.
+3. **The headless Session is written at the execution's end**, OPEN and closed in one transaction,
+   because only then does the adapter report the provider ref (`adapter_state`). Every end with a
+   process writes one, including a discarded pause and an ENDED_REJECTED end, which still gets no
+   checkpoint (§8.1).
+4. **A hand-off checkpoint's `context_package_id` is the mission's package**, a reference; the
+   continuation's prompt is the checkpoint's rendering, and P12 records no extra package for it.
+5. **S4.3's script changed after all.** §21 said its script would not change; the continuation on
+   account B replays the task's whole script and hit the rate limit again, so both steps are
+   `fresh_only`. S2 also needed two planner recordings (eight tasks and three): the judge's
+   recorded brain answers every mission it has no entry for with a one-task plan, so `t3` and `t6`
+   never existed and S2's second function had been passing vacuously.
+6. **A defect found on the way: pressure or a limit seen while STARTING.** The manager reads output
+   before it records the execution's first output, so the first pressure and limit reports arrived
+   with the execution still STARTING (no hand-off edge) and were either ignored or turned into a
+   stop. Both now record progress first.
+7. **P11's E30 and E31 were migrated**: a ceiling crossing and a limit are account-change hand-offs
+   now (D20), where P11 stopped the execution; E30's "affinity is None" became "the continuation is
+   P10's fresh choice (a fallback)".
+8. **The session routes call the session service**, not `req.run`: locate before and launch after
+   the command are Core-side work around one writer command, as the e-stop route writes its sentinel
+   around its command. `link` and `close`, which need nothing around them, are plain `req.run`s.
+9. **`Ports.terminal`**, so that no test opens a real window: every test Core records launches
+   (`JudgeTerminal`, the integration rigs' recorders).
+10. **`CoreClient` gained eleven operations** (testing-strategy §1.1), and H1 and R1 moved from §6
+    into §2 with C1–C14.
+11. **The usage-ledger write is one helper** (`executions._ledger`) shared by an ordinary end and
+    a hand-off, and P10's R33 and P11's X21/X25 snippets were retargeted to the moved code.
+12. **The real session adapters were not run against real CLIs.** Launching one opens a real
+    terminal; unit tests build their argv through `build_launch_command` with no CLI installed.
+    Exercising them live is a manual check.
+
+**Mutation.** `tools/mutate_p12.py`: 24 mutants, all killed; seven needed a test of their own
+(T17, E79, E80, E81, and T02 / T21 / T32 strengthened). P8's (22), P9's (36), P10's (37) and
+P11's (30) suites still kill everything.
+
+**A defect in every mutation runner, found by P12's full run.** A mutant the same size as the
+line it replaces, restored within the same second, left its compiled bytecode live: a `.pyc` is
+checked against the source's size and whole-second mtime, so every later run imported the
+mutant. P10's R34 (`d['account_id'] or d['account_ref']` against `d['account_ref'] or
+d['harness_id']`, 35 characters each) did exactly that, and `test_I_U2` then failed in the
+working tree while passing in a clean worktree. Worse, a mutant "killed" by a test that already
+fails proves nothing, and no runner checked. All five runners (P8–P12) now run mutants with
+`PYTHONDONTWRITEBYTECODE`, drop a restored file's cached bytecode, and refuse to start unless
+every guarding test passes on the unmutated tree. Every suite was re-run from cleared caches
+under the fixed runners; the counts above are those runs.

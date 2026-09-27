@@ -836,6 +836,21 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Tests: pressure from recorded usage, PreCompact backstop, account-change hand-off creates a new
   session, mission state unchanged.
 - Acceptance: S2, S4 (hand-off part) pass; H1 (testing-strategy §6).
+  - **P12, as built** (p12-design-gate.md, D1–D21). A Session is a durable provider conversation
+    (headless, interactive_attached, manual; OPEN / CLOSED / LOST), bound to one harness and
+    account, with a fixed workspace and project and a mission link; hand-off and interruption are
+    not states. Every end of an execution that ran derives one Checkpoint in the transaction of
+    the end; pressure (the PreCompact hook as backstop), a provider limit, a ceiling crossing or
+    the user hands a running execution off, and the continuation is created through P9 and P10 in
+    the same transaction, the task never leaving RUNNING. A user's session resumes on its own
+    harness's recorded model and effort (R1) and is handed off as a new linked session carrying a
+    Core-rendered artifact — current mission state, or the source's text turns when it continues
+    no mission — never the source's provider state (H1). Resume reads current durable state: a
+    brief of what changed since the session's own cursor (P4's digest, scoped) and a P5 package
+    rebuilt when stale. Duplicate requests are idempotent by request id; a restarted Core opens no
+    terminal. Ten routes, `archeus sessions / resume / handoff`, `build_launch_command` in a
+    UI-free module. S2, S4's hand-off, C1–C14, H1 and R1 pass on both bindings; `retry` is not
+    built (D17). `.archeus/injected-context.md` is legacy. Deviations: p12-design-gate §31.
 
 **P13 — Verification and review**
 - Depends: P12. New: `verification/*`, integration (merge-back) machine.

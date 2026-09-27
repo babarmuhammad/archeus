@@ -34,7 +34,11 @@ contract, never through Core internals. `list_knowledge` was added in P6, D8 of
 p6-design-gate.md: K1–K3 judge what a pass produced through the contract. `submit_message`
 is implemented in both bindings in P7: it posts the turn and returns Archeus's reply once Core
 has settled what the turn set in motion; the judge's default Core is offered a recorded brain,
-p7-design-gate D8.) Two bindings: `InProcessClient` (P1–P3, calls the
+p7-design-gate D8. P12 added the session and checkpoint operations — `register_session`,
+`launch_session`, `get_session`, `list_sessions`, `session_brief`, `resume_session`,
+`handoff_session`, `link_session`, `close_session`, `checkpoints`, `handoff_execution`
+(p12-design-gate §19, §21): C1–C14, H1 and R1 judge continuity through the contract, on two
+fake session harnesses and a terminal that records instead of opening.) Two bindings: `InProcessClient` (P1–P3, calls the
 application layer directly) and `HttpClient` (P3.5 onward, HTTP + SSE). Every scenario runs
 against both once HTTP exists.
 
@@ -86,6 +90,22 @@ them so nothing is tested twice under different names or missed.
 | K1 | Knowledge builds with no Claude Code installed | ADR-0022 | `test_k01_knowledge_without_claude.py` (fake `headless` harnesses only; a harness not declaring `headless` never elected; your choice honoured; the RouteDecision records the election and its rejected candidates) | P6, P10 |
 | K2 | Structured extraction across mechanisms | ADR-0006, ADR-0022 | `test_k02_structured_extraction.py` (native and prompted both valid; invalid retried once, then no knowledge; provenance names harness and model) | P6 |
 | K3 | Project setup completes after the knowledge pass | plan P6 | `test_k03_project_setup.py` (success, failure, gated by ADR-0021: the project stays usable; the result is a count) | P6 |
+| C1 | Resume after an interruption: the session is found, the mission reconstructed from current state, a fresh package assembled, the changes surfaced | p12-design-gate §9 | `test_c01_resume_continuity.py` | P12 |
+| C2 | An execution that moved while the session was away is shown as it is now | — | `test_c01_resume_continuity.py` | P12 |
+| C3 | Cross-harness hand-off: the target gets what Core renders, no provider-private state | ADR-0023 | `test_c03_session_handoff.py` | P12 |
+| C4 | A model switch keeps the session, its provider session and its mission; another harness's model is refused | ADR-0022 | `test_c04_session_model_and_concurrency.py` | P12 |
+| C5 | Two sessions on one mission: each resume reads the durable changes the other made | — | `test_c04_session_model_and_concurrency.py` | P12 |
+| C6 | A stale context package is rebuilt through P5; a fresh one is reused | P5 | `test_c04_session_model_and_concurrency.py` | P12 |
+| C7 | A session grants nothing; a continuation meets the policy as it is now (P9) | P9 | `test_c04_session_model_and_concurrency.py` | P12 |
+| C8 | Sessions survive a Core restart and no launch is replayed | G1 | `test_c01_resume_continuity.py` | P12 |
+| C9 | Hand-off lineage is explicit and the source is never written | ADR-0023 | `test_c03_session_handoff.py` | P12 |
+| C10 | No secret reaches a session, an event, a launch or an artifact | — | `test_c03_session_handoff.py` | P12 |
+| C11 | The same resume request twice changes nothing | — | `test_c01_resume_continuity.py` | P12 |
+| C12 | The same hand-off request twice makes one target | — | `test_c03_session_handoff.py` | P12 |
+| C13 | Current durable state wins over what a checkpoint recorded | — | `test_c01_resume_continuity.py` | P12 |
+| C14 | Missing context is reported, never invented; nothing to hand over is refused | — | `test_c03_session_handoff.py` | P12 |
+| H1 | Cross-harness session hand-off (moved from §6 by the P12 gate) | ADR-0023 | `test_h01_r01_session_harnesses.py` | P12 |
+| R1 | A session resumes on its own harness's configuration (moved from §6 by the P12 gate) | ADR-0023 | `test_h01_r01_session_harnesses.py` | P12 |
 | G3 | GUI/TUI/web/mobile use one backend model | SP17 | `test_g03_one_model.py` (same mission observed via SPA e2e, TUI script, CLI) | P16–P19 |
 | G4 | Audit trail exists | — | `test_g04_audit.py` (every transition has an event with actor + reason; approvals immutable) | P2 |
 | G5 | Emergency stop exists (with and without Core) | — | `test_g05_estop.py` (STOP sentinel halts fake executions; `archeus estop` kills by pid+create_time with Core down) | P11, P20 |
@@ -140,7 +160,7 @@ exist or if a judge test is not listed — the table cannot drift from the suite
 Required by the 2.8.0 behaviour of the current product (commits `94b90f9`, `26f983b`). Each
 moves into the §2 table, with its strict-xfail judge file, at its phase's design gate — not
 before, so §2 stays exactly what the judge collects. **K1–K3 moved into §2 with P6**
-(p6-design-gate §10); R1 and H1 are still scheduled here. All run on fake harnesses: a second fake
+(p6-design-gate §10); **R1 and H1 moved into §2 with P12** (p12-design-gate §21), as C1–C14 joined it. All run on fake harnesses: a second fake
 harness id added without any domain change is how "a new harness needs no new entity" is proven.
 
 | ID | Scenario | Asserts | Phase |
@@ -148,5 +168,3 @@ harness id added without any domain change is how "a new harness needs no new en
 | K1 | Knowledge builds with no Claude Code installed | only a fake `headless` harness is installed → the knowledge pass runs on it; a harness not declaring `headless` is never elected; the user's own-call choice (harness + model) is honoured when installed and capable; the RouteDecision records the election and its rejected candidates | P6 (election), P10 (router) |
 | K2 | Structured extraction across mechanisms | a `native` and a `prompted` adapter both yield items that pass Core's schema validation; invalid prompted output is retried once, then asks (ADR-0006); provenance names harness and model | P6 |
 | K3 | Project setup completes after the knowledge pass | create project → deterministic assessment → initial knowledge pass queued; the project stays usable when the pass fails or is gated by ADR-0021, and its result is counted, never assumed a collection | P6 |
-| R1 | A session resumes on its own harness's configuration | parametrised over two harnesses: the resume argv carries the session's recorded model and effort in that harness's vocabulary, and never another harness's model, effort or defaults | P11 |
-| H1 | Cross-harness session hand-off | parametrised source → target over two harnesses: the artifact carries the required context, the target adapter delivers it, a new Session has `handoff_from_session_id`, the source Session is unchanged, `session.handed_off` is recorded | P12 |
