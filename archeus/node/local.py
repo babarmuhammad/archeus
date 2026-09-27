@@ -22,7 +22,8 @@ from claude_sessions import config, proc
 from ..harnesses import base
 from ..infra.paths import ExecPaths, processes_registry, run_dir, stop_sentinel
 
-FLAGS = ('PAUSE', 'STOP')
+#: control flags the hook reads (P11 PAUSE/STOP; P12 HANDOFF, p12-design-gate §10.1)
+FLAGS = ('PAUSE', 'STOP', 'HANDOFF')
 
 
 class LocalNode:
@@ -136,6 +137,11 @@ class LocalNode:
                 pass
 
     @staticmethod
+    def precompacted(execution_id):
+        """The PreCompact backstop fired (the hook wrote it; p12-design-gate §13.1)."""
+        return os.path.exists(os.path.join(ExecPaths(execution_id).dir, 'precompact.json'))
+
+    @staticmethod
     def disarmed():
         return os.path.exists(stop_sentinel())
 
@@ -210,6 +216,23 @@ class LocalNode:
                 host = host_of(url) if '://' in url else url.split('@')[-1].split(':')[0]
                 out.setdefault(parts[0], host or None)
         return out
+
+    # ── a user's terminal (p12-design-gate §14.4) ──
+
+    @staticmethod
+    def open_terminal(argv, *, cwd, env, title=''):
+        """Open a user's session in a new terminal window: (process | None,
+        error). Launched, never supervised — the user drives it (§14.3)."""
+        return proc.spawn_terminal(argv, cwd=cwd, env=env, title=title)
+
+    @staticmethod
+    def diff_stat(workdir):
+        """`git diff --stat HEAD` lines of *workdir*, for a checkpoint; [] when it is
+        not a repository (p12-design-gate §8.2)."""
+        if not workdir or not os.path.isdir(workdir):
+            return []
+        out = proc.git(['diff', '--stat', 'HEAD'], workdir) or ''
+        return [line.strip() for line in out.splitlines() if line.strip()][:30]
 
     # ── worktrees (§17) ──
 

@@ -34,6 +34,8 @@ _ID = re.compile(r'exe_[0-9A-HJKMNP-TV-Z]{26}\Z')
 
 
 def decision(kind, reason=''):
+    if kind == 'continue':
+        return {}                   # a PreCompact answer: nothing to decide
     if kind == 'halt':
         return {'continue': False, 'stopReason': reason or 'halted by Archeus'}
     out = {'hookEventName': 'PreToolUse', 'permissionDecision': kind}
@@ -81,10 +83,21 @@ def run(payload, environ):
     if not (home and token and _ID.match(eid)):
         return 'halt', 'this process has no Archeus execution identity'
     exec_dir = os.path.join(home, 'run', 'exec', eid)
+    if payload.get('hook_event_name') == 'PreCompact':
+        # the context-pressure backstop (p12-design-gate §13.1): recorded for
+        # Core, never asked of it; compaction itself goes ahead
+        try:
+            os.makedirs(exec_dir, exist_ok=True)
+            with open(os.path.join(exec_dir, 'precompact.json'), 'w', encoding='utf-8') as f:
+                json.dump({'at': time.time(), 'trigger': payload.get('trigger')}, f)
+        except OSError:
+            pass
+        return 'continue', ''
     if os.path.exists(os.path.join(home, 'run', 'STOP')):
         _halted(exec_dir, None, 'emergency stop')
         return 'halt', 'emergency stop'
-    for flag, why in (('STOP', 'stopped by Archeus'), ('PAUSE', 'paused by Archeus')):
+    for flag, why in (('STOP', 'stopped by Archeus'), ('PAUSE', 'paused by Archeus'),
+                      ('HANDOFF', 'handing off to a fresh session')):
         if os.path.exists(os.path.join(exec_dir, flag)):
             _halted(exec_dir, None, why)
             return 'halt', why

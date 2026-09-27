@@ -60,7 +60,9 @@ def test_X2_p11_writes_no_approval_rule_or_route_decision_itself():
 def test_X3_p11_fires_no_plan_verification_review_or_mission_success():
     forbidden = {'all_tasks_done', 'verified', 'accepted', 'checks_passed', 'checks_failed_retry',
                  'checks_failed_final', 'approve', 'reject', 'plan_auto_approved', 'redispatch',
-                 'replan', 'pressure_or_account_change', 'checkpoint_written'}
+                 'replan'}
+    # `pressure_or_account_change` and `checkpoint_written` were P12's until P12
+    # built them (p12-design-gate §10.1); the rest stay P13's and the planner's
     for rel in ('archeus/core/application/executions.py', 'archeus/core/execution/manager.py'):
         assert not (_strings(rel) & forbidden), (rel, _strings(rel) & forbidden)
         for n in ast.walk(_tree(rel)):
@@ -90,8 +92,8 @@ def test_X6_the_hook_is_stdlib_only():
 
 
 def test_X7_no_later_phase_module_exists_yet():
-    for rel in ('archeus/core/execution/checkpoint.py', 'archeus/core/execution/handoff.py',
-                'archeus/core/execution/integration.py', 'archeus/harnesses/codex',
+    # execution/checkpoint.py and execution/handoff.py are P12's, built (p12-design-gate §27)
+    for rel in ('archeus/core/execution/integration.py', 'archeus/harnesses/codex',
                 'archeus/core/automation', 'archeus/node/remote.py'):
         assert not os.path.exists(os.path.join(ROOT, rel)), rel
 

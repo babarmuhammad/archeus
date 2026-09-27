@@ -208,7 +208,9 @@ def test_a_secret_never_reaches_an_event(secret):
 def test_the_breaker_and_the_uncharged_ends_are_the_gates():
     assert (X.STORM, X.STORM_WINDOW_S, X.PERSIST, X.BEAT_S, X.COOLDOWN_S) == (5, 600, 2, 60, 300)
     assert set(X.UNCHARGED) == {'user', 'estop', 'ceiling', 'limit', 'breaker',
-                                'pause_timeout', 'cancel', 'binding', 'disarmed'}
+                                'pause_timeout', 'cancel', 'binding', 'disarmed',
+                                # P12: a hand-off spends no attempt (p12-design-gate D20)
+                                'pressure', 'handoff_user'}
 
 
 # ── §10 the hook's protocol, without a process ──────────────────────────────

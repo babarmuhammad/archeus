@@ -172,6 +172,10 @@ def prompt(mission, lines, *, replan=None):
                                 ', failed: %s' % t['failure_class'] if t['failure_class']
                                 else '') for t in replan['tasks']]
         parts += ['Failed check: %s' % v for v in replan['failed']]
+        for c in replan.get('checkpoints') or ():
+            parts.append('Where %s stopped: %s; next: %s' % (
+                c['key'], '; '.join(c['open_problems']) or 'no open problem recorded',
+                c['next_action'] or 'continue from the diff'))
         if replan.get('review'):
             parts.append('Review: %s' % replan['review'])
     return '\n'.join(parts)

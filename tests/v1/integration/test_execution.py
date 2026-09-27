@@ -460,10 +460,15 @@ def test_E30_crossing_the_allocation_stops_the_execution_uncharged_and_drops_aff
         x.manager._clock['usage'] = 0.0                 # the next pass reads the feed
         x.drive(mid, ended(x, e.id))
         e = x.state(e.id)
-        assert (e.state, e.stop_reason, e.charged) == ('ENDED_KILLED', 'ceiling', False)
-        with x.db.read() as r:
-            from archeus.core.application import resources
-            assert resources._affinity(r, x.m(mid)) is None
+        # P12 (p12-design-gate §10.1, D20): an account change is continued by a
+        # checkpoint hand-off, where P11 stopped the execution; still uncharged
+        assert (e.state, e.stop_reason, e.charged) == ('ENDED_HANDOFF', 'ceiling', False)
+        # the affinity to the account it was stopped by is dropped (D10): the
+        # continuation is P10's fresh choice — here the only account, as a fallback
+        nxt = x.drive(mid, lambda: x.exe(task_id=e.task_id).handoff_from == e.id
+                      and x.exe(task_id=e.task_id))
+        (rd,) = x.all(entities.RouteDecision, id=nxt.route_decision_id)
+        assert (rd.result, rd.account_id) == ('fallback', acc)
     finally:
         x.cleanup()
 
@@ -477,7 +482,8 @@ def test_E31_a_provider_limit_marks_the_account_limited_and_stops_its_work(x):
     e = x.drive(mid, lambda: x.exe(mission_id=mid))
     x.drive(mid, ended(x, e.id))
     e = x.state(e.id)
-    assert (e.state, e.stop_reason, e.charged) == ('ENDED_KILLED', 'limit', False)
+    # P12 (p12-design-gate §10.1, D20): the limit hands the work off, uncharged
+    assert (e.state, e.stop_reason, e.charged) == ('ENDED_HANDOFF', 'limit', False)
     a = x.one(entities.Account, id=acc)
     assert (a.health, a.limited_until) == ('LIMITED', '2099-01-01T00:00:00Z')
 

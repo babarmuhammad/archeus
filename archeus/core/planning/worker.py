@@ -186,7 +186,16 @@ def _replan(conn, m, why):
               for v in rows.where(conn, entities.Verification, plan_id=prev.entity.id)
               if v.entity.state == 'FAILED']
     reviews = rows.where(conn, entities.Review, plan_id=prev.entity.id)
+    # P12 (p12-design-gate §8.4): the latest checkpoint of each task that ended
+    # FAILED or BLOCKED — its open problems and next action, as history
+    latest = {}
+    for r in rows.where(conn, entities.Checkpoint, mission_id=m.id):
+        latest[r.entity.task_id] = r.entity
+    checkpoints = [{'key': t.key, 'open_problems': list(latest[t.id].open_problems),
+                    'next_action': latest[t.id].next_action}
+                   for t in tasks if t.state in ('FAILED', 'BLOCKED') and t.id in latest]
     return {'why': why, 'plan_version': prev.entity.plan_version, 'failed': failed,
+            'checkpoints': checkpoints,
             'review': reviews[-1].entity.verdict if reviews else None,
             'tasks': [{'key': t.key, 'title': t.title, 'state': t.state,
                        'failure_class': t.failure_class} for t in tasks]}

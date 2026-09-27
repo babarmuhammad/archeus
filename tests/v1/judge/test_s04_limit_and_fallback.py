@@ -37,10 +37,12 @@ def test_fallback_follows_the_account_policy(client, rig, fallback, expect):
         wait_state(client, m['id'], expect)
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P12")
 def test_crossing_the_ceiling_mid_run_halts_at_the_boundary_and_hands_off(client, rig):
     a, b = _two_accounts(client, 'allow')
-    rig.script_harness('t1', [{'emit': {'type': 'error', 'error': 'rate_limit'}}, {'exit': 1}])
+    # the refusal happens on A only: the continuation on B does not repeat it
+    # (`fresh_only`, p12-design-gate D18, §31)
+    rig.script_harness('t1', [{'emit': {'type': 'error', 'error': 'rate_limit'}, 'fresh_only': True},
+                              {'exit': 1, 'fresh_only': True}])
     m = client.create_mission(title='Cross', objective='Two tasks')
     wait_state(client, m['id'], 'COMPLETED', timeout=120)
     accounts = [e['payload']['account_id'] for e in events_of(client, 'execution.started')]

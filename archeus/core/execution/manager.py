@@ -20,7 +20,6 @@ neither.
 
 import logging
 import os
-import re
 import secrets
 import sys
 import time
@@ -31,6 +30,7 @@ from ...infra.paths import ExecPaths
 from ...node.local import LocalNode
 from ..application import errors, executions as X, resources
 from ..domain import entities, states
+from ..redact import redact  # noqa: F401  (p11-design-gate §19; shared since P12)
 from . import canonical
 
 log = logging.getLogger('archeus.execution')
@@ -41,24 +41,18 @@ _ENDED = states.terminal('execution')
 #: stops that do not wait for a boundary
 _NOW = ('estop', 'limit', 'disarmed', 'breaker')
 PROGRESS_S = 1.0
+#: context pressure that hands an execution off (execution-architecture §6), and
+#: what the PreCompact backstop counts as (p12-design-gate §13.1)
+PRESSURE_HANDOFF, PRESSURE_PRECOMPACT = 0.75, 0.9
 #: how long a pause may wait for a tool boundary before it becomes a stop (§13)
 PAUSE_TIMEOUT_S = 120.0
 ACCOUNTS_S = 5.0
 USAGE_S = 30.0
-#: what a progress event may never carry (p11-design-gate §19)
-_SECRET = re.compile(r'(hook_[A-Za-z0-9_\-]{8,}|dev_[A-Za-z0-9_\-]{8,}|node_[A-Za-z0-9_\-]{8,}'
-                     r'|sk-[A-Za-z0-9_\-]{8,}|gh[pousr]_[A-Za-z0-9]{8,}|github_pat_[A-Za-z0-9_]{8,}'
-                     r'|AKIA[0-9A-Z]{12,}|(?i:bearer)\s+[A-Za-z0-9._\-]{8,})')
-
 #: the environment every execution runs in (execution-architecture §2): it can
 #: commit locally, it cannot push with the user's credentials
 CAPABILITY_ENV = {'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': '', 'SSH_AUTH_SOCK': None,
                   'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'credential.helper',
                   'GIT_CONFIG_VALUE_0': ''}
-
-
-def redact(text):
-    return _SECRET.sub('[redacted]', text)
 
 
 def line_of(ev):
@@ -131,7 +125,7 @@ class ExecutionManager:
             if e.process_seq == 0:
                 return self._first(e, m, disarmed)
             return self._reconcile_one(e, disarmed)       # prepared, never recorded
-        if s in ('STARTING', 'RUNNING', 'PAUSING', 'STOPPING'):
+        if s in ('STARTING', 'RUNNING', 'PAUSING', 'STOPPING', 'HANDING_OFF'):
             if e.id not in self._procs:
                 return self._reconcile_one(e, disarmed)
             return self._watch(e, m, disarmed)
@@ -187,14 +181,20 @@ class ExecutionManager:
                      stop_reason='disarmed')
             return True
         home = account.entity.home_ref if account is not None else None
+        prompt, continuation = '%s\n\n%s\n' % (m.objective, t.title), 0
+        if e.handoff_from is not None:
+            # a continuation (p12-design-gate §10.1): the checkpoint of the
+            # execution it continues is the variable suffix of its prompt
+            prompt, continuation = self._continuation(e, prompt)
         spec = base.ExecutionSpec(
-            execution_id=e.id, prompt='%s\n\n%s\n' % (m.objective, t.title), workdir=workdir,
+            execution_id=e.id, prompt=prompt, workdir=workdir,
             attempt=e.attempt, model=e.model, effort=e.effort, process_seq=seq,
             account=base.AccountRef(e.account_id or e.harness_id, home),
             env=dict(CAPABILITY_ENV, ARCHEUS_HOOK_TOKEN=token),
             hook_settings=(sys.executable, HOOK),
             task_contract={'key': t.key, 'kind': t.kind, 'estimate': t.estimate,
                            'action_classes': list(t.action_classes),
+                           'continuation': continuation,
                            'fake_scenario': self.scenarios.get(t.key, _DEFAULT)})
         try:
             handle = self.node.spawn(adapter, spec, resume_state=resume_state)
@@ -202,9 +202,7 @@ class ExecutionManager:
             self._do(X.refuse, execution_id=e.id, reason='the process did not start: %s' % err,
                      stop_reason='binding')
             return True
-        self._procs[e.id] = {'adapter': adapter, 'handle': handle, 'seq': seq,
-                             'offset': self._offset(e), 'reported': 0.0, 'events': 0,
-                             'lines': [], 'usage': None, 'since': None, 'flagged': False}
+        self._procs[e.id] = self._fresh(adapter, handle, seq, self._offset(e), None)
         self._do(X.record_process, execution_id=e.id, pid=handle.pid,
                  create_time=handle.create_time, process_seq=seq)
         if self.node.disarmed():            # the e-stop raced the spawn: it loses
@@ -218,6 +216,41 @@ class ExecutionManager:
             return os.path.getsize(ExecPaths(e.id).stream)
         except OSError:
             return 0
+
+    @staticmethod
+    def _fresh(adapter, handle, seq, offset, usage):
+        """What the manager keeps about one live process."""
+        return {'adapter': adapter, 'handle': handle, 'seq': seq, 'offset': offset,
+                'reported': 0.0, 'events': 0, 'lines': [], 'usage': usage, 'since': None,
+                'flagged': False, 'decisions': [], 'last_error': None, 'pressure': None,
+                'window': None}
+
+    def _continuation(self, e, prompt):
+        """(prompt with the checkpoint suffix, hand-offs before this one)."""
+        from . import checkpoint
+        n, cur = 0, e
+        with self.db.read() as r:
+            cp = checkpoint.of_execution(r, e.handoff_from)
+            while cur is not None and cur.handoff_from is not None and n < 1000:
+                n += 1
+                row = rows.get(r, entities.Execution, cur.handoff_from)
+                cur = row.entity if row else None
+        if cp is None:
+            return prompt, n
+        return '%s\n\n%s\n' % (prompt.rstrip('\n'), checkpoint.text_of(cp)), n
+
+    def _window(self, e, adapter):
+        """The context window of the execution's model (§13.1): the offer's,
+        else the smallest the harness declares; None when it declares none."""
+        try:
+            models = adapter.capabilities(None).models
+        except Exception:
+            return None
+        known = {m.id: m.context_window for m in models
+                 if not isinstance(m, str) and m.context_window}
+        if e.model in known:
+            return known[e.model]
+        return min(known.values()) if known else None
 
     def _workspace(self, e, m, t):
         """(workdir, branch) — §17. Recorded before the process starts."""
@@ -247,6 +280,9 @@ class ExecutionManager:
         p = self._procs[e.id]
         adapter, handle = p['adapter'], p['handle']
         did = self._tail(e, p)
+        if self.node.precompacted(e.id) and (p['pressure'] or 0.0) < PRESSURE_PRECOMPACT:
+            p['pressure'] = PRESSURE_PRECOMPACT         # the PreCompact backstop
+            self._maybe_handoff(e, p)
         did |= self._hooks(e, p, disarmed)
         did |= self._control(e, m, p, disarmed)
         st = adapter.status(handle)
@@ -265,8 +301,11 @@ class ExecutionManager:
             p['lines'].append(line_of(ev))
             if isinstance(ev.get('usage'), dict):
                 p['usage'] = ev['usage']
+                self._pressure(e, p, ev['usage'])
+            _facts_from(ev, p)
             if ev.get('type') == 'limit' and e.account_id is not None and not p.get('limit'):
                 p['limit'] = True
+                self._progress(e, p)        # output was read: RUNNING before it hands off
                 self._do(X.account_limited, account_id=e.account_id,
                          resets_at=ev.get('resets_at'))
                 self._stop_account(e.account_id, 'limit', 'the provider refused for a limit')
@@ -274,11 +313,35 @@ class ExecutionManager:
             self._progress(e, p)
         return True
 
+    def _pressure(self, e, p, usage):
+        """Context pressure from a usage report (§13.1); at the threshold a
+        running execution is handed off."""
+        if p['window'] is None:
+            p['window'] = self._window(e, p['adapter']) or 0
+        if not p['window']:
+            return
+        used = sum(usage.get(k) or 0 for k in ('input_tokens', 'cache_read_input_tokens',
+                                               'cache_creation_input_tokens'))
+        p['pressure'] = max(p['pressure'] or 0.0, used / float(p['window']))
+        self._maybe_handoff(e, p)
+
+    def _maybe_handoff(self, e, p):
+        if (p['pressure'] or 0.0) < PRESSURE_HANDOFF or p.get('handing_off'):
+            return
+        self._progress(e, p)                # output was read: RUNNING before it hands off
+        e = self._reload(e)
+        if e.state != 'RUNNING':
+            return
+        p['handing_off'] = True
+        self._do(X.request_handoff, execution_id=e.id, stop_reason='pressure',
+                 reason='context pressure %.2f reached %.2f' % (p['pressure'],
+                                                                  PRESSURE_HANDOFF))
+
     def _progress(self, e, p):
         if not p['events'] and p['offset'] == e.stream_offset:
             return
         self._do(X.record_progress, execution_id=e.id, offset=p['offset'], events=p['events'],
-                 lines=p['lines'], usage=p['usage'])
+                 lines=p['lines'], usage=p['usage'], pressure=p.get('pressure'))
         p['reported'], p['events'], p['lines'] = time.monotonic(), 0, []
 
     def _hooks(self, e, p, disarmed):
@@ -308,25 +371,33 @@ class ExecutionManager:
 
     def _control(self, e, m, p, disarmed):
         state = e.state
-        if disarmed and state in ('STARTING', 'RUNNING', 'PAUSING'):
+        if disarmed and state in ('STARTING', 'RUNNING', 'PAUSING', 'HANDING_OFF'):
             self._do(X.stop, execution_id=e.id, reason='emergency stop', stop_reason='estop')
             state, e = 'STOPPING', self._reload(e)
-        elif state in ('STARTING', 'RUNNING', 'PAUSING') and (m is None or m.state in (
+        elif state in ('STARTING', 'RUNNING', 'PAUSING', 'HANDING_OFF') and (
+                m is None or m.state in (
                 'CANCELLED', 'FAILED', 'COMPLETED')):
             self._do(X.stop, execution_id=e.id, reason='the mission ended', stop_reason='cancel')
             state, e = 'STOPPING', self._reload(e)
         elif state == 'RUNNING' and m is not None and m.state == 'PAUSED':
             self._do(X.pause_work, mission_id=m.id)
             state, e = 'PAUSING', self._reload(e)
-        if state not in ('PAUSING', 'STOPPING'):
+        if state not in ('PAUSING', 'STOPPING', 'HANDING_OFF'):
             p['since'], p['flagged'] = None, False
             return False
         if p['since'] is None:
             p['since'] = time.monotonic()
         if not p['flagged']:
-            self.node.set_flag(e.id, 'PAUSE' if state == 'PAUSING' else 'STOP')
+            self.node.set_flag(e.id, {'PAUSING': 'PAUSE', 'HANDING_OFF': 'HANDOFF'}.get(
+                state, 'STOP'))
             p['flagged'] = True
         waited = time.monotonic() - p['since']
+        if state == 'HANDING_OFF':
+            # the checkpoint is Core's: a hand-off that meets no tool boundary,
+            # or one for an account change, needs nothing more from the process
+            if e.stop_reason in _NOW or waited >= self.pause_timeout:
+                self.node.kill(p['adapter'], p['handle'])
+            return True
         if state == 'PAUSING' and waited >= self.pause_timeout:
             self._do(X.pause_timed_out, execution_id=e.id)
             p['since'], p['flagged'] = time.monotonic(), False
@@ -350,11 +421,35 @@ class ExecutionManager:
         self._procs.pop(e.id, None)
         if e.state in _ENDED:
             return
+        facts = self._facts(e, p)
+        usage = dict(result.usage or {}) or p['usage']
+        if e.state == 'RUNNING' and result.failure == 'limit' and e.account_id is not None:
+            # a limit seen only at the exit (p12-design-gate §10.1): the account
+            # is LIMITED and the work continues elsewhere, by hand-off
+            self._do(X.account_limited, account_id=e.account_id)
+            self._do(X.request_handoff, execution_id=e.id, stop_reason='limit',
+                     reason='the provider refused for a limit')
+            e = self._reload(e)
+        clean = st.exit_code == 0 and not result.halted and result.exit_reason != 'killed'
+        if e.state == 'HANDING_OFF' and not clean:
+            self._do(X.record_handoff, policy=self.policy, missions=self.missions,
+                     router=self.router, execution_id=e.id, now=time.time(),
+                     exit_code=st.exit_code, usage=usage,
+                     adapter_state=result.adapter_state, final_offset=p['offset'],
+                     facts=facts)
+            return
         self._do(X.record_end, execution_id=e.id, exit_code=st.exit_code,
                  killed=result.exit_reason == 'killed', halted=result.halted,
-                 failure=result.failure, usage=dict(result.usage or {}) or p['usage'],
+                 failure=result.failure, usage=usage,
                  summary=result.reported_summary, adapter_state=result.adapter_state,
-                 final_offset=p['offset'], output=p['offset'] > 0)
+                 final_offset=p['offset'], output=p['offset'] > 0, facts=facts)
+
+    def _facts(self, e, p):
+        """What the checkpoint needs from outside the transaction (§8.2)."""
+        workdir = e.workdir or ExecPaths(e.id).dir
+        return {'files_changed': self.node.diff_stat(workdir) if e.branch or e.workdir
+                else [], 'decisions': list(p.get('decisions') or [])[-30:],
+                'last_error': p.get('last_error')}
 
     # ── halted executions ──
 
@@ -405,7 +500,12 @@ class ExecutionManager:
                                                           'INTENT', 'PAUSED',
                                                           'AWAITING_APPROVAL'):
                 try:
-                    self._do(X.stop, execution_id=x.id, reason=why, stop_reason=reason)
+                    if x.state == 'RUNNING' and reason in X.HANDOFF_CAUSES:
+                        # an account change is continued elsewhere (§10.1)
+                        self._do(X.request_handoff, execution_id=x.id, stop_reason=reason,
+                                 reason=why)
+                    else:
+                        self._do(X.stop, execution_id=x.id, reason=why, stop_reason=reason)
                 except errors.LOST_RACE:
                     pass
 
@@ -510,20 +610,17 @@ class ExecutionManager:
                                  'process_seq': e.process_seq, 'ended_at': time.time()})
 
     def _adopt(self, e, adapter, handle):
-        self._procs[e.id] = {'adapter': adapter, 'handle': handle, 'seq': e.process_seq,
-                             'offset': e.stream_offset, 'reported': 0.0, 'events': 0,
-                             'lines': [], 'usage': e.usage, 'since': None, 'flagged': False}
+        self._procs[e.id] = self._fresh(adapter, handle, e.process_seq, e.stream_offset,
+                                        e.usage)
         self._do(X.adopted, execution_id=e.id, pid=handle.pid, offset=e.stream_offset)
 
     def _collect_gone(self, e, adapter, handle):
         """The process is gone: collect what it left, as if observed (§15.3). An
         exit nobody can read is LOST, never success."""
         st = adapter.status(handle)
-        p = {'adapter': adapter, 'handle': handle, 'seq': e.process_seq,
-             'offset': e.stream_offset, 'reported': 0.0, 'events': 0, 'lines': [],
-             'usage': e.usage}
+        p = self._fresh(adapter, handle, e.process_seq, e.stream_offset, e.usage)
         if st.state != 'exited' or st.exit_code is None:
-            if e.state == 'STOPPING':
+            if e.state in ('STOPPING', 'HANDING_OFF'):
                 self._collect(e, p, base.ProcStatus('exited', None))
                 return True
             if e.state == 'PAUSING':
@@ -535,6 +632,19 @@ class ExecutionManager:
             return True
         self._collect(e, p, st)
         return True
+
+
+def _facts_from(ev, p):
+    """DECISION: lines and the last error, collected as the stream is read."""
+    t = ev.get('type')
+    text = ev.get('text') if isinstance(ev.get('text'), str) else ''
+    if t == 'assistant' and 'DECISION:' in text:
+        for line in text.splitlines():
+            if line.strip().startswith('DECISION:'):
+                p['decisions'].append(redact(line.strip()[len('DECISION:'):].strip())[:300])
+    if t in ('error', 'stderr', 'limit'):
+        p['last_error'] = redact(str(ev.get('text') or ev.get('error') or ev.get('kind')
+                                     or t))[:300]
 
 
 def _inside(path, root):

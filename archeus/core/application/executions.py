@@ -33,10 +33,10 @@ from .commands import active_plan
 
 #: live states: a process may exist, or the execution may still get one
 LIVE = ('INTENT', 'STARTING', 'RUNNING', 'AWAITING_APPROVAL', 'PAUSING', 'PAUSED',
-        'STOPPING', 'LOST')
+        'STOPPING', 'LOST', 'HANDING_OFF')
 #: ends the task does not own: they spend no attempt (D9)
 UNCHARGED = ('user', 'estop', 'ceiling', 'limit', 'breaker', 'pause_timeout', 'cancel',
-             'binding', 'disarmed')
+             'binding', 'disarmed', 'pressure', 'handoff_user')
 #: how an end is reported, by the state it is observed in (§8.1)
 _EXIT = {'ok': 'exited_success', 'error': 'exited_error'}
 _USAGE_KEYS = ('tokens_in', 'tokens_out', 'cache_read', 'cache_write', 'cost_usd')
@@ -116,7 +116,7 @@ def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, p
     return {'execution_id': e.id, 'process_seq': process_seq, 'refused': None}
 
 
-def refuse(tx, *, actor, execution_id, reason, stop_reason):
+def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None):
     """An execution with no process ends here: INTENT never spawned
     (ABANDONED), a paused or waiting one is discarded (ENDED_KILLED); either way
     uncharged, and the task goes back to READY."""
@@ -128,6 +128,7 @@ def refuse(tx, *, actor, execution_id, reason, stop_reason):
                   dict(fields, exit_reason='abandoned'))
     else:
         e = _fire(tx, e.id, 'discarded', actor, reason, dict(fields, exit_reason='killed'))
+        e = _finish(tx, actor, e, facts)
         _event(tx, 'execution.ended', e, actor, _end_payload(e))
     return _respond(tx, actor, e, reason)
 
@@ -153,7 +154,8 @@ def record_process(tx, *, actor, execution_id, pid, create_time, process_seq):
     return {'execution_id': e.id, 'state': e.state, 'seq': ev.seq}
 
 
-def record_progress(tx, *, actor, execution_id, offset, events=0, lines=(), usage=None):
+def record_progress(tx, *, actor, execution_id, offset, events=0, lines=(), usage=None,
+                    pressure=None):
     """New stream output was read up to *offset*: the offset (never backwards),
     the cumulative usage, `first_output`, and `execution.progress`."""
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
@@ -165,7 +167,9 @@ def record_progress(tx, *, actor, execution_id, offset, events=0, lines=(), usag
     got = {'stream_offset': offset}
     if usage:
         got['usage'] = _usage(usage)
-    if offset == e.stream_offset and got.get('usage', e.usage) == e.usage:
+    if pressure is not None:
+        got['pressure'] = round(float(pressure), 4)
+    if offset == e.stream_offset and got.get('usage', e.usage) == e.usage             and got.get('pressure', e.pressure) == e.pressure:
         return {'execution_id': e.id, 'offset': offset}          # nothing new
     tx.update(entities.Execution, e.id, got, actor=actor)
     last, size = [], 0
@@ -201,7 +205,8 @@ def _end_payload(e):
 
 
 def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False, failure=None,
-               usage=None, summary='', adapter_state=None, final_offset=None, output=True):
+               usage=None, summary='', adapter_state=None, final_offset=None, output=True,
+               facts=None):
     """A process of *execution_id* is gone. Which edge that is depends on the
     state it was observed in; a second report of the same end is an invalid
     transition (nothing changes). A vanished process is never success: without
@@ -228,13 +233,13 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
                   dict(fields, exit_reason='killed', exit_code=exit_code,
                        charged=e.stop_reason not in UNCHARGED, ended_at=_now_iso(),
                        hook_token_hash=None))
-        return _ended(tx, actor, e, usage)
+        return _ended(tx, actor, e, usage, facts)
     if e.state == 'STARTING':
         if not output:
             return lost(tx, actor=actor, execution_id=e.id,
                         reason='the process exited without output')
         e = _fire(tx, e.id, 'first_output', actor, 'the process wrote output')
-    if e.state not in ('RUNNING', 'PAUSING'):
+    if e.state not in ('RUNNING', 'PAUSING', 'HANDING_OFF'):
         raise lifecycle.IllegalTrigger('execution', e.state, 'record_end',
                                        'the execution has already ended')
     ok = exit_code == 0 and not killed and not halted
@@ -247,23 +252,39 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
     e = _fire(tx, e.id, _EXIT['ok' if ok else 'error'], actor,
               'exit code %s%s' % (exit_code, ' (halted without being asked)' if halted else ''),
               dict(fields, exit_reason='ok' if ok else 'error', exit_code=exit_code,
-                   charged=not (uncharged or stop), stop_reason=stop, ended_at=_now_iso(),
-                   hook_token_hash=None))
-    return _ended(tx, actor, e, usage)
+                   charged=not (uncharged or stop), stop_reason=stop or e.stop_reason,
+                   ended_at=_now_iso(), hook_token_hash=None))
+    return _ended(tx, actor, e, usage, facts)
 
 
-def _ended(tx, actor, e, usage):
+def _finish(tx, actor, e, facts):
+    """What every end of an execution that ran leaves behind (p12-design-gate
+    §6, D5): the headless session it ran in, and its checkpoint."""
+    from ..execution import checkpoint
+    from . import sessions
+    if e.process_seq >= 1 and e.session_id is None:
+        ref = (e.adapter_state or {}).get('session')
+        sessions.headless_session(tx, actor=actor, execution=e,
+                                  provider_session_ref=ref if isinstance(ref, str) else None)
+        e = lifecycle.load(tx, entities.Execution, e.id).entity
+    if checkpoint.ran(e):
+        checkpoint.derive(tx, actor=actor, execution=e, facts=facts)
+    return e
+
+
+def _ended(tx, actor, e, usage, facts=None):
     u = _usage(usage) or _usage(e.usage)
     if u and e.route_decision_id is not None:
         # attributable truth (P10): once per execution, against where it was routed
         tx.insert(entities.UsageLedger(id=ids.new_id('usage_ledger'), execution_id=e.id,
                                        route_decision_id=e.route_decision_id,
                                        account_id=e.account_id, **u), actor=actor)
+    e = _finish(tx, actor, e, facts)
     _event(tx, 'execution.ended', e, actor, _end_payload(e))
     return _respond(tx, actor, e, 'execution %s ended (%s)' % (e.id, e.exit_reason))
 
 
-def lost(tx, *, actor, execution_id, reason):
+def lost(tx, *, actor, execution_id, reason, facts=None):
     """Nothing is watching and nothing is collectable: LOST -> ENDED_KILLED,
     charged (a process may have run and done anything)."""
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
@@ -276,7 +297,7 @@ def lost(tx, *, actor, execution_id, reason):
     e = _fire(tx, e.id, 'reconciled_kill', actor, reason,
               {'exit_reason': 'lost', 'charged': True, 'ended_at': _now_iso(),
                'hook_token_hash': None})
-    return _ended(tx, actor, e, None)
+    return _ended(tx, actor, e, None, facts)
 
 
 def _respond(tx, actor, e, why):
@@ -409,6 +430,65 @@ def pause_timed_out(tx, *, actor, execution_id):
     return {'execution_id': e.id, 'state': e.state}
 
 
+# ── hand-off (p12-design-gate §10.1) ────────────────────────────────────────
+
+#: why Core hands an execution off -> the stop reason it records
+HANDOFF_CAUSES = ('pressure', 'limit', 'ceiling')
+
+
+def request_handoff(tx, *, actor, execution_id, stop_reason, reason):
+    """Core decided a running execution should continue in a fresh one:
+    RUNNING -> HANDING_OFF; the manager halts it at the next tool call."""
+    if stop_reason not in HANDOFF_CAUSES:
+        raise ValueError('a hand-off is for %s, not %r' % (', '.join(HANDOFF_CAUSES),
+                                                           stop_reason))
+    e = lifecycle.load(tx, entities.Execution, execution_id).entity
+    e = _fire(tx, e.id, 'pressure_or_account_change', actor, reason,
+              {'stop_reason': stop_reason})
+    return {'execution_id': e.id, 'state': e.state}
+
+
+def handoff_execution(tx, *, actor, execution_id):
+    """The user asks for a running execution to continue in a fresh session."""
+    _user(actor)
+    e = lifecycle.load(tx, entities.Execution, execution_id).entity
+    e = _fire(tx, e.id, 'user_handoff', actor, 'the user asked for a fresh session',
+              {'stop_reason': 'handoff_user'})
+    return {'execution_id': e.id, 'state': e.state}
+
+
+def record_handoff(tx, *, actor, policy, missions, router, execution_id, now, exit_code=None,
+                   usage=None, adapter_state=None, final_offset=None, facts=None):
+    """The process of a HANDING_OFF execution is gone: in one transaction its
+    checkpoint, HANDING_OFF -> ENDED_HANDOFF (uncharged), and the continuation
+    (P9, P10, a new INTENT with `handoff_from`). The task and the mission do
+    not move unless there is no continuation (then the task is READY again,
+    uncharged)."""
+    from ..execution.handoff import continue_task
+    e = lifecycle.load(tx, entities.Execution, execution_id).entity
+    if e.state != 'HANDING_OFF':
+        raise lifecycle.IllegalTrigger('execution', e.state, 'checkpoint_written',
+                                       'the execution is not handing off')
+    if final_offset is not None and final_offset > e.stream_offset:
+        tx.update(entities.Execution, e.id, {'stream_offset': final_offset}, actor=actor)
+    e = _fire(tx, e.id, 'checkpoint_written', actor,
+              'handed off (%s): the checkpoint is written' % e.stop_reason,
+              {'exit_reason': 'handoff', 'exit_code': exit_code, 'charged': False,
+               'ended_at': _now_iso(), 'hook_token_hash': None,
+               'adapter_state': dict(adapter_state) if adapter_state else e.adapter_state})
+    u = _usage(usage) or _usage(e.usage)
+    if u and e.route_decision_id is not None:
+        tx.insert(entities.UsageLedger(id=ids.new_id('usage_ledger'), execution_id=e.id,
+                                       route_decision_id=e.route_decision_id,
+                                       account_id=e.account_id, **u), actor=actor)
+    e = _finish(tx, actor, e, facts)
+    _event(tx, 'execution.ended', e, actor, _end_payload(e))
+    nxt = continue_task(tx, actor=actor, policy=policy, missions=missions, router=router,
+                        execution=e, now=now)
+    return {'execution_id': e.id, 'state': e.state, 'continuation': nxt['execution_id'],
+            'refused': nxt['refused']}
+
+
 def approval_answered(tx, *, actor, execution_id):
     """An execution waiting on an action approval: REJECTED or EXPIRED ends it
     (ENDED_REJECTED); anything else leaves it waiting (the manager resumes it
@@ -422,6 +502,7 @@ def approval_answered(tx, *, actor, execution_id):
     e = _fire(tx, e.id, 'rejected', actor, 'approval %s %s' % (a.id, a.state.lower()),
               {'exit_reason': 'rejected', 'charged': True, 'ended_at': _now_iso(),
                'hook_token_hash': None})
+    e = _finish(tx, actor, e, None)         # its session; no checkpoint (P9's decision is it)
     _event(tx, 'execution.ended', e, actor, _end_payload(e))
     return _respond(tx, actor, e, 'execution %s: approval %s' % (e.id, a.state.lower()))
 
@@ -640,6 +721,14 @@ def view(conn, execution_id):
     out = v(row)
     out.pop('hook_token_hash', None)
     return out
+
+
+def checkpoints(conn, execution_id):
+    """The checkpoints of an execution (p12-design-gate §19): at most one."""
+    if rows.get(conn, entities.Execution, execution_id) is None:
+        raise lifecycle.NotFound(execution_id)
+    return [r.entity.to_dict() for r in rows.where(conn, entities.Checkpoint,
+                                                   execution_id=execution_id)]
 
 
 def of_task(conn, task_id):

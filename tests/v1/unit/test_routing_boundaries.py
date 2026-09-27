@@ -134,9 +134,9 @@ def test_B8_core_registers_its_executors_behind_the_policy_gate():
 
 def test_B9_no_later_phase_module_exists_yet():
     # P11 (p11-design-gate §26) creates core/execution, node and the Claude Code
-    # adapter; what stays later is P12's continuity and the deferred Codex adapter
-    for rel in ('archeus/core/execution/checkpoint.py', 'archeus/core/execution/handoff.py',
-                'archeus/harnesses/codex'):
+    # adapter, and P12 its continuity (checkpoint.py, handoff.py); what stays
+    # later is the deferred Codex adapter
+    for rel in ('archeus/harnesses/codex',):
         assert not os.path.exists(os.path.join(ROOT, rel)), rel
 
 

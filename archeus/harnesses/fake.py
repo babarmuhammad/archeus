@@ -26,7 +26,6 @@ from . import base
 
 AGENT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fake_agent.py')
 
-_NOT_YET = 'the fake harness does not simulate %s until P12 (hand-off)'
 
 
 #: the model a fake harness offers unless told otherwise: a known `large`
@@ -63,6 +62,10 @@ class FakeHarness:
 
     def start(self, spec):
         steps = list(spec.task_contract.get('fake_scenario', ()))
+        if spec.task_contract.get('continuation'):
+            # a continuation after a hand-off (p12-design-gate D18): a step marked
+            # `fresh_only` (the pressure that caused the hand-off) is not repeated
+            steps = [x for x in steps if not x.get('fresh_only')]
         argv = [sys.executable, AGENT, json.dumps(steps), str(int(spec.resume_ref or 0))]
         if spec.hook_settings:
             spec = replace(spec, env=dict(spec.env, ARCHEUS_HOOK_CMD=json.dumps(
@@ -83,9 +86,6 @@ class FakeHarness:
     def resume(self, spec, state):
         """Run the scenario again from the step the last process halted at."""
         return self.start(replace(spec, resume_ref=str((state or {}).get('step', 0))))
-
-    def handoff(self, checkpoint):
-        raise NotImplementedError(_NOT_YET % 'hand-off')
 
     def status(self, handle):
         child = self._children.get(handle.execution_id)
@@ -141,6 +141,8 @@ class FakeHarness:
                 failure = 'limit'
             elif e.get('type') == 'error' and e.get('kind') in ('resource', 'auth', 'task'):
                 failure = e['kind']
+            elif e.get('type') == 'error' and e.get('error') == 'rate_limit':
+                failure = 'limit'         # how Claude Code words a limit (p12-design-gate D18)
         halt = next((e for e in reversed(events) if e.get('type') == 'halted'), None)
         halted = os.path.exists(base.halted_path(handle.exec_dir))
         if handle.execution_id in self._stopped:

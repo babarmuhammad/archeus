@@ -4,8 +4,9 @@
            [--model m] [--effort e] --max-turns N --settings <exec dir>/settings.json
            [--resume <session uuid>]                    (prompt on stdin)
 
-The settings file installs ONE PreToolUse hook for this execution only — the
-Archeus hook (harnesses/hook.py) — and never touches the user's settings.json
+The settings file installs the Archeus hook (harnesses/hook.py) for this
+execution only — as its PreToolUse command, and (P12) as its PreCompact command,
+the context-pressure backstop — and never touches the user's settings.json
 (ADR-0019). The account is its home: `CLAUDE_CONFIG_DIR` from the account's
 `home_ref`, with any API key popped so it cannot shadow the login (the current
 product's `config.account_env` rule). The process I/O contract is the shared one
@@ -99,7 +100,9 @@ class ClaudeCodeAdapter:
         if spec.hook_settings:
             cmd = ' '.join('"%s"' % a for a in spec.hook_settings)
             hooks = {'PreToolUse': [{'matcher': '*', 'hooks': [
-                {'type': 'command', 'command': cmd, 'timeout': 120}]}]}
+                {'type': 'command', 'command': cmd, 'timeout': 120}]}],
+                     'PreCompact': [{'hooks': [
+                         {'type': 'command', 'command': cmd, 'timeout': 30}]}]}
         os.makedirs(os.path.dirname(path), exist_ok=True)
         config.write_json_atomic(path, {'hooks': hooks}, indent=None)
         return path
@@ -145,9 +148,6 @@ class ClaudeCodeAdapter:
 
     def pause(self, handle):
         return base.PauseResult(halted=False)       # the PAUSE flag, at the next tool call
-
-    def handoff(self, checkpoint):
-        raise NotImplementedError('hand-off is P12')
 
     def status(self, handle):
         child = self._children.get(handle.execution_id)

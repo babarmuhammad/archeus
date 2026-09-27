@@ -75,6 +75,31 @@ def _require(machine, row, states, verb):
                                        '%s needs %s' % (verb, ' or '.join(states)))
 
 
+def new_execution(tx, actor, m, plan, t, route, auth, rd, handoff_from=None):
+    """An Execution in INTENT for a routed, authorised task: the one place one
+    is created — by dispatch, and by a checkpoint hand-off's continuation
+    (p12-design-gate §10.1), which is why the attempt is counted from the rows
+    (a hand-off's attempt is uncharged, P11 D9)."""
+    e = entities.Execution(id=ids.new_id('execution'), task_id=t.id, mission_id=m.id,
+                           attempt=len(tx.where(entities.Execution, task_id=t.id)) + 1,
+                           harness_id=route.harness_id or route.selected,
+                           route_decision_id=rd, account_id=route.account_id,
+                           model=route.model, effort=route.effort,
+                           # the binding it may run under (P11, p11-design-gate §7)
+                           plan_id=plan.id, plan_digest=plan.digest,
+                           policy_decision_id=auth.get('policy_decision_id'),
+                           handoff_from=handoff_from)
+    tx.insert(e, actor=actor)
+    ev = tx.append(new_event('execution.intent', Ref('execution', e.id), actor,
+                             payload={'task_id': t.id, 'attempt': e.attempt,
+                                      'harness_id': e.harness_id, 'account_id': e.account_id,
+                                      'route_decision_id': rd, 'handoff_from': handoff_from},
+                             workspace=m.workspace_id, project=m.project_id))
+    return {'task_id': t.id, 'execution_id': e.id, 'attempt': e.attempt,
+            'harness_id': e.harness_id, 'account_id': e.account_id, 'model': e.model,
+            'effort': e.effort, 'route_decision_id': rd, 'seq': ev.seq}
+
+
 class Work:
     """Commands for the work under a mission. `missions` is the P3 `Missions`
     (its Policy port is the plan gate's); `router` picks the harness."""
@@ -284,21 +309,7 @@ class Work:
                     'route_decision_id': rd}
         self._fire(tx, entities.Task, task_id, 'routed', actor,
                    route.explanation or 'routed to %s' % route.selected)
-        e = entities.Execution(id=ids.new_id('execution'), task_id=task_id, mission_id=m.id,
-                               attempt=len(tx.where(entities.Execution, task_id=task_id)) + 1,
-                               harness_id=route.harness_id or route.selected,
-                               route_decision_id=rd, account_id=route.account_id,
-                               model=route.model, effort=route.effort,
-                               # the binding it may run under (P11, p11-design-gate §7)
-                               plan_id=plan.id, plan_digest=plan.digest,
-                               policy_decision_id=auth.get('policy_decision_id'))
-        tx.insert(e, actor=actor)
-        ev = self._event(tx, 'execution.intent', Ref('execution', e.id), actor, m,
-                         {'task_id': task_id, 'attempt': e.attempt, 'harness_id': e.harness_id,
-                          'account_id': e.account_id, 'route_decision_id': rd})
-        return {'task_id': task_id, 'execution_id': e.id, 'attempt': e.attempt,
-                'harness_id': e.harness_id, 'account_id': e.account_id, 'model': e.model,
-                'effort': e.effort, 'route_decision_id': rd, 'seq': ev.seq}
+        return new_execution(tx, actor, m, plan, t, route, auth, rd)
 
     def _failed(self, tx, actor, t, retry, final, failure_class, why):
         """Retry while charged attempts remain (a retry is a new Execution),
