@@ -105,9 +105,14 @@ def lock_is_held():
     return False
 
 
-def write_core_json(info):
-    if not config.write_json_atomic(core_json_path(), info, indent=None):
-        raise OSError('could not write %s' % core_json_path())
+def write_core_json(info, retry_s=2.0):
+    # a reader holding the old core.json open fails the replace on Windows for
+    # that instant: waited out, as a probe holding the lock is
+    deadline = time.monotonic() + retry_s
+    while not config.write_json_atomic(core_json_path(), info, indent=None):
+        if time.monotonic() >= deadline:
+            raise OSError('could not write %s' % core_json_path())
+        time.sleep(0.05)
 
 
 def read_core_json():

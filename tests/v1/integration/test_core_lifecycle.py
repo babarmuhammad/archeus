@@ -229,6 +229,25 @@ def test_core_json_names_a_live_process_by_pid_and_creation_time(archeus_home):
         core.kill()
 
 
+def test_core_json_is_written_past_a_reader_holding_the_old_one(archeus_home):
+    """A client polling for core.json (the judge's `wait_ready`, `archeus
+    status`) holds the killed Core's stale one open for an instant; on Windows
+    that fails the replace, and a Core that took it as fatal exited 1 at
+    start (CI run 36322748379). It is waited out, as the lock is."""
+    import threading
+    path = discovery.core_json_path()
+    discovery.ensure_run_dir()
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write('{"stale": true}')
+    reader = open(path, encoding='utf-8')
+    threading.Timer(0.3, reader.close).start()
+    try:
+        discovery.write_core_json({'pid': 1, 'create_time': 1, 'port': 7})
+    finally:
+        reader.close()
+    assert discovery.read_core_json()['port'] == 7
+
+
 def test_core_waits_out_a_probe_that_holds_the_lock_for_an_instant(archeus_home):
     """The CLI's discovery probe takes the lock for a moment; a Core starting
     at that moment retries (for 2 s) instead of refusing (§7)."""
