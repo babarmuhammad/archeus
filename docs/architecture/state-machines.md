@@ -338,6 +338,10 @@ stateDiagram-v2
     PAUSED --> STARTING: resume
     RUNNING --> HANDING_OFF: pressure_or_account_change
     HANDING_OFF --> ENDED_HANDOFF: checkpoint_written
+    RUNNING --> HANDING_OFF: user_handoff
+    HANDING_OFF --> ENDED_OK: exited_success
+    HANDING_OFF --> ENDED_ERROR: exited_error
+    HANDING_OFF --> STOPPING: stop
     RUNNING --> STOPPING: stop
     STARTING --> STOPPING: stop
     PAUSING --> STOPPING: stop
@@ -387,6 +391,32 @@ stateDiagram-v2
   LOST → ENDED_KILLED (`spawn_unconfirmed` / `start_timeout` / `heartbeat_missing`, then
   `reconciled_kill`), and its task retries with a new execution. Adoption (`LOST → RUNNING`) is
   the execution manager's (P11).
+
+**P12 hand-off** (p12-design-gate §10.1, D20): Core decides `pressure_or_account_change`
+(pressure ≥ 0.75 or the PreCompact backstop, a provider limit, a ceiling crossing); the user asks
+with `user_handoff`. The hook halts at the next tool call; the end, the checkpoint and the
+continuation (P9 `check_dispatch`, P10 `route`, a new INTENT with `handoff_from` and the next
+attempt number, uncharged) are one transaction. Work that finished before the boundary ends as
+usual from HANDING_OFF; a stop takes it to STOPPING. Every end with a process derives exactly one
+Checkpoint.
+
+### 4.1 Session (P12)
+
+```mermaid
+stateDiagram-v2
+    [*] --> OPEN
+    OPEN --> CLOSED: close
+    CLOSED --> OPEN: reopen
+    OPEN --> LOST: vanished
+    LOST --> OPEN: reappeared
+```
+
+A Session is a provider conversation (p12-design-gate §6–§7). OPEN: Archeus can resume it.
+CLOSED: the user closed it; `reopen` is resuming it again. LOST: its provider session was looked
+for and is gone; `reappeared` when a later look finds it. Only a user device closes or reopens;
+only Core marks a session LOST or found. Nothing is terminal. A hand-off leaves its source
+unchanged (the target records `handoff_from_session_id`), and an interruption — a Core restart,
+a closed terminal — changes no session.
 
 ---
 

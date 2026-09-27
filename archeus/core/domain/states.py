@@ -41,7 +41,7 @@ class TransitionProof:
 
 #: Machines in the order their diagrams appear in state-machines.md.
 MACHINES = (
-    'idea', 'mission', 'plan', 'task', 'execution', 'approval', 'verification',
+    'idea', 'mission', 'plan', 'task', 'execution', 'session', 'approval', 'verification',
     'review', 'automation', 'automation_run', 'account_health',
     'repository_inspection', 'architecture', 'knowledge_item', 'device',
     'execution_node', 'integration',
@@ -176,6 +176,12 @@ _EDGES = {
         ('PAUSED', 'STARTING', 'resume'),
         ('RUNNING', 'HANDING_OFF', 'pressure_or_account_change'),
         ('HANDING_OFF', 'ENDED_HANDOFF', 'checkpoint_written'),
+        # P12 (p12-design-gate D20, section 10.1): the user asks for a fresh session;
+        # work that finished before the boundary; a stop while handing off
+        ('RUNNING', 'HANDING_OFF', 'user_handoff'),
+        ('HANDING_OFF', 'ENDED_OK', 'exited_success'),
+        ('HANDING_OFF', 'ENDED_ERROR', 'exited_error'),
+        ('HANDING_OFF', 'STOPPING', 'stop'),
         ('RUNNING', 'STOPPING', 'stop'),
         # P11 (p11-design-gate D8): a stop before the first output or while a
         # pause is pending; work that finished before a boundary; and an end
@@ -198,6 +204,15 @@ _EDGES = {
         ('ENDED_KILLED', _E, None),
         ('ENDED_HANDOFF', _E, None),
         ('ENDED_REJECTED', _E, None),
+    ),
+    # P12 (p12-design-gate D4): a provider conversation; hand-off and interruption
+    # are not states, and nothing here is terminal
+    'session': (
+        (_S, 'OPEN', None),
+        ('OPEN', 'CLOSED', 'close'),
+        ('CLOSED', 'OPEN', 'reopen'),
+        ('OPEN', 'LOST', 'vanished'),
+        ('LOST', 'OPEN', 'reappeared'),
     ),
     'approval': (
         (_S, 'PENDING', None),
@@ -375,7 +390,6 @@ TABLE = tuple(
 #: States of entities whose lifecycle state-machines.md does not diagram. They
 #: are validated as sets; their edges are not declared yet (see the P1 report).
 STATE_SETS = {
-    'session': ('OPEN', 'CLOSED', 'LOST'),
     'harness': ('AVAILABLE', 'MISSING', 'MISCONFIGURED'),
 }
 

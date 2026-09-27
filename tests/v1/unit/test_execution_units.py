@@ -175,9 +175,17 @@ D8 = {('STARTING', 'STOPPING', 'stop'), ('PAUSING', 'STOPPING', 'stop'),
       ('PAUSED', 'ENDED_KILLED', 'discarded'), ('AWAITING_APPROVAL', 'ENDED_KILLED', 'discarded')}
 
 
+#: P12's hand-off edges (p12-design-gate D20): the user's request, work that
+#: finished before the boundary, a stop while handing off
+P12_HANDOFF = {('RUNNING', 'HANDING_OFF', 'user_handoff'),
+               ('HANDING_OFF', 'ENDED_OK', 'exited_success'),
+               ('HANDING_OFF', 'ENDED_ERROR', 'exited_error'),
+               ('HANDING_OFF', 'STOPPING', 'stop')}
+
+
 def test_the_execution_machine_is_p1s_plus_exactly_the_six_p11_edges():
     got = {(a, b, t) for a, b, t, _g in states.edges('execution') if t is not None}
-    assert got == P1_EXECUTION | D8
+    assert got == P1_EXECUTION | D8 | P12_HANDOFF
     assert set(states.states('execution')) == {s for e in P1_EXECUTION for s in e[:2]}
 
 

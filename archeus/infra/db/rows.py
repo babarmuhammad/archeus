@@ -47,6 +47,8 @@ TABLES = {
     entities.Account: 'accounts',
     entities.ResourcePolicy: 'resource_policies',
     entities.UsageSnapshot: 'usage_snapshots',
+    entities.Session: 'sessions',
+    entities.Checkpoint: 'checkpoints',
 }
 
 #: Row metadata, never entity fields: optimistic-concurrency version, timestamps,

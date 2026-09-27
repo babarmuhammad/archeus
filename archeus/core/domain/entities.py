@@ -773,7 +773,10 @@ MODEL_TIERS = ('small', 'mid', 'large')
 WORKSPACE_MODES = ('in_place', 'worktree')
 #: Why an execution was stopped (P11, p11-design-gate §20.1).
 STOP_REASONS = ('user', 'estop', 'ceiling', 'limit', 'breaker', 'pause_timeout', 'cancel',
-                'binding', 'disarmed')
+                'binding', 'disarmed',
+                # P12 (p12-design-gate §10.1): why an execution handed off; the
+                # account changes are the existing `limit` and `ceiling`
+                'pressure', 'handoff_user')
 #: How an adapter classifies an end (p11-design-gate §9.1): who owns it.
 FAILURES = ('resource', 'task', 'auth', 'limit')
 
@@ -847,9 +850,11 @@ class Execution(Entity):
     _ID = 'execution'
     _STATE = ('state', 'execution')
     _REFS = {'task_id': 'task', 'mission_id': 'mission', 'route_decision_id': 'route_decision',
-             'account_id': 'account', 'plan_id': 'plan', 'policy_decision_id': 'policy_decision'}
+             'account_id': 'account', 'plan_id': 'plan', 'policy_decision_id': 'policy_decision',
+             'session_id': 'session', 'handoff_from': 'execution'}
     _MIN1 = ('attempt',)
-    _CHOICES = {'exit_reason': ('ok', 'error', 'killed', 'lost', 'abandoned', 'rejected'),
+    _CHOICES = {'exit_reason': ('ok', 'error', 'killed', 'lost', 'abandoned', 'rejected',
+                                'handoff'),
                 'stop_reason': STOP_REASONS, 'failure': FAILURES}
     _NONNEG = ('process_seq', 'hook_seq', 'stream_offset')
     id: str
@@ -891,31 +896,108 @@ class Execution(Entity):
     charged: bool = None
     started_at: str = None
     ended_at: str = None
+    # P12 (p12-design-gate §6, §10.1): the headless session it ran in, the
+    # execution it continues after a hand-off, and its last context pressure
+    session_id: str = None
+    handoff_from: str = None
+    pressure: float = None
     state: str = None
+
+
+#: How a Session came to exist (p12-design-gate D1): the one an execution ran in,
+#: one Archeus launched for the user, or one the user registered.
+SESSION_MODES = ('headless', 'interactive_attached', 'manual')
+CHECKPOINT_TRIGGERS = ('task_boundary', 'pressure', 'account_change', 'pause', 'failure',
+                       'user')
 
 
 @entity
 class Session(Entity):
+    """A provider conversation (domain-model §7.5; p12-design-gate §6, §20): one
+    harness, one account (None: the harness's own home), one provider session.
+    Infrastructure: it owns no work, and its fields are cursors into current
+    state (`mission_id`, `last_seen_seq`, `context_package_id`), never copies."""
     _ID = 'session'
     _STATE = ('state', 'session')
-    _TEXT = ('harness_id',)
-    _REFS = {'account_id': 'account'}
+    _TEXT = ('harness_id', 'cwd')
+    _REFS = {'workspace_id': 'workspace', 'account_id': 'account', 'project_id': 'project',
+             'mission_id': 'mission',
+             'handoff_from_session_id': 'session', 'execution_id': 'execution',
+             'context_package_id': 'context_package'}
+    _CHOICES = {'mode': SESSION_MODES}
+    _NONNEG = ('last_seen_seq', 'launch_seq', 'launched_seq')
     id: str
     harness_id: str
-    account_id: str
+    workspace_id: str
+    cwd: str
+    mode: str
+    account_id: str = None
+    project_id: str = None
+    mission_id: str = None
+    provider_session_ref: str = None
+    transcript_path: str = None
+    # what a resume reopens on, in the harness's own vocabulary (ADR-0023)
+    model: str = None
+    effort: str = None
+    # lineage: the session this one was handed off from, and the request that did it
+    handoff_from_session_id: str = None
+    handoff_request: str = None
+    handoff_artifact_sha: str = None
+    # headless: the execution that ran in it
+    execution_id: str = None
+    # the session's own cursor into the event log, and the package it was last given
+    last_seen_seq: int = 0
+    context_package_id: str = None
+    # the request id of the last resume (a duplicate changes nothing, D10); not
+    # named for the word the domain keeps out of fields (domain-model §1 rule 7)
+    last_request: str = None
+    # launches: a post-commit side effect, never replayed by a restarted Core
+    launch_seq: int = 0
+    launched_seq: int = 0
+    launch_error: str = None
+    started_at: str = None
+    last_active_at: str = None
+    closed_reason: str = None
     state: str = None
+
+    def _check(self):
+        if self.mode == 'headless' and self.execution_id is None:
+            raise ValueError('a headless session names the execution it ran')
+        if self.launched_seq > self.launch_seq:
+            raise ValueError('a session cannot have launched more than it was asked to')
 
 
 @entity
 class Checkpoint(Entity):
+    """Core-derived history of one ended execution (domain-model §7.6;
+    p12-design-gate §8): immutable, never read to decide a state; its rendering
+    is the next execution's prompt suffix."""
     _ID = 'checkpoint'
-    _CHOICES = {'trigger': ('task_boundary', 'pressure', 'account_change', 'pause', 'failure')}
-    _REFS = {'execution_id': 'execution', 'mission_id': 'mission'}
+    _CHOICES = {'trigger': CHECKPOINT_TRIGGERS}
+    _REFS = {'execution_id': 'execution', 'mission_id': 'mission', 'task_id': 'task',
+             'session_id': 'session', 'plan_id': 'plan', 'context_package_id': 'context_package'}
+    _NONNEG = ('as_of_seq',)
     id: str
     execution_id: str
     mission_id: str
     trigger: str
+    task_id: str = None
+    session_id: str = None
+    plan_id: str = None
+    plan_version: int = None
+    as_of_seq: int = 0
+    objective: str = ''
+    constraints: tuple = ()
+    success_criteria: tuple = ()
+    completed_steps: tuple = ()
+    files_changed: tuple = ()
+    decisions: tuple = ()
+    open_problems: tuple = ()
+    verification: tuple = ()
     next_action: str = ''
+    context_package_id: str = None
+    artifact_sha: str = None
+    usage: dict = None
 
 
 @entity
