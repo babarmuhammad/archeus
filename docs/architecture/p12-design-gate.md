@@ -894,9 +894,16 @@ bindings.
 12. **The real session adapters were not run against real CLIs.** Launching one opens a real
     terminal; unit tests build their argv through `build_launch_command` with no CLI installed.
     Exercising them live is a manual check.
+13. **A race CI found: a hook request answered on a stale reading of the stream.** A
+    manager pass could read the stream a moment before the agent wrote its usage and then
+    asked the hook, and allow the call on that reading; the work then finished instead of
+    handing off (S2 counted one hand-off of two on one Windows job). `_hooks` now reads the
+    stream again before it answers anything, so output written before a tool call is judged
+    before the call. E82 reproduces it deterministically; mutant Y25 is its gate.
 
-**Mutation.** `tools/mutate_p12.py`: 24 mutants, all killed; seven needed a test of their own
-(T17, E79, E80, E81, and T02 / T21 / T32 strengthened). P8's (22), P9's (36), P10's (37) and
+**Mutation.** `tools/mutate_p12.py`: 25 mutants (§22's 24, and Y25 for the race above),
+all killed; eight needed a test of their own (T17, E79, E80, E81, E82, and T02 / T21 /
+T32 strengthened). P8's (22), P9's (36), P10's (37) and
 P11's (30) suites still kill everything.
 
 **A defect in every mutation runner, found by P12's full run.** A mutant the same size as the
@@ -909,3 +916,12 @@ fails proves nothing, and no runner checked. All five runners (P8–P12) now run
 `PYTHONDONTWRITEBYTECODE`, drop a restored file's cached bytecode, and refuse to start unless
 every guarding test passes on the unmutated tree. Every suite was re-run from cleared caches
 under the fixed runners; the counts above are those runs.
+
+**CI: the writer-throughput floor on the Windows runners.** The P2 gate
+`test_writer_throughput_is_at_least_500_commands_per_second` (`CI_FLOOR`, 200 commands/s on CI)
+failed on three of the four Windows jobs, twice, at 140–192 commands/s. It is not a P12
+regression, and that is measured rather than assumed: the same loop at P11 (`d8b5a3d`) and at P12,
+alone and at the end of the whole contract + integration run in one process, gives 1650–1700
+commands/s on both commits (with the same leftover threads); P11's passing CI run spent 6.4–7.5 s
+on that test, about 200–235 commands/s, already at the floor. The runners are the variable, and
+the floor was not lowered.
