@@ -4,6 +4,8 @@
 import socket
 import time
 
+import ci_diag
+
 from archeus.core.application import commands
 from v1.integration.test_api_auth import observe_device
 from v1.judge.http import SSEClient
@@ -56,7 +58,10 @@ def test_a_reader_that_never_reads_does_not_slow_the_writer(tc):
         for i in range(200):
             tc.core.db.writer.execute(commands.create_mission, {
                 'actor': tc.core.system, 'title': 'm%d' % i, 'objective': 'o' * 2000})
-        assert time.monotonic() - t0 < 20, 'the writer waited on a reader'
+        took = time.monotonic() - t0
+        ci_diag.record('reader_never_reads', writes=200, seconds=round(took, 3),
+                       census=ci_diag.census())
+        assert took < 20, 'the writer waited on a reader'
         assert tc.http('GET', '/v1/version').status == 200
     finally:
         raw.close()

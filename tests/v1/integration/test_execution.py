@@ -12,11 +12,13 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime
 
+import ci_diag
 import pytest
 
 from archeus.core import engine, ports
-from archeus.core.application import executions as X, lifecycle
+from archeus.core.application import executions as X, lifecycle, queries
 from archeus.core.domain import entities, ids
 from archeus.core.execution import manager as M
 from archeus.core.execution.manager import ExecutionManager
@@ -61,6 +63,7 @@ class Rig(RoutingRig):
             moved = self.manager.tick() or moved
             if not moved:
                 time.sleep(0.02)
+        self._diag('drive_timeout', timeout=timeout, procs=self._diag_procs)
         raise AssertionError('timed out; executions: %s' % [
             (e.state, e.stop_reason, e.exit_reason) for e in self.all(entities.Execution)])
 
@@ -90,7 +93,65 @@ class Rig(RoutingRig):
         return [(e['payload']['from'], e['payload']['to'])
                 for e in self.events('execution.state_changed') if e['subject']['id'] == eid]
 
+    def _diag_procs(self):
+        """CI diagnostics: what each live process looks like right now."""
+        out = []
+        for eid, p in list(self.manager._procs.items()):
+            stream, size, tail = ExecPaths(eid).stream, None, b''
+            try:
+                size = os.path.getsize(stream)
+                with open(stream, 'rb') as f:
+                    f.seek(max(0, size - 400))
+                    tail = f.read()
+            except OSError:
+                pass
+            out.append({'execution': eid, 'pid': p['handle'].pid,
+                        'alive': LocalNode.alive(p['handle']), 'stream_bytes': size,
+                        'stream_tail': tail.decode('utf-8', 'replace')})
+        return out
+
+    def _diag_timeline(self):
+        """CI diagnostics: per execution, ms from its first event to the
+        process being prepared, from there to the process identity being
+        recorded (the spawn), and from there to its first output (RUNNING)."""
+        def at(e):
+            return datetime.fromisoformat(e['at'].replace('Z', '+00:00')).timestamp()
+        firsts = {}
+        with self.db.read() as r:
+            evs = [e for e in queries.events(r) if e['subject']['kind'] == 'execution']
+        for e in evs:
+            f = firsts.setdefault(e['subject']['id'], {'requested': at(e)})
+            key = {'execution.prepared': 'prepared', 'execution.started': 'started'}.get(
+                e['type'])
+            if e['type'] == 'execution.state_changed' and e['payload'].get('to') == 'RUNNING':
+                key = 'running'
+            if key and key not in f:
+                f[key] = at(e)
+        out = []
+        for ex in self.all(entities.Execution):
+            f = firsts.get(ex.id, {})
+
+            def ms(a, b, f=f):
+                return round(1000 * (f[b] - f[a])) if a in f and b in f else None
+            out.append({'execution': ex.id, 'state': ex.state, 'harness': ex.harness_id,
+                        'to_prepared_ms': ms('requested', 'prepared'),
+                        'spawn_ms': ms('prepared', 'started'),
+                        'first_output_ms': ms('started', 'running')})
+        return out
+
+    def _diag(self, kind, **parts):
+        """Record CI diagnostics; never raises, so a teardown still kills."""
+        if not ci_diag.enabled:
+            return
+        try:
+            ci_diag.record(kind, test=os.environ.get('PYTEST_CURRENT_TEST', ''),
+                           timeline=self._diag_timeline(),
+                           **{k: v() if callable(v) else v for k, v in parts.items()})
+        except Exception as err:
+            ci_diag.record(kind, error=repr(err))
+
     def cleanup(self):
+        self._diag('executions')
         for p in list(self.manager._procs.values()):
             proc.kill_pid_tree(p['handle'].pid, p['handle'].create_time)
 

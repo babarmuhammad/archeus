@@ -5,6 +5,7 @@ import threading
 import time
 from concurrent.futures import wait
 
+import ci_diag
 import pytest
 
 from archeus.core.application import commands
@@ -397,7 +398,7 @@ CI_FLOOR = 200
 def test_writer_throughput_is_at_least_500_commands_per_second(db, actor):
     """Pipelined, as an API under load would submit them. Best of three
     batches, so one scheduler or antivirus stall does not decide the result."""
-    n, best = 500, 0.0
+    n, best, rates, t0 = 500, 0.0, [], time.time()
     for _ in range(3):
         t = time.perf_counter()
         futs = [db.writer.submit(commands.create_mission,
@@ -405,6 +406,12 @@ def test_writer_throughput_is_at_least_500_commands_per_second(db, actor):
                 for _ in range(n)]
         for f in futs:
             f.result(60)
-        best = max(best, n / (time.perf_counter() - t))
+        rates.append(n / (time.perf_counter() - t))
+        best = max(best, rates[-1])
     floor = CI_FLOOR if os.environ.get('CI') else TARGET_RATE
+    if ci_diag.enabled:            # after the measured loop: it cannot move the rate
+        ci_diag.record('p2_throughput', start=round(t0, 3), end=round(time.time(), 3),
+                       commands=3 * n, batch_rates=[round(r, 1) for r in rates],
+                       best=round(best, 1), floor=floor, census=ci_diag.census(),
+                       probes=ci_diag.probes(os.path.dirname(db.path)))
     assert best >= floor, '%.0f commands/s (floor %d)' % (best, floor)
