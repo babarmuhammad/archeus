@@ -197,7 +197,35 @@ MUTATIONS = [
 ]
 
 
+#: Mutant runs write no bytecode, and a restored file's cached bytecode is
+#: dropped: a mutant the same size as the original line, restored within the
+#: same second, otherwise leaves its compiled code live (a .pyc is checked by
+#: source size and whole-second mtime) and every later test runs the mutant.
+_ENV = dict(os.environ, PYTHONDONTWRITEBYTECODE='1')
+
+
+def _drop_pyc(path):
+    import importlib.util
+    try:
+        os.remove(importlib.util.cache_from_source(path))
+    except OSError:
+        pass
+
+
+def _baseline(tests):
+    """A mutant "killed" by a test that already fails proves nothing: every
+    guarding test must pass on the unmutated tree first."""
+    r = subprocess.run([sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider',
+                        *sorted(set(tests))], cwd=ROOT, capture_output=True, text=True,
+                       env=_ENV)
+    if r.returncode != 0:
+        raise SystemExit('the guarding tests fail on the unmutated tree; fix them first:\n%s'
+                         % r.stdout[-3000:])
+
+
 def run(selected=()):
+    _baseline([t for m in MUTATIONS if not selected or m[0] in selected
+               for t in m[-1]])
     survived, killed = [], []
     for mid, what, rel, old, new, tests in MUTATIONS:
         if selected and mid not in selected:
@@ -212,10 +240,11 @@ def run(selected=()):
                 f.write(src.replace(old, new))
             r = subprocess.run([sys.executable, '-m', 'pytest', '-q', '-x', '-p',
                                 'no:cacheprovider', *tests], cwd=ROOT, capture_output=True,
-                               text=True)
+                               text=True, env=_ENV)
         finally:
             with open(path, 'w', encoding='utf-8', newline='') as f:
                 f.write(src)
+            _drop_pyc(path)
         (killed if r.returncode != 0 else survived).append(mid)
         print('%-5s %-8s %s' % (mid, 'killed' if r.returncode else 'SURVIVED', what))
     print('\n%d/%d killed' % (len(killed), len(killed) + len(survived)))

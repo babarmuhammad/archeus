@@ -145,8 +145,8 @@ MUTATIONS = [
      "                       charged=True, ended_at=_now_iso(),")],
      [I + '::test_E22_a_user_stop_kills_by_identity_charges_nothing_and_blocks_the_mission']),
     ('X25', 'charged ends uncharged', [(EX,
-     "                   charged=not (uncharged or stop), stop_reason=stop, ended_at=_now_iso(),",
-     "                   charged=False, stop_reason=stop, ended_at=_now_iso(),")],
+     "                   charged=not (uncharged or stop), stop_reason=stop or e.stop_reason,",
+     "                   charged=False, stop_reason=stop or e.stop_reason,")],
      [I + '::test_E26_a_failing_task_retries_with_new_executions_until_its_budget']),
     ('X26', 'progress offset allowed to go backwards', [(EX,
      "    if offset < e.stream_offset:\n        raise ValueError(",
@@ -176,6 +176,32 @@ MUTATIONS = [
 ]
 
 
+#: Mutant runs write no bytecode, and a restored file's cached bytecode is
+#: dropped: a mutant the same size as the original line, restored within the
+#: same second, otherwise leaves its compiled code live (a .pyc is checked by
+#: source size and whole-second mtime) and every later test runs the mutant.
+_ENV = dict(os.environ, PYTHONDONTWRITEBYTECODE='1')
+
+
+def _drop_pyc(path):
+    import importlib.util
+    try:
+        os.remove(importlib.util.cache_from_source(path))
+    except OSError:
+        pass
+
+
+def _baseline(tests):
+    """A mutant "killed" by a test that already fails proves nothing: every
+    guarding test must pass on the unmutated tree first."""
+    r = subprocess.run([sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider',
+                        *sorted(set(tests))], cwd=ROOT, capture_output=True, text=True,
+                       env=_ENV)
+    if r.returncode != 0:
+        raise SystemExit('the guarding tests fail on the unmutated tree; fix them first:\n%s'
+                         % r.stdout[-3000:])
+
+
 def _apply(edits):
     """{path: (original, mutated)} for *edits*; raises if a snippet is not unique."""
     out = {}
@@ -197,6 +223,7 @@ def run(selected=()):
     chosen = [m for m in MUTATIONS if not selected or m[0] in selected]
     for _mid, _what, edits, _tests in chosen:          # every snippet checked before any run
         _apply(edits)
+    _baseline([t for m in chosen for t in m[3]])
     survived, killed = [], []
     for mid, what, edits, tests in chosen:
         files = _apply(edits)
@@ -207,7 +234,7 @@ def run(selected=()):
             try:
                 r = subprocess.run([sys.executable, '-m', 'pytest', '-q', '-x', '-p',
                                     'no:cacheprovider', *tests], cwd=ROOT, capture_output=True,
-                                   text=True, timeout=TIMEOUT_S)
+                                   text=True, timeout=TIMEOUT_S, env=_ENV)
                 caught, how = r.returncode != 0, ''
             except subprocess.TimeoutExpired:
                 caught, how = True, ' (timed out)'
@@ -215,6 +242,7 @@ def run(selected=()):
             for path, (src, _mutated) in files.items():
                 with open(path, 'w', encoding='utf-8', newline='') as f:
                     f.write(src)
+                _drop_pyc(path)
         (killed if caught else survived).append(mid)
         print('%-5s %-8s %s%s' % (mid, 'killed' if caught else 'SURVIVED', what, how),
               flush=True)
