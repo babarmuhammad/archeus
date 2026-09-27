@@ -235,10 +235,13 @@ def test_c15_preview_writes_nothing_and_a_recorded_package_is_readable(tc, fixtu
     pid, _rid = _register(tc, fixture_repo, [NO_CORE_API])
     # the knowledge pass the new project triggers records a package of its own
     # (Core's system principal): it has to be done before `before` is taken,
-    # and its `pending` is the events it has not consumed yet, not a timer
+    # and its `pending` is the events it has not consumed yet, not a timer.
+    # `idle` too: mid-walk the world has nothing due, yet the walk it is in
+    # completes the inspection that starts the knowledge pass
     def settled():
         h = tc.http('GET', '/v1/health').json()                  # one reading of both
-        return h['world']['pending'] == 0 and h['knowledge']['pending'] == 0
+        return all(h[w]['state'] == 'idle' and h[w]['pending'] == 0
+                   for w in ('world', 'knowledge'))
     _wait(settled, what='the world and knowledge to settle')
     events = lambda: tc.http('GET', '/v1/events?limit=1000').json()['events']  # noqa: E731
     before = events()[-1]['seq']

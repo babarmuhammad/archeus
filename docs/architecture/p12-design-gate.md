@@ -1007,4 +1007,10 @@ P8 22/22.
     Core's start is the same. The write is retried for up to 2 s, as a probe holding the lock
     already is. Mutant Y28.
 
+19. **C15's settle check had G01's blind spot.** Run 36328051696 (Windows 3.10) recorded a
+    package after `before`: item 16's check read only `pending`, and in the middle of an
+    inspection walk the world has nothing due while the walk it is in completes the inspection
+    that starts the knowledge pass. Holding the walk shows it: `pending` 0 on both, the world
+    `running`. The check now also requires both workers `idle`.
+
 **Mutation after 17–18.** P12 28/28 (Y27, Y28), P11 32/32, P10 37/37, P9 36/36, P8 22/22.
