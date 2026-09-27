@@ -23,6 +23,7 @@ import time
 import urllib.error
 import urllib.request
 from typing import Optional, Sequence
+from urllib.parse import quote
 
 from archeus.api import auth
 from archeus.harnesses.fake import FakeHarness
@@ -302,6 +303,72 @@ class HttpClient:
             raise CoreClientError(404, 'not_found', {'id': subject_id})
         work = [d for d in got if d['subject']['kind'] == 'task']
         return self._call('GET', '/v1/route-decisions/%s' % (work or got)[-1]['id'])
+
+    # ── sessions and checkpoints (P12) ──
+
+    @staticmethod
+    def _body(**kw):
+        return dict({k: v for k, v in kw.items() if v is not None},
+                    idempotency_key=ids.new_ulid())
+
+    def register_session(self, *, harness_id: str, cwd: str,
+                         provider_session_ref: Optional[str] = None,
+                         mission_id: Optional[str] = None, project_id: Optional[str] = None,
+                         account_id: Optional[str] = None, model: Optional[str] = None,
+                         effort: Optional[str] = None) -> dict:
+        return self._call('POST', '/v1/sessions', self._body(
+            harness_id=harness_id, cwd=cwd, provider_session_ref=provider_session_ref,
+            mission_id=mission_id, project_id=project_id, account_id=account_id,
+            model=model, effort=effort))
+
+    def launch_session(self, *, harness_id: str, cwd: str, mission_id: Optional[str] = None,
+                       project_id: Optional[str] = None, account_id: Optional[str] = None,
+                       model: Optional[str] = None, effort: Optional[str] = None) -> dict:
+        return self._call('POST', '/v1/sessions', self._body(
+            harness_id=harness_id, cwd=cwd, launch=True, mission_id=mission_id,
+            project_id=project_id, account_id=account_id, model=model, effort=effort))
+
+    def get_session(self, session_id: str) -> dict:
+        return self._call('GET', '/v1/sessions/%s' % quote(session_id, safe=''))
+
+    def list_sessions(self, *, project_id: Optional[str] = None,
+                      mission_id: Optional[str] = None) -> list:
+        q = '&'.join('%s=%s' % (k, quote(v, safe='')) for k, v in
+                     (('project', project_id), ('mission', mission_id)) if v)
+        return self._call('GET', '/v1/sessions' + ('?' + q if q else ''))['sessions']
+
+    def session_brief(self, session_id: str) -> dict:
+        return self._call('GET', '/v1/sessions/%s/brief' % quote(session_id, safe=''))
+
+    def resume_session(self, session_id: str, *, request_id: str, model: Optional[str] = None,
+                       effort: Optional[str] = None, deliver_brief: bool = False) -> dict:
+        return self._call('POST', '/v1/sessions/%s/resume' % quote(session_id, safe=''),
+                          self._body(request_id=request_id, model=model, effort=effort,
+                                     deliver_brief=deliver_brief))
+
+    def handoff_session(self, session_id: str, *, request_id: str, harness_id: str,
+                        account_id: Optional[str] = None, model: Optional[str] = None,
+                        effort: Optional[str] = None, reason: str = '') -> dict:
+        return self._call('POST', '/v1/sessions/%s/handoff' % quote(session_id, safe=''),
+                          self._body(request_id=request_id, harness_id=harness_id,
+                                     account_id=account_id, model=model, effort=effort,
+                                     reason=reason or None))
+
+    def link_session(self, session_id: str, mission_id: Optional[str]) -> dict:
+        body = dict(idempotency_key=ids.new_ulid(), mission_id=mission_id)
+        return self._call('POST', '/v1/sessions/%s/link' % quote(session_id, safe=''), body)
+
+    def close_session(self, session_id: str) -> dict:
+        return self._call('POST', '/v1/sessions/%s/close' % quote(session_id, safe=''),
+                          self._body())
+
+    def checkpoints(self, execution_id: str) -> list:
+        return self._call('GET', '/v1/executions/%s/checkpoints'
+                          % quote(execution_id, safe=''))['checkpoints']
+
+    def handoff_execution(self, execution_id: str) -> dict:
+        return self._call('POST', '/v1/executions/%s/handoff' % quote(execution_id, safe=''),
+                          self._body())
 
     # ── resources (P10) ──
 

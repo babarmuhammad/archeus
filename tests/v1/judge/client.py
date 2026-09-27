@@ -22,8 +22,9 @@ import os
 from typing import Optional, Protocol, Sequence, runtime_checkable
 
 from archeus.core import engine, ports
-from archeus.core.application import (authorization, commands, conversation, queries,
-                                      resources, work, world)
+from archeus.core.application import (authorization, commands, conversation, executions,
+                                      queries, resources, sessions, work, world)
+from archeus.core.sessions.service import SessionService
 from archeus.core.application.lifecycle import GuardFailed, IllegalTrigger
 from archeus.core.application.work import PolicyDenied
 from archeus.core.application.world import Conflict
@@ -107,6 +108,28 @@ class CoreClient(Protocol):
                             brain_reserve_pct: Optional[int] = None,
                             fallback: Optional[str] = None,
                             expected_version: Optional[int] = None) -> dict: ...
+    # ── sessions and checkpoints (P12) ──
+    def register_session(self, *, harness_id: str, cwd: str,
+                         provider_session_ref: Optional[str] = None,
+                         mission_id: Optional[str] = None, project_id: Optional[str] = None,
+                         account_id: Optional[str] = None, model: Optional[str] = None,
+                         effort: Optional[str] = None) -> dict: ...
+    def launch_session(self, *, harness_id: str, cwd: str, mission_id: Optional[str] = None,
+                       project_id: Optional[str] = None, account_id: Optional[str] = None,
+                       model: Optional[str] = None, effort: Optional[str] = None) -> dict: ...
+    def get_session(self, session_id: str) -> dict: ...
+    def list_sessions(self, *, project_id: Optional[str] = None,
+                      mission_id: Optional[str] = None) -> list: ...
+    def session_brief(self, session_id: str) -> dict: ...
+    def resume_session(self, session_id: str, *, request_id: str, model: Optional[str] = None,
+                       effort: Optional[str] = None, deliver_brief: bool = False) -> dict: ...
+    def handoff_session(self, session_id: str, *, request_id: str, harness_id: str,
+                        account_id: Optional[str] = None, model: Optional[str] = None,
+                        effort: Optional[str] = None, reason: str = '') -> dict: ...
+    def link_session(self, session_id: str, mission_id: Optional[str]) -> dict: ...
+    def close_session(self, session_id: str) -> dict: ...
+    def checkpoints(self, execution_id: str) -> list: ...
+    def handoff_execution(self, execution_id: str) -> dict: ...
     # ── the event stream ──
     def events(self, after_seq: int = 0, *, limit: Optional[int] = None) -> list: ...
 
@@ -198,6 +221,13 @@ class InProcessClient:
             # the world worker, pumped by `_idle` as the engine is (P4)
             self._world = World(self._db, actor=Ref('system', self._system))
             self._world.sweep()
+            # the session service (P12), on the judge's two fake session harnesses
+            # and a terminal that records instead of opening; its boot sweep too
+            from .support import JudgeTerminal, session_adapters
+            self._sessions = SessionService(self._db, system=Ref('system', self._system),
+                                            adapters=session_adapters(),
+                                            node=JudgeTerminal(self.home))
+            self._sessions.sweep()
             # the knowledge worker, likewise (P6)
             own = OwnCalls(self._db, actor=Ref('system', self._system), callers=callers,
                            preference=self._preference or ports.LegacyOwnCallPreference(),
@@ -504,13 +534,86 @@ class InProcessClient:
             'fallback': fallback, 'expected_version': expected_version})
 
 
+    # ── sessions and checkpoints (P12) ──
+
+    def _sessions_do(self, fn, **kw):
+        self._core()
+        return self._call(lambda: fn(self._actor(), key=ids.new_ulid(), **kw))
+
+    def register_session(self, *, harness_id: str, cwd: str,
+                         provider_session_ref: Optional[str] = None,
+                         mission_id: Optional[str] = None, project_id: Optional[str] = None,
+                         account_id: Optional[str] = None, model: Optional[str] = None,
+                         effort: Optional[str] = None) -> dict:
+        kw = {k: v for k, v in dict(provider_session_ref=provider_session_ref,
+                                    mission_id=mission_id, project_id=project_id,
+                                    account_id=account_id, model=model,
+                                    effort=effort).items() if v is not None}
+        self._core()
+        return self._sessions_do(self._sessions.register, harness_id=harness_id, cwd=cwd, **kw)
+
+    def launch_session(self, *, harness_id: str, cwd: str, mission_id: Optional[str] = None,
+                       project_id: Optional[str] = None, account_id: Optional[str] = None,
+                       model: Optional[str] = None, effort: Optional[str] = None) -> dict:
+        kw = {k: v for k, v in dict(mission_id=mission_id, project_id=project_id,
+                                    account_id=account_id, model=model,
+                                    effort=effort).items() if v is not None}
+        self._core()
+        return self._sessions_do(self._sessions.launch, harness_id=harness_id, cwd=cwd, **kw)
+
+    def get_session(self, session_id: str) -> dict:
+        return self._read(sessions.view, session_id)
+
+    def list_sessions(self, *, project_id: Optional[str] = None,
+                      mission_id: Optional[str] = None) -> list:
+        return self._read(lambda c: sessions.listing(c, project_id=project_id,
+                                                     mission_id=mission_id))
+
+    def session_brief(self, session_id: str) -> dict:
+        return self._read(sessions.preview_brief, session_id)
+
+    def resume_session(self, session_id: str, *, request_id: str, model: Optional[str] = None,
+                       effort: Optional[str] = None, deliver_brief: bool = False) -> dict:
+        self._core()
+        return self._sessions_do(self._sessions.resume, session_id=session_id,
+                                 request_id=request_id, model=model, effort=effort,
+                                 deliver_brief=deliver_brief)
+
+    def handoff_session(self, session_id: str, *, request_id: str, harness_id: str,
+                        account_id: Optional[str] = None, model: Optional[str] = None,
+                        effort: Optional[str] = None, reason: str = '') -> dict:
+        self._core()
+        return self._sessions_do(self._sessions.handoff, source_session_id=session_id,
+                                 request_id=request_id, harness_id=harness_id,
+                                 account_id=account_id, model=model, effort=effort,
+                                 reason=reason)
+
+    def link_session(self, session_id: str, mission_id: Optional[str]) -> dict:
+        return self._run(sessions.link, {'session_id': session_id, 'mission_id': mission_id},
+                         ids.new_ulid())
+
+    def close_session(self, session_id: str) -> dict:
+        return self._run(sessions.close, {'session_id': session_id}, ids.new_ulid())
+
+    def checkpoints(self, execution_id: str) -> list:
+        return self._read(executions.checkpoints, execution_id)
+
+    def handoff_execution(self, execution_id: str) -> dict:
+        return self._run(executions.handoff_execution, {'execution_id': execution_id},
+                         ids.new_ulid())
+
+
 #: Operations with a real body in both bindings (P2: G1, G4; P3: the mission
 #: control verbs; P3.5: listing missions, which the SPA's two lists read).
 IMPLEMENTED = ('create_mission', 'get_mission', 'list_missions', 'events', 'pause', 'resume',
                'create_project', 'declare_constraint', 'status', 'digest', 'ack',
                'import_meeting', 'list_knowledge', 'route_why', 'submit_message',
                'decide_approval', 'set_policy_rule', 'register_account',
-               'set_resource_policy', 'stop')
+               'set_resource_policy', 'stop',
+               # P12
+               'register_session', 'launch_session', 'get_session', 'list_sessions',
+               'session_brief', 'resume_session', 'handoff_session', 'link_session',
+               'close_session', 'checkpoints', 'handoff_execution')
 
 # Every other operation is declared and fails loudly. Later phases replace these
 # with real bodies one by one; tests/v1/contract/test_core_client.py keeps every

@@ -127,6 +127,40 @@ def knowledge_pass(client, project_id):
     return wait_for(ended)
 
 
+#: The two session harnesses every judge Core offers (P12): two fake ids with
+#: their own vocabularies, which is how H1 and R1 run "over two harnesses"
+#: with no domain change (testing-strategy §6).
+SESSION_HARNESSES = (('fake_a', ('fake-model', 'fake-large'), ('low', 'high')),
+                     ('fake_b', ('b-small', 'b-large'), ('min', 'max')))
+
+
+def session_adapters():
+    from archeus.harnesses.sessions import FakeSessions
+    return [FakeSessions(h, models=m, efforts=e) for h, m, e in SESSION_HARNESSES]
+
+
+class JudgeTerminal:
+    """Where a judge Core "opens" a user's terminal: one JSON line per launch
+    in `<ARCHEUS_HOME>/judge-terminal.jsonl` (argv, cwd, the env's keys only),
+    and nothing is ever opened."""
+
+    def __init__(self, home):
+        self.path = os.path.join(str(home), 'judge-terminal.jsonl')
+
+    def open_terminal(self, argv, *, cwd, env, title=''):
+        with open(self.path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps({'argv': list(argv), 'cwd': cwd, 'env_keys': sorted(env)})
+                    + '\n')
+        return object(), None
+
+    def launches(self):
+        try:
+            with open(self.path, encoding='utf-8') as f:
+                return [json.loads(line) for line in f if line.strip()]
+        except FileNotFoundError:
+            return []
+
+
 class Rig:
     """What a scenario controls besides Core: the fake harness's scripts, fake
     usage and fake time, and Core's own process (testing-strategy §1.1 fixtures).
@@ -155,6 +189,23 @@ class Rig:
         if not hasattr(self.client, '_report_usage'):
             self._pending('the fake usage feed for this binding', 'P10')
         self.client._report_usage(account_id, window, utilisation_pct)
+
+    def provider_session(self, harness_id, turns, ref=None):
+        """A session the user started in a fake session harness themselves (P12):
+        its provider transcript, with these (role, text) turns. Returns its ref."""
+        from archeus.harnesses.sessions import FakeSessions
+        ref = ref or 'user-' + os.urandom(6).hex()
+        FakeSessions(harness_id).write(ref, turns)
+        return ref
+
+    def drop_provider_session(self, harness_id, ref):
+        """The provider session is gone (its transcript deleted)."""
+        from archeus.harnesses.sessions import FakeSessions
+        os.remove(FakeSessions(harness_id).path(ref))
+
+    def launches(self):
+        """Every terminal a judge Core was asked to open, oldest first."""
+        return JudgeTerminal(paths.archeus_home()).launches()
 
     def advance(self, seconds):
         """Move fake time forward (FakeClock)."""

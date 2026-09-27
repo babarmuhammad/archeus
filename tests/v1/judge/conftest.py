@@ -46,9 +46,10 @@ def client(request, archeus_home, monkeypatch):
     if request.param == 'inprocess':
         c = InProcessClient(archeus_home, callers=[recorded_brain()])
     elif request.param == 'http':
-        c = TempCore(archeus_home, ports=runtime.Ports(callers=[recorded_brain()],
-                                                       usage=FakeUsageFeed())
-                     ).start().client()
+        c = TempCore(archeus_home, ports=runtime.Ports(
+            callers=[recorded_brain()], usage=FakeUsageFeed(),
+            sessions=support.session_adapters(),
+            terminal=support.JudgeTerminal(archeus_home))).start().client()
     else:
         raise AssertionError('unknown binding %r' % request.param)
     monkeypatch.setattr(support, 'idle', c._idle)

@@ -80,6 +80,12 @@ def test_T02_only_a_user_device_changes_a_session(x):
             x.do(S.close, who=who, session_id=s['id'])
     with pytest.raises(authorization.NotPermitted):
         x.do(S.vanished, who=x.user, session_id=s['id'], reason='no')
+    for who in (x.system, x.brain):
+        with pytest.raises(authorization.NotPermitted):
+            x.do(S.resume, who=who, session_id=s['id'], request_id='r')
+        with pytest.raises(authorization.NotPermitted):
+            x.do(S.handoff, who=who, source_session_id=s['id'], request_id='h',
+                 harness_id='fake_b', turns=[['user', 'x']])
 
 
 def test_T03_close_reopen_vanish_reappear(x):
@@ -202,7 +208,7 @@ def test_T20_a_handoff_is_a_new_linked_session_and_the_source_is_untouched(x):
 
 def test_T21_the_target_gets_the_rendered_artifact_and_none_of_the_source_s_own_state(x):
     s = x.session(turns=[('user', 'fix the login'), ('assistant', 'token sk-' + 'a' * 20),
-                         ('assistant', 'done with step one')])
+                         ('tool', 'TOOL-OUTPUT-LINE'), ('assistant', 'done with step one')])
     src = x.s(s['id'])
     out = x.sessions.handoff(x.user, source_session_id=s['id'], request_id='h1',
                              harness_id='fake_b')
@@ -213,7 +219,9 @@ def test_T21_the_target_gets_the_rendered_artifact_and_none_of_the_source_s_own_
     text = open(path, encoding='utf-8').read()
     assert 'fix the login' in text and 'done with step one' in text
     assert 'sk-aaaa' not in text and '[redacted]' in text
+    assert 'TOOL-OUTPUT-LINE' not in text                  # text turns only
     assert path in spec.opening
+    assert x.s(out['id']).provider_session_ref not in (None, src.provider_session_ref)
 
 
 def test_T22_the_same_handoff_request_makes_one_target(x):
@@ -283,9 +291,13 @@ def test_T31_a_failed_launch_is_recorded_and_resuming_retries_it(x):
 
 
 def test_T32_the_sweep_marks_a_vanished_provider_session_lost(x):
-    s = x.session()
+    x.scenarios['t1'] = [{'emit': {'type': 'working'}}, {'sleep': 30}]
+    mid = x.ready(task('t1', 'write_repo'))
+    s = x.session(mission=mid)
+    state = x.m(mid).state
     os.remove(x.fa.path(x.s(s['id']).provider_session_ref))
     assert x.sessions.sweep()['moved'] == [(s['id'], 'LOST')]
+    assert x.m(mid).state == state                 # an interruption fails nothing (D9)
 
 
 def test_T33_nothing_in_a_session_its_events_or_artifacts_carries_a_secret(x):
@@ -310,3 +322,11 @@ def test_T34_a_headless_session_cannot_be_resumed(x):
     assert (s.mode, s.state, s.execution_id) == ('headless', 'CLOSED', e.id)
     with pytest.raises(lifecycle.IllegalTrigger):
         x.do(S.resume, who=x.user, session_id=s.id, request_id='r1')
+
+
+def test_T17_the_brief_shows_only_what_changed_after_the_session_s_own_cursor(x):
+    mid = x.mission()
+    x.propose(mid, task('t1', 'write_repo'))            # before the session existed
+    s = x.session(mission=mid)
+    b = x.sessions.resume(x.user, session_id=s['id'], request_id='r1')['brief']
+    assert b['changes']['count'] == 0 and b['changes']['groups'] == []

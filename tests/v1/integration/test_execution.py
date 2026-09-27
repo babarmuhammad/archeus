@@ -748,6 +748,63 @@ def test_E62_a_disarmed_core_kills_live_orphans_at_boot(x):
     assert x.state(e.id).state not in ('RUNNING', 'STARTING')
 
 
+# ── hand-off (P12, p12-design-gate §10.1) ────────────────────────────────────
+
+PRESSURE = [{'emit': {'type': 'working'}},
+            {'emit': {'type': 'usage', 'usage': {'input_tokens': 190000}}, 'fresh_only': True},
+            {'emit': {'type': 'tool', 'name': 'Read', 'input': {'file_path': 'a'}}}, DONE]
+
+
+def _handed_off(x, mid):
+    return x.drive(mid, lambda: [e for e in x.all(entities.Execution, mission_id=mid)
+                                 if e.state == 'ENDED_HANDOFF'])[0]
+
+
+def test_E79_pressure_hands_off_and_the_task_continues_where_it_was(x):
+    x.scenarios['t1'] = PRESSURE
+    mid = x.ready(task('t1', 'write_repo', 'read'))
+    first = _handed_off(x, mid)
+    nxt = x.drive(mid, lambda: x.exe(task_id=first.task_id).handoff_from == first.id
+                  and x.exe(task_id=first.task_id))
+    x.drive(mid, ended(x, nxt.id))
+    assert (first.exit_reason, first.stop_reason, first.charged) == ('handoff', 'pressure', False)
+    assert (nxt.attempt, x.state(nxt.id).state) == (first.attempt + 1, 'ENDED_OK')
+    moves = [(ev['payload']['from'], ev['payload']['to']) for ev in x.events('task.state_changed')
+             if ev['subject']['id'] == first.task_id]
+    assert ('RUNNING', 'READY') not in moves             # the task never left RUNNING
+    assert x.m(mid).state == 'EXECUTING' or x.m(mid).state in ('VERIFYING', 'COMPLETED')
+    (cp,) = x.all(entities.Checkpoint, execution_id=first.id)
+    assert cp.trigger == 'pressure'
+    started = [ev for ev in x.events('execution.started') if ev['subject']['id'] == nxt.id]
+    assert started                                        # the continuation ran
+
+
+def test_E80_a_continuation_meets_the_policy_as_it_is_now(x):
+    x.scenarios['t1'] = [{'emit': {'type': 'working'}}, {'sleep': 0.6}] + PRESSURE[1:]
+    mid = x.ready(task('t1', 'write_repo', 'read'))
+    _running(x, mid)
+    x.rule('USER', 'write_repo', 'ASK')                  # the task now needs the user
+    first = _handed_off(x, mid)
+    assert not [e for e in x.all(entities.Execution, task_id=first.task_id)
+                if e.handoff_from == first.id]
+    assert x.pending(mid).task_id == first.task_id               # P9 asks, now
+    assert x.task_of(mid).state in ('READY', 'AWAITING_APPROVAL')
+
+
+def test_E81_a_continuation_goes_only_where_the_router_sends_it(x):
+    acc = x.account('Only')
+    x.scenarios['t1'] = [{'emit': {'type': 'working'}},
+                         {'emit': {'type': 'limit', 'resets_at': '2099-01-01T00:00:00Z'}},
+                         {'sleep': 30}]
+    mid = x.ready(task('t1', 'write_repo'))
+    first = _handed_off(x, mid)
+    assert first.account_id == acc
+    # the only account is LIMITED: P10 has nowhere to continue it, so nothing is created
+    assert not [e for e in x.all(entities.Execution, task_id=first.task_id)
+                if e.handoff_from == first.id]
+    assert x.one(entities.Account, id=acc).health == 'LIMITED'
+
+
 # ── output ───────────────────────────────────────────────────────────────────
 
 def test_E70_output_is_tailed_in_order_redacted_and_ends_with_its_offset(x):
