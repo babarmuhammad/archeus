@@ -779,6 +779,30 @@ def test_E79_pressure_hands_off_and_the_task_continues_where_it_was(x):
     assert started                                        # the continuation ran
 
 
+def test_E82_output_written_before_a_tool_call_is_read_before_the_call_is_answered(x):
+    """The race CI found: a pass reads the stream a moment before the agent
+    writes its usage and then asks the hook. The request must not be answered
+    on a stale reading — the pressure it was preceded by hands the execution
+    off at that very call."""
+    x.scenarios['t1'] = PRESSURE
+    mid = x.ready(task('t1', 'write_repo', 'read'))
+    e = x.drive(mid, lambda: x.exe(mission_id=mid) and x.exe(mission_id=mid).pid
+                and x.exe(mission_id=mid))
+    deadline = time.monotonic() + 20
+    while not x.manager.node.pending_requests(e.id) and time.monotonic() < deadline:
+        time.sleep(0.02)                        # no pass runs: the agent asks, unread
+    real, calls = x.manager._tail, []
+
+    def stale_first(ex, p):
+        calls.append(1)
+        return False if len(calls) == 1 else real(ex, p)
+    x.manager._tail = stale_first
+    x.manager.tick()
+    x.manager._tail = real
+    x.drive(mid, ended(x, e.id))
+    assert (x.state(e.id).state, x.state(e.id).stop_reason) == ('ENDED_HANDOFF', 'pressure')
+
+
 def test_E80_a_continuation_meets_the_policy_as_it_is_now(x):
     x.scenarios['t1'] = [{'emit': {'type': 'working'}}, {'sleep': 0.6}] + PRESSURE[1:]
     mid = x.ready(task('t1', 'write_repo', 'read'))

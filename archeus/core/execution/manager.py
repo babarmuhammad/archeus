@@ -346,7 +346,13 @@ class ExecutionManager:
 
     def _hooks(self, e, p, disarmed):
         did = False
-        for seq, req in self.node.pending_requests(e.id):
+        pending = self.node.pending_requests(e.id)
+        if pending:
+            # what the agent wrote before it asked is read before it is answered:
+            # a usage report just ahead of a tool call is the pressure that hands
+            # the execution off at that very call (p12-design-gate §10.1)
+            self._tail(e, p)
+        for seq, req in pending:
             did = True
             if req is None:
                 self.node.respond(e.id, seq, 'halt', 'the request could not be read')

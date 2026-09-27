@@ -151,6 +151,10 @@ MUTATIONS = [
      "            self._do(X.request_handoff, execution_id=e.id, stop_reason='limit',",
      "            self._do(X.request_handoff, execution_id=e.id, stop_reason='limit',")],
      [S4 + '::test_crossing_the_ceiling_mid_run_halts_at_the_boundary_and_hands_off']),
+    ('Y25', 'a hook request answered on a stale reading of the stream', [(MGR,
+     "        if pending:\n            # what the agent wrote before it asked",
+     "        if False:\n            # what the agent wrote before it asked")],
+     [I + '::test_E82_output_written_before_a_tool_call_is_read_before_the_call_is_answered']),
 ]
 
 
