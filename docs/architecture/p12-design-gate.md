@@ -980,3 +980,31 @@ it) settled it in two runs:
 
 **Mutation after these.** P12 26/26 (Y26 added), P11 32/32 (X31, X32), P10 37/37, P9 36/36,
 P8 22/22.
+
+17. **G01's "nothing advances" was a false idle signal, not a stuck Core.** Runs 36321061552
+    and 36322748379 failed G01 `[http]` four times with execution ENDED_OK, task VERIFYING,
+    mission EXECUTING and every loop idle. VERIFYING needs no wake-up: it is the task row's
+    state, and every engine pass steps every unsettled mission (a new Core starts with nothing
+    parked) and verifies a VERIFYING task before anything else, so a Core killed there resumes
+    it on its first pass, and the transition's guard (VERIFYING required) means it happens once.
+    The engine never saw the task in VERIFYING. The judge had declared idleness first:
+    `archeus-exec` set its state only *after* a tick, so it still read `idle` from the tick
+    before while the current one collected an exited process — `_collect` drops the process
+    from `_procs` (`live` 0), runs `diff_stat` (git), then commits `record_end`. When nothing
+    else in that tick committed (the agent's last line already read and reported, which an
+    adopted process does at once because its `reported` clock starts at zero), health showed
+    every loop idle with no event past their cursors, the judge failed at once, and its
+    last-states read, milliseconds later, found the end committed and the verification not yet
+    run. The exec loop is now `running` for the whole of every tick, so `idle` means the last
+    tick did nothing and none is in flight. Deterministic reproduction: a status that reports
+    the exit two passes late and a hold between forgetting the process and committing its end
+    (with and without a restart, `test_engine_loop.py`); both read idle without the fix. A task
+    held in VERIFYING across two kills is verified exactly once. Mutant Y27.
+18. **A restarting Core refused to start past a reader of `core.json` (Windows).** The same
+    runs failed `test_seq_keeps_increasing_across_a_restart` with `could not write core.json`:
+    the killed Core's stale file was being read by `wait_ready`'s poll, and on Windows a file
+    open without `FILE_SHARE_DELETE` fails `os.replace` onto it. `archeus status` polling at a
+    Core's start is the same. The write is retried for up to 2 s, as a probe holding the lock
+    already is. Mutant Y28.
+
+**Mutation after 17–18.** P12 28/28 (Y27, Y28), P11 32/32, P10 37/37, P9 36/36, P8 22/22.
