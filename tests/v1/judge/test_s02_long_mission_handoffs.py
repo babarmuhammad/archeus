@@ -11,12 +11,23 @@ The first function, which counts the hand-offs, passes since P12; both
 scripts gained a tool boundary after the pressure (p12-design-gate D18).
 """
 
-import pytest
-
 from .support import events_of, mission_states, wait_state
 
 
 def test_a_mission_survives_two_session_handoffs(client, rig):
+    _two_handoffs(client, rig)
+
+
+def test_a_first_output_written_before_the_spawn_returns_still_hands_off(client, rig,
+                                                                         monkeypatch):
+    """How Windows CI lost one of S2's hand-offs (`assert 1 == 2`): t3's usage
+    report is its first output, and when it landed before spawn() returned
+    the manager counted it as already read. Held here until it has."""
+    rig.spawn_returns_after(monkeypatch, 't3', b'"usage"')
+    _two_handoffs(client, rig)
+
+
+def _two_handoffs(client, rig):
     # p12-design-gate D18: a tool call after the pressure is the boundary the
     # hand-off halts at (without one the process just finishes), and the
     # pressure is `fresh_only`, or each continuation would report it again

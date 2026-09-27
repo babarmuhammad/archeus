@@ -155,6 +155,13 @@ MUTATIONS = [
      "        if pending:\n            # what the agent wrote before it asked",
      "        if False:\n            # what the agent wrote before it asked")],
      [I + '::test_E82_output_written_before_a_tool_call_is_read_before_the_call_is_answered']),
+    ('Y26', 'a hand-off lost to pressure the child wrote before its spawn returned', [(MGR,
+     "        offset = self._offset(e)\n        try:",
+     "        try:"), (MGR,
+     "self._procs[e.id] = self._fresh(adapter, handle, seq, offset, None)",
+     "self._procs[e.id] = self._fresh(adapter, handle, seq, self._offset(e), None)")],
+     ['tests/v1/judge/test_s02_long_mission_handoffs.py'
+      '::test_a_first_output_written_before_the_spawn_returns_still_hands_off']),
 ]
 
 

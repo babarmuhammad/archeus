@@ -196,13 +196,17 @@ class ExecutionManager:
                            'action_classes': list(t.action_classes),
                            'continuation': continuation,
                            'fake_scenario': self.scenarios.get(t.key, _DEFAULT)})
+        # where this process's output starts, taken BEFORE it can write any: a
+        # size read after spawn() returns counts whatever the child wrote in
+        # between as already read, so its first output is never seen
+        offset = self._offset(e)
         try:
             handle = self.node.spawn(adapter, spec, resume_state=resume_state)
         except (base.SpawnFailed, base.AlreadySpawned) as err:
             self._do(X.refuse, execution_id=e.id, reason='the process did not start: %s' % err,
                      stop_reason='binding')
             return True
-        self._procs[e.id] = self._fresh(adapter, handle, seq, self._offset(e), None)
+        self._procs[e.id] = self._fresh(adapter, handle, seq, offset, None)
         self._do(X.record_process, execution_id=e.id, pid=handle.pid,
                  create_time=handle.create_time, process_seq=seq)
         if self.node.disarmed():            # the e-stop raced the spawn: it loses

@@ -190,6 +190,25 @@ class Rig:
             self._pending('the fake usage feed for this binding', 'P10')
         self.client._report_usage(account_id, window, utilisation_pct)
 
+    def spawn_returns_after(self, monkeypatch, task_key, marker):
+        """Hold the node's spawn() of *task_key*'s first process until *marker*
+        is in its stream: the child writes before the spawn returns, as a slow
+        Windows runner made it do (p12-design-gate §31)."""
+        from archeus.node.local import LocalNode
+        real = LocalNode.spawn
+
+        def late(node, adapter, spec, resume_state=None):
+            handle = real(node, adapter, spec, resume_state=resume_state)
+            contract = spec.task_contract
+            if contract.get('key') == task_key and not contract.get('continuation'):
+                stream = paths.ExecPaths(spec.execution_id).stream
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline and not (
+                        os.path.exists(stream) and marker in open(stream, 'rb').read()):
+                    time.sleep(0.01)
+            return handle
+        monkeypatch.setattr(LocalNode, 'spawn', late)
+
     def provider_session(self, harness_id, turns, ref=None):
         """A session the user started in a fake session harness themselves (P12):
         its provider transcript, with these (role, text) turns. Returns its ref."""

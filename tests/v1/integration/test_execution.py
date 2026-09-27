@@ -864,6 +864,46 @@ def test_E82_output_written_before_a_tool_call_is_read_before_the_call_is_answer
     assert (x.state(e.id).state, x.state(e.id).stop_reason) == ('ENDED_HANDOFF', 'pressure')
 
 
+def _spawn_returns_after(x, marker):
+    """The race Windows CI found (E23, T14, S02): the child writes before
+    spawn() returns. Hold the return until *marker* is in its stream."""
+    real = x.manager.node.spawn
+
+    def late(adapter, spec, resume_state=None):
+        handle = real(adapter, spec, resume_state=resume_state)
+        stream, deadline = ExecPaths(spec.execution_id).stream, time.monotonic() + 20
+        while time.monotonic() < deadline:
+            if os.path.exists(stream) and marker in open(stream, 'rb').read():
+                break
+            time.sleep(0.01)
+        return handle
+    x.manager.node.spawn = late
+
+
+def test_E83_output_written_before_the_spawn_returns_is_first_output(x):
+    """A process that wrote and then went quiet stayed STARTING for its whole
+    life: the offset was the stream's size read AFTER the spawn, so what it
+    wrote in between counted as already read."""
+    x.scenarios['t1'] = [{'emit': {'type': 'working'}}, {'sleep': 30}]
+    mid = x.ready(task('t1', 'write_repo'))
+    _spawn_returns_after(x, b'"working"')
+    e = x.drive(mid, lambda: x.exe(mission_id=mid) and x.exe(mission_id=mid).pid
+                and x.exe(mission_id=mid))
+    x.drive(mid, lambda: x.state(e.id).state == 'RUNNING', timeout=10)
+    assert x.state(e.id).stream_offset > 0
+
+
+def test_E84_pressure_written_before_the_spawn_returns_still_hands_off(x):
+    """The same race lost S02 [http] a hand-off: the usage report was the
+    child's first output, so it was skipped, and the tool call after it was
+    allowed as if there were no pressure."""
+    x.scenarios['t1'] = PRESSURE
+    mid = x.ready(task('t1', 'write_repo', 'read'))
+    _spawn_returns_after(x, b'"usage"')
+    e = _handed_off(x, mid)
+    assert (e.exit_reason, e.stop_reason) == ('handoff', 'pressure')
+
+
 def test_E80_a_continuation_meets_the_policy_as_it_is_now(x):
     x.scenarios['t1'] = [{'emit': {'type': 'working'}}, {'sleep': 0.6}] + PRESSURE[1:]
     mid = x.ready(task('t1', 'write_repo', 'read'))

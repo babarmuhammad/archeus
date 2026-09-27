@@ -173,6 +173,14 @@ MUTATIONS = [
      "task=t)",
      "            auth = {'outcome': 'covered', 'policy_decision_id': e.policy_decision_id}")],
      [S + '::test_S07_a_resume_is_judged_by_p9_again']),
+    # ── found by Windows CI after P12 (p12-design-gate §31) ──
+    ('X31', 'a process\'s stream offset read after its spawn', [(MGR,
+     "        offset = self._offset(e)\n        try:",
+     "        try:"), (MGR,
+     "self._procs[e.id] = self._fresh(adapter, handle, seq, offset, None)",
+     "self._procs[e.id] = self._fresh(adapter, handle, seq, self._offset(e), None)")],
+     [I + '::test_E83_output_written_before_the_spawn_returns_is_first_output',
+      I + '::test_E84_pressure_written_before_the_spawn_returns_still_hands_off']),
 ]
 
 
