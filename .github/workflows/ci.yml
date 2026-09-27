@@ -53,7 +53,9 @@ jobs:
       # --basetemp (Windows only): pytest's basetemp, which holds every test
       # database, on RUNNER_TEMP (D:) instead of %TEMP% (C:). Run 36318248029
       # measured C: fsync at 1.7-6.7 ms p50 and D: at 0.10-0.30 ms; nothing
-      # else about the tests changes. On the command line, not PYTEST_ADDOPTS:
+      # else about the tests changes. Kept after the controlled run 36321061552:
+      # Windows P2 went from 67-96 to 1213-1580 commands/s in the suite with
+      # the 200/s floor untouched (p12-design-gate §31). On the command line, not PYTEST_ADDOPTS:
       # pytest shell-splits that variable and eats the path's backslashes.
       - name: 'Diagnostic: P2 throughput alone, before the suite'
         continue-on-error: true
