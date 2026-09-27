@@ -69,6 +69,16 @@ given trigger on a given subject is decided in the application layer (P9), never
 | POST | `/v1/missions/{id}/stop` | control | required | — | `StopMissionRequest` | `MissionStopped` |
 | POST | `/v1/estop` | control | required | — | `EstopRequest` | `Estopped` |
 | POST | `/v1/rearm` | control | required | — | `RearmRequest` | `Rearmed` |
+| GET | `/v1/sessions` | observe | — | — | — | `SessionList` |
+| GET | `/v1/sessions/{id}` | observe | — | — | — | `Session` |
+| GET | `/v1/sessions/{id}/brief` | observe | — | — | — | `SessionBrief` |
+| POST | `/v1/sessions` | control | required | — | `CreateSessionRequest` | `SessionOutcome` |
+| POST | `/v1/sessions/{id}/resume` | control | required | — | `ResumeSessionRequest` | `SessionOutcome` |
+| POST | `/v1/sessions/{id}/handoff` | control | required | — | `HandoffSessionRequest` | `SessionOutcome` |
+| POST | `/v1/sessions/{id}/link` | control | required | — | `LinkSessionRequest` | `Session` |
+| POST | `/v1/sessions/{id}/close` | control | required | — | `CloseSessionRequest` | `Session` |
+| GET | `/v1/executions/{id}/checkpoints` | observe | — | — | — | `CheckpointList` |
+| POST | `/v1/executions/{id}/handoff` | control | required | — | `HandoffExecutionRequest` | `ExecutionStopped` |
 | GET | `/v1/conversations/{id}/messages` | observe | — | `after` | — | `MessageList` |
 | POST | `/v1/conversations/{id}/messages` | control | required | — | `PostMessageRequest` | `MessagePosted` |
 | GET | `/v1/intents/{id}` | observe | — | — | — | `Intent` |
@@ -166,6 +176,28 @@ interface Card {
   type: 'mission_proposal' | 'plan' | 'approval' | 'route_explanation' | 'diff' | 'verification' | 'digest' | 'mission' | 'idea' | 'challenge' | 'clarification' | 'knowledge' | 'status';
   ref: Subject;
   [field: string]: unknown;
+}
+```
+
+### `Checkpoint`
+
+```ts
+interface Checkpoint {
+  id: string;
+  execution_id: string;
+  mission_id: string;
+  trigger: 'task_boundary' | 'pressure' | 'account_change' | 'pause' | 'failure' | 'user';
+  next_action?: string;
+  as_of_seq?: number;
+  [field: string]: unknown;
+}
+```
+
+### `CheckpointList`
+
+```ts
+interface CheckpointList {
+  checkpoints: Checkpoint[];
 }
 ```
 
@@ -993,6 +1025,62 @@ interface Scope {
 }
 ```
 
+### `Session`
+
+```ts
+interface Session {
+  id: string;
+  harness_id: string;
+  mode: 'headless' | 'interactive_attached' | 'manual';
+  state: 'CLOSED' | 'LOST' | 'OPEN';
+  workspace_id: string;
+  cwd: string;
+  account_id?: string | null;
+  project_id?: string | null;
+  mission_id?: string | null;
+  model?: string | null;
+  effort?: string | null;
+  handoff_from_session_id?: string | null;
+  last_seen_seq: number;
+  launch_seq?: number;
+  launched_seq?: number;
+  [field: string]: unknown;
+}
+```
+
+### `SessionBrief`
+
+```ts
+interface SessionBrief {
+  as_of_seq: number;
+  session: Record<string, unknown>;
+  mission?: Record<string, unknown> | null;
+  changes: Record<string, unknown>;
+  context: Record<string, unknown>;
+  [field: string]: unknown;
+}
+```
+
+### `SessionList`
+
+```ts
+interface SessionList {
+  sessions: Session[];
+}
+```
+
+### `SessionOutcome`
+
+```ts
+interface SessionOutcome {
+  id: string;
+  state: string;
+  duplicate?: boolean;
+  launch?: Record<string, unknown> | null;
+  [field: string]: unknown;
+}
+```
+
 ### `Simulation`
 
 ```ts
@@ -1348,6 +1436,75 @@ interface EstopRequest {
 
 ```ts
 interface RearmRequest {
+  idempotency_key: string;
+}
+```
+
+### `CreateSessionRequest`
+
+```ts
+interface CreateSessionRequest {
+  harness_id: string;
+  cwd: string;
+  launch?: boolean | null;
+  provider_session_ref?: string | null;
+  account_id?: string | null;
+  project_id?: string | null;
+  mission_id?: string | null;
+  model?: string | null;
+  effort?: string | null;
+  idempotency_key: string;
+}
+```
+
+### `ResumeSessionRequest`
+
+```ts
+interface ResumeSessionRequest {
+  request_id: string;
+  model?: string | null;
+  effort?: string | null;
+  deliver_brief?: boolean | null;
+  idempotency_key: string;
+}
+```
+
+### `HandoffSessionRequest`
+
+```ts
+interface HandoffSessionRequest {
+  request_id: string;
+  harness_id: string;
+  account_id?: string | null;
+  model?: string | null;
+  effort?: string | null;
+  reason?: string | null;
+  idempotency_key: string;
+}
+```
+
+### `LinkSessionRequest`
+
+```ts
+interface LinkSessionRequest {
+  mission_id?: string | null;
+  idempotency_key: string;
+}
+```
+
+### `CloseSessionRequest`
+
+```ts
+interface CloseSessionRequest {
+  reason?: string | null;
+  idempotency_key: string;
+}
+```
+
+### `HandoffExecutionRequest`
+
+```ts
+interface HandoffExecutionRequest {
   idempotency_key: string;
 }
 ```

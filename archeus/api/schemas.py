@@ -352,6 +352,43 @@ TYPES = {
                 'required': ['armed']},
     'ProviderTermsDecided': {'type': 'object', 'properties': {
         'provider_terms': {'ref': 'ProviderTerms'}}, 'required': ['provider_terms']},
+    # ── sessions and checkpoints (P12, p12-design-gate §19) ──
+    'Session': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'harness_id': {'type': 'string'},
+        'mode': {'type': 'string', 'enum': list(entities.SESSION_MODES)},
+        'state': {'type': 'string', 'enum': sorted(states.states('session'))},
+        'workspace_id': {'type': 'string'}, 'cwd': {'type': 'string'},
+        'account_id': {'type': 'string', 'nullable': True},
+        'project_id': {'type': 'string', 'nullable': True},
+        'mission_id': {'type': 'string', 'nullable': True},
+        'model': {'type': 'string', 'nullable': True},
+        'effort': {'type': 'string', 'nullable': True},
+        'handoff_from_session_id': {'type': 'string', 'nullable': True},
+        'last_seen_seq': {'type': 'integer'}, 'launch_seq': {'type': 'integer'},
+        'launched_seq': {'type': 'integer'}},
+        'required': ['id', 'harness_id', 'mode', 'state', 'workspace_id', 'cwd',
+                     'last_seen_seq']},
+    'SessionList': {'type': 'object', 'properties': {
+        'sessions': {'type': 'array', 'items': {'ref': 'Session'}}},
+        'required': ['sessions']},
+    'SessionBrief': {'type': 'object', 'open': True, 'properties': {
+        'as_of_seq': {'type': 'integer'}, 'session': {'type': 'object'},
+        'mission': {'type': 'object', 'nullable': True}, 'changes': {'type': 'object'},
+        'context': {'type': 'object'}},
+        'required': ['as_of_seq', 'session', 'changes', 'context']},
+    'SessionOutcome': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'state': {'type': 'string'},
+        'duplicate': {'type': 'boolean'}, 'launch': {'type': 'object', 'nullable': True}},
+        'required': ['id', 'state']},
+    'Checkpoint': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'execution_id': {'type': 'string'},
+        'mission_id': {'type': 'string'},
+        'trigger': {'type': 'string', 'enum': list(entities.CHECKPOINT_TRIGGERS)},
+        'next_action': {'type': 'string'}, 'as_of_seq': {'type': 'integer'}},
+        'required': ['id', 'execution_id', 'mission_id', 'trigger']},
+    'CheckpointList': {'type': 'object', 'properties': {
+        'checkpoints': {'type': 'array', 'items': {'ref': 'Checkpoint'}}},
+        'required': ['checkpoints']},
     # ── conversation and intent (P7, p7-design-gate §9) ──
     'Card': {'type': 'object', 'open': True, 'properties': {
         'type': {'type': 'string', 'enum': list(entities.CARD_TYPES)},
@@ -593,6 +630,25 @@ MISSION_RESOURCES = {'type': 'object', 'properties': {
     'max_cost_band': {'type': 'string', 'nullable': True, 'enum': list(entities.COST_BANDS)},
     'idempotency_key': KEY},
     'required': ['idempotency_key']}
+_S = {'type': 'string', 'nullable': True}
+CREATE_SESSION = {'type': 'object', 'properties': {
+    'harness_id': {'type': 'string'}, 'cwd': {'type': 'string'},
+    'launch': {'type': 'boolean', 'nullable': True},
+    'provider_session_ref': _S, 'account_id': _S, 'project_id': _S, 'mission_id': _S,
+    'model': _S, 'effort': _S, 'idempotency_key': KEY},
+    'required': ['harness_id', 'cwd', 'idempotency_key']}
+RESUME_SESSION = {'type': 'object', 'properties': {
+    'request_id': {'type': 'string'}, 'model': _S, 'effort': _S,
+    'deliver_brief': {'type': 'boolean', 'nullable': True}, 'idempotency_key': KEY},
+    'required': ['request_id', 'idempotency_key']}
+HANDOFF_SESSION = {'type': 'object', 'properties': {
+    'request_id': {'type': 'string'}, 'harness_id': {'type': 'string'}, 'account_id': _S,
+    'model': _S, 'effort': _S, 'reason': _S, 'idempotency_key': KEY},
+    'required': ['request_id', 'harness_id', 'idempotency_key']}
+LINK_SESSION = {'type': 'object', 'properties': {
+    'mission_id': _S, 'idempotency_key': KEY}, 'required': ['idempotency_key']}
+CLOSE_SESSION = {'type': 'object', 'properties': {
+    'reason': _S, 'idempotency_key': KEY}, 'required': ['idempotency_key']}
 REDEEM = {'type': 'object', 'properties': {
     'code': {'type': 'string'}, 'platform': {'type': 'string', 'enum': ['web', 'desktop']}},
     'required': ['code', 'platform']}

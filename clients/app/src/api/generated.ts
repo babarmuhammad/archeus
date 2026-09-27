@@ -59,6 +59,20 @@ export interface Card {
   [field: string]: unknown;
 }
 
+export interface Checkpoint {
+  id: string;
+  execution_id: string;
+  mission_id: string;
+  trigger: 'task_boundary' | 'pressure' | 'account_change' | 'pause' | 'failure' | 'user';
+  next_action?: string;
+  as_of_seq?: number;
+  [field: string]: unknown;
+}
+
+export interface CheckpointList {
+  checkpoints: Checkpoint[];
+}
+
 export interface CommandResult {
   id: string;
   state: string;
@@ -615,6 +629,46 @@ export interface Scope {
   project: string | null;
 }
 
+export interface Session {
+  id: string;
+  harness_id: string;
+  mode: 'headless' | 'interactive_attached' | 'manual';
+  state: 'CLOSED' | 'LOST' | 'OPEN';
+  workspace_id: string;
+  cwd: string;
+  account_id?: string | null;
+  project_id?: string | null;
+  mission_id?: string | null;
+  model?: string | null;
+  effort?: string | null;
+  handoff_from_session_id?: string | null;
+  last_seen_seq: number;
+  launch_seq?: number;
+  launched_seq?: number;
+  [field: string]: unknown;
+}
+
+export interface SessionBrief {
+  as_of_seq: number;
+  session: Record<string, unknown>;
+  mission?: Record<string, unknown> | null;
+  changes: Record<string, unknown>;
+  context: Record<string, unknown>;
+  [field: string]: unknown;
+}
+
+export interface SessionList {
+  sessions: Session[];
+}
+
+export interface SessionOutcome {
+  id: string;
+  state: string;
+  duplicate?: boolean;
+  launch?: Record<string, unknown> | null;
+  [field: string]: unknown;
+}
+
 export interface Simulation {
   decision: string;
   reason: string;
@@ -838,6 +892,51 @@ export interface RearmRequest {
   idempotency_key: string;
 }
 
+export interface CreateSessionRequest {
+  harness_id: string;
+  cwd: string;
+  launch?: boolean | null;
+  provider_session_ref?: string | null;
+  account_id?: string | null;
+  project_id?: string | null;
+  mission_id?: string | null;
+  model?: string | null;
+  effort?: string | null;
+  idempotency_key: string;
+}
+
+export interface ResumeSessionRequest {
+  request_id: string;
+  model?: string | null;
+  effort?: string | null;
+  deliver_brief?: boolean | null;
+  idempotency_key: string;
+}
+
+export interface HandoffSessionRequest {
+  request_id: string;
+  harness_id: string;
+  account_id?: string | null;
+  model?: string | null;
+  effort?: string | null;
+  reason?: string | null;
+  idempotency_key: string;
+}
+
+export interface LinkSessionRequest {
+  mission_id?: string | null;
+  idempotency_key: string;
+}
+
+export interface CloseSessionRequest {
+  reason?: string | null;
+  idempotency_key: string;
+}
+
+export interface HandoffExecutionRequest {
+  idempotency_key: string;
+}
+
 export interface PostMessageRequest {
   text: string;
   in_reply_to?: string | null;
@@ -1001,6 +1100,26 @@ export const api = {
     send<Estopped>('POST', '/v1/estop', body),
   rearm: (send: Send, body: RearmRequest) =>
     send<Rearmed>('POST', '/v1/rearm', body),
+  listSessions: (send: Send) =>
+    send<SessionList>('GET', '/v1/sessions'),
+  getSession: (send: Send, id: string) =>
+    send<Session>('GET', '/v1/sessions/' + encodeURIComponent(id)),
+  sessionBrief: (send: Send, id: string) =>
+    send<SessionBrief>('GET', '/v1/sessions/' + encodeURIComponent(id) + '/brief'),
+  createSession: (send: Send, body: CreateSessionRequest) =>
+    send<SessionOutcome>('POST', '/v1/sessions', body),
+  resumeSession: (send: Send, id: string, body: ResumeSessionRequest) =>
+    send<SessionOutcome>('POST', '/v1/sessions/' + encodeURIComponent(id) + '/resume', body),
+  handoffSession: (send: Send, id: string, body: HandoffSessionRequest) =>
+    send<SessionOutcome>('POST', '/v1/sessions/' + encodeURIComponent(id) + '/handoff', body),
+  linkSession: (send: Send, id: string, body: LinkSessionRequest) =>
+    send<Session>('POST', '/v1/sessions/' + encodeURIComponent(id) + '/link', body),
+  closeSession: (send: Send, id: string, body: CloseSessionRequest) =>
+    send<Session>('POST', '/v1/sessions/' + encodeURIComponent(id) + '/close', body),
+  listCheckpoints: (send: Send, id: string) =>
+    send<CheckpointList>('GET', '/v1/executions/' + encodeURIComponent(id) + '/checkpoints'),
+  handoffExecution: (send: Send, id: string, body: HandoffExecutionRequest) =>
+    send<ExecutionStopped>('POST', '/v1/executions/' + encodeURIComponent(id) + '/handoff', body),
   listMessages: (send: Send, id: string, query: { after?: number } = {}) =>
     send<MessageList>('GET', '/v1/conversations/' + encodeURIComponent(id) + '/messages' + qs(query)),
   postMessage: (send: Send, id: string, body: PostMessageRequest) =>

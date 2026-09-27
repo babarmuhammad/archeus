@@ -118,6 +118,9 @@ class Ports:
     callers: list = None
     preference: object = field(default_factory=P.LegacyOwnCallPreference)
     executors: list = None
+    # P12: the session adapters (p12-design-gate §13.3); None is the real ones
+    # (Claude Code, pi), a test passes fakes. Nothing is launched but on request.
+    sessions: list = None
 
     @property
     def stub(self):
@@ -445,10 +448,22 @@ class Core:
                                 poll_s=self.world_poll_s, on_fail=self._engine_failed,
                                 name='archeus-policy')
         self.policy.start()
+        from .sessions.service import SessionService
+        from ..harnesses.sessions import real_session_adapters
+        from ..node.local import LocalNode
+        self.sessions = SessionService(
+            self.db, system=self.system, node=LocalNode(),
+            adapters=real_session_adapters() if self.ports.sessions is None
+            else self.ports.sessions)
+        try:        # D21: a launch a previous Core was asked for is expired, never replayed
+            self.sessions.sweep()
+        except Exception:                           # never a reason not to start
+            log.exception('the session sweep failed')
         self.api = server.Api(db=self.db, missions=self.missions,
                               authorization=Authorization(missions=self.missions),
                               resources=Resources(registry=registry, callers=self.callers),
-                              conversations=self.conversations, port=self.port,
+                              conversations=self.conversations, sessions=self.sessions,
+                              port=self.port,
                               health=self.health, version=VERSION,
                               heartbeat_s=self.heartbeat_s, launch_clock=self.launch_clock,
                               static_dir=self.static_dir)

@@ -22,7 +22,8 @@ import time
 #: and exit 2, so no script ever sees a verb change from "opened the TUI" to
 #: something else.
 DEFERRED = {'approve': 'P9', 'pair': 'P15'}
-VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair')
+VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair',
+         'sessions', 'resume', 'handoff')
 
 USAGE = """usage: archeus core [--open]    run Archeus Core in the foreground (Ctrl+C stops it)
        archeus status           is Core running? (exit 0 yes, 1 no, 2 discovery failed,
@@ -37,7 +38,15 @@ USAGE = """usage: archeus core [--open]    run Archeus Core in the foreground (C
                                 pause a mission: its executions halt at their next tool call
        archeus pause all --now  the emergency stop (as `archeus estop`)
        archeus estop            stop every execution now; Core stays disarmed until
-                                a user device re-arms it (P11; with Core down: P20)"""
+                                a user device re-arms it (P11; with Core down: P20)
+       archeus sessions [--project P] [--mission M]
+                                the sessions Core knows, newest activity first (P12)
+       archeus resume <session> [--model M] [--effort E]
+                                reopen a session on its own harness, with what changed
+                                since it was last used
+       archeus handoff <session> --to <harness> [--account A] [--model M] [--effort E]
+                                continue a session in a new one on another harness or
+                                account, from what Archeus hands over"""
 _TERMS = {'permit': 'permitted', 'refuse': 'refused'}
 
 
@@ -62,6 +71,14 @@ def main(argv):
         return estop()
     if verb == 'pause' and len(args) == 1 and args[0] != 'all':
         return pause(args[0])
+    opts = _flags(args[1:] if verb in ('resume', 'handoff') else args)
+    if verb == 'sessions' and opts is not None and set(opts) <= {'project', 'mission'}:
+        return sessions(opts)
+    if verb == 'resume' and args and opts is not None and set(opts) <= {'model', 'effort'}:
+        return resume(args[0], opts)
+    if (verb == 'handoff' and args and opts is not None and 'to' in opts
+            and set(opts) <= {'to', 'account', 'model', 'effort'}):
+        return handoff(args[0], opts)
     print(USAGE, file=sys.stderr)
     return 2
 
@@ -200,6 +217,87 @@ def pause(mission_id):
         print('Core refused to pause %s' % mission_id, file=sys.stderr)
         return 2
     print('%s: %s (its executions halt at their next tool call)' % (mission_id, out['state']))
+    return 0
+
+
+def _flags(args):
+    """`--name value` pairs, or None when they are not that."""
+    if len(args) % 2:
+        return None
+    out = {}
+    for k, v in zip(args[::2], args[1::2]):
+        if not k.startswith('--') or v.startswith('--'):
+            return None
+        out[k[2:]] = v
+    return out
+
+
+def _running():
+    info = _core_or_say()
+    if info is None:
+        print('Core is not running: start it with `archeus core`', file=sys.stderr)
+    return info
+
+
+def sessions(opts):
+    from urllib.parse import urlencode
+    info = _running()
+    if info is None:
+        return 1
+    q = urlencode({k: v for k, v in opts.items()})
+    out = _get(info, 'GET', '/v1/sessions' + ('?' + q if q else ''))
+    if out is None:
+        print('Core did not answer', file=sys.stderr)
+        return 2
+    for s in out['sessions']:
+        print('%s  %-7s %-20s %-12s %s%s' % (
+            s['id'], s['state'], s['harness_id'], s.get('model') or '-', s['cwd'],
+            '  (from %s)' % s['handoff_from_session_id']
+            if s.get('handoff_from_session_id') else ''))
+    if not out['sessions']:
+        print('no sessions')
+    return 0
+
+
+def resume(session_id, opts):
+    import os
+    from urllib.parse import quote
+    info = _running()
+    if info is None:
+        return 1
+    body = dict(opts, request_id=os.urandom(12).hex(), idempotency_key=os.urandom(16).hex())
+    out = _get(info, 'POST', '/v1/sessions/%s/resume' % quote(session_id, safe=''), body)
+    if out is None:
+        print('Core refused to resume %s' % session_id, file=sys.stderr)
+        return 2
+    b = out.get('brief') or {}
+    n = (b.get('changes') or {}).get('count', 0)
+    print('%s: resumed on %s%s; %d change(s) since it was last used'
+          % (session_id, out['harness_id'], ' (%s)' % out['model'] if out.get('model')
+             else '', n))
+    launch = out.get('launch') or {}
+    if launch.get('error'):
+        print('the terminal did not open: %s' % launch['error'], file=sys.stderr)
+        return 2
+    return 0
+
+
+def handoff(session_id, opts):
+    import os
+    from urllib.parse import quote
+    info = _running()
+    if info is None:
+        return 1
+    body = {'request_id': os.urandom(12).hex(), 'idempotency_key': os.urandom(16).hex(),
+            'harness_id': opts['to']}
+    body.update({k: opts[k] for k in ('account', 'model', 'effort') if k in opts})
+    if 'account' in body:
+        body['account_id'] = body.pop('account')
+    out = _get(info, 'POST', '/v1/sessions/%s/handoff' % quote(session_id, safe=''), body)
+    if out is None:
+        print('Core refused to hand %s off' % session_id, file=sys.stderr)
+        return 2
+    print('%s -> %s on %s' % (session_id, out['id'], out['harness_id']))
     return 0
 
 

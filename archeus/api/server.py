@@ -156,7 +156,7 @@ class Api:
     the Policy port), the launch codes, the streams and Core's health."""
 
     def __init__(self, *, db, missions, port, health, version, conversations=None,
-                 authorization=None, resources=None, executions=None,
+                 authorization=None, resources=None, executions=None, sessions=None,
                  heartbeat_s=15.0, launch_clock=time.monotonic, static_dir=STATIC_DIR,
                  command_timeout=COMMAND_TIMEOUT_S):
         self.db, self.missions, self.health, self.version = db, missions, health, version
@@ -167,6 +167,8 @@ class Api:
             from ..core.application.executions import Executions
             executions = Executions(missions=missions)
         self.executions = executions
+        # P12: the session service (the launcher and the adapters around each command)
+        self.sessions = sessions
         self.origin = auth.Origin(port)
         self.launch = auth.LaunchCodes(clock=launch_clock)
         self.static = Static(static_dir)

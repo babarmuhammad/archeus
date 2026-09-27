@@ -71,7 +71,7 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
     targets = sorted({ast.unparse(n.args[0]) for n in handlers})
     assert targets == ['commands.create_mission', 'commands.register_device',
                        'commands.revoke_device', 'conversation.post_message',
-
+                       'executions.handoff_execution',
                        'knowledge.confirm', 'knowledge.forget',
                        'knowledge.import_meeting', 'knowledge.record_feedback',
                        'knowledge.reject', 'knowledge.retract', 'knowledge.supersede',
@@ -85,6 +85,7 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
                        'req.api.missions.resume',
                        'resources.register_account', 'resources.set_account_enabled',
                        'resources.set_mission_resources', 'resources.set_resource_policy',
+                       'sessions.close', 'sessions.link',
                        'world.ack_digest',
                        'world.create_project', 'world.declare_constraint'], targets
 
@@ -210,24 +211,42 @@ P11 = {
     ('POST', '/v1/estop', 'control', 'required'),
     ('POST', '/v1/rearm', 'control', 'required'),
 }
+#: P12 (p12-design-gate §19): sessions, checkpoints, an execution's hand-off
+P12 = {
+    ('GET', '/v1/sessions', 'observe', None),
+    ('GET', '/v1/sessions/{id}', 'observe', None),
+    ('GET', '/v1/sessions/{id}/brief', 'observe', None),
+    ('POST', '/v1/sessions', 'control', 'required'),
+    ('POST', '/v1/sessions/{id}/resume', 'control', 'required'),
+    ('POST', '/v1/sessions/{id}/handoff', 'control', 'required'),
+    ('POST', '/v1/sessions/{id}/link', 'control', 'required'),
+    ('POST', '/v1/sessions/{id}/close', 'control', 'required'),
+    ('GET', '/v1/executions/{id}/checkpoints', 'observe', None),
+    ('POST', '/v1/executions/{id}/handoff', 'control', 'required'),
+}
 
 
-def test_the_route_table_is_exactly_the_p35b_to_p11_tables():
-    """L2, and P9's E4 / P10's / P11's boundary: nothing from P12 (retry,
-    hand-off), P14 (automations), P15 (pair, device list) or P16 (/v1/now, the
-    execution stream), and no hook route — a later phase adds its rows with its
-    own tests."""
+def test_the_route_table_is_exactly_the_p35b_to_p12_tables():
+    """L2, and P9's E4 / P10's / P11's / P12's boundary: no `retry` (P12 did not
+    build it, p12-design-gate D17), nothing from P14 (automations), P15 (pair,
+    device list) or P16 (/v1/now, the execution stream), and no hook route — a
+    later phase adds its rows with its own tests."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
-    assert got == EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11
-    assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11)
+    assert got == EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12
+    assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11
+                                     | P12)
     # E7: no plan route takes a command (no execution control from P8)
     assert not [r for r in routes.ROUTES if 'plan' in r.path and r.method != 'GET']
     for word in ('route/', 'pair', '/now', 'hook', 'dispatch', 'stream?', '/retry',
-                 'handoff', 'cancel', 'accept', 'graph', 'attention', 'automation'):
+                 'cancel', 'accept', 'graph', 'attention', 'automation'):
         assert not [r.path for r in routes.ROUTES if word in r.path], word
-    # P11: the only execution paths are the six above
+    # P12: the only hand-off paths are a session's and an execution's
+    assert {r.path for r in routes.ROUTES if 'handoff' in r.path} == {
+        '/v1/sessions/{id}/handoff', '/v1/executions/{id}/handoff'}
+    # P11 + P12: the only execution paths are P11's six and P12's two
     assert {r.path for r in routes.ROUTES if 'execution' in r.path or 'stop' in r.path
-            or 'rearm' in r.path} == {p for _m, p, _s, _i in P11}
+            or 'rearm' in r.path} == {p for _m, p, _s, _i in P11} | {
+        '/v1/executions/{id}/checkpoints', '/v1/executions/{id}/handoff'}
     # P10: every resource change is admin; reading them is observe
     assert {r.scope for r in routes.ROUTES if ('account' in r.path or 'resource' in r.path)
             and r.method == 'POST'} == {'admin'}

@@ -39,6 +39,7 @@ from collections import namedtuple
 from ..core.application import commands, queries, world
 from ..core.application import calls as own_calls
 from ..core.application import conversation, executions, knowledge, resources
+from ..core.application import sessions
 from ..core.context import assemble as context
 from ..core.knowledge import ingest
 from ..harnesses.calls import real_callers
@@ -390,6 +391,78 @@ def rearm(req):
     return 200, out
 
 
+# ── sessions and checkpoints (P12, p12-design-gate §19) ──
+
+def _device(req):
+    from ..core.domain.values import Ref
+    return Ref('user_device', req.principal['principal_id'])
+
+
+def list_sessions(req):
+    with req.api.db.read() as conn:
+        return 200, {'sessions': sessions.listing(
+            conn, project_id=_one(req.query, 'project'), mission_id=_one(req.query, 'mission'),
+            state=_one(req.query, 'state'))}
+
+
+def get_session(req):
+    with req.api.db.read() as conn:
+        return 200, sessions.view(conn, req.params['id'])
+
+
+def session_brief(req):
+    with req.api.db.read() as conn:
+        return 200, sessions.preview_brief(conn, req.params['id'])
+
+
+def create_session(req):
+    b = dict(req.body)
+    key, launch = b.pop('idempotency_key'), b.pop('launch', None)
+    b = {k: v for k, v in b.items() if v is not None}
+    svc = req.api.sessions
+    if launch:
+        b.pop('provider_session_ref', None)
+        return 200, svc.launch(_device(req), key=key, **b)
+    return 200, svc.register(_device(req), key=key, **b)
+
+
+def resume_session(req):
+    b = req.body
+    return 200, req.api.sessions.resume(
+        _device(req), session_id=req.params['id'], request_id=b['request_id'],
+        model=b.get('model'), effort=b.get('effort'),
+        deliver_brief=bool(b.get('deliver_brief')), key=b['idempotency_key'])
+
+
+def handoff_session(req):
+    b = req.body
+    return 200, req.api.sessions.handoff(
+        _device(req), source_session_id=req.params['id'], request_id=b['request_id'],
+        harness_id=b['harness_id'], account_id=b.get('account_id'), model=b.get('model'),
+        effort=b.get('effort'), reason=b.get('reason') or '', key=b['idempotency_key'])
+
+
+def link_session(req):
+    return 200, req.run(sessions.link, {'session_id': req.params['id'],
+                                        'mission_id': req.body.get('mission_id')})
+
+
+def close_session(req):
+    kw = {'session_id': req.params['id']}
+    if req.body.get('reason'):
+        kw['reason'] = req.body['reason']
+    return 200, req.run(sessions.close, kw)
+
+
+def list_checkpoints(req):
+    with req.api.db.read() as conn:
+        return 200, {'checkpoints': executions.checkpoints(conn, req.params['id'])}
+
+
+def handoff_execution(req):
+    return 200, req.run(executions.handoff_execution, {'execution_id': req.params['id']})
+
+
 def list_messages(req):
     with req.api.db.read() as conn:
         return 200, {'messages': queries.messages(conn, req.params['id'],
@@ -595,6 +668,25 @@ ROUTES = (
           schemas.KEYED, 'MissionStopped'),
     Route('POST', '/v1/estop', estop, 'control', 'required', schemas.KEYED, 'Estopped'),
     Route('POST', '/v1/rearm', rearm, 'control', 'required', schemas.KEYED, 'Rearmed'),
+    # P12: sessions and checkpoints (p12-design-gate §19)
+    Route('GET', '/v1/sessions', list_sessions, 'observe', None, None, 'SessionList'),
+    Route('GET', '/v1/sessions/{id}', get_session, 'observe', None, None, 'Session'),
+    Route('GET', '/v1/sessions/{id}/brief', session_brief, 'observe', None, None,
+          'SessionBrief'),
+    Route('POST', '/v1/sessions', create_session, 'control', 'required',
+          schemas.CREATE_SESSION, 'SessionOutcome'),
+    Route('POST', '/v1/sessions/{id}/resume', resume_session, 'control', 'required',
+          schemas.RESUME_SESSION, 'SessionOutcome'),
+    Route('POST', '/v1/sessions/{id}/handoff', handoff_session, 'control', 'required',
+          schemas.HANDOFF_SESSION, 'SessionOutcome'),
+    Route('POST', '/v1/sessions/{id}/link', link_session, 'control', 'required',
+          schemas.LINK_SESSION, 'Session'),
+    Route('POST', '/v1/sessions/{id}/close', close_session, 'control', 'required',
+          schemas.CLOSE_SESSION, 'Session'),
+    Route('GET', '/v1/executions/{id}/checkpoints', list_checkpoints, 'observe', None, None,
+          'CheckpointList'),
+    Route('POST', '/v1/executions/{id}/handoff', handoff_execution, 'control', 'required',
+          schemas.KEYED, 'ExecutionStopped'),
     # P7: conversation and intent (p7-design-gate §9)
     Route('GET', '/v1/conversations/{id}/messages', list_messages, 'observe', None, None,
           'MessageList'),
