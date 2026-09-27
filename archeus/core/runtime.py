@@ -272,9 +272,11 @@ class ExecLoop:
             while not self._stop.is_set():
                 with self.db.read() as conn:
                     head = outbox.head(conn)
-                if self.manager.tick():
-                    self.state = 'running'
-                else:
+                # `running` for the whole tick: collecting an exited process
+                # forgets it before its end commits, so an `idle` left over from
+                # the last tick would read as "nothing advances" (G01)
+                self.state = 'running'
+                if not self.manager.tick():
                     self.state, self.observed_seq = 'idle', head
                     self._stop.wait(self.EXEC_S)
             self.state = 'stopped'
