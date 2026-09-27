@@ -103,7 +103,20 @@ def wait_state(client, mission_id, state, timeout=30.0):
         m = client.get_mission(mission_id)
         return m if m['state'] == state else None
     reached.__name__ = 'mission %s -> %s' % (mission_id, state)
-    return wait_for(reached, timeout)
+    try:
+        return wait_for(reached, timeout)
+    except (AssertionError, NotImplementedError) as err:
+        # say where everything stopped: a CI failure is otherwise read blind
+        raise type(err)('%s; last states: %s' % (err, _last_states(client))) from None
+
+
+def _last_states(client):
+    """{kind id: last `to`} from every *.state_changed event."""
+    last = {}
+    for e in client.events(0):
+        if e['type'].endswith('.state_changed'):
+            last['%s %s' % (e['subject']['kind'], e['subject']['id'])] = e['payload'].get('to')
+    return last
 
 
 def events_of(client, type_, after=0):
