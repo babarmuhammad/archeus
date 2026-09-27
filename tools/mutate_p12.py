@@ -26,6 +26,8 @@ HAR = 'archeus/harnesses/sessions.py'
 EX = 'archeus/core/application/executions.py'
 HO = 'archeus/core/execution/handoff.py'
 MGR = 'archeus/core/execution/manager.py'
+RUN = 'archeus/core/runtime.py'
+L = 'tests/v1/integration/test_engine_loop.py'
 T = 'tests/v1/integration/test_sessions.py'
 I = 'tests/v1/integration/test_execution.py'
 B = 'tests/v1/unit/test_session_boundaries.py'
@@ -162,6 +164,20 @@ MUTATIONS = [
      "self._procs[e.id] = self._fresh(adapter, handle, seq, self._offset(e), None)")],
      ['tests/v1/judge/test_s02_long_mission_handoffs.py'
       '::test_a_first_output_written_before_the_spawn_returns_still_hands_off']),
+    # ── the idle signal (G01) ──
+    ('Y27', 'the exec loop reads idle while a tick is recording an end', [(RUN,
+     "                self.state = 'running'\n                if not self.manager.tick():",
+     "                if self.manager.tick():\n                    self.state = 'running'\n"
+     "                else:")],
+     [L + '::test_an_end_being_recorded_is_not_idle',
+      L + '::test_an_adopted_end_being_recorded_is_not_idle']),
+    # Windows only: POSIX renames over an open file
+    ('Y28', 'a restarting Core refuses to start past a reader of core.json', [(
+     'archeus/infra/discovery.py',
+     "def write_core_json(info, retry_s=2.0):",
+     "def write_core_json(info, retry_s=0):")],
+     ['tests/v1/integration/test_core_lifecycle.py'
+      '::test_core_json_is_written_past_a_reader_holding_the_old_one']),
 ]
 
 
