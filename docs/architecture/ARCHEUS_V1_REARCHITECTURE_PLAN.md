@@ -893,6 +893,14 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Tests: E2E per surface, contrast, keyframes, dead-space/overflow audit, accessibility checks
   (axe-core in Playwright), floors.
 - Acceptance: G3 (GUI part); Apple-skill five-lens review passes with no Critical findings.
+- Design gate (before implementation) must carry an **External Reference Evaluation** with an
+  ADOPT/ADAPT/REJECT table (Ship Notes included) and a **Motion & Interaction System** section:
+  [../research/external-references.md R7](../research/external-references.md).
+- Design gate must also carry a **Graph Capability & Graph Interaction System** section
+  (inventory of existing graph modules with ADOPT/ADAPT/PRESERVE-BEHIND-UI/DEFER/REJECT
+  dispositions, ontology mapping, provenance/event/selection chains, a11y, mobile, performance):
+  [ui-architecture.md §5.1](ui-architecture.md). Implementation is not approved until it names
+  which existing graph work is preserved and in what role.
 
 **P17 — TUI**
 - Depends: P16 (shares nav table and presentation table). New: `cli/tui/*`.

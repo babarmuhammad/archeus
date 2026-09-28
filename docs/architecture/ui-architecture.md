@@ -194,6 +194,110 @@ budget: 1,000 nodes at 60 fps on integrated graphics; beyond that, clusters coll
 The current `stage.js` three.js background is **not** carried into V1 as ambient decoration
 (ADR-0016). Its flat graph-scene lineage is the candidate for the later optional 3D mode.
 
+### 5.1 P16 carry-forward: graph capability preservation (not yet started)
+
+Supplied 2026-09-28 as a P16 addendum. Nothing is implemented, inspected or refactored for it
+before P16 begins; P13–P15 are untouched by it. It adds to the P16 requirements and weakens none
+of them (ontology, external-reference evaluation, visual, motion, accessibility, responsive,
+performance). The renderer choice in §5 above is provisional until step 1 below is done: P16 does
+not start by choosing a graph library or copying a visual style.
+
+**The requirement.** Graph is a first-class Archeus capability where relationships, lineage,
+dependencies, provenance, topology or connected knowledge are the primary information — not a
+look applied to every screen. Archeus does not become a graph application: lists, timelines,
+detail views, forms and the command bar remain the primary UI, a user can work without ever
+opening a graph, and the graph is never the only way to reach any fact. Graph is treated twice
+and the two are kept apart: (a) existing technical/product capability to inventory and preserve;
+(b) a visual/interaction language that may inform the design system.
+
+**Order.** ontology → existing graph capability inventory → information architecture → decide
+where graph belongs → visual design system (graph visual language) → motion & interaction system
+(graph interaction/motion) → implementation. Inspect first, design second, reuse/adapt third,
+implement last.
+
+**Discovery.** Inventory before deciding any fate: every graph-related module, data structure,
+domain model, query, builder, visualization, API/route, derived relationship, persistence and
+serialization format, interaction mechanism, screen/component, test and fixture, consumer,
+dependency, performance characteristic, document, and any relationship semantics the graph
+already encodes. A module is not obsolete because its current UI is legacy. Known starting points
+— **not** the inventory, which P16 owes by inspection: `claude_sessions/connections.py`,
+`flowgraph.py`, `cluster_spec.py` (+ its generated `web/cluster-spec.js`, `www/lib/cluster-spec.ts`),
+the semantic memory graph and recall subgraph (`memory.py`, `recall.py`, `recall_hook.py`,
+`archeus/core/knowledge`), the legacy `/graph` route and `stage.js` graph scene,
+`www/components/journey/scene.ts`, `archeus/core/world`, and `/v1/world/graph` (§5, P18).
+
+**The P16 design gate gains a section "Graph Capability & Graph Interaction System"** containing:
+
+1. Existing graph capability inventory — table `| Existing capability | Technical location | What
+   it represents | Current consumer | Current UI exposure | Architectural value | P16 disposition |
+   Reason |`, disposition ∈ ADOPT / ADAPT / PRESERVE-BEHIND-UI / DEFER / REJECT, decided by what the
+   capability does. Presentation that does not fit the new UI is not grounds for REJECT.
+2. Graph-to-ontology mapping over at least: projects, repositories, worktrees, missions, tasks,
+   requirements, plans, plan versions, actions, executions, sessions, context, evidence,
+   verification, reviews, approvals, world state, knowledge, decisions, feedback, model/harness
+   selection, resources, accounts, dependencies, lineage, events, automation — stating which are
+   genuinely graph relationships and which stay lists/tables/timelines/detail views. Nothing is
+   forced into a graph.
+3. Capability preservation assessment, answering explicitly: which graph work is preserved and
+   reused; which needs adaptation because its presentation belongs to the legacy UI; which stays
+   internal/backend capability rather than exposed directly. Answered from the implementation, not
+   from aesthetics.
+4. The dispositions themselves, with reasons.
+5. IA role: whether a first-class relationship view exists and which focused chains it serves
+   (candidates, not commitments: mission → task → requirement → plan → action → execution →
+   evidence → verification → review; project → repository → worktree → mission → session;
+   task → model/harness selection → execution → evidence → verification; knowledge → decision →
+   feedback → later learning). Meaningful relationships, never the whole database.
+6. Navigation model: node → canonical entity view (mission, execution, verification detail), edge
+   → relationship/provenance explanation, focus, expand/collapse neighbourhood, filter by entity
+   and relationship type, search, path/lineage/causation/dependency/provenance tracing, pin, back
+   to previous graph context, deep links. One navigation model, not a second incompatible one.
+7. Provenance (P13): graph may render plan → action → execution → evidence → verification →
+   review, but only authoritative backend relationships — no inferred edges, stale/superseded
+   entities visibly distinct, verification stays P13-owned, graph is never a source of truth.
+8. Event causality (P14): event → automation → action request → execution → verification →
+   resulting event, as an investigation target, not one giant event graph; no private model
+   reasoning.
+9. Model/harness selection: task → requirements → selected model × harness → account/resource →
+   execution → verification, showing what was selected, alternatives where appropriate, the
+   constraints that decided it, what actually ran and whether a fallback occurred — structured
+   selection rationale only, never chain-of-thought.
+10. Visual graph language: nodes, edges, relationship emphasis, depth/focus, grouping, progressive
+    disclosure, state-based node appearance, lineage/dependency rendering — strongest where
+    relationships are the information, calm everywhere else.
+11. Interaction model.
+12. Motion model: motion for focus, expansion, collapse, traversal, state change, causal
+    progression, selection. No ambient or perpetual graph motion, no constantly moving nodes, no
+    live layout animation, no animation storms, no per-item animation across long or live lists;
+    `transform`/`opacity` only, reduced motion honoured (design system §8, repo flicker rules).
+13. Accessibility: not mouse-only — keyboard traversal, focus, node selection, edge inspection,
+    screen readers, touch, reduced motion; a selected node exposes its relationships as a
+    structured, navigable list that does not depend on spatial position.
+14. Responsive/mobile: not the desktop graph shrunk — focused neighbourhood, bottom sheet/detail
+    panel, tap-to-expand, relationship lists, simplified topology, graph-to-detail transitions;
+    same relationships, different representation.
+15. Performance/scaling: node/edge counts, density, layout cost, incremental and live updates,
+    culling/virtualization, filtering, progressive expansion, memory, mobile. Start focused →
+    expand deliberately → filter → inspect → navigate; never load, render and animate everything.
+16. Migration/reuse strategy for each ADOPT/ADAPT/PRESERVE-BEHIND-UI item.
+17. Tests and acceptance criteria.
+
+**External references.** Munder Difflin, Vicoa, Graphify, Cognee, Anthropic redesign methodology,
+Apple Design Skill, Ship Notes (R7) and anything supplied before P16 are evaluated for graph ideas
+as inputs, not templates ([../research/external-references.md](../research/external-references.md)).
+Ship Notes is a motion/interaction reference and not an authority on graph design; no copied code
+without license review. The ontology and the existing graph capabilities stay authoritative.
+
+**Acceptance question — P16 implementation is not approved until the gate answers it:** *How are
+we preserving the substantial graph work already built into Archeus rather than accidentally
+throwing it away during the UI rearchitecture?* The answer names concrete modules and capabilities
+and their future role. "The graph can be rebuilt later" is not an answer; valuable graph
+functionality is reused or adapted where technically appropriate, not replaced for visual reasons.
+
+P16's outcome is IA + visual design system + motion & interaction system + the graph/relationship
+experience — native to Archeus, a distinct mode for relationship-heavy work. P18 then builds the
+spatial view against what this section decides.
+
 ## 6. TUI architecture
 
 `archeus/cli/tui/` is a new, thin client on the API, reusing `claude_sessions/term.py` (the

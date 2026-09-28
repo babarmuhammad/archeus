@@ -147,3 +147,42 @@ a weaker model working hard"). Status: adapted into router economics
 | 4 | Improvement mode: tokens before layout; one signature element; "would this plan fit another product?" | [V] | Design process | adopted |
 | 5 | HIG *Generative AI* (2026-06-08): keep people in control, refine/revert, ask before irreversible actions, specific progress text, disclosure, voluntary feedback | [V] `references/hig/generative-ai.md` | Conversation UX | adopted |
 | 6 | Cross-platform translation (tab bar ↔ bottom navigation; size classes ↔ container queries; menu bar/tray commands) | [V] `references/cross-platform.md` | Platform adaptation | adopted |
+
+## R7 — Ship Notes Components (P16 carry-forward, not yet inspected)
+
+| Field | Value |
+|---|---|
+| URL | https://aqualang89.github.io/shipnotes-components/ |
+| Supplied | 2026-09-27, as a P16 addendum; nothing implemented, fetched or copied yet |
+| Revision / license | unknown — record both when P16 inspects the source; unclear license → reference only, no code |
+| Role | motion, interaction and component-pattern reference. **Not** an information-architecture source |
+
+What P16 owes this reference, in order, during its design phase and before any implementation:
+
+1. Inspect the actual source, not the demo: animation primitives, CSS/SVG animation, entry/exit,
+   hover/press/focus, loading and status transitions, expand/collapse, list/card and navigation
+   transitions, decorative motion, timing, easing, reduced-motion handling, dependencies, cost.
+   Note which parts are reusable ideas and which are coupled to Ship Notes' own design system or
+   application architecture.
+2. Classify every relevant pattern in a table `| Pattern | Source | Archeus application | Decision |
+   Reason |` with Decision ∈ ADOPT / ADAPT / REJECT. ADOPT says where and verifies accessibility and
+   performance; ADAPT says what changes and why; REJECT says what it conflicts with. Looking
+   impressive is not a reason.
+3. Motion must report real state (execution started/stopped, verifying → verified, approval
+   required, handoff, model/harness selected or fallen back, context or evidence available). The
+   backend state is authoritative: no invented states, and no transition shown that did not occur.
+   Model/harness selection may show selected model, harness, the deciding capability/constraint and
+   fallback status — never reasoning transcripts.
+4. Constraints it must fit (already binding via [design system §8](../design/ARCHEUS_V1_DESIGN_SYSTEM.md)
+   and the repo's flicker rules): `transform`/`opacity` only, no ambient loops, one parked
+   animation loop, no per-item animation across long or live lists, reduced motion honoured,
+   motion never the sole carrier of state, no hover-only information on touch, keyboard/focus/
+   screen-reader semantics checked at desktop, tablet and mobile widths.
+5. Evaluate it alongside R1–R6 and the other supplied UI references; none of them overrides the
+   ontology, the P16 requirements, accessibility, responsive rules or the Apple Design Skill review.
+
+The P16 design gate gains two sections: **External Reference Evaluation** (includes this entry)
+and **Motion & Interaction System** (principles, duration/easing tokens, state transitions,
+interaction feedback, loading, attention, reduced motion, responsive behaviour, performance
+budget). Order: IA from the ontology first, visual system second, motion last — motion reinforces
+the other two and never drives navigation or pages.
