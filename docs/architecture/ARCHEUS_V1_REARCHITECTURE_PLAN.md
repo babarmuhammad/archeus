@@ -420,6 +420,7 @@ Sequencing changes from the source plan (0–24), each justified:
 | Brain as structured-output calls (P7), not an MCP server | P7 would otherwise depend on the execution stack (P11); until P10 the account comes from legacy `rotate.elect()` + `quota.reason()` (§31.4) |
 | **Provider-terms gate (ADR-0021) moved** from P0 to *immediately before the first real headless model call* | P0.5–P3.5 make no real model call; the architecture supports API-key accounts regardless of the answer |
 | P20 = hardening, P21 = observability *views* | the mechanisms exist from P2 (events, decisions); these phases add breaker drills, secrets review, trace UI and metrics |
+| **P24 audit and P25 documentation inserted before the release gate, which moves from P24 to P26** (2026-09-28) | P20 hardens each control as it is built; only a system that has substantially landed can be attacked *across* phase boundaries, and only the final architecture can be documented without describing a historical one. See the renumbering note under §31.1 |
 
 ### 31.1 Phase table
 
@@ -951,7 +952,128 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   Windows (primary), macOS, Linux.
 - Acceptance: all traceability rows green.
 
-**P24 — V1 release gate** — §34.
+> **Renumbering note (2026-09-28).** Until this date **P24 meant "V1 release gate"**. The
+> release gate is now **P26**; P24 and P25 are new phases inserted before it. P0–P23 keep their
+> numbers and meaning. A reference to "P24" or "release gate" written before 2026-09-28 (commit
+> messages, design gates, handoff notes) means today's **P26**. The source implementation plan's
+> "Phase 24" (the G rows' origin in [testing-strategy.md §2](testing-strategy.md)) is also the
+> release gate, i.e. P26 here.
+
+**P24 — Whole-application security audit and hardening**
+- Depends: P23. Not a rerun of P20. P20 builds and hardens each security control; P24 runs
+  after the rest of V1 has landed and attacks the resulting system on the assumption that
+  **individual phase boundaries may contain mistakes, and tries to cross them**.
+- Design gate (before any audit work) inspects the actual application and classifies every
+  category below as **applicable / not applicable / already covered / requires new testing /
+  requires remediation**, with the evidence for each classification. Nothing is assumed to
+  apply or not to apply.
+  - Identity and access: authentication; authorization; privilege escalation; project and user
+    isolation; stale authorization; session security; session handoff; credential revocation.
+  - Boundaries of work: repository access; filesystem access; command/process execution;
+    worktree boundaries; tool execution; model/harness boundaries; account/resource boundaries;
+    plugin boundaries; verification/review boundaries.
+  - Control bypass: policy bypass; approval bypass; execution-control bypass.
+  - Remote and clients: remote access; client/device security; pairing; mobile/remote-client
+    security; deployment and security-header configuration where applicable.
+  - Interfaces: API security; realtime/WebSocket/SSE security; event security; event
+    forgery/replay; automation security; automation escalation; graph/API data leakage.
+  - Data: secrets; credentials; logs; configuration; cross-project data leakage; cross-user
+    data leakage.
+  - Supply chain: package/build integrity; dependency vulnerabilities; supply-chain risks.
+  - Vulnerability classes: injection; XSS/CSRF where applicable; SSRF where applicable; path
+    traversal; command injection; replay attacks; race conditions; TOCTOU where applicable.
+- **Cross-phase security is the centre of P24.** The audit attacks the seams between P4 world,
+  P5 context, P6 knowledge, P7 intent/mission, P8 plans, P9 policy/authorization, P10 routing,
+  P11 execution, P12 sessions/continuity, P13 verification/review, P14 events/automation, P15
+  presence/pairing/remote/mobile, P16 UI/client architecture and every later phase, looking
+  for vulnerabilities created by interactions between subsystems that are each correct alone.
+  Questions it must answer with evidence, at minimum: can a remote client bypass P9; can an
+  automation create privileged work; can stale session state bypass current authorization;
+  can an event cause work outside its project; can a graph/API endpoint expose data outside
+  the caller's scope; can model/harness selection bypass policy; can execution controls be
+  invoked without the right authorization; can a forged event create an automation run; can a
+  stale approval authorize a changed action; can verification be forged or bypassed; can a
+  client reconnect with revoked credentials; can a legacy compatibility path bypass the new
+  controls.
+- Test strategy, where each is justified by the design gate's classification: static
+  analysis; dependency audit; secret scanning; configuration audit; API security testing;
+  authentication, authorization and privilege-boundary testing; replay testing;
+  race/concurrency testing; fuzzing; malformed-input testing; adversarial event and
+  automation testing; client/pairing and remote-access testing; package/supply-chain
+  inspection; **manual architectural review**. A vulnerability scanner is one input, not the
+  audit.
+- Findings: every finding carries **ID, affected component, affected phase boundary,
+  severity, exploitability, impact, evidence, remediation, regression test, status**.
+  Severity uses the scale this plan already uses (Critical / High / Medium / Low, as in §34
+  and Appendix A); no new scoring system. Every remediated finding lands with a regression
+  test that fails when the fix is reverted (mutation-verified, testing-strategy's rule).
+- Exceptions: a Critical or High finding may stay open only as a **documented accepted-risk
+  exception** in the report — reason, compensating control, owner, expiry — signed off by the
+  user. There is no other route past P26 for one.
+- Deliverable: the **final security audit report** (category classification, cross-phase
+  results, findings register, exceptions).
+- Acceptance: every category classified with evidence; every cross-phase question answered;
+  no Critical or High finding open outside a signed exception; report committed.
+
+**P25 — Documentation, website and discoverability**
+- Depends: P24 (the documentation must describe the audited system, including its security
+  model and any accepted exceptions). Runs after the architecture and implementation are
+  substantially complete.
+- Rule: document the **actual final V1 architecture**, not the historical one because older
+  documents exist. Every capability is labelled **implemented / experimental / deferred /
+  planned / deprecated / legacy**.
+- Scope: README; architecture documentation; developer documentation; user documentation;
+  API documentation; CLI documentation; website (`www/`); SEO; GEO; AEO; structured
+  metadata; documentation and terminology consistency; links; accessibility; website
+  performance.
+- README: orients and routes, it is not the specification. It explains what Archeus is, the
+  problem it solves, the core concepts (missions, tasks, plans, world, knowledge, context),
+  architecture, model × harness selection, policy/authorization, resource/account routing,
+  execution, sessions/continuity, verification/review, events/automation,
+  presence/pairing/remote/mobile, graph capabilities, security, installation, quick start,
+  development, testing, documentation, project status and roadmap, each at orientation depth
+  with a link to the detailed document.
+- Documentation audit over the whole set for: obsolete architecture; stale terminology;
+  contradictory descriptions; stale diagrams; stale API examples; missing architecture
+  boundaries; missing onboarding, troubleshooting, deployment or security information; broken
+  links; stale generated documentation; incorrect CLI examples; inconsistent naming;
+  undocumented limitations; incorrect implementation/status claims. Target: Archeus is
+  understandable without reading the repository.
+- Website: a product explanation, not a prettier README. Evaluate whether it communicates
+  what Archeus is and why it exists, how it works, the major concepts, missions/tasks/plans,
+  model × harness intelligence, policy and authorization, execution, verification,
+  continuity, automation, graph capabilities, remote/mobile, security, developer experience,
+  documentation and repository access. It uses the P16 design language, not a separate visual
+  system, and represents the graph accurately: **not every Archeus operation is graph-based**.
+- SEO (technical and semantic, where applicable): titles; meta descriptions; canonical URLs;
+  robots.txt; sitemap; structured data; headings; semantic HTML; crawlability; indexability;
+  internal linking; URL structure; duplicate content; image metadata; Open Graph and social
+  metadata; page performance; accessibility; documentation discoverability. No keyword
+  stuffing.
+- AEO: authoritative, explicitly worded pages or sections answering — what Archeus is; how it
+  works; what a mission is; mission vs task vs plan; how models and harnesses are selected;
+  how authorization works; how work is executed; how verification works; how session
+  continuity works; what the graph is; how automation works; how remote access works; how
+  Archeus differs from a conventional coding agent. Factual definitions, no FAQ padding.
+- GEO: one canonical information hierarchy — website → documentation → README →
+  architecture documentation → repository/source — with no contradictory descriptions of
+  Archeus. Audit canonical terminology, project identity, authoritative architecture pages,
+  consistent descriptions, version/status information, structured metadata, documentation
+  relationships, citations where appropriate, machine-readable information where useful. The
+  goal is accurate machine understanding, not manipulation.
+- Discoverability: SEO/GEO/AEO are one concern with distinct technical requirements. The
+  design gate records what is optimized, the evidence behind each change, what stays
+  intentionally unchanged, and which items are technical SEO, documentation structure,
+  semantic/entity clarity, answer-oriented content and generative discoverability. No claims
+  about ranking or guaranteed search performance.
+- Acceptance: the consistency check passes across README, website, architecture docs, API
+  docs, CLI docs, developer docs, generated docs, examples and release notes — one concept,
+  one meaning, everywhere; documentation and website builds, link checks and the existing
+  site gates are green.
+
+**P26 — V1 release gate** — §34. Release authorization, not an implementation phase: it
+verifies the whole V1 state after P24 and P25 against an evidence checklist and a list of
+blockers, and reviews architecture consistency. (Was P24 before 2026-09-28.)
 
 ### 31.2 Minimal V1 slice (what "V1 exists" requires)
 
@@ -977,7 +1099,7 @@ flowchart LR
     P14 --> P15 --> P16 --> P17
     P16 --> P18
     P17 --> P19
-    P18 --> P19 --> P20 --> P21 --> P22 --> P23 --> P24
+    P18 --> P19 --> P20 --> P21 --> P22 --> P23 --> P24 --> P25 --> P26
 ```
 
 P4–P6 and P16's static parts can overlap once P3.5 is in; the table above is the dependency
@@ -1022,7 +1144,7 @@ Rules:
 | Hook bypass inside agent shells | medium | high | capability removal is primary; Core-only push/deploy; unclassified exec = strictest |
 | stdlib HTTP server limits (HTTP/1.1, threads) | medium | medium | separate SSE pool, leader-tab stream, single user by design; revisit only if measured |
 | Brain cost and latency | medium | medium | deterministic grammar for control, brain reserve, small/mid tiers for classification, prompt-cache-friendly prefixes |
-| Scope size (25 phases) | high | high | minimal slice first; each phase gated; walking skeleton early |
+| Scope size (27 phases, P0–P26) | high | high | minimal slice first; each phase gated; walking skeleton early |
 | Two apps during the strangler period confuse users | medium | medium | V1 opened from the legacy app as a preview; one owner per artifact |
 | Remote access misconfiguration exposes Core | low | high | HTTPS tunnel only, tokens required even on loopback, host allowlist, pairing only from a local session |
 | Knowledge rot / stale context | medium | medium | validity windows, supersession, drift, staleness labels, forget |
@@ -1055,7 +1177,9 @@ context contract, policy contract, routing contract, harness adapter contract, p
 boundaries, presence/realtime contract, UI IA derived from the above, external research
 recorded, decisions documented with reasons — each is linked from the table at the top.
 
-**V1 release gate:**
+**V1 release gate (P26; P24 before 2026-09-28):**
+
+*Capability criteria* (unchanged):
 - [ ] Mission state durable and independent of any session (G1)
 - [ ] Mission lifecycle reliable across restarts, pauses, hand-offs (S2, G1)
 - [ ] Context selection works, explainable and provenance-aware (G2)
@@ -1072,6 +1196,40 @@ recorded, decisions documented with reasons — each is linked from the table at
 - [ ] Repository re-inspection and drift work (S7)
 - [ ] Legacy data migration tested (G8)
 - [ ] Every traceability row green; no Critical design-review findings; no High security findings
+
+*Release evidence* — each item is a recorded artifact (command output, CI run, report), not a
+statement that tests pass:
+- [ ] P0–P25 each closed at its gate, with its design gate and as-built record
+- [ ] Clean working tree on the intended release branch; intended commits pushed; `main`
+      changed only by the intended merge
+- [ ] CI green on the release commit; complete test suite run; mutation suites at or above
+      their floors
+- [ ] Package validation (built wheel installed into a clean environment and exercised)
+- [ ] Documentation build, website build and API-reference validation green; links checked
+- [ ] P24 audit report committed; every finding resolved or under a signed exception; no
+      unreviewed exception
+- [ ] Architecture documentation, README and website synchronized with the shipped system
+      (P25 consistency check); no stale documentation claims
+- [ ] Release metadata, version and changelog/release notes; known limitations stated
+- [ ] Migration status reconciled (P22 cutover, retirement checklist); no unintended legacy
+      path remains
+
+*Release blockers* — any one stops the release; this list extends, and does not relax, the
+criteria above: failing CI; a failing required test; a mutation regression; an unresolved
+Critical security finding; an unresolved High security finding without a signed P24
+exception; a broken package; a broken documentation or website build; stale architecture
+documentation; unreconciled migration state; accidental changes to `main`; a missing required
+release artifact.
+
+*Architecture consistency review* — verify the ownership chain still holds in the shipped code:
+P4 World · P5 Context · P6 Knowledge/Learning · P7 Intent/Mission · P8 Plans · P9
+Policy/Authorization · P10 Resource/Model/Harness Routing · P11 Execution · P12
+Sessions/Continuity · P13 Verification/Review · P14 Events/Automation · P15
+Presence/Pairing/Remote/Mobile · P16 UI/Experience, with P17–P25 adding clients, views,
+migration, audit and documentation but no new owner. Verify that no later implementation
+created a second policy engine, routing engine, execution engine, verification engine or
+session system; a hidden model/harness selection engine; an event-sourced shadow state
+system; a UI-specific source of truth; or an automation-specific authorization path.
 
 ---
 

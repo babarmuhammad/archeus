@@ -68,7 +68,8 @@ sets `ARCHEUS_HOME` to a temp directory (the resolver reads it at call time).
 
 Four sources define "V1 works": the prompt's 15 acceptance scenarios (**S**), the implementation
 plan's scenarios A–G (**IP**), the specification's 18 acceptance criteria (**SP**) and the
-release gate (**G**, implementation plan Phase 24 + PDF §32). They overlap; this table merges
+release gate (**G**, implementation plan Phase 24 + PDF §32; the release gate is this plan's
+P26 since 2026-09-28, see the renumbering note in the plan's §31.1). They overlap; this table merges
 them so nothing is tested twice under different names or missed.
 
 | ID | Requirement | Also covers | Judge test (`tests/v1/judge/`) | Phases |
