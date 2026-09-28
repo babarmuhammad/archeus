@@ -15,10 +15,10 @@ itself — do not edit by hand. Refreshed weekly by `.github/workflows/metrics.y
 
 | | |
 |---|---|
-| Version in this repository | **2.6.0** |
-| Published on PyPI | 2.6.0 |
-| Latest upload | 2026-09-17 |
-| Releases to date | 8 |
+| Version in this repository | **2.8.0** |
+| Published on PyPI | 2.8.0 |
+| Latest upload | 2026-09-25 |
+| Releases to date | 10 |
 | License | MIT |
 | Runtime dependencies | **0** |
 
@@ -30,7 +30,7 @@ From [pypistats.org](https://pypistats.org/packages/archeus), mirrors excluded.
 
 | Last day | Last week | Last month |
 |---|---|---|
-| 10 | 396 | 916 |
+| 3 | 193 | 1,098 |
 
 ## Repository
 
@@ -38,21 +38,21 @@ From [pypistats.org](https://pypistats.org/packages/archeus), mirrors excluded.
 |---|---|
 | Stars | 9 |
 | Forks | 2 |
-| Open issues and pull requests | 0 |
+| Open issues and pull requests | 1 |
 | First commit | 2026-06-11 |
-| Last push | 2026-09-17 |
+| Last push | 2026-09-28 |
 
 ## Codebase
 
 | | |
 |---|---|
 | Python files | 240 |
-| Lines of Python | 87,905 |
-| Tests | 2,047 |
+| Lines of Python | 88,592 |
+| Tests | 2,059 |
 | Documentation pages | 30 |
-| Commits | 296 |
-| Commits in the last 30 days | 197 |
+| Commits | 305 |
+| Commits in the last 30 days | 188 |
 
 Tests run on Windows, macOS and Linux across the supported Python versions on every push — see [CI](https://github.com/babarmuhammad/archeus/actions).
 
-*Generated 2026-09-21 10:00 UTC.*
+*Generated 2026-09-28 11:00 UTC.*
