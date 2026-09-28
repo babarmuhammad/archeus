@@ -514,6 +514,10 @@ Automation: `name`, `trigger` (`{kind: event|schedule|condition|state, pattern|c
 (overlay applied to missions it creates), `notify`, `max_depth` (cause-chain cap, default 3),
 `rate_limit` (default 6/hour), `state`. AutomationRun: `automation_id`, `triggering_event_seq`,
 `cause_chain[]`, `claimed_at`, `state`, `mission_id?`, `skip_reason?`.
+*As built (P14, p14-design-gate §7, D7):* the trigger is `{kind: event, type, where}`, the template
+`{title, objective, success_criteria?}` (no conditions, overlay or notify yet), plus `principal_id`
+(its own `automation` principal) and `armed_seq`; a run carries `triggering_event_id`, `depth`,
+`rationale`, `reason_code`/`reason` (the skip reason) and `created_at` (the claim time).
 
 ### 9.5 Event
 See [api-and-realtime.md §3](api-and-realtime.md) for the envelope. Core columns:

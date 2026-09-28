@@ -92,9 +92,10 @@ def test_X6_the_hook_is_stdlib_only():
 
 
 def test_X7_no_later_phase_module_exists_yet():
-    # execution/checkpoint.py and execution/handoff.py are P12's, built (p12-design-gate §27)
+    # execution/checkpoint.py and execution/handoff.py are P12's, built (p12-design-gate §27);
+    # archeus/core/automation is P14's, built (p14-design-gate)
     for rel in ('archeus/core/execution/integration.py', 'archeus/harnesses/codex',
-                'archeus/core/automation', 'archeus/node/remote.py'):
+                'archeus/node/remote.py'):
         assert not os.path.exists(os.path.join(ROOT, rel)), rel
 
 

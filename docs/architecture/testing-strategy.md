@@ -41,7 +41,9 @@ p7-design-gate D8. P12 added the session and checkpoint operations — `register
 fake session harnesses and a terminal that records instead of opening. P13 added
 `verifications`, `decide_verification`, `reviews`, `review` and `abandon_integration`
 (p13-design-gate §21): V01–V15 judge what was verified, decided and reviewed through the
-contract; nothing in it writes evidence.) Two bindings: `InProcessClient` (P1–P3, calls the
+contract; nothing in it writes evidence. P14 added `create_automation`,
+`set_automation_state`, `automations` and `automation` (p14-design-gate §17): S10 and S10b
+judge automation through the contract; nothing in it appends an event.) Two bindings: `InProcessClient` (P1–P3, calls the
 application layer directly) and `HttpClient` (P3.5 onward, HTTP + SSE). Every scenario runs
 against both once HTTP exists.
 

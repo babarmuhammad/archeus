@@ -1614,12 +1614,23 @@ class Automation(Entity):
     _STATE = ('state', 'automation')
     _TEXT = ('name',)
     _MIN1 = ('max_depth', 'rate_limit')
+    _NONNEG = ('armed_seq',)
+    _REFS = {'principal_id': 'principal'}
     id: str
     workspace_id: str
     name: str
     max_depth: int = 3
     rate_limit: int = 6
     project_id: str = None
+    # P14 (p14-design-gate §7): {kind: event, type, where}; validated by
+    # core/automation/matcher.py when written, never here
+    trigger: dict = None
+    # {title, objective, success_criteria?}: the mission it asks for
+    template: dict = None
+    # its own principal (kind `automation`, scope `create_mission`)
+    principal_id: str = None
+    # the outbox head when it was last enabled: it never fires for an earlier event
+    armed_seq: int = 0
     state: str = None
 
 
@@ -1627,11 +1638,25 @@ class Automation(Entity):
 class AutomationRun(Entity):
     _ID = 'automation_run'
     _STATE = ('state', 'automation_run')
-    _REFS = {'automation_id': 'automation'}
-    _NONNEG = ('triggering_event_seq',)
+    _REFS = {'automation_id': 'automation', 'mission_id': 'mission'}
+    _NONNEG = ('triggering_event_seq', 'depth')
+    # one decision about one event, fixed when claimed (p14-design-gate §7)
+    _FROZEN = ('automation_id', 'triggering_event_seq', 'triggering_event_id', 'depth',
+               'cause_chain', 'rationale')
     id: str
     automation_id: str
     triggering_event_seq: int
+    triggering_event_id: str = None
+    # the causal depth: the triggering event's + 1 (§10)
+    depth: int = 1
+    cause_chain: tuple = ()
+    # which predicate matched which value
+    rationale: dict = None
+    # why it ended where it did: condition_false | rate_limited | depth_exceeded |
+    # denied | allowed | mission_completed | mission_cancelled
+    reason_code: str = None
+    reason: str = None
+    mission_id: str = None
     state: str = None
 
 

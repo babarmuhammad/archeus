@@ -438,6 +438,42 @@ TYPES = {
         'integration_state': {'type': 'string', 'nullable': True,
                               'enum': sorted(states.states('integration'))}},
         'required': ['id', 'key', 'title', 'kind', 'state', 'depends_on', 'acceptance']},
+    # P14 (p14-design-gate §17)
+    'Automation': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'name': {'type': 'string'},
+        'state': {'type': 'string', 'enum': sorted(states.states('automation'))},
+        'trigger': {'type': 'object'}, 'template': {'type': 'object'},
+        'project_id': {'type': 'string', 'nullable': True},
+        'max_depth': {'type': 'integer'}, 'rate_limit': {'type': 'integer'},
+        'armed_seq': {'type': 'integer'}, 'version': {'type': 'integer'},
+        'runs': {'type': 'array', 'items': {'ref': 'AutomationRun'}}},
+        'required': ['id', 'name', 'state', 'trigger', 'template', 'version']},
+    'AutomationRun': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'automation_id': {'type': 'string'},
+        'state': {'type': 'string', 'enum': sorted(states.states('automation_run'))},
+        'triggering_event_seq': {'type': 'integer'}, 'depth': {'type': 'integer'},
+        'rationale': {'type': 'object', 'nullable': True},
+        'reason_code': {'type': 'string', 'nullable': True},
+        'reason': {'type': 'string', 'nullable': True},
+        'mission_id': {'type': 'string', 'nullable': True}},
+        'required': ['id', 'automation_id', 'state', 'triggering_event_seq', 'depth']},
+    'AutomationList': {'type': 'object', 'properties': {
+        'automations': {'type': 'array', 'items': {'ref': 'Automation'}},
+        'quarantined': {'type': 'array', 'items': {'type': 'object'}}},
+        'required': ['automations', 'quarantined']},
+    'AutomationWritten': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'state': {'type': 'string'}, 'version': {'type': 'integer'}},
+        'required': ['id', 'state', 'version']},
+    'AutomationSimulation': {'type': 'object', 'properties': {
+        'automation_id': {'type': 'string'}, 'days': {'type': 'integer'},
+        'examined': {'type': 'integer'},
+        'matched': {'type': 'array', 'items': {'type': 'object'}}},
+        'required': ['automation_id', 'days', 'examined', 'matched']},
+    'AutomationExplanation': {'type': 'object', 'properties': {
+        'run': {'ref': 'AutomationRun'}, 'automation': {'type': 'object'},
+        'event': {'type': 'object', 'nullable': True}, 'why': {'type': 'object'},
+        'mission': {'type': 'object', 'nullable': True}},
+        'required': ['run', 'automation', 'event', 'why', 'mission']},
     # P13 (p13-design-gate §21)
     'Check': {'type': 'object', 'open': True, 'properties': {
         'name': {'type': 'string'}, 'kind': {'type': 'string', 'enum': list(entities.CHECK_KINDS)},
@@ -658,6 +694,17 @@ DECIDE = {'type': 'object', 'properties': {
     'expected_version': {'type': 'integer', 'nullable': True}, 'idempotency_key': KEY},
     'required': ['decision', 'action_hash', 'idempotency_key']}
 _IDS = {'type': 'array', 'nullable': True, 'items': {'type': 'string'}}
+# P14 (p14-design-gate §17)
+CREATE_AUTOMATION = {'type': 'object', 'properties': {
+    'name': {'type': 'string'}, 'trigger': {'type': 'object'}, 'template': {'type': 'object'},
+    'project_id': {'type': 'string', 'nullable': True},
+    'max_depth': {'type': 'integer', 'nullable': True},
+    'rate_limit': {'type': 'integer', 'nullable': True}, 'idempotency_key': KEY},
+    'required': ['name', 'trigger', 'template', 'idempotency_key']}
+AUTOMATION_STATE = {'type': 'object', 'properties': {
+    'action': {'type': 'string', 'enum': ['enable', 'disable', 'archive']},
+    'expected_version': {'type': 'integer', 'nullable': True}, 'idempotency_key': KEY},
+    'required': ['action', 'idempotency_key']}
 # P13 (p13-design-gate §21)
 DECIDE_VERIFICATION = {'type': 'object', 'properties': {
     'decision': {'type': 'string', 'enum': ['accept', 'reject']},

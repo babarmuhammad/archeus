@@ -151,12 +151,14 @@ class World:
         data = json.dumps(payload, sort_keys=True, separators=(',', ':')).encode('utf-8')
         sha = artifacts.put(data)
         previous = self._previous(repo.id, head)
-        change = None
+        change, models = None, []
         if previous is not None:
-            change = inspection.diff(json.loads(artifacts.get(previous.payload_sha256)), payload,
-                                     previous.to_dict(), obs)
+            before = json.loads(artifacts.get(previous.payload_sha256))
+            change = inspection.diff(before, payload, previous.to_dict(), obs)
+            models = inspection.models_added(before, payload)
         self._run(world.complete_inspection, inspection_id=iid, observation=obs,
-                  payload_sha256=sha, payload_size=len(data), diff_from_previous=change)
+                  payload_sha256=sha, payload_size=len(data), diff_from_previous=change,
+                  models_added=models)
         self._assess(repo, iid, payload)
 
     def _assess(self, repo, inspection=None, payload=None):

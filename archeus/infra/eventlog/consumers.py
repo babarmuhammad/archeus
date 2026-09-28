@@ -11,9 +11,17 @@ cursor. So a crash:
 
 Delivery is at-least-once to the handler and never skips an event. Cursors only
 move forward (`MAX`), so an out-of-date advance cannot rewind one.
+
+A handler that cannot handle an event yet raises `Hold` (P14, p14-design-gate
+§11): the batch stops there, nothing is recorded and the cursor stays, so the
+event is delivered again on a later pass and nothing after it overtakes it.
 """
 
 from . import outbox
+
+
+class Hold(Exception):
+    """Stop this batch at this event; deliver it again later."""
 
 
 def cursor(conn, name):
@@ -42,9 +50,12 @@ def deliver(db, name, handler, *, limit=100):
         done = {r[0] for r in conn.execute(
             'SELECT event_seq FROM consumer_effects WHERE consumer = ? AND event_seq > ?',
             (name, start))}
-    for event in batch:
+    for n, event in enumerate(batch):
         if event.seq not in done:
-            result = handler(event)
+            try:
+                result = handler(event)
+            except Hold:
+                return n
             db.writer.execute(_record_effect, {'name': name, 'seq': event.seq,
                                                'result': str(result or '')})
         db.writer.execute(_advance, {'name': name, 'seq': event.seq})

@@ -49,6 +49,8 @@ TABLES = {
     entities.UsageSnapshot: 'usage_snapshots',
     entities.Session: 'sessions',
     entities.Checkpoint: 'checkpoints',
+    entities.Automation: 'automations',
+    entities.AutomationRun: 'automation_runs',
 }
 
 #: Row metadata, never entity fields: optimistic-concurrency version, timestamps,

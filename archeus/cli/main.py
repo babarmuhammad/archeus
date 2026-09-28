@@ -23,7 +23,7 @@ import time
 #: something else.
 DEFERRED = {'approve': 'P9', 'pair': 'P15'}
 VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair',
-         'sessions', 'resume', 'handoff', 'verify', 'decide')
+         'sessions', 'resume', 'handoff', 'verify', 'decide', 'automation')
 
 USAGE = """usage: archeus core [--open]    run Archeus Core in the foreground (Ctrl+C stops it)
        archeus status           is Core running? (exit 0 yes, 1 no, 2 discovery failed,
@@ -53,7 +53,18 @@ USAGE = """usage: archeus core [--open]    run Archeus Core in the foreground (C
                                 decide a verification that waits on you
        archeus decide <mission> accept|changes|reject [--note N]
                                 review a mission's result yourself (your review is the
-                                latest, so it overrides the model's)"""
+                                latest, so it overrides the model's)
+       archeus automation list  the automations and any quarantined event (P14)
+       archeus automation show|simulate <id>
+                                one automation and its latest runs; or which events of
+                                the last 30 days it would have fired on
+       archeus automation create <file.json>
+                                write one ({name, trigger, template, project_id?}); it
+                                starts disabled
+       archeus automation enable|disable|archive <id>
+       archeus automation why <run>
+                                why an automated action happened: the event, the rule,
+                                and what the mission it asked for then did"""
 _TERMS = {'permit': 'permitted', 'refuse': 'refused'}
 
 
@@ -82,6 +93,8 @@ def main(argv):
         return verify(args[0])
     if verb == 'decide' and len(args) in (2, 4) and (len(args) == 2 or args[2] == '--note'):
         return decide(args[0], args[1], args[3] if len(args) == 4 else '')
+    if verb == 'automation' and args and (args == ['list'] or len(args) == 2):
+        return automation(args[0], args[1] if len(args) == 2 else None)
     opts = _flags(args[1:] if verb in ('resume', 'handoff') else args)
     if verb == 'sessions' and opts is not None and set(opts) <= {'project', 'mission'}:
         return sessions(opts)
@@ -287,6 +300,58 @@ def decide(target, verdict, note=''):
         print('Core refused: %s is not waiting for that decision' % target, file=sys.stderr)
         return 2
     print('%s: %s' % (target, out.get('state') or out.get('verdict')))
+    return 0
+
+
+_AUTOMATION_ACTIONS = ('enable', 'disable', 'archive')
+
+
+def automation(what, arg):
+    """The automations (P14 §17): read, write, switch, explain."""
+    import os
+    from urllib.parse import quote
+    if what not in ('list', 'show', 'simulate', 'create', 'why') + _AUTOMATION_ACTIONS:
+        print(USAGE, file=sys.stderr)
+        return 2
+    body = None
+    if what == 'create':
+        try:
+            with open(arg, encoding='utf-8') as f:
+                body = json.load(f)
+        except (OSError, ValueError) as e:
+            print('cannot read %s: %s' % (arg, e), file=sys.stderr)
+            return 2
+    info = _running()
+    if info is None:
+        return 1
+    key = {'idempotency_key': os.urandom(16).hex()}
+    a = quote(arg or '', safe='')
+    if what == 'list':
+        out = _get(info, 'GET', '/v1/automations')
+    elif what == 'show':
+        out = _get(info, 'GET', '/v1/automations/%s' % a)
+    elif what == 'simulate':
+        out = _get(info, 'GET', '/v1/automations/%s/simulate' % a)
+    elif what == 'why':
+        out = _get(info, 'GET', '/v1/automation-runs/%s' % a)
+    elif what == 'create':
+        out = _get(info, 'POST', '/v1/automations', dict(body, **key))
+    else:
+        out = _get(info, 'POST', '/v1/automations/%s/state' % a, dict(key, action=what))
+    if out is None:
+        print('Core refused or does not know %s' % (arg or 'that'), file=sys.stderr)
+        return 2
+    if what == 'list':
+        for x in out['automations']:
+            print('%s  %-10s %-28s %s' % (x['id'], x['state'], x['trigger']['type'], x['name']))
+        for q in out['quarantined']:
+            print('quarantined event %d: %s' % (q['seq'], q['error']))
+        if not out['automations']:
+            print('no automations')
+    elif what in ('show', 'why', 'simulate'):
+        print(json.dumps(out, indent=2))
+    else:
+        print('%s: %s' % (out['id'], out['state']))
     return 0
 
 

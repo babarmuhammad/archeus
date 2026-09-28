@@ -45,7 +45,7 @@ from collections import namedtuple
 from ..core.application import commands, queries, world
 from ..core.application import calls as own_calls
 from ..core.application import conversation, executions, knowledge, resources
-from ..core.application import sessions
+from ..core.application import automations, sessions
 from ..core.application import verification
 from ..core.context import assemble as context
 from ..core.knowledge import ingest
@@ -591,6 +591,47 @@ def get_verification(req):
         return 200, queries.get_verification(conn, req.params['id'])
 
 
+# ── P14: automations (p14-design-gate §17) ──
+
+def list_automations(req):
+    with req.api.db.read() as conn:
+        return 200, automations.list_automations(conn)
+
+
+def get_automation(req):
+    with req.api.db.read() as conn:
+        return 200, automations.get_automation(conn, req.params['id'])
+
+
+def simulate_automation(req):
+    raw = _one(req.query, 'days')
+    days = 30 if raw is None else _cursor(raw, 'days')
+    if not 1 <= days <= 180:
+        raise Invalid('days', 'is 1..180')
+    with req.api.db.read() as conn:
+        return 200, automations.simulate(conn, req.params['id'], now=queries._now(), days=days)
+
+
+def get_automation_run(req):
+    with req.api.db.read() as conn:
+        return 200, automations.explain(conn, req.params['id'])
+
+
+def create_automation(req):
+    b = req.body
+    kw = {k: b[k] for k in ('max_depth', 'rate_limit') if b.get(k) is not None}
+    return 200, req.run(automations.create, dict(
+        kw, name=b['name'], trigger=b['trigger'], template=b['template'],
+        project_id=b.get('project_id')))
+
+
+def set_automation_state(req):
+    b = req.body
+    return 200, req.run(automations.set_state, {
+        'automation_id': req.params['id'], 'action': b['action'],
+        'expected_version': b.get('expected_version')})
+
+
 def decide_verification(req):
     b = req.body
     return 200, req.run(req.api.decisions.decide, {
@@ -770,6 +811,18 @@ ROUTES = (
           schemas.USER_REVIEW, 'ReviewRecorded'),
     Route('POST', '/v1/tasks/{id}/integration/abandon', abandon_integration, 'control',
           'required', schemas.ABANDON_INTEGRATION, 'IntegrationAbandoned'),
+    # P14: automations (p14-design-gate §17) — no route appends an event, runs one
+    # now, or approves anything: an automation only asks for missions
+    Route('GET', '/v1/automations', list_automations, 'observe', None, None, 'AutomationList'),
+    Route('GET', '/v1/automations/{id}', get_automation, 'observe', None, None, 'Automation'),
+    Route('GET', '/v1/automations/{id}/simulate', simulate_automation, 'observe', None, None,
+          'AutomationSimulation'),
+    Route('GET', '/v1/automation-runs/{id}', get_automation_run, 'observe', None, None,
+          'AutomationExplanation'),
+    Route('POST', '/v1/automations', create_automation, 'admin', 'required',
+          schemas.CREATE_AUTOMATION, 'AutomationWritten'),
+    Route('POST', '/v1/automations/{id}/state', set_automation_state, 'admin', 'required',
+          schemas.AUTOMATION_STATE, 'AutomationWritten'),
 )
 
 #: The query parameters each GET route reads (for the docs and the client).
@@ -779,7 +832,8 @@ QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),
          '/v1/knowledge': ('project', 'state', 'type'),
          '/v1/route-decisions': ('source', 'purpose'),
          '/v1/conversations/{id}/messages': ('after',), '/v1/ideas': ('state',),
-         '/v1/policy-decisions': ('mission', 'stage'), '/v1/approvals': ('state', 'mission')}
+         '/v1/policy-decisions': ('mission', 'stage'), '/v1/approvals': ('state', 'mission'),
+         '/v1/automations/{id}/simulate': ('days',)}
 
 STREAM = '/v1/events/stream'
 

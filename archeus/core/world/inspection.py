@@ -10,6 +10,7 @@ rebuilt (`force=True`) because its cache key — file count and whole-second
 mtime — cannot see an edit made in the same second.
 """
 
+import fnmatch
 import json
 import os
 import re
@@ -19,6 +20,18 @@ from claude_sessions import connections, repos
 #: Bumped whenever any extractor's output can change, so an inspection stored
 #: by an older extractor is never taken for a current one.
 EXTRACTOR_VERSION = 1
+#: a file that appears at one of these is a new model or schema: the world
+#: worker emits `repository.model_added` for it (P14, p14-design-gate D16)
+MODEL_GLOBS = ('models/*', '*/models/*', '*models.py', '*.prisma', 'schema.*', '*/schema.*')
+
+
+def models_added(previous, payload):
+    """The model/schema files in *payload* that *previous* did not have; none
+    for a first inspection, which is a baseline, not a change."""
+    if previous is None:
+        return []
+    new = set(payload['files']) - set(previous['files'])
+    return sorted(f for f in new if any(fnmatch.fnmatchcase(f, g) for g in MODEL_GLOBS))
 
 _SHA = re.compile(r'[0-9a-f]{40}([0-9a-f]{24})?')
 

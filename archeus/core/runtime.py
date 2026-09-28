@@ -60,6 +60,7 @@ from .application.conversation import Conversations
 from .knowledge.passes import Passes
 from .knowledge.worker import Knowledge
 from .missions.intent import Intents
+from .automation.worker import Automations
 from .application.planning import Planning
 from .planning.worker import Planner
 from .world.worker import World
@@ -333,7 +334,10 @@ class WorldLoop:
 
     def status(self):
         pending = self.world.pending() if self.state in ('idle', 'running') else 0
-        return {'state': self.state, 'pending': pending}
+        out = {'state': self.state, 'pending': pending}
+        if hasattr(self.world, 'detail') and self.state in ('idle', 'running'):
+            out.update(self.world.detail())     # P14: held and quarantined events
+        return out
 
     def _run(self):
         try:
@@ -379,6 +383,7 @@ class Core:
         self.static_dir, self.world_poll_s = static_dir, world_poll_s
         self.lock = self.db = self.loop = self.world = self.api = self.server = None
         self.knowledge = self.intent = self.plan = self.policy = self.verify = None
+        self.automation = None
         self.exec = self.manager = None
         self.warning = None
         self.exit_code = 0
@@ -471,6 +476,11 @@ class Core:
                                 poll_s=self.world_poll_s, on_fail=self._engine_failed,
                                 name='archeus-policy')
         self.policy.start()
+        # P14: the automation consumer asks for missions; the loop above runs them
+        self.automation = WorldLoop(Automations(self.db, actor=self.system), self.db,
+                                    poll_s=self.world_poll_s, on_fail=self._engine_failed,
+                                    name='archeus-automation')
+        self.automation.start()
         from .sessions.service import SessionService
         from ..harnesses.sessions import real_session_adapters
         from ..node.local import LocalNode
@@ -542,6 +552,8 @@ class Core:
                 'policy': self.policy.status() if self.policy is not None
                 else {'state': 'idle', 'pending': 0},
                 'verify': self.verify.status() if self.verify is not None
+                else {'state': 'idle', 'pending': 0},
+                'automation': self.automation.status() if self.automation is not None
                 else {'state': 'idle', 'pending': 0}}
 
     def launch_url(self):
@@ -574,6 +586,8 @@ class Core:
             self.server.shutdown()
             self.server.server_close()
             self.server = None
+        if self.automation is not None:
+            self.automation.stop()
         if self.policy is not None:
             self.policy.stop()
         if self.plan is not None:

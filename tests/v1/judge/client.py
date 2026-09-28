@@ -22,7 +22,8 @@ import os
 from typing import Optional, Protocol, Sequence, runtime_checkable
 
 from archeus.core import engine, ports
-from archeus.core.application import (authorization, commands, conversation, executions,
+from archeus.core.application import (authorization, automations, commands, conversation,
+                                      executions,
                                       queries, resources, sessions, verification, work,
                                       world)
 from archeus.core.sessions.service import SessionService
@@ -138,6 +139,13 @@ class CoreClient(Protocol):
     def reviews(self, mission_id: str) -> list: ...
     def review(self, mission_id: str, verdict: str, *, note: Optional[str] = None) -> dict: ...
     def abandon_integration(self, task_id: str, *, reason: Optional[str] = None) -> dict: ...
+    # ── automations (P14) ──
+    def create_automation(self, *, name: str, trigger: dict, template: dict,
+                          project_id: Optional[str] = None, max_depth: Optional[int] = None,
+                          rate_limit: Optional[int] = None) -> dict: ...
+    def set_automation_state(self, automation_id: str, action: str) -> dict: ...
+    def automations(self) -> list: ...
+    def automation(self, automation_id: str) -> dict: ...
     # ── the event stream ──
     def events(self, after_seq: int = 0, *, limit: Optional[int] = None) -> list: ...
 
@@ -269,6 +277,9 @@ class InProcessClient:
                                         calls=own if self._real_review else None,
                                         verify=self._real_verification, timeout_s=60)
             self._verify.sweep()
+            # the automation consumer (P14), pumped likewise
+            from archeus.core.automation.worker import Automations
+            self._automation = Automations(self._db, actor=Ref('system', self._system))
         return self._db
 
     def _actor(self):
@@ -340,14 +351,16 @@ class InProcessClient:
         planned = self._plans is not None and self._plans.pass_once()['changed']
         expired = self._expiry.pass_once()['changed']
         verified = self._verify.pass_once()['changed']
+        # P14: the automation consumer; a held event is work still to do
+        reacted = self._automation.pass_once()['changed'] or bool(self._automation.retrying)
         return not (worked or learned or read or planned or stepped or expired or ran
-                    or verified)
+                    or verified or reacted)
 
     def close(self, *, drain=True):
         if self._db is not None:
             self._db.close(drain=drain)
             self._db = self._engine = self._world = self._knowledge = None   # orphans now
-            self._intents = self._plans = self._verify = None
+            self._intents = self._plans = self._verify = self._automation = None
             self._lock.release()
             self._lock = None
 
@@ -649,6 +662,27 @@ class InProcessClient:
         return self._run(verification.abandon_integration,
                          {'task_id': task_id, 'reason': reason or ''}, ids.new_ulid())
 
+    # ── automations (P14) ──
+
+    def create_automation(self, *, name: str, trigger: dict, template: dict,
+                          project_id: Optional[str] = None, max_depth: Optional[int] = None,
+                          rate_limit: Optional[int] = None) -> dict:
+        kw = {k: v for k, v in (('max_depth', max_depth), ('rate_limit', rate_limit))
+              if v is not None}
+        return self._run(automations.create, dict(kw, name=name, trigger=trigger,
+                                                  template=template, project_id=project_id),
+                         ids.new_ulid())
+
+    def set_automation_state(self, automation_id: str, action: str) -> dict:
+        return self._run(automations.set_state,
+                         {'automation_id': automation_id, 'action': action}, ids.new_ulid())
+
+    def automations(self) -> list:
+        return self._read(automations.list_automations)['automations']
+
+    def automation(self, automation_id: str) -> dict:
+        return self._read(automations.get_automation, automation_id)
+
 
 #: Operations with a real body in both bindings (P2: G1, G4; P3: the mission
 #: control verbs; P3.5: listing missions, which the SPA's two lists read).
@@ -663,7 +697,9 @@ IMPLEMENTED = ('create_mission', 'get_mission', 'list_missions', 'events', 'paus
                'close_session', 'checkpoints', 'handoff_execution',
                # P13
                'verifications', 'decide_verification', 'reviews', 'review',
-               'abandon_integration')
+               'abandon_integration',
+               # P14
+               'create_automation', 'set_automation_state', 'automations', 'automation')
 
 # Every other operation is declared and fails loudly. Later phases replace these
 # with real bodies one by one; tests/v1/contract/test_core_client.py keeps every

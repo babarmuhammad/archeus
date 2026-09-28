@@ -879,6 +879,19 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Depends: P13. New: `automation/*`, templates, simulation.
 - Tests: loop guard, claim-and-advance under concurrent ticks, schedule parsing, suspension.
 - Acceptance: S10, S10b pass.
+  - **P14, as built** (p14-design-gate.md, D1–D17). State plus same-transaction events, never
+    event-sourced: an event is a fact, the tables stay the authority. The `automation` outbox
+    consumer (`archeus-automation`) delivers at least once, in commit order, and runs ONE writer
+    command per matching event that claims a run per automation (`UNIQUE (automation, event)`),
+    decides it (stale, depth, rate limit, e-stop, an execution-caused event) and, only when every
+    guard passes, inserts a Mission in CREATED with `origin: automation` — whose plan, dispatch,
+    route, execution, verification and review are P8–P13's, unchanged. Causal depth follows the
+    mission lineage and escalates at 3; three escalations or rate-limited runs in an hour suspend
+    the automation; a failing reaction is held, retried and quarantined after 3 attempts. The
+    world worker now emits `repository.model_added`. Six routes and `archeus automation`; an
+    explanation of every run from rows. E01–E25, S10, S10b pass; 21/21 mutations killed.
+    Deferred: schedule and condition triggers, `run-now`, built-in templates (D14). Deviations:
+    p14-design-gate §22.
 
 **P15 — Presence, pairing, remote, mobile**
 - Depends: P14 (and P3.5). New: pairing routes, scope enforcement for *paired* devices (local

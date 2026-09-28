@@ -144,7 +144,7 @@ QUERY_TYPES = {'state': "Mission['state']", 'after': 'number', 'limit': 'number'
                'project': 'string', 'type': 'string', 'source': 'string',
                'purpose': 'string',
                # a parameter named like another route's is typed by its own route
-               'mission': 'string', 'stage': 'string',
+               'mission': 'string', 'stage': 'string', 'days': 'number',
                ('/v1/knowledge', 'state'): "KnowledgeItem['state']",
                ('/v1/approvals', 'state'): "Approval['state']"}
 

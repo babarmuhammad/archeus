@@ -69,7 +69,8 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
     handlers = [n for _p, t in _py('archeus', 'api') for n in ast.walk(t)
                 if isinstance(n, ast.Call) and ast.unparse(n.func) == 'req.run']
     targets = sorted({ast.unparse(n.args[0]) for n in handlers})
-    assert targets == ['commands.create_mission', 'commands.register_device',
+    assert targets == ['automations.create', 'automations.set_state',
+                       'commands.create_mission', 'commands.register_device',
                        'commands.revoke_device', 'conversation.post_message',
                        'executions.handoff_execution',
                        'knowledge.confirm', 'knowledge.forget',
@@ -237,17 +238,32 @@ P13 = {
     ('POST', '/v1/missions/{id}/review', 'approve', 'required'),
     ('POST', '/v1/tasks/{id}/integration/abandon', 'control', 'required'),
 }
+#: P14 (p14-design-gate §17): automations read, simulated and explained; writing
+#: and enabling one is admin; nothing appends an event or runs one now
+P14 = {
+    ('GET', '/v1/automations', 'observe', None),
+    ('GET', '/v1/automations/{id}', 'observe', None),
+    ('GET', '/v1/automations/{id}/simulate', 'observe', None),
+    ('GET', '/v1/automation-runs/{id}', 'observe', None),
+    ('POST', '/v1/automations', 'admin', 'required'),
+    ('POST', '/v1/automations/{id}/state', 'admin', 'required'),
+}
 
 
-def test_the_route_table_is_exactly_the_p35b_to_p13_tables():
-    """L2, and P9's E4 / P10's / P11's / P12's / P13's boundary: no `retry` (P12
-    did not build it, p12-design-gate D17), nothing from P14 (automations), P15
-    (pair, device list) or P16 (/v1/now, the execution stream), and no hook route
-    — a later phase adds its rows with its own tests."""
+def test_the_route_table_is_exactly_the_p35b_to_p14_tables():
+    """L2, and P9's E4 / P10's / P11's / P12's / P13's / P14's boundary: no `retry`
+    (P12 did not build it, p12-design-gate D17), no event append or `run-now`
+    (P14), nothing from P15 (pair, device list) or P16 (/v1/now, the execution
+    stream), and no hook route — a later phase adds its rows with its own tests."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
-    assert got == EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12 | P13
+    assert got == EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12 | P13 | P14
     assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11
-                                     | P12 | P13)
+                                     | P12 | P13 | P14)
+    # P14: an automation's only write routes are admin; no route takes an event
+    assert {r.scope for r in routes.ROUTES if 'automation' in r.path
+            and r.method == 'POST'} == {'admin'}
+    assert not [r.path for r in routes.ROUTES if r.method == 'POST'
+                and ('event' in r.path or 'run-now' in r.path)]
     # P13: nothing records evidence or a verdict over HTTP
     for r in routes.ROUTES:
         if 'verification' in r.path and r.method == 'POST':
@@ -255,7 +271,7 @@ def test_the_route_table_is_exactly_the_p35b_to_p13_tables():
     # E7: no plan route takes a command (no execution control from P8)
     assert not [r for r in routes.ROUTES if 'plan' in r.path and r.method != 'GET']
     for word in ('route/', 'pair', '/now', 'hook', 'dispatch', 'stream?', '/retry',
-                 'cancel', 'accept', 'graph', 'attention', 'automation'):
+                 'cancel', 'accept', 'graph', 'attention', 'run-now'):
         assert not [r.path for r in routes.ROUTES if word in r.path], word
     # P12: the only hand-off paths are a session's and an execution's
     assert {r.path for r in routes.ROUTES if 'handoff' in r.path} == {

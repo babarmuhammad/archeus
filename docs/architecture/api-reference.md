@@ -100,6 +100,12 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/v1/missions/{id}/reviews` | observe | — | — | — | `ReviewList` |
 | POST | `/v1/missions/{id}/review` | approve | required | — | `ReviewMissionRequest` | `ReviewRecorded` |
 | POST | `/v1/tasks/{id}/integration/abandon` | control | required | — | `AbandonIntegrationRequest` | `IntegrationAbandoned` |
+| GET | `/v1/automations` | observe | — | — | — | `AutomationList` |
+| GET | `/v1/automations/{id}` | observe | — | — | — | `Automation` |
+| GET | `/v1/automations/{id}/simulate` | observe | — | `days` | — | `AutomationSimulation` |
+| GET | `/v1/automation-runs/{id}` | observe | — | — | — | `AutomationExplanation` |
+| POST | `/v1/automations` | admin | required | — | `CreateAutomationRequest` | `AutomationWritten` |
+| POST | `/v1/automations/{id}/state` | admin | required | — | `SetAutomationStateRequest` | `AutomationWritten` |
 
 A launch-code device holds `observe`; the local token holds `observe control approve admin`.
 
@@ -172,6 +178,85 @@ interface Approval {
 ```ts
 interface ApprovalList {
   approvals: Approval[];
+}
+```
+
+### `Automation`
+
+```ts
+interface Automation {
+  id: string;
+  name: string;
+  state: 'ARCHIVED' | 'DISABLED' | 'DRAFT' | 'ENABLED' | 'PENDING_APPROVAL' | 'SUSPENDED';
+  trigger: Record<string, unknown>;
+  template: Record<string, unknown>;
+  project_id?: string | null;
+  max_depth?: number;
+  rate_limit?: number;
+  armed_seq?: number;
+  version: number;
+  runs?: AutomationRun[];
+  [field: string]: unknown;
+}
+```
+
+### `AutomationExplanation`
+
+```ts
+interface AutomationExplanation {
+  run: AutomationRun;
+  automation: Record<string, unknown>;
+  event: Record<string, unknown> | null;
+  why: Record<string, unknown>;
+  mission: Record<string, unknown> | null;
+}
+```
+
+### `AutomationList`
+
+```ts
+interface AutomationList {
+  automations: Automation[];
+  quarantined: Record<string, unknown>[];
+}
+```
+
+### `AutomationRun`
+
+```ts
+interface AutomationRun {
+  id: string;
+  automation_id: string;
+  state: 'CLAIMED' | 'ESCALATED' | 'FAILED' | 'MISSION_CREATED' | 'POLICY_CHECK' | 'SKIPPED' | 'SUCCEEDED';
+  triggering_event_seq: number;
+  depth: number;
+  rationale?: Record<string, unknown> | null;
+  reason_code?: string | null;
+  reason?: string | null;
+  mission_id?: string | null;
+  [field: string]: unknown;
+}
+```
+
+### `AutomationSimulation`
+
+```ts
+interface AutomationSimulation {
+  automation_id: string;
+  days: number;
+  examined: number;
+  matched: Record<string, unknown>[];
+}
+```
+
+### `AutomationWritten`
+
+```ts
+interface AutomationWritten {
+  id: string;
+  state: string;
+  version: number;
+  [field: string]: unknown;
 }
 ```
 
@@ -1725,6 +1810,30 @@ interface ReviewMissionRequest {
 ```ts
 interface AbandonIntegrationRequest {
   reason?: string | null;
+  idempotency_key: string;
+}
+```
+
+### `CreateAutomationRequest`
+
+```ts
+interface CreateAutomationRequest {
+  name: string;
+  trigger: Record<string, unknown>;
+  template: Record<string, unknown>;
+  project_id?: string | null;
+  max_depth?: number | null;
+  rate_limit?: number | null;
+  idempotency_key: string;
+}
+```
+
+### `SetAutomationStateRequest`
+
+```ts
+interface SetAutomationStateRequest {
+  action: 'enable' | 'disable' | 'archive';
+  expected_version?: number | null;
   idempotency_key: string;
 }
 ```

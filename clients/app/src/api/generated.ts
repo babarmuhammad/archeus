@@ -53,6 +53,61 @@ export interface ApprovalList {
   approvals: Approval[];
 }
 
+export interface Automation {
+  id: string;
+  name: string;
+  state: 'ARCHIVED' | 'DISABLED' | 'DRAFT' | 'ENABLED' | 'PENDING_APPROVAL' | 'SUSPENDED';
+  trigger: Record<string, unknown>;
+  template: Record<string, unknown>;
+  project_id?: string | null;
+  max_depth?: number;
+  rate_limit?: number;
+  armed_seq?: number;
+  version: number;
+  runs?: AutomationRun[];
+  [field: string]: unknown;
+}
+
+export interface AutomationExplanation {
+  run: AutomationRun;
+  automation: Record<string, unknown>;
+  event: Record<string, unknown> | null;
+  why: Record<string, unknown>;
+  mission: Record<string, unknown> | null;
+}
+
+export interface AutomationList {
+  automations: Automation[];
+  quarantined: Record<string, unknown>[];
+}
+
+export interface AutomationRun {
+  id: string;
+  automation_id: string;
+  state: 'CLAIMED' | 'ESCALATED' | 'FAILED' | 'MISSION_CREATED' | 'POLICY_CHECK' | 'SKIPPED' | 'SUCCEEDED';
+  triggering_event_seq: number;
+  depth: number;
+  rationale?: Record<string, unknown> | null;
+  reason_code?: string | null;
+  reason?: string | null;
+  mission_id?: string | null;
+  [field: string]: unknown;
+}
+
+export interface AutomationSimulation {
+  automation_id: string;
+  days: number;
+  examined: number;
+  matched: Record<string, unknown>[];
+}
+
+export interface AutomationWritten {
+  id: string;
+  state: string;
+  version: number;
+  [field: string]: unknown;
+}
+
 export interface Card {
   type: 'mission_proposal' | 'plan' | 'approval' | 'route_explanation' | 'diff' | 'verification' | 'digest' | 'mission' | 'idea' | 'challenge' | 'clarification' | 'knowledge' | 'status';
   ref: Subject;
@@ -1079,6 +1134,22 @@ export interface AbandonIntegrationRequest {
   idempotency_key: string;
 }
 
+export interface CreateAutomationRequest {
+  name: string;
+  trigger: Record<string, unknown>;
+  template: Record<string, unknown>;
+  project_id?: string | null;
+  max_depth?: number | null;
+  rate_limit?: number | null;
+  idempotency_key: string;
+}
+
+export interface SetAutomationStateRequest {
+  action: 'enable' | 'disable' | 'archive';
+  expected_version?: number | null;
+  idempotency_key: string;
+}
+
 export type Method = 'GET' | 'POST';
 export type Send = <T>(method: Method, path: string, body?: unknown) => Promise<T>;
 
@@ -1249,4 +1320,16 @@ export const api = {
     send<ReviewRecorded>('POST', '/v1/missions/' + encodeURIComponent(id) + '/review', body),
   abandonIntegration: (send: Send, id: string, body: AbandonIntegrationRequest) =>
     send<IntegrationAbandoned>('POST', '/v1/tasks/' + encodeURIComponent(id) + '/integration/abandon', body),
+  listAutomations: (send: Send) =>
+    send<AutomationList>('GET', '/v1/automations'),
+  getAutomation: (send: Send, id: string) =>
+    send<Automation>('GET', '/v1/automations/' + encodeURIComponent(id)),
+  simulateAutomation: (send: Send, id: string, query: { days?: number } = {}) =>
+    send<AutomationSimulation>('GET', '/v1/automations/' + encodeURIComponent(id) + '/simulate' + qs(query)),
+  getAutomationRun: (send: Send, id: string) =>
+    send<AutomationExplanation>('GET', '/v1/automation-runs/' + encodeURIComponent(id)),
+  createAutomation: (send: Send, body: CreateAutomationRequest) =>
+    send<AutomationWritten>('POST', '/v1/automations', body),
+  setAutomationState: (send: Send, id: string, body: SetAutomationStateRequest) =>
+    send<AutomationWritten>('POST', '/v1/automations/' + encodeURIComponent(id) + '/state', body),
 };

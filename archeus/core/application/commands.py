@@ -53,17 +53,20 @@ def record_context_package(tx, *, actor, subject_kind, subject_id, query=None):
     return pkg
 
 def create_mission(tx, *, actor, title, objective, project_id=None,
-                   workspace_id=ids.GLOBAL_WORKSPACE, success_criteria=(), max_replans=2):
+                   workspace_id=ids.GLOBAL_WORKSPACE, success_criteria=(), max_replans=2,
+                   origin='conversation', origin_ref=None, cause=()):
+    """A mission in CREATED. `origin`/`origin_ref`/`cause` are for Core's own
+    callers (an automation run, P14): no route passes them."""
     if project_id is not None and tx.get(entities.Project, project_id) is None:
         raise lifecycle.NotFound(project_id)     # a mission names a registered project (P4)
     m = entities.Mission(id=ids.new_id('mission'), workspace_id=workspace_id,
                          project_id=project_id, title=title, objective=objective,
                          success_criteria=tuple(dict(c) for c in success_criteria),
-                         max_replans=max_replans)
+                         max_replans=max_replans, origin=origin, origin_ref=origin_ref)
     row = tx.insert(m, actor=actor)
     e = tx.append(new_event('mission.created', Ref('mission', m.id), actor,
                             payload={'title': title}, workspace=workspace_id,
-                            project=project_id))
+                            project=project_id, cause_chain=cause))
     return {'id': m.id, 'state': m.state, 'version': row.version, 'seq': e.seq}
 
 

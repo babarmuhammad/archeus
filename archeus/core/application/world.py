@@ -172,7 +172,7 @@ def begin_inspection(tx, *, actor, repository_id, revision, retry_of=None):
 
 
 def complete_inspection(tx, *, actor, inspection_id, observation, payload_sha256, payload_size,
-                        diff_from_previous=None):
+                        diff_from_previous=None, models_added=()):
     """RUNNING -> COMPLETED with what the pass observed. A second completion
     of the same inspection is a no-op returning the first; completing a
     revision another inspection already completed is refused, so there is one
@@ -191,6 +191,14 @@ def complete_inspection(tx, *, actor, inspection_id, observation, payload_sha256
     row, _e = lifecycle.fire(tx, entities.RepositoryInspection, inspection_id, 'inspected',
                              actor=actor, reason='inspected %s' % row.entity.revision,
                              fields=fields)
+    # P14 (p14-design-gate D16): one fact per new model/schema file, with the
+    # inspection that found it, for automations to react to
+    repo = tx.get(entities.Repository, row.entity.repository_id).entity
+    for path in models_added:
+        tx.append(new_event('repository.model_added', Ref('repository', repo.id), actor,
+                            payload={'path': path, 'revision': row.entity.revision,
+                                     'inspection': inspection_id},
+                            workspace=repo.workspace_id, project=repo.project_id))
     return {'inspection': view(row), 'changed': True}
 
 

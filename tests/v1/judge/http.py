@@ -124,8 +124,9 @@ class HttpClient:
             return False
         # P6-P8: every event not yet consumed; P13: every verification, merge
         # or review due, and none in flight
-        for worker in ('knowledge', 'intent', 'plan', 'verify'):
-            if health[worker]['state'] != 'idle' or health[worker]['pending']:
+        for worker in ('knowledge', 'intent', 'plan', 'verify', 'automation'):
+            if (health[worker]['state'] != 'idle' or health[worker]['pending']
+                    or health[worker].get('retrying')):
                 return False
         return not self._call('GET', '/v1/events?after=%d&limit=1'
                               % min(engine['observed_seq'], ex['observed_seq']))['events']
@@ -394,6 +395,26 @@ class HttpClient:
     def abandon_integration(self, task_id: str, *, reason: Optional[str] = None) -> dict:
         return self._call('POST', '/v1/tasks/%s/integration/abandon' % quote(task_id, safe=''),
                           self._body(reason=reason))
+
+    # ── automations (P14) ──
+
+    def create_automation(self, *, name: str, trigger: dict, template: dict,
+                          project_id: Optional[str] = None, max_depth: Optional[int] = None,
+                          rate_limit: Optional[int] = None) -> dict:
+        body = {k: v for k, v in (('project_id', project_id), ('max_depth', max_depth),
+                                  ('rate_limit', rate_limit)) if v is not None}
+        return self._call('POST', '/v1/automations', self._body(
+            name=name, trigger=trigger, template=template, **body))
+
+    def set_automation_state(self, automation_id: str, action: str) -> dict:
+        return self._call('POST', '/v1/automations/%s/state' % quote(automation_id, safe=''),
+                          self._body(action=action))
+
+    def automations(self) -> list:
+        return self._call('GET', '/v1/automations')['automations']
+
+    def automation(self, automation_id: str) -> dict:
+        return self._call('GET', '/v1/automations/%s' % quote(automation_id, safe=''))
 
     # ── resources (P10) ──
 

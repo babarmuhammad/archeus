@@ -33,7 +33,9 @@ DOCUMENTED = ('submit_message', 'create_mission', 'get_mission', 'list_missions'
               'close_session', 'checkpoints', 'handoff_execution',
               # P13 (testing-strategy §1.1; p13-design-gate §21)
               'verifications', 'decide_verification', 'reviews', 'review',
-              'abandon_integration')
+              'abandon_integration',
+              # P14 (testing-strategy §1.1; p14-design-gate §17)
+              'create_automation', 'set_automation_state', 'automations', 'automation')
 
 
 def test_the_contract_is_exactly_the_documented_operations():
