@@ -188,18 +188,37 @@ class Principal(Entity):
             raise ValueError('a %s principal cannot hold %s' % (self.kind, sorted(extra)))
 
 
+#: A step-up PIN at rest (P15 D19): `pbkdf2_sha256$<iterations>$<salt>$<hash>`.
+PIN_HASH = re.compile(r'pbkdf2_sha256\$[1-9][0-9]{4,6}\$[0-9a-f]{32}\$[0-9a-f]{64}')
+
+
 @entity
 class Device(Entity):
+    """A CLIENT registration (p15-design-gate D1): one credentialed installation
+    of a client program. A physical device is not an entity (D2): `host_label`
+    is what the user called it, `platform` what the client declared — both for
+    display only. `origin` is Core's own record of the registration path and is
+    the only one of these a security decision reads (D5)."""
     _ID = 'device'
     _STATE = ('state', 'device')
-    _TEXT = ('name',)
-    _CHOICES = {'platform': ('desktop', 'web', 'ios', 'android', 'tui')}
+    _TEXT = ('name', 'host_label')
+    _CHOICES = {'platform': ('desktop', 'web', 'ios', 'android', 'tui'),
+                'origin': ('local', 'paired'), 'client_type': ('cli', 'spa')}
     _REFS = {'principal_id': 'principal'}
     id: str
     principal_id: str
     name: str
     platform: str
     state: str = None
+    # P15: rows written before P15 carry none of these and read as local
+    origin: str = 'local'
+    client_type: str = None
+    host_label: str = None
+    pin_hash: str = None
+
+    def _check(self):
+        if self.pin_hash is not None and not PIN_HASH.fullmatch(self.pin_hash):
+            raise ValueError('Device.pin_hash is not a pbkdf2_sha256 record')
 
 
 # ── world (domain-model §4) ─────────────────────────────────────────────────

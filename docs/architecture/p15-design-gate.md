@@ -298,6 +298,7 @@ equal to the loopback origin's host. Mutation M02 removes the Host half.
 | stale credential / revoked client | `auth.live` on every request and on every stream wake |
 | stolen device / credential | revoke; 180-day expiry bounds an unnoticed theft; step-up needs the PIN; admin off by default |
 | cloned client (token copied) | indistinguishable by design (a bearer token is the identity); visible as unexpected presence/actions; revoke. Device attestation is out of reach for a PWA (D2) |
+| a local credential used through the tunnel | refused: a local credential (the CLI's token, a launch-code browser) is honoured on the loopback Host only; a remote client is a paired one (D21) |
 | malicious client with a valid token | can do what its scopes allow, through P9 like any client — never more: every command is the route's application command, guarded as for the local CLI |
 | cross-user | V1 has one owner; every `user_device` principal acts for that owner. Non-user principals (brain, execution, automation) hold no `observe` scope and cannot read or subscribe (P19) |
 | cross-project | a client sees the owner's whole workspace (single owner, D13); a stream may be *narrowed* to projects (§11), which is a subscription, not a permission |
@@ -578,6 +579,7 @@ Same runner as P11–P14. Each mutation must be killed by the named tests.
 | M20 | presence events written on every connection instead of 0↔1 | R5 |
 | M21 | a client may decide an approval without the echoed `action_hash` reaching P9 (route drops it) | P14 |
 | M22 | reconnect replay: the idempotency key is not forwarded on pause | P11 |
+| M23 | a local credential is honoured through the tunnel (D21) | R3 |
 
 ## 21. Decisions
 
@@ -609,10 +611,82 @@ Same runner as P11–P14. Each mutation must be killed by the named tests.
 - **D17** Local-only routes require loopback peer **and** loopback Host (R2).
 - **D18** Offline queuing is server-declared: only the digest ack is replayable.
 - **D19** Step-up PIN: 6–12 digits, pbkdf2-sha256 200k, per-client; 5 consecutive failures revoke.
+- **D21** A credential whose client is not `paired` is honoured on the loopback Host only
+  (added during implementation, §22).
 - **D20** Deferred to P16: pairing and device screens, QR rendering, PWA manifest and service worker,
   mobile layouts. Deferred to P20 (or a user decision on ADR-0010 Q3): ntfy notifications. Deferred:
   token refresh, self-revoke ("sign out this phone"), per-project client grants.
 
 ## 22. As built
 
-*(written when P15 is built)*
+Everything in §1–§21 is built as written, except the deviations below.
+
+**Files.** New: `archeus/api/presence.py`, `tests/v1/integration/test_presence.py`,
+`tests/v1/unit/test_presence_units.py`, `tools/mutate_p15.py`. Changed: `archeus/api/auth.py`
+(remote hosts in `Origin`, `remote_host`, `PairingCodes` + `PairingLocked`, `StepUpFailures`,
+`iso`/`now_iso`; `LaunchCodes` keeps its API over a shared `_mint`/`_pop`), `api/server.py`
+(`Api` gains `remote_hosts`, `pairing`, `step_up`, `instance`, `started_at`, `seen`; the pipeline
+records presence, adds `X-Archeus-Seq`, refuses queued intent and local credentials on a remote
+Host), `api/sse.py` (connection ids, narrowing, the 0↔1 traces, a stream's own traces hidden
+from it), `api/routes.py` (four routes, `REPLAYABLE`, Host-and-peer `_loopback`, the step-up
+lockout in `decide_approval`, `expected_version` on pause/resume), `api/schemas.py`,
+`core/domain/entities.py` (`Device.origin`, `client_type`, `host_label`, `pin_hash`),
+`core/application/commands.py` (`register_device` takes them, `hash_pin`, `pin_matches`,
+`record_connection`), `core/application/authorization.py` (`is_paired`, `_step_up_valid` —
+the change P9 D16 reserved for P15), `core/application/queries.py` (`devices`, the credential's
+`device_origin`), `core/runtime.py` + `cli/main.py` + `claude_sessions/cli.py` (`--remote-host`,
+`archeus pair`, `archeus devices`), the generated API reference and TypeScript client, the judge
+(`http.py`, `support.py`, S11, S14, G6), `tests/v1/integration/test_sse.py`,
+`tests/v1/unit/test_api_structure.py`. No migration: every new client field is a body field with
+a default, so rows written before P15 read as `local`.
+
+**Tests.** 32 integration tests (P01–P30, R1–R5, the CLI), 35 unit and boundary tests (codes,
+breaker, lockout, hosts, narrowing, PIN at rest, P31, P32, the trace moves nothing); judge S11
+(both functions), S14 (cross-device) and G6 (revoked stream) no longer xfail — over the HTTP
+binding; the in-process binding has no credentials and skips `rig.device`.
+
+**Deviations.**
+
+1. **D21 was added while building** [new]. With a remote host enabled, the CLI's local token (all
+   four scopes, a file on this machine) was accepted through the tunnel like a paired client.
+   A client that is not `paired` is now honoured on the loopback Host only (`403
+   host_not_allowed`, "pair this client to use Archeus remotely"); R3 and M23 pin it.
+2. **A stream hides its own client's traces** [clar]. `device.stream_opened` is written after the
+   stream registers, so the opening stream would otherwise receive the notice of its own
+   connection. Other clients still see it (the desktop hears the phone connect). The P3.5b SSE
+   tests that compared frames with *every* event now compare with every event but the client's
+   own traces.
+3. **S14's cross-device function waits for Core to settle** before the phone acknowledges: the
+   engine moves the new mission on by itself, and an event after the ack is — correctly — news on
+   the desktop. The per-user cursor is what the function proves, and it does.
+4. **`rig.device` skips on the in-process binding** (as `device_token` and `http_get` already do):
+   pairing is a transport concept with nothing to call in process.
+5. **Mutation list.** M07 needs two edits (the revoke handler's close *and* the stream's own
+   re-check), because either alone still closes the stream within one wake — a single-edit M07
+   would test nothing. M13/M14 are the plausible "presence is authoritative" regressions (a
+   dropped last stream closes the client's sessions / pauses running missions), inserted where the
+   close trace is written. M21 is "the route drops the step-up proof on its way to P9". M23 was
+   added with D21. M14 first **survived**: P07 closed only the client's raw socket, which the
+   HTTP response object kept open, so Core never saw a disconnect and the mutated code never ran.
+   P07 now closes the client properly and waits for Core's own `device.stream_closed` before it
+   asserts — a disconnect is a disconnect when Core has seen it.
+6. **`queries.credential` also returns `device_origin`**, which the pipeline needs for D21 and the
+   lockout; the P3.5b `launch/*` routes now check Host as well as peer (R2), which changes nothing
+   for a local caller.
+7. **A P3.5b test race, widened by P15.** `test_a_stream_that_falls_behind_a_prune_…` armed its
+   page hold *after* the stream opened, so a first page already in flight could read past the
+   prune. The trace commit before the stream's first page made that window wide enough to fail
+   about one run in three; the hold is now armed before the stream opens (10/10 afterwards).
+   `Origin.origin_for(None)` is the local origin: a unit test calls `fetch_ok` with no Host,
+   which a real request never reaches (the Host check runs first).
+8. **ADR-0010 stays PROPOSED.** P15 built the tunnel-agnostic parts (remote hosts, pairing, PIN,
+   resync); the tunnel choice (Q2) and ntfy (Q3) remain the user's (D20).
+
+**Known limitations** (stated in §16 or here; none is a gap P9–P14 rely on): presence and the PIN
+lockout counter are per Core process; a PIN proof is checked inside P9's transaction (pbkdf2,
+~0.05 s of writer time per proof on the development machine); the failure breaker is global, so
+someone who can reach the tunnel can keep *pairing* locked (not access); no token refresh (re-pair
+after 180 days); no self-revoke ("sign out this phone"); commands are attributed to a client, not a
+connection (D12); a single owner, so no per-project client grants (D13); the pairing and device
+screens, QR, PWA manifest and service worker and mobile layouts are P16's, ntfy is P20's or Q3's
+(D20) — until P16, pairing is `archeus pair` plus any HTTP client.

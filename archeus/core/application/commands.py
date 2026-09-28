@@ -10,6 +10,9 @@ runs `command(tx, **kwargs)` with JSON arguments, and later phases swap a
 stub port without touching a caller.
 """
 
+import hashlib
+import hmac
+import secrets
 from dataclasses import replace
 
 from ...infra.db import rows
@@ -72,21 +75,46 @@ def create_mission(tx, *, actor, title, objective, project_id=None,
 
 # ── devices and their tokens (P3.5b local auth) ──────────────────────────
 
-def register_device(tx, *, actor, name, platform, token_hash, scopes, expires_at=None):
-    """A user device with its first credential, in one transaction: a
-    `user_device` principal holding *scopes*, its Device (PAIRING -> ACTIVE by
-    `code_redeemed`) and the `tokens` row. Only the token's sha256 arrives here:
-    the token itself never enters a command, its arguments or its response.
-    *actor* is who vouched for the device (Core's system principal for the local
-    token, the minting device for a launch code). Deciding who may do that is
-    the caller's (a route scope); nothing here checks it."""
+#: pbkdf2 work for a step-up PIN at rest (p15-design-gate D19).
+PIN_ITERATIONS = 200_000
+
+
+def hash_pin(pin):
+    """The at-rest record of a step-up PIN. Run on an HTTP thread, never in a
+    command: the writer only ever receives the record."""
+    salt = secrets.token_bytes(16)
+    h = hashlib.pbkdf2_hmac('sha256', pin.encode('utf-8'), salt, PIN_ITERATIONS)
+    return 'pbkdf2_sha256$%d$%s$%s' % (PIN_ITERATIONS, salt.hex(), h.hex())
+
+
+def pin_matches(record, pin):
+    """True when *pin* is the PIN *record* was made from (compared as bytes)."""
+    if not (record and isinstance(pin, str) and pin):
+        return False
+    _algo, n, salt, want = record.split('$')
+    got = hashlib.pbkdf2_hmac('sha256', pin.encode('utf-8'), bytes.fromhex(salt), int(n)).hex()
+    return hmac.compare_digest(got.encode('ascii'), want.encode('ascii'))
+
+
+def register_device(tx, *, actor, name, platform, token_hash, scopes, expires_at=None,
+                    origin='local', client_type=None, host_label=None, pin_hash=None):
+    """A client with its first credential, in one transaction: a `user_device`
+    principal holding *scopes*, its client row (entity `Device`, PAIRING ->
+    ACTIVE by `code_redeemed`) and the `tokens` row. Only the token's sha256
+    arrives here: the token itself never enters a command, its arguments or its
+    response; likewise only a PIN's pbkdf2 record (P15). *actor* is who vouched
+    for the client (Core's system principal for the local token, the minting
+    client for a launch code, the starting client for a pairing). Deciding who
+    may do that is the caller's (a route scope); nothing here checks it."""
     if not (isinstance(token_hash, str) and entities._HEX64.fullmatch(token_hash)):
         raise ValueError('token_hash is a sha256 hex digest')
     p = entities.Principal(id=ids.new_id('principal'), kind='user_device', scopes=tuple(scopes))
     tx.insert(p, actor=actor)
     tx.append(new_event('principal.created', Ref('principal', p.id), actor,
                         payload={'kind': p.kind, 'scopes': list(p.scopes)}))
-    d = entities.Device(id=ids.new_id('device'), principal_id=p.id, name=name, platform=platform)
+    d = entities.Device(id=ids.new_id('device'), principal_id=p.id, name=name, platform=platform,
+                        origin=origin, host_label=host_label, pin_hash=pin_hash,
+                        client_type=client_type or ('cli' if platform == 'tui' else 'spa'))
     tx.insert(d, actor=actor)
     row, e = lifecycle.fire(tx, entities.Device, d.id, 'code_redeemed', actor=actor,
                             reason='a %s device was issued its token' % platform)
@@ -101,6 +129,21 @@ def revoke_device(tx, *, actor, device_id, reason='revoked on request'):
     row, e = lifecycle.fire(tx, entities.Device, device_id, 'revoke', actor=actor, reason=reason)
     tx.revoke_tokens(row.entity.principal_id)
     return _result(row, [e])
+
+
+def record_connection(tx, *, actor, device_id, connection_id, opened, reason=None):
+    """The durable trace of presence (p15-design-gate §5, D4): the client went
+    from no event stream to one (`device.stream_opened`) or from one to none
+    (`device.stream_closed`, with why). A fact about transport, written for the
+    audit trail; nothing reads it to decide anything, and it moves no entity."""
+    if tx.get(entities.Device, device_id) is None:
+        raise lifecycle.NotFound(device_id)
+    payload = {'connection_id': connection_id}
+    if not opened:
+        payload['reason'] = reason
+    e = tx.append(new_event('device.stream_opened' if opened else 'device.stream_closed',
+                            Ref('device', device_id), actor, payload=payload))
+    return {'seq': e.seq}
 
 
 # ── mission lifecycle (state-machines §2) ──────────────────────────────────

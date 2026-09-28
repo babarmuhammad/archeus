@@ -94,8 +94,32 @@ class HttpClient:
 
     def __init__(self, base_url, token, *, core=None):
         self.base, self.token, self.core = base_url, token, core
+        self.device_id = None               # set on a paired client (P15)
 
     # ── binding plumbing (not part of the contract) ──
+
+    def _pair(self, name, scopes, *, platform='android', pin=None):
+        """A paired client of this Core (the rig's `device`, P15): this client
+        (the local token, admin) starts a pairing; the new one redeems it and
+        acts with its own token and exactly *scopes*."""
+        code = self._call('POST', '/v1/devices/pair/start',
+                          {'name': name, 'scopes': list(scopes)})['code']
+        r = request(self.base, 'POST', '/v1/devices/pair/redeem',
+                    body={'code': code, 'platform': platform, 'pin': pin})
+        if r.status != 200:
+            raise CoreClientError(r.status, r.json()['error'], r.json().get('detail'))
+        out = r.json()
+        paired = HttpClient(self.base, out['token'], core=self.core)
+        paired.device_id = out['device_id']
+        return paired
+
+    def _revoke(self, other):
+        self._call('POST', '/v1/devices/%s/revoke' % other.device_id,
+                   {'idempotency_key': ids.new_ulid()})
+
+    def open_stream(self, **query):
+        """This client's own event stream (an SSEClient)."""
+        return SSEClient(self.base, self.token, query=query)
 
     def _http(self, method, path, body=None, **kw):
         return request(self.base, method, path, token=self.token, body=body, **kw)
@@ -452,7 +476,7 @@ class SSEClient:
     """`GET /v1/events/stream` read frame by frame."""
 
     def __init__(self, base_url, token, *, last_event_id=None, after=None, headers=None,
-                 timeout=10):
+                 timeout=10, query=None):
         host, port = base_url.split('//', 1)[1].split(':')
         self.conn = http.client.HTTPConnection(host, int(port), timeout=timeout)
         h = dict(headers or {})
@@ -460,7 +484,10 @@ class SSEClient:
             h['Authorization'] = 'Bearer ' + token
         if last_event_id is not None:
             h['Last-Event-ID'] = str(last_event_id)
-        path = '/v1/events/stream' + ('' if after is None else '?after=%s' % after)
+        q = [('after', after)] if after is not None else []
+        for k, vs in (query or {}).items():         # P15 narrowing: project=, type=
+            q += [(k, v) for v in ((vs,) if isinstance(vs, str) else vs)]
+        path = '/v1/events/stream' + ('?' + '&'.join('%s=%s' % kv for kv in q) if q else '')
         self.conn.request('GET', path, headers=h)
         self.sock = self.conn.sock       # HTTP/1.0: getresponse hands it to the response
         self.resp = self.conn.getresponse()
@@ -513,6 +540,10 @@ class SSEClient:
             except TimeoutError:
                 break
         return self.eof
+
+    def closed(self, timeout=5.0):
+        """True once Core has ended the stream (EOF within *timeout*)."""
+        return self.wait_eof(timeout)
 
     def close(self):
         try:

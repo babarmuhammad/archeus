@@ -35,6 +35,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from ..core.application import errors, queries
 from ..core.domain.values import Ref
+from ..infra.eventlog import outbox
 from . import auth, routes, sse
 from .routes import Refused
 from .schemas import Invalid, validate
@@ -162,7 +163,7 @@ class Api:
     def __init__(self, *, db, missions, port, health, version, conversations=None,
                  authorization=None, resources=None, executions=None, sessions=None,
                  heartbeat_s=15.0, launch_clock=time.monotonic, static_dir=STATIC_DIR,
-                 command_timeout=COMMAND_TIMEOUT_S):
+                 command_timeout=COMMAND_TIMEOUT_S, remote_hosts=()):
         self.db, self.missions, self.health, self.version = db, missions, health, version
         self.conversations = conversations
         self.authorization = authorization
@@ -176,8 +177,16 @@ class Api:
         # P13: the user's decisions on verifications and reviews
         from ..core.application.verification import Decisions
         self.decisions = Decisions(missions)
-        self.origin = auth.Origin(port)
+        self.origin = auth.Origin(port, remote_hosts)
         self.launch = auth.LaunchCodes(clock=launch_clock)
+        # P15 (p15-design-gate §5, §6, §13): pairing codes, step-up lockout, and
+        # what this process has seen of each client — presence is transport
+        # observation, per Core process, and nothing in core reads it
+        self.pairing = auth.PairingCodes(clock=launch_clock)
+        self.step_up = auth.StepUpFailures()
+        self.instance = secrets.token_hex(8)
+        self.started_at = auth.now_iso()
+        self.seen = {}                  # device id -> (monotonic, iso) of its last request
         self.static = Static(static_dir)
         self.stopping = False
         self.sse = sse.Streams(db, heartbeat_s=heartbeat_s, stopping=lambda: self.stopping)
@@ -194,7 +203,7 @@ class Api:
         if not auth.live(cred, h):
             return None, None
         return {'principal_id': cred['principal_id'], 'device_id': cred['device_id'],
-                'scopes': cred['scopes']}, h
+                'scopes': cred['scopes'], 'origin': cred['device_origin']}, h
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -310,6 +319,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not self.api.requests.acquire(blocking=False):
                     raise Refused(503, 'busy', headers={'Retry-After': '1'})
                 slot = self.api.requests
+            extra = {}
             if route.scope is not None:
                 self.principal, self.token_hash = self.api.authenticate(
                     self.headers.get('Authorization'))
@@ -317,10 +327,30 @@ class Handler(BaseHTTPRequestHandler):
                     raise Refused(401, 'unauthenticated')
                 if route.scope not in self.principal['scopes']:
                     raise Refused(403, 'scope_required', {'scope': route.scope})
+                if (self.principal['origin'] != 'paired'
+                        and not self.api.origin.local_host(self.headers.get('Host'))):
+                    # a local credential (the CLI's, a launch-code browser) is
+                    # honoured on this machine only; through a tunnel a client
+                    # is a paired one (p15-design-gate §8.4, D21)
+                    raise Refused(403, 'host_not_allowed',
+                                  {'why': 'pair this client to use Archeus remotely'})
+                self.api.seen[self.principal['device_id']] = (time.monotonic(), auth.now_iso())
+                if route.method == 'GET' and route.path != routes.STREAM:
+                    # read BEFORE the handler's own read: the body reflects at
+                    # least this seq (p15-design-gate §13, P25)
+                    with self.api.db.read() as conn:
+                        extra['X-Archeus-Seq'] = str(outbox.head(conn))
+            if (self.headers.get('X-Archeus-Queued') is not None
+                    and (route.method, route.path) not in routes.REPLAYABLE):
+                # a command replayed from an offline queue is refused unless
+                # the server declared it replayable (p15-design-gate §12, D18)
+                raise Refused(409, 'queued_intent_refused',
+                              {'why': 'send it again only once your user has seen the '
+                                      'current state and asked for it'})
             self.body = self._body(route, raw)
             out = route.handler(self)
             if out is not None:
-                self._respond(*out)
+                self._respond(out[0], out[1], extra)
         except concurrent.futures.TimeoutError as e:
             # a command timing out, not the client: an OSError since 3.11
             if self._status is None:

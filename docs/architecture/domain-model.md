@@ -141,6 +141,15 @@ A paired client. Fields: `id`, `principal_id`, `name`, `platform` (desktop | web
 `paired_at`, `last_seen_at`, `last_seen_event_seq`, `state` (PAIRING | ACTIVE | REVOKED),
 `push` (optional ntfy topic / desktop). The local desktop shell and a locally opened browser are devices too; they obtain their token through the local launch-code bootstrap (see [api-and-realtime.md §5.1](api-and-realtime.md)).
 
+*As built (P15, [p15-design-gate.md](p15-design-gate.md) §3–§5, D1–D5):* the `Device` entity
+is the **client registration** — one credentialed installation of a client program — not the
+hardware. Physical devices are not entities (Archeus cannot verify one); a client carries the
+user's `host_label` and the `platform` it declared, for display only. P15 added `origin` (`local`
+for the local token and launch codes, `paired` for a pairing redemption — the only one of these
+fields a security decision reads), `client_type` (`cli`, `spa`) and `pin_hash` (the step-up PIN's
+pbkdf2 record, never serialized). Scopes and expiry live on the principal and its `tokens` row;
+`last_seen_at` is presence, held in Core memory, not stored; `push` is not built (ntfy deferred).
+
 ---
 
 ## 4. World entities

@@ -179,6 +179,15 @@ The cursor contract (`seq` in `Last-Event-ID` or `?after=`), implemented by
   an in-process condition variable that the writer notifies after each commit, then read new
   events with a short `query_only` connection (no WAL checkpoint starvation).
 - **Revocation** closes the device's live streams immediately.
+- *As built (P15, [p15-design-gate.md](p15-design-gate.md) §5, §11, §13):* a stream may be
+  **narrowed** with `?project=` and `?type=` (repeatable; a type is a prefix such as `mission.`);
+  narrowing only removes frames. A client going from no stream to one, and from one to none, writes
+  `device.stream_opened` / `device.stream_closed` (`system`, payload `connection_id`, and `reason`
+  on close); a stream never shows a client its own traces. Delivery to clients is resumable and
+  best-effort, never "reliable": correctness comes from re-query. Every authenticated JSON GET
+  carries `X-Archeus-Seq` (the head read before the handler's own read), and `GET /v1/sync` returns
+  `{client, core.instance, head_seq, floor_seq, server_time}` — the resync protocol is
+  p15-design-gate §13.
 
 ## 5. Authentication, pairing and remote access
 
@@ -224,6 +233,14 @@ user runs.
 - The tunnel forwards to loopback, so Core **cannot use source address as identity** — every
   remote request must carry a device token.
 
+*As built (P15, [p15-design-gate.md](p15-design-gate.md) §8, D16, D17, D21):* remote access is
+opt-in with `archeus core --remote-host <dns name>` (repeatable; no wildcard, no IP literal). A
+request naming that host must carry `Origin: https://<host>` when it carries an Origin at all. A
+local-only route (`launch/*`, `pair/start`) requires a loopback peer **and** the loopback Host,
+because a tunnel's requests also arrive from loopback. A local credential (the CLI's token, a
+launch-code browser) is honoured on the loopback Host only: through a tunnel a client is a paired
+one. Tunnel choice (Q2) stays PROPOSED.
+
 ### 5.3 Pairing
 
 1. On a local, authenticated desktop session: Control → Devices → "Pair a phone" →
@@ -235,6 +252,20 @@ user runs.
 3. Default mobile scopes: `observe`, `control`, `approve`. `admin` (policy/resource changes) is
    off by default and can be granted from the desktop.
 4. Redeem is rate-limited (5 attempts/min per IP-hash, 20/day per code window).
+
+*As built (P15, [p15-design-gate.md](p15-design-gate.md) §6, D7–D11, D19):* the code is 128 bits
+(`secrets.token_urlsafe(16)`), not 8 characters, and rides in the URL **fragment**
+(`https://<remote-host>/#pair=<code>`), so it never reaches a server or proxy log; it lives 120 s,
+in Core memory only, and the first redemption spends it. Scopes, name and host label are fixed at
+the start (`archeus pair` today; the desktop screen is P16's) and the redeemer cannot widen them.
+Source addresses are meaningless behind a tunnel, so the rate limit is a global **failure
+breaker**: more than 10 failed redemptions in 60 s burn every live code and answer `429
+pairing_locked` until the window passes. Every failure is the same `401 invalid_pairing_code`. The
+PIN (6–12 digits, optional) is stored as a pbkdf2-sha256 record and is P9's step-up proof for that
+client; 5 consecutive wrong proofs revoke the client. A paired credential expires after 180 days.
+There is no post-redemption confirmation step (D11); the new client is announced on every stream
+and revocable at once. `GET /v1/devices` lists clients with presence; `GET /v1/sync` is the
+resync anchor (§4 *as built*).
 
 Tokens are typed (`dev_…` device, `node_…` node, `hook_…` execution hook token) and verified
 with `hmac.compare_digest` on bytes. Token prefixes are a namespace of their own, disjoint from
@@ -250,7 +281,7 @@ with the execution.
 |---|---|---|
 | In-app | yes | Attention tray + badge; SSE-driven |
 | Desktop | yes | existing `claude_sessions/notify.py` (WinRT toast / osascript / notify-send) |
-| ntfy | yes (optional) | stdlib HTTPS POST to a user-chosen ntfy server/topic; message contains no secrets and no content beyond a title + deep link (`https://<remote-host>/a/<approval-id>`). Works on iOS and Android without app-store publication |
+| ntfy | yes (optional) — **not built in P15** (p15-design-gate D20: deferred to P20 or the user's Q3 answer) | stdlib HTTPS POST to a user-chosen ntfy server/topic; message contains no secrets and no content beyond a title + deep link (`https://<remote-host>/a/<approval-id>`). Works on iOS and Android without app-store publication |
 | Web Push | DEFERRED | requires ECDSA P-256 (VAPID) signing that the stdlib cannot do; would need an optional extra |
 
 Notification defaults: approvals, blocked missions, mission completed (if it ran > 5 min),
@@ -271,7 +302,9 @@ account limits that stop work, drift found. Everything else stays in the feed.
 
 - Client offline: the SPA shows the last snapshot with an "offline since …" banner; commands are
   **not** queued offline (an approval sent hours late could be wrong); control verbs are disabled
-  with an explanation.
+  with an explanation. *As built (P15, p15-design-gate §12, D18):* a client replaying a queued
+  command marks it `X-Archeus-Queued: 1`; Core refuses it `409 queued_intent_refused`, unwritten,
+  unless the route is declared replayable — only `POST /v1/digest/ack`.
 - Core restarting: `503 core_starting` with `Retry-After`; the SPA keeps its cursor and resumes.
 - Remote unreachable: the phone shows "Archeus on <PC> is unreachable — work on the PC continues;
   the e-stop on the PC still works."

@@ -114,7 +114,7 @@ def print_version():
 #: its liveness, plus the verbs reserved for later phases. Spelled out here so
 #: the dispatch imports nothing until one of them is typed.
 V1_VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair',
-            'sessions', 'resume', 'handoff', 'verify', 'decide', 'automation')
+            'sessions', 'resume', 'handoff', 'verify', 'decide', 'automation', 'devices')
 
 
 def run():

@@ -34,15 +34,23 @@ a revision or a verdict: only the verification worker records those.
 
 Deliberately absent (a test pins the table): cancel, accept, request-changes,
 approvals (P9), executions and routing (P10, P11), `/v1/now` and the execution
-stream (P16), pairing and a device list (P15), hooks (P11), a manual
+stream (P16), hooks (P11), a manual
 re-inspect (the world worker covers it), `/v1/world/graph` (P18) and the rest
 of knowledge (P6). A user accepts a result by reviewing it (P13).
+
+P15 adds access, never ownership (p15-design-gate §18): pairing a client
+(start is local admin, redemption is public and spends its code), the client
+list with presence, the resync anchor `/v1/sync`, stream narrowing
+(`?project=`, `?type=`), and the optional `expected_version` P7's pause and
+resume already took. A local-only route checks the Host as well as the peer,
+because a tunnel forwards from loopback (§8.3).
 """
 
 import re
 from collections import namedtuple
+from datetime import datetime, timedelta, timezone
 
-from ..core.application import commands, queries, world
+from ..core.application import commands, errors, queries, world
 from ..core.application import calls as own_calls
 from ..core.application import conversation, executions, knowledge, resources
 from ..core.application import automations, sessions
@@ -52,7 +60,8 @@ from ..core.knowledge import ingest
 from ..harnesses.calls import real_callers
 from ..core.world import digest as world_digest
 from ..core.world import status as world_status
-from . import auth, schemas
+from ..infra.eventlog import outbox
+from . import auth, presence, schemas
 from .schemas import Invalid
 
 Route = namedtuple('Route', 'method path handler scope idempotent request_schema '
@@ -80,7 +89,10 @@ def _cursor(raw, field):
 
 
 def _loopback(req):
-    if not auth.loopback_peer(req.peer):
+    """A local-only route: a loopback peer AND the loopback Host. A tunnel
+    forwards from loopback, so the peer alone proves nothing once a remote host
+    is enabled; its requests name the tunnel's host (p15-design-gate §8.3, D17)."""
+    if not (auth.loopback_peer(req.peer) and req.api.origin.local_host(req.headers.get('Host'))):
         raise Refused(403, 'host_not_allowed', {'why': 'only from this machine'})
 
 
@@ -131,11 +143,13 @@ def create_mission(req):
 
 
 def pause_mission(req):
-    return 200, req.run(req.api.missions.pause, {'mission_id': req.params['id']})
+    return 200, req.run(req.api.missions.pause, {
+        'mission_id': req.params['id'], 'expected_version': req.body.get('expected_version')})
 
 
 def resume_mission(req):
-    return 200, req.run(req.api.missions.resume, {'mission_id': req.params['id']})
+    return 200, req.run(req.api.missions.resume, {
+        'mission_id': req.params['id'], 'expected_version': req.body.get('expected_version')})
 
 
 def events(req):
@@ -152,7 +166,9 @@ def events_stream(req):
     raw = req.headers.get('Last-Event-ID')      # a reconnect carries it: it wins
     if raw is None:
         raw = _one(req.query, 'after')
-    return req.api.sse.serve(req, None if raw is None else _cursor(raw, 'cursor'))
+    from . import sse                           # sse imports this module
+    keep = sse.narrowing(req.query.get('project', ()), req.query.get('type', ()))
+    return req.api.sse.serve(req, None if raw is None else _cursor(raw, 'cursor'), keep)
 
 
 def launch_code(req):
@@ -174,6 +190,75 @@ def launch_redeem(req):
         'token_hash': auth.token_hash(token), 'scopes': list(auth.LAUNCH_SCOPES)},
         actor_id=minter[0], keyed=False)
     return 200, {'device_id': out['device_id'], 'token': token}
+
+
+# ── clients: pairing, listing, resync (P15, p15-design-gate §6, §13, §18) ──
+
+def pair_start(req):
+    """Local admin only — the user's confirmation (§6.1). The grant (scopes,
+    name, host label) is fixed here and a redeemer cannot widen it (D9). The
+    code is in the response once and in Core's memory as a hash for 120 s."""
+    _loopback(req)
+    b = req.body
+    scopes = [s for s in auth.SCOPES if s in (b.get('scopes') or auth.PAIR_SCOPES)]
+    if 'observe' not in scopes:
+        raise Invalid('scopes', 'always includes observe')
+    for f in ('name', 'host_label'):
+        if b.get(f) is not None and not b[f].strip():
+            raise Invalid(f, 'is a non-empty string')
+    code = req.api.pairing.mint({'starter': req.principal['principal_id'], 'scopes': scopes,
+                                 'name': b.get('name'), 'host_label': b.get('host_label')})
+    remote = req.api.origin.remote
+    return 200, {'code': code, 'expires_in': int(auth.PAIR_TTL_S), 'scopes': scopes,
+                 'url': 'https://%s/#pair=%s' % (remote[0], code) if remote else None}
+
+
+def pair_redeem(req):
+    """Public: the code is the credential for this one call (§6.1 step 3).
+    Everything checkable is checked before the code is spent; the token is
+    made here and only its hash — and only the PIN's pbkdf2 record — enters
+    the command, which runs with no idempotency key (P3.5b A4)."""
+    b = req.body
+    if b.get('pin') is not None and not auth.PIN.fullmatch(b['pin']):
+        raise Invalid('pin', 'is 6 to 12 digits')
+    if b.get('name') is not None and not b['name'].strip():
+        raise Invalid('name', 'is a non-empty string')
+    try:
+        grant = req.api.pairing.redeem(b['code'])
+    except auth.PairingLocked:
+        raise Refused(429, 'pairing_locked', headers={
+            'Retry-After': str(int(auth.PairingCodes.FAIL_WINDOW_S))}) from None
+    if grant is None:
+        raise Refused(401, 'invalid_pairing_code')
+    token = auth.new_token()
+    expires = auth.iso(datetime.now(timezone.utc) + timedelta(days=auth.PAIRED_TOKEN_DAYS))
+    out = req.run(commands.register_device, {
+        'name': grant['name'] or b.get('name') or 'paired %s' % b['platform'],
+        'platform': b['platform'], 'token_hash': auth.token_hash(token),
+        'scopes': grant['scopes'], 'expires_at': expires, 'origin': 'paired',
+        'client_type': 'spa', 'host_label': grant['host_label'],
+        'pin_hash': commands.hash_pin(b['pin']) if b.get('pin') else None},
+        actor_id=grant['starter'], keyed=False)
+    return 200, {'device_id': out['device_id'], 'token': token, 'scopes': grant['scopes'],
+                 'expires_at': expires}
+
+
+def list_devices(req):
+    with req.api.db.read() as conn:
+        got = queries.devices(conn)
+    return 200, {'devices': [dict(d, presence=presence.of(req.api, d)) for d in got]}
+
+
+def sync(req):
+    """The resync anchor (§13): who this client is, which Core process it is
+    talking to, and the event cursor range to resume or restart from."""
+    with req.api.db.read() as conn:
+        head, floor = outbox.head(conn), outbox.floor(conn)
+        (me,) = [d for d in queries.devices(conn) if d['id'] == req.principal['device_id']]
+    return 200, {'client': dict(me, presence=presence.of(req.api, me)),
+                 'core': {'instance': req.api.instance, 'started_at': req.api.started_at,
+                          'version': req.api.version},
+                 'head_seq': head, 'floor_seq': floor, 'server_time': auth.now_iso()}
 
 
 def status(req):
@@ -572,13 +657,32 @@ def decide_approval(req):
     """The client echoes the `action_hash` it displayed (X02). A DENY found at
     approve time is recorded and answered `423 policy_denied`."""
     b = req.body
-    out = req.run(req.api.authorization.decide, {
-        'approval_id': req.params['id'], 'decision': b['decision'],
-        'action_hash': b['action_hash'], 'note': b.get('note'), 'step_up': b.get('step_up'),
-        'expected_version': b.get('expected_version')})
+    try:
+        out = req.run(req.api.authorization.decide, {
+            'approval_id': req.params['id'], 'decision': b['decision'],
+            'action_hash': b['action_hash'], 'note': b.get('note'), 'step_up': b.get('step_up'),
+            'expected_version': b.get('expected_version')})
+    except errors.GuardFailed as e:
+        if b.get('step_up') is not None and 'step-up' in e.result.reason:
+            _step_up_failed(req)
+        raise
+    if b.get('step_up') is not None:
+        req.api.step_up.reset(req.principal['device_id'])
     if out.get('denied'):
         raise Refused(423, 'policy_denied', dict(out['denied'], approval_id=out['approval_id']))
     return 200, out
+
+
+def _step_up_failed(req):
+    """A paired client's wrong PIN proof, counted; the 5th in a row revokes it
+    (p15-design-gate §6.6, D19). Whether the approval needed the proof, and
+    whether this one was valid, was P9's guard; this is access control only."""
+    device = req.principal['device_id']
+    if req.principal['origin'] == 'paired' and req.api.step_up.failed(device):
+        req.run(commands.revoke_device, {'device_id': device, 'reason': 'step_up_failures'},
+                keyed=False)
+        req.api.step_up.reset(device)
+        req.api.sse.close_device(device)
 
 
 def list_verifications(req):
@@ -678,9 +782,9 @@ ROUTES = (
     Route('POST', '/v1/missions', create_mission, 'control', 'required',
           schemas.CREATE_MISSION, 'Created'),
     Route('POST', '/v1/missions/{id}/pause', pause_mission, 'control', 'required',
-          schemas.KEYED, 'CommandResult'),
+          schemas.KEYED_VERSIONED, 'CommandResult'),
     Route('POST', '/v1/missions/{id}/resume', resume_mission, 'control', 'required',
-          schemas.KEYED, 'CommandResult'),
+          schemas.KEYED_VERSIONED, 'CommandResult'),
     Route('GET', '/v1/events', events, 'observe', None, None, 'EventPage'),
     Route('GET', '/v1/events/stream', events_stream, 'observe', None, None, 'StreamFrame'),
     Route('POST', '/v1/devices/launch/code', launch_code, 'admin', 'exempt', schemas.EMPTY,
@@ -689,6 +793,14 @@ ROUTES = (
           'Redeemed'),
     Route('POST', '/v1/devices/{id}/revoke', revoke_device, 'admin', 'required', schemas.KEYED,
           'CommandResult'),
+    # P15: pairing, the client list, the resync anchor (p15-design-gate §18) —
+    # access to the service only: no route here decides, routes or runs anything
+    Route('POST', '/v1/devices/pair/start', pair_start, 'admin', 'exempt', schemas.PAIR_START,
+          'PairingCode'),
+    Route('POST', '/v1/devices/pair/redeem', pair_redeem, None, 'exempt', schemas.PAIR_REDEEM,
+          'Paired'),
+    Route('GET', '/v1/devices', list_devices, 'observe', None, None, 'DeviceList'),
+    Route('GET', '/v1/sync', sync, 'observe', None, None, 'Sync'),
     # ── the world (P4) ──
     Route('GET', '/v1/status', status, 'observe', None, None, 'Status'),
     Route('GET', '/v1/projects', list_projects, 'observe', None, None, 'ProjectList'),
@@ -827,7 +939,7 @@ ROUTES = (
 
 #: The query parameters each GET route reads (for the docs and the client).
 QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),
-         '/v1/events/stream': ('after',), '/v1/status': ('project',),
+         '/v1/events/stream': ('after', 'project', 'type'), '/v1/status': ('project',),
          '/v1/repositories/{id}/inspections': ('limit',),
          '/v1/knowledge': ('project', 'state', 'type'),
          '/v1/route-decisions': ('source', 'purpose'),
@@ -836,6 +948,11 @@ QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),
          '/v1/automations/{id}/simulate': ('days',)}
 
 STREAM = '/v1/events/stream'
+
+#: The commands a client may replay from an offline queue (p15-design-gate §12,
+#: D18): only the digest ack, which is monotone. Every other command sent with
+#: `X-Archeus-Queued` is refused `409 queued_intent_refused`, unwritten.
+REPLAYABLE = frozenset({('POST', '/v1/digest/ack')})
 
 
 def _compile(path):

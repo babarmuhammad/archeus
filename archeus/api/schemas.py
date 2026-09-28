@@ -111,6 +111,48 @@ TYPES = {
     'Redeemed': {'type': 'object', 'properties': {'device_id': {'type': 'string'},
                                                   'token': {'type': 'string'}},
                  'required': ['device_id', 'token']},
+    # ── clients, pairing, presence, resync (P15, p15-design-gate §18) ──
+    'PairingCode': {'type': 'object', 'properties': {
+        'code': {'type': 'string'}, 'expires_in': {'type': 'integer'},
+        'scopes': {'type': 'array', 'items': {'type': 'string'}},
+        'url': {'type': 'string', 'nullable': True}},
+        'required': ['code', 'expires_in', 'scopes', 'url']},
+    'Paired': {'type': 'object', 'properties': {
+        'device_id': {'type': 'string'}, 'token': {'type': 'string'},
+        'scopes': {'type': 'array', 'items': {'type': 'string'}},
+        'expires_at': {'type': 'string'}},
+        'required': ['device_id', 'token', 'scopes', 'expires_at']},
+    'Presence': {'type': 'object', 'properties': {
+        'state': {'type': 'string', 'enum': ['connected', 'recent', 'absent', 'revoked']},
+        'connections': {'type': 'integer'},
+        'last_seen_at': {'type': 'string', 'nullable': True}},
+        'required': ['state', 'connections', 'last_seen_at']},
+    'Client': {'type': 'object', 'properties': {
+        'id': {'type': 'string'}, 'principal_id': {'type': 'string'},
+        'name': {'type': 'string'}, 'platform': {'type': 'string'},
+        'origin': {'type': 'string', 'enum': ['local', 'paired']},
+        'client_type': {'type': 'string', 'enum': ['cli', 'spa']},
+        'host_label': {'type': 'string', 'nullable': True}, 'state': {'type': 'string'},
+        'created_at': {'type': 'string'},
+        'scopes': {'type': 'array', 'items': {'type': 'string'}},
+        'expires_at': {'type': 'string', 'nullable': True},
+        'capabilities': {'type': 'object', 'properties': {
+            'step_up': {'type': 'string', 'enum': ['local', 'pin', 'none']}},
+            'required': ['step_up']},
+        'presence': {'ref': 'Presence'}},
+        'required': ['id', 'principal_id', 'name', 'platform', 'origin', 'client_type',
+                     'host_label', 'state', 'created_at', 'scopes', 'expires_at',
+                     'capabilities', 'presence']},
+    'DeviceList': {'type': 'object', 'properties': {
+        'devices': {'type': 'array', 'items': {'ref': 'Client'}}}, 'required': ['devices']},
+    'Sync': {'type': 'object', 'properties': {
+        'client': {'ref': 'Client'},
+        'core': {'type': 'object', 'properties': {
+            'instance': {'type': 'string'}, 'started_at': {'type': 'string'},
+            'version': {'type': 'string'}}, 'required': ['instance', 'started_at', 'version']},
+        'head_seq': {'type': 'integer'}, 'floor_seq': {'type': 'integer'},
+        'server_time': {'type': 'string'}},
+        'required': ['client', 'core', 'head_seq', 'floor_seq', 'server_time']},
     # ── the world (P4, p4-design-gate §8-§10) ──
     'Finding': {'type': 'object', 'open': True, 'properties': {
         'constraint_id': {'type': 'string'}, 'constraint': {'type': 'string'},
@@ -759,6 +801,23 @@ LINK_SESSION = {'type': 'object', 'properties': {
     'mission_id': _S, 'idempotency_key': KEY}, 'required': ['idempotency_key']}
 CLOSE_SESSION = {'type': 'object', 'properties': {
     'reason': _S, 'idempotency_key': KEY}, 'required': ['idempotency_key']}
+#: P15: pairing (p15-design-gate §6). Unknown fields are refused, so neither
+#: body can carry a model, harness, account or anything else (§15, P32).
+PAIR_START = {'type': 'object', 'properties': {
+    'name': {'type': 'string', 'nullable': True},
+    'host_label': {'type': 'string', 'nullable': True},
+    'scopes': {'type': 'array', 'nullable': True,
+               'items': {'type': 'string', 'enum': ['observe', 'control', 'approve', 'admin']}}},
+    'required': []}
+PAIR_REDEEM = {'type': 'object', 'properties': {
+    'code': {'type': 'string'},
+    'platform': {'type': 'string', 'enum': ['web', 'desktop', 'ios', 'android']},
+    'name': {'type': 'string', 'nullable': True}, 'pin': {'type': 'string', 'nullable': True}},
+    'required': ['code', 'platform']}
+#: pause/resume (P15 D15): P7's commands already took `expected_version`
+KEYED_VERSIONED = {'type': 'object', 'properties': {
+    'idempotency_key': KEY, 'expected_version': {'type': 'integer', 'nullable': True}},
+    'required': ['idempotency_key']}
 REDEEM = {'type': 'object', 'properties': {
     'code': {'type': 'string'}, 'platform': {'type': 'string', 'enum': ['web', 'desktop']}},
     'required': ['code', 'platform']}

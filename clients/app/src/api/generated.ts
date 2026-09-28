@@ -138,6 +138,24 @@ export interface CheckpointList {
   checkpoints: Checkpoint[];
 }
 
+export interface Client {
+  id: string;
+  principal_id: string;
+  name: string;
+  platform: string;
+  origin: 'local' | 'paired';
+  client_type: 'cli' | 'spa';
+  host_label: string | null;
+  state: string;
+  created_at: string;
+  scopes: string[];
+  expires_at: string | null;
+  capabilities: {
+    step_up: 'local' | 'pin' | 'none';
+  };
+  presence: Presence;
+}
+
 export interface CommandResult {
   id: string;
   state: string;
@@ -250,6 +268,10 @@ export interface Decided {
   changed: boolean;
   version: number;
   [field: string]: unknown;
+}
+
+export interface DeviceList {
+  devices: Client[];
 }
 
 export interface Digest {
@@ -532,6 +554,20 @@ export interface MissionStopped {
   stopped: string[];
 }
 
+export interface Paired {
+  device_id: string;
+  token: string;
+  scopes: string[];
+  expires_at: string;
+}
+
+export interface PairingCode {
+  code: string;
+  expires_in: number;
+  scopes: string[];
+  url: string | null;
+}
+
 export interface Plan {
   id: string;
   mission_id: string;
@@ -589,6 +625,12 @@ export interface PolicyRule {
   revision: number;
   retired_at?: string | null;
   [field: string]: unknown;
+}
+
+export interface Presence {
+  state: 'connected' | 'recent' | 'absent' | 'revoked';
+  connections: number;
+  last_seen_at: string | null;
 }
 
 export interface ProfileSet {
@@ -791,6 +833,18 @@ export interface Subject {
   id: string;
 }
 
+export interface Sync {
+  client: Client;
+  core: {
+    instance: string;
+    started_at: string;
+    version: string;
+  };
+  head_seq: number;
+  floor_seq: number;
+  server_time: string;
+}
+
 export interface Task {
   id: string;
   key: string;
@@ -857,10 +911,12 @@ export interface CreateMissionRequest {
 
 export interface PauseMissionRequest {
   idempotency_key: string;
+  expected_version?: number | null;
 }
 
 export interface ResumeMissionRequest {
   idempotency_key: string;
+  expected_version?: number | null;
 }
 
 export interface LaunchCodeRequest {
@@ -873,6 +929,19 @@ export interface LaunchRedeemRequest {
 
 export interface RevokeDeviceRequest {
   idempotency_key: string;
+}
+
+export interface PairStartRequest {
+  name?: string | null;
+  host_label?: string | null;
+  scopes?: Array<'observe' | 'control' | 'approve' | 'admin'> | null;
+}
+
+export interface PairRedeemRequest {
+  code: string;
+  platform: 'web' | 'desktop' | 'ios' | 'android';
+  name?: string | null;
+  pin?: string | null;
 }
 
 export interface CreateProjectRequest {
@@ -1188,6 +1257,14 @@ export const api = {
     send<Redeemed>('POST', '/v1/devices/launch/redeem', body),
   revokeDevice: (send: Send, id: string, body: RevokeDeviceRequest) =>
     send<CommandResult>('POST', '/v1/devices/' + encodeURIComponent(id) + '/revoke', body),
+  pairStart: (send: Send, body: PairStartRequest) =>
+    send<PairingCode>('POST', '/v1/devices/pair/start', body),
+  pairRedeem: (send: Send, body: PairRedeemRequest) =>
+    send<Paired>('POST', '/v1/devices/pair/redeem', body),
+  listDevices: (send: Send) =>
+    send<DeviceList>('GET', '/v1/devices'),
+  sync: (send: Send) =>
+    send<Sync>('GET', '/v1/sync'),
   status: (send: Send, query: { project?: string } = {}) =>
     send<Status>('GET', '/v1/status' + qs(query)),
   listProjects: (send: Send) =>

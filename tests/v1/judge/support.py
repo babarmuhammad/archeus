@@ -298,11 +298,15 @@ class Rig:
         return wait_for(done)
 
     def device(self, name, scopes):
-        """A paired device's own client (its token, its scopes)."""
-        self._pending('paired devices', 'P15')
+        """A paired client's own client (its token, its scopes), paired through
+        the real P15 routes. Credentials exist only over HTTP: the in-process
+        binding has none to pair, so a scenario that needs one skips there."""
+        if not hasattr(self.client, '_pair'):
+            pytest.skip('paired clients exist only over the http binding')
+        return self.client._pair(name, scopes)
 
     def revoke(self, device):
-        self._pending('device revocation', 'P15')
+        self.client._revoke(device)
 
     def principal_client(self, kind):
         """A client acting as a non-user principal (brain, execution, …),

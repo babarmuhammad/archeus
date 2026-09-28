@@ -901,6 +901,27 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Tests: pairing expiry/rate limits, a paired device's revoked stream closes, PWA install on
   Android/iOS (manual checklist), ntfy payload contains no secrets.
 - Acceptance: S11, S14 (cross-device) pass.
+  - **P15, as built** (p15-design-gate.md, D1–D21). P15 controls access to the service and
+    delivers notice of change; it decides, routes, executes, verifies and reacts to nothing. The
+    `Device` entity is the **client registration** (one credentialed installation), with Core's
+    own `origin` (`local`/`paired`), `client_type`, a user `host_label` and a step-up `pin_hash`;
+    physical devices are not entities. **Pairing**: local admin start (`archeus pair`) → 128-bit,
+    120 s, single-use code in the URL fragment → public redemption that mints the token on the
+    HTTP thread (only its hash, and only the PIN's pbkdf2 record, enter the command); scopes fixed
+    at the start; a failure breaker burns every live code; paired credentials expire in 180 days.
+    **Remote**: `--remote-host` (exact DNS names, `https` origin); local-only routes check Host as
+    well as peer, because a tunnel forwards from loopback; local credentials are honoured on the
+    loopback Host only. **Step-up**: P9's guard reads `origin`, not the declared platform, and a
+    paired client's proof is its PIN; 5 wrong in a row revoke it. **Presence** is in-memory
+    (`connected`/`recent`/`absent`/`revoked`), traced only as `device.stream_opened/closed` on
+    0↔1 transitions, and read by nothing in `archeus/core`. **Realtime/resync**: SSE only, with
+    `?project=`/`?type=` narrowing, `X-Archeus-Seq` on every authenticated GET and the
+    `GET /v1/sync` anchor; delivery to clients is best-effort, correctness is re-query. **Offline**:
+    only the digest ack is replayable; a queued live-only command is `409 queued_intent_refused`.
+    Pause/resume expose P7's `expected_version`. Four routes, `archeus pair` / `devices`. P01–P32
+    and R1–R5 pass, S11/S14/G6 green; 23/23 mutations killed. Deferred to P16: pairing and device
+    screens, QR, PWA manifest and service worker, mobile layouts; ntfy to P20 or Q3 (D20).
+    Deviations: p15-design-gate §22.
 
 **P16 — GUI information architecture**
 - Depends: P15. New: full SPA surfaces, tokens pipeline, design gates, Qt shell attach.

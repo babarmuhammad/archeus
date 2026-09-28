@@ -20,13 +20,16 @@ import socket
 import threading
 import time
 
-from ..core.application import queries
+from ..core.application import commands, queries
+from ..core.domain import ids
 from ..infra.eventlog import outbox
 from . import auth
 from .routes import Refused
 
 MAX_STREAMS = 8
 PER_DEVICE = 2
+#: the presence trace types (p15-design-gate §5)
+PRESENCE = 'device.stream_'
 
 
 class TooManyStreams(RuntimeError):
@@ -34,10 +37,26 @@ class TooManyStreams(RuntimeError):
 
 
 class _Stream:
+    """One connection (p15-design-gate §7): a client's live stream, named by a
+    fresh `connection_id` that dies with it."""
+
     def __init__(self, device_id):
         self.device_id = device_id
+        self.connection_id = ids.new_ulid()
         self.closing = threading.Event()
         self.done = threading.Event()
+
+
+def narrowing(projects=(), types=()):
+    """The subscription filter (p15-design-gate §11): keep an event of one of
+    *projects* (or of no project) whose type starts with one of *types*. Empty
+    means everything. It can only remove what the unfiltered stream carries."""
+    projects, types = frozenset(projects), tuple(types)
+
+    def keep(e):
+        return ((not projects or e.project is None or e.project in projects)
+                and (not types or e.type.startswith(types)))
+    return keep
 
 
 def frame(event):
@@ -59,20 +78,27 @@ class Streams:
         with self._lock:
             return len(self._open)
 
-    def _register(self, device_id):
+    def connections(self, device_id):
+        """The connection ids *device_id* holds open now (presence, §5)."""
         with self._lock:
-            if (len(self._open) >= MAX_STREAMS
-                    or sum(s.device_id == device_id for s in self._open) >= PER_DEVICE):
+            return [s.connection_id for s in self._open if s.device_id == device_id]
+
+    def _register(self, device_id):
+        """(stream, first): *first* when the client had no stream open."""
+        with self._lock:
+            mine = sum(s.device_id == device_id for s in self._open)
+            if len(self._open) >= MAX_STREAMS or mine >= PER_DEVICE:
                 raise TooManyStreams()
             s = _Stream(device_id)
             self._open.append(s)
-            return s
+            return s, mine == 0
 
     def _unregister(self, s):
+        """True when *s* was the client's last open stream."""
         with self._lock:
             if s in self._open:
                 self._open.remove(s)
-        s.done.set()
+            return not any(o.device_id == s.device_id for o in self._open)
 
     def _close(self, match, timeout):
         with self._lock:
@@ -98,38 +124,54 @@ class Streams:
         with self.db.read() as conn:
             return auth.live(queries.credential(conn, presented_hash), presented_hash)
 
-    def serve(self, req, cursor):
-        """Validate the cursor, then stream until the client goes, the device is
-        revoked, or Core stops. Returns None: the response is already written."""
+    def serve(self, req, cursor, keep=narrowing()):
+        """Validate the cursor, then stream until the client goes, the client is
+        revoked, or Core stops. Returns None: the response is already written.
+        A client going from no stream to one, and from one to none, is recorded
+        (`device.stream_opened` / `_closed`, p15 §5 D4) — only the transitions."""
         with self.db.read() as conn:
             head = outbox.head(conn)
             if cursor is not None:
                 outbox.events_after(conn, cursor, limit=1)     # 400 / 410 before the 200
         cursor = head if cursor is None else cursor
         try:
-            stream = self._register(req.principal['device_id'])
+            stream, first = self._register(req.principal['device_id'])
         except TooManyStreams:
             raise Refused(429, 'too_many_streams') from None
+        reason = 'client_gone'
         try:
+            if first:
+                self._trace(req, stream, True)
             req.start_stream()
-            self._loop(req, stream, cursor)
+            reason = self._loop(req, stream, cursor, keep)
         finally:
             try:
                 req.connection.shutdown(socket.SHUT_RDWR)   # EOF reaches the client now
             except OSError:
                 pass
-            self._unregister(stream)
+            if self._unregister(stream):
+                self._trace(req, stream, False, reason)
+            stream.done.set()
         return None
 
-    def _loop(self, req, stream, cursor):
+    def _trace(self, req, stream, opened, reason=None):
+        try:
+            req.run(commands.record_connection, {
+                'device_id': stream.device_id, 'connection_id': stream.connection_id,
+                'opened': opened, 'reason': reason}, keyed=False)
+        except Exception:           # a trace is never a reason to refuse or keep a stream
+            pass
+
+    def _loop(self, req, stream, cursor, keep):
+        """Stream until one of the §7 ends; returns which one."""
         writer = self.db.writer
         last_write = time.monotonic()
         while True:
             if self.stopping():
                 req.write(b'event: shutdown\ndata: {}\n\n')
-                return
+                return 'core_stopping'
             if stream.closing.is_set():
-                return
+                return 'revoked'
             seen = writer.commit_count
             while True:
                 try:
@@ -137,11 +179,15 @@ class Streams:
                 except outbox.CursorExpired as e:
                     req.write(('event: cursor_expired\ndata: %s\n\n' % json.dumps(
                         {'reason': e.reason, 'floor': e.floor, 'head': e.head})).encode())
-                    return
-                if page:
-                    req.write(b''.join(frame(e) for e in page))
-                    cursor = page[-1].seq
+                    return 'cursor_expired'
+                # a client's own connection traces are no notice to itself
+                shown = [e for e in page if keep(e) and not (
+                    e.type.startswith(PRESENCE) and e.subject.id == stream.device_id)]
+                if shown:
+                    req.write(b''.join(frame(e) for e in shown))
                     last_write = time.monotonic()
+                if page:
+                    cursor = page[-1].seq
                 if len(page) < outbox.MAX_LIMIT:
                     break
             wait = self.heartbeat_s - (time.monotonic() - last_write)
@@ -153,4 +199,4 @@ class Streams:
                                until=lambda: stream.closing.is_set() or self.stopping())
             # a revocation made any other way still closes within one wake
             if not self._still_valid(req.token_hash):
-                return
+                return 'revoked'

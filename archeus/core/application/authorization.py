@@ -42,8 +42,8 @@ from . import lifecycle
 TTL = {'plan': timedelta(hours=24), 'task': timedelta(hours=24),
        'action': timedelta(hours=2)}
 LIVE = ('PENDING', 'APPROVED')
-#: devices paired from outside this machine (P15); before P15 every device is
-#: local, and a local device satisfies step-up (D16)
+#: the pre-P15 reading of "paired", for clients registered before P15 recorded
+#: an `origin`; a local client satisfies step-up (D16, p15-design-gate §6.6)
 PAIRED_PLATFORMS = ('ios', 'android')
 _DECIDED = {'approve': 'APPROVED', 'reject': 'REJECTED', 'request_changes': 'REJECTED'}
 
@@ -512,11 +512,23 @@ def _principal(tx, actor, scope):
     return p.entity
 
 
+def is_paired(device):
+    """Paired is Core's own record of how a client registered (`origin`), never
+    the platform it declared — a paired browser says `web` (p15-design-gate
+    R1). The platform rule is kept for clients registered before P15 recorded
+    an origin."""
+    return device.origin == 'paired' or device.platform in PAIRED_PLATFORMS
+
+
 def _step_up_valid(tx, actor, proof):
-    """Before P15 every device is local, and a local device satisfies step-up;
-    a paired device needs a proof, which P15 defines (D16)."""
-    devices = rows.where(tx.conn, entities.Device, principal_id=actor.id)
-    return proof is None and not any(d.entity.platform in PAIRED_PLATFORMS for d in devices)
+    """A local client satisfies step-up by being local; a paired one needs a
+    proof, which P15 defines as its PIN (D16; p15-design-gate §6.6)."""
+    from .commands import pin_matches
+    paired = [d.entity for d in rows.where(tx.conn, entities.Device, principal_id=actor.id)
+              if is_paired(d.entity)]
+    if not paired:
+        return proof is None
+    return all(pin_matches(d.pin_hash, proof) for d in paired)
 
 
 def _awaiting(conn, a, mission):

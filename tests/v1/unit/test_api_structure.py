@@ -70,7 +70,8 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
                 if isinstance(n, ast.Call) and ast.unparse(n.func) == 'req.run']
     targets = sorted({ast.unparse(n.args[0]) for n in handlers})
     assert targets == ['automations.create', 'automations.set_state',
-                       'commands.create_mission', 'commands.register_device',
+                       'commands.create_mission', 'commands.record_connection',
+                       'commands.register_device',
                        'commands.revoke_device', 'conversation.post_message',
                        'executions.handoff_execution',
                        'knowledge.confirm', 'knowledge.forget',
@@ -250,15 +251,29 @@ P14 = {
 }
 
 
-def test_the_route_table_is_exactly_the_p35b_to_p14_tables():
-    """L2, and P9's E4 / P10's / P11's / P12's / P13's / P14's boundary: no `retry`
-    (P12 did not build it, p12-design-gate D17), no event append or `run-now`
-    (P14), nothing from P15 (pair, device list) or P16 (/v1/now, the execution
-    stream), and no hook route — a later phase adds its rows with its own tests."""
+#: P15 (p15-design-gate §18): pairing (start is local admin; redemption is
+#: public and spends its code; neither response may be stored, so both are
+#: exempt), the client list and the resync anchor — access, never ownership
+P15 = {
+    ('POST', '/v1/devices/pair/start', 'admin', 'exempt'),
+    ('POST', '/v1/devices/pair/redeem', None, 'exempt'),
+    ('GET', '/v1/devices', 'observe', None),
+    ('GET', '/v1/sync', 'observe', None),
+}
+
+
+def test_the_route_table_is_exactly_the_p35b_to_p15_tables():
+    """L2, and P9's E4 / P10's / P11's / P12's / P13's / P14's / P15's boundary:
+    no `retry` (P12 did not build it, p12-design-gate D17), no event append or
+    `run-now` (P14), nothing from P16 (/v1/now, the execution stream), and no
+    hook route — a later phase adds its rows with its own tests."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
-    assert got == EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12 | P13 | P14
+    assert got == EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15
     assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11
-                                     | P12 | P13 | P14)
+                                     | P12 | P13 | P14 | P15)
+    # P15: the only pairing paths are start and redeem; no route pairs a node
+    assert {r.path for r in routes.ROUTES if 'pair' in r.path} == {
+        '/v1/devices/pair/start', '/v1/devices/pair/redeem'}
     # P14: an automation's only write routes are admin; no route takes an event
     assert {r.scope for r in routes.ROUTES if 'automation' in r.path
             and r.method == 'POST'} == {'admin'}
@@ -270,7 +285,7 @@ def test_the_route_table_is_exactly_the_p35b_to_p14_tables():
             assert r.path.endswith('/decide'), r.path
     # E7: no plan route takes a command (no execution control from P8)
     assert not [r for r in routes.ROUTES if 'plan' in r.path and r.method != 'GET']
-    for word in ('route/', 'pair', '/now', 'hook', 'dispatch', 'stream?', '/retry',
+    for word in ('route/', '/now', 'hook', 'dispatch', 'stream?', '/retry',
                  'cancel', 'accept', 'graph', 'attention', 'run-now'):
         assert not [r.path for r in routes.ROUTES if word in r.path], word
     # P12: the only hand-off paths are a session's and an execution's
@@ -298,7 +313,8 @@ def test_every_scope_is_a_coarse_credential_scope_and_approve_is_only_deciding()
         '/v1/missions/{id}/review']
     assert auth.LAUNCH_SCOPES == ('observe',)
     public = {r.path for r in routes.ROUTES if r.scope is None}
-    assert public == {'/', '/assets/*', '/v1/devices/launch/redeem'}
+    assert public == {'/', '/assets/*', '/v1/devices/launch/redeem', '/v1/devices/pair/redeem'}
+    assert auth.PAIR_SCOPES == ('observe', 'control', 'approve')       # admin opt-in (§6.5)
 
 
 def test_every_command_route_declares_its_request_and_response_shape():

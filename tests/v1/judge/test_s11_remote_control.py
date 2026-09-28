@@ -7,7 +7,6 @@ from .client import CoreClientError
 from .support import wait_state
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P15")
 def test_a_paired_phone_can_pause_and_resume_a_mission(client, rig):
     phone = rig.device('phone', scopes=('observe', 'control', 'approve'))
     rig.script_harness('t1', [{'sleep': 5}])
@@ -19,7 +18,6 @@ def test_a_paired_phone_can_pause_and_resume_a_mission(client, rig):
     wait_state(phone, m['id'], 'COMPLETED', timeout=60)
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P15")
 def test_a_device_without_the_control_scope_cannot_pause(client, rig):
     viewer = rig.device('tablet', scopes=('observe',))
     m = client.create_mission(title='Remote', objective='Observe only')

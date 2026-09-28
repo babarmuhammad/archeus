@@ -13,6 +13,7 @@ rest is `run/local-token`. A launch code lives in this process's memory for
 
 import hashlib
 import hmac
+import re
 import secrets
 import threading
 import time
@@ -27,6 +28,13 @@ LOCAL_SCOPES = SCOPES
 LAUNCH_SCOPES = ('observe',)
 LAUNCH_TTL_S = 60.0
 LAUNCH_PLATFORMS = ('web', 'desktop')
+#: P15 pairing (p15-design-gate §6): a code's life, a paired client's default
+#: scopes, its credential's life (D8) and the platforms it may declare.
+PAIR_TTL_S = 120.0
+PAIR_SCOPES = ('observe', 'control', 'approve')
+PAIRED_TOKEN_DAYS = 180
+PAIR_PLATFORMS = ('web', 'desktop', 'ios', 'android')
+PIN = re.compile(r'[0-9]{6,12}')
 
 CSP = ("default-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; "
        "frame-ancestors 'none'")
@@ -55,8 +63,12 @@ def bearer(header):
     return token
 
 
-def _now_iso():
-    return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+def iso(dt):
+    return dt.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
+
+def now_iso():
+    return iso(datetime.now(timezone.utc))
 
 
 def live(cred, presented_hash, now=None):
@@ -68,30 +80,57 @@ def live(cred, presented_hash, now=None):
         return False
     if cred['revoked_at'] is not None or cred['device_state'] != 'ACTIVE':
         return False
-    return cred['expires_at'] is None or cred['expires_at'] > (now or _now_iso())
+    return cred['expires_at'] is None or cred['expires_at'] > (now or now_iso())
 
 
 class Origin:
-    """The one accepted origin, `http://127.0.0.1:<port>` (D10, §18.3).
-    `localhost` is deliberately NOT a second name for it: a second origin is a
-    second IndexedDB token and a second stream leader (A41)."""
+    """The accepted origins: `http://127.0.0.1:<port>` (D10, §18.3) and, when
+    the user enables remote access, `https://<host>` for each configured tunnel
+    host (p15-design-gate §8.2, D16). `localhost` is deliberately NOT a second
+    name for the local one: a second origin is a second IndexedDB token and a
+    second stream leader (A41)."""
 
-    def __init__(self, port):
+    def __init__(self, port, remote_hosts=()):
         self.port = port
         self.host = '127.0.0.1:%d' % port
         self.origin = 'http://' + self.host
+        self.remote = tuple(remote_host(h) for h in remote_hosts)
 
     def host_ok(self, host):
+        return host == self.host or host in self.remote
+
+    def local_host(self, host):
+        """The request named the loopback origin, not a tunnel's host: half of
+        what makes a request local — the other half is the peer (p15 §8.3)."""
         return host == self.host
+
+    def origin_for(self, host):
+        """The origin a request naming *host* must come from; no Host (never a
+        real request: the Host check runs first) is the local one."""
+        return self.origin if host in (None, self.host) else 'https://%s' % host
 
     def fetch_ok(self, headers):
         """Fetch metadata: a browser request is same-origin (or typed into the
-        address bar); a request with neither header is not a browser's."""
+        address bar), and its Origin is the one its own Host names — a tunnel
+        host only over https; a request with neither header is not a browser's."""
         site = headers.get('Sec-Fetch-Site')
         if site is not None and site not in ('same-origin', 'none'):
             return False
         origin = headers.get('Origin')
-        return origin is None or origin == self.origin
+        return origin is None or origin == self.origin_for(headers.get('Host'))
+
+
+_HOSTNAME = re.compile(r'(?=[a-z0-9.:-]*[a-z])[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
+                       r'(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?::[0-9]{1,5})?')
+
+
+def remote_host(host):
+    """A tunnel host as its Host header will carry it: a DNS name with at least
+    one dot, optionally `:port`. No wildcard, no IP literal, no scheme."""
+    h = (host or '').strip().lower()
+    if not _HOSTNAME.fullmatch(h) or h.split(':')[0].split('.')[-1].isdigit():
+        raise ValueError('a remote host is a DNS name such as pc.tailnet.ts.net: %r' % host)
+    return h
 
 
 def loopback_peer(address):
@@ -100,33 +139,102 @@ def loopback_peer(address):
 
 
 class LaunchCodes:
-    """In-memory, single-use, 60 s codes: `{sha256(code): (expires, principal,
-    device)}`. `redeem` pops under the lock, so of two concurrent redemptions
-    exactly one finds the code — the pop IS the use."""
+    """In-memory, single-use, short-lived codes: `{sha256(code): (expires,
+    payload)}`. `redeem` pops under the lock, so of two concurrent redemptions
+    exactly one finds the code — the pop IS the use. A launch code's payload is
+    its minter, (principal, device)."""
 
     def __init__(self, clock=time.monotonic, ttl=LAUNCH_TTL_S):
         self.clock, self.ttl = clock, ttl
         self._codes = {}
         self._lock = threading.Lock()
 
-    def mint(self, principal_id, device_id):
-        code = secrets.token_urlsafe(32)
+    def _mint(self, payload, nbytes=32):
+        code = secrets.token_urlsafe(nbytes)
         now = self.clock()
         with self._lock:
             self._codes = {h: v for h, v in self._codes.items() if v[0] > now}
-            self._codes[token_hash(code)] = (now + self.ttl, principal_id, device_id)
+            self._codes[token_hash(code)] = (now + self.ttl, payload)
         return code
 
-    def redeem(self, code):
-        """(principal_id, device_id) of the minter, or None — for a reused,
-        expired, unknown and malformed code alike."""
+    def _pop(self, code):
         if not isinstance(code, str) or not code:
             return None
         with self._lock:
             hit = self._codes.pop(token_hash(code), None)
         if hit is None or self.clock() > hit[0]:
             return None
-        return hit[1], hit[2]
+        return hit[1]
+
+    def mint(self, principal_id, device_id):
+        return self._mint((principal_id, device_id))
+
+    def redeem(self, code):
+        """(principal_id, device_id) of the minter, or None — for a reused,
+        expired, unknown and malformed code alike."""
+        return self._pop(code)
 
     def __len__(self):
         return len(self._codes)
+
+
+class PairingLocked(RuntimeError):
+    """Too many failed redemptions: every live code was burned (p15 D10)."""
+
+
+class PairingCodes(LaunchCodes):
+    """Pairing bootstrap codes (p15-design-gate §6, D7, D10): 128 bits, 120 s,
+    single use. The payload is the grant fixed at the start (starter, scopes,
+    name, host label), so a redeemer cannot widen it. More than `FAIL_LIMIT`
+    failed redemptions inside `FAIL_WINDOW_S` burn every live code and refuse
+    redemption until the window has passed."""
+
+    FAIL_LIMIT = 10
+    FAIL_WINDOW_S = 60.0
+
+    def __init__(self, clock=time.monotonic, ttl=PAIR_TTL_S):
+        super().__init__(clock=clock, ttl=ttl)
+        self._fails = []
+        self._locked_until = float('-inf')
+
+    def mint(self, grant):
+        return self._mint(dict(grant), nbytes=16)
+
+    def redeem(self, code):
+        """The grant, or None (unknown, expired, reused, malformed alike);
+        raises PairingLocked while the breaker is open."""
+        now = self.clock()
+        if now < self._locked_until:
+            raise PairingLocked()
+        grant = self._pop(code)
+        if grant is not None:
+            return grant
+        with self._lock:
+            self._fails = [t for t in self._fails if t > now - self.FAIL_WINDOW_S] + [now]
+            if len(self._fails) > self.FAIL_LIMIT:
+                self._codes.clear()
+                self._fails = []
+                self._locked_until = now + self.FAIL_WINDOW_S
+                raise PairingLocked()
+        return None
+
+
+class StepUpFailures:
+    """Consecutive wrong step-up PIN proofs per client, in memory (p15 D19):
+    the `LIMIT`th revokes the client. A correct proof resets the count."""
+
+    LIMIT = 5
+
+    def __init__(self):
+        self._n = {}
+        self._lock = threading.Lock()
+
+    def failed(self, device_id):
+        """True when this failure is the one that must revoke."""
+        with self._lock:
+            self._n[device_id] = self._n.get(device_id, 0) + 1
+            return self._n[device_id] >= self.LIMIT
+
+    def reset(self, device_id):
+        with self._lock:
+            self._n.pop(device_id, None)

@@ -30,10 +30,14 @@ given trigger on a given subject is decided in the application layer (P9), never
 | POST | `/v1/missions/{id}/pause` | control | required | — | `PauseMissionRequest` | `CommandResult` |
 | POST | `/v1/missions/{id}/resume` | control | required | — | `ResumeMissionRequest` | `CommandResult` |
 | GET | `/v1/events` | observe | — | `after`, `limit` | — | `EventPage` |
-| GET | `/v1/events/stream` | observe | — | `after` | — | SSE: `id`, `event` and a `StreamFrame` per event |
+| GET | `/v1/events/stream` | observe | — | `after`, `project`, `type` | — | SSE: `id`, `event` and a `StreamFrame` per event |
 | POST | `/v1/devices/launch/code` | admin | exempt | — | `LaunchCodeRequest` | `LaunchCode` |
 | POST | `/v1/devices/launch/redeem` | none | exempt | — | `LaunchRedeemRequest` | `Redeemed` |
 | POST | `/v1/devices/{id}/revoke` | admin | required | — | `RevokeDeviceRequest` | `CommandResult` |
+| POST | `/v1/devices/pair/start` | admin | exempt | — | `PairStartRequest` | `PairingCode` |
+| POST | `/v1/devices/pair/redeem` | none | exempt | — | `PairRedeemRequest` | `Paired` |
+| GET | `/v1/devices` | observe | — | — | — | `DeviceList` |
+| GET | `/v1/sync` | observe | — | — | — | `Sync` |
 | GET | `/v1/status` | observe | — | `project` | — | `Status` |
 | GET | `/v1/projects` | observe | — | — | — | `ProjectList` |
 | GET | `/v1/projects/{id}` | observe | — | — | — | `Project` |
@@ -306,6 +310,28 @@ interface CheckpointList {
 }
 ```
 
+### `Client`
+
+```ts
+interface Client {
+  id: string;
+  principal_id: string;
+  name: string;
+  platform: string;
+  origin: 'local' | 'paired';
+  client_type: 'cli' | 'spa';
+  host_label: string | null;
+  state: string;
+  created_at: string;
+  scopes: string[];
+  expires_at: string | null;
+  capabilities: {
+    step_up: 'local' | 'pin' | 'none';
+  };
+  presence: Presence;
+}
+```
+
 ### `CommandResult`
 
 ```ts
@@ -465,6 +491,14 @@ interface Decided {
   changed: boolean;
   version: number;
   [field: string]: unknown;
+}
+```
+
+### `DeviceList`
+
+```ts
+interface DeviceList {
+  devices: Client[];
 }
 ```
 
@@ -884,6 +918,28 @@ interface MissionStopped {
 }
 ```
 
+### `Paired`
+
+```ts
+interface Paired {
+  device_id: string;
+  token: string;
+  scopes: string[];
+  expires_at: string;
+}
+```
+
+### `PairingCode`
+
+```ts
+interface PairingCode {
+  code: string;
+  expires_in: number;
+  scopes: string[];
+  url: string | null;
+}
+```
+
 ### `Plan`
 
 ```ts
@@ -964,6 +1020,16 @@ interface PolicyRule {
   revision: number;
   retired_at?: string | null;
   [field: string]: unknown;
+}
+```
+
+### `Presence`
+
+```ts
+interface Presence {
+  state: 'connected' | 'recent' | 'absent' | 'revoked';
+  connections: number;
+  last_seen_at: string | null;
 }
 ```
 
@@ -1275,6 +1341,22 @@ interface Subject {
 }
 ```
 
+### `Sync`
+
+```ts
+interface Sync {
+  client: Client;
+  core: {
+    instance: string;
+    started_at: string;
+    version: string;
+  };
+  head_seq: number;
+  floor_seq: number;
+  server_time: string;
+}
+```
+
 ### `Task`
 
 ```ts
@@ -1376,6 +1458,7 @@ interface CreateMissionRequest {
 ```ts
 interface PauseMissionRequest {
   idempotency_key: string;
+  expected_version?: number | null;
 }
 ```
 
@@ -1384,6 +1467,7 @@ interface PauseMissionRequest {
 ```ts
 interface ResumeMissionRequest {
   idempotency_key: string;
+  expected_version?: number | null;
 }
 ```
 
@@ -1408,6 +1492,27 @@ interface LaunchRedeemRequest {
 ```ts
 interface RevokeDeviceRequest {
   idempotency_key: string;
+}
+```
+
+### `PairStartRequest`
+
+```ts
+interface PairStartRequest {
+  name?: string | null;
+  host_label?: string | null;
+  scopes?: Array<'observe' | 'control' | 'approve' | 'admin'> | null;
+}
+```
+
+### `PairRedeemRequest`
+
+```ts
+interface PairRedeemRequest {
+  code: string;
+  platform: 'web' | 'desktop' | 'ios' | 'android';
+  name?: string | null;
+  pin?: string | null;
 }
 ```
 

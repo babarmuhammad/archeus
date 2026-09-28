@@ -376,8 +376,10 @@ class WorldLoop:
 class Core:
     def __init__(self, *, port=DEFAULT_PORT, ports=None, heartbeat_s=15.0, idle_s=IDLE_S,
                  launch_clock=time.monotonic, lock_retry_s=2.0, static_dir=server.STATIC_DIR,
-                 world_poll_s=WORLD_POLL_S):
+                 world_poll_s=WORLD_POLL_S, remote_hosts=()):
         self.port, self.ports = port, ports or Ports()
+        # P15: the tunnel hosts the user enabled (p15-design-gate §8.2); none by default
+        self.remote_hosts = tuple(auth.remote_host(h) for h in remote_hosts)
         self.heartbeat_s, self.idle_s = heartbeat_s, idle_s
         self.launch_clock, self.lock_retry_s = launch_clock, lock_retry_s
         self.static_dir, self.world_poll_s = static_dir, world_poll_s
@@ -500,7 +502,7 @@ class Core:
                               port=self.port,
                               health=self.health, version=VERSION,
                               heartbeat_s=self.heartbeat_s, launch_clock=self.launch_clock,
-                              static_dir=self.static_dir)
+                              static_dir=self.static_dir, remote_hosts=self.remote_hosts)
         try:
             self.server = server.Server(self.api, self.port)
         except OSError as e:
@@ -619,12 +621,13 @@ class Core:
         self._done.set()
 
 
-def run(*, port=DEFAULT_PORT, ports=None, open_browser=False, out=None, err=None):
+def run(*, port=DEFAULT_PORT, ports=None, open_browser=False, out=None, err=None,
+        remote_hosts=()):
     """`archeus core` in the foreground. Exit codes: 0 stopped cleanly, 1
     another Core holds the lock (or Core refused to start), 2 the port is in
     use, 3 the engine or the world worker failed."""
     out, err = out or sys.stdout, err or sys.stderr
-    core = Core(port=port, ports=ports)
+    core = Core(port=port, ports=ports, remote_hosts=remote_hosts)
     try:
         core.start()
     except discovery.LockHeld:

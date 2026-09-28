@@ -21,11 +21,21 @@ import time
 #: Verbs whose behaviour belongs to a later phase: they do nothing, say so,
 #: and exit 2, so no script ever sees a verb change from "opened the TUI" to
 #: something else.
-DEFERRED = {'approve': 'P9', 'pair': 'P15'}
+DEFERRED = {'approve': 'P9'}
 VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair',
-         'sessions', 'resume', 'handoff', 'verify', 'decide', 'automation')
+         'sessions', 'resume', 'handoff', 'verify', 'decide', 'automation', 'devices')
 
-USAGE = """usage: archeus core [--open]    run Archeus Core in the foreground (Ctrl+C stops it)
+USAGE = """usage: archeus core [--open] [--remote-host H]...
+                                run Archeus Core in the foreground (Ctrl+C stops it);
+                                --remote-host accepts requests for H, a tunnel's https
+                                name (Tailscale Serve, a reverse proxy) — tokens still
+                                required
+       archeus pair [--name N] [--host-label H] [--scopes observe,control,approve]
+                                pair a phone or another browser: a one-time code for
+                                120 s, and the link to open on it (P15)
+       archeus devices          the clients paired or signed in, and which are connected
+       archeus devices revoke <id>
+                                revoke one: its token stops working, its streams close
        archeus status           is Core running? (exit 0 yes, 1 no, 2 discovery failed,
                                 3 its engine failed)
        archeus terms            the provider-terms answers (ADR-0021)
@@ -74,8 +84,14 @@ def main(argv):
         print('archeus %s is not available yet (arrives with %s); nothing was done'
               % (verb, DEFERRED[verb]), file=sys.stderr)
         return 2
-    if verb == 'core' and set(args) <= {'--open'}:
-        return core(open_browser='--open' in args)
+    if verb == 'core' and _core_args(args) is not None:
+        return core(open_browser='--open' in args, remote_hosts=_core_args(args))
+    pair_opts = _flags(args) if verb == 'pair' else None
+    if verb == 'pair' and pair_opts is not None and set(pair_opts) <= {
+            'name', 'host-label', 'scopes'}:
+        return pair(pair_opts)
+    if verb == 'devices' and (not args or (len(args) == 2 and args[0] == 'revoke')):
+        return devices(args[1] if args else None)
     if verb == 'status' and not args:
         return status()
     if verb == 'terms' and not args:
@@ -107,7 +123,20 @@ def main(argv):
     return 2
 
 
-def core(*, open_browser=False):
+def _core_args(args):
+    """The `--remote-host` values of `archeus core [--open] [--remote-host H]...`,
+    or None when the arguments are not that."""
+    hosts, rest = [], list(args)
+    while rest:
+        a = rest.pop(0)
+        if a == '--remote-host' and rest and not rest[0].startswith('--'):
+            hosts.append(rest.pop(0))
+        elif a != '--open':
+            return None
+    return hosts
+
+
+def core(*, open_browser=False, remote_hosts=()):
     from ..infra import discovery
     if open_browser:
         state, info = discovery.discover()
@@ -120,7 +149,64 @@ def core(*, open_browser=False):
             print('opened Archeus on http://127.0.0.1:%d' % info['port'])
             return 0
     from ..core import runtime
-    return runtime.run(port=runtime.DEFAULT_PORT, open_browser=open_browser)
+    from ..api import auth
+    try:
+        hosts = [auth.remote_host(h) for h in remote_hosts]
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    return runtime.run(port=runtime.DEFAULT_PORT, open_browser=open_browser, remote_hosts=hosts)
+
+
+def pair(opts):
+    """Start a pairing (p15-design-gate §6): the code works once, for 120 s, on
+    the scopes chosen here. The link carries it in its fragment, which never
+    reaches a server log."""
+    info = _running()
+    if info is None:
+        return 1
+    body = {'name': opts.get('name'), 'host_label': opts.get('host-label')}
+    if 'scopes' in opts:
+        body['scopes'] = [s for s in opts['scopes'].split(',') if s]
+    out = _get(info, 'POST', '/v1/devices/pair/start', body)
+    if out is None:
+        print('Core refused to start a pairing (the scopes must include observe)',
+              file=sys.stderr)
+        return 2
+    print('pairing code (valid %ds, once): %s' % (out['expires_in'], out['code']))
+    print('scopes: %s' % ', '.join(out['scopes']))
+    if out['url']:
+        print('open on the new device: %s' % out['url'])
+    else:
+        print('no remote host is set: start Core with `archeus core --remote-host <name>` '
+              'to reach it from another device')
+    return 0
+
+
+def devices(revoke_id=None):
+    import os
+    from urllib.parse import quote
+    info = _running()
+    if info is None:
+        return 1
+    if revoke_id is not None:
+        out = _get(info, 'POST', '/v1/devices/%s/revoke' % quote(revoke_id, safe=''),
+                   {'idempotency_key': os.urandom(16).hex()})
+        if out is None:
+            print('Core refused to revoke %s' % revoke_id, file=sys.stderr)
+            return 2
+        print('%s: %s' % (revoke_id, out['state']))
+        return 0
+    out = _get(info, 'GET', '/v1/devices')
+    if out is None:
+        print('Core did not answer', file=sys.stderr)
+        return 2
+    for d in out['devices']:
+        p = d['presence']
+        print('%s  %-7s %-6s %-9s %-10s %s%s' % (
+            d['id'], d['state'], d['origin'], d['platform'], p['state'], d['name'],
+            '  (%s)' % d['host_label'] if d['host_label'] else ''))
+    return 0
 
 
 def _get(info, method, path, body=None):

@@ -18,7 +18,10 @@ def _mission(tc, key):
 
 
 def _all(tc):
-    return tc.client().events(0)
+    """Every event a stream of this client carries: all of them but its own
+    connection traces (`device.stream_*`, p15-design-gate §5) — the only client
+    here is the local one, so every trace is its own."""
+    return [e for e in tc.client().events(0) if not e['type'].startswith(sse.PRESENCE)]
 
 
 def _settle(tc):
@@ -60,7 +63,7 @@ def test_last_event_id_replays_exactly_what_came_after(quiet):
             assert f['data']['scope'] == by_seq[f['id']]['scope']
         _mission(quiet, 'd')                                                # then live
         live = s.frames(1)
-        assert live[0]['id'] == max(seqs) + 1 and live[0]['event'] == 'mission.created'
+        assert live[0]['id'] > max(seqs) and live[0]['event'] == 'mission.created'
     finally:
         s.close()
 
@@ -78,7 +81,8 @@ def test_the_header_wins_over_the_query_and_no_cursor_means_live_only(quiet):
     s = SSEClient(quiet.base_url, quiet.token)
     try:
         _mission(quiet, 'c')
-        assert s.frames(1)[0]['id'] == head + 1         # nothing replayed, the new one live
+        # nothing replayed, the new one live
+        assert s.frames(1)[0]['id'] == next(e['seq'] for e in _all(quiet) if e['seq'] > head)
     finally:
         s.close()
 
@@ -204,9 +208,11 @@ def test_a_stream_that_falls_behind_a_prune_gets_cursor_expired_and_closes(quiet
             released.wait(10)
         return real(self, cursor)
     monkeypatch.setattr(sse.Streams, '_page', slow)
+    # held from its first page: set after the stream opened, a first page
+    # already in flight could read past the prune (P15 made that window wider)
+    hold.set()
     s = SSEClient(quiet.base_url, quiet.token)
     try:
-        hold.set()
         _mission(quiet, 'a')
         _settle(quiet)
         quiet.core.db.writer.execute(retention.prune, {'now': '2999-01-01T00:00:00.000Z',

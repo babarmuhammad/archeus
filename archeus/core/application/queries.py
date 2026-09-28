@@ -107,7 +107,7 @@ def system_principal(conn):
 
 def credential(conn, token_hash):
     """The device a token hash belongs to: `{principal_id, device_id, scopes,
-    expires_at, revoked_at, device_state}`, or None. Judging it (revoked,
+    expires_at, revoked_at, device_state, device_origin}`, or None. Judging it (revoked,
     expired, inactive) is the caller's."""
     t = conn.execute("SELECT * FROM tokens WHERE token_hash = ? AND kind = 'device'",
                      (token_hash,)).fetchone()
@@ -117,8 +117,32 @@ def credential(conn, token_hash):
     return {'token_hash': t['token_hash'], 'principal_id': t['principal_id'],
             'device_id': dev[0].entity.id if dev else None,
             'device_state': dev[0].entity.state if dev else None,
+            'device_origin': dev[0].entity.origin if dev else None,
             'scopes': tuple(json.loads(t['scopes'])), 'expires_at': t['expires_at'],
             'revoked_at': t['revoked_at']}
+
+
+def devices(conn):
+    """Every client registration (entity `Device`, p15-design-gate §4), oldest
+    first, with its credential's scopes and expiry and its derived step-up
+    capability. Never its PIN record or token hash. Presence is not here: it
+    is transport observation, added by the API from its own memory (§5)."""
+    from .authorization import is_paired
+    out = []
+    for r in sorted(rows.where(conn, entities.Device), key=lambda r: (r.created_at, r.entity.id)):
+        d = r.entity
+        t = conn.execute("SELECT scopes, expires_at FROM tokens WHERE principal_id = ? AND "
+                         "kind = 'device' ORDER BY created_at DESC LIMIT 1",
+                         (d.principal_id,)).fetchone()
+        step_up = ('local' if not is_paired(d) else 'pin' if d.pin_hash else 'none')
+        out.append({'id': d.id, 'principal_id': d.principal_id, 'name': d.name,
+                    'platform': d.platform, 'origin': d.origin,
+                    'client_type': d.client_type or ('cli' if d.platform == 'tui' else 'spa'),
+                    'host_label': d.host_label, 'state': d.state, 'created_at': r.created_at,
+                    'scopes': json.loads(t['scopes']) if t else [],
+                    'expires_at': t['expires_at'] if t else None,
+                    'capabilities': {'step_up': step_up}})
+    return out
 
 
 def events(conn, after_seq=0, *, limit=None):

@@ -48,7 +48,6 @@ def test_a_locked_deny_cannot_be_loosened_at_the_plan_gate(client):
             if e['subject']['id'] == m['id']][-1] == 'plan_denied'
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P15")
 def test_revoking_a_device_closes_its_live_stream(client, rig):
     phone = rig.device('phone', scopes=('observe',))
     stream = phone.open_stream()
