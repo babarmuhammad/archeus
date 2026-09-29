@@ -233,6 +233,15 @@ def test_below_600_px_the_relations_list_is_the_view(browser, core):
     assert page.locator('canvas').count() == 0
     page.locator('.rel-list, .relations').first.wait_for(timeout=10000)
     assert page.locator('.graph-toggle').count() == 0      # no link to what cannot be shown
+    page.wait_for_timeout(300)
+    # the list equivalent must not scroll the page sideways at phone width (A12)
+    assert page.evaluate('() => document.documentElement.scrollWidth - innerWidth') <= 0
+    for url in ('#/world/graph', '#/world/graph/mission/%s' % mid):
+        _go(page, url)
+        page.locator('[data-graph-narrow]').wait_for(timeout=10000)
+        page.wait_for_timeout(300)
+        over = page.evaluate('() => document.documentElement.scrollWidth - innerWidth')
+        assert over <= 0, (url, over)
     assert not errors, errors
     context.close()
 
