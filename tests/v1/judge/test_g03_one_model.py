@@ -17,10 +17,20 @@ def test_the_gui_shows_the_mission_the_api_reports(client, rig):
     assert card['label'].strip()                # a label, never a glyph alone
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P17")
 def test_the_tui_shows_the_mission_the_api_reports(client, rig):
+    """P17: the TUI's Work row says what the API says — read from the frame a
+    user sees, the label mapped back through the presentation table."""
+    tui = rig.tui()
     m = client.create_mission(title='One model', objective='Seen everywhere')
-    assert rig.tui().mission_row(m['id'])['state'] == client.get_mission(m['id'])['state']
+    for _ in range(50):
+        # the TUI's read bracketed by two API reads that agree: the mission did
+        # not move while the TUI looked (it reads fast enough to catch it moving)
+        before = client.get_mission(m['id'])['state']
+        row = tui.mission_row(m['id'])
+        if client.get_mission(m['id'])['state'] == before:
+            break
+    assert row['state'] == before
+    assert row['label'].strip()                 # a label, never a glyph alone
 
 
 @pytest.mark.xfail(strict=True, reason="phase:P19")

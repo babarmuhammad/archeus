@@ -210,6 +210,38 @@ class SpaDriver:
                 b.close()
 
 
+class TuiDriver:
+    """What the TUI shows (G3): each read opens `archeus tui` on this Core with
+    the local token, presses the Work key, and reads the mission's row from the
+    frame a user would see — never Core's API. The visible label is mapped back
+    to a state through the one presentation table, which is only sound while
+    every mission state has its own label (asserted)."""
+
+    def __init__(self, tc):
+        self.tc = tc
+
+    def mission_row(self, mission_id):
+        from archeus.cli.tui import app as A, client as C
+        from archeus.cli.tui._tables import DESTINATIONS, LABELS
+        from archeus.cli.tui.view import Style
+        from claude_sessions import render
+        labels = LABELS['mission']
+        by_label = {v: k for k, v in labels.items()}
+        assert len(by_label) == len(labels), 'two mission states share a label'
+        app = A.App(C.Core(self.tc.port, self.tc.token), Style(), stream=False,
+                    size=lambda: (160, 200))
+        app.signal('stream_open')
+        work = next(d['tui'] for d in DESTINATIONS if d['id'] == 'work')
+        app.frame()
+        app.handle(('char', work))
+        app.frame()
+        (line,) = [x for x in app._doc.lines
+                   if x['target'] == ('open', 'mission', mission_id, None)]
+        text = render.strip_ansi(line['text']).strip()
+        label = text.split(' ', 1)[1].split('  ', 1)[0]     # after the glyph, before the title
+        return {'state': by_label.get(label), 'label': label, 'text': text}
+
+
 class JudgeTerminal:
     """Where a judge Core "opens" a user's terminal: one JSON line per launch
     in `<ARCHEUS_HOME>/judge-terminal.jsonl` (argv, cwd, the env's keys only),
@@ -376,7 +408,12 @@ class Rig:
         return SpaDriver(tc)
 
     def tui(self):
-        self._pending('the TUI driver', 'P17')
+        """The V1 TUI against this Core (P17), over the HTTP binding only: it is
+        a client of the HTTP API and the in-process binding has no server."""
+        tc = getattr(self.client, 'core', None)
+        if tc is None:
+            pytest.skip('the TUI exists only over the http binding')
+        return TuiDriver(tc)
 
     def cli(self, *argv):
         self._pending('the V1 CLI', 'P3.5')
