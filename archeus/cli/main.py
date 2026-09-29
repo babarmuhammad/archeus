@@ -23,7 +23,8 @@ import time
 #: something else.
 DEFERRED = {'approve': 'P9'}
 VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair',
-         'sessions', 'resume', 'handoff', 'verify', 'decide', 'automation', 'devices')
+         'sessions', 'resume', 'handoff', 'verify', 'decide', 'automation', 'devices',
+         'tui')
 
 USAGE = """usage: archeus core [--open] [--remote-host H]...
                                 run Archeus Core in the foreground (Ctrl+C stops it);
@@ -36,6 +37,9 @@ USAGE = """usage: archeus core [--open] [--remote-host H]...
        archeus devices          the clients paired or signed in, and which are connected
        archeus devices revoke <id>
                                 revoke one: its token stops working, its streams close
+       archeus tui [--open KIND/ID] [--once] [--light]
+                                the terminal client of a running Core (P17); it never
+                                starts Core
        archeus status           is Core running? (exit 0 yes, 1 no, 2 discovery failed,
                                 3 its engine failed)
        archeus terms            the provider-terms answers (ADR-0021)
@@ -92,6 +96,9 @@ def main(argv):
         return pair(pair_opts)
     if verb == 'devices' and (not args or (len(args) == 2 and args[0] == 'revoke')):
         return devices(args[1] if args else None)
+    if verb == 'tui':
+        from .tui.app import main as tui
+        return tui(args)
     if verb == 'status' and not args:
         return status()
     if verb == 'terms' and not args:
