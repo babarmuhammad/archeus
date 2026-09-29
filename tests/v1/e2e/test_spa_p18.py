@@ -91,7 +91,10 @@ def test_the_drill_world_project_mission_execution_and_back(browser, core, arche
     wait(page, lambda: page.evaluate('location.hash') == '#/world/graph/mission/%s' % mid,
          what='the mission focus URL')
     g = _graph(page)
-    check(g.get_attribute('data-graph-focus') == 'mission:%s' % mid, 'mission focus')
+    # the URL changes before the new graph renders: wait for it, as for the project
+    wait(page, lambda: g.get_attribute('data-graph-focus') == 'mission:%s' % mid,
+         what='the mission graph')
+    check(True, 'mission focus')
     keys = _mirror(page)
     ex = [k for k in keys if k.startswith('execution:')]
     check(ex and 'mission:%s' % mid in keys and any(k.startswith('plan:') for k in keys),
