@@ -329,7 +329,7 @@ def test_a_route_decision_shows_recorded_selection_facts_only(db, world):
 def test_every_node_carries_only_allowlisted_keys(db, world):
     g = read(db, G.world_graph, ('mission', world['mid']), 2, 1000)
     allowed = {'kind', 'id', 'label', 'parent', 'machine', 'state', 'attrs', 'counts',
-               'endpoint', 'missing'}
+               'endpoint', 'missing', 'type'}
     for n in g['nodes']:
         assert set(n) <= allowed, n
 

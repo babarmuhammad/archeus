@@ -19,6 +19,7 @@ import { Inspector } from './surfaces/Inspector';
 import { NowView } from './surfaces/Now';
 import { WorkView } from './surfaces/Work';
 import { ProjectPage, WorldView } from './surfaces/World';
+import { GraphView } from './graph/GraphView';
 
 type Boot = { phase: 'starting' } | { phase: 'pair'; code: string } | { phase: 'out' } | { phase: 'in'; token: string } | { phase: 'failed'; why: string };
 
@@ -135,7 +136,10 @@ function Shell({ token }: { token: string }) {
       else if (f.event === RESYNC) store.signal('resync');
       else {
         store.signal('frame');
-        if (f.event !== HEARTBEAT) store.invalidate(staleBy(f));
+        if (f.event !== HEARTBEAT) {
+          store.invalidate(staleBy(f));
+          store.frame(f);
+        }
       }
     });
     return () => {
@@ -259,6 +263,7 @@ function View({ route }: { route: Route }) {
     case 'work':
       return <WorkView project={route.project} />;
     case 'world':
+      if (route.graph) return <GraphView focus={route.graph === 'world' ? null : route.graph} modules={route.modules} />;
       return route.project ? <ProjectPage id={route.project} /> : <WorldView />;
     case 'attention':
       return <AttentionView />;

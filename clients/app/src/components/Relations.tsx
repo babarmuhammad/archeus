@@ -6,14 +6,34 @@ import { useState } from 'react';
 import { TIER_STYLE, type Edge } from '../graph/relations';
 import { objectHref } from '../nav/destinations';
 import { Empty, RefLabel } from './ui';
+import { useWide } from '../graph/wide';
 
-export function Relations({ edges }: { edges: Edge[] }) {
+/** P18 (p18-design-gate A4): the same relationships as a graph, one link away.
+ * Hidden below 600 px, where this list is the view (A12). */
+export function GraphLink({ kind, id }: { kind: string; id: string }) {
+  if (!useWide()) return null;
+  return (
+    <a className="graph-toggle" href={`#/world/graph/${kind}/${encodeURIComponent(id)}`}>
+      Show as a graph
+    </a>
+  );
+}
+
+export function Relations({ edges, of }: { edges: Edge[]; of?: { kind: string; id: string } }) {
   const rels = [...new Set(edges.map((e) => e.rel.replace(/ v\d+$/, ' (version)')))];
   const [only, setOnly] = useState<string | null>(null);
-  if (!edges.length) return <Empty>No recorded relationships.</Empty>;
+  const link = of ? <GraphLink kind={of.kind} id={of.id} /> : null;
+  if (!edges.length)
+    return (
+      <>
+        {link}
+        <Empty>No recorded relationships.</Empty>
+      </>
+    );
   const shown = only ? edges.filter((e) => e.rel.replace(/ v\d+$/, ' (version)') === only) : edges;
   return (
     <div className="relations">
+      {link}
       {rels.length > 1 ? (
         <div className="chips" role="group" aria-label="Filter by relationship">
           <button type="button" className={only ? 'chip' : 'chip on'} aria-pressed={!only} onClick={() => setOnly(null)}>

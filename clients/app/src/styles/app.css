@@ -795,6 +795,64 @@ table.canonical {
   border-color: var(--text);
 }
 
+/* ── the spatial view (P18): a mode of World and Relations; nothing animates here —
+   the canvas's one loop does, and parks ── */
+
+.graph-toggle {
+  font: var(--type-caption);
+  color: var(--text-2);
+}
+
+.graph-view h1 .graph-mode {
+  font: var(--type-caption);
+  color: var(--text-2);
+  margin-left: var(--space-3);
+}
+
+.graph-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.graph-bar .chips {
+  margin-bottom: 0;
+}
+
+.graph-bar a.chip {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.graph-search {
+  min-width: 12rem;
+}
+
+.graph-canvas {
+  display: block;
+  width: 100%;
+  height: max(420px, 64vh);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-raised);
+  touch-action: none;
+}
+
+.graph-canvas:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.graph .status-line,
+.graph .stale-line {
+  font: var(--type-caption);
+  color: var(--text-2);
+  margin: 0 0 var(--space-2);
+}
+
 /* ── attention and approvals ── */
 
 .att {

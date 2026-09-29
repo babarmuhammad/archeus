@@ -8,7 +8,8 @@ import { useRead } from '../data/cache';
 import { knowledgeEdges } from '../graph/relations';
 import { INSPECTOR_TABS, TAB_LABEL, objectHref } from '../nav/destinations';
 import { ago } from '../state/present';
-import { Relations } from '../components/Relations';
+import { GraphLink, Relations } from '../components/Relations';
+import { useWide } from '../graph/wide';
 import { ActionButton, Empty, Fresh, KV, Loadable, Section, StateBadge, Tabs } from '../components/ui';
 
 export function WorldView() {
@@ -17,6 +18,7 @@ export function WorldView() {
   return (
     <div className="view">
       <h1 tabIndex={-1}>World</h1>
+      <WorldGraphLink />
       <Tabs label="World" current={kind} onSelect={(k) => setKind(k as typeof kind)} tabs={[{ id: 'projects', label: 'Projects' }, { id: 'knowledge', label: 'Knowledge' }]} />
       <div role="tabpanel" id={`panel-${kind}`} aria-labelledby={`tab-${kind}`}>
         {kind === 'projects' ? (
@@ -55,6 +57,26 @@ export function WorldView() {
   );
 }
 
+function ModulesLink({ id }: { id: string }) {
+  if (!useWide()) return null;
+  return (
+    <a className="graph-toggle" href={`#/world/graph/repository/${encodeURIComponent(id)}/modules`}>
+      Modules as a graph
+    </a>
+  );
+}
+
+function WorldGraphLink() {
+  if (!useWide()) return null;
+  return (
+    <p>
+      <a className="graph-toggle" href="#/world/graph">
+        Show the world as a graph
+      </a>
+    </p>
+  );
+}
+
 function NewProject() {
   const [name, setName] = useState('');
   const [path, setPath] = useState('');
@@ -90,13 +112,14 @@ export function ProjectPage({ id }: { id: string }) {
             <h1 tabIndex={-1}>{x.name}</h1>
             <Fresh snap={p} />
             <p>
-              <a href={`#/work/${x.id}`}>Its missions in Work</a> · roots <span className="mono">{x.root_paths.join(', ')}</span>
+              <a href={`#/work/${x.id}`}>Its missions in Work</a> · <GraphLink kind="project" id={x.id} /> · roots <span className="mono">{x.root_paths.join(', ')}</span>
             </p>
             {(x.repositories ?? []).map((r) => (
               <Section key={r.id} title={`${r.kind} · ${r.path}`}>
                 <div className="facts">
                   <StateBadge machine="architecture" state={r.architecture_state} />
                   {r.last_revision ? <span className="mono">at {String(r.last_revision).slice(0, 10)}</span> : null}
+                  <ModulesLink id={r.id} />
                 </div>
                 {(r.findings ?? []).length ? (
                   <table className="grid">
@@ -272,7 +295,7 @@ export function KnowledgeInspector({ id, tab, onTab }: { id: string; tab?: strin
                 </Section>
               </>
             ) : (
-              <Relations edges={knowledgeEdges(k)} />
+              <Relations of={{ kind: 'knowledge_item', id: k.id }} edges={knowledgeEdges(k)} />
             )}
           </div>
         </div>

@@ -274,6 +274,8 @@ def node_of(kind, row):
     if machine is not None:
         n['machine'] = machine
         n['state'] = getattr(e, states_field(kind))
+    if kind == 'knowledge_item':
+        n['type'] = e.type                 # a DECISION is drawn as a diamond (A3, V7)
     if kind == 'route_decision':
         attrs = {a: getattr(e, a) for a in ROUTE_ATTRS}
         attrs['fallback_from'] = list(attrs['fallback_from'] or ())

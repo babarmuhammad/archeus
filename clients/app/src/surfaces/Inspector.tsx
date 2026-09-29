@@ -66,7 +66,7 @@ function RowInspector({ kind, id, tab, onTab }: { kind: string; id: string; tab?
           </header>
           {tabs.length > 1 ? <Tabs label={kind} current={current} onSelect={onTab} tabs={tabs.map((t) => ({ id: t, label: TAB_LABEL[t] }))} /> : null}
           <div role="tabpanel" id={`panel-${current}`} aria-labelledby={tabs.length > 1 ? `tab-${current}` : undefined} className="panel">
-            {current === 'relations' ? <Relations edges={EDGES[kind]?.(row) ?? []} /> : DETAIL[kind]?.(row) ?? <Fields row={row} />}
+            {current === 'relations' ? <Relations of={{ kind, id }} edges={EDGES[kind]?.(row) ?? []} /> : DETAIL[kind]?.(row) ?? <Fields row={row} />}
           </div>
         </div>
       )}

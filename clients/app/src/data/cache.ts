@@ -7,6 +7,11 @@ import type { Send } from '../api/generated';
 import { CoreError } from '../api/transport';
 import { initial, next, type ConnState, type Signal } from './connection';
 
+export interface Frame {
+  event: string;
+  data?: unknown;
+}
+
 export interface Snapshot<T> {
   data?: T;
   error?: CoreError;
@@ -31,7 +36,20 @@ class Store {
   private timer: ReturnType<typeof setTimeout> | undefined;
   conn: ConnState = initial();
   private connListeners = new Set<() => void>();
+  private frameListeners = new Set<(f: Frame) => void>();
   readonly seqs = new Map<string, number>();
+
+  /** A stream frame arrived (after it invalidated what it makes stale). A
+   * listener may only react to the frame's type and subject — never read its
+   * payload as state (P14): the graph pulses a live execution's edge (P18 A8). */
+  frame(f: Frame) {
+    this.frameListeners.forEach((l) => l(f));
+  }
+
+  onFrame(l: (f: Frame) => void) {
+    this.frameListeners.add(l);
+    return () => void this.frameListeners.delete(l);
+  }
 
   configure(send: Send) {
     this.send = send;

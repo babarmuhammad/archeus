@@ -12,7 +12,7 @@ export const phoneTabs = () => DESTINATIONS.filter((d) => d.phone === 'tab');
 // ── routes (hash-based, D7) ──
 
 export type Route =
-  | { view: Destination['id']; section?: string; project?: string }
+  | { view: Destination['id']; section?: string; project?: string; graph?: 'world' | { kind: string; id: string }; modules?: string }
   | { view: 'object'; kind: string; id: string; tab?: string; under: Destination['id'] };
 
 /** The route a hash names; the two bootstrap fragments (`launch=`, `pair=`)
@@ -20,8 +20,13 @@ export type Route =
 export function parse(hash: string, under: Destination['id'] = 'now'): Route {
   const h = hash.replace(/^#/, '');
   if (!h.startsWith('/')) return { view: 'now' };
-  const [a, b, c, d] = h.slice(1).split('/').map(decodeURIComponent);
+  const [a, b, c, d, e, f] = h.slice(1).split('/').map(decodeURIComponent);
   if (a === 'o' && b && c) return { view: 'object', kind: b, id: c, tab: d || undefined, under };
+  // the spatial view, a mode of World (p18-design-gate A4); no project id is `graph`
+  if (a === 'world' && b === 'graph') {
+    if (!c || !d) return { view: 'world', graph: 'world' };
+    return e === 'modules' ? { view: 'world', graph: { kind: c, id: d }, modules: f ?? '' } : { view: 'world', graph: { kind: c, id: d } };
+  }
   if ((a === 'world' || a === 'work') && b) return { view: a, project: b };
   if (a === 'control') return { view: 'control', section: b || 'autonomy' };
   const known = DESTINATIONS.find((x) => x.id === a);
@@ -30,6 +35,11 @@ export function parse(hash: string, under: Destination['id'] = 'now'): Route {
 
 export function href(r: Route): string {
   if (r.view === 'object') return `#/o/${r.kind}/${encodeURIComponent(r.id)}${r.tab ? '/' + r.tab : ''}`;
+  if (r.view === 'world' && r.graph) {
+    if (r.graph === 'world') return '#/world/graph';
+    const base = `#/world/graph/${r.graph.kind}/${encodeURIComponent(r.graph.id)}`;
+    return r.modules === undefined ? base : `${base}/modules${r.modules ? '/' + encodeURIComponent(r.modules) : ''}`;
+  }
   if ((r.view === 'world' || r.view === 'work') && r.project) return `#/${r.view}/${encodeURIComponent(r.project)}`;
   if (r.view === 'control') return `#/control/${r.section ?? 'autonomy'}`;
   return `#/${r.view}`;

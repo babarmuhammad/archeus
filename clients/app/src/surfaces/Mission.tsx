@@ -547,7 +547,7 @@ function MoreButton({ id, pages, onMore }: { id: string; pages: number[]; onMore
 
 function MissionRelations({ m, plan }: { m: Mission; plan?: MissionPlan }) {
   const s = useRead<SessionList>(`/v1/sessions?mission=${m.id}`);
-  return <Relations edges={missionEdges(m, plan ?? null, s.data?.sessions ?? [])} />;
+  return <Relations of={{ kind: 'mission', id: m.id }} edges={missionEdges(m, plan ?? null, s.data?.sessions ?? [])} />;
 }
 
 // ── execution detail (§6.6) ──
@@ -580,7 +580,7 @@ export function ExecutionInspector({ id, tab, onTab }: { id: string; tab?: strin
           <div role="tabpanel" id={`panel-${current}`} aria-labelledby={`tab-${current}`} className="panel">
             {current === 'output' && <Output id={x.id} />}
             {current === 'checkpoints' && <Checkpoints id={x.id} />}
-            {current === 'relations' && <Relations edges={executionEdges(x)} />}
+            {current === 'relations' && <Relations of={{ kind: 'execution', id: x.id }} edges={executionEdges(x)} />}
           </div>
         </div>
       )}

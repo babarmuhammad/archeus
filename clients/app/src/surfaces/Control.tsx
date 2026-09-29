@@ -359,7 +359,7 @@ export function SessionInspector({ id, tab, onTab }: { id: string; tab?: string;
                 ))}
               </ol>
             )}
-            {current === 'relations' && <Relations edges={sessionEdges(x, x)} />}
+            {current === 'relations' && <Relations of={{ kind: 'session', id: x.id }} edges={sessionEdges(x, x)} />}
           </div>
         </div>
       )}
