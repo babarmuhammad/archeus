@@ -217,3 +217,29 @@ def test_the_manifest_names_what_the_pwa_needs():
     assert m['background_color'] == TOKENS['themes']['dark']['bg']
     for icon in m['icons']:
         assert os.path.exists(os.path.join(APP, 'public', icon['src'].lstrip('/'))), icon
+
+
+# ── the spatial view's motion (p18-design-gate A7, A9, §13) ──
+
+def _src(*parts):
+    src = open(os.path.join(APP, 'src', *parts), encoding='utf-8').read()
+    return re.sub(r'//.*$', '', re.sub(r'/\*.*?\*/', '', src, flags=re.S), flags=re.M)
+
+
+def test_the_graph_loop_is_the_only_animation_frame_caller():
+    """A9: one loop. Also checked by the TS suite (M19); here in the Node-free job."""
+    callers = []
+    for d, _dirs, files in os.walk(os.path.join(APP, 'src')):
+        for f in files:
+            if f.endswith(('.ts', '.tsx')):
+                rel = os.path.relpath(os.path.join(d, f), os.path.join(APP, 'src')).split(os.sep)
+                if re.search(r'requestAnimationFrame\s*\(', _src(*rel)):
+                    callers.append('/'.join(rel))
+    assert callers == ['graph/loop.ts'], callers
+
+
+def test_the_layout_reads_no_clock_and_no_random():
+    """A7: the same data and focus give the same picture (also TS, M13)."""
+    src = _src('graph', 'layout.ts')
+    assert 'function layout(' in src
+    assert not re.search(r'Math\.random|Date\.now|performance\.now|new Date\(', src)

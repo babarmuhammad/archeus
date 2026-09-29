@@ -432,6 +432,19 @@ def test_stale_not_inspected_and_missing_payload_are_said_not_guessed(db, repo, 
         rg(db, ids.new_id('repository'))
 
 
+def test_a_missing_payload_is_logged_once_per_sha(db, world, caplog):
+    """A5: the view says the payload is missing on every read; the log says it once."""
+    rep, ins, sha = ids.new_id('repository'), ids.new_id('repository_inspection'), '1' * 64
+    put(db, E.Repository(id=rep, workspace_id=WS, project_id=world['prj'], path='Z:/d',
+                         path_key='z:/d', last_inspection_id=ins, last_revision='r1'),
+        E.RepositoryInspection(id=ins, repository_id=rep, extractor_version=1,
+                               revision='r1', state='COMPLETED', payload_sha256=sha))
+    with caplog.at_level('WARNING', logger='archeus.core'):
+        assert [rg(db, rep)['reason'] for _ in range(3)] == ['payload_missing'] * 3
+    said = [r.getMessage() for r in caplog.records if sha in r.getMessage()]
+    assert len(said) == 1 and rep in said[0], said
+
+
 # ── A15, A10: what the scope does not isolate, and the server's cost ──
 
 def test_one_observe_reader_sees_every_projects_graph(db, world):

@@ -36,6 +36,7 @@ R = 'tests/v1/integration/test_graph_routes.py::'
 PAR = 'tests/v1/unit/test_graph_parity.py'
 TS = 'node:test/graph.test.ts'
 E2E = 'tests/v1/e2e/test_spa_p18.py::'
+DG = 'tests/v1/design/test_design_gates.py::'
 
 MUTATIONS = [
     ('M01', 'an edge emitted when its field is empty', [(GRAPH,
@@ -225,6 +226,10 @@ MUTATIONS = [
      "  if (reduced || !subject ||",
      "  if (!subject ||")],
      [TS]),
+    ('M44', 'a missing payload logged on every read (D3)', [(GRAPH,
+     "        if i.payload_sha256 not in _MISSING:",
+     "        if True:")],
+     [Q + 'test_a_missing_payload_is_logged_once_per_sha']),
     ('M45', 'the phone view scrolls sideways (390 px regression)', [(GV,
      'data-graph-narrow="">',
      'data-graph-narrow="" style={{ minWidth: 700 }}>')],
@@ -237,6 +242,16 @@ MUTATIONS = [
      "    ctx.drawImage(layer.ctx.canvas, 0, 0);\n",
      "")],
      [TS, E2E + 'test_zoom_fit_and_the_loop_parking']),
+    # the M13 and M19 edits again, each against the Node-free design gate alone (D7)
+    ('M48', 'the layout seeded with Math.random, against the design gate (D7)', [(LAYOUT,
+     "  const rnd = prng(hash(inp.seed));",
+     "  const rnd = Math.random;")],
+     [DG + 'test_the_layout_reads_no_clock_and_no_random']),
+    ('M49', 'a second requestAnimationFrame caller, against the design gate (D7)', [(RENDER,
+     "export function draw(ctx: CanvasRenderingContext2D, s: Scene): DrawStats {\n",
+     "export function draw(ctx: CanvasRenderingContext2D, s: Scene): DrawStats {\n"
+     "  if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(() => undefined);\n")],
+     [DG + 'test_the_graph_loop_is_the_only_animation_frame_caller']),
 ]
 
 
@@ -299,7 +314,7 @@ def run(selected=()):
             # the failing test that names this mutant, else the first: a kill is
             # auditable by name (a mutant that does not parse never gets here)
             fails = [f.strip() for f in re.findall(
-                r'^(FAILED \S+|\s*not ok \d+ - .+|timed out)$', out, re.M)]
+                r'^(FAILED \S+|\s*not ok \d+ - .+|timed out)', out, re.M)]
             own = [f for f in fails if re.search(r'\b%s\b' % mid, f)]
             how = ' <- ' + (own or fails)[0] if caught and fails else ''
         finally:

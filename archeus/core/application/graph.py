@@ -13,6 +13,7 @@ function shows (p18 V8); they carry the hierarchy the renderer collapses by.
 
 import functools
 import json
+import logging
 import posixpath
 
 from ...infra.db import rows
@@ -26,6 +27,9 @@ DEPTH_MAX = 2
 LIMIT_MAX = 1000
 LIMIT_DEFAULT = 500
 EDGE_MAX = 4000
+
+log = logging.getLogger('archeus.core')
+_MISSING = set()  # payload shas already reported missing (A5: logged once each)
 
 # kind -> (entity class, machine or None); order is the cap's kind rank (A6)
 KINDS = {
@@ -468,6 +472,10 @@ def repository_graph(conn, repository_id, read, focus='', depth=1, limit=LIMIT_D
     try:
         payload = _payload(i.payload_sha256, read)
     except (OSError, KeyError, ValueError, LookupError):
+        if i.payload_sha256 not in _MISSING:
+            _MISSING.add(i.payload_sha256)
+            log.warning('repository %s: its stored inspection payload %s is missing',
+                        r.id, i.payload_sha256)
         return dict(base, available=False, reason='payload_missing')
     return dict(base, available=True, **_tree(payload, focus, depth, limit),
                 revision=i.revision, inspected_at=i.inspected_at,
