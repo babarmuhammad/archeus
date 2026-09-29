@@ -36,6 +36,13 @@ no_window_flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 #: upgrade worker: it starts here and does its work after we are gone.
 detached_flags = getattr(subprocess, 'DETACHED_PROCESS', 0) or no_window_flags
 
+#: A console of its own that nobody sees, in its own process group. For a child
+#: that starts console programs itself (a harness running its hooks, git, test
+#: commands): under DETACHED_PROCESS it has no console, so Windows opens a new,
+#: VISIBLE one for every such grandchild. A hidden console is inherited instead.
+#: The new group keeps a Ctrl+C in our console from reaching it, as detaching did.
+hidden_console_flags = no_window_flags | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+
 
 def run(args, *, cwd=None, env=None, timeout=30, stdin=None, check=False):
     """`subprocess.run` with the decoding pinned and the console suppressed.
@@ -281,7 +288,7 @@ def kill_pid_tree(pid, create_time):
         return False
 
 
-def spawn_detached(argv, *, cwd=None, env=None, log=None, stdin_path=None):
+def spawn_detached(argv, *, cwd=None, env=None, log=None, stdin_path=None, hidden_console=False):
     """Start *argv* with no console and no tie to this process.
 
     Returns (Popen|None, error) — the same shape as spawn_terminal, because
@@ -314,7 +321,8 @@ def spawn_detached(argv, *, cwd=None, env=None, log=None, stdin_path=None):
     kw ={'cwd': cwd, 'env': env, 'stdin': source,
           'stdout': sink, 'stderr': subprocess.STDOUT}
     if WINDOWS:
-        kw['creationflags'] = detached_flags
+        # *hidden_console*: see hidden_console_flags — for a child that spawns
+        kw['creationflags'] = hidden_console_flags if hidden_console else detached_flags
     else:
         kw['start_new_session'] = True
     try:

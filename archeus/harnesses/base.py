@@ -276,8 +276,11 @@ def spawn(spec, argv):
             env[k] = v
     env['ARCHEUS_EXECUTION_ID'] = spec.execution_id
     env['ARCHEUS_HOME'] = archeus_home()
+    # a hidden console, not none: the agent runs its hooks and tools as console
+    # programs, and each would otherwise open a visible window of its own
     child, err = proc.spawn_detached(list(argv), cwd=spec.workdir, env=env,
-                                     log=paths.stream, stdin_path=paths.prompt)
+                                     log=paths.stream, stdin_path=paths.prompt,
+                                     hidden_console=True)
     if child is None:
         # we KNOW nothing started, so say so: a marker without `ended` would
         # otherwise read as "a process may exist" to reconciliation
