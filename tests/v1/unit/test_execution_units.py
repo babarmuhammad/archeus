@@ -10,7 +10,7 @@ import time
 import pytest
 
 from archeus.core.application import executions as X
-from archeus.core.domain import actions, ids, states
+from archeus.core.domain import actions, entities, ids, states
 from archeus.core.domain.actions import Action
 from archeus.core.execution import canonical as C
 from archeus.core.execution.manager import redact
@@ -211,6 +211,8 @@ def test_the_breaker_and_the_uncharged_ends_are_the_gates():
                                 'pause_timeout', 'cancel', 'binding', 'disarmed',
                                 # P12: a hand-off spends no attempt (p12-design-gate D20)
                                 'pressure', 'handoff_user'}
+    # P11 §28 note 11: a workspace that cannot be made is the task's own end
+    assert set(entities.STOP_REASONS) - set(X.UNCHARGED) == {'workspace'}
 
 
 # ── §10 the hook's protocol, without a process ──────────────────────────────

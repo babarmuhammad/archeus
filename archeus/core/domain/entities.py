@@ -816,6 +816,8 @@ WORKSPACE_MODES = ('in_place', 'worktree')
 #: Why an execution was stopped (P11, p11-design-gate §20.1).
 STOP_REASONS = ('user', 'estop', 'ceiling', 'limit', 'breaker', 'pause_timeout', 'cancel',
                 'binding', 'disarmed',
+                # P11 as built (§28 note 11): the task's workspace could not be made
+                'workspace',
                 # P12 (p12-design-gate §10.1): why an execution handed off; the
                 # account changes are the existing `limit` and `ceiling`
                 'pressure', 'handoff_user')

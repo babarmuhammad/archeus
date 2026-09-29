@@ -776,7 +776,7 @@ pairing, automation).
 | D6 | P10's router is asked again on resume and must answer the same account. |
 | D7 | A task stays RUNNING for its execution's life; pause and approval waits are execution states. |
 | D8 | Six execution edges added (§8.2); no state added. |
-| D9 | Charged vs uncharged ends; only task-owned ends spend `max_attempts`. |
+| D9 | Charged vs uncharged ends; only task-owned ends spend `max_attempts`. (As built: note 7's two rules and note 11's workspace rule.) |
 | D10 | Resource-attributable ends drop affinity (resource-router §7) — a one-predicate change to P10's `_affinity`. |
 | D11 | The e-stop writes the sentinel first, kills by identity, blocks missions, leaves Core disarmed until `rearm`. |
 | D12 | The hook channel is a per-execution file mailbox, not HTTP. |
@@ -887,6 +887,24 @@ bindings.
     for user sessions and the `main.build_launch_command` preparation seam for the
     interactive-attach path. Both exist only to serve user sessions, which D29 moved to P12,
     so both are P12's too; P11 builds neither.
+11. **A task's workspace (defect correction, found by P16's validation, 2026-09-29).** `git
+    worktree add -b` can create the branch and then fail (a path too long for git, a disk
+    error); every later attempt then failed on the branch itself. The same happens when a later
+    plan version reuses a task key whose branch P13 kept after its merge (p13 §12.1). The
+    failure was refused as `binding`, which D9 does not charge, so the task was re-dispatched
+    forever (395 attempts in one run). Two changes, and nothing else in execution moved:
+    - `LocalNode.add_worktree` reuses an existing task branch when the branch holds nothing
+      its base lacks, recreating it at the base (`worktree add -B`), so the worktree starts from
+      the base the task asks for (P13 D12). A branch holding commits its base does not have is
+      never moved; that case is refused with the reason.
+    - **D9 changes:** a workspace that cannot be made ends the execution with the new
+      `stop_reason='workspace'`, which is **charged**. It is the task's own failure, like the two
+      charged rules in note 7, so it spends `max_attempts` and ends in `execution_failed_final`
+      with the reason, instead of looping. `binding` again means only a stale plan binding
+      (§7) or provider terms. `refuse` derives `charged` from the stop reason (`not in
+      UNCHARGED`), which is unchanged for every other caller.
+    Tests: `test_verification.py` (a branch left by a failed add, a workspace that cannot be
+    made, a merged branch moved to its base, an unmerged branch never moved); mutations X33-X36.
 
 **Defects found while building it, all fixed with a test.** `binding()` accepted a SUPERSEDED
 plan that was still the highest version; resuming a mission while disarmed let `advance` read
@@ -895,7 +913,7 @@ disarmed); two concurrent hooks could take the same request number (`_reserve` n
 number with an exclusive lock file); `git push origin :branch` was not classed as destructive;
 the endpoint-floor fuzz exhausted Windows' ephemeral ports once P10's routes were added (D31).
 
-**Mutation.** `tools/mutate_p11.py`: 30 mutants, one per §24.3 invariant, all killed. Three
+**Mutation.** `tools/mutate_p11.py`: 30 mutants at P11 (36 after note 11's X33-X36), one per §24.3 invariant, all killed. Three
 needed a test of their own rather than a different safeguard: `E14` (nothing starts while
 disarmed), `S07` (a resume asks P9 again), and E10's `Blunt` adapter, which proves the node's
 own identity check and not only the adapter's. Two model an acknowledging command rather than a

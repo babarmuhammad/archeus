@@ -826,7 +826,9 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
     Claude Code function pass on both bindings; the real-adapter S1/S5 run is opt-in. **Moved:**
     R1 and user sessions to P12 (D29); the Codex adapter to P20 (D30); the pi adapter and the
     `build_launch_command` seam with them, since both serve user sessions. No migration.
-    Deviations: p11-design-gate §28.
+    Deviations: p11-design-gate §28. Defect correction (2026-09-29, §28 note 11): an existing
+    task branch no longer makes every attempt fail, and a workspace that cannot be made is a
+    charged `stop_reason='workspace'` (a D9 change), so it can no longer retry forever.
 
 **P12 — Session and context continuity**
 - Depends: P11. New: `execution/checkpoint.py`, `execution/handoff.py`.

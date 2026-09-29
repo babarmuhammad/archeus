@@ -431,3 +431,81 @@ def test_a_verification_whose_plan_is_superseded_while_it_runs_cannot_be_recorde
         _do(core, V.record, missions=core._missions, verification_id=vid,
             checks=[{'name': 'test', 'kind': 'command', 'result': 'pass'}])
     assert _get(core, entities.Verification, vid).state == 'RUNNING'
+
+
+# ── a task's workspace (P11 as built, §28 note 11) ──────────────────────────
+
+def _git(root, *args):
+    return subprocess.run(['git', *args], cwd=root, capture_output=True, text=True,
+                          check=True).stdout.strip()
+
+
+def test_a_branch_left_by_a_failed_worktree_add_does_not_stop_the_task(core):
+    """`git worktree add -b` can create the branch and then fail; every later
+    attempt used to fail on the branch itself, uncharged, forever."""
+    rig = Rig(core)
+    repo, mid = _mission(core, rig, steps=[_write(FIX), {'emit': {'type': 'result',
+                                                                  'summary': 'done'}}])
+    _git(repo.path, 'branch', 'archeus/%s.t1' % mid)       # what the failed add left
+    pump(core, lambda: _state(core, mid) == 'COMPLETED')
+    t = _task(core, mid)
+    with core._core().read() as conn:
+        es = [r.entity for r in rows.where(conn, entities.Execution, task_id=t.id)]
+    assert [(e.state, e.stop_reason) for e in es] == [('ENDED_OK', None)]
+
+
+def test_a_workspace_that_cannot_be_made_spends_the_tasks_attempts(core, monkeypatch):
+    from archeus.node.local import LocalNode
+
+    def refuse(root, path, branch, base='HEAD'):
+        raise OSError('git worktree add failed: fatal: simulated')
+    monkeypatch.setattr(LocalNode, 'add_worktree', staticmethod(refuse))
+    rig = Rig(core)
+    _repo, mid = _mission(core, rig, steps=[_write(FIX)])
+    pump(core, lambda: _task(core, mid) is not None)
+    tid = _task(core, mid).id
+    pump(core, lambda: _get(core, entities.Task, tid).state == 'FAILED')
+    t = _get(core, entities.Task, tid)
+    with core._core().read() as conn:
+        es = [r.entity for r in rows.where(conn, entities.Execution, task_id=tid)]
+    assert len(es) == t.max_attempts
+    assert {(e.state, e.stop_reason, e.charged) for e in es} == {('ABANDONED', 'workspace', True)}
+
+
+def _repo_with_commit(tmp_path):
+    root = str(tmp_path / 'r')
+    os.makedirs(root)
+    _git(root, 'init', '-q', '-b', 'main')
+    _git(root, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty',
+         '-m', 'base')
+    return root
+
+
+def test_a_task_branch_that_holds_nothing_new_is_moved_to_its_base(tmp_path):
+    """Kept after its merge (P13 §12.1), then a later plan version reuses the
+    task key: the worktree starts from the base it asks for, not the old tip."""
+    from archeus.node.local import LocalNode
+    root = _repo_with_commit(tmp_path)
+    _git(root, 'branch', 'archeus/m.t1')
+    _git(root, 'checkout', '-q', '-b', 'archeus/m')
+    _git(root, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty',
+         '-m', 'merged later')
+    _git(root, 'checkout', '-q', 'main')
+    path = str(tmp_path / 'wt')
+    assert LocalNode.add_worktree(root, path, 'archeus/m.t1', base='archeus/m') == path
+    assert _git(path, 'rev-parse', 'HEAD') == _git(root, 'rev-parse', 'archeus/m')
+    assert _git(path, 'rev-parse', '--abbrev-ref', 'HEAD') == 'archeus/m.t1'
+
+
+def test_a_task_branch_holding_commits_its_base_lacks_is_never_moved(tmp_path):
+    from archeus.node.local import LocalNode
+    root = _repo_with_commit(tmp_path)
+    _git(root, 'checkout', '-q', '-b', 'archeus/m.t1')
+    _git(root, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty',
+         '-m', 'work nobody merged')
+    tip = _git(root, 'rev-parse', 'HEAD')
+    _git(root, 'checkout', '-q', 'main')
+    with pytest.raises(OSError, match='holds commits'):
+        LocalNode.add_worktree(root, str(tmp_path / 'wt'), 'archeus/m.t1', base='main')
+    assert _git(root, 'rev-parse', 'archeus/m.t1') == tip
+    assert not os.path.exists(str(tmp_path / 'wt'))

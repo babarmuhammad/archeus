@@ -25,6 +25,7 @@ HOOK = 'archeus/harnesses/hook.py'
 I = 'tests/v1/integration/test_execution.py'
 S = 'tests/v1/integration/test_execution_security.py'
 U = 'tests/v1/unit/test_execution_units.py'
+VER = 'tests/v1/integration/test_verification.py'
 TIMEOUT_S = 900
 
 MUTATIONS = [
@@ -185,6 +186,23 @@ MUTATIONS = [
      "            if len(mine) >= MISSION_PARALLEL:",
      "            if len(mine) >= 1:")],
      [I + '::test_E50_independent_tasks_run_at_the_same_time']),
+    # ── a task's workspace (§28 note 11) ──
+    ('X33', 'an existing task branch makes every attempt fail', [(NODE,
+     "            flag = '-B'\n",
+     "            flag = '-b'\n")],
+     [VER + '::test_a_branch_left_by_a_failed_worktree_add_does_not_stop_the_task']),
+    ('X34', 'a task branch with unmerged commits moved to its base', [(NODE,
+     "            if not LocalNode.git_is_ancestor(root, branch, base):",
+     "            if False:")],
+     [VER + '::test_a_task_branch_holding_commits_its_base_lacks_is_never_moved']),
+    ('X35', 'a workspace failure spends no attempt', [(EX,
+     "    fields = {'stop_reason': stop_reason, 'charged': stop_reason not in UNCHARGED,",
+     "    fields = {'stop_reason': stop_reason, 'charged': False,")],
+     [VER + '::test_a_workspace_that_cannot_be_made_spends_the_tasks_attempts']),
+    ('X36', 'a workspace failure reported as a stale binding', [(MGR,
+     "reason='no workspace: %s' % err,\n                     stop_reason='workspace')",
+     "reason='no workspace: %s' % err,\n                     stop_reason='binding')")],
+     [VER + '::test_a_workspace_that_cannot_be_made_spends_the_tasks_attempts']),
 ]
 
 

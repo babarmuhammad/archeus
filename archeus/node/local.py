@@ -249,7 +249,16 @@ class LocalNode:
         if os.path.isdir(path):
             return path             # this execution's own, made before a restart
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        r = proc.run(['git', 'worktree', 'add', '-b', branch, '--', path, base], cwd=root,
+        flag = '-b'
+        if LocalNode.branch_exists(root, branch):
+            # left by an add that failed after creating it, or kept after its
+            # merge (P13 §12.1) while plan versions reuse task keys: moved to
+            # *base* only when that loses nothing, else `-b` fails on it forever
+            if not LocalNode.git_is_ancestor(root, branch, base):
+                raise OSError('branch %s holds commits %s does not; it is left as it is'
+                              % (branch, base))
+            flag = '-B'
+        r = proc.run(['git', 'worktree', 'add', flag, branch, '--', path, base], cwd=root,
                      timeout=60)
         if r is None or r.returncode != 0:
             raise OSError('git worktree add failed: %s' % ((r.stderr or r.stdout or '').strip()

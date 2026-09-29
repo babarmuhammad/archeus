@@ -118,10 +118,12 @@ def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, p
 
 def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None):
     """An execution with no process ends here: INTENT never spawned
-    (ABANDONED), a paused or waiting one is discarded (ENDED_KILLED); either way
-    uncharged, and the task goes back to READY."""
+    (ABANDONED), a paused or waiting one is discarded (ENDED_KILLED). Uncharged,
+    and the task goes back to READY, unless the reason is the task's own (a
+    workspace that cannot be made, §28 note 11): that one spends an attempt."""
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
-    fields = {'stop_reason': stop_reason, 'charged': False, 'ended_at': _now_iso(),
+    fields = {'stop_reason': stop_reason, 'charged': stop_reason not in UNCHARGED,
+              'ended_at': _now_iso(),
               'hook_token_hash': None}
     if e.state == 'INTENT':
         e = _fire(tx, e.id, 'spawn_failed', actor, reason,

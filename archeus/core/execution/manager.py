@@ -174,7 +174,7 @@ class ExecutionManager:
             workdir, branch = self._workspace(e, m, t)
         except OSError as err:
             self._do(X.refuse, execution_id=e.id, reason='no workspace: %s' % err,
-                     stop_reason='binding')
+                     stop_reason='workspace')
             return True
         token = 'hook_' + secrets.token_urlsafe(32)
         seq = e.process_seq + 1
