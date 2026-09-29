@@ -12,6 +12,7 @@ whatever happens. A mutation the tests do not catch ("survived") fails the run.
 It edits sources: run it with nothing else running against the tree.
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -232,36 +233,40 @@ def _baseline(tests):
                          % r.stdout[-3000:])
 
 
-_TS_PARSE = (
-    "const ts=require('typescript');const f=process.argv[1];let s='';"
-    "process.stdin.setEncoding('utf8').on('data',d=>s+=d).on('end',()=>{"
-    "const r=ts.transpileModule(s,{fileName:f,reportDiagnostics:true,"
-    "compilerOptions:{jsx:ts.JsxEmit.Preserve}});"
-    "for(const d of r.diagnostics)console.log(ts.flattenDiagnosticMessageText(d.messageText,' '));})")
+_TS_CHECK = os.path.join(ROOT, 'tools', 'mutant_tscheck.cjs')
+
+
+def ts_errors(items):
+    """For [(path, text)] of mutated TypeScript: why each does not parse or, for an
+    SPA source, does not type-check as the build would (None when clean). One node
+    process for the batch; nothing is written."""
+    r = subprocess.run(['node', _TS_CHECK], capture_output=True, text=True, encoding='utf-8',
+                       input=json.dumps({'app': os.path.join(ROOT, 'clients', 'app'),
+                                         'items': [{'path': os.path.join(ROOT, p), 'text': t}
+                                                   for p, t in items]}))
+    if r.returncode:
+        raise SystemExit('cannot check TypeScript mutants (node and clients/app/node_modules '
+                         'are needed):\n%s' % r.stderr[-1000:])
+    return [e or None for e in json.loads(r.stdout)]
 
 
 def parse_error(path, text):
-    """Why mutated *text* of *path* does not parse, or None. A mutant that does not
-    parse fails every test that loads it, which proves nothing about the invariant
-    it was written for: it is a BROKEN mutant, never a kill."""
+    """Why mutated *text* of *path* does not parse — or, for an SPA source, does not
+    type-check — or None. Such a mutant fails every test that loads it, which proves
+    nothing about the invariant it was written for: it is a BROKEN mutant, never a
+    kill."""
     if path.endswith('.py'):
         try:
             compile(text, path, 'exec')
         except SyntaxError as e:
             return 'line %s: %s' % (e.lineno, e.msg)
     elif path.endswith('.json'):
-        import json
         try:
             json.loads(text)
         except ValueError as e:
             return str(e)
     elif path.endswith(('.ts', '.tsx')):
-        r = subprocess.run(['node', '-e', _TS_PARSE, path], input=text, capture_output=True,
-                           text=True, encoding='utf-8', cwd=os.path.join(ROOT, 'clients', 'app'))
-        if r.returncode:
-            raise SystemExit('cannot parse-check %s (node and clients/app/node_modules '
-                             'are needed):\n%s' % (path, r.stderr[-1000:]))
-        return r.stdout.strip() or None
+        return ts_errors([(path, text)])[0]
     return None
 
 

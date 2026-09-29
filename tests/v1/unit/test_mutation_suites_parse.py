@@ -1,4 +1,5 @@
-"""Every mutant of every phase suite parses once applied (p18-design-gate §22 I14).
+"""Every mutant of every phase suite parses — and type-checks, for an SPA source —
+once applied (p18-design-gate §22.1 F7, §22.2.1).
 
 A mutant that does not parse fails every test that loads it, whatever that test
 asserts, so a runner counting it as killed reports an invariant as guarded when
@@ -44,14 +45,20 @@ def _mutated(edits):
 
 @pytest.mark.parametrize('suite', SUITES)
 def test_every_mutant_parses_once_applied(suite):
-    broken = []
+    broken, ts = [], []
     for mid, edits in _mutants(suite):
         for rel, text in _mutated(edits).items():
-            if rel.endswith(('.ts', '.tsx')) and not TS_OK:
+            if rel.endswith(('.ts', '.tsx')):
+                if TS_OK:
+                    ts.append((mid, rel, text))
                 continue
             err = mutate_p11.parse_error(rel, text)
             if err:
                 broken.append('%s %s: %s' % (mid, rel, err))
+    # an SPA source is type-checked as the build would (noUnusedLocals included)
+    for (mid, rel, _t), err in zip(ts, mutate_p11.ts_errors([(r, t) for _m, r, t in ts]) if ts else []):
+        if err:
+            broken.append('%s %s: %s' % (mid, rel, err))
     assert not broken, broken
 
 
@@ -65,3 +72,8 @@ def test_a_broken_mutant_is_refused_before_it_can_count():
         assert mutate_p11.parse_error('loop.ts', 'function f(): void {\n  g();\n}\n') is None
         assert mutate_p11.parse_error('v.tsx', 'const a = <div>{x}</div>;\n') is None
         assert mutate_p11.parse_error('v.tsx', 'const a = <div>{x}</span>;\n')
+        # an SPA source must also type-check as the build does: an import left unused
+        loop = os.path.join('clients', 'app', 'src', 'graph', 'loop.ts')
+        src = open(os.path.join(ROOT, loop), encoding='utf-8').read()
+        assert mutate_p11.parse_error(loop, src) is None
+        assert 'never read' in mutate_p11.parse_error(loop, 'const unused = 1;\n' + src)
