@@ -232,8 +232,42 @@ def _baseline(tests):
                          % r.stdout[-3000:])
 
 
+_TS_PARSE = (
+    "const ts=require('typescript');const f=process.argv[1];let s='';"
+    "process.stdin.setEncoding('utf8').on('data',d=>s+=d).on('end',()=>{"
+    "const r=ts.transpileModule(s,{fileName:f,reportDiagnostics:true,"
+    "compilerOptions:{jsx:ts.JsxEmit.Preserve}});"
+    "for(const d of r.diagnostics)console.log(ts.flattenDiagnosticMessageText(d.messageText,' '));})")
+
+
+def parse_error(path, text):
+    """Why mutated *text* of *path* does not parse, or None. A mutant that does not
+    parse fails every test that loads it, which proves nothing about the invariant
+    it was written for: it is a BROKEN mutant, never a kill."""
+    if path.endswith('.py'):
+        try:
+            compile(text, path, 'exec')
+        except SyntaxError as e:
+            return 'line %s: %s' % (e.lineno, e.msg)
+    elif path.endswith('.json'):
+        import json
+        try:
+            json.loads(text)
+        except ValueError as e:
+            return str(e)
+    elif path.endswith(('.ts', '.tsx')):
+        r = subprocess.run(['node', '-e', _TS_PARSE, path], input=text, capture_output=True,
+                           text=True, encoding='utf-8', cwd=os.path.join(ROOT, 'clients', 'app'))
+        if r.returncode:
+            raise SystemExit('cannot parse-check %s (node and clients/app/node_modules '
+                             'are needed):\n%s' % (path, r.stderr[-1000:]))
+        return r.stdout.strip() or None
+    return None
+
+
 def _apply(edits):
-    """{path: (original, mutated)} for *edits*; raises if a snippet is not unique."""
+    """{path: (original, mutated)} for *edits*; raises if a snippet is not unique or
+    the mutated file does not parse (a broken mutant stops the run, uncounted)."""
     out = {}
     for rel, old, new in edits:
         path = os.path.join(ROOT, rel)
@@ -246,6 +280,11 @@ def _apply(edits):
             raise SystemExit('the snippet occurs %d times in %s:\n%s' % (cur.count(old), rel,
                                                                         old))
         out[path] = (src, cur.replace(old, new))
+    for path, (_src, mutated) in out.items():
+        err = parse_error(path, mutated)
+        if err:
+            raise SystemExit('BROKEN MUTANT: %s does not parse once mutated (%s):\n%s'
+                             % (os.path.relpath(path, ROOT), err, edits))
     return out
 
 

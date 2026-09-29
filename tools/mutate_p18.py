@@ -14,6 +14,7 @@ running against the tree.
 """
 
 import os
+import re
 import subprocess
 import sys
 
@@ -105,7 +106,7 @@ MUTATIONS = [
      "")],
      [TS]),
     ('M17', 'the loop keeps scheduling with nothing to animate', [(LOOP,
-     "    if (this.anims.size) this.kick();",
+     "    if (this.anims.size) this.kick();\n    else this.onState?.('parked');",
      "    this.kick();")],
      [TS]),
     ('M18', 'an animation accepted under reduced motion', [(LOOP,
@@ -204,13 +205,13 @@ def _run(tests, fail_fast=True):
                                 *(['-x'] if fail_fast else []), *sorted(set(py))], cwd=ROOT,
                                capture_output=True, text=True, encoding='utf-8', errors='replace',
                                timeout=mutate_p11.TIMEOUT_S, env=env)
-            out, code = out + r.stdout[-3000:], code or r.returncode
+            out, code = out + r.stdout, code or r.returncode
         if node and not (fail_fast and code):
-            r = subprocess.run(['node', '--experimental-strip-types', '--no-warnings', '--test',
+            r = subprocess.run(['node', '--experimental-strip-types', '--no-warnings', '--test', '--test-reporter=tap',
                                 *sorted(set(node))], cwd=APP, capture_output=True, text=True,
                                encoding='utf-8', errors='replace',
                                timeout=mutate_p11.TIMEOUT_S, shell=os.name == 'nt')
-            out, code = out + r.stdout[-3000:], code or r.returncode
+            out, code = out + r.stdout, code or r.returncode
     except subprocess.TimeoutExpired:
         return 1, 'timed out'
     return code, out
@@ -228,7 +229,7 @@ def run(selected=()):
         _build()
     code, out = _run([t for m in chosen for t in m[3]], fail_fast=False)
     if code:
-        raise SystemExit('the guarding tests fail on the unmutated tree; fix them first:\n%s' % out)
+        raise SystemExit('the guarding tests fail on the unmutated tree; fix them first:\n%s' % out[-6000:])
     survived, killed = [], []
     for mid, what, edits, tests in chosen:
         files = mutate_p11._apply(edits)
@@ -239,7 +240,14 @@ def run(selected=()):
                     f.write(mutated)
             if build:
                 _build()
-            caught = _run(tests)[0] != 0
+            code, out = _run(tests)
+            caught = code != 0
+            # the failing test that names this mutant, else the first: a kill is
+            # auditable by name (a mutant that does not parse never gets here)
+            fails = [f.strip() for f in re.findall(
+                r'^(FAILED \S+|\s*not ok \d+ - .+|timed out)$', out, re.M)]
+            own = [f for f in fails if re.search(r'\b%s\b' % mid, f)]
+            how = ' <- ' + (own or fails)[0] if caught and fails else ''
         finally:
             for path, (src, _mutated) in files.items():
                 with open(path, 'w', encoding='utf-8', newline='') as f:
@@ -248,7 +256,8 @@ def run(selected=()):
             if build:
                 _build()
         (killed if caught else survived).append(mid)
-        print('%-5s %-8s %s' % (mid, 'killed' if caught else 'SURVIVED', what), flush=True)
+        print('%-5s %-8s %s%s' % (mid, 'killed' if caught else 'SURVIVED', what, how),
+              flush=True)
     print('\n%d/%d killed' % (len(killed), len(killed) + len(survived)))
     return 1 if survived else 0
 
