@@ -2,24 +2,28 @@
 /** Per subject kind, the read paths it can change (invalidation.json). */
 export const RULES: Record<string, string[]> = {
   "mission": [
+    "/v1/world/graph**",
     "/v1/missions**",
     "/v1/attention",
     "/v1/digest",
     "/v1/status**"
   ],
   "plan": [
+    "/v1/world/graph**",
     "/v1/missions/*/plan",
     "/v1/missions/*/timeline**",
     "/v1/plans/{id}",
     "/v1/missions**"
   ],
   "task": [
+    "/v1/world/graph**",
     "/v1/missions/*/plan",
     "/v1/missions/*/timeline**",
     "/v1/tasks/{id}/executions",
     "/v1/digest"
   ],
   "execution": [
+    "/v1/world/graph**",
     "/v1/executions/{id}**",
     "/v1/tasks/*/executions",
     "/v1/missions/*/timeline**",
@@ -29,11 +33,13 @@ export const RULES: Record<string, string[]> = {
     "/v1/executions/*/checkpoints"
   ],
   "approval": [
+    "/v1/world/graph**",
     "/v1/approvals**",
     "/v1/attention",
     "/v1/missions**"
   ],
   "verification": [
+    "/v1/world/graph**",
     "/v1/verifications/{id}",
     "/v1/missions/*/verifications",
     "/v1/missions/*/timeline**",
@@ -41,33 +47,39 @@ export const RULES: Record<string, string[]> = {
     "/v1/digest"
   ],
   "review": [
+    "/v1/world/graph**",
     "/v1/missions/*/reviews",
     "/v1/missions/*/timeline**",
     "/v1/attention",
     "/v1/digest"
   ],
   "knowledge_item": [
+    "/v1/world/graph**",
     "/v1/knowledge**",
     "/v1/attention"
   ],
   "relation": [
+    "/v1/world/graph**",
     "/v1/knowledge/**"
   ],
   "feedback": [
     "/v1/knowledge**"
   ],
   "meeting": [
+    "/v1/world/graph**",
     "/v1/knowledge**"
   ],
   "decision": [
     "/v1/knowledge**"
   ],
   "project": [
+    "/v1/world/graph**",
     "/v1/projects**",
     "/v1/status**",
     "/v1/digest"
   ],
   "repository": [
+    "/v1/world/graph**",
     "/v1/projects**",
     "/v1/status**",
     "/v1/repositories/{id}/**",
@@ -85,10 +97,12 @@ export const RULES: Record<string, string[]> = {
     "/v1/ideas**"
   ],
   "automation": [
+    "/v1/world/graph**",
     "/v1/automations**",
     "/v1/attention"
   ],
   "automation_run": [
+    "/v1/world/graph**",
     "/v1/automations**",
     "/v1/automation-runs/{id}"
   ],
@@ -103,9 +117,11 @@ export const RULES: Record<string, string[]> = {
     "/v1/harnesses"
   ],
   "route_decision": [
+    "/v1/world/graph**",
     "/v1/route-decisions**"
   ],
   "policy_decision": [
+    "/v1/world/graph**",
     "/v1/policy-decisions**"
   ],
   "policy_rule": [
@@ -115,9 +131,11 @@ export const RULES: Record<string, string[]> = {
     "/v1/provider-terms"
   ],
   "session": [
+    "/v1/world/graph**",
     "/v1/sessions**"
   ],
   "context_package": [
+    "/v1/world/graph**",
     "/v1/context/{id}"
   ],
   "device": [

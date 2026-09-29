@@ -3,6 +3,7 @@ what a neighbourhood contains, in what order, how the cap and the depth hold,
 and — as much — what it must never contain: an inferred edge, a body, a
 routing explanation, a credential, a node beyond its depth."""
 
+import hashlib
 import json
 
 import pytest
@@ -247,15 +248,21 @@ def test_a_tableless_kind_and_a_missing_row_are_endpoints_not_nodes(db, world):
         assert set(n) == {'kind', 'id', 'endpoint', 'missing', 'label'}
 
 
-def test_structural_edges_are_marked_and_the_lists_own_edge_wins(db, world, actor):
-    apr = ids.new_id('approval')
-    put(db, E.Approval(id=apr, subject=Ref('plan', world['p2']), action_hash='a' * 64,
-                       requested_by=actor.id, kind='plan', mission_id=world['mid'],
-                       plan_id=world['p2'], plan_version=2, state='PENDING',
-                       expires_at='2999-01-01T00:00:00.000Z'))
+def test_a_mission_shows_its_pending_approval_as_the_list_does(db, world, actor):
+    """The list's edge (a mission waiting on its pending approval) and nothing
+    more: a decided approval is history, read in the inspector (§22 G2)."""
+    apr, old = ids.new_id('approval'), ids.new_id('approval')
+    for aid, st in ((old, 'APPROVED'), (apr, 'PENDING')):
+        put(db, E.Approval(id=aid, subject=Ref('plan', world['p2']), action_hash=hashlib.sha256(aid.encode()).hexdigest(),
+                           requested_by=actor.id, kind='plan', mission_id=world['mid'],
+                           plan_id=world['p2'], plan_version=2, state=st,
+                           expires_at='2999-01-01T00:00:00.000Z'))
     g = read(db, G.world_graph, ('mission', world['mid']), 1, 500)
     (a,) = edge(g, 'approvals.mission_id', ('mission', world['mid']), ('approval', apr))
-    assert a['structural'] is False                       # the pending edge, not membership
+    assert a['structural'] is False and a['from']['kind'] == 'mission'
+    assert ('approval', old) not in keys(g)
+    back = read(db, G.world_graph, ('approval', apr), 1, 500)
+    assert ('mission', world['mid']) in keys(back)
     t = read(db, G.world_graph, ('plan', world['p2']), 1, 500)
     assert all(e['structural'] for e in t['edges'] if e['field'] == 'tasks.plan_id')
 
@@ -449,3 +456,12 @@ def test_a_thousand_node_neighbourhood_is_built_within_budget(db, world):
 #: 0.10 s measured 2026-09-29 on the development machine; CI runners are slower,
 #: so the gate is 15x the measurement (p18-design-gate A10)
 BUDGET_S = 1.5
+
+
+def test_containment_edges_are_marked_structural(db, world):
+    """V8: the hierarchy the renderer collapses by, never shown as a list edge."""
+    t = read(db, G.world_graph, ('plan', world['p2']), 1, 500)
+    member = [e for e in t['edges'] if e['field'] == 'tasks.plan_id']
+    assert len(member) == 2 and all(e['structural'] for e in member)
+    listed = [e for e in t['edges'] if e['field'] == 'plans.mission_id']
+    assert listed and not any(e['structural'] for e in listed)

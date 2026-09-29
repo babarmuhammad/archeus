@@ -125,3 +125,17 @@ def test_every_list_edge_function_has_a_case_here():
     assert {c['fn'] for c in EDGE_CASES} == {
         'missionEdges', 'planEdges', 'taskDependencies', 'executionEdges', 'verificationEdges',
         'sessionEdges', 'knowledgeEdges', 'runEdges'}
+
+
+def test_every_field_core_emits_has_its_words_and_no_word_is_orphaned():
+    """A1 (3): the graph names a field, the client says its words — so the
+    vocabulary in relations.ts covers exactly the fields Core can emit."""
+    import inspect
+    import re
+    ts = os.path.join(os.path.dirname(CASES), '..', '..', 'src', 'graph', 'relations.ts')
+    with open(ts, encoding='utf-8') as f:
+        block = f.read().split('export const EDGE_WORDS', 1)[1].split('};', 1)[0]
+    words = set(re.findall(r"'([A-Za-z_]+\.[A-Za-z_]+)': \[", block))
+    core = set(re.findall(r"_edge\(out, me, '([A-Za-z_]+\.[A-Za-z_]+)'",
+                          inspect.getsource(G.held_edges)))
+    assert core and core == words, (core ^ words)

@@ -86,12 +86,12 @@ MUTATIONS = [
      '                    <span className="title mono">{x.id}</span>')], [T_SHELL]),
     # ── the graph's list form: authoritative edges only ──
     ('M11', 'a hand-off edge points the wrong way', [(REL,
-     "edge(out, 'continues', 'execution', e.handoff_from, 'Execution.handoff_from');",
-     "edge(out, 'continues', 'execution', e.id, 'Execution.handoff_from');")], [T_REL]),
+     "edge(out, 'Execution.handoff_from', 'execution', e.handoff_from);",
+     "edge(out, 'Execution.handoff_from', 'execution', e.id);")], [T_REL]),
     ('M12', 'a verification is linked to an execution it did not record', [(REL,
-     "edge(out, 'checked the work of', 'execution', v.execution_id, 'Verification.execution_id');",
-     "edge(out, 'checked the work of', 'execution', v.execution_id ?? v.plan_id, "
-     "'Verification.execution_id');")], [T_REL]),
+     "edge(out, 'Verification.execution_id', 'execution', v.execution_id);",
+     "edge(out, 'Verification.execution_id', 'execution', v.execution_id ?? v.plan_id);")],
+     [T_REL]),
     # ── model × harness × account, approvals, commands ──
     ('M13', 'the model is merged into the harness field', [(PRESENT,
      "    { key: 'harness', label: 'Harness', value: v(r.harness_id) },",

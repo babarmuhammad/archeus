@@ -187,8 +187,6 @@ def held_edges(conn, kind, e):
         _edge(out, me, 'repositories.project_id', 'project', e.project_id, structural=True)
     elif kind == 'review':
         _edge(out, me, 'reviews.plan_id', 'plan', e.plan_id, structural=True)
-    elif kind == 'approval':
-        _edge(out, me, 'approvals.mission_id', 'mission', e.mission_id, structural=True)
     return out
 
 
@@ -217,7 +215,6 @@ def _holders(conn, kind, node_id):
         plans = rows.where(conn, E.Plan, mission_id=node_id)
         add('plan', plans)
         add('session', rows.where(conn, E.Session, mission_id=node_id))
-        add('approval', rows.where(conn, E.Approval, mission_id=node_id))
         add('automation_run', rows.where(conn, E.AutomationRun, mission_id=node_id))
         for t in rows.where(conn, E.Task, mission_id=node_id):
             add('execution', rows.where(conn, E.Execution, task_id=t.entity.id))
@@ -249,6 +246,11 @@ def _holders(conn, kind, node_id):
         add('session', rows.where(conn, E.Session, handoff_from_session_id=node_id))
     elif kind == 'automation':
         add('automation_run', rows.where(conn, E.AutomationRun, automation_id=node_id))
+    elif kind == 'approval':
+        # the one edge an approval has is its mission's "waiting on" (the list's)
+        me = rows.get(conn, E.Approval, node_id)
+        if me is not None and me.entity.mission_id:
+            add('mission', [m for m in [rows.get(conn, E.Mission, me.entity.mission_id)] if m])
     return out
 
 
