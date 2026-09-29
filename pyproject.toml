@@ -91,6 +91,7 @@ packages = [
     "archeus",
     "archeus.api",
     "archeus.cli",
+    "archeus.cli.tui",
     "archeus.core",
     "archeus.core.application",
     "archeus.core.automation",

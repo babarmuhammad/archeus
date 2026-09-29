@@ -5,6 +5,7 @@ overflow audit at four widths, reduced motion and touch targets. A check floor
 derived from the navigation table keeps a suite that silently checks nothing
 from passing."""
 
+import json
 import os
 import re
 import time
@@ -20,10 +21,11 @@ from v1.judge.http import TempCore, request
 from .conftest import wait
 
 APP = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'clients', 'app')
-NAV = open(os.path.join(APP, 'src', 'nav', 'destinations.ts'), encoding='utf-8').read()
-DESTINATIONS = re.findall(r"\{ id: '(\w+)', label: '(\w+)'", NAV.split('export const DESTINATIONS')[1].split('];')[0])
-SECTIONS = re.findall(r"\{ id: '(\w+)', label: '[\w ]+' \}", NAV.split('CONTROL_SECTIONS')[1].split('] as const')[0])
-MISSION_TABS = re.findall(r"'(\w+)'", re.search(r'mission: \[([^\]]+)\]', NAV).group(1))
+with open(os.path.join(APP, 'tokens', 'navigation.json'), encoding='utf-8') as _f:
+    NAV = json.load(_f)                     # the one navigation table (p17-design-gate A1)
+DESTINATIONS = [(d['id'], d['label']) for d in NAV['destinations']]
+SECTIONS = [s['id'] for s in NAV['control_sections']]
+MISSION_TABS = NAV['inspector_tabs']['mission']
 DEPLOY = dict(engine.SKELETON_PLAN, tasks=[dict(engine.SKELETON_PLAN['tasks'][0],
                                                  action_classes=['deploy'])])
 SLOW = {'work': [{'emit': {'type': 'working'}}, {'sleep': 30}]}

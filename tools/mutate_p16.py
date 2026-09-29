@@ -25,9 +25,11 @@ PRES = 'clients/app/src/state/presentation.ts'
 PRESENT = 'clients/app/src/state/present.ts'
 CONN = 'clients/app/src/data/connection.ts'
 CMDS = 'clients/app/src/data/commands.ts'
-INV = 'clients/app/src/data/invalidation.ts'
+# the two tables generated from clients/app/tokens/ since P17 (A1): mutated where the
+# SPA reads them, as M01-M03 mutate the generated presentation.ts
+INV = 'clients/app/src/data/rules.ts'
 REL = 'clients/app/src/graph/relations.ts'
-NAV = 'clients/app/src/nav/destinations.ts'
+NAV = 'clients/app/src/nav/table.ts'
 ANN = 'clients/app/src/a11y/announce.ts'
 CTRL = 'clients/app/src/surfaces/Control.tsx'
 STREAM = 'clients/app/src/api/stream.ts'
@@ -109,8 +111,8 @@ MUTATIONS = [
      "  systemReduced || pref === 'reduced' ? 'reduced' : 'full';",
      "  systemReduced ? 'reduced' : 'full';")], [T_SHELL]),
     ('M18', 'a phone loses Attention from its tab bar', [(NAV,
-     "{ id: 'attention', label: 'Attention', key: 'j', phone: 'tab',",
-     "{ id: 'attention', label: 'Attention', key: 'j', phone: 'menu',")], [T_SHELL]),
+     '    "tui": "a",\n    "phone": "tab",',
+     '    "tui": "a",\n    "phone": "menu",')], [T_SHELL]),
     ('M19', 'the polite announcer speaks on every frame', [(ANN,
      '      if (now - last >= every) {\n        last = now;\n        pending = null;',
      '      if (true) {\n        last = now;\n        pending = null;')], [T_SHELL]),
@@ -148,8 +150,8 @@ MUTATIONS = [
      '"RESUMED": "active", "VERIFYING": "verifying",')],
      [DESIGN + '::test_the_generated_ui_files_are_current']),
     ('M28', 'a mission frame stops re-reading what waits on the user', [(INV,
-     "  mission: ['/v1/missions**', '/v1/attention', '/v1/digest', '/v1/status**'],",
-     "  mission: ['/v1/missions**', '/v1/digest', '/v1/status**'],")], [T_INV]),
+     '  "mission": [\n    "/v1/missions**",\n    "/v1/attention",\n',
+     '  "mission": [\n    "/v1/missions**",\n')], [T_INV]),
     ('M29', 'opening the stream starts a session (presence treated as a session)', [(STREAM,
      '        emit({ event: OPENED });',
      "        emit({ event: OPENED });\n        void fetch('/v1/sessions', { method: 'POST' });")],

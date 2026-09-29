@@ -1,19 +1,19 @@
 {
-  "$comment": "Domain state -> presentation class, per state machine of archeus/core/domain/states.py (p16-design-gate §6.1, D9). tools/gen_ui.py refuses a machine state with no class, or a class with no glyph and label. A class says how a state LOOKS; it never decides what the state means — that is the row's. Labels default to the state name in sentence case; `labels` overrides one where the plain name would mislead.",
+  "$comment": "Domain state -> presentation class, per state machine of archeus/core/domain/states.py (p16-design-gate §6.1, D9). tools/gen_ui.py refuses a machine state with no class, or a class with no glyph, ASCII glyph (the TUI fallback, p17-design-gate §9) and label. A class says how a state LOOKS; it never decides what the state means — that is the row's. Labels default to the state name in sentence case; `labels` overrides one where the plain name would mislead.",
   "classes": {
-    "planning":  {"glyph": "◌", "role": "state.thinking",  "name": "Planning"},
-    "proposed":  {"glyph": "○", "role": "text-2",          "name": "Proposed"},
-    "needs_you": {"glyph": "◆", "role": "state.attention", "name": "Needs you"},
-    "approved":  {"glyph": "◇", "role": "text-2",          "name": "Approved"},
-    "active":    {"glyph": "●", "role": "state.active",    "name": "Active"},
-    "verifying": {"glyph": "●", "role": "state.active",    "name": "Verifying"},
-    "reviewing": {"glyph": "●", "role": "state.active",    "name": "Reviewing"},
-    "blocked":   {"glyph": "■", "role": "state.blocked",   "name": "Blocked"},
-    "paused":    {"glyph": "‖", "role": "state.paused",    "name": "Paused"},
-    "failed":    {"glyph": "✕", "role": "state.blocked",   "name": "Failed"},
-    "done":      {"glyph": "✓", "role": "state.done",      "name": "Done"},
-    "neutral":   {"glyph": "·", "role": "text-2",          "name": "—"},
-    "inactive":  {"glyph": "–", "role": "text-2",          "name": "Inactive"}
+    "planning":  {"glyph": "◌", "ascii": "~", "role": "state.thinking",  "name": "Planning"},
+    "proposed":  {"glyph": "○", "ascii": "o", "role": "text-2",          "name": "Proposed"},
+    "needs_you": {"glyph": "◆", "ascii": "!", "role": "state.attention", "name": "Needs you"},
+    "approved":  {"glyph": "◇", "ascii": "^", "role": "text-2",          "name": "Approved"},
+    "active":    {"glyph": "●", "ascii": "*", "role": "state.active",    "name": "Active"},
+    "verifying": {"glyph": "●", "ascii": "*", "role": "state.active",    "name": "Verifying"},
+    "reviewing": {"glyph": "●", "ascii": "*", "role": "state.active",    "name": "Reviewing"},
+    "blocked":   {"glyph": "■", "ascii": "#", "role": "state.blocked",   "name": "Blocked"},
+    "paused":    {"glyph": "‖", "ascii": "=", "role": "state.paused",    "name": "Paused"},
+    "failed":    {"glyph": "✕", "ascii": "x", "role": "state.blocked",   "name": "Failed"},
+    "done":      {"glyph": "✓", "ascii": "+", "role": "state.done",      "name": "Done"},
+    "neutral":   {"glyph": "·", "ascii": ".", "role": "text-2",          "name": "—"},
+    "inactive":  {"glyph": "–", "ascii": "-", "role": "text-2",          "name": "Inactive"}
   },
   "machines": {
     "mission": {
