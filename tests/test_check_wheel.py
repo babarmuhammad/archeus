@@ -17,7 +17,9 @@ spec.loader.exec_module(check_wheel)
 S = 'archeus/api/static/'
 INDEX = ('<!doctype html><script type="module" src="/assets/app-1.js"></script>'
          '<link rel="stylesheet" href="/assets/app-2.css">')
+MANIFEST = '{"icons": [{"src": "/assets/icon-192.png"}]}'
 GOOD = {S + 'index.html': INDEX, S + 'assets/app-1.js': 'x', S + 'assets/app-2.css': 'y',
+        S + 'sw.js': '', S + 'manifest.webmanifest': MANIFEST, S + 'assets/icon-192.png': '',
         'archeus/__init__.py': ''}
 
 
@@ -42,6 +44,9 @@ def test_a_good_wheel_passes(tmp_path):
     ({'archeus/api/.gitignore': '/static/'}, 'sources, maps or node_modules'),
     ({S + 'index.html': '<link href="/assets/app-2.css">'}, 'references no script'),
     ({S + 'index.html': INDEX + '<script>alert(1)</script>'}, 'inline script'),
+    ({S + 'sw.js': None}, 'no archeus/api/static/sw.js'),
+    ({S + 'manifest.webmanifest': None}, 'no archeus/api/static/manifest.webmanifest'),
+    ({S + 'assets/icon-192.png': None}, 'manifest names icons the wheel lacks'),
 ])
 def test_every_broken_wheel_is_refused(tmp_path, change, why):
     files = dict(GOOD)

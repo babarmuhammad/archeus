@@ -606,14 +606,15 @@ table.canonical {
   width: 100%;
   border-collapse: collapse;
   margin: var(--space-3) 0;
-  display: block;
-  overflow-x: auto;
 }
 
+/* long ids wrap inside their cell: a table that scrolls instead is a scroll
+   region, and one only keyboard users cannot reach (axe scrollable-region-focusable) */
 .grid th,
 .grid td,
 .canonical th,
 .canonical td {
+  overflow-wrap: anywhere;
   text-align: left;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--line);
