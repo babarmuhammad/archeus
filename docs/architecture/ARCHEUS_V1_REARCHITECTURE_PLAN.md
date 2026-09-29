@@ -1000,7 +1000,9 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
     layout run once per focus with positions kept, the client's one `requestAnimationFrame`
     loop that parks, keyboard traversal with Enter to the canonical inspector, an accessible
     mirror from the same read, and the Relations list below 600 px. One edge vocabulary
-    (`EDGE_WORDS` in `relations.ts`) for the list and the graph. 33/33 P18 mutations killed.
+    (`EDGE_WORDS` in `relations.ts`) for the list and the graph. After the pre-push audit: pin,
+    frame-time degrade, a cached static layer under the pulses, focus back to the canvas, grey
+    superseded plans, a tested pulse rule (gate §22.1). 49/49 P18 mutations killed.
     Manual evidence owed: 60 fps on integrated graphics (A10). Deviations: p18-design-gate §22.
 
 **P19 — Client unification**

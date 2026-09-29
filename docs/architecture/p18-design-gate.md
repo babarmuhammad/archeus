@@ -956,12 +956,12 @@ Recorded during implementation as they arise; none is applied silently.
 
 | # | Where | What was approved | What was done, and why | Status |
 |---|---|---|---|---|
-| **I1** | A6 ordering | order by hop, kind rank, **presentation-class** rank, `updated_at`, id | Core orders an **open** row (a state with a way out in `states.py`) before a **settled** one instead of by presentation class. The presentation table is client data (`presentation.json`); Core reading it would put presentation into the API, the thing A1 keeps out. The domain table gives the same practical order (a running attempt before an ended one — tested). | for review |
-| **I2** | A4, A1 | a mission focus returns its approvals | Only the **pending** approval, as the list shows it (`missionEdges`' "waiting on approval"). A membership edge for every approval would have held `approvals.mission_id` from two directions, and one field cannot have one pair of words from both ends; decided approvals are history, read in the mission's inspector. | for review |
-| **I3** | A1, V8 | two structural edges (`tasks.plan_id`, `repositories.project_id`) | Four: also `knowledge_items.project_id` (so a project focus reaches its knowledge, as A4 requires) and `reviews.plan_id` (so a mission focus reaches its reviews). Each is a real column, marked `structural`, drawn at half weight and listed in the mirror; none is on a Relations tab until P19. | for review |
+| **I1** | A6 ordering | order by hop, kind rank, **presentation-class** rank, `updated_at`, id | Core orders an **open** row (a state with a way out in `states.py`) before a **settled** one instead of by presentation class. The presentation table is client data (`presentation.json`); Core reading it would put presentation into the API, the thing A1 keeps out. The domain table gives the same practical order (a running attempt before an ended one — tested). | approved 2026-09-29 |
+| **I2** | A4, A1 | a mission focus returns its approvals | Only the **pending** approval, as the list shows it (`missionEdges`' "waiting on approval"). A membership edge for every approval would have held `approvals.mission_id` from two directions, and one field cannot have one pair of words from both ends; decided approvals are history, read in the mission's inspector. | approved 2026-09-29 |
+| **I3** | A1, V8 | two structural edges (`tasks.plan_id`, `repositories.project_id`) | Four: also `knowledge_items.project_id` (so a project focus reaches its knowledge, as A4 requires) and `reviews.plan_id` (so a mission focus reaches its reviews). Each is a real column, marked `structural`, drawn at half weight and listed in the mirror; none is on a Relations tab until P19. | approved 2026-09-29 |
 | **I4** | A4 | a project focus returns its meetings | Meetings are reached through their relations only: `meetings.project_id` has no index, and §6 forbids a scan. | recorded |
-| **I5** | A11 | Enter opens the inspector; `+/-`, `0`, `/` | Also **F** — focus the graph on the selected node, which is the drill (world → project → mission → execution) — and **P** to mark a path end. Double-click opens, a click selects. Enter keeps its approved meaning. | for review |
-| **I6** | A7 | children appear with one opacity step | They appear at once, with no fade: less motion than approved, never more. The focus-change camera move (≤ 240 ms, none under reduced motion) is built. | recorded |
+| **I5** | A11 | Enter opens the inspector; `+/-`, `0`, `/` | Also **F** — focus the graph on the selected node, which is the drill (world → project → mission → execution) — and **P** to mark a path end. Double-click opens, a click selects. Enter keeps its approved meaning. | approved 2026-09-29 |
+| **I6** | A7 | children appear with one opacity step | They appear at once, with no fade: less motion than approved, never more. The focus-change camera move is not built either (§22.1 D5; this row said it was). | recorded |
 | **I7** | §8 | "This object is not in the graph" | P16's existing wording for a 404 read ("the graph is unavailable: It no longer exists."), so one read failure reads the same everywhere. | recorded |
 | **I8** | A2 allowlist | node fields `kind, id, label, parent, machine, state, attrs, counts, endpoint, missing` | A knowledge item also carries its `type` — the classification the DECISION diamond (A3, V7) is drawn from; never its body. | recorded |
 | **I9** | A13 | chips by relationship field | Chips by the relationship's **words**: two fields can share them ("of mission"), and a person filters by what they read. | recorded |
@@ -970,14 +970,50 @@ Recorded during implementation as they arise; none is applied silently.
 | **I12** | A6 | a neighbourhood from holders' edges | A holder row found by a reverse lookup is loaded **only if it holds an edge to the node** (found by reading the approval → mission path, where the mission's edge exists only while the approval is pending); a node is never drawn unconnected by accident. | recorded |
 | **I13** | §12.3-style regression | P16/P17 mutation suites re-run unchanged | P18's new first entry in the mission and approval invalidation rules moved the text P16's M28 and P17's M11 are anchored on; both runners refused before mutating anything. The anchors now include the new entry; the mutants are the same. | recorded |
 
+### 22.1 Post-audit corrections (2026-09-29)
+
+A pre-push audit of the built view against §1–§21 found seven gaps (F1–F7) and eight places
+where this gate's text does not describe what was built (D1–D8). The user decided them on
+2026-09-29: fix F1–F7, add the 390 px overflow regression, and fold D1–D8 in without turning any
+of them into a new architecture decision. The approved sections above are **not rewritten**: an
+item where the build differs from an approved design is recorded here and held for review.
+
+| # | Gate decision it serves | What changed | Test (mutants) | Architecture? | Status |
+|---|---|---|---|---|---|
+| **F1** | A13 pin | `.` (and a toolbar **Pin/Unpin** button, `aria-pressed`, for the pointer) toggles the selected node in a per-tab, in-memory map keyed by the read path — never stored, never sent, not in the URL; the layout receives the set as fixed; the mirror says "(pinned)". Every node already placed keeps its position (A7) and nothing auto-collapses (D6), so both of A13's guarantees hold for every node today; the pin is what keeps them for this one if either ever changes. | TS `pin: "." toggles…` (M35, M36); e2e `test_closing_the_inspector_returns_to_the_canvas_and_a_pin_is_never_stored` (a reload forgets it; no storage key) | no — completes A13. The `.` key is new, like I5's F and P | key: for review |
+| **F2** | A10 frame-time degrade | `Loop` measures the time between frames of a running animation; three consecutive frames over 20 ms set `degraded` until the animation ends, and one more frame then draws everything again. A degraded frame draws no pulse and no label but the focus's. | TS `three slow frames…` (M37, M46), `degraded, a frame draws…` (M38) | no — completes A10 | fixed |
+| **F3** | A10 proxy (5) | `render.frame()` keeps a **static layer**: an offscreen canvas (never in the DOM) holding everything but the pulses, redrawn only when `staticSig()` — model, visible keys, drawn edges, positions, camera, focus, selection, dimming, path, live set, reduced motion, degrade, size, theme — changes. A frame in which only a pulse moved is one `drawImage` plus one path per pulse (edges looked up by id, indexed once per drawn list). Pulses are drawn **over** the nodes now, as §A10 says. A lost context drops the layer. The proxy is not weakened: it is gated at 1,000 nodes. | TS `a pulse frame reuses the static layer…` (M39, M40, M47); e2e zoom test asserts the copied layer shows the graph (M47) | no — completes A10 | fixed |
+| **F4** | A11 focus order | Closing an inspector (Close, Esc or Back) whose page is a graph returns focus to the canvas, which stayed mounted under the inspector and kept its walk (the same node selected). A two-line rule in `App.tsx`'s focus effect; every other page still focuses `main h1` (P16 §17). | e2e (same test as F1) (M41) | no — completes A11 | fixed |
+| **F5** | A3 plan row | A plan version whose presentation class is `inactive` (superseded, rejected) is drawn at `--text-3`, not only its edge. | TS `a superseded or rejected plan version…` (M34) | no — completes A3 | fixed |
+| **F6** | A8, A18-14 | The pulse decision is one pure function, `model.pulseFor(frame, drawn, live, lastPulse, now, reduced)`, which the view calls. | TS `a pulse: only an execution.* frame…` (M42, M43), with M18 and M32 | no | fixed |
+| **F7** | §15 mutation integrity | M17 left a dangling `else`, so it did not parse and "killed" by a crash. It is a valid mutant now. `mutate_p11._apply` (the engine of P11–P18) refuses a mutant that does not parse, before any run, as **BROKEN MUTANT**, so it can never count. `test_mutation_suites_parse.py` checks every mutant of all eleven suites. `mutate_p18` prints the failing test that names each mutant. A mutant that fails the SPA's type check stops the run in the same way (M41 did once and was corrected). | `test_mutation_suites_parse.py`; M17 killed by `a redraw is one frame…` | no — test infrastructure | fixed (`4ca892d`) |
+| **R390** | A12, A18-28 | The below-600 px test asserts `scrollWidth − innerWidth ≤ 0` at 390 px for a mission graph URL and the world graph URL, not only that the canvas is absent. | e2e `test_below_600_px_the_relations_list_is_the_view` (M45) | no | fixed |
+| **D1** | A1, A6 text | A1 and A6 describe one `EDGES` table that the breadth-first walk reads. As built, `graph.py` holds the same fields as a per-kind `held_edges()` plus `relation_edge()` and the reverse lookups in `_holders()` (the parity cases hold them equal to the list mappers). "`structural` marks two" is four since I3. | parity and query tests, unchanged | no | recorded |
+| **D2** | A2 parent list | As built, a session's parent is its mission, else its project; a review's is its **plan** (A2 says mission; this follows approved I3); a policy decision's is its mission; a context package's and an automation's is its project; an automation run's is its automation (A2 says "others → none"). Each is the row's own column. | query tests, unchanged | differs from A2's text | **for review** |
+| **D3** | A5 | "payload missing → logged once per sha" was not built. It is now: one `archeus.core` warning per missing sha; the view still says "missing" on every read. | `test_a_missing_payload_is_logged_once_per_sha` (M44) | no — completes A5 | fixed |
+| **D4** | A6, A10 proxy (4), A15 | The walk queries **per node** (`rows.where` per id, all inside the one `db.read()`), not "one batched `IN (…)` per edge definition per hop". A response's cost is therefore bounded by the size of the neighbourhoods it reads, not by the node cap: a project with 10,000 knowledge items reads them all before the cap cuts (measured 0.10 s for 1,100). The node cap and the depth cap hold. Proposed: add this to P24's audit of graph cost and aggregation. | `test_a_thousand_node_neighbourhood_is_built_within_budget`, unchanged | differs from A6's text | **for review** |
+| **D5** | A7 focus change | A focus change is a new read, so the view remounts and the camera **jumps** to the new fit: the ≤ 240 ms focus-change tween is not built (zoom and fit do tween). Less motion than approved, never more. I6 above wrongly said it was built; corrected. | — | differs from A7's text | **for review** |
+| **D6** | A10 client cap | "An expand that would exceed 1,000 collapses the farthest expanded cluster first" is not built. It cannot happen: a view holds one read (the client sends no `limit`, so at most 500 nodes) plus one "+N" stub per parent and kind, and expanding only shows nodes already loaded. A stub re-focuses instead. | TS stub test, unchanged | differs from A10's text | **for review** |
+| **D7** | §13 design row | The single `requestAnimationFrame` caller and the `layout.ts` clock/random bans were only in the TS suite. They are now also in `test_design_gates.py`, as §13 says, so they run in the Node-free `test` job. | `test_the_graph_loop_is_the_only_animation_frame_caller` (M49), `test_the_layout_reads_no_clock_and_no_random` (M48) | no — completes §13 | fixed |
+| **D8** | §23 | §23 said everything was built as written except I1–I13, and that "the pulse itself is TS-tested". Both corrected below: what is not built is listed, and the pulse test exists (F6). | — | no | fixed |
+
+M17's anchor moved again with F2's degrade branch; the mutant is the same (the loop always
+schedules another frame).
+
 ## 23. As built
 
 Everything in §1–§21 is built as written and approved (§4.1), except the implementation
-decisions recorded in §22 (I1–I13). Commits: `ecfbacd` (this gate, approved), `20c26ec` (the
+decisions recorded in §22 (I1–I13) and the post-audit corrections of §22.1. **Not built as
+written, held for review (§22.1):** D2 (A2's parent list), D4 (A6's batched per-hop query;
+cost bounded by the neighbourhoods read, not the cap), D5 (no focus-change camera tween) and
+D6 (no farthest-cluster collapse, which one read of at most 500 nodes cannot need). The pin
+key `.` (F1) is new and also for review. Commits: `ecfbacd` (this gate, approved), `20c26ec` (the
 graph query and its two routes), `5bada10` (`EDGE_WORDS` and the invalidation rules),
 `711a052` (the spatial view), `67ae6b6` (tests, boundaries and the mutation suite),
-`24d6190` (the P16/P17 anchors, I13), and this
-as-built commit.
+`24d6190` (the P16/P17 anchors, I13), `f9ad2ee` (as built), and after the audit `4ca892d`
+(F7: broken mutants), `f29fc5e` (F1–F6), `c3deabc` (the 390 px overflow regression),
+`7eabdc9` (D3, D7), `bba3544` (the drill waits for the graph it checks) and the docs commit
+recording §22 and §22.1.
 
 **Backend (two read routes; no migration, no state, no event type).** New:
 `archeus/core/application/graph.py` — `world_graph()` (A4, A6: a breadth-first neighbourhood over
@@ -1011,14 +1047,20 @@ Build: 390 KB JS, 119 KB gzip (was 360 KB), 17 KB CSS.
 | Layer | File | Count |
 |---|---|---|
 | Core edges vs the shared cases; vocabulary coverage | `tests/v1/unit/test_graph_parity.py` | 17 |
-| query over a real database | `tests/v1/integration/test_graph_query.py` | 25 |
+| query over a real database | `tests/v1/integration/test_graph_query.py` | 26 |
 | routes over a real Core; route ↔ TUI list parity | `tests/v1/integration/test_graph_routes.py` | 4 |
 | boundaries (static) | `tests/v1/unit/test_graph_boundaries.py` | 6 |
-| client units | `clients/app/test/graph.test.ts` | 24 |
-| browser | `tests/v1/e2e/test_spa_p18.py` | 8 |
+| client units | `clients/app/test/graph.test.ts` | 30 |
+| browser | `tests/v1/e2e/test_spa_p18.py` | 9 |
+| the loop and the layout, Node-free (D7) | `tests/v1/design/test_design_gates.py` | 2 |
+| every mutant of P8–P18 parses (F7) | `tests/v1/unit/test_mutation_suites_parse.py` | 12 |
 | changed | `test_api_structure.py` (the `graph` allowlist, `P18` pin), `test_core_client.py` and both bindings (`world_graph`, `repository_graph`) | — |
 
-`tools/mutate_p18.py`: **33/33 killed**; each mutant names its direct test (§15), and M33 rebuilds the SPA for its browser test.
+`tools/mutate_p18.py`: **49/49 killed** — M01–M33 of §15, and M34–M49 for the §22.1
+corrections (F1 M35–M36, F2 M37, M38, M46, F3 M39, M40, M47, F4 M41, F5 M34, F6 M42–M43, D3
+M44, the 390 px regression M45, D7 M48–M49). The runner prints the failing test that names
+each mutant, and refuses a mutant that does not parse (F7); a mutant guarded by a browser test
+rebuilds the SPA.
 
 **Acceptance scenarios (§16), each with its test.** 
 | # | Scenario | Test |
@@ -1028,16 +1070,16 @@ Build: 390 KB JS, 119 KB gzip (was 360 KB), 17 KB CSS.
 | A18-03 | mission focus | e2e drill (`F` on the mission): plan and execution in the mirror |
 | A18-04 | Relations ↔ graph parity | `test_core_edges_equal_the_list_mapper_on_every_shared_case` (15 cases); `test_the_route_and_the_tui_list_show_the_same_edges` (real mission) |
 | A18-05 | keyboard traversal visits every edge in order | `↓ visits every edge of the focus…` (TS); e2e drill |
-| A18-06 | Enter → `#/o/<kind>/<id>`, Back → the graph | e2e drill |
+| A18-06 | Enter → `#/o/<kind>/<id>`, Back → the graph; closing returns focus to the canvas | e2e drill; `test_closing_the_inspector_returns_to_the_canvas_and_a_pin_is_never_stored` (F4) |
 | A18-07/08 | zoom, fit | e2e `test_zoom_fit_and_the_loop_parking` |
 | A18-09/10 | search; search expands ancestors | TS `search finds loaded nodes and expands their ancestors`; e2e drill |
 | A18-11 | focus + context | TS |
 | A18-12 | expand/collapse | TS `collapse hides every descendant…` |
 | A18-13 | edge lifting with counts | TS `edges lift to the nearest visible ancestor…` |
-| A18-14 | live execution | TS `only an execution Core says is active is live…`; e2e `test_a_running_execution_is_live_on_its_edge` (the live edge; the pulse itself is TS-tested) |
+| A18-14 | live execution | TS `only an execution Core says is active is live…`; TS `a pulse: only an execution.* frame about a live execution, once per 2 s per edge, never reduced` (F6); e2e `test_a_running_execution_is_live_on_its_edge` (the live edge) |
 | A18-15 | reduced motion | TS loop test; e2e `test_reduced_motion_moves_nothing` (a zoom is exactly one frame) |
 | A18-16/17 | hidden page, lost context park the loop | TS loop tests; e2e (`visibilitychange`, dispatched `contextlost`/`contextrestored`) |
-| A18-18 | 1,000-node budget | TS layout proxy; `test_a_thousand_node_neighbourhood_is_built_within_budget` (0.10 s measured, gate 1.5 s); 60 fps manual (below) |
+| A18-18 | 1,000-node budget | TS layout proxy; `test_a_thousand_node_neighbourhood_is_built_within_budget` (0.10 s measured, gate 1.5 s); TS `a pulse frame reuses the static layer…` (proxy 5, F3) and the frame-time degrade tests (F2); 60 fps manual (below) |
 | A18-19 | > 250 → dots, batched | TS `above 250 visible nodes every node is a dot…` |
 | A18-20 | truncation, `hidden`, "+N" | `test_the_cap_holds_and_hidden_counts_what_it_cut`; TS stub test |
 | A18-21 | deterministic ordering | `test_nodes_come_in_hop_then_kind_rank_order_and_the_same_bytes_twice`, `test_edges_are_sorted_and_ids_are_stable` |
@@ -1047,14 +1089,14 @@ Build: 390 KB JS, 119 KB gzip (was 360 KB), 17 KB CSS.
 | A18-25 | unknown focus | `test_an_unknown_focus_is_not_found`; routes 404; e2e `test_an_unknown_focus_says_so` |
 | A18-26 | non-node kind as focus | `test_the_graph_needs_a_credential_and_refuses_what_is_not_a_node` |
 | A18-27 | mirror; axe | TS mirror test; e2e `test_axe_and_no_sideways_scroll_on_the_graph` |
-| A18-28 | < 600 px | e2e `test_below_600_px_the_relations_list_is_the_view` |
+| A18-28 | < 600 px | e2e `test_below_600_px_the_relations_list_is_the_view` (no canvas, the list, and no sideways scroll at 390 px) |
 | A18-29 | no mutation | `test_the_graph_routes_write_nothing`; boundary scans |
 | A18-30 | no reasoning exposed | `test_a_route_decision_shows_recorded_selection_facts_only`, `test_every_node_carries_only_allowlisted_keys` |
 | A18-31 | no inferred relationships | `test_every_edge_is_a_recorded_column_or_relation_row` |
 | A18-32 | API/client generation parity | `gen_api_docs.py --check`, `test_api_structure.py`, `test_core_client.py` |
 
 
-**Regression.** Full suite (`--basetemp` short): **4,801 passed, 0 failed** (15 skipped, 6 xfailed). Mutation suites, every mutant killed: P8 22/22, P9 36/36, P10 37/37, P11 36/36, P12 28/28, P13 16/16, P14 21/21, P15 23/23, P16 29/29, P17 28/28, P18 33/33 (P16 and P17 after their anchors moved with the invalidation table, §22 I13). e2e + G3 with `ARCHEUS_E2E=1`: 27 passed, 3 skipped (the GUI/TUI functions over the in-process binding), 1 xfailed (P19). `npm test` 64/64, `tsc` and `vite build` clean, `gen_ui.py --check`, `gen_api_docs.py --check`, Ruff and mkdocs `--strict` clean; the wheel built, installed in a clean venv, `check_wheel.py` passes (the SPA served with Node off PATH) and the installed Core lists both graph routes. CI: after the push (§20 item 5).
+**Regression (after the §22.1 corrections, 2026-09-29, on `bba3544`).** Full suite (`--basetemp` short): **4,817 passed, 0 failed** (15 skipped, 6 xfailed). Two earlier runs of the same list each stopped on one timing failure, both load-dependent and both from a test reading the moment before an asynchronous step lands: the P18 drill read `data-graph-focus` before the new graph rendered (fixed in `bba3544`, which waits for it as the project step already did), and P15's `test_R5_presence_is_traced_on_transitions_only_with_the_connection` read the events between `sse._unregister` lowering the count and `_trace` appending `device.stream_closed` (passes 16/16 alone; P15's test, not changed here — tracked). Mutation suites, every mutant killed and none broken: P8 22/22, P9 36/36, P10 37/37, P11 36/36, P12 28/28, P13 16/16, P14 21/21, P15 23/23, P16 29/29, P17 28/28, **P18 49/49**. e2e + G3 with `ARCHEUS_E2E=1`: 28 passed, 3 skipped (the GUI/TUI functions over the in-process binding), 1 xfailed (P19). `npm test` 70/70; `tsc` and `vite build` clean (392 KB JS, 120 KB gzip; 17 KB CSS); `gen_ui.py`, `gen_api_docs.py` and `gen_plugin.py --check`, Ruff and mkdocs `--strict` clean; the wheel built, installed in a clean venv, `check_wheel.py` passes (the SPA served with Node off PATH) and the installed Core lists both graph routes, `GET`, `observe`. CI: after the push (§20 item 5).
 
 **Manual evidence still owed by the user (not claimable from CI).**
 
@@ -1077,4 +1119,5 @@ execution while the graph is open; a live execution with no progress in that tim
 thick-static or plain edge only.
 
 **DESIGN_GATE = IMPLEMENTED** once the push is approved and CI is green on every job
-(I1, I2, I3 and I5 await the user's review).
+(I1, I2, I3 and I5 approved by the user, 2026-09-29; the `.` pin key, D2, D4, D5 and D6
+await review, §22.1).
