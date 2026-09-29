@@ -263,6 +263,10 @@ def test_a_mission_shows_its_pending_approval_as_the_list_does(db, world, actor)
     assert ('approval', old) not in keys(g)
     back = read(db, G.world_graph, ('approval', apr), 1, 500)
     assert ('mission', world['mid']) in keys(back)
+    # a decided approval has no edge to its mission, so nothing is drawn beside it
+    # unconnected (§22 G12)
+    alone = read(db, G.world_graph, ('approval', old), 1, 500)
+    assert keys(alone) == [('approval', old)] and alone['edges'] == []
     t = read(db, G.world_graph, ('plan', world['p2']), 1, 500)
     assert all(e['structural'] for e in t['edges'] if e['field'] == 'tasks.plan_id')
 

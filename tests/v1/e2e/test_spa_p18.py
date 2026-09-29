@@ -1,0 +1,254 @@
+"""P18 in a real browser against a real Core (p18-design-gate §13, §16): the
+drill world → project → mission → execution, Enter to the canonical inspector
+and Back, zoom and fit and find by keyboard, the loop parking on a hidden page,
+a lost context and reduced motion, the import graph, the 390 px list fallback,
+axe-core and the overflow audit. A check floor keeps a suite that silently
+checks nothing from passing."""
+
+import os
+import time
+
+import pytest
+
+from archeus.core import engine, ports, runtime
+from archeus.harnesses.fake import FakeHarness
+from claude_sessions import proc
+from v1.judge.http import TempCore
+from v1.judge.support import FixtureRepo
+
+from .conftest import wait
+from .test_spa_p16 import AXE, Checks, _go, _mission, _open, _settled
+
+SLOW = {'work': [{'emit': {'type': 'working'}}, {'emit': {'type': 'working'}},
+                 {'sleep': 1}, {'emit': {'type': 'working'}}, {'sleep': 30}]}
+
+
+@pytest.fixture
+def slow(archeus_home):
+    tc = TempCore(archeus_home, ports=runtime.Ports(
+        brain=ports.FixedPlanBrain(engine.SKELETON_PLAN), scenarios=dict(SLOW),
+        executors=[FakeHarness()])).start()
+    yield tc
+    for p in list(tc.core.manager._procs.values()):
+        proc.kill_pid_tree(p['handle'].pid, p['handle'].create_time)
+    tc.stop(kill=True)
+
+
+def _project(tc, archeus_home):
+    repo = FixtureRepo.create('layered-python', os.path.dirname(str(archeus_home)))
+    r = tc.http('POST', '/v1/projects', body={'name': 'Atlas', 'root_paths': [repo.path],
+                                              'idempotency_key': 'prj-%f' % time.time()})
+    assert r.status == 200, r.body
+    return r.json()
+
+
+def _graph(page):
+    g = page.locator('.graph')
+    g.wait_for(timeout=15000)
+    return g
+
+
+def _mirror(page):
+    return page.locator('[data-graph-mirror] li[data-key]').evaluate_all(
+        'els => els.map(e => e.dataset.key)')
+
+
+def _find(page, text):
+    page.focus('canvas.graph-canvas')
+    page.keyboard.press('/')
+    page.keyboard.type(text)
+    page.keyboard.press('Escape')               # back to the canvas
+
+
+def test_the_drill_world_project_mission_execution_and_back(browser, core, archeus_home):
+    """A18-01/02/03/06/09/10: every step a URL, the list mirror equal to what
+    is drawn, Enter to the canonical inspector and Back to the same focus."""
+    check = Checks()
+    project = _project(core, archeus_home)
+    r = core.http('POST', '/v1/missions', body={
+        'title': 'Drill me', 'objective': 'o', 'project_id': project['project']['id'],
+        'idempotency_key': 'drill-%f' % time.time()})
+    assert r.status == 200, r.body
+    mid = r.json()['id']
+    _settled(core, mid, 'COMPLETED')
+    context, page, errors = _open(browser, core)
+    _go(page, '#/world/graph')
+    g = _graph(page)
+    check(g.get_attribute('data-graph-focus') == 'workspace', 'world level')
+    check('project:%s' % project['project']['id'] in _mirror(page), 'the project is a cluster at world level')
+    check(not [k for k in _mirror(page) if not k.startswith(('project:', 'more:'))],
+          'the world level loads no child row')
+    page.focus('canvas.graph-canvas')
+    page.keyboard.press('f')                    # focus the graph on the project
+    wait(page, lambda: page.evaluate('location.hash') == '#/world/graph/project/%s' % project['project']['id'],
+         what='the project focus URL')
+    g = _graph(page)
+    wait(page, lambda: 'mission:%s' % mid in _mirror(page), what="the project's mission")
+    _find(page, 'Drill me')
+    wait(page, lambda: g.get_attribute('data-graph-at') == 'mission:%s' % mid, what='found')
+    page.focus('canvas.graph-canvas')
+    page.keyboard.press('f')                    # and on to the mission
+    wait(page, lambda: page.evaluate('location.hash') == '#/world/graph/mission/%s' % mid,
+         what='the mission focus URL')
+    g = _graph(page)
+    check(g.get_attribute('data-graph-focus') == 'mission:%s' % mid, 'mission focus')
+    keys = _mirror(page)
+    ex = [k for k in keys if k.startswith('execution:')]
+    check(ex and 'mission:%s' % mid in keys and any(k.startswith('plan:') for k in keys),
+          'the mission graph holds its plan and its execution')
+    _find(page, 'Attempt 1')
+    wait(page, lambda: g.get_attribute('data-graph-at') == ex[0], what='search lands on the attempt')
+    page.focus('canvas.graph-canvas')
+    page.keyboard.press('Enter')
+    wait(page, lambda: page.evaluate('location.hash').startswith('#/o/execution/'),
+         what='Enter opens the canonical inspector')
+    check(page.evaluate('location.hash') == '#/o/execution/%s' % ex[0].split(':', 1)[1],
+          'the inspector of the node that was selected')
+    page.go_back()
+    wait(page, lambda: page.evaluate('location.hash') == '#/world/graph/mission/%s' % mid,
+         what='Back returns to the graph')
+    check(page.locator('.graph').is_visible(), 'the graph again')
+    check(not errors, errors)
+    assert check.n >= 8
+    context.close()
+
+
+def test_zoom_fit_and_the_loop_parking(browser, core):
+    """A18-07/08/16/17: zoom and fit by keyboard; a hidden page and a lost
+    context park the one loop; nothing draws until they end."""
+    check = Checks()
+    mid = _mission(core, 'Zoom me')
+    _settled(core, mid, 'COMPLETED')
+    context, page, errors = _open(browser, core)
+    _go(page, '#/world/graph/mission/%s' % mid)
+    g = _graph(page)
+    canvas = page.locator('canvas.graph-canvas')
+    wait(page, lambda: g.get_attribute('data-graph-loop') == 'parked', what='idle parks')
+    z0 = float(canvas.get_attribute('data-zoom'))
+    page.focus('canvas.graph-canvas')
+    page.keyboard.press('+')
+    wait(page, lambda: float(canvas.get_attribute('data-zoom')) > z0 * 1.2, what='zoom in')
+    wait(page, lambda: g.get_attribute('data-graph-loop') == 'parked', what='parks after the zoom')
+    check(True, 'zoomed and parked')
+    page.keyboard.press('0')
+    wait(page, lambda: abs(float(canvas.get_attribute('data-zoom')) - z0) < 0.01, what='fit')
+    check(True, 'fit')
+    # a hidden page: nothing is scheduled, whatever is asked
+    page.evaluate("() => { Object.defineProperty(document, 'hidden', {configurable: true, get: () => true});"
+                  " document.dispatchEvent(new Event('visibilitychange')); }")
+    frames = int(canvas.get_attribute('data-frames'))
+    page.keyboard.press('+')
+    page.wait_for_timeout(400)
+    check(g.get_attribute('data-graph-loop') == 'parked', 'hidden: parked')
+    check(int(canvas.get_attribute('data-frames')) == frames, 'hidden: no frame drawn')
+    page.evaluate("() => { Object.defineProperty(document, 'hidden', {configurable: true, get: () => false});"
+                  " document.dispatchEvent(new Event('visibilitychange')); }")
+    wait(page, lambda: int(canvas.get_attribute('data-frames')) > frames, what='visible again: the owed frame')
+    # a lost context
+    page.evaluate("() => document.querySelector('canvas.graph-canvas').dispatchEvent(new Event('contextlost'))")
+    frames = int(canvas.get_attribute('data-frames'))
+    page.keyboard.press('-')
+    page.wait_for_timeout(400)
+    check(int(canvas.get_attribute('data-frames')) == frames, 'lost: no frame drawn')
+    page.evaluate("() => document.querySelector('canvas.graph-canvas').dispatchEvent(new Event('contextrestored'))")
+    wait(page, lambda: int(canvas.get_attribute('data-frames')) > frames, what='restored: redrawn')
+    check(not errors, errors)
+    assert check.n >= 6
+    context.close()
+
+
+def test_reduced_motion_moves_nothing(browser, core):
+    """A18-15: under reduced motion a zoom is one frame, never a tween."""
+    mid = _mission(core, 'Still')
+    _settled(core, mid, 'COMPLETED')
+    context, page, errors = _open(browser, core, reduced_motion='reduce')
+    _go(page, '#/world/graph/mission/%s' % mid)
+    g = _graph(page)
+    canvas = page.locator('canvas.graph-canvas')
+    wait(page, lambda: g.get_attribute('data-graph-loop') == 'parked', what='idle')
+    frames = int(canvas.get_attribute('data-frames'))
+    page.focus('canvas.graph-canvas')
+    page.keyboard.press('+')
+    page.wait_for_timeout(500)
+    assert int(canvas.get_attribute('data-frames')) - frames == 1
+    assert not errors, errors
+    context.close()
+
+
+def test_a_running_execution_is_live_on_its_edge(browser, slow):
+    """A18-14: live from Core's state; a pulse only for a frame about it."""
+    mid = _mission(slow, 'Still running')
+    deadline = time.monotonic() + 30
+    while not [x for x in slow.http('GET', '/v1/world/graph?focus=mission:' + mid).json()['nodes']
+               if x['kind'] == 'execution' and x.get('state') == 'RUNNING']:
+        assert time.monotonic() < deadline, 'no running execution'
+        time.sleep(0.1)
+    context, page, errors = _open(browser, slow)
+    _go(page, '#/world/graph/mission/%s' % mid)
+    g = _graph(page)
+    wait(page, lambda: int(g.get_attribute('data-graph-live') or 0) >= 1, what='a live edge')
+    assert not errors, errors
+    context.close()
+
+
+def test_the_repository_import_graph(browser, core, archeus_home):
+    """A18-23/24: the stored payload, focused and one level down."""
+    project = _project(core, archeus_home)
+    rep = project['repositories'][0]['id']
+    deadline = time.monotonic() + 30
+    while not core.http('GET', '/v1/repositories/%s/graph' % rep).json().get('available'):
+        assert time.monotonic() < deadline, 'the repository was never inspected'
+        time.sleep(0.2)
+    context, page, errors = _open(browser, core)
+    _go(page, '#/world/graph/repository/%s/modules' % rep)
+    _graph(page)
+    keys = _mirror(page)
+    assert keys and all(k.startswith('path:') for k in keys), keys
+    top = [k for k in keys if '/' not in k[len('path:'):] and not k.startswith('path:outside:')]
+    assert top, keys
+    assert not errors, errors
+    context.close()
+
+
+def test_an_unknown_focus_says_so(browser, core):
+    context, page, _errors = _open(browser, core)
+    _go(page, '#/world/graph/mission/msn_01J0000000000000000000000Z')
+    page.get_by_text('no longer exists', exact=False).first.wait_for(timeout=10000)
+    context.close()
+
+
+def test_below_600_px_the_relations_list_is_the_view(browser, core):
+    """A18-28: no canvas on a phone; the Relations list instead."""
+    mid = _mission(core, 'Phone')
+    _settled(core, mid, 'COMPLETED')
+    context, page, errors = _open(browser, core, viewport={'width': 390, 'height': 844})
+    _go(page, '#/world/graph/mission/%s' % mid)
+    page.locator('[data-graph-narrow]').wait_for(timeout=10000)
+    assert page.locator('canvas').count() == 0
+    page.locator('.rel-list, .relations').first.wait_for(timeout=10000)
+    assert page.locator('.graph-toggle').count() == 0      # no link to what cannot be shown
+    assert not errors, errors
+    context.close()
+
+
+def test_axe_and_no_sideways_scroll_on_the_graph(browser, core):
+    """A18-27: axe-core finds nothing serious; nothing overflows at 768-1920."""
+    if not os.path.isfile(AXE):
+        pytest.skip('axe-core is not installed (npm ci in clients/app)')
+    mid = _mission(core, 'Accessible graph')
+    _settled(core, mid, 'COMPLETED')
+    for width in (768, 1280, 1920):
+        context, page, errors = _open(browser, core, bypass_csp=True,
+                                      viewport={'width': width, 'height': 900})
+        _go(page, '#/world/graph/mission/%s' % mid)
+        _graph(page)
+        page.wait_for_timeout(300)
+        over = page.evaluate('() => document.documentElement.scrollWidth - innerWidth')
+        assert over <= 0, (width, over)
+        page.add_script_tag(path=AXE)
+        bad = page.evaluate('async () => (await axe.run(document, {resultTypes: ["violations"]})).violations'
+                            '.filter(v => ["serious", "critical"].includes(v.impact))'
+                            '.map(v => v.id + ": " + v.nodes.map(n => n.target.join(" ")).slice(0, 3).join(", "))')
+        assert not bad, (width, bad)
+        assert not errors, errors
+        context.close()

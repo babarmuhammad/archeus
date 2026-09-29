@@ -333,9 +333,10 @@ def world_graph(conn, focus=None, depth=None, limit=LIMIT_DEFAULT):
             row = loaded[(k, i)][1]
             cand = held_edges(conn, k, row.entity)
             for hk, hrow in _holders(conn, k, i):
-                cand += [x for x in held_edges(conn, hk, hrow.entity)
-                         if _key(x['to']) == (k, i)]
-                found.setdefault((hk, hrow.entity.id), hrow)
+                mine = [x for x in held_edges(conn, hk, hrow.entity) if _key(x['to']) == (k, i)]
+                if mine:                   # a row that holds no edge here is not a neighbour
+                    cand += mine
+                    found.setdefault((hk, hrow.entity.id), hrow)
             cand += [relation_edge(r) for r in _relations(conn, k, i)]
             for x in cand:
                 ek = _edge_key(x)

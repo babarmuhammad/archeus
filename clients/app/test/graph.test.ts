@@ -1,0 +1,415 @@
+// P18: the spatial view's pure parts (p18-design-gate §13, §15): the encoding
+// against the renderer, the G4 mechanisms, keyboard traversal, the mirror,
+// layout determinism, stability and budget, level of detail, the one loop and
+// its parking, energy from Core's state, routes and invalidation.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { DASH, ENCODING, dashOf, lookOf, tracePath } from '../src/graph/encoding.ts';
+import { allExpanded, around, build, inFocus, keyOf, lifted, liveExecutions, path, pulseEdge, search, toggle, visible, type GraphData } from '../src/graph/model.ts';
+import { ITERATIONS, layout } from '../src/graph/layout.ts';
+import { draw, LOD_NODES, type Scene } from '../src/graph/render.ts';
+import { Loop, type LoopHost } from '../src/graph/loop.ts';
+import { start, step } from '../src/graph/keys.ts';
+import { mirrorRows } from '../src/graph/mirror.ts';
+import { TIER_STYLE } from '../src/graph/relations.ts';
+import { present } from '../src/state/present.ts';
+import { href, parse } from '../src/nav/destinations.ts';
+import { staleBy } from '../src/data/invalidation.ts';
+
+const P = { kind: 'project', id: 'prj_1' };
+const M = { kind: 'mission', id: 'msn_1' };
+const PL = { kind: 'plan', id: 'pln_1' };
+const T1 = { kind: 'task', id: 'tsk_1' };
+const T2 = { kind: 'task', id: 'tsk_2' };
+const X1 = { kind: 'execution', id: 'exe_1' };
+const X2 = { kind: 'execution', id: 'exe_2' };
+const K = { kind: 'knowledge_item', id: 'kn_1' };
+
+const e = (field: string, from: { kind: string; id: string }, to: { kind: string; id: string }, extra = {}) => ({
+  id: `${field}|${from.kind}:${from.id}|${to.kind}:${to.id}`,
+  from,
+  to,
+  field,
+  rel: null,
+  tier: null,
+  inactive: false,
+  structural: false,
+  ...extra,
+});
+
+const DATA: GraphData = {
+  nodes: [
+    { ...M, label: 'Ship the chart', parent: P, machine: 'mission', state: 'EXECUTING' },
+    { ...P, label: 'Atlas', parent: null },
+    { ...PL, label: 'Plan v1', parent: M, machine: 'plan', state: 'APPROVED' },
+    { ...T1, label: 'Write it', parent: PL, machine: 'task', state: 'RUNNING' },
+    { ...T2, label: 'Test it', parent: PL, machine: 'task', state: 'PENDING' },
+    { ...X1, label: 'Attempt 1', parent: T1, machine: 'execution', state: 'ENDED_HANDOFF' },
+    { ...X2, label: 'Attempt 2', parent: T1, machine: 'execution', state: 'RUNNING' },
+    { ...K, label: 'Use bars', parent: P, machine: 'knowledge_item', state: 'CONFIRMED', type: 'DECISION' },
+    { kind: 'decision', id: 'dec_1', label: 'decision dec_1', endpoint: true, missing: false },
+  ],
+  edges: [
+    e('missions.project_id', M, P),
+    e('plans.mission_id', PL, M),
+    e('tasks.plan_id', T1, PL, { structural: true }),
+    e('tasks.plan_id', T2, PL, { structural: true }),
+    e('Task.depends_on', T2, T1),
+    e('executions.task_id', X1, T1),
+    e('executions.task_id', X2, T1),
+    e('executions.mission_id', X2, M),
+    e('Execution.handoff_from', X2, X1),
+    e('relations.learned_from', K, M, { rel: 'learned_from', tier: 'INFERRED' }),
+    e('relations.motivated', { kind: 'decision', id: 'dec_1' }, K, { rel: 'motivated', tier: 'AMBIGUOUS' }),
+  ],
+  hidden: [{ parent: M, kind: 'session', count: 3 }],
+  truncated: true,
+};
+
+const m = build(DATA);
+const k = keyOf;
+
+// ── the encoding against the renderer (A3, M04) ──
+
+function recorder() {
+  const ops: string[] = [];
+  const state: Record<string, unknown> = {};
+  const ctx = new Proxy(state, {
+    get(t, p: string) {
+      if (p in t) return t[p];
+      return (...a: unknown[]) => {
+        ops.push(`${p}(${a.map((x) => (typeof x === 'number' ? Math.round(x * 100) / 100 : JSON.stringify(x))).join(',')})`);
+      };
+    },
+    set(t, p: string, v) {
+      t[p] = v;
+      if (p === 'fillStyle' || p === 'strokeStyle') ops.push(`${p}=${String(v)}`);
+      return true;
+    },
+  }) as unknown as CanvasRenderingContext2D;
+  return { ctx, ops };
+}
+
+function scene(data: GraphData, extra: Partial<Scene> = {}): Scene {
+  const mm = build(data);
+  const vis = visible(mm, allExpanded(mm));
+  const keys = mm.nodes.map(keyOf).filter((x) => vis.has(x));
+  const pos = new Map(keys.map((x, i) => [x, { x: i * 10, y: (i % 7) * 10 }]));
+  return {
+    model: mm, keys, drawn: lifted(mm, vis), pos, cam: { x: 0, y: 0, k: 1 }, focus: null, context: null, live: new Set(), liveStatic: false,
+    pulse: new Map(), colour: (v) => v, width: 100, height: 100, dpr: 1, ...extra,
+  };
+}
+
+test('every kind in the encoding is drawn as its own shape, filled or stroked as encoded (A3)', () => {
+  for (const [kind, look] of Object.entries(ENCODING)) {
+    const { ctx, ops } = recorder();
+    draw(ctx, scene({ nodes: [{ kind, id: 'x', label: 'x' }], edges: [] }));
+    const want = recorder();
+    const { filled } = tracePath(want.ctx, look.shape, 0, 0, kind === 'project' ? 26 : look.shape === 'dot' ? 4 : ['circle', 'square', 'ring', 'folder'].includes(look.shape) ? 10 : 7);
+    const traced = want.ops.join(';');
+    assert.ok(ops.join(';').includes(traced), `${kind}: its shape is not what the encoding traces`);
+    assert.ok(ops.includes(filled ? 'fill()' : 'stroke()'), kind);
+  }
+  assert.equal(lookOf('knowledge_item', false, 'DECISION').shape, 'diamond');
+  assert.equal(lookOf('session').shape, 'ring'); // P16 §20.10, not "person" (V1)
+  assert.equal(lookOf('decision', true).shape, 'endpoint');
+});
+
+test('each confidence tier is drawn with its own dash; a column edge is solid (M04)', () => {
+  assert.deepEqual(TIER_STYLE, { EXTRACTED: 'solid', INFERRED: 'dashed', AMBIGUOUS: 'dotted' });
+  assert.deepEqual(dashOf('INFERRED'), [6, 4]);
+  assert.deepEqual(dashOf('AMBIGUOUS'), [1.5, 3]);
+  assert.deepEqual(dashOf('EXTRACTED'), []);
+  assert.deepEqual(dashOf(null), []);
+  const { ctx, ops } = recorder();
+  draw(ctx, scene({ nodes: [{ ...K, label: 'k' }, { ...M, label: 'm' }], edges: [e('relations.learned_from', K, M, { tier: 'INFERRED' })] }));
+  assert.ok(ops.includes(`setLineDash(${JSON.stringify(DASH.dashed)})`), ops.join('\n'));
+});
+
+test('only missions, tasks and executions are coloured by state', () => {
+  const { ctx, ops } = recorder();
+  draw(ctx, scene({ nodes: [{ ...M, label: 'm', machine: 'mission', state: 'EXECUTING' }, { ...K, label: 'k', machine: 'knowledge_item', state: 'CONFIRMED' }], edges: [] }));
+  const fills = ops.filter((o) => o.startsWith('fillStyle=')).map((o) => o.slice(10));
+  assert.ok(fills.includes('--state-active'));
+  assert.ok(!fills.some((f) => f.startsWith('--state-') && f !== '--state-active'));
+});
+
+// ── the G4 mechanisms (A7, A13) ──
+
+test('edges lift to the nearest visible ancestor and count what they stand for (M24)', () => {
+  const closed = toggle(allExpanded(m), k(PL)); // collapse the plan: tasks and executions hide
+  const vis = visible(m, closed);
+  assert.ok(vis.has(k(PL)) && !vis.has(k(T1)) && !vis.has(k(X2)));
+  const d = lifted(m, vis);
+  const toMission = d.find((x) => [x.a, x.b].includes(k(M)) && [x.a, x.b].includes(k(PL)));
+  // plans.mission_id + X2's executions.mission_id, lifted to the plan
+  assert.equal(toMission?.count, 2);
+  assert.ok(!d.some((x) => x.a === x.b));
+});
+
+test('collapse hides every descendant, expand shows them again (M26)', () => {
+  const closed = toggle(allExpanded(m), k(M));
+  const vis = visible(m, closed);
+  for (const x of [PL, T1, T2, X1, X2]) assert.ok(!vis.has(k(x)), x.id);
+  assert.ok(vis.has(k(M)) && vis.has(k(P)) && vis.has(k(K)));
+  assert.ok(visible(m, toggle(closed, k(M))).has(k(X2)));
+});
+
+test('focus + context keeps the focus and its neighbours, dims the rest (M25)', () => {
+  const d = lifted(m, visible(m, allExpanded(m)));
+  const ctx = inFocus(d, k(X2))!;
+  assert.deepEqual([...ctx].sort(), [k(M), k(T1), k(X1), k(X2)].sort());
+  assert.equal(inFocus(d, null), null);
+});
+
+test('search finds loaded nodes and expands their ancestors, asking Core nothing (M16)', () => {
+  const closed = toggle(toggle(allExpanded(m), k(M)), k(PL));
+  const { hits, expanded } = search(m, closed, 'attempt 2');
+  assert.deepEqual(hits, [k(X2)]);
+  assert.ok(visible(m, expanded).has(k(X2)));
+  assert.deepEqual(search(m, closed, 'more').hits, []); // the "+N" stub is not a node
+});
+
+test('a path runs over loaded edges only; none is invented', () => {
+  const p = path(m, k(X1), k(P))!;
+  assert.deepEqual(p, path(m, k(X1), k(P))); // the same answer every time
+  assert.equal(p[0], k(X1));
+  assert.equal(p[p.length - 1], k(P));
+  for (let i = 0; i + 1 < p.length; i++)
+    assert.ok(m.edges.some((x) => [k(x.from), k(x.to)].includes(p[i]) && [k(x.from), k(x.to)].includes(p[i + 1])), `${p[i]}→${p[i + 1]} is no loaded edge`);
+  const island = build({ nodes: [{ ...M, label: 'm' }, { ...K, label: 'k' }], edges: [] });
+  assert.equal(path(island, k(M), k(K)), null);
+});
+
+test('what the cap cut is one "+N" stub per parent and kind, listed and drawable', () => {
+  const stub = m.nodes.find((n) => n.kind === 'more')!;
+  assert.equal(stub.label, '+3 more session');
+  assert.equal(m.parentOf.get(keyOf(stub)), k(M));
+});
+
+// ── keyboard traversal (A11, M15) ──
+
+test('↓ visits every edge of the focus in the drawn order and wraps; → crosses; ← returns', () => {
+  const d = lifted(m, visible(m, allExpanded(m)));
+  const edges = around(d, k(M));
+  let w = start(k(M));
+  const seen: string[] = [];
+  for (let i = 0; i < edges.length; i++) {
+    seen.push(edges[w.sel].other);
+    w = step(w, 'ArrowDown', d, k(M)).walk;
+  }
+  assert.deepEqual(seen, edges.map((x) => x.other));
+  assert.equal(w.sel, 0);
+  assert.equal(step(w, 'ArrowUp', d, k(M)).walk.sel, edges.length - 1);
+  const crossed = step(w, 'ArrowRight', d, k(M)).walk;
+  assert.equal(crossed.at, edges[0].other);
+  const back = step(crossed, 'ArrowLeft', d, k(M)).walk;
+  assert.equal(back.at, k(M));
+  assert.equal(around(d, k(M))[back.sel].other, crossed.at);
+  assert.equal(step(crossed, 'Home', d, k(M)).walk.at, k(M));
+  assert.equal(step(w, 'Enter', d, k(M)).command, 'open');
+  for (const [key, cmd] of [['+', 'zoom-in'], ['-', 'zoom-out'], ['0', 'fit'], ['/', 'search'], [' ', 'toggle']] as const)
+    assert.equal(step(w, key, d, k(M)).command, cmd);
+});
+
+// ── the mirror (A11, M14) ──
+
+test('the mirror lists exactly the loaded nodes — collapsed ones and stubs too — with their edges in words', () => {
+  const rows = mirrorRows(m);
+  assert.deepEqual(rows.map((r) => r.k), m.nodes.map(keyOf));
+  const x2 = rows.find((r) => r.k === k(X2))!;
+  assert.ok(x2.edges.some((x) => x.text === 'continues Attempt 1'));
+  assert.ok(rows.find((r) => r.k === k(X1))!.edges.some((x) => x.text === 'continued by Attempt 2'));
+  assert.ok(rows.find((r) => r.k === k(K))!.edges.some((x) => x.text === 'learned_from Ship the chart (inferred)'));
+});
+
+// ── layout (A7, A10: M13, M28) ──
+
+function big(n: number) {
+  const nodes = [{ ...P, label: 'p' }] as GraphData['nodes'];
+  const edges = [];
+  for (let i = 0; i < n - 1; i++) {
+    const me = { kind: 'knowledge_item', id: `kn_${i}` };
+    nodes.push({ ...me, label: `fact ${i}`, parent: P });
+    edges.push(e('knowledge_items.project_id', me, P, { structural: true }));
+  }
+  return { nodes, edges } as GraphData;
+}
+
+function place(d: GraphData, seed = 'focus', prev?: Map<string, { x: number; y: number }>) {
+  const mm = build(d);
+  const vis = visible(mm, allExpanded(mm));
+  const keys = mm.nodes.map(keyOf).filter((x) => vis.has(x));
+  return layout({ keys, parentOf: (x) => mm.parentOf.get(x) ?? null, radius: () => 8, links: lifted(mm, vis).map((x) => [x.a, x.b] as [string, string]), seed, prev });
+}
+
+test('the same data and focus give the same picture; nothing reads a clock or Math.random (M13)', () => {
+  assert.deepEqual([...place(DATA)], [...place(DATA)]);
+  assert.notDeepEqual([...place(DATA)], [...place(DATA, 'another focus')]);
+  const src = readFileSync(new URL('../src/graph/layout.ts', import.meta.url), 'utf8').replace(/\/\/.*$/gm, '');
+  assert.ok(!/Math\.random|Date\.now|performance\.now/.test(src));
+});
+
+test('a refresh that adds a node moves no node already placed (M28)', () => {
+  const before = place(DATA);
+  const more = { ...DATA, nodes: [...DATA.nodes, { kind: 'session', id: 'ses_9', label: 's', parent: M }], edges: [...DATA.edges, e('sessions.mission_id', { kind: 'session', id: 'ses_9' }, M)] };
+  const after = place(more, 'focus', before);
+  for (const [key, p] of before) assert.deepEqual(after.get(key), p, key);
+  assert.ok(after.has('session:ses_9'));
+});
+
+test('a 1,000-node layout is a fixed amount of work within budget (A10 proxy 1)', () => {
+  assert.equal(ITERATIONS, 120);
+  const t = performance.now();
+  const pos = place(big(1000));
+  const took = performance.now() - t;
+  assert.equal(pos.size, 1000);
+  for (const p of pos.values()) assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y));
+  // measured ~0.3 s on the development machine; a wide regression margin, not a GPU claim
+  assert.ok(took < 5000, `layout took ${took} ms`);
+});
+
+// ── level of detail (A10, M20) ──
+
+test('above 250 visible nodes every node is a dot, batched per colour', () => {
+  const { ctx } = recorder();
+  const many = draw(ctx, scene(big(LOD_NODES + 50)));
+  assert.equal(many.lod, 'dots');
+  assert.ok(many.paths < 20, `${many.paths} paths for ${many.nodes} nodes`);
+  const few = draw(recorder().ctx, scene(big(LOD_NODES - 50)));
+  assert.equal(few.lod, 'full');
+  assert.ok(few.paths >= LOD_NODES - 50);
+});
+
+// ── the one loop (A9: M17, M18) ──
+
+function host(over: Partial<LoopHost> = {}) {
+  const q: ((t: number) => void)[] = [];
+  let now = 0;
+  const h: LoopHost & { run: () => number; tick: (ms: number) => void; pending: () => number } = {
+    raf: (cb) => q.push(cb),
+    caf: (id) => void (q[id - 1] = () => undefined),
+    now: () => now,
+    hidden: () => false,
+    focused: () => true,
+    reduced: () => false,
+    ...over,
+    run() {
+      let n = 0;
+      while (q.length && n < 1000) {
+        q.shift()!(now);
+        n++;
+      }
+      return n;
+    },
+    tick(ms) {
+      now += ms;
+    },
+    pending: () => q.length,
+  };
+  return h;
+}
+
+test('a redraw is one frame, then the loop parks (M17)', () => {
+  const h = host();
+  let drawn = 0;
+  const l = new Loop(h, () => drawn++);
+  assert.equal(l.state, 'parked');
+  l.request();
+  l.request();
+  assert.equal(h.run(), 1);
+  assert.equal(drawn, 1);
+  assert.equal(l.state, 'parked');
+  assert.equal(h.pending(), 0);
+});
+
+test('an animation runs until it ends, then parks', () => {
+  const h = host();
+  const l = new Loop(h, () => h.tick(100));
+  assert.equal(l.animate(240), true);
+  h.run();
+  assert.equal(l.state, 'parked');
+  assert.equal(l.animating, 0);
+  assert.ok(l.frames >= 3);
+});
+
+test('reduced motion: no animation is accepted; the change still draws once (M18)', () => {
+  const h = host({ reduced: () => true });
+  const l = new Loop(h, () => undefined);
+  assert.equal(l.animate(240), false);
+  assert.equal(l.animating, 0);
+  assert.equal(h.run(), 1);
+});
+
+test('a hidden page, a blurred window and a lost context park the loop; waking resumes', () => {
+  for (const cond of ['hidden', 'blurred', 'lost'] as const) {
+    let hidden = cond === 'hidden';
+    let focused = cond !== 'blurred';
+    const h = host({ hidden: () => hidden, focused: () => focused });
+    const l = new Loop(h, () => undefined);
+    if (cond === 'lost') l.setLost(true);
+    l.request();
+    l.animate(1000);
+    assert.equal(h.pending(), 0, cond);
+    assert.equal(l.state, 'parked', cond);
+    hidden = false;
+    focused = true;
+    if (cond === 'lost') l.setLost(false);
+    else l.wake();
+    assert.equal(l.state, 'running', cond);
+  }
+});
+
+test('requestAnimationFrame has exactly one caller in the client: the graph loop (M19)', () => {
+  const root = new URL('../src/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  const hits: string[] = [];
+  const walk = (dir: string) => {
+    for (const f of readdirSync(dir)) {
+      const p = join(dir, f);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.tsx?$/.test(f) && /requestAnimationFrame\s*\(/.test(readFileSync(p, 'utf8'))) hits.push(p.replace(/\\/g, '/'));
+    }
+  };
+  walk(root);
+  assert.deepEqual(hits.map((p) => p.slice(p.indexOf('src/'))), ['src/graph/loop.ts']);
+});
+
+// ── energy from Core's state (A8, M32) ──
+
+test('only an execution Core says is active is live; its pulse edge is its task edge', () => {
+  const live = liveExecutions(m, (mc, s) => present(mc, s).cls === 'active');
+  assert.deepEqual([...live], [k(X2)]); // RUNNING, never ENDED_HANDOFF
+  const d = lifted(m, visible(m, allExpanded(m)));
+  assert.equal(pulseEdge(d, k(X2))?.edges[0].field, 'executions.task_id');
+});
+
+// ── routes and invalidation (A4, A8: M30) ──
+
+test('every graph step is a URL, and a project page keeps its own', () => {
+  assert.deepEqual(parse('#/world/graph'), { view: 'world', graph: 'world' });
+  assert.deepEqual(parse('#/world/graph/mission/msn_1'), { view: 'world', graph: { kind: 'mission', id: 'msn_1' } });
+  assert.deepEqual(parse('#/world/graph/repository/rep_1/modules/app%2Fcore'), { view: 'world', graph: { kind: 'repository', id: 'rep_1' }, modules: 'app/core' });
+  assert.deepEqual(parse('#/world/prj_1'), { view: 'world', project: 'prj_1' });
+  for (const h of ['#/world/graph', '#/world/graph/mission/msn_1', '#/world/graph/repository/rep_1/modules', '#/world/graph/repository/rep_1/modules/app%2Fcore'])
+    assert.equal(href(parse(h)), h);
+});
+
+test('a frame about anything the graph is read from makes the graph stale (M30)', () => {
+  const g = '/v1/world/graph?focus=mission:msn_1';
+  for (const kind of ['mission', 'execution', 'task', 'plan', 'session', 'relation', 'knowledge_item', 'approval', 'verification', 'review', 'project', 'repository', 'automation_run'])
+    assert.equal(staleBy({ event: `${kind}.updated`, data: { subject: { kind, id: 'x' } } })(g), true, kind);
+  assert.equal(staleBy({ event: 'device.seen', data: { subject: { kind: 'device', id: 'x' } } })(g), false);
+  assert.equal(staleBy({ event: 'repository_inspection.completed', data: { subject: { kind: 'repository_inspection', id: 'x' } } })('/v1/repositories/rep_1/graph?focus=app'), true);
+});
+
+test('the graph code sends nothing: its only reads are the two graph paths', () => {
+  const dir = new URL('../src/graph/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  for (const f of readdirSync(dir)) {
+    const src = readFileSync(join(dir, f), 'utf8');
+    assert.ok(!/'POST'|"POST"|send\(/.test(src), `${f} sends`);
+    for (const m2 of src.matchAll(/[`'"](\/v1\/[^`'"]*)/g)) assert.ok(/^\/v1\/(world\/graph|repositories\/)/.test(m2[1]), `${f}: ${m2[1]}`);
+  }
+});
