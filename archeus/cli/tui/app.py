@@ -217,9 +217,10 @@ class App:
         box = []
         if m['kind'] == 'prompt':
             name, label, required = m['act']['fields'][m['i']]
+            # a field label may name Core's values (the harness ids), so it is cleaned
             box = [self.st.paint(m['act']['label'], 'text', bold=True),
-                   self.st.paint(label + ('' if required else ' (optional)'), 'text-2'),
-                   '> ' + m['buf'],
+                   self.st.t(label + ('' if required else ' (optional)'), 'text-2'),
+                   '> ' + clean(m['buf']),
                    self.st.paint('⏎ next  Esc cancel', 'text-2')]
         elif m['kind'] == 'confirm':
             from .view import wrap
@@ -502,7 +503,9 @@ def run(app, *, live, once=False):
             if once:
                 return
             if term.kbhit():
-                app.handle(term.key_event())
+                ev = term.key_event()           # None: a key this client ignores
+                if ev:
+                    app.handle(ev)
             else:
                 time.sleep(0.03)
     finally:

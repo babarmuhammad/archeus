@@ -64,9 +64,10 @@ class Doc:
         self.lines.append({'text': text, 'target': target, 'acts': list(acts or ())})
 
     def h(self, title):
+        """A section heading; it often carries Core text, so it is cleaned."""
         if self.lines:
             self.add()
-        self.add(self.st.paint(title, 'text', bold=True))
+        self.add(self.st.t(title, 'text', bold=True))
 
     def hint(self, text, indent=2):
         from .view import wrap
@@ -152,7 +153,7 @@ def ref_label(app, kind, id_):
         if e['data'] is not None:
             name = n[1](e['data'])
     lead = (LETTER[kind] + ' ') if kind in LETTER else kind.replace('_', ' ') + ' '
-    return app.st.paint(lead, 'text-2') + (T(app, name) if name else T(app, id_[:12] + '…'))
+    return T(app, lead, 'text-2') + (T(app, name) if name else T(app, id_[:12] + '…'))
 
 
 def resources(app, r):
@@ -184,10 +185,10 @@ def relations(app, doc, edges):
         for e in es:
             bits = ['    ' + ref_label(app, e['to']['kind'], e['to']['id'])]
             if e.get('tier'):
-                bits.append(app.st.paint(e['tier'].lower(), 'text-2'))
+                bits.append(T(app, e['tier'].lower(), 'text-2'))
             if e.get('inactive'):
                 bits.append(app.st.paint('no longer current', 'state.paused'))
-            bits.append(app.st.paint('from ' + e['field'], 'text-2'))
+            bits.append(T(app, 'from ' + e['field'], 'text-2'))     # it names Core's label
             doc.add('  '.join(bits), target=open_(e['to']['kind'], e['to']['id']))
 
 
@@ -302,10 +303,10 @@ def card(app, doc, m, i, c):
                         fields=[('answer', 'Your answer', True)], reread=reread,
                         ident=ident + ':w')]
             text = 'Archeus needs an answer before it can start.'
-        doc.add('    ' + app.st.paint('[' + type_ + '] ', 'state.attention')
+        doc.add('    ' + T(app, '[' + type_ + '] ', 'state.attention')
                 + app.st.paint(text), acts=acts)
         return
-    bits = ['    ' + app.st.paint('[' + type_.replace('_', ' ') + ']', 'text-2'),
+    bits = ['    ' + T(app, '[' + type_.replace('_', ' ') + ']', 'text-2'),
             T(app, '%s %s' % (kind, id_))]
     if kind == 'mission':
         e = app.read('/v1/missions/' + id_)
@@ -477,7 +478,7 @@ def attention_items(app, doc, limit=None):
 def entry(app, doc, item):
     title = ATTENTION_KIND.get(item['kind'], item['kind'])
     head = ('  ' + app.st.badge(ATTENTION_MACHINE.get(item['kind'], item['kind']), item['state'])
-            + '  ' + app.st.paint(title, 'text', bold=True) + '  '
+            + '  ' + T(app, title, 'text', bold=True) + '  '
             + app.st.paint(ago(app, item.get('since')), 'text-2'))
     if item['kind'] == 'approval':
         return approval_card(app, doc, item['ref']['id'], head)
@@ -520,11 +521,18 @@ def approval_card(app, doc, aid, head=None):
     def decide(decision):
         return lambda key, v: app.core.post(path, S.decide_body(
             a, decision, key, {k: v[k] for k in ('step_up', 'note') if v.get(k)}))
+    cons = p.get('consequences') or {}
+    # a decision is final: it is confirmed in prose, in Core's own words when it
+    # gave them (p17-design-gate §8, T03)
     acts = [Act('A', 'Approve plan' if a['kind'] == 'plan' else 'Approve', 'approve',
                 decide('approve'), reread=reread, disabled=not_eligible or cannot, fields=pin,
+                confirm='Approve: ' + clean_title(cons.get('approve')
+                                                  or 'the action runs as shown.'),
                 ident='approve:' + aid),
             Act('R', 'Reject', 'approve', decide('reject'), reread=reread,
-                disabled=not_eligible, ident='reject:' + aid)]
+                disabled=not_eligible, ident='reject:' + aid,
+                confirm='Reject: ' + clean_title(cons.get('reject')
+                                                 or 'the action does not run.'))]
     if a['kind'] == 'plan' and a['state'] == 'PENDING' and app.can('approve'):
         acts.append(Act('C', 'Request changes', 'approve', decide('request_changes'),
                         reread=reread, disabled=None if a.get('eligible')
@@ -540,7 +548,7 @@ def approval_card(app, doc, aid, head=None):
     if against.get('mission'):
         ask.append(app.st.paint('for ') + T(app, against['mission']['title']))
     if against.get('plan'):
-        ask.append(app.st.paint('plan v%s' % against['plan']['version']))
+        ask.append(T(app, 'plan v%s' % against['plan']['version']))
     if ask:
         doc.add('    ' + ' · '.join(ask))
     for w in p.get('what') or []:
@@ -548,7 +556,6 @@ def approval_card(app, doc, aid, head=None):
         doc.add('    ' + T(app, w['task'] + (' · ' + w['title'] if w.get('title') else ''))
                 + '  ' + T(app, w['class'], 'text-2') + '  ' + T(app, target) + '  '
                 + T(app, w['decision'] + (' — ' + w['why'] if w.get('why') else ''), 'text-2'))
-    cons = p.get('consequences') or {}
     doc.kv([('Why it asks', T(app, p.get('why') or '—')),
             ('If you approve', T(app, cons.get('approve') or '—')),
             ('If you reject', T(app, cons.get('reject') or '—')),
@@ -557,8 +564,8 @@ def approval_card(app, doc, aid, head=None):
             ('Action hash', T(app, a['action_hash'][:16] + '…'))], indent=4)
     plan = against.get('plan') or {}
     if plan.get('summary'):
-        doc.add('    ' + app.st.paint('Plan summary, %s: ' % (plan.get('summary_by')
-                                                             or 'model-written'), 'text-2')
+        doc.add('    ' + T(app, 'Plan summary, %s: ' % (plan.get('summary_by')
+                                                      or 'model-written'), 'text-2')
                 + T(app, plan['summary']))
     if a.get('decided_by'):
         me = (sync.get('client') or {}).get('principal_id')
@@ -579,12 +586,14 @@ def verification_decision(app, doc, item, head):
                     lambda key, v: app.core.post(path, {'decision': 'accept',
                                                         'note': v.get('note', ''),
                                                         'idempotency_key': key}),
-                    fields=note, reread=reread, ident='accept:' + vid),
+                    fields=note, reread=reread, ident='accept:' + vid,
+                    confirm='Accept this result as verified by you. It cannot be undone.'),
                 Act('R', 'Reject result', 'approve',
                     lambda key, v: app.core.post(path, {'decision': 'reject',
                                                         'note': v.get('note', ''),
                                                         'idempotency_key': key}),
-                    fields=note, reread=reread, ident='rejectv:' + vid)]
+                    fields=note, reread=reread, ident='rejectv:' + vid,
+                    confirm='Reject this result. It cannot be undone.')]
     doc.add(head, target=open_('verification', vid), acts=acts)
     doc.add('    ' + (app.st.paint('Nothing deterministic could check this: it waits for you to '
                                    'accept or reject the result.') if human else
@@ -606,7 +615,8 @@ def knowledge_proposal(app, doc, item, head):
             Act('D', 'Dismiss', 'control',
                 lambda key, v: app.core.post('/v1/knowledge/%s/reject' % kid,
                                              {'idempotency_key': key}),
-                reread=reread, ident='dismiss:' + kid)]
+                reread=reread, ident='dismiss:' + kid,
+                confirm='Dismiss this proposal: Archeus will not remember it.')]
     doc.add(head, target=open_('knowledge_item', kid), acts=acts)
     doc.add('    ' + app.st.paint('Remember: ') + T(app, item.get('reason'), bold=True) + ' '
             + T(app, '(%s)' % (item.get('reason_code') or '').lower(), 'text-2'))
@@ -642,8 +652,8 @@ def autonomy(app, doc):
     cell = {(c, n): str(((p['profiles'][n] or {}).get(c) or {}).get('decision') or '—')
             for c in ACTION_CLASSES for n in names}
     w = {n: max([len(n)] + [len(cell[c, n]) for c in ACTION_CLASSES]) + 2 for n in names}
-    doc.add('  ' + app.st.paint('Action class'.ljust(16) + ''.join(n.ljust(w[n]) for n in names),
-                                'text-2'))
+    doc.add('  ' + T(app, 'Action class'.ljust(16) + ''.join(n.ljust(w[n]) for n in names),
+                     'text-2'))
     for c in ACTION_CLASSES:
         doc.add('  ' + T(app, c.ljust(16)) + ''.join(T(app, cell[c, n].ljust(w[n]))
                                                      for n in names))
@@ -1076,7 +1086,7 @@ def now_tab(app, doc, m, mp):
 
 
 def execution_row(app, doc, e):
-    bits = ['  ' + app.st.paint('attempt %s' % e['attempt'], 'text'),
+    bits = ['  ' + T(app, 'attempt %s' % e['attempt'], 'text'),
             app.st.badge('execution', e['state']), resources(app, e)]
     if e.get('handoff_from'):
         bits.append(app.st.paint('continues an earlier execution (hand-off)', 'text-2'))
@@ -1128,7 +1138,10 @@ def evidence(app, doc, m, mp):
             doc.act(key, label, 'approve',
                     lambda k, v, verdict=verdict: app.core.post(path, {
                         'verdict': verdict, 'note': v.get('note', ''), 'idempotency_key': k}),
-                    fields=note, reread=reread, ident='review:%s:%s' % (m['id'], verdict))
+                    fields=note, reread=reread, ident='review:%s:%s' % (m['id'], verdict),
+                    confirm={'accept': 'Accept the result: the mission completes. It cannot be '
+                                       'undone.',
+                             'reject': 'Reject the result. It cannot be undone.'}.get(verdict))
 
 
 def why(app, doc, m, mp):
@@ -1374,7 +1387,7 @@ def knowledge_insp(app, doc, kind, kid, tab):
             ident='confirmk:' + kid)
         doc.act('R', 'Reject', 'control', lambda key, v: app.core.post(
             path + '/reject', dict(ver, idempotency_key=key)), reread=reread,
-            ident='rejectk:' + kid)
+            ident='rejectk:' + kid, confirm='Reject this item: it is never used as context.')
     if k['state'] == 'CONFIRMED':
         doc.act('X', 'Retract', 'control', lambda key, v: app.core.post(
             path + '/retract', dict(ver, idempotency_key=key)), reread=reread,
