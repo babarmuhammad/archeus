@@ -57,7 +57,7 @@ import re
 from collections import namedtuple
 from datetime import datetime, timedelta, timezone
 
-from ..core.application import commands, errors, queries, world
+from ..core.application import commands, errors, graph, queries, world
 from ..core.application import calls as own_calls
 from ..core.application import conversation, executions, knowledge, resources
 from ..core.application import automations, sessions
@@ -67,6 +67,8 @@ from ..core.knowledge import ingest
 from ..harnesses.calls import real_callers
 from ..core.world import digest as world_digest
 from ..core.world import status as world_status
+from ..core.domain import ids
+from ..infra.artifacts import store as artifacts
 from ..infra.eventlog import outbox
 from . import auth, presence, schemas
 from .schemas import Invalid
@@ -312,6 +314,47 @@ def list_inspections(req):
         raise Invalid('limit', 'is 1..500')
     with req.api.db.read() as conn:
         return 200, {'inspections': world_status.inspections(conn, req.params['id'], limit)}
+
+
+def _graph_bounds(req, default_depth):
+    raw = _one(req.query, 'depth')
+    depth = default_depth if raw is None else _cursor(raw, 'depth')
+    if depth is not None and not 1 <= depth <= graph.DEPTH_MAX:
+        raise Invalid('depth', 'is 1..%d' % graph.DEPTH_MAX)
+    raw = _one(req.query, 'limit')
+    limit = graph.LIMIT_DEFAULT if raw is None else _cursor(raw, 'limit')
+    if not 1 <= limit <= graph.LIMIT_MAX:
+        raise Invalid('limit', 'is 1..%d' % graph.LIMIT_MAX)
+    return depth, limit
+
+
+def world_graph(req):
+    """A bounded neighbourhood of recorded relationships (p18-design-gate A6):
+    `focus=<kind>:<id>` (the workspace when absent), read-only."""
+    depth, limit = _graph_bounds(req, None)
+    raw = _one(req.query, 'focus')
+    focus = None
+    if raw is not None:
+        kind, _, fid = raw.partition(':')
+        # credentials, devices, principals, events and accounts are never nodes (A2, A15)
+        if kind not in graph.KINDS:
+            raise Invalid('focus', 'is <kind>:<id> of a graph kind')
+        if not ids.is_id(fid, kind):
+            raise Invalid('focus', 'names a malformed %s id' % kind)
+        focus = (kind, fid)
+    with req.api.db.read() as conn:
+        return 200, graph.world_graph(conn, focus, depth, limit)
+
+
+def repository_graph(req):
+    """The stored import graph of a repository, focused on a path (A5)."""
+    depth, limit = _graph_bounds(req, 1)
+    focus = _one(req.query, 'focus') or ''
+    if len(focus) > 1024 or '\\' in focus or any(p in ('..', '.') for p in focus.split('/')):
+        raise Invalid('focus', 'is a path inside the repository')
+    with req.api.db.read() as conn:
+        return 200, graph.repository_graph(conn, req.params['id'], artifacts.get, focus, depth,
+                                           limit)
 
 
 def digest(req):
@@ -870,6 +913,10 @@ ROUTES = (
           'ProjectCreated'),
     Route('POST', '/v1/projects/{id}/constraints', declare_constraint, 'control', 'required',
           schemas.DECLARE_CONSTRAINT, 'ConstraintDeclared'),
+    # P18 (p18-design-gate A5, A6): the graph reads — GET, observe, read-only
+    Route('GET', '/v1/world/graph', world_graph, 'observe', None, None, 'WorldGraph'),
+    Route('GET', '/v1/repositories/{id}/graph', repository_graph, 'observe', None, None,
+          'RepositoryGraph'),
     Route('GET', '/v1/repositories/{id}/inspections', list_inspections, 'observe', None, None,
           'InspectionList'),
     Route('GET', '/v1/digest', digest, 'observe', None, None, 'Digest'),
@@ -1015,7 +1062,9 @@ QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),
          '/v1/policy-decisions': ('mission', 'stage'), '/v1/approvals': ('state', 'mission'),
          '/v1/automations/{id}/simulate': ('days',),
          '/v1/executions/{id}/stream': ('from',),
-         '/v1/missions/{id}/timeline': ('before', 'limit')}
+         '/v1/missions/{id}/timeline': ('before', 'limit'),
+         '/v1/world/graph': ('focus', 'depth', 'limit'),
+         '/v1/repositories/{id}/graph': ('focus', 'depth', 'limit')}
 
 STREAM = '/v1/events/stream'
 

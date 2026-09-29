@@ -22,6 +22,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlencode
 from typing import Optional, Sequence
 from urllib.parse import quote
 
@@ -284,6 +285,21 @@ class HttpClient:
 
     def ack(self, up_to_seq: int) -> dict:
         return self._call('POST', '/v1/digest/ack', {'up_to_seq': up_to_seq})
+
+    # ── the graph (P18) ──
+
+    def world_graph(self, *, focus: Optional[str] = None, depth: Optional[int] = None,
+                    limit: Optional[int] = None) -> dict:
+        q = urlencode([kv for kv in (('focus', focus), ('depth', depth), ('limit', limit))
+                       if kv[1] is not None])
+        return self._call('GET', '/v1/world/graph' + ('?' + q if q else ''))
+
+    def repository_graph(self, repository_id: str, *, focus: str = '',
+                         depth: Optional[int] = None, limit: Optional[int] = None) -> dict:
+        q = urlencode([kv for kv in (('focus', focus or None), ('depth', depth),
+                                     ('limit', limit)) if kv[1] is not None])
+        return self._call('GET', '/v1/repositories/%s/graph' % repository_id
+                          + ('?' + q if q else ''))
 
     # ── knowledge and own calls (P6) ──
 

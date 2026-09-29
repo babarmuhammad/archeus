@@ -23,7 +23,7 @@ from typing import Optional, Protocol, Sequence, runtime_checkable
 
 from archeus.core import engine, ports
 from archeus.core.application import (authorization, automations, commands, conversation,
-                                      executions,
+                                      executions, graph,
                                       queries, resources, sessions, verification, work,
                                       world)
 from archeus.core.sessions.service import SessionService
@@ -146,6 +146,11 @@ class CoreClient(Protocol):
     def set_automation_state(self, automation_id: str, action: str) -> dict: ...
     def automations(self) -> list: ...
     def automation(self, automation_id: str) -> dict: ...
+    # ── the graph (P18) ──
+    def world_graph(self, *, focus: Optional[str] = None, depth: Optional[int] = None,
+                    limit: Optional[int] = None) -> dict: ...
+    def repository_graph(self, repository_id: str, *, focus: str = '',
+                         depth: Optional[int] = None, limit: Optional[int] = None) -> dict: ...
     # ── the event stream ──
     def events(self, after_seq: int = 0, *, limit: Optional[int] = None) -> list: ...
 
@@ -683,6 +688,26 @@ class InProcessClient:
     def automation(self, automation_id: str) -> dict:
         return self._read(automations.get_automation, automation_id)
 
+    # ── the graph (P18) ──
+
+    def world_graph(self, *, focus: Optional[str] = None, depth: Optional[int] = None,
+                    limit: Optional[int] = None) -> dict:
+        ref = None
+        if focus is not None:
+            kind, _, fid = focus.partition(':')
+            if kind not in graph.KINDS:
+                raise CoreClientError(400, 'invalid_request', {'field': 'focus'})
+            ref = (kind, fid)
+        return self._read(graph.world_graph, ref, depth,
+                          graph.LIMIT_DEFAULT if limit is None else limit)
+
+    def repository_graph(self, repository_id: str, *, focus: str = '',
+                         depth: Optional[int] = None, limit: Optional[int] = None) -> dict:
+        from archeus.infra.artifacts import store
+        return self._read(graph.repository_graph, repository_id, store.get, focus,
+                          1 if depth is None else depth,
+                          graph.LIMIT_DEFAULT if limit is None else limit)
+
 
 #: Operations with a real body in both bindings (P2: G1, G4; P3: the mission
 #: control verbs; P3.5: listing missions, which the SPA's two lists read).
@@ -699,7 +724,9 @@ IMPLEMENTED = ('create_mission', 'get_mission', 'list_missions', 'events', 'paus
                'verifications', 'decide_verification', 'reviews', 'review',
                'abandon_integration',
                # P14
-               'create_automation', 'set_automation_state', 'automations', 'automation')
+               'create_automation', 'set_automation_state', 'automations', 'automation',
+               # P18
+               'world_graph', 'repository_graph')
 
 # Every other operation is declared and fails loudly. Later phases replace these
 # with real bodies one by one; tests/v1/contract/test_core_client.py keeps every

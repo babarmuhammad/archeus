@@ -396,6 +396,28 @@ export interface Forgotten {
   changed: boolean;
 }
 
+export interface GraphEdge {
+  id: string;
+  from: Subject;
+  to: Subject;
+  field: string;
+  [field: string]: unknown;
+}
+
+export interface GraphHidden {
+  parent: Subject;
+  kind: string;
+  count: number;
+}
+
+export interface GraphNode {
+  kind: string;
+  id: string;
+  label: string;
+  parent?: Subject | null;
+  [field: string]: unknown;
+}
+
 export interface Harness {
   id: string;
   installed: boolean;
@@ -731,6 +753,23 @@ export interface Repository {
   [field: string]: unknown;
 }
 
+export interface RepositoryGraph {
+  repository_id: string;
+  focus: string;
+  depth: number;
+  limit: number;
+  as_of_seq: number;
+  available: boolean;
+  reason?: string | null;
+  nodes?: GraphNode[];
+  edges?: GraphEdge[];
+  truncated?: boolean;
+  hidden?: GraphHidden[];
+  stale?: boolean;
+  revision?: string | null;
+  [field: string]: unknown;
+}
+
 export interface ResourcePolicy {
   id: string;
   account_id: string;
@@ -933,6 +972,17 @@ export interface Version {
 export interface Worker {
   state: 'starting' | 'reconciling' | 'running' | 'idle' | 'failed' | 'stopped';
   pending: number;
+}
+
+export interface WorldGraph {
+  focus: Subject;
+  depth: number;
+  limit: number;
+  as_of_seq: number;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  truncated: boolean;
+  hidden: GraphHidden[];
 }
 
 export interface CreateMissionRequest {
@@ -1310,6 +1360,10 @@ export const api = {
     send<ProjectCreated>('POST', '/v1/projects', body),
   declareConstraint: (send: Send, id: string, body: DeclareConstraintRequest) =>
     send<ConstraintDeclared>('POST', '/v1/projects/' + encodeURIComponent(id) + '/constraints', body),
+  worldGraph: (send: Send, query: { focus?: string; depth?: number; limit?: number } = {}) =>
+    send<WorldGraph>('GET', '/v1/world/graph' + qs(query)),
+  repositoryGraph: (send: Send, id: string, query: { focus?: string; depth?: number; limit?: number } = {}) =>
+    send<RepositoryGraph>('GET', '/v1/repositories/' + encodeURIComponent(id) + '/graph' + qs(query)),
   listInspections: (send: Send, id: string, query: { limit?: number } = {}) =>
     send<InspectionList>('GET', '/v1/repositories/' + encodeURIComponent(id) + '/inspections' + qs(query)),
   digest: (send: Send) =>

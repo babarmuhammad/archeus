@@ -272,14 +272,21 @@ P16 = {
     ('GET', '/v1/executions/{id}/stream', 'observe', None),
 }
 
+#: P18 (p18-design-gate A5, A6, A14): the two graph reads — GET, observe, nothing else
+P18 = {
+    ('GET', '/v1/world/graph', 'observe', None),
+    ('GET', '/v1/repositories/{id}/graph', 'observe', None),
+}
 
-def test_the_route_table_is_exactly_the_p35b_to_p16_tables():
+
+def test_the_route_table_is_exactly_the_p35b_to_p18_tables():
     """L2, and P9's E4 / P10's / P11's / P12's / P13's / P14's / P15's boundary:
     no `retry` (P12 did not build it, p12-design-gate D17), no event append or
     `run-now` (P14), nothing from P16 (/v1/now, the execution stream), and no
-    hook route — a later phase adds its rows with its own tests."""
+    hook route — a later phase adds its rows with its own tests. P18's graph
+    reads are the only paths that may name a graph."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
-    tables = EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16
+    tables = EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16 | P18
     assert got == tables
     assert len(routes.ROUTES) == len(tables)
     # P15: the only pairing paths are start and redeem; no route pairs a node
@@ -297,8 +304,11 @@ def test_the_route_table_is_exactly_the_p35b_to_p16_tables():
     # E7: no plan route takes a command (no execution control from P8)
     assert not [r for r in routes.ROUTES if 'plan' in r.path and r.method != 'GET']
     for word in ('route/', '/now', 'hook', 'dispatch', 'stream?', '/retry',
-                 'cancel', 'accept', 'graph', 'run-now'):
+                 'cancel', 'accept', 'run-now'):
         assert not [r.path for r in routes.ROUTES if word in r.path], word
+    # P18: the word `graph` is allowed on exactly its two reads, both GET and observe
+    assert {(r.method, r.path, r.scope) for r in routes.ROUTES if 'graph' in r.path} == {
+        (m, p, s) for m, p, s, _i in P18}
     # P12: the only hand-off paths are a session's and an execution's
     assert {r.path for r in routes.ROUTES if 'handoff' in r.path} == {
         '/v1/sessions/{id}/handoff', '/v1/executions/{id}/handoff'}

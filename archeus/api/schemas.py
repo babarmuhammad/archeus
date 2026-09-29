@@ -180,6 +180,38 @@ TYPES = {
         'truncated': {'type': 'boolean'}, 'available': {'type': 'boolean'}},
         'required': ['execution_id', 'offset', 'next_offset', 'events', 'truncated',
                      'available']},
+    # ── P18 graph reads (p18-design-gate A5, A6) ──
+    'GraphNode': {'type': 'object', 'open': True, 'properties': {
+        'kind': {'type': 'string'}, 'id': {'type': 'string'}, 'label': {'type': 'string'},
+        'parent': {'ref': 'Subject', 'nullable': True}},
+        'required': ['kind', 'id', 'label']},
+    'GraphEdge': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'from': {'ref': 'Subject'}, 'to': {'ref': 'Subject'},
+        'field': {'type': 'string'}},
+        'required': ['id', 'from', 'to', 'field']},
+    'GraphHidden': {'type': 'object', 'properties': {
+        'parent': {'ref': 'Subject'}, 'kind': {'type': 'string'}, 'count': {'type': 'integer'}},
+        'required': ['parent', 'kind', 'count']},
+    'WorldGraph': {'type': 'object', 'properties': {
+        'focus': {'ref': 'Subject'}, 'depth': {'type': 'integer'}, 'limit': {'type': 'integer'},
+        'as_of_seq': {'type': 'integer'},
+        'nodes': {'type': 'array', 'items': {'ref': 'GraphNode'}},
+        'edges': {'type': 'array', 'items': {'ref': 'GraphEdge'}},
+        'truncated': {'type': 'boolean'},
+        'hidden': {'type': 'array', 'items': {'ref': 'GraphHidden'}}},
+        'required': ['focus', 'depth', 'limit', 'as_of_seq', 'nodes', 'edges', 'truncated',
+                     'hidden']},
+    'RepositoryGraph': {'type': 'object', 'open': True, 'properties': {
+        'repository_id': {'type': 'string'}, 'focus': {'type': 'string'},
+        'depth': {'type': 'integer'}, 'limit': {'type': 'integer'},
+        'as_of_seq': {'type': 'integer'}, 'available': {'type': 'boolean'},
+        'reason': {'type': 'string', 'nullable': True},
+        'nodes': {'type': 'array', 'items': {'ref': 'GraphNode'}},
+        'edges': {'type': 'array', 'items': {'ref': 'GraphEdge'}},
+        'truncated': {'type': 'boolean'},
+        'hidden': {'type': 'array', 'items': {'ref': 'GraphHidden'}},
+        'stale': {'type': 'boolean'}, 'revision': {'type': 'string', 'nullable': True}},
+        'required': ['repository_id', 'focus', 'depth', 'limit', 'as_of_seq', 'available']},
     # ── the world (P4, p4-design-gate §8-§10) ──
     'Finding': {'type': 'object', 'open': True, 'properties': {
         'constraint_id': {'type': 'string'}, 'constraint': {'type': 'string'},

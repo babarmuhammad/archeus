@@ -45,6 +45,8 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/v1/projects/{id}` | observe | — | — | — | `Project` |
 | POST | `/v1/projects` | admin | required | — | `CreateProjectRequest` | `ProjectCreated` |
 | POST | `/v1/projects/{id}/constraints` | control | required | — | `DeclareConstraintRequest` | `ConstraintDeclared` |
+| GET | `/v1/world/graph` | observe | — | `focus`, `depth`, `limit` | — | `WorldGraph` |
+| GET | `/v1/repositories/{id}/graph` | observe | — | `focus`, `depth`, `limit` | — | `RepositoryGraph` |
 | GET | `/v1/repositories/{id}/inspections` | observe | — | `limit` | — | `InspectionList` |
 | GET | `/v1/digest` | observe | — | — | — | `Digest` |
 | POST | `/v1/digest/ack` | control | — | — | `AckDigestRequest` | `Acked` |
@@ -685,6 +687,40 @@ interface Forgotten {
 }
 ```
 
+### `GraphEdge`
+
+```ts
+interface GraphEdge {
+  id: string;
+  from: Subject;
+  to: Subject;
+  field: string;
+  [field: string]: unknown;
+}
+```
+
+### `GraphHidden`
+
+```ts
+interface GraphHidden {
+  parent: Subject;
+  kind: string;
+  count: number;
+}
+```
+
+### `GraphNode`
+
+```ts
+interface GraphNode {
+  kind: string;
+  id: string;
+  label: string;
+  parent?: Subject | null;
+  [field: string]: unknown;
+}
+```
+
 ### `Harness`
 
 ```ts
@@ -1192,6 +1228,27 @@ interface Repository {
 }
 ```
 
+### `RepositoryGraph`
+
+```ts
+interface RepositoryGraph {
+  repository_id: string;
+  focus: string;
+  depth: number;
+  limit: number;
+  as_of_seq: number;
+  available: boolean;
+  reason?: string | null;
+  nodes?: GraphNode[];
+  edges?: GraphEdge[];
+  truncated?: boolean;
+  hidden?: GraphHidden[];
+  stale?: boolean;
+  revision?: string | null;
+  [field: string]: unknown;
+}
+```
+
 ### `ResourcePolicy`
 
 ```ts
@@ -1493,6 +1550,21 @@ interface Version {
 interface Worker {
   state: 'starting' | 'reconciling' | 'running' | 'idle' | 'failed' | 'stopped';
   pending: number;
+}
+```
+
+### `WorldGraph`
+
+```ts
+interface WorldGraph {
+  focus: Subject;
+  depth: number;
+  limit: number;
+  as_of_seq: number;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  truncated: boolean;
+  hidden: GraphHidden[];
 }
 ```
 
