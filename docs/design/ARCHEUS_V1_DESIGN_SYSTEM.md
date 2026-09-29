@@ -241,7 +241,7 @@ account — no other resource was free".
 | **Policy grid** | action classes × scope | locked cells show a lock; simulate box |
 | **Composer** | intent input | supports control verbs, `@` object mentions, file drop (meeting notes); shows "Archeus will…" preview for control verbs |
 | **Command bar** | ⌘/Ctrl+K anywhere | same parser as composer + jump-to-object |
-| **Graph view** | spatial inspection | encoding in research §26; keyboard traversal; list fallback |
+| **Graph view** | spatial inspection | encoding in research §26; keyboard traversal; list fallback. *As built (P18):* `src/graph/encoding.ts` is the table (session ring, DECISION diamond, state colour on missions/tasks/executions only, neutral elsewhere); motion is one camera move and one edge pulse, both removed under reduced motion; below 600 px the Relations list |
 | **Toast** | off-screen success/failure | max one at a time, 4 s, never for errors needing action |
 
 ## 12. Accessibility rules (floors, gated)

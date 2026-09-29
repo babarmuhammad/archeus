@@ -413,6 +413,9 @@ The spatial view is **an inspection instrument for relationships and state**, no
 | Colour | the fixed state colours on missions; neutral for everything else |
 | Distance | graph proximity from the focused object, not decoration |
 
+*As built (P18, p18-design-gate V1, V7):* "ring person" became **ring session** and "diamond
+decision" a **DECISION-type knowledge item** — V1 has no person or decision table.
+
 Default is 2D fine-line (legible, accessible, cheap). A 3D mode may reuse the flat graph-scene
 lineage from today's `stage.js` later; it is not in the V1 slice. Drill-down: world → project →
 mission → execution by focusing. Every node is reachable by keyboard and the view has a list

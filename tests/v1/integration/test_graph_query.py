@@ -250,7 +250,7 @@ def test_a_tableless_kind_and_a_missing_row_are_endpoints_not_nodes(db, world):
 
 def test_a_mission_shows_its_pending_approval_as_the_list_does(db, world, actor):
     """The list's edge (a mission waiting on its pending approval) and nothing
-    more: a decided approval is history, read in the inspector (§22 G2)."""
+    more: a decided approval is history, read in the inspector (§22 I2)."""
     apr, old = ids.new_id('approval'), ids.new_id('approval')
     for aid, st in ((old, 'APPROVED'), (apr, 'PENDING')):
         put(db, E.Approval(id=aid, subject=Ref('plan', world['p2']), action_hash=hashlib.sha256(aid.encode()).hexdigest(),
@@ -264,7 +264,7 @@ def test_a_mission_shows_its_pending_approval_as_the_list_does(db, world, actor)
     back = read(db, G.world_graph, ('approval', apr), 1, 500)
     assert ('mission', world['mid']) in keys(back)
     # a decided approval has no edge to its mission, so nothing is drawn beside it
-    # unconnected (§22 G12)
+    # unconnected (§22 I12)
     alone = read(db, G.world_graph, ('approval', old), 1, 500)
     assert keys(alone) == [('approval', old)] and alone['edges'] == []
     t = read(db, G.world_graph, ('plan', world['p2']), 1, 500)
@@ -296,7 +296,7 @@ def test_edges_are_sorted_and_ids_are_stable(db, world):
 
 
 def test_the_running_attempt_ranks_before_the_ended_one(db, world):
-    """Open before settled (§22 G1): with room for one execution, the live one stays."""
+    """Open before settled (§22 I1): with room for one execution, the live one stays."""
     g = read(db, G.world_graph, ('task', world['t1']), 1, 2)
     got = keys(g)
     assert got[0] == ('task', world['t1'])

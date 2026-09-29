@@ -952,8 +952,129 @@ Push only after local validation and the user's confirmation; then watch CI.
 
 ## 22. Deviations and new decisions for the user's review
 
-Recorded during implementation as they arise; none is applied silently. *(empty)*
+Recorded during implementation as they arise; none is applied silently.
+
+| # | Where | What was approved | What was done, and why | Status |
+|---|---|---|---|---|
+| **I1** | A6 ordering | order by hop, kind rank, **presentation-class** rank, `updated_at`, id | Core orders an **open** row (a state with a way out in `states.py`) before a **settled** one instead of by presentation class. The presentation table is client data (`presentation.json`); Core reading it would put presentation into the API, the thing A1 keeps out. The domain table gives the same practical order (a running attempt before an ended one — tested). | for review |
+| **I2** | A4, A1 | a mission focus returns its approvals | Only the **pending** approval, as the list shows it (`missionEdges`' "waiting on approval"). A membership edge for every approval would have held `approvals.mission_id` from two directions, and one field cannot have one pair of words from both ends; decided approvals are history, read in the mission's inspector. | for review |
+| **I3** | A1, V8 | two structural edges (`tasks.plan_id`, `repositories.project_id`) | Four: also `knowledge_items.project_id` (so a project focus reaches its knowledge, as A4 requires) and `reviews.plan_id` (so a mission focus reaches its reviews). Each is a real column, marked `structural`, drawn at half weight and listed in the mirror; none is on a Relations tab until P19. | for review |
+| **I4** | A4 | a project focus returns its meetings | Meetings are reached through their relations only: `meetings.project_id` has no index, and §6 forbids a scan. | recorded |
+| **I5** | A11 | Enter opens the inspector; `+/-`, `0`, `/` | Also **F** — focus the graph on the selected node, which is the drill (world → project → mission → execution) — and **P** to mark a path end. Double-click opens, a click selects. Enter keeps its approved meaning. | for review |
+| **I6** | A7 | children appear with one opacity step | They appear at once, with no fade: less motion than approved, never more. The focus-change camera move (≤ 240 ms, none under reduced motion) is built. | recorded |
+| **I7** | §8 | "This object is not in the graph" | P16's existing wording for a 404 read ("the graph is unavailable: It no longer exists."), so one read failure reads the same everywhere. | recorded |
+| **I8** | A2 allowlist | node fields `kind, id, label, parent, machine, state, attrs, counts, endpoint, missing` | A knowledge item also carries its `type` — the classification the DECISION diamond (A3, V7) is drawn from; never its body. | recorded |
+| **I9** | A13 | chips by relationship field | Chips by the relationship's **words**: two fields can share them ("of mission"), and a person filters by what they read. | recorded |
+| **I10** | A8 | the view reacts to frames | P16's cache gains `store.onFrame()`: listeners get a frame's type and subject after it invalidated what it makes stale. The graph uses it to pulse a live edge; no payload is read as state. It is the one change to `cache.ts` and `App.tsx`. | recorded |
+| **I11** | A5 | `focus` matched against the payload | Also refused before any read when it names `..`, `.`, a backslash or exceeds 1,024 characters (400), so a path can never be traversal-shaped even though it is only ever compared with stored paths. | recorded |
+| **I12** | A6 | a neighbourhood from holders' edges | A holder row found by a reverse lookup is loaded **only if it holds an edge to the node** (found by reading the approval → mission path, where the mission's edge exists only while the approval is pending); a node is never drawn unconnected by accident. | recorded |
+| **I13** | §12.3-style regression | P16/P17 mutation suites re-run unchanged | P18's new first entry in the mission and approval invalidation rules moved the text P16's M28 and P17's M11 are anchored on; both runners refused before mutating anything. The anchors now include the new entry; the mutants are the same. | recorded |
 
 ## 23. As built
 
-*(written at the end of the phase)*
+Everything in §1–§21 is built as written and approved (§4.1), except the implementation
+decisions recorded in §22 (I1–I13). Commits: `ecfbacd` (this gate, approved), `20c26ec` (the
+graph query and its two routes), `5bada10` (`EDGE_WORDS` and the invalidation rules),
+`711a052` (the spatial view), `67ae6b6` (tests, boundaries and the mutation suite),
+`24d6190` (the P16/P17 anchors, I13), and this
+as-built commit.
+
+**Backend (two read routes; no migration, no state, no event type).** New:
+`archeus/core/application/graph.py` — `world_graph()` (A4, A6: a breadth-first neighbourhood over
+the columns and `Relation` rows Core records, each edge held by the row holding its field, the
+world level every project collapsed with counts) and `repository_graph()` (A5: the stored
+inspection payload, focused, aggregated, with `stale` / `not_inspected` / `payload_missing`).
+Changed: `api/routes.py` (the two `observe` GET rows, `focus`/`depth`/`limit` validation, the
+query allowlist), `api/schemas.py` (`GraphNode`, `GraphEdge`, `GraphHidden`, `WorldGraph`,
+`RepositoryGraph`), `tools/gen_api_docs.py` (two query parameter types). The route table went
+from 97 to 99 rows. Generated: `api-reference.md`, `generated.ts`.
+
+**Shared vocabulary and invalidation.** `clients/app/src/graph/relations.ts` gains `EDGE_WORDS`
+and `edgeWords()`; its list functions read their words from it with every output unchanged
+(`parity.json`, the relations tests). `invalidation.json`: `/v1/world/graph**` on the 18 kinds a
+node or edge is read from; regenerated into `rules.ts` and the TUI's `_tables.py`.
+`tools/mutate_p16.py`'s M11/M12 anchors moved with the text.
+
+**Client.** `clients/app/src/graph/`: `encoding.ts` (the A3 table and the one `tracePath`),
+`model.ts` (visibility, lifting, expand/collapse, focus + context, search, path, "+N" stubs,
+live executions), `layout.ts` (seeded, fixed 120 iterations, positions kept), `render.ts`
+(Canvas 2D, batched per style, dots above 250), `loop.ts` (the client's only
+`requestAnimationFrame` caller), `keys.ts` (traversal), `mirror.ts` (the accessible rows),
+`wide.ts` (the 600 px rule), `GraphView.tsx`. Changed: `App.tsx` (the world graph routes; the
+frame notification), `data/cache.ts` (`onFrame`, I10), `nav/destinations.ts` (three graph route
+forms), `components/Relations.tsx` (`GraphLink`), `surfaces/{World,Mission,Control,Inspector}.tsx`
+(the links), `styles/app.css` (graph styles; no animation, no media query). No dependency added.
+Build: 390 KB JS, 119 KB gzip (was 360 KB), 17 KB CSS.
+
+**Tests.**
+
+| Layer | File | Count |
+|---|---|---|
+| Core edges vs the shared cases; vocabulary coverage | `tests/v1/unit/test_graph_parity.py` | 17 |
+| query over a real database | `tests/v1/integration/test_graph_query.py` | 25 |
+| routes over a real Core; route ↔ TUI list parity | `tests/v1/integration/test_graph_routes.py` | 4 |
+| boundaries (static) | `tests/v1/unit/test_graph_boundaries.py` | 6 |
+| client units | `clients/app/test/graph.test.ts` | 24 |
+| browser | `tests/v1/e2e/test_spa_p18.py` | 8 |
+| changed | `test_api_structure.py` (the `graph` allowlist, `P18` pin), `test_core_client.py` and both bindings (`world_graph`, `repository_graph`) | — |
+
+`tools/mutate_p18.py`: **33/33 killed**; each mutant names its direct test (§15), and M33 rebuilds the SPA for its browser test.
+
+**Acceptance scenarios (§16), each with its test.** 
+| # | Scenario | Test |
+|---|---|---|
+| A18-01 | world level: projects collapsed with counts, no child row | `test_the_world_level_is_projects_only_collapsed_with_counts`; e2e drill |
+| A18-02 | project focus | `test_a_project_focus_reaches_its_missions_sessions_and_knowledge`; e2e drill (`F` on the project) |
+| A18-03 | mission focus | e2e drill (`F` on the mission): plan and execution in the mirror |
+| A18-04 | Relations ↔ graph parity | `test_core_edges_equal_the_list_mapper_on_every_shared_case` (15 cases); `test_the_route_and_the_tui_list_show_the_same_edges` (real mission) |
+| A18-05 | keyboard traversal visits every edge in order | `↓ visits every edge of the focus…` (TS); e2e drill |
+| A18-06 | Enter → `#/o/<kind>/<id>`, Back → the graph | e2e drill |
+| A18-07/08 | zoom, fit | e2e `test_zoom_fit_and_the_loop_parking` |
+| A18-09/10 | search; search expands ancestors | TS `search finds loaded nodes and expands their ancestors`; e2e drill |
+| A18-11 | focus + context | TS |
+| A18-12 | expand/collapse | TS `collapse hides every descendant…` |
+| A18-13 | edge lifting with counts | TS `edges lift to the nearest visible ancestor…` |
+| A18-14 | live execution | TS `only an execution Core says is active is live…`; e2e `test_a_running_execution_is_live_on_its_edge` (the live edge; the pulse itself is TS-tested) |
+| A18-15 | reduced motion | TS loop test; e2e `test_reduced_motion_moves_nothing` (a zoom is exactly one frame) |
+| A18-16/17 | hidden page, lost context park the loop | TS loop tests; e2e (`visibilitychange`, dispatched `contextlost`/`contextrestored`) |
+| A18-18 | 1,000-node budget | TS layout proxy; `test_a_thousand_node_neighbourhood_is_built_within_budget` (0.10 s measured, gate 1.5 s); 60 fps manual (below) |
+| A18-19 | > 250 → dots, batched | TS `above 250 visible nodes every node is a dot…` |
+| A18-20 | truncation, `hidden`, "+N" | `test_the_cap_holds_and_hidden_counts_what_it_cut`; TS stub test |
+| A18-21 | deterministic ordering | `test_nodes_come_in_hop_then_kind_rank_order_and_the_same_bytes_twice`, `test_edges_are_sorted_and_ids_are_stable` |
+| A18-22 | deterministic, stable layout | TS layout tests |
+| A18-23 | import graph | `test_the_repository_graph_*` (4); e2e `test_the_repository_import_graph` |
+| A18-24 | stale / not inspected / payload missing | `test_stale_not_inspected_and_missing_payload_are_said_not_guessed` |
+| A18-25 | unknown focus | `test_an_unknown_focus_is_not_found`; routes 404; e2e `test_an_unknown_focus_says_so` |
+| A18-26 | non-node kind as focus | `test_the_graph_needs_a_credential_and_refuses_what_is_not_a_node` |
+| A18-27 | mirror; axe | TS mirror test; e2e `test_axe_and_no_sideways_scroll_on_the_graph` |
+| A18-28 | < 600 px | e2e `test_below_600_px_the_relations_list_is_the_view` |
+| A18-29 | no mutation | `test_the_graph_routes_write_nothing`; boundary scans |
+| A18-30 | no reasoning exposed | `test_a_route_decision_shows_recorded_selection_facts_only`, `test_every_node_carries_only_allowlisted_keys` |
+| A18-31 | no inferred relationships | `test_every_edge_is_a_recorded_column_or_relation_row` |
+| A18-32 | API/client generation parity | `gen_api_docs.py --check`, `test_api_structure.py`, `test_core_client.py` |
+
+
+**Regression.** Full suite (`--basetemp` short): **4,801 passed, 0 failed** (15 skipped, 6 xfailed). Mutation suites, every mutant killed: P8 22/22, P9 36/36, P10 37/37, P11 36/36, P12 28/28, P13 16/16, P14 21/21, P15 23/23, P16 29/29, P17 28/28, P18 33/33 (P16 and P17 after their anchors moved with the invalidation table, §22 I13). e2e + G3 with `ARCHEUS_E2E=1`: 27 passed, 3 skipped (the GUI/TUI functions over the in-process binding), 1 xfailed (P19). `npm test` 64/64, `tsc` and `vite build` clean, `gen_ui.py --check`, `gen_api_docs.py --check`, Ruff and mkdocs `--strict` clean; the wheel built, installed in a clean venv, `check_wheel.py` passes (the SPA served with Node off PATH) and the installed Core lists both graph routes. CI: after the push (§20 item 5).
+
+**Manual evidence still owed by the user (not claimable from CI).**
+
+1. *A10 — 60 fps on integrated graphics.* On a machine with integrated graphics (Intel UHD
+   class), in Edge or Chrome on Windows: start Core, create or import enough data for a
+   neighbourhood near the cap (or open `#/world/graph/project/<id>` on the largest project),
+   open DevTools → Performance, record while pressing `+`, `-` and `0` a few times and while a
+   running execution pulses; the frame chart must hold 60 fps (frames ≤ 16.7 ms) during the
+   camera moves and pulses, and show no frames at all while idle (the loop parks). Record the
+   machine, browser, node count shown (`data-graph-nodes`) and the worst frame in §22.
+2. *P17 carry-over — Windows Terminal and conhost.* With Core running (`archeus core`): in
+   Windows Terminal and in a classic conhost window (`conhost.exe powershell`), run `archeus
+   tui`; check the state glyphs render (or the ASCII set with `ARCHEUS_TUI_ASCII=1`), the
+   colours follow the dark default and `--light`, a resize redraws without stray lines, `1`–`4`
+   and `a` switch destinations, an inspector opens with Enter and `q` quits and leaves the
+   prompt usable. Record any difference between the two consoles.
+
+**Known limitations** as §18.1, plus: the pulse needs `execution.*` frames about a live
+execution while the graph is open; a live execution with no progress in that time shows its
+thick-static or plain edge only.
+
+**DESIGN_GATE = IMPLEMENTED** once the push is approved and CI is green on every job
+(I1, I2, I3 and I5 await the user's review).

@@ -987,9 +987,29 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Tests: encoding table ↔ renderer parity test; keyboard traversal; 1,000-node budget; reduced
   motion.
 - Acceptance: drill world → project → mission → execution; list equivalent.
+  - **P18, as built** (p18-design-gate.md, A1–A17, I1–I13). Two `observe` GET routes, read-only
+    and bounded: `/v1/world/graph?focus=<kind>:<id>&depth=1|2&limit=` (a neighbourhood of the
+    columns and `Relation` rows Core records, each edge held by the row that holds its field;
+    the world level is every project collapsed with counts, never a child row) and
+    `/v1/repositories/{id}/graph` (the stored inspection payload, focused, with stale / not
+    inspected / payload missing said). No migration, state or event type; the graph writes
+    nothing, infers nothing and routes nothing — a route decision shows its recorded selection
+    facts only. The SPA view (`clients/app/src/graph/`) is a mode of World and of every
+    Relations tab: Canvas 2D, no dependency, the legacy renderer's mechanisms ported (lifting,
+    expand/collapse, focus + context, search that expands ancestors, 250-node dot LOD), a seeded
+    layout run once per focus with positions kept, the client's one `requestAnimationFrame`
+    loop that parks, keyboard traversal with Enter to the canonical inspector, an accessible
+    mirror from the same read, and the Relations list below 600 px. One edge vocabulary
+    (`EDGE_WORDS` in `relations.ts`) for the list and the graph. 33/33 P18 mutations killed.
+    Manual evidence owed: 60 fps on integrated graphics (A10). Deviations: p18-design-gate §22.
 
 **P19 — Client unification**
 - Depends: P16–P18. Work: remove any logic that crept into clients; generated client everywhere.
+- Carried from P18 (p18-design-gate A1, V2): until P19 there are three edge implementations —
+  Core's `graph.py` (the graph routes), the SPA's `relations.ts` and the TUI's `present.py`,
+  held equal by `parity.json` and a route test. P19 moves the Relations tab and the TUI onto
+  `/v1/world/graph?focus=<object>&depth=1`, deletes the two client edge mappers and carries
+  their cases to the route's tests; `EDGE_WORDS` stays the client's vocabulary.
 - Test: the implementation plan's unification scenario (create on desktop → observe on mobile →
   approve on mobile → execute on PC → review on desktop → inspect on TUI).
 - Acceptance: G3 fully passes.

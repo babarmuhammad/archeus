@@ -200,6 +200,18 @@ budget: 1,000 nodes at 60 fps on integrated graphics; beyond that, clusters coll
 The current `stage.js` three.js background is **not** carried into V1 as ambient decoration
 (ADR-0016). Its flat graph-scene lineage is the candidate for the later optional 3D mode.
 
+*As built (P18, [p18-design-gate.md](p18-design-gate.md) §23):* routes `#/world/graph`,
+`#/world/graph/<kind>/<id>` and `#/world/graph/repository/<id>/modules[/<path>]` over
+`GET /v1/world/graph?focus=<kind>:<id>&depth=` (depth 1 for the world and a project, 2
+otherwise) and `GET /v1/repositories/{id}/graph`. The encoding is `src/graph/encoding.ts`
+(A3: a session is a ring, a DECISION-type knowledge item a diamond; state colour on missions,
+tasks and executions only). Layout: seeded, 120 iterations once per focus, positions kept
+across refreshes. Energy: one 240 ms opacity pulse on a live execution's task edge per frame
+about it, at most every 2 s; under reduced motion the live edge is drawn 2 px instead. Keys:
+↑/↓ choose an edge, → follow, ← back, Enter open, F focus the graph there, Space expand or
+collapse, `+`/`-`, `0`, `/`, P marks a path end. Below 600 px the Relations list is the view.
+The 1,000-node, 60 fps budget is CI proxies plus manual evidence on integrated graphics.
+
 ### 5.1 P16 carry-forward: graph capability preservation
 
 *Done by P16* ([p16-design-gate.md](p16-design-gate.md)): the inventory, classification and
