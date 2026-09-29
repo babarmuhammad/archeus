@@ -238,3 +238,25 @@ export function liveExecutions(m: Model, isActive: (machine: string, state: stri
 export function pulseEdge(drawn: readonly Drawn[], exec: string): Drawn | null {
   return drawn.find((d) => d.edges.some((e) => e.field === 'executions.task_id' && keyOf(e.from) === exec)) ?? null;
 }
+
+export const PULSE_MS = 240;
+export const PULSE_EVERY_MS = 2000;
+
+/** Whether a stream frame pulses an edge (A8), and which: an `execution.*`
+ * frame about a loaded execution whose edge is live, at most once per
+ * PULSE_EVERY_MS per edge, never under reduced motion. The frame says only
+ * WHICH row moved; whether it is live is Core's state in the read. */
+export function pulseFor(
+  f: { event: string; data?: unknown },
+  drawn: readonly Drawn[],
+  live: ReadonlySet<string>,
+  last: ReadonlyMap<string, number>,
+  now: number,
+  reduced: boolean,
+): Drawn | null {
+  const subject = (f.data as { subject?: Ref } | undefined)?.subject;
+  if (reduced || !subject || subject.kind !== 'execution' || !f.event.startsWith('execution.')) return null;
+  const d = pulseEdge(drawn, keyOf(subject));
+  if (!d || !live.has(d.id)) return null;
+  return now - (last.get(d.id) ?? -Infinity) < PULSE_EVERY_MS ? null : d;
+}

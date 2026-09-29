@@ -2,7 +2,13 @@
 // and nothing else. Level of detail: up to LOD_NODES visible nodes each is its
 // shape; above, every node is a dot and dots of one colour are ONE path, so the
 // work per frame grows with the number of colours, not of nodes. Edges are
-// batched per style the same way. No loop here: the view's Loop calls draw().
+// batched per style the same way. No loop here: the view's Loop calls frame().
+//
+// Two layers (A10 proxy 5): everything but the pulses is drawn once into a
+// cached STATIC layer, redrawn only when something it shows changed; a frame
+// in which only a pulse moved copies that layer and strokes the pulsed edges
+// over it, so its work is one copy plus one path per pulse, whatever the
+// number of nodes.
 import { colourVar, dashOf, lookOf, radiusOf, tracePath, widthOf } from './encoding.ts';
 import type { Drawn, Model } from './model.ts';
 import type { Point } from './layout.ts';
@@ -29,6 +35,7 @@ export interface Scene {
   live: ReadonlySet<string>; // drawn edge ids with a live execution
   liveStatic: boolean; // reduced motion: live edges drawn thicker, never pulsed
   pulse: ReadonlyMap<string, number>; // drawn edge id → 0..1 of its one pulse
+  degraded?: boolean; // frames run slow (Loop.degraded): no pulse, the focus's label only
   colour: (cssVar: string) => string;
   width: number;
   height: number;
@@ -42,7 +49,48 @@ export interface DrawStats {
   nodes: number;
 }
 
+/** The whole picture on one context: the static layer, then the pulses. */
 export function draw(ctx: CanvasRenderingContext2D, s: Scene): DrawStats {
+  return counted(ctx, s, (stats) => {
+    paintStatic(ctx, s, stats);
+    drawPulses(ctx, s);
+  });
+}
+
+/** The cached static layer: an offscreen context the size of the canvas, and
+ * what it was last drawn from. */
+export interface Layer {
+  ctx: CanvasRenderingContext2D;
+  sig: readonly unknown[] | null;
+}
+
+/** What the static layer shows: when none of it changed, the layer is reused.
+ * The pulse map is deliberately not in it. */
+export function staticSig(s: Scene): unknown[] {
+  return [s.model, s.keys, s.drawn, s.pos, s.cam.x, s.cam.y, s.cam.k, s.focus, s.selected ?? null, s.context, s.path ?? null, s.live, s.liveStatic, !!s.degraded, s.width, s.height, s.dpr, s.colour('--bg'), s.colour('--text')];
+}
+
+/** One frame of the view: redraw the static layer only if it changed, copy it,
+ * stroke the pulses over it. `paths` counts the work on the visible canvas;
+ * `layer` says whether the static layer was redrawn (its own work then
+ * counted in `layerPaths`). */
+export function frame(ctx: CanvasRenderingContext2D, layer: Layer, s: Scene): DrawStats & { layer: boolean; layerPaths: number } {
+  const sig = staticSig(s);
+  const stale = !layer.sig || sig.length !== layer.sig.length || sig.some((v, i) => v !== layer.sig![i]);
+  let under: DrawStats | null = null;
+  if (stale) {
+    under = counted(layer.ctx, s, (stats) => paintStatic(layer.ctx, s, stats));
+    layer.sig = sig;
+  }
+  const top = counted(ctx, s, () => {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(layer.ctx.canvas, 0, 0);
+    drawPulses(ctx, s);
+  });
+  return { ...top, labels: under?.labels ?? 0, layer: stale, layerPaths: under?.paths ?? 0 };
+}
+
+function counted(ctx: CanvasRenderingContext2D, s: Scene, body: (stats: DrawStats) => void): DrawStats {
   const stats: DrawStats = { lod: s.keys.length > LOD_NODES ? 'dots' : 'full', paths: 0, labels: 0, nodes: s.keys.length };
   const bp = ctx.beginPath.bind(ctx);
   ctx.beginPath = () => {
@@ -50,17 +98,24 @@ export function draw(ctx: CanvasRenderingContext2D, s: Scene): DrawStats {
     bp();
   };
   try {
-    ctx.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
-    ctx.fillStyle = s.colour('--bg');
-    ctx.fillRect(0, 0, s.width, s.height);
-    ctx.setTransform(s.dpr * s.cam.k, 0, 0, s.dpr * s.cam.k, s.dpr * (s.width / 2 - s.cam.x * s.cam.k), s.dpr * (s.height / 2 - s.cam.y * s.cam.k));
-    drawEdges(ctx, s);
-    drawNodes(ctx, s, stats);
-    drawLabels(ctx, s, stats);
+    body(stats);
   } finally {
     ctx.beginPath = bp;
   }
   return stats;
+}
+
+const toCamera = (ctx: CanvasRenderingContext2D, s: Scene) =>
+  ctx.setTransform(s.dpr * s.cam.k, 0, 0, s.dpr * s.cam.k, s.dpr * (s.width / 2 - s.cam.x * s.cam.k), s.dpr * (s.height / 2 - s.cam.y * s.cam.k));
+
+function paintStatic(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
+  ctx.setTransform(s.dpr, 0, 0, s.dpr, 0, 0);
+  ctx.fillStyle = s.colour('--bg');
+  ctx.fillRect(0, 0, s.width, s.height);
+  toCamera(ctx, s);
+  drawEdges(ctx, s);
+  drawNodes(ctx, s, stats);
+  drawLabels(ctx, s, stats);
 }
 
 const dim = (s: Scene, k: string) => !!s.context && !s.context.has(k);
@@ -94,10 +149,23 @@ function drawEdges(ctx: CanvasRenderingContext2D, s: Scene) {
     }
     ctx.stroke();
   }
-  // one opacity step per pulsed edge, drawn over the static layer (A8)
+  ctx.globalAlpha = 1;
+}
+
+// drawn edges by id, once per drawn list (the view memoises it): a pulse frame
+// looks its edges up instead of scanning them
+const BY_ID = new WeakMap<readonly Drawn[], Map<string, Drawn>>();
+
+/** One opacity step per pulsed edge, over the static layer (A8); none while
+ * frames run slow (A10 degrade). */
+function drawPulses(ctx: CanvasRenderingContext2D, s: Scene) {
+  if (s.degraded || !s.pulse.size) return;
+  toCamera(ctx, s);
   ctx.setLineDash([]);
+  let index = BY_ID.get(s.drawn);
+  if (!index) BY_ID.set(s.drawn, (index = new Map(s.drawn.map((d) => [d.id, d]))));
   for (const [id, t] of s.pulse) {
-    const d = s.drawn.find((x) => x.id === id);
+    const d = index.get(id);
     const pa = d && s.pos.get(d.a);
     const pb = d && s.pos.get(d.b);
     if (!pa || !pb) continue;
@@ -175,7 +243,9 @@ function drawLabels(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
     const n = s.model.byKey.get(k);
     if (!n) continue;
     const cluster = lookOf(n.kind, n.endpoint, n.type).shape === 'cluster';
-    if (cluster) wanted.add(k);
+    if (s.degraded) {
+      if (k === s.focus) wanted.add(k); // frames run slow: the focus's label only
+    } else if (cluster) wanted.add(k);
     else if (s.cam.k >= LABEL_ZOOM) {
       if (k === s.focus) wanted.add(k);
       else if (stats.lod === 'full' && (!s.context || s.context.has(k))) wanted.add(k);

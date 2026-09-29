@@ -49,8 +49,11 @@ export function lookOf(kind: string, endpoint?: boolean, ktype?: string | null):
 }
 
 /** The CSS custom property a node is coloured with: a state colour only where
- * the kind carries state, `--text-2` (neutral) everywhere else. */
+ * the kind carries state, `--text-2` (neutral) everywhere else, and `--text-3`
+ * for a plan version no longer current (its presentation class `inactive`:
+ * superseded or rejected — A3). */
 export function colourVar(kind: string, machine?: string, state?: string): string {
+  if (kind === 'plan' && machine && state && present(machine, state).cls === 'inactive') return '--text-3';
   const look = ENCODING[kind];
   if (!look?.state || !machine || !state) return '--text-2';
   const role = present(machine, state).role;

@@ -26,9 +26,10 @@ APP = os.path.join(ROOT, 'clients', 'app')
 GRAPH = 'archeus/core/application/graph.py'
 ROUTES = 'archeus/api/routes.py'
 G = 'clients/app/src/graph/'
-MODEL, LAYOUT, LOOP, RENDER, KEYS, MIRROR, WIDE, REL = (G + n for n in (
+MODEL, LAYOUT, LOOP, RENDER, KEYS, MIRROR, WIDE, REL, ENC, GV = (G + n for n in (
     'model.ts', 'layout.ts', 'loop.ts', 'render.ts', 'keys.ts', 'mirror.ts', 'wide.ts',
-    'relations.ts'))
+    'relations.ts', 'encoding.ts', 'GraphView.tsx'))
+APPTSX = 'clients/app/src/App.tsx'
 RULES = 'clients/app/src/data/rules.ts'
 Q = 'tests/v1/integration/test_graph_query.py::'
 R = 'tests/v1/integration/test_graph_routes.py::'
@@ -106,8 +107,8 @@ MUTATIONS = [
      "")],
      [TS]),
     ('M17', 'the loop keeps scheduling with nothing to animate', [(LOOP,
-     "    if (this.anims.size) this.kick();\n    else this.onState?.('parked');",
-     "    this.kick();")],
+     "    if (this.anims.size) this.kick();",
+     "    if (true) this.kick();")],
      [TS]),
     ('M18', 'an animation accepted under reduced motion', [(LOOP,
      "    if (this.host.reduced()) {",
@@ -183,6 +184,55 @@ MUTATIONS = [
      "export const MIN_WIDTH = 600;",
      "export const MIN_WIDTH = 300;")],
      [E2E + 'test_below_600_px_the_relations_list_is_the_view']),
+    # ── the post-audit round (gate §22 F1-F6, D3, the 390 px regression) ──
+    ('M34', 'a superseded plan version drawn like a current one (F5)', [(ENC,
+     "  if (kind === 'plan' && machine && state && present(machine, state).cls === 'inactive') return '--text-3';\n",
+     "")],
+     [TS]),
+    ('M35', 'the pin key does nothing (F1)', [(KEYS,
+     "      return { walk: w, command: 'pin' };",
+     "      return { walk: w, command: null };")],
+     [TS]),
+    ('M36', 'the mirror never says a node is pinned (F1)', [(MIRROR,
+     "pinned: pinned.has(k) };",
+     "pinned: false };")],
+     [TS]),
+    ('M37', 'slow frames never degrade an animation (F2)', [(LOOP,
+     "      if (this.slow >= SLOW_FRAMES) this.degraded = true;",
+     "      if (this.slow >= SLOW_FRAMES * 1000) this.degraded = true;")],
+     [TS]),
+    ('M38', 'a degraded frame still draws its pulses (F2)', [(RENDER,
+     "  if (s.degraded || !s.pulse.size) return;",
+     "  if (!s.pulse.size) return;")],
+     [TS]),
+    ('M39', 'the static layer redrawn on every frame (F3)', [(RENDER,
+     "  const stale = !layer.sig ||",
+     "  const stale = true || !layer.sig ||")],
+     [TS]),
+    ('M40', 'the pulse map part of the static layer, so a pulse redraws everything (F3)', [(RENDER,
+     "  return [s.model, s.keys,",
+     "  return [s.pulse, s.model, s.keys,")],
+     [TS]),
+    ('M41', 'closing the inspector leaves focus on the page heading (F4)', [(APPTSX,
+     "      const back = closed ? document.querySelector<HTMLElement>('main .graph-canvas') : null;",
+     "      const back = closed && false ? document.querySelector<HTMLElement>('main .graph-canvas') : null;")],
+     [E2E + 'test_closing_the_inspector_returns_to_the_canvas_and_a_pin_is_never_stored']),
+    ('M42', 'a live edge pulses on every frame, no rate limit (F6)', [(MODEL,
+     "  return now - (last.get(d.id) ?? -Infinity) < PULSE_EVERY_MS ? null : d;",
+     "  return d;")],
+     [TS]),
+    ('M43', 'a pulse under reduced motion (F6)', [(MODEL,
+     "  if (reduced || !subject ||",
+     "  if (!subject ||")],
+     [TS]),
+    ('M46', 'the frame after a degraded animation never comes, so its labels stay dropped (F2)', [(LOOP,
+     "      this.last = null;\n      this.request();",
+     "      this.last = null;")],
+     [TS]),
+    ('M47', 'the static layer never copied to the canvas (F3)', [(RENDER,
+     "    ctx.drawImage(layer.ctx.canvas, 0, 0);\n",
+     "")],
+     [TS, E2E + 'test_zoom_fit_and_the_loop_parking']),
 ]
 
 

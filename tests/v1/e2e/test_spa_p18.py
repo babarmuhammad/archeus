@@ -124,6 +124,12 @@ def test_zoom_fit_and_the_loop_parking(browser, core):
     g = _graph(page)
     canvas = page.locator('canvas.graph-canvas')
     wait(page, lambda: g.get_attribute('data-graph-loop') == 'parked', what='idle parks')
+    # the visible canvas is the static layer copied: it must show the graph, not a blank
+    inked = page.evaluate("""() => { const c = document.querySelector('canvas.graph-canvas');
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0;
+        for (let i = 0; i < d.length; i += 4) if (d[i] !== d[0] || d[i+1] !== d[1] || d[i+2] !== d[2]) n++;
+        return n; }""")
+    check(inked > 200, 'the copied static layer shows the graph (%d inked pixels)' % inked)
     z0 = float(canvas.get_attribute('data-zoom'))
     page.focus('canvas.graph-canvas')
     page.keyboard.press('+')
@@ -228,6 +234,49 @@ def test_below_600_px_the_relations_list_is_the_view(browser, core):
     page.locator('.rel-list, .relations').first.wait_for(timeout=10000)
     assert page.locator('.graph-toggle').count() == 0      # no link to what cannot be shown
     assert not errors, errors
+    context.close()
+
+
+def test_closing_the_inspector_returns_to_the_canvas_and_a_pin_is_never_stored(browser, core):
+    """A11: closing an inspector opened from the graph gives focus back to the
+    canvas with the same node selected. A13: a pin is view state for this tab
+    only, so a reload forgets it and nothing stores it."""
+    check = Checks()
+    mid = _mission(core, 'Come back')
+    _settled(core, mid, 'COMPLETED')
+    context, page, errors = _open(browser, core)
+    _go(page, '#/world/graph/mission/%s' % mid)
+    g = _graph(page)
+    page.focus('canvas.graph-canvas')
+    page.keyboard.press('ArrowDown')
+    page.keyboard.press('ArrowRight')           # across an edge: a node that is not the focus
+    at = g.get_attribute('data-graph-at')
+    check(at and at != 'mission:%s' % mid, 'walked to a neighbour')
+    page.keyboard.press('.')
+    wait(page, lambda: g.get_attribute('data-graph-pinned') == '1', what='pinned')
+    check(page.locator('[data-graph-mirror] li[data-key="%s"]' % at).first.inner_text()
+          .split('\n')[0].count('(pinned)') == 1, 'the mirror says it is pinned')
+    page.keyboard.press('Enter')
+    wait(page, lambda: page.evaluate('location.hash').startswith('#/o/'), what='the inspector')
+    page.locator('.inspector h1').first.wait_for(timeout=10000)
+    page.focus('.inspector h1')                 # focus is in the inspector, off the canvas
+    check(page.evaluate("() => !!document.activeElement?.closest('.inspector')"), 'in the inspector')
+    page.keyboard.press('Escape')
+    wait(page, lambda: page.evaluate('location.hash') == '#/world/graph/mission/%s' % mid,
+         what='closed')
+    on_canvas = "() => document.activeElement?.classList.contains('graph-canvas')"
+    wait(page, lambda: page.evaluate(on_canvas), what='focus back on the canvas')
+    page.wait_for_timeout(300)                  # and still there once the close has settled
+    check(page.evaluate(on_canvas), 'focus stays on the canvas')
+    check(g.get_attribute('data-graph-at') == at, 'the same node selected')
+    check(g.get_attribute('data-graph-pinned') == '1', 'the pin kept for the tab')
+    stored = page.evaluate('() => JSON.stringify([Object.keys(localStorage), Object.keys(sessionStorage)])')
+    check('pin' not in stored.lower(), 'nothing stores a pin: %s' % stored)
+    page.reload()
+    g = _graph(page)
+    check(g.get_attribute('data-graph-pinned') == '0', 'a reload forgets the pin')
+    check(not errors, errors)
+    assert check.n >= 9
     context.close()
 
 

@@ -1,11 +1,12 @@
 // The accessible mirror's rows (p18-design-gate A11): one per LOADED node, in
 // the read's order, each with its edges in the shared words. Built from the
-// same object the canvas draws: never a second source. Pure.
+// same object the canvas draws: never a second source. A pinned node (view
+// state, A13) says so. Pure.
 import { lookOf } from './encoding.ts';
 import { keyOf, type Model } from './model.ts';
 import { edgeWords } from './relations.ts';
 
-export function mirrorRows(model: Model) {
+export function mirrorRows(model: Model, pinned: ReadonlySet<string> = new Set()) {
   return model.nodes.map((n) => {
     const k = keyOf(n);
     const look = lookOf(n.kind, n.endpoint, n.type);
@@ -21,6 +22,6 @@ export function mirrorRows(model: Model) {
           (e.count && e.count > 1 ? ` ×${e.count}` : '');
         return { id: e.id, text };
       });
-    return { k, n, look, edges };
+    return { k, n, look, edges, pinned: pinned.has(k) };
   });
 }

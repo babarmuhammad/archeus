@@ -157,13 +157,19 @@ function Shell({ token }: { token: string }) {
   // focus the view's heading on navigation (§17) — not on the first load, where
   // focus starts at the top of the document and the skip link comes first
   const navigated = useRef(false);
+  const fromView = useRef(route.view);
   useEffect(() => {
+    // closing an inspector opened over the spatial view returns focus to its
+    // canvas, which kept its walk (the same node selected; p18 A11)
+    const closed = fromView.current === 'object' && route.view !== 'object';
+    fromView.current = route.view;
     if (!navigated.current) {
       navigated.current = true;
       return;
     }
     const t = setTimeout(() => {
-      const h = document.querySelector<HTMLElement>(route.view === 'object' ? '.inspector h1' : 'main h1');
+      const back = closed ? document.querySelector<HTMLElement>('main .graph-canvas') : null;
+      const h = back ?? document.querySelector<HTMLElement>(route.view === 'object' ? '.inspector h1' : 'main h1');
       h?.focus({ preventScroll: false });
     }, 0);
     return () => clearTimeout(t);

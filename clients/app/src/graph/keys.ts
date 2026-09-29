@@ -1,7 +1,7 @@
 // Keyboard traversal (p18-design-gate A11; p16 §20.11): keyboard equals
 // pointer. ↑/↓ select the previous/next edge of the focused node in the drawn
 // order, → crosses the selected edge, ← steps back along the way it came,
-// Home returns to the query's focus. Enter, Space, +/-, 0 and / are commands
+// Home returns to the query's focus. Enter, Space, +/-, 0, /, p and . are commands
 // the view carries out. Pure: the view keeps the state, this decides the next.
 import { around, type Drawn } from './model.ts';
 
@@ -11,7 +11,7 @@ export interface Walk {
   trail: string[]; // the nodes crossed from, most recent last
 }
 
-export type Command = 'open' | 'toggle' | 'zoom-in' | 'zoom-out' | 'fit' | 'search' | 'clear' | 'path-mark' | null;
+export type Command = 'open' | 'toggle' | 'zoom-in' | 'zoom-out' | 'fit' | 'search' | 'clear' | 'path-mark' | 'pin' | null;
 
 export function start(root: string): Walk {
   return { at: root, sel: 0, trail: [] };
@@ -55,6 +55,8 @@ export function step(w: Walk, key: string, drawn: readonly Drawn[], root: string
       return { walk: w, command: 'clear' };
     case 'p':
       return { walk: w, command: 'path-mark' };
+    case '.':
+      return { walk: w, command: 'pin' };
     default:
       return { walk: w, command: null };
   }

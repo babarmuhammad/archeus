@@ -6,11 +6,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { DASH, ENCODING, dashOf, lookOf, tracePath } from '../src/graph/encoding.ts';
-import { allExpanded, around, build, inFocus, keyOf, lifted, liveExecutions, path, pulseEdge, search, toggle, visible, type GraphData } from '../src/graph/model.ts';
+import { DASH, ENCODING, colourVar, dashOf, lookOf, tracePath } from '../src/graph/encoding.ts';
+import { allExpanded, around, build, inFocus, keyOf, lifted, liveExecutions, path, pulseEdge, pulseFor, PULSE_EVERY_MS, PULSE_MS, search, toggle, visible, type GraphData } from '../src/graph/model.ts';
 import { ITERATIONS, layout } from '../src/graph/layout.ts';
-import { draw, LOD_NODES, type Scene } from '../src/graph/render.ts';
-import { Loop, type LoopHost } from '../src/graph/loop.ts';
+import { draw, frame, LOD_NODES, staticSig, type Scene } from '../src/graph/render.ts';
+import { Loop, SLOW_FRAME_MS, SLOW_FRAMES, type LoopHost } from '../src/graph/loop.ts';
 import { start, step } from '../src/graph/keys.ts';
 import { mirrorRows } from '../src/graph/mirror.ts';
 import { TIER_STYLE } from '../src/graph/relations.ts';
@@ -412,4 +412,123 @@ test('the graph code sends nothing: its only reads are the two graph paths', () 
     assert.ok(!/'POST'|"POST"|send\(/.test(src), `${f} sends`);
     for (const m2 of src.matchAll(/[`'"](\/v1\/[^`'"]*)/g)) assert.ok(/^\/v1\/(world\/graph|repositories\/)/.test(m2[1]), `${f}: ${m2[1]}`);
   }
+});
+
+// ── the post-audit round (gate §22 F1–F6) ──
+
+test('a superseded or rejected plan version is drawn at --text-3, a current one neutral (F5, A3: M34)', () => {
+  const plan = (state: string) => {
+    const { ctx, ops } = recorder();
+    draw(ctx, scene({ nodes: [{ ...PL, label: 'v', machine: 'plan', state }], edges: [] }));
+    return ops.filter((o) => o.startsWith('strokeStyle=')).map((o) => o.slice(12));
+  };
+  for (const s of ['SUPERSEDED', 'REJECTED']) assert.deepEqual(plan(s), ['--text-3'], s);
+  for (const s of ['APPROVED', 'PROPOSED', 'DRAFT']) assert.deepEqual(plan(s), ['--text-2'], s);
+  assert.equal(colourVar('plan', 'plan', 'SUPERSEDED'), '--text-3');
+  assert.equal(colourVar('plan', 'plan', 'APPROVED'), '--text-2');
+});
+
+test('pin: "." toggles the focused node; the mirror says which are pinned; a pinned node stays put (F1, A13: M35, M36)', () => {
+  const d = lifted(m, visible(m, allExpanded(m)));
+  assert.equal(step(start(k(M)), '.', d, k(M)).command, 'pin');
+  const pinned = toggle(new Set(), k(T1));
+  assert.deepEqual(mirrorRows(m, pinned).filter((r) => r.pinned).map((r) => r.k), [k(T1)]);
+  assert.deepEqual(mirrorRows(m).filter((r) => r.pinned), []);
+  assert.equal(toggle(pinned, k(T1)).size, 0); // the same key unpins
+  const mm = build(DATA);
+  const vis = visible(mm, allExpanded(mm));
+  const keys = mm.nodes.map(keyOf).filter((x) => vis.has(x));
+  const at = { x: 999, y: -999 };
+  const pos = layout({ keys, parentOf: (x) => mm.parentOf.get(x) ?? null, radius: () => 8, links: lifted(mm, vis).map((x) => [x.a, x.b] as [string, string]), seed: 'f', prev: new Map([[k(T1), at]]), pinned });
+  assert.deepEqual(pos.get(k(T1)), at);
+  // view state only: nothing in the graph code stores or sends a pin
+  const view = readFileSync(new URL('../src/graph/GraphView.tsx', import.meta.url), 'utf8');
+  assert.ok(!/localStorage|sessionStorage|indexedDB/.test(view));
+});
+
+test('three slow frames during an animation degrade it until it ends; one frame then restores (F2, A10: M37, M46)', () => {
+  const h = host();
+  const seen: boolean[] = [];
+  const l = new Loop(h, () => {
+    seen.push(l.degraded);
+    h.tick(25); // every frame takes 25 ms: over SLOW_FRAME_MS
+  });
+  assert.equal(SLOW_FRAME_MS, 20);
+  assert.equal(SLOW_FRAMES, 3);
+  l.animate(300);
+  h.run();
+  // frame 1 has no previous frame; frames 2, 3 and 4 are slow: the third slow one is drawn degraded
+  assert.deepEqual(seen.slice(0, 4), [false, false, false, true]);
+  assert.equal(seen[seen.length - 1], false, 'the frame after the animation draws everything again');
+  assert.equal(l.degraded, false);
+  assert.equal(l.state, 'parked');
+  const fast = host();
+  const f = new Loop(fast, () => {
+    fast.tick(10);
+    assert.equal(f.degraded, false);
+  });
+  f.animate(300);
+  fast.run();
+  const idle = host(); // slow frames with nothing animating (single redraws) never degrade
+  const r = new Loop(idle, () => idle.tick(100));
+  for (let i = 0; i < 5; i++) {
+    r.request();
+    idle.run();
+  }
+  assert.equal(r.degraded, false);
+});
+
+test('degraded, a frame draws no pulse and no label but the focus (F2, A10: M38)', () => {
+  const pulsed = scene(DATA);
+  const id = pulseEdge(pulsed.drawn, k(X2))!.id;
+  const run = (degraded: boolean) => {
+    const { ctx, ops } = recorder();
+    const st = draw(ctx, { ...pulsed, focus: k(M), pulse: new Map([[id, 0.5]]), degraded });
+    return { st, active: ops.includes('strokeStyle=--state-active') };
+  };
+  const full = run(false);
+  const slow = run(true);
+  assert.ok(full.active && full.st.labels > 1);
+  assert.ok(!slow.active, 'a pulse drawn while degraded');
+  assert.equal(slow.st.labels, 1);
+});
+
+test('a pulse frame reuses the static layer: one copy and one path per pulse, whatever the size (F3, A10 proxy 5: M39, M40, M47)', () => {
+  const s = scene(big(1000));
+  const id = s.drawn[0].id;
+  const layer = { ctx: recorder().ctx, sig: null as readonly unknown[] | null };
+  const first = frame(recorder().ctx, layer, s);
+  assert.equal(first.layer, true);
+  assert.ok(first.layerPaths >= 1, 'the static layer is drawn once');
+  for (const t of [0.1, 0.5, 0.9]) {
+    const top = recorder();
+    const f = frame(top.ctx, layer, { ...s, pulse: new Map([[id, t]]) });
+    assert.equal(f.layer, false, 'a pulse redrew the static layer');
+    assert.equal(f.paths, 1, `${f.paths} paths for one pulse over ${s.keys.length} nodes`);
+    assert.equal(top.ops.filter((o) => o.startsWith('drawImage(')).length, 1);
+  }
+  // anything the static layer shows redraws it: the camera, the selection, the degrade
+  for (const change of [{ cam: { x: 1, y: 0, k: 1 } }, { selected: id }, { degraded: true }, { width: 101 }] as Partial<Scene>[]) {
+    frame(recorder().ctx, layer, s);
+    assert.equal(frame(recorder().ctx, layer, { ...s, ...change }).layer, true, JSON.stringify(change));
+  }
+  assert.ok(!staticSig(s).includes(s.pulse), 'the pulse map is part of the static layer');
+});
+
+test('a pulse: only an execution.* frame about a live execution, once per 2 s per edge, never reduced (F6, A8: M42, M43)', () => {
+  const d = lifted(m, visible(m, allExpanded(m)));
+  const live = new Set([pulseEdge(d, k(X2))!.id]);
+  const f = (kind: string, id: string, event = `${kind}.progress`) => ({ event, data: { subject: { kind, id } } });
+  const last = new Map<string, number>();
+  const got = pulseFor(f('execution', X2.id), d, live, last, 1000, false);
+  assert.equal(got?.id, [...live][0]);
+  last.set(got!.id, 1000);
+  assert.equal(pulseFor(f('execution', X2.id), d, live, last, 1000 + PULSE_EVERY_MS - 1, false), null, 'twice within 2 s');
+  assert.equal(pulseFor(f('execution', X2.id), d, live, last, 1000 + PULSE_EVERY_MS, false)?.id, got!.id);
+  assert.equal(pulseFor(f('execution', X1.id), d, live, new Map(), 0, false), null, 'an ended execution pulsed'); // ENDED_HANDOFF
+  assert.equal(pulseFor(f('execution', X2.id), d, live, new Map(), 0, true), null, 'a pulse under reduced motion');
+  assert.equal(pulseFor(f('task', T1.id), d, live, new Map(), 0, false), null);
+  assert.equal(pulseFor(f('execution', X2.id, 'mission.updated'), d, live, new Map(), 0, false), null);
+  assert.equal(pulseFor({ event: 'execution.progress' }, d, live, new Map(), 0, false), null);
+  assert.equal(PULSE_MS, 240);
 });

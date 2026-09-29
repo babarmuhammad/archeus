@@ -21,11 +21,21 @@ export interface LoopHost {
 
 export type LoopState = 'running' | 'parked';
 
+// frame-time degrade (A10; Ship Notes R7 ADAPT): this many consecutive frames
+// slower than SLOW_FRAME_MS during an animation drop its extras until it ends
+export const SLOW_FRAME_MS = 20;
+export const SLOW_FRAMES = 3;
+
 export class Loop {
   private anims = new Set<Anim>();
   private frame: number | null = null;
   private dirty = false;
   private lost = false;
+  private last: number | null = null; // the previous frame's time in this chain
+  private slow = 0;
+  /** Frames are running slow during this animation: the view drops pulses
+   * and every label but the focus's until it ends. */
+  degraded = false;
   frames = 0; // frames run: what the tests (and the view's data attribute) read
 
   private host: LoopHost;
@@ -85,19 +95,35 @@ export class Loop {
   private park() {
     if (this.frame !== null) this.host.caf(this.frame);
     this.frame = null;
+    this.last = null; // a parked gap is not a slow frame
     this.onState?.('parked');
   }
 
   private tick(t: number) {
     this.frame = null;
     if (this.blocked()) return this.park();
+    if (this.anims.size && this.last !== null) {
+      this.slow = t - this.last > SLOW_FRAME_MS ? this.slow + 1 : 0;
+      if (this.slow >= SLOW_FRAMES) this.degraded = true;
+    }
+    this.last = t;
     this.frames++;
     this.dirty = false;
     this.draw(t);
     const now = this.host.now();
     for (const a of [...this.anims]) if (a.until <= now) this.anims.delete(a);
     if (this.anims.size) this.kick();
-    else this.onState?.('parked');
+    else if (this.degraded) {
+      // the animation ended: one more frame puts back what was dropped
+      this.degraded = false;
+      this.slow = 0;
+      this.last = null;
+      this.request();
+    } else {
+      this.last = null;
+      this.slow = 0;
+      this.onState?.('parked');
+    }
   }
 
   get animating() {

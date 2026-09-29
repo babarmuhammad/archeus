@@ -13,15 +13,12 @@ import { Inspector } from '../surfaces/Inspector';
 import { lookOf } from './encoding';
 import { fit, layout, type Point } from './layout';
 import { browserHost, Loop } from './loop';
-import { allExpanded, around, build, inFocus, keyOf, lifted, liveExecutions, path as tracePathKeys, pulseEdge, search, toggle, visible, type GraphData, type Model, type Ref } from './model';
-import { draw, type Camera, type DrawStats } from './render';
+import { allExpanded, around, build, inFocus, keyOf, lifted, liveExecutions, path as tracePathKeys, pulseEdge, pulseFor, PULSE_MS, search, toggle, visible, type GraphData, type Model, type Ref } from './model';
+import { frame, type Camera, type DrawStats, type Layer } from './render';
 import { selected as selectedEdge, start, step, type Walk } from './keys';
 import { edgeWords } from './relations';
 import { mirrorRows } from './mirror';
 import { MIN_WIDTH, useWide } from './wide';
-
-const PULSE_MS = 240;
-const PULSE_EVERY_MS = 2000;
 
 /** Where a graph view lives (A4): every step is a URL. */
 export function graphHref(focus: Ref | null, modules?: string): string {
@@ -60,6 +57,9 @@ function Narrow({ focus, modules }: { focus: Ref | null; modules?: string }) {
 
 // positions per focus, kept for the tab's life: Back returns to the same picture
 const POSITIONS = new Map<string, Map<string, Point>>();
+// pins per focus (A13): view state, in memory, this tab only — never stored,
+// never sent, not in the URL
+const PINS = new Map<string, Set<string>>();
 
 function Spatial({ focus, modules }: { focus: Ref | null; modules?: string }) {
   const path = graphPath(focus, modules);
@@ -96,7 +96,13 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   const [query, setQuery] = useState('');
   const [walk, setWalk] = useState<Walk>(() => start(rootKey));
   const [pathEnds, setPathEnds] = useState<string[]>([]);
-  const [pinned] = useState<Set<string>>(() => new Set());
+  const [pinned, setPinnedState] = useState<Set<string>>(() => PINS.get(path) ?? new Set());
+  const pin = (k: string) => {
+    if (!k) return;
+    const next = toggle(pinned, k);
+    PINS.set(path, next);
+    setPinnedState(next);
+  };
   const canvas = useRef<HTMLCanvasElement>(null);
   const searchBox = useRef<HTMLInputElement>(null);
   const cam = useRef<{ from: Camera; to: Camera; start: number } | null>(null);
@@ -106,6 +112,8 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   const pulses = useRef(new Map<string, Pulse>());
   const lastPulse = useRef(new Map<string, number>());
   const statsRef = useRef<DrawStats | null>(null);
+  const layer = useRef<Layer | null>(null);
+  const layerDraws = useRef(0);
   const [loopState, setLoopState] = useState<'running' | 'parked'>('parked');
   const [lod, setLod] = useState<'full' | 'dots'>('full');
   const [pulseCount, setPulseCount] = useState(0);
@@ -187,7 +195,8 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   sceneRef.current = () => {
     const c = canvas.current;
     const ctx = c?.getContext('2d');
-    if (!c || !ctx) return;
+    const l = layer.current;
+    if (!c || !ctx || !l) return;
     const now = performance.now();
     const styles = getComputedStyle(c);
     const pulse = new Map<string, number>();
@@ -196,7 +205,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
       if (t >= 1) pulses.current.delete(id);
       else pulse.set(id, t);
     }
-    const stats = draw(ctx, {
+    const stats = frame(ctx, l, {
       model,
       keys,
       drawn,
@@ -213,8 +222,11 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
       width: size.current.w,
       height: size.current.h,
       dpr: Math.min(2, devicePixelRatio || 1),
+      degraded: !!loopRef.current?.degraded,
     });
     statsRef.current = stats;
+    if (stats.layer) layerDraws.current++;
+    c.dataset.layers = String(layerDraws.current); // static-layer redraws (A10 proxy 5)
     c.dataset.zoom = camera(now).k.toFixed(3); // what a test (or a bug report) reads
     c.dataset.frames = String(loopRef.current?.frames ?? 0);
     if (stats.lod !== lod) setLod(stats.lod);
@@ -227,8 +239,12 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
     loop = new Loop(host, () => sceneRef.current(), setLoopState);
     loopRef.current = loop;
     const c = canvas.current!;
+    layer.current = { ctx: document.createElement('canvas').getContext('2d')!, sig: null };
     const lost = () => loop!.setLost(true);
-    const restored = () => loop!.setLost(false);
+    const restored = () => {
+      layer.current!.sig = null; // what the layer held went with the context
+      loop!.setLost(false);
+    };
     c.addEventListener('contextlost', lost);
     c.addEventListener('contextrestored', restored);
     const ro = new ResizeObserver(([e]) => {
@@ -240,18 +256,17 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
       sized.current = true;
       c.width = w * dpr;
       c.height = h * dpr;
+      layer.current!.ctx.canvas.width = c.width;
+      layer.current!.ctx.canvas.height = c.height;
+      layer.current!.sig = null;
       if (first) fitRef.current(false); // the first fit needs the real size
       loop!.request();
     });
     ro.observe(c);
     const stopFrames = store.onFrame((f) => {
-      const subject = (f.data as { subject?: Ref } | undefined)?.subject;
-      if (!subject || subject.kind !== 'execution' || !f.event.startsWith('execution.')) return;
-      const d = pulseEdge(drawnRef.current, keyOf(subject));
-      if (!d || !liveRef.current.has(d.id)) return;
       const now = performance.now();
-      if (now - (lastPulse.current.get(d.id) ?? -Infinity) < PULSE_EVERY_MS) return;
-      if (!loop!.animate(PULSE_MS)) return; // reduced motion: the thick static edge says it instead
+      const d = pulseFor(f, drawnRef.current, liveRef.current, lastPulse.current, now, host.reduced());
+      if (!d || !loop!.animate(PULSE_MS)) return; // reduced motion: the thick static edge says it instead
       lastPulse.current.set(d.id, now);
       pulses.current.set(d.id, { start: now });
       setPulseCount((n) => n + 1);
@@ -331,6 +346,8 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
         return;
       case 'path-mark':
         return setPathEnds((p) => (p.length >= 2 ? [w.at] : [...p, w.at]));
+      case 'pin':
+        return pin(w.at);
     }
   };
 
@@ -366,7 +383,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   const hiddenCount = (data.hidden ?? []).reduce((a, h) => a + h.count, 0);
 
   return (
-    <div className="graph" data-graph-focus={focus ? `${focus.kind}:${focus.id}` : 'workspace'} data-graph-nodes={keys.length} data-graph-lod={lod} data-graph-loop={loopState} data-graph-at={walk.at} data-graph-live={live.size} data-graph-pulses={pulseCount}>
+    <div className="graph" data-graph-focus={focus ? `${focus.kind}:${focus.id}` : 'workspace'} data-graph-nodes={keys.length} data-graph-lod={lod} data-graph-loop={loopState} data-graph-at={walk.at} data-graph-live={live.size} data-graph-pulses={pulseCount} data-graph-pinned={pinned.size}>
       <div className="graph-bar" role="toolbar" aria-label="Graph">
         <a className="chip" href={modules !== undefined ? objectHref('repository', focus!.id) : focus ? (focus.kind === 'project' ? `#/world/${focus.id}` : objectHref(focus.kind, focus.id, 'relations')) : '#/world'}>
           List
@@ -385,6 +402,9 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
         </button>
         <button type="button" className="chip" onClick={() => fitAll()}>
           Fit
+        </button>
+        <button type="button" className="chip" aria-pressed={pinned.has(walk.at)} onClick={() => pin(walk.at)}>
+          {pinned.has(walk.at) ? 'Unpin' : 'Pin'}
         </button>
         {rels.length > 1 ? (
           <span className="chips" role="group" aria-label="Show one relationship">
@@ -443,9 +463,9 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
         }}
       />
       <p id="graph-keys" className="caption">
-        ↑ ↓ choose a relationship · → follow it · ← back · Enter open · F focus here · Space expand or collapse · + − zoom · 0 fit · / find · P mark a path end
+        ↑ ↓ choose a relationship · → follow it · ← back · Enter open · F focus here · Space expand or collapse · + − zoom · 0 fit · / find · P mark a path end · . pin or unpin
       </p>
-      <Mirror model={model} />
+      <Mirror model={model} pinned={pinned} />
     </div>
   );
 }
@@ -457,11 +477,11 @@ const chipOf = (e: { field: string; rel?: string | null }) => edgeWords(e.field,
 /** The accessible form (A11): the same loaded graph as a list — every node the
  * read returned (the collapsed ones and the "+N" stubs too), each with its
  * edges in words. Not a second data source: built from the same object. */
-export function Mirror({ model }: { model: Model }) {
+export function Mirror({ model, pinned }: { model: Model; pinned?: ReadonlySet<string> }) {
   return (
     <section className="sr" aria-label="Relationships in this view, as a list" data-graph-mirror="">
       <ul>
-        {mirrorRows(model).map(({ k, n, look, edges }) => {
+        {mirrorRows(model, pinned).map(({ k, n, look, edges, pinned: isPinned }) => {
           return (
             <li key={k} data-key={k}>
               {n.endpoint ? (
@@ -474,6 +494,7 @@ export function Mirror({ model }: { model: Model }) {
                   {look.noun} {n.label}
                 </a>
               )}
+              {isPinned ? ' (pinned)' : ''}
               {n.machine && n.state ? <StateBadge machine={n.machine} state={n.state} /> : null}
               {edges.length ? (
                 <ul>
