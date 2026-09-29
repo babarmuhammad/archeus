@@ -1002,8 +1002,12 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
     mirror from the same read, and the Relations list below 600 px. One edge vocabulary
     (`EDGE_WORDS` in `relations.ts`) for the list and the graph. After the pre-push audit: pin,
     frame-time degrade, a cached static layer under the pulses, focus back to the canvas, grey
-    superseded plans, a tested pulse rule (gate §22.1). 49/49 P18 mutations killed.
-    Manual evidence owed: 60 fps on integrated graphics (A10). Deviations: p18-design-gate §22.
+    superseded plans, a tested pulse rule (gate §22.1); then the approved behaviours a final
+    consistency pass found missing — world counts, route facts on focus, hover and focus labels,
+    search centring, "no path", Esc, touch pinch/double-tap/44 px targets (§22.2.1). 65/65 P18
+    mutations killed. Manual evidence owed: 60 fps (A10), Windows Terminal/conhost (P17), a
+    physical touch device (A12).
+    Deviations: p18-design-gate §22.
 
 **P19 — Client unification**
 - Depends: P16–P18. Work: remove any logic that crept into clients; generated client everywhere.

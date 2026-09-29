@@ -1039,6 +1039,25 @@ needs the user's decision (build it, or accept it as recorded).
 | N6 | A11 Esc | "clears search, then selection" | clears the search and the path marks; the selection stays |
 | N7 | A12 touch | pinch zooms; toolbar targets never under 44 px at ≥ 600 px | no touch-pinch handling (a trackpad pinch arrives as a wheel and zooms); chips are `--target-desktop` (28 px) with no coarse-pointer rule. Double-tap relies on the browser's `dblclick`, not verified on a touch device |
 
+#### 22.2.1 N1–N7 built (2026-09-29)
+
+The user decided that N1–N7 are approved behaviour to be built before the push, not deviations
+to accept. They were built with the smallest change each requirement allows; the table above
+stays as the record of what was missing. No approved section was changed; no dependency,
+backend change, write path, query or second traversal was added.
+
+| # | Requirement | What was built | Test (mutants) | Manual evidence |
+|---|---|---|---|---|
+| N1 | A3, A4 counts | A world-level project draws a second line with exactly Core's `counts`: missions in total and by Core's own state (its label, never a presentation class — I1, C1), repositories, sessions, knowledge items (`encoding.countsText`). The mirror row carries the same words. | TS `a world-level project shows the counts…` (M50, M51); e2e `test_counts_route_facts_hover_search_centre_path_and_esc` (M51) | none |
+| N2 | A3 route decision | A focused route decision draws a second line with its recorded facts — harness, account, model, effort, result, fell back from, the number eliminated — read through a fixed client allowlist of Core's `ROUTE_ATTRS`, so any other field a response carried is never shown; the mirror row always carries them. | TS `a focused route decision shows its recorded selection facts and nothing else` (M52); e2e (the row has them, and no explanation, requirement, candidate or snapshot) | none |
+| N3 | A10 labels | The query focus is labelled whatever the walk does; a mouse hover labels its node up to 250 visible nodes (hit-tested on the canvas, no DOM per node); above 250 only the query focus and the selection; degraded, those two only. | TS `labels: the query focus and the selection always…` (M53, M54); e2e hover (M61) | none |
+| N4 | A13 search | A match is centred at the current zoom once the layout has placed it (the camera's ≤ 240 ms move, none under reduced motion); it is still search over loaded nodes only. | e2e: the match's screen position is the canvas centre ± 2 px (M60) | none |
+| N5 | A13 path | `model.pathStatus` says `none` for two marked ends with no path over loaded edges; the view shows "No path within the loaded neighbourhood." as a status line. | TS `path tracing says "none"…` (M55); e2e (M59) | none |
+| N6 | A11 Esc | Esc clears the search, the path marks and the selected relationship (`sel -1`); ↓ and ↑ start again from the first or the last edge; the walk's node stays. | TS `Esc clears the selected relationship…` (M56); e2e (M62) | none |
+| N7 | A12 touch | A two-finger pinch zooms by the ratio of the fingers' distance and keeps the point under their midpoint still (`layout.pinchCamera`); a single tap selects and a second tap on the same node within 350 ms opens it (`keys.doubleTap`; the mouse's `dblclick` is ignored after a touch); `@media (pointer: coarse)` raises the graph toolbar's controls to `--target-phone` (44 px) — a pointer rule, not a width rule. Below 600 px nothing changed: no canvas, the Relations list where the object has one, the note and link otherwise (C8). | TS `a pinch scales with the fingers…` (M57, M58); e2e `test_touch_pinch_double_tap_and_44_px_targets` on an emulated touch screen at 1280 px: two real touch points through CDP `Input.dispatchTouchEvent` zoom ×1.5, a touchscreen double-tap opens the node and one tap does not, every toolbar control ≥ 44 px (M63, M64, M65) | **yes**: pinch, double-tap and the target size on a physical touch device (§23, manual item 3) — emulation proves the handlers and the CSS, not a real digitiser |
+
+The anchor of M36 moved with the mirror's `detail`; the mutant is the same.
+
 ## 23. As built
 
 Everything in §1–§21 is built as written and approved (§4.1), except the implementation
@@ -1048,13 +1067,16 @@ written, held for review and then approved as recorded (§22.1, the user, 2026-0
 not the cap — a P24 audit item), D5 (no focus-change camera tween) and D6 (no farthest-cluster
 collapse, which one read of at most 500 nodes cannot need); the pin key `.` (F1) likewise.
 **Found in the final consistency pass and not changed (§22.2):** eight description differences
-(C1–C8) and seven approved behaviours that are not built (N1–N7), awaiting the user's decision. Commits: `ecfbacd` (this gate, approved), `20c26ec` (the
+(C1–C8) and seven approved behaviours that were not built (N1–N7). The user decided N1–N7 are
+requirements, not deviations: they were then built (§22.2.1, `c511dfe`), and the mutation
+engine was made to refuse a mutant that fails the SPA's type check (`4e9a224`). Commits: `ecfbacd` (this gate, approved), `20c26ec` (the
 graph query and its two routes), `5bada10` (`EDGE_WORDS` and the invalidation rules),
 `711a052` (the spatial view), `67ae6b6` (tests, boundaries and the mutation suite),
 `24d6190` (the P16/P17 anchors, I13), `f9ad2ee` (as built), and after the audit `4ca892d`
 (F7: broken mutants), `f29fc5e` (F1–F6), `c3deabc` (the 390 px overflow regression),
-`7eabdc9` (D3, D7), `bba3544` (the drill waits for the graph it checks) and the docs commit
-recording §22 and §22.1.
+`7eabdc9` (D3, D7), `bba3544` (the drill waits for the graph it checks), `46617fc` and
+`913555d` (docs: §22, §22.1, §22.2), `c511dfe` (N1–N7), `4e9a224` (mutants must type-check)
+and the docs commit recording §22.2.1.
 
 **Backend (two read routes; no migration, no state, no event type).** New:
 `archeus/core/application/graph.py` — `world_graph()` (A4, A6: a breadth-first neighbourhood over
@@ -1091,29 +1113,31 @@ Build: 390 KB JS, 119 KB gzip (was 360 KB), 17 KB CSS.
 | query over a real database | `tests/v1/integration/test_graph_query.py` | 26 |
 | routes over a real Core; route ↔ TUI list parity | `tests/v1/integration/test_graph_routes.py` | 4 |
 | boundaries (static) | `tests/v1/unit/test_graph_boundaries.py` | 6 |
-| client units | `clients/app/test/graph.test.ts` | 30 |
-| browser | `tests/v1/e2e/test_spa_p18.py` | 9 |
+| client units | `clients/app/test/graph.test.ts` | 36 |
+| browser | `tests/v1/e2e/test_spa_p18.py` | 11 |
 | the loop and the layout, Node-free (D7) | `tests/v1/design/test_design_gates.py` | 2 |
-| every mutant of P8–P18 parses (F7) | `tests/v1/unit/test_mutation_suites_parse.py` | 12 |
+| every mutant of P8–P18 parses, and type-checks for an SPA source (F7, §22.2.1) | `tests/v1/unit/test_mutation_suites_parse.py` | 12 |
 | changed | `test_api_structure.py` (the `graph` allowlist, `P18` pin), `test_core_client.py` and both bindings (`world_graph`, `repository_graph`) | — |
 
-`tools/mutate_p18.py`: **49/49 killed** — M01–M33 of §15, and M34–M49 for the §22.1
+`tools/mutate_p18.py`: **65/65 killed** — M01–M33 of §15; M34–M49 for the §22.1
 corrections (F1 M35–M36, F2 M37, M38, M46, F3 M39, M40, M47, F4 M41, F5 M34, F6 M42–M43, D3
-M44, the 390 px regression M45, D7 M48–M49). The runner prints the failing test that names
-each mutant, and refuses a mutant that does not parse (F7); a mutant guarded by a browser test
-rebuilds the SPA.
+M44, the 390 px regression M45, D7 M48–M49); M50–M65 for N1–N7 (§22.2.1: N1 M50–M51, N2 M52,
+N3 M53, M54, M61, N4 M60, N5 M55, M59, N6 M56, M62, N7 M57, M58, M63–M65). The runner prints
+the failing test that names each mutant and refuses, before any test runs, a mutant that does
+not parse or — for an SPA source — does not type-check as the build does (F7, `4e9a224`); a
+mutant guarded by a browser test rebuilds the SPA.
 
 **Acceptance scenarios (§16), each with its test.** 
 | # | Scenario | Test |
 |---|---|---|
-| A18-01 | world level: projects collapsed with counts, no child row | `test_the_world_level_is_projects_only_collapsed_with_counts`; e2e drill |
+| A18-01 | world level: projects collapsed with counts, no child row | `test_the_world_level_is_projects_only_collapsed_with_counts`; e2e drill; the counts shown: TS `a world-level project shows the counts…`, e2e `test_counts_route_facts_hover_search_centre_path_and_esc` (N1) |
 | A18-02 | project focus | `test_a_project_focus_reaches_its_missions_sessions_and_knowledge`; e2e drill (`F` on the project) |
 | A18-03 | mission focus | e2e drill (`F` on the mission): plan and execution in the mirror |
 | A18-04 | Relations ↔ graph parity | `test_core_edges_equal_the_list_mapper_on_every_shared_case` (15 cases); `test_the_route_and_the_tui_list_show_the_same_edges` (real mission) |
-| A18-05 | keyboard traversal visits every edge in order | `↓ visits every edge of the focus…` (TS); e2e drill |
+| A18-05 | keyboard traversal visits every edge in order | `↓ visits every edge of the focus…` (TS); e2e drill; Esc: TS `Esc clears the selected relationship…` and the N-test e2e (N6) |
 | A18-06 | Enter → `#/o/<kind>/<id>`, Back → the graph; closing returns focus to the canvas | e2e drill; `test_closing_the_inspector_returns_to_the_canvas_and_a_pin_is_never_stored` (F4) |
-| A18-07/08 | zoom, fit | e2e `test_zoom_fit_and_the_loop_parking` |
-| A18-09/10 | search; search expands ancestors | TS `search finds loaded nodes and expands their ancestors`; e2e drill |
+| A18-07/08 | zoom, fit | e2e `test_zoom_fit_and_the_loop_parking`; pinch: TS `a pinch scales with the fingers…`, e2e `test_touch_pinch_double_tap_and_44_px_targets` (N7) |
+| A18-09/10 | search; search expands ancestors | TS `search finds loaded nodes and expands their ancestors`; e2e drill; the match centred: e2e N-test (N4) |
 | A18-11 | focus + context | TS |
 | A18-12 | expand/collapse | TS `collapse hides every descendant…` |
 | A18-13 | edge lifting with counts | TS `edges lift to the nearest visible ancestor…` |
@@ -1129,15 +1153,15 @@ rebuilds the SPA.
 | A18-24 | stale / not inspected / payload missing | `test_stale_not_inspected_and_missing_payload_are_said_not_guessed` |
 | A18-25 | unknown focus | `test_an_unknown_focus_is_not_found`; routes 404; e2e `test_an_unknown_focus_says_so` |
 | A18-26 | non-node kind as focus | `test_the_graph_needs_a_credential_and_refuses_what_is_not_a_node` |
-| A18-27 | mirror; axe | TS mirror test; e2e `test_axe_and_no_sideways_scroll_on_the_graph` |
+| A18-27 | mirror; axe | TS mirror test; e2e `test_axe_and_no_sideways_scroll_on_the_graph`; the mirror's counts and route facts (N1, N2) |
 | A18-28 | < 600 px | e2e `test_below_600_px_the_relations_list_is_the_view` (no canvas, the list, and no sideways scroll at 390 px) |
 | A18-29 | no mutation | `test_the_graph_routes_write_nothing`; boundary scans |
-| A18-30 | no reasoning exposed | `test_a_route_decision_shows_recorded_selection_facts_only`, `test_every_node_carries_only_allowlisted_keys` |
+| A18-30 | no reasoning exposed | `test_a_route_decision_shows_recorded_selection_facts_only`, `test_every_node_carries_only_allowlisted_keys`; what the view shows: TS `a focused route decision shows its recorded selection facts and nothing else` and the N-test e2e (N2) |
 | A18-31 | no inferred relationships | `test_every_edge_is_a_recorded_column_or_relation_row` |
 | A18-32 | API/client generation parity | `gen_api_docs.py --check`, `test_api_structure.py`, `test_core_client.py` |
 
 
-**Regression (after the §22.1 corrections, 2026-09-29, on `bba3544`).** Full suite (`--basetemp` short): **4,817 passed, 0 failed** (15 skipped, 6 xfailed). Two earlier runs of the same list each stopped on one timing failure, both load-dependent and both from a test reading the moment before an asynchronous step lands: the P18 drill read `data-graph-focus` before the new graph rendered (fixed in `bba3544`, which waits for it as the project step already did), and P15's `test_R5_presence_is_traced_on_transitions_only_with_the_connection` read the events between `sse._unregister` lowering the count and `_trace` appending `device.stream_closed` (passes 16/16 alone; P15's test, not changed here — tracked). Mutation suites, every mutant killed and none broken: P8 22/22, P9 36/36, P10 37/37, P11 36/36, P12 28/28, P13 16/16, P14 21/21, P15 23/23, P16 29/29, P17 28/28, **P18 49/49**. e2e + G3 with `ARCHEUS_E2E=1`: 28 passed, 3 skipped (the GUI/TUI functions over the in-process binding), 1 xfailed (P19). `npm test` 70/70; `tsc` and `vite build` clean (392 KB JS, 120 KB gzip; 17 KB CSS); `gen_ui.py`, `gen_api_docs.py` and `gen_plugin.py --check`, Ruff and mkdocs `--strict` clean; the wheel built, installed in a clean venv, `check_wheel.py` passes (the SPA served with Node off PATH) and the installed Core lists both graph routes, `GET`, `observe`. CI: after the push (§20 item 5).
+**Regression (after N1–N7, 2026-09-29, on `4e9a224`).** Full suite (`--basetemp` short): **4,819 passed, 0 failed** (15 skipped, 6 xfailed). Mutation suites, every mutant killed and none broken — every TypeScript mutant of an SPA source now also type-checks as the build does: P8 22/22, P9 36/36, P10 37/37, P11 36/36, P12 28/28, P13 16/16, P14 21/21, P15 23/23, P16 29/29, P17 28/28, **P18 65/65**, each P18 kill naming the failing test. e2e + G3 with `ARCHEUS_E2E=1`: 30 passed, 3 skipped (the GUI/TUI functions over the in-process binding), 1 xfailed (P19). `npm test` 76/76; `tsc` and `vite build` clean; `gen_ui.py`, `gen_api_docs.py` and `gen_plugin.py --check`, Ruff and mkdocs `--strict` clean; the wheel built, installed in a clean venv, `check_wheel.py` passes (the SPA served with Node off PATH) and the installed Core lists both graph routes, `GET`, `observe`. Before N1–N7, two runs of the same list had each stopped once on a load-dependent test timing, both a test reading the moment before an asynchronous step lands: the P18 drill (fixed in `bba3544`) and P15's `test_R5_presence_is_traced_on_transitions_only_with_the_connection`, which reads the events between `sse._unregister` lowering the count and `_trace` appending `device.stream_closed` (passes 16/16 alone; P15's test, unchanged here — tracked). CI: after the push (§20 item 5).
 
 **Manual evidence still owed by the user (not claimable from CI).**
 
@@ -1154,6 +1178,13 @@ rebuilds the SPA.
    colours follow the dark default and `--light`, a resize redraws without stray lines, `1`–`4`
    and `a` switch destinations, an inspector opens with Enter and `q` quits and leaves the
    prompt usable. Record any difference between the two consoles.
+3. *A12 — a physical touch device (N7).* On a touch screen at least 600 px wide (a tablet or a
+   touch laptop) in Edge or Chrome, on a graph URL: a two-finger pinch zooms around the fingers;
+   one tap selects a node and a double-tap on it opens its inspector; the graph toolbar's
+   controls are comfortable to tap (44 px); then on a phone (< 600 px) no canvas is drawn and
+   the Relations list (or the note and link, C8) is shown. Record the device and the browser.
+   The browser tests emulate touch through CDP; they prove the handlers and the CSS, not a real
+   digitiser.
 
 **Known limitations** as §18.1, plus: the pulse needs `execution.*` frames about a live
 execution while the graph is open; a live execution with no progress in that time shows its
@@ -1161,4 +1192,5 @@ thick-static or plain edge only.
 
 **DESIGN_GATE = IMPLEMENTED** once the push is approved and CI is green on every job
 (I1, I2, I3 and I5 approved by the user, 2026-09-29; the `.` pin key, D2, D4, D5 and D6
-approved as recorded the same day, §22.1; N1–N7 await the user's decision, §22.2).
+approved as recorded the same day, §22.1; N1–N7 built after the user's decision, §22.2.1;
+the manual items above remain the user's).
