@@ -279,10 +279,10 @@ dependence; step-up PIN pad for destructive approvals; comfortable density only.
 
 | GUI element | TUI |
 |---|---|
-| State glyph + colour | same glyph when the terminal font has it, else the ASCII set `* ! # = ~ + x` (active, needs you, blocked, paused, planning, done, failed) chosen by a startup probe; ANSI colour from the token table (nearest non-system 256-colour, never 0–15, as `themes.hex_to_x256` does today); monochrome safe |
+| State glyph + colour | same glyph when the terminal font has it, else the ASCII set `* ! # = ~ + x` (active, needs you, blocked, paused, planning, done, failed) chosen by a startup probe; ANSI colour from the token table (nearest non-system 256-colour, never 0–15, as `themes.hex_to_x256` does today); monochrome safe. *As built (P17):* the ASCII glyph of every presentation class lives in `presentation.json` (also `o` proposed, `^` approved, `.` neutral, `-` inactive); the probe is the output encoding, and `ARCHEUS_TUI_ASCII=1` forces it |
 | Sidebar destinations | top line `1 Now 2 Work 3 World 4 Control ◆2 attention` |
-| Inspector | full-screen pager with tab keys `o p n e t w l` (outcome, plan, now, evidence, thread, why, timeline) |
-| Cards | boxed blocks with the primary action key shown (`[a] approve  [r] reject`) |
+| Inspector | full-screen pager with tab keys `o p n e t w l` (outcome, plan, now, evidence, thread, why, timeline). *As built (P17, p17-design-gate A6):* the keys come from `navigation.json`; the mission's are `o p n e w t r` (outcome, plan, now, evidence, why, timeline, relations). **There is no Thread tab**: P16 never built one (p16-design-gate §30 deviation 10), so `t` is Timeline and Relations has `r` |
+| Cards | boxed blocks with the primary action key shown (`[a] approve  [r] reject`). *As built (P17):* commands are upper-case keys on the hint bar (`[A] Approve plan  [R] Reject`), so no command shares a key with a tab or a destination |
 | Composer / command bar | `:` command line with the same grammar |
 | Thread | `›` marker on rows changed since last look |
 | Toasts | status line message, 4 s |

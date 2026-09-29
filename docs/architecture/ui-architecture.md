@@ -81,6 +81,9 @@ clients/app/
 | `control` | Control | sidebar | avatar menu | `4` | Ctrl/⌘+, |
 | `command` | Command bar | overlay | top search field on Now | `:` | Ctrl/⌘+K |
 
+*As built (P16 table, P17 column):* `clients/app/tokens/navigation.json` holds these rows; `key`
+is the SPA's Ctrl/⌘ shortcut and `tui` the TUI key, and both clients read the one file (A1).
+
 Control sub-sections (the only second level): Autonomy · Automations · Resources · Devices ·
 Notifications · Appearance · About. Resources → harness detail pages hold harness-specific
 configuration (Claude Code: hooks, plugins, skills, agents, MCP, output styles — today's pages,
@@ -312,6 +315,15 @@ destinations; the event stream drives re-queries exactly like the SPA. The legac
 (`claude_sessions/main.py`) remains until the retirement gate. The thin CLI (`archeus status |
 approve | pause | route why | estop | pair`) ships first (V1 slice) because it is also the
 scripting and emergency interface.
+
+*As built (P17, [p17-design-gate.md](p17-design-gate.md) §20):* `archeus tui [--open KIND/ID]
+[--once] [--light]`, a client of a running Core on the local token only (it never starts Core).
+The navigation, presentation, trigger and invalidation tables are the SPA's JSON, generated into
+`archeus/cli/tui/_tables.py` and `tokens.py` by `tools/gen_ui.py` (A1); the SPA's pure
+presentation logic has a Python twin held to it by shared cases in
+`clients/app/test/fixtures/parity.json` (A2); `client.py` is a stdlib HTTP + SSE transport that
+keeps Core's refusals whole (A3). Every Core string passes one sanitiser before it is laid out.
+Relationships are Core-supplied edge lists; nothing spatial is drawn (P18).
 
 ## 7. UI quality gates (carried from the repo, applied to the SPA)
 
