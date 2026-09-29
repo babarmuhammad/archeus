@@ -980,7 +980,7 @@ item where the build differs from an approved design is recorded here and held f
 
 | # | Gate decision it serves | What changed | Test (mutants) | Architecture? | Status |
 |---|---|---|---|---|---|
-| **F1** | A13 pin | `.` (and a toolbar **Pin/Unpin** button, `aria-pressed`, for the pointer) toggles the selected node in a per-tab, in-memory map keyed by the read path — never stored, never sent, not in the URL; the layout receives the set as fixed; the mirror says "(pinned)". Every node already placed keeps its position (A7) and nothing auto-collapses (D6), so both of A13's guarantees hold for every node today; the pin is what keeps them for this one if either ever changes. | TS `pin: "." toggles…` (M35, M36); e2e `test_closing_the_inspector_returns_to_the_canvas_and_a_pin_is_never_stored` (a reload forgets it; no storage key) | no — completes A13. The `.` key is new, like I5's F and P | key: for review |
+| **F1** | A13 pin | `.` (and a toolbar **Pin/Unpin** button, `aria-pressed`, for the pointer) toggles the selected node in a per-tab, in-memory map keyed by the read path — never stored, never sent, not in the URL; the layout receives the set as fixed; the mirror says "(pinned)". Every node already placed keeps its position (A7) and nothing auto-collapses (D6), so both of A13's guarantees hold for every node today; the pin is what keeps them for this one if either ever changes. | TS `pin: "." toggles…` (M35, M36); e2e `test_closing_the_inspector_returns_to_the_canvas_and_a_pin_is_never_stored` (a reload forgets it; no storage key) | no — completes A13. The `.` key is new, like I5's F and P | key: approved 2026-09-29 |
 | **F2** | A10 frame-time degrade | `Loop` measures the time between frames of a running animation; three consecutive frames over 20 ms set `degraded` until the animation ends, and one more frame then draws everything again. A degraded frame draws no pulse and no label but the focus's. | TS `three slow frames…` (M37, M46), `degraded, a frame draws…` (M38) | no — completes A10 | fixed |
 | **F3** | A10 proxy (5) | `render.frame()` keeps a **static layer**: an offscreen canvas (never in the DOM) holding everything but the pulses, redrawn only when `staticSig()` — model, visible keys, drawn edges, positions, camera, focus, selection, dimming, path, live set, reduced motion, degrade, size, theme — changes. A frame in which only a pulse moved is one `drawImage` plus one path per pulse (edges looked up by id, indexed once per drawn list). Pulses are drawn **over** the nodes now, as §A10 says. A lost context drops the layer. The proxy is not weakened: it is gated at 1,000 nodes. | TS `a pulse frame reuses the static layer…` (M39, M40, M47); e2e zoom test asserts the copied layer shows the graph (M47) | no — completes A10 | fixed |
 | **F4** | A11 focus order | Closing an inspector (Close, Esc or Back) whose page is a graph returns focus to the canvas, which stayed mounted under the inspector and kept its walk (the same node selected). A two-line rule in `App.tsx`'s focus effect; every other page still focuses `main h1` (P16 §17). | e2e (same test as F1) (M41) | no — completes A11 | fixed |
@@ -989,25 +989,66 @@ item where the build differs from an approved design is recorded here and held f
 | **F7** | §15 mutation integrity | M17 left a dangling `else`, so it did not parse and "killed" by a crash. It is a valid mutant now. `mutate_p11._apply` (the engine of P11–P18) refuses a mutant that does not parse, before any run, as **BROKEN MUTANT**, so it can never count. `test_mutation_suites_parse.py` checks every mutant of all eleven suites. `mutate_p18` prints the failing test that names each mutant. A mutant that fails the SPA's type check stops the run in the same way (M41 did once and was corrected). | `test_mutation_suites_parse.py`; M17 killed by `a redraw is one frame…` | no — test infrastructure | fixed (`4ca892d`) |
 | **R390** | A12, A18-28 | The below-600 px test asserts `scrollWidth − innerWidth ≤ 0` at 390 px for a mission graph URL and the world graph URL, not only that the canvas is absent. | e2e `test_below_600_px_the_relations_list_is_the_view` (M45) | no | fixed |
 | **D1** | A1, A6 text | A1 and A6 describe one `EDGES` table that the breadth-first walk reads. As built, `graph.py` holds the same fields as a per-kind `held_edges()` plus `relation_edge()` and the reverse lookups in `_holders()` (the parity cases hold them equal to the list mappers). "`structural` marks two" is four since I3. | parity and query tests, unchanged | no | recorded |
-| **D2** | A2 parent list | As built, a session's parent is its mission, else its project; a review's is its **plan** (A2 says mission; this follows approved I3); a policy decision's is its mission; a context package's and an automation's is its project; an automation run's is its automation (A2 says "others → none"). Each is the row's own column. | query tests, unchanged | differs from A2's text | **for review** |
+| **D2** | A2 parent list | As built, a session's parent is its mission, else its project; a review's is its **plan** (A2 says mission; this follows approved I3); a policy decision's is its mission; a context package's and an automation's is its project; an automation run's is its automation (A2 says "others → none"). Each is the row's own column. | query tests, unchanged | differs from A2's text | approved as recorded, 2026-09-29 |
 | **D3** | A5 | "payload missing → logged once per sha" was not built. It is now: one `archeus.core` warning per missing sha; the view still says "missing" on every read. | `test_a_missing_payload_is_logged_once_per_sha` (M44) | no — completes A5 | fixed |
-| **D4** | A6, A10 proxy (4), A15 | The walk queries **per node** (`rows.where` per id, all inside the one `db.read()`), not "one batched `IN (…)` per edge definition per hop". A response's cost is therefore bounded by the size of the neighbourhoods it reads, not by the node cap: a project with 10,000 knowledge items reads them all before the cap cuts (measured 0.10 s for 1,100). The node cap and the depth cap hold. Proposed: add this to P24's audit of graph cost and aggregation. | `test_a_thousand_node_neighbourhood_is_built_within_budget`, unchanged | differs from A6's text | **for review** |
-| **D5** | A7 focus change | A focus change is a new read, so the view remounts and the camera **jumps** to the new fit: the ≤ 240 ms focus-change tween is not built (zoom and fit do tween). Less motion than approved, never more. I6 above wrongly said it was built; corrected. | — | differs from A7's text | **for review** |
-| **D6** | A10 client cap | "An expand that would exceed 1,000 collapses the farthest expanded cluster first" is not built. It cannot happen: a view holds one read (the client sends no `limit`, so at most 500 nodes) plus one "+N" stub per parent and kind, and expanding only shows nodes already loaded. A stub re-focuses instead. | TS stub test, unchanged | differs from A10's text | **for review** |
+| **D4** | A6, A10 proxy (4), A15 | The walk queries **per node** (`rows.where` per id, all inside the one `db.read()`), not "one batched `IN (…)` per edge definition per hop". A response's cost is therefore bounded by the size of the neighbourhoods it reads, not by the node cap: a project with 10,000 knowledge items reads them all before the cap cuts (measured 0.10 s for 1,100). The node cap and the depth cap hold. Proposed: add this to P24's audit of graph cost and aggregation. | `test_a_thousand_node_neighbourhood_is_built_within_budget`, unchanged | differs from A6's text | approved as recorded, 2026-09-29; a P24 audit item |
+| **D5** | A7 focus change | A focus change is a new read, so the view remounts and the camera **jumps** to the new fit: the ≤ 240 ms focus-change tween is not built (zoom and fit do tween). Less motion than approved, never more. I6 above wrongly said it was built; corrected. | — | differs from A7's text | approved as recorded, 2026-09-29 |
+| **D6** | A10 client cap | "An expand that would exceed 1,000 collapses the farthest expanded cluster first" is not built. It cannot happen: a view holds one read (the client sends no `limit`, so at most 500 nodes) plus one "+N" stub per parent and kind, and expanding only shows nodes already loaded. A stub re-focuses instead. | TS stub test, unchanged | differs from A10's text | approved as recorded, 2026-09-29 |
 | **D7** | §13 design row | The single `requestAnimationFrame` caller and the `layout.ts` clock/random bans were only in the TS suite. They are now also in `test_design_gates.py`, as §13 says, so they run in the Node-free `test` job. | `test_the_graph_loop_is_the_only_animation_frame_caller` (M49), `test_the_layout_reads_no_clock_and_no_random` (M48) | no — completes §13 | fixed |
 | **D8** | §23 | §23 said everything was built as written except I1–I13, and that "the pulse itself is TS-tested". Both corrected below: what is not built is listed, and the pulse test exists (F6). | — | no | fixed |
 
 M17's anchor moved again with F2's degrade branch; the mutant is the same (the loop always
 schedules another frame).
 
+**Decisions (the user, 2026-09-29).** F2–F7, D3, D7, the 390 px regression and the mutation
+engine's parse and type-check protections are accepted as described. F1 is approved as built:
+the `.` key, the Pin/Unpin button, pins per tab and in memory only, shown in the mirror, no
+persistence. D2, D4, D5 and D6 are approved **as recorded here**: A2, A6, A7 and A10 keep their
+original wording and these rows are the record of what was built instead; no tween (D5) and no
+farthest-cluster collapse (D6) is added to match the original text; D4 is a P24
+security/performance audit item (plan, P24 entry) and the query is not redesigned in P18.
+
+### 22.2 Consistency pass (2026-09-29): found, not changed
+
+A last read of A1–A17, §5–§14 and V1–V9 against the code, after §22.1. Nothing here was changed:
+the first group is description only; the second is approved behaviour that is not built, and each
+needs the user's decision (build it, or accept it as recorded).
+
+**Description differences (recorded).**
+
+| # | Where | The gate says | What is built |
+|---|---|---|---|
+| C1 | A4 | project `counts` are "missions by presentation class" | missions by **state** (`mission_states`), for the reason of I1: the class table is client data |
+| C2 | A7 | children seeded "in id order" | in the read's order (hop, kind rank, open before settled, `updated_at`, id — A6/I1) |
+| C3 | A8 | "an identical response changes no position and redraws only the pulse" | no position moves; each re-read is a new object, so the static layer (F3) is redrawn once per re-read — at most once a second (A8) — and every pulse frame between re-reads is the layer copy plus the pulse |
+| C4 | §5 `loading` | "the previous picture stays, marked" | true for a re-read of the same focus; a focus change is a new read and a remount (D5), so it shows the loading state |
+| C5 | §7 | `mirror.tsx`; "a toggle on World and on the Relations tab" | `mirror.ts` (plus `keys.ts`, `wide.ts`); the graph is reached by a link (`GraphLink`), the list by the **List** chip |
+| C6 | §8 | context lost → "the Relations list is shown" | the loop parks and the canvas stays; the **List** chip remains (as §18.1 item 4 says) |
+| C7 | §13 | `tests/v1/unit/test_graph_query.py`; `clients/app/test/graph-*.test.ts` | `tests/v1/integration/test_graph_query.py`; one `clients/app/test/graph.test.ts` (§23's table is right) |
+| C8 | A12 | a graph URL below 600 px shows the focused object's Relations list | for a mission (any object with a Relations tab) it does; for the world level and a project focus, which have no Relations tab, it shows the note and a link to the list page |
+
+**Approved behaviour not built (for the user's decision).**
+
+| # | Where | Approved | Built |
+|---|---|---|---|
+| N1 | A3 project, A4 | the world-level cluster is drawn "with its counts" | Core returns `counts`; the client shows them nowhere — not on the canvas, not in the mirror (the label only) |
+| N2 | A3 route decision | "its A2 attrs in the label on focus" | Core returns `attrs`; the client shows only the label |
+| N3 | A10 labels | ≤ 250: labels for the focus, its neighbours and the **hovered** or keyboard-selected node; > 250: the focus and the selection | there is no hover; labels follow the walk's current node and its neighbours; above 250 only the walk's current node is labelled, not the query focus when the walk has moved |
+| N4 | A13 search | a match expands its ancestors "and centres it" | it expands and selects the match; the camera does not move to it |
+| N5 | A13 path | otherwise "no path within the loaded neighbourhood" | no message: an unconnected pair highlights nothing |
+| N6 | A11 Esc | "clears search, then selection" | clears the search and the path marks; the selection stays |
+| N7 | A12 touch | pinch zooms; toolbar targets never under 44 px at ≥ 600 px | no touch-pinch handling (a trackpad pinch arrives as a wheel and zooms); chips are `--target-desktop` (28 px) with no coarse-pointer rule. Double-tap relies on the browser's `dblclick`, not verified on a touch device |
+
 ## 23. As built
 
 Everything in §1–§21 is built as written and approved (§4.1), except the implementation
 decisions recorded in §22 (I1–I13) and the post-audit corrections of §22.1. **Not built as
-written, held for review (§22.1):** D2 (A2's parent list), D4 (A6's batched per-hop query;
-cost bounded by the neighbourhoods read, not the cap), D5 (no focus-change camera tween) and
-D6 (no farthest-cluster collapse, which one read of at most 500 nodes cannot need). The pin
-key `.` (F1) is new and also for review. Commits: `ecfbacd` (this gate, approved), `20c26ec` (the
+written, held for review and then approved as recorded (§22.1, the user, 2026-09-29):** D2
+(A2's parent list), D4 (A6's batched per-hop query; cost bounded by the neighbourhoods read,
+not the cap — a P24 audit item), D5 (no focus-change camera tween) and D6 (no farthest-cluster
+collapse, which one read of at most 500 nodes cannot need); the pin key `.` (F1) likewise.
+**Found in the final consistency pass and not changed (§22.2):** eight description differences
+(C1–C8) and seven approved behaviours that are not built (N1–N7), awaiting the user's decision. Commits: `ecfbacd` (this gate, approved), `20c26ec` (the
 graph query and its two routes), `5bada10` (`EDGE_WORDS` and the invalidation rules),
 `711a052` (the spatial view), `67ae6b6` (tests, boundaries and the mutation suite),
 `24d6190` (the P16/P17 anchors, I13), `f9ad2ee` (as built), and after the audit `4ca892d`
@@ -1120,4 +1161,4 @@ thick-static or plain edge only.
 
 **DESIGN_GATE = IMPLEMENTED** once the push is approved and CI is green on every job
 (I1, I2, I3 and I5 approved by the user, 2026-09-29; the `.` pin key, D2, D4, D5 and D6
-await review, §22.1).
+approved as recorded the same day, §22.1; N1–N7 await the user's decision, §22.2).

@@ -1078,6 +1078,12 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   stale approval authorize a changed action; can verification be forged or bypassed; can a
   client reconnect with revoked credentials; can a legacy compatibility path bypass the new
   controls.
+- Carried from P18 (p18-design-gate A15, §4.1 item 4, §22.1 D4): an `observe` credential
+  reads every project's graph (no project isolation in V1's model), and a graph response's
+  cost is bounded by the size of the neighbourhoods it reads — one query per node inside one
+  read snapshot — not by the 1,000-node cap. Audit both: information leakage and aggregation
+  (does a neighbourhood reveal more than the lists together), and the cost of a large
+  neighbourhood as a denial-of-service vector.
 - Test strategy, where each is justified by the design gate's classification: static
   analysis; dependency audit; secret scanning; configuration audit; API security testing;
   authentication, authorization and privilege-boundary testing; replay testing;
