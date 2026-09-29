@@ -6,12 +6,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { DASH, ENCODING, colourVar, dashOf, lookOf, tracePath } from '../src/graph/encoding.ts';
-import { allExpanded, around, build, inFocus, keyOf, lifted, liveExecutions, path, pulseEdge, pulseFor, PULSE_EVERY_MS, PULSE_MS, search, toggle, visible, type GraphData } from '../src/graph/model.ts';
-import { ITERATIONS, layout } from '../src/graph/layout.ts';
+import { DASH, ENCODING, attrsText, colourVar, countsText, dashOf, lookOf, tracePath } from '../src/graph/encoding.ts';
+import { allExpanded, around, build, inFocus, keyOf, lifted, liveExecutions, path, pathStatus, pulseEdge, pulseFor, PULSE_EVERY_MS, PULSE_MS, search, toggle, visible, type GraphData } from '../src/graph/model.ts';
+import { ITERATIONS, layout, pinchCamera } from '../src/graph/layout.ts';
 import { draw, frame, LOD_NODES, staticSig, type Scene } from '../src/graph/render.ts';
 import { Loop, SLOW_FRAME_MS, SLOW_FRAMES, type LoopHost } from '../src/graph/loop.ts';
-import { start, step } from '../src/graph/keys.ts';
+import { DOUBLE_TAP_MS, doubleTap, selected, start, step } from '../src/graph/keys.ts';
 import { mirrorRows } from '../src/graph/mirror.ts';
 import { TIER_STYLE } from '../src/graph/relations.ts';
 import { present } from '../src/state/present.ts';
@@ -531,4 +531,112 @@ test('a pulse: only an execution.* frame about a live execution, once per 2 s pe
   assert.equal(pulseFor(f('execution', X2.id, 'mission.updated'), d, live, new Map(), 0, false), null);
   assert.equal(pulseFor({ event: 'execution.progress' }, d, live, new Map(), 0, false), null);
   assert.equal(PULSE_MS, 240);
+});
+
+// ── the approved behaviours built after the consistency pass (gate §22.2 N1–N7) ──
+
+const WORLD: GraphData = {
+  nodes: [
+    { ...P, label: 'Atlas', parent: null, counts: { missions: 3, mission_states: { COMPLETED: 2, EXECUTING: 1 }, repositories: 1, sessions: 0, knowledge_items: 5 } },
+    { kind: 'project', id: 'prj_2', label: 'Borealis', parent: null, counts: { missions: 0, mission_states: {}, repositories: 0, sessions: 2, knowledge_items: 1 } },
+  ],
+  edges: [],
+};
+const fills = (ops: string[]) => ops.filter((o) => o.startsWith('fillText(')).map((o) => JSON.parse('[' + o.slice(9, -1) + ']')[0] as string);
+
+test('a world-level project shows the counts Core returned, by Core state, on the canvas and in the mirror (N1: M50, M51)', () => {
+  const want = '3 missions (Done — verified and reviewed: 2, Executing: 1) · 1 repository · 0 sessions · 5 knowledge items';
+  assert.equal(countsText(WORLD.nodes[0].counts), want);
+  assert.equal(countsText(WORLD.nodes[1].counts), '0 missions · 0 repositories · 2 sessions · 1 knowledge item');
+  assert.equal(countsText(undefined), '');
+  const { ctx, ops } = recorder();
+  draw(ctx, scene(WORLD));
+  assert.ok(fills(ops).includes(want), fills(ops).join(' | '));
+  const rows = mirrorRows(build(WORLD));
+  assert.equal(rows.find((r) => r.k === k(P))!.detail, want);
+});
+
+const RD: GraphData = {
+  nodes: [
+    { kind: 'route_decision', id: 'rd_1', label: 'route for Write it', parent: T1, attrs: { harness_id: 'claude_code', account_id: 'personal', model: 'opus', effort: 'high', result: 'SELECTED', fallback_from: ['codex'], eliminated: 2, explanation: 'why it chose', requirements: ['x'], candidates: [{ id: 'c' }], input_snapshot: { a: 1 } } },
+    { ...T1, label: 'Write it', machine: 'task', state: 'RUNNING' },
+  ],
+  edges: [e('RouteDecision.task_id', { kind: 'route_decision', id: 'rd_1' }, T1)],
+};
+const RD_WORDS = 'harness claude_code · account personal · model opus · effort high · result SELECTED · fell back from codex · 2 eliminated';
+
+test('a focused route decision shows its recorded selection facts and nothing else (N2: M52)', () => {
+  assert.equal(attrsText(RD.nodes[0].attrs), RD_WORDS);
+  for (const bad of ['why it chose', 'explanation', 'requirements', 'candidates', 'input_snapshot', 'snapshot']) assert.ok(!attrsText(RD.nodes[0].attrs).includes(bad), bad);
+  assert.equal(attrsText({ harness_id: 'h', fallback_from: [], eliminated: 0, model: null }), 'harness h');
+  const focused = recorder();
+  draw(focused.ctx, scene(RD, { focus: 'route_decision:rd_1' }));
+  assert.ok(fills(focused.ops).includes(RD_WORDS), 'drawn on focus');
+  const other = recorder();
+  draw(other.ctx, scene(RD, { focus: k(T1) }));
+  assert.ok(!fills(other.ops).includes(RD_WORDS), 'drawn although not focused');
+  assert.equal(mirrorRows(build(RD)).find((r) => r.n.kind === 'route_decision')!.detail, RD_WORDS);
+});
+
+test('labels: the query focus and the selection always, a hovered node up to 250, never more above (N3: M53, M54)', () => {
+  const small = scene(DATA);
+  const ctxOf = inFocus(small.drawn, k(X2)); // the walk is at attempt 2: its neighbours
+  const base = { focus: k(X2), context: ctxOf, root: k(K) };
+  const run = (extra: Partial<Scene>, d = small) => {
+    const { ctx, ops } = recorder();
+    draw(ctx, { ...d, ...base, ...extra });
+    return fills(ops);
+  };
+  const labelOf = (x: { kind: string; id: string }) => m.byKey.get(k(x))!.label;
+  assert.ok(!ctxOf!.has(k(K)) && !ctxOf!.has(k(T2)));
+  assert.ok(run({}).includes(labelOf(K)), 'the query focus lost its label when the walk moved');
+  assert.ok(!run({}).includes(labelOf(T2)), 'a node outside the context is labelled');
+  assert.ok(run({ hover: k(T2) }).includes(labelOf(T2)), 'the hovered node is not labelled');
+  // above 250 visible nodes: the focus and the selection only, hover or not
+  const many = scene(big(LOD_NODES + 50));
+  const a = many.keys[3];
+  const b = many.keys[7];
+  const { ctx, ops } = recorder();
+  draw(ctx, { ...many, focus: a, root: b, hover: many.keys[9], context: null });
+  const drawnLabels = fills(ops);
+  const names = [a, b].map((x) => many.model.byKey.get(x)!.label);
+  for (const nm of names) assert.ok(drawnLabels.includes(nm), nm);
+  assert.deepEqual(drawnLabels.filter((t) => !names.includes(t) && t !== 'p'), [], 'labels beyond the focus and the selection'); // 'p' is the project cluster
+});
+
+test('path tracing says "none" for two loaded ends with no loaded path, "found" otherwise (N5: M55)', () => {
+  assert.equal(pathStatus(m, [k(X1), k(P)]), 'found');
+  assert.equal(pathStatus(m, [k(X1)]), null);
+  const island = build({ nodes: [{ ...M, label: 'm' }, { ...K, label: 'k' }], edges: [] });
+  assert.equal(pathStatus(island, [k(M), k(K)]), 'none');
+});
+
+test('Esc clears the selected relationship; ↓ and ↑ start again from either end (N6: M56)', () => {
+  const d = lifted(m, visible(m, allExpanded(m)));
+  const n = around(d, k(M)).length;
+  const w = step(start(k(M)), 'ArrowDown', d, k(M)).walk;
+  assert.ok(selected(w, d));
+  const cleared = step(w, 'Escape', d, k(M));
+  assert.equal(cleared.command, 'clear');
+  assert.equal(selected(cleared.walk, d), null, 'Esc kept the selection');
+  assert.equal(cleared.walk.at, k(M), 'Esc moved the walk');
+  assert.equal(step(cleared.walk, 'ArrowDown', d, k(M)).walk.sel, 0);
+  assert.equal(step(cleared.walk, 'ArrowUp', d, k(M)).walk.sel, n - 1);
+  assert.equal(step(cleared.walk, 'ArrowRight', d, k(M)).walk.at, k(M), 'crossed an edge nobody selected');
+});
+
+test('a pinch scales with the fingers and keeps the point under them still; a double-tap is one node twice, quickly (N7: M57, M58)', () => {
+  const start0 = { x: 10, y: -20, k: 1 };
+  const mid = { x: 40, y: 30 };
+  const c = pinchCamera(start0, 100, 200, mid);
+  assert.equal(c.k, 2);
+  const world = (cam: { x: number; y: number; k: number }) => ({ x: cam.x + mid.x / cam.k, y: cam.y + mid.y / cam.k });
+  assert.deepEqual(world(c), world(start0), 'the point under the fingers moved');
+  assert.equal(pinchCamera(start0, 100, 50, mid).k, 0.5);
+  assert.equal(pinchCamera(start0, 100, 10_000, mid).k, 4); // the zoom's own bounds
+  assert.equal(DOUBLE_TAP_MS, 350);
+  assert.equal(doubleTap({ k: 'a', t: 1000 }, 'a', 1300), true);
+  assert.equal(doubleTap({ k: 'a', t: 1000 }, 'a', 1000 + DOUBLE_TAP_MS + 1), false);
+  assert.equal(doubleTap({ k: 'a', t: 1000 }, 'b', 1100), false);
+  assert.equal(doubleTap(null, 'a', 1100), false);
 });

@@ -60,6 +60,48 @@ export function colourVar(kind: string, machine?: string, state?: string): strin
   return '--' + role.replace('.', '-');
 }
 
+/** A project's counts at world level (A3, A4), exactly as Core counted them:
+ * missions by Core's own state (I1, §22.2 C1 — the state's label, never a
+ * presentation class), then repositories, sessions and knowledge items. */
+export function countsText(c?: Record<string, unknown> | null): string {
+  if (!c || typeof c.missions !== 'number') return '';
+  const n = (v: unknown) => (typeof v === 'number' ? v : 0);
+  const of = (v: number, one: string, many = one + 's') => `${v} ${v === 1 ? one : many}`;
+  const states = Object.entries((c.mission_states ?? {}) as Record<string, unknown>)
+    .filter(([, v]) => n(v) > 0)
+    .map(([s, v]) => `${present('mission', s).label}: ${n(v)}`);
+  return [
+    of(c.missions, 'mission') + (states.length ? ` (${states.join(', ')})` : ''),
+    of(n(c.repositories), 'repository', 'repositories'),
+    of(n(c.sessions), 'session'),
+    of(n(c.knowledge_items), 'knowledge item'),
+  ].join(' · ');
+}
+
+// A route decision's recorded selection facts (A2's attrs, A3 "in the label
+// on focus"), in this order and ONLY these: whatever else a response carried
+// is never shown (A6: no explanation, requirements, candidates, snapshot).
+const ROUTE_ATTR_WORDS: readonly (readonly [string, string])[] = [
+  ['harness_id', 'harness'],
+  ['account_id', 'account'],
+  ['model', 'model'],
+  ['effort', 'effort'],
+  ['result', 'result'],
+  ['fallback_from', 'fell back from'],
+  ['eliminated', 'eliminated'],
+];
+
+export function attrsText(a?: Record<string, unknown> | null): string {
+  if (!a) return '';
+  const out: string[] = [];
+  for (const [k, word] of ROUTE_ATTR_WORDS) {
+    const v = a[k];
+    if (v === null || v === undefined || v === '' || v === 0 || (Array.isArray(v) && !v.length)) continue;
+    out.push(k === 'eliminated' ? `${Number(v)} eliminated` : `${word} ${Array.isArray(v) ? v.map(String).join(', ') : String(v)}`);
+  }
+  return out.join(' · ');
+}
+
 /** Dash arrays per tier (TIER_STYLE): EXTRACTED solid, INFERRED dashed,
  * AMBIGUOUS dotted; an edge read from a column is solid. */
 export const DASH: Readonly<Record<string, readonly number[]>> = { solid: [], dashed: [6, 4], dotted: [1.5, 3] };

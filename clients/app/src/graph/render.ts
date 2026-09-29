@@ -9,7 +9,7 @@
 // in which only a pulse moved copies that layer and strokes the pulsed edges
 // over it, so its work is one copy plus one path per pulse, whatever the
 // number of nodes.
-import { colourVar, dashOf, lookOf, radiusOf, tracePath, widthOf } from './encoding.ts';
+import { attrsText, colourVar, countsText, dashOf, lookOf, radiusOf, tracePath, widthOf } from './encoding.ts';
 import type { Drawn, Model } from './model.ts';
 import type { Point } from './layout.ts';
 
@@ -28,7 +28,9 @@ export interface Scene {
   drawn: readonly Drawn[];
   pos: ReadonlyMap<string, Point>;
   cam: Camera;
-  focus: string | null;
+  focus: string | null; // the walk's current node: the keyboard or pointer selection
+  root?: string | null; // the query's focus: labelled whatever the walk does (A10)
+  hover?: string | null; // the node under a mouse (A10)
   selected?: string | null; // a drawn edge id
   context: ReadonlySet<string> | null; // focus + context: null → nothing dimmed
   path?: ReadonlySet<string> | null; // drawn edge ids on a traced path
@@ -67,7 +69,7 @@ export interface Layer {
 /** What the static layer shows: when none of it changed, the layer is reused.
  * The pulse map is deliberately not in it. */
 export function staticSig(s: Scene): unknown[] {
-  return [s.model, s.keys, s.drawn, s.pos, s.cam.x, s.cam.y, s.cam.k, s.focus, s.selected ?? null, s.context, s.path ?? null, s.live, s.liveStatic, !!s.degraded, s.width, s.height, s.dpr, s.colour('--bg'), s.colour('--text')];
+  return [s.model, s.keys, s.drawn, s.pos, s.cam.x, s.cam.y, s.cam.k, s.focus, s.root ?? null, s.hover ?? null, s.selected ?? null, s.context, s.path ?? null, s.live, s.liveStatic, !!s.degraded, s.width, s.height, s.dpr, s.colour('--bg'), s.colour('--text')];
 }
 
 /** One frame of the view: redraw the static layer only if it changed, copy it,
@@ -238,17 +240,21 @@ function drawNodes(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
 }
 
 function drawLabels(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
+  // A10: the query focus and the selection always (above 250 nodes, only
+  // they); up to 250 also the selection's neighbours and the hovered node;
+  // below LABEL_ZOOM cluster labels only; degraded, the two foci only
+  const main = (k: string) => k === s.focus || k === s.root;
   const wanted = new Set<string>();
   for (const k of s.keys) {
     const n = s.model.byKey.get(k);
     if (!n) continue;
     const cluster = lookOf(n.kind, n.endpoint, n.type).shape === 'cluster';
     if (s.degraded) {
-      if (k === s.focus) wanted.add(k); // frames run slow: the focus's label only
+      if (main(k)) wanted.add(k); // frames run slow: the foci's labels only
     } else if (cluster) wanted.add(k);
     else if (s.cam.k >= LABEL_ZOOM) {
-      if (k === s.focus) wanted.add(k);
-      else if (stats.lod === 'full' && (!s.context || s.context.has(k))) wanted.add(k);
+      if (main(k)) wanted.add(k);
+      else if (stats.lod === 'full' && (k === s.hover || !s.context || s.context.has(k))) wanted.add(k);
     }
   }
   ctx.fillStyle = s.colour('--text');
@@ -258,9 +264,18 @@ function drawLabels(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
     const n = s.model.byKey.get(k)!;
     const p = s.pos.get(k);
     if (!p) continue;
+    const x = p.x + (radiusOf(lookOf(n.kind, n.endpoint, n.type).shape) + 4);
     ctx.globalAlpha = dim(s, k) ? 0.4 : 1;
-    ctx.fillText(n.label, p.x + (radiusOf(lookOf(n.kind, n.endpoint, n.type).shape) + 4), p.y);
+    ctx.fillText(n.label, x, p.y);
     stats.labels++;
+    // a second line, only what Core returned: a project's counts (A3, A4),
+    // a route decision's recorded selection facts when it is focused (A3)
+    const detail = n.kind === 'project' ? countsText(n.counts) : n.kind === 'route_decision' && k === s.focus ? attrsText(n.attrs) : '';
+    if (detail && !s.degraded) {
+      ctx.fillStyle = s.colour('--text-2');
+      ctx.fillText(detail, x, p.y + 15 / s.cam.k);
+      ctx.fillStyle = s.colour('--text');
+    }
   }
   ctx.globalAlpha = 1;
 }

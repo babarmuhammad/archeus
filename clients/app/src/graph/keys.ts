@@ -1,13 +1,15 @@
 // Keyboard traversal (p18-design-gate A11; p16 §20.11): keyboard equals
 // pointer. ↑/↓ select the previous/next edge of the focused node in the drawn
 // order, → crosses the selected edge, ← steps back along the way it came,
-// Home returns to the query's focus. Enter, Space, +/-, 0, /, p and . are commands
+// Home returns to the query's focus, Esc clears the selected relationship
+// (sel -1) and the view also clears the search and the path marks (A11).
+// Enter, Space, +/-, 0, /, p and . are commands
 // the view carries out. Pure: the view keeps the state, this decides the next.
 import { around, type Drawn } from './model.ts';
 
 export interface Walk {
   at: string; // the focused node
-  sel: number; // index into around(at)
+  sel: number; // index into around(at); -1 when nothing is selected
   trail: string[]; // the nodes crossed from, most recent last
 }
 
@@ -24,7 +26,7 @@ export function step(w: Walk, key: string, drawn: readonly Drawn[], root: string
     case 'ArrowDown':
       return { walk: { ...w, sel: n ? (w.sel + 1) % n : 0 }, command: null };
     case 'ArrowUp':
-      return { walk: { ...w, sel: n ? (w.sel - 1 + n) % n : 0 }, command: null };
+      return { walk: { ...w, sel: n ? (w.sel < 0 ? n - 1 : (w.sel - 1 + n) % n) : 0 }, command: null };
     case 'ArrowRight': {
       const e = edges[w.sel];
       if (!e) return { walk: w, command: null };
@@ -52,7 +54,7 @@ export function step(w: Walk, key: string, drawn: readonly Drawn[], root: string
     case '/':
       return { walk: w, command: 'search' };
     case 'Escape':
-      return { walk: w, command: 'clear' };
+      return { walk: { ...w, sel: -1 }, command: 'clear' };
     case 'p':
       return { walk: w, command: 'path-mark' };
     case '.':
@@ -60,6 +62,14 @@ export function step(w: Walk, key: string, drawn: readonly Drawn[], root: string
     default:
       return { walk: w, command: null };
   }
+}
+
+export const DOUBLE_TAP_MS = 350;
+
+/** A touch tap on *k* at time *t* opens the node when it follows a tap on the
+ * same node within DOUBLE_TAP_MS (A12: tap selects, double-tap opens). */
+export function doubleTap(prev: { k: string; t: number } | null, k: string, t: number): boolean {
+  return !!prev && prev.k === k && t - prev.t <= DOUBLE_TAP_MS;
 }
 
 /** The selected edge of the walk, if any. */

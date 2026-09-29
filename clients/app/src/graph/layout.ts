@@ -146,6 +146,16 @@ export function layout(inp: LayoutInput): Map<string, Point> {
   return pos;
 }
 
+/** A two-finger pinch (A12): the scale follows the fingers' distance *d1*
+ * against *d0* when the pinch began, and the world point under their midpoint
+ * *mid* (screen offset from the canvas centre) stays where it is. */
+export function pinchCamera(start: { x: number; y: number; k: number }, d0: number, d1: number, mid: Point): { x: number; y: number; k: number } {
+  const k = Math.max(0.1, Math.min(4, start.k * (d1 / Math.max(1, d0))));
+  const wx = start.x + mid.x / start.k;
+  const wy = start.y + mid.y / start.k;
+  return { x: wx - mid.x / k, y: wy - mid.y / k, k };
+}
+
 /** The camera that shows every point: centre and scale for a w×h viewport. */
 export function fit(points: Iterable<Point>, w: number, h: number, pad = 40): { x: number; y: number; k: number } {
   let x0 = Infinity;

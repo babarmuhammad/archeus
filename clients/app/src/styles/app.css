@@ -841,6 +841,16 @@ table.canonical {
   touch-action: none;
 }
 
+/* a touch screen at any width the graph is drawn: its controls are touch
+   targets (p18 A12) — a pointer rule, not a width rule */
+@media (pointer: coarse) {
+  .graph-bar .chip,
+  .graph-search {
+    min-height: var(--target-phone);
+    min-width: var(--target-phone);
+  }
+}
+
 .graph-canvas:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;

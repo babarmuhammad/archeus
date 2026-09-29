@@ -11,11 +11,11 @@ import { present } from '../state/present';
 import { Empty, Fresh, Loadable, StateBadge } from '../components/ui';
 import { Inspector } from '../surfaces/Inspector';
 import { lookOf } from './encoding';
-import { fit, layout, type Point } from './layout';
+import { fit, layout, pinchCamera, type Point } from './layout';
 import { browserHost, Loop } from './loop';
-import { allExpanded, around, build, inFocus, keyOf, lifted, liveExecutions, path as tracePathKeys, pulseEdge, pulseFor, PULSE_MS, search, toggle, visible, type GraphData, type Model, type Ref } from './model';
+import { allExpanded, around, build, inFocus, keyOf, lifted, liveExecutions, path as tracePathKeys, pathStatus, pulseEdge, pulseFor, PULSE_MS, search, toggle, visible, type GraphData, type Model, type Ref } from './model';
 import { frame, type Camera, type DrawStats, type Layer } from './render';
-import { selected as selectedEdge, start, step, type Walk } from './keys';
+import { doubleTap, selected as selectedEdge, start, step, type Walk } from './keys';
 import { edgeWords } from './relations';
 import { mirrorRows } from './mirror';
 import { MIN_WIDTH, useWide } from './wide';
@@ -174,6 +174,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
     }
     return ids;
   }, [pathEnds, model, drawn]);
+  const pathState = useMemo(() => pathStatus(model, pathEnds), [model, pathEnds]);
 
   // the camera: fit once per focus, kept afterwards
   const camera = (now: number): Camera => {
@@ -212,6 +213,8 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
       pos,
       cam: camera(now),
       focus: walk.at || null,
+      root: rootKey || null,
+      hover: hoverRef.current,
       selected: sel?.edge.id ?? null,
       context,
       path: traced,
@@ -227,7 +230,11 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
     statsRef.current = stats;
     if (stats.layer) layerDraws.current++;
     c.dataset.layers = String(layerDraws.current); // static-layer redraws (A10 proxy 5)
-    c.dataset.zoom = camera(now).k.toFixed(3); // what a test (or a bug report) reads
+    const cm = camera(now);
+    c.dataset.zoom = cm.k.toFixed(3); // what a test (or a bug report) reads
+    const at = pos.get(walk.at);
+    c.dataset.at = at ? `${Math.round((at.x - cm.x) * cm.k + size.current.w / 2)},${Math.round((at.y - cm.y) * cm.k + size.current.h / 2)}` : '';
+    c.dataset.hover = hoverRef.current ?? '';
     c.dataset.frames = String(loopRef.current?.frames ?? 0);
     if (stats.lod !== lod) setLod(stats.lod);
   };
@@ -355,11 +362,48 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
     setQuery(q);
     const { hits, expanded: next } = search(model, expanded, q);
     setExpanded(next);
-    if (hits[0]) setWalk({ at: hits[0], sel: 0, trail: [...walk.trail, walk.at] });
+    if (hits[0]) {
+      setWalk({ at: hits[0], sel: 0, trail: [...walk.trail, walk.at] });
+      setCentreOn({ k: hits[0] });
+    }
   };
+  // A13: the match is centred, at the current zoom, once the layout has placed it
+  const [centreOn, setCentreOn] = useState<{ k: string } | null>(null);
+  useEffect(() => {
+    const p = centreOn && pos.get(centreOn.k);
+    if (!p) return;
+    setCentreOn(null);
+    moveTo({ x: p.x, y: p.y, k: camera(performance.now()).k }, true);
+  }, [centreOn, pos]);
 
-  // pointer: click selects, double-click opens, drag pans, wheel zooms
+  // pointer: click (or tap) selects, double-click (or double-tap) opens, drag
+  // pans, wheel or a two-finger pinch zooms, a mouse hover labels (A10, A12)
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const hoverRef = useRef<string | null>(null);
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ d0: number; cam: Camera } | null>(null);
+  const lastTap = useRef<{ k: string; t: number } | null>(null);
+  const lastPointer = useRef('mouse');
+  const setHover = (k: string | null) => {
+    if (hoverRef.current === k) return;
+    hoverRef.current = k;
+    loopRef.current?.request();
+  };
+  const fingers = () => {
+    const [a, b] = [...touches.current.values()];
+    const r = canvas.current!.getBoundingClientRect();
+    return { d: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2 - r.left - size.current.w / 2, y: (a.y + b.y) / 2 - r.top - size.current.h / 2 } };
+  };
+  const lift = (e: React.PointerEvent) => {
+    const pinched = !!pinch.current;
+    if (e.pointerType === 'touch') {
+      touches.current.delete(e.pointerId);
+      if (touches.current.size < 2) pinch.current = null;
+    }
+    const d = drag.current;
+    drag.current = null;
+    return pinched || !d || d.moved;
+  };
   const hit = (e: React.PointerEvent | React.MouseEvent): string | null => {
     const r = canvas.current!.getBoundingClientRect();
     const c = camera(performance.now());
@@ -383,7 +427,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   const hiddenCount = (data.hidden ?? []).reduce((a, h) => a + h.count, 0);
 
   return (
-    <div className="graph" data-graph-focus={focus ? `${focus.kind}:${focus.id}` : 'workspace'} data-graph-nodes={keys.length} data-graph-lod={lod} data-graph-loop={loopState} data-graph-at={walk.at} data-graph-live={live.size} data-graph-pulses={pulseCount} data-graph-pinned={pinned.size}>
+    <div className="graph" data-graph-focus={focus ? `${focus.kind}:${focus.id}` : 'workspace'} data-graph-nodes={keys.length} data-graph-lod={lod} data-graph-loop={loopState} data-graph-at={walk.at} data-graph-live={live.size} data-graph-pulses={pulseCount} data-graph-pinned={pinned.size} data-graph-selected={sel?.edge.id ?? ''} data-graph-path={pathState ?? ''}>
       <div className="graph-bar" role="toolbar" aria-label="Graph">
         <a className="chip" href={modules !== undefined ? objectHref('repository', focus!.id) : focus ? (focus.kind === 'project' ? `#/world/${focus.id}` : objectHref(focus.kind, focus.id, 'relations')) : '#/world'}>
           List
@@ -420,6 +464,11 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
         ) : null}
       </div>
       {stale ? <p className="stale-line">{stale}</p> : null}
+      {pathState === 'none' ? (
+        <p className="status-line" role="status">
+          No path within the loaded neighbourhood.
+        </p>
+      ) : null}
       {data.truncated ? <p className="status-line">{hiddenCount} more not shown — open a “+N” node or focus closer.</p> : null}
       <canvas
         ref={canvas}
@@ -431,12 +480,29 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
         aria-describedby="graph-keys"
         onKeyDown={onKey}
         onPointerDown={(e) => {
+          lastPointer.current = e.pointerType;
+          if (e.pointerType === 'touch') {
+            touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (touches.current.size === 2) {
+              pinch.current = { d0: fingers().d, cam: camera(performance.now()) };
+              drag.current = null; // two fingers zoom; they do not pan or select
+              return;
+            }
+          }
           drag.current = { x: e.clientX, y: e.clientY, moved: false };
           canvas.current?.setPointerCapture(e.pointerId);
         }}
         onPointerMove={(e) => {
+          if (e.pointerType === 'touch' && touches.current.has(e.pointerId)) {
+            touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            const p = pinch.current;
+            if (p && touches.current.size === 2) {
+              const { d, mid } = fingers();
+              return moveTo(pinchCamera(p.cam, p.d0, d, mid), false);
+            }
+          }
           const d = drag.current;
-          if (!d) return;
+          if (!d) return e.pointerType === 'mouse' ? setHover(hit(e)) : undefined;
           const dx = e.clientX - d.x;
           const dy = e.clientY - d.y;
           if (Math.abs(dx) + Math.abs(dy) < 3 && !d.moved) return;
@@ -447,13 +513,21 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
           moveTo({ x: c.x - dx / c.k, y: c.y - dy / c.k, k: c.k }, false);
         }}
         onPointerUp={(e) => {
-          const d = drag.current;
-          drag.current = null;
-          if (d?.moved) return;
+          if (lift(e)) return;
           const k = hit(e);
-          if (k) setWalk({ at: k, sel: 0, trail: walk.at && walk.at !== k ? [...walk.trail, walk.at] : walk.trail });
+          if (!k) return;
+          if (e.pointerType === 'touch') {
+            const t = performance.now();
+            const second = doubleTap(lastTap.current, k, t);
+            lastTap.current = second ? null : { k, t };
+            if (second) return open(k); // A12: double-tap opens
+          }
+          setWalk({ at: k, sel: 0, trail: walk.at && walk.at !== k ? [...walk.trail, walk.at] : walk.trail });
         }}
+        onPointerCancel={(e) => void lift(e)}
+        onPointerLeave={(e) => e.pointerType === 'mouse' && setHover(null)}
         onDoubleClick={(e) => {
+          if (lastPointer.current === 'touch') return; // a double-tap opened it already
           const k = hit(e);
           if (k) open(k);
         }}
@@ -463,7 +537,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
         }}
       />
       <p id="graph-keys" className="caption">
-        ↑ ↓ choose a relationship · → follow it · ← back · Enter open · F focus here · Space expand or collapse · + − zoom · 0 fit · / find · P mark a path end · . pin or unpin
+        ↑ ↓ choose a relationship · → follow it · ← back · Enter open · F focus here · Space expand or collapse · + − zoom · 0 fit · / find · P mark a path end · . pin or unpin · Esc clear
       </p>
       <Mirror model={model} pinned={pinned} />
     </div>
@@ -481,7 +555,7 @@ export function Mirror({ model, pinned }: { model: Model; pinned?: ReadonlySet<s
   return (
     <section className="sr" aria-label="Relationships in this view, as a list" data-graph-mirror="">
       <ul>
-        {mirrorRows(model, pinned).map(({ k, n, look, edges, pinned: isPinned }) => {
+        {mirrorRows(model, pinned).map(({ k, n, look, edges, pinned: isPinned, detail }) => {
           return (
             <li key={k} data-key={k}>
               {n.endpoint ? (
@@ -495,6 +569,7 @@ export function Mirror({ model, pinned }: { model: Model; pinned?: ReadonlySet<s
                 </a>
               )}
               {isPinned ? ' (pinned)' : ''}
+              {detail ? ` — ${detail}` : ''}
               {n.machine && n.state ? <StateBadge machine={n.machine} state={n.state} /> : null}
               {edges.length ? (
                 <ul>

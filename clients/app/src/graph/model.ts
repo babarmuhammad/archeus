@@ -224,6 +224,13 @@ export function path(m: Model, from: string, to: string): string[] | null {
   return out;
 }
 
+/** What path tracing says about two marked ends (A13): `found`, or `none`
+ * within the loaded neighbourhood — never a question for Core. */
+export function pathStatus(m: Model, ends: readonly string[]): 'found' | 'none' | null {
+  if (ends.length !== 2) return null;
+  return path(m, ends[0], ends[1]) ? 'found' : 'none';
+}
+
 /** The executions that are live right now, by Core's state (A8): their
  * presentation class is `active`. */
 export function liveExecutions(m: Model, isActive: (machine: string, state: string) => boolean): Set<string> {

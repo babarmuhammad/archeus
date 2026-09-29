@@ -313,3 +313,148 @@ def test_axe_and_no_sideways_scroll_on_the_graph(browser, core):
         assert not bad, (width, bad)
         assert not errors, errors
         context.close()
+
+
+# ── the approved behaviours built after the consistency pass (gate §22.2 N1–N7) ──
+
+def _row(page, key):
+    return page.locator('[data-graph-mirror] li[data-key="%s"]' % key).first.inner_text().split('\n')[0]
+
+
+def _at(page):
+    x, y = page.locator('canvas.graph-canvas').get_attribute('data-at').split(',')
+    box = page.locator('canvas.graph-canvas').bounding_box()
+    return box['x'] + int(x), box['y'] + int(y), box
+
+
+def test_counts_route_facts_hover_search_centre_path_and_esc(browser, core, archeus_home):
+    """N1 world counts, N2 a route decision's recorded facts, N3 hover, N4 a
+    search match centred, N5 "no path", N6 Esc clears the selection — each
+    read from what the page shows."""
+    check = Checks()
+    project = _project(core, archeus_home)
+    pid = project['project']['id']
+    r = core.http('POST', '/v1/missions', body={
+        'title': 'Count me', 'objective': 'o', 'project_id': pid,
+        'idempotency_key': 'count-%f' % time.time()})
+    assert r.status == 200, r.body
+    mid = r.json()['id']
+    _settled(core, mid, 'COMPLETED')
+    second = FixtureRepo.create('layered-python', os.path.dirname(str(archeus_home)))
+    r = core.http('POST', '/v1/projects', body={'name': 'Borealis', 'root_paths': [second.path],
+                                                'idempotency_key': 'b-%f' % time.time()})
+    assert r.status == 200, r.body
+    other = r.json()['project']['id']
+    context, page, errors = _open(browser, core)
+    # N1: the world level says what Core counted
+    _go(page, '#/world/graph')
+    g = _graph(page)
+    wait(page, lambda: 'project:%s' % other in _mirror(page), what='both projects')
+    row = _row(page, 'project:%s' % pid)
+    check('1 mission (' in row and '1 repository' in row and 'knowledge item' in row, 'counts: %s' % row)
+    check('0 missions' in _row(page, 'project:%s' % other), 'the other project counted too')
+    # N5: two loaded ends with no loaded path between them
+    page.focus('canvas.graph-canvas')
+    first = g.get_attribute('data-graph-at')
+    page.keyboard.press('p')
+    _find(page, 'Borealis' if first == 'project:%s' % pid else 'Atlas')
+    page.focus('canvas.graph-canvas')
+    page.keyboard.press('p')
+    wait(page, lambda: g.get_attribute('data-graph-path') == 'none', what='no path found')
+    check(page.get_by_role('status').filter(has_text='No path within the loaded neighbourhood').count() == 1,
+          'the page says there is no path')
+    # N2: a mission's route decision, with its recorded facts and nothing else
+    _go(page, '#/world/graph/mission/%s' % mid)
+    g = _graph(page)
+    wait(page, lambda: g.get_attribute('data-graph-focus') == 'mission:%s' % mid, what='the mission graph')
+    rds = [x for x in _mirror(page) if x.startswith('route_decision:')]
+    check(rds, 'the mission graph holds a route decision: %s' % _mirror(page))
+    facts = _row(page, rds[0])
+    check(' — harness ' in facts, 'its recorded facts: %s' % facts)
+    for bad in ('explanation', 'requirement', 'candidate', 'snapshot'):
+        check(bad not in facts.lower(), '%s shown' % bad)
+    # N6: Esc clears the search, the path marks and the selection
+    page.focus('canvas.graph-canvas')
+    page.keyboard.press('ArrowDown')
+    check(g.get_attribute('data-graph-selected') != '', 'a relationship selected')
+    page.keyboard.press('p')
+    page.keyboard.press('p')
+    check(g.get_attribute('data-graph-path') == 'found', 'a path marked')
+    page.fill('input.graph-search', 'zzz')
+    page.focus('canvas.graph-canvas')
+    page.keyboard.press('Escape')
+    check(g.get_attribute('data-graph-selected') == '', 'Esc cleared the selection')
+    check(g.get_attribute('data-graph-path') == '', 'Esc cleared the path marks')
+    check(page.input_value('input.graph-search') == '', 'Esc cleared the search')
+    # N4: a search match is centred in the canvas
+    _find(page, 'Attempt 1')
+    wait(page, lambda: g.get_attribute('data-graph-at').startswith('execution:'), what='found')
+    wait(page, lambda: g.get_attribute('data-graph-loop') == 'parked', what='the move ends')
+    x, y, box = _at(page)
+    check(abs(x - (box['x'] + box['width'] / 2)) <= 2 and abs(y - (box['y'] + box['height'] / 2)) <= 2,
+          'the match is centred: at %s,%s in %s' % (x, y, box))
+    # N3: the mouse over a node is the hovered node (its label drawn — TS render test)
+    page.mouse.move(x, y)
+    wait(page, lambda: page.locator('canvas.graph-canvas').get_attribute('data-hover') == g.get_attribute('data-graph-at'),
+         what='hovered')
+    page.mouse.move(box['x'] + 2, box['y'] + 2)
+    wait(page, lambda: page.locator('canvas.graph-canvas').get_attribute('data-hover') == '', what='hover left')
+    check(True, 'hover follows the mouse')
+    check(not errors, errors)
+    assert check.n >= 16
+    context.close()
+
+
+def test_touch_pinch_double_tap_and_44_px_targets(browser, core):
+    """N7 (A12) on an emulated touch screen at 1280 px: two real touch points
+    (CDP Input.dispatchTouchEvent) pinch the zoom, a double-tap opens the node,
+    and every toolbar control is at least 44 px. A physical touch device is
+    still manual evidence (gate §23)."""
+    check = Checks()
+    mid = _mission(core, 'Touch me')
+    _settled(core, mid, 'COMPLETED')
+    context, page, errors = _open(browser, core, has_touch=True, viewport={'width': 1280, 'height': 900})
+    check(page.evaluate("matchMedia('(pointer: coarse)').matches"), 'the emulated screen is coarse')
+    _go(page, '#/world/graph/mission/%s' % mid)
+    g = _graph(page)
+    canvas = page.locator('canvas.graph-canvas')
+    wait(page, lambda: g.get_attribute('data-graph-loop') == 'parked', what='idle')
+    small = page.evaluate("""() => [...document.querySelectorAll('.graph-bar .chip, .graph-search')]
+        .map(e => e.getBoundingClientRect()).filter(r => r.height < 44 || r.width < 44).length""")
+    check(small == 0, '%d toolbar controls under 44 px' % small)
+    # pinch: two fingers spreading from 40 px apart to 200 px apart
+    box = canvas.bounding_box()
+    cx, cy = box['x'] + box['width'] / 2, box['y'] + box['height'] / 2
+    z0 = float(canvas.get_attribute('data-zoom'))
+    cdp = context.new_cdp_session(page)
+
+    def touch(kind, gap):
+        pts = [] if kind == 'touchEnd' else [
+            {'x': cx - gap / 2, 'y': cy, 'id': 1}, {'x': cx + gap / 2, 'y': cy, 'id': 2}]
+        cdp.send('Input.dispatchTouchEvent', {'type': kind, 'touchPoints': pts})
+
+    touch('touchStart', 100)
+    for gap in (110, 125, 140, 150):
+        touch('touchMove', gap)
+    touch('touchEnd', 0)
+    # the zoom follows the fingers: 100 px apart to 150 px apart is x1.5
+    wait(page, lambda: abs(float(canvas.get_attribute('data-zoom')) - z0 * 1.5) <= z0 * 0.03,
+         what='the pinch zoomed x1.5 (from %s)' % z0)
+    check(True, 'pinch zooms: %s -> %s' % (z0, canvas.get_attribute('data-zoom')))
+    # a single tap selects; a double-tap on the same node opens it
+    page.focus('canvas.graph-canvas')
+    page.keyboard.press('0')
+    wait(page, lambda: abs(float(canvas.get_attribute('data-zoom')) - z0) < 0.01, what='fit')
+    wait(page, lambda: g.get_attribute('data-graph-loop') == 'parked', what='parked')
+    x, y, _box = _at(page)
+    at = g.get_attribute('data-graph-at')
+    page.touchscreen.tap(x, y)
+    page.wait_for_timeout(100)
+    check(page.evaluate('location.hash') == '#/world/graph/mission/%s' % mid, 'one tap does not open')
+    page.touchscreen.tap(x, y)
+    wait(page, lambda: page.evaluate('location.hash') == '#/o/%s/%s' % tuple(at.split(':', 1)),
+         what='the double-tap opens the node')
+    check(True, 'double-tap opens')
+    check(not errors, errors)
+    assert check.n >= 6
+    context.close()
