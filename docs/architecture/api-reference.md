@@ -20,6 +20,8 @@ given trigger on a given subject is decided in the application layer (P9), never
 |---|---|---|---|---|---|---|
 | GET | `/` | none | — | — | — | the built SPA |
 | GET | `/assets/*` | none | — | — | — | the built SPA |
+| GET | `/sw.js` | none | — | — | — | the built SPA |
+| GET | `/manifest.webmanifest` | none | — | — | — | the built SPA |
 | GET | `/v1/health` | observe | — | — | — | `Health` |
 | GET | `/v1/version` | observe | — | — | — | `Version` |
 | GET | `/v1/missions` | observe | — | `state`, `project` | — | `MissionList` |
@@ -69,6 +71,7 @@ given trigger on a given subject is decided in the application layer (P9), never
 | POST | `/v1/missions/{id}/resources` | admin | required | — | `SetMissionResourcesRequest` | `Mission` |
 | GET | `/v1/executions/{id}` | observe | — | — | — | `Execution` |
 | GET | `/v1/tasks/{id}/executions` | observe | — | — | — | `ExecutionList` |
+| GET | `/v1/executions/{id}/stream` | observe | — | `from` | — | `ExecutionOutput` |
 | POST | `/v1/executions/{id}/stop` | control | required | — | `StopExecutionRequest` | `ExecutionStopped` |
 | POST | `/v1/missions/{id}/stop` | control | required | — | `StopMissionRequest` | `MissionStopped` |
 | POST | `/v1/estop` | control | required | — | `EstopRequest` | `Estopped` |
@@ -104,6 +107,8 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/v1/missions/{id}/reviews` | observe | — | — | — | `ReviewList` |
 | POST | `/v1/missions/{id}/review` | approve | required | — | `ReviewMissionRequest` | `ReviewRecorded` |
 | POST | `/v1/tasks/{id}/integration/abandon` | control | required | — | `AbandonIntegrationRequest` | `IntegrationAbandoned` |
+| GET | `/v1/attention` | observe | — | — | — | `Attention` |
+| GET | `/v1/missions/{id}/timeline` | observe | — | `before`, `limit` | — | `Timeline` |
 | GET | `/v1/automations` | observe | — | — | — | `AutomationList` |
 | GET | `/v1/automations/{id}` | observe | — | — | — | `Automation` |
 | GET | `/v1/automations/{id}/simulate` | observe | — | `days` | — | `AutomationSimulation` |
@@ -182,6 +187,31 @@ interface Approval {
 ```ts
 interface ApprovalList {
   approvals: Approval[];
+}
+```
+
+### `Attention`
+
+```ts
+interface Attention {
+  items: AttentionItem[];
+  count: number;
+}
+```
+
+### `AttentionItem`
+
+```ts
+interface AttentionItem {
+  kind: 'approval' | 'verification' | 'mission' | 'knowledge' | 'drift' | 'automation' | 'account';
+  ref: Subject;
+  state: string;
+  reason_code: string;
+  reason: string | null;
+  mission_id: string | null;
+  project_id: string | null;
+  since: string;
+  [field: string]: unknown;
 }
 ```
 
@@ -596,6 +626,19 @@ interface ExecutionList {
 }
 ```
 
+### `ExecutionOutput`
+
+```ts
+interface ExecutionOutput {
+  execution_id: string;
+  offset: number;
+  next_offset: number;
+  events: Record<string, unknown>[];
+  truncated: boolean;
+  available: boolean;
+}
+```
+
 ### `ExecutionStopped`
 
 ```ts
@@ -810,6 +853,7 @@ interface KnowledgeList {
 interface LaunchCode {
   code: string;
   expires_in: number;
+  scopes: string[];
 }
 ```
 
@@ -1116,6 +1160,7 @@ interface Rearmed {
 interface Redeemed {
   device_id: string;
   token: string;
+  scopes: string[];
 }
 ```
 
@@ -1373,6 +1418,16 @@ interface Task {
 }
 ```
 
+### `Timeline`
+
+```ts
+interface Timeline {
+  mission_id: string;
+  events: Event[];
+  next_before: number | null;
+}
+```
+
 ### `Transition`
 
 ```ts
@@ -1475,6 +1530,7 @@ interface ResumeMissionRequest {
 
 ```ts
 interface LaunchCodeRequest {
+  scopes?: Array<'observe' | 'control' | 'approve' | 'admin'> | null;
 }
 ```
 

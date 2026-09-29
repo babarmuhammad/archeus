@@ -223,6 +223,11 @@ jobs:
           npm ci
           npm run build
           npm audit --audit-level=high
+      - name: The client's unit tests
+        # node --test with type stripping (p16-design-gate D19): the
+        # presentation, connection, invalidation, relation and command logic
+        working-directory: clients/app
+        run: npm test
       - run: python -m pip install pytest playwright
       - run: python -m playwright install --with-deps chromium
       - name: The SPA skeleton in a real browser
@@ -233,7 +238,7 @@ jobs:
           ARCHEUS_E2E: '1'
         run: |
           set -o pipefail
-          python -m pytest tests/v1/e2e -v | tee e2e.txt
+          python -m pytest tests/v1/e2e tests/v1/judge/test_g03_one_model.py -v | tee e2e.txt
           grep -Eq '[1-9][0-9]* passed' e2e.txt
 
   plugin:

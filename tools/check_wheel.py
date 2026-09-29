@@ -9,6 +9,7 @@ can prove anything: a package-data glob that matches nothing is silent, and
 this repository has shipped an empty directory that way before.
 """
 
+import json
 import os
 import re
 import subprocess
@@ -55,6 +56,12 @@ def check_archive(path):
         assert not bad, 'the wheel ships sources, maps or node_modules: %s' % bad[:5]
         assert STATIC + 'index.html' in names, 'the wheel has no %sindex.html' % STATIC
         html = z.read(STATIC + 'index.html').decode('utf-8')
+        for root in ('sw.js', 'manifest.webmanifest'):
+            assert STATIC + root in names, 'the wheel has no %s%s' % (STATIC, root)
+        icons = [i['src'].lstrip('/') for i in
+                 json.loads(z.read(STATIC + 'manifest.webmanifest'))['icons']]
+    lost = [i for i in icons if STATIC + i not in names]
+    assert not lost, 'the manifest names icons the wheel lacks: %s' % lost
     refs = sorted(set(REFS.findall(html)))
     assert any(r.endswith('.js') for r in refs), 'index.html references no script'
     missing = [r for r in refs if STATIC + 'assets/' + r not in names]
@@ -77,8 +84,7 @@ def main(argv):
     refs = check_archive(wheel)
     if '--python' in argv:
         py = os.path.abspath(argv[argv.index('--python') + 1])    # it runs from elsewhere
-        import json
-        r = subprocess.run([py, '-c', RUN, json.dumps(refs)], cwd=tempfile.gettempdir(),
+        r =subprocess.run([py, '-c', RUN, json.dumps(refs)], cwd=tempfile.gettempdir(),
                            env=without_node(os.environ), capture_output=True, text=True,
                            timeout=120)
         sys.stdout.write(r.stdout)

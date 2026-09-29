@@ -24,7 +24,8 @@ from ..core.domain import ids
 SCOPES = ('observe', 'control', 'approve', 'admin')
 #: The local token (the CLI, `archeus core --open`) holds every scope.
 LOCAL_SCOPES = SCOPES
-#: A browser device made from a launch code is read-only (USER D-scope).
+#: A browser device made from a launch code is read-only (USER D-scope) unless
+#: its minter asks for more of its own scopes (p16-design-gate D2).
 LAUNCH_SCOPES = ('observe',)
 LAUNCH_TTL_S = 60.0
 LAUNCH_PLATFORMS = ('web', 'desktop')
@@ -166,12 +167,14 @@ class LaunchCodes:
             return None
         return hit[1]
 
-    def mint(self, principal_id, device_id):
-        return self._mint((principal_id, device_id))
+    def mint(self, principal_id, device_id, scopes=LAUNCH_SCOPES):
+        """*scopes* are the grant the minter asked for, already bounded by its
+        own (p16-design-gate D2); the redeemer cannot change them."""
+        return self._mint((principal_id, device_id, tuple(scopes)))
 
     def redeem(self, code):
-        """(principal_id, device_id) of the minter, or None — for a reused,
-        expired, unknown and malformed code alike."""
+        """(principal_id, device_id, scopes) of the minter's grant, or None — for
+        a reused, expired, unknown and malformed code alike."""
         return self._pop(code)
 
     def __len__(self):

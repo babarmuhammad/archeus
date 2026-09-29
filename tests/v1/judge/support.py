@@ -172,6 +172,44 @@ def session_adapters():
     return [FakeSessions(h, models=m, efforts=e) for h, m, e in SESSION_HARNESSES]
 
 
+class SpaDriver:
+    """What the SPA shows (G3): each read opens the app on a launch code, the
+    way a user does, and reads the row the page rendered — never Core's API."""
+
+    def __init__(self, tc):
+        from archeus.api import server
+        self.tc = tc
+        if not os.path.isfile(os.path.join(server.STATIC_DIR, 'index.html')):
+            self._need('the SPA is not built: npm ci && npm run build in clients/app')
+        try:
+            import playwright.sync_api  # noqa: F401
+        except ImportError:
+            self._need('playwright is not installed')
+
+    @staticmethod
+    def _need(why):
+        if os.environ.get('ARCHEUS_E2E') == '1':
+            pytest.fail(why)
+        pytest.skip(why)
+
+    def mission_card(self, mission_id):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            b = p.chromium.launch()
+            try:
+                page = b.new_page()
+                page.goto(self.tc.core.launch_url())
+                page.evaluate("() => location.hash = '#/work'")
+                row = page.locator('li[data-mission="%s"]' % mission_id)
+                row.wait_for(timeout=20000)
+                badge = row.locator('.state')
+                return {'state': row.get_attribute('data-state'),
+                        'badge_state': badge.get_attribute('data-state'),
+                        'label': badge.inner_text()}
+            finally:
+                b.close()
+
+
 class JudgeTerminal:
     """Where a judge Core "opens" a user's terminal: one JSON line per launch
     in `<ARCHEUS_HOME>/judge-terminal.jsonl` (argv, cwd, the env's keys only),
@@ -329,8 +367,13 @@ class Rig:
         return self.client.token
 
     def gui(self):
-        """The SPA driven by Playwright against this Core."""
-        self._pending('the SPA driver', 'P16')
+        """The SPA driven by Playwright against this Core (P16). Only the HTTP
+        binding has a Core to open it on; without Playwright or a built SPA it
+        skips, unless ARCHEUS_E2E=1 makes that a failure (the v1-client job)."""
+        tc = getattr(self.client, 'core', None)
+        if tc is None:
+            pytest.skip('the SPA exists only over the http binding')
+        return SpaDriver(tc)
 
     def tui(self):
         self._pending('the TUI driver', 'P17')

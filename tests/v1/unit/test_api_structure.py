@@ -262,15 +262,26 @@ P15 = {
 }
 
 
-def test_the_route_table_is_exactly_the_p35b_to_p15_tables():
+#: P16 (p16-design-gate §3.2): presentation reads and the PWA's root files —
+#: no decision, no state, no event; the launch code's grant is D2 (same row)
+P16 = {
+    ('GET', '/sw.js', None, None),
+    ('GET', '/manifest.webmanifest', None, None),
+    ('GET', '/v1/attention', 'observe', None),
+    ('GET', '/v1/missions/{id}/timeline', 'observe', None),
+    ('GET', '/v1/executions/{id}/stream', 'observe', None),
+}
+
+
+def test_the_route_table_is_exactly_the_p35b_to_p16_tables():
     """L2, and P9's E4 / P10's / P11's / P12's / P13's / P14's / P15's boundary:
     no `retry` (P12 did not build it, p12-design-gate D17), no event append or
     `run-now` (P14), nothing from P16 (/v1/now, the execution stream), and no
     hook route — a later phase adds its rows with its own tests."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
-    assert got == EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15
-    assert len(routes.ROUTES) == len(EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11
-                                     | P12 | P13 | P14 | P15)
+    tables = EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16
+    assert got == tables
+    assert len(routes.ROUTES) == len(tables)
     # P15: the only pairing paths are start and redeem; no route pairs a node
     assert {r.path for r in routes.ROUTES if 'pair' in r.path} == {
         '/v1/devices/pair/start', '/v1/devices/pair/redeem'}
@@ -286,15 +297,16 @@ def test_the_route_table_is_exactly_the_p35b_to_p15_tables():
     # E7: no plan route takes a command (no execution control from P8)
     assert not [r for r in routes.ROUTES if 'plan' in r.path and r.method != 'GET']
     for word in ('route/', '/now', 'hook', 'dispatch', 'stream?', '/retry',
-                 'cancel', 'accept', 'graph', 'attention', 'run-now'):
+                 'cancel', 'accept', 'graph', 'run-now'):
         assert not [r.path for r in routes.ROUTES if word in r.path], word
     # P12: the only hand-off paths are a session's and an execution's
     assert {r.path for r in routes.ROUTES if 'handoff' in r.path} == {
         '/v1/sessions/{id}/handoff', '/v1/executions/{id}/handoff'}
-    # P11 + P12: the only execution paths are P11's six and P12's two
+    # P11 + P12 + P16: P11's six, P12's two and P16's read-only output tail
     assert {r.path for r in routes.ROUTES if 'execution' in r.path or 'stop' in r.path
             or 'rearm' in r.path} == {p for _m, p, _s, _i in P11} | {
-        '/v1/executions/{id}/checkpoints', '/v1/executions/{id}/handoff'}
+        '/v1/executions/{id}/checkpoints', '/v1/executions/{id}/handoff',
+        '/v1/executions/{id}/stream'}
     # P10: every resource change is admin; reading them is observe
     assert {r.scope for r in routes.ROUTES if ('account' in r.path or 'resource' in r.path)
             and r.method == 'POST'} == {'admin'}
@@ -313,7 +325,8 @@ def test_every_scope_is_a_coarse_credential_scope_and_approve_is_only_deciding()
         '/v1/missions/{id}/review']
     assert auth.LAUNCH_SCOPES == ('observe',)
     public = {r.path for r in routes.ROUTES if r.scope is None}
-    assert public == {'/', '/assets/*', '/v1/devices/launch/redeem', '/v1/devices/pair/redeem'}
+    assert public == {'/', '/assets/*', '/sw.js', '/manifest.webmanifest',
+                      '/v1/devices/launch/redeem', '/v1/devices/pair/redeem'}
     assert auth.PAIR_SCOPES == ('observe', 'control', 'approve')       # admin opt-in (§6.5)
 
 

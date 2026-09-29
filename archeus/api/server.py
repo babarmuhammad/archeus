@@ -86,6 +86,17 @@ class Static:
         except FileNotFoundError:
             return 200, Raw(NOT_BUILT, 'text/html; charset=utf-8')
 
+    #: The PWA files served at the root (p16-design-gate D6), by name only.
+    ROOT = {'sw.js': 'text/javascript; charset=utf-8',
+            'manifest.webmanifest': 'application/manifest+json'}
+
+    def root_file(self, name):
+        try:
+            with open(os.path.join(self.dir, name), 'rb') as f:
+                return 200, Raw(f.read(), self.ROOT[name])
+        except FileNotFoundError:
+            raise Refused(404, 'not_found') from None
+
     def asset(self, name):
         assets = os.path.join(self.dir, 'assets')
         # membership in the directory listing, not path arithmetic: a name with

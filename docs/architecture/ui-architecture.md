@@ -47,6 +47,9 @@ clients/app/
 - P3.5b ships the minimal SPA of this structure: two lists (Now, Work), `api/generated.ts`,
   `api/stream.ts` (Web Locks leader + `BroadcastChannel`) and `api/transport.ts`, with no router
   and no query library — both are Q4, decided with P16's surfaces (p3.5b-design-gate.md D1).
+  *As built (P16, [p16-design-gate.md](p16-design-gate.md) §30):* Q4 is decided — neither library;
+  a keyed cache invalidated by event subject (`src/data/cache.ts`, `invalidation.ts`) and
+  destinations held in the URL (`src/nav/destinations.ts`). The PROPOSED line below is superseded.
 - Stack: TypeScript + React 19 + Vite (DECIDED). Data layer: **TanStack Query** for the cache
   with event-driven invalidation (PROPOSED — it does exactly "cache by key, invalidate by
   subject"; a hand-rolled cache would be reinvented). Routing: a small router (React Router)
@@ -194,7 +197,10 @@ budget: 1,000 nodes at 60 fps on integrated graphics; beyond that, clusters coll
 The current `stage.js` three.js background is **not** carried into V1 as ambient decoration
 (ADR-0016). Its flat graph-scene lineage is the candidate for the later optional 3D mode.
 
-### 5.1 P16 carry-forward: graph capability preservation (not yet started)
+### 5.1 P16 carry-forward: graph capability preservation
+
+*Done by P16* ([p16-design-gate.md](p16-design-gate.md)): the inventory, classification and
+relations view are in the gate; the text below is the requirement as supplied.
 
 Supplied 2026-09-28 as a P16 addendum. Nothing is implemented, inspected or refactored for it
 before P16 begins; P13–P15 are untouched by it. It adds to the P16 requirements and weakens none

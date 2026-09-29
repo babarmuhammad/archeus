@@ -723,6 +723,14 @@ def view(conn, execution_id):
     return out
 
 
+def entity(conn, execution_id):
+    """The Execution entity itself (what a read of its output needs)."""
+    row = rows.get(conn, entities.Execution, execution_id)
+    if row is None:
+        raise lifecycle.NotFound(execution_id)
+    return row.entity
+
+
 def checkpoints(conn, execution_id):
     """The checkpoints of an execution (p12-design-gate §19): at most one."""
     if rows.get(conn, entities.Execution, execution_id) is None:

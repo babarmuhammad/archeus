@@ -53,6 +53,23 @@ export interface ApprovalList {
   approvals: Approval[];
 }
 
+export interface Attention {
+  items: AttentionItem[];
+  count: number;
+}
+
+export interface AttentionItem {
+  kind: 'approval' | 'verification' | 'mission' | 'knowledge' | 'drift' | 'automation' | 'account';
+  ref: Subject;
+  state: string;
+  reason_code: string;
+  reason: string | null;
+  mission_id: string | null;
+  project_id: string | null;
+  since: string;
+  [field: string]: unknown;
+}
+
 export interface Automation {
   id: string;
   name: string;
@@ -340,6 +357,15 @@ export interface ExecutionList {
   executions: Execution[];
 }
 
+export interface ExecutionOutput {
+  execution_id: string;
+  offset: number;
+  next_offset: number;
+  events: Record<string, unknown>[];
+  truncated: boolean;
+  available: boolean;
+}
+
 export interface ExecutionStopped {
   execution_id: string;
   state: string;
@@ -483,6 +509,7 @@ export interface KnowledgeList {
 export interface LaunchCode {
   code: string;
   expires_in: number;
+  scopes: string[];
 }
 
 export interface Meeting {
@@ -681,6 +708,7 @@ export interface Rearmed {
 export interface Redeemed {
   device_id: string;
   token: string;
+  scopes: string[];
 }
 
 export interface Replied {
@@ -857,6 +885,12 @@ export interface Task {
   [field: string]: unknown;
 }
 
+export interface Timeline {
+  mission_id: string;
+  events: Event[];
+  next_before: number | null;
+}
+
 export interface Transition {
   from: string;
   to: string;
@@ -920,6 +954,7 @@ export interface ResumeMissionRequest {
 }
 
 export interface LaunchCodeRequest {
+  scopes?: Array<'observe' | 'control' | 'approve' | 'admin'> | null;
 }
 
 export interface LaunchRedeemRequest {
@@ -1327,6 +1362,8 @@ export const api = {
     send<Execution>('GET', '/v1/executions/' + encodeURIComponent(id)),
   listTaskExecutions: (send: Send, id: string) =>
     send<ExecutionList>('GET', '/v1/tasks/' + encodeURIComponent(id) + '/executions'),
+  executionStream: (send: Send, id: string, query: { from?: number } = {}) =>
+    send<ExecutionOutput>('GET', '/v1/executions/' + encodeURIComponent(id) + '/stream' + qs(query)),
   stopExecution: (send: Send, id: string, body: StopExecutionRequest) =>
     send<ExecutionStopped>('POST', '/v1/executions/' + encodeURIComponent(id) + '/stop', body),
   stopMission: (send: Send, id: string, body: StopMissionRequest) =>
@@ -1397,6 +1434,10 @@ export const api = {
     send<ReviewRecorded>('POST', '/v1/missions/' + encodeURIComponent(id) + '/review', body),
   abandonIntegration: (send: Send, id: string, body: AbandonIntegrationRequest) =>
     send<IntegrationAbandoned>('POST', '/v1/tasks/' + encodeURIComponent(id) + '/integration/abandon', body),
+  attentionItems: (send: Send) =>
+    send<Attention>('GET', '/v1/attention'),
+  missionTimeline: (send: Send, id: string, query: { before?: number; limit?: number } = {}) =>
+    send<Timeline>('GET', '/v1/missions/' + encodeURIComponent(id) + '/timeline' + qs(query)),
   listAutomations: (send: Send) =>
     send<AutomationList>('GET', '/v1/automations'),
   getAutomation: (send: Send, id: string) =>

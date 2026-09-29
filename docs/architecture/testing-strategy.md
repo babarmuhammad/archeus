@@ -18,6 +18,7 @@ refactor. It also carries this repository's rules: a gate nobody has watched fai
 | E2E UI | `tests/v1/e2e/` (Playwright, as `tools/smoke_gui.py` today) | SPA flows against the judge's Core fixture: every destination, inspector tab, approval flow; overflow/dead-space audit; animation loop parks | CI + before release |
 | TUI | `tests/v1/tui/` | TUI screens driven by scripted keys through `term.py`'s patched backend (today's `tests/harness.py` pattern) | every commit |
 | Design gates | `tests/v1/design/` | contrast over tokens × themes, keyframe properties, no backdrop-filter, container-query rule, tokens regenerated, CSP/no inline script | every commit |
+| Client units | `clients/app/test/*.test.ts` (`npm test`, `node --test`, no framework) | pure SPA modules: presentation, cache invalidation, relations, destinations, commands (P16) | CI (`v1-client`) |
 | Legacy suite | `tests/` (existing ~1,300 tests) | unchanged; guards the P0.5 seam edits and the legacy app until retirement | every commit |
 
 ### 1.1 The `CoreClient` contract and phase-tagged scenarios
@@ -118,7 +119,7 @@ them so nothing is tested twice under different names or missed.
 | R1 | A session resumes on its own harness's configuration (moved from §6 by the P12 gate) | ADR-0023 | `test_h01_r01_session_harnesses.py` | P12 |
 | V1 | The outcome is verified from evidence Core observed, never from an exit code: a wrong change fails (V01/V14), a right one is merged into the mission branch and reviewed (V02/V15), nothing to run waits for you (V03), a failing criterion replans (V05), tests passing with no change fail (V11) | SP11, SP12, p13-design-gate §24 (V04, V07–V10, V12, V13, M01–M06 in `tests/v1/integration/test_verification.py` and `test_provenance.py`) | `test_v01_outcome_verification.py` | P13 |
 | V6 | A retried task is verified on the attempt that ended it, never on an earlier one | p13-design-gate §10 | `test_v06_attempts.py` | P13 |
-| G3 | GUI/TUI/web/mobile use one backend model | SP17 | `test_g03_one_model.py` (same mission observed via SPA e2e, TUI script, CLI) | P16–P19 |
+| G3 | GUI/TUI/web/mobile use one backend model | SP17 | `test_g03_one_model.py` (same mission observed via SPA e2e, TUI script, CLI; P16: the GUI function passes through `SpaDriver`) | P16–P19 |
 | G4 | Audit trail exists | — | `test_g04_audit.py` (every transition has an event with actor + reason; approvals immutable) | P2 |
 | G5 | Emergency stop exists (with and without Core) | — | `test_g05_estop.py` (STOP sentinel halts fake executions; `archeus estop` kills by pid+create_time with Core down) | P11, P20 |
 | G6 | Security: approval boundaries and destructive-action controls | — | `test_g06_security.py` (DENY not overridable downward; execution scope cannot create missions; brain cannot approve; token in query string rejected; revoked device stream closed) | P3.5, P9, P15 |

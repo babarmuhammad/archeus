@@ -148,13 +148,13 @@ a weaker model working hard"). Status: adapted into router economics
 | 5 | HIG *Generative AI* (2026-06-08): keep people in control, refine/revert, ask before irreversible actions, specific progress text, disclosure, voluntary feedback | [V] `references/hig/generative-ai.md` | Conversation UX | adopted |
 | 6 | Cross-platform translation (tab bar ↔ bottom navigation; size classes ↔ container queries; menu bar/tray commands) | [V] `references/cross-platform.md` | Platform adaptation | adopted |
 
-## R7 — Ship Notes Components (P16 carry-forward, not yet inspected)
+## R7 — Ship Notes Components (P16 carry-forward, inspected)
 
 | Field | Value |
 |---|---|
 | URL | https://aqualang89.github.io/shipnotes-components/ |
 | Supplied | 2026-09-27, as a P16 addendum; nothing implemented, fetched or copied yet |
-| Revision / license | unknown — record both when P16 inspects the source; unclear license → reference only, no code |
+| Revision / license | `c1b70d046c6b21c8f6bbae5899bf38e473eff9d2` (2026-09-26), MIT; inspected 2026-09-28. Patterns only, no code copied; the classification table is [p16-design-gate.md](../architecture/p16-design-gate.md) §22 |
 | Role | motion, interaction and component-pattern reference. **Not** an information-architecture source |
 
 What P16 owes this reference, in order, during its design phase and before any implementation:

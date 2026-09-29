@@ -558,9 +558,10 @@ class Core:
                 'automation': self.automation.status() if self.automation is not None
                 else {'state': 'idle', 'pending': 0}}
 
-    def launch_url(self):
-        """A fresh launch code in the URL fragment (never sent to the server)."""
-        code = self.api.launch.mint(self.local['principal_id'], self.local['device_id'])
+    def launch_url(self, scopes=auth.LAUNCH_SCOPES):
+        """A fresh launch code in the URL fragment (never sent to the server).
+        *scopes* is the grant (p16-design-gate D2): the local token holds every scope."""
+        code = self.api.launch.mint(self.local['principal_id'], self.local['device_id'], scopes)
         return '%s/#launch=%s' % (self.api.origin.origin, code)
 
     # ── stop ──
@@ -648,7 +649,7 @@ def run(*, port=DEFAULT_PORT, ports=None, open_browser=False, out=None, err=None
         print('warning: %s' % core.warning, file=err)
     if open_browser:
         import webbrowser
-        webbrowser.open(core.launch_url())
+        webbrowser.open(core.launch_url(auth.LOCAL_SCOPES))       # D2: the user at this machine
     for name in ('SIGTERM', 'SIGBREAK'):
         if hasattr(signal, name):
             signal.signal(getattr(signal, name), lambda *_: core.request_stop())

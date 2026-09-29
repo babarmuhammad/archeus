@@ -106,11 +106,13 @@ TYPES = {
     'EventPage': {'type': 'object', 'properties': {
         'events': {'type': 'array', 'items': {'ref': 'Event'}}}, 'required': ['events']},
     'LaunchCode': {'type': 'object', 'properties': {'code': {'type': 'string'},
-                                                    'expires_in': {'type': 'integer'}},
-                   'required': ['code', 'expires_in']},
+                                                    'expires_in': {'type': 'integer'},
+                                                    'scopes': {'type': 'array', 'items': {'type': 'string'}}},
+                   'required': ['code', 'expires_in', 'scopes']},
     'Redeemed': {'type': 'object', 'properties': {'device_id': {'type': 'string'},
-                                                  'token': {'type': 'string'}},
-                 'required': ['device_id', 'token']},
+                                                  'token': {'type': 'string'},
+                                                  'scopes': {'type': 'array', 'items': {'type': 'string'}}},
+                 'required': ['device_id', 'token', 'scopes']},
     # ── clients, pairing, presence, resync (P15, p15-design-gate §18) ──
     'PairingCode': {'type': 'object', 'properties': {
         'code': {'type': 'string'}, 'expires_in': {'type': 'integer'},
@@ -153,6 +155,31 @@ TYPES = {
         'head_seq': {'type': 'integer'}, 'floor_seq': {'type': 'integer'},
         'server_time': {'type': 'string'}},
         'required': ['client', 'core', 'head_seq', 'floor_seq', 'server_time']},
+    # ── P16 presentation reads (p16-design-gate D3-D5) ──
+    'AttentionItem': {'type': 'object', 'open': True, 'properties': {
+        'kind': {'type': 'string', 'enum': ['approval', 'verification', 'mission', 'knowledge',
+                                            'drift', 'automation', 'account']},
+        'ref': {'ref': 'Subject'}, 'state': {'type': 'string'},
+        'reason_code': {'type': 'string'}, 'reason': {'type': 'string', 'nullable': True},
+        'mission_id': {'type': 'string', 'nullable': True},
+        'project_id': {'type': 'string', 'nullable': True}, 'since': {'type': 'string'}},
+        'required': ['kind', 'ref', 'state', 'reason_code', 'reason', 'mission_id',
+                     'project_id', 'since']},
+    'Attention': {'type': 'object', 'properties': {
+        'items': {'type': 'array', 'items': {'ref': 'AttentionItem'}},
+        'count': {'type': 'integer'}}, 'required': ['items', 'count']},
+    'Timeline': {'type': 'object', 'properties': {
+        'mission_id': {'type': 'string'},
+        'events': {'type': 'array', 'items': {'ref': 'Event'}},
+        'next_before': {'type': 'integer', 'nullable': True}},
+        'required': ['mission_id', 'events', 'next_before']},
+    'ExecutionOutput': {'type': 'object', 'properties': {
+        'execution_id': {'type': 'string'}, 'offset': {'type': 'integer'},
+        'next_offset': {'type': 'integer'},
+        'events': {'type': 'array', 'items': {'type': 'object', 'open': True}},
+        'truncated': {'type': 'boolean'}, 'available': {'type': 'boolean'}},
+        'required': ['execution_id', 'offset', 'next_offset', 'events', 'truncated',
+                     'available']},
     # ── the world (P4, p4-design-gate §8-§10) ──
     'Finding': {'type': 'object', 'open': True, 'properties': {
         'constraint_id': {'type': 'string'}, 'constraint': {'type': 'string'},
@@ -646,6 +673,11 @@ CREATE_MISSION = {'type': 'object', 'properties': {
 KEYED = {'type': 'object', 'properties': {'idempotency_key': KEY},
          'required': ['idempotency_key']}
 EMPTY = {'type': 'object', 'properties': {}, 'required': []}
+#: P16 (p16-design-gate D2): a launch code's grant, bounded by the minter's scopes
+LAUNCH_CODE = {'type': 'object', 'properties': {
+    'scopes': {'type': 'array', 'nullable': True,
+               'items': {'type': 'string', 'enum': ['observe', 'control', 'approve', 'admin']}}},
+    'required': []}
 CREATE_PROJECT = {'type': 'object', 'properties': {
     'name': {'type': 'string'}, 'root_paths': {'type': 'array', 'items': {'type': 'string'}},
     'idempotency_key': KEY}, 'required': ['name', 'root_paths', 'idempotency_key']}

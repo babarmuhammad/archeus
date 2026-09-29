@@ -63,7 +63,7 @@ def test_launch_codes_are_unchanged_by_the_refactor():
     c = Clock()
     codes = auth.LaunchCodes(clock=c)
     code = codes.mint('prn_a', 'dvc_a')
-    assert codes.redeem(code) == ('prn_a', 'dvc_a') and codes.redeem(code) is None
+    assert codes.redeem(code) == ('prn_a', 'dvc_a', ('observe',)) and codes.redeem(code) is None
 
 
 def test_step_up_failures_revoke_at_the_fifth_in_a_row_and_reset_on_success():

@@ -936,6 +936,28 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   dispositions, ontology mapping, provenance/event/selection chains, a11y, mobile, performance):
   [ui-architecture.md §5.1](ui-architecture.md). Implementation is not approved until it names
   which existing graph work is preserved and in what role.
+  - **P16, as built** (p16-design-gate.md, D1–D20). The IA is ADR-0014's, re-derived from the
+    P4–P15 ontology: Now · Work · World · Control, Attention and the command bar as layers, one
+    inspector per object kind (the mission's: Outcome · Plan · Now · Evidence · Why · Timeline ·
+    Relations), sessions and clients under Control. One token table and one presentation table
+    (every state of every machine in `states.py`, with its glyph, label and the triggers a button
+    may be offered for) generate the CSS and TypeScript (`tools/gen_ui.py`). The client holds no
+    logic: one cache keyed by read path, invalidated by stream frames (ids only), one connection
+    machine with per-view freshness (current · stale · reconnecting · unavailable), no optimistic
+    state, no offline queue, commands keyed per user action. Backend seams, all reads or
+    transport: `/v1/attention`, `/v1/missions/{id}/timeline`, `/v1/executions/{id}/stream`
+    (redacted, through `adapter.inspect`), `/sw.js` and `/manifest.webmanifest` (the offline
+    shell never caches `/v1/`), and a launch code whose grant its minter chooses within its own
+    scopes (D2, the user's decision; `archeus core --open` asks for every scope). The graph is a
+    capability: 35 existing capabilities inventoried with dispositions, the Relations tab and the
+    automation causal chain render authoritative edges only, the spatial view stays P18's. Ship
+    Notes Components (c1b70d0, MIT) was inspected as a motion reference; patterns only, no code.
+    Motion is transform/opacity, once, never while reduced, no loop. Pairing screen with a local
+    QR, device list with presence, revocation, the redeem flow, PWA manifest and service worker,
+    phone/tablet/desktop layouts. G3's GUI function passes; 29/29 P16 mutations killed. Deferred
+    (seams S1–S10): per-mission threads, plan edit, chat `approve`/`reject`, confirming a mission
+    under `careful`, `/v1/now`, an offline snapshot, the Qt shell attach and the legacy "Open V1"
+    link (P19), `/v1/world/graph` (P18). Deviations: p16-design-gate §30.
 
 **P17 — TUI**
 - Depends: P16 (shares nav table and presentation table). New: `cli/tui/*`.
@@ -1178,11 +1200,11 @@ Rules:
 | Q1 | Provider terms for automated headless use of subscription accounts and rotation across several subscriptions | OPEN (ADR-0021) | user | before the first real headless model call (P4 optional model pass, P6 extraction or P7 brain, whichever comes first) |
 | Q2 | Remote access via Tailscale Serve as the documented default | PROPOSED (ADR-0010) | user | P15 |
 | Q3 | ntfy as the default push channel (vs a native wrapper later) | PROPOSED | user | P15 |
-| Q4 | SPA libraries (TanStack Query, React Router) | PROPOSED | engineering | P16 (the P3.5b SPA uses neither: p3.5b-design-gate.md D1) |
-| Q5 | Exact hex values of the design tokens | PROPOSED | design review | P16 |
-| Q6 | Voice channel in V1? | OPEN (research D1) | user | P16 |
-| Q7 | Legacy worlds as a "Classic" appearance? | OPEN (research D3) | user | P16 |
-| Q8 | UI languages at launch | OPEN (research D4) | user | P16 |
+| Q4 | SPA libraries (TanStack Query, React Router) | DECIDED: neither (p16-design-gate D8) | engineering | P16 |
+| Q5 | Exact hex values of the design tokens | DECIDED (p16-design-gate §15.1, D11; contrast-gated) | design review | P16 |
+| Q6 | Voice channel in V1? | DEFERRED (p16-design-gate D14) | user | after V1 |
+| Q7 | Legacy worlds as a "Classic" appearance? | DECIDED: no (p16-design-gate D12, ADR-0017) | user | P16 |
+| Q8 | UI languages at launch | DECIDED: English (p16-design-gate D13, reversible) | user | P16 |
 | Q9 | Import-all vs choose-projects onboarding | OPEN (research D5) | user | P22 |
 | Q10 | Remote execution nodes timing | DEFERRED | user | after V1 |
 | Q11 | Web Push via optional extra | DEFERRED | engineering | after V1 |

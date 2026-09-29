@@ -53,6 +53,7 @@ mobile (ADR-0010). Push beyond ntfy is **DEFERRED**.
 | Approvals (P9) | `/v1/approvals?state=&mission=`, `/v1/approvals/{id}` (with `eligible`) | `approvals/{id}/decide` (scope `approve`; `approve`, `reject`, `request_changes`, echoing `action_hash`) |
 | Automations | `/v1/automations`, `/v1/automations/{id}/runs` | `create`, `enable`, `disable`, `archive`, `run-now` |
 | Devices / Nodes | `/v1/devices`, `/v1/nodes` | `launch/code` (local token only), `launch/redeem` (loopback only), `pair/start` (local only), `pair/redeem`, `devices/{id}/revoke`, `estop`, `rearm` |
+| UI reads (*as built, P16*, p16-design-gate §30) | `GET /v1/attention`, `GET /v1/missions/{id}/timeline?before&limit`, `GET /v1/executions/{id}/stream?from` (redacted output tail), public `/sw.js` and `/manifest.webmanifest` | `launch/code` now carries the minter's chosen scopes (bounded by its own, always `observe`); `launch/redeem` grants exactly them (D2) |
 | Events | `/v1/events?after=&limit=` (paged catch-up), `/v1/events/stream` (SSE) | — |
 | Hooks (execution scope only) | — | `/v1/hook/evaluate`, `/v1/hook/report`, `/v1/hook/checkpoint`, `/v1/hook/request-approval` |
 | System | `/v1/health`, `/v1/version` | `/v1/estop` (all executions), `/v1/rearm` |
@@ -210,7 +211,8 @@ The cursor contract (`seq` in `Last-Event-ID` or `?after=`), implemented by
   `http://127.0.0.1:<port>/#launch=<code>`. The fragment never reaches the server or its logs.
   The SPA reads it, calls `POST /v1/devices/launch/redeem {code}` (accepted only from loopback
   with a loopback Host header) and receives a device token for a `desktop`/`web` device — with
-  the `observe` scope only, because the P3.5b SPA is read-only — stores
+  the `observe` scope only, because the P3.5b SPA is read-only (*as built, P16, D2:* the scopes
+  the minter chose, bounded by its own and always including `observe`) — stores
   it in IndexedDB, and immediately removes the fragment with `history.replaceState`. A reused or
   expired code gets `401`; the SPA then shows "Open Archeus from the desktop app or run
   `archeus core --open`". Remote devices never use this path; they pair (§5.3). Loopback is **not** trusted by itself (lesson: DNS rebinding):

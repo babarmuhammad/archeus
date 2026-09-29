@@ -1364,4 +1364,109 @@ no optimistic state, no cached API data in the service worker, no physical-hardw
    wheel;
 7. as-built (§30) and plan entry; commit; push after validation; CI.
 
-**DESIGN_GATE = PROPOSED.**
+## 30. As built
+
+Everything in §1–§29 is built as written, except the deviations below.
+
+**Backend (four read routes, one command change, two static files; no migration, no state, no
+event type).** New: `archeus/core/application/attention.py` (`attention()` — D3; `timeline()` —
+D5), `archeus/core/execution/output.py` (`read()` — D4, through `adapter.inspect`, every string
+through `core/redact.py`, at most 1,000 events per answer). Changed: `api/auth.py` (`LaunchCodes`
+carries the minter's grant, D2; `LAUNCH_SCOPES` unchanged), `api/routes.py` (the five P16 rows,
+`launch_code` bounds the grant by the minter's own scopes and always keeps `observe`,
+`launch_redeem` registers exactly it), `api/schemas.py` (`LAUNCH_CODE`, `Attention`,
+`AttentionItem`, `Timeline`, `ExecutionOutput`; `LaunchCode` and `Redeemed` name the grant),
+`api/server.py` (`Static.root_file` serves `sw.js` and `manifest.webmanifest` by name only),
+`core/application/executions.py` (`entity()`, so the API layer imports no row codec),
+`core/runtime.py` (`launch_url(scopes)`; `archeus core --open` asks for every scope),
+`cli/main.py` (the same for a Core already running), `tools/gen_api_docs.py` (the two new query
+parameters). The route table went from 92 to 97 rows (§1.2's "95" was a miscount).
+
+**Client.** `clients/app/`: `tokens/{tokens,presentation}.json` → `tools/gen_ui.py` →
+`src/styles/tokens.css`, `src/state/{tokens,presentation}.ts` (presentation also carries the
+per-state trigger table from `states.py`, so a button is offered only where the machine has the
+trigger); `src/data/{cache,connection,invalidation,commands,core}.ts`; `src/state/present.ts`;
+`src/graph/relations.ts`; `src/nav/destinations.ts`; `src/a11y/announce.ts`;
+`src/components/{ui,Relations,QR}.tsx`; `src/surfaces/{Now,Work,World,Attention,Control,Mission,
+Inspector,CommandBar}.tsx`; `src/App.tsx` (bootstraps, shell, keyboard, focus, the stream);
+`public/{sw.js,manifest.webmanifest,assets/icon-192.png,assets/icon-512.png}`. Dependencies:
+`qrcode-generator` 2.0.4 (MIT, no dependencies; the only runtime addition), dev-only `axe-core`
+4.13.0 (MPL-2.0, e2e only, not shipped) and `@types/node` 22.20.4. Build: 360 KB JS (109 KB
+gzip), 16 KB CSS.
+
+**Tests.**
+
+| Layer | File | Count |
+|---|---|---|
+| backend seams | `tests/v1/integration/test_ui_seams.py` | 10 |
+| design gates | `tests/v1/design/test_design_gates.py` | 15 |
+| client units | `clients/app/test/*.test.ts` (`npm test`) | 38 |
+| e2e | `tests/v1/e2e/test_spa_p16.py` (12) + the reworked `test_spa_skeleton.py` (5) | 17 |
+| judge | `test_g03_one_model.py::test_the_gui_shows_the_mission_the_api_reports` (P16 marker removed; `rig.gui()` = `SpaDriver`, HTTP binding only) | 1 |
+| changed | `test_api_structure.py` (the `P16` set; `attention` no longer a forbidden word; `graph` still is), `test_api_auth_units.py`, `test_presence_units.py` (a launch code's payload carries its grant) | — |
+
+`tools/mutate_p16.py`: **29/29 killed** (M01–M29 of §24.2 as implemented below).
+
+**Deviations.**
+
+1. **M10, M26 and M27 target the thing, not the checker.** §24.2 described M26 and M27 as
+   mutations of the design test's own allowlist; as built they break the rule the test guards —
+   a keyframe animating `background` in `app.css` (M26), a mission state removed from
+   `presentation.json` (M27) — which is the repository's "watch the gate fail" rule. M10 is a
+   session row given `machine="mission"` in `Control.tsx`, killed by a static client test.
+2. **`text-3` is not used for essential text.** axe-core flagged the disabled-reason captions
+   and the relation field names at 3:1; `text-3` meets its own 3:1 floor but the design system
+   already says it is never for essential content. They, inactive rows and the `inactive` class
+   use `text-2`; `text-3` stays a token with its floor tested.
+3. **No animated spinner.** §18.1 forbids any iteration count above one; a busy button says
+   "Approve…" instead of spinning.
+4. **The inspector replaces the main column below 1,000 px** instead of overlaying it: one scroll
+   and one focus order, and no focus trap needed. Desktop keeps the side column.
+5. **Initial focus stays at the top** so the skip link is the first Tab stop; focus moves to the
+   view's heading only on a navigation (found by the keyboard e2e test).
+6. **Inspector tabs replace the history entry**; closing an inspector returns to the destination
+   it was opened over (a Back through every tab visited was the first behaviour).
+7. **A resync before anything is shown is not announced** as "Back — read again" (the new
+   leader's own RESYNC at start-up); the generation still advances.
+8. **Why on a settled mission** says it is completed (or cancelled) and stops; a route shown as the
+   reason must be a *task's* route — an own call after the end (the lesson pass) is not a reason.
+9. **CI**: the `v1-client` job gains `npm test` and the G3 judge function (the only CI change;
+   made with the user's confirmation, §27 of the plan's rules).
+10. Everything declared in §27 up front holds (Qt shell attach and the legacy link → P19; the
+    five-lens review is the self-review below; `SPACE_JS` not ported; no Thread tab).
+
+**Five-lens self-review (Apple Design Skill).**
+
+| Lens | Finding | Severity |
+|---|---|---|
+| Accessibility | axe-core: no serious or critical violation on eight surfaces; keyboard-only journey (skip link, Ctrl+1–3/J/K, roving tabs, Esc) passes; every state is glyph + label; reduced motion removes all movement; phone targets ≥ 44 px | none open |
+| Platform conventions | sidebar / rail / bottom tab bar by width; native `<dialog>` for confirmations and the command bar; Esc closes the topmost layer | Low: no desktop tray (legacy shell, P19) |
+| Visual craft | one token table, contrast floors tested per theme, no hue accent, state colours only on state | Low: object references still fall back to a short id where a row has no name (route and policy decisions) |
+| Interaction | every command re-reads, is disabled with a reason, confirms irreversible actions in prose; no optimistic state | Medium: no plan editor (S2) and no per-mission thread (S1) — deferred seams, not defects |
+| Content | Core's refusal reasons verbatim; model-written text labelled as such; progress text only from rows | Low: English only (Q8) |
+
+No Critical or High finding.
+
+**Final architectural check (§24 of the P16 brief), with evidence.**
+
+| Question | Answer | Evidence |
+|---|---|---|
+| A. ontology without collapse | yes — each noun has its own machine table, label and place | §2; `presentation.json`; `presentation.test.ts`; `present.test.ts` (M10, M13) |
+| B. conversation a surface | yes — a panel of Now; cards render live rows | §5; `Now.tsx` `CardRef`; no verb parsing (`shell.test.ts`) |
+| C. mission/plan/approval/execution/verification/review distinct | yes — six looks, three facts in the Plan tab, `ENDED_OK` never ✓ | M01–M05; `test_only_a_completed_mission_is_done…` |
+| D. continuity is reconstruction | yes — the session brief (P12), never the transcript | `Control.tsx` `Brief`; §6.9 |
+| E. cross-harness continuity ≠ harness | yes — lineage rows name each session's harness | `sessionEdges`; `relations.test.ts` |
+| F. model × harness without a routing authority | yes — three fields; controls call P10/P12 commands only | `resourceLine` (M13); `ResourcePreferences`, `SessionActions` |
+| G. P15 client/device/connection/presence | yes — client ≠ hardware ("declared"), presence ≠ activity, revocation signs out | `Devices`; M09; pairing e2e |
+| H. stale / reconnect / offline explicit | yes — one connection machine and per-view freshness | `connection.ts`; M07, M08; restart e2e |
+| I. graph work inventoried and preserved | yes — 35 capabilities with dispositions and future roles | §20.1, §20.3 |
+| J. graph a capability, not the IA | yes — Relations tab + causal chains; spatial view P18 | §20.5; `Relations.tsx`; M11, M12 |
+| K. Ship Notes as motion reference only | yes — source c1b70d0 (MIT) inspected; patterns only, no code | §22 |
+| L. IA independent of the legacy dashboard | yes — derived from P4–P15; legacy mapped, not copied | §4, §21 |
+| M. no shadow policy/routing/execution/verification/session | yes | §19; `shell.test.ts` scans; M14, M29 |
+| N. accessibility and mobile first-class | yes | §16, §17; axe, keyboard, width and target e2e; M16–M18 |
+| O. "what changed while I was away" without replay | yes — the digest (P4) and the session brief (P12) | `DigestSection`; `Brief` |
+| P. why blocked / awaiting / executing / failed / verified / awaiting review | yes — `explainState()` from rows, "no recorded reason" otherwise | `present.test.ts` |
+| Q. live data without noise | yes — frames invalidate keys in 50 ms batches; one pulse per changed object; no loops | §12; `invalidation.ts`; design gates |
+
+**DESIGN_GATE = IMPLEMENTED.**

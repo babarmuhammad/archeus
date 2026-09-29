@@ -228,7 +228,9 @@ def _get(info, method, path, body=None):
 
 
 def _launch_code(info):
-    out = _get(info, 'POST', '/v1/devices/launch/code')
+    # the user at this machine opens the app with its full grant (p16-design-gate D2)
+    out = _get(info, 'POST', '/v1/devices/launch/code',
+               {'scopes': ['observe', 'control', 'approve', 'admin']})
     if out is None:
         print('could not get a launch code from Core on port %d' % info['port'], file=sys.stderr)
         return None

@@ -38,6 +38,13 @@ stream (P16), hooks (P11), a manual
 re-inspect (the world worker covers it), `/v1/world/graph` (P18) and the rest
 of knowledge (P6). A user accepts a result by reviewing it (P13).
 
+P16 adds presentation reads, never decisions (p16-design-gate §3.2): what waits
+on the user (`/v1/attention`), a mission's own events (`…/timeline`), an
+execution's redacted output tail (`…/stream`, frozen to P16 by P3.5b D8), the
+PWA's two root files, and the launch code's grant chosen by its minter (D2).
+`/v1/now` is not built (the client composes it from three reads) and
+`/v1/world/graph` stays P18's.
+
 P15 adds access, never ownership (p15-design-gate §18): pairing a client
 (start is local admin, redemption is public and spends its code), the client
 list with presence, the resync anchor `/v1/sync`, stream narrowing
@@ -172,9 +179,19 @@ def events_stream(req):
 
 
 def launch_code(req):
+    """The grant is the minter's to choose, bounded by its own scopes and never
+    without `observe` (p16-design-gate D2); the default stays read-only."""
     _loopback(req)
-    code = req.api.launch.mint(req.principal['principal_id'], req.principal['device_id'])
-    return 200, {'code': code, 'expires_in': int(auth.LAUNCH_TTL_S)}
+    asked = (req.body or {}).get('scopes') or auth.LAUNCH_SCOPES
+    if 'observe' not in asked:
+        raise Invalid('scopes', 'always includes observe')
+    for s in asked:
+        if s not in req.principal['scopes']:
+            raise Refused(403, 'scope_required', {'scope': s})
+    scopes = [s for s in auth.SCOPES if s in asked]
+    code = req.api.launch.mint(req.principal['principal_id'], req.principal['device_id'],
+                               scopes)
+    return 200, {'code': code, 'expires_in': int(auth.LAUNCH_TTL_S), 'scopes': scopes}
 
 
 def launch_redeem(req):
@@ -187,9 +204,9 @@ def launch_redeem(req):
     token = auth.new_token()
     out = req.run(commands.register_device, {
         'name': 'browser (%s)' % req.body['platform'], 'platform': req.body['platform'],
-        'token_hash': auth.token_hash(token), 'scopes': list(auth.LAUNCH_SCOPES)},
+        'token_hash': auth.token_hash(token), 'scopes': list(minter[2])},
         actor_id=minter[0], keyed=False)
-    return 200, {'device_id': out['device_id'], 'token': token}
+    return 200, {'device_id': out['device_id'], 'token': token, 'scopes': list(minter[2])}
 
 
 # ── clients: pairing, listing, resync (P15, p15-design-gate §6, §13, §18) ──
@@ -451,6 +468,47 @@ def set_mission_resources(req):
 def get_execution(req):
     with req.api.db.read() as conn:
         return 200, executions.view(conn, req.params['id'])
+
+
+def execution_stream(req):
+    """P16 (D4): the output tail of one execution, from a byte offset, redacted.
+    The row is read in the snapshot; the stream file is read after it."""
+    from ..core.execution import output
+    raw = _one(req.query, 'from')
+    offset = 0 if raw is None else _cursor(raw, 'from')
+    with req.api.db.read() as conn:
+        e = executions.entity(conn, req.params['id'])
+    reg = req.api.resources.registry
+    adapter = reg.get(e.harness_id) if e.harness_id in reg.ids() else None
+    return 200, output.read(e, adapter, offset)
+
+
+def attention_items(req):
+    """P16 (D3): what waits on the user, from rows."""
+    from ..core.application import attention
+    with req.api.db.read() as conn:
+        return 200, attention.attention(conn, now=queries._now())
+
+
+def mission_timeline(req):
+    """P16 (D5): the events of the mission's own rows, newest first."""
+    from ..core.application import attention
+    raw_b, raw_l = _one(req.query, 'before'), _one(req.query, 'limit')
+    limit = 50 if raw_l is None else _cursor(raw_l, 'limit')
+    if not 1 <= limit <= attention.MAX_TIMELINE:
+        raise Invalid('limit', 'is 1..%d' % attention.MAX_TIMELINE)
+    with req.api.db.read() as conn:
+        return 200, attention.timeline(conn, req.params['id'],
+                                       None if raw_b is None else _cursor(raw_b, 'before'),
+                                       limit)
+
+
+def service_worker(req):
+    return req.api.static.root_file('sw.js')
+
+
+def manifest(req):
+    return req.api.static.root_file('manifest.webmanifest')
 
 
 def list_task_executions(req):
@@ -772,6 +830,9 @@ def revoke_device(req):
 ROUTES = (
     Route('GET', '/', static_index, None, None, None, None),
     Route('GET', '/assets/*', static_asset, None, None, None, None),
+    # P16 (p16-design-gate D6): the PWA's two root files, public like the page
+    Route('GET', '/sw.js', service_worker, None, None, None, None),
+    Route('GET', '/manifest.webmanifest', manifest, None, None, None, None),
     Route('GET', '/v1/health', health, 'observe', None, None, 'Health'),
     Route('GET', '/v1/version', version, 'observe', None, None, 'Version'),
     Route('GET', '/v1/missions', list_missions, 'observe', None, None, 'MissionList'),
@@ -787,7 +848,7 @@ ROUTES = (
           schemas.KEYED_VERSIONED, 'CommandResult'),
     Route('GET', '/v1/events', events, 'observe', None, None, 'EventPage'),
     Route('GET', '/v1/events/stream', events_stream, 'observe', None, None, 'StreamFrame'),
-    Route('POST', '/v1/devices/launch/code', launch_code, 'admin', 'exempt', schemas.EMPTY,
+    Route('POST', '/v1/devices/launch/code', launch_code, 'admin', 'exempt', schemas.LAUNCH_CODE,
           'LaunchCode'),
     Route('POST', '/v1/devices/launch/redeem', launch_redeem, None, 'exempt', schemas.REDEEM,
           'Redeemed'),
@@ -859,6 +920,9 @@ ROUTES = (
     Route('GET', '/v1/executions/{id}', get_execution, 'observe', None, None, 'Execution'),
     Route('GET', '/v1/tasks/{id}/executions', list_task_executions, 'observe', None, None,
           'ExecutionList'),
+    # P16 (p16-design-gate D4): an execution's output tail, read-only and redacted
+    Route('GET', '/v1/executions/{id}/stream', execution_stream, 'observe', None, None,
+          'ExecutionOutput'),
     Route('POST', '/v1/executions/{id}/stop', stop_execution, 'control', 'required',
           schemas.KEYED, 'ExecutionStopped'),
     Route('POST', '/v1/missions/{id}/stop', stop_mission, 'control', 'required',
@@ -925,6 +989,10 @@ ROUTES = (
           'required', schemas.ABANDON_INTEGRATION, 'IntegrationAbandoned'),
     # P14: automations (p14-design-gate §17) — no route appends an event, runs one
     # now, or approves anything: an automation only asks for missions
+    # P16 (p16-design-gate D3, D5): what waits on the user, and a mission's own events
+    Route('GET', '/v1/attention', attention_items, 'observe', None, None, 'Attention'),
+    Route('GET', '/v1/missions/{id}/timeline', mission_timeline, 'observe', None, None,
+          'Timeline'),
     Route('GET', '/v1/automations', list_automations, 'observe', None, None, 'AutomationList'),
     Route('GET', '/v1/automations/{id}', get_automation, 'observe', None, None, 'Automation'),
     Route('GET', '/v1/automations/{id}/simulate', simulate_automation, 'observe', None, None,
@@ -945,7 +1013,9 @@ QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),
          '/v1/route-decisions': ('source', 'purpose'),
          '/v1/conversations/{id}/messages': ('after',), '/v1/ideas': ('state',),
          '/v1/policy-decisions': ('mission', 'stage'), '/v1/approvals': ('state', 'mission'),
-         '/v1/automations/{id}/simulate': ('days',)}
+         '/v1/automations/{id}/simulate': ('days',),
+         '/v1/executions/{id}/stream': ('from',),
+         '/v1/missions/{id}/timeline': ('before', 'limit')}
 
 STREAM = '/v1/events/stream'
 

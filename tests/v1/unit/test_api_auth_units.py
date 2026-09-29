@@ -61,14 +61,14 @@ def test_launch_codes_are_single_use_and_expire_on_the_injected_clock():
     now = [100.0]
     codes = auth.LaunchCodes(clock=lambda: now[0])
     a = codes.mint('prn_a', 'dvc_a')
-    assert codes.redeem(a) == ('prn_a', 'dvc_a')
+    assert codes.redeem(a) == ('prn_a', 'dvc_a', ('observe',))
     assert codes.redeem(a) is None                          # the pop is the use
     b = codes.mint('prn_a', 'dvc_a')
     now[0] += 60.01
     assert codes.redeem(b) is None
     c = codes.mint('prn_a', 'dvc_a')
     now[0] += 59.99
-    assert codes.redeem(c) == ('prn_a', 'dvc_a')
+    assert codes.redeem(c) == ('prn_a', 'dvc_a', ('observe',))
     for bad in (None, '', 5, 'x' * 43):
         assert codes.redeem(bad) is None
     assert len(codes) == 0
