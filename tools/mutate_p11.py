@@ -250,6 +250,13 @@ def ts_errors(items):
     return [e or None for e in json.loads(r.stdout)]
 
 
+def as_file(src, snippet):
+    """*snippet*, written with LF, in the line endings of *src*: a CRLF checkout
+    (Windows, core.autocrlf) must match and mutate a file exactly as an LF one does,
+    without the mutant changing a line ending it does not rewrite."""
+    return snippet.replace('\n', '\r\n') if '\r\n' in src else snippet
+
+
 def parse_error(path, text):
     """Why mutated *text* of *path* does not parse — or, for an SPA source, does not
     type-check — or None. Such a mutant fails every test that loads it, which proves
@@ -281,6 +288,7 @@ def _apply(edits):
                 src = f.read()
             out[path] = (src, src)
         src, cur = out[path]
+        old, new = as_file(src, old), as_file(src, new)
         if cur.count(old) != 1:
             raise SystemExit('the snippet occurs %d times in %s:\n%s' % (cur.count(old), rel,
                                                                         old))

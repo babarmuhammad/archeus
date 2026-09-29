@@ -14,6 +14,8 @@ import os
 import subprocess
 import sys
 
+from mutate_p11 import as_file
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 I = 'tests/v1/integration/test_planning.py'
 U = 'tests/v1/unit/test_planning_units.py'
@@ -152,6 +154,7 @@ def run(selected=()):
         path = os.path.join(ROOT, rel)
         with open(path, encoding='utf-8', newline='') as f:
             src = f.read()
+        old, new = as_file(src, old), as_file(src, new)
         if src.count(old) != 1:
             raise SystemExit('%s: the snippet occurs %d times in %s' % (mid, src.count(old), rel))
         try:

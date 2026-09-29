@@ -14,6 +14,8 @@ import os
 import subprocess
 import sys
 
+from mutate_p11 import as_file
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RT = 'archeus/core/routing/router.py'
 RES = 'archeus/core/application/resources.py'
@@ -243,6 +245,7 @@ def run(selected=()):
         path = os.path.join(ROOT, rel)
         with open(path, encoding='utf-8', newline='') as f:
             src = f.read()
+        old, new = as_file(src, old), as_file(src, new)
         if src.count(old) != 1:
             raise SystemExit('%s: the snippet occurs %d times in %s' % (mid, src.count(old), rel))
         try:

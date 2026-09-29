@@ -32,12 +32,17 @@ def _mutants(name):
             yield m[0], m[2]
 
 
-def _mutated(edits):
+def _mutated(edits, eol=None):
+    """*edits* applied as the engines apply them; *eol* re-ends every line of each
+    file first, to stand in for a checkout with those line endings."""
     files = {}
     for rel, old, new in edits:
         if rel not in files:
             with open(os.path.join(ROOT, rel), encoding='utf-8', newline='') as f:
                 files[rel] = f.read()
+            if eol:
+                files[rel] = files[rel].replace('\r\n', '\n').replace('\n', eol)
+        old, new = mutate_p11.as_file(files[rel], old), mutate_p11.as_file(files[rel], new)
         assert files[rel].count(old) == 1, (rel, old)
         files[rel] = files[rel].replace(old, new)
     return files
@@ -60,6 +65,25 @@ def test_every_mutant_parses_once_applied(suite):
         if err:
             broken.append('%s %s: %s' % (mid, rel, err))
     assert not broken, broken
+
+
+@pytest.mark.parametrize('suite', SUITES)
+def test_a_crlf_checkout_mutates_exactly_as_an_lf_one(suite):
+    # Windows checks .sql/.ts out CRLF (autocrlf) and every anchor is written LF:
+    # no multi-line anchor matched there, which turned every Windows job of CI run
+    # 36637671060 red
+    for mid, edits in _mutants(suite):
+        lf, crlf = _mutated(edits, '\n'), _mutated(edits, '\r\n')
+        assert crlf == {r: t.replace('\n', '\r\n') for r, t in lf.items()}, mid
+
+
+def test_the_engine_keeps_a_crlf_files_endings(tmp_path):
+    path = str(tmp_path / 'm.sql')
+    src = 'CREATE TABLE t (\r\n  a INT\r\n);\r\nCREATE INDEX i ON t (a);\r\n'
+    with open(path, 'w', encoding='utf-8', newline='') as f:
+        f.write(src)
+    out = mutate_p11._apply([(path, 'a INT\n);', 'a TEXT\n);')])
+    assert out[path] == (src, src.replace('a INT\r\n', 'a TEXT\r\n'))
 
 
 def test_a_broken_mutant_is_refused_before_it_can_count():
