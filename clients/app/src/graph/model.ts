@@ -4,6 +4,7 @@
 // focus + context, search that expands ancestors, and a path over the edges
 // already loaded. It only arranges what Core returned: no edge is created,
 // none is inferred, nothing is read. Pure.
+import { MOTIONS } from '../state/motion.ts';
 
 export interface Ref {
   kind: string;
@@ -246,8 +247,9 @@ export function pulseEdge(drawn: readonly Drawn[], exec: string): Drawn | null {
   return drawn.find((d) => d.edges.some((e) => e.field === 'executions.task_id' && keyOf(e.from) === exec)) ?? null;
 }
 
-export const PULSE_MS = 240;
-export const PULSE_EVERY_MS = 2000;
+// the pulse's duration and rate are the motion registry's (ADR-0024 §6)
+export const PULSE_MS = MOTIONS['execution-pulse'].max_ms;
+export const PULSE_EVERY_MS = MOTIONS['execution-pulse'].min_interval_ms;
 
 /** Whether a stream frame pulses an edge (A8), and which: an `execution.*`
  * frame about a loaded execution whose edge is live, at most once per

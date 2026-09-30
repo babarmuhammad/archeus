@@ -4,7 +4,10 @@
 // one is unfinished or a redraw was asked for. It parks — cancels its pending
 // frame and schedules nothing — while the page is hidden, the window is
 // blurred, motion is reduced (no animation is ever accepted then; a change
-// draws once), the canvas context is lost, or nothing is animating.
+// draws once), the canvas context is lost, or nothing is animating. What it
+// may animate is the motion registry's to say (ADR-0024 §3): animate() takes a
+// registered id, never a duration, so an unregistered animation does not type.
+import { MOTIONS, type LoopMotionId } from '../state/motion.ts';
 
 export interface Anim {
   until: number; // ms timestamp it ends at
@@ -62,13 +65,14 @@ export class Loop {
     this.kick();
   }
 
-  /** Start a finite animation; refused (returns false) under reduced motion. */
-  animate(ms: number): boolean {
+  /** Start a registered finite animation for its registered duration;
+   * refused (returns false) under reduced motion. */
+  animate(motion: LoopMotionId): boolean {
     if (this.host.reduced()) {
       this.request(); // the change still shows, at once
       return false;
     }
-    this.anims.add({ until: this.host.now() + ms });
+    this.anims.add({ until: this.host.now() + MOTIONS[motion].max_ms });
     this.kick();
     return true;
   }

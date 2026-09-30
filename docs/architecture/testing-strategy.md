@@ -186,15 +186,20 @@ harness id added without any domain change is how "a new harness needs no new en
 
 Each gate is mutation-verified (remove the feature, the gate must fail) and runs in the v1-client
 CI job. They are listed here so the phase cannot close without them; they are not rows of §2
-because no test file exists yet.
+because most have no test file yet. A row marked **built** names its tests; its mutants are
+`tools/mutate_p19_5.py` (N01-N23, 23/23 killed, 2026-09-30). The browser gates run on the page's
+frozen clock (`tests/v1/e2e/motion.py`: Playwright's clock, a frame counter over the fake
+`requestAnimationFrame`, `document.getAnimations()`, canvas pixel reads, a stream frame injected
+over the tab channel), never on a sleep; the unit gates on `test/motion-harness.ts` (a frozen loop
+host, a recording canvas, `renderAt(scene, timeline, t)`).
 
 | Gate | Asserts |
 |---|---|
-| idle invariant | with no live execution, no arriving change and no input: 0 rAF callbacks and 0 running `Animation` objects over 10 s |
-| motion registry | every keyframe / WAAPI / rAF use is declared in `motion.json`; transform/opacity only; no `infinite`, no iteration > 1, no `filter` animation |
-| caps | ≤ 8 travelling markers, ≤ 12 canvas pulses, ≤ 3 chips per row, 1 thread draw-on, orbit ≤ 1 / 5 s; marker ≤ 600 ms |
-| determinism | `renderAt(t)` frames equal for equal (state, t); no `Math.random` in `clients/app/src` |
-| no replay | a resync / reconnect / re-read redraws state and fires no pulse, marker or thread |
+| idle invariant (**built**) | with no live execution, no arriving change and no input: 0 rAF callbacks and 0 running `Animation` objects over 10 s — on every destination and the graph, and after a rerender, a reconnect-and-resync and a remount (`test_spa_motion.py::test_idle_archeus_runs_no_frame_and_no_animation`, 10 s of frozen page time; `motion.test.ts` idle tests at the loop and the timeline) |
+| motion registry (**built**) | every keyframe, transition and `Loop.animate` id is a built entry of `motion.json`, and every built entry is really bound; no WAAPI; an `approved` id is used nowhere; every entry has its metadata, `replay: false` (`gen_ui.motion_problems`; design gates `test_every_keyframe_and_transition_is_a_registered_motion`, `test_every_loop_animation_is_a_registered_built_motion`; `motion.test.ts`); transform/opacity only, no `infinite` (the P16 gates) |
+| caps (partly built) | registry: marker ≤ 600 ms, ≤ 8, oldest dropped; pulse 240 ms, ≤ 12, ≤ 1 / 2 s per edge (`test_the_motion_registry_holds_the_approved_budgets`); the timeline enforces cap and `over_cap` (`motion.test.ts` caps). Chips ≤ 3 per row, thread 1, orbit ≤ 1 / 5 s are registered and gated when built |
+| determinism (**built**) | `renderAt(t)` pictures equal for equal (state, t), different while a motion is active, the static picture once it ended; `timeline.ts`, `render.ts` and `layout.ts` read no clock and no random. `Math.random` remains in `data/commands.ts` (an idempotency-key fallback, not motion): open, outside this gate |
+| no replay (**built** for the pulse) | an event at or below the newest seq a motion presented is refused, and a running presentation keeps its start (`motion.test.ts`); in the browser a historical frame heard again — mid-pulse and after the rate window, or an older seq — fires no pulse, a newer one does (`test_a_historical_event_heard_again_never_replays_or_restarts`). The re-sent frame is injected over the tab channel: Core is not asked to re-send one. Markers and threads join the gate when built |
 | halo lifecycle | halo ⇔ presentation class `active`, with hysteresis across a reconnect |
 | thread | T1 reaches the row named by `Message.links`, once; T2 marks exactly the digest's changed rows; left-edge rule used by nothing else |
 | confidence styles | EXTRACTED solid, INFERRED dashed, AMBIGUOUS dotted; the legend lists only tiers present in the loaded edges |

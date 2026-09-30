@@ -6,9 +6,10 @@
                                   has no presentation class, or a class is
                                   incomplete
 
-Sources: clients/app/tokens/{tokens,presentation,navigation,invalidation}.json.
+Sources: clients/app/tokens/{tokens,presentation,navigation,invalidation,motion}.json.
 Outputs for the SPA: src/styles/tokens.css, src/state/tokens.ts,
-src/state/presentation.ts, src/nav/table.ts, src/data/rules.ts. Outputs for the
+src/state/presentation.ts, src/nav/table.ts, src/data/rules.ts,
+src/state/motion.ts (the motion registry, ADR-0024 §3). Outputs for the
 TUI (p17-design-gate A1, A7): archeus/cli/tui/_tables.py and
 archeus/cli/tui/tokens.py, because the JSON is not in the wheel. One table,
 everything derived — the cluster-spec pattern (tools/gen_cluster_spec.py)
@@ -32,6 +33,8 @@ NAVIGATION = os.path.join(APP, 'tokens', 'navigation.json')
 INVALIDATION = os.path.join(APP, 'tokens', 'invalidation.json')
 NAV_TS = os.path.join(APP, 'src', 'nav', 'table.ts')
 RULES_TS = os.path.join(APP, 'src', 'data', 'rules.ts')
+MOTION = os.path.join(APP, 'tokens', 'motion.json')
+MOTION_TS = os.path.join(APP, 'src', 'state', 'motion.ts')
 TUI = os.path.join(ROOT, 'archeus', 'cli', 'tui')
 TABLES_PY = os.path.join(TUI, '_tables.py')
 TOKENS_PY = os.path.join(TUI, 'tokens.py')
@@ -220,6 +223,80 @@ def render_rules_ts(i):
             % json.dumps(i['rules'], indent=2))
 
 
+#: every registry field, in the order the generated table writes it; absent = None
+MOTION_FIELDS = ('status', 'source', 'trigger', 'driven_by', 'runs_on', 'css', 'transition',
+                 'max_ms', 'token', 'ttl_ms', 'ttl_error_ms', 'easing', 'cap', 'cap_per',
+                 'over_cap', 'min_interval_ms', 'interval_per', 'surfaces', 'idle', 'replay',
+                 'reduced', 'equivalent')
+_ONE_OF = {'status': ('built', 'approved'), 'driven_by': ('event', 'user', 'state'),
+           'runs_on': ('css', 'loop', 'static'), 'idle': ('never', 'static'),
+           'easing': ('ease', 'linear', 'ease-in-out', None), 'cap_per': ('surface', 'target', None),
+           'over_cap': ('drop-oldest', 'refuse', None), 'interval_per': ('surface', 'target', None)}
+
+
+def motion_problems(m, t):
+    """Everything wrong with the motion registry (ADR-0024 §3-§6)."""
+    bad = []
+    for mid, e in m['motions'].items():
+        def no(why, mid=mid):
+            bad.append('motion %s: %s' % (mid, why))
+        for k in set(e) - set(MOTION_FIELDS):
+            no('unknown field %r' % k)
+        for k in ('status', 'source', 'trigger', 'driven_by', 'runs_on', 'surfaces', 'idle',
+                  'reduced', 'equivalent'):
+            if not e.get(k):
+                no('has no %s' % k)
+        for k, allowed in _ONE_OF.items():
+            if e.get(k) not in allowed:
+                no('%s %r is not one of %s' % (k, e.get(k), allowed))
+        if e.get('replay') is not False:
+            no('replay must be false: nothing replays after a re-read (ADR-0024 §5)')
+        static = e.get('max_ms') is None
+        if static != (e.get('runs_on') == 'static') or static != (e.get('idle') == 'static'):
+            no('static (max_ms null) must be runs_on static and idle static, and only then')
+        if static and e.get('easing') is not None:
+            no('a static entry has no easing')
+        if not static and not (isinstance(e['max_ms'], int) and e['max_ms'] > 0):
+            no('max_ms must be a positive integer')
+        if not static and e.get('easing') is None:
+            no('an animation names its easing')
+        if e.get('driven_by') == 'state' and not static:
+            no('only a static entry follows state; an animation is triggered by an event or the user')
+        if e.get('token') is not None and t['motion'].get(e['token']) != e.get('max_ms'):
+            no('max_ms %s disagrees with token %s = %s' % (e.get('max_ms'), e['token'],
+                                                           t['motion'].get(e['token'])))
+        cap = e.get('cap')
+        if cap is not None and not (isinstance(cap, int) and cap > 0):
+            no('cap must be a positive integer or null')
+        if (cap is None) != (e.get('cap_per') is None):
+            no('a cap says what it counts (cap_per), and only a cap does')
+        if cap is None and e.get('over_cap') is not None:
+            no('over_cap without a cap')
+        if (e.get('min_interval_ms') is None) != (e.get('interval_per') is None):
+            no('min_interval_ms and interval_per go together')
+        bound = bool(e.get('css') or e.get('transition'))
+        if bound and e.get('runs_on') != 'css':
+            no('keyframes or transitions bound to a motion that does not run on css')
+        if e.get('status') == 'built' and e.get('runs_on') == 'css' and not bound:
+            no('a built css motion names its keyframes or transition selectors')
+        if e.get('status') == 'approved' and bound:
+            no('an approved motion is not built yet: it binds nothing until its status says built')
+    return bad
+
+
+def render_motion_ts(m):
+    rows = {mid: {k: e.get(k) for k in MOTION_FIELDS} for mid, e in m['motions'].items()}
+    return (HEAD + '// The motion registry (ADR-0024 §3), from tokens/motion.json: the only place\n'
+            '// an animation may be declared. Its gates: tools/gen_ui.py --check,\n'
+            '// test/motion.test.ts, tests/v1/design/test_design_gates.py.\n'
+            'export const MOTIONS = %s as const;\n\n'
+            'export type MotionId = keyof typeof MOTIONS;\n'
+            '/** The motions Loop.animate() may run: built, and run on the graph loop. */\n'
+            'export type LoopMotionId = { [K in MotionId]: (typeof MOTIONS)[K] extends '
+            "{ status: 'built'; runs_on: 'loop' } ? K : never }[MotionId];\n"
+            % json.dumps(rows, ensure_ascii=False, indent=2))
+
+
 def _py(v):
     return pprint.pformat(v, width=99, sort_dicts=False)
 
@@ -253,11 +330,11 @@ def render_tokens_py(t):
 
 def outputs():
     t, p = load(TOKENS), load(PRESENTATION)
-    n, i = load(NAVIGATION), load(INVALIDATION)
+    n, i, mo = load(NAVIGATION), load(INVALIDATION), load(MOTION)
     return {CSS_OUT: render_css(t), TOKENS_TS: render_tokens_ts(t),
             PRES_TS: render_presentation_ts(p), NAV_TS: render_nav_ts(n),
             RULES_TS: render_rules_ts(i), TABLES_PY: render_tables_py(p, n, i),
-            TOKENS_PY: render_tokens_py(t)}, problems(p, t) + nav_problems(n)
+            TOKENS_PY: render_tokens_py(t), MOTION_TS: render_motion_ts(mo)},         problems(p, t) + nav_problems(n) + motion_problems(mo, t)
 
 
 def main(argv):

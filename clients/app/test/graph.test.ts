@@ -10,7 +10,8 @@ import { DASH, ENCODING, attrsText, colourVar, countsText, dashOf, lookOf, trace
 import { allExpanded, around, build, inFocus, keyOf, lifted, liveExecutions, path, pathStatus, pulseEdge, pulseFor, PULSE_EVERY_MS, PULSE_MS, search, toggle, visible, type GraphData } from '../src/graph/model.ts';
 import { ITERATIONS, layout, pinchCamera } from '../src/graph/layout.ts';
 import { draw, frame, LOD_NODES, staticSig, type Scene } from '../src/graph/render.ts';
-import { Loop, SLOW_FRAME_MS, SLOW_FRAMES, type LoopHost } from '../src/graph/loop.ts';
+import { Loop, SLOW_FRAME_MS, SLOW_FRAMES } from '../src/graph/loop.ts';
+import { fakeHost, recorder } from './motion-harness.ts';
 import { DOUBLE_TAP_MS, doubleTap, selected, start, step } from '../src/graph/keys.ts';
 import { mirrorRows } from '../src/graph/mirror.ts';
 import { TIER_STYLE } from '../src/graph/relations.ts';
@@ -72,25 +73,6 @@ const m = build(DATA);
 const k = keyOf;
 
 // ── the encoding against the renderer (A3, M04) ──
-
-function recorder() {
-  const ops: string[] = [];
-  const state: Record<string, unknown> = {};
-  const ctx = new Proxy(state, {
-    get(t, p: string) {
-      if (p in t) return t[p];
-      return (...a: unknown[]) => {
-        ops.push(`${p}(${a.map((x) => (typeof x === 'number' ? Math.round(x * 100) / 100 : JSON.stringify(x))).join(',')})`);
-      };
-    },
-    set(t, p: string, v) {
-      t[p] = v;
-      if (p === 'fillStyle' || p === 'strokeStyle') ops.push(`${p}=${String(v)}`);
-      return true;
-    },
-  }) as unknown as CanvasRenderingContext2D;
-  return { ctx, ops };
-}
 
 function scene(data: GraphData, extra: Partial<Scene> = {}): Scene {
   const mm = build(data);
@@ -286,32 +268,7 @@ test('above 250 visible nodes every node is a dot, batched per colour', () => {
 
 // ── the one loop (A9: M17, M18) ──
 
-function host(over: Partial<LoopHost> = {}) {
-  const q: ((t: number) => void)[] = [];
-  let now = 0;
-  const h: LoopHost & { run: () => number; tick: (ms: number) => void; pending: () => number } = {
-    raf: (cb) => q.push(cb),
-    caf: (id) => void (q[id - 1] = () => undefined),
-    now: () => now,
-    hidden: () => false,
-    focused: () => true,
-    reduced: () => false,
-    ...over,
-    run() {
-      let n = 0;
-      while (q.length && n < 1000) {
-        q.shift()!(now);
-        n++;
-      }
-      return n;
-    },
-    tick(ms) {
-      now += ms;
-    },
-    pending: () => q.length,
-  };
-  return h;
-}
+const host = fakeHost;
 
 test('a redraw is one frame, then the loop parks (M17)', () => {
   const h = host();
@@ -329,7 +286,7 @@ test('a redraw is one frame, then the loop parks (M17)', () => {
 test('an animation runs until it ends, then parks', () => {
   const h = host();
   const l = new Loop(h, () => h.tick(100));
-  assert.equal(l.animate(240), true);
+  assert.equal(l.animate('execution-pulse'), true);
   h.run();
   assert.equal(l.state, 'parked');
   assert.equal(l.animating, 0);
@@ -339,7 +296,7 @@ test('an animation runs until it ends, then parks', () => {
 test('reduced motion: no animation is accepted; the change still draws once (M18)', () => {
   const h = host({ reduced: () => true });
   const l = new Loop(h, () => undefined);
-  assert.equal(l.animate(240), false);
+  assert.equal(l.animate('execution-pulse'), false);
   assert.equal(l.animating, 0);
   assert.equal(h.run(), 1);
 });
@@ -352,7 +309,7 @@ test('a hidden page, a blurred window and a lost context park the loop; waking r
     const l = new Loop(h, () => undefined);
     if (cond === 'lost') l.setLost(true);
     l.request();
-    l.animate(1000);
+    l.animate('execution-pulse');
     assert.equal(h.pending(), 0, cond);
     assert.equal(l.state, 'parked', cond);
     hidden = false;
@@ -455,7 +412,7 @@ test('three slow frames during an animation degrade it until it ends; one frame 
   });
   assert.equal(SLOW_FRAME_MS, 20);
   assert.equal(SLOW_FRAMES, 3);
-  l.animate(300);
+  l.animate('execution-pulse');
   h.run();
   // frame 1 has no previous frame; frames 2, 3 and 4 are slow: the third slow one is drawn degraded
   assert.deepEqual(seen.slice(0, 4), [false, false, false, true]);
@@ -467,7 +424,7 @@ test('three slow frames during an animation degrade it until it ends; one frame 
     fast.tick(10);
     assert.equal(f.degraded, false);
   });
-  f.animate(300);
+  f.animate('execution-pulse');
   fast.run();
   const idle = host(); // slow frames with nothing animating (single redraws) never degrade
   const r = new Loop(idle, () => idle.tick(100));

@@ -183,6 +183,68 @@ def test_transitions_move_only_transform_and_opacity_and_nothing_loops():
         assert 'animation-iteration-count' not in css
 
 
+MOTIONS = gen_ui.load(gen_ui.MOTION)['motions']
+
+
+def _built(field):
+    return {v for e in MOTIONS.values() if e['status'] == 'built' for v in e.get(field) or ()}
+
+
+def test_every_keyframe_and_transition_is_a_registered_motion():
+    """ADR-0024 §3: a keyframe or a transition the motion registry does not
+    declare fails the build, and a registered one must really exist."""
+    frames, moving = set(), set()
+    for css in _css().values():
+        frames |= {name for name, _body in _blocks(css, 'keyframes')}
+        flat = re.sub(r'@[^{]+\{', '', css)            # innermost rules, whatever encloses them
+        for sel, body in re.findall(r'([^{}]+)\{([^{}]*)\}', flat):
+            t = re.search(r'transition\s*:\s*([^;]+);', body)
+            if t and not t.group(1).strip().startswith('none'):
+                moving |= {s.strip() for s in sel.split(',')}
+    assert frames == _built('css'), 'keyframes %s, registered %s' % (sorted(frames), sorted(_built('css')))
+    assert moving == _built('transition'), 'transitions on %s, registered %s' % (
+        sorted(moving), sorted(_built('transition')))
+    assert len(frames) >= 4 and moving
+
+
+def test_every_loop_animation_is_a_registered_built_motion():
+    """ADR-0024 §3 in the Node-free job (the TS suite checks it too): every
+    `.animate(` names a built loop motion; no WAAPI, no bare duration."""
+    calls = 0
+    for d, _dirs, files in os.walk(os.path.join(APP, 'src')):
+        for f in files:
+            if f.endswith(('.ts', '.tsx')) and f != 'motion.ts':
+                rel = os.path.relpath(os.path.join(d, f), os.path.join(APP, 'src')).split(os.sep)
+                for arg in re.findall(r'\.animate\(([^)]*)\)', _src(*rel)):
+                    calls += 1
+                    m = re.fullmatch(r"\s*'([a-z-]+)'\s*", arg)
+                    e = MOTIONS.get(m.group(1)) if m else None
+                    assert e and e['status'] == 'built' and e['runs_on'] == 'loop', (
+                        '%s: .animate(%s) is not a built loop motion' % ('/'.join(rel), arg))
+    assert calls >= 2
+
+
+def test_the_motion_registry_holds_the_approved_budgets():
+    """ADR-0024 §6; gen_ui.motion_problems holds the shape (run by --check)."""
+    assert not gen_ui.motion_problems({'motions': MOTIONS}, TOKENS)
+    marker = MOTIONS['travelling-marker']
+    assert marker['max_ms'] <= 600 and marker['cap'] <= 8 and marker['over_cap'] == 'drop-oldest'
+    pulse = MOTIONS['execution-pulse']
+    assert (pulse['max_ms'], pulse['cap'], pulse['min_interval_ms']) == (240, 12, 2000)
+    assert MOTIONS['activity-halo']['max_ms'] is None and MOTIONS['activity-halo']['idle'] == 'static'
+    assert all(e['replay'] is False for e in MOTIONS.values())
+
+
+def test_the_presentation_clock_and_the_renderer_read_no_clock_and_no_random():
+    """ADR-0024 §4, ADR-0029 §1: a motion is a pure function of (state,
+    presentation time) — renderAt(t) — so neither file reads a clock, a
+    random number or schedules a frame of its own."""
+    for parts in (('state', 'timeline.ts'), ('graph', 'render.ts')):
+        src = _src(*parts)
+        assert not re.search(r'Math\.random|Date\.now|performance\.now|new Date\(|'
+                             r'requestAnimationFrame|setTimeout|setInterval', src), parts
+
+
 def test_no_readback_effects():
     for path, css in _css().items():
         for bad in (r'backdrop-filter', r'mix-blend-mode', r'(^|[\s;{])filter\s*:'):

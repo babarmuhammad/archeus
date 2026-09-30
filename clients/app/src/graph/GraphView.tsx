@@ -7,13 +7,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { announce } from '../a11y/announce';
 import { store, useRead } from '../data/cache';
 import { objectHref } from '../nav/destinations';
+import { MOTIONS } from '../state/motion';
 import { present } from '../state/present';
+import { timeline } from '../state/timeline';
 import { Empty, Fresh, Loadable, StateBadge } from '../components/ui';
 import { Inspector } from '../surfaces/Inspector';
 import { lookOf } from './encoding';
 import { fit, layout, pinchCamera, type Point } from './layout';
 import { browserHost, Loop } from './loop';
-import { allExpanded, around, build, inFocus, keyOf, lifted, liveExecutions, path as tracePathKeys, pathStatus, pulseEdge, pulseFor, PULSE_MS, search, toggle, visible, type GraphData, type Model, type Ref } from './model';
+import { allExpanded, around, build, inFocus, keyOf, lifted, liveExecutions, path as tracePathKeys, pathStatus, pulseEdge, pulseFor, search, toggle, visible, type GraphData, type Model, type Ref } from './model';
 import { frame, type Camera, type DrawStats, type Layer } from './render';
 import { doubleTap, selected as selectedEdge, start, step, type Walk } from './keys';
 import { edgeWords } from './relations';
@@ -83,9 +85,7 @@ function Spatial({ focus, modules }: { focus: Ref | null; modules?: string }) {
   );
 }
 
-interface Pulse {
-  start: number;
-}
+const CAMERA_MS = MOTIONS['camera-settle'].max_ms;
 
 function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus: Ref | null; modules?: string; path: string; stale: string | null }) {
   const model = useMemo(() => build(data), [data]);
@@ -109,7 +109,6 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   const size = useRef({ w: 800, h: 520 });
   const sized = useRef(false);
   const fitRef = useRef<(animate?: boolean) => void>(() => undefined);
-  const pulses = useRef(new Map<string, Pulse>());
   const lastPulse = useRef(new Map<string, number>());
   const statsRef = useRef<DrawStats | null>(null);
   const layer = useRef<Layer | null>(null);
@@ -180,14 +179,14 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   const camera = (now: number): Camera => {
     const c = cam.current;
     if (!c) return { x: 0, y: 0, k: 1 };
-    const t = Math.min(1, (now - c.start) / PULSE_MS);
+    const t = Math.min(1, (now - c.start) / CAMERA_MS);
     return { x: c.from.x + (c.to.x - c.from.x) * t, y: c.from.y + (c.to.y - c.from.y) * t, k: c.from.k + (c.to.k - c.from.k) * t };
   };
   const moveTo = (to: Camera, animate: boolean) => {
     const now = performance.now();
     const from = cam.current ? camera(now) : to;
     cam.current = { from, to, start: now };
-    if (!animate || !loopRef.current?.animate(PULSE_MS)) cam.current = { from: to, to, start: 0 };
+    if (!animate || !loopRef.current?.animate('camera-settle')) cam.current = { from: to, to, start: 0 };
     loopRef.current?.request();
   };
   const fitAll = (animate = true) => moveTo(fit(keys.map((k) => pos.get(k)!).filter(Boolean), size.current.w, size.current.h), animate);
@@ -200,12 +199,8 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
     if (!c || !ctx || !l) return;
     const now = performance.now();
     const styles = getComputedStyle(c);
-    const pulse = new Map<string, number>();
-    for (const [id, p] of pulses.current) {
-      const t = (now - p.start) / PULSE_MS;
-      if (t >= 1) pulses.current.delete(id);
-      else pulse.set(id, t);
-    }
+    // renderAt(now): the pulses are the timeline's, read at this frame's time
+    const pulse = timeline.progress('execution-pulse', now);
     const stats = frame(ctx, l, {
       model,
       keys,
@@ -273,9 +268,11 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
     const stopFrames = store.onFrame((f) => {
       const now = performance.now();
       const d = pulseFor(f, drawnRef.current, liveRef.current, lastPulse.current, now, host.reduced());
-      if (!d || !loop!.animate(PULSE_MS)) return; // reduced motion: the thick static edge says it instead
+      // reduced motion: the thick static edge says it instead. The timeline
+      // refuses an event it has presented (a reconnect or a second tab re-sending
+      // it): a pulse is never replayed, and one running keeps its own start.
+      if (!d || !timeline.start('execution-pulse', d.id, f.id, now, host.reduced()) || !loop!.animate('execution-pulse')) return;
       lastPulse.current.set(d.id, now);
-      pulses.current.set(d.id, { start: now });
       setPulseCount((n) => n + 1);
     });
     return () => {

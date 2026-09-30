@@ -8,6 +8,7 @@ import { CoreError } from '../api/transport';
 import { initial, next, type ConnState, type Signal } from './connection';
 
 export interface Frame {
+  id?: number; // Core's event seq (the SSE id): the event's own time
   event: string;
   data?: unknown;
 }
