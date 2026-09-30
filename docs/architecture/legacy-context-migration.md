@@ -1004,7 +1004,7 @@ deferred.
 | non-Claude usage windows | **D** | each adapter's; Codex's with the Codex adapter (V1 release) |
 | voice | **D** | post-V1, same pipeline (ADR-0042 §7) |
 | remote workers | **D** | post-V1 (ADR-0008) |
-| ADR-0010 (remote access over a tunnel) | **B** | found still PROPOSED although P15 built on it; reported, not decided here |
+| ADR-0010 (remote access over a tunnel) | **B** | deliberately PROPOSED: P15 built the tunnel-agnostic parts and left the tunnel choice (Q2) and ntfy (Q3) to the user (p15-design-gate, as-built item 8, D20) — not an inconsistency |
 
 No decision needs a new ADR (class C is empty). ADR-0045 is amended in place for MD-3, MD-5 and
 MD-6.

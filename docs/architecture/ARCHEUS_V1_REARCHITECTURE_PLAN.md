@@ -1300,6 +1300,10 @@ any harness's ADR-0021 `rotation` answer is `permitted`: until then the router u
 priority-1 subscription of a harness (`archeus/core/routing/router.py:198-206`), so no second
 account can be consumed. Invariant: no router consumes a user-protected account merely because it
 is eligible. Recommended right after the C-22 defect slice; it neither needs nor changes P19.5.
+*Finding 2026-10-01:* "no second account can be consumed" holds for subscriptions only — API-key
+and proxy accounts are outside the rotation rule, and Claude Code's unregistered own-call account
+uses legacy `rotate.elect()` when rotation is permitted; the proposed extension of the edge and of
+AP-1's scope is decision D-25 (ADR-0041, "Why AP-1 first").
 
 **Deferred past V1:** remote execution nodes, pi/generic-CLI adapters, 3D spatial mode, Web
 Push, FTS5, vector search, EMA reinforcement and contradiction edges, Archeus-as-MCP-server,

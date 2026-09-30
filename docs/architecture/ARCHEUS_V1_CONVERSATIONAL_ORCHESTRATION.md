@@ -796,7 +796,9 @@ P22 — limits, project defaults, UI; V1.x-O1 — task-family limits.
 
 **D. The dependency edge:** **AP-1 → ADR-0021 `rotation: permitted` for any harness.** Until AP-1
 lands, `rotation` must stay unpermitted, so only one subscription per harness can be consumed and
-no protected account can be reached by rotation at all. AP-1 depends on nothing after P10; it does
+no protected account can be reached by rotation at all. *(Finding 2026-10-01: incomplete for API-key
+and proxy accounts and for Claude Code's unregistered own-call account — ADR-0041 "Why AP-1
+first"; the extension is decision D-25.)* AP-1 depends on nothing after P10; it does
 not touch P19.5 and does not expand its Core slice. Recommended order: right after the C-22 slice.
 
 **Invariant, recorded in ADR-0041 and gated by AP-1: no router consumes a user-protected account
