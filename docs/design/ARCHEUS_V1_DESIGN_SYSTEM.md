@@ -5,6 +5,16 @@ Status: **DECIDED** for principles, semantic roles, state model and accessibilit
 Research and rationale: [ARCHEUS_V1_DESIGN_RESEARCH.md](ARCHEUS_V1_DESIGN_RESEARCH.md).
 UI structure: [../architecture/ui-architecture.md](../architecture/ui-architecture.md).
 
+> **Amended 2026-09-30** (ADR-0024…0028, user directive; the visual rulebook is
+> [ARCHEUS_V1_VISUAL_ARCHITECTURE_RECONCILIATION.md](ARCHEUS_V1_VISUAL_ARCHITECTURE_RECONCILIATION.md)).
+> Where this document and the rulebook differ, the rulebook governs. In short: Visual DNA "dark
+> and still until Archeus acts" with an activity **halo**, execution **pulse**, travelling
+> **marker** and the **thread** (§2, §8); one motion registry and the idle invariant (§8); the
+> thread's T1 form is drawn from `Message.links` and **the left edge of a row belongs to the
+> thread** (§2); legacy palettes survive only as thread tints (§3.3, ADR-0026); `focus` moves to
+> thread ink because `#FFD166` is ΔE 12.3 from attention (§3.3, ADR-0028); overlays are opaque
+> and depth/transparency are fixed tokens (§6); the mark and its orbit enter the shell (ADR-0027).
+
 This is a product language, not a component library. It says what Archeus looks like *because of
 what Archeus is*: a persistent colleague whose work you glance at, verify and direct.
 
@@ -90,7 +100,7 @@ stays; nothing else gets a signature.
 
 | Theme | Status | Notes |
 |---|---|---|
-| Archeus Dark | follows the OS | `bg #0E1116`, `surface-1 #141922`, `surface-2 #1A2130`, `text #E6EAF0` (14.6:1 on surface-1), `text-2 #AAB3C0` (8.3:1), `primary` fill `#E6EAF0` with `#0E1116` label, `thread #F4F1EA`, `focus #FFD166` (12.2:1) |
+| Archeus Dark | follows the OS | `bg #0E1116`, `surface-1 #141922`, `surface-2 #1A2130`, `text #E6EAF0` (14.6:1 on surface-1), `text-2 #AAB3C0` (8.3:1), `primary` fill `#E6EAF0` with `#0E1116` label, `thread #F4F1EA`, `focus #F4F1EA` (thread ink — was `#FFD166`, ΔE 12.3 from attention; ADR-0028; `tokens.json` still carries the old value until P19.5) |
 | Archeus Light | follows the OS | `bg #F7F8FA`, `surface-1 #FFFFFF`, `text #11151C` (18.3:1), `text-2 #4A5463` (7.7:1), `primary` fill `#11151C`, `thread #11151C` |
 | High Contrast (dark + light) | follows `prefers-contrast: more` / Windows contrast themes (`forced-colors`) | solid surfaces, 7:1 body text, 2 px lines, no tints |
 
@@ -149,7 +159,8 @@ state glyphs ≥ 3:1 on `surface-1`; focus ring ≥ 3:1 against both the control
 | Overlay (sheets, popovers, command bar) | `surface-3` | 1 px `line-strong` | 12 px (sheets: 16 top) | shadow `0 8px 24px rgba(0,0,0,.32)` |
 | Controls | inherit | 1 px `line` | 6 px | 0 |
 
-- **Transparency:** overlays may use 92–96% opaque `surface-3`; no `backdrop-filter`, no blur,
+- **Transparency:** overlays are opaque `surface-3` (amended 2026-09-30; was "may use 92–96%");
+  depth and transparency inside the graph are the fixed tokens of ADR-0028; no `backdrop-filter`, no blur,
   no blend modes (they tear the Qt WebEngine GPU surface — verified in the current repo — and
   cost readbacks everywhere). Reduced transparency → 100% opaque.
 - No gradients on surfaces. The only gradient allowed is the thread's travelling highlight.
@@ -174,6 +185,13 @@ state glyphs ≥ 3:1 on `surface-1`; focus ring ≥ 3:1 against both the control
 | Sheet (mobile) | 280 ms | spring-like ease-out | open/close |
 | Thread travel | ≤ 600 ms, once | ease-in-out | Archeus acted on an object |
 | Active pulse | one 240 ms opacity pulse per batch of new output, at most every 2 s | ease-out | execution stream produced events |
+| Activity halo (2026-09-30) | static — no animation; appears on the first live read, clears when a read shows the work ended | — | presentation class `active` |
+| Travelling marker (2026-09-30) | ≤ 600 ms once per output batch, ≤ 8 concurrent | linear along the edge | `execution.*` frame on a drawn live edge |
+| Activity chip (2026-09-30) | fade 160 ms, TTL 2.5 s (4 s on error), ≤ 3 per row | ease-out | a re-read execution's current action |
+| Presence orbit (2026-09-30) | ≤ 900 ms, ≤ 1 per 5 s | ease-in-out | a batch of activity frames |
+
+Every row above is also an entry in the motion registry (ADR-0024); no animation exists outside it,
+none runs while idle, and none replays after a re-read or reconnect.
 
 Rules (carried from the repo and the HIG): animate only `transform` and `opacity`; no ambient
 loops; nothing loops — the active pulse fires once per batch of real output (design review B.5 replaced

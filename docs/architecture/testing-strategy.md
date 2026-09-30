@@ -181,3 +181,28 @@ harness id added without any domain change is how "a new harness needs no new en
 | K1 | Knowledge builds with no Claude Code installed | only a fake `headless` harness is installed → the knowledge pass runs on it; a harness not declaring `headless` is never elected; the user's own-call choice (harness + model) is honoured when installed and capable; the RouteDecision records the election and its rejected candidates | P6 (election), P10 (router) |
 | K2 | Structured extraction across mechanisms | a `native` and a `prompted` adapter both yield items that pass Core's schema validation; invalid prompted output is retried once, then asks (ADR-0006); provenance names harness and model | P6 |
 | K3 | Project setup completes after the knowledge pass | create project → deterministic assessment → initial knowledge pass queued; the project stays usable when the pass fails or is gated by ADR-0021, and its result is counted, never assumed a collection | P6 |
+
+## 7. Visual architecture gates (P19.5, ADR-0024…0029 — to be built; none exist yet)
+
+Each gate is mutation-verified (remove the feature, the gate must fail) and runs in the v1-client
+CI job. They are listed here so the phase cannot close without them; they are not rows of §2
+because no test file exists yet.
+
+| Gate | Asserts |
+|---|---|
+| idle invariant | with no live execution, no arriving change and no input: 0 rAF callbacks and 0 running `Animation` objects over 10 s |
+| motion registry | every keyframe / WAAPI / rAF use is declared in `motion.json`; transform/opacity only; no `infinite`, no iteration > 1, no `filter` animation |
+| caps | ≤ 8 travelling markers, ≤ 12 canvas pulses, ≤ 3 chips per row, 1 thread draw-on, orbit ≤ 1 / 5 s; marker ≤ 600 ms |
+| determinism | `renderAt(t)` frames equal for equal (state, t); no `Math.random` in `clients/app/src` |
+| no replay | a resync / reconnect / re-read redraws state and fires no pulse, marker or thread |
+| halo lifecycle | halo ⇔ presentation class `active`, with hysteresis across a reconnect |
+| thread | T1 reaches the row named by `Message.links`, once; T2 marks exactly the digest's changed rows; left-edge rule used by nothing else |
+| confidence styles | EXTRACTED solid, INFERRED dashed, AMBIGUOUS dotted; the legend lists only tiers present in the loaded edges |
+| impact view | reachable set equals BFS over recorded relations in the loaded neighbourhood, bounded by hops |
+| colour separation | focus ≥ ΔE 30 from every state colour; red used only by blocked/failed-needing-action; tints 3:1 and ΔE ≥ 30 |
+| text equivalents | every registry animation has a live text equivalent present in the DOM |
+| Now | ≤ 7 blocks; state sentence derived from counts; no greeting |
+| favicon / orbit | favicon and orbit state follow idle / working / needs you / disconnected |
+| framebuffer probes | halo, hull, focus and edge style pixels at known node positions (not screenshots) |
+| frozen-clock captures | every surface × theme × width × state (ADR-0029), human-reviewed |
+| innerText | no raw ids, JSON or hashes in the default view; one command name per command |

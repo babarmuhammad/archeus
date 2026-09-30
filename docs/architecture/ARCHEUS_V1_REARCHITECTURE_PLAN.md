@@ -1020,6 +1020,31 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   approve on mobile → execute on PC → review on desktop → inspect on TUI).
 - Acceptance: G3 fully passes.
 
+**P19.5 — Visual language and operational presence** — *APPROVED by the user 2026-09-30
+(ADR-0030); in progress.* Slices that need nothing from P19 (tokens, primitives, the motion
+registry, the graph's visual language) land in order now; the forms that P19 moves onto
+`/v1/world/graph` (the Relations list and the TUI) wait for P19. Rulebook:
+[../design/ARCHEUS_V1_VISUAL_ARCHITECTURE_RECONCILIATION.md](../design/ARCHEUS_V1_VISUAL_ARCHITECTURE_RECONCILIATION.md);
+decisions ADR-0024…0029.
+- Depends: P19 (unified clients; Relations/TUI on `/v1/world/graph`).
+- Core slice first (ADR-0006 verbs through P9): Pause all and a readable emergency-stop state
+  (P11 rules); set mission priority, read by routing/scheduling (P10 rules). Nothing else in Core.
+- Client work: tokens (focus ≠ attention, red reserved, depth/transparency tokens); primitives;
+  graph edge semantics, legend, impact view, hull/depth/cored nodes, static project cage; the
+  thread (T1 from `Message.links`, T2 on every list, T3 spatial) and tints; activity halo,
+  execution pulse on rows, travelling marker, activity chips; the mark, orbit and favicon; the
+  operations strip; Now as the operational surface (≤ 7 blocks, state sentence, live map);
+  Work (pins, context menus, reprioritise, Pause all), inspector (resizable, noun title,
+  Details disclosure), Knowledge (context preview, forget with dry run), Ideas stepper,
+  Resources form (existing route), command palette; the surface state matrix; plain-language
+  and id hygiene.
+- Amends P18 A8 (ADR-0030, recorded in p18-design-gate §23).
+- Tests: testing-strategy §7 (idle invariant, motion registry, caps, no replay, reduced motion,
+  text equivalents, confidence styles, focus ≠ attention, framebuffer probes, frozen-clock
+  captures), every gate mutation-verified; existing V1 suite green.
+- Acceptance: rulebook §34 manual visual acceptance on the real app via the developer launcher,
+  before/after captures, and an independent adversarial design review against the rulebook.
+
 **P20 — Security and trust hardening**
 - Depends: P19. Work: breaker drills, e-stop drills, secrets review (DPAPI path), threat-model
   review of remote access, dependency audit, fuzzing of the command API and hook canonicaliser.
@@ -1192,8 +1217,10 @@ flowchart LR
     P14 --> P15 --> P16 --> P17
     P16 --> P18
     P17 --> P19
-    P18 --> P19 --> P20 --> P21 --> P22 --> P23 --> P24 --> P25 --> P26
+    P18 --> P19 --> P195[P19.5] --> P20 --> P21 --> P22 --> P23 --> P24 --> P25 --> P26
 ```
+
+P19.5 was approved on 2026-09-30 (ADR-0030).
 
 P4–P6 and P16's static parts can overlap once P3.5 is in; the table above is the dependency
 order, not a staffing plan.

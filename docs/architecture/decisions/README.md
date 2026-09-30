@@ -27,3 +27,10 @@ Internal documents (excluded from the published manual). Status values: DECIDED,
 | [0021](ADR-0021.md) | Provider-terms gate before the first real headless model call | OPEN |
 | [0022](ADR-0022.md) | Archeus's own model calls run on any capable harness | DECIDED |
 | [0023](ADR-0023.md) | A user's own session resumes and hands off through its harness | DECIDED |
+| [0024](ADR-0024.md) | Visual DNA and event-driven motion: dark and still until Archeus acts | DECIDED |
+| [0025](ADR-0025.md) | Graph edge semantics, legend, impact view and the constellation treatment | DECIDED |
+| [0026](ADR-0026.md) | The thread and thread tints | DECIDED |
+| [0027](ADR-0027.md) | Identity and operational presence: the mark, the orbit and the control surface | DECIDED |
+| [0028](ADR-0028.md) | Colour separation, depth and transparency tokens | DECIDED |
+| [0029](ADR-0029.md) | Visual evidence: deterministic regression and manual visual acceptance | DECIDED |
+| [0030](ADR-0030.md) | Phase amendments for the visual architecture: P19.5, P18 A8, V1.x-3D, Core owners | DECIDED |

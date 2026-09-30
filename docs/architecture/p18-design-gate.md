@@ -1194,3 +1194,32 @@ thick-static or plain edge only.
 (I1, I2, I3 and I5 approved by the user, 2026-09-29; the `.` pin key, D2, D4, D5 and D6
 approved as recorded the same day, §22.1; N1–N7 built after the user's decision, §22.2.1;
 the manual items above remain the user's).
+
+## 24. Amendment record — A8 energy (APPROVED by the user, 2026-09-30)
+
+Recorded here so the change is not silent (ADR-0030, DECIDED; decisions ADR-0024, ADR-0025).
+
+- **A8 as first approved (2026-09-29):** energy is one 240 ms
+  opacity step on the live execution's edge, ≤ 1 per 2 s.
+- **A8 as amended (approved 2026-09-30):** keep that pulse; add (a) a **static activity halo** on every loaded
+  object whose presentation class is `active`, drawn into the static layer, zero frames, with
+  hysteresis (appears on the first live read, clears only when a read shows the work ended), and
+  (b) an **event-driven travelling marker** along the drawn live edge, one per `execution.*` batch,
+  ≤ 600 ms, ≤ 8 concurrent, deterministic, removed under reduced motion (live edges 2 px, as
+  built), degraded to the existing pulse when frames run slow. The P18 rejections stand exactly as
+  approved: `Math.random` phases, `sin(T)` node breathing, the bokeh background, the never-parking
+  loop, the tween into a freshly settled layout. They rejected mechanisms, not the concepts.
+- **Where it is built:** P19.5, not by reopening P18.
+- **Deviation rows owed (doc-only):** (1) A8 narrowed research §26's "a light pulse travelling along
+  a line or a node halo" to an opacity step without recording it — recorded now; (2) legacy renderer
+  items not ported and their dispositions (rulebook §12): rotating cage glyph → static project cage
+  (P19.5, no rotation); hull fill → ADR-0025 hull (P19.5); drag-to-move → rejected (deterministic
+  shared positions; pin covers it); expand all / collapse all → P19.5; legend → P19.5; rich tooltip →
+  hover label + state word (P19.5).
+- **Colour defects found against DS §3.2 (ADR-0028):** the narrow-graph note (`GraphView.tsx:42`)
+  uses red for an informational sentence; the focus ring `#FFD166` is ΔE 12.3 from attention. Fix
+  with P18 closure or in P19.5 — the user's choice.
+- **P18 is not closed** until the manual checks of §20 are performed and recorded: 60 fps on
+  integrated graphics (A10); the TUI in Windows Terminal and in conhost (P17 carry-over); a physical
+  touch device (A12/N7); the PWA install checklist where it applies; the visual capture checklist.
+  Emulation does not count as a physical touch test.

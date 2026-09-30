@@ -186,3 +186,24 @@ and **Motion & Interaction System** (principles, duration/easing tokens, state t
 interaction feedback, loading, attention, reduced motion, responsive behaviour, performance
 budget). Order: IA from the ontology first, visual system second, motion last — motion reinforces
 the other two and never drives navigation or pages.
+
+---
+
+## Re-inspection for the visual architecture (2026-09-30)
+
+All seven references and zoetrope were re-read at source (shallow clones in a session scratchpad;
+nothing copied into the repository). Observations and dispositions are in the visual rulebook
+([../design/ARCHEUS_V1_VISUAL_ARCHITECTURE_RECONCILIATION.md](../design/ARCHEUS_V1_VISUAL_ARCHITECTURE_RECONCILIATION.md)
+§2.4, §3, §37) and ADR-0024…0030. No code from any of them is used by Archeus; every contribution
+is a principle, an interaction pattern or a visual technique.
+
+| Ref | Revision inspected | Licence | Main contribution to the visual architecture |
+|---|---|---|---|
+| R1 Munder Difflin | v0.5.3 (2026-09-25) | MIT (assets separately licensed) | "the representation is the status"; envelopes only for real messages; caged demo mode; agent strip; resizable side panel; before/after evidence |
+| R2 Vicoa | main, 2026-09 | AGPL-3.0 | awaiting-you badge; offline clients greyed; resume at the dead end; drafts retained; "jump to unseen" |
+| R3 Graphify | `1cd9a36c0c57` (2026-09-29) | Apache-2.0 / MIT | EXTRACTED solid vs INFERRED dashed; legend with show/hide; hull fill; layout once then static; blast radius (`affected.py`) |
+| R4 Cognee | `ba3631f2ed36` (2026-09-29) | Apache-2.0 | bounded subgraph by default (seed, k-hop, cap); "layout-once rule"; scrub by classes, never positions |
+| R5 code-migration-kit | `cf91c9d5068d` (2026-07-08) | Apache-2.0 | the design document as rulebook; adversarial design review; a judge that must fail on broken code; no inferred approval |
+| R6 Apple Design Skill | `6237cc12e323` (2026-09-29) | — | point-of-view / template test; motion never the only carrier; badges only for real counts; target and text floors |
+| R7 Ship Notes | `550fb4c09db3` (2026-09-29) | MIT | easing curve (already adopted); loop gate; self-retiring loops; deterministic `renderAt(t)`; do not copy `filter: brightness()` |
+| zoetrope (credits) | `b1f31dd26bd4` (2026-09-11) | MIT | two clocks — content time vs presentation time; ephemeral activity chips; layout never re-runs by itself |
