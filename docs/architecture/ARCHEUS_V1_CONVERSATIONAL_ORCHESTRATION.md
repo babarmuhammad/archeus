@@ -676,6 +676,7 @@ Each gate is mutation-verified in the phase that builds it (testing-strategy §4
 | D-22 | P19 owns the inherited P16 seams | **DECIDED** — confirmed by the decision pass's P19 list |
 | D-23 | live work and consumption inside existing reads | **DECIDED** with D-13 (ADR-0043 §2–§3) |
 | D-24 | Carried: the orchestration plan's D-1…D-12 (ADR-0036…0040 PROPOSED), ADR-0021 (OPEN), Q-C1 | unchanged — still the user's |
+| D-26 | Context capacity as a governed execution resource (context-capacity audit, 2026-10-01) | **OPEN** — ADR-0047 PROPOSED: the P12 pressure hand-off stays the mechanism; adds its recorded basis and derived quality, a no-progress guard, compaction unavailable in V1, `live_work.context`; owner P21 |
 
 ### G2. What remains undecided
 

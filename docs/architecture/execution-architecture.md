@@ -208,6 +208,12 @@ unknown the smallest window in that table, so pressure is over- rather than unde
 treat as pressure 0.9; a `compact_boundary` event → record that compaction happened (the
 execution continues; the checkpoint is still derived at the next boundary). Bounded tasks and
 `--max-turns` keep pressure rare — hand-off is the exception path, not the design.
+*(ADR-0047, PROPOSED, P21: each pressure value is recorded with its basis — window, window source,
+usage offset — and read as reported / estimated / unavailable / stale; the as-built unknown-model
+rule is the smallest window the **harness** declares, and none when it declares none
+(p12-design-gate §13.1); a pressure continuation with no progress over its predecessor ends as a
+charged `context_insufficient` failure rather than handing off again; Archeus triggers no
+compaction.)*
 
 **What a checkpoint contains** — **derived by Core**, not asked of an agent whose context is
 already full:

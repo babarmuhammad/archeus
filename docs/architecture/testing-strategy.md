@@ -271,3 +271,29 @@ multi-account, codex, pi) and re-run in P25.5 on the user's environment. Design:
 | MG-17 coexistence | one fixture holds four projects at once — V1, legacy, migration pending, V1 in its rollback window — and each behaves as legacy-context-migration §24.5 states: the marker is present exactly for A and D, legacy writers and hooks stand down only there, V1 hooks act only there, and no global mode exists | a global flag; legacy standing down for an unmarked project |
 | MG-19 sessions as source material | a run creates no Execution from a legacy session and no Session row except by the user's action or the run's recorded `sessions` rule; every session appears in the manifest | a Session row per transcript; a date window applied by default |
 | MG-18 unmigrated projects operational | for an unmigrated project, the legacy launcher, memory build, recall hook, CLAUDE.md block refresh and the project's own test and git commands behave exactly as on a machine without V1 | any legacy workflow broken by V1's presence |
+
+## 10. Context capacity gates (P21 — ADR-0047, PROPOSED 2026-10-01)
+
+Not built beyond what the **Exists** column names; the owning phase cannot close without the rest.
+Each new gate is mutation-verified in P21 (§4) on fake harness scripts (a scripted `usage`
+emission, as S2 already does), never on a real account. Design:
+[ADR-0047](decisions/ADR-0047.md).
+
+| Gate | Asserts | Exists | Mutation it must kill |
+|---|---|---|---|
+| CX-1 healthy continues | an execution whose reported pressure stays below the p12 threshold is never handed off and ends on its own | S2 (P12) | a hand-off below the threshold |
+| CX-2 approaching limit detected | a usage report at the threshold, or a PreCompact record, requests the hand-off at the next tool boundary | S2.1, p12 Y21 | pressure ignored; PreCompact ignored |
+| CX-3 no blind continuation | a pressure continuation with no progress over its predecessor's checkpoint creates no further continuation and ends charged with `failure_class: context_insufficient`; the attempt budget bounds the repetition | — | the guard removed (the loop runs until the scenario's own cap); the failure left uncharged |
+| CX-4 checkpoint on every end | every end of an execution that ran, including a guarded one, derives one Checkpoint in the transaction of the end | P12 | an end without a checkpoint |
+| CX-5 provenance | a continuation carries `handoff_from`, `attempt + 1`, the same plan binding, the checkpoint id and `continuation` count; the hand-off reason names the window, its source and the usage offset | P12 (all but the basis) | the basis dropped from the reason |
+| CX-6 state reaches the new session | the continuation's prompt carries the checkpoint rendering; mission and task states are unchanged by the hand-off | S2, C13 | a stale field shown as current |
+| CX-7 protection holds at a continuation | over generated snapshots a continuation never elects a `last_resort` or `explicit_only` account that AP-1 would not elect for a first dispatch, whatever its window or remaining capacity | AP-1 gate (first dispatch only) | the continuation route skipping AP-1 |
+| CX-8 unknown is not zero | with no window or no usage report, `pressure` and `remaining` are `None`, the item's quality is *unavailable*, and nothing renders 0 or "fits" | — | `None` coerced to 0 |
+| CX-9 estimated and stale are labelled | a window from `harness_smallest` reads *estimated*; output recorded after the usage offset reads *stale*; neither reads *reported* | — | the quality derived from the value alone |
+| CX-10 a failed hand-off loses nothing | a continuation refused by P9 or P10 leaves the checkpoint, the task READY uncharged and the diff in place | P12 (§10.1 step 4) | the checkpoint written after the refusal check |
+| CX-11 no compaction by Archeus | no Archeus code path asks a harness to compact or summarise; a harness's own compaction is recorded and turns into a hand-off, and the checkpoint's fields do not depend on the agent's context | — (static walk + P12 PreCompact test) | a compaction call added; a checkpoint field read from agent output other than `DECISION:` lines |
+| CX-12 deterministic | the same stream offsets and offers give the same pressure, basis, quality and guard outcome twice; quality needs no clock | — | a wall-clock staleness |
+| CX-13 no unrelated disruption | a hand-off in mission A leaves every other execution, session and account state unchanged | — | a hand-off flag set by account or harness instead of by execution |
+| CX-14 explainable | the `why` answer for a hand-off equals the execution's recorded reason, basis and checkpoint; no model call | S12 pattern (routing) | an answer composed from anything but the record |
+| CX-15 idle is still | with no live execution nothing computes pressure, no request polls for it and nothing animates | ADR-0024 gates | a context read on a timer |
+| CX-16 legacy and projects untouched | a migration run writes no `context` basis and no `pressure` for any imported session; a hand-off, a checkpoint and a continuation change no byte of the project outside ADR-0046's namespace | MG-12, MG-19 (P22) | a fabricated historical pressure; a checkpoint written into the repository |
