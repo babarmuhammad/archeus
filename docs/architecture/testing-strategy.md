@@ -213,3 +213,33 @@ host, a recording canvas, `renderAt(scene, timeline, t)`).
 | framebuffer probes | halo (built), travelling marker (built), hull, focus and edge style pixels at known node positions (not screenshots) |
 | frozen-clock captures | every surface × theme × width × state (ADR-0029), human-reviewed |
 | innerText | no raw ids, JSON or hashes in the default view; one command name per command |
+
+## 8. Conversation, account-protection, live-work and theme gates (ADR-0041…0044, decided 2026-09-30)
+
+Not built; listed so the owning slice or phase cannot close without them. Each is mutation-verified
+in the phase that builds it (§4). Full wording and mutations:
+[ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md](ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md) F4.
+
+| Gate | Owner | Asserts |
+|---|---|---|
+| AP-1 protection invariant | AP-1 | over generated snapshots no `last_resort` account is elected while a `normal` candidate survives, whatever its affinity, preference or priority; no `explicit_only` account is elected unless a user-device preference or pin names it; a set budget eliminates a windowed account when reached; a `cost_*` budget on an account reporting no cost is refused at write; unknown usage is never read as 0 |
+| G1 chat approve | P19 (S3) | a chat `approve` is the card's decision: same `action_hash`, step-up, idempotency |
+| G2 all-scope verbs | P19.5 Core slice | `pause all` / `emergency stop` reach the strip's commands; e-stop confirms |
+| G3 no widening without confirmation | P19 | no brain output applies a widening directive or a standing change; the policy route stays `admin` |
+| G4 narrowing with source | P19 | a narrowing directive lands on the mission with its `message_id`; an unresolved name is a clarification, never a guessed id |
+| G5 explanation card | P19 | the `route_explanation` card equals the RouteDecision record |
+| G6 one live derivation | P21 | `live_work` lists exactly the live executions and own calls without an outcome; the `status` verb and `/v1/status` agree |
+| G7 route preview | P22 | a plan task's preview equals the dispatch decision for an unchanged snapshot |
+| G8 own calls visible, still | P21 | an in-flight own call is listed and counted on its account, and animates nothing |
+| G9 protection classes and lift | AP-1, P22 | as AP-1, plus the lift is scoped to the naming mission or project |
+| G10 budgets always | AP-1 | a budget on a windowed account is enforced; none set → behaviour unchanged |
+| G11 project defaults | P22 | missions inherit and may narrow their project's defaults; only a user device sets them |
+| G12 unknown stays unknown | P21 | consumption renders a missing reading as unknown, never a number |
+| G13 effective policy parity | P21, P22 | the effective-policy read equals the router's inputs |
+| G14 directive scope | P19 | ambiguous or task scope applies to the mission only; "never" / "from now on" produce a change card; no directive removes an elimination |
+| T1 explicit theme | P19 | each explicit theme renders its token set whatever the emulated OS scheme |
+| T2 system default | P19 | a first launch follows the OS scheme and contrast |
+| T3 forced colours | P19 | `forced-colors: active` overrides any explicit choice |
+| T4 contrast floors | P19 | the existing contrast gates run over every theme × role, unchanged |
+| T5 persistence per client | P19 | the choice survives a reload, a service-worker offline start and a Qt shell restart (persistent profile); no Core read is needed |
+| T6 before first paint; tints are not themes | P19 | `<html>` carries the theme attributes before the stylesheet paints (a `'self'` boot script); only the three token sets are selectable as application themes |

@@ -235,6 +235,12 @@ never persisted.
 Control verbs (pause, resume, stop, approve, reject, reprioritize, status, route-why) are parsed by
 a deterministic grammar and never need a model (ADR-0006).
 
+*Decided 2026-09-30 (ADR-0042, P19/P22):* Intent gains `resource_directive` (scope; prefer and
+forbid accounts, harnesses, models, locations; a tier requirement; a pin), proposed by the brain and
+resolved by Core; narrowing and preference apply to the mission, widening and standing changes
+become change cards; the preference or policy version a directive produced records its
+`message_id` and `intent_id`. A future voice modality produces an ordinary user Message.
+
 **As built (P7, p7-design-gate §4–§5):** Message also has `in_reply_to`, `intent_id` and
 `principal_id`; a card is `{type, ref, ...}` and a link `{ref}`, and card types add `mission`,
 `idea`, `challenge`, `clarification`, `knowledge` and `status`. Intent also has `via` (grammar /
@@ -433,6 +439,11 @@ ROUTED / SERVED / BILLED); RouteDecision gains `task_family`, `capability_snapsh
 | `project_allow[]`, `project_deny[]` | project restrictions |
 | `fallback` | allow / ask / deny — may the router fall back *to* this account without asking |
 | `brain_reserve_pct` | share reserved for Archeus's own reasoning calls |
+| `consumption` | *ADR-0041, AP-1:* `normal` / `last_resort` / `explicit_only` — protection applied before any ordering key |
+| `limits` | *ADR-0041, P22:* optional `subjects`, `max_tier`, `task_families` (V1.x-O1) |
+
+*ADR-0041:* budgets are enforced whenever set (AP-1); a project may carry default
+`resource_preferences` in the mission shape, inherited by its missions (P22).
 
 ### 8.5 UsageSnapshot and UsageLedger
 `UsageSnapshot`: what the provider reports (`account_id`, `window` 5h/7d/monthly,

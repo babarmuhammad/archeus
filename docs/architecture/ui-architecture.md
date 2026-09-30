@@ -158,16 +158,23 @@ mobile · TUI.
 - **Automations:** list, rule reader, simulation, runs.
 - **Resources:** harnesses, accounts (priority, ceiling, reserve, budgets, fallback, project
   rules, live usage, health), models, route preview, sessions (infrastructure view), nodes.
+  *Decided 2026-09-30 (ADR-0041, ADR-0043):* each account also shows its consumption class
+  (`normal` / `last_resort` / `explicit_only`) and limits as words, what it is running now, what it
+  has consumed, its windows with unknown shown as unknown, and the effective policy including the
+  defaults; offers and the catalogue stay separate lists (ADR-0036, PROPOSED).
 - **Devices:** paired devices, pair a phone (local only), revoke, remote access setup guide
   (Tailscale Serve), emergency stop / re-arm.
 - **Notifications:** channels (desktop, ntfy), which events notify.
-- **Appearance:** thread tint, density, motion (light/dark/contrast follow the OS).
+- **Appearance:** theme (System · Dark · Light) and contrast (System · Standard · High), System
+  by default and stored per client (ADR-0044, P19); thread tint, density, motion. `forced-colors`
+  always wins.
 - **Mobile:** read + limited edits (pause automations, change fallback, revoke device); policy
   edits require the `admin` scope. **TUI:** screen `4`.
 
 ### 4.7 Command bar
 Same grammar as the composer: control verbs (answered without a model), jump to object by name,
-"new mission …", "idea …". Shows what will happen before Enter ("Pause *Dashboard* — 2 executions
+"new mission …", "idea …", and the resource verbs of ADR-0042 (`use` / `don't use` an account or
+harness, `pause all`, `what is running`). Shows what will happen before Enter ("Pause *Dashboard* — 2 executions
 will halt at their next step").
 
 ### 4.8 Search

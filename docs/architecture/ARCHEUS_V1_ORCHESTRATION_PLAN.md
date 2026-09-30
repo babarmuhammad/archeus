@@ -16,8 +16,11 @@ that binds implementation**, **degraded and offline behaviour**, **the UI archit
 **the delivery plan**. Five new ADRs are proposed (ADR-0036…0040, all PROPOSED).
 
 A third pass, [ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md](ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md)
-(ADR-0041…0043, PROPOSED), adds conversational directives, live-work visibility and account
-consumption policy; it continues this document's decision (D-13…) and conflict (C-30…) ids.
+(ADR-0041…0043, DECIDED in the user's decision pass of 2026-09-30, with ADR-0044 for the
+application theme), adds conversational directives, live-work visibility and account consumption
+policy; it continues this document's decision (D-13…) and conflict (C-30…) ids. That pass also
+adds slice **AP-1** (account protection) and binds ADR-0021's `rotation` answer to it. This
+document's own D-1…D-12 and ADR-0036…0040 remain PROPOSED.
 
 Method: the V1 and legacy code was read at source for availability, harness, policy, economy,
 evidence and evaluation (file:line below; the pi root cause and every claim marked *verified* was

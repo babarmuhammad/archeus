@@ -100,17 +100,22 @@ stays; nothing else gets a signature.
 
 | Theme | Status | Notes |
 |---|---|---|
-| Archeus Dark | follows the OS | `bg #0E1116`, `surface-1 #141922`, `surface-2 #1A2130`, `text #E6EAF0` (14.6:1 on surface-1), `text-2 #AAB3C0` (8.3:1), `primary` fill `#E6EAF0` with `#0E1116` label, `thread #F4F1EA`, `focus #F4F1EA` (thread ink — was `#FFD166`, ΔE 12.3 from attention; ADR-0028; built in P19.5 slice 1; light: `#11151C`) |
-| Archeus Light | follows the OS | `bg #F7F8FA`, `surface-1 #FFFFFF`, `text #11151C` (18.3:1), `text-2 #4A5463` (7.7:1), `primary` fill `#11151C`, `thread #11151C` |
-| High Contrast (dark + light) | follows `prefers-contrast: more` / Windows contrast themes (`forced-colors`) | solid surfaces, 7:1 body text, 2 px lines, no tints |
+| Archeus Dark | the OS default under System; selectable (ADR-0044) | `bg #0E1116`, `surface-1 #141922`, `surface-2 #1A2130`, `text #E6EAF0` (14.6:1 on surface-1), `text-2 #AAB3C0` (8.3:1), `primary` fill `#E6EAF0` with `#0E1116` label, `thread #F4F1EA`, `focus #F4F1EA` (thread ink — was `#FFD166`, ΔE 12.3 from attention; ADR-0028; built in P19.5 slice 1; light: `#11151C`) |
+| Archeus Light | the OS default under System; selectable (ADR-0044) | `bg #F7F8FA`, `surface-1 #FFFFFF`, `text #11151C` (18.3:1), `text-2 #4A5463` (7.7:1), `primary` fill `#11151C`, `thread #11151C` |
+| High Contrast (dark + light) | follows `prefers-contrast: more` / Windows contrast themes (`forced-colors`), or the High contrast preference (ADR-0044) | solid surfaces, 7:1 body text, 2 px lines, no tints |
 
-Appearance **follows the operating system** (`prefers-color-scheme`, `prefers-contrast`,
-`forced-colors`, `prefers-reduced-transparency`) — there is no app-level light/dark switch
-(`dark-mode.md` › "Avoid offering an app-specific appearance setting"). The user's only appearance
-choices are thread tint, density and motion. Measured contrast of every state glyph colour on
+Appearance **follows the operating system by default** (`prefers-color-scheme`,
+`prefers-contrast`, `forced-colors`, `prefers-reduced-transparency`). *Amended 2026-09-30 by the
+user's decision D-21 (ADR-0044; to be implemented in P19):* the user may override it per client with a theme
+(System · Dark · Light) and a contrast (System · Standard · High) preference; `forced-colors`
+always wins; the choice is applied before first paint and works offline. The application themes
+are exactly the three above; appearance choices otherwise remain thread tint, density and motion.
+(The earlier rule — no app-level switch, after `dark-mode.md` — is superseded for Archeus because
+it runs inside browser, PWA and Qt shells whose appearance the user often cannot set per app.) Measured contrast of every state glyph colour on
 `surface-1`: dark 6.2–9.6:1, light 5.0–6.5:1 (all ≥ 4.5:1, so state *labels* may use them too).
 
-Legacy `themes.PALETTES` (39 authored palettes) survive **only as thread tints**; surfaces and state colours do not change. Skins and worlds are not
+Legacy `themes.PALETTES` (39 authored palettes) survive **only as thread tints** — an application
+theme and a thread tint are different things, and no palette becomes an application theme; surfaces and state colours do not change. Skins and worlds are not
 carried into the V1 client (ADR-0017): they redefine chrome per look, which conflicts with fixed
 state semantics. The legacy GUI keeps them until it retires. The build rejects a thread tint
 that fails 3:1 against `surface-1` or collides (CIE76 ΔE < 30) with any state colour.

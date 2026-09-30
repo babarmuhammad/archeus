@@ -149,7 +149,10 @@ no vector store in V1 (ADR-0012, ADR-0013).
      Matched → executed/answered with no model call.
   2. Otherwise a brain call (structured output, schema `intent.v1`) classifies: question /
      new_work / continue_work / feedback / preference / idea, with target refs, ambiguities and
-     a confidence.
+     a confidence. *Decided 2026-09-30 (ADR-0042):* the reading may carry a `resource_directive`;
+     Core resolves every name (an unresolved one is a clarification), applies mission-scoped
+     narrowing and preference, and turns widening or standing changes into a change card a user
+     device confirms. The brain writes nothing.
   3. Ambiguity above threshold or a **conflict with CONFIRMED knowledge** → a Challenge block
      (the user chooses) instead of a mission. Archeus is expected to disagree when evidence
      disagrees (spec principle 15). *As built (P7, p7-design-gate D1, D11):* "above threshold"
@@ -388,6 +391,8 @@ Everything is reconstructable from the event log plus decision records:
 | Hand-offs | checkpoints with triggers |
 | Automations | AutomationRun rows with skip/escalate reasons |
 | What the user needs to do | Attention query |
+| What is running now, and waiting on what | `live_work`: live executions and in-flight own calls (ADR-0043) |
+| What is consuming each account | account consumption: live consumers, ledger totals, windows with unknown kept unknown (ADR-0043) |
 
 Metrics derived nightly into a `metrics_daily` table (missions completed/failed, median time to
 complete, approvals per mission, fallback rate, verification failure rate, cost per mission
@@ -1021,11 +1026,13 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   **S3** the chat verbs `approve`/`reject` bound to a displayed card's `action_hash`, **S4**
   mission confirmation before `start` under `careful`, **S6** offline snapshot, **S7** the Qt
   shell attach (the desktop deployment mode) with the legacy "Open V1" link.
-- *Proposed 2026-09-30 (third orchestration pass, PROPOSED pending the user's review — ADR-0042,
-  [ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md](ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md)):*
+- *Decided 2026-09-30 (ADR-0042, ADR-0044;
+  [ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md](ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md) Part H):*
   conversational resource directives for accounts and harnesses (grammar `use`/`don't use` and
-  `intent.v1.resource_directive`, narrowing applied, widening confirmed); the `route_explanation`
-  card on `why`.
+  `intent.v1.resource_directive`; mission-scoped narrowing and preference applied, widening and
+  standing changes confirmed from a user device); the `route_explanation` card on `why`; the
+  application theme and contrast preference in Control → Appearance (System by default, per client;
+  the Qt shell attach keeps a persistent QtWebEngine profile for it).
 - Test: the implementation plan's unification scenario (create on desktop → observe on mobile →
   approve on mobile → execute on PC → review on desktop → inspect on TUI).
 - Acceptance: G3 fully passes.
@@ -1039,7 +1046,7 @@ decisions ADR-0024…0029.
 - Depends: P19 (unified clients; Relations/TUI on `/v1/world/graph`).
 - Core slice first (ADR-0006 verbs through P9): Pause all and a readable emergency-stop state
   (P11 rules); set mission priority, read by routing/scheduling (P10 rules). Nothing else in Core.
-  *Proposed 2026-09-30 (ADR-0042, PROPOSED):* the grammar verbs for these same commands —
+  *Decided 2026-09-30 (ADR-0042):* the grammar verbs for these same commands —
   `pause all`, `resume all`, `reprioritise` — land with them; no other Core work.
 - Client work: tokens (focus ≠ attention, red reserved, depth/transparency tokens); primitives;
   graph edge semantics, legend, impact view, hull/depth/cored nodes, static project cage; the
@@ -1070,7 +1077,7 @@ decisions ADR-0024…0029.
   and its record carries `task_family` and a (so far empty) `capability_snapshot`; the Artifact
   producer record and `artifact.recorded` (already assigned by ADR-0030 §4). No routing behaviour
   changes.
-- *Proposed 2026-09-30 (ADR-0043, PROPOSED —
+- *Decided 2026-09-30 (ADR-0043, ADR-0041 §5 —
   [ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md](ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md)):*
   `live_work` (executions in live states and own calls in flight) as a `live` section of
   `/v1/status`; account consumption (live consumers, ledger totals, windows with unknown shown as
@@ -1088,11 +1095,11 @@ decisions ADR-0024…0029.
   imported APPROVED (`source_kind: import`) so no current route changes silently, and routed
   offers name exact ids where known. Legacy `MODEL_PROFILES` is never migrated as evidence (at
   most REFERENCE history, excluded from every evidence query).
-- *Proposed 2026-09-30 (ADR-0041, PROPOSED —
-  [ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md](ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md)):*
-  account consumption classes (`normal` / `last_resort` / `explicit_only`), `limits` by subject
-  and tier, budgets enforced whenever set, project default resource preferences, with the
-  Resources UI for them; a route preview per plan task shown on the plan approval card; model and
+- *Decided 2026-09-30 (ADR-0041, ADR-0042 —
+  [ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md](ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md) H3):*
+  `limits` by subject and tier, project default resource preferences, and the Resources UI for
+  every ADR-0041 field (the consumption classes and budgets themselves land earlier, in AP-1 —
+  §31.2); a route preview per plan task shown on the plan approval card; model and
   location directive kinds (ADR-0042) once the catalogue exists.
 - Tests: fixture legacy homes (multi-account, codex, pi), idempotency, counts.
 - Acceptance: G8 passes; retirement checklist (migration-plan §6) evaluated.
@@ -1248,9 +1255,18 @@ escalation (O2), declared step outputs, artifact inputs and critic reviews (O3),
 adapters and the data-class provider rule (O4), skills as routable capabilities (O5). V1 builds
 only the provenance and catalogue foundations in P21/P22.
 
+**Account protection before multi-account routing (ADR-0041, decided 2026-09-30).** Slice
+**AP-1** — consumption classes (`normal` / `last_resort` / `explicit_only`, partitioned before any
+ordering key) and budgets enforced whenever set — is a standalone Core slice that must land before
+any harness's ADR-0021 `rotation` answer is `permitted`: until then the router uses only the
+priority-1 subscription of a harness (`archeus/core/routing/router.py:198-206`), so no second
+account can be consumed. Invariant: no router consumes a user-protected account merely because it
+is eligible. Recommended right after the C-22 defect slice; it neither needs nor changes P19.5.
+
 **Deferred past V1:** remote execution nodes, pi/generic-CLI adapters, 3D spatial mode, Web
 Push, FTS5, vector search, EMA reinforcement and contradiction edges, Archeus-as-MCP-server,
-multi-user workspaces, WebAuthn step-up.
+multi-user workspaces, WebAuthn step-up, the **voice** modality (it will feed the same
+conversation, intent and command pipeline — ADR-0042 §7 — never a second one).
 
 ### 31.3 Dependency graph
 
@@ -1264,7 +1280,8 @@ flowchart LR
     P18 --> P19 --> P195[P19.5] --> P20 --> P21 --> P22 --> P23 --> P24 --> P25 --> P26
 ```
 
-P19.5 was approved on 2026-09-30 (ADR-0030).
+P19.5 was approved on 2026-09-30 (ADR-0030). Outside the chain: the C-22 defect slice and
+**AP-1 → ADR-0021 `rotation: permitted`** (ADR-0041; rotation stays unpermitted until AP-1 lands).
 
 P4–P6 and P16's static parts can overlap once P3.5 is in; the table above is the dependency
 order, not a staffing plan.
@@ -1450,7 +1467,7 @@ fixes the rating was *Needs work* (two High findings on colour meaning and sideb
 |---|---|---|---|---|
 | B.1 | High | Hue accent `#7CC4FF` was ΔE 18 from `state.active` `#5AA9FF` on dark (1.31:1 between them) — below the design system's own ΔE ≥ 20 rule — and in Light the accent **was** the active colour (`#0B63CE` both). Blocked `#F07178` vs Failed `#FF8A65` ΔE 22 (dark) and 11 (light) | `color.md`: colours must stay distinguishable and mean one thing consistently | Removed the hue accent: primary = neutral inverted fill, links = underlined text, thread = near-white ink (`#F4F1EA`) / black ink on light; Failed shares the Blocked red with a different glyph and label; thread tints must be ΔE ≥ 30 from every state |
 | B.2 | High | *Pause all* and *Devices* sat at the bottom of the sidebar (wireframe A.1) | `sidebars.md`: "Avoid putting critical information or actions at the bottom of a sidebar. People often relocate a window in a way that hides its bottom edge." | *Pause all* moved to the Now header, the tray and the command bar; Devices lives in Control |
-| B.3 | Medium | App-level Dark/Light/High Contrast theme choice | `dark-mode.md`: "Avoid offering an app-specific appearance setting." | Appearance follows `prefers-color-scheme`, `prefers-contrast`, `forced-colors`, `prefers-reduced-transparency`; user choices reduced to thread tint, density, motion |
+| B.3 | Medium | App-level Dark/Light/High Contrast theme choice | `dark-mode.md`: "Avoid offering an app-specific appearance setting." | Appearance follows `prefers-color-scheme`, `prefers-contrast`, `forced-colors`, `prefers-reduced-transparency`; user choices reduced to thread tint, density, motion. **Superseded 2026-09-30 by the user's decision D-21 (ADR-0044):** a per-client theme and contrast preference with System as the default; `forced-colors` always wins; palettes stay thread tints |
 | B.4 | Medium | Swiping an approval sheet away had no defined meaning | `sheets.md`: "Support swiping to dismiss a sheet" and "Provide an alternative to the Done button" | Swipe = decide later (item stays in Attention); Approve/Reject are explicit |
 | B.5 | Medium (judgment) | The active glyph "breathed" continuously while output flowed — an ambient loop on the most-watched element | Design rule 7 (research §15); `generative-ai.md`: specific progress text carries the meaning | One 240 ms pulse per batch of real output, at most every 2 s |
 | B.6 | Medium (judgment) | TUI glyphs (◌ ‖ ◆) may be missing from Windows console fonts | information must not depend on glyphs the device cannot render | ASCII fallback set chosen by a startup probe |

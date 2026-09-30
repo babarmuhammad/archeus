@@ -118,6 +118,10 @@ must_halt(execution)          = worst(account) ≥ allocation_pct        (checke
   `allocation_known = false`. They are governed by **ledger budgets** (`tokens_per_day`,
   `cost_per_day`, `concurrency`). An account with `allocation_known = false` and no budgets is
   eligible **only as a fallback**, and only when its `fallback` is `allow`.
+- **Amended by ADR-0041 (slice AP-1):** budgets are enforced **whenever set**, on accounts with a
+  readable window too — the ceiling bounds the provider's window, the budget what Archeus spends;
+  `concurrency` caps live executions on any account; a budget is accepted only on a measure the
+  adapter reports, so it is never evaluated against a missing number.
 - `brain_reserve_pct` is what the two `ceiling` cases express: the brain may use up to
   `effective_ceiling`, tasks and reviews up to `effective_ceiling − brain_reserve_pct`.
   Archeus can therefore always still *think* (and explain it is out of capacity) when task
@@ -180,6 +184,14 @@ discrete `evidence_fit` key after priority and before tier fit only under a user
 rule. By default evidence only annotates each candidate. No weighted score exists; every decision
 freezes the evidence it consulted (`capability_snapshot`). Detail:
 [ARCHEUS_V1_ORCHESTRATION_RECONCILIATION.md](ARCHEUS_V1_ORCHESTRATION_RECONCILIATION.md) §13.
+
+**Amended by ADR-0041 (consumption classes; slice AP-1, before any ADR-0021 `rotation:
+permitted`):** `explicit_only` accounts and accounts outside their `limits` are eliminated at
+`restriction` with a reason; the survivors are then **partitioned before ordering** — a
+`last_resort` candidate is considered only when no `normal` candidate survived, and electing it
+is a fallback under its `fallback` mode (default `ask`). A user-device preference or pin naming a
+protected account lifts its class for that scope. Invariant: no router consumes a user-protected
+account merely because it is eligible; affinity cannot override the partition.
 
 **Affinity (step 1 of ordering)** keeps a mission on the account/harness its previous execution
 used, as long as that account is still eligible. Without it a P1 account recovering from a limit

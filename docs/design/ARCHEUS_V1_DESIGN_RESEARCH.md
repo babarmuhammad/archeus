@@ -579,7 +579,7 @@ references point at the roadmap in the rearchitecture plan.
 
 | # | Question | Owner | Blocks |
 |---|---|---|---|
-| D1 | Does the user want a spoken/voice channel (JARVIS model) in V1 or later? | user | nothing in V1 slice |
+| D1 | Does the user want a spoken/voice channel (JARVIS model) in V1 or later? | user | nothing in V1 slice — **answered 2026-09-30:** later (post-V1), as a modality feeding the same conversation, intent and command pipeline (ADR-0042 §7) |
 | D2 | Mobile PWA vs a thin native wrapper for push reliability on iOS (ntfy covers it for V1) | user | P15 |
 | D3 | Should the legacy worlds survive as a "Classic" appearance of the V1 app? | user | P16 |
 | D4 | Language(s) of the UI copy at launch (today English; user writes Italian too) | user | P16 copy |
