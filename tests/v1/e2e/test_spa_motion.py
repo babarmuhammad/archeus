@@ -16,6 +16,7 @@ from .test_spa_p18 import _graph, slow  # noqa: F401 (a fixture)
 
 IDLE_MS = 10_000
 PULSE_MS = 240      # the registry's execution-pulse (clients/app/tokens/motion.json)
+MARKER_MS = 600     # and its travelling-marker
 FRAME_MS = 16       # one fake-clock animation frame
 
 
@@ -103,11 +104,14 @@ def test_a_historical_event_heard_again_never_replays_or_restarts(browser, slow)
     advance(page, 100)
     check(pulses() == n + 1, 'a new event pulses (the positive control)')
     hear(page, frame)                           # the same event again, mid-pulse
+    advance(page, PULSE_MS - 100 + 2 * FRAME_MS)  # past its own end, before a restart's
+    running = int(page.locator('canvas.graph-canvas').get_attribute('data-pulses'))
+    check(running == 0, 'the pulse restarted instead of keeping its start (%d running)' % running)
     advance(page, 1000)
     ran = frames(page) - f0
     check(pulses() == n + 1, 'the event heard again pulsed again')
-    check(ran <= math.ceil(PULSE_MS / FRAME_MS) + 2,
-          '%d frames: the pulse restarted instead of keeping its start' % ran)
+    # the same frame sends a travelling marker too (600 ms): the loop runs for it, then parks
+    check(ran <= math.ceil(MARKER_MS / FRAME_MS) + 3, '%d frames for one pulse and one marker' % ran)
     check(g.get_attribute('data-graph-loop') == 'parked', 'parked after the pulse')
     advance(page, 3000)                         # past the 2 s rate limit: only novelty is left
     for again in (frame, dict(frame, id=seq - 1)):

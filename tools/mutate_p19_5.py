@@ -1,6 +1,6 @@
-"""The P19.5 mutation suite (ADR-0024, ADR-0029 §6): the motion foundation and
-the activity halo. Break each gate's invariant, run the test written for it,
-and require it to fail.
+"""The P19.5 mutation suite (ADR-0024, ADR-0029 §6): the motion foundation,
+the activity halo and the travelling marker. Break each gate's invariant, run
+the test written for it, and require it to fail.
 
     py tools/mutate_p19_5.py            every mutation
     py tools/mutate_p19_5.py N01 N11    only these
@@ -34,6 +34,12 @@ DG = 'tests/v1/design/test_design_gates.py::'
 E2E = 'tests/v1/e2e/test_spa_motion.py::'
 IDLE = E2E + 'test_idle_archeus_runs_no_frame_and_no_animation'
 REPLAY = E2E + 'test_a_historical_event_heard_again_never_replays_or_restarts'
+MARKER = 'node:test/marker.test.ts'
+MARKER_E2E = 'tests/v1/e2e/test_spa_marker.py::test_the_marker_travels_once_from_the_execution_to_its_task'
+MARKER_RM = 'tests/v1/e2e/test_spa_marker.py::test_reduced_motion_draws_no_marker_and_says_it_in_words'
+#: the generated travelling-marker entry's budget, as gen_ui writes it
+MARKER_TS = ('"max_ms": 600,\n    "token": null,\n    "ttl_ms": null,\n    "ttl_error_ms": null,\n'
+             '    "easing": "linear",\n    "cap": 8,')
 
 MUTATIONS = [
     # ── the registry ──
@@ -80,7 +86,7 @@ MUTATIONS = [
      [DG + 'test_every_loop_animation_is_a_registered_built_motion']),
     ('N11', 'an approved, unbuilt motion run by the client', [(GV,
      "!loop!.animate('execution-pulse')) return;",
-     "!loop!.animate('execution-pulse') || !loop!.animate('travelling-marker' as never)) return;")],
+     "!loop!.animate('execution-pulse') || !loop!.animate('thread-travel' as never)) return;")],
      [TS]),
     ('N12', 'a built loop motion nothing runs', [(GV,
      "loopRef.current?.animate('camera-settle')",
@@ -188,6 +194,82 @@ MUTATIONS = [
      "const CAMERA_MS = MOTIONS['camera-settle'].max_ms;",
      "const CAMERA_MS = MOTIONS['camera-settle'].max_ms + Math.random() * 0;")],
      [DG + 'test_the_presentation_clock_and_the_renderer_read_no_clock_and_no_random']),
+    # ── the travelling marker (ADR-0024 §5-6, rulebook §21 A-04) ──
+    ('N38', 'the marker never drawn', [(RENDER,
+     '  if (!s.marker?.size) return;', '  if (s.marker?.size !== -1) return;')],
+     [MARKER]),
+    ('N39', 'the marker never drawn, in the browser', [(RENDER,
+     '  if (!s.marker?.size) return;', '  if (s.marker?.size !== -1) return;')],
+     [MARKER_E2E]),
+    ('N40', 'the marker at the wrong duration (500 ms)', [(REG_TS, MARKER_TS, MARKER_TS.replace('600', '500'))],
+     [MARKER]),
+    ('N41', 'the marker over its 600 ms budget (601 ms)', [(REG_TS, MARKER_TS, MARKER_TS.replace('600', '601'))],
+     [MARKER]),
+    ('N42', 'the marker cap moved off 8 (7)', [(REG_TS, MARKER_TS, MARKER_TS.replace('"cap": 8', '"cap": 7'))],
+     [MARKER]),
+    ('N43', 'the marker cap moved off 8 (9), in the browser', [(REG_TS, MARKER_TS, MARKER_TS.replace('"cap": 8', '"cap": 9'))],
+     [MARKER_E2E]),
+    ('N44', 'the marker refuses at the cap instead of dropping the oldest', [(REG_TS,
+     '    "cap": 8,\n    "cap_per": "surface",\n    "over_cap": "drop-oldest",',
+     '    "cap": 8,\n    "cap_per": "surface",\n    "over_cap": "refuse",')],
+     [MARKER]),
+    ('N45', 'one execution\'s batches collapse into one drawn marker', [(MODEL,
+     'JSON.stringify([t.edge, t.from, t.to, seq ?? null])', 'JSON.stringify([t.edge, t.from, t.to, seq === seq ? null : 0])')],
+     [MARKER]),
+    ('N46', 'the marker replayed: every hearing is a new event', [(GV,
+     "markerTarget(t, f.id), f.id, now,", "markerTarget(t, f.id), (f.id ?? 0) + now + Math.random(), now,")],
+     [MARKER_E2E]),
+    ('N47', 'a reconnect (a new connection generation) forgets what was presented', [(CACHE,
+     "import { CoreError } from '../api/transport';",
+     "import { CoreError } from '../api/transport';\nimport { timeline } from '../state/timeline';"), (CACHE,
+     'if (this.conn.gen !== before.gen) this.invalidateAll();',
+     'if (this.conn.gen !== before.gen) {\n        this.invalidateAll();\n'
+     '        (timeline as unknown as { seen: Map<string, number> }).seen.clear();\n      }')],
+     [MARKER_E2E]),
+    ('N48', 'a random path', [(RENDER,
+     '    const hy = a.y + dy * p;', '    const hy = a.y + dy * p + (Math.random() - 0.5) * 8;')],
+     [MARKER]),
+    ('N49', 'a random path (Node-free gate)', [(RENDER,
+     '    const hy = a.y + dy * p;', '    const hy = a.y + dy * p + (Math.random() - 0.5) * 8;')],
+     [DG + 'test_the_presentation_clock_and_the_renderer_read_no_clock_and_no_random']),
+    ('N50', 'the marker animated under reduced motion', [(GV,
+     'f.id, now, host.reduced()) && loop!.animate', 'f.id, now, false) && loop!.animate')],
+     [MARKER_RM]),
+    ('N51', 'the marker a perpetual animation', [(LOOP,
+     'this.anims.add({ until: this.host.now() + MOTIONS[motion].max_ms });',
+     "this.anims.add({ until: this.host.now() + (motion === 'travelling-marker' ? Infinity : MOTIONS[motion].max_ms) });")],
+     [MARKER]),
+    ('N52', 'the marker a perpetual animation, in the browser', [(LOOP,
+     'this.anims.add({ until: this.host.now() + MOTIONS[motion].max_ms });',
+     "this.anims.add({ until: this.host.now() + (motion === 'travelling-marker' ? Infinity : MOTIONS[motion].max_ms) });")],
+     [MARKER_E2E]),
+    ('N53', 'the marker survives its completion', [(TL,
+     'if (t >= s.start && t < s.start + ms)',
+     "if (t >= s.start && (s.motion === 'travelling-marker' || t < s.start + ms))")],
+     [MARKER]),
+    ('N54', 'the marker from the task to the execution (wrong source/target)', [(MODEL,
+     'return { edge: d.id, from, to: from === d.a ? d.b : d.a };',
+     'return { edge: d.id, from: from === d.a ? d.b : d.a, to: from };')],
+     [MARKER]),
+    ('N55', 'the marker from the task to the execution, in the browser', [(MODEL,
+     'return { edge: d.id, from, to: from === d.a ? d.b : d.a };',
+     'return { edge: d.id, from: from === d.a ? d.b : d.a, to: from };')],
+     [MARKER_E2E]),
+    ('N56', 'a marker for an event that is not about an execution', [(MODEL,
+     "  if (!subject || subject.kind !== 'execution' || !f.event.startsWith('execution.')) return null;\n  const x",
+     '  if (!subject) return null;\n  const x')],
+     [MARKER]),
+    ('N57', 'a marker on an edge that is not live', [(MODEL,
+     '  if (!d || !live.has(d.id)) return null;\n  const from',
+     '  if (!d || !(live.has(d.id) || true)) return null;\n  const from')],
+     [MARKER]),
+    ('N58', 'the marker keeps the loop running once idle', [(GV,
+     '    c.dataset.markers = String(marker.size);',
+     '    c.dataset.markers = String(marker.size);\n    if (marker.size >= 0) loopRef.current?.request();')],
+     [MARKER_E2E]),
+    ('N59', 'the mirror loses the marker\'s words', [(MIRROR,
+     "(live ? ' — live now' : '')", "''")],
+     [MARKER, MARKER_RM]),
 ]
 
 if __name__ == '__main__':

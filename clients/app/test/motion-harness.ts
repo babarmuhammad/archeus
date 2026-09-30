@@ -72,6 +72,6 @@ export function recorder() {
  * and t give the same ops. A slice adding a canvas motion adds its read here. */
 export function renderAt(scene: Scene, tl: Timeline, t: number): { ops: string[]; stats: DrawStats } {
   const { ctx, ops } = recorder();
-  const stats = draw(ctx, { ...scene, pulse: tl.progress('execution-pulse', t) });
+  const stats = draw(ctx, { ...scene, pulse: tl.progress('execution-pulse', t), marker: tl.progress('travelling-marker', t) });
   return { ops, stats };
 }

@@ -9,10 +9,11 @@
 // in which only a pulse moved copies that layer and strokes the pulsed edges
 // over it, so its work is one copy plus one path per pulse, whatever the
 // number of nodes. The activity halo is part of the static layer: a node with
-// live work costs no frame for having it.
+// live work costs no frame for having it. Travelling markers are drawn over
+// the layer like pulses: two paths per frame, whatever the number of markers.
 import { ALPHA } from '../state/tokens.ts';
 import { attrsText, colourVar, countsText, dashOf, lookOf, radiusOf, tracePath, widthOf } from './encoding.ts';
-import type { Drawn, Model } from './model.ts';
+import { travelOf, type Drawn, type Model } from './model.ts';
 import type { Point } from './layout.ts';
 
 export const LOD_NODES = 250; // the legacy renderer's threshold (G4)
@@ -39,6 +40,7 @@ export interface Scene {
   live: ReadonlySet<string>; // drawn edge ids with a live execution
   liveStatic: boolean; // reduced motion: live edges drawn thicker, never pulsed
   pulse: ReadonlyMap<string, number>; // drawn edge id → 0..1 of its one pulse
+  marker?: ReadonlyMap<string, number>; // markerTarget → 0..1 of its travel
   halo: ReadonlySet<string>; // node keys with live work (model.haloed): a static ring each
   haloSolid?: boolean; // forced colours or reduced transparency: one solid ring, no alpha
   degraded?: boolean; // frames run slow (Loop.degraded): no pulse, the focus's label only
@@ -60,6 +62,7 @@ export function draw(ctx: CanvasRenderingContext2D, s: Scene): DrawStats {
   return counted(ctx, s, (stats) => {
     paintStatic(ctx, s, stats);
     drawPulses(ctx, s);
+    drawMarkers(ctx, s);
   });
 }
 
@@ -92,6 +95,7 @@ export function frame(ctx: CanvasRenderingContext2D, layer: Layer, s: Scene): Dr
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(layer.ctx.canvas, 0, 0);
     drawPulses(ctx, s);
+    drawMarkers(ctx, s);
   });
   return { ...top, labels: under?.labels ?? 0, layer: stale, layerPaths: under?.paths ?? 0 };
 }
@@ -185,6 +189,71 @@ function drawPulses(ctx: CanvasRenderingContext2D, s: Scene) {
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
+}
+
+/** The marker token (rulebook §38): thread ink, a 3 px head and a 12 px tail,
+ * in screen pixels whatever the zoom. */
+export const MARKER_HEAD = 3;
+export const MARKER_TAIL = 12;
+
+/** The travelling markers over the static layer (ADR-0024 §6, rulebook A-04):
+ * each a head at its progress p along the straight edge from its source to its
+ * target — linear, constant speed — with a tail back toward the source, never
+ * past it; all tails one path, all heads one path. While frames run slow a
+ * marker becomes the A-02 pulse's form instead (rulebook §21-§22: degraded →
+ * pulse): the edge's one opacity step, no travel. A marker whose edge is no
+ * longer drawn between its two ends is not drawn. */
+function drawMarkers(ctx: CanvasRenderingContext2D, s: Scene) {
+  if (!s.marker?.size) return;
+  toCamera(ctx, s);
+  ctx.setLineDash([]);
+  let index = BY_ID.get(s.drawn);
+  if (!index) BY_ID.set(s.drawn, (index = new Map(s.drawn.map((d) => [d.id, d]))));
+  const heads: [number, number][] = [];
+  const tails: [number, number, number, number][] = [];
+  for (const [target, p] of s.marker) {
+    const t = travelOf(target);
+    const d = index.get(t.edge);
+    const a = s.pos.get(t.from);
+    const b = s.pos.get(t.to);
+    if (!d || !a || !b || !((d.a === t.from && d.b === t.to) || (d.a === t.to && d.b === t.from))) continue;
+    if (s.degraded) {
+      ctx.globalAlpha = Math.max(0, 1 - p);
+      ctx.lineWidth = 2 / s.cam.k;
+      ctx.strokeStyle = s.colour('--state-active');
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      continue;
+    }
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const hx = a.x + dx * p;
+    const hy = a.y + dy * p;
+    const back = Math.min(p * len, MARKER_TAIL / s.cam.k) / len;
+    tails.push([hx - dx * back, hy - dy * back, hx, hy]);
+    heads.push([hx, hy]);
+  }
+  ctx.globalAlpha = 1;
+  if (!heads.length) return;
+  ctx.strokeStyle = s.colour('--thread');
+  ctx.lineWidth = 1 / s.cam.k;
+  ctx.beginPath();
+  for (const [x0, y0, x1, y1] of tails) {
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+  }
+  ctx.stroke();
+  ctx.fillStyle = s.colour('--thread');
+  ctx.beginPath();
+  const r = MARKER_HEAD / 2 / s.cam.k;
+  for (const [x, y] of heads) {
+    ctx.moveTo(x + r, y);
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+  }
+  ctx.fill();
 }
 
 /** Where the halo's two strokes sit, outside the node's own radius (inside the

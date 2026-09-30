@@ -281,3 +281,44 @@ export function pulseFor(
   if (!d || !live.has(d.id)) return null;
   return now - (last.get(d.id) ?? -Infinity) < PULSE_EVERY_MS ? null : d;
 }
+
+/** One travelling marker: the drawn edge it runs along, from the execution's
+ * end to the task's end (both visible node keys). */
+export interface Travel {
+  edge: string;
+  from: string;
+  to: string;
+}
+
+/** Whether a stream frame sends a travelling marker (ADR-0024 §6, rulebook
+ * A-04), and where: an `execution.*` frame about a loaded execution whose
+ * `executions.task_id` edge is drawn and live, one per frame (a frame is one
+ * output batch). Source and target are Core's — the frame's subject and its
+ * recorded edge, lifted to what is visible — never geometry, adjacency or a
+ * guess. Reduced motion is the timeline's to refuse, so the event still counts
+ * as presented. */
+export function markerFor(
+  f: { event: string; data?: unknown },
+  m: Model,
+  vis: ReadonlySet<string>,
+  drawn: readonly Drawn[],
+  live: ReadonlySet<string>,
+): Travel | null {
+  const subject = (f.data as { subject?: Ref } | undefined)?.subject;
+  if (!subject || subject.kind !== 'execution' || !f.event.startsWith('execution.')) return null;
+  const x = keyOf(subject);
+  const d = pulseEdge(drawn, x);
+  if (!d || !live.has(d.id)) return null;
+  const from = lift(m, vis, x);
+  if (from !== d.a && from !== d.b) return null;
+  return { edge: d.id, from, to: from === d.a ? d.b : d.a };
+}
+
+/** A marker's timeline target, and back: the edge, its direction and the
+ * event's seq — one execution's successive batches are separate markers on
+ * the same edge, each drawn, not one key the timeline's read collapses. */
+export const markerTarget = (t: Travel, seq: number | undefined): string => JSON.stringify([t.edge, t.from, t.to, seq ?? null]);
+export function travelOf(target: string): Travel {
+  const [edge, from, to] = JSON.parse(target) as string[];
+  return { edge, from, to };
+}

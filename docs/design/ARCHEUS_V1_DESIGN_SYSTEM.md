@@ -186,7 +186,7 @@ state glyphs ≥ 3:1 on `surface-1`; focus ring ≥ 3:1 against both the control
 | Thread travel | ≤ 600 ms, once | ease-in-out | Archeus acted on an object |
 | Active pulse | one 240 ms opacity pulse per batch of new output, at most every 2 s, ≤ 12 concurrent on the canvas | ease-out | execution stream produced events |
 | Activity halo (2026-09-30; built on the graph) | static — no animation; appears on the first live read, clears when a read shows the work ended | — | presentation class `active` |
-| Travelling marker (2026-09-30) | ≤ 600 ms once per output batch, ≤ 8 concurrent | linear along the edge | `execution.*` frame on a drawn live edge |
+| Travelling marker (2026-09-30; built on the graph) | 600 ms once per output batch, ≤ 8 concurrent (oldest dropped) | linear along the edge | `execution.*` frame on a drawn live edge |
 | Activity chip (2026-09-30) | fade 160 ms, TTL 2.5 s (4 s on error), ≤ 3 per row | ease-out | a re-read execution's current action |
 | Presence orbit (2026-09-30) | ≤ 900 ms, ≤ 1 per 5 s | ease-in-out | a batch of activity frames |
 
@@ -221,6 +221,31 @@ the offsets are a layout choice this slice made, no document gave them. Forced c
 transparency draw one solid ring. It is drawn into the static layer before the nodes: no frame, no
 timeline entry, the same under reduced motion. Its text equivalent is the node's state word in the
 graph mirror and "live work now" beside it. The row-glyph ring (rulebook A-03) is not built yet.
+
+**The travelling marker as built (P19.5, 2026-09-30), on the graph** (ADR-0024 §5-6, rulebook §21
+A-04). *What qualifies:* an `execution.*` stream frame whose `subject` is an execution loaded in the
+graph read with a drawn `executions.task_id` edge that is live (its execution's presentation class
+is `active`) — one marker per frame, i.e. per batch of output. A frame about another kind, another
+event, an execution not in the read, an ended execution or a frame with no seq sends none.
+*Source and target are Core's:* the source is the frame's execution and the target is the task at
+the other end of the edge Core recorded, both as drawn (lifted to a visible ancestor inside a
+collapsed group); never geometry, adjacency, a recent render or a guess, and no Core change. The
+execution → produced-object causality marker is a different thing and stays with P21 (Q-B1).
+*Travel:* a straight line from the source's position to the target's at constant speed (linear
+easing), the head at progress p of the registry's 600 ms, a 3 px `--thread` head and a 12 px tail
+behind it that never passes the source, both in screen pixels whatever the zoom; all tails are one
+path and all heads another, drawn over the static-layer copy after the pulses, so no node or edge
+changes and no layout moves. *Cap:* 8 at once on the canvas, the oldest dropped by the timeline;
+one execution's successive batches are separate markers on the same edge. *No replay, reconnect,
+remount:* started through the page's one timeline with the frame's seq, so the same seq heard again
+(a reconnect, a resync, a second tab, a remount or a route change) starts nothing and a running
+marker keeps its start; only a newer seq starts another. *Idle:* each marker is one registered
+`Loop.animate('travelling-marker')` of 600 ms; with none running the loop parks and schedules no
+frame. *Slow frames* (`Loop.degraded`): a marker takes the pulse's form (one opacity step over its
+edge, no travel), per rulebook §21-22. *Reduced motion:* no marker is drawn, the event still counts
+as presented (turning reduced motion off replays nothing), and the live edge is drawn 2 px and
+static. *Text equivalent:* in the graph mirror the execution's relation to its task reads
+"… — live now"; the mirror never narrates the animation. The operations-map surface is not built.
 
 **Adding a motion** (every later P19.5 slice): (1) give its entry the approved values, never new
 ones; it stays `approved` until the code runs it; (2) when built, set `built` and bind it — a CSS

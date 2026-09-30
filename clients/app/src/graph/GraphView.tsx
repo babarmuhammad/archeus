@@ -15,7 +15,7 @@ import { Inspector } from '../surfaces/Inspector';
 import { lookOf } from './encoding';
 import { fit, layout, pinchCamera, type Point } from './layout';
 import { browserHost, Loop } from './loop';
-import { allExpanded, around, build, haloed, inFocus, keyOf, lifted, liveExecutions, path as tracePathKeys, pathStatus, pulseEdge, pulseFor, search, toggle, visible, type GraphData, type Model, type Ref } from './model';
+import { allExpanded, around, build, haloed, inFocus, keyOf, lifted, liveExecutions, markerFor, markerTarget, path as tracePathKeys, pathStatus, pulseEdge, pulseFor, search, toggle, visible, type GraphData, type Model, type Ref } from './model';
 import { frame, type Camera, type DrawStats, type Layer } from './render';
 import { doubleTap, selected as selectedEdge, start, step, type Walk } from './keys';
 import { edgeWords } from './relations';
@@ -116,6 +116,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   const [loopState, setLoopState] = useState<'running' | 'parked'>('parked');
   const [lod, setLod] = useState<'full' | 'dots'>('full');
   const [pulseCount, setPulseCount] = useState(0);
+  const [markerCount, setMarkerCount] = useState(0);
   const loopRef = useRef<Loop | null>(null);
   const sceneRef = useRef<() => void>(() => undefined);
 
@@ -205,6 +206,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
     const styles = getComputedStyle(c);
     // renderAt(now): the pulses are the timeline's, read at this frame's time
     const pulse = timeline.progress('execution-pulse', now);
+    const marker = timeline.progress('travelling-marker', now);
     const stats = frame(ctx, l, {
       model,
       keys,
@@ -222,6 +224,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
       halo,
       haloSolid: matchMedia('(forced-colors: active)').matches || matchMedia('(prefers-reduced-transparency: reduce)').matches,
       pulse,
+      marker,
       colour: (v) => styles.getPropertyValue(v).trim() || '#888',
       width: size.current.w,
       height: size.current.h,
@@ -237,6 +240,8 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
     c.dataset.at = at ? `${Math.round((at.x - cm.x) * cm.k + size.current.w / 2)},${Math.round((at.y - cm.y) * cm.k + size.current.h / 2)}` : '';
     c.dataset.hover = hoverRef.current ?? '';
     c.dataset.frames = String(loopRef.current?.frames ?? 0);
+    c.dataset.pulses = String(pulse.size); // running now, this frame
+    c.dataset.markers = String(marker.size); // travelling now, this frame (the cap's reading)
     if (stats.lod !== lod) setLod(stats.lod);
   };
 
@@ -273,6 +278,12 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
     ro.observe(c);
     const stopFrames = store.onFrame((f) => {
       const now = performance.now();
+      // the travelling marker: the frame's execution to its task, along Core's
+      // recorded edge. Under reduced motion the timeline still records the
+      // event (it never plays later) and the 2 px static live edge says it.
+      const t = markerFor(f, modelRef.current, visRef.current, drawnRef.current, liveRef.current);
+      if (t && timeline.start('travelling-marker', markerTarget(t, f.id), f.id, now, host.reduced()) && loop!.animate('travelling-marker'))
+        setMarkerCount((n) => n + 1);
       const d = pulseFor(f, drawnRef.current, liveRef.current, lastPulse.current, now, host.reduced());
       // reduced motion: the thick static edge says it instead. The timeline
       // refuses an event it has presented (a reconnect or a second tab re-sending
@@ -292,8 +303,12 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   }, []);
   const drawnRef = useRef(drawn);
   const liveRef = useRef(live);
+  const modelRef = useRef(model);
+  const visRef = useRef(vis);
   drawnRef.current = drawn;
   liveRef.current = live;
+  modelRef.current = model;
+  visRef.current = vis;
 
   // one redraw when what is drawn changed — never on a render the loop's own
   // state caused (that would be a loop by another name)
@@ -430,7 +445,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   const hiddenCount = (data.hidden ?? []).reduce((a, h) => a + h.count, 0);
 
   return (
-    <div className="graph" data-graph-focus={focus ? `${focus.kind}:${focus.id}` : 'workspace'} data-graph-nodes={keys.length} data-graph-lod={lod} data-graph-loop={loopState} data-graph-at={walk.at} data-graph-live={live.size} data-graph-halos={halos} data-graph-pulses={pulseCount} data-graph-pinned={pinned.size} data-graph-selected={sel?.edge.id ?? ''} data-graph-path={pathState ?? ''}>
+    <div className="graph" data-graph-focus={focus ? `${focus.kind}:${focus.id}` : 'workspace'} data-graph-nodes={keys.length} data-graph-lod={lod} data-graph-loop={loopState} data-graph-at={walk.at} data-graph-live={live.size} data-graph-halos={halos} data-graph-pulses={pulseCount} data-graph-markers={markerCount} data-graph-pinned={pinned.size} data-graph-selected={sel?.edge.id ?? ''} data-graph-path={pathState ?? ''}>
       <div className="graph-bar" role="toolbar" aria-label="Graph">
         <a className="chip" href={modules !== undefined ? objectHref('repository', focus!.id) : focus ? (focus.kind === 'project' ? `#/world/${focus.id}` : objectHref(focus.kind, focus.id, 'relations')) : '#/world'}>
           List
@@ -578,7 +593,9 @@ export function Mirror({ model, pinned, halo }: { model: Model; pinned?: Readonl
               {edges.length ? (
                 <ul>
                   {edges.map((e) => (
-                    <li key={e.id}>{e.text}</li>
+                    <li key={e.id} data-live={e.live ? '' : undefined}>
+                      {e.text}
+                    </li>
                   ))}
                 </ul>
               ) : null}

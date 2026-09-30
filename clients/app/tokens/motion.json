@@ -93,14 +93,14 @@
       "equivalent": "the node's state word in the graph mirror, and 'live work now' beside it"
     },
     "travelling-marker": {
-      "status": "approved", "source": "ADR-0024 §6, rulebook §21 A-04, ADR-0030 (amends P18 A8)",
-      "trigger": "an execution.* frame on a drawn live edge, one per output batch",
+      "status": "built", "source": "ADR-0024 §6, rulebook §21 A-04, ADR-0030 (amends P18 A8)",
+      "trigger": "an execution.* frame whose subject is a loaded execution with a drawn live executions.task_id edge (Core's recorded relation): one marker per frame, i.e. per output batch, from the execution's end to the task's end",
       "driven_by": "event", "runs_on": "loop",
       "max_ms": 600, "easing": "linear",
-      "cap": 8, "cap_per": "surface", "over_cap": "drop-oldest", "surfaces": ["graph", "operations map"],
+      "cap": 8, "cap_per": "surface", "over_cap": "drop-oldest", "surfaces": ["graph"],
       "idle": "never", "replay": false,
-      "reduced": "removed: the live edge is drawn 2 px and static",
-      "equivalent": "the mirror says the edge is live"
+      "reduced": "removed: the live edge is drawn 2 px and static; the event still counts as presented, so it never plays later",
+      "equivalent": "the mirror says the edge is live: 'live now' on the execution's attempt-of relation"
     },
     "thread-travel": {
       "status": "approved", "source": "ADR-0024 §6, rulebook §21 A-05",
