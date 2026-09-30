@@ -39,7 +39,7 @@ export function GraphView({ focus, modules }: { focus: Ref | null; modules?: str
 
 /** Below 600 px (A12): the list equivalent, never a shrunken graph. */
 function Narrow({ focus, modules }: { focus: Ref | null; modules?: string }) {
-  const note = <p className="unavailable" data-graph-narrow="">The spatial view needs a window at least {MIN_WIDTH} px wide; the relationships are listed instead.</p>;
+  const note = <p className="hint" data-graph-narrow="">The spatial view needs a window at least {MIN_WIDTH} px wide; the relationships are listed instead.</p>;
   if (focus && modules === undefined && !['project', 'workspace'].includes(focus.kind))
     return (
       <div className="view">

@@ -109,6 +109,37 @@ def test_state_colours_are_told_apart(theme):
         assert math.dist(_lab(t[a]), _lab(t[b])) >= 20, (theme, a, b)
 
 
+@pytest.mark.parametrize('theme', sorted(TOKENS['themes']))
+def test_focus_is_never_read_as_a_state(theme):
+    """ADR-0028: a focus ring is not a state. The amber focus was ΔE 12.3 from
+    the attention amber (dark) and 7.1 from it (light), so a focused node read as
+    "needs you". Focus is the thread ink now; it clears the same separation floor
+    the state colours hold among themselves."""
+    t = TOKENS['themes'][theme]
+    for s in STATES:
+        assert math.dist(_lab(t['focus']), _lab(t[s])) >= 20, (theme, 'focus', s)
+
+
+def test_the_terminal_focus_is_never_a_state_colour():
+    """The same rule after ANSI-256 quantization: in light, focus and attention
+    had landed on the very same terminal colour (94)."""
+    sys.path.insert(0, ROOT)
+    from archeus.cli.tui.tokens import COLOURS
+    for theme, c in COLOURS.items():
+        states = {c[s] for s in STATES}
+        assert c['focus'] not in states, (theme, c['focus'])
+
+
+def test_the_narrow_graph_note_is_not_a_problem():
+    """ADR-0028: red means a problem the user must resolve. Below 600 px the
+    graph gives way to its list — information, not an error — so the note must
+    not wear the blocked colour (`.unavailable`, `.err`)."""
+    src = open(os.path.join(APP, 'src', 'graph', 'GraphView.tsx'), encoding='utf-8').read()
+    tag = re.search(r'<p className="([^"]*)"[^>]*data-graph-narrow', src)
+    assert tag, 'the narrow-graph note is missing'
+    assert not {'unavailable', 'err'} & set(tag.group(1).split()), tag.group(0)
+
+
 # ── motion (§18.1) and the Qt tear lesson ──
 
 ALLOWED_MOTION = {'transform', 'opacity'}

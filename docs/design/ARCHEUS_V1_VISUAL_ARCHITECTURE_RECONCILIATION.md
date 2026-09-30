@@ -1096,7 +1096,7 @@ existing contrast test. Values marked **Δ** change from today; everything else 
 | text | `text`, `text-2`, `text-3` | as built (14.6:1, 8.3:1, ≥ 3:1) | as built | contrast gate |
 | primary | neutral fill | `#E6EAF0` on `#0E1116` | `#11151C` | no hue accent |
 | state | `state-active/attention/blocked/paused/thinking/done` | `#5AA9FF #F2B544 #F07178 #A7B0BD #B79CFF #5FD08B` | `#0B63CE #8A5600 #B3261E #5B6472 #6A45C9 #1E7F45` | fixed across themes; red only for problems |
-| **focus** Δ | `focus` | `#F4F1EA` (thread ink) | `#11151C` | ≥ 3:1 vs control and surface; ΔE ≥ 30 from every state colour |
+| **focus** Δ | `focus` | `#F4F1EA` (thread ink) | `#11151C` | ≥ 3:1 vs control and surface; ΔE ≥ 20 from every state colour (the state-separation floor; see ADR-0028) |
 | thread | `thread` | `#F4F1EA` | `#11151C` | the only non-state ink |
 | thread tints Δ | `thread-tint-*` | curated list from legacy palettes | same | 3:1 on `surface-1`; ΔE ≥ 30 from state colours **and focus**; never carries meaning |
 | activity Δ | `halo-outer`, `halo-inner` | `state-active` @ .35 / .70 | same | two strokes, no gradient |

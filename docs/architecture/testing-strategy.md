@@ -182,7 +182,7 @@ harness id added without any domain change is how "a new harness needs no new en
 | K2 | Structured extraction across mechanisms | a `native` and a `prompted` adapter both yield items that pass Core's schema validation; invalid prompted output is retried once, then asks (ADR-0006); provenance names harness and model | P6 |
 | K3 | Project setup completes after the knowledge pass | create project → deterministic assessment → initial knowledge pass queued; the project stays usable when the pass fails or is gated by ADR-0021, and its result is counted, never assumed a collection | P6 |
 
-## 7. Visual architecture gates (P19.5, ADR-0024…0029 — to be built; none exist yet)
+## 7. Visual architecture gates (P19.5, ADR-0024…0029 — being built slice by slice)
 
 Each gate is mutation-verified (remove the feature, the gate must fail) and runs in the v1-client
 CI job. They are listed here so the phase cannot close without them; they are not rows of §2
@@ -199,7 +199,7 @@ because no test file exists yet.
 | thread | T1 reaches the row named by `Message.links`, once; T2 marks exactly the digest's changed rows; left-edge rule used by nothing else |
 | confidence styles | EXTRACTED solid, INFERRED dashed, AMBIGUOUS dotted; the legend lists only tiers present in the loaded edges |
 | impact view | reachable set equals BFS over recorded relations in the loaded neighbourhood, bounded by hops |
-| colour separation | focus ≥ ΔE 30 from every state colour; red used only by blocked/failed-needing-action; tints 3:1 and ΔE ≥ 30 |
+| colour separation (partly built) | focus ≥ ΔE 20 from every state colour (built: `test_focus_is_never_read_as_a_state`, `test_the_terminal_focus_is_never_a_state_colour`); red used only by blocked/failed-needing-action; tints 3:1 and ΔE ≥ 30 |
 | text equivalents | every registry animation has a live text equivalent present in the DOM |
 | Now | ≤ 7 blocks; state sentence derived from counts; no greeting |
 | favicon / orbit | favicon and orbit state follow idle / working / needs you / disconnected |

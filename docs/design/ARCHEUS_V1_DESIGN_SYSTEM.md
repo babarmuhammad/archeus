@@ -100,7 +100,7 @@ stays; nothing else gets a signature.
 
 | Theme | Status | Notes |
 |---|---|---|
-| Archeus Dark | follows the OS | `bg #0E1116`, `surface-1 #141922`, `surface-2 #1A2130`, `text #E6EAF0` (14.6:1 on surface-1), `text-2 #AAB3C0` (8.3:1), `primary` fill `#E6EAF0` with `#0E1116` label, `thread #F4F1EA`, `focus #F4F1EA` (thread ink — was `#FFD166`, ΔE 12.3 from attention; ADR-0028; `tokens.json` still carries the old value until P19.5) |
+| Archeus Dark | follows the OS | `bg #0E1116`, `surface-1 #141922`, `surface-2 #1A2130`, `text #E6EAF0` (14.6:1 on surface-1), `text-2 #AAB3C0` (8.3:1), `primary` fill `#E6EAF0` with `#0E1116` label, `thread #F4F1EA`, `focus #F4F1EA` (thread ink — was `#FFD166`, ΔE 12.3 from attention; ADR-0028; built in P19.5 slice 1; light: `#11151C`) |
 | Archeus Light | follows the OS | `bg #F7F8FA`, `surface-1 #FFFFFF`, `text #11151C` (18.3:1), `text-2 #4A5463` (7.7:1), `primary` fill `#11151C`, `thread #11151C` |
 | High Contrast (dark + light) | follows `prefers-contrast: more` / Windows contrast themes (`forced-colors`) | solid surfaces, 7:1 body text, 2 px lines, no tints |
 

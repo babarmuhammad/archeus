@@ -50,7 +50,7 @@
   --primary: #E6EAF0;
   --on-primary: #0E1116;
   --thread: #F4F1EA;
-  --focus: #FFD166;
+  --focus: #F4F1EA;
   --state-active: #5AA9FF;
   --state-attention: #F2B544;
   --state-blocked: #F07178;
@@ -72,7 +72,7 @@
     --primary: #11151C;
     --on-primary: #FFFFFF;
     --thread: #11151C;
-    --focus: #8A4B00;
+    --focus: #11151C;
     --state-active: #0B63CE;
     --state-attention: #8A5600;
     --state-blocked: #B3261E;
