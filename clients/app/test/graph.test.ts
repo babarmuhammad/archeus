@@ -81,7 +81,7 @@ function scene(data: GraphData, extra: Partial<Scene> = {}): Scene {
   const pos = new Map(keys.map((x, i) => [x, { x: i * 10, y: (i % 7) * 10 }]));
   return {
     model: mm, keys, drawn: lifted(mm, vis), pos, cam: { x: 0, y: 0, k: 1 }, focus: null, context: null, live: new Set(), liveStatic: false,
-    pulse: new Map(), colour: (v) => v, width: 100, height: 100, dpr: 1, ...extra,
+    pulse: new Map(), halo: new Set(), colour: (v) => v, width: 100, height: 100, dpr: 1, ...extra,
   };
 }
 

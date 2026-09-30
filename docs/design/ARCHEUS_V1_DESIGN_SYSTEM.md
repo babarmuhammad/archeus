@@ -184,8 +184,8 @@ state glyphs ≥ 3:1 on `surface-1`; focus ring ≥ 3:1 against both the control
 | Inspector slide | 220 ms | ease-out | open/close |
 | Sheet (mobile) | 280 ms | spring-like ease-out | open/close |
 | Thread travel | ≤ 600 ms, once | ease-in-out | Archeus acted on an object |
-| Active pulse | one 240 ms opacity pulse per batch of new output, at most every 2 s | ease-out | execution stream produced events |
-| Activity halo (2026-09-30) | static — no animation; appears on the first live read, clears when a read shows the work ended | — | presentation class `active` |
+| Active pulse | one 240 ms opacity pulse per batch of new output, at most every 2 s, ≤ 12 concurrent on the canvas | ease-out | execution stream produced events |
+| Activity halo (2026-09-30; built on the graph) | static — no animation; appears on the first live read, clears when a read shows the work ended | — | presentation class `active` |
 | Travelling marker (2026-09-30) | ≤ 600 ms once per output batch, ≤ 8 concurrent | linear along the edge | `execution.*` frame on a drawn live edge |
 | Activity chip (2026-09-30) | fade 160 ms, TTL 2.5 s (4 s on error), ≤ 3 per row | ease-out | a re-read execution's current action |
 | Presence orbit (2026-09-30) | ≤ 900 ms, ≤ 1 per 5 s | ease-in-out | a batch of activity frames |
@@ -206,6 +206,21 @@ presentations at module scope (a rerender, remount or route change never makes a
 an event at or below the newest seq it presented for that motion (no replay, and a running one keeps
 its start), refuses under reduced motion while counting the event as presented, and answers
 `at(t)` / `progress(motion, t)` as a pure read — `renderAt(t)`.
+
+**The activity halo as built (P19.5, 2026-09-30), on the graph.** *Active work* is Core's own
+state: a node carries a halo when its presentation class, from the `state` the graph read returned,
+is `active` (`model.haloed`) — an execution INTENT / STARTING / RUNNING / HANDING_OFF, a mission
+EXECUTING, a task RUNNING, and the rest of the class. No frame, message, recent render or mount
+makes one. *Completion* is a read showing another state; *hysteresis* is the read the view holds —
+the cache keeps it across a lost stream, a resync and a failed re-read, so the halo never clears on
+a reconnect (a remount after the cache dropped the read draws nothing until the next read, and then
+the truth). It is two static 1 px strokes of `--state-active` at `--halo-inner` (.70) and
+`--halo-outer` (.35) (ADR-0028 §3; the two alpha tokens were added to `tokens.json`), 2 and 6 units
+outside the node's radius — inside and outside the focus ring, so a focused live node shows both;
+the offsets are a layout choice this slice made, no document gave them. Forced colours or reduced
+transparency draw one solid ring. It is drawn into the static layer before the nodes: no frame, no
+timeline entry, the same under reduced motion. Its text equivalent is the node's state word in the
+graph mirror and "live work now" beside it. The row-glyph ring (rulebook A-03) is not built yet.
 
 **Adding a motion** (every later P19.5 slice): (1) give its entry the approved values, never new
 ones; it stays `approved` until the code runs it; (2) when built, set `built` and bind it — a CSS

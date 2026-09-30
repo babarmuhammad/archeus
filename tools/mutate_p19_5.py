@@ -1,5 +1,6 @@
-"""The P19.5 motion-foundation mutation suite (ADR-0024, ADR-0029 §6): break
-each gate's invariant, run the test written for it, and require it to fail.
+"""The P19.5 mutation suite (ADR-0024, ADR-0029 §6): the motion foundation and
+the activity halo. Break each gate's invariant, run the test written for it,
+and require it to fail.
 
     py tools/mutate_p19_5.py            every mutation
     py tools/mutate_p19_5.py N01 N11    only these
@@ -22,6 +23,12 @@ TL = 'clients/app/src/state/timeline.ts'
 LOOP = 'clients/app/src/graph/loop.ts'
 GV = 'clients/app/src/graph/GraphView.tsx'
 CSS = 'clients/app/src/styles/app.css'
+MODEL = 'clients/app/src/graph/model.ts'
+RENDER = 'clients/app/src/graph/render.ts'
+MIRROR = 'clients/app/src/graph/mirror.ts'
+CACHE = 'clients/app/src/data/cache.ts'
+HALO = 'node:test/halo.test.ts'
+HALO_E2E = 'tests/v1/e2e/test_spa_halo.py::test_the_halo_marks_live_work_until_core_says_it_stopped'
 TS = 'node:test/motion.test.ts'
 DG = 'tests/v1/design/test_design_gates.py::'
 E2E = 'tests/v1/e2e/test_spa_motion.py::'
@@ -125,6 +132,62 @@ MUTATIONS = [
      '.state .glyph {\n  display: inline-block;\n}',
      '.state .glyph {\n  display: inline-block;\n  animation: state-in var(--dur-state) var(--ease) infinite;\n}')],
      [IDLE]),
+    # ── the pulse cap (ADR-0024 §6: 12) ──
+    ('N24', 'the pulse cap moved off 12 (registry)', [(REG,
+     '"cap": 12, "cap_per": "surface",',
+     '"cap": 13, "cap_per": "surface",')],
+     [DG + 'test_the_motion_registry_holds_the_approved_budgets']),
+    ('N25', 'the pulse cap moved off 12 (generated)', [(REG_TS,
+     '    "cap": 12,',
+     '    "cap": 13,')],
+     [TS]),
+    # ── the activity halo (ADR-0024 §5-6, P18 A8 as amended) ──
+    ('N26', 'a halo on every node with a state, live or not (fake activity)', [(MODEL,
+     'if (n.machine && n.state && isActive(n.machine, n.state)) out.add(keyOf(n));',
+     'if (n.machine && n.state && (isActive(n.machine, n.state) || true)) out.add(keyOf(n));')],
+     [HALO]),
+    ('N27', 'the halo never drawn', [(RENDER,
+     '  drawHalos(ctx, s, stats);\n', '  if (s.halo.size < 0) drawHalos(ctx, s, stats);\n')],
+     [HALO]),
+    ('N28', 'the halo never drawn, in the browser', [(RENDER,
+     '  drawHalos(ctx, s, stats);\n', '  if (s.halo.size < 0) drawHalos(ctx, s, stats);\n')],
+     [HALO_E2E]),
+    ('N29', 'the halo outside the static layer signature', [(RENDER,
+     ' s.halo, !!s.haloSolid,', '')],
+     [HALO]),
+    ('N30', 'both halo strokes at the inner alpha', [(RENDER,
+     "[HALO_RINGS[1], ALPHA['halo-outer']]", "[HALO_RINGS[1], ALPHA['halo-inner']]")],
+     [HALO]),
+    ('N31', 'the halo dropped under reduced motion', [(GV,
+     '      halo,\n      haloSolid:',
+     "      halo: matchMedia('(prefers-reduced-motion: reduce)').matches ? new Set<string>() : halo,\n"
+     '      haloSolid:')],
+     [HALO_E2E]),
+    ('N32', 'the halo cleared while the stream is down', [(GV,
+     "import { store, useRead } from '../data/cache';",
+     "import { store, useConn, useRead } from '../data/cache';"), (GV,
+     "  const halo = useMemo(() => haloed(model, (m, s) => present(m, s).cls === 'active'), [model]);",
+     "  const conn = useConn();\n"
+     "  const halo = useMemo(() => (conn.conn === 'reconnecting' ? new Set<string>() : haloed(model, (m, s) => present(m, s).cls === 'active')), [model, conn]);")],
+     [HALO_E2E]),
+    ('N33', 'a failed re-read drops the read the view holds', [(CACHE,
+     'this.set(path, { ...e.snap, error, pending: false, gen });',
+     'this.set(path, { error, pending: false, gen });')],
+     [HALO_E2E]),
+    ('N34', 'the mirror loses the halo\'s words (unit)', [(MIRROR,
+     'live: halo.has(k),', 'live: halo.has(k) && false,')],
+     [HALO]),
+    ('N35', 'the mirror loses the halo\'s words (browser)', [(GV,
+     "{live ? ' — live work now' : ''}", "{''}")],
+     [HALO_E2E]),
+    ('N36', 'an active halo keeps the loop running', [(LOOP,
+     '    if (this.anims.size) this.kick();',
+     '    if (true) this.kick();')],
+     [HALO_E2E]),
+    ('N37', 'Math.random in the graph view (the clarified scope)', [(GV,
+     "const CAMERA_MS = MOTIONS['camera-settle'].max_ms;",
+     "const CAMERA_MS = MOTIONS['camera-settle'].max_ms + Math.random() * 0;")],
+     [DG + 'test_the_presentation_clock_and_the_renderer_read_no_clock_and_no_random']),
 ]
 
 if __name__ == '__main__':

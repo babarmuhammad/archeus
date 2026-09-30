@@ -8,7 +8,9 @@
 // cached STATIC layer, redrawn only when something it shows changed; a frame
 // in which only a pulse moved copies that layer and strokes the pulsed edges
 // over it, so its work is one copy plus one path per pulse, whatever the
-// number of nodes.
+// number of nodes. The activity halo is part of the static layer: a node with
+// live work costs no frame for having it.
+import { ALPHA } from '../state/tokens.ts';
 import { attrsText, colourVar, countsText, dashOf, lookOf, radiusOf, tracePath, widthOf } from './encoding.ts';
 import type { Drawn, Model } from './model.ts';
 import type { Point } from './layout.ts';
@@ -37,6 +39,8 @@ export interface Scene {
   live: ReadonlySet<string>; // drawn edge ids with a live execution
   liveStatic: boolean; // reduced motion: live edges drawn thicker, never pulsed
   pulse: ReadonlyMap<string, number>; // drawn edge id → 0..1 of its one pulse
+  halo: ReadonlySet<string>; // node keys with live work (model.haloed): a static ring each
+  haloSolid?: boolean; // forced colours or reduced transparency: one solid ring, no alpha
   degraded?: boolean; // frames run slow (Loop.degraded): no pulse, the focus's label only
   colour: (cssVar: string) => string;
   width: number;
@@ -69,7 +73,7 @@ export interface Layer {
 /** What the static layer shows: when none of it changed, the layer is reused.
  * The pulse map is deliberately not in it. */
 export function staticSig(s: Scene): unknown[] {
-  return [s.model, s.keys, s.drawn, s.pos, s.cam.x, s.cam.y, s.cam.k, s.focus, s.root ?? null, s.hover ?? null, s.selected ?? null, s.context, s.path ?? null, s.live, s.liveStatic, !!s.degraded, s.width, s.height, s.dpr, s.colour('--bg'), s.colour('--text')];
+  return [s.model, s.keys, s.drawn, s.pos, s.cam.x, s.cam.y, s.cam.k, s.focus, s.root ?? null, s.hover ?? null, s.selected ?? null, s.context, s.path ?? null, s.live, s.liveStatic, s.halo, !!s.haloSolid, !!s.degraded, s.width, s.height, s.dpr, s.colour('--bg'), s.colour('--text')];
 }
 
 /** One frame of the view: redraw the static layer only if it changed, copy it,
@@ -116,6 +120,7 @@ function paintStatic(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) 
   ctx.fillRect(0, 0, s.width, s.height);
   toCamera(ctx, s);
   drawEdges(ctx, s);
+  drawHalos(ctx, s, stats);
   drawNodes(ctx, s, stats);
   drawLabels(ctx, s, stats);
 }
@@ -179,6 +184,43 @@ function drawPulses(ctx: CanvasRenderingContext2D, s: Scene) {
     ctx.lineTo(pb.x, pb.y);
     ctx.stroke();
   }
+  ctx.globalAlpha = 1;
+}
+
+/** Where the halo's two strokes sit, outside the node's own radius (inside the
+ * focus ring's 4 and outside it, so a focused live node shows both). */
+export const HALO_RINGS = [2, 6] as const;
+
+/** The activity halo (ADR-0024 §6, ADR-0028 §3): two static 1 px strokes of
+ * --state-active round every visible node with live work, the inner at
+ * halo-inner and the outer at halo-outer; one solid ring when transparency
+ * must not carry it. No gradient, no glow, never animated. One path per
+ * ring and dimming, whatever the number of halos. */
+function drawHalos(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
+  if (!s.halo.size) return;
+  const dots = stats.lod === 'dots';
+  const rings: [number, number][] = s.haloSolid ? [[HALO_RINGS[0], 1]] : [[HALO_RINGS[0], ALPHA['halo-inner']], [HALO_RINGS[1], ALPHA['halo-outer']]];
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1 / s.cam.k;
+  ctx.strokeStyle = s.colour('--state-active');
+  for (const faded of [false, true])
+    for (const [gap, alpha] of rings) {
+      const at: [number, number, number][] = [];
+      for (const k of s.keys) {
+        const n = s.halo.has(k) && dim(s, k) === faded ? s.model.byKey.get(k) : undefined;
+        const p = n && s.pos.get(k);
+        if (!n || !p) continue;
+        at.push([p.x, p.y, dots ? (2 + gap) / s.cam.k : radiusOf(lookOf(n.kind, n.endpoint, n.type).shape) + gap]);
+      }
+      if (!at.length) continue;
+      ctx.globalAlpha = alpha * (faded ? 0.25 : 1);
+      ctx.beginPath();
+      for (const [x, y, r] of at) {
+        ctx.moveTo(x + r, y);
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+      }
+      ctx.stroke();
+    }
   ctx.globalAlpha = 1;
 }
 

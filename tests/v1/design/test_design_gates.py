@@ -243,6 +243,16 @@ def test_the_presentation_clock_and_the_renderer_read_no_clock_and_no_random():
         src = _src(*parts)
         assert not re.search(r'Math\.random|Date\.now|performance\.now|new Date\(|'
                              r'requestAnimationFrame|setTimeout|setInterval', src), parts
+    # the rule's scope (ADR-0024 §4 as clarified): animation, rendering, layout
+    # and presentation state — every file of graph/ and state/. An operational
+    # identifier (data/commands.ts's idempotency-key fallback) is outside it.
+    seen = 0
+    for sub in ('graph', 'state'):
+        for f in os.listdir(os.path.join(APP, 'src', sub)):
+            if f.endswith(('.ts', '.tsx')):
+                assert 'Math.random' not in _src(sub, f), '%s/%s' % (sub, f)
+                seen += 1
+    assert seen >= 12
 
 
 def test_no_readback_effects():

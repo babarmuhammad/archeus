@@ -101,7 +101,7 @@ function scene(): Scene {
   return {
     model: m, keys, drawn: lifted(m, vis), pos: new Map([[keyOf(X), { x: 10, y: 10 }], [keyOf(T), { x: 60, y: 40 }]]),
     cam: { x: 0, y: 0, k: 1 }, focus: null, context: null, live: new Set(), liveStatic: false,
-    pulse: new Map(), colour: (v) => v, width: 100, height: 100, dpr: 1,
+    pulse: new Map(), halo: new Set(), colour: (v) => v, width: 100, height: 100, dpr: 1,
   };
 }
 

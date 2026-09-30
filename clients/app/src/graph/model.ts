@@ -241,6 +241,18 @@ export function liveExecutions(m: Model, isActive: (machine: string, state: stri
   return out;
 }
 
+/** The nodes carrying an activity halo (ADR-0024 §5-6, P18 A8 as amended):
+ * every loaded node whose presentation class, by Core's state in the read,
+ * is `active`. Nothing else makes one — not a frame, a message, a recent
+ * render or a mount. Hysteresis is the read's: the view draws the last read
+ * it holds, which the cache keeps across a lost stream, a resync and a failed
+ * re-read, so a halo clears only when a read shows the work no longer live. */
+export function haloed(m: Model, isActive: (machine: string, state: string) => boolean): Set<string> {
+  const out = new Set<string>();
+  for (const n of m.nodes) if (n.machine && n.state && isActive(n.machine, n.state)) out.add(keyOf(n));
+  return out;
+}
+
 /** The one edge a live execution's pulse travels: its `executions.task_id`
  * edge, as drawn (lifted) now. */
 export function pulseEdge(drawn: readonly Drawn[], exec: string): Drawn | null {

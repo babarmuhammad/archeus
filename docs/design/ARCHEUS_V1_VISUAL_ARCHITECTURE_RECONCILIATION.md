@@ -633,7 +633,7 @@ the build.
   forward only, **never replayed** on a re-read, resync or seek. A resync redraws state, it does not
   re-fire pulses.
 - transform/opacity only; no `infinite`, no iteration > 1, no `steps()`; one rAF caller
-  (`graph/loop.ts`); CSS/WAAPI finite animations for DOM; `Math.random` banned in `src/`;
+  (`graph/loop.ts`); CSS/WAAPI finite animations for DOM; `Math.random` banned in animation, rendering, layout and presentation state (`src/graph/`, `src/state/`; ADR-0024 §4);
   **`filter:` is never animated** (R7's `brightness()` dimming is the example of what not to copy).
 - Demo/fixture motion is caged (R1): impossible while real Core data is present.
 

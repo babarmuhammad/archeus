@@ -62,6 +62,8 @@ def render_css(t):
     for k, v in t['motion'].items():
         out.append('  --dur-%s: %dms;' % (k, v))
     out.append('  --ease: %s;' % t['easing'])
+    for k, v in _alpha(t).items():
+        out.append('  --%s: %s;' % (k, v))
     for k, v in t['layout'].items():
         out.append('  --%s: %s;' % (k.replace('_', '-'), '%dch' % v if k.endswith('_ch')
                                       else '%dpx' % v))
@@ -92,11 +94,17 @@ def render_css(t):
     return '\n'.join(out) + '\n'
 
 
+def _alpha(t):
+    """The fixed transparency tokens (ADR-0028 §3), without the comment."""
+    return {k: v for k, v in t['alpha'].items() if not k.startswith('$')}
+
+
 def render_tokens_ts(t):
     return (HEAD + 'export const MOTION = %s as const;\nexport const EASING = %s;\n'
             'export const BREAKPOINTS = %s as const;\nexport const TARGETS = %s as const;\n'
+            'export const ALPHA = %s as const;\n'
             % (json.dumps(t['motion']), json.dumps(t['easing']), json.dumps(t['breakpoints']),
-               json.dumps(t['targets'])))
+               json.dumps(t['targets']), json.dumps(_alpha(t))))
 
 
 def _label(state):

@@ -15,7 +15,7 @@ import { Inspector } from '../surfaces/Inspector';
 import { lookOf } from './encoding';
 import { fit, layout, pinchCamera, type Point } from './layout';
 import { browserHost, Loop } from './loop';
-import { allExpanded, around, build, inFocus, keyOf, lifted, liveExecutions, path as tracePathKeys, pathStatus, pulseEdge, pulseFor, search, toggle, visible, type GraphData, type Model, type Ref } from './model';
+import { allExpanded, around, build, haloed, inFocus, keyOf, lifted, liveExecutions, path as tracePathKeys, pathStatus, pulseEdge, pulseFor, search, toggle, visible, type GraphData, type Model, type Ref } from './model';
 import { frame, type Camera, type DrawStats, type Layer } from './render';
 import { doubleTap, selected as selectedEdge, start, step, type Walk } from './keys';
 import { edgeWords } from './relations';
@@ -150,6 +150,10 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
     return merged;
   }, [model, keys, drawn, path, pinned, vis]);
 
+  // the activity halo: Core's state in the read this view holds, nothing else
+  const halo = useMemo(() => haloed(model, (m, s) => present(m, s).cls === 'active'), [model]);
+  const halos = useMemo(() => keys.filter((k) => halo.has(k)).length, [keys, halo]);
+
   const live = useMemo(() => {
     const execs = liveExecutions(model, (m, s) => present(m, s).cls === 'active');
     const out = new Set<string>();
@@ -215,6 +219,8 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
       path: traced,
       live,
       liveStatic: document.documentElement.dataset.motion === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches,
+      halo,
+      haloSolid: matchMedia('(forced-colors: active)').matches || matchMedia('(prefers-reduced-transparency: reduce)').matches,
       pulse,
       colour: (v) => styles.getPropertyValue(v).trim() || '#888',
       width: size.current.w,
@@ -294,7 +300,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   useEffect(() => {
     if (!cam.current) fitAll(false);
     loopRef.current?.request();
-  }, [model, keys, drawn, pos, walk, context, traced, live]);
+  }, [model, keys, drawn, pos, walk, context, traced, live, halo]);
 
   // what the keyboard (or a click) says
   useEffect(() => {
@@ -424,7 +430,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   const hiddenCount = (data.hidden ?? []).reduce((a, h) => a + h.count, 0);
 
   return (
-    <div className="graph" data-graph-focus={focus ? `${focus.kind}:${focus.id}` : 'workspace'} data-graph-nodes={keys.length} data-graph-lod={lod} data-graph-loop={loopState} data-graph-at={walk.at} data-graph-live={live.size} data-graph-pulses={pulseCount} data-graph-pinned={pinned.size} data-graph-selected={sel?.edge.id ?? ''} data-graph-path={pathState ?? ''}>
+    <div className="graph" data-graph-focus={focus ? `${focus.kind}:${focus.id}` : 'workspace'} data-graph-nodes={keys.length} data-graph-lod={lod} data-graph-loop={loopState} data-graph-at={walk.at} data-graph-live={live.size} data-graph-halos={halos} data-graph-pulses={pulseCount} data-graph-pinned={pinned.size} data-graph-selected={sel?.edge.id ?? ''} data-graph-path={pathState ?? ''}>
       <div className="graph-bar" role="toolbar" aria-label="Graph">
         <a className="chip" href={modules !== undefined ? objectHref('repository', focus!.id) : focus ? (focus.kind === 'project' ? `#/world/${focus.id}` : objectHref(focus.kind, focus.id, 'relations')) : '#/world'}>
           List
@@ -536,7 +542,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
       <p id="graph-keys" className="caption">
         ↑ ↓ choose a relationship · → follow it · ← back · Enter open · F focus here · Space expand or collapse · + − zoom · 0 fit · / find · P mark a path end · . pin or unpin · Esc clear
       </p>
-      <Mirror model={model} pinned={pinned} />
+      <Mirror model={model} pinned={pinned} halo={halo} />
     </div>
   );
 }
@@ -548,13 +554,13 @@ const chipOf = (e: { field: string; rel?: string | null }) => edgeWords(e.field,
 /** The accessible form (A11): the same loaded graph as a list — every node the
  * read returned (the collapsed ones and the "+N" stubs too), each with its
  * edges in words. Not a second data source: built from the same object. */
-export function Mirror({ model, pinned }: { model: Model; pinned?: ReadonlySet<string> }) {
+export function Mirror({ model, pinned, halo }: { model: Model; pinned?: ReadonlySet<string>; halo?: ReadonlySet<string> }) {
   return (
     <section className="sr" aria-label="Relationships in this view, as a list" data-graph-mirror="">
       <ul>
-        {mirrorRows(model, pinned).map(({ k, n, look, edges, pinned: isPinned, detail }) => {
+        {mirrorRows(model, pinned, halo).map(({ k, n, look, edges, pinned: isPinned, detail, live }) => {
           return (
-            <li key={k} data-key={k}>
+            <li key={k} data-key={k} data-live={live ? '' : undefined}>
               {n.endpoint ? (
                 <span>
                   {look.noun} {n.label}
@@ -567,6 +573,7 @@ export function Mirror({ model, pinned }: { model: Model; pinned?: ReadonlySet<s
               )}
               {isPinned ? ' (pinned)' : ''}
               {detail ? ` — ${detail}` : ''}
+              {live ? ' — live work now' : ''}
               {n.machine && n.state ? <StateBadge machine={n.machine} state={n.state} /> : null}
               {edges.length ? (
                 <ul>

@@ -223,9 +223,9 @@ export const MOTIONS = {
     "equivalent": "the list's own count and the row itself"
   },
   "activity-halo": {
-    "status": "approved",
-    "source": "ADR-0024 §5-6, rulebook §21 A-03",
-    "trigger": "the object's presentation class is active (hysteresis: clears only when a read shows the work ended)",
+    "status": "built",
+    "source": "ADR-0024 §5-6, rulebook §21 A-03, P18 A8 as amended, ADR-0028 §3",
+    "trigger": "a read of Core's state shows the object's presentation class active; it clears only when a read shows it is not (hysteresis: the view draws the last read it holds, which survives a lost stream, a resync and a failed re-read)",
     "driven_by": "state",
     "runs_on": "static",
     "css": null,
@@ -241,13 +241,12 @@ export const MOTIONS = {
     "min_interval_ms": null,
     "interval_per": null,
     "surfaces": [
-      "graph",
-      "row glyph"
+      "graph"
     ],
     "idle": "static",
     "replay": false,
-    "reduced": "kept: it is static already",
-    "equivalent": "the state word 'Running'"
+    "reduced": "kept: it is static, so reduced motion shows the same halo",
+    "equivalent": "the node's state word in the graph mirror, and 'live work now' beside it"
   },
   "travelling-marker": {
     "status": "approved",

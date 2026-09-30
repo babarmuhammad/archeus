@@ -22,6 +22,8 @@
   --dur-pulse: 240ms;
   --dur-toast: 160ms;
   --ease: cubic-bezier(.22,.8,.18,1);
+  --halo-outer: 0.35;
+  --halo-inner: 0.7;
   --sidebar: 232px;
   --rail: 64px;
   --inspector-min: 360px;
