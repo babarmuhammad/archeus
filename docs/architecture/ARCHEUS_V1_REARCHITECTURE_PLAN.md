@@ -1257,13 +1257,13 @@ verification phase, not a feature phase.
   project-owned file is written, moved, renamed, reformatted or annotated outside ADR-0046's named
   capabilities; cutover is **per project**, with no global mode; nothing runs as a side effect of
   an update, restart or schedule.
-- Work, in order: preservation inventory; project baseline manifests; dry run on a scratch
+- Work, in order (the per-project sequence of legacy-context-migration.md §25.1): preservation inventory; project baseline manifests; dry run on a scratch
   database and its report; the real import (source records, then derived rows); dual-read
   verification against the legacy app; rollback drill; the project compatibility gate; the user's
   review of every unresolved item; then, for the projects the user chooses and only when the
   user approves each, the per-project cutover with its opt-ins and a rollback window of at least
   90 days that only the user closes.
-- Gates (testing-strategy §9, MG-1…MG-18): 100% of source records accounted for and classified;
+- Gates (testing-strategy §9, MG-1…MG-19): 100% of source records accounted for and classified;
   0 silent losses; 0 unexplained conflicts; 100% provenance; deterministic re-run; rollback
   demonstrated; migrated memory readable by V1; legacy source recoverable; every project-file
   difference attributed.
@@ -1415,7 +1415,7 @@ recorded, decisions documented with reasons — each is linked from the table at
 - [ ] Repository re-inspection and drift work (S7)
 - [ ] Legacy data migration tested (G8)
 - [ ] Legacy context and memory migrated and verified; existing projects unchanged unless opted
-      in (P25.5, MG-1…MG-18)
+      in (P25.5, MG-1…MG-19)
 - [ ] Every traceability row green; no Critical design-review findings; no High security findings
 
 *Release evidence* — each item is a recorded artifact (command output, CI run, report), not a

@@ -3,9 +3,10 @@
 Status: **DECIDED — architecture only; nothing is migrated, no tool exists, and no project file,
 repository, memory store, Core, API or UI was changed to produce it.** Written 2026-09-30 on
 `archeus-v1-rearchitecture` at `c94e026` (`e9d5681`); the user's decision pass of 2026-10-01
-resolved MD-1…MD-6 and LM-C1…LM-C3 (§24). Decision records:
+resolved MD-1…MD-6 and LM-C1…LM-C3 (§24); a validation pass the same day corrected MD-3, MD-5
+and MD-6 and strengthened the compatibility gate and rollback (§25). Decision records:
 [ADR-0045](decisions/ADR-0045.md) (migration, DECIDED) and [ADR-0046](decisions/ADR-0046.md)
-(the V1 write boundary, DECIDED). Where a section below and §24 differ, §24 and the ADRs govern. It extends, and does not restate,
+(the V1 write boundary, DECIDED). Where sections differ, §25 governs, then §24 and the ADRs. It extends, and does not restate,
 [migration-plan.md](migration-plan.md) (strangler, gap analysis, P22 importer, ownership),
 ADR-0019 (data ownership during the strangler period), [context-and-knowledge.md](context-and-knowledge.md)
 (knowledge lifecycle, supersession, forget), domain-model §1 (three truths, provenance) and
@@ -40,6 +41,7 @@ cited as §1…§24.
 22. Traceability
 23. Dependencies, amendments, undecided
 24. Decision record (2026-10-01)
+25. Architecture validation (2026-10-01, second pass)
 
 ---
 
@@ -391,7 +393,7 @@ citing the same paths.
 | **Mission** | intent, plan versions, checkpoints | V1 | history after completion | a never-launched legacy plan → a CREATED mission, origin `legacy_import`, awaiting confirmation; a launched one → REFERENCE; never COMPLETED (ADR-0045 §11) |
 | **Task** | contract, state | V1 | with its mission | none |
 | **Execution** | one attempt, its record | V1 | history | **none**: no legacy session becomes an Execution (ADR-0045 §11, P12 D2) |
-| **Session** | the harness's conversation | the harness | the harness's | every legacy session in scope → a Session row, mode `manual`, referencing its transcript in place |
+| **Session** | the harness's conversation | the harness | the harness's | preserved as manifest entries; a Session row (mode `manual`) only by the user's action or an explicit per-run rule (§25.3) |
 | **Reference** | external material with provenance, and project files cited at a revision | its owner | pinned to a revision | reference, never copy |
 | **Memory / lesson** | knowledge items at one of the scopes above | V1 | context-and-knowledge §3 | keeps its source scope |
 
@@ -578,7 +580,7 @@ or a cutover.
 | M-21 | ADRs and documents (§21) | ADR-0045; this document | now | — | documentation gates | P25 |
 | M-22 | cannot declare V1 complete while unverified (§22) | P26 evidence + blocker | P26 | — | P26 checklist | P26 |
 
-Gates MG-1…MG-18 are listed in testing-strategy §9.
+Gates MG-1…MG-19 are listed in testing-strategy §9.
 
 ## 23. Dependencies, amendments, undecided
 
@@ -647,6 +649,9 @@ run. Never C → anything; never D → A directly.
 
 ### 24.4 MD-3 — legacy sessions: none become Executions
 
+*Corrected by §25.3: historical sessions stay source material; a Session row only by the user's
+action or an explicit per-run rule.*
+
 An Execution is work Archeus drove under P9/P10, and its schema requires a task and a mission (P12
 D2); a legacy session was driven by the user. So every legacy session of a project in scope
 becomes a **Session** row, mode `manual`, through P12's registration path: identity = (harness,
@@ -678,6 +683,9 @@ closed (ADR-0045 §8).
 
 ### 24.6 MD-5 — retirement is separate and explicit
 
+*Corrected by §25.4: the legacy app retires only by a release decision after P25.5, never while a
+project still works through it.*
+
 Per project: when the user closes its rollback window (§24.7). Of the legacy app: only when
 migration-plan §6's retirement checklist passes **and** every known project is either retired from
 legacy or explicitly left on it by the user — and only by the user's decision. **No date is set.**
@@ -685,6 +693,9 @@ The legacy app stays available during V1 development and for every project not c
 not require it to retire, and no retirement can invalidate an unmigrated project.
 
 ### 24.7 MD-6 — recovery material and its retention
+
+*Corrected by §25.5: retention configurable per project above the ADR-0019 floor; the exporter
+itself removed only by a release decision.*
 
 | Question | Answer |
 |---|---|
@@ -729,7 +740,7 @@ not require it to retire, and no retirement can invalidate an unmigrated project
 
 ### 24.10 P25.5 acceptance (revised)
 
-The gates MG-1…MG-18 pass on the fixture legacy homes, including a four-project coexistence
+The gates MG-1…MG-19 pass on the fixture legacy homes, including a four-project coexistence
 fixture; a full dry run over the user's real environment passes (read only, 100% accounted); and the
 sequence up to cutover — import, dual-read, compatibility gate, rollback drill — passes on at least
 one real project the user chooses. **No cutover is required for acceptance.** P26 requires P25.5
@@ -741,10 +752,273 @@ P25.5 is a run of tooling, so "implementation" means two things with different p
 
 **The P22 tooling** (fixture legacy homes only, never the user's real stores) may begin when: P21
 is closed and P22 has started under its own design gate; that design gate carries this document's
-tool design, MG-1…MG-18 and the legacy marker seam; and the user approves that gate.
+tool design, MG-1…MG-19 and the legacy marker seam; and the user approves that gate.
 
 **The P25.5 run** on the user's environment may begin only when all of: P22 tooling built with
-MG-1…MG-18 mutation-verified; P23 closed (acceptance of the target); P24 closed with the tooling in
+MG-1…MG-19 mutation-verified; P23 closed (acceptance of the target); P24 closed with the tooling in
 its scope and no open High finding; P25 closed (the runbook published); the ADR-0046 static gate
 green on the release candidate; the user has read the dry-run plan; and the user issues the
 command. Nothing in this pass authorises any of it.
+
+## 25. Architecture validation (2026-10-01, second pass)
+
+A validation of this document, ADR-0045, ADR-0046 and the orchestration decisions against the
+user's validation brief of 2026-10-01. Verified at `d4bc009` (the brief named `e9d5681`; the
+repository is authoritative). No hard stop condition was met: every legacy source can be read
+without mutation (a SQLite store such as Codex's `state_*.sqlite` is category D — its bytes are
+hashed, it is never opened as a database); every project-file ownership boundary is established by
+ADR-0046; rollback never needs to overwrite user data (§25.7); V1 modifies no project before its
+cutover; every provenance link is preservable. Three earlier decisions are **corrected** here
+(§25.3–§25.5) and govern where §24 differs.
+
+### 25.1 The cutover sequence, per project
+
+1. **freeze input** — the snapshot's manifest fixes the exact bytes and log offsets read; later
+   legacy writes are the next snapshot's, never this run's;
+2. **immutable snapshot**; 3. **extract** into source records; 4. **transform** (named, versioned,
+   pure); 5. **validate** (schema, categories, secrets, conflicts); 6. **dual-read** (§18);
+7. **completeness** (§17, MG-15); 8. **project compatibility** (§14, strengthened in §25.6);
+9. **rollback demonstrated** on this project's copy (§15, §25.7); 10. **the user's explicit
+   authorisation**, per project, with the non-rollbackable register (§25.7) shown; 11. **cut over
+   that project only** (marker + approved opt-ins); 12. **keep rollback and export** (§25.5);
+13. **observe** — the rollback window, with dual-read repeatable on demand; 14. **close the
+   migration of that project** only after verification and only by the user.
+
+**Any failed gate: no cutover**, the project stays on legacy, and its legacy source stays exactly as
+it was. One project failing never blocks another.
+
+### 25.2 Dual-run: who may write what until a project's cutover
+
+| Actor | Reads | Writes |
+|---|---|---|
+| legacy app | its stores | its stores — unchanged behaviour |
+| V1 | V1 state; legacy stores read only (inspection, imports) | inside ADR-0046 only; the **only** V1 writes into legacy-owned files are the two ADR-0019 shared files, through the legacy app's own functions — declared, never hidden |
+| migration tooling | legacy stores, read only | `ARCHEUS_HOME` only (snapshot, source records, V1 rows, reports) |
+| dual-read | both sides | nothing but its report; legacy-side reads use the legacy formats on the snapshot, and rendered blocks are rendered in memory |
+
+No write-through from V1 or from the tooling into legacy exists beyond the two declared files; MG-1
+(tooling), MG-14 (V1) and MG-16 (dual-read) hold it.
+
+### 25.3 MD-3 corrected — sessions stay source material unless a defined rule applies
+
+§24.4 made every legacy session a Session row. That imports records whose meaning to V1 has not
+been shown, which the brief rules out. Four classes, each handled differently:
+
+| Class | Examples | Becomes |
+|---|---|---|
+| historical knowledge | lessons, entities, decisions, `KEEP` blocks | V1 knowledge (category A), with provenance to the session it came from |
+| historical sessions | transcripts of past sessions | **preserved source material**: a manifest entry with identity (harness, account config dir, provider session id), path, size and hash (category D); no V1 row |
+| currently active / relevant sessions | a session the user resumes, hands off or registers | a **Session** row, mode `manual`, through P12's registration path — created by the user's action at any time, never by the migration's choice |
+| operational logs | bash log, denials, events | category D |
+
+A session may become a Session row during a migration run only through an **explicit,
+configurable, per-run rule** the user sets (`sessions: none | listed | window <from>…<to>`, default
+`none`), recorded in the run. No session becomes an Execution for any reason (P12 D2), and none
+becomes a Session row merely because of its date. A lesson's `sids` link to the manifest entries of
+those sessions, so provenance is kept without any Session row.
+
+### 25.4 MD-5 corrected — retiring the legacy app is a separate release decision after P25.5
+
+§24.6 allowed retirement while a project was "explicitly left on legacy", which would break that
+project. Corrected: the legacy app retires only by the user's **explicit release decision after
+P25.5**, and only when every project the user names as required has, independently, passed
+migration, demonstrated rollback, had its dual-read differences explained, passed its compatibility
+gate and had its legacy export verified; every other project is either cut over too, or explicitly
+declared by the user as no longer needing Archeus — its legacy state then stays preserved in place
+and in a snapshot. While any project still works through the legacy app, the legacy app does not
+retire.
+
+### 25.5 MD-6 corrected — retention is configurable, with an existing floor
+
+The architecture already defines one number: ADR-0019's "export back to legacy formats for 90 days
+after cutover". That is kept as the **floor**, not invented here. Retention of a project's recovery
+material is **configurable per project** at or above it, never expires by itself, and ends only by
+the user closing the window. Separately, the **export capability** itself (the exporter in V1) is
+removed only by an explicit release decision, never because a period elapsed. During retention the
+snapshot plus the export are enough to reconstruct the legacy representation (§25.7 names what the
+export cannot carry).
+
+### 25.6 Project compatibility gate, strengthened
+
+Detected, per project, in the before/after manifests: git `HEAD`, every ref, the index hash, every
+tracked file, every untracked file, ignored files where practical (by path, size and hash; large
+generated trees summarised by a directory hash), `CLAUDE.md`, `AGENTS.md`, `.claude/rules/`,
+`.claude/settings.json` and the rest of `.claude/`, every entry of `.archeus/` (legacy-owned and
+V1-owned separately), the harness session folders of the project, and `git worktree list`.
+
+Every change is attributed to exactly one owner, **by positive evidence only**:
+
+| Owner | Evidence |
+|---|---|
+| **V1 change** | an entry in V1's write ledger (ADR-0046: every write outside `ARCHEUS_HOME` is logged) |
+| **approved mission change** | an Execution with its verified merge or worktree record |
+| **migration change** | an entry in the migration run's write ledger — before cutover this can only be `ARCHEUS_HOME`, so any project change claiming it fails |
+| **legacy change** | a change only inside a legacy-owned region: a legacy entry of `.archeus/`, the inside of a managed block's markers, a legacy-owned harness file |
+| **user change** | anything else — **presumptive**: listed for the user to confirm; on fixture homes, where no user acts, a presumptive user change **fails** the gate |
+
+**A change is never attributed to the migration because it happened during a migration run.** An
+unattributed or unconfirmed change fails the gate.
+
+### 25.7 Rollback, and the non-rollbackable register
+
+Rollback restores legacy compatibility, keeps every V1-native record and all migration provenance,
+restores opt-in project files from their verified pre-change copies, re-enables the legacy writers
+(removes the marker) and re-emits legacy formats where supported. It **never blindly overwrites a
+newer user change**: a file is restored only if its current hash equals the hash V1 last wrote;
+otherwise the three versions (pre-change, V1's, current) are shown and the user decides.
+
+Artifacts whose rollback is not complete are listed in a **non-rollbackable register** shown before
+the cutover authorisation (§25.1 step 10), which the user must accept explicitly:
+
+| Artifact | Limit |
+|---|---|
+| V1-native knowledge created after cutover | re-emitted only in the fields the legacy format has (no lifecycle state history, no V1 provenance beyond a source note); the rest stays in V1 |
+| missions run in V1 after cutover | their merged code stays in the user's git history (the user's work, not migration state); the legacy app has no representation of a mission |
+| a legacy loop and its imported V1 automation | the automation is imported DISABLED and stays so until the user stops the legacy loop, so the two never both run; rollback leaves the legacy loop as the user left it |
+
+Nothing outside this register is non-rollbackable.
+
+### 25.8 The preservation matrix, completed
+
+§4 gives, per source, the owner class, location, destination, method, verification and loss risk.
+The remaining columns the brief names — scope, current format, target representation,
+transformation, provenance key and fallback — are these, keyed by §4's ids:
+
+| Id | Scope | Format | Target V1 representation | Transformation | Provenance key | Fallback if the transform fails |
+|---|---|---|---|---|---|---|
+| L1 | project | JSON graph | KnowledgeItem ENTITY / LESSON, Relation | `map.graph.v1`, `map.lesson.v1` | project, file, entity id | source record kept; items `unsupported`; project `partial`; no cutover without acceptance |
+| L2 | project | JSON list | history events `legacy.worklog` | `map.worklog.v1` | project, file, entry index + timestamp | source record kept |
+| L3 | project | text log | `hits` / `last_used_at` on mapped items | `map.hits.v1` | file, byte range | source record kept; counters left at 0 and flagged |
+| L4, L7, L8 | project | text | none (category B) | `copy.v1` | file, hash | — |
+| L5 | project | text copies + index | none (category B, history of L1 and M1) | `copy.v1` | file, timestamp in name | — |
+| L6 | project | markdown | CREATED mission awaiting confirmation (never launched) or REFERENCE (launched) | `map.plan.v1` | file, hash | source record kept; REFERENCE only |
+| L9, L10, L11 | project | text / JSONL | none (category D) | `ref.v1` | path, size, hash | original in place |
+| L12, L18, L19, L20 | project / account | JSON / logs | none (category D) | `ref.v1` | path, hash | — |
+| L13 | project | JSON | Project root paths, inspection input | `map.workspace.v1` | file, hash | source record kept; roots confirmed by the user |
+| L14 | global / account | JSON | Account, ResourcePolicy defaults, preferences; legacy theme only as a *suggestion* (§25.11) | `map.settings.v1` (secrets → category C) | file, key path | source record kept; the user sets accounts by hand |
+| L15 | project / account | JSON + OS scheduler | Automation, DISABLED | `map.loops.v1` | file, loop id | source record kept |
+| L16 | global | markdown | REFERENCE (skills as offers: V1.x-O5) | `map.library.v1` | file, hash | source record kept |
+| L17 | project / session | JSON / text | labels on Session rows when those exist; project STANDARD (system prompt) | `map.session_meta.v1` | file, session id | source record kept |
+| L21 | account | credential files | none (category C) | `excl.v1` | path only, no hash | — |
+| M1 | project (file project-owned) | managed blocks in markdown | `KEEP` → STANDARD (explicit); the rest none (category B) | `map.keep_block.v1` | file, block marker, hash | source record kept; file never written |
+| M2 | project | markdown | none (category B) | `copy.v1` | file, hash | — |
+| M3, M4, M5 | project | markdown / JSON | REFERENCE (harness configuration of the project) | `ref.v1` | path, hash | original in place |
+| U1, U2 | user | markdown / JSON | REFERENCE only | `ref.v1` | path, hash | original in place |
+| H1 | project / session | JSONL / SQLite | manifest entries (§25.3); Session rows only by the user's action or the run's explicit rule | `ref.v1` | harness, config dir, session id, path, hash | original in place |
+| H2 | account | harness files | none | `ref.v1` (existence) | path | — |
+| R1, R3, R4 | project (git) | markdown, git | REFERENCE / ARCHITECTURE at `path@commit` | `ref.commit.v1` | path, commit, hash | resolves in git |
+| R2 | project | markdown, **some untracked** | REFERENCE; untracked notes are **copied** into the snapshot (category B) so a recovery path exists (§25.9) | `copy.v1` + `ref.v1` | path, hash (+ commit when tracked) | original in place |
+| R5 | V1 | SQLite | unchanged; conflicts with L1 per §10 | — | row ids | V1 backup before import |
+
+Every category the brief lists has a row: memory (L1), lessons (L1), knowledge (L1, M1 `KEEP`),
+recall history (L3), worklog (L2), session history (H1, L17), plans (L6), generated prompts (L8),
+project context (M1, L13, L17), global context (U1, L14), agent and skill definitions (M3, L16),
+hooks (U2), rules (M2), managed blocks (M1), project settings (M4), architecture knowledge and ADRs
+(R1), implementation and validation history (R3, L2, L5), handoff notes (R2, L9), design
+references (R4), harness-specific context (L17, H2), provenance (every row), unresolved decisions
+and known failures (R1, L1 lessons, L11), operational knowledge (L1, L3, L14, L15, L18).
+
+### 25.9 Untracked handoff notes
+
+`notes/p16-handoff.md`, `notes/p18-handoff.md` and `notes/p19-5-marker-handoff.md` are untracked
+in this repository: **they have no git recovery path today**, and being untracked does not make them
+safe. They are recorded as **preservation candidates**: every migration inventory lists them; the
+snapshot copies them (category B, secret-scanned) rather than only referencing them, which gives
+them their first recovery path; they are never moved, rewritten, committed or deleted by Archeus. In
+general, a project's untracked files are listed in the baseline manifest by hash, and copied only
+when they are recognised notes (`notes/**/*.md`, `*handoff*.md`) or the user selects them. Until
+the first snapshot exists, only the user can protect them (commit or back up) — this pass does
+neither.
+
+### 25.10 Model, harness, account and routing knowledge
+
+Migration preserves what routing needs **without turning history into policy**:
+
+| Legacy knowledge | In V1 | Never becomes |
+|---|---|---|
+| accounts and homes (identity: harness, config dir) | Account rows, V1 defaults, `consumption: normal` | a protection or a rotation permission — the import report asks the user to set each account's class before ADR-0021 `rotation` is permitted (the AP-1 edge) |
+| `rotate_threshold`, own-call CLI and model | shown on the report / a preference (migration-plan §4) | an allocation or a constraint |
+| provider profiles | accounts to review; keys excluded | provider terms — ADR-0021 answers are the user's, per harness, and stay `unknown` until given |
+| legacy model list, `MODEL_PROFILES` | at most REFERENCE history | capability evidence (ADR-0031, P22) |
+| lessons about models, harnesses, routing | LESSON knowledge with provenance | a routing rule — evidence orders or excludes only under the user's named rule (ADR-0033) |
+| models recorded in transcripts | reachable through the session manifest | OBSERVED evidence — that class is Archeus-driven, verified outcomes only (ADR-0032) |
+| project preferences, restrictions | project defaults to confirm (ADR-0041 §4) | a policy the user did not confirm |
+
+A historical preference stays distinguishable from a current policy (its provenance says
+`legacy`), a lesson from an authorisation, evidence from a rule. Legacy has no execution history
+(its sessions were not Executions), no task families and no route decisions, so none is fabricated;
+harness, account and model identities survive on every reference. There is no Agent entity.
+
+### 25.11 Conversation, themes and deployment
+
+- **Conversation (JARVIS).** Legacy has no Conversation entity; V1's conversation starts with the
+  migrated knowledge, plans, `KEEP` blocks, session manifest and references behind it. Nothing is
+  flattened: source records stay recoverable, and a historical transcript reaches a live
+  conversation through P12's explicit hand-off rendering or registration, on the user's action.
+  "What happened, why, what was learned, what the user decided" is answered from knowledge with
+  provenance, the worklog history and the referenced sources; "what is happening now" from V1
+  state (ADR-0043).
+- **Themes.** migration-plan §4 mapped a legacy theme to a thread tint; a migration that set it
+  would write a client preference, which ADR-0044 keeps per client. Corrected: the legacy palette
+  becomes a **suggested** thread tint shown once in Control → Appearance; migration never writes a
+  client's theme, contrast or tint, and never sets an application theme. The 39 palettes stay
+  thread tints; application themes stay System / Dark / Light / High Contrast.
+- **Deployment.** Browser tab, Edge `--app`, PWA, Qt shell and TUI are unaffected: migration has no
+  client component, and each client's appearance stays in its own storage.
+
+### 25.12 Advertised vs usable models (C-22) — the four distinctions are represented
+
+| The brief's distinction | ADR-0036 (PROPOSED) |
+|---|---|
+| CATALOGUED | a `Model` row (rung 1) — shown as catalogue, never as an offer |
+| AVAILABLE TO THIS ACCOUNT | an offer exists: the account's configured provider addresses the model (rung 2), and the account is enabled (rung 3) |
+| AVAILABLE THROUGH THIS HARNESS | the harness is installed and serves the subject (rung 4, descriptor `serves`, ADR-0037) |
+| CURRENTLY RUNNABLE | credentials, reachability and capacity pass (rungs 5–7: `AVAILABLE`); for a given piece of work, "executable" is the router's preview |
+
+The UI requirement is already assigned (orchestration plan D2: state and reason per offer, the
+catalogue as a separate count, P22). No documentation change was needed; the fix remains the C-22
+slice, awaiting the orchestration plan's D-2.
+
+### 25.13 Remaining decisions, classified
+
+A = already decided and consistent · B = needs the user · C = needs a new ADR · D = can safely stay
+deferred.
+
+| Decision | Class | Note |
+|---|---|---|
+| ADR-0036…0040 (orchestration plan D-1) | **B** | still PROPOSED |
+| D-2 C-22 slice timing | **B** | recommended first |
+| D-3 pi execution adapter | **B** | recommended V1.x-O4 |
+| D-4 user-declared self-hosted tier | **B** | |
+| D-5 location values | **B** | the location kind of ADR-0042 directives waits on it |
+| D-6 harness-shipped catalogue rung · D-7 probes · D-8 material substitution · D-9 evaluation evidence apart · D-10 architecture changes by replan · D-11 Attention items | **B** | each inside ADR-0036…0040 |
+| D-12: ADR-0021 provider terms (incl. rotation) | **B** | OPEN; rotation is now bound to AP-1 |
+| D-12: C-15 research-record correction | **B** | outstanding |
+| D-12: "DECIDED (direction set by …)" wording on ADR-0031…0035 | **D** | cosmetic |
+| D-13…D-24 | **A** | decided in `c94e026` |
+| MD-1, MD-2, MD-4 | **A** | as decided in `d4bc009` |
+| MD-3, MD-5, MD-6 | **A** | as corrected in §25.3–§25.5 |
+| legacy app retirement date | **D** | a later release decision (§25.4) |
+| Classic appearance (rulebook Q-C1) | **D** | blocks nothing; untouched by ADR-0044 |
+| harness-internal subagent visibility | **D** | not proposed; never an Archeus agent |
+| non-Claude usage windows | **D** | each adapter's; Codex's with the Codex adapter (V1 release) |
+| voice | **D** | post-V1, same pipeline (ADR-0042 §7) |
+| remote workers | **D** | post-V1 (ADR-0008) |
+| ADR-0010 (remote access over a tunnel) | **B** | found still PROPOSED although P15 built on it; reported, not decided here |
+
+No decision needs a new ADR (class C is empty). ADR-0045 is amended in place for MD-3, MD-5 and
+MD-6.
+
+### 25.14 Orchestration requirements re-validated
+
+- **Visibility** without an Agent entity: ADR-0043's `live_work` gives mission, plan step, harness,
+  account, model and revision, worktree, state, what it waits on, what it produced and why it was
+  routed (the RouteDecision); the mission stays the unit.
+- **Architecture → implementation → review**: requirements → capabilities → policy → account
+  availability → project constraints → preferences → a RouteDecision that explains itself; pins
+  stay possible; no product is bound to a role (conversational-orchestration H5).
+- **Account control**: "don't use" (forbid / `explicit_only`), "only if necessary" (`last_resort`),
+  "never automatically" (`explicit_only`), "keep capacity" (`reserve_pct`), "prefer" (preference /
+  priority), "account B for this mission" (mission preference; confirmed if B is protected), "not
+  the shared account unless I approve" (`last_resort` with `fallback: ask`). No silent rotation:
+  rotation stays unpermitted until AP-1 lands (ADR-0041).

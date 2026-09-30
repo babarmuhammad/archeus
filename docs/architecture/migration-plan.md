@@ -171,13 +171,13 @@ legacy-context-migration.md §4.
 | Lessons | KnowledgeItem LESSON | pending → CANDIDATE; approved/pinned → CONFIRMED; `confidence`, `sids` → provenance |
 | Conflicts in graph | Relation `contradicts` + Attention proposal | |
 | Worklog entries | events `legacy.worklog` (history) | not knowledge |
-| Session transcripts | Session rows (harness claude/codex/pi), mode `manual`, one per legacy session in scope — **no Executions** (*amended 2026-10-01, ADR-0045 §11: P12 D2 — an Execution is work Archeus drove*) | transcripts stay where they are, referenced by hash; artifacts only on demand |
+| Session transcripts | preserved source material: a manifest entry per session (harness, account, session id, path, hash); a Session row (mode `manual`) only by the user's action or an explicit per-run rule; **no Executions** (*amended 2026-10-01, ADR-0045 §11: P12 D2*) | transcripts stay where they are, referenced by hash; artifacts only on demand |
 | `.archeus/plan-latest.md` | never launched: Mission in CREATED awaiting the user's confirmation; launched: a REFERENCE item with the verbatim plan — never COMPLETED (*amended 2026-10-01, ADR-0045 §11*) | origin `legacy_import` |
 | Loops registry | Automation (DISABLED; user re-enables under V1 policy) | cron → schedule trigger |
 | Project system prompts, CLAUDE.md user fences (KEEP) | STANDARD knowledge (explicit) | |
 | Launch settings (model, effort, permission mode) | project/global defaults + policy profile suggestion | |
 | Own-call CLI and model (`headless_harness`, `headless_harness_model`, `extract_model`) | `archeus_call` routing preference, global scope (ADR-0022) | a preference, not a constraint, unless the user marks it required |
-| Themes | Appearance thread tint (nearest that passes the ΔE gate) | |
+| Themes | a *suggested* thread tint (nearest that passes the ΔE gate), shown once in Control → Appearance | *amended 2026-10-01:* migration never writes a client's theme, contrast or tint (ADR-0044 keeps them per client) |
 | Events log (`archeus-events.jsonl`) | not migrated (diagnostic) | |
 
 ## 5. Data ownership during the strangler period (ADR-0019)
