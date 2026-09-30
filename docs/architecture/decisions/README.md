@@ -48,4 +48,5 @@ Internal documents (excluded from the published manual). Status values: DECIDED,
 | [0042](ADR-0042.md) | Conversational directives resolve into the same governed operations as the controls | DECIDED |
 | [0043](ADR-0043.md) | Live work is executions and in-flight own calls, derived once; there is no Agent entity | DECIDED |
 | [0044](ADR-0044.md) | The application theme is a per-client preference (System, Dark, Light, High Contrast); thread tints stay tints | DECIDED |
-| [0045](ADR-0045.md) | Legacy context migration is lossless-first and read-only; project files untouched without a per-project opt-in; cutover only in P25.5 | PROPOSED |
+| [0045](ADR-0045.md) | Legacy context migration is per project, lossless-first and read-only; existing projects stay on legacy until their own approved cutover (P25.5) | DECIDED |
+| [0046](ADR-0046.md) | The V1 write boundary: ARCHEUS_HOME, an Archeus-owned project-local namespace with per-entry ownership, and project files only through named capabilities | DECIDED |

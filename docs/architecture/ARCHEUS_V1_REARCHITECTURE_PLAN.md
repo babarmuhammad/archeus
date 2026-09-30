@@ -1089,13 +1089,15 @@ decisions ADR-0024…0029.
 **P22 — Legacy migration**
 - Depends: P21. New: `legacy/importers.py`, onboarding import flow, ownership cutover *(moved
   to P25.5 on 2026-09-30: cutover follows a verified migration and the user's approval)*.
-- *Added 2026-09-30 (the user's directive; design ADR-0045, PROPOSED —
+- *Added 2026-09-30 (the user's directive; design ADR-0045, DECIDED 2026-10-01 —
   [legacy-context-migration.md](legacy-context-migration.md)):* the migration tooling, built
   here with the importer and audited in P24 — `archeus migrate inventory | snapshot | dry-run |
   diff | import | verify | report | rollback | export-legacy`; read-only extraction into an
   immutable content-addressed snapshot; verbatim source records under every derived row;
-  provenance, conflict relations, run records and reports. Runs here only against fixture legacy
-  homes and copies; the real migration is P25.5's.
+  provenance, conflict relations, run records and reports; and the **legacy marker seam** (legacy
+  writers and account hooks stand down only for a project carrying `.archeus/v1-cutover.json`,
+  ADR-0045 §12, ADR-0046). Runs here only against fixture legacy homes and copies; the real
+  migration is P25.5's. *Decided 2026-10-01 (ADR-0045, ADR-0046).*
 - Orchestration foundations (ADR-0031; added 2026-09-30): the model catalogue moves into Core —
   the legacy `models.py` / pi / provider-proxy catalogue reads become a Core command writing
   `Model`/`ModelOffer` with provenance and TTL, the routing-status machine (CATALOGUED /
@@ -1244,25 +1246,31 @@ decisions ADR-0024…0029.
   site gates are green.
 
 **P25.5 — Legacy Context and Memory Migration** — *added 2026-09-30 at the user's direction (a
-hard requirement for declaring V1 migrated); design ADR-0045, PROPOSED;
+hard requirement for declaring V1 migrated); design ADR-0045 and ADR-0046, DECIDED 2026-10-01;
 [legacy-context-migration.md](legacy-context-migration.md).* A controlled migration and
 verification phase, not a feature phase.
 - Depends: P22 (tooling), P23 (acceptance of the target), P24 (audit of the tooling), P25
   (the runbook). Identifier: the plan's convention for an inserted phase (P0.5, P3.5, P19.5).
-- Invariants: the legacy source is read only; no project-owned file is written, moved, renamed,
-  reformatted or annotated; the legacy app, V1 and every project coexist throughout; nothing runs
-  as a side effect of an update, restart or schedule.
+- Invariants: **existing project safety** — V1 development ≠ migration ≠ project cutover; no
+  project ever has to migrate to keep working, and each stays on the legacy system until its own
+  approved cutover (target-architecture §2 principle 9); the legacy source is read only; no
+  project-owned file is written, moved, renamed, reformatted or annotated outside ADR-0046's named
+  capabilities; cutover is **per project**, with no global mode; nothing runs as a side effect of
+  an update, restart or schedule.
 - Work, in order: preservation inventory; project baseline manifests; dry run on a scratch
   database and its report; the real import (source records, then derived rows); dual-read
   verification against the legacy app; rollback drill; the project compatibility gate; the user's
-  review of every unresolved item; the user-approved cutover, per project, with per-project
-  opt-ins for Archeus-managed blocks in project files.
-- Gates (testing-strategy §9, MG-1…MG-12): 100% of source records accounted for and classified;
+  review of every unresolved item; then, for the projects the user chooses and only when the
+  user approves each, the per-project cutover with its opt-ins and a rollback window of at least
+  90 days that only the user closes.
+- Gates (testing-strategy §9, MG-1…MG-18): 100% of source records accounted for and classified;
   0 silent losses; 0 unexplained conflicts; 100% provenance; deterministic re-run; rollback
   demonstrated; migrated memory readable by V1; legacy source recoverable; every project-file
   difference attributed.
-- Acceptance: the gates pass on the fixture legacy homes and on the user's environment, and the
-  user approves the cutover.
+- Acceptance: the gates pass on the fixture legacy homes (including a four-project coexistence
+  fixture); a full dry run of the user's environment passes; the sequence up to cutover passes on
+  at least one real project the user chooses. **No cutover is required**, and the legacy app does
+  not retire here (legacy-context-migration.md §24.6, §24.10).
 
 **P26 — V1 release gate** — §34. Release authorization, not an implementation phase: it
 verifies the whole V1 state after P24 and P25 against an evidence checklist and a list of
@@ -1407,7 +1415,7 @@ recorded, decisions documented with reasons — each is linked from the table at
 - [ ] Repository re-inspection and drift work (S7)
 - [ ] Legacy data migration tested (G8)
 - [ ] Legacy context and memory migrated and verified; existing projects unchanged unless opted
-      in (P25.5, MG-1…MG-12)
+      in (P25.5, MG-1…MG-18)
 - [ ] Every traceability row green; no Critical design-review findings; no High security findings
 
 *Release evidence* — each item is a recorded artifact (command output, CI run, report), not a
@@ -1431,8 +1439,8 @@ statement that tests pass:
 criteria above: failing CI; a failing required test; a mutation regression; an unresolved
 Critical security finding; an unresolved High security finding without a signed P24
 exception; a broken package; a broken documentation or website build; stale architecture
-documentation; unreconciled migration state; P25.5 not verified; an unattributed change to a
-project file; accidental changes to `main`; a missing required release artifact.
+documentation; unreconciled migration state (a known project without an explicit, recorded
+migration state); P25.5 not verified; an unattributed change to a project file; accidental changes to `main`; a missing required release artifact.
 
 *Architecture consistency review* — verify the ownership chain still holds in the shipped code:
 P4 World · P5 Context · P6 Knowledge/Learning · P7 Intent/Mission · P8 Plans · P9

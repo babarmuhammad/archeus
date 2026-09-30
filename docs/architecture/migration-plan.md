@@ -155,7 +155,7 @@ class), a `quota.assess` refactor (wrong primitive), splitting `gui_api`, removi
 Importer runs read-only against legacy stores, idempotently (keyed by legacy identity), into a
 fresh `archeus.db`; re-running updates, never duplicates.
 
-*Extended 2026-09-30 (ADR-0045, PROPOSED; [legacy-context-migration.md](legacy-context-migration.md)):*
+*Extended 2026-09-30, decided 2026-10-01 (ADR-0045; [legacy-context-migration.md](legacy-context-migration.md)):*
 the mapping below runs from an immutable snapshot's verbatim **source records**, never straight
 from the live stores, and every row it produces cites its source record; the tooling is built in
 P22 and the real migration, verification and cutover are **P25.5**. The full preservation
@@ -171,8 +171,8 @@ legacy-context-migration.md §4.
 | Lessons | KnowledgeItem LESSON | pending → CANDIDATE; approved/pinned → CONFIRMED; `confidence`, `sids` → provenance |
 | Conflicts in graph | Relation `contradicts` + Attention proposal | |
 | Worklog entries | events `legacy.worklog` (history) | not knowledge |
-| Session transcripts | Session rows (harness claude/codex/pi) + manual Executions for the last 90 days (configurable) | transcripts stay where they are; artifacts only on demand |
-| `.archeus/plan-latest.md` | Mission (state PAUSED if the plan was never launched, COMPLETED otherwise) + Plan v1 | origin `legacy_import` |
+| Session transcripts | Session rows (harness claude/codex/pi), mode `manual`, one per legacy session in scope — **no Executions** (*amended 2026-10-01, ADR-0045 §11: P12 D2 — an Execution is work Archeus drove*) | transcripts stay where they are, referenced by hash; artifacts only on demand |
+| `.archeus/plan-latest.md` | never launched: Mission in CREATED awaiting the user's confirmation; launched: a REFERENCE item with the verbatim plan — never COMPLETED (*amended 2026-10-01, ADR-0045 §11*) | origin `legacy_import` |
 | Loops registry | Automation (DISABLED; user re-enables under V1 policy) | cron → schedule trigger |
 | Project system prompts, CLAUDE.md user fences (KEEP) | STANDARD knowledge (explicit) | |
 | Launch settings (model, effort, permission mode) | project/global defaults + policy profile suggestion | |
@@ -182,9 +182,12 @@ legacy-context-migration.md §4.
 
 ## 5. Data ownership during the strangler period (ADR-0019)
 
-*"Cutover" below is P25.5's user-approved cutover (ADR-0045, PROPOSED), and "V1 writes via
-refactored `claude_md`/`memrules`" applies only to a project whose user opted in to it at
-cutover; a project without that opt-in keeps its files as the legacy app last wrote them.*
+*Decided 2026-10-01 (ADR-0045, ADR-0046): "cutover" below is P25.5's user-approved cutover of
+**one project at a time** — "before" and "after" hold per project, signalled by that project's
+`.archeus/v1-cutover.json`, and a project never cut over stays entirely on the legacy system.
+"V1 writes via refactored `claude_md`/`memrules`" applies only to a project whose user opted in at
+its cutover. V1 also owns `.archeus/sessions/` (P12 D15); every other entry of a project's
+`.archeus/` stays legacy's (ADR-0046).*
 
 | Artifact | Owner before cutover | V1 behaviour before cutover | After cutover |
 |---|---|---|---|
@@ -233,11 +236,14 @@ keep modules marked REUSE.
 
 ## 7. Rollback
 
-*The migration's own rollback (checkpoints, withdrawal of a run, post-cutover restore) is
-legacy-context-migration.md §15 (ADR-0045, PROPOSED).*
+*The migration's own rollback (checkpoints, withdrawal of a run, post-cutover restore, the
+per-project rollback window of at least 90 days that only the user closes) is
+legacy-context-migration.md §15 and §24.7 (ADR-0045 §10). "90 days" below is that window's
+minimum.*
 
-Every phase that touches user data is additive until P22: V1 reads legacy stores and writes only
-`ARCHEUS_HOME` (target-architecture §5.1) plus the two shared files of §5. Rolling back = stop
+Every phase that touches user data is additive until a project's own cutover (P25.5, ADR-0045): V1 reads legacy stores and writes only
+inside the write boundary of target-architecture §5.1 (ADR-0046: `ARCHEUS_HOME`, its own entries
+of a project's `.archeus/`, the named capabilities, and the two shared files of §5). Rolling back = stop
 using V1 (stop Core first). To reset V1, remove only the V1-owned entries of
 target-architecture §5.1 — `archeus.db` and its `-wal`/`-shm` files, `artifacts/`, `backups/`,
 `logs/`, `run/` and `worktrees/` (remove its worktrees with `git worktree remove` first, so the

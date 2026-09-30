@@ -244,7 +244,7 @@ in the phase that builds it (§4). Full wording and mutations:
 | T5 persistence per client | P19 | the choice survives a reload, a service-worker offline start and a Qt shell restart (persistent profile); no Core read is needed |
 | T6 before first paint; tints are not themes | P19 | `<html>` carries the theme attributes before the stylesheet paints (a `'self'` boot script); only the three token sets are selectable as application themes |
 
-## 9. Legacy context migration gates (P22 tooling, P25.5 run — ADR-0045, PROPOSED)
+## 9. Legacy context migration gates (P22 tooling, P25.5 run — ADR-0045, ADR-0046, decided 2026-10-01)
 
 Not built. Each is mutation-verified in P22 against fixture legacy homes (the existing G8 fixtures:
 multi-account, codex, pi) and re-run in P25.5 on the user's environment. Design:
@@ -257,10 +257,16 @@ multi-account, codex, pi) and re-run in P25.5 on the user's environment. Design:
 | MG-3 losslessness | every `copied` item's bytes and every per-record fragment are recoverable from the snapshot; redactions are listed with field path and hash | a fragment dropped; an undeclared redaction |
 | MG-4 provenance | 100% of migrated rows reach a source record through `derived_from`, with snapshot, path, key, hashes, transform and field diff | a row without `derived_from`; transform unrecorded |
 | MG-5 no silent choice | an imported item conflicting with a V1 CONFIRMED item is a CANDIDATE with `contradicts` and a proposal; neither is superseded | newer wins silently |
-| MG-6 project compatibility | project manifests before and after: every difference attributed (user, legacy app, approved mission, ADR-0019 shared file, V1 delivery copy, approved opt-in); none unattributed; no V1 metadata in a project-owned file | a migration writes a managed block without opt-in |
+| MG-6 project compatibility | project manifests before and after: every difference attributed to the user, the legacy app, or one of ADR-0046's permitted writes (project-local namespace entries, task worktree, verified merge, cutover opt-in); none unattributed; no V1 metadata in a project-owned file | a migration writes a managed block without opt-in |
 | MG-7 scope preserved | every record keeps its source scope; nothing becomes global | a project lesson imported globally |
 | MG-8 rollback | before cutover the run's rows are withdrawn and V1-native rows kept; after cutover opt-in files restore to their recorded hashes; MG-1 and MG-6 pass after | a V1-native row withdrawn; a file not restored |
 | MG-9 dry run | a dry run writes only its scratch database and report | a write to the live database |
-| MG-10 no credentials | no credential or API key appears in any artifact, source record, row or report | a settings key copied |
+| MG-10 sensitive categories | every source lands in its ADR-0045 §9 category: no credential, API key or hash of a secret in any artifact, record, row or report (C); D sources are never copied; B records never enter a context package; a D → B exception needs its recorded `admin` command and secret scan | a settings key copied; a secret hashed; a bash log copied by default; a B record in a context package |
 | MG-11 consent | no run or cutover starts without an `admin` user-device command; an update, restart or schedule starts none | cutover on upgrade |
-| MG-12 V1 write boundary | a static walk of `archeus/` finds no write outside `ARCHEUS_HOME` except the named seams (P12 D15 delivery copies, the ADR-0019 shared files through their legacy functions, git operations of an approved execution, the verified merge) | a new write site inside a project |
+| MG-12 V1 write boundary | a static walk of `archeus/` finds no write outside the four places of ADR-0046 (`ARCHEUS_HOME`; the V1-owned and shared entries of `<project>/.archeus/`; the three named project capabilities; the two user-level writes) | a new write site inside a project |
+| MG-13 per-project isolation | a run over project A leaves every byte, the memory, context, rules, git state and legacy configuration of project B unchanged (manifest diff of B is empty); a source that cannot be assigned to exactly one project in scope fails the run closed | a run widened to a sibling folder; an ambiguous source imported |
+| MG-14 legacy non-interference | with V1 Core running, inspecting and migrating other projects, an unmigrated project's legacy stores and managed blocks change only by the legacy app's own writers | V1 writes a legacy entry of `.archeus/` |
+| MG-15 source accounting | 100% of source records are in the manifest and classified, every exclusion has a reason, and every record is cited by a derived row or the report (legacy-context-migration §17) | a record silently skipped |
+| MG-16 dual-read | every §18 comparison runs, and every difference is classified and explained before a run can reach VERIFIED | a regression left unexplained; V1 preferred by default |
+| MG-17 coexistence | one fixture holds four projects at once — V1, legacy, migration pending, V1 in its rollback window — and each behaves as legacy-context-migration §24.5 states: the marker is present exactly for A and D, legacy writers and hooks stand down only there, V1 hooks act only there, and no global mode exists | a global flag; legacy standing down for an unmarked project |
+| MG-18 unmigrated projects operational | for an unmigrated project, the legacy launcher, memory build, recall hook, CLAUDE.md block refresh and the project's own test and git commands behave exactly as on a machine without V1 | any legacy workflow broken by V1's presence |

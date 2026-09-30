@@ -80,6 +80,13 @@ flowchart TB
 8. **Clients hold no business logic.** A client sends commands, runs queries and listens to the
    event stream. Parity between GUI, mobile and TUI follows from sharing the API, not from tests
    comparing surfaces (which the current repo needs because logic is duplicated).
+9. **Existing project safety** (ADR-0045 §1, ADR-0046). V1 development, migration and project
+   cutover are three separate concerns. No existing project has to be migrated, rewritten,
+   restructured or converted to keep working; each stays on the legacy system until its own
+   user-approved cutover, one project at a time, with no global mode. Before that, migration
+   leaves its files, legacy context and memory, CLAUDE.md / AGENTS.md / rules, harness
+   configuration and git state untouched and usable. V1 writes only inside the boundary of
+   §5.1; nothing else in a project, ever, without a named capability.
 
 ## 3. Package layout
 
@@ -233,11 +240,18 @@ validated by the command handler (not the DB); indices on `(workspace_id, projec
 for list queries; `events(seq)` is the realtime cursor. Portability: Core refuses to start on
 SQLite older than 3.31, and the schema uses neither `RETURNING` nor `STRICT` tables.
 
-Two legacy files are written by V1 on purpose, through the legacy functions that already own
-them: `<project>/.archeus/connections-cache.json` (by `connections.build_hierarchy` during
-inspection — deterministic, atomic) and `~/.claude/archeus-limits.json` (by
-`quota.note_limit`, the cross-process rate-limit latch both apps must agree on). See
-migration-plan §5.
+**The write boundary (ADR-0046, decided 2026-10-01; resolves LM-C1).** V1 never silently writes
+an arbitrary project-owned file. Everything it writes is in exactly one of four places:
+
+| Place | What V1 may write | Owner / authority |
+|---|---|---|
+| `ARCHEUS_HOME` | its V1-owned entries (the table above) — all migration output included | V1 |
+| the Archeus-owned project-local namespace `<project>/.archeus/` (gitignored `*`, never project content; ownership per entry) | `sessions/<session-id>.md` — per-session delivery copies (P12 D15), never overwritten; `v1-cutover.json` — only at a user-approved cutover of that project (ADR-0045 §12); `connections-cache.json` — shared, only through `connections.build_hierarchy` (deterministic, atomic); the directory and its `.gitignore` only through the legacy `store.workdir`, if absent. Every other entry is legacy's and is never written, moved or deleted; the mirror under a harness project folder is legacy's | per entry |
+| project-owned files and git state | only through three named capabilities: a task worktree (`git worktree add` / `remove`, its task branch — an authorised execution); the verified merge of an approved mission; a cutover opt-in (managed blocks in CLAUDE.md / AGENTS.md, `.claude/rules/archeus-mem-*`) approved by the user for that project | each attributable to its record and visible in the compatibility manifest |
+| user-level harness configuration | `~/.claude/archeus-limits.json` only through `quota.note_limit` (the shared rate-limit latch); at a user-approved cutover, V1's hook entries in an account's `settings.json` through the atomic read-modify-write helper | shared / the user's approval |
+
+Any other write site is a decision that amends ADR-0046 first; testing-strategy §9 MG-12 walks
+the code for it. See migration-plan §5.
 
 Backups: `sqlite3.Connection.backup()` into `<ARCHEUS_HOME>/backups/`, two kinds with disjoint
 names:

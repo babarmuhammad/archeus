@@ -1,9 +1,11 @@
 # Archeus V1 — Legacy context and memory migration (P25.5)
 
-Status: **PROPOSED — architecture only; nothing is migrated, no tool exists, and no project file,
+Status: **DECIDED — architecture only; nothing is migrated, no tool exists, and no project file,
 repository, memory store, Core, API or UI was changed to produce it.** Written 2026-09-30 on
-`archeus-v1-rearchitecture` at `c94e026`. Decision record:
-[ADR-0045](decisions/ADR-0045.md) (PROPOSED). It extends, and does not restate,
+`archeus-v1-rearchitecture` at `c94e026` (`e9d5681`); the user's decision pass of 2026-10-01
+resolved MD-1…MD-6 and LM-C1…LM-C3 (§24). Decision records:
+[ADR-0045](decisions/ADR-0045.md) (migration, DECIDED) and [ADR-0046](decisions/ADR-0046.md)
+(the V1 write boundary, DECIDED). Where a section below and §24 differ, §24 and the ADRs govern. It extends, and does not restate,
 [migration-plan.md](migration-plan.md) (strangler, gap analysis, P22 importer, ownership),
 ADR-0019 (data ownership during the strangler period), [context-and-knowledge.md](context-and-knowledge.md)
 (knowledge lifecycle, supersession, forget), domain-model §1 (three truths, provenance) and
@@ -37,6 +39,7 @@ cited as §1…§24.
 21. Final cutover
 22. Traceability
 23. Dependencies, amendments, undecided
+24. Decision record (2026-10-01)
 
 ---
 
@@ -49,8 +52,8 @@ Already decided and kept:
 - **Data ownership** (ADR-0019, migration-plan §5): before cutover the legacy app owns every
   memory, lesson, CLAUDE.md block, rules file, hook and account setting; V1 imports read-only
   snapshots and never writes them; V1 executions are tagged so the legacy app skips them.
-- **V1's write boundary** (target-architecture §5.1): V1 writes only its own `ARCHEUS_HOME`
-  entries plus the two shared files of migration-plan §5, through their legacy functions.
+- **V1's write boundary** (target-architecture §5.1): as the audit found it, "`ARCHEUS_HOME` plus
+  two shared files" — stale against P12 D15, and now stated precisely by ADR-0046 (§24.8).
 - **A read-only, idempotent importer** keyed by legacy identity (migration-plan §4, P22), with its
   mapping table, and an export back to legacy formats for 90 days after cutover (§7).
 - **Knowledge with provenance and lifecycle**: `source_kind` including `legacy` and `import`,
@@ -97,8 +100,10 @@ migration and the user's approval, §21). P22 keeps the importer and gains the t
 P25.5 depends on P22 (tooling), P23 (acceptance), P24 (audit) and P25 (runbook).
 
 For other installations after release, P25.5's procedure is what `archeus migrate` does on each
-machine, opt-in, per project; the phase's gate is met on fixture legacy homes **and** on the
-user's own environment.
+machine, opt-in, per project. **P25.5's acceptance does not require any project to be cut over**
+(§24.7): it requires the gates on fixture legacy homes, a full dry run of the user's environment,
+and the whole sequence up to — not including — cutover on at least one real project the user
+chooses. Which projects are cut over, and when, stays the user's choice.
 
 ## 3. What is Archeus state and what is project state
 
@@ -110,14 +115,16 @@ user's own environment.
 | **Harness-owned** | transcripts, file history, harness settings and memory under each harness home | the harness | read only; reference by path and hash; never copied wholesale |
 | **User configuration** | global instructions the user wrote for a harness (e.g. `~/.claude/CLAUDE.md`) | the user | not migrated as Archeus knowledge; referenced only |
 | **Credentials** | account credentials, API keys | the harness / the user | never copied (§20) |
-| **V1-owned** | the `ARCHEUS_HOME` entries of target-architecture §5.1, plus the files V1 already creates inside a project's Archeus workdir: the session delivery copies `<project>/.archeus/sessions/<id>.md` (P12 D15, `archeus/core/sessions/service.py:34-39`) and the shared connections cache written through its legacy function (ADR-0019) | V1 | the migration writes only to `ARCHEUS_HOME` |
+| **V1-owned** | the `ARCHEUS_HOME` entries of target-architecture §5.1, plus the V1-owned entries of the project-local namespace `<project>/.archeus/` (ADR-0046: `sessions/`, `v1-cutover.json`) | V1 | the migration writes only to `ARCHEUS_HOME`; cutover writes only the marker and the approved opt-ins |
 
-**Conflict found (LM-C1).** target-architecture §5.1 says V1 writes only `ARCHEUS_HOME` plus the
+**Conflict found (LM-C1).** target-architecture §5.1 said V1 writes only `ARCHEUS_HOME` plus the
 two shared files; P12 D15 decided, and V1 builds, per-session delivery copies inside
 `<project>/.archeus/sessions/`. Both are inside the gitignored Archeus workdir, never a
 project-owned file, so no project file is affected; the sentence is stale, not the code. Resolution
-on approval: target-architecture §5.1 names the P12 D15 copies, and the compatibility gate (§14)
-attributes them. No code changes.
+decided 2026-10-01 (ADR-0046): the write boundary is named precisely — `ARCHEUS_HOME`, the
+Archeus-owned project-local namespace with per-entry ownership, project-owned files only through
+named approved capabilities, and two user-level writes — and target-architecture §5.1 now says so.
+No code changes.
 
 The existence of a V1 representation of something never authorises modifying the legacy
 representation.
@@ -132,7 +139,8 @@ by `config._ensure_dir`, `config.py:737-757`); **C** an account config dir (env
 `config.py:118`); **PF** `C/projects/<enc>` (the harness's per-project folder; several W stores
 are mirrored there: `memory.py:57-63,130-146`, `diffview.py:142-144`, `workspace.py:156-158`).
 Owner classes are §3's. Preservation: **copy** = content-addressed copy in the snapshot;
-**ref** = reference-only (path + hash, original kept in place); **redact** = copy with declared
+**ref** = reference-only (path + hash, original kept in place — category D of ADR-0045 §9);
+**copy** is category A or B by row; **excl** is category C; **redact** = copy with declared
 redactions; **excl** = excluded with a reason. Verification: **hash** = re-hash of the snapshot
 copy and of the source after the run; **dual** = dual-read (§18); **gate** = compatibility gate
 (§14). Loss risk is the risk *if migration were done naively*, which the method answers.
@@ -308,7 +316,8 @@ modified; a new one is taken.
   representation is never the only copy; a source record is never deleted while any derived row
   or the migration report cites it.
 - "Lossless" means: every byte of every `copied` item is recoverable; a `redacted` item records the
-  redacted spans (field path, sha256 of the original value) so the loss is declared and bounded;
+  redacted spans (field path, and for a non-secret value its sha256; a secret value records the
+  field path only — ADR-0045 §9) so the loss is declared and bounded;
   a `reference-only` item is preserved by the unmodified original plus its recorded hash.
 
 ## 9. Provenance
@@ -379,10 +388,10 @@ citing the same paths.
 | **Archeus global** (`ws_global`) | the user's cross-project preferences and standards, Archeus's own operational knowledge (routing, harness, model lessons) | V1 (after cutover) | superseded / retracted | only records the legacy app itself held globally; nothing is widened to global on import |
 | **Project** (`project_id`) | project facts, entities, lessons, decisions, conventions | the project's knowledge in V1 | lifecycle, decay | legacy per-project memory → this project only |
 | **Worktree** | a task's isolated checkout under `worktrees/` | V1 execution | removed after merge / abandon | not migrated (legacy has none) |
-| **Mission** | intent, plan versions, checkpoints | V1 | history after completion | a legacy `plan-latest.md` → one mission (migration-plan §4) |
+| **Mission** | intent, plan versions, checkpoints | V1 | history after completion | a never-launched legacy plan → a CREATED mission, origin `legacy_import`, awaiting confirmation; a launched one → REFERENCE; never COMPLETED (ADR-0045 §11) |
 | **Task** | contract, state | V1 | with its mission | none |
-| **Execution** | one attempt, its record | V1 | history | legacy sessions of the last N days → manual executions (migration-plan §4) |
-| **Session** | the harness's conversation | the harness | the harness's | Session rows reference transcripts in place |
+| **Execution** | one attempt, its record | V1 | history | **none**: no legacy session becomes an Execution (ADR-0045 §11, P12 D2) |
+| **Session** | the harness's conversation | the harness | the harness's | every legacy session in scope → a Session row, mode `manual`, referencing its transcript in place |
 | **Reference** | external material with provenance, and project files cited at a revision | its owner | pinned to a revision | reference, never copy |
 | **Memory / lesson** | knowledge items at one of the scopes above | V1 | context-and-knowledge §3 | keeps its source scope |
 
@@ -527,12 +536,17 @@ Built in **P22** (extending `legacy/importers.py`), audited in **P24**, run in *
 Only after all of: V1 implementation complete (P23, P24, P25 closed); dry run passed; coverage
 verified (§17); the project compatibility gate passed (§14); rollback demonstrated (§15);
 provenance checks passed; dual-read verified (§18); every unresolved item explicitly accepted by
-the user in the report; and **the user approves the cutover**, per project or for all.
+the user in the report; and **the user approves the cutover of that project** — cutover is per
+project, never for all at once (ADR-0045 §12).
 
 Cutover then does exactly what ADR-0019 describes for "after cutover" — V1 knowledge becomes the
-source and the legacy memory writers stand down — **plus** a per-project list of opt-ins, each
-separately approved: take over the managed blocks in CLAUDE.md, take over
-`.claude/rules/archeus-mem-*`, install V1's hooks in place of the legacy ones. A project with no
+source and the legacy memory writers stand down — **for that project only**, signalled by the
+per-project marker `<project>/.archeus/v1-cutover.json` (ADR-0046) which the legacy writers and
+hooks check (the P22 legacy seam) — **plus** a per-project list of opt-ins, each separately
+approved: take over the managed blocks in CLAUDE.md / AGENTS.md, take over
+`.claude/rules/archeus-mem-*`, and (on the first project cut over on an account) add V1's hook
+entries beside the legacy ones in that account's `settings.json`; both hooks consult the marker, so
+each acts only for the projects it owns. A project with no
 opt-in keeps its files exactly as the legacy app last wrote them. The migration is **never** an
 automatic side effect of an ordinary V1 update: no upgrade, restart or scheduled job starts a run
 or a cutover.
@@ -564,7 +578,7 @@ or a cutover.
 | M-21 | ADRs and documents (§21) | ADR-0045; this document | now | — | documentation gates | P25 |
 | M-22 | cannot declare V1 complete while unverified (§22) | P26 evidence + blocker | P26 | — | P26 checklist | P26 |
 
-Gates MG-1…MG-12 are listed in testing-strategy §9.
+Gates MG-1…MG-18 are listed in testing-strategy §9.
 
 ## 23. Dependencies, amendments, undecided
 
@@ -573,20 +587,164 @@ Gates MG-1…MG-12 are listed in testing-strategy §9.
 imported loops), P21 (audit and trace views to show runs), P22 (importer and tooling), P23
 (acceptance of the target), P24 (audit of the tooling), P25 (runbook).
 
-**Amends on approval:** plan §31.1 (P22 loses "ownership cutover" and gains the tooling; P25.5
-added; P26 evidence and blockers), §31.3 (P25 → P25.5 → P26); migration-plan §4 (mapping runs from
-source records), §5 ("cutover" = P25.5; project-file writers by per-project opt-in), §7 (rollback
-per §15); ADR-0019 consequences (cutover timing and the opt-in); testing-strategy §2 (G8 extended)
-and §9 (MG gates). ADR-0019's rules before cutover and target-architecture §5.1 are unchanged.
+**Amended (2026-10-01):** plan §31.1 (P22 loses "ownership cutover" and gains the tooling and
+the legacy marker seam; P25.5; P26 evidence and blockers), §31.3; migration-plan §4 (sessions and
+plans rows; mapping from source records), §5 (per-project cutover, marker, write boundary), §7;
+target-architecture §2 (principle 9) and §5.1 (the write boundary, ADR-0046); testing-strategy §9.
+ADR-0019's rules before a project's cutover are unchanged; its "after cutover" now applies per
+project.
 
-**Undecided (the user's):**
+**Decided 2026-10-01:** MD-1…MD-6 — see §24. Nothing of the original list remains open except the
+legacy app's retirement date, which §24.5 deliberately leaves to a later user decision.
 
-- **MD-1** approve ADR-0045 and P25.5 as written;
-- **MD-2** the default for sensitive sources (`reference-only`, as proposed, or copy after secret
-  scan);
-- **MD-3** how many days of legacy sessions become manual executions (migration-plan §4 says 90,
-  configurable);
-- **MD-4** whether cutover is per project (proposed) or all at once;
-- **MD-5** whether the legacy app retires at P26 or after (the retirement checklist,
-  migration-plan §6, is evaluated in P22; retirement itself is not a P26 criterion today);
-- **MD-6** how long the export back to legacy formats is kept (90 days today).
+## 24. Decision record (2026-10-01)
+
+The user's decision pass on this architecture. Records: [ADR-0045](decisions/ADR-0045.md)
+(DECIDED) and [ADR-0046](decisions/ADR-0046.md) (DECIDED).
+
+### 24.1 The hard invariant — existing project safety during V1 development
+
+> **V1 development ≠ migration ≠ project cutover.** An existing project keeps working on the
+> legacy system while V1 is built, and for as long as it is not cut over. The existence or
+> development of V1 never requires a project to be migrated, rewritten, restructured or converted,
+> and migration is never a prerequisite for normal work on a project. Until *that project's*
+> approved cutover, migration leaves its files, legacy context, legacy memory, CLAUDE.md / AGENTS.md
+> / rules, harness configuration and git state untouched and usable; V1 may coexist without forcing
+> conversion. After its cutover, every change is attributable and has provenance, its project-owned
+> files pass the compatibility gate, rollback has been demonstrated, and legacy recovery stays
+> available for its rollback window.
+
+It is ADR-0045 §1 and target-architecture §2 principle 9.
+
+### 24.2 MD-1 — ADR-0045: DECIDED
+
+The proposed record preserved every property the decision pass named (read-only extraction,
+immutable snapshots, verbatim sources, provenance, deterministic re-runs, conflict preservation,
+rollback, dual-read, project compatibility, 100% accounting, no credential copying, explicit
+cutover). Five seams were missing or wrong, and each was closed from existing architecture rather
+than invented:
+
+| Gap | Closed by |
+|---|---|
+| cutover could be "for all"; no mechanism kept legacy and V1 from both writing a project | per-project cutover and the marker (LM-C2, §24.5) |
+| a run was not keyed to project identity and had no fail-closed rule | ADR-0045 §8 |
+| migration-plan §4 turned legacy sessions into manual Executions, which P12 D2 forbids | ADR-0045 §11 (MD-3) |
+| a launched legacy plan was imported as COMPLETED, asserting a review that never happened | ADR-0045 §11 (LM-C3) |
+| a redaction recorded the sha256 of a secret | ADR-0045 §9: path only for secrets |
+
+### 24.3 MD-2 — sensitive sources: four categories, reference-only by default
+
+| Category | Meaning | Inventory rows |
+|---|---|---|
+| **A** usable V1 knowledge | derived rows usable as context under the project's data class | L1, L6 (plan text), L13, L14 (non-secret fields), L15, L16, L17 (labels, system prompt), M1 (`ARCHEUS:KEEP` only) |
+| **B** preserved source record, never ordinary context | copied and hashed; shown in reports and provenance; never in a context package | L2 (as history events), L3, L4, L5, L7, L8, M1 and M2 (the regenerated blocks) |
+| **C** excluded entirely | never copied; a secret inside a copied file becomes "redacted at field path P", with no hash | L21; the `api_key` / token fields of L14; any secret-scan hit |
+| **D** hash, manifest and provenance only (the default for sensitive operational records) | the original stays in place; Archeus keeps path, size, mtime, hash | L9, L10, L11, H1 (and archived transcripts), L12, L18, L19, L20, M3–M5, U1, U2, H2, R1–R4 (at a commit or hash) |
+
+Exception: D → B only, per source and per project, by an `admin` user-device command, after a
+secret scan whose hits become declared redactions, under the project's data class, recorded on the
+run. Never C → anything; never D → A directly.
+
+### 24.4 MD-3 — legacy sessions: none become Executions
+
+An Execution is work Archeus drove under P9/P10, and its schema requires a task and a mission (P12
+D2); a legacy session was driven by the user. So every legacy session of a project in scope
+becomes a **Session** row, mode `manual`, through P12's registration path: identity = (harness,
+account config dir, provider session id); id derived deterministically from it; transcript
+referenced in place (category D); state as the harness records it. An incomplete, open or
+unreadable session is a Session row marked so, or a report entry — never dropped. No age window
+applies: a Session row is an index entry, so preserving all of them costs nothing and invents
+nothing. migration-plan §4's "manual Executions for the last 90 days" is withdrawn.
+
+### 24.5 MD-4 — cutover is per project
+
+Lifecycle, per project: `legacy → dry run → snapshot → validation → dual-read → compatibility
+gate → explicit user approval → V1 cutover → monitored coexistence (rollback window) → legacy
+retired for that project`. There is no global migration flag or mode. **Coexistence model — all
+four at once are valid:**
+
+| Project | State | Who owns its Archeus state | Marker `.archeus/v1-cutover.json` | Legacy writers / hooks | V1 hooks | Recovery material |
+|---|---|---|---|---|---|---|
+| A | V1 (window closed) | V1 | present | stand down | act | deleted only if the user chose to |
+| B | legacy | legacy | absent | act as today | do nothing | — |
+| C | migration pending (snapshot / dry run / import / verify) | legacy | absent | act as today | do nothing | the run's V1 rows, only in `ARCHEUS_HOME` |
+| D | V1 + rollback window | V1 | present | stand down | act | snapshot + deterministic legacy export, retained |
+
+The marker is the only per-project signal both applications read: the legacy writers (memory,
+lessons, worklog, CLAUDE.md / AGENTS.md blocks, rules) and account hooks stand down only where it is
+present; V1's hooks act only where it is present. It is a legacy seam built in P22 with the tooling
+(LM-C2). A run over project A cannot touch project B: scope is explicit project identities and fails
+closed (ADR-0045 §8).
+
+### 24.6 MD-5 — retirement is separate and explicit
+
+Per project: when the user closes its rollback window (§24.7). Of the legacy app: only when
+migration-plan §6's retirement checklist passes **and** every known project is either retired from
+legacy or explicitly left on it by the user — and only by the user's decision. **No date is set.**
+The legacy app stays available during V1 development and for every project not cut over; P26 does
+not require it to retire, and no retirement can invalidate an unmigrated project.
+
+### 24.7 MD-6 — recovery material and its retention
+
+| Question | Answer |
+|---|---|
+| what | the immutable snapshot (exact source bytes) + a legacy-format export (memory graph with lessons, worklog, managed-block renderings) of the project's V1 state |
+| deterministic? | yes: a versioned exporter over V1 state at a recorded event sequence; same inputs, same bytes |
+| verified how | hash, and a parse of the export in a scratch directory against the legacy formats (never in the project) |
+| where | `ARCHEUS_HOME/artifacts/`; written into the project only when a rollback is executed |
+| how long | the project's rollback window: **at least 90 days** (ADR-0019), **no automatic expiry** |
+| when deleted | only by an explicit user command after the user closed the window |
+| still dependent on legacy tooling? | the window cannot be closed; the material stays |
+
+### 24.8 LM-C1…LM-C3
+
+- **LM-C1** (write boundary) — resolved by **ADR-0046**: `ARCHEUS_HOME`; the Archeus-owned
+  project-local namespace `<project>/.archeus/` with per-entry ownership (V1 owns `sessions/` and
+  `v1-cutover.json`; `connections-cache.json` shared through its legacy function; the directory,
+  its `.gitignore` and everything else legacy's); project-owned files and git state only through
+  three named capabilities (task worktree, verified merge, cutover opt-in); user-level writes only
+  the shared latch and, at cutover, V1's hook entries. target-architecture §5.1 now states it.
+- **LM-C2** (per-project cutover mechanism) — the marker and the legacy seam, §24.5.
+- **LM-C3** (a legacy plan imported as COMPLETED) — a never-launched plan becomes a CREATED mission
+  with origin `legacy_import` awaiting confirmation; a launched one a REFERENCE item.
+
+### 24.9 The fourteen required gates
+
+| # | Gate | Where |
+|---|---|---|
+| 1 | per-project isolation | **MG-13** (new) |
+| 2 | legacy-project non-interference | **MG-14** (new) |
+| 3 | no arbitrary project-file writes | MG-12 (static) + MG-6 |
+| 4 | deterministic snapshot | MG-2 |
+| 5 | 100% source accounting | **MG-15** (new; the §17 table as a gate) |
+| 6 | provenance | MG-4 |
+| 7 | conflict preservation | MG-5 |
+| 8 | rollback | MG-8 |
+| 9 | dual-read | **MG-16** (new; §18 as a gate) |
+| 10 | sensitive-data handling | MG-10 (extended to categories A–D) |
+| 11 | coexistence of legacy and V1 projects | **MG-17** (new) |
+| 12 | unattributed project change detection | MG-6 |
+| 13 | cutover requires explicit approval | MG-11 |
+| 14 | unmigrated projects remain fully operational | **MG-18** (new) |
+
+### 24.10 P25.5 acceptance (revised)
+
+The gates MG-1…MG-18 pass on the fixture legacy homes, including a four-project coexistence
+fixture; a full dry run over the user's real environment passes (read only, 100% accounted); and the
+sequence up to cutover — import, dual-read, compatibility gate, rollback drill — passes on at least
+one real project the user chooses. **No cutover is required for acceptance.** P26 requires P25.5
+closed and every known project in an explicit, recorded migration state.
+
+### 24.11 Before P25.5 implementation may begin
+
+P25.5 is a run of tooling, so "implementation" means two things with different preconditions.
+
+**The P22 tooling** (fixture legacy homes only, never the user's real stores) may begin when: P21
+is closed and P22 has started under its own design gate; that design gate carries this document's
+tool design, MG-1…MG-18 and the legacy marker seam; and the user approves that gate.
+
+**The P25.5 run** on the user's environment may begin only when all of: P22 tooling built with
+MG-1…MG-18 mutation-verified; P23 closed (acceptance of the target); P24 closed with the tooling in
+its scope and no open High finding; P25 closed (the runbook published); the ADR-0046 static gate
+green on the release candidate; the user has read the dry-run plan; and the user issues the
+command. Nothing in this pass authorises any of it.
