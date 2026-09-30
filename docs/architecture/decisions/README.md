@@ -44,3 +44,6 @@ Internal documents (excluded from the published manual). Status values: DECIDED,
 | [0038](ADR-0038.md) | Four control modes for orchestration acts; a material substitution asks | PROPOSED |
 | [0039](ADR-0039.md) | Model evaluation is an approved mission over a versioned fixture suite | PROPOSED |
 | [0040](ADR-0040.md) | A consumed architecture artifact binds implementation; changing it is a plan-level act | PROPOSED |
+| [0041](ADR-0041.md) | Account consumption policy: protected accounts, subject limits, budgets always enforced, a readable effective policy | PROPOSED |
+| [0042](ADR-0042.md) | Conversational directives resolve into the same governed operations as the controls | PROPOSED |
+| [0043](ADR-0043.md) | Live work is executions and in-flight own calls, derived once; there is no Agent entity | PROPOSED |

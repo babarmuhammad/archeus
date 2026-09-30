@@ -15,6 +15,10 @@ the orchestration can rely on**, **the four control modes**, **model evaluation*
 that binds implementation**, **degraded and offline behaviour**, **the UI architecture**, and
 **the delivery plan**. Five new ADRs are proposed (ADR-0036…0040, all PROPOSED).
 
+A third pass, [ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md](ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md)
+(ADR-0041…0043, PROPOSED), adds conversational directives, live-work visibility and account
+consumption policy; it continues this document's decision (D-13…) and conflict (C-30…) ids.
+
 Method: the V1 and legacy code was read at source for availability, harness, policy, economy,
 evidence and evaluation (file:line below; the pi root cause and every claim marked *verified* was
 re-read first-hand); pi v0.85.1 was run read-only on this machine (`pi --version`,

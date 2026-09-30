@@ -1016,6 +1016,16 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   held equal by `parity.json` and a route test. P19 moves the Relations tab and the TUI onto
   `/v1/world/graph?focus=<object>&depth=1`, deletes the two client edge mappers and carries
   their cases to the route's tests; `EDGE_WORDS` stays the client's vocabulary.
+- Inherited from P16 (p16-design-gate §3.3, seams recorded there with P19 as owner; named here
+  2026-09-30, ownership unchanged): **S1** per-mission conversation threads, **S2** plan edit,
+  **S3** the chat verbs `approve`/`reject` bound to a displayed card's `action_hash`, **S4**
+  mission confirmation before `start` under `careful`, **S6** offline snapshot, **S7** the Qt
+  shell attach (the desktop deployment mode) with the legacy "Open V1" link.
+- *Proposed 2026-09-30 (third orchestration pass, PROPOSED pending the user's review — ADR-0042,
+  [ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md](ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md)):*
+  conversational resource directives for accounts and harnesses (grammar `use`/`don't use` and
+  `intent.v1.resource_directive`, narrowing applied, widening confirmed); the `route_explanation`
+  card on `why`.
 - Test: the implementation plan's unification scenario (create on desktop → observe on mobile →
   approve on mobile → execute on PC → review on desktop → inspect on TUI).
 - Acceptance: G3 fully passes.
@@ -1029,6 +1039,8 @@ decisions ADR-0024…0029.
 - Depends: P19 (unified clients; Relations/TUI on `/v1/world/graph`).
 - Core slice first (ADR-0006 verbs through P9): Pause all and a readable emergency-stop state
   (P11 rules); set mission priority, read by routing/scheduling (P10 rules). Nothing else in Core.
+  *Proposed 2026-09-30 (ADR-0042, PROPOSED):* the grammar verbs for these same commands —
+  `pause all`, `resume all`, `reprioritise` — land with them; no other Core work.
 - Client work: tokens (focus ≠ attention, red reserved, depth/transparency tokens); primitives;
   graph edge semantics, legend, impact view, hull/depth/cored nodes, static project cage; the
   thread (T1 from `Message.links`, T2 on every list, T3 spatial) and tints; activity halo,
@@ -1058,6 +1070,12 @@ decisions ADR-0024…0029.
   and its record carries `task_family` and a (so far empty) `capability_snapshot`; the Artifact
   producer record and `artifact.recorded` (already assigned by ADR-0030 §4). No routing behaviour
   changes.
+- *Proposed 2026-09-30 (ADR-0043, PROPOSED —
+  [ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md](ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md)):*
+  `live_work` (executions in live states and own calls in flight) as a `live` section of
+  `/v1/status`; account consumption (live consumers, ledger totals, windows with unknown shown as
+  unknown) and the effective resource policy in `/v1/accounts`; the `status` verb answering from
+  them. No Agent entity.
 - Acceptance: every question in §28 answerable from the UI.
 
 **P22 — Legacy migration**
@@ -1070,6 +1088,12 @@ decisions ADR-0024…0029.
   imported APPROVED (`source_kind: import`) so no current route changes silently, and routed
   offers name exact ids where known. Legacy `MODEL_PROFILES` is never migrated as evidence (at
   most REFERENCE history, excluded from every evidence query).
+- *Proposed 2026-09-30 (ADR-0041, PROPOSED —
+  [ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md](ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md)):*
+  account consumption classes (`normal` / `last_resort` / `explicit_only`), `limits` by subject
+  and tier, budgets enforced whenever set, project default resource preferences, with the
+  Resources UI for them; a route preview per plan task shown on the plan approval card; model and
+  location directive kinds (ADR-0042) once the catalogue exists.
 - Tests: fixture legacy homes (multi-account, codex, pi), idempotency, counts.
 - Acceptance: G8 passes; retirement checklist (migration-plan §6) evaluated.
 
