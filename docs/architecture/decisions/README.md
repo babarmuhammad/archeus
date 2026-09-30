@@ -39,3 +39,8 @@ Internal documents (excluded from the published manual). Status values: DECIDED,
 | [0033](ADR-0033.md) | Evidence advises routing; it orders or excludes only under an explicit rule | DECIDED |
 | [0034](ADR-0034.md) | Artifact-first hand-off between the steps of a mission | DECIDED |
 | [0035](ADR-0035.md) | A project's data class limits which providers and locations may receive its work | DECIDED |
+| [0036](ADR-0036.md) | Availability is a per-offer state with one reason, separate from routing status | PROPOSED |
+| [0037](ADR-0037.md) | The harness descriptor declares what a harness serves; orchestration never branches on a harness id | PROPOSED |
+| [0038](ADR-0038.md) | Four control modes for orchestration acts; a material substitution asks | PROPOSED |
+| [0039](ADR-0039.md) | Model evaluation is an approved mission over a versioned fixture suite | PROPOSED |
+| [0040](ADR-0040.md) | A consumed architecture artifact binds implementation; changing it is a plan-level act | PROPOSED |
