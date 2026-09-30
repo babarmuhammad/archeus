@@ -7801,18 +7801,27 @@ async function drawOwnModel(row){
      the catalogue it ships with, which is what makes a FRESH install offer
      anything at all instead of an empty box. A <datalist> keeps its group
      headings, so the split survives into the dropdown. */
-  const seen=d.models||[],cards=(d.cards||[]).filter(c=>seen.indexOf(c.id)<0);
+  /* `configured` comes first: it is the CLI's own answer to what this home can
+     RUN (pi's --list-models). `run here` and `ships with this CLI` are only
+     suggestions, and each drops what an earlier group already lists (C-22). */
+  const conf=d.configured||[],
+        seen=(d.models||[]).filter(m=>conf.indexOf(m)<0),
+        cards=(d.cards||[]).filter(c=>seen.indexOf(c.id)<0&&conf.indexOf(c.id)<0);
   const dl=$('#fOwnModels');
   if(dl)dl.innerHTML=
-    (seen.length?`<optgroup label="run here">`
+    (conf.length?`<optgroup label="configured for this account">`
+      +conf.map(m=>`<option value="${esc(m)}">`).join('')+`</optgroup>`:'')
+    +(seen.length?`<optgroup label="run here">`
       +seen.map(m=>`<option value="${esc(m)}">`).join('')+`</optgroup>`:'')
     +(cards.length?`<optgroup label="ships with this CLI">`
       +cards.map(c=>`<option value="${esc(c.id)}">${esc(c.label)}</option>`).join('')
       +`</optgroup>`:'');
   const note=$('#fOwnModelNote');
-  if(note)note.textContent=seen.length||cards.length
-    ? '— '+[seen.length&&seen.length+' run here',
+  if(note)note.textContent=conf.length||seen.length||cards.length
+    ? '— '+[conf.length&&conf.length+' configured for this account',
+            seen.length&&seen.length+' run here',
             cards.length&&cards.length+' in its catalogue'].filter(Boolean).join(', ')
+      +(d.configured_why?' (configured: '+d.configured_why+')':'')
       +'; type any other'
     : '— archeus has not seen this CLI run yet; type a model id';
   const es=d.efforts||[''];

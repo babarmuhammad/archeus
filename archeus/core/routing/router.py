@@ -138,9 +138,21 @@ def _capability(c, req, snap):
     return None
 
 
+def _offers(c):
+    """The candidate account's own offers when the snapshot carries them, else
+    its harness's (a snapshot recorded before C-22 replays as it was decided)."""
+    own = c['_a'].get('models')
+    return (c['_h'].get('models') or ()) if own is None else own
+
+
 def _model(c, req, snap):
     h = c['_h']
-    offers = {m['id']: m for m in h.get('models') or ()}
+    if c['_a'].get('models') == []:
+        # the account's own discovery found nothing it can run: an unknown
+        # capability is never an available one (C-22)
+        note = c['_a'].get('models_note')
+        return 'offers no model it can run%s' % (' (%s)' % note if note else '')
+    offers = {m['id']: m for m in _offers(c)}
     need, ctx = req.get('min_model_tier'), req.get('min_context_window')
 
     def fits(m):
@@ -287,8 +299,7 @@ def order_key(c, req, snap):
     affine = bool(aff) and (c['harness'], _key(c)) == (aff.get('harness'), aff.get('account'))
     pref = (c['account'] in _ids(req.get('preferred'), 'accounts')
             or c['harness'] in _ids(req.get('preferred'), 'harnesses'))
-    tier = next((m.get('tier') for m in c['_h'].get('models') or ()
-                 if m['id'] == c['model']), None)
+    tier = next((m.get('tier') for m in _offers(c) if m['id'] == c['model']), None)
     return (0 if affine else 1, 0 if pref else 1, c['priority'],
             _rank(tier) if c['model'] else 0, 1 if c['constrained'] else 0, c['resource'])
 

@@ -63,6 +63,9 @@ class Capabilities:
     # result either way, so neither is preferred and neither is required.
     structured_output: Optional[str] = None
     efforts: tuple = ()                 # the levels it accepts, in its own scale
+    # why `models` is empty when the adapter could not find out what this
+    # account can run (C-22): a failed discovery offers nothing, and says so
+    models_note: Optional[str] = None
 
 
 @dataclass(frozen=True)

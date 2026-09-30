@@ -193,6 +193,12 @@ is a fallback under its `fallback` mode (default `ask`). A user-device preferenc
 protected account lifts its class for that scope. Invariant: no router consumes a user-protected
 account merely because it is eligible; affinity cannot override the partition.
 
+**As built (C-22, 2026-10-01):** an offer is the account's. Each account in the snapshot
+carries its own `models`, from its adapter asked for that account (a pi home's own
+`--list-models`). The model step reads them, falling back to the harness's list only for a
+snapshot that predates the field. An account whose own list is empty is eliminated at `model`
+with the adapter's reason: an unknown capability is never an available one.
+
 **Affinity (step 1 of ordering)** keeps a mission on the account/harness its previous execution
 used, as long as that account is still eligible. Without it a P1 account recovering from a limit
 would steal a mission mid-flight, which throws away the prompt cache and forces a hand-off for

@@ -216,8 +216,11 @@ class PiSessions:
 
     def capabilities(self, account=None):
         from claude_sessions import harnesses
-        from .calls import pi_models
-        return _caps(pi_models(), harnesses.descriptor(self._legacy)['efforts'])
+        from .calls import pi_offers
+        models, note = pi_offers(account)
+        caps = _caps(models, harnesses.descriptor(self._legacy)['efforts'])
+        return base.Capabilities(caps.capabilities, caps.enforcement, caps.models,
+                                 caps.structured_output, caps.efforts, models_note=note)
 
     def locate(self, ref, home, cwd):
         from claude_sessions import pi

@@ -112,8 +112,10 @@ class PiCaller:
         return base.HarnessInfo(self.id, bool(exe), None, exe)
 
     def capabilities(self, account=None):
+        models, note = pi_offers(account)
         return base.Capabilities(frozenset({'headless', 'structured_output', 'interactive'}),
-                                 'none', pi_models(), structured_output='prompted')
+                                 'none', models, structured_output='prompted',
+                                 models_note=note)
 
     def authenticate(self, account):
         import os
@@ -158,18 +160,26 @@ def claude_models():
     return tuple(out)
 
 
-def pi_models():
-    """pi's offers, in its own vocabulary (`provider/id`): what this install
-    has run and declared, and its catalogue with each context window. pi
-    states no tier, so every one is unknown — the smallest (ADR-0022)."""
-    from claude_sessions import harnesses, pi
+def pi_models(home=None):
+    """pi's offers for ONE pi home, in its own vocabulary (`provider/id`): the
+    models pi itself lists as runnable there (`pi.configured`), never the
+    catalogue it ships (C-22; domain-model §8.3: an offer is an account's).
+    pi states no tier, so every one is unknown — the smallest (ADR-0022)."""
+    return pi_offers(base.AccountRef('pi', home) if home else None)[0]
+
+
+def pi_offers(account=None):
+    """(offers, note) for *account*'s pi home, or the default home without one.
+    A failed discovery is ((), why): nothing is offered and nothing is guessed."""
+    from claude_sessions import pi
     try:
-        ctx = {c['id']: c.get('context') for c in pi.catalogue() if c.get('id')}
-        ids_ = list(dict.fromkeys(list(pi.models(harnesses.home_dir('pi'))) + list(ctx)))
-    except Exception:          # an unreadable pi state offers nothing, never crashes routing
-        return ()
-    return tuple(base.ModelInfo(m, None, ctx.get(m) if isinstance(ctx.get(m), int) else None)
-                 for m in ids_)
+        got = pi.configured(account.home_ref if account is not None else None)
+    except Exception as e:     # an unreadable pi state offers nothing, never crashes routing
+        return (), 'pi model discovery failed: %s: %s' % (type(e).__name__, e)
+    if not got['ok']:
+        return (), got['why']
+    offers = tuple(base.ModelInfo(m['id'], None, m['context']) for m in got['models'])
+    return offers, None if offers else 'pi lists no model this home can run'
 
 
 def real_callers():

@@ -73,11 +73,15 @@ class SessionService:
             a = rows.get(r, entities.Account, account_id)
         return a.entity.home_ref if a else None
 
-    def adapter(self, harness_id, need=('interactive',)):
+    def adapter(self, harness_id, need=('interactive',), account_id=None, home=None):
+        """(adapter, models, efforts): the models are the ones THIS account can
+        run (C-22) — its home's, never another account's."""
         a = self.adapters.get(harness_id)
         if a is None or not a.discover().installed:
             raise Refused('%s is not installed' % harness_id)
-        caps = a.capabilities(None)
+        home = home or self._home(account_id)
+        from ...harnesses.base import AccountRef
+        caps = a.capabilities(AccountRef(account_id or harness_id, home) if home else None)
         missing = [c for c in need if c not in caps.capabilities]
         if missing:
             raise Refused('%s does not declare %s' % (harness_id, ', '.join(missing)))
@@ -109,7 +113,7 @@ class SessionService:
 
     def launch(self, actor, key=None, **kw):
         """A new interactive session in a terminal."""
-        a, models, efforts = self.adapter(kw['harness_id'])
+        a, models, efforts = self.adapter(kw['harness_id'], account_id=kw.get('account_id'))
         out = self._do(S.open_session, actor, key, mode='interactive_attached', launch=True,
                        models=models, efforts=efforts, **kw)
         return dict(out, launch=self._launch(out['id']))
@@ -117,7 +121,8 @@ class SessionService:
     def resume(self, actor, *, session_id, request_id, model=None, effort=None,
                deliver_brief=False, key=None):
         s, home = self._session(session_id)
-        a, models, efforts = self.adapter(s.harness_id, need=('interactive', 'resume'))
+        a, models, efforts = self.adapter(s.harness_id, need=('interactive', 'resume'),
+                                          home=home)
         if s.mode != 'headless' and s.last_request != request_id:
             got = self._locate(s, home, a)
             if got is None:
@@ -140,7 +145,7 @@ class SessionService:
     def handoff(self, actor, *, source_session_id, request_id, harness_id, account_id=None,
                 model=None, effort=None, reason='', key=None):
         src, home = self._session(source_session_id)
-        a, models, efforts = self.adapter(harness_id)
+        a, models, efforts = self.adapter(harness_id, account_id=account_id)
         turns = None
         if src.mission_id is None:
             # read-only: a hand-off never writes its source (invariant 6), not

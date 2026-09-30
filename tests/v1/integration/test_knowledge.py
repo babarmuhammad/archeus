@@ -152,7 +152,8 @@ def test_n05_a_real_adapter_passes_the_gate_and_its_argv_is_the_harness_own(make
     monkeypatch.setattr(harnesses, 'exe', lambda hid=None: 'C:/x/pi.exe')
     monkeypatch.setattr(harnesses, 'disabled', lambda: set())
     # P10: the model must be one pi offers (its own vocabulary)
-    monkeypatch.setattr(real, 'pi_models', lambda: (base.ModelInfo('spark/qwen3.8'),))
+    monkeypatch.setattr(real, 'pi_offers',
+                        lambda account=None: ((base.ModelInfo('spark/qwen3.8'),), None))
     import json
     monkeypatch.setattr(llmcall, 'run_headless', lambda cmd, stdin=None, **kw: (
         seen.append((cmd, stdin)), llmcall.Result(0, 'ok ' + json.dumps(GOOD), '', '', False))[1])

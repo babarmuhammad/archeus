@@ -675,14 +675,43 @@ Stop after the architecture: nothing above starts without the user's approval of
 
 | ID | Conflict | Evidence | Resolution proposed | Status |
 |---|---|---|---|---|
-| C-22 | **pi offers its whole shipped catalogue as available** (1,356 offers; pi says 1 is runnable) | `calls.py:161-172`; `pi.py:323-343,424-479`; `Control.tsx:247`; `pi --list-models` | offers = pi's `getAvailable()`; catalogue rows stay catalogue (ADR-0036) | PROPOSED — D-2 |
+| C-22 | **pi offers its whole shipped catalogue as available** (1,356 offers; pi says 1 is runnable) | `calls.py:161-172`; `pi.py:323-343,424-479`; `Control.tsx:247`; `pi --list-models` | offers = pi's `getAvailable()`; catalogue rows stay catalogue (ADR-0036) | **FIXED** (C-22 slice, 2026-10-01; see "C-22 as built" below) |
 | C-23 | Local-only operation is impossible: the planner needs `large`, pi offers are `tier: None`; pi cannot execute | `core/calls.py:44`; `router.py:82-84`; execution-architecture §3 | user-declared tier (D-4); pi execution adapter (D-3) | PROPOSED |
 | C-24 | "local" conflates this machine with the user's LAN server | `models.json` `baseUrl 192.168.1.113` | `this_node | self_hosted | remote` (D-5) | PROPOSED |
 | C-25 | Harness version is never recorded, yet evidence is keyed on it (ADR-0032 §4) | `calls.py:57`; `claude_code/adapter.py:84` | `installed_version` populated (ADR-0037, P22) | PROPOSED |
 | C-26 | Account auth is probed only at registration; availability goes stale silently | `resources.py:74,88` | periodic auth probe (ADR-0036, D-7) | PROPOSED |
 | C-27 | `fallback: allow` can substitute a different provider/location/tier silently once a second provider exists | resource-router §7 | material substitution asks (ADR-0038, D-8) | PROPOSED |
 | C-28 | Resource-starved work is invisible in Attention | `attention.py:39-45,73-75` | Attention items (D-11, P21) | PROPOSED |
-| C-29 | Legacy `pi.auth_state` reports pi "missing" while `models.json` makes it work | `pi.py:482-499` | honour `models.json` providers (with C-22) | PROPOSED |
+| C-29 | Legacy `pi.auth_state` reports pi "missing" while `models.json` makes it work | `pi.py:482-499` | honour `models.json` providers (with C-22) | **FIXED** (with C-22) |
+
+**C-22 as built (2026-10-01).** A defect against already-decided rules (domain-model §8.3,
+ADR-0022, ADR-0031), fixed without ADR-0036, whose states stay unbuilt:
+
+- **Discovery per home.** `claude_sessions/pi.py` `configured(home)` runs `pi --list-models` with
+  `PI_CODING_AGENT_DIR` set to that home and parses pi's own table (pi prints exactly
+  `getAvailable()`). Ids are `provider/model`. Context windows come from `models.json`, else the
+  shipped catalogue's fact for the same id, else unknown. Results are cached per home on the pi
+  executable, its version (package.json), the shim's stamp and the stamps of `models.json`,
+  `auth.json` and `settings.json`; a failed answer is retried after 60 s even with nothing
+  changed, a successful one lives until its key changes.
+- **Failure offers nothing.** A failed run, an unrecognised table or row, no executable or no
+  home is `ok: False` with its reason, and never falls back to the catalogue. pi's own
+  "No models available" is an empty answer, not a failure.
+- **Offers per account.** `PiCaller` and `PiSessions` answer `capabilities(account)` from that
+  account's home, and `Capabilities.models_note` carries why the list is empty.
+  `resources._account_offers` puts each account's own offers in the snapshot. The router's model
+  step reads the candidate account's offers when present, else the harness's (so older
+  RouteDecision snapshots replay unchanged). An account whose own discovery found nothing is
+  eliminated at `model` with that reason. The P12 session service validates a model against the
+  target account's home.
+- **Catalogue stays catalogue.** `pi.catalogue()` is unchanged. The legacy launch modal lists
+  "configured for this account" (`configured`, `configured_why`) apart from "run here" and
+  "ships with this CLI".
+- **Unchanged:** `/v1/harnesses` shape (its `models` is the default home's configured set);
+  Claude offers; tiers (pi models stay tier-unknown, D-4); probes (D-7); rotation, AP-1, D-25.
+- **Tests:** `tests/v1/unit/test_pi_discovery.py` and
+  `tests/test_harnesses.py::test_the_launch_modal_keeps_configured_apart_from_the_catalogue`,
+  16 mutants killed.
 
 **The directive's sections traced:** §1–§2 → Part C preamble; §3, §12 → A3, C3; §4 → C1; §5 →
 C7; §6 → C8; §7 → C4; §8 → C9; §9 → C5; §10 → C4 (independence only); §11 → C2; §13 → A5, C12;

@@ -4449,6 +4449,18 @@ def api_harness_models(q, body):
     # one consumer of `cost` is the pricing table in `stats`, which reads the
     # catalogue directly and server-side.
     cards = [{'id': c['id'], 'label': c['label']} for c in cards]
+    # `configured` is what THIS home can run, in the CLI's own words (C-22) —
+    # a third list, because "ships with this CLI" says nothing about a login
+    # and "run here" says nothing about whether it still runs. A failed answer
+    # is an empty list and its reason, never the catalogue in its place.
+    configured, configured_why = [], ''
+    if d.get('configured'):
+        try:
+            got_c = _h.impl('configured', d['id'])(_h.home_dir(d['id']))
+            configured = [m['id'] for m in got_c['models']]
+            configured_why = got_c['why']
+        except Exception as e:
+            configured_why = '%s: %s' % (type(e).__name__, e)
     # a preset naming a model no catalogue publishes is dropped rather than
     # offered: the whole point of a quick start is that clicking it works, and
     # an id that 404s on the first turn is worse than no button. With no
@@ -4459,7 +4471,8 @@ def api_harness_models(q, body):
                for n, b, f in (d.get('presets') or ())
                if not known or (f.get('model') or '') in known]
     return dict(_launch_vocab(d), models=got, catalogue=False,
-                cards=cards, presets=presets)
+                cards=cards, presets=presets, configured=configured,
+                configured_why=configured_why)
 
 
 def _launch_vocab(d):

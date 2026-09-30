@@ -364,6 +364,8 @@ HARNESSES = {
         'efforts': ('', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'),
         'models': 'pi.models',
         'catalogue': 'pi.catalogue',
+        #: what ONE home can run, pi's own `--list-models` (C-22) — never the catalogue
+        'configured': 'pi.configured',
         'doctor': 'pi.doctor',
         #: no login subcommand; `pi` prompts on first use and writes auth.json
         'login_argv': (),

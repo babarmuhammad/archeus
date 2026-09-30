@@ -204,6 +204,27 @@ def _terms(conn):
             for h, t in sorted(terms(conn).items())}
 
 
+def _account_offers(accounts, adapters, hs):
+    """Each account's own offers (domain-model §8.3: an offer is an account's,
+    ADR-0022): the adapter asked for THAT account, so one home never lends its
+    models to another (C-22). The harness-level list stays for the harness view
+    and for a snapshot taken before this field existed."""
+    from ...harnesses.base import AccountRef
+    by = {a.id: a for a in adapters}
+    installed = {h['id'] for h in hs if h['installed']}
+    for e in accounts:
+        ad = by.get(e['harness'])
+        if ad is None or e['harness'] not in installed:
+            continue
+        try:
+            caps = ad.capabilities(AccountRef(e['id'] or e['ref'] or e['harness'],
+                                              e['home_ref']))
+        except Exception as err:            # an adapter bug offers nothing
+            e['models'], e['models_note'] = [], '%s: %s' % (type(err).__name__, err)
+            continue
+        e['models'], e['models_note'] = _models(caps), caps.models_note
+
+
 def _registered(conn, harness_ids, feed, now):
     """The registered accounts of *harness_ids*, with policy, usage and ledger.
     Returns (entries, readings): the feed's readings are recorded by the
@@ -259,6 +280,7 @@ def call_snapshot(conn, *, callers, feed, preference, purpose, schema, project_i
                              'label': a.id, 'auth_kind': None, 'registered': False,
                              'health': None, 'why_not': why or None, 'policy': None,
                              'usage': None, 'ledger': None})
+    _account_offers(accounts, callers, hs)
     models = {h['id']: preference.model_for(h['id']) for h in hs
               if preference.model_for(h['id'])}
     req = {'subject': 'archeus_call', 'purpose': purpose, 'project_id': project_id,
@@ -336,6 +358,7 @@ def task_snapshot(conn, *, adapters, feed, mission, plan, task, decision, now):
                              'harness': h['id'], 'label': h['id'], 'auth_kind': None,
                              'registered': False, 'health': None, 'why_not': None,
                              'policy': None, 'usage': None, 'ledger': None})
+    _account_offers(accounts, adapters, hs)
     req = {'subject': 'task', 'purpose': None, 'mission_id': mission.id, 'task_id': task.id,
            'project_id': mission.project_id,
            'capabilities': sorted(task.capabilities_required), 'structured_output': False,
