@@ -243,3 +243,24 @@ in the phase that builds it (§4). Full wording and mutations:
 | T4 contrast floors | P19 | the existing contrast gates run over every theme × role, unchanged |
 | T5 persistence per client | P19 | the choice survives a reload, a service-worker offline start and a Qt shell restart (persistent profile); no Core read is needed |
 | T6 before first paint; tints are not themes | P19 | `<html>` carries the theme attributes before the stylesheet paints (a `'self'` boot script); only the three token sets are selectable as application themes |
+
+## 9. Legacy context migration gates (P22 tooling, P25.5 run — ADR-0045, PROPOSED)
+
+Not built. Each is mutation-verified in P22 against fixture legacy homes (the existing G8 fixtures:
+multi-account, codex, pi) and re-run in P25.5 on the user's environment. Design:
+[legacy-context-migration.md](legacy-context-migration.md) §14–§18.
+
+| Gate | Asserts | Mutation it must kill |
+|---|---|---|
+| MG-1 read-only source | after snapshot, dry run, import, verify and rollback, every legacy source has the same bytes, mtime and name; no lock or `.corrupt-*` file appeared | extractor calls a legacy loader that quarantines; a write-back |
+| MG-2 determinism | two runs over one snapshot produce byte-identical source records and derived rows; a new snapshot reports every item unchanged / changed / new / gone | a timestamp or random id in a derived row |
+| MG-3 losslessness | every `copied` item's bytes and every per-record fragment are recoverable from the snapshot; redactions are listed with field path and hash | a fragment dropped; an undeclared redaction |
+| MG-4 provenance | 100% of migrated rows reach a source record through `derived_from`, with snapshot, path, key, hashes, transform and field diff | a row without `derived_from`; transform unrecorded |
+| MG-5 no silent choice | an imported item conflicting with a V1 CONFIRMED item is a CANDIDATE with `contradicts` and a proposal; neither is superseded | newer wins silently |
+| MG-6 project compatibility | project manifests before and after: every difference attributed (user, legacy app, approved mission, ADR-0019 shared file, V1 delivery copy, approved opt-in); none unattributed; no V1 metadata in a project-owned file | a migration writes a managed block without opt-in |
+| MG-7 scope preserved | every record keeps its source scope; nothing becomes global | a project lesson imported globally |
+| MG-8 rollback | before cutover the run's rows are withdrawn and V1-native rows kept; after cutover opt-in files restore to their recorded hashes; MG-1 and MG-6 pass after | a V1-native row withdrawn; a file not restored |
+| MG-9 dry run | a dry run writes only its scratch database and report | a write to the live database |
+| MG-10 no credentials | no credential or API key appears in any artifact, source record, row or report | a settings key copied |
+| MG-11 consent | no run or cutover starts without an `admin` user-device command; an update, restart or schedule starts none | cutover on upgrade |
+| MG-12 V1 write boundary | a static walk of `archeus/` finds no write outside `ARCHEUS_HOME` except the named seams (P12 D15 delivery copies, the ADR-0019 shared files through their legacy functions, git operations of an approved execution, the verified merge) | a new write site inside a project |

@@ -155,6 +155,13 @@ class), a `quota.assess` refactor (wrong primitive), splitting `gui_api`, removi
 Importer runs read-only against legacy stores, idempotently (keyed by legacy identity), into a
 fresh `archeus.db`; re-running updates, never duplicates.
 
+*Extended 2026-09-30 (ADR-0045, PROPOSED; [legacy-context-migration.md](legacy-context-migration.md)):*
+the mapping below runs from an immutable snapshot's verbatim **source records**, never straight
+from the live stores, and every row it produces cites its source record; the tooling is built in
+P22 and the real migration, verification and cutover are **P25.5**. The full preservation
+inventory (every legacy store, its owner class, destination, method and loss risk) is
+legacy-context-migration.md §4.
+
 | Legacy data | V1 entity | Mapping |
 |---|---|---|
 | Accounts (`settings['accounts']`), homes (`settings['homes']`), provider profiles | Account + ResourcePolicy with the V1 defaults (allocation 80, reserve 10); the legacy `rotate_threshold` (default 98) is recorded on the import report for the user to review, not copied into allocation | `auth_kind` by harness/profile |
@@ -174,6 +181,10 @@ fresh `archeus.db`; re-running updates, never duplicates.
 | Events log (`archeus-events.jsonl`) | not migrated (diagnostic) | |
 
 ## 5. Data ownership during the strangler period (ADR-0019)
+
+*"Cutover" below is P25.5's user-approved cutover (ADR-0045, PROPOSED), and "V1 writes via
+refactored `claude_md`/`memrules`" applies only to a project whose user opted in to it at
+cutover; a project without that opt-in keeps its files as the legacy app last wrote them.*
 
 | Artifact | Owner before cutover | V1 behaviour before cutover | After cutover |
 |---|---|---|---|
@@ -221,6 +232,9 @@ Then: remove `web/app.js` & co., legacy routes, legacy TUI screens, `gui_api` jo
 keep modules marked REUSE.
 
 ## 7. Rollback
+
+*The migration's own rollback (checkpoints, withdrawal of a run, post-cutover restore) is
+legacy-context-migration.md §15 (ADR-0045, PROPOSED).*
 
 Every phase that touches user data is additive until P22: V1 reads legacy stores and writes only
 `ARCHEUS_HOME` (target-architecture §5.1) plus the two shared files of §5. Rolling back = stop

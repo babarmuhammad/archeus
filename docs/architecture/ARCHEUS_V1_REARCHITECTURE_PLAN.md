@@ -426,6 +426,7 @@ Sequencing changes from the source plan (0–24), each justified:
 | **Provider-terms gate (ADR-0021) moved** from P0 to *immediately before the first real headless model call* | P0.5–P3.5 make no real model call; the architecture supports API-key accounts regardless of the answer |
 | P20 = hardening, P21 = observability *views* | the mechanisms exist from P2 (events, decisions); these phases add breaker drills, secrets review, trace UI and metrics |
 | **P24 audit and P25 documentation inserted before the release gate, which moves from P24 to P26** (2026-09-28) | P20 hardens each control as it is built; only a system that has substantially landed can be attacked *across* phase boundaries, and only the final architecture can be documented without describing a historical one. See the renumbering note under §31.1 |
+| **P25.5 Legacy Context and Memory Migration** inserted before the release gate; the ownership cutover moves there from P22 (2026-09-30, ADR-0045) | the migration must run into a finished, accepted and audited V1 with tooling the P24 audit has attacked; cutover needs a verified migration and the user's approval; V1 cannot be declared complete while it is unverified |
 
 ### 31.1 Phase table
 
@@ -1086,7 +1087,15 @@ decisions ADR-0024…0029.
 - Acceptance: every question in §28 answerable from the UI.
 
 **P22 — Legacy migration**
-- Depends: P21. New: `legacy/importers.py`, onboarding import flow, ownership cutover.
+- Depends: P21. New: `legacy/importers.py`, onboarding import flow, ownership cutover *(moved
+  to P25.5 on 2026-09-30: cutover follows a verified migration and the user's approval)*.
+- *Added 2026-09-30 (the user's directive; design ADR-0045, PROPOSED —
+  [legacy-context-migration.md](legacy-context-migration.md)):* the migration tooling, built
+  here with the importer and audited in P24 — `archeus migrate inventory | snapshot | dry-run |
+  diff | import | verify | report | rollback | export-legacy`; read-only extraction into an
+  immutable content-addressed snapshot; verbatim source records under every derived row;
+  provenance, conflict relations, run records and reports. Runs here only against fixture legacy
+  homes and copies; the real migration is P25.5's.
 - Orchestration foundations (ADR-0031; added 2026-09-30): the model catalogue moves into Core —
   the legacy `models.py` / pi / provider-proxy catalogue reads become a Core command writing
   `Model`/`ModelOffer` with provenance and TTL, the routing-status machine (CATALOGUED /
@@ -1234,6 +1243,27 @@ decisions ADR-0024…0029.
   one meaning, everywhere; documentation and website builds, link checks and the existing
   site gates are green.
 
+**P25.5 — Legacy Context and Memory Migration** — *added 2026-09-30 at the user's direction (a
+hard requirement for declaring V1 migrated); design ADR-0045, PROPOSED;
+[legacy-context-migration.md](legacy-context-migration.md).* A controlled migration and
+verification phase, not a feature phase.
+- Depends: P22 (tooling), P23 (acceptance of the target), P24 (audit of the tooling), P25
+  (the runbook). Identifier: the plan's convention for an inserted phase (P0.5, P3.5, P19.5).
+- Invariants: the legacy source is read only; no project-owned file is written, moved, renamed,
+  reformatted or annotated; the legacy app, V1 and every project coexist throughout; nothing runs
+  as a side effect of an update, restart or schedule.
+- Work, in order: preservation inventory; project baseline manifests; dry run on a scratch
+  database and its report; the real import (source records, then derived rows); dual-read
+  verification against the legacy app; rollback drill; the project compatibility gate; the user's
+  review of every unresolved item; the user-approved cutover, per project, with per-project
+  opt-ins for Archeus-managed blocks in project files.
+- Gates (testing-strategy §9, MG-1…MG-12): 100% of source records accounted for and classified;
+  0 silent losses; 0 unexplained conflicts; 100% provenance; deterministic re-run; rollback
+  demonstrated; migrated memory readable by V1; legacy source recoverable; every project-file
+  difference attributed.
+- Acceptance: the gates pass on the fixture legacy homes and on the user's environment, and the
+  user approves the cutover.
+
 **P26 — V1 release gate** — §34. Release authorization, not an implementation phase: it
 verifies the whole V1 state after P24 and P25 against an evidence checklist and a list of
 blockers, and reviews architecture consistency. (Was P24 before 2026-09-28.)
@@ -1277,7 +1307,7 @@ flowchart LR
     P14 --> P15 --> P16 --> P17
     P16 --> P18
     P17 --> P19
-    P18 --> P19 --> P195[P19.5] --> P20 --> P21 --> P22 --> P23 --> P24 --> P25 --> P26
+    P18 --> P19 --> P195[P19.5] --> P20 --> P21 --> P22 --> P23 --> P24 --> P25 --> P255[P25.5] --> P26
 ```
 
 P19.5 was approved on 2026-09-30 (ADR-0030). Outside the chain: the C-22 defect slice and
@@ -1376,11 +1406,13 @@ recorded, decisions documented with reasons — each is linked from the table at
 - [ ] Emergency stop works with and without Core (G5)
 - [ ] Repository re-inspection and drift work (S7)
 - [ ] Legacy data migration tested (G8)
+- [ ] Legacy context and memory migrated and verified; existing projects unchanged unless opted
+      in (P25.5, MG-1…MG-12)
 - [ ] Every traceability row green; no Critical design-review findings; no High security findings
 
 *Release evidence* — each item is a recorded artifact (command output, CI run, report), not a
 statement that tests pass:
-- [ ] P0–P25 each closed at its gate, with its design gate and as-built record
+- [ ] P0–P25.5 each closed at its gate, with its design gate and as-built record
 - [ ] Clean working tree on the intended release branch; intended commits pushed; `main`
       changed only by the intended merge
 - [ ] CI green on the release commit; complete test suite run; mutation suites at or above
@@ -1392,22 +1424,22 @@ statement that tests pass:
 - [ ] Architecture documentation, README and website synchronized with the shipped system
       (P25 consistency check); no stale documentation claims
 - [ ] Release metadata, version and changelog/release notes; known limitations stated
-- [ ] Migration status reconciled (P22 cutover, retirement checklist); no unintended legacy
-      path remains
+- [ ] Migration status reconciled (P25.5 migration report and cutover, retirement checklist);
+      no unintended legacy path remains
 
 *Release blockers* — any one stops the release; this list extends, and does not relax, the
 criteria above: failing CI; a failing required test; a mutation regression; an unresolved
 Critical security finding; an unresolved High security finding without a signed P24
 exception; a broken package; a broken documentation or website build; stale architecture
-documentation; unreconciled migration state; accidental changes to `main`; a missing required
-release artifact.
+documentation; unreconciled migration state; P25.5 not verified; an unattributed change to a
+project file; accidental changes to `main`; a missing required release artifact.
 
 *Architecture consistency review* — verify the ownership chain still holds in the shipped code:
 P4 World · P5 Context · P6 Knowledge/Learning · P7 Intent/Mission · P8 Plans · P9
 Policy/Authorization · P10 Resource/Model/Harness Routing · P11 Execution · P12
 Sessions/Continuity · P13 Verification/Review · P14 Events/Automation · P15
-Presence/Pairing/Remote/Mobile · P16 UI/Experience, with P17–P25 adding clients, views,
-migration, audit and documentation but no new owner. Verify that no later implementation
+Presence/Pairing/Remote/Mobile · P16 UI/Experience, with P17–P25.5 adding clients, views,
+migration (P22 tooling, P25.5 run), audit and documentation but no new owner. Verify that no later implementation
 created a second policy engine, routing engine, execution engine, verification engine or
 session system; a hidden model/harness selection engine; an event-sourced shadow state
 system; a UI-specific source of truth; or an automation-specific authorization path.
