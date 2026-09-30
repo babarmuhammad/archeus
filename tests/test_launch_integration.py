@@ -24,6 +24,9 @@ def captured_launch(monkeypatch, sb, choice, opts, folder_files=None,
         return 0
     monkeypatch.setattr(subprocess, 'call', fake_call)
     monkeypatch.setattr(main_mod, 'get_claude_exe', lambda: r'C:\fake\claude.exe')
+    # the argv is built in the UI-free launch module now (P12), which binds its own name
+    from claude_sessions import launch as _launch_mod
+    monkeypatch.setattr(_launch_mod, 'get_claude_exe', lambda: r'C:\fake\claude.exe')
     folder = sb.projects / encoded
     folder.mkdir(exist_ok=True)
     for fname, content in (folder_files or {}).items():
@@ -129,6 +132,8 @@ def _stub_provider(monkeypatch, **over):
                             port=20129, **over)
     s = dict(_cfg._DEFAULT_SETTINGS, providers=[prof], provider_active='p1')
     monkeypatch.setattr(_main, 'load_settings', lambda: dict(s))
+    from claude_sessions import launch as _launch_mod   # where the argv is built (P12)
+    monkeypatch.setattr(_launch_mod, 'load_settings', lambda: dict(s))
     return prof
 
 
