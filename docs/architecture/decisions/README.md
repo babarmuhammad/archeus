@@ -34,3 +34,8 @@ Internal documents (excluded from the published manual). Status values: DECIDED,
 | [0028](ADR-0028.md) | Colour separation, depth and transparency tokens | DECIDED |
 | [0029](ADR-0029.md) | Visual evidence: deterministic regression and manual visual acceptance | DECIDED |
 | [0030](ADR-0030.md) | Phase amendments for the visual architecture: P19.5, P18 A8, V1.x-3D, Core owners | DECIDED |
+| [0031](ADR-0031.md) | The model catalogue is dated current state, and discovery is not authorisation to route | DECIDED |
+| [0032](ADR-0032.md) | Capability evidence: four classes, method apart from class, task-family scoped, no score | DECIDED |
+| [0033](ADR-0033.md) | Evidence advises routing; it orders or excludes only under an explicit rule | DECIDED |
+| [0034](ADR-0034.md) | Artifact-first hand-off between the steps of a mission | DECIDED |
+| [0035](ADR-0035.md) | A project's data class limits which providers and locations may receive its work | DECIDED |

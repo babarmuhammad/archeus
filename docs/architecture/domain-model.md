@@ -409,6 +409,19 @@ every other adapter reports its own (`Capabilities.models`). A model id is **tha
 vocabulary** (`claude-opus-5-5`; pi's `provider/id`, locally hosted models included) and is valid
 only as an offer of the account it runs on; tier and context window may be unknown (ADR-0022).
 
+*Amended by ADR-0031 (P21/P22, not yet built):* `Model` holds catalogue **facts** only —
+`provider`, exact `revision`, `alias_of`, `location`, context, output cap, tool support, efforts,
+price where stated, `deprecated_at`/`retired_at`, and per field its source rung, `source_ref` and
+`observed_at` — plus a routing status (CATALOGUED → EVALUATING → APPROVED, RETIRED) that enters
+state-machines.md with its implementation; `ModelOffer` gains `route_kind` (direct | alias | proxy
+| opaque_router). The newest-model-following logic above no longer makes a model routable; the
+user (or a standing rule the user created) approves it. `strengths` tags are not capability
+evidence: performance claims are ADR-0032's (DECLARED / OBSERVED / INFERRED / UNKNOWN, task-family
+scoped, no score). Execution gains `model_revision` and `served_model` with its level (REQUESTED /
+ROUTED / SERVED / BILLED); RouteDecision gains `task_family`, `capability_snapshot` and
+`escalated_from` (ADR-0033); Artifact gains its producer (ADR-0034); projects gain `data_class`
+(ADR-0035).
+
 ### 8.4 ResourcePolicy (priority + allocation)
 
 | Field | Meaning |

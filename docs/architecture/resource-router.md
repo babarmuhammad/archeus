@@ -33,7 +33,7 @@ A Session is bound to (harness, account). Moving work to another account is ther
 | Harness discovery | node probes executables (today's `harnesses.HARNESSES` descriptors + `exe_setting`) | Harness rows with `capabilities`, `enforcement`, `installed_version` |
 | Account registration | user in Control → Resources (import from legacy `settings['accounts']` / `settings['homes']` at migration) | Account rows (`node_id` = local), `auth_kind`, `home_ref` |
 | Auth probe | adapter `authenticate()` (cheap, no inference) | health UNVERIFIED → AVAILABLE / UNAUTHENTICATED |
-| Model offers | adapter `capabilities()` + `models.roster()` newest-per-family logic | ModelOffer rows; stale offers marked unavailable after 24 h |
+| Model offers | adapter `capabilities()` + `models.roster()` newest-per-family logic — **amended by ADR-0031:** offers come from the dated catalogue (`Model`/`ModelOffer` with provenance), a model is routable only in routing status APPROVED (EVALUATING for an evaluation subject), and a routed offer names an exact id where one is known; a newer model never becomes routable merely by existing | ModelOffer rows; stale offers marked unavailable after 24 h |
 | Resource policy | user sets priority, allocation, reserve, budgets, project rules, fallback | ResourcePolicy row; changes are events |
 
 Defaults at first run: every account `priority` in registration order, `allocation_pct` 80,
@@ -171,6 +171,15 @@ def route(subject, now) -> RouteDecision:
     chosen = cands[0]
     return record(subject, chosen, rejected, snap, cands[1:])      # RouteDecision + event
 ```
+
+**Amended by ADR-0033 (V1.x-O2), ADR-0031 and ADR-0035:** requirements gain `task_family` and
+`exact_provenance`; elimination gains a `provenance` step (an offer that cannot guarantee a SERVED
+record fails an exact-provenance subject), the data-class provider rule inside `restriction`, and an
+`evidence` step that eliminates only under a user's `evidence_exclude` rule; ordering gains one
+discrete `evidence_fit` key after priority and before tier fit only under a user's `evidence_order`
+rule. By default evidence only annotates each candidate. No weighted score exists; every decision
+freezes the evidence it consulted (`capability_snapshot`). Detail:
+[ARCHEUS_V1_ORCHESTRATION_RECONCILIATION.md](ARCHEUS_V1_ORCHESTRATION_RECONCILIATION.md) §13.
 
 **Affinity (step 1 of ordering)** keeps a mission on the account/harness its previous execution
 used, as long as that account is still eligible. Without it a P1 account recovering from a limit

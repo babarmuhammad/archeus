@@ -1052,10 +1052,24 @@ decisions ADR-0024…0029.
 
 **P21 — Observability views**
 - Depends: P20. New: trace view per mission, metrics_daily, Health page, `archeus doctor`.
+- Orchestration foundations (ADR-0031, ADR-0033, ADR-0034; added 2026-09-30): `Execution`
+  records `model_revision` and `served_model` with its level (REQUESTED / ROUTED / SERVED /
+  BILLED); a decision's `input_snapshot` records the harness version and catalogue row versions,
+  and its record carries `task_family` and a (so far empty) `capability_snapshot`; the Artifact
+  producer record and `artifact.recorded` (already assigned by ADR-0030 §4). No routing behaviour
+  changes.
 - Acceptance: every question in §28 answerable from the UI.
 
 **P22 — Legacy migration**
 - Depends: P21. New: `legacy/importers.py`, onboarding import flow, ownership cutover.
+- Orchestration foundations (ADR-0031; added 2026-09-30): the model catalogue moves into Core —
+  the legacy `models.py` / pi / provider-proxy catalogue reads become a Core command writing
+  `Model`/`ModelOffer` with provenance and TTL, the routing-status machine (CATALOGUED /
+  EVALUATING / APPROVED / RETIRED) in `states.py` and state-machines.md, the `catalog.*` and
+  `model.state_changed` events, and the read route `/v1/models`; the models offered today are
+  imported APPROVED (`source_kind: import`) so no current route changes silently, and routed
+  offers name exact ids where known. Legacy `MODEL_PROFILES` is never migrated as evidence (at
+  most REFERENCE history, excluded from every evidence query).
 - Tests: fixture legacy homes (multi-account, codex, pi), idempotency, counts.
 - Acceptance: G8 passes; retirement checklist (migration-plan §6) evaluated.
 
@@ -1203,6 +1217,12 @@ supersession · event + schedule automations with loop guard · since-you-left d
 Now/Work/World/Control/Attention as lists · PWA over Tailscale Serve · ntfy · thin CLI.
 **V1 release additionally requires** the Codex adapter (provider neutrality proven with a second
 real harness) and the full TUI.
+
+**Evidence-driven orchestration (ADR-0031…0035) is V1.x-O**, after V1: capability evidence and
+the `CAPABILITY` knowledge type (O1), evidence annotation/ordering/exclusion rules and bounded
+escalation (O2), declared step outputs, artifact inputs and critic reviews (O3), provider-proxy
+adapters and the data-class provider rule (O4), skills as routable capabilities (O5). V1 builds
+only the provenance and catalogue foundations in P21/P22.
 
 **Deferred past V1:** remote execution nodes, pi/generic-CLI adapters, 3D spatial mode, Web
 Push, FTS5, vector search, EMA reinforcement and contradiction edges, Archeus-as-MCP-server,
