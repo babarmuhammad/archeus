@@ -9,7 +9,7 @@ import { send } from '../data/core';
 import { useRead, useRefresh } from '../data/cache';
 import { objectHref } from '../nav/destinations';
 import { ago } from '../state/present';
-import { ActionButton, Empty, Fresh, KV, Loadable, StateBadge, useMe } from '../components/ui';
+import { ActionButton, Details, Empty, Fresh, KV, Loadable, Prose, StateBadge, useMe } from '../components/ui';
 
 const KIND_LABEL: Record<string, string> = {
   approval: 'Approval',
@@ -72,7 +72,7 @@ function AttentionEntry({ item }: { item: AttentionItem }) {
         <KnowledgeProposal item={item} />
       ) : (
         <p>
-          {item.reason ? <span>{item.reason} · </span> : null}
+          {item.reason ? <span><Prose text={item.reason} /> · </span> : null}
           <a href={LINK[item.kind]?.(item) ?? '#/attention'}>Open</a>
         </p>
       )}
@@ -178,7 +178,7 @@ export function ApprovalCard({ id }: { id: string }) {
                     <td className="mono">{w.target ?? (w.paths ?? []).join(', ') ?? '—'}</td>
                     <td>
                       {w.decision}
-                      {w.why ? ` — ${w.why}` : ''}
+                      {w.why ? <> — <Prose text={w.why} /></> : ''}
                     </td>
                   </tr>
                 ))}
@@ -186,14 +186,14 @@ export function ApprovalCard({ id }: { id: string }) {
             </table>
             <KV
               rows={[
-                ['Why it asks', p.why ?? '—'],
-                ['If you approve', p.consequences?.approve ?? '—'],
-                ['If you reject', p.consequences?.reject ?? '—'],
+                ['Why it asks', p.why ? <Prose text={p.why} /> : '—'],
+                ['If you approve', p.consequences?.approve ? <Prose text={p.consequences.approve} /> : '—'],
+                ['If you reject', p.consequences?.reject ? <Prose text={p.consequences.reject} /> : '—'],
                 ['Expires', `${a.expires_at} (${ago(a.expires_at)})`],
                 ['Covers', p.reusable ?? '—'],
-                ['Action hash', <span className="mono">{a.action_hash.slice(0, 16)}…</span>],
               ]}
             />
+            <Details rows={[['Action hash (what an approval is bound to)', a.action_hash], ['Approval id', a.id], ['Mission id', a.mission_id], ['Plan id', a.plan_id]]} />
             {p.against?.plan?.summary ? (
               <p className="provenance">
                 Plan summary, {p.against.plan.summary_by ?? 'model-written'}: {p.against.plan.summary}
@@ -242,7 +242,7 @@ function VerificationDecision({ item }: { item: AttentionItem }) {
   return (
     <div>
       <p>
-        {human ? 'Nothing deterministic could check this: it waits for you to accept or reject the result.' : `The verifier broke (${item.reason ?? 'no reason'}) — this is not a failure of the work.`}{' '}
+        {human ? 'Nothing deterministic could check this: it waits for you to accept or reject the result.' : <>The verifier broke (<Prose text={item.reason ?? 'no reason'} />) — this is not a failure of the work.</>}{' '}
         <a href={objectHref('verification', item.ref.id)}>Evidence</a>
         {item.mission_id ? <> · <a href={objectHref('mission', item.mission_id, 'evidence')}>Mission</a></> : null}
       </p>
@@ -266,7 +266,7 @@ function KnowledgeProposal({ item }: { item: AttentionItem }) {
   return (
     <div>
       <p>
-        Remember: <strong>{item.reason}</strong> ({item.reason_code.toLowerCase()}) ·{' '}
+        Remember: <strong><Prose text={item.reason} /></strong> ({item.reason_code.toLowerCase()}) ·{' '}
         <a href={objectHref('knowledge_item', item.ref.id)}>Provenance</a>
       </p>
       <div className="row">

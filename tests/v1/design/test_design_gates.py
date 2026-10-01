@@ -314,6 +314,18 @@ def test_components_render_text_never_markup():
     assert "script-src 'self'" in auth.CSP and 'unsafe-inline' not in auth.CSP
 
 
+def test_no_view_renders_json():
+    """R1 (ADR-0029 §4, rulebook §5.13): a value is shown as words or as a
+    structured list, never as JSON — not in the default view and not in
+    Details. The browser gate (tests/v1/e2e/test_spa_copy.py) reads the
+    pages; this one keeps the source from reaching for the shortcut."""
+    for sub in ('surfaces', 'components'):
+        for dirpath, _dirs, files in os.walk(os.path.join(APP, 'src', sub)):
+            for n in files:
+                if n.endswith(('.ts', '.tsx')):
+                    assert 'JSON.stringify' not in open(os.path.join(dirpath, n), encoding='utf-8').read(), n
+
+
 def test_the_manifest_names_what_the_pwa_needs():
     m = json.load(open(os.path.join(APP, 'public', 'manifest.webmanifest'), encoding='utf-8'))
     assert m['start_url'] == '/' and m['display'] == 'standalone'

@@ -1,5 +1,6 @@
 """The P19.5 mutation suite (ADR-0024, ADR-0029 §6): the motion foundation,
-the activity halo and the travelling marker. Break each gate's invariant, run
+the activity halo, the travelling marker, the Core slice, and R1's copy/id
+gate with the Details disclosure (N71-N83). Break each gate's invariant, run
 the test written for it, and require it to fail.
 
     py tools/mutate_p19_5.py            every mutation
@@ -42,6 +43,12 @@ RUNTIME = 'archeus/core/runtime.py'
 ROUTES = 'archeus/api/routes.py'
 GRAMMAR = 'archeus/core/application/grammar.py'
 CORE = 'tests/v1/integration/test_p195_core.py::'
+CONTROL = 'clients/app/src/surfaces/Control.tsx'
+MISSION = 'clients/app/src/surfaces/Mission.tsx'
+UI = 'clients/app/src/components/ui.tsx'
+PRESENT = 'clients/app/src/state/present.ts'
+PRESENT_TS = 'node:test/present.test.ts'
+COPY = 'tests/v1/e2e/test_spa_copy.py::test_no_page_shows_an_id_json_or_hash_and_details_holds_them'
 #: the generated travelling-marker entry's budget, as gen_ui writes it
 MARKER_TS = ('"max_ms": 600,\n    "token": null,\n    "ttl_ms": null,\n    "ttl_error_ms": null,\n'
              '    "easing": "linear",\n    "cap": 8,')
@@ -324,6 +331,56 @@ MUTATIONS = [
      "        if m.priority == priority:\n            return _result(row)",
      "        if True:\n            return _result(row)")],
      [CORE + 'test_priority_defaults_to_zero_and_reprioritise_changes_only_it']),
+    # ── R1's copy/id gate and the minimum R9 Details disclosure (ADR-0029 §4, rulebook §15) ──
+    ('N71', 'an automation trigger shown as JSON (source gate)', [(CONTROL,
+     "['When', triggerText(a.trigger)],",
+     "['When', <span className=\"mono\">{void triggerText}{JSON.stringify(a.trigger)}</span>],")],
+     [DG + 'test_no_view_renders_json']),
+    ('N72', 'an automation trigger shown as JSON (in the browser)', [(CONTROL,
+     "['When', triggerText(a.trigger)],",
+     "['When', <span className=\"mono\">{void triggerText}{JSON.stringify(a.trigger)}</span>],")],
+     [COPY]),
+    ('N73', 'a reference with no name falls back to its short id', [(UI,
+     "{name ? ` ${String(name)}` : null}",
+     "{name ? ` ${String(name)}` : <span className=\"mono\"> {id.slice(0, 12)}…</span>}")],
+     [COPY]),
+    ('N74', 'the mission header shows its id again', [(MISSION,
+     '              <StateBadge machine="mission" state={mission.state} />\n',
+     '              <StateBadge machine="mission" state={mission.state} /> <span className="mono">{mission.id}</span>\n')],
+     [COPY]),
+    ('N75', 'Details open by default', [(UI,
+     '<details className="details" data-details="">',
+     '<details className="details" data-details="" open>')],
+     [COPY]),
+    ('N76', 'Details holds a JSON dump instead of rows', [(UI,
+     '<dd className="mono">{String(v)}</dd>',
+     '<dd className="mono">{`{"${k}": "${String(v)}"}`}</dd>')],
+     [COPY]),
+    ('N77', 'the identifiers deleted rather than moved: Details never renders', [(UI,
+     '  if (!shown.length) return null;',
+     '  if (shown.length) return null;')],
+     [COPY]),
+    ('N78', "an id in Core's own sentence kept as text (unit)", [(PRESENT,
+     '    out.push({ kind, id: m[0] });', '    out.push(m[0]);')],
+     [PRESENT_TS]),
+    ('N79', "an id in Core's own sentence kept as text (in the browser)", [(PRESENT,
+     '    out.push({ kind, id: m[0] });', '    out.push(m[0]);')],
+     [COPY]),
+    ('N80', 'an id field left in the readable half', [(PRESENT,
+     'const TECH = /(^|_)(id|ids|digest|hash|sha|sha256)$|',
+     'const TECH = /(^|_)(ids|digest|hash|sha|sha256)$|')],
+     [PRESENT_TS]),
+    ('N81', 'an account named by its id, not its label', [(UI,
+     "{f.key === 'account' && f.value !== '—' ? <AccountName id={f.value} /> : f.value}",
+     '{f.value}')],
+     [COPY]),
+    ('N82', 'account usage shown as JSON', [(PRESENT,
+     "  return `${w.join(' · ') || 'no window reported'}${seen}${u.source ? ` from ${u.source}` : ''}`;",
+     "  return JSON.stringify(u) || `${w}${seen}`;")],
+     [PRESENT_TS]),
+    ('N83', "the mission's own id missing from its Details", [(MISSION,
+     "        ['Mission id', m.id],\n", '')],
+     [COPY]),
 ]
 
 if __name__ == '__main__':

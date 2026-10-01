@@ -2,7 +2,7 @@
 // Evidence · Why · Timeline · Relations. Every tab reads its own rows; the
 // header's actions are offered only from states whose table has the trigger,
 // and Core judges every press.
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   api,
   type Checkpoint,
@@ -23,9 +23,9 @@ import { send } from '../data/core';
 import { useRead } from '../data/cache';
 import { executionEdges, missionEdges, taskDependencies, verificationEdges } from '../graph/relations';
 import { INSPECTOR_TABS, TAB_LABEL, objectHref } from '../nav/destinations';
-import { ago, explainState, offers, statusLine } from '../state/present';
+import { ago, explainState, inline, offers, statusLine, technical } from '../state/present';
 import { Relations } from '../components/Relations';
-import { ActionButton, Empty, Fresh, KV, Loadable, Resources, Section, StateBadge, Tabs } from '../components/ui';
+import { AccountName, ActionButton, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Resources, Section, StateBadge, Tabs } from '../components/ui';
 
 export function MissionInspector({ id, tab, onTab }: { id: string; tab?: string; onTab: (t: string) => void }) {
   const m = useRead<Mission>(`/v1/missions/${id}`);
@@ -44,6 +44,7 @@ export function MissionInspector({ id, tab, onTab }: { id: string; tab?: string;
               <Fresh snap={m} />
             </div>
             <MissionActions mission={mission} />
+            <MissionDetails m={mission} />
           </header>
           <Tabs label="Mission" current={current} onSelect={onTab} tabs={INSPECTOR_TABS.mission.map((t) => ({ id: t, label: TAB_LABEL[t] }))} />
           <div role="tabpanel" id={`panel-${current}`} aria-labelledby={`tab-${current}`} className="panel">
@@ -58,6 +59,56 @@ export function MissionInspector({ id, tab, onTab }: { id: string; tab?: string;
         </div>
       )}
     </Loadable>
+  );
+}
+
+type Prefs = Partial<Record<'preferred_harnesses' | 'forbidden_harnesses' | 'preferred_accounts' | 'forbidden_accounts', string[] | null>> & { max_cost_band?: string | null };
+
+function MissionDetails({ m }: { m: Mission }) {
+  const prefs = (m.resource_preferences ?? {}) as Prefs;
+  return (
+    <Details
+      rows={[
+        ['Mission id', m.id],
+        ['Plan id', m.plan_id],
+        ['Project id', m.project_id],
+        ['Workspace id', m.workspace_id],
+        ['Context package id', m.context_package_id as string | undefined],
+        ['Pending approval id', m.pending_approval_id as string | undefined],
+        ['Started from (id)', m.origin_ref as string | undefined],
+        ['Mission branch (git)', m.integration_branch],
+        ['Branch head (git)', m.integration_head],
+        ['Preferred account ids', prefs.preferred_accounts],
+        ['Avoided account ids', prefs.forbidden_accounts],
+      ]}
+    />
+  );
+}
+
+/** The router preferences a mission carries, in words; accounts by label. */
+function PrefsText({ p }: { p: Prefs }) {
+  const parts: ReactNode[] = [];
+  const list = (k: keyof Prefs) => ((p[k] as string[] | null | undefined) ?? []).filter(Boolean);
+  if (list('preferred_harnesses').length) parts.push(`prefers ${list('preferred_harnesses').join(', ')}`);
+  if (list('forbidden_harnesses').length) parts.push(`never ${list('forbidden_harnesses').join(', ')}`);
+  for (const [k, word] of [['preferred_accounts', 'prefers account'], ['forbidden_accounts', 'never account']] as const)
+    for (const a of list(k))
+      parts.push(
+        <>
+          {word} <AccountName id={a} />
+        </>,
+      );
+  if (p.max_cost_band) parts.push(`cost ceiling ${p.max_cost_band}`);
+  if (!parts.length) return <>none</>;
+  return (
+    <>
+      {parts.map((x, i) => (
+        <span key={i}>
+          {i ? ' · ' : ''}
+          {x}
+        </span>
+      ))}
+    </>
   );
 }
 
@@ -89,7 +140,6 @@ function MissionActions({ mission }: { mission: Mission }) {
 function Outcome({ m }: { m: Mission }) {
   const crit = (m.success_criteria as { text: string; check: string; origin?: string }[] | undefined) ?? [];
   const reqs = (m.requirements as { text: string; origin?: string }[] | undefined) ?? [];
-  const prefs = m.resource_preferences as Record<string, unknown> | undefined;
   return (
     <>
       <Section title="Objective">
@@ -126,8 +176,7 @@ function Outcome({ m }: { m: Mission }) {
             ['Origin', `${String(m.origin ?? '—')}`],
             ['Autonomy profile', String(m.autonomy_profile ?? 'the user default')],
             ['Replans allowed', String(m.max_replans ?? '—')],
-            ['Mission branch', <span className="mono">{String(m.integration_branch ?? '—')}</span>],
-            ['Resource preferences', prefs && Object.keys(prefs).length ? <span className="mono">{JSON.stringify(prefs)}</span> : 'none'],
+            ['Resource preferences', <PrefsText p={(m.resource_preferences ?? {}) as Prefs} />],
           ]}
         />
         <ResourcePreferences m={m} />
@@ -202,7 +251,7 @@ function PlanTab({ snap }: { snap: ReturnType<typeof useRead<MissionPlan>> }) {
                 <StateBadge machine="plan" state={p.state} />
                 {p.estimated_cost ? <span className="tag">cost band: {p.estimated_cost}</span> : null}
                 <span className="tag">{p.in_force ? 'in force' : 'not in force'}</span>
-                {!p.current ? <span className="tag stale">planned from context that has changed: {p.current_why}</span> : null}
+                {!p.current ? <span className="tag stale">planned from context that has changed: <Prose text={p.current_why} /></span> : null}
               </div>
               {typeof p.summary === 'string' ? <p className="provenance">Summary (planner, model-written): {p.summary}</p> : null}
               <ol className="waves">
@@ -299,7 +348,7 @@ export function ExecutionRow({ e }: { e: Execution }) {
       <a href={objectHref('execution', e.id)}>attempt {e.attempt}</a> <StateBadge machine="execution" state={e.state} />
       <Resources r={e} />
       {e.handoff_from ? <span className="hint">continuing in a fresh session: it continues <a href={objectHref('execution', String(e.handoff_from))}>an earlier execution</a> (hand-off)</span> : null}
-      {e.stop_reason || e.exit_reason ? <span className="hint">{String(e.stop_reason ?? e.exit_reason)}</span> : null}
+      {e.stop_reason || e.exit_reason ? <span className="hint"><Prose text={String(e.stop_reason ?? e.exit_reason)} /></span> : null}
       {e.context ? <span className="hint" data-context={e.context.quality}>context {e.context.quality}</span> : null}
     </li>
   );
@@ -314,13 +363,13 @@ function ContextBlock({ x }: { x: Execution }) {
   return (
     <KV
       rows={[
-        ['Context', <span data-context={c.quality}>{c.quality} — {c.summary}</span>],
+        ['Context', <span data-context={c.quality}>{c.quality} — <Prose text={c.summary} /></span>],
         ['Pressure', c.pressure === null ? 'unknown' : c.pressure.toFixed(2)],
         ['Tokens used / window / left', `${n(c.used_tokens)} / ${n(c.window)} / ${n(c.remaining)}`],
         ['Window source', c.window_source],
         ['Usage source', c.usage_source],
-        ['Hand-off', x.handoff?.from ? <>continues <a href={objectHref('execution', x.handoff.from)}>{x.handoff.from}</a> ({x.handoff.count} before it){x.handoff.reason ? `: ${x.handoff.reason}` : ''}</> : 'none'],
-        ['Why', x.why ?? '—'],
+        ['Hand-off', x.handoff?.from ? <>continues <a href={objectHref('execution', x.handoff.from)}><RefLabel kind="execution" id={x.handoff.from} /></a> ({x.handoff.count} before it){x.handoff.reason ? <>: <Prose text={x.handoff.reason} /></> : ''}</> : 'none'],
+        ['Why', x.why ? <Prose text={x.why} /> : '—'],
       ]}
     />
   );
@@ -340,7 +389,6 @@ function Evidence({ id, m }: { id: string; m: Mission }) {
                   <li key={x.id}>
                     <StateBadge machine="verification" state={x.state} /> <a href={objectHref('verification', x.id)}>{x.subject.kind === 'mission' ? `criterion ${String(x.criterion ?? '')}` : 'task check'}</a>{' '}
                     <span className="tag">{x.verifier}</span>
-                    {x.revision ? <span className="mono"> at {String(x.revision).slice(0, 10)}</span> : null}
                     <ul className="checks">
                       {x.checks.map((c, i) => (
                         <li key={i} data-result={c.result}>
@@ -419,7 +467,7 @@ function Why({ m, plan }: { m: Mission; plan?: MissionPlan }) {
         <ul className="list">
           {why.map((w, i) => (
             <li key={i}>
-              {w.text} <span className="field">({w.source})</span>
+              <Prose text={w.text} /> <span className="field">({w.source})</span>
             </li>
           ))}
         </ul>
@@ -428,7 +476,7 @@ function Why({ m, plan }: { m: Mission; plan?: MissionPlan }) {
         {ctx ? (
           <>
             <p className="hint">
-              Package <a href={objectHref('context_package', ctx.id)}>{ctx.id}</a> · as of event {ctx.as_of_seq} · {ctx.budget.used_tokens} of {ctx.budget.limit_tokens} tokens
+              <a href={objectHref('context_package', ctx.id)}>The context package</a> · as of event {ctx.as_of_seq} · {ctx.budget.used_tokens} of {ctx.budget.limit_tokens} tokens
             </p>
             <table className="grid">
               <thead>
@@ -447,7 +495,7 @@ function Why({ m, plan }: { m: Mission; plan?: MissionPlan }) {
                       <a href={objectHref(it.ref.kind, it.ref.id)}>{it.type}</a> <span className="hint">{it.store}</span>
                     </td>
                     <td data-fresh={it.freshness}>{it.freshness}</td>
-                    <td>{it.reason}</td>
+                    <td><Prose text={it.reason} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -458,7 +506,7 @@ function Why({ m, plan }: { m: Mission; plan?: MissionPlan }) {
                 <ul className="list">
                   {ctx.excluded.map((x, i) => (
                     <li key={i}>
-                      {x.ref.kind} {x.ref.id} ({x.freshness}): {x.reason}
+                      <RefLabel kind={x.ref.kind} id={x.ref.id} /> ({x.freshness}): <Prose text={x.reason} />
                     </li>
                   ))}
                 </ul>
@@ -466,7 +514,7 @@ function Why({ m, plan }: { m: Mission; plan?: MissionPlan }) {
             ) : null}
             {ctx.conflicts.map((c, i) => (
               <p key={i} className="warn">
-                Conflict ({c.kind}): {c.reason} — preferred {c.preferred}
+                Conflict ({c.kind}): <Prose text={c.reason} /> — preferred <Prose text={String(c.preferred)} />
               </p>
             ))}
           </>
@@ -482,7 +530,7 @@ function Why({ m, plan }: { m: Mission; plan?: MissionPlan }) {
                 {l.policy_decisions.map((d) => (
                   <li key={d.id}>
                     <span className="mono">{d.stage}</span> · <strong>{d.decision}</strong>
-                    {d.outcome ? ` (${d.outcome})` : ''} — {d.reason} · <a href={objectHref('policy_decision', d.id)}>record</a>
+                    {d.outcome ? ` (${d.outcome})` : ''} — <Prose text={d.reason} /> · <a href={objectHref('policy_decision', d.id)}>record</a>
                     {d.approval_id ? <> · <a href={objectHref('approval', String(d.approval_id))}>its approval</a></> : null}
                   </li>
                 ))}
@@ -502,7 +550,7 @@ function Why({ m, plan }: { m: Mission; plan?: MissionPlan }) {
                   <li key={d.id}>
                     <a href={objectHref('route_decision', d.id)}>{String(d.purpose ?? (d.subject as { kind?: string })?.kind ?? 'route')}</a> · {String(d.result ?? (d.selected ? 'selected' : 'none'))}
                     <Resources r={d} />
-                    <p className="hint">{d.explanation}</p>
+                    <p className="hint"><Prose text={d.explanation} /></p>
                   </li>
                 ))}
               </ul>
@@ -541,7 +589,7 @@ function TimelinePage({ id, before }: { id: string; before?: number }) {
               <li key={e.seq}>
                 <span className="mono seq">{e.seq}</span> <span className="type">{e.type}</span>{' '}
                 <a href={objectHref(e.subject.kind, e.subject.id)}>{e.subject.kind}</a>
-                {typeof e.payload.reason === 'string' ? <span className="hint"> — {e.payload.reason}</span> : null}
+                {typeof e.payload.reason === 'string' ? <span className="hint"> — <Prose text={e.payload.reason} /></span> : null}
                 {typeof e.payload.to === 'string' ? <span className="hint"> → {e.payload.to}</span> : null}
                 <span className="age"> {ago(e.at)}</span>
                 {e.cause_chain.length ? <span className="hint"> · caused by {e.cause_chain.length} earlier event(s)</span> : null}
@@ -589,6 +637,20 @@ export function ExecutionInspector({ id, tab, onTab }: { id: string; tab?: strin
               <Fresh snap={e} />
             </div>
             <Resources r={x} />
+            <Details
+              rows={[
+                ['Execution id', x.id],
+                ['Task id', x.task_id],
+                ['Mission id', x.mission_id],
+                ['Session id', x.session_id as string | undefined],
+                ['Account id', x.account_id],
+                ['Route decision id', x.route_decision_id as string | undefined],
+                ['Policy decision id', x.policy_decision_id as string | undefined],
+                ['Continues execution (id)', x.handoff?.from ?? (x.handoff_from as string | undefined)],
+                ['Process id', x.pid],
+                ['End-state digest', x.end_state_digest],
+              ]}
+            />
             <ContextBlock x={x} />
             <div className="row actions">
               {['STARTING', 'RUNNING', 'PAUSING', 'HANDING_OFF'].includes(x.state) ? (
@@ -626,11 +688,17 @@ function Output({ id }: { id: string }) {
           <>
             {o.truncated || o.events.length > TAIL ? <p className="hint">Showing the last {Math.min(TAIL, o.events.length)} events.</p> : null}
             <ol className="output" aria-label="Execution output">
-              {o.events.slice(-TAIL).map((ev, i) => (
-                <li key={i} data-type={String(ev.type)}>
-                  <span className="type">{String(ev.type)}</span> <span className="text">{typeof ev.text === 'string' ? ev.text : JSON.stringify(ev)}</span>
-                </li>
-              ))}
+              {o.events.slice(-TAIL).map((ev, i) => {
+                // an event without text is its fields in words; its identifiers and digests behind Details
+                const { type, text, ...rest } = ev;
+                const [fields, ids] = technical(rest);
+                return (
+                  <li key={i} data-type={String(type)}>
+                    <span className="type">{String(type)}</span> <span className="text">{typeof text === 'string' ? text : inline(fields)}</span>
+                    <Details rows={ids} />
+                  </li>
+                );
+              })}
             </ol>
           </>
         )

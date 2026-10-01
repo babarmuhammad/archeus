@@ -185,6 +185,12 @@ def triggers():
     return {m: {s: sorted(t) for s, t in sorted(v.items())} for m, v in sorted(out.items())}
 
 
+def id_kinds():
+    """Prefix -> kind, from Core's one list of id-bearing kinds."""
+    from archeus.core.domain import ids
+    return {prefix: kind for kind, prefix in sorted(ids.PREFIXES.items(), key=lambda kv: kv[1])}
+
+
 def render_presentation_ts(p):
     labels = {m: {s: p.get('labels', {}).get(m, {}).get(s) or _label(s) for s in table}
               for m, table in sorted(p['machines'].items())}
@@ -196,9 +202,11 @@ def render_presentation_ts(p):
             'export const LABELS: Record<string, Record<string, string>> = %s;\n'
             '/** Per machine and state, the triggers states.py declares from it. */\n'
             'export const TRIGGERS: Record<string, Record<string, string[]>> = %s;\n'
+            '/** Id prefix -> kind (ids.PREFIXES): how Core\'s own sentences name an object. */\n'
+            'export const ID_KINDS: Record<string, string> = %s;\n'
             % (json.dumps(p['classes'], ensure_ascii=False, indent=2),
                json.dumps(machines, indent=2), json.dumps(labels, ensure_ascii=False, indent=2),
-               json.dumps(triggers(), indent=2)))
+               json.dumps(triggers(), indent=2), json.dumps(id_kinds(), indent=2)))
 
 
 def render_nav_ts(n):

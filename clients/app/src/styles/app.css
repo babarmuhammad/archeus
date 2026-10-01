@@ -1058,6 +1058,15 @@ summary {
   min-height: var(--target-desktop);
 }
 
+/* identifiers behind an explicit disclosure (rulebook §15): quiet, never a second heading */
+.details {
+  margin: var(--space-2) 0;
+}
+
+.details > summary {
+  color: var(--text-2);
+}
+
 dialog {
   background: var(--surface-3);
   color: var(--text);

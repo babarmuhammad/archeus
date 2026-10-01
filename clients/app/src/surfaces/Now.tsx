@@ -193,9 +193,8 @@ function CardRef({ type, kind, id, intent }: { type: string; kind: string; id: s
     );
   }
   return (
-    <a className="card" href={objectHref(kind, id)} aria-label={`${type.replace('_', ' ')}: ${kind} ${id}`}>
-      <span className="card-type">{type.replace('_', ' ')}</span> <span className="mono">{kind} {id}</span>
-      {kind === 'mission' ? <LiveMission id={id} /> : null}
+    <a className="card" href={objectHref(kind, id)}>
+      <span className="card-type">{type.replace('_', ' ')}</span> {kind === 'mission' ? <LiveMission id={id} /> : <RefLabel kind={kind} id={id} />}
     </a>
   );
 }

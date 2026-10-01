@@ -6,8 +6,9 @@ import { CoreError } from '../api/transport';
 import { canCommand, freshness, type Freshness } from '../data/connection';
 import { action, explain, keyAfter, retryable } from '../data/commands';
 import { store, useConn, useRead, type Snapshot } from '../data/cache';
-import { badge, resourceLine } from '../state/present';
-import type { Sync } from '../api/generated';
+import { badge, inline, mentions, resourceLine } from '../state/present';
+import { objectHref } from '../nav/destinations';
+import type { AccountList, Sync } from '../api/generated';
 
 /** A state as glyph + label. When the state changes while on screen (never
  * because it first appeared) the glyph plays one 160 ms transform/opacity step
@@ -255,17 +256,71 @@ export function KV({ rows }: { rows: [string, ReactNode][] }) {
   );
 }
 
-/** Harness, model and account: three fields, never one (§6.4). */
+/** Harness, model and account: three fields, never one (§6.4). The account
+ * is named by its label; its id is the owning object's Details. */
 export function Resources({ r }: { r: Parameters<typeof resourceLine>[0] }) {
   return (
     <dl className="resources">
       {resourceLine(r).map((f) => (
         <div key={f.key} data-field={f.key}>
           <dt>{f.label}</dt>
-          <dd className="mono">{f.value}</dd>
+          <dd className="mono">{f.key === 'account' && f.value !== '—' ? <AccountName id={f.value} /> : f.value}</dd>
         </div>
       ))}
     </dl>
+  );
+}
+
+/** An account as the user named it, read from the accounts Core holds. */
+export function AccountName({ id }: { id: string }) {
+  const s = useRead<AccountList>('/v1/accounts');
+  const a = s.data?.accounts.find((x) => x.id === id);
+  return <>{a ? a.label : s.data ? 'an account not registered here' : '…'}</>;
+}
+
+/** A sentence Core wrote, with every object it names by id shown as that
+ * object, linked — the id itself is in that object's Details. */
+export function Prose({ text }: { text: unknown }) {
+  if (text === null || text === undefined || text === '') return null;
+  if (typeof text !== 'string') return <>{inline(text)}</>; // a presented field is untyped (Record<string, unknown>)
+  return (
+    <>
+      {mentions(text).map((p, i) =>
+        typeof p === 'string' ? (
+          p
+        ) : (
+          <a key={i} href={objectHref(p.kind, p.id)}>
+            {p.kind === 'account' ? <AccountName id={p.id} /> : <RefLabel kind={p.kind} id={p.id} />}
+          </a>
+        ),
+      )}
+    </>
+  );
+}
+
+type Scalar = string | number | boolean | null | undefined;
+
+/** Identifiers behind an explicit disclosure (rulebook §15; R9's Details,
+ * the minimum R1 needs): closed by default, so the default view carries none;
+ * each row says what the identifier names. Scalars only — a JSON value cannot
+ * reach it. */
+export function Details({ rows }: { rows: [string, Scalar | Scalar[]][] }) {
+  const shown = rows
+    .map(([k, v]) => [k, Array.isArray(v) ? v.filter((x) => x !== null && x !== undefined && x !== '').join(', ') : v] as const)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '');
+  if (!shown.length) return null;
+  return (
+    <details className="details" data-details="">
+      <summary>Details</summary>
+      <dl className="kv">
+        {shown.map(([k, v]) => (
+          <div key={k}>
+            <dt>{k}</dt>
+            <dd className="mono">{String(v)}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }
 
@@ -274,17 +329,23 @@ const NAMED: Record<string, { path: (id: string) => string; name: (r: Record<str
   project: { path: (id) => `/v1/projects/${id}`, name: (r) => r.name },
   knowledge_item: { path: (id) => `/v1/knowledge/${id}`, name: (r) => r.title },
   session: { path: (id) => `/v1/sessions/${id}`, name: (r) => `${String(r.harness_id)} ${String(r.mode)} session` },
+  execution: { path: (id) => `/v1/executions/${id}`, name: (r) => `attempt ${String(r.attempt)}` },
+  plan: { path: (id) => `/v1/plans/${id}`, name: (r) => `v${String(r.plan_version)}` },
+  verification: { path: (id) => `/v1/verifications/${id}`, name: (r) => r.verifier },
+  route_decision: { path: (id) => `/v1/route-decisions/${id}`, name: (r) => r.purpose ?? 'of a task' },
+  policy_decision: { path: (id) => `/v1/policy-decisions/${id}`, name: (r) => r.stage },
 };
 
 /** An object named as a person would: its title when it has one (read from
- * its own row), else its kind and a short id. */
+ * its own row), else its kind alone — its id is in its own Details. */
 export function RefLabel({ kind, id }: { kind: string; id: string }) {
   const n = NAMED[kind];
   const s = useRead<Record<string, unknown>>(n ? n.path(id) : null);
   const name = n && s.data ? n.name(s.data) : null;
   return (
     <span className="ref">
-      <span className="ref-kind">{kind.replace('_', ' ')}</span> {name ? String(name) : <span className="mono">{id.slice(0, 12)}…</span>}
+      <span className="ref-kind">{kind.replace('_', ' ')}</span>
+      {name ? ` ${String(name)}` : null}
     </span>
   );
 }

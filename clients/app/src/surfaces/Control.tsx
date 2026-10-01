@@ -24,10 +24,10 @@ import { motionMode, type MotionPref } from '../data/commands';
 import { send } from '../data/core';
 import { sessionEdges } from '../graph/relations';
 import { CONTROL_SECTIONS, INSPECTOR_TABS, TAB_LABEL, href, objectHref } from '../nav/destinations';
-import { ago, presenceLabel } from '../state/present';
+import { ago, presenceLabel, templateText, triggerText, usageText } from '../state/present';
 import { QR } from '../components/QR';
 import { Relations } from '../components/Relations';
-import { ActionButton, Empty, Fresh, KV, Loadable, Resources, Section, StateBadge, Tabs, useMe } from '../components/ui';
+import { ActionButton, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Resources, Section, StateBadge, Tabs, useMe } from '../components/ui';
 
 export function ControlView({ section }: { section: string }) {
   const cur = CONTROL_SECTIONS.find((s) => s.id === section)?.id ?? 'autonomy';
@@ -63,8 +63,9 @@ function Autonomy() {
         <>
           <Section title="Your default profile" actions={<Fresh snap={s} />}>
             <p>
-              <strong>{p.user_profile}</strong> · policy version <span className="mono">{p.policy_version.slice(0, 12)}</span>
+              <strong>{p.user_profile}</strong>
             </p>
+            <Details rows={[['Policy version (digest)', p.policy_version]]} />
             <div className="row">
               {(['careful', 'standard', 'autonomous'] as const).map((name) => (
                 <ActionButton
@@ -152,7 +153,7 @@ function Simulate() {
       </form>
       {got ? (
         <p role="status">
-          The policy would decide <strong>{got.decision}</strong>: {got.reason} (nothing was done)
+          The policy would decide <strong>{got.decision}</strong>: <Prose text={got.reason} /> (nothing was done)
         </p>
       ) : null}
     </Section>
@@ -172,8 +173,8 @@ function Automations() {
               <Section key={a.id} title={a.name} actions={<StateBadge machine="automation" state={a.state} />}>
                 <KV
                   rows={[
-                    ['When', <span className="mono">{JSON.stringify(a.trigger)}</span>],
-                    ['Archeus will', <span className="mono">{JSON.stringify(a.template)}</span>],
+                    ['When', triggerText(a.trigger)],
+                    ['Archeus will', templateText(a.template)],
                     ['Depth limit · rate limit', `${String(a.max_depth ?? '—')} · ${String(a.rate_limit ?? '—')} per hour`],
                   ]}
                 />
@@ -182,6 +183,7 @@ function Automations() {
                   {['DRAFT', 'DISABLED', 'SUSPENDED'].includes(a.state) ? <ActionButton label="Enable" scope="admin" run={(key) => api.setAutomationState(send(), a.id, { action: 'enable', expected_version: a.version, idempotency_key: key })} reread={['/v1/automations', '/v1/attention']} /> : null}
                   {['ENABLED', 'DISABLED'].includes(a.state) ? <ActionButton label="Archive" scope="admin" confirm="Archive this automation: it never fires again. It cannot be undone." kind="danger" run={(key) => api.setAutomationState(send(), a.id, { action: 'archive', expected_version: a.version, idempotency_key: key })} reread={['/v1/automations']} /> : null}
                 </div>
+                <Details rows={[['Automation id', a.id], ['Project id', a.project_id]]} />
                 <AutomationRuns id={a.id} />
               </Section>
             ))}
@@ -202,7 +204,7 @@ function AutomationRuns({ id }: { id: string }) {
       {runs.slice(-20).reverse().map((r) => (
         <li key={r.id}>
           <StateBadge machine="automation_run" state={r.state} /> <a href={objectHref('automation_run', r.id)}>run on event {r.triggering_event_seq}</a> · depth {r.depth}
-          {r.reason ? ` · ${r.reason}` : ''}
+          {r.reason ? <> · <Prose text={r.reason} /></> : ''}
           {r.mission_id ? <> · <a href={objectHref('mission', r.mission_id)}>its mission</a></> : null}
         </li>
       ))}
@@ -265,9 +267,10 @@ function ResourcesSection() {
                         ['Priority', String(x.resource_policy.priority)],
                         ['Allocation ceiling', `${x.resource_policy.allocation_pct}% (reserve ${x.resource_policy.reserve_pct}%, own-call reserve ${x.resource_policy.brain_reserve_pct}%)`],
                         ['Fallback to it', x.resource_policy.fallback],
-                        ['Latest usage', x.usage ? <span className="mono">{JSON.stringify(x.usage)}</span> : 'not observed'],
+                        ['Latest usage', usageText(x.usage as Parameters<typeof usageText>[0])],
                       ]}
                     />
+                    <Details rows={[['Account id', x.id], ['Home (config directory)', x.home_ref as string | undefined]]} />
                   </li>
                 ))}
               </ul>
@@ -314,7 +317,7 @@ function Sessions() {
                 <li key={x.id} className="row-item" data-session={x.id}>
                   <a className="row-link" href={objectHref('session', x.id)}>
                     <StateBadge machine="session" state={x.state} />
-                    <span className="title mono">{x.id}</span>
+                    <span className="title">{x.harness_id} session</span>
                     <span className="status">{x.mode}</span>
                     <Resources r={x} />
                   </a>
@@ -341,10 +344,20 @@ export function SessionInspector({ id, tab, onTab }: { id: string; tab?: string;
             <h1 tabIndex={-1}>Session</h1>
             <div className="meta">
               <StateBadge machine="session" state={x.state} />
-              <span className="mono">{x.id}</span> · {x.mode}
+              <span>{x.mode}</span>
               <Fresh snap={s} />
             </div>
             <Resources r={x} />
+            <Details
+              rows={[
+                ['Session id', x.id],
+                ['Account id', x.account_id],
+                ['Mission id', x.mission_id],
+                ['Project id', x.project_id],
+                ['Workspace id', x.workspace_id],
+                ['Continues session (id)', x.handoff_from_session_id],
+              ]}
+            />
             <SessionActions x={x} />
           </header>
           <Tabs label="Session" current={current} onSelect={onTab} tabs={INSPECTOR_TABS.session.map((t) => ({ id: t, label: TAB_LABEL[t] }))} />
@@ -354,7 +367,7 @@ export function SessionInspector({ id, tab, onTab }: { id: string; tab?: string;
               <ol className="list">
                 {[...(x.lineage ?? []), x, ...(x.targets ?? [])].map((y) => (
                   <li key={y.id}>
-                    {y.id === x.id ? <strong>this session</strong> : <a href={objectHref('session', y.id)}>{y.id}</a>} · harness <span className="mono">{y.harness_id}</span> · <StateBadge machine="session" state={y.state} />
+                    {y.id === x.id ? <strong>this session</strong> : <a href={objectHref('session', y.id)}>{(x.lineage ?? []).includes(y) ? 'an earlier session' : 'a later session'}</a>} · harness <span className="mono">{y.harness_id}</span> · <StateBadge machine="session" state={y.state} />
                   </li>
                 ))}
               </ol>
@@ -394,7 +407,7 @@ function Brief({ id }: { id: string }) {
                 <ul className="list">
                   {ch.groups.map((g) => (
                     <li key={g.ref.id}>
-                      <a href={objectHref(g.ref.kind, g.ref.id)}>{g.ref.kind} {g.ref.id}</a> · {g.headline} · {g.count}
+                      <a href={objectHref(g.ref.kind, g.ref.id)}><RefLabel kind={g.ref.kind} id={g.ref.id} /></a> · {g.headline} · {g.count}
                     </li>
                   ))}
                 </ul>
@@ -637,14 +650,16 @@ function About() {
       <Section title="This client">
         <Loadable snap={s} what="this client">
           {(x) => (
+            <>
+            <Details rows={[['Core instance', x.core.instance], ['This client (device id)', x.client.id], ['Principal id', x.client.principal_id as string | undefined]]} />
             <KV
               rows={[
                 ['Registered as', `${x.client.name} (${x.client.origin})`],
                 ['Scopes', x.client.scopes.join(', ')],
-                ['Core instance', <span className="mono">{x.core.instance}</span>],
                 ['Events kept', `${x.floor_seq} – ${x.head_seq}`],
               ]}
             />
+            </>
           )}
         </Loadable>
       </Section>

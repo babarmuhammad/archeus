@@ -2,7 +2,7 @@
 // M09, M10, M13).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { explainState, presenceLabel, resourceLine, statusLine } from '../src/state/present.ts';
+import { explainState, firedText, inline, mentions, presenceLabel, resourceLine, statusLine, technical, templateText, triggerText, usageText } from '../src/state/present.ts';
 import { PRESENTATION } from '../src/state/presentation.ts';
 
 test('harness, model and account stay three fields; nothing is merged or borrowed (M13)', () => {
@@ -53,4 +53,67 @@ test('why a mission is where it is comes from rows, most specific first; no gues
   assert.equal(explainState({ mission: { state: 'COMPLETED' }, route: { result: 'blocked' } }).length, 1);
   const v = explainState({ mission: { state: 'VERIFYING' }, verification: { state: 'FAILED', checks: [{ name: 'pytest', result: 'fail' }] } });
   assert.match(v[0].text, /pytest/);
+});
+
+// ── R1 (rulebook §15, ADR-0029 §4): words in the default view, identifiers in Details ──
+
+const JSONISH = /[{[]\s*"[^"]+"\s*:/;
+
+test('a row splits into words and its identifiers, each labelled, none dropped (R1)', () => {
+  const row = {
+    id: 'pdc_01',
+    stage: 'dispatch',
+    decision: 'allow',
+    policy_version: 'ab12cd34ef56',
+    subject: { kind: 'task', id: 'tsk_01' },
+    items: [{ task: 't1', class: 'read', approval_id: 'apr_01' }],
+    related_ids: ['msn_01', 'msn_02'],
+  };
+  const [clean, tech] = technical(row);
+  assert.deepEqual(clean, { stage: 'dispatch', decision: 'allow', subject: { kind: 'task' }, items: [{ task: 't1', class: 'read' }] });
+  assert.deepEqual(tech, [
+    ['Id', 'pdc_01'],
+    ['Policy version', 'ab12cd34ef56'],
+    ['Subject · id', 'tsk_01'],
+    ['Items 1 · approval id', 'apr_01'],
+    ['Related ids', 'msn_01, msn_02'],
+  ]);
+  // every identifier is somewhere, and the readable half carries none
+  for (const v of ['pdc_01', 'ab12cd34ef56', 'tsk_01', 'apr_01', 'msn_02']) {
+    assert.ok(tech.some(([, x]) => x.includes(v)), v);
+    assert.ok(!inline(clean).includes(v), v);
+  }
+});
+
+test("Core's own sentences name objects, never show their ids (R1)", () => {
+  const apr = 'apr_01M3WNGS8FDY37GE2K1XRAJMAT';
+  const acc = 'acc_01M3WNNW2D4GWJSFBYY12PK4KQ';
+  assert.deepEqual(mentions(`plan v1 approved (approval ${apr})`), ['plan v1 approved (', { kind: 'approval', id: apr }, ')']);
+  assert.deepEqual(mentions(`ranked below ${acc}`), ['ranked below ', { kind: 'account', id: acc }]);
+  assert.deepEqual(mentions('nothing here; acc_short is not an id'), ['nothing here; acc_short is not an id']);
+  assert.deepEqual(mentions(`${apr}`), [{ kind: 'approval', id: apr }]);
+});
+
+test('a value reads as words on one line, never as JSON (R1)', () => {
+  assert.equal(inline({ type: 'tool', name: 'Bash', input: { command: 'ls' } }), 'Type tool · Name Bash · Input Command ls');
+  assert.equal(inline([1, 'a']), '1, a');
+  assert.equal(inline(null), '—');
+  assert.ok(!JSONISH.test(inline({ a: { b: [{ c: 1 }] } })));
+});
+
+test('an automation says when it fires, what it asks for and why it fired, in words (R1)', () => {
+  const t = triggerText({ type: 'mission.failed', where: { project: 'Atlas', path: { glob: 'src/*' }, kind: { not_glob: 'doc*' } } });
+  assert.equal(t, 'When a mission.failed event happens, where project is Atlas and path matches src/* and kind does not match doc*');
+  assert.equal(triggerText({ type: 'mission.completed', where: {} }), 'When a mission.completed event happens');
+  assert.equal(templateText({ title: 'Fix it', objective: 'Tests pass', success_criteria: [{}] }), 'Start a mission “Fix it”: Tests pass (1 success criterion)');
+  assert.equal(firedText({ type: 'mission.failed', where: { project: { test: 'Atlas', value: 'Atlas' } } }), 'It fired on a mission.failed event: project was Atlas.');
+  for (const s of [t, firedText({ type: 'x', where: { a: { test: { glob: '*' }, value: { deep: 1 } } } })]) assert.ok(!JSONISH.test(s), s);
+});
+
+test('usage reads as windows and when it was seen; an unreported window is unknown, never 0 (R1)', () => {
+  const now = Date.parse('2026-10-01T12:00:00Z');
+  const u = usageText({ windows: { five_hour: 42, seven_day: null }, resets_at: { five_hour: '2026-10-01T14:00:00Z' }, observed_at: now / 1000 - 120, source: 'statusline' }, now);
+  assert.equal(u, 'five hour 42% (resets in 2 h) · seven day unknown, observed 2 min ago from statusline');
+  assert.equal(usageText(null), 'not observed');
+  assert.ok(!JSONISH.test(u));
 });

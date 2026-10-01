@@ -188,7 +188,8 @@ Each gate is mutation-verified (remove the feature, the gate must fail) and runs
 CI job. They are listed here so the phase cannot close without them; they are not rows of §2
 because most have no test file yet. A row marked **built** names its tests; its mutants are
 `tools/mutate_p19_5.py` (N01-N59, 59/59 killed, 2026-09-30: the foundation N01-N25, the halo
-N26-N37, the travelling marker N38-N59). The browser gates run on the page's
+N26-N37, the travelling marker N38-N59; the copy/id gate and Details N71-N83, 13/13 killed,
+2026-10-01). The browser gates run on the page's
 frozen clock (`tests/v1/e2e/motion.py`: Playwright's clock, a frame counter over the fake
 `requestAnimationFrame`, `document.getAnimations()`, canvas pixel reads, a stream frame injected
 over the tab channel), never on a sleep; the unit gates on `test/motion-harness.ts` (a frozen loop
@@ -212,7 +213,7 @@ host, a recording canvas, `renderAt(scene, timeline, t)`).
 | favicon / orbit | favicon and orbit state follow idle / working / needs you / disconnected |
 | framebuffer probes | halo (built), travelling marker (built), hull, focus and edge style pixels at known node positions (not screenshots) |
 | frozen-clock captures | every surface × theme × width × state (ADR-0029), human-reviewed |
-| innerText | no raw ids, JSON or hashes in the default view; one command name per command |
+| innerText (**built** for ids, JSON and hashes; the command-name clause is not) | no raw ids, JSON or hashes in the default view; one command name per command. **Built:** every destination, Control section, mission, execution, session and knowledge tab, and the plan, task, route, policy, verification, project and repository inspectors, read as a person reads them (visible text and accessible names; a closed disclosure renders only its summary) against a Core holding an account, a project with a repository, an automation, a lesson and a mission that asked before it deployed, carry no Archeus id (Core's own `ids.PREFIXES`, whole or shortened), bare ULID, JSON or hex digest; every Details is closed, titled "Details" and holds label/value rows only; it holds the object's identifiers whole, equal to what Core returns, and opening it shows them; names, states, the account label and the automation's sentences stay on screen (`test_spa_copy.py`; the patterns' own positive and negative cases without a browser; `present.test.ts` for the split into words and identifiers, Core's sentences, automations and usage; design gate `test_no_view_renders_json`). "Dismiss" and "Accept result" still each name two commands |
 
 ## 8. Conversation, account-protection, live-work and theme gates (ADR-0041…0044, decided 2026-09-30)
 

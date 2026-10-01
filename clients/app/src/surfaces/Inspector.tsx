@@ -11,7 +11,8 @@ import { SessionInspector } from './Control';
 import { ExecutionInspector, MissionInspector } from './Mission';
 import { KnowledgeInspector } from './World';
 import { Relations } from '../components/Relations';
-import { Fresh, KV, Loadable, Resources, Section, StateBadge, Tabs } from '../components/ui';
+import { Details, Fresh, KV, Loadable, Prose, RefLabel, Resources, Section, StateBadge, Tabs, useMe } from '../components/ui';
+import { firedText, inline, technical, words } from '../state/present';
 
 const PATH: Record<string, (id: string) => string> = {
   plan: (id) => `/v1/plans/${id}`,
@@ -39,9 +40,8 @@ export function Inspector({ kind, id, tab, onTab }: { kind: string; id: string; 
   if (!PATH[kind])
     return (
       <div className="inspector-body">
-        <h1 tabIndex={-1}>
-          {kind.replace('_', ' ')} <span className="mono">{id}</span>
-        </h1>
+        <h1 tabIndex={-1}>{words(kind)}</h1>
+        <Details rows={[[`${words(kind)} id`, id]]} />
         <p className="unavailable">This client has no view of a {kind.replace('_', ' ')} yet.</p>
       </div>
     );
@@ -50,6 +50,7 @@ export function Inspector({ kind, id, tab, onTab }: { kind: string; id: string; 
 
 function RowInspector({ kind, id, tab, onTab }: { kind: string; id: string; tab?: string; onTab: (t: string) => void }) {
   const snap = useRead<Record<string, unknown>>(PATH[kind](id));
+  const { me } = useMe();
   const tabs = INSPECTOR_TABS[kind] ?? ['detail'];
   const current = tab && tabs.includes(tab) ? tab : tabs[0];
   return (
@@ -57,16 +58,16 @@ function RowInspector({ kind, id, tab, onTab }: { kind: string; id: string; tab?
       {(row) => (
         <div className="inspector-body">
           <header className="insp-head">
-            <h1 tabIndex={-1}>{TITLE[kind] ?? kind.replace('_', ' ')}</h1>
+            <h1 tabIndex={-1}>{TITLE[kind] ?? words(kind)}</h1>
             <div className="meta">
               {typeof row.state === 'string' && MACHINE[kind] ? <StateBadge machine={MACHINE[kind]} state={row.state} /> : null}
-              <span className="mono">{id}</span>
               <Fresh snap={snap} />
             </div>
+            <Details rows={[[`${TITLE[kind] ?? words(kind)} id`, id], ...(DETAIL[kind] ? IDS[kind]?.(row) ?? [] : technical(row)[1].filter(([k]) => k !== 'Id'))]} />
           </header>
           {tabs.length > 1 ? <Tabs label={kind} current={current} onSelect={onTab} tabs={tabs.map((t) => ({ id: t, label: TAB_LABEL[t] }))} /> : null}
           <div role="tabpanel" id={`panel-${current}`} aria-labelledby={tabs.length > 1 ? `tab-${current}` : undefined} className="panel">
-            {current === 'relations' ? <Relations of={{ kind, id }} edges={EDGES[kind]?.(row) ?? []} /> : DETAIL[kind]?.(row) ?? <Fields row={row} />}
+            {current === 'relations' ? <Relations of={{ kind, id }} edges={EDGES[kind]?.(row) ?? []} /> : DETAIL[kind]?.(row, me?.principal_id) ?? <Fields row={row} />}
           </div>
         </div>
       )}
@@ -91,12 +92,33 @@ const EDGES: Record<string, (r: Record<string, unknown>) => ReturnType<typeof pl
   automation_run: (r) => runEdges((r as unknown as AutomationExplanation).run as unknown as Record<string, unknown>),
 };
 
-const DETAIL: Record<string, (r: Record<string, unknown>) => ReactNode> = {
+/** The identifiers each dedicated view keeps out of its default reading, by
+ * what they name. */
+const IDS: Record<string, (r: Record<string, unknown>) => [string, string | null | undefined][]> = {
+  plan: (r) => [['Mission id', r.mission_id as string], ['Replaces plan id', r.supersedes_plan_id as string], ['Plan digest', r.digest as string]],
+  verification: (r) => [
+    ['Execution id', r.execution_id as string],
+    ['Plan id', r.plan_id as string],
+    ['Revision checked (git)', r.revision as string],
+    ['Decided by (principal id)', r.decided_by as string],
+  ],
+  route_decision: (r) => [
+    ['Selected resource', r.selected as string],
+    ['Account id', r.account_id as string],
+    ['Fell back from', ((r.fallback_from as string[] | undefined) ?? []).join(', ')],
+  ],
+  automation_run: (r) => {
+    const x = r as unknown as AutomationExplanation;
+    return [['Automation id', String(x.automation.id ?? '')], ['Mission id', x.mission ? String(x.mission.id) : null]];
+  },
+};
+
+const DETAIL: Record<string, (r: Record<string, unknown>, me?: string) => ReactNode> = {
   plan: (r) => {
     const p = r as unknown as Plan;
     return (
       <>
-        <KV rows={[['Version', `v${p.plan_version}`], ['In force', String(p.in_force)], ['Cost band', String(p.estimated_cost ?? '—')], ['Digest', <span className="mono">{String(p.digest ?? '—')}</span>]]} />
+        <KV rows={[['Version', `v${p.plan_version}`], ['In force', p.in_force ? 'yes' : 'no'], ['Cost band', String(p.estimated_cost ?? '—')]]} />
         <ul className="list">
           {p.tasks.map((t) => (
             <li key={t.id}>
@@ -107,15 +129,21 @@ const DETAIL: Record<string, (r: Record<string, unknown>) => ReactNode> = {
       </>
     );
   },
-  verification: (r) => {
+  verification: (r, me) => {
     const v = r as unknown as Verification & { evidence?: { check: string; available: boolean }[] };
     return (
       <>
-        <KV rows={[['Verifier', v.verifier], ['Revision checked', <span className="mono">{String(v.revision ?? '—')}</span>], ['Of execution', v.execution_id ? <a href={objectHref('execution', v.execution_id)}>{v.execution_id}</a> : 'none recorded'], ['Decided by', String(v.decided_by ?? '—')]]} />
+        <KV
+          rows={[
+            ['Verifier', v.verifier],
+            ['Of execution', v.execution_id ? <a href={objectHref('execution', v.execution_id)}><RefLabel kind="execution" id={v.execution_id} /></a> : 'none recorded'],
+            ['Decided by', !v.decided_by ? '—' : v.decided_by === me ? 'you, on this client' : 'another client'],
+          ]}
+        />
         <ul className="checks">
           {v.checks.map((c, i) => (
             <li key={i} data-result={c.result}>
-              {c.name}: {c.result} {c.detail ? `— ${c.detail}` : ''} {v.evidence?.find((e) => e.check === c.name)?.available ? '(evidence kept)' : '(no evidence file)'}
+              {c.name}: {c.result} {c.detail ? <>— <Prose text={c.detail} /></> : ''} {v.evidence?.find((e) => e.check === c.name)?.available ? '(evidence kept)' : '(no evidence file)'}
             </li>
           ))}
         </ul>
@@ -127,8 +155,8 @@ const DETAIL: Record<string, (r: Record<string, unknown>) => ReactNode> = {
     return (
       <>
         <Resources r={d} />
-        <KV rows={[['Result', String(d.result ?? '—')], ['Fell back from', String(d.fallback_from ?? '—')], ['Decided by', String(d.decided_by ?? '—')]]} />
-        <p className="prose">{d.explanation}</p>
+        <KV rows={[['Result', String(d.result ?? '—')], ['Fell back', ((d.fallback_from as string[] | undefined) ?? []).length ? 'yes — what it fell back from is in Details' : 'no'], ['Decided by', String(d.decided_by ?? '—')]]} />
+        <p className="prose"><Prose text={d.explanation} /></p>
         <Section title="Candidates">
           <table className="grid">
             <thead>
@@ -141,9 +169,12 @@ const DETAIL: Record<string, (r: Record<string, unknown>) => ReactNode> = {
             <tbody>
               {d.candidates.map((c, i) => (
                 <tr key={i}>
-                  <td className="mono">{JSON.stringify(c.resource ?? c.candidate ?? c)}</td>
+                  <td>
+                    {String(c.label ?? c.harness ?? '—')}
+                    {c.harness && c.label !== c.harness ? <span className="hint"> on {String(c.harness)}</span> : null}
+                  </td>
                   <td>{String(c.eliminated_at_step ?? c.eliminated_at ?? 'kept')}</td>
-                  <td>{String(c.reason ?? '—')}</td>
+                  <td>{c.reason ? <Prose text={String(c.reason)} /> : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -161,14 +192,31 @@ const DETAIL: Record<string, (r: Record<string, unknown>) => ReactNode> = {
         </Section>
         <Section title="The run">
           <StateBadge machine="automation_run" state={x.run.state} />
-          <KV rows={[['Depth', String(x.run.depth)], ['Reason', String(x.run.reason ?? '—')], ['Why', <span className="mono">{JSON.stringify(x.why)}</span>]]} />
+          <KV rows={[['Depth', String(x.run.depth)], ['Reason', x.run.reason ? <Prose text={x.run.reason} /> : '—'], ['Why', firedText(x.why as Parameters<typeof firedText>[0])]]} />
         </Section>
-        <Section title="What it caused">{x.mission ? <a href={objectHref('mission', String(x.mission.id))}>{String(x.mission.title ?? x.mission.id)}</a> : <p>No mission.</p>}</Section>
+        <Section title="What it caused">{x.mission ? <a href={objectHref('mission', String(x.mission.id))}>{String(x.mission.title ?? 'its mission')}</a> : <p>No mission.</p>}</Section>
       </>
     );
   },
 };
 
+/** A row with no dedicated view: its fields as words, nested values as
+ * nested lists; its identifiers are in the header's Details. */
 function Fields({ row }: { row: Record<string, unknown> }) {
-  return <KV rows={Object.entries(row).map(([k, v]) => [k, <span className="mono">{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>])} />;
+  return <Value v={technical(row)[0]} />;
+}
+
+function Value({ v }: { v: unknown }): ReactNode {
+  if (Array.isArray(v) && v.some((x) => x && typeof x === 'object'))
+    return (
+      <ol className="list">
+        {v.map((x, i) => (
+          <li key={i}>
+            <Value v={x} />
+          </li>
+        ))}
+      </ol>
+    );
+  if (v && typeof v === 'object' && !Array.isArray(v)) return <KV rows={Object.entries(v).map(([k, x]) => [words(k), <Value v={x} />])} />;
+  return typeof v === 'string' && v ? <Prose text={v} /> : inline(v);
 }

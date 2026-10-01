@@ -2,7 +2,7 @@
 // returned to text and glyphs; none decides what a state means, whether an
 // action is allowed, where work runs or whether it is done — those are the
 // rows' (P9–P15). Pure: the node tests and the mutation suite run it directly.
-import { CLASSES, LABELS, PRESENTATION, TRIGGERS } from './presentation.ts';
+import { CLASSES, ID_KINDS, LABELS, PRESENTATION, TRIGGERS } from './presentation.ts';
 
 /** Whether the state machine has *trigger* from *state* at all — what a button
  * may be offered for. Whether it may fire now is Core's (guards, P9). */
@@ -184,4 +184,119 @@ function fmt(s: number): string {
   if (s < 3600) return `${Math.max(1, Math.round(s / 60))} min`;
   if (s < 86400) return `${Math.round(s / 3600)} h`;
   return `${Math.round(s / 86400)} d`;
+}
+
+// ── plain language: a value as words, an identifier behind Details (R1, rulebook §15) ──
+
+const MENTION = new RegExp(`\\b(${Object.keys(ID_KINDS).join('|')})_[0-9A-HJKMNP-TV-Z]{26}\\b`, 'g');
+
+export type Piece = string | { kind: string; id: string };
+
+/** Core's own sentences sometimes name an object by its id ("plan v1 approved
+ * (approval apr_…)"). Split such a sentence into its words and the objects it
+ * names, so each is shown as that object and never as its id; the kind word
+ * the sentence already put before the id is not said twice. */
+export function mentions(text: string): Piece[] {
+  const out: Piece[] = [];
+  let last = 0;
+  for (const m of text.matchAll(MENTION)) {
+    const kind = ID_KINDS[m[1]];
+    let before = text.slice(last, m.index);
+    const word = kind.replace(/_/g, ' ') + ' ';
+    if (before.toLowerCase().endsWith(word)) before = before.slice(0, -word.length);
+    if (before) out.push(before);
+    out.push({ kind, id: m[0] });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+/** A field name as words: `as_of_seq` → `As of seq`. */
+export const words = (k: string) => (k.charAt(0).toUpperCase() + k.slice(1)).replace(/_/g, ' ');
+
+/** Fields that hold an identifier, a digest or a git revision: they belong in
+ * Details, never in the default view. Read by NAME, so a value that merely
+ * looks like an id is not guessed at. */
+const TECH = /(^|_)(id|ids|digest|hash|sha|sha256)$|^(revision|last_revision|evaluated_against|policy_version|instance|home_ref|integration_branch|integration_head)$/;
+
+const scalar = (v: unknown) => v === null || ['string', 'number', 'boolean', 'undefined'].includes(typeof v);
+
+/** Split a row Core returned into what a person reads and its identifiers,
+ * each labelled by where it sits (`Subject · id`). Nothing is dropped: every
+ * technical scalar comes back as a Details row. */
+export function technical(v: unknown, at = ''): [unknown, [string, string][]] {
+  const label = (k: string) => (at ? `${at} · ${words(k).toLowerCase()}` : words(k));
+  if (Array.isArray(v)) {
+    const tech: [string, string][] = [];
+    const clean = v.map((x, i) => {
+      const [c, t] = technical(x, `${at || 'Item'} ${i + 1}`);
+      tech.push(...t);
+      return c;
+    });
+    return [clean, tech];
+  }
+  if (v && typeof v === 'object') {
+    const out: Record<string, unknown> = {};
+    const tech: [string, string][] = [];
+    for (const [k, x] of Object.entries(v)) {
+      if (TECH.test(k) && (scalar(x) || (Array.isArray(x) && x.every(scalar)))) {
+        if (x !== null && x !== undefined && x !== '' && !(Array.isArray(x) && !x.length)) tech.push([label(k), Array.isArray(x) ? x.join(', ') : String(x)]);
+      } else {
+        const [c, t] = technical(x, label(k));
+        out[k] = c;
+        tech.push(...t);
+      }
+    }
+    return [out, tech];
+  }
+  return [v, []];
+}
+
+/** A value on one line: scalars as themselves, lists joined, objects as
+ * `Key value` pairs — never JSON. */
+export function inline(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '—';
+  if (Array.isArray(v)) return v.length ? v.map(inline).join(', ') : '—';
+  if (typeof v === 'object') return Object.entries(v).map(([k, x]) => `${words(k)} ${inline(x)}`).join(' · ') || '—';
+  return String(v);
+}
+
+type Test = string | number | boolean | null | { glob?: string; not_glob?: string };
+
+const test = (k: string, t: Test) =>
+  t && typeof t === 'object'
+    ? 'glob' in t
+      ? `${words(k).toLowerCase()} matches ${t.glob}`
+      : `${words(k).toLowerCase()} does not match ${t.not_glob}`
+    : `${words(k).toLowerCase()} is ${String(t)}`;
+
+/** An automation trigger (p14 §L: `{kind: 'event', type, where}`) in words. */
+export function triggerText(t: { type?: unknown; where?: Record<string, Test> | null }): string {
+  const where = Object.entries(t.where ?? {}).map(([k, v]) => test(k, v));
+  return `When a ${String(t.type ?? 'recorded')} event happens${where.length ? `, where ${where.join(' and ')}` : ''}`;
+}
+
+/** What an automation asks for (`{title, objective, success_criteria}`) in words. */
+export function templateText(t: { title?: unknown; objective?: unknown; success_criteria?: unknown[] }): string {
+  const n = (t.success_criteria ?? []).length;
+  return `Start a mission “${String(t.title ?? '')}”: ${String(t.objective ?? '')}${n ? ` (${n} success ${n === 1 ? 'criterion' : 'criteria'})` : ''}`;
+}
+
+/** Why a run fired (`{type, where: {key: {test, value}}}`) in words. */
+export function firedText(w: { type?: unknown; where?: Record<string, { test: Test; value: unknown }> | null }): string {
+  const seen = Object.entries(w.where ?? {}).map(([k, x]) => `${words(k).toLowerCase()} was ${inline(x.value)}`);
+  return `It fired on a ${String(w.type ?? 'recorded')} event${seen.length ? `: ${seen.join(', ')}` : ''}.`;
+}
+
+/** An account's newest usage reading (`{windows, resets_at, observed_at, source}`)
+ * in words; a window not reported is not shown as 0. */
+export function usageText(u: { windows?: Record<string, number | null>; resets_at?: Record<string, string>; observed_at?: number | null; source?: string } | null, now = Date.now()): string {
+  if (!u) return 'not observed';
+  const w = Object.entries(u.windows ?? {}).map(([k, pct]) => {
+    const at = u.resets_at?.[k];
+    return `${words(k).toLowerCase()} ${pct === null || pct === undefined ? 'unknown' : `${pct}%`}${at ? ` (resets ${ago(at, now)})` : ''}`;
+  });
+  const seen = typeof u.observed_at === 'number' ? `, observed ${ago(new Date(u.observed_at * 1000).toISOString(), now)}` : '';
+  return `${w.join(' · ') || 'no window reported'}${seen}${u.source ? ` from ${u.source}` : ''}`;
 }

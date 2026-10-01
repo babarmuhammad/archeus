@@ -10,7 +10,7 @@ import { INSPECTOR_TABS, TAB_LABEL, objectHref } from '../nav/destinations';
 import { ago } from '../state/present';
 import { GraphLink, Relations } from '../components/Relations';
 import { useWide } from '../graph/wide';
-import { ActionButton, Empty, Fresh, KV, Loadable, Section, StateBadge, Tabs } from '../components/ui';
+import { ActionButton, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Section, StateBadge, Tabs } from '../components/ui';
 
 export function WorldView() {
   const p = useRead<ProjectList>('/v1/projects');
@@ -111,6 +111,7 @@ export function ProjectPage({ id }: { id: string }) {
           <>
             <h1 tabIndex={-1}>{x.name}</h1>
             <Fresh snap={p} />
+            <Details rows={[['Project id', x.id], ['Workspace id', x.workspace_id as string | undefined]]} />
             <p>
               <a href={`#/work/${x.id}`}>Its missions in Work</a> · <GraphLink kind="project" id={x.id} /> · roots <span className="mono">{x.root_paths.join(', ')}</span>
             </p>
@@ -118,9 +119,9 @@ export function ProjectPage({ id }: { id: string }) {
               <Section key={r.id} title={`${r.kind} · ${r.path}`}>
                 <div className="facts">
                   <StateBadge machine="architecture" state={r.architecture_state} />
-                  {r.last_revision ? <span className="mono">at {String(r.last_revision).slice(0, 10)}</span> : null}
                   <ModulesLink id={r.id} />
                 </div>
+                <Details rows={[['Repository id', r.id], ['Last inspected revision (git)', r.last_revision as string | undefined]]} />
                 {(r.findings ?? []).length ? (
                   <table className="grid">
                     <caption className="sr">Constraint findings</caption>
@@ -137,7 +138,7 @@ export function ProjectPage({ id }: { id: string }) {
                           <td>{f.constraint}</td>
                           <td>{f.status}</td>
                           <td>
-                            {f.reason ?? '—'}
+                            {f.reason ? <Prose text={f.reason} /> : '—'}
                             {f.violations.length ? (
                               <ul className="list mono">
                                 {f.violations.slice(0, 10).map((v, i) => (
@@ -255,7 +256,7 @@ export function KnowledgeInspector({ id, tab, onTab }: { id: string; tab?: strin
       {(k) => (
         <div className="inspector-body">
           <header className="insp-head">
-            <h1 tabIndex={-1}>{String(k.title ?? k.id)}</h1>
+            <h1 tabIndex={-1}>{String(k.title ?? 'Knowledge item')}</h1>
             <div className="meta">
               <StateBadge machine="knowledge_item" state={k.state} />
               <span className="tag">{String(k.type ?? '').toLowerCase()}</span>
@@ -272,6 +273,14 @@ export function KnowledgeInspector({ id, tab, onTab }: { id: string; tab?: strin
                 <ActionButton label="Retract" scope="control" kind="danger" confirm="Retract this item: it stops being used as context. The row and its provenance are kept." run={(key) => api.retractKnowledge(send(), id, { idempotency_key: key, expected_version: Number(k.version) })} reread={reread} />
               ) : null}
             </div>
+            <Details
+              rows={[
+                ['Knowledge item id', k.id],
+                ['Source (id)', (k.source_ref as { id?: string } | null | undefined)?.id],
+                ['Produced by route decision (id)', k.route_decision_id as string | undefined],
+                ...k.chain.map((c, i): [string, string] => [`Version ${i + 1} id`, c]),
+              ]}
+            />
           </header>
           <Tabs label="Knowledge item" current={current} onSelect={onTab} tabs={INSPECTOR_TABS.knowledge_item.map((t) => ({ id: t, label: TAB_LABEL[t] }))} />
           <div role="tabpanel" id={`panel-${current}`} aria-labelledby={`tab-${current}`} className="panel">
@@ -281,15 +290,15 @@ export function KnowledgeInspector({ id, tab, onTab }: { id: string; tab?: strin
                 <KV
                   rows={[
                     ['Origin', String(k.origin ?? '—')],
-                    ['Source', `${String(k.source_kind ?? '—')} ${k.source_ref ? JSON.stringify(k.source_ref) : ''}`],
+                    ['Source', <SourceRef k={k} />],
                     ['Observed', ago(k.observed_at as string | null)],
-                    ['Produced by (route)', k.route_decision_id ? <a href={objectHref('route_decision', String(k.route_decision_id))}>{String(k.route_decision_id)}</a> : 'the user or a deterministic pass'],
+                    ['Produced by (route)', k.route_decision_id ? <a href={objectHref('route_decision', String(k.route_decision_id))}>a model call</a> : 'the user or a deterministic pass'],
                   ]}
                 />
                 <Section title="Supersession chain (oldest first)">
                   <ol className="list">
                     {k.chain.map((c) => (
-                      <li key={c}>{c === id ? <strong>{c} (this item)</strong> : <a href={objectHref('knowledge_item', c)}>{c}</a>}</li>
+                      <li key={c}>{c === id ? <strong>this item</strong> : <a href={objectHref('knowledge_item', c)}><RefLabel kind="knowledge_item" id={c} /></a>}</li>
                     ))}
                   </ol>
                 </Section>
@@ -301,5 +310,19 @@ export function KnowledgeInspector({ id, tab, onTab }: { id: string; tab?: strin
         </div>
       )}
     </Loadable>
+  );
+}
+
+/** Where a knowledge item came from: the object it was learnt from, named. */
+function SourceRef({ k }: { k: KnowledgeDetail }) {
+  const ref = k.source_ref as { kind: string; id: string } | null | undefined;
+  if (!ref) return <>{String(k.source_kind ?? '—')}</>;
+  return (
+    <>
+      {String(k.source_kind ?? '')}{' '}
+      <a href={objectHref(ref.kind, ref.id)}>
+        <RefLabel kind={ref.kind} id={ref.id} />
+      </a>
+    </>
   );
 }
