@@ -1088,12 +1088,16 @@ decisions ADR-0024…0029.
   execution resource on P12's existing pressure hand-off — every `pressure` recorded with its
   basis (window and its source, the usage offset) and a derived quality (reported / estimated /
   unavailable / stale; unknown is never 0); `live_work` items carry `context`; the hand-off reason
-  names its basis; a pressure continuation that made no progress ends as a charged
-  `context_insufficient` failure instead of handing off again. No threshold changes (p12 D20), no
-  compaction by Archeus, no routing behaviour changes. Gates CX-1…CX-16 (testing-strategy §10).
+  names its basis; a PreCompact reading is *signalled*, never a usage report; a pressure
+  continuation whose recorded end state shows no progress over its chain ends `ENDED_HANDOFF`
+  charged and takes the ordinary retry and replan path as `context_insufficient`, instead of
+  handing off again; a chain that keeps progressing has no count cap and is bounded by its
+  resources. No threshold changes (p12 D20), no compaction by Archeus, no routing behaviour
+  changes. Gates CX-1…CX-18 (testing-strategy §10).
 - Acceptance: every question in §28 answerable from the UI.
 
-**P22 — Legacy migration**
+**P22 — Legacy capabilities into Core and the migration tooling** *(the migration itself is
+P25.5; renamed 2026-10-01 from "Legacy migration", ownership unchanged)*
 - Depends: P21. New: `legacy/importers.py`, onboarding import flow, ownership cutover *(moved
   to P25.5 on 2026-09-30: cutover follows a verified migration and the user's approval)*.
 - *Added 2026-09-30 (the user's directive; design ADR-0045, DECIDED 2026-10-01 —

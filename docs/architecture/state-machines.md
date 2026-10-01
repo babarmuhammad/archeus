@@ -380,7 +380,8 @@ stateDiagram-v2
   Approval row bound to the action hash. `resume_approved` resumes the provider session with a
   one-shot allow token for that hash.
 - **HANDING_OFF → ENDED_HANDOFF** ends this execution; the Execution Manager creates the next
-  Execution (attempt unchanged, `handoff_from` set) for the same task, fed by the checkpoint.
+  Execution (the next attempt number, uncharged, `handoff_from` set — as built in P12, below) for
+  the same task, fed by the checkpoint.
 - **LOST** is decided by Core, never self-reported: no process-registry liveness *and* no output
   for `lost_after` (default 90 s), or node OFFLINE past grace. Reconciliation at boot either
   `adopted` (pid + create_time match a live process that is still writing its stream) or
@@ -398,7 +399,10 @@ with `user_handoff`. The hook halts at the next tool call; the end, the checkpoi
 continuation (P9 `check_dispatch`, P10 `route`, a new INTENT with `handoff_from` and the next
 attempt number, uncharged) are one transaction. Work that finished before the boundary ends as
 usual from HANDING_OFF; a stop takes it to STOPPING. Every end with a process derives exactly one
-Checkpoint.
+Checkpoint. *(ADR-0047, PROPOSED, P21: a pressure continuation whose recorded end state shows no
+progress over its chain takes the same `checkpoint_written` edge with `charged True` and creates
+no continuation; its task takes `execution_failed_retry` or `execution_failed_final`
+(`context_insufficient`). No new state or edge.)*
 
 ### 4.1 Session (P12)
 

@@ -711,7 +711,8 @@ ADR-0022, ADR-0031), fixed without ADR-0036, whose states stay unbuilt:
   Claude offers; tiers (pi models stay tier-unknown, D-4); probes (D-7); rotation, AP-1, D-25.
 - **Tests:** `tests/v1/unit/test_pi_discovery.py` and
   `tests/test_harnesses.py::test_the_launch_modal_keeps_configured_apart_from_the_catalogue`,
-  16 mutants killed.
+  18 of 18 mutants killed (M01–M18, the final run on a scratch copy; an earlier run of 16
+  preceded the two cache-expiry mutants M17–M18).
 
 **The directive's sections traced:** §1–§2 → Part C preamble; §3, §12 → A3, C3; §4 → C1; §5 →
 C7; §6 → C8; §7 → C4; §8 → C9; §9 → C5; §10 → C4 (independence only); §11 → C2; §13 → A5, C12;

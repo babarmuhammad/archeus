@@ -202,17 +202,19 @@ pause-timeout stop, failure, user request "continue in a fresh session".
 
 **Context pressure signal** (headless): after each assistant message in stream-json,
 `pressure = (usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens)
-/ model.context_window` (window from the live catalogue's `max_input_tokens` via `models`;
-when the catalogue is unreachable, a bundled per-family fallback table, and if the model is
-unknown the smallest window in that table, so pressure is over- rather than under-estimated). Backstops: the PreCompact hook fires →
+/ model.context_window` (the window of the execution's model from the account's offers or the
+adapter's declared models; an unknown model uses the smallest window that harness declares, so
+pressure is over- rather than under-estimated, and a harness declaring none has no pressure
+hand-off — recorded, not guessed; p12-design-gate §13.1, as built). Backstops: the PreCompact hook fires →
 treat as pressure 0.9; a `compact_boundary` event → record that compaction happened (the
 execution continues; the checkpoint is still derived at the next boundary). Bounded tasks and
 `--max-turns` keep pressure rare — hand-off is the exception path, not the design.
 *(ADR-0047, PROPOSED, P21: each pressure value is recorded with its basis — window, window source,
-usage offset — and read as reported / estimated / unavailable / stale; the as-built unknown-model
-rule is the smallest window the **harness** declares, and none when it declares none
-(p12-design-gate §13.1); a pressure continuation with no progress over its predecessor ends as a
-charged `context_insufficient` failure rather than handing off again; Archeus triggers no
+usage offset, the PreCompact signal — and read as signalled / unavailable / stale / estimated /
+reported; a pressure continuation whose recorded end state shows no progress over every earlier
+link of its chain ends `ENDED_HANDOFF` charged, with `context_insufficient` taking the ordinary
+retry and replan path, rather than handing off again; a chain that keeps progressing has no count
+cap and is bounded by its resources, P9, P10, the e-stop and the user; Archeus triggers no
 compaction.)*
 
 **What a checkpoint contains** — **derived by Core**, not asked of an agent whose context is
