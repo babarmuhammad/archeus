@@ -164,3 +164,12 @@ export const TIER_STYLE: Record<NonNullable<Edge['tier']>, string> = {
   INFERRED: 'dashed',
   AMBIGUOUS: 'dotted',
 };
+
+/** What a person reads for a tier (ADR-0025 §1, rulebook §25): the list, the
+ * mirror and the legend say these words, never the enum. An edge read from a
+ * column has no tier and is recorded. */
+export const TIER_WORD: Record<NonNullable<Edge['tier']>, string> = {
+  EXTRACTED: 'recorded',
+  INFERRED: 'suggested by Archeus',
+  AMBIGUOUS: 'unclear',
+};

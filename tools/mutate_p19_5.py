@@ -1,6 +1,7 @@
 """The P19.5 mutation suite (ADR-0024, ADR-0029 §6): the motion foundation,
 the activity halo, the travelling marker, the Core slice, and R1's copy/id
-gate with the Details disclosure and its command names (N71-N88). Break each gate's invariant, run
+gate with the Details disclosure and its command names (N71-N88), and R2's legend,
+expand all / collapse all and plain tier words (N89-N102). Break each gate's invariant, run
 the test written for it, and require it to fail.
 
     py tools/mutate_p19_5.py            every mutation
@@ -53,6 +54,11 @@ ATTENTION = 'clients/app/src/surfaces/Attention.tsx'
 WORLD = 'clients/app/src/surfaces/World.tsx'
 INSPECTOR = 'clients/app/src/surfaces/Inspector.tsx'
 NAMES = DG + 'test_one_name_per_command'
+LEGEND = 'clients/app/src/graph/legend.ts'
+KEYS = 'clients/app/src/graph/keys.ts'
+RELLIST = 'clients/app/src/components/Relations.tsx'
+LEGEND_TS = 'node:test/legend.test.ts'
+LEGEND_E2E = 'tests/v1/e2e/test_spa_legend.py::test_the_legend_and_the_whole_graph_commands'
 #: the generated travelling-marker entry's budget, as gen_ui writes it
 MARKER_TS = ('"max_ms": 600,\n    "token": null,\n    "ttl_ms": null,\n    "ttl_error_ms": null,\n'
              '    "easing": "linear",\n    "cap": 8,')
@@ -404,6 +410,54 @@ MUTATIONS = [
      "['Inspection id', i.id], ['Revision inspected (git)', i.revision]",
      "['Inspection id', i.id]")],
      [COPY]),
+    # ── R2: the legend, expand all / collapse all, the plain tier words ──
+    ('N89', 'the legend lists every tier, loaded or not (AMBIGUOUS before Core writes one)', [(LEGEND,
+     '    if (tiers.has(t)) rows.push(', '    if (tiers.size >= 0) rows.push(')],
+     [LEGEND_TS]),
+    ('N90', 'a DECISION is listed under knowledge, not as the decision its diamond is', [(LEGEND,
+     "  return 'kind:' + (look.shape === 'diamond' ? 'decision' : n.kind);", "  return 'kind:' + n.kind;")],
+     [LEGEND_TS]),
+    ('N91', 'the mirror says the tier enum again', [(MIRROR,
+     "` (${TIER_WORD[e.tier as keyof typeof TIER_WORD]})`",
+     "` (${e.tier.toLowerCase()})`")],
+     [LEGEND_TS]),
+    ('N92', 'the Relations list says the tier enum again', [(RELLIST,
+     '{TIER_WORD[e.tier]}', '{TIER_WORD[e.tier] && e.tier.toLowerCase()}')],
+     [LEGEND_E2E]),
+    ('N93', 'an unticked kind stays in the drawing', [(LEGEND,
+     '  const out = new Set([...vis].filter(shownKey));', '  const out = new Set(vis);')],
+     [LEGEND_E2E]),
+    ('N94', 'a legend row is words without a checkbox', [(GV,
+     '<input type="checkbox" checked={!hidden.has(r.key)} onChange={() => onToggle(r.key)} /> ',
+     '<span data-off={String(hidden.has(r.key))} onClick={() => onToggle(r.key)} /> ')],
+     [LEGEND_E2E]),
+    ('N95', 'a kind swatch is not the shape the graph draws', [('clients/app/src/graph/render.ts',
+     "    const { filled } = tracePath(ctx, row.shape, cx, cy, Math.min(radiusOf(row.shape), h / 2 - 2));",
+     "    const { filled } = tracePath(ctx, 'circle', cx, cy, Math.min(radiusOf(row.shape), h / 2 - 2));")],
+     [LEGEND_TS]),
+    ('N96', 'a tier swatch drawn solid whatever its tier', [('clients/app/src/graph/render.ts',
+     "    line(row.dash, widthOf(1), '--line-strong');", "    line([], widthOf(1), '--line-strong');")],
+     [LEGEND_TS]),
+    ('N97', 'collapse all collapses nothing', [(GV,
+     '    const none = new Set<string>();\n    setExpanded(none);', '    const none = new Set<string>();\n    setExpanded(allExpanded(model));')],
+     [LEGEND_E2E]),
+    ('N98', 'expand all is a toggle, so twice undoes it', [(GV,
+     '  const expandAll = () => setExpanded(allExpanded(model));',
+     '  const expandAll = () => setExpanded((x) => (x.size === allExpanded(model).size ? new Set<string>() : allExpanded(model)));')],
+     [LEGEND_E2E]),
+    ('N99', 'C is not the collapse-all command', [(KEYS,
+     "    case 'c':\n      return { walk: w, command: 'collapse-all' };\n", '')],
+     [LEGEND_TS]),
+    ('N100', 'a collapse leaves the keyboard on a node it hid', [(GV,
+     '    if (at && at !== walk.at) setWalk(', '    if (at && at === walk.at) setWalk(')],
+     [LEGEND_E2E]),
+    ('N101', 'collapse all moves the URL', [(GV,
+     '    const none = new Set<string>();\n    setExpanded(none);',
+     "    const none = new Set<string>();\n    setExpanded(none);\n    history.replaceState(null, '', location.hash + '/collapsed');")],
+     [LEGEND_E2E]),
+    ('N102', 'under reduced motion the legend still promises a travelling marker', [(LEGEND,
+     "word: reduced ? 'live now: the thicker line", "word: reduced && false ? 'live now: the thicker line")],
+     [LEGEND_TS]),
 ]
 
 if __name__ == '__main__':

@@ -15,6 +15,7 @@ import { ALPHA } from '../state/tokens.ts';
 import { attrsText, colourVar, countsText, dashOf, lookOf, radiusOf, tracePath, widthOf } from './encoding.ts';
 import { travelOf, type Drawn, type Model } from './model.ts';
 import type { Point } from './layout.ts';
+import type { LegendRow } from './legend.ts';
 
 export const LOD_NODES = 250; // the legacy renderer's threshold (G4)
 export const LABEL_ZOOM = 0.5; // below it: cluster labels only (ui-architecture §5)
@@ -256,9 +257,78 @@ function drawMarkers(ctx: CanvasRenderingContext2D, s: Scene) {
   ctx.fill();
 }
 
+/** A legend row's swatch (ADR-0025 §2), drawn with what the graph draws that
+ * thing with: the kind's traced shape in the neutral node colour, the tier's
+ * dash in edge ink, the halo's two rings (one solid when transparency must not
+ * carry it), the marker's thread-ink tail and head — or, under reduced motion,
+ * the static live edge that replaces it. Canvas pixels, origin top left. */
+export function drawSwatch(ctx: CanvasRenderingContext2D, row: LegendRow, w: number, h: number, colour: (v: string) => string, solid = false, reduced = false) {
+  const cx = w / 2;
+  const cy = h / 2;
+  ctx.clearRect(0, 0, w, h);
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+  const line = (dash: readonly number[], width: number, ink: string) => {
+    ctx.setLineDash(dash as number[]);
+    ctx.lineWidth = width;
+    ctx.strokeStyle = colour(ink);
+    ctx.beginPath();
+    ctx.moveTo(2, cy);
+    ctx.lineTo(w - 2, cy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  };
+  if (row.group === 'kind') {
+    ctx.setLineDash(row.shape === 'endpoint' ? [1.5, 3] : []);
+    const { filled } = tracePath(ctx, row.shape, cx, cy, Math.min(radiusOf(row.shape), h / 2 - 2));
+    if (filled) {
+      ctx.fillStyle = colour('--text-2');
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = colour('--text-2');
+      ctx.stroke();
+    }
+  } else if (row.group === 'tier') {
+    line(row.dash, widthOf(1), '--line-strong');
+  } else if (row.key === 'halo') {
+    const r = radiusOf('dot');
+    tracePath(ctx, 'dot', cx, cy, r);
+    ctx.fillStyle = colour('--text-2');
+    ctx.fill();
+    ctx.strokeStyle = colour('--state-active');
+    for (const [gap, alpha] of haloRings(solid)) {
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + gap, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  } else if (reduced) {
+    line([], widthOf(1, true), '--line-strong');
+  } else {
+    line([], widthOf(1), '--line-strong');
+    const hx = w * 0.7;
+    ctx.strokeStyle = colour('--thread');
+    ctx.beginPath();
+    ctx.moveTo(hx - MARKER_TAIL, cy);
+    ctx.lineTo(hx, cy);
+    ctx.stroke();
+    ctx.fillStyle = colour('--thread');
+    ctx.beginPath();
+    ctx.arc(hx, cy, MARKER_HEAD / 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 /** Where the halo's two strokes sit, outside the node's own radius (inside the
  * focus ring's 4 and outside it, so a focused live node shows both). */
 export const HALO_RINGS = [2, 6] as const;
+
+/** The halo's rings as (gap, alpha): two at halo-inner and halo-outer, or one
+ * solid ring when transparency must not carry it. */
+const haloRings = (solid: boolean): [number, number][] =>
+  solid ? [[HALO_RINGS[0], 1]] : [[HALO_RINGS[0], ALPHA['halo-inner']], [HALO_RINGS[1], ALPHA['halo-outer']]];
 
 /** The activity halo (ADR-0024 §6, ADR-0028 §3): two static 1 px strokes of
  * --state-active round every visible node with live work, the inner at
@@ -268,7 +338,7 @@ export const HALO_RINGS = [2, 6] as const;
 function drawHalos(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
   if (!s.halo.size) return;
   const dots = stats.lod === 'dots';
-  const rings: [number, number][] = s.haloSolid ? [[HALO_RINGS[0], 1]] : [[HALO_RINGS[0], ALPHA['halo-inner']], [HALO_RINGS[1], ALPHA['halo-outer']]];
+  const rings = haloRings(!!s.haloSolid);
   ctx.setLineDash([]);
   ctx.lineWidth = 1 / s.cam.k;
   ctx.strokeStyle = s.colour('--state-active');

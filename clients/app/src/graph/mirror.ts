@@ -8,7 +8,7 @@
 // marker run along, says "live now" — their text equivalent. Pure.
 import { attrsText, countsText, lookOf } from './encoding.ts';
 import { keyOf, type Model } from './model.ts';
-import { edgeWords } from './relations.ts';
+import { edgeWords, TIER_WORD } from './relations.ts';
 
 export function mirrorRows(model: Model, pinned: ReadonlySet<string> = new Set(), halo: ReadonlySet<string> = new Set()) {
   return model.nodes.map((n) => {
@@ -22,7 +22,7 @@ export function mirrorRows(model: Model, pinned: ReadonlySet<string> = new Set()
         const other = model.byKey.get(keyOf(holder ? e.to : e.from));
         const text =
           `${edgeWords(e.field, holder, e.rel)} ${other ? other.label : (holder ? e.to : e.from).id}` +
-          (e.tier ? ` (${e.tier.toLowerCase()})` : '') +
+          (e.tier && e.tier in TIER_WORD ? ` (${TIER_WORD[e.tier as keyof typeof TIER_WORD]})` : '') +
           (e.inactive ? ' — no longer current' : '') +
           (e.count && e.count > 1 ? ` ×${e.count}` : '') +
           (live ? ' — live now' : '');

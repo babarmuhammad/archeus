@@ -15,8 +15,9 @@ import { Inspector } from '../surfaces/Inspector';
 import { lookOf } from './encoding';
 import { fit, layout, pinchCamera, type Point } from './layout';
 import { browserHost, Loop } from './loop';
-import { allExpanded, around, build, haloed, inFocus, keyOf, lifted, liveExecutions, markerFor, markerTarget, path as tracePathKeys, pathStatus, pulseEdge, pulseFor, search, toggle, visible, type GraphData, type Model, type Ref } from './model';
-import { frame, type Camera, type DrawStats, type Layer } from './render';
+import { allExpanded, around, build, haloed, inFocus, keyOf, lift as liftKey, lifted, liveExecutions, markerFor, markerTarget, path as tracePathKeys, pathStatus, pulseEdge, pulseFor, search, toggle, visible, type GraphData, type Model, type Ref } from './model';
+import { drawSwatch, frame, type Camera, type DrawStats, type Layer } from './render';
+import { applyLegend, legendRows, type LegendRow } from './legend';
 import { doubleTap, selected as selectedEdge, start, step, type Walk } from './keys';
 import { edgeWords } from './relations';
 import { mirrorRows } from './mirror';
@@ -93,6 +94,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   const rootKey = root && model.byKey.has(root) ? root : model.nodes[0] ? keyOf(model.nodes[0]) : '';
   const [expanded, setExpanded] = useState<Set<string>>(() => allExpanded(model));
   const [only, setOnly] = useState<string | null>(null);
+  const [hidden, setHidden] = useState<Set<string>>(() => new Set()); // legend rows unticked: view state, never sent
   const [query, setQuery] = useState('');
   const [walk, setWalk] = useState<Walk>(() => start(rootKey));
   const [pathEnds, setPathEnds] = useState<string[]>([]);
@@ -127,9 +129,10 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
     for (const k of allExpanded(model)) seen.current.add(k);
   }, [model]);
 
-  const vis = useMemo(() => visible(model, expanded), [model, expanded]);
+  const shown = useMemo(() => applyLegend(model, visible(model, expanded), hidden), [model, expanded, hidden]);
+  const vis = shown.vis;
   const keys = useMemo(() => model.nodes.map(keyOf).filter((k) => vis.has(k)), [model, vis]);
-  const drawn = useMemo(() => lifted(model, vis, (e) => !only || chipOf(e) === only), [model, vis, only]);
+  const drawn = useMemo(() => lifted(model, vis, (e) => shown.keep(e) && (!only || chipOf(e) === only)), [model, vis, shown, only]);
   const pos = useMemo(() => {
     const kept = POSITIONS.get(path) ?? new Map<string, Point>();
     const parentVis = (k: string) => {
@@ -220,9 +223,9 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
       context,
       path: traced,
       live,
-      liveStatic: document.documentElement.dataset.motion === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches,
+      liveStatic: reducedMotion(),
       halo,
-      haloSolid: matchMedia('(forced-colors: active)').matches || matchMedia('(prefers-reduced-transparency: reduce)').matches,
+      haloSolid: solidHalo(),
       pulse,
       marker,
       colour: (v) => styles.getPropertyValue(v).trim() || '#888',
@@ -342,6 +345,17 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
     location.assign(graphHref({ kind: n.kind, id: n.id }));
   };
 
+  // expand all / collapse all (rulebook §12): the same expanded set Space
+  // toggles one entry of — view state only; the keyboard moves to what stands
+  // for the focused node when a collapse hides it
+  const expandAll = () => setExpanded(allExpanded(model));
+  const collapseAll = () => {
+    const none = new Set<string>();
+    setExpanded(none);
+    const at = liftKey(model, applyLegend(model, visible(model, none), hidden).vis, walk.at);
+    if (at && at !== walk.at) setWalk({ at, sel: 0, trail: [] });
+  };
+
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'f') {
       e.preventDefault();
@@ -357,6 +371,10 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
       case 'toggle':
         if (model.children.has(w.at)) setExpanded((x) => toggle(x, w.at));
         return;
+      case 'expand-all':
+        return expandAll();
+      case 'collapse-all':
+        return collapseAll();
       case 'zoom-in':
         return moveTo({ ...c, k: Math.min(4, c.k * 1.25) }, true);
       case 'zoom-out':
@@ -445,7 +463,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   const hiddenCount = (data.hidden ?? []).reduce((a, h) => a + h.count, 0);
 
   return (
-    <div className="graph" data-graph-focus={focus ? `${focus.kind}:${focus.id}` : 'workspace'} data-graph-nodes={keys.length} data-graph-lod={lod} data-graph-loop={loopState} data-graph-at={walk.at} data-graph-live={live.size} data-graph-halos={halos} data-graph-pulses={pulseCount} data-graph-markers={markerCount} data-graph-pinned={pinned.size} data-graph-selected={sel?.edge.id ?? ''} data-graph-path={pathState ?? ''}>
+    <div className="graph" data-graph-focus={focus ? `${focus.kind}:${focus.id}` : 'workspace'} data-graph-nodes={keys.length} data-graph-lod={lod} data-graph-loop={loopState} data-graph-at={walk.at} data-graph-live={live.size} data-graph-halos={halos} data-graph-pulses={pulseCount} data-graph-markers={markerCount} data-graph-pinned={pinned.size} data-graph-expanded={expanded.size} data-graph-collapsible={model.children.size} data-graph-hidden={hidden.size} data-graph-selected={sel?.edge.id ?? ''} data-graph-path={pathState ?? ''}>
       <div className="graph-bar" role="toolbar" aria-label="Graph">
         <a className="chip" href={modules !== undefined ? objectHref('repository', focus!.id) : focus ? (focus.kind === 'project' ? `#/world/${focus.id}` : objectHref(focus.kind, focus.id, 'relations')) : '#/world'}>
           List
@@ -467,6 +485,12 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
         </button>
         <button type="button" className="chip" aria-pressed={pinned.has(walk.at)} onClick={() => pin(walk.at)}>
           {pinned.has(walk.at) ? 'Unpin' : 'Pin'}
+        </button>
+        <button type="button" className="chip" disabled={!model.children.size} onClick={expandAll}>
+          Expand all
+        </button>
+        <button type="button" className="chip" disabled={!model.children.size} onClick={collapseAll}>
+          Collapse all
         </button>
         {rels.length > 1 ? (
           <span className="chips" role="group" aria-label="Show one relationship">
@@ -555,11 +579,72 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
         }}
       />
       <p id="graph-keys" className="caption">
-        ↑ ↓ choose a relationship · → follow it · ← back · Enter open · F focus here · Space expand or collapse · + − zoom · 0 fit · / find · P mark a path end · . pin or unpin · Esc clear
+        ↑ ↓ choose a relationship · → follow it · ← back · Enter open · F focus here · Space expand or collapse · E expand all · C collapse all · + − zoom · 0 fit · / find · P mark a path end · . pin or unpin · Esc clear
       </p>
+      <Legend model={model} hidden={hidden} onToggle={(k) => setHidden((h) => toggle(h, k))} />
       <Mirror model={model} pinned={pinned} halo={halo} />
     </div>
   );
+}
+
+const GROUPS = [
+  ['kind', 'Shapes'],
+  ['tier', 'Lines'],
+  ['live', 'Live work'],
+] as const;
+const SWATCH = { w: 28, h: 24 };
+const reducedMotion = () => document.documentElement.dataset.motion === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches;
+const solidHalo = () => matchMedia('(forced-colors: active)').matches || matchMedia('(prefers-reduced-transparency: reduce)').matches;
+
+/** The legend (ADR-0025 §2): what each shape and line in this picture means,
+ * and the two marks of live work, as a list. Each shape and line row is a real
+ * checkbox that hides what it names from the drawing. */
+function Legend({ model, hidden, onToggle }: { model: Model; hidden: ReadonlySet<string>; onToggle: (key: string) => void }) {
+  const reduced = reducedMotion();
+  const solid = solidHalo();
+  const rows = legendRows(model, reduced);
+  return (
+    <details className="graph-legend" open data-graph-legend="">
+      <summary>Legend</summary>
+      <p className="hint">Untick a shape or a line to hide it from the drawing.</p>
+      {GROUPS.map(([g, title]) => {
+        const rs = rows.filter((r) => r.group === g);
+        return rs.length ? (
+          <ul key={g} className="legend-rows" aria-label={title}>
+            {rs.map((r) => (
+              <li key={r.key} data-legend={r.key}>
+                {r.group === 'live' ? (
+                  <>
+                    <Swatch row={r} reduced={reduced} solid={solid} /> {r.word}
+                  </>
+                ) : (
+                  <label>
+                    <input type="checkbox" checked={!hidden.has(r.key)} onChange={() => onToggle(r.key)} /> <Swatch row={r} reduced={reduced} solid={solid} /> {r.word}
+                  </label>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : null;
+      })}
+    </details>
+  );
+}
+
+function Swatch({ row, reduced, solid }: { row: LegendRow; reduced: boolean; solid: boolean }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const c = ref.current;
+    const ctx = c?.getContext('2d');
+    if (!c || !ctx) return;
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    c.width = SWATCH.w * dpr;
+    c.height = SWATCH.h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const styles = getComputedStyle(c);
+    drawSwatch(ctx, row, SWATCH.w, SWATCH.h, (v) => styles.getPropertyValue(v).trim() || '#888', solid, reduced);
+  }, [row.key, reduced, solid]);
+  return <canvas ref={ref} className="legend-swatch" aria-hidden="true" />;
 }
 
 /** A relationship chip filters by the words the list says (two fields can

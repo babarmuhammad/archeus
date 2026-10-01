@@ -3,7 +3,7 @@
 // order, → crosses the selected edge, ← steps back along the way it came,
 // Home returns to the query's focus, Esc clears the selected relationship
 // (sel -1) and the view also clears the search and the path marks (A11).
-// Enter, Space, +/-, 0, /, p and . are commands
+// Enter, Space, e, c, +/-, 0, /, p and . are commands
 // the view carries out. Pure: the view keeps the state, this decides the next.
 import { around, type Drawn } from './model.ts';
 
@@ -13,7 +13,7 @@ export interface Walk {
   trail: string[]; // the nodes crossed from, most recent last
 }
 
-export type Command = 'open' | 'toggle' | 'zoom-in' | 'zoom-out' | 'fit' | 'search' | 'clear' | 'path-mark' | 'pin' | null;
+export type Command = 'open' | 'toggle' | 'expand-all' | 'collapse-all' | 'zoom-in' | 'zoom-out' | 'fit' | 'search' | 'clear' | 'path-mark' | 'pin' | null;
 
 export function start(root: string): Walk {
   return { at: root, sel: 0, trail: [] };
@@ -44,6 +44,10 @@ export function step(w: Walk, key: string, drawn: readonly Drawn[], root: string
       return { walk: w, command: 'open' };
     case ' ':
       return { walk: w, command: 'toggle' };
+    case 'e':
+      return { walk: w, command: 'expand-all' };
+    case 'c':
+      return { walk: w, command: 'collapse-all' };
     case '+':
     case '=':
       return { walk: w, command: 'zoom-in' };

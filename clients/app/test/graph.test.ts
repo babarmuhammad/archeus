@@ -205,7 +205,7 @@ test('the mirror lists exactly the loaded nodes — collapsed ones and stubs too
   const x2 = rows.find((r) => r.k === k(X2))!;
   assert.ok(x2.edges.some((x) => x.text === 'continues Attempt 1'));
   assert.ok(rows.find((r) => r.k === k(X1))!.edges.some((x) => x.text === 'continued by Attempt 2'));
-  assert.ok(rows.find((r) => r.k === k(K))!.edges.some((x) => x.text === 'learned_from Ship the chart (inferred)'));
+  assert.ok(rows.find((r) => r.k === k(K))!.edges.some((x) => x.text === 'learned_from Ship the chart (suggested by Archeus)'));
 });
 
 // ── layout (A7, A10: M13, M28) ──

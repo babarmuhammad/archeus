@@ -3,7 +3,7 @@
 // graph, and the only form P16 draws. Each row says which field it was read
 // from; a superseded or ended neighbour is shown distinct, never as current.
 import { useState } from 'react';
-import { TIER_STYLE, type Edge } from '../graph/relations';
+import { TIER_STYLE, TIER_WORD, type Edge } from '../graph/relations';
 import { objectHref } from '../nav/destinations';
 import { Empty, RefLabel } from './ui';
 import { useWide } from '../graph/wide';
@@ -53,7 +53,7 @@ export function Relations({ edges, of }: { edges: Edge[]; of?: { kind: string; i
             {e.tier ? (
               <span className="tier" data-style={TIER_STYLE[e.tier]}>
                 <span className="swatch" aria-hidden="true" />
-                {e.tier.toLowerCase()}
+                {TIER_WORD[e.tier]}
               </span>
             ) : null}
             <a href={objectHref(e.to.kind, e.to.id)}>
