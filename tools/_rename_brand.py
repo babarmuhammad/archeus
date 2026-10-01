@@ -84,6 +84,12 @@ HOLD = {
     'the same as claudectl': '\x00HOLD-FAQ-Q\x00',
     'claudectl was renamed to archeus': '\x00HOLD-FAQ-A\x00',
     'pip install -U claudectl': '\x00HOLD-FAQ-UPGRADE\x00',
+    # Two real names in the V1 architecture, permanent like the README line: the
+    # legacy settings file the P25.5 migration reads (`migrate.py` knows both
+    # names), and the private growth repository, which is still called that.
+    # Renaming either would point the documents at files that do not exist.
+    'old `claudectl.json`': '\x00HOLD-LEGACY-SETTINGS\x00',
+    '`claudectl-growth`': '\x00HOLD-GROWTH-REPO\x00',
 }
 
 SUBS = (('claudectl', 'archeus'),
