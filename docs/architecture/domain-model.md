@@ -265,9 +265,10 @@ the primary conversation; per-mission threads are P16's.
 | `context_scope` | levels allowed (L0–L4), extra refs pinned by the user, refs excluded (P7: set by intent; not persisted before it) |
 | `context_package_id?` | the ContextPackage its `context_ready` move recorded (§5.3; P5) |
 | `dependencies[]` | other missions/decisions this waits on |
-| `priority` | integer; user-set; reprioritize = command |
+| `priority` | integer; user-set; reprioritize = command. *P19.5:* default 0, higher first; it orders only dispatch across missions when capacity is contended (the engine pass) — never a routing, account or model input |
 | `max_replans` | default 2: replans allowed after the initial plan (0 = none); `replan_budget_exhausted` (state-machines §2) |
 | `held_from?` | the state the mission was in when it entered BLOCKED/PAUSED; `resume` and the `redispatch` guard read it (state-machines §2) |
+| `pause_batch_id?` | *P19.5:* the PauseBatch (§9.6) that paused it, while it is still PAUSED by it; any move out of PAUSED clears it, so Resume all resumes only what that batch still holds |
 | `decided_plan_version?` | the `plan_version` the mission last decided (auto-approved or sent for approval); both plan-decision guards refuse that plan again (state-machines §2) |
 | `autonomy_profile` | named policy overlay (e.g. `careful`, `standard`, `autonomous`) — see policy |
 | `resource_preferences` | optional per-mission routing overrides (preferred accounts, forbidden harnesses, cost ceiling) |
@@ -563,6 +564,14 @@ See [api-and-realtime.md §3](api-and-realtime.md) for the envelope. Core column
 event ids, ≤ 16), `subject_kind`, `subject_id`, `workspace_id`, `project_id?`, `payload` (JSON,
 small; big things are artifacts), `visibility` (user / system — system events are not shown in
 activity feeds but are kept for audit).
+
+### 9.6 PauseBatch (P19.5 Core slice)
+One Pause all (ADR-0042 §1): `mission_ids`, the EXECUTING missions it paused, each by its own
+`pause` edge, in order. Immutable; a Pause all that pauses nothing records none. Resume all reads
+the newest batch and resumes exactly its missions that are still PAUSED with its id
+(`Mission.pause_batch_id`) — never one paused on its own, never a BLOCKED one. Read from rows, not
+from the event log, which retention may prune. Events: `pause_batch.created`,
+`pause_batch.resumed`.
 
 ---
 

@@ -188,8 +188,12 @@ class EngineLoop:
             head = outbox.head(conn)
             # parked on the mission's version AND its tasks' and executions'
             # (P11 D28): an execution ending must wake the mission it belongs to
+            # higher priority first (P19.5): the mission stepped first takes
+            # contended capacity first; oldest first among equals, as before
             live = [(m['id'], (m['version'], _stamp(conn, m['id'])))
-                    for m in queries.list_missions(conn) if m['state'] not in engine.SETTLED]
+                    for m in sorted(queries.list_missions(conn),
+                                    key=lambda m: -m['priority'])
+                    if m['state'] not in engine.SETTLED]
         progressed = False
         for mid, version in live:
             if self._stop.is_set():

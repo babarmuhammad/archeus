@@ -161,6 +161,20 @@ def resume_mission(req):
         'mission_id': req.params['id'], 'expected_version': req.body.get('expected_version')})
 
 
+def pause_all(req):
+    return 200, req.run(req.api.missions.pause_all, {})
+
+
+def resume_all(req):
+    return 200, req.run(req.api.missions.resume_all, {})
+
+
+def reprioritise_mission(req):
+    return 200, req.run(req.api.missions.reprioritise, {
+        'mission_id': req.params['id'], 'priority': req.body['priority'],
+        'expected_version': req.body.get('expected_version')})
+
+
 def events(req):
     after = _cursor(_one(req.query, 'after') or '0', 'cursor')
     raw = _one(req.query, 'limit')
@@ -281,10 +295,12 @@ def sync(req):
 
 
 def status(req):
+    from ..node.local import LocalNode
     project = _one(req.query, 'project')
     with req.api.db.read() as conn:
+        # `armed`: the e-stop's state as Health reads it, for the operations strip
         return 200, dict(world_status.status(conn, project),
-                         live=live.live_work(conn, project))
+                         live=live.live_work(conn, project), armed=not LocalNode.disarmed())
 
 
 def list_projects(req):
@@ -896,6 +912,13 @@ ROUTES = (
           schemas.KEYED_VERSIONED, 'CommandResult'),
     Route('POST', '/v1/missions/{id}/resume', resume_mission, 'control', 'required',
           schemas.KEYED_VERSIONED, 'CommandResult'),
+    # P19.5 Core slice (ADR-0030, ADR-0042 §1): the same control scope as one mission's
+    Route('POST', '/v1/missions/pause-all', pause_all, 'control', 'required',
+          schemas.KEYED, 'PauseBatchResult'),
+    Route('POST', '/v1/missions/resume-all', resume_all, 'control', 'required',
+          schemas.KEYED, 'PauseBatchResult'),
+    Route('POST', '/v1/missions/{id}/reprioritize', reprioritise_mission, 'control',
+          'required', schemas.REPRIORITIZE, 'CommandResult'),
     Route('GET', '/v1/events', events, 'observe', None, None, 'EventPage'),
     Route('GET', '/v1/events/stream', events_stream, 'observe', None, None, 'StreamFrame'),
     Route('POST', '/v1/devices/launch/code', launch_code, 'admin', 'exempt', schemas.LAUNCH_CODE,

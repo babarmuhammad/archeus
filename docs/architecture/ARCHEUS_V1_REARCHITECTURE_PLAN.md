@@ -1049,6 +1049,14 @@ decisions ADR-0024…0029.
   (P11 rules); set mission priority, read by routing/scheduling (P10 rules). Nothing else in Core.
   *Decided 2026-09-30 (ADR-0042):* the grammar verbs for these same commands —
   `pause all`, `resume all`, `reprioritise` — land with them; no other Core work.
+  *Built (Core slice, the user's decisions of 2026-10-01):* Pause all pauses only EXECUTING
+  missions, by their own `pause` edge, as one recorded PauseBatch (no new state or edge; the
+  e-stop stays what guarantees nothing starts); Resume all resumes exactly the newest batch's
+  missions still paused by it; `POST /v1/missions/pause-all` / `resume-all` /
+  `{id}/reprioritize` take the per-mission pause's `control` scope, no P9 stage; priority
+  (default 0, higher first) orders only the engine pass, never routing; `armed` is on Health and
+  `/v1/status`; the three grammar verbs answer without a model call. The client slices wait for
+  their own ordering decision.
 - Client work: tokens (focus ≠ attention, red reserved, depth/transparency tokens); primitives;
   graph edge semantics, legend, impact view, hull/depth/cored nodes, static project cage; the
   thread (T1 from `Message.links`, T2 on every list, T3 spatial) and tints; activity halo,

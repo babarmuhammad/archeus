@@ -51,6 +51,12 @@ TYPES = {
         'changed': {'type': 'boolean'}, 'seq': {'type': 'integer', 'nullable': True},
         'transitions': {'type': 'array', 'items': {'ref': 'Transition'}}},
         'required': ['id', 'state', 'version', 'changed', 'seq', 'transitions']},
+    # P19.5: Pause all / Resume all — the batch and each mission's own move
+    'PauseBatchResult': {'type': 'object', 'properties': {
+        'pause_batch_id': {'type': 'string', 'nullable': True},
+        'changed': {'type': 'boolean'},
+        'missions': {'type': 'array', 'items': {'ref': 'CommandResult'}}},
+        'required': ['pause_batch_id', 'changed', 'missions']},
     'Created': {'type': 'object', 'properties': {
         'id': {'type': 'string'}, 'state': {'type': 'string'}, 'version': {'type': 'integer'},
         'seq': {'type': 'integer'}}, 'required': ['id', 'state', 'version', 'seq']},
@@ -92,8 +98,11 @@ TYPES = {
                                                  'failed', 'stopped']},
             'pending': {'type': 'integer'}}, 'required': ['state', 'pending']},
         'knowledge': {'ref': 'Worker'}, 'intent': {'ref': 'Worker'},
-        'plan': {'ref': 'Worker'}, 'policy': {'ref': 'Worker'}},
-        'required': ['core', 'engine', 'world', 'knowledge', 'intent', 'plan', 'policy']},
+        'plan': {'ref': 'Worker'}, 'policy': {'ref': 'Worker'},
+        # the e-stop (P11): False while disarmed; read here and on /v1/status (P19.5)
+        'armed': {'type': 'boolean'}},
+        'required': ['core', 'engine', 'world', 'knowledge', 'intent', 'plan', 'policy',
+                     'armed']},
     'Worker': {'type': 'object', 'properties': {
         'state': {'type': 'string', 'enum': ['starting', 'reconciling', 'running', 'idle',
                                              'failed', 'stopped']},
@@ -275,9 +284,10 @@ TYPES = {
         'drift': {'type': 'array', 'items': {'ref': 'Finding'}},
         'unchecked': {'type': 'array', 'items': {'ref': 'Finding'}},
         'unknown_project': {'type': 'array', 'items': {'type': 'string'}},
-        'live': {'type': 'array', 'items': {'ref': 'LiveItem'}}},
+        'live': {'type': 'array', 'items': {'ref': 'LiveItem'}},
+        'armed': {'type': 'boolean'}},
         'required': ['source', 'as_of_seq', 'projects', 'missions', 'drift', 'unchecked',
-                     'unknown_project', 'live']},
+                     'unknown_project', 'live', 'armed']},
     # ADR-0043 §2 (P21): one item of work in flight; ADR-0047 §9: its context
     'LiveItem': {'type': 'object', 'open': True, 'properties': {
         'kind': {'type': 'string', 'enum': ['execution']}, 'id': {'type': 'string'},
@@ -926,6 +936,10 @@ PAIR_REDEEM = {'type': 'object', 'properties': {
 KEYED_VERSIONED = {'type': 'object', 'properties': {
     'idempotency_key': KEY, 'expected_version': {'type': 'integer', 'nullable': True}},
     'required': ['idempotency_key']}
+REPRIORITIZE = {'type': 'object', 'properties': {
+    'idempotency_key': KEY, 'priority': {'type': 'integer'},
+    'expected_version': {'type': 'integer', 'nullable': True}},
+    'required': ['idempotency_key', 'priority']}
 REDEEM = {'type': 'object', 'properties': {
     'code': {'type': 'string'}, 'platform': {'type': 'string', 'enum': ['web', 'desktop']}},
     'required': ['code', 'platform']}

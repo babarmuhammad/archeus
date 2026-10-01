@@ -31,6 +31,9 @@ given trigger on a given subject is decided in the application layer (P9), never
 | POST | `/v1/missions` | control | required | — | `CreateMissionRequest` | `Created` |
 | POST | `/v1/missions/{id}/pause` | control | required | — | `PauseMissionRequest` | `CommandResult` |
 | POST | `/v1/missions/{id}/resume` | control | required | — | `ResumeMissionRequest` | `CommandResult` |
+| POST | `/v1/missions/pause-all` | control | required | — | `PauseAllRequest` | `PauseBatchResult` |
+| POST | `/v1/missions/resume-all` | control | required | — | `ResumeAllRequest` | `PauseBatchResult` |
+| POST | `/v1/missions/{id}/reprioritize` | control | required | — | `ReprioritiseMissionRequest` | `CommandResult` |
 | GET | `/v1/events` | observe | — | `after`, `limit` | — | `EventPage` |
 | GET | `/v1/events/stream` | observe | — | `after`, `project`, `type` | — | SSE: `id`, `event` and a `StreamFrame` per event |
 | POST | `/v1/devices/launch/code` | admin | exempt | — | `LaunchCodeRequest` | `LaunchCode` |
@@ -801,6 +804,7 @@ interface Health {
   intent: Worker;
   plan: Worker;
   policy: Worker;
+  armed: boolean;
 }
 ```
 
@@ -1071,6 +1075,16 @@ interface PairingCode {
   expires_in: number;
   scopes: string[];
   url: string | null;
+}
+```
+
+### `PauseBatchResult`
+
+```ts
+interface PauseBatchResult {
+  pause_batch_id: string | null;
+  changed: boolean;
+  missions: CommandResult[];
 }
 ```
 
@@ -1478,6 +1492,7 @@ interface Status {
   unchecked: Finding[];
   unknown_project: string[];
   live: LiveItem[];
+  armed: boolean;
 }
 ```
 
@@ -1650,6 +1665,32 @@ interface PauseMissionRequest {
 ```ts
 interface ResumeMissionRequest {
   idempotency_key: string;
+  expected_version?: number | null;
+}
+```
+
+### `PauseAllRequest`
+
+```ts
+interface PauseAllRequest {
+  idempotency_key: string;
+}
+```
+
+### `ResumeAllRequest`
+
+```ts
+interface ResumeAllRequest {
+  idempotency_key: string;
+}
+```
+
+### `ReprioritiseMissionRequest`
+
+```ts
+interface ReprioritiseMissionRequest {
+  idempotency_key: string;
+  priority: number;
   expected_version?: number | null;
 }
 ```

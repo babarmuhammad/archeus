@@ -479,6 +479,7 @@ export interface Health {
   intent: Worker;
   plan: Worker;
   policy: Worker;
+  armed: boolean;
 }
 
 export interface Idea {
@@ -657,6 +658,12 @@ export interface PairingCode {
   expires_in: number;
   scopes: string[];
   url: string | null;
+}
+
+export interface PauseBatchResult {
+  pause_batch_id: string | null;
+  changed: boolean;
+  missions: CommandResult[];
 }
 
 export interface Plan {
@@ -932,6 +939,7 @@ export interface Status {
   unchecked: Finding[];
   unknown_project: string[];
   live: LiveItem[];
+  armed: boolean;
 }
 
 export interface StreamFrame {
@@ -1044,6 +1052,20 @@ export interface PauseMissionRequest {
 
 export interface ResumeMissionRequest {
   idempotency_key: string;
+  expected_version?: number | null;
+}
+
+export interface PauseAllRequest {
+  idempotency_key: string;
+}
+
+export interface ResumeAllRequest {
+  idempotency_key: string;
+}
+
+export interface ReprioritiseMissionRequest {
+  idempotency_key: string;
+  priority: number;
   expected_version?: number | null;
 }
 
@@ -1379,6 +1401,12 @@ export const api = {
     send<CommandResult>('POST', '/v1/missions/' + encodeURIComponent(id) + '/pause', body),
   resumeMission: (send: Send, id: string, body: ResumeMissionRequest) =>
     send<CommandResult>('POST', '/v1/missions/' + encodeURIComponent(id) + '/resume', body),
+  pauseAll: (send: Send, body: PauseAllRequest) =>
+    send<PauseBatchResult>('POST', '/v1/missions/pause-all', body),
+  resumeAll: (send: Send, body: ResumeAllRequest) =>
+    send<PauseBatchResult>('POST', '/v1/missions/resume-all', body),
+  reprioritiseMission: (send: Send, id: string, body: ReprioritiseMissionRequest) =>
+    send<CommandResult>('POST', '/v1/missions/' + encodeURIComponent(id) + '/reprioritize', body),
   events: (send: Send, query: { after?: number; limit?: number } = {}) =>
     send<EventPage>('GET', '/v1/events' + qs(query)),
   launchCode: (send: Send, body: LaunchCodeRequest) =>

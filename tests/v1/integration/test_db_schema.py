@@ -125,7 +125,7 @@ def test_only_two_modules_open_sqlite_and_only_writer_commands_write_sql():
 
 def test_a_fresh_database_reaches_the_current_schema(db):
     with db.read() as r:
-        assert migrate.version(r) == migrate.migrations()[-1][0] == 12
+        assert migrate.version(r) == migrate.migrations()[-1][0] == 13
         tables = {x[0] for x in r.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {'principals', 'devices', 'tokens', 'missions', 'events', 'consumer_cursors',
             'consumer_effects', 'idempotency_keys',
@@ -136,7 +136,7 @@ def test_a_fresh_database_reaches_the_current_schema(db):
             'conversations', 'messages', 'intents', 'ideas',
             'policy_rules', 'policy_decisions', 'approvals',
             'accounts', 'resource_policies', 'usage_snapshots',
-            'sessions', 'checkpoints'} <= tables
+            'sessions', 'checkpoints', 'pause_batches'} <= tables
 
 
 def test_every_persisted_entity_table_has_the_row_shape(db):

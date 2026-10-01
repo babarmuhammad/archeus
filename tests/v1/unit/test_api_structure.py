@@ -86,7 +86,8 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
                        'req.api.executions.estop',
                        'req.api.executions.rearm', 'req.api.executions.stop_execution',
                        'req.api.executions.stop_mission', 'req.api.missions.pause',
-                       'req.api.missions.resume',
+                       'req.api.missions.pause_all', 'req.api.missions.reprioritise',
+                       'req.api.missions.resume', 'req.api.missions.resume_all',
                        'resources.register_account', 'resources.set_account_enabled',
                        'resources.set_mission_resources', 'resources.set_resource_policy',
                        'sessions.close', 'sessions.link',
@@ -278,6 +279,14 @@ P18 = {
     ('GET', '/v1/repositories/{id}/graph', 'observe', None),
 }
 
+#: P19.5 Core slice (ADR-0030, ADR-0042 §1): Pause all, Resume all and a mission's
+#: priority — `control` and idempotent, exactly as one mission's pause
+P195 = {
+    ('POST', '/v1/missions/pause-all', 'control', 'required'),
+    ('POST', '/v1/missions/resume-all', 'control', 'required'),
+    ('POST', '/v1/missions/{id}/reprioritize', 'control', 'required'),
+}
+
 
 def test_the_route_table_is_exactly_the_p35b_to_p18_tables():
     """L2, and P9's E4 / P10's / P11's / P12's / P13's / P14's / P15's boundary:
@@ -286,7 +295,8 @@ def test_the_route_table_is_exactly_the_p35b_to_p18_tables():
     hook route — a later phase adds its rows with its own tests. P18's graph
     reads are the only paths that may name a graph."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
-    tables = EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16 | P18
+    tables = (EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16
+              | P18 | P195)
     assert got == tables
     assert len(routes.ROUTES) == len(tables)
     # P15: the only pairing paths are start and redeem; no route pairs a node

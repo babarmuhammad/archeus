@@ -22,7 +22,12 @@ TYPES = (
     ('mission.created', 'mission', 'user', False, 'a mission row was created'),
     ('mission.state_changed', 'mission', 'user', False, 'a mission moved state (payload: from, to, reason)'),
     ('mission.updated', 'mission', 'user', False,
-     'a mission\'s requirements or constraints changed (payload: the fields and what was added)'),
+     'a mission\'s requirements, constraints, resources or priority changed (payload: the '
+     'fields and what was added)'),
+    ('pause_batch.created', 'pause_batch', 'user', False,
+     'Pause all paused these EXECUTING missions (payload: mission_ids)'),
+    ('pause_batch.resumed', 'pause_batch', 'user', False,
+     'Resume all resumed the missions of this batch still paused by it (payload: mission_ids)'),
     ('idea.created', 'idea', 'user', False, 'an idea was captured'),
     ('idea.state_changed', 'idea', 'user', False, 'an idea moved state (payload: from, to, reason)'),
     ('plan.created', 'plan', 'user', False, 'a plan version was proposed'),

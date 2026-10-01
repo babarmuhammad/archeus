@@ -220,12 +220,17 @@ PLAN_DECISIONS = ('plan_auto_approved', 'plan_needs_approval')
 
 def _record_hold(row, to):
     """Set on the way into a hold, cleared on the way out of RESUMED, so the
-    value is only ever about the hold the mission is in now."""
+    value is only ever about the hold the mission is in now; and the Pause all
+    that paused it is forgotten the moment it leaves PAUSED by any edge, so
+    Resume all can only ever resume what that batch still holds."""
+    out = {}
     if to in HOLDS:
-        return {'held_from': row.entity.state}
-    if row.entity.state == 'RESUMED':
-        return {'held_from': None}
-    return None
+        out['held_from'] = row.entity.state
+    elif row.entity.state == 'RESUMED':
+        out['held_from'] = None
+    if row.entity.state == 'PAUSED' and row.entity.pause_batch_id is not None:
+        out['pause_batch_id'] = None
+    return out or None
 
 
 def _result(row, events=(), considered=None):
@@ -376,6 +381,65 @@ class Missions:
         row, e = self._fire(tx, mission_id, 'pause', actor=actor, reason=reason,
                             expected_version=expected_version)
         return _result(row, [e])
+
+    def pause_all(self, tx, *, actor, reason='paused by Pause all'):
+        """Pause every EXECUTING mission (P19.5; ADR-0042 §1), each by its own
+        `pause` edge, as one batch Resume all can invert exactly. Nothing else
+        is held: an approved mission may still start, and only the e-stop
+        guarantees that nothing does. Pausing nothing records nothing."""
+        running = [r.entity.id for r in tx.where(entities.Mission)
+                   if r.entity.state == 'EXECUTING']
+        if not running:
+            return {'pause_batch_id': None, 'changed': False, 'missions': []}
+        b = entities.PauseBatch(id=ids.new_id('pause_batch'), mission_ids=tuple(running))
+        tx.insert(b, actor=actor)
+        out = []
+        for mid in running:
+            row, e = self._fire(tx, mid, 'pause', actor=actor, reason=reason,
+                                extra={'pause_batch_id': b.id})
+            out.append(_result(row, [e]))
+        tx.append(new_event('pause_batch.created', Ref('pause_batch', b.id), actor,
+                            payload={'mission_ids': list(running)}))
+        return {'pause_batch_id': b.id, 'changed': True, 'missions': out}
+
+    def resume_all(self, tx, *, actor, reason='resumed by Resume all'):
+        """Resume exactly the missions the newest Pause all paused that it still
+        holds (PAUSED with its `pause_batch_id`): never one paused on its own,
+        never a BLOCKED one. A second call finds none and changes nothing."""
+        batches = tx.where(entities.PauseBatch)
+        if not batches:
+            return {'pause_batch_id': None, 'changed': False, 'missions': []}
+        b = batches[-1].entity
+        held = []
+        for mid in b.mission_ids:
+            m = lifecycle.load(tx, entities.Mission, mid).entity
+            if m.state == 'PAUSED' and m.pause_batch_id == b.id:
+                held.append(mid)
+        out = [self.resume(tx, actor=actor, mission_id=mid, reason=reason) for mid in held]
+        if held:
+            tx.append(new_event('pause_batch.resumed', Ref('pause_batch', b.id), actor,
+                                payload={'mission_ids': list(held)}))
+        return {'pause_batch_id': b.id, 'changed': bool(held), 'missions': out}
+
+    def reprioritise(self, tx, *, actor, mission_id, priority, expected_version=None):
+        """Set the mission's priority (P19.5): dispatch order across missions
+        when capacity is contended, higher first. It changes nothing else —
+        no routing input, no account, no state."""
+        if not isinstance(priority, int) or isinstance(priority, bool):
+            raise ValueError('a priority is an integer, higher first: %r' % (priority,))
+        row = lifecycle.load(tx, entities.Mission, mission_id)
+        m = row.entity
+        if m.state in states.terminal('mission'):
+            raise lifecycle.IllegalTrigger('mission', m.state, 'reprioritise',
+                                           'the mission has ended')
+        if m.priority == priority:
+            return _result(row)
+        out = tx.update(entities.Mission, mission_id, {'priority': priority}, actor=actor,
+                        expected_version=expected_version)
+        e = tx.append(new_event('mission.updated', Ref('mission', mission_id), actor,
+                                payload={'priority': priority, 'was': m.priority},
+                                workspace=m.workspace_id, project=m.project_id))
+        return dict(_result(out), changed=True, seq=e.seq)
 
     def resume(self, tx, *, actor, mission_id, reason='resumed on request',
                expected_version=None):

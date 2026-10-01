@@ -150,5 +150,6 @@ export const RULES: Record<string, string[]> = {
     "/v1/**"
   ],
   "execution_node": [],
-  "model": []
+  "model": [],
+  "pause_batch": []
 };

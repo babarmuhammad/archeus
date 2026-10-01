@@ -157,6 +157,14 @@ class Conversations:
         elif verb in ('pause', 'resume', 'cancel'):
             text, resolution = self._mission_verb(tx, actor, verb, target['id'], msg)
             cards.append(_card('mission', 'mission', target['id']))
+        elif verb in ('pause_all', 'resume_all'):
+            text, resolution, moved = self._all_verb(tx, actor, verb, msg)
+            for mid in moved:
+                cards.append(_card('mission', 'mission', mid))
+                links.append({'ref': {'kind': 'mission', 'id': mid}})
+        elif verb == 'reprioritise':
+            text, resolution = self._reprioritise(tx, actor, target['id'], arg, msg)
+            cards.append(_card('mission', 'mission', target['id']))
         elif verb == 'status':
             text, more = _status(tx, target)
             links += more
@@ -182,6 +190,35 @@ class Conversations:
         now = lifecycle.load(tx, entities.Mission, mission_id).entity.state
         done = {'pause': 'Paused', 'resume': 'Resumed', 'cancel': 'Cancelled'}[verb]
         return '%s "%s": %s -> %s.' % (done, m.title, m.state, now), 'mission_updated'
+
+    def _all_verb(self, tx, actor, verb, msg):
+        """`pause all` / `resume all`: the same commands as the controls."""
+        out = getattr(self.missions, verb)(tx, actor=actor,
+                                           reason='%s: asked in message %s' % (
+                                               verb.replace('_', ' '), msg.id))
+        moved = [m['id'] for m in out['missions']]
+        if verb == 'pause_all':
+            text = ('Paused %d running mission(s); "resume all" resumes exactly these.'
+                    % len(moved) if moved else 'Nothing is running: nothing was paused.')
+        else:
+            text = ('Resumed %d mission(s) the last Pause all paused.' % len(moved) if moved
+                    else 'Nothing the last Pause all paused is still paused.')
+        return text, 'mission_updated' if out['changed'] else 'answered', moved
+
+    def _reprioritise(self, tx, actor, mission_id, arg, msg):
+        m = lifecycle.load(tx, entities.Mission, mission_id).entity
+        if not arg:
+            return ('Say the new priority for "%s" as a number, higher first (now %d): '
+                    '"reprioritise %s to 5".' % (m.title, m.priority, m.title), 'declined')
+        try:
+            out = self.missions.reprioritise(tx, actor=actor, mission_id=mission_id,
+                                             priority=int(arg))
+        except lifecycle.IllegalTrigger as e:
+            return 'I cannot reprioritise "%s": %s.' % (m.title, e), 'declined'
+        if not out['changed']:
+            return '"%s" already has priority %d.' % (m.title, m.priority), 'answered'
+        return ('Priority of "%s": %d -> %d (dispatch order only).'
+                % (m.title, m.priority, int(arg)), 'mission_updated')
 
     # ── the brain's reading ──
 

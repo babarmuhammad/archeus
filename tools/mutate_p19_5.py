@@ -37,6 +37,11 @@ REPLAY = E2E + 'test_a_historical_event_heard_again_never_replays_or_restarts'
 MARKER = 'node:test/marker.test.ts'
 MARKER_E2E = 'tests/v1/e2e/test_spa_marker.py::test_the_marker_travels_once_from_the_execution_to_its_task'
 MARKER_RM = 'tests/v1/e2e/test_spa_marker.py::test_reduced_motion_draws_no_marker_and_says_it_in_words'
+CMD = 'archeus/core/application/commands.py'
+RUNTIME = 'archeus/core/runtime.py'
+ROUTES = 'archeus/api/routes.py'
+GRAMMAR = 'archeus/core/application/grammar.py'
+CORE = 'tests/v1/integration/test_p195_core.py::'
 #: the generated travelling-marker entry's budget, as gen_ui writes it
 MARKER_TS = ('"max_ms": 600,\n    "token": null,\n    "ttl_ms": null,\n    "ttl_error_ms": null,\n'
              '    "easing": "linear",\n    "cap": 8,')
@@ -270,6 +275,55 @@ MUTATIONS = [
     ('N59', 'the mirror loses the marker\'s words', [(MIRROR,
      "(live ? ' — live now' : '')", "''")],
      [MARKER, MARKER_RM]),
+    # ── the Core slice (ADR-0030, ADR-0042 §1; the user's decisions of 2026-10-01) ──
+    ('N60', 'Resume all resumes every paused mission, not its batch', [(CMD,
+     "            if m.state == 'PAUSED' and m.pause_batch_id == b.id:",
+     "            if m.state == 'PAUSED':")],
+     [CORE + 'test_resume_all_resumes_exactly_the_last_batch_never_one_paused_on_its_own',
+      CORE + 'test_a_batch_mission_resumed_and_paused_on_its_own_is_no_longer_the_batchs']),
+    ('N61', 'a mission keeps its batch after leaving PAUSED', [(CMD,
+     "    if row.entity.state == 'PAUSED' and row.entity.pause_batch_id is not None:\n"
+     "        out['pause_batch_id'] = None",
+     "    if False:\n        out['pause_batch_id'] = None")],
+     [CORE + 'test_a_batch_mission_resumed_and_paused_on_its_own_is_no_longer_the_batchs']),
+    ('N62', 'Resume all reads the oldest batch', [(CMD,
+     "        b = batches[-1].entity", "        b = batches[0].entity")],
+     [CORE + 'test_resume_all_reads_the_newest_batch_and_repeats_safely']),
+    ('N63', 'Pause all marks no batch on the missions it paused', [(CMD,
+     "                                extra={'pause_batch_id': b.id})",
+     "                                extra=None)")],
+     [CORE + 'test_pause_all_pauses_every_executing_mission_as_one_recorded_batch']),
+    ('N64', 'Resume all unblocks a blocked mission of the batch', [(CMD,
+     "            if m.state == 'PAUSED' and m.pause_batch_id == b.id:",
+     "            if m.state in ('PAUSED', 'BLOCKED') and m.pause_batch_id in (b.id, None):")],
+     [CORE + 'test_resume_all_never_unblocks_a_blocked_mission']),
+    ('N65', 'priority ignored by the engine pass', [(RUNTIME,
+     "                                    key=lambda m: -m['priority'])",
+     "                                    key=lambda m: 0)")],
+     [CORE + 'test_higher_priority_steps_first_and_equals_keep_the_oldest_first',
+      CORE + 'test_under_contended_capacity_the_higher_priority_mission_dispatches_first']),
+    ('N66', 'priority read lowest first', [(RUNTIME,
+     "                                    key=lambda m: -m['priority'])",
+     "                                    key=lambda m: m['priority'])")],
+     [CORE + 'test_higher_priority_steps_first_and_equals_keep_the_oldest_first']),
+    ('N67', 'priority enters the routing requirement', [('archeus/core/application/resources.py',
+     "    req = {'subject': 'task', 'purpose': None, 'mission_id': mission.id, 'task_id': task.id,",
+     "    req = {'subject': 'task', 'purpose': None, 'mission_id': mission.id, 'task_id': task.id,\n"
+     "           'priority': getattr(mission, 'priority', 0),")],
+     [CORE + 'test_a_reprioritised_mission_routes_exactly_as_before']),
+    ('N68', '/v1/status reports armed whatever the e-stop', [(ROUTES,
+     "                         live=live.live_work(conn, project), armed=not LocalNode.disarmed())",
+     "                         live=live.live_work(conn, project), armed=True)")],
+     [CORE + 'test_health_and_status_both_read_the_e_stop']),
+    ('N69', '`pause all` falls through to a mission named "all" (and so to the brain)', [(GRAMMAR,
+     "    if p.verb in ALL_VERBS and key(p.arg) == 'all':",
+     "    if False:")],
+     [CORE + 'test_pause_all_resume_all_and_reprioritise_never_call_the_model',
+      CORE + 'test_the_grammar_reads_the_three_verbs']),
+    ('N70', 'a reprioritise changes nothing it reports changed', [(CMD,
+     "        if m.priority == priority:\n            return _result(row)",
+     "        if True:\n            return _result(row)")],
+     [CORE + 'test_priority_defaults_to_zero_and_reprioritise_changes_only_it']),
 ]
 
 if __name__ == '__main__':

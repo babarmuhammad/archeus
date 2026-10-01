@@ -51,6 +51,7 @@ TABLES = {
     entities.Checkpoint: 'checkpoints',
     entities.Automation: 'automations',
     entities.AutomationRun: 'automation_runs',
+    entities.PauseBatch: 'pause_batches',
 }
 
 #: Row metadata, never entity fields: optimistic-concurrency version, timestamps,

@@ -24,9 +24,13 @@ VERBS = {'pause': 'pause', 'resume': 'resume', 'stop': 'cancel', 'cancel': 'canc
          'status': 'status', 'why': 'why', 'remember': 'remember', 'approve': 'approve',
          'reject': 'reject', 'reprioritise': 'reprioritise', 'reprioritize': 'reprioritise'}
 #: verbs recognised before their phase: answered, never acted on
-NOT_YET = {'approve': 'P9 (approvals)', 'reject': 'P9 (approvals)',
-           'reprioritise': 'P10 (priorities)'}
+NOT_YET = {'approve': 'P9 (approvals)', 'reject': 'P9 (approvals)'}
 MISSION_VERBS = ('pause', 'resume', 'cancel')
+#: `pause all` / `resume all` (P19.5, ADR-0042 §1): the all-scope verb wins over a
+#: mission titled "all", which stays reachable by its id
+ALL_VERBS = {'pause': 'pause_all', 'resume': 'resume_all'}
+#: `reprioritise <mission> [to] <integer>`: the mission, then its new priority
+_PRIORITY = re.compile(r'^(.*?)\s+(?:to\s+)?([-+]?\d+)$', re.I)
 
 Parsed = namedtuple('Parsed', 'verb arg')
 #: `target` is a {kind, id} ref (or None for a bare `status` or a NOT_YET verb)
@@ -81,6 +85,15 @@ def resolve(conn, text):
         return Control(p.verb, None, p.arg)
     if p.verb == 'remember':
         return Control('remember', None, p.arg)
+    if p.verb in ALL_VERBS and key(p.arg) == 'all':
+        return Control(ALL_VERBS[p.verb], None, '')
+    if p.verb == 'reprioritise':
+        got = _PRIORITY.match(p.arg)
+        m = _mission(conn, got.group(1) if got else p.arg) if p.arg else None
+        if m is None:
+            return None                     # an object that does not resolve: the brain's
+        return Control('reprioritise', {'kind': 'mission', 'id': m.id},
+                       got.group(2) if got else '')
     if p.verb in MISSION_VERBS:
         m = _mission(conn, p.arg) if p.arg else None
         return None if m is None else Control(p.verb, {'kind': 'mission', 'id': m.id}, p.arg)

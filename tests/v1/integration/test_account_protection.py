@@ -426,11 +426,13 @@ def test_migration_0012_leaves_a_copy_the_pre_ap1_build_opens(tmp_path):
             shutil.copy(os.path.join(migrate.MIGRATIONS_DIR, f), str(old))
     path = str(tmp_path / 'home' / 'archeus.db')
     Database.open(path, migrations_dir=str(old)).close()
+    latest = migrate.migrations()[-1][0]           # 12 or later: 0012 is among them
     db = Database.open(path)
     with db.read() as conn:
-        assert migrate.version(conn) == 12
+        assert migrate.version(conn) == latest
     db.close()
-    (copy,) = glob.glob(str(tmp_path / 'home' / 'backups' / 'migration-archeus-v11-to-v12-*.db'))
+    (copy,) = glob.glob(str(tmp_path / 'home' / 'backups' /
+                            ('migration-archeus-v11-to-v%d-*.db' % latest)))
     restored = str(tmp_path / 'restored.db')
     B.restore(copy, restored)
     back = Database.open(restored, migrations_dir=str(old))

@@ -150,6 +150,7 @@
       "/v1/**"
     ],
     "execution_node": [],
-    "model": []
+    "model": [],
+    "pause_batch": []
   }
 }

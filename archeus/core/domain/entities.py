@@ -667,7 +667,8 @@ class Mission(Entity):
                 'autonomy_profile': AUTONOMY_PROFILES}
     _NONNEG = ('max_replans',)
     _REFS = {'context_package_id': 'context_package',
-             'origin_ref': ('message', 'idea', 'automation_run')}
+             'origin_ref': ('message', 'idea', 'automation_run'),
+             'pause_batch_id': 'pause_batch'}
     id: str
     workspace_id: str
     title: str
@@ -681,12 +682,17 @@ class Mission(Entity):
     requirements: tuple = ()
     constraints: tuple = ()
     project_id: str = None
+    # dispatch order across missions when capacity is contended, higher first
+    # (P19.5, ADR-0030); never a routing or account input
     priority: int = 0
     max_replans: int = 2            # `replan_budget_exhausted` (state-machines §2)
     # the state the mission was in when it last entered BLOCKED or PAUSED;
     # `resume` reads it (current state, never the event log, which retention
     # may prune)
     held_from: str = None
+    # the Pause all that paused it, while it is still PAUSED by it: Resume all
+    # resumes exactly these; any move out of PAUSED clears it (P19.5)
+    pause_batch_id: str = None
     # the plan_version the mission last decided (auto-approved or sent for
     # approval), recorded with that move: the plan gate never decides the same
     # plan twice, so REPLANNING (or PLANNING after request_changes) needs a new one
@@ -747,6 +753,22 @@ class Mission(Entity):
                     and set(c) <= {'text', 'origin', 'source_ref'}):
                 raise ValueError('a requirement or constraint is {text, origin: '
                                  'explicit|inferred, source_ref?}: %r' % (c,))
+
+
+@entity
+class PauseBatch(Entity):
+    """One Pause all (P19.5; ADR-0042 §1): the missions it paused, in the order
+    it paused them. Immutable. Resume all reads the newest and resumes those of
+    its missions that are still PAUSED by it (`Mission.pause_batch_id`)."""
+    _ID = 'pause_batch'
+    _FROZEN = FROZEN_ALL
+    id: str
+    mission_ids: tuple = ()
+
+    def _check(self):
+        if not self.mission_ids or not all(ids.is_id(m, 'mission') for m in self.mission_ids):
+            raise ValueError('a pause batch names the missions it paused: %r'
+                             % (self.mission_ids,))
 
 
 @entity
