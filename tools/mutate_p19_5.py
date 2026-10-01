@@ -1,6 +1,6 @@
 """The P19.5 mutation suite (ADR-0024, ADR-0029 §6): the motion foundation,
 the activity halo, the travelling marker, the Core slice, and R1's copy/id
-gate with the Details disclosure (N71-N83). Break each gate's invariant, run
+gate with the Details disclosure and its command names (N71-N88). Break each gate's invariant, run
 the test written for it, and require it to fail.
 
     py tools/mutate_p19_5.py            every mutation
@@ -49,6 +49,10 @@ UI = 'clients/app/src/components/ui.tsx'
 PRESENT = 'clients/app/src/state/present.ts'
 PRESENT_TS = 'node:test/present.test.ts'
 COPY = 'tests/v1/e2e/test_spa_copy.py::test_no_page_shows_an_id_json_or_hash_and_details_holds_them'
+ATTENTION = 'clients/app/src/surfaces/Attention.tsx'
+WORLD = 'clients/app/src/surfaces/World.tsx'
+INSPECTOR = 'clients/app/src/surfaces/Inspector.tsx'
+NAMES = DG + 'test_one_name_per_command'
 #: the generated travelling-marker entry's budget, as gen_ui writes it
 MARKER_TS = ('"max_ms": 600,\n    "token": null,\n    "ttl_ms": null,\n    "ttl_error_ms": null,\n'
              '    "easing": "linear",\n    "cap": 8,')
@@ -380,6 +384,25 @@ MUTATIONS = [
      [PRESENT_TS]),
     ('N83', "the mission's own id missing from its Details", [(MISSION,
      "        ['Mission id', m.id],\n", '')],
+     [COPY]),
+    ('N84', 'a verification decision called "Accept result" like the mission review', [(ATTENTION,
+     'label="Mark passed"', 'label="Accept result"')],
+     [NAMES]),
+    ('N85', 'rejecting a knowledge proposal called "Dismiss" in Attention', [(ATTENTION,
+     '<ActionButton label="Reject" scope="control" run={(key) => api.rejectKnowledge(',
+     '<ActionButton label="Dismiss" scope="control" run={(key) => api.rejectKnowledge(')],
+     [NAMES]),
+    ('N86', 'the automation run inspector shows its run id', [(INSPECTOR,
+     '<StateBadge machine="automation_run" state={x.run.state} />',
+     '<StateBadge machine="automation_run" state={x.run.state} /> {String(x.run.id)}')],
+     [COPY]),
+    ('N87', 'an open "Recent inspections" shows the short git revision again', [(WORLD,
+     "{i.inspected_at ? `inspected ${ago(String(i.inspected_at))}` : `attempt ${i.attempts}`}",
+     "<span className=\"mono\">{String(i.revision ?? '').slice(0, 10)}</span>")],
+     [COPY]),
+    ('N88', "an inspection's revision dropped instead of moved to Details", [(WORLD,
+     "['Inspection id', i.id], ['Revision inspected (git)', i.revision]",
+     "['Inspection id', i.id]")],
      [COPY]),
 ]
 

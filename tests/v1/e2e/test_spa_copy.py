@@ -7,7 +7,7 @@ names, never the closed contents of a disclosure — and must carry no Archeus
 id, no JSON and no hash. The identifiers are not gone: Core still returns them,
 and each object shows them, labelled by what they name, behind one explicit
 Details disclosure that is closed by default and holds rows, never a dump.
-Mutation-verified by tools/mutate_p19_5.py (N71-N79)."""
+Mutation-verified by tools/mutate_p19_5.py (N71-N79, N86-N88)."""
 
 import re
 import time
@@ -133,6 +133,15 @@ def test_no_page_shows_an_id_json_or_hash_and_details_holds_them(browser, deploy
                                                  'template': {'title': 'Why did {subject.id} fail', 'objective': 'Find the cause'}})
     assert r.status == 200, r.body
     aut = r.json()['id']
+    # a second automation, enabled, that the deploy's completion fires: its run
+    # is an inspector of its own, with Core's sentence naming the mission it asked for
+    r = tc.http('POST', '/v1/automations', body={'name': 'Say what shipped', 'idempotency_key': 'aut2-%f' % time.time(),
+                                                 'trigger': {'kind': 'event', 'type': 'mission.state_changed', 'where': {'to': 'COMPLETED'}},
+                                                 'template': {'title': 'Say what shipped', 'objective': 'Write it down'}})
+    assert r.status == 200, r.body
+    aut2 = r.json()['id']
+    r = tc.http('POST', '/v1/automations/%s/state' % aut2, body={'action': 'enable', 'idempotency_key': 'en-%f' % time.time()})
+    assert r.status == 200, r.body
     mid = _mission(tc, 'Deploy the docs')
     _settled(tc, mid, 'APPROVAL_REQUIRED')
     approval = tc.http('GET', '/v1/approvals?mission=%s' % mid).json()['approvals'][0]
@@ -168,6 +177,13 @@ def test_no_page_shows_an_id_json_or_hash_and_details_holds_them(browser, deploy
                                               'promote': {'type': 'LESSON', 'title': 'A deploy asks first'}})
     assert r.status == 200, r.body
     kid = r.json()['promoted']['id']
+    deadline = time.monotonic() + 30
+    while not (runs := tc.http('GET', '/v1/automations/%s' % aut2).json().get('runs')):
+        assert time.monotonic() < deadline, 'the deploy completing never fired the automation'
+        time.sleep(0.05)
+    run = runs[0]
+    pkg = m['context_package_id']
+    assert pkg and run['automation_id'] == aut2
 
     pages = []
     for did, label in DESTINATIONS:
@@ -183,12 +199,28 @@ def test_no_page_shows_an_id_json_or_hash_and_details_holds_them(browser, deploy
     pages += [('#/o/verification/%s' % x['id'], 'Verification') for x in verifications]
     pages += [('#/o/repository/%s' % x['id'], 'Repository') for x in proj.get('repositories') or []]
     pages += [('#/o/knowledge_item/%s/%s' % (kid, t), 'A deploy asks first') for t in NAV['inspector_tabs']['knowledge_item']]
+    pages += [('#/o/automation_run/%s' % run['id'], 'Automation run'),
+              ('#/o/context_package/%s' % pkg, 'Context package')]
     seen = {}
     for h, expect in pages:
         _go(page, h)
         _wait_heading(page, expect)
         page.wait_for_timeout(300)                  # named references read their own rows
         seen[h] = _read(page, h, check)
+
+    # a disclosure that is not Details is read open as well: it is content, not identifiers
+    _go(page, '#/world/%s' % pid)
+    inspections = page.locator('details:not([data-details])', has=page.locator('summary', has_text='Recent inspections'))
+    inspections.locator(':scope > summary').click()
+    inspections.locator('li').first.wait_for(timeout=15000)
+    _read(page, 'the recent inspections, open', check)
+    held = {r.get('Inspection id'): r for r in inspections.first.evaluate('''(root) => [...root.querySelectorAll('li')].map((li) =>
+      Object.fromEntries([...li.querySelectorAll('details[data-details] > dl.kv > div')].map((r) => [r.querySelector('dt').textContent, r.querySelector('dd').textContent])))''')}
+    listed = [i for x in proj.get('repositories') or []
+              for i in tc.http('GET', '/v1/repositories/%s/inspections?limit=5' % x['id']).json()['inspections']]
+    check(any(i['revision'] for i in listed), 'an inspection recorded a revision to hold')
+    for i in listed:
+        check(held.get(i['id'], {}).get('Revision inspected (git)') == (i['revision'] or None), 'inspection %s keeps its revision in its own Details' % i['state'])
 
     # the readable half is still there: names, states, labels, sentences
     insp = '#/o/mission/%s/outcome' % mid
@@ -206,9 +238,11 @@ def test_no_page_shows_an_id_json_or_hash_and_details_holds_them(browser, deploy
         ('#/o/session/%s/brief' % session['id'], '.insp-head', {'Session id': session['id'], 'Mission id': mid}),
         ('#/o/plan/%s' % plan['id'], '.insp-head', {'Plan version id': plan['id'], 'Plan digest': plan['digest']}),
         ('#/control/resources', 'main', {'Account id': acc}),
-        ('#/control/automations', 'main', {'Automation id': aut}),
+        ('#/control/automations', 'section[aria-labelledby]:has(h2:text-is("Look at failures"))', {'Automation id': aut}),
+        ('#/control/automations', 'section[aria-labelledby]:has(h2:text-is("Say what shipped"))', {'Automation id': aut2}),
         ('#/world/%s' % pid, 'main', {'Project id': pid}),
         ('#/o/knowledge_item/%s' % kid, '.insp-head', {'Knowledge item id': kid}),
+        ('#/o/automation_run/%s' % run['id'], '.insp-head', {'Automation run id': run['id'], 'Automation id': aut2}),
     )
     for h, scope, want in exposed:
         _go(page, h)
@@ -222,8 +256,9 @@ def test_no_page_shows_an_id_json_or_hash_and_details_holds_them(browser, deploy
         check(next(iter(want.values())) in opened, '%s: opening Details shows the id' % h)
 
     # one read per page, the three before the decision, two on the approval, six
-    # readable, and per Details every id it must hold plus the opening
-    floor = len(pages) + 3 + 2 + 6 + sum(len(w) + 1 for _h, _s, w in exposed)
+    # readable, the open inspections and at least one of them, and per Details
+    # every id it must hold plus the opening
+    floor = len(pages) + 3 + 2 + 6 + 2 + sum(len(w) + 1 for _h, _s, w in exposed)
     assert n[0] >= floor, 'ran %d checks, floor %d' % (n[0], floor)
     assert not errors, errors
     context.close()

@@ -81,9 +81,9 @@ MUTATIONS = [
      "      return `connected (${p.connections} streams)`;")], [T_PRESENT]),
     ('M10', "a session row wears its mission's state", [(CTRL,
      '                    <StateBadge machine="session" state={x.state} />\n'
-     '                    <span className="title mono">{x.id}</span>',
+     '                    <span className="title">{x.harness_id} session</span>',
      '                    <StateBadge machine="mission" state={x.state} />\n'
-     '                    <span className="title mono">{x.id}</span>')], [T_SHELL]),
+     '                    <span className="title">{x.harness_id} session</span>')], [T_SHELL]),
     # ── the graph's list form: authoritative edges only ──
     ('M11', 'a hand-off edge points the wrong way', [(REL,
      "edge(out, 'Execution.handoff_from', 'execution', e.handoff_from);",

@@ -242,7 +242,7 @@ function VerificationDecision({ item }: { item: AttentionItem }) {
   return (
     <div>
       <p>
-        {human ? 'Nothing deterministic could check this: it waits for you to accept or reject the result.' : <>The verifier broke (<Prose text={item.reason ?? 'no reason'} />) — this is not a failure of the work.</>}{' '}
+        {human ? 'Nothing deterministic could check this: it waits for you to say whether it passed.' : <>The verifier broke (<Prose text={item.reason ?? 'no reason'} />) — this is not a failure of the work.</>}{' '}
         <a href={objectHref('verification', item.ref.id)}>Evidence</a>
         {item.mission_id ? <> · <a href={objectHref('mission', item.mission_id, 'evidence')}>Mission</a></> : null}
       </p>
@@ -253,8 +253,8 @@ function VerificationDecision({ item }: { item: AttentionItem }) {
             <input value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
           <div className="row">
-            <ActionButton label="Accept result" scope="approve" kind="primary" run={(key) => api.decideVerification(send(), item.ref.id, { decision: 'accept', note, idempotency_key: key })} reread={['/v1/attention', '/v1/verifications', '/v1/missions']} />
-            <ActionButton label="Reject result" scope="approve" run={(key) => api.decideVerification(send(), item.ref.id, { decision: 'reject', note, idempotency_key: key })} reread={['/v1/attention', '/v1/verifications', '/v1/missions']} />
+            <ActionButton label="Mark passed" scope="approve" kind="primary" run={(key) => api.decideVerification(send(), item.ref.id, { decision: 'accept', note, idempotency_key: key })} reread={['/v1/attention', '/v1/verifications', '/v1/missions']} />
+            <ActionButton label="Mark failed" scope="approve" run={(key) => api.decideVerification(send(), item.ref.id, { decision: 'reject', note, idempotency_key: key })} reread={['/v1/attention', '/v1/verifications', '/v1/missions']} />
           </div>
         </>
       ) : null}
@@ -271,7 +271,7 @@ function KnowledgeProposal({ item }: { item: AttentionItem }) {
       </p>
       <div className="row">
         <ActionButton label="Confirm" scope="control" kind="primary" run={(key) => api.confirmKnowledge(send(), item.ref.id, { idempotency_key: key })} reread={['/v1/attention', '/v1/knowledge']} />
-        <ActionButton label="Dismiss" scope="control" run={(key) => api.rejectKnowledge(send(), item.ref.id, { idempotency_key: key })} reread={['/v1/attention', '/v1/knowledge']} />
+        <ActionButton label="Reject" scope="control" run={(key) => api.rejectKnowledge(send(), item.ref.id, { idempotency_key: key })} reread={['/v1/attention', '/v1/knowledge']} />
       </div>
     </div>
   );

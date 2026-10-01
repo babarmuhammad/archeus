@@ -43,7 +43,7 @@ export function WorldView() {
                     ))}
                   </ul>
                 ) : (
-                  <Empty>No project yet. Create one from Control or with the CLI.</Empty>
+                  <Empty>No project yet. Create one below or with the CLI.</Empty>
                 )
               }
             </Loadable>
@@ -175,8 +175,9 @@ function Inspections({ repo }: { repo: string }) {
           <ul className="list">
             {l.inspections.map((i) => (
               <li key={i.id}>
-                <StateBadge machine="repository_inspection" state={i.state} /> <span className="mono">{String(i.revision ?? '').slice(0, 10)}</span>
-                {i.failure ? ` — ${i.failure}` : ''}
+                <StateBadge machine="repository_inspection" state={i.state} /> {i.inspected_at ? `inspected ${ago(String(i.inspected_at))}` : `attempt ${i.attempts}`}
+                {i.failure ? <> — <Prose text={i.failure} /></> : null}
+                <Details rows={[['Inspection id', i.id], ['Revision inspected (git)', i.revision]]} />
               </li>
             ))}
           </ul>

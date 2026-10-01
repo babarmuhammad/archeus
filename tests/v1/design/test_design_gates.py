@@ -326,6 +326,70 @@ def test_no_view_renders_json():
                     assert 'JSON.stringify' not in open(os.path.join(dirpath, n), encoding='utf-8').read(), n
 
 
+def _commands():
+    """(file, names, command) for every ActionButton: the names it can show and
+    the Core command it sends, as (api method, the decision it carries)."""
+    out = []
+    for sub in ('surfaces', 'components'):
+        for dirpath, _dirs, files in os.walk(os.path.join(APP, 'src', sub)):
+            for n in files:
+                if not n.endswith('.tsx'):
+                    continue
+                for body in re.findall(r'<ActionButton\b(.*?)/>', open(os.path.join(dirpath, n), encoding='utf-8').read(), re.S):
+                    lit = re.search(r'label="([^"]+)"', body)
+                    alt = re.search(r"label=\{[^}]*\?\s*'([^']+)'\s*:\s*'([^']+)'\s*\}", body)
+                    tpl = re.search(r'label=\{`([^`]+)`\}', body)
+                    names = ((lit.group(1),) if lit else alt.groups() if alt else
+                             (re.sub(r'\$\{[^}]*\}', '…', tpl.group(1)),) if tpl else ())
+                    methods = re.findall(r'api\.(\w+)\(', body)
+                    said = re.search(r"(?:decision|verdict|action|choice)\s*:\s*'(\w+)'|decideBody\(\w+,\s*'(\w+)'", body)
+                    assert names and len(methods) == 1, (n, body[:120])
+                    out.append((n, names, (methods[0], said and (said.group(1) or said.group(2)))))
+    return out
+
+
+def _bare(name, command):
+    """Is *name* nothing but the verb Core gives *command*?"""
+    method, said = command
+    verb = said or re.match(r'[a-z]+', method).group(0)
+    letters = lambda s: re.sub(r'[^a-z]', '', s.lower())  # noqa: E731
+    stems = lambda s: {w[:5] for w in re.split(r'[^a-z]+', s.lower()) if w}  # noqa: E731
+    return letters(name) == letters(verb) or stems(name) == stems(verb)
+
+
+def test_one_name_per_command():
+    """R1 (testing-strategy §7 `innerText`, rulebook §2.5 and §40.5): a Core
+    command is called one thing everywhere, and a name means one command. A
+    name may be shared only when it is the bare verb, sent to whichever object
+    the page is about ("Stop" a mission, "Stop" an attempt); a name that says
+    more than the verb ("Accept result") names exactly one command. Read from
+    the source, so a button that only renders in a rare state is held too.
+    Mutation-verified by tools/mutate_p19_5.py (N84, N85)."""
+    found = _commands()
+    assert len(found) >= 35, 'read only %d command buttons' % len(found)
+    by_command, by_name = {}, {}
+    for _n, names, cmd in found:
+        by_command.setdefault(cmd, set()).add(names)
+        for name in names:
+            by_name.setdefault(name, set()).add(cmd)
+    for cmd, names in by_command.items():
+        assert len(names) == 1, '%s is called %s' % (cmd, sorted(names))
+    for name, cmds in by_name.items():
+        if len(cmds) > 1:
+            assert all(_bare(name, c) for c in cmds), '"%s" names %s' % (name, sorted(cmds, key=str))
+
+
+def test_the_command_name_rule_fails_what_the_rulebook_found():
+    """The rule's own cases, without the source: the two collisions rulebook
+    §2.5 recorded are refused, the shared bare verbs are not."""
+    assert not _bare('Accept result', ('decideVerification', 'accept'))
+    assert not _bare('Dismiss', ('rejectKnowledge', None)) and not _bare('Dismiss', ('ackDigest', None))
+    for name, cmd in (('Stop', ('stopExecution', None)), ('Hand off', ('handoffSession', None)),
+                      ('Reject', ('decideApproval', 'reject')), ('Reject', ('rejectKnowledge', None)),
+                      ('Request changes', ('reviewMission', 'changes_requested'))):
+        assert _bare(name, cmd), (name, cmd)
+
+
 def test_the_manifest_names_what_the_pwa_needs():
     m = json.load(open(os.path.join(APP, 'public', 'manifest.webmanifest'), encoding='utf-8'))
     assert m['start_url'] == '/' and m['display'] == 'standalone'
