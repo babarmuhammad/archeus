@@ -401,7 +401,7 @@ An authenticated instance of a harness: one Claude config dir, one Codex home, o
 | `harness_id`, `label` | |
 | `auth_kind` | subscription_oauth / api_key / provider_proxy |
 | `node_id` | **accounts are node-bound**: credentials never leave the node that holds them |
-| `home_ref` | the config dir (opaque to Core except for display) |
+| `home_ref` | the config dir (opaque to Core except for display). *ADR-0048:* frozen once registered; at most one registered account per (harness, node, canonical home), the canonical form being the adapter's |
 | `health` | Account health machine (state-machines §9) |
 | `limited_until?` | reset time when a window is exhausted |
 | `resource_policy_id` | priority + allocation |
@@ -442,7 +442,9 @@ ROUTED / SERVED / BILLED); RouteDecision gains `task_family`, `capability_snapsh
 | `consumption` | *ADR-0041, AP-1:* `normal` / `last_resort` / `explicit_only` — protection applied before any ordering key |
 | `limits` | *ADR-0041, P22:* optional `subjects`, `max_tier`, `task_families` (V1.x-O1) |
 
-*ADR-0041:* budgets are enforced whenever set (AP-1); a project may carry default
+*ADR-0048 (account identity):* policy, audit and provenance name an account by its **account
+key** — `Account.id` when registered, else the adapter's `<harness_id>:<canonical home>` for the
+harness's one default account. *ADR-0041:* budgets are enforced whenever set (AP-1); a project may carry default
 `resource_preferences` in the mission shape, inherited by its missions (P22).
 
 ### 8.5 UsageSnapshot and UsageLedger
@@ -452,7 +454,9 @@ rollout_file). `UsageLedger`: what Archeus itself consumed (`execution_id`, `acc
 `tokens_in`, `tokens_out`, `cache_read`, `cache_write`, `cost_usd?`, `at`). Snapshots are
 *observed truth*; the ledger is *attributable truth*. The router uses both (resource-router §4).
 A row for one of Archeus's own calls, which has no execution, carries its `route_decision_id`
-instead (ADR-0022).
+instead (ADR-0022). *ADR-0048 (AP-1):* every consumer that ran writes exactly one row; each figure
+is a number or `None` (not reported — never 0), and the row carries `basis` ∈ `reported_total` |
+`partial` | `none`.
 
 ### 8.6 RouteDecision
 Persisted for every routing call: `subject` (task / review / `archeus_call` with its `purpose` —

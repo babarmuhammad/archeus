@@ -233,6 +233,13 @@ in the phase that builds it (§4). Full wording and mutations:
 | G8 own calls visible, still | P21 | an in-flight own call is listed and counted on its account, and animates nothing |
 | G9 protection classes and lift | AP-1, P22 | as AP-1, plus the lift is scoped to the naming mission or project |
 | G10 budgets always | AP-1 | a budget on a windowed account is enforced; none set → behaviour unchanged |
+| AP-UK unknown usage (ADR-0048) | AP-1 | an adapter's absent figure is `None`; every end of a consumer that ran writes one ledger row with its `basis`; a period with a `partial` or `none` row makes a budget unevaluable and eliminates the account; a lower bound reaching the budget reads "reached"; a budget on an undeclared measure is refused at write |
+| AP-CC concurrency over live work (ADR-0048) | AP-1 | live executions and in-flight own calls on one account key both count; at the cap a task and an own call are both refused; an own call past its maximum run no longer counts |
+| AP-ID one account key (ADR-0048) | AP-1 | a task and an own call on the same unregistered home carry one key and a review is routed away from it; a second registration of a home is refused; `home_ref` cannot change |
+| AP-RT no election outside the router (ADR-0048) | AP-1 | no V1 module imports `rotate`; with no registered account a harness offers exactly one fixed candidate; a registered account removes it |
+| AP-LG legacy coexistence (ADR-0048) | AP-1 | across the AP-1 suites a fixture legacy home's settings, stores and rotation state are byte-identical before and after; AP-1 adds no import of a legacy writer |
+| AP-WB no project or memory writes (ADR-0048) | AP-1 | a fixture project's files, timestamps and git status and a fixture legacy memory store are unchanged; AP-1 writes only `ARCHEUS_HOME` |
+| AP-RB rollback (ADR-0048) | AP-1 | migration 0012 leaves a pre-migration copy of `archeus.db` in `ARCHEUS_HOME/backups/` that the pre-AP-1 build opens |
 | G11 project defaults | P22 | missions inherit and may narrow their project's defaults; only a user device sets them |
 | G12 unknown stays unknown | P21 | consumption renders a missing reading as unknown, never a number |
 | G13 effective policy parity | P21, P22 | the effective-policy read equals the router's inputs |

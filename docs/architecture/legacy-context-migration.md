@@ -936,7 +936,7 @@ Migration preserves what routing needs **without turning history into policy**:
 
 | Legacy knowledge | In V1 | Never becomes |
 |---|---|---|
-| accounts and homes (identity: harness, config dir) | Account rows, V1 defaults, `consumption: normal` | a protection or a rotation permission — the import report asks the user to set each account's class before ADR-0021 `rotation` is permitted (the AP-1 edge) |
+| accounts and homes (identity: harness, config dir — matched by canonical home, never a second Account for a home already registered, ADR-0048 §2) | Account rows, V1 defaults, `consumption: normal` | a protection or a rotation permission — the import report asks the user to set each account's class before ADR-0021 `rotation` is permitted (the AP-1 edge) |
 | `rotate_threshold`, own-call CLI and model | shown on the report / a preference (migration-plan §4) | an allocation or a constraint |
 | provider profiles | accounts to review; keys excluded | provider terms — ADR-0021 answers are the user's, per harness, and stay `unknown` until given |
 | legacy model list, `MODEL_PROFILES` | at most REFERENCE history | capability evidence (ADR-0031, P22) |

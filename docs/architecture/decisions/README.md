@@ -51,3 +51,4 @@ Internal documents (excluded from the published manual). Status values: DECIDED,
 | [0045](ADR-0045.md) | Legacy context migration is per project, lossless-first and read-only; existing projects stay on legacy until their own approved cutover (P25.5) | DECIDED |
 | [0046](ADR-0046.md) | The V1 write boundary: ARCHEUS_HOME, an Archeus-owned project-local namespace with per-entry ownership, and project files only through named capabilities | DECIDED |
 | [0047](ADR-0047.md) | Context capacity is a governed execution resource: measured with its basis, never assumed; the only continuation is the existing checkpoint hand-off | DECIDED |
+| [0048](ADR-0048.md) | D-25: account identity, usage measures, own calls as consumers, and the legacy boundary of AP-1 | DECIDED |

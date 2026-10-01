@@ -122,6 +122,13 @@ must_halt(execution)          = worst(account) ≥ allocation_pct        (checke
   readable window too — the ceiling bounds the provider's window, the budget what Archeus spends;
   `concurrency` caps live executions on any account; a budget is accepted only on a measure the
   adapter reports, so it is never evaluated against a missing number.
+- **Amended by ADR-0048 (D-25, slice AP-1):** the reported measures are the adapter's
+  `Capabilities.usage_measures` (⊆ `tokens`, `cost`); every consumer that ran writes one ledger
+  row whose figures are numbers or `None` with a `basis` (`reported_total` / `partial` / `none`);
+  a budget whose period holds anything but `reported_total` is **unevaluable** and eliminates the
+  account as a reached budget does, unless the known lower bound already reaches it.
+  `concurrency` counts the account's live work — live executions **and own calls in flight**
+  (ADR-0043 §1) — and at the cap refuses every subject.
 - `brain_reserve_pct` is what the two `ceiling` cases express: the brain may use up to
   `effective_ceiling`, tasks and reviews up to `effective_ceiling − brain_reserve_pct`.
   Archeus can therefore always still *think* (and explain it is out of capacity) when task
@@ -192,6 +199,13 @@ permitted`):** `explicit_only` accounts and accounts outside their `limits` are 
 is a fallback under its `fallback` mode (default `ask`). A user-device preference or pin naming a
 protected account lifts its class for that scope. Invariant: no router consumes a user-protected
 account merely because it is eligible; affinity cannot override the partition.
+
+**Amended by ADR-0048 (D-25):** no account is ever chosen outside `route`: a harness with no
+registered account offers exactly one candidate, its adapter's fixed `default_account()`, which is
+never rotated and is not offered once the harness has a registered account. Every candidate is
+named by its **account key** — a registered `Account.id`, or the adapter's
+`<harness_id>:<canonical home>` for the default — in requirements, snapshots, decisions, the
+ledger and the review's `forbidden`.
 
 **As built (C-22, 2026-10-01):** an offer is the account's. Each account in the snapshot
 carries its own `models`, from its adapter asked for that account (a pi home's own

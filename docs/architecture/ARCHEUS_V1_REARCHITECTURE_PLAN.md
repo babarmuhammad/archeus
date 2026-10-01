@@ -1315,7 +1315,12 @@ is eligible. Recommended right after the C-22 defect slice; it neither needs nor
 *Finding 2026-10-01:* "no second account can be consumed" holds for subscriptions only — API-key
 and proxy accounts are outside the rotation rule, and Claude Code's unregistered own-call account
 uses legacy `rotate.elect()` when rotation is permitted; the proposed extension of the edge and of
-AP-1's scope is decision D-25 (ADR-0041, "Why AP-1 first").
+AP-1's scope is decision D-25 (ADR-0041, "Why AP-1 first"). *Resolved 2026-10-01 (ADR-0048):*
+AP-1 removes every election outside the router, gives each real account one key, declares usage
+measures in the adapter capabilities with budgets failing closed on unknown usage, counts own
+calls in flight toward `concurrency`, and governs V1 Core only — the legacy app keeps its own
+rotation and own calls until each project's P25.5 cutover and, account-wide, until retirement.
+Its exact scope and gates are ADR-0048 §5 and §8.
 
 **Deferred past V1:** remote execution nodes, pi/generic-CLI adapters, 3D spatial mode, Web
 Push, FTS5, vector search, EMA reinforcement and contradiction edges, Archeus-as-MCP-server,
