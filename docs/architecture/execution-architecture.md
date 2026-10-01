@@ -209,7 +209,8 @@ hand-off — recorded, not guessed; p12-design-gate §13.1, as built). Backstops
 treat as pressure 0.9; a `compact_boundary` event → record that compaction happened (the
 execution continues; the checkpoint is still derived at the next boundary). Bounded tasks and
 `--max-turns` keep pressure rare — hand-off is the exception path, not the design.
-*(ADR-0047, PROPOSED, P21: each pressure value is recorded with its basis — window, window source,
+*(ADR-0047, DECIDED and built in P21 — `execution/pressure.py`, `executions.no_progress`,
+`LocalNode.end_state`: each pressure value is recorded with its basis — window, window source,
 usage offset, the PreCompact signal — and read as signalled / unavailable / stale / estimated /
 reported; a pressure continuation whose recorded end state shows no progress over every earlier
 link of its chain ends `ENDED_HANDOFF` charged, with `context_insufficient` taking the ordinary

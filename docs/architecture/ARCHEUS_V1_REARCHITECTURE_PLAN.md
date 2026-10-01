@@ -1084,7 +1084,8 @@ decisions ADR-0024…0029.
   `/v1/status`; account consumption (live consumers, ledger totals, windows with unknown shown as
   unknown) and the effective resource policy in `/v1/accounts`; the `status` verb answering from
   them. No Agent entity.
-- *Proposed 2026-10-01 (ADR-0047, decision D-26, PROPOSED):* context capacity as a governed
+- *Decided 2026-10-01 (ADR-0047, decision D-26 — DECIDED; built in the P21 D-26 slice, see
+  ADR-0047 "As built"):* context capacity as a governed
   execution resource on P12's existing pressure hand-off — every `pressure` recorded with its
   basis (window and its source, the usage offset) and a derived quality (reported / estimated /
   unavailable / stale; unknown is never 0); `live_work` items carry `context`; the hand-off reason

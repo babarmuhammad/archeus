@@ -31,7 +31,7 @@ from ...node.local import LocalNode
 from ..application import errors, executions as X, resources
 from ..domain import entities, states
 from ..redact import redact  # noqa: F401  (p11-design-gate §19; shared since P12)
-from . import canonical
+from . import canonical, pressure as P
 
 log = logging.getLogger('archeus.execution')
 
@@ -48,8 +48,8 @@ def mission_branch(mission_id):
 _NOW = ('estop', 'limit', 'disarmed', 'breaker')
 PROGRESS_S = 1.0
 #: context pressure that hands an execution off (execution-architecture §6), and
-#: what the PreCompact backstop counts as (p12-design-gate §13.1)
-PRESSURE_HANDOFF, PRESSURE_PRECOMPACT = 0.75, 0.9
+#: what the PreCompact backstop counts as (p12-design-gate §13.1; ADR-0047 §3)
+PRESSURE_HANDOFF, PRESSURE_PRECOMPACT = P.PRESSURE_HANDOFF, P.PRESSURE_PRECOMPACT
 #: how long a pause may wait for a tool boundary before it becomes a stop (§13)
 PAUSE_TIMEOUT_S = 120.0
 ACCOUNTS_S = 5.0
@@ -233,7 +233,7 @@ class ExecutionManager:
         return {'adapter': adapter, 'handle': handle, 'seq': seq, 'offset': offset,
                 'reported': 0.0, 'events': 0, 'lines': [], 'usage': usage, 'since': None,
                 'flagged': False, 'decisions': [], 'last_error': None, 'pressure': None,
-                'window': None}
+                'window': None, 'window_source': 'none', 'context': None}
 
     def _continuation(self, e, prompt):
         """(prompt with the checkpoint suffix, hand-offs before this one)."""
@@ -250,17 +250,25 @@ class ExecutionManager:
         return '%s\n\n%s\n' % (prompt.rstrip('\n'), checkpoint.text_of(cp)), n
 
     def _window(self, e, adapter):
-        """The context window of the execution's model (§13.1): the offer's,
-        else the smallest the harness declares; None when it declares none."""
+        """(window, source) of the execution's model (§13.1, ADR-0047 §2): the
+        offer of the execution's own account (C-22: an offer is an account's),
+        else the smallest window those offers declare; (None, 'none') when
+        they declare none."""
+        home = None
+        if e.account_id is not None:
+            with self.db.read() as r:
+                row = rows.get(r, entities.Account, e.account_id)
+            home = row.entity.home_ref if row is not None else None
         try:
-            models = adapter.capabilities(None).models
+            models = adapter.capabilities(base.AccountRef(e.account_id or e.harness_id,
+                                                          home)).models
         except Exception:
-            return None
+            return None, 'none'
         known = {m.id: m.context_window for m in models
                  if not isinstance(m, str) and m.context_window}
         if e.model in known:
-            return known[e.model]
-        return min(known.values()) if known else None
+            return known[e.model], 'offer'
+        return (min(known.values()), 'harness_smallest') if known else (None, 'none')
 
     def _workspace(self, e, m, t):
         """(workdir, branch) — §17. Recorded before the process starts."""
@@ -294,8 +302,11 @@ class ExecutionManager:
         p = self._procs[e.id]
         adapter, handle = p['adapter'], p['handle']
         did = self._tail(e, p)
-        if self.node.precompacted(e.id) and (p['pressure'] or 0.0) < PRESSURE_PRECOMPACT:
-            p['pressure'] = PRESSURE_PRECOMPACT         # the PreCompact backstop
+        if self.node.precompacted(e.id) and (p['context'] or {}).get('signal') != 'precompact':
+            # the PreCompact backstop: the harness's own signal, recorded as
+            # one (quality signalled), with the policy stand-in as its pressure
+            p['context'] = P.signalled(p['context'], p['offset'])
+            p['pressure'] = max(p['pressure'] or 0.0, PRESSURE_PRECOMPACT)
             self._maybe_handoff(e, p)
         did |= self._hooks(e, p, disarmed)
         did |= self._control(e, m, p, disarmed)
@@ -331,12 +342,13 @@ class ExecutionManager:
         """Context pressure from a usage report (§13.1); at the threshold a
         running execution is handed off."""
         if p['window'] is None:
-            p['window'] = self._window(e, p['adapter']) or 0
-        if not p['window']:
-            return
-        used = sum(usage.get(k) or 0 for k in ('input_tokens', 'cache_read_input_tokens',
-                                               'cache_creation_input_tokens'))
-        p['pressure'] = max(p['pressure'] or 0.0, used / float(p['window']))
+            w, p['window_source'] = self._window(e, p['adapter'])
+            p['window'] = w or 0
+        p['context'], got = P.reported(usage, p['window'], p['window_source'], p['offset'],
+                                       p['context'])
+        if got is None:
+            return                      # no window, or no input figure: not measured
+        p['pressure'] = max(p['pressure'] or 0.0, got)
         self._maybe_handoff(e, p)
 
     def _maybe_handoff(self, e, p):
@@ -348,14 +360,14 @@ class ExecutionManager:
             return
         p['handing_off'] = True
         self._do(X.request_handoff, execution_id=e.id, stop_reason='pressure',
-                 reason='context pressure %.2f reached %.2f' % (p['pressure'],
-                                                                  PRESSURE_HANDOFF))
+                 reason=P.reason(p['context'], p['pressure']))
 
     def _progress(self, e, p):
         if not p['events'] and p['offset'] == e.stream_offset:
             return
         self._do(X.record_progress, execution_id=e.id, offset=p['offset'], events=p['events'],
-                 lines=p['lines'], usage=p['usage'], pressure=p.get('pressure'))
+                 lines=p['lines'], usage=p['usage'], pressure=p.get('pressure'),
+                 context=p.get('context'))
         p['reported'], p['events'], p['lines'] = time.monotonic(), 0, []
 
     def _hooks(self, e, p, disarmed):
@@ -469,7 +481,8 @@ class ExecutionManager:
         workdir = e.workdir or ExecPaths(e.id).dir
         return {'files_changed': self.node.diff_stat(workdir) if e.branch or e.workdir
                 else [], 'decisions': list(p.get('decisions') or [])[-30:],
-                'last_error': p.get('last_error')}
+                'last_error': p.get('last_error'),
+                'end_state': self.node.end_state(workdir) if e.branch or e.workdir else None}
 
     # ── halted executions ──
 
@@ -632,6 +645,7 @@ class ExecutionManager:
     def _adopt(self, e, adapter, handle):
         self._procs[e.id] = self._fresh(adapter, handle, e.process_seq, e.stream_offset,
                                         e.usage)
+        self._procs[e.id]['context'] = e.context      # the basis recorded so far
         self._do(X.adopted, execution_id=e.id, pid=handle.pid, offset=e.stream_offset)
 
     def _collect_gone(self, e, adapter, handle):

@@ -50,4 +50,4 @@ Internal documents (excluded from the published manual). Status values: DECIDED,
 | [0044](ADR-0044.md) | The application theme is a per-client preference (System, Dark, Light, High Contrast); thread tints stay tints | DECIDED |
 | [0045](ADR-0045.md) | Legacy context migration is per project, lossless-first and read-only; existing projects stay on legacy until their own approved cutover (P25.5) | DECIDED |
 | [0046](ADR-0046.md) | The V1 write boundary: ARCHEUS_HOME, an Archeus-owned project-local namespace with per-entry ownership, and project files only through named capabilities | DECIDED |
-| [0047](ADR-0047.md) | Context capacity is a governed execution resource: measured with its basis, never assumed; the only continuation is the existing checkpoint hand-off | PROPOSED |
+| [0047](ADR-0047.md) | Context capacity is a governed execution resource: measured with its basis, never assumed; the only continuation is the existing checkpoint hand-off | DECIDED |

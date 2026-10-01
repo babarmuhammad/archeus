@@ -265,6 +265,20 @@ export interface ContextRef {
   [field: string]: unknown;
 }
 
+export interface ContextState {
+  quality: 'signalled' | 'unavailable' | 'stale' | 'estimated' | 'reported';
+  pressure: number | null;
+  used_tokens: number | null;
+  window: number | null;
+  remaining: number | null;
+  window_source: 'offer' | 'harness_smallest' | 'none';
+  usage_source: 'harness_reported' | 'none';
+  at_seq: number | null;
+  signal: 'none' | 'precompact';
+  signal_seq: number | null;
+  summary: string;
+}
+
 export interface Created {
   id: string;
   state: string;
@@ -350,6 +364,10 @@ export interface Execution {
   exit_reason?: string | null;
   charged?: boolean | null;
   version: number;
+  end_state_digest?: string | null;
+  context: ContextState;
+  handoff?: Handoff;
+  why?: string;
   [field: string]: unknown;
 }
 
@@ -416,6 +434,12 @@ export interface GraphNode {
   label: string;
   parent?: Subject | null;
   [field: string]: unknown;
+}
+
+export interface Handoff {
+  from: string | null;
+  count: number;
+  reason: string | null;
 }
 
 export interface Harness {
@@ -532,6 +556,24 @@ export interface LaunchCode {
   code: string;
   expires_in: number;
   scopes: string[];
+}
+
+export interface LiveItem {
+  kind: 'execution';
+  id: string;
+  mission_id: string;
+  task_id: string;
+  task_key?: string;
+  state: string;
+  attempt: number;
+  harness_id?: string | null;
+  account_id?: string | null;
+  model?: string | null;
+  waits_on?: string | null;
+  handoff: Handoff;
+  handing_off?: string | null;
+  context: ContextState;
+  [field: string]: unknown;
 }
 
 export interface Meeting {
@@ -888,6 +930,7 @@ export interface Status {
   drift: Finding[];
   unchecked: Finding[];
   unknown_project: string[];
+  live: LiveItem[];
 }
 
 export interface StreamFrame {

@@ -951,6 +951,11 @@ class Execution(Entity):
     session_id: str = None
     handoff_from: str = None
     pressure: float = None
+    # P21 (ADR-0047 §2, §5): the basis `pressure` was read from (its quality is
+    # derived at read time, execution/pressure.py), and the measured digest of
+    # the workdir at the end (None: not measurable — the guard's no progress)
+    context: dict = None
+    end_state_digest: str = None
     state: str = None
 
 

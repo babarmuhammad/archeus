@@ -524,10 +524,26 @@ def _status(tx, target):
                                              for m in live[:10]),
         len(st['drift']))
     links = [{'ref': {'kind': 'mission', 'id': m['id']}} for m in live[:10]]
+    from .live import live_work
+    work = live_work(tx.conn, target['id'] if target else None)
+    if work:
+        text += ' Running now: %s.' % '; '.join(
+            '%s attempt %d (%s, context %s%s)' % (
+                w['task_key'], w['attempt'], w['state'], w['context']['quality'],
+                '' if w['context']['remaining'] is None
+                else ', %s tokens left' % '{:,}'.format(w['context']['remaining']))
+            for w in work[:10])
+        links += [{'ref': {'kind': 'execution', 'id': w['id']}} for w in work[:10]]
     return text, links
 
 
 def _why(tx, target):
+    if target['kind'] == 'execution':
+        from .live import explain
+        row = tx.get(entities.Execution, target['id'])
+        if row is None:
+            return 'There is no execution %s.' % target['id']
+        return explain(tx.conn, row.entity)
     got = [r.entity for r in tx.where(entities.RouteDecision)
            if r.entity.id == target['id']
            or (r.entity.source is not None and r.entity.source.id == target['id'])]

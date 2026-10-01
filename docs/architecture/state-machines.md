@@ -399,7 +399,7 @@ with `user_handoff`. The hook halts at the next tool call; the end, the checkpoi
 continuation (P9 `check_dispatch`, P10 `route`, a new INTENT with `handoff_from` and the next
 attempt number, uncharged) are one transaction. Work that finished before the boundary ends as
 usual from HANDING_OFF; a stop takes it to STOPPING. Every end with a process derives exactly one
-Checkpoint. *(ADR-0047, PROPOSED, P21: a pressure continuation whose recorded end state shows no
+Checkpoint. *(ADR-0047, DECIDED and built in P21: a pressure continuation whose recorded end state shows no
 progress over its chain takes the same `checkpoint_written` edge with `charged True` and creates
 no continuation; its task takes `execution_failed_retry` or `execution_failed_final`
 (`context_insufficient`). No new state or edge.)*

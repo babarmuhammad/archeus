@@ -298,9 +298,31 @@ export function ExecutionRow({ e }: { e: Execution }) {
     <li className="execution" data-execution={e.id}>
       <a href={objectHref('execution', e.id)}>attempt {e.attempt}</a> <StateBadge machine="execution" state={e.state} />
       <Resources r={e} />
-      {e.handoff_from ? <span className="hint">continues <a href={objectHref('execution', String(e.handoff_from))}>an earlier execution</a> (hand-off)</span> : null}
+      {e.handoff_from ? <span className="hint">continuing in a fresh session: it continues <a href={objectHref('execution', String(e.handoff_from))}>an earlier execution</a> (hand-off)</span> : null}
       {e.stop_reason || e.exit_reason ? <span className="hint">{String(e.stop_reason ?? e.exit_reason)}</span> : null}
+      {e.context ? <span className="hint" data-context={e.context.quality}>context {e.context.quality}</span> : null}
     </li>
+  );
+}
+
+/** ADR-0047 §9: an execution's context as Core recorded it — the basis, its
+ * quality and what is left only when both were measured; unknown is shown as
+ * unknown, never as 0. Every word comes from Core. */
+function ContextBlock({ x }: { x: Execution }) {
+  const c = x.context;
+  const n = (v: number | null) => (v === null ? 'unknown' : v.toLocaleString('en'));
+  return (
+    <KV
+      rows={[
+        ['Context', <span data-context={c.quality}>{c.quality} — {c.summary}</span>],
+        ['Pressure', c.pressure === null ? 'unknown' : c.pressure.toFixed(2)],
+        ['Tokens used / window / left', `${n(c.used_tokens)} / ${n(c.window)} / ${n(c.remaining)}`],
+        ['Window source', c.window_source],
+        ['Usage source', c.usage_source],
+        ['Hand-off', x.handoff?.from ? <>continues <a href={objectHref('execution', x.handoff.from)}>{x.handoff.from}</a> ({x.handoff.count} before it){x.handoff.reason ? `: ${x.handoff.reason}` : ''}</> : 'none'],
+        ['Why', x.why ?? '—'],
+      ]}
+    />
   );
 }
 
@@ -567,6 +589,7 @@ export function ExecutionInspector({ id, tab, onTab }: { id: string; tab?: strin
               <Fresh snap={e} />
             </div>
             <Resources r={x} />
+            <ContextBlock x={x} />
             <div className="row actions">
               {['STARTING', 'RUNNING', 'PAUSING', 'HANDING_OFF'].includes(x.state) ? (
                 <ActionButton label="Stop" scope="control" kind="danger" confirm="Stop this execution now: its process is killed. The task and mission respond as Core decides (P11)." run={(key) => api.stopExecution(send(), x.id, { idempotency_key: key })} reread={[`/v1/executions/${x.id}`]} />

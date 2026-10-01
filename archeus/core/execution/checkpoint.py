@@ -14,6 +14,7 @@ manager reads the stream) as plain data:
     files_changed  `git diff --stat` lines of the workdir
     decisions      stream lines beginning `DECISION:` (the task contract's convention)
     last_error     the stream's last error line
+    context_insufficient  the no-progress guard's reason (ADR-0047 §5), when it fired
 """
 
 from ...infra.artifacts import store as artifacts
@@ -76,6 +77,8 @@ def derive(tx, *, actor, execution, facts=None, context_package_id=None):
         problems.append('the process exited with code %s' % e.exit_code)
     if facts.get('last_error'):
         problems.append('last error: %s' % facts['last_error'])
+    if facts.get('context_insufficient'):
+        problems.append(facts['context_insufficient'])
     decisions = list(facts.get('decisions') or ())
     decisions += ['%s (knowledge %s)' % (k.entity.title, k.entity.id)
                   for k in rows.where(tx.conn, entities.KnowledgeItem)

@@ -127,7 +127,11 @@ mobile · TUI.
 - Tabs: Outcome · Plan · Now · Evidence · Thread · Why · Timeline (research §19, wireframe A.2).
 - Plan edit creates a new plan version (and supersedes approvals), never edits in place.
 - Execution detail opens *within* the Now tab (live tail subscribed only while open), showing
-  harness/account/model as metadata, not headline.
+  harness/account/model as metadata, not headline. *As built (P21, ADR-0047 §9):* it also shows
+  the execution's context as Core recorded it — quality, basis, pressure, tokens used / window /
+  left (unknown shown as unknown, never 0), window and usage source, the hand-off it continues
+  and Core's `why` — and an execution row in the Now tab says "continuing in a fresh session"
+  for a continuation and names its context quality. Every word is Core's.
 
 ### 4.4 World
 - **Need:** "What does Archeus know about my world, and is it right?"

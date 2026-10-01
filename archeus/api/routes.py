@@ -60,7 +60,7 @@ from datetime import datetime, timedelta, timezone
 from ..core.application import commands, errors, graph, queries, world
 from ..core.application import calls as own_calls
 from ..core.application import conversation, executions, knowledge, resources
-from ..core.application import automations, sessions
+from ..core.application import automations, live, sessions
 from ..core.application import verification
 from ..core.context import assemble as context
 from ..core.knowledge import ingest
@@ -281,8 +281,10 @@ def sync(req):
 
 
 def status(req):
+    project = _one(req.query, 'project')
     with req.api.db.read() as conn:
-        return 200, world_status.status(conn, _one(req.query, 'project'))
+        return 200, dict(world_status.status(conn, project),
+                         live=live.live_work(conn, project))
 
 
 def list_projects(req):

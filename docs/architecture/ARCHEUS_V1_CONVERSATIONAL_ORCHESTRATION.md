@@ -676,7 +676,7 @@ Each gate is mutation-verified in the phase that builds it (testing-strategy §4
 | D-22 | P19 owns the inherited P16 seams | **DECIDED** — confirmed by the decision pass's P19 list |
 | D-23 | live work and consumption inside existing reads | **DECIDED** with D-13 (ADR-0043 §2–§3) |
 | D-24 | Carried: the orchestration plan's D-1…D-12 (ADR-0036…0040 PROPOSED), ADR-0021 (OPEN), Q-C1 | unchanged — still the user's |
-| D-26 | Context capacity as a governed execution resource (context-capacity audit, 2026-10-01) | **OPEN** — ADR-0047 PROPOSED: the P12 pressure hand-off stays the mechanism; adds its recorded basis and derived quality, a no-progress guard, compaction unavailable in V1, `live_work.context`; owner P21. Revised 2026-10-01 by the resolution pass: the guard reads recorded end states across the whole chain (never a checkpoint), ends `ENDED_HANDOFF` charged into the ordinary retry and replan path, no continuation-count cap (the resource bound instead), PreCompact read as *signalled* |
+| D-26 | Context capacity as a governed execution resource (context-capacity audit, 2026-10-01) | **DECIDED** 2026-10-01 (ADR-0047 DECIDED; built in the P21 D-26 slice) — the P12 pressure hand-off stays the mechanism; adds its recorded basis and derived quality, a no-progress guard, compaction unavailable in V1, `live_work.context`; owner P21. Revised 2026-10-01 by the resolution pass: the guard reads recorded end states across the whole chain (never a checkpoint), ends `ENDED_HANDOFF` charged into the ordinary retry and replan path, no continuation-count cap (the resource bound instead), PreCompact read as *signalled* |
 
 ### G2. What remains undecided
 

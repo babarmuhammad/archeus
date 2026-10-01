@@ -157,9 +157,10 @@ def record_process(tx, *, actor, execution_id, pid, create_time, process_seq):
 
 
 def record_progress(tx, *, actor, execution_id, offset, events=0, lines=(), usage=None,
-                    pressure=None):
+                    pressure=None, context=None):
     """New stream output was read up to *offset*: the offset (never backwards),
-    the cumulative usage, `first_output`, and `execution.progress`."""
+    the cumulative usage, the pressure with its basis (ADR-0047 §2),
+    `first_output`, and `execution.progress`."""
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
     if offset < e.stream_offset:
         raise ValueError('progress for %s went backwards (%d < %d)'
@@ -171,7 +172,10 @@ def record_progress(tx, *, actor, execution_id, offset, events=0, lines=(), usag
         got['usage'] = _usage(usage)
     if pressure is not None:
         got['pressure'] = round(float(pressure), 4)
-    if offset == e.stream_offset and got.get('usage', e.usage) == e.usage             and got.get('pressure', e.pressure) == e.pressure:
+    if context is not None:
+        got['context'] = dict(context)
+    if offset == e.stream_offset and got.get('usage', e.usage) == e.usage             and got.get('pressure', e.pressure) == e.pressure \
+            and got.get('context', e.context) == e.context:
         return {'execution_id': e.id, 'offset': offset}          # nothing new
     tx.update(entities.Execution, e.id, got, actor=actor)
     last, size = [], 0
@@ -218,6 +222,7 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
         tx.update(entities.Execution, e.id, {'stream_offset': final_offset}, actor=actor)
     fields = {'adapter_state': dict(adapter_state) if adapter_state else e.adapter_state,
               'failure': failure, 'summary': summary or e.summary}
+    end = {'end_state_digest': (facts or {}).get('end_state')}
     if e.state == 'AWAITING_APPROVAL':
         # the hook halted it for an approval: the execution waits, the process is gone
         tx.update(entities.Execution, e.id, {'adapter_state': fields['adapter_state'],
@@ -234,7 +239,7 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
         e = _fire(tx, e.id, 'process_gone', actor, 'the process is gone',
                   dict(fields, exit_reason='killed', exit_code=exit_code,
                        charged=e.stop_reason not in UNCHARGED, ended_at=_now_iso(),
-                       hook_token_hash=None))
+                       hook_token_hash=None, **end))
         return _ended(tx, actor, e, usage, facts)
     if e.state == 'STARTING':
         if not output:
@@ -255,7 +260,7 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
               'exit code %s%s' % (exit_code, ' (halted without being asked)' if halted else ''),
               dict(fields, exit_reason='ok' if ok else 'error', exit_code=exit_code,
                    charged=not (uncharged or stop), stop_reason=stop or e.stop_reason,
-                   ended_at=_now_iso(), hook_token_hash=None))
+                   ended_at=_now_iso(), hook_token_hash=None, **end))
     return _ended(tx, actor, e, usage, facts)
 
 
@@ -463,6 +468,35 @@ def handoff_execution(tx, *, actor, execution_id):
     return {'execution_id': e.id, 'state': e.state}
 
 
+def no_progress(tx, e, end_state):
+    """Why the pressure hand-off of *e* must not continue (ADR-0047 §5), or None.
+
+    Only a continuation handing off for pressure is judged. It made progress
+    when its measured end state is one no earlier link of its chain (the whole
+    `handoff_from` ancestry, so A -> B -> A is caught) ended in. Read from the
+    Execution rows, never from a checkpoint (p12-design-gate §8.3). An end
+    state that could not be measured is no progress: guards fail closed."""
+    from ..execution import pressure
+    if e.stop_reason != 'pressure' or e.handoff_from is None:
+        return None
+    chain, cur = [], e.handoff_from
+    while cur is not None:
+        prev = lifecycle.load(tx, entities.Execution, cur).entity
+        chain.append(prev)
+        cur = prev.handoff_from
+    earlier = [x.end_state_digest for x in chain if x.end_state_digest is not None]
+    # the artifacts an execution recorded count too; no execution records one
+    # until the producer record exists (V1-3, P21), so none are passed yet
+    if pressure.progressed(end_state, (), earlier):
+        return None
+    why = ('its end state could not be measured' if end_state is None else
+           'it ended in a state an earlier link of its chain already ended in')
+    return ('context insufficient: a pressure continuation with no progress over the %d '
+            'earlier link(s) of its chain (%s); now: %s; before: %s; charged'
+            % (len(chain), why, pressure.describe(e.context),
+               pressure.describe(chain[0].context)))
+
+
 def record_handoff(tx, *, actor, policy, missions, router, execution_id, now, exit_code=None,
                    usage=None, adapter_state=None, final_offset=None, facts=None):
     """The process of a HANDING_OFF execution is gone: in one transaction its
@@ -477,14 +511,27 @@ def record_handoff(tx, *, actor, policy, missions, router, execution_id, now, ex
                                        'the execution is not handing off')
     if final_offset is not None and final_offset > e.stream_offset:
         tx.update(entities.Execution, e.id, {'stream_offset': final_offset}, actor=actor)
+    end_state = (facts or {}).get('end_state')
+    guarded = no_progress(tx, e, end_state)
     e = _fire(tx, e.id, 'checkpoint_written', actor,
-              'handed off (%s): the checkpoint is written' % e.stop_reason,
-              {'exit_reason': 'handoff', 'exit_code': exit_code, 'charged': False,
-               'ended_at': _now_iso(), 'hook_token_hash': None,
+              guarded or 'handed off (%s): the checkpoint is written' % e.stop_reason,
+              {'exit_reason': 'handoff', 'exit_code': exit_code, 'charged': guarded is not None,
+               'ended_at': _now_iso(), 'hook_token_hash': None, 'end_state_digest': end_state,
                'adapter_state': dict(adapter_state) if adapter_state else e.adapter_state})
     _ledger(tx, actor, e, usage)
-    e = _finish(tx, actor, e, facts)
+    e = _finish(tx, actor, e, dict(facts or {}, context_insufficient=guarded) if guarded
+                else facts)
     _event(tx, 'execution.ended', e, actor, _end_payload(e))
+    if guarded is not None:
+        # ADR-0047 §5: no continuation; the attempt is spent and the ordinary
+        # retry (a fresh execution) or FAILED -> replan takes over
+        t = lifecycle.load(tx, entities.Task, e.task_id).entity
+        if t.state == 'RUNNING':
+            t = charged_failure(tx, actor, t, 'execution_failed_retry', 'execution_failed_final',
+                                'context_insufficient', 'execution %s: %s' % (e.id, guarded)
+                                ).entity
+        return {'execution_id': e.id, 'state': e.state, 'continuation': None,
+                'refused': guarded, 'task_state': t.state}
     nxt = continue_task(tx, actor=actor, policy=policy, missions=missions, router=router,
                         execution=e, now=now)
     return {'execution_id': e.id, 'state': e.state, 'continuation': nxt['execution_id'],
@@ -719,9 +766,14 @@ def view(conn, execution_id):
     row = rows.get(conn, entities.Execution, execution_id)
     if row is None:
         raise lifecycle.NotFound(execution_id)
+    from ..execution import pressure
     from .queries import view as v
     out = v(row)
     out.pop('hook_token_hash', None)
+    out['context'] = pressure.view(row.entity)
+    from .live import explain, handoff_of
+    out['handoff'] = handoff_of(conn, row.entity)
+    out['why'] = explain(conn, row.entity)
     return out
 
 
@@ -746,9 +798,11 @@ def of_task(conn, task_id):
     if rows.get(conn, entities.Task, task_id) is None:
         raise lifecycle.NotFound(task_id)
     out = []
+    from ..execution import pressure
     for r in rows.where(conn, entities.Execution, task_id=task_id):
         d = v(r)
         d.pop('hook_token_hash', None)
+        d['context'] = pressure.view(r.entity)
         out.append(d)
     return out
 

@@ -13,6 +13,7 @@ A process is identified by (pid, create_time), never by a pid alone
 time through the P0.5 seam `proc.process_create_time`.
 """
 
+import hashlib
 import json
 import os
 import time
@@ -238,6 +239,37 @@ class LocalNode:
             return []
         out = proc.git(['diff', '--stat', 'HEAD'], workdir) or ''
         return [line.strip() for line in out.splitlines() if line.strip()][:30]
+
+    @staticmethod
+    def end_state(workdir):
+        """The digest of *workdir*'s state at an execution's end (ADR-0047 §5):
+        HEAD, the tracked diff against it and every untracked file's content
+        hash. None when it cannot be measured (not a repository, no commit, a
+        failed read) — the guard reads that as no progress.
+
+        Read-only: `--no-optional-locks` keeps git from refreshing the index,
+        and `hash-object` without `-w` stores nothing (ADR-0046, MG-6)."""
+        if not workdir or not os.path.isdir(workdir):
+            return None
+
+        def git(*args, stdin=None):
+            r = proc.run(['git', '--no-optional-locks', *args], cwd=workdir, stdin=stdin)
+            return None if r is None or r.returncode else r.stdout
+        head = git('rev-parse', '--verify', 'HEAD')
+        diff = git('diff', '--binary', 'HEAD')
+        others = git('ls-files', '--others', '--exclude-standard', '-z')
+        if head is None or diff is None or others is None:
+            return None
+        paths = sorted(p for p in others.split('\0') if p)
+        hashes = git('hash-object', '--stdin-paths', stdin='\n'.join(paths) + '\n') \
+            if paths else ''
+        if hashes is None:
+            return None
+        h = hashlib.sha256()
+        for part in (head.strip(), diff, '\0'.join(paths), hashes):
+            h.update(part.encode('utf-8', 'surrogateescape'))
+            h.update(b'\0')
+        return h.hexdigest()
 
     # ── worktrees (§17) ──
 
