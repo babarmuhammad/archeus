@@ -438,9 +438,10 @@ TYPES = {
         'priority': {'type': 'integer'}, 'allocation_pct': {'type': 'integer'},
         'reserve_pct': {'type': 'integer'}, 'brain_reserve_pct': {'type': 'integer'},
         'fallback': {'type': 'string', 'enum': ['allow', 'ask', 'deny']},
-        'budgets': {'type': 'object', 'nullable': True}, 'version': {'type': 'integer'}},
+        'budgets': {'type': 'object', 'nullable': True}, 'version': {'type': 'integer'},
+        'consumption': {'type': 'string', 'enum': list(entities.CONSUMPTION)}},
         'required': ['id', 'account_id', 'priority', 'allocation_pct', 'reserve_pct',
-                     'brain_reserve_pct', 'fallback', 'version']},
+                     'brain_reserve_pct', 'fallback', 'version', 'consumption']},
     'Account': {'type': 'object', 'open': True, 'properties': {
         'id': {'type': 'string'}, 'harness_id': {'type': 'string'}, 'label': {'type': 'string'},
         'auth_kind': {'type': 'string', 'enum': list(entities.AUTH_KINDS)},
@@ -879,7 +880,9 @@ RESOURCE_POLICY = {'type': 'object', 'properties': {
     'priority': _INT, 'allocation_pct': _INT, 'reserve_pct': _INT, 'brain_reserve_pct': _INT,
     'fallback': {'type': 'string', 'nullable': True, 'enum': ['allow', 'ask', 'deny']},
     'budgets': {'type': 'object', 'nullable': True}, 'project_allow': _IDS,
-    'project_deny': _IDS, 'expected_version': _INT, 'idempotency_key': KEY},
+    'project_deny': _IDS,
+    'consumption': {'type': 'string', 'nullable': True, 'enum': list(entities.CONSUMPTION)},
+    'expected_version': _INT, 'idempotency_key': KEY},
     'required': ['idempotency_key']}
 MISSION_RESOURCES = {'type': 'object', 'properties': {
     'preferred_accounts': _IDS, 'preferred_harnesses': _IDS, 'forbidden_accounts': _IDS,

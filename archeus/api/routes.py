@@ -491,10 +491,15 @@ def set_account_state(req):
 
 
 def set_resource_policy(req):
+    """The adapter is asked what the account reports (outside any
+    transaction); the command refuses a budget on any other measure."""
     b = req.body
+    with req.api.db.read() as conn:
+        a = queries.get_account(conn, req.params['id'])
     return 200, req.run(resources.set_resource_policy, dict(
         {k: b.get(k) for k in resources.POLICY_FIELDS},
-        account_id=req.params['id'], expected_version=b.get('expected_version')))
+        account_id=req.params['id'], expected_version=b.get('expected_version'),
+        usage_measures=req.api.resources.usage_measures(a['harness_id'], a['home_ref'])))
 
 
 def list_harnesses(req):

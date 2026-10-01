@@ -240,6 +240,14 @@ in the phase that builds it (§4). Full wording and mutations:
 | AP-LG legacy coexistence (ADR-0048) | AP-1 | across the AP-1 suites a fixture legacy home's settings, stores and rotation state are byte-identical before and after; AP-1 adds no import of a legacy writer |
 | AP-WB no project or memory writes (ADR-0048) | AP-1 | a fixture project's files, timestamps and git status and a fixture legacy memory store are unchanged; AP-1 writes only `ARCHEUS_HOME` |
 | AP-RB rollback (ADR-0048) | AP-1 | migration 0012 leaves a pre-migration copy of `archeus.db` in `ARCHEUS_HOME/backups/` that the pre-AP-1 build opens |
+
+*Built in the AP-1 slice (ADR-0048 "As built"):* AP-1, G9 (the mission-scoped lift), G10, AP-UK,
+AP-CC, AP-ID, AP-RT, AP-LG, AP-WB and AP-RB are `tests/v1/unit/test_ap1_units.py` and
+`tests/v1/integration/test_account_protection.py`, mutation-verified by `tools/mutate_ap1.py`
+(28 of 28 killed). G9's project half and G11–G13 stay with P21 / P22.
+
+| Gate | Owner | Asserts |
+|---|---|---|
 | G11 project defaults | P22 | missions inherit and may narrow their project's defaults; only a user device sets them |
 | G12 unknown stays unknown | P21 | consumption renders a missing reading as unknown, never a number |
 | G13 effective policy parity | P21, P22 | the effective-policy read equals the router's inputs |
@@ -295,7 +303,7 @@ already does) and temporary git repositories, never on a real account or project
 | CX-4 checkpoint on every end | every end of an execution that ran, including a guarded one, derives one Checkpoint in the transaction of the end | built: P12; the guarded end's checkpoint in `test_cx3_…` | an end without a checkpoint |
 | CX-5 provenance | a continuation carries `handoff_from`, `attempt + 1`, the same plan binding, the checkpoint id and `continuation` count; the hand-off reason names the window, its source and the usage offset | built: P12, and the basis in the reason (`test_cx2_…`, `test_why_and_status_…`) | the basis dropped from the reason |
 | CX-6 state reaches the new session | the continuation's prompt carries the checkpoint rendering; mission and task states are unchanged by the hand-off | S2, C13 (P12) | a stale field shown as current |
-| CX-7 protection holds at a continuation | over generated snapshots a continuation never elects a `last_resort` or `explicit_only` account that AP-1 would not elect for a first dispatch, whatever its window or remaining capacity | — (depends on the AP-1 gate above, specified for first dispatch and not built; CX-7 runs once AP-1 lands) | the continuation route skipping AP-1 |
+| CX-7 protection holds at a continuation | over generated snapshots a continuation never elects a `last_resort` or `explicit_only` account that AP-1 would not elect for a first dispatch, whatever its window or remaining capacity | built (AP-1): `tests/v1/integration/test_account_protection.py` `test_a_continuation_never_goes_back_…`, `test_a_retry_never_goes_…`; `tools/mutate_ap1.py` A22, A23 | the continuation route skipping AP-1 |
 | CX-8 unknown is not zero | with no window or no usage report, `pressure` and `remaining` are `None`, the item's quality is *unavailable*, and nothing renders 0 or "fits" | built: `tests/v1/unit/test_pressure_units.py` `test_no_window_or_no_report_…`, `test_precompact_…` | `None` coerced to 0 |
 | CX-9 estimated, stale and signalled are labelled | a window from `harness_smallest` reads *estimated*; output recorded after the usage offset reads *stale*; a PreCompact record reads *signalled*, its 0.9 is never shown as a measured ratio, `used_tokens` holds only what a usage report said and `remaining` is `null`; none of them reads *reported* | built: `tests/v1/unit/test_pressure_units.py` (estimated, stale, signalled); `tests/v1/integration/test_context_capacity.py` PreCompact | the quality derived from the value alone; a PreCompact 0.9 recorded as `usage_source: harness_reported` |
 | CX-10 a failed hand-off loses nothing | a continuation refused by P9 or P10 leaves the checkpoint, the task READY uncharged and the diff in place | P12 (§10.1 step 4) | the checkpoint written after the refusal check |

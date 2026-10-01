@@ -331,7 +331,7 @@ class Work:
                                          create_time=create_time, process_seq=1)
 
     def record_exit(self, tx, *, actor, execution_id, exit_reason, exit_code, summary='',
-                    output=True, usage=None):
+                    output=True, usage=None, usage_total=False):
         """The process exited (`executions.record_end`): ENDED_OK sends the task
         to VERIFYING — never to SUCCEEDED. A second report of the same end is an
         invalid transition: nothing changes."""
@@ -341,7 +341,7 @@ class Work:
         code = 0 if exit_reason == 'ok' else (exit_code if exit_code not in (0, None) else 1)
         return executions.record_end(tx, actor=actor, execution_id=execution_id,
                                      exit_code=code, summary=summary, usage=usage,
-                                     output=output)
+                                     output=output, usage_total=usage_total)
 
     # ── verification and review ──
 

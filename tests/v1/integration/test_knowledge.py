@@ -289,10 +289,9 @@ def test_n14_no_harness_installed_is_unavailable(make):
 
 def test_n15_an_account_that_cannot_be_spent_is_unavailable(make):
     class Spent(FakeCaller):
-        def account(self, *, rotation):
-            return self._acct, 'account rate-limited by Claude'
+        def why_not(self, account):
+            return 'account rate-limited by Claude'
     s = Spent('fake')
-    s._acct = __import__('archeus.harnesses.base', fromlist=['AccountRef']).AccountRef('a')
     r = make([s])
     r.run(C.decide_provider_terms, harness_id='fake', headless='permitted')
     kp = r.kp(project(r).project_id)

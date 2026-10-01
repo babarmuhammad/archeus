@@ -822,6 +822,7 @@ export interface ResourcePolicy {
   fallback: 'allow' | 'ask' | 'deny';
   budgets?: Record<string, unknown> | null;
   version: number;
+  consumption: 'normal' | 'last_resort' | 'explicit_only';
   [field: string]: unknown;
 }
 
@@ -1183,6 +1184,7 @@ export interface SetResourcePolicyRequest {
   budgets?: Record<string, unknown> | null;
   project_allow?: string[] | null;
   project_deny?: string[] | null;
+  consumption?: 'normal' | 'last_resort' | 'explicit_only' | null;
   expected_version?: number | null;
   idempotency_key: string;
 }

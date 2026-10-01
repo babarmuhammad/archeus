@@ -11,6 +11,9 @@ command that recorded it asks P9's approval machinery.
                 harness with no registered account offers its own (`account`
                 None, `account_ref` the adapter's), one with none offers nothing
     eliminate   STEPS in order; a candidate stops at the first it fails
+    partition   protection before ordering (ADR-0041 §1): a `last_resort`
+                survivor is kept out while any `normal` one survives, and
+                with none it is only a fallback under its own `fallback`
     order       affinity, preference, priority, tier fit, not near its
                 ceiling, id (§5 ordering; cost and latency: no V1 adapter
                 reports them, so they are not keys)
@@ -35,13 +38,14 @@ command that recorded it asks P9's approval machinery.
 capabilities, enforcement, structured_output, efforts, models [{id, tier,
 context_window}], exempt}], accounts [{id, ref, harness, label, auth_kind,
 registered, health, why_not, policy, usage {windows {5h: pct}, resets_at,
-age_s}, ledger {tokens_today, cost_today, running}}], terms {harness:
+age_s}, usage_measures, ledger {tokens_today, cost_today, running, complete
+{tokens, cost}}}], terms {harness:
 {headless, rotation}}, affinity {harness, account}, approved_fallbacks [key].
 """
 
 TIERS = ('small', 'mid', 'large')
 STEPS = ('installed', 'headless', 'capability', 'model', 'enforcement', 'provider_terms',
-         'restriction', 'health', 'allocation', 'election')
+         'restriction', 'health', 'allocation', 'partition', 'election')
 #: health states the router may use (state-machines §9); DEGRADED only by fallback
 ROUTABLE = ('AVAILABLE', 'CONSTRAINED')
 #: the conservative bump a task adds before it starts, by size (resource-router §4)
@@ -237,7 +241,22 @@ def _restriction(c, req, snap):
         return 'excluded for project %s by your resource rules' % project
     if p.get('project_allow') and project not in p['project_allow']:
         return 'reserved for other projects by your resource rules'
+    if p.get('consumption') == 'explicit_only' and not _named(c, req):
+        return 'used only when you name it (explicit_only)'
     return None
+
+
+def _named(c, req):
+    """The work names this account: a mission's preference or a requirement,
+    which only a user device sets (ADR-0041 §1: the lift of a class, for that
+    work only). An own call names none, so it never lifts one."""
+    return c['account'] is not None and c['account'] in (
+        _ids(req.get('preferred'), 'accounts') | _ids(req.get('required'), 'accounts'))
+
+
+def _last_resort(c, req):
+    return ((c['_a'].get('policy') or {}).get('consumption') == 'last_resort'
+            and not _named(c, req))
 
 
 def _health(c, req, snap):
@@ -262,29 +281,58 @@ def _allocation(c, req, snap):
     p, usage = a['policy'], a.get('usage')
     c['ceiling'] = cap = ceiling(p, req['subject'])
     w = worst(usage)
+    budgets = p.get('budgets') or {}
     if w is not None:
         c['usage'] = w
         bump = PROJECTED.get(req.get('size'), 0)
         c['constrained'] = w >= cap - NEAR
-        if w + bump < cap:
-            return None
+        if w + bump >= cap:
+            c['fallbackable'] = True
+            return '%s at %g%%%s is not under its %g%% ceiling for %s' % (
+                'usage' if not usage.get('age_s') or usage['age_s'] <= STALE_S
+                else 'stale usage (+%d)' % STALE_PENALTY, w,
+                ' (+%d projected)' % bump if bump else '', cap,
+                'own calls' if req['subject'] == 'archeus_call' else 'tasks')
+    elif not budgets:
         c['fallbackable'] = True
-        return '%s at %g%%%s is not under its %g%% ceiling for %s' % (
-            'usage' if not usage.get('age_s') or usage['age_s'] <= STALE_S
-            else 'stale usage (+%d)' % STALE_PENALTY, w,
-            ' (+%d projected)' % bump if bump else '', cap,
-            'own calls' if req['subject'] == 'archeus_call' else 'tasks')
-    budgets, led = p.get('budgets') or {}, a.get('ledger') or {}
-    c['fallbackable'] = True
-    if not budgets:
         return 'no readable usage window and no budget: used only as a fallback'
-    over = [k for k, have in (('tokens_per_day', led.get('tokens_today', 0)),
-                              ('cost_per_day', led.get('cost_today', 0)),
-                              ('concurrency', led.get('running', 0)))
-            if k in budgets and have >= budgets[k]]
+    # budgets are enforced whenever set, a window or not (ADR-0041 §3)
+    why = _budgets(budgets, a)
+    if why is not None:
+        c['fallbackable'] = True
+    return why
+
+
+#: each budget's figure in the ledger the snapshot carries
+_LEDGER = {'tokens_per_day': 'tokens_today', 'cost_per_day': 'cost_today',
+           'concurrency': 'running'}
+#: the usage measure each budget is evaluated on (ADR-0048 D-25.3): a budget on
+#: one the account's adapter does not declare is refused at write and
+#: unevaluable here; `concurrency` is Core's own count and needs none
+BUDGET_MEASURES = {'tokens_per_day': 'tokens', 'cost_per_day': 'cost', 'concurrency': None}
+
+
+def _budgets(budgets, a):
+    """Why a budget stops the account, or None (ADR-0048 §3). Reached when the
+    known amount reaches it; otherwise unevaluable when its measure is one the
+    account does not report or its ledger is incomplete: unknown is never 0.
+    `concurrency` is Core's own count, never unknown."""
+    led, done = a['ledger'], a['ledger'].get('complete') or {}
+    declared = a.get('usage_measures')      # None: a snapshot recorded before AP-1
+    over, unknown = [], []
+    for k in sorted(budgets):
+        if led[_LEDGER[k]] >= budgets[k]:
+            over.append(k)
+            continue
+        m = BUDGET_MEASURES[k]
+        if m is not None and (not done.get(m, True)
+                              or (declared is not None and m not in declared)):
+            unknown.append(k)
     if over:
         return 'budget reached: %s' % ', '.join(over)
-    c['fallbackable'] = False
+    if unknown:
+        return ('budget %s cannot be evaluated: usage partly unreported'
+                % ', '.join(unknown))
     return None
 
 
@@ -328,7 +376,7 @@ def route(req, snap):
     candidate with the step that stopped it."""
     cands = candidates(snap)
     live = list(cands)
-    for step in STEPS[:-1]:
+    for step in STEPS[:STEPS.index('partition')]:
         keep = []
         for c in live:
             why = _STEP[step](c, req, snap)
@@ -337,7 +385,18 @@ def route(req, snap):
             else:
                 c['eliminated_at_step'], c['reason'] = step, why
         live = keep
-    ordered = sorted(live, key=lambda c: order_key(c, req, snap))
+    # protection before any ordering key (ADR-0041 §1): affinity, preference and
+    # priority never reach a last-resort account while a normal one survives
+    normal = [c for c in live if not _last_resort(c, req)]
+    for c in live:
+        if _last_resort(c, req):
+            c['eliminated_at_step'] = 'partition'
+            if normal:
+                c['reason'] = 'a last-resort account, not used while a normal one can run'
+            else:
+                c['fallbackable'] = True
+                c['reason'] = 'a last-resort account, used only as a fallback'
+    ordered = sorted(normal, key=lambda c: order_key(c, req, snap))
     result, win, why = 'selected', None, None
     if ordered:
         win = ordered[0]
@@ -345,7 +404,9 @@ def route(req, snap):
         for c in ordered[1:]:
             c['eliminated_at_step'], c['reason'] = 'election', 'ranked below %s' % win['resource']
     else:
-        fb = sorted((c for c in cands if c['fallbackable']), key=lambda c: order_key(c, req, snap))
+        # the partition holds among fallbacks too: a normal account first
+        fb = sorted((c for c in cands if c['fallbackable']),
+                    key=lambda c: (_last_resort(c, req), order_key(c, req, snap)))
         approved = set(snap.get('approved_fallbacks') or ())
         pick = (next((c for c in fb if _key(c) in approved), None)
                 or next((c for c in fb if c['fallback'] == 'allow'), None))

@@ -87,7 +87,14 @@ class ClaudeCodeAdapter:
         return base.Capabilities(
             frozenset({'code_edit', 'shell', 'web', 'headless', 'interactive', 'resume',
                        'structured_output'}), 'hook', claude_models(),
-            structured_output='native', efforts=('low', 'medium', 'high'))
+            structured_output='native', efforts=('low', 'medium', 'high'),
+            usage_measures=frozenset({'tokens'}))
+
+    def default_account(self):
+        """The active Claude config dir, fixed (ADR-0048 D-25.1), with its home,
+        so a task's process runs on it rather than on whatever Core inherited."""
+        from claude_sessions import config
+        return base.default_ref(self.id, config.resolve_config_dir(None))
 
     def authenticate(self, account):
         from claude_sessions import usage
@@ -194,7 +201,7 @@ class ClaudeCodeAdapter:
             'ok' if st.exit_code == 0 and not last.get('is_error') else 'error')
         return base.ExecutionResult(
             exit_reason=reason, exit_code=st.exit_code, reported_summary=last.get('summary', ''),
-            usage=last.get('usage') or {}, session_ref=session,
+            usage=last.get('usage') or {}, usage_total=bool(results), session_ref=session,
             transcript_path=os.path.join(handle.exec_dir, 'stream.jsonl'), failure=failure,
             halted=halted, adapter_state={'session': session} if session else None)
 

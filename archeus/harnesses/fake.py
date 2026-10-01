@@ -42,11 +42,13 @@ class FakeHarness:
 
     def __init__(self, id=None, *, capabilities=('code_edit', 'shell', 'structured_output',
                                                   'headless', 'resume'),
-                 models=(FAKE_MODEL,), enforcement='hook', efforts=()):
+                 models=(FAKE_MODEL,), enforcement='hook', efforts=(),
+                 usage_measures=('tokens',)):
         if id is not None:
             self.id = id
         self._caps, self._models = frozenset(capabilities), tuple(models)
         self._enforcement, self._efforts = enforcement, tuple(efforts)
+        self._measures = frozenset(usage_measures)
         self._children = {}     # execution_id -> Popen, for exit codes of what we started
         self._stopped = set()
 
@@ -55,7 +57,10 @@ class FakeHarness:
 
     def capabilities(self, account):
         return base.Capabilities(self._caps, self._enforcement, self._models,
-                                 efforts=self._efforts)
+                                 efforts=self._efforts, usage_measures=self._measures)
+
+    def default_account(self):
+        return base.AccountRef('fake:%s' % self.id)
 
     def authenticate(self, account):
         return base.AuthStatus(True, 'fake accounts need no login')
@@ -155,7 +160,7 @@ class FakeHarness:
         return base.ExecutionResult(
             exit_reason=reason, exit_code=st.exit_code,
             reported_summary=results[-1].get('summary', '') if results else '',
-            usage=usage[-1] if usage else {},
+            usage=usage[-1] if usage else {}, usage_total=bool(results),
             transcript_path=os.path.join(handle.exec_dir, 'stream.jsonl'),
             failure=failure, halted=halted,
             adapter_state={'step': halt['at']} if halt is not None else None)
@@ -174,10 +179,12 @@ class FakeCaller:
     `sent` records every (spec, effective prompt) it was given."""
 
     def __init__(self, id='fake', *, headless=True, structured='native', installed=True,
-                 replies=None, models=(FAKE_MODEL,), efforts=(), auth_ok=True):
+                 replies=None, models=(FAKE_MODEL,), efforts=(), auth_ok=True,
+                 usage_measures=('tokens',)):
         self.id, self.headless, self.structured = id, headless, structured
         self.installed, self.models = installed, tuple(models)
         self.efforts, self.auth_ok = tuple(efforts), auth_ok
+        self.usage_measures = frozenset(usage_measures)
         self._replies = {k: list(v) for k, v in (replies or {}).items()}
         self.sent = []
 
@@ -188,10 +195,13 @@ class FakeCaller:
         caps = {'headless', 'structured_output'} if self.headless else {'interactive'}
         return base.Capabilities(frozenset(caps), 'none', self.models,
                                  structured_output=self.structured if self.headless else None,
-                                 efforts=self.efforts)
+                                 efforts=self.efforts, usage_measures=self.usage_measures)
 
-    def account(self, *, rotation):
-        return base.AccountRef('fake:%s' % self.id), ''
+    def default_account(self):
+        return base.AccountRef('fake:%s' % self.id)
+
+    def why_not(self, account):
+        return ''
 
     def authenticate(self, account):
         return base.AuthStatus(self.auth_ok, 'scripted')

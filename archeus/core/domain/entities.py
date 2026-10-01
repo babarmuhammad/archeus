@@ -1284,19 +1284,21 @@ class Account(Entity):
     """An authenticated instance of a harness (domain-model §8.2): one config
     dir, one home, one API key. `node_id` None is the local node, the only one
     V1 has (ADR-0008). `home_ref` is opaque to Core except for display and for
-    the adapter that runs on it."""
+    the adapter that runs on it. `home_key` is its canonical form (ADR-0048
+    D-25.2): one registered account per home, and neither ever changes."""
     _ID = 'account'
     _STATE = ('health', 'account_health')
     _TEXT = ('harness_id', 'label')
     _CHOICES = {'auth_kind': AUTH_KINDS}
     _REFS = {'node_id': 'execution_node'}
-    _FROZEN = ('harness_id', 'auth_kind', 'node_id')
+    _FROZEN = ('harness_id', 'auth_kind', 'node_id', 'home_ref', 'home_key')
     id: str
     harness_id: str
     label: str
     auth_kind: str
     node_id: str = None
     home_ref: str = None
+    home_key: str = None
     # LIMITED until this instant (P11: a provider limit, state-machines §9)
     limited_until: str = None
     health: str = None
@@ -1329,6 +1331,8 @@ class ModelOffer(Entity):
 #: What a ResourcePolicy's `budgets` may hold (resource-router §4: the ledger
 #: governs an account with no readable window).
 BUDGET_KEYS = ('tokens_per_day', 'cost_per_day', 'concurrency')
+#: How an account may be consumed (ADR-0041 §1): protection before ordering.
+CONSUMPTION = ('normal', 'last_resort', 'explicit_only')
 
 
 @entity
@@ -1337,7 +1341,7 @@ class ResourcePolicy(Entity):
     is a CEILING on the provider-reported window, never a share Archeus must
     use (resource-router §4)."""
     _ID = 'resource_policy'
-    _CHOICES = {'fallback': ('allow', 'ask', 'deny')}
+    _CHOICES = {'fallback': ('allow', 'ask', 'deny'), 'consumption': CONSUMPTION}
     _REFS = {'account_id': 'account'}
     _NONNEG = ('allocation_pct', 'reserve_pct', 'brain_reserve_pct')
     _MIN1 = ('priority',)
@@ -1352,6 +1356,7 @@ class ResourcePolicy(Entity):
     budgets: dict = None
     project_allow: tuple = ()
     project_deny: tuple = ()
+    consumption: str = 'normal'
 
     def _check(self):
         if self.allocation_pct > 100:
@@ -1392,6 +1397,11 @@ class UsageSnapshot(Entity):
             raise ValueError('utilisation_pct must be a number >= 0')
 
 
+#: What a ledger row's figures are (ADR-0048 §3): the harness's own total for
+#: that consumer, a lower bound (it ended without its total), or nothing.
+LEDGER_BASIS = ('reported_total', 'partial', 'none')
+
+
 @entity
 class UsageLedger(Entity):
     """What Archeus itself consumed, attributable to the RouteDecision that
@@ -1402,23 +1412,31 @@ class UsageLedger(Entity):
     _ID = 'usage_ledger'
     _REFS = {'execution_id': 'execution', 'account_id': 'account',
              'route_decision_id': 'route_decision'}
-    _NONNEG = ('tokens_in', 'tokens_out', 'cache_read', 'cache_write')
+    _CHOICES = {'basis': LEDGER_BASIS}
+    _FIGURES = ('tokens_in', 'tokens_out', 'cache_read', 'cache_write')
     _FROZEN = FROZEN_ALL
     id: str
     execution_id: str = None
     route_decision_id: str = None
     account_id: str = None
     account_ref: str = None
-    tokens_in: int = 0
-    tokens_out: int = 0
-    cache_read: int = 0
-    cache_write: int = 0
+    # None: not reported, never 0 (ADR-0048 D-25.3)
+    tokens_in: int = None
+    tokens_out: int = None
+    cache_read: int = None
+    cache_write: int = None
     cost_usd: float = None
+    # a row written before the basis existed never said it was the total
+    basis: str = 'partial'
 
     def _check(self):
         if self.route_decision_id is None:
             raise ValueError('a usage row belongs to the route decision that chose where it '
                              'ran')
+        for f in self._FIGURES:
+            v = getattr(self, f)
+            if v is not None and not (isinstance(v, int) and not isinstance(v, bool) and v >= 0):
+                raise ValueError('UsageLedger.%s must be an integer >= 0 or None: %r' % (f, v))
 
 
 #: How a routing decision ended (resource-router §5, §7).

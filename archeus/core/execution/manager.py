@@ -166,6 +166,8 @@ class ExecutionManager:
             permitted = resources.terms_permit(r, adapter)
             t = rows.get(r, entities.Task, e.task_id).entity
             account = rows.get(r, entities.Account, e.account_id) if e.account_id else None
+            rd = (rows.get(r, entities.RouteDecision, e.route_decision_id)
+                  if account is None and e.route_decision_id else None)
         if not permitted:
             self._do(X.refuse, execution_id=e.id, reason='provider terms do not permit it',
                      stop_reason='binding')
@@ -186,7 +188,12 @@ class ExecutionManager:
             self._do(X.refuse, execution_id=e.id, reason='emergency stop: nothing starts',
                      stop_reason='disarmed')
             return True
-        home = account.entity.home_ref if account is not None else None
+        # a harness's default account runs on the home its decision recorded
+        # (ADR-0048 D-25.2), never on whatever Core's environment holds
+        accts = ((rd.entity.input_snapshot or {}).get('accounts') or ()) if rd else ()
+        home = account.entity.home_ref if account is not None else next(
+            (a.get('home_ref') for a in accts if a.get('id') is None
+             and a['harness'] == e.harness_id and a.get('ref') == rd.entity.account_ref), None)
         prompt, continuation = '%s\n\n%s\n' % (m.objective, t.title), 0
         if e.handoff_from is not None:
             # a continuation (p12-design-gate §10.1): the checkpoint of the
@@ -454,7 +461,10 @@ class ExecutionManager:
         if e.state in _ENDED:
             return
         facts = self._facts(e, p)
-        usage = dict(result.usage or {}) or p['usage']
+        # the adapter's figures are the harness's own total only when it says so;
+        # the last progress report is a lower bound (ADR-0048 §3)
+        usage, total = ((dict(result.usage), result.usage_total) if result.usage
+                        else (p['usage'], False))
         if e.state == 'RUNNING' and result.failure == 'limit' and e.account_id is not None:
             # a limit seen only at the exit (p12-design-gate §10.1): the account
             # is LIMITED and the work continues elsewhere, by hand-off
@@ -466,13 +476,13 @@ class ExecutionManager:
         if e.state == 'HANDING_OFF' and not clean:
             self._do(X.record_handoff, policy=self.policy, missions=self.missions,
                      router=self.router, execution_id=e.id, now=time.time(),
-                     exit_code=st.exit_code, usage=usage,
+                     exit_code=st.exit_code, usage=usage, usage_total=total,
                      adapter_state=result.adapter_state, final_offset=p['offset'],
                      facts=facts)
             return
         self._do(X.record_end, execution_id=e.id, exit_code=st.exit_code,
                  killed=result.exit_reason == 'killed', halted=result.halted,
-                 failure=result.failure, usage=usage,
+                 failure=result.failure, usage=usage, usage_total=total,
                  summary=result.reported_summary, adapter_state=result.adapter_state,
                  final_offset=p['offset'], output=p['offset'] > 0, facts=facts)
 

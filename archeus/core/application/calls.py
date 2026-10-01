@@ -15,10 +15,16 @@ from .queries import view
 
 #: How a call can end (the outcome's `state`).
 OUTCOMES = ('ok', 'gated', 'unavailable', 'model_unavailable', 'timeout', 'failed', 'invalid')
+#: the ends of a call that never reached an adapter's process (nothing consumed)
+NOT_RUN = ('gated', 'unavailable')
+#: the ends after which the adapter answered every attempt: its figures are its own total
+ANSWERED = ('ok', 'invalid')
 
 
 def end_call(tx, *, actor, route_decision_id, outcome, usage=None):
-    """Write the outcome (once) and, when the call ran, its usage row."""
+    """Write the outcome (once) and, when the call may have run, its usage
+    row — one even when nothing was reported (`basis: none`), so no
+    consumption hides behind a missing row (ADR-0048 D-25.3)."""
     row = tx.get(entities.RouteDecision, route_decision_id)
     if row is None:
         raise lifecycle.NotFound(route_decision_id)
@@ -28,14 +34,18 @@ def end_call(tx, *, actor, route_decision_id, outcome, usage=None):
         raise ValueError('an own call ends as one of %s' % (OUTCOMES,))
     tx.update(entities.RouteDecision, route_decision_id, {'outcome': dict(outcome)},
               actor=actor)
-    if usage is not None:
+    ran = usage is not None or outcome['state'] not in NOT_RUN
+    if ran and row.entity.subject.kind == 'archeus_call':
         u = {k: usage[k] for k in ('tokens_in', 'tokens_out', 'cache_read', 'cache_write',
-                                   'cost_usd') if usage.get(k) is not None}
+                                   'cost_usd') if (usage or {}).get(k) is not None}
+        basis = ('none' if not u else
+                 'reported_total' if outcome['state'] in ANSWERED else 'partial')
         tx.insert(entities.UsageLedger(id=ids.new_id('usage_ledger'),
                                        route_decision_id=route_decision_id,
                                        account_id=row.entity.account_id,
                                        account_ref=outcome.get('account_ref')
-                                       or row.entity.account_ref, **u), actor=actor)
+                                       or row.entity.account_ref, basis=basis, **u),
+                  actor=actor)
     rd = row.entity
     tx.append(new_event('archeus_call.ended', Ref('route_decision', route_decision_id), actor,
                         payload={'purpose': rd.purpose, 'outcome': dict(outcome),

@@ -77,12 +77,15 @@ class OwnCalls:
             req, snap, readings = resources.call_snapshot(
                 conn, callers=self.callers, feed=self.usage, preference=self.preference.get(),
                 purpose=purpose, schema=schema, project_id=project_id,
-                min_tier=CALL_TIERS.get(purpose), forbidden=forbidden)
-        d = R.route(req, snap)
-        rd = self._do(resources.record_call_route, purpose=purpose, source=dict(source),
-                      workspace_id=workspace_id, project_id=project_id, requirements=req,
-                      snapshot=snap, decision=d, readings=readings,
-                      context_package_id=context_package_id)['route_decision_id']
+                min_tier=CALL_TIERS.get(purpose), forbidden=forbidden,
+                max_run_s=ATTEMPTS * self.timeout_s)
+        # decided inside the transaction that records it, over fresh ledgers:
+        # two calls cannot both take an account's last slot (ADR-0048 D-25.4)
+        got = self._do(resources.record_call_route, purpose=purpose, source=dict(source),
+                       workspace_id=workspace_id, project_id=project_id, requirements=req,
+                       snapshot=snap, readings=readings,
+                       context_package_id=context_package_id)
+        rd, d, snap = got['route_decision_id'], got['decision'], got['snapshot']
         if d['result'] not in ('selected', 'fallback'):
             gated = d['result'] == 'blocked' and any(
                 c['eliminated_at_step'] == 'provider_terms' for c in d['candidates'])
@@ -90,10 +93,12 @@ class OwnCalls:
             # the reason of the candidate that got furthest: the most specific why-not
             far = max(d['candidates'], default=None,
                       key=lambda c: R.STEPS.index(c['eliminated_at_step']))
-            why = ('the only account left needs your approval, which an own call never asks'
-                   if d['result'] == 'ask' else far['reason'] if far is not None
-                   and far['eliminated_at_step'] in ('health', 'allocation')
-                   else 'no eligible harness')
+            # (AP-1: a protection or a full budget is named, so "why is my planner
+            # waiting" is answered from the record)
+            why = (far['reason'] if far is not None and far['eliminated_at_step'] in (
+                'restriction', 'health', 'allocation', 'partition') else 'no eligible harness')
+            if d['result'] == 'ask':
+                why = '%s; only your approval could use it, which an own call never asks' % why
             self._end(rd, state, reason=why)
             return Called(rd, state, None, None, why, 0, None)
         adapter = next(a for a in self.callers if a.id == d['harness_id'])
@@ -120,19 +125,31 @@ class OwnCalls:
                 res = adapter.call(spec)
             except Exception as e:          # an adapter bug is a failed call, never a crash
                 res = base.CallResult(error='failed', detail='%s: %s' % (type(e).__name__, e))
-            for k, v in (res.usage or {}).items():
-                usage[k] = usage.get(k, 0) + v if isinstance(v, (int, float)) else v
+            usage = _add(usage, res.usage or {}, first=attempt == 1)
             if res.error is not None:
-                self._end(rd, res.error, usage=usage or None, reason=res.detail,
+                # no binary: nothing ran, so there is nothing to ledger
+                self._end(rd, res.error, usage=None if res.error == 'unavailable' else usage,
+                          reason=res.detail,
                           attempts=attempt, account_ref=account.account_id)
                 return Called(rd, res.error, None, usage, res.detail, attempt, account.account_id)
             problems = _problems(res.parsed, schema, check)
             if not problems:
                 return Called(rd, 'ok', res.parsed, usage, '', attempt, account.account_id)
-        self._end(rd, 'invalid', usage=usage or None, reason='; '.join(problems[:5]),
+        self._end(rd, 'invalid', usage=usage, reason='; '.join(problems[:5]),
                   attempts=ATTEMPTS, account_ref=account.account_id)
         return Called(rd, 'invalid', None, usage, '; '.join(problems[:5]), ATTEMPTS,
                       account.account_id)
+
+
+def _add(have, got, *, first):
+    """The attempts' figures summed. A figure one attempt reported and another
+    did not is no longer a total, so it is dropped: unknown, never a part read
+    as the whole (ADR-0048 §3)."""
+    nums = {k: v for k, v in got.items()
+            if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    if first:
+        return nums
+    return {k: have[k] + nums[k] for k in set(have) & set(nums)}
 
 
 def _problems(parsed, schema, check):

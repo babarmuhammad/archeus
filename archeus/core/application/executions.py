@@ -212,7 +212,7 @@ def _end_payload(e):
 
 def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False, failure=None,
                usage=None, summary='', adapter_state=None, final_offset=None, output=True,
-               facts=None):
+               facts=None, usage_total=False):
     """A process of *execution_id* is gone. Which edge that is depends on the
     state it was observed in; a second report of the same end is an invalid
     transition (nothing changes). A vanished process is never success: without
@@ -240,7 +240,7 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
                   dict(fields, exit_reason='killed', exit_code=exit_code,
                        charged=e.stop_reason not in UNCHARGED, ended_at=_now_iso(),
                        hook_token_hash=None, **end))
-        return _ended(tx, actor, e, usage, facts)
+        return _ended(tx, actor, e, usage, facts, usage_total)
     if e.state == 'STARTING':
         if not output:
             return lost(tx, actor=actor, execution_id=e.id,
@@ -261,7 +261,7 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
               dict(fields, exit_reason='ok' if ok else 'error', exit_code=exit_code,
                    charged=not (uncharged or stop), stop_reason=stop or e.stop_reason,
                    ended_at=_now_iso(), hook_token_hash=None, **end))
-    return _ended(tx, actor, e, usage, facts)
+    return _ended(tx, actor, e, usage, facts, usage_total)
 
 
 def _finish(tx, actor, e, facts):
@@ -279,17 +279,27 @@ def _finish(tx, actor, e, facts):
     return e
 
 
-def _ledger(tx, actor, e, usage):
-    u = _usage(usage) or _usage(e.usage)
-    if u and e.route_decision_id is not None:
-        # attributable truth (P10): once per execution, against where it was routed
-        tx.insert(entities.UsageLedger(id=ids.new_id('usage_ledger'), execution_id=e.id,
-                                       route_decision_id=e.route_decision_id,
-                                       account_id=e.account_id, **u), actor=actor)
+def _ledger(tx, actor, e, usage, total=False):
+    """Attributable truth (P10): one row per execution that ran, against where
+    it was routed — also when it reported nothing (`basis: none`), so no
+    consumption hides behind a missing row (ADR-0048 D-25.3). `total` is the
+    adapter saying the figures are the harness's own total for the process; a
+    second process (a resume) or the last progress report is a lower bound."""
+    if e.route_decision_id is None or e.process_seq < 1:
+        return                      # never spawned: nothing was consumed
+    u = _usage(usage)
+    if not u:
+        u, total = _usage(e.usage), False
+    # ponytail: one row per execution, so a resumed one is only a lower bound;
+    # per-process rows would make it a total
+    basis = 'none' if not u else 'reported_total' if total and e.process_seq == 1 else 'partial'
+    tx.insert(entities.UsageLedger(id=ids.new_id('usage_ledger'), execution_id=e.id,
+                                   route_decision_id=e.route_decision_id,
+                                   account_id=e.account_id, basis=basis, **u), actor=actor)
 
 
-def _ended(tx, actor, e, usage, facts=None):
-    _ledger(tx, actor, e, usage)
+def _ended(tx, actor, e, usage, facts=None, usage_total=False):
+    _ledger(tx, actor, e, usage, usage_total)
     e = _finish(tx, actor, e, facts)
     _event(tx, 'execution.ended', e, actor, _end_payload(e))
     return _respond(tx, actor, e, 'execution %s ended (%s)' % (e.id, e.exit_reason))
@@ -498,7 +508,8 @@ def no_progress(tx, e, end_state):
 
 
 def record_handoff(tx, *, actor, policy, missions, router, execution_id, now, exit_code=None,
-                   usage=None, adapter_state=None, final_offset=None, facts=None):
+                   usage=None, adapter_state=None, final_offset=None, facts=None,
+                   usage_total=False):
     """The process of a HANDING_OFF execution is gone: in one transaction its
     checkpoint, HANDING_OFF -> ENDED_HANDOFF (uncharged), and the continuation
     (P9, P10, a new INTENT with `handoff_from`). The task and the mission do
@@ -518,7 +529,7 @@ def record_handoff(tx, *, actor, policy, missions, router, execution_id, now, ex
               {'exit_reason': 'handoff', 'exit_code': exit_code, 'charged': guarded is not None,
                'ended_at': _now_iso(), 'hook_token_hash': None, 'end_state_digest': end_state,
                'adapter_state': dict(adapter_state) if adapter_state else e.adapter_state})
-    _ledger(tx, actor, e, usage)
+    _ledger(tx, actor, e, usage, usage_total)
     e = _finish(tx, actor, e, dict(facts or {}, context_insufficient=guarded) if guarded
                 else facts)
     _event(tx, 'execution.ended', e, actor, _end_payload(e))

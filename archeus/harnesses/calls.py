@@ -24,13 +24,16 @@ _MODEL_WHY = re.compile(r'not found|does not exist|invalid|ambiguous|unknown|not
 
 
 def _usage(envelope):
+    """The figures the envelope reports; an absent one is absent, never 0
+    (ADR-0048 D-25.3)."""
     u = envelope.get('usage') if isinstance(envelope, dict) else None
     if not isinstance(u, dict):
         return {}
-    n = lambda k: u.get(k) if isinstance(u.get(k), int) else 0  # noqa: E731
-    return {'tokens_in': n('input_tokens'), 'tokens_out': n('output_tokens'),
-            'cache_read': n('cache_read_input_tokens'),
-            'cache_write': n('cache_creation_input_tokens')}
+    names = {'input_tokens': 'tokens_in', 'output_tokens': 'tokens_out',
+             'cache_read_input_tokens': 'cache_read',
+             'cache_creation_input_tokens': 'cache_write'}
+    return {ours: u[theirs] for theirs, ours in names.items()
+            if isinstance(u.get(theirs), int) and not isinstance(u.get(theirs), bool)}
 
 
 def _failed(r):
@@ -57,9 +60,12 @@ class ClaudeCodeCaller:
         return base.HarnessInfo(self.id, bool(exe), None, exe)
 
     def capabilities(self, account=None):
+        # a cost figure is reported, but what it means differs by auth kind, so
+        # no cost is declared and a cost budget is refused (ADR-0048 §3)
         return base.Capabilities(
             frozenset({'headless', 'structured_output', 'interactive', 'resume', 'code_edit',
-                       'shell'}), 'hook', claude_models(), structured_output='native')
+                       'shell'}), 'hook', claude_models(), structured_output='native',
+            usage_measures=frozenset({'tokens'}))
 
     def authenticate(self, account):
         """Cheap, no inference: the home holds a Claude login."""
@@ -67,13 +73,15 @@ class ClaudeCodeCaller:
         ok = bool(usage._creds(account.home_ref))
         return base.AuthStatus(ok, '' if ok else 'no Claude login in %s' % account.home_ref)
 
-    def account(self, *, rotation):
-        """(AccountRef, why-not): legacy `rotate.elect()` when rotation across
-        subscriptions is permitted (ADR-0021), else the active account; and
-        `quota.reason()`, non-empty when that account cannot be spent."""
-        from claude_sessions import quota, rotate
-        cfg = rotate.elect() if rotation else config.resolve_config_dir(None)
-        return base.AccountRef('claude_code:%s' % cfg, cfg), quota.reason(cfg)
+    def default_account(self):
+        """The active Claude config dir, fixed: no election here, because choosing
+        among accounts is the router's, over registered ones (ADR-0048 D-25.1)."""
+        return base.default_ref(self.id, config.resolve_config_dir(None))
+
+    def why_not(self, account):
+        """`quota.reason()`: non-empty when that account cannot be spent."""
+        from claude_sessions import quota
+        return quota.reason(account.home_ref)
 
     def call(self, spec):
         exe = self.discover().executable
@@ -122,10 +130,12 @@ class PiCaller:
         ok = bool(account.home_ref) and os.path.isdir(account.home_ref)
         return base.AuthStatus(ok, '' if ok else 'no pi home at %s' % account.home_ref)
 
-    def account(self, *, rotation):
+    def default_account(self):
         from claude_sessions import harnesses
-        home = harnesses.home_dir('pi')
-        return base.AccountRef('pi:%s' % home, home), ''
+        return base.default_ref(self.id, harnesses.home_dir('pi'))
+
+    def why_not(self, account):
+        return ''
 
     def call(self, spec):
         exe = self.discover().executable

@@ -205,7 +205,8 @@ registered account offers exactly one candidate, its adapter's fixed `default_ac
 never rotated and is not offered once the harness has a registered account. Every candidate is
 named by its **account key** — a registered `Account.id`, or the adapter's
 `<harness_id>:<canonical home>` for the default — in requirements, snapshots, decisions, the
-ledger and the review's `forbidden`.
+ledger and the review's `forbidden`. *As built (AP-1):* the partition is the router step
+`partition`, between `allocation` and `election`; ADR-0048 "As built" has the detail.
 
 **As built (C-22, 2026-10-01):** an offer is the account's. Each account in the snapshot
 carries its own `models`, from its adapter asked for that account (a pi home's own

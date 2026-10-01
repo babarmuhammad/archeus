@@ -85,8 +85,8 @@ MUTATIONS = [
       I + '::test_I_R2_the_probe_decides_health_and_only_available_accounts_are_routed']),
     # ── allocation ──
     ('R12', 'the allocation ceiling ignored', RT,
-     "        if w + bump < cap:\n            return None\n",
-     "        if True:\n            return None\n",
+     "        if w + bump >= cap:\n            c['fallbackable'] = True\n",
+     "        if False:\n            c['fallbackable'] = True\n",
      [U + '::test_a_task_starts_only_under_the_ceiling_minus_the_projected_bump',
       S4 + '::test_no_execution_starts_on_an_account_at_its_ceiling']),
     ('R13', 'the brain reserve not kept from tasks', RT,
@@ -190,8 +190,8 @@ MUTATIONS = [
      [B + '::test_B10_a_router_decision_is_frozen_but_for_an_own_calls_outcome']),
     # P11 moved the ledger write into the execution's end (executions._ended)
     ('R33', 'an execution\'s usage not ledgered against its decision', EXE,
-     "    if u and e.route_decision_id is not None:",
-     "    if False:",
+     "    if e.route_decision_id is None or e.process_seq < 1:\n        return",
+     "    if True:\n        return",
      [I + '::test_I_U1_an_executions_usage_points_at_its_route_decision_and_counts_for_budgets']),
     ('R34', 'an own call run on a different account than decided', CALLS,
      "        account = base.AccountRef(d['account_id'] or d['account_ref'], acct.get('home_ref'))",

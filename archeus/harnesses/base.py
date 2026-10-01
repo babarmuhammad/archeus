@@ -35,6 +35,20 @@ class AccountRef:
     home_ref: Optional[str] = None      # harness home dir; opaque to Core
 
 
+def canonical_home(home):
+    """The canonical form of a home path (ADR-0048 D-25.2): absolute, and
+    case-folded where the filesystem is. One real home, one key."""
+    return os.path.normcase(os.path.abspath(os.path.expanduser(home)))
+
+
+def default_ref(harness_id, home):
+    """A harness's default account (ADR-0048 D-25.1): keyed `<harness>:<canonical
+    home>`, the key policy, ledger and provenance name it by; its `home_ref`
+    stays the real path, so the process runs exactly where it always did."""
+    return AccountRef('%s:%s' % (harness_id, canonical_home(home)),
+                      os.path.abspath(os.path.expanduser(home)))
+
+
 @dataclass(frozen=True)
 class HarnessInfo:
     id: str
@@ -66,6 +80,9 @@ class Capabilities:
     # why `models` is empty when the adapter could not find out what this
     # account can run (C-22): a failed discovery offers nothing, and says so
     models_note: Optional[str] = None
+    # the usage measures this account's figures report as the provider's own
+    # (ADR-0048 D-25.3): ⊆ {tokens, cost}; a budget on any other is refused
+    usage_measures: frozenset = frozenset()
 
 
 @dataclass(frozen=True)
@@ -172,6 +189,9 @@ class ExecutionResult:
     exit_code: Optional[int] = None
     reported_summary: str = ''
     usage: Mapping = field(default_factory=dict)
+    # True: `usage` is the harness's own total for this process (ADR-0048 §3);
+    # otherwise it is at most a lower bound
+    usage_total: bool = False
     session_ref: Optional[str] = None
     transcript_path: Optional[str] = None
     files_changed: Optional[tuple] = None
@@ -189,6 +209,9 @@ class HarnessAdapter(Protocol):
 
     def discover(self) -> HarnessInfo: ...
     def capabilities(self, account: AccountRef) -> Capabilities: ...
+    # the one account the harness offers when none is registered (ADR-0048
+    # D-25.1): fixed, never elected among others — choosing is the router's
+    def default_account(self) -> AccountRef: ...
     def authenticate(self, account: AccountRef) -> AuthStatus: ...
     def start(self, spec: ExecutionSpec) -> ProcessHandle: ...
     def send(self, handle: ProcessHandle, message: str) -> None: ...

@@ -1320,7 +1320,8 @@ AP-1 removes every election outside the router, gives each real account one key,
 measures in the adapter capabilities with budgets failing closed on unknown usage, counts own
 calls in flight toward `concurrency`, and governs V1 Core only — the legacy app keeps its own
 rotation and own calls until each project's P25.5 cutover and, account-wide, until retirement.
-Its exact scope and gates are ADR-0048 §5 and §8.
+Its exact scope and gates are ADR-0048 §5 and §8. *Built* in the AP-1 slice (ADR-0048 "As
+built"); `rotation` stays unpermitted until the user's ADR-0021 answer.
 
 **Deferred past V1:** remote execution nodes, pi/generic-CLI adapters, 3D spatial mode, Web
 Push, FTS5, vector search, EMA reinforcement and contradiction edges, Archeus-as-MCP-server,

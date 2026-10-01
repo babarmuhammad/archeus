@@ -572,12 +572,16 @@ def test_E33_usage_is_the_providers_cumulative_figure_ledgered_once_at_the_end(x
         30, 7, acc, x.state(e.id).route_decision_id)
 
 
-def test_E34_unknown_usage_writes_no_ledger_row(x):
+def test_E34_unknown_usage_writes_a_row_that_says_so_never_zero(x):
+    """ADR-0048 D-25.3 (amends P11's "no row"): an execution that ran and
+    reported nothing leaves a row with no figures and `basis: none`, so no
+    consumption hides behind a missing row."""
     x.scenarios['t1'] = [DONE]
     mid = x.ready(task('t1', 'write_repo'))
     e = x.drive(mid, lambda: x.exe(mission_id=mid))
     x.drive(mid, ended(x, e.id))
-    assert x.all(entities.UsageLedger, execution_id=e.id) == []
+    (row,) = x.all(entities.UsageLedger, execution_id=e.id)
+    assert (row.basis, row.tokens_in, row.tokens_out, row.cost_usd) == ('none', None, None, None)
     assert x.state(e.id).usage is None
 
 

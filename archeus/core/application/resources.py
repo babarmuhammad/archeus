@@ -27,7 +27,7 @@ from .queries import view
 REGISTER_DEFAULTS = {'allocation_pct': 80, 'reserve_pct': 10, 'brain_reserve_pct': 10,
                      'fallback': 'ask'}
 POLICY_FIELDS = ('priority', 'allocation_pct', 'reserve_pct', 'brain_reserve_pct', 'fallback',
-                 'budgets', 'project_allow', 'project_deny')
+                 'budgets', 'project_allow', 'project_deny', 'consumption')
 #: How long a fallback question waits for its answer (as a task approval does).
 ROUTE_TTL = timedelta(hours=24)
 _LIVE_EXEC = tuple(s for s in states.states('execution') if s not in states.terminal('execution'))
@@ -59,9 +59,18 @@ def register_account(tx, *, actor, harness_id, label, auth_kind, home_ref=None, 
     registration order); `auth` is the adapter's probe, made before this
     command by the caller ({'ok', 'detail'}, or None when no adapter can
     probe it: it stays UNVERIFIED and is not routed to)."""
+    from ...harnesses.base import canonical_home
     _user(actor, 'registers an account')
+    key = canonical_home(home_ref) if home_ref else None
+    if key is not None:
+        for r in rows.where(tx.conn, entities.Account, harness_id=harness_id):
+            o = r.entity
+            if o.node_id is None and (o.home_key or (o.home_ref and canonical_home(o.home_ref))
+                                      ) == key:
+                raise ValueError('that home is already registered as account %s: one home, '
+                                 'one account (ADR-0048)' % o.id)
     a = entities.Account(id=ids.new_id('account'), harness_id=harness_id, label=label,
-                         auth_kind=auth_kind, home_ref=home_ref)
+                         auth_kind=auth_kind, home_ref=home_ref, home_key=key)
     tx.insert(a, actor=actor)
     tx.append(new_event('account.registered', Ref('account', a.id), actor,
                         payload={'harness_id': harness_id, 'label': label,
@@ -90,15 +99,25 @@ def set_account_enabled(tx, *, actor, account_id, enabled, auth=None):
     return account_view(tx.conn, lifecycle.load(tx, entities.Account, account_id))
 
 
-def set_resource_policy(tx, *, actor, account_id, expected_version=None, **fields):
-    """Change an account's priority, allocation, reserves, fallback, budgets or
-    project restrictions. A ceiling, never a quota Archeus must spend."""
+def set_resource_policy(tx, *, actor, account_id, expected_version=None, usage_measures=None,
+                        **fields):
+    """Change an account's priority, allocation, reserves, fallback, budgets,
+    project restrictions or consumption class. A ceiling, never a quota Archeus
+    must spend. `usage_measures` is what the account's adapter declares it
+    reports (the caller asks the adapter, outside the transaction): a budget on
+    any other measure is refused, so it is never evaluated against a number
+    nobody reports (ADR-0041 §3, ADR-0048 D-25.3)."""
     _user(actor, 'changes a resource policy')
     lifecycle.load(tx, entities.Account, account_id)
     (row,) = tx.where(entities.ResourcePolicy, account_id=account_id)
     got = {k: v for k, v in fields.items() if k in POLICY_FIELDS and v is not None}
     if set(fields) - set(POLICY_FIELDS):
         raise ValueError('a resource policy has only %s' % (POLICY_FIELDS,))
+    for k in sorted(got.get('budgets') or {}):
+        m = R.BUDGET_MEASURES.get(k)
+        if m is not None and m not in (usage_measures or ()):
+            raise ValueError('a %s budget needs the %s measure, which this account does not '
+                             'report: it would be evaluated against a missing number' % (k, m))
     entities.ResourcePolicy(**dict(row.entity.to_dict(), **got))            # validate
     out = tx.update(entities.ResourcePolicy, row.entity.id, got, actor=actor,
                     expected_version=expected_version)
@@ -161,17 +180,58 @@ def observe(tx, *, actor, readings):
                                 visibility='system'))
 
 
-def ledger_totals(conn, account_id, today):
+def own_call_live(row, now):
+    """An own call (its RouteDecision row) is in flight from its decision's
+    commit until its outcome, within its maximum run (ADR-0043 §1, ADR-0048
+    D-25.4): a Core that died mid-call cannot hold a slot for ever."""
+    rd = row.entity
+    if rd.outcome is not None or rd.result not in ('selected', 'fallback'):
+        return False
+    bound = (rd.requirements or {}).get('max_run_s')
+    return bound is None or now - _epoch(row.created_at) <= bound
+
+
+def ledger_totals(conn, account_id, today, now=None):
     """What Archeus consumed on *account_id* since *today* (an ISO date), and
-    how many of its executions are live (the budget path, §4)."""
+    its live work (the budget path, §4).
+
+    `tokens_today` / `cost_today` sum only what was reported and are a lower
+    bound unless `complete` says so: a row that is not the harness's own
+    total, a figure not reported, or an own call that ended with no outcome
+    makes its measure incomplete — unknown is never 0 (ADR-0048 §3). `running`
+    is the account's live work: live executions and own calls in flight."""
+    now = time.time() if now is None else now
     tokens = cost = 0
+    complete = {'tokens': True, 'cost': True}
     for r in rows.where(conn, entities.UsageLedger, account_id=account_id):
-        if r.created_at >= today:
-            tokens += r.entity.tokens_in + r.entity.tokens_out
-            cost += r.entity.cost_usd or 0
+        if r.created_at < today:
+            continue
+        e = r.entity
+        whole = e.basis == 'reported_total'
+        for v in (e.tokens_in, e.tokens_out):
+            tokens += v or 0
+        complete['tokens'] &= whole and None not in (e.tokens_in, e.tokens_out)
+        cost += e.cost_usd or 0
+        complete['cost'] &= whole and e.cost_usd is not None
     running = sum(1 for r in rows.where(conn, entities.Execution)
                   if r.entity.account_id == account_id and r.entity.state in _LIVE_EXEC)
-    return {'tokens_today': tokens, 'cost_today': round(cost, 6), 'running': running}
+    # ponytail: a day's decisions by a scan of created_at; an indexed account
+    # column when the decision history makes that scan matter
+    since = _iso(now - 86400)
+    for rec in conn.execute('SELECT * FROM route_decisions WHERE created_at >= ? '
+                            'ORDER BY rowid', (since,)):
+        r = rows.decode(entities.RouteDecision, rec)
+        rd = r.entity
+        if rd.account_id != account_id or rd.subject.kind != 'archeus_call':
+            continue
+        if own_call_live(r, now):
+            running += 1
+        elif rd.outcome is None and rd.result in ('selected', 'fallback') \
+                and r.created_at >= today:
+            # it may have run and will never write its row
+            complete = {'tokens': False, 'cost': False}
+    return {'tokens_today': tokens, 'cost_today': round(cost, 6), 'running': running,
+            'complete': complete}
 
 
 # ── the snapshot (resource-router §5: everything a decision is made from) ──
@@ -221,8 +281,10 @@ def _account_offers(accounts, adapters, hs):
                                               e['home_ref']))
         except Exception as err:            # an adapter bug offers nothing
             e['models'], e['models_note'] = [], '%s: %s' % (type(err).__name__, err)
+            e['usage_measures'] = []
             continue
         e['models'], e['models_note'] = _models(caps), caps.models_note
+        e['usage_measures'] = sorted(caps.usage_measures)
 
 
 def _registered(conn, harness_ids, feed, now):
@@ -252,16 +314,28 @@ def _registered(conn, harness_ids, feed, now):
                         'budgets': dict(p.budgets or {}),
                         'project_allow': list(p.project_allow),
                         'project_deny': list(p.project_deny)},
-                    'usage': usage, 'ledger': ledger_totals(conn, a.id, today)})
+                    'usage': usage, 'ledger': ledger_totals(conn, a.id, today, now)})
     return out, readings
 
 
+def refresh_ledgers(conn, snap, now):
+    """*snap* with every registered account's ledger read again from *conn*:
+    an own call's snapshot is gathered outside the writer, so its decision is
+    taken again inside the transaction that records it, where no other
+    decision can interleave (a concurrency slot is never granted twice)."""
+    today = _iso(now)[:10]
+    accts = [dict(a, ledger=ledger_totals(conn, a['id'], today, now)) if a.get('registered')
+             else a for a in snap['accounts']]
+    return dict(snap, accounts=accts)
+
+
 def call_snapshot(conn, *, callers, feed, preference, purpose, schema, project_id, min_tier,
-                  now=None, forbidden=None):
+                  now=None, forbidden=None, max_run_s=None):
     """(requirements, snapshot, readings) for one of Archeus's own calls
     (ADR-0022): every own-call adapter; a harness with no registered account
-    offers its own, as its adapter names it (P6), with the adapter's reason
-    when it cannot be spent."""
+    offers its one fixed default account (ADR-0048 D-25.1), with the adapter's
+    reason when it cannot be spent. `max_run_s` bounds how long the call
+    counts as live work."""
     from ...harnesses.fake import is_fake_caller
     now = time.time() if now is None else now
     terms = _terms(conn)
@@ -271,8 +345,8 @@ def call_snapshot(conn, *, callers, feed, preference, purpose, schema, project_i
     for a, h in zip(sorted(callers, key=lambda a: a.id), hs):
         if h['installed'] and 'headless' in h['capabilities'] and a.id not in have:
             try:
-                ref, why = a.account(rotation=(terms.get(a.id) or {}).get('rotation')
-                                     == 'permitted')
+                ref = a.default_account()
+                why = a.why_not(ref)
             except Exception as e:          # an adapter bug is an unusable account
                 ref, why = None, '%s: %s' % (type(e).__name__, e)
             accounts.append({'id': None, 'ref': ref and ref.account_id,
@@ -290,7 +364,7 @@ def call_snapshot(conn, *, callers, feed, preference, purpose, schema, project_i
            'preferred': {'harnesses': [preference.harness] if preference.harness else [],
                          'accounts': []},
            'forbidden': {k: sorted(v) for k, v in (forbidden or {}).items() if v},
-           'required': {}, 'size': None, 'policy': None}
+           'required': {}, 'size': None, 'policy': None, 'max_run_s': max_run_s}
     snap = {'now': _iso(now), 'harnesses': hs, 'accounts': accounts, 'terms': terms,
             'affinity': None, 'approved_fallbacks': []}
     return req, snap, readings
@@ -352,11 +426,17 @@ def task_snapshot(conn, *, adapters, feed, mission, plan, task, decision, now):
     hs = [harness_view(a, _is_fake(a)) for a in sorted(adapters, key=lambda a: a.id)]
     accounts, readings = _registered(conn, {h['id'] for h in hs}, feed, now)
     have = {a['harness'] for a in accounts}
+    by = {a.id: a for a in adapters}
     for h in hs:
         if h['installed'] and h['id'] not in have:
-            accounts.append({'id': None, 'ref': '%s:default' % h['id'], 'home_ref': None,
+            try:
+                ref, why = by[h['id']].default_account(), None
+            except Exception as e:          # an adapter bug is an unusable account
+                ref, why = None, '%s: %s' % (type(e).__name__, e)
+            accounts.append({'id': None, 'ref': ref and ref.account_id,
+                             'home_ref': ref and ref.home_ref,
                              'harness': h['id'], 'label': h['id'], 'auth_kind': None,
-                             'registered': False, 'health': None, 'why_not': None,
+                             'registered': False, 'health': None, 'why_not': why,
                              'policy': None, 'usage': None, 'ledger': None})
     _account_offers(accounts, adapters, hs)
     req = {'subject': 'task', 'purpose': None, 'mission_id': mission.id, 'task_id': task.id,
@@ -410,14 +490,17 @@ def record_route(tx, *, actor, subject, requirements, snapshot, decision, readin
 
 
 def record_call_route(tx, *, actor, purpose, source, workspace_id, project_id, requirements,
-                      snapshot, decision, readings=None, context_package_id=None):
-    """An own call's decision, committed before anything runs (P6's INTENT rule)."""
+                      snapshot, readings=None, context_package_id=None, now=None):
+    """An own call's decision, taken and committed before anything runs (P6's
+    INTENT rule), inside this transaction over freshly read ledgers."""
+    snapshot = refresh_ledgers(tx.conn, snapshot, time.time() if now is None else now)
+    decision = R.route(requirements, snapshot)
     row = record_route(tx, actor=actor, subject=Ref('archeus_call', purpose),
                        requirements=requirements, snapshot=snapshot, decision=decision,
                        readings=readings, source=Ref(**source), purpose=purpose,
                        workspace_id=workspace_id, project_id=project_id,
                        context_package_id=context_package_id)
-    return {'route_decision_id': row.entity.id}
+    return {'route_decision_id': row.entity.id, 'decision': decision, 'snapshot': snapshot}
 
 
 def replay(route_decision):
@@ -529,6 +612,18 @@ class Resources:
                     return {'ok': False, 'detail': '%s: %s' % (type(e).__name__, e)}
                 return {'ok': bool(st.ok), 'detail': st.detail or ''}
         return None
+
+    def usage_measures(self, harness_id, home_ref=None):
+        """What the first adapter of *harness_id* declares it reports for that
+        account (ADR-0048 D-25.3), or () when none can tell."""
+        from ...harnesses import base
+        for a in self._adapters(harness_id):
+            try:
+                return tuple(sorted(a.capabilities(
+                    base.AccountRef(harness_id, home_ref)).usage_measures))
+            except Exception:               # an adapter bug declares nothing
+                return ()
+        return ()
 
     def harnesses(self):
         from ...harnesses.fake import is_fake_caller

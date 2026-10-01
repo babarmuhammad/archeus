@@ -219,8 +219,8 @@ def test_l13_claude_code_calls_read_only_ephemeral_and_native(monkeypatch, tmp_p
     assert stdin.endswith(HEADLESS_MARK)
     assert os.path.normcase(kw['env']['CLAUDE_CONFIG_DIR']) == os.path.normcase(str(tmp_path))
     assert (got.error, got.parsed) == (None, {'decisions': []})
-    assert got.usage == {'tokens_in': 7, 'tokens_out': 3, 'cache_read': 0, 'cache_write': 0,
-                         'cost_usd': 0.01}
+    # a figure the envelope does not report is absent, never 0 (ADR-0048 D-25.3)
+    assert got.usage == {'tokens_in': 7, 'tokens_out': 3, 'cost_usd': 0.01}
 
 
 def test_l14_pi_calls_with_its_own_flags_vocabulary_and_home(monkeypatch, tmp_path):
@@ -234,8 +234,9 @@ def test_l14_pi_calls_with_its_own_flags_vocabulary_and_home(monkeypatch, tmp_pa
     real_home = harnesses.home_dir
     monkeypatch.setattr(harnesses, 'home_dir',
                         lambda hid=None: home if hid == 'pi' else real_home(hid))
-    account, why_not = real.PiCaller().account(rotation=False)
-    assert (account.home_ref, why_not) == (home, '')
+    account = real.PiCaller().default_account()
+    assert (account.home_ref, real.PiCaller().why_not(account)) == (home, '')
+    assert account.account_id == 'pi:%s' % base.canonical_home(home)
     spec = base.CallSpec(**dict(_spec(model='spark/qwen3.8').__dict__, account=account))
     got = real.PiCaller().call(spec)
     (cmd, stdin, kw), = run.seen
