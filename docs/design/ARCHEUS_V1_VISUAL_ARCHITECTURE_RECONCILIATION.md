@@ -423,12 +423,12 @@ One scroll away: upcoming, decisions, conversation history.
 | groups by what it waits on | G | BUILT | — | — |
 | live row: halo, pulse, chip, fraction, resource line | F | **PRESERVED** | frames ✓ | P19.5 |
 | thread rule on changed rows | D | **PRESERVED** | digest ✓ | P19.5 |
-| pins (sidebar pinned missions) | D | **PRESERVED** (local preference, never sent) | none | P19.5 |
+| pins | D | **ADAPTED (D-9, §46.1)**: a Pinned group at the top of Work at every width, not the sidebar (local preference, never sent) | none | P19.5 |
 | context menu (desktop, same actions as visible buttons; Shift+F10) | D | **PRESERVED** | none | P19.5 |
-| drag-to-reprioritise (+ Alt+↑/↓) | D | **PRESERVED** | **Core**: set mission priority + router reads it (Q-B4) | Core first, then P19.5 |
+| reprioritise | D | **ADAPTED (D-14, §46.1)**: an absolute "Priority N" set by Core's one command; drag and Alt+↑/↓ are a recorded deviation, waiting for a later Core reorder verb | **Core**: set mission priority (built, `cde51b3`) | P19.5 (R10b) |
 | Pause all | D | **PRESERVED** | **Core**: bulk pause verb; e-stop is kill + BLOCKED, not pause (Q-B3) | Core first, then P19.5 |
 | approval / verification inline state | G | BUILT | — | — |
-| ideas stepper (CAPTURED → UNDERSTOOD → … → LEARNED, states exist in `states.py:53-73`) | D | **PRESERVED** | ✓ | P19.5 |
+| ideas stepper (CAPTURED → UNDERSTOOD → … → LEARNED, states exist in `states.py:53-73`) | D | **ADAPTED (D-11, §46.1)**: read-only — no transition API | ✓ | P19.5 |
 | operational density | F | §7.2 | — | P19.5 |
 
 ---
@@ -538,7 +538,8 @@ already own the mechanics.
 
 The web UI keeps its command bar (BUILT) and becomes a real **palette**: arrow-key selection
 (today every option is `aria-selected=false` and only the first hit is reachable), server-backed
-search over missions/projects/knowledge (today cache-only), **object-scoped actions** ("Pause
+search over missions/projects/knowledge (today cache-only — **D-12, §46.1: stays cache-only in
+P19.5; server search is P21's**), **object-scoped actions** ("Pause
 *Dashboard*", "Open *Atlas* as a graph") that call the same Core verbs as the buttons, and the
 effect preview UIA §5 specifies ("Pause *Dashboard* — 2 executions will halt"). The input border
 shows readiness (R1): neutral when live, amber when reconnecting, disabled with a reason when a
@@ -584,7 +585,7 @@ The graph mirror remains authoritative. Every visual concept has a non-visual fo
 | orbit presence | strip sentence (`role=status`, change-only, ≤ 1 / 30 s) |
 | attention pulse | count in the tab name + polite announce |
 | toast | `role=status`, never the only signal (the row changed too) |
-| drag reprioritise | Alt+↑/↓ and "Move to…" |
+| reprioritise | a number field with its label ("Priority"), D-14 — no drag is built |
 | context menu | Shift+F10 / menu key; same actions visible elsewhere |
 | legend toggles | real checkboxes |
 | forced colours | halos → 1 px solid ring; thread → 2 px `Highlight` |
@@ -1049,7 +1050,7 @@ not proceed on inferred approval").
 | R7 | mark, icon, orbit, strip | P19.5 | R1 | shell, assets | e-stop read (Q-B3) | e2e + axe | — | 1 / 5 s |
 | R8 | Now: sentence, upcoming (step 1), decisions, automation line, map | P19.5 | R3, R7, Q-A2 | `Now.tsx`, `GraphView` map mode | — | e2e | — | ≤ 40 |
 | R9 | toasts, skeletons, menus, pins, resizable inspector, confirms, Details disclosure, resume | P19.5 | R1 | shell, surfaces | — | e2e + keyboard | — | — |
-| R10 | Pause all, reprioritise | Core → P19.5 | Q-B3, Q-B4 | Work, strip | **Core verbs** | contract + e2e | — | — |
+| R10 | Pause all, reprioritise (absolute priority, D-14) | Core → P19.5 | Q-B3, Q-B4 | Work, strip, inspector | **Core verbs** | contract + e2e | — | — |
 | R11 | resources form, ideas stepper, forget flow, palette upgrade | P19.5 | R1 | Control, Work, World, CommandBar | — | e2e | — | — |
 | R12 | static cage glyph | P19.5 | R3, Q-V3 | `render.ts` | — | framebuffer read | — | world only |
 | R13 | independent adversarial design review against this rulebook | P19.5 exit | R1–R12 | — | — | recorded | reviewer + user | — |
@@ -1190,12 +1191,13 @@ Every cell names the carrier; "—" means the state cannot occur on that surface
 
 ## 43. Ideas and Resources (explicit)
 
-- **Ideas** (Work → Ideas): a stepper over Core's real states — CAPTURED → UNDERSTOOD → EXPLORED →
+- **Ideas** (Work → Ideas; **D-11, §46.1: read-only — the transition buttons below are a recorded
+  deviation until Core has an idea-transition command**): a stepper over Core's real states — CAPTURED → UNDERSTOOD → EXPLORED →
   VALIDATED → CONCEPT → PLANNED → SCHEDULED → IMPLEMENTING → COMPLETED → LEARNED, with PARKED /
   DISCARDED as side exits and *revive* — each step showing its evidence (the linked knowledge and
   mission) and the one transition available now. Conversion "idea → mission" is the existing
   PLANNED → IMPLEMENTING edge. CLIENT ONLY. P19.5.
-- **Resources** (Control → Resources): a form over the existing `POST /v1/resource-policies/{id}`
+- **Resources** (Control → Resources; **D-7, §46.1: built in P19.5**): a form over the existing `POST /v1/resource-policies/{id}`
   (priority, allocation ceiling, reserve, brain reserve, fallback, budgets tokens/cost/concurrency,
   project allow/deny) with the **route preview** (`/v1/route-decisions`) beside it and current
   usage where the account read provides it. Admin scope; disabled with a reason otherwise.
@@ -1283,6 +1285,25 @@ ADRs. What it leaves conditional stays open. Nothing below was inferred beyond t
 | forget / undo | "forget/undo where the architecture permits" (§11) | dry run, no undo | unchanged: RETRACTED is terminal in Core, so no undo is offered (P16 §18.3 forbids simulating one) |
 | TUI | "same state vocabulary… do not reproduce the graphical language" (§20) | P17 as built | unchanged: glyph + word per state (`●` working, `◆` needs you, `✕` failed, `■` blocked/stopped, `›` changed); no motion in the TUI |
 | schedules | "upcoming work when Core supports it" (§6) | "P14 follow-up" (not a phase) | owner **P21** proposed (ADR-0030): ADR-0020 decided schedule triggers; P14 D14 deferred them with no owner |
+
+### 46.1 P19.5 interaction decisions (the user, 2026-10-03)
+
+The six questions that blocked R9, R10b and R11 were answered by the user on 2026-10-03. Their
+identifiers are the P19.5 register's (D-7, D-8, D-9, D-11, D-12, D-14); they are **not** the
+plan's D-1…D-26 or the conversational-orchestration D-7…D-14, which are other decisions. Each
+answer is recorded here as given; nothing below widens it.
+
+| Decision | Question | Answer | What it changes | Recorded deviation |
+|---|---|---|---|---|
+| **D-14** | How does a user reprioritise a mission? | **(b) absolute "Priority N"**: one command sets the mission's absolute priority — Core's existing `POST /v1/missions/{id}/reprioritize` (integer, default 0, higher first; ordering the engine pass only, never routing) | §10 drag-to-reprioritise and Alt+↑/↓ are **not built** in P19.5; the mission inspector's header and its context menu set "Priority" as a number | **Yes — from §10 and §20** (drag, Alt+↑/↓, "Move to…"). Relative ordering waits for a later Core capability (a reorder / relative-move verb), which P19.5 does **not** add. P19.5 resolves no question about ordering scope (within a Work group or global) beyond what the absolute-priority model already is: one integer per mission, read by the engine. Work's grouping and its order within a group are unchanged |
+| **D-8** | When does a toast appear? | **(b)** when work that ran **≥ 10 s** finishes **off screen** | `motion.json` `toast` trigger reworded to this; no toast for a successful command | No — `motion.json` is aligned to §17/§41/§47; the "command succeeded off screen" trigger is not built |
+| **D-9** | Where do pinned missions live? | **(b)** a **Pinned** group at the top of Work | at every supported width, including a phone; a local preference, never sent to Core | **Yes — from §10's "sidebar pinned missions"** (the sidebar is not where pins live) |
+| **D-7** | Resources form: P19.5 or P22? | **(a)** P19.5 builds the §43 fields over the existing `POST /v1/resource-policies/{id}` | priority, allocation ceiling, reserve, own-call reserve, fallback, the three budgets, project allow/deny, beside the route preview | No. P22 keeps "the Resources UI for every ADR-0041 field" beyond §43 (the consumption class, `limits` by subject and tier, project defaults) |
+| **D-11** | Ideas stepper without a transition API? | **(a)** a **read-only** stepper: Core's states and each idea's evidence, no transition buttons | Work → Ideas shows where each idea is on the path and what it links to | **Yes — from §43's "the one transition available now"**: Core has no idea-transition command, and none is added to make the stepper interactive |
+| **D-12** | Palette search without server support? | **(a)** upgrade the palette now — arrow-key selection, object-scoped actions on the same Core verbs as the buttons, the effect preview — with search **cache-only** | the command bar searches what this client has already read | **Yes — from §18's "server-backed search"**. Server-side search over missions, projects and knowledge is owned by **P21** (Observability views — its acceptance is "every question in §28 answerable from the UI"), as a Core read route; P19.5 adds no search parameter |
+
+Disposition of the items the 2026-10-03 audit found with no slice (each a decision of the same
+date, recorded in §46.2 when R13 runs) stays open until it is written there.
 
 ## 47. Component map — directive names → primitives
 

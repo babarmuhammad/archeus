@@ -1061,7 +1061,15 @@ decisions ADR-0024…0029.
   needed and nothing more — `/v1/status` `resumable`, the mission ids Resume all would resume now,
   from the one helper (`commands.resumable`) the command itself runs, and `priority` /
   `pause_batch_id` declared on the Mission schema as Core already returned them; no route, state,
-  event or semantics changed. Reprioritise (R10b) waits for its interaction decision.
+  event or semantics changed. *Decided 2026-10-03 (the user; rulebook §46.1):* D-14 — reprioritise
+  is an absolute "Priority N" over the existing command, drag and Alt+↑/↓ a recorded deviation
+  waiting for a later Core reorder verb, no ordering-scope question resolved; D-8 — a toast only
+  for work that ran ≥ 10 s and finished off screen; D-9 — pins are a Pinned group at the top of
+  Work, at every width; D-7 — the §43 Resources form is P19.5's, over the existing route (P22 keeps
+  the rest of ADR-0041's fields); D-11 — the Ideas stepper is read-only (no idea-transition
+  command is added); D-12 — the palette is upgraded with search cache-only, server search owned by
+  P21. No new Core verb or route comes with any of them. Order unchanged: R10b → R9 → R11 → R12 →
+  R13, with the P18 `origin_ref` graph defect fixed before R13.
 - Client work: tokens (focus ≠ attention, red reserved, depth/transparency tokens); primitives;
   graph edge semantics, legend, impact view, hull/depth/cored nodes, static project cage; the
   thread (T1 from `Message.links`, T2 on every list, T3 spatial) and tints; activity halo,

@@ -417,7 +417,7 @@ export const MOTIONS = {
   "toast": {
     "status": "approved",
     "source": "rulebook §21 A-13",
-    "trigger": "a command succeeded whose result is not on screen",
+    "trigger": "work that ran at least 10 s finished while its row was not on screen (D-8)",
     "driven_by": "event",
     "runs_on": "css",
     "css": null,
