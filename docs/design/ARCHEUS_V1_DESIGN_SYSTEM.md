@@ -199,7 +199,7 @@ state glyphs ≥ 3:1 on `surface-1`; focus ring ≥ 3:1 against both the control
 | Activity halo (2026-09-30; built on the graph) | static — no animation; appears on the first live read, clears when a read shows the work ended | — | presentation class `active` |
 | Travelling marker (2026-09-30; built on the graph) | 600 ms once per output batch, ≤ 8 concurrent (oldest dropped) | linear along the edge | `execution.*` frame on a drawn live edge |
 | Activity chip (2026-09-30) | fade 160 ms, TTL 2.5 s (4 s on error), ≤ 3 per row | ease-out | a re-read execution's current action |
-| Presence orbit (2026-09-30) | ≤ 900 ms, ≤ 1 per 5 s | ease-in-out | a batch of activity frames |
+| Presence orbit (2026-09-30; built in the shell, P19.5 R7) | one 900 ms turn of the mark's node round its orbit, ≤ 1 per 5 s, parked where it began; none under reduced motion | ease-in-out | a batch of `execution.*` frames |
 
 Every row above is also an entry in the motion registry (ADR-0024); no animation exists outside it,
 none runs while idle, and none replays after a re-read or reconnect.
@@ -321,6 +321,7 @@ account — no other resource was free".
 
 | Component | Purpose | Key rules |
 |---|---|---|
+| **Mark and operations strip** | the shell header on every page (ADR-0027 §1-3) | *As built (P19.5, R7):* the credited glyph (`MARK` in `state/orbit.ts`, the site's figure) in `currentColor` at 20 px beside "Archeus", and on the boot screen with "Connecting to Archeus…"; nowhere else. Its orbit's node is the presence — hollow while not connected, `state-attention` while something needs you, `state-active` while an attempt runs, neutral otherwise — and the favicon shows the same state still, on the dark tile; the app icons are the tile mark. The strip is a `nav` named Operations: "N running · N needs you · N clients", each a link to its list, the freshness of the status read, and Emergency stop behind its confirmation, or "Emergency stop engaged" while Core reads it disarmed; its words go to a status region at most once per 30 s, only on a change. A phone shows the mark and the counts. Pause all joins it with R10 |
 | **Presence line** | top of Now: "Archeus · working on 2 missions · 1 needs you" | derived from counts, never personality text |
 | **Digest** | since-you-left grouped list | every bullet links to its object; Dismiss advances the per-user cursor |
 | **Mission row** | one mission in any list | glyph, title, project, status line, waiting-on, age; no tokens/sessions. *As built (P19.5, R5):* an `execution.*` frame about a running attempt, its mission read again from Core, plays one 240 ms opacity step over the row (`row-pulse`), at most once per 2 s, never for an event already presented, never under reduced motion or slow frames; the state word is its equivalent (Core records no last-output time). Like every row the digest can name, it carries the T2 rule and "changed since you looked" while Core's digest names it. The activity chip is not built: its text has no source yet |

@@ -112,8 +112,109 @@ h1:focus {
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   font-weight: 600;
   letter-spacing: 0.02em;
+}
+
+/* the mark (ADR-0027 §1): the credited glyph in currentColor, 20 px; its
+   orbit's node is Archeus's presence (§2) — neutral, active, attention, or
+   hollow while this client is not connected */
+.mark {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.mark-node {
+  fill: currentColor;
+}
+
+.mark[data-presence='active'] .mark-node {
+  fill: var(--state-active);
+}
+
+.mark[data-presence='attention'] .mark-node {
+  fill: var(--state-attention);
+}
+
+.mark[data-presence='disconnected'] .mark-node {
+  fill: var(--surface-1);
+  stroke: currentColor;
+  stroke-width: 0.8px;
+}
+
+/* one turn per batch of activity (rulebook §21 A-07): the group carrying the
+   node turns once round the orbit's circle, and the node's own group turns
+   back the same amount on the same curve, so the node stays round; both
+   park where they began */
+.orbit-turn,
+.orbit-counter {
+  transform-box: view-box;
+  transform-origin: 0 0;
+}
+
+.orbit-turn {
+  animation: orbit-turn var(--dur-orbit) ease-in-out 1;
+}
+
+.orbit-counter {
+  animation: orbit-counter var(--dur-orbit) ease-in-out 1;
+}
+
+@keyframes orbit-turn {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes orbit-counter {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+/* O-1 (rulebook §6, §7.1): one line, the quietest thing on screen */
+.strip ul {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font: var(--type-caption);
+  color: var(--text-2);
+}
+
+.strip a {
+  color: var(--text-2);
+}
+
+.strip li:empty {
+  display: none;
+}
+
+.strip .why {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.tag.blocked {
+  border-color: var(--state-blocked);
+  color: var(--state-blocked);
 }
 
 .banner {
@@ -316,6 +417,17 @@ h1:focus {
     display: none;
   }
 
+  /* the compact strip: the mark and the counts (rulebook §19) */
+  .top .strip-more {
+    display: none;
+  }
+
+  .top .strip a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--target-phone);
+  }
+
   .main {
     padding: var(--space-5) var(--space-5) var(--space-7);
   }
@@ -346,6 +458,12 @@ h1:focus {
   max-width: 60ch;
   margin: 10vh auto;
   padding: var(--space-5);
+}
+
+.notice.boot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 .view {
@@ -1349,6 +1467,10 @@ html[data-motion='reduced'] *::after {
     height: 2px;
     background: Highlight;
     forced-color-adjust: none;
+  }
+
+  .mark[data-presence='disconnected'] .mark-node {
+    fill: Canvas;
   }
 
   :focus-visible {

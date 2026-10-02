@@ -103,8 +103,10 @@ def render_tokens_ts(t):
     return (HEAD + 'export const MOTION = %s as const;\nexport const EASING = %s;\n'
             'export const BREAKPOINTS = %s as const;\nexport const TARGETS = %s as const;\n'
             'export const ALPHA = %s as const;\n'
+            '/** The dark theme, for what is drawn outside the page: the favicon\'s tile. */\n'
+            'export const DARK: Record<string, string> = %s;\n'
             % (json.dumps(t['motion']), json.dumps(t['easing']), json.dumps(t['breakpoints']),
-               json.dumps(t['targets']), json.dumps(_alpha(t))))
+               json.dumps(t['targets']), json.dumps(_alpha(t)), json.dumps(t['themes']['dark'])))
 
 
 def _label(state):

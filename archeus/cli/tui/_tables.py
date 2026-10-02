@@ -465,6 +465,7 @@ RULES = {'mission': ['/v1/world/graph**', '/v1/missions**', '/v1/attention', '/v
           '/v1/tasks/{id}/executions',
           '/v1/digest'],
  'execution': ['/v1/world/graph**',
+               '/v1/status**',
                '/v1/executions/{id}**',
                '/v1/tasks/*/executions',
                '/v1/missions/*/timeline**',

@@ -22,6 +22,7 @@
   --dur-pulse: 240ms;
   --dur-toast: 160ms;
   --dur-travel: 600ms;
+  --dur-orbit: 900ms;
   --ease: cubic-bezier(.22,.8,.18,1);
   --halo-outer: 0.35;
   --halo-inner: 0.7;

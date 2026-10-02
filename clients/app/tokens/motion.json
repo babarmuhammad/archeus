@@ -134,15 +134,15 @@
       "equivalent": "the row is no longer marked as changed"
     },
     "presence-orbit": {
-      "status": "approved", "source": "ADR-0024 §6, rulebook §21 A-07",
-      "trigger": "a batch of execution.* frames",
-      "driven_by": "event", "runs_on": "css",
-      "max_ms": 900, "easing": "ease-in-out",
+      "status": "built", "source": "ADR-0024 §6, ADR-0027 §2, rulebook §8, §21 A-07",
+      "trigger": "a batch of execution.* frames: the mark's node goes once round its orbit and parks where it started",
+      "driven_by": "event", "runs_on": "css", "css": ["orbit-turn", "orbit-counter"],
+      "max_ms": 900, "token": "orbit", "easing": "ease-in-out",
       "cap": 1, "cap_per": "surface",
       "min_interval_ms": 5000, "interval_per": "surface", "surfaces": ["shell"],
       "idle": "never", "replay": false,
-      "reduced": "colour only: the mark shows working, without the orbit",
-      "equivalent": "the status strip's text"
+      "reduced": "colour only: the node shows the presence and no turn is drawn; the event still counts as presented",
+      "equivalent": "the operations strip's counts, said in a status region at most once per 30 s"
     },
     "attention-arrival": {
       "status": "approved", "source": "rulebook §21 A-08",

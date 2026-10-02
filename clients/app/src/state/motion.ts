@@ -360,15 +360,18 @@ export const MOTIONS = {
     "equivalent": "the row is no longer marked as changed"
   },
   "presence-orbit": {
-    "status": "approved",
-    "source": "ADR-0024 §6, rulebook §21 A-07",
-    "trigger": "a batch of execution.* frames",
+    "status": "built",
+    "source": "ADR-0024 §6, ADR-0027 §2, rulebook §8, §21 A-07",
+    "trigger": "a batch of execution.* frames: the mark's node goes once round its orbit and parks where it started",
     "driven_by": "event",
     "runs_on": "css",
-    "css": null,
+    "css": [
+      "orbit-turn",
+      "orbit-counter"
+    ],
     "transition": null,
     "max_ms": 900,
-    "token": null,
+    "token": "orbit",
     "ttl_ms": null,
     "ttl_error_ms": null,
     "easing": "ease-in-out",
@@ -382,8 +385,8 @@ export const MOTIONS = {
     ],
     "idle": "never",
     "replay": false,
-    "reduced": "colour only: the mark shows working, without the orbit",
-    "equivalent": "the status strip's text"
+    "reduced": "colour only: the node shows the presence and no turn is drawn; the event still counts as presented",
+    "equivalent": "the operations strip's counts, said in a status region at most once per 30 s"
   },
   "attention-arrival": {
     "status": "approved",

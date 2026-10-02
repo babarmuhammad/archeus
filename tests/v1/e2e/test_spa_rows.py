@@ -318,7 +318,11 @@ def test_a_running_attempt_pulses_its_mission_row_once(browser, slow):  # noqa: 
     pulses = lambda: page.evaluate('window.__pulses')  # noqa: E731
     shown = lambda: row.locator('.row-pulse').get_attribute('data-pulse') if row.locator('.row-pulse').count() else None  # noqa: E731
 
-    # the fence: after it every frame Core sends is history, so only this test moves
+    # the fence: after it every frame Core sends is history, so only this test moves.
+    # The slow harness's own frames may have pulsed the row while the wait above
+    # ran (they turn the shell's orbit too, which that wait sees): leave the
+    # 2 s window of any such pulse before the fence is heard
+    advance(page, EVERY_MS)
     f0 = frames(page)
     hear(page, _frame(ex['id'], FENCE))
     wait(page, lambda: shown() == str(FENCE), what='a new event pulses the row')

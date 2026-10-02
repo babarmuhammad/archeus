@@ -3,8 +3,9 @@ the activity halo, the travelling marker, the Core slice, and R1's copy/id
 gate with the Details disclosure and its command names (N71-N88), and R2's legend,
 expand all / collapse all and plain tier words (N89-N102), and R3's hull, depth,
 cored node, receding lines and impact view (N103-N119), and R5's row pulse and change rule
-(N120-N139), and R6's thread line on Now (N140-N153). Break each gate's invariant, run
-the test written for it, and require it to fail.
+(N120-N139), and R6's thread line on Now (N140-N153), and R7's mark, orbit, favicon and
+operations strip (N154-N180). Break each gate's invariant, run the test written for it,
+and require it to fail.
 
     py tools/mutate_p19_5.py            every mutation
     py tools/mutate_p19_5.py N01 N11    only these
@@ -80,6 +81,18 @@ LOOPS = DG + 'test_transitions_move_only_transform_and_opacity_and_nothing_loops
 #: the generated travelling-marker entry's budget, as gen_ui writes it
 MARKER_TS = ('"max_ms": 600,\n    "token": null,\n    "ttl_ms": null,\n    "ttl_error_ms": null,\n'
              '    "easing": "linear",\n    "cap": 8,')
+
+APP = 'clients/app/src/App.tsx'
+ORBIT = 'clients/app/src/state/orbit.ts'
+RULES_TS = 'clients/app/src/data/rules.ts'
+ORBIT_TS = 'node:test/orbit.test.ts'
+STRIP_E2E = 'tests/v1/e2e/test_spa_strip.py::'
+STRIP = STRIP_E2E + 'test_the_mark_the_strip_and_the_favicon_follow_what_archeus_is_doing'
+STRIP_RM = STRIP_E2E + 'test_reduced_motion_turns_nothing_and_shows_the_colour'
+STRIP_NEEDS = STRIP_E2E + 'test_needs_you_the_emergency_stop_and_the_compact_strip'
+STRIP_BOOT = STRIP_E2E + 'test_the_boot_screen_is_the_mark_and_connecting'
+ESTOP_CONFIRM = (' confirm="Every running execution is killed now and Archeus refuses new work until you re-arm it.'
+                 ' Missions are not lost; they wait." run={(key) => api.estop(')
 
 MUTATIONS = [
     # ── the registry ──
@@ -636,6 +649,92 @@ MUTATIONS = [
     ('N153', 'the line never leaves', [(CSS,
      'animation: thread-draw var(--dur-travel) ease-in-out 1;', 'animation: thread-draw var(--dur-travel) ease-in-out infinite;')],
      [LOOPS, THREAD_E2E]),
+    # ── R7: the mark, the orbit, the favicon, the operations strip ──
+    ('N154', 'working outranks needs you', [(ORBIT,
+     "  if (needsYou > 0) return 'attention';\n  return running(live).length ? 'active' : 'idle';",
+     "  if (running(live).length) return 'active';\n  return needsYou > 0 ? 'attention' : 'idle';")],
+     [ORBIT_TS]),
+    ('N155', 'a disconnected client shows a live node', [(ORBIT,
+     "  if (!connected) return 'disconnected';", "  if (!connected && needsYou < 0) return 'disconnected';")],
+     [ORBIT_TS, STRIP]),
+    ('N156', 'any live work counts as running', [(ORBIT,
+     "live.filter((x) => present('execution', x.state).cls === 'active')", "live.filter((x) => present('execution', x.state).cls !== 'done')")],
+     [ORBIT_TS]),
+    ('N157', 'the strip counts attempts, not missions', [(ORBIT,
+     'new Set(running(live).map((x) => x.mission_id)).size', 'running(live).length')],
+     [ORBIT_TS]),
+    ('N158', 'no rate limit on the turn', [(ORBIT,
+     '    if (now - this.last < ORBIT_EVERY_MS) return;', '    if (now - this.last < 0) return;')],
+     [ORBIT_TS, STRIP]),
+    ('N159', 'a refused event turns anyway (replay, reduced motion)', [(ORBIT,
+     "    if (!this.timeline.start('presence-orbit', 'shell', f.id, now, this.host.reduced())) return;",
+     "    this.timeline.start('presence-orbit', 'shell', f.id, now, this.host.reduced());")],
+     [ORBIT_TS, STRIP, STRIP_RM]),
+    ('N160', 'any frame with a seq turns the node', [(ORBIT,
+     '    if (!pulseSubject(f)) return;', '    if (!pulseSubject(f) && f.id === undefined) return;')],
+     [ORBIT_TS, STRIP]),
+    ('N161', 'the turn runs on the travel duration', [(CSS,
+     'animation: orbit-turn var(--dur-orbit) ease-in-out 1;', 'animation: orbit-turn var(--dur-travel) ease-in-out 1;')],
+     [ORBIT_TS, STRIP]),
+    ('N162', 'no counter-turn: the node is squashed on the way', [(CSS,
+     '    transform: rotate(-360deg);', '    transform: rotate(0deg);')],
+     [ORBIT_TS, STRIP]),
+    ('N163', 'the turn never stops', [(CSS,
+     'animation: orbit-turn var(--dur-orbit) ease-in-out 1;', 'animation: orbit-turn var(--dur-orbit) ease-in-out infinite;')],
+     [LOOPS, STRIP]),
+    ('N164', 'the turn travels the wrong way round', [(CSS,
+     '    transform: rotate(360deg);', '    transform: rotate(180deg);')],
+     [ORBIT_TS, STRIP]),
+    ('N165', 'the favicon never follows the presence', [(APP,
+     '    l.href = favicon(p, DARK);', "    l.href = favicon('idle', DARK);")],
+     [STRIP_NEEDS]),
+    ('N166', 'the favicon shows needs you as working', [(ORBIT,
+     "p === 'attention' ? dark['state.attention'] : ink", "p === 'attention' ? dark['state.active'] : ink")],
+     [ORBIT_TS]),
+    ('N167', 'the node is not coloured while working', [(CSS,
+     ".mark[data-presence='active'] .mark-node {\n  fill: var(--state-active);",
+     ".mark[data-presence='active'] .mark-node {\n  fill: currentColor;")],
+     [STRIP]),
+    ('N168', 'a disconnected node is not hollow', [(CSS,
+     '  fill: var(--surface-1);\n  stroke: currentColor;', '  fill: currentColor;\n  stroke: currentColor;')],
+     [STRIP]),
+    ('N169', 'the clients count is every registered client', [(APP,
+     ".filter((d) => d.presence.state === 'connected').length", '.length')],
+     [STRIP]),
+    ('N170', 'needs you links to the wrong list', [(APP,
+     'href="#/attention" data-strip="needs"', 'href="#/work" data-strip="needs"')],
+     [ORBIT_TS, STRIP]),
+    ('N171', 'the strip is not a landmark', [(APP,
+     '<nav className="strip" aria-label="Operations">', '<div className="strip" aria-label="Operations">'),
+     (APP, '      </span>\n    </nav>\n  );', '      </span>\n    </div>\n  );')],
+     [ORBIT_TS, STRIP]),
+    ('N172', 'the first reading is said', [(APP,
+     '    if (first) return;\n    const t = lim', '    if (first && !sentence) return;\n    const t = lim')],
+     [STRIP]),
+    ('N173', 'every change is said at once', [(APP,
+     'const STRIP_SAYS_EVERY_MS = 30_000;', 'const STRIP_SAYS_EVERY_MS = 0;')],
+     [ORBIT_TS, STRIP]),
+    ('N174', 'the emergency stop without its confirmation', [(APP, ESTOP_CONFIRM, ' run={(key) => api.estop(')],
+     [STRIP_NEEDS]),
+    ('N175', 'the engaged stop is never shown', [(APP,
+     'status.data?.armed === false ?', 'status.data?.armed === false && false ?')],
+     [STRIP_NEEDS]),
+    ('N176', 'the phone strip carries the stop', [(CSS,
+     '  .top .strip-more {\n    display: none;', '  .top .strip-more {\n    display: list-item;')],
+     [STRIP_NEEDS]),
+    ('N177', 'an execution frame leaves /v1/status as it was', [(RULES_TS,
+     '  "execution": [\n    "/v1/world/graph**",\n    "/v1/status**",\n', '  "execution": [\n    "/v1/world/graph**",\n')],
+     [ORBIT_TS, STRIP]),
+    ('N178', 'the boot screen says only "Connecting…"', [(APP,
+     '<p>Connecting to Archeus…</p>', '<p>Connecting…</p>')],
+     [ORBIT_TS, STRIP_BOOT]),
+    ('N179', 'the mark repeated outside the shell', [('clients/app/src/surfaces/Now.tsx',
+     '      <h1 tabIndex={-1}>Now</h1>', '      <h1 tabIndex={-1}>Now</h1>\n      <svg className="mark" aria-hidden="true" />')],
+     [ORBIT_TS, STRIP]),
+    ('N180', 'reduced motion turns the node', [(APP,
+     'new Orbit(timeline, { now: () => performance.now(), reduced: reducedMotion })',
+     'new Orbit(timeline, { now: () => performance.now(), reduced: () => reducedMotion() && false })')],
+     [STRIP_RM]),
 ]
 
 if __name__ == '__main__':

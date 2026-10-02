@@ -24,6 +24,7 @@ export const RULES: Record<string, string[]> = {
   ],
   "execution": [
     "/v1/world/graph**",
+    "/v1/status**",
     "/v1/executions/{id}**",
     "/v1/tasks/*/executions",
     "/v1/missions/*/timeline**",

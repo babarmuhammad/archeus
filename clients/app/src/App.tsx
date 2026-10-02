@@ -2,13 +2,14 @@
 // code on this computer, a pairing code anywhere), then one connection, one
 // cache, one navigation table, one inspector. Every state on screen is a state
 // Core returned; the stream only says what to read again.
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Attention } from './api/generated';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { api, type Attention, type DeviceList, type Status } from './api/generated';
 import { authenticate, redeemPairing, sender, takeFragment, CoreError } from './api/transport';
 import { HEARTBEAT, LOST, OPENED, RESYNC, UNAUTHENTICATED, subscribe } from './api/stream';
-import { announce } from './a11y/announce';
-import { store, useConn, useRead } from './data/cache';
-import { BANNER } from './data/connection';
+import { announce, limiter } from './a11y/announce';
+import { store, useConn, useRead, type Snapshot } from './data/cache';
+import { BANNER, canCommand } from './data/connection';
+import { send } from './data/core';
 import { setSend } from './data/core';
 import { staleBy } from './data/invalidation';
 import { DESTINATIONS, href, parse, phoneTabs, type Route } from './nav/destinations';
@@ -20,6 +21,11 @@ import { NowView } from './surfaces/Now';
 import { WorkView } from './surfaces/Work';
 import { ProjectPage, WorldView } from './surfaces/World';
 import { GraphView } from './graph/GraphView';
+import { reducedMotion } from './graph/loop';
+import { ActionButton, Fresh } from './components/ui';
+import { MARK, Orbit, favicon, presence, runningMissions, type Presence } from './state/orbit';
+import { timeline } from './state/timeline';
+import { DARK } from './state/tokens';
 
 type Boot = { phase: 'starting' } | { phase: 'pair'; code: string } | { phase: 'out' } | { phase: 'in'; token: string } | { phase: 'failed'; why: string };
 
@@ -34,7 +40,13 @@ export default function App() {
       (e) => setBoot({ phase: 'failed', why: String(e) }),
     );
   }, []);
-  if (boot.phase === 'starting') return <main className="notice">Connecting…</main>;
+  if (boot.phase === 'starting')
+    return (
+      <main className="notice boot">
+        <Mark />
+        <p>Connecting to Archeus…</p>
+      </main>
+    );
   if (boot.phase === 'failed') return <main className="notice">Archeus could not start: {boot.why}</main>;
   if (boot.phase === 'pair') return <PairRedeem code={boot.code} onPaired={(token) => setBoot({ phase: 'in', token })} />;
   if (boot.phase === 'out')
@@ -120,6 +132,16 @@ function Shell({ token }: { token: string }) {
   const [cmd, setCmd] = useState(false);
   const main = useRef<HTMLElement>(null);
   const att = useRead<Attention>('/v1/attention');
+  const status = useRead<Status>('/v1/status');
+  const p = presence(canCommand(conn.conn), att.data?.count ?? 0, status.data?.live ?? []);
+
+  // the favicon shows the presence, still (ADR-0027 §2)
+  useEffect(() => {
+    const l = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (!l) return;
+    l.href = favicon(p, DARK);
+    l.dataset.presence = p;
+  }, [p]);
 
   useEffect(() => {
     const s = sender(token, (path, seq) => store.seqs.set(path, seq));
@@ -206,7 +228,11 @@ function Shell({ token }: { token: string }) {
         Skip to content
       </a>
       <header className="top">
-        <span className="brand">Archeus</span>
+        <span className="brand">
+          <Mark presence={p} />
+          Archeus
+        </span>
+        <OperationsStrip status={status} count={att.data ? count : undefined} />
         {banner ? (
           <p className="banner" data-conn={conn.conn} role="status">
             {banner}
@@ -292,4 +318,127 @@ function Icon({ id }: { id: string }) {
       <path d={ICONS[id]} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
+}
+
+// ── the mark, its orbit and the operations strip (ADR-0027, rulebook §6 O-1, §8) ──
+
+// the page's one orbit: every frame, whatever page is open
+const orbit = new Orbit(timeline, { now: () => performance.now(), reduced: reducedMotion });
+store.onFrame((f) => orbit.frame(f));
+
+const K = MARK.ry / MARK.rx;
+
+/** The mark (monochrome, `currentColor`). Its node is the presence; a turn
+ * plays once per batch of activity, keyed by the event it presents. The orbit
+ * is a circle squashed into the ellipse, so the node's own group undoes the
+ * squash and the turn, and stays round wherever it is on the way. */
+function Mark({ presence: p }: { presence?: Presence }) {
+  const turn = useSyncExternalStore(
+    (l) => orbit.subscribe(l),
+    () => orbit.current(),
+  );
+  const { letter, tilt, cx, cy, rx, at, r } = MARK;
+  return (
+    <svg className="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false" data-presence={p ?? 'idle'}>
+      <g fill="currentColor">
+        {letter.map((d) => (
+          <path key={d} d={d} />
+        ))}
+      </g>
+      <g transform={`rotate(${tilt} ${cx} ${cy})`}>
+        <ellipse cx={cx} cy={cy} rx={rx} ry={MARK.ry} fill="none" stroke="currentColor" strokeWidth="1.35" opacity="0.55" />
+        <g transform={`translate(${cx} ${cy}) scale(1 ${K}) rotate(${at})`}>
+          <g key={turn} className={turn ? 'orbit-turn' : undefined} data-orbit={turn || undefined}>
+            <g transform={`translate(${rx} 0)`}>
+              <g className={turn ? 'orbit-counter' : undefined}>
+                <g transform={`rotate(${-at}) scale(1 ${1 / K})`}>
+                  <circle className="mark-node" r={r} />
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+    </svg>
+  );
+}
+
+const STRIP_SAYS_EVERY_MS = 30_000;
+
+/** O-1: one line on every page — what runs, what needs you, how many clients
+ * are connected, how fresh that is, and the emergency stop. Each number links
+ * to its list. Its words are the orbit's equivalent, said at most once per
+ * 30 s and only when they change. */
+function OperationsStrip({ status, count }: { status: Snapshot<Status>; count: number | undefined }) {
+  const devices = useRead<DeviceList>('/v1/devices');
+  const running = status.data ? runningMissions(status.data.live) : undefined;
+  const clients = devices.data?.devices.filter((d) => d.presence.state === 'connected').length;
+  const facts = [
+    running === undefined ? null : `${running} running`,
+    count === undefined ? null : `${count} ${count === 1 ? 'needs' : 'need'} you`,
+    clients === undefined ? null : `${clients} ${clients === 1 ? 'client' : 'clients'}`,
+  ];
+  const sentence = facts.every((f) => f !== null) ? facts.join(' · ') : null;
+  const said = useSaid(sentence);
+  return (
+    <nav className="strip" aria-label="Operations">
+      <ul>
+        {facts[0] ? (
+          <li>
+            <a href="#/now" data-strip="running">{facts[0]}</a>
+          </li>
+        ) : null}
+        {facts[1] ? (
+          <li>
+            <a href="#/attention" data-strip="needs">{facts[1]}</a>
+          </li>
+        ) : null}
+        {facts[2] ? (
+          <li>
+            <a href="#/control/devices" data-strip="clients">{facts[2]}</a>
+          </li>
+        ) : null}
+        <li className="strip-more">
+          <Fresh snap={status} />
+        </li>
+        <li className="strip-more" data-strip="estop">
+          {status.data?.armed === false ? (
+            <a href="#/control/about" className="tag blocked">
+              Emergency stop engaged
+            </a>
+          ) : (
+            <ActionButton label="Emergency stop" scope="control" kind="danger" confirm="Every running execution is killed now and Archeus refuses new work until you re-arm it. Missions are not lost; they wait." run={(key) => api.estop(send(), { idempotency_key: key })} reread={['/v1']} />
+          )}
+        </li>
+      </ul>
+      <span className="sr" role="status" data-strip-said>
+        {said}
+      </span>
+    </nav>
+  );
+}
+
+/** What the strip's status region says: a change, at most once per 30 s, the
+ * latest winning; never the first reading. */
+function useSaid(sentence: string | null): string {
+  const lim = useRef(limiter(STRIP_SAYS_EVERY_MS));
+  const prev = useRef<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [said, setSaid] = useState('');
+  useEffect(() => () => clearTimeout(timer.current ?? undefined), []);
+  useEffect(() => {
+    if (sentence === null || sentence === prev.current) return;
+    const first = prev.current === null;
+    prev.current = sentence;
+    if (first) return;
+    const t = lim.current.offer(sentence, Date.now());
+    if (t !== null) return setSaid(t);
+    // the limiter keeps the latest; one timer says it when the 30 s are up
+    timer.current ??= setTimeout(() => {
+      timer.current = null;
+      const f = lim.current.flush(Date.now());
+      if (f !== null) setSaid(f);
+    }, STRIP_SAYS_EVERY_MS);
+  }, [sentence]);
+  return said;
 }

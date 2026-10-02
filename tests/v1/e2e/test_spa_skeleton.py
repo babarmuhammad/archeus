@@ -64,7 +64,7 @@ def test_launch_now_work_and_live_updates_through_the_stream(browser, core):
                 body={'title': 'x', 'objective': 'o', 'idempotency_key': 'nope'})
     assert (r.status, r.json()['detail']) == (403, {'scope': 'control'})
     page.get_by_text('does not hold the “control” scope').first.wait_for()
-    for b in page.locator('.action button').all():
+    for b in page.locator('.action > button').all():   # a command; a closed confirmation's own buttons are not reachable
         assert b.is_disabled()
 
     # SSE alone: no timer re-queries the list; only an event does
