@@ -59,6 +59,12 @@ Contrast it becomes a solid 2 px line in `focus` colour. **Removal test:** witho
 the user loses the visible connection between what Archeus *said* and what it *did* — so it
 stays; nothing else gets a signature.
 
+*As built (P19.5, R6):* the conversation form on Now — a new Archeus message whose `Message.links`
+name an object with a row on screen draws one line from the message to that row, drawn on and
+gone; what stays is the list rule (on the row, and on the message's card or link) while the digest
+names the object; the polite live region says "Archeus updated …". Thread tints and the mission
+Now tab are not built yet (no curated tint list; per-mission conversations are P19's).
+
 ## 3. Colour system
 
 ### 3.1 Roles
@@ -188,7 +194,7 @@ state glyphs ≥ 3:1 on `surface-1`; focus ring ≥ 3:1 against both the control
 | Row insert/remove | 200 ms | ease-out | list changed (keyed reconcile) |
 | Inspector slide | 220 ms | ease-out | open/close |
 | Sheet (mobile) | 280 ms | spring-like ease-out | open/close |
-| Thread travel | ≤ 600 ms, once | ease-in-out | Archeus acted on an object |
+| Thread travel (built on Now, P19.5 R6) | ≤ 600 ms, once | ease-in-out | Archeus acted on an object |
 | Active pulse (built on the graph; on mission rows since P19.5 R5) | one 240 ms opacity pulse per batch of new output, at most every 2 s, ≤ 12 concurrent on the canvas | ease-out | execution stream produced events |
 | Activity halo (2026-09-30; built on the graph) | static — no animation; appears on the first live read, clears when a read shows the work ended | — | presentation class `active` |
 | Travelling marker (2026-09-30; built on the graph) | 600 ms once per output batch, ≤ 8 concurrent (oldest dropped) | linear along the edge | `execution.*` frame on a drawn live edge |

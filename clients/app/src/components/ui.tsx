@@ -382,6 +382,18 @@ const NAMED: Record<string, { path: (id: string) => string; name: (r: Record<str
   policy_decision: { path: (id) => `/v1/policy-decisions/${id}`, name: (r) => r.stage },
 };
 
+/** RefLabel's words as text, read from the object's own row: what an
+ * announcement says. */
+export async function refName(kind: string, id: string): Promise<string> {
+  const n = NAMED[kind];
+  const word = kind.replace('_', ' ');
+  if (!n) return word;
+  await store.fetch(n.path(id));
+  const d = store.snapshot(n.path(id)).data as Record<string, unknown> | undefined;
+  const name = d ? n.name(d) : null;
+  return name ? `${word} ${String(name)}` : word;
+}
+
 /** An object named as a person would: its title when it has one (read from
  * its own row), else its kind alone — its id is in its own Details. */
 export function RefLabel({ kind, id }: { kind: string; id: string }) {

@@ -552,6 +552,42 @@ h1:focus {
   animation: row-pulse var(--dur-pulse) linear 1;
 }
 
+/* T1 (ADR-0026 §1, design system §2): one fine line in thread ink from a new
+   Archeus message to the row of what it touched, drawn on once and gone
+   (rulebook §21 A-05). Placed by left/top/width; only its transform and
+   opacity move. */
+.thread-line {
+  position: fixed;
+  height: 1px;
+  background: var(--thread);
+  transform-origin: 0 50%;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0;
+  animation: thread-draw var(--dur-travel) ease-in-out 1;
+}
+
+@keyframes thread-draw {
+  from {
+    opacity: 1;
+    transform: rotate(var(--angle)) scaleX(0);
+  }
+  75% {
+    opacity: 1;
+    transform: rotate(var(--angle)) scaleX(1);
+  }
+  to {
+    opacity: 0;
+    transform: rotate(var(--angle)) scaleX(1);
+  }
+}
+
+@media (min-resolution: 2dppx) {
+  .thread-line {
+    height: 1.5px;
+  }
+}
+
 @keyframes row-pulse {
   from {
     opacity: 0.16;
@@ -1285,6 +1321,11 @@ html[data-motion='reduced'] *::after {
   [data-thread]::before {
     border-left-color: var(--focus);
   }
+
+  .thread-line {
+    height: 2px;
+    background: var(--focus);
+  }
 }
 
 @media (forced-colors: active) {
@@ -1302,6 +1343,12 @@ html[data-motion='reduced'] *::after {
 
   [data-thread]::before {
     border-left-color: CanvasText;
+  }
+
+  .thread-line {
+    height: 2px;
+    background: Highlight;
+    forced-color-adjust: none;
   }
 
   :focus-visible {

@@ -3,7 +3,7 @@ the activity halo, the travelling marker, the Core slice, and R1's copy/id
 gate with the Details disclosure and its command names (N71-N88), and R2's legend,
 expand all / collapse all and plain tier words (N89-N102), and R3's hull, depth,
 cored node, receding lines and impact view (N103-N119), and R5's row pulse and change rule
-(N120-N139). Break each gate's invariant, run
+(N120-N139), and R6's thread line on Now (N140-N153). Break each gate's invariant, run
 the test written for it, and require it to fail.
 
     py tools/mutate_p19_5.py            every mutation
@@ -71,6 +71,12 @@ PULSE_E2E = 'tests/v1/e2e/test_spa_rows.py::test_a_running_attempt_pulses_its_mi
 RULE_E2E = 'tests/v1/e2e/test_spa_rows.py::test_the_change_rule_marks_exactly_what_changed_on_every_list'
 LEFT = DG + 'test_the_left_edge_of_a_row_belongs_to_the_thread'
 BOUND = DG + 'test_every_keyframe_and_transition_is_a_registered_motion'
+NOW = 'clients/app/src/surfaces/Now.tsx'
+THREAD = 'clients/app/src/state/thread.ts'
+THREAD_TS = 'node:test/thread.test.ts'
+THREAD_E2E = 'tests/v1/e2e/test_spa_thread.py::test_a_reply_draws_its_thread_to_the_row_once'
+KEYFRAMES = DG + 'test_keyframes_animate_only_transform_and_opacity'
+LOOPS = DG + 'test_transitions_move_only_transform_and_opacity_and_nothing_loops'
 #: the generated travelling-marker entry's budget, as gen_ui writes it
 MARKER_TS = ('"max_ms": 600,\n    "token": null,\n    "ttl_ms": null,\n    "ttl_error_ms": null,\n'
              '    "easing": "linear",\n    "cap": 8,')
@@ -587,6 +593,49 @@ MUTATIONS = [
     ('N139', 'the rule never said in words', [(UI,
      '  return on ? <span className="sr"> changed since you looked</span> : null;', '  return on ? <span className="sr"></span> : null;')],
      [RULE_E2E]),
+    # ── R6: the thread's T1 form on Now (tints and the mission Now tab deferred) ──
+    ('N140', 'a reply never draws its line', [(NOW,
+     '      setLine({ key: m.id, to: target });\n', '')],
+     [THREAD_E2E]),
+    ('N141', 'the line goes to the first link, on screen or not', [(THREAD,
+     'links.find(onScreen) ?? null;', 'links.find(onScreen) ? links[0] : null;')],
+     [THREAD_TS]),
+    ('N142', 'the line leaves the message on the far side', [(THREAD,
+     '  const x = rightward ? from.right : from.left;', '  const x = rightward ? from.left : from.right;')],
+     [THREAD_TS, THREAD_E2E]),
+    ('N143', 'a message heard again draws again', [(NOW,
+     '  if (id && !handled.has(id)) heard.set(id, f.id!);', '  if (id) heard.set(id, f.id!);')],
+     [THREAD_TS, THREAD_E2E]),
+    ('N144', 'the line drawn under reduced motion', [(NOW,
+     "seq, performance.now(), reducedMotion()))", "seq, performance.now(), reducedMotion() && false))")],
+     [THREAD_E2E]),
+    ('N145', 'nothing said in words', [(NOW,
+     '.then((names) => announce(threadWords(names)));', '.then((names) => names.length < 0 && announce(threadWords(names)));')],
+     [THREAD_E2E]),
+    ('N146', 'the words are not the rulebook\'s', [(THREAD,
+     '`Archeus updated ${names.join(\', \')}`', '`Archeus changed ${names.join(\', \')}`')],
+     [THREAD_TS, THREAD_E2E]),
+    ('N147', 'a user\'s own message draws a thread', [(NOW,
+     "const links = m.author === 'archeus' ? linksOf(m.links) : [];", 'const links = linksOf(m.links);')],
+     [THREAD_TS]),
+    ('N148', 'a message\'s card never carries the change rule', [(NOW,
+     ' data-ref={`${kind}:${id}`} {...thread(changed)}>', ' data-ref={`${kind}:${id}`}>')],
+     [THREAD_E2E]),
+    ('N149', 'a link with no card is not shown', [(NOW,
+     '  const bare = linksOf(m.links).filter(', '  const bare = linksOf([]).filter(')],
+     [THREAD_E2E]),
+    ('N150', 'forced colours draw the line in thread ink', [(CSS,
+     '    background: Highlight;\n    forced-color-adjust: none;', '    background: var(--thread);\n    forced-color-adjust: none;')],
+     [THREAD_E2E]),
+    ('N151', 'high contrast keeps the fine line', [(CSS,
+     '  .thread-line {\n    height: 2px;\n    background: var(--focus);', '  .thread-line {\n    height: 1px;\n    background: var(--focus);')],
+     [THREAD_E2E]),
+    ('N152', 'the line animates its width', [(CSS,
+     '    opacity: 1;\n    transform: rotate(var(--angle)) scaleX(0);', '    opacity: 1;\n    width: 0;')],
+     [KEYFRAMES]),
+    ('N153', 'the line never leaves', [(CSS,
+     'animation: thread-draw var(--dur-travel) ease-in-out 1;', 'animation: thread-draw var(--dur-travel) ease-in-out infinite;')],
+     [LOOPS, THREAD_E2E]),
 ]
 
 if __name__ == '__main__':

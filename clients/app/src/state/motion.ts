@@ -303,15 +303,17 @@ export const MOTIONS = {
     "equivalent": "the mirror says the edge is live: 'live now' on the execution's attempt-of relation"
   },
   "thread-travel": {
-    "status": "approved",
-    "source": "ADR-0024 §6, rulebook §21 A-05",
-    "trigger": "a new Archeus message whose links[] target a row on screen",
+    "status": "built",
+    "source": "ADR-0024 §6, ADR-0026 §1, rulebook §21 A-05, design system §2",
+    "trigger": "a new Archeus message whose links[] target a row on screen: one line from the message to that row, drawn on once and gone; built on Now (the mission Now tab waits for P19's per-mission conversations)",
     "driven_by": "event",
     "runs_on": "css",
-    "css": null,
+    "css": [
+      "thread-draw"
+    ],
     "transition": null,
     "max_ms": 600,
-    "token": null,
+    "token": "travel",
     "ttl_ms": null,
     "ttl_error_ms": null,
     "easing": "ease-in-out",
@@ -326,8 +328,8 @@ export const MOTIONS = {
     ],
     "idle": "never",
     "replay": false,
-    "reduced": "the thread rule appears, with no travel",
-    "equivalent": "a live-region announcement naming the object"
+    "reduced": "no line: the row and the message's card keep their change rule (T2) while the digest names the object",
+    "equivalent": "a polite announcement 'Archeus updated …' naming the objects, and the message's card or link"
   },
   "thread-rule-fade": {
     "status": "built",
