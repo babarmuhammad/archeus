@@ -15,12 +15,12 @@ import { Inspector } from '../surfaces/Inspector';
 import { lookOf } from './encoding';
 import { fit, layout, pinchCamera, type Point } from './layout';
 import { browserHost, Loop } from './loop';
-import { allExpanded, around, build, haloed, inFocus, keyOf, lift as liftKey, lifted, liveExecutions, markerFor, markerTarget, path as tracePathKeys, pathStatus, pulseEdge, pulseFor, search, toggle, visible, type GraphData, type Model, type Ref } from './model';
+import { allExpanded, around, build, depthAlphas, haloed, hops, IMPACT_HOPS, impactOf, inFocus, keyOf, lift as liftKey, lifted, liveExecutions, markerFor, markerTarget, path as tracePathKeys, pathStatus, pulseEdge, pulseFor, search, toggle, visible, type GraphData, type Model, type Ref } from './model';
 import { drawSwatch, frame, type Camera, type DrawStats, type Layer } from './render';
 import { applyLegend, legendRows, type LegendRow } from './legend';
 import { doubleTap, selected as selectedEdge, start, step, type Walk } from './keys';
 import { edgeWords } from './relations';
-import { mirrorRows } from './mirror';
+import { mirrorRows, type Around } from './mirror';
 import { MIN_WIDTH, useWide } from './wide';
 
 /** Where a graph view lives (A4): every step is a URL. */
@@ -98,6 +98,9 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   const [query, setQuery] = useState('');
   const [walk, setWalk] = useState<Walk>(() => start(rootKey));
   const [pathEnds, setPathEnds] = useState<string[]>([]);
+  // "What does this affect?" (ADR-0025 §3): view state, about the focused node
+  const [impact, setImpact] = useState(false);
+  const [impactHops, setImpactHops] = useState<number>(IMPACT_HOPS.default);
   const [pinned, setPinnedState] = useState<Set<string>>(() => PINS.get(path) ?? new Set());
   const pin = (k: string) => {
     if (!k) return;
@@ -182,6 +185,11 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
     return ids;
   }, [pathEnds, model, drawn]);
   const pathState = useMemo(() => pathStatus(model, pathEnds), [model, pathEnds]);
+  const affected = useMemo(() => (impact && vis.has(walk.at) ? impactOf(model, vis, drawn, walk.at, impactHops) : null), [impact, impactHops, model, vis, drawn, walk.at]);
+  const lit = useMemo(() => (affected ? new Set([...(traced ?? []), ...affected.edges]) : traced), [traced, affected]);
+  // depth by graph distance from the focus (ADR-0025 §4); in the impact view, what it affects
+  const depth = useMemo(() => depthAlphas(drawn, keys, walk.at || null, opaque(), affected?.shown), [drawn, keys, walk.at, affected]);
+  const steps = useMemo(() => (walk.at && vis.has(walk.at) ? hops(drawn, walk.at) : null), [drawn, walk.at, vis]);
 
   // the camera: fit once per focus, kept afterwards
   const camera = (now: number): Camera => {
@@ -221,11 +229,12 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
       hover: hoverRef.current,
       selected: sel?.edge.id ?? null,
       context,
-      path: traced,
+      depth,
+      path: lit,
       live,
       liveStatic: reducedMotion(),
       halo,
-      haloSolid: solidHalo(),
+      opaque: opaque(),
       pulse,
       marker,
       colour: (v) => styles.getPropertyValue(v).trim() || '#888',
@@ -245,6 +254,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
     c.dataset.frames = String(loopRef.current?.frames ?? 0);
     c.dataset.pulses = String(pulse.size); // running now, this frame
     c.dataset.markers = String(marker.size); // travelling now, this frame (the cap's reading)
+    if (stats.layer) c.dataset.hulls = String(stats.hulls); // project volumes in the static layer
     if (stats.lod !== lod) setLod(stats.lod);
   };
 
@@ -318,7 +328,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   useEffect(() => {
     if (!cam.current) fitAll(false);
     loopRef.current?.request();
-  }, [model, keys, drawn, pos, walk, context, traced, live, halo]);
+  }, [model, keys, drawn, pos, walk, context, lit, depth, live, halo]);
 
   // what the keyboard (or a click) says
   useEffect(() => {
@@ -386,6 +396,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
       case 'clear':
         setQuery('');
         setPathEnds([]);
+        setImpact(false);
         return;
       case 'path-mark':
         return setPathEnds((p) => (p.length >= 2 ? [w.at] : [...p, w.at]));
@@ -463,7 +474,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   const hiddenCount = (data.hidden ?? []).reduce((a, h) => a + h.count, 0);
 
   return (
-    <div className="graph" data-graph-focus={focus ? `${focus.kind}:${focus.id}` : 'workspace'} data-graph-nodes={keys.length} data-graph-lod={lod} data-graph-loop={loopState} data-graph-at={walk.at} data-graph-live={live.size} data-graph-halos={halos} data-graph-pulses={pulseCount} data-graph-markers={markerCount} data-graph-pinned={pinned.size} data-graph-expanded={expanded.size} data-graph-collapsible={model.children.size} data-graph-hidden={hidden.size} data-graph-selected={sel?.edge.id ?? ''} data-graph-path={pathState ?? ''}>
+    <div className="graph" data-graph-focus={focus ? `${focus.kind}:${focus.id}` : 'workspace'} data-graph-nodes={keys.length} data-graph-lod={lod} data-graph-loop={loopState} data-graph-at={walk.at} data-graph-live={live.size} data-graph-halos={halos} data-graph-pulses={pulseCount} data-graph-markers={markerCount} data-graph-pinned={pinned.size} data-graph-expanded={expanded.size} data-graph-collapsible={model.children.size} data-graph-hidden={hidden.size} data-graph-impact={affected ? affected.steps.size : ''} data-graph-selected={sel?.edge.id ?? ''} data-graph-path={pathState ?? ''}>
       <div className="graph-bar" role="toolbar" aria-label="Graph">
         <a className="chip" href={modules !== undefined ? objectHref('repository', focus!.id) : focus ? (focus.kind === 'project' ? `#/world/${focus.id}` : objectHref(focus.kind, focus.id, 'relations')) : '#/world'}>
           List
@@ -492,6 +503,18 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
         <button type="button" className="chip" disabled={!model.children.size} onClick={collapseAll}>
           Collapse all
         </button>
+        <button type="button" className={impact ? 'chip on' : 'chip'} aria-pressed={impact} disabled={!vis.has(walk.at)} onClick={() => setImpact((x) => !x)}>
+          What does this affect?
+        </button>
+        {impact ? (
+          <select className="chip" aria-label="How many steps" value={impactHops} onChange={(e) => setImpactHops(Number(e.target.value))}>
+            {Array.from({ length: IMPACT_HOPS.max }, (_, i) => i + 1).map((h) => (
+              <option key={h} value={h}>
+                within {h} {h === 1 ? 'step' : 'steps'}
+              </option>
+            ))}
+          </select>
+        ) : null}
         {rels.length > 1 ? (
           <span className="chips" role="group" aria-label="Show one relationship">
             <button type="button" className={only ? 'chip' : 'chip on'} aria-pressed={!only} onClick={() => setOnly(null)}>
@@ -506,6 +529,11 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
         ) : null}
       </div>
       {stale ? <p className="stale-line">{stale}</p> : null}
+      {affected ? (
+        <p className="status-line" role="status" data-graph-impact-line="">
+          {model.byKey.get(walk.at)?.label ?? 'This'} affects {affected.steps.size ? `${affected.steps.size} ${affected.steps.size === 1 ? 'object' : 'objects'}` : 'nothing recorded'} within {affected.hops} {affected.hops === 1 ? 'step' : 'steps'} — over recorded relations in this loaded view only.
+        </p>
+      ) : null}
       {pathState === 'none' ? (
         <p className="status-line" role="status">
           No path within the loaded neighbourhood.
@@ -582,7 +610,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
         ↑ ↓ choose a relationship · → follow it · ← back · Enter open · F focus here · Space expand or collapse · E expand all · C collapse all · + − zoom · 0 fit · / find · P mark a path end · . pin or unpin · Esc clear
       </p>
       <Legend model={model} hidden={hidden} onToggle={(k) => setHidden((h) => toggle(h, k))} />
-      <Mirror model={model} pinned={pinned} halo={halo} />
+      <Mirror model={model} pinned={pinned} halo={halo} around={walk.at && steps ? { focus: walk.at, steps, affected: affected?.steps } : undefined} />
     </div>
   );
 }
@@ -594,14 +622,14 @@ const GROUPS = [
 ] as const;
 const SWATCH = { w: 28, h: 24 };
 const reducedMotion = () => document.documentElement.dataset.motion === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches;
-const solidHalo = () => matchMedia('(forced-colors: active)').matches || matchMedia('(prefers-reduced-transparency: reduce)').matches;
+const opaque = () => matchMedia('(forced-colors: active)').matches || matchMedia('(prefers-reduced-transparency: reduce)').matches;
 
 /** The legend (ADR-0025 §2): what each shape and line in this picture means,
  * and the two marks of live work, as a list. Each shape and line row is a real
  * checkbox that hides what it names from the drawing. */
 function Legend({ model, hidden, onToggle }: { model: Model; hidden: ReadonlySet<string>; onToggle: (key: string) => void }) {
   const reduced = reducedMotion();
-  const solid = solidHalo();
+  const solid = opaque();
   const rows = legendRows(model, reduced);
   return (
     <details className="graph-legend" open data-graph-legend="">
@@ -654,11 +682,11 @@ const chipOf = (e: { field: string; rel?: string | null }) => edgeWords(e.field,
 /** The accessible form (A11): the same loaded graph as a list — every node the
  * read returned (the collapsed ones and the "+N" stubs too), each with its
  * edges in words. Not a second data source: built from the same object. */
-export function Mirror({ model, pinned, halo }: { model: Model; pinned?: ReadonlySet<string>; halo?: ReadonlySet<string> }) {
+export function Mirror({ model, pinned, halo, around }: { model: Model; pinned?: ReadonlySet<string>; halo?: ReadonlySet<string>; around?: Around }) {
   return (
     <section className="sr" aria-label="Relationships in this view, as a list" data-graph-mirror="">
       <ul>
-        {mirrorRows(model, pinned, halo).map(({ k, n, look, edges, pinned: isPinned, detail, live }) => {
+        {mirrorRows(model, pinned, halo, around).map(({ k, n, look, edges, pinned: isPinned, detail, live, notes }) => {
           return (
             <li key={k} data-key={k} data-live={live ? '' : undefined}>
               {n.endpoint ? (
@@ -673,6 +701,7 @@ export function Mirror({ model, pinned, halo }: { model: Model; pinned?: Readonl
               )}
               {isPinned ? ' (pinned)' : ''}
               {detail ? ` — ${detail}` : ''}
+              {notes.map((x) => ` — ${x}`).join('')}
               {live ? ' — live work now' : ''}
               {n.machine && n.state ? <StateBadge machine={n.machine} state={n.state} /> : null}
               {edges.length ? (

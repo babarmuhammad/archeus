@@ -173,3 +173,12 @@ export const TIER_WORD: Record<NonNullable<Edge['tier']>, string> = {
   INFERRED: 'suggested by Archeus',
   AMBIGUOUS: 'unclear',
 };
+
+export type Tier = keyof typeof TIER_WORD;
+
+/** An edge's tier as drawn: a column edge (no tier) is recorded; a tier Core
+ * does not define is none — never guessed. */
+export function tierOf(e: { tier?: string | null }): Tier | null {
+  if (!e.tier) return 'EXTRACTED';
+  return e.tier in TIER_WORD ? (e.tier as Tier) : null;
+}

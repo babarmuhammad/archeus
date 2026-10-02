@@ -13,7 +13,7 @@
 // the layer like pulses: two paths per frame, whatever the number of markers.
 import { ALPHA } from '../state/tokens.ts';
 import { attrsText, colourVar, countsText, dashOf, lookOf, radiusOf, tracePath, widthOf } from './encoding.ts';
-import { travelOf, type Drawn, type Model } from './model.ts';
+import { ancestors, travelOf, type Drawn, type Model } from './model.ts';
 import type { Point } from './layout.ts';
 import type { LegendRow } from './legend.ts';
 
@@ -36,14 +36,15 @@ export interface Scene {
   root?: string | null; // the query's focus: labelled whatever the walk does (A10)
   hover?: string | null; // the node under a mouse (A10)
   selected?: string | null; // a drawn edge id
-  context: ReadonlySet<string> | null; // focus + context: null → nothing dimmed
+  context: ReadonlySet<string> | null; // focus + context: the nodes labelled with the focus
+  depth?: ReadonlyMap<string, number> | null; // node key → its depth alpha (model.depthAlphas); absent → 1
   path?: ReadonlySet<string> | null; // drawn edge ids on a traced path
   live: ReadonlySet<string>; // drawn edge ids with a live execution
   liveStatic: boolean; // reduced motion: live edges drawn thicker, never pulsed
   pulse: ReadonlyMap<string, number>; // drawn edge id → 0..1 of its one pulse
   marker?: ReadonlyMap<string, number>; // markerTarget → 0..1 of its travel
   halo: ReadonlySet<string>; // node keys with live work (model.haloed): a static ring each
-  haloSolid?: boolean; // forced colours or reduced transparency: one solid ring, no alpha
+  opaque?: boolean; // forced colours or reduced transparency: every alpha token opaque (ADR-0028 §3)
   degraded?: boolean; // frames run slow (Loop.degraded): no pulse, the focus's label only
   colour: (cssVar: string) => string;
   width: number;
@@ -56,6 +57,7 @@ export interface DrawStats {
   paths: number; // beginPath calls: the CI proxy for work per frame
   labels: number;
   nodes: number;
+  hulls: number; // project volumes drawn
 }
 
 /** The whole picture on one context: the static layer, then the pulses. */
@@ -77,7 +79,7 @@ export interface Layer {
 /** What the static layer shows: when none of it changed, the layer is reused.
  * The pulse map is deliberately not in it. */
 export function staticSig(s: Scene): unknown[] {
-  return [s.model, s.keys, s.drawn, s.pos, s.cam.x, s.cam.y, s.cam.k, s.focus, s.root ?? null, s.hover ?? null, s.selected ?? null, s.context, s.path ?? null, s.live, s.liveStatic, s.halo, !!s.haloSolid, !!s.degraded, s.width, s.height, s.dpr, s.colour('--bg'), s.colour('--text')];
+  return [s.model, s.keys, s.drawn, s.pos, s.cam.x, s.cam.y, s.cam.k, s.focus, s.root ?? null, s.hover ?? null, s.selected ?? null, s.context, s.path ?? null, s.live, s.liveStatic, s.halo, !!s.opaque, s.depth ?? null, !!s.degraded, s.width, s.height, s.dpr, s.colour('--bg'), s.colour('--text')];
 }
 
 /** One frame of the view: redraw the static layer only if it changed, copy it,
@@ -98,11 +100,11 @@ export function frame(ctx: CanvasRenderingContext2D, layer: Layer, s: Scene): Dr
     drawPulses(ctx, s);
     drawMarkers(ctx, s);
   });
-  return { ...top, labels: under?.labels ?? 0, layer: stale, layerPaths: under?.paths ?? 0 };
+  return { ...top, labels: under?.labels ?? 0, hulls: under?.hulls ?? 0, layer: stale, layerPaths: under?.paths ?? 0 };
 }
 
 function counted(ctx: CanvasRenderingContext2D, s: Scene, body: (stats: DrawStats) => void): DrawStats {
-  const stats: DrawStats = { lod: s.keys.length > LOD_NODES ? 'dots' : 'full', paths: 0, labels: 0, nodes: s.keys.length };
+  const stats: DrawStats = { lod: s.keys.length > LOD_NODES ? 'dots' : 'full', paths: 0, labels: 0, nodes: s.keys.length, hulls: 0 };
   const bp = ctx.beginPath.bind(ctx);
   ctx.beginPath = () => {
     stats.paths++;
@@ -124,13 +126,103 @@ function paintStatic(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) 
   ctx.fillStyle = s.colour('--bg');
   ctx.fillRect(0, 0, s.width, s.height);
   toCamera(ctx, s);
+  drawHulls(ctx, s, stats);
   drawEdges(ctx, s);
   drawHalos(ctx, s, stats);
   drawNodes(ctx, s, stats);
   drawLabels(ctx, s, stats);
 }
 
-const dim = (s: Scene, k: string) => !!s.context && !s.context.has(k);
+const alphaOf = (s: Scene, k: string) => s.depth?.get(k) ?? 1;
+
+/** Padding between a project's members and its hull, in world units. */
+export const HULL_PAD = 6;
+
+export interface Hull {
+  project: string;
+  pts: Point[];
+  focused: boolean;
+}
+
+/** The project hulls (ADR-0025 §4, rulebook §12): for each drawn project with
+ * at least one drawn member — a node it contains at any depth — the convex
+ * hull of its own and its members' shapes, padded; focused when the focus is
+ * the project or one of its members. A collapsed project draws none. */
+export function hulls(s: Pick<Scene, 'model' | 'keys' | 'pos' | 'focus'>): Hull[] {
+  const out: Hull[] = [];
+  for (const k of s.keys) {
+    const n = s.model.byKey.get(k);
+    if (n?.kind !== 'project' || n.endpoint) continue;
+    const members = s.keys.filter((x) => x !== k && ancestors(s.model, x).includes(k));
+    if (!members.length) continue;
+    const pts: Point[] = [];
+    for (const x of [k, ...members]) {
+      const p = s.pos.get(x);
+      const m = s.model.byKey.get(x)!;
+      if (!p) continue;
+      const r = radiusOf(lookOf(m.kind, m.endpoint, m.type).shape) + HULL_PAD;
+      for (let i = 0; i < 12; i++) pts.push({ x: p.x + r * Math.cos((i * Math.PI) / 6), y: p.y + r * Math.sin((i * Math.PI) / 6) });
+    }
+    out.push({ project: k, pts: convex(pts), focused: !!s.focus && (s.focus === k || members.includes(s.focus)) });
+  }
+  return out;
+}
+
+/** Andrew's monotone chain: the convex hull, counter-clockwise. */
+function convex(ps: Point[]): Point[] {
+  const p = [...ps].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (p.length < 3) return p;
+  const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const half = (pts: Point[]) => {
+    const h: Point[] = [];
+    for (const q of pts) {
+      while (h.length >= 2 && cross(h[h.length - 2], h[h.length - 1], q) <= 0) h.pop();
+      h.push(q);
+    }
+    h.pop();
+    return h;
+  };
+  return [...half(p), ...half([...p].reverse())];
+}
+
+/** One filled path per project hull, under every stroke, in text ink at
+ * `hull` (`hull-focus` for the focused project's); opaque, a 1 px outline. */
+function drawHulls(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
+  const hs = hulls(s);
+  stats.hulls = hs.length;
+  ctx.setLineDash([]);
+  for (const h of hs) {
+    ctx.beginPath();
+    h.pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    ctx.closePath();
+    if (s.opaque) {
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1 / s.cam.k;
+      ctx.strokeStyle = s.colour('--line');
+      ctx.stroke();
+    } else {
+      ctx.globalAlpha = ALPHA[h.focused ? 'hull-focus' : 'hull'];
+      ctx.fillStyle = s.colour('--text');
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** Receding lines (ADR-0025 §4, rulebook §24-25): an edge the focus does not
+ * touch, and every edge Archeus only suggested, at alpha-recede; a recorded
+ * edge of the focus at full strength (a mixed bundle claims no tier, so it
+ * follows the focus rule). The selected, path and live edges are bright: the
+ * caller never asks. Opaque: nothing recedes. */
+export function recede(s: Pick<Scene, 'focus' | 'opaque'>, d: Pick<Drawn, 'a' | 'b' | 'tier'>): number {
+  if (s.opaque) return 1;
+  if (d.tier && d.tier !== 'EXTRACTED') return ALPHA['alpha-recede'];
+  return !s.focus || d.a === s.focus || d.b === s.focus ? 1 : ALPHA['alpha-recede'];
+}
+
+/** A live node's core (ADR-0025 §4, rulebook §12): a dot of thread ink inside
+ * its shape, this fraction of its radius. */
+export const CORE = 0.35;
 
 function drawEdges(ctx: CanvasRenderingContext2D, s: Scene) {
   const groups = new Map<string, Drawn[]>();
@@ -138,19 +230,19 @@ function drawEdges(ctx: CanvasRenderingContext2D, s: Scene) {
     const pa = s.pos.get(d.a);
     const pb = s.pos.get(d.b);
     if (!pa || !pb) continue;
-    const faded = dim(s, d.a) || dim(s, d.b);
     const hot = d.id === s.selected || !!s.path?.has(d.id);
     const live = s.live.has(d.id);
-    const key = [dashOf(d.tier).join(','), widthOf(d.count, live && s.liveStatic), faded, hot, d.inactive, d.structural].join('|');
+    const alpha = hot || live ? 1 : recede(s, d);
+    const key = [dashOf(d.tier).join(','), widthOf(d.count, live && s.liveStatic), alpha, hot, d.inactive, d.structural].join('|');
     const g = groups.get(key);
     if (g) g.push(d);
     else groups.set(key, [d]);
   }
   for (const [key, ds] of groups) {
-    const [dash, w, faded, hot, inactive, structural] = key.split('|');
+    const [dash, w, alpha, hot, inactive, structural] = key.split('|');
     ctx.setLineDash(dash ? dash.split(',').map(Number) : []);
     ctx.lineWidth = Number(w) / s.cam.k;
-    ctx.globalAlpha = faded === 'true' ? 0.25 : structural === 'true' ? 0.5 : 1;
+    ctx.globalAlpha = Number(alpha) * (structural === 'true' ? 0.5 : 1);
     ctx.strokeStyle = s.colour(hot === 'true' ? '--focus' : inactive === 'true' ? '--text-3' : '--line-strong');
     ctx.beginPath();
     for (const d of ds) {
@@ -296,6 +388,10 @@ export function drawSwatch(ctx: CanvasRenderingContext2D, row: LegendRow, w: num
     tracePath(ctx, 'dot', cx, cy, r);
     ctx.fillStyle = colour('--text-2');
     ctx.fill();
+    ctx.fillStyle = colour('--thread');
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * CORE, 0, Math.PI * 2);
+    ctx.fill();
     ctx.strokeStyle = colour('--state-active');
     for (const [gap, alpha] of haloRings(solid)) {
       ctx.globalAlpha = alpha;
@@ -338,21 +434,22 @@ const haloRings = (solid: boolean): [number, number][] =>
 function drawHalos(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
   if (!s.halo.size) return;
   const dots = stats.lod === 'dots';
-  const rings = haloRings(!!s.haloSolid);
+  const rings = haloRings(!!s.opaque);
   ctx.setLineDash([]);
   ctx.lineWidth = 1 / s.cam.k;
   ctx.strokeStyle = s.colour('--state-active');
-  for (const faded of [false, true])
+  const depths = [...new Set(s.keys.filter((k) => s.halo.has(k)).map((k) => alphaOf(s, k)))];
+  for (const depth of depths)
     for (const [gap, alpha] of rings) {
       const at: [number, number, number][] = [];
       for (const k of s.keys) {
-        const n = s.halo.has(k) && dim(s, k) === faded ? s.model.byKey.get(k) : undefined;
+        const n = s.halo.has(k) && alphaOf(s, k) === depth ? s.model.byKey.get(k) : undefined;
         const p = n && s.pos.get(k);
         if (!n || !p) continue;
         at.push([p.x, p.y, dots ? (2 + gap) / s.cam.k : radiusOf(lookOf(n.kind, n.endpoint, n.type).shape) + gap]);
       }
       if (!at.length) continue;
-      ctx.globalAlpha = alpha * (faded ? 0.25 : 1);
+      ctx.globalAlpha = alpha * depth;
       ctx.beginPath();
       for (const [x, y, r] of at) {
         ctx.moveTo(x + r, y);
@@ -371,14 +468,14 @@ function drawNodes(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
       const n = s.model.byKey.get(k);
       const p = s.pos.get(k);
       if (!n || !p) continue;
-      const c = colourVar(n.kind, n.machine, n.state) + (dim(s, k) ? '|dim' : '');
+      const c = colourVar(n.kind, n.machine, n.state) + '|' + alphaOf(s, k);
       const g = byColour.get(c);
       if (g) g.push(p);
       else byColour.set(c, [p]);
     }
     for (const [c, ps] of byColour) {
-      const [cssVar, faded] = c.split('|');
-      ctx.globalAlpha = faded ? 0.25 : 1;
+      const [cssVar, alpha] = c.split('|');
+      ctx.globalAlpha = Number(alpha);
       ctx.fillStyle = s.colour(cssVar);
       ctx.beginPath();
       const r = 2 / s.cam.k;
@@ -397,7 +494,7 @@ function drawNodes(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
     if (!n || !p) continue;
     const look = lookOf(n.kind, n.endpoint, n.type);
     const col = s.colour(colourVar(n.kind, n.machine, n.state));
-    ctx.globalAlpha = dim(s, k) ? 0.25 : 1;
+    ctx.globalAlpha = alphaOf(s, k);
     ctx.lineWidth = 1 / s.cam.k;
     ctx.setLineDash(look.shape === 'endpoint' ? [1.5, 3] : []);
     const { filled } = tracePath(ctx, look.shape, p.x, p.y, radiusOf(look.shape));
@@ -407,6 +504,12 @@ function drawNodes(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
     } else {
       ctx.strokeStyle = col;
       ctx.stroke();
+    }
+    if (s.halo.has(k)) {
+      ctx.fillStyle = s.colour('--thread');
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radiusOf(look.shape) * CORE, 0, Math.PI * 2);
+      ctx.fill();
     }
     if (k === s.focus) {
       ctx.setLineDash([]);
@@ -446,7 +549,7 @@ function drawLabels(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
     const p = s.pos.get(k);
     if (!p) continue;
     const x = p.x + (radiusOf(lookOf(n.kind, n.endpoint, n.type).shape) + 4);
-    ctx.globalAlpha = dim(s, k) ? 0.4 : 1;
+    ctx.globalAlpha = alphaOf(s, k);
     ctx.fillText(n.label, x, p.y);
     stats.labels++;
     // a second line, only what Core returned: a project's counts (A3, A4),

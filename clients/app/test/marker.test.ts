@@ -83,7 +83,8 @@ function hear(tl: Timeline, v: View, f: ReturnType<typeof frameOf>, now: number,
   return !!t && tl.start('travelling-marker', markerTarget(t, f.id), f.id, now, reduced);
 }
 
-/** The markers drawn: heads (the arcs filled in thread ink) and tails (the
+/** The markers drawn: heads (the arcs of a head's radius filled in thread
+ * ink — a live node's core is thread ink too, and larger) and tails (the
  * segments stroked in it), in camera units. */
 function marks(o: string[]) {
   const heads: [number, number][] = [];
@@ -98,7 +99,7 @@ function marks(o: string[]) {
     if (op.startsWith('fillStyle=')) fill = op.slice(10);
     else if (op.startsWith('strokeStyle=')) stroke = op.slice(12);
     else if (op === 'beginPath()') (arcs = []), (segs = []);
-    else if (op.startsWith('arc(')) arcs.push([n[0], n[1]]);
+    else if (op.startsWith('arc(') && n[2] === MARKER_HEAD / 2) arcs.push([n[0], n[1]]);
     else if (op.startsWith('moveTo(')) at = n;
     else if (op.startsWith('lineTo(')) segs.push([...at, ...n]);
     else if (op === 'fill()' && fill === '--thread') heads.push(...arcs);

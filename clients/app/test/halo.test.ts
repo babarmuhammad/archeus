@@ -64,6 +64,16 @@ function rings(o: string[]): string[] {
 }
 const R = 7; // an execution is a triangle of radius 7 (encoding.radiusOf)
 
+/** The ops without each live node's core: thread ink, one arc, one fill. */
+function uncored(o: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < o.length; i++) {
+    if (o[i] === 'fillStyle=--thread' && o[i + 1] === 'beginPath()' && o[i + 2]?.startsWith(`arc(`) && o[i + 3] === 'fill()') i += 3;
+    else out.push(o[i]);
+  }
+  return out;
+}
+
 test('an inactive object has no halo; an active one has two static strokes at the approved alphas', () => {
   const still = scene(data('ENDED_OK'));
   assert.equal(still.halo.size, 0);
@@ -132,7 +142,7 @@ test('completion: a read showing the work ended removes the halo, leaving the in
 test('reduced motion keeps the halo; forced colours or reduced transparency make it one solid ring', () => {
   const live = scene(data('RUNNING'));
   assert.deepEqual(rings(ops({ ...live, liveStatic: true })), rings(ops(live)), 'reduced motion dropped the halo');
-  const solid = ops({ ...live, haloSolid: true });
+  const solid = ops({ ...live, opaque: true });
   assert.deepEqual(rings(solid), [`arc(0,0,${R + HALO_RINGS[0]},0,6.28)`]);
   assert.ok(solid.includes('globalAlpha=1') && !solid.includes(`globalAlpha=${ALPHA['halo-outer']}`));
 });
@@ -145,8 +155,9 @@ test('several live objects each carry their own halo; the others are drawn exact
   assert.ok(r.some((a) => a.startsWith('arc(60,0,')) && r.some((a) => a.startsWith('arc(0,0,')));
   // the halo is one inserted block of its own strokes: every other op — every
   // other node, edge and label — is exactly what the picture without it draws
+  // ...and inside each live node its core (R3), the cored node's own block
   const without = ops({ ...both, halo: new Set() });
-  const withHalo = ops(both);
+  const withHalo = uncored(ops(both));
   let a = 0;
   while (without[a] === withHalo[a]) a++;
   let z = 0;

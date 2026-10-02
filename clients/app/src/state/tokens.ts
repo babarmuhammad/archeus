@@ -3,4 +3,4 @@ export const MOTION = {"state": 160, "row": 200, "inspector": 220, "sheet": 280,
 export const EASING = "cubic-bezier(.22,.8,.18,1)";
 export const BREAKPOINTS = {"tablet": 600, "desktop": 1000} as const;
 export const TARGETS = {"desktop": 28, "phone": 44} as const;
-export const ALPHA = {"halo-outer": 0.35, "halo-inner": 0.7} as const;
+export const ALPHA = {"halo-outer": 0.35, "halo-inner": 0.7, "alpha-recede": 0.4, "alpha-tier1": 0.64, "alpha-tier2": 0.36, "hull": 0.06, "hull-focus": 0.1} as const;

@@ -7,9 +7,7 @@
 // keeps listing everything loaded. Pure.
 import { ENCODING, dashOf, lookOf, type Shape } from './encoding.ts';
 import { keyOf, type GEdge, type GNode, type Model } from './model.ts';
-import { TIER_WORD } from './relations.ts';
-
-export type Tier = keyof typeof TIER_WORD;
+import { TIER_WORD, tierOf, type Tier } from './relations.ts';
 
 export type LegendRow =
   | { key: string; group: 'kind'; shape: Shape; word: string }
@@ -25,13 +23,6 @@ export function kindKey(n: GNode): string {
   const look = lookOf(n.kind, n.endpoint, n.type);
   if (look.shape === 'endpoint') return 'kind:endpoint';
   return 'kind:' + (look.shape === 'diamond' ? 'decision' : n.kind);
-}
-
-/** An edge's tier as drawn: a column edge (no tier) is recorded; a tier Core
- * does not define is none — never guessed. */
-export function tierOf(e: GEdge): Tier | null {
-  if (!e.tier) return 'EXTRACTED';
-  return e.tier in TIER_WORD ? (e.tier as Tier) : null;
 }
 
 /** The rows, in the encoding's order: kinds present in the loaded picture,

@@ -1,7 +1,8 @@
 """The P19.5 mutation suite (ADR-0024, ADR-0029 §6): the motion foundation,
 the activity halo, the travelling marker, the Core slice, and R1's copy/id
 gate with the Details disclosure and its command names (N71-N88), and R2's legend,
-expand all / collapse all and plain tier words (N89-N102). Break each gate's invariant, run
+expand all / collapse all and plain tier words (N89-N102), and R3's hull, depth,
+cored node, receding lines and impact view (N103-N119). Break each gate's invariant, run
 the test written for it, and require it to fail.
 
     py tools/mutate_p19_5.py            every mutation
@@ -59,6 +60,9 @@ KEYS = 'clients/app/src/graph/keys.ts'
 RELLIST = 'clients/app/src/components/Relations.tsx'
 LEGEND_TS = 'node:test/legend.test.ts'
 LEGEND_E2E = 'tests/v1/e2e/test_spa_legend.py::test_the_legend_and_the_whole_graph_commands'
+CONST_TS = 'node:test/constellation.test.ts'
+HULL_E2E = 'tests/v1/e2e/test_spa_constellation.py::test_the_hull_and_what_this_affects'
+CORE_E2E = 'tests/v1/e2e/test_spa_constellation.py::test_a_running_attempt_is_cored'
 #: the generated travelling-marker entry's budget, as gen_ui writes it
 MARKER_TS = ('"max_ms": 600,\n    "token": null,\n    "ttl_ms": null,\n    "ttl_error_ms": null,\n'
              '    "easing": "linear",\n    "cap": 8,')
@@ -181,15 +185,15 @@ MUTATIONS = [
      '  drawHalos(ctx, s, stats);\n', '  if (s.halo.size < 0) drawHalos(ctx, s, stats);\n')],
      [HALO_E2E]),
     ('N29', 'the halo outside the static layer signature', [(RENDER,
-     ' s.halo, !!s.haloSolid,', '')],
+     ' s.halo, !!s.opaque,', '')],
      [HALO]),
     ('N30', 'both halo strokes at the inner alpha', [(RENDER,
      "[HALO_RINGS[1], ALPHA['halo-outer']]", "[HALO_RINGS[1], ALPHA['halo-inner']]")],
      [HALO]),
     ('N31', 'the halo dropped under reduced motion', [(GV,
-     '      halo,\n      haloSolid:',
+     '      halo,\n      opaque:',
      "      halo: matchMedia('(prefers-reduced-motion: reduce)').matches ? new Set<string>() : halo,\n"
-     '      haloSolid:')],
+     '      opaque:')],
      [HALO_E2E]),
     ('N32', 'the halo cleared while the stream is down', [(GV,
      "import { store, useRead } from '../data/cache';",
@@ -458,6 +462,59 @@ MUTATIONS = [
     ('N102', 'under reduced motion the legend still promises a travelling marker', [(LEGEND,
      "word: reduced ? 'live now: the thicker line", "word: reduced && false ? 'live now: the thicker line")],
      [LEGEND_TS]),
+    # ── R3: hull, depth tiers, cored node, receding lines, "What does this affect?" ──
+    ('N103', 'the hull never drawn', [(RENDER,
+     '  drawHulls(ctx, s, stats);\n  drawEdges(ctx, s);\n', '  if (s.keys.length < 0) drawHulls(ctx, s, stats);\n  drawEdges(ctx, s);\n')],
+     [CONST_TS, HULL_E2E]),
+    ('N104', 'a collapsed project still wears a hull', [(RENDER,
+     '    if (!members.length) continue;\n', '    if (!members.length && s.keys.length < 0) continue;\n')],
+     [CONST_TS]),
+    ('N105', 'the hull drawn over the strokes', [(RENDER,
+     '  drawHulls(ctx, s, stats);\n  drawEdges(ctx, s);\n', '  drawEdges(ctx, s);\n  drawHulls(ctx, s, stats);\n')],
+     [CONST_TS]),
+    ('N106', 'forced colours still fill the hull', [(RENDER,
+     '    if (s.opaque) {\n      ctx.globalAlpha = 1;', '    if (s.opaque && s.keys.length < 0) {\n      ctx.globalAlpha = 1;')],
+     [HULL_E2E]),
+    ('N107', 'the focused project never wears hull-focus', [(RENDER,
+     "ALPHA[h.focused ? 'hull-focus' : 'hull']", "ALPHA[h.focused && s.keys.length < 0 ? 'hull-focus' : 'hull']")],
+     [CONST_TS]),
+    ('N108', 'depth tiers one step out', [(MODEL,
+     'h <= 1 ? 1 : h === 2 ? mid : far', 'h <= 2 ? 1 : h === 3 ? mid : far')],
+     [CONST_TS]),
+    ('N109', 'opaque depth still fades the far tier', [(MODEL,
+     '  const far = opaque ? 0.64 :', '  const far = opaque && keys.length < 0 ? 0.64 :')],
+     [CONST_TS]),
+    ('N110', 'every node cored, live or not', [(RENDER,
+     "    if (s.halo.has(k)) {\n      ctx.fillStyle = s.colour('--thread');", "    if (s.halo.size >= 0) {\n      ctx.fillStyle = s.colour('--thread');")],
+     [CONST_TS]),
+    ('N111', 'a live node drawn without its core', [(RENDER,
+     "    if (s.halo.has(k)) {\n      ctx.fillStyle = s.colour('--thread');", "    if (s.halo.has(k) && s.keys.length < 0) {\n      ctx.fillStyle = s.colour('--thread');")],
+     [CORE_E2E]),
+    ('N112', 'a suggested edge of the focus at full strength', [(RENDER,
+     "  if (d.tier && d.tier !== 'EXTRACTED') return ALPHA['alpha-recede'];\n", '')],
+     [CONST_TS]),
+    ('N113', 'unfocused recorded edges never recede', [(RENDER,
+     "  return !s.focus || d.a === s.focus || d.b === s.focus ? 1 : ALPHA['alpha-recede'];", '  return 1;')],
+     [CONST_TS]),
+    ('N114', 'the impact view crosses suggested relations', [(MODEL,
+     "    if (tierOf(e) !== 'EXTRACTED') continue;\n", '    if (tierOf(e) === null) continue;\n')],
+     [CONST_TS]),
+    ('N115', 'the impact view ignores its bound', [(MODEL,
+     '  for (let h = 1; h <= limit && ring.length; h++) {', '  for (let h = 1; h <= IMPACT_HOPS.max && ring.length; h++) {')],
+     [CONST_TS, HULL_E2E]),
+    ('N116', 'Esc leaves the impact view on', [(GV,
+     '        setPathEnds([]);\n        setImpact(false);\n', '        setPathEnds([]);\n')],
+     [HULL_E2E]),
+    ('N117', 'the impact view looks like the ordinary graph', [(MODEL,
+     '(k === focus || bright.has(k) ? 1 : far)', '(k === focus || bright.has(k) ? 1 : 1)')],
+     [CONST_TS]),
+    ('N118', 'the mirror no longer says how far a node is', [(MIRROR,
+     '      ...(d ? [`${stepsWord(d)} from ${focus}`] : []),\n', '      ...(d && d < 0 ? [`${stepsWord(d)} from ${focus}`] : []),\n')],
+     [CONST_TS, HULL_E2E]),
+    ('N119', 'the impact toggle moves the URL', [(GV,
+     'onClick={() => setImpact((x) => !x)}',
+     "onClick={() => (setImpact((x) => !x), history.replaceState(null, '', location.hash + '/affects'))}")],
+     [HULL_E2E]),
 ]
 
 if __name__ == '__main__':

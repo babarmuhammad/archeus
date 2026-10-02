@@ -5,12 +5,25 @@
 // selection facts are its `detail`, the words the canvas draws (A3); a node
 // the canvas haloes is `live` — the halo's text equivalent (ADR-0024 §6); and a
 // live execution's attempt-of relation, the edge its pulse and travelling
-// marker run along, says "live now" — their text equivalent. Pure.
+// marker run along, says "live now" — their text equivalent. R3's marks say
+// themselves in words too (rulebook §20): the hull as "in project Atlas",
+// depth as "2 steps from <focus>", and the impact view as "affected". Pure.
 import { attrsText, countsText, lookOf } from './encoding.ts';
-import { keyOf, type Model } from './model.ts';
+import { ancestors, keyOf, type Model } from './model.ts';
 import { edgeWords, TIER_WORD } from './relations.ts';
 
-export function mirrorRows(model: Model, pinned: ReadonlySet<string> = new Set(), halo: ReadonlySet<string> = new Set()) {
+/** Where the view stands: the focused node, the drawn hop distance of each
+ * node from it, and — while the impact view is on — what it affects. */
+export interface Around {
+  focus: string;
+  steps: ReadonlyMap<string, number>;
+  affected?: ReadonlyMap<string, number> | null;
+}
+
+const stepsWord = (n: number) => `${n} ${n === 1 ? 'step' : 'steps'}`;
+
+export function mirrorRows(model: Model, pinned: ReadonlySet<string> = new Set(), halo: ReadonlySet<string> = new Set(), around?: Around) {
+  const focus = around && model.byKey.get(around.focus)?.label;
   return model.nodes.map((n) => {
     const k = keyOf(n);
     const look = lookOf(n.kind, n.endpoint, n.type);
@@ -29,6 +42,14 @@ export function mirrorRows(model: Model, pinned: ReadonlySet<string> = new Set()
         return { id: e.id, text, live };
       });
     const detail = n.kind === 'project' ? countsText(n.counts) : n.kind === 'route_decision' ? attrsText(n.attrs) : '';
-    return { k, n, look, edges, live: halo.has(k), pinned: pinned.has(k), detail };
+    const project = ancestors(model, k).map((a) => model.byKey.get(a)!).find((a) => a.kind === 'project');
+    const d = around && k !== around.focus ? around.steps.get(k) : undefined;
+    const hit = around?.affected?.get(k);
+    const notes = [
+      ...(project ? [`in project ${project.label}`] : []),
+      ...(d ? [`${stepsWord(d)} from ${focus}`] : []),
+      ...(hit ? [`affected, ${stepsWord(hit)} from ${focus} over recorded relations`] : []),
+    ];
+    return { k, n, look, edges, live: halo.has(k), pinned: pinned.has(k), detail, notes };
   });
 }

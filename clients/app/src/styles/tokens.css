@@ -24,6 +24,11 @@
   --ease: cubic-bezier(.22,.8,.18,1);
   --halo-outer: 0.35;
   --halo-inner: 0.7;
+  --alpha-recede: 0.4;
+  --alpha-tier1: 0.64;
+  --alpha-tier2: 0.36;
+  --hull: 0.06;
+  --hull-focus: 0.1;
   --sidebar: 232px;
   --rail: 64px;
   --inspector-min: 360px;

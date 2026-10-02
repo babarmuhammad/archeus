@@ -6,11 +6,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ENCODING, dashOf, lookOf, radiusOf, tracePath } from '../src/graph/encoding.ts';
 import { allExpanded, build, keyOf, lift, lifted, toggle, visible, type GraphData } from '../src/graph/model.ts';
-import { applyLegend, kindKey, legendRows, tierOf, type LegendRow } from '../src/graph/legend.ts';
+import { applyLegend, kindKey, legendRows, type LegendRow } from '../src/graph/legend.ts';
 import { drawSwatch, HALO_RINGS, MARKER_HEAD, MARKER_TAIL } from '../src/graph/render.ts';
 import { step, start } from '../src/graph/keys.ts';
 import { mirrorRows } from '../src/graph/mirror.ts';
-import { TIER_STYLE, TIER_WORD } from '../src/graph/relations.ts';
+import { TIER_STYLE, TIER_WORD, tierOf } from '../src/graph/relations.ts';
 import { ALPHA } from '../src/state/tokens.ts';
 import { recorder } from './motion-harness.ts';
 

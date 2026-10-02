@@ -5,6 +5,8 @@
 // already loaded. It only arranges what Core returned: no edge is created,
 // none is inferred, nothing is read. Pure.
 import { MOTIONS } from '../state/motion.ts';
+import { ALPHA } from '../state/tokens.ts';
+import { tierOf } from './relations.ts';
 
 export interface Ref {
   kind: string;
@@ -166,6 +168,96 @@ export function inFocus(drawn: readonly Drawn[], k: string | null): Set<string> 
   const out = new Set([k]);
   for (const x of around(drawn, k)) out.add(x.other);
   return out;
+}
+
+/** Hop distance from *from* over the DRAWN edges (what the picture shows),
+ * breadth first; nodes it cannot reach are absent. */
+export function hops(drawn: readonly Drawn[], from: string): Map<string, number> {
+  const out = new Map([[from, 0]]);
+  const q = [from];
+  while (q.length) {
+    const x = q.shift()!;
+    for (const { other } of around(drawn, x)) {
+      if (out.has(other)) continue;
+      out.set(other, out.get(x)! + 1);
+      q.push(other);
+    }
+  }
+  return out;
+}
+
+/** Depth by graph distance (ADR-0025 §4, rulebook §12 and §24): the focus and
+ * its neighbours at full strength, two steps at alpha-tier1, three or more —
+ * or not connected in this picture — at alpha-tier2. While the impact view is
+ * on (*bright* given), the focus and what it affects are at full strength and
+ * the rest at alpha-tier2. Opaque (forced colours, reduced transparency):
+ * 1 / 1 / .64. No focus: every node at full strength (an empty map). */
+export function depthAlphas(
+  drawn: readonly Drawn[],
+  keys: readonly string[],
+  focus: string | null,
+  opaque = false,
+  bright?: ReadonlySet<string> | null,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!focus || !keys.includes(focus)) return out;
+  const mid = opaque ? 1 : ALPHA['alpha-tier1'];
+  const far = opaque ? 0.64 : ALPHA['alpha-tier2'];
+  const d = hops(drawn, focus);
+  for (const k of keys) {
+    const h = d.get(k) ?? Infinity;
+    out.set(k, bright ? (k === focus || bright.has(k) ? 1 : far) : h <= 1 ? 1 : h === 2 ? mid : far);
+  }
+  return out;
+}
+
+export const IMPACT_HOPS = { default: 2, max: 3 } as const;
+
+/** "What does this affect?" (ADR-0025 §3): the loaded objects reachable from
+ * *from* over RECORDED relations, both directions, within *n* hops — Core's
+ * relations in this read, nothing inferred and nothing asked for. `steps` is
+ * each one's distance; `shown` what stands for them in the picture (lifted to
+ * a drawn node); `edges` the drawn edges the search crossed, drawn as the path
+ * highlight. */
+export function impactOf(m: Model, vis: ReadonlySet<string>, drawn: readonly Drawn[], from: string, n: number = IMPACT_HOPS.default) {
+  const limit = Math.max(1, Math.min(IMPACT_HOPS.max, n));
+  const adj = new Map<string, [string, GEdge][]>();
+  for (const e of [...m.edges].sort((x, y) => (x.id < y.id ? -1 : 1))) {
+    if (tierOf(e) !== 'EXTRACTED') continue;
+    const a = keyOf(e.from);
+    const b = keyOf(e.to);
+    adj.set(a, [...(adj.get(a) ?? []), [b, e]]);
+    adj.set(b, [...(adj.get(b) ?? []), [a, e]]);
+  }
+  const steps = new Map<string, number>();
+  const crossed: GEdge[] = [];
+  const seen = new Set([from]);
+  let ring = [from];
+  for (let h = 1; h <= limit && ring.length; h++) {
+    const next: string[] = [];
+    for (const x of ring)
+      for (const [y, e] of adj.get(x) ?? []) {
+        if (seen.has(y) || !m.byKey.has(y)) continue;
+        seen.add(y);
+        steps.set(y, h);
+        crossed.push(e);
+        next.push(y);
+      }
+    ring = next;
+  }
+  const shown = new Set<string>();
+  for (const k of steps.keys()) {
+    const l = lift(m, vis, k);
+    if (l) shown.add(l);
+  }
+  const edges = new Set<string>();
+  for (const e of crossed) {
+    const a = lift(m, vis, keyOf(e.from));
+    const b = lift(m, vis, keyOf(e.to));
+    const d = a && b && a !== b ? drawn.find((x) => (x.a === a && x.b === b) || (x.a === b && x.b === a)) : null;
+    if (d) edges.add(d.id);
+  }
+  return { steps, shown, edges, hops: limit };
 }
 
 /** Toggle one node's children (expand/collapse by parent). */
