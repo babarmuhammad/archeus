@@ -196,6 +196,34 @@ export const MOTIONS = {
     "reduced": "removed: the live edge is drawn thicker and static instead",
     "equivalent": "the execution's state word (Running) in the mirror and the Relations list"
   },
+  "row-pulse": {
+    "status": "built",
+    "source": "ADR-0024 §6, rulebook §21 A-02 (rows), design system §8",
+    "trigger": "an execution.* frame whose execution, read again from Core, is live and belongs to a mission whose row is on screen: one opacity step on that row",
+    "driven_by": "event",
+    "runs_on": "css",
+    "css": [
+      "row-pulse"
+    ],
+    "transition": null,
+    "max_ms": 240,
+    "token": "pulse",
+    "ttl_ms": null,
+    "ttl_error_ms": null,
+    "easing": "linear",
+    "cap": null,
+    "cap_per": null,
+    "over_cap": null,
+    "min_interval_ms": 2000,
+    "interval_per": "target",
+    "surfaces": [
+      "rows"
+    ],
+    "idle": "never",
+    "replay": false,
+    "reduced": "removed (and while frames run slow): the event still counts as presented, so it never plays later",
+    "equivalent": "the mission's state word on the row (Core records no last-output time, so no 'output N s ago')"
+  },
   "row-change": {
     "status": "approved",
     "source": "design system §8",
@@ -302,13 +330,15 @@ export const MOTIONS = {
     "equivalent": "a live-region announcement naming the object"
   },
   "thread-rule-fade": {
-    "status": "approved",
+    "status": "built",
     "source": "rulebook §21 A-06",
     "trigger": "the user acknowledges the digest",
     "driven_by": "user",
     "runs_on": "css",
     "css": null,
-    "transition": null,
+    "transition": [
+      "[data-thread]::before"
+    ],
     "max_ms": 200,
     "token": null,
     "ttl_ms": null,

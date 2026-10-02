@@ -189,7 +189,7 @@ state glyphs ≥ 3:1 on `surface-1`; focus ring ≥ 3:1 against both the control
 | Inspector slide | 220 ms | ease-out | open/close |
 | Sheet (mobile) | 280 ms | spring-like ease-out | open/close |
 | Thread travel | ≤ 600 ms, once | ease-in-out | Archeus acted on an object |
-| Active pulse | one 240 ms opacity pulse per batch of new output, at most every 2 s, ≤ 12 concurrent on the canvas | ease-out | execution stream produced events |
+| Active pulse (built on the graph; on mission rows since P19.5 R5) | one 240 ms opacity pulse per batch of new output, at most every 2 s, ≤ 12 concurrent on the canvas | ease-out | execution stream produced events |
 | Activity halo (2026-09-30; built on the graph) | static — no animation; appears on the first live read, clears when a read shows the work ended | — | presentation class `active` |
 | Travelling marker (2026-09-30; built on the graph) | 600 ms once per output batch, ≤ 8 concurrent (oldest dropped) | linear along the edge | `execution.*` frame on a drawn live edge |
 | Activity chip (2026-09-30) | fade 160 ms, TTL 2.5 s (4 s on error), ≤ 3 per row | ease-out | a re-read execution's current action |
@@ -317,7 +317,7 @@ account — no other resource was free".
 |---|---|---|
 | **Presence line** | top of Now: "Archeus · working on 2 missions · 1 needs you" | derived from counts, never personality text |
 | **Digest** | since-you-left grouped list | every bullet links to its object; Dismiss advances the per-user cursor |
-| **Mission row** | one mission in any list | glyph, title, project, status line, waiting-on, age; no tokens/sessions |
+| **Mission row** | one mission in any list | glyph, title, project, status line, waiting-on, age; no tokens/sessions. *As built (P19.5, R5):* an `execution.*` frame about a running attempt, its mission read again from Core, plays one 240 ms opacity step over the row (`row-pulse`), at most once per 2 s, never for an event already presented, never under reduced motion or slow frames; the state word is its equivalent (Core records no last-output time). Like every row the digest can name, it carries the T2 rule and "changed since you looked" while Core's digest names it. The activity chip is not built: its text has no source yet |
 | **Card** (conversation) | live view of an object inside a message | types: mission proposal, plan, approval, route explanation, diff, verification, digest; updates live; shows "inferred" chips |
 | **Challenge block** | Archeus disagrees or asks | two explicit choices as buttons; never a yes/no on prose |
 | **Inspector** | canonical detail of any object | fixed tabs per kind; *Why* tab always last-but-one; Timeline last. *As built (P19.5, R1):* titled by a noun or the object's own name, never its id; its identifiers are the header's **Details** |

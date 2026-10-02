@@ -1,14 +1,18 @@
 // The product components (design system §11), kept few. Every state is glyph +
 // label; every disabled control says why; every command re-reads instead of
 // assuming its result.
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { CoreError } from '../api/transport';
 import { canCommand, freshness, type Freshness } from '../data/connection';
 import { action, explain, keyAfter, retryable } from '../data/commands';
 import { store, useConn, useRead, type Snapshot } from '../data/cache';
 import { badge, inline, mentions, resourceLine } from '../state/present';
 import { objectHref } from '../nav/destinations';
-import type { AccountList, Sync } from '../api/generated';
+import { api, type AccountList, type Digest, type Sync } from '../api/generated';
+import { send } from '../data/core';
+import { framesSlow, reducedMotion } from '../graph/loop';
+import { RowPulses } from '../state/rowpulse';
+import { timeline } from '../state/timeline';
 
 /** A state as glyph + label. When the state changes while on screen (never
  * because it first appeared) the glyph plays one 160 ms transform/opacity step
@@ -31,6 +35,48 @@ export function StateBadge({ machine, state }: { machine: string; state: string 
       <span className="label">{b.label}</span>
     </span>
   );
+}
+
+// the page's row pulses: every frame, whatever page is open; a row on screen
+// is what makes one draw
+const rowPulses = new RowPulses(timeline, {
+  now: () => performance.now(),
+  reduced: reducedMotion,
+  degraded: framesSlow,
+  read: (id) => api.getExecution(send(), id),
+});
+store.onFrame((f) => void rowPulses.frame(f));
+
+/** A mission row's pulse (rulebook §21 A-02): a span that plays the row-pulse
+ * keyframes once, keyed by the event it presents — and only for a pulse that
+ * began while this row was on screen, so a remount replays nothing. */
+export function RowPulse({ mission }: { mission: string }) {
+  const [since] = useState(() => rowPulses.seq(mission));
+  useEffect(() => rowPulses.show(mission), [mission]);
+  const seq = useSyncExternalStore(
+    (l) => rowPulses.subscribe(l),
+    () => rowPulses.seq(mission),
+  );
+  return seq > since ? <span key={seq} className="row-pulse" data-pulse={seq} aria-hidden="true" /> : null;
+}
+
+/** T2 (ADR-0026 §1): whether a row's object is in the digest — changed since
+ * the user last looked. The digest is the only source; dismissing it clears
+ * every rule at once. */
+export function useChanged(): (kind: string, id: string) => boolean {
+  const d = useRead<Digest>('/v1/digest');
+  const groups = d.data?.groups;
+  const keys = useMemo(() => new Set((groups ?? []).map((g) => `${g.ref.kind}:${g.ref.id}`)), [groups]);
+  return (kind, id) => keys.has(`${kind}:${id}`);
+}
+
+/** The left edge of a row belongs to the thread: a row that can carry the
+ * rule says so, and a changed one carries it. */
+export const thread = (changed: boolean) => ({ 'data-thread': changed ? 'changed' : '' });
+
+/** The rule in words: it is never the only carrier. */
+export function Changed({ on }: { on: boolean }) {
+  return on ? <span className="sr"> changed since you looked</span> : null;
 }
 
 const FRESH_TEXT: Record<Freshness, string | null> = {
@@ -350,12 +396,15 @@ export function RefLabel({ kind, id }: { kind: string; id: string }) {
   );
 }
 
-export function Section({ title, children, actions, id }: { title: string; children: ReactNode; actions?: ReactNode; id?: string }) {
+export function Section({ title, children, actions, id, changed }: { title: string; children: ReactNode; actions?: ReactNode; id?: string; changed?: boolean }) {
   const h = useId();
   return (
-    <section className="section" aria-labelledby={h} id={id}>
+    <section className="section" aria-labelledby={h} id={id} {...(changed === undefined ? {} : thread(changed))}>
       <header>
-        <h2 id={h}>{title}</h2>
+        <h2 id={h}>
+          {title}
+          {changed !== undefined ? <Changed on={changed} /> : null}
+        </h2>
         {actions ? <div className="actions">{actions}</div> : null}
       </header>
       {children}

@@ -29,6 +29,11 @@ export type LoopState = 'running' | 'parked';
 export const SLOW_FRAME_MS = 20;
 export const SLOW_FRAMES = 3;
 
+// the loops running slow now: the page's one measure of load, which the rows'
+// CSS pulse reads too (rulebook §21: degraded, no pulse)
+const slow = new Set<Loop>();
+export const framesSlow = () => slow.size > 0;
+
 export class Loop {
   private anims = new Set<Anim>();
   private frame: number | null = null;
@@ -108,7 +113,10 @@ export class Loop {
     if (this.blocked()) return this.park();
     if (this.anims.size && this.last !== null) {
       this.slow = t - this.last > SLOW_FRAME_MS ? this.slow + 1 : 0;
-      if (this.slow >= SLOW_FRAMES) this.degraded = true;
+      if (this.slow >= SLOW_FRAMES) {
+        this.degraded = true;
+        slow.add(this);
+      }
     }
     this.last = t;
     this.frames++;
@@ -120,6 +128,7 @@ export class Loop {
     else if (this.degraded) {
       // the animation ended: one more frame puts back what was dropped
       this.degraded = false;
+      slow.delete(this);
       this.slow = 0;
       this.last = null;
       this.request();
@@ -135,12 +144,15 @@ export class Loop {
   }
 
   dispose() {
+    slow.delete(this);
     this.park();
     this.anims.clear();
   }
 }
 
 let focused = typeof document === 'undefined' ? true : document.hasFocus();
+
+export const reducedMotion = () => document.documentElement.dataset.motion === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** The browser host: the document, the window and the motion preference.
  * *wake* runs after every visibility or focus change; the returned function
@@ -168,6 +180,6 @@ export function browserHost(wake: () => void): [LoopHost, () => void] {
     now: () => performance.now(),
     hidden: () => document.hidden,
     focused: () => focused,
-    reduced: () => document.documentElement.dataset.motion === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches,
+    reduced: reducedMotion,
   }, off];
 }

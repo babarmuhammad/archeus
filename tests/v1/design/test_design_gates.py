@@ -207,6 +207,28 @@ def test_every_keyframe_and_transition_is_a_registered_motion():
     assert len(frames) >= 4 and moving
 
 
+def test_the_left_edge_of_a_row_belongs_to_the_thread():
+    """ADR-0026 §1 (P19.5 R5): the change rule is the 2 px left-edge rule in
+    thread ink on a row the digest names, and only it: no other rule draws
+    thread ink on a left edge, and nothing else draws on a row's left edge."""
+    rules = []
+    for css in _css().values():
+        flat = re.sub(r'@[^{]+\{', '', css)
+        rules += [({x.strip() for x in sel.split(',')}, body) for sel, body in re.findall(r'([^{}]+)\{([^{}]*)\}', flat)]
+    inked = set().union(*(sel for sel, body in rules
+                          if re.search(r'(border-left[^;]*|inset\s+2px\s+0[^;]*)var\(--thread\)', body)))
+    assert inked == {'.thread-rule', '[data-thread]::before'}, inked
+    bar = [body for sel, body in rules if sel == {'[data-thread]::before'} and 'content:' in body]
+    assert bar and re.search(r'\bleft:\s*0;', bar[0]) and re.search(r'border-left:\s*2px solid var\(--thread\)', bar[0]) \
+        and re.search(r'opacity:\s*0;', bar[0]), 'a 2 px bar on the left edge, clear until the row changed'
+    assert any(sel == {"[data-thread='changed']::before"} and re.search(r'opacity:\s*1;', body) for sel, body in rules)
+    ours = {'[data-thread]', '[data-thread]::before', "[data-thread='changed']::before", '.thread-rule'}
+    rows = {'.row-item', '.rows', '.list'} | ours
+    for sel, body in rules:
+        if sel & rows and not sel <= ours:
+            assert not re.search(r'border-left|inset\s+-?\d+px\s+0', body), (sel, body)
+
+
 def test_every_loop_animation_is_a_registered_built_motion():
     """ADR-0024 §3 in the Node-free job (the TS suite checks it too): every
     `.animate(` names a built loop motion; no WAAPI, no bare duration."""

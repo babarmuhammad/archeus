@@ -27,7 +27,7 @@ import { CONTROL_SECTIONS, INSPECTOR_TABS, TAB_LABEL, href, objectHref } from '.
 import { ago, presenceLabel, templateText, triggerText, usageText } from '../state/present';
 import { QR } from '../components/QR';
 import { Relations } from '../components/Relations';
-import { ActionButton, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Resources, Section, StateBadge, Tabs, useMe } from '../components/ui';
+import { ActionButton, Changed, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Resources, Section, StateBadge, Tabs, thread, useChanged, useMe } from '../components/ui';
 
 export function ControlView({ section }: { section: string }) {
   const cur = CONTROL_SECTIONS.find((s) => s.id === section)?.id ?? 'autonomy';
@@ -57,6 +57,7 @@ const CLASSES = ['read', 'web', 'write_repo', 'exec', 'git_commit', 'git_push', 
 
 function Autonomy() {
   const s = useRead<Policies>('/v1/policies');
+  const changed = useChanged();
   return (
     <Loadable snap={s} what="the policy">
       {(p) => (
@@ -108,7 +109,8 @@ function Autonomy() {
             {p.rules.length ? (
               <ul className="list">
                 {p.rules.map((r) => (
-                  <li key={r.id} data-inactive={r.retired_at ? '' : undefined}>
+                  <li key={r.id} data-rule={r.id} data-inactive={r.retired_at ? '' : undefined} {...thread(changed('policy_rule', r.id))}>
+                    <Changed on={changed('policy_rule', r.id)} />
                     <span className="mono">{r.scope_level}</span> · {r.action_class} → <strong>{r.decision}</strong> {r.locked ? <span className="tag">locked</span> : null} {r.retired_at ? <span className="tag">retired</span> : null}
                     {!r.retired_at ? <ActionButton label="Retire" scope="admin" run={(key) => api.retireRule(send(), r.id, { idempotency_key: key })} reread={['/v1/policies']} /> : null}
                   </li>
@@ -164,13 +166,14 @@ function Simulate() {
 
 function Automations() {
   const s = useRead<AutomationList>('/v1/automations');
+  const changed = useChanged();
   return (
     <Loadable snap={s} what="the automations">
       {(l) =>
         l.automations.length ? (
           <>
             {l.automations.map((a) => (
-              <Section key={a.id} title={a.name} actions={<StateBadge machine="automation" state={a.state} />}>
+              <Section key={a.id} title={a.name} actions={<StateBadge machine="automation" state={a.state} />} changed={changed('automation', a.id)}>
                 <KV
                   rows={[
                     ['When', triggerText(a.trigger)],
@@ -199,10 +202,12 @@ function Automations() {
 function AutomationRuns({ id }: { id: string }) {
   const s = useRead<{ runs?: { id: string; state: string; depth: number; reason?: string | null; mission_id?: string | null; triggering_event_seq: number }[] }>(`/v1/automations/${id}`);
   const runs = s.data?.runs ?? [];
+  const changed = useChanged();
   return runs.length ? (
     <ul className="list">
       {runs.slice(-20).reverse().map((r) => (
-        <li key={r.id}>
+        <li key={r.id} data-run={r.id} {...thread(changed('automation_run', r.id))}>
+          <Changed on={changed('automation_run', r.id)} />
           <StateBadge machine="automation_run" state={r.state} /> <a href={objectHref('automation_run', r.id)}>run on event {r.triggering_event_seq}</a> · depth {r.depth}
           {r.reason ? <> · <Prose text={r.reason} /></> : ''}
           {r.mission_id ? <> · <a href={objectHref('mission', r.mission_id)}>its mission</a></> : null}
@@ -220,6 +225,7 @@ function ResourcesSection() {
   const h = useRead<HarnessList>('/v1/harnesses');
   const a = useRead<AccountList>('/v1/accounts');
   const r = useRead<RouteDecisionList>('/v1/route-decisions');
+  const changed = useChanged();
   return (
     <>
       <Section title="Harnesses" actions={<Fresh snap={h} />}>
@@ -239,8 +245,9 @@ function ResourcesSection() {
               <tbody>
                 {l.harnesses.map((x) => (
                   <tr key={x.id}>
-                    <th scope="row" className="mono">
+                    <th scope="row" className="mono" data-harness={x.id} {...thread(changed('harness', x.id))}>
                       {x.id}
+                      <Changed on={changed('harness', x.id)} />
                     </th>
                     <td>{x.installed ? 'yes' : 'no'}</td>
                     <td>{x.execution ? 'yes' : 'no'}</td>
@@ -260,7 +267,8 @@ function ResourcesSection() {
             l.accounts.length ? (
               <ul className="list">
                 {l.accounts.map((x) => (
-                  <li key={x.id}>
+                  <li key={x.id} data-account={x.id} {...thread(changed('account', x.id))}>
+                    <Changed on={changed('account', x.id)} />
                     <StateBadge machine="account_health" state={x.health} /> <strong>{x.label}</strong> · harness <span className="mono">{x.harness_id}</span> · {x.auth_kind}
                     <KV
                       rows={[
@@ -306,6 +314,7 @@ function ResourcesSection() {
 
 function Sessions() {
   const s = useRead<SessionList>('/v1/sessions');
+  const changed = useChanged();
   return (
     <Section title="Sessions" actions={<Fresh snap={s} />}>
       <p className="hint">A session is one provider conversation on one harness and account. It is not a mission: a mission may continue across several sessions and harnesses.</p>
@@ -314,10 +323,11 @@ function Sessions() {
           l.sessions.length ? (
             <ul className="rows">
               {[...l.sessions].reverse().map((x) => (
-                <li key={x.id} className="row-item" data-session={x.id}>
+                <li key={x.id} className="row-item" data-session={x.id} {...thread(changed('session', x.id))}>
                   <a className="row-link" href={objectHref('session', x.id)}>
                     <StateBadge machine="session" state={x.state} />
                     <span className="title">{x.harness_id} session</span>
+                    <Changed on={changed('session', x.id)} />
                     <span className="status">{x.mode}</span>
                     <Resources r={x} />
                   </a>
@@ -336,6 +346,7 @@ function Sessions() {
 export function SessionInspector({ id, tab, onTab }: { id: string; tab?: string; onTab: (t: string) => void }) {
   const s = useRead<Session & { lineage?: Session[]; targets?: Session[] }>(`/v1/sessions/${id}`);
   const current = tab && INSPECTOR_TABS.session.includes(tab) ? tab : 'brief';
+  const changed = useChanged();
   return (
     <Loadable snap={s} what="the session">
       {(x) => (
@@ -366,7 +377,8 @@ export function SessionInspector({ id, tab, onTab }: { id: string; tab?: string;
             {current === 'lineage' && (
               <ol className="list">
                 {[...(x.lineage ?? []), x, ...(x.targets ?? [])].map((y) => (
-                  <li key={y.id}>
+                  <li key={y.id} {...thread(changed('session', y.id))}>
+                    <Changed on={changed('session', y.id)} />
                     {y.id === x.id ? <strong>this session</strong> : <a href={objectHref('session', y.id)}>{(x.lineage ?? []).includes(y) ? 'an earlier session' : 'a later session'}</a>} · harness <span className="mono">{y.harness_id}</span> · <StateBadge machine="session" state={y.state} />
                   </li>
                 ))}

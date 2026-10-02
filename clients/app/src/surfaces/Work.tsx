@@ -4,7 +4,7 @@ import { type Attention, type IdeaList, type Mission, type MissionList } from '.
 import { useRead } from '../data/cache';
 import { objectHref } from '../nav/destinations';
 import { ago, present, statusLine } from '../state/present';
-import { Empty, Fresh, Loadable, Section, StateBadge } from '../components/ui';
+import { Changed, Empty, Fresh, Loadable, RowPulse, Section, StateBadge, thread, useChanged } from '../components/ui';
 
 const GROUPS: { id: string; title: string; classes: string[] }[] = [
   { id: 'needs', title: 'Needs you', classes: ['needs_you'] },
@@ -26,8 +26,10 @@ export function groupOf(m: Mission, waiting: Set<string>): string {
 }
 
 export function MissionRow({ m, waiting }: { m: Mission; waiting?: boolean }) {
+  const changed = useChanged()('mission', m.id);
   return (
-    <li className="row-item" data-mission={m.id} data-state={m.state}>
+    <li className="row-item" data-mission={m.id} data-state={m.state} {...thread(changed)}>
+      <RowPulse mission={m.id} />
       <a href={objectHref('mission', m.id)} className="row-link">
         <StateBadge machine="mission" state={m.state} />
         <span className="title">{m.title}</span>
@@ -35,6 +37,7 @@ export function MissionRow({ m, waiting }: { m: Mission; waiting?: boolean }) {
         <span className="status">{statusLine(m)}</span>
         {m.origin === 'automation' ? <span className="tag">from an automation</span> : null}
         <span className="age">{ago(m.updated_at)}</span>
+        <Changed on={changed} />
       </a>
     </li>
   );
@@ -81,13 +84,15 @@ export function WorkView({ project }: { project?: string }) {
 function Ideas() {
   const snap = useRead<IdeaList>('/v1/ideas');
   const ideas = snap.data?.ideas ?? [];
+  const changed = useChanged();
   if (!ideas.length) return null;
   return (
     <Section title={`Ideas · ${ideas.length}`}>
       <ul className="rows">
         {ideas.map((i) => (
-          <li key={i.id} className="row-item">
+          <li key={i.id} className="row-item" data-idea={i.id} {...thread(changed('idea', i.id))}>
             <StateBadge machine="idea" state={i.state} /> <span className="title">{i.title ?? i.text}</span>
+            <Changed on={changed('idea', i.id)} />
             {i.promoted_mission_id ? (
               <a href={objectHref('mission', i.promoted_mission_id)}>its mission</a>
             ) : null}

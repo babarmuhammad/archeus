@@ -2,7 +2,8 @@
 the activity halo, the travelling marker, the Core slice, and R1's copy/id
 gate with the Details disclosure and its command names (N71-N88), and R2's legend,
 expand all / collapse all and plain tier words (N89-N102), and R3's hull, depth,
-cored node, receding lines and impact view (N103-N119). Break each gate's invariant, run
+cored node, receding lines and impact view (N103-N119), and R5's row pulse and change rule
+(N120-N139). Break each gate's invariant, run
 the test written for it, and require it to fail.
 
     py tools/mutate_p19_5.py            every mutation
@@ -63,6 +64,13 @@ LEGEND_E2E = 'tests/v1/e2e/test_spa_legend.py::test_the_legend_and_the_whole_gra
 CONST_TS = 'node:test/constellation.test.ts'
 HULL_E2E = 'tests/v1/e2e/test_spa_constellation.py::test_the_hull_and_what_this_affects'
 CORE_E2E = 'tests/v1/e2e/test_spa_constellation.py::test_a_running_attempt_is_cored'
+ROWPULSE = 'clients/app/src/state/rowpulse.ts'
+WORK = 'clients/app/src/surfaces/Work.tsx'
+ROWS_TS = 'node:test/rowpulse.test.ts'
+PULSE_E2E = 'tests/v1/e2e/test_spa_rows.py::test_a_running_attempt_pulses_its_mission_row_once'
+RULE_E2E = 'tests/v1/e2e/test_spa_rows.py::test_the_change_rule_marks_exactly_what_changed_on_every_list'
+LEFT = DG + 'test_the_left_edge_of_a_row_belongs_to_the_thread'
+BOUND = DG + 'test_every_keyframe_and_transition_is_a_registered_motion'
 #: the generated travelling-marker entry's budget, as gen_ui writes it
 MARKER_TS = ('"max_ms": 600,\n    "token": null,\n    "ttl_ms": null,\n    "ttl_error_ms": null,\n'
              '    "easing": "linear",\n    "cap": 8,')
@@ -515,6 +523,70 @@ MUTATIONS = [
      'onClick={() => setImpact((x) => !x)}',
      "onClick={() => (setImpact((x) => !x), history.replaceState(null, '', location.hash + '/affects'))}")],
      [HULL_E2E]),
+    # ── R5: the row pulse and the change rule (T2); the activity chip is not built ──
+    ('N120', 'the row pulse never drawn', [(UI,
+     'return seq > since ? <span key={seq} className="row-pulse"', 'return seq > since && seq < 0 ? <span key={seq} className="row-pulse"')],
+     [PULSE_E2E]),
+    ('N121', 'a frame pulses no row', [(ROWPULSE,
+     '    this.seqs.set(e.mission_id, f.id!);\n', '')],
+     [ROWS_TS]),
+    ('N122', 'the row pulse has no rate limit', [(ROWPULSE,
+     '    if (now - (this.last.get(e.mission_id) ?? -Infinity) < ROW_PULSE_EVERY_MS) return;\n', '')],
+     [ROWS_TS, PULSE_E2E]),
+    ('N123', 'a presented event or a resync pulses again', [(ROWPULSE,
+     "    if (!this.timeline.start('row-pulse', 'mission:' + e.mission_id, f.id, now, this.quiet())) return;",
+     "    if (!this.timeline.start('row-pulse', 'mission:' + e.mission_id, f.id, now, this.quiet()) && this.quiet()) return;")],
+     [ROWS_TS, PULSE_E2E]),
+    ('N124', 'a remounted row replays its last pulse', [(UI,
+     'return seq > since ? <span key={seq} className="row-pulse"', 'return seq > Math.min(since, 0) ? <span key={seq} className="row-pulse"')],
+     [PULSE_E2E]),
+    ('N125', 'the row pulses under reduced motion', [(ROWPULSE,
+     '    return this.host.reduced() || this.host.degraded();', '    return this.host.degraded();')],
+     [ROWS_TS, PULSE_E2E]),
+    ('N126', 'the row pulses while frames run slow', [(ROWPULSE,
+     '    return this.host.reduced() || this.host.degraded();', '    return this.host.reduced();')],
+     [ROWS_TS]),
+    ('N127', 'a degraded loop never tells the page', [(LOOP,
+     '        slow.add(this);\n', '')],
+     [ROWS_TS]),
+    ('N128', 'the rows never read the slow frames', [(UI,
+     '  degraded: framesSlow,\n', '  degraded: () => framesSlow() && false,\n')],
+     [ROWS_TS]),
+    ('N129', 'a frame pulses a row that is not on screen', [(ROWPULSE,
+     "    if (!this.shown.has(e.mission_id) || present('execution', e.state).cls !== 'active') return;",
+     "    if (present('execution', e.state).cls !== 'active') return;")],
+     [ROWS_TS]),
+    ('N130', 'an ended execution pulses its row', [(ROWPULSE,
+     "    if (!this.shown.has(e.mission_id) || present('execution', e.state).cls !== 'active') return;",
+     "    if (!this.shown.has(e.mission_id) || !present('execution', e.state).cls) return;")],
+     [ROWS_TS]),
+    ('N131', 'the accounts list never carries the rule', [(CONTROL,
+     " {...thread(changed('account', x.id))}", '')],
+     [RULE_E2E]),
+    ('N132', 'the ideas list never carries the rule', [(WORK,
+     " {...thread(changed('idea', i.id))}", '')],
+     [RULE_E2E]),
+    ('N133', 'the rule survives Dismiss', [(UI,
+     '`${g.ref.kind}:${g.ref.id}`)), [groups]);', '`${g.ref.kind}:${g.ref.id}`)), [groups === undefined]);')],
+     [RULE_E2E]),
+    ('N134', 'an unchanged row carries the rule', [(UI,
+     "({ 'data-thread': changed ? 'changed' : '' })", "({ 'data-thread': changed || true ? 'changed' : '' })")],
+     [RULE_E2E]),
+    ('N135', 'the rule drawn on the wrong edge', [(CSS,
+     "  left: 0;\n  border-left: 2px solid var(--thread);", "  right: 0;\n  border-right: 2px solid var(--thread);")],
+     [LEFT, RULE_E2E]),
+    ('N136', 'the rule in a state colour instead of thread ink', [(CSS,
+     "  left: 0;\n  border-left: 2px solid var(--thread);", "  left: 0;\n  border-left: 2px solid var(--state-attention);")],
+     [LEFT, RULE_E2E]),
+    ('N137', 'the rule fade unbound from its registry entry', [(CSS,
+     '  transition: opacity var(--dur-row) var(--ease);\n}\n\n[data-thread=', '  transition: none;\n}\n\n[data-thread=')],
+     [BOUND, RULE_E2E]),
+    ('N138', 'the row pulse keyframes unbound from its registry entry', [(CSS,
+     '@keyframes row-pulse {', '@keyframes row-flash {')],
+     [BOUND]),
+    ('N139', 'the rule never said in words', [(UI,
+     '  return on ? <span className="sr"> changed since you looked</span> : null;', '  return on ? <span className="sr"></span> : null;')],
+     [RULE_E2E]),
 ]
 
 if __name__ == '__main__':

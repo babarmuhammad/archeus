@@ -511,6 +511,56 @@ h1:focus {
   margin-bottom: var(--space-2);
 }
 
+/* T2 (ADR-0026 §1): the left edge of a row belongs to the thread. The rule is
+   a 2 px bar drawn over the row's left edge, so arriving or leaving moves
+   nothing; it appears at once with the digest and fades (opacity only, ADR-0024
+   §4) when the digest is dismissed (rulebook §21 A-06). */
+[data-thread] {
+  position: relative;
+  padding-left: var(--space-2);
+}
+
+[data-thread]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-left: 2px solid var(--thread);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-row) var(--ease);
+}
+
+[data-thread='changed']::before {
+  opacity: 1;
+  transition: none;
+}
+
+/* the execution pulse on a row (rulebook §21 A-02): one opacity step over the
+   row, once per output batch; the row's state word is its equivalent */
+.row-item {
+  position: relative;
+}
+
+.row-pulse {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--state-active);
+  opacity: 0;
+  animation: row-pulse var(--dur-pulse) linear 1;
+}
+
+@keyframes row-pulse {
+  from {
+    opacity: 0.16;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 .empty,
 .loading,
 .unavailable {
@@ -1231,7 +1281,8 @@ html[data-motion='reduced'] *::after {
     border-width: var(--hairline, 2px);
   }
 
-  .thread-rule {
+  .thread-rule,
+  [data-thread]::before {
     border-left-color: var(--focus);
   }
 }
@@ -1247,6 +1298,10 @@ html[data-motion='reduced'] *::after {
 
   .badge {
     border: 1px solid CanvasText;
+  }
+
+  [data-thread]::before {
+    border-left-color: CanvasText;
   }
 
   :focus-visible {

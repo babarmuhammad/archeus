@@ -10,11 +10,12 @@ import { INSPECTOR_TABS, TAB_LABEL, objectHref } from '../nav/destinations';
 import { ago } from '../state/present';
 import { GraphLink, Relations } from '../components/Relations';
 import { useWide } from '../graph/wide';
-import { ActionButton, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Section, StateBadge, Tabs } from '../components/ui';
+import { ActionButton, Changed, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Section, StateBadge, Tabs, thread, useChanged } from '../components/ui';
 
 export function WorldView() {
   const p = useRead<ProjectList>('/v1/projects');
   const [kind, setKind] = useState<'projects' | 'knowledge'>('projects');
+  const changed = useChanged();
   return (
     <div className="view">
       <h1 tabIndex={-1}>World</h1>
@@ -29,9 +30,10 @@ export function WorldView() {
                 l.projects.length ? (
                   <ul className="rows">
                     {l.projects.map((x) => (
-                      <li key={x.id} className="row-item">
+                      <li key={x.id} className="row-item" data-project={x.id} {...thread(changed('project', x.id))}>
                         <a className="row-link" href={`#/world/${x.id}`}>
                           <span className="title">{x.name}</span>
+                          <Changed on={changed('project', x.id)} />
                           <span className="status">
                             {(x.repositories ?? []).length} {(x.repositories ?? []).length === 1 ? 'repository' : 'repositories'}
                           </span>
@@ -104,6 +106,7 @@ function NewProject() {
 
 export function ProjectPage({ id }: { id: string }) {
   const p = useRead<Project>(`/v1/projects/${id}`);
+  const changed = useChanged();
   return (
     <div className="view">
       <Loadable snap={p} what="the project">
@@ -116,7 +119,7 @@ export function ProjectPage({ id }: { id: string }) {
               <a href={`#/work/${x.id}`}>Its missions in Work</a> · <GraphLink kind="project" id={x.id} /> · roots <span className="mono">{x.root_paths.join(', ')}</span>
             </p>
             {(x.repositories ?? []).map((r) => (
-              <Section key={r.id} title={`${r.kind} · ${r.path}`}>
+              <Section key={r.id} title={`${r.kind} · ${r.path}`} changed={changed('repository', r.id)}>
                 <div className="facts">
                   <StateBadge machine="architecture" state={r.architecture_state} />
                   <ModulesLink id={r.id} />
@@ -210,6 +213,7 @@ function DeclareConstraint({ project }: { project: string }) {
 function KnowledgeList() {
   const [state, setState] = useState<string>('');
   const s = useRead<KnowledgeList>(state ? `/v1/knowledge?state=${state}` : '/v1/knowledge');
+  const changed = useChanged();
   return (
     <>
       <label className="filter">
@@ -229,10 +233,11 @@ function KnowledgeList() {
           l.knowledge.length ? (
             <ul className="rows">
               {l.knowledge.map((k) => (
-                <li key={k.id} className="row-item" data-inactive={['SUPERSEDED', 'RETRACTED', 'EXPIRED'].includes(k.state) ? '' : undefined}>
+                <li key={k.id} className="row-item" data-knowledge={k.id} data-inactive={['SUPERSEDED', 'RETRACTED', 'EXPIRED'].includes(k.state) ? '' : undefined} {...thread(changed('knowledge_item', k.id))}>
                   <a className="row-link" href={objectHref('knowledge_item', k.id)}>
                     <StateBadge machine="knowledge_item" state={k.state} />
                     <span className="title">{k.title}</span>
+                    <Changed on={changed('knowledge_item', k.id)} />
                     <span className="tag">{k.type.toLowerCase()}</span>
                     <span className="status">{String(k.source_kind ?? '')}</span>
                   </a>
@@ -252,6 +257,7 @@ export function KnowledgeInspector({ id, tab, onTab }: { id: string; tab?: strin
   const s = useRead<KnowledgeDetail>(`/v1/knowledge/${id}`);
   const current = tab && INSPECTOR_TABS.knowledge_item.includes(tab) ? tab : 'detail';
   const reread = [`/v1/knowledge`, '/v1/attention'];
+  const changed = useChanged();
   return (
     <Loadable snap={s} what="the knowledge item">
       {(k) => (
@@ -299,7 +305,10 @@ export function KnowledgeInspector({ id, tab, onTab }: { id: string; tab?: strin
                 <Section title="Supersession chain (oldest first)">
                   <ol className="list">
                     {k.chain.map((c) => (
-                      <li key={c}>{c === id ? <strong>this item</strong> : <a href={objectHref('knowledge_item', c)}><RefLabel kind="knowledge_item" id={c} /></a>}</li>
+                      <li key={c} {...thread(changed('knowledge_item', c))}>
+                        {c === id ? <strong>this item</strong> : <a href={objectHref('knowledge_item', c)}><RefLabel kind="knowledge_item" id={c} /></a>}
+                        <Changed on={changed('knowledge_item', c)} />
+                      </li>
                     ))}
                   </ol>
                 </Section>

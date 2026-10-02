@@ -72,6 +72,17 @@
       "reduced": "removed: the live edge is drawn thicker and static instead",
       "equivalent": "the execution's state word (Running) in the mirror and the Relations list"
     },
+    "row-pulse": {
+      "status": "built", "source": "ADR-0024 §6, rulebook §21 A-02 (rows), design system §8",
+      "trigger": "an execution.* frame whose execution, read again from Core, is live and belongs to a mission whose row is on screen: one opacity step on that row",
+      "driven_by": "event", "runs_on": "css", "css": ["row-pulse"],
+      "max_ms": 240, "token": "pulse", "easing": "linear",
+      "cap": null,
+      "min_interval_ms": 2000, "interval_per": "target", "surfaces": ["rows"],
+      "idle": "never", "replay": false,
+      "reduced": "removed (and while frames run slow): the event still counts as presented, so it never plays later",
+      "equivalent": "the mission's state word on the row (Core records no last-output time, so no 'output N s ago')"
+    },
     "row-change": {
       "status": "approved", "source": "design system §8",
       "trigger": "a list gained or lost a row (keyed reconcile)",
@@ -113,9 +124,9 @@
       "equivalent": "a live-region announcement naming the object"
     },
     "thread-rule-fade": {
-      "status": "approved", "source": "rulebook §21 A-06",
+      "status": "built", "source": "rulebook §21 A-06",
       "trigger": "the user acknowledges the digest",
-      "driven_by": "user", "runs_on": "css",
+      "driven_by": "user", "runs_on": "css", "transition": ["[data-thread]::before"],
       "max_ms": 200, "easing": "ease",
       "cap": null, "surfaces": ["lists"],
       "idle": "never", "replay": false,

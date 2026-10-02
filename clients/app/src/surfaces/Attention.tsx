@@ -9,7 +9,7 @@ import { send } from '../data/core';
 import { useRead, useRefresh } from '../data/cache';
 import { objectHref } from '../nav/destinations';
 import { ago } from '../state/present';
-import { ActionButton, Details, Empty, Fresh, KV, Loadable, Prose, StateBadge, useMe } from '../components/ui';
+import { ActionButton, Changed, Details, Empty, Fresh, KV, Loadable, Prose, StateBadge, thread, useChanged, useMe } from '../components/ui';
 
 const KIND_LABEL: Record<string, string> = {
   approval: 'Approval',
@@ -23,6 +23,7 @@ const KIND_LABEL: Record<string, string> = {
 
 export function AttentionView({ limit, heading = true }: { limit?: number; heading?: boolean }) {
   const snap = useRead<AttentionT>('/v1/attention');
+  const changed = useChanged();
   const body = (
     <Loadable snap={snap} what="Attention">
       {(a) => {
@@ -32,8 +33,9 @@ export function AttentionView({ limit, heading = true }: { limit?: number; headi
           <>
             <ul className="attention">
               {items.map((i) => (
-                <li key={i.kind + i.ref.id}>
+                <li key={i.kind + i.ref.id} data-ref={i.ref.kind + ':' + i.ref.id} {...thread(changed(i.ref.kind, i.ref.id))}>
                   <AttentionEntry item={i} />
+                  <Changed on={changed(i.ref.kind, i.ref.id)} />
                 </li>
               ))}
             </ul>
