@@ -180,6 +180,10 @@ def ago(iso, now_ms):
 # Every edge is read from the field that records it; an edge whose field is
 # empty is not emitted. Nothing is inferred.
 
+#: The kind of object a mission's `origin_ref` (an id) names, by its origin —
+#: Core's `entities.ORIGIN_REF_KIND`; a legacy import names none.
+ORIGIN_REF_KIND = {'conversation': 'message', 'idea': 'idea', 'automation': 'automation_run'}
+
 def _edge(out, rel, kind, value, field, **extra):
     v = _str(value)
     if v:
@@ -191,9 +195,9 @@ def mission_edges(m, plan=None, sessions=()):
     _edge(out, 'in project', 'project', m.get('project_id'), 'missions.project_id')
     _edge(out, 'context used', 'context_package', m.get('context_package_id'),
           'Mission.context_package_id')
-    origin = m.get('origin_ref') or {}
-    if origin.get('kind'):
-        _edge(out, 'started from', origin['kind'], origin.get('id'), 'Mission.origin_ref')
+    origin = ORIGIN_REF_KIND.get(m.get('origin'))
+    if origin:
+        _edge(out, 'started from', origin, m.get('origin_ref'), 'Mission.origin_ref')
     for v in (plan or {}).get('versions') or []:
         _edge(out, 'plan v%s' % v['plan_version'], 'plan', v['id'], 'plans.mission_id',
               inactive=v['state'] in ('SUPERSEDED', 'REJECTED'))

@@ -8,10 +8,8 @@
      "id": "msn_1",
      "project_id": "prj_1",
      "context_package_id": "ctx_1",
-     "origin_ref": {
-      "kind": "automation_run",
-      "id": "run_1"
-     },
+     "origin": "automation",
+     "origin_ref": "run_1",
      "pending_approval_id": "apr_1"
     },
     {
@@ -117,10 +115,65 @@
    "args": [
     {
      "id": "msn_2",
-     "origin_ref": {
-      "kind": "",
-      "id": "x"
-     }
+     "origin": "legacy_import",
+     "origin_ref": "x"
+    },
+    null,
+    []
+   ],
+   "out": []
+  },
+  {
+   "fn": "missionEdges",
+   "args": [
+    {
+     "id": "msn_3",
+     "origin": "conversation",
+     "origin_ref": "msg_1"
+    },
+    null,
+    []
+   ],
+   "out": [
+    {
+     "rel": "started from",
+     "to": {
+      "kind": "message",
+      "id": "msg_1"
+     },
+     "field": "Mission.origin_ref"
+    }
+   ]
+  },
+  {
+   "fn": "missionEdges",
+   "args": [
+    {
+     "id": "msn_4",
+     "origin": "idea",
+     "origin_ref": "ida_1"
+    },
+    null,
+    []
+   ],
+   "out": [
+    {
+     "rel": "started from",
+     "to": {
+      "kind": "idea",
+      "id": "ida_1"
+     },
+     "field": "Mission.origin_ref"
+    }
+   ]
+  },
+  {
+   "fn": "missionEdges",
+   "args": [
+    {
+     "id": "msn_5",
+     "origin": "conversation",
+     "origin_ref": null
     },
     null,
     []

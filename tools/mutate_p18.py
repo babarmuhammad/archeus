@@ -318,6 +318,19 @@ MUTATIONS = [
      "            if (second) return open(k); // A12: double-tap opens",
      "            if (second) return; // mutated: a double-tap neither opens nor selects")],
      [E2E + 'test_touch_pinch_double_tap_and_44_px_targets']),
+    # the origin_ref defect found 2026-10-03 (an id, its kind the origin's)
+    ('M66', "Core drops a mission's started-from edge", [(GRAPH,
+     "        if E.ORIGIN_REF_KIND.get(e.origin):",
+     "        if False:")],
+     [Q + 'test_a_mission_with_an_origin_holds_its_started_from_edge', PAR]),
+    ('M67', "the TUI's list drops a mission's started-from edge", [('archeus/cli/tui/present.py',
+     "    origin = ORIGIN_REF_KIND.get(m.get('origin'))",
+     "    origin = None")],
+     ['tests/v1/tui/test_parity.py', R + 'test_a_mission_started_from_something_is_read_over_http_and_by_the_tui']),
+    ('M68', "the SPA's list drops a mission's started-from edge", [(REL,
+     "  if (origin) edge(out, 'Mission.origin_ref', origin, m.origin_ref);",
+     "  if (origin && false) edge(out, 'Mission.origin_ref', origin, m.origin_ref);")],
+     ['node:test/parity.test.ts']),
 ]
 
 

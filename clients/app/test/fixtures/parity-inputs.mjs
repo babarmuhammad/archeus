@@ -7,7 +7,7 @@ import { writeFileSync } from 'node:fs';
 
 const NOW = Date.parse('2026-09-29T12:00:00Z');
 const mission = {
-  id: 'msn_1', project_id: 'prj_1', context_package_id: 'ctx_1', origin_ref: { kind: 'automation_run', id: 'run_1' },
+  id: 'msn_1', project_id: 'prj_1', context_package_id: 'ctx_1', origin: 'automation', origin_ref: 'run_1',
   pending_approval_id: 'apr_1',
 };
 const plan = { versions: [{ id: 'pln_1', plan_version: 1, state: 'SUPERSEDED' }, { id: 'pln_2', plan_version: 2, state: 'APPROVED' }, { id: 'pln_3', plan_version: 3, state: 'REJECTED' }] };
@@ -15,7 +15,10 @@ const conn = (c, gen = 0) => ({ conn: c, gen, since: 0 });
 
 export const INPUTS = [
   ['missionEdges', mission, plan, [{ id: 'ses_1' }, { id: '' }]],
-  ['missionEdges', { id: 'msn_2', origin_ref: { kind: '', id: 'x' } }, null, []],
+  ['missionEdges', { id: 'msn_2', origin: 'legacy_import', origin_ref: 'x' }, null, []],
+  ['missionEdges', { id: 'msn_3', origin: 'conversation', origin_ref: 'msg_1' }, null, []],
+  ['missionEdges', { id: 'msn_4', origin: 'idea', origin_ref: 'ida_1' }, null, []],
+  ['missionEdges', { id: 'msn_5', origin: 'conversation', origin_ref: null }, null, []],
   ['planEdges', { mission_id: 'msn_1', supersedes_plan_id: 'pln_1', context_package_id: 'ctx_1', route_decision_id: 'rte_1' }],
   ['planEdges', { mission_id: 'msn_1', supersedes_plan_id: null }],
   ['taskDependencies', { depends_on: ['t1', 't9'] }, { t1: { id: 'tsk_1' } }],

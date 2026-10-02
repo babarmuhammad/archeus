@@ -143,9 +143,8 @@ def held_edges(conn, kind, e):
     if kind == 'mission':
         _edge(out, me, 'missions.project_id', 'project', e.project_id)
         _edge(out, me, 'Mission.context_package_id', 'context_package', e.context_package_id)
-        o = e.origin_ref
-        if o is not None and o.kind:
-            _edge(out, me, 'Mission.origin_ref', o.kind, o.id)
+        if E.ORIGIN_REF_KIND.get(e.origin):
+            _edge(out, me, 'Mission.origin_ref', E.ORIGIN_REF_KIND[e.origin], e.origin_ref)
         pending = [r.entity.id for r in rows.where(conn, E.Approval, mission_id=e.id)
                    if r.entity.state == 'PENDING']
         if pending:

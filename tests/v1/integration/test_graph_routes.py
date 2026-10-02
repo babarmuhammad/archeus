@@ -82,6 +82,27 @@ def test_the_graph_routes_write_nothing(core):
     assert get(core, '/v1/status')[1] == head
 
 
+def test_a_mission_started_from_something_is_read_over_http_and_by_the_tui(core):
+    """The P18 defect found 2026-10-03: a mission with an `origin_ref` (an id)
+    made `/v1/world/graph` answer 500. Now the route answers, carries the
+    started-from edge, and the TUI's Relations list shows the same edge."""
+    from archeus.core.application import commands
+    from archeus.core.domain.values import Ref
+    msg = ids.new_id('message')
+    mid = core.core.db.writer.execute(commands.create_mission, {
+        'actor': Ref('user_device', ids.new_id('principal')), 'title': 'From a message',
+        'objective': 'o', 'origin': 'conversation', 'origin_ref': msg})['id']
+    assert get(core, '/v1/world/graph')[0] == 200
+    s, g = get(core, '/v1/world/graph?focus=mission:%s&depth=2&limit=1000' % mid)
+    assert s == 200
+    assert [(e['to']['kind'], e['to']['id']) for e in g['edges']
+            if e['field'] == 'Mission.origin_ref'] == [('message', msg)]
+    m = get(core, '/v1/missions/' + mid)[1]
+    assert m['origin_ref'] == msg                 # the contract: an id
+    assert [e['to'] for e in P.mission_edges(m) if e['field'] == 'Mission.origin_ref'] == [
+        {'kind': 'message', 'id': msg}]
+
+
 def test_the_route_answers_with_the_seq_it_reflects(core):
     mid = _mission(core)
     r = core.http('GET', '/v1/world/graph?focus=mission:' + mid)

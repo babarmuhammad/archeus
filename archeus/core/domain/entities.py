@@ -658,6 +658,11 @@ COST_BANDS = ('low', 'medium', 'high')      # bands, never precise (domain-model
 RESOURCE_PREFERENCE_KEYS = ('preferred_accounts', 'preferred_harnesses', 'forbidden_accounts',
                             'forbidden_harnesses', 'max_cost_band', 'since')
 
+#: The kind of object `Mission.origin_ref` names, by the mission's origin. A
+#: legacy import has no ref kind. The clients hold the same map (parity cases).
+ORIGIN_REF_KIND = {'conversation': 'message', 'idea': 'idea', 'automation': 'automation_run'}
+
+
 @entity
 class Mission(Entity):
     _ID = 'mission'
@@ -674,7 +679,8 @@ class Mission(Entity):
     title: str
     objective: str
     origin: str = 'conversation'
-    # the message, idea or automation run it came from (domain-model §7.1)
+    # the message, idea or automation run it came from (domain-model §7.1): an
+    # id, whose kind is the origin's (ORIGIN_REF_KIND)
     origin_ref: str = None
     desired_outcome: str = ''
     # each {text, origin: explicit|inferred, source_ref?}: what the user asked

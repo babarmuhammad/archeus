@@ -197,7 +197,7 @@ def test_every_edge_is_a_recorded_column_or_relation_row(db, world):
                     assert (h.subject.kind, h.subject.id) == (b['kind'], b['id']), e
                 elif f == 'Mission.origin_ref':
                     h = rows.get(conn, E.Mission, a['id']).entity
-                    assert (h.origin_ref.kind, h.origin_ref.id) == (b['kind'], b['id']), e
+                    assert (E.ORIGIN_REF_KIND[h.origin], h.origin_ref) == (b['kind'], b['id']), e
                 elif f == 'approvals.mission_id' and a['kind'] == 'mission':
                     ap = rows.get(conn, E.Approval, b['id']).entity
                     assert ap.mission_id == a['id'] and ap.state == 'PENDING', e
@@ -206,6 +206,30 @@ def test_every_edge_is_a_recorded_column_or_relation_row(db, world):
                     assert a['kind'] == kind, e
                     h = rows.get(conn, G.KINDS[kind][0], a['id']).entity
                     assert getattr(h, attr) == b['id'], e
+
+
+def test_a_mission_with_an_origin_holds_its_started_from_edge(db, actor):
+    """The P18 defect found 2026-10-03: `Mission.origin_ref` is an id, its kind
+    the origin's (`E.ORIGIN_REF_KIND`), and reading it as {kind, id} made every
+    neighbourhood holding such a mission raise. Each origin's edge names the
+    right kind; a legacy import, or no ref, holds none."""
+    run = ids.new_id('automation_run')
+    cases = {'automation': ('automation_run', run), 'conversation': ('message', ids.new_id('message')),
+             'idea': ('idea', ids.new_id('idea')), 'legacy_import': (None, None)}
+    for origin, (kind, ref) in cases.items():
+        mid = db.writer.execute(commands.create_mission, {
+            'actor': actor, 'title': origin, 'objective': 'o', 'origin': origin, 'origin_ref': ref})['id']
+        g = read(db, G.world_graph, ('mission', mid), 2, 1000)
+        got = [(e['to']['kind'], e['to']['id']) for e in g['edges']
+               if e['field'] == 'Mission.origin_ref' and e['from']['id'] == mid]
+        assert got == ([(kind, ref)] if kind else []), origin
+        if kind:                       # no row behind it here: an endpoint, never an invented node
+            end = next(n for n in g['nodes'] if (n['kind'], n['id']) == (kind, ref))
+            assert end['endpoint'] is True
+    mid = db.writer.execute(commands.create_mission, {'actor': actor, 'title': 'n', 'objective': 'o'})['id']
+    assert not [e for e in read(db, G.world_graph, ('mission', mid), 1, 100)['edges']
+                if e['field'] == 'Mission.origin_ref']
+    assert 'nodes' in read(db, G.world_graph, None, None, 1000)  # the world level reads too
 
 
 def test_no_edge_is_emitted_for_an_empty_field(db, world):

@@ -59,6 +59,10 @@ export function edgeWords(field: string, holder: boolean, rel?: string | null): 
   return w ? w[holder ? 0 : 1] : field;
 }
 
+/** The kind of object a mission's `origin_ref` (an id) names, by its origin —
+ * Core's `entities.ORIGIN_REF_KIND`; a legacy import names none. */
+const ORIGIN_REF_KIND: Record<string, string> = { conversation: 'message', idea: 'idea', automation: 'automation_run' };
+
 const s = (v: unknown) => (typeof v === 'string' && v ? v : null);
 
 function edge(out: Edge[], field: string, kind: string, id: unknown, extra: Partial<Edge> = {}, holder = true) {
@@ -74,8 +78,8 @@ export function missionEdges(
   const out: Edge[] = [];
   edge(out, 'missions.project_id', 'project', m.project_id);
   edge(out, 'Mission.context_package_id', 'context_package', m.context_package_id);
-  const origin = m.origin_ref as { kind?: string; id?: string } | undefined;
-  if (origin?.kind) edge(out, 'Mission.origin_ref', origin.kind, origin.id);
+  const origin = ORIGIN_REF_KIND[String(m.origin)];
+  if (origin) edge(out, 'Mission.origin_ref', origin, m.origin_ref);
   for (const v of plan?.versions ?? [])
     edge(out, 'plans.mission_id', 'plan', v.id, {
       rel: `${edgeWords('plans.mission_id', false)} v${String(v.plan_version)}`,
