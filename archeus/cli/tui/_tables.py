@@ -514,4 +514,4 @@ RULES = {'mission': ['/v1/world/graph**', '/v1/missions**', '/v1/attention', '/v
  'principal': ['/v1/**'],
  'execution_node': [],
  'model': [],
- 'pause_batch': []}
+ 'pause_batch': ['/v1/status**']}

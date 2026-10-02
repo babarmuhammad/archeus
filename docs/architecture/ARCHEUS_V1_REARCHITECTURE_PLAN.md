@@ -1056,7 +1056,12 @@ decisions ADR-0024…0029.
   `{id}/reprioritize` take the per-mission pause's `control` scope, no P9 stage; priority
   (default 0, higher first) orders only the engine pass, never routing; `armed` is on Health and
   `/v1/status`; the three grammar verbs answer without a model call. The client slices wait for
-  their own ordering decision.
+  their own ordering decision. *Ordered 2026-10-02:* R10 → R9 → R11 → R12 → R13. *Built (R10a,
+  client Pause all / Resume all):* on the strip and Work, with the minimal contract support it
+  needed and nothing more — `/v1/status` `resumable`, the mission ids Resume all would resume now,
+  from the one helper (`commands.resumable`) the command itself runs, and `priority` /
+  `pause_batch_id` declared on the Mission schema as Core already returned them; no route, state,
+  event or semantics changed. Reprioritise (R10b) waits for its interaction decision.
 - Client work: tokens (focus ≠ attention, red reserved, depth/transparency tokens); primitives;
   graph edge semantics, legend, impact view, hull/depth/cored nodes, static project cage; the
   thread (T1 from `Message.links`, T2 on every list, T3 spatial) and tints; activity halo,

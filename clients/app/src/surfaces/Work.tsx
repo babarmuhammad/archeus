@@ -1,10 +1,11 @@
 // Work (p16-design-gate §4.1, §6.1): every mission, grouped by what it waits
 // on; ideas; missions an automation started say so and link their run.
-import { type Attention, type IdeaList, type Mission, type MissionList } from '../api/generated';
-import { useRead } from '../data/cache';
+import { api, type Attention, type IdeaList, type Mission, type MissionList, type Status } from '../api/generated';
+import { useRead, type Snapshot } from '../data/cache';
+import { send } from '../data/core';
 import { objectHref } from '../nav/destinations';
 import { ago, present, statusLine } from '../state/present';
-import { Changed, Empty, Fresh, Loadable, RowPulse, Section, StateBadge, thread, useChanged } from '../components/ui';
+import { ActionButton, Changed, Empty, Fresh, Loadable, RowPulse, Section, StateBadge, thread, useChanged } from '../components/ui';
 
 const GROUPS: { id: string; title: string; classes: string[] }[] = [
   { id: 'needs', title: 'Needs you', classes: ['needs_you'] },
@@ -43,14 +44,40 @@ export function MissionRow({ m, waiting }: { m: Mission; waiting?: boolean }) {
   );
 }
 
+const ALL_REREAD = ['/v1/missions', '/v1/status', '/v1/attention', '/v1/digest'];
+
+/** Pause all and Resume all (P19.5 R10a): Core's two workspace verbs, the same
+ * on the strip and on Work. Pause all pauses the missions executing now; it is
+ * not the emergency stop, and an approved mission may still start after it.
+ * Resume all is offered only while Core's status names missions it would
+ * resume (`resumable`, the newest Pause all's missions still paused by it);
+ * the client keeps nothing about batches. */
+export function PauseAll({ status }: { status: Snapshot<Status> }) {
+  return (
+    <>
+      <ActionButton label="Pause all" scope="control" run={(key) => api.pauseAll(send(), { idempotency_key: key })} reread={ALL_REREAD} />
+      {status.data?.resumable.length ? (
+        <ActionButton label="Resume all" scope="control" run={(key) => api.resumeAll(send(), { idempotency_key: key })} reread={ALL_REREAD} />
+      ) : null}
+    </>
+  );
+}
+
 export function WorkView({ project }: { project?: string }) {
   const snap = useRead<MissionList>(project ? `/v1/missions?project=${project}` : '/v1/missions');
   const att = useRead<Attention>('/v1/attention');
+  const status = useRead<Status>('/v1/status');
   const waiting = new Set((att.data?.items ?? []).map((i) => i.mission_id).filter(Boolean) as string[]);
   return (
     <div className="view">
       <h1 tabIndex={-1}>Work</h1>
       <Fresh snap={snap} />
+      {/* both verbs are workspace-wide: a project's Work does not offer them */}
+      {project ? null : (
+        <div className="row actions" data-pause-all>
+          <PauseAll status={status} />
+        </div>
+      )}
       <Loadable snap={snap} what="the missions">
         {(l) =>
           l.missions.length ? (

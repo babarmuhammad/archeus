@@ -442,14 +442,6 @@ h1:focus {
     animation-name: sheet-in;
     animation-duration: var(--dur-sheet);
   }
-
-  button,
-  .btn,
-  input,
-  select,
-  textarea {
-    min-height: var(--target-phone);
-  }
 }
 
 /* ── content ── */
@@ -1499,5 +1491,18 @@ html[data-motion='reduced'] *::after {
 
   :focus-visible {
     outline: 2px solid Highlight;
+  }
+}
+
+/* Phone targets (design system §5): last in the file, because `.btn` and the
+   form controls declare their desktop min-height later than the phone block
+   above and would otherwise win on source order. */
+@media (max-width: 599px) {
+  button,
+  .btn,
+  input,
+  select,
+  textarea {
+    min-height: var(--target-phone);
   }
 }

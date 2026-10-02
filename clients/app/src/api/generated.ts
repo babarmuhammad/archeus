@@ -628,6 +628,8 @@ export interface Mission {
   planning_blocked?: Record<string, unknown> | null;
   integration_branch?: string;
   integration_head?: string | null;
+  priority?: number;
+  pause_batch_id?: string | null;
   [field: string]: unknown;
 }
 
@@ -940,6 +942,7 @@ export interface Status {
   unknown_project: string[];
   live: LiveItem[];
   armed: boolean;
+  resumable: string[];
 }
 
 export interface StreamFrame {

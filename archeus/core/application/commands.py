@@ -55,6 +55,20 @@ def record_context_package(tx, *, actor, subject_kind, subject_id, query=None):
                         workspace=pkg.workspace_id, project=pkg.project_id))
     return pkg
 
+def resumable(conn):
+    """(the newest PauseBatch's id or None, the missions it still holds): those
+    PAUSED with its `pause_batch_id`, in the order it paused them. What Resume
+    all resumes, and what /v1/status reports it would: one rule for both."""
+    batches = rows.where(conn, entities.PauseBatch)
+    if not batches:
+        return None, []
+    b = batches[-1].entity
+    held = [mid for mid in b.mission_ids
+            if (m := rows.get(conn, entities.Mission, mid).entity).state == 'PAUSED'
+            and m.pause_batch_id == b.id]
+    return b.id, held
+
+
 def create_mission(tx, *, actor, title, objective, project_id=None,
                    workspace_id=ids.GLOBAL_WORKSPACE, success_criteria=(), max_replans=2,
                    origin='conversation', origin_ref=None, cause=()):
@@ -406,20 +420,12 @@ class Missions:
         """Resume exactly the missions the newest Pause all paused that it still
         holds (PAUSED with its `pause_batch_id`): never one paused on its own,
         never a BLOCKED one. A second call finds none and changes nothing."""
-        batches = tx.where(entities.PauseBatch)
-        if not batches:
-            return {'pause_batch_id': None, 'changed': False, 'missions': []}
-        b = batches[-1].entity
-        held = []
-        for mid in b.mission_ids:
-            m = lifecycle.load(tx, entities.Mission, mid).entity
-            if m.state == 'PAUSED' and m.pause_batch_id == b.id:
-                held.append(mid)
+        batch, held = resumable(tx.conn)
         out = [self.resume(tx, actor=actor, mission_id=mid, reason=reason) for mid in held]
         if held:
-            tx.append(new_event('pause_batch.resumed', Ref('pause_batch', b.id), actor,
+            tx.append(new_event('pause_batch.resumed', Ref('pause_batch', batch), actor,
                                 payload={'mission_ids': list(held)}))
-        return {'pause_batch_id': b.id, 'changed': bool(held), 'missions': out}
+        return {'pause_batch_id': batch, 'changed': bool(held), 'missions': out}
 
     def reprioritise(self, tx, *, actor, mission_id, priority, expected_version=None):
         """Set the mission's priority (P19.5): dispatch order across missions

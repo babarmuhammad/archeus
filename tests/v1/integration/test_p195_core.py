@@ -2,7 +2,8 @@
 2026-10-01): Pause all pauses exactly the EXECUTING missions as one recorded
 batch, Resume all inverts exactly that batch, a mission's priority orders only
 dispatch across missions, and the e-stop's state is readable on Health and on
-/v1/status. On the real database, through the writer; fake adapters only."""
+/v1/status, as is what Resume all would resume (`resumable`, R10a). On the real
+database, through the writer; fake adapters only."""
 
 import ast
 import os
@@ -145,6 +146,94 @@ def test_pause_all_and_resume_all_with_nothing_to_do_write_nothing(r):
     assert r.do(r.missions.resume_all, who=r.user)['changed'] is False
     assert r.do(r.missions.pause_all, who=r.user)['changed'] is False
     assert r.head() == head and batches(r) == []
+
+
+# ── what Resume all would resume, readable (R10a) ───────────────────────────
+# The minimal contract the client's Resume all needs: /v1/status `resumable`,
+# from the one rule Resume all itself runs (`commands.resumable`).
+
+def resumable(r):
+    with r.db.read() as conn:
+        return commands.resumable(conn)
+
+
+def resume_all_resumes_what_status_said(r):
+    """Resume all, checked against what the read said just before it."""
+    said = resumable(r)
+    out = r.do(r.missions.resume_all, who=r.user)
+    assert (out['pause_batch_id'], [m['id'] for m in out['missions']]) == said
+    assert out['changed'] is bool(said[1])
+    return out
+
+
+def test_resumable_is_the_newest_batchs_missions_it_still_holds(r):
+    assert resumable(r) == (None, [])
+    a, b = executing(r, 'A'), executing(r, 'B')
+    r.do(r.missions.pause_all, who=r.user)
+    (pb,) = batches(r)
+    assert resumable(r) == (pb.id, [a, b])
+    resume_all_resumes_what_status_said(r)
+    assert resumable(r) == (pb.id, [])
+    assert resume_all_resumes_what_status_said(r)['changed'] is False   # a second one: nothing
+
+
+def test_an_older_batch_still_holding_a_mission_is_not_resumable(r):
+    """The case that needed the read: batch A holds m1, the newest batch B held
+    only m2, which was resumed by hand. Resume all would resume nothing, so
+    nothing is resumable, though m1 still carries A's id."""
+    m1 = executing(r, 'm1')
+    r.do(r.missions.pause_all, who=r.user)                   # batch A: m1
+    m2 = executing(r, 'm2')
+    r.do(r.missions.pause_all, who=r.user)                   # batch B: m2
+    a, b = batches(r)
+    assert (a.mission_ids, b.mission_ids) == ((m1,), (m2,))
+    r.do(r.missions.resume, who=r.user, mission_id=m2)       # by hand
+    assert resumable(r) == (b.id, [])
+    assert r.m(m1).pause_batch_id == a.id and state(r, m1) == 'PAUSED'
+    resume_all_resumes_what_status_said(r)
+    assert state(r, m1) == 'PAUSED'
+
+
+def test_a_mission_paused_on_its_own_is_never_resumable(r):
+    alone, a = executing(r, 'alone'), executing(r, 'A')
+    r.do(r.missions.pause, who=r.user, mission_id=alone)
+    assert resumable(r) == (None, [])
+    r.do(r.missions.pause_all, who=r.user)
+    assert resumable(r)[1] == [a]
+    # a batch mission resumed and paused again by hand leaves the batch
+    r.do(r.missions.resume, who=r.user, mission_id=a)
+    r.do(r.missions.pause, who=r.user, mission_id=a)
+    assert resumable(r)[1] == []
+    resume_all_resumes_what_status_said(r)
+    assert (state(r, alone), state(r, a)) == ('PAUSED', 'PAUSED')
+
+
+def test_a_pause_all_that_pauses_nothing_leaves_the_newest_batch_resumable(r):
+    a = executing(r, 'A')
+    r.do(r.missions.pause_all, who=r.user)
+    (pb,) = batches(r)
+    assert r.do(r.missions.pause_all, who=r.user)['changed'] is False   # nothing executing
+    assert batches(r) == [pb] and resumable(r) == (pb.id, [a])
+    resume_all_resumes_what_status_said(r)
+    assert state(r, a) == 'EXECUTING'
+
+
+def test_resume_all_and_the_read_share_one_rule():
+    """One helper, so the read and the command cannot drift apart."""
+    import inspect
+    from archeus.api import routes
+    assert 'resumable(tx.conn)' in inspect.getsource(commands.Missions.resume_all)
+    assert 'commands.resumable(conn)' in inspect.getsource(routes.status)
+    assert 'PauseBatch' not in inspect.getsource(commands.Missions.resume_all)
+
+
+def test_the_contract_declares_what_the_client_reads():
+    from archeus.api import schemas
+    m, s = schemas.TYPES['Mission'], schemas.TYPES['Status']
+    assert m['properties']['priority'] == {'type': 'integer'}
+    assert m['properties']['pause_batch_id'] == {'type': 'string', 'nullable': True}
+    assert s['properties']['resumable'] == {'type': 'array', 'items': {'type': 'string'}}
+    assert 'resumable' in s['required']
 
 
 # ── authorisation (decision 3): exactly as one mission's pause ──────────────
@@ -322,10 +411,13 @@ def test_health_and_status_both_read_the_e_stop(core):
 
 
 def test_the_all_scope_routes_answer_over_http(core):
+    assert core.http('GET', '/v1/status').json()['resumable'] == []
     assert _post(core, '/v1/missions/pause-all').json() == {
         'pause_batch_id': None, 'changed': False, 'missions': []}
     assert _post(core, '/v1/missions/resume-all').json()['changed'] is False
     mid = _post(core, '/v1/missions', {'title': 'M', 'objective': 'o'}).json()['id']
+    one = core.http('GET', '/v1/missions/%s' % mid).json()
+    assert (one['priority'], one['pause_batch_id']) == (0, None)    # declared, as Core returns them
     got = _post(core, '/v1/missions/%s/reprioritize' % mid, {'priority': 4})
     assert got.status == 200 and got.json()['changed'] is True
     assert core.http('GET', '/v1/missions/%s' % mid).json()['priority'] == 4

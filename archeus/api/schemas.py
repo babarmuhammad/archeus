@@ -40,7 +40,11 @@ TYPES = {
         'planning_blocked': {'type': 'object', 'nullable': True},
         # P13: the mission branch and its head as Core last recorded it
         'integration_branch': {'type': 'string'},
-        'integration_head': {'type': 'string', 'nullable': True}},
+        'integration_head': {'type': 'string', 'nullable': True},
+        # P19.5: dispatch order across missions (higher first), and the Pause all
+        # batch holding it while PAUSED by one
+        'priority': {'type': 'integer'},
+        'pause_batch_id': {'type': 'string', 'nullable': True}},
         'required': ['id', 'state', 'title', 'objective', 'version', 'created_at',
                      'updated_at']},
     'Transition': {'type': 'object', 'properties': {
@@ -285,9 +289,11 @@ TYPES = {
         'unchecked': {'type': 'array', 'items': {'ref': 'Finding'}},
         'unknown_project': {'type': 'array', 'items': {'type': 'string'}},
         'live': {'type': 'array', 'items': {'ref': 'LiveItem'}},
-        'armed': {'type': 'boolean'}},
+        'armed': {'type': 'boolean'},
+        # P19.5 R10a: the mission ids Resume all would resume now
+        'resumable': {'type': 'array', 'items': {'type': 'string'}}},
         'required': ['source', 'as_of_seq', 'projects', 'missions', 'drift', 'unchecked',
-                     'unknown_project', 'live', 'armed']},
+                     'unknown_project', 'live', 'armed', 'resumable']},
     # ADR-0043 §2 (P21): one item of work in flight; ADR-0047 §9: its context
     'LiveItem': {'type': 'object', 'open': True, 'properties': {
         'kind': {'type': 'string', 'enum': ['execution']}, 'id': {'type': 'string'},

@@ -18,7 +18,7 @@ import { CommandBar } from './surfaces/CommandBar';
 import { ControlView, applyMotion } from './surfaces/Control';
 import { Inspector } from './surfaces/Inspector';
 import { NowView } from './surfaces/Now';
-import { WorkView } from './surfaces/Work';
+import { PauseAll, WorkView } from './surfaces/Work';
 import { ProjectPage, WorldView } from './surfaces/World';
 import { GraphView } from './graph/GraphView';
 import { reducedMotion } from './graph/loop';
@@ -366,7 +366,8 @@ function Mark({ presence: p }: { presence?: Presence }) {
 const STRIP_SAYS_EVERY_MS = 30_000;
 
 /** O-1: one line on every page — what runs, what needs you, how many clients
- * are connected, how fresh that is, and the emergency stop. Each number links
+ * are connected, how fresh that is, Pause all (and Resume all while Core says
+ * it would resume something), and the emergency stop. Each number links
  * to its list. Its words are the orbit's equivalent, said at most once per
  * 30 s and only when they change. */
 function OperationsStrip({ status, count }: { status: Snapshot<Status>; count: number | undefined }) {
@@ -400,6 +401,9 @@ function OperationsStrip({ status, count }: { status: Snapshot<Status>; count: n
         ) : null}
         <li className="strip-more">
           <Fresh snap={status} />
+        </li>
+        <li className="strip-more" data-strip="pause-all">
+          <PauseAll status={status} />
         </li>
         <li className="strip-more" data-strip="estop">
           {status.data?.armed === false ? (

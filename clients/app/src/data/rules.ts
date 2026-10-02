@@ -152,5 +152,7 @@ export const RULES: Record<string, string[]> = {
   ],
   "execution_node": [],
   "model": [],
-  "pause_batch": []
+  "pause_batch": [
+    "/v1/status**"
+  ]
 };

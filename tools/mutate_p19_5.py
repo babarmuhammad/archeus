@@ -5,8 +5,9 @@ expand all / collapse all and plain tier words (N89-N102), and R3's hull, depth,
 cored node, receding lines and impact view (N103-N119), and R5's row pulse and change rule
 (N120-N139), and R6's thread line on Now (N140-N153), and R7's mark, orbit, favicon and
 operations strip (N154-N180), and R8's Now — the state sentence, upcoming, recent decisions, the
-automation line and the live map (N181-N207). Break each gate's invariant, run the test written for it,
-and require it to fail.
+automation line and the live map (N181-N207), and R10a's Pause all / Resume all on the strip and
+Work with `/v1/status`'s `resumable` (N208-N222). Break each gate's invariant, run the test written
+for it, and require it to fail.
 
     py tools/mutate_p19_5.py            every mutation
     py tools/mutate_p19_5.py N01 N11    only these
@@ -100,6 +101,10 @@ NOW_TS = 'node:test/now.test.ts'
 NOW_E2E = 'tests/v1/e2e/test_spa_now.py::'
 NOW_SAYS = NOW_E2E + 'test_the_sentence_upcoming_decisions_and_the_automation_line'
 NOW_MAP = NOW_E2E + 'test_the_live_map_holds_live_work_only_and_opens_the_full_graph'
+SCHEMAS = 'archeus/api/schemas.py'
+ALL_E2E = 'tests/v1/e2e/test_spa_pause_all.py::'
+ALL = ALL_E2E + 'test_pause_all_and_resume_all_follow_cores_newest_batch'
+ALL_RO = ALL_E2E + 'test_a_client_without_control_is_told_why'
 
 MUTATIONS = [
     # ── the registry ──
@@ -332,8 +337,8 @@ MUTATIONS = [
      [MARKER, MARKER_RM]),
     # ── the Core slice (ADR-0030, ADR-0042 §1; the user's decisions of 2026-10-01) ──
     ('N60', 'Resume all resumes every paused mission, not its batch', [(CMD,
-     "            if m.state == 'PAUSED' and m.pause_batch_id == b.id:",
-     "            if m.state == 'PAUSED':")],
+     "            and m.pause_batch_id == b.id]",
+     "            ]")],
      [CORE + 'test_resume_all_resumes_exactly_the_last_batch_never_one_paused_on_its_own',
       CORE + 'test_a_batch_mission_resumed_and_paused_on_its_own_is_no_longer_the_batchs']),
     ('N61', 'a mission keeps its batch after leaving PAUSED', [(CMD,
@@ -342,15 +347,15 @@ MUTATIONS = [
      "    if False:\n        out['pause_batch_id'] = None")],
      [CORE + 'test_a_batch_mission_resumed_and_paused_on_its_own_is_no_longer_the_batchs']),
     ('N62', 'Resume all reads the oldest batch', [(CMD,
-     "        b = batches[-1].entity", "        b = batches[0].entity")],
+     "    b = batches[-1].entity", "    b = batches[0].entity")],
      [CORE + 'test_resume_all_reads_the_newest_batch_and_repeats_safely']),
     ('N63', 'Pause all marks no batch on the missions it paused', [(CMD,
      "                                extra={'pause_batch_id': b.id})",
      "                                extra=None)")],
      [CORE + 'test_pause_all_pauses_every_executing_mission_as_one_recorded_batch']),
     ('N64', 'Resume all unblocks a blocked mission of the batch', [(CMD,
-     "            if m.state == 'PAUSED' and m.pause_batch_id == b.id:",
-     "            if m.state in ('PAUSED', 'BLOCKED') and m.pause_batch_id in (b.id, None):")],
+     "== 'PAUSED'\n            and m.pause_batch_id == b.id]",
+     "in ('PAUSED', 'BLOCKED')\n            and m.pause_batch_id in (b.id, None)]")],
      [CORE + 'test_resume_all_never_unblocks_a_blocked_mission']),
     ('N65', 'priority ignored by the engine pass', [(RUNTIME,
      "                                    key=lambda m: -m['priority'])",
@@ -367,8 +372,8 @@ MUTATIONS = [
      "           'priority': getattr(mission, 'priority', 0),")],
      [CORE + 'test_a_reprioritised_mission_routes_exactly_as_before']),
     ('N68', '/v1/status reports armed whatever the e-stop', [(ROUTES,
-     "                         live=live.live_work(conn, project), armed=not LocalNode.disarmed())",
-     "                         live=live.live_work(conn, project), armed=True)")],
+     "live=live.live_work(conn, project), armed=not LocalNode.disarmed(),",
+     "live=live.live_work(conn, project), armed=True,")],
      [CORE + 'test_health_and_status_both_read_the_e_stop']),
     ('N69', '`pause all` falls through to a mission named "all" (and so to the brain)', [(GRAMMAR,
      "    if p.verb in ALL_VERBS and key(p.arg) == 'all':",
@@ -828,6 +833,62 @@ MUTATIONS = [
      "        {missions.data && att.data ? stateSentence(active.length, needs) : null}",
      "        {missions.data && att.data ? `Archeus · ${active.length} missions active · ${needs} things need you${stateSentence.name ? '' : ''}` : null}")],
      [NOW_TS, NOW_SAYS]),
+    # ── R10a: Pause all / Resume all on the strip and Work, and `resumable` ──
+    ('N208', '`resumable` guessed from the missions\' own batch ids', [(ROUTES,
+     "                         resumable=commands.resumable(conn)[1])",
+     "                         resumable=[r.entity.id for r in __import__('archeus.infra.db.rows', fromlist=['x'])"
+     ".where(conn, __import__('archeus.core.domain.entities', fromlist=['x']).Mission)"
+     " if r.entity.state == 'PAUSED' and r.entity.pause_batch_id])")],
+     [CORE + 'test_resume_all_and_the_read_share_one_rule', ALL]),
+    ('N209', '/v1/status never says anything is resumable', [(ROUTES,
+     "                         resumable=commands.resumable(conn)[1])",
+     "                         resumable=[])")],
+     [ALL]),
+    ('N210', 'the contract leaves the missions\' batch undeclared', [(SCHEMAS,
+     "        'pause_batch_id': {'type': 'string', 'nullable': True}},\n        'required': ['id', 'state',",
+     "        },\n        'required': ['id', 'state',")],
+     [CORE + 'test_the_contract_declares_what_the_client_reads']),
+    ('N211', '`resumable` optional in the contract', [(SCHEMAS,
+     "                     'unknown_project', 'live', 'armed', 'resumable']},",
+     "                     'unknown_project', 'live', 'armed']},")],
+     [CORE + 'test_the_contract_declares_what_the_client_reads']),
+    ('N212', 'Resume all offered whenever the status is read', [(WORK,
+     "      {status.data?.resumable.length ? (", "      {status.data ? (")],
+     [ALL]),
+    ('N213', 'Resume all offered from a paused mission\'s batch id', [(WORK,
+     "      {status.data?.resumable.length ? (",
+     "      {status.data?.missions.some((m) => m.state === 'PAUSED' && !!m.pause_batch_id) ? (")],
+     [ALL]),
+    ('N214', 'Pause all sends Resume all', [(WORK,
+     "<ActionButton label=\"Pause all\" scope=\"control\" run={(key) => api.pauseAll(",
+     "<ActionButton label=\"Pause all\" scope=\"control\" run={(key) => api.resumeAll(")],
+     [ALL]),
+    ('N215', 'Pause all asks for a confirmation', [(WORK,
+     "<ActionButton label=\"Pause all\" scope=\"control\" run=",
+     "<ActionButton label=\"Pause all\" scope=\"control\" confirm=\"Pause every executing mission.\" run=")],
+     [ALL]),
+    ('N216', 'every press of Pause all reuses one key', [(WORK,
+     "api.pauseAll(send(), { idempotency_key: key })", "api.pauseAll(send(), { idempotency_key: key && 'pause-all' })")],
+     [ALL]),
+    ('N217', 'Pause all offered to a client without control', [(WORK,
+     "<ActionButton label=\"Pause all\" scope=\"control\"", "<ActionButton label=\"Pause all\" scope=\"observe\"")],
+     [ALL_RO]),
+    ('N218', 'Resume all offered to a client without control', [(WORK,
+     "<ActionButton label=\"Resume all\" scope=\"control\"", "<ActionButton label=\"Resume all\" scope=\"observe\"")],
+     [ALL_RO]),
+    ('N219', 'the strip has no Pause all', [(APP,
+     "          <PauseAll status={status} />\n", "          {PauseAll.name ? null : null}\n")],
+     [ALL]),
+    ('N220', 'Work has no Pause all', [(WORK,
+     "          <PauseAll status={status} />\n", "          {status ? null : null}\n")],
+     [ALL, ALL_RO]),
+    ('N221', 'a project\'s Work offers the workspace-wide verbs', [(WORK,
+     "      {project ? null : (", "      {false ? null : (")],
+     [ALL]),
+    ('N222', 'a phone\'s buttons fall back to the desktop target', [(CSS,
+     "  textarea {\n    min-height: var(--target-phone);\n  }\n}\n",
+     "  textarea {\n    min-height: var(--target-desktop);\n  }\n}\n")],
+     [ALL]),
 ]
 
 if __name__ == '__main__':

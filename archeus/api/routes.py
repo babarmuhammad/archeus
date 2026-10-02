@@ -298,9 +298,12 @@ def status(req):
     from ..node.local import LocalNode
     project = _one(req.query, 'project')
     with req.api.db.read() as conn:
-        # `armed`: the e-stop's state as Health reads it, for the operations strip
+        # `armed`: the e-stop's state as Health reads it, for the operations strip;
+        # `resumable`: the missions Resume all would resume now (workspace-wide,
+        # like the command), from the rule the command itself runs
         return 200, dict(world_status.status(conn, project),
-                         live=live.live_work(conn, project), armed=not LocalNode.disarmed())
+                         live=live.live_work(conn, project), armed=not LocalNode.disarmed(),
+                         resumable=commands.resumable(conn)[1])
 
 
 def list_projects(req):
