@@ -6,7 +6,7 @@ cored node, receding lines and impact view (N103-N119), and R5's row pulse and c
 (N120-N139), and R6's thread line on Now (N140-N153), and R7's mark, orbit, favicon and
 operations strip (N154-N180), and R8's Now — the state sentence, upcoming, recent decisions, the
 automation line and the live map (N181-N207), and R10a's Pause all / Resume all on the strip and
-Work with `/v1/status`'s `resumable` (N208-N222). Break each gate's invariant, run the test written
+Work with `/v1/status`'s `resumable` (N208-N222), and R10b's absolute priority (D-14, N223-N229). Break each gate's invariant, run the test written
 for it, and require it to fail.
 
     py tools/mutate_p19_5.py            every mutation
@@ -105,6 +105,10 @@ SCHEMAS = 'archeus/api/schemas.py'
 ALL_E2E = 'tests/v1/e2e/test_spa_pause_all.py::'
 ALL = ALL_E2E + 'test_pause_all_and_resume_all_follow_cores_newest_batch'
 ALL_RO = ALL_E2E + 'test_a_client_without_control_is_told_why'
+PRI_E2E = 'tests/v1/e2e/test_spa_priority.py::'
+PRI = PRI_E2E + 'test_priority_is_one_number_set_by_cores_one_command'
+PRI_END = PRI_E2E + 'test_an_ended_mission_offers_no_priority'
+PRI_RO = PRI_E2E + 'test_a_client_without_control_is_told_why'
 
 MUTATIONS = [
     # ── the registry ──
@@ -889,6 +893,29 @@ MUTATIONS = [
      "  textarea {\n    min-height: var(--target-phone);\n  }\n}\n",
      "  textarea {\n    min-height: var(--target-desktop);\n  }\n}\n")],
      [ALL]),
+    # R10b: reprioritise as an absolute priority (D-14, rulebook §46.1)
+    ('N223', 'an ended mission offers a priority', [(PRESENT,
+     "export const ended = (machine: string, state: string) => !TRIGGERS[machine]?.[state]?.length;",
+     "export const ended = (machine: string, state: string) => !TRIGGERS[machine]?.[state]?.length && false;")],
+     [PRESENT_TS, PRI_END]),
+    ('N224', 'Set priority sends a priority other than the one typed', [(MISSION,
+     "{ priority: Number(v), expected_version", "{ priority: Number(v) + 1, expected_version")],
+     [PRI]),
+    ('N225', 'a fraction is sent', [(MISSION,
+     "disabled={whole ? null : 'A priority is a whole number.'}", "disabled={whole && false ? 'x' : null}")],
+     [PRI]),
+    ('N226', 'the field keeps what was typed instead of what Core holds', [(MISSION,
+     "  useEffect(() => setV(now), [now]);", "  useEffect(() => undefined, [now]);")],
+     [PRI]),
+    ('N227', 'the Work row never says a priority', [(WORK,
+     "        {m.priority ? <span className=\"tag\" data-priority={m.priority}>priority {m.priority}</span> : null}\n", "")],
+     [PRI]),
+    ('N228', 'priority offered to a client without control', [(MISSION,
+     "        label=\"Set priority\"\n        scope=\"control\"", "        label=\"Set priority\"\n        scope=\"observe\"")],
+     [PRI_RO]),
+    ('N229', 'the inspector offers no priority', [(MISSION,
+     "{ended('mission', mission.state) ? null : <Priority mission={mission} />}", "{ended('mission', mission.state) || true ? null : <Priority mission={mission} />}")],
+     [PRI, PRI_RO]),
 ]
 
 if __name__ == '__main__':

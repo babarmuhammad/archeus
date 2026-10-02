@@ -9,6 +9,10 @@ import { CLASSES, ID_KINDS, LABELS, PRESENTATION, TRIGGERS } from './presentatio
 export const offers = (machine: string, state: string, ...trigger: string[]) =>
   trigger.some((t) => TRIGGERS[machine]?.[state]?.includes(t) ?? false);
 
+/** Whether *state* ends its machine: no trigger leaves it (a mission's
+ * COMPLETED and CANCELLED). Core still refuses whatever it refuses. */
+export const ended = (machine: string, state: string) => !TRIGGERS[machine]?.[state]?.length;
+
 export interface Look {
   cls: string;
   glyph: string;

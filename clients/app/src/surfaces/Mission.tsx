@@ -2,7 +2,7 @@
 // Evidence · Why · Timeline · Relations. Every tab reads its own rows; the
 // header's actions are offered only from states whose table has the trigger,
 // and Core judges every press.
-import { useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import {
   api,
   type Checkpoint,
@@ -23,7 +23,7 @@ import { send } from '../data/core';
 import { useRead } from '../data/cache';
 import { executionEdges, missionEdges, taskDependencies, verificationEdges } from '../graph/relations';
 import { INSPECTOR_TABS, TAB_LABEL, objectHref } from '../nav/destinations';
-import { ago, explainState, inline, offers, statusLine, technical } from '../state/present';
+import { ago, ended, explainState, inline, offers, statusLine, technical } from '../state/present';
 import { Relations } from '../components/Relations';
 import { AccountName, ActionButton, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Resources, Section, StateBadge, Tabs } from '../components/ui';
 
@@ -44,6 +44,7 @@ export function MissionInspector({ id, tab, onTab }: { id: string; tab?: string;
               <Fresh snap={m} />
             </div>
             <MissionActions mission={mission} />
+            {ended('mission', mission.state) ? null : <Priority mission={mission} />}
             <MissionDetails m={mission} />
           </header>
           <Tabs label="Mission" current={current} onSelect={onTab} tabs={INSPECTOR_TABS.mission.map((t) => ({ id: t, label: TAB_LABEL[t] }))} />
@@ -133,6 +134,35 @@ function MissionActions({ mission }: { mission: Mission }) {
           reread={reread}
         />
       ) : null}
+    </div>
+  );
+}
+
+/** Reprioritise (P19.5 R10b; D-14, rulebook §46.1): the mission's absolute
+ * priority, set by Core's one command. Higher is dispatched first when
+ * missions wait for capacity; routing never reads it. Drag and Alt+↑/↓ are a
+ * recorded deviation: Core has no relative move. Offered until the mission
+ * ends, which is when Core stops accepting it. */
+export function Priority({ mission }: { mission: Mission }) {
+  const now = String(mission.priority ?? 0);
+  const [v, setV] = useState(now);
+  const id = useId();
+  useEffect(() => setV(now), [now]);
+  const whole = /^-?\d+$/.test(v.trim());
+  return (
+    <div className="priority" data-priority-form="">
+      <label htmlFor={id}>Priority</label>
+      <input id={id} type="number" step={1} inputMode="numeric" value={v} onChange={(e) => setV(e.target.value)} aria-describedby={id + 'h'} />
+      <ActionButton
+        label="Set priority"
+        scope="control"
+        disabled={whole ? null : 'A priority is a whole number.'}
+        run={(key) => api.reprioritiseMission(send(), mission.id, { priority: Number(v), expected_version: mission.version, idempotency_key: key })}
+        reread={[`/v1/missions/${mission.id}`, '/v1/missions', '/v1/status']}
+      />
+      <p className="hint" id={id + 'h'}>
+        Higher is started first when missions wait for capacity. Every mission starts at 0.
+      </p>
     </div>
   );
 }

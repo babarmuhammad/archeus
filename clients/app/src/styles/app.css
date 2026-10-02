@@ -1310,6 +1310,24 @@ summary {
   min-height: var(--target-desktop);
 }
 
+/* reprioritise (D-14): one number and its command, in the inspector header */
+.priority {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.priority input {
+  width: 9ch;
+}
+
+.priority .hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 /* identifiers behind an explicit disclosure (rulebook §15): quiet, never a second heading */
 .details {
   margin: var(--space-2) 0;

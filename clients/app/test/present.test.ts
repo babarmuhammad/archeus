@@ -2,7 +2,7 @@
 // M09, M10, M13).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { explainState, firedText, inline, mentions, presenceLabel, resourceLine, statusLine, technical, templateText, triggerText, usageText } from '../src/state/present.ts';
+import { ended, explainState, firedText, inline, mentions, presenceLabel, resourceLine, statusLine, technical, templateText, triggerText, usageText } from '../src/state/present.ts';
 import { PRESENTATION } from '../src/state/presentation.ts';
 
 test('harness, model and account stay three fields; nothing is merged or borrowed (M13)', () => {
@@ -116,4 +116,11 @@ test('usage reads as windows and when it was seen; an unreported window is unkno
   assert.equal(u, 'five hour 42% (resets in 2 h) · seven day unknown, observed 2 min ago from statusline');
   assert.equal(usageText(null), 'not observed');
   assert.ok(!JSONISH.test(u));
+});
+
+test('a state ends its machine exactly when no trigger leaves it (R10b: where priority is offered)', () => {
+  assert.deepEqual(Object.keys(PRESENTATION.mission).filter((x) => ended('mission', x)).sort(), ['CANCELLED', 'COMPLETED']);
+  assert.equal(ended('mission', 'EXECUTING'), false);
+  assert.equal(ended('mission', 'PAUSED'), false);
+  assert.equal(ended('mission', 'FAILED'), false); // a failed mission may still be replanned
 });

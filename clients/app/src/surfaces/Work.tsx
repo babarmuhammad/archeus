@@ -37,6 +37,7 @@ export function MissionRow({ m, waiting }: { m: Mission; waiting?: boolean }) {
         {waiting ? <span className="tag attention">waiting on you</span> : null}
         <span className="status">{statusLine(m)}</span>
         {m.origin === 'automation' ? <span className="tag">from an automation</span> : null}
+        {m.priority ? <span className="tag" data-priority={m.priority}>priority {m.priority}</span> : null}
         <span className="age">{ago(m.updated_at)}</span>
         <Changed on={changed} />
       </a>
