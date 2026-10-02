@@ -134,7 +134,7 @@ state glyphs ≥ 3:1 on `surface-1`; focus ring ≥ 3:1 against both the control
 
 | Role | Desktop | Mobile | Weight | Use |
 |---|---|---|---|---|
-| `display` | 28/34 | 28/34 | 600 | Now greeting line only |
+| `display` | 28/34 | 28/34 | 600 | Now's state sentence only (*as built, P19.5 R8*; ADR-0027 §5: never a greeting) |
 | `title-1` | 20/26 | 22/28 | 600 | view titles |
 | `title-2` | 16/22 | 18/24 | 600 | section and inspector titles |
 | `body` | 13/20 | 17/24 | 400 | default text (HIG floors: 13 desktop, 17 mobile) |
@@ -256,7 +256,8 @@ frame. *Slow frames* (`Loop.degraded`): a marker takes the pulse's form (one opa
 edge, no travel), per rulebook §21-22. *Reduced motion:* no marker is drawn, the event still counts
 as presented (turning reduced motion off replays nothing), and the live edge is drawn 2 px and
 static. *Text equivalent:* in the graph mirror the execution's relation to its task reads
-"… — live now"; the mirror never narrates the animation. The operations-map surface is not built.
+"… — live now"; the mirror never narrates the animation. On Now's live map (R8) no marker travels:
+its depth-1 mission reads load no task, so no `executions.task_id` edge is drawn there.
 
 **Adding a motion** (every later P19.5 slice): (1) give its entry the approved values, never new
 ones; it stays `approved` until the code runs it; (2) when built, set `built` and bind it — a CSS
@@ -322,7 +323,8 @@ account — no other resource was free".
 | Component | Purpose | Key rules |
 |---|---|---|
 | **Mark and operations strip** | the shell header on every page (ADR-0027 §1-3) | *As built (P19.5, R7):* the credited glyph (`MARK` in `state/orbit.ts`, the site's figure) in `currentColor` at 20 px beside "Archeus", and on the boot screen with "Connecting to Archeus…"; nowhere else. Its orbit's node is the presence — hollow while not connected, `state-attention` while something needs you, `state-active` while an attempt runs, neutral otherwise — and the favicon shows the same state still, on the dark tile; the app icons are the tile mark. The strip is a `nav` named Operations: "N running · N needs you · N clients", each a link to its list, the freshness of the status read, and Emergency stop behind its confirmation, or "Emergency stop engaged" while Core reads it disarmed; its words go to a status region at most once per 30 s, only on a change. A phone shows the mark and the counts. Pause all joins it with R10 |
-| **Presence line** | top of Now: "Archeus · working on 2 missions · 1 needs you" | derived from counts, never personality text |
+| **State sentence** | top of Now (ADR-0027 §5; replaces the presence line) | *As built (P19.5, R8):* "Archeus is working on 2 missions. 1 needs you." / "Archeus is idle. Nothing needs you." — two counts in words (the unsettled missions and `/v1/attention`'s count; rulebook §9, Appendix B), in the `display` role, never a greeting or personality text; the strip's status region already says the counts aloud, so the sentence is not a live region. Under it, the background automation line: "N automations watching" (the ENABLED automations), a link to Control → Automations, absent when none watches |
+| **Now** | the operational surface (ADR-0027 §4) | *As built (P19.5, R8):* at most seven blocks, in this order — Needs you (top 3), Happening now, Since you last looked, Upcoming, Recent decisions, the Live map, the conversation (rulebook §7.2: the map over the conversation in the right column). **Upcoming** (step 1, until P21's schedules) lists the missions the screen calls Approved or Planning. **Recent decisions** (client-composed, O-6) lists the five newest of: a decided approval ("approved" / "rejected" / "changes requested", for its mission), a route decision that fell back (`result: fallback`), a confirmed DECISION knowledge item — each row naming and linking its object and carrying the T2 rule. A block with nothing to show is not drawn. The **Live map** (O-4) is the graph's own renderer over `/v1/world/graph` at depth 1 around each active mission (at most 40 seeds), holding only those missions and the attempts `/v1/status` lists as live, at most 40 nodes, the cap's cut counted; drawn from 1000 px up, never on a phone; no toolbar, the legend closed, the mirror kept; it frames what it holds whenever that changes; every node opens the full graph focused there. The halo and the cored node carry live work in it; the travelling marker and the pulse need a task edge, which a depth-1 mission read does not load, so the map has neither. The activity chip, "recent real output" and the empty-Now composer focus are not R8's |
 | **Digest** | since-you-left grouped list | every bullet links to its object; Dismiss advances the per-user cursor |
 | **Mission row** | one mission in any list | glyph, title, project, status line, waiting-on, age; no tokens/sessions. *As built (P19.5, R5):* an `execution.*` frame about a running attempt, its mission read again from Core, plays one 240 ms opacity step over the row (`row-pulse`), at most once per 2 s, never for an event already presented, never under reduced motion or slow frames; the state word is its equivalent (Core records no last-output time). Like every row the digest can name, it carries the T2 rule and "changed since you looked" while Core's digest names it. The activity chip is not built: its text has no source yet |
 | **Card** (conversation) | live view of an object inside a message | types: mission proposal, plan, approval, route explanation, diff, verification, digest; updates live; shows "inferred" chips |

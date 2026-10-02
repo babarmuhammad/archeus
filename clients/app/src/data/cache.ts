@@ -2,7 +2,7 @@
 // when a component first shows it, re-read only when a stream frame makes it
 // stale (invalidation.ts) or the connection resyncs. It holds Core's answers
 // and nothing else — no optimistic write, no derived state.
-import { useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import type { Send } from '../api/generated';
 import { CoreError } from '../api/transport';
 import { initial, next, type ConnState, type Signal } from './connection';
@@ -154,6 +154,26 @@ export function useRead<T>(path: string | null): Snapshot<T> {
     () => (path ? store.snapshot(path) : EMPTY),
   );
   return snap as Snapshot<T>;
+}
+
+/** The cached answers of several reads, as one value that changes only when
+ * one of them does. */
+export function useReads<T>(paths: readonly string[]): Snapshot<T>[] {
+  const key = paths.join('\n');
+  const last = useRef<Snapshot<unknown>[]>([]);
+  const subscribe = useCallback(
+    (l: () => void) => {
+      const offs = key ? key.split('\n').map((p) => store.subscribe(p, l)) : [];
+      return () => offs.forEach((off) => off());
+    },
+    [key],
+  );
+  return useSyncExternalStore(subscribe, () => {
+    const snaps = key ? key.split('\n').map((p) => store.snapshot(p)) : [];
+    const prev = last.current;
+    if (snaps.length !== prev.length || snaps.some((s, i) => s !== prev[i])) last.current = snaps;
+    return last.current;
+  }) as Snapshot<T>[];
 }
 
 export function useConn(): ConnState {

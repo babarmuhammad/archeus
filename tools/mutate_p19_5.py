@@ -4,7 +4,8 @@ gate with the Details disclosure and its command names (N71-N88), and R2's legen
 expand all / collapse all and plain tier words (N89-N102), and R3's hull, depth,
 cored node, receding lines and impact view (N103-N119), and R5's row pulse and change rule
 (N120-N139), and R6's thread line on Now (N140-N153), and R7's mark, orbit, favicon and
-operations strip (N154-N180). Break each gate's invariant, run the test written for it,
+operations strip (N154-N180), and R8's Now — the state sentence, upcoming, recent decisions, the
+automation line and the live map (N181-N207). Break each gate's invariant, run the test written for it,
 and require it to fail.
 
     py tools/mutate_p19_5.py            every mutation
@@ -93,6 +94,12 @@ STRIP_NEEDS = STRIP_E2E + 'test_needs_you_the_emergency_stop_and_the_compact_str
 STRIP_BOOT = STRIP_E2E + 'test_the_boot_screen_is_the_mark_and_connecting'
 ESTOP_CONFIRM = (' confirm="Every running execution is killed now and Archeus refuses new work until you re-arm it.'
                  ' Missions are not lost; they wait." run={(key) => api.estop(')
+NOWS = 'clients/app/src/state/now.ts'
+WIDE = 'clients/app/src/graph/wide.ts'
+NOW_TS = 'node:test/now.test.ts'
+NOW_E2E = 'tests/v1/e2e/test_spa_now.py::'
+NOW_SAYS = NOW_E2E + 'test_the_sentence_upcoming_decisions_and_the_automation_line'
+NOW_MAP = NOW_E2E + 'test_the_live_map_holds_live_work_only_and_opens_the_full_graph'
 
 MUTATIONS = [
     # ── the registry ──
@@ -223,8 +230,8 @@ MUTATIONS = [
      '      opaque:')],
      [HALO_E2E]),
     ('N32', 'the halo cleared while the stream is down', [(GV,
-     "import { store, useRead } from '../data/cache';",
-     "import { store, useConn, useRead } from '../data/cache';"), (GV,
+     "import { store, useRead, useReads, type Snapshot } from '../data/cache';",
+     "import { store, useConn, useRead, useReads, type Snapshot } from '../data/cache';"), (GV,
      "  const halo = useMemo(() => haloed(model, (m, s) => present(m, s).cls === 'active'), [model]);",
      "  const conn = useConn();\n"
      "  const halo = useMemo(() => (conn.conn === 'reconnecting' ? new Set<string>() : haloed(model, (m, s) => present(m, s).cls === 'active')), [model, conn]);")],
@@ -735,6 +742,92 @@ MUTATIONS = [
      'new Orbit(timeline, { now: () => performance.now(), reduced: reducedMotion })',
      'new Orbit(timeline, { now: () => performance.now(), reduced: () => reducedMotion() && false })')],
      [STRIP_RM]),
+    # ── R8: Now — the state sentence, upcoming, recent decisions, the automation line, the live map ──
+    ('N181', 'the sentence greets', [(NOWS,
+     "  const doing = active ? `Archeus is working on", "  const doing = active ? `Good afternoon. Archeus is working on")],
+     [NOW_TS, NOW_SAYS]),
+    ('N182', 'the sentence counts every mission as active', [(NOWS,
+     'ms.filter((m) => !SETTLED.includes(m.state));', 'ms.filter((m) => !SETTLED.includes(m.state) || !!m.state);')],
+     [NOW_TS]),
+    ('N183', 'the sentence is not in the display role', [(CSS,
+     '.state-sentence {\n  font: 600 var(--type-display);', '.state-sentence {\n  font: 600 var(--type-body);')],
+     [NOW_TS, NOW_SAYS]),
+    ('N184', 'upcoming holds running work', [(NOWS,
+     "export const UPCOMING: readonly string[] = ['approved', 'planning'];", "export const UPCOMING: readonly string[] = ['approved', 'planning', 'active'];")],
+     [NOW_TS]),
+    ('N185', 'upcoming reads the bare state, not what the screen calls it', [(NOWS,
+     'UPCOMING.includes(present(\'mission\', m.state).cls)', 'UPCOMING.includes(present(\'mission\', m.state).cls && m.state.toLowerCase())')],
+     [NOW_TS, NOW_SAYS]),
+    ('N186', 'a candidate DECISION counts as decided', [(NOWS,
+     "      .filter((k) => k.type === 'DECISION' && k.state === 'CONFIRMED')", "      .filter((k) => k.type === 'DECISION')")],
+     [NOW_TS, NOW_SAYS]),
+    ('N187', 'every route decision counts, not only the fallbacks', [(NOWS,
+     "routes.filter((r) => r.result === 'fallback')", "routes.filter((r) => r.result !== 'blocked')")],
+     [NOW_TS]),
+    ('N188', 'recent decisions oldest first', [(NOWS,
+     'out.sort((a, b) => b.at.localeCompare(a.at))', 'out.sort((a, b) => a.at.localeCompare(b.at))')],
+     [NOW_TS]),
+    ('N189', 'recent decisions unbounded', [(NOWS,
+     '.slice(0, n);\n}', '.slice(0, n + 99);\n}')],
+     [NOW_TS]),
+    ('N190', 'the automation line counts every automation', [(NOWS,
+     "as.filter((a) => a.state === 'ENABLED').length", "as.filter((a) => a.state !== 'ARCHIVED').length")],
+     [NOW_TS, NOW_SAYS]),
+    ('N191', 'the automation line links nowhere', [(NOW,
+     '      <a href="#/control/automations">{line}</a>', '      <span>{line}</span>')],
+     [NOW_SAYS]),
+    ('N192', 'a decision row links its mission, not itself', [(NOW,
+     '            <a href={objectHref(d.kind, d.id)}>', "            <a href={objectHref('mission', d.mission ?? d.id)}>")],
+     [NOW_SAYS]),
+    ('N193', 'a decision row cannot carry the change rule', [(NOW,
+     ' data-ref={`${d.kind}:${d.id}`} {...thread(changed(d.kind, d.id))}>', ' data-ref={`${d.kind}:${d.id}`}>')],
+     [NOW_SAYS]),
+    ('N194', 'the blocks out of ADR-0027 order', [(NOW,
+     '          <DigestSection />\n', ''), (NOW,
+     '        <div className="now-main">\n', '        <div className="now-main">\n          <DigestSection />\n')],
+     [NOW_TS]),
+    ('N195', 'the map draws everything its reads return', [(NOWS,
+     "((n.kind === 'mission' && seed.has(n.id)) || (n.kind === 'execution' && live.has(n.id)))", '(n.kind !== \'more\' || seed.has(n.id) || live.has(n.id))')],
+     [NOW_TS, NOW_MAP]),
+    ('N196', 'the map keeps an attempt that ended', [(NOWS,
+     "(n.kind === 'execution' && live.has(n.id))", "(n.kind === 'execution' && (live.has(n.id) || !!n.id))")],
+     [NOW_TS, NOW_MAP]),
+    ('N197', 'the map over its 40-node cap', [(NOWS,
+     'export const MAP_CAP = 40;', 'export const MAP_CAP = 400;')],
+     [NOW_TS]),
+    ('N198', 'the map on narrow windows', [(WIDE,
+     'export const MAP_MIN_WIDTH = 1000;', 'export const MAP_MIN_WIDTH = 600;')],
+     [NOW_TS, NOW_MAP]),
+    ('N199', 'the map reads two steps out', [(NOWS,
+     '&depth=1&limit=', '&depth=2&limit=')],
+     [NOW_TS]),
+    ('N200', 'a map node opens the inspector, not the full graph', [(GV,
+     '    if (map) return location.assign(n.kind === \'more\' ? graphHref(null) : graphHref({ kind: n.kind, id: n.id }));\n', '')],
+     [NOW_MAP]),
+    ('N201', 'the map never frames what arrives later', [(GV,
+     '    if (map && sized.current) fitAll(false);', '    if (map && sized.current && false) fitAll(false);')],
+     [NOW_MAP]),
+    ('N202', 'the map carries the whole graph toolbar', [(GV,
+     '      {map ? null : <div className="graph-bar"', '      {false ? null : <div className="graph-bar"')],
+     [NOW_MAP]),
+    ('N203', 'the map under the conversation', [(NOW,
+     '          {mapFits && active.length ? <MapSection missions={all} /> : null}\n          <Conversation />',
+     '          <Conversation />\n          {mapFits && active.length ? <MapSection missions={all} /> : null}')],
+     [NOW_TS, NOW_MAP]),
+    ('N204', 'the map seeds settled missions', [(NOWS,
+     'activeMissions(ms).slice(0, MAP_CAP)', 'ms.slice(0, MAP_CAP)')],
+     [NOW_TS]),
+    ('N205', 'several reads never update after the first answer', [(CACHE,
+     '    if (snaps.length !== prev.length || snaps.some((s, i) => s !== prev[i])) last.current = snaps;',
+     '    if (snaps.length !== prev.length) last.current = snaps;')],
+     [NOW_MAP]),
+    ('N207', 'a re-read of the same live work redraws the map', [(GV,
+     '    if (last.current?.sig !== sig) last.current = { sig, data: d };', '    last.current = { sig, data: d };')],
+     [NOW_MAP, STRIP]),
+    ('N206', 'the presence line is back', [(NOW,
+     "        {missions.data && att.data ? stateSentence(active.length, needs) : null}",
+     "        {missions.data && att.data ? `Archeus · ${active.length} missions active · ${needs} things need you${stateSentence.name ? '' : ''}` : null}")],
+     [NOW_TS, NOW_SAYS]),
 ]
 
 if __name__ == '__main__':

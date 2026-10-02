@@ -5,9 +5,10 @@
 // 600 px it is not drawn at all and the Relations list is the view (A12).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { announce } from '../a11y/announce';
-import { store, useRead } from '../data/cache';
+import { store, useRead, useReads, type Snapshot } from '../data/cache';
 import { objectHref } from '../nav/destinations';
 import { MOTIONS } from '../state/motion';
+import { liveMap, MAP_PATH, mapRead } from '../state/now';
 import { present } from '../state/present';
 import { timeline } from '../state/timeline';
 import { Empty, Fresh, Loadable, StateBadge } from '../components/ui';
@@ -86,9 +87,36 @@ function Spatial({ focus, modules }: { focus: Ref | null; modules?: string }) {
   );
 }
 
+/** Now's live map (ADR-0027 §4, rulebook §6 O-4): the same renderer over the
+ * graph read around each active mission — live work only, at most 40 nodes,
+ * every node opening the full graph. Its caller shows it from 1000 px up. */
+export function LiveMap({ seeds, live }: { seeds: readonly string[]; live: ReadonlySet<string> }) {
+  const key = seeds.join();
+  const paths = useMemo(() => seeds.map(mapRead), [key]);
+  const reads = useReads<GraphData>(paths);
+  // a re-read of the same live work is the same picture: it draws no frame
+  const last = useRef<{ sig: string; data: GraphData } | null>(null);
+  const data = useMemo(() => {
+    const d = liveMap(seeds, reads.map((r) => r.data), live);
+    const sig = JSON.stringify(d);
+    if (last.current?.sig !== sig) last.current = { sig, data: d };
+    return last.current.data;
+  }, [key, reads, live]);
+  if (!data.nodes.length) {
+    const waiting = reads.find((r) => r.data === undefined && !r.error);
+    const failed = reads.find((r) => r.error);
+    return waiting || failed ? <Loadable snap={(waiting ?? failed) as Snapshot<never>} what="the live map">{() => null}</Loadable> : null;
+  }
+  return (
+    <div className="live-map">
+      <Canvas data={data} focus={null} path={MAP_PATH} stale={null} map />
+    </div>
+  );
+}
+
 const CAMERA_MS = MOTIONS['camera-settle'].max_ms;
 
-function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus: Ref | null; modules?: string; path: string; stale: string | null }) {
+function Canvas({ data, focus, modules, path, stale, map = false }: { data: GraphData; focus: Ref | null; modules?: string; path: string; stale: string | null; map?: boolean }) {
   const model = useMemo(() => build(data), [data]);
   const root = focus ? keyOf(modules !== undefined ? { kind: 'path', id: modules } : focus) : null;
   const rootKey = root && model.byKey.has(root) ? root : model.nodes[0] ? keyOf(model.nodes[0]) : '';
@@ -323,6 +351,13 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   modelRef.current = model;
   visRef.current = vis;
 
+  // the live map is an overview: it frames whatever live work it holds, so a
+  // read answering later or an attempt starting is never off the canvas
+  const drawnKeys = keys.join();
+  useEffect(() => {
+    if (map && sized.current) fitAll(false);
+  }, [map, drawnKeys]);
+
   // one redraw when what is drawn changed — never on a render the loop's own
   // state caused (that would be a loop by another name)
   useEffect(() => {
@@ -341,6 +376,8 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   const open = (k: string) => {
     const n = model.byKey.get(k);
     if (!n) return;
+    // the live map's click-through (rulebook §6 O-4): the full graph, there
+    if (map) return location.assign(n.kind === 'more' ? graphHref(null) : graphHref({ kind: n.kind, id: n.id }));
     if (n.kind === 'more') return location.assign(graphHref(n.parent ?? null));
     if (modules !== undefined) {
       if (n.kind === 'directory' && !n.endpoint) location.assign(graphHref(focus, n.id));
@@ -351,7 +388,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
   };
   const drill = (k: string) => {
     const n = model.byKey.get(k);
-    if (!n || n.endpoint || modules !== undefined) return open(k);
+    if (!n || n.endpoint || modules !== undefined || map) return open(k);
     location.assign(graphHref({ kind: n.kind, id: n.id }));
   };
 
@@ -475,7 +512,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
 
   return (
     <div className="graph" data-graph-focus={focus ? `${focus.kind}:${focus.id}` : 'workspace'} data-graph-nodes={keys.length} data-graph-lod={lod} data-graph-loop={loopState} data-graph-at={walk.at} data-graph-live={live.size} data-graph-halos={halos} data-graph-pulses={pulseCount} data-graph-markers={markerCount} data-graph-pinned={pinned.size} data-graph-expanded={expanded.size} data-graph-collapsible={model.children.size} data-graph-hidden={hidden.size} data-graph-impact={affected ? affected.steps.size : ''} data-graph-selected={sel?.edge.id ?? ''} data-graph-path={pathState ?? ''}>
-      <div className="graph-bar" role="toolbar" aria-label="Graph">
+      {map ? null : <div className="graph-bar" role="toolbar" aria-label="Graph">
         <a className="chip" href={modules !== undefined ? objectHref('repository', focus!.id) : focus ? (focus.kind === 'project' ? `#/world/${focus.id}` : objectHref(focus.kind, focus.id, 'relations')) : '#/world'}>
           List
         </a>
@@ -527,7 +564,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
             ))}
           </span>
         ) : null}
-      </div>
+      </div>}
       {stale ? <p className="stale-line">{stale}</p> : null}
       {affected ? (
         <p className="status-line" role="status" data-graph-impact-line="">
@@ -546,7 +583,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
         tabIndex={0}
         role="application"
         aria-roledescription="relationship graph"
-        aria-label={`Relationships around ${model.byKey.get(rootKey)?.label ?? 'the world'}. Arrow keys walk the edges, Enter opens, F focuses the graph there.`}
+        aria-label={map ? 'Live work: the active missions and their running attempts. Arrow keys walk the edges, Enter opens the full graph there.' : `Relationships around ${model.byKey.get(rootKey)?.label ?? 'the world'}. Arrow keys walk the edges, Enter opens, F focuses the graph there.`}
         aria-describedby="graph-keys"
         onKeyDown={onKey}
         onPointerDown={(e) => {
@@ -609,7 +646,7 @@ function Canvas({ data, focus, modules, path, stale }: { data: GraphData; focus:
       <p id="graph-keys" className="caption">
         ↑ ↓ choose a relationship · → follow it · ← back · Enter open · F focus here · Space expand or collapse · E expand all · C collapse all · + − zoom · 0 fit · / find · P mark a path end · . pin or unpin · Esc clear
       </p>
-      <Legend model={model} hidden={hidden} onToggle={(k) => setHidden((h) => toggle(h, k))} />
+      <Legend model={model} hidden={hidden} open={!map} onToggle={(k) => setHidden((h) => toggle(h, k))} />
       <Mirror model={model} pinned={pinned} halo={halo} around={walk.at && steps ? { focus: walk.at, steps, affected: affected?.steps } : undefined} />
     </div>
   );
@@ -627,12 +664,12 @@ const opaque = () => matchMedia('(forced-colors: active)').matches || matchMedia
 /** The legend (ADR-0025 §2): what each shape and line in this picture means,
  * and the two marks of live work, as a list. Each shape and line row is a real
  * checkbox that hides what it names from the drawing. */
-function Legend({ model, hidden, onToggle }: { model: Model; hidden: ReadonlySet<string>; onToggle: (key: string) => void }) {
+function Legend({ model, hidden, open, onToggle }: { model: Model; hidden: ReadonlySet<string>; open: boolean; onToggle: (key: string) => void }) {
   const reduced = reducedMotion();
   const solid = opaque();
   const rows = legendRows(model, reduced);
   return (
-    <details className="graph-legend" open data-graph-legend="">
+    <details className="graph-legend" open={open} data-graph-legend="">
       <summary>Legend</summary>
       <p className="hint">Untick a shape or a line to hide it from the drawing.</p>
       {GROUPS.map(([g, title]) => {

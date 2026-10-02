@@ -490,15 +490,39 @@ h1:focus {
   max-width: var(--measure-ch);
 }
 
-.presence {
+/* the state sentence (ADR-0027 §5) in the display role (design system §4);
+   the automation line under it is the quietest line on the page */
+.state-sentence {
+  font: 600 var(--type-display);
+  margin: 0 0 var(--space-2);
+}
+
+.automation-line {
   color: var(--text-2);
-  margin: 0 0 var(--space-5);
+  margin: 0;
+}
+
+.automation-line a {
+  color: inherit;
 }
 
 .now-grid {
   display: grid;
   gap: var(--space-6);
   grid-template-columns: minmax(0, 1fr);
+  margin-top: var(--space-5);
+}
+
+.now-side {
+  display: grid;
+  gap: var(--space-6);
+  align-content: start;
+  min-width: 0;
+}
+
+/* the live map (rulebook §6 O-4): compact, above the conversation */
+.live-map .graph-canvas {
+  height: 320px;
 }
 
 @container main (min-width: 880px) {

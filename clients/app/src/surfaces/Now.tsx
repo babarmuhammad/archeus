@@ -1,13 +1,17 @@
-// Now (p16-design-gate §6.10, §5): the return — the presence line, what
-// changed since you last looked (the digest), what is happening, the top of
-// Attention, and the conversation. Composed from three reads (S5).
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { api, SETTLED, type Digest, type Message, type MessageList, type MissionList } from '../api/generated';
+// Now (p16-design-gate §6.10, §5; ADR-0027 §4-5, rulebook §9): the operational
+// surface — the state sentence, then at most seven blocks in ADR-0027's order:
+// needs you, happening now, since you last looked, upcoming, recent decisions,
+// the live map and the conversation. Composed from Core's reads (S5).
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { api, type ApprovalList, type AutomationList, type Digest, type KnowledgeList, type Message, type MessageList, type MissionList, type RouteDecisionList, type Status } from '../api/generated';
 import { announce } from '../a11y/announce';
 import { send } from '../data/core';
 import { store, useRead } from '../data/cache';
+import { LiveMap } from '../graph/GraphView';
 import { reducedMotion } from '../graph/loop';
+import { MAP_MIN_WIDTH, useWide } from '../graph/wide';
 import { objectHref } from '../nav/destinations';
+import { activeMissions, automationLine, mapSeeds, recentDecisions, stateSentence, upcoming } from '../state/now';
 import { ago } from '../state/present';
 import { lineBetween, linksOf, messageHeard, targetOf, threadWords, type Ref } from '../state/thread';
 import { timeline } from '../state/timeline';
@@ -49,17 +53,23 @@ const HEADLINE: Record<string, string> = {
 export function NowView() {
   const missions = useRead<MissionList>('/v1/missions');
   const att = useRead<AttentionT>('/v1/attention');
-  const active = (missions.data?.missions ?? []).filter((m) => !SETTLED.includes(m.state));
+  const all = missions.data?.missions ?? [];
+  const active = activeMissions(all);
+  const next = upcoming(all);
   const needs = att.data?.count ?? 0;
+  const mapFits = useWide(MAP_MIN_WIDTH);
   return (
     <div className="view now">
       <h1 tabIndex={-1}>Now</h1>
-      <p className="presence" aria-live="off">
-        Archeus · {active.length} {active.length === 1 ? 'mission' : 'missions'} active · {needs} {needs === 1 ? 'thing needs' : 'things need'} you
+      <p className="state-sentence" data-state-sentence="" aria-live="off">
+        {missions.data && att.data ? stateSentence(active.length, needs) : null}
       </p>
+      <AutomationLine />
       <div className="now-grid">
         <div className="now-main">
-          <DigestSection />
+          <Section title="Needs you">
+            <AttentionView limit={3} heading={false} />
+          </Section>
           <Section title="Happening now" actions={<Fresh snap={missions} />}>
             <Loadable snap={missions} what="the missions">
               {() =>
@@ -75,13 +85,83 @@ export function NowView() {
               }
             </Loadable>
           </Section>
-          <Section title="Needs you">
-            <AttentionView limit={3} heading={false} />
-          </Section>
+          <DigestSection />
+          {next.length ? (
+            <Section title="Upcoming">
+              <ul className="rows" data-now="upcoming">
+                {next.map((m) => (
+                  <MissionRow key={m.id} m={m} />
+                ))}
+              </ul>
+            </Section>
+          ) : null}
+          <Decisions />
         </div>
-        <Conversation />
+        <div className="now-side">
+          {mapFits && active.length ? <MapSection missions={all} /> : null}
+          <Conversation />
+        </div>
       </div>
     </div>
+  );
+}
+
+/** The background automation line (rulebook §9): quiet, and a link to them. */
+function AutomationLine() {
+  const a = useRead<AutomationList>('/v1/automations');
+  const line = a.data ? automationLine(a.data.automations) : null;
+  return line ? (
+    <p className="automation-line" data-automation-line="">
+      <a href="#/control/automations">{line}</a>
+    </p>
+  ) : null;
+}
+
+/** Recent decisions (rulebook §9, O-6): each row names its object and links it. */
+function Decisions() {
+  const ap = useRead<ApprovalList>('/v1/approvals');
+  const rd = useRead<RouteDecisionList>('/v1/route-decisions');
+  const kn = useRead<KnowledgeList>('/v1/knowledge?type=DECISION&state=CONFIRMED');
+  const changed = useChanged();
+  const rows = ap.data && rd.data && kn.data ? recentDecisions(ap.data.approvals, rd.data.route_decisions, kn.data.knowledge) : [];
+  return rows.length ? (
+    <Section title="Recent decisions">
+      <ul className="rows" data-now="decisions">
+        {rows.map((d) => (
+          <li key={d.kind + d.id} className="row-item" data-ref={`${d.kind}:${d.id}`} {...thread(changed(d.kind, d.id))}>
+            <a href={objectHref(d.kind, d.id)}>
+              <RefLabel kind={d.kind} id={d.id} />
+            </a>
+            {d.mission ? (
+              <>
+                {' '}
+                for{' '}
+                <a href={objectHref('mission', d.mission)}>
+                  <RefLabel kind="mission" id={d.mission} />
+                </a>
+              </>
+            ) : null}{' '}
+            · {d.words} <span className="age">{ago(d.at)}</span>
+            <Changed on={changed(d.kind, d.id)} />
+          </li>
+        ))}
+      </ul>
+    </Section>
+  ) : null;
+}
+
+/** The live map's block: its seeds are the active missions, its live set the
+ * attempts Core's status lists — the same derivation the strip counts. */
+function MapSection({ missions }: { missions: MissionList['missions'] }) {
+  const status = useRead<Status>('/v1/status');
+  const seeds = mapSeeds(missions);
+  const ids = (status.data?.live ?? []).map((x) => x.id);
+  const key = ids.join();
+  const live = useMemo(() => new Set(ids), [key]);
+  return (
+    <Section title="Live map" actions={<Fresh snap={status} />}>
+      <LiveMap seeds={seeds} live={live} />
+    </Section>
   );
 }
 
