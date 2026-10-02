@@ -731,6 +731,26 @@ h1:focus {
   }
 }
 
+/* A-12: a static skeleton in the shape of a list — never animated (no shimmer) */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+
+.sk-row {
+  display: block;
+  height: var(--target-desktop);
+  max-width: 48rem;
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+}
+
+.sk-row:nth-child(3n) {
+  max-width: 32rem;
+}
+
 .empty,
 .loading,
 .unavailable {
@@ -1481,6 +1501,10 @@ html[data-motion='reduced'] *::after {
 }
 
 @media (forced-colors: active) {
+  .sk-row {
+    border: 1px solid GrayText;
+  }
+
   .btn,
   .chip,
   .tag,

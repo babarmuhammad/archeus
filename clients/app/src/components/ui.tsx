@@ -108,6 +108,20 @@ export function Fresh({ snap }: { snap: Snapshot<unknown> }) {
   ) : null;
 }
 
+/** Loading (rulebook §21 A-12, Appendix B): static skeleton rows in the shape
+ * of a list — no shimmer, nothing moves — and "Reading X…" for a screen
+ * reader, the only words while it waits. */
+export function Skeleton({ what, rows = 3 }: { what: string; rows?: number }) {
+  return (
+    <div className="skeleton" role="status" data-skeleton="">
+      <span className="sr">Reading {what}…</span>
+      {Array.from({ length: rows }, (_, i) => (
+        <span key={i} className="sk-row" aria-hidden="true" />
+      ))}
+    </div>
+  );
+}
+
 /** Loading / unavailable / content, from one read. */
 export function Loadable<T>({ snap, children, what }: { snap: Snapshot<T>; children: (d: T) => ReactNode; what: string }) {
   if (snap.data === undefined) {
@@ -117,7 +131,7 @@ export function Loadable<T>({ snap, children, what }: { snap: Snapshot<T>; child
           {what} is unavailable: {explain(snap.error)}
         </p>
       );
-    return <p className="loading">Reading {what}…</p>;
+    return <Skeleton what={what} />;
   }
   return <>{children(snap.data)}</>;
 }

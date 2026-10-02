@@ -285,7 +285,7 @@ other properties (as `tests/test_gui_flicker.py` does today).
 | Focus | 2 px `focus` ring, 2 px offset, always visible on keyboard focus (`:focus-visible`) |
 | Selected | 2 px `text` left rule + `surface-2` background |
 | Disabled | 40% opacity **plus** a reason in the tooltip/accessible description ("Needs the approve scope on this device") |
-| Loading | skeleton rows for lists (static, no shimmer loop); inline spinner only inside a control; specific progress text |
+| Loading | skeleton rows for lists (static, no shimmer loop); inline spinner only inside a control; specific progress text. *As built (P19.5, R9):* `Skeleton` in `components/ui.tsx`, the loading state of every `Loadable` — three still bars and "Reading X…" for a screen reader |
 | Empty | one sentence saying what will appear here and one action ("No missions yet. Tell Archeus what you want.") |
 | Error | inline, next to the thing; says what happened and what to do; never a modal for a recoverable error |
 | Success | the state change itself (✓) plus a transient toast only when the success happened off-screen |

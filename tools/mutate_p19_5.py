@@ -110,6 +110,8 @@ PRI = PRI_E2E + 'test_priority_is_one_number_set_by_cores_one_command'
 PRI_END = PRI_E2E + 'test_an_ended_mission_offers_no_priority'
 PRI_RO = PRI_E2E + 'test_a_client_without_control_is_told_why'
 
+LOADING = 'tests/v1/e2e/test_spa_loading.py::test_a_pending_list_is_a_still_skeleton_until_core_answers'
+
 MUTATIONS = [
     # ── the registry ──
     ('N01', 'a registered motion allowed to replay', [(REG,
@@ -916,6 +918,21 @@ MUTATIONS = [
     ('N229', 'the inspector offers no priority', [(MISSION,
      "{ended('mission', mission.state) ? null : <Priority mission={mission} />}", "{ended('mission', mission.state) || true ? null : <Priority mission={mission} />}")],
      [PRI, PRI_RO]),
+    # R9: loading is a static skeleton (rulebook §21 A-12, Appendix B)
+    ('N230', 'loading back to a line of text', [(UI,
+     "    return <Skeleton what={what} />;",
+     "    return <p className=\"loading\">Reading {what}…{Skeleton.name ? '' : ''}</p>;")],
+     [LOADING]),
+    ('N231', 'the skeleton shimmers', [(CSS,
+     "  background: var(--surface-2);\n}\n\n.sk-row:nth-child(3n) {",
+     "  background: var(--surface-2);\n  transition: opacity 240ms;\n}\n\n.sk-row:nth-child(3n) {")],
+     [LOADING]),
+    ('N232', 'the skeleton says nothing to a screen reader', [(UI,
+     "      <span className=\"sr\">Reading {what}…</span>\n", "      <span className=\"sr\">{what && ''}</span>\n")],
+     [LOADING]),
+    ('N233', 'the skeleton vanishes under forced colours', [(CSS,
+     "  .sk-row {\n    border: 1px solid GrayText;\n  }\n", "")],
+     [LOADING]),
 ]
 
 if __name__ == '__main__':
