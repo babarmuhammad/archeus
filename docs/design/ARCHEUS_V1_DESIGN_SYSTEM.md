@@ -191,7 +191,7 @@ state glyphs ≥ 3:1 on `surface-1`; focus ring ≥ 3:1 against both the control
 | Motion | Duration | Easing | Trigger |
 |---|---|---|---|
 | State change (glyph cross-fade + 2 px lift) | 160 ms | ease-out | domain state changed |
-| Row insert/remove | 200 ms | ease-out | list changed (keyed reconcile) |
+| ~~Row insert/remove~~ — **not built in V1** (rulebook §46.2: an exception; rows appear and leave at once) | — | — | — |
 | Inspector slide | 220 ms | ease-out | open/close |
 | Sheet (mobile) | 280 ms | spring-like ease-out | open/close |
 | Thread travel (built on Now, P19.5 R6) | ≤ 600 ms, once | ease-in-out | Archeus acted on an object |
@@ -361,7 +361,7 @@ account — no other resource was free".
 ## 13. Desktop adaptation
 
 Sidebar (one level, with sub-sections inside Control only — two levels max; nothing critical at
-its bottom edge — *Pause all* lives in the Now header, the tray and the command bar), inspector column,
+its bottom edge — *Pause all* lives in the operations strip in the shell header on every page, Now included, and on Work; the tray gets it with the Qt shell attach, P19's S7; the command bar has none, its actions being object-scoped, D-12; rulebook §46.2), inspector column,
 tray menu (Open, Pause all, Emergency stop, Quit), native notifications, standard shortcuts
 (⌘/Ctrl+K, ⌘/Ctrl+1–4 destinations, ⌘/Ctrl+. pause focused mission, `?` shortcuts), right-click
 menus on rows, resizable columns, compact density. (Drag to reprioritise is not built: D-14 makes priority an absolute number, rulebook §46.1.)

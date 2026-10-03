@@ -1302,8 +1302,28 @@ answer is recorded here as given; nothing below widens it.
 | **D-11** | Ideas stepper without a transition API? | **(a)** a **read-only** stepper: Core's states and each idea's evidence, no transition buttons | Work → Ideas shows where each idea is on the path and what it links to | **Yes — from §43's "the one transition available now"**: Core has no idea-transition command, and none is added to make the stepper interactive |
 | **D-12** | Palette search without server support? | **(a)** upgrade the palette now — arrow-key selection, object-scoped actions on the same Core verbs as the buttons, the effect preview — with search **cache-only** | the command bar searches what this client has already read | **Yes — from §18's "server-backed search"**. Server-side search over missions, projects and knowledge is owned by **P21** (Observability views — its acceptance is "every question in §28 answerable from the UI"), as a Core read route; P19.5 adds no search parameter |
 
-Disposition of the items the 2026-10-03 audit found with no slice (each a decision of the same
-date, recorded in §46.2 when R13 runs) stays open until it is written there.
+### 46.2 Disposition of the P19.5 items with no slice (2026-10-03)
+
+The user asked for each item the 2026-10-03 audit found with no slice to be built now, deferred
+with a named owner, or recorded as an exception, with none left open. The user's instruction
+named the three possible dispositions; the choice for each item below was made against this
+rulebook's own owners and the Core record each item would need. Each row can be reversed by the
+user like any other entry in this register.
+
+| Item | Disposition | Why | Owner and dependency |
+|---|---|---|---|
+| **A-17 activity chip** (R5) | **DEFERRED** | Its text is "the current action", and no Core record holds one: `Execution` (entities.py) records harness, route, process, usage, pressure and the end, never a current tool or step; ADR-0043's `live_work` names live executions, not what each is doing. A chip written from the client's guess would break the Core-read rule (§5, R2) | **P21** (Observability views; `live_work` and the activity stream are P21's): first a Core record of an execution's current action, then the chip. The registry entry stays `approved` with its values |
+| **Thread tints** (R6) | **DEFERRED** | The curated list does not exist (legacy palette accents that pass 3:1 and ΔE ≥ 30 from every state colour, §23), and choosing a tint belongs to Control → Appearance, which is P19's (ADR-0044) | **P22**, with R17 (palette → tint migration): the importer brings the legacy palettes the list is drawn from; the contrast + ΔE gate lands with the list |
+| **Mission Now tab** (R6) | **DEFERRED** | It is the per-mission conversation, P16 seam S1, which P19 owns and has not built | **P19** (S1). A-05 thread travel extends to it there; its registry entry already names the surface |
+| **A-08 attention arrival** | **BUILD NOW** (P19.5) | Fully specified (§17, §20, §21: 240 ms once, cap 1, nav badge, CSS; reduced motion removes it; announced; the count in the tab name) and its only input, Attention's count, is read from Core today | this phase |
+| **row-change** (design system §8 "Row insert/remove") | **EXCEPTION** (not built in V1) | §21's table, the authoritative list, has no row for it, and §26 gives it no owner. Animating a removal keeps a row on screen after Core's read has dropped it, and animating an insertion repeats on the same row what the thread rule T2 and A-01 already say. Rows appear and leave at once, which was already its reduced-motion form | none. The registry entry is removed and design system §8 records the exception; adding it later means a new entry with new approval |
+| **Q-A5** browser-owned shortcuts | **EXCEPTION until the user answers** | The client still binds Ctrl/⌘+1, 2, 3 and J (`tokens/navigation.json`, the client tables of P17). In a browser tab Ctrl+1–3 switch tabs and Ctrl+J opens downloads, which goes against R6's "never repurpose standard shortcuts" (§20). Choosing replacement keys is the user's decision (§31) and is not made here. The bindings stay as they are, and every destination stays reachable from the nav, the phone tabs and the command bar | the user's decision; it must be answered before **P26**, and R13 lists it |
+| **Pause-all wording** (design system §13) | **DEVIATION**, wording amended | Design system §13 put Pause all in "the Now header, the tray and the command bar". R10a built it in the operations strip, which sits in the shell header on every page, Now included, and on Work, which is where a phone has it. The tray belongs to the Qt shell attach, P19's S7. The command bar's actions are object-scoped under D-12, so it has no Pause all | design system §13 now states what was built. The tray: **P19** (S7). The command bar: none in V1 |
+
+**Sequencing, not decided here.** P19.5 depends on P19 (§31.3: P19 → P19.5 → P20), and no P19
+work has been built. Three of P19.5's surfaces are recorded as waiting for it: the mission Now tab
+above, T2 on the Relations list and the TUI (testing-strategy §7), and the tray. Whether R13 runs
+before P19, with those rows carried into P19, or after it is the user's call.
 
 ## 47. Component map — directive names → primitives
 

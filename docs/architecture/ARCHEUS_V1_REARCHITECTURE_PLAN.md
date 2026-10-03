@@ -1027,6 +1027,9 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   **S3** the chat verbs `approve`/`reject` bound to a displayed card's `action_hash`, **S4**
   mission confirmation before `start` under `careful`, **S6** offline snapshot, **S7** the Qt
   shell attach (the desktop deployment mode) with the legacy "Open V1" link.
+- *Carried from P19.5 (rulebook §46.2, 2026-10-03):* the mission Now tab (it is S1's surface;
+  A-05 thread travel extends to it), T2's changed rule on the Relations list and the TUI once
+  they read `/v1/world/graph`, and Pause all in the tray with S7.
 - *Decided 2026-09-30 (ADR-0042, ADR-0044;
   [ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md](ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md) Part H):*
   conversational resource directives for accounts and harnesses (grammar `use`/`don't use` and
@@ -1070,6 +1073,12 @@ decisions ADR-0024…0029.
   command is added); D-12 — the palette is upgraded with search cache-only, server search owned by
   P21. No new Core verb or route comes with any of them. Order unchanged: R10b → R9 → R11 → R12 →
   R13, with the P18 `origin_ref` graph defect fixed before R13.
+  *Disposed 2026-10-03 (rulebook §46.2):* A-08 attention arrival is built in P19.5; the
+  activity chip waits for a Core record of an execution's current action (P21); thread tints
+  go to P22 with the tint migration; the mission Now tab goes to P19 (S1); row insert/remove is
+  an exception, not built in V1; Q-A5's replacement shortcuts stay the user's decision, due
+  before P26; design system §13's Pause all wording now states what was built. Whether R13
+  runs before or after P19 is the user's call.
 - Client work: tokens (focus ≠ attention, red reserved, depth/transparency tokens); primitives;
   graph edge semantics, legend, impact view, hull/depth/cored nodes, static project cage; the
   thread (T1 from `Message.links`, T2 on every list, T3 spatial) and tints; activity halo,
@@ -1116,6 +1125,9 @@ decisions ADR-0024…0029.
   handing off again; a chain that keeps progressing has no count cap and is bounded by its
   resources. No threshold changes (p12 D20), no compaction by Archeus, no routing behaviour
   changes. Gates CX-1…CX-18 (testing-strategy §10).
+- *Carried from P19.5 (rulebook §46.2, 2026-10-03):* the activity chip (rulebook A-17). It
+  first needs a Core record of an execution's current action, which neither `Execution` nor
+  ADR-0043's `live_work` holds. Server-side search for the command bar (D-12) is also P21's.
 - Acceptance: every question in §28 answerable from the UI.
 
 **P22 — Legacy capabilities into Core and the migration tooling** *(the migration itself is
@@ -1145,6 +1157,10 @@ P25.5; renamed 2026-10-01 from "Legacy migration", ownership unchanged)*
   every ADR-0041 field (the consumption classes and budgets themselves land earlier, in AP-1 —
   §31.2); a route preview per plan task shown on the plan approval card; model and
   location directive kinds (ADR-0042) once the catalogue exists.
+- *Carried from P19.5 (rulebook §46.2, 2026-10-03):* thread tints. The curated list of legacy
+  palette accents passing 3:1 and ΔE ≥ 30 from every state colour comes with R17's tint
+  migration, along with its contrast + ΔE gate; choosing a tint sits in Control → Appearance
+  (ADR-0044).
 - Tests: fixture legacy homes (multi-account, codex, pi), idempotency, counts.
 - Acceptance: G8 passes; retirement checklist (migration-plan §6) evaluated.
 

@@ -224,32 +224,6 @@ export const MOTIONS = {
     "reduced": "removed (and while frames run slow): the event still counts as presented, so it never plays later",
     "equivalent": "the mission's state word on the row (Core records no last-output time, so no 'output N s ago')"
   },
-  "row-change": {
-    "status": "approved",
-    "source": "design system §8",
-    "trigger": "a list gained or lost a row (keyed reconcile)",
-    "driven_by": "event",
-    "runs_on": "css",
-    "css": null,
-    "transition": null,
-    "max_ms": 200,
-    "token": "row",
-    "ttl_ms": null,
-    "ttl_error_ms": null,
-    "easing": "ease",
-    "cap": null,
-    "cap_per": null,
-    "over_cap": null,
-    "min_interval_ms": null,
-    "interval_per": null,
-    "surfaces": [
-      "lists"
-    ],
-    "idle": "never",
-    "replay": false,
-    "reduced": "instant: the row is there, or gone, at once",
-    "equivalent": "the list's own count and the row itself"
-  },
   "activity-halo": {
     "status": "built",
     "source": "ADR-0024 §5-6, rulebook §21 A-03, P18 A8 as amended, ADR-0028 §3",
