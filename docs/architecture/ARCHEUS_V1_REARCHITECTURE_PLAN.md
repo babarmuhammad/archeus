@@ -1029,7 +1029,9 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
   shell attach (the desktop deployment mode) with the legacy "Open V1" link.
 - *Carried from P19.5 (rulebook §46.2, 2026-10-03):* the mission Now tab (it is S1's surface;
   A-05 thread travel extends to it), T2's changed rule on the Relations list and the TUI once
-  they read `/v1/world/graph`, and Pause all in the tray with S7.
+  they read `/v1/world/graph`, and Pause all in the tray with S7. *Decided 2026-10-03 (the
+  user; rulebook §46.3):* R13, P19.5's exit review, runs after P19 has built and integrated
+  these three, never against a surface missing them.
 - *Decided 2026-09-30 (ADR-0042, ADR-0044;
   [ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md](ARCHEUS_V1_CONVERSATIONAL_ORCHESTRATION.md) Part H):*
   conversational resource directives for accounts and harnesses (grammar `use`/`don't use` and
@@ -1079,6 +1081,14 @@ decisions ADR-0024…0029.
   an exception, not built in V1; Q-A5's replacement shortcuts stay the user's decision, due
   before P26; design system §13's Pause all wording now states what was built. Whether R13
   runs before or after P19 is the user's call.
+  *Decided 2026-10-03 (the user; rulebook §46.3):* R13 does not run yet. The order is P19 →
+  the mission Now tab, the changed-row marker on the Relations list and the TUI, and Pause all
+  in the tray, implemented and integrated → R13; P19.5 is not exited until R13 has run, and
+  those three are not P19.5 implementation failures. Q-A5 is resolved for P19.5: Archeus
+  replaces the browser-owned Ctrl+1, Ctrl+2, Ctrl+3 and Ctrl+J bindings with Alt+1, Alt+2,
+  Alt+3 and Alt+J respectively (application shortcuts that must not interfere with
+  browser-reserved combinations; no Ctrl+Shift substitutes), verified against the supported
+  browser/OS matrix before P26.
 - Client work: tokens (focus ≠ attention, red reserved, depth/transparency tokens); primitives;
   graph edge semantics, legend, impact view, hull/depth/cored nodes, static project cage; the
   thread (T1 from `Message.links`, T2 on every list, T3 spatial) and tints; activity halo,

@@ -2,8 +2,8 @@
 
 **Status: APPROVED by the user, 2026-09-30 — the authoritative visual rulebook for the remaining
 V1 work.** Decisions ADR-0024…0030 are DECIDED; P19.5 is approved and in progress; the P18 A8
-amendment is approved (p18-design-gate §24) and built in P19.5. Still open from §46: Q-A5
-(browser-owned shortcuts), Q-V6 (website, P25), Q-C1 (Classic appearance ownership), Q-C2
+amendment is approved (p18-design-gate §24) and built in P19.5. Q-A5 (browser-owned shortcuts)
+is decided (§46.3). Still open from §46: Q-V6 (website, P25), Q-C1 (Classic appearance ownership), Q-C2
 (reference archive). Date 2026-09-30. Branch
 `archeus-v1-rearchitecture` at `5fa0bdb`.
 
@@ -594,7 +594,7 @@ The graph mirror remains authoritative. Every visual concept has a non-visual fo
 R6 floors also adopted: text to 200 %; desktop targets ≥ 28 px (min 20), phone ≥ 44 px (BUILT);
 motion cancellable (no one waits for an animation — markers never block input); **Ctrl+1/2/3 and
 Ctrl+J collide with browser tab/downloads shortcuts** (R6 "never repurpose standard shortcuts")
-→ NEEDS DECISION (Q-A5).
+→ Q-A5, DECIDED 2026-10-03: Alt+1/2/3 and Alt+J (§46.3).
 
 ## 21. Animation architecture (output 13)
 
@@ -809,7 +809,7 @@ No retained concept is unowned, and no deferred concept lacks a named phase.
 | X-16 | existing visual direction | IP 849 use it | PROMPT 34, PPTX s.12 don't assume it | reuse | reuse the *direction* (constellation, energy), not the legacy UI | §4 | **Q-A1** |
 | X-17 | focus colour | DS focus `#FFD166` | DS attention `#F2B544`, ΔE ≥ 30 rule | collision | focus → thread ink | ΔE 12.3 measured | **Q-V5** |
 | X-18 | overlay opacity | DS 92–96 % | P16 opaque | value | opaque | — | doc |
-| X-19 | shortcuts | DS ⌘1–4; UIA ⌘1–3/⌘J/⌘, | browser owns Ctrl+1–3, Ctrl+J (R6) | collision | alternatives needed | — | **Q-A5** |
+| X-19 | shortcuts | DS ⌘1–4; UIA ⌘1–3/⌘J/⌘, | browser owns Ctrl+1–3, Ctrl+J (R6) | collision | Alt+1/2/3 and Alt+J (§46.3) | — | **Q-A5** (decided 2026-10-03) |
 | X-20 | tiers | DR/ADR "INFERRED dashed, AMBIGUOUS dotted" | Core never writes AMBIGUOUS | third style | hide AMBIGUOUS from the legend until written | Core audit | doc |
 | X-21 | Pause all | SP 942; DS §13; B.2 | Core has only per-mission pause and e-stop (kill + BLOCKED) | semantics | new Core verb; e-stop stays distinct | Core audit | **Q-B3** |
 | X-22 | red | DS "red = problem needing resolution" | `.unavailable` on informational notes | usage | neutral hint | code | defect |
@@ -897,6 +897,7 @@ No backend change is made by this task.
 - **Q-A3** Adopt the animation registry, the idle invariant and the two-clocks rule as binding
   gates (new ADR-0024).
 - **Q-A5** Replace Ctrl+1/2/3 and Ctrl+J (browser-owned) with non-colliding shortcuts.
+  *Decided 2026-10-03 (§46.3):* Alt+1, Alt+2, Alt+3 and Alt+J.
 
 **Identity**
 - **Q-V1** Legacy palettes survive only as thread tints; amend ADR-0017.
@@ -1053,7 +1054,7 @@ not proceed on inferred approval").
 | R10 | Pause all, reprioritise (absolute priority, D-14) | Core → P19.5 | Q-B3, Q-B4 | Work, strip, inspector | **Core verbs** | contract + e2e | — | — |
 | R11 | resources form, ideas stepper, forget flow, palette upgrade | P19.5 | R1 | Control, Work, World, CommandBar | — | e2e | — | — |
 | R12 | static cage glyph | P19.5 | R3, Q-V3 | `render.ts` | — | framebuffer read | — | world only |
-| R13 | independent adversarial design review against this rulebook | P19.5 exit | R1–R12 | — | — | recorded | reviewer + user | — |
+| R13 | independent adversarial design review against this rulebook | P19.5 exit, after P19 and its three carried behaviours (§46.3) | R1–R12 | — | — | recorded | reviewer + user | — |
 | R14 | upcoming step 2 | P21 | Q-B2 | Now | schedules | contract | — | — |
 | R15 | notifications, push | P20 | Q-B5 | shell, sw.js | notification record | P20 gate | devices | — |
 | R16 | trace view, replay, causality markers, activity stream full | P21 | Q-B1 | new view | cause + produced | P21 gate | — | classes only |
@@ -1257,7 +1258,7 @@ ADRs. What it leaves conditional stays open. Nothing below was inferred beyond t
 | Q-A1 P18 A8 amendment | "If approved by the architecture: Amend P18 A8… Record the amendment" (§29) | **recorded, awaiting approval** | ADR-0030; p18-design-gate §24 |
 | Q-A2 operations map | "Include an operations strip / compact live map" (§6) | DECIDED | ADR-0027 |
 | Q-A3 motion registry, idle invariant, two clocks | "Create one authoritative motion registry… IDLE = zero animation loops"; "content time != presentation time" (§16, §17) | DECIDED | ADR-0024 |
-| Q-A5 browser-owned shortcuts | not addressed | **open** | §31 |
+| Q-A5 browser-owned shortcuts | not addressed | DECIDED (the user, 2026-10-03) | §46.3 |
 | Q-V1 thread tints only | "must NOT become skins; themes; appearance modes" (§4.5) | DECIDED | ADR-0026 |
 | Q-V2 mark, orbit, favicon | "The actual Archeus mark must appear… mark/orbit can communicate system presence"; favicon states (§4.10, §8) | DECIDED | ADR-0027 |
 | Q-V3 static project cage | "static project cage glyph where useful" (§4.6) | DECIDED | ADR-0025 |
@@ -1317,13 +1318,24 @@ user like any other entry in this register.
 | **Mission Now tab** (R6) | **DEFERRED** | It is the per-mission conversation, P16 seam S1, which P19 owns and has not built | **P19** (S1). A-05 thread travel extends to it there; its registry entry already names the surface |
 | **A-08 attention arrival** | **BUILD NOW** (P19.5) | Fully specified (§17, §20, §21: 240 ms once, cap 1, nav badge, CSS; reduced motion removes it; announced; the count in the tab name) and its only input, Attention's count, is read from Core today | this phase |
 | **row-change** (design system §8 "Row insert/remove") | **EXCEPTION** (not built in V1) | §21's table, the authoritative list, has no row for it, and §26 gives it no owner. Animating a removal keeps a row on screen after Core's read has dropped it, and animating an insertion repeats on the same row what the thread rule T2 and A-01 already say. Rows appear and leave at once, which was already its reduced-motion form | none. The registry entry is removed and design system §8 records the exception; adding it later means a new entry with new approval |
-| **Q-A5** browser-owned shortcuts | **EXCEPTION until the user answers** | The client still binds Ctrl/⌘+1, 2, 3 and J (`tokens/navigation.json`, the client tables of P17). In a browser tab Ctrl+1–3 switch tabs and Ctrl+J opens downloads, which goes against R6's "never repurpose standard shortcuts" (§20). Choosing replacement keys is the user's decision (§31) and is not made here. The bindings stay as they are, and every destination stays reachable from the nav, the phone tabs and the command bar | the user's decision; it must be answered before **P26**, and R13 lists it |
+| **Q-A5** browser-owned shortcuts | **EXCEPTION until the user answers** — answered 2026-10-03, §46.3 | The client still binds Ctrl/⌘+1, 2, 3 and J (`tokens/navigation.json`, the client tables of P17). In a browser tab Ctrl+1–3 switch tabs and Ctrl+J opens downloads, which goes against R6's "never repurpose standard shortcuts" (§20). Choosing replacement keys is the user's decision (§31) and is not made here. The bindings stay as they are, and every destination stays reachable from the nav, the phone tabs and the command bar | the user's decision; it must be answered before **P26**, and R13 lists it |
 | **Pause-all wording** (design system §13) | **DEVIATION**, wording amended | Design system §13 put Pause all in "the Now header, the tray and the command bar". R10a built it in the operations strip, which sits in the shell header on every page, Now included, and on Work, which is where a phone has it. The tray belongs to the Qt shell attach, P19's S7. The command bar's actions are object-scoped under D-12, so it has no Pause all | design system §13 now states what was built. The tray: **P19** (S7). The command bar: none in V1 |
 
 **Sequencing, not decided here.** P19.5 depends on P19 (§31.3: P19 → P19.5 → P20), and no P19
 work has been built. Three of P19.5's surfaces are recorded as waiting for it: the mission Now tab
 above, T2 on the Relations list and the TUI (testing-strategy §7), and the tray. Whether R13 runs
-before P19, with those rows carried into P19, or after it is the user's call.
+before P19, with those rows carried into P19, or after it is the user's call. *Decided by the
+user, 2026-10-03:* after it (§46.3).
+
+### 46.3 R13 timing and Q-A5 (the user, 2026-10-03)
+
+Both questions §46.2 left open were answered by the user on 2026-10-03. Each answer is recorded
+here as given; nothing below widens it, and no §46.1 or §46.2 disposition is reopened by it.
+
+| Decision | Question | Answer | What it changes | Recorded deviation |
+|---|---|---|---|---|
+| **R13 timing** | Does R13 run before P19, with the waiting rows carried, or after it? | **After P19.** R13, the independent design review, does not run yet. The order is **P19 → the three carried behaviours implemented and integrated → R13**. The three are the mission Now tab, the changed-row marker (T2) on the Relations list and the TUI, and Pause all in the tray | R13 (§36) stays the P19.5 exit, and P19.5 is **not exited** until it has run. R13 is not run against a deliberately incomplete surface. The three carried behaviours are **not** P19.5 implementation failures, and their §46.2 dispositions stand | No. §31.3's P19 → P19.5 → P20 is unchanged; this fixes where R13 sits inside it |
+| **Q-A5** | Which keys replace the browser-owned shortcuts? | Archeus replaces the browser-owned **Ctrl+1, Ctrl+2, Ctrl+3 and Ctrl+J** bindings with **Alt+1, Alt+2, Alt+3 and Alt+J** respectively. These are application shortcuts and must not interfere with browser-reserved combinations. Ctrl+Shift combinations are **not** substituted | Q-A5 is **resolved for P19.5**. The new keys must be verified against the supported browser/OS matrix before **P26**. This record does not change the bindings in `tokens/navigation.json` or the client tables (P17); making that change is part of the work verified before P26 | No. It applies R6's "never repurpose standard shortcuts" (§20) |
 
 ## 47. Component map — directive names → primitives
 
