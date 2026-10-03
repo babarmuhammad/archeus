@@ -26,6 +26,7 @@ import { ActionButton, Fresh } from './components/ui';
 import { MARK, Orbit, favicon, presence, runningMissions, type Presence } from './state/orbit';
 import { timeline } from './state/timeline';
 import { TOAST_TTL_MS, Toasts, type Ended } from './state/toast';
+import { INSPECTOR_MAX, INSPECTOR_MIN, clampWidth, keyWidth, loadWidth, saveWidth } from './state/inspector';
 import { DARK } from './state/tokens';
 
 type Boot = { phase: 'starting' } | { phase: 'pair'; code: string } | { phase: 'out' } | { phase: 'in'; token: string } | { phase: 'failed'; why: string };
@@ -131,7 +132,9 @@ function Shell({ token }: { token: string }) {
   const conn = useConn();
   const [route, under] = useRoute();
   const [cmd, setCmd] = useState(false);
+  const [iw, setIw] = useState(() => loadWidth(storage()));
   const main = useRef<HTMLElement>(null);
+  const aside = useRef<HTMLElement>(null);
   const att = useRead<Attention>('/v1/attention');
   const status = useRead<Status>('/v1/status');
   const p = presence(canCommand(conn.conn), att.data?.count ?? 0, status.data?.live ?? []);
@@ -224,7 +227,12 @@ function Shell({ token }: { token: string }) {
   const current = route.view === 'object' ? under.view : route.view;
   const underView = route.view === 'object' ? under : route;
   return (
-    <div className="shell" data-inspector={route.view === 'object' ? '' : undefined} data-conn={conn.conn}>
+    <div
+      className="shell"
+      data-inspector={route.view === 'object' ? '' : undefined}
+      data-conn={conn.conn}
+      style={iw ? ({ '--inspector-w': `${iw}px` } as React.CSSProperties) : undefined}
+    >
       <a className="skip" href="#main" onClick={(e) => (e.preventDefault(), main.current?.focus())}>
         Skip to content
       </a>
@@ -267,7 +275,17 @@ function Shell({ token }: { token: string }) {
         <View route={underView} />
       </main>
       {route.view === 'object' ? (
-        <aside className="inspector" aria-label="Inspector">
+        <InspectorResize
+          aside={aside}
+          width={iw}
+          onWidth={(w, keep) => {
+            setIw(w);
+            if (keep) saveWidth(storage(), w);
+          }}
+        />
+      ) : null}
+      {route.view === 'object' ? (
+        <aside className="inspector" aria-label="Inspector" ref={aside}>
           <button type="button" className="btn secondary close" onClick={closeInspector}>
             Close <span className="sr">inspector</span>
           </button>
@@ -279,6 +297,52 @@ function Shell({ token }: { token: string }) {
       <div id="live-polite" className="sr" aria-live="polite" />
       <div id="live-assertive" className="sr" aria-live="assertive" />
     </div>
+  );
+}
+
+function storage(): Storage | null {
+  try {
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** The inspector's divider (rulebook §15): a window splitter at its left edge.
+ * Drag it, or focus it and use ←/→ (with or without Alt), Home and End; the
+ * width stays within 360–560 px and is remembered in this browser. Alt+←/→
+ * are not taken anywhere else: they are the browser's Back and Forward. */
+function InspectorResize({ aside, width, onWidth }: { aside: React.RefObject<HTMLElement | null>; width: number | null; onWidth: (w: number, keep: boolean) => void }) {
+  const [measured, setMeasured] = useState<number>(INSPECTOR_MIN);
+  useEffect(() => setMeasured(Math.round(aside.current?.getBoundingClientRect().width ?? INSPECTOR_MIN)), [aside, width]);
+  const now = width ?? clampWidth(measured);
+  return (
+    <div
+      className="insp-resize"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Inspector width"
+      aria-valuemin={INSPECTOR_MIN}
+      aria-valuemax={INSPECTOR_MAX}
+      aria-valuenow={now}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        const w = keyWidth(now, e.key);
+        if (w === null) return;
+        e.preventDefault();
+        onWidth(w, true);
+      }}
+      onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+      onPointerMove={(e) => {
+        const r = aside.current?.getBoundingClientRect();
+        if (r && e.currentTarget.hasPointerCapture(e.pointerId)) onWidth(clampWidth(r.right - e.clientX), false);
+      }}
+      onPointerUp={(e) => {
+        if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+        e.currentTarget.releasePointerCapture(e.pointerId);
+        onWidth(now, true);
+      }}
+    />
   );
 }
 

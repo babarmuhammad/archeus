@@ -96,8 +96,24 @@ h1:focus {
 }
 
 .shell[data-inspector] {
-  grid-template-columns: var(--sidebar) minmax(0, 1fr) minmax(var(--inspector-min), min(40vw, var(--inspector-max)));
+  grid-template-columns: var(--sidebar) minmax(0, 1fr) var(--inspector-w, minmax(var(--inspector-min), min(40vw, var(--inspector-max))));
   grid-template-areas: 'top top top' 'nav main inspector';
+}
+
+/* the inspector's divider (rulebook §15): a thin splitter on its left edge */
+.insp-resize {
+  grid-area: inspector;
+  justify-self: start;
+  width: 8px;
+  margin-left: -4px;
+  z-index: 5;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.insp-resize:hover,
+.insp-resize:focus-visible {
+  background: var(--line-strong);
 }
 
 .top {
@@ -347,7 +363,8 @@ h1:focus {
   }
 
   /* the inspector takes the main column's place: one scroll, one focus order */
-  .shell[data-inspector] .main {
+  .shell[data-inspector] .main,
+  .shell > .insp-resize {
     display: none;
   }
 

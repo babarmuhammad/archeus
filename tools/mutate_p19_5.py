@@ -125,6 +125,10 @@ MENU_E2E = 'tests/v1/e2e/test_spa_work_menu.py::'
 PINS_E2E = MENU_E2E + 'test_pins_are_a_group_at_the_top_of_work_kept_in_this_browser'
 MENU = MENU_E2E + 'test_a_row_menu_holds_the_rows_own_actions_by_keyboard_and_pointer'
 
+INSP = 'clients/app/src/state/inspector.ts'
+INSP_TS = 'node:test/inspector.test.ts'
+RESIZE = 'tests/v1/e2e/test_spa_inspector_resize.py::test_the_inspector_is_resized_by_its_divider_and_remembers_it'
+
 MUTATIONS = [
     # ── the registry ──
     ('N01', 'a registered motion allowed to replay', [(REG,
@@ -1007,6 +1011,29 @@ MUTATIONS = [
      "      onBlur={(e) => !box.current?.contains(e.relatedTarget as Node) && !modal() && close(false)}",
      "      onBlur={(e) => !box.current?.contains(e.relatedTarget as Node) && !modal() && false && close(false)}")],
      [MENU]),
+    # R9: the resizable inspector (rulebook §15)
+    ('N251', 'the inspector widens past 560', [(INSP,
+     "export const clampWidth = (w: number) => Math.round(Math.min(INSPECTOR_MAX, Math.max(INSPECTOR_MIN, w)));",
+     "export const clampWidth = (w: number) => Math.round(Math.max(INSPECTOR_MIN, w));")],
+     [INSP_TS, RESIZE]),
+    ('N252', 'the left arrow narrows the inspector', [(INSP,
+     "    case 'ArrowLeft':\n      return clampWidth(w + INSPECTOR_STEP);",
+     "    case 'ArrowLeft':\n      return clampWidth(w - INSPECTOR_STEP);")],
+     [INSP_TS, RESIZE]),
+    ('N253', 'the width is not remembered', [(APP,
+     "            if (keep) saveWidth(storage(), w);", "            if (keep && !keep) saveWidth(storage(), w);")],
+     [RESIZE]),
+    ('N254', 'the shell ignores the chosen width', [(CSS,
+     "minmax(0, 1fr) var(--inspector-w, minmax(var(--inspector-min), min(40vw, var(--inspector-max))));",
+     "minmax(0, 1fr) minmax(var(--inspector-min), min(40vw, var(--inspector-max)));")],
+     [RESIZE]),
+    ('N255', 'a drag does nothing', [(APP,
+     "        if (r && e.currentTarget.hasPointerCapture(e.pointerId)) onWidth(clampWidth(r.right - e.clientX), false);",
+     "        if (r && e.currentTarget.hasPointerCapture(e.pointerId) && e.clientX < 0) onWidth(clampWidth(r.right - e.clientX), false);")],
+     [RESIZE]),
+    ('N256', 'the divider says no width', [(APP,
+     "      aria-valuenow={now}\n", "")],
+     [RESIZE]),
 ]
 
 if __name__ == '__main__':
