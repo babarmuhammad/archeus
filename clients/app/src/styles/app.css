@@ -310,6 +310,20 @@ h1:focus {
   font-weight: 600;
 }
 
+/* A-08: one 240 ms pulse when the count rose (rulebook §21); a newer arrival remounts it */
+.badge[data-arrival] {
+  animation: attention-arrival var(--dur-pulse) var(--ease) 1;
+}
+
+@keyframes attention-arrival {
+  from {
+    transform: scale(1.3);
+  }
+  to {
+    transform: none;
+  }
+}
+
 .main {
   grid-area: main;
   container: main / inline-size;

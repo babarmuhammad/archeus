@@ -149,6 +149,11 @@ PAL_E2E = 'tests/v1/e2e/test_spa_palette.py::test_the_palette_moves_by_arrows_an
 CAGE_TS = 'node:test/cage.test.ts'
 CAGE_E2E = 'tests/v1/e2e/test_spa_cage.py::test_a_large_project_at_the_world_level_is_a_still_cage'
 
+ARRIVAL = 'clients/app/src/state/arrival.ts'
+ARRIVAL_TS = 'node:test/arrival.test.ts'
+ARRIVAL_E2E = 'tests/v1/e2e/test_spa_arrival.py::test_a_rise_in_what_needs_you_pulses_the_badge_once'
+ARRIVAL_RM = 'tests/v1/e2e/test_spa_arrival.py::test_reduced_motion_says_the_rise_and_pulses_nothing'
+
 MUTATIONS = [
     # ── the registry ──
     ('N01', 'a registered motion allowed to replay', [(REG,
@@ -1188,6 +1193,36 @@ MUTATIONS = [
     ('N293', 'the view never says it is the world level', [(GV,
      "      world: !focus && !map,\n", "")],
      [CAGE_E2E]),
+    # A-08: attention arrival (rulebook §21, §46.2)
+    ('N294', 'the first read pulses', [(ARRIVAL,
+     "    const rose = this.count !== undefined && count > this.count;\n",
+     "    const rose = this.count === undefined || count > this.count;\n")],
+     [ARRIVAL_TS, ARRIVAL_E2E]),
+    ('N295', 'a fall or the same count pulses', [(ARRIVAL,
+     "&& count > this.count;", "&& count >= this.count;")],
+     [ARRIVAL_TS]),
+    ('N296', 'an older or the same read counts again', [(ARRIVAL,
+     "    if (seq === undefined || seq <= this.at) return;\n", "    if (seq === undefined || seq < this.at) return;\n")],
+     [ARRIVAL_TS]),
+    ('N297', 'the arrival is not announced', [(ARRIVAL,
+     "    this.host.announce(needsYou(count));\n", "")],
+     [ARRIVAL_TS, ARRIVAL_E2E, ARRIVAL_RM]),
+    ('N298', 'the pulse ignores reduced motion', [(ARRIVAL,
+     "this.host.now(), this.host.reduced())", "this.host.now(), false)")],
+     [ARRIVAL_TS]),
+    ('N299', 'the badge is not remounted by the arrival', [(APP,
+     '<span key={arrived} className="badge"', '<span className="badge"')],
+     [ARRIVAL_TS, ARRIVAL_E2E]),
+    ('N300', 'the tab name says no count', [(APP,
+     "    document.title = tabTitle(count);\n", "    document.title = tabTitle(0);\n")],
+     [ARRIVAL_TS, ARRIVAL_E2E, ARRIVAL_RM]),
+    ('N301', 'the arrival never reads Core', [(APP,
+     "    if (att.data) arrival.read(att.data.count, att.seq);\n", "")],
+     [ARRIVAL_E2E]),
+    ('N302', 'the pulse loops', [(CSS,
+     "  animation: attention-arrival var(--dur-pulse) var(--ease) 1;\n",
+     "  animation: attention-arrival var(--dur-pulse) var(--ease) infinite;\n")],
+     [ARRIVAL_TS, DG + 'test_transitions_move_only_transform_and_opacity_and_nothing_loops']),
 ]
 
 if __name__ == '__main__':

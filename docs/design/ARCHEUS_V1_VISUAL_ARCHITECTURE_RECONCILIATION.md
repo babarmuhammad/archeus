@@ -532,7 +532,7 @@ already own the mechanics.
 | undo | only where Core has an inverse (none today) | P16 §18.3 | Core per verb | rule |
 | system / OS notification (desktop) | only for approval required and e-stop, while the window is hidden | R1 notifies when blocked on the human | Core `notify_default` is dead metadata (Q-B5) | P20 |
 | mobile push | same two classes | P15 D20 | Core notification record + transport (Q-B5) | P20 |
-| attention arrival | one 240 ms pulse on the badge when the count increases | A-08 | ✓ | P19.5 |
+| attention arrival | one 240 ms pulse on the badge when the count increases | A-08 | ✓ | BUILT (P19.5, §46.2) |
 
 ## 18. Command surface
 

@@ -23,6 +23,7 @@ import { ProjectPage, WorldView } from './surfaces/World';
 import { GraphView } from './graph/GraphView';
 import { reducedMotion } from './graph/loop';
 import { ActionButton, Fresh } from './components/ui';
+import { Arrival, needsYou, tabTitle } from './state/arrival';
 import { MARK, Orbit, favicon, presence, runningMissions, type Presence } from './state/orbit';
 import { timeline } from './state/timeline';
 import { TOAST_TTL_MS, Toasts, type Ended } from './state/toast';
@@ -147,6 +148,18 @@ function Shell({ token }: { token: string }) {
     l.dataset.presence = p;
   }, [p]);
 
+  // A-08: a rise in Core's count pulses the badge once and is announced; the
+  // tab's name carries the count (rulebook §20)
+  const count = att.data?.count ?? 0;
+  useEffect(() => {
+    if (att.data) arrival.read(att.data.count, att.seq);
+    document.title = tabTitle(count);
+  }, [att.data, att.seq, count]);
+  const arrived = useSyncExternalStore(
+    (l) => arrival.subscribe(l),
+    () => arrival.current(),
+  );
+
   useEffect(() => {
     const s = sender(token, (path, seq) => store.seqs.set(path, seq));
     store.configure(s);
@@ -223,7 +236,6 @@ function Shell({ token }: { token: string }) {
   }, [keys]);
 
   const banner = BANNER[conn.conn];
-  const count = att.data?.count ?? 0;
   const current = route.view === 'object' ? under.view : route.view;
   const underView = route.view === 'object' ? under : route;
   return (
@@ -262,7 +274,7 @@ function Shell({ token }: { token: string }) {
                 <Icon id={d.id} />
                 <span className="nav-label">{d.label}</span>
                 {d.id === 'attention' && count ? (
-                  <span className="badge" aria-label={`${count} ${count === 1 ? 'thing needs' : 'things need'} you`}>
+                  <span key={arrived} className="badge" data-arrival={arrived || undefined} aria-label={needsYou(count)}>
                     {count}
                   </span>
                 ) : null}
@@ -447,6 +459,9 @@ function ToastRegion() {
     </div>
   );
 }
+
+// the page's one attention arrival (A-08): whatever page is open
+const arrival = new Arrival(timeline, { now: () => performance.now(), reduced: reducedMotion, announce });
 
 // ── the mark, its orbit and the operations strip (ADR-0027, rulebook §6 O-1, §8) ──
 

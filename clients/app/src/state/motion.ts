@@ -363,12 +363,14 @@ export const MOTIONS = {
     "equivalent": "the operations strip's counts, said in a status region at most once per 30 s"
   },
   "attention-arrival": {
-    "status": "approved",
-    "source": "rulebook §21 A-08",
-    "trigger": "the attention count increased",
+    "status": "built",
+    "source": "rulebook §21 A-08, §17, §20; §46.2",
+    "trigger": "the attention count increased: a read of /v1/attention at a newer Core seq than the one held shows a higher count (the first read sets the baseline and never pulses; a fall is not an arrival)",
     "driven_by": "event",
     "runs_on": "css",
-    "css": null,
+    "css": [
+      "attention-arrival"
+    ],
     "transition": null,
     "max_ms": 240,
     "token": null,
@@ -386,7 +388,7 @@ export const MOTIONS = {
     "idle": "never",
     "replay": false,
     "reduced": "removed: the badge count changes",
-    "equivalent": "an announcement and the badge count"
+    "equivalent": "the new count announced politely, the badge's own count and its label, and the count in the tab's name"
   },
   "toast": {
     "status": "built",
