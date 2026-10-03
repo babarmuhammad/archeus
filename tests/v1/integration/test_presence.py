@@ -543,6 +543,25 @@ def test_P14_R1_a_paired_client_approves_through_p9_with_its_pin(deploy):
     assert 'approved' in outcomes
 
 
+def test_P19_B5_a_chat_approve_needs_the_same_step_up_as_the_card(deploy):
+    """G1 (p19-design-gate B5): the turn carrying the card's decision is
+    refused without the PIN, writes nothing, and decides with it."""
+    _d, phone = pair(deploy, platform='web', pin='482913')
+    mid = _mission(deploy)
+    a = _pending(deploy, mid)
+    assert a['step_up']
+    url = '/v1/conversations/%s/messages' % mid
+    body = {'text': 'approve', 'decision': {'approval_id': a['id'], 'action_hash':
+                                             a['action_hash'], 'expected_version': a['version']}}
+    r = _post(deploy, url, dict(body, idempotency_key='no-pin'), token=phone)
+    assert (r.status, r.json()['error']) == (422, 'guard_failed')           # no proof
+    assert all(m['text'] != 'approve' for m in _get(deploy, url).json()['messages'])
+    r = _post(deploy, url, dict(body, step_up='482913', idempotency_key='pin'), token=phone)
+    assert r.status == 200, r.body
+    assert _get(deploy, '/v1/approvals/%s' % a['id']).json()['state'] in ('APPROVED',
+                                                                          'CONSUMED')
+
+
 def test_R1_five_wrong_pins_revoke_the_client_and_no_pin_means_no_step_up(deploy):
     did, phone = pair(deploy, pin='482913')
     _n, nopin = pair(deploy, platform='web')

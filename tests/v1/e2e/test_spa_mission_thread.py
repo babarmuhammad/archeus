@@ -12,7 +12,7 @@ import time
 
 from .conftest import wait
 from .test_spa_halo import _running
-from .test_spa_p16 import Checks, _go, _mission
+from .test_spa_p16 import Checks, _go, _mission, _settled, deploy  # noqa: F401 (a fixture)
 from .test_spa_p18 import slow  # noqa: F401 (a fixture)
 from .test_spa_thread import _context, _page, _quiet_line, _threads
 
@@ -89,3 +89,32 @@ def test_the_mission_now_tab_is_its_thread_and_a_reply_reaches_a_row_there(brows
     check(not errors, 'no console errors: %s' % errors)
     context.close()
     assert check.n >= 11, 'ran %d checks' % check.n
+
+
+def test_an_approval_card_in_the_thread_decides_it_as_attention_does(browser, deploy):  # noqa: F811
+    """P19 S3 (B5): the approval is a card in the mission's thread; its
+    Approve sends the turn carrying the card's hash, and Core decides it by
+    the SPA's own principal: the mission moves exactly as after Attention."""
+    check = Checks()
+    mid = _mission(deploy, 'Deploy from the thread')
+    _settled(deploy, mid, 'APPROVAL_REQUIRED')
+    (a,) = deploy.http('GET', '/v1/approvals?mission=' + mid).json()['approvals']
+    context, page, errors = _context(browser, deploy, viewport={'width': 1280, 'height': 1100})
+    _go(page, '#/o/mission/%s/now' % mid)
+    card = page.locator('.mission-now article[data-approval="%s"]' % a['id']).first
+    card.wait_for()
+    check(card.get_attribute('data-state') == 'PENDING', 'the card shows the live approval')
+    card.get_by_role('button', name='Approve').click()
+    _settled(deploy, mid, 'COMPLETED')
+    got = deploy.http('GET', '/v1/approvals/' + a['id']).json()
+    check(got['state'] in ('APPROVED', 'CONSUMED'), 'Core decided it')
+    check(got['decided_by'] != 'archeus' and got['decided_by'] is not None, 'by the poster')
+    msgs = deploy.http('GET', '/v1/conversations/%s/messages' % mid).json()['messages']
+    turn = [m for m in msgs if m['author'] == 'user' and m['text'] == 'approve']
+    check(len(turn) == 1, 'the decision is a turn in the thread')
+    page.locator('.mission-now [data-message]', has_text='Approved for').wait_for()
+    wait(page, lambda: card.get_attribute('data-state') != 'PENDING', what='the card re-reads')
+    check(card.get_attribute('data-state') == got['state'], 'the card says what Core says')
+    check(not errors, 'no console errors: %s' % errors)
+    context.close()
+    assert check.n >= 6, 'ran %d checks' % check.n

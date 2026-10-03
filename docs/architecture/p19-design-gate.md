@@ -581,6 +581,46 @@ offline cold start on a phone.
     still gets no line (A-05), so the conversation above the work can leave an attempt off
     screen on a short window.
 
+**Slice 4a (B5, chat approve / reject), 2026-10-03.**
+
+16. **The approval card carries the ref, not the hash** (deviation from B5 (1), which listed
+    `action_hash` and `expected_version` on the card). The card is `{type: 'approval', ref}`, the
+    existing card type; a client reads the hash, version, state and eligibility from
+    `GET /v1/approvals/{id}`, the same read Attention's card makes. A hash copied into a message
+    would be a second copy of the approval that a supersede leaves stale; read live, the card
+    always sends what the approval now is, and a superseded one shows as closed.
+17. **A bare `approve` / `reject` is a declined reply listing the pending approvals' cards**
+    (B5 said "a clarification card"). Up to ten, and in a mission's thread only that mission's.
+    A clarification would ask the user to pick one, and the pick would still have to be a card
+    carrying its hash, so the cards are the choice; nothing is ever decided from the words alone.
+    `NOT_YET` is gone (C-30).
+18. **A PIN step-up is given in Attention, not in the conversation.** The message post accepts
+    `step_up` exactly as `/decide` does (G1 holds over both, `test_presence.py`), but neither
+    client's composer asks for a PIN: on a paired client whose step-up is a PIN the card says so
+    and links Attention; on one with no PIN it says it cannot. A local client meets step-up by
+    being local and decides in the conversation.
+19. **One transaction, and a refusal writes nothing.** The route checks the `approve` scope
+    before running anything; Core then records the turn, reads it (`control_verb`, via
+    `grammar`, target the approval), decides through `authorization.decide` with the poster's
+    principal, and replies, in the turn's transaction. A wrong hash, a missing PIN or a word other
+    than approve / reject rolls the turn back with the decision. A DENY found at decide time is
+    `423 policy_denied`, as on `/decide`. The reply carries the approval's card again, so the
+    thread shows the decided state where the decision was made.
+20. **Mutants P31-P40** (B5): the card never posted, the card not linking its mission, the scope
+    check removed, the client's hash ignored, the step-up proof dropped, a bare `approve` pointing
+    at nothing, the SPA's and the TUI's card sending a bare word, the SPA's card deciding in the
+    primary conversation, and the TUI offering a PIN step-up it cannot take. All ten killed.
+21. **`test_one_name_per_command` reads a turn's word as its decision.** The card's two buttons
+    send `postMessage` with `text: 'approve'` / `'reject'`, so the gate's parser now takes `text`
+    beside `decision`/`verdict`/`action`/`choice`; otherwise the composer's Send and the card's
+    Approve would read as one command with two names. The card's calls are written inline in its
+    buttons, as the gate requires of every command.
+22. **Found, not changed:** two e2e tests are intermittent on this machine independent of B5 —
+    `test_spa_marker.py::test_the_marker_travels_once_from_the_execution_to_its_task` (passes
+    and fails on consecutive runs alone; no approval in its path) and
+    `test_spa_resources.py::test_an_accounts_policy_is_a_form_over_cores_route` (failed once in
+    the full run, passes alone).
+
 ## 13. As built
 
 (empty until implementation)

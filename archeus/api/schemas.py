@@ -817,6 +817,13 @@ IMPORT_MEETING = {'type': 'object', 'properties': {
     'required': ['path', 'idempotency_key']}
 POST_MESSAGE = {'type': 'object', 'properties': {
     'text': {'type': 'string'}, 'in_reply_to': {'type': 'string', 'nullable': True},
+    # P19 S3 (p19-design-gate B5): the approval card the user is looking at; a
+    # message carrying it needs the `approve` scope and the approval's step-up
+    'decision': {'type': 'object', 'nullable': True, 'properties': {
+        'approval_id': {'type': 'string'}, 'action_hash': {'type': 'string'},
+        'expected_version': {'type': 'integer', 'nullable': True}},
+        'required': ['approval_id', 'action_hash']},
+    'step_up': {'type': 'string', 'nullable': True},
     'idempotency_key': KEY}, 'required': ['text', 'idempotency_key']}
 CLARIFY = {'type': 'object', 'properties': {
     'choice': {'type': 'string', 'nullable': True, 'enum': ['proceed', 'drop']},

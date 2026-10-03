@@ -4,7 +4,7 @@
 // the live map and the conversation. Composed from Core's reads (S5).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { paths, api, type ApprovalList, type AutomationList, type Digest, type KnowledgeList, type Message, type MessageList, type MissionList, type RouteDecisionList, type Status } from '../api/generated';
+import { paths, api, type Approval, type ApprovalList, type Sync, type AutomationList, type Digest, type KnowledgeList, type Message, type MessageList, type MissionList, type RouteDecisionList, type Status } from '../api/generated';
 import { announce } from '../a11y/announce';
 import { send } from '../data/core';
 import { store, useRead } from '../data/cache';
@@ -365,11 +365,45 @@ function CardRef({ type, kind, id, intent, changed, conversation }: { type: stri
       </article>
     );
   }
+  if (type === 'approval' && kind === 'approval') return <ChatApproval id={id} conversation={conversation} />;
   return (
     <a className="card" href={objectHref(kind, id)} data-ref={`${kind}:${id}`} {...thread(changed)}>
       <span className="card-type">{type.replace('_', ' ')}</span> {kind === 'mission' ? <LiveMission id={id} /> : <RefLabel kind={kind} id={id} />}
       <Changed on={changed} />
     </a>
+  );
+}
+
+/** An approval asked for, in the conversation (P19 S3): Approve or Reject
+ * here sends the turn with this card's hash and version, and Core decides it
+ * exactly as Attention's buttons do (G1). A step-up is given in Attention. */
+function ChatApproval({ id, conversation }: { id: string; conversation: string }) {
+  const s = useRead<Approval>(paths.getApproval(id));
+  const me = useRead<Sync>(paths.sync());
+  const a = s.data;
+  if (!a) return <RefLabel kind="approval" id={id} />;
+  // a local client's step-up is being local; a PIN is asked for in Attention
+  const capability = me.data?.client.capabilities.step_up;
+  const stepUp = !a.step_up ? null : capability === 'pin' ? 'It needs this client’s PIN, which Attention asks for.' : capability === 'none' ? 'This client has no PIN: it cannot satisfy a step-up.' : null;
+  const scope = typeof a.presented.scope === 'string' ? a.presented.scope : a.kind;
+  const closed =
+    a.state !== 'PENDING' ? `This approval is ${a.state.toLowerCase()}.` : !a.eligible ? `Not decidable now: ${a.eligible_why ?? 'no reason given'}.` : stepUp;
+  const decision = { approval_id: a.id, action_hash: a.action_hash, expected_version: a.version };
+  const reread = [paths.listMessages(conversation), paths.getApproval(id), paths.attentionItems(), paths.listMissions()];
+  return (
+    <article className="card" aria-label="approval" data-approval={a.id} data-state={a.state}>
+      <p>Approve {scope}?</p>
+      {closed ? (
+        <p className="hint">
+          {closed} {a.state === 'PENDING' && capability === 'pin' && a.step_up ? <a href="#/attention">Open Attention</a> : null}
+        </p>
+      ) : (
+        <div className="row">
+          <ActionButton label="Approve" scope="approve" kind="primary" run={(key) => api.postMessage(send(), conversation, { text: 'approve', decision, idempotency_key: key })} reread={reread} />
+          <ActionButton label="Reject" scope="approve" confirm="Reject what this approval asks. A decided approval cannot be changed." run={(key) => api.postMessage(send(), conversation, { text: 'reject', decision, idempotency_key: key })} reread={reread} />
+        </div>
+      )}
+    </article>
   );
 }
 

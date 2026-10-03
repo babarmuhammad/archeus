@@ -2,7 +2,8 @@
 run the test written for it, and require it to fail. B1, one edge
 implementation (P01-P08); B2, the change rule on the Relations list and the
 TUI (P09-P14); B11, the generated client everywhere (P15-P20); B3, a mission's own
-conversation and the mission Now tab (P21-P30).
+conversation and the mission Now tab (P21-P30); B5, chat approve / reject
+is the card's decision (P31-P40).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -44,6 +45,12 @@ NOW = 'clients/app/src/surfaces/Now.tsx'
 THR = 'tests/v1/integration/test_mission_thread.py::'
 THREAD_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
               'test_the_mission_now_tab_is_its_thread_and_a_reply_reaches_a_row_there')
+SPA_APPROVE = ('tests/v1/e2e/test_spa_mission_thread.py::'
+               'test_an_approval_card_in_the_thread_decides_it_as_attention_does')
+CA = 'tests/v1/integration/test_chat_approve.py::'
+AUTHZ = 'archeus/core/application/authorization.py'
+ROUTES = 'archeus/api/routes.py'
+TUI_CA = 'tests/v1/tui/test_chat_approval.py::'
 CLI_STATUS = ('tests/v1/integration/test_cli_v1.py::'
               'test_status_of_a_mission_prints_what_core_reports_and_a_refusal_in_its_words')
 
@@ -162,6 +169,49 @@ MUTATIONS = [
      "            lambda key, v: app.core.post(endpoints.post_message(cid),",
      "            lambda key, v: app.core.post(endpoints.post_message('primary'),")],
      ['tests/v1/tui/test_mission_thread.py::test_its_message_command_posts_to_the_thread']),
+    # ── B5: chat approve / reject is the card's decision ──
+    ('P31', 'an approval is never said in the conversation', [(AUTHZ,
+     "    approval_card(tx, actor, a, mission)\n", "")],
+     [CA + 'test_an_approval_is_a_card_in_the_conversation_and_in_its_missions_thread']),
+    ('P32', "the approval card does not link its mission, so its thread lacks it", [(CONV,
+     "             links=[{'ref': {'kind': 'mission', 'id': mission.id}},\n"
+     "                    {'ref': {'kind': 'approval', 'id': approval.id}}])\n\n\ndef decide_by_message",
+     "             links=[{'ref': {'kind': 'approval', 'id': approval.id}}])\n\n\ndef decide_by_message")],
+     [CA + 'test_an_approval_is_a_card_in_the_conversation_and_in_its_missions_thread']),
+    ('P33', 'a chat decision needs no approve scope', [(ROUTES,
+     "    if 'approve' not in req.principal['scopes']:\n"
+     "        raise Refused(403, 'scope_required', {'scope': 'approve'})\n"
+     "    try:\n        out = req.run(req.api.authorization.decide_by_message",
+     "    try:\n        out = req.run(req.api.authorization.decide_by_message")],
+     [CA + 'test_a_wrong_hash_a_missing_scope_or_another_word_writes_nothing']),
+    ('P34', "a chat decision ignores the hash the user saw", [(CONV,
+     "decision=p.verb,\n                 action_hash=action_hash,",
+     "decision=p.verb,\n                 action_hash=tx.get(entities.Approval, approval_id).entity.action_hash,")],
+     [CA + 'test_a_wrong_hash_a_missing_scope_or_another_word_writes_nothing']),
+    ('P35', "a chat decision drops the step-up proof", [(CONV,
+     "                 action_hash=action_hash, step_up=step_up,",
+     "                 action_hash=action_hash, step_up=None,")],
+     ['tests/v1/integration/test_presence.py::test_P19_B5_a_chat_approve_needs_the_same_step_up_as_the_card']),
+    ('P36', 'a bare approve does not point at the card', [(CONV,
+     "            for a in pending[:10]:", "            for a in pending[:0]:")],
+     [CA + 'test_a_bare_approve_decides_nothing_and_points_at_the_card']),
+    ('P37', "the SPA's card sends a bare word", [(NOW,
+     "{ text: 'approve', decision, idempotency_key: key }",
+     "{ text: 'approve', idempotency_key: key }")],
+     [SPA_APPROVE]),
+    ('P38', "the SPA's card decides in the primary conversation", [(NOW,
+     "api.postMessage(send(), conversation, { text: 'approve', decision,",
+     "api.postMessage(send(), 'primary', { text: 'approve', decision,")],
+     [SPA_APPROVE]),
+    ('P39', "the TUI's card sends a bare word", [(SCR,
+     "            'text': text, 'decision': {'approval_id': aid, 'action_hash': a['action_hash'],\n"
+     "                                       'expected_version': a['version']},\n",
+     "            'text': text,\n")],
+     [TUI_CA + 'test_approve_posts_the_turn_with_the_cards_hash_and_version_to_the_thread']),
+    ('P40', "the TUI offers a PIN step-up it cannot take", [(SCR,
+     "PIN, which Attention asks for.' if capability == 'pin'",
+     "PIN, which Attention asks for.' if capability == 'pinned'")],
+     [TUI_CA + 'test_a_pin_step_up_is_given_in_attention_not_here']),
 ]
 
 if __name__ == '__main__':

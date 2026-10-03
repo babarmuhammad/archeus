@@ -105,6 +105,53 @@ def ask_meeting_date(tx, *, actor, meeting_id, name):
              links=[{'ref': {'kind': 'meeting', 'id': meeting_id}}])
 
 
+def approval_card(tx, actor, approval, mission):
+    """An approval asked for, said where the user talks to Archeus (P19 S3): a
+    card naming the live approval, linked to its mission, so the mission's
+    thread shows it as well. The card holds the ref only; a client reads the
+    approval's hash and version from the approval itself."""
+    scope = (approval.presented or {}).get('scope') or approval.kind
+    _message(tx, actor, conversation_id=primary(tx, actor), author='archeus',
+             text='"%s" needs your approval: %s.' % (mission.title, scope),
+             cards=[_card('approval', 'approval', approval.id)],
+             links=[{'ref': {'kind': 'mission', 'id': mission.id}},
+                    {'ref': {'kind': 'approval', 'id': approval.id}}])
+
+
+def decide_by_message(tx, *, actor, decide, text, conversation_id, approval_id, action_hash,
+                      expected_version=None, step_up=None):
+    """`approve` / `reject` sent with the card the user is looking at (P19 S3):
+    the turn, its reading and the card's decision in one transaction, by the
+    poster's principal — the same decision `/decide` makes (G1)."""
+    from .grammar import parse
+    p = parse(text)
+    if p is None or p.verb not in ('approve', 'reject'):
+        raise ValueError('a message carrying a decision says approve or reject')
+    posted = post_message(tx, actor=actor, text=text, conversation_id=conversation_id)
+    msg = tx.get(entities.Message, posted['message_id']).entity
+    it = _intent(tx, actor, msg, kind='control_verb', via='grammar',
+                 target_refs=({'kind': 'approval', 'id': approval_id},), reason=p.verb)
+    out = decide(tx, actor=actor, approval_id=approval_id, decision=p.verb,
+                 action_hash=action_hash, step_up=step_up, expected_version=expected_version)
+    a = lifecycle.load(tx, entities.Approval, approval_id).entity
+    m = lifecycle.load(tx, entities.Mission, a.mission_id).entity
+    if out.get('denied'):
+        words = 'The policy denies it now, so nothing was approved for "%s".' % m.title
+    else:
+        words = '%s for "%s".' % ('Approved' if p.verb == 'approve' else 'Rejected', m.title)
+    it = _set(tx, actor, it, resolution='mission_updated' if out.get('changed', True)
+              else 'answered')
+    r = _reply(tx, actor, msg, it, words, cards=[_card('approval', 'approval', approval_id)],
+               links=[{'ref': {'kind': 'mission', 'id': m.id}},
+                      {'ref': {'kind': 'approval', 'id': approval_id}}])
+    return dict(r, message_id=msg.id, conversation_id=posted['conversation_id'], decided=out)
+
+
+def _pending_approvals(tx, mission_id=None):
+    return [r.entity for r in tx.where(entities.Approval) if r.entity.state == 'PENDING'
+            and (mission_id is None or r.entity.mission_id == mission_id)]
+
+
 def _card(type_, kind, id_, **extra):
     return dict(extra, type=type_, ref={'kind': kind, 'id': id_})
 
@@ -165,11 +212,17 @@ class Conversations:
         cards, links, resolution = [], [], 'answered'
         if target:
             links.append(_link(target))
-        from .grammar import NOT_YET
-        if verb in NOT_YET:
-            text = '"%s" is recognised, but acting on it arrives with %s.' % (verb,
-                                                                            NOT_YET[verb])
+        if verb in ('approve', 'reject'):
+            # a bare word binds to no card: it never guesses which approval (S3)
+            conv = tx.get(entities.Conversation, msg.conversation_id).entity
+            pending = _pending_approvals(tx, conv.mission_id)
+            for a in pending[:10]:
+                cards.append(_card('approval', 'approval', a.id))
+                links.append({'ref': {'kind': 'approval', 'id': a.id}})
             resolution = 'declined'
+            text = ('Nothing is waiting for your approval.' if not pending else
+                    'To %s, use %s card: it decides exactly the action it shows.'
+                    % (verb, 'its' if len(pending) == 1 else 'the approval\'s'))
         elif verb in ('pause', 'resume', 'cancel'):
             text, resolution = self._mission_verb(tx, actor, verb, target['id'], msg)
             cards.append(_card('mission', 'mission', target['id']))

@@ -328,6 +328,8 @@ def card(app, doc, m, i, c, cid='primary'):
         doc.add('    ' + T(app, '[' + type_ + '] ', 'state.attention')
                 + app.st.paint(text), acts=acts)
         return
+    if type_ == 'approval' and kind == 'approval':
+        return chat_approval(app, doc, id_, ident, cid)
     bits = ['    ' + T(app, '[' + type_.replace('_', ' ') + ']', 'text-2'),
             T(app, '%s %s' % (kind, id_))]
     if kind == 'mission':
@@ -335,6 +337,42 @@ def card(app, doc, m, i, c, cid='primary'):
         if e['data']:
             bits += [T(app, e['data']['title']), app.st.badge('mission', e['data']['state'])]
     doc.add('  '.join(bits), target=open_(kind, id_))
+
+
+def chat_approval(app, doc, aid, ident, cid):
+    """An approval asked for, in the conversation (P19 S3): its Approve and
+    Reject send the turn with this card's hash and version, and Core decides
+    it as Attention's commands do (G1); a step-up is given in Attention."""
+    a = app.read(endpoints.get_approval(aid))['data']
+    if a is None:
+        doc.add('    ' + T(app, '[approval] approval %s' % aid, 'text-2'))
+        return
+    scope = (a.get('presented') or {}).get('scope') or a['kind']
+    me = (app.read(endpoints.sync())['data'] or {}).get('client') or {}
+    capability = (me.get('capabilities') or {}).get('step_up')
+    # a local client's step-up is being local; a PIN is asked for in Attention
+    step_up = (None if not a.get('step_up') else
+               'It needs this client’s PIN, which Attention asks for.' if capability == 'pin'
+               else 'This client has no PIN: it cannot satisfy a step-up.'
+               if capability == 'none' else None)
+    closed = ('This approval is %s.' % a['state'].lower() if a['state'] != 'PENDING'
+              else 'Not decidable now: %s.' % (a.get('eligible_why') or 'no reason given')
+              if not a.get('eligible') else step_up)
+    reread = [endpoints.list_messages(cid), endpoints.get_approval(aid),
+              endpoints.attention_items(), endpoints.list_missions()]
+
+    def decide(text):
+        return lambda key, v: app.core.post(endpoints.post_message(cid), {
+            'text': text, 'decision': {'approval_id': aid, 'action_hash': a['action_hash'],
+                                       'expected_version': a['version']},
+            'idempotency_key': key})
+    acts = [Act('A', 'Approve', 'approve', decide('approve'), reread=reread, disabled=closed,
+                ident=ident + ':a', confirm='Approve %s.' % clean_title(scope)),
+            Act('R', 'Reject', 'approve', decide('reject'), reread=reread, disabled=closed,
+                ident=ident + ':r',
+                confirm='Reject what this approval asks. A decided approval cannot be changed.')]
+    doc.add('    ' + T(app, '[approval] ', 'state.attention') + app.st.paint('Approve %s?' % scope)
+            + ('  ' + app.st.paint(closed, 'text-2') if closed else ''), acts=acts)
 
 
 # ── Work ─────────────────────────────────────────────────────────────────────

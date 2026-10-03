@@ -23,8 +23,6 @@ from ..domain import entities, ids, states
 VERBS = {'pause': 'pause', 'resume': 'resume', 'stop': 'cancel', 'cancel': 'cancel',
          'status': 'status', 'why': 'why', 'remember': 'remember', 'approve': 'approve',
          'reject': 'reject', 'reprioritise': 'reprioritise', 'reprioritize': 'reprioritise'}
-#: verbs recognised before their phase: answered, never acted on
-NOT_YET = {'approve': 'P9 (approvals)', 'reject': 'P9 (approvals)'}
 MISSION_VERBS = ('pause', 'resume', 'cancel')
 #: `pause all` / `resume all` (P19.5, ADR-0042 §1): the all-scope verb wins over a
 #: mission titled "all", which stays reachable by its id
@@ -33,7 +31,7 @@ ALL_VERBS = {'pause': 'pause_all', 'resume': 'resume_all'}
 _PRIORITY = re.compile(r'^(.*?)\s+(?:to\s+)?([-+]?\d+)$', re.I)
 
 Parsed = namedtuple('Parsed', 'verb arg')
-#: `target` is a {kind, id} ref (or None for a bare `status` or a NOT_YET verb)
+#: `target` is a {kind, id} ref (or None for a bare `status`, `approve` or `reject`)
 Control = namedtuple('Control', 'verb target arg')
 
 _WORDS = re.compile(r'([A-Za-z]+)(?:\s+(.*))?\s*$', re.S)
@@ -83,8 +81,8 @@ def resolve(conn, text, mission=None):
     p = parse(text)
     if p is None:
         return None
-    if p.verb in NOT_YET:
-        return Control(p.verb, None, p.arg)
+    if p.verb in ('approve', 'reject'):
+        return Control(p.verb, None, p.arg)       # bound to a card, never to its words
     if p.verb == 'remember':
         return Control('remember', None, p.arg)
     if p.verb in ALL_VERBS and key(p.arg) == 'all':

@@ -689,10 +689,33 @@ def list_messages(req):
 
 
 def post_message(req):
+    """A user turn. One carrying the displayed approval card's `decision` is
+    the card's decision (P19 S3, G1): the `approve` scope, the step-up and the
+    hash exactly as `/decide`, decided in the same transaction as the turn."""
     b = req.body
-    return 200, req.run(conversation.post_message, {
-        'text': b['text'], 'conversation_id': req.params['id'],
-        'in_reply_to': b.get('in_reply_to')})
+    d = b.get('decision')
+    if d is None:
+        return 200, req.run(conversation.post_message, {
+            'text': b['text'], 'conversation_id': req.params['id'],
+            'in_reply_to': b.get('in_reply_to')})
+    if 'approve' not in req.principal['scopes']:
+        raise Refused(403, 'scope_required', {'scope': 'approve'})
+    try:
+        out = req.run(req.api.authorization.decide_by_message, {
+            'text': b['text'], 'conversation_id': req.params['id'],
+            'approval_id': d['approval_id'], 'action_hash': d['action_hash'],
+            'expected_version': d.get('expected_version'), 'step_up': b.get('step_up')})
+    except errors.GuardFailed as e:
+        if b.get('step_up') is not None and 'step-up' in e.result.reason:
+            _step_up_failed(req)
+        raise
+    if b.get('step_up') is not None:
+        req.api.step_up.reset(req.principal['device_id'])
+    decided = out.pop('decided')
+    if decided.get('denied'):
+        raise Refused(423, 'policy_denied', dict(decided['denied'],
+                                                 approval_id=decided['approval_id']))
+    return 200, out
 
 
 def get_intent(req):

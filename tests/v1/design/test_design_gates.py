@@ -350,7 +350,8 @@ def test_no_view_renders_json():
 
 def _commands():
     """(file, names, command) for every ActionButton: the names it can show and
-    the Core command it sends, as (api method, the decision it carries)."""
+    the Core command it sends, as (api method, the decision it carries). A turn
+    that carries a card's decision (P19 B5) is the word it sends."""
     out = []
     for sub in ('surfaces', 'components'):
         for dirpath, _dirs, files in os.walk(os.path.join(APP, 'src', sub)):
@@ -364,7 +365,7 @@ def _commands():
                     names = ((lit.group(1),) if lit else alt.groups() if alt else
                              (re.sub(r'\$\{[^}]*\}', '…', tpl.group(1)),) if tpl else ())
                     methods = re.findall(r'api\.(\w+)\(', body)
-                    said = re.search(r"(?:decision|verdict|action|choice)\s*:\s*'(\w+)'|decideBody\(\w+,\s*'(\w+)'", body)
+                    said = re.search(r"(?:decision|verdict|action|choice|text)\s*:\s*'(\w+)'|decideBody\(\w+,\s*'(\w+)'", body)
                     assert names and len(methods) == 1, (n, body[:120])
                     out.append((n, names, (methods[0], said and (said.group(1) or said.group(2)))))
     return out

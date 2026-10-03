@@ -325,6 +325,8 @@ def request(tx, *, actor, kind, mission, plan, items, h, decision_id, why, ctx, 
         expires_at=_plus(tx.now, TTL[kind]), policy_decision_id=decision_id,
         policy_version=ctx.get('policy_version'))
     tx.insert(a, actor=actor)
+    from .conversation import approval_card
+    approval_card(tx, actor, a, mission)
     tx.append(new_event('approval.requested', Ref('approval', a.id), actor, payload={
         'kind': kind, 'mission_id': mission.id, 'plan_id': plan.id, 'task_id': a.task_id,
         'action_hash': h, 'step_up': step_up, 'expires_at': a.expires_at},
@@ -908,6 +910,10 @@ class Authorization:
 
     def decide(self, tx, **kw):
         return decide(tx, policy=self.policy, missions=self.missions, **kw)
+
+    def decide_by_message(self, tx, **kw):
+        from .conversation import decide_by_message
+        return decide_by_message(tx, decide=self.decide, **kw)
 
     def record_plan_denial(self, tx, **kw):
         return record_plan_denial(tx, policy=self.policy, missions=self.missions, **kw)

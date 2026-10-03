@@ -2040,6 +2040,12 @@ interface HandoffExecutionRequest {
 interface PostMessageRequest {
   text: string;
   in_reply_to?: string | null;
+  decision?: {
+    approval_id: string;
+    action_hash: string;
+    expected_version?: number | null;
+  } | null;
+  step_up?: string | null;
   idempotency_key: string;
 }
 ```

@@ -79,6 +79,7 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
                        'knowledge.reject', 'knowledge.retract', 'knowledge.supersede',
                        'own_calls.decide_provider_terms',
                        'req.api.authorization.create_rule', 'req.api.authorization.decide',
+                       'req.api.authorization.decide_by_message',
                        'req.api.authorization.retire_rule',
                        'req.api.authorization.set_profile',
                        'req.api.conversations.choose',
