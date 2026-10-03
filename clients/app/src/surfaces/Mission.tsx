@@ -113,7 +113,7 @@ function PrefsText({ p }: { p: Prefs }) {
   );
 }
 
-function MissionActions({ mission }: { mission: Mission }) {
+export function MissionActions({ mission }: { mission: Mission }) {
   const reread = [`/v1/missions/${mission.id}`, '/v1/missions', '/v1/attention'];
   const v = { expected_version: mission.version };
   return (

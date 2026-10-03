@@ -119,6 +119,12 @@ TOAST_LONG = TOAST_E2E + 'test_long_work_finishing_off_screen_gives_one_toast_th
 TOAST_RM = TOAST_E2E + 'test_reduced_motion_shows_the_toast_still'
 TOAST_SHORT = TOAST_E2E + 'test_short_work_never_celebrates'
 
+PINS = 'clients/app/src/state/pins.ts'
+PINS_TS = 'node:test/pins.test.ts'
+MENU_E2E = 'tests/v1/e2e/test_spa_work_menu.py::'
+PINS_E2E = MENU_E2E + 'test_pins_are_a_group_at_the_top_of_work_kept_in_this_browser'
+MENU = MENU_E2E + 'test_a_row_menu_holds_the_rows_own_actions_by_keyboard_and_pointer'
+
 MUTATIONS = [
     # ── the registry ──
     ('N01', 'a registered motion allowed to replay', [(REG,
@@ -969,6 +975,38 @@ MUTATIONS = [
      "  animation: toast-in var(--dur-toast) var(--ease) 1;\n}\n",
      "}\n")],
      [TOAST_LONG]),
+    # R9: pinned missions (D-9) and a row's actions as a menu
+    ('N242', 'a pin is not kept in this browser', [(PINS,
+     "      this.storage?.setItem(KEY, JSON.stringify(this.ids));", "      this.storage?.getItem(KEY);")],
+     [PINS_TS, PINS_E2E]),
+    ('N243', 'Work has no Pinned group', [(WORK,
+     "              <Pinned missions={l.missions} waiting={waiting} />\n", "              {Pinned.name ? null : null}\n")],
+     [PINS_E2E]),
+    ('N244', 'the newest pin first', [(PINS,
+     "    this.ids = this.has(id) ? this.ids.filter((x) => x !== id) : [...this.ids, id];",
+     "    this.ids = this.has(id) ? this.ids.filter((x) => x !== id) : [id, ...this.ids];")],
+     [PINS_TS, PINS_E2E]),
+    ('N245', 'a refusing storage breaks pinning', [(PINS,
+     "    try {\n      this.storage?.setItem(KEY, JSON.stringify(this.ids));\n    } catch {\n      // refused: kept for this page only\n    }\n",
+     "    this.storage?.setItem(KEY, JSON.stringify(this.ids));\n")],
+     [PINS_TS]),
+    ('N246', 'no key or right-click opens the menu', [(WORK,
+     "      onContextMenu={actions ? (e) => (e.preventDefault(), setMenu(true)) : undefined}",
+     "      onContextMenu={actions ? (e) => e.preventDefault() : undefined}")],
+     [MENU]),
+    ('N247', 'Esc leaves focus nowhere', [(WORK,
+     "    if (back) link.current?.focus();", "    if (back && !back) link.current?.focus();")],
+     [MENU]),
+    ('N248', 'the menu leaves out the inspector\'s actions', [(WORK,
+     "      <MissionActions mission={m} />\n    </div>", "      {MissionActions.name ? null : null}\n    </div>")],
+     [MENU]),
+    ('N249', 'Esc in a confirmation closes the whole menu', [(WORK,
+     "        if (e.key !== 'Escape' || modal()) return;", "        if (e.key !== 'Escape') return;")],
+     [MENU]),
+    ('N250', 'leaving the menu leaves it open', [(WORK,
+     "      onBlur={(e) => !box.current?.contains(e.relatedTarget as Node) && !modal() && close(false)}",
+     "      onBlur={(e) => !box.current?.contains(e.relatedTarget as Node) && !modal() && false && close(false)}")],
+     [MENU]),
 ]
 
 if __name__ == '__main__':

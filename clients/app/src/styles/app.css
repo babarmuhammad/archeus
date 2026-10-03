@@ -677,6 +677,39 @@ h1:focus {
   position: relative;
 }
 
+/* D-9: a Work row's pin, on the row's right (its left edge is the thread's) */
+.row-item > .pin {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-4);
+}
+
+.row-item:has(> .pin) > .row-link {
+  padding-right: calc(var(--space-4) + 6rem);
+}
+
+/* a row's actions as a menu (rulebook §10, §20): opaque, under its row */
+.row-menu {
+  position: absolute;
+  top: 100%;
+  right: var(--space-4);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 14rem;
+  padding: var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+}
+
+.row-menu .actions {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .row-pulse {
   position: absolute;
   inset: 0;

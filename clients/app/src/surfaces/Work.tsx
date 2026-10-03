@@ -5,7 +5,10 @@ import { useRead, type Snapshot } from '../data/cache';
 import { send } from '../data/core';
 import { objectHref } from '../nav/destinations';
 import { ago, present, statusLine } from '../state/present';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ActionButton, Changed, Empty, Fresh, Loadable, RowPulse, Section, StateBadge, thread, useChanged } from '../components/ui';
+import { pins } from '../state/pins';
+import { MissionActions } from './Mission';
 
 const GROUPS: { id: string; title: string; classes: string[] }[] = [
   { id: 'needs', title: 'Needs you', classes: ['needs_you'] },
@@ -26,12 +29,77 @@ export function groupOf(m: Mission, waiting: Set<string>): string {
   return GROUPS.find((g) => g.classes.includes(cls))?.id ?? 'ended';
 }
 
-export function MissionRow({ m, waiting }: { m: Mission; waiting?: boolean }) {
-  const changed = useChanged()('mission', m.id);
+function usePinned(id: string): boolean {
+  return useSyncExternalStore(
+    (l) => pins.subscribe(l),
+    () => pins.has(id),
+  );
+}
+
+/** Pin or unpin a mission (D-9): a local preference, never sent to Core. */
+export function PinButton({ m }: { m: Mission }) {
+  const on = usePinned(m.id);
   return (
-    <li className="row-item" data-mission={m.id} data-state={m.state} {...thread(changed)}>
+    <button type="button" className="btn secondary pin" aria-pressed={on} aria-label={`${on ? 'Unpin' : 'Pin'} “${m.title}”`} onClick={() => pins.toggle(m.id)}>
+      {on ? 'Unpin' : 'Pin'}
+    </button>
+  );
+}
+
+/** A row's actions as a menu (rulebook §10, §20): right-click, Shift+F10 or
+ * the menu key — the browser sends all three as one contextmenu event. It holds exactly what is offered elsewhere — Open, Pin and the
+ * inspector's own Pause / Resume / Stop, by the same buttons — so nothing is
+ * only here. Esc or leaving it closes it; Esc returns to the row. */
+function RowMenu({ m, close }: { m: Mission; close: (back: boolean) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const modal = () => !!box.current?.querySelector('dialog[open]');
+  // focus moves in, so leaving it — a press outside, Tab — is a blur
+  useEffect(() => box.current?.querySelector<HTMLElement>('a, button:not([disabled])')?.focus(), []);
+  return (
+    <div
+      ref={box}
+      className="row-menu"
+      role="dialog"
+      aria-label={`Actions for “${m.title}”`}
+      data-row-menu=""
+      onKeyDown={(e) => {
+        if (e.key !== 'Escape' || modal()) return;
+        e.stopPropagation();
+        close(true);
+      }}
+      onBlur={(e) => !box.current?.contains(e.relatedTarget as Node) && !modal() && close(false)}
+    >
+      <a href={objectHref('mission', m.id)}>Open</a>
+      <PinButton m={m} />
+      <MissionActions mission={m} />
+    </div>
+  );
+}
+
+export function MissionRow({ m, waiting, actions, pinned }: { m: Mission; waiting?: boolean; actions?: boolean; pinned?: boolean }) {
+  const changed = useChanged()('mission', m.id);
+  const [menu, setMenu] = useState(false);
+  const link = useRef<HTMLAnchorElement>(null);
+  const close = (back: boolean) => {
+    setMenu(false);
+    if (back) link.current?.focus();
+  };
+  return (
+    <li
+      className="row-item"
+      data-mission={m.id}
+      data-state={m.state}
+      data-pinned={pinned || undefined}
+      {...thread(changed)}
+      onContextMenu={actions ? (e) => (e.preventDefault(), setMenu(true)) : undefined}
+    >
       <RowPulse mission={m.id} />
-      <a href={objectHref('mission', m.id)} className="row-link">
+      <a
+        ref={link}
+        href={objectHref('mission', m.id)}
+        className="row-link"
+        aria-keyshortcuts={actions ? 'Shift+F10' : undefined}
+      >
         <StateBadge machine="mission" state={m.state} />
         <span className="title">{m.title}</span>
         {waiting ? <span className="tag attention">waiting on you</span> : null}
@@ -41,6 +109,8 @@ export function MissionRow({ m, waiting }: { m: Mission; waiting?: boolean }) {
         <span className="age">{ago(m.updated_at)}</span>
         <Changed on={changed} />
       </a>
+      {actions ? <PinButton m={m} /> : null}
+      {menu ? <RowMenu m={m} close={close} /> : null}
     </li>
   );
 }
@@ -83,6 +153,7 @@ export function WorkView({ project }: { project?: string }) {
         {(l) =>
           l.missions.length ? (
             <>
+              <Pinned missions={l.missions} waiting={waiting} />
               {GROUPS.map((g) => {
                 const ms = l.missions
                   .filter((m) => groupOf(m, waiting) === g.id)
@@ -91,7 +162,7 @@ export function WorkView({ project }: { project?: string }) {
                   <Section key={g.id} title={`${g.title} · ${ms.length}`}>
                     <ul className="rows">
                       {ms.slice(0, PAGE).map((m) => (
-                        <MissionRow key={m.id} m={m} waiting={waiting.has(m.id)} />
+                        <MissionRow key={m.id} m={m} waiting={waiting.has(m.id)} actions />
                       ))}
                     </ul>
                     {ms.length > PAGE ? <p className="hint">{ms.length - PAGE} more not shown.</p> : null}
@@ -107,6 +178,25 @@ export function WorkView({ project }: { project?: string }) {
       <Ideas />
     </div>
   );
+}
+
+/** D-9: the pinned missions Work lists, at its top, oldest pin first — the
+ * same rows, also in their own groups. */
+function Pinned({ missions, waiting }: { missions: Mission[]; waiting: Set<string> }) {
+  const ids = useSyncExternalStore(
+    (l) => pins.subscribe(l),
+    () => pins.list(),
+  );
+  const ms = ids.map((id) => missions.find((m) => m.id === id)).filter((m): m is Mission => !!m);
+  return ms.length ? (
+    <Section title={`Pinned · ${ms.length}`} id="pinned">
+      <ul className="rows">
+        {ms.map((m) => (
+          <MissionRow key={m.id} m={m} waiting={waiting.has(m.id)} actions pinned />
+        ))}
+      </ul>
+    </Section>
+  ) : null;
 }
 
 function Ideas() {
