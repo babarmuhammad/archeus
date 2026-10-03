@@ -2,7 +2,11 @@
 // architecture state, and what Archeus knows — with provenance, supersession
 // and relations. List-first; the spatial view is P18's.
 import { useState } from 'react';
-import { api, type InspectionList, type KnowledgeDetail, type KnowledgeList, type Project, type ProjectList } from '../api/generated';
+import { api, type Forgotten, type InspectionList, type KnowledgeDetail, type KnowledgeList, type Project, type ProjectList } from '../api/generated';
+import { CoreError } from '../api/transport';
+import { explain, newKey } from '../data/commands';
+import { canCommand } from '../data/connection';
+import { useConn } from '../data/cache';
 import { send } from '../data/core';
 import { useRead } from '../data/cache';
 import { knowledgeEdges } from '../graph/relations';
@@ -10,7 +14,7 @@ import { INSPECTOR_TABS, TAB_LABEL, objectHref } from '../nav/destinations';
 import { ago } from '../state/present';
 import { GraphLink, Relations } from '../components/Relations';
 import { useWide } from '../graph/wide';
-import { ActionButton, Changed, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Section, StateBadge, Tabs, thread, useChanged } from '../components/ui';
+import { ActionButton, Changed, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Section, StateBadge, Tabs, thread, useChanged, useMe } from '../components/ui';
 
 export function WorldView() {
   const p = useRead<ProjectList>('/v1/projects');
@@ -280,6 +284,7 @@ export function KnowledgeInspector({ id, tab, onTab }: { id: string; tab?: strin
                 <ActionButton label="Retract" scope="control" kind="danger" confirm="Retract this item: it stops being used as context. The row and its provenance are kept." run={(key) => api.retractKnowledge(send(), id, { idempotency_key: key, expected_version: Number(k.version) })} reread={reread} />
               ) : null}
             </div>
+            <Forget id={k.id} />
             <Details
               rows={[
                 ['Knowledge item id', k.id],
@@ -320,6 +325,85 @@ export function KnowledgeInspector({ id, tab, onTab }: { id: string; tab?: strin
         </div>
       )}
     </Loadable>
+  );
+}
+
+const MODES = {
+  retract: 'Stop using it — the item and its provenance are kept (retract)',
+  purge: 'Erase its content — only a tombstone with its provenance is kept (purge)',
+} as const;
+
+/** What a forget would change, in words, from Core's dry run. */
+export function forgetWords(f: Forgotten): string[] {
+  return f.changes.map((c) => {
+    const to = c.to !== c.from ? `it stops being used as context (${String(c.from).toLowerCase()} → ${String(c.to).toLowerCase()})` : null;
+    return [to, c.purge ? 'its content is erased; its provenance stays' : null].filter(Boolean).join('; ');
+  });
+}
+
+/** Forget (rulebook §13): Core's one forget entry point. The preview is Core's
+ * own dry run — it changes nothing — and Forget sends the same selector and
+ * mode for real, behind a confirmation. No undo is offered: a retracted item
+ * stays retracted and a purged one keeps only its tombstone (P16 §18.3). */
+function Forget({ id }: { id: string }) {
+  const [mode, setMode] = useState<keyof typeof MODES>('retract');
+  const [preview, setPreview] = useState<{ mode: string; out: Forgotten } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const conn = useConn();
+  const { can } = useMe();
+  const why = !can('control') ? 'This client does not hold the “control” scope.' : !canCommand(conn.conn) ? 'Not connected — nothing is sent while reconnecting.' : null;
+  const shown = preview?.mode === mode ? preview.out : null;
+  async function dryRun() {
+    setErr(null);
+    try {
+      setPreview({ mode, out: await api.forgetKnowledge(send(), { selector: { ids: [id] }, mode, dry_run: true, idempotency_key: newKey() }) });
+    } catch (e) {
+      setErr(explain(e instanceof CoreError ? e : new CoreError(0, 'network', {})));
+    }
+  }
+  return (
+    <details className="form forget" data-forget="">
+      <summary>Forget…</summary>
+      <fieldset>
+        <legend>How to forget it</legend>
+        {(Object.keys(MODES) as (keyof typeof MODES)[]).map((m) => (
+          <label key={m} className="check">
+            <input type="radio" name={`forget-${id}`} value={m} checked={mode === m} onChange={() => setMode(m)} /> {MODES[m]}
+          </label>
+        ))}
+      </fieldset>
+      <button type="button" className="btn secondary" disabled={!!why} title={why ?? undefined} onClick={() => void dryRun()}>
+        See what would change
+      </button>
+      {why ? <span className="why">{why}</span> : null}
+      {err ? <p className="err" role="alert">{err}</p> : null}
+      {shown ? (
+        <div role="status" data-forget-preview="">
+          {shown.changes.length ? (
+            <>
+              <p>Forgetting would change {shown.changes.length === 1 ? 'this item' : `${shown.changes.length} items`}:</p>
+              <ul className="list">
+                {forgetWords(shown).map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p>Nothing would change: it is already forgotten this way.</p>
+          )}
+        </div>
+      ) : null}
+      <ActionButton
+        label="Forget"
+        scope="control"
+        kind="danger"
+        disabled={!shown ? 'See what would change first.' : !shown.changes.length ? 'Nothing would change.' : null}
+        confirm={`Forget it: ${mode === 'purge' ? 'its content is erased and only a tombstone with its provenance is kept' : 'it stops being used as context'}. This cannot be undone.`}
+        run={(key) => api.forgetKnowledge(send(), { selector: { ids: [id] }, mode, dry_run: false, idempotency_key: key })}
+        reread={['/v1/knowledge', '/v1/attention']}
+        onDone={() => setPreview(null)}
+      />
+    </details>
   );
 }
 

@@ -131,6 +131,8 @@ RESIZE = 'tests/v1/e2e/test_spa_inspector_resize.py::test_the_inspector_is_resiz
 
 R9D = 'tests/v1/e2e/test_spa_r9_details.py::'
 
+FORGET = 'tests/v1/e2e/test_spa_forget.py::test_forgetting_previews_by_cores_dry_run_and_offers_no_undo'
+
 MUTATIONS = [
     # ── the registry ──
     ('N01', 'a registered motion allowed to replay', [(REG,
@@ -1064,6 +1066,33 @@ MUTATIONS = [
      "      <details className=\"form\" open={!resumable && !later}>",
      "      <details className=\"form\">")],
      [R9D + 'test_a_session_that_cannot_be_resumed_offers_where_it_continues']),
+    # R11: the forget flow (rulebook §13): Core's dry run as the preview, no undo
+    ('N264', 'the preview forgets for real', [(WORLD,
+     "{ selector: { ids: [id] }, mode, dry_run: true, idempotency_key: newKey() }",
+     "{ selector: { ids: [id] }, mode, dry_run: false, idempotency_key: newKey() }")],
+     [FORGET]),
+    ('N265', 'Forget without a preview', [(WORLD,
+     "        disabled={!shown ? 'See what would change first.' : !shown.changes.length ? 'Nothing would change.' : null}",
+     "        disabled={!shown ? null : !shown.changes.length ? 'Nothing would change.' : null}")],
+     [FORGET]),
+    ('N266', 'a preview of one mode stands for another', [(WORLD,
+     "  const shown = preview?.mode === mode ? preview.out : null;", "  const shown = preview ? preview.out : null;")],
+     [FORGET]),
+    ('N267', 'Forget always retracts', [(WORLD,
+     "{ selector: { ids: [id] }, mode, dry_run: false, idempotency_key: key }",
+     "{ selector: { ids: [id] }, mode: 'retract', dry_run: false, idempotency_key: key }")],
+     [FORGET]),
+    ('N268', 'Forget asks nothing', [(WORLD,
+     "        confirm={`Forget it: ${mode === 'purge' ? 'its content is erased and only a tombstone with its provenance is kept' : 'it stops being used as context'}. This cannot be undone.`}\n",
+     "")],
+     [FORGET]),
+    ('N269', 'Forget offered when nothing would change', [(WORLD,
+     "        disabled={!shown ? 'See what would change first.' : !shown.changes.length ? 'Nothing would change.' : null}",
+     "        disabled={!shown ? 'See what would change first.' : null}")],
+     [FORGET]),
+    ('N270', 'the preview hides that the content is erased', [(WORLD,
+     "c.purge ? 'its content is erased; its provenance stays' : null", "null")],
+     [FORGET]),
 ]
 
 if __name__ == '__main__':
