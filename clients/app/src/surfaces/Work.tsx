@@ -6,8 +6,9 @@ import { send } from '../data/core';
 import { objectHref } from '../nav/destinations';
 import { ago, present, statusLine } from '../state/present';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ActionButton, Changed, Empty, Fresh, Loadable, RowPulse, Section, StateBadge, thread, useChanged } from '../components/ui';
+import { ActionButton, Changed, Empty, Fresh, Loadable, RefLabel, RowPulse, Section, StateBadge, thread, useChanged } from '../components/ui';
 import { pins } from '../state/pins';
+import { ideaSteps } from '../state/ideas';
 import { MissionActions } from './Mission';
 
 const GROUPS: { id: string; title: string; classes: string[] }[] = [
@@ -199,6 +200,24 @@ function Pinned({ missions, waiting }: { missions: Mission[]; waiting: Set<strin
   ) : null;
 }
 
+/** Where an idea is on Core's path (rulebook §43; D-11): read-only — Core has
+ * no idea-transition command, so no step is a button. */
+function IdeaPath({ state }: { state: string }) {
+  const { path, aside } = ideaSteps(state);
+  return (
+    <>
+      <ol className="stepper" aria-label="Where this idea is on its path" data-stepper="">
+        {path.map((s) => (
+          <li key={s.state} data-step={s.state} data-at={s.at} aria-current={s.at === 'now' ? 'step' : undefined}>
+            {s.label}
+          </li>
+        ))}
+      </ol>
+      {aside ? <p className="hint" data-aside="">Set aside: {aside.toLowerCase()}. Reviving it takes it back to Captured.</p> : null}
+    </>
+  );
+}
+
 function Ideas() {
   const snap = useRead<IdeaList>('/v1/ideas');
   const ideas = snap.data?.ideas ?? [];
@@ -209,11 +228,17 @@ function Ideas() {
       <ul className="rows">
         {ideas.map((i) => (
           <li key={i.id} className="row-item" data-idea={i.id} {...thread(changed('idea', i.id))}>
-            <StateBadge machine="idea" state={i.state} /> <span className="title">{i.title ?? i.text}</span>
+            <StateBadge machine="idea" state={i.state} /> <span className="title">{i.title || i.text}</span>
             <Changed on={changed('idea', i.id)} />
-            {i.promoted_mission_id ? (
-              <a href={objectHref('mission', i.promoted_mission_id)}>its mission</a>
-            ) : null}
+            <IdeaPath state={i.state} />
+            <p className="hint" data-idea-evidence="">
+              {i.origin_message_id ? 'Captured from the conversation.' : 'Captured.'}{' '}
+              {i.promoted_mission_id ? (
+                <>
+                  Made into <a href={objectHref('mission', i.promoted_mission_id)}><RefLabel kind="mission" id={i.promoted_mission_id} /></a>.
+                </>
+              ) : null}
+            </p>
           </li>
         ))}
       </ul>

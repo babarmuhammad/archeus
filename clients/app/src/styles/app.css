@@ -1380,6 +1380,25 @@ summary {
   min-height: var(--target-desktop);
 }
 
+/* the Ideas stepper (rulebook §43; D-11): where an idea is, read-only */
+.stepper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-2) 0;
+  padding: 0;
+  list-style: none;
+  font: var(--type-caption);
+  color: var(--text-2);
+}
+
+.stepper [aria-current='step'] {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* reprioritise (D-14): one number and its command, in the inspector header */
 .priority {
   display: flex;

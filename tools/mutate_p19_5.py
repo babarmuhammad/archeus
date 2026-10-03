@@ -137,6 +137,10 @@ POLICY = 'clients/app/src/state/policy.ts'
 POLICY_TS = 'node:test/policy.test.ts'
 RES = 'tests/v1/e2e/test_spa_resources.py::test_an_accounts_policy_is_a_form_over_cores_route'
 
+IDEAS = 'clients/app/src/state/ideas.ts'
+IDEAS_TS = 'node:test/ideas.test.ts'
+IDEAS_E2E = 'tests/v1/e2e/test_spa_ideas.py::test_each_idea_shows_where_it_is_on_cores_path_and_offers_no_transition'
+
 MUTATIONS = [
     # ── the registry ──
     ('N01', 'a registered motion allowed to replay', [(REG,
@@ -1118,6 +1122,23 @@ MUTATIONS = [
     ('N276', 'the form does not follow Core after a save', [(CONTROL,
      "  }, [p.version]);\n", "  }, []);\n")],
      [RES]),
+    # R11: the read-only Ideas stepper (rulebook §43; D-11)
+    ('N277', 'the stepper does not say where the idea is', [(WORK,
+     " aria-current={s.at === 'now' ? 'step' : undefined}>", ">")],
+     [IDEAS_E2E]),
+    ('N278', 'a step is a button', [(WORK,
+     "            {s.label}\n          </li>", "            <button type=\"button\">{s.label}</button>\n          </li>")],
+     [IDEAS_E2E]),
+    ('N279', 'the path out of Core\'s order', [(IDEAS,
+     "['CAPTURED', 'UNDERSTOOD', 'EXPLORED',", "['CAPTURED', 'EXPLORED', 'UNDERSTOOD',")],
+     [IDEAS_TS, IDEAS_E2E]),
+    ('N280', 'the step after the current one counted earlier', [(IDEAS,
+     "j < i ? 'earlier' : j === i ? 'now' : 'later'", "j <= i + 1 && j !== i ? 'earlier' : j === i ? 'now' : 'later'")],
+     [IDEAS_TS, IDEAS_E2E]),
+    ('N281', 'the mission an idea became is not linked', [(WORK,
+     "                  Made into <a href={objectHref('mission', i.promoted_mission_id)}><RefLabel kind=\"mission\" id={i.promoted_mission_id} /></a>.",
+     "                  Made into a mission{RefLabel.name ? '' : ''}.")],
+     [IDEAS_E2E]),
 ]
 
 if __name__ == '__main__':
