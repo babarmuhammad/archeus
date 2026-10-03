@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import Mapping, Optional, Protocol, runtime_checkable
 
 from .domain import entities, ids
-from .domain.actions import Action
+from .domain.actions import CORE_CLASSES, Action
 from .domain.values import Ref
 
 
@@ -136,7 +136,10 @@ class FixedPolicy:
         self.decision, self.by_class = decision, dict(by_class or {})
 
     def evaluate(self, action, ctx):
-        d = self.by_class.get(action.action_class, self.decision)
+        # one decision "for every action" means every task's action: a mission
+        # still starts unless `by_class` names `mission.start` (P19 B6)
+        d = self.by_class.get(action.action_class, 'ALLOW' if action.action_class
+                              in CORE_CLASSES else self.decision)
         return entities.PolicyDecision(
             id=ids.new_id('policy_decision'), action=action, decision=d,
             reason='stub policy (P3.5): %s for %s' % (d, action.action_class))

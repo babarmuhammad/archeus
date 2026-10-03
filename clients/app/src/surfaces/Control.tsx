@@ -56,7 +56,8 @@ export function ControlView({ section }: { section: string }) {
 
 // ── autonomy: the policy as it is, and a way to ask "what would happen" ──
 
-const CLASSES = ['read', 'web', 'write_repo', 'exec', 'git_commit', 'git_push', 'deploy', 'external_comm', 'destructive', 'spend', 'personal_data', 'install', 'credential'] as const;
+/** The action classes are Core's: every profile names each one (P19 B6 added `mission.start`). */
+const classesOf = (p: Policies | undefined) => Object.keys(Object.values(p?.profiles ?? {})[0] ?? {});
 
 function Autonomy() {
   const s = useRead<Policies>(paths.getPolicies());
@@ -95,7 +96,7 @@ function Autonomy() {
                 </tr>
               </thead>
               <tbody>
-                {CLASSES.map((c) => (
+                {classesOf(p).map((c) => (
                   <tr key={c}>
                     <th scope="row" className="mono">
                       {c}
@@ -131,6 +132,7 @@ function Autonomy() {
 }
 
 function Simulate() {
+  const policies = useRead<Policies>(paths.getPolicies());
   const [cls, setCls] = useState<string>('git_push');
   const [target, setTarget] = useState('');
   const [got, setGot] = useState<Simulation | null>(null);
@@ -140,7 +142,7 @@ function Simulate() {
         <label>
           Action class
           <select value={cls} onChange={(e) => setCls(e.target.value)}>
-            {CLASSES.map((c) => (
+            {classesOf(policies.data).map((c) => (
               <option key={c}>{c}</option>
             ))}
           </select>

@@ -187,9 +187,10 @@ class Engine:
             # as a mission's failure is exactly what an e-stop must not cause
             return None
         if m.state == 'CREATED':
-            self._do(self.missions.fire, mission_id=m.id, trigger=START,
-                     reason='Archeus starts on the mission')
-            return START
+            # P9 judges the start (P19 B6): under `careful` it waits for its approval
+            got = self._do(authorization.gate_start, policy=self.missions.policy,
+                           missions=self.missions, mission_id=m.id)
+            return START if got['started'] else None
         if m.state == 'UNDERSTANDING':
             self._do(self.missions.understand, mission_id=m.id)     # from its intent (P7)
             return 'understood'

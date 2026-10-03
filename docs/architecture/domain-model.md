@@ -517,7 +517,7 @@ for Archeus's internal reads are counted, not recorded individually). Fields: `a
 *As built (P9, p9-design-gate §4.3, §9):* rules are immutable revisions (`revision`,
 `supersedes_rule_id`, `retired_at` written once), with `match`, `boundary` + `outside`,
 `expires_at` and `source`; GLOBAL rules are Core's own and never rows. A PolicyDecision is one
-evaluation, frozen whole (`FROZEN_ALL`): `stage` (plan, dispatch, action), `outcome`, per-item
+evaluation, frozen whole (`FROZEN_ALL`): `stage` (plan, dispatch, action, start), `outcome`, per-item
 results with the rules that decided them, `matched_rules` (full snapshots), `policy_version`,
 `engine_version`, the binding and its `action_hash`. A later evaluation is a new decision; an
 old one keeps saying what its policy said.
@@ -548,6 +548,13 @@ profiles expanded at USER and MISSION level (D5, D26).
 
 ### 9.4 Automation and AutomationRun
 Automation: `name`, `trigger` (`{kind: event|schedule|condition|state, pattern|cron|predicate}`),
+*As built (P19 B6, p19-design-gate §12 Slice 4b):* a fifth `kind`, `start`, is consent to start one
+mission. Its `action_hash` binds the mission alone (no plan exists yet, so `plan_id`,
+`plan_version` and `plan_digest` are null) and it expires after 24 h. It is never CONSUMED: once the
+mission has left CREATED it is ineligible, so it authorises one START. Starting a
+mission is the Core-owned action class `mission.start`: `careful` asks, `standard` and
+`autonomous` allow, and a rule may name it; a task never declares it.
+
 `conditions[]`, `mission_template` (objective template, task hints, verification), `policy`
 (overlay applied to missions it creates), `notify`, `max_depth` (cause-chain cap, default 3),
 `rate_limit` (default 6/hour), `state`. AutomationRun: `automation_id`, `triggering_event_seq`,

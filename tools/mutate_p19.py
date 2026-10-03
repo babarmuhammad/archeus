@@ -3,7 +3,8 @@ run the test written for it, and require it to fail. B1, one edge
 implementation (P01-P08); B2, the change rule on the Relations list and the
 TUI (P09-P14); B11, the generated client everywhere (P15-P20); B3, a mission's own
 conversation and the mission Now tab (P21-P30); B5, chat approve / reject
-is the card's decision (P31-P40).
+is the card's decision (P31-P40); B6, mission confirmation under `careful`
+(P41-P50).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -51,6 +52,10 @@ CA = 'tests/v1/integration/test_chat_approve.py::'
 AUTHZ = 'archeus/core/application/authorization.py'
 ROUTES = 'archeus/api/routes.py'
 TUI_CA = 'tests/v1/tui/test_chat_approval.py::'
+RULES = 'archeus/core/policy/rules.py'
+ENGINE = 'archeus/core/engine.py'
+PORTS = 'archeus/core/ports.py'
+SC_ = 'tests/v1/integration/test_start_confirmation.py::'
 CLI_STATUS = ('tests/v1/integration/test_cli_v1.py::'
               'test_status_of_a_mission_prints_what_core_reports_and_a_refusal_in_its_words')
 
@@ -212,6 +217,49 @@ MUTATIONS = [
      "PIN, which Attention asks for.' if capability == 'pin'",
      "PIN, which Attention asks for.' if capability == 'pinned'")],
      [TUI_CA + 'test_a_pin_step_up_is_given_in_attention_not_here']),
+    # ── B6: mission confirmation under `careful` ──
+    ('P41', '`careful` allows a mission to start', [(RULES,
+     "    'careful': _profile({}),", "    'careful': _profile({'mission.start': ('ALLOW', None)}),")],
+     [SC_ + 'test_under_careful_the_mission_waits_in_created_for_its_start_approval']),
+    ('P42', 'the engine fires START without asking P9', [(ENGINE,
+     "            got = self._do(authorization.gate_start, policy=self.missions.policy,\n"
+     "                           missions=self.missions, mission_id=m.id)\n",
+     "            got = self._do(self.missions.fire, mission_id=m.id, trigger=START,\n"
+     "                           reason='Archeus starts on the mission') or {'started': True}\n")],
+     [SC_ + 'test_under_careful_the_mission_waits_in_created_for_its_start_approval']),
+    ('P43', 'a waiting start asks again on every pass', [(AUTHZ,
+     "    if live_approval(tx.conn, h) is None:\n        d = record(tx, actor=actor, stage='start',",
+     "    if True:\n        d = record(tx, actor=actor, stage='start',")],
+     [SC_ + 'test_under_careful_the_mission_waits_in_created_for_its_start_approval']),
+    ('P44', 'approving a start does not start the mission', [(AUTHZ,
+     "    elif a.kind == 'start':\n        out = missions.fire(",
+     "    elif a.kind == 'never':\n        out = missions.fire(")],
+     [SC_ + 'test_a_start_is_approved_from_the_conversation_card']),
+    ('P45', 'rejecting a start does not cancel the mission', [(AUTHZ,
+     "    if kind == 'start':\n        out = missions.cancel(",
+     "    if kind == 'never':\n        out = missions.cancel(")],
+     [SC_ + 'test_under_careful_rejecting_the_start_cancels_the_mission']),
+    ('P46', 'a start approval is judged eligible like a plan approval', [(AUTHZ,
+     "    if a.kind == 'start':\n        return None if mission.state == 'CREATED' else (\n"
+     "            'not_awaiting', 'mission %s is %s' % (mission.id, mission.state))\n", "")],
+     [SC_ + 'test_under_careful_the_mission_waits_in_created_for_its_start_approval']),
+    ('P47', 'the e-stop holds a start', [(AUTHZ,
+     "    ctx = dict(context(conn, mission, stage='start', now=now, actor=actor), estop=False)",
+     "    ctx = context(conn, mission, stage='start', now=now, actor=actor)")],
+     [SC_ + 'test_the_estop_does_not_hold_a_start_and_careful_still_asks']),
+    ('P48', "a user's DENY rule asks instead of holding", [(AUTHZ,
+     "    if decision == 'DENY':\n        return {'started': False, 'waiting': 'policy_denied'}\n",
+     "")],
+     [SC_ + 'test_a_users_deny_rule_holds_the_mission_without_asking']),
+    ('P49', 'the stub policy holds every mission at its start', [(PORTS,
+     "'ALLOW' if action.action_class\n                              in CORE_CLASSES else self.decision",
+     "self.decision")],
+     ['tests/v1/integration/test_planning_http.py::'
+      'test_h01_the_mission_view_carries_the_plan_in_force_and_health_the_worker']),
+    ('P50', "the TUI's matrix keeps its own copy of the classes", [(SCR,
+     "    classes = list(p['profiles'][names[0]])\n",
+     "    classes = [c for c in p['profiles'][names[0]] if c != 'mission.start']\n")],
+     ['tests/v1/tui/test_acceptance.py::test_the_autonomy_matrix_lists_every_class_core_judges']),
 ]
 
 if __name__ == '__main__':

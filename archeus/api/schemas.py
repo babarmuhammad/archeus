@@ -838,7 +838,7 @@ _OBJ = {'type': 'object', 'nullable': True}
 CREATE_RULE = {'type': 'object', 'properties': {
     'scope_level': {'type': 'string', 'enum': list(entities.SCOPE_LEVELS[1:])},
     'scope_ref': {'type': 'string', 'nullable': True},
-    'action_class': {'type': 'string', 'enum': list(entities.ACTION_CLASSES)},
+    'action_class': {'type': 'string', 'enum': list(entities.RULE_CLASSES)},
     'decision': {'type': 'string', 'enum': list(entities.DECISIONS)},
     'locked': {'type': 'boolean', 'nullable': True}, 'match': _OBJ, 'boundary': _OBJ,
     'outside': {'type': 'string', 'nullable': True, 'enum': ['ASK', 'DENY']},

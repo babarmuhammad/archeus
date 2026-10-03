@@ -9,7 +9,7 @@ snapshot every rule it read and replay from the snapshot alone.
 
 import re
 
-from ..domain.actions import ACTION_CLASSES
+from ..domain.actions import RULE_CLASSES
 
 LEVELS = ('GLOBAL', 'USER', 'WORKSPACE', 'PROJECT', 'MISSION', 'TASK')
 #: DENY > ASK > ALLOW_WITHIN_BOUNDARY > ALLOW (plan §13)
@@ -21,7 +21,7 @@ STEP_UP_CLASSES = ('deploy', 'destructive')
 #: what a task's capabilities make inevitable (§3.3, D6)
 IMPLIED = {'code_edit': 'write_repo', 'shell': 'exec', 'web': 'web'}
 COST_BANDS = ('low', 'medium', 'high')
-PROFILES_VERSION = 1
+PROFILES_VERSION = 2          # 2: `mission.start` (P19 B6)
 ENGINE_VERSION = 1
 #: the task's own workspace: its worktree, or the execution's own directory (§5.2)
 WORKSPACE = '@workspace'
@@ -32,18 +32,21 @@ _TASK_BRANCHES = {'branches': ['archeus/*']}
 
 
 def _profile(overrides):
-    table = {c: ('ASK', None) for c in ACTION_CLASSES}
+    table = {c: ('ASK', None) for c in RULE_CLASSES}
     table.update(read=('ALLOW', None), web=('ALLOW', None))
     table.update(overrides)
     return table
 
 
-#: The three autonomy profiles (§5.2): class -> (decision, boundary).
+#: The three autonomy profiles (§5.2): class -> (decision, boundary). Only
+#: `careful` asks before a mission starts (P19 B6).
 PROFILES = {
     'careful': _profile({}),
-    'standard': _profile({'write_repo': (AWB, _IN_WORKSPACE), 'exec': (AWB, _IN_WORKSPACE),
+    'standard': _profile({'mission.start': ('ALLOW', None),
+                          'write_repo': (AWB, _IN_WORKSPACE), 'exec': (AWB, _IN_WORKSPACE),
                           'git_commit': (AWB, _TASK_BRANCHES)}),
-    'autonomous': _profile({'write_repo': (AWB, _IN_WORKSPACE), 'exec': (AWB, _IN_WORKSPACE),
+    'autonomous': _profile({'mission.start': ('ALLOW', None),
+                            'write_repo': (AWB, _IN_WORKSPACE), 'exec': (AWB, _IN_WORKSPACE),
                             'git_commit': (AWB, _TASK_BRANCHES),
                             'git_push': (AWB, _TASK_BRANCHES)}),
 }

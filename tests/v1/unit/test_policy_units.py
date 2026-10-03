@@ -7,7 +7,7 @@ import random
 import pytest
 
 from archeus.core.domain import entities, ids
-from archeus.core.domain.actions import ACTION_CLASSES, Action
+from archeus.core.domain.actions import ACTION_CLASSES, RULE_CLASSES, Action
 from archeus.core.policy import engine as E
 from archeus.core.policy import rules as R
 
@@ -113,9 +113,9 @@ def test_U_R8_leaving_an_attribute_out_never_reaches_a_permissive_rule():
 
 def test_U_R9_inheritance_falls_back_to_the_nearest_broader_level():
     assert ev(act('git_push'), profiles={'USER': 'autonomous'})['deciding_rule'].startswith(
-        'profile:autonomous@1:USER')
+        'profile:autonomous@2:USER')
     assert ev(act('git_push'), profiles={'USER': None})['deciding_rule'].startswith(
-        'profile:careful@1:GLOBAL')
+        'profile:careful@2:GLOBAL')
 
 
 def test_U_R10_no_applicable_rule_is_a_deny():
@@ -132,7 +132,7 @@ def test_U_R10_no_applicable_rule_is_a_deny():
 
 
 def test_the_baseline_covers_every_class():
-    assert {r['action_class'] for r in R.builtin()} == set(ACTION_CLASSES)
+    assert {r["action_class"] for r in R.builtin()} == set(RULE_CLASSES)
 
 
 def test_an_expired_rule_is_ignored():
@@ -218,7 +218,7 @@ def test_U_P1_each_profile_answers_its_table(profile):
 def test_U_P2_a_mission_profile_is_deeper_than_the_users():
     r = ev(act('git_push'), profiles={'USER': 'careful', 'MISSION': 'autonomous'})
     assert r['decision'] == 'ALLOW_WITHIN_BOUNDARY'
-    assert r['deciding_rule'].startswith('profile:autonomous@1:MISSION')
+    assert r['deciding_rule'].startswith('profile:autonomous@2:MISSION')
 
 
 def test_U_P3_autonomy_never_loosens_a_locked_rule_or_the_floor():
@@ -227,7 +227,7 @@ def test_U_P3_autonomy_never_loosens_a_locked_rule_or_the_floor():
               profiles={'MISSION': 'autonomous'})['decision'] == 'ASK'
     assert ev(act('destructive'), profiles={'MISSION': 'autonomous'})['decision'] == 'DENY'
     # and it never removes a boundary: autonomous is AWB, never a bare ALLOW
-    assert all(d != 'ALLOW' or c in ('read', 'web')
+    assert all(d != 'ALLOW' or c in ('read', 'web', 'mission.start')   # starting has no boundary
                for c, (d, _b) in R.PROFILES['autonomous'].items())
 
 

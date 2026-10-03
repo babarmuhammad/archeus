@@ -499,3 +499,12 @@ def test_relations_say_the_tier_and_the_field_in_words():
     shown = plain(app)
     assert 'inferred' in shown and 'ambiguous' in shown
     assert 'no longer current' in shown and 'from relations.applies_to' in shown
+
+
+def test_the_autonomy_matrix_lists_every_class_core_judges(core):
+    """The classes are Core's, not a copy (P19 B6): `mission.start` is a row,
+    asked only under `careful`."""
+    app = app_on(core)
+    app.go({'view': 'control', 'section': 'autonomy'})
+    got = next(x.split() for x in plain(app).splitlines() if x.split()[:1] == ['mission.start'])
+    assert got[1:] == ['ASK', 'ALLOW', 'ALLOW']

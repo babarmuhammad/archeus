@@ -621,6 +621,42 @@ offline cold start on a phone.
     `test_spa_resources.py::test_an_accounts_policy_is_a_form_over_cores_route` (failed once in
     the full run, passes alone).
 
+**Slice 4b (B6, confirmation under `careful`), 2026-10-03.**
+
+23. **A migration after all** (deviation from §6, which said B6 adds "a policy table value, no
+    schema"). `approvals.plan_id` was `NOT NULL`, and a start approval exists before the mission
+    has a plan. `0014_start_approvals.sql` rebuilds `approvals` with `plan_id` nullable (SQLite
+    cannot drop a `NOT NULL`) and copies every row across unchanged. The `action_hash` of a
+    `start` approval binds the mission alone, and `actions.action_hash` refuses a start binding
+    that names anything else.
+24. **`mission.start` is a Core class, not a task class.** It lives in `actions.CORE_CLASSES`;
+    `RULE_CLASSES = ACTION_CLASSES + CORE_CLASSES` is what a rule and a judged action may name.
+    The planner, the plan validator and `Task` still read `ACTION_CLASSES`, so no plan can declare
+    it. `standard` and `autonomous` ALLOW it, `careful` ASKs. The profile table changed, so
+    `PROFILES_VERSION` is 2 and the built-in rule ids are `@2`.
+25. **The e-stop does not hold a start (for the user's review).** Before B6 the engine started a
+    CREATED mission while disarmed: the e-stop holds what runs, and starting only leads to
+    understanding and planning, both of which stay held at dispatch. B6 keeps that rather than
+    change it quietly: `judge_start` evaluates with `estop=False`, so `standard` still starts
+    under the e-stop and `careful` still asks. If the e-stop should also hold starts, it is one
+    line and one test.
+26. **A user's DENY rule on `mission.start` holds the mission without asking.** It waits in
+    CREATED, nothing is recorded (it is judged again on every pass, and recording each pass would
+    flood the decisions), and it starts once the rule is retired.
+27. **The stub policy exempts Core classes.** `FixedPolicy('ASK')` means "every task's action
+    asks"; without the exemption every test built on it stalled in CREATED. `by_class` can still
+    name `mission.start`.
+28. **The clients take the class list from Core.** The TUI's Control matrix and Simulate field
+    and the SPA's `Control.tsx` had each kept a hand copy of the thirteen classes, which B6 would
+    have left a row short. Both now read the classes off `GET /v1/policies`' profiles.
+29. **Mutants P41-P50** (B6): `careful` allowing the start, the engine firing START without
+    asking, a waiting start asking again on every pass, approving not starting, rejecting not
+    cancelling, a start approval judged eligible like a plan approval, the e-stop holding a start,
+    a DENY rule asking, the stub policy holding every mission at its start, and the TUI's matrix
+    dropping a class. All ten killed. P43 survived the first run: the engine passes over a
+    waiting mission once, so the test now restarts Core and asserts the start is still asked only
+    once.
+
 ## 13. As built
 
 (empty until implementation)

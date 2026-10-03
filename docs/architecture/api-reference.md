@@ -2066,7 +2066,7 @@ interface ClarifyIntentRequest {
 interface CreateRuleRequest {
   scope_level: 'USER' | 'WORKSPACE' | 'PROJECT' | 'MISSION' | 'TASK';
   scope_ref?: string | null;
-  action_class: 'read' | 'web' | 'write_repo' | 'exec' | 'git_commit' | 'git_push' | 'deploy' | 'external_comm' | 'destructive' | 'spend' | 'personal_data' | 'install' | 'credential';
+  action_class: 'read' | 'web' | 'write_repo' | 'exec' | 'git_commit' | 'git_push' | 'deploy' | 'external_comm' | 'destructive' | 'spend' | 'personal_data' | 'install' | 'credential' | 'mission.start';
   decision: 'ALLOW' | 'ASK' | 'ALLOW_WITHIN_BOUNDARY' | 'DENY';
   locked?: boolean | null;
   match?: Record<string, unknown> | null;
@@ -2105,7 +2105,7 @@ interface SimulatePolicyRequest {
   action: Record<string, unknown>;
   mission_id?: string | null;
   task_id?: string | null;
-  stage?: 'plan' | 'dispatch' | 'action' | null;
+  stage?: 'plan' | 'dispatch' | 'action' | 'start' | null;
   extra_rules?: Record<string, unknown>[] | null;
 }
 ```

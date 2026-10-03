@@ -20,7 +20,7 @@ from typing import ClassVar
 
 from . import ids, states
 from .actions import (ACTION_CLASSES, APPROVAL_KINDS, BOUNDARY_KEYS, DECISIONS, MATCH_KEYS,
-                      Action)
+                      RULE_CLASSES, Action)
 from .values import ORIGINS, PRINCIPAL_SCOPES, SOURCE_KINDS, Ref
 
 _HEX64 = re.compile(r'[0-9a-f]{64}')
@@ -1537,7 +1537,7 @@ class ExecutionNode(Entity):
 #: Rule levels (p9-design-gate §4.1, D1). ACTION is an approval scope, never a
 #: rule's: the most specific "rule" is a valid approval of the exact action.
 SCOPE_LEVELS = ('GLOBAL', 'USER', 'WORKSPACE', 'PROJECT', 'MISSION', 'TASK')
-POLICY_STAGES = ('plan', 'dispatch', 'action')
+POLICY_STAGES = ('plan', 'dispatch', 'action', 'start')
 RULE_SOURCES = ('builtin', 'profile', 'user')
 
 
@@ -1547,7 +1547,7 @@ class PolicyRule(Entity):
     retirement plus the next revision; only `retired_at` is ever written after
     the insert. GLOBAL is Core's own (built-in and profile rules, in code)."""
     _ID = 'policy_rule'
-    _CHOICES = {'scope_level': SCOPE_LEVELS, 'action_class': ACTION_CLASSES,
+    _CHOICES = {'scope_level': SCOPE_LEVELS, 'action_class': RULE_CLASSES,
                 'decision': DECISIONS, 'outside': ('ASK', 'DENY'), 'source': RULE_SOURCES}
     _REFS = {'supersedes_rule_id': 'policy_rule'}
     _MIN1 = ('revision',)

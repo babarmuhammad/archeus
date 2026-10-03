@@ -40,7 +40,7 @@ from . import lifecycle
 
 #: How long a request may wait for its decision (domain-model §9.3, D8).
 TTL = {'plan': timedelta(hours=24), 'task': timedelta(hours=24),
-       'action': timedelta(hours=2)}
+       'action': timedelta(hours=2), 'start': timedelta(hours=24)}
 LIVE = ('PENDING', 'APPROVED')
 #: the pre-P15 reading of "paired", for clients registered before P15 recorded
 #: an `origin`; a local client satisfies step-up (D16, p15-design-gate §6.6)
@@ -196,6 +196,24 @@ def task_hash(plan, task):
                                [actions.item(task.key, a) for _c, _b, a in items_of(task)])
 
 
+def start_action(mission):
+    return Action(action_class='mission.start', target='mission:%s' % mission.id)
+
+
+def start_hash(mission):
+    """The identity of starting *mission* (P19 B6): the mission alone."""
+    return actions.action_hash('start', actions.binding(
+        mission_id=mission.id, plan_id=None, plan_version=None, plan_digest=None),
+        [actions.item(None, start_action(mission))])
+
+
+def judge_start(policy, conn, mission, *, now, actor=None):
+    # the e-stop holds what runs, not what starts: a CREATED mission was always
+    # started while disarmed (the engine's `_step`), and B6 asks only `careful`
+    ctx = dict(context(conn, mission, stage='start', now=now, actor=actor), estop=False)
+    return [dict(judge(policy, start_action(mission), ctx), task=None)], ctx
+
+
 def live_approval(conn, h):
     got = [r for r in rows.where(conn, entities.Approval, action_hash=h)
            if r.entity.state in LIVE]
@@ -272,8 +290,26 @@ def _overall(items):
     return max((i['decision'] for i in items), key=R.STRICTNESS.get, default='ALLOW')
 
 
+def _presented_start(mission, items, why):
+    return {
+        'what': [{'task': None, 'title': None, 'class': i['class'],
+                  'target': i['action']['target'], 'paths': None, 'implied_by': None,
+                  'decision': i['decision'], 'why': i['reason']} for i in items],
+        'why': why,
+        'against': {'mission': {'id': mission.id, 'title': mission.title,
+                                'objective': mission.objective}, 'plan': None, 'task': None},
+        'scope': 'starting this mission',
+        'resources': sorted({i['class'] for i in items}),
+        'consequences': {'approve': 'the mission starts: it is understood and planned',
+                         'reject': 'the mission is cancelled', 'request_changes': None,
+                         'step_up': False},
+        'reusable': 'single-use'}
+
+
 def _presented(tx, kind, mission, plan, task, items, why, step_up):
     """What the user is asked (§8.6): built from rows, model text labelled."""
+    if kind == 'start':
+        return _presented_start(mission, items, why)
     titles = {t.key: t.title for t in _tasks(tx.conn, plan)}
     return {
         'what': [{'task': i['task'], 'title': titles.get(i['task']), 'class': i['class'],
@@ -314,11 +350,12 @@ def request(tx, *, actor, kind, mission, plan, items, h, decision_id, why, ctx, 
     step_up = any(i.get('step_up') for i in items)
     a = entities.Approval(
         id=ids.new_id('approval'), kind=kind,
-        subject=Ref(kind if kind != 'action' else 'execution',
-                    {'plan': plan.id, 'task': task.id if task else None,
-                     'action': execution_id}[kind]),
+        subject=Ref({'action': 'execution', 'start': 'mission'}.get(kind, kind),
+                    {'plan': plan and plan.id, 'task': task.id if task else None,
+                     'action': execution_id, 'start': mission.id}[kind]),
         action_hash=h, requested_by=actor.id, step_up=step_up, mission_id=mission.id,
-        plan_id=plan.id, plan_version=plan.plan_version, plan_digest=plan.digest,
+        plan_id=plan and plan.id, plan_version=plan and plan.plan_version,
+        plan_digest=plan and plan.digest,
         task_id=None if task is None else task.id, execution_id=execution_id,
         presented=_presented(tx, kind, mission, plan, task, items, why, step_up),
         items=tuple({'task': i['task'], 'action': i['action']} for i in items),
@@ -328,7 +365,7 @@ def request(tx, *, actor, kind, mission, plan, items, h, decision_id, why, ctx, 
     from .conversation import approval_card
     approval_card(tx, actor, a, mission)
     tx.append(new_event('approval.requested', Ref('approval', a.id), actor, payload={
-        'kind': kind, 'mission_id': mission.id, 'plan_id': plan.id, 'task_id': a.task_id,
+        'kind': kind, 'mission_id': mission.id, 'plan_id': a.plan_id, 'task_id': a.task_id,
         'action_hash': h, 'step_up': step_up, 'expires_at': a.expires_at},
         workspace=mission.workspace_id, project=mission.project_id))
     return a, True
@@ -563,6 +600,9 @@ def ineligible(conn, a, *, now, approve=True):
     if a.expires_at <= now:
         return 'expired', 'expired at %s' % a.expires_at
     mission = rows.get(conn, entities.Mission, a.mission_id).entity
+    if a.kind == 'start':
+        return None if mission.state == 'CREATED' else (
+            'not_awaiting', 'mission %s is %s' % (mission.id, mission.state))
     prow = active_plan(conn, mission.id)
     plan = None if prow is None else prow.entity
     if plan is None or plan.id != a.plan_id or plan.state not in ('PROPOSED', 'APPROVED'):
@@ -609,7 +649,8 @@ def decide(tx, *, actor, policy, missions, approval_id, decision, action_hash, n
     if bad is not None:
         raise NotEligible(a.id, *bad)
     mission = lifecycle.load(tx, entities.Mission, a.mission_id).entity
-    plan = active_plan(tx.conn, mission.id).entity
+    prow = None if a.kind == 'start' else active_plan(tx.conn, mission.id)
+    plan = None if prow is None else prow.entity
     task = None if a.task_id is None else lifecycle.load(tx, entities.Task, a.task_id).entity
     if decision == 'approve':
         return _approve(tx, actor, policy, missions, row, mission, plan, task, step_up, note,
@@ -620,6 +661,9 @@ def decide(tx, *, actor, policy, missions, approval_id, decision, action_hash, n
                                              else 'rejected by a user device'),
                              fields=_decided(tx, actor, decision, note))
     out = None
+    if kind == 'start':
+        out = missions.cancel(tx, actor=actor, mission_id=mission.id,
+                              reason=note or 'its start was rejected (approval %s)' % a.id)
     if kind == 'route':
         lifecycle.fire(tx, entities.Task, task.id, 'rejected', actor=actor,
                        reason='approval %s: running on the fallback account was rejected' % a.id)
@@ -648,6 +692,8 @@ def _approve(tx, actor, policy, missions, row, mission, plan, task, proof, note,
     if a.kind == 'route':
         return _approve_route(tx, actor, missions, row, mission, task, proof, note, given)
     items = []
+    if a.kind == 'start':                   # the start, judged again
+        items, ctx = judge_start(policy, tx.conn, mission, now=tx.now, actor=actor)
     if a.kind == 'action':                  # the one action it is for, judged again
         ctx = context(tx.conn, mission, stage='action', now=tx.now, task=task, actor=actor,
                       plan=plan, task_classes=[c for c, _b, _x in items_of(task)])
@@ -655,14 +701,14 @@ def _approve(tx, actor, policy, missions, row, mission, plan, task, proof, note,
             r = judge(policy, Action(**_action_kwargs(it['action'])), ctx)
             r.update(task=task.key, task_id=task.id)
             items.append(r)
-    for t in (() if a.kind == 'action' else [task] if task is not None
+    for t in (() if a.kind in ('action', 'start') else [task] if task is not None
               else _tasks(tx.conn, plan)):
         got, ctx = evaluate_task(policy, tx.conn, mission, t.key, t.action_classes,
                                  capabilities=t.capabilities_required, touches=t.touches,
                                  now=tx.now, task=t, actor=actor, plan=plan,
                                  stage='plan' if a.kind == 'plan' else 'dispatch')
         items += got
-    stage = {'plan': 'plan', 'task': 'dispatch', 'action': 'action'}[a.kind]
+    stage = {'plan': 'plan', 'task': 'dispatch', 'action': 'action', 'start': 'start'}[a.kind]
     subject = Ref('approval', a.id)
     denied = [i for i in items if i['decision'] == 'DENY']
     if denied:
@@ -692,6 +738,9 @@ def _approve(tx, actor, policy, missions, row, mission, plan, task, proof, note,
     elif a.kind == 'task':
         out = missions.resume(tx, actor=actor, mission_id=mission.id,
                               reason='task %s approved (approval %s)' % (task.key, a.id))
+    elif a.kind == 'start':
+        out = missions.fire(tx, actor=actor, mission_id=mission.id, trigger='start',
+                            reason='its start approved by a user device (approval %s)' % a.id)
     return _answer(tx, row, mission=out)
 
 
@@ -718,6 +767,33 @@ def _answer(tx, row, *, changed=True, mission=None):
     a = row.entity
     return {'approval_id': a.id, 'kind': a.kind, 'state': a.state, 'decision': a.decision,
             'version': row.version, 'changed': changed, 'mission': mission}
+
+
+def gate_start(tx, *, actor, policy, missions, mission_id):
+    """May a CREATED mission start (P19 S4, p19-design-gate B6)? `mission.start`
+    is judged like any class: ALLOW (`standard`, `autonomous`) fires START now;
+    ASK (`careful`) records the ask and requests a `start` approval once, and
+    the mission waits in CREATED until it is decided (approving fires START,
+    rejecting cancels); DENY (a user's rule) waits and records nothing, since
+    it is judged again on every pass."""
+    m = lifecycle.load(tx, entities.Mission, mission_id).entity
+    if m.state != 'CREATED':
+        return {'started': False, 'waiting': None}
+    items, ctx = judge_start(policy, tx.conn, m, now=tx.now, actor=actor)
+    decision = items[0]['decision']
+    if decision not in ('ASK', 'DENY'):
+        missions.fire(tx, actor=actor, mission_id=m.id, trigger='start',
+                      reason='Archeus starts on the mission')
+        return {'started': True, 'waiting': None}
+    if decision == 'DENY':
+        return {'started': False, 'waiting': 'policy_denied'}
+    h = start_hash(m)
+    if live_approval(tx.conn, h) is None:
+        d = record(tx, actor=actor, stage='start', mission=m, decision='ASK', outcome='asked',
+                   items=items, h=h, ctx=ctx, reason=items[0]['reason'])
+        request(tx, actor=actor, kind='start', mission=m, plan=None, items=items, h=h,
+                decision_id=d.id, why=items[0]['reason'], ctx=ctx)
+    return {'started': False, 'waiting': 'approval_required'}
 
 
 def withdraw(tx, *, actor, mission_id, reason):
@@ -917,6 +993,9 @@ class Authorization:
 
     def record_plan_denial(self, tx, **kw):
         return record_plan_denial(tx, policy=self.policy, missions=self.missions, **kw)
+
+    def gate_start(self, tx, **kw):
+        return gate_start(tx, policy=self.policy, missions=self.missions, **kw)
 
     def evaluate_action(self, tx, **kw):
         return evaluate_action(tx, policy=self.policy, **kw)

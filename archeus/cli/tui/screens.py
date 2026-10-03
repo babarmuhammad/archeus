@@ -42,9 +42,6 @@ ATTENTION_MACHINE = {'approval': 'approval', 'verification': 'verification',
                      'mission': 'mission', 'knowledge': 'knowledge_item',
                      'drift': 'architecture', 'automation': 'automation',
                      'account': 'account_health'}
-ACTION_CLASSES = ('read', 'web', 'write_repo', 'exec', 'git_commit', 'git_push', 'deploy',
-                  'external_comm', 'destructive', 'spend', 'personal_data', 'install',
-                  'credential')
 TAIL = 200
 KNOWLEDGE_STATES = ('', 'CANDIDATE', 'CONFIRMED', 'SUPERSEDED', 'RETRACTED', 'EXPIRED')
 
@@ -709,12 +706,14 @@ def autonomy(app, doc):
                 disabled='This is the profile in force.' if p['user_profile'] == name else None,
                 reread=[endpoints.get_policies()])
     names = list(p['profiles'])
+    # the classes are Core's: every profile names each one (P19 B6 added one)
+    classes = list(p['profiles'][names[0]])
     cell = {(c, n): str(((p['profiles'][n] or {}).get(c) or {}).get('decision') or '—')
-            for c in ACTION_CLASSES for n in names}
-    w = {n: max([len(n)] + [len(cell[c, n]) for c in ACTION_CLASSES]) + 2 for n in names}
+            for c in classes for n in names}
+    w = {n: max([len(n)] + [len(cell[c, n]) for c in classes]) + 2 for n in names}
     doc.add('  ' + T(app, 'Action class'.ljust(16) + ''.join(n.ljust(w[n]) for n in names),
                      'text-2'))
-    for c in ACTION_CLASSES:
+    for c in classes:
         doc.add('  ' + T(app, c.ljust(16)) + ''.join(T(app, cell[c, n].ljust(w[n]))
                                                      for n in names))
     doc.h('Your rules · %d' % len(p['rules']))
@@ -740,7 +739,7 @@ def autonomy(app, doc):
             lambda k, v: app.core.post(endpoints.simulate_policy(),
                                        {'action': {'class': v['class'],
                                                    'target': v.get('target') or None}}),
-            fields=[('class', 'Action class (%s)' % ', '.join(ACTION_CLASSES), True),
+            fields=[('class', 'Action class (%s)' % ', '.join(classes), True),
                     ('target', 'Target (optional)', False)],
             done=keep, sent='Simulated — nothing was done.')
     if got:

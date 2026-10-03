@@ -16,14 +16,21 @@ ACTION_CLASSES = (
     'read', 'web', 'write_repo', 'exec', 'git_commit', 'git_push', 'deploy',
     'external_comm', 'destructive', 'spend', 'personal_data', 'install', 'credential',
 )
+#: What Core itself does, never a task's: judged like any class and named by a
+#: rule, never declared by a plan. `mission.start` is firing START on a mission
+#: (P19 S4, p19-design-gate B6).
+CORE_CLASSES = ('mission.start',)
+#: every class a rule or a judged action may name
+RULE_CLASSES = ACTION_CLASSES + CORE_CLASSES
 
 #: The four policy decisions, used everywhere (state-machines §0).
 DECISIONS = ('ALLOW', 'ASK', 'ALLOW_WITHIN_BOUNDARY', 'DENY')
 
 #: What an approval or a decision can be about (p9-design-gate §8.1). `route`
 #: (P10, resource-router §7) is consent to run one task on a fallback account
-#: whose policy says `ask`: it authorises no action.
-APPROVAL_KINDS = ('plan', 'task', 'action', 'route')
+#: whose policy says `ask`: it authorises no action. `start` (P19 B6) is consent
+#: to start one mission, bound to the mission alone: it has no plan yet.
+APPROVAL_KINDS = ('plan', 'task', 'action', 'route', 'start')
 #: The identity an authorisation is bound to (§7.2): exactly these keys.
 BINDING_KEYS = ('mission_id', 'plan_id', 'plan_version', 'plan_digest', 'task_id',
                 'task_key', 'execution_id')
@@ -50,7 +57,7 @@ class Action:
     host: str = None
 
     def __post_init__(self):
-        if self.action_class not in ACTION_CLASSES:
+        if self.action_class not in RULE_CLASSES:
             raise ValueError('unknown action class: %r' % (self.action_class,))
         if not (isinstance(self.target, str) and self.target):
             raise ValueError('an action needs a target')
@@ -97,7 +104,11 @@ def action_hash(kind, bind, items):
         raise ValueError('unknown approval kind: %r' % (kind,))
     if set(bind) != set(BINDING_KEYS):
         raise ValueError('a binding names exactly %s' % (BINDING_KEYS,))
-    if not (bind['mission_id'] and bind['plan_id'] and bind['plan_digest']):
+    if kind == 'start':
+        if not bind['mission_id'] or any(v is not None for k, v in bind.items()
+                                         if k != 'mission_id'):
+            raise ValueError('a start binding names its mission and nothing else')
+    elif not (bind['mission_id'] and bind['plan_id'] and bind['plan_digest']):
         raise ValueError('a binding names its mission, plan and plan digest')
     body = {'v': 1, 'kind': kind, 'binding': dict(bind),
             'items': sorted((dict(i) for i in items), key=_json)}
