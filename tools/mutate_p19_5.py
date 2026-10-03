@@ -146,6 +146,9 @@ PAL_TS = 'node:test/palette.test.ts'
 CMDBAR = 'clients/app/src/surfaces/CommandBar.tsx'
 PAL_E2E = 'tests/v1/e2e/test_spa_palette.py::test_the_palette_moves_by_arrows_and_acts_by_cores_verbs'
 
+CAGE_TS = 'node:test/cage.test.ts'
+CAGE_E2E = 'tests/v1/e2e/test_spa_cage.py::test_a_large_project_at_the_world_level_is_a_still_cage'
+
 MUTATIONS = [
     # ── the registry ──
     ('N01', 'a registered motion allowed to replay', [(REG,
@@ -1167,6 +1170,24 @@ MUTATIONS = [
      "const ACT = { pause: (id: string, v: number, key: string) => api.pauseMission(",
      "const ACT = { pause: (id: string, v: number, key: string) => api.resumeMission(")],
      [PAL_E2E]),
+    # R12: the static project cage (ADR-0025 §4)
+    ('N289', 'the cage outside the world level', [(RENDER,
+     "export const cageShown = (world: boolean, k: number) => world && 2 * radiusOf('cluster') * k >= CAGE_MIN_PX;",
+     "export const cageShown = (world: boolean, k: number) => (world || !world) && 2 * radiusOf('cluster') * k >= CAGE_MIN_PX;")],
+     [CAGE_TS, CAGE_E2E]),
+    ('N290', 'the cage however small', [(RENDER,
+     "world && 2 * radiusOf('cluster') * k >= CAGE_MIN_PX;", "world && 2 * radiusOf('cluster') * k >= 0;")],
+     [CAGE_TS, CAGE_E2E]),
+    ('N291', 'a cage without its junctions', [(RENDER,
+     "    ctx.arc(x + p.x * r, y + p.y * r, JUNCTION * r, 0, Math.PI * 2);\n", "")],
+     [CAGE_TS, CAGE_E2E]),
+    ('N292', 'the cage turns with time', [(RENDER,
+     "function drawCage(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, colour: string) {\n",
+     "function drawCage(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, colour: string) {\n  x += Math.sin(Date.now()) * 0.001 * r;\n")],
+     [CAGE_TS]),
+    ('N293', 'the view never says it is the world level', [(GV,
+     "      world: !focus && !map,\n", "")],
+     [CAGE_E2E]),
 ]
 
 if __name__ == '__main__':

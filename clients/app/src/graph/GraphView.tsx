@@ -263,6 +263,7 @@ function Canvas({ data, focus, modules, path, stale, map = false }: { data: Grap
       liveStatic: reducedMotion(),
       halo,
       opaque: opaque(),
+      world: !focus && !map,
       pulse,
       marker,
       colour: (v) => styles.getPropertyValue(v).trim() || '#888',

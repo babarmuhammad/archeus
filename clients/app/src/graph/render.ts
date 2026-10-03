@@ -45,6 +45,7 @@ export interface Scene {
   marker?: ReadonlyMap<string, number>; // markerTarget → 0..1 of its travel
   halo: ReadonlySet<string>; // node keys with live work (model.haloed): a static ring each
   opaque?: boolean; // forced colours or reduced transparency: every alpha token opaque (ADR-0028 §3)
+  world?: boolean; // the world level (no focus, not the live map): a large project is its cage (ADR-0025 §4)
   degraded?: boolean; // frames run slow (Loop.degraded): no pulse, the focus's label only
   colour: (cssVar: string) => string;
   width: number;
@@ -460,6 +461,55 @@ function drawHalos(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
   ctx.globalAlpha = 1;
 }
 
+// ── the project cage (ADR-0025 §4, rulebook §12, R12) ──
+// A project cluster at the world level is a STATIC 12-junction cage when it is
+// drawn at least 48 px across, and its circle below that. The cage is an
+// icosahedron's wireframe seen along one face's axis — its 12 vertices fall on
+// 12 distinct points, its 30 edges are fine lines — computed once here, the
+// same every frame: it never rotates and nothing about it animates.
+
+export const CAGE_MIN_PX = 48;
+const PHI = (1 + Math.sqrt(5)) / 2;
+
+function cageGeometry(): { points: Point[]; edges: [number, number][] } {
+  const v: [number, number, number][] = [];
+  for (const a of [-1, 1]) for (const b of [-PHI, PHI]) v.push([0, a, b], [a, b, 0], [b, 0, a]);
+  const edges: [number, number][] = [];
+  for (let i = 0; i < v.length; i++)
+    for (let j = i + 1; j < v.length; j++) if (Math.abs(Math.hypot(v[i][0] - v[j][0], v[i][1] - v[j][1], v[i][2] - v[j][2]) - 2) < 1e-9) edges.push([i, j]);
+  // look along the axis of the face (0,1,φ) (0,-1,φ) (φ,0,1): rotate its normal onto z
+  const n = [PHI / 3, 0, (2 * PHI + 1) / 3];
+  const len = Math.hypot(n[0], n[1], n[2]);
+  const [nx, nz] = [n[0] / len, n[2] / len]; // n lies in the x-z plane: a rotation about y
+  const flat = v.map(([x, y, z]): Point => ({ x: x * nz - z * nx, y }));
+  const r = Math.max(...flat.map((p) => Math.hypot(p.x, p.y)));
+  return { points: flat.map((p) => ({ x: p.x / r, y: p.y / r })), edges };
+}
+
+/** The cage in unit coordinates: 12 junctions, 30 edges. */
+export const CAGE = cageGeometry();
+export const JUNCTION = 0.09; // a junction's radius, a fraction of the cage's
+
+/** Whether a project is drawn as its cage at zoom *k*. */
+export const cageShown = (world: boolean, k: number) => world && 2 * radiusOf('cluster') * k >= CAGE_MIN_PX;
+
+function drawCage(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, colour: string) {
+  ctx.strokeStyle = colour;
+  ctx.beginPath();
+  for (const [a, b] of CAGE.edges) {
+    ctx.moveTo(x + CAGE.points[a].x * r, y + CAGE.points[a].y * r);
+    ctx.lineTo(x + CAGE.points[b].x * r, y + CAGE.points[b].y * r);
+  }
+  ctx.stroke();
+  ctx.fillStyle = colour;
+  ctx.beginPath();
+  for (const p of CAGE.points) {
+    ctx.moveTo(x + p.x * r + JUNCTION * r, y + p.y * r);
+    ctx.arc(x + p.x * r, y + p.y * r, JUNCTION * r, 0, Math.PI * 2);
+  }
+  ctx.fill();
+}
+
 function drawNodes(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
   ctx.setLineDash([]);
   if (stats.lod === 'dots') {
@@ -497,8 +547,8 @@ function drawNodes(ctx: CanvasRenderingContext2D, s: Scene, stats: DrawStats) {
     ctx.globalAlpha = alphaOf(s, k);
     ctx.lineWidth = 1 / s.cam.k;
     ctx.setLineDash(look.shape === 'endpoint' ? [1.5, 3] : []);
-    const { filled } = tracePath(ctx, look.shape, p.x, p.y, radiusOf(look.shape));
-    if (filled) {
+    if (look.shape === 'cluster' && cageShown(!!s.world, s.cam.k)) drawCage(ctx, p.x, p.y, radiusOf('cluster'), col);
+    else if (tracePath(ctx, look.shape, p.x, p.y, radiusOf(look.shape)).filled) {
       ctx.fillStyle = col;
       ctx.fill();
     } else {
