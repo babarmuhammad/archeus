@@ -243,7 +243,8 @@ become change cards; the preference or policy version a directive produced recor
 
 **As built (P7, p7-design-gate §4–§5):** Message also has `in_reply_to`, `intent_id` and
 `principal_id`; a card is `{type, ref, ...}` and a link `{ref}`, and card types add `mission`,
-`idea`, `challenge`, `clarification`, `knowledge` and `status`. Intent also has `via` (grammar /
+`idea`, `challenge`, `clarification`, `knowledge` and `status` (P19 B10 adds `estop` and
+`stop`, the two confirmations, and emits `route_explanation` on `why`). Intent also has `via` (grammar /
 brain), `workspace_id`, `project_id`, `conflicts`, `reason`, `proposal` (the validated,
 resolved reading a challenge choice is applied from), `route_decision_id`,
 `context_package_id` and `answers_intent_id`; one message has at most one intent (unique). A

@@ -22,7 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
 
 @pytest.mark.parametrize('text, verb, arg', [
     ('pause Ship it', 'pause', 'Ship it'), ('resume Ship it.', 'resume', 'Ship it'),
-    ('stop Ship it', 'cancel', 'Ship it'), ('cancel  Ship   it!', 'cancel', 'Ship it'),
+    ('stop Ship it', 'stop', 'Ship it'), ('cancel  Ship   it!', 'cancel', 'Ship it'),
     ('status', 'status', ''), ('Status archeus', 'status', 'archeus'),
     ('why rte_01', 'why', 'rte_01'), ('approve', 'approve', ''), ('reject', 'reject', ''),
     ('reprioritize x', 'reprioritise', 'x'), ('reprioritise', 'reprioritise', ''),

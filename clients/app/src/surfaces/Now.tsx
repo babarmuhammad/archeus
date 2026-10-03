@@ -4,7 +4,7 @@
 // the live map and the conversation. Composed from Core's reads (S5).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { paths, api, type Approval, type ApprovalList, type Sync, type AutomationList, type Digest, type KnowledgeList, type Message, type MessageList, type MissionList, type RouteDecisionList, type Status } from '../api/generated';
+import { paths, api, type Approval, type ApprovalList, type Sync, type AutomationList, type Digest, type KnowledgeList, type Message, type MessageList, type MissionList, type RouteDecision, type RouteDecisionList, type Status } from '../api/generated';
 import { announce } from '../a11y/announce';
 import { send } from '../data/core';
 import { store, useRead } from '../data/cache';
@@ -324,7 +324,7 @@ function MessageRow({ m, conversation }: { m: Message; conversation: string }) {
       {m.cards.length || bare.length ? (
         <div className="cards">
           {m.cards.map((c, i) => (
-            <CardRef key={i} type={c.type} kind={c.ref.kind} id={c.ref.id} intent={m.intent_id ?? undefined} changed={changed(c.ref.kind, c.ref.id)} conversation={conversation} />
+            <CardRef key={i} type={c.type} kind={c.ref.kind} id={c.ref.id} intent={m.intent_id ?? undefined} changed={changed(c.ref.kind, c.ref.id)} conversation={conversation} message={m.id} />
           ))}
           {bare.map((l) => (
             <a key={l.kind + l.id} className="card" href={objectHref(l.kind, l.id)} data-ref={`${l.kind}:${l.id}`} {...thread(changed(l.kind, l.id))}>
@@ -341,7 +341,7 @@ function MessageRow({ m, conversation }: { m: Message; conversation: string }) {
 
 /** A card is a link to the live object, labelled by its type. Challenge and
  * clarification cards answer through P7's command. */
-function CardRef({ type, kind, id, intent, changed, conversation }: { type: string; kind: string; id: string; intent?: string; changed: boolean; conversation: string }) {
+function CardRef({ type, kind, id, intent, changed, conversation, message }: { type: string; kind: string; id: string; intent?: string; changed: boolean; conversation: string; message: string }) {
   const [answer, setAnswer] = useState('');
   if ((type === 'challenge' || type === 'clarification') && kind === 'intent') {
     return (
@@ -366,6 +366,9 @@ function CardRef({ type, kind, id, intent, changed, conversation }: { type: stri
     );
   }
   if (type === 'approval' && kind === 'approval') return <ChatApproval id={id} conversation={conversation} />;
+  if (type === 'estop') return <ChatEstop />;
+  if (type === 'stop' && kind === 'mission') return <ChatStop id={id} conversation={conversation} message={message} />;
+  if (type === 'route_explanation' && kind === 'route_decision') return <ChatRouteExplanation id={id} />;
   return (
     <a className="card" href={objectHref(kind, id)} data-ref={`${kind}:${id}`} {...thread(changed)}>
       <span className="card-type">{type.replace('_', ' ')}</span> {kind === 'mission' ? <LiveMission id={id} /> : <RefLabel kind={kind} id={id} />}
@@ -404,6 +407,57 @@ function ChatApproval({ id, conversation }: { id: string; conversation: string }
         </div>
       )}
     </article>
+  );
+}
+
+/** `emergency stop` said in the conversation (P19 B10): the card is its
+ * confirmation and runs the strip's own command (G2). */
+function ChatEstop() {
+  const st = useRead<Status>(paths.status());
+  return (
+    <article className="card" aria-label="emergency stop">
+      <p>Every running execution is killed now and Archeus refuses new work until you re-arm it. Missions are not lost; they wait.</p>
+      {st.data && !st.data.armed ? (
+        <p className="hint">The emergency stop is engaged.</p>
+      ) : (
+        <div className="row">
+          <ActionButton label="Emergency stop" scope="control" kind="danger" run={(key) => api.estop(send(), { idempotency_key: key })} reread={['/v1']} />
+        </div>
+      )}
+    </article>
+  );
+}
+
+/** `stop` on a running mission (P19 B10, C-33): one card that, confirmed,
+ * pauses then cancels it; Core does both in the confirming turn. */
+function ChatStop({ id, conversation, message }: { id: string; conversation: string; message: string }) {
+  const m = useRead<{ state: string; title: string }>(paths.getMission(id));
+  const open = m.data && (m.data.state === 'EXECUTING' || m.data.state === 'PAUSED');
+  return (
+    <article className="card" aria-label="stop mission" data-ref={`mission:${id}`}>
+      <p>
+        Stop {m.data ? `“${m.data.title}”` : 'this mission'}: it is paused, then cancelled. A cancelled mission does not come back.
+      </p>
+      {m.data && !open ? (
+        <p className="hint">
+          This mission is {m.data.state.toLowerCase()}. <StateBadge machine="mission" state={m.data.state} />
+        </p>
+      ) : (
+        <div className="row">
+          <ActionButton label="Stop mission" scope="control" kind="danger" run={(key) => api.postMessage(send(), conversation, { text: 'stop', confirm: { message_id: message }, idempotency_key: key })} reread={[paths.listMessages(conversation), paths.getMission(id), paths.listMissions()]} />
+        </div>
+      )}
+    </article>
+  );
+}
+
+/** `why`'s card (P19 B10, G5): the RouteDecision itself, read from Core. */
+function ChatRouteExplanation({ id }: { id: string }) {
+  const rd = useRead<RouteDecision>(paths.getRouteDecision(id));
+  return (
+    <a className="card" href={objectHref('route_decision', id)} data-ref={`route_decision:${id}`} aria-label="route explanation">
+      <span className="card-type">route explanation</span> {rd.data ? rd.data.explanation : <RefLabel kind="route_decision" id={id} />}
+    </a>
   );
 }
 

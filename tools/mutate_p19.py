@@ -4,7 +4,8 @@ implementation (P01-P08); B2, the change rule on the Relations list and the
 TUI (P09-P14); B11, the generated client everywhere (P15-P20); B3, a mission's own
 conversation and the mission Now tab (P21-P30); B5, chat approve / reject
 is the card's decision (P31-P40); B6, mission confirmation under `careful`
-(P41-P50).
+(P41-P50); B10a, `emergency stop`, `stop <running mission>` and the
+explanation card (P51-P62).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -56,6 +57,10 @@ RULES = 'archeus/core/policy/rules.py'
 ENGINE = 'archeus/core/engine.py'
 PORTS = 'archeus/core/ports.py'
 SC_ = 'tests/v1/integration/test_start_confirmation.py::'
+CV = 'tests/v1/integration/test_chat_verbs.py::'
+TUI_CV = 'tests/v1/tui/test_chat_verbs.py::'
+STOP_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
+            'test_the_stop_and_emergency_stop_cards_confirm_what_the_words_only_asked')
 CLI_STATUS = ('tests/v1/integration/test_cli_v1.py::'
               'test_status_of_a_mission_prints_what_core_reports_and_a_refusal_in_its_words')
 
@@ -260,6 +265,52 @@ MUTATIONS = [
      "    classes = list(p['profiles'][names[0]])\n",
      "    classes = [c for c in p['profiles'][names[0]] if c != 'mission.start']\n")],
      ['tests/v1/tui/test_acceptance.py::test_the_autonomy_matrix_lists_every_class_core_judges']),
+    # ── B10a: `emergency stop`, `stop <running mission>`, the explanation card ──
+    ('P51', '`emergency stop` is read from any words that begin with it', [(GRAM,
+     "        return Control('estop', None, '') if key(p.arg) == 'stop' else None",
+     "        return Control('estop', None, '')")],
+     [CV + 'test_the_grammar_reads_emergency_stop_and_stop_by_the_missions_state']),
+    ('P52', '`emergency stop` answers with no card to confirm it', [(CONV,
+     "            cards.append(_card('estop', 'workspace', ids.GLOBAL_WORKSPACE))\n", "")],
+     [CV + 'test_emergency_stop_asks_and_its_card_is_the_strips_command']),
+    ('P53', '`stop` on a running mission is a plain cancel', [(GRAM,
+     "            verb = 'stop_running' if m.state == 'EXECUTING' else 'cancel'",
+     "            verb = 'cancel'")],
+     [CV + 'test_stop_on_a_running_mission_asks_then_pauses_and_cancels_it_in_one_turn']),
+    ('P54', 'the confirmed stop does not pause first', [(CONV,
+     "        if m.state == 'EXECUTING':\n            self.missions.pause(",
+     "        if False:\n            self.missions.pause(")],
+     [CV + 'test_stop_on_a_running_mission_asks_then_pauses_and_cancels_it_in_one_turn']),
+    ('P55', 'a confirmation may name any message', [(CONV,
+     "        if row is None or row.entity.author != 'archeus' or not stop:",
+     "        if row is None:")],
+     [CV + 'test_a_confirmation_must_name_a_stop_card_and_say_stop']),
+    ('P56', 'a confirmation need not say stop', [(CONV,
+     "        if p is None or p.verb != 'stop':\n            raise ValueError('a message confirming",
+     "        if p is None:\n            raise ValueError('a message confirming")],
+     [CV + 'test_a_confirmation_must_name_a_stop_card_and_say_stop']),
+    ('P57', '`why` attaches no route_explanation card', [(CONV,
+     "                cards.append(_card('route_explanation', 'route_decision', rd))\n", "")],
+     [CV + 'test_why_attaches_the_route_explanation_card_equal_to_the_record']),
+    ('P58', "the explanation's words diverge from the record", [(CONV,
+     "    return got[-1].explanation, got[-1].id",
+     "    return 'Routing: ' + got[-1].explanation, got[-1].id")],
+     [CV + 'test_why_attaches_the_route_explanation_card_equal_to_the_record']),
+    ('P59', "the TUI's stop card confirms the mission, not its own card", [(SCR,
+     "'confirm': {'message_id': m['id']}}),", "'confirm': {'message_id': id_}}),")],
+     [TUI_CV + 'test_the_stop_card_posts_the_confirming_turn_naming_its_own_message']),
+    ('P60', "the TUI's emergency-stop card runs another command", [(SCR,
+     "                                         lambda key, v: app.core.post(endpoints.estop(),",
+     "                                         lambda key, v: app.core.post(endpoints.rearm(),")],
+     [TUI_CV + 'test_the_estop_card_runs_the_strips_command_and_says_when_it_is_engaged']),
+    ('P61', "the SPA's stop card confirms the mission, not its own card", [(NOW,
+     "{ text: 'stop', confirm: { message_id: message }, idempotency_key: key }",
+     "{ text: 'stop', confirm: { message_id: message && id }, idempotency_key: key }")],
+     [STOP_E2E]),
+    ('P62', "the SPA's emergency-stop card runs another command", [(NOW,
+     "run={(key) => api.estop(send(), { idempotency_key: key })} reread={['/v1']} />\n        </div>\n      )}\n    </article>\n  );\n}\n\n/** `stop` on",
+     "run={(key) => api.rearm(send(), { idempotency_key: key })} reread={['/v1']} />\n        </div>\n      )}\n    </article>\n  );\n}\n\n/** `stop` on")],
+     [STOP_E2E]),
 ]
 
 if __name__ == '__main__':

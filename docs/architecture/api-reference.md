@@ -303,7 +303,7 @@ interface AutomationWritten {
 
 ```ts
 interface Card {
-  type: 'mission_proposal' | 'plan' | 'approval' | 'route_explanation' | 'diff' | 'verification' | 'digest' | 'mission' | 'idea' | 'challenge' | 'clarification' | 'knowledge' | 'status';
+  type: 'mission_proposal' | 'plan' | 'approval' | 'route_explanation' | 'diff' | 'verification' | 'digest' | 'mission' | 'idea' | 'challenge' | 'clarification' | 'knowledge' | 'status' | 'estop' | 'stop';
   ref: Subject;
   [field: string]: unknown;
 }
@@ -2044,6 +2044,9 @@ interface PostMessageRequest {
     approval_id: string;
     action_hash: string;
     expected_version?: number | null;
+  } | null;
+  confirm?: {
+    message_id: string;
   } | null;
   step_up?: string | null;
   idempotency_key: string;

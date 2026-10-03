@@ -2,9 +2,11 @@
 
 A control verb is recognised and resolved without a model: `pause <mission>`,
 `resume <mission>`, `stop <mission>` / `cancel <mission>`, `status [<project>]`,
-`why <id>`, `remember [that] <text>`, and `approve`, `reject`,
-`reprioritise` (recognised, and answered that their phase has not arrived:
-approvals are P9's, priorities P10's). A reference is an id, or the exact title
+`why <id>`, `remember [that] <text>`, `approve` / `reject` (bound to a card,
+P19 S3), `pause all` / `resume all`, `reprioritise <mission> [to] <n>`, and
+`emergency stop` (P19 B10), which only asks: its card confirms it. `stop` on an
+EXECUTING mission is `stop_running`, one card that pauses then cancels it
+(C-33). A reference is an id, or the exact title
 (case and spacing aside) of one open mission / one project. Anything that does
 not match whole, or whose reference does not resolve to exactly one object, is
 not a control verb, and goes to the brain — so a sentence that happens to
@@ -20,9 +22,10 @@ from ...infra.db import rows
 from ..domain import entities, ids, states
 
 #: word -> verb
-VERBS = {'pause': 'pause', 'resume': 'resume', 'stop': 'cancel', 'cancel': 'cancel',
+VERBS = {'pause': 'pause', 'resume': 'resume', 'stop': 'stop', 'cancel': 'cancel',
          'status': 'status', 'why': 'why', 'remember': 'remember', 'approve': 'approve',
-         'reject': 'reject', 'reprioritise': 'reprioritise', 'reprioritize': 'reprioritise'}
+         'reject': 'reject', 'reprioritise': 'reprioritise', 'reprioritize': 'reprioritise',
+         'emergency': 'estop'}
 MISSION_VERBS = ('pause', 'resume', 'cancel')
 #: `pause all` / `resume all` (P19.5, ADR-0042 §1): the all-scope verb wins over a
 #: mission titled "all", which stays reachable by its id
@@ -85,6 +88,9 @@ def resolve(conn, text, mission=None):
         return Control(p.verb, None, p.arg)       # bound to a card, never to its words
     if p.verb == 'remember':
         return Control('remember', None, p.arg)
+    if p.verb == 'estop':
+        # `emergency stop` only asks: the card confirms it (P19 B10, ADR-0042 §1)
+        return Control('estop', None, '') if key(p.arg) == 'stop' else None
     if p.verb in ALL_VERBS and key(p.arg) == 'all':
         return Control(ALL_VERBS[p.verb], None, '')
     if p.verb == 'reprioritise':
@@ -94,11 +100,18 @@ def resolve(conn, text, mission=None):
             return None                     # an object that does not resolve: the brain's
         return Control('reprioritise', {'kind': 'mission', 'id': m.id},
                        got.group(2) if got else '')
-    if p.verb in MISSION_VERBS:
+    if p.verb in MISSION_VERBS + ('stop',):
         m = _mission(conn, p.arg) if p.arg else None
         if m is None and mission and not p.arg:
             m = rows.get(conn, entities.Mission, mission).entity
-        return None if m is None else Control(p.verb, {'kind': 'mission', 'id': m.id}, p.arg)
+        if m is None:
+            return None
+        verb = p.verb
+        if verb == 'stop':
+            # a running mission has no cancel edge: one card pauses, then cancels
+            # it (C-33); any other mission is cancelled as before
+            verb = 'stop_running' if m.state == 'EXECUTING' else 'cancel'
+        return Control(verb, {'kind': 'mission', 'id': m.id}, p.arg)
     if p.verb == 'status':
         if not p.arg:
             return Control('status', None, '')

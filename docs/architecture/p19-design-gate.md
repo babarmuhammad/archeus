@@ -657,6 +657,44 @@ offline cold start on a phone.
     waiting mission once, so the test now restarts Core and asserts the start is still asked only
     once.
 
+**Slice 5a (B10: `emergency stop`, `stop <running mission>`, the explanation card), 2026-10-03.**
+The user chose, before implementation: the mixed confirmation path, change cards in the
+conversation only, and B10 in two commits (5a, then 5b).
+
+30. **`emergency stop` only asks.** The grammar reads exactly `emergency stop` (case, spacing and
+    end punctuation aside; anything longer is the brain's). The reply carries an `estop` card and
+    nothing is engaged. The card's button is the strip's own command, `POST /v1/estop` with the
+    `control` scope, so the sentinel is written first exactly as from the strip (G2). A client
+    shows "The emergency stop is engaged." instead of the button while `/v1/status` says
+    disarmed.
+31. **`stop <running mission>` is one confirmation card** (C-33). `stop` on an EXECUTING mission
+    (named, or bare in its thread) answers with a `stop` card and stops nothing; `stop` on any
+    other mission cancels it as before, and `cancel` is unchanged. Confirming the card posts a
+    turn that says `stop` and carries `confirm: {message_id}`, the message holding the card. Core
+    reads the mission from that card, never from the words, and in the turn's transaction
+    pauses it if it is EXECUTING and then cancels it: two existing edges, no new one. A mission
+    that can no longer be cancelled is `422 invalid_transition` and the turn is rolled back. A
+    confirmation naming a message without a `stop` card, or not saying `stop`, is `400` and
+    writes nothing.
+32. **One new optional field on the message post** (deviation from §7, which lists only
+    `decision` for the message post): `confirm: {message_id}`. A body carrying both `decision`
+    and `confirm` is refused. Scope: the route's `control`.
+33. **Two card types** (`estop`, `stop`), added to `CARD_TYPES`. The `estop` card's ref is the
+    global workspace, as the `status` card's is.
+34. **`why` attaches a `route_explanation` card** whose ref is the RouteDecision, and the
+    reply's text is that record's `explanation` (G5). For `why <execution>` the text is the live
+    explanation (P12's `explain`, which quotes the record) and the card names the execution's own
+    RouteDecision. As with the approval card (item 16), the card carries the ref and a client
+    reads the record itself.
+35. **Not built here:** `stop all` (C-33 maps "stop/pause all" to Pause all; ADR-0042 §1 and B10
+    name only `pause all`), so `stop all` still resolves a mission titled "all" or goes to the
+    brain.
+36. **Mutants P51-P62** (B10a): `emergency stop` read from longer words, the card missing, `stop`
+    on a running mission a plain cancel, the confirmation not pausing first, accepting any
+    message or any word, `why` without its card or with words that differ from the record, the
+    TUI's and the SPA's stop card confirming the mission instead of its own card, and both
+    clients' emergency-stop card running another command. All twelve killed.
+
 ## 13. As built
 
 (empty until implementation)

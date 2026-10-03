@@ -694,6 +694,13 @@ def post_message(req):
     hash exactly as `/decide`, decided in the same transaction as the turn."""
     b = req.body
     d = b.get('decision')
+    if d is not None and b.get('confirm') is not None:
+        raise ValueError('a message carries a decision or a confirmation, not both')
+    if b.get('confirm') is not None:
+        # a `stop` card's confirmation (P19 B10, C-33): the route's `control` scope
+        return 200, req.run(req.api.conversations.confirm_by_message, {
+            'text': b['text'], 'conversation_id': req.params['id'],
+            'message_id': b['confirm']['message_id']})
     if d is None:
         return 200, req.run(conversation.post_message, {
             'text': b['text'], 'conversation_id': req.params['id'],

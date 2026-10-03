@@ -226,6 +226,17 @@ class Conversations:
         elif verb in ('pause', 'resume', 'cancel'):
             text, resolution = self._mission_verb(tx, actor, verb, target['id'], msg)
             cards.append(_card('mission', 'mission', target['id']))
+        elif verb == 'estop':
+            # asked, never done from the words: the card runs the strip's command
+            text = ('An emergency stop kills every running execution now and refuses new work '
+                    'until a device re-arms it; missions wait, nothing is lost. Confirm it on '
+                    'the card.')
+            cards.append(_card('estop', 'workspace', ids.GLOBAL_WORKSPACE))
+        elif verb == 'stop_running':
+            m = lifecycle.load(tx, entities.Mission, target['id']).entity
+            text = ('Stopping "%s" pauses it, then cancels it; a cancelled mission does not '
+                    'come back. Confirm it on the card.' % m.title)
+            cards.append(_card('stop', 'mission', m.id))
         elif verb in ('pause_all', 'resume_all'):
             text, resolution, moved = self._all_verb(tx, actor, verb, msg)
             for mid in moved:
@@ -240,13 +251,45 @@ class Conversations:
             cards.append(_card('status', target['kind'] if target else 'workspace',
                                target['id'] if target else ids.GLOBAL_WORKSPACE))
         elif verb == 'why':
-            text = _why(tx, target)
+            text, rd = _why(tx, target)
+            if rd is not None:              # the card is the record (G5); the text its words
+                cards.append(_card('route_explanation', 'route_decision', rd))
+                links.append({'ref': {'kind': 'route_decision', 'id': rd}})
         else:                                               # remember
             text, k = _remember(tx, actor, arg, msg)
             cards.append(_card('knowledge', 'knowledge_item', k))
             links.append({'ref': {'kind': 'knowledge_item', 'id': k}})
         it = _set(tx, actor, it, resolution=resolution)
         return _reply(tx, actor, msg, it, text, cards, links)
+
+    def confirm_by_message(self, tx, *, actor, text, conversation_id, message_id):
+        """Confirm on a `stop` card (P19 B10, C-33): the turn, its reading and
+        the stop — pause if it runs, then cancel — in one transaction, by the
+        poster's principal. The mission is the card's, never the words'; a
+        mission that can no longer be cancelled writes nothing."""
+        from .grammar import parse
+        p = parse(text)
+        if p is None or p.verb != 'stop':
+            raise ValueError('a message confirming a stop card says stop')
+        row = tx.get(entities.Message, message_id)
+        stop = [c for c in (row.entity.cards if row else ()) if c['type'] == 'stop']
+        if row is None or row.entity.author != 'archeus' or not stop:
+            raise ValueError('confirm names an Archeus message carrying a stop card')
+        mid = stop[0]['ref']['id']
+        posted = post_message(tx, actor=actor, text=text, conversation_id=conversation_id)
+        msg = tx.get(entities.Message, posted['message_id']).entity
+        it = _intent(tx, actor, msg, kind='control_verb', via='grammar',
+                     target_refs=({'kind': 'mission', 'id': mid},), reason='stop')
+        m = lifecycle.load(tx, entities.Mission, mid).entity
+        why = 'stop: confirmed in message %s' % msg.id
+        if m.state == 'EXECUTING':
+            self.missions.pause(tx, actor=actor, mission_id=mid, reason=why)
+        self.missions.cancel(tx, actor=actor, mission_id=mid, reason=why)
+        it = _set(tx, actor, it, resolution='mission_updated')
+        r = _reply(tx, actor, msg, it, 'Stopped "%s": %s -> CANCELLED.' % (m.title, m.state),
+                   cards=[_card('mission', 'mission', mid)],
+                   links=[{'ref': {'kind': 'mission', 'id': mid}}])
+        return dict(r, message_id=msg.id, conversation_id=posted['conversation_id'])
 
     def _mission_verb(self, tx, actor, verb, mission_id, msg):
         m = lifecycle.load(tx, entities.Mission, mission_id).entity
@@ -644,19 +687,20 @@ def _status(tx, target):
 
 
 def _why(tx, target):
+    """(the words, the RouteDecision they explain or None)."""
     if target['kind'] == 'execution':
         from .live import explain
         row = tx.get(entities.Execution, target['id'])
         if row is None:
-            return 'There is no execution %s.' % target['id']
-        return explain(tx.conn, row.entity)
+            return 'There is no execution %s.' % target['id'], None
+        return explain(tx.conn, row.entity), row.entity.route_decision_id
     got = [r.entity for r in tx.where(entities.RouteDecision)
            if r.entity.id == target['id']
            or (r.entity.source is not None and r.entity.source.id == target['id'])]
     if not got:
         return 'No resource was chosen for %s, so there is nothing to explain yet.' % (
-            target['id'],)
-    return got[-1].explanation
+            target['id'],), None
+    return got[-1].explanation, got[-1].id
 
 
 def _remember(tx, actor, text, msg):

@@ -118,3 +118,40 @@ def test_an_approval_card_in_the_thread_decides_it_as_attention_does(browser, de
     check(not errors, 'no console errors: %s' % errors)
     context.close()
     assert check.n >= 6, 'ran %d checks' % check.n
+
+
+def test_the_stop_and_emergency_stop_cards_confirm_what_the_words_only_asked(browser, slow):  # noqa: F811
+    """P19 B10 (C-33, G2): `stop` on a running mission answers with a card whose
+    Stop mission sends the confirming turn, and Core pauses then cancels it;
+    `emergency stop` answers with a card whose button is the strip's command."""
+    from archeus.node.local import LocalNode
+    check = Checks()
+    mid = _mission(slow, 'Stop from the thread')
+    _settled(slow, mid, 'EXECUTING')
+    _sent, reply = _say(slow, mid, 'stop')
+    check([c['type'] for c in reply['cards']] == ['stop'], 'the words only asked')
+    context, page, errors = _context(browser, slow, viewport={'width': 1280, 'height': 1100})
+    try:
+        _go(page, '#/o/mission/%s/now' % mid)
+        card = page.locator('.mission-now article[aria-label="stop mission"]').first
+        card.wait_for()
+        check(slow.http('GET', '/v1/missions/' + mid).json()['state'] == 'EXECUTING',
+              'nothing stopped before the confirmation')
+        card.get_by_role('button', name='Stop mission').click()
+        _settled(slow, mid, 'CANCELLED')
+        msgs = slow.http('GET', '/v1/conversations/%s/messages' % mid).json()['messages']
+        check(len([m for m in msgs if m['author'] == 'user' and m['text'] == 'stop']) == 2,
+              'the confirmation is a turn in the thread')
+        _say(slow, mid, 'emergency stop')
+        es = page.locator('.mission-now article[aria-label="emergency stop"]').first
+        es.wait_for()
+        check(slow.http('GET', '/v1/status').json()['armed'] is True, 'the words engaged nothing')
+        es.get_by_role('button', name='Emergency stop').click()
+        wait(page, lambda: slow.http('GET', '/v1/status').json()['armed'] is False,
+             what='the strip\'s command ran')
+        es.get_by_text('The emergency stop is engaged.').wait_for()
+        check(not errors, 'no console errors: %s' % errors)
+    finally:
+        context.close()
+        LocalNode.clear_estop()
+    assert check.n >= 5, 'ran %d checks' % check.n

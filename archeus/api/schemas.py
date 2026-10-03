@@ -823,6 +823,9 @@ POST_MESSAGE = {'type': 'object', 'properties': {
         'approval_id': {'type': 'string'}, 'action_hash': {'type': 'string'},
         'expected_version': {'type': 'integer', 'nullable': True}},
         'required': ['approval_id', 'action_hash']},
+    # P19 B10: the `stop` card the user confirms (C-33): pause, then cancel
+    'confirm': {'type': 'object', 'nullable': True, 'properties': {
+        'message_id': {'type': 'string'}}, 'required': ['message_id']},
     'step_up': {'type': 'string', 'nullable': True},
     'idempotency_key': KEY}, 'required': ['text', 'idempotency_key']}
 CLARIFY = {'type': 'object', 'properties': {

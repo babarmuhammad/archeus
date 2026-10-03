@@ -83,6 +83,7 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
                        'req.api.authorization.retire_rule',
                        'req.api.authorization.set_profile',
                        'req.api.conversations.choose',
+                       'req.api.conversations.confirm_by_message',
                        'req.api.decisions.decide', 'req.api.decisions.review',
                        'req.api.executions.estop',
                        'req.api.executions.rearm', 'req.api.executions.stop_execution',

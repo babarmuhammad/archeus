@@ -327,6 +327,38 @@ def card(app, doc, m, i, c, cid='primary'):
         return
     if type_ == 'approval' and kind == 'approval':
         return chat_approval(app, doc, id_, ident, cid)
+    if type_ == 'estop':
+        # the card is the confirmation; its command is the strip's (P19 B10, G2)
+        armed = (app.read(endpoints.status())['data'] or {}).get('armed', True)
+        acts = [] if not armed else [Act('E', 'Emergency stop', 'control',
+                                         lambda key, v: app.core.post(endpoints.estop(),
+                                                                      {'idempotency_key': key}),
+                                         reread=[endpoints.health(), endpoints.status()],
+                                         ident=ident + ':e')]
+        doc.add('    ' + T(app, '[emergency stop] ', 'state.attention') + app.st.paint(
+            'Every running execution is killed now and Archeus refuses new work until you '
+            're-arm it.' if armed else 'The emergency stop is engaged.'), acts=acts)
+        return
+    if type_ == 'stop' and kind == 'mission':
+        # one card: Core pauses, then cancels, in the confirming turn (C-33)
+        mi = app.read(endpoints.get_mission(id_))['data'] or {}
+        live = mi.get('state') in ('EXECUTING', 'PAUSED')
+        acts = [Act('S', 'Stop mission', 'control',
+                    lambda key, v: app.core.post(
+                        endpoints.post_message(cid), {'text': 'stop', 'idempotency_key': key,
+                                                      'confirm': {'message_id': m['id']}}),
+                    reread=reread + [endpoints.get_mission(id_), endpoints.list_missions()],
+                    disabled=None if live else 'This mission is %s.' % str(
+                        mi.get('state') or 'unknown').lower(), ident=ident + ':s')]
+        doc.add('    ' + T(app, '[stop] ', 'state.attention') + app.st.paint(
+            'Stop "%s": it is paused, then cancelled.' % (mi.get('title') or id_)), acts=acts)
+        return
+    if type_ == 'route_explanation' and kind == 'route_decision':
+        rd = app.read(endpoints.get_route_decision(id_))['data'] or {}
+        doc.add('    ' + T(app, '[route explanation] ', 'text-2')
+                + T(app, rd.get('explanation') or 'route decision %s' % id_),
+                target=open_(kind, id_))
+        return
     bits = ['    ' + T(app, '[' + type_.replace('_', ' ') + ']', 'text-2'),
             T(app, '%s %s' % (kind, id_))]
     if kind == 'mission':

@@ -557,10 +557,11 @@ class Conversation(Entity):
 
 #: A reply card's type (domain-model §6): a typed, live reference to a domain
 #: object. P7 adds the ones its replies carry (mission, idea, challenge,
-#: clarification, knowledge, status) to the documented set.
+#: clarification, knowledge, status) to the documented set; P19 B10 the two
+#: confirmations, `estop` and `stop` (a running mission: pause, then cancel).
 CARD_TYPES = ('mission_proposal', 'plan', 'approval', 'route_explanation', 'diff',
               'verification', 'digest', 'mission', 'idea', 'challenge', 'clarification',
-              'knowledge', 'status')
+              'knowledge', 'status', 'estop', 'stop')
 
 
 def check_ref(r, what):
