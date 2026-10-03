@@ -353,6 +353,29 @@ def card(app, doc, m, i, c, cid='primary'):
         doc.add('    ' + T(app, '[stop] ', 'state.attention') + app.st.paint(
             'Stop "%s": it is paused, then cancelled.' % (mi.get('title') or id_)), acts=acts)
         return
+    if type_ == 'change':
+        # Core's proposal (P19 B10, ADR-0042 §3): confirming runs the existing
+        # `admin` route with Core's own body; a mission's closes once re-set
+        cmd = c['command']
+        since = None
+        if c['scope'] == 'mission':
+            since = ((app.read(endpoints.get_mission(id_))['data'] or {})
+                     .get('resource_preferences') or {}).get('since')
+        stale = c['scope'] == 'mission' and since != c['based_on']
+        if cmd['name'] == 'setMissionResources':
+            act = Act('P', 'Set routing preferences', 'admin',
+                      lambda key, v: app.core.post(endpoints.set_mission_resources(cmd['id']),
+                                                   dict(cmd['body'], idempotency_key=key)),
+                      reread=reread + [endpoints.get_mission(cmd['id'])], ident=ident + ':p',
+                      disabled='The mission’s resources were set again since.' if stale
+                      else None)
+        else:
+            act = Act('P', 'Save policy', 'admin',
+                      lambda key, v: app.core.post(endpoints.set_resource_policy(cmd['id']),
+                                                   dict(cmd['body'], idempotency_key=key)),
+                      reread=reread + [endpoints.list_accounts()], ident=ident + ':p')
+        doc.add('    ' + T(app, '[change] ', 'state.attention') + T(app, c['says']), acts=[act])
+        return
     if type_ == 'route_explanation' and kind == 'route_decision':
         rd = app.read(endpoints.get_route_decision(id_))['data'] or {}
         doc.add('    ' + T(app, '[route explanation] ', 'text-2')

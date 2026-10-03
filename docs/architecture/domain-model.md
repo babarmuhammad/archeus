@@ -282,6 +282,11 @@ the primary conversation; per-mission threads are P16's.
 | `learned_at` | set when the learning pass has run; **learning is not a mission state** |
 | `blocked_reason?`, `paused_by?` | |
 
+*As built (P19 B10, p19-design-gate §12 Slice 5b):* `Mission.resource_preferences` gains
+`directives`, the entries a user's message added (`{key, id, message_id, intent_id}`); a user
+device setting the preferences clears them, and the router never lets such a preference lift a
+protected account. `intent.v1` gains `resource_directive` (accounts and harnesses).
+
 ### 7.2 Plan
 Immutable once approved; a replan creates a new version (`plan_version` increments,
 `supersedes_plan_id`). Fields: `mission_id`, `plan_version` (the plan's number within its
@@ -547,8 +552,6 @@ never CONSUMED; action approvals are single-use. The idempotency key is the writ
 field. `User.autonomy_profile` (default `standard`) and `Mission.autonomy_profile` are the
 profiles expanded at USER and MISSION level (D5, D26).
 
-### 9.4 Automation and AutomationRun
-Automation: `name`, `trigger` (`{kind: event|schedule|condition|state, pattern|cron|predicate}`),
 *As built (P19 B6, p19-design-gate §12 Slice 4b):* a fifth `kind`, `start`, is consent to start one
 mission. Its `action_hash` binds the mission alone (no plan exists yet, so `plan_id`,
 `plan_version` and `plan_digest` are null) and it expires after 24 h. It is never CONSUMED: once the
@@ -556,6 +559,8 @@ mission has left CREATED it is ineligible, so it authorises one START. Starting 
 mission is the Core-owned action class `mission.start`: `careful` asks, `standard` and
 `autonomous` allow, and a rule may name it; a task never declares it.
 
+### 9.4 Automation and AutomationRun
+Automation: `name`, `trigger` (`{kind: event|schedule|condition|state, pattern|cron|predicate}`),
 `conditions[]`, `mission_template` (objective template, task hints, verification), `policy`
 (overlay applied to missions it creates), `notify`, `max_depth` (cause-chain cap, default 3),
 `rate_limit` (default 6/hour), `state`. AutomationRun: `automation_id`, `triggering_event_seq`,

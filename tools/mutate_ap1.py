@@ -58,9 +58,8 @@ MUTATIONS = [
      [U + '::test_explicit_only_is_never_automatic_and_a_user_named_account_lifts_it',
       I + '::test_explicit_only_is_used_only_when_a_user_device_names_it_for_that_mission']),
     ('A06', 'the lift granted by any preference, not by naming the account', [(RT,
-     "        _ids(req.get('preferred'), 'accounts') | _ids(req.get('required'), 'accounts'))",
-     "        _ids(req.get('preferred'), 'accounts') | _ids(req.get('required'), 'accounts')"
-     ") or bool(req.get('preferred'))")],
+     "        | _ids(req.get('required'), 'accounts'))",
+     "        | _ids(req.get('required'), 'accounts')) or bool(req.get('preferred'))")],
      [U + '::test_explicit_only_is_never_automatic_and_a_user_named_account_lifts_it']),
     ('A07', 'an exclusion reason dropped', [(RT,
      "                c['reason'] = 'a last-resort account, not used while a normal one can run'",

@@ -303,7 +303,7 @@ interface AutomationWritten {
 
 ```ts
 interface Card {
-  type: 'mission_proposal' | 'plan' | 'approval' | 'route_explanation' | 'diff' | 'verification' | 'digest' | 'mission' | 'idea' | 'challenge' | 'clarification' | 'knowledge' | 'status' | 'estop' | 'stop';
+  type: 'mission_proposal' | 'plan' | 'approval' | 'route_explanation' | 'diff' | 'verification' | 'digest' | 'mission' | 'idea' | 'challenge' | 'clarification' | 'knowledge' | 'status' | 'estop' | 'stop' | 'change';
   ref: Subject;
   [field: string]: unknown;
 }

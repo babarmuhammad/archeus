@@ -558,10 +558,11 @@ class Conversation(Entity):
 #: A reply card's type (domain-model §6): a typed, live reference to a domain
 #: object. P7 adds the ones its replies carry (mission, idea, challenge,
 #: clarification, knowledge, status) to the documented set; P19 B10 the two
-#: confirmations, `estop` and `stop` (a running mission: pause, then cancel).
+#: confirmations, `estop` and `stop` (a running mission: pause, then cancel),
+#: and `change`, a widening or standing directive proposed for a user device.
 CARD_TYPES = ('mission_proposal', 'plan', 'approval', 'route_explanation', 'diff',
               'verification', 'digest', 'mission', 'idea', 'challenge', 'clarification',
-              'knowledge', 'status', 'estop', 'stop')
+              'knowledge', 'status', 'estop', 'stop', 'change')
 
 
 def check_ref(r, what):
@@ -655,9 +656,12 @@ CRITERION_CHECKS = ('automatic', 'human')
 PLANNING_BLOCKS = ('clarification', 'challenge', 'call', 'policy')
 COST_BANDS = ('low', 'medium', 'high')      # bands, never precise (domain-model §7.2)
 #: A mission's resource preferences (P10): four id lists, then the plan
-#: gate's auto-approve ceiling and when they were set.
+#: gate's auto-approve ceiling and when they were set; `directives` (P19 B10)
+#: are the list entries a user's message added, each with its `message_id` and
+#: `intent_id` (ADR-0042 §3). A user device setting the lists clears them.
 RESOURCE_PREFERENCE_KEYS = ('preferred_accounts', 'preferred_harnesses', 'forbidden_accounts',
-                            'forbidden_harnesses', 'max_cost_band', 'since')
+                            'forbidden_harnesses', 'max_cost_band', 'since', 'directives')
+DIRECTIVE_KEYS = ('key', 'id', 'message_id', 'intent_id')
 
 #: The kind of object `Mission.origin_ref` names, by the mission's origin. A
 #: legacy import has no ref kind. The clients hold the same map (parity cases).
@@ -738,6 +742,12 @@ class Mission(Entity):
                 if not (isinstance(rp.get(k, ()), (list, tuple))
                         and all(isinstance(x, str) and x for x in rp.get(k, ()))):
                     raise ValueError('Mission.resource_preferences[%r] is a list of ids' % k)
+            for d in rp.get('directives') or ():
+                if not (isinstance(d, dict) and set(d) == set(DIRECTIVE_KEYS)
+                        and d['key'] in RESOURCE_PREFERENCE_KEYS[:4]
+                        and d['id'] in rp.get(d['key'], ())):
+                    raise ValueError('a directive is {%s}, naming an id in its list: %r'
+                                     % (', '.join(DIRECTIVE_KEYS), d))
         b = self.planning_blocked
         if b is not None and not (isinstance(b, dict) and b.get('kind') in PLANNING_BLOCKS):
             raise ValueError('Mission.planning_blocked is {kind: %s, ...}: %r'

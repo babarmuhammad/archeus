@@ -307,7 +307,8 @@ def test_why_and_status_answer_from_the_record(x):
     e2 = _execs(x, mid)[1]
     with x.db.read() as r:
         assert grammar.resolve(r, 'why %s' % e2.id).target == {'kind': 'execution', 'id': e2.id}
-    text = x.do(lambda tx, actor: C._why(tx, {'kind': 'execution', 'id': e2.id}))
+    text, rd = x.do(lambda tx, actor: C._why(tx, {'kind': 'execution', 'id': e2.id}))
+    assert rd == e2.route_decision_id                  # the card the reply carries (P19 B10)
     assert 'context insufficient' in text and '(charged)' in text
     assert 'No continuation was created' in text and 'checkpoint' in text
     assert 'It continues execution %s in a fresh session' % _execs(x, mid)[0].id in text

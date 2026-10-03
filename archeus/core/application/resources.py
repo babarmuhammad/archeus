@@ -448,6 +448,8 @@ def task_snapshot(conn, *, adapters, feed, mission, plan, task, decision, now):
                          'harnesses': list(rp.get('preferred_harnesses') or ())},
            'forbidden': {'accounts': list(rp.get('forbidden_accounts') or ()),
                          'harnesses': list(rp.get('forbidden_harnesses') or ())},
+           'conversational': {'accounts': [d['id'] for d in rp.get('directives') or ()
+                                           if d['key'] == 'preferred_accounts']},
            'required': {}, 'size': R.size_of(task.estimate),
            'policy': {'decision_id': decision.id, 'outcome': decision.outcome,
                       'items': [{'class': i['class'], 'decision': i['decision'],

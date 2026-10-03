@@ -155,3 +155,36 @@ def test_the_stop_and_emergency_stop_cards_confirm_what_the_words_only_asked(bro
         context.close()
         LocalNode.clear_estop()
     assert check.n >= 5, 'ran %d checks' % check.n
+
+
+def test_a_change_card_is_confirmed_through_the_existing_admin_route(browser, slow):  # noqa: F811
+    """P19 B10 (ADR-0042 §3, G3): `use` naming an `explicit_only` account
+    changes nothing and answers with a change card; its Save preferences runs
+    the mission's resources route with Core's body, and the card then closes."""
+    check = Checks()
+    from archeus.core.domain.ids import new_ulid as key
+    assert slow.http('POST', '/v1/policies/profile', body={
+        'scope': 'user', 'profile': 'careful', 'idempotency_key': key()}).status == 200
+    acc = slow.http('POST', '/v1/accounts', body={'harness_id': 'fake', 'label': 'Shared',
+                                                  'auth_kind': 'api_key',
+                                                  'idempotency_key': key()}).json()['id']
+    assert slow.http('POST', '/v1/resource-policies/' + acc, body={
+        'consumption': 'explicit_only', 'idempotency_key': key()}).status == 200
+    mid = _mission(slow, 'Widen me')
+    _sent, reply = _say(slow, mid, 'use Shared')
+    check([c['type'] for c in reply['cards']] == ['change'], 'only proposed')
+    prefs = lambda: slow.http('GET', '/v1/missions/' + mid).json().get('resource_preferences') or {}  # noqa: E731
+    check(acc not in (prefs().get('preferred_accounts') or []), 'nothing was applied')
+    context, page, errors = _context(browser, slow, viewport={'width': 1280, 'height': 1100})
+    try:
+        _go(page, '#/o/mission/%s/now' % mid)
+        card = page.locator('.mission-now article[aria-label="change"]').first
+        card.wait_for()
+        card.get_by_role('button', name='Save preferences').click()
+        wait(page, lambda: acc in (prefs().get('preferred_accounts') or []),
+             what='the route applied Core\'s body')
+        card.get_by_text('were set again since').wait_for()
+        check(not errors, 'no console errors: %s' % errors)
+    finally:
+        context.close()
+    assert check.n >= 3, 'ran %d checks' % check.n

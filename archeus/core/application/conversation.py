@@ -199,8 +199,10 @@ class Conversations:
     """The commands of the intent pipeline. `missions` is the P3 `Missions`:
     the only way a mission moves (pause, resume, cancel)."""
 
-    def __init__(self, *, missions):
+    def __init__(self, *, missions, harnesses=lambda: ()):
         self.missions = missions
+        # the execution harness ids a directive may name (the adapter registry's)
+        self.harnesses = harnesses
 
     # ── the deterministic grammar ──
 
@@ -226,6 +228,13 @@ class Conversations:
         elif verb in ('pause', 'resume', 'cancel'):
             text, resolution = self._mission_verb(tx, actor, verb, target['id'], msg)
             cards.append(_card('mission', 'mission', target['id']))
+        elif verb in ('use', 'dont_use'):
+            ref = [arg['resource']]
+            text, resolution, more, also = directive(
+                tx, actor, msg, it, target['id'], prefer=ref if verb == 'use' else (),
+                forbid=ref if verb == 'dont_use' else (), scope=arg['scope'])
+            cards += more
+            links += also
         elif verb == 'estop':
             # asked, never done from the words: the card runs the strip's command
             text = ('An emergency stop kills every running execution now and refuses new work '
@@ -373,21 +382,43 @@ class Conversations:
         unresolved = [m for m in p['mentions'] if m['ref'] is None and m['kind'] in RESOLVABLE]
         material = [a for a in p['ambiguities'] if a['material']]
         stale = _stale_target(tx, p)
-        if unresolved or material or stale:
-            return self._clarify(tx, actor, msg, it, unresolved, material, stale)
+        d, unnamed = resolve_directive(tx, p.get('resource_directive'), self.harnesses())
+        if unresolved or material or stale or unnamed:
+            return self._clarify(tx, actor, msg, it, unresolved, material, stale + unnamed)
+        if d is not None and (d['scope'] == 'standing'
+                              or kind not in ('new_work', 'continue_work')):
+            return self._directive_alone(tx, actor, msg, it, d)
         if kind in ('new_work', 'continue_work') and p['conflicts']:
             return self._challenge(tx, actor, msg, it, p)
         return self._commit(tx, actor, msg, it, p)
 
     def _commit(self, tx, actor, msg, it, p, extra_constraints=()):
         kind = p['kind']
-        if kind == 'new_work':
-            return self._new_work(tx, actor, msg, it, p, extra_constraints)
-        if kind == 'continue_work':
-            return self._continue(tx, actor, msg, it, p, extra_constraints)
+        if kind in ('new_work', 'continue_work'):
+            # a directive applies to the mission the request creates or continues
+            d = resolve_directive(tx, p.get('resource_directive'), self.harnesses())[0]
+            then = None if d is None else (lambda mid, it: directive(
+                tx, actor, msg, it, mid, prefer=d['prefer'], forbid=d['forbid'],
+                scope=d['scope']))
+            return (self._new_work if kind == 'new_work' else self._continue)(
+                tx, actor, msg, it, p, extra_constraints, then)
         if kind == 'idea':
             return self._idea(tx, actor, msg, it, p)
         return self._feedback(tx, actor, msg, it, p)
+
+    def _directive_alone(self, tx, actor, msg, it, d):
+        """A directive with no request around it: standing, or for the mission
+        whose thread it was said in; with neither, which mission is asked."""
+        conv = tx.get(entities.Conversation, msg.conversation_id).entity
+        if d['scope'] != 'standing' and conv.mission_id is None:
+            q = 'Which mission should this apply to? Say "%s ... for <mission>".' % (
+                'don\'t use' if d['forbid'] else 'use')
+            return self._clarify(tx, actor, msg, it, [], [], [q])
+        text, resolution, cards, links = directive(
+            tx, actor, msg, it, conv.mission_id, prefer=d['prefer'], forbid=d['forbid'],
+            scope=d['scope'])
+        it = _set(tx, actor, it, resolution=resolution)
+        return _reply(tx, actor, msg, it, text, cards, links)
 
     def _answer(self, tx, actor, msg, it, p):
         it = _set(tx, actor, it, resolution='answered')
@@ -421,10 +452,10 @@ class Conversations:
                                    choices=['proceed', 'drop'])],
                       links=[{'ref': {'kind': 'knowledge_item', 'id': k}} for k in against])
 
-    def _new_work(self, tx, actor, msg, it, p, extra_constraints):
+    def _new_work(self, tx, actor, msg, it, p, extra_constraints, then=None):
         target = p['target']
         if target is not None:                             # an idea made into work
-            return self._promote(tx, actor, msg, it, p, target['id'], extra_constraints)
+            return self._promote(tx, actor, msg, it, p, target['id'], extra_constraints, then)
         project = None if p['project'] is None else p['project']['id']
         m = _mission(tx, actor, p, project=project, origin='conversation', origin_ref=msg.id,
                      msg=msg, extra_constraints=extra_constraints)
@@ -432,11 +463,11 @@ class Conversations:
         links = [{'ref': {'kind': 'mission', 'id': m.id}}]
         if project:
             links.append({'ref': {'kind': 'project', 'id': project}})
-        return _reply(tx, actor, msg, it, 'I have taken this on as a mission: "%s" (%s)%s.'
-                      % (m.title, m.id, _inferred(m)),
-                      cards=[_card('mission_proposal', 'mission', m.id)], links=links)
+        return _reply(tx, actor, msg, it, *_with(then, m.id, it, (
+            'I have taken this on as a mission: "%s" (%s)%s.' % (m.title, m.id, _inferred(m)),
+            [_card('mission_proposal', 'mission', m.id)], links)))
 
-    def _promote(self, tx, actor, msg, it, p, idea_id, extra_constraints):
+    def _promote(self, tx, actor, msg, it, p, idea_id, extra_constraints, then=None):
         idea = lifecycle.load(tx, entities.Idea, idea_id).entity
         m = _mission(tx, actor, dict(p, title=p.get('title') or idea.title or idea.text,
                                      objective=p.get('objective') or idea.text),
@@ -451,20 +482,22 @@ class Conversations:
             lifecycle.fire(tx, entities.Idea, idea.id, trigger, actor=actor, reason=why,
                            fields=fields)
         it = _set(tx, actor, it, resolution='mission_created')
-        return _reply(tx, actor, msg, it, 'Idea %s is now mission "%s" (%s)%s.'
-                      % (idea.id, m.title, m.id, _inferred(m)),
-                      cards=[_card('mission_proposal', 'mission', m.id),
-                             _card('idea', 'idea', idea.id)],
-                      links=[{'ref': {'kind': 'mission', 'id': m.id}},
-                             {'ref': {'kind': 'idea', 'id': idea.id}}])
+        return _reply(tx, actor, msg, it, *_with(then, m.id, it, (
+            'Idea %s is now mission "%s" (%s)%s.' % (idea.id, m.title, m.id, _inferred(m)),
+            [_card('mission_proposal', 'mission', m.id), _card('idea', 'idea', idea.id)],
+            [{'ref': {'kind': 'mission', 'id': m.id}}, {'ref': {'kind': 'idea', 'id': idea.id}}])))
 
-    def _continue(self, tx, actor, msg, it, p, extra_constraints):
+    def _continue(self, tx, actor, msg, it, p, extra_constraints, then=None):
         mid = p['target']['id']
         row = lifecycle.load(tx, entities.Mission, mid)
         m = row.entity
         req = _items(p['requirements'], msg)
         con = _items(p['constraints'], msg) + list(extra_constraints)
         if not (req or con):
+            if then is not None:            # the directive is what it asks
+                text, resolution, cards, links = then(mid, it)
+                it = _set(tx, actor, it, resolution=resolution)
+                return _reply(tx, actor, msg, it, text, cards, links)
             it = _set(tx, actor, it, resolution='answered',
                       reason='nothing to add to %s' % mid)
             return _reply(tx, actor, msg, it, 'Noted for mission "%s" (%s); it asks nothing '
@@ -479,10 +512,10 @@ class Conversations:
             'added': {'requirements': req, 'constraints': con}, 'message_id': msg.id},
             workspace=m.workspace_id, project=m.project_id))
         it = _set(tx, actor, it, resolution='mission_updated')
-        return _reply(tx, actor, msg, it, 'Added to mission "%s" (%s): %s.' % (
-            m.title, mid, '; '.join(c['text'] for c in req + con)),
-            cards=[_card('mission', 'mission', mid)],
-            links=[{'ref': {'kind': 'mission', 'id': mid}}])
+        return _reply(tx, actor, msg, it, *_with(then, mid, it, (
+            'Added to mission "%s" (%s): %s.' % (m.title, mid,
+                                                 '; '.join(c['text'] for c in req + con)),
+            [_card('mission', 'mission', mid)], [{'ref': {'kind': 'mission', 'id': mid}}])))
 
     def _idea(self, tx, actor, msg, it, p):
         project = None if p['project'] is None else p['project']['id']
@@ -661,6 +694,159 @@ def _pending_clarification(tx, reply_to):
         if c['type'] in ('clarification', 'challenge') and c['ref']['kind'] == 'intent':
             return c['ref']['id']
     return None
+
+
+# ── resource directives (ADR-0042 §2-§4, H2; P19 B10: accounts and harnesses) ──
+
+#: the account classes a preference cannot reach without a confirmation
+PROTECTED = ('last_resort', 'explicit_only')
+
+
+def resolve_directive(tx, d, harnesses=()):
+    """(the brain's `resource_directive` with every name resolved to one
+    `{kind, id}`, the questions for names that resolve to none or several)."""
+    from .grammar import resource
+    if not d:
+        return None, []
+    out, asked = {'scope': d['scope'], 'prefer': [], 'forbid': []}, []
+    for side in ('prefer', 'forbid'):
+        for kind in ('account', 'harness'):
+            for name in (d.get(side) or {}).get(kind + 's') or ():
+                ref = resource(tx.conn, name, (kind,), harnesses)
+                if ref is None:
+                    asked.append('I do not know exactly one %s called "%s". Which one do you '
+                                 'mean?' % (kind, name))
+                else:
+                    out[side].append(ref)
+    return out, asked
+
+
+def _consumption(tx, ref):
+    if ref['kind'] != 'account':
+        return None
+    got = tx.where(entities.ResourcePolicy, account_id=ref['id'])
+    return got[0].entity.consumption if got else None
+
+
+def _name(tx, ref):
+    if ref['kind'] == 'account':
+        return 'account "%s"' % lifecycle.load(tx, entities.Account, ref['id']).entity.label
+    return 'harness %s' % ref['id']
+
+
+def directive(tx, actor, msg, intent, mission_id, *, prefer=(), forbid=(), scope='mission'):
+    """A directive from the user's own message (ADR-0042 §3): narrowing and
+    preference apply to the mission now, recorded with the message and intent
+    they came from; widening (a protected account, or lifting a forbid) and
+    standing changes are proposed on a `change` card that runs the existing
+    `admin` route when a user device confirms it. Nothing here removes an
+    elimination. (text, resolution, cards, links)."""
+    p = tx.get(entities.Principal, msg.principal_id) if msg.principal_id else None
+    if p is None or p.entity.kind != 'user_device':
+        return ('Only a message from your own device can change what work may use; nothing '
+                'was changed.', 'declined', [], [])
+    cards, said = [], []
+    if scope == 'standing':
+        for ref in forbid:
+            if ref['kind'] == 'account':
+                cards.append(_standing_card(tx, ref))
+            else:
+                said.append('A standing rule for %s cannot be set from the conversation; '
+                            'forbid it per mission instead.' % _name(tx, ref))
+        for ref in prefer:
+            said.append('A standing preference for %s cannot be set from the conversation; '
+                        'prefer it per mission instead.' % _name(tx, ref))
+        if cards:
+            said.insert(0, 'Confirm on the card to make this standing.')
+        return ' '.join(said), 'answered', cards, []
+    m = lifecycle.load(tx, entities.Mission, mission_id).entity
+    if m.state in states.terminal('mission'):
+        return ('"%s" has ended (%s); nothing was changed.' % (m.title, m.state),
+                'declined', [], [])
+    rp = dict(m.resource_preferences or {})
+    lists = {k: list(rp.get(k) or ()) for k in entities.RESOURCE_PREFERENCE_KEYS[:4]}
+    applied, widen = [], []
+    for ref in forbid:                                   # narrowing: always, at once
+        fk, pk = 'forbidden_%ss' % ref['kind'], 'preferred_%ss' % ref['kind']
+        if ref['id'] in lists[pk]:
+            lists[pk].remove(ref['id'])
+        if ref['id'] not in lists[fk]:
+            lists[fk].append(ref['id'])
+            applied.append((fk, ref))
+            said.append('no longer using %s' % _name(tx, ref))
+    for ref in prefer:
+        fk, pk = 'forbidden_%ss' % ref['kind'], 'preferred_%ss' % ref['kind']
+        if ref['id'] in lists[fk] or _consumption(tx, ref) in PROTECTED:
+            widen.append(ref)                            # widening: proposed only
+        elif ref['id'] not in lists[pk]:
+            lists[pk].append(ref['id'])
+            applied.append((pk, ref))
+            said.append('preferring %s' % _name(tx, ref))
+    since = rp.get('since')
+    if applied:
+        kept = [d for d in rp.get('directives') or () if d['id'] in lists[d['key']]]
+        prefs = dict(rp, **lists, since=tx.now, directives=kept + [
+            {'key': k, 'id': r['id'], 'message_id': msg.id, 'intent_id': intent.id}
+            for k, r in applied])
+        entities.Mission(**dict(m.to_dict(), resource_preferences=prefs))      # validate
+        tx.update(entities.Mission, m.id, {'resource_preferences': prefs}, actor=actor)
+        tx.append(new_event('mission.updated', Ref('mission', m.id), actor, payload={
+            'fields': ['resource_preferences'], 'resource_preferences': prefs,
+            'message_id': msg.id, 'intent_id': intent.id},
+            workspace=m.workspace_id, project=m.project_id))
+        since, rp = tx.now, prefs
+    text = ('For "%s": %s.' % (m.title, '; '.join(said))) if said else (
+        'For "%s": nothing new to apply.' % m.title if not widen else '')
+    if applied and scope == 'task':
+        text += ' Until task-level preferences exist this applies to the whole mission.'
+    for ref in widen:
+        lists2 = {k: list(v) for k, v in lists.items()}
+        fk, pk = 'forbidden_%ss' % ref['kind'], 'preferred_%ss' % ref['kind']
+        if ref['id'] in lists2[fk]:
+            lists2[fk].remove(ref['id'])
+        lists2[pk].append(ref['id'])
+        why = ('it is forbidden for this mission' if ref['id'] in lists[fk] else
+               'it is used only %s' % ('when nothing else can run' if _consumption(tx, ref) ==
+                                        'last_resort' else 'when you name it'))
+        says = 'Use %s for "%s": %s, so this widens what it may use.' % (_name(tx, ref), m.title,
+                                                                         why)
+        body = dict(lists2)
+        if rp.get('max_cost_band'):
+            body['max_cost_band'] = rp['max_cost_band']
+        cards.append(dict(_card('change', 'mission', m.id), scope='mission', says=says,
+                          command={'name': 'setMissionResources', 'id': m.id, 'body': body},
+                          based_on=since))
+        text = (text + ' ' if text else '') + says + ' Confirm it on the card.'
+    if scope == 'ambiguous':                 # read as the mission's; offered as standing
+        for ref in forbid:
+            if ref['kind'] == 'account':
+                cards.append(_standing_card(tx, ref))
+                text += ' To make it standing, confirm it on the card.'
+    if applied:
+        cards.insert(0, _card('mission', 'mission', m.id))
+    return (text.strip(), 'mission_updated' if applied else 'answered', cards,
+            [{'ref': {'kind': 'mission', 'id': m.id}}])
+
+
+def _standing_card(tx, ref):
+    """"Never use account A": its consumption becomes `explicit_only`, through
+    the resource policy route (`admin`) when a user device confirms it."""
+    return dict(_card('change', 'account', ref['id']), scope='standing',
+                says='Never use %s unless you name it: its consumption becomes explicit_only.'
+                     % _name(tx, ref),
+                command={'name': 'setResourcePolicy', 'id': ref['id'],
+                         'body': {'consumption': 'explicit_only'}},
+                based_on=None)
+
+
+def _with(then, mission_id, intent, reply):
+    """(text, cards, links) of a reply, with its directive's outcome appended."""
+    text, cards, links = reply
+    if then is None:
+        return text, cards, links
+    more, _resolution, extra, also = then(mission_id, intent)
+    return ((text + ' ' + more).strip(), list(cards) + [c for c in extra if c not in cards],
+            list(links) + list(also))
 
 
 def _status(tx, target):

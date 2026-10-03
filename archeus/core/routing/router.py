@@ -249,9 +249,12 @@ def _restriction(c, req, snap):
 def _named(c, req):
     """The work names this account: a mission's preference or a requirement,
     which only a user device sets (ADR-0041 §1: the lift of a class, for that
-    work only). An own call names none, so it never lifts one."""
+    work only). An own call names none, so it never lifts one, and neither does
+    a preference a conversation added (`conversational`, ADR-0042 §3: it orders,
+    it makes nothing eligible)."""
     return c['account'] is not None and c['account'] in (
-        _ids(req.get('preferred'), 'accounts') | _ids(req.get('required'), 'accounts'))
+        (_ids(req.get('preferred'), 'accounts') - _ids(req.get('conversational'), 'accounts'))
+        | _ids(req.get('required'), 'accounts'))
 
 
 def _last_resort(c, req):

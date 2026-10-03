@@ -5,7 +5,7 @@ TUI (P09-P14); B11, the generated client everywhere (P15-P20); B3, a mission's o
 conversation and the mission Now tab (P21-P30); B5, chat approve / reject
 is the card's decision (P31-P40); B6, mission confirmation under `careful`
 (P41-P50); B10a, `emergency stop`, `stop <running mission>` and the
-explanation card (P51-P62).
+explanation card (P51-P62); B10b, resource directives (P63-P74).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -59,6 +59,11 @@ PORTS = 'archeus/core/ports.py'
 SC_ = 'tests/v1/integration/test_start_confirmation.py::'
 CV = 'tests/v1/integration/test_chat_verbs.py::'
 TUI_CV = 'tests/v1/tui/test_chat_verbs.py::'
+DIR = 'tests/v1/integration/test_directives.py::'
+ROUTER = 'archeus/core/routing/router.py'
+RES = 'archeus/core/application/resources.py'
+CHANGE_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
+              'test_a_change_card_is_confirmed_through_the_existing_admin_route')
 STOP_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
             'test_the_stop_and_emergency_stop_cards_confirm_what_the_words_only_asked')
 CLI_STATUS = ('tests/v1/integration/test_cli_v1.py::'
@@ -162,7 +167,7 @@ MUTATIONS = [
      "        if m is None and mission and not p.arg:\n            m = rows.get(conn, entities.Mission, mission).entity\n", "")],
      [THR + 'test_a_bare_mission_verb_in_a_thread_is_about_its_mission_and_answered_there']),
     ('P26', "the intent worker forgets which thread a turn is in", [(INTENT,
-     "grammar.resolve(conn, msg.text, mission=conv.mission_id)", "grammar.resolve(conn, msg.text, mission=None)")],
+     "grammar.resolve(conn, msg.text, mission=conv.mission_id,", "grammar.resolve(conn, msg.text, mission=None,")],
      [THR + 'test_a_bare_mission_verb_in_a_thread_is_about_its_mission_and_answered_there']),
     ('P27', "the mission's Now tab shows the primary conversation", [(MISSION,
      '<Conversation conversation={mission.id} scope=".mission-now"',
@@ -311,6 +316,68 @@ MUTATIONS = [
      "run={(key) => api.estop(send(), { idempotency_key: key })} reread={['/v1']} />\n        </div>\n      )}\n    </article>\n  );\n}\n\n/** `stop` on",
      "run={(key) => api.rearm(send(), { idempotency_key: key })} reread={['/v1']} />\n        </div>\n      )}\n    </article>\n  );\n}\n\n/** `stop` on")],
      [STOP_E2E]),
+    # ── B10b: resource directives (ADR-0042 §2-§4; G3, G4, G14) ──
+    ('P63', "`don't use` narrows nothing", [(CONV,
+     "            lists[fk].append(ref['id'])\n            applied.append((fk, ref))\n",
+     "            applied.append((fk, ref))\n")],
+     [DIR + 'test_dont_use_narrows_the_named_mission_with_its_message_and_intent']),
+    ('P64', 'a directive drops its source message', [(CONV,
+     "            {'key': k, 'id': r['id'], 'message_id': msg.id, 'intent_id': intent.id}",
+     "            {'key': k, 'id': r['id'], 'message_id': None, 'intent_id': intent.id}")],
+     [DIR + 'test_dont_use_narrows_the_named_mission_with_its_message_and_intent',
+      DIR + 'test_the_brains_directive_lands_on_the_mission_it_creates']),
+    ('P65', 'a protected account is preferred without a confirmation', [(CONV,
+     "        if ref['id'] in lists[fk] or _consumption(tx, ref) in PROTECTED:",
+     "        if ref['id'] in lists[fk]:")],
+     [DIR + 'test_use_prefers_a_normal_account_and_proposes_a_protected_one']),
+    ('P66', 'lifting a forbid applies at once', [(CONV,
+     "        if ref['id'] in lists[fk] or _consumption(tx, ref) in PROTECTED:",
+     "        if _consumption(tx, ref) in PROTECTED:")],
+     [DIR + 'test_lifting_a_forbid_is_widening_and_only_proposed']),
+    ('P67', 'a name that resolves to nothing is guessed', [(GRAM,
+     "for h in sorted(harnesses) if key(h) == n]\n    return _one(got)",
+     "for h in sorted(harnesses) if key(h) == n]\n    return _one(got) or next(\n"
+     "        ({'kind': 'account', 'id': r.entity.id} for r in rows.where(conn, entities.Account)),"
+     " None)")],
+     [DIR + 'test_the_grammar_reads_use_and_dont_use_and_leaves_what_it_cannot_resolve',
+      DIR + 'test_an_unresolved_name_from_the_brain_is_a_clarification_and_writes_nothing']),
+    ('P68', "an ambiguous `don't use` changes the global policy", [(CONV,
+     "                cards.append(_standing_card(tx, ref))\n"
+     "                text += ' To make it standing, confirm it on the card.'",
+     "                tx.update(entities.ResourcePolicy, tx.where(entities.ResourcePolicy, "
+     "account_id=ref['id'])[0].entity.id, {'consumption': 'explicit_only'}, actor=actor)\n"
+     "                cards.append(_standing_card(tx, ref))\n"
+     "                text += ' To make it standing, confirm it on the card.'")],
+     [DIR + 'test_an_ambiguous_dont_use_is_the_missions_and_offers_standing_without_applying_it']),
+    ('P69', "a message that is not a user device's carries a directive", [(CONV,
+     "    if p is None or p.entity.kind != 'user_device':\n        return ('Only a message",
+     "    if p is None:\n        return ('Only a message")],
+     [DIR + 'test_only_a_user_devices_message_carries_a_directive']),
+    ('P70', 'a preference a conversation added lifts a protected account', [(ROUTER,
+     "        (_ids(req.get('preferred'), 'accounts') - _ids(req.get('conversational'), 'accounts'))",
+     "        _ids(req.get('preferred'), 'accounts')")],
+     [DIR + 'test_a_conversational_preference_lifts_no_protected_account',
+      DIR + 'test_a_preference_a_conversation_added_never_routes_to_an_explicit_only_account']),
+    ('P71', "the router is not told which preferences a conversation added", [(RES,
+     "           'conversational': {'accounts': [d['id'] for d in rp.get('directives') or ()\n"
+     "                                           if d['key'] == 'preferred_accounts']},",
+     "           'conversational': {'accounts': []},")],
+     [DIR + 'test_a_preference_a_conversation_added_never_routes_to_an_explicit_only_account']),
+    ('P72', 'a standing directive is applied to the mission instead', [(CONV,
+     "        if d is not None and (d['scope'] == 'standing'\n"
+     "                              or kind not in ('new_work', 'continue_work')):",
+     "        if d is not None and kind not in ('new_work', 'continue_work', 'preference'):")],
+     [DIR + 'test_never_is_a_standing_change_card_and_changes_no_policy']),
+    ('P73', "the TUI's change card sends its own body, not Core's", [(SCR,
+     "                                                   dict(cmd['body'], idempotency_key=key)),\n"
+     "                      reread=reread + [endpoints.get_mission(cmd['id'])]",
+     "                                                   dict(idempotency_key=key)),\n"
+     "                      reread=reread + [endpoints.get_mission(cmd['id'])]")],
+     [TUI_CV + 'test_a_change_card_runs_the_existing_admin_route_with_cores_own_body']),
+    ('P74', "the SPA's change card sends its own body, not Core's", [(NOW,
+     "api.setMissionResources(send(), card.command.id, { ...body, idempotency_key: key })",
+     "api.setMissionResources(send(), card.command.id, { idempotency_key: key, preferred_accounts: [] })")],
+     [CHANGE_E2E]),
 ]
 
 if __name__ == '__main__':

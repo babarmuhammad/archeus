@@ -147,7 +147,10 @@ def test_a_reply_draws_its_thread_to_the_row_once(browser, slow, archeus_home): 
 
     # a link with no card is shown as one, and draws the same way
     why = _say(tc, 'why %s' % alpha)
-    check(not why['cards'] and why['links'], 'Core\'s "why" links Alpha without a card')
+    # (P19 B10: its one card is the route decision's; Alpha stays a bare link)
+    check(not [c for c in why['cards'] if c['ref']['id'] == alpha]
+          and {'kind': 'mission', 'id': alpha} in [l['ref'] for l in why['links']],
+          'Core\'s "why" links Alpha without a card')
     bare = page.locator('[data-message="%s"] a.card[data-ref="mission:%s"]' % (why['id'], alpha))
     bare.wait_for()
     check('mission Alpha' in bare.text_content(), 'named as a person reads it: %s' % bare.text_content())

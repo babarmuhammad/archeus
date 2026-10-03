@@ -695,6 +695,80 @@ conversation only, and B10 in two commits (5a, then 5b).
     TUI's and the SPA's stop card confirming the mission instead of its own card, and both
     clients' emergency-stop card running another command. All twelve killed.
 
+**Slice 5b (B10: resource directives for accounts and harnesses), 2026-10-03.**
+
+37. **The grammar.** `use <account|harness> [for <mission>]` and `don't use` / `do not use` the
+    same. With no mission named, the thread's mission, and the scope is read as ambiguous; in
+    the primary conversation a mission must be named. An account is named by its label or id,
+    a harness by its id among the execution harnesses Core has (the adapter registry's, handed
+    to `Conversations`, since harnesses are not rows); "account X" / "harness X" says which.
+    Anything that does not resolve to exactly one object goes to the brain, never guessed.
+38. **The brain.** `intent.v1` gains `resource_directive`: `scope` (mission, task, standing,
+    ambiguous) and `prefer` / `forbid`, each `{accounts, harnesses}` as names said. Core resolves
+    every name; one that resolves to none or several is a clarification and nothing is written
+    (G4). It applies to the mission the request creates or continues. With no such request it
+    applies to the thread's mission, is a standing proposal, or, in the primary conversation,
+    asks which mission. A `preference` message carrying a directive is not also a knowledge
+    candidate.
+39. **Narrowing and preference apply at once, with their source** (G4). A forbid joins the
+    mission's forbidden list (and leaves its preferred list); a preference of a `normal` account
+    or of a harness joins the preferred list. Each entry is recorded in a new
+    `resource_preferences.directives` list as `{key, id, message_id, intent_id}`, and the
+    `mission.updated` event carries both ids. Deviation from ADR-0042 §3's "on the preference
+    version it produced": mission preferences are not versioned, so the provenance rides on
+    the entries. A user device setting the mission's resources replaces the lists and clears
+    `directives`. `since` is reset, as the route resets it.
+40. **Widening and standing are only proposed** (G3), on a `change` card (a new card type) that
+    carries Core's command: `{name, id, body}` plus `says`, `scope` and `based_on`. Widening is a
+    preference for a `last_resort` or `explicit_only` account, or for something the mission
+    forbids: the card's command is `setMissionResources` with the full lists that would result,
+    and `based_on` is the mission's `since`, so a client closes the card once the mission's
+    resources were set again. Standing is H2's example: a standing forbid of an account proposes
+    `setResourcePolicy` with `consumption: explicit_only`. A standing preference and a standing
+    harness rule have no existing route, so the reply says so and proposes nothing. An
+    ambiguous `don't use <account>` applies to the mission and also offers the standing card. A
+    `task` scope applies to the whole mission and the reply says so. Confirming runs the
+    existing `admin` route from a user device; the brain's principal writes nothing.
+41. **A conversation's preference never lifts a protected account** (G14). The router's `_named`
+    no longer counts the preferred accounts a directive added (`conversational` in the task's
+    requirement), so such a preference orders candidates and makes nothing eligible (ADR-0042
+    §3), even if the account's class changes after the directive applied. A small router change,
+    beyond §7's list.
+42. **Only a user device's message carries a directive.** Any other principal's message is
+    declined and nothing is changed.
+43. **Clients.** The SPA renders the `change` card with the commands' existing names ("Save
+    preferences", "Save policy"; one name per command) and marks each directive entry on the
+    mission's resource line "(from your message)". The TUI's card uses its own existing name for
+    the mission route, "Set routing preferences", and "Save policy" for the account policy. The
+    change card is in the conversation only, not in Attention (the user's decision; ADR-0042's
+    UI row says Attention).
+44. **Not built here, as the gate says:** model and location directives, tier requirements and
+    pins (P22), "keep this work local" (data class, ADR-0035), and project defaults (P22, G11).
+45. **Mutants P63-P74** (B10b): a forbid that narrows nothing, a directive without its source
+    message, a protected account preferred without a confirmation, a forbid lifted at once, an
+    unresolved name guessed, an ambiguous `don't use` changing the global policy, a non-device
+    message carrying a directive, the router lifting a protected account for a conversation's
+    preference, the router not told which preferences a conversation added, a standing directive
+    applied to the mission, and both clients' change card sending a body of their own. All
+    twelve killed. Two earlier mutants' anchors moved with this slice and were re-anchored, and
+    both are still killed: p19 P26 (the intent worker's grammar call gained `harnesses`) and
+    ap1 A06 (`_named` gained `conversational`).
+46. **Found by the full run after 5a was committed:** 5a changed `why`'s reply (it now carries
+    the card), and two tests pinned the old shape: `test_spa_thread.py`'s "a link with no card"
+    case (Alpha is still a bare link; the one card is the route decision's) and
+    `test_context_capacity.py`, which called `_why` directly. Both are updated in 5b. The 5a
+    commit was made on the targeted suites only.
+47. **A documentation fix to B6.** B6's commit staged only its own lines of `domain-model.md`
+    with a zero-context patch, and the other session's uncommitted lines above it shifted the
+    position, so B6's `start`-approval paragraph landed inside §9.4's first lines. 5b's commit
+    puts it back at the end of §9.3, where the working copy always had it.
+48. **The final full run** (B10a + B10b): 2517 passed, 3 failed, 13 skipped, 5 xfailed. The
+    three failures are timeouts under full-suite load, and each passes alone (three runs each
+    for the last two): `test_spa_marker.py` (the known flake, §3), `test_spa_resources.py`'s
+    account-policy form (item 22) and, newly seen, `test_spa_arrival.py::test_reduced_motion_says_the_rise_and_pulses_nothing`
+    ("the arrival is still announced"). None is in code B10 changed. They are recorded, not
+    fixed.
+
 ## 13. As built
 
 (empty until implementation)

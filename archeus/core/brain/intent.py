@@ -29,6 +29,9 @@ _H = {'type': 'string', 'maxLength': 12, 'nullable': True}
 _ITEMS = {'type': 'array', 'maxItems': 20, 'items': {'type': 'object', 'properties': {
     'text': _S, 'origin': {'type': 'string', 'enum': ['explicit', 'inferred']}},
     'required': ['text', 'origin']}}
+_NAMES = {'type': 'object', 'nullable': True, 'properties': {
+    k: {'type': 'array', 'maxItems': 10, 'items': {'type': 'string', 'maxLength': 200}}
+    for k in ('accounts', 'harnesses')}}
 SCHEMA = {'type': 'object', 'properties': {
     'kind': {'type': 'string', 'enum': list(KINDS)},
     'title': {'type': 'string', 'maxLength': 120, 'nullable': True},
@@ -55,7 +58,11 @@ SCHEMA = {'type': 'object', 'properties': {
             'text': _S, 'refs': {'type': 'array', 'maxItems': 10,
                                  'items': {'type': 'string', 'maxLength': 12}}},
         'required': ['text', 'refs']}},
-    'confidence': {'type': 'number', 'nullable': True}},
+    'confidence': {'type': 'number', 'nullable': True},
+    # ADR-0042 §2 (P19 B10: accounts and harnesses): names, resolved by Core
+    'resource_directive': {'type': 'object', 'nullable': True, 'properties': {
+        'scope': {'type': 'string', 'enum': ['mission', 'task', 'standing', 'ambiguous']},
+        'prefer': _NAMES, 'forbid': _NAMES}, 'required': ['scope']}},
     'required': ['kind']}
 
 PREFIX = (
@@ -76,7 +83,11 @@ PREFIX = (
     "(origin inferred). List an ambiguity as material only when the two readings would be "
     "materially different work. List under conflicts the handles of items the request goes "
     "against, and say why; an item marked not confirmed is still listed, it stays not "
-    "confirmed. For a question, answer in claims, each citing the handles it rests on.\n")
+    "confirmed. For a question, answer in claims, each citing the handles it rests on.\n"
+    "When the user says which accounts or harnesses to use or not use, put their names, as "
+    "said, in resource_directive.prefer / .forbid; its scope is mission (this work), task "
+    "(one step of it), standing (\"never\", \"from now on\", every project) or ambiguous "
+    "(not said).\n")
 
 
 def handles(pkg):
@@ -221,6 +232,10 @@ def check(parsed, facts):
     c = p.get('confidence')
     if c is not None and not 0 <= c <= 1:
         bad.append('confidence is 0..1')
+    d = p.get('resource_directive')
+    if d is not None and not any((d.get(s) or {}).get(k) for s in ('prefer', 'forbid')
+                                 for k in ('accounts', 'harnesses')):
+        bad.append('a resource_directive names an account or harness')
     return bad
 
 

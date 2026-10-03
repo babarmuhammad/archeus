@@ -455,7 +455,8 @@ class Core:
                                    self.db, poll_s=self.world_poll_s,
                                    on_fail=self._engine_failed, name='archeus-knowledge')
         self.knowledge.start()
-        self.conversations = Conversations(missions=self.missions)
+        self.conversations = Conversations(missions=self.missions,
+                                           harnesses=lambda: set(registry.ids()))
         self.intent = WorldLoop(Intents(self.db, actor=self.system, calls=own,
                                         conversations=self.conversations,
                                         after='knowledge'),

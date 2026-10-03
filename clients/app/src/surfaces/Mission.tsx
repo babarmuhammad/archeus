@@ -64,7 +64,11 @@ export function MissionInspector({ id, tab, onTab }: { id: string; tab?: string;
   );
 }
 
-type Prefs = Partial<Record<'preferred_harnesses' | 'forbidden_harnesses' | 'preferred_accounts' | 'forbidden_accounts', string[] | null>> & { max_cost_band?: string | null };
+type Prefs = Partial<Record<'preferred_harnesses' | 'forbidden_harnesses' | 'preferred_accounts' | 'forbidden_accounts', string[] | null>> & {
+  max_cost_band?: string | null;
+  /** the entries a user's message added (P19 B10, ADR-0042 §3) */
+  directives?: { key: string; id: string; message_id: string }[];
+};
 
 function MissionDetails({ m }: { m: Mission }) {
   const prefs = (m.resource_preferences ?? {}) as Prefs;
@@ -91,13 +95,15 @@ function MissionDetails({ m }: { m: Mission }) {
 function PrefsText({ p }: { p: Prefs }) {
   const parts: ReactNode[] = [];
   const list = (k: keyof Prefs) => ((p[k] as string[] | null | undefined) ?? []).filter(Boolean);
-  if (list('preferred_harnesses').length) parts.push(`prefers ${list('preferred_harnesses').join(', ')}`);
-  if (list('forbidden_harnesses').length) parts.push(`never ${list('forbidden_harnesses').join(', ')}`);
+  const said = (k: string, id: string) => ((p.directives ?? []).some((d) => d.key === k && d.id === id) ? ' (from your message)' : '');
+  for (const [k, word] of [['preferred_harnesses', 'prefers'], ['forbidden_harnesses', 'never']] as const)
+    for (const h of list(k)) parts.push(`${word} ${h}${said(k, h)}`);
   for (const [k, word] of [['preferred_accounts', 'prefers account'], ['forbidden_accounts', 'never account']] as const)
     for (const a of list(k))
       parts.push(
         <>
           {word} <AccountName id={a} />
+          {said(k, a)}
         </>,
       );
   if (p.max_cost_band) parts.push(`cost ceiling ${p.max_cost_band}`);

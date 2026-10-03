@@ -4,7 +4,7 @@
 // the live map and the conversation. Composed from Core's reads (S5).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { paths, api, type Approval, type ApprovalList, type Sync, type AutomationList, type Digest, type KnowledgeList, type Message, type MessageList, type MissionList, type RouteDecision, type RouteDecisionList, type Status } from '../api/generated';
+import { paths, api, type Approval, type ApprovalList, type Sync, type AutomationList, type Digest, type KnowledgeList, type Message, type MessageList, type MissionList, type Mission, type RouteDecision, type RouteDecisionList, type Status } from '../api/generated';
 import { announce } from '../a11y/announce';
 import { send } from '../data/core';
 import { store, useRead } from '../data/cache';
@@ -324,7 +324,7 @@ function MessageRow({ m, conversation }: { m: Message; conversation: string }) {
       {m.cards.length || bare.length ? (
         <div className="cards">
           {m.cards.map((c, i) => (
-            <CardRef key={i} type={c.type} kind={c.ref.kind} id={c.ref.id} intent={m.intent_id ?? undefined} changed={changed(c.ref.kind, c.ref.id)} conversation={conversation} message={m.id} />
+            <CardRef key={i} type={c.type} kind={c.ref.kind} id={c.ref.id} intent={m.intent_id ?? undefined} changed={changed(c.ref.kind, c.ref.id)} conversation={conversation} message={m.id} card={c} />
           ))}
           {bare.map((l) => (
             <a key={l.kind + l.id} className="card" href={objectHref(l.kind, l.id)} data-ref={`${l.kind}:${l.id}`} {...thread(changed(l.kind, l.id))}>
@@ -341,7 +341,7 @@ function MessageRow({ m, conversation }: { m: Message; conversation: string }) {
 
 /** A card is a link to the live object, labelled by its type. Challenge and
  * clarification cards answer through P7's command. */
-function CardRef({ type, kind, id, intent, changed, conversation, message }: { type: string; kind: string; id: string; intent?: string; changed: boolean; conversation: string; message: string }) {
+function CardRef({ type, kind, id, intent, changed, conversation, message, card }: { type: string; kind: string; id: string; intent?: string; changed: boolean; conversation: string; message: string; card: object }) {
   const [answer, setAnswer] = useState('');
   if ((type === 'challenge' || type === 'clarification') && kind === 'intent') {
     return (
@@ -369,6 +369,7 @@ function CardRef({ type, kind, id, intent, changed, conversation, message }: { t
   if (type === 'estop') return <ChatEstop />;
   if (type === 'stop' && kind === 'mission') return <ChatStop id={id} conversation={conversation} message={message} />;
   if (type === 'route_explanation' && kind === 'route_decision') return <ChatRouteExplanation id={id} />;
+  if (type === 'change') return <ChatChange card={card as ChangeCard} conversation={conversation} />;
   return (
     <a className="card" href={objectHref(kind, id)} data-ref={`${kind}:${id}`} {...thread(changed)}>
       <span className="card-type">{type.replace('_', ' ')}</span> {kind === 'mission' ? <LiveMission id={id} /> : <RefLabel kind={kind} id={id} />}
@@ -458,6 +459,40 @@ function ChatRouteExplanation({ id }: { id: string }) {
     <a className="card" href={objectHref('route_decision', id)} data-ref={`route_decision:${id}`} aria-label="route explanation">
       <span className="card-type">route explanation</span> {rd.data ? rd.data.explanation : <RefLabel kind="route_decision" id={id} />}
     </a>
+  );
+}
+
+type ChangeCard = {
+  ref: { kind: string; id: string };
+  scope: 'mission' | 'standing';
+  says: string;
+  command: { name: 'setMissionResources' | 'setResourcePolicy'; id: string; body: Record<string, unknown> };
+  based_on: string | null;
+};
+
+/** A widening or standing directive (P19 B10, ADR-0042 §3): Core proposed it;
+ * confirming runs the existing `admin` route with Core's own body. A mission's
+ * proposal is closed once its resources were set again since. */
+function ChatChange({ card, conversation }: { card: ChangeCard; conversation: string }) {
+  const m = useRead<Mission>(card.scope === 'mission' ? paths.getMission(card.ref.id) : null);
+  const since = ((m.data?.resource_preferences ?? {}) as { since?: string }).since ?? null;
+  const stale = card.scope === 'mission' && m.data && since !== card.based_on;
+  const body = card.command.body;
+  return (
+    <article className="card" aria-label="change" data-scope={card.scope}>
+      <p>{card.says}</p>
+      {stale ? (
+        <p className="hint">This mission’s resources were set again since; say it again to get a new proposal.</p>
+      ) : card.command.name === 'setMissionResources' ? (
+        <div className="row">
+          <ActionButton label="Save preferences" scope="admin" run={(key) => api.setMissionResources(send(), card.command.id, { ...body, idempotency_key: key })} reread={[paths.listMessages(conversation), paths.getMission(card.command.id)]} />
+        </div>
+      ) : (
+        <div className="row">
+          <ActionButton label="Save policy" scope="admin" run={(key) => api.setResourcePolicy(send(), card.command.id, { ...body, idempotency_key: key })} reread={[paths.listMessages(conversation), paths.listAccounts()]} />
+        </div>
+      )}
+    </article>
   );
 }
 

@@ -72,3 +72,51 @@ def test_the_stop_card_posts_the_confirming_turn_naming_its_own_message():
 
 def test_the_route_explanation_card_is_the_records_own_words():
     assert 'Chosen: account A, the only one eligible.' in '\n'.join(_app().frame())
+
+
+def _change_app(since='2026-10-03T12:00:00Z'):
+    body = {'preferred_accounts': ['acc_1'], 'forbidden_accounts': [], 'preferred_harnesses': [],
+            'forbidden_harnesses': []}
+    msgs = {'messages': [{'id': 'msg_9', 'author': 'archeus', 'text': 'Confirm it on the card.',
+                          'created_at': '2026-10-03T12:00:03Z', 'links': [], 'cards': [
+        {'type': 'change', 'ref': {'kind': 'mission', 'id': MID}, 'scope': 'mission',
+         'says': 'Use account "Shared" for "Ship": it is used only when you name it.',
+         'command': {'name': 'setMissionResources', 'id': MID, 'body': body},
+         'based_on': '2026-10-03T12:00:00Z'},
+        {'type': 'change', 'ref': {'kind': 'account', 'id': 'acc_2'}, 'scope': 'standing',
+         'says': 'Never use account "A" unless you name it.',
+         'command': {'name': 'setResourcePolicy', 'id': 'acc_2',
+                     'body': {'consumption': 'explicit_only'}}, 'based_on': None}]}]}
+    app = _StubApp({
+        endpoints.get_mission(MID): {'id': MID, 'title': 'Ship', 'state': 'EXECUTING',
+                                     'objective': 'o', 'version': 2,
+                                     'resource_preferences': {'since': since}},
+        endpoints.get_mission_plan(MID): {'versions': [], 'plan': {'tasks': []}},
+        endpoints.list_messages(MID): msgs,
+        endpoints.attention_items(): {'items': [], 'count': 0}, endpoints.digest(): {'groups': []},
+        endpoints.sync(): {'client': {'scopes': ['observe', 'control', 'approve', 'admin'],
+                                      'capabilities': {'step_up': 'local'}}}})
+    app.open('mission', MID, 'now')
+    app.frame()
+    return app, body
+
+
+def test_a_change_card_runs_the_existing_admin_route_with_cores_own_body():
+    app, body = _change_app()
+    acts = {a['label']: a for x in app._doc.lines for a in x['acts']
+            if a['label'] in ('Set routing preferences', 'Save policy')}
+    assert {a['scope'] for a in acts.values()} == {'admin'}
+    sent = []
+    app.core.post = lambda path, b: sent.append((path, b)) or {}
+    acts['Set routing preferences']['run']('k1', {})
+    acts['Save policy']['run']('k2', {})
+    assert sent == [(endpoints.set_mission_resources(MID), dict(body, idempotency_key='k1')),
+                    (endpoints.set_resource_policy('acc_2'),
+                     {'consumption': 'explicit_only', 'idempotency_key': 'k2'})]
+
+
+def test_a_missions_change_card_closes_once_its_resources_were_set_again():
+    app, _body = _change_app(since='2026-10-03T13:00:00Z')
+    (act,) = [a for x in app._doc.lines for a in x['acts']
+              if a['label'] == 'Set routing preferences']
+    assert 'set again' in act['disabled']
