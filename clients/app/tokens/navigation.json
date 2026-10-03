@@ -64,6 +64,10 @@
       "label": "Clients"
     },
     {
+      "id": "appearance",
+      "label": "Appearance"
+    },
+    {
       "id": "about",
       "label": "About"
     }

@@ -1626,27 +1626,51 @@ html[data-motion='reduced'] *::after {
   transition: none !important;
 }
 
+/* High contrast (ADR-0044): the OS's when this client says `system`, or this
+   client's own choice. `:where` adds no specificity, so the forced-colours
+   block below still wins on source order, as it must. */
 @media (prefers-contrast: more) {
-  .rows,
-  .row-item,
-  .att,
-  .card,
-  .btn,
-  input,
-  select,
-  textarea {
+  :where(html:not([data-contrast='standard'])) .rows,
+  :where(html:not([data-contrast='standard'])) .row-item,
+  :where(html:not([data-contrast='standard'])) .att,
+  :where(html:not([data-contrast='standard'])) .card,
+  :where(html:not([data-contrast='standard'])) .btn,
+  :where(html:not([data-contrast='standard'])) input,
+  :where(html:not([data-contrast='standard'])) select,
+  :where(html:not([data-contrast='standard'])) textarea {
     border-width: var(--hairline, 2px);
   }
 
-  .thread-rule,
-  [data-thread]::before {
+  :where(html:not([data-contrast='standard'])) .thread-rule,
+  :where(html:not([data-contrast='standard'])) [data-thread]::before {
     border-left-color: var(--focus);
   }
 
-  .thread-line {
+  :where(html:not([data-contrast='standard'])) .thread-line {
     height: 2px;
     background: var(--focus);
   }
+}
+
+:where(html[data-contrast='high']) .rows,
+:where(html[data-contrast='high']) .row-item,
+:where(html[data-contrast='high']) .att,
+:where(html[data-contrast='high']) .card,
+:where(html[data-contrast='high']) .btn,
+:where(html[data-contrast='high']) input,
+:where(html[data-contrast='high']) select,
+:where(html[data-contrast='high']) textarea {
+  border-width: var(--hairline, 2px);
+}
+
+:where(html[data-contrast='high']) .thread-rule,
+:where(html[data-contrast='high']) [data-thread]::before {
+  border-left-color: var(--focus);
+}
+
+:where(html[data-contrast='high']) .thread-line {
+  height: 2px;
+  background: var(--focus);
 }
 
 @media (forced-colors: active) {

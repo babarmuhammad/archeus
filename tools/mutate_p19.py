@@ -5,7 +5,8 @@ TUI (P09-P14); B11, the generated client everywhere (P15-P20); B3, a mission's o
 conversation and the mission Now tab (P21-P30); B5, chat approve / reject
 is the card's decision (P31-P40); B6, mission confirmation under `careful`
 (P41-P50); B10a, `emergency stop`, `stop <running mission>` and the
-explanation card (P51-P62); B10b, resource directives (P63-P74); B4, plan edit (P75-P89).
+explanation card (P51-P62); B10b, resource directives (P63-P74); B4, plan edit (P75-P89);
+B9, the application theme (P90-P100).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -66,6 +67,15 @@ WORK = 'archeus/core/application/work.py'
 VALIDATE = 'archeus/core/planning/validate.py'
 PE = 'tests/v1/integration/test_plan_edit.py::'
 PLAN_E2E = 'tests/v1/e2e/test_spa_plan_edit.py::test_the_plan_awaiting_approval_is_edited_on_its_tab'
+TOK_CSS = 'clients/app/src/styles/tokens.css'
+APP_CSS = 'clients/app/src/styles/app.css'
+BOOT = 'clients/app/src/state/appearance.js'
+INDEX = 'clients/app/index.html'
+CONTROL = 'clients/app/src/surfaces/Control.tsx'
+AP = 'tests/v1/e2e/test_spa_appearance.py::'
+AP_CHOICE = AP + 'test_appearance_is_this_clients_choice_over_the_systems'
+AP_FORCED = AP + 'test_forced_colours_override_any_choice'
+AP_FIRST = AP + 'test_the_choice_is_on_html_before_the_stylesheet_and_survives_an_offline_start'
 CHANGE_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
               'test_a_change_card_is_confirmed_through_the_existing_admin_route')
 STOP_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
@@ -449,6 +459,51 @@ MUTATIONS = [
      "    if p.get('edited_by'):                  # P19 S2: the TUI shows an edit, never makes one",
      "    if False:")],
      ['tests/v1/tui/test_plan_edit.py::test_the_persons_version_is_shown_as_such']),
+    ('P90', 'an explicit light theme is not applied', [(TOK_CSS,
+     ":root[data-theme='light'] {\n  color-scheme: light;",
+     ":root[data-theme='lite'] {\n  color-scheme: light;")],
+     [AP_CHOICE]),
+    ('P91', "the OS's light scheme wins over an explicit dark", [(TOK_CSS,
+     "@media (prefers-color-scheme: light) {\n  :root:not([data-theme='dark']) {",
+     "@media (prefers-color-scheme: light) {\n  :root {")],
+     [AP_CHOICE]),
+    ('P92', "an explicit standard contrast does not hold off the OS's", [(TOK_CSS,
+     "@media (prefers-contrast: more) {\n  :root:not([data-contrast='standard']) {",
+     "@media (prefers-contrast: more) {\n  :root {")],
+     [AP_CHOICE]),
+    ('P93', 'an explicit high contrast is not applied', [(TOK_CSS,
+     ":root[data-contrast='high'] {", ":root[data-contrast='higher'] {")],
+     [AP_CHOICE]),
+    ('P94', 'a theme stops a forced colour', [(TOK_CSS,
+     ":root[data-theme='light'] {\n  color-scheme: light;",
+     ":root[data-theme='light'] {\n  forced-color-adjust: none;\n  color-scheme: light;")],
+     [AP_FORCED]),
+    ('P95', 'the high-contrast rule outranks the forced-colours block', [(APP_CSS,
+     ":where(html[data-contrast='high']) .thread-line {",
+     "html[data-contrast='high'] .thread-line {")],
+     [AP_FORCED]),
+    ('P96', 'any stored name is a theme, a palette too', [(BOOT,
+     "Object.prototype.hasOwnProperty.call(BG, p.theme) ? p.theme : 'system'",
+     "p.theme ? p.theme : 'system'")],
+     [AP_CHOICE]),
+    ('P97', 'the choice is kept for this tab only', [(BOOT,
+     "    if (next) localStorage.setItem(KEY, JSON.stringify(next));\n"
+     "    p = JSON.parse(localStorage.getItem(KEY));",
+     "    if (next) sessionStorage.setItem(KEY, JSON.stringify(next));\n"
+     "    p = JSON.parse(sessionStorage.getItem(KEY));")],
+     [AP_CHOICE]),
+    ('P98', 'the theme colour stays dark whatever is chosen', [(BOOT,
+     "m.setAttribute('content', BG[theme === 'system' ? os : theme]);",
+     "m.setAttribute('content', BG.dark);")],
+     [AP_CHOICE]),
+    ('P99', 'the boot waits for the page like a module', [(INDEX,
+     '<script src="/src/state/appearance.js"></script>',
+     '<script defer src="/src/state/appearance.js"></script>')],
+     [DG + 'test_t6_the_appearance_boot_runs_before_the_stylesheet', AP_FIRST]),
+    ('P100', "the TUI names a theme that is not the terminal's", [(SCR,
+     "    doc.add('  ' + app.st.paint(app.st.theme.capitalize(), 'text', True)",
+     "    doc.add('  ' + app.st.paint('Dark', 'text', True)")],
+     ['tests/v1/tui/test_appearance.py::test_the_terminal_names_its_own_theme_and_motion']),
 ]
 
 if __name__ == '__main__':

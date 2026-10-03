@@ -837,6 +837,77 @@ conversation only, and B10 in two commits (5a, then 5b).
     The two other intermittent tests of item 48 passed in this run, which says nothing about
     whether they are fixed.
 
+**Slice 7 (B9, Appearance), 2026-10-04.**
+
+60. **As B9 chose.** Control → Appearance is a new section (between Clients and About) holding
+    theme (System · Dark · Light), contrast (System · Standard · High) and motion, which moved
+    there from About. The choice is stored under `archeus-appearance` in localStorage beside
+    `archeus-motion`, per client and never synced; nothing in Core reads it (ADR-0044 "Core/API:
+    none" holds: no route, schema or Core file changed).
+61. **The boot is generated and emitted as a hashed asset** (B9 did not say how a `'self'` boot
+    script is built or cached). `tools/gen_ui.py` writes `src/state/appearance.js` from
+    `tokens.json`, so its theme list is the token sets and nothing else. It is a classic
+    parser-blocking script: a module is deferred and cannot promise to run before the
+    stylesheet paints. Vite does not bundle a classic script, so a small plugin in
+    `vite.config.ts` emits it as `assets/appearance-<hash>.js` and points `index.html`'s tag at
+    it. That puts it under Core's existing `/assets/*` route and the service worker's
+    cache-first asset rule, so the offline start (T5) needed no Core route and no worker change.
+    The build prints Vite's "can't be bundled without type=module" note for it, which is the
+    intent. The boot owns the storage: Control → Appearance calls `archeusAppearance(next)`,
+    which stores the choice and applies it, so the key and the allowlist live in one file.
+62. **The attributes and the `system` mapping.** The boot always sets `data-theme` (system,
+    dark, light) and `data-contrast` (system, standard, high) on `<html>`; a stored value that
+    is not a token set (a legacy palette name) is `system`. `tokens.css` maps `system` with
+    `:root:not([data-theme='dark'])` under `prefers-color-scheme: light` and
+    `:root:not([data-contrast='standard'])` under `prefers-contrast: more`, so a page whose
+    boot did not run still follows the OS as before. Explicit choices are
+    `:root[data-theme='light']`, `:root[data-theme='dark']` (only `color-scheme`) and
+    `:root[data-contrast='high']`. No token value changed.
+63. **The high-contrast component rules follow the same switch, and forced colours still win.**
+    `app.css`'s `prefers-contrast: more` block (thicker borders, the thread rule and line in
+    `focus`) now also applies under an explicit High and not under an explicit Standard. Its
+    prefixes are wrapped in `:where()` so they add no specificity: the forced-colours block
+    after it keeps winning on source order (T3), as it did before B9.
+64. **The theme colour is no longer hard-coded** (§1.9 listed `#0E1116`). `index.html` carries
+    two `theme-color` metas, one per OS scheme; the boot fills them from the token `bg`s, both
+    with the chosen theme's when one is chosen, and sets `color-scheme` to match. The PWA
+    manifest's `background_color` stays the dark `bg`: a manifest has no per-scheme value.
+65. **The TUI's Appearance section** (deviation: B9 and ADR-0044 §6 say the TUI is unchanged,
+    but the Control sections are one shared table, p17-design-gate A1). The TUI's Appearance
+    names its own theme (`--light` / `ARCHEUS_TUI_THEME`), says the app chooses its own, and
+    holds the motion line that moved out of About. It offers no command and reads no app
+    preference; the TUI's theme selection is unchanged.
+66. **T5's Qt half is B8's.** The persistent QtWebEngine profile and the OS-following pre-load
+    background are B8's (§4 B8, "Profile"); B9 tests a reload, another tab of the client and an
+    offline start from the service worker with Core out of reach.
+67. **Tests.** `test_spa_appearance.py` (T1, T2, T3, T5, T6 in a real browser, with a check
+    floor), `test_design_gates.py::test_t6_*` (the selectable themes are exactly the token sets
+    the contrast gates run over, T4; the boot is a classic script ahead of every stylesheet and
+    module, T6), `tests/v1/tui/test_appearance.py`. A fast reload can open the event stream
+    before Core has seen the old page's close, which Core answers 429; the e2e's console check
+    ignores that one status.
+68. **Mutants P90-P100** (B9): an explicit Light not applied, the OS's light scheme over an
+    explicit Dark, an explicit Standard not holding off the OS's contrast, an explicit High not
+    applied, a theme stopping a forced colour, the high-contrast rule outranking the
+    forced-colours block, any stored name taken as a theme, the choice kept for one tab, the
+    theme colour fixed at dark, the boot deferred, and the TUI naming a theme not its own. All
+    eleven killed. P92 survived the first run: under an explicit Light the theme's own rule
+    outranks a mutated `:root`, so the e2e's Light case could not see it; it now also checks
+    Dark with Standard under an OS asking for more contrast. **A pin B9 moved:** P19.5's N151
+    (the high-contrast thread line) anchored on the old `.thread-line` rule inside
+    `prefers-contrast: more`; it is re-anchored on the same rule under its new `:where()`
+    prefix and still killed. No P19.5 behaviour or test changed.
+69. **The full run** (B9 on B4, `tests/v1`): 2542 passed, 2 failed, 13 skipped, 5 xfailed. The
+    failures are the two intermittent tests of item 48, `test_spa_arrival.py`'s reduced-motion
+    test and `test_spa_resources.py`'s account-policy form. Neither uses the motion control B9
+    moved (the first emulates `reduced_motion`; `applyMotion` and `data-motion` are unchanged)
+    and together they passed five of six isolated runs, so they stay classed as already known,
+    not as B9's. `test_spa_marker.py`, the known flake, passed in this run, which says nothing
+    about whether it is fixed. A run over the whole tree also failed
+    `tests/test_cli_help.py::test_a_deferred_v1_verb_imports_only_its_dispatcher`
+    (`archeus.cli._api` imported with the dispatcher); it fails the same way on `67a032c`, before
+    B9, and is outside the `tests/v1` baseline.
+
 ## 13. As built
 
 (empty until implementation)

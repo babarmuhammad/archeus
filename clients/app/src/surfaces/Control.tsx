@@ -49,6 +49,7 @@ export function ControlView({ section }: { section: string }) {
       {cur === 'resources' && <ResourcesSection />}
       {cur === 'sessions' && <Sessions />}
       {cur === 'devices' && <Devices />}
+      {cur === 'appearance' && <Appearance />}
       {cur === 'about' && <About />}
     </div>
   );
@@ -745,7 +746,7 @@ function PairStart() {
   );
 }
 
-// ── about: this Core, this client, motion ──
+// ── appearance: theme, contrast and motion, this client's own (ADR-0044) ──
 
 export const MOTION_KEY = 'archeus-motion';
 
@@ -762,10 +763,70 @@ export function applyMotion() {
   document.documentElement.dataset.motion = motionMode(sys, readMotionPref());
 }
 
+type Theme = 'system' | 'dark' | 'light';
+type Contrast = 'system' | 'standard' | 'high';
+type AppearancePref = { theme: Theme; contrast: Contrast };
+
+declare global {
+  /** The appearance boot's own function (src/state/appearance.js): stores a choice, applies what is stored. */
+  function archeusAppearance(next?: AppearancePref): AppearancePref;
+}
+
+function Appearance() {
+  const [look, setLook] = useState<AppearancePref>(() => archeusAppearance());
+  const [pref, setPref] = useState<MotionPref>(readMotionPref());
+  const choose = (next: AppearancePref) => setLook(archeusAppearance(next));
+  return (
+    <>
+      <p className="hint">Kept by this client only: another browser, the desktop app or a phone chooses its own. Windows contrast themes always win.</p>
+      <Section title="Theme">
+        <label>
+          <select aria-label="Theme" value={look.theme} onChange={(e) => choose({ ...look, theme: e.target.value as Theme })}>
+            <option value="system">Follow the system</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </label>
+      </Section>
+      <Section title="Contrast">
+        <label>
+          <select aria-label="Contrast" value={look.contrast} onChange={(e) => choose({ ...look, contrast: e.target.value as Contrast })}>
+            <option value="system">Follow the system</option>
+            <option value="standard">Standard</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+      </Section>
+      <Section title="Motion">
+        <label>
+          <select
+            aria-label="Motion"
+            value={pref}
+            onChange={(e) => {
+              const v = e.target.value as MotionPref;
+              setPref(v);
+              try {
+                localStorage.setItem(MOTION_KEY, v);
+              } catch {
+                /* a display preference: without storage it follows the system */
+              }
+              applyMotion();
+            }}
+          >
+            <option value="system">Follow the system</option>
+            <option value="reduced">Reduced: no movement, changes appear at once</option>
+          </select>
+        </label>
+      </Section>
+    </>
+  );
+}
+
+// ── about: this Core, this client ──
+
 function About() {
   const h = useRead<Health>(paths.health());
   const s = useRead<Sync>(paths.sync());
-  const [pref, setPref] = useState<MotionPref>(readMotionPref());
   return (
     <>
       <Section title="This Core">
@@ -798,26 +859,6 @@ function About() {
             </>
           )}
         </Loadable>
-      </Section>
-      <Section title="Motion">
-        <label>
-          <select
-            value={pref}
-            onChange={(e) => {
-              const v = e.target.value as MotionPref;
-              setPref(v);
-              try {
-                localStorage.setItem(MOTION_KEY, v);
-              } catch {
-                /* a display preference: without storage it follows the system */
-              }
-              applyMotion();
-            }}
-          >
-            <option value="system">Follow the system</option>
-            <option value="reduced">Reduced: no movement, changes appear at once</option>
-          </select>
-        </label>
       </Section>
       <Section title="Emergency stop">
         <p>Stops every running execution now and refuses new work until you re-arm.</p>

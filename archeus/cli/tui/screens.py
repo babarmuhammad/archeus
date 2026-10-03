@@ -743,7 +743,8 @@ def control(app, doc):
                                           s['id'] == cur) for s in CONTROL_SECTIONS)
             + app.st.paint('   [Tab] next section', 'text-2'))
     {'autonomy': autonomy, 'automations': automations, 'resources': resources_section,
-     'sessions': sessions, 'devices': devices, 'about': about}[cur](app, doc)
+     'sessions': sessions, 'devices': devices, 'appearance': appearance,
+     'about': about}[cur](app, doc)
 
 
 def autonomy(app, doc):
@@ -984,6 +985,16 @@ def devices(app, doc):
         doc.empty('[P] makes a code that works once, for two minutes.')
 
 
+def appearance(app, doc):
+    # ADR-0044 §6: the terminal keeps its own theme and reads no app preference
+    doc.h('Theme')
+    doc.add('  ' + app.st.paint(app.st.theme.capitalize(), 'text', True)
+            + app.st.paint(" — this terminal's own: archeus tui --light, or ARCHEUS_TUI_THEME"
+                           ' (dark, light). The app chooses its own.', 'text-2'))
+    doc.h('Motion')
+    doc.hint('Nothing in the terminal moves: a change is shown when it is read.')
+
+
 def about(app, doc):
     doc.h('This Core')
     h = doc.load(endpoints.health(), "Core's health")
@@ -1004,8 +1015,6 @@ def about(app, doc):
                 ('Scopes', T(app, ', '.join(s['client']['scopes']))),
                 ('Core instance', T(app, s['core']['instance'])),
                 ('Events kept', T(app, '%s – %s' % (s['floor_seq'], s['head_seq'])))])
-    doc.h('Motion')
-    doc.hint('Nothing in the terminal moves: a change is shown when it is read.')
     doc.h('Emergency stop')
     doc.add('  ' + app.st.paint('Stops every running execution now and refuses new work until '
                                 'you re-arm.'))

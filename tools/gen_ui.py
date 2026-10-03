@@ -10,7 +10,8 @@ Sources: clients/app/tokens/{tokens,presentation,navigation,invalidation,motion,
 Outputs for the SPA: src/styles/tokens.css, src/state/tokens.ts,
 src/state/presentation.ts, src/nav/table.ts, src/data/rules.ts,
 src/state/motion.ts (the motion registry, ADR-0024 §3), src/graph/edgeWords.ts
-(the relationship vocabulary, p19-design-gate B1). Outputs for the
+(the relationship vocabulary, p19-design-gate B1), src/state/appearance.js (the
+appearance boot, p19-design-gate B9). Outputs for the
 TUI (p17-design-gate A1, A7): archeus/cli/tui/_tables.py and
 archeus/cli/tui/tokens.py, because the JSON is not in the wheel. One table,
 everything derived — the cluster-spec pattern (tools/gen_cluster_spec.py)
@@ -38,6 +39,11 @@ MOTION = os.path.join(APP, 'tokens', 'motion.json')
 MOTION_TS = os.path.join(APP, 'src', 'state', 'motion.ts')
 EDGES = os.path.join(APP, 'tokens', 'edges.json')
 EDGES_TS = os.path.join(APP, 'src', 'graph', 'edgeWords.ts')
+APPEARANCE_JS = os.path.join(APP, 'src', 'state', 'appearance.js')
+#: the localStorage key of this client's appearance choice (p19-design-gate B9)
+APPEARANCE_KEY = 'archeus-appearance'
+#: the contrast choices beside `system` (ADR-0044 §1)
+CONTRASTS = ('standard', 'high')
 TUI = os.path.join(ROOT, 'archeus', 'cli', 'tui')
 TABLES_PY = os.path.join(TUI, '_tables.py')
 TOKENS_PY = os.path.join(TUI, 'tokens.py')
@@ -80,16 +86,25 @@ def render_css(t):
     for role, hexv in t['themes']['dark'].items():
         out.append('  %s: %s;' % (_var(role), hexv))
     out.append('}')
-    out.append('@media (prefers-color-scheme: light) {\n  :root {')
-    for role, hexv in t['themes']['light'].items():
-        out.append('    %s: %s;' % (_var(role), hexv))
+    # ADR-0044 §5: each theme under its attribute (set by the appearance boot),
+    # and `system` — no attribute, or data-*="system" — mapped in media queries
+    light = ['%s: %s;' % (_var(role), hexv) for role, hexv in t['themes']['light'].items()]
+    high = ['%s: var(%s);' % (_var(role), _var(src))
+            for role, src in t['high_contrast'].items() if not role.startswith('$')]
+    high.append('--hairline: 2px;')
+    out.append(":root[data-theme='dark'] {\n  color-scheme: dark;\n}")
+    out.append("@media (prefers-color-scheme: light) {\n  :root:not([data-theme='dark']) {")
+    out += ['    ' + d for d in light]
     out.append('  }\n}')
-    out.append('@media (prefers-contrast: more) {\n  :root {')
-    for role, src in t['high_contrast'].items():
-        if role.startswith('$'):
-            continue
-        out.append('    %s: var(%s);' % (_var(role), _var(src)))
-    out.append('    --hairline: 2px;\n  }\n}')
+    out.append(":root[data-theme='light'] {\n  color-scheme: light;")
+    out += ['  ' + d for d in light]
+    out.append('}')
+    out.append("@media (prefers-contrast: more) {\n  :root:not([data-contrast='standard']) {")
+    out += ['    ' + d for d in high]
+    out.append('  }\n}')
+    out.append(":root[data-contrast='high'] {")
+    out += ['  ' + d for d in high]
+    out.append('}')
     out.append('@media (max-width: %dpx) {\n  :root {' % (t['breakpoints']['tablet'] - 1))
     for k, (size, line) in t['type']['phone'].items():
         out.append('    --type-%s: %.4frem/%.4frem var(--font);' % (k, size / 16, line / 16))
@@ -110,6 +125,41 @@ def render_tokens_ts(t):
             'export const DARK: Record<string, string> = %s;\n'
             % (json.dumps(t['motion']), json.dumps(t['easing']), json.dumps(t['breakpoints']),
                json.dumps(t['targets']), json.dumps(_alpha(t)), json.dumps(t['themes']['dark'])))
+
+
+def render_appearance_js(t):
+    """The appearance boot (ADR-0044 §4): a classic script, not a module, because
+    only a parser-blocking one is sure to run before the stylesheet paints."""
+    bg = {name: theme['bg'] for name, theme in t['themes'].items()}
+    return HEAD + """// The appearance boot (ADR-0044 §4, p19-design-gate B9): index.html loads it
+// before the stylesheet, from 'self'. It reads this client's own choice (never
+// Core: it works offline) and puts the theme and contrast on <html>; only the
+// token sets are themes, so anything else stored is `system`. Control ->
+// Appearance calls it with the new choice, which it stores first.
+function archeusAppearance(next) {
+  var KEY = %s, BG = %s, CONTRASTS = %s, p = null;
+  try {
+    if (next) localStorage.setItem(KEY, JSON.stringify(next));
+    p = JSON.parse(localStorage.getItem(KEY));
+  } catch (e) {
+    /* without storage a choice holds for this page; a value not ours is `system` */
+    p = next || null;
+  }
+  var theme = p && Object.prototype.hasOwnProperty.call(BG, p.theme) ? p.theme : 'system';
+  var contrast = p && CONTRASTS.indexOf(p.contrast) >= 0 ? p.contrast : 'system';
+  var html = document.documentElement;
+  html.setAttribute('data-theme', theme);
+  html.setAttribute('data-contrast', contrast);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
+    var os = (m.getAttribute('media') || '').indexOf('light') >= 0 ? 'light' : 'dark';
+    m.setAttribute('content', BG[theme === 'system' ? os : theme]);
+  });
+  var scheme = document.querySelector('meta[name="color-scheme"]');
+  if (scheme) scheme.setAttribute('content', theme === 'system' ? 'dark light' : theme);
+  return { theme: theme, contrast: contrast };
+}
+archeusAppearance();
+""" % (json.dumps(APPEARANCE_KEY), json.dumps(bg), json.dumps(list(CONTRASTS)))
 
 
 def _label(state):
@@ -363,7 +413,8 @@ def outputs():
     return {CSS_OUT: render_css(t), TOKENS_TS: render_tokens_ts(t),
             PRES_TS: render_presentation_ts(p), NAV_TS: render_nav_ts(n),
             RULES_TS: render_rules_ts(i), TABLES_PY: render_tables_py(p, n, i, w),
-            TOKENS_PY: render_tokens_py(t), MOTION_TS: render_motion_ts(mo), EDGES_TS: render_edges_ts(w)},         problems(p, t) + nav_problems(n) + motion_problems(mo, t)
+            TOKENS_PY: render_tokens_py(t), MOTION_TS: render_motion_ts(mo), EDGES_TS: render_edges_ts(w),
+            APPEARANCE_JS: render_appearance_js(t)},         problems(p, t) + nav_problems(n) + motion_problems(mo, t)
 
 
 def main(argv):

@@ -39,6 +39,7 @@ CONTROL_SECTIONS = [{'id': 'autonomy', 'label': 'Autonomy'},
  {'id': 'resources', 'label': 'Resources'},
  {'id': 'sessions', 'label': 'Sessions'},
  {'id': 'devices', 'label': 'Clients'},
+ {'id': 'appearance', 'label': 'Appearance'},
  {'id': 'about', 'label': 'About'}]
 
 INSPECTOR_TABS = {'mission': ['outcome', 'plan', 'now', 'evidence', 'why', 'timeline', 'relations'],

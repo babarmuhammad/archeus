@@ -270,12 +270,12 @@ AP-CC, AP-ID, AP-RT, AP-LG, AP-WB and AP-RB are `tests/v1/unit/test_ap1_units.py
 | G12 unknown stays unknown | P21 | consumption renders a missing reading as unknown, never a number |
 | G13 effective policy parity | P21, P22 | the effective-policy read equals the router's inputs |
 | G14 directive scope (**built**, P19 B10) | P19 | ambiguous or task scope applies to the mission only; "never" / "from now on" produce a change card; no directive removes an elimination. **Built:** an ambiguous `don't use` applies to the mission and only offers standing; `standing` is a change card; a preference a conversation added never lifts an `explicit_only` or `last_resort` account, through the real snapshot and router (`test_directives.py`) |
-| T1 explicit theme | P19 | each explicit theme renders its token set whatever the emulated OS scheme |
-| T2 system default | P19 | a first launch follows the OS scheme and contrast |
-| T3 forced colours | P19 | `forced-colors: active` overrides any explicit choice |
-| T4 contrast floors | P19 | the existing contrast gates run over every theme × role, unchanged |
-| T5 persistence per client | P19 | the choice survives a reload, a service-worker offline start and a Qt shell restart (persistent profile); no Core read is needed |
-| T6 before first paint; tints are not themes | P19 | `<html>` carries the theme attributes before the stylesheet paints (a `'self'` boot script); only the three token sets are selectable as application themes |
+| T1 explicit theme (**built**, P19 B9) | P19 | each explicit theme renders its token set whatever the emulated OS scheme. **Built:** Light and Dark, Standard and High chosen in Control → Appearance hold under every emulated OS scheme and contrast, the theme colour with them (`test_spa_appearance.py`) |
+| T2 system default (**built**, P19 B9) | P19 | a first launch follows the OS scheme and contrast. **Built:** a first launch is `system`/`system` and follows the OS's scheme and contrast as they change (`test_spa_appearance.py`) |
+| T3 forced colours (**built**, P19 B9) | P19 | `forced-colors: active` overrides any explicit choice. **Built:** under forced colours every choice gives one look, and the thread line stays `Highlight` under an explicit High (`test_spa_appearance.py`) |
+| T4 contrast floors (**built**, P19 B9) | P19 | the existing contrast gates run over every theme × role, unchanged. **Built:** unchanged, and the selectable themes are asserted to be exactly the token sets those gates run over (`test_design_gates.py::test_t6_*`) |
+| T5 persistence per client (**built** but the Qt half, P19 B9) | P19 | the choice survives a reload, a service-worker offline start and a Qt shell restart (persistent profile); no Core read is needed. **Built:** a reload, another tab of the client and an offline start from the service worker with Core out of reach keep it (`test_spa_appearance.py`); the Qt shell restart is B8's (p19-design-gate §12) |
+| T6 before first paint; tints are not themes (**built**, P19 B9) | P19 | `<html>` carries the theme attributes before the stylesheet paints (a `'self'` boot script); only the three token sets are selectable as application themes. **Built:** the attributes are on `<html>` while the stylesheet request is still held; the boot is a classic script ahead of every stylesheet and module; a stored palette name is `system` (`test_spa_appearance.py`, `test_design_gates.py::test_t6_*`; `tools/mutate_p19.py` P90-P100) |
 
 ## 9. Legacy context migration gates (P22 tooling, P25.5 run — ADR-0045, ADR-0046, decided 2026-10-01)
 

@@ -76,6 +76,10 @@ export const CONTROL_SECTIONS = [
     "label": "Clients"
   },
   {
+    "id": "appearance",
+    "label": "Appearance"
+  },
+  {
     "id": "about",
     "label": "About"
   }

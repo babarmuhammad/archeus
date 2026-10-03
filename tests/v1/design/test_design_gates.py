@@ -292,6 +292,40 @@ def test_reduced_motion_contrast_and_forced_colours_are_honoured():
     assert '@media (prefers-contrast: more)' in _css()[STYLES[1]]
 
 
+# ── the application theme (ADR-0044, p19-design-gate B9) ──
+
+def _boot():
+    src = open(gen_ui.APPEARANCE_JS, encoding='utf-8').read()
+    return json.loads(re.search(r'BG = (\{[^}]*\})', src).group(1))
+
+
+def test_t6_only_the_token_sets_are_themes_and_each_has_its_attribute():
+    """T4/T6: the themes a client may choose are exactly the token sets the
+    contrast gates above run over, each emitted under its own attribute, the
+    `system` mapping in media queries; high contrast both ways too."""
+    assert sorted(_boot()) == sorted(TOKENS['themes']) == ['dark', 'light']
+    css = _css()[STYLES[1]]
+    for name in TOKENS['themes']:
+        assert ":root[data-theme='%s']" % name in css, name
+    assert re.search(r"@media \(prefers-color-scheme: light\) \{\s*:root:not\(\[data-theme='dark'\]\)", css)
+    assert re.search(r"@media \(prefers-contrast: more\) \{\s*:root:not\(\[data-contrast='standard'\]\)", css)
+    assert ":root[data-contrast='high']" in css
+    for path, text in _css().items():
+        for m in re.finditer(r"data-theme='([^']*)'", text):
+            assert m.group(1) in TOKENS['themes'], (path, m.group(1))
+
+
+def test_t6_the_appearance_boot_runs_before_the_stylesheet():
+    """T6, statically: a classic `'self'` script (never inline, async, deferred or
+    a module) loaded in <head> before anything that could paint."""
+    html = open(os.path.join(APP, 'index.html'), encoding='utf-8').read()
+    tags = re.findall(r'<(script|link)\b([^>]*)>', html)
+    first = tags.index(('script', ' src="/src/state/appearance.js"'))
+    assert html.index('</head>') > html.index('/src/state/appearance.js')
+    assert not [t for t in tags[:first] if t[0] == 'script' or 'stylesheet' in t[1]]
+    assert all(t[0] == 'link' or 'src=' in t[1] for t in tags), 'no inline script (CSP)'
+
+
 #: What a width media query may touch: the chrome (where the navigation and the
 #: inspector sit), and control target sizes. Every component reads its container.
 CHROME = re.compile(r'^(\.shell\b|\.nav\b|\.nav-label|\.top\b|\.main\b|\.inspector\b|\.banner\b|'
