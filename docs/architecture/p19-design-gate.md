@@ -769,6 +769,74 @@ conversation only, and B10 in two commits (5a, then 5b).
     ("the arrival is still announced"). None is in code B10 changed. They are recorded, not
     fixed.
 
+**Slice 6 (B4, plan edit), 2026-10-03.**
+
+49. **The route as B4 designed it.** `POST /v1/plans/{id}/edit`, `approve` scope, idempotent.
+    The body is `tasks` (the whole list in the planner's resolved task shape, `PlanTaskSpec`)
+    and an optional `expected_version`, which is the plan row's version, as an approval's is
+    on `/decide`. Core checks the principal itself as well (a user device holding `approve`).
+    Only the plan in force (PROPOSED) of an APPROVAL_REQUIRED mission is edited. Anything
+    else is `422 invalid_transition`, and a stale version is `409 version_conflict`. Core
+    fires `request_changes`, then `propose_plan` with the edit, in one transaction. The
+    validator, the supersession of approvals (P9 D14) and the plan gate's auto-approve /
+    needs-approval split are not touched, so an edit that still needs approval asks again with
+    a new approval and card.
+50. **No migration** (deviation from §6, which said B4 adds `edited_by` "(schema)"). Plan
+    fields live in the row's JSON body, so `edited_by` is an entity field (`_REFS` principal,
+    frozen like the rest). The digest includes it only when it is set. A planner's version
+    hashes exactly as it did before B4, so every stored digest stays valid.
+51. **A validator refusal is `422 guard_failed`**, the refusal of the version's own `ready`
+    guard (plan DRAFT → PROPOSED), with the validator's sentences as its reason. Nothing is
+    written. Beyond `validate.problems`, an edit also refuses an input taken from a task that
+    is not in the plan, which the planner's handle check covers on its path. The planner's
+    path itself is unchanged.
+52. **Reordering is the order sent** (B4 named "reorder" without saying how it is carried).
+    Core keys the tasks `t1…tN` in dependency order, stable in the order sent, exactly as it
+    keys a planner's labels (`planner.resolve`). It remaps `depends_on` and `inputs.from_task`.
+    A task's labels in the body are only labels.
+53. **What the edit does not carry, it inherits.** The new version keeps the replaced
+    version's `summary`, `inputs`, `assumptions`, `questions`, `risks`, `refs` and `rollback`.
+    Its `coverage` is recomputed from its own tasks' `serves` (`planner.coverage`, now shared
+    with the planner). It is judged on the replaced version's explicit requirements
+    (`planner.explicit_handles`), so an edit cannot drop the only task serving one. Planner
+    provenance (`round_seq`, `route_decision_id`, `context_package_id`) is None.
+54. **Core's serialisation edges are derived again, never adopted.** A client sending back the
+    task list as read also sends the dependencies Core added (D8). The replaced version's
+    `serialised` edges are dropped from the body before validation, and `serialise()` adds
+    them again, with their reason, wherever `touches` still overlap. So the new version's
+    `serialised` still lists exactly Core's edges.
+55. **Found, not changed: an edit spends a replan.** The replan budget counts
+    `plan_version - 1`, so each edit, like each `request_changes` re-plan before it, is one
+    replan of `max_replans`.
+56. **Clients.** The SPA's Plan tab offers "Edit plan…" only while the plan is in force and
+    PROPOSED and the mission's table has `request_changes` from its state. The editor
+    renames, sets the description (`objective`) and the acceptance criteria (text and check),
+    reorders, adds and removes a task, and sets what a task waits for. Every other field is
+    sent back as read. "Save plan" is the command's one name. The new task's kind is chosen
+    from `TASK_KINDS`, which `gen_api_docs.py` now generates beside `MISSION_STATES` rather
+    than the client keeping a copy. Both clients mark a person's version "edited by a
+    person". The TUI shows it and never edits (a test fails if any TUI module names the
+    command).
+57. **Pins B4 moved.** P8's boundary that no plan route takes a command (E7 in
+    `test_api_structure.py`, H04 in `test_planning_http.py`) now admits exactly
+    `/v1/plans/{id}/edit`. The `approve` scope, which reached only decisions, also reaches
+    the edit, a decision on the plan awaiting approval. Moving the planner's `inputs` line into
+    the shared `coverage` helper moved p8 M06a's anchor; it is re-anchored on the same line
+    and still killed.
+58. **Mutants P75-P89** (B4): a replaced version edited, the validator's 422 skipped, the
+    explicit requirements ignored, Core's serialisation edges adopted, the labels kept instead
+    of Core's keys, the author not recorded, the replaced version's lists dropped, its
+    coverage copied, the mission not sent back first, a stale version accepted, the route on
+    `control`, a planner's digest changed, the SPA sending another order, the SPA offering the
+    editor in any state, and the TUI not marking a person's version. All fifteen killed. P87
+    survived the first run: the e2e's only reorder was also forced by a dependency, so a
+    reversed list keyed the same. The e2e now saves the reorder alone and the dependency as a
+    second edit.
+59. **The full run** (B4 on B10): 2535 passed, 1 failed, 13 skipped, 5 xfailed. The failure is
+    `test_spa_marker.py`, the known flake (§3, item 22); B4 does not touch the code it runs.
+    The two other intermittent tests of item 48 passed in this run, which says nothing about
+    whether they are fixed.
+
 ## 13. As built
 
 (empty until implementation)

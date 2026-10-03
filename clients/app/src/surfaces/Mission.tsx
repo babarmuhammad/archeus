@@ -6,12 +6,14 @@ import { useEffect, useId, useState, type ReactNode } from 'react';
 import {
   paths,
   api,
+  TASK_KINDS,
   type Checkpoint,
   type ContextPackage,
   type Execution,
   type ExecutionList,
   type Mission,
   type MissionPlan,
+  type PlanTaskSpec,
   type PolicyDecisionList,
   type ReviewList,
   type RouteDecisionList,
@@ -51,7 +53,7 @@ export function MissionInspector({ id, tab, onTab }: { id: string; tab?: string;
           <Tabs label="Mission" current={current} onSelect={onTab} tabs={INSPECTOR_TABS.mission.map((t) => ({ id: t, label: TAB_LABEL[t] }))} />
           <div role="tabpanel" id={`panel-${current}`} aria-labelledby={`tab-${current}`} className="panel">
             {current === 'outcome' && <Outcome m={mission} />}
-            {current === 'plan' && <PlanTab snap={plan} />}
+            {current === 'plan' && <PlanTab snap={plan} mission={mission} />}
             {current === 'now' && <NowTab mission={mission} plan={plan.data} />}
             {current === 'evidence' && <Evidence id={id} m={mission} />}
             {current === 'why' && <Why m={mission} plan={plan.data} />}
@@ -274,7 +276,7 @@ function ResourcePreferences({ m }: { m: Mission }) {
 
 /** Plan versions as a lineage; tasks by wave. Proposed, approved and running
  * are three facts, never one badge. */
-function PlanTab({ snap }: { snap: ReturnType<typeof useRead<MissionPlan>> }) {
+function PlanTab({ snap, mission }: { snap: ReturnType<typeof useRead<MissionPlan>>; mission: Mission }) {
   return (
     <Loadable snap={snap} what="the plan">
       {(mp) => {
@@ -288,6 +290,7 @@ function PlanTab({ snap }: { snap: ReturnType<typeof useRead<MissionPlan>> }) {
                 <StateBadge machine="plan" state={p.state} />
                 {p.estimated_cost ? <span className="tag">cost band: {p.estimated_cost}</span> : null}
                 <span className="tag">{p.in_force ? 'in force' : 'not in force'}</span>
+                {p.edited_by ? <span className="tag">edited by a person</span> : null}
                 {!p.current ? <span className="tag stale">planned from context that has changed: <Prose text={p.current_why} /></span> : null}
               </div>
               {typeof p.summary === 'string' ? <p className="provenance">Summary (planner, model-written): {p.summary}</p> : null}
@@ -309,6 +312,7 @@ function PlanTab({ snap }: { snap: ReturnType<typeof useRead<MissionPlan>> }) {
                   {(p.serialised ?? []).map((s) => `${String(s.after)} → ${String(s.task)}`).join(', ')}
                 </p>
               ) : null}
+              {p.in_force && p.state === 'PROPOSED' && offers('mission', mission.state, 'request_changes') ? <PlanEditor key={p.id} p={p} mission={mission.id} /> : null}
             </Section>
             <Section title="Versions">
               <ol className="versions" reversed>
@@ -325,6 +329,131 @@ function PlanTab({ snap }: { snap: ReturnType<typeof useRead<MissionPlan>> }) {
         );
       }}
     </Loadable>
+  );
+}
+
+/** The task fields a plan edit carries: the planner's own task shape (P19 S2). */
+const SPEC = ['key', 'title', 'kind', 'objective', 'expected_output', 'boundaries', 'depends_on', 'action_classes', 'capabilities_required', 'min_model_tier', 'workspace_mode', 'touches', 'refs', 'serves', 'inputs', 'acceptance', 'estimate'] as const;
+type Crit = { text: string; check: 'automatic' | 'human' };
+
+/** Edit the plan awaiting approval (P19 S2; p19-design-gate B4): rename,
+ * reorder, describe, set acceptance, add or remove a task, change what it
+ * waits for. Saving sends the whole list to Core, which keys it, validates it
+ * and decides it as it would a planner's version — and asks again if it must. */
+function PlanEditor({ p, mission }: { p: NonNullable<MissionPlan['plan']>; mission: string }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<PlanTaskSpec[]>(() => p.tasks.map((t) => Object.fromEntries(SPEC.filter((k) => t[k] != null).map((k) => [k, t[k]])) as unknown as PlanTaskSpec));
+  const [added, setAdded] = useState(0);
+  if (!open)
+    return (
+      <button type="button" className="btn link" onClick={() => setOpen(true)}>
+        Edit plan…
+      </button>
+    );
+  const set = (i: number, patch: Partial<PlanTaskSpec>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const move = (i: number, by: number) => {
+    const next = [...rows];
+    [next[i], next[i + by]] = [next[i + by], next[i]];
+    setRows(next);
+  };
+  const remove = (i: number) => setRows(rows.filter((_, j) => j !== i).map((r) => ({ ...r, depends_on: (r.depends_on ?? []).filter((d) => d !== rows[i].key) })));
+  const crits = (r: PlanTaskSpec): Crit[] => r.acceptance ?? [];
+  return (
+    <form className="form plan-editor" onSubmit={(e) => e.preventDefault()}>
+      <p className="hint">Your edit becomes the next version of this plan. Core checks it as it checks the planner's, numbers the tasks in this order, and asks for approval again if the plan still needs it.</p>
+      <ol className="list">
+        {rows.map((r, i) => (
+          <li key={r.key} data-edit-task={r.key}>
+            <fieldset>
+              <legend>Task {i + 1}</legend>
+              <label>
+                Title
+                <input value={r.title} onChange={(e) => set(i, { title: e.target.value })} />
+              </label>
+              <label>
+                Kind
+                <select value={r.kind} onChange={(e) => set(i, { kind: e.target.value as PlanTaskSpec['kind'] })}>
+                  {TASK_KINDS.map((k) => (
+                    <option key={k} value={k}>
+                      {k}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Description
+                <textarea rows={2} value={r.objective ?? ''} onChange={(e) => set(i, { objective: e.target.value })} />
+              </label>
+              <fieldset>
+                <legend>Acceptance</legend>
+                {crits(r).map((c, n) => (
+                  <div className="row" key={n}>
+                    <input aria-label={`Criterion ${n + 1}`} value={c.text} onChange={(e) => set(i, { acceptance: crits(r).map((x, m) => (m === n ? { ...x, text: e.target.value } : x)) })} />
+                    <select aria-label={`How criterion ${n + 1} is checked`} value={c.check} onChange={(e) => set(i, { acceptance: crits(r).map((x, m) => (m === n ? { ...x, check: e.target.value as Crit['check'] } : x)) })}>
+                      <option value="automatic">automatic</option>
+                      <option value="human">human</option>
+                    </select>
+                    <button type="button" className="btn link" onClick={() => set(i, { acceptance: crits(r).filter((_, m) => m !== n) })}>
+                      Remove criterion
+                    </button>
+                  </div>
+                ))}
+                <button type="button" className="btn link" onClick={() => set(i, { acceptance: [...crits(r), { text: '', check: 'automatic' }] })}>
+                  Add criterion
+                </button>
+              </fieldset>
+              {rows.length > 1 ? (
+                <fieldset>
+                  <legend>Waits for</legend>
+                  {rows
+                    .filter((o) => o.key !== r.key)
+                    .map((o) => (
+                      <label key={o.key} className="check">
+                        <input type="checkbox" checked={(r.depends_on ?? []).includes(o.key)} onChange={(e) => set(i, { depends_on: e.target.checked ? [...(r.depends_on ?? []), o.key] : (r.depends_on ?? []).filter((d) => d !== o.key) })} />
+                        {o.title || o.key}
+                      </label>
+                    ))}
+                </fieldset>
+              ) : null}
+              <div className="row">
+                <button type="button" className="btn link" disabled={i === 0} onClick={() => move(i, -1)}>
+                  Move up
+                </button>
+                <button type="button" className="btn link" disabled={i === rows.length - 1} onClick={() => move(i, 1)}>
+                  Move down
+                </button>
+                <button type="button" className="btn link" onClick={() => remove(i)}>
+                  Remove task
+                </button>
+              </div>
+            </fieldset>
+          </li>
+        ))}
+      </ol>
+      <button
+        type="button"
+        className="btn link"
+        onClick={() => {
+          setRows([...rows, { key: `new${added + 1}`, title: '', kind: 'research', objective: '', acceptance: [{ text: '', check: 'automatic' }] }]);
+          setAdded(added + 1);
+        }}
+      >
+        Add task
+      </button>
+      <div className="row">
+        <ActionButton
+          label="Save plan"
+          scope="approve"
+          kind="primary"
+          run={(key) => api.editPlan(send(), p.id, { tasks: rows, expected_version: p.version, idempotency_key: key })}
+          reread={[paths.getMissionPlan(mission), paths.getMission(mission), paths.listApprovals({ mission }), paths.attentionItems()]}
+          onDone={() => setOpen(false)}
+        />
+        <button type="button" className="btn link" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 

@@ -90,7 +90,7 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
                        'req.api.executions.stop_mission', 'req.api.missions.pause',
                        'req.api.missions.pause_all', 'req.api.missions.reprioritise',
                        'req.api.missions.resume', 'req.api.missions.resume_all',
-                       'resources.register_account', 'resources.set_account_enabled',
+                       'req.api.work.edit_plan', 'resources.register_account', 'resources.set_account_enabled',
                        'resources.set_mission_resources', 'resources.set_resource_policy',
                        'sessions.close', 'sessions.link',
                        'verification.abandon_integration',
@@ -181,6 +181,8 @@ P7 = {
 P8 = {
     ('GET', '/v1/missions/{id}/plan', 'observe', None),
     ('GET', '/v1/plans/{id}', 'observe', None),
+    # P19 S2 (p19-design-gate B4): a person's edit of the plan awaiting approval
+    ('POST', '/v1/plans/{id}/edit', 'approve', 'required'),
 }
 
 
@@ -313,8 +315,10 @@ def test_the_route_table_is_exactly_the_p35b_to_p18_tables():
     for r in routes.ROUTES:
         if 'verification' in r.path and r.method == 'POST':
             assert r.path.endswith('/decide'), r.path
-    # E7: no plan route takes a command (no execution control from P8)
-    assert not [r for r in routes.ROUTES if 'plan' in r.path and r.method != 'GET']
+    # E7: no plan route takes a command (no execution control from P8), but P19
+    # S2's edit of the plan awaiting approval (p19-design-gate B4)
+    assert [r.path for r in routes.ROUTES if 'plan' in r.path and r.method != 'GET'] == [
+        '/v1/plans/{id}/edit']
     for word in ('route/', '/now', 'hook', 'dispatch', 'stream?', '/retry',
                  'cancel', 'accept', 'run-now'):
         assert not [r.path for r in routes.ROUTES if word in r.path], word
@@ -341,9 +345,10 @@ def test_the_route_table_is_exactly_the_p35b_to_p18_tables():
 def test_every_scope_is_a_coarse_credential_scope_and_approve_is_only_deciding():
     assert {r.scope for r in routes.ROUTES} <= set(auth.SCOPES) | {None}
     # P9: the approve scope reaches only decisions — an approval's, and P13's two
-    # human decisions (a verification waiting on you, your own review)
+    # human decisions (a verification waiting on you, your own review); P19 S2's
+    # plan edit is a decision on the plan awaiting approval (p19-design-gate B4)
     assert [r.path for r in routes.ROUTES if r.scope == 'approve'] == [
-        '/v1/approvals/{id}/decide', '/v1/verifications/{id}/decide',
+        '/v1/plans/{id}/edit', '/v1/approvals/{id}/decide', '/v1/verifications/{id}/decide',
         '/v1/missions/{id}/review']
     assert auth.LAUNCH_SCOPES == ('observe',)
     public = {r.path for r in routes.ROUTES if r.scope is None}

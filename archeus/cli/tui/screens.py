@@ -1140,6 +1140,8 @@ def plan_tab(app, doc, m, mp):
     if p.get('estimated_cost'):
         facts.append(T(app, 'cost band: ' + p['estimated_cost'], 'text-2'))
     facts.append(app.st.paint('in force' if p.get('in_force') else 'not in force', 'text-2'))
+    if p.get('edited_by'):                  # P19 S2: the TUI shows an edit, never makes one
+        facts.append(app.st.paint('edited by a person', 'text-2'))
     if not p.get('current'):
         facts.append(app.st.paint('planned from context that has changed: ', 'state.attention')
                      + T(app, p.get('current_why'), 'state.attention'))

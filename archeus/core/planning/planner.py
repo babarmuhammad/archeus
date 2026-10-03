@@ -286,18 +286,12 @@ def resolve(parsed, facts):
                 else {'ref': ref(x['ref'])})) for x in t.get('inputs') or ()],
             'acceptance': [dict(c) for c in t.get('acceptance') or ()],
             'estimate': t['estimate']})
-    reqs = [(h, f) for h, f in facts.items() if f['kind'] in ('requirement', 'constraint')]
-    served = {}
-    for t in tasks:
-        for h in t['serves']:
-            served.setdefault(h, []).append(t['key'])
+    inputs = [{'handle': h, 'kind': f['kind'], 'origin': f['origin'], 'text': f['text']}
+              for h, f in facts.items() if f['kind'] in ('requirement', 'constraint')]
     spec = {
         'summary': parsed['summary'], 'tasks': tasks,
         'success_criteria': [dict(c) for c in parsed.get('success_criteria') or ()],
-        'inputs': [{'handle': h, 'kind': f['kind'], 'origin': f['origin'], 'text': f['text']}
-                   for h, f in reqs],
-        'coverage': [{'requirement': h, 'origin': f['origin'], 'tasks': served.get(h, [])}
-                     for h, f in reqs if f['kind'] == 'requirement'],
+        'inputs': inputs, 'coverage': coverage(inputs, tasks),
         'assumptions': [dict({'text': a['text'], 'origin': 'inferred'}, **(
             {'about': ref(a['about']) if _world(facts[a['about']]) else a['about']}
             if a.get('about') is not None else {})) for a in parsed.get('assumptions') or ()],
@@ -305,9 +299,23 @@ def resolve(parsed, facts):
                       for q in parsed.get('questions') or () if not q['blocking']],
         'risks': list(parsed.get('risks') or ()), 'rollback': parsed.get('rollback'),
         'refs': [ref(h) for h in parsed.get('refs') or ()]}
-    explicit = [h for h, f in facts.items()
-                if f['kind'] == 'requirement' and f['origin'] == 'explicit']
-    return spec, explicit, []
+    return spec, explicit_handles(inputs), []
+
+
+def coverage(inputs, tasks):
+    """Which tasks serve each requirement a plan was made against."""
+    served = {}
+    for t in tasks:
+        for h in t.get('serves') or ():
+            served.setdefault(h, []).append(t['key'])
+    return [{'requirement': i['handle'], 'origin': i['origin'],
+             'tasks': served.get(i['handle'], [])} for i in inputs if i['kind'] == 'requirement']
+
+
+def explicit_handles(inputs):
+    """The requirements a plan must serve or ask about (D16)."""
+    return [i['handle'] for i in inputs
+            if i['kind'] == 'requirement' and i['origin'] == 'explicit']
 
 
 def resolve_block(block, facts):

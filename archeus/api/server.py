@@ -188,6 +188,9 @@ class Api:
         # P13: the user's decisions on verifications and reviews
         from ..core.application.verification import Decisions
         self.decisions = Decisions(missions)
+        # P19 S2: a person's plan edit, which routes nothing
+        from ..core.application.work import Work
+        self.work = Work(missions=missions, router=None)
         self.origin = auth.Origin(port, remote_hosts)
         self.launch = auth.LaunchCodes(clock=launch_clock)
         # P15 (p15-design-gate §5, §6, §13): pairing codes, step-up lockout, and

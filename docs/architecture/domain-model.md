@@ -308,6 +308,14 @@ against and which tasks serve each; `assumptions` are always origin inferred; `s
 lists the dependencies Core added between parallel tasks whose `touches` may overlap, so the
 planner's own edges are exactly the rest. A round that cannot plan records
 `Mission.planning_blocked` instead of a version.
+*As built (P19 S2, p19-design-gate B4):* a person may edit the plan in force while its mission
+is APPROVAL_REQUIRED (`POST /v1/plans/{id}/edit`, `approve` scope). The edit is the next
+version, proposed exactly as a planner's: the mission takes `request_changes` and the version
+is recorded, validated, gated and supersedes its predecessor's approvals in one transaction.
+`edited_by` names the principal (None on a planner's version); an edited version has no
+`round_seq`, `route_decision_id` or `context_package_id`. It keeps the replaced version's lists,
+recomputes `coverage` from its tasks, and Core keys the tasks `t1…tN` in the order sent. The
+`digest` includes `edited_by` only when it is set, so versions stored before it keep theirs.
 
 ### 7.3 Task
 An executable unit in the plan's DAG.

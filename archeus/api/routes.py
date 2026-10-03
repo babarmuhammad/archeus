@@ -144,6 +144,15 @@ def get_plan(req):
         return 200, queries.get_plan(conn, req.params['id'])
 
 
+def edit_plan(req):
+    """A person's edit of the plan awaiting approval (P19 S2): the next version,
+    through the validator and the plan gate, superseding its approvals."""
+    b = req.body
+    return 200, req.run(req.api.work.edit_plan, {
+        'plan_id': req.params['id'], 'tasks': b['tasks'],
+        'expected_version': b.get('expected_version')})
+
+
 def create_mission(req):
     b = req.body
     return 200, req.run(commands.create_mission, {
@@ -939,6 +948,9 @@ ROUTES = (
     Route('GET', '/v1/missions/{id}/plan', get_mission_plan, 'observe', None, None,
           'MissionPlan'),
     Route('GET', '/v1/plans/{id}', get_plan, 'observe', None, None, 'Plan'),
+    # P19 S2 (p19-design-gate B4): only the plan in force, while it awaits approval
+    Route('POST', '/v1/plans/{id}/edit', edit_plan, 'approve', 'required', schemas.EDIT_PLAN,
+          'PlanEdited'),
     Route('POST', '/v1/missions', create_mission, 'control', 'required',
           schemas.CREATE_MISSION, 'Created'),
     Route('POST', '/v1/missions/{id}/pause', pause_mission, 'control', 'required',

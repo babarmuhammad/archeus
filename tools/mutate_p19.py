@@ -5,7 +5,7 @@ TUI (P09-P14); B11, the generated client everywhere (P15-P20); B3, a mission's o
 conversation and the mission Now tab (P21-P30); B5, chat approve / reject
 is the card's decision (P31-P40); B6, mission confirmation under `careful`
 (P41-P50); B10a, `emergency stop`, `stop <running mission>` and the
-explanation card (P51-P62); B10b, resource directives (P63-P74).
+explanation card (P51-P62); B10b, resource directives (P63-P74); B4, plan edit (P75-P89).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -62,6 +62,10 @@ TUI_CV = 'tests/v1/tui/test_chat_verbs.py::'
 DIR = 'tests/v1/integration/test_directives.py::'
 ROUTER = 'archeus/core/routing/router.py'
 RES = 'archeus/core/application/resources.py'
+WORK = 'archeus/core/application/work.py'
+VALIDATE = 'archeus/core/planning/validate.py'
+PE = 'tests/v1/integration/test_plan_edit.py::'
+PLAN_E2E = 'tests/v1/e2e/test_spa_plan_edit.py::test_the_plan_awaiting_approval_is_edited_on_its_tab'
 CHANGE_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
               'test_a_change_card_is_confirmed_through_the_existing_admin_route')
 STOP_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
@@ -378,6 +382,73 @@ MUTATIONS = [
      "api.setMissionResources(send(), card.command.id, { ...body, idempotency_key: key })",
      "api.setMissionResources(send(), card.command.id, { idempotency_key: key, preferred_accounts: [] })")],
      [CHANGE_E2E]),
+    # ── B4: plan edit (P19 S2) ──
+    ('P75', 'a version that is not the plan in force is edited', [(WORK,
+     "        if prev.state != 'PROPOSED' or active_plan(tx.conn, prev.mission_id).entity.id != prev.id:",
+     "        if False:")],
+     [PE + 'test_a_replay_is_one_edit_and_a_stale_or_replaced_version_is_refused']),
+    ('P76', "an edit skips the validator's 422", [(WORK,
+     "        if found:                   # what the version's `ready` guard would refuse",
+     "        if False:")],
+     [PE + 'test_the_validator_refuses_with_a_422_and_nothing_is_written']),
+    ('P77', "an edit is not judged on the requirements the plan must serve", [(WORK,
+     "        explicit = planner.explicit_handles(prev.inputs)",
+     "        explicit = []")],
+     [PE + 'test_the_validator_refuses_with_a_422_and_nothing_is_written']),
+    ('P78', "Core's serialisation edges are adopted as the person's", [(WORK,
+     "                                     if (t.get('key'), d) not in added]) for t in tasks]",
+     "                                     if True]) for t in tasks]")],
+     [PE + 'test_cores_serialisation_edges_are_derived_again_not_adopted']),
+    ('P79', 'the tasks keep their labels instead of Core keying them in order', [(WORK,
+     "        key = {t['key']: 't%d' % i for i, t in enumerate(specs, 1)}",
+     "        key = {t['key']: t['key'] for t in specs}")],
+     [PE + 'test_an_edit_is_the_persons_next_version_and_asks_again']),
+    ('P80', 'the edited version does not name its author', [(WORK,
+     "            tx, actor=actor, mission_id=prev.mission_id, explicit=explicit, edited_by=who.id,",
+     "            tx, actor=actor, mission_id=prev.mission_id, explicit=explicit, edited_by=None,")],
+     [PE + 'test_an_edit_is_the_persons_next_version_and_asks_again']),
+    ('P81', "the edited version loses the lists of the one it replaces", [(WORK,
+     "            plan=dict({k: getattr(prev, k) for k in _PLAN_LISTS + ('summary', 'rollback')},",
+     "            plan=dict({},")],
+     [PE + 'test_an_edit_is_the_persons_next_version_and_asks_again']),
+    ('P82', "the edited version's coverage is the replaced version's", [(WORK,
+     "                      tasks=specs, coverage=planner.coverage(prev.inputs, specs)))",
+     "                      tasks=specs, coverage=prev.coverage))")],
+     [PE + 'test_an_edit_is_the_persons_next_version_and_asks_again']),
+    ('P83', 'the mission is not sent back before the edit is proposed', [(WORK,
+     "        self.missions.request_changes(tx, actor=actor, mission_id=prev.mission_id,\n"
+     "                                      reason='plan v%d edited by %s' % (prev.plan_version, who.id))\n",
+     "")],
+     [PE + 'test_an_edit_is_the_persons_next_version_and_asks_again']),
+    ('P84', "a stale `expected_version` is not refused", [(WORK,
+     "        if expected_version is not None and expected_version != row.version:\n"
+     "            raise lifecycle.VersionConflict(plan_id, expected_version, row.version)\n"
+     "        prev = row.entity",
+     "        prev = row.entity")],
+     [PE + 'test_a_replay_is_one_edit_and_a_stale_or_replaced_version_is_refused']),
+    ('P85', 'a plan edit needs only the control scope', [(ROUTES,
+     "    Route('POST', '/v1/plans/{id}/edit', edit_plan, 'approve', 'required', schemas.EDIT_PLAN,",
+     "    Route('POST', '/v1/plans/{id}/edit', edit_plan, 'control', 'required', schemas.EDIT_PLAN,")],
+     [PE + 'test_only_the_approve_scope_and_only_while_the_plan_awaits_approval']),
+    ('P86', "a planner's version hashes differently than it was stored", [(VALIDATE,
+     "    body = {'plan': {k: v for k, v in plan.to_dict().items() if k not in _PLAN_SKIP\n"
+     "                     and not (k == 'edited_by' and v is None)},",
+     "    body = {'plan': {k: v for k, v in plan.to_dict().items() if k not in _PLAN_SKIP},")],
+     ['tests/v1/unit/test_planning_units.py::'
+      'test_a_planners_version_keeps_the_digest_it_was_stored_with']),
+    ('P87', 'the SPA sends the tasks in another order than shown', [(MISSION,
+     "api.editPlan(send(), p.id, { tasks: rows, expected_version: p.version, idempotency_key: key })",
+     "api.editPlan(send(), p.id, { tasks: [...rows].reverse(), expected_version: p.version, "
+     "idempotency_key: key })")],
+     [PLAN_E2E]),
+    ('P88', 'the SPA offers the editor whatever the plan and the mission', [(MISSION,
+     "{p.in_force && p.state === 'PROPOSED' && offers('mission', mission.state, 'request_changes') ? ",
+     "{true ? ")],
+     [PLAN_E2E]),
+    ('P89', "the TUI does not say a version is a person's", [(SCR,
+     "    if p.get('edited_by'):                  # P19 S2: the TUI shows an edit, never makes one",
+     "    if False:")],
+     ['tests/v1/tui/test_plan_edit.py::test_the_persons_version_is_shown_as_such']),
 ]
 
 if __name__ == '__main__':

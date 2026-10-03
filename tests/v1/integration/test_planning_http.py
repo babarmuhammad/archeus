@@ -82,8 +82,8 @@ def test_h04_no_plan_route_takes_a_command(archeus_home):
     try:
         mid = _mission(tc)
         m = _planned(tc, mid)
-        for path in ('/v1/plans/%s' % m['plan_id'], '/v1/missions/%s/plan' % mid,
-                     '/v1/plans/%s/edit' % m['plan_id']):
+        # P19 S2 adds the one plan command, `/v1/plans/{id}/edit` (test_plan_edit.py)
+        for path in ('/v1/plans/%s' % m['plan_id'], '/v1/missions/%s/plan' % mid):
             r = tc.http('POST', path, body={'idempotency_key': 'z'})
             assert r.status in (404, 405), (path, r.status)
         assert tc.http('GET', '/v1/plans/%s' % m['plan_id']).json()['state'] == 'PROPOSED'

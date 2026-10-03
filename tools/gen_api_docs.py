@@ -165,6 +165,9 @@ def render_v1_client():
            'export const SETTLED: readonly string[] = [%s];'
            % ', '.join(q % s for s in engine.SETTLED),
            'export const SCOPES = [%s] as const;' % ', '.join(q % s for s in auth.SCOPES),
+           '/** What a task may be (P19 S2: the plan editor offers these). */',
+           'export const TASK_KINDS = [%s] as const;'
+           % ', '.join(q % k for k in schemas.entities.TASK_KINDS),
            'export const STREAM_PATH = %s;' % (q % routes.STREAM), '']
     for name in sorted(schemas.TYPES):
         out += ['export interface %s %s' % (name, _ts_object(schemas.TYPES[name], '  ')), '']

@@ -40,7 +40,7 @@ from ..domain import entities, guards, ids
 from ..domain.actions import Action
 from ..domain.events import new_event
 from ..domain.values import Ref
-from ..planning import validate
+from ..planning import planner, validate
 from . import authorization, lifecycle, resources
 from .commands import active_plan
 
@@ -130,7 +130,8 @@ class Work:
     # ── plan ──
 
     def propose_plan(self, tx, *, actor, mission_id, plan, round_seq=None,
-                     route_decision_id=None, context_package_id=None, explicit=(), asked=()):
+                     route_decision_id=None, context_package_id=None, explicit=(), asked=(),
+                     edited_by=None):
         """Record a proposed plan as the next PlanVersion with its tasks, then
         take the mission's decision on it — all in one transaction, so a plan is
         never left undecided. From REASONING the mission first moves to PLANNING
@@ -178,7 +179,7 @@ class Work:
             summary=plan.get('summary', ''), estimated_cost=validate.cost_band(specs),
             supersedes_plan_id=None if prev is None else prev.entity.id, round_seq=round_seq,
             route_decision_id=route_decision_id, context_package_id=context_package_id,
-            serialised=tuple(serialised),
+            serialised=tuple(serialised), edited_by=edited_by,
             **{k: tuple(plan.get(k) or ()) for k in _PLAN_LISTS},
             rollback=plan.get('rollback'))
         p = replace(p, digest=validate.digest(p, tasks))
@@ -232,6 +233,54 @@ class Work:
                                          trigger='plan_needs_approval', reason=e.result.reason)
         return {'plan_id': p.id, 'plan_version': p.plan_version, 'digest': p.digest,
                 'mission': decided}
+
+    def edit_plan(self, tx, *, actor, plan_id, tasks, expected_version=None):
+        """A person's edit of the plan awaiting them (P19 S2, p19-design-gate
+        B4): only the mission's plan in force, only while the mission is
+        APPROVAL_REQUIRED. *tasks* is the whole list in the planner's task
+        shape, labelled by the editor; Core keys them t1…tN in that order, as
+        it keys a planner's. The mission is sent back (`request_changes`) and
+        the edit proposed as the next version in this one transaction, so the
+        validator, the supersession of approvals (P9 D14) and the plan gate run
+        as for the planner's — an edit that needs approval asks again — with the
+        person as its author and no planner provenance. The version keeps the
+        lists of the one it replaces; its coverage is its own tasks'."""
+        who = authorization._principal(tx, actor, 'approve')
+        row = lifecycle.load(tx, entities.Plan, plan_id)
+        if expected_version is not None and expected_version != row.version:
+            raise lifecycle.VersionConflict(plan_id, expected_version, row.version)
+        prev = row.entity
+        m = lifecycle.load(tx, entities.Mission, prev.mission_id)
+        _require('mission', m, ('APPROVAL_REQUIRED',), 'edit_plan')
+        if prev.state != 'PROPOSED' or active_plan(tx.conn, prev.mission_id).entity.id != prev.id:
+            raise lifecycle.IllegalTrigger('plan', prev.state, 'edit_plan',
+                                           'only the plan in force is edited')
+        # Core's serialisation edges are derived again, never kept as the person's
+        added = {(s['task'], s['after']) for s in prev.serialised}
+        specs = [dict(t, depends_on=[d for d in t.get('depends_on') or ()
+                                     if (t.get('key'), d) not in added]) for t in tasks]
+        explicit = planner.explicit_handles(prev.inputs)
+        found = validate.problems(specs, criteria=m.entity.success_criteria, explicit=explicit)
+        labels = {t.get('key') for t in specs}
+        found += ['task %s takes an input from %s, which is not in the plan' % (t['key'], x)
+                  for t in specs for x in (i.get('from_task') for i in t.get('inputs') or ())
+                  if x is not None and x not in labels]
+        if found:                   # what the version's `ready` guard would refuse
+            raise lifecycle.GuardFailed('plan', 'DRAFT', 'PROPOSED', 'ready', guards.GuardResult(
+                'ready', False, 'the plan is not valid: %s' % '; '.join(found)))
+        specs = validate.order(specs)
+        key = {t['key']: 't%d' % i for i, t in enumerate(specs, 1)}
+        specs = [dict(t, key=key[t['key']], depends_on=[key[d] for d in t['depends_on']],
+                      inputs=[dict(x, from_task=key[x['from_task']])
+                              if x.get('from_task') is not None else x
+                              for x in t.get('inputs') or ()]) for t in specs]
+        self.missions.request_changes(tx, actor=actor, mission_id=prev.mission_id,
+                                      reason='plan v%d edited by %s' % (prev.plan_version, who.id))
+        out = self.propose_plan(
+            tx, actor=actor, mission_id=prev.mission_id, explicit=explicit, edited_by=who.id,
+            plan=dict({k: getattr(prev, k) for k in _PLAN_LISTS + ('summary', 'rollback')},
+                      tasks=specs, coverage=planner.coverage(prev.inputs, specs)))
+        return dict(out, changed=True)
 
     def replan_budget_spent(self, tx, *, actor, mission_id):
         """REPLANNING -> BLOCKED if the replan budget is spent (judged on the plan

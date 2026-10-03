@@ -688,9 +688,42 @@ TYPES = {
         'tasks': {'type': 'array', 'items': {'ref': 'Task'}},
         'waves': {'type': 'array', 'items': {'type': 'array', 'items': {'type': 'string'}}},
         'serialised': {'type': 'array', 'items': {'type': 'object'}},
-        'current': {'type': 'boolean'}, 'current_why': {'type': 'string'}},
+        'current': {'type': 'boolean'}, 'current_why': {'type': 'string'},
+        # P19 S2: the principal whose edit this version is (None: the planner's)
+        'edited_by': {'type': 'string', 'nullable': True}, 'version': {'type': 'integer'}},
         'required': ['id', 'mission_id', 'plan_version', 'state', 'tasks', 'waves',
                      'current', 'current_why']},
+    #: a task as the planner hands it to Core (planner.resolve), labelled by its editor
+    'PlanTaskSpec': {'type': 'object', 'properties': {
+        'key': {'type': 'string'}, 'title': {'type': 'string'},
+        'kind': {'type': 'string', 'enum': list(entities.TASK_KINDS)},
+        'objective': {'type': 'string', 'nullable': True},
+        'expected_output': {'type': 'string', 'nullable': True},
+        'boundaries': {'type': 'array', 'items': {'type': 'string'}},
+        'depends_on': {'type': 'array', 'items': {'type': 'string'}},
+        'action_classes': {'type': 'array', 'items': {
+            'type': 'string', 'enum': list(entities.ACTION_CLASSES)}},
+        'capabilities_required': {'type': 'array', 'items': {
+            'type': 'string', 'enum': list(entities.CAPABILITIES)}},
+        'min_model_tier': {'type': 'string', 'nullable': True,
+                           'enum': list(entities.MODEL_TIERS)},
+        'workspace_mode': {'type': 'string', 'nullable': True,
+                           'enum': list(entities.WORKSPACE_MODES)},
+        'touches': {'type': 'array', 'items': {'type': 'string'}},
+        'refs': {'type': 'array', 'items': {'type': 'object'}},
+        'serves': {'type': 'array', 'items': {'type': 'string'}},
+        'inputs': {'type': 'array', 'items': {'type': 'object'}},
+        'acceptance': {'type': 'array', 'items': {'type': 'object', 'properties': {
+            'text': {'type': 'string'},
+            'check': {'type': 'string', 'enum': list(entities.CRITERION_CHECKS)}},
+            'required': ['text', 'check']}},
+        'estimate': {'type': 'integer'}},
+        'required': ['key', 'title', 'kind']},
+    'PlanEdited': {'type': 'object', 'open': True, 'properties': {
+        'plan_id': {'type': 'string'}, 'plan_version': {'type': 'integer'},
+        'digest': {'type': 'string'}, 'mission': {'type': 'object'},
+        'changed': {'type': 'boolean'}},
+        'required': ['plan_id', 'plan_version', 'digest', 'changed']},
     'PlanVersionRef': {'type': 'object', 'properties': {
         'id': {'type': 'string'}, 'plan_version': {'type': 'integer'},
         'state': {'type': 'string', 'enum': sorted(states.states('plan'))},
@@ -868,6 +901,11 @@ DECIDE = {'type': 'object', 'properties': {
     'expected_version': {'type': 'integer', 'nullable': True}, 'idempotency_key': KEY},
     'required': ['decision', 'action_hash', 'idempotency_key']}
 _IDS = {'type': 'array', 'nullable': True, 'items': {'type': 'string'}}
+#: P19 S2 (p19-design-gate B4): the whole task list; the plan's version as read
+EDIT_PLAN = {'type': 'object', 'properties': {
+    'tasks': {'type': 'array', 'items': {'ref': 'PlanTaskSpec'}},
+    'expected_version': {'type': 'integer', 'nullable': True}, 'idempotency_key': KEY},
+    'required': ['tasks', 'idempotency_key']}
 # P14 (p14-design-gate §17)
 CREATE_AUTOMATION = {'type': 'object', 'properties': {
     'name': {'type': 'string'}, 'trigger': {'type': 'object'}, 'template': {'type': 'object'},

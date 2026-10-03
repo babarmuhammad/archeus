@@ -47,6 +47,10 @@ class endpoints:
         return _path('/v1/plans/{id}', id_)
 
     @staticmethod
+    def edit_plan(id_):
+        return _path('/v1/plans/{id}/edit', id_)
+
+    @staticmethod
     def create_mission():
         return _path('/v1/missions')
 

@@ -796,7 +796,8 @@ class Plan(Entity):
     _ID = 'plan'
     _STATE = ('state', 'plan')
     _REFS = {'mission_id': 'mission', 'supersedes_plan_id': 'plan',
-             'route_decision_id': 'route_decision', 'context_package_id': 'context_package'}
+             'route_decision_id': 'route_decision', 'context_package_id': 'context_package',
+             'edited_by': 'principal'}
     _CHOICES = {'estimated_cost': COST_BANDS}
     _MIN1 = ('plan_version',)
     _FROZEN = FROZEN_ALL
@@ -829,6 +830,9 @@ class Plan(Entity):
     refs: tuple = ()
     # dependencies Core added (D8): {task, after, because}; the model's are the rest
     serialised: tuple = ()
+    # P19 S2 (p19-design-gate B4): the principal whose edit this version is;
+    # None for a planner's version. An edited one has no planner provenance
+    edited_by: str = None
     state: str = None
 
     def _check(self):

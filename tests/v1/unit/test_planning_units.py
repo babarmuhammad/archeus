@@ -260,3 +260,26 @@ def test_every_recorded_judge_plan_passes_cores_validation():
         shapes.validate(entry['parsed'], planner.SCHEMA)
         assert planner.check(entry['parsed'], facts) == [], entry.get('when', 'default')
         assert planner.blocking(entry['parsed']) is None
+
+
+def test_a_planners_version_keeps_the_digest_it_was_stored_with():
+    """P19 B4 added `Plan.edited_by`: a digest stored before it never had the
+    key, so a planner's version (no editor) must hash exactly as it did then,
+    or every stored plan would fail its integrity check. An edited version's
+    author is part of its content."""
+    import hashlib
+    import json
+    p = entities.Plan(id='pln_01J0000000000000000000000A',
+                      mission_id='msn_01J0000000000000000000000A')
+    task = entities.Task(id='tsk_01J0000000000000000000000A', plan_id=p.id,
+                         mission_id=p.mission_id, key='t1', title='T', kind='research',
+                         acceptance=tuple(OK))
+    before = {k: v for k, v in p.to_dict().items()
+              if k not in ('id', 'state', 'digest', 'edited_by')}
+    tk = {k: v for k, v in task.to_dict().items()
+          if k not in ('id', 'state', 'failure_class', 'plan_id')}
+    old = hashlib.sha256(json.dumps({'plan': before, 'tasks': [tk]}, sort_keys=True,
+                                    separators=(',', ':')).encode('utf-8')).hexdigest()
+    assert validate.digest(p, [task]) == old
+    from dataclasses import replace
+    assert validate.digest(replace(p, edited_by='prn_01J0000000000000000000000A'), [task]) != old

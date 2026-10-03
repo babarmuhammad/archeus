@@ -28,6 +28,7 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/v1/missions/{id}` | observe | — | — | — | `Mission` |
 | GET | `/v1/missions/{id}/plan` | observe | — | — | — | `MissionPlan` |
 | GET | `/v1/plans/{id}` | observe | — | — | — | `Plan` |
+| POST | `/v1/plans/{id}/edit` | approve | required | — | `EditPlanRequest` | `PlanEdited` |
 | POST | `/v1/missions` | control | required | — | `CreateMissionRequest` | `Created` |
 | POST | `/v1/missions/{id}/pause` | control | required | — | `PauseMissionRequest` | `CommandResult` |
 | POST | `/v1/missions/{id}/resume` | control | required | — | `ResumeMissionRequest` | `CommandResult` |
@@ -1106,7 +1107,49 @@ interface Plan {
   serialised?: Record<string, unknown>[];
   current: boolean;
   current_why: string;
+  edited_by?: string | null;
+  version?: number;
   [field: string]: unknown;
+}
+```
+
+### `PlanEdited`
+
+```ts
+interface PlanEdited {
+  plan_id: string;
+  plan_version: number;
+  digest: string;
+  mission?: Record<string, unknown>;
+  changed: boolean;
+  [field: string]: unknown;
+}
+```
+
+### `PlanTaskSpec`
+
+```ts
+interface PlanTaskSpec {
+  key: string;
+  title: string;
+  kind: 'code_change' | 'research' | 'document' | 'presentation' | 'inspection' | 'verification' | 'human';
+  objective?: string | null;
+  expected_output?: string | null;
+  boundaries?: string[];
+  depends_on?: string[];
+  action_classes?: Array<'read' | 'web' | 'write_repo' | 'exec' | 'git_commit' | 'git_push' | 'deploy' | 'external_comm' | 'destructive' | 'spend' | 'personal_data' | 'install' | 'credential'>;
+  capabilities_required?: Array<'code_edit' | 'shell' | 'web' | 'long_context' | 'vision'>;
+  min_model_tier?: 'small' | 'mid' | 'large' | null;
+  workspace_mode?: 'in_place' | 'worktree' | null;
+  touches?: string[];
+  refs?: Record<string, unknown>[];
+  serves?: string[];
+  inputs?: Record<string, unknown>[];
+  acceptance?: Array<{
+    text: string;
+    check: 'automatic' | 'human';
+  }>;
+  estimate?: number;
 }
 ```
 
@@ -1639,6 +1682,16 @@ interface WorldGraph {
   edges: GraphEdge[];
   truncated: boolean;
   hidden: GraphHidden[];
+}
+```
+
+### `EditPlanRequest`
+
+```ts
+interface EditPlanRequest {
+  tasks: PlanTaskSpec[];
+  expected_version?: number | null;
+  idempotency_key: string;
 }
 ```
 

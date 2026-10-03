@@ -5,6 +5,8 @@ export const MISSION_STATES = ['CREATED', 'UNDERSTANDING', 'CONTEXT_GATHERING', 
 /** States Core has nothing to do in: ended, or waiting for a human. */
 export const SETTLED: readonly string[] = ['COMPLETED', 'CANCELLED', 'FAILED', 'BLOCKED', 'PAUSED', 'APPROVAL_REQUIRED'];
 export const SCOPES = ['observe', 'control', 'approve', 'admin'] as const;
+/** What a task may be (P19 S2: the plan editor offers these). */
+export const TASK_KINDS = ['code_change', 'research', 'document', 'presentation', 'inspection', 'verification', 'human'] as const;
 export const STREAM_PATH = '/v1/events/stream';
 
 export interface Account {
@@ -681,7 +683,41 @@ export interface Plan {
   serialised?: Record<string, unknown>[];
   current: boolean;
   current_why: string;
+  edited_by?: string | null;
+  version?: number;
   [field: string]: unknown;
+}
+
+export interface PlanEdited {
+  plan_id: string;
+  plan_version: number;
+  digest: string;
+  mission?: Record<string, unknown>;
+  changed: boolean;
+  [field: string]: unknown;
+}
+
+export interface PlanTaskSpec {
+  key: string;
+  title: string;
+  kind: 'code_change' | 'research' | 'document' | 'presentation' | 'inspection' | 'verification' | 'human';
+  objective?: string | null;
+  expected_output?: string | null;
+  boundaries?: string[];
+  depends_on?: string[];
+  action_classes?: Array<'read' | 'web' | 'write_repo' | 'exec' | 'git_commit' | 'git_push' | 'deploy' | 'external_comm' | 'destructive' | 'spend' | 'personal_data' | 'install' | 'credential'>;
+  capabilities_required?: Array<'code_edit' | 'shell' | 'web' | 'long_context' | 'vision'>;
+  min_model_tier?: 'small' | 'mid' | 'large' | null;
+  workspace_mode?: 'in_place' | 'worktree' | null;
+  touches?: string[];
+  refs?: Record<string, unknown>[];
+  serves?: string[];
+  inputs?: Record<string, unknown>[];
+  acceptance?: Array<{
+    text: string;
+    check: 'automatic' | 'human';
+  }>;
+  estimate?: number;
 }
 
 export interface PlanVersionRef {
@@ -1038,6 +1074,12 @@ export interface WorldGraph {
   edges: GraphEdge[];
   truncated: boolean;
   hidden: GraphHidden[];
+}
+
+export interface EditPlanRequest {
+  tasks: PlanTaskSpec[];
+  expected_version?: number | null;
+  idempotency_key: string;
 }
 
 export interface CreateMissionRequest {
@@ -1460,6 +1502,8 @@ export const api = {
     send<MissionPlan>('GET', paths.getMissionPlan(id)),
   getPlan: (send: Send, id: string) =>
     send<Plan>('GET', paths.getPlan(id)),
+  editPlan: (send: Send, id: string, body: EditPlanRequest) =>
+    send<PlanEdited>('POST', '/v1/plans/' + encodeURIComponent(id) + '/edit', body),
   createMission: (send: Send, body: CreateMissionRequest) =>
     send<Created>('POST', '/v1/missions', body),
   pauseMission: (send: Send, id: string, body: PauseMissionRequest) =>

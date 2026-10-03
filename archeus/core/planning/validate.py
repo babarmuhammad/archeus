@@ -224,7 +224,9 @@ _TASK_SKIP = ('id', 'state', 'failure_class', 'plan_id')
 def digest(plan, tasks):
     """sha256 of a version's canonical content: the Plan entity's fields but its
     id, state and digest, and every task's contract (by key)."""
-    body = {'plan': {k: v for k, v in plan.to_dict().items() if k not in _PLAN_SKIP},
+    # `edited_by` came with P19 B4: a digest stored before it never had the key
+    body = {'plan': {k: v for k, v in plan.to_dict().items() if k not in _PLAN_SKIP
+                     and not (k == 'edited_by' and v is None)},
             'tasks': sorted(({k: v for k, v in t.to_dict().items() if k not in _TASK_SKIP}
                              for t in tasks), key=lambda t: t['key'])}
     return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(',', ':'))
