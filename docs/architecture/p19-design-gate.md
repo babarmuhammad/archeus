@@ -503,7 +503,34 @@ offline cold start on a phone.
 
 ## 12. Deviations and new decisions for the user's review
 
-(empty until implementation)
+**Slice 1 (B1 + B2), 2026-10-03.**
+
+1. **The TUI's thread rule is `│`, not the design system's `›`** (deviation). Since P17 `›` is
+   the TUI's cursor marker (`app.py`, drawn in the column before every row), so a `›` rule would
+   make a changed row and the focused row look the same — focus ≠ attention (rulebook §15). The
+   rule is `│` in thread ink on the row's own left edge (the column the row's indent already
+   leaves, so nothing moves; `|` on an ASCII terminal), on every row that names an object the
+   digest names, the digest's own rows included as the SPA's are. The design system's TUI row
+   records it as built. Reversible: the glyph is one constant.
+2. **A Relations list now shows the reverse edges the route reaches** (consequence of B1, not a
+   deviation). The old mappers listed what each object's own read carried; the route at depth 1
+   lists every non-structural edge incident to the object. A mission's list now also names its
+   attempts (`executions.mission_id`), the runs that created it and the verifications of it; an
+   execution's, the attempt that continues it and the verification that checked it.
+3. **Reverse edges the route does not reach** (found, not changed). `graph._holders` has no
+   branch for a session's executions (`Execution.session_id`), nor for context packages, route
+   decisions or policy decisions. So a session's list does not name the attempts that ran in it
+   (it never did); the other three kinds have no Relations tab. Adding holder branches is a Core
+   change to the P18 route; not made here. `test_every_relations_list_is_its_objects_one_hop_of_the_graph`
+   asserts what holds: no row the graph lacks, every edge the object holds.
+4. **A plan version's number moved from the row's words to its label**: the old list said
+   "plan v2"; the route's words are "plan" and the link names the version ("plan v2", the
+   existing `RefLabel`), so the relationship filter shows one "plan" chip, not one per version.
+5. **Mutants moved** (B1, B13): p16 M06, M11, M12 re-anchored on `graph.py`, guarded by
+   `test_graph_parity.py` over the frozen cases the mappers carried
+   (`tests/v1/unit/fixtures/graph_edge_cases.json`); p18 M67 and M68 retired (the fault, a
+   client's own list dropping an edge, can no longer be written; M66 keeps it in Core). All
+   re-run killed, with p17 M24 and p18 M02, M04, M66.
 
 ## 13. As built
 

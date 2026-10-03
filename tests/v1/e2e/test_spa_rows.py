@@ -12,7 +12,8 @@ The row pulse: an `execution.*` frame about a running attempt pulses its
 mission's row once (one CSS opacity step, no animation frame), at most once
 per 2 s, never again for an event already presented, never after a remount,
 never under reduced motion — and the page is idle before, between and after.
-Mutation-verified by tools/mutate_p19_5.py (N120 onward). Check floors keep a
+The Relations list joined in P19 (p19-design-gate B2).
+Mutation-verified by tools/mutate_p19_5.py (N120 onward) and tools/mutate_p19.py. Check floors keep a
 test that silently checks nothing from passing."""
 
 import math
@@ -201,7 +202,10 @@ def test_the_change_rule_marks_exactly_what_changed_on_every_list(browser, deplo
              ('#/control/sessions', {}), ('#/world/%s' % new['project'], {}), ('#/world/%s' % old['project'], {}),
              ('#/o/session/%s/lineage' % new['session'], {'self': ('session', new['session'])}),
              ('#/o/session/%s/lineage' % old['session'], {'self': ('session', old['session'])}),
-             ('#/o/knowledge_item/%s/detail' % new['knowledge'], {'self': ('knowledge_item', new['knowledge'])})]
+             ('#/o/knowledge_item/%s/detail' % new['knowledge'], {'self': ('knowledge_item', new['knowledge'])}),
+             # the Relations list (P19 B2): each row is its neighbour's
+             ('#/o/mission/%s/relations' % new['mission'], {}), ('#/o/mission/%s/relations' % old['mission'], {}),
+             ('#/o/session/%s/relations' % new['session'], {})]
     for h, extra in pages:
         _go(page, h)
         settle(page)
@@ -233,6 +237,9 @@ def test_the_change_rule_marks_exactly_what_changed_on_every_list(browser, deplo
     ruled('#/o/session/%s/lineage' % new['session'], 'session', new['session'])
     ruled('#/o/session/%s/lineage' % old['session'], 'session', old['session'], False)
     ruled('#/o/knowledge_item/%s/detail' % new['knowledge'], 'knowledge_item', new['knowledge'])
+    ruled('#/o/mission/%s/relations' % new['mission'], 'session', new['session'])
+    ruled('#/o/mission/%s/relations' % old['mission'], 'session', old['session'], False)
+    ruled('#/o/session/%s/relations' % new['session'], 'mission', new['mission'])
     check(any(w == '#/control/resources' and k[0] == 'harness' and not on for w, k, on in seen), 'the harness rows can carry it')
     check(any(w == '#/attention' and on for w, k, on in seen), 'Attention: a ruled item')
     check(any(w == '#/world/%s' % new['project'] and k[0] == 'repository' for w, k, on in seen), 'the repositories')

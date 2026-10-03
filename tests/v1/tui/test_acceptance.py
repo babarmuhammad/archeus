@@ -484,15 +484,16 @@ def test_relations_say_the_tier_and_the_field_in_words():
     """Monochrome cannot carry a line style: EXTRACTED / INFERRED / AMBIGUOUS
     are words on the row, with the field the edge was read from."""
     k = {'id': 'kn_1', 'title': 'k', 'text': 't', 'state': 'CONFIRMED', 'type': 'FACT',
-         'version': 1, 'chain': [], 'superseded_by_id': 'kn_2',
-         'relations': [{'src_kind': 'knowledge_item', 'src_id': 'kn_1', 'rel': 'applies_to',
-                        'dst_kind': 'project', 'dst_id': 'prj_1', 'confidence_tier': 'INFERRED',
-                        'valid_until': '2026-01-01T00:00:00Z'},
-                       {'src_kind': 'knowledge_item', 'src_id': 'kn_1', 'rel': 'mentions',
-                        'dst_kind': 'repository', 'dst_id': 'rep_1',
-                        'confidence_tier': 'AMBIGUOUS'}]}
+         'version': 1, 'chain': [], 'superseded_by_id': 'kn_2'}
+    me = {'kind': 'knowledge_item', 'id': 'kn_1'}
+    graph = {'edges': [
+        {'from': me, 'to': {'kind': 'project', 'id': 'prj_1'}, 'field': 'relations.applies_to',
+         'rel': 'applies_to', 'tier': 'INFERRED', 'inactive': True, 'structural': False},
+        {'from': me, 'to': {'kind': 'repository', 'id': 'rep_1'}, 'field': 'relations.mentions',
+         'rel': 'mentions', 'tier': 'AMBIGUOUS', 'inactive': False, 'structural': False}]}
     app = _StubApp({'/v1/knowledge/kn_1': k, '/v1/attention': {'items': [], 'count': 0},
-                    '/v1/sync': {'client': {'scopes': []}}})
+                    '/v1/sync': {'client': {'scopes': []}},
+                    '/v1/world/graph?focus=knowledge_item:kn_1&depth=1&limit=1000': graph})
     app.open('knowledge_item', 'kn_1', 'relations')
     shown = plain(app)
     assert 'inferred' in shown and 'ambiguous' in shown

@@ -12,9 +12,7 @@ import { staleBy } from '../src/data/invalidation.ts';
 
 type Fn = (...a: never[]) => unknown;
 const FN: Record<string, Fn> = {
-  missionEdges: rel.missionEdges, planEdges: rel.planEdges, taskDependencies: rel.taskDependencies,
-  executionEdges: rel.executionEdges, verificationEdges: rel.verificationEdges, sessionEdges: rel.sessionEdges,
-  knowledgeEdges: rel.knowledgeEdges, runEdges: rel.runEdges,
+  edgeRows: rel.edgeRows as Fn,
   present: pr.present, badge: pr.badge, isDone: pr.isDone, offers: pr.offers, presenceLabel: pr.presenceLabel,
   resourceLine: pr.resourceLine, statusLine: pr.statusLine, explainState: pr.explainState, ago: pr.ago,
   next: cn.next, freshness: cn.freshness, canCommand: cn.canCommand,

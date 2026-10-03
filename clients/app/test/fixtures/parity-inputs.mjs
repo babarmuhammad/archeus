@@ -6,39 +6,28 @@
 import { writeFileSync } from 'node:fs';
 
 const NOW = Date.parse('2026-09-29T12:00:00Z');
-const mission = {
-  id: 'msn_1', project_id: 'prj_1', context_package_id: 'ctx_1', origin: 'automation', origin_ref: 'run_1',
-  pending_approval_id: 'apr_1',
-};
-const plan = { versions: [{ id: 'pln_1', plan_version: 1, state: 'SUPERSEDED' }, { id: 'pln_2', plan_version: 2, state: 'APPROVED' }, { id: 'pln_3', plan_version: 3, state: 'REJECTED' }] };
 const conn = (c, gen = 0) => ({ conn: c, gen, since: 0 });
 
 export const INPUTS = [
-  ['missionEdges', mission, plan, [{ id: 'ses_1' }, { id: '' }]],
-  ['missionEdges', { id: 'msn_2', origin: 'legacy_import', origin_ref: 'x' }, null, []],
-  ['missionEdges', { id: 'msn_3', origin: 'conversation', origin_ref: 'msg_1' }, null, []],
-  ['missionEdges', { id: 'msn_4', origin: 'idea', origin_ref: 'ida_1' }, null, []],
-  ['missionEdges', { id: 'msn_5', origin: 'conversation', origin_ref: null }, null, []],
-  ['planEdges', { mission_id: 'msn_1', supersedes_plan_id: 'pln_1', context_package_id: 'ctx_1', route_decision_id: 'rte_1' }],
-  ['planEdges', { mission_id: 'msn_1', supersedes_plan_id: null }],
-  ['taskDependencies', { depends_on: ['t1', 't9'] }, { t1: { id: 'tsk_1' } }],
-  ['taskDependencies', {}, {}],
-  ['executionEdges', { id: 'exe_2', task_id: 'tsk_1', mission_id: 'msn_1', handoff_from: 'exe_1', session_id: 'ses_1', route_decision_id: 'rte_1', policy_decision_id: 'pd_1' }],
-  ['executionEdges', { id: 'exe_1', task_id: 'tsk_1', mission_id: 'msn_1', handoff_from: null }],
-  ['verificationEdges', { subject: { kind: 'task', id: 'tsk_1' }, plan_id: 'pln_2', execution_id: 'exe_2' }],
-  ['verificationEdges', { subject: { kind: 'mission', id: 'msn_1' }, plan_id: 'pln_2' }],
-  ['sessionEdges', { mission_id: 'msn_1', handoff_from_session_id: 'ses_0', project_id: 'prj_1' }, { targets: [{ id: 'ses_2' }, { id: 'ses_3' }] }],
-  ['sessionEdges', { id: 'ses_9' }],
-  ['knowledgeEdges', {
-    id: 'kn_1', supersedes_id: 'kn_0', superseded_by_id: 'kn_2', route_decision_id: 'rte_4',
-    relations: [
-      { src_kind: 'knowledge_item', src_id: 'kn_1', rel: 'applies_to', dst_kind: 'project', dst_id: 'prj_1', confidence_tier: 'INFERRED', valid_until: null },
-      { src_kind: 'decision', src_id: 'dec_1', rel: 'explains', dst_kind: 'knowledge_item', dst_id: 'kn_1', confidence_tier: null, valid_until: '2026-09-01T00:00:00Z' },
-      { src_kind: 'knowledge_item', src_id: 'kn_1', rel: 'mentions', dst_kind: 'repository', dst_id: 'rep_1', confidence_tier: 'AMBIGUOUS' },
-    ],
-  }],
-  ['runEdges', { automation_id: 'aut_1', mission_id: 'msn_1' }],
-  ['runEdges', { automation_id: 'aut_1', mission_id: null }],
+  // edgeRows (p19-design-gate B1): the Relations list from Core's graph read
+  ['edgeRows', [
+    { from: { kind: 'mission', id: 'msn_1' }, to: { kind: 'project', id: 'prj_1' }, field: 'missions.project_id', rel: null, tier: null, inactive: false, structural: false },
+    { from: { kind: 'mission', id: 'msn_1' }, to: { kind: 'message', id: 'msg_1' }, field: 'Mission.origin_ref', rel: null, tier: null, inactive: false, structural: false },
+    { from: { kind: 'plan', id: 'pln_1' }, to: { kind: 'mission', id: 'msn_1' }, field: 'plans.mission_id', rel: null, tier: null, inactive: true, structural: false },
+    { from: { kind: 'plan', id: 'pln_2' }, to: { kind: 'mission', id: 'msn_1' }, field: 'plans.mission_id', rel: null, tier: null, inactive: false, structural: false },
+    { from: { kind: 'session', id: 'ses_1' }, to: { kind: 'mission', id: 'msn_1' }, field: 'sessions.mission_id', rel: null, tier: null, inactive: false, structural: false },
+    { from: { kind: 'task', id: 'tsk_1' }, to: { kind: 'plan', id: 'pln_2' }, field: 'tasks.plan_id', rel: null, tier: null, inactive: false, structural: true },
+    { from: { kind: 'execution', id: 'exe_1' }, to: { kind: 'task', id: 'tsk_1' }, field: 'executions.task_id', rel: null, tier: null, inactive: false, structural: false },
+  ], { kind: 'mission', id: 'msn_1' }],
+  ['edgeRows', [
+    { from: { kind: 'knowledge_item', id: 'kn_1' }, to: { kind: 'project', id: 'prj_1' }, field: 'relations.applies_to', rel: 'applies_to', tier: 'INFERRED', inactive: false, structural: false },
+    { from: { kind: 'decision', id: 'dec_1' }, to: { kind: 'knowledge_item', id: 'kn_1' }, field: 'relations.explains', rel: 'explains', tier: 'EXTRACTED', inactive: true, structural: false },
+    { from: { kind: 'knowledge_item', id: 'kn_1' }, to: { kind: 'knowledge_item', id: 'kn_0' }, field: 'KnowledgeItem.supersedes_id', rel: null, tier: null, inactive: false, structural: false },
+    { from: { kind: 'knowledge_item', id: 'kn_2' }, to: { kind: 'knowledge_item', id: 'kn_1' }, field: 'KnowledgeItem.supersedes_id', rel: null, tier: null, inactive: false, structural: false },
+    { from: { kind: 'knowledge_item', id: 'kn_1' }, to: { kind: 'project', id: 'prj_1' }, field: 'knowledge_items.project_id', rel: null, tier: null, inactive: false, structural: true },
+    { from: { kind: 'knowledge_item', id: 'kn_1' }, to: { kind: 'route_decision', id: 'rte_4' }, field: 'Not.a_field', rel: null, tier: null, inactive: false, structural: false },
+  ], { kind: 'knowledge_item', id: 'kn_1' }],
+  ['edgeRows', [], { kind: 'session', id: 'ses_9' }],
   ['present', 'mission', 'EXECUTING'],
   ['present', 'mission', 'APPROVAL_REQUIRED'],
   ['present', 'mission', 'NOT_A_STATE'],

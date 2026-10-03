@@ -9,7 +9,6 @@ import { canCommand } from '../data/connection';
 import { useConn } from '../data/cache';
 import { send } from '../data/core';
 import { useRead } from '../data/cache';
-import { knowledgeEdges } from '../graph/relations';
 import { INSPECTOR_TABS, TAB_LABEL, objectHref } from '../nav/destinations';
 import { ago } from '../state/present';
 import { GraphLink, Relations } from '../components/Relations';
@@ -319,7 +318,7 @@ export function KnowledgeInspector({ id, tab, onTab }: { id: string; tab?: strin
                 </Section>
               </>
             ) : (
-              <Relations of={{ kind: 'knowledge_item', id: k.id }} edges={knowledgeEdges(k)} />
+              <Relations of={{ kind: 'knowledge_item', id: k.id }} />
             )}
           </div>
         </div>

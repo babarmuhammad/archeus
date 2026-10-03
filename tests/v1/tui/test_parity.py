@@ -15,10 +15,7 @@ with open(CASES, encoding='utf-8') as _f:
     ALL = json.load(_f)['cases']
 
 FN = {
-    'missionEdges': P.mission_edges, 'planEdges': P.plan_edges,
-    'taskDependencies': P.task_dependencies, 'executionEdges': P.execution_edges,
-    'verificationEdges': P.verification_edges, 'sessionEdges': P.session_edges,
-    'knowledgeEdges': P.knowledge_edges, 'runEdges': P.run_edges,
+    'edgeRows': P.edge_rows,
     'present': P.present, 'badge': P.badge, 'isDone': P.is_done, 'offers': P.offers,
     'presenceLabel': P.presence_label, 'resourceLine': P.resource_line,
     'statusLine': P.status_line, 'explainState': P.explain_state, 'ago': P.ago,

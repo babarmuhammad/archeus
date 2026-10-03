@@ -28,7 +28,9 @@ CMDS = 'clients/app/src/data/commands.ts'
 # the two tables generated from clients/app/tokens/ since P17 (A1): mutated where the
 # SPA reads them, as M01-M03 mutate the generated presentation.ts
 INV = 'clients/app/src/data/rules.ts'
-REL = 'clients/app/src/graph/relations.ts'
+# P19 deleted the client edge mappers (p19-design-gate B1): M06, M11 and M12 now break
+# the one edge implementation, Core's graph.py, guarded by the cases the mappers carried
+GRAPH = 'archeus/core/application/graph.py'
 NAV = 'clients/app/src/nav/table.ts'
 ANN = 'clients/app/src/a11y/announce.ts'
 CTRL = 'clients/app/src/surfaces/Control.tsx'
@@ -44,7 +46,7 @@ T_PRES = 'node:test/presentation.test.ts'
 T_PRESENT = 'node:test/present.test.ts'
 T_CONN = 'node:test/connection.test.ts'
 T_INV = 'node:test/invalidation.test.ts'
-T_REL = 'node:test/relations.test.ts'
+T_GRAPH = 'tests/v1/unit/test_graph_parity.py'
 T_SHELL = 'node:test/shell.test.ts'
 SEAMS = 'tests/v1/integration/test_ui_seams.py'
 DESIGN = 'tests/v1/design/test_design_gates.py'
@@ -65,9 +67,10 @@ MUTATIONS = [
      '    "RESUMED": "active",\n    "REVIEWING": "done",')], [T_PRES]),
     ('M05', 'an execution that exited ok looks like success', [(PRES,
      '    "ENDED_OK": "neutral",', '    "ENDED_OK": "done",')], [T_PRES]),
-    ('M06', 'a superseded plan version is shown as current', [(REL,
-     "inactive: v.state === 'SUPERSEDED' || v.state === 'REJECTED',", 'inactive: false,')],
-     [T_REL]),
+    ('M06', 'a superseded plan version is shown as current', [(GRAPH,
+     "              inactive=e.state in ('SUPERSEDED', 'REJECTED'))",
+     "              inactive=False)")],
+     [T_GRAPH]),
     # ── realtime: stale is never current ──
     ('M07', 'a view reads as current while the stream reconnects', [(CONN,
      "  if (c.conn === 'reconnecting' || c.conn === 'connecting') return entry.hasData ? "
@@ -85,13 +88,13 @@ MUTATIONS = [
      '                    <StateBadge machine="mission" state={x.state} />\n'
      '                    <span className="title">{x.harness_id} session</span>')], [T_SHELL]),
     # ── the graph's list form: authoritative edges only ──
-    ('M11', 'a hand-off edge points the wrong way', [(REL,
-     "edge(out, 'Execution.handoff_from', 'execution', e.handoff_from);",
-     "edge(out, 'Execution.handoff_from', 'execution', e.id);")], [T_REL]),
-    ('M12', 'a verification is linked to an execution it did not record', [(REL,
-     "edge(out, 'Verification.execution_id', 'execution', v.execution_id);",
-     "edge(out, 'Verification.execution_id', 'execution', v.execution_id ?? v.plan_id);")],
-     [T_REL]),
+    ('M11', 'a hand-off edge points the wrong way', [(GRAPH,
+     "_edge(out, me, 'Execution.handoff_from', 'execution', e.handoff_from)",
+     "_edge(out, me, 'Execution.handoff_from', 'execution', e.id)")], [T_GRAPH]),
+    ('M12', 'a verification is linked to an execution it did not record', [(GRAPH,
+     "_edge(out, me, 'Verification.execution_id', 'execution', e.execution_id)",
+     "_edge(out, me, 'Verification.execution_id', 'execution', e.execution_id or e.plan_id)")],
+     [T_GRAPH]),
     # ── model × harness × account, approvals, commands ──
     ('M13', 'the model is merged into the harness field', [(PRESENT,
      "    { key: 'harness', label: 'Harness', value: v(r.harness_id) },",

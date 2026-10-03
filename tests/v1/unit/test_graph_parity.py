@@ -1,13 +1,14 @@
-"""P18 A1 (1): Core's graph edges against the shared parity cases.
+"""Core's graph edges against the cases the client edge mappers carried.
 
-`parity.json` already holds the SPA's `relations.ts` and the TUI's `present.py`
-to the same outputs. Here Core's holder edges (`archeus/core/application/graph.py`)
-are held to them too, so the three edge implementations that exist until P19
-(p18-design-gate V2) cannot drift apart. A list function shows an object's edges
-from where it stands; Core emits each edge once, from the row that holds its
-field. So each case is compared as the set of (field, neighbour, tier, inactive)
-around the object, with the holders the list function's own inputs name.
-Structural (containment) edges are Core's only (V8) and are left out."""
+Until P19 the SPA's `relations.ts` and the TUI's `present.py` each assembled
+edges and `parity.json` held them equal (p18-design-gate A1, V2). P19 deleted
+both mappers (p19-design-gate B1): Core's `graph.py` is the one implementation,
+and the cases the mappers carried live on here as `fixtures/graph_edge_cases.json`,
+frozen. A list showed an object's edges from where it stands; Core emits each
+edge once, from the row that holds its field. So each case is compared as the
+set of (field, neighbour, tier, inactive) around the object, with the holders
+the old function's own inputs name. Structural (containment) edges are the
+graph's only (V8, B1 X3) and are left out."""
 
 import dataclasses
 import json
@@ -19,10 +20,11 @@ import pytest
 from archeus.core.application import graph as G
 from archeus.core.domain import entities as E
 
-CASES = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'clients', 'app', 'test',
-                     'fixtures', 'parity.json')
+CASES = os.path.join(os.path.dirname(__file__), 'fixtures', 'graph_edge_cases.json')
 with open(CASES, encoding='utf-8') as _f:
-    EDGE_CASES = [c for c in json.load(_f)['cases'] if c['fn'].endswith(('Edges', 'Dependencies'))]
+    EDGE_CASES = json.load(_f)['cases']
+WORDS = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'clients', 'app', 'tokens',
+                     'edges.json')
 
 CLASS = {'mission': E.Mission, 'plan': E.Plan, 'task': E.Task, 'execution': E.Execution,
          'verification': E.Verification, 'session': E.Session, 'knowledge_item': E.KnowledgeItem,
@@ -121,21 +123,20 @@ def test_core_edges_equal_the_list_mapper_on_every_shared_case(case, monkeypatch
     assert around(me, got) == want, case['args']
 
 
-def test_every_list_edge_function_has_a_case_here():
+def test_every_deleted_list_function_kept_its_cases():
     assert {c['fn'] for c in EDGE_CASES} == {
         'missionEdges', 'planEdges', 'taskDependencies', 'executionEdges', 'verificationEdges',
         'sessionEdges', 'knowledgeEdges', 'runEdges'}
 
 
 def test_every_field_core_emits_has_its_words_and_no_word_is_orphaned():
-    """A1 (3): the graph names a field, the client says its words — so the
-    vocabulary in relations.ts covers exactly the fields Core can emit."""
+    """A1 (3): the graph names a field, the clients say its words — so the one
+    vocabulary (tokens/edges.json, generated into both clients) covers exactly
+    the fields Core can emit."""
     import inspect
     import re
-    ts = os.path.join(os.path.dirname(CASES), '..', '..', 'src', 'graph', 'relations.ts')
-    with open(ts, encoding='utf-8') as f:
-        block = f.read().split('export const EDGE_WORDS', 1)[1].split('};', 1)[0]
-    words = set(re.findall(r"'([A-Za-z_]+\.[A-Za-z_]+)': \[", block))
+    with open(WORDS, encoding='utf-8') as f:
+        words = set(json.load(f)['words'])
     core = set(re.findall(r"_edge\(out, me, '([A-Za-z_]+\.[A-Za-z_]+)'",
                           inspect.getsource(G.held_edges)))
     assert core and core == words, (core ^ words)

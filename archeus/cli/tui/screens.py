@@ -59,9 +59,22 @@ class Doc:
     def __init__(self, app, width):
         self.app, self.st, self.width = app, app.st, width
         self.lines, self.acts, self.title = [], [], ''
+        self._changed = None
 
     def add(self, text='', target=None, acts=None):
+        if (target and target[0] == 'open' and text.startswith('  ')
+                and (target[1], target[2]) in self.changed()):
+            # T2 (ADR-0026 §1; p19-design-gate B2): the row's own left edge
+            # belongs to the thread; `›` beside it is the cursor's, never this
+            text = self.st.paint('│', 'thread') + text[1:]
         self.lines.append({'text': text, 'target': target, 'acts': list(acts or ())})
+
+    def changed(self):
+        """The objects Core's digest names: changed since the user last looked."""
+        if self._changed is None:
+            d = self.app.read('/v1/digest')['data'] or {}
+            self._changed = {(g['ref']['kind'], g['ref']['id']) for g in d.get('groups') or ()}
+        return self._changed
 
     def h(self, title):
         """A section heading; it often carries Core text, so it is cleaned."""
@@ -170,10 +183,16 @@ def go(**route):
     return ('go', route)
 
 
-def relations(app, doc, edges):
+def relations(app, doc, kind, id_):
     """The Relations tab: an object's authoritative edges as a list grouped by
     relationship, each with the tier as a word and the field it was read from;
-    a superseded or ended neighbour is marked, never shown as current."""
+    a superseded or ended neighbour is marked, never shown as current. Core's
+    graph route focused on the object is the one source (p19-design-gate B1)."""
+    g = doc.load('/v1/world/graph?focus=%s:%s&depth=1&limit=1000' % (kind, id_),
+                 'the relationships')
+    if g is None:
+        return
+    edges = P.edge_rows(g['edges'], {'kind': kind, 'id': id_})
     if not edges:
         doc.empty('No recorded relationships.')
         return
@@ -959,7 +978,9 @@ def mission_insp(app, doc, kind, mid, tab):
             confirm='Stop every execution of this mission now. Their processes are killed; the '
                     'mission waits for you, blocked, and resuming it dispatches the work again.')
     {'outcome': outcome, 'plan': plan_tab, 'now': now_tab, 'evidence': evidence, 'why': why,
-     'timeline': timeline, 'relations': mission_relations}[tab](app, doc, m, mp)
+     'timeline': timeline,
+     'relations': lambda app, doc, m, _mp: relations(app, doc, 'mission', m['id'])}[tab](
+        app, doc, m, mp)
 
 
 def outcome(app, doc, m, mp):
@@ -1038,11 +1059,11 @@ def plan_tab(app, doc, m, mp):
             t = by_key.get(k)
             if t is None:
                 continue
-            deps = P.task_dependencies(t, by_key)
             doc.add('    ' + app.st.badge('task', t['state']) + '  ' + T(app, t['key'])
                     + '  ' + T(app, t['title']) + '  ' + T(app, t['kind'], 'text-2')
                     + (app.st.paint('  after ', 'text-2') + T(app, ', '.join(t['depends_on']),
-                                                               'text-2') if deps else '')
+                                                               'text-2')
+                       if any(d in by_key for d in t.get('depends_on') or ()) else '')
                     + (app.st.paint('  merge: ', 'text-2')
                        + T(app, t['integration_state'].lower(), 'text-2')
                        if t.get('integration_state') else ''))
@@ -1240,11 +1261,6 @@ def timeline(app, doc, m, mp):
                 ident='older:' + m['id'])
 
 
-def mission_relations(app, doc, m, mp):
-    sl = app.read('/v1/sessions?mission=' + m['id'])['data'] or {}
-    relations(app, doc, P.mission_edges(m, mp, sl.get('sessions') or []))
-
-
 def execution_insp(app, doc, kind, eid, tab):
     path = '/v1/executions/' + eid
     x = doc.load(path, 'the execution')
@@ -1289,7 +1305,7 @@ def execution_insp(app, doc, kind, eid, tab):
                     ('As of event', T(app, str(k.get('as_of_seq', '—'))))])
             doc.add()
     else:
-        relations(app, doc, P.execution_edges(x))
+        relations(app, doc, 'execution', eid)
 
 
 def session_insp(app, doc, kind, sid, tab):
@@ -1332,7 +1348,7 @@ def session_insp(app, doc, kind, sid, tab):
                     + T(app, y['harness_id']) + '  ' + app.st.badge('session', y['state']),
                     target=None if me else open_('session', y['id']))
     else:
-        relations(app, doc, P.session_edges(x, x))
+        relations(app, doc, 'session', sid)
 
 
 def session_brief(app, doc, sid):
@@ -1394,7 +1410,7 @@ def knowledge_insp(app, doc, kind, kid, tab):
             confirm='Retract this item: it stops being used as context. The row and its '
                     'provenance are kept.', ident='retract:' + kid)
     if tab != 'detail':
-        return relations(app, doc, P.knowledge_edges(k))
+        return relations(app, doc, 'knowledge_item', kid)
     doc.para(str(k.get('text') or ''))
     doc.kv([('Origin', T(app, str(k.get('origin') or '—'))),
             ('Source', T(app, '%s %s' % (k.get('source_kind') or '—',
@@ -1433,9 +1449,7 @@ def row_insp(app, doc, kind, id_, tab):
         and kind in ROW_MACHINE else []
     doc.add('  ' + '  '.join(meta + [T(app, id_)]) + fresh(app, path))
     if tab == 'relations':
-        edges = {'plan': P.plan_edges, 'verification': P.verification_edges,
-                 'automation_run': lambda x: P.run_edges(x['run'])}[kind](r)
-        return relations(app, doc, edges)
+        return relations(app, doc, kind, id_)
     {'plan': plan_detail, 'verification': verification_detail,
      'route_decision': route_detail, 'automation_run': run_detail}.get(kind, fields)(app, doc, r)
 

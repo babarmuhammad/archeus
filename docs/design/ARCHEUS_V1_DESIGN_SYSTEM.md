@@ -383,7 +383,7 @@ dependence; step-up PIN pad for destructive approvals; comfortable density only.
 | Inspector | full-screen pager with tab keys `o p n e t w l` (outcome, plan, now, evidence, thread, why, timeline). *As built (P17, p17-design-gate A6):* the keys come from `navigation.json`; the mission's are `o p n e w t r` (outcome, plan, now, evidence, why, timeline, relations). **There is no Thread tab**: P16 never built one (p16-design-gate §30 deviation 10), so `t` is Timeline and Relations has `r` |
 | Cards | boxed blocks with the primary action key shown (`[a] approve  [r] reject`). *As built (P17):* commands are upper-case keys on the hint bar (`[A] Approve plan  [R] Reject`), so no command shares a key with a tab or a destination |
 | Composer / command bar | `:` command line with the same grammar |
-| Thread | `›` marker on rows changed since last look |
+| Thread | `›` marker on rows changed since last look. *As built (P19, p19-design-gate B2, §12):* `│` in thread ink on the row's own left edge (`|` on an ASCII terminal), on every row naming an object the digest names, because `›` is the cursor's marker since P17 and focus is never attention |
 | Toasts | status line message, 4 s |
 | Motion | none |
 

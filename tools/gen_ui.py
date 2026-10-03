@@ -6,10 +6,11 @@
                                   has no presentation class, or a class is
                                   incomplete
 
-Sources: clients/app/tokens/{tokens,presentation,navigation,invalidation,motion}.json.
+Sources: clients/app/tokens/{tokens,presentation,navigation,invalidation,motion,edges}.json.
 Outputs for the SPA: src/styles/tokens.css, src/state/tokens.ts,
 src/state/presentation.ts, src/nav/table.ts, src/data/rules.ts,
-src/state/motion.ts (the motion registry, ADR-0024 §3). Outputs for the
+src/state/motion.ts (the motion registry, ADR-0024 §3), src/graph/edgeWords.ts
+(the relationship vocabulary, p19-design-gate B1). Outputs for the
 TUI (p17-design-gate A1, A7): archeus/cli/tui/_tables.py and
 archeus/cli/tui/tokens.py, because the JSON is not in the wheel. One table,
 everything derived — the cluster-spec pattern (tools/gen_cluster_spec.py)
@@ -35,6 +36,8 @@ NAV_TS = os.path.join(APP, 'src', 'nav', 'table.ts')
 RULES_TS = os.path.join(APP, 'src', 'data', 'rules.ts')
 MOTION = os.path.join(APP, 'tokens', 'motion.json')
 MOTION_TS = os.path.join(APP, 'src', 'state', 'motion.ts')
+EDGES = os.path.join(APP, 'tokens', 'edges.json')
+EDGES_TS = os.path.join(APP, 'src', 'graph', 'edgeWords.ts')
 TUI = os.path.join(ROOT, 'archeus', 'cli', 'tui')
 TABLES_PY = os.path.join(TUI, '_tables.py')
 TOKENS_PY = os.path.join(TUI, 'tokens.py')
@@ -315,22 +318,30 @@ def render_motion_ts(m):
             % json.dumps(rows, ensure_ascii=False, indent=2))
 
 
+def render_edges_ts(w):
+    return (HEAD + "/** Per field Core's graph route emits: the words at the row holding it,\n"
+            ' * then at the row it names (tokens/edges.json). */\n'
+            'export const EDGE_WORDS: Readonly<Record<string, readonly [string, string]>> = %s;\n'
+            % json.dumps(w['words'], ensure_ascii=False, indent=2))
+
+
 def _py(v):
     return pprint.pformat(v, width=99, sort_dicts=False)
 
 
-def render_tables_py(p, n, i):
+def render_tables_py(p, n, i, w):
     labels = {m: {s: p.get('labels', {}).get(m, {}).get(s) or _label(s) for s in table}
               for m, table in sorted(p['machines'].items())}
     machines = {m: dict(sorted(table.items())) for m, table in sorted(p['machines'].items())}
     parts = [PY_HEAD, '"""The TUI\'s copy of the V1 client tables (p17-design-gate A1):\n'
-             'navigation, presentation, triggers and invalidation, from the JSON the SPA\n'
-             'reads."""\n']
+             'navigation, presentation, triggers, invalidation and the relationship words,\n'
+             'from the JSON the SPA reads."""\n']
     for name, value in (('DESTINATIONS', n['destinations']),
                         ('CONTROL_SECTIONS', n['control_sections']),
                         ('INSPECTOR_TABS', n['inspector_tabs']), ('TABS', n['tabs']),
                         ('CLASSES', p['classes']), ('PRESENTATION', machines),
-                        ('LABELS', labels), ('TRIGGERS', triggers()), ('RULES', i['rules'])):
+                        ('LABELS', labels), ('TRIGGERS', triggers()), ('RULES', i['rules']),
+                        ('EDGE_WORDS', w['words'])):
         parts.append('\n%s = %s\n' % (name, _py(value)))
     return ''.join(parts)
 
@@ -348,11 +359,11 @@ def render_tokens_py(t):
 
 def outputs():
     t, p = load(TOKENS), load(PRESENTATION)
-    n, i, mo = load(NAVIGATION), load(INVALIDATION), load(MOTION)
+    n, i, mo, w = load(NAVIGATION), load(INVALIDATION), load(MOTION), load(EDGES)
     return {CSS_OUT: render_css(t), TOKENS_TS: render_tokens_ts(t),
             PRES_TS: render_presentation_ts(p), NAV_TS: render_nav_ts(n),
-            RULES_TS: render_rules_ts(i), TABLES_PY: render_tables_py(p, n, i),
-            TOKENS_PY: render_tokens_py(t), MOTION_TS: render_motion_ts(mo)},         problems(p, t) + nav_problems(n) + motion_problems(mo, t)
+            RULES_TS: render_rules_ts(i), TABLES_PY: render_tables_py(p, n, i, w),
+            TOKENS_PY: render_tokens_py(t), MOTION_TS: render_motion_ts(mo), EDGES_TS: render_edges_ts(w)},         problems(p, t) + nav_problems(n) + motion_problems(mo, t)
 
 
 def main(argv):

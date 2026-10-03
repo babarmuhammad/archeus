@@ -1,6 +1,7 @@
 """P18's two graph routes over a real Core (p18-design-gate A1 (2), A6, A14,
-A15): authentication, the refusals, read-only-ness, and the route against the
-TUI's list mapper over a mission the engine really ran."""
+A15): authentication, the refusals, read-only-ness, and — since P19 moved both
+clients' Relations lists onto the route (p19-design-gate B1) — each object's
+list read from its own one-hop focus over a mission the engine really ran."""
 
 import time
 
@@ -99,8 +100,10 @@ def test_a_mission_started_from_something_is_read_over_http_and_by_the_tui(core)
             if e['field'] == 'Mission.origin_ref'] == [('message', msg)]
     m = get(core, '/v1/missions/' + mid)[1]
     assert m['origin_ref'] == msg                 # the contract: an id
-    assert [e['to'] for e in P.mission_edges(m) if e['field'] == 'Mission.origin_ref'] == [
-        {'kind': 'message', 'id': msg}]
+    one = get(core, '/v1/world/graph?focus=mission:%s&depth=1&limit=1000' % mid)[1]
+    rows = P.edge_rows(one['edges'], {'kind': 'mission', 'id': mid})
+    assert [(e['rel'], e['to']) for e in rows if e['field'] == 'Mission.origin_ref'] == [
+        ('started from', {'kind': 'message', 'id': msg})]
 
 
 def test_the_route_answers_with_the_seq_it_reflects(core):
@@ -109,48 +112,40 @@ def test_the_route_answers_with_the_seq_it_reflects(core):
     assert int(r.headers['X-Archeus-Seq']) <= r.json()['as_of_seq']
 
 
-def _list_edges(tc, kind, x):
-    """What the TUI's Relations list shows for one object, read the way the
-    TUI reads it (screens.py)."""
-    if kind == 'mission':
-        mp = get(tc, '/v1/missions/%s/plan' % x)[1]
-        m = get(tc, '/v1/missions/' + x)[1]
-        sl = get(tc, '/v1/sessions?mission=' + x)[1]
-        return P.mission_edges(m, mp, sl.get('sessions') or [])
-    if kind == 'plan':
-        return P.plan_edges(get(tc, '/v1/plans/' + x)[1])
-    if kind == 'task':
-        return []                        # its list edges are its plan's dependency lanes
-    if kind == 'execution':
-        return P.execution_edges(get(tc, '/v1/executions/' + x)[1])
-    if kind == 'verification':
-        return P.verification_edges(get(tc, '/v1/verifications/' + x)[1])
-    if kind == 'session':
-        s = get(tc, '/v1/sessions/' + x)[1]
-        return P.session_edges(s, s)
-    return None                          # no list function for this kind
-
-
-def test_the_route_and_the_tui_list_show_the_same_edges(core):
-    """A1 (2): over a mission the engine ran, every edge any object's Relations
-    list shows is an edge of the graph, and every non-structural graph edge
-    between loaded nodes is on some object's list — one edge set, two views."""
+def test_every_relations_list_is_its_objects_one_hop_of_the_graph(core):
+    """B1: what an object's Relations list shows (both clients read it from the
+    route focused on the object, depth 1) is drawn from the one edge set: every
+    row is a non-structural edge of the mission's wider neighbourhood, every
+    edge the object itself holds is a row, and each says the clients' words.
+    (A reverse edge is a row where the route's holder lookup reaches it; the
+    kinds it does not reach are recorded in p19-design-gate §12.)"""
+    from archeus.cli.tui._tables import EDGE_WORDS, INSPECTOR_TABS
+    tabbed = {k for k, tabs in INSPECTOR_TABS.items() if 'relations' in tabs}
     mid = _mission(core)
     s, g = get(core, '/v1/world/graph?focus=mission:%s&depth=2&limit=1000' % mid)
     assert s == 200 and not g['truncated']
-    shown = {(n['kind'], n['id']) for n in g['nodes']}
-    listed_kinds = {'mission', 'plan', 'execution', 'verification', 'session'}
-    from_list = set()
-    for kind, x in shown:
-        if kind not in listed_kinds:
+    full = {(n['kind'], n['id']) for n in g['nodes'] if not n.get('endpoint')}
+    listed = 0
+    for kind, x in sorted(full):
+        if kind not in tabbed:               # no Relations list to compare
             continue
-        for e in _list_edges(core, kind, x) or []:
-            other = (e['to']['kind'], e['to']['id'])
-            if other in shown:                 # beyond the depth is not the graph's to show
-                from_list.add((e['field'], frozenset({(kind, x), other})))
-    from_graph = {(e['field'], frozenset({(e['from']['kind'], e['from']['id']),
-                                          (e['to']['kind'], e['to']['id'])}))
-                  for e in g['edges'] if not e['structural']
-                  and e['from']['kind'] in listed_kinds}
-    assert len(from_list) >= 8, from_list          # the mission really ran: a real neighbourhood
-    assert from_list == from_graph, (from_list ^ from_graph)
+        me = {'kind': kind, 'id': x}
+        s, one = get(core, '/v1/world/graph?focus=%s:%s&depth=1&limit=1000' % (kind, x))
+        assert s == 200 and one['depth'] == 1 and not one['truncated'], (kind, x)
+        rows = P.edge_rows(one['edges'], me)
+        wider = {(e['field'], (e['to'] if e['from'] == me else e['from'])['id']) for e in g['edges']
+                 if not e['structural'] and me in (e['from'], e['to'])
+                 and _ref(e['to'] if e['from'] == me else e['from']) in full}
+        held = {(e['field'], e['to']['id']) for e in g['edges']
+                if not e['structural'] and e['from'] == me and _ref(e['to']) in full}
+        got = {(r['field'], r['to']['id']) for r in rows if _ref(r['to']) in full}
+        assert got <= wider, (kind, x, got - wider)          # nothing the graph lacks
+        assert held <= got, (kind, x, held - got)            # nothing it holds is missing
+        for r in rows:
+            assert r['field'].startswith('relations.') or r['field'] in EDGE_WORDS, r
+        listed += len(rows)
+    assert listed >= 16, listed                    # the mission really ran: a real neighbourhood
+
+
+def _ref(r):
+    return (r['kind'], r['id'])

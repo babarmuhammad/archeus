@@ -5,7 +5,7 @@ A mutant that does not parse fails every test that loads it, whatever that test
 asserts, so a runner counting it as killed reports an invariant as guarded when
 nothing checked it (P18's M17 was such a mutant). `mutate_p11._apply` refuses a
 broken mutant before any run for the suites built on it (P11-P18); this gate
-covers all eleven, P8-P10's own engines included. TypeScript is checked only where
+covers every suite, P8-P10's own engines included. TypeScript is checked only where
 node and clients/app/node_modules exist (the Node-free test job checks Python)."""
 
 import importlib
@@ -19,7 +19,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.a
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 import mutate_p11  # noqa: E402
 
-SUITES = ['mutate_p%d' % n for n in range(8, 19)] + ['mutate_p19_5', 'mutate_ap1']
+SUITES = ['mutate_p%d' % n for n in range(8, 20)] + ['mutate_p19_5', 'mutate_ap1']
 TS_OK = bool(shutil.which('node')) and os.path.isdir(
     os.path.join(ROOT, 'clients', 'app', 'node_modules', 'typescript'))
 

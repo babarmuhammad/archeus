@@ -4,7 +4,6 @@
 import type { ReactNode } from 'react';
 import type { AutomationExplanation, Plan, RouteDecision, Verification } from '../api/generated';
 import { useRead } from '../data/cache';
-import { planEdges, runEdges, verificationEdges } from '../graph/relations';
 import { INSPECTOR_TABS, TAB_LABEL, objectHref } from '../nav/destinations';
 import { ApprovalCard } from './Attention';
 import { SessionInspector } from './Control';
@@ -67,7 +66,7 @@ function RowInspector({ kind, id, tab, onTab }: { kind: string; id: string; tab?
           </header>
           {tabs.length > 1 ? <Tabs label={kind} current={current} onSelect={onTab} tabs={tabs.map((t) => ({ id: t, label: TAB_LABEL[t] }))} /> : null}
           <div role="tabpanel" id={`panel-${current}`} aria-labelledby={tabs.length > 1 ? `tab-${current}` : undefined} className="panel">
-            {current === 'relations' ? <Relations of={{ kind, id }} edges={EDGES[kind]?.(row) ?? []} /> : DETAIL[kind]?.(row, me?.principal_id) ?? <Fields row={row} />}
+            {current === 'relations' ? <Relations of={{ kind, id }} /> : DETAIL[kind]?.(row, me?.principal_id) ?? <Fields row={row} />}
           </div>
         </div>
       )}
@@ -85,12 +84,6 @@ const TITLE: Record<string, string> = {
 };
 
 const MACHINE: Record<string, string> = { plan: 'plan', verification: 'verification', automation_run: 'automation_run' };
-
-const EDGES: Record<string, (r: Record<string, unknown>) => ReturnType<typeof planEdges>> = {
-  plan: planEdges,
-  verification: verificationEdges,
-  automation_run: (r) => runEdges((r as unknown as AutomationExplanation).run as unknown as Record<string, unknown>),
-};
 
 /** The identifiers each dedicated view keeps out of its default reading, by
  * what they name. */

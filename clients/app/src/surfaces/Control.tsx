@@ -24,7 +24,6 @@ import { clearToken } from '../api/transport';
 import { store, useRead } from '../data/cache';
 import { motionMode, type MotionPref } from '../data/commands';
 import { send } from '../data/core';
-import { sessionEdges } from '../graph/relations';
 import { CONTROL_SECTIONS, INSPECTOR_TABS, TAB_LABEL, href, objectHref } from '../nav/destinations';
 import { ago, presenceLabel, templateText, triggerText, usageText } from '../state/present';
 import { BUDGETS, draftBudgets, policyProblem, type PolicyDraft } from '../state/policy';
@@ -490,7 +489,7 @@ export function SessionInspector({ id, tab, onTab }: { id: string; tab?: string;
                 ))}
               </ol>
             )}
-            {current === 'relations' && <Relations of={{ kind: 'session', id: x.id }} edges={sessionEdges(x, x)} />}
+            {current === 'relations' && <Relations of={{ kind: 'session', id: x.id }} />}
           </div>
         </div>
       )}

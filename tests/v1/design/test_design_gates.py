@@ -444,3 +444,44 @@ def test_the_layout_reads_no_clock_and_no_random():
     src = _src('graph', 'layout.ts')
     assert 'function layout(' in src
     assert not re.search(r'Math\.random|Date\.now|performance\.now|new Date\(', src)
+
+
+# ── one edge implementation (p19-design-gate B1) ──
+
+def _client_sources():
+    """Every hand-written client module: the SPA's src/ and the TUI."""
+    for top in (os.path.join(APP, 'src'), os.path.join(ROOT, 'archeus', 'cli', 'tui')):
+        for dp, _ds, fs in os.walk(top):
+            for f in fs:
+                if f.endswith(('.ts', '.tsx', '.py')) and f not in ('edgeWords.ts', '_tables.py',
+                                                                     'generated.ts'):
+                    p = os.path.join(dp, f)
+                    with open(p, encoding='utf-8') as fh:
+                        yield os.path.relpath(p, ROOT), fh.read()
+
+
+def _assembled_edges(src, fields):
+    """Where *src* builds an edge itself: an `edge(out, …)` builder, or an
+    object literal naming a relationship field Core emits."""
+    names = '|'.join(re.escape(f) for f in fields)
+    return (re.findall(r'\b_?edge\(\s*out\s*,', src)
+            + re.findall(r"""['"]?field['"]?\s*:\s*['"](?:%s|relations\.)""" % names, src))
+
+
+def test_no_client_assembles_an_edge():
+    """Core's graph route is the one edge implementation; a client only says
+    an edge in words (relations.ts edgeRows, present.py edge_rows)."""
+    with open(os.path.join(APP, 'tokens', 'edges.json'), encoding='utf-8') as f:
+        fields = list(json.load(f)['words'])
+    bad = {p: hits for p, src in _client_sources() if (hits := _assembled_edges(src, fields))}
+    assert not bad, bad
+
+
+def test_the_edge_gate_finds_what_p18_shipped():
+    """The gate fails the two forms the deleted mappers had."""
+    fields = ['Execution.handoff_from']
+    assert _assembled_edges("  edge(out, 'Execution.handoff_from', 'execution', e.handoff_from);",
+                            fields)
+    assert _assembled_edges("out.append({'rel': r, 'to': t, 'field': 'Execution.handoff_from'})",
+                            fields)
+    assert not _assembled_edges("const live = e.field === 'executions.task_id';", fields)

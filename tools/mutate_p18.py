@@ -323,14 +323,9 @@ MUTATIONS = [
      "        if E.ORIGIN_REF_KIND.get(e.origin):",
      "        if False:")],
      [Q + 'test_a_mission_with_an_origin_holds_its_started_from_edge', PAR]),
-    ('M67', "the TUI's list drops a mission's started-from edge", [('archeus/cli/tui/present.py',
-     "    origin = ORIGIN_REF_KIND.get(m.get('origin'))",
-     "    origin = None")],
-     ['tests/v1/tui/test_parity.py', R + 'test_a_mission_started_from_something_is_read_over_http_and_by_the_tui']),
-    ('M68', "the SPA's list drops a mission's started-from edge", [(REL,
-     "  if (origin) edge(out, 'Mission.origin_ref', origin, m.origin_ref);",
-     "  if (origin && false) edge(out, 'Mission.origin_ref', origin, m.origin_ref);")],
-     ['node:test/parity.test.ts']),
+    # M67 and M68 (a client's own list dropping the started-from edge) retired in P19:
+    # neither client assembles an edge any more (p19-design-gate B1); the fault now
+    # lives only in Core, as M66, and tools/mutate_p19.py breaks the clients' adapter
 ]
 
 

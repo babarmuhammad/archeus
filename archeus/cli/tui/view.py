@@ -51,7 +51,7 @@ _ASCII = str.maketrans({'·': '-', '—': '-', '–': '-', '…': '...', '›': 
                         '✕': 'x', '●': '*', '◆': '!', '■': '#', '‖': '=', '◌': '~',
                         '○': 'o', '◇': '^', '─': '-', '│': '|', '⏎': 'Enter',
                         '↑': 'Up', '↓': 'Down'})
-_PROBE = ''.join(sorted({c['glyph'] for c in CLASSES.values()})) + '›—…→─'
+_PROBE = ''.join(sorted({c['glyph'] for c in CLASSES.values()})) + '›—…→─│'
 
 
 def encodable(stream):

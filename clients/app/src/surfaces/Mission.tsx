@@ -14,14 +14,13 @@ import {
   type PolicyDecisionList,
   type ReviewList,
   type RouteDecisionList,
-  type SessionList,
+
   type Task,
   type Timeline as TimelineT,
   type VerificationList,
 } from '../api/generated';
 import { send } from '../data/core';
 import { useRead } from '../data/cache';
-import { executionEdges, missionEdges, taskDependencies, verificationEdges } from '../graph/relations';
 import { INSPECTOR_TABS, TAB_LABEL, objectHref } from '../nav/destinations';
 import { ago, endReason, ended, explainState, inline, offers, statusLine, technical } from '../state/present';
 import { Relations } from '../components/Relations';
@@ -55,7 +54,7 @@ export function MissionInspector({ id, tab, onTab }: { id: string; tab?: string;
             {current === 'evidence' && <Evidence id={id} m={mission} />}
             {current === 'why' && <Why m={mission} plan={plan.data} />}
             {current === 'timeline' && <TimelineTab id={id} />}
-            {current === 'relations' && <MissionRelations m={mission} plan={plan.data} />}
+            {current === 'relations' && <Relations of={{ kind: 'mission', id: mission.id }} />}
           </div>
         </div>
       )}
@@ -323,12 +322,11 @@ function PlanTab({ snap }: { snap: ReturnType<typeof useRead<MissionPlan>> }) {
 
 function TaskRow({ t, byKey }: { t: Task | undefined; byKey: Record<string, Task> }) {
   if (!t) return null;
-  const deps = taskDependencies(t, byKey);
   return (
     <li className="task" data-task={t.key}>
       <StateBadge machine="task" state={t.state} />
       <span className="mono">{t.key}</span> <span>{t.title}</span> <span className="tag">{t.kind}</span>
-      {deps.length ? <span className="hint"> after {(t.depends_on ?? []).join(', ')}</span> : null}
+      {(t.depends_on ?? []).some((k) => byKey[k]) ? <span className="hint"> after {(t.depends_on ?? []).join(', ')}</span> : null}
       {t.integration_state ? <span className="tag">merge: {t.integration_state.toLowerCase()}</span> : null}
     </li>
   );
@@ -652,11 +650,6 @@ function MoreButton({ id, pages, onMore }: { id: string; pages: number[]; onMore
   ) : null;
 }
 
-function MissionRelations({ m, plan }: { m: Mission; plan?: MissionPlan }) {
-  const s = useRead<SessionList>(`/v1/sessions?mission=${m.id}`);
-  return <Relations of={{ kind: 'mission', id: m.id }} edges={missionEdges(m, plan ?? null, s.data?.sessions ?? [])} />;
-}
-
 // ── execution detail (§6.6) ──
 
 export function ExecutionInspector({ id, tab, onTab }: { id: string; tab?: string; onTab: (t: string) => void }) {
@@ -711,7 +704,7 @@ export function ExecutionInspector({ id, tab, onTab }: { id: string; tab?: strin
           <div role="tabpanel" id={`panel-${current}`} aria-labelledby={`tab-${current}`} className="panel">
             {current === 'output' && <Output id={x.id} />}
             {current === 'checkpoints' && <Checkpoints id={x.id} />}
-            {current === 'relations' && <Relations of={{ kind: 'execution', id: x.id }} edges={executionEdges(x)} />}
+            {current === 'relations' && <Relations of={{ kind: 'execution', id: x.id }} />}
           </div>
         </div>
       )}
@@ -782,4 +775,3 @@ function Checkpoints({ id }: { id: string }) {
   );
 }
 
-export { verificationEdges };

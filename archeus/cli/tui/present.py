@@ -8,7 +8,7 @@ cases in `clients/app/test/fixtures/parity.json` run against both sides.
 import datetime
 import math
 
-from ._tables import CLASSES, LABELS, PRESENTATION, TRIGGERS
+from ._tables import CLASSES, EDGE_WORDS, LABELS, PRESENTATION, TRIGGERS
 
 
 def offers(machine, state, *trigger):
@@ -177,114 +177,33 @@ def ago(iso, now_ms):
 
 
 # ── relations (the list form of the graph capability, p16 §20) ──────────────
-# Every edge is read from the field that records it; an edge whose field is
-# empty is not emitted. Nothing is inferred.
+# Core's graph route assembles every edge (p19-design-gate B1); the TUI only
+# says them in the clients' one vocabulary (relations.ts edgeWords/edgeRows).
 
-#: The kind of object a mission's `origin_ref` (an id) names, by its origin —
-#: Core's `entities.ORIGIN_REF_KIND`; a legacy import names none.
-ORIGIN_REF_KIND = {'conversation': 'message', 'idea': 'idea', 'automation': 'automation_run'}
+def edge_words(field, holder, rel=None):
+    """An edge's words at the row holding its field, or at the row it names; a
+    `Relation` row says its own `rel`."""
+    if field.startswith('relations.'):
+        return str(rel) if holder else '%s (from)' % rel
+    w = EDGE_WORDS.get(field)
+    return w[0 if holder else 1] if w else field
 
-def _edge(out, rel, kind, value, field, **extra):
-    v = _str(value)
-    if v:
-        out.append(dict({'rel': rel, 'to': {'kind': kind, 'id': v}, 'field': field}, **extra))
 
-
-def mission_edges(m, plan=None, sessions=()):
+def edge_rows(edges, of):
+    """The Relations list of *of* from Core's graph read focused on it: every
+    edge incident to it, said from its end; containment is the graph's alone."""
     out = []
-    _edge(out, 'in project', 'project', m.get('project_id'), 'missions.project_id')
-    _edge(out, 'context used', 'context_package', m.get('context_package_id'),
-          'Mission.context_package_id')
-    origin = ORIGIN_REF_KIND.get(m.get('origin'))
-    if origin:
-        _edge(out, 'started from', origin, m.get('origin_ref'), 'Mission.origin_ref')
-    for v in (plan or {}).get('versions') or []:
-        _edge(out, 'plan v%s' % v['plan_version'], 'plan', v['id'], 'plans.mission_id',
-              inactive=v['state'] in ('SUPERSEDED', 'REJECTED'))
-    _edge(out, 'waiting on approval', 'approval', m.get('pending_approval_id'),
-          'approvals.mission_id')
-    for x in sessions:
-        _edge(out, 'continued in session', 'session', x.get('id'), 'sessions.mission_id')
-    return out
-
-
-def plan_edges(p):
-    out = []
-    _edge(out, 'of mission', 'mission', p.get('mission_id'), 'plans.mission_id')
-    _edge(out, 'replaces', 'plan', p.get('supersedes_plan_id'), 'plans.supersedes_plan_id')
-    _edge(out, 'context used', 'context_package', p.get('context_package_id'),
-          'Plan.context_package_id')
-    _edge(out, 'planned by', 'route_decision', p.get('route_decision_id'),
-          'Plan.route_decision_id')
-    return out
-
-
-def task_dependencies(t, by_key):
-    out = []
-    for k in t.get('depends_on') or []:
-        _edge(out, 'after', 'task', (by_key.get(k) or {}).get('id'), 'Task.depends_on')
-    return out
-
-
-def execution_edges(e):
-    out = []
-    _edge(out, 'attempt of task', 'task', e.get('task_id'), 'executions.task_id')
-    _edge(out, 'of mission', 'mission', e.get('mission_id'), 'executions.mission_id')
-    _edge(out, 'continues', 'execution', e.get('handoff_from'), 'Execution.handoff_from')
-    _edge(out, 'runs in session', 'session', e.get('session_id'), 'Execution.session_id')
-    _edge(out, 'routed by', 'route_decision', e.get('route_decision_id'),
-          'Execution.route_decision_id')
-    _edge(out, 'authorised by', 'policy_decision', e.get('policy_decision_id'),
-          'Execution.policy_decision_id')
-    return out
-
-
-def verification_edges(v):
-    out = []
-    subject = v.get('subject') or {}
-    if subject.get('kind'):
-        _edge(out, 'verifies', subject['kind'], subject.get('id'), 'Verification.subject')
-    _edge(out, 'of plan', 'plan', v.get('plan_id'), 'verifications.plan_id')
-    _edge(out, 'checked the work of', 'execution', v.get('execution_id'),
-          'Verification.execution_id')
-    return out
-
-
-def session_edges(x, view=None):
-    out = []
-    _edge(out, 'continues mission', 'mission', x.get('mission_id'), 'sessions.mission_id')
-    _edge(out, 'handed off from', 'session', x.get('handoff_from_session_id'),
-          'sessions.handoff_from_session_id')
-    for t in (view or {}).get('targets') or []:
-        _edge(out, 'handed off to', 'session', t.get('id'), 'sessions.handoff_from_session_id')
-    _edge(out, 'in project', 'project', x.get('project_id'), 'sessions.project_id')
-    return out
-
-
-def knowledge_edges(k):
-    out = []
-    me = _str(k.get('id'))
-    for r in k.get('relations') or []:
-        tier = r.get('confidence_tier')
-        tier = 'EXTRACTED' if tier is None else tier
-        inactive = bool(r.get('valid_until'))
-        if r.get('src_kind') == 'knowledge_item' and r.get('src_id') == me:
-            _edge(out, str(r['rel']), str(r['dst_kind']), r.get('dst_id'),
-                  'relations.' + str(r['rel']), tier=tier, inactive=inactive)
-        else:
-            _edge(out, '%s (from)' % r['rel'], str(r['src_kind']), r.get('src_id'),
-                  'relations.' + str(r['rel']), tier=tier, inactive=inactive)
-    _edge(out, 'replaces', 'knowledge_item', k.get('supersedes_id'), 'KnowledgeItem.supersedes_id')
-    _edge(out, 'replaced by', 'knowledge_item', k.get('superseded_by_id'),
-          'KnowledgeItem.superseded_by_id', inactive=False)
-    _edge(out, 'produced by', 'route_decision', k.get('route_decision_id'),
-          'KnowledgeItem.route_decision_id')
-    return out
-
-
-def run_edges(r):
-    out = []
-    _edge(out, 'run of automation', 'automation', r.get('automation_id'),
-          'automation_runs.automation_id')
-    _edge(out, 'created mission', 'mission', r.get('mission_id'), 'automation_runs.mission_id')
+    for e in edges:
+        if e.get('structural'):
+            continue
+        holder = e['from'] == of
+        if not holder and e['to'] != of:
+            continue
+        row = {'rel': edge_words(e['field'], holder, e.get('rel')),
+               'to': e['to'] if holder else e['from'], 'field': e['field']}
+        if e.get('tier'):
+            row['tier'] = e['tier']
+        if e.get('inactive'):
+            row['inactive'] = True
+        out.append(row)
     return out
