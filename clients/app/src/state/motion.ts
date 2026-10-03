@@ -415,12 +415,15 @@ export const MOTIONS = {
     "equivalent": "an announcement and the badge count"
   },
   "toast": {
-    "status": "approved",
-    "source": "rulebook §21 A-13",
-    "trigger": "work that ran at least 10 s finished while its row was not on screen (D-8)",
+    "status": "built",
+    "source": "rulebook §21 A-13, §17; D-8 (rulebook §46.1)",
+    "trigger": "work that ran at least 10 s finished while its row was not on screen (D-8): an execution.ended frame whose attempt Core reads as ENDED_OK, its own started_at and ended_at 10 s or more apart, with no row or inspector of its mission or attempt on screen",
     "driven_by": "event",
     "runs_on": "css",
-    "css": null,
+    "css": [
+      "toast-in",
+      "toast-out"
+    ],
     "transition": null,
     "max_ms": 160,
     "token": "toast",
@@ -429,7 +432,7 @@ export const MOTIONS = {
     "easing": "ease",
     "cap": 1,
     "cap_per": "surface",
-    "over_cap": null,
+    "over_cap": "drop-oldest",
     "min_interval_ms": null,
     "interval_per": null,
     "surfaces": [
@@ -438,7 +441,7 @@ export const MOTIONS = {
     "idle": "never",
     "replay": false,
     "reduced": "no fade: the toast appears and leaves at once",
-    "equivalent": "role=status text"
+    "equivalent": "its text in a role=status region mounted at boot; never the only signal — the mission's row and state changed too"
   },
   "activity-chip": {
     "status": "approved",

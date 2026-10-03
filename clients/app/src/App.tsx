@@ -12,7 +12,7 @@ import { BANNER, canCommand } from './data/connection';
 import { send } from './data/core';
 import { setSend } from './data/core';
 import { staleBy } from './data/invalidation';
-import { DESTINATIONS, href, parse, phoneTabs, type Route } from './nav/destinations';
+import { DESTINATIONS, href, objectHref, parse, phoneTabs, type Route } from './nav/destinations';
 import { AttentionView } from './surfaces/Attention';
 import { CommandBar } from './surfaces/CommandBar';
 import { ControlView, applyMotion } from './surfaces/Control';
@@ -25,6 +25,7 @@ import { reducedMotion } from './graph/loop';
 import { ActionButton, Fresh } from './components/ui';
 import { MARK, Orbit, favicon, presence, runningMissions, type Presence } from './state/orbit';
 import { timeline } from './state/timeline';
+import { TOAST_TTL_MS, Toasts, type Ended } from './state/toast';
 import { DARK } from './state/tokens';
 
 type Boot = { phase: 'starting' } | { phase: 'pair'; code: string } | { phase: 'out' } | { phase: 'in'; token: string } | { phase: 'failed'; why: string };
@@ -274,6 +275,7 @@ function Shell({ token }: { token: string }) {
         </aside>
       ) : null}
       <CommandBar open={cmd} onClose={() => setCmd(false)} />
+      <ToastRegion />
       <div id="live-polite" className="sr" aria-live="polite" />
       <div id="live-assertive" className="sr" aria-live="assertive" />
     </div>
@@ -317,6 +319,68 @@ function Icon({ id }: { id: string }) {
     <svg className="icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
       <path d={ICONS[id]} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+// ── the completion toast (rulebook §17, §21 A-13; D-8) ──
+
+/** Whether a row or the inspector of *mission* or its attempt *execution* is
+ * on screen now: then the row's own state change says it, and no toast does. */
+function onScreen(mission: string, execution: string): boolean {
+  const h = location.hash;
+  if (h.startsWith(`#/o/mission/${mission}`) || h.startsWith(`#/o/execution/${execution}`)) return true;
+  const sel = `[data-mission="${CSS.escape(mission)}"], [data-execution="${CSS.escape(execution)}"]`;
+  return [...document.querySelectorAll(sel)].some((el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.bottom > 0 && r.top < innerHeight;
+  });
+}
+
+// the page's one toast queue: every frame, whatever page is open
+const toasts = new Toasts(timeline, {
+  now: () => performance.now(),
+  reduced: reducedMotion,
+  read: (id) => api.getExecution(send(), id) as Promise<Ended>,
+  title: async (id) => {
+    await store.fetch(`/v1/missions/${id}`);
+    const m = store.snapshot(`/v1/missions/${id}`).data as { title?: string } | undefined;
+    return m?.title ?? null;
+  },
+  onScreen,
+});
+store.onFrame((f) => void toasts.frame(f));
+
+/** One toast at a time, in a status region mounted at boot (so a screen
+ * reader hears it); it fades in, stays 4 s — longer while focus is inside
+ * it — and fades out. The mission's row changed too: it is never the only
+ * signal, and a failure is never toasted. */
+function ToastRegion() {
+  const t = useSyncExternalStore(
+    (l) => toasts.subscribe(l),
+    () => toasts.showing(),
+  );
+  const [leaving, setLeaving] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setLeaving(false);
+    if (!t) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const up = () => {
+      if (box.current?.contains(document.activeElement)) return void (timer = setTimeout(up, TOAST_TTL_MS));
+      if (t.still || reducedMotion()) toasts.dismiss(t.seq);
+      else setLeaving(true);
+    };
+    timer = setTimeout(up, TOAST_TTL_MS);
+    return () => clearTimeout(timer);
+  }, [t]);
+  return (
+    <div className="toast-region" role="status" ref={box} data-toasts="">
+      {t ? (
+        <p key={t.seq} className={`toast${leaving ? ' leaving' : ''}`} data-still={t.still || undefined} data-toast={t.seq} onAnimationEnd={() => leaving && toasts.dismiss(t.seq)}>
+          Finished: {t.title ? `“${t.title}”` : 'a mission'}, attempt {t.attempt}. <a href={objectHref('mission', t.mission)}>Open it</a>
+        </p>
+      ) : null}
+    </div>
   );
 }
 

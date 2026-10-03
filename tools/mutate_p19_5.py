@@ -112,6 +112,13 @@ PRI_RO = PRI_E2E + 'test_a_client_without_control_is_told_why'
 
 LOADING = 'tests/v1/e2e/test_spa_loading.py::test_a_pending_list_is_a_still_skeleton_until_core_answers'
 
+TOAST = 'clients/app/src/state/toast.ts'
+TOAST_TS = 'node:test/toast.test.ts'
+TOAST_E2E = 'tests/v1/e2e/test_spa_toast.py::'
+TOAST_LONG = TOAST_E2E + 'test_long_work_finishing_off_screen_gives_one_toast_that_leaves'
+TOAST_RM = TOAST_E2E + 'test_reduced_motion_shows_the_toast_still'
+TOAST_SHORT = TOAST_E2E + 'test_short_work_never_celebrates'
+
 MUTATIONS = [
     # ── the registry ──
     ('N01', 'a registered motion allowed to replay', [(REG,
@@ -933,6 +940,35 @@ MUTATIONS = [
     ('N233', 'the skeleton vanishes under forced colours', [(CSS,
      "  .sk-row {\n    border: 1px solid GrayText;\n  }\n", "")],
      [LOADING]),
+    # R9: the completion toast (D-8)
+    ('N234', 'short work celebrates', [(TOAST,
+     "(ranFor(e) ?? 0) >= TOAST_AFTER_MS", "(ranFor(e) ?? 0) >= 0")],
+     [TOAST_TS, TOAST_SHORT]),
+    ('N235', 'a failure is toasted', [(TOAST,
+     "export const deserves = (e: Ended) => e.state === 'ENDED_OK' &&", "export const deserves = (e: Ended) => !!e.state &&")],
+     [TOAST_TS]),
+    ('N236', 'a toast though the row is on screen', [(APP,
+     "  if (h.startsWith(`#/o/mission/${mission}`) || h.startsWith(`#/o/execution/${execution}`)) return true;",
+     "  if (h) return false;")],
+     [TOAST_LONG]),
+    ('N237', 'an end heard again is toasted again', [(TOAST,
+     "    if (!x || f.id! <= this.seen) return;", "    if (!x || f.id! < this.seen) return;")],
+     [TOAST_TS, TOAST_LONG]),
+    ('N238', 'the toast never leaves', [(APP,
+     "    timer = setTimeout(up, TOAST_TTL_MS);\n    return () => clearTimeout(timer);",
+     "    timer = setTimeout(up, TOAST_TTL_MS * 1000);\n    return () => clearTimeout(timer);")],
+     [TOAST_LONG]),
+    ('N239', 'under reduced motion the toast waits for a fade that never plays', [(APP,
+     "      if (t.still || reducedMotion()) toasts.dismiss(t.seq);", "      if (t.still && !reducedMotion()) toasts.dismiss(t.seq);")],
+     [TOAST_RM]),
+    ('N240', 'the toast region is not a status region', [(APP,
+     "    <div className=\"toast-region\" role=\"status\" ref={box} data-toasts=\"\">",
+     "    <div className=\"toast-region\" ref={box} data-toasts=\"\">")],
+     [TOAST_LONG]),
+    ('N241', 'the toast appears without its registered fade', [(CSS,
+     "  animation: toast-in var(--dur-toast) var(--ease) 1;\n}\n",
+     "}\n")],
+     [TOAST_LONG]),
 ]
 
 if __name__ == '__main__':

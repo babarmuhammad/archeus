@@ -1461,6 +1461,60 @@ dialog.command input {
   }
 }
 
+/* A-13: the completion toast — 160 ms in, 4 s, 160 ms out; one at a time */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.toast-region {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 30; /* rulebook §38 z-toast: over chrome and drawers, under dialogs (top layer) */
+  max-width: min(28rem, calc(100vw - 2 * var(--space-4)));
+}
+
+.toast {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  animation: toast-in var(--dur-toast) var(--ease) 1;
+}
+
+.toast.leaving {
+  animation: toast-out var(--dur-toast) var(--ease) forwards 1;
+}
+
+/* a phone: the top of the sheet (rulebook §21 A-13), clear of the tab bar */
+@media (max-width: 599px) {
+  .shell > .toast-region {
+    top: var(--space-2);
+    bottom: auto;
+    left: var(--space-2);
+    right: var(--space-2);
+    max-width: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

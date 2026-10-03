@@ -155,14 +155,14 @@
       "equivalent": "an announcement and the badge count"
     },
     "toast": {
-      "status": "approved", "source": "rulebook §21 A-13",
-      "trigger": "work that ran at least 10 s finished while its row was not on screen (D-8)",
-      "driven_by": "event", "runs_on": "css",
+      "status": "built", "source": "rulebook §21 A-13, §17; D-8 (rulebook §46.1)",
+      "trigger": "work that ran at least 10 s finished while its row was not on screen (D-8): an execution.ended frame whose attempt Core reads as ENDED_OK, its own started_at and ended_at 10 s or more apart, with no row or inspector of its mission or attempt on screen",
+      "driven_by": "event", "runs_on": "css", "css": ["toast-in", "toast-out"],
       "max_ms": 160, "token": "toast", "ttl_ms": 4000, "easing": "ease",
-      "cap": 1, "cap_per": "surface", "surfaces": ["shell"],
+      "cap": 1, "cap_per": "surface", "over_cap": "drop-oldest", "surfaces": ["shell"],
       "idle": "never", "replay": false,
       "reduced": "no fade: the toast appears and leaves at once",
-      "equivalent": "role=status text"
+      "equivalent": "its text in a role=status region mounted at boot; never the only signal — the mission's row and state changed too"
     },
     "activity-chip": {
       "status": "approved", "source": "ADR-0024 §6, rulebook §21 A-17",
