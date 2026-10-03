@@ -23,7 +23,7 @@ import { send } from '../data/core';
 import { useRead } from '../data/cache';
 import { executionEdges, missionEdges, taskDependencies, verificationEdges } from '../graph/relations';
 import { INSPECTOR_TABS, TAB_LABEL, objectHref } from '../nav/destinations';
-import { ago, ended, explainState, inline, offers, statusLine, technical } from '../state/present';
+import { ago, endReason, ended, explainState, inline, offers, statusLine, technical } from '../state/present';
 import { Relations } from '../components/Relations';
 import { AccountName, ActionButton, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Resources, Section, StateBadge, Tabs } from '../components/ui';
 
@@ -378,7 +378,7 @@ export function ExecutionRow({ e }: { e: Execution }) {
       <a href={objectHref('execution', e.id)}>attempt {e.attempt}</a> <StateBadge machine="execution" state={e.state} />
       <Resources r={e} />
       {e.handoff_from ? <span className="hint">continuing in a fresh session: it continues <a href={objectHref('execution', String(e.handoff_from))}>an earlier execution</a> (hand-off)</span> : null}
-      {e.stop_reason || e.exit_reason ? <span className="hint"><Prose text={String(e.stop_reason ?? e.exit_reason)} /></span> : null}
+      {endReason(e) ? <span className="err" data-end-reason="">{endReason(e)}</span> : null}
       {e.context ? <span className="hint" data-context={e.context.quality}>context {e.context.quality}</span> : null}
     </li>
   );
@@ -473,7 +473,14 @@ function UserReview({ id }: { id: string }) {
       <div className="row">
         <ActionButton label="Accept result" scope="approve" kind="primary" run={(key) => api.reviewMission(send(), id, { verdict: 'accept', note, idempotency_key: key })} reread={reread} />
         <ActionButton label="Request changes" scope="approve" run={(key) => api.reviewMission(send(), id, { verdict: 'changes_requested', note, idempotency_key: key })} reread={reread} />
-        <ActionButton label="Reject" scope="approve" kind="danger" run={(key) => api.reviewMission(send(), id, { verdict: 'reject', note, idempotency_key: key })} reread={reread} />
+        <ActionButton
+          label="Reject"
+          scope="approve"
+          kind="danger"
+          confirm="Reject this result. The rejection is recorded and cannot be changed; the mission stays in review for you to decide what comes next."
+          run={(key) => api.reviewMission(send(), id, { verdict: 'reject', note, idempotency_key: key })}
+          reread={reread}
+        />
       </div>
     </div>
   );
@@ -678,9 +685,18 @@ export function ExecutionInspector({ id, tab, onTab }: { id: string; tab?: strin
                 ['Policy decision id', x.policy_decision_id as string | undefined],
                 ['Continues execution (id)', x.handoff?.from ?? (x.handoff_from as string | undefined)],
                 ['Process id', x.pid],
+                ['Exit code', x.exit_code as number | undefined],
+                ['How it ended (Core)', x.exit_reason],
+                ['Why it was stopped (Core)', x.stop_reason],
+                ['Failure class (Core)', x.failure as string | undefined],
                 ['End-state digest', x.end_state_digest],
               ]}
             />
+            {endReason(x) ? (
+              <p className="err" data-end-reason="">
+                ✕ {endReason(x)}
+              </p>
+            ) : null}
             <ContextBlock x={x} />
             <div className="row actions">
               {['STARTING', 'RUNNING', 'PAUSING', 'HANDING_OFF'].includes(x.state) ? (

@@ -148,6 +148,7 @@ export function ApprovalCard({ id }: { id: string }) {
             scope="approve"
             kind={destructive ? 'danger' : 'secondary'}
             disabled={notEligible}
+            confirm={`Reject what this approval asks${p.consequences?.reject ? `: ${p.consequences.reject}` : ''}. A decided approval cannot be changed.`}
             run={(key) => api.decideApproval(send(), a.id, decideBody(a, 'reject', key))}
             reread={reread}
           />

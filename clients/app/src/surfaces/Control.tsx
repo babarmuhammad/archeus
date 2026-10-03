@@ -369,7 +369,7 @@ export function SessionInspector({ id, tab, onTab }: { id: string; tab?: string;
                 ['Continues session (id)', x.handoff_from_session_id],
               ]}
             />
-            <SessionActions x={x} />
+            <SessionActions x={x} later={((x.targets ?? []) as unknown as string[]).at(-1)} />
           </header>
           <Tabs label="Session" current={current} onSelect={onTab} tabs={INSPECTOR_TABS.session.map((t) => ({ id: t, label: TAB_LABEL[t] }))} />
           <div role="tabpanel" id={`panel-${current}`} aria-labelledby={`tab-${current}`} className="panel">
@@ -449,7 +449,13 @@ function Brief({ id }: { id: string }) {
   );
 }
 
-function SessionActions({ x }: { x: Session }) {
+/** A session's actions, and its way on (rulebook §16): one that was handed
+ * off says where it continued; one that cannot be resumed — lost, or an
+ * execution's own (it continues by hand-off) — offers the hand-off first. */
+function SessionActions({ x, later }: { x: Session; later?: string }) {
+  const resumable = x.state !== 'LOST' && x.mode !== 'headless';
+  // Core's `targets` are the ids of the sessions this one was handed off to
+  const next = useRead<Session>(later ? `/v1/sessions/${later}` : null);
   const h = useRead<HarnessList>('/v1/harnesses');
   const [harness, setHarness] = useState('');
   const [account, setAccount] = useState('');
@@ -459,12 +465,22 @@ function SessionActions({ x }: { x: Session }) {
   const rid = () => crypto.randomUUID();
   return (
     <div className="session-actions">
-      {x.state !== 'LOST' ? (
+      {later ? (
+        <p className="continue" data-continue="">
+          Continued on <a href={objectHref('session', later)}>{next.data ? `the ${next.data.harness_id} session` : 'a later session'}</a>.
+        </p>
+      ) : null}
+      {resumable ? (
         <ActionButton label="Resume" scope="control" kind="primary" run={(key) => api.resumeSession(send(), x.id, { request_id: rid(), deliver_brief: true, idempotency_key: key })} reread={reread} />
       ) : null}
       {x.state === 'OPEN' ? <ActionButton label="Close" scope="control" run={(key) => api.closeSession(send(), x.id, { idempotency_key: key })} reread={reread} /> : null}
-      <details className="form">
-        <summary>Hand off to another harness…</summary>
+      {!resumable && !later ? (
+        <p className="hint" data-dead-end="">
+          {x.state === 'LOST' ? 'Its provider session is gone, so it cannot be resumed.' : 'This session belongs to an execution: it continues by hand-off, not by resume.'}
+        </p>
+      ) : null}
+      <details className="form" open={!resumable && !later}>
+        <summary>{!resumable && !later ? 'Continue on another harness…' : 'Hand off to another harness…'}</summary>
         <p className="hint">A new session starts on the harness you choose, with what Core renders of the current state. This session is not changed.</p>
         <label>
           Target harness (required)

@@ -2,7 +2,7 @@
 // M09, M10, M13).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ended, explainState, firedText, inline, mentions, presenceLabel, resourceLine, statusLine, technical, templateText, triggerText, usageText } from '../src/state/present.ts';
+import { endReason, ended, explainState, firedText, inline, mentions, presenceLabel, resourceLine, statusLine, technical, templateText, triggerText, usageText } from '../src/state/present.ts';
 import { PRESENTATION } from '../src/state/presentation.ts';
 
 test('harness, model and account stay three fields; nothing is merged or borrowed (M13)', () => {
@@ -123,4 +123,17 @@ test('a state ends its machine exactly when no trigger leaves it (R10b: where pr
   assert.equal(ended('mission', 'EXECUTING'), false);
   assert.equal(ended('mission', 'PAUSED'), false);
   assert.equal(ended('mission', 'FAILED'), false); // a failed mission may still be replanned
+});
+
+test('a failed attempt says why in words; a good or live one says nothing (Appendix B)', () => {
+  assert.equal(endReason({ state: 'ENDED_OK', exit_reason: 'ok' }), null);
+  assert.equal(endReason({ state: 'RUNNING' }), null);
+  assert.equal(endReason({ state: 'ENDED_ERROR', exit_reason: 'error', failure: 'auth' }), "it ended with an error: the account's sign-in failed");
+  assert.equal(endReason({ state: 'ENDED_ERROR', exit_reason: 'error' }), 'it ended with an error: the process exited with an error');
+  assert.equal(endReason({ state: 'ENDED_KILLED', exit_reason: 'killed', stop_reason: 'estop' }), 'stopped by the emergency stop');
+  assert.equal(endReason({ state: 'ENDED_KILLED', exit_reason: 'killed', stop_reason: 'something new' }), 'stopped');
+  assert.equal(endReason({ state: 'ABANDONED', exit_reason: 'abandoned' }), 'it never started');
+  assert.equal(endReason({ state: 'ENDED_REJECTED', exit_reason: 'rejected' }), 'an approval it needed was rejected');
+  for (const x of [{ state: 'ENDED_ERROR', exit_reason: 'error', failure: 'task', exit_code: 3 }])
+    assert.ok(!/\d/.test(endReason(x) ?? ''), 'no raw code in the words');
 });

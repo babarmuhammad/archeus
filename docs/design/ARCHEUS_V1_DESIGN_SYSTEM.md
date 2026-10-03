@@ -310,6 +310,8 @@ generated from `archeus/core/domain/states.py` so UI and domain cannot drift.
 | Failed | ✕ (red, shared with Blocked) | "Failed: tests still failing after 2 replans" | FAILED, ENDED_ERROR |
 | Inactive | – | "Cancelled" / "Archived" | CANCELLED, ARCHIVED, SUPERSEDED |
 
+*As built (P19.5, R9):* every destructive verb asks first, Cancel focused — the six built before, and now Reject on an approval (saying, in Core's own words, what it does) and Reject on a result (rulebook Appendix B). A failed attempt shows ✕ and a plain reason in red; its exit code and Core's raw end fields are its Details. A session that cannot be resumed offers "Continue on another harness…" first and, once handed off, says where it continued (rulebook §16).
+
 **Approval required** always renders the canonical action (command/target/diff hash) in `mono`
 with the policy reason underneath, and two buttons of equal size; destructive approvals put
 Reject on the leading side and require step-up.

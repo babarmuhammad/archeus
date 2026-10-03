@@ -129,6 +129,8 @@ INSP = 'clients/app/src/state/inspector.ts'
 INSP_TS = 'node:test/inspector.test.ts'
 RESIZE = 'tests/v1/e2e/test_spa_inspector_resize.py::test_the_inspector_is_resized_by_its_divider_and_remembers_it'
 
+R9D = 'tests/v1/e2e/test_spa_r9_details.py::'
+
 MUTATIONS = [
     # ── the registry ──
     ('N01', 'a registered motion allowed to replay', [(REG,
@@ -1034,6 +1036,34 @@ MUTATIONS = [
     ('N256', 'the divider says no width', [(APP,
      "      aria-valuenow={now}\n", "")],
      [RESIZE]),
+    # R9: the last confirmations, a failed attempt's reason and Details, the resume affordance
+    ('N257', 'rejecting an approval asks nothing', [(ATTENTION,
+     "            confirm={`Reject what this approval asks${p.consequences?.reject ? `: ${p.consequences.reject}` : ''}. A decided approval cannot be changed.`}\n",
+     "")],
+     [R9D + 'test_rejecting_an_approval_asks_first']),
+    ('N258', 'rejecting a result asks nothing', [(MISSION,
+     "          confirm=\"Reject this result. The rejection is recorded and cannot be changed; the mission stays in review for you to decide what comes next.\"\n",
+     "")],
+     [R9D + 'test_rejecting_a_result_asks_first']),
+    ('N259', 'a failed attempt shows its raw end', [(PRESENT,
+     "      return `it ended with an error: ${FAILED[s(x.failure)] ?? 'the process exited with an error'}`;",
+     "      return `exit ${String(x.exit_reason)} ${String((x as { exit_code?: unknown }).exit_code)}${FAILED.x ?? ''}`;")],
+     [PRESENT_TS, R9D + 'test_a_failed_attempt_says_why_and_keeps_its_codes_in_details']),
+    ('N260', 'the exit code is not in Details', [(MISSION,
+     "                ['Exit code', x.exit_code as number | undefined],\n", "")],
+     [R9D + 'test_a_failed_attempt_says_why_and_keeps_its_codes_in_details']),
+    ('N261', 'an execution\'s session offers Resume', [(CONTROL,
+     "  const resumable = x.state !== 'LOST' && x.mode !== 'headless';",
+     "  const resumable = x.state !== 'LOST';")],
+     [R9D + 'test_a_session_that_cannot_be_resumed_offers_where_it_continues']),
+    ('N262', 'a handed-off session does not say where it continued', [(CONTROL,
+     "      {later ? (\n        <p className=\"continue\" data-continue=\"\">",
+     "      {later && !later ? (\n        <p className=\"continue\" data-continue=\"\">")],
+     [R9D + 'test_a_session_that_cannot_be_resumed_offers_where_it_continues']),
+    ('N263', 'the dead end hides the way on', [(CONTROL,
+     "      <details className=\"form\" open={!resumable && !later}>",
+     "      <details className=\"form\">")],
+     [R9D + 'test_a_session_that_cannot_be_resumed_offers_where_it_continues']),
 ]
 
 if __name__ == '__main__':

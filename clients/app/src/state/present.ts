@@ -13,6 +13,45 @@ export const offers = (machine: string, state: string, ...trigger: string[]) =>
  * COMPLETED and CANCELLED). Core still refuses whatever it refuses. */
 export const ended = (machine: string, state: string) => !TRIGGERS[machine]?.[state]?.length;
 
+const STOPPED: Record<string, string> = {
+  user: 'stopped by you',
+  estop: 'stopped by the emergency stop',
+  ceiling: 'stopped: the account reached its ceiling',
+  limit: 'stopped: the account reached its usage limit',
+  breaker: 'stopped: the account kept failing and was taken out of use',
+  pause_timeout: 'stopped: it did not pause in time',
+  cancel: 'stopped: its mission was cancelled',
+  binding: 'stopped: what it was bound to changed',
+  disarmed: 'stopped: Archeus was disarmed',
+  workspace: 'stopped: its workspace could not be made',
+};
+const FAILED: Record<string, string> = {
+  resource: 'the account or its provider failed',
+  auth: "the account's sign-in failed",
+  limit: 'the account reached its usage limit',
+  task: 'the work itself failed',
+};
+
+/** Why an attempt ended badly, in words, from the fields Core recorded
+ * (rulebook Appendix B: "✕ red + plain reason; raw code under Details");
+ * null for an attempt that did not fail. */
+export function endReason(x: { state: string; exit_reason?: unknown; stop_reason?: unknown; failure?: unknown }): string | null {
+  if (present('execution', x.state).cls !== 'failed') return null;
+  const s = (v: unknown) => (typeof v === 'string' ? v : '');
+  switch (s(x.exit_reason)) {
+    case 'killed':
+      return STOPPED[s(x.stop_reason)] ?? 'stopped';
+    case 'lost':
+      return 'Archeus lost its process';
+    case 'rejected':
+      return 'an approval it needed was rejected';
+    case 'abandoned':
+      return 'it never started';
+    default:
+      return `it ended with an error: ${FAILED[s(x.failure)] ?? 'the process exited with an error'}`;
+  }
+}
+
 export interface Look {
   cls: string;
   glyph: string;
