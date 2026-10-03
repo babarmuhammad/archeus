@@ -4,12 +4,14 @@
 import { useEffect, useState } from 'react';
 import {
   api,
+  type Account,
   type AccountList,
   type AutomationList,
   type DeviceList,
   type Health,
   type HarnessList,
   type PairingCode,
+  type ProjectList,
   type Policies,
   type RouteDecisionList,
   type Session,
@@ -25,6 +27,7 @@ import { send } from '../data/core';
 import { sessionEdges } from '../graph/relations';
 import { CONTROL_SECTIONS, INSPECTOR_TABS, TAB_LABEL, href, objectHref } from '../nav/destinations';
 import { ago, presenceLabel, templateText, triggerText, usageText } from '../state/present';
+import { BUDGETS, draftBudgets, policyProblem, type PolicyDraft } from '../state/policy';
 import { QR } from '../components/QR';
 import { Relations } from '../components/Relations';
 import { ActionButton, Changed, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Resources, Section, StateBadge, Tabs, thread, useChanged, useMe } from '../components/ui';
@@ -279,6 +282,7 @@ function ResourcesSection() {
                       ]}
                     />
                     <Details rows={[['Account id', x.id], ['Home (config directory)', x.home_ref as string | undefined]]} />
+                    <PolicyForm a={x} />
                   </li>
                 ))}
               </ul>
@@ -307,6 +311,108 @@ function ResourcesSection() {
         </Loadable>
       </Section>
     </>
+  );
+}
+
+/** An account's resource policy as a form (rulebook §43; D-7, §46.1): the
+ * fields Core's existing `POST /v1/resource-policies/{id}` takes — priority,
+ * allocation ceiling, the two reserves, fallback, the three budgets and the
+ * projects it may or may not serve. Admin scope. A ceiling, never a quota
+ * Archeus must spend. P22 adds the rest of ADR-0041's fields. */
+function PolicyForm({ a }: { a: Account }) {
+  const p = a.resource_policy as Account['resource_policy'] & { project_allow?: string[]; project_deny?: string[] };
+  const budgets = (p.budgets ?? {}) as Record<string, number>;
+  const projects = useRead<ProjectList>('/v1/projects');
+  const start = (): PolicyDraft => ({
+    priority: String(p.priority),
+    allocation_pct: String(p.allocation_pct),
+    reserve_pct: String(p.reserve_pct),
+    brain_reserve_pct: String(p.brain_reserve_pct),
+    tokens_per_day: budgets.tokens_per_day === undefined ? '' : String(budgets.tokens_per_day),
+    cost_per_day: budgets.cost_per_day === undefined ? '' : String(budgets.cost_per_day),
+    concurrency: budgets.concurrency === undefined ? '' : String(budgets.concurrency),
+  });
+  const [d, setD] = useState<PolicyDraft>(start);
+  const [fallback, setFallback] = useState(p.fallback);
+  const [allow, setAllow] = useState<string[]>([...(p.project_allow ?? [])]);
+  const [deny, setDeny] = useState<string[]>([...(p.project_deny ?? [])]);
+  useEffect(() => {
+    setD(start());
+    setFallback(p.fallback);
+    setAllow([...(p.project_allow ?? [])]);
+    setDeny([...(p.project_deny ?? [])]);
+  }, [p.version]);
+  const num = (k: keyof PolicyDraft, label: string, hint?: string) => (
+    <label>
+      {label}
+      {hint ? <span className="hint"> {hint}</span> : null}
+      <input type="number" inputMode="numeric" min={k === 'priority' ? undefined : 0} value={d[k]} onChange={(e) => setD({ ...d, [k]: e.target.value })} />
+    </label>
+  );
+  const toggle = (list: string[], set: (v: string[]) => void, id: string) => set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+  return (
+    <details className="form policy" data-policy-form={a.id} data-version={p.version}>
+      <summary>Change this account's policy…</summary>
+      {num('priority', 'Priority', '— a lower number is tried first')}
+      {num('allocation_pct', 'Allocation ceiling, % of the provider window', '— work starts only below it')}
+      {num('reserve_pct', 'Reserve, %', '— kept free for you')}
+      {num('brain_reserve_pct', "Own-call reserve, %", "— kept for Archeus's own calls")}
+      <label>
+        Fallback — when nothing else can run it, may work run here past the ceiling?
+        <select value={fallback} onChange={(e) => setFallback(e.target.value as typeof fallback)}>
+          <option value="allow">yes (allow)</option>
+          <option value="ask">ask me first (ask)</option>
+          <option value="deny">never (deny)</option>
+        </select>
+      </label>
+      <fieldset>
+        <legend>Budgets — blank for none</legend>
+        {BUDGETS.map(([k, label]) => (
+          <span key={k}>{num(k, label)}</span>
+        ))}
+      </fieldset>
+      {(projects.data?.projects ?? []).length ? (
+        <>
+          <fieldset>
+            <legend>Only these projects — none ticked: any project</legend>
+            {(projects.data?.projects ?? []).map((x) => (
+              <label key={x.id} className="check">
+                <input type="checkbox" checked={allow.includes(x.id)} onChange={() => toggle(allow, setAllow, x.id)} /> {x.name}
+              </label>
+            ))}
+          </fieldset>
+          <fieldset>
+            <legend>Never these projects</legend>
+            {(projects.data?.projects ?? []).map((x) => (
+              <label key={x.id} className="check">
+                <input type="checkbox" checked={deny.includes(x.id)} onChange={() => toggle(deny, setDeny, x.id)} /> {x.name}
+              </label>
+            ))}
+          </fieldset>
+        </>
+      ) : null}
+      <ActionButton
+        label="Save policy"
+        scope="admin"
+        kind="primary"
+        disabled={policyProblem(d)}
+        run={(key) =>
+          api.setResourcePolicy(send(), a.id, {
+            priority: Number(d.priority),
+            allocation_pct: Number(d.allocation_pct),
+            reserve_pct: Number(d.reserve_pct),
+            brain_reserve_pct: Number(d.brain_reserve_pct),
+            fallback,
+            budgets: draftBudgets(d),
+            project_allow: allow,
+            project_deny: deny,
+            expected_version: p.version,
+            idempotency_key: key,
+          })
+        }
+        reread={['/v1/accounts', '/v1/route-decisions']}
+      />
+    </details>
   );
 }
 

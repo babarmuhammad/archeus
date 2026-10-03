@@ -336,7 +336,7 @@ account — no other resource was free".
 | **Why panel** | explainability | three sections: Context used (with reasons), Policy (matched rules), Route (candidates × reason); raw record toggle |
 | **Attention item** | one thing needing the user | kind icon, one-line ask, primary + secondary action, due/expiry |
 | **Plan list** | task DAG as indented list with lanes | current task highlighted; approval points marked ◆ |
-| **Resource row** | account with priority handle, ceiling slider, utilisation bars, health | reserve shown as hatched band; health glyph |
+| **Resource row** | account with priority handle, ceiling slider, utilisation bars, health | reserve shown as hatched band; health glyph. *As built (P19.5, R11; D-7):* a form per account over the existing `POST /v1/resource-policies/{id}` — priority (a lower number is tried first), allocation ceiling, reserve, own-call reserve, fallback, three budgets, project allow/deny by name — admin scope, saved against the version on screen; number fields rather than a handle and a slider, which are not built |
 | **Policy grid** | action classes × scope | locked cells show a lock; simulate box |
 | **Composer** | intent input | supports control verbs, `@` object mentions, file drop (meeting notes); shows "Archeus will…" preview for control verbs |
 | **Command bar** | ⌘/Ctrl+K anywhere | same parser as composer + jump-to-object |

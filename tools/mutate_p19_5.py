@@ -133,6 +133,10 @@ R9D = 'tests/v1/e2e/test_spa_r9_details.py::'
 
 FORGET = 'tests/v1/e2e/test_spa_forget.py::test_forgetting_previews_by_cores_dry_run_and_offers_no_undo'
 
+POLICY = 'clients/app/src/state/policy.ts'
+POLICY_TS = 'node:test/policy.test.ts'
+RES = 'tests/v1/e2e/test_spa_resources.py::test_an_accounts_policy_is_a_form_over_cores_route'
+
 MUTATIONS = [
     # ── the registry ──
     ('N01', 'a registered motion allowed to replay', [(REG,
@@ -1093,6 +1097,27 @@ MUTATIONS = [
     ('N270', 'the preview hides that the content is erased', [(WORLD,
      "c.purge ? 'its content is erased; its provenance stays' : null", "null")],
      [FORGET]),
+    # R11: the Resources form over the existing route (rulebook §43; D-7)
+    ('N271', 'reserves over the ceiling are sent', [(POLICY,
+     "  if (Number(d.reserve_pct) + Number(d.brain_reserve_pct) > Number(d.allocation_pct)) return 'The two reserves together cannot exceed the allocation ceiling.';\n",
+     "")],
+     [POLICY_TS, RES]),
+    ('N272', 'a blank budget is sent as zero', [(POLICY,
+     "Object.fromEntries(BUDGETS.filter(([k]) => d[k].trim()).map(([k]) => [k, Number(d[k])]));",
+     "Object.fromEntries(BUDGETS.map(([k]) => [k, Number(d[k])]));")],
+     [POLICY_TS, RES]),
+    ('N273', 'the form saves against no version', [(CONTROL,
+     "            expected_version: p.version,\n            idempotency_key: key,", "            idempotency_key: key,")],
+     [RES]),
+    ('N274', 'the form forgets the project restriction', [(CONTROL,
+     "            project_allow: allow,\n", "")],
+     [RES]),
+    ('N275', 'the form saves without admin', [(CONTROL,
+     "        label=\"Save policy\"\n        scope=\"admin\"", "        label=\"Save policy\"\n        scope=\"observe\"")],
+     [RES]),
+    ('N276', 'the form does not follow Core after a save', [(CONTROL,
+     "  }, [p.version]);\n", "  }, []);\n")],
+     [RES]),
 ]
 
 if __name__ == '__main__':
