@@ -1,9 +1,8 @@
 # P19 design gate — client unification
 
-Status: **PROPOSED** (2026-10-03). Not approved. No P19 code is written until the user approves
-the decisions in §4, as for every phase since P8. Anything implementation later finds that
-departs from an approved decision is recorded in §12 for the user's review, never applied
-silently.
+Status: **APPROVED** (B1–B13, the user, 2026-10-03, with the decisions recorded in §4.1).
+Implementation follows §5. Anything implementation finds that departs from an approved decision
+is recorded in §12 for the user's review, never applied silently.
 
 Sources read, in precedence order: the plan (§31.1 P16–P19.5, §31.3), this repository at
 `df1b492` (P19.5 implementation-complete and verified, nothing pushed; the user's uncommitted
@@ -431,6 +430,19 @@ which B10 covers.
 `tools/mutate_p19.py`, ids P01…, every gate's direct test kills its mutant; mutants moved from
 p16/p17/p18 by B1 are recorded in those suites with the reason. The P19.5 suites stay as they are.
 
+### 4.1 Decisions taken (the user, 2026-10-03)
+
+| Decision | Question | Answer |
+|---|---|---|
+| **B3 / X1** | What is the mission Now tab? | **(a)** The mission's thread (composer, messages, A-05 travel) above the executions the tab already shows; no Thread tab |
+| **B7 / X5** | Build the offline snapshot? | **Yes, the Now reads only**, written by the SPA (never the service worker) to IndexedDB, shown read-only "Offline — as of <time>" with no command, cleared on revoke |
+| **B5** | How does a chat `approve` reach the decision? | **Core decides**: the message post carries the displayed card's `{approval_id, action_hash, expected_version}`, requires `approve` and step-up as `/decide` does, and the grammar calls `authorization.decide` with the poster's principal |
+| **B6** | Mechanism for confirmation under `careful` | **A P9 approval**: action class `mission.start`; under `careful` an Approval is created and the mission waits in CREATED; no new route or edge |
+| **B1 / X3, X4** | Structural edges on the Relations tab; where `EDGE_WORDS` lives | **Structural edges stay graph-only; `EDGE_WORDS` moves to `tokens/edges.json`**, generated into `relations.ts` (same export) and the TUI's `_tables.py` |
+| **B2** | Which TUI rows carry T2 | **Every digest-named row** (Work, World, Attention, Control lists, the relations view), `›` from `/v1/digest`, cleared by its acknowledgement |
+| **B10 / X6, X7** | The unowned verbs; steering | **`emergency stop` and `stop <running mission>` land in P19 with B10; steering stays out of P19** (it needs its own ADR) and is recorded as a deviation |
+| **the rest** | B4, B8, B9, B11, B12, B13, the order in §5 | **Approved as written** |
+
 ## 5. Slices and order (after approval)
 
 1. **B1 + B2** edges and T2 (Relations list, TUI) — no Core change.
@@ -485,7 +497,8 @@ offline cold start on a phone.
 
 1. X2: the plan's `focus=<object>` is the route's `focus=<kind>:<id>`.
 2. X4 (if B1 approved): `EDGE_WORDS` source moves to a token file; `relations.ts` keeps exporting it.
-3. X7: steering stays out of P19 unless the user decides otherwise.
+3. X7: steering into a running mission is not built in P19 (the user, 2026-10-03; it needs its
+   own ADR). The rulebook's "DEFERRED … P19" row is answered by this record.
 4. The travelling-marker flake is pre-existing and not touched.
 
 ## 12. Deviations and new decisions for the user's review
