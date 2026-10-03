@@ -2,7 +2,7 @@
 // architecture state, and what Archeus knows — with provenance, supersession
 // and relations. List-first; the spatial view is P18's.
 import { useState } from 'react';
-import { api, type Forgotten, type InspectionList, type KnowledgeDetail, type KnowledgeList, type Project, type ProjectList } from '../api/generated';
+import { paths, api, type Forgotten, type InspectionList, type KnowledgeDetail, type KnowledgeItem, type KnowledgeList, type Project, type ProjectList } from '../api/generated';
 import { CoreError } from '../api/transport';
 import { explain, newKey } from '../data/commands';
 import { canCommand } from '../data/connection';
@@ -16,7 +16,7 @@ import { useWide } from '../graph/wide';
 import { ActionButton, Changed, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Section, StateBadge, Tabs, thread, useChanged, useMe } from '../components/ui';
 
 export function WorldView() {
-  const p = useRead<ProjectList>('/v1/projects');
+  const p = useRead<ProjectList>(paths.listProjects());
   const [kind, setKind] = useState<'projects' | 'knowledge'>('projects');
   const changed = useChanged();
   return (
@@ -101,14 +101,14 @@ function NewProject() {
         scope="admin"
         disabled={name.trim() && path.trim() ? null : 'Give a name and a root path.'}
         run={(key) => api.createProject(send(), { name, root_paths: [path], idempotency_key: key })}
-        reread={['/v1/projects']}
+        reread={[paths.listProjects()]}
       />
     </details>
   );
 }
 
 export function ProjectPage({ id }: { id: string }) {
-  const p = useRead<Project>(`/v1/projects/${id}`);
+  const p = useRead<Project>(paths.getProject(id));
   const changed = useChanged();
   return (
     <div className="view">
@@ -172,7 +172,7 @@ export function ProjectPage({ id }: { id: string }) {
 }
 
 function Inspections({ repo }: { repo: string }) {
-  const s = useRead<InspectionList>(`/v1/repositories/${repo}/inspections?limit=5`);
+  const s = useRead<InspectionList>(paths.listInspections(repo, { limit: 5 }));
   return (
     <details>
       <summary>Recent inspections</summary>
@@ -207,7 +207,7 @@ function DeclareConstraint({ project }: { project: string }) {
         scope="control"
         disabled={text.trim() ? null : 'Write the rule first.'}
         run={(key) => api.declareConstraint(send(), project, { statement: text, idempotency_key: key })}
-        reread={[`/v1/projects/${project}`]}
+        reread={[paths.getProject(project)]}
       />
     </details>
   );
@@ -215,7 +215,7 @@ function DeclareConstraint({ project }: { project: string }) {
 
 function KnowledgeList() {
   const [state, setState] = useState<string>('');
-  const s = useRead<KnowledgeList>(state ? `/v1/knowledge?state=${state}` : '/v1/knowledge');
+  const s = useRead<KnowledgeList>(paths.listKnowledge(state ? { state: state as KnowledgeItem['state'] } : {}));
   const changed = useChanged();
   return (
     <>
@@ -257,9 +257,9 @@ function KnowledgeList() {
 }
 
 export function KnowledgeInspector({ id, tab, onTab }: { id: string; tab?: string; onTab: (t: string) => void }) {
-  const s = useRead<KnowledgeDetail>(`/v1/knowledge/${id}`);
+  const s = useRead<KnowledgeDetail>(paths.getKnowledge(id));
   const current = tab && INSPECTOR_TABS.knowledge_item.includes(tab) ? tab : 'detail';
-  const reread = [`/v1/knowledge`, '/v1/attention'];
+  const reread = [paths.listKnowledge(), paths.attentionItems()];
   const changed = useChanged();
   return (
     <Loadable snap={s} what="the knowledge item">
@@ -399,7 +399,7 @@ function Forget({ id }: { id: string }) {
         disabled={!shown ? 'See what would change first.' : !shown.changes.length ? 'Nothing would change.' : null}
         confirm={`Forget it: ${mode === 'purge' ? 'its content is erased and only a tombstone with its provenance is kept' : 'it stops being used as context'}. This cannot be undone.`}
         run={(key) => api.forgetKnowledge(send(), { selector: { ids: [id] }, mode, dry_run: false, idempotency_key: key })}
-        reread={['/v1/knowledge', '/v1/attention']}
+        reread={[paths.listKnowledge(), paths.attentionItems()]}
         onDone={() => setPreview(null)}
       />
     </details>

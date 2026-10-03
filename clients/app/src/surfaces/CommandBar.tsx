@@ -6,7 +6,7 @@
 // no verb (§5, §19) and decides no permission; search is cache-only (P21 owns
 // server search).
 import { useEffect, useRef, useState } from 'react';
-import { api, type KnowledgeList, type MissionList, type ProjectList, type Status } from '../api/generated';
+import { paths, api, type KnowledgeList, type MissionList, type ProjectList, type Status } from '../api/generated';
 import { store, useConn } from '../data/cache';
 import { CoreError } from '../api/transport';
 import { explain, keyAfter, newKey, retryable } from '../data/commands';
@@ -34,10 +34,10 @@ export function CommandBar({ open, onClose }: { open: boolean; onClose: () => vo
   const hits = paletteHits(
     {
       destinations: DESTINATIONS.map((d) => ({ id: d.id, label: d.label, to: href({ view: d.id }) })),
-      missions: read<MissionList>('/v1/missions')?.missions ?? [],
-      projects: read<ProjectList>('/v1/projects')?.projects ?? [],
-      knowledge: (read<KnowledgeList>('/v1/knowledge')?.knowledge ?? []) as { id: string; title?: string | null }[],
-      live: read<Status>('/v1/status')?.live ?? [],
+      missions: read<MissionList>(paths.listMissions())?.missions ?? [],
+      projects: read<ProjectList>(paths.listProjects())?.projects ?? [],
+      knowledge: (read<KnowledgeList>(paths.listKnowledge())?.knowledge ?? []) as { id: string; title?: string | null }[],
+      live: read<Status>(paths.status())?.live ?? [],
     },
     q,
   );
@@ -61,7 +61,7 @@ export function CommandBar({ open, onClose }: { open: boolean; onClose: () => vo
       setMsg(explain(e instanceof CoreError ? e : new CoreError(0, 'network', {})));
     } finally {
       // never assume the result: read again what the command may have changed
-      for (const p of [`/v1/missions/${h.mission.id}`, '/v1/missions', '/v1/status', '/v1/attention'])
+      for (const p of [paths.getMission(h.mission.id), paths.listMissions(), paths.status(), paths.attentionItems()])
         store.invalidate((x) => x === p || x.startsWith(p + '?'));
     }
   }
@@ -80,7 +80,7 @@ export function CommandBar({ open, onClose }: { open: boolean; onClose: () => vo
       await api.postMessage(send(), 'primary', { text: q, idempotency_key: tellKey.current });
       setMsg('Sent to Archeus — its reply appears on Now.');
       setQ('');
-      store.invalidate((p) => p.startsWith('/v1/conversations/'));
+      store.invalidate((p) => p.startsWith(paths.listMessages('primary')));
     } catch (e) {
       const ce = e instanceof CoreError ? e : new CoreError(0, 'network', {});
       outcome = ce.code === 'network' ? 'network' : 'refused';

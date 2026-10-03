@@ -1,7 +1,7 @@
 """The P19 mutation suite (p19-design-gate B13): break each gate's invariant,
 run the test written for it, and require it to fail. B1, one edge
 implementation (P01-P08); B2, the change rule on the Relations list and the
-TUI (P09-P14).
+TUI (P09-P14); B11, the generated client everywhere (P15-P20).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -29,6 +29,13 @@ TUI_REL = 'tests/v1/tui/test_acceptance.py::test_relations_say_the_tier_and_the_
 THREAD = 'tests/v1/tui/test_thread.py::'
 ROWS = 'tests/v1/e2e/test_spa_rows.py::test_the_change_rule_marks_exactly_what_changed_on_every_list'
 GATE = 'tests/v1/design/test_design_gates.py::test_no_client_assembles_an_edge'
+DG = 'tests/v1/design/test_design_gates.py::'
+PYAPI = 'archeus/cli/_api.py'
+MAIN = 'archeus/cli/main.py'
+PYCLIENT = 'tests/v1/unit/test_api_client.py'
+G3 = 'tests/v1/judge/test_g03_one_model.py::test_every_client_agrees'
+CLI_STATUS = ('tests/v1/integration/test_cli_v1.py::'
+              'test_status_of_a_mission_prints_what_core_reports_and_a_refusal_in_its_words')
 
 MUTATIONS = [
     # ── B1: the clients say Core's edges, from where they stand ──
@@ -46,7 +53,7 @@ MUTATIONS = [
      '    if (e.inactive) row.inactive = true;\n', '')],
      [REL_TS, PARITY_TS]),
     ('P05', "the SPA's list reads two hops", [(REL,
-     '&depth=1&limit=1000', '&depth=2&limit=1000')],
+     'depth: 1, limit: 1000', 'depth: 2, limit: 1000')],
      [REL_TS]),
     ('P06', "the TUI's list shows containment", [(PRES,
      "        if e.get('structural'):\n            continue\n", '')],
@@ -84,6 +91,29 @@ MUTATIONS = [
      "            text = self.st.paint('│', 'thread') + text[1:]",
      "            text = self.st.paint('│', 'thread') + text")],
      [THREAD + 'test_a_changed_row_carries_the_rule_and_no_other_row_does']),
+    # ── B11: the generated client everywhere ──
+    ('P15', 'the SPA spells a path again', [('clients/app/src/surfaces/CommandBar.tsx',
+     "p.startsWith(paths.listMessages('primary'))", "p.startsWith('/v1/conversations/')")],
+     [DG + 'test_the_spa_reads_every_path_from_the_generated_client']),
+    ('P16', 'the TUI spells a path again', [(SCR,
+     "    g = doc.load(endpoints.digest(), 'the digest')",
+     "    g = doc.load('/v1/digest', 'the digest')")],
+     [DG + 'test_the_cli_and_the_tui_read_every_path_from_the_generated_client']),
+    ('P17', 'the Python client puts an id in a path unencoded', [(PYAPI,
+     "    return head + quote(id_, safe='') + tail if _ else r_path",
+     "    return head + id_ + tail if _ else r_path")],
+     [PYCLIENT]),
+    ('P18', 'the Python client sends an absent query value', [(PYAPI,
+     "    q = [(k, v) for k, v in pairs if v is not None]",
+     "    q = [(k, v) for k, v in pairs]")],
+     [PYCLIENT]),
+    ('P19', "the CLI says a state Core did not report", [(MAIN,
+     "    print('%s: %s (%s)' % (m['id'], m['state'], m['title']))",
+     "    print('%s: %s (%s)' % (m['id'], 'COMPLETED', m['title']))")],
+     [G3, CLI_STATUS]),
+    ('P20', "the CLI drops Core's refusal", [(MAIN,
+     "        print(sync.explain(e.refusal()), file=sys.stderr)\n", "")],
+     [CLI_STATUS]),
 ]
 
 if __name__ == '__main__':

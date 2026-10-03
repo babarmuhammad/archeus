@@ -49,3 +49,32 @@ def test_a_deferred_verb_does_nothing_names_its_phase_and_exits_2(verb, phase, c
 def test_the_legacy_entry_point_dispatches_exactly_the_v1_verbs():
     from claude_sessions import cli as legacy
     assert legacy.V1_VERBS == cli.VERBS
+
+
+# ── P19 B11: the CLI is a client of the one model, and says Core's refusal ──
+
+def test_status_of_a_mission_prints_what_core_reports_and_a_refusal_in_its_words(archeus_home,
+                                                                                capsys):
+    """A deploy needs a person, so the mission rests at APPROVAL_REQUIRED: the
+    state the CLI prints is one Core holds still, and not the one most reach."""
+    import time
+    from archeus.core import engine, ports, runtime
+    from archeus.core.domain import ids
+    from v1.judge.http import TempCore
+    deploy = dict(engine.SKELETON_PLAN, tasks=[dict(engine.SKELETON_PLAN['tasks'][0],
+                                                    action_classes=['deploy'])])
+    tc = TempCore(archeus_home, ports=runtime.Ports(brain=ports.FixedPlanBrain(deploy))).start()
+    try:
+        mid = tc.http('POST', '/v1/missions', body={
+            'title': 'Seen by the CLI', 'objective': 'o', 'idempotency_key': 'cli-%f' % time.time()
+        }).json()['id']
+        deadline = time.monotonic() + 30
+        while tc.http('GET', '/v1/missions/' + mid).json()['state'] != 'APPROVAL_REQUIRED':
+            assert time.monotonic() < deadline, 'the mission never asked'
+            time.sleep(0.05)
+        assert cli.main(['status', mid]) == 0
+        assert capsys.readouterr().out == '%s: APPROVAL_REQUIRED (Seen by the CLI)\n' % mid
+        assert cli.main(['status', ids.new_id('mission')]) == 2
+        assert 'It no longer exists.' in capsys.readouterr().err     # Core's not_found, in words
+    finally:
+        tc.stop(kill=True)

@@ -3,7 +3,7 @@
 // cache, one navigation table, one inspector. Every state on screen is a state
 // Core returned; the stream only says what to read again.
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { api, type Attention, type DeviceList, type Status } from './api/generated';
+import { paths, api, type Attention, type DeviceList, type Status } from './api/generated';
 import { authenticate, redeemPairing, sender, takeFragment, CoreError } from './api/transport';
 import { HEARTBEAT, LOST, OPENED, RESYNC, UNAUTHENTICATED, subscribe } from './api/stream';
 import { announce, limiter } from './a11y/announce';
@@ -136,8 +136,8 @@ function Shell({ token }: { token: string }) {
   const [iw, setIw] = useState(() => loadWidth(storage()));
   const main = useRef<HTMLElement>(null);
   const aside = useRef<HTMLElement>(null);
-  const att = useRead<Attention>('/v1/attention');
-  const status = useRead<Status>('/v1/status');
+  const att = useRead<Attention>(paths.attentionItems());
+  const status = useRead<Status>(paths.status());
   const p = presence(canCommand(conn.conn), att.data?.count ?? 0, status.data?.live ?? []);
 
   // the favicon shows the presence, still (ADR-0027 §2)
@@ -418,8 +418,8 @@ const toasts = new Toasts(timeline, {
   reduced: reducedMotion,
   read: (id) => api.getExecution(send(), id) as Promise<Ended>,
   title: async (id) => {
-    await store.fetch(`/v1/missions/${id}`);
-    const m = store.snapshot(`/v1/missions/${id}`).data as { title?: string } | undefined;
+    await store.fetch(paths.getMission(id));
+    const m = store.snapshot(paths.getMission(id)).data as { title?: string } | undefined;
     return m?.title ?? null;
   },
   onScreen,
@@ -514,7 +514,7 @@ const STRIP_SAYS_EVERY_MS = 30_000;
  * to its list. Its words are the orbit's equivalent, said at most once per
  * 30 s and only when they change. */
 function OperationsStrip({ status, count }: { status: Snapshot<Status>; count: number | undefined }) {
-  const devices = useRead<DeviceList>('/v1/devices');
+  const devices = useRead<DeviceList>(paths.listDevices());
   const running = status.data ? runningMissions(status.data.live) : undefined;
   const clients = devices.data?.devices.filter((d) => d.presence.state === 'connected').length;
   const facts = [

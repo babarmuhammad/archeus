@@ -12,16 +12,17 @@ import { KnowledgeInspector } from './World';
 import { Relations } from '../components/Relations';
 import { Details, Fresh, KV, Loadable, Prose, RefLabel, Resources, Section, StateBadge, Tabs, useMe } from '../components/ui';
 import { firedText, inline, technical, words } from '../state/present';
+import { paths } from '../api/generated';
 
 const PATH: Record<string, (id: string) => string> = {
-  plan: (id) => `/v1/plans/${id}`,
-  verification: (id) => `/v1/verifications/${id}`,
-  route_decision: (id) => `/v1/route-decisions/${id}`,
-  policy_decision: (id) => `/v1/policy-decisions/${id}`,
-  context_package: (id) => `/v1/context/${id}`,
-  automation_run: (id) => `/v1/automation-runs/${id}`,
-  project: (id) => `/v1/projects/${id}`,
-  repository: (id) => `/v1/repositories/${id}/inspections`,
+  plan: (id) => paths.getPlan(id),
+  verification: (id) => paths.getVerification(id),
+  route_decision: (id) => paths.getRouteDecision(id),
+  policy_decision: (id) => paths.getPolicyDecision(id),
+  context_package: (id) => paths.getContextPackage(id),
+  automation_run: (id) => paths.getAutomationRun(id),
+  project: (id) => paths.getProject(id),
+  repository: (id) => paths.listInspections(id),
 };
 
 export function Inspector({ kind, id, tab, onTab }: { kind: string; id: string; tab?: string; onTab: (t: string) => void }) {

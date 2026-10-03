@@ -3,7 +3,7 @@
 // needs you, happening now, since you last looked, upcoming, recent decisions,
 // the live map and the conversation. Composed from Core's reads (S5).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { api, type ApprovalList, type AutomationList, type Digest, type KnowledgeList, type Message, type MessageList, type MissionList, type RouteDecisionList, type Status } from '../api/generated';
+import { paths, api, type ApprovalList, type AutomationList, type Digest, type KnowledgeList, type Message, type MessageList, type MissionList, type RouteDecisionList, type Status } from '../api/generated';
 import { announce } from '../a11y/announce';
 import { send } from '../data/core';
 import { store, useRead } from '../data/cache';
@@ -51,8 +51,8 @@ const HEADLINE: Record<string, string> = {
 };
 
 export function NowView() {
-  const missions = useRead<MissionList>('/v1/missions');
-  const att = useRead<AttentionT>('/v1/attention');
+  const missions = useRead<MissionList>(paths.listMissions());
+  const att = useRead<AttentionT>(paths.attentionItems());
   const all = missions.data?.missions ?? [];
   const active = activeMissions(all);
   const next = upcoming(all);
@@ -108,7 +108,7 @@ export function NowView() {
 
 /** The background automation line (rulebook §9): quiet, and a link to them. */
 function AutomationLine() {
-  const a = useRead<AutomationList>('/v1/automations');
+  const a = useRead<AutomationList>(paths.listAutomations());
   const line = a.data ? automationLine(a.data.automations) : null;
   return line ? (
     <p className="automation-line" data-automation-line="">
@@ -119,9 +119,9 @@ function AutomationLine() {
 
 /** Recent decisions (rulebook §9, O-6): each row names its object and links it. */
 function Decisions() {
-  const ap = useRead<ApprovalList>('/v1/approvals');
-  const rd = useRead<RouteDecisionList>('/v1/route-decisions');
-  const kn = useRead<KnowledgeList>('/v1/knowledge?type=DECISION&state=CONFIRMED');
+  const ap = useRead<ApprovalList>(paths.listApprovals());
+  const rd = useRead<RouteDecisionList>(paths.listRouteDecisions());
+  const kn = useRead<KnowledgeList>(paths.listKnowledge({ type: 'DECISION', state: 'CONFIRMED' }));
   const changed = useChanged();
   const rows = ap.data && rd.data && kn.data ? recentDecisions(ap.data.approvals, rd.data.route_decisions, kn.data.knowledge) : [];
   return rows.length ? (
@@ -153,7 +153,7 @@ function Decisions() {
 /** The live map's block: its seeds are the active missions, its live set the
  * attempts Core's status lists — the same derivation the strip counts. */
 function MapSection({ missions }: { missions: MissionList['missions'] }) {
-  const status = useRead<Status>('/v1/status');
+  const status = useRead<Status>(paths.status());
   const seeds = mapSeeds(missions);
   const ids = (status.data?.live ?? []).map((x) => x.id);
   const key = ids.join();
@@ -166,7 +166,7 @@ function MapSection({ missions }: { missions: MissionList['missions'] }) {
 }
 
 function DigestSection() {
-  const d = useRead<Digest>('/v1/digest');
+  const d = useRead<Digest>(paths.digest());
   return (
     <Loadable snap={d} what="the digest">
       {(g) =>
@@ -178,7 +178,7 @@ function DigestSection() {
                 label="Dismiss"
                 scope="control"
                 run={() => api.ackDigest(send(), { up_to_seq: g.up_to_seq })}
-                reread={['/v1/digest']}
+                reread={[paths.digest()]}
               />
             }
           >
@@ -203,7 +203,7 @@ function DigestSection() {
 /** The primary conversation (§5): a surface, not the application. A card shows
  * the live row its ref names, never a copy from the message. */
 function Conversation() {
-  const msgs = useRead<MessageList>('/v1/conversations/primary/messages');
+  const msgs = useRead<MessageList>(paths.listMessages('primary'));
   const [text, setText] = useState('');
   const [sent, setSent] = useState<string | null>(null);
   const list = msgs.data?.messages ?? [];
@@ -261,7 +261,7 @@ function Conversation() {
           kind="primary"
           disabled={text.trim() ? null : 'Write a message first.'}
           run={(key) => api.postMessage(send(), 'primary', { text, idempotency_key: key })}
-          reread={['/v1/conversations/primary/messages']}
+          reread={[paths.listMessages('primary')]}
           onDone={() => {
             setSent(text);
             setText('');
@@ -340,8 +340,8 @@ function CardRef({ type, kind, id, intent, changed }: { type: string; kind: stri
         <p>{type === 'challenge' ? 'Archeus disagrees with what is recorded. Keep going, or drop it?' : 'Archeus needs an answer before it can start.'}</p>
         {type === 'challenge' ? (
           <div className="row">
-            <ActionButton label="Proceed anyway" scope="control" run={(key) => api.clarifyIntent(send(), id, { choice: 'proceed', idempotency_key: key })} reread={['/v1/conversations/primary/messages']} />
-            <ActionButton label="Drop it" scope="control" run={(key) => api.clarifyIntent(send(), id, { choice: 'drop', idempotency_key: key })} reread={['/v1/conversations/primary/messages']} />
+            <ActionButton label="Proceed anyway" scope="control" run={(key) => api.clarifyIntent(send(), id, { choice: 'proceed', idempotency_key: key })} reread={[paths.listMessages('primary')]} />
+            <ActionButton label="Drop it" scope="control" run={(key) => api.clarifyIntent(send(), id, { choice: 'drop', idempotency_key: key })} reread={[paths.listMessages('primary')]} />
           </div>
         ) : (
           <div className="row">
@@ -349,7 +349,7 @@ function CardRef({ type, kind, id, intent, changed }: { type: string; kind: stri
               Your answer
               <input value={answer} onChange={(e) => setAnswer(e.target.value)} />
             </label>
-            <ActionButton label="Answer" scope="control" disabled={answer.trim() ? null : 'Write an answer first.'} run={(key) => api.clarifyIntent(send(), id, { text: answer, idempotency_key: key })} reread={['/v1/conversations/primary/messages']} />
+            <ActionButton label="Answer" scope="control" disabled={answer.trim() ? null : 'Write an answer first.'} run={(key) => api.clarifyIntent(send(), id, { text: answer, idempotency_key: key })} reread={[paths.listMessages('primary')]} />
           </div>
         )}
         {intent ? null : null}
@@ -365,7 +365,7 @@ function CardRef({ type, kind, id, intent, changed }: { type: string; kind: stri
 }
 
 function LiveMission({ id }: { id: string }) {
-  const m = useRead<{ state: string; title: string }>(`/v1/missions/${id}`);
+  const m = useRead<{ state: string; title: string }>(paths.getMission(id));
   return m.data ? (
     <span>
       {' '}

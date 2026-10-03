@@ -11,8 +11,9 @@ import threading
 import urllib.error
 import urllib.request
 
+from .._api import STREAM_PATH
+
 LOOPBACK = '127.0.0.1'
-STREAM_PATH = '/v1/events/stream'
 #: a marker `events()` yields when the stream answers, never a frame Core sends
 OPENED = ' opened'
 TIMEOUT_S = 10

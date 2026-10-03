@@ -485,3 +485,60 @@ def test_the_edge_gate_finds_what_p18_shipped():
     assert _assembled_edges("out.append({'rel': r, 'to': t, 'field': 'Execution.handoff_from'})",
                             fields)
     assert not _assembled_edges("const live = e.field === 'executions.task_id';", fields)
+
+
+# ── generated client everywhere (p19-design-gate B11) ──
+
+def _raw_paths(src):
+    """Every `/v1/` path the SPA source spells out itself, comments aside."""
+    code = re.sub(r'/\*[\s\S]*?\*/', '', src)
+    code = re.sub(r'(^|\s)//[^\n]*', r'\1', code)
+    return re.findall(r"""['"`]/v1/[^'"`]*""", code)
+
+
+def test_the_spa_reads_every_path_from_the_generated_client():
+    """A route rename must fail the type check, so no SPA module spells a
+    `/v1/` path: reads use `paths.*`, commands `api.*` (generated.ts)."""
+    skip = {os.path.join('src', 'api', 'generated.ts'), os.path.join('src', 'data', 'rules.ts')}
+    bad = {}
+    for dp, _ds, fs in os.walk(os.path.join(APP, 'src')):
+        for f in fs:
+            p = os.path.join(dp, f)
+            if f.endswith(('.ts', '.tsx')) and os.path.relpath(p, APP) not in skip:
+                with open(p, encoding='utf-8') as fh:
+                    if hits := _raw_paths(fh.read()):
+                        bad[os.path.relpath(p, APP)] = hits
+    assert not bad, bad
+
+
+def test_the_path_gate_finds_a_spelled_path_and_ignores_a_comment():
+    assert _raw_paths("const s = useRead<X>('/v1/attention');")
+    assert _raw_paths("useRead(`/v1/missions/${id}`)")
+    assert not _raw_paths("// Core's `/v1/status` lists as live\nconst x = paths.status();")
+    assert not _raw_paths("/** An edge as `/v1/world/graph` returns it */")
+
+
+def _py_raw_paths(src):
+    """Every string in Python source that is itself a `/v1/` path."""
+    import ast
+    return [n.value for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value.startswith('/v1/')]
+
+
+def test_the_cli_and_the_tui_read_every_path_from_the_generated_client():
+    """B11: the CLI and the TUI build every path with `archeus/cli/_api.py`."""
+    top = os.path.join(ROOT, 'archeus', 'cli')
+    bad = {}
+    for dp, _ds, fs in os.walk(top):
+        for f in fs:
+            if f.endswith('.py') and f not in ('_api.py', '_tables.py'):
+                with open(os.path.join(dp, f), encoding='utf-8') as fh:
+                    if hits := _py_raw_paths(fh.read()):
+                        bad[os.path.relpath(os.path.join(dp, f), ROOT)] = hits
+    assert not bad, bad
+
+
+def test_the_python_path_gate_finds_a_spelled_path():
+    assert _py_raw_paths("app.read('/v1/attention')")
+    assert _py_raw_paths("x = '/v1/missions/%s/plan' % mid")
+    assert not _py_raw_paths("print('Core did not answer /v1/health')")

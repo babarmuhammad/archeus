@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
+from archeus.cli._api import endpoints
 from archeus.cli.tui import app as A, client as C, screens as SC
 from archeus.cli.tui._tables import CONTROL_SECTIONS, DESTINATIONS, INSPECTOR_TABS, TABS
 from archeus.cli.tui.view import Style
@@ -493,7 +494,7 @@ def test_relations_say_the_tier_and_the_field_in_words():
          'rel': 'mentions', 'tier': 'AMBIGUOUS', 'inactive': False, 'structural': False}]}
     app = _StubApp({'/v1/knowledge/kn_1': k, '/v1/attention': {'items': [], 'count': 0},
                     '/v1/sync': {'client': {'scopes': []}},
-                    '/v1/world/graph?focus=knowledge_item:kn_1&depth=1&limit=1000': graph})
+                    endpoints.world_graph(focus='knowledge_item:kn_1', depth=1, limit=1000): graph})
     app.open('knowledge_item', 'kn_1', 'relations')
     shown = plain(app)
     assert 'inferred' in shown and 'ambiguous' in shown

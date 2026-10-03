@@ -237,7 +237,8 @@ class TuiDriver:
         app.frame()
         (line,) = [x for x in app._doc.lines
                    if x['target'] == ('open', 'mission', mission_id, None)]
-        text = render.strip_ansi(line['text']).strip()
+        # a changed row carries the thread's rule first (P19 B2): a mark, not the label
+        text = render.strip_ansi(line['text']).lstrip('│').strip()
         label = text.split(' ', 1)[1].split('  ', 1)[0]     # after the glyph, before the title
         return {'state': by_label.get(label), 'label': label, 'text': text}
 
@@ -416,7 +417,21 @@ class Rig:
         return TuiDriver(tc)
 
     def cli(self, *argv):
-        self._pending('the V1 CLI', 'P3.5')
+        """`archeus <argv>` run as a user would, against this Core (P19 B11):
+        its exit code and what it printed; `status <mission>` also gives the
+        state it printed."""
+        import contextlib
+        import io
+        from archeus.cli import main as cli
+        if getattr(self.client, 'core', None) is None:
+            pytest.skip('the CLI is a client of the HTTP API only')
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = cli.main(list(argv))
+        got = {'exit': code, 'out': out.getvalue(), 'err': err.getvalue()}
+        if argv[:1] == ('status',) and len(argv) == 2 and code == 0:
+            got['state'] = got['out'].split(': ', 1)[1].split(' ', 1)[0]
+        return got
 
     def fixture_legacy_home(self, name):
         self._pending('fixture legacy homes', 'P22')

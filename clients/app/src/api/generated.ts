@@ -1384,20 +1384,73 @@ function qs(q: Record<string, string | number | undefined>): string {
   return p.length ? '?' + p.join('&') : '';
 }
 
+/** Every read's path, one builder per GET route (p19-design-gate B11): what a
+ * client reads and caches by, so a route rename fails the type check. */
+export const paths = {
+  health: () => '/v1/health',
+  version: () => '/v1/version',
+  listMissions: (query: { state?: Mission['state']; project?: string } = {}) => '/v1/missions' + qs(query),
+  getMission: (id: string) => '/v1/missions/' + encodeURIComponent(id),
+  getMissionPlan: (id: string) => '/v1/missions/' + encodeURIComponent(id) + '/plan',
+  getPlan: (id: string) => '/v1/plans/' + encodeURIComponent(id),
+  events: (query: { after?: number; limit?: number } = {}) => '/v1/events' + qs(query),
+  listDevices: () => '/v1/devices',
+  sync: () => '/v1/sync',
+  status: (query: { project?: string } = {}) => '/v1/status' + qs(query),
+  listProjects: () => '/v1/projects',
+  getProject: (id: string) => '/v1/projects/' + encodeURIComponent(id),
+  worldGraph: (query: { focus?: string; depth?: number; limit?: number } = {}) => '/v1/world/graph' + qs(query),
+  repositoryGraph: (id: string, query: { focus?: string; depth?: number; limit?: number } = {}) => '/v1/repositories/' + encodeURIComponent(id) + '/graph' + qs(query),
+  listInspections: (id: string, query: { limit?: number } = {}) => '/v1/repositories/' + encodeURIComponent(id) + '/inspections' + qs(query),
+  digest: () => '/v1/digest',
+  getContextPackage: (id: string) => '/v1/context/' + encodeURIComponent(id),
+  listKnowledge: (query: { project?: string; state?: KnowledgeItem['state']; type?: string } = {}) => '/v1/knowledge' + qs(query),
+  getKnowledge: (id: string) => '/v1/knowledge/' + encodeURIComponent(id),
+  listRouteDecisions: (query: { source?: string; purpose?: string } = {}) => '/v1/route-decisions' + qs(query),
+  getRouteDecision: (id: string) => '/v1/route-decisions/' + encodeURIComponent(id),
+  listProviderTerms: () => '/v1/provider-terms',
+  listHarnesses: () => '/v1/harnesses',
+  listAccounts: () => '/v1/accounts',
+  getExecution: (id: string) => '/v1/executions/' + encodeURIComponent(id),
+  listTaskExecutions: (id: string) => '/v1/tasks/' + encodeURIComponent(id) + '/executions',
+  executionStream: (id: string, query: { from?: number } = {}) => '/v1/executions/' + encodeURIComponent(id) + '/stream' + qs(query),
+  listSessions: (query: { project?: string; mission?: string; state?: Mission['state'] } = {}) => '/v1/sessions' + qs(query),
+  getSession: (id: string) => '/v1/sessions/' + encodeURIComponent(id),
+  sessionBrief: (id: string) => '/v1/sessions/' + encodeURIComponent(id) + '/brief',
+  listCheckpoints: (id: string) => '/v1/executions/' + encodeURIComponent(id) + '/checkpoints',
+  listMessages: (id: string, query: { after?: number } = {}) => '/v1/conversations/' + encodeURIComponent(id) + '/messages' + qs(query),
+  getIntent: (id: string) => '/v1/intents/' + encodeURIComponent(id),
+  listIdeas: (query: { state?: Mission['state'] } = {}) => '/v1/ideas' + qs(query),
+  getPolicies: () => '/v1/policies',
+  listPolicyDecisions: (query: { mission?: string; stage?: string } = {}) => '/v1/policy-decisions' + qs(query),
+  getPolicyDecision: (id: string) => '/v1/policy-decisions/' + encodeURIComponent(id),
+  listApprovals: (query: { state?: Approval['state']; mission?: string } = {}) => '/v1/approvals' + qs(query),
+  getApproval: (id: string) => '/v1/approvals/' + encodeURIComponent(id),
+  listVerifications: (id: string) => '/v1/missions/' + encodeURIComponent(id) + '/verifications',
+  getVerification: (id: string) => '/v1/verifications/' + encodeURIComponent(id),
+  listReviews: (id: string) => '/v1/missions/' + encodeURIComponent(id) + '/reviews',
+  attentionItems: () => '/v1/attention',
+  missionTimeline: (id: string, query: { before?: number; limit?: number } = {}) => '/v1/missions/' + encodeURIComponent(id) + '/timeline' + qs(query),
+  listAutomations: () => '/v1/automations',
+  getAutomation: (id: string) => '/v1/automations/' + encodeURIComponent(id),
+  simulateAutomation: (id: string, query: { days?: number } = {}) => '/v1/automations/' + encodeURIComponent(id) + '/simulate' + qs(query),
+  getAutomationRun: (id: string) => '/v1/automation-runs/' + encodeURIComponent(id),
+};
+
 /** One function per route of the table; the stream is read at STREAM_PATH. */
 export const api = {
   health: (send: Send) =>
-    send<Health>('GET', '/v1/health'),
+    send<Health>('GET', paths.health()),
   version: (send: Send) =>
-    send<Version>('GET', '/v1/version'),
+    send<Version>('GET', paths.version()),
   listMissions: (send: Send, query: { state?: Mission['state']; project?: string } = {}) =>
-    send<MissionList>('GET', '/v1/missions' + qs(query)),
+    send<MissionList>('GET', paths.listMissions(query)),
   getMission: (send: Send, id: string) =>
-    send<Mission>('GET', '/v1/missions/' + encodeURIComponent(id)),
+    send<Mission>('GET', paths.getMission(id)),
   getMissionPlan: (send: Send, id: string) =>
-    send<MissionPlan>('GET', '/v1/missions/' + encodeURIComponent(id) + '/plan'),
+    send<MissionPlan>('GET', paths.getMissionPlan(id)),
   getPlan: (send: Send, id: string) =>
-    send<Plan>('GET', '/v1/plans/' + encodeURIComponent(id)),
+    send<Plan>('GET', paths.getPlan(id)),
   createMission: (send: Send, body: CreateMissionRequest) =>
     send<Created>('POST', '/v1/missions', body),
   pauseMission: (send: Send, id: string, body: PauseMissionRequest) =>
@@ -1411,7 +1464,7 @@ export const api = {
   reprioritiseMission: (send: Send, id: string, body: ReprioritiseMissionRequest) =>
     send<CommandResult>('POST', '/v1/missions/' + encodeURIComponent(id) + '/reprioritize', body),
   events: (send: Send, query: { after?: number; limit?: number } = {}) =>
-    send<EventPage>('GET', '/v1/events' + qs(query)),
+    send<EventPage>('GET', paths.events(query)),
   launchCode: (send: Send, body: LaunchCodeRequest) =>
     send<LaunchCode>('POST', '/v1/devices/launch/code', body),
   launchRedeem: (send: Send, body: LaunchRedeemRequest) =>
@@ -1423,37 +1476,37 @@ export const api = {
   pairRedeem: (send: Send, body: PairRedeemRequest) =>
     send<Paired>('POST', '/v1/devices/pair/redeem', body),
   listDevices: (send: Send) =>
-    send<DeviceList>('GET', '/v1/devices'),
+    send<DeviceList>('GET', paths.listDevices()),
   sync: (send: Send) =>
-    send<Sync>('GET', '/v1/sync'),
+    send<Sync>('GET', paths.sync()),
   status: (send: Send, query: { project?: string } = {}) =>
-    send<Status>('GET', '/v1/status' + qs(query)),
+    send<Status>('GET', paths.status(query)),
   listProjects: (send: Send) =>
-    send<ProjectList>('GET', '/v1/projects'),
+    send<ProjectList>('GET', paths.listProjects()),
   getProject: (send: Send, id: string) =>
-    send<Project>('GET', '/v1/projects/' + encodeURIComponent(id)),
+    send<Project>('GET', paths.getProject(id)),
   createProject: (send: Send, body: CreateProjectRequest) =>
     send<ProjectCreated>('POST', '/v1/projects', body),
   declareConstraint: (send: Send, id: string, body: DeclareConstraintRequest) =>
     send<ConstraintDeclared>('POST', '/v1/projects/' + encodeURIComponent(id) + '/constraints', body),
   worldGraph: (send: Send, query: { focus?: string; depth?: number; limit?: number } = {}) =>
-    send<WorldGraph>('GET', '/v1/world/graph' + qs(query)),
+    send<WorldGraph>('GET', paths.worldGraph(query)),
   repositoryGraph: (send: Send, id: string, query: { focus?: string; depth?: number; limit?: number } = {}) =>
-    send<RepositoryGraph>('GET', '/v1/repositories/' + encodeURIComponent(id) + '/graph' + qs(query)),
+    send<RepositoryGraph>('GET', paths.repositoryGraph(id, query)),
   listInspections: (send: Send, id: string, query: { limit?: number } = {}) =>
-    send<InspectionList>('GET', '/v1/repositories/' + encodeURIComponent(id) + '/inspections' + qs(query)),
+    send<InspectionList>('GET', paths.listInspections(id, query)),
   digest: (send: Send) =>
-    send<Digest>('GET', '/v1/digest'),
+    send<Digest>('GET', paths.digest()),
   ackDigest: (send: Send, body: AckDigestRequest) =>
     send<Acked>('POST', '/v1/digest/ack', body),
   getContextPackage: (send: Send, id: string) =>
-    send<ContextPackage>('GET', '/v1/context/' + encodeURIComponent(id)),
+    send<ContextPackage>('GET', paths.getContextPackage(id)),
   previewContext: (send: Send, body: PreviewContextRequest) =>
     send<ContextPreview>('POST', '/v1/context/preview', body),
   listKnowledge: (send: Send, query: { project?: string; state?: KnowledgeItem['state']; type?: string } = {}) =>
-    send<KnowledgeList>('GET', '/v1/knowledge' + qs(query)),
+    send<KnowledgeList>('GET', paths.listKnowledge(query)),
   getKnowledge: (send: Send, id: string) =>
-    send<KnowledgeDetail>('GET', '/v1/knowledge/' + encodeURIComponent(id)),
+    send<KnowledgeDetail>('GET', paths.getKnowledge(id)),
   confirmKnowledge: (send: Send, id: string, body: ConfirmKnowledgeRequest) =>
     send<KnowledgeChanged>('POST', '/v1/knowledge/' + encodeURIComponent(id) + '/confirm', body),
   rejectKnowledge: (send: Send, id: string, body: RejectKnowledgeRequest) =>
@@ -1469,17 +1522,17 @@ export const api = {
   importMeeting: (send: Send, body: ImportMeetingRequest) =>
     send<MeetingImported>('POST', '/v1/meetings/import', body),
   listRouteDecisions: (send: Send, query: { source?: string; purpose?: string } = {}) =>
-    send<RouteDecisionList>('GET', '/v1/route-decisions' + qs(query)),
+    send<RouteDecisionList>('GET', paths.listRouteDecisions(query)),
   getRouteDecision: (send: Send, id: string) =>
-    send<RouteDecision>('GET', '/v1/route-decisions/' + encodeURIComponent(id)),
+    send<RouteDecision>('GET', paths.getRouteDecision(id)),
   listProviderTerms: (send: Send) =>
-    send<ProviderTermsList>('GET', '/v1/provider-terms'),
+    send<ProviderTermsList>('GET', paths.listProviderTerms()),
   decideProviderTerms: (send: Send, id: string, body: DecideProviderTermsRequest) =>
     send<ProviderTermsDecided>('POST', '/v1/provider-terms/' + encodeURIComponent(id), body),
   listHarnesses: (send: Send) =>
-    send<HarnessList>('GET', '/v1/harnesses'),
+    send<HarnessList>('GET', paths.listHarnesses()),
   listAccounts: (send: Send) =>
-    send<AccountList>('GET', '/v1/accounts'),
+    send<AccountList>('GET', paths.listAccounts()),
   registerAccount: (send: Send, body: RegisterAccountRequest) =>
     send<Account>('POST', '/v1/accounts', body),
   setAccountState: (send: Send, id: string, body: SetAccountStateRequest) =>
@@ -1489,11 +1542,11 @@ export const api = {
   setMissionResources: (send: Send, id: string, body: SetMissionResourcesRequest) =>
     send<Mission>('POST', '/v1/missions/' + encodeURIComponent(id) + '/resources', body),
   getExecution: (send: Send, id: string) =>
-    send<Execution>('GET', '/v1/executions/' + encodeURIComponent(id)),
+    send<Execution>('GET', paths.getExecution(id)),
   listTaskExecutions: (send: Send, id: string) =>
-    send<ExecutionList>('GET', '/v1/tasks/' + encodeURIComponent(id) + '/executions'),
+    send<ExecutionList>('GET', paths.listTaskExecutions(id)),
   executionStream: (send: Send, id: string, query: { from?: number } = {}) =>
-    send<ExecutionOutput>('GET', '/v1/executions/' + encodeURIComponent(id) + '/stream' + qs(query)),
+    send<ExecutionOutput>('GET', paths.executionStream(id, query)),
   stopExecution: (send: Send, id: string, body: StopExecutionRequest) =>
     send<ExecutionStopped>('POST', '/v1/executions/' + encodeURIComponent(id) + '/stop', body),
   stopMission: (send: Send, id: string, body: StopMissionRequest) =>
@@ -1502,12 +1555,12 @@ export const api = {
     send<Estopped>('POST', '/v1/estop', body),
   rearm: (send: Send, body: RearmRequest) =>
     send<Rearmed>('POST', '/v1/rearm', body),
-  listSessions: (send: Send) =>
-    send<SessionList>('GET', '/v1/sessions'),
+  listSessions: (send: Send, query: { project?: string; mission?: string; state?: Mission['state'] } = {}) =>
+    send<SessionList>('GET', paths.listSessions(query)),
   getSession: (send: Send, id: string) =>
-    send<Session>('GET', '/v1/sessions/' + encodeURIComponent(id)),
+    send<Session>('GET', paths.getSession(id)),
   sessionBrief: (send: Send, id: string) =>
-    send<SessionBrief>('GET', '/v1/sessions/' + encodeURIComponent(id) + '/brief'),
+    send<SessionBrief>('GET', paths.sessionBrief(id)),
   createSession: (send: Send, body: CreateSessionRequest) =>
     send<SessionOutcome>('POST', '/v1/sessions', body),
   resumeSession: (send: Send, id: string, body: ResumeSessionRequest) =>
@@ -1519,21 +1572,21 @@ export const api = {
   closeSession: (send: Send, id: string, body: CloseSessionRequest) =>
     send<Session>('POST', '/v1/sessions/' + encodeURIComponent(id) + '/close', body),
   listCheckpoints: (send: Send, id: string) =>
-    send<CheckpointList>('GET', '/v1/executions/' + encodeURIComponent(id) + '/checkpoints'),
+    send<CheckpointList>('GET', paths.listCheckpoints(id)),
   handoffExecution: (send: Send, id: string, body: HandoffExecutionRequest) =>
     send<ExecutionStopped>('POST', '/v1/executions/' + encodeURIComponent(id) + '/handoff', body),
   listMessages: (send: Send, id: string, query: { after?: number } = {}) =>
-    send<MessageList>('GET', '/v1/conversations/' + encodeURIComponent(id) + '/messages' + qs(query)),
+    send<MessageList>('GET', paths.listMessages(id, query)),
   postMessage: (send: Send, id: string, body: PostMessageRequest) =>
     send<MessagePosted>('POST', '/v1/conversations/' + encodeURIComponent(id) + '/messages', body),
   getIntent: (send: Send, id: string) =>
-    send<Intent>('GET', '/v1/intents/' + encodeURIComponent(id)),
+    send<Intent>('GET', paths.getIntent(id)),
   clarifyIntent: (send: Send, id: string, body: ClarifyIntentRequest) =>
     send<Replied>('POST', '/v1/intents/' + encodeURIComponent(id) + '/clarify', body),
   listIdeas: (send: Send, query: { state?: Mission['state'] } = {}) =>
-    send<IdeaList>('GET', '/v1/ideas' + qs(query)),
+    send<IdeaList>('GET', paths.listIdeas(query)),
   getPolicies: (send: Send) =>
-    send<Policies>('GET', '/v1/policies'),
+    send<Policies>('GET', paths.getPolicies()),
   createRule: (send: Send, body: CreateRuleRequest) =>
     send<RuleWritten>('POST', '/v1/policies/rules', body),
   retireRule: (send: Send, id: string, body: RetireRuleRequest) =>
@@ -1543,39 +1596,39 @@ export const api = {
   simulatePolicy: (send: Send, body: SimulatePolicyRequest) =>
     send<Simulation>('POST', '/v1/policies/simulate', body),
   listPolicyDecisions: (send: Send, query: { mission?: string; stage?: string } = {}) =>
-    send<PolicyDecisionList>('GET', '/v1/policy-decisions' + qs(query)),
+    send<PolicyDecisionList>('GET', paths.listPolicyDecisions(query)),
   getPolicyDecision: (send: Send, id: string) =>
-    send<PolicyDecision>('GET', '/v1/policy-decisions/' + encodeURIComponent(id)),
+    send<PolicyDecision>('GET', paths.getPolicyDecision(id)),
   listApprovals: (send: Send, query: { state?: Approval['state']; mission?: string } = {}) =>
-    send<ApprovalList>('GET', '/v1/approvals' + qs(query)),
+    send<ApprovalList>('GET', paths.listApprovals(query)),
   getApproval: (send: Send, id: string) =>
-    send<Approval>('GET', '/v1/approvals/' + encodeURIComponent(id)),
+    send<Approval>('GET', paths.getApproval(id)),
   decideApproval: (send: Send, id: string, body: DecideApprovalRequest) =>
     send<Decided>('POST', '/v1/approvals/' + encodeURIComponent(id) + '/decide', body),
   listVerifications: (send: Send, id: string) =>
-    send<VerificationList>('GET', '/v1/missions/' + encodeURIComponent(id) + '/verifications'),
+    send<VerificationList>('GET', paths.listVerifications(id)),
   getVerification: (send: Send, id: string) =>
-    send<Verification>('GET', '/v1/verifications/' + encodeURIComponent(id)),
+    send<Verification>('GET', paths.getVerification(id)),
   decideVerification: (send: Send, id: string, body: DecideVerificationRequest) =>
     send<VerificationDecided>('POST', '/v1/verifications/' + encodeURIComponent(id) + '/decide', body),
   listReviews: (send: Send, id: string) =>
-    send<ReviewList>('GET', '/v1/missions/' + encodeURIComponent(id) + '/reviews'),
+    send<ReviewList>('GET', paths.listReviews(id)),
   reviewMission: (send: Send, id: string, body: ReviewMissionRequest) =>
     send<ReviewRecorded>('POST', '/v1/missions/' + encodeURIComponent(id) + '/review', body),
   abandonIntegration: (send: Send, id: string, body: AbandonIntegrationRequest) =>
     send<IntegrationAbandoned>('POST', '/v1/tasks/' + encodeURIComponent(id) + '/integration/abandon', body),
   attentionItems: (send: Send) =>
-    send<Attention>('GET', '/v1/attention'),
+    send<Attention>('GET', paths.attentionItems()),
   missionTimeline: (send: Send, id: string, query: { before?: number; limit?: number } = {}) =>
-    send<Timeline>('GET', '/v1/missions/' + encodeURIComponent(id) + '/timeline' + qs(query)),
+    send<Timeline>('GET', paths.missionTimeline(id, query)),
   listAutomations: (send: Send) =>
-    send<AutomationList>('GET', '/v1/automations'),
+    send<AutomationList>('GET', paths.listAutomations()),
   getAutomation: (send: Send, id: string) =>
-    send<Automation>('GET', '/v1/automations/' + encodeURIComponent(id)),
+    send<Automation>('GET', paths.getAutomation(id)),
   simulateAutomation: (send: Send, id: string, query: { days?: number } = {}) =>
-    send<AutomationSimulation>('GET', '/v1/automations/' + encodeURIComponent(id) + '/simulate' + qs(query)),
+    send<AutomationSimulation>('GET', paths.simulateAutomation(id, query)),
   getAutomationRun: (send: Send, id: string) =>
-    send<AutomationExplanation>('GET', '/v1/automation-runs/' + encodeURIComponent(id)),
+    send<AutomationExplanation>('GET', paths.getAutomationRun(id)),
   createAutomation: (send: Send, body: CreateAutomationRequest) =>
     send<AutomationWritten>('POST', '/v1/automations', body),
   setAutomationState: (send: Send, id: string, body: SetAutomationStateRequest) =>

@@ -8,6 +8,7 @@ route, a session or a verdict.
 
 import json
 
+from .._api import endpoints
 from . import present as P
 from . import sync as S
 from ._tables import CONTROL_SECTIONS, DESTINATIONS, INSPECTOR_TABS, TABS
@@ -22,10 +23,10 @@ LETTER = {'mission': 'M', 'project': 'P', 'repository': 'R', 'decision': 'D', 'p
           'meeting': 'N', 'knowledge_item': 'K', 'idea': 'I', 'automation': 'A',
           'account': '$'}
 # objects named as a person would, from their own row (ui.tsx RefLabel)
-NAMED = {'mission': (lambda i: '/v1/missions/' + i, lambda r: r.get('title')),
-         'project': (lambda i: '/v1/projects/' + i, lambda r: r.get('name')),
-         'knowledge_item': (lambda i: '/v1/knowledge/' + i, lambda r: r.get('title')),
-         'session': (lambda i: '/v1/sessions/' + i,
+NAMED = {'mission': (lambda i: endpoints.get_mission(i), lambda r: r.get('title')),
+         'project': (lambda i: endpoints.get_project(i), lambda r: r.get('name')),
+         'knowledge_item': (lambda i: endpoints.get_knowledge(i), lambda r: r.get('title')),
+         'session': (lambda i: endpoints.get_session(i),
                      lambda r: '%s %s session' % (r.get('harness_id'), r.get('mode')))}
 WORK_GROUPS = (('needs', 'Needs you', ('needs_you',)),
                ('active', 'Active', ('active', 'verifying', 'reviewing', 'approved')),
@@ -72,7 +73,7 @@ class Doc:
     def changed(self):
         """The objects Core's digest names: changed since the user last looked."""
         if self._changed is None:
-            d = self.app.read('/v1/digest')['data'] or {}
+            d = self.app.read(endpoints.digest())['data'] or {}
             self._changed = {(g['ref']['kind'], g['ref']['id']) for g in d.get('groups') or ()}
         return self._changed
 
@@ -188,7 +189,7 @@ def relations(app, doc, kind, id_):
     relationship, each with the tier as a word and the field it was read from;
     a superseded or ended neighbour is marked, never shown as current. Core's
     graph route focused on the object is the one source (p19-design-gate B1)."""
-    g = doc.load('/v1/world/graph?focus=%s:%s&depth=1&limit=1000' % (kind, id_),
+    g = doc.load(endpoints.world_graph(focus='%s:%s' % (kind, id_), depth=1, limit=1000),
                  'the relationships')
     if g is None:
         return
@@ -225,7 +226,7 @@ def mission_row(app, doc, m, waiting=False):
 
 
 def reread_mission(mid):
-    return ['/v1/missions/' + mid, '/v1/missions', '/v1/attention']
+    return [endpoints.get_mission(mid), endpoints.list_missions(), endpoints.attention_items()]
 
 
 def post(app, path):
@@ -236,21 +237,21 @@ def post(app, path):
 # ── Now ──────────────────────────────────────────────────────────────────────
 
 def now(app, doc):
-    ml = app.read('/v1/missions')['data'] or {}
-    att = app.read('/v1/attention')['data'] or {}
+    ml = app.read(endpoints.list_missions())['data'] or {}
+    att = app.read(endpoints.attention_items())['data'] or {}
     active = [m for m in ml.get('missions', []) if m['state'] not in SETTLED]
     needs = att.get('count', 0)
     doc.add('  ' + app.st.paint('Archeus · %d %s active · %d %s you' % (
         len(active), 'mission' if len(active) == 1 else 'missions', needs,
         'thing needs' if needs == 1 else 'things need'), 'text-2'))
-    g = doc.load('/v1/digest', 'the digest')
+    g = doc.load(endpoints.digest(), 'the digest')
     if g and g['count']:
         doc.h('Since you last looked · %d %s' % (g['count'],
                                                  'change' if g['count'] == 1 else 'changes'))
         up_to = g['up_to_seq']
         doc.act('D', 'Dismiss', 'control',
-                lambda key, v: app.core.post('/v1/digest/ack', {'up_to_seq': up_to}),
-                reread=['/v1/digest'])
+                lambda key, v: app.core.post(endpoints.ack_digest(), {'up_to_seq': up_to}),
+                reread=[endpoints.digest()])
         if g.get('truncated'):
             doc.hint('Some older events are no longer kept; this is what remains.')
         for x in g['groups']:
@@ -258,8 +259,8 @@ def now(app, doc):
                     + T(app, HEADLINE.get(x['headline'], x['headline'])) + ' · %d %s'
                     % (x['count'], 'event' if x['count'] == 1 else 'events'),
                     target=open_(x['ref']['kind'], x['ref']['id']))
-    doc.h('Happening now' + fresh(app, '/v1/missions'))
-    if doc.load('/v1/missions', 'the missions') is not None:
+    doc.h('Happening now' + fresh(app, endpoints.list_missions()))
+    if doc.load(endpoints.list_missions(), 'the missions') is not None:
         if active:
             for m in active:
                 mission_row(app, doc, m)
@@ -272,12 +273,12 @@ def now(app, doc):
 
 def conversation(app, doc):
     doc.h('Conversation')
-    ml = doc.load('/v1/conversations/primary/messages', 'the conversation')
+    ml = doc.load(endpoints.list_messages('primary'), 'the conversation')
     doc.act('M', 'Message', 'control',
-            lambda key, v: app.core.post('/v1/conversations/primary/messages',
+            lambda key, v: app.core.post(endpoints.post_message('primary'),
                                          {'text': v['text'], 'idempotency_key': key}),
             fields=[('text', 'Tell Archeus what you want', True)],
-            reread=['/v1/conversations/primary/messages'], sent='Sent — Archeus is reading it.')
+            reread=[endpoints.list_messages('primary')], sent='Sent — Archeus is reading it.')
     if ml is None:
         return
     msgs = ml['messages']
@@ -302,9 +303,9 @@ def card(app, doc, m, i, c):
     answered through P7's command."""
     kind, id_, type_ = c['ref']['kind'], c['ref']['id'], c['type']
     ident = 'card:%s:%d' % (m['id'], i)
-    reread = ['/v1/conversations/primary/messages']
+    reread = [endpoints.list_messages('primary')]
     if type_ in ('challenge', 'clarification') and kind == 'intent':
-        path = '/v1/intents/%s/clarify' % id_
+        path = endpoints.clarify_intent(id_)
         if type_ == 'challenge':
             acts = [Act('Y', 'Proceed anyway', 'control',
                         lambda key, v: app.core.post(path, {'choice': 'proceed',
@@ -328,7 +329,7 @@ def card(app, doc, m, i, c):
     bits = ['    ' + T(app, '[' + type_.replace('_', ' ') + ']', 'text-2'),
             T(app, '%s %s' % (kind, id_))]
     if kind == 'mission':
-        e = app.read('/v1/missions/' + id_)
+        e = app.read(endpoints.get_mission(id_))
         if e['data']:
             bits += [T(app, e['data']['title']), app.st.badge('mission', e['data']['state'])]
     doc.add('  '.join(bits), target=open_(kind, id_))
@@ -345,12 +346,12 @@ def group_of(m, waiting):
 
 def work(app, doc):
     project = app.route.get('project')
-    path = '/v1/missions?project=%s' % project if project else '/v1/missions'
+    path = endpoints.list_missions(project=project)
     if project:
         doc.hint('Missions of one project · [Esc] all missions')
     doc.fresh(path)
     ml = doc.load(path, 'the missions')
-    att = app.read('/v1/attention')['data'] or {}
+    att = app.read(endpoints.attention_items())['data'] or {}
     waiting = {i.get('mission_id') for i in att.get('items', []) if i.get('mission_id')}
     if ml is not None:
         if not ml['missions']:
@@ -365,7 +366,7 @@ def work(app, doc):
                 mission_row(app, doc, m, m['id'] in waiting)
             if len(ms) > PAGE:
                 doc.hint('%d more not shown.' % (len(ms) - PAGE))
-    ideas = (app.read('/v1/ideas')['data'] or {}).get('ideas') or []
+    ideas = (app.read(endpoints.list_ideas())['data'] or {}).get('ideas') or []
     if ideas:
         doc.h('Ideas · %d' % len(ideas))
         for i in ideas:
@@ -390,8 +391,8 @@ def world(app, doc):
             + app.st.paint('   [Tab] switch', 'text-2'))
     if tab == 'knowledge':
         return knowledge_list(app, doc)
-    doc.fresh('/v1/projects')
-    pl = doc.load('/v1/projects', 'the projects')
+    doc.fresh(endpoints.list_projects())
+    pl = doc.load(endpoints.list_projects(), 'the projects')
     if pl is not None:
         if not pl['projects']:
             doc.empty('No project yet. Create one: [N] New project.')
@@ -404,20 +405,20 @@ def world(app, doc):
                                 for r in repos),
                     target=go(view='world', project=x['id']))
     doc.act('N', 'New project', 'admin',
-            lambda key, v: app.core.post('/v1/projects', {'name': v['name'],
+            lambda key, v: app.core.post(endpoints.create_project(), {'name': v['name'],
                                                          'root_paths': [v['path']],
                                                          'idempotency_key': key}),
             fields=[('name', 'Name', True),
                     ('path', 'Root path on the computer running Archeus', True)],
-            reread=['/v1/projects'])
+            reread=[endpoints.list_projects()])
 
 
 def project_page(app, doc, pid):
-    x = doc.load('/v1/projects/' + pid, 'the project')
+    x = doc.load(endpoints.get_project(pid), 'the project')
     if x is None:
         return
     doc.title = clean_title(x['name'])
-    doc.fresh('/v1/projects/' + pid)
+    doc.fresh(endpoints.get_project(pid))
     doc.add('  ' + app.st.paint('Its missions in Work', 'text'), target=go(view='work',
                                                                              project=pid))
     doc.hint('roots ' + ', '.join(x['root_paths']))
@@ -434,7 +435,7 @@ def project_page(app, doc, pid):
                     + '  ' + T(app, f.get('reason') or '—'))
             for v in f['violations'][:10]:
                 doc.add('      ' + T(app, ' → '.join(v), 'text-2'))
-        ins = app.read('/v1/repositories/%s/inspections?limit=5' % r['id'])['data']
+        ins = app.read(endpoints.list_inspections(r['id'], limit=5))['data']
         if ins:
             doc.add('  ' + app.st.paint('Recent inspections', 'text-2'))
             for i in ins['inspections']:
@@ -442,11 +443,11 @@ def project_page(app, doc, pid):
                         + T(app, str(i.get('revision') or '')[:10])
                         + (' — ' + T(app, i['failure']) if i.get('failure') else ''))
     doc.act('K', 'Declare constraint', 'control',
-            lambda key, v: app.core.post('/v1/projects/%s/constraints' % pid,
+            lambda key, v: app.core.post(endpoints.declare_constraint(pid),
                                          {'statement': v['statement'], 'idempotency_key': key}),
             fields=[('statement', 'The rule, in words (a checkable rule needs a kind and '
                                   'spec; the CLI takes those)', True)],
-            reread=['/v1/projects/' + pid], ident='constraint:' + pid)
+            reread=[endpoints.get_project(pid)], ident='constraint:' + pid)
 
 
 def clean_title(s):
@@ -456,7 +457,7 @@ def clean_title(s):
 
 def knowledge_list(app, doc):
     state = app.ui.get('knowledge_state', '')
-    path = '/v1/knowledge?state=%s' % state if state else '/v1/knowledge'
+    path = endpoints.list_knowledge(state=state or None)
     doc.add('  ' + app.st.paint('State: %s   [F] next filter' % (state.lower() or 'all'),
                                 'text-2') + fresh(app, path))
     kl = doc.load(path, 'the knowledge')
@@ -476,12 +477,12 @@ def knowledge_list(app, doc):
 # ── Attention ────────────────────────────────────────────────────────────────
 
 def attention(app, doc):
-    doc.fresh('/v1/attention')
+    doc.fresh(endpoints.attention_items())
     attention_items(app, doc)
 
 
 def attention_items(app, doc, limit=None):
-    a = doc.load('/v1/attention', 'Attention')
+    a = doc.load(endpoints.attention_items(), 'Attention')
     if a is None:
         return
     items = a['items'][:limit] if limit else a['items']
@@ -518,8 +519,8 @@ def entry(app, doc, item):
 def approval_card(app, doc, aid, head=None):
     """The canonical action as Core rendered it, why it asks, what each answer
     does and when it expires (Attention.tsx ApprovalCard)."""
-    a = doc.load('/v1/approvals/' + aid, 'the approval')
-    sync = app.read('/v1/sync')['data'] or {}
+    a = doc.load(endpoints.get_approval(aid), 'the approval')
+    sync = app.read(endpoints.sync())['data'] or {}
     if a is None:
         if head:
             doc.add(head)
@@ -533,8 +534,8 @@ def approval_card(app, doc, aid, head=None):
     not_eligible = ('This approval is %s.' % a['state'].lower() if a['state'] != 'PENDING'
                     else None if a.get('eligible') else
                     'Not decidable now: %s.' % (a.get('eligible_why') or 'no reason given'))
-    reread = ['/v1/approvals', '/v1/attention', '/v1/missions']
-    path = '/v1/approvals/%s/decide' % aid
+    reread = [endpoints.list_approvals(), endpoints.attention_items(), endpoints.list_missions()]
+    path = endpoints.decide_approval(aid)
     pin = [('step_up', 'This client’s PIN (step-up)', True)] if needs_pin else []
 
     def decide(decision):
@@ -596,8 +597,8 @@ def approval_card(app, doc, aid, head=None):
 def verification_decision(app, doc, item, head):
     human = item['state'] == 'AWAITING_HUMAN'
     vid = item['ref']['id']
-    reread = ['/v1/attention', '/v1/verifications', '/v1/missions']
-    path = '/v1/verifications/%s/decide' % vid
+    reread = [endpoints.attention_items(), endpoints.get_verification(vid), endpoints.list_missions()]
+    path = endpoints.decide_verification(vid)
     note = [('note', 'Note (optional)', False)]
     acts = []
     if human:
@@ -626,13 +627,13 @@ def verification_decision(app, doc, item, head):
 
 def knowledge_proposal(app, doc, item, head):
     kid = item['ref']['id']
-    reread = ['/v1/attention', '/v1/knowledge']
+    reread = [endpoints.attention_items(), endpoints.list_knowledge()]
     acts = [Act('C', 'Confirm', 'control',
-                lambda key, v: app.core.post('/v1/knowledge/%s/confirm' % kid,
+                lambda key, v: app.core.post(endpoints.confirm_knowledge(kid),
                                              {'idempotency_key': key}),
                 reread=reread, ident='confirm:' + kid),
             Act('D', 'Dismiss', 'control',
-                lambda key, v: app.core.post('/v1/knowledge/%s/reject' % kid,
+                lambda key, v: app.core.post(endpoints.reject_knowledge(kid),
                                              {'idempotency_key': key}),
                 reread=reread, ident='dismiss:' + kid,
                 confirm='Dismiss this proposal: Archeus will not remember it.')]
@@ -654,19 +655,19 @@ def control(app, doc):
 
 
 def autonomy(app, doc):
-    p = doc.load('/v1/policies', 'the policy')
+    p = doc.load(endpoints.get_policies(), 'the policy')
     if p is None:
         return
-    doc.h('Your default profile' + fresh(app, '/v1/policies'))
+    doc.h('Your default profile' + fresh(app, endpoints.get_policies()))
     doc.add('  ' + T(app, p['user_profile'], bold=True) + app.st.paint(' · policy version ')
             + T(app, p['policy_version'][:12]))
     for key, name in (('C', 'careful'), ('S', 'standard'), ('U', 'autonomous')):
         doc.act(key, 'Use ' + name, 'admin',
-                lambda k, v, name=name: app.core.post('/v1/policies/profile',
+                lambda k, v, name=name: app.core.post(endpoints.set_profile(),
                                                       {'scope': 'user', 'profile': name,
                                                        'idempotency_key': k}),
                 disabled='This is the profile in force.' if p['user_profile'] == name else None,
-                reread=['/v1/policies'])
+                reread=[endpoints.get_policies()])
     names = list(p['profiles'])
     cell = {(c, n): str(((p['profiles'][n] or {}).get(c) or {}).get('decision') or '—')
             for c in ACTION_CLASSES for n in names}
@@ -682,9 +683,9 @@ def autonomy(app, doc):
     for r in p['rules']:
         acts = [] if r.get('retired_at') else [
             Act('T', 'Retire', 'admin',
-                lambda k, v, rid=r['id']: app.core.post('/v1/policies/rules/%s/retire' % rid,
+                lambda k, v, rid=r['id']: app.core.post(endpoints.retire_rule(rid),
                                                         {'idempotency_key': k}),
-                reread=['/v1/policies'], ident='retire:' + r['id'])]
+                reread=[endpoints.get_policies()], ident='retire:' + r['id'])]
         doc.add('  ' + T(app, '%s · %s → ' % (r['scope_level'], r['action_class']))
                 + T(app, r['decision'], bold=True)
                 + ('  ' + app.st.paint('locked', 'text-2') if r.get('locked') else '')
@@ -696,7 +697,7 @@ def autonomy(app, doc):
     def keep(out, values):
         app.ui['simulation'] = out
     doc.act('W', 'Simulate', 'observe',
-            lambda k, v: app.core.post('/v1/policies/simulate',
+            lambda k, v: app.core.post(endpoints.simulate_policy(),
                                        {'action': {'class': v['class'],
                                                    'target': v.get('target') or None}}),
             fields=[('class', 'Action class (%s)' % ', '.join(ACTION_CLASSES), True),
@@ -712,17 +713,17 @@ def autonomy(app, doc):
 
 
 def automations(app, doc):
-    al = doc.load('/v1/automations', 'the automations')
+    al = doc.load(endpoints.list_automations(), 'the automations')
     if al is None:
         return
     if not al['automations']:
         doc.empty('No automation yet. One is written with the CLI (`archeus automation`) or by '
                   'an admin client.')
     for a in al['automations']:
-        reread = ['/v1/automations']
+        reread = [endpoints.list_automations()]
 
         def set_state(action, a=a):
-            return lambda k, v: app.core.post('/v1/automations/%s/state' % a['id'], {
+            return lambda k, v: app.core.post(endpoints.set_automation_state(a['id']), {
                 'action': action, 'expected_version': a['version'], 'idempotency_key': k})
         acts = []
         if a['state'] == 'ENABLED':
@@ -742,7 +743,7 @@ def automations(app, doc):
                 ('Archeus will', T(app, json.dumps(a['template']))),
                 ('Depth limit · rate limit', T(app, '%s · %s per hour' % (
                     a.get('max_depth', '—'), a.get('rate_limit', '—'))))], indent=4)
-        runs = (app.read('/v1/automations/' + a['id'])['data'] or {}).get('runs') or []
+        runs = (app.read(endpoints.get_automation(a['id']))['data'] or {}).get('runs') or []
         if not runs:
             doc.hint('It has not fired yet.', indent=4)
         for r in list(reversed(runs[-20:])):
@@ -754,8 +755,8 @@ def automations(app, doc):
 
 
 def resources_section(app, doc):
-    doc.h('Harnesses' + fresh(app, '/v1/harnesses'))
-    hl = doc.load('/v1/harnesses', 'the harnesses')
+    doc.h('Harnesses' + fresh(app, endpoints.list_harnesses()))
+    hl = doc.load(endpoints.list_harnesses(), 'the harnesses')
     if hl is not None:
         for x in hl['harnesses']:
             models = ', '.join(str(m.get('id') or m.get('model') or '') for m in x['models']
@@ -767,7 +768,7 @@ def resources_section(app, doc):
                     + T(app, x.get('enforcement') or '—'))
             doc.add('    ' + app.st.paint('models ', 'text-2') + T(app, models))
     doc.h('Accounts')
-    al = doc.load('/v1/accounts', 'the accounts')
+    al = doc.load(endpoints.list_accounts(), 'the accounts')
     if al is not None:
         if not al['accounts']:
             doc.empty('No account registered.')
@@ -784,7 +785,7 @@ def resources_section(app, doc):
                     ('Latest usage', T(app, json.dumps(x['usage'])) if x.get('usage')
                      else app.st.paint('not observed'))], indent=4)
     doc.h('Recent routing decisions')
-    rl = doc.load('/v1/route-decisions', 'the route decisions')
+    rl = doc.load(endpoints.list_route_decisions(), 'the route decisions')
     if rl is not None:
         if not rl['route_decisions']:
             doc.empty('Nothing was routed yet.')
@@ -795,10 +796,10 @@ def resources_section(app, doc):
 
 
 def sessions(app, doc):
-    doc.h('Sessions' + fresh(app, '/v1/sessions'))
+    doc.h('Sessions' + fresh(app, endpoints.list_sessions()))
     doc.hint('A session is one provider conversation on one harness and account. It is not a '
              'mission: a mission may continue across several sessions and harnesses.')
-    sl = doc.load('/v1/sessions', 'the sessions')
+    sl = doc.load(endpoints.list_sessions(), 'the sessions')
     if sl is None:
         return
     if not sl['sessions']:
@@ -810,12 +811,12 @@ def sessions(app, doc):
 
 
 def devices(app, doc):
-    doc.h('Clients' + fresh(app, '/v1/devices'))
+    doc.h('Clients' + fresh(app, endpoints.list_devices()))
     doc.hint('A client is one registered installation of an Archeus app. “Connected” means an '
              'event stream is open — not that someone is using it. The platform is what the '
              'client declared.')
-    dl = doc.load('/v1/devices', 'the clients')
-    me = ((app.read('/v1/sync')['data'] or {}).get('client') or {})
+    dl = doc.load(endpoints.list_devices(), 'the clients')
+    me = ((app.read(endpoints.sync())['data'] or {}).get('client') or {})
     if dl is not None:
         groups = {}
         for x in dl['devices']:
@@ -830,11 +831,11 @@ def devices(app, doc):
                             app.signal('self_revoked')
                     acts.append(Act(
                         'V', 'Revoke', 'admin',
-                        lambda k, v, did=x['id']: app.core.post('/v1/devices/%s/revoke' % did,
+                        lambda k, v, did=x['id']: app.core.post(endpoints.revoke_device(did),
                                                                 {'idempotency_key': k}),
                         confirm='This client loses access at once and its open streams close. '
                                 'It cannot be undone: the client must be paired again.',
-                        reread=['/v1/devices'], done=done, ident='revoke:' + x['id']))
+                        reread=[endpoints.list_devices()], done=done, ident='revoke:' + x['id']))
                 pres = x['presence']
                 doc.add('    ' + T(app, x['name'], bold=True)
                         + ('  ' + app.st.paint('this client', 'state.active')
@@ -861,7 +862,7 @@ def devices(app, doc):
     def keep(out, values):
         app.ui['pairing'] = dict(out, since=app.now_ms())
     doc.act('P', 'Start pairing', 'admin',
-            lambda k, v: app.core.post('/v1/devices/pair/start', {
+            lambda k, v: app.core.post(endpoints.pair_start(), {
                 'name': v.get('name') or None, 'host_label': v.get('label') or None,
                 'scopes': ['observe', 'control', 'approve', 'admin']
                 if (v.get('admin') or '').lower().startswith('y')
@@ -891,7 +892,7 @@ def devices(app, doc):
 
 def about(app, doc):
     doc.h('This Core')
-    h = doc.load('/v1/health', "Core's health")
+    h = doc.load(endpoints.health(), "Core's health")
     if h is not None:
         doc.kv([('Version', T(app, h['core']['version'])),
                 ('Schema', T(app, str(h['core']['schema']))),
@@ -902,7 +903,7 @@ def about(app, doc):
                     h['world']['state'], h['knowledge']['state'], h['intent']['state'],
                     h['plan']['state'], h['policy']['state'])))])
     doc.h('This client')
-    s = doc.load('/v1/sync', 'this client')
+    s = doc.load(endpoints.sync(), 'this client')
     if s is not None:
         doc.kv([('Registered as', T(app, '%s (%s)' % (s['client']['name'],
                                                       s['client']['origin']))),
@@ -915,12 +916,12 @@ def about(app, doc):
     doc.add('  ' + app.st.paint('Stops every running execution now and refuses new work until '
                                 'you re-arm.'))
     doc.act('E', 'Emergency stop', 'control',
-            lambda k, v: app.core.post('/v1/estop', {'idempotency_key': k}),
+            lambda k, v: app.core.post(endpoints.estop(), {'idempotency_key': k}),
             confirm='Every running execution is killed now and Archeus refuses new work until '
-                    'you re-arm it. Missions are not lost; they wait.', reread=['/v1/health'])
-    doc.act('R', 'Re-arm', 'control', lambda k, v: app.core.post('/v1/rearm',
+                    'you re-arm it. Missions are not lost; they wait.', reread=[endpoints.health()])
+    doc.act('R', 'Re-arm', 'control', lambda k, v: app.core.post(endpoints.rearm(),
                                                                   {'idempotency_key': k}),
-            reread=['/v1/health'])
+            reread=[endpoints.health()])
 
 
 # ── inspectors ───────────────────────────────────────────────────────────────
@@ -954,9 +955,9 @@ def _header(app, doc, title, machine, state, path, extra=''):
 
 
 def mission_insp(app, doc, kind, mid, tab):
-    path = '/v1/missions/' + mid
+    path = endpoints.get_mission(mid)
     m = doc.load(path, 'the mission')
-    mp = app.read(path + '/plan')['data']
+    mp = app.read(endpoints.get_mission_plan(mid))['data']
     if m is None:
         return
     line = P.status_line(dict(m, pending_approval={'kind': 'plan'} if m.get('pending_approval_id')
@@ -968,13 +969,13 @@ def mission_insp(app, doc, kind, mid, tab):
     reread, v = reread_mission(mid), {'expected_version': m['version']}
     if P.offers('mission', m['state'], 'pause'):
         doc.act('P', 'Pause', 'control', lambda k, _v: app.core.post(
-            path + '/pause', dict(v, idempotency_key=k)), reread=reread, ident='pause:' + mid)
+            endpoints.pause_mission(mid), dict(v, idempotency_key=k)), reread=reread, ident='pause:' + mid)
     if P.offers('mission', m['state'], 'resume', 'unblock'):
         doc.act('R', 'Resume', 'control', lambda k, _v: app.core.post(
-            path + '/resume', dict(v, idempotency_key=k)), reread=reread, ident='resume:' + mid)
+            endpoints.resume_mission(mid), dict(v, idempotency_key=k)), reread=reread, ident='resume:' + mid)
     if m['state'] in ('EXECUTING', 'PAUSED'):
         doc.act('S', 'Stop', 'control', lambda k, _v: app.core.post(
-            path + '/stop', {'idempotency_key': k}), reread=reread, ident='stop:' + mid,
+            endpoints.stop_mission(mid), {'idempotency_key': k}), reread=reread, ident='stop:' + mid,
             confirm='Stop every execution of this mission now. Their processes are killed; the '
                     'mission waits for you, blocked, and resuming it dispatches the work again.')
     {'outcome': outcome, 'plan': plan_tab, 'now': now_tab, 'evidence': evidence, 'why': why,
@@ -1015,7 +1016,7 @@ def outcome(app, doc, m, mp):
         s = (s or '').strip()
         return [x.strip() for x in s.split(',') if x.strip()] if s else None
     doc.act('F', 'Set routing preferences', 'admin',
-            lambda k, v: app.core.post('/v1/missions/%s/resources' % m['id'], {
+            lambda k, v: app.core.post(endpoints.set_mission_resources(m['id']), {
                 'idempotency_key': k,
                 'preferred_harnesses': lst(v.get('preferred_harnesses')),
                 'forbidden_harnesses': lst(v.get('forbidden_harnesses')),
@@ -1028,12 +1029,12 @@ def outcome(app, doc, m, mp):
                     ('forbidden_accounts', 'Forbidden accounts (comma-separated ids)', False),
                     ('max_cost_band', 'Cost ceiling: low, medium or high (empty: unchanged)',
                      False)],
-            reread=['/v1/missions/' + m['id']], ident='prefs:' + m['id'])
+            reread=[endpoints.get_mission(m['id'])], ident='prefs:' + m['id'])
 
 
 def plan_tab(app, doc, m, mp):
     if mp is None:
-        doc.load('/v1/missions/%s/plan' % m['id'], 'the plan')
+        doc.load(endpoints.get_mission_plan(m['id']), 'the plan')
         return
     p = mp.get('plan')
     if not p:
@@ -1097,7 +1098,7 @@ def now_tab(app, doc, m, mp):
     for t in shown:
         doc.h(t['key'] + ' · ' + clean_title(t['title']))
         doc.add('  ' + app.st.badge('task', t['state']))
-        xl = doc.load('/v1/tasks/%s/executions' % t['id'], 'the executions')
+        xl = doc.load(endpoints.list_task_executions(t['id']), 'the executions')
         if xl is None:
             continue
         if not xl['executions']:
@@ -1118,7 +1119,7 @@ def execution_row(app, doc, e):
 
 def evidence(app, doc, m, mp):
     doc.h('Verification')
-    vl = doc.load('/v1/missions/%s/verifications' % m['id'], 'the verifications')
+    vl = doc.load(endpoints.list_verifications(m['id']), 'the verifications')
     if vl is not None:
         if not vl['verifications']:
             doc.empty('Nothing has been verified yet.')
@@ -1136,7 +1137,7 @@ def evidence(app, doc, m, mp):
                         + (T(app, ' (exit %s)' % c['exit_code']) if c.get('exit_code') is not None
                            else ''))
     doc.h('Review')
-    rl = doc.load('/v1/missions/%s/reviews' % m['id'], 'the reviews')
+    rl = doc.load(endpoints.list_reviews(m['id']), 'the reviews')
     if rl is not None:
         if not rl['reviews']:
             doc.empty('No review yet.')
@@ -1151,7 +1152,7 @@ def evidence(app, doc, m, mp):
     if m['state'] == 'REVIEWING':
         doc.hint('Your review is recorded as a review of its own; accepting completes the '
                  'mission (P13).')
-        reread, path = reread_mission(m['id']), '/v1/missions/%s/review' % m['id']
+        reread, path = reread_mission(m['id']), endpoints.review_mission(m['id'])
         note = [('note', 'Note (optional)', False)]
         for key, label, verdict in (('A', 'Accept result', 'accept'),
                                     ('C', 'Request changes', 'changes_requested'),
@@ -1166,8 +1167,8 @@ def evidence(app, doc, m, mp):
 
 
 def why(app, doc, m, mp):
-    pdl = app.read('/v1/policy-decisions?mission=' + m['id'])['data']
-    rdl = app.read('/v1/route-decisions?source=' + m['id'])['data']
+    pdl = app.read(endpoints.list_policy_decisions(mission=m['id']))['data']
+    rdl = app.read(endpoints.list_route_decisions(source=m['id']))['data']
     pds = (pdl or {}).get('policy_decisions') or []
     rds = (rdl or {}).get('route_decisions') or []
     last_policy = pds[-1] if pds else None
@@ -1209,7 +1210,7 @@ def why(app, doc, m, mp):
                 c['kind'], c['reason'], c['preferred']), 'state.attention'))
     doc.h('Policy decisions')
     if pdl is None:
-        doc.load('/v1/policy-decisions?mission=' + m['id'], 'the policy decisions')
+        doc.load(endpoints.list_policy_decisions(mission=m['id']), 'the policy decisions')
     elif not pds:
         doc.empty('No policy decision yet.')
     for d in pds:
@@ -1219,7 +1220,7 @@ def why(app, doc, m, mp):
                 target=open_('policy_decision', d['id']))
     doc.h('Where the work was routed')
     if rdl is None:
-        doc.load('/v1/route-decisions?source=' + m['id'], 'the route decisions')
+        doc.load(endpoints.list_route_decisions(source=m['id']), 'the route decisions')
     elif not rds:
         doc.empty('Nothing was routed yet.')
     for d in rds:
@@ -1234,8 +1235,7 @@ def timeline(app, doc, m, mp):
     pages = app.ui.setdefault('timeline:' + m['id'], [None])
     nb = None
     for before in pages:
-        path = '/v1/missions/%s/timeline?limit=50%s' % (m['id'], '&before=%s' % before
-                                                         if before else '')
+        path = endpoints.mission_timeline(m['id'], limit=50, before=before or None)
         t = doc.load(path, 'the timeline')
         if t is None:
             return
@@ -1262,7 +1262,7 @@ def timeline(app, doc, m, mp):
 
 
 def execution_insp(app, doc, kind, eid, tab):
-    path = '/v1/executions/' + eid
+    path = endpoints.get_execution(eid)
     x = doc.load(path, 'the execution')
     if x is None:
         return
@@ -1272,14 +1272,14 @@ def execution_insp(app, doc, kind, eid, tab):
     doc.add('  ' + resources(app, x))
     if x['state'] in ('STARTING', 'RUNNING', 'PAUSING', 'HANDING_OFF'):
         doc.act('S', 'Stop', 'control', lambda k, v: app.core.post(
-            path + '/stop', {'idempotency_key': k}), reread=[path], ident='stopx:' + eid,
+            endpoints.stop_execution(eid), {'idempotency_key': k}), reread=[path], ident='stopx:' + eid,
             confirm='Stop this execution now: its process is killed. The task and mission '
                     'respond as Core decides (P11).')
     if x['state'] == 'RUNNING':
         doc.act('H', 'Hand off', 'control', lambda k, v: app.core.post(
-            path + '/handoff', {'idempotency_key': k}), reread=[path], ident='handoffx:' + eid)
+            endpoints.handoff_execution(eid), {'idempotency_key': k}), reread=[path], ident='handoffx:' + eid)
     if tab == 'output':
-        o = doc.load(path + '/stream', 'the output')
+        o = doc.load(endpoints.execution_stream(eid), 'the output')
         if o is None:
             return
         if not o['available']:
@@ -1292,7 +1292,7 @@ def execution_insp(app, doc, kind, eid, tab):
             text = ev['text'] if isinstance(ev.get('text'), str) else json.dumps(ev)
             doc.add('  ' + T(app, str(ev.get('type')), 'text-2') + '  ' + T(app, text))
     elif tab == 'checkpoints':
-        cl = doc.load(path + '/checkpoints', 'the checkpoints')
+        cl = doc.load(endpoints.list_checkpoints(eid), 'the checkpoints')
         if cl is None:
             return
         if not cl['checkpoints']:
@@ -1309,7 +1309,7 @@ def execution_insp(app, doc, kind, eid, tab):
 
 
 def session_insp(app, doc, kind, sid, tab):
-    path = '/v1/sessions/' + sid
+    path = endpoints.get_session(sid)
     x = doc.load(path, 'the session')
     if x is None:
         return
@@ -1317,16 +1317,16 @@ def session_insp(app, doc, kind, sid, tab):
             T(app, x['id']) + app.st.paint(' · ') + T(app, x['mode']))
     doc.add('  ' + resources(app, x))
     import uuid
-    reread = ['/v1/sessions']
+    reread = [endpoints.list_sessions()]
     if x['state'] != 'LOST':
-        doc.act('R', 'Resume', 'control', lambda k, v: app.core.post(path + '/resume', {
+        doc.act('R', 'Resume', 'control', lambda k, v: app.core.post(endpoints.resume_session(sid), {
             'request_id': str(uuid.uuid4()), 'deliver_brief': True, 'idempotency_key': k}),
             reread=reread, ident='resumes:' + sid)
     if x['state'] == 'OPEN':
-        doc.act('C', 'Close', 'control', lambda k, v: app.core.post(path + '/close', {
+        doc.act('C', 'Close', 'control', lambda k, v: app.core.post(endpoints.close_session(sid), {
             'idempotency_key': k}), reread=reread, ident='close:' + sid)
-    harnesses = [h['id'] for h in (app.read('/v1/harnesses')['data'] or {}).get('harnesses', [])]
-    doc.act('H', 'Hand off', 'control', lambda k, v: app.core.post(path + '/handoff', {
+    harnesses = [h['id'] for h in (app.read(endpoints.list_harnesses())['data'] or {}).get('harnesses', [])]
+    doc.act('H', 'Hand off', 'control', lambda k, v: app.core.post(endpoints.handoff_session(sid), {
         'request_id': str(uuid.uuid4()), 'harness_id': v['harness'],
         'account_id': v.get('account') or None, 'model': v.get('model') or None,
         'reason': v.get('reason') or None, 'idempotency_key': k}),
@@ -1352,7 +1352,7 @@ def session_insp(app, doc, kind, sid, tab):
 
 
 def session_brief(app, doc, sid):
-    b = doc.load('/v1/sessions/%s/brief' % sid, 'the brief')
+    b = doc.load(endpoints.session_brief(sid), 'the brief')
     if b is None:
         return
     m, ch, ctx = b.get('mission'), b.get('changes') or {}, b.get('context') or {}
@@ -1389,24 +1389,24 @@ def session_brief(app, doc, sid):
 
 
 def knowledge_insp(app, doc, kind, kid, tab):
-    path = '/v1/knowledge/' + kid
+    path = endpoints.get_knowledge(kid)
     k = doc.load(path, 'the knowledge item')
     if k is None:
         return
     _header(app, doc, str(k.get('title') or k['id']), 'knowledge_item', k['state'], path,
             T(app, str(k.get('type') or '').lower(), 'text-2'))
-    reread = ['/v1/knowledge', '/v1/attention']
+    reread = [endpoints.list_knowledge(), endpoints.attention_items()]
     ver = {'expected_version': int(k['version'])}
     if k['state'] == 'CANDIDATE':
         doc.act('C', 'Confirm', 'control', lambda key, v: app.core.post(
-            path + '/confirm', dict(ver, idempotency_key=key)), reread=reread,
+            endpoints.confirm_knowledge(kid), dict(ver, idempotency_key=key)), reread=reread,
             ident='confirmk:' + kid)
         doc.act('R', 'Reject', 'control', lambda key, v: app.core.post(
-            path + '/reject', dict(ver, idempotency_key=key)), reread=reread,
+            endpoints.reject_knowledge(kid), dict(ver, idempotency_key=key)), reread=reread,
             ident='rejectk:' + kid, confirm='Reject this item: it is never used as context.')
     if k['state'] == 'CONFIRMED':
         doc.act('X', 'Retract', 'control', lambda key, v: app.core.post(
-            path + '/retract', dict(ver, idempotency_key=key)), reread=reread,
+            endpoints.retract_knowledge(kid), dict(ver, idempotency_key=key)), reread=reread,
             confirm='Retract this item: it stops being used as context. The row and its '
                     'provenance are kept.', ident='retract:' + kid)
     if tab != 'detail':
@@ -1425,14 +1425,14 @@ def knowledge_insp(app, doc, kind, kid, tab):
                 target=None if c == kid else open_('knowledge_item', c))
 
 
-ROW_PATH = {'plan': lambda i: '/v1/plans/' + i,
-            'verification': lambda i: '/v1/verifications/' + i,
-            'route_decision': lambda i: '/v1/route-decisions/' + i,
-            'policy_decision': lambda i: '/v1/policy-decisions/' + i,
-            'context_package': lambda i: '/v1/context/' + i,
-            'automation_run': lambda i: '/v1/automation-runs/' + i,
-            'project': lambda i: '/v1/projects/' + i,
-            'repository': lambda i: '/v1/repositories/%s/inspections' % i}
+ROW_PATH = {'plan': lambda i: endpoints.get_plan(i),
+            'verification': lambda i: endpoints.get_verification(i),
+            'route_decision': lambda i: endpoints.get_route_decision(i),
+            'policy_decision': lambda i: endpoints.get_policy_decision(i),
+            'context_package': lambda i: endpoints.get_context_package(i),
+            'automation_run': lambda i: endpoints.get_automation_run(i),
+            'project': lambda i: endpoints.get_project(i),
+            'repository': lambda i: endpoints.list_inspections(i)}
 ROW_TITLE = {'plan': 'Plan version', 'verification': 'Verification',
              'route_decision': 'Route decision', 'policy_decision': 'Policy decision',
              'context_package': 'Context package', 'automation_run': 'Automation run'}

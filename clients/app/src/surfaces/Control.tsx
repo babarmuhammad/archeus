@@ -3,6 +3,7 @@
 // evaluates a policy, orders a route or starts a session by itself.
 import { useEffect, useState } from 'react';
 import {
+  paths,
   api,
   type Account,
   type AccountList,
@@ -58,7 +59,7 @@ export function ControlView({ section }: { section: string }) {
 const CLASSES = ['read', 'web', 'write_repo', 'exec', 'git_commit', 'git_push', 'deploy', 'external_comm', 'destructive', 'spend', 'personal_data', 'install', 'credential'] as const;
 
 function Autonomy() {
-  const s = useRead<Policies>('/v1/policies');
+  const s = useRead<Policies>(paths.getPolicies());
   const changed = useChanged();
   return (
     <Loadable snap={s} what="the policy">
@@ -77,7 +78,7 @@ function Autonomy() {
                   scope="admin"
                   disabled={p.user_profile === name ? 'This is the profile in force.' : null}
                   run={(key) => api.setProfile(send(), { scope: 'user', profile: name, idempotency_key: key })}
-                  reread={['/v1/policies']}
+                  reread={[paths.getPolicies()]}
                 />
               ))}
             </div>
@@ -114,7 +115,7 @@ function Autonomy() {
                   <li key={r.id} data-rule={r.id} data-inactive={r.retired_at ? '' : undefined} {...thread(changed('policy_rule', r.id))}>
                     <Changed on={changed('policy_rule', r.id)} />
                     <span className="mono">{r.scope_level}</span> · {r.action_class} → <strong>{r.decision}</strong> {r.locked ? <span className="tag">locked</span> : null} {r.retired_at ? <span className="tag">retired</span> : null}
-                    {!r.retired_at ? <ActionButton label="Retire" scope="admin" run={(key) => api.retireRule(send(), r.id, { idempotency_key: key })} reread={['/v1/policies']} /> : null}
+                    {!r.retired_at ? <ActionButton label="Retire" scope="admin" run={(key) => api.retireRule(send(), r.id, { idempotency_key: key })} reread={[paths.getPolicies()]} /> : null}
                   </li>
                 ))}
               </ul>
@@ -167,7 +168,7 @@ function Simulate() {
 // ── automations (§L): rules and their runs; a run links the mission it made ──
 
 function Automations() {
-  const s = useRead<AutomationList>('/v1/automations');
+  const s = useRead<AutomationList>(paths.listAutomations());
   const changed = useChanged();
   return (
     <Loadable snap={s} what="the automations">
@@ -184,9 +185,9 @@ function Automations() {
                   ]}
                 />
                 <div className="row">
-                  {a.state === 'ENABLED' ? <ActionButton label="Disable" scope="admin" run={(key) => api.setAutomationState(send(), a.id, { action: 'disable', expected_version: a.version, idempotency_key: key })} reread={['/v1/automations']} /> : null}
-                  {['DRAFT', 'DISABLED', 'SUSPENDED'].includes(a.state) ? <ActionButton label="Enable" scope="admin" run={(key) => api.setAutomationState(send(), a.id, { action: 'enable', expected_version: a.version, idempotency_key: key })} reread={['/v1/automations', '/v1/attention']} /> : null}
-                  {['ENABLED', 'DISABLED'].includes(a.state) ? <ActionButton label="Archive" scope="admin" confirm="Archive this automation: it never fires again. It cannot be undone." kind="danger" run={(key) => api.setAutomationState(send(), a.id, { action: 'archive', expected_version: a.version, idempotency_key: key })} reread={['/v1/automations']} /> : null}
+                  {a.state === 'ENABLED' ? <ActionButton label="Disable" scope="admin" run={(key) => api.setAutomationState(send(), a.id, { action: 'disable', expected_version: a.version, idempotency_key: key })} reread={[paths.listAutomations()]} /> : null}
+                  {['DRAFT', 'DISABLED', 'SUSPENDED'].includes(a.state) ? <ActionButton label="Enable" scope="admin" run={(key) => api.setAutomationState(send(), a.id, { action: 'enable', expected_version: a.version, idempotency_key: key })} reread={[paths.listAutomations(), paths.attentionItems()]} /> : null}
+                  {['ENABLED', 'DISABLED'].includes(a.state) ? <ActionButton label="Archive" scope="admin" confirm="Archive this automation: it never fires again. It cannot be undone." kind="danger" run={(key) => api.setAutomationState(send(), a.id, { action: 'archive', expected_version: a.version, idempotency_key: key })} reread={[paths.listAutomations()]} /> : null}
                 </div>
                 <Details rows={[['Automation id', a.id], ['Project id', a.project_id]]} />
                 <AutomationRuns id={a.id} />
@@ -202,7 +203,7 @@ function Automations() {
 }
 
 function AutomationRuns({ id }: { id: string }) {
-  const s = useRead<{ runs?: { id: string; state: string; depth: number; reason?: string | null; mission_id?: string | null; triggering_event_seq: number }[] }>(`/v1/automations/${id}`);
+  const s = useRead<{ runs?: { id: string; state: string; depth: number; reason?: string | null; mission_id?: string | null; triggering_event_seq: number }[] }>(paths.getAutomation(id));
   const runs = s.data?.runs ?? [];
   const changed = useChanged();
   return runs.length ? (
@@ -224,9 +225,9 @@ function AutomationRuns({ id }: { id: string }) {
 // ── resources (§6.4): harness, account and model are three things ──
 
 function ResourcesSection() {
-  const h = useRead<HarnessList>('/v1/harnesses');
-  const a = useRead<AccountList>('/v1/accounts');
-  const r = useRead<RouteDecisionList>('/v1/route-decisions');
+  const h = useRead<HarnessList>(paths.listHarnesses());
+  const a = useRead<AccountList>(paths.listAccounts());
+  const r = useRead<RouteDecisionList>(paths.listRouteDecisions());
   const changed = useChanged();
   return (
     <>
@@ -321,7 +322,7 @@ function ResourcesSection() {
 function PolicyForm({ a }: { a: Account }) {
   const p = a.resource_policy as Account['resource_policy'] & { project_allow?: string[]; project_deny?: string[] };
   const budgets = (p.budgets ?? {}) as Record<string, number>;
-  const projects = useRead<ProjectList>('/v1/projects');
+  const projects = useRead<ProjectList>(paths.listProjects());
   const start = (): PolicyDraft => ({
     priority: String(p.priority),
     allocation_pct: String(p.allocation_pct),
@@ -409,7 +410,7 @@ function PolicyForm({ a }: { a: Account }) {
             idempotency_key: key,
           })
         }
-        reread={['/v1/accounts', '/v1/route-decisions']}
+        reread={[paths.listAccounts(), paths.listRouteDecisions()]}
       />
     </details>
   );
@@ -418,7 +419,7 @@ function PolicyForm({ a }: { a: Account }) {
 // ── sessions (P12, §6.9): infrastructure; continuity is reconstruction ──
 
 function Sessions() {
-  const s = useRead<SessionList>('/v1/sessions');
+  const s = useRead<SessionList>(paths.listSessions());
   const changed = useChanged();
   return (
     <Section title="Sessions" actions={<Fresh snap={s} />}>
@@ -449,7 +450,7 @@ function Sessions() {
 }
 
 export function SessionInspector({ id, tab, onTab }: { id: string; tab?: string; onTab: (t: string) => void }) {
-  const s = useRead<Session & { lineage?: Session[]; targets?: Session[] }>(`/v1/sessions/${id}`);
+  const s = useRead<Session & { lineage?: Session[]; targets?: Session[] }>(paths.getSession(id));
   const current = tab && INSPECTOR_TABS.session.includes(tab) ? tab : 'brief';
   const changed = useChanged();
   return (
@@ -500,7 +501,7 @@ export function SessionInspector({ id, tab, onTab }: { id: string; tab?: string;
 /** What mattered, what changed, what is unresolved, what to see next — built
  * by Core from current state (P12), never a replay of the transcript. */
 function Brief({ id }: { id: string }) {
-  const b = useRead<SessionBrief>(`/v1/sessions/${id}/brief`);
+  const b = useRead<SessionBrief>(paths.sessionBrief(id));
   return (
     <Loadable snap={b} what="the brief">
       {(x) => {
@@ -560,13 +561,13 @@ function Brief({ id }: { id: string }) {
 function SessionActions({ x, later }: { x: Session; later?: string }) {
   const resumable = x.state !== 'LOST' && x.mode !== 'headless';
   // Core's `targets` are the ids of the sessions this one was handed off to
-  const next = useRead<Session>(later ? `/v1/sessions/${later}` : null);
-  const h = useRead<HarnessList>('/v1/harnesses');
+  const next = useRead<Session>(later ? paths.getSession(later) : null);
+  const h = useRead<HarnessList>(paths.listHarnesses());
   const [harness, setHarness] = useState('');
   const [account, setAccount] = useState('');
   const [model, setModel] = useState('');
   const [reason, setReason] = useState('');
-  const reread = [`/v1/sessions`];
+  const reread = [paths.listSessions()];
   const rid = () => crypto.randomUUID();
   return (
     <div className="session-actions">
@@ -625,8 +626,8 @@ function SessionActions({ x, later }: { x: Session; later?: string }) {
 // ── clients (P15, §6.12): registrations, presence, pairing, revocation ──
 
 function Devices() {
-  const d = useRead<DeviceList>('/v1/devices');
-  const me = useRead<Sync>('/v1/sync');
+  const d = useRead<DeviceList>(paths.listDevices());
+  const me = useRead<Sync>(paths.sync());
   const { local } = useMe();
   return (
     <>
@@ -659,7 +660,7 @@ function Devices() {
                               kind="danger"
                               confirm="This client loses access at once and its open streams close. It cannot be undone: the client must be paired again."
                               run={(key) => api.revokeDevice(send(), x.id, { idempotency_key: key })}
-                              reread={['/v1/devices']}
+                              reread={[paths.listDevices()]}
                               onDone={() => {
                                 if (x.id === me.data?.client.id) {
                                   void clearToken();
@@ -760,8 +761,8 @@ export function applyMotion() {
 }
 
 function About() {
-  const h = useRead<Health>('/v1/health');
-  const s = useRead<Sync>('/v1/sync');
+  const h = useRead<Health>(paths.health());
+  const s = useRead<Sync>(paths.sync());
   const [pref, setPref] = useState<MotionPref>(readMotionPref());
   return (
     <>
@@ -820,7 +821,7 @@ function About() {
         <p>Stops every running execution now and refuses new work until you re-arm.</p>
         <div className="row">
           <ActionButton label="Emergency stop" scope="control" kind="danger" confirm="Every running execution is killed now and Archeus refuses new work until you re-arm it. Missions are not lost; they wait." run={(key) => api.estop(send(), { idempotency_key: key })} reread={['/v1']} />
-          <ActionButton label="Re-arm" scope="control" run={(key) => api.rearm(send(), { idempotency_key: key })} reread={['/v1/health']} />
+          <ActionButton label="Re-arm" scope="control" run={(key) => api.rearm(send(), { idempotency_key: key })} reread={[paths.health()]} />
         </div>
       </Section>
     </>

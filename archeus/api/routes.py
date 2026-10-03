@@ -1087,6 +1087,7 @@ ROUTES = (
 
 #: The query parameters each GET route reads (for the docs and the client).
 QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),
+         '/v1/sessions': ('project', 'mission', 'state'),
          '/v1/events/stream': ('after', 'project', 'type'), '/v1/status': ('project',),
          '/v1/repositories/{id}/inspections': ('limit',),
          '/v1/knowledge': ('project', 'state', 'type'),

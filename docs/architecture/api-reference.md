@@ -81,7 +81,7 @@ given trigger on a given subject is decided in the application layer (P9), never
 | POST | `/v1/missions/{id}/stop` | control | required | — | `StopMissionRequest` | `MissionStopped` |
 | POST | `/v1/estop` | control | required | — | `EstopRequest` | `Estopped` |
 | POST | `/v1/rearm` | control | required | — | `RearmRequest` | `Rearmed` |
-| GET | `/v1/sessions` | observe | — | — | — | `SessionList` |
+| GET | `/v1/sessions` | observe | — | `project`, `mission`, `state` | — | `SessionList` |
 | GET | `/v1/sessions/{id}` | observe | — | — | — | `Session` |
 | GET | `/v1/sessions/{id}/brief` | observe | — | — | — | `SessionBrief` |
 | POST | `/v1/sessions` | control | required | — | `CreateSessionRequest` | `SessionOutcome` |

@@ -10,6 +10,7 @@ import shutil
 import sys
 import time
 
+from .._api import endpoints
 from . import client as C
 from . import screens as SC
 from . import sync as S
@@ -71,7 +72,7 @@ class App:
                 self.dirty = True
 
     def can(self, scope):
-        me = (self.read('/v1/sync')['data'] or {}).get('client') or {}
+        me = (self.read(endpoints.sync())['data'] or {}).get('client') or {}
         return scope in (me.get('scopes') or [])
 
     def signal(self, sig):
@@ -180,7 +181,7 @@ class App:
         return [self.st.line(x, width) for x in lines[:height]]
 
     def top_line(self, width):
-        att = (self.cache.get('/v1/attention') or {}).get('data') or {}
+        att = (self.cache.get(endpoints.attention_items()) or {}).get('data') or {}
         cur = self.route['view'] if self.route['view'] != 'object' else self.under['view']
         parts = [self.st.paint('ARCHEUS', 'text', bold=True)]
         for d in DESTINATIONS:
@@ -340,8 +341,8 @@ class App:
         """Go to a destination, a loaded mission or a loaded project, or tell
         Archeus: the text goes to the primary conversation unparsed (no client
         grammar, p16 §5)."""
-        missions = ((self.cache.get('/v1/missions') or {}).get('data') or {}).get('missions', [])
-        projects = ((self.cache.get('/v1/projects') or {}).get('data') or {}).get('projects', [])
+        missions = ((self.cache.get(endpoints.list_missions()) or {}).get('data') or {}).get('missions', [])
+        projects = ((self.cache.get(endpoints.list_projects()) or {}).get('data') or {}).get('projects', [])
         hits = [('Go to ' + d['label'], ('go', {'view': d['id']})) for d in DESTINATIONS]
         hits += [('Mission: ' + clean(m['title']), ('open', 'mission', m['id'], None))
                  for m in missions]
@@ -409,9 +410,9 @@ class App:
             _label, target = m['hits'][m['i']]
             if target[0] == 'tell':
                 self.execute(SC.Act('', 'Tell Archeus', 'control', lambda key, v: self.core.post(
-                    '/v1/conversations/primary/messages', {'text': target[1],
+                    endpoints.post_message('primary'), {'text': target[1],
                                                            'idempotency_key': key}),
-                    reread=['/v1/conversations/primary/messages'], ident='tell:' + target[1],
+                    reread=[endpoints.list_messages('primary')], ident='tell:' + target[1],
                     sent='Sent — Archeus is reading it.'), {})
             else:
                 self.follow(target)

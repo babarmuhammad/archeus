@@ -33,8 +33,8 @@ def test_the_tui_shows_the_mission_the_api_reports(client, rig):
     assert row['label'].strip()                 # a label, never a glyph alone
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P19")
 def test_every_client_agrees(client, rig):
+    """P19: the SPA, the TUI and the CLI say one state for one mission."""
     m = client.create_mission(title='One model', objective='Seen everywhere')
     views = {rig.gui().mission_card(m['id'])['state'],
              rig.tui().mission_row(m['id'])['state'],

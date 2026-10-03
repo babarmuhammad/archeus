@@ -4,6 +4,7 @@
 // and Core judges every press.
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import {
+  paths,
   api,
   type Checkpoint,
   type ContextPackage,
@@ -27,8 +28,8 @@ import { Relations } from '../components/Relations';
 import { AccountName, ActionButton, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Resources, Section, StateBadge, Tabs } from '../components/ui';
 
 export function MissionInspector({ id, tab, onTab }: { id: string; tab?: string; onTab: (t: string) => void }) {
-  const m = useRead<Mission>(`/v1/missions/${id}`);
-  const plan = useRead<MissionPlan>(`/v1/missions/${id}/plan`);
+  const m = useRead<Mission>(paths.getMission(id));
+  const plan = useRead<MissionPlan>(paths.getMissionPlan(id));
   const current = tab && INSPECTOR_TABS.mission.includes(tab) ? tab : 'outcome';
   return (
     <Loadable snap={m} what="the mission">
@@ -113,7 +114,7 @@ function PrefsText({ p }: { p: Prefs }) {
 }
 
 export function MissionActions({ mission }: { mission: Mission }) {
-  const reread = [`/v1/missions/${mission.id}`, '/v1/missions', '/v1/attention'];
+  const reread = [paths.getMission(mission.id), paths.listMissions(), paths.attentionItems()];
   const v = { expected_version: mission.version };
   return (
     <div className="row actions">
@@ -157,7 +158,7 @@ export function Priority({ mission }: { mission: Mission }) {
         scope="control"
         disabled={whole ? null : 'A priority is a whole number.'}
         run={(key) => api.reprioritiseMission(send(), mission.id, { priority: Number(v), expected_version: mission.version, idempotency_key: key })}
-        reread={[`/v1/missions/${mission.id}`, '/v1/missions', '/v1/status']}
+        reread={[paths.getMission(mission.id), paths.listMissions(), paths.status()]}
       />
       <p className="hint" id={id + 'h'}>
         Higher is started first when missions wait for capacity. Every mission starts at 0.
@@ -257,7 +258,7 @@ function ResourcePreferences({ m }: { m: Mission }) {
             max_cost_band: (f.max_cost_band || null) as 'low' | 'medium' | 'high' | null,
           })
         }
-        reread={[`/v1/missions/${m.id}`]}
+        reread={[paths.getMission(m.id)]}
         onDone={() => setOpen(false)}
       />
     </form>
@@ -352,7 +353,7 @@ function NowTab({ plan }: { plan?: MissionPlan }) {
 }
 
 function Executions({ taskId }: { taskId: string }) {
-  const ex = useRead<ExecutionList>(`/v1/tasks/${taskId}/executions`);
+  const ex = useRead<ExecutionList>(paths.listTaskExecutions(taskId));
   return (
     <Loadable snap={ex} what="the executions">
       {(l) =>
@@ -404,8 +405,8 @@ function ContextBlock({ x }: { x: Execution }) {
 }
 
 function Evidence({ id, m }: { id: string; m: Mission }) {
-  const v = useRead<VerificationList>(`/v1/missions/${id}/verifications`);
-  const r = useRead<ReviewList>(`/v1/missions/${id}/reviews`);
+  const v = useRead<VerificationList>(paths.listVerifications(id));
+  const r = useRead<ReviewList>(paths.listReviews(id));
   return (
     <>
       <Section title="Verification">
@@ -460,7 +461,7 @@ function Evidence({ id, m }: { id: string; m: Mission }) {
 
 function UserReview({ id }: { id: string }) {
   const [note, setNote] = useState('');
-  const reread = [`/v1/missions/${id}`, '/v1/missions', '/v1/attention'];
+  const reread = [paths.getMission(id), paths.listMissions(), paths.attentionItems()];
   return (
     <div className="form">
       <p className="hint">Your review is recorded as a review of its own; accepting completes the mission (P13).</p>
@@ -485,8 +486,8 @@ function UserReview({ id }: { id: string }) {
 }
 
 function Why({ m, plan }: { m: Mission; plan?: MissionPlan }) {
-  const pd = useRead<PolicyDecisionList>(`/v1/policy-decisions?mission=${m.id}`);
-  const rd = useRead<RouteDecisionList>(`/v1/route-decisions?source=${m.id}`);
+  const pd = useRead<PolicyDecisionList>(paths.listPolicyDecisions({ mission: m.id }));
+  const rd = useRead<RouteDecisionList>(paths.listRouteDecisions({ source: m.id }));
   const ctx = m.context_package as ContextPackage | null | undefined;
   const lastPolicy = pd.data?.policy_decisions.at(-1);
   // a task's route explains the work; an own call (a lesson pass after the end) does not
@@ -614,7 +615,7 @@ function TimelineTab({ id }: { id: string }) {
 }
 
 function TimelinePage({ id, before }: { id: string; before?: number }) {
-  const t = useRead<TimelineT>(`/v1/missions/${id}/timeline?limit=50${before ? `&before=${before}` : ''}`);
+  const t = useRead<TimelineT>(paths.missionTimeline(id, { limit: 50, before: before || undefined }));
   return (
     <Loadable snap={t} what="the timeline">
       {(l) =>
@@ -641,7 +642,7 @@ function TimelinePage({ id, before }: { id: string; before?: number }) {
 
 function MoreButton({ id, pages, onMore }: { id: string; pages: number[]; onMore: (b: number) => void }) {
   const last = pages.at(-1);
-  const t = useRead<TimelineT>(`/v1/missions/${id}/timeline?limit=50${last ? `&before=${last}` : ''}`);
+  const t = useRead<TimelineT>(paths.missionTimeline(id, { limit: 50, before: last || undefined }));
   const nb = t.data?.next_before;
   return nb ? (
     <button type="button" className="btn secondary" onClick={() => onMore(nb)}>
@@ -653,7 +654,7 @@ function MoreButton({ id, pages, onMore }: { id: string; pages: number[]; onMore
 // ── execution detail (§6.6) ──
 
 export function ExecutionInspector({ id, tab, onTab }: { id: string; tab?: string; onTab: (t: string) => void }) {
-  const e = useRead<Execution>(`/v1/executions/${id}`);
+  const e = useRead<Execution>(paths.getExecution(id));
   const current = tab && INSPECTOR_TABS.execution.includes(tab) ? tab : 'output';
   return (
     <Loadable snap={e} what="the execution">
@@ -693,10 +694,10 @@ export function ExecutionInspector({ id, tab, onTab }: { id: string; tab?: strin
             <ContextBlock x={x} />
             <div className="row actions">
               {['STARTING', 'RUNNING', 'PAUSING', 'HANDING_OFF'].includes(x.state) ? (
-                <ActionButton label="Stop" scope="control" kind="danger" confirm="Stop this execution now: its process is killed. The task and mission respond as Core decides (P11)." run={(key) => api.stopExecution(send(), x.id, { idempotency_key: key })} reread={[`/v1/executions/${x.id}`]} />
+                <ActionButton label="Stop" scope="control" kind="danger" confirm="Stop this execution now: its process is killed. The task and mission respond as Core decides (P11)." run={(key) => api.stopExecution(send(), x.id, { idempotency_key: key })} reread={[paths.getExecution(x.id)]} />
               ) : null}
               {x.state === 'RUNNING' ? (
-                <ActionButton label="Hand off" scope="control" run={(key) => api.handoffExecution(send(), x.id, { idempotency_key: key })} reread={[`/v1/executions/${x.id}`]} />
+                <ActionButton label="Hand off" scope="control" run={(key) => api.handoffExecution(send(), x.id, { idempotency_key: key })} reread={[paths.getExecution(x.id)]} />
               ) : null}
             </div>
           </header>
@@ -717,7 +718,7 @@ const TAIL = 200;
 /** The output tail (D4, D16): read only while this is open; Core redacts it;
  * rendered as text, never as markup. */
 function Output({ id }: { id: string }) {
-  const out = useRead<{ events: Record<string, unknown>[]; truncated: boolean; available: boolean; next_offset: number }>(`/v1/executions/${id}/stream`);
+  const out = useRead<{ events: Record<string, unknown>[]; truncated: boolean; available: boolean; next_offset: number }>(paths.executionStream(id));
   return (
     <Loadable snap={out} what="the output">
       {(o) =>
@@ -747,7 +748,7 @@ function Output({ id }: { id: string }) {
 }
 
 function Checkpoints({ id }: { id: string }) {
-  const c = useRead<{ checkpoints: Checkpoint[] }>(`/v1/executions/${id}/checkpoints`);
+  const c = useRead<{ checkpoints: Checkpoint[] }>(paths.listCheckpoints(id));
   return (
     <Loadable snap={c} what="the checkpoints">
       {(l) =>

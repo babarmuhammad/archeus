@@ -18,6 +18,8 @@ import json
 import sys
 import time
 
+from ._api import endpoints
+
 #: Verbs whose behaviour belongs to a later phase: they do nothing, say so,
 #: and exit 2, so no script ever sees a verb change from "opened the TUI" to
 #: something else.
@@ -42,6 +44,8 @@ USAGE = """usage: archeus core [--open] [--remote-host H]...
                                 starts Core
        archeus status           is Core running? (exit 0 yes, 1 no, 2 discovery failed,
                                 3 its engine failed)
+       archeus status <mission-id>
+                                a mission's state, as Core reports it (P19)
        archeus terms            the provider-terms answers (ADR-0021)
        archeus terms <harness> permit|refuse [--rotation permit|refuse]
                                 answer it: may Archeus make automated headless calls on
@@ -101,6 +105,8 @@ def main(argv):
         return tui(args)
     if verb == 'status' and not args:
         return status()
+    if verb == 'status' and len(args) == 1:
+        return mission_status(args[0])
     if verb == 'terms' and not args:
         return terms()
     if (verb == 'terms' and len(args) in (2, 4) and args[1] in _TERMS
@@ -175,7 +181,7 @@ def pair(opts):
     body = {'name': opts.get('name'), 'host_label': opts.get('host-label')}
     if 'scopes' in opts:
         body['scopes'] = [s for s in opts['scopes'].split(',') if s]
-    out = _get(info, 'POST', '/v1/devices/pair/start', body)
+    out = _get(info, 'POST', endpoints.pair_start(), body)
     if out is None:
         print('Core refused to start a pairing (the scopes must include observe)',
               file=sys.stderr)
@@ -192,19 +198,18 @@ def pair(opts):
 
 def devices(revoke_id=None):
     import os
-    from urllib.parse import quote
     info = _running()
     if info is None:
         return 1
     if revoke_id is not None:
-        out = _get(info, 'POST', '/v1/devices/%s/revoke' % quote(revoke_id, safe=''),
+        out = _get(info, 'POST', endpoints.revoke_device(revoke_id),
                    {'idempotency_key': os.urandom(16).hex()})
         if out is None:
             print('Core refused to revoke %s' % revoke_id, file=sys.stderr)
             return 2
         print('%s: %s' % (revoke_id, out['state']))
         return 0
-    out = _get(info, 'GET', '/v1/devices')
+    out = _get(info, 'GET', endpoints.list_devices())
     if out is None:
         print('Core did not answer', file=sys.stderr)
         return 2
@@ -217,26 +222,24 @@ def devices(revoke_id=None):
 
 
 def _get(info, method, path, body=None):
-    import urllib.request
+    """Core's answer, or None after saying on stderr why, in Core's own code and
+    detail (p19-design-gate B11): over the transport the TUI uses."""
     from ..infra import discovery
+    from .tui import client, sync
     token = discovery.read_local_token()
     if token is None:
         return None
-    data = json.dumps(body or {}).encode() if method == 'POST' else None
-    req = urllib.request.Request('http://127.0.0.1:%d%s' % (info['port'], path), method=method,
-                                 data=data,
-                                 headers={'Authorization': 'Bearer ' + token,
-                                          'Content-Type': 'application/json'})
+    core = client.Core(info['port'], token)
     try:
-        with urllib.request.urlopen(req, timeout=5) as r:
-            return json.loads(r.read())
-    except Exception:
+        return core.get(path)[0] if method == 'GET' else core.post(path, body or {})
+    except client.CoreError as e:
+        print(sync.explain(e.refusal()), file=sys.stderr)
         return None
 
 
 def _launch_code(info):
     # the user at this machine opens the app with its full grant (p16-design-gate D2)
-    out = _get(info, 'POST', '/v1/devices/launch/code',
+    out = _get(info, 'POST', endpoints.launch_code(),
                {'scopes': ['observe', 'control', 'approve', 'admin']})
     if out is None:
         print('could not get a launch code from Core on port %d' % info['port'], file=sys.stderr)
@@ -254,7 +257,7 @@ def terms(harness=None, headless=None, rotation=None):
         print('Core is not running: start it with `archeus core`', file=sys.stderr)
         return 1
     if harness is None:
-        out = _get(info, 'GET', '/v1/provider-terms')
+        out = _get(info, 'GET', endpoints.list_provider_terms())
         if out is None:
             print('Core did not answer', file=sys.stderr)
             return 2
@@ -265,7 +268,7 @@ def terms(harness=None, headless=None, rotation=None):
     body = {'headless': headless, 'idempotency_key': os.urandom(16).hex()}
     if rotation is not None:
         body['rotation'] = rotation
-    out = _get(info, 'POST', '/v1/provider-terms/%s' % harness, body)
+    out = _get(info, 'POST', endpoints.decide_provider_terms(harness), body)
     if out is None:
         print('Core refused the answer for %s' % harness, file=sys.stderr)
         return 2
@@ -278,7 +281,6 @@ def route_why(ref):
     """The explanation Core generated from a persisted RouteDecision (no model
     call; resource-router §8): *ref* is its id, or the id of what it is about,
     whose latest decision is shown."""
-    from urllib.parse import quote
     from ..core.domain import ids
     from ..infra import discovery
     state, info = discovery.discover()
@@ -286,9 +288,9 @@ def route_why(ref):
         print('Core is not running: start it with `archeus core`', file=sys.stderr)
         return 1
     if ids.is_id(ref, 'route_decision'):
-        d = _get(info, 'GET', '/v1/route-decisions/%s' % quote(ref, safe=''))
+        d = _get(info, 'GET', endpoints.get_route_decision(ref))
     else:
-        got = _get(info, 'GET', '/v1/route-decisions?source=%s' % quote(ref, safe=''))
+        got = _get(info, 'GET', endpoints.list_route_decisions(source=ref))
         d = got['route_decisions'][-1] if got and got['route_decisions'] else None
     if d is None:
         print('no route decision for %s' % ref, file=sys.stderr)
@@ -314,7 +316,7 @@ def estop():
         print('Core is not running: the e-stop without Core arrives with P20; start Core '
               'with `archeus core` or stop the processes yourself', file=sys.stderr)
         return 2
-    out = _get(info, 'POST', '/v1/estop', {'idempotency_key': os.urandom(16).hex()})
+    out = _get(info, 'POST', endpoints.estop(), {'idempotency_key': os.urandom(16).hex()})
     if out is None:
         print('Core did not accept the e-stop', file=sys.stderr)
         return 2
@@ -325,12 +327,11 @@ def estop():
 
 def pause(mission_id):
     import os
-    from urllib.parse import quote
     info = _core_or_say()
     if info is None:
         print('Core is not running: start it with `archeus core`', file=sys.stderr)
         return 1
-    out = _get(info, 'POST', '/v1/missions/%s/pause' % quote(mission_id, safe=''),
+    out = _get(info, 'POST', endpoints.pause_mission(mission_id),
                {'idempotency_key': os.urandom(16).hex()})
     if out is None:
         print('Core refused to pause %s' % mission_id, file=sys.stderr)
@@ -339,15 +340,28 @@ def pause(mission_id):
     return 0
 
 
+def mission_status(mission_id):
+    """A mission's state as Core reports it: the CLI is one more client of the
+    one model (G3; p19-design-gate B11)."""
+    info = _core_or_say()
+    if info is None:
+        print('Core is not running: start it with `archeus core`', file=sys.stderr)
+        return 1
+    m = _get(info, 'GET', endpoints.get_mission(mission_id))
+    if m is None:
+        return 2
+    print('%s: %s (%s)' % (m['id'], m['state'], m['title']))
+    return 0
+
+
 def verify(mission_id):
     """Every verification of the mission and its reviews (P13 §21)."""
-    from urllib.parse import quote
     info = _running()
     if info is None:
         return 1
-    m = quote(mission_id, safe='')
-    vs = _get(info, 'GET', '/v1/missions/%s/verifications' % m)
-    rs = _get(info, 'GET', '/v1/missions/%s/reviews' % m)
+    m = mission_id
+    vs = _get(info, 'GET', endpoints.list_verifications(m))
+    rs = _get(info, 'GET', endpoints.list_reviews(m))
     if vs is None or rs is None:
         print('Core does not know mission %s' % mission_id, file=sys.stderr)
         return 2
@@ -377,16 +391,15 @@ def decide(target, verdict, note=''):
     """A verification that waits on you (ver_…), or your own review of a
     mission in review (msn_…)."""
     import os
-    from urllib.parse import quote
     info = _running()
     if info is None:
         return 1
     key = {'idempotency_key': os.urandom(16).hex(), 'note': note or None}
-    t = quote(target, safe='')
+    t = target
     if target.startswith('ver_') and verdict in ('accept', 'reject'):
-        out = _get(info, 'POST', '/v1/verifications/%s/decide' % t, dict(key, decision=verdict))
+        out = _get(info, 'POST', endpoints.decide_verification(t), dict(key, decision=verdict))
     elif target.startswith('msn_') and verdict in _REVIEW_VERDICTS:
-        out = _get(info, 'POST', '/v1/missions/%s/review' % t,
+        out = _get(info, 'POST', endpoints.review_mission(t),
                    dict(key, verdict=_REVIEW_VERDICTS[verdict]))
     else:
         print(USAGE, file=sys.stderr)
@@ -404,7 +417,6 @@ _AUTOMATION_ACTIONS = ('enable', 'disable', 'archive')
 def automation(what, arg):
     """The automations (P14 §17): read, write, switch, explain."""
     import os
-    from urllib.parse import quote
     if what not in ('list', 'show', 'simulate', 'create', 'why') + _AUTOMATION_ACTIONS:
         print(USAGE, file=sys.stderr)
         return 2
@@ -420,19 +432,19 @@ def automation(what, arg):
     if info is None:
         return 1
     key = {'idempotency_key': os.urandom(16).hex()}
-    a = quote(arg or '', safe='')
+    a = arg or ''
     if what == 'list':
-        out = _get(info, 'GET', '/v1/automations')
+        out = _get(info, 'GET', endpoints.list_automations())
     elif what == 'show':
-        out = _get(info, 'GET', '/v1/automations/%s' % a)
+        out = _get(info, 'GET', endpoints.get_automation(a))
     elif what == 'simulate':
-        out = _get(info, 'GET', '/v1/automations/%s/simulate' % a)
+        out = _get(info, 'GET', endpoints.simulate_automation(a))
     elif what == 'why':
-        out = _get(info, 'GET', '/v1/automation-runs/%s' % a)
+        out = _get(info, 'GET', endpoints.get_automation_run(a))
     elif what == 'create':
-        out = _get(info, 'POST', '/v1/automations', dict(body, **key))
+        out = _get(info, 'POST', endpoints.create_automation(), dict(body, **key))
     else:
-        out = _get(info, 'POST', '/v1/automations/%s/state' % a, dict(key, action=what))
+        out = _get(info, 'POST', endpoints.set_automation_state(a), dict(key, action=what))
     if out is None:
         print('Core refused or does not know %s' % (arg or 'that'), file=sys.stderr)
         return 2
@@ -470,12 +482,10 @@ def _running():
 
 
 def sessions(opts):
-    from urllib.parse import urlencode
     info = _running()
     if info is None:
         return 1
-    q = urlencode({k: v for k, v in opts.items()})
-    out = _get(info, 'GET', '/v1/sessions' + ('?' + q if q else ''))
+    out = _get(info, 'GET', endpoints.list_sessions(**opts))
     if out is None:
         print('Core did not answer', file=sys.stderr)
         return 2
@@ -491,12 +501,11 @@ def sessions(opts):
 
 def resume(session_id, opts):
     import os
-    from urllib.parse import quote
     info = _running()
     if info is None:
         return 1
     body = dict(opts, request_id=os.urandom(12).hex(), idempotency_key=os.urandom(16).hex())
-    out = _get(info, 'POST', '/v1/sessions/%s/resume' % quote(session_id, safe=''), body)
+    out = _get(info, 'POST', endpoints.resume_session(session_id), body)
     if out is None:
         print('Core refused to resume %s' % session_id, file=sys.stderr)
         return 2
@@ -514,7 +523,6 @@ def resume(session_id, opts):
 
 def handoff(session_id, opts):
     import os
-    from urllib.parse import quote
     info = _running()
     if info is None:
         return 1
@@ -523,7 +531,7 @@ def handoff(session_id, opts):
     body.update({k: opts[k] for k in ('account', 'model', 'effort') if k in opts})
     if 'account' in body:
         body['account_id'] = body.pop('account')
-    out = _get(info, 'POST', '/v1/sessions/%s/handoff' % quote(session_id, safe=''), body)
+    out = _get(info, 'POST', endpoints.handoff_session(session_id), body)
     if out is None:
         print('Core refused to hand %s off' % session_id, file=sys.stderr)
         return 2
@@ -541,7 +549,7 @@ def status():
         print('Core: running, discovery file unreadable (%s); nothing was sent to it'
               % discovery.core_json_path())
         return 2
-    health = _get(info, 'GET', '/v1/health')
+    health = _get(info, 'GET', endpoints.health())
     if health is None:
         print('Core: running (pid %d, port %d), but /v1/health did not answer'
               % (info['pid'], info['port']))

@@ -23,6 +23,7 @@ import { doubleTap, selected as selectedEdge, start, step, type Walk } from './k
 import { edgeWords } from './relations';
 import { mirrorRows, type Around } from './mirror';
 import { MIN_WIDTH, useWide } from './wide';
+import { paths } from '../api/generated';
 
 /** Where a graph view lives (A4): every step is a URL. */
 export function graphHref(focus: Ref | null, modules?: string): string {
@@ -32,8 +33,8 @@ export function graphHref(focus: Ref | null, modules?: string): string {
 }
 
 export function graphPath(focus: Ref | null, modules?: string): string {
-  if (modules !== undefined && focus) return `/v1/repositories/${focus.id}/graph${modules ? '?focus=' + encodeURIComponent(modules) : ''}`;
-  return focus ? `/v1/world/graph?focus=${focus.kind}:${encodeURIComponent(focus.id)}` : '/v1/world/graph';
+  if (modules !== undefined && focus) return paths.repositoryGraph(focus.id, modules ? { focus: modules } : {});
+  return paths.worldGraph(focus ? { focus: `${focus.kind}:${focus.id}` } : {});
 }
 
 export function GraphView({ focus, modules }: { focus: Ref | null; modules?: string }) {

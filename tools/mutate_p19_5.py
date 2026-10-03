@@ -852,7 +852,7 @@ MUTATIONS = [
      'export const MAP_MIN_WIDTH = 1000;', 'export const MAP_MIN_WIDTH = 600;')],
      [NOW_TS, NOW_MAP]),
     ('N199', 'the map reads two steps out', [(NOWS,
-     '&depth=1&limit=', '&depth=2&limit=')],
+     'depth: 1, limit: MAP_CAP', 'depth: 2, limit: MAP_CAP')],
      [NOW_TS]),
     ('N200', 'a map node opens the inspector, not the full graph', [(GV,
      '    if (map) return location.assign(n.kind === \'more\' ? graphHref(null) : graphHref({ kind: n.kind, id: n.id }));\n', '')],

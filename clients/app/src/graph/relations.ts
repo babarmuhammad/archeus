@@ -3,6 +3,7 @@
 // the field that records it (p19-design-gate B1); this module only says them
 // in words, from where one stands, and the spatial view says the same words
 // (EDGE_WORDS). Pure: tested and mutated directly.
+import { paths } from '../api/generated.ts';
 import { EDGE_WORDS } from './edgeWords.ts';
 
 export { EDGE_WORDS };
@@ -39,7 +40,7 @@ export interface RouteEdge {
 /** The read a Relations list is drawn from: one hop around the object, every
  * edge (depth is always sent: the route walks two hops for most kinds). */
 export const relationsPath = (kind: string, id: string) =>
-  `/v1/world/graph?focus=${kind}:${encodeURIComponent(id)}&depth=1&limit=1000`;
+  paths.worldGraph({ focus: `${kind}:${id}`, depth: 1, limit: 1000 });
 
 /** The Relations list of *of*, from Core's graph read focused on it: every
  * edge incident to it, said from its end. Containment (`structural`) is the

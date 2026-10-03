@@ -1,6 +1,6 @@
 // Work (p16-design-gate §4.1, §6.1): every mission, grouped by what it waits
 // on; ideas; missions an automation started say so and link their run.
-import { api, type Attention, type IdeaList, type Mission, type MissionList, type Status } from '../api/generated';
+import { paths, api, type Attention, type IdeaList, type Mission, type MissionList, type Status } from '../api/generated';
 import { useRead, type Snapshot } from '../data/cache';
 import { send } from '../data/core';
 import { objectHref } from '../nav/destinations';
@@ -116,7 +116,7 @@ export function MissionRow({ m, waiting, actions, pinned }: { m: Mission; waitin
   );
 }
 
-const ALL_REREAD = ['/v1/missions', '/v1/status', '/v1/attention', '/v1/digest'];
+const ALL_REREAD = [paths.listMissions(), paths.status(), paths.attentionItems(), paths.digest()];
 
 /** Pause all and Resume all (P19.5 R10a): Core's two workspace verbs, the same
  * on the strip and on Work. Pause all pauses the missions executing now; it is
@@ -136,9 +136,9 @@ export function PauseAll({ status }: { status: Snapshot<Status> }) {
 }
 
 export function WorkView({ project }: { project?: string }) {
-  const snap = useRead<MissionList>(project ? `/v1/missions?project=${project}` : '/v1/missions');
-  const att = useRead<Attention>('/v1/attention');
-  const status = useRead<Status>('/v1/status');
+  const snap = useRead<MissionList>(project ? paths.listMissions({ project: project }) : paths.listMissions());
+  const att = useRead<Attention>(paths.attentionItems());
+  const status = useRead<Status>(paths.status());
   const waiting = new Set((att.data?.items ?? []).map((i) => i.mission_id).filter(Boolean) as string[]);
   return (
     <div className="view">
@@ -219,7 +219,7 @@ function IdeaPath({ state }: { state: string }) {
 }
 
 function Ideas() {
-  const snap = useRead<IdeaList>('/v1/ideas');
+  const snap = useRead<IdeaList>(paths.listIdeas());
   const ideas = snap.data?.ideas ?? [];
   const changed = useChanged();
   if (!ideas.length) return null;

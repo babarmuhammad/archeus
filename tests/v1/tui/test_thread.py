@@ -4,6 +4,7 @@ left edge — on every list, the relations view included — and only then; the
 rule is never the cursor's `›`, and an acknowledged digest leaves no rule."""
 
 from archeus.cli.tui.view import Style
+from archeus.cli._api import endpoints
 from claude_sessions import render
 
 from .test_acceptance import _StubApp
@@ -70,7 +71,7 @@ def test_the_relations_view_rules_the_neighbour_the_digest_names():
     data = dict(_data(_digest(('session', 'ses_1'))), **{
         '/v1/missions/msn_1': dict(_missions()[1], objective='o'),
         '/v1/missions/msn_1/plan': {'versions': []},
-        '/v1/world/graph?focus=mission:msn_1&depth=1&limit=1000': graph})
+        endpoints.world_graph(focus='mission:msn_1', depth=1, limit=1000): graph})
     app = _StubApp(data)
     app.open('mission', 'msn_1', 'relations')
     rows = _lines(app)

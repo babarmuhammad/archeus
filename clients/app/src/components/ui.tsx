@@ -8,7 +8,7 @@ import { action, explain, keyAfter, retryable } from '../data/commands';
 import { store, useConn, useRead, type Snapshot } from '../data/cache';
 import { badge, inline, mentions, resourceLine } from '../state/present';
 import { objectHref } from '../nav/destinations';
-import { api, type AccountList, type Digest, type Sync } from '../api/generated';
+import { paths, api, type AccountList, type Digest, type Sync } from '../api/generated';
 import { send } from '../data/core';
 import { framesSlow, reducedMotion } from '../graph/loop';
 import { RowPulses } from '../state/rowpulse';
@@ -64,7 +64,7 @@ export function RowPulse({ mission }: { mission: string }) {
  * the user last looked. The digest is the only source; dismissing it clears
  * every rule at once. */
 export function useChanged(): (kind: string, id: string) => boolean {
-  const d = useRead<Digest>('/v1/digest');
+  const d = useRead<Digest>(paths.digest());
   const groups = d.data?.groups;
   const keys = useMemo(() => new Set((groups ?? []).map((g) => `${g.ref.kind}:${g.ref.id}`)), [groups]);
   return (kind, id) => keys.has(`${kind}:${id}`);
@@ -143,7 +143,7 @@ export function Empty({ children }: { children: ReactNode }) {
 // ── who this client is (P15 §4): its scopes decide what to offer; Core decides ──
 
 export function useMe() {
-  const s = useRead<Sync>('/v1/sync');
+  const s = useRead<Sync>(paths.sync());
   const me = s.data?.client;
   return {
     me,
@@ -333,7 +333,7 @@ export function Resources({ r }: { r: Parameters<typeof resourceLine>[0] }) {
 
 /** An account as the user named it, read from the accounts Core holds. */
 export function AccountName({ id }: { id: string }) {
-  const s = useRead<AccountList>('/v1/accounts');
+  const s = useRead<AccountList>(paths.listAccounts());
   const a = s.data?.accounts.find((x) => x.id === id);
   return <>{a ? a.label : s.data ? 'an account not registered here' : '…'}</>;
 }
@@ -385,15 +385,15 @@ export function Details({ rows }: { rows: [string, Scalar | Scalar[]][] }) {
 }
 
 const NAMED: Record<string, { path: (id: string) => string; name: (r: Record<string, unknown>) => unknown }> = {
-  mission: { path: (id) => `/v1/missions/${id}`, name: (r) => r.title },
-  project: { path: (id) => `/v1/projects/${id}`, name: (r) => r.name },
-  knowledge_item: { path: (id) => `/v1/knowledge/${id}`, name: (r) => r.title },
-  session: { path: (id) => `/v1/sessions/${id}`, name: (r) => `${String(r.harness_id)} ${String(r.mode)} session` },
-  execution: { path: (id) => `/v1/executions/${id}`, name: (r) => `attempt ${String(r.attempt)}` },
-  plan: { path: (id) => `/v1/plans/${id}`, name: (r) => `v${String(r.plan_version)}` },
-  verification: { path: (id) => `/v1/verifications/${id}`, name: (r) => r.verifier },
-  route_decision: { path: (id) => `/v1/route-decisions/${id}`, name: (r) => r.purpose ?? 'of a task' },
-  policy_decision: { path: (id) => `/v1/policy-decisions/${id}`, name: (r) => r.stage },
+  mission: { path: (id) => paths.getMission(id), name: (r) => r.title },
+  project: { path: (id) => paths.getProject(id), name: (r) => r.name },
+  knowledge_item: { path: (id) => paths.getKnowledge(id), name: (r) => r.title },
+  session: { path: (id) => paths.getSession(id), name: (r) => `${String(r.harness_id)} ${String(r.mode)} session` },
+  execution: { path: (id) => paths.getExecution(id), name: (r) => `attempt ${String(r.attempt)}` },
+  plan: { path: (id) => paths.getPlan(id), name: (r) => `v${String(r.plan_version)}` },
+  verification: { path: (id) => paths.getVerification(id), name: (r) => r.verifier },
+  route_decision: { path: (id) => paths.getRouteDecision(id), name: (r) => r.purpose ?? 'of a task' },
+  policy_decision: { path: (id) => paths.getPolicyDecision(id), name: (r) => r.stage },
 };
 
 /** RefLabel's words as text, read from the object's own row: what an

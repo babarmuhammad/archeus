@@ -20,7 +20,9 @@ ROOT = os.path.join(os.path.dirname(__file__), '..', '..', '..')
 TUI = os.path.join(ROOT, 'archeus', 'cli', 'tui')
 TOKENS = os.path.join(ROOT, 'clients', 'app', 'tokens')
 #: what the TUI may import beyond the standard library and itself
-ALLOWED = {'archeus.infra.discovery', 'claude_sessions.render', 'claude_sessions.term'}
+#: (`archeus.cli._api` since P19: the generated client, p19-design-gate B11)
+ALLOWED = {'archeus.infra.discovery', 'claude_sessions.render', 'claude_sessions.term',
+           'archeus.cli._api'}
 
 
 def _modules():

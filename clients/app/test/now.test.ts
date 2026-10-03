@@ -107,7 +107,7 @@ test('the live map is bounded: at most 40 nodes, what the cap cut is counted', (
 });
 
 test('the map reads each mission at depth 1, capped, and is shown from 1000 px', () => {
-  assert.equal(mapRead('mis_1'), '/v1/world/graph?focus=mission:mis_1&depth=1&limit=40');
+  assert.equal(mapRead('mis_1'), '/v1/world/graph?focus=mission%3Amis_1&depth=1&limit=40');
   assert.equal(MAP_MIN_WIDTH, 1000);
 });
 

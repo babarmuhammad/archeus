@@ -61,5 +61,5 @@ test('every field has words at both ends; an unknown field says its own name', (
 });
 
 test('the list reads one hop around its object, every edge', () => {
-  assert.equal(relationsPath('mission', 'msn_1'), '/v1/world/graph?focus=mission:msn_1&depth=1&limit=1000');
+  assert.equal(relationsPath('mission', 'msn_1'), '/v1/world/graph?focus=mission%3Amsn_1&depth=1&limit=1000');
 });

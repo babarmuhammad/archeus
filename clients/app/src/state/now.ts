@@ -2,7 +2,7 @@
 // O-4-O-6, §9). Every word comes from a count or from Core's own records, and
 // the live map holds live work only: the active missions and the attempts
 // Core's `/v1/status` lists as live, each from the graph read around its mission.
-import { SETTLED, type Approval, type Automation, type KnowledgeItem, type Mission, type RouteDecision } from '../api/generated.ts';
+import { paths, SETTLED, type Approval, type Automation, type KnowledgeItem, type Mission, type RouteDecision } from '../api/generated.ts';
 import type { GEdge, GNode, GraphData, Hidden } from '../graph/model.ts';
 import { present } from './present.ts';
 
@@ -61,7 +61,7 @@ export function recentDecisions(approvals: readonly Approval[], routes: readonly
 
 export const MAP_CAP = 40;
 export const MAP_PATH = 'now:live-map';
-export const mapRead = (mission: string) => `/v1/world/graph?focus=mission:${encodeURIComponent(mission)}&depth=1&limit=${MAP_CAP}`;
+export const mapRead = (mission: string) => paths.worldGraph({ focus: `mission:${mission}`, depth: 1, limit: MAP_CAP });
 
 /** The map's seeds: the active missions, at most the cap. */
 export const mapSeeds = (ms: readonly Mission[]): string[] => activeMissions(ms).slice(0, MAP_CAP).map((m) => m.id);

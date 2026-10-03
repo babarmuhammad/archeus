@@ -2,7 +2,7 @@
 // GET /v1/attention. Each item is decided through its own P9/P6/P13 command;
 // nothing here judges eligibility — the row says whether it can be decided.
 import { useEffect, useState } from 'react';
-import { api, type Approval, type Attention as AttentionT, type AttentionItem, type Sync } from '../api/generated';
+import { paths, api, type Approval, type Attention as AttentionT, type AttentionItem, type Sync } from '../api/generated';
 import { announceApproval } from '../a11y/announce';
 import { decideBody } from '../data/commands';
 import { send } from '../data/core';
@@ -22,7 +22,7 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 export function AttentionView({ limit, heading = true }: { limit?: number; heading?: boolean }) {
-  const snap = useRead<AttentionT>('/v1/attention');
+  const snap = useRead<AttentionT>(paths.attentionItems());
   const changed = useChanged();
   const body = (
     <Loadable snap={snap} what="Attention">
@@ -102,9 +102,9 @@ const LINK: Record<string, (i: AttentionItem) => string> = {
 /** The approval card (ui-architecture §4.10): the canonical action as Core
  * rendered it, why it asks, what each answer does, when it expires. */
 export function ApprovalCard({ id }: { id: string }) {
-  const snap = useRead<Approval>(`/v1/approvals/${id}`);
-  const sync = useRead<Sync>('/v1/sync');
-  useRefresh(`/v1/approvals/${id}`, 30000); // eligibility moves with the clock (expiry)
+  const snap = useRead<Approval>(paths.getApproval(id));
+  const sync = useRead<Sync>(paths.sync());
+  useRefresh(paths.getApproval(id), 30000); // eligibility moves with the clock (expiry)
   const { can } = useMe();
   const [pin, setPin] = useState('');
   useEffect(() => {
@@ -129,7 +129,7 @@ export function ApprovalCard({ id }: { id: string }) {
         const notEligible = a.state !== 'PENDING' ? `This approval is ${a.state.toLowerCase()}.` : !a.eligible ? `Not decidable now: ${a.eligible_why ?? 'no reason given'}.` : null;
         const decided = a.decided_by ? `Decided ${ago(String(a.decided_at))}${a.decided_by === sync.data?.client.principal_id ? ' on this client' : ' on another client'}` : null;
         const extra = () => ({ step_up: needsPin ? pin : undefined });
-        const reread = [`/v1/approvals`, '/v1/attention', '/v1/missions'];
+        const reread = [paths.listApprovals(), paths.attentionItems(), paths.listMissions()];
         const approve = (
           <ActionButton
             key="a"
@@ -233,7 +233,7 @@ function RequestChanges({ approval }: { approval: Approval }) {
         scope="approve"
         disabled={note.trim() ? (approval.eligible ? null : 'Not decidable now.') : 'Say what should change.'}
         run={(key) => api.decideApproval(send(), approval.id, decideBody(approval, 'request_changes', key, { note }))}
-        reread={['/v1/approvals', '/v1/attention', '/v1/missions']}
+        reread={[paths.listApprovals(), paths.attentionItems(), paths.listMissions()]}
       />
     </div>
   );
@@ -256,8 +256,8 @@ function VerificationDecision({ item }: { item: AttentionItem }) {
             <input value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
           <div className="row">
-            <ActionButton label="Mark passed" scope="approve" kind="primary" run={(key) => api.decideVerification(send(), item.ref.id, { decision: 'accept', note, idempotency_key: key })} reread={['/v1/attention', '/v1/verifications', '/v1/missions']} />
-            <ActionButton label="Mark failed" scope="approve" run={(key) => api.decideVerification(send(), item.ref.id, { decision: 'reject', note, idempotency_key: key })} reread={['/v1/attention', '/v1/verifications', '/v1/missions']} />
+            <ActionButton label="Mark passed" scope="approve" kind="primary" run={(key) => api.decideVerification(send(), item.ref.id, { decision: 'accept', note, idempotency_key: key })} reread={[paths.attentionItems(), paths.getVerification(item.ref.id), paths.listMissions()]} />
+            <ActionButton label="Mark failed" scope="approve" run={(key) => api.decideVerification(send(), item.ref.id, { decision: 'reject', note, idempotency_key: key })} reread={[paths.attentionItems(), paths.getVerification(item.ref.id), paths.listMissions()]} />
           </div>
         </>
       ) : null}
@@ -273,8 +273,8 @@ function KnowledgeProposal({ item }: { item: AttentionItem }) {
         <a href={objectHref('knowledge_item', item.ref.id)}>Provenance</a>
       </p>
       <div className="row">
-        <ActionButton label="Confirm" scope="control" kind="primary" run={(key) => api.confirmKnowledge(send(), item.ref.id, { idempotency_key: key })} reread={['/v1/attention', '/v1/knowledge']} />
-        <ActionButton label="Reject" scope="control" run={(key) => api.rejectKnowledge(send(), item.ref.id, { idempotency_key: key })} reread={['/v1/attention', '/v1/knowledge']} />
+        <ActionButton label="Confirm" scope="control" kind="primary" run={(key) => api.confirmKnowledge(send(), item.ref.id, { idempotency_key: key })} reread={[paths.attentionItems(), paths.listKnowledge()]} />
+        <ActionButton label="Reject" scope="control" run={(key) => api.rejectKnowledge(send(), item.ref.id, { idempotency_key: key })} reread={[paths.attentionItems(), paths.listKnowledge()]} />
       </div>
     </div>
   );
