@@ -279,7 +279,7 @@ export const MOTIONS = {
   "thread-travel": {
     "status": "built",
     "source": "ADR-0024 §6, ADR-0026 §1, rulebook §21 A-05, design system §2",
-    "trigger": "a new Archeus message whose links[] target a row on screen: one line from the message to that row, drawn on once and gone; built on Now (the mission Now tab waits for P19's per-mission conversations)",
+    "trigger": "a new Archeus message whose links[] target a row on screen: one line from the message to that row, drawn on once and gone; built on Now, and on the mission Now tab with P19's per-mission conversations",
     "driven_by": "event",
     "runs_on": "css",
     "css": [

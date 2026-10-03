@@ -555,6 +555,32 @@ offline cold start on a phone.
 11. **P19.5's N199 re-anchored** (`depth: 1, limit: MAP_CAP`, the map's read now built by
     `paths.worldGraph`): same fault, same guard, killed. No P19.5 behaviour changed.
 
+**Slice 3 (B3, the mission Now tab), 2026-10-03.**
+
+12. **No migration, no `Mission.conversation_id`, no back-fill** (deviation from B3's storage
+    design; the behaviour is B3's). A mission's id names its thread, as `primary` already names
+    the primary conversation: `GET/POST /v1/conversations/<mission-id>/messages`. The thread is
+    made by `conversation.thread()` on the first turn posted to it, and Core's one writer makes
+    "at most one per mission" hold without the unique index (`tx.where` then insert in one
+    serialised transaction). An existing mission needs nothing back-filled: its thread is empty
+    until used, and already shows the primary messages that link it. Reversible: the index and
+    the column can still be added if a second writer ever exists.
+13. **Cards stay in the primary conversation** (B3 said "to its thread and stay visible in
+    primary"). Nothing is copied: `Planning.hold`'s blocked card is written once, in primary,
+    with links naming the mission, and the thread read shows it (ADR-0015 "linked into its
+    thread"). The same holds for B5's approval card.
+14. **A bare verb in a thread** (`pause`, `resume`, `stop`) is about the thread's mission
+    (grammar `resolve(…, mission=)`); `reprioritise`, `status` and `why` keep their objects. The
+    brain path reads a thread turn as it reads any turn (its context is unchanged); its reply
+    lands in the thread.
+15. **Found while building it:** the thread's line had picked the reply's own link card as its
+    "row" — on Now the conversation sits outside `.now-main`, so it never could; on the mission
+    tab it is inside the scope. A message's card is never a row now (`rowOf`), and the line is
+    rendered into `document.body`, since the inspector is a size container and a size container
+    is the containing block of a fixed descendant. Neither changes Now. A row below the fold
+    still gets no line (A-05), so the conversation above the work can leave an attempt off
+    screen on a short window.
+
 ## 13. As built
 
 (empty until implementation)

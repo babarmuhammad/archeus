@@ -76,8 +76,10 @@ def _project(conn, arg):
     return _one([p for p in every if key(p.name) == key(arg)])
 
 
-def resolve(conn, text):
-    """The Control *text* is, resolved against the rows, or None (the brain's)."""
+def resolve(conn, text, mission=None):
+    """The Control *text* is, resolved against the rows, or None (the brain's).
+    In a mission's thread (*mission*, P19 S1) a mission verb with no object is
+    about that mission."""
     p = parse(text)
     if p is None:
         return None
@@ -96,6 +98,8 @@ def resolve(conn, text):
                        got.group(2) if got else '')
     if p.verb in MISSION_VERBS:
         m = _mission(conn, p.arg) if p.arg else None
+        if m is None and mission and not p.arg:
+            m = rows.get(conn, entities.Mission, mission).entity
         return None if m is None else Control(p.verb, {'kind': 'mission', 'id': m.id}, p.arg)
     if p.verb == 'status':
         if not p.arg:

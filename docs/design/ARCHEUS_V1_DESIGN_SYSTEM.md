@@ -62,8 +62,9 @@ stays; nothing else gets a signature.
 *As built (P19.5, R6):* the conversation form on Now — a new Archeus message whose `Message.links`
 name an object with a row on screen draws one line from the message to that row, drawn on and
 gone; what stays is the list rule (on the row, and on the message's card or link) while the digest
-names the object; the polite live region says "Archeus updated …". Thread tints and the mission
-Now tab are not built yet (no curated tint list; per-mission conversations are P19's).
+names the object; the polite live region says "Archeus updated …". Thread tints are not built yet
+(no curated tint list, P22). *As built (P19, p19-design-gate B3):* the mission Now tab holds the
+mission's own conversation above what is running for it, and the line reaches a row there.
 
 ## 3. Colour system
 

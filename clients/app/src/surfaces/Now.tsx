@@ -3,6 +3,7 @@
 // needs you, happening now, since you last looked, upcoming, recent decisions,
 // the live map and the conversation. Composed from Core's reads (S5).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { paths, api, type ApprovalList, type AutomationList, type Digest, type KnowledgeList, type Message, type MessageList, type MissionList, type RouteDecisionList, type Status } from '../api/generated';
 import { announce } from '../a11y/announce';
 import { send } from '../data/core';
@@ -29,13 +30,15 @@ store.onFrame((f) => {
   if (id && !handled.has(id)) heard.set(id, f.id!);
 });
 
-/** A linked object's row on Now, when it is on screen: a mission's own row
- * first, else any row that names the object. */
-function rowOf(r: Ref): Element | null {
-  const main = document.querySelector('.now-main');
+/** A linked object's row in *scope* (Now's main column, or a mission's Now
+ * tab), when it is on screen: a mission's own row first, else any row that
+ * names the object. */
+function rowOf(r: Ref, scope: string): Element | null {
+  const main = document.querySelector(scope);
   const all = (q: string) => (main ? [...main.querySelectorAll(q)] : []);
   const rows = [...(r.kind === 'mission' ? all(`li[data-mission="${r.id}"]`) : []), ...all(`[data-ref="${r.kind}:${r.id}"]`)];
   return rows.find((e) => {
+    if (e.closest('.conversation')) return false; // a message's own card is not a row
     const b = e.getBoundingClientRect();
     return b.width > 0 && b.bottom > 0 && b.top < innerHeight && b.right > 0 && b.left < innerWidth;
   }) ?? null;
@@ -200,10 +203,11 @@ function DigestSection() {
   );
 }
 
-/** The primary conversation (§5): a surface, not the application. A card shows
- * the live row its ref names, never a copy from the message. */
-function Conversation() {
-  const msgs = useRead<MessageList>(paths.listMessages('primary'));
+/** A conversation (§5): the primary one on Now, a mission's own thread on its
+ * Now tab (P19 S1; a mission's id names its thread). A surface, not the
+ * application. A card shows the live row its ref names, never a copy. */
+export function Conversation({ conversation = 'primary', scope = '.now-main', title = 'Conversation', label = 'Conversation with Archeus' }: { conversation?: string; scope?: string; title?: string; label?: string }) {
+  const msgs = useRead<MessageList>(paths.listMessages(conversation));
   const [text, setText] = useState('');
   const [sent, setSent] = useState<string | null>(null);
   const list = msgs.data?.messages ?? [];
@@ -221,21 +225,21 @@ function Conversation() {
       const links = m.author === 'archeus' ? linksOf(m.links) : [];
       if (!links.length) continue;
       void Promise.all(links.map((l) => refName(l.kind, l.id))).then((names) => announce(threadWords(names)));
-      const target = targetOf(links, (r) => rowOf(r) !== null);
+      const target = targetOf(links, (r) => rowOf(r, scope) !== null);
       if (!target || !timeline.start('thread-travel', 'message:' + m.id, seq, performance.now(), reducedMotion())) continue;
       setLine({ key: m.id, to: target });
     }
-  }, [list]);
+  }, [list, scope]);
   return (
-    <section className="conversation" aria-label="Conversation with Archeus">
-      <h2>Conversation</h2>
+    <section className="conversation" aria-label={label}>
+      <h2>{title}</h2>
       <Loadable snap={msgs} what="the conversation">
         {() =>
           shown.length ? (
             <ol className="messages">
               {list.length > shown.length ? <li className="hint">{list.length - shown.length} older messages are not shown.</li> : null}
               {shown.map((m) => (
-                <MessageRow key={m.id} m={m} />
+                <MessageRow key={m.id} m={m} conversation={conversation} />
               ))}
             </ol>
           ) : (
@@ -243,7 +247,7 @@ function Conversation() {
           )
         }
       </Loadable>
-      {line ? <ThreadLine key={line.key} from={line.key} to={line.to} onEnd={endLine} /> : null}
+      {line ? <ThreadLine key={line.key} from={line.key} to={line.to} scope={scope} onEnd={endLine} /> : null}
       {sent ? <p className="hint" role="status">Sent — Archeus is reading it.</p> : null}
       <form
         className="composer"
@@ -251,17 +255,17 @@ function Conversation() {
           e.preventDefault();
         }}
       >
-        <label htmlFor="composer" className="sr">
+        <label htmlFor={composerId(conversation)} className="sr">
           Tell Archeus what you want
         </label>
-        <textarea id="composer" rows={2} value={text} placeholder="Tell Archeus what you want…" onChange={(e) => setText(e.target.value)} />
+        <textarea id={composerId(conversation)} rows={2} value={text} placeholder="Tell Archeus what you want…" onChange={(e) => setText(e.target.value)} />
         <ActionButton
           label="Send"
           scope="control"
           kind="primary"
           disabled={text.trim() ? null : 'Write a message first.'}
-          run={(key) => api.postMessage(send(), 'primary', { text, idempotency_key: key })}
-          reread={[paths.listMessages('primary')]}
+          run={(key) => api.postMessage(send(), conversation, { text, idempotency_key: key })}
+          reread={[paths.listMessages(conversation)]}
           onDone={() => {
             setSent(text);
             setText('');
@@ -272,16 +276,19 @@ function Conversation() {
   );
 }
 
+/** The composer's id: the primary one keeps the id it always had. */
+const composerId = (c: string) => (c === 'primary' ? 'composer' : `composer-${c}`);
+
 /** The line itself, measured in the layout pass just before it is painted, so
  * it starts where the message and the row are when it first shows. */
-function ThreadLine({ from, to, onEnd }: { from: string; to: Ref; onEnd: () => void }) {
+function ThreadLine({ from, to, scope, onEnd }: { from: string; to: Ref; scope: string; onEnd: () => void }) {
   const el = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
     // placed again whenever the page moves under it (a re-read adding a row
     // above the target): its place is set, never animated
     const place = () => {
       const a = document.querySelector(`[data-message="${from}"]`);
-      const b = rowOf(to);
+      const b = rowOf(to, scope);
       if (!a || !b || !el.current) return false;
       const l = lineBetween(a.getBoundingClientRect(), b.getBoundingClientRect());
       Object.assign(el.current.style, { left: `${l.x}px`, top: `${l.y}px`, width: `${l.length}px` });
@@ -291,7 +298,7 @@ function ThreadLine({ from, to, onEnd }: { from: string; to: Ref; onEnd: () => v
     if (!place()) return onEnd();
     const ro = new ResizeObserver(() => void place());
     const mo = new MutationObserver(() => void place());
-    document.querySelectorAll('.now-main, .conversation').forEach((e) => {
+    document.querySelectorAll(`${scope}, .conversation`).forEach((e) => {
       ro.observe(e);
       mo.observe(e, { childList: true, subtree: true });
     });
@@ -300,10 +307,12 @@ function ThreadLine({ from, to, onEnd }: { from: string; to: Ref; onEnd: () => v
       mo.disconnect();
     };
   }, [from, to, onEnd]);
-  return <span ref={el} className="thread-line" data-thread-line={from} aria-hidden="true" onAnimationEnd={onEnd} />;
+  // in the body: a size container (the inspector) is the containing block of a
+  // fixed descendant, which would place the line by the panel, not the viewport
+  return createPortal(<span ref={el} className="thread-line" data-thread-line={from} aria-hidden="true" onAnimationEnd={onEnd} />, document.body);
 }
 
-function MessageRow({ m }: { m: Message }) {
+function MessageRow({ m, conversation }: { m: Message; conversation: string }) {
   const archeus = m.author === 'archeus';
   const changed = useChanged();
   // a link no card already shows is shown as one: the thread's object, by name
@@ -315,7 +324,7 @@ function MessageRow({ m }: { m: Message }) {
       {m.cards.length || bare.length ? (
         <div className="cards">
           {m.cards.map((c, i) => (
-            <CardRef key={i} type={c.type} kind={c.ref.kind} id={c.ref.id} intent={m.intent_id ?? undefined} changed={changed(c.ref.kind, c.ref.id)} />
+            <CardRef key={i} type={c.type} kind={c.ref.kind} id={c.ref.id} intent={m.intent_id ?? undefined} changed={changed(c.ref.kind, c.ref.id)} conversation={conversation} />
           ))}
           {bare.map((l) => (
             <a key={l.kind + l.id} className="card" href={objectHref(l.kind, l.id)} data-ref={`${l.kind}:${l.id}`} {...thread(changed(l.kind, l.id))}>
@@ -332,7 +341,7 @@ function MessageRow({ m }: { m: Message }) {
 
 /** A card is a link to the live object, labelled by its type. Challenge and
  * clarification cards answer through P7's command. */
-function CardRef({ type, kind, id, intent, changed }: { type: string; kind: string; id: string; intent?: string; changed: boolean }) {
+function CardRef({ type, kind, id, intent, changed, conversation }: { type: string; kind: string; id: string; intent?: string; changed: boolean; conversation: string }) {
   const [answer, setAnswer] = useState('');
   if ((type === 'challenge' || type === 'clarification') && kind === 'intent') {
     return (
@@ -340,8 +349,8 @@ function CardRef({ type, kind, id, intent, changed }: { type: string; kind: stri
         <p>{type === 'challenge' ? 'Archeus disagrees with what is recorded. Keep going, or drop it?' : 'Archeus needs an answer before it can start.'}</p>
         {type === 'challenge' ? (
           <div className="row">
-            <ActionButton label="Proceed anyway" scope="control" run={(key) => api.clarifyIntent(send(), id, { choice: 'proceed', idempotency_key: key })} reread={[paths.listMessages('primary')]} />
-            <ActionButton label="Drop it" scope="control" run={(key) => api.clarifyIntent(send(), id, { choice: 'drop', idempotency_key: key })} reread={[paths.listMessages('primary')]} />
+            <ActionButton label="Proceed anyway" scope="control" run={(key) => api.clarifyIntent(send(), id, { choice: 'proceed', idempotency_key: key })} reread={[paths.listMessages(conversation)]} />
+            <ActionButton label="Drop it" scope="control" run={(key) => api.clarifyIntent(send(), id, { choice: 'drop', idempotency_key: key })} reread={[paths.listMessages(conversation)]} />
           </div>
         ) : (
           <div className="row">
@@ -349,7 +358,7 @@ function CardRef({ type, kind, id, intent, changed }: { type: string; kind: stri
               Your answer
               <input value={answer} onChange={(e) => setAnswer(e.target.value)} />
             </label>
-            <ActionButton label="Answer" scope="control" disabled={answer.trim() ? null : 'Write an answer first.'} run={(key) => api.clarifyIntent(send(), id, { text: answer, idempotency_key: key })} reread={[paths.listMessages('primary')]} />
+            <ActionButton label="Answer" scope="control" disabled={answer.trim() ? null : 'Write an answer first.'} run={(key) => api.clarifyIntent(send(), id, { text: answer, idempotency_key: key })} reread={[paths.listMessages(conversation)]} />
           </div>
         )}
         {intent ? null : null}

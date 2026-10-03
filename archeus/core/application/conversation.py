@@ -47,6 +47,19 @@ def primary(tx, actor):
     return c.id
 
 
+def thread(tx, actor, mission_id):
+    """A mission's own conversation (ADR-0015; P19 S1), made on first use. The
+    one writer makes it, so a mission has at most one."""
+    lifecycle.load(tx, entities.Mission, mission_id)
+    got = tx.where(entities.Conversation, mission_id=mission_id)
+    if got:
+        return got[0].entity.id
+    c = entities.Conversation(id=ids.new_id('conversation'), kind='mission',
+                              mission_id=mission_id)
+    tx.insert(c, actor=actor)
+    return c.id
+
+
 def _message(tx, actor, *, conversation_id, author, text, in_reply_to=None, cards=(),
              links=(), intent_id=None):
     m = entities.Message(id=ids.new_id('message'), conversation_id=conversation_id,
@@ -62,11 +75,14 @@ def _message(tx, actor, *, conversation_id, author, text, in_reply_to=None, card
 
 def post_message(tx, *, actor, text, conversation_id=None, in_reply_to=None):
     """A user turn. Its interpretation arrives later, as the reply (the intent
-    worker); this only records it (api-and-realtime §2)."""
+    worker); this only records it (api-and-realtime §2). A mission's id names
+    its thread (P19 S1)."""
     if not (isinstance(text, str) and text.strip()):
         raise ValueError('a message has text')
     if conversation_id is None or conversation_id == 'primary':
         conversation_id = primary(tx, actor)
+    elif ids.kind_of(conversation_id) == 'mission':
+        conversation_id = thread(tx, actor, conversation_id)
     elif tx.get(entities.Conversation, conversation_id) is None:
         raise lifecycle.NotFound(conversation_id)
     if in_reply_to is not None:

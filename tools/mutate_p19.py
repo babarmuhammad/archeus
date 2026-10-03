@@ -1,7 +1,8 @@
 """The P19 mutation suite (p19-design-gate B13): break each gate's invariant,
 run the test written for it, and require it to fail. B1, one edge
 implementation (P01-P08); B2, the change rule on the Relations list and the
-TUI (P09-P14); B11, the generated client everywhere (P15-P20).
+TUI (P09-P14); B11, the generated client everywhere (P15-P20); B3, a mission's own
+conversation and the mission Now tab (P21-P30).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -34,6 +35,15 @@ PYAPI = 'archeus/cli/_api.py'
 MAIN = 'archeus/cli/main.py'
 PYCLIENT = 'tests/v1/unit/test_api_client.py'
 G3 = 'tests/v1/judge/test_g03_one_model.py::test_every_client_agrees'
+CONV = 'archeus/core/application/conversation.py'
+QRY = 'archeus/core/application/queries.py'
+GRAM = 'archeus/core/application/grammar.py'
+INTENT = 'archeus/core/missions/intent.py'
+MISSION = 'clients/app/src/surfaces/Mission.tsx'
+NOW = 'clients/app/src/surfaces/Now.tsx'
+THR = 'tests/v1/integration/test_mission_thread.py::'
+THREAD_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
+              'test_the_mission_now_tab_is_its_thread_and_a_reply_reaches_a_row_there')
 CLI_STATUS = ('tests/v1/integration/test_cli_v1.py::'
               'test_status_of_a_mission_prints_what_core_reports_and_a_refusal_in_its_words')
 
@@ -114,6 +124,44 @@ MUTATIONS = [
     ('P20', "the CLI drops Core's refusal", [(MAIN,
      "        print(sync.explain(e.refusal()), file=sys.stderr)\n", "")],
      [CLI_STATUS]),
+    # ── B3: a mission's own conversation and the mission Now tab ──
+    ('P21', 'a mission gets a new thread for every turn', [(CONV,
+     "    got = tx.where(entities.Conversation, mission_id=mission_id)\n    if got:\n",
+     "    got = tx.where(entities.Conversation, mission_id=mission_id)\n    if False:\n")],
+     [THR + 'test_a_missions_id_names_its_one_thread_made_on_first_use']),
+    ('P22', "a turn sent to a mission's thread lands in the primary conversation", [(CONV,
+     "        conversation_id = thread(tx, actor, conversation_id)\n",
+     "        conversation_id = primary(tx, actor)\n")],
+     [THR + 'test_a_missions_id_names_its_one_thread_made_on_first_use']),
+    ('P23', 'the thread leaves out the primary messages that link its mission', [(QRY,
+     "                if any((x.get('ref') or {}).get('id') == mission_id for x in r.entity.links or ())]",
+     "                if False]")],
+     [THR + 'test_the_thread_shows_the_primary_messages_that_link_its_mission_in_order']),
+    ('P24', 'the thread shows every primary message', [(QRY,
+     "                if any((x.get('ref') or {}).get('id') == mission_id for x in r.entity.links or ())]",
+     "                if True]")],
+     [THR + 'test_the_thread_shows_the_primary_messages_that_link_its_mission_in_order']),
+    ('P25', "a bare mission verb in a thread is not about its mission", [(GRAM,
+     "        if m is None and mission and not p.arg:\n            m = rows.get(conn, entities.Mission, mission).entity\n", "")],
+     [THR + 'test_a_bare_mission_verb_in_a_thread_is_about_its_mission_and_answered_there']),
+    ('P26', "the intent worker forgets which thread a turn is in", [(INTENT,
+     "grammar.resolve(conn, msg.text, mission=conv.mission_id)", "grammar.resolve(conn, msg.text, mission=None)")],
+     [THR + 'test_a_bare_mission_verb_in_a_thread_is_about_its_mission_and_answered_there']),
+    ('P27', "the mission's Now tab shows the primary conversation", [(MISSION,
+     '<Conversation conversation={mission.id} scope=".mission-now"',
+     '<Conversation conversation={mission.id && \'primary\'} scope=".mission-now"')],
+     [THREAD_E2E]),
+    ('P28', "the thread's line goes to the message's own card", [(NOW,
+     "    if (e.closest('.conversation')) return false; // a message's own card is not a row\n", '')],
+     [THREAD_E2E]),
+    ('P29', "the tab's composer posts to the primary conversation", [(NOW,
+     "run={(key) => api.postMessage(send(), conversation, { text, idempotency_key: key })}",
+     "run={(key) => api.postMessage(send(), 'primary', { text, idempotency_key: key })}")],
+     [THREAD_E2E]),
+    ('P30', "the TUI's thread posts to the primary conversation", [(SCR,
+     "            lambda key, v: app.core.post(endpoints.post_message(cid),",
+     "            lambda key, v: app.core.post(endpoints.post_message('primary'),")],
+     ['tests/v1/tui/test_mission_thread.py::test_its_message_command_posts_to_the_thread']),
 ]
 
 if __name__ == '__main__':

@@ -271,14 +271,16 @@ def now(app, doc):
     conversation(app, doc)
 
 
-def conversation(app, doc):
-    doc.h('Conversation')
-    ml = doc.load(endpoints.list_messages('primary'), 'the conversation')
+def conversation(app, doc, cid='primary', title='Conversation'):
+    """The primary conversation on Now, a mission's thread on its Now tab (P19
+    S1: a mission's id names its thread)."""
+    doc.h(title)
+    ml = doc.load(endpoints.list_messages(cid), 'the conversation')
     doc.act('M', 'Message', 'control',
-            lambda key, v: app.core.post(endpoints.post_message('primary'),
+            lambda key, v: app.core.post(endpoints.post_message(cid),
                                          {'text': v['text'], 'idempotency_key': key}),
             fields=[('text', 'Tell Archeus what you want', True)],
-            reread=[endpoints.list_messages('primary')], sent='Sent — Archeus is reading it.')
+            reread=[endpoints.list_messages(cid)], sent='Sent — Archeus is reading it.')
     if ml is None:
         return
     msgs = ml['messages']
@@ -295,15 +297,15 @@ def conversation(app, doc):
                    else ''))
         doc.para(m['text'], indent=4)
         for i, c in enumerate(m.get('cards') or []):
-            card(app, doc, m, i, c)
+            card(app, doc, m, i, c, cid)
 
 
-def card(app, doc, m, i, c):
+def card(app, doc, m, i, c, cid='primary'):
     """A card links the live object it names; a challenge or clarification is
     answered through P7's command."""
     kind, id_, type_ = c['ref']['kind'], c['ref']['id'], c['type']
     ident = 'card:%s:%d' % (m['id'], i)
-    reread = [endpoints.list_messages('primary')]
+    reread = [endpoints.list_messages(cid)]
     if type_ in ('challenge', 'clarification') and kind == 'intent':
         path = endpoints.clarify_intent(id_)
         if type_ == 'challenge':
@@ -1086,6 +1088,8 @@ def plan_tab(app, doc, m, mp):
 
 
 def now_tab(app, doc, m, mp):
+    conversation(app, doc, m['id'], "This mission's conversation")
+    doc.add()
     tasks = ((mp or {}).get('plan') or {}).get('tasks') or []
     live = [t for t in tasks if t['state'] in ('ROUTING', 'RUNNING', 'AWAITING_APPROVAL',
                                                'VERIFYING', 'PAUSED', 'BLOCKED')]

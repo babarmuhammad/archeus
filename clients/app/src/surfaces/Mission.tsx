@@ -25,6 +25,7 @@ import { useRead } from '../data/cache';
 import { INSPECTOR_TABS, TAB_LABEL, objectHref } from '../nav/destinations';
 import { ago, endReason, ended, explainState, inline, offers, statusLine, technical } from '../state/present';
 import { Relations } from '../components/Relations';
+import { Conversation } from './Now';
 import { AccountName, ActionButton, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Resources, Section, StateBadge, Tabs } from '../components/ui';
 
 export function MissionInspector({ id, tab, onTab }: { id: string; tab?: string; onTab: (t: string) => void }) {
@@ -51,7 +52,7 @@ export function MissionInspector({ id, tab, onTab }: { id: string; tab?: string;
           <div role="tabpanel" id={`panel-${current}`} aria-labelledby={`tab-${current}`} className="panel">
             {current === 'outcome' && <Outcome m={mission} />}
             {current === 'plan' && <PlanTab snap={plan} />}
-            {current === 'now' && <NowTab plan={plan.data} />}
+            {current === 'now' && <NowTab mission={mission} plan={plan.data} />}
             {current === 'evidence' && <Evidence id={id} m={mission} />}
             {current === 'why' && <Why m={mission} plan={plan.data} />}
             {current === 'timeline' && <TimelineTab id={id} />}
@@ -334,7 +335,19 @@ function TaskRow({ t, byKey }: { t: Task | undefined; byKey: Record<string, Task
 }
 
 /** Tasks in flight and their executions (§6.6). */
-function NowTab({ plan }: { plan?: MissionPlan }) {
+/** The mission's Now tab (P19 S1; p19-design-gate B3, §4.1): its own thread —
+ * what it was asked and answered, A-05 travel to a row here — above what is
+ * running for it. */
+function NowTab({ mission, plan }: { mission: Mission; plan?: MissionPlan }) {
+  return (
+    <div className="mission-now">
+      <Conversation conversation={mission.id} scope=".mission-now" title="This mission's conversation" label="Conversation with Archeus about this mission" />
+      <NowWork plan={plan} />
+    </div>
+  );
+}
+
+function NowWork({ plan }: { plan?: MissionPlan }) {
   const tasks = plan?.plan?.tasks ?? [];
   const live = tasks.filter((t) => ['ROUTING', 'RUNNING', 'AWAITING_APPROVAL', 'VERIFYING', 'PAUSED', 'BLOCKED'].includes(t.state));
   const shown = live.length ? live : tasks;
@@ -373,7 +386,7 @@ function Executions({ taskId }: { taskId: string }) {
 
 export function ExecutionRow({ e }: { e: Execution }) {
   return (
-    <li className="execution" data-execution={e.id}>
+    <li className="execution" data-execution={e.id} data-ref={`execution:${e.id}`}>
       <a href={objectHref('execution', e.id)}>attempt {e.attempt}</a> <StateBadge machine="execution" state={e.state} />
       <Resources r={e} />
       {e.handoff_from ? <span className="hint">continuing in a fresh session: it continues <a href={objectHref('execution', String(e.handoff_from))}>an earlier execution</a> (hand-off)</span> : null}

@@ -109,7 +109,8 @@ class Intents:
             if rows.where(conn, entities.Intent, message_id=message_id):
                 return 'already read'
             ask = _asked(conn, msg.in_reply_to)
-            control = None if ask else grammar.resolve(conn, msg.text)
+            conv = rows.get(conn, entities.Conversation, msg.conversation_id).entity
+            control = None if ask else grammar.resolve(conn, msg.text, mission=conv.mission_id)
         if ask and ask['kind'] == 'meeting':
             return 'dated:%s' % self._do(self.conv.date_meeting, message_id=message_id,
                                          meeting_id=ask['id'])['resolution']

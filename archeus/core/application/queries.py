@@ -6,7 +6,7 @@ import os
 from ...infra.db import rows
 from ...infra.db.writer import NotFound
 from ...infra.eventlog import outbox
-from ..domain import entities, states
+from ..domain import entities, ids, states
 from .commands import active_plan
 
 
@@ -249,17 +249,40 @@ def _conversation(conn, conversation_id):
 
 
 def messages(conn, conversation_id, after=None):
-    """A conversation's messages, oldest first; those after message *after*."""
-    cid = _conversation(conn, conversation_id)
-    if cid is None:
-        return []
-    got = [view(r) for r in rows.where(conn, entities.Message, conversation_id=cid)]
+    """A conversation's messages, oldest first; those after message *after*. A
+    mission's thread (named by the mission's id, P19 S1) is its own messages
+    and every message of the primary conversation whose links name the
+    mission (ADR-0015: linked into its thread, never copied)."""
+    if ids.kind_of(conversation_id) == 'mission':
+        got = _thread(conn, conversation_id)
+    else:
+        cid = _conversation(conn, conversation_id)
+        if cid is None:
+            return []
+        got = [view(r) for r in rows.where(conn, entities.Message, conversation_id=cid)]
     if after is not None:
         idx = [i for i, m in enumerate(got) if m['id'] == after]
         if not idx:
             raise NotFound(after)
         got = got[idx[0] + 1:]
     return got
+
+
+def _thread(conn, mission_id):
+    if rows.get(conn, entities.Mission, mission_id) is None:
+        raise NotFound(mission_id)
+    own = rows.where(conn, entities.Conversation, mission_id=mission_id)
+    prim = rows.where(conn, entities.Conversation, kind='primary')
+    got = []
+    if own:
+        got += rows.where(conn, entities.Message, conversation_id=own[0].entity.id)
+    if prim:
+        # ponytail: every primary message is read to find the linked ones;
+        # an index of message links when a long conversation makes it slow
+        got += [r for r in rows.where(conn, entities.Message, conversation_id=prim[0].entity.id)
+                if any((x.get('ref') or {}).get('id') == mission_id for x in r.entity.links or ())]
+    got.sort(key=lambda r: (r.created_at, r.entity.id))
+    return [view(r) for r in got]
 
 
 def reply_to(conn, message_id):
