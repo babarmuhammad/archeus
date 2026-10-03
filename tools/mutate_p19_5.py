@@ -141,6 +141,11 @@ IDEAS = 'clients/app/src/state/ideas.ts'
 IDEAS_TS = 'node:test/ideas.test.ts'
 IDEAS_E2E = 'tests/v1/e2e/test_spa_ideas.py::test_each_idea_shows_where_it_is_on_cores_path_and_offers_no_transition'
 
+PAL = 'clients/app/src/state/palette.ts'
+PAL_TS = 'node:test/palette.test.ts'
+CMDBAR = 'clients/app/src/surfaces/CommandBar.tsx'
+PAL_E2E = 'tests/v1/e2e/test_spa_palette.py::test_the_palette_moves_by_arrows_and_acts_by_cores_verbs'
+
 MUTATIONS = [
     # ── the registry ──
     ('N01', 'a registered motion allowed to replay', [(REG,
@@ -1139,6 +1144,29 @@ MUTATIONS = [
      "                  Made into <a href={objectHref('mission', i.promoted_mission_id)}><RefLabel kind=\"mission\" id={i.promoted_mission_id} /></a>.",
      "                  Made into a mission{RefLabel.name ? '' : ''}.")],
      [IDEAS_E2E]),
+    # R11: the palette upgrade (rulebook §18; D-12)
+    ('N282', 'the arrows do not move the active hit', [(PAL,
+     "    case 'ArrowDown':\n      return (i + 1) % count;", "    case 'ArrowDown':\n      return i;")],
+     [PAL_TS, PAL_E2E]),
+    ('N283', 'the active hit is not told to assistive technology', [(CMDBAR,
+     "          aria-activedescendant={hits.length ? `cmd-opt-${at}` : undefined}\n", "")],
+     [PAL_E2E]),
+    ('N284', 'the effect counts every live attempt', [(PAL,
+     "  const n = live.filter((x) => x.mission_id === m.id).length;", "  const n = live.filter((x) => !!x.mission_id || !!m.id).length;")],
+     [PAL_TS, PAL_E2E]),
+    ('N285', 'Pause offered whatever the state', [(PAL,
+     "    if (offers('mission', m.state, 'pause'))", "    if (m.state)")],
+     [PAL_TS]),
+    ('N286', 'a retried message gets a new key', [(CMDBAR,
+     "      tellKey.current = keyAfter(tellKey.current, outcome);", "      tellKey.current = keyAfter(tellKey.current, outcome === 'network' ? 'ok' : outcome);")],
+     [PAL_E2E]),
+    ('N287', 'an action is sent though it cannot be', [(CMDBAR,
+     "    } else if (!why) void act(h);", "    } else void act(h);")],
+     [PAL_E2E]),
+    ('N288', 'the palette sends the other verb', [(CMDBAR,
+     "const ACT = { pause: (id: string, v: number, key: string) => api.pauseMission(",
+     "const ACT = { pause: (id: string, v: number, key: string) => api.resumeMission(")],
+     [PAL_E2E]),
 ]
 
 if __name__ == '__main__':

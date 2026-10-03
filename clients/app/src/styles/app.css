@@ -1453,9 +1453,21 @@ dialog.command input {
   width: 100%;
 }
 
-.hits a {
+/* the palette (rulebook §18): ↑/↓ moves the active option; readiness on the input */
+.hits [role='option'] {
   display: block;
   padding: var(--space-2) var(--space-3);
+  min-height: var(--target-desktop);
+  cursor: pointer;
+}
+
+.hits [aria-selected='true'] {
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+
+dialog.command input[data-ready='reconnecting'] {
+  border-color: var(--state-attention);
 }
 
 .qr {
