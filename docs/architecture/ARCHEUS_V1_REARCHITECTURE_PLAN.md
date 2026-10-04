@@ -1137,9 +1137,9 @@ decisions ADR-0024…0029.
   implementation, scaffolding, contracts or tests before then). Work: breaker drills, e-stop drills, secrets review (DPAPI path), threat-model
   review of remote access, dependency audit, fuzzing of the command API and hook canonicaliser.
 - *Carried from P19.5 (p19-design-gate §12 items 112 and 114; the user, 2026-10-05):* item 83's
-  e-stop without Core, with **F7** (the tray reports Pause all and Emergency stop only as a
-  Windows notification, which Windows may not show) and **F8** (the tray offers Emergency stop
-  when Core is already disarmed); **F4** with item 86 (a double reload hits the per-device
+  e-stop without Core, with **F7** (the window's Pause all and Control → About's Emergency stop
+  show no confirmation) and **F8** (Control → About offers Emergency stop and Re-arm whatever
+  Core's state, without naming it); **F4** with item 86 (a double reload hits the per-device
   stream cap for about 20 s); **F6** (the command bar has no touch exit).
 - *Added 2026-10-02, decided 2026-10-03 (external research; register and backlog in
   [ARCHEUS_V2_ASSISTANT_LAYER.md](ARCHEUS_V2_ASSISTANT_LAYER.md) §4–§5):*

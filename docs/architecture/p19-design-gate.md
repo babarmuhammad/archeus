@@ -1417,20 +1417,25 @@ status. One code change (`cf7cb97`); everything else is a record.
         touch user is trapped until they pick a destination or restart the app; VoiceOver's
         escape gesture works.
       - Not run: Android, and Safari itself (Chrome on iOS is the same WebKit engine).
-    - **M1, Qt shell on the real Windows display: PASS for the safety behaviour, by the user's
-      own clicks.** Launch from a stopped Core started it, and the theme survived a restart.
-      The tray's Emergency stop asked first: Enter and Escape stopped nothing, and only the
-      box's own button stopped. With Core down it started nothing (`archeus status` still
-      exited 1).
-      - **F7 (new, P2, deferred to P20 by the user):** Pause all and Emergency stop report their
-        result only as a tray notification (`tray.showMessage`, `gui_qt.py`). The scripted run
-        of item 112 shows the calls are made, but on this machine Windows displayed none of
-        them, and they were not in the notification centre. The stop worked, and the window's
-        operations strip shows "Emergency stop engaged". The fix belongs with item 83's
-        e-stop without Core.
-      - **F8 (new, P3, deferred to P20 by the user):** the tray keeps offering Emergency stop
-        once Core is disarmed. A second press stops nothing new and is harmless, but the menu
-        does not show the state the window does.
+    - **M1, Qt shell on the real Windows display: PASS, by the user's own clicks.**
+      - Launch from a stopped Core started it, and the theme survived a restart.
+      - Tray → Pause all: the Windows notification "Nothing was running".
+      - Tray → Emergency stop opened the native box. Enter and Escape each closed it without
+        stopping anything. Only its own button stopped, with the notification "emergency stop:
+        0 execution(s) stopped; Core is disarmed until re-armed".
+      - With Core down it started nothing (`archeus status` still exited 1).
+      - Core's log ties each command to its client: Pause all came from the desktop shell,
+        and exactly one e-stop came through `archeus estop`'s path.
+      - The first pass used the window's own buttons by mistake: every command then came from
+        the page's device. That pass is what F7 and F8 describe. It is not M1.
+      - **F7 (new, P3, deferred to P20 by the user):** in the window, Pause all with nothing
+        running, and Emergency stop in Control → About, show no visible confirmation. The
+        tray reports both; the strip shows "Emergency stop engaged".
+      - **F8 (new, P3, deferred to P20 by the user):** Control → About shows Emergency stop
+        and Re-arm whatever Core's state, and never says which state it is in
+        (`Control.tsx`, the "Emergency stop" section). The user pressed Emergency stop twice
+        with no re-arm between. It was harmless, but the page did not say Core was already
+        disarmed.
     - **M3: moved to P23** by the user (no Mac or Linux machine), with testing-strategy §7.1's
       other unverified rows.
     - **D and E of item 111: approved** by the user. The ADR-0029 §3 capture matrix, the

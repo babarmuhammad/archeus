@@ -633,12 +633,12 @@ p19-design-gate §12 item 114. This supersedes the rows above where they differ.
 | | Status |
 |---|---|
 | Commits | `4604b74` (a tunnel's 502 is offline: `sw.js` and `App.tsx`, test, P105 re-anchored, P168–P170) and this record |
-| M1, Qt shell, real Windows display | **PASS** by the user's own clicks for launch, theme across a restart, the e-stop box (Enter and Escape stop nothing; only its button stops) and Core down (starts nothing). The tray's result messages were never displayed by Windows: **F7**, deferred to P20 |
+| M1, Qt shell, real Windows display | **PASS** by the user's own clicks: launch, theme across a restart, tray Pause all and Emergency stop with their Windows notifications, the native e-stop box (Enter and Escape stop nothing; only its button stops), and Core down (starts nothing) |
 | M2, real phone, offline cold start | **PASS after `4604b74`** on an iPhone 14 Pro Max, Chrome on iOS (WebKit), over Tailscale Serve. Before the fix, a cold start with Core down behind the tunnel was a white page (the tunnel answers 502). After it, every §11.1 M2 criterion passed, with one `GET /v1/version` and no data request offline |
 | M3, Q-A5 on macOS and Linux | **Moved to P23** by the user |
 | M4, §34 design sign-off | **Given** by the user, with F1–F8 known |
 | D and E (item 111) | **Approved** by the user: P23 |
-| New findings | F6 (command bar has no touch exit), F7 (tray result only as a Windows notification), F8 (tray offers Emergency stop when already disarmed): all P20, by the user |
+| New findings | F6 (command bar has no touch exit), F7 (the window's Pause all and Control → About's Emergency stop show no confirmation), F8 (Control → About offers Emergency stop and Re-arm whatever Core's state, without naming it): all P20, by the user |
 | Deferred work | As above, plus F6, F7 and F8 (P20) and M3 (P23) |
 | Status | Every P19.5 exit condition is met; P19.5 is exited when the user records the exit sign-off |
 
