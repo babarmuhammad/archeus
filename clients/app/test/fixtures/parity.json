@@ -924,6 +924,78 @@
    "out": "in 30 min"
   },
   {
+   "fn": "stateSentence",
+   "args": [
+    0,
+    0
+   ],
+   "out": "Archeus is idle. Nothing needs you."
+  },
+  {
+   "fn": "stateSentence",
+   "args": [
+    0,
+    1
+   ],
+   "out": "Archeus is idle. 1 needs you."
+  },
+  {
+   "fn": "stateSentence",
+   "args": [
+    0,
+    2
+   ],
+   "out": "Archeus is idle. 2 need you."
+  },
+  {
+   "fn": "stateSentence",
+   "args": [
+    1,
+    0
+   ],
+   "out": "Archeus is working on 1 mission. Nothing needs you."
+  },
+  {
+   "fn": "stateSentence",
+   "args": [
+    1,
+    1
+   ],
+   "out": "Archeus is working on 1 mission. 1 needs you."
+  },
+  {
+   "fn": "stateSentence",
+   "args": [
+    1,
+    2
+   ],
+   "out": "Archeus is working on 1 mission. 2 need you."
+  },
+  {
+   "fn": "stateSentence",
+   "args": [
+    2,
+    0
+   ],
+   "out": "Archeus is working on 2 missions. Nothing needs you."
+  },
+  {
+   "fn": "stateSentence",
+   "args": [
+    2,
+    1
+   ],
+   "out": "Archeus is working on 2 missions. 1 needs you."
+  },
+  {
+   "fn": "stateSentence",
+   "args": [
+    2,
+    2
+   ],
+   "out": "Archeus is working on 2 missions. 2 need you."
+  },
+  {
    "fn": "next",
    "args": [
     {

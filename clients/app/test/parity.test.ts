@@ -9,6 +9,7 @@ import * as pr from '../src/state/present.ts';
 import * as cn from '../src/data/connection.ts';
 import * as cm from '../src/data/commands.ts';
 import { staleBy } from '../src/data/invalidation.ts';
+import { stateSentence } from '../src/state/now.ts';
 
 type Fn = (...a: never[]) => unknown;
 const FN: Record<string, Fn> = {
@@ -19,6 +20,7 @@ const FN: Record<string, Fn> = {
   explain: cm.explain, decideBody: cm.decideBody, retryable: cm.retryable,
   keyAfter: ((p: string, o: 'ok' | 'refused' | 'network') => cm.keyAfter(p, o, () => 'NEW')) as Fn,
   staleBy: ((f: { event: string; data?: unknown }, p: string) => staleBy(f)(p)) as Fn,
+  stateSentence: stateSentence as Fn,
 };
 
 const { cases } = JSON.parse(readFileSync(new URL('./fixtures/parity.json', import.meta.url), 'utf-8')) as {

@@ -77,6 +77,16 @@ export const INPUTS = [
   ['ago', '2026-09-29T09:00:00Z', NOW],
   ['ago', '2026-09-20T12:00:00Z', NOW],
   ['ago', '2026-09-29T12:30:00Z', NOW],
+  // stateSentence (rulebook §46.4 S-3): the TUI's Now header is this sentence, word for word
+  ['stateSentence', 0, 0],
+  ['stateSentence', 0, 1],
+  ['stateSentence', 0, 2],
+  ['stateSentence', 1, 0],
+  ['stateSentence', 1, 1],
+  ['stateSentence', 1, 2],
+  ['stateSentence', 2, 0],
+  ['stateSentence', 2, 1],
+  ['stateSentence', 2, 2],
   ['next', conn('connecting'), 'frame', 5],
   ['next', conn('connecting'), 'stream_open', 5],
   ['next', conn('live'), 'stream_lost', 5],
@@ -146,8 +156,10 @@ if (process.argv[1] && process.argv[1].endsWith('parity-inputs.mjs')) {
   const cn = await import('../../src/data/connection.ts');
   const cm = await import('../../src/data/commands.ts');
   const inv = await import('../../src/data/invalidation.ts');
+  const now = await import('../../src/state/now.ts');
   const FN = {
     ...rel, ...pr, ...cn, ...cm,
+    stateSentence: now.stateSentence,
     staleBy: (f, p) => inv.staleBy(f)(p),
     keyAfter: (p, o) => cm.keyAfter(p, o, () => 'NEW'),
     ago: (iso, now) => pr.ago(iso, now),

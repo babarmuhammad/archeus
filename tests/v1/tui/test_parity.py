@@ -19,6 +19,7 @@ FN = {
     'present': P.present, 'badge': P.badge, 'isDone': P.is_done, 'offers': P.offers,
     'presenceLabel': P.presence_label, 'resourceLine': P.resource_line,
     'statusLine': P.status_line, 'explainState': P.explain_state, 'ago': P.ago,
+    'stateSentence': P.state_sentence,
     'next': S.next_state, 'freshness': S.freshness, 'canCommand': S.can_command,
     'explain': S.explain, 'decideBody': S.decide_body, 'retryable': S.retryable,
     'keyAfter': lambda prev, outcome: S.key_after(prev, outcome, lambda: 'NEW'),

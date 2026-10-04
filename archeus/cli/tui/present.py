@@ -86,6 +86,17 @@ def status_line(m):
     return ''
 
 
+def state_sentence(active, needs_you):
+    """ADR-0027 §5's state sentence, word for word the SPA's `stateSentence`
+    (`state/now.ts`; rulebook §46.4 S-3): two counts in words, no greeting."""
+    def count(n, one, many):
+        return '%d %s' % (n, one if n == 1 else many)
+    doing = ('Archeus is working on %s.' % count(active, 'mission', 'missions')
+             if active else 'Archeus is idle.')
+    return '%s %s' % (doing, '%s you.' % count(needs_you, 'needs', 'need')
+                      if needs_you else 'Nothing needs you.')
+
+
 def explain_state(x):
     """The recorded reasons for a mission's state, most specific first; when no
     row explains it, it says so instead of guessing. No reasoning is read."""

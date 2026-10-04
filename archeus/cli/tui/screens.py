@@ -238,9 +238,7 @@ def now(app, doc):
     att = app.read(endpoints.attention_items())['data'] or {}
     active = [m for m in ml.get('missions', []) if m['state'] not in SETTLED]
     needs = att.get('count', 0)
-    doc.add('  ' + app.st.paint('Archeus · %d %s active · %d %s you' % (
-        len(active), 'mission' if len(active) == 1 else 'missions', needs,
-        'thing needs' if needs == 1 else 'things need'), 'text-2'))
+    doc.add('  ' + app.st.paint(P.state_sentence(len(active), needs), 'text'))
     g = doc.load(endpoints.digest(), 'the digest')
     if g and g['count']:
         doc.h('Since you last looked · %d %s' % (g['count'],
