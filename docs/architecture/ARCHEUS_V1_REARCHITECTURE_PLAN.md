@@ -1112,6 +1112,10 @@ decisions ADR-0024…0029.
   row and the framebuffer focus/edge probes move from this phase's "Tests" line to **P23**. The
   live-map keys are kept, Ctrl/⌘+K is kept, ⌘+, is no longer bound, and the browser/OS matrix
   is testing-strategy §7.1.
+  *The user's checks, 2026-10-05 (p19-design-gate §12 item 114):* M1 and M2 pass on real
+  hardware, M2 after `4604b74` (behind a tunnel, Core down is a 502 and is now offline); M3
+  moves to P23; the move of D and E to P23 is approved; the §34 design sign-off is given. Every
+  exit condition is met, and P19.5 is exited when the user records the exit sign-off.
 - Client work: tokens (focus ≠ attention, red reserved, depth/transparency tokens); primitives;
   graph edge semantics, legend, impact view, hull/depth/cored nodes, static project cage; the
   thread (T1 from `Message.links`, T2 on every list, T3 spatial) and tints; activity halo,
@@ -1132,6 +1136,11 @@ decisions ADR-0024…0029.
 - Depends: **P19.5, explicitly finished** (§31.3 chain; the user's sequencing of 2026-10-03: no P20
   implementation, scaffolding, contracts or tests before then). Work: breaker drills, e-stop drills, secrets review (DPAPI path), threat-model
   review of remote access, dependency audit, fuzzing of the command API and hook canonicaliser.
+- *Carried from P19.5 (p19-design-gate §12 items 112 and 114; the user, 2026-10-05):* item 83's
+  e-stop without Core, with **F7** (the tray reports Pause all and Emergency stop only as a
+  Windows notification, which Windows may not show) and **F8** (the tray offers Emergency stop
+  when Core is already disarmed); **F4** with item 86 (a double reload hits the per-device
+  stream cap for about 20 s); **F6** (the command bar has no touch exit).
 - *Added 2026-10-02, decided 2026-10-03 (external research; register and backlog in
   [ARCHEUS_V2_ASSISTANT_LAYER.md](ARCHEUS_V2_ASSISTANT_LAYER.md) §4–§5):*
   - **What an execution loads from its settings sources** (ADR-0049, DECIDED; XR-1).
@@ -1241,7 +1250,8 @@ P25.5; renamed 2026-10-01 from "Legacy migration", ownership unchanged)*
 - Carried from P19.5's closure (p19-design-gate §12 item 111): the ADR-0029 §3 frozen-clock
   capture matrix; the text-equivalent gate over every registry animation; framebuffer focus
   and edge-style probes; the browser/OS matrix rows not verified in V1 (testing-strategy §7.1),
-  including Q-A5 and ⌘/Ctrl shortcuts on real macOS and Linux.
+  including Q-A5 and ⌘/Ctrl shortcuts on real macOS and Linux (M3, moved here by the user on
+  2026-10-05), and Android.
 - Acceptance: all traceability rows green.
 
 > **Renumbering note (2026-09-28).** Until this date **P24 meant "V1 release gate"**. The

@@ -1386,18 +1386,72 @@ status. One code change (`cf7cb97`); everything else is a record.
       code changed.
     - Outside `tests/v1`: `test_cli_help.py::test_a_deferred_v1_verb_imports_only_its_dispatcher`
       still fails, as since item 69. It is out of scope.
+114. **The user's manual checks and decisions (2026-10-05).** Performed by the user on real
+    hardware, with Claude running the setup; the results are the user's.
+    - **M2, real phone: PASS, after one fix (`4604b74`).** An iPhone 14 Pro Max, iOS, Chrome
+      (WebKit), paired over Tailscale Serve (`https://<pc>.<tailnet>.ts.net`, tailnet only) to a
+      throwaway Core on a temporary home with the fake harness: one mission executing, one
+      waiting for approval.
+      - **The first offline cold start was a white page.** Behind a tunnel, Core down is not a
+        dropped connection: Tailscale Serve answers **HTTP 502** (measured: a Serve port with
+        nothing listening returns 502). `sw.js` handed that 502 on as the page and cached it in
+        place of the good one, so even a real offline start would then open blank. `App.tsx`
+        showed the snapshot only for status 0, so it would have shown the failure screen. The
+        emulated pre-check of item 112 used the browser's offline switch, the one case that
+        worked. **Fixed in `4604b74`:** a non-OK page answer falls back to the kept page and only
+        OK answers are cached (an asset's too); a 502-504 that is not Core's own JSON
+        (`invalid_response`) is offline, and Core's own 503s are unchanged.
+        `test_a_tunnel_answering_for_a_core_that_is_down_is_offline` (5/5 runs), P105
+        re-anchored, P168-P170, 4/4 killed.
+      - **After the fix, every §11.1 M2 criterion passed.** The cold start showed "Offline — as
+        of 05/10/2026, 00:10:12 (8 min ago)", the time of the last read. Needs you read
+        "Pending Approval · Deploy the release notes". Happening now showed only the executing
+        mission, and Since you last looked named missions. No command was enabled, nothing
+        scrolled sideways, and dark, light and Increase Contrast stayed readable. Core down
+        was stood in for by a recorder answering 502 on Core's port, as the tunnel does. It
+        logged `GET /`, `/manifest.webmanifest`, **one `GET /v1/version`** and `/sw.js`, and no
+        data request. With Core back, the S-1 card read as labelled rows and VoiceOver read
+        each cell with its label once (parts A, B and D).
+      - **F6 (new, P3, deferred to P20 by the user):** the command bar ("Go to or tell…")
+        closes only with Escape or by choosing a destination. A phone has no Escape, so a
+        touch user is trapped until they pick a destination or restart the app; VoiceOver's
+        escape gesture works.
+      - Not run: Android, and Safari itself (Chrome on iOS is the same WebKit engine).
+    - **M1, Qt shell on the real Windows display: PASS for the safety behaviour, by the user's
+      own clicks.** Launch from a stopped Core started it, and the theme survived a restart.
+      The tray's Emergency stop asked first: Enter and Escape stopped nothing, and only the
+      box's own button stopped. With Core down it started nothing (`archeus status` still
+      exited 1).
+      - **F7 (new, P2, deferred to P20 by the user):** Pause all and Emergency stop report their
+        result only as a tray notification (`tray.showMessage`, `gui_qt.py`). The scripted run
+        of item 112 shows the calls are made, but on this machine Windows displayed none of
+        them, and they were not in the notification centre. The stop worked, and the window's
+        operations strip shows "Emergency stop engaged". The fix belongs with item 83's
+        e-stop without Core.
+      - **F8 (new, P3, deferred to P20 by the user):** the tray keeps offering Emergency stop
+        once Core is disarmed. A second press stops nothing new and is harmless, but the menu
+        does not show the state the window does.
+    - **M3: moved to P23** by the user (no Mac or Linux machine), with testing-strategy §7.1's
+      other unverified rows.
+    - **D and E of item 111: approved** by the user. The ADR-0029 §3 capture matrix, the
+      text-equivalent gate and the framebuffer focus/edge probes are P23's.
+    - **M4, the rulebook §34 design sign-off: given** by the user. The V1 UI is coherent,
+      usable, accessible and polished enough to freeze, with F1-F8 known.
+    - **Status:** every P19.5 exit condition is met. P19.5 is exited when the user records the
+      exit sign-off.
 
 ## 13. As built
 
 Every decision of §4 is built as approved (§4.1), with the deviations, corrections and findings
-recorded in §12, items 1–113. Nothing in §12 was applied without being recorded there. Commits:
+recorded in §12, items 1–114. Nothing in §12 was applied without being recorded there. Commits:
 `744a473` and `107da0b` (this gate, proposed and then approved), `6e6176a` (B1 + B2), `937d8ea`
 (B11), `2fc4e27` (B3), `ee97440` (B5), `20a9d46` (B6), `2fac7bb` (B10a), `2043317` (B10b),
 `67a032c` (B4), `bb4a7fd` (B9), `f5282e3` (B7), `46b2089` (B8), `c744763` (B12), `0558d3a`
 (the R13 review, before correction), `4e471ef` (the R13 correction pass, items 99–104), and the
 R13 follow-up (items 105–110): `df42b37` (S-3), `ce4a7b6` (S-2), `7c95c7c` (S-1, carrying
 the mutant list P147–P158), `44b60cc` (Q-A5), `c647d19` (its documentation), and the P19.5
-closure (items 111–113): `cf7cb97` (Ctrl+, never Cmd+,) and the closure's documentation commit.
+closure (items 111–113): `cf7cb97` (Ctrl+, never Cmd+,) and `6bff00a` (its documentation),
+and the user's checks (item 114): `4604b74` (a tunnel's 502 is offline) and the sign-off record.
 
 **What P19 built, by kind (§0).**
 

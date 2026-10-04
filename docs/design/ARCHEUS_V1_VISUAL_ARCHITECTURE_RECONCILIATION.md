@@ -1379,7 +1379,8 @@ except the §27 clarification above.
 ### 46.5 P19.5 closure decisions (2026-10-04)
 
 Made at the user's direction ("the smallest defensible decision for each"), recorded in
-p19-design-gate §12 item 111, and subject to the user's P19.5 sign-off:
+p19-design-gate §12 item 111, and accepted by the user on 2026-10-05 together with the §34
+design sign-off (item 114):
 
 | Open item | Decision |
 |---|---|

@@ -621,7 +621,24 @@ The definitive status at the closure. The items are in p19-design-gate §12, 111
 | Deferred work | R13-03 to R13-13 (before P26); items 83 and 86 and F4 (P20); the activity chip (P21); thread tints (P22); D and E above, and the matrix rows not verified in V1 (P23); X7 (its own ADR) |
 | V2 | **No V2 production work is mixed into V1.** The V2 research documents and `prototypes/` were not touched or committed by this closure |
 
-**What still needs the user:** M2 on a real phone and M3 on a real Mac and Linux machine, by
-§11.1 (or moving M3 to P23 with the matrix's other unverified rows); a tray click on the real
-shell to complete M1; the approval of D and E's move to P23; and the §34 design sign-off.
+**What still needed the user at that point:** M2 on a real phone and M3 on a real Mac and Linux
+machine, by §11.1 (or moving M3 to P23 with the matrix's other unverified rows); a tray click on
+the real shell to complete M1; the approval of D and E's move to P23; and the §34 design
+sign-off. §12.1 records how each was settled.
+
+### 12.1 The user's checks and decisions (2026-10-05)
+
+p19-design-gate §12 item 114. This supersedes the rows above where they differ.
+
+| | Status |
+|---|---|
+| Commits | `4604b74` (a tunnel's 502 is offline: `sw.js` and `App.tsx`, test, P105 re-anchored, P168–P170) and this record |
+| M1, Qt shell, real Windows display | **PASS** by the user's own clicks for launch, theme across a restart, the e-stop box (Enter and Escape stop nothing; only its button stops) and Core down (starts nothing). The tray's result messages were never displayed by Windows: **F7**, deferred to P20 |
+| M2, real phone, offline cold start | **PASS after `4604b74`** on an iPhone 14 Pro Max, Chrome on iOS (WebKit), over Tailscale Serve. Before the fix, a cold start with Core down behind the tunnel was a white page (the tunnel answers 502). After it, every §11.1 M2 criterion passed, with one `GET /v1/version` and no data request offline |
+| M3, Q-A5 on macOS and Linux | **Moved to P23** by the user |
+| M4, §34 design sign-off | **Given** by the user, with F1–F8 known |
+| D and E (item 111) | **Approved** by the user: P23 |
+| New findings | F6 (command bar has no touch exit), F7 (tray result only as a Windows notification), F8 (tray offers Emergency stop when already disarmed): all P20, by the user |
+| Deferred work | As above, plus F6, F7 and F8 (P20) and M3 (P23) |
+| Status | Every P19.5 exit condition is met; P19.5 is exited when the user records the exit sign-off |
 

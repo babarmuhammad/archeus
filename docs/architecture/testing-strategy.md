@@ -245,14 +245,16 @@ every row; "Linux" there means `navigator.platform` says Linux, which includes C
 |---|---|---|
 | Windows 11 · Chromium (Playwright) | **tested**, automated | the full `tests/v1` suite with `ARCHEUS_E2E=1` |
 | Linux · Chromium (Playwright, headless) | **tested**, automated | the `v1-client` CI job (`ubuntu-latest`); not run on unpushed commits |
-| Windows 11 · the Qt shell (QtWebEngine, Chromium 140) | **tested** offscreen (`test_gui_qt.py`); real display tool-verified at the closure | p19-design-gate §12 item 112 (M1) |
+| Windows 11 · the Qt shell (QtWebEngine, Chromium 140) | **tested** offscreen (`test_gui_qt.py`); real display tool-verified at the closure and **checked by hand** (M1, 2026-10-05) | p19-design-gate §12 items 112, 114 |
 | Windows · installed Edge or Chrome | expected (the same engine as tested); not separately tested | — |
-| Phone · iOS Safari, Android Chrome (paired, installed) | **claimed** (P15, design system); emulated at 390 px only | the physical check is M2 (r13-design-review §11.1) |
+| Phone · iOS, Chrome (WebKit), paired over Tailscale Serve | **checked by hand** (M2, 2026-10-05), after `4604b74` | p19-design-gate §12 item 114; the tunnel's 502 is gated by `test_a_tunnel_answering_for_a_core_that_is_down_is_offline` |
+| Phone · iOS Safari, Android Chrome (paired, installed) | **claimed** (P15, design system); Safari is the same WebKit engine as the row above; Android not run | P23 |
 | macOS · Safari, Chrome | **not verified in V1** | P23 (M3) |
 | Linux desktop · Firefox, Chromium by hand | **not verified in V1** | P23 (M3) |
 | Firefox on any OS | **not verified in V1** | P23 |
 
-Nothing outside the first three rows is a V1 guarantee until P23 has run it.
+Nothing outside the first three rows and the hand-checked iOS row is a V1 guarantee until P23 has
+run it.
 
 ## 8. Conversation, account-protection, live-work and theme gates (ADR-0041…0044, decided 2026-09-30)
 
