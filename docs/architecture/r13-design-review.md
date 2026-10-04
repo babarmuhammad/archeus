@@ -1,8 +1,13 @@
 # R13 — Independent design review of P19 (P19.5's exit review)
 
-Status: **REQUIRES A CORRECTION PASS.** Two findings block exit (§3, R13-01 and R13-02). The
-rest are corrections that do not block, decisions for the user, or wording changes to the
-documents. Nothing in the implementation was changed by this review.
+Status: **PASSED after the correction pass (§9).** Both blocking findings (R13-01, R13-02) are
+resolved in the implementation and re-checked. The manual checks of §6 and the user's sign-off
+are still outstanding, and P19.5 does not exit without them.
+
+Status as first recorded (commit `0558d3a`, unchanged below): **REQUIRES A CORRECTION PASS.**
+Two findings block exit (§3, R13-01 and R13-02). The rest are corrections that do not block,
+decisions for the user, or wording changes to the documents. Nothing in the implementation was
+changed by this review.
 
 Date 2026-10-04. Branch `archeus-v1-rearchitecture` at `c744763`, which is P19 B1–B12. Nothing
 is pushed.
@@ -385,3 +390,93 @@ captures.
 
 P19.5 is not exited, and P20 does not start, until the correction pass has landed, R13 is
 re-checked and the user has signed off.
+
+## 8. The user's decisions on R13's findings (2026-10-04)
+
+Recorded as given. None was built in the correction pass, which was limited to the two blockers.
+
+- **R13-03.** Use one "N new messages" row. The digest must not fill the main reading path
+  with unnamed "message progressed" rows.
+- **R13-05.** A bare `why` inside a mission's conversation means "why this mission?". The
+  mission thread supplies the referent.
+- **R13-08.** Only one live, actionable approval card per underlying approval. A bare
+  `approve` must not create a second live card.
+- **R13-11.** No database column or internal storage name in the main Relations reading
+  path. Keep whatever the P16 contract actually requires, but not as primary user-facing
+  terminology.
+- **R13-12.** The action is called **Save preferences**, in the browser and in the TUI.
+- **R13-15.** Amend the three stale design documents (theme switching, the TUI changed marker,
+  the tray icon colour) to the later approved rules. This reconciles documents; it is not a
+  new design decision.
+- **R13-16.** Accepted: the TUI's `│` changed marker in place of `›`. Also accepted, as an
+  exception: the inspector's Alt+←/→ resize, including that the divider must have focus.
+
+Unchanged: the dispositions in §5 (activity chip → P21, thread tints → P22, row insert/remove
+as the V1 exception, A-08, the Pause-all wording, Q-A5 before P26, item 86 → P20, item 83 →
+P20, X7, the known intermittent tests and the out-of-scope `test_cli_help` failure).
+
+## 9. Correction pass and second review (2026-10-04)
+
+Correction commit `4e471ef` (p19-design-gate §12 items 99–104), on top of `0558d3a`.
+
+**R13-01: resolved.**
+- The change: `run_v1`'s tray item now opens a native `QMessageBox` titled "Emergency stop".
+  It shows `gui.ESTOP_CONFIRM`, the sentence the header strip, Control and the chat card
+  already use. Cancel is both the default and the escape button. Only the box's own
+  "Emergency stop" button calls the unchanged `shell.estop()`.
+- Verified in the real offscreen Qt shell (`test_gui_qt.py`): Enter calls no e-stop; the
+  button calls exactly one. The title, the sentence, the default and the two buttons are
+  checked.
+- Mutants P138–P140 are killed. The e-stop semantics are unchanged, including with Core down
+  (item 83).
+
+**R13-02: resolved.** Re-checked on a real Core in the 390 px offline cold start: a mission
+running, a mission waiting for approval, through the service worker.
+- (A) The waiting mission is kept. Offline Needs you reads "Pending Approval · Deploy the
+  release notes". Happening now shows only the running mission, as online.
+- (B) Since you last looked names the mission rows ("mission Deploy the release notes · needs
+  you · 9 events") and the rows Attention ties to a mission ("approval for Deploy the release
+  notes · …"). No id is shown.
+- (C) The view is in the app frame: a 16 px inset, equal to the online `.main` on the same
+  client. Text runs 16–374 px of 390. The scroll width is 390, so there is no sideways scroll.
+  There are no commands.
+- The tests: `test_offline_needs_you_names_what_waits_and_sits_in_the_app_frame` and the
+  amended cold-start test. Mutants P102, P108 and P141–P145 are killed.
+
+**Residual, not blocking (P3).** Rows the kept data cannot name keep their kind alone:
+message, policy decision, and an approval already decided (Attention no longer lists it).
+They read as before. The message rows are R13-03's (§8). Naming policy decisions and decided
+approvals offline would need data B7 does not keep, so it is not done.
+
+**Found while verifying R13-02 (fixed, item 103).**
+- The defect: `sender()` returned an unreadable OK body as data. That caused an intermittent
+  "reading 'filter'" page error in the cold-start test (3 in about 85 runs before the fix, 0
+  in 40 after), and could put the object into the snapshot.
+- The cause is established from the stack. A cut-short body is now a network failure.
+  `test_a_read_whose_body_never_arrives_is_never_data` covers it, with mutant P146.
+- Whether this was item 76's single uncaptured B7 failure is not established.
+
+**No new regression found.** The second review compared the offline and online Now at 390 px
+(the same inset and structure; the offline view adds the banner and stays read-only). It
+re-read the tray menu: Open, Pause all, Emergency stop, Quit, with Pause all unchanged and no
+prompt. The offline view's only visual change is the shared frame.
+
+**Tests.**
+- The client: type check and build clean, 225/225 unit tests.
+- Targeted: `test_gui_qt.py`, and `test_spa_offline_snapshot.py` (6 tests).
+- Full `tests/v1`, `ARCHEUS_E2E=1`: **2568 passed, 0 failed, 13 skipped, 5 xfailed**. The
+  three new tests account for the difference from the 2565 baseline. `test_spa_marker.py`
+  (item 22) passed in this run. That says nothing about whether it is fixed.
+- Mutation: the 27 mutants these changes touch were run (B7's P101–P110, B8's Qt mutants
+  P126, P127 and P129–P131, and the new P138–P146) and **27/27 were killed**. The full
+  P01–P146 pass was **not rerun**.
+
+**Manual checks: still outstanding (§6), none claimed.**
+- On a real Windows display: launch, the theme surviving a restart, the tray's Pause all, the
+  tray's Emergency stop (now with its confirmation) and Core down.
+- The offline cold start on a real phone. Repeat it, since R13-02 changed the offline layout.
+- The user's §34 sign-off.
+
+**Disposition: R13 passes.** The two blocking findings are resolved in the implementation.
+R13-03 to R13-16 remain as recorded, with the user's decisions in §8. P19.5 exit still needs
+the manual checks and the user's sign-off. P20 has not started.
