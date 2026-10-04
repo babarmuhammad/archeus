@@ -9,7 +9,8 @@ explanation card (P51-P62); B10b, resource directives (P63-P74); B4, plan edit (
 B9, the application theme (P90-P100); B7, the offline snapshot (P101-P110); B8, the
 desktop shell, its tray and the legacy "Open Archeus V1" (P111-P133); B12, the
 unification scenario (P134-P137); the R13 correction pass (P138-P146); the R13
-follow-up of rulebook §46.4, S-3 (P147-P149), S-2 (P150-P153) and S-1 (P154-P158).
+follow-up of rulebook §46.4, S-3 (P147-P149), S-2 (P150-P153) and S-1 (P154-P158);
+Q-A5's Alt shortcuts (P159-P165).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -113,6 +114,7 @@ NOW_HDR = 'tests/v1/tui/test_now_header.py'
 NOW_MAP = ('tests/v1/e2e/test_spa_now.py::'
            'test_the_live_map_holds_live_work_only_and_opens_the_full_graph')
 S1 = 'tests/v1/e2e/test_spa_p16.py::test_nothing_scrolls_sideways_at_any_width'
+QA5 = 'tests/v1/e2e/test_spa_p16.py::test_the_shortcuts_are_alt_and_leave_the_browsers_own_alone'
 
 MUTATIONS = [
     # ── B1: the clients say Core's edges, from where they stand ──
@@ -725,6 +727,29 @@ MUTATIONS = [
     ('P158', 'a stacked value is labelled with another column', [(ATT,
      '<td className="mono" data-label="Class">', '<td className="mono" data-label="Target">')],
      [S1]),
+    # Q-A5 (rulebook §46.3): Alt alone, by the physical key, never in a text field, no Alt+digit on Linux
+    ('P159', "the browser's Ctrl shortcuts are taken again", [(APP_TSX,
+     "x.mod === 'ctrl' ? mod && x.key === e.key.toLowerCase() :",
+     "mod && x.key === e.key.toLowerCase() ? true :")],
+     [QA5]),
+    ('P160', 'AltGr (Ctrl+Alt) navigates', [(APP_TSX,
+     'const alt = e.altKey && !mod && !e.shiftKey && !editable(e.target);', "const alt = e.altKey && !e.shiftKey && !editable(e.target);")],
+     [QA5]),
+    ('P161', 'Alt+Shift navigates', [(APP_TSX,
+     'const alt = e.altKey && !mod && !e.shiftKey && !editable(e.target);', "const alt = e.altKey && !mod && !editable(e.target);")],
+     [QA5]),
+    ('P162', 'a shortcut fires in a text field', [(APP_TSX,
+     "(t.isContentEditable || t.matches('input, textarea, select'))", '(t.isContentEditable)')],
+     [QA5]),
+    ('P163', 'the shortcut is matched by the character, not the physical key', [(APP_TSX,
+     "alt && keyCode(x.key) === e.code &&", "alt && keyCode(x.key) === keyCode(e.key) &&")],
+     [QA5]),
+    ('P164', 'Linux keeps Alt+digit', [(APP_TSX,
+     "const LINUX = /linux/i.test(navigator.platform);", "const LINUX = /^$/.test(navigator.platform);")],
+     [QA5]),
+    ('P165', 'Linux loses Alt+J too', [(APP_TSX,
+     "!(LINUX && /\\d/.test(x.key)),", "!LINUX,")],
+     [QA5]),
     # B12: the unification scenario, one Core across the desktop, the phone and the TUI
     ('P134', 'a decision names no device', [(AUTHZ,
      "'decided_by': actor.id, 'decided_at': tx.now,", "'decided_by': None, 'decided_at': tx.now,")],

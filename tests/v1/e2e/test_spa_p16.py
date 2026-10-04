@@ -225,7 +225,7 @@ def test_keyboard_only_navigation(browser, core):
     context, page, errors = _open(browser, core)
     page.keyboard.press('Tab')
     assert page.evaluate('document.activeElement.textContent') == 'Skip to content'
-    page.keyboard.press('Control+2')
+    page.keyboard.press('Alt+2')
     page.get_by_role('heading', name='Work', exact=True).wait_for()
     wait(page, lambda: page.evaluate('document.activeElement.tagName') == 'H1', what='focus on the heading')
     page.locator('li[data-mission="%s"] a' % mid).focus()
@@ -246,6 +246,62 @@ def test_keyboard_only_navigation(browser, core):
     page.keyboard.press('Enter')
     page.get_by_role('heading', name='Work', exact=True).wait_for()
     assert not errors, errors
+    context.close()
+
+
+PLATFORM = "Object.defineProperty(Navigator.prototype, 'platform', {get: () => %s})"
+# every keydown as the page's own handler left it: its code and whether it was taken
+TAKEN = "window.__taken = []; addEventListener('keydown', (e) => __taken.push([e.code, e.defaultPrevented]))"
+
+
+def _on(browser, tc, platform):
+    context = browser.new_context()
+    context.add_init_script(PLATFORM % json.dumps(platform))
+    page = context.new_page()
+    page.goto(tc.core.launch_url(FULL))
+    page.get_by_role('heading', name='Now', exact=True).wait_for()
+    page.evaluate(TAKEN)
+    return context, page
+
+
+def _press(page, keys):
+    """Press `keys` from Now with focus on the page; say where it went and whether it was taken."""
+    _go(page, '#/now')
+    page.evaluate('document.activeElement.blur()')
+    page.evaluate('window.__taken.length = 0')
+    page.keyboard.press(keys)
+    page.wait_for_timeout(150)
+    return page.evaluate('location.hash'), page.evaluate('window.__taken.some(([, p]) => p)')
+
+
+def test_the_shortcuts_are_alt_and_leave_the_browsers_own_alone(browser, core):
+    """Q-A5 (rulebook §46.3; the user, 2026-10-04): Alt+1/2/3 and Alt+J in place of the
+    browser-owned Ctrl+1/2/3 and Ctrl+J; Alt alone, by the physical key, never in a text
+    field, and no Alt+digit on Linux."""
+    context, page = _on(browser, core, 'Win32')
+    for keys, to in (('Alt+1', '#/now'), ('Alt+2', '#/work'), ('Alt+3', '#/world'), ('Alt+j', '#/attention'),
+                     ('Control+Comma', '#/control/autonomy')):
+        assert _press(page, keys) == (to, True), keys
+    for keys in ('Control+1', 'Control+2', 'Control+3', 'Control+j',   # the browser's: not taken
+                 'Control+Alt+2', 'Alt+Shift+2', 'Meta+Alt+2'):          # AltGr, and Alt not alone
+        assert _press(page, keys) == ('#/now', False), keys
+    # the physical key, whatever character it types: Option+2 is ™ on a US Mac
+    _go(page, '#/now')
+    page.evaluate("dispatchEvent(new KeyboardEvent('keydown', {key: '™', code: 'Digit2', altKey: true}))")
+    wait(page, lambda: page.evaluate('location.hash') == '#/work', what='Option+2 by its code')
+    # never in a text field
+    _go(page, '#/now')
+    for keys in ('Alt+2', 'Alt+j'):
+        page.locator('#composer').focus()
+        page.keyboard.press(keys)
+        page.wait_for_timeout(150)
+        assert page.evaluate('location.hash') == '#/now', keys
+    context.close()
+    # Linux: Alt+digit stays the browser's; Alt+J is still Attention
+    context, page = _on(browser, core, 'Linux x86_64')
+    for keys in ('Alt+1', 'Alt+2', 'Alt+3'):
+        assert _press(page, keys) == ('#/now', False), keys
+    assert _press(page, 'Alt+j') == ('#/attention', True)
     context.close()
 
 

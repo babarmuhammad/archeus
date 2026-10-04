@@ -127,6 +127,12 @@ function PairRedeem({ code, onPaired }: { code: string; onPaired: (t: string) =>
   );
 }
 
+/** Q-A5: Firefox on Linux gives Alt+1–8 to its tabs. ChromeOS (whose shelf owns them) and
+ *  Android report a Linux platform too, so they are left alone with it. */
+const LINUX = /linux/i.test(navigator.platform);
+const keyCode = (k: string) => (/\d/.test(k) ? 'Digit' : 'Key') + k.toUpperCase();
+const editable = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || t.matches('input, textarea, select'));
+
 function useRoute(): [Route, Route] {
   const [hash, setHash] = useState(location.hash);
   const under = useRef<Route>(parse(location.hash));
@@ -251,12 +257,17 @@ function Shell({ token }: { token: string }) {
       setCmd(true);
       return;
     }
-    if (mod) {
-      const d = DESTINATIONS.find((x) => x.key === e.key.toLowerCase());
-      if (d) {
-        e.preventDefault();
-        location.hash = d.id === 'control' ? '#/control/autonomy' : `#/${d.id}`;
-      }
+    // Q-A5 (rulebook §46.3; the user, 2026-10-04): the browser owns Ctrl+1–3 and
+    // Ctrl+J, so those go to Alt — alone (AltGr is Ctrl+Alt), by the physical key
+    // (Option types a character on macOS), never in a text field, and no
+    // Alt+digit on Linux, where Firefox's tabs own it
+    const alt = e.altKey && !mod && !e.shiftKey && !editable(e.target);
+    const d = DESTINATIONS.find((x) =>
+      x.mod === 'ctrl' ? mod && x.key === e.key.toLowerCase() : alt && keyCode(x.key) === e.code && !(LINUX && /\d/.test(x.key)),
+    );
+    if (d) {
+      e.preventDefault();
+      location.hash = d.id === 'control' ? '#/control/autonomy' : `#/${d.id}`;
     }
     if (e.key === 'Escape' && location.hash.startsWith('#/o/') && !document.querySelector('dialog[open]')) closeInspector();
   }, []);

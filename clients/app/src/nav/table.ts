@@ -2,7 +2,9 @@
 export interface Destination {
   id: 'now' | 'work' | 'world' | 'attention' | 'control';
   label: string;
-  /** keyboard shortcut with Ctrl (Windows/Linux) or Cmd (macOS) */
+  /** Q-A5: Alt alone, by the physical key, never in a text field; or Ctrl (Cmd on macOS) */
+  mod: 'alt' | 'ctrl';
+  /** the shortcut key, with `mod` */
   key: string;
   /** the TUI key (p17-design-gate §3) */
   tui: string;
@@ -14,6 +16,7 @@ export interface Destination {
 export const DESTINATIONS: Destination[] = [
   {
     "id": "now",
+    "mod": "alt",
     "label": "Now",
     "key": "1",
     "tui": "1",
@@ -22,6 +25,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     "id": "work",
+    "mod": "alt",
     "label": "Work",
     "key": "2",
     "tui": "2",
@@ -30,6 +34,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     "id": "world",
+    "mod": "alt",
     "label": "World",
     "key": "3",
     "tui": "3",
@@ -38,6 +43,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     "id": "attention",
+    "mod": "alt",
     "label": "Attention",
     "key": "j",
     "tui": "a",
@@ -46,6 +52,7 @@ export const DESTINATIONS: Destination[] = [
   },
   {
     "id": "control",
+    "mod": "ctrl",
     "label": "Control",
     "key": ",",
     "tui": "4",

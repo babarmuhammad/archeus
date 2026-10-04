@@ -1,8 +1,9 @@
 {
-  "$comment": "THE navigation table (p16-design-gate §4.2, p17-design-gate §3, A1): one flat declaration. The SPA's sidebar, rail, phone tab bar, shortcuts and command bar, and the TUI's screens and keys, all read it through tools/gen_ui.py (src/nav/table.ts, archeus/cli/tui/_tables.py). `key` is the SPA shortcut with Ctrl (Windows/Linux) or Cmd (macOS); `tui` is the TUI key (ui-architecture §3). A tab's `key` is its TUI key inside an inspector; it is unique within each kind. There is no Thread tab: P16 never built one (p16-design-gate §30 deviation 10).",
+  "$comment": "THE navigation table (p16-design-gate §4.2, p17-design-gate §3, A1): one flat declaration. The SPA's sidebar, rail, phone tab bar, shortcuts and command bar, and the TUI's screens and keys, all read it through tools/gen_ui.py (src/nav/table.ts, archeus/cli/tui/_tables.py). `key` is the SPA shortcut and `mod` its modifier: `alt` is Alt (Option on macOS) alone, matched by the physical key and never in a text field, with no Alt+digit on Linux, where the browser's tabs own it (Q-A5, rulebook §46.3; the user, 2026-10-04); `ctrl` is Ctrl (Windows/Linux) or Cmd (macOS); `tui` is the TUI key (ui-architecture §3). A tab's `key` is its TUI key inside an inspector; it is unique within each kind. There is no Thread tab: P16 never built one (p16-design-gate §30 deviation 10).",
   "destinations": [
     {
       "id": "now",
+      "mod": "alt",
       "label": "Now",
       "key": "1",
       "tui": "1",
@@ -11,6 +12,7 @@
     },
     {
       "id": "work",
+      "mod": "alt",
       "label": "Work",
       "key": "2",
       "tui": "2",
@@ -19,6 +21,7 @@
     },
     {
       "id": "world",
+      "mod": "alt",
       "label": "World",
       "key": "3",
       "tui": "3",
@@ -27,6 +30,7 @@
     },
     {
       "id": "attention",
+      "mod": "alt",
       "label": "Attention",
       "key": "j",
       "tui": "a",
@@ -35,6 +39,7 @@
     },
     {
       "id": "control",
+      "mod": "ctrl",
       "label": "Control",
       "key": ",",
       "tui": "4",

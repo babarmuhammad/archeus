@@ -269,7 +269,9 @@ def render_nav_ts(n):
             + 'export interface Destination {\n'
             + "  id: 'now' | 'work' | 'world' | 'attention' | 'control';\n"
             + '  label: string;\n'
-            + '  /** keyboard shortcut with Ctrl (Windows/Linux) or Cmd (macOS) */\n'
+            + '  /** Q-A5: Alt alone, by the physical key, never in a text field; or Ctrl (Cmd on macOS) */\n'
+            + "  mod: 'alt' | 'ctrl';\n"
+            + '  /** the shortcut key, with `mod` */\n'
             + '  key: string;\n'
             + '  /** the TUI key (p17-design-gate §3) */\n'
             + '  tui: string;\n'
