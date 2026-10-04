@@ -664,7 +664,7 @@ Base palette, state colours and "no hue accent" stay as DS §3 and P16 D11 froze
 
 | Item | Decision | Evidence | Approval |
 |---|---|---|---|
-| base | Archeus Dark / Light / High Contrast, following the OS; no app switch | DS; R6 | — |
+| base | Archeus Dark / Light / High Contrast. ~~following the OS; no app switch~~ **Superseded by ADR-0044 (D-21; R13-15, the user, 2026-10-04):** the OS preference by default, with a per-client choice in Control → Appearance (theme, contrast, motion), as built by P19 B9 | DS; R6; ADR-0044 | — |
 | state | active blue (running, halo, energy, markers) · attention amber (needs you, only) · **blocked/failed red — only a problem requiring resolution** · paused grey · thinking violet (planning, never "AI thinking") · done green | DS §3.2 | — |
 | **focus** | move from `#FFD166` to **thread ink** (`#F4F1EA` dark / `#11151C` light), 2 px + offset | **ΔE 12.3 vs attention** (measured); a focused node reads as "needs you" | Q-V5 |
 | thread | near-white ink; optional **thread tint** from a curated list of legacy palette accents passing 3:1 and ΔE ≥ 30 from every state colour — the only survival route of the 39 palettes | DS §3.3; MIG L173 | Q-V1 |
@@ -860,7 +860,7 @@ items listed in §35.)
 | R6 Apple skill | lenses; template test; floors | §20, §33 | floors partly BUILT | axe, contrast | P19.5 |
 | R7 Ship Notes | easing; loop gate; renderAt | §21 | easing, loop BUILT | loop tests | done / P19.5 |
 | P16 | IA, motion table | §21 | mostly BUILT | P16 suite | done |
-| P17 | TUI parity | TUI: `●` live mark, `›` changed (BUILT); no motion | BUILT | P17 suite | done |
+| P17 | TUI parity | TUI: `●` live mark; no motion. The changed marker is `│`, built by P19 B2 (p19-design-gate §12 item 1; accepted R13-16), not by P17 and not `›` (R13-15) | BUILT | P17 suite; P19 B2 | done |
 | P18 | graph A1–A17 | §12; A8 amendment | BUILT | P18 suite | done / P19.5 |
 
 ## 30. Core / API dependencies (output 21)
@@ -1284,7 +1284,7 @@ ADRs. What it leaves conditional stays open. Nothing below was inferred beyond t
 | pull-to-refresh | "support where useful" but "do not add mobile gestures that conflict with browser/platform gestures" (§19) | REJECTED | **stays REJECTED**: mobile browsers own the pull-down gesture (native reload), and the stream + freshness keep the view current |
 | swipe | "support swipe interactions where useful" (§19) | DEFERRED V1.x | **ADAPTED, P19.5**: a horizontal swipe on a row *reveals* that row's actions and never performs one; never from a screen edge (iOS back-swipe); physical check in P23 |
 | forget / undo | "forget/undo where the architecture permits" (§11) | dry run, no undo | unchanged: RETRACTED is terminal in Core, so no undo is offered (P16 §18.3 forbids simulating one) |
-| TUI | "same state vocabulary… do not reproduce the graphical language" (§20) | P17 as built | unchanged: glyph + word per state (`●` working, `◆` needs you, `✕` failed, `■` blocked/stopped, `›` changed); no motion in the TUI |
+| TUI | "same state vocabulary… do not reproduce the graphical language" (§20) | P17 as built | unchanged: glyph + word per state (`●` working, `◆` needs you, `✕` failed, `■` blocked/stopped, `│` changed — P19 B2, accepted R13-16, amended R13-15); no motion in the TUI |
 | schedules | "upcoming work when Core supports it" (§6) | "P14 follow-up" (not a phase) | owner **P21** proposed (ADR-0030): ADR-0020 decided schedule triggers; P14 D14 deferred them with no owner |
 
 ### 46.1 P19.5 interaction decisions (the user, 2026-10-03)
@@ -1318,7 +1318,7 @@ user like any other entry in this register.
 | **Mission Now tab** (R6) | **DEFERRED** | It is the per-mission conversation, P16 seam S1, which P19 owns and has not built | **P19** (S1). A-05 thread travel extends to it there; its registry entry already names the surface |
 | **A-08 attention arrival** | **BUILD NOW** (P19.5) | Fully specified (§17, §20, §21: 240 ms once, cap 1, nav badge, CSS; reduced motion removes it; announced; the count in the tab name) and its only input, Attention's count, is read from Core today | this phase |
 | **row-change** (design system §8 "Row insert/remove") | **EXCEPTION** (not built in V1) | §21's table, the authoritative list, has no row for it, and §26 gives it no owner. Animating a removal keeps a row on screen after Core's read has dropped it, and animating an insertion repeats on the same row what the thread rule T2 and A-01 already say. Rows appear and leave at once, which was already its reduced-motion form | none. The registry entry is removed and design system §8 records the exception; adding it later means a new entry with new approval |
-| **Q-A5** browser-owned shortcuts | **EXCEPTION until the user answers** — answered 2026-10-03, §46.3 | The client still binds Ctrl/⌘+1, 2, 3 and J (`tokens/navigation.json`, the client tables of P17). In a browser tab Ctrl+1–3 switch tabs and Ctrl+J opens downloads, which goes against R6's "never repurpose standard shortcuts" (§20). Choosing replacement keys is the user's decision (§31) and is not made here. The bindings stay as they are, and every destination stays reachable from the nav, the phone tabs and the command bar | the user's decision; it must be answered before **P26**, and R13 lists it |
+| **Q-A5** browser-owned shortcuts | **EXCEPTION until the user answers** — answered 2026-10-03, §46.3; **built 2026-10-04** (Alt+1/2/3 and Alt+J, p19-design-gate §12 item 108), so the text after this cell describes the bindings before then | The client still binds Ctrl/⌘+1, 2, 3 and J (`tokens/navigation.json`, the client tables of P17). In a browser tab Ctrl+1–3 switch tabs and Ctrl+J opens downloads, which goes against R6's "never repurpose standard shortcuts" (§20). Choosing replacement keys is the user's decision (§31) and is not made here. The bindings stay as they are, and every destination stays reachable from the nav, the phone tabs and the command bar | the user's decision; it must be answered before **P26**, and R13 lists it |
 | **Pause-all wording** (design system §13) | **DEVIATION**, wording amended | Design system §13 put Pause all in "the Now header, the tray and the command bar". R10a built it in the operations strip, which sits in the shell header on every page, Now included, and on Work, which is where a phone has it. The tray belongs to the Qt shell attach, P19's S7. The command bar's actions are object-scoped under D-12, so it has no Pause all | design system §13 now states what was built. The tray: **P19** (S7). The command bar: none in V1 |
 
 **Sequencing, not decided here.** P19.5 depends on P19 (§31.3: P19 → P19.5 → P20), and no P19
@@ -1337,6 +1337,12 @@ here as given; nothing below widens it, and no §46.1 or §46.2 disposition is r
 | **R13 timing** | Does R13 run before P19, with the waiting rows carried, or after it? | **After P19.** R13, the independent design review, does not run yet. The order is **P19 → the three carried behaviours implemented and integrated → R13**. The three are the mission Now tab, the changed-row marker (T2) on the Relations list and the TUI, and Pause all in the tray | R13 (§36) stays the P19.5 exit, and P19.5 is **not exited** until it has run. R13 is not run against a deliberately incomplete surface. The three carried behaviours are **not** P19.5 implementation failures, and their §46.2 dispositions stand | No. §31.3's P19 → P19.5 → P20 is unchanged; this fixes where R13 sits inside it |
 | **Q-A5** | Which keys replace the browser-owned shortcuts? | Archeus replaces the browser-owned **Ctrl+1, Ctrl+2, Ctrl+3 and Ctrl+J** bindings with **Alt+1, Alt+2, Alt+3 and Alt+J** respectively. These are application shortcuts and must not interfere with browser-reserved combinations. Ctrl+Shift combinations are **not** substituted | Q-A5 is **resolved for P19.5**. The new keys must be verified against the supported browser/OS matrix before **P26**. This record does not change the bindings in `tokens/navigation.json` or the client tables (P17); making that change is part of the work verified before P26 | No. It applies R6's "never repurpose standard shortcuts" (§20) |
 
+**Q-A5, the user's readings and the build (2026-10-04).** No Alt+1/2/3 on Linux (Firefox selects
+tabs with them there); Alt+J is bound everywhere. Alt alone, matched by the physical key, never
+while focus is in a text field. Built in `44b60cc` (p19-design-gate §12 item 108), with the conflict
+evidence recorded there. Still owed before P26: the check on a real Mac and on Linux, and a written
+supported browser/OS matrix, which no document defines yet.
+
 ### 46.4 The V2 UI research boundary decisions (the user, 2026-10-04)
 
 The V2 UI research (`ARCHEUS_V2_UI_RESEARCH.md` §11.2, `ARCHEUS_V2_VISUAL_DIRECTION.md` §18.1)
@@ -1351,6 +1357,11 @@ reopened by it.
 | **S-1** | **V1 correction.** The approval card's "What exactly will happen" table must become readable **labelled rows** (Task / Class / Target / Policy, each a key–value pair) when its container is too narrow for four columns, instead of crushing to "Cl / as / s" at 390 px | One component's CSS, keyed to its own container with a container query (DS §5; the codebase's container rule). No copy, verb or order change. Acceptance: at 390 px every label and value reads whole; the existing 390 px overflow/axe e2e plus one assertion that each value sits under its label | The R13 §8 follow-up, before P26 |
 | **S-2** | **V1 correction.** The live map on Now drops the visible three-line graph-key caption. It lists the full graph's 14 key groups, and the map uses only the arrow keys and Enter | Discoverability stays, in three places: (1) the map canvas keeps its own `aria-label`, which already says "Arrow keys walk the edges, Enter opens the full graph there", and stops pointing `aria-describedby` at the full key list; (2) when the map canvas has keyboard focus (`:focus-visible`), a one-line hint shows the map's own keys — "↑ ↓ → ← walk · Enter open in the full graph"; (3) the full graph keeps the full caption unchanged. This removes noise from Now (≤ 7 blocks) and keeps explanation where the keys work | The R13 §8 follow-up, before P26 |
 | **S-3** | **V1 correction.** The TUI's Now header uses the same state sentence as the SPA (ADR-0027 §5) in place of "Archeus · N missions active · N things need you" | Wording constraint: the TUI renders **the identical sentence** the SPA's `stateSentence` produces: "Archeus is working on N mission(s)." or "Archeus is idle.", then "N need(s) you." or "Nothing needs you." The TUI does not paraphrase it. The counts come from the same reads (active missions, attention count), pluralised the same way. It is painted as the screen's headline (`text`, not `text-2`). No greeting and no glyph is added. A parity test pins the sentence for 0/1/2 of each count across both clients | The R13 §8 follow-up, before P26 |
+
+**Built 2026-10-04** (p19-design-gate §12 items 105–107): S-3 in `df42b37`, S-2 in `ce4a7b6`, S-1 in
+`7c95c7c`. S-1's threshold is 51em, measured (item 107). S-2's premise that the map takes only the
+arrow keys and Enter is not literally true; the map still accepts the full graph's keys, recorded
+as a decision for the user (item 106).
 
 **V2 design direction** (recorded as direction, not as V1 work):
 

@@ -1157,14 +1157,126 @@ conversation only, and B10 in two commits (5a, then 5b).
     R13-07, R13-08, R13-09, R13-10, R13-11, R13-12, R13-13, R13-15 and R13-16. The decisions
     on R13-03, -05, -08, -11, -12, -15 and -16 are recorded in `r13-design-review.md` §8.
 
+**R13 follow-up: S-1, S-2, S-3, Q-A5 and the R13-15/16 records (rulebook §46.3, §46.4), 2026-10-04.**
+Scope, as the user set it on 2026-10-04: these four corrections and the R13-15/16 document fixes.
+R13-03 to R13-13 stay unbuilt and are due before P26 (item 104).
+
+105. **S-3: the TUI's Now header is the SPA's state sentence** (`df42b37`).
+    `present.state_sentence(active, needs_you)` is word for word `state/now.ts`'s
+    `stateSentence`, and `screens.now()` paints it with `text` in place of "Archeus · N missions
+    active · N things need you" in `text-2`. The counts are the same reads as before (the missions
+    not SETTLED, Attention's count). The shared parity fixture gains nine `stateSentence` cases
+    (0/1/2 of each count), run by both clients' parity tests; `test_now_header.py` checks what the
+    screen draws, colour on. Mutants P147–P149.
+106. **S-2: the live map drops the full key list** (`ce4a7b6`). The map's canvas keeps its own
+    `aria-label` and no longer has `aria-describedby="graph-keys"`; `#graph-keys` is not rendered
+    on Now. A one-line hint, "↑ ↓ → ← walk · Enter open in the full graph", shows only while the
+    canvas has `:focus-visible`. The full graph keeps its caption unchanged. Mutants P150–P153.
+    - **Finding, not changed (a decision for the user):** S-2's premise that the map uses only
+      the arrow keys and Enter is not literally true. The map's `onKey` runs the full graph's
+      `step()`, so F, Space, E/C, +/−/0, P, . and Esc still act on it. The hint shows what the
+      decision specified. Restricting the map's keys would be a new decision.
+    - **An intermittent failure in the new assertion, caused by this work and fixed:** the read of
+      the full graph sampled the page right after the hash moved, before React swapped Now out, and
+      read the outgoing map's canvas in 4 of 10 runs. It now waits for `#graph-keys` and for
+      `.live-map` to go: 0 of 15.
+107. **S-1: a narrow approval card's task table is labelled rows** (`7c95c7c`). The card is a
+    size container (`approval`). At `max-width: 51em` the header row is hidden and each cell is a
+    block under its own label, generated from `data-label` (Task / Class / Target / Policy). No
+    copy, verb or order change.
+    - **The threshold was measured**, Playwright, every width × Now, Attention and the mission
+      Outcome tab: four-column headers broke mid-word on a card of 626 px (48em at the 13 px body
+      type) and were whole at 690 px (53em). In `em`, so the 17 px coarse-pointer type stacks
+      sooner. Every card ≤ 626 px stacks (390 px Now and Attention, 768 px Attention, the
+      inspector at 1000/1280/1440 px), and every card ≥ 690 px keeps its columns with one-line
+      headers. This also removes the "Clas/s" wrap in the 1440 px inspector; R13-04's other items
+      stay unbuilt.
+    - Stacked, Chromium's accessibility tree keeps table, row and cell, and each cell's name
+      carries its label once ("Class deploy").
+    - `test_nothing_scrolls_sideways_at_any_width`: at 390 px no header row, every label drawn
+      whole, every value under its label and inside its cell; at 1280 px four columns with
+      one-line headers. axe also runs on `#/attention` at 390 px. Mutants P154–P158.
+108. **Q-A5: the destination shortcuts are Alt+1/2/3 and Alt+J** (`44b60cc`). The user's readings
+    of 2026-10-04, applied:
+    - **Linux:** no Alt+1/2/3 where `navigator.platform` says Linux; Alt+J is bound on every
+      platform. ChromeOS (whose shelf owns Alt+1–8) and Android report a Linux platform and are
+      treated as Linux.
+    - **Typing:** Alt alone (no Ctrl, Meta or Shift; AltGr arrives as Ctrl+Alt on Windows),
+      matched by the physical key (`KeyboardEvent.code`), never while focus is in an input,
+      textarea, select or contenteditable.
+    - `navigation.json` gains `mod` (`alt` for Now, Work, World and Attention, `ctrl` for
+      Control's `,`, which Q-A5 does not cover); `gen_ui.py` emits it typed as `'alt' | 'ctrl'`.
+      Ctrl/⌘+K and Ctrl/⌘+, are unchanged.
+    - `test_the_shortcuts_are_alt_and_leave_the_browsers_own_alone`; the keyboard-only test now
+      presses Alt+2. Mutants P159–P165.
+    - **Evidence for the conflict check** (desk research, 2026-10-04):
+      - Chrome Help (support.google.com/chrome/answer/157179): tabs are Ctrl+1–8
+        (Windows/Linux) and ⌘+1–8 (macOS); Downloads is Ctrl+J and ⌘+Shift+J; no Alt+digit and
+        no Alt+J.
+      - Edge (Microsoft support, keyboard shortcuts in Microsoft Edge): Ctrl+J is Downloads; no
+        Alt+1/2/3 or Alt+J.
+      - Safari (Apple's Safari user guide, keyboard shortcuts): ⌘1–9 select tabs; nothing on
+        Option+1–3 or Option+J.
+      - Firefox, from source (mozilla-central `browser/base/content/browser-sets.inc.xhtml`):
+        `NUM_SELECT_TAB_MODIFIER` is `alt` under `XP_GNOME` and `accel` elsewhere, and
+        `key_selectTab1..8` are not `reserved`, so on Linux Alt+1–8 select a tab. The Mozilla
+        support page could not be fetched (bot challenge). Firefox's menu access keys
+        (`menubar.ftl`) are F, E, V, s, B, T and H; none is J.
+      - Chromium: Alt+1–9 select a tab on Linux (not ChromeOS) in `accelerator_table.cc` at an
+        older commit; that path is gone on current main, so this is confirmed historically, not
+        for current Chromium.
+      - macOS: Option+1/2/3/J type ¡ ™ £ ∆ on the US layout (community sources; Apple does not
+        tabulate it). MDN: `KeyboardEvent.code` is "not altered by keyboard layout or the state
+        of the modifier keys", which is why the match is by code.
+      - Windows AltGr: MDN `getModifierState` reports AltGr as Ctrl+Alt.
+      - GNOME help: no default Alt+1–3 or Alt+J. NVDA uses the Insert modifier. **KDE, JAWS,
+        Narrator and VoiceOver were not verified.**
+    - **Not decided by Q-A5, recorded for the user:** Ctrl/⌘+K is browser-owned too (Chrome and
+      Firefox focus the search box); ⌘+, is Preferences in macOS browsers; and no document in
+      `docs/` defines the "supported browser/OS matrix" §46.3 verifies against.
+    - **Owed on real hardware:** the keys on a real Mac (Safari and Chrome) and in Firefox and
+      Chromium on Linux.
+109. **R13-15 and R13-16, recorded.** R13-15: rulebook §23's base row is marked superseded by
+    ADR-0044; §29's P17 row and §46's TUI row say `│`, built by P19 B2; design system §3.2 says
+    attention is the only **state** colour in the tray icon, with the measured ΔE. R13-16:
+    testing-strategy §7's inspector row records the Alt+←/→ resize as an accepted exception. No
+    behaviour changes.
+110. **Verification of the follow-up** (on `44b60cc`, 2026-10-04).
+    - Targeted: `test_now_header.py` and the TUI parity cases; the live-map test 15 of 15 after
+      item 106's fix; the S-1 and Q-A5 browser tests; the client's type check and 225/225 unit
+      tests; `gen_ui.py --check` and `gen_api_docs.py --check`.
+    - Full `tests/v1`, `ARCHEUS_E2E=1`: **2586 passed, 1 failed, 13 skipped, 5 xfailed, 1 error**
+      (27 min). 2588 in all: the R13 baseline's 2568 plus the 20 tests this follow-up adds.
+      - The error is the run's own configuration, not the code: it ran with `-p no:logging`,
+        which removes `caplog`; `test_graph_query.py::test_a_missing_payload_is_logged_once_per_sha`
+        passes without that flag.
+      - The failure is item 22's `test_spa_marker.py` ("the marker begins at the execution:
+        None"). Run alone, the same assertion fails at `059b47c` too, in a worktree with that
+        tree's own build: 4 of 8 runs there, 11 of 16 on `44b60cc`, a difference these sample
+        sizes do not establish. Not caused by this work and not fixed. "Intermittent"
+        understates it on this machine: about half of the runs alone fail.
+      - Items 48 and 90's tests passed in this run. That says nothing about whether they are fixed.
+    - Mutation: **P147–P165, 19/19 killed** (P147–P158 in one run, P159–P165 in another). Before
+      their first run, P162–P164 were repointed because the mutated build refused an unused
+      helper (the runner's type-check gate); each still breaks the same rule. None was weakened.
+      The full P01–P165 pass was not rerun.
+    - Outside `tests/v1`: `test_cli_help.py::test_a_deferred_v1_verb_imports_only_its_dispatcher`
+      still fails, as since item 69.
+    - **Still open for P19.5:** the manual checks (`r13-design-review.md` §11.1), the user's §34
+      sign-off, the ADR-0029 §3 capture matrix (no tool produces it; the user decides at
+      sign-off), and testing-strategy §7's "text equivalents" and "framebuffer probes" rows,
+      which are not marked built.
+
 ## 13. As built
 
 Every decision of §4 is built as approved (§4.1), with the deviations, corrections and findings
-recorded in §12, items 1–104. Nothing in §12 was applied without being recorded there. Commits:
+recorded in §12, items 1–110. Nothing in §12 was applied without being recorded there. Commits:
 `744a473` and `107da0b` (this gate, proposed and then approved), `6e6176a` (B1 + B2), `937d8ea`
 (B11), `2fc4e27` (B3), `ee97440` (B5), `20a9d46` (B6), `2fac7bb` (B10a), `2043317` (B10b),
 `67a032c` (B4), `bb4a7fd` (B9), `f5282e3` (B7), `46b2089` (B8), `c744763` (B12), `0558d3a`
-(the R13 review, before correction) and the R13 correction pass's commit (items 99–104).
+(the R13 review, before correction), `4e471ef` (the R13 correction pass, items 99–104), and the
+R13 follow-up (items 105–110): `df42b37` (S-3), `ce4a7b6` (S-2), `7c95c7c` (S-1, carrying
+the mutant list P147–P158), `44b60cc` (Q-A5) and the follow-up's documentation commit.
 
 **What P19 built, by kind (§0).**
 
@@ -1207,6 +1319,7 @@ edge cases. Browser: `test_spa_mission_thread`, `test_spa_plan_edit`, `test_spa_
 
 **Mutation.** `tools/mutate_p19.py` has 137 mutants, P01–P137. Every one was killed when its
 slice landed, and all 137 were killed again in one pass over B12's final tree (item 97).
+The R13 correction pass and follow-up added P138–P165, each killed when it landed (items 99–110).
 Mutants moved from p8, p16, p18 and P19.5 suites, and the ap1 suite, are
 re-anchored and still killed, or retired with the reason recorded (items 5, 11, 45, 57, 68).
 `test_mutation_suites_parse.py` checks on every run that each anchor of every suite occurs

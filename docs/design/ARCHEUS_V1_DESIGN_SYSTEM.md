@@ -101,7 +101,10 @@ mission's own conversation above what is running for it, and the line reaches a 
 - **No state colour is also an interface colour.** Primary actions are neutral fills and links are
   underlined text, so the only hues on a screen are states. (The first draft's blue accent sat
   ΔE 18 from `state.active` on dark and was identical to it on light. Design review B.1.)
-- `attention` is the only colour allowed to appear in the tab bar badge and the tray icon.
+- `attention` is the only **state** colour allowed to appear in the tab bar badge and the tray icon.
+  The tray icon is the approved app icon (rulebook §8: gold artwork on dark), so its artwork
+  colours are not state colours; the attention dot stays distinguishable from them (measured
+  minimum ΔE 23.7 at 32 px, 25.9 at 16 px). Amended by R13-15, the user, 2026-10-04.
 
 ### 3.3 Themes
 

@@ -495,3 +495,105 @@ The V2 UI research found one more V1 correction and two decision requests at the
 The acceptance criteria and the TUI wording constraint are recorded in the rulebook,
 `docs/design/ARCHEUS_V1_VISUAL_ARCHITECTURE_RECONCILIATION.md` §46.4. None of them was built when
 it was recorded.
+
+## 11. The R13 follow-up (2026-10-04)
+
+The user set the scope on 2026-10-04: S-1, S-2, S-3 (§10), the Q-A5 key change, and the R13-15
+and R13-16 document fixes. R13-03 to R13-13 stay unbuilt and are due before P26. Recorded in
+p19-design-gate §12 items 105–110.
+
+| Item | Commit | Result |
+|---|---|---|
+| S-3 | `df42b37` | The TUI's Now header is `stateSentence`, word for word, painted `text`. Mutants P147–P149 |
+| S-2 | `ce4a7b6` | No full key list on Now; a one-line hint on keyboard focus; the full graph unchanged. Mutants P150–P153 |
+| S-1 | `7c95c7c` | The task table stacks into labelled rows below 51em (measured). Mutants P154–P158 |
+| Q-A5 | `44b60cc` | Alt+1/2/3 and Alt+J; Alt alone, by the physical key, never in a text field; no Alt+digit on Linux. Mutants P159–P165 |
+| R13-15 / R13-16 | the documentation commit | Rulebook §23, §29, §46; design system §3.2; testing-strategy §7's inspector row |
+
+**Verification** (p19-design-gate §12 item 110): full `tests/v1` with E2E, 2586 passed, 13
+skipped, 5 xfailed; the one failure is item 22's `test_spa_marker.py`, which fails the same way
+on the pre-follow-up tree; the one error was the run's `-p no:logging` flag. Mutants P147–P165,
+19/19 killed.
+
+**Decisions this follow-up surfaced, for the user (not acted on):**
+- The live map still accepts the full graph's keys (F, Space, E/C, +/−/0, P, ., Esc); S-2
+  assumed it took only the arrows and Enter (item 106).
+- Ctrl/⌘+K is browser-owned too, and ⌘+, is Preferences in macOS browsers (item 108).
+- No document defines the supported browser/OS matrix that §46.3 verifies Q-A5 against.
+- The ADR-0029 §3 frozen-clock capture matrix is a P19.5 test row (testing-strategy §7) and no
+  tool produces it. Recorded as open, for the user to decide at sign-off.
+
+### 11.1 Manual acceptance, for the user to perform
+
+None of these is claimed. Record each result as PASS or FAIL, with the date, the device and the
+build (`git rev-parse --short HEAD`), in p19-design-gate §12 as a new item after 110, and in
+§13's "Evidence of §10". A FAIL is recorded with what was seen.
+
+**M1. The Qt shell on a real Windows display.**
+- Environment: Windows 11 on a physical display (not RDP, not offscreen), PyQt6 and
+  PyQt6-WebEngine installed, Core stopped first (`archeus status` exits 1).
+- Command: `archeus gui`.
+- Observe and PASS when:
+  1. *Launch:* Core starts (`archeus status` exits 0 in a second terminal), the Archeus window
+     opens on Now with no white flash, and a tray icon appears.
+  2. *Theme survives a restart:* Control → Appearance → Theme: Light. The window turns light at
+     once. Tray → Quit. Run `archeus gui` again: it opens light. Set it back afterwards.
+  3. *Pause all:* start a mission that runs for a while. Tray → Pause all. A tray notification
+     says "Paused N running mission(s)" and the mission shows Paused in the window. With nothing
+     running it says "Nothing was running".
+  4. *Emergency stop asks first (R13-01):* Tray → Emergency stop. A native box titled
+     "Emergency stop", warning icon, says "Every running execution is killed now and Archeus
+     refuses new work until you re-arm it. Missions are not lost; they wait." with two buttons,
+     "Emergency stop" and Cancel. Cancel has the default focus. Press Enter: nothing stops.
+     Open it again, press Escape: nothing stops. Open it again and click "Emergency stop": the
+     tray says "emergency stop: N execution(s) stopped; Core is disarmed until re-armed". Re-arm
+     from a user device afterwards.
+  5. *Core down (item 83):* stop Core (end the `archeus core` process, or Ctrl+C where it runs
+     in the foreground). Tray → Emergency stop → "Emergency stop". The tray says "Core is not
+     running: the e-stop without Core arrives with P20; …" and Core is **not** started
+     (`archeus status` still exits 1). This is the recorded deviation, not a failure.
+- FAIL: any step differs; a white flash or flicker; Enter or Escape stops anything; Core starts
+  in step 5.
+
+**M2. The offline cold start on a real phone (repeat after R13-02; S-1 is new).**
+- Environment: a physical phone, the browser it will be used with (Safari on iOS or Chrome on
+  Android), reaching Core over the user's tunnel (`archeus core --remote-host <name>`), paired
+  with `archeus pair` and installed to the home screen. A desktop to inspect it: Safari Web
+  Inspector (iOS) or `chrome://inspect` (Android).
+- Prepare: one running mission and one mission waiting for approval (listed in Attention).
+  Open Now on the phone online and wait for it to settle, so the snapshot is written.
+- Steps: close the app fully (swipe it away). Stop Core. Start the app from the home screen.
+- Observe and PASS when:
+  1. Now opens without Core, in the app frame, under "Offline — as of <time> (<age>). This is
+     what this client last read; nothing here can be changed until Archeus is reachable.", the
+     age matching when Core was last read.
+  2. Needs you shows "Pending Approval · <the waiting mission's title>"; Happening now shows
+     only the running mission; Since you last looked names missions, not ids.
+  3. No command is enabled.
+  4. Nothing scrolls sideways on any offline screen.
+  5. With Core back, open an approval card on the phone: its task table reads as labelled rows
+     (Task, Class, Target, Policy), each value under its label (S-1). With VoiceOver or
+     TalkBack, each cell is read with its label once.
+  6. Light, dark and high contrast (the phone's setting, and Control → Appearance where it
+     applies): text and states stay readable offline.
+  7. While offline, the inspector's network panel shows no request to Core's origin (`/v1/…`);
+     only service-worker shell reads.
+- FAIL: a blank or unframed view, an id where a name should be, a missing waiting mission,
+  sideways scroll, an enabled command, a request to `/v1/` while offline, an unreadable theme.
+
+**M3. Q-A5 on real hardware.**
+- Environment: (a) a Mac with Safari and Chrome; (b) Linux with Firefox and Chromium.
+- Steps: open the SPA, click the page body (not a text field), press each shortcut.
+- PASS on the Mac: Option+1/2/3 go to Now/Work/World and Option+J to Attention, with no
+  character typed and no browser action; ⌘+1/2/3 still switch browser tabs; inside the
+  composer, Option+J types ∆ and does not navigate.
+- PASS on Linux: Alt+1/2/3 switch Firefox/Chromium tabs (Archeus does not take them); Alt+J goes
+  to Attention; Ctrl+1/2/3 and Ctrl+J stay the browser's.
+- FAIL: a collision, a typed character on navigation, or a shortcut firing in a text field.
+
+**M4. The user's design sign-off (rulebook §34).** BEFORE/AFTER captures on a real Core; a
+screen-reader pass with live work; forced colours; 200 % text; the template test. Then the
+P19.5 exit sign-off itself.
+
+**Carried, not P19.5's:** 60 fps at 1,000 nodes, Windows Terminal and conhost, a physical touch
+device (P18 closure / P23).

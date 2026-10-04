@@ -1101,6 +1101,12 @@ decisions ADR-0024…0029.
   Alt+3 and Alt+J respectively (application shortcuts that must not interfere with
   browser-reserved combinations; no Ctrl+Shift substitutes), verified against the supported
   browser/OS matrix before P26.
+  *R13 follow-up, 2026-10-04 (p19-design-gate §12 items 105–110):* S-1, S-2 and S-3 (rulebook
+  §46.4) and Q-A5's Alt keys are built (no Alt+digit on Linux, Alt+J everywhere; Alt alone, by
+  the physical key, never in a text field: the user, 2026-10-04); R13-15's document amendments
+  and R13-16's acceptances are recorded. Still due before P26: R13-03 to R13-13, the Q-A5 check
+  on a real Mac and on Linux, and the supported browser/OS matrix, which no document defines.
+  P19.5 is not exited: the manual checks and the user's sign-off are outstanding.
 - Client work: tokens (focus ≠ attention, red reserved, depth/transparency tokens); primitives;
   graph edge semantics, legend, impact view, hull/depth/cored nodes, static project cage; the
   thread (T1 from `Message.links`, T2 on every list, T3 spatial) and tints; activity halo,
