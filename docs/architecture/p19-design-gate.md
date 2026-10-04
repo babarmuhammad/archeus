@@ -964,6 +964,86 @@ conversation only, and B10 in two commits (5a, then 5b).
     known intermittent tests (item 22's `test_spa_marker.py`, item 48's two) all passed in this
     run, which says nothing about whether they are fixed.
 
+**Slice 9 (B8, the desktop shell, its tray and "Open Archeus V1"), 2026-10-04.**
+
+79. **As B8 designed it.** `archeus gui` (`archeus/cli/gui.py`, Qt-free) finds Core through
+    `core.json`; when nothing holds Core's lock it starts `archeus core` in the background
+    (its own process, a hidden console, output in `<ARCHEUS_HOME>/logs/gui-core.log`) and waits
+    up to 30s; a Core that holds its lock and is still starting is waited for, never started
+    twice. Core keeps running when the shell quits. The page opens on a fresh launch code in
+    the fragment through `launch_url`, now the one helper `archeus core --open`, `archeus gui`
+    and the legacy link all use, so the page's grant is `archeus core --open`'s. The window and
+    tray are `run_v1` in `claude_sessions/gui_qt.py`, the existing Qt lineage, with GPU
+    compositing left on. Without PyQt6-WebEngine the verb says so, points at `archeus core
+    --open` and starts nothing.
+80. **The shell's own credential.** A second launch code with `observe` + `control`, redeemed as
+    a device row named "desktop shell" (`platform: desktop`), held in the process's memory only.
+    Pause all (`POST /v1/missions/pause-all`) and the Attention count use it, so neither needs
+    the page. With Core down, Pause all says "Archeus Core is not running" rather than
+    reporting a refusal.
+81. **The profile and the pre-load background.** A named persistent `QWebEngineProfile` at
+    `QtWebEngine/archeus` under `ARCHEUS_HOME`, inside the entry target-architecture §5.1 reserves.
+    The device token, the appearance choice and B7's snapshot survive a restart there. Before
+    the page paints, the window shows the `bg` token of the OS's current scheme. The token
+    colours reach Python through `tools/gen_ui.py`, which now also writes `SHELL` (each
+    scheme's `bg` and `attention`) into `archeus/cli/tui/tokens.py`.
+82. **The tray.** Open, Pause all, Emergency stop, Quit. Closing the window hides it to the
+    tray, and Quit is explicit (Qt's own quit sends close events, which the hide handler would
+    otherwise intercept). The icon carries the attention colour only while Attention's count
+    is non-zero. That count is read when the menu opens and when the window hides; the shell
+    has no timer.
+83. **The tray's Emergency stop with Core down does nothing** (deviation: B8's manual test
+    says it "works with Core down"). The tray runs `archeus estop`'s own code, as B8 designs
+    it, and that code's Core-down path is P20's registry kill. Today it says so and never
+    starts Core. The tray shows what it said. The deviation closes when P20 lands, with no
+    change here.
+84. **The legacy command is `--gui`** (correction: B8 writes `python -m claude_sessions gui`).
+    The legacy GUI was always `archeus --gui`, and that path is unchanged. `gui` joins
+    `V1_VERBS`, so `archeus gui` is the V1 shell. The legacy help names both.
+85. **`name` on the launch redeem** (new API surface B8 did not list). `POST
+    /v1/launch/redeem` takes an optional `name` for the device row; empty or absent keeps
+    `browser (<platform>)`. The generated client and both API documents are regenerated.
+86. **"desktop shell" rows accumulate** (found, not changed). Each launch redeems a new
+    credential, and nothing revokes the last one when the shell quits. Control → Clients lists
+    one "desktop shell" row per launch until the user revokes them. Revoking on Quit would
+    miss a crash or a kill. Reusing a row would need the token on disk, which §9 rules out.
+    A decision for the user.
+87. **"Open Archeus V1"** in the legacy sidebar foot (`POST /api/v1/open`). It asks the
+    running Core for a launch code and opens the system browser. It never starts Core, and
+    with Core down it says how to start it. The icon rail hides the foot's spans, so on a
+    narrow window the button reads "V1". `tests/test_endpoint_floor.py` now runs that route
+    against a temporary home with the browser stubbed, so the floor never opens a real one.
+88. **Tests.** `tests/v1/integration/test_gui_shell.py` (17) runs against a real Core with no
+    display. It covers attach and start-once, the background start, the page's grant, the
+    shell's credential (scopes, name, memory only), Pause all, the e-stop's code with Core up
+    and down, Attention, the profile path, the OS-scheme colours, the verb without Qt, and
+    the legacy route and button. `tests/v1/e2e/test_gui_qt.py` runs the real window offscreen
+    twice against one Core and checks five things. The profile is persistent at
+    `profile_dir()`, and an appearance choice made in the first run is on `<html>` in the
+    second. The pre-load background is the scheme's token. The menu reads Open, Pause all,
+    Emergency stop, Quit, and each reaches the shell's action. The icon carries the attention
+    colour only once something waits, read when the menu opens and when the window hides.
+    Closing the window hides it. **CI does not run it:** the client job does not install
+    PyQt6-WebEngine, so the test skips there even under `ARCHEUS_E2E`. It ran here. The
+    manual Windows check B8 names (a real display, not offscreen) has not been done.
+89. **Mutants P111-P133** (B8): the credential's scopes, name, storage and token; the page's
+    grant; starting a running Core; not waiting for a starting one; the start's console;
+    Pause all's route and its Core-down wording; the e-stop starting Core or not being
+    `archeus estop`'s code; Attention not being Core's; the profile's place and persistence;
+    the pre-load colour in the window and in the token lookup; the icon's colour with
+    nothing waiting; hiding without reading Attention; Pause all running the e-stop; the
+    legacy link with no launch code; and the verb starting Core without Qt. All 23 killed on
+    the first run.
+90. **The full run** (B8 on B7, `tests/v1`, `ARCHEUS_E2E=1`): 2562 passed, 3 failed, 13
+    skipped, 5 xfailed. One failure was this slice's: the first wording of item 81 wrote the
+    profile's path as an `<ARCHEUS_HOME>/` entry, which `test_paths.py` keeps for entries V1
+    owns, and `QtWebEngine` is the Qt shell's. The wording is fixed and the test passes.
+    `test_spa_arrival.py::test_reduced_motion_says_the_rise_and_pulses_nothing` failed once in
+    the full run and passed alone. Item 22's `test_spa_marker.py` failed in the full run and
+    then passed once in three runs alone, with the same "the marker begins at the execution:
+    None". B8 changes no SPA code those two run (the generated client gained one optional
+    field).
+
 ## 13. As built
 
 (empty until implementation)

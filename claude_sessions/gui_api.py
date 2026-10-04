@@ -3186,6 +3186,23 @@ def api_open_path(q, body):
             'name': os.path.basename(cand) or cand}
 
 
+def api_open_v1(q, body):
+    """The sidebar foot's "Open Archeus V1" (p19-design-gate B8): asks the
+    running Core for a launch code, as `archeus core --open` does, and opens
+    the app in the system browser. It never starts Core."""
+    import webbrowser
+    from archeus.cli import main as v1
+    from archeus.infra import discovery
+    state, info = discovery.discover()
+    if state != 'running':
+        return {'ok': False, 'error': 'Archeus Core is not running: start it with `archeus core`'}
+    url = v1.launch_url(info)
+    if url is None:
+        return {'ok': False, 'error': 'Archeus Core did not give a launch code'}
+    webbrowser.open(url)
+    return {'ok': True}
+
+
 # ── hand-off (context injection) & plan-execute ──────────────
 #
 # `/api/inject/sessions` used to live here: it listed every session of the
@@ -4744,6 +4761,7 @@ POST_ROUTES = {
     '/api/extra-paths': api_extra_paths_set,
     '/api/add-dirs': api_add_dirs_set,
     '/api/open-path': api_open_path,
+    '/api/v1/open': api_open_v1,
     '/api/quit': api_quit,
     '/api/health/allowlist': api_health_allowlist,
     '/api/conventions/sync': api_conventions_sync,

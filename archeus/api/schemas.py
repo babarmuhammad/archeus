@@ -994,8 +994,10 @@ REPRIORITIZE = {'type': 'object', 'properties': {
     'idempotency_key': KEY, 'priority': {'type': 'integer'},
     'expected_version': {'type': 'integer', 'nullable': True}},
     'required': ['idempotency_key', 'priority']}
+#: `name` (P19 B8): the desktop shell names its own credential's row
 REDEEM = {'type': 'object', 'properties': {
-    'code': {'type': 'string'}, 'platform': {'type': 'string', 'enum': ['web', 'desktop']}},
+    'code': {'type': 'string'}, 'platform': {'type': 'string', 'enum': ['web', 'desktop']},
+    'name': {'type': 'string', 'nullable': True}},
     'required': ['code', 'platform']}
 
 

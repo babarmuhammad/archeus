@@ -8073,6 +8073,8 @@ function segDraw(){
 $('#segTui').onclick=()=>setMode('tui');
 $('#segGui').onclick=()=>setMode('gui');
 $('#bHelp').onclick=()=>go('helpp');
+$('#bOpenV1').onclick=async()=>{const r=await post('/api/v1/open',{});
+  toast(r.ok?'Archeus V1 opened in your browser':r.error,r.ok?'':'err');};
 /* ── the sidebar's top row ──
    It carried a logo, the product name and a tagline. The tagline is gone: it is
    a website device — its audience is someone who does not yet know what the

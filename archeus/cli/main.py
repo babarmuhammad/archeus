@@ -26,7 +26,7 @@ from ._api import endpoints
 DEFERRED = {'approve': 'P9'}
 VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair',
          'sessions', 'resume', 'handoff', 'verify', 'decide', 'automation', 'devices',
-         'tui')
+         'tui', 'gui')
 
 USAGE = """usage: archeus core [--open] [--remote-host H]...
                                 run Archeus Core in the foreground (Ctrl+C stops it);
@@ -42,6 +42,9 @@ USAGE = """usage: archeus core [--open] [--remote-host H]...
        archeus tui [--open KIND/ID] [--once] [--light]
                                 the terminal client of a running Core (P17); it never
                                 starts Core
+       archeus gui              the desktop app: the Archeus window and its tray (Open,
+                                Pause all, Emergency stop, Quit); starts Core if it is
+                                not running (P19)
        archeus status           is Core running? (exit 0 yes, 1 no, 2 discovery failed,
                                 3 its engine failed)
        archeus status <mission-id>
@@ -103,6 +106,9 @@ def main(argv):
     if verb == 'tui':
         from .tui.app import main as tui
         return tui(args)
+    if verb == 'gui' and not args:
+        from .gui import main as gui
+        return gui()
     if verb == 'status' and not args:
         return status()
     if verb == 'status' and len(args) == 1:
@@ -154,11 +160,11 @@ def core(*, open_browser=False, remote_hosts=()):
     if open_browser:
         state, info = discovery.discover()
         if state == 'running':          # ask the running Core instead of starting one
-            code = _launch_code(info)
-            if code is None:
+            url = launch_url(info)
+            if url is None:
                 return 2
             import webbrowser
-            webbrowser.open('http://127.0.0.1:%d/#launch=%s' % (info['port'], code))
+            webbrowser.open(url)
             print('opened Archeus on http://127.0.0.1:%d' % info['port'])
             return 0
     from ..core import runtime
@@ -245,6 +251,15 @@ def _launch_code(info):
         print('could not get a launch code from Core on port %d' % info['port'], file=sys.stderr)
         return None
     return out['code']
+
+
+def launch_url(info):
+    """The app's address with a fresh launch code in its fragment, which never
+    reaches a server log (api-and-realtime §5.1): `core --open`, `gui` and the
+    legacy GUI's "Open Archeus V1" all open the app this way. None after
+    saying on stderr why."""
+    code = _launch_code(info)
+    return None if code is None else 'http://127.0.0.1:%d/#launch=%s' % (info['port'], code)
 
 
 def terms(harness=None, headless=None, rotation=None):

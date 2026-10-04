@@ -228,7 +228,8 @@ def launch_redeem(req):
     # with no idempotency key: nothing stores the response that carries it (A4)
     token = auth.new_token()
     out = req.run(commands.register_device, {
-        'name': 'browser (%s)' % req.body['platform'], 'platform': req.body['platform'],
+        'name': (req.body.get('name') or '').strip() or 'browser (%s)' % req.body['platform'],
+        'platform': req.body['platform'],
         'token_hash': auth.token_hash(token), 'scopes': list(minter[2])},
         actor_id=minter[0], keyed=False)
     return 200, {'device_id': out['device_id'], 'token': token, 'scopes': list(minter[2])}

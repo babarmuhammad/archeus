@@ -1765,6 +1765,7 @@ interface LaunchCodeRequest {
 interface LaunchRedeemRequest {
   code: string;
   platform: 'web' | 'desktop';
+  name?: string | null;
 }
 ```
 

@@ -133,3 +133,125 @@ def run_desktop(on_ready=None):
     finally:
         srv.shutdown()
         srv.server_close()
+
+
+def run_v1(shell, on_ready=None):
+    """`archeus gui` (p19-design-gate B8): Archeus V1's app in this window, with
+    a tray. *shell* is an `archeus.cli.gui.Shell`, which owns every decision —
+    the launch address, the shell's credential, the tray's actions, the profile
+    directory, the colours; this function only draws them. Returns the exit
+    code. `on_ready(view, app)` as in `run_desktop`.
+
+    - The page lives in a NAMED, persistent QWebEngineProfile under
+      `<ARCHEUS_HOME>/QtWebEngine/` (ADR-0044 T5): its storage, so the device
+      token and the appearance choice, survives a restart. The default profile
+      `run_desktop` uses is kept apart: the legacy GUI is unchanged.
+    - Before the page paints, the window shows the OS scheme's token
+      background (ADR-0044 §4), never a fixed dark.
+    - Closing the window hides it to the tray; Quit in the tray quits. Core is
+      not stopped: it outlives the shell (target-architecture §4).
+    - The tray icon carries the attention colour only while Attention's count
+      is non-zero, read when the menu opens and when the window hides to the
+      tray. There is no timer.
+    - GPU compositing stays on, as in `run_desktop`.
+    """
+    from PyQt6.QtCore import Qt, QUrl
+    from PyQt6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPixmap
+    from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+    from PyQt6.QtWebEngineWidgets import QWebEngineView
+    from PyQt6.QtWidgets import QApplication, QMainWindow, QMenu, QSystemTrayIcon
+
+    app = QApplication(sys.argv[:1] or ['archeus'])
+    app.setApplicationName('archeus')
+    app.setQuitOnLastWindowClosed(False)
+    dark = app.styleHints().colorScheme() == Qt.ColorScheme.Dark
+
+    store = shell.profile_dir()
+    profile = QWebEngineProfile('archeus', app)
+    profile.setPersistentStoragePath(store)
+    profile.setCachePath(os.path.join(store, 'cache'))
+
+    ico = _icon_path()
+    plain = QIcon(ico) if ico else QIcon()
+
+    def with_dot():
+        px = plain.pixmap(32, 32) if ico else QPixmap(32, 32)
+        if not ico:
+            px.fill(Qt.GlobalColor.transparent)
+        p = QPainter(px)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor(shell.attention_colour(dark)))
+        p.drawEllipse(18, 18, 13, 13)
+        p.end()
+        return QIcon(px)
+
+    alert = with_dot()
+    tray = QSystemTrayIcon(plain, app)
+    tray.setToolTip('Archeus')
+
+    def refresh():
+        n = shell.attention()
+        tray.setIcon(alert if n else plain)
+        tray.setToolTip('Archeus — %d need%s you' % (n, '' if n != 1 else 's') if n
+                        else 'Archeus')
+
+    quitting = []
+
+    def quit_():
+        quitting.append(True)            # Qt's quit closes the windows first
+        app.quit()
+
+    class Window(QMainWindow):
+        def closeEvent(self, ev):        # hide to the tray; Quit is the tray's
+            if quitting:
+                return ev.accept()
+            ev.ignore()
+            self.hide()
+            refresh()
+
+    win = Window()
+    win.setWindowTitle('Archeus')
+    win.setWindowIcon(plain)
+    view = QWebEngineView()
+    page = QWebEnginePage(profile, view)
+    page.setBackgroundColor(QColor(shell.preload_bg(dark)))
+    page.newWindowRequested.connect(lambda req: QDesktopServices.openUrl(req.requestedUrl()))
+    view.setPage(page)
+    url = shell.page_url()
+    if url is None:
+        return 2
+    view.load(QUrl(url))
+    win.setCentralWidget(view)
+    win.resize(1280, 840)
+
+    def show():
+        win.showNormal()
+        win.raise_()
+        win.activateWindow()
+
+    def say(text):
+        tray.showMessage('Archeus', text)
+
+    menu = QMenu()
+    for label, act in (('Open', show), ('Pause all', lambda: say(shell.pause_all())),
+                       ('Emergency stop', lambda: say(shell.estop()[1])),
+                       ('Quit', quit_)):
+        a = QAction(label, menu)
+        a.triggered.connect(act)
+        menu.addAction(a)
+    menu.aboutToShow.connect(refresh)
+    tray.setContextMenu(menu)
+    tray.activated.connect(
+        lambda why: why == QSystemTrayIcon.ActivationReason.Trigger and show())
+    tray.show()
+    win.show()
+    if on_ready is not None:
+        view.loadFinished.connect(lambda ok: ok and on_ready(view, app))
+    try:
+        return app.exec()
+    finally:
+        # the page must go before its profile, or the profile is never flushed
+        view.setPage(None)
+        page.deleteLater()
+        del page

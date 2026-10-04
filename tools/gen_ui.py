@@ -403,8 +403,13 @@ def render_tokens_py(t):
     skip = ('bg', 'surface-1', 'surface-2', 'surface-3', 'on-primary')
     colours = {name: {role: hex_to_x256(h) for role, h in theme.items() if role not in skip}
                for name, theme in t['themes'].items()}
+    shell = {name: {'bg': theme['bg'], 'attention': theme['state.attention']}
+             for name, theme in t['themes'].items()}
     return (PY_HEAD + '"""The token table as ANSI-256 colours per theme (p17-design-gate A7)."""\n'
-            + '\nCOLOURS = %s\n' % _py(colours))
+            + '\nCOLOURS = %s\n' % _py(colours)
+            + "\n#: What the desktop shell draws outside the page (p19-design-gate B8): its\n"
+              "#: pre-load background and the tray icon's attention dot, per OS scheme.\n"
+            + 'SHELL = %s\n' % _py(shell))
 
 
 def outputs():

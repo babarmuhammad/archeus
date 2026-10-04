@@ -6,7 +6,8 @@ conversation and the mission Now tab (P21-P30); B5, chat approve / reject
 is the card's decision (P31-P40); B6, mission confirmation under `careful`
 (P41-P50); B10a, `emergency stop`, `stop <running mission>` and the
 explanation card (P51-P62); B10b, resource directives (P63-P74); B4, plan edit (P75-P89);
-B9, the application theme (P90-P100); B7, the offline snapshot (P101-P110).
+B9, the application theme (P90-P100); B7, the offline snapshot (P101-P110); B8, the
+desktop shell, its tray and the legacy "Open Archeus V1" (P111-P133).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -91,6 +92,14 @@ STOP_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
             'test_the_stop_and_emergency_stop_cards_confirm_what_the_words_only_asked')
 CLI_STATUS = ('tests/v1/integration/test_cli_v1.py::'
               'test_status_of_a_mission_prints_what_core_reports_and_a_refusal_in_its_words')
+
+GUI = 'archeus/cli/gui.py'
+QT = 'claude_sessions/gui_qt.py'
+GAPI = 'claude_sessions/gui_api.py'
+SH = 'tests/v1/integration/test_gui_shell.py::'
+SH_CRED = SH + 'test_the_shells_credential_is_observe_and_control_named_desktop_shell_in_memory'
+QT_RUN = ('tests/v1/e2e/test_gui_qt.py::'
+          'test_the_window_keeps_its_profile_across_a_restart_and_the_tray_acts')
 
 MUTATIONS = [
     # ── B1: the clients say Core's edges, from where they stand ──
@@ -549,6 +558,85 @@ MUTATIONS = [
     ('P110', 'the snapshot is not keyed by the Core origin', [(SNAP,
      "s.put(k, `${k.origin} ${path}`)", "s.put(k, path)")],
      [OS_COLD]),
+    ('P111', "the shell's credential may approve", [(GUI,
+     "SHELL_SCOPES = ['observe', 'control']", "SHELL_SCOPES = ['observe', 'control', 'approve']")],
+     [SH_CRED]),
+    ('P112', "the shell's device row is not named", [(GUI,
+     "{'code': code, 'platform': 'desktop', 'name': SHELL_NAME}",
+     "{'code': code, 'platform': 'desktop'}")],
+     [SH_CRED]),
+    ('P113', 'Core ignores the name a redeem gives', [(ROUTES,
+     "'name': (req.body.get('name') or '').strip() or 'browser (%s)' % req.body['platform'],",
+     "'name': 'browser (%s)' % req.body['platform'],")],
+     [SH_CRED]),
+    ('P114', "the shell's credential is written to disk", [(GUI,
+     "    return client.Core(info['port'], out['token'])",
+     "    return open(discovery.core_json_path() + '.shell', 'w').write(out['token']) and "
+     "client.Core(info['port'], out['token'])")],
+     [SH_CRED]),
+    ('P115', "the shell acts with the CLI's own admin token", [(GUI,
+     "    return client.Core(info['port'], out['token'])", "    return client.Core(info['port'], token)")],
+     [SH_CRED]),
+    ('P116', "the window's page gets less than the local grant", [(MAIN,
+     "{'scopes': ['observe', 'control', 'approve', 'admin']})", "{'scopes': ['observe']})")],
+     [SH + 'test_the_page_opens_on_a_launch_code_with_the_full_local_grant']),
+    ('P117', 'a running Core is started again', [(GUI,
+     "    if state == 'not_running':\n        err = start()",
+     "    if state != 'unreadable':\n        err = start()")],
+     [SH + 'test_a_running_core_is_attached_and_never_started_again']),
+    ('P118', 'a Core that is starting is not waited for', [(GUI,
+     "    while state != 'running' and time.monotonic() < deadline:", "    while False:")],
+     [SH + 'test_with_no_core_the_shell_starts_it_once_and_waits_for_it']),
+    ('P119', 'the started Core has no console for its executions', [(GUI,
+     "proc.spawn_detached(argv, hidden_console=True, log=start_log())",
+     "proc.spawn_detached(argv, hidden_console=False, log=start_log())")],
+     [SH + 'test_the_start_runs_archeus_core_in_the_background']),
+    ('P120', 'Pause all reaches another route', [(GUI,
+     "out = self._own.post(endpoints.pause_all(),", "out = self._own.post(endpoints.resume_all(),")],
+     [SH + 'test_pause_all_pauses_what_runs_with_the_shells_credential']),
+    ('P121', 'Pause all with Core down reads as a refusal', [(GUI,
+     "return NOT_RUNNING if e.status == 0 else", "return NOT_RUNNING if e.status == -1 else")],
+     [SH + 'test_with_core_down_pause_all_says_so']),
+    ('P122', "the tray's e-stop starts Core", [(GUI,
+     "        code = main.estop()", "        code = start_core() or main.estop()")],
+     [SH + 'test_emergency_stop_with_core_down_never_starts_it']),
+    ('P123', "the tray's e-stop is not archeus estop's code", [(GUI,
+     "        code = main.estop()", "        code = main.pause('all')")],
+     [SH + 'test_emergency_stop_is_archeus_estops_code']),
+    ('P124', 'the Attention count is not Core\'s', [(GUI,
+     "return self._own.get(endpoints.attention_items())[0]['count']",
+     "return self._own.get(endpoints.attention_items())[0]['count'] * 0")],
+     [SH + 'test_the_attention_count_is_cores', QT_RUN]),
+    ('P125', 'the profile is outside the Qt shell\'s own entry', [(GUI,
+     "os.path.join(paths.archeus_home(), 'QtWebEngine', 'archeus')",
+     "os.path.join(paths.archeus_home(), 'profile')")],
+     [SH + 'test_the_profile_lives_in_the_qt_shells_own_entry']),
+    ('P126', 'the window keeps nothing across a restart', [(QT,
+     "    profile = QWebEngineProfile('archeus', app)", "    profile = QWebEngineProfile(app)")],
+     [QT_RUN]),
+    ('P127', 'the window paints dark before the page, whatever the OS', [(QT,
+     "page.setBackgroundColor(QColor(shell.preload_bg(dark)))",
+     "page.setBackgroundColor(QColor(shell.preload_bg(True)))")],
+     [QT_RUN]),
+    ('P128', 'the pre-load background is the dark token whatever the scheme', [(GUI,
+     "    return SHELL['dark' if dark else 'light']['bg']", "    return SHELL['dark']['bg']")],
+     [SH + 'test_the_colours_outside_the_page_are_the_tokens_of_the_os_scheme']),
+    ('P129', 'the tray icon carries the attention colour with nothing waiting', [(QT,
+     "tray.setIcon(alert if n else plain)", "tray.setIcon(alert)")],
+     [QT_RUN]),
+    ('P130', 'hiding to the tray does not read Attention', [(QT,
+     "            ev.ignore()\n            self.hide()\n            refresh()\n",
+     "            ev.ignore()\n            self.hide()\n")],
+     [QT_RUN]),
+    ('P131', "the tray's Pause all runs the e-stop", [(QT,
+     "('Pause all', lambda: say(shell.pause_all()))", "('Pause all', lambda: say(shell.estop()[1]))")],
+     [QT_RUN]),
+    ('P132', '"Open Archeus V1" opens the app with no launch code', [(GAPI,
+     "    url = v1.launch_url(info)\n", "    url = 'http://127.0.0.1:%d/' % info['port']\n")],
+     [SH + 'test_open_archeus_v1_from_the_legacy_gui']),
+    ('P133', 'archeus gui without Qt starts Core anyway', [(GUI,
+     "        import PyQt6.QtWebEngineWidgets  # noqa: F401\n", "        pass\n")],
+     [SH + 'test_the_gui_verb_without_qt_says_so_and_starts_nothing']),
 ]
 
 if __name__ == '__main__':

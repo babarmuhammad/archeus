@@ -29,3 +29,8 @@ COLOURS = {'dark': {'line': 237,
            'state.paused': 241,
            'state.thinking': 62,
            'state.done': 29}}
+
+#: What the desktop shell draws outside the page (p19-design-gate B8): its
+#: pre-load background and the tray icon's attention dot, per OS scheme.
+SHELL = {'dark': {'bg': '#0E1116', 'attention': '#F2B544'},
+ 'light': {'bg': '#F7F8FA', 'attention': '#8A5600'}}

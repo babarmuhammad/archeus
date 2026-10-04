@@ -48,6 +48,9 @@ V1 (preview)
                              opens its app in the browser). Walking skeleton:
                              it runs a fake harness and a stub policy only.
   status                     is Core running? Exit 0 yes, 1 no.
+  gui                        the V1 desktop app: Core's app in a window, with a tray
+                             (Open, Pause all, Emergency stop, Quit). Starts Core
+                             if it is not running. (--gui is the workspace GUI.)
 
 OPTIONS
   -h, --help                 this text
@@ -115,7 +118,7 @@ def print_version():
 #: the dispatch imports nothing until one of them is typed.
 V1_VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair',
             'sessions', 'resume', 'handoff', 'verify', 'decide', 'automation', 'devices',
-            'tui')
+            'tui', 'gui')
 
 
 def run():
