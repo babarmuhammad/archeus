@@ -223,6 +223,14 @@ def _core_map(tc):
     return sorted(set(keys))
 
 
+MAP_LABEL = ('Live work: the active missions and their running attempts. Arrow keys walk the edges, '
+             'Enter opens the full graph there.')
+MAP_HINT = '↑ ↓ → ← walk · Enter open in the full graph'
+FULL_KEYS = ('↑ ↓ choose a relationship · → follow it · ← back · Enter open · F focus here · Space expand or '
+             'collapse · E expand all · C collapse all · + − zoom · 0 fit · / find · P mark a path end · . pin or '
+             'unpin · Esc clear')
+
+
 def test_the_live_map_holds_live_work_only_and_opens_the_full_graph(browser, slow):  # noqa: F811
     tc = slow
     check = Checks()
@@ -240,7 +248,12 @@ def test_the_live_map_holds_live_work_only_and_opens_the_full_graph(browser, slo
     check(page.locator('.live-map .graph-bar').count() == 0, 'compact: no graph toolbar')
     check(page.locator('.live-map [data-graph-legend]').get_attribute('open') is None, 'the legend is there, closed')
     canvas = page.locator('.live-map canvas.graph-canvas')
-    check(canvas.get_attribute('aria-label').startswith('Live work'), 'the map is named for what it holds')
+    check(canvas.get_attribute('aria-label') == MAP_LABEL, 'the map is named for what it holds, with its keys')
+    # rulebook §46.4 S-2: not the full graph's key list, on screen or as the description
+    check(page.locator('.live-map #graph-keys').count() == 0, 'no full key caption on Now')
+    check(canvas.get_attribute('aria-describedby') is None, 'the map is not described by the full key list')
+    hint = page.locator('.live-map .map-hint')
+    check(hint.count() == 1 and not hint.is_visible(), 'the map hint waits for keyboard focus')
     side = page.evaluate("() => [...document.querySelector('.now-side').children].map(c => c.querySelector('h2')?.textContent.trim())")
     check(side == ['Live map', 'Conversation'], 'the map stands over the conversation: %s' % side)
     check(canvas_ink(page, '.live-map canvas.graph-canvas') > 200, 'the map is drawn')
@@ -282,10 +295,21 @@ def test_the_live_map_holds_live_work_only_and_opens_the_full_graph(browser, slo
     canvas.wait_for()
     at = m.get_attribute('data-graph-at')
     canvas.focus()
+    check(hint.is_visible() and hint.inner_text().strip() == MAP_HINT, "focused: the map's own keys, one line: %r" % hint.inner_text())
+    hb, cb = hint.bounding_box(), canvas.bounding_box()
+    check(hb['height'] < 2 * float(hint.evaluate('e => parseFloat(getComputedStyle(e).lineHeight)')) and hb['y'] >= cb['y'] + cb['height'],
+          'one line, under the map: %s' % hb)
     page.keyboard.press('Enter')
     wait(page, lambda: page.evaluate('location.hash').startswith('#/world/graph/'), what='the full graph opens')
     kind, oid = at.split(':', 1)
     check(page.evaluate('location.hash') == '#/world/graph/%s/%s' % (kind, oid), 'the full graph, focused there: %s' % page.evaluate('location.hash'))
+    # the hash moves before React swaps Now for the full graph: wait for the swap, then read
+    page.locator('#graph-keys').wait_for()
+    wait(page, lambda: page.locator('.live-map').count() == 0, what='Now gives way to the full graph')
+    full = page.locator('main canvas.graph-canvas')
+    check(full.count() == 1 and full.get_attribute('aria-describedby') == 'graph-keys'
+          and page.locator('#graph-keys').inner_text().strip() == FULL_KEYS
+          and page.locator('main .map-hint').count() == 0, 'the full graph keeps its full key caption')
     _go(page, '#/now')
     settle(page)
 

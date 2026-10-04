@@ -586,7 +586,7 @@ function Canvas({ data, focus, modules, path, stale, map = false }: { data: Grap
         role="application"
         aria-roledescription="relationship graph"
         aria-label={map ? 'Live work: the active missions and their running attempts. Arrow keys walk the edges, Enter opens the full graph there.' : `Relationships around ${model.byKey.get(rootKey)?.label ?? 'the world'}. Arrow keys walk the edges, Enter opens, F focuses the graph there.`}
-        aria-describedby="graph-keys"
+        aria-describedby={map ? undefined : 'graph-keys'}
         onKeyDown={onKey}
         onPointerDown={(e) => {
           lastPointer.current = e.pointerType;
@@ -645,9 +645,17 @@ function Canvas({ data, focus, modules, path, stale, map = false }: { data: Grap
           moveTo({ ...c, k: Math.max(0.1, Math.min(4, c.k * (e.deltaY < 0 ? 1.1 : 1 / 1.1))) }, false);
         }}
       />
-      <p id="graph-keys" className="caption">
-        ↑ ↓ choose a relationship · → follow it · ← back · Enter open · F focus here · Space expand or collapse · E expand all · C collapse all · + − zoom · 0 fit · / find · P mark a path end · . pin or unpin · Esc clear
-      </p>
+      {map ? (
+        // rulebook §46.4 S-2: the map's own keys, shown while the canvas has
+        // keyboard focus; the full key list stays with the full graph
+        <p className="caption map-hint" aria-hidden="true">
+          ↑ ↓ → ← walk · Enter open in the full graph
+        </p>
+      ) : (
+        <p id="graph-keys" className="caption">
+          ↑ ↓ choose a relationship · → follow it · ← back · Enter open · F focus here · Space expand or collapse · E expand all · C collapse all · + − zoom · 0 fit · / find · P mark a path end · . pin or unpin · Esc clear
+        </p>
+      )}
       <Legend model={model} hidden={hidden} open={!map} onToggle={(k) => setHidden((h) => toggle(h, k))} />
       <Mirror model={model} pinned={pinned} halo={halo} around={walk.at && steps ? { focus: walk.at, steps, affected: affected?.steps } : undefined} />
     </div>

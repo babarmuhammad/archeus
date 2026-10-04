@@ -548,6 +548,19 @@ h1:focus {
   height: 320px;
 }
 
+/* rulebook §46.4 S-2: the map's one-line key hint, only while the canvas
+   has keyboard focus */
+.map-hint {
+  display: none;
+  font: var(--type-caption);
+  color: var(--text-2);
+  margin: var(--space-2) 0 0;
+}
+
+.graph-canvas:focus-visible ~ .map-hint {
+  display: block;
+}
+
 @container main (min-width: 880px) {
   .now-grid {
     grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
