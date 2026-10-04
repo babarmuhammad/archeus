@@ -3,7 +3,7 @@
 **Status: APPROVED by the user, 2026-09-30 — the authoritative visual rulebook for the remaining
 V1 work.** Decisions ADR-0024…0030 are DECIDED; P19.5 is approved and in progress; the P18 A8
 amendment is approved (p18-design-gate §24) and built in P19.5. Q-A5 (browser-owned shortcuts)
-is decided (§46.3). Still open from §46: Q-V6 (website, P25), Q-C1 (Classic appearance ownership), Q-C2
+is decided (§46.3). The V2 UI research boundary decisions (S-1…S-3, V-D1…V-D5) are recorded in §46.4. Still open from §46: Q-V6 (website, P25), Q-C1 (Classic appearance ownership), Q-C2
 (reference archive). Date 2026-09-30. Branch
 `archeus-v1-rearchitecture` at `5fa0bdb`.
 
@@ -773,7 +773,7 @@ No retained concept is unowned, and no deferred concept lacks a named phase.
 | perpetual / ambient loops, background motion, idle "life" (R1 coffee breaks, R7 orbs) | principle 5; fails "what does this communicate?"; the brand rule "it stops" |
 | `Math.random`, `sin(T)` breathing, uncontrolled physics, layout re-runs | nondeterministic; destroys spatial memory (zoetrope "jumpy"; R4 layout-once) |
 | bokeh, blur, backdrop-filter, blend modes, glass showcase | Qt readback tearing; contrast; R6 glass only for floating functional layers |
-| glow / bloom as decoration | PROMPT 1576 "overuse of glowing elements"; "state-aware glow" is carried by the halo |
+| glow / bloom as decoration | PROMPT 1576 "overuse of glowing elements"; "state-aware glow" is carried by the halo. *Clarified for V2 (the user, 2026-10-04, V-D1, §46.4):* the luminous thread's moving head and its landing ring are **functional state light**, not decorative glow. Each is one-shot (≤ 600 ms head, ≤ 240 ms ring), fires only on a Core-recorded Archeus action, and is transform/opacity only. Glow, bloom and light that report nothing stay rejected. Not built in V1 |
 | per-cluster hues in the app | colour belongs to state (DS); kept on the website |
 | rotating cage, counter-rotating web in 2D | perpetual rotation; the web deferred to 3D |
 | drag-to-move nodes | positions are deterministic and shared across clients; pin covers "keep this here" |
@@ -1336,6 +1336,34 @@ here as given; nothing below widens it, and no §46.1 or §46.2 disposition is r
 |---|---|---|---|---|
 | **R13 timing** | Does R13 run before P19, with the waiting rows carried, or after it? | **After P19.** R13, the independent design review, does not run yet. The order is **P19 → the three carried behaviours implemented and integrated → R13**. The three are the mission Now tab, the changed-row marker (T2) on the Relations list and the TUI, and Pause all in the tray | R13 (§36) stays the P19.5 exit, and P19.5 is **not exited** until it has run. R13 is not run against a deliberately incomplete surface. The three carried behaviours are **not** P19.5 implementation failures, and their §46.2 dispositions stand | No. §31.3's P19 → P19.5 → P20 is unchanged; this fixes where R13 sits inside it |
 | **Q-A5** | Which keys replace the browser-owned shortcuts? | Archeus replaces the browser-owned **Ctrl+1, Ctrl+2, Ctrl+3 and Ctrl+J** bindings with **Alt+1, Alt+2, Alt+3 and Alt+J** respectively. These are application shortcuts and must not interfere with browser-reserved combinations. Ctrl+Shift combinations are **not** substituted | Q-A5 is **resolved for P19.5**. The new keys must be verified against the supported browser/OS matrix before **P26**. This record does not change the bindings in `tokens/navigation.json` or the client tables (P17); making that change is part of the work verified before P26 | No. It applies R6's "never repurpose standard shortcuts" (§20) |
+
+### 46.4 The V2 UI research boundary decisions (the user, 2026-10-04)
+
+The V2 UI research (`ARCHEUS_V2_UI_RESEARCH.md` §11.2, `ARCHEUS_V2_VISUAL_DIRECTION.md` §18.1)
+asked for three V1 boundary decisions and five V2 direction decisions. The user gave direction on
+2026-10-04, recorded here. Nothing was built when it was recorded. No §46.1–§46.3 disposition is
+reopened by it.
+
+**V1 corrections:**
+
+| Id | Decision | What it changes | Owner |
+|---|---|---|---|
+| **S-1** | **V1 correction.** The approval card's "What exactly will happen" table must become readable **labelled rows** (Task / Class / Target / Policy, each a key–value pair) when its container is too narrow for four columns, instead of crushing to "Cl / as / s" at 390 px | One component's CSS, keyed to its own container with a container query (DS §5; the codebase's container rule). No copy, verb or order change. Acceptance: at 390 px every label and value reads whole; the existing 390 px overflow/axe e2e plus one assertion that each value sits under its label | The R13 §8 follow-up, before P26 |
+| **S-2** | **V1 correction.** The live map on Now drops the visible three-line graph-key caption. It lists the full graph's 14 key groups, and the map uses only the arrow keys and Enter | Discoverability stays, in three places: (1) the map canvas keeps its own `aria-label`, which already says "Arrow keys walk the edges, Enter opens the full graph there", and stops pointing `aria-describedby` at the full key list; (2) when the map canvas has keyboard focus (`:focus-visible`), a one-line hint shows the map's own keys — "↑ ↓ → ← walk · Enter open in the full graph"; (3) the full graph keeps the full caption unchanged. This removes noise from Now (≤ 7 blocks) and keeps explanation where the keys work | The R13 §8 follow-up, before P26 |
+| **S-3** | **V1 correction.** The TUI's Now header uses the same state sentence as the SPA (ADR-0027 §5) in place of "Archeus · N missions active · N things need you" | Wording constraint: the TUI renders **the identical sentence** the SPA's `stateSentence` produces: "Archeus is working on N mission(s)." or "Archeus is idle.", then "N need(s) you." or "Nothing needs you." The TUI does not paraphrase it. The counts come from the same reads (active missions, attention count), pluralised the same way. It is painted as the screen's headline (`text`, not `text-2`). No greeting and no glyph is added. A parity test pins the sentence for 0/1/2 of each count across both clients | The R13 §8 follow-up, before P26 |
+
+**V2 design direction** (recorded as direction, not as V1 work):
+
+| Id | Decision |
+|---|---|
+| **V-D1** | Yes. The luminous thread's head and landing ring are functional state light, not prohibited glow. §27 now says so |
+| **V-D2** | Yes. The luminous thread is the leading V2 visual signature. Not implemented |
+| **V-D3** | Yes. A quiet-motion mode is a V2 design rule: everything except hero moments. Not implemented |
+| **V-D4** | Yes, prototype-gated. The four hero moments are V2 candidates, subject to PR-1…PR-6 |
+| **V-D5** | Yes, prototype-gated. The larger Segoe UI Variable display treatment is investigated. Typography is not increased globally until PR-4 and its readability measurements pass |
+
+The governing V2 document is `ARCHEUS_V2_UI_ARCHITECTURE.md`. It does not amend any V1 rule
+except the §27 clarification above.
 
 ## 47. Component map — directive names → primitives
 

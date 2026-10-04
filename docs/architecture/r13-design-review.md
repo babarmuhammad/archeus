@@ -480,3 +480,18 @@ prompt. The offline view's only visual change is the shared frame.
 **Disposition: R13 passes.** The two blocking findings are resolved in the implementation.
 R13-03 to R13-16 remain as recorded, with the user's decisions in §8. P19.5 exit still needs
 the manual checks and the user's sign-off. P20 has not started.
+
+## 10. Boundary decisions after the V2 UI research (2026-10-04)
+
+The V2 UI research found one more V1 correction and two decision requests at the R13 boundary
+(`docs/design/ARCHEUS_V2_UI_RESEARCH.md` §11.2). The user decided all three on 2026-10-04 as
+**V1 corrections**, owned by the same follow-up as the §8 decisions, before P26:
+
+- **S-1:** the approval card's task table stacks into labelled rows at narrow widths.
+- **S-2:** the Now live map drops the full graph's key caption and keeps a focus-revealed
+  one-line hint plus its own accessible label.
+- **S-3:** the TUI Now header uses the SPA's state sentence verbatim.
+
+The acceptance criteria and the TUI wording constraint are recorded in the rulebook,
+`docs/design/ARCHEUS_V1_VISUAL_ARCHITECTURE_RECONCILIATION.md` §46.4. None of them was built when
+it was recorded.
