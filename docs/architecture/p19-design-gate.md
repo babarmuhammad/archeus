@@ -1044,6 +1044,143 @@ conversation only, and B10 in two commits (5a, then 5b).
     None". B8 changes no SPA code those two run (the generated client gained one optional
     field).
 
+**Slice 10 (B12, the unification scenario and G3), 2026-10-04.**
+
+91. **As B12 designed it.** `tests/v1/e2e/test_unification.py` runs the plan's chain over one
+    real Core. **Create on desktop:** a 1280 px SPA sends "Deploy the release notes" from Now's
+    composer, and the conversation's brain (a scripted fake caller) makes the mission, with
+    origin `conversation` and its card in the desktop's conversation. **Observe on mobile:** the
+    desktop pairs a phone in Control → Clients with a PIN. The phone is a 390 px touch context
+    with its own paired principal (`observe`, `control`, `approve`, no `admin`). The page does
+    not scroll sideways, and its Work row shows the plan waiting. **Approve on mobile:** the phone
+    approves in Attention, meeting the deploy's step-up with its PIN, and Core records the
+    phone's principal as the decider. **Execute on PC:** the task's one attempt runs on the fake
+    harness on this machine's node and ends well. **Review on desktop:** the reviewer rejects
+    the result, so it waits for a person, and the desktop's "Accept result" completes the
+    mission. The left-open phone shows COMPLETED from Core's stream with no navigation.
+    **Inspect on TUI:** the judge's `TuiDriver` reads the mission's Work row from the frame and
+    gets the state Core holds. No console error on either page. The test has a check floor
+    of 18. CI's `v1-client` job runs it, because that job already runs `tests/v1/e2e`.
+92. **What "PC", "desktop" and "mobile" are in the rig** (clarification, not a change). One
+    machine plays all three. Desktop and mobile are two browser contexts told apart by their
+    viewport and by their credential: the desktop is the local launch grant and the phone is a
+    paired device. "PC" is the local node running the fake harness. No second machine or real
+    phone is exercised; that is the manual evidence of §10.
+93. **"Review on desktop" is the user's review** (B12 names the step, not the mechanism). The
+    scripted reviewer would accept on its own and leave nothing to review, so the scenario's
+    reviewer rejects (the existing `_RejectingReview` of `test_spa_r9_details.py`). The result
+    then waits in REVIEWING, and the person's review completes it, recorded as reviewer `user`.
+94. **G3 lost its xfail in B11, not here.** `test_g03_one_model.py` has carried no xfail since
+    `937d8ea` (B11 (4), item 9), so B12 changes nothing in it. Its three tests,
+    `test_every_client_agrees` among them, pass in B12's full run.
+95. **Mutants P134-P137** (B12): a decision that names no device, the phone's approval dropping
+    its PIN, the desktop's review naming no device, and a phone paired with a PIN that keeps
+    none. Each is guarded by the unification test alone, and all four are killed. P136 first
+    mutated the review's `reviewer='user' if user else reviewer` and survived. The mutant was
+    equivalent: the one caller of a user's review (`Decisions.review`) passes `reviewer='user'`
+    itself, so the expression could not change anything. P136 now mutates the field that says
+    whose review it is, `principal_id=actor.id if user else None`. The test checks that the
+    review's principal is the desktop's own device, the one its launch code created, and not
+    the phone's.
+96. **Not B12's (§12 item 86 unchanged).** The "desktop shell" rows still accumulate, one per
+    `archeus gui` launch. B12 adds a test and changes no client, credential or revocation code,
+    so the item stays the user's decision as item 86 records it. No P19 slice owns it. If the
+    user chooses to change how credentials are kept, that belongs with the credential and
+    remote-access review in P20.
+97. **The final full run** (B12 on B8, `tests/v1`, `ARCHEUS_E2E=1`): 2565 passed, 1 failed, 13
+    skipped, 5 xfailed.
+    - The failure is item 22's `test_spa_marker.py`, with its known message ("the marker begins
+      at the execution: None"). Run alone right after, it failed once and passed once. B12
+      changes no production code, so it is classed as the known intermittent and not B12's.
+    - The other two intermittent tests of items 48 and 90 passed in this run. That says
+      nothing about whether they are fixed.
+    - Also clean: the client's type check, its 225 unit tests, `gen_api_docs.py --check`,
+      `gen_ui.py --check`, the design gates, `test_traceability.py` and
+      `test_mutation_suites_parse.py`.
+    - The full P19 mutation pass on this tree: P01–P137, **137/137 killed**, the runner restoring every mutated file.
+98. **The manual evidence of §10 is still owed** and was not performed in this slice.
+    - The Qt shell on a real Windows display: a restart that keeps the theme, the tray's
+      Pause all, and the tray's Emergency stop. Item 83 records what the stop does with Core
+      down.
+    - The offline cold start on a real phone.
+
+    The offscreen Qt test and the browser tests do not replace either check.
+
 ## 13. As built
 
-(empty until implementation)
+Every decision of §4 is built as approved (§4.1), with the deviations, corrections and findings
+recorded in §12, items 1–98. Nothing in §12 was applied without being recorded there. Commits:
+`744a473` and `107da0b` (this gate, proposed and then approved), `6e6176a` (B1 + B2), `937d8ea`
+(B11), `2fc4e27` (B3), `ee97440` (B5), `20a9d46` (B6), `2fac7bb` (B10a), `2043317` (B10b),
+`67a032c` (B4), `bb4a7fd` (B9), `f5282e3` (B7), `46b2089` (B8), and B12's commit, which holds
+this section.
+
+**What P19 built, by kind (§0).**
+
+1. **Consolidation.** One edge implementation. The Relations tab and the TUI read
+   `/v1/world/graph?focus=<kind>:<id>&depth=1`, both client mappers are deleted, and their
+   cases are now `graph.py`'s (`graph_edge_cases.json`). `EDGE_WORDS` lives in
+   `tokens/edges.json`, generated into `relations.ts` and `_tables.py` (B1). One generated
+   client per language: typed paths in `generated.ts` behind a literal gate, and the stdlib
+   `archeus/cli/_api.py` (`endpoints`) under the TUI and the CLI. `archeus status <mission>`
+   makes the CLI a G3 client (B11). The presentation words stay, held by the golden fixtures
+   (B11 (3)).
+2. **The Core seams.**
+   - S1: a mission's thread, addressed by the mission's id, with no migration (B3, item 12).
+   - S2: `POST /v1/plans/{id}/edit` (B4).
+   - S3: chat approve and reject decide the displayed card's approval, through
+     `authorization.decide` (B5).
+   - S4: confirmation under `careful` is a P9 approval of the Core class `mission.start`,
+     with migration `0014` (B6, item 23).
+   - S6: the offline snapshot of Now, kept by the SPA (B7).
+   - S7: `archeus gui`, its tray and the legacy "Open Archeus V1" (B8).
+   - ADR-0042: `emergency stop`, `stop <running mission>`, the `route_explanation` card on
+     `why` (B10a), and resource directives for accounts and harnesses (B10b).
+3. **The three carried P19.5 behaviours.** The mission Now tab (B3), T2's changed rule on the
+   Relations list and the TUI (B2, `│` in the TUI, item 1), and Pause all in the tray (B8).
+4. **The client preference.** Control → Appearance: theme, contrast and motion, from a
+   generated classic boot script (B9).
+
+**The test the plan names** (B12). `tests/v1/e2e/test_unification.py` runs the unification
+scenario over one Core (item 91). G3 (`test_g03_one_model.py`) runs with no xfail since B11 and
+passes.
+
+**Tests added by P19.** Integration: `test_mission_thread`, `test_chat_approve`,
+`test_start_confirmation`, `test_chat_verbs`, `test_directives`, `test_plan_edit`,
+`test_gui_shell`. TUI: `test_thread`, `test_mission_thread`, `test_chat_approval`,
+`test_chat_verbs`, `test_plan_edit`, `test_appearance`. Unit: `test_api_client`, with the shared
+edge cases. Browser: `test_spa_mission_thread`, `test_spa_plan_edit`, `test_spa_appearance`,
+`test_spa_offline_snapshot`, `test_gui_qt` (offscreen, needs PyQt6-WebEngine) and
+`test_unification`. Client: `test/snapshot.test.ts`, plus the gates added to
+`test_design_gates.py` and the existing suites each slice extended.
+
+**Mutation.** `tools/mutate_p19.py` has 137 mutants, P01–P137. Every one was killed when its
+slice landed, and all 137 were killed again in one pass over B12's final tree (item 97).
+Mutants moved from p8, p16, p18 and P19.5 suites, and the ap1 suite, are
+re-anchored and still killed, or retired with the reason recorded (items 5, 11, 45, 57, 68).
+`test_mutation_suites_parse.py` checks on every run that each anchor of every suite occurs
+exactly once in the current tree.
+
+**Evidence of §10.** See item 97 for B12's final run.
+- **Automated, done:** every slice's tests and mutants, the full V1 suite, the client's type
+  check and tests, and G3.
+- **Manual, outstanding:**
+  - On a real Windows display, the Qt shell: launch, a restart that keeps the theme, the
+    tray's Pause all, and its Emergency stop. With Core down, the stop does what item 83
+    records.
+  - The offline cold start on a real phone.
+
+  Neither has been performed. The offscreen and CI evidence does not stand in for either.
+
+**Open, carried as recorded.**
+- Item 86 (desktop-shell rows) is the user's decision (item 96).
+- Item 83 (the tray's e-stop with Core down) waits for P20.
+- Items 22, 48 and 90: the intermittent `test_spa_marker.py`, `test_spa_arrival.py` and
+  `test_spa_resources.py`, recorded and not fixed.
+- X7: steering into a running mission needs its own ADR.
+- `tests/test_cli_help.py::test_a_deferred_v1_verb_imports_only_its_dispatcher` fails, outside
+  `tests/v1`, and has failed since before B9 (item 69).
+
+**R13-ready.** P19 is built, and its three carried behaviours are integrated. R13, P19.5's exit
+review (rulebook §46.3), has **not** run. The branch stops here for it. P20 does not start
+until P19.5 is explicitly finished.

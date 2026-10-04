@@ -7,7 +7,8 @@ is the card's decision (P31-P40); B6, mission confirmation under `careful`
 (P41-P50); B10a, `emergency stop`, `stop <running mission>` and the
 explanation card (P51-P62); B10b, resource directives (P63-P74); B4, plan edit (P75-P89);
 B9, the application theme (P90-P100); B7, the offline snapshot (P101-P110); B8, the
-desktop shell, its tray and the legacy "Open Archeus V1" (P111-P133).
+desktop shell, its tray and the legacy "Open Archeus V1" (P111-P133); B12, the
+unification scenario (P134-P137).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -100,6 +101,10 @@ SH = 'tests/v1/integration/test_gui_shell.py::'
 SH_CRED = SH + 'test_the_shells_credential_is_observe_and_control_named_desktop_shell_in_memory'
 QT_RUN = ('tests/v1/e2e/test_gui_qt.py::'
           'test_the_window_keeps_its_profile_across_a_restart_and_the_tray_acts')
+ATT = 'clients/app/src/surfaces/Attention.tsx'
+VERIF = 'archeus/core/application/verification.py'
+UNIFY = ('tests/v1/e2e/test_unification.py::'
+         'test_create_on_desktop_observe_and_approve_on_mobile_execute_review_inspect')
 
 MUTATIONS = [
     # ── B1: the clients say Core's edges, from where they stand ──
@@ -637,6 +642,20 @@ MUTATIONS = [
     ('P133', 'archeus gui without Qt starts Core anyway', [(GUI,
      "        import PyQt6.QtWebEngineWidgets  # noqa: F401\n", "        pass\n")],
      [SH + 'test_the_gui_verb_without_qt_says_so_and_starts_nothing']),
+    # B12: the unification scenario, one Core across the desktop, the phone and the TUI
+    ('P134', 'a decision names no device', [(AUTHZ,
+     "'decided_by': actor.id, 'decided_at': tx.now,", "'decided_by': None, 'decided_at': tx.now,")],
+     [UNIFY]),
+    ('P135', "the phone's approval drops its PIN", [(ATT,
+     "step_up: needsPin ? pin : undefined", "step_up: undefined")],
+     [UNIFY]),
+    ('P136', "the desktop's review names no device", [(VERIF,
+     "principal_id=actor.id if user else None,", "principal_id=None,")],
+     [UNIFY]),
+    ('P137', "a phone paired with a PIN keeps none", [(ROUTES,
+     "'pin_hash': commands.hash_pin(b['pin']) if b.get('pin') else None},",
+     "'pin_hash': None},")],
+     [UNIFY]),
 ]
 
 if __name__ == '__main__':

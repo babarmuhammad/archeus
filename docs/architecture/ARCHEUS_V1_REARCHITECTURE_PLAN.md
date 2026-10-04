@@ -1042,6 +1042,18 @@ per-function tagging rule in [testing-strategy.md §1.1](testing-strategy.md).
 - Test: the implementation plan's unification scenario (create on desktop → observe on mobile →
   approve on mobile → execute on PC → review on desktop → inspect on TUI).
 - Acceptance: G3 fully passes.
+  - **P19, as built** (p19-design-gate.md, B1–B13; §13). What was built:
+    - one edge implementation on `/v1/world/graph`;
+    - a generated client per language (`generated.ts`, `archeus/cli/_api.py`);
+    - S1–S4, S6 and S7, the ADR-0042 verbs, directives and explanation card, and
+      Control → Appearance;
+    - the three carried P19.5 behaviours: the mission Now tab, T2 on the Relations list and
+      the TUI, and Pause all in the tray.
+
+    The unification scenario runs in a real browser and the TUI over one Core
+    (`tests/v1/e2e/test_unification.py`), and G3 passes. 137/137 P19 mutations were killed.
+    Two manual checks are still owed: the Qt shell on a real Windows display, and the offline
+    cold start on a real phone. R13 has not run. Deviations: p19-design-gate §12.
 
 **P19.5 — Visual language and operational presence** — *APPROVED by the user 2026-09-30
 (ADR-0030); in progress.* Slices that need nothing from P19 (tokens, primitives, the motion
