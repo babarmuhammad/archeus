@@ -289,6 +289,12 @@ def test_the_shortcuts_are_alt_and_leave_the_browsers_own_alone(browser, core):
     _go(page, '#/now')
     page.evaluate("dispatchEvent(new KeyboardEvent('keydown', {key: '™', code: 'Digit2', altKey: true}))")
     wait(page, lambda: page.evaluate('location.hash') == '#/work', what='Option+2 by its code')
+    # Cmd+, is the browser's Settings on macOS: never taken (Windows keeps Win+, for itself, so it
+    # is dispatched rather than pressed); Control stays Ctrl+, (p19-design-gate §12 item 111)
+    _go(page, '#/now')
+    kept = page.evaluate("dispatchEvent(new KeyboardEvent('keydown', {key: ',', code: 'Comma', metaKey: true, cancelable: true}))")
+    page.wait_for_timeout(150)
+    assert kept and page.evaluate('location.hash') == '#/now', 'Cmd+, was taken'
     # never in a text field
     _go(page, '#/now')
     for keys in ('Alt+2', 'Alt+j'):

@@ -2,7 +2,7 @@
 export interface Destination {
   id: 'now' | 'work' | 'world' | 'attention' | 'control';
   label: string;
-  /** Q-A5: Alt alone, by the physical key, never in a text field; or Ctrl (Cmd on macOS) */
+  /** Q-A5: Alt alone, by the physical key, never in a text field; or Ctrl alone, never Cmd */
   mod: 'alt' | 'ctrl';
   /** the shortcut key, with `mod` */
   key: string;

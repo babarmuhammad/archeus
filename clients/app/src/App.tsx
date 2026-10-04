@@ -260,10 +260,12 @@ function Shell({ token }: { token: string }) {
     // Q-A5 (rulebook §46.3; the user, 2026-10-04): the browser owns Ctrl+1–3 and
     // Ctrl+J, so those go to Alt — alone (AltGr is Ctrl+Alt), by the physical key
     // (Option types a character on macOS), never in a text field, and no
-    // Alt+digit on Linux, where Firefox's tabs own it
+    // Alt+digit on Linux, where Firefox's tabs own it. Control's Ctrl+, is Ctrl
+    // alone, never ⌘: ⌘+, is the browser's own Settings on macOS
     const alt = e.altKey && !mod && !e.shiftKey && !editable(e.target);
+    const ctrl = e.ctrlKey && !e.metaKey && !e.altKey;
     const d = DESTINATIONS.find((x) =>
-      x.mod === 'ctrl' ? mod && x.key === e.key.toLowerCase() : alt && keyCode(x.key) === e.code && !(LINUX && /\d/.test(x.key)),
+      x.mod === 'ctrl' ? ctrl && x.key === e.key.toLowerCase() : alt && keyCode(x.key) === e.code && !(LINUX && /\d/.test(x.key)),
     );
     if (d) {
       e.preventDefault();

@@ -269,7 +269,7 @@ def render_nav_ts(n):
             + 'export interface Destination {\n'
             + "  id: 'now' | 'work' | 'world' | 'attention' | 'control';\n"
             + '  label: string;\n'
-            + '  /** Q-A5: Alt alone, by the physical key, never in a text field; or Ctrl (Cmd on macOS) */\n'
+            + '  /** Q-A5: Alt alone, by the physical key, never in a text field; or Ctrl alone, never Cmd */\n'
             + "  mod: 'alt' | 'ctrl';\n"
             + '  /** the shortcut key, with `mod` */\n'
             + '  key: string;\n'

@@ -10,7 +10,7 @@ B9, the application theme (P90-P100); B7, the offline snapshot (P101-P110); B8, 
 desktop shell, its tray and the legacy "Open Archeus V1" (P111-P133); B12, the
 unification scenario (P134-P137); the R13 correction pass (P138-P146); the R13
 follow-up of rulebook §46.4, S-3 (P147-P149), S-2 (P150-P153) and S-1 (P154-P158);
-Q-A5's Alt shortcuts (P159-P165).
+Q-A5's Alt shortcuts (P159-P165); P19.5 closure, Ctrl+, never Cmd+, (P166-P167).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -729,8 +729,8 @@ MUTATIONS = [
      [S1]),
     # Q-A5 (rulebook §46.3): Alt alone, by the physical key, never in a text field, no Alt+digit on Linux
     ('P159', "the browser's Ctrl shortcuts are taken again", [(APP_TSX,
-     "x.mod === 'ctrl' ? mod && x.key === e.key.toLowerCase() :",
-     "mod && x.key === e.key.toLowerCase() ? true :")],
+     "x.mod === 'ctrl' ? ctrl && x.key === e.key.toLowerCase() :",
+     "(ctrl || mod) && x.key === e.key.toLowerCase() ? true :")],
      [QA5]),
     ('P160', 'AltGr (Ctrl+Alt) navigates', [(APP_TSX,
      'const alt = e.altKey && !mod && !e.shiftKey && !editable(e.target);', "const alt = e.altKey && !e.shiftKey && !editable(e.target);")],
@@ -749,6 +749,13 @@ MUTATIONS = [
      [QA5]),
     ('P165', 'Linux loses Alt+J too', [(APP_TSX,
      "!(LINUX && /\\d/.test(x.key)),", "!LINUX,")],
+     [QA5]),
+    # P19.5 closure (p19-design-gate §12 item 111): Control is Ctrl+, alone; Cmd+, stays the browser's
+    ('P166', "Cmd+, (the browser's Settings on macOS) is taken", [(APP_TSX,
+     "const ctrl = e.ctrlKey && !e.metaKey && !e.altKey;", "const ctrl = (e.ctrlKey || e.metaKey) && !e.altKey;")],
+     [QA5]),
+    ('P167', 'Ctrl+, no longer reaches Control', [(APP_TSX,
+     "const ctrl = e.ctrlKey && !e.metaKey && !e.altKey;", "const ctrl = e.metaKey && !e.altKey;")],
      [QA5]),
     # B12: the unification scenario, one Core across the desktop, the phone and the TUI
     ('P134', 'a decision names no device', [(AUTHZ,
