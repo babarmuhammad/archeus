@@ -173,13 +173,13 @@ export function ApprovalCard({ id }: { id: string }) {
               <tbody>
                 {(p.what ?? []).map((w, i) => (
                   <tr key={i}>
-                    <td className="mono">
+                    <td className="mono" data-label="Task">
                       {w.task}
                       {w.title ? ` · ${w.title}` : ''}
                     </td>
-                    <td className="mono">{w.class}</td>
-                    <td className="mono">{w.target ?? (w.paths ?? []).join(', ') ?? '—'}</td>
-                    <td>
+                    <td className="mono" data-label="Class">{w.class}</td>
+                    <td className="mono" data-label="Target">{w.target ?? (w.paths ?? []).join(', ') ?? '—'}</td>
+                    <td data-label="Policy">
                       {w.decision}
                       {w.why ? <> — <Prose text={w.why} /></> : ''}
                     </td>

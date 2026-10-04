@@ -8,7 +8,8 @@ is the card's decision (P31-P40); B6, mission confirmation under `careful`
 explanation card (P51-P62); B10b, resource directives (P63-P74); B4, plan edit (P75-P89);
 B9, the application theme (P90-P100); B7, the offline snapshot (P101-P110); B8, the
 desktop shell, its tray and the legacy "Open Archeus V1" (P111-P133); B12, the
-unification scenario (P134-P137).
+unification scenario (P134-P137); the R13 correction pass (P138-P146); the R13
+follow-up of rulebook §46.4, S-3 (P147-P149), S-2 (P150-P153) and S-1 (P154-P158).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -106,6 +107,12 @@ ATT = 'clients/app/src/surfaces/Attention.tsx'
 VERIF = 'archeus/core/application/verification.py'
 UNIFY = ('tests/v1/e2e/test_unification.py::'
          'test_create_on_desktop_observe_and_approve_on_mobile_execute_review_inspect')
+
+GV = 'clients/app/src/graph/GraphView.tsx'
+NOW_HDR = 'tests/v1/tui/test_now_header.py'
+NOW_MAP = ('tests/v1/e2e/test_spa_now.py::'
+           'test_the_live_map_holds_live_work_only_and_opens_the_full_graph')
+S1 = 'tests/v1/e2e/test_spa_p16.py::test_nothing_scrolls_sideways_at_any_width'
 
 MUTATIONS = [
     # ── B1: the clients say Core's edges, from where they stand ──
@@ -676,6 +683,48 @@ MUTATIONS = [
      "const data = await r.json().catch(() => undefined);",
      "const data = await r.json().catch(() => ({ error: 'invalid_response', detail: {} }));")],
      [OS + 'test_a_read_whose_body_never_arrives_is_never_data']),
+    # R13 follow-up, rulebook §46.4 S-3: the TUI's Now header is the SPA's state sentence
+    ('P147', "the TUI's Now header is the pre-ADR line", [(SCR,
+     "app.st.paint(P.state_sentence(len(active), needs), 'text')",
+     "app.st.paint('Archeus · %d active · %d need you' % (len(active), needs), 'text')")],
+     [NOW_HDR]),
+    ('P148', "the TUI's Now header is painted secondary", [(SCR,
+     "app.st.paint(P.state_sentence(len(active), needs), 'text')",
+     "app.st.paint(P.state_sentence(len(active), needs), 'text-2')")],
+     [NOW_HDR]),
+    ('P149', "the TUI's sentence says one needs you in the plural", [(PRES,
+     "'%s you.' % count(needs_you, 'needs', 'need')", "'%s you.' % count(needs_you, 'need', 'need')")],
+     [PARITY_PY]),
+    # S-2: the live map drops the full key list; its own keys show on keyboard focus
+    ('P150', 'the live map is described by the full key list', [(GV,
+     "aria-describedby={map ? undefined : 'graph-keys'}", 'aria-describedby="graph-keys"')],
+     [NOW_MAP]),
+    ('P151', 'the live map shows the full key caption', [(GV,
+     "      {map ? (\n        // rulebook §46.4 S-2", "      {false ? (\n        // rulebook §46.4 S-2")],
+     [NOW_MAP]),
+    ('P152', "the live map's hint shows without focus", [(APP_CSS,
+     ".map-hint {\n  display: none;", ".map-hint {\n  display: block;")],
+     [NOW_MAP]),
+    ('P153', "the live map's hint never shows", [(APP_CSS,
+     ".graph-canvas:focus-visible ~ .map-hint {\n  display: block;",
+     ".graph-canvas:focus-visible ~ .map-hint {\n  display: none;")],
+     [NOW_MAP]),
+    # S-1: a narrow approval card's task table is labelled rows
+    ('P154', 'the approval card does not read its own width', [(APP_CSS,
+     "  container: approval / inline-size;\n", "  container: none;\n")],
+     [S1]),
+    ('P155', 'the stacked rows carry no label', [(APP_CSS,
+     "    content: attr(data-label);\n", "    content: none;\n")],
+     [S1]),
+    ('P156', 'the task table stacks at every width', [(APP_CSS,
+     "@container approval (max-width: 51em) {", "@container approval (max-width: 999em) {")],
+     [S1]),
+    ('P157', 'the stacked table keeps its header row', [(APP_CSS,
+     "  .approval .canonical thead {\n    display: none;", "  .approval .canonical thead {\n    display: table-header-group;")],
+     [S1]),
+    ('P158', 'a stacked value is labelled with another column', [(ATT,
+     '<td className="mono" data-label="Class">', '<td className="mono" data-label="Target">')],
+     [S1]),
     # B12: the unification scenario, one Core across the desktop, the phone and the TUI
     ('P134', 'a decision names no device', [(AUTHZ,
      "'decided_by': actor.id, 'decided_at': tx.now,", "'decided_by': None, 'decided_at': tx.now,")],

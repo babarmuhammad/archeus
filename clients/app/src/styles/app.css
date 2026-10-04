@@ -1234,6 +1234,45 @@ table.canonical {
   font-weight: 600;
 }
 
+/* rulebook §46.4 S-1: the card reads its own width. Too narrow for four
+   columns (measured at the 13 px body type: headers whole at a 690 px card,
+   53 em, broken mid-word at 626 px, 48 em; in em so a larger type stacks
+   sooner), the task table stacks into labelled rows, each value under its
+   label. The label is the cell's own text (generated from data-label), so
+   the header row goes rather than say each label twice */
+.approval {
+  container: approval / inline-size;
+}
+
+@container approval (max-width: 51em) {
+  .approval .canonical thead {
+    display: none;
+  }
+
+  .approval .canonical tbody,
+  .approval .canonical tr,
+  .approval .canonical td {
+    display: block;
+  }
+
+  .approval .canonical tr {
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .approval .canonical td {
+    padding: var(--space-1) 0;
+    border-bottom: 0;
+  }
+
+  .approval .canonical td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--text-2);
+    font: 600 var(--type-body);
+  }
+}
+
 .approval .ask {
   margin-top: 0;
 }

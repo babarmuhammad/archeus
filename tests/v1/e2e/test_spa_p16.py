@@ -268,8 +268,40 @@ def test_axe_finds_no_serious_or_critical_violation(browser, deploy):
                             '.filter(v => ["serious", "critical"].includes(v.impact))'
                             '.map(v => v.id + ": " + v.nodes.map(n => n.target.join(" ")).slice(0, 3).join(", "))')
         bad += ['%s %s' % (hash_, v) for v in got]
+    # the approval card on a phone, its task table as labelled rows (S-1)
+    page.set_viewport_size({'width': 390, 'height': 844})
+    _go(page, '#/attention')
+    page.wait_for_timeout(500)
+    page.add_script_tag(path=AXE)
+    got = page.evaluate('async () => (await axe.run(document, {resultTypes: ["violations"]})).violations'
+                        '.filter(v => ["serious", "critical"].includes(v.impact)).map(v => v.id)')
+    bad += ['390 px #/attention %s' % v for v in got]
     assert not bad, bad
     context.close()
+
+
+COLUMNS = ['Task', 'Class', 'Target', 'Policy']
+# each cell of the first approval card's task table: the column it belongs to,
+# whether its header row is shown, whether its own label is drawn above it, and
+# where its value's text sits
+APPROVAL_CELLS = '''() => {
+  const t = document.querySelector('.approval table.canonical');
+  const ths = [...t.querySelectorAll('thead th')];
+  return [...t.querySelectorAll('tbody td')].map((td, i) => {
+    const th = ths[i % ths.length], b = getComputedStyle(td, '::before');
+    const r = document.createRange();
+    r.selectNodeContents(td);
+    const v = [...r.getClientRects()].filter((x) => x.width > 0);
+    const cell = td.getBoundingClientRect(), pad = parseFloat(getComputedStyle(td).paddingTop);
+    const lh = parseFloat(getComputedStyle(th).lineHeight);
+    const shown = b.display === 'block' && b.content === JSON.stringify(th.textContent);
+    return {label: th.textContent, head: th.getBoundingClientRect().height > 0,
+            headLines: Math.round(th.getBoundingClientRect().height / lh - 0.4), labelShown: shown,
+            labelBottom: cell.top + pad + (shown ? parseFloat(b.lineHeight) : 0),
+            valueTop: Math.min(...v.map((x) => x.top)), valueLeft: Math.min(...v.map((x) => x.left)),
+            valueRight: Math.max(...v.map((x) => x.right)), left: cell.left, right: cell.right};
+  });
+}'''
 
 
 @pytest.mark.parametrize('width', [390, 768, 1280, 1920])
@@ -286,6 +318,21 @@ def test_nothing_scrolls_sideways_at_any_width(browser, deploy, width):
         if extra > 0:
             over.append((hash_, extra))
     assert not over, over
+    _go(page, '#/attention')
+    page.locator('.approval table.canonical tbody td').first.wait_for()
+    cells = page.evaluate(APPROVAL_CELLS)
+    assert cells and {c['label'] for c in cells} == set(COLUMNS), cells
+    if width == 390:
+        # rulebook §46.4 S-1: too narrow for four columns, the approval's task
+        # table is labelled rows; each label whole, each value under its label
+        for c in cells:
+            assert not c['head'] and c['labelShown'], c
+            assert c['valueTop'] >= c['labelBottom'] - 0.5, ('the value is not under its label', c)
+            assert c['valueRight'] <= c['right'] + 0.5 and c['valueLeft'] >= c['left'] - 0.5, ('the value does not fit', c)
+    if width == 1280:
+        # wide enough: the four columns stay, each header on one line
+        for c in cells:
+            assert c['head'] and not c['labelShown'] and c['headLines'] == 1, c
     if width == 390:
         # a phone: the tab bar holds Now, Work, World and Attention, and targets are 44 px
         tabs = [t.inner_text().strip() for t in page.locator('nav .nav-label').all() if t.is_visible()]
