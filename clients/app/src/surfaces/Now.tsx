@@ -17,9 +17,10 @@ import { ago } from '../state/present';
 import { lineBetween, linksOf, messageHeard, targetOf, threadWords, type Ref } from '../state/thread';
 import { timeline } from '../state/timeline';
 import { ActionButton, Changed, Empty, Fresh, Loadable, RefLabel, Section, StateBadge, refName, thread, useChanged } from '../components/ui';
-import { AttentionView } from './Attention';
+import { AttentionView, KIND_LABEL, MACHINE } from './Attention';
 import { MissionRow } from './Work';
 import type { Attention as AttentionT } from '../api/generated';
+import { NOW_READS, asOf, type Kept } from '../data/snapshot';
 
 // the messages a stream frame said arrived (message id → the frame's seq),
 // waiting for the re-read that brings them; each is handled once
@@ -165,6 +166,74 @@ function MapSection({ missions }: { missions: MissionList['missions'] }) {
     <Section title="Live map" actions={<Fresh snap={status} />}>
       <LiveMap seeds={seeds} live={live} />
     </Section>
+  );
+}
+
+/** The offline snapshot (P19 B7): the last Now this client read, shown on a
+ * cold start with no Core. Read-only by construction — plain text, no link, no
+ * command, no read of its own. */
+export function OfflineNow({ kept }: { kept: Kept[] }) {
+  const [status, digest, att, missions] = NOW_READS.map((p) => kept.find((k) => k.path === p)!.data) as [Status, Digest, AttentionT, MissionList];
+  const at = new Date(asOf(kept));
+  const next = upcoming(missions.missions);
+  return (
+    <main className="view now offline-now" data-offline-snapshot="">
+      <p className="banner" role="status">
+        Offline — as of {at.toLocaleString()} ({ago(at.toISOString())}). This is what this client last read; nothing here can be changed until Archeus is reachable.
+      </p>
+      <h1>Now</h1>
+      <p className="state-sentence">{stateSentence(missions.missions.length, att.count)}</p>
+      <p className="hint">{`${status.live.length} running`}{status.armed ? null : ' · Emergency stop engaged'}</p>
+      <Section title="Needs you">
+        {att.items.length ? (
+          <ul className="rows">
+            {att.items.map((i) => (
+              <li key={i.kind + i.ref.id} className="row-item" data-ref={i.ref.kind + ':' + i.ref.id}>
+                <StateBadge machine={MACHINE[i.kind]} state={i.state} /> {KIND_LABEL[i.kind] ?? i.kind}
+                {i.reason ? ` · ${i.reason}` : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Empty>Nothing needed you.</Empty>
+        )}
+      </Section>
+      <Section title="Happening now">
+        {missions.missions.length ? (
+          <ul className="rows">
+            {missions.missions.map((m) => (
+              <li key={m.id} className="row-item" data-mission={m.id}>
+                <StateBadge machine="mission" state={m.state} /> <span className="title">{m.title}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Empty>Nothing was in progress.</Empty>
+        )}
+      </Section>
+      {digest.count ? (
+        <Section title={`Since you last looked · ${digest.count} ${digest.count === 1 ? 'change' : 'changes'}`}>
+          <ul className="digest">
+            {digest.groups.map((x) => (
+              <li key={x.ref.kind + x.ref.id} data-ref={`${x.ref.kind}:${x.ref.id}`}>
+                {x.ref.kind.replace('_', ' ')} · {HEADLINE[x.headline] ?? x.headline} · {x.count} {x.count === 1 ? 'event' : 'events'}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+      {next.length ? (
+        <Section title="Upcoming">
+          <ul className="rows">
+            {next.map((m) => (
+              <li key={m.id} className="row-item" data-mission={m.id}>
+                <StateBadge machine="mission" state={m.state} /> <span className="title">{m.title}</span>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+    </main>
   );
 }
 

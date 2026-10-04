@@ -3,6 +3,7 @@
 // (p3.5b D7) on this machine, a pairing code (P15 §6) anywhere. The token only
 // ever travels in the Authorization header — never in a URL.
 import { api, type Send } from './generated';
+import { clearSnapshot } from '../data/snapshot';
 
 const DB = 'archeus';
 const STORE = 'auth';
@@ -82,7 +83,9 @@ export async function authenticate(launch?: string): Promise<string | null> {
       return stored;
     } catch (e) {
       if (!(e instanceof CoreError && e.status === 401)) throw e;
+      // revoked while away: the revocation is read before anything is shown
       await clearToken();
+      await clearSnapshot();
     }
   }
   if (!launch) return null;

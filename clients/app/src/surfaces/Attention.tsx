@@ -11,7 +11,7 @@ import { objectHref } from '../nav/destinations';
 import { ago } from '../state/present';
 import { ActionButton, Changed, Details, Empty, Fresh, KV, Loadable, Prose, StateBadge, thread, useChanged, useMe } from '../components/ui';
 
-const KIND_LABEL: Record<string, string> = {
+export const KIND_LABEL: Record<string, string> = {
   approval: 'Approval',
   verification: 'Waiting for your acceptance',
   mission: 'Planning asks you',
@@ -82,7 +82,7 @@ function AttentionEntry({ item }: { item: AttentionItem }) {
   );
 }
 
-const MACHINE: Record<string, string> = {
+export const MACHINE: Record<string, string> = {
   approval: 'approval',
   verification: 'verification',
   mission: 'mission',

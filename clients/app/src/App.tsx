@@ -17,12 +17,13 @@ import { AttentionView } from './surfaces/Attention';
 import { CommandBar } from './surfaces/CommandBar';
 import { ControlView, applyMotion } from './surfaces/Control';
 import { Inspector } from './surfaces/Inspector';
-import { NowView } from './surfaces/Now';
+import { NowView, OfflineNow } from './surfaces/Now';
 import { PauseAll, WorkView } from './surfaces/Work';
 import { ProjectPage, WorldView } from './surfaces/World';
 import { GraphView } from './graph/GraphView';
 import { reducedMotion } from './graph/loop';
-import { ActionButton, Fresh } from './components/ui';
+import { ActionButton, Fresh, useMe } from './components/ui';
+import { NOW_READS, clearSnapshot, keep, loadSnapshot, mayKeep, type Kept } from './data/snapshot';
 import { Arrival, needsYou, tabTitle } from './state/arrival';
 import { MARK, Orbit, favicon, presence, runningMissions, type Presence } from './state/orbit';
 import { timeline } from './state/timeline';
@@ -30,7 +31,13 @@ import { TOAST_TTL_MS, Toasts, type Ended } from './state/toast';
 import { INSPECTOR_MAX, INSPECTOR_MIN, clampWidth, keyWidth, loadWidth, saveWidth } from './state/inspector';
 import { DARK } from './state/tokens';
 
-type Boot = { phase: 'starting' } | { phase: 'pair'; code: string } | { phase: 'out' } | { phase: 'in'; token: string } | { phase: 'failed'; why: string };
+type Boot =
+  | { phase: 'starting' }
+  | { phase: 'pair'; code: string }
+  | { phase: 'out' }
+  | { phase: 'in'; token: string }
+  | { phase: 'offline'; kept: Kept[] }
+  | { phase: 'failed'; why: string };
 
 export default function App() {
   const [boot, setBoot] = useState<Boot>({ phase: 'starting' });
@@ -40,7 +47,11 @@ export default function App() {
     if (f.pair) return setBoot({ phase: 'pair', code: f.pair });
     authenticate(f.launch).then(
       (token) => setBoot(token ? { phase: 'in', token } : { phase: 'out' }),
-      (e) => setBoot({ phase: 'failed', why: String(e) }),
+      async (e) => {
+        // a cold start with no Core shows the last Now, read-only (P19 B7)
+        const kept = e instanceof CoreError && e.status === 0 ? await loadSnapshot() : null;
+        setBoot(kept ? { phase: 'offline', kept } : { phase: 'failed', why: String(e) });
+      },
     );
   }, []);
   if (boot.phase === 'starting')
@@ -50,6 +61,7 @@ export default function App() {
         <p>Connecting to Archeus…</p>
       </main>
     );
+  if (boot.phase === 'offline') return <OfflineNow kept={boot.kept} />;
   if (boot.phase === 'failed') return <main className="notice">Archeus could not start: {boot.why}</main>;
   if (boot.phase === 'pair') return <PairRedeem code={boot.code} onPaired={(token) => setBoot({ phase: 'in', token })} />;
   if (boot.phase === 'out')
@@ -138,6 +150,9 @@ function Shell({ token }: { token: string }) {
   const aside = useRef<HTMLElement>(null);
   const att = useRead<Attention>(paths.attentionItems());
   const status = useRead<Status>(paths.status());
+  const { me } = useMe();
+  const keeping = !!me && mayKeep(me);
+  const ended = conn.conn === 'unauthenticated' || conn.conn === 'revoked';
   const p = presence(canCommand(conn.conn), att.data?.count ?? 0, status.data?.live ?? []);
 
   // the favicon shows the presence, still (ADR-0027 §2)
@@ -187,6 +202,21 @@ function Shell({ token }: { token: string }) {
       removeEventListener('offline', offLine);
     };
   }, [token]);
+
+  // the offline snapshot (P19 B7): the Now reads, kept after each successful
+  // read and from what is already read; gone with this client's credential
+  useEffect(() => {
+    if (ended) return void clearSnapshot();
+    if (!keeping) return;
+    const k = (path: string, data: unknown, seq?: number) => {
+      if (store.conn.conn !== 'unauthenticated' && store.conn.conn !== 'revoked') keep(path, data, seq);
+    };
+    for (const path of NOW_READS) {
+      const s = store.snapshot(path);
+      if (s.data !== undefined) k(path, s.data, s.seq);
+    }
+    return store.onRead(k);
+  }, [keeping, ended]);
 
   useEffect(() => {
     const t = BANNER[conn.conn];

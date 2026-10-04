@@ -170,7 +170,7 @@ event type or a decision.
 | **S3** chat `approve`/`reject` verbs | a verb bound to a displayed card's `action_hash` | the P7 grammar change and the binding are P9's; cards cover the need | P19 |
 | **S4** mission confirmation before `start` under `careful` | a lifecycle rule (P9 D5 "unchanged (P16)") | a mission-machine and policy change, not presentation | P19 (flagged to the user, §28) |
 | **S5** `/v1/now` | one call for the Now surface | the SPA composes Now from digest + missions + attention (three existing reads); a fourth route would duplicate them | not planned |
-| **S6** offline snapshot | last snapshot persisted for a cold offline start | the service worker caches the shell only; data is never cached (D6) | P19 |
+| **S6** offline snapshot | last snapshot persisted for a cold offline start | the service worker caches the shell only; data is never cached (D6) | P19 (**built**, p19-design-gate B7: the SPA keeps the Now reads; the worker stays shell-only) |
 | **S7** Qt shell attach | the desktop shell minting a launch code with D2 scopes and loading the V1 URL | touches the legacy shell; D2 is the mechanism it needs | P19 |
 | **S8** `/v1/world/graph` | a focused neighbourhood query | P18 (§20.5) | P18 |
 | **S9** meetings, decisions, people lists | World list kinds | no route lists meetings; Decision/Person/Organization have no table | P22 / later |
@@ -692,6 +692,12 @@ re-read authoritative state; the client never replays local assumptions.
 upgraded Core's SPA wins, cache-first for hashed assets. It never touches `/v1/*`: no API
 response, no token, no event is ever cached by it. Offline with a cached shell, the app opens,
 finds no Core, and shows `offline` with nothing to act on.
+
+*Amended for the SPA (P19, p19-design-gate B7, S6):* the worker's sentence holds. The SPA itself
+keeps the Now composition (`/v1/status`, `/v1/digest`, `/v1/attention`, the unsettled
+`/v1/missions`) in IndexedDB after each read, never a token or an event, never on a client paired
+`observe`-only; a cold start with no Core shows it read-only under "Offline — as of <time>", and
+revoking the client clears it.
 
 ---
 

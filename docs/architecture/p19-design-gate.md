@@ -908,6 +908,62 @@ conversation only, and B10 in two commits (5a, then 5b).
     (`archeus.cli._api` imported with the dispatcher); it fails the same way on `67a032c`, before
     B9, and is outside the `tests/v1` baseline.
 
+**Slice 8 (B7, the offline snapshot), 2026-10-04.**
+
+70. **As B7 designed it.** The service worker is unchanged and stays shell-only (D6). The SPA
+    keeps the Now composition in IndexedDB (`archeus-snapshot`, store `now`, a separate database
+    from the device token's), one entry per read keyed `<Core origin> <path>`, each with its
+    origin, its data, the `X-Archeus-Seq` it was read at and the time. It is written after every
+    successful read of those paths (the read cache's new `onRead`), and once from what is
+    already read when the client's own record arrives, so a read that finished before `/v1/sync`
+    answered is not lost. Nothing else is kept: no token, no event, no other read. Appearance is
+    not part of it (B9's preference stays in localStorage).
+71. **The missions read** (deviation: B7 names `/v1/missions?state=active`, which Core refuses,
+    since `state` must be a mission state). The snapshot keeps `/v1/missions`, the read Now
+    already makes, filtered at write to the unsettled missions (`activeMissions`, what Now's
+    Happening now and Upcoming show). No Core query was added, and no settled mission is kept.
+72. **The cold start.** When the stored token's first read fails for want of a network (status
+    0) and every Now read is kept for this origin, the app opens on the snapshot instead of "could
+    not start". `OfflineNow` is its own small view, read-only by construction: plain text under
+    "Offline — as of <time> (<age>)", with the state sentence, the running count (and the
+    emergency stop, if engaged), Needs you, Happening now, Since you last looked and Upcoming.
+    No link, button or field, no read of its own, and no state colour or glyph beyond the
+    existing badges. "As of" is the oldest kept read's time. A missing read means no snapshot.
+    The live Now's map, automation line, decisions and conversation are other reads and are not
+    shown. Its heading has no `tabIndex` because the view has no navigation, which also keeps
+    an older mutation anchor on Now's heading unique.
+73. **Cleared** on every route out of the credential. The client revokes itself (Control →
+    Clients: the existing Revoke on "this client", which is how a user leaves the device; no
+    new control). Any 401 while open (the connection's `unauthenticated` or `revoked`): nothing
+    is written after it. A 401 on the next online start, read before anything is shown (§8).
+74. **Never written on a client paired `observe`-only** (B7: "from another network"). Core
+    cannot tell networks apart, so the rule is the client's own record: `origin: paired` and
+    no scope but `observe`. A local client, or a paired one with any other scope, keeps one.
+75. **§13.5 amended for the SPA** in p16-design-gate: the worker's sentence holds; the SPA's
+    own snapshot is this slice's. The security note stands: a phone paired with more than
+    `observe` keeps mission titles, attention text and status at rest.
+76. **Tests.** `test_spa_offline_snapshot.py`: what is kept (four paths keyed by origin, with
+    seq and time; no token, no event, no settled mission), the offline cold start through the
+    service worker (as of, the rows, no command, link or field, Tab reaches nothing, nothing
+    sent), clearing (self-revoke, revoked while open, revoked while away), and an
+    `observe`-only paired client keeping nothing, and, on a quiet Core with `/v1/sync` held
+    until the Now reads have answered, those reads kept once the client is known.
+    `test/snapshot.test.ts`: the kept paths, the
+    missions filter, the `observe`-only rule, "as of", and the worker still never touching
+    `/v1/`. One run of the e2e file failed, once in over 30 runs; the
+    failure's output was not captured and it did not recur, so it is recorded here rather than
+    explained.
+77. **Mutants P101-P110** (B7): every read kept, a settled mission kept, an `observe`-only
+    paired client keeping one, "as of" the newest read, no snapshot on a cold start without
+    Core, a client revoked while away or while open keeping its snapshot, the offline Now
+    linking a mission, what was read before the client was known never kept, and the entries
+    not keyed by origin. All ten killed. P109 survived the first run: on the `slow` Core the
+    stream re-reads the Now paths, so the catch-up was never the only writer. The quiet-Core
+    test above was added and P109 is guarded by it (killed twice by it).
+78. **The full run** (B7 on B9, `tests/v1`): 2548 passed, 0 failed, 13 skipped, 5 xfailed. The
+    known intermittent tests (item 22's `test_spa_marker.py`, item 48's two) all passed in this
+    run, which says nothing about whether they are fixed.
+
 ## 13. As built
 
 (empty until implementation)

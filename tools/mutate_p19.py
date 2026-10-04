@@ -6,7 +6,7 @@ conversation and the mission Now tab (P21-P30); B5, chat approve / reject
 is the card's decision (P31-P40); B6, mission confirmation under `careful`
 (P41-P50); B10a, `emergency stop`, `stop <running mission>` and the
 explanation card (P51-P62); B10b, resource directives (P63-P74); B4, plan edit (P75-P89);
-B9, the application theme (P90-P100).
+B9, the application theme (P90-P100); B7, the offline snapshot (P101-P110).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -76,6 +76,15 @@ AP = 'tests/v1/e2e/test_spa_appearance.py::'
 AP_CHOICE = AP + 'test_appearance_is_this_clients_choice_over_the_systems'
 AP_FORCED = AP + 'test_forced_colours_override_any_choice'
 AP_FIRST = AP + 'test_the_choice_is_on_html_before_the_stylesheet_and_survives_an_offline_start'
+SNAP = 'clients/app/src/data/snapshot.ts'
+APP_TSX = 'clients/app/src/App.tsx'
+TRANSPORT = 'clients/app/src/api/transport.ts'
+NOW_TSX = 'clients/app/src/surfaces/Now.tsx'
+SNAP_TS = 'node:test/snapshot.test.ts'
+OS = 'tests/v1/e2e/test_spa_offline_snapshot.py::'
+OS_COLD = OS + 'test_an_offline_cold_start_shows_the_last_now_read_only'
+OS_REVOKE = OS + 'test_revoking_this_client_clears_its_snapshot'
+OS_OBSERVE = OS + 'test_a_client_paired_observe_only_keeps_nothing'
 CHANGE_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
               'test_a_change_card_is_confirmed_through_the_existing_admin_route')
 STOP_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
@@ -504,6 +513,42 @@ MUTATIONS = [
      "    doc.add('  ' + app.st.paint(app.st.theme.capitalize(), 'text', True)",
      "    doc.add('  ' + app.st.paint('Dark', 'text', True)")],
      ['tests/v1/tui/test_appearance.py::test_the_terminal_names_its_own_theme_and_motion']),
+    ('P101', 'every read is kept, not only the Now composition', [(SNAP,
+     "  if (!NOW_READS.includes(path)) return;\n", "")],
+     [OS_COLD]),
+    ('P102', 'a settled mission is kept', [(SNAP,
+     "path === paths.listMissions() ? { missions: activeMissions((data as MissionList).missions) } : data;",
+     "path === paths.listMissions() ? { missions: activeMissions([]).concat((data as MissionList).missions) } : data;")],
+     [SNAP_TS, OS_COLD]),
+    ('P103', 'a client paired observe-only keeps a snapshot', [(SNAP,
+     "!(c.origin === 'paired' && c.scopes.every((s) => s === 'observe'));",
+     "!(c.origin === 'paired' && c.scopes.every((s) => s === 'nothing'));")],
+     [SNAP_TS, OS_OBSERVE]),
+    ('P104', 'a snapshot is as new as its newest read', [(SNAP,
+     "kept.map((k) => k.at).sort()[0];", "kept.map((k) => k.at).sort().reverse()[0];")],
+     [SNAP_TS]),
+    ('P105', 'a cold start with no Core shows no snapshot', [(APP_TSX,
+     "const kept = e instanceof CoreError && e.status === 0 ? await loadSnapshot() : null;",
+     "const kept = e instanceof CoreError && e.status === 401 ? await loadSnapshot() : null;")],
+     [OS_COLD]),
+    ('P106', 'a client revoked while away keeps its snapshot', [(TRANSPORT,
+     "      await clearToken();\n      await clearSnapshot();", "      await clearToken();\n      void clearSnapshot;")],
+     [OS_REVOKE]),
+    ('P107', 'a client revoked while open keeps its snapshot', [(APP_TSX,
+     "    if (ended) return void clearSnapshot();", "    if (ended) return void clearSnapshot;")],
+     [OS_REVOKE]),
+    ('P108', 'the offline Now links a mission', [(NOW_TSX,
+     "<StateBadge machine=\"mission\" state={m.state} /> <span className=\"title\">{m.title}</span>\n"
+     "              </li>\n            ))}\n          </ul>\n        ) : (\n          <Empty>Nothing was in progress.</Empty>",
+     "<StateBadge machine=\"mission\" state={m.state} /> <a href=\"#/now\" className=\"title\">{m.title}</a>\n"
+     "              </li>\n            ))}\n          </ul>\n        ) : (\n          <Empty>Nothing was in progress.</Empty>")],
+     [OS_COLD]),
+    ('P109', 'what was read before the client was known is never kept', [(APP_TSX,
+     "      if (s.data !== undefined) k(path, s.data, s.seq);", "      void s;")],
+     [OS + 'test_what_was_read_before_the_client_was_known_is_kept']),
+    ('P110', 'the snapshot is not keyed by the Core origin', [(SNAP,
+     "s.put(k, `${k.origin} ${path}`)", "s.put(k, path)")],
+     [OS_COLD]),
 ]
 
 if __name__ == '__main__':

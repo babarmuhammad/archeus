@@ -38,6 +38,7 @@ class Store {
   conn: ConnState = initial();
   private connListeners = new Set<() => void>();
   private frameListeners = new Set<(f: Frame) => void>();
+  private readListeners = new Set<(path: string, data: unknown, seq?: number) => void>();
   readonly seqs = new Map<string, number>();
 
   /** A stream frame arrived (after it invalidated what it makes stale). A
@@ -50,6 +51,12 @@ class Store {
   onFrame(l: (f: Frame) => void) {
     this.frameListeners.add(l);
     return () => void this.frameListeners.delete(l);
+  }
+
+  /** Hears every successful read (the offline snapshot keeps the Now ones). */
+  onRead(l: (path: string, data: unknown, seq?: number) => void) {
+    this.readListeners.add(l);
+    return () => void this.readListeners.delete(l);
   }
 
   configure(send: Send) {
@@ -113,6 +120,7 @@ class Store {
         try {
           const data = await this.send('GET', path);
           this.set(path, { data, pending: false, gen, seq: this.seqs.get(path) });
+          this.readListeners.forEach((l) => l(path, data, this.seqs.get(path)));
         } catch (err) {
           const error = err instanceof CoreError ? err : new CoreError(0, 'network', {});
           if (error.status === 401) this.signal('unauthorized');
