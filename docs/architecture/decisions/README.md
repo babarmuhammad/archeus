@@ -52,3 +52,7 @@ Internal documents (excluded from the published manual). Status values: DECIDED,
 | [0046](ADR-0046.md) | The V1 write boundary: ARCHEUS_HOME, an Archeus-owned project-local namespace with per-entry ownership, and project files only through named capabilities | DECIDED |
 | [0047](ADR-0047.md) | Context capacity is a governed execution resource: measured with its basis, never assumed; the only continuation is the existing checkpoint hand-off | DECIDED |
 | [0048](ADR-0048.md) | D-25: account identity, usage measures, own calls as consumers, and the legacy boundary of AP-1 | DECIDED |
+| [0049](ADR-0049.md) | What a V1 execution inherits from the Claude Code settings sources it runs under (account home, project, local: hooks, plugins, skills, MCP, permissions, CLAUDE.md) | DECIDED |
+| [0050](ADR-0050.md) | A future assistant layer is a client and modality of the conversation and mission model, never a second loop, router, memory or approval path | DECIDED |
+| [0051](ADR-0051.md) | V1 execution isolation is application-level and harness-provided; an Archeus-owned OS-level sandbox is post-V1 | DECIDED |
+| [0052](ADR-0052.md) | Claude Code executions get tool removal derived from action classes, beneath the per-tool hook; unmapped tools are excluded by default | DECIDED |

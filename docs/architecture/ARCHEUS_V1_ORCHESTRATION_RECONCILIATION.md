@@ -1104,7 +1104,10 @@ evidence annotations → promotion to INFERRED → `evidence_order`/`evidence_ex
 
 **POST-V1**: automated external docs/changelog/benchmark ingestion; time decay (half-life) and EMA
 reinforcement (already deferred past V1 in plan §31.2); cross-workspace or shared evidence;
-composite subjects beyond skills; an Archeus-native harness.
+composite subjects beyond skills; an Archeus-native harness. *Added 2026-10-02:* the assistant
+layer (voice, desktop presence, browser and desktop capabilities) is plan §31.5 (V2-A0…A5),
+governed by ADR-0050. The skills trust question raised by the same research is XR-3, owned by
+V1.x-O5 ([ARCHEUS_V2_ASSISTANT_LAYER.md](ARCHEUS_V2_ASSISTANT_LAYER.md) §4).
 
 **REJECTED**: §35.
 

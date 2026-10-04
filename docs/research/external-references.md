@@ -207,3 +207,37 @@ is a principle, an interaction pattern or a visual technique.
 | R6 Apple Design Skill | `6237cc12e323` (2026-09-29) | — | point-of-view / template test; motion never the only carrier; badges only for real counts; target and text floors |
 | R7 Ship Notes | `550fb4c09db3` (2026-09-29) | MIT | easing curve (already adopted); loop gate; self-retiring loops; deterministic `renderAt(t)`; do not copy `filter: brightness()` |
 | zoetrope (credits) | `b1f31dd26bd4` (2026-09-11) | MIT | two clocks — content time vs presentation time; ephemeral activity chips; layout never re-runs by itself |
+
+---
+
+## Agent ecosystem, Jarvis and Windows speech (2026-10)
+
+Sixteen further sources (X1–X16) were read at pinned revisions in October 2026:
+- the eight repositories of the reel list;
+- what was found from them;
+- Huw Prosser's public Jarvis work;
+- the Windows speech-to-text components.
+
+Every observation, its classification against Archeus, the decision register (XR-1…XR-11) and
+the post-V1 backlog (PV-1…PV-17) are in
+[2026-10-external-research.md](2026-10-external-research.md). No code from any of them is used
+by Archeus.
+
+| Ref | Source | Revision | Licence | Disposition in one line |
+|---|---|---|---|---|
+| X1 | browser-use/browser-use | `62a0f71b` | MIT | `Agent` loop rejected; snapshot and placeholder ideas are reference for XR-2 |
+| X2 | browser-use/browser-harness | `afbcc38` | MIT | CDP primitives, a possible `browser` provider after XR-2 |
+| X3 | browser-use/windows-harness | `46a37cf1` | MIT | Windows desktop control; needs XR-6 |
+| X4 | jayzeng/agentmemory | `a6c256b` | MIT | rejected as a store (ADR-0012) |
+| X5 | tobi/qmd | `26b703c5` | MIT | vector retrieval rejected in V1; origin guard already matched |
+| X6 | K-Dense-AI/scientific-agent-skills | `1549884` | MIT | skills content; trust evidence for XR-3 |
+| X7 | cathrynlavery/diagram-design | `f903933` | MIT | `self_check` contract; skill metadata for O5 |
+| X8 | CYBERAD7/anthropic-cybersecurity-skills (upstream mukul975) | `888bbe4` / `54a7988` | Apache-2.0 | rejected |
+| X9 | harness-engineer/awesome-harness-engineering | `0b14b85` | none | handoff patterns already decided; OS sandbox question for P20 |
+| X10 | volcengine/OpenViking | `7e47957d` | AGPL-3.0 | rejected as a service; multi-size summaries are XR-5 |
+| X11 | acstener/blazing-transcribe | `bc97a2d` | MIT | macOS-only; its VAD and endpointing design is the reference for PV-1/PV-2 |
+| X12 | huwprosser/jarvis-mlx | `e2a0887` | none | half-duplex voice loop; ideas only |
+| X13 | huwprosser/fury-sdk | `bbdf07c` | none | interrupt pattern kept; tool-call healing, loop and compaction rejected |
+| X14 | huwprosser: web-whisper, spotify-cli, clap-detection, carter-voice-assistant, deskgpt | see the research file | mostly none | client-VAD/server-STT split; narrow integrations before desktop control |
+| X15 | ricky0123/vad | `2e5aca9` | ISC | Silero VAD in the browser; needs a CSP decision (XR-4) |
+| X16 | Windows speech components (Silero, whisper.cpp, Parakeet, NeMo-Speech.cpp, sherpa-onnx, onnx-asr, CTranslate2, sounddevice, wake-word engines) | see the research file §3 | MIT / Apache-2.0 / CC-BY-4.0 (others noted) | benchmark first (PV-1) |

@@ -297,7 +297,7 @@ The P1 contract already is the harness interface the directive describes; what i
 | execute task | `start()` / `collect_result()` | — |
 | repository / filesystem access | `code_edit`; workdir rules (execution-architecture §2) | split `fs_read` / `code_edit` in the capability vocabulary |
 | terminal | `shell` | — (renamed nowhere; `shell` is the term) |
-| browser | not declared | add `browser` (declared only when the harness drives a browser, not `web` fetch) |
+| browser | not declared | add `browser` (declared only when the harness drives a browser, not `web` fetch) — *withdrawn from P22 on 2026-10-03 (XR-12, ADR-0037 "Amended"): designed with its action class in V2-A4* |
 | tool invocation, MCP | `mcp`, action classes | — |
 | patch application | the harness edits files; Core merges the verified worktree | stays Core's: a harness never applies a patch to the user's tree (ADR-0007) |
 | structured output | `structured_output` native/prompted | — |

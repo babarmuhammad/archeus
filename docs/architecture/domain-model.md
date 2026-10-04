@@ -239,7 +239,9 @@ a deterministic grammar and never need a model (ADR-0006).
 forbid accounts, harnesses, models, locations; a tier requirement; a pin), proposed by the brain and
 resolved by Core; narrowing and preference apply to the mission, widening and standing changes
 become change cards; the preference or policy version a directive produced records its
-`message_id` and `intent_id`. A future voice modality produces an ordinary user Message.
+`message_id` and `intent_id`. A future voice modality produces an ordinary user Message, with its
+input modality recorded (ADR-0042 §7). The field does not exist yet, and when it lands is XR-7
+([ARCHEUS_V2_ASSISTANT_LAYER.md](ARCHEUS_V2_ASSISTANT_LAYER.md) §4).
 
 **As built (P7, p7-design-gate §4–§5):** Message also has `in_reply_to`, `intent_id` and
 `principal_id`; a card is `{type, ref, ...}` and a link `{ref}`, and card types add `mission`,

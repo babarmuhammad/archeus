@@ -88,3 +88,6 @@ notes/reference/
 
 # iteration renders from the cluster/reference passes
 .qa/
+
+# Architecture
+docs/architecture/reference

@@ -1106,8 +1106,41 @@ decisions ADR-0024…0029.
   before/after captures, and an independent adversarial design review against the rulebook.
 
 **P20 — Security and trust hardening**
-- Depends: P19. Work: breaker drills, e-stop drills, secrets review (DPAPI path), threat-model
+- Depends: **P19.5, explicitly finished** (§31.3 chain; the user's sequencing of 2026-10-03: no P20
+  implementation, scaffolding, contracts or tests before then). Work: breaker drills, e-stop drills, secrets review (DPAPI path), threat-model
   review of remote access, dependency audit, fuzzing of the command API and hook canonicaliser.
+- *Added 2026-10-02, decided 2026-10-03 (external research; register and backlog in
+  [ARCHEUS_V2_ASSISTANT_LAYER.md](ARCHEUS_V2_ASSISTANT_LAYER.md) §4–§5):*
+  - **What an execution loads from its settings sources** (ADR-0049, DECIDED; XR-1).
+    - The user, project and local sources are excluded by default, with an explicit, recorded
+      opt-in, and an inventory of what loaded is always recorded.
+    - If narrowing a source breaks the login, that source falls back to recorded-only, and the
+      fallback is shown.
+    - The deny path uses exit code 2.
+    - P20 builds it (PV-10) and observes it on one real execution per source rule (PV-19, which
+      needs ADR-0021). Archeus's legacy hooks already stand down (P0.5 guard).
+  - **Execution isolation** (ADR-0051, DECIDED; XR-13). P20 builds **no** Archeus-owned OS
+    sandbox. It specifies and tests the application-level and harness-provided boundary:
+    - credential removal;
+    - the worktree as workdir;
+    - the fail-closed hook on Core down, timeout, an unreadable answer and a crash;
+    - ADR-0049's flags and inventory;
+    - network-denied tasks routed only to `sandbox` harnesses;
+    - the sentinel and the registry kill.
+
+    It keeps that boundary named apart from an OS sandbox. An Archeus-owned sandbox is PV-20,
+    required before V2-A5.
+  - **Tool removal** (ADR-0052, DECIDED; XR-14, §33 Q22). The Claude Code adapter derives
+    `--tools` in allow-form from the task's action classes, and passes `--disallowedTools
+    "mcp__*"` except for MCP servers opted in under ADR-0049. It never passes `--allowedTools`,
+    which pre-approves. Unmapped built-in tools are excluded by default. This closes the
+    execution-architecture §2 / ADR-0007 tool layer that p11 §18 never built (PV-22).
+  - **Threat model** (ADR-0051 §3). It names the OS-level confinement Claude Code executions lack
+    on Windows, plus the future microphone, screen capture and desktop input injection (ADR-0050
+    §11). Nothing is built for those in V1.
+  - **Acceptance additions to G6:** the exclusion, inventory, fallback and exit-code-2 deny tests
+    (ADR-0049); the boundary tests above (ADR-0051 §2); and ADR-0052's argv, mapping-completeness,
+    CLI-drift and mutation tests, plus the observed run (gated by ADR-0021).
 - Acceptance: G6 fully passes; no High findings open.
 
 **P21 — Observability views**
@@ -1167,6 +1200,11 @@ P25.5; renamed 2026-10-01 from "Legacy migration", ownership unchanged)*
   every ADR-0041 field (the consumption classes and budgets themselves land earlier, in AP-1 —
   §31.2); a route preview per plan task shown on the plan approval card; model and
   location directive kinds (ADR-0042) once the catalogue exists.
+- *Decided 2026-10-03 (XR-12; ADR-0037 "Amended"):* the descriptor work does **not** add the
+  `browser` capability word. It adds `fs_read` and the other ADR-0037 §2 facts. `browser`, its
+  policy action class and its boundary are designed together in the browser capability ADR before
+  V2-A4. Policy has no `browser` action class, and `web` is ALLOW by default
+  (`archeus/core/policy/rules.py:22,36`).
 - *Carried from P19.5 (rulebook §46.2, 2026-10-03):* thread tints. The curated list of legacy
   palette accents passing 3:1 and ΔE ≥ 30 from every state colour comes with R17's tint
   migration, along with its contrast + ΔE gate; choosing a tint sits in Control → Appearance
@@ -1373,7 +1411,9 @@ built"); `rotation` stays unpermitted until the user's ADR-0021 answer.
 **Deferred past V1:** remote execution nodes, pi/generic-CLI adapters, 3D spatial mode, Web
 Push, FTS5, vector search, EMA reinforcement and contradiction edges, Archeus-as-MCP-server,
 multi-user workspaces, WebAuthn step-up, the **voice** modality (it will feed the same
-conversation, intent and command pipeline — ADR-0042 §7 — never a second one).
+conversation, intent and command pipeline — ADR-0042 §7 — never a second one). Voice, desktop
+presence and browser/desktop capabilities are sequenced as the post-V1 assistant layer **V2-A0…A5**
+(§31.5).
 
 ### 31.3 Dependency graph
 
@@ -1392,6 +1432,9 @@ P19.5 was approved on 2026-09-30 (ADR-0030). Outside the chain: the C-22 defect 
 
 P4–P6 and P16's static parts can overlap once P3.5 is in; the table above is the dependency
 order, not a staffing plan.
+
+After P26: V1.x-O1…O5 (orchestration reconciliation §29) and the assistant layer V2-A0…A5
+(§31.5). V2-A0 is a benchmark with no product code and can run at any time.
 
 ### 31.4 Model-call classes and the provider-terms gate
 
@@ -1422,6 +1465,61 @@ Rules:
 - The user's harness and model for Archeus's own calls (legacy `headless_harness`,
   `headless_harness_model`) is a preference for subject `archeus_call`, imported at migration
   (migration-plan §4) and read by the pre-router election until P10 and by the router after.
+
+### 31.5 Post-V1 assistant layer (V2-A) — *added 2026-10-02, decided architecture 2026-10-03; phases unscheduled*
+
+**The governing principle** is **ADR-0050 (DECIDED 2026-10-03).** A future Jarvis-style
+assistant is clients and device components over the existing conversations, missions, routing,
+knowledge, approvals, policy, resources and execution model. It never adds a second router,
+memory, approval path, agent loop or mission system. Speech engines are device components, not
+routed models, and voice activation is push-to-talk only.
+
+**Where the detail lives:** [ARCHEUS_V2_ASSISTANT_LAYER.md](ARCHEUS_V2_ASSISTANT_LAYER.md),
+the authoritative home of:
+- the register (XR-1…XR-14);
+- the backlog (PV-1…PV-22);
+- each phase's prerequisites, decisions, security boundary, acceptance and evidence (§2);
+- the research designs (§3);
+- the reconciliation and the external lessons;
+- the do-not-forget index.
+
+If this table and that document's §2 differ, that document wins. The evidence is
+[../research/2026-10-external-research.md](../research/2026-10-external-research.md).
+
+**Nothing here is V1, and nothing here is authorised to start.**
+- **A0** is research only: dated reports, no product code. It may run at any time.
+- **A production phase is ready only when four things hold:**
+  1. its decisions are DECIDED;
+  2. its prerequisites have reported;
+  3. its threat-model entry exists;
+  4. the user has given an explicit go-ahead.
+
+  That code could be written is not readiness.
+
+**Two independent tracks.**
+- The speech track: A0 → A1, A2 → A3.
+- The capability track: A4, A5. It depends on ADR-0037 and ADR-0051, not on voice.
+
+| Phase | Kind | Contents | Backlog | Decisions first | Depends on |
+|---|---|---|---|---|---|
+| **V2-A0a** STT/VAD benchmark | research | engines, latency, accuracy, resources, offline/online, streaming and partials, punctuation, interruption, licences, Windows integration | PV-1 | — | — |
+| **V2-A0b** TTS survey | research | latency, quality, interruption and cancellation, streaming, offline/online, resources, Windows engines, licences | PV-18 | — | — |
+| **V2-A0c** shell probe | research | QtWebEngine microphone permission, WASM VAD under a test CSP, tray, global hotkey, packaging; does not commit to Qt | PV-16 | — | — |
+| **V2-A1** voice input | production | push-to-talk, VAD, endpointing, local STT; transcript as a user `Message` with modality and engine provenance | PV-2, PV-3 | XR-4, XR-7, XR-9 | P26; A0a (A0c for option B) |
+| **V2-A2** voice output, interruption | production | client TTS of what Core returned; sentence chunking; interruption that is not a stop verb | PV-4, PV-11 | XR-8, XR-9 | A0b (A1 only for a spoken barge-in) |
+| **V2-A3a** tray and hotkey | production | the mark's state in the tray; push-to-talk hotkey | PV-5 | — | A0c (A1 for the hotkey) |
+| **V2-A3b** spoken Attention | production | Attention items spoken, opt-in | PV-15 | — | A2 |
+| **V2-A4** browser capability | production | the browser capability ADR (word + action class + boundary); CDP primitives, isolated profile, request-level filter | PV-7, PV-14 | XR-2, XR-9 | ADR-0037 implemented (P22) |
+| **V2-A5** desktop capability | production | the desktop capability ADR; UI Automation reads before SendInput writes; PowerShell only under policy | PV-6, PV-14 | XR-6, XR-9 | ADR-0037; PV-20 (ADR-0051 §5) |
+
+**Deferred beyond these phases:** a wake word (PV-21; needs an amendment of ADR-0050 §2).
+
+**What this research adds to V1 is only:**
+- ADR-0049, ADR-0051 and ADR-0052 in P20, after P19.5;
+- `browser` omitted from P22.
+
+Everything else is excluded from V1 by
+[ARCHEUS_V2_ASSISTANT_LAYER.md](ARCHEUS_V2_ASSISTANT_LAYER.md) §9.
 
 ## 32. Risks
 
@@ -1456,6 +1554,17 @@ Rules:
 | Q12 | Vector search / FTS5 | DEFERRED | engineering | when retrieval quality is measured insufficient |
 | Q13 | Archeus as an MCP server for other harnesses | DEFERRED | engineering | after V1 |
 | Q14 | Multi-user workspaces | DEFERRED | user | after V1 |
+| Q15 | Must an execution exclude, record or accept what the settings sources it runs under (account home, project, local) load: hooks, plugins, skills, MCP servers, permissions, CLAUDE.md? With which deny form? (XR-1) | DECIDED 2026-10-03 (ADR-0049: exclude by default, opt-in, always record; exit code 2) | user | built in P20 |
+| Q16 | Approve the assistant-layer principle: voice and desktop presence as clients and modalities, never a second loop (XR-11) | DECIDED 2026-10-03 (ADR-0050, amendments folded in; push-to-talk) | user | — |
+| Q17 | Where speech becomes text, and its privacy rule; in-browser VAD needs `'wasm-unsafe-eval'` in the CSP (XR-4) | DEFERRED | user | after V1, after the STT benchmark (PV-1) |
+| Q18 | A desktop-control capability word and policy action class (XR-6); what declaring `browser` requires (XR-2) | DEFERRED | user | with ADR-0037 (P22) for XR-2; after V1 for XR-6 |
+| Q19 | Telemetry off and verified as a precondition for adopting any third-party component (XR-9) | OPEN | user | before any adoption |
+| Q20 | Does ADR-0037's `browser` word ship in P22 before XR-2 defines its policy: inert, with an action class, or deferred to V2-A4? (XR-12) | DECIDED 2026-10-03: deferred to V2-A4 (ADR-0037 "Amended") | user | — |
+| Q21 | Does P20 include an OS-level filesystem and network sandbox for executions? (XR-13) | DECIDED 2026-10-03: no; P20 tests the application and harness boundary (ADR-0051); OS sandbox is PV-20 | user | — |
+| Q22 | Does P20 build the Claude Code tool allowlists execution-architecture §2 specifies (unbuilt per p11 §18), record the hook as the sole tool gate, or leave it to P24? (XR-14; brief: [XR-14_TOOL_ALLOWLIST_BRIEF.md](XR-14_TOOL_ALLOWLIST_BRIEF.md)) | DECIDED 2026-10-03: build removal (`--tools` allow-form, `mcp__*` deny, never `--allowedTools`; unmapped excluded) — ADR-0052 | user | built in P20, after P19.5 |
+
+Research-origin questions (Q15–Q22) are registered in full, with options, trade-offs and evidence, as
+XR-1…XR-14 in [ARCHEUS_V2_ASSISTANT_LAYER.md](ARCHEUS_V2_ASSISTANT_LAYER.md) §4.
 
 ## 34. Definition of done
 

@@ -689,7 +689,9 @@ Each gate is mutation-verified in the phase that builds it (testing-strategy §4
   SubagentStart/Stop; not proposed).
 - Remaining-capacity reads for harnesses other than Claude Code (each adapter's to report; Codex
   rate limits from rollout files are specified in resource-router §4, not built).
-- When the post-V1 voice modality and remote worker nodes are scheduled.
+- When the post-V1 voice modality and remote worker nodes are scheduled. *(2026-10-03: the voice
+  modality and the rest of the assistant layer are sequenced, unscheduled, as plan §31.5 V2-A0…A5;
+  their open decisions are XR-4, XR-7 and XR-8 (XR-10 and XR-11 decided 2026-10-03) in [ARCHEUS_V2_ASSISTANT_LAYER.md](ARCHEUS_V2_ASSISTANT_LAYER.md).)*
 
 ### G3. Recommended implementation order (report item 16)
 
@@ -844,7 +846,8 @@ a question.
 answered: not V1). It feeds the **same** pipeline: speech produces a user `Message` (its modality
 recorded), which goes through the grammar, intent, directive and command path; replies may be
 spoken; approvals and destructive confirmations are never accepted by voice alone (ADR-0042 §7).
-Nothing in V1 prevents it: every interaction already is a message plus cards.
+Nothing in V1 prevents it: every interaction already is a message plus cards. *(2026-10-03: the
+boundary for any Jarvis-style assistant is ADR-0050 (DECIDED 2026-10-03); the phases are plan §31.5.)*
 
 **Architecture → implementation → verification → review.** Covered by existing objects with
 provenance: an architecture task producing an `architecture` artifact (ADR-0034), consumed at a
