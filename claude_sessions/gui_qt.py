@@ -150,6 +150,8 @@ def run_v1(shell, on_ready=None):
       background (ADR-0044 §4), never a fixed dark.
     - Closing the window hides it to the tray; Quit in the tray quits. Core is
       not stopped: it outlives the shell (target-architecture §4).
+    - The tray's Emergency stop asks first, in a native box whose default is
+      Cancel; only its own button reaches `shell.estop`.
     - The tray icon carries the attention colour only while Attention's count
       is non-zero, read when the menu opens and when the window hides to the
       tray. There is no timer.
@@ -159,7 +161,7 @@ def run_v1(shell, on_ready=None):
     from PyQt6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPixmap
     from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
     from PyQt6.QtWebEngineWidgets import QWebEngineView
-    from PyQt6.QtWidgets import QApplication, QMainWindow, QMenu, QSystemTrayIcon
+    from PyQt6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox, QSystemTrayIcon
 
     app = QApplication(sys.argv[:1] or ['archeus'])
     app.setApplicationName('archeus')
@@ -233,9 +235,18 @@ def run_v1(shell, on_ready=None):
     def say(text):
         tray.showMessage('Archeus', text)
 
+    def estop():
+        # destructive, so it asks first, Cancel the default (rulebook §6 O-1, §17)
+        box = QMessageBox(QMessageBox.Icon.Warning, 'Emergency stop', shell.estop_confirm)
+        stop = box.addButton('Emergency stop', QMessageBox.ButtonRole.DestructiveRole)
+        box.setDefaultButton(box.addButton(QMessageBox.StandardButton.Cancel))
+        box.exec()
+        if box.clickedButton() is stop:
+            say(shell.estop()[1])
+
     menu = QMenu()
     for label, act in (('Open', show), ('Pause all', lambda: say(shell.pause_all())),
-                       ('Emergency stop', lambda: say(shell.estop()[1])),
+                       ('Emergency stop', estop),
                        ('Quit', quit_)):
         a = QAction(label, menu)
         a.triggered.connect(act)

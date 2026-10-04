@@ -28,6 +28,9 @@ SHELL_NAME = 'desktop shell'
 #: how long a Core this shell started may take to answer
 START_WAIT_S = 30
 NOT_RUNNING = 'Archeus Core is not running'
+#: what the tray asks before its Emergency stop: the app's own confirmation (rulebook §6 O-1, §17)
+ESTOP_CONFIRM = ('Every running execution is killed now and Archeus refuses new work until '
+                 'you re-arm it. Missions are not lost; they wait.')
 
 
 def profile_dir():
@@ -130,6 +133,7 @@ class Shell:
     preload_bg = staticmethod(preload_bg)
     attention_colour = staticmethod(attention_colour)
     estop = staticmethod(estop)
+    estop_confirm = ESTOP_CONFIRM
 
     def page_url(self):
         """A fresh launch address for the window's page (D2's scopes), or None."""

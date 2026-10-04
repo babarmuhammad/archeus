@@ -3,7 +3,6 @@
 // composition after each successful read, so a cold start with no Core can
 // show it read-only. Nothing else is kept: no token, no event, no other read.
 import { paths, type Client, type MissionList } from '../api/generated.ts';
-import { activeMissions } from '../state/now.ts';
 
 const DB = 'archeus-snapshot';
 const STORE = 'now';
@@ -23,9 +22,14 @@ export interface Kept {
  * apart, and a paired client is one that is not on the computer running it. */
 export const mayKeep = (c: Pick<Client, 'origin' | 'scopes'>) => !(c.origin === 'paired' && c.scopes.every((s) => s === 'observe'));
 
-/** What is kept of a read: the missions only as Now shows them, the unsettled ones. */
+/** The mission states that have ended: nothing about them is Now's. */
+export const ENDED: readonly string[] = ['COMPLETED', 'CANCELLED', 'FAILED'];
+
+/** What is kept of a read: the missions that have not ended — the ones Now
+ * shows working, and the ones that wait on you (an approval, a pause, a block),
+ * whose titles name what Needs you and the digest point at (R13-02). */
 export const keptData = (path: string, data: unknown): unknown =>
-  path === paths.listMissions() ? { missions: activeMissions((data as MissionList).missions) } : data;
+  path === paths.listMissions() ? { missions: (data as MissionList).missions.filter((m) => !ENDED.includes(m.state)) } : data;
 
 /** When the oldest kept read was taken: what the whole snapshot is "as of". */
 export const asOf = (kept: readonly Kept[]): string => kept.map((k) => k.at).sort()[0];

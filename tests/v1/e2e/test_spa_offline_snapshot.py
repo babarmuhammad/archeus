@@ -1,16 +1,17 @@
 """The offline snapshot in a real browser against a real Core (P16 seam S6;
 p19-design-gate B7): the SPA keeps exactly the Now composition in IndexedDB
-after its reads — no token, no event, no settled mission — and a cold start
+after its reads — no token, no event, no ended mission — and a cold start
 with no Core shows it read-only under "Offline — as of <time>" with nothing to
 act on. Revoking this client clears it, whether it revokes itself, is revoked
 while open, or is revoked while away (read first on the next online start). A
-client paired `observe`-only never keeps one. A check floor keeps a test that
-silently checks nothing from passing."""
+client paired `observe`-only never keeps one. Offline, Needs you and the digest
+name what they point at from the kept missions, in the app frame's inset (R13-02).
+A check floor keeps a test that silently checks nothing from passing."""
 
 import json
 
 from .conftest import wait
-from .test_spa_p16 import FULL, Checks, _go, _mission, _open, _settled, slow  # noqa: F401 (a fixture)
+from .test_spa_p16 import FULL, Checks, _go, _mission, _open, _settled, deploy, slow  # noqa: F401 (fixtures)
 
 NOW = ['/v1/status', '/v1/digest', '/v1/attention', '/v1/missions']
 
@@ -54,7 +55,7 @@ def _under_the_worker(page):
 def test_an_offline_cold_start_shows_the_last_now_read_only(browser, slow):  # noqa: F811
     tc = slow
     check = Checks()
-    done = _mission(tc, 'Already settled')
+    done = _mission(tc, 'Stopped by hand')
     _settled(tc, done, 'EXECUTING')
     assert tc.http('POST', '/v1/missions/%s/stop' % done, body={'idempotency_key': 's-' + done}).status == 200
     _settled(tc, done, 'BLOCKED')
@@ -70,7 +71,8 @@ def test_an_offline_cold_start_shows_the_last_now_read_only(browser, slow):  # n
     check(all(v['origin'] == origin and v['at'] for v in kept['values']), 'each read with its origin and time')
     check(all(isinstance(v['seq'], int) for v in kept['values']), 'and the event head it was read at')
     missions = next(v for v in kept['values'] if v['path'] == '/v1/missions')['data']['missions']
-    check([m['id'] for m in missions] == [mid], 'the missions as Now shows them, never a settled one')
+    check(sorted(m['id'] for m in missions) == sorted([mid, done]),
+          'the missions that have not ended: the running one, and the stopped one waiting on a person')
     token = page.evaluate(TOKEN)
     blob = json.dumps(kept)
     check(token and token not in blob, 'no token is kept')
@@ -85,8 +87,8 @@ def test_an_offline_cold_start_shows_the_last_now_read_only(browser, slow):  # n
     snap.wait_for()
     check(snap.get_by_role('status').inner_text().startswith('Offline — as of '), 'it says it is offline, as of when')
     check(snap.locator('[data-mission="%s"]' % mid).count() == 1, 'the mission it last read')
-    check('Ship the offline fix' in snap.inner_text() and 'Already settled' not in snap.inner_text(),
-          'by its title, and nothing settled')
+    check('Ship the offline fix' in snap.inner_text() and snap.locator('[data-mission="%s"]' % done).count() == 0,
+          'by its title, and the stopped one not as happening')
     att = next(v for v in kept['values'] if v['path'] == '/v1/attention')['data']
     check(snap.get_by_role('heading', name='Needs you').count() == 1
           and snap.locator('[data-ref]').count() >= len(att['items']), 'and what needed you')
@@ -207,3 +209,96 @@ def test_what_was_read_before_the_client_was_known_is_kept(browser, core):
     check(True, 'kept from what was already read')
     context.close()
     assert check.n >= 2
+
+
+def _section(snap, heading):
+    return snap.locator('section').filter(has=snap.page.get_by_role('heading', name=heading))
+
+
+def test_offline_needs_you_names_what_waits_and_sits_in_the_app_frame(browser, deploy):  # noqa: F811
+    """R13-02: on a phone, offline, Needs you names the mission waiting for
+    approval and the digest names its rows from the kept missions; an ended
+    mission is never kept; the view has the app frame's inset and no sideways
+    scroll."""
+    tc = deploy
+    check = Checks()
+    ended, waits = _mission(tc, 'Rejected and gone'), _mission(tc, 'Deploy the release notes')
+    _settled(tc, ended, 'APPROVAL_REQUIRED')
+    _settled(tc, waits, 'APPROVAL_REQUIRED')
+    (a,) = [a for a in tc.http('GET', '/v1/approvals?mission=' + ended).json()['approvals']
+            if a['state'] == 'PENDING']
+    r = tc.http('POST', '/v1/approvals/%s/decide' % a['id'], body={
+        'decision': 'reject', 'action_hash': a['action_hash'], 'idempotency_key': 'no-' + ended})
+    check(r.status == 200, 'rejected: %s' % r.body)
+    _settled(tc, ended, 'CANCELLED')
+    context, page, errors = _open(browser, tc, viewport={'width': 390, 'height': 844},
+                                  is_mobile=True, has_touch=True)
+    wait(page, lambda: _paths(_kept(page)) == sorted(NOW), what='the Now reads kept')
+    kept = _kept(page)
+    missions = next(v for v in kept['values'] if v['path'] == '/v1/missions')['data']['missions']
+    check([m['id'] for m in missions] == [waits], 'the mission waiting for approval is kept, the ended one never')
+    frame = page.evaluate("getComputedStyle(document.querySelector('main.main')).paddingLeft")
+
+    _under_the_worker(page)
+    context.set_offline(True)
+    page.reload()
+    snap = page.locator('[data-offline-snapshot]')
+    snap.wait_for()
+    att = next(v for v in kept['values'] if v['path'] == '/v1/attention')['data']
+    (item,) = [i for i in att['items'] if i['kind'] == 'approval' and i['mission_id'] == waits]
+    needs = _section(snap, 'Needs you').locator('[data-ref="approval:%s"]' % item['ref']['id'])
+    check(needs.count() == 1 and 'Deploy the release notes' in needs.inner_text(),
+          'Needs you names the mission the approval is for: %s' % (needs.all_inner_texts(),))
+    happening = _section(snap, 'Happening now')
+    check(happening.locator('[data-mission="%s"]' % waits).count() == 0, 'a waiting mission is not happening now')
+    digest = snap.locator('ul.digest > li')
+    rows = dict(zip(digest.evaluate_all('ls => ls.map((l) => l.dataset.ref)'), digest.all_inner_texts()))
+    mine = [t for ref, t in rows.items() if ref == 'mission:' + waits]
+    check(mine and all(t.startswith('mission Deploy the release notes · ') for t in mine),
+          'the digest names a mission by its title: %s' % mine)
+    tied = [t for ref, t in rows.items() if ref == 'approval:' + item['ref']['id']]
+    check(all(t.startswith('approval for Deploy the release notes · ') for t in tied),
+          'and what Attention ties to it by its title: %s' % tied)
+    check('Rejected and gone' not in snap.inner_text(), 'nothing names the ended mission')
+    check(page.locator(COMMANDS).count() == 0, 'still no command, link or field')
+    box = page.evaluate("""() => {
+      const v = document.querySelector('[data-offline-snapshot]');
+      const ink = [...v.querySelectorAll('h1, h2, p, li')].map((e) => e.getBoundingClientRect());
+      return {sw: document.documentElement.scrollWidth, iw: innerWidth, pad: getComputedStyle(v).paddingLeft,
+              left: Math.min(...ink.map((b) => b.left)), right: Math.max(...ink.map((b) => b.right))};
+    }""")
+    check(box['sw'] <= box['iw'], 'no sideways scroll at 390 px: %s' % box)
+    check(box['pad'] == frame, "the app frame's inset: %s against %s" % (box['pad'], frame))
+    inset = float(frame[:-2])
+    check(inset >= 16 and box['left'] >= inset - 0.5 and box['right'] <= box['iw'] - inset + 0.5,
+          'text is inset from both edges: %s' % box)
+    context.set_offline(False)
+    check(not [e for e in errors if 'net::' not in e and 'Failed to load resource' not in e], errors)
+    assert check.n >= 12, 'only %d checks ran' % check.n
+    context.close()
+
+
+def test_a_read_whose_body_never_arrives_is_never_data(browser, core):
+    """A 200 whose body is cut short (the connection dropped mid-read, as when a
+    client goes offline during a read) is a network failure: no view takes it
+    for data and the snapshot never keeps it. It was the cause of an
+    intermittent "reading 'filter'" page error in the cold-start test."""
+    check = Checks()
+    context = browser.new_context()
+    page = context.new_page()
+    errors = []
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    def cut(body):
+        return lambda route: route.fulfill(status=200, content_type='application/json', body=body)
+    page.route('**/v1/approvals', cut('{"approvals": ['))
+    page.route('**/v1/digest', cut('{"count": 1, "gro'))
+    page.goto(core.core.launch_url(FULL))
+    page.get_by_role('heading', name='Now', exact=True).wait_for()
+    wait(page, lambda: '/v1/status' in _paths(_kept(page)), what='the reads that did arrive kept')
+    page.wait_for_timeout(1000)
+    kept = _kept(page)
+    check('/v1/digest' not in _paths(kept) and 'invalid_response' not in json.dumps(kept),
+          'a cut-short read is never kept: %s' % _paths(kept))
+    check(not errors, 'and no view takes it for data: %s' % errors)
+    assert check.n >= 2
+    context.close()

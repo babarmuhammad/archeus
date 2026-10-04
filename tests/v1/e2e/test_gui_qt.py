@@ -3,7 +3,8 @@
 named persistent profile under `<ARCHEUS_HOME>/QtWebEngine/`, so a choice made
 in one run is the page's in the next; the pre-load background is the OS
 scheme's token; the tray offers Open, Pause all, Emergency stop and Quit, each
-reaching the shell's own action; the icon carries the attention colour only
+reaching the shell's own action, the Emergency stop only through a confirmation
+whose default is Cancel (R13-01); the icon carries the attention colour only
 while Attention's count is non-zero; closing the window hides it to the tray.
 
 Each run is its own process (a restart is a new process), offscreen. Needs
@@ -28,8 +29,9 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 CHILD = r'''
 import json, sys
 sys.path.insert(0, %(root)r)
-from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QSystemTrayIcon
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtTest import QTest
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
 from archeus.cli import gui
 from claude_sessions import gui_qt
 
@@ -90,6 +92,19 @@ def ready(view, app):
             win.close()                          # hides to the tray, reads Attention
             out['visible_after_close'] = win.isVisible()
             out['icon_on_hide'] = pixel()
+            def answer(how):
+                box = QApplication.activeModalWidget()
+                out.setdefault('asked', []).append(
+                    [box.windowTitle(), box.text(), box.defaultButton().text(),
+                     [b.text() for b in box.buttons()]])
+                if how == 'enter':                   # Enter takes the default
+                    QTest.keyClick(box, Qt.Key.Key_Return)
+                else:
+                    next(b for b in box.buttons() if b.text() == 'Emergency stop').click()
+            QTimer.singleShot(100, lambda: answer('enter'))
+            acts['Emergency stop'].trigger()     # returns once the box is answered
+            out['calls_after_enter'] = list(calls)
+            QTimer.singleShot(100, lambda: answer('confirm'))
             acts['Emergency stop'].trigger()
         out['calls'] = list(calls)
         QTimer.singleShot(800, acts['Quit'].trigger)
@@ -151,6 +166,12 @@ def test_the_window_keeps_its_profile_across_a_restart_and_the_tray_acts(archeus
         attention = gui.attention_colour(second['dark']).lower()
         assert second['icon_on_open'] == attention == second['icon_on_hide']
         assert second['visible_after_close'] is False
+        # R13-01: the tray asks first; Enter takes Cancel, only its own button stops
+        assert second['calls_after_enter'] == [['attention', 1], ['attention', 1]]
         assert second['calls'] == [['attention', 1], ['attention', 1], 'estop']
+        for title, text, default, buttons in second['asked']:
+            assert (title, text, default) == ('Emergency stop', gui.ESTOP_CONFIRM, 'Cancel')
+            assert sorted(buttons) == ['Cancel', 'Emergency stop']
+        assert len(second['asked']) == 2
     finally:
         tc.stop(kill=True)

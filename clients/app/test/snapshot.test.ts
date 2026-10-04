@@ -9,10 +9,11 @@ test('only the Now composition is kept', () => {
   assert.deepEqual([...NOW_READS], ['/v1/status', '/v1/digest', '/v1/attention', '/v1/missions']);
 });
 
-test('the missions are kept as Now shows them: the unsettled ones', () => {
+test('the missions kept are the ones that have not ended: working, or waiting on a person (R13-02)', () => {
   const m = (id: string, state: string) => ({ id, state, title: id }) as unknown as Mission;
-  const kept = keptData(paths.listMissions(), { missions: [m('a', 'EXECUTING'), m('b', 'COMPLETED'), m('c', 'APPROVED'), m('d', 'CANCELLED')] });
-  assert.deepEqual((kept as { missions: Mission[] }).missions.map((x) => x.id), ['a', 'c']);
+  const all = [m('a', 'EXECUTING'), m('b', 'COMPLETED'), m('c', 'APPROVED'), m('d', 'CANCELLED'), m('e', 'APPROVAL_REQUIRED'), m('f', 'FAILED'), m('g', 'PAUSED'), m('h', 'BLOCKED')];
+  const kept = keptData(paths.listMissions(), { missions: all });
+  assert.deepEqual((kept as { missions: Mission[] }).missions.map((x) => x.id), ['a', 'c', 'e', 'g', 'h']);
   const status = { live: [] };
   assert.equal(keptData(paths.status(), status), status);
 });

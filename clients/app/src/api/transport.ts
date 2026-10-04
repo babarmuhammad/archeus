@@ -53,7 +53,10 @@ export function sender(token?: string, onSeq?: (path: string, seq: number) => vo
     }
     const seq = r.headers.get('X-Archeus-Seq');
     if (seq !== null && onSeq) onSeq(path, Number(seq));
-    const data = await r.json().catch(() => ({ error: 'invalid_response', detail: {} }));
+    const data = await r.json().catch(() => undefined);
+    // a body that never arrived whole (the connection dropped mid-read) is no
+    // answer: never data, which a read would show and the snapshot would keep
+    if (data === undefined) throw r.ok ? new CoreError(0, 'network', {}) : new CoreError(r.status, 'invalid_response', {});
     if (!r.ok) throw new CoreError(r.status, data.error, data.detail ?? {});
     return data as T;
   };

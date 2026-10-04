@@ -87,6 +87,7 @@ OS = 'tests/v1/e2e/test_spa_offline_snapshot.py::'
 OS_COLD = OS + 'test_an_offline_cold_start_shows_the_last_now_read_only'
 OS_REVOKE = OS + 'test_revoking_this_client_clears_its_snapshot'
 OS_OBSERVE = OS + 'test_a_client_paired_observe_only_keeps_nothing'
+OS_NAMED = OS + 'test_offline_needs_you_names_what_waits_and_sits_in_the_app_frame'
 CHANGE_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
               'test_a_change_card_is_confirmed_through_the_existing_admin_route')
 STOP_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
@@ -530,10 +531,10 @@ MUTATIONS = [
     ('P101', 'every read is kept, not only the Now composition', [(SNAP,
      "  if (!NOW_READS.includes(path)) return;\n", "")],
      [OS_COLD]),
-    ('P102', 'a settled mission is kept', [(SNAP,
-     "path === paths.listMissions() ? { missions: activeMissions((data as MissionList).missions) } : data;",
-     "path === paths.listMissions() ? { missions: activeMissions([]).concat((data as MissionList).missions) } : data;")],
-     [SNAP_TS, OS_COLD]),
+    ('P102', 'an ended mission is kept', [(SNAP,
+     "missions.filter((m) => !ENDED.includes(m.state)) } : data;",
+     "missions.filter((m) => !ENDED.includes(m.state) || true) } : data;")],
+     [SNAP_TS, OS_NAMED]),
     ('P103', 'a client paired observe-only keeps a snapshot', [(SNAP,
      "!(c.origin === 'paired' && c.scopes.every((s) => s === 'observe'));",
      "!(c.origin === 'paired' && c.scopes.every((s) => s === 'nothing'));")],
@@ -553,9 +554,9 @@ MUTATIONS = [
      [OS_REVOKE]),
     ('P108', 'the offline Now links a mission', [(NOW_TSX,
      "<StateBadge machine=\"mission\" state={m.state} /> <span className=\"title\">{m.title}</span>\n"
-     "              </li>\n            ))}\n          </ul>\n        ) : (\n          <Empty>Nothing was in progress.</Empty>",
+     "                </li>\n              ))}\n            </ul>\n          ) : (\n            <Empty>Nothing was in progress.</Empty>",
      "<StateBadge machine=\"mission\" state={m.state} /> <a href=\"#/now\" className=\"title\">{m.title}</a>\n"
-     "              </li>\n            ))}\n          </ul>\n        ) : (\n          <Empty>Nothing was in progress.</Empty>")],
+     "                </li>\n              ))}\n            </ul>\n          ) : (\n            <Empty>Nothing was in progress.</Empty>")],
      [OS_COLD]),
     ('P109', 'what was read before the client was known is never kept', [(APP_TSX,
      "      if (s.data !== undefined) k(path, s.data, s.seq);", "      void s;")],
@@ -642,6 +643,39 @@ MUTATIONS = [
     ('P133', 'archeus gui without Qt starts Core anyway', [(GUI,
      "        import PyQt6.QtWebEngineWidgets  # noqa: F401\n", "        pass\n")],
      [SH + 'test_the_gui_verb_without_qt_says_so_and_starts_nothing']),
+    # R13-01: the tray's Emergency stop asks first, Cancel the default
+    ('P138', "the tray's e-stop stops without asking", [(QT,
+     "('Emergency stop', estop),", "('Emergency stop', lambda: say(shell.estop()[1])),")],
+     [QT_RUN]),
+    ('P139', "the tray's e-stop box defaults to stopping", [(QT,
+     "box.setDefaultButton(box.addButton(QMessageBox.StandardButton.Cancel))",
+     "box.addButton(QMessageBox.StandardButton.Cancel); box.setDefaultButton(stop)")],
+     [QT_RUN]),
+    ('P140', "the tray's e-stop stops whatever the answer", [(QT,
+     "        if box.clickedButton() is stop:\n", "        if True:\n")],
+     [QT_RUN]),
+    # R13-02: offline, Needs you and the digest are named; the view has the app frame
+    ('P141', 'offline Needs you names no mission', [(NOW_TSX,
+     "{title ? <span className=\"title\"> · {title}</span> : null}", "{title && null}")],
+     [OS_NAMED]),
+    ('P142', 'the offline digest names a row by its kind alone', [(NOW_TSX,
+     "{title ? ` ${x.ref.kind === 'mission' ? '' : 'for '}${title}` : null}", "{title && null}")],
+     [OS_NAMED]),
+    ('P143', 'the offline digest never reads what Attention ties to a mission', [(NOW_TSX,
+     "(mission ?? att.items.find((i) => i.ref.kind === ref.kind && i.ref.id === ref.id)?.mission_id ?? '')",
+     "(mission ?? '')")],
+     [OS_NAMED]),
+    ('P144', 'offline Happening now shows the missions waiting on you', [(NOW_TSX,
+     "<ul className=\"rows\">\n              {active.map((m) => (", "<ul className=\"rows\">\n              {all.map((m) => (")],
+     [OS_COLD]),
+    ('P145', 'the offline view sits outside the app frame', [(NOW_TSX,
+     '<main className="main offline-now" data-offline-snapshot="">',
+     '<main className="offline-now" data-offline-snapshot="">')],
+     [OS_NAMED]),
+    ('P146', 'a read whose body never arrived is taken for data', [(TRANSPORT,
+     "const data = await r.json().catch(() => undefined);",
+     "const data = await r.json().catch(() => ({ error: 'invalid_response', detail: {} }));")],
+     [OS + 'test_a_read_whose_body_never_arrives_is_never_data']),
     # B12: the unification scenario, one Core across the desktop, the phone and the TUI
     ('P134', 'a decision names no device', [(AUTHZ,
      "'decided_by': actor.id, 'decided_at': tx.now,", "'decided_by': None, 'decided_at': tx.now,")],

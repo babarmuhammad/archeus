@@ -1106,14 +1106,65 @@ conversation only, and B10 in two commits (5a, then 5b).
 
     The offscreen Qt test and the browser tests do not replace either check.
 
+**R13 correction pass (the two blocking findings of `r13-design-review.md`), 2026-10-04.**
+
+99. **R13-01: the tray's Emergency stop asks first.** `run_v1`'s tray item opens a native
+    `QMessageBox` (warning icon, title "Emergency stop") with the sentence the app's own
+    confirmations use, `gui.ESTOP_CONFIRM`, and two buttons: "Emergency stop" and Cancel.
+    Cancel is the default and the escape button, so Enter or Escape stops nothing. Only the
+    box's own "Emergency stop" button calls `shell.estop()`, which is unchanged
+    (`archeus estop`'s code, never starting Core, item 83). No new e-stop mechanism.
+    `test_gui_qt.py` answers the box twice in the restart run: Enter (no e-stop is called),
+    then the button (one e-stop). It checks the title, the sentence, the default and the two
+    buttons. Mutants P138–P140: the tray stopping without asking, the box defaulting to the
+    stop, and any answer stopping. All killed.
+100. **R13-02 (A): the snapshot keeps every mission that has not ended.** This corrects item 71.
+    `keptData` drops only `COMPLETED`, `CANCELLED` and `FAILED` (`ENDED`). It no longer uses
+    `activeMissions`, because the engine's `SETTLED` also holds the states that wait on a
+    person (`APPROVAL_REQUIRED`, `PAUSED`, `BLOCKED`). It is still the same read
+    (`/v1/missions`), with no Core query added and nothing kept beyond B7's four reads. The
+    offline Happening now shows the active missions only, as online, and the state sentence
+    counts them. Mutant P102 is re-anchored ("an ended mission is kept"). P144 covers offline
+    Happening now showing a waiting mission.
+101. **R13-02 (B): offline rows are named from the kept missions.** Needs you appends the
+    title of the mission an item names (`mission_id`, or the item itself when it is a mission).
+    Since you last looked reads "mission <title>" for a mission and "<kind> for <title>" for
+    an object Attention ties to a mission. Anything else keeps its kind alone; no id is shown.
+    A message row stays kind-only, because the snapshot holds nothing that names it; R13-03's
+    "N new messages" decision is not built here. Mutants P141–P143. All killed.
+102. **R13-02 (C): the offline view is in the app frame.** `OfflineNow` renders as
+    `<main class="main">` around a `.view`, so it takes the shell's `.main` inset at every
+    width. At 390 px the test checks: no sideways scroll; the same inset as the online frame
+    (measured on the same client before going offline); and every heading, paragraph and row
+    inset from both edges. Mutant P145. Killed.
+103. **The cause of an intermittent page error in the cold-start test.** Recorded here because
+    the R13-02 tests run into it. `sender()` read an answer whose status was OK but whose body
+    could not be parsed, as happens when the connection drops mid-read. It returned
+    `{error: 'invalid_response'}` *as data*. Going offline during the test's online phase
+    sometimes did exactly that to `/v1/approvals`. The live Now's Decisions then read
+    `.approvals.filter` on it and threw "Cannot read properties of undefined (reading
+    'filter')". The same path could also put that object into the snapshot.
+    - Established from the page error's stack: the minified `recentDecisions`, called by the
+      `Decisions` component. It reproduced in 3 of about 85 runs before the fix and 0 of 40
+      after.
+    - The fix: a body that does not arrive whole is a network failure (`CoreError(0,
+      'network')`) on an OK status, and `invalid_response` on any other status, as before.
+      `test_a_read_whose_body_never_arrives_is_never_data` cuts two bodies short and checks
+      that neither is kept and no view throws. Mutant P146 restores the old line. Killed.
+    - Whether this was also item 76's single uncaptured B7 failure is **not established**:
+      that run's output was never captured.
+104. **Not built in this pass, by the user's instruction:** R13-03, R13-04, R13-05, R13-06,
+    R13-07, R13-08, R13-09, R13-10, R13-11, R13-12, R13-13, R13-15 and R13-16. The decisions
+    on R13-03, -05, -08, -11, -12, -15 and -16 are recorded in `r13-design-review.md` §8.
+
 ## 13. As built
 
 Every decision of §4 is built as approved (§4.1), with the deviations, corrections and findings
-recorded in §12, items 1–98. Nothing in §12 was applied without being recorded there. Commits:
+recorded in §12, items 1–104. Nothing in §12 was applied without being recorded there. Commits:
 `744a473` and `107da0b` (this gate, proposed and then approved), `6e6176a` (B1 + B2), `937d8ea`
 (B11), `2fc4e27` (B3), `ee97440` (B5), `20a9d46` (B6), `2fac7bb` (B10a), `2043317` (B10b),
-`67a032c` (B4), `bb4a7fd` (B9), `f5282e3` (B7), `46b2089` (B8), and B12's commit, which holds
-this section.
+`67a032c` (B4), `bb4a7fd` (B9), `f5282e3` (B7), `46b2089` (B8), `c744763` (B12), `0558d3a`
+(the R13 review, before correction) and the R13 correction pass's commit (items 99–104).
 
 **What P19 built, by kind (§0).**
 
