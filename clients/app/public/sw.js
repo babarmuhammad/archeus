@@ -24,6 +24,9 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
       fetch(e.request)
         .then((r) => {
+          // an answer that is not the page — a tunnel's 502 while Core is down —
+          // is offline too: the kept page, and never kept in its place
+          if (!r.ok) return caches.match('/').then((hit) => hit || r);
           const copy = r.clone();
           caches.open(SHELL).then((c) => c.put('/', copy));
           return r;
@@ -38,7 +41,7 @@ self.addEventListener('fetch', (e) => {
           hit ||
           fetch(e.request).then((r) => {
             const copy = r.clone();
-            caches.open(SHELL).then((c) => c.put(e.request, copy));
+            if (r.ok) caches.open(SHELL).then((c) => c.put(e.request, copy));
             return r;
           }),
       ),

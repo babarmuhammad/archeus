@@ -48,8 +48,11 @@ export default function App() {
     authenticate(f.launch).then(
       (token) => setBoot(token ? { phase: 'in', token } : { phase: 'out' }),
       async (e) => {
-        // a cold start with no Core shows the last Now, read-only (P19 B7)
-        const kept = e instanceof CoreError && e.status === 0 ? await loadSnapshot() : null;
+        // a cold start with no Core shows the last Now, read-only (P19 B7): no
+        // network, or a tunnel's gateway answering for a Core that is down (a
+        // 502-504 that is not Core's own JSON)
+        const down = e instanceof CoreError && (e.status === 0 || (e.code === 'invalid_response' && e.status >= 502 && e.status <= 504));
+        const kept = down ? await loadSnapshot() : null;
         setBoot(kept ? { phase: 'offline', kept } : { phase: 'failed', why: String(e) });
       },
     );

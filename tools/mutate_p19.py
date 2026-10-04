@@ -10,7 +10,8 @@ B9, the application theme (P90-P100); B7, the offline snapshot (P101-P110); B8, 
 desktop shell, its tray and the legacy "Open Archeus V1" (P111-P133); B12, the
 unification scenario (P134-P137); the R13 correction pass (P138-P146); the R13
 follow-up of rulebook §46.4, S-3 (P147-P149), S-2 (P150-P153) and S-1 (P154-P158);
-Q-A5's Alt shortcuts (P159-P165); P19.5 closure, Ctrl+, never Cmd+, (P166-P167).
+Q-A5's Alt shortcuts (P159-P165); P19.5 closure, Ctrl+, never Cmd+, (P166-P167) and a
+tunnel's 502 is offline (P168-P170).
 
     py tools/mutate_p19.py            every mutation
     py tools/mutate_p19.py P01 P09    only these
@@ -90,6 +91,8 @@ OS_COLD = OS + 'test_an_offline_cold_start_shows_the_last_now_read_only'
 OS_REVOKE = OS + 'test_revoking_this_client_clears_its_snapshot'
 OS_OBSERVE = OS + 'test_a_client_paired_observe_only_keeps_nothing'
 OS_NAMED = OS + 'test_offline_needs_you_names_what_waits_and_sits_in_the_app_frame'
+OS_GW = OS + 'test_a_tunnel_answering_for_a_core_that_is_down_is_offline'
+SW = 'clients/app/public/sw.js'
 CHANGE_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
               'test_a_change_card_is_confirmed_through_the_existing_admin_route')
 STOP_E2E = ('tests/v1/e2e/test_spa_mission_thread.py::'
@@ -552,8 +555,8 @@ MUTATIONS = [
      "kept.map((k) => k.at).sort()[0];", "kept.map((k) => k.at).sort().reverse()[0];")],
      [SNAP_TS]),
     ('P105', 'a cold start with no Core shows no snapshot', [(APP_TSX,
-     "const kept = e instanceof CoreError && e.status === 0 ? await loadSnapshot() : null;",
-     "const kept = e instanceof CoreError && e.status === 401 ? await loadSnapshot() : null;")],
+     "const down = e instanceof CoreError && (e.status === 0 ||",
+     "const down = e instanceof CoreError && (e.status === 401 ||")],
      [OS_COLD]),
     ('P106', 'a client revoked while away keeps its snapshot', [(TRANSPORT,
      "      await clearToken();\n      await clearSnapshot();", "      await clearToken();\n      void clearSnapshot;")],
@@ -757,6 +760,16 @@ MUTATIONS = [
     ('P167', 'Ctrl+, no longer reaches Control', [(APP_TSX,
      "const ctrl = e.ctrlKey && !e.metaKey && !e.altKey;", "const ctrl = e.metaKey && !e.altKey;")],
      [QA5]),
+    # P19.5 closure, M2 (p19-design-gate §12 item 114): behind a tunnel, Core down is a 502
+    ('P168', "a tunnel's 502 is not offline", [(APP_TSX,
+     "(e.code === 'invalid_response' && e.status >= 502 && e.status <= 504)", 'false')],
+     [OS_GW]),
+    ('P169', "the worker hands on the tunnel's 502 as the page", [(SW,
+     "          if (!r.ok) return caches.match('/').then((hit) => hit || r);\n", '')],
+     [OS_GW]),
+    ('P170', "the worker keeps an asset's 502", [(SW,
+     "            if (r.ok) caches.open(SHELL)", '            caches.open(SHELL)')],
+     [OS_GW]),
     # B12: the unification scenario, one Core across the desktop, the phone and the TUI
     ('P134', 'a decision names no device', [(AUTHZ,
      "'decided_by': actor.id, 'decided_at': tx.now,", "'decided_by': None, 'decided_at': tx.now,")],

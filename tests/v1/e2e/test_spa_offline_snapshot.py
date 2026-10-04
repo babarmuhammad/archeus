@@ -8,7 +8,9 @@ client paired `observe`-only never keeps one. Offline, Needs you and the digest
 name what they point at from the kept missions, in the app frame's inset (R13-02).
 A check floor keeps a test that silently checks nothing from passing."""
 
+import http.server
 import json
+import threading
 
 from .conftest import wait
 from .test_spa_p16 import FULL, Checks, _go, _mission, _open, _settled, deploy, slow  # noqa: F401 (fixtures)
@@ -275,6 +277,69 @@ def test_offline_needs_you_names_what_waits_and_sits_in_the_app_frame(browser, d
     context.set_offline(False)
     check(not [e for e in errors if 'net::' not in e and 'Failed to load resource' not in e], errors)
     assert check.n >= 12, 'only %d checks ran' % check.n
+    context.close()
+
+
+class _Gateway(http.server.BaseHTTPRequestHandler):
+    """A tunnel whose Core is down: Tailscale Serve answers 502 with no body
+    (measured at the P19.5 closure, M2), and every request is recorded."""
+    seen = []
+
+    def do_GET(self):  # noqa: N802
+        self.seen.append(self.path)
+        self.send_response(502)
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
+    def log_message(self, *a):
+        pass
+
+
+def test_a_tunnel_answering_for_a_core_that_is_down_is_offline(browser, deploy):  # noqa: F811
+    """M2 on a real phone: behind a tunnel, Core down is not a dropped
+    connection but a 502 from the gateway. The installed app still opens its
+    kept page and the last Now, never caches the 502 in the page's place (an
+    asset's either), and reads nothing but the reachability probe."""
+    tc = deploy
+    check = Checks()
+    waits = _mission(tc, 'Deploy the release notes')
+    _settled(tc, waits, 'APPROVAL_REQUIRED')
+    context, page, errors = _open(browser, tc)
+    wait(page, lambda: _paths(_kept(page)) == sorted(NOW), what='the Now reads kept')
+    _under_the_worker(page)
+    port = tc.port
+    tc.stop()
+    _Gateway.seen = []
+    gw = http.server.ThreadingHTTPServer(('127.0.0.1', port), _Gateway)
+    threading.Thread(target=gw.serve_forever, daemon=True).start()
+    try:
+        page.reload()
+        snap = page.locator('[data-offline-snapshot]')
+        snap.wait_for()
+        check(snap.get_by_role('status').inner_text().startswith('Offline — as of '), 'a 502 cold start is offline')
+        check('Deploy the release notes' in snap.inner_text(), 'with the last Now')
+        # the page open when Core went down was still reading: count a cold
+        # start whose page before it was already the offline one
+        _Gateway.seen = []
+        page.reload()
+        snap.wait_for()
+        check([p for p in _Gateway.seen if p.startswith('/v1/')] == ['/v1/version'],
+              'no read but the probe: %s' % _Gateway.seen)
+        check(page.evaluate("caches.match('/').then((r) => r && r.status)") == 200, 'the 502 is never kept as the page')
+        page.evaluate("fetch('/assets/gone-0000.js').catch(() => null)")
+        page.wait_for_timeout(500)          # the worker's put is not awaited
+        check(page.evaluate("caches.match('/assets/gone-0000.js').then((r) => r === undefined)"),
+              'nor as an asset')
+        context.set_offline(True)
+        page.reload()
+        snap.wait_for()
+        check(snap.get_by_role('status').inner_text().startswith('Offline — as of '), 'and the page opens offline after it')
+        context.set_offline(False)
+    finally:
+        gw.shutdown()
+        gw.server_close()
+    check(not [e for e in errors if 'net::' not in e and 'Failed to load resource' not in e], errors)
+    assert check.n >= 7, 'only %d checks ran' % check.n
     context.close()
 
 
