@@ -1267,16 +1267,137 @@ R13-03 to R13-13 stay unbuilt and are due before P26 (item 104).
       sign-off), and testing-strategy §7's "text equivalents" and "framebuffer probes" rows,
       which are not marked built.
 
+**P19.5 closure (2026-10-04).** The user asked for the open decisions to be made at the smallest
+defensible size, the manual checks to be performed where this environment can, and a definitive
+status. One code change (`cf7cb97`); everything else is a record.
+
+111. **The five open decisions.**
+    - **A. Live-map keys: KEEP.** The map still accepts the full graph's keys (F, Space, E/C,
+      + − 0, P, ., Esc) and nothing is restricted. The reasons:
+      - they act only while the canvas has focus, which is WCAG 2.1.4's exemption for
+        single-key shortcuts;
+      - none reaches Core or destroys anything: on the map, F opens the full graph as Enter
+        does, `/` does nothing without the toolbar, a pin is never stored, and Esc clears view
+        state;
+      - they are built and tested behaviour (P18, R8), and no rulebook rule restricts them;
+      - S-2 decided what is *shown* (visual noise on Now), not what the map can do.
+
+      The hint names the primary path (arrows and Enter). The full list stays with the full
+      graph. S-2's premise that "the map uses only the arrow keys and Enter" is corrected by
+      this record.
+    - **B. Ctrl/⌘+K: KEEP. ⌘+,: no longer bound (`cf7cb97`). Ctrl+,: KEEP.**
+      - Ctrl/⌘+K is the decided palette binding (p16-design-gate §4.1, D-12).
+      - The rulebook's R6 audit (§20) listed only Ctrl+1/2/3 and Ctrl+J as collisions.
+      - A browser lets the page take it (the palette tests prove it in Chromium), and the
+        palette has a visible button that names the key.
+      - ⌘+, is the browser's own Settings on macOS, so taking it repurposed a standard shortcut
+        (R6). Control's shortcut is now Ctrl alone on every platform, which changes nothing on
+        Windows or Linux. Mutants P166 and P167.
+      - Ctrl+, has no binding in any source item 108 cites.
+      - Both decisions are re-checked on real macOS and Linux in P23 (M3).
+    - **C. The browser/OS matrix: defined** in testing-strategy §7.1, from what V1 claims and what
+      has been run. Only Chromium on Windows and Linux, and QtWebEngine on Windows, are tested.
+      Phones are claimed and checked by hand (M2). macOS, desktop Linux by hand, and Firefox
+      are not verified in V1 and are owned by P23.
+    - **D. The ADR-0029 §3 frozen-clock capture matrix: not required for P19.5 exit; deferred to
+      P23.** The reasons:
+      - ADR-0029's own header splits ownership: P19.5 owns the gates, P23 the acceptance
+        program.
+      - §3 is a set of captures reviewed by a person and never auto-accepted. It is acceptance
+        evidence, not a gate that can fail by itself.
+      - It needs the P18 1,000-node fixture and a 12-concurrent-execution fixture, across eight
+        states, and no tool here produces it. Building that is new tooling at the freeze.
+      - P23 is the phase that runs acceptance on Windows, macOS and Linux.
+
+      The captures this closure took (item 112) are evidence for M4, not that matrix. **This
+      amends the plan's P19.5 "Tests" line and needs the user's approval in the sign-off.**
+    - **E. testing-strategy §7's last two rows: neither is built; both go to P23.**
+      - *Text equivalents:* every registry entry declares one (`motion.json`; `motion.test.ts`
+        requires the field). The DOM is checked for some of them: the halo and the marker in the
+        mirror, a row's state word, the toast's status region, and the attention announcement.
+        No gate covers every registry animation, so the row is not built.
+      - *Framebuffer probes:* the halo, marker, hull, cored node and cage are probed on the
+        framebuffer. The focus ring and edge styles are not: dashes are checked on the
+        recording canvas (`graph.test.ts`) and focus by computed style. So the row is not
+        built.
+
+      Like D, this amends the plan's P19.5 "Tests" line.
+112. **The manual checks (r13-design-review §11.1).**
+    - **M1, Qt shell on the real Windows display: PASS, tool-verified; a person's tray click is
+      not covered.** Run on Windows 11, on the real display (not offscreen), with a throwaway
+      Core in a temporary `ARCHEUS_HOME` (`.qa/p19.5-closure/m1/m1.py`). The menu items and
+      keys were triggered by the script, not by a hand. Captures came from the composited
+      desktop (PIL ImageGrab).
+      1. Launch: the window opens on Now, and the tray icon is visible and not null.
+      2. Theme: Dark was chosen in run 1; run 2, a new process, opened Dark although the OS is
+         light. It connected in 0.2 s.
+      3. Pause all reached Core ("Nothing was running": the test Core's one mission was waiting
+         for approval).
+      4. Emergency stop: the native box is titled "Emergency stop", shows `ESTOP_CONFIRM`, and
+         has Cancel as its focused default. Escape stopped nothing (twice), and so did Enter.
+         Only the box's own button stopped: "emergency stop: 0 execution(s) stopped; Core is
+         disarmed until re-armed".
+      5. Core down: "Core is not running: the e-stop without Core arrives with P20; …", and Core
+         stayed `not_running` (item 83).
+      6. Visual: the box and the tray icon follow §8 and §17, and the window has no white flash.
+         Captures are in `.qa/p19.5-closure/m1/`.
+    - **M2, real phone: NOT PERFORMED.** No phone was available. An emulated pre-check at
+      390 px, which is not the physical check (ADR-0029 §7):
+      - the cold start offline shows "Offline — as of <date, time> (just now)";
+      - Needs you reads "Pending Approval · Deploy the release notes";
+      - no sideways scroll in light, dark, high contrast or forced colours;
+      - no command;
+      - the S-1 card stacks, and its cells read "Class deploy" and so on.
+      - **Offline, each cold start makes exactly one `GET /v1/version` reachability probe**,
+        which fails, and no data read. That probe is inherent when Core is down and the network
+        is up. §11.1's criterion is corrected from "no request" to "no data request; the one
+        probe expected".
+    - **M3, Q-A5 on macOS Safari/Chrome and Linux Firefox/Chromium: NOT PERFORMED.** No Mac or
+      Linux machine was available. Covered in Chromium only, by the platform-emulating test.
+    - **M4, design review against the V1 rulebook: PASS for the freeze, by Claude's review. The
+      user's §34 sign-off is still owed.** The review covered every destination and the mission
+      inspector at 1440, 1000 and 390 px in light and dark, on a fake Core, plus the real-display
+      shell. No sideways scroll anywhere, and no page error. Coherent: one frame, state glyph and
+      word everywhere, red only for problems, focus in thread ink. Usable: commands disabled with
+      the reason when disconnected, and confirmations before destructive acts. The rough edges
+      found are P3 and do not block a V1 freeze:
+      - F1: the approval card's Policy row and its ISO expiry are R13-04, already due before P26;
+      - F2 (new): a live-map node label is clipped at the canvas edge ("Refactor the impor…");
+      - F3 (new): in forced colours the offline "Now" heading overlaps the offline box's bottom
+        border;
+      - F4 (new): reloading twice inside 15 s leaves two dead streams on one device, which hits
+        Core's `PER_DEVICE = 2` stream cap until the heartbeat reaps them. The next start then
+        shows "Reconnecting" for about 20 s (measured on the shell, 19.9 s; 0.2 s without the
+        double reload). That is P15's stream bookkeeping, not P19.5's, and goes to P20 with
+        item 86;
+      - F5: Control's policy table prints its canonical enums (`ALLOW_WITHIN_BOUNDARY`), the same
+        class as R13-10.
+113. **Verification at the closure** (on `cf7cb97`, 2026-10-04).
+    - `tests/v1` plus `tests/test_p05_seams.py` (the documentation seams), `ARCHEUS_E2E=1`:
+      **2609 passed, 1 failed, 14 skipped, 5 xfailed** (27 min). It includes `test_traceability.py`,
+      `test_state_tables.py`, `test_mutation_suites_parse.py` and the design gates. The one
+      failure is item 22's `test_spa_marker.py`, which is known to be intermittent: it fails the
+      same way on `059b47c` (item 110) and was not touched. The xfails are P20 and P22 phase
+      markers.
+    - Client: type check clean; 225/225 unit tests; `gen_ui.py --check` and
+      `gen_api_docs.py --check` current.
+    - Mutation: the affected range only, **P159–P167, 9/9 killed** (P159 re-anchored on the new
+      guard and still re-takes Ctrl+1/2/3/J). The full corpus was not rerun, because no other
+      code changed.
+    - Outside `tests/v1`: `test_cli_help.py::test_a_deferred_v1_verb_imports_only_its_dispatcher`
+      still fails, as since item 69. It is out of scope.
+
 ## 13. As built
 
 Every decision of §4 is built as approved (§4.1), with the deviations, corrections and findings
-recorded in §12, items 1–110. Nothing in §12 was applied without being recorded there. Commits:
+recorded in §12, items 1–113. Nothing in §12 was applied without being recorded there. Commits:
 `744a473` and `107da0b` (this gate, proposed and then approved), `6e6176a` (B1 + B2), `937d8ea`
 (B11), `2fc4e27` (B3), `ee97440` (B5), `20a9d46` (B6), `2fac7bb` (B10a), `2043317` (B10b),
 `67a032c` (B4), `bb4a7fd` (B9), `f5282e3` (B7), `46b2089` (B8), `c744763` (B12), `0558d3a`
 (the R13 review, before correction), `4e471ef` (the R13 correction pass, items 99–104), and the
 R13 follow-up (items 105–110): `df42b37` (S-3), `ce4a7b6` (S-2), `7c95c7c` (S-1, carrying
-the mutant list P147–P158), `44b60cc` (Q-A5) and the follow-up's documentation commit.
+the mutant list P147–P158), `44b60cc` (Q-A5), `c647d19` (its documentation), and the P19.5
+closure (items 111–113): `cf7cb97` (Ctrl+, never Cmd+,) and the closure's documentation commit.
 
 **What P19 built, by kind (§0).**
 

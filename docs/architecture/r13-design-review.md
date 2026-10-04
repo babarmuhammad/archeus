@@ -576,8 +576,9 @@ build (`git rev-parse --short HEAD`), in p19-design-gate §12 as a new item afte
      TalkBack, each cell is read with its label once.
   6. Light, dark and high contrast (the phone's setting, and Control → Appearance where it
      applies): text and states stay readable offline.
-  7. While offline, the inspector's network panel shows no request to Core's origin (`/v1/…`);
-     only service-worker shell reads.
+  7. While offline, the inspector's network panel shows no data request to Core's origin. The one
+     `GET /v1/version` reachability probe per cold start is expected and fails (corrected at the
+     P19.5 closure, p19-design-gate §12 item 112).
 - FAIL: a blank or unframed view, an id where a name should be, a missing waiting mission,
   sideways scroll, an enabled command, a request to `/v1/` while offline, an unreadable theme.
 
@@ -597,3 +598,30 @@ P19.5 exit sign-off itself.
 
 **Carried, not P19.5's:** 60 fps at 1,000 nodes, Windows Terminal and conhost, a physical touch
 device (P18 closure / P23).
+
+## 12. P19.5 closure record (2026-10-04)
+
+The definitive status at the closure. The items are in p19-design-gate §12, 111–113.
+
+| | Status |
+|---|---|
+| HEAD | `cf7cb97` plus this documentation commit, on `archeus-v1-rearchitecture`; nothing pushed; main untouched |
+| Commits in this closure | `cf7cb97` (Control is Ctrl+, alone, never ⌘+,) and the closure's documentation commit |
+| M1, Qt shell, real Windows display | **PASS, tool-verified** on the real display with a throwaway Core: launch, the theme surviving a restart, Pause all, the e-stop box (Cancel the default; Enter and Escape stop nothing; only its button stops), Core down. **Not covered:** a person clicking the real tray menu |
+| M2, real phone, offline cold start | **NOT PERFORMED** (no phone). The emulated 390 px pre-check passes, including one expected `GET /v1/version` probe and no data request offline |
+| M3, Q-A5 on macOS and Linux | **NOT PERFORMED** (no Mac or Linux machine); covered in Chromium only |
+| M4, design review against the V1 rulebook | **PASS for the freeze, by Claude's review**, with P3 notes F1–F5 (item 112). The user's §34 sign-off is still owed |
+| Live-map keys | **Keep** (item 111 A) |
+| Ctrl/⌘+K and ⌘+, | Ctrl/⌘+K **kept**; ⌘+, **no longer bound**; Ctrl+, kept (item 111 B) |
+| Browser/OS matrix | **Defined**, testing-strategy §7.1 |
+| ADR-0029 §3 capture matrix | **Deferred to P23**; not a P19.5 exit condition (item 111 D). Needs the user's approval, since it amends the plan's P19.5 "Tests" line |
+| Text equivalents | **Open → P23** (declared for every registry entry, not gated over all of them) |
+| Framebuffer probes | Halo, marker, hull, cored node and cage **built**; focus and edge styles **open → P23** |
+| Known failures | `test_spa_marker.py` (item 22, intermittent, unchanged); `test_cli_help.py` deferred-verb test (item 69, out of scope) |
+| Deferred work | R13-03 to R13-13 (before P26); items 83 and 86 and F4 (P20); the activity chip (P21); thread tints (P22); D and E above, and the matrix rows not verified in V1 (P23); X7 (its own ADR) |
+| V2 | **No V2 production work is mixed into V1.** The V2 research documents and `prototypes/` were not touched or committed by this closure |
+
+**What still needs the user:** M2 on a real phone and M3 on a real Mac and Linux machine, by
+§11.1 (or moving M3 to P23 with the matrix's other unverified rows); a tray click on the real
+shell to complete M1; the approval of D and E's move to P23; and the §34 design sign-off.
+

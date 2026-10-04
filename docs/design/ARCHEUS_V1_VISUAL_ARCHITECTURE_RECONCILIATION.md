@@ -1376,6 +1376,20 @@ as a decision for the user (item 106).
 The governing V2 document is `ARCHEUS_V2_UI_ARCHITECTURE.md`. It does not amend any V1 rule
 except the §27 clarification above.
 
+### 46.5 P19.5 closure decisions (2026-10-04)
+
+Made at the user's direction ("the smallest defensible decision for each"), recorded in
+p19-design-gate §12 item 111, and subject to the user's P19.5 sign-off:
+
+| Open item | Decision |
+|---|---|
+| Live-map keys (S-2 finding) | **Keep** the full graph's keys on the map: they act only on canvas focus (WCAG 2.1.4's exemption), none reaches Core, and S-2 decided what is shown, not what the map can do |
+| Ctrl/⌘+K | **Keep**: the decided palette binding (p16, D-12), not among R6's collisions (§20), with a visible button naming it |
+| ⌘+, | **Not bound** (`cf7cb97`): it is the browser's Settings on macOS (R6). Control's shortcut is Ctrl+, alone |
+| Browser/OS matrix | testing-strategy §7.1 |
+| ADR-0029 §3 capture matrix | **P23**, not P19.5 exit (acceptance evidence, not a gate) |
+| Text equivalents, framebuffer focus/edge probes | **Open → P23** |
+
 ## 47. Component map — directive names → primitives
 
 The directive's component list (§22) mapped to §39. Names that would duplicate an existing

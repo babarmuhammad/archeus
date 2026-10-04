@@ -1107,6 +1107,11 @@ decisions ADR-0024…0029.
   and R13-16's acceptances are recorded. Still due before P26: R13-03 to R13-13, the Q-A5 check
   on a real Mac and on Linux, and the supported browser/OS matrix, which no document defines.
   P19.5 is not exited: the manual checks and the user's sign-off are outstanding.
+  *P19.5 closure, 2026-10-04 (p19-design-gate §12 items 111–113; subject to the user's
+  sign-off):* the ADR-0029 §3 frozen-clock captures, testing-strategy §7's "text equivalents"
+  row and the framebuffer focus/edge probes move from this phase's "Tests" line to **P23**. The
+  live-map keys are kept, Ctrl/⌘+K is kept, ⌘+, is no longer bound, and the browser/OS matrix
+  is testing-strategy §7.1.
 - Client work: tokens (focus ≠ attention, red reserved, depth/transparency tokens); primitives;
   graph edge semantics, legend, impact view, hull/depth/cored nodes, static project cage; the
   thread (T1 from `Message.links`, T2 on every list, T3 spatial) and tints; activity halo,
@@ -1233,6 +1238,10 @@ P25.5; renamed 2026-10-01 from "Legacy migration", ownership unchanged)*
 **P23 — Acceptance program**
 - Depends: P22. Run the whole judge + E2E + contract (real harness) + manual mobile checklist on
   Windows (primary), macOS, Linux.
+- Carried from P19.5's closure (p19-design-gate §12 item 111): the ADR-0029 §3 frozen-clock
+  capture matrix; the text-equivalent gate over every registry animation; framebuffer focus
+  and edge-style probes; the browser/OS matrix rows not verified in V1 (testing-strategy §7.1),
+  including Q-A5 and ⌘/Ctrl shortcuts on real macOS and Linux.
 - Acceptance: all traceability rows green.
 
 > **Renumbering note (2026-09-28).** Until this date **P24 meant "V1 release gate"**. The
