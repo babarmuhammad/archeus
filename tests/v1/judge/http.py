@@ -159,6 +159,11 @@ class HttpClient:
     def _restart(self, *, kill=True):
         self.core.restart(kill=kill)
 
+    def _stop_core(self):
+        if not isinstance(self.core, TempCore):
+            raise NotImplementedError('stopping a Core process from the judge')
+        self.core.stop(kill=True)
+
     def _report_usage(self, account_id, window, pct):
         """The rig's `usage`: the scripted feed the in-process Core reads."""
         if not isinstance(self.core, TempCore):

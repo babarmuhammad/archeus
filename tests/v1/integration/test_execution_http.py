@@ -129,7 +129,12 @@ def test_X06_the_cli_pauses_a_mission_and_engages_the_estop(core, capsys):
     assert cli.main(['pause', 'all', '--later']) == 2              # usage
 
 
-def test_X07_the_estop_without_core_is_p20s(archeus_home, capsys):
+def test_X07_the_estop_without_core_stops_without_starting_it(archeus_home, capsys):
+    # P20 slice A; the drills are test_estop_drills.py
     from archeus.cli import main as cli
-    assert cli.main(['estop']) == 2
-    assert 'P20' in capsys.readouterr().err
+    from archeus.infra import discovery
+    assert cli.main(['estop']) == 0
+    assert 'without Core' in capsys.readouterr().out
+    import os
+    assert os.path.exists(paths.stop_sentinel())
+    assert discovery.discover()[0] == 'not_running'

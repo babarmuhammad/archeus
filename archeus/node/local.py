@@ -113,13 +113,17 @@ class LocalNode:
                 continue
         return out
 
+    @classmethod
+    def unended(cls):
+        """The registry's spawn lines with no end line: what may still run."""
+        lines = cls.registry()
+        ended = {(x['execution_id'], x.get('process_seq')) for x in lines if x.get('op') == 'end'}
+        return [x for x in lines if x.get('op') == 'spawn'
+                and (x['execution_id'], x.get('process_seq')) not in ended]
+
     def compact_registry(self):
         """Keep only processes with no end line (boot, §15.2)."""
-        lines = self.registry()
-        ended = {(x['execution_id'], x.get('process_seq')) for x in lines if x.get('op') == 'end'}
-        live = [x for x in lines if x.get('op') == 'spawn'
-                and (x['execution_id'], x.get('process_seq')) not in ended]
-        text = ''.join(json.dumps(x, sort_keys=True) + '\n' for x in live)
+        text = ''.join(json.dumps(x, sort_keys=True) + '\n' for x in self.unended())
         os.makedirs(run_dir(), exist_ok=True)
         config.write_atomic(processes_registry(), text)
 
@@ -157,6 +161,20 @@ class LocalNode:
         os.makedirs(run_dir(), exist_ok=True)
         with open(stop_sentinel(), 'w', encoding='utf-8') as f:
             f.write(json.dumps({'at': time.time()}))
+
+    @classmethod
+    def estop_without_core(cls):
+        """The e-stop with Core down or unreachable (execution-architecture §10
+        path 2, p11-design-gate §13.4): the sentinel first, so every hook halts
+        on it and a Core starting meanwhile comes up disarmed, then a kill of
+        every registry process that has no end line and is still the process
+        recorded (pid and create_time; a reused pid is never touched).
+        Returns (killed, not_running) as lists of registry lines."""
+        cls.engage_estop()
+        killed, gone = [], []
+        for x in cls.unended():
+            (killed if proc.kill_pid_tree(x.get('pid'), x.get('create_time')) else gone).append(x)
+        return killed, gone
 
     @staticmethod
     def clear_estop():

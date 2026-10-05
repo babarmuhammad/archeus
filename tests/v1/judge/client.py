@@ -383,6 +383,10 @@ class InProcessClient:
         self.close(drain=not kill)
         self._core()
 
+    def _stop_core(self):
+        """Core is killed and stays down (its executions' processes live on)."""
+        self.close(drain=False)
+
     # ── the contract ──
 
     def create_mission(self, *, title: str, objective: str,
@@ -522,7 +526,9 @@ class InProcessClient:
             idempotency_key)
 
     def status(self, *, project_id: Optional[str] = None) -> dict:
-        return self._read(world_status.status, project_id)
+        from archeus.node.local import LocalNode
+        # `armed` as the route composes it (routes.status): the e-stop's state (G5)
+        return dict(self._read(world_status.status, project_id), armed=not LocalNode.disarmed())
 
     def digest(self) -> dict:
         return self._read(world_digest.digest)

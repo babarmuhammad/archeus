@@ -59,7 +59,8 @@ USAGE = """usage: archeus core [--open] [--remote-host H]...
                                 pause a mission: its executions halt at their next tool call
        archeus pause all --now  the emergency stop (as `archeus estop`)
        archeus estop            stop every execution now; Core stays disarmed until
-                                a user device re-arms it (P11; with Core down: P20)
+                                a user device re-arms it; with Core down it kills the
+                                recorded processes itself and never starts Core
        archeus sessions [--project P] [--mission M]
                                 the sessions Core knows, newest activity first (P12)
        archeus resume <session> [--model M] [--effort E]
@@ -323,20 +324,37 @@ def _core_or_say():
 
 
 def estop():
-    """The e-stop with Core running (execution-architecture §10 path 1). With
-    Core down the registry kill is P20's; nothing is attempted."""
+    """The emergency stop (execution-architecture §10). Core running: Core's
+    own e-stop (path 1). Core down or not answering: the STOP sentinel and the
+    registry kill, here, without starting Core (path 2, P20 slice A). A Core
+    that answers and refuses is not bypassed."""
     import os
+    from ..infra import discovery
+    from ..node.local import LocalNode
+    from .tui import client, sync
     info = _core_or_say()
-    if info is None:
-        print('Core is not running: the e-stop without Core arrives with P20; start Core '
-              'with `archeus core` or stop the processes yourself', file=sys.stderr)
+    token = discovery.read_local_token() if info is not None else None
+    if token is not None:
+        try:
+            out = client.Core(info['port'], token).post(
+                endpoints.estop(), {'idempotency_key': os.urandom(16).hex()})
+        except client.CoreError as e:
+            if e.code != 'network':
+                print('Core did not accept the e-stop: %s' % sync.explain(e.refusal()),
+                      file=sys.stderr)
+                return 2
+        else:
+            print('emergency stop: %d execution(s) stopped; Core is disarmed until re-armed'
+                  % len(out['stopped']))
+            return 0
+    try:
+        killed, _ = LocalNode.estop_without_core()
+    except OSError as e:
+        print('emergency stop failed: the STOP file could not be written (%s)' % e,
+              file=sys.stderr)
         return 2
-    out = _get(info, 'POST', endpoints.estop(), {'idempotency_key': os.urandom(16).hex()})
-    if out is None:
-        print('Core did not accept the e-stop', file=sys.stderr)
-        return 2
-    print('emergency stop: %d execution(s) stopped; Core is disarmed until re-armed'
-          % len(out['stopped']))
+    print('emergency stop without Core: %d process(es) killed; Core starts disarmed and runs '
+          'nothing until re-armed' % len(killed))
     return 0
 
 

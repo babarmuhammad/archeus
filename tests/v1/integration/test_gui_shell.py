@@ -188,7 +188,9 @@ def test_emergency_stop_is_archeus_estops_code(core, sent):
 def test_emergency_stop_with_core_down_never_starts_it(archeus_home, monkeypatch):
     monkeypatch.setattr(gui, 'start_core', _never)
     code, said = gui.estop()
-    assert code == 2 and 'Core is not running' in said and 'P20' in said
+    # P20 slice A (item 83): the tray stops without Core, and still never starts it
+    assert code == 0 and said.startswith('emergency stop without Core: '), said
+    assert os.path.exists(paths.stop_sentinel())
     assert discovery.discover()[0] == 'not_running'
 
 

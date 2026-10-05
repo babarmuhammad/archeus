@@ -385,8 +385,19 @@ class Rig:
         return self.client._principal_client(kind)
 
     def estop_without_core(self):
-        """Run `archeus estop` with Core stopped."""
-        self._pending('the Core-less e-stop', 'P11')
+        """Kill Core, leave it down, and run `archeus estop` (P20 slice A).
+        Returns what the command said."""
+        if not hasattr(self.client, '_stop_core'):
+            self._pending('stopping Core for this binding', 'P20')
+        import contextlib
+        import io
+        from archeus.cli import main
+        self.client._stop_core()
+        said = io.StringIO()
+        with contextlib.redirect_stdout(said), contextlib.redirect_stderr(said):
+            code = main.estop()
+        assert code == 0, said.getvalue()
+        return said.getvalue()
 
     def http_get(self, path):
         """A raw authenticated GET; only the HTTP binding has a wire to send it on."""
