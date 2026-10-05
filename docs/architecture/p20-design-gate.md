@@ -659,6 +659,142 @@ resolved.
     - The same on a phone, where the line and the single action must fit at 390 px.
     - With Core stopped, the unknown sentence and no button.
 
+### Slice C — F4 and item 86: streams and the shell's credential (2026-10-05)
+
+Authorised by the user for slice C only (2026-10-05). Decisions used: D2 and D1 as recorded in
+§4.1. Nothing of D6, D10, D11, D12, D13, D14, D15 or §4.2 (O1–O3) was used or resolved.
+
+24. **F4 as built (D2).** `Streams._register` (`archeus/api/sse.py`) decides under the pool's
+    lock. A device at `PER_DEVICE` has its **oldest** stream (first in opening order) taken
+    out of the pool and flagged closing with the reason `superseded`; if that stream has
+    already sent its `200`, its socket is shut down too. The new stream is registered in the
+    same critical section. Only when the device is under
+    its own cap does `MAX_STREAMS` apply, and it is still `429 too_many_streams`.
+    - **Clarification, for the user's review: a capped device at a full pool still takes
+      over.** Replacing its own stream does not grow the pool, so refusing it would leave
+      item 112 alive whenever the pool is full. A device under its cap at a full pool is
+      refused as before.
+    - **Why the socket is shut down at the takeover**, not only when the old thread notices:
+      a stream blocked writing to a client that stopped reading would otherwise hold its
+      thread outside the pool's count until TCP gives up. Each takeover would then leave one
+      more such thread, which a device could repeat. `_Stream.hangup()` is the same shutdown
+      the stream's own `finally` already did, now one method.
+    - **A race found and fixed during the slice.** The first cut shut the socket down
+      unconditionally. In a burst, a stream superseded before its `200` was written then had
+      its socket cut mid-handshake, so that client saw a connection error instead of an
+      answer (1 in 20 stress runs of the burst test; 1 failure in the first related-suite
+      run). Now a stream that has not started is only flagged: it writes its `200`, sees
+      `closing` at its loop's first check and ends with an EOF. The flag and the loop's check
+      cannot both miss: the takeover sets `closing` before reading `started`, the stream sets
+      `started` before reading `closing`. After the fix: the takeover file 30/30 runs green.
+    - **Presence (D2's "one close and one open").** The live presence list
+      (`Streams.connections`) shows the oldest connection id gone and a new one present. **No
+      `device.stream_opened`/`_closed` trace is written for a takeover**: p15 §5 D4 records only
+      the transitions none→one and one→none, and a takeover is neither. Recorded as the reading
+      of D2's test line, not a change to D4.
+    - **Determinism.** The survivor set is decided by registration order under one lock, never
+      by network order: of any burst, the last two registered survive.
+    - **No authority added.** Authentication (route scope, live credential) runs before
+      `serve`, so a revoked, absent or wrong token reaches no stream of anyone's. The takeover
+      touches only the presenting device's own streams.
+25. **Item 86 as built (D1).**
+    - `POST /v1/devices/launch/code` accepts `supersede`, whose only allowed value is
+      `"desktop shell"` (`entities.SUPERSEDE_SLOTS`, enforced by the request schema and by the
+      entity). The route is `admin` and loopback-only as before, so the authority to supersede
+      is the local token's: the shell asks with the local token, as it already did.
+    - `LaunchCodes.mint` fixes the slot in the code's payload, like the scopes; the redeemer
+      cannot add or change it.
+    - `commands.register_device(supersede=…)` revokes, **in the redeem's own transaction**,
+      every `ACTIVE` device whose `supersede` equals the slot (reason "superseded by a new
+      desktop shell"), then records the new device with the slot. Revocation is the existing
+      `revoke_device` (device `REVOKED`, every token of its principal revoked).
+    - The shell (`archeus/cli/gui.py`) adds `'supersede': SHELL_NAME` to the code it asks for.
+      Its scopes stay exactly `observe` + `control`; it cannot revoke anything itself.
+    - The token is still held in memory only; nothing is written to disk.
+    - A superseded shell's streams end at the redeem's commit: every stream wakes on a commit
+      and closes when its credential is no longer live (the existing `_still_valid` rule).
+26. **Deviations from the gate's text (for the user's review).**
+    - **No migration** (§6 named one). The marker is a new optional `Device.supersede` field.
+      Entity fields that are not promoted to a column live in the row's JSON `body`
+      (`infra/db/rows.py`), as P15's `origin`, `host_label` and `pin_hash` did. Rows written
+      before P20 read `supersede = None`: they hold no slot, so the **first** P20 shell launch
+      cannot revoke a pre-P20 shell row. Those rows stay as they are and can be revoked from
+      Clients as before; every later launch keeps one.
+    - **No explicit stream close in the redeem route.** A first cut called `close_device` for
+      each superseded device, as `revoke_device` does. It was removed: the commit already
+      closes those streams, so the loop was redundant and its mutant could not be killed
+      deterministically. The revoke route keeps its own close, which also makes its answer
+      wait for it.
+27. **Limitations and races found (recorded, not changed).**
+    - **A device opening a third stream ping-pongs.** Three tabs of one client that each open
+      their own stream (no leader-tab sharing) evict each other in turn, each reconnecting.
+      The SPA's leader tab keeps a healthy browser to one stream, so this needs a client that
+      does not share; D2's cost, as designed.
+    - **A second concurrent `archeus gui`** revokes the first shell's credential (D1's stated
+      cost). The first shell's tray then reads Attention as unknown and reports Core's refusal
+      for Pause all. The tray's Emergency stop is unaffected: it uses the local token
+      (`archeus estop`), never the shell's credential.
+    - **A shell request racing the superseding redeem** fails with the ordinary
+      `401 unauthenticated` (gate §8), as the tests show.
+28. **Tests.**
+    - `tests/v1/integration/test_stream_takeover.py` (6, real HTTP stack): item 112's two
+      reloads (the live page connects at once and receives frames); newest wins, oldest
+      closes, and another device's two streams are untouched and still receive; a takeover
+      writes no presence trace; a burst of 8 concurrent opens over 2 old streams answers 200
+      to all and keeps exactly the last two **registered** (order taken from the pool's own
+      registration, not the network); the pool's cap still refuses a new device while a
+      capped device at a full pool takes over; no takeover without a live credential (absent,
+      wrong and revoked tokens are 401 and touch nothing).
+    - `tests/v1/unit/test_stream_takeover_units.py` (3): which stream is superseded and that
+      it is told every way (out of the pool, `closing`, reason, hang-up once started); a
+      stream superseded before its `200` is not cut; the pool's cap against a capped device.
+    - `tests/v1/integration/test_gui_shell.py`, 6 new: a second launch revokes the first
+      (401 `unauthenticated` on reads and Pause all, its stream closed; the second works,
+      `observe` + `control` only, cannot revoke; neither token anywhere under
+      `ARCHEUS_HOME`); the revocation is recorded with its reason; an ordinary launch code,
+      and a browser merely *named* "desktop shell", supersede nothing and are never
+      superseded; a crashed shell is revoked at the next launch **across a Core restart**; 4
+      concurrent launches leave exactly one live shell; only `admin` mints a superseding code
+      and only for the shell's slot (403, 400).
+    - Changed to the approved behaviour: `test_api_pools.py` (a third stream of one device is
+      now 200 and closes the oldest) and P22 in `test_presence.py` (renamed `…a_third_takes_
+      the_oldest`). The launch-code payload asserts in two unit files gained the slot (`None`).
+    - Stability: the takeover file 30/30 consecutive runs; `test_gui_shell.py` 10/10.
+    - Client: type check clean, 231/231; `gen_api_docs.py --check` and `gen_ui.py --check`
+      current (the generated client gained `supersede?: 'desktop shell' | null`).
+29. **Mutants.** `tools/mutate_p20.py` Q18–Q33 (ids provisional, D14), **16/16 killed**:
+    - F4: Q18 the cap refuses again; Q19 the newest closed instead; Q20 the pool's cap gone;
+      Q21 a capped device refused at a full pool; Q22 another device's stream taken; Q23 not
+      flagged closing; Q24 not hung up; Q25 a takeover traced as a transition; Q33 a stream
+      cut before its `200`.
+    - Item 86: Q26 the redeem revokes nothing; Q27 every active client revoked, slot or not;
+      Q28 the slot not recorded; Q29 the shell does not ask for it; Q30 the code drops it;
+      Q31 a non-admin client mints one; Q32 the slot is free text.
+    - Re-run because their files changed: P15's whole suite (`auth.py`, `sse.py`) 23/23; P16
+      M25 1/1; P19 P111–P124 (`gui.py`) 14/14. `test_mutation_suites_parse.py` passes for every
+      suite it covers; it caught Q27's anchor going stale after the guard fix below.
+    - **A guard caught a first cut.** `test_guards.py::test_no_state_is_set_outside_the_p2_
+      primitive` rejects the text `state=` in `commands.py`, which a `tx.where(…,
+      state='ACTIVE')` filter tripped. The filter reads the state in Python instead.
+30. **The full run** (`tests/v1` plus `tests/test_p05_seams.py`, `ARCHEUS_E2E=1`, slices A–C):
+    **2640 passed, 0 failed, 14 skipped, 3 xfailed** (31 min).
+    - None of the known intermittents recurred in this run: `test_g03_one_model.py::
+      test_every_client_agrees[http]` (slices A and B), `test_spa_marker`,
+      `test_spa_resources`, `test_spa_halo`. **They keep their classification**; one clean
+      run does not reclassify them.
+    - Outside `tests/v1`: `test_cli_help.py`'s deferred-verb test (item 69) was not run and
+      is unchanged.
+31. **Evidence still needed for P20 exit from this slice.**
+    - **Manual, owed by the user (proposed for §10; not yet in it until the user agrees):**
+      - In the real Qt shell: quit and relaunch `archeus gui` (and once, end its process from
+        Task Manager instead of quitting). Control → Clients then shows exactly one ACTIVE
+        "desktop shell"; the tray's Pause all and Attention count work.
+      - In a real browser and on a phone: reload twice quickly. The page reconnects at once
+        (item 112's 19.9 s was measured that way).
+    - **Pre-P20 shell rows** (item 26) stay until revoked by hand from Clients. Whether to
+      sweep them is the user's call; nothing here does it.
+    - Nothing else of P20's §10 is affected by this slice.
+
 ## 13. As built
 (Filled at the end of P20.)
 
