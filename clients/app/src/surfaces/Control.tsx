@@ -22,11 +22,12 @@ import {
   type Sync,
 } from '../api/generated';
 import { clearToken } from '../api/transport';
-import { store, useRead } from '../data/cache';
+import { store, useConn, useRead, type Snapshot } from '../data/cache';
+import { canCommand } from '../data/connection';
 import { motionMode, type MotionPref } from '../data/commands';
 import { send } from '../data/core';
 import { CONTROL_SECTIONS, INSPECTOR_TABS, TAB_LABEL, href, objectHref } from '../nav/destinations';
-import { ago, presenceLabel, templateText, triggerText, usageText } from '../state/present';
+import { ago, armedText, estopSaid, presenceLabel, templateText, triggerText, usageText } from '../state/present';
 import { BUDGETS, draftBudgets, policyProblem, type PolicyDraft } from '../state/policy';
 import { QR } from '../components/QR';
 import { Relations } from '../components/Relations';
@@ -860,13 +861,42 @@ function About() {
           )}
         </Loadable>
       </Section>
-      <Section title="Emergency stop">
-        <p>Stops every running execution now and refuses new work until you re-arm.</p>
-        <div className="row">
-          <ActionButton label="Emergency stop" scope="control" kind="danger" confirm="Every running execution is killed now and Archeus refuses new work until you re-arm it. Missions are not lost; they wait." run={(key) => api.estop(send(), { idempotency_key: key })} reread={['/v1']} />
-          <ActionButton label="Re-arm" scope="control" run={(key) => api.rearm(send(), { idempotency_key: key })} reread={[paths.health()]} />
-        </div>
-      </Section>
+      <Estop health={h} />
     </>
+  );
+}
+
+/** The emergency stop (P20 F7, F8): the state Core reports, in words, and only
+ * the action that applies to it. Nothing is guessed while Core cannot be
+ * reached, and the one status line is what Core answered, shown while the
+ * state it describes holds. */
+function Estop({ health }: { health: Snapshot<Health> }) {
+  const conn = useConn();
+  const [said, setSaid] = useState<ReturnType<typeof estopSaid> | null>(null);
+  const armed = canCommand(conn.conn) ? health.data?.armed : undefined;
+  const shown = said && (said.when === undefined || said.when === armed) ? said : null;
+  return (
+    <Section title="Emergency stop">
+      <p data-armed={armed === undefined ? 'unknown' : String(armed)}>
+        {armed === false ? <span className="tag blocked">{armedText(armed)}</span> : armedText(armed)}
+      </p>
+      {armed === true ? (
+        <div className="row">
+          <ActionButton label="Emergency stop" scope="control" kind="danger" confirm="Every running execution is killed now and Archeus refuses new work until you re-arm it. Missions are not lost; they wait." run={(key) => api.estop(send(), { idempotency_key: key })} reread={['/v1']} report={(o) => setSaid(estopSaid('estop', o))} />
+        </div>
+      ) : armed === false ? (
+        <div className="row">
+          <ActionButton label="Re-arm" scope="control" run={(key) => api.rearm(send(), { idempotency_key: key })} reread={['/v1']} report={(o) => setSaid(estopSaid('rearm', o))} />
+        </div>
+      ) : null}
+      <p className="hint" role="status" data-estop-said>
+        {shown && !shown.alert ? shown.text : null}
+      </p>
+      {shown?.alert ? (
+        <p className="err" role="alert" data-estop-said>
+          {shown.text}
+        </p>
+      ) : null}
+    </Section>
   );
 }

@@ -343,3 +343,44 @@ export function usageText(u: { windows?: Record<string, number | null>; resets_a
   const seen = typeof u.observed_at === 'number' ? `, observed ${ago(new Date(u.observed_at * 1000).toISOString(), now)}` : '';
   return `${w.join(' · ') || 'no window reported'}${seen}${u.source ? ` from ${u.source}` : ''}`;
 }
+
+// ── the emergency stop in Control → About (P20 F7, F8) ──
+
+/** How a press ended, for a caller that says it itself (ActionButton's
+ * `report`): Core's answer; a refusal (4xx: nothing was done); a failure inside
+ * Core (5xx); or no answer at all (whether Core acted is not known). */
+export type Outcome =
+  | { ok: true; out: unknown }
+  | { ok: false; kind: 'refused' | 'failed' | 'network'; why: string };
+
+/** Core's armed state in words; *armed* undefined is "Core cannot be reached",
+ * never a guess from an older read. */
+export function armedText(armed: boolean | undefined): string {
+  if (armed === undefined)
+    return 'Core cannot be reached, so whether it is armed is not known here. The tray’s Emergency stop and “archeus estop” work without Core.';
+  return armed ? 'Armed: Archeus accepts new work.' : 'Emergency stop engaged: Archeus refuses new work until you re-arm.';
+}
+
+/** One status line for what Core answered to an emergency stop or a re-arm, in
+ * the tray's words, and the armed state it describes (`when`; undefined when
+ * no answer came). A line never claims more than Core said. */
+export function estopSaid(act: 'estop' | 'rearm', o: Outcome): { text: string; alert: boolean; when?: boolean } {
+  if (o.ok) {
+    const out = (o.out ?? {}) as { stopped?: unknown[]; armed?: boolean };
+    if (act === 'estop')
+      return { text: `Emergency stop: ${out.stopped?.length ?? 0} execution(s) stopped; Core is disarmed until re-armed.`, alert: false, when: out.armed };
+    return out.armed
+      ? { text: 'Re-armed: Core accepts new work again.', alert: false, when: true }
+      : { text: 'Core answered, but it is still disarmed.', alert: true, when: false };
+  }
+  const what = act === 'estop' ? 'nothing is confirmed stopped' : 'it stays disarmed';
+  if (o.kind === 'network')
+    return { text: act === 'estop'
+      ? 'Core did not answer, so nothing is confirmed stopped. The tray’s Emergency stop and “archeus estop” stop without Core.'
+      : 'Core did not answer, so the re-arm is not confirmed.', alert: true };
+  if (o.kind === 'failed')
+    return { text: `The ${act === 'estop' ? 'emergency stop' : 're-arm'} failed inside Core, so ${what}: ${o.why}`, alert: true, when: act === 'rearm' ? false : true };
+  return { text: act === 'estop'
+    ? `Core refused the emergency stop, so nothing was stopped: ${o.why}`
+    : `Core refused the re-arm, so it stays disarmed: ${o.why}`, alert: true, when: act === 'rearm' ? false : true };
+}

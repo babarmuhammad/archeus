@@ -6,7 +6,7 @@ import { CoreError } from '../api/transport';
 import { canCommand, freshness, type Freshness } from '../data/connection';
 import { action, explain, keyAfter, retryable } from '../data/commands';
 import { store, useConn, useRead, type Snapshot } from '../data/cache';
-import { badge, inline, mentions, resourceLine } from '../state/present';
+import { badge, inline, mentions, resourceLine, type Outcome } from '../state/present';
 import { objectHref } from '../nav/destinations';
 import { paths, api, type AccountList, type Digest, type Sync } from '../api/generated';
 import { send } from '../data/core';
@@ -164,6 +164,7 @@ export function ActionButton({
   kind = 'secondary',
   confirm,
   onDone,
+  report,
 }: {
   label: string;
   scope: 'observe' | 'control' | 'approve' | 'admin';
@@ -173,6 +174,8 @@ export function ActionButton({
   kind?: 'primary' | 'secondary' | 'danger';
   confirm?: string;
   onDone?: (out: unknown) => void;
+  /** the caller says the outcome itself (P20 F7); the button then shows no error of its own */
+  report?: (o: Outcome) => void;
 }) {
   const conn = useConn();
   const { can } = useMe();
@@ -200,10 +203,12 @@ export function ActionButton({
         else throw e;
       }
       onDone?.(out);
+      report?.({ ok: true, out });
     } catch (e) {
       const ce = e instanceof CoreError ? e : new CoreError(0, 'network', {});
       outcome = ce.code === 'network' ? 'network' : 'refused';
-      setErr(explain(ce));
+      if (report) report({ ok: false, kind: outcome === 'network' ? 'network' : ce.status >= 500 ? 'failed' : 'refused', why: explain(ce) });
+      else setErr(explain(ce));
     } finally {
       key.current = keyAfter(key.current, outcome);
       setBusy(false);
