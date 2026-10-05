@@ -2,8 +2,10 @@
 
 Status: **APPROVED IN PART** (the user, 2026-10-05): D1, D2, D3, D4, D5, D10 and D15 as
 proposed; D7 as an amendment; D8 and D9 moved out of P20. **D6, D11, D12, D13 (breaker drills),
-D14 and the order of §5 beyond slice A are not yet decided** and are not inferred (§4.1).
-Implementation is authorised for **slice A only**, then stops for the user's review. Anything
+D14 and the order of §5 after slice C are not yet decided** and are not inferred (§4.1).
+Implementation was authorised one slice at a time: **A, B and C are implemented with automated
+evidence and await their manual checks (§10); P20 is not complete; no slice after C is
+authorised** (§14). Anything
 implementation finds that departs from an approved decision is recorded in §12 for the user's
 review, never applied silently.
 
@@ -410,13 +412,21 @@ already mints launch codes.
   `gen_api_docs.py --check`; traceability and design gates.
 - The threat model, secrets review, remote-access review and dependency audit committed, with
   **no High finding open**.
-- **Manual, owed by the user:**
-  - the tray Emergency stop with Core down on the real Windows display (item 83's M1 step 5,
-    now expected to stop; §12 item 10);
-  - Control → About in the real Qt shell and on a phone (slice B, §12 item 23);
-  - F6 on a real phone;
-  - the observed runs (D15). Until they are done, P20 is at most "ready except for the observed
-    run".
+- **Manual, owed by the user.** None is removed or downgraded by a later slice; each is NOT
+  RUN until the user performs it. A sub-check that cannot be performed (no suitable device) is
+  recorded NOT RUN, never passed by a weaker criterion.
+
+  | Id | Check | Procedure | Expected | Status |
+  |---|---|---|---|---|
+  | **A-M1** | Slice A, item 83 (M1 step 5): tray e-stop with Core down | On the real Windows display, with a mission running, stop Core. Tray → Emergency stop → confirm "Emergency stop". Then `archeus status`; then `archeus gui`; then Re-arm from a user device | The notification reads "emergency stop without Core: N process(es) killed; …"; the mission's process is gone; `archeus status` still exits 1 (Core not started); `archeus gui` starts Core **disarmed**; after Re-arm, new work starts (§12 item 10) | NOT RUN |
+  | **B-M1** | Slice B: Control → About in the real Qt shell | In `archeus gui`, open Control → About. While armed: press Emergency stop; check Cancel is the default and Enter and Escape stop nothing; confirm; read the status line; press Re-arm | Armed shows its sentence and Emergency stop only; the accepted line is Core's answer in the tray's words; disarmed shows Re-arm only; after Re-arm the section says armed only once Core confirms (§12 items 13–18, 23) | NOT RUN |
+  | **B-M2** | Slice B: Control → About on a phone, including Core unreachable | On a real phone at ≈ 390 px, the same as B-M1; then stop Core and reopen the section | The sentence, the one action and the status line fit at 390 px; with Core stopped, the "Core cannot be reached …" sentence and **no** button (§12 items 13, 23) | NOT RUN |
+  | **F6-M1** | F6 (D5) on a real phone | Slice D (not built). On a real phone: open the command bar, close it with its Close button; open it again, close it by tapping the backdrop | Each closes the bar and returns focus to the opener (D5) | NOT RUN (slice D not built) |
+  | **C-M1** | Slice C, item 86: desktop shell supersession | 1. Launch `archeus gui`. 2. Control → Clients shows the expected "desktop shell". 3. End that GUI process externally (e.g. Task Manager). 4. Launch `archeus gui` again. 5. Check Control → Clients | Exactly one ACTIVE "desktop shell"; the previous shell's credential is no longer usable (its row REVOKED); the new shell is the active one; no second active desktop-shell credential remains. (A row created before slice C has no marker and is not superseded: §12 item 33) | NOT RUN |
+  | **C-M2** | Slice C, F4: rapid reload takeover | Against one device/session, reload the page twice in quick succession. Once in a real desktop browser; once on a real phone if one is available. Keep a second device's page open meanwhile | The page reconnects promptly, with no ≈ 20 s lockout (item 112's 19.9 s); the device's own oldest stream is taken over and the previous stream closed; the other device's stream is unaffected | desktop NOT RUN · phone NOT RUN |
+
+- **The observed runs (D15).** Not a UI check: see §14.E. Until they are done, P20 is at most
+  "ready except for the observed run".
 
 ## 11. Deviations declared up front
 - The plan's P20 entry does not list notifications, Codex or the re-arm step-up; this gate
@@ -784,17 +794,180 @@ Authorised by the user for slice C only (2026-10-05). Decisions used: D2 and D1 
       run does not reclassify them.
     - Outside `tests/v1`: `test_cli_help.py`'s deferred-verb test (item 69) was not run and
       is unchanged.
-31. **Evidence still needed for P20 exit from this slice.**
-    - **Manual, owed by the user (proposed for §10; not yet in it until the user agrees):**
-      - In the real Qt shell: quit and relaunch `archeus gui` (and once, end its process from
-        Task Manager instead of quitting). Control → Clients then shows exactly one ACTIVE
-        "desktop shell"; the tray's Pause all and Attention count work.
-      - In a real browser and on a phone: reload twice quickly. The page reconnects at once
-        (item 112's 19.9 s was measured that way).
-    - **Pre-P20 shell rows** (item 26) stay until revoked by hand from Clients. Whether to
-      sweep them is the user's call; nothing here does it.
-    - Nothing else of P20's §10 is affected by this slice.
+31. **Evidence still needed for P20 exit from this slice.** The user approved both proposed
+    manual checks on 2026-10-05; they are **C-M1** and **C-M2** in §10, with their procedure
+    and expected result there. Nothing else of P20's §10 is affected by this slice.
+32. **Status (the user, 2026-10-05): implemented, automated tests green, awaiting its manual
+    gate checks (C-M1, C-M2).** Slice C is not P20, and P20 is not complete. The evidence, as
+    recorded above:
+    - full `tests/v1` + seams + E2E: 2640 passed, 0 failed, 14 skipped, 3 xfailed;
+    - stream takeover: 6 integration + 3 unit tests; 30/30 consecutive runs of the takeover
+      file after the handshake-race fix;
+    - shell credential: 6 new tests; 10/10 consecutive runs of `test_gui_shell.py`;
+    - client: 231/231, type check clean, both generator checks current;
+    - mutants: Q18–Q33 16/16 killed; P15 (23/23), P16 M25 (1/1), P19 P111–P124 (14/14)
+      re-run and killed.
+
+    The known intermittents (`test_g03_one_model.py[http]`, `test_spa_marker`,
+    `test_spa_resources`, `test_spa_halo`) keep their classification: they did not recur in
+    this run, which neither clears nor reclassifies them. `test_cli_help` (item 69) is
+    unchanged and was not run.
+33. **The two deviations, and what they mean (no new requirement follows from either).**
+    - **Pre-existing shell rows.** The marker is a new optional field in the device row's
+      existing JSON body; no row was migrated. Consequence: a "desktop shell" row created
+      before slice C carries no marker, holds no slot, and is never superseded. **It stays
+      until the user revokes it by hand from Control → Clients.** No gate requires a
+      migration (§6's "one migration" was the design's estimate of how a marker would be
+      stored, not a requirement), so none is added.
+    - **Independent streams from one client.** Three tabs of one client that do not share a
+      single stream can close one another's streams, each reconnecting in turn. This is D2's
+      policy applied as approved; the SPA's leader tab keeps a healthy browser to one stream.
+      **Not redesigned**, and no slice takes it up unless an approved requirement asks.
+34. **Authority boundaries: reviewed against the code and the tests.** Each statement, its
+    evidence, and where the evidence is indirect:
+
+    | Statement | Holds? | Evidence |
+    |---|---|---|
+    | Authentication happens before any stream takeover | **Yes** | `GET /v1/events/stream` is scope `observe` (`routes.py`); the server's pipeline authenticates (step 6, `401 unauthenticated`) before any handler runs, and `_register` is reached only from `serve`, the handler. `test_no_takeover_without_a_live_credential` |
+    | A revoked or missing credential cannot take over a stream | **Yes** | Same test: an absent token, an unknown one and a revoked device's token are each `401`, and the presenting device's two held streams remain registered and still receive frames |
+    | A per-device takeover affects only that device | **Yes** | `mine` is filtered by `device_id` under the pool's lock. `test_the_newest_wins_…_no_other_stream_is_touched` (another device's two streams unchanged and live), the unit test, mutant Q22 |
+    | Global pool capacity still returns 429 | **Yes, precisely:** for a device *under* its own cap. A device already at its cap replaces its own oldest stream even when the pool is full, so the pool never grows past `MAX_STREAMS` (item 24's clarification) | `test_the_pools_cap_is_still_a_refusal_and_a_capped_device_still_takes_over`, the unit test, Q20, Q21 |
+    | Shell supersession revokes the previous shell credential transactionally | **Yes, by construction**; the outcome is tested, atomicity is not fault-injected | The revocation runs inside `commands.register_device`, one writer command, which is one transaction with the new device's insert. Tested: a second launch revokes the first; 4 concurrent launches leave exactly one live shell; a crashed shell is revoked across a Core restart; Q26–Q28. **No test injects a failure between the revoke and the insert** to prove the rollback; that rests on the writer's existing one-command-one-transaction rule |
+    | The local-token tray Emergency stop is independent of shell supersession | **Yes, by construction**; tested indirectly | `Shell.estop` is `gui.estop` → `main.estop()`, which reads the local token (`discovery.read_local_token()`) and never the shell's credential. `test_emergency_stop_is_archeus_estops_code` asserts the e-stop request carries the local token. **No test presses the tray e-stop on a shell whose credential was superseded**; independence follows from the e-stop never reading `_own` |
+
+    No discrepancy was found. The two "by construction" rows are recorded so that a later
+    slice does not mistake them for directly tested properties.
 
 ## 13. As built
 (Filled at the end of P20.)
+
+## 14. Reconciliation after slice C (2026-10-05)
+
+Asked for by the user before any slice D is proposed. **P20 is not complete.** Nothing here
+decides anything; where a line needs a decision, it names whose.
+
+### 14.A Completed (implemented and verified by automated tests)
+
+| Item | Decision | Slice | State |
+|---|---|---|---|
+| Item 83, the e-stop with Core down; G5's `phase:P20` xfail removed; the e-stop drills (A01–A06, D13's e-stop half) | §4.1 item 83 | A | automated green; **A-M1 not run** |
+| F7, Control → About states Core's answer | D3 | B | automated green; **B-M1, B-M2 not run** |
+| F8, Control → About names the state, one action | D4 | B | automated green; **B-M1, B-M2 not run** |
+| F4, a device's newest stream wins | D2 | C | automated green; **C-M2 not run** |
+| Item 86, one desktop-shell credential at a time | D1 | C | automated green; **C-M1 not run** |
+| Notifications out of P20 (to P21); plan and dependency records updated | D8 | records | done (`8fe7ce3`) |
+| The Codex adapter to P23; G7's xfail re-marked `phase:P23` | D9 | records | done; no `phase:P20` xfail remains in `tests/` |
+
+"Completed" here means implemented with its automated evidence. No slice is complete as a
+gate while its manual checks are NOT RUN.
+
+### 14.B Approved, not implemented
+
+| Item | Decision | Slice (§5) | Note |
+|---|---|---|---|
+| F6, the command bar's Close button and backdrop tap | D5 | D | not started |
+| The re-arm PIN step-up | D10 | its own slice (J's list) | approved **as proposed**: step-up on `POST /v1/rearm` from a **paired (non-local)** device, through the existing PIN path; rulebook §19 amended to "e-stop (confirm)". Not built |
+| The secrets review, with the DPAPI row amended if Core stores no API key | D7 (amendment) | I | not started |
+| ADR-0052 tool removal (PV-22) | ADR-0052 (DECIDED) | F | not started; its "except opted-in servers" part reads D6's opt-in store |
+| ADR-0049 exclusion, inventory, exit-code-2 deny (PV-10) | ADR-0049 (DECIDED); the store and command are D6 | E | **blocked on D6** |
+| ADR-0051 §2 boundary tests; the threat model | ADR-0051 (DECIDED) | G | not started |
+| Remote-access threat-model review; dependency audit | plan §31.1 P20 | I | not started |
+| Breaker drills, fuzzing | plan §31.1 P20 | H | **blocked on D12, D13** |
+
+### 14.C Open decisions (the user's)
+
+| # | Question | Blocks |
+|---|---|---|
+| O1 | Re-arm re-asks the plan gate for missions blocked only by the e-stop? (they stay BLOCKED today; P9's rule) | nothing in P20's slices; V2's stop-band copy (§14.F) |
+| O2 | Does Pause all (strip, Work) get F7's post-action line? | nothing until answered |
+| O3 / D14 | Are `Q01…` the suite's mutant ids? (Q01–Q33 used provisionally) | nothing; renaming is a text edit |
+| D6 | ADR-0049's opt-in store and command | slice E; part of F; PV-19 |
+| D11 | Owners of R13-03 to R13-13 (none P20's as proposed) | the P21–P23 entries |
+| D12 | Fuzzing: stdlib harness or `hypothesis` | slice H |
+| D13 | The breaker drills (the e-stop half is built) | slice H |
+| §5 order | The order of the slices after C | which slice is next |
+
+### 14.D Manual verification outstanding
+
+The six checks, with procedure, expected result and status, are the table in §10: **A-M1,
+B-M1, B-M2, F6-M1, C-M1, C-M2**, all NOT RUN (C-M2 has a desktop and a phone sub-check, each
+NOT RUN; F6-M1 cannot run until slice D exists). None was removed or downgraded by this pass.
+
+### 14.E D15, the observed run
+
+- **What it is.** D15 (approved) decides how P20 reports the real-account verification: built
+  and tested against the fake harness and the recorded stream; the observed run on a real
+  account is a manual check owed by the user under ADR-0021's permit; until it is done, P20 is
+  at most **"ready except for the observed run"**, and every undocumented flag effect stays a
+  verification item, never a fact.
+- **What the run must show.**
+  - **PV-19** (ADR-0049): one real execution per ADR-0049 source rule; the recorded inventory
+    matches the flags; the account's login survives the narrowing, or the recorded fallback is
+    shown; the exit-code-2 deny and the halt behaviour observed.
+  - **ADR-0052 §7** (PV-22): one observed execution confirms that a removed tool is never
+    offered or called, and shows how the `mcp__*` deny behaves beside an opted-in server.
+- **What it needs first.** ADR-0021 answered for the harness (it is **OPEN**: `archeus terms
+  claude_code permit` is the user's act); PV-10 built (slice E, blocked on D6); PV-22 built
+  (slice F). Neither slice exists, so there is nothing yet to observe.
+- **Status: nothing has satisfied D15.** No observed run has been performed and none is
+  claimed. Slices A–C do not touch the execution boundary.
+
+### 14.F P20 and the V2 product-design reassessment
+
+The other session's V2 documents (uncommitted, not modified here) were read for this map:
+`ARCHEUS_V2_PRODUCT_UX_REASSESSMENT.md`, `ARCHEUS_V2_LATER_UI_LV2_1_GATE.md`,
+`ARCHEUS_V2_LATER_UI_LV2_2_PLAN.md`, `ARCHEUS_V2_UI_ARCHITECTURE.md`, the LV2 rulebook, and
+`lv2-dr2`/`lv2-dr8`. **The V2 direction is under reassessment by the user, who does not
+consider the current prototype good enough** (hierarchy, visibility, explainability, a sense
+of what Archeus is doing when opened, a deliberate mobile application, desktop identity). LV2-1's
+automated results are **not** permission to implement the current V2 design, and nothing in
+P20 relies on them.
+
+**P20 items V2 depends on.** Every V2 production phase starts after P26 (LV2-2 plan), so all of
+P20 precedes V2 production. Four P20 outcomes are load-bearing for V2's designs:
+- **D10's re-arm step-up**: V2's "Resume work…" (SS-6) is designed on it.
+- **O1**: what a resume does to the missions the stop blocked; V2's stop band says "stays
+  blocked until you resume Archeus and unblock it", which is today's behaviour.
+- **D7's secrets review and the remote-access review (slice I)**: DR-8 (check output stored
+  unredacted in two places) and DR-2 (whether a paired phone sees local-path remotes) both
+  name P20 as the owner of their at-rest and remote questions.
+- **D3/D4's wording**: V2's safety-state vocabulary (below).
+
+**V2 questions independent of P20.** The information architecture (LD-2), the three directions
+(A, B, C) and the choice between them, visual hierarchy and identity, explainability and the
+*what · where · why · evidence · next* frame, the phone as a deliberate application (LV2-3),
+the day's light (LD-4), the budget (LD-1), and the data contracts DR-1, DR-3 and DR-4 apart from
+any security question in them.
+
+**V2 questions that must not alter P20's safety and security semantics.** Any V2 decision may
+change words and placement; none may change, without a new gate:
+- the e-stop's availability with Core down, and that only the tray and `archeus estop` hold
+  that local authority (the page holds none, §12 item 15);
+- "no new work until re-armed", and a re-arm counting only once Core confirms it;
+- protection against accidental activation (item 83). LD-7's two-press interaction replaces
+  slice B's confirmation after P26, so it must keep that requirement tested, as the LV2-2 plan
+  says;
+- D10's step-up on re-arm;
+- authentication before any action; the stream cap and takeover scope (D2); the shell's slot
+  and its separation from the local token (D1, §12 item 34);
+- a notification never approves (the LV2 rulebook's rule 18 already agrees).
+
+**Contradictions found (recorded, not resolved).**
+
+| # | What disagrees | P20 side | V2 side | Whose decision |
+|---|---|---|---|---|
+| V2-1 | **"Armed" means opposite things.** | D4's approved copy: "Armed: Archeus accepts new work" (`present.ts` `armedText`), Re-arm | SS-1/SS-6: the safety state is never "armed"/"disarmed" and "re-arm" is not used; Core's `estop_armed()` and its policy reason ("emergency stop armed: every action is denied") use *armed* for **stopped**. The reassessment proposes this as a P20 follow-up (its Q3, V-4) | the user. P20's copy is unchanged |
+| V2-2 | **The e-stop's confirmation.** | Slice B keeps a confirmation dialog (Cancel default); D10 amends rulebook §19 to "e-stop (confirm)" | LD-7 (approved): two presses, a 3 s lapse, **no dialog**, after P26 | the user, through LD-7's own production gate. Not a P20 semantics change if accidental activation stays tested; the §19 wording would need amending then |
+| V2-3 | **Who needs a PIN to resume.** | D10 as approved: step-up on re-arm **from a paired (non-local) device**; the local desktop asks none | SS-4's hint says "resuming needs a PIN" and SS-6 applies on every surface, the local desktop included | the user: either V2's copy is device-specific, or D10's scope widens. P20 does not change D10 |
+| V2-4 | **Push ownership.** | D8: notifications and push moved out of P20, to P21 | `ARCHEUS_V2_UI_ARCHITECTURE.md` ("P20: push, credentials") and the LV2-2 plan ("P20's push and credential review (LV2-3)") still name P20 | records only: D8 stands; the V2 documents are stale on this point and are not edited here |
+| V2-5 | **DR-8's at-rest question.** | D7's approved scope: enumerate every secret written at rest | DR-8 asks whether its at-rest question (check output may hold secrets) is handed to D7 | the user: an open hand-off, not a conflict |
+
+### 14.G Is there a defensible next slice?
+
+Yes, without any new decision: **D (F6, D5)** is approved, small, listed next in §5, confined to
+V1's command bar and needed before F6-M1 can run. **I** (the secrets review, the remote-access
+review and the dependency audit) is equally free of open decisions, touches no UI, and is what
+DR-8 and DR-2 wait on. The D10 slice is approved but should start with the user confirming its
+scope against V2-3. E, H and part of F wait on D6, D12 and D13. **The order is the user's (§5
+order is open); nothing starts until the user authorises it.**
 
