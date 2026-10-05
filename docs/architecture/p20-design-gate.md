@@ -334,7 +334,15 @@ Recorded as given. Nothing beyond what is written here is approved.
 | **D10** mobile e-stop | **Approved as proposed.** No PIN before Emergency stop, which stays the fastest safety action. Re-arm is the privileged operation and requires the PIN step-up (built in its own slice, not in A) |
 | **D15** observed run | **Approved.** No observed-run evidence is claimed before it is performed. P20 may complete its implementation and other evidence, but stays **"ready except for the observed run"** until ADR-0021 is resolved and the real run is done |
 | **Item 83** | **Proceed exactly against the existing design** (execution-architecture §10 path 2, p11 §13.4, D26). Acceptance: the e-stop is available with Core down; the local safety action actually happens; no new work starts afterwards; re-arm restores starting work; the operation is safe against accidental activation; the STOP file and the process registry are reused, with no parallel mechanism. The requirement is not weakened because the mechanism exists |
-| **Not decided** | D6 (ADR-0049 opt-in store and command), D11 (R13-03 to R13-13 owners), D12 (fuzz tooling), D13's breaker drills, D14 (mutant ids), the order of §5 after slice A |
+| **Not decided** | D6 (ADR-0049 opt-in store and command), D11 (R13-03 to R13-13 owners), D12 (fuzz tooling), D13's breaker drills, D14 (mutant ids), the order of §5 after slice A; and the questions §4.2 adds |
+
+### 4.2 Open questions found during implementation (the user's, not inferred)
+
+| # | Question | Found in | Status |
+|---|---|---|---|
+| O1 | Should a re-arm re-ask the plan gate for missions that `builtin:estop` blocked while Core was disarmed? Today they stay BLOCKED after the re-arm (P9's existing rule, both e-stop paths) | slice A, §12 item 5 | **open**; nothing changed |
+| O2 | F7 also names the window's **Pause all** with nothing running. D3's approved text names only Control → About's Emergency stop. Does Pause all (strip, Work) get the same post-action line? | slice B, §12 item 17 | **open**; not built |
+| O3 | D14: are `Q01…` the suite's ids? Slices A and B use them provisionally (Q01–Q17) | slices A, B | **open**; ids not renamed |
 
 Slice A's mutants are numbered `Q01…` in `tools/mutate_p20.py` as D14 proposes; D14 being
 undecided, the ids are provisional and renumbering them is a text edit.
@@ -402,9 +410,13 @@ already mints launch codes.
   `gen_api_docs.py --check`; traceability and design gates.
 - The threat model, secrets review, remote-access review and dependency audit committed, with
   **no High finding open**.
-- **Manual, owed by the user:** the tray Emergency stop with Core down on the real Windows
-  display (item 83's M1 step 5, now expected to stop); F6 on a real phone; the observed runs
-  (D15).
+- **Manual, owed by the user:**
+  - the tray Emergency stop with Core down on the real Windows display (item 83's M1 step 5,
+    now expected to stop; §12 item 10);
+  - Control → About in the real Qt shell and on a phone (slice B, §12 item 23);
+  - F6 on a real phone;
+  - the observed runs (D15). Until they are done, P20 is at most "ready except for the observed
+    run".
 
 ## 11. Deviations declared up front
 - The plan's P20 entry does not list notifications, Codex or the re-arm step-up; this gate
@@ -508,5 +520,145 @@ already mints launch codes.
       `test_gui_shell.py`, traceability, seams) gave 62 passed, 1 skipped. The full suite was
       not re-run, because the two fixes touch only a message string and a test import.
 
+### Slice B — F7 and F8, Control → About's emergency stop (2026-10-05)
+
+Decisions used: D3 and D4 as recorded in §4.1. Nothing of D6, D11, D12, D14 or §4.2 was used or
+resolved.
+
+12. **As built.**
+    - `ActionButton` (`clients/app/src/components/ui.tsx`) gains one optional prop, `report`.
+      A caller that passes it is told how the press ended, and the button then shows no error
+      of its own. There are four outcomes: Core's answer; refused (4xx, nothing was done);
+      failed inside Core (5xx); no answer. Every other caller is unchanged.
+    - Control → About's "Emergency stop" section is a small `Estop` component in
+      `surfaces/Control.tsx`.
+    - Its words come from two pure functions in `state/present.ts`, `armedText` and
+      `estopSaid`, so the node tests and the mutants reach them directly.
+    - No new component kind, route, Core command or stop mechanism. The press still sends
+      `POST /v1/estop` (or `/v1/rearm`) through the existing button, behind the existing
+      confirmation.
+13. **F8: the state, and only the action that applies.** The section opens with the state in
+    words:
+    - armed: "Armed: Archeus accepts new work." It offers **Emergency stop** only.
+    - disarmed: "Emergency stop engaged: Archeus refuses new work until you re-arm." This is
+      the strip's existing `tag blocked` treatment. It offers **Re-arm** only.
+    - **unknown**: "Core cannot be reached, so whether it is armed is not known here. The
+      tray's Emergency stop and "archeus estop" work without Core." It offers **no action**.
+      This applies whenever the connection cannot command, or Core's health has not been
+      read; an older read is never shown as the current state.
+14. **F7: one status line, Core's answer, in the tray's words.**
+    - Accepted: "Emergency stop: N execution(s) stopped; Core is disarmed until re-armed." N
+      is the length of Core's `stopped`. The sentence is the tray's.
+    - Refused: "Core refused the emergency stop, so nothing was stopped: <Core's reason>".
+    - Failed inside Core: "The emergency stop failed inside Core, so nothing is confirmed
+      stopped: <reason>".
+    - No answer: "Core did not answer, so nothing is confirmed stopped. The tray's Emergency
+      stop and "archeus estop" stop without Core."
+    - Re-arm: "Re-armed: Core accepts new work again." only when Core answers `armed: true`.
+      If Core answers otherwise: "Core answered, but it is still disarmed." Refused, failed
+      and unanswered re-arms say the re-arm did not happen or is not confirmed.
+15. **Clarification, for the user's review: "Core unreachable and the Core-down path was
+    used" cannot happen in the page.**
+    - The SPA holds no local authority. It cannot write `run/STOP` or kill a process, and
+      giving it either would be new authority in the shell and a second stop authority. The
+      brief excludes both.
+    - So, in the page, "unreachable" is the honest "nothing is confirmed stopped", plus the
+      name of the stop that does work without Core.
+    - The Core-down stop is reported where it happens: the tray and `archeus estop` (slice A,
+      unchanged).
+    - The four cases are therefore covered across the two surfaces:
+
+      | | Tray and CLI | Control → About |
+      |---|---|---|
+      | Core accepted | "emergency stop: N execution(s) stopped; …" | same sentence |
+      | Core unreachable | "emergency stop without Core: N process(es) killed; …" | "Core did not answer, so nothing is confirmed stopped …" |
+      | Core refused | "Core did not accept the e-stop: <reason>" | "Core refused the emergency stop, so nothing was stopped: …" |
+      | Failure | "emergency stop failed: the STOP file could not be written …" | "The emergency stop failed inside Core, so nothing is confirmed stopped: …" |
+
+16. **Not a notification system.**
+    - One line, held in the section's own state.
+    - It is replaced by the next press, gone on navigation, and **shown only while the state
+      it describes still holds.** A line about a disarmed Core disappears when Core is
+      re-armed from anywhere else; the E2E test re-arms over HTTP and checks this.
+    - Success is `role="status"`; refused, failed and unanswered are `role="alert"`, as the
+      button's own error was. No toast, no persistence, no motion.
+17. **Not changed.**
+    - The confirmation: the same text, Cancel autofocused, Enter and Escape stop nothing
+      (re-tested in the About section itself).
+    - The strip's and the conversation card's Emergency stop.
+    - The tray: no code change; `test_gui_shell.py` and P19's P122/P123 green.
+    - Slice A's semantics. Nothing in the page reaches the Core-down path.
+    - F7's Pause-all half is **not built**: D3's approved text names only Control → About
+      (§4.2 O2).
+18. **Re-arm only from Core's confirmation.**
+    - The section's state comes only from Core's reads. The status line comes only from
+      Core's answer.
+    - The E2E test holds the re-arm request in flight and checks that the section still says
+      disarmed, with no success line, until Core answers.
+    - Re-arm's re-read widened from `/v1/health` to `/v1`, as the e-stop already did, so the
+      strip and `/v1/status` follow at once (minor; no new read).
+19. **D10 untouched.** The re-arm PIN step-up is approved but not built: it is its own slice
+    (§4.1 D10). This slice adds no PIN or authentication.
+20. **Tests.**
+    - `clients/app/test/estop.test.ts`: 6 node tests over both wording functions. The client
+      suite is 231/231; type check clean; `gen_ui.py --check` and `gen_api_docs.py --check`
+      current.
+    - `tests/v1/e2e/test_spa_estop_about.py`: 3 browser tests against a real Core.
+      - Armed, then stop (Cancel first; Enter and Escape stop nothing), then the accepted
+        line. A re-arm made elsewhere clears the line. Disarmed offers Re-arm only. A refused
+        re-arm changes nothing. A held re-arm shows nothing until Core answers.
+      - Refused (403), failed (500) and unanswered (aborted) stops: each says its line as an
+        alert, and Core stays armed.
+      - Core killed: the state becomes unknown, with no guess and no action.
+      - 4 consecutive green runs.
+    - Related suites green: `test_spa_appearance`, `test_spa_strip`, `test_spa_pause_all`,
+      `test_spa_mission_thread`, `test_gui_qt`, `test_spa_p16`, `test_gui_shell`, and the
+      slice A drills (50 passed). Design gates 37 passed.
+21. **Mutants.** Q09–Q17, **9/9 killed**:
+    - Q09: the last read is shown while unreachable.
+    - Q10: a disarmed Core is offered the Emergency stop.
+    - Q11: a re-arm is said without Core's `armed`.
+    - Q12: a 5xx reads as a refusal.
+    - Q13: the stopped count is not Core's.
+    - Q14: a line outlives its state.
+    - Q15: a refused or failed press says nothing.
+    - Q16: unreachable is given a state.
+    - Q17: no answer reads as a refusal.
+
+    `test_mutation_suites_parse.py` passes for every suite it runs with TypeScript, including
+    `mutate_p20`. Q09 was first written so that it left two names unused, which TypeScript
+    rejects; it now keeps them in use. No older mutant is anchored on the changed lines.
+    - **Line endings.** Three of this slice's edits were first written with CRLF. Python's
+      text-mode write on Windows turned `ui.tsx`, `Control.tsx` and `mutate_p20.py` into
+      CRLF, and the editor wrote the two new test files with CRLF. A node test that reads
+      `ui.tsx` as text (`rowpulse.test.ts`) caught it. All five were normalised to LF before
+      any mutant ran.
+22. **The full run** (`tests/v1` plus `tests/test_p05_seams.py`, `ARCHEUS_E2E=1`, slices A and B):
+    **2623 passed, 1 failed, 1 error, 14 skipped, 3 xfailed** (40 min).
+    - The error, `test_graph_query.py::test_a_missing_payload_is_logged_once_per_sha` ("fixture
+      'caplog' not found"), came from the run's own `-p no:logging` flag, as at P19's item 110.
+      Re-run without the flag: passed.
+    - The failure, `test_g03_one_model.py::test_every_client_agrees[http]`, read `REVIEWING` on
+      one client and `COMPLETED` on another. It is the same failure as slice A's full run
+      (`VERIFYING` there).
+      - **Classified as a pre-existing race in the test**, not a regression. The test reads the
+        SPA, the TUI, the CLI and the API one after another while the mission is still moving
+        through VERIFYING, REVIEWING and COMPLETED, and waits for nothing to settle
+        (unchanged since `937d8ea`, P19 B11).
+      - Both full runs ran beside an unrelated CPU-bound job on this machine, which widens the
+        window.
+      - Slices A and B change no Core-up path and nothing those four reads use. It passed 4 of
+        4 isolated re-runs after slice A.
+      - **Not fixed and not called green.** It is listed with the known intermittents, beside
+        `test_spa_marker`, `test_spa_resources` and slice A's `test_spa_halo`, which did not
+        recur in this run.
+    - Outside `tests/v1`: `test_cli_help.py`'s deferred-verb test, item 69, unchanged.
+23. **Manual, owed by the user.**
+    - Control → About in the real Qt shell: armed, stop (Enter and Escape stop nothing), the
+      line, Re-arm.
+    - The same on a phone, where the line and the single action must fit at 390 px.
+    - With Core stopped, the unknown sentence and no button.
+
 ## 13. As built
 (Filled at the end of P20.)
+
