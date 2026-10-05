@@ -2,9 +2,9 @@
 
 Status: **APPROVED IN PART** (the user, 2026-10-05): D1, D2, D3, D4, D5, D10 and D15 as
 proposed; D7 as an amendment; D8 and D9 moved out of P20. **D6, D11, D12, D13 (breaker drills),
-D14 and the order of §5 after slice C are not yet decided** and are not inferred (§4.1).
-Implementation was authorised one slice at a time: **A, B and C are implemented with automated
-evidence and await their manual checks (§10); P20 is not complete; no slice after C is
+D14 and the order of §5 after slice D are not yet decided** and are not inferred (§4.1).
+Implementation was authorised one slice at a time: **A, B, C and D are implemented with automated
+evidence and await their manual checks (§10); P20 is not complete; no slice after D is
 authorised** (§14). Anything
 implementation finds that departs from an approved decision is recorded in §12 for the user's
 review, never applied silently.
@@ -421,7 +421,7 @@ already mints launch codes.
   | **A-M1** | Slice A, item 83 (M1 step 5): tray e-stop with Core down | On the real Windows display, with a mission running, stop Core. Tray → Emergency stop → confirm "Emergency stop". Then `archeus status`; then `archeus gui`; then Re-arm from a user device | The notification reads "emergency stop without Core: N process(es) killed; …"; the mission's process is gone; `archeus status` still exits 1 (Core not started); `archeus gui` starts Core **disarmed**; after Re-arm, new work starts (§12 item 10) | NOT RUN |
   | **B-M1** | Slice B: Control → About in the real Qt shell | In `archeus gui`, open Control → About. While armed: press Emergency stop; check Cancel is the default and Enter and Escape stop nothing; confirm; read the status line; press Re-arm | Armed shows its sentence and Emergency stop only; the accepted line is Core's answer in the tray's words; disarmed shows Re-arm only; after Re-arm the section says armed only once Core confirms (§12 items 13–18, 23) | NOT RUN |
   | **B-M2** | Slice B: Control → About on a phone, including Core unreachable | On a real phone at ≈ 390 px, the same as B-M1; then stop Core and reopen the section | The sentence, the one action and the status line fit at 390 px; with Core stopped, the "Core cannot be reached …" sentence and **no** button (§12 items 13, 23) | NOT RUN |
-  | **F6-M1** | F6 (D5) on a real phone | Slice D (not built). On a real phone: open the command bar, close it with its Close button; open it again, close it by tapping the backdrop | Each closes the bar and returns focus to the opener (D5) | NOT RUN (slice D not built) |
+  | **F6-M1** | F6 (D5) on a real phone | On a real phone (no screen reader): tap "Go to or tell…" to open the command bar; tap its **Close** button. Open it again; tap the dimmed backdrop outside it. Open it again; tap inside the bar's own edge, away from any control | Close and the backdrop tap each close the bar, and focus returns to the opener; a tap on the bar itself closes nothing; Close is at least a phone target (44 px) and is visible in the OS's high-contrast / forced-colours mode if the phone offers one (§12 items 35-36) | NOT RUN |
   | **C-M1** | Slice C, item 86: desktop shell supersession | 1. Launch `archeus gui`. 2. Control → Clients shows the expected "desktop shell". 3. End that GUI process externally (e.g. Task Manager). 4. Launch `archeus gui` again. 5. Check Control → Clients | Exactly one ACTIVE "desktop shell"; the previous shell's credential is no longer usable (its row REVOKED); the new shell is the active one; no second active desktop-shell credential remains. (A row created before slice C has no marker and is not superseded: §12 item 33) | NOT RUN |
   | **C-M2** | Slice C, F4: rapid reload takeover | Against one device/session, reload the page twice in quick succession. Once in a real desktop browser; once on a real phone if one is available. Keep a second device's page open meanwhile | The page reconnects promptly, with no ≈ 20 s lockout (item 112's 19.9 s); the device's own oldest stream is taken over and the previous stream closed; the other device's stream is unaffected | desktop NOT RUN · phone NOT RUN |
 
@@ -838,6 +838,74 @@ Authorised by the user for slice C only (2026-10-05). Decisions used: D2 and D1 
     No discrepancy was found. The two "by construction" rows are recorded so that a later
     slice does not mistake them for directly tested properties.
 
+### Slice D — F6, the command bar's touch exit (2026-10-05)
+
+Authorised by the user for slice D only. Decision used: D5 as recorded in §4.1. Nothing of D10,
+slice I, O1–O3, D6, D11–D14, ADR-0021 or the §5 order after D was used or resolved; the
+D10 / V2-3 mismatch (§14.F) is left exactly as recorded.
+
+35. **As built (D5).** `clients/app/src/surfaces/CommandBar.tsx` gains:
+    - a visible **Close** button (`btn secondary`, the existing small-button style) beside the
+      input, in the same row; it calls the bar's existing `onClose`;
+    - a **tap on the backdrop** closes the bar: a click whose target is the `<dialog>` itself and
+      whose point lies outside the dialog's box. The geometry is one pure function,
+      `onBackdrop(box, x, y)` in `state/palette.ts`, so a tap on the bar's own padding (also a
+      click on the `<dialog>` element) closes nothing.
+    - `app.css`: the bar's form lays the input and the button out in one row (`flex`, the input
+      shrinks). Nothing else changed: the phone rule already gives every `.btn` the 44 px phone
+      target, and the forced-colours and high-contrast rules already border every `.btn`.
+    - **Unchanged:** Escape (the native `<dialog>` cancel), Ctrl/⌘+K, the opener button, every
+      palette behaviour (arrows, actions by Core's verbs, Tell Archeus and its key reuse), and
+      no new route, Core call, authority or motion.
+36. **Focus return needed no code.** The native modal `<dialog>` restores focus to the element
+    that had it when `showModal()` ran. Tested for Close and the backdrop on a 390 px touch
+    context and for the backdrop on a desktop: focus is back on "Go to or tell…" each time.
+37. **Authority boundaries: unchanged.** Slice D is presentation only. It adds no request and
+    no state, and the bar's actions still go through the same Core verbs with the same
+    `control`-scope and connection checks. The e-stop, re-arm, authentication, stream and
+    shell-credential boundaries (§12 item 34) are untouched.
+38. **Tests.**
+    - `tests/v1/e2e/test_spa_command_close.py` (3, real browser, real Core):
+      - at 390 × 844 with touch: Close is visible and at least 44 × 44 px; a tap on Close
+        closes the bar and focus returns to the opener; a tap on the bar's own edge closes
+        nothing; a backdrop tap closes it and focus returns; Escape still closes it;
+      - on a desktop: Ctrl+K opens with the input focused; Close is shown; Escape closes; a
+        backdrop click closes and focus returns;
+      - under forced colours and under `prefers-contrast: more`: Close is visible, drawn with a
+        border, and still closes the bar.
+      - 5/5 consecutive runs green.
+    - `clients/app/test/palette.test.ts`: one node test of `onBackdrop` (outside on all four
+      sides; edges and inside are not the backdrop). Client 232/232, type check clean,
+      `gen_ui.py --check` and `gen_api_docs.py --check` current.
+    - Related: the palette, P16, appearance, offline-snapshot, About e-stop and strip E2E
+      suites, the design gates, traceability and seams: **99 passed, 1 skipped**.
+    - **A test-side correction during the slice:** the first cut measured Close with
+      `bounding_box()` while the dialog's existing open animation was still scaling it (43.1 px
+      read for a 44 px button); it now reads the layout size. The desktop test's check floor
+      was first set one too high and corrected to the five checks it makes.
+39. **Mutants.** `tools/mutate_p20.py` Q34–Q37 (ids provisional, D14), **4/4 killed**:
+    Q34 the Close button is not there; Q35 Close closes nothing; Q36 a backdrop tap closes
+    nothing; Q37 a tap on the bar's own padding closes it.
+    - **A survivor, recorded:** Q34's first form added the `hidden` attribute to the button and
+      **survived**, correctly. `.btn` sets `display: inline-flex`, which overrides the user
+      agent's `[hidden] { display: none }`, so that mutant never hid anything (an equivalent
+      mutant). Q34 now removes the element and is killed. Recorded because the same pattern
+      would make any `hidden` on a `.btn` elsewhere a no-op; nothing in this slice uses it.
+    - Re-run because their files changed: P19.5 N282–N288 (`CommandBar.tsx`, `palette.ts`)
+      7/7 killed; P19 P15 (`CommandBar.tsx`) 1/1 killed. `test_mutation_suites_parse.py` passes
+      for `mutate_p19`, `mutate_p19_5` and `mutate_p20` (6/6).
+40. **The full run** (`tests/v1` plus `tests/test_p05_seams.py`, `ARCHEUS_E2E=1`, slices A–D):
+    **2642 passed, 1 failed, 14 skipped, 3 xfailed** (28 min).
+    - The failure is `test_spa_marker.py::test_the_marker_travels_once_from_the_execution_to_its_task`
+      ("the marker begins at the execution: None"): the **known intermittent** (§3, item 22),
+      with the same signature as before. In isolation afterwards it failed 1 of 3 runs. Slice D
+      does not touch the graph or the marker. **Not fixed and not called green; its
+      classification is unchanged.**
+    - The other known intermittents (`test_g03_one_model.py[http]`, `test_spa_resources`,
+      `test_spa_halo`) did not recur; that clears nothing. `test_cli_help` (item 69) was not run.
+41. **Status: implemented, automated tests green apart from the known intermittent above,
+    awaiting its manual check F6-M1 (§10).** P20 is not complete.
+
 ## 13. As built
 (Filled at the end of P20.)
 
@@ -855,6 +923,7 @@ decides anything; where a line needs a decision, it names whose.
 | F8, Control → About names the state, one action | D4 | B | automated green; **B-M1, B-M2 not run** |
 | F4, a device's newest stream wins | D2 | C | automated green; **C-M2 not run** |
 | Item 86, one desktop-shell credential at a time | D1 | C | automated green; **C-M1 not run** |
+| F6, the command bar's Close button and backdrop tap | D5 | D | automated green (§12 item 40's known intermittent aside); **F6-M1 not run** |
 | Notifications out of P20 (to P21); plan and dependency records updated | D8 | records | done (`8fe7ce3`) |
 | The Codex adapter to P23; G7's xfail re-marked `phase:P23` | D9 | records | done; no `phase:P20` xfail remains in `tests/` |
 
@@ -865,8 +934,7 @@ gate while its manual checks are NOT RUN.
 
 | Item | Decision | Slice (§5) | Note |
 |---|---|---|---|
-| F6, the command bar's Close button and backdrop tap | D5 | D | not started |
-| The re-arm PIN step-up | D10 | its own slice (J's list) | approved **as proposed**: step-up on `POST /v1/rearm` from a **paired (non-local)** device, through the existing PIN path; rulebook §19 amended to "e-stop (confirm)". Not built |
+| The re-arm PIN step-up | D10 | its own slice (J's list) | approved **as proposed**: step-up on `POST /v1/rearm` from a **paired (non-local)** device, through the existing PIN path; rulebook §19 amended to "e-stop (confirm)". Not built. **Blocked** (the user, 2026-10-05) until the user reconciles it with V2-3 (§14.F); no interpretation is chosen here |
 | The secrets review, with the DPAPI row amended if Core stores no API key | D7 (amendment) | I | not started |
 | ADR-0052 tool removal (PV-22) | ADR-0052 (DECIDED) | F | not started; its "except opted-in servers" part reads D6's opt-in store |
 | ADR-0049 exclusion, inventory, exit-code-2 deny (PV-10) | ADR-0049 (DECIDED); the store and command are D6 | E | **blocked on D6** |
@@ -891,7 +959,7 @@ gate while its manual checks are NOT RUN.
 
 The six checks, with procedure, expected result and status, are the table in §10: **A-M1,
 B-M1, B-M2, F6-M1, C-M1, C-M2**, all NOT RUN (C-M2 has a desktop and a phone sub-check, each
-NOT RUN; F6-M1 cannot run until slice D exists). None was removed or downgraded by this pass.
+NOT RUN). F6-M1 can be run now that slice D exists. None was removed or downgraded.
 
 ### 14.E D15, the observed run
 
@@ -962,7 +1030,7 @@ change words and placement; none may change, without a new gate:
 | V2-4 | **Push ownership.** | D8: notifications and push moved out of P20, to P21 | `ARCHEUS_V2_UI_ARCHITECTURE.md` ("P20: push, credentials") and the LV2-2 plan ("P20's push and credential review (LV2-3)") still name P20 | records only: D8 stands; the V2 documents are stale on this point and are not edited here |
 | V2-5 | **DR-8's at-rest question.** | D7's approved scope: enumerate every secret written at rest | DR-8 asks whether its at-rest question (check output may hold secrets) is handed to D7 | the user: an open hand-off, not a conflict |
 
-### 14.G Is there a defensible next slice?
+### 14.G Is there a defensible next slice? (written after slice C; slice D has since been done)
 
 Yes, without any new decision: **D (F6, D5)** is approved, small, listed next in §5, confined to
 V1's command bar and needed before F6-M1 can run. **I** (the secrets review, the remote-access
