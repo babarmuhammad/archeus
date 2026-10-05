@@ -413,7 +413,100 @@ already mints launch codes.
   Pause all, D3 changes.
 
 ## 12. Deviations and new decisions for the user's review
-(Filled during implementation.)
+
+### Slice A — item 83, the e-stop with Core down (2026-10-05)
+
+1. **As built, against the existing design** (execution-architecture §10 path 2, p11 §13.4,
+   D26). `LocalNode.estop_without_core()` (`archeus/node/local.py`) writes `run/STOP` first, then
+   calls `proc.kill_pid_tree(pid, create_time)` on every `run/processes.jsonl` spawn line that
+   has no end line. The unended-line rule is now one method, `LocalNode.unended()`, which
+   `compact_registry()` also reads, so boot compaction and the e-stop cannot disagree about what
+   may still run. `archeus estop` (`archeus/cli/main.py`) takes that path when no Core answers,
+   and says "emergency stop without Core: N process(es) killed; Core starts disarmed and runs
+   nothing until re-armed". The tray's Emergency stop runs the same function behind its
+   unchanged R13-01 confirmation, so item 83 closes with no change to `gui.py`, as item 83 said
+   it would. No second mechanism: the sentinel, the registry and the kill helper are the ones
+   P11 built.
+2. **"Down or unreachable", read precisely (clarification, for the user's review).** The
+   Core-less path runs when discovery finds no running Core (`not_running` or `unreadable`), when
+   there is no local token, or when the POST to `/v1/estop` fails at the network level
+   (`CoreError` code `network`, which includes a timeout). **A Core that answers and refuses is
+   not bypassed**: the command prints Core's refusal and exits 2, and nothing is killed
+   (`test_A04`, Q06). The reason: a refusal is a decision by a live Core, and overriding it
+   locally would be a second authority. An unwritable sentinel exits 2 and reports a failure,
+   never a stop (`test_A05`, Q08).
+3. **Accidental activation (no change).** `archeus estop` is an explicit verb with no prompt,
+   as §10 specifies. The tray asks first (R13-01: Cancel is the default; Enter and Escape stop
+   nothing; P126-P131). A second press is harmless: the sentinel stays and nothing is left to
+   kill (`test_A01`). No new confirmation was added.
+4. **After a Core-less e-stop (the drill).** `test_A06` runs it on the real runtime:
+   - Core is killed and its execution's process lives on;
+   - the e-stop kills that process with Core still down;
+   - Core restarts disarmed, and the killed execution reconciles to an `ENDED_*` state that is
+     never `ENDED_OK`;
+   - a mission created while disarmed starts nothing;
+   - `POST /v1/rearm` restores starting work, and a new mission's execution starts.
+
+   G5's `phase:P20` xfail is removed. On both bindings it now checks that the e-stop reports
+   the one running process killed before Core returns. The judge may not import Core
+   internals, so whether the process is dead is checked by `test_A06`.
+5. **Found, not changed (a design question for the user).** A mission created while Core is
+   disarmed is refused at its plan gate by `builtin:estop` (P9's existing rule;
+   `test_I_G6_estop_denies_the_plan`). It stays **BLOCKED after the re-arm**. This holds for
+   both e-stop paths and predates P20. The e-stop's wording ("Missions are not lost; they
+   wait") is about missions that existed when it was pressed, and those do wait. Should a
+   re-arm re-ask the plan gate for missions blocked only by `builtin:estop`? That is a P9
+   behaviour change, so it is not in slice A.
+6. **Test infrastructure.** The in-process judge binding's `status()` now carries `armed` as
+   `routes.status` composes it. G5 had asserted it since P3.5, but only the HTTP binding
+   provided it. Both bindings gained `_stop_core()`, and `Rig.estop_without_core()` has a body.
+7. **Known ceiling (unchanged, recorded).** `kill_pid_tree` checks `create_time` and then
+   kills, in two steps. A pid recycled in the microseconds between them is not caught (its
+   existing `ponytail:` note). Closing that gap needs handle-based tree kills (Job Objects),
+   which is PV-20's ground, not P20's.
+8. **Tests.** `tests/v1/integration/test_estop_drills.py` holds A01-A06, 7 cases:
+   - exactly the live registry processes die; ended and recycled pids are untouched;
+   - the sentinel is written before any kill;
+   - an unanswering Core (`unreadable`, or `running` with a network failure) is stopped
+     without it;
+   - a refusing Core is not bypassed;
+   - an unwritable sentinel fails;
+   - the restart, re-arm and new-work drill.
+
+   Updated tests: `test_X07` (the CLI with Core down stops and never starts Core),
+   `test_gui_shell.py::test_emergency_stop_with_core_down_never_starts_it` (the tray now stops),
+   and G5. The CLI help line now describes the Core-down path instead of naming P20.
+9. **Mutants.** `tools/mutate_p20.py`, Q01-Q08 (ids provisional, D14), **8/8 killed**.
+   Re-run because their code or tests changed: P19's P122 and P123 (the tray e-stop), 2/2
+   killed; P11's X06, X07, X33 and X34 (`node/local.py`), 4/4 killed.
+   `test_mutation_suites_parse.py` now covers `mutate_p20`. The full run caught a first cut
+   whose refusal line repeated P19's P20 anchor (`print(sync.explain(e.refusal()), …)`) at a
+   deeper indent, so that anchor matched twice. The e-stop's line was reworded rather than
+   re-anchoring P20; P19 and P20 were re-run, 2/2 killed, and the parse gate passes for
+   `mutate_p19` and `mutate_p20`.
+10. **Manual, owed by the user.** M1 step 5 on the real Windows display, re-run with the new
+    expectation. With Core stopped and a mission running, Tray → Emergency stop → "Emergency
+    stop" gives a notification "emergency stop without Core: N process(es) killed; …"; the
+    mission's process is gone; `archeus status` still exits 1. Then `archeus gui` starts Core
+    disarmed, and Re-arm from a user device restores work.
+11. **The full run** (`tests/v1` plus `tests/test_p05_seams.py`, `ARCHEUS_E2E=1`, before the two
+    fixes above): **2616 passed, 6 failed, 14 skipped, 3 xfailed** (38 min).
+    - Slice A's own, fixed and re-run green: the parse gate's two `mutate_p19` cases (item 9)
+      and `test_traceability::test_judge_scenarios_never_import_core_internals` (G5 had
+      imported `claude_sessions.proc`; item 4).
+    - `test_spa_resources.py`: item 22/48/90's known intermittent. In isolation it failed 1 of
+      3 runs.
+    - `test_g03_one_model.py::test_every_client_agrees[http]` read `VERIFYING` on one client and
+      `COMPLETED` on another, a read race between clients. It passed 4 of 4 re-runs. Slice A
+      changes no Core-up path; recorded as **newly observed intermittent**, not fixed.
+    - `test_spa_halo.py::test_the_halo_marks_live_work_until_core_says_it_stopped` ("a failed
+      re-read cleared the halo") passed 3 of 3 in isolation. Slice A changes no SPA code;
+      recorded as **newly observed intermittent under load**, not fixed.
+    - Outside `tests/v1`: `test_cli_help.py::test_a_deferred_v1_verb_imports_only_its_dispatcher`,
+      item 69's, unchanged and out of scope.
+    - After the fixes, the slice's targeted set (drills, G5, `test_execution_http.py`,
+      `test_gui_shell.py`, traceability, seams) gave 62 passed, 1 skipped. The full suite was
+      not re-run, because the two fixes touch only a message string and a test import.
 
 ## 13. As built
 (Filled at the end of P20.)
