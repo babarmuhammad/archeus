@@ -641,4 +641,5 @@ p19-design-gate §12 item 114. This supersedes the rows above where they differ.
 | New findings | F6 (command bar has no touch exit), F7 (the window's Pause all and Control → About's Emergency stop show no confirmation), F8 (Control → About offers Emergency stop and Re-arm whatever Core's state, without naming it): all P20, by the user |
 | Deferred work | As above, plus F6, F7 and F8 (P20) and M3 (P23) |
 | Status | Every P19.5 exit condition is met; P19.5 is exited when the user records the exit sign-off |
+| Exit | **P19.5 exited** by the user's sign-off, 2026-10-05, at `59281ac`. P20 opens with its design gate |
 

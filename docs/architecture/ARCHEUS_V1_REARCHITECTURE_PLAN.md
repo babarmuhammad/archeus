@@ -1116,6 +1116,8 @@ decisions ADR-0024…0029.
   hardware, M2 after `4604b74` (behind a tunnel, Core down is a 502 and is now offline); M3
   moves to P23; the move of D and E to P23 is approved; the §34 design sign-off is given. Every
   exit condition is met, and P19.5 is exited when the user records the exit sign-off.
+  *Exited 2026-10-05 (the user's exit sign-off, recorded at `59281ac`).* P20 opens with
+  [p20-design-gate.md](p20-design-gate.md).
 - Client work: tokens (focus ≠ attention, red reserved, depth/transparency tokens); primitives;
   graph edge semantics, legend, impact view, hull/depth/cored nodes, static project cage; the
   thread (T1 from `Message.links`, T2 on every list, T3 spatial) and tints; activity halo,

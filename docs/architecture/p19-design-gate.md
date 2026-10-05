@@ -1528,3 +1528,6 @@ exactly once in the current tree.
 **R13-ready.** P19 is built, and its three carried behaviours are integrated. R13, P19.5's exit
 review (rulebook §46.3), has **not** run. The branch stops here for it. P20 does not start
 until P19.5 is explicitly finished.
+
+**P19.5 exited** (the user's exit sign-off, 2026-10-05, at `59281ac`). Items 83 and 86, F4, F6,
+F7 and F8 carry to P20 ([p20-design-gate.md](p20-design-gate.md)).
