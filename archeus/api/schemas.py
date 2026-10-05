@@ -799,7 +799,9 @@ EMPTY = {'type': 'object', 'properties': {}, 'required': []}
 #: P16 (p16-design-gate D2): a launch code's grant, bounded by the minter's scopes
 LAUNCH_CODE = {'type': 'object', 'properties': {
     'scopes': {'type': 'array', 'nullable': True,
-               'items': {'type': 'string', 'enum': ['observe', 'control', 'approve', 'admin']}}},
+               'items': {'type': 'string', 'enum': ['observe', 'control', 'approve', 'admin']}},
+    # P20 D1: the redeemed client takes this slot alone (only the desktop shell)
+    'supersede': {'type': 'string', 'nullable': True, 'enum': list(entities.SUPERSEDE_SLOTS)}},
     'required': []}
 CREATE_PROJECT = {'type': 'object', 'properties': {
     'name': {'type': 'string'}, 'root_paths': {'type': 'array', 'items': {'type': 'string'}},

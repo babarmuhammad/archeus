@@ -1756,6 +1756,7 @@ interface ReprioritiseMissionRequest {
 ```ts
 interface LaunchCodeRequest {
   scopes?: Array<'observe' | 'control' | 'approve' | 'admin'> | null;
+  supersede?: 'desktop shell' | null;
 }
 ```
 

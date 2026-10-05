@@ -11,7 +11,9 @@ run_v1`, the existing Qt lineage, which only calls back into a `Shell`.
 The shell's credential is `observe` + `control`, redeemed from a launch code as
 a device row named "desktop shell", and held in this process's memory only
 (§9): it is what Pause all and the Attention count use, so neither depends on
-the page being open.
+the page being open. Its launch code takes the "desktop shell" slot
+(p20-design-gate D1), so redeeming it revokes the previous shell's credential,
+a crashed one's included: one shell credential is live at a time.
 """
 
 import contextlib
@@ -105,7 +107,8 @@ def _credential(info):
         return None
     local = client.Core(info['port'], token)
     try:
-        code = local.post(endpoints.launch_code(), {'scopes': SHELL_SCOPES})['code']
+        code = local.post(endpoints.launch_code(), {'scopes': SHELL_SCOPES,
+                                                     'supersede': SHELL_NAME})['code']
         out = local.post(endpoints.launch_redeem(),
                          {'code': code, 'platform': 'desktop', 'name': SHELL_NAME})
     except client.CoreError:

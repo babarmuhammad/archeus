@@ -214,8 +214,10 @@ def launch_code(req):
         if s not in req.principal['scopes']:
             raise Refused(403, 'scope_required', {'scope': s})
     scopes = [s for s in auth.SCOPES if s in asked]
+    # P20 D1: a slot the redeem takes alone; minting it is `admin` (the route's
+    # scope) on loopback, so the authority to supersede is the local machine's
     code = req.api.launch.mint(req.principal['principal_id'], req.principal['device_id'],
-                               scopes)
+                               scopes, (req.body or {}).get('supersede'))
     return 200, {'code': code, 'expires_in': int(auth.LAUNCH_TTL_S), 'scopes': scopes}
 
 
@@ -230,8 +232,9 @@ def launch_redeem(req):
     out = req.run(commands.register_device, {
         'name': (req.body.get('name') or '').strip() or 'browser (%s)' % req.body['platform'],
         'platform': req.body['platform'],
-        'token_hash': auth.token_hash(token), 'scopes': list(minter[2])},
-        actor_id=minter[0], keyed=False)
+        'token_hash': auth.token_hash(token), 'scopes': list(minter[2]),
+        'supersede': minter[3]}, actor_id=minter[0], keyed=False)
+    # a superseded client's streams end at this commit's wake (sse `_still_valid`)
     return 200, {'device_id': out['device_id'], 'token': token, 'scopes': list(minter[2])}
 
 

@@ -53,7 +53,7 @@ mobile (ADR-0010). Push beyond ntfy is **DEFERRED**.
 | Approvals (P9) | `/v1/approvals?state=&mission=`, `/v1/approvals/{id}` (with `eligible`) | `approvals/{id}/decide` (scope `approve`; `approve`, `reject`, `request_changes`, echoing `action_hash`) |
 | Automations | `/v1/automations`, `/v1/automations/{id}/runs` | `create`, `enable`, `disable`, `archive`, `run-now` |
 | Devices / Nodes | `/v1/devices`, `/v1/nodes` | `launch/code` (local token only), `launch/redeem` (loopback only), `pair/start` (local only), `pair/redeem`, `devices/{id}/revoke`, `estop`, `rearm` |
-| UI reads (*as built, P16*, p16-design-gate §30) | `GET /v1/attention`, `GET /v1/missions/{id}/timeline?before&limit`, `GET /v1/executions/{id}/stream?from` (redacted output tail), public `/sw.js` and `/manifest.webmanifest` | `launch/code` now carries the minter's chosen scopes (bounded by its own, always `observe`); `launch/redeem` grants exactly them (D2) |
+| UI reads (*as built, P16*, p16-design-gate §30) | `GET /v1/attention`, `GET /v1/missions/{id}/timeline?before&limit`, `GET /v1/executions/{id}/stream?from` (redacted output tail), public `/sw.js` and `/manifest.webmanifest` | `launch/code` now carries the minter's chosen scopes (bounded by its own, always `observe`); `launch/redeem` grants exactly them (D2). *P20 D1:* `launch/code` may carry `supersede: "desktop shell"` (admin, loopback); redeeming it revokes every ACTIVE client that took that slot before and closes its streams |
 | Events | `/v1/events?after=&limit=` (paged catch-up), `/v1/events/stream` (SSE) | — |
 | Hooks (execution scope only) | — | `/v1/hook/evaluate`, `/v1/hook/report`, `/v1/hook/checkpoint`, `/v1/hook/request-approval` |
 | System | `/v1/health`, `/v1/version` | `/v1/estop` (all executions), `/v1/rearm` |
@@ -172,7 +172,9 @@ The cursor contract (`seq` in `Last-Event-ID` or `?after=`), implemented by
   shutdown`.
 - **Separate pools.** `api/server.py` keeps request threads (bounded, e.g. 32) and SSE streams
   (bounded, e.g. 8, max 2 per device) apart, so long-lived streams never starve commands — the
-  current `gui.py` has a single 32-slot semaphore that SSE would exhaust.
+  current `gui.py` has a single 32-slot semaphore that SSE would exhaust. *As built, P20 D2:* a
+  device at its own cap gets its new stream and its oldest is closed (the newest wins); only
+  the pool's cap answers `429 too_many_streams`.
 - **One stream per browser.** The SPA elects a leader tab (Web Locks API) that owns the SSE
   connection and fans events out to other tabs via `BroadcastChannel`; this avoids the HTTP/1.1
   six-connections-per-origin limit.

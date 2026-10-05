@@ -1116,6 +1116,7 @@ export interface ReprioritiseMissionRequest {
 
 export interface LaunchCodeRequest {
   scopes?: Array<'observe' | 'control' | 'approve' | 'admin'> | null;
+  supersede?: 'desktop shell' | null;
 }
 
 export interface LaunchRedeemRequest {

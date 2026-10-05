@@ -167,14 +167,16 @@ class LaunchCodes:
             return None
         return hit[1]
 
-    def mint(self, principal_id, device_id, scopes=LAUNCH_SCOPES):
+    def mint(self, principal_id, device_id, scopes=LAUNCH_SCOPES, supersede=None):
         """*scopes* are the grant the minter asked for, already bounded by its
-        own (p16-design-gate D2); the redeemer cannot change them."""
-        return self._mint((principal_id, device_id, tuple(scopes)))
+        own (p16-design-gate D2); the redeemer cannot change them. *supersede*
+        (p20-design-gate D1) names the slot whose earlier holders the redeem
+        revokes, fixed here like the scopes."""
+        return self._mint((principal_id, device_id, tuple(scopes), supersede))
 
     def redeem(self, code):
-        """(principal_id, device_id, scopes) of the minter's grant, or None — for
-        a reused, expired, unknown and malformed code alike."""
+        """(principal_id, device_id, scopes, supersede) of the minter's grant, or
+        None — for a reused, expired, unknown and malformed code alike."""
         return self._pop(code)
 
     def __len__(self):

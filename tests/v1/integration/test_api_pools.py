@@ -34,8 +34,12 @@ def test_eight_open_streams_leave_requests_answering_and_a_ninth_is_429(tc):
         while tc.core.api.sse.count() != 7:
             assert time.monotonic() < deadline
             time.sleep(0.02)
-        third = SSEClient(tc.base_url, tokens[0])                  # per device: 2 at most
-        assert third.status == 429
+        third = SSEClient(tc.base_url, tokens[0])   # per device: 2 at most, the newest wins (P20 D2)
+        streams.append(third)
+        assert third.status == 200 and streams[0].closed()
+        while tc.core.api.sse.count() != 7:
+            assert time.monotonic() < deadline + 5
+            time.sleep(0.02)
         fifth_device = SSEClient(tc.base_url, tokens[4])
         assert fifth_device.status == 200
         streams.append(fifth_device)

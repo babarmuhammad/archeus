@@ -12,7 +12,9 @@ malformed, 410 pruned/ahead); one that expires mid-stream gets an explicit
 Each stream writes its own socket from its own thread, so a slow client blocks
 only itself; the writer never waits on a reader, it only notifies
 (`Writer.wait_commit`). Streams have their own bounded pool (8, at most 2 per
-device) apart from requests, so they cannot starve commands.
+device) apart from requests, so they cannot starve commands. A device at its
+own cap gets its new stream and loses its oldest (p20-design-gate D2); only the
+pool's cap is a refusal.
 """
 
 import json
@@ -40,11 +42,20 @@ class _Stream:
     """One connection (p15-design-gate §7): a client's live stream, named by a
     fresh `connection_id` that dies with it."""
 
-    def __init__(self, device_id):
-        self.device_id = device_id
+    def __init__(self, device_id, conn=None):
+        self.device_id, self.conn = device_id, conn
         self.connection_id = ids.new_ulid()
+        self.why = 'revoked'                # what a close from outside means
+        self.started = False                # its 200 is written
         self.closing = threading.Event()
         self.done = threading.Event()
+
+    def hangup(self):
+        """EOF reaches the client now, and a write blocked on it fails."""
+        try:
+            self.conn.shutdown(socket.SHUT_RDWR)
+        except (OSError, AttributeError):
+            pass
 
 
 def narrowing(projects=(), types=()):
@@ -83,15 +94,29 @@ class Streams:
         with self._lock:
             return [s.connection_id for s in self._open if s.device_id == device_id]
 
-    def _register(self, device_id):
-        """(stream, first): *first* when the client had no stream open."""
+    def _register(self, device_id, conn=None):
+        """(stream, first): *first* when the client had no stream open. At its
+        cap the device's newest stream wins (p20-design-gate D2): its oldest
+        leaves the pool here, under the lock, and is hung up, so a dead stream
+        a reload left behind never refuses the live page. Only that device's
+        streams are touched; the pool's own cap is still a refusal."""
         with self._lock:
-            mine = sum(s.device_id == device_id for s in self._open)
-            if len(self._open) >= MAX_STREAMS or mine >= PER_DEVICE:
+            mine = [s for s in self._open if s.device_id == device_id]
+            oldest = None
+            if len(mine) >= PER_DEVICE:
+                oldest = mine[0]                # `_open` is in opening order
+                self._open.remove(oldest)
+            elif len(self._open) >= MAX_STREAMS:
                 raise TooManyStreams()
-            s = _Stream(device_id)
+            s = _Stream(device_id, conn)
             self._open.append(s)
-            return s, mine == 0
+        if oldest is not None:
+            oldest.why = 'superseded'
+            oldest.closing.set()
+            if oldest.started:      # else it answers 200, sees `closing` and ends cleanly
+                oldest.hangup()
+            self.db.writer.wake()
+        return s, not mine
 
     def _unregister(self, s):
         """True when *s* was the client's last open stream."""
@@ -135,7 +160,7 @@ class Streams:
                 outbox.events_after(conn, cursor, limit=1)     # 400 / 410 before the 200
         cursor = head if cursor is None else cursor
         try:
-            stream, first = self._register(req.principal['device_id'])
+            stream, first = self._register(req.principal['device_id'], req.connection)
         except TooManyStreams:
             raise Refused(429, 'too_many_streams') from None
         reason = 'client_gone'
@@ -143,12 +168,10 @@ class Streams:
             if first:
                 self._trace(req, stream, True)
             req.start_stream()
+            stream.started = True
             reason = self._loop(req, stream, cursor, keep)
         finally:
-            try:
-                req.connection.shutdown(socket.SHUT_RDWR)   # EOF reaches the client now
-            except OSError:
-                pass
+            stream.hangup()
             if self._unregister(stream):
                 self._trace(req, stream, False, reason)
             stream.done.set()
@@ -171,7 +194,7 @@ class Streams:
                 req.write(b'event: shutdown\ndata: {}\n\n')
                 return 'core_stopping'
             if stream.closing.is_set():
-                return 'revoked'
+                return stream.why
             seen = writer.commit_count
             while True:
                 try:

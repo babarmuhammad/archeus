@@ -268,18 +268,23 @@ def test_P05_two_clients_of_one_user_coexist_and_revoke_independently(tc):
     assert _get(tc, '/v1/version', tb).status == 200
 
 
-def test_P22_two_tabs_of_one_client_see_the_same_frames_and_a_third_is_refused(tc):
+def test_P22_two_tabs_of_one_client_see_the_same_frames_and_a_third_takes_the_oldest(tc):
     _d, phone = pair(tc)
-    one, two = SSEClient(tc.base_url, phone), SSEClient(tc.base_url, phone)
+    one = SSEClient(tc.base_url, phone)
+    _wait(lambda: tc.core.api.sse.count() == 1, 'the first tab registered')
+    two = SSEClient(tc.base_url, phone)
+    _wait(lambda: tc.core.api.sse.count() == 2, 'the second tab registered')
+    # 2 per client; a third wins and the oldest closes (p20-design-gate D2)
+    three = SSEClient(tc.base_url, phone)
     try:
-        assert SSEClient(tc.base_url, phone).status == 429         # 2 per client
+        assert three.status == 200 and one.closed()
         mid = _mission(tc)
-        f1 = [f for f in one.frames(1) if f['event'] == 'mission.created']
         f2 = [f for f in two.frames(1) if f['event'] == 'mission.created']
-        assert f1 == f2 and f1[0]['data']['subject']['id'] == mid
+        f3 = [f for f in three.frames(1) if f['event'] == 'mission.created']
+        assert f2 == f3 and f2[0]['data']['subject']['id'] == mid
     finally:
-        one.close()
-        two.close()
+        for s in (one, two, three):
+            s.close()
 
 
 @pytest.mark.core(heartbeat_s=0.1)       # a dropped socket is found at the next write

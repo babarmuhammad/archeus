@@ -191,6 +191,10 @@ class Principal(Entity):
 #: A step-up PIN at rest (P15 D19): `pbkdf2_sha256$<iterations>$<salt>$<hash>`.
 PIN_HASH = re.compile(r'pbkdf2_sha256\$[1-9][0-9]{4,6}\$[0-9a-f]{32}\$[0-9a-f]{64}')
 
+#: Slots one client holds at a time (p20-design-gate D1): redeeming a launch code
+#: minted for a slot revokes the client that held it before. Only the desktop shell.
+SUPERSEDE_SLOTS = ('desktop shell',)
+
 
 @entity
 class Device(Entity):
@@ -203,7 +207,8 @@ class Device(Entity):
     _STATE = ('state', 'device')
     _TEXT = ('name', 'host_label')
     _CHOICES = {'platform': ('desktop', 'web', 'ios', 'android', 'tui'),
-                'origin': ('local', 'paired'), 'client_type': ('cli', 'spa')}
+                'origin': ('local', 'paired'), 'client_type': ('cli', 'spa'),
+                'supersede': SUPERSEDE_SLOTS}
     _REFS = {'principal_id': 'principal'}
     id: str
     principal_id: str
@@ -215,6 +220,8 @@ class Device(Entity):
     client_type: str = None
     host_label: str = None
     pin_hash: str = None
+    # P20 D1: the slot this client holds alone; the next redeem into it revokes it
+    supersede: str = None
 
     def _check(self):
         if self.pin_hash is not None and not PIN_HASH.fullmatch(self.pin_hash):

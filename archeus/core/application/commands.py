@@ -111,7 +111,8 @@ def pin_matches(record, pin):
 
 
 def register_device(tx, *, actor, name, platform, token_hash, scopes, expires_at=None,
-                    origin='local', client_type=None, host_label=None, pin_hash=None):
+                    origin='local', client_type=None, host_label=None, pin_hash=None,
+                    supersede=None):
     """A client with its first credential, in one transaction: a `user_device`
     principal holding *scopes*, its client row (entity `Device`, PAIRING ->
     ACTIVE by `code_redeemed`) and the `tokens` row. Only the token's sha256
@@ -119,15 +120,26 @@ def register_device(tx, *, actor, name, platform, token_hash, scopes, expires_at
     response; likewise only a PIN's pbkdf2 record (P15). *actor* is who vouched
     for the client (Core's system principal for the local token, the minting
     client for a launch code, the starting client for a pairing). Deciding who
-    may do that is the caller's (a route scope); nothing here checks it."""
+    may do that is the caller's (a route scope); nothing here checks it.
+
+    *supersede* (p20-design-gate D1): the slot this client takes alone. Every
+    ACTIVE client holding the same slot is revoked in this transaction, so a
+    crashed shell's credential dies at the next launch; a client redeemed
+    without a slot is never touched."""
     if not (isinstance(token_hash, str) and entities._HEX64.fullmatch(token_hash)):
         raise ValueError('token_hash is a sha256 hex digest')
+    if supersede is not None:
+        for r in tx.where(entities.Device):
+            if r.entity.supersede == supersede and r.entity.state == 'ACTIVE':
+                revoke_device(tx, actor=actor, device_id=r.entity.id,
+                              reason='superseded by a new %s' % supersede)
     p = entities.Principal(id=ids.new_id('principal'), kind='user_device', scopes=tuple(scopes))
     tx.insert(p, actor=actor)
     tx.append(new_event('principal.created', Ref('principal', p.id), actor,
                         payload={'kind': p.kind, 'scopes': list(p.scopes)}))
     d = entities.Device(id=ids.new_id('device'), principal_id=p.id, name=name, platform=platform,
                         origin=origin, host_label=host_label, pin_hash=pin_hash,
+                        supersede=supersede,
                         client_type=client_type or ('cli' if platform == 'tui' else 'spa'))
     tx.insert(d, actor=actor)
     row, e = lifecycle.fire(tx, entities.Device, d.id, 'code_redeemed', actor=actor,
