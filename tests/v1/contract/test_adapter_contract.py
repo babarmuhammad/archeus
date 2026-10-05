@@ -226,10 +226,10 @@ def test_the_claude_code_adapter_normalises_a_recorded_stream(tmp_path):
     assert [e['type'] for e in adapter.normalise(refused)] == ['limit', 'result']
 
 
-@pytest.mark.xfail(strict=True, reason="phase:P20")
+@pytest.mark.xfail(strict=True, reason="phase:P23")
 def test_the_codex_adapter_normalises_a_recorded_stream():
-    """Deferred (p11-design-gate D30): no Codex install and no recording to
-    write it against."""
+    """Deferred (p11-design-gate D30; moved to P23 by p20-design-gate D9): no
+    Codex install and no recording to write it against."""
     from archeus.harnesses.codex import adapter                # noqa: F401  (P11)
     fixture = os.path.join(os.path.dirname(__file__), 'fixtures', 'codex_stream.jsonl')
     assert json.loads(open(fixture, encoding='utf-8').readline())

@@ -530,8 +530,8 @@ already own the mechanics.
 | recoverable command refusal | inline reason (BUILT) | — | — | — |
 | destructive confirm | modal dialog, Cancel default | R6 | ✓ | BUILT (+2) |
 | undo | only where Core has an inverse (none today) | P16 §18.3 | Core per verb | rule |
-| system / OS notification (desktop) | only for approval required and e-stop, while the window is hidden | R1 notifies when blocked on the human | Core `notify_default` is dead metadata (Q-B5) | P20 |
-| mobile push | same two classes | P15 D20 | Core notification record + transport (Q-B5) | P20 |
+| system / OS notification (desktop) | only for approval required and e-stop, while the window is hidden | R1 notifies when blocked on the human | Core `notify_default` is dead metadata (Q-B5) | P21 (moved from P20 by the user, 2026-10-05; p20-design-gate D8) |
+| mobile push | same two classes | P15 D20 | Core notification record + transport (Q-B5) | P21 (moved from P20 by the user, 2026-10-05; p20-design-gate D8) |
 | attention arrival | one 240 ms pulse on the badge when the count increases | A-08 | ✓ | BUILT (P19.5, §46.2) |
 
 ## 18. Command surface
@@ -562,7 +562,7 @@ Core (P9–P14). Owner P19.5; the TUI's `:` command already shares the vocabular
 - **Mobile operator controls:** pause/resume mission, Pause all (Core), e-stop (confirm + PIN).
   Mobile policy/routing edits: read + limited, admin scope (UIA, as built) — the references
   disagree among themselves (§28 X-11).
-- **Notifications:** P20 (push) — §17.
+- **Notifications:** P21 (push) (moved from P20 by the user, 2026-10-05; p20-design-gate D8) — §17.
 - **Live preview, share links, file browser, git diff, terminal on mobile (R2): REJECTED for V1**
   (out of Archeus's role: mobile "controls and observes", SP 826-828; share links are a new
   exposure surface for P20/P24 to reason about, not a visual feature).
@@ -754,7 +754,7 @@ in this task.
 | trace view, replay, scrub "as of" | zoetrope; R4 | history | none | DEFERRED | **P21** | — | list form | classes only | P21 gate |
 | causality marker execution → produced object | DR §26 | causality | none | DEFERRED | **P21** | **Q-B1** | mirror | ≤8 | contract |
 | composer "Archeus will…" preview | DS §11 | intent preview | none | DEFERRED | **P21** | Core intent preview | — | — | — |
-| OS / push notifications | P15; R1; R2 | interrupt when needed | none | DEFERRED | **P20** | **Q-B5** | — | — | P20 gate |
+| OS / push notifications | P15; R1; R2 | interrupt when needed | none | DEFERRED | **P21** (moved from P20 by the user, 2026-10-05; p20-design-gate D8) | **Q-B5** | — | — | P21 gate |
 | people / organisation nodes | PROMPT 296; PPTX s.11 | world | endpoints | DEFERRED | **P22** | person table | — | — | — |
 | palette → tint migration | MIG L173 | continuity | presumes feature | DEFERRED | **P22** | Q-V1 | — | — | importer |
 | PWA install, physical touch, WT/conhost, 60 fps | P15/P18 | evidence | owed | DEFERRED | **P18 closure / P23** | devices | — | — | manual record |
@@ -853,7 +853,7 @@ items listed in §35.)
 | PDF p1, p9, p10 | visualization to understand; light/energy; glass-like | X-8, DNA-4, §24 | none | — | P19.5 |
 | PPTX s.9–12 | one core; stack; spatial world model; core first | §12, §11 | partial | — | P19.5 |
 | R1 Munder Difflin | representation = state; envelopes; strip; side panel; caged demo; real-app evidence | §6 table, A-04, §15, §34 | partial | §34 | P19.5 |
-| R2 Vicoa | status rail; offline grey; resume; badge = awaiting input; push | §16, §17, §19 | partial | e2e | P19.5 / P20 |
+| R2 Vicoa | status rail; offline grey; resume; badge = awaiting input; push | §16, §17, §19 | partial | e2e | P19.5 / P21 (moved from P20 by the user, 2026-10-05; p20-design-gate D8) |
 | R3 Graphify | confidence styling; legend toggles; path/explain text | §25, §12 | dashes BUILT | unit | P19.5 |
 | R4 Cognee | bounded by default; layout once; classes-only scrub | §12, §21 | bounded BUILT | P18 / P21 | done / P21 |
 | R5 migration kit | rulebook; adversarial review; judge; no inferred approval | this document; §34 | — | recorded review | P19.5 exit / P26 |
@@ -878,7 +878,7 @@ items listed in §35.)
 | **upcoming work** | **CORE** | APPROVED/PLANNING missions; idea SCHEDULED state (no date) | schedule triggers + `next_run` (P14 D14 deferred them) | P21 (ADR-0030) |
 | **event cause (general)** | **CORE** | `actor`, `cause_chain` (automation path only); `/v1/events` returns them | cause for non-automation commands; SSE frames carry no cause | P21 |
 | **execution → produced object** | **CORE** | checkpoint `files_changed`, `Task.merged_revision`; `produced` relation type unused | a produced/affected record | P21 |
-| **notifications / push** | **CORE** | `notify_default` column (never read); attention rules | notification record + transport | P20 |
+| **notifications / push** | **CORE** | `notify_default` column (never read); attention rules | notification record + transport | P21 (moved from P20 by the user, 2026-10-05; p20-design-gate D8) |
 | knowledge forget | **CLIENT ONLY** (preview) / **CORE** (undo) | dry-run default | an inverse for RETRACTED — **not requested**; no undo is offered | — |
 | knowledge "when used" | **VERIFY** | context packages record inclusion | a per-item "used" summary | Q-B6 |
 | operational summary | **CLIENT ONLY** | `/v1/status`, `/v1/digest`, `/v1/attention` | — | — |
@@ -922,7 +922,7 @@ No backend change is made by this task.
 - **Q-B2** schedules / `next_run` for upcoming work (P21, ADR-0030).
 - **Q-B3** Pause all verb + readable e-stop state.
 - **Q-B4** set mission priority, read by routing/scheduling.
-- **Q-B5** notification record + push transport (P20).
+- **Q-B5** notification record + push transport (P21(moved from P20 by the user, 2026-10-05; p20-design-gate D8).
 - **Q-B6** knowledge "when used" (verify first).
 - **Q-B7** unified decision log (optional).
 
@@ -946,7 +946,7 @@ No backend change is made by this task.
 | Decisions | — (scattered) | recent decisions | — | — | block + section | P19.5 |
 | Inspector | tabs, slide, Esc | resize, noun titles, live header, Details disclosure | raw data hidden | tabs | resize | P19.5 |
 | Devices / sessions | presence, pairing | offline grey, resume | — | Control location | resume | P19.5 |
-| Notifications | banner, badge | toast, OS, push | — | badge | toast | P19.5 / P20 |
+| Notifications | banner, badge | toast, OS, push | — | badge | toast | P19.5 / P21 (moved from P20 by the user, 2026-10-05; p20-design-gate D8) |
 | Command | cache search, Tell Archeus | arrow keys, server search, object actions, effect preview | idempotency | Ctrl+K | actions | P19.5 |
 | Mobile | tabs, sheets, 44 px, PWA | row cues, resume, Jump to unseen | — | A12 list | cues | P19.5 / P23 |
 | Empty / loading / failure | text | skeleton, action per empty, neutral retryable failures | red → neutral where not a problem | copy discipline | skeleton | P19.5 |
@@ -1029,7 +1029,7 @@ not proceed on inferred approval").
 | DOC-4 | DS §2, §3, §4, §6, §7, §8, §9, §11, §13 | thread forms; focus colour; state sentence; opaque overlays + tokens; icon list; delete "breathing"; halo/marker/chip rows; strip; toasts |
 | DOC-5 | DR §7, §26, §30 | cite Gen-1 notes and Gen-2 lines by name; dispositions |
 | DOC-6 | UIA §4, §5.1 | strip, map, mobile cues; lists-for-control / spatial-for-overview |
-| DOC-7 | PLAN | P19.5 (or P19 extension); V1.x-3D, V1.x; P21 trace + causality; P20 notifications; P21 schedules; P22 tint migration; P23 PWA checklist |
+| DOC-7 | PLAN | P19.5 (or P19 extension); V1.x-3D, V1.x; P21 trace + causality; P21 notifications (from P20, D8); P21 schedules; P22 tint migration; P23 PWA checklist |
 | DOC-8 | P18 gate §22 (doc-only) | deviation rows: A8 narrowing; unported G4 items and their dispositions; colour defects |
 | DOC-9 | P16 gate | "specified, not built" list with owners |
 | DOC-10 | testing-strategy | idle invariant, motion registry gate, marker budget, text-equivalent gate, two-clocks test, copy/id gate, manual acceptance record |
@@ -1056,7 +1056,7 @@ not proceed on inferred approval").
 | R12 | static cage glyph | P19.5 | R3, Q-V3 | `render.ts` | — | framebuffer read | — | world only |
 | R13 | independent adversarial design review against this rulebook | P19.5 exit, after P19 and its three carried behaviours (§46.3) | R1–R12 | — | — | recorded | reviewer + user | — |
 | R14 | upcoming step 2 | P21 | Q-B2 | Now | schedules | contract | — | — |
-| R15 | notifications, push | P20 | Q-B5 | shell, sw.js | notification record | P20 gate | devices | — |
+| R15 | notifications, push | P21 (moved from P20 by the user, 2026-10-05; p20-design-gate D8) | Q-B5 | shell, sw.js | notification record | P21 gate | devices | — |
 | R16 | trace view, replay, causality markers, activity stream full | P21 | Q-B1 | new view | cause + produced | P21 gate | — | classes only |
 | R17 | tint migration, people nodes | P22 | Q-V1 | importers | person table | importer | — | — |
 | R18 | PWA / touch / WT / 60 fps records | P18 closure + P23 | — | — | — | — | devices | — |

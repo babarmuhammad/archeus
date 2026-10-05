@@ -1,9 +1,11 @@
 # P20 design gate — security and trust hardening
 
-Status: **PROPOSED, awaiting the user's approval.** No P20 product code, scaffolding, contract or
-test is written until the decisions in §4 are approved. Anything implementation then finds that
-departs from an approved decision is recorded in §12 for the user's review, never applied
-silently.
+Status: **APPROVED IN PART** (the user, 2026-10-05): D1, D2, D3, D4, D5, D10 and D15 as
+proposed; D7 as an amendment; D8 and D9 moved out of P20. **D6, D11, D12, D13 (breaker drills),
+D14 and the order of §5 beyond slice A are not yet decided** and are not inferred (§4.1).
+Implementation is authorised for **slice A only**, then stops for the user's review. Anything
+implementation finds that departs from an approved decision is recorded in §12 for the user's
+review, never applied silently.
 
 Sources read, in precedence order: the plan (§27, §31.1 P11, P15, P19.5, P20, P21–P24, §31.3,
 §33 Q15, Q21, Q22), this repository at `59281ac` (P19.5 exited, nothing pushed; the V2 research
@@ -314,6 +316,33 @@ test kills its mutant; affected P19 mutants (P126–P131 on the tray e-stop) re-
   ADR-0021's permit, and P20 is reported "ready except the observed run" until it is done.**
   Until PV-19 observes otherwise, every undocumented flag effect is recorded as a verification
   item, never as fact (ADR-0049).
+
+### 4.1 Decisions taken (the user, 2026-10-05)
+
+Recorded as given. Nothing beyond what is written here is approved.
+
+| Decision | Answer |
+|---|---|
+| **D1** shell credential | **Approved.** A new Qt shell launch revokes the previous shell credential. The token is never persisted to disk. The shell keeps exactly its `observe` + `control` scopes |
+| **D2** stream cap | **Approved.** At a device's stream cap the newest stream wins and the oldest is closed. This is the deterministic policy |
+| **D3** F7 | **Approved.** Control → About's Emergency stop already confirms before acting; a post-action status line shows Core's actual answer in the tray's terminology. No second stop mechanism |
+| **D4** F8 | **Approved.** Control → About states whether Core is armed and offers only the action that applies. No contradictory actions |
+| **D5** F6 | **Approved.** The mobile command bar gets a visible Close control, and a tap on the backdrop closes it |
+| **D7** DPAPI | **Approved as an amendment.** First establish the evidence for what credentials and API keys Core stores. If Core stores no API key needing DPAPI, amend plan §27's obsolete requirement instead of manufacturing DPAPI work; record the evidence and rationale here (slice I) |
+| **D8** notifications | **Moved out of P20** to a later phase; the plan and dependency records are updated. Owner: **P21** (attention and Health), whose design gate decides the push transport or records its deferral |
+| **D9** Codex adapter | **Moved to P23.** No artificial evidence. It returns to discussion only if a real Codex installation and stream become available and the user reconsiders ownership. G7's xfail is re-marked `phase:P23` |
+| **D10** mobile e-stop | **Approved as proposed.** No PIN before Emergency stop, which stays the fastest safety action. Re-arm is the privileged operation and requires the PIN step-up (built in its own slice, not in A) |
+| **D15** observed run | **Approved.** No observed-run evidence is claimed before it is performed. P20 may complete its implementation and other evidence, but stays **"ready except for the observed run"** until ADR-0021 is resolved and the real run is done |
+| **Item 83** | **Proceed exactly against the existing design** (execution-architecture §10 path 2, p11 §13.4, D26). Acceptance: the e-stop is available with Core down; the local safety action actually happens; no new work starts afterwards; re-arm restores starting work; the operation is safe against accidental activation; the STOP file and the process registry are reused, with no parallel mechanism. The requirement is not weakened because the mechanism exists |
+| **Not decided** | D6 (ADR-0049 opt-in store and command), D11 (R13-03 to R13-13 owners), D12 (fuzz tooling), D13's breaker drills, D14 (mutant ids), the order of §5 after slice A |
+
+Slice A's mutants are numbered `Q01…` in `tools/mutate_p20.py` as D14 proposes; D14 being
+undecided, the ids are provisional and renumbering them is a text edit.
+
+**Recorded direction, not P20 scope (the user, 2026-10-05):** after V1 and the current V2
+evidence and implementation phases, a dedicated, evidence-driven and prototyped UI/UX refinement
+research phase (desktop and especially mobile: structure, interaction, purposeful motion,
+hierarchy, a premium feel). Nothing of it enters V1 or P20.
 
 ## 5. Slices and order (after approval)
 

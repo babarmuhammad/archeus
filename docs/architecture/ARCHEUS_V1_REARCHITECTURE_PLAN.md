@@ -1175,6 +1175,12 @@ decisions ADR-0024…0029.
   - **Acceptance additions to G6:** the exclusion, inventory, fallback and exit-code-2 deny tests
     (ADR-0049); the boundary tests above (ADR-0051 §2); and ADR-0052's argv, mapping-completeness,
     CLI-drift and mutation tests, plus the observed run (gated by ADR-0021).
+- *Decided 2026-10-05 (p20-design-gate §4.1):* notifications (rulebook Q-B5, R15) move out of
+  P20 to **P21** (D8); the Codex adapter and G7's Codex row move to **P23** (D9; no Codex
+  installation or real stream exists, and no artificial evidence is made); no PIN before the
+  e-stop, re-arm from a paired device takes the PIN step-up (D10); the observed run (PV-19,
+  ADR-0052 §7) stays owed until ADR-0021 is resolved, and P20 is "ready except for the observed
+  run" until then (D15).
 - Acceptance: G6 fully passes; no High findings open.
 
 **P21 — Observability views**
@@ -1205,6 +1211,10 @@ decisions ADR-0024…0029.
 - *Carried from P19.5 (rulebook §46.2, 2026-10-03):* the activity chip (rulebook A-17). It
   first needs a Core record of an execution's current action, which neither `Execution` nor
   ADR-0043's `live_work` holds. Server-side search for the command bar (D-12) is also P21's.
+- *Moved from P20, 2026-10-05 (p20-design-gate D8):* notifications — the OS notification for
+  approval required and e-stop while the window is hidden, and the mobile push record and
+  transport (rulebook Q-B5, R15; p15 D20). P21's design gate decides the push transport or
+  records its deferral.
 - Acceptance: every question in §28 answerable from the UI.
 
 **P22 — Legacy capabilities into Core and the migration tooling** *(the migration itself is
@@ -1254,6 +1264,9 @@ P25.5; renamed 2026-10-01 from "Legacy migration", ownership unchanged)*
   and edge-style probes; the browser/OS matrix rows not verified in V1 (testing-strategy §7.1),
   including Q-A5 and ⌘/Ctrl shortcuts on real macOS and Linux (M3, moved here by the user on
   2026-10-05), and Android.
+- *Moved from P20, 2026-10-05 (p20-design-gate D9; p11 D30):* the Codex adapter and its recorded
+  stream (G7's Codex row), built only against a real Codex installation; it returns to an
+  earlier phase only if one becomes available and the user reconsiders ownership.
 - Acceptance: all traceability rows green.
 
 > **Renumbering note (2026-09-28).** Until this date **P24 meant "V1 release gate"**. The
