@@ -70,3 +70,10 @@ export function moveActive(i: number, count: number, key: string): number | null
       return null;
   }
 }
+
+/** A tap at (x, y) on the dialog element itself falls on its backdrop when it
+ * is outside the dialog's box (p20-design-gate D5): a tap on the dialog's own
+ * padding is inside and closes nothing. */
+export function onBackdrop(box: { left: number; right: number; top: number; bottom: number }, x: number, y: number): boolean {
+  return x < box.left || x > box.right || y < box.top || y > box.bottom;
+}

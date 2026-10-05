@@ -3,7 +3,7 @@
 // ↑/↓ over the hits.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PALETTE_SHOWN, effectOf, moveActive, paletteHits } from '../src/state/palette.ts';
+import { PALETTE_SHOWN, effectOf, moveActive, onBackdrop, paletteHits } from '../src/state/palette.ts';
 
 const input = {
   destinations: [{ id: 'work', label: 'Work', to: '#/work' }],
@@ -46,4 +46,10 @@ test('↑/↓ move the active hit round the list; other keys stay the text field
   assert.equal(moveActive(0, 3, 'ArrowUp'), 2);
   assert.equal(moveActive(0, 3, 'Home'), null);
   assert.equal(moveActive(0, 0, 'ArrowDown'), null);
+});
+
+test('a tap outside the bar is on its backdrop; a tap on its own padding is not (P20 D5)', () => {
+  const box = { left: 10, right: 110, top: 20, bottom: 220 };
+  for (const [x, y] of [[9, 100], [111, 100], [50, 19], [50, 221]]) assert.equal(onBackdrop(box, x, y), true, `${x},${y}`);
+  for (const [x, y] of [[10, 20], [110, 220], [60, 120]]) assert.equal(onBackdrop(box, x, y), false, `${x},${y}`);
 });

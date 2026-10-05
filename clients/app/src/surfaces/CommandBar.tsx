@@ -13,7 +13,7 @@ import { explain, keyAfter, newKey, retryable } from '../data/commands';
 import { canCommand } from '../data/connection';
 import { send } from '../data/core';
 import { DESTINATIONS, href } from '../nav/destinations';
-import { moveActive, paletteHits, type Hit } from '../state/palette';
+import { moveActive, onBackdrop, paletteHits, type Hit } from '../state/palette';
 import { useMe } from '../components/ui';
 
 const ACT = { pause: (id: string, v: number, key: string) => api.pauseMission(send(), id, { idempotency_key: key, expected_version: v }), resume: (id: string, v: number, key: string) => api.resumeMission(send(), id, { idempotency_key: key, expected_version: v }) };
@@ -91,7 +91,16 @@ export function CommandBar({ open, onClose }: { open: boolean; onClose: () => vo
   }
 
   return (
-    <dialog ref={dlg} className="command" aria-label="Command bar" onClose={onClose}>
+    <dialog
+      ref={dlg}
+      className="command"
+      aria-label="Command bar"
+      onClose={onClose}
+      onClick={(e) => {
+        // a touch exit (p20-design-gate D5): a tap on the backdrop closes the bar
+        if (e.target === e.currentTarget && onBackdrop(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY)) onClose();
+      }}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -125,6 +134,10 @@ export function CommandBar({ open, onClose }: { open: boolean; onClose: () => vo
           placeholder="Go to… act on a mission… or tell Archeus what you want"
           autoComplete="off"
         />
+        {/* the visible exit (D5): Escape stays; a touch user without a screen reader needs this */}
+        <button type="button" className="btn secondary cmd-close" onClick={onClose}>
+          Close
+        </button>
       </form>
       <ul className="hits" role="listbox" id="cmd-hits" aria-label="Results">
         {hits.map((h, i) => (

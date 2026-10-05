@@ -1515,8 +1515,14 @@ dialog.command {
   margin-top: 12vh;
 }
 
+dialog.command form {
+  display: flex;
+  gap: var(--space-2);
+}
+
 dialog.command input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 
 /* the palette (rulebook §18): ↑/↓ moves the active option; readiness on the input */

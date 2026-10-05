@@ -2,7 +2,8 @@
 the user decides it). Slice A, item 83: the e-stop with Core down or not
 answering (Q01-Q08); slice B, F7 and F8, Control → About's emergency stop
 (Q09-Q17; an e2e-guarded mutant rebuilds the SPA); slice C, F4's stream
-takeover (Q18-Q25) and item 86's one shell credential at a time (Q26-Q32).
+takeover (Q18-Q25, Q33) and item 86's one shell credential at a time (Q26-Q32);
+slice D, F6's touch exit from the command bar (Q34-Q37).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -36,6 +37,10 @@ SCHEMAS = 'archeus/api/schemas.py'
 TK = 'tests/v1/integration/test_stream_takeover.py::'
 TKU = 'tests/v1/unit/test_stream_takeover_units.py::'
 SH = 'tests/v1/integration/test_gui_shell.py::'
+CMDBAR = 'clients/app/src/surfaces/CommandBar.tsx'
+PAL = 'clients/app/src/state/palette.ts'
+CC = 'tests/v1/e2e/test_spa_command_close.py::'
+PAL_TS = 'node:test/palette.test.ts'
 
 MUTATIONS = [
     # Slice A, item 83: execution-architecture §10 path 2
@@ -170,6 +175,25 @@ MUTATIONS = [
      "    'supersede': {'type': 'string', 'nullable': True, 'enum': list(entities.SUPERSEDE_SLOTS)}},",
      "    'supersede': {'type': 'string', 'nullable': True}},")],
      [SH + 'test_only_admin_on_loopback_mints_a_superseding_code_and_only_for_the_shell']),
+
+    # Slice D, F6 (D5): the command bar has a touch exit
+    # (`hidden` on a `.btn` is not a mutant: `.btn`'s display overrides it)
+    ('Q34', 'the Close button is not there', [(CMDBAR,
+     '        <button type="button" className="btn secondary cmd-close" onClick={onClose}>\n'
+     '          Close\n'
+     '        </button>\n', '')],
+     [CC + 'test_on_a_phone_close_and_a_backdrop_tap_each_close_the_bar_and_restore_focus']),
+    ('Q35', 'Close closes nothing', [(CMDBAR,
+     'className="btn secondary cmd-close" onClick={onClose}>',
+     'className="btn secondary cmd-close" onClick={() => undefined}>')],
+     [CC + 'test_on_a_phone_close_and_a_backdrop_tap_each_close_the_bar_and_restore_focus']),
+    ('Q36', 'a backdrop tap closes nothing', [(CMDBAR,
+     'if (e.target === e.currentTarget && onBackdrop(',
+     'if (e.target === e.currentTarget && false && onBackdrop(')],
+     [CC + 'test_on_a_phone_close_and_a_backdrop_tap_each_close_the_bar_and_restore_focus']),
+    ('Q37', "a tap on the bar's own padding closes it", [(PAL,
+     '  return x < box.left ||', '  return true || x < box.left ||')],
+     [PAL_TS, CC + 'test_on_a_phone_close_and_a_backdrop_tap_each_close_the_bar_and_restore_focus']),
 ]
 
 if __name__ == '__main__':
