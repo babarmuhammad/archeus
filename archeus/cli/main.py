@@ -26,7 +26,7 @@ from ._api import endpoints
 DEFERRED = {'approve': 'P9'}
 VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair',
          'sessions', 'resume', 'handoff', 'verify', 'decide', 'automation', 'devices',
-         'tui', 'gui')
+         'tui', 'gui', 'executions')
 
 USAGE = """usage: archeus core [--open] [--remote-host H]...
                                 run Archeus Core in the foreground (Ctrl+C stops it);
@@ -86,7 +86,14 @@ USAGE = """usage: archeus core [--open] [--remote-host H]...
        archeus automation enable|disable|archive <id>
        archeus automation why <run>
                                 why an automated action happened: the event, the rule,
-                                and what the mission it asked for then did"""
+                                and what the mission it asked for then did
+       archeus executions opt-ins
+                                what executions may load from their settings sources
+                                (ADR-0049): every opt-in, in and out
+       archeus executions opt-in|opt-out <account|project> <source|plugin|mcp> <name>
+                                let an account's or a project's executions load a
+                                settings source (an account: user; a project: project,
+                                local), a plugin or an MCP server again, or stop it"""
 _TERMS = {'permit': 'permitted', 'refuse': 'refused'}
 
 
@@ -131,6 +138,9 @@ def main(argv):
         return decide(args[0], args[1], args[3] if len(args) == 4 else '')
     if verb == 'automation' and args and (args == ['list'] or len(args) == 2):
         return automation(args[0], args[1] if len(args) == 2 else None)
+    if verb == 'executions' and (args == ['opt-ins'] or (
+            len(args) == 4 and args[0] in _OPT and args[2] in ('source', 'plugin', 'mcp'))):
+        return opt_ins(*args)
     opts = _flags(args[1:] if verb in ('resume', 'handoff') else args)
     if verb == 'sessions' and opts is not None and set(opts) <= {'project', 'mission'}:
         return sessions(opts)
@@ -492,6 +502,43 @@ def automation(what, arg):
         print(json.dumps(out, indent=2))
     else:
         print('%s: %s' % (out['id'], out['state']))
+    return 0
+
+
+_OPT = {'opt-in': True, 'opt-out': False}
+
+
+def opt_ins(what, owner=None, kind=None, name=None):
+    """P20 D6 (ADR-0049): list the opt-ins, or opt one in or out. Core decides
+    and records; this sends the command with the local token."""
+    import os
+    info = _running()
+    if info is None:
+        return 1
+    if what == 'opt-ins':
+        out = _get(info, 'GET', endpoints.list_opt_ins())
+        if out is None:
+            return 2
+        for x in out['opt_ins']:
+            print('%s  %-7s %-26s %-6s %-3s %s  (version %d)' % (
+                x['id'], x['owner'], x['owner_id'], x['kind'],
+                'in' if x['opted_in'] else 'out', x['name'], x['version']))
+        if not out['opt_ins']:
+            print('no opt-ins: every execution excludes its settings sources\' hooks, '
+                  'plugins, skills and MCP servers')
+        return 0
+    out = _get(info, 'POST', endpoints.set_opt_in(), {
+        'owner_id': owner, 'kind': kind, 'name': name, 'opted_in': _OPT[what],
+        'idempotency_key': os.urandom(16).hex()})
+    if out is None:
+        return 2
+    x = out['opt_in']
+    if not out['changed']:
+        print('%s %s %s: no change' % (owner, kind, name))
+    else:
+        print('%s %s %s: opted %s (version %d)' % (owner, kind, name,
+                                                   'in' if x['opted_in'] else 'out',
+                                                   x['version']))
     return 0
 
 

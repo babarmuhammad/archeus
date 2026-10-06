@@ -16,12 +16,20 @@ starts where the last one halted) — a JSON list of steps:
 
 An emitted event of `type: tool` is a tool call, and a real agent asks its
 hook first: when `ARCHEUS_HOOK_CMD` names one (a JSON argv) the agent runs it
-exactly as Claude Code runs a PreToolUse command — the call as JSON on stdin,
-the decision as JSON on stdout (p11-design-gate §10.6). `allow` emits the
-event; `deny` emits `tool_denied` and exits 3 (a script cannot adapt); a halt
-emits `halted` with the step to resume at and exits 0. An allowed `Write` call
+exactly as Claude Code runs a PreToolUse command — the call as JSON on stdin
+(p11-design-gate §10.6) — and reads its answer as Claude Code documents it:
+exit code 2 blocks the call with the reason on stderr (ADR-0049 §3, the deny);
+exit code 0 is the JSON on stdout (`continue: false` halts, a
+`permissionDecision` allows); ANY other exit code, a timeout or a hook that
+cannot run is a non-blocking error, and the call PROCEEDS — the worst case,
+modelled so that a hook which fails open is caught here (P20). `allow` emits
+the event; `deny` emits `tool_denied` and exits 3 (a script cannot adapt); a
+halt emits `halted` with the step to resume at and exits 0. An allowed `Write` call
 (`input: {file_path, content}`) writes that file in the workdir (P13: the
 verifier judges the workspace, not the report).
+
+Arguments after the scenario and the start step are the spawn's flags (P20,
+ADR-0049); `started` echoes them as `argv`.
 
 Falling off the end of the scenario exits 0. The last line is always
 `{"type": "exit", "code": n}`, so a Core that did not start the process (and
@@ -43,17 +51,25 @@ def hook(cmd, event):
             'session_id': os.environ.get('ARCHEUS_EXECUTION_ID')}
     try:
         r = subprocess.run(cmd, input=json.dumps(call), capture_output=True, text=True,
-                           timeout=float(os.environ.get('ARCHEUS_HOOK_WAIT', '60')) + 30)
+                           encoding='utf-8', errors='replace',
+                           timeout=float(os.environ.get('ARCHEUS_HOOK_TIMEOUT', '120')))
+    except Exception as e:                          # incl. a timeout: non-blocking
+        return 'proceed', 'the hook did not answer: %s' % type(e).__name__
+    if r.returncode == 2:
+        return 'deny', (r.stderr or '').strip()
+    if r.returncode != 0:
+        return 'proceed', 'the hook exited %d' % r.returncode
+    try:
         out = json.loads(r.stdout or '{}')
-    except Exception as e:
-        return 'halt', 'the hook could not run: %s' % type(e).__name__
+    except ValueError:
+        return 'proceed', 'the hook printed no JSON'
+    out = out if isinstance(out, dict) else {}
     if out.get('continue') is False:
         return 'halt', out.get('stopReason') or ''
     spec = out.get('hookSpecificOutput') or {}
-    kind = spec.get('permissionDecision')
-    if kind in ('allow', 'deny'):
-        return kind, spec.get('permissionDecisionReason') or ''
-    return 'halt', 'the hook gave no decision'
+    if spec.get('permissionDecision') == 'allow':
+        return 'allow', ''
+    return 'proceed', 'the hook gave no decision'
 
 
 def write(spec):
@@ -87,7 +103,8 @@ def main(argv):
 
     emit({'type': 'started', 'pid': os.getpid(), 'at_step': start,
           'execution_id': os.environ.get('ARCHEUS_EXECUTION_ID'),
-          'stdin_bytes': len(data), 'stdin_sha256': hashlib.sha256(data).hexdigest()})
+          'stdin_bytes': len(data), 'stdin_sha256': hashlib.sha256(data).hexdigest(),
+          'argv': argv[3:]})
     for i, step in enumerate(steps):
         if i < start:
             continue
@@ -95,6 +112,8 @@ def main(argv):
             ev = step['emit']
             if cmd is not None and isinstance(ev, dict) and ev.get('type') == 'tool':
                 kind, reason = hook(cmd, ev)
+                if kind == 'proceed':
+                    emit({'type': 'hook_error', 'name': ev.get('name'), 'reason': reason})
                 if kind == 'halt':
                     emit({'type': 'halted', 'at': i, 'reason': reason})
                     return done(0)

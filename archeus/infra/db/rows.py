@@ -52,6 +52,7 @@ TABLES = {
     entities.Automation: 'automations',
     entities.AutomationRun: 'automation_runs',
     entities.PauseBatch: 'pause_batches',
+    entities.OptIn: 'opt_ins',
 }
 
 #: Row metadata, never entity fields: optimistic-concurrency version, timestamps,

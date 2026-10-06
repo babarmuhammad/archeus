@@ -370,6 +370,7 @@ export interface Execution {
   context: ContextState;
   handoff?: Handoff;
   why?: string;
+  inventory?: Inventory | null;
   [field: string]: unknown;
 }
 
@@ -527,6 +528,25 @@ export interface Intent {
   [field: string]: unknown;
 }
 
+export interface Inventory {
+  inventory_version?: number;
+  observed?: boolean;
+  flags?: Record<string, unknown>;
+  opt_ins?: Record<string, unknown>[];
+  items?: InventoryItem[];
+  truncated?: boolean;
+  unavailable?: string;
+  [field: string]: unknown;
+}
+
+export interface InventoryItem {
+  source: string;
+  type: string;
+  name: string;
+  status: string;
+  [field: string]: unknown;
+}
+
 export interface KnowledgeChanged {
   knowledge_item: KnowledgeItem;
   changed: boolean;
@@ -648,6 +668,29 @@ export interface MissionPlan {
 export interface MissionStopped {
   mission_id: string;
   stopped: string[];
+}
+
+export interface OptIn {
+  id: string;
+  kind: 'source' | 'plugin' | 'mcp';
+  name: string;
+  opted_in: boolean;
+  owner?: 'account' | 'project';
+  owner_id?: string;
+  account_id?: string | null;
+  project_id?: string | null;
+  version: number;
+  updated_at?: string;
+  [field: string]: unknown;
+}
+
+export interface OptInChanged {
+  opt_in: OptIn | null;
+  changed: boolean;
+}
+
+export interface OptInList {
+  opt_ins: OptIn[];
 }
 
 export interface Paired {
@@ -1267,6 +1310,15 @@ export interface SetMissionResourcesRequest {
   idempotency_key: string;
 }
 
+export interface SetOptInRequest {
+  owner_id: string;
+  kind: 'source' | 'plugin' | 'mcp';
+  name: string;
+  opted_in: boolean;
+  expected_version?: number | null;
+  idempotency_key: string;
+}
+
 export interface StopExecutionRequest {
   idempotency_key: string;
 }
@@ -1464,6 +1516,7 @@ export const paths = {
   listProviderTerms: () => '/v1/provider-terms',
   listHarnesses: () => '/v1/harnesses',
   listAccounts: () => '/v1/accounts',
+  listOptIns: () => '/v1/opt-ins',
   getExecution: (id: string) => '/v1/executions/' + encodeURIComponent(id),
   listTaskExecutions: (id: string) => '/v1/tasks/' + encodeURIComponent(id) + '/executions',
   executionStream: (id: string, query: { from?: number } = {}) => '/v1/executions/' + encodeURIComponent(id) + '/stream' + qs(query),
@@ -1596,6 +1649,10 @@ export const api = {
     send<ResourcePolicy>('POST', '/v1/resource-policies/' + encodeURIComponent(id), body),
   setMissionResources: (send: Send, id: string, body: SetMissionResourcesRequest) =>
     send<Mission>('POST', '/v1/missions/' + encodeURIComponent(id) + '/resources', body),
+  listOptIns: (send: Send) =>
+    send<OptInList>('GET', paths.listOptIns()),
+  setOptIn: (send: Send, body: SetOptInRequest) =>
+    send<OptInChanged>('POST', '/v1/opt-ins', body),
   getExecution: (send: Send, id: string) =>
     send<Execution>('GET', paths.getExecution(id)),
   listTaskExecutions: (send: Send, id: string) =>

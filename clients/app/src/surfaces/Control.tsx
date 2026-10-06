@@ -11,6 +11,7 @@ import {
   type DeviceList,
   type Health,
   type HarnessList,
+  type OptInList,
   type PairingCode,
   type ProjectList,
   type Policies,
@@ -232,6 +233,7 @@ function ResourcesSection() {
   const h = useRead<HarnessList>(paths.listHarnesses());
   const a = useRead<AccountList>(paths.listAccounts());
   const r = useRead<RouteDecisionList>(paths.listRouteDecisions());
+  const o = useRead<OptInList>(paths.listOptIns());
   const changed = useChanged();
   return (
     <>
@@ -292,6 +294,44 @@ function ResourcesSection() {
               </ul>
             ) : (
               <Empty>No account registered.</Empty>
+            )
+          }
+        </Loadable>
+      </Section>
+      {/* P20 D6 (ADR-0049): read-only; `archeus executions opt-in|opt-out` sets them */}
+      <Section title="What executions may load from their settings sources" actions={<Fresh snap={o} />}>
+        <p className="hint">
+          Every execution excludes its account's, project's and local settings (hooks, plugins, skills, MCP servers) unless an opt-in below lets it back in. Set with “archeus executions opt-in|opt-out”; read-only here.
+        </p>
+        <Loadable snap={o} what="the opt-ins">
+          {(l) =>
+            l.opt_ins.length ? (
+              <table className="grid" data-opt-ins="">
+                <thead>
+                  <tr>
+                    <th scope="col">Kind</th>
+                    <th scope="col">Name</th>
+                    <th scope="col">Belongs to</th>
+                    <th scope="col">State</th>
+                    <th scope="col">Version</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {l.opt_ins.map((x) => (
+                    <tr key={x.id} data-opt-in={x.id}>
+                      <td>{x.kind}</td>
+                      <th scope="row" className="mono">{x.name}</th>
+                      <td>
+                        {x.owner} <span className="mono">{x.owner_id}</span>
+                      </td>
+                      <td>{x.opted_in ? 'opted in' : 'opted out'}</td>
+                      <td>{x.version}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <Empty>Nothing is opted in: every settings source is excluded.</Empty>
             )
           }
         </Loadable>

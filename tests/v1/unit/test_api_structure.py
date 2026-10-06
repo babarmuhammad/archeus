@@ -77,7 +77,7 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
                        'knowledge.confirm', 'knowledge.forget',
                        'knowledge.import_meeting', 'knowledge.record_feedback',
                        'knowledge.reject', 'knowledge.retract', 'knowledge.supersede',
-                       'own_calls.decide_provider_terms',
+                       'optins.set_opt_in', 'own_calls.decide_provider_terms',
                        'req.api.authorization.create_rule', 'req.api.authorization.decide',
                        'req.api.authorization.decide_by_message',
                        'req.api.authorization.retire_rule',
@@ -290,6 +290,13 @@ P195 = {
     ('POST', '/v1/missions/resume-all', 'control', 'required'),
     ('POST', '/v1/missions/{id}/reprioritize', 'control', 'required'),
 }
+#: P20 D6 (ADR-0049): the opt-ins read by anyone who observes, written only
+#: by `admin` (the command also requires a user device); no route edits an
+#: inventory, which only the spawn records
+P20 = {
+    ('GET', '/v1/opt-ins', 'observe', None),
+    ('POST', '/v1/opt-ins', 'admin', 'required'),
+}
 
 
 def test_the_route_table_is_exactly_the_p35b_to_p18_tables():
@@ -300,7 +307,7 @@ def test_the_route_table_is_exactly_the_p35b_to_p18_tables():
     reads are the only paths that may name a graph."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
     tables = (EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16
-              | P18 | P195)
+              | P18 | P195 | P20)
     assert got == tables
     assert len(routes.ROUTES) == len(tables)
     # P15: the only pairing paths are start and redeem; no route pairs a node

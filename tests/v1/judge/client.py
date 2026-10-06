@@ -23,7 +23,7 @@ from typing import Optional, Protocol, Sequence, runtime_checkable
 
 from archeus.core import engine, ports
 from archeus.core.application import (authorization, automations, commands, conversation,
-                                      executions, graph,
+                                      executions, graph, optins,
                                       queries, resources, sessions, verification, work,
                                       world)
 from archeus.core.sessions.service import SessionService
@@ -110,6 +110,10 @@ class CoreClient(Protocol):
                             brain_reserve_pct: Optional[int] = None,
                             fallback: Optional[str] = None,
                             expected_version: Optional[int] = None) -> dict: ...
+    # ── settings-source opt-ins and an execution's read (P20 D6, ADR-0049) ──
+    def set_opt_in(self, owner_id: str, kind: str, name: str, opted_in: bool) -> dict: ...
+    def opt_ins(self) -> list: ...
+    def execution(self, execution_id: str) -> dict: ...
     # ── sessions and checkpoints (P12) ──
     def register_session(self, *, harness_id: str, cwd: str,
                          provider_session_ref: Optional[str] = None,
@@ -231,7 +235,8 @@ class InProcessClient:
                 self._system = self._db.writer.execute(commands.register_principal, {
                     'kind': 'system', 'scopes': ('system',)})['id']
             registry = AdapterRegistry(self._policy)
-            registry.register(FakeHarness())
+            # P20 (ADR-0049): the fake stands in for Claude Code's settings sources
+            registry.register(FakeHarness(sources=True))
             callers = real_callers() if self._callers is None else self._callers
             self._resources = resources.Resources(registry=registry, callers=callers)
             self._engine = engine.Engine(
@@ -582,6 +587,15 @@ class InProcessClient:
             'reserve_pct': reserve_pct, 'brain_reserve_pct': brain_reserve_pct,
             'fallback': fallback, 'expected_version': expected_version})
 
+    def set_opt_in(self, owner_id: str, kind: str, name: str, opted_in: bool) -> dict:
+        return self._run(optins.set_opt_in, {'owner_id': owner_id, 'kind': kind,
+                                             'name': name, 'opted_in': opted_in})
+
+    def opt_ins(self) -> list:
+        return self._read(optins.listing)
+
+    def execution(self, execution_id: str) -> dict:
+        return self._read(executions.view, execution_id)
 
     # ── sessions and checkpoints (P12) ──
 
@@ -732,7 +746,9 @@ IMPLEMENTED = ('create_mission', 'get_mission', 'list_missions', 'events', 'paus
                # P14
                'create_automation', 'set_automation_state', 'automations', 'automation',
                # P18
-               'world_graph', 'repository_graph')
+               'world_graph', 'repository_graph',
+               # P20 D6
+               'set_opt_in', 'opt_ins', 'execution')
 
 # Every other operation is declared and fails loudly. Later phases replace these
 # with real bodies one by one; tests/v1/contract/test_core_client.py keeps every

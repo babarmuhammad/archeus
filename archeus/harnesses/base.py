@@ -114,6 +114,11 @@ class ExecutionSpec:
     # is the next) and the account it runs on
     process_seq: int = 1
     account: Optional['AccountRef'] = None
+    # P20 (ADR-0049, D6): the (owner, kind, name) opt-ins of exactly this
+    # execution's account and project, and the inventory recorded from them,
+    # whose flags the adapter's argv reads (None: every source excluded)
+    opt_ins: tuple = ()
+    inventory: Optional[Mapping] = None
 
 
 @dataclass(frozen=True)

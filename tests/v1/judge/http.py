@@ -410,6 +410,17 @@ class HttpClient:
         return self._call('POST', '/v1/sessions/%s/close' % quote(session_id, safe=''),
                           self._body())
 
+    def set_opt_in(self, owner_id: str, kind: str, name: str, opted_in: bool) -> dict:
+        return self._call('POST', '/v1/opt-ins', {
+            'owner_id': owner_id, 'kind': kind, 'name': name, 'opted_in': opted_in,
+            'idempotency_key': ids.new_ulid()})
+
+    def opt_ins(self) -> list:
+        return self._call('GET', '/v1/opt-ins')['opt_ins']
+
+    def execution(self, execution_id: str) -> dict:
+        return self._call('GET', '/v1/executions/%s' % quote(execution_id, safe=''))
+
     def checkpoints(self, execution_id: str) -> list:
         return self._call('GET', '/v1/executions/%s/checkpoints'
                           % quote(execution_id, safe=''))['checkpoints']
@@ -588,7 +599,7 @@ class TempCore:
         if kw['ports'].executors is None:
             # a test Core executes on the fake harness unless it names its
             # executors (P11: the runtime's default is the real adapters)
-            kw['ports'].executors = [FakeHarness()]
+            kw['ports'].executors = [FakeHarness(sources=True)]
         if not real_verification:
             # and verifies and reviews on the scripted stubs unless it asks for
             # the verification worker (P13: the runtime's default)
@@ -673,7 +684,8 @@ if cfg.get('pause_timeout') is not None:   # a short pause timeout for the test 
     from archeus.core.execution import manager as _manager
     _manager.PAUSE_TIMEOUT_S = cfg['pause_timeout']
 ports = runtime.Ports(scenarios=cfg.get('scenarios') or {},
-                      brain=P.FixedPlanBrain(engine.SKELETON_PLAN), executors=[FakeHarness()])
+                      brain=P.FixedPlanBrain(engine.SKELETON_PLAN),
+                      executors=[FakeHarness(sources=True)])
 if not cfg.get('real_verification'):  # P13: a test Core keeps the stubs unless asked
     ports.verifier, ports.reviewer = P.ScriptedVerifier(), P.ScriptedReview()
 if cfg.get('brain_fails'):

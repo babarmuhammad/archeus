@@ -60,7 +60,7 @@ from datetime import datetime, timedelta, timezone
 from ..core.application import commands, errors, graph, queries, world
 from ..core.application import calls as own_calls
 from ..core.application import conversation, executions, knowledge, resources
-from ..core.application import automations, live, sessions
+from ..core.application import automations, live, optins, sessions
 from ..core.application import verification
 from ..core.context import assemble as context
 from ..core.knowledge import ingest
@@ -532,6 +532,21 @@ def set_resource_policy(req):
         {k: b.get(k) for k in resources.POLICY_FIELDS},
         account_id=req.params['id'], expected_version=b.get('expected_version'),
         usage_measures=req.api.resources.usage_measures(a['harness_id'], a['home_ref'])))
+
+
+def list_opt_ins(req):
+    """P20 D6: every settings-source opt-in, in and out (read-only)."""
+    with req.api.db.read() as conn:
+        return 200, {'opt_ins': optins.listing(conn)}
+
+
+def set_opt_in(req):
+    """P20 D6 (ADR-0049): opt a source, plugin or MCP server in or out for an
+    account's or a project's executions. `admin`, and a user device."""
+    b = req.body
+    return 200, req.run(optins.set_opt_in, {
+        'owner_id': b['owner_id'], 'kind': b['kind'], 'name': b['name'],
+        'opted_in': b['opted_in'], 'expected_version': b.get('expected_version')})
 
 
 def list_harnesses(req):
@@ -1042,6 +1057,10 @@ ROUTES = (
           schemas.RESOURCE_POLICY, 'ResourcePolicy'),
     Route('POST', '/v1/missions/{id}/resources', set_mission_resources, 'admin', 'required',
           schemas.MISSION_RESOURCES, 'Mission'),
+    # P20 D6 (ADR-0049): what an execution may load from its settings sources
+    Route('GET', '/v1/opt-ins', list_opt_ins, 'observe', None, None, 'OptInList'),
+    Route('POST', '/v1/opt-ins', set_opt_in, 'admin', 'required', schemas.SET_OPT_IN,
+          'OptInChanged'),
     # P11: executions (p11-design-gate §21)
     Route('GET', '/v1/executions/{id}', get_execution, 'observe', None, None, 'Execution'),
     Route('GET', '/v1/tasks/{id}/executions', list_task_executions, 'observe', None, None,

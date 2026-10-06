@@ -468,6 +468,31 @@ TYPES = {
                      'usage', 'version']},
     'AccountList': {'type': 'object', 'properties': {
         'accounts': {'type': 'array', 'items': {'ref': 'Account'}}}, 'required': ['accounts']},
+    # P20 D6 (ADR-0049): one opt-in row, its owner named; and an execution's inventory
+    'OptIn': {'type': 'object', 'open': True, 'properties': {
+        'id': {'type': 'string'}, 'kind': {'type': 'string', 'enum': list(entities.OPT_IN_KINDS)},
+        'name': {'type': 'string'}, 'opted_in': {'type': 'boolean'},
+        'owner': {'type': 'string', 'enum': ['account', 'project']},
+        'owner_id': {'type': 'string'},
+        'account_id': {'type': 'string', 'nullable': True},
+        'project_id': {'type': 'string', 'nullable': True}, 'version': {'type': 'integer'},
+        'updated_at': {'type': 'string'}},
+        'required': ['id', 'kind', 'name', 'opted_in', 'version']},
+    'OptInList': {'type': 'object', 'properties': {
+        'opt_ins': {'type': 'array', 'items': {'ref': 'OptIn'}}}, 'required': ['opt_ins']},
+    'OptInChanged': {'type': 'object', 'properties': {
+        'opt_in': {'ref': 'OptIn', 'nullable': True}, 'changed': {'type': 'boolean'}},
+        'required': ['opt_in', 'changed']},
+    'InventoryItem': {'type': 'object', 'open': True, 'properties': {
+        'source': {'type': 'string'}, 'type': {'type': 'string'}, 'name': {'type': 'string'},
+        'status': {'type': 'string'}}, 'required': ['source', 'type', 'name', 'status']},
+    'Inventory': {'type': 'object', 'open': True, 'properties': {
+        'inventory_version': {'type': 'integer'}, 'observed': {'type': 'boolean'},
+        'flags': {'type': 'object'},
+        'opt_ins': {'type': 'array', 'items': {'type': 'object'}},
+        'items': {'type': 'array', 'items': {'ref': 'InventoryItem'}},
+        'truncated': {'type': 'boolean'}, 'unavailable': {'type': 'string'}},
+        'required': []},
     'Harness': {'type': 'object', 'open': True, 'properties': {
         'id': {'type': 'string'}, 'installed': {'type': 'boolean'},
         'capabilities': {'type': 'array', 'items': {'type': 'string'}},
@@ -494,7 +519,7 @@ TYPES = {
         'charged': {'type': 'boolean', 'nullable': True}, 'version': {'type': 'integer'},
         'end_state_digest': {'type': 'string', 'nullable': True},
         'context': {'ref': 'ContextState'}, 'handoff': {'ref': 'Handoff'},
-        'why': {'type': 'string'}},
+        'why': {'type': 'string'}, 'inventory': {'ref': 'Inventory', 'nullable': True}},
         'required': ['id', 'task_id', 'mission_id', 'attempt', 'state', 'process_seq',
                      'stream_offset', 'version', 'context']},
     'ExecutionList': {'type': 'object', 'properties': {
@@ -950,6 +975,13 @@ RESOURCE_POLICY = {'type': 'object', 'properties': {
     'consumption': {'type': 'string', 'nullable': True, 'enum': list(entities.CONSUMPTION)},
     'expected_version': _INT, 'idempotency_key': KEY},
     'required': ['idempotency_key']}
+#: P20 D6: `owner_id` is an account or a project id; `opted_in` false opts out
+SET_OPT_IN = {'type': 'object', 'properties': {
+    'owner_id': {'type': 'string'},
+    'kind': {'type': 'string', 'enum': list(entities.OPT_IN_KINDS)},
+    'name': {'type': 'string'}, 'opted_in': {'type': 'boolean'},
+    'expected_version': _INT, 'idempotency_key': KEY},
+    'required': ['owner_id', 'kind', 'name', 'opted_in', 'idempotency_key']}
 MISSION_RESOURCES = {'type': 'object', 'properties': {
     'preferred_accounts': _IDS, 'preferred_harnesses': _IDS, 'forbidden_accounts': _IDS,
     'forbidden_harnesses': _IDS,

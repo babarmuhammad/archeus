@@ -218,3 +218,42 @@ def edge_rows(edges, of):
             row['inactive'] = True
         out.append(row)
     return out
+
+
+#: P20 (ADR-0049): what became of one item an execution's settings sources load
+INVENTORY_STATUS = {'excluded': 'excluded', 'opted_in': 'opted in',
+                    'not_excludable': 'loaded, not excludable',
+                    'recorded_only': 'loaded, recorded only (fallback)',
+                    'not_found': 'opted in, not found'}
+INVENTORY_TYPE = {'hook': 'hook', 'permission': 'permission rule', 'plugin': 'plugin',
+                  'skill': 'skill', 'mcp_server': 'MCP server', 'claude_md': 'CLAUDE.md',
+                  'managed_settings': 'managed settings', 'unreadable': 'unreadable file'}
+
+
+def inventory_lines(inv):
+    """[label, text] rows of an execution's recorded inventory (ADR-0049): the
+    flags it was spawned with, then every item and what became of it. Words
+    only; what was excluded is Core's record, never decided here."""
+    if not inv:
+        return [['Inherited settings', 'not recorded for this execution']]
+    if inv.get('unavailable'):
+        return [['Inherited settings', inv['unavailable']]]
+    f = inv.get('flags') or {}
+
+    def names(xs):
+        return ', '.join(xs) or 'none'
+    rows = [['Settings sources loaded', names(f.get('setting_sources') or [])],
+            ['MCP servers', 'only the opted in: ' + names(
+                [s['name'] for s in f.get('mcp_servers') or []])],
+            ['Skills', 'disabled' if f.get('disable_slash_commands')
+             else 'enabled: a skill is opted in'],
+            ['Plugins for this session', names([d['name'] for d in f.get('plugin_dirs') or []
+                                                if d.get('path')])],
+            ['Observed on a real run', 'yes' if inv.get('observed') else
+             'not yet (PV-19): what each flag excludes is expected, not observed']]
+    for i in inv.get('items') or []:
+        rows.append(['%s (%s)' % (INVENTORY_TYPE.get(i['type'], i['type']), i['source']),
+                     '%s: %s' % (i['name'], INVENTORY_STATUS.get(i['status'], i['status']))])
+    if inv.get('truncated'):
+        rows.append(['More', 'the record was cut; not every item is listed'])
+    return rows

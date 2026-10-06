@@ -57,3 +57,43 @@ def test_revoking_a_device_closes_its_live_stream(client, rig):
 
 def test_a_token_in_the_query_string_is_rejected(client, rig):
     assert rig.http_get('/v1/now?token=' + rig.device_token()).status == 401
+
+
+# ── P20 slice E (ADR-0049, D6): what an execution loads from its settings sources ──
+
+def _first_execution(client):
+    prepared = wait_for(lambda: events_of(client, 'execution.prepared'))
+    return prepared[0]['subject']['id']
+
+
+def test_an_execution_records_its_settings_sources_and_excludes_them_by_default(client, rig):
+    """Nothing opted in: the execution is spawned with every settings source
+    left out, MCP strict with no server, skills disabled, no plugin; and the
+    record of what those sources hold, with what became of each, is its read."""
+    client.create_mission(title='Inherit', objective='Run one task')
+    got = client.execution(_first_execution(client))
+    inv = got['inventory']
+    assert inv['flags'] == {'setting_sources': [], 'strict_mcp_config': True,
+                            'mcp_servers': [], 'disable_slash_commands': True,
+                            'plugin_dirs': []}
+    assert inv['observed'] is False and inv['opt_ins'] == []
+    assert {i['status'] for i in inv['items']} <= {'excluded', 'not_excludable'}
+    assert got['inventory_sha256']
+
+
+def test_only_a_user_device_opts_a_settings_source_in(client, rig):
+    """An opt-in is the user's (ADR-0035's pattern): the brain principal is
+    refused, the user's change is one row whose version counts every change."""
+    acc = client.register_account(harness_id='fake', label='Work', auth_kind='api_key')['id']
+    with pytest.raises(CoreClientError) as err:
+        rig.principal_client('brain').set_opt_in(acc, 'mcp', 'gh', True)
+    assert err.value.status == 403
+    first = client.set_opt_in(acc, 'mcp', 'gh', True)
+    out = client.set_opt_in(acc, 'mcp', 'gh', False)
+    assert (first['opt_in']['version'], out['opt_in']['version']) == (1, 2)
+    (row,) = client.opt_ins()
+    assert (row['owner'], row['name'], row['opted_in'], row['version']) == (
+        'account', 'gh', False, 2)
+    with pytest.raises(CoreClientError) as err:
+        client.set_opt_in(acc, 'source', 'project', True)       # not the account's source
+    assert err.value.status == 400

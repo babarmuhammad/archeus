@@ -36,7 +36,9 @@ DOCUMENTED = ('submit_message', 'create_mission', 'get_mission', 'list_missions'
               'abandon_integration',
               # P14 (testing-strategy §1.1; p14-design-gate §17)
               'create_automation', 'set_automation_state', 'automations', 'automation',
-              'world_graph', 'repository_graph')
+              'world_graph', 'repository_graph',
+              # P20 D6 (testing-strategy §1.1; p20-design-gate slice E)
+              'set_opt_in', 'opt_ins', 'execution')
 
 
 def test_the_contract_is_exactly_the_documented_operations():

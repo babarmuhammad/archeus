@@ -361,6 +361,7 @@ configured under Resources, not a row.)
 | `usage` | tokens in/out/cache, cost where known |
 | `context_pressure` | last computed ratio (continuity §) |
 | `adapter_state` | opaque JSON owned by the harness adapter |
+| `inventory_sha256` | *P20, ADR-0049:* the artifact recording what its settings sources load and what became of each item (excluded, opted in, not excludable, recorded only), taken before the process exists; the spawn's flags are read from it |
 
 ### 7.5 Session
 Infrastructure. A provider conversation that one or more executions ran inside.
@@ -507,6 +508,15 @@ A machine that can run executions. `id`, `name`, `platform`, `kind` (local / rem
 ### 8.8 ProviderTerms (P6, ADR-0021)
 One per harness id: `headless` and `rotation`, each `unknown | permitted | refused`, and a
 `note`. No row is `unknown`, which blocks a real call as `refused` does; only the user writes it.
+
+### 8.9 OptIn (P20 D6, ADR-0049)
+What an account's or a project's executions are let load again from their settings sources.
+Exactly one owner: `account_id` or `project_id`. `kind` is `source` (an account holds `user`; a
+project holds `project` and `local`), `plugin` (`name@marketplace`, loaded for the session with
+`--plugin-dir`) or `mcp` (a server name, the only servers `--strict-mcp-config` loads); `name`
+is never a path. `opted_in` false is an opt-out. Set only by a user device through the `admin`
+command (the `data_class` pattern of ADR-0035); a change is the same row's next version, one
+row per owner, kind and name. An execution reads exactly its own account's and project's rows.
 
 ## 9. Control
 

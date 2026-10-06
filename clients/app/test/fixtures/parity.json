@@ -924,6 +924,214 @@
    "out": "in 30 min"
   },
   {
+   "fn": "inventoryLines",
+   "args": [
+    null
+   ],
+   "out": [
+    [
+     "Inherited settings",
+     "not recorded for this execution"
+    ]
+   ]
+  },
+  {
+   "fn": "inventoryLines",
+   "args": [
+    {
+     "unavailable": "the inventory abc cannot be read: OSError"
+    }
+   ],
+   "out": [
+    [
+     "Inherited settings",
+     "the inventory abc cannot be read: OSError"
+    ]
+   ]
+  },
+  {
+   "fn": "inventoryLines",
+   "args": [
+    {
+     "inventory_version": 1,
+     "observed": false,
+     "opt_ins": [],
+     "recorded_only": [],
+     "flags": {
+      "setting_sources": [],
+      "strict_mcp_config": true,
+      "mcp_servers": [],
+      "disable_slash_commands": true,
+      "plugin_dirs": []
+     },
+     "items": [
+      {
+       "source": "user",
+       "type": "hook",
+       "name": "Stop: notify.sh",
+       "status": "excluded"
+      },
+      {
+       "source": "project",
+       "type": "mcp_server",
+       "name": "github",
+       "status": "excluded"
+      },
+      {
+       "source": "ancestor",
+       "type": "claude_md",
+       "name": "D:/CLAUDE.md",
+       "status": "not_excludable",
+       "sha256": "abababababababababababababababababababababababababababababababab"
+      }
+     ],
+     "truncated": false
+    }
+   ],
+   "out": [
+    [
+     "Settings sources loaded",
+     "none"
+    ],
+    [
+     "MCP servers",
+     "only the opted in: none"
+    ],
+    [
+     "Skills",
+     "disabled"
+    ],
+    [
+     "Plugins for this session",
+     "none"
+    ],
+    [
+     "Observed on a real run",
+     "not yet (PV-19): what each flag excludes is expected, not observed"
+    ],
+    [
+     "hook (user)",
+     "Stop: notify.sh: excluded"
+    ],
+    [
+     "MCP server (project)",
+     "github: excluded"
+    ],
+    [
+     "CLAUDE.md (ancestor)",
+     "D:/CLAUDE.md: loaded, not excludable"
+    ]
+   ]
+  },
+  {
+   "fn": "inventoryLines",
+   "args": [
+    {
+     "inventory_version": 1,
+     "observed": false,
+     "opt_ins": [
+      {
+       "owner": "project",
+       "kind": "source",
+       "name": "project"
+      }
+     ],
+     "flags": {
+      "setting_sources": [
+       "project"
+      ],
+      "strict_mcp_config": true,
+      "mcp_servers": [
+       {
+        "owner": "project",
+        "name": "github"
+       }
+      ],
+      "disable_slash_commands": false,
+      "plugin_dirs": [
+       {
+        "name": "a@m",
+        "path": "C:/h/plugins/a"
+       },
+       {
+        "name": "b@m",
+        "path": null
+       }
+      ]
+     },
+     "items": [
+      {
+       "source": "plugin",
+       "type": "plugin",
+       "name": "b@m",
+       "status": "not_found"
+      },
+      {
+       "source": "user",
+       "type": "skill",
+       "name": "x",
+       "status": "not_excludable"
+      },
+      {
+       "source": "local",
+       "type": "weird",
+       "name": "y",
+       "status": "recorded_only"
+      },
+      {
+       "source": "user",
+       "type": "plugin",
+       "name": "z",
+       "status": "odd"
+      }
+     ],
+     "truncated": true
+    }
+   ],
+   "out": [
+    [
+     "Settings sources loaded",
+     "project"
+    ],
+    [
+     "MCP servers",
+     "only the opted in: github"
+    ],
+    [
+     "Skills",
+     "enabled: a skill is opted in"
+    ],
+    [
+     "Plugins for this session",
+     "a@m"
+    ],
+    [
+     "Observed on a real run",
+     "not yet (PV-19): what each flag excludes is expected, not observed"
+    ],
+    [
+     "plugin (plugin)",
+     "b@m: opted in, not found"
+    ],
+    [
+     "skill (user)",
+     "x: loaded, not excludable"
+    ],
+    [
+     "weird (local)",
+     "y: loaded, recorded only (fallback)"
+    ],
+    [
+     "plugin (user)",
+     "z: odd"
+    ],
+    [
+     "More",
+     "the record was cut; not every item is listed"
+    ]
+   ]
+  },
+  {
    "fn": "stateSentence",
    "args": [
     0,

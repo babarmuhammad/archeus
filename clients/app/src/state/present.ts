@@ -384,3 +384,56 @@ export function estopSaid(act: 'estop' | 'rearm', o: Outcome): { text: string; a
     ? `Core refused the emergency stop, so nothing was stopped: ${o.why}`
     : `Core refused the re-arm, so it stays disarmed: ${o.why}`, alert: true, when: act === 'rearm' ? false : true };
 }
+
+/** P20 (ADR-0049): what became of one item an execution's settings sources load. */
+const INVENTORY_STATUS: Record<string, string> = {
+  excluded: 'excluded',
+  opted_in: 'opted in',
+  not_excludable: 'loaded, not excludable',
+  recorded_only: 'loaded, recorded only (fallback)',
+  not_found: 'opted in, not found',
+};
+const INVENTORY_TYPE: Record<string, string> = {
+  hook: 'hook',
+  permission: 'permission rule',
+  plugin: 'plugin',
+  skill: 'skill',
+  mcp_server: 'MCP server',
+  claude_md: 'CLAUDE.md',
+  managed_settings: 'managed settings',
+  unreadable: 'unreadable file',
+};
+
+type InventoryLike = {
+  unavailable?: string;
+  observed?: boolean;
+  truncated?: boolean;
+  flags?: {
+    setting_sources?: string[];
+    mcp_servers?: { name: string }[];
+    disable_slash_commands?: boolean;
+    plugin_dirs?: { name: string; path?: string | null }[];
+  };
+  items?: { source: string; type: string; name: string; status: string }[];
+};
+
+/** [label, text] rows of an execution's recorded inventory (ADR-0049): the
+ * flags it was spawned with, then every item and what became of it. Words
+ * only; what was excluded is Core's record, never decided here. */
+export function inventoryLines(inv: InventoryLike | null | undefined): [string, string][] {
+  if (!inv) return [['Inherited settings', 'not recorded for this execution']];
+  if (inv.unavailable) return [['Inherited settings', inv.unavailable]];
+  const f = inv.flags ?? {};
+  const names = (xs: string[]) => xs.join(', ') || 'none';
+  const rows: [string, string][] = [
+    ['Settings sources loaded', names(f.setting_sources ?? [])],
+    ['MCP servers', 'only the opted in: ' + names((f.mcp_servers ?? []).map((s) => s.name))],
+    ['Skills', f.disable_slash_commands ? 'disabled' : 'enabled: a skill is opted in'],
+    ['Plugins for this session', names((f.plugin_dirs ?? []).filter((d) => d.path).map((d) => d.name))],
+    ['Observed on a real run', inv.observed ? 'yes' : 'not yet (PV-19): what each flag excludes is expected, not observed'],
+  ];
+  for (const i of inv.items ?? [])
+    rows.push([`${INVENTORY_TYPE[i.type] ?? i.type} (${i.source})`, `${i.name}: ${INVENTORY_STATUS[i.status] ?? i.status}`]);
+  if (inv.truncated) rows.push(['More', 'the record was cut; not every item is listed']);
+  return rows;
+}

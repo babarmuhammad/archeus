@@ -18,19 +18,22 @@ Policy is P9's (`authorization`, through those commands); resources are P10's
 neither.
 """
 
+import json
 import logging
 import os
 import secrets
 import sys
 import time
+from dataclasses import replace
 
 from ...harnesses import base
+from ...infra.artifacts import store
 from ...infra.db import rows
 from ...infra.paths import ExecPaths
 from ...node.local import LocalNode
-from ..application import errors, executions as X, resources
+from ..application import errors, executions as X, optins, resources
 from ..domain import entities, states
-from ..redact import redact  # noqa: F401  (p11-design-gate §19; shared since P12)
+from ..redact import redact  # p11-design-gate §19; shared since P12, and P20's inventory
 from . import canonical, pressure as P
 
 log = logging.getLogger('archeus.execution')
@@ -180,14 +183,6 @@ class ExecutionManager:
             return True
         token = 'hook_' + secrets.token_urlsafe(32)
         seq = e.process_seq + 1
-        out = self._do(X.prepare_process, execution_id=e.id, token_digest=X.token_hash(token),
-                       workdir=workdir, branch=branch, process_seq=seq)
-        if out['refused']:
-            return True
-        if self.node.disarmed():
-            self._do(X.refuse, execution_id=e.id, reason='emergency stop: nothing starts',
-                     stop_reason='disarmed')
-            return True
         # a harness's default account runs on the home its decision recorded
         # (ADR-0048 D-25.2), never on whatever Core's environment holds
         accts = ((rd.entity.input_snapshot or {}).get('accounts') or ()) if rd else ()
@@ -199,16 +194,45 @@ class ExecutionManager:
             # a continuation (p12-design-gate §10.1): the checkpoint of the
             # execution it continues is the variable suffix of its prompt
             prompt, continuation = self._continuation(e, prompt)
+        with self.db.read() as r:
+            opt_ins = optins.effective(r, account_id=e.account_id, project_id=m.project_id)
         spec = base.ExecutionSpec(
             execution_id=e.id, prompt=prompt, workdir=workdir,
             attempt=e.attempt, model=e.model, effort=e.effort, process_seq=seq,
             account=base.AccountRef(e.account_id or e.harness_id, home),
             env=dict(CAPABILITY_ENV, ARCHEUS_HOOK_TOKEN=token),
-            hook_settings=(sys.executable, HOOK),
+            hook_settings=(sys.executable, HOOK), opt_ins=opt_ins,
             task_contract={'key': t.key, 'kind': t.kind, 'estimate': t.estimate,
                            'action_classes': list(t.action_classes),
                            'continuation': continuation,
                            'fake_scenario': self.scenarios.get(t.key, _DEFAULT)})
+        # P20 (ADR-0049): what the settings sources load, taken and stored
+        # before the process exists; the spawn's flags are read from exactly
+        # what was stored. One that cannot be taken starts nothing, and is
+        # charged like a workspace that cannot be made (P11 note 11): an
+        # uncharged end re-dispatches the task, so a failure that persists
+        # would start a new execution on every tick, forever.
+        sha = size = None
+        try:
+            got = adapter.inventory(spec) if hasattr(adapter, 'inventory') else None
+            if got is not None:
+                data = redact(json.dumps(got, sort_keys=True)).encode('utf-8')
+                sha, size = store.put(data), len(data)
+                spec = replace(spec, inventory=json.loads(data))
+        except Exception as err:
+            self._do(X.refuse, execution_id=e.id, stop_reason='workspace',
+                     reason='the settings sources could not be inventoried: %s'
+                     % type(err).__name__)
+            return True
+        out = self._do(X.prepare_process, execution_id=e.id, token_digest=X.token_hash(token),
+                       workdir=workdir, branch=branch, process_seq=seq,
+                       inventory_sha256=sha, inventory_size=size)
+        if out['refused']:
+            return True
+        if self.node.disarmed():
+            self._do(X.refuse, execution_id=e.id, reason='emergency stop: nothing starts',
+                     stop_reason='disarmed')
+            return True
         # where this process's output starts, taken BEFORE it can write any: a
         # size read after spawn() returns counts whatever the child wrote in
         # between as already read, so its first output is never seen

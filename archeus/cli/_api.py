@@ -231,6 +231,14 @@ class endpoints:
         return _path('/v1/missions/{id}/resources', id_)
 
     @staticmethod
+    def list_opt_ins():
+        return _path('/v1/opt-ins')
+
+    @staticmethod
+    def set_opt_in():
+        return _path('/v1/opt-ins')
+
+    @staticmethod
     def get_execution(id_):
         return _path('/v1/executions/{id}', id_)
 

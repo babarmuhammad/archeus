@@ -25,7 +25,7 @@ import {
 import { send } from '../data/core';
 import { useRead } from '../data/cache';
 import { INSPECTOR_TABS, TAB_LABEL, objectHref } from '../nav/destinations';
-import { ago, endReason, ended, explainState, inline, offers, statusLine, technical } from '../state/present';
+import { ago, endReason, ended, explainState, inline, inventoryLines, offers, statusLine, technical } from '../state/present';
 import { Relations } from '../components/Relations';
 import { Conversation } from './Now';
 import { AccountName, ActionButton, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Resources, Section, StateBadge, Tabs } from '../components/ui';
@@ -552,6 +552,24 @@ function ContextBlock({ x }: { x: Execution }) {
   );
 }
 
+/** P20 (ADR-0049): beside the Why, what this execution's settings sources load
+ * and what became of each item, as Core recorded it at the spawn. */
+function InventoryBlock({ x }: { x: Execution }) {
+  // a label repeats (one row per hook, skill, server…), so rows key by position
+  return (
+    <dl className="kv" data-inventory="" aria-label="What it inherited from its settings sources">
+      {inventoryLines(x.inventory).map(([k, v], i) => (
+        <div key={i}>
+          <dt>{k}</dt>
+          <dd>
+            <Prose text={v} />
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function Evidence({ id, m }: { id: string; m: Mission }) {
   const v = useRead<VerificationList>(paths.listVerifications(id));
   const r = useRead<ReviewList>(paths.listReviews(id));
@@ -840,6 +858,7 @@ export function ExecutionInspector({ id, tab, onTab }: { id: string; tab?: strin
               </p>
             ) : null}
             <ContextBlock x={x} />
+            <InventoryBlock x={x} />
             <div className="row actions">
               {['STARTING', 'RUNNING', 'PAUSING', 'HANDING_OFF'].includes(x.state) ? (
                 <ActionButton label="Stop" scope="control" kind="danger" confirm="Stop this execution now: its process is killed. The task and mission respond as Core decides (P11)." run={(key) => api.stopExecution(send(), x.id, { idempotency_key: key })} reread={[paths.getExecution(x.id)]} />

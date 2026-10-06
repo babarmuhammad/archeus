@@ -508,6 +508,7 @@ RULES = {'mission': ['/v1/world/graph**', '/v1/missions**', '/v1/attention', '/v
  'automation_run': ['/v1/world/graph**', '/v1/automations**', '/v1/automation-runs/{id}'],
  'account': ['/v1/accounts', '/v1/attention'],
  'resource_policy': ['/v1/accounts'],
+ 'opt_in': ['/v1/opt-ins'],
  'harness': ['/v1/harnesses'],
  'route_decision': ['/v1/world/graph**', '/v1/route-decisions**'],
  'policy_decision': ['/v1/world/graph**', '/v1/policy-decisions**'],

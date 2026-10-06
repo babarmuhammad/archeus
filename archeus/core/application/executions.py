@@ -92,10 +92,13 @@ def binding(conn, e):
 
 # ── process start and progress ──────────────────────────────────────────────
 
-def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, process_seq):
+def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, process_seq,
+                    inventory_sha256=None, inventory_size=None):
     """Before a process starts: the binding still holds (else the execution ends
     uncharged and the task is re-dispatched), and the new process's number,
-    workdir, branch and hook token hash are recorded."""
+    workdir, branch and hook token hash are recorded — and (P20, ADR-0049) the
+    inventory of what its settings sources load, an artifact the manager has
+    already stored, referenced from the execution."""
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
     if e.state not in ('INTENT', 'PAUSED', 'AWAITING_APPROVAL'):
         raise lifecycle.IllegalTrigger('execution', e.state, 'prepare_process',
@@ -107,12 +110,17 @@ def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, p
     if why is not None:
         return dict(refuse(tx, actor=actor, execution_id=e.id, reason=why,
                            stop_reason='binding'), refused=why)
+    if inventory_sha256 is not None and tx.get(entities.Artifact, inventory_sha256) is None:
+        tx.insert(entities.Artifact(id=inventory_sha256, media_type='application/json',
+                                    size=inventory_size), actor=actor)
     tx.update(entities.Execution, e.id, {'process_seq': process_seq, 'workdir': workdir,
                                          'branch': branch, 'hook_token_hash': token_digest,
-                                         'hook_seq': 0 if e.process_seq == 0 else e.hook_seq},
+                                         'hook_seq': 0 if e.process_seq == 0 else e.hook_seq,
+                                         'inventory_sha256': inventory_sha256},
               actor=actor)
     _event(tx, 'execution.prepared', e, actor, {'process_seq': process_seq, 'workdir': workdir,
-                                                'branch': branch})
+                                                'branch': branch,
+                                                'inventory': inventory_sha256})
     return {'execution_id': e.id, 'process_seq': process_seq, 'refused': None}
 
 
@@ -785,7 +793,23 @@ def view(conn, execution_id):
     from .live import explain, handoff_of
     out['handoff'] = handoff_of(conn, row.entity)
     out['why'] = explain(conn, row.entity)
+    out['inventory'] = inventory(row.entity.inventory_sha256)
     return out
+
+
+def inventory(sha):
+    """The recorded inventory of what an execution's settings sources load
+    (ADR-0049), read from its artifact; None when none was recorded, and an
+    `unavailable` note — never a guess — when the artifact cannot be read."""
+    if sha is None:
+        return None
+    import json
+    from ...infra.artifacts import store
+    try:
+        got = json.loads(store.get(sha).decode('utf-8'))
+    except (OSError, ValueError) as e:
+        return {'unavailable': 'the inventory %s cannot be read: %s' % (sha, type(e).__name__)}
+    return got if isinstance(got, dict) else {'unavailable': 'the inventory is not an object'}
 
 
 def entity(conn, execution_id):

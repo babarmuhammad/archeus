@@ -155,6 +155,8 @@ def _sample(cls):
         E.AutomationRun: dict(id=i('automation_run'), automation_id=i('automation'),
                               triggering_event_seq=7),
         E.PauseBatch: dict(id=i('pause_batch'), mission_ids=(i('mission'),)),
+        E.OptIn: dict(id=i('opt_in'), kind='plugin', name='caveman@caveman',
+                      account_id=i('account')),
     }
     return cls(**samples[cls])
 
@@ -179,7 +181,7 @@ def test_the_entity_list_covers_domain_model_md():
                  'Verification', 'Review', 'Feedback', 'Artifact', 'Harness', 'Account',
                  'Model', 'ModelOffer', 'ResourcePolicy', 'UsageSnapshot', 'UsageLedger',
                  'RouteDecision', 'ExecutionNode', 'PolicyRule', 'PolicyDecision', 'Approval',
-                 'Automation', 'AutomationRun', 'PauseBatch', 'Event'):
+                 'Automation', 'AutomationRun', 'PauseBatch', 'OptIn', 'Event'):
         assert noun in names, noun
 
 

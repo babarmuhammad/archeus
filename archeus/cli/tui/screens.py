@@ -877,6 +877,20 @@ def resources_section(app, doc):
                     ('Fallback to it', T(app, rp['fallback'])),
                     ('Latest usage', T(app, json.dumps(x['usage'])) if x.get('usage')
                      else app.st.paint('not observed'))], indent=4)
+    # P20 D6 (ADR-0049): read-only here; `archeus executions opt-in|opt-out` sets them
+    doc.h('What executions may load from their settings sources')
+    doc.hint('Every execution excludes its account\'s, project\'s and local settings '
+             '(hooks, plugins, skills, MCP servers) unless an opt-in below lets it back in. '
+             'Set with "archeus executions opt-in|opt-out"; read-only in this view.')
+    ol = doc.load(endpoints.list_opt_ins(), 'the opt-ins')
+    if ol is not None:
+        if not ol['opt_ins']:
+            doc.empty('Nothing is opted in: every settings source is excluded.')
+        for o in ol['opt_ins']:
+            doc.add('  ' + T(app, o['kind'], bold=True) + '  ' + T(app, o['name'])
+                    + app.st.paint(' · %s %s · %s · version %d' % (
+                        o['owner'], o['owner_id'], 'opted in' if o['opted_in'] else 'opted out',
+                        o['version']), 'text-2'))
     doc.h('Recent routing decisions')
     rl = doc.load(endpoints.list_route_decisions(), 'the route decisions')
     if rl is not None:
@@ -1375,6 +1389,8 @@ def execution_insp(app, doc, kind, eid, tab):
     doc.add('  ' + app.st.paint('mission', 'text'), target=open_('mission', x['mission_id'],
                                                                 'now'))
     doc.add('  ' + resources(app, x))
+    # P20 (ADR-0049): what its settings sources load, and what became of each
+    doc.kv([(label, T(app, text)) for label, text in P.inventory_lines(x.get('inventory'))])
     if x['state'] in ('STARTING', 'RUNNING', 'PAUSING', 'HANDING_OFF'):
         doc.act('S', 'Stop', 'control', lambda k, v: app.core.post(
             endpoints.stop_execution(eid), {'idempotency_key': k}), reread=[path], ident='stopx:' + eid,

@@ -2,13 +2,17 @@
 
     claude -p --output-format stream-json --verbose --session-id <uuid>
            [--model m] [--effort e] --max-turns N --settings <exec dir>/settings.json
+           --setting-sources <opted in> --strict-mcp-config [--mcp-config <exec dir>/mcp.json]
+           [--disable-slash-commands] [--plugin-dir <dir>]...
            [--resume <session uuid>]                    (prompt on stdin)
 
 The settings file installs the Archeus hook (harnesses/hook.py) for this
 execution only — as its PreToolUse command, and (P12) as its PreCompact command,
 the context-pressure backstop — and never touches the user's settings.json
-(ADR-0019). The account is its home: `CLAUDE_CONFIG_DIR` from the account's
-`home_ref`, with any API key popped so it cannot shadow the login (the current
+(ADR-0019). What the account's, the project's and the local settings sources
+would load besides is excluded unless opted in, and recorded (ADR-0049, P20 D6:
+harnesses/sources.py); the flags are read from the recorded inventory. The
+account is its home: `CLAUDE_CONFIG_DIR` from the account's `home_ref`, with any API key popped so it cannot shadow the login (the current
 product's `config.account_env` rule). The process I/O contract is the shared one
 (base.spawn): the stream is stream-json on stdout, tailed from a file.
 
@@ -24,12 +28,16 @@ from dataclasses import replace
 
 from claude_sessions import config, proc, quota
 
-from .. import base
+from .. import base, sources
 from ..calls import claude_models
 
 #: turns per task size (p11-design-gate §18): a bounded agent
 MAX_TURNS = {1: 20, 2: 40, 3: 60, 4: 80, 5: 100}
 _ERR = {'error_during_execution': 'resource', 'error_max_turns': 'task'}
+#: Claude Code's own limit on the hook (seconds). The hook answers `halt` at
+#: its own deadline (ARCHEUS_HOOK_WAIT, 60 s) well before this one, because a
+#: hook Claude Code times out is not documented to block the call
+HOOK_TIMEOUT_S = 120
 
 
 def normalise(raw):
@@ -107,7 +115,7 @@ class ClaudeCodeAdapter:
         if spec.hook_settings:
             cmd = ' '.join('"%s"' % a for a in spec.hook_settings)
             hooks = {'PreToolUse': [{'matcher': '*', 'hooks': [
-                {'type': 'command', 'command': cmd, 'timeout': 120}]}],
+                {'type': 'command', 'command': cmd, 'timeout': HOOK_TIMEOUT_S}]}],
                      'PreCompact': [{'hooks': [
                          {'type': 'command', 'command': cmd, 'timeout': 30}]}]}
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -118,12 +126,26 @@ class ClaudeCodeAdapter:
         a = [self._find(), '-p', '--output-format', 'stream-json', '--verbose',
              '--max-turns', str(MAX_TURNS.get(int(spec.task_contract.get('estimate', 3)), 60)),
              '--settings', self._settings(spec)]
+        a += sources.flag_argv((spec.inventory or {}).get('flags') or sources.DEFAULT_FLAGS,
+                               home=self._home(spec),
+                               workdir=spec.workdir,
+                               exec_dir=base.ExecPaths(spec.execution_id).dir)
         a += ['--resume', session] if spec.resume_ref else ['--session-id', session]
         if spec.model:
             a += ['--model', spec.model]
         if spec.effort:
             a += ['--effort', spec.effort]
         return a
+
+    def inventory(self, spec):
+        """What this execution's settings sources load and what becomes of it
+        (ADR-0049): taken before the spawn, recorded by Core, read by argv."""
+        return sources.take(self._home(spec), spec.workdir, spec.opt_ins)
+
+    @staticmethod
+    def _home(spec):
+        home = spec.account.home_ref if spec.account else None
+        return os.path.expanduser(home) if home else None
 
     def _env(self, spec):
         env = dict(spec.env)

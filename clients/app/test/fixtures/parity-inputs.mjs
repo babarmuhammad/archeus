@@ -77,6 +77,26 @@ export const INPUTS = [
   ['ago', '2026-09-29T09:00:00Z', NOW],
   ['ago', '2026-09-20T12:00:00Z', NOW],
   ['ago', '2026-09-29T12:30:00Z', NOW],
+  // inventoryLines (P20, ADR-0049): an execution's recorded inventory, in words
+  ['inventoryLines', null],
+  ['inventoryLines', { unavailable: 'the inventory abc cannot be read: OSError' }],
+  ['inventoryLines', { inventory_version: 1, observed: false, opt_ins: [], recorded_only: [],
+    flags: { setting_sources: [], strict_mcp_config: true, mcp_servers: [], disable_slash_commands: true, plugin_dirs: [] },
+    items: [
+      { source: 'user', type: 'hook', name: 'Stop: notify.sh', status: 'excluded' },
+      { source: 'project', type: 'mcp_server', name: 'github', status: 'excluded' },
+      { source: 'ancestor', type: 'claude_md', name: 'D:/CLAUDE.md', status: 'not_excludable', sha256: 'ab'.repeat(32) },
+    ], truncated: false }],
+  ['inventoryLines', { inventory_version: 1, observed: false,
+    opt_ins: [{ owner: 'project', kind: 'source', name: 'project' }],
+    flags: { setting_sources: ['project'], strict_mcp_config: true, mcp_servers: [{ owner: 'project', name: 'github' }],
+      disable_slash_commands: false, plugin_dirs: [{ name: 'a@m', path: 'C:/h/plugins/a' }, { name: 'b@m', path: null }] },
+    items: [
+      { source: 'plugin', type: 'plugin', name: 'b@m', status: 'not_found' },
+      { source: 'user', type: 'skill', name: 'x', status: 'not_excludable' },
+      { source: 'local', type: 'weird', name: 'y', status: 'recorded_only' },
+      { source: 'user', type: 'plugin', name: 'z', status: 'odd' },
+    ], truncated: true }],
   // stateSentence (rulebook §46.4 S-3): the TUI's Now header is this sentence, word for word
   ['stateSentence', 0, 0],
   ['stateSentence', 0, 1],

@@ -220,8 +220,11 @@ def test_the_breaker_and_the_uncharged_ends_are_the_gates():
 def test_the_hook_speaks_claude_codes_vocabulary():
     assert hook.decision('allow') == {'hookSpecificOutput': {
         'hookEventName': 'PreToolUse', 'permissionDecision': 'allow'}}
-    assert hook.decision('deny', 'no')['hookSpecificOutput']['permissionDecisionReason'] == 'no'
     assert hook.decision('halt', 'stop') == {'continue': False, 'stopReason': 'stop'}
+    # P20 (ADR-0049 §3): a deny is exit code 2 with the reason on stderr, never JSON
+    assert hook.answer('deny', 'no') == ('', 'no', 2)
+    with pytest.raises(ValueError):
+        hook.decision('deny', 'no')
 
 
 def test_the_hook_asks_through_the_mailbox_and_honours_the_answer(tmp_path):

@@ -22,7 +22,7 @@ from dataclasses import replace
 
 from claude_sessions import llmcall, proc
 
-from . import base
+from . import base, sources
 
 AGENT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fake_agent.py')
 
@@ -43,12 +43,16 @@ class FakeHarness:
     def __init__(self, id=None, *, capabilities=('code_edit', 'shell', 'structured_output',
                                                   'headless', 'resume'),
                  models=(FAKE_MODEL,), enforcement='hook', efforts=(),
-                 usage_measures=('tokens',)):
+                 usage_measures=('tokens',), sources=False):
         if id is not None:
             self.id = id
         self._caps, self._models = frozenset(capabilities), tuple(models)
         self._enforcement, self._efforts = enforcement, tuple(efforts)
         self._measures = frozenset(usage_measures)
+        # P20 (ADR-0049): stand in for Claude Code's settings sources too — the
+        # same inventory and flags, the flags passed to the agent, which echoes
+        # them in its `started` event
+        self._sources = sources
         self._children = {}     # execution_id -> Popen, for exit codes of what we started
         self._stopped = set()
 
@@ -65,6 +69,12 @@ class FakeHarness:
     def authenticate(self, account):
         return base.AuthStatus(True, 'fake accounts need no login')
 
+    def inventory(self, spec):
+        if not self._sources:
+            return None
+        home = spec.account.home_ref if spec.account else None
+        return sources.take(home, spec.workdir, spec.opt_ins)
+
     def start(self, spec):
         steps = list(spec.task_contract.get('fake_scenario', ()))
         if spec.task_contract.get('continuation'):
@@ -75,6 +85,12 @@ class FakeHarness:
         # a first attempt that fails and a second that is right)
         steps = [x for x in steps if x.get('attempt') in (None, spec.attempt)]
         argv = [sys.executable, AGENT, json.dumps(steps), str(int(spec.resume_ref or 0))]
+        if self._sources:
+            argv += sources.flag_argv((spec.inventory or {}).get('flags') or
+                                      sources.DEFAULT_FLAGS,
+                                      home=spec.account.home_ref if spec.account else None,
+                                      workdir=spec.workdir,
+                                      exec_dir=base.ExecPaths(spec.execution_id).dir)
         if spec.hook_settings:
             spec = replace(spec, env=dict(spec.env, ARCHEUS_HOOK_CMD=json.dumps(
                 list(spec.hook_settings))))

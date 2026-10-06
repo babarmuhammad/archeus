@@ -1006,7 +1006,13 @@ class Execution(Entity):
     # the workdir at the end (None: not measurable — the guard's no progress)
     context: dict = None
     end_state_digest: str = None
+    # P20 (ADR-0049, D6): the artifact recording what its settings sources load
+    inventory_sha256: str = None
     state: str = None
+
+    def _check(self):
+        if self.inventory_sha256 is not None and not _HEX64.fullmatch(self.inventory_sha256):
+            raise ValueError('Execution.inventory_sha256 names an artifact (a sha256)')
 
 
 #: How a Session came to exist (p12-design-gate D1): the one an execution ran in,
@@ -1421,6 +1427,51 @@ class ResourcePolicy(Entity):
         for p in self.project_allow + self.project_deny:
             if not ids.is_id(p, 'project'):
                 raise ValueError('a project restriction names a project id: %r' % (p,))
+
+
+#: What an execution may be let load from its settings sources (ADR-0049; P20 D6).
+OPT_IN_KINDS = ('source', 'plugin', 'mcp')
+#: The settings source each owner holds (D6): the account home is the account's;
+#: a project's committed `.claude/` and its local settings are the project's
+SOURCE_OWNERS = {'account': ('user',), 'project': ('project', 'local')}
+#: a plugin (`name@marketplace`) or MCP server name: never a path
+_OPT_IN_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.@-]{0,127}')
+
+
+@entity
+class OptIn(Entity):
+    """One thing an account's or a project's executions are let load again
+    (ADR-0049 §2, P20 D6): a settings source, a plugin or an MCP server.
+    Exactly one owner. Set only by a user device through a command; a change is
+    the same row's next version (`opted_in` False is an opt-out), never a new
+    row, so the history is the row's events."""
+    _ID = 'opt_in'
+    _TEXT = ('name',)
+    _CHOICES = {'kind': OPT_IN_KINDS}
+    _REFS = {'account_id': 'account'}
+    _FROZEN = ('account_id', 'project_id', 'kind', 'name')
+    id: str
+    kind: str
+    name: str
+    account_id: str = None
+    project_id: str = None
+    opted_in: bool = True
+
+    @property
+    def owner(self):
+        return 'account' if self.account_id is not None else 'project'
+
+    def _check(self):
+        if (self.account_id is None) == (self.project_id is None):
+            raise ValueError('an opt-in has exactly one owner: an account or a project')
+        if not isinstance(self.opted_in, bool):
+            raise ValueError('OptIn.opted_in is a boolean')
+        if not _OPT_IN_NAME.fullmatch(self.name) or '..' in self.name:
+            raise ValueError('an opt-in names a source, plugin or MCP server, never a path: %r'
+                             % self.name)
+        if self.kind == 'source' and self.name not in SOURCE_OWNERS[self.owner]:
+            raise ValueError('a %s holds the %s settings source(s), not %r' % (
+                self.owner, ' and '.join(SOURCE_OWNERS[self.owner]), self.name))
 
 
 @entity

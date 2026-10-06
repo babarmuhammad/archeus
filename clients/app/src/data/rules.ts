@@ -114,6 +114,9 @@ export const RULES: Record<string, string[]> = {
   "resource_policy": [
     "/v1/accounts"
   ],
+  "opt_in": [
+    "/v1/opt-ins"
+  ],
   "harness": [
     "/v1/harnesses"
   ],

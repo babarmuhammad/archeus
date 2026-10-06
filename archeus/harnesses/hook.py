@@ -15,11 +15,14 @@ unreadable answer, a missing identity, a crash: deny and halt (fail closed, D13)
 A halt leaves `halted.json` in the execution's directory, which is how Core tells
 a halted process from one that finished (§9.1).
 
-Printed on stdout, in Claude Code's hook vocabulary:
-    allow  {"hookSpecificOutput": {..., "permissionDecision": "allow"}}
-    deny   {"hookSpecificOutput": {..., "permissionDecision": "deny",
-                                   "permissionDecisionReason": reason}}
-    halt   {"continue": false, "stopReason": reason}
+Answered in Claude Code's hook protocol (P20, ADR-0049 §3):
+    allow  exit 0, on stdout {"hookSpecificOutput": {..., "permissionDecision": "allow"}}
+    deny   exit 2, the reason on stderr, nothing on stdout: exit code 2 is the
+           documented unconditional block, whatever another source's hook says
+    halt   exit 0, on stdout {"continue": false, "stopReason": reason}
+Never any other exit code: Claude Code treats one as a non-blocking error and
+lets the call through, so a crash anywhere is a halt, or a deny when even the
+halt cannot be written.
 """
 
 import json
@@ -33,15 +36,27 @@ POLL_S = 0.05
 _ID = re.compile(r'exe_[0-9A-HJKMNP-TV-Z]{26}\Z')
 
 
+#: Claude Code's documented blocking exit code (a deny)
+DENY_EXIT = 2
+
+
 def decision(kind, reason=''):
+    """The stdout JSON of an exit-0 answer: allow, halt or a PreCompact's continue."""
     if kind == 'continue':
         return {}                   # a PreCompact answer: nothing to decide
     if kind == 'halt':
         return {'continue': False, 'stopReason': reason or 'halted by Archeus'}
-    out = {'hookEventName': 'PreToolUse', 'permissionDecision': kind}
+    if kind != 'allow':
+        raise ValueError('only allow, halt and continue answer on stdout: %r' % (kind,))
+    return {'hookSpecificOutput': {'hookEventName': 'PreToolUse',
+                                   'permissionDecision': 'allow'}}
+
+
+def answer(kind, reason=''):
+    """(stdout, stderr, exit code) for one decision."""
     if kind == 'deny':
-        out['permissionDecisionReason'] = reason or 'denied by Archeus'
-    return {'hookSpecificOutput': out}
+        return '', reason or 'denied by Archeus', DENY_EXIT
+    return json.dumps(decision(kind, reason)), '', 0
 
 
 def _halted(exec_dir, seq, reason):
@@ -127,10 +142,11 @@ def run(payload, environ):
 
 
 def main():
-    try:
-        sys.stdout.reconfigure(encoding='utf-8')
-    except (AttributeError, ValueError, OSError):
-        pass
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding='utf-8')
+        except (AttributeError, ValueError, OSError):
+            pass
     env = dict(os.environ)
     os.environ['ARCHEUS_HOOK_ACTIVE'] = '1'
     try:
@@ -140,10 +156,38 @@ def main():
         kind, reason = run(payload, env)
     except Exception as e:              # a broken hook never allows
         kind, reason = 'halt', 'the Archeus hook failed: %s' % type(e).__name__
-    sys.stdout.write(json.dumps(decision(kind, reason)))
-    sys.stdout.flush()
-    return 0
+    out, err, code = answer(kind, reason)
+    if out:
+        sys.stdout.write(out)
+        sys.stdout.flush()
+    if err:
+        sys.stderr.write(err)
+        sys.stderr.flush()
+    return code
+
+
+def guarded(fn=main):
+    """*fn*'s exit code, or the deny's when anything at all escapes it (even the
+    write of a halt): never a code Claude Code would let the call through on."""
+    try:
+        code = fn()
+    except BaseException:               # noqa: B036 — nothing may leave but an answer
+        code = None
+    if code in (0, DENY_EXIT):
+        return code
+    try:
+        sys.stderr.write('the Archeus hook failed; denied (fail closed)')
+        sys.stderr.flush()
+    except Exception:
+        pass
+    return DENY_EXIT
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    code = guarded()
+    try:            # a flush the interpreter would do at exit can fail too, and
+        sys.stdout.flush()      # then it exits 120 whatever was returned: flush
+        sys.stderr.flush()      # here, and leave without the interpreter's
+    except Exception:           # own finalisation
+        code = DENY_EXIT
+    os._exit(code)

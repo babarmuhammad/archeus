@@ -129,6 +129,9 @@ TYPES = (
      'an account moved along its health machine (payload: from, to, trigger, reason)'),
     ('resource_policy.updated', 'resource_policy', 'user', False,
      "an account's priority, allocation, budgets or restrictions changed (payload: fields)"),
+    ('opt_in.changed', 'opt_in', 'user', False,
+     'an account or project opted a settings source, plugin or MCP server in or out of its '
+     'executions (P20 D6; payload: owner, owner_id, kind, name, opted_in, version)'),
     ('usage.observed', 'account', 'system', False,
      'a provider usage window was observed for an account (payload: window, pct, source)'),
     ('harness.state_changed', 'harness', 'user', False, 'a harness appeared, vanished or broke'),

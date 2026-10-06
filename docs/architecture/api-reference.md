@@ -75,6 +75,8 @@ given trigger on a given subject is decided in the application layer (P9), never
 | POST | `/v1/accounts/{id}/state` | admin | required | — | `SetAccountStateRequest` | `Account` |
 | POST | `/v1/resource-policies/{id}` | admin | required | — | `SetResourcePolicyRequest` | `ResourcePolicy` |
 | POST | `/v1/missions/{id}/resources` | admin | required | — | `SetMissionResourcesRequest` | `Mission` |
+| GET | `/v1/opt-ins` | observe | — | — | — | `OptInList` |
+| POST | `/v1/opt-ins` | admin | required | — | `SetOptInRequest` | `OptInChanged` |
 | GET | `/v1/executions/{id}` | observe | — | — | — | `Execution` |
 | GET | `/v1/tasks/{id}/executions` | observe | — | — | — | `ExecutionList` |
 | GET | `/v1/executions/{id}/stream` | observe | — | `from` | — | `ExecutionOutput` |
@@ -642,6 +644,7 @@ interface Execution {
   context: ContextState;
   handoff?: Handoff;
   why?: string;
+  inventory?: Inventory | null;
   [field: string]: unknown;
 }
 ```
@@ -876,6 +879,33 @@ interface Intent {
 }
 ```
 
+### `Inventory`
+
+```ts
+interface Inventory {
+  inventory_version?: number;
+  observed?: boolean;
+  flags?: Record<string, unknown>;
+  opt_ins?: Record<string, unknown>[];
+  items?: InventoryItem[];
+  truncated?: boolean;
+  unavailable?: string;
+  [field: string]: unknown;
+}
+```
+
+### `InventoryItem`
+
+```ts
+interface InventoryItem {
+  source: string;
+  type: string;
+  name: string;
+  status: string;
+  [field: string]: unknown;
+}
+```
+
 ### `KnowledgeChanged`
 
 ```ts
@@ -1056,6 +1086,41 @@ interface MissionPlan {
 interface MissionStopped {
   mission_id: string;
   stopped: string[];
+}
+```
+
+### `OptIn`
+
+```ts
+interface OptIn {
+  id: string;
+  kind: 'source' | 'plugin' | 'mcp';
+  name: string;
+  opted_in: boolean;
+  owner?: 'account' | 'project';
+  owner_id?: string;
+  account_id?: string | null;
+  project_id?: string | null;
+  version: number;
+  updated_at?: string;
+  [field: string]: unknown;
+}
+```
+
+### `OptInChanged`
+
+```ts
+interface OptInChanged {
+  opt_in: OptIn | null;
+  changed: boolean;
+}
+```
+
+### `OptInList`
+
+```ts
+interface OptInList {
+  opt_ins: OptIn[];
 }
 ```
 
@@ -1984,6 +2049,19 @@ interface SetMissionResourcesRequest {
   forbidden_accounts?: string[] | null;
   forbidden_harnesses?: string[] | null;
   max_cost_band?: 'low' | 'medium' | 'high' | null;
+  idempotency_key: string;
+}
+```
+
+### `SetOptInRequest`
+
+```ts
+interface SetOptInRequest {
+  owner_id: string;
+  kind: 'source' | 'plugin' | 'mcp';
+  name: string;
+  opted_in: boolean;
+  expected_version?: number | null;
   idempotency_key: string;
 }
 ```

@@ -3,7 +3,9 @@ the user decides it). Slice A, item 83: the e-stop with Core down or not
 answering (Q01-Q08); slice B, F7 and F8, Control → About's emergency stop
 (Q09-Q17; an e2e-guarded mutant rebuilds the SPA); slice C, F4's stream
 takeover (Q18-Q25, Q33) and item 86's one shell credential at a time (Q26-Q32);
-slice D, F6's touch exit from the command bar (Q34-Q37).
+slice D, F6's touch exit from the command bar (Q34-Q37); slice E, PV-10
+(ADR-0049, D6): settings-source opt-ins, the inventory and the exit-code-2
+deny (Q38-Q67; two e2e-guarded mutants rebuild the SPA).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -41,6 +43,22 @@ CMDBAR = 'clients/app/src/surfaces/CommandBar.tsx'
 PAL = 'clients/app/src/state/palette.ts'
 CC = 'tests/v1/e2e/test_spa_command_close.py::'
 PAL_TS = 'node:test/palette.test.ts'
+OPT = 'archeus/core/application/optins.py'
+ENT = 'archeus/core/domain/entities.py'
+SRC = 'archeus/harnesses/sources.py'
+HOOK = 'archeus/harnesses/hook.py'
+AGENT = 'archeus/harnesses/fake_agent.py'
+CCA = 'archeus/harnesses/claude_code/adapter.py'
+MGR = 'archeus/core/execution/manager.py'
+EXE = 'archeus/core/application/executions.py'
+MISSION = 'clients/app/src/surfaces/Mission.tsx'
+SU = 'tests/v1/unit/test_settings_sources_units.py::'
+SI = 'tests/v1/integration/test_settings_sources.py::'
+G6 = 'tests/v1/judge/test_g06_security.py::'
+API = 'tests/v1/unit/test_api_structure.py::test_the_route_table_is_exactly_the_p35b_to_p18_tables'
+OPT_E2E = 'tests/v1/e2e/test_spa_opt_ins.py::'
+PARITY_TS = 'node:test/parity.test.ts'
+PARITY_PY = 'tests/v1/tui/test_parity.py'
 
 MUTATIONS = [
     # Slice A, item 83: execution-architecture §10 path 2
@@ -194,6 +212,142 @@ MUTATIONS = [
     ('Q37', "a tap on the bar's own padding closes it", [(PAL,
      '  return x < box.left ||', '  return true || x < box.left ||')],
      [PAL_TS, CC + 'test_on_a_phone_close_and_a_backdrop_tap_each_close_the_bar_and_restore_focus']),
+
+    # Slice E, PV-10 (ADR-0049, D6): the opt-in command and what applies
+    ('Q38', 'a non-user principal opts a source in', [(OPT,
+     "    if actor.kind != 'user_device':\n", "    if False:\n")],
+     [SI + 'test_I04_only_a_user_device_may_and_only_for_a_real_owner_within_its_sources',
+      G6 + 'test_only_a_user_device_opts_a_settings_source_in']),
+    ('Q39', "another owner's opt-in applies", [(OPT,
+     "for r in rows.where(conn, entities.OptIn, **{owner + '_id': oid})",
+     "for r in rows.where(conn, entities.OptIn)")],
+     [SI + 'test_I05_an_opt_in_applies_to_exactly_its_own_account_and_project']),
+    ('Q40', 'an opted-out row still applies', [(OPT,
+     "                if r.entity.opted_in]", "                if True]")],
+     [SI + 'test_I05_an_opt_in_applies_to_exactly_its_own_account_and_project']),
+    ('Q41', 'a change is not recorded as an event', [(OPT,
+     "    tx.append(new_event('opt_in.changed',", "    (lambda e: e)(new_event('opt_in.changed',")],
+     [SI + 'test_I01_an_account_opt_in_is_one_row_whose_version_counts_every_change']),
+    ('Q42', 'an owner opts in a source it does not hold', [(ENT,
+     "        if self.kind == 'source' and self.name not in SOURCE_OWNERS[self.owner]:",
+     "        if self.kind == 'source' and self.name not in SOURCE_OWNERS['account'] + SOURCE_OWNERS['project']:")],
+     [SU + 'test_E14_an_opt_in_has_one_owner_its_own_sources_and_never_a_path',
+      SI + 'test_I04_only_a_user_device_may_and_only_for_a_real_owner_within_its_sources']),
+    ('Q43', 'an opt-in name may be a path', [(ENT,
+     "        if not _OPT_IN_NAME.fullmatch(self.name) or '..' in self.name:",
+     "        if not self.name:")],
+     [SU + 'test_E14_an_opt_in_has_one_owner_its_own_sources_and_never_a_path']),
+    ('Q44', 'a control-scope client writes an opt-in', [(ROUTES,
+     "    Route('POST', '/v1/opt-ins', set_opt_in, 'admin',",
+     "    Route('POST', '/v1/opt-ins', set_opt_in, 'control',")],
+     [SI + 'test_H01_opt_ins_are_admin_written_and_observe_read', API]),
+    # the flags
+    ('Q45', 'no --setting-sources when nothing is opted in (the CLI loads every source)', [(SRC,
+     "    a = ['--setting-sources', ','.join(flags['setting_sources']), '--strict-mcp-config']",
+     "    a = (['--setting-sources', ','.join(flags['setting_sources'])] if flags['setting_sources'] else []) + ['--strict-mcp-config']")],
+     [SU + 'test_E02_the_argv_always_names_the_sources_even_when_none',
+      SI + 'test_I06_an_execution_records_its_inventory_and_is_given_exactly_its_flags']),
+    ('Q46', 'no --strict-mcp-config', [(SRC,
+     "    a = ['--setting-sources', ','.join(flags['setting_sources']), '--strict-mcp-config']",
+     "    a = ['--setting-sources', ','.join(flags['setting_sources'])]")],
+     [SU + 'test_E02_the_argv_always_names_the_sources_even_when_none']),
+    ('Q47', 'every source is loaded', [(SRC,
+     "    flags = {'setting_sources': [s for s in SOURCES if s in opted_sources or s in recorded_only],",
+     "    flags = {'setting_sources': list(SOURCES),")],
+     [SU + 'test_E01_with_nothing_opted_in_every_source_is_excluded',
+      G6 + 'test_an_execution_records_its_settings_sources_and_excludes_them_by_default']),
+    ('Q48', 'skills are never disabled', [(SRC,
+     "    if flags['disable_slash_commands']:\n", "    if False:\n")],
+     [SU + 'test_E02_the_argv_always_names_the_sources_even_when_none']),
+    ('Q49', 'any opt-in enables every skill', [(SRC,
+     "    skill_in = any(status(src) != 'excluded' for src, _s in found) or any(",
+     "    skill_in = bool(opt_ins) or any(")],
+     [SU + 'test_E09_skills_stay_disabled_unless_a_skill_is_opted_in']),
+    ('Q50', "a project's opt-in passes the account's server of that name", [(SRC,
+     "            on = (owner, n) in opted_mcp\n",
+     "            on = n in {m for _o, m in opted_mcp}\n")],
+     [SU + 'test_E06_strict_mcp_passes_only_the_opted_in_server_of_its_own_owner']),
+    ('Q51', 'every MCP server definition reaches --mcp-config', [(SRC,
+     "        got = ((d or {}).get('mcpServers') or {}).get(s['name'])\n"
+     "        if isinstance(got, dict) and s['name'] not in out:\n"
+     "            out[s['name']] = got\n",
+     "        for k, got in ((d or {}).get('mcpServers') or {}).items():\n"
+     "            out.setdefault(k, got)\n")],
+     [SU + 'test_E06_strict_mcp_passes_only_the_opted_in_server_of_its_own_owner',
+      SI + 'test_I07_the_owners_opt_ins_reach_the_spawn_and_no_one_elses']),
+    ('Q52', "a plugin directory outside the home's plugins is loaded", [(SRC,
+     "        if isinstance(p, str) and os.path.isdir(p) and _inside(p, root):",
+     "        if isinstance(p, str) and os.path.isdir(p):")],
+     [SU + 'test_E08_a_plugin_that_resolves_outside_the_homes_plugins_is_not_loaded']),
+    ('Q53', "a settings file's env reaches the inventory", [(SRC,
+     "    plugins = d.get('enabledPlugins')\n",
+     "    out += [('env', '%s=%s' % kv) for kv in sorted((d.get('env') or {}).items())]\n"
+     "    plugins = d.get('enabledPlugins')\n")],
+     [SU + 'test_E11_no_secret_reaches_the_record',
+      SI + 'test_I08_the_stored_inventory_carries_no_secret']),
+    # the record
+    ('Q54', 'the inventory is stored unredacted', [(MGR,
+     "                data = redact(json.dumps(got, sort_keys=True)).encode('utf-8')",
+     "                data = json.dumps(got, sort_keys=True).encode('utf-8')")],
+     [SI + 'test_I08_the_stored_inventory_carries_no_secret']),
+    ('Q55', 'the spawn is not given the recorded flags', [(MGR,
+     "                spec = replace(spec, inventory=json.loads(data))\n", "")],
+     [SI + 'test_I07_the_owners_opt_ins_reach_the_spawn_and_no_one_elses']),
+    ('Q56', 'an inventory that cannot be taken still spawns', [(MGR,
+     "        except Exception as err:\n"
+     "            self._do(X.refuse, execution_id=e.id, stop_reason='workspace',\n"
+     "                     reason='the settings sources could not be inventoried: %s'\n"
+     "                     % type(err).__name__)\n"
+     "            return True\n",
+     "        except Exception as err:\n"
+     "            pass\n")],
+     [SI + 'test_I09_an_inventory_that_cannot_be_taken_starts_nothing']),
+    ('Q67', 'an inventory failure is uncharged (the task is re-dispatched every tick)', [(MGR,
+     "            self._do(X.refuse, execution_id=e.id, stop_reason='workspace',\n"
+     "                     reason='the settings sources could not be inventoried",
+     "            self._do(X.refuse, execution_id=e.id, stop_reason='binding',\n"
+     "                     reason='the settings sources could not be inventoried")],
+     [SI + 'test_I09_an_inventory_that_cannot_be_taken_starts_nothing']),
+    ('Q57', 'the execution does not reference its inventory', [(EXE,
+     "                                         'inventory_sha256': inventory_sha256},",
+     "                                         'inventory_sha256': None},")],
+     [SI + 'test_I06_an_execution_records_its_inventory_and_is_given_exactly_its_flags',
+      G6 + 'test_an_execution_records_its_settings_sources_and_excludes_them_by_default']),
+    ('Q58', 'the execution read leaves the inventory out', [(EXE,
+     "    out['inventory'] = inventory(row.entity.inventory_sha256)\n",
+     "    out['inventory'] = None\n")],
+     [SI + 'test_I06_an_execution_records_its_inventory_and_is_given_exactly_its_flags']),
+    # the deny form, and every way the hook could let a call through
+    ('Q59', 'a deny is JSON at exit 0 again', [(HOOK,
+     "        return '', reason or 'denied by Archeus', DENY_EXIT",
+     "        return json.dumps({'hookSpecificOutput': {'hookEventName': 'PreToolUse', "
+     "'permissionDecision': 'deny', 'permissionDecisionReason': reason}}), '', 0")],
+     [SU + 'test_E16_a_deny_is_exit_code_2_with_the_reason_on_stderr',
+      SI + 'test_I10_a_deny_reaches_the_agent_as_the_exit_code_2_block']),
+    ('Q60', 'a failing hook exits with another code', [(HOOK,
+     "    if code in (0, DENY_EXIT):", "    if code is not None:")],
+     [SU + 'test_E18_a_hook_crash_halts_and_never_exits_with_another_code']),
+    ('Q61', "the interpreter's own exit flush decides the code", [(HOOK,
+     "    os._exit(code)", "    sys.exit(code)")],
+     [SU + 'test_E22_a_hook_that_cannot_write_its_answer_still_exits_with_the_deny']),
+    ('Q62', "Claude Code's timeout is shorter than the hook's own deadline", [(CCA,
+     "HOOK_TIMEOUT_S = 120", "HOOK_TIMEOUT_S = 30")],
+     [SU + 'test_E19_a_core_that_never_answers_is_a_halt_before_claude_codes_own_timeout']),
+    ('Q63', 'the fake agent halts on a failing hook (a fail-open hook goes unseen)', [(AGENT,
+     "    if r.returncode != 0:\n        return 'proceed',",
+     "    if r.returncode != 0:\n        return 'halt',")],
+     [SU + 'test_E20_the_fake_agent_lets_a_failing_hook_through_as_claude_code_would']),
+    # the read-only surfaces
+    ('Q64', 'the inventory says skills are disabled when they are not', [(PRES,
+     "    ['Skills', f.disable_slash_commands ? 'disabled' : 'enabled: a skill is opted in'],",
+     "    ['Skills', 'disabled'],")],
+     [PARITY_TS]),
+    ('Q65', "an execution's inspector does not show what it inherited", [(MISSION,
+     "            <InventoryBlock x={x} />\n", "            {false && <InventoryBlock x={x} />}\n")],
+     [OPT_E2E + 'test_an_execution_shows_what_it_inherited_beside_its_why']),
+    ('Q66', 'an opt-out is listed as opted in', [(CTRL,
+     "<td>{x.opted_in ? 'opted in' : 'opted out'}</td>", "<td>{'opted in'}</td>")],
+     [OPT_E2E + 'test_the_opt_ins_are_listed_read_only_and_follow_core']),
 ]
 
 if __name__ == '__main__':

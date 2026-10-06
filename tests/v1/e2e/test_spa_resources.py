@@ -84,7 +84,11 @@ def test_an_accounts_policy_is_a_form_over_cores_route(browser, core, archeus_ho
           'one save, against the version on screen, keyed')
     check(isinstance(sent[0]['priority'], int) and sent[0]['budgets'] == {'concurrency': 2}, 'numbers, not text: %s' % sent[0])
 
-    # a blank budget removes it; untick a project
+    # a blank budget removes it; untick a project. The save's new version resets
+    # the draft when it arrives, and the field already reads '2' before then, so
+    # an edit made in between would be wiped: wait for the version itself.
+    wait(page, lambda: form.get_attribute('data-version') == str(_policy(core, acc)['version']),
+         what='the form holds the version the save made')
     wait(page, lambda: field('Attempts at once').input_value() == '2', what='the form shows what Core holds')
     field('Attempts at once').fill('')
     form.get_by_label('Atlas').first.uncheck()

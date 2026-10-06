@@ -47,7 +47,10 @@ contract; nothing in it writes evidence. P14 added `create_automation`,
 judge automation through the contract; nothing in it appends an event. P15 added no contract
 operation: it made the rig's `device(name, scopes)` and `revoke(device)` real — a client paired
 through the real routes, returned as an `HttpClient` holding its own token, with `open_stream()`
-(p15-design-gate §19); credentials exist only over HTTP, so the in-process binding skips them.)
+(p15-design-gate §19); credentials exist only over HTTP, so the in-process binding skips them.
+P20 added `set_opt_in`, `opt_ins` and `execution` (p20-design-gate D6, slice E): G6 judges
+ADR-0049's default exclusion, the recorded inventory and the opt-in's authority through the
+contract; the judge's fake harness stands in for Claude Code's settings sources.)
 Two bindings: `InProcessClient` (P1–P3, calls the
 application layer directly) and `HttpClient` (P3.5 onward, HTTP + SSE). Every scenario runs
 against both once HTTP exists.

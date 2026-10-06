@@ -859,6 +859,7 @@ export const ID_KINDS: Record<string, string> = {
   "msn": "mission",
   "mtg": "meeting",
   "nod": "execution_node",
+  "opi": "opt_in",
   "org": "organization",
   "pab": "pause_batch",
   "pdc": "policy_decision",
