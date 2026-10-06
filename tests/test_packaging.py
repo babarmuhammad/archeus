@@ -34,12 +34,105 @@ def _package_data_globs():
     return re.findall(r'"([^"]+)"', body)
 
 
+def _declared_packages():
+    import re
+    text = open(os.path.join(ROOT, 'pyproject.toml'), encoding='utf-8').read()
+    body = text[text.index('[tool.setuptools]'):]
+    body = body[body.index('packages = ['):]
+    return re.findall(r'"([^"]+)"', body[:body.index(']') + 1])
+
+
+def test_the_declared_packages_are_exactly_the_packages_on_disk():
+    """`packages` does not recurse, so an `archeus` subpackage missing from the
+    list imports fine from the source tree and is simply absent from the wheel
+    — the skills_templates failure again, one level up. The other direction
+    catches a listed package that was renamed or deleted."""
+    on_disk = set()
+    for top in ('claude_sessions', 'archeus'):
+        for d, subdirs, files in os.walk(os.path.join(ROOT, top)):
+            subdirs[:] = [s for s in subdirs if s != '__pycache__']
+            if '__init__.py' in files:
+                on_disk.add(os.path.relpath(d, ROOT).replace(os.sep, '.'))
+    assert set(_declared_packages()) == on_disk
+
+
+def test_the_v1_package_imports_in_a_clean_interpreter():
+    """Nothing about `archeus` may depend on having been imported after the
+    legacy UI, or on the cwd: a fresh interpreter run from elsewhere imports
+    every declared V1 module, and none of them loads the legacy UI stack."""
+    mods = ['archeus.core.domain.' + m for m in
+            ('ids', 'states', 'values', 'actions', 'entities', 'events', 'guards')]
+    mods += ['archeus.core.application.lifecycle']
+    mods += ['archeus.core.ports', 'archeus.infra.paths', 'archeus.harnesses.base',
+             'archeus.harnesses.fake', 'archeus.harnesses.registry',
+             'archeus.infra.db', 'archeus.infra.db.backup', 'archeus.infra.eventlog.outbox',
+             'archeus.infra.eventlog.consumers', 'archeus.infra.eventlog.retention',
+             'archeus.infra.artifacts.store', 'archeus.core.application.commands',
+             'archeus.core.application.queries', 'archeus.core.application.work',
+             'archeus.core.engine']
+    probe = ('import sys; sys.path.insert(0, %r)\n' % ROOT
+             + ''.join('import %s\n' % m for m in mods)
+             + "bad = [m for m in ('claude_sessions.ui', 'claude_sessions.gui_api', "
+               "'claude_sessions.main', 'claude_sessions.gui') if m in sys.modules]\n"
+               "print(bad)")
+    r = subprocess.run([sys.executable, '-c', probe], capture_output=True, text=True,
+                       encoding='utf-8', errors='ignore', timeout=60,
+                       cwd=os.path.dirname(ROOT))
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == '[]', r.stdout
+
+
+def _every_package_data():
+    """{package: [globs]} for every `[tool.setuptools.package-data]` entry."""
+    import re
+    text = open(os.path.join(ROOT, 'pyproject.toml'), encoding='utf-8').read()
+    body = text[text.index('[tool.setuptools.package-data]'):]
+    body = body[body.index('\n') + 1:]
+    body = body[:body.index('\n[')] if '\n[' in body else body
+    out = {}
+    for m in re.finditer(r'(?ms)^"?([\w.]+)"? = \[(.*?)\]', body):
+        out[m.group(1)] = re.findall(r'"([^"]+)"', m.group(2))
+    return out
+
+
+#: Globs whose files are BUILT, not tracked: the V1 SPA (p3.5b design gate
+#: §18.2), which Vite writes into archeus/api/static before `python -m build`.
+#: The Node-free test job cannot build it, so these may match nothing here —
+#: and only these: every one must be git-ignored (so it can never be hiding a
+#: hand-written file that failed to match), and the package job then requires
+#: them to match in the INSTALLED wheel (tools/check_wheel.py).
+GENERATED_GLOBS = {'archeus.api': ('static/*', 'static/assets/*')}
+
+
 def test_every_declared_glob_matches_at_least_one_file():
     """A glob that matches nothing is invisible: the build succeeds, the wheel is
     just missing the data."""
-    empty = [pat for pat in _package_data_globs()
-             if not glob(os.path.join(PKG, pat.replace('/', os.sep)))]
+    empty = []
+    for pkg, pats in _every_package_data().items():
+        base = os.path.join(ROOT, *pkg.split('.'))
+        for pat in pats:
+            if pat in GENERATED_GLOBS.get(pkg, ()):
+                continue
+            if not glob(os.path.join(base, pat.replace('/', os.sep))):
+                empty.append('%s: %s' % (pkg, pat))
     assert not empty, 'package-data patterns matching no files: %s' % empty
+
+
+def test_the_generated_glob_exemption_is_exactly_the_ignored_spa_output():
+    declared = _every_package_data()
+    assert set(GENERATED_GLOBS) == {'archeus.api'}
+    for pkg, pats in GENERATED_GLOBS.items():
+        assert tuple(declared[pkg]) == pats, 'the exemption and pyproject disagree'
+        probes = ['/'.join(pkg.split('.') + [p.replace('*', 'probe.js')]) for p in pats]
+        r = subprocess.run(['git', 'check-ignore', '--no-index'] + probes, cwd=ROOT,
+                           capture_output=True, text=True, encoding='utf-8',
+                           errors='ignore', timeout=60)
+        assert set(r.stdout.split()) == set(probes), 'a generated glob is not git-ignored'
+    # the ignore is scoped to its own directory, never a root rule
+    assert open(os.path.join(ROOT, 'archeus', 'api', '.gitignore')).read().split() == [
+        '/static/']
+    assert open(os.path.join(ROOT, 'clients', 'app', '.gitignore')).read().split() == [
+        '/node_modules/']
 
 
 def test_the_bundled_skill_templates_are_covered_by_a_glob():
@@ -51,6 +144,24 @@ def test_the_bundled_skill_templates_are_covered_by_a_glob():
         covered.update(glob(os.path.join(PKG, pat.replace('/', os.sep))))
     missing = [p for p in on_disk if p not in covered]
     assert not missing, 'templates that would not ship: %s' % missing
+
+
+def test_every_v1_migration_is_covered_by_package_data():
+    """The schema is .sql files in a directory that is not a package, so they
+    ship only if package-data names them — and a wheel without them opens a
+    database with no tables. Every migration on disk must match the glob."""
+    import re
+    text = open(os.path.join(ROOT, 'pyproject.toml'), encoding='utf-8').read()
+    body = text[text.index('[tool.setuptools.package-data]'):]
+    line = re.search(r'^"archeus\.infra\.db" = \[(.*)\]$', body, re.M)
+    assert line, 'archeus.infra.db declares no package-data'
+    base = os.path.join(ROOT, 'archeus', 'infra', 'db')
+    covered = set()
+    for pat in re.findall(r'"([^"]+)"', line.group(1)):
+        covered.update(glob(os.path.join(base, pat.replace('/', os.sep))))
+    on_disk = set(glob(os.path.join(base, 'migrations', '*.sql')))
+    assert on_disk, 'no migrations on disk'
+    assert on_disk <= covered, 'migrations that would not ship: %s' % sorted(on_disk - covered)
 
 
 def test_the_plugin_bundle_is_tracked_by_git():

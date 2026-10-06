@@ -339,7 +339,8 @@ def test_no_module_builds_its_own_headless_claude_call():
                      if isinstance(e, ast.Constant) and isinstance(e.value, str)}
             if flags & {'-p', '--print'}:
                 offenders.append('%s:%d' % (name, node.lineno))
-    # memory.py IS the seam. Each of the others has a contract the seam does not
+    # llmcall.py IS the seam (moved out of memory.py in P0.5; memory._claude_stdin
+    # is its caller). Each of the others has a contract the seam does not
     # express, rather than a second copy of one it does:
     #   claude_md / plan_execute  stream their output as it arrives
     #                             (--output-format stream-json, a live pane)
@@ -347,8 +348,8 @@ def test_no_module_builds_its_own_headless_claude_call():
     #                             own permission mode, its own quota report and
     #                             its own journal entry
     #   pi                        `headless_argv` is the seam's own argv for a
-    #                             non-Claude CLI, called only from _claude_stdin
-    waived = ('memory.py', 'claude_md.py', 'plan_execute.py', 'loops.py', 'pi.py')
+    #                             non-Claude CLI, called only from llmcall
+    waived = ('llmcall.py', 'claude_md.py', 'plan_execute.py', 'loops.py', 'pi.py')
     offenders = [o for o in offenders if not o.startswith(waived)]
     assert not offenders, ('headless claude spawned outside memory._claude_stdin: '
                            + ', '.join(offenders))

@@ -1,0 +1,155 @@
+{
+  "$comment": "Which cached reads a stream frame makes stale (p16-design-gate §14.2). Per subject kind, the read paths it can change: {id} is the subject id, * one path segment, a trailing ** any rest (query included). A kind with no rule makes nothing stale. Generates src/data/rules.ts and archeus/cli/tui/_tables.py (tools/gen_ui.py). principal: the e-stop and its re-arm, after which everything that runs may have moved. /v1/world/graph** (P18, p18-design-gate A8): every kind a graph node or edge is read from; the repository graph is already under repository's and repository_inspection's rules.",
+  "rules": {
+    "mission": [
+      "/v1/world/graph**",
+      "/v1/missions**",
+      "/v1/attention",
+      "/v1/digest",
+      "/v1/status**"
+    ],
+    "plan": [
+      "/v1/world/graph**",
+      "/v1/missions/*/plan",
+      "/v1/missions/*/timeline**",
+      "/v1/plans/{id}",
+      "/v1/missions**"
+    ],
+    "task": [
+      "/v1/world/graph**",
+      "/v1/missions/*/plan",
+      "/v1/missions/*/timeline**",
+      "/v1/tasks/{id}/executions",
+      "/v1/digest"
+    ],
+    "execution": [
+      "/v1/world/graph**",
+      "/v1/executions/{id}**",
+      "/v1/tasks/*/executions",
+      "/v1/missions/*/timeline**",
+      "/v1/digest"
+    ],
+    "checkpoint": [
+      "/v1/executions/*/checkpoints"
+    ],
+    "approval": [
+      "/v1/world/graph**",
+      "/v1/approvals**",
+      "/v1/attention",
+      "/v1/missions**"
+    ],
+    "verification": [
+      "/v1/world/graph**",
+      "/v1/verifications/{id}",
+      "/v1/missions/*/verifications",
+      "/v1/missions/*/timeline**",
+      "/v1/attention",
+      "/v1/digest"
+    ],
+    "review": [
+      "/v1/world/graph**",
+      "/v1/missions/*/reviews",
+      "/v1/missions/*/timeline**",
+      "/v1/attention",
+      "/v1/digest"
+    ],
+    "knowledge_item": [
+      "/v1/world/graph**",
+      "/v1/knowledge**",
+      "/v1/attention"
+    ],
+    "relation": [
+      "/v1/world/graph**",
+      "/v1/knowledge/**"
+    ],
+    "feedback": [
+      "/v1/knowledge**"
+    ],
+    "meeting": [
+      "/v1/world/graph**",
+      "/v1/knowledge**"
+    ],
+    "decision": [
+      "/v1/knowledge**"
+    ],
+    "project": [
+      "/v1/world/graph**",
+      "/v1/projects**",
+      "/v1/status**",
+      "/v1/digest"
+    ],
+    "repository": [
+      "/v1/world/graph**",
+      "/v1/projects**",
+      "/v1/status**",
+      "/v1/repositories/{id}/**",
+      "/v1/attention",
+      "/v1/digest"
+    ],
+    "repository_inspection": [
+      "/v1/repositories/**",
+      "/v1/projects**"
+    ],
+    "message": [
+      "/v1/conversations/**"
+    ],
+    "idea": [
+      "/v1/ideas**"
+    ],
+    "automation": [
+      "/v1/world/graph**",
+      "/v1/automations**",
+      "/v1/attention"
+    ],
+    "automation_run": [
+      "/v1/world/graph**",
+      "/v1/automations**",
+      "/v1/automation-runs/{id}"
+    ],
+    "account": [
+      "/v1/accounts",
+      "/v1/attention"
+    ],
+    "resource_policy": [
+      "/v1/accounts"
+    ],
+    "harness": [
+      "/v1/harnesses"
+    ],
+    "route_decision": [
+      "/v1/world/graph**",
+      "/v1/route-decisions**"
+    ],
+    "policy_decision": [
+      "/v1/world/graph**",
+      "/v1/policy-decisions**"
+    ],
+    "policy_rule": [
+      "/v1/policies"
+    ],
+    "provider_terms": [
+      "/v1/provider-terms"
+    ],
+    "session": [
+      "/v1/world/graph**",
+      "/v1/sessions**"
+    ],
+    "context_package": [
+      "/v1/world/graph**",
+      "/v1/context/{id}"
+    ],
+    "device": [
+      "/v1/devices",
+      "/v1/sync"
+    ],
+    "user": [
+      "/v1/digest",
+      "/v1/policies"
+    ],
+    "principal": [
+      "/v1/**"
+    ],
+    "execution_node": [],
+    "model": []
+  }
+}

@@ -1,0 +1,741 @@
+"""The `CoreClient` contract the acceptance judge is written against
+(testing-strategy §1.1).
+
+The judge never imports Core internals, and it is written before the API
+exists, so this Protocol is the surface it may use: exactly the operations the
+scenarios need, mirroring the command/query surface of api-and-realtime §2.
+Commands return dicts shaped like the API's responses; `events(after_seq)`
+returns envelopes (api-and-realtime §3.1).
+
+Bindings:
+- `InProcessClient` (P1–P3.5) calls the application layer directly. An
+  operation whose phase has not arrived raises `NotImplementedError` — loudly,
+  never a silent `None` a scenario could mistake for an answer — so each judge
+  function that needs it is an expected failure tagged with its phase.
+- `HttpClient` (P3.5 onward) speaks HTTP + SSE; every scenario then runs
+  against both bindings.
+"""
+
+import copy
+import inspect
+import os
+from typing import Optional, Protocol, Sequence, runtime_checkable
+
+from archeus.core import engine, ports
+from archeus.core.application import (authorization, automations, commands, conversation,
+                                      executions, graph,
+                                      queries, resources, sessions, verification, work,
+                                      world)
+from archeus.core.sessions.service import SessionService
+from archeus.core.application.lifecycle import GuardFailed, IllegalTrigger
+from archeus.core.application.work import PolicyDenied
+from archeus.core.application.world import Conflict
+from archeus.core.domain import ids
+from archeus.core.domain.values import PRINCIPAL_SCOPES, Ref
+from archeus.core.world import digest as world_digest
+from archeus.core.world import status as world_status
+from archeus.core.world.worker import World
+from archeus.core.calls import OwnCalls
+from archeus.core.knowledge import ingest
+from archeus.core.knowledge.passes import Passes
+from archeus.core.knowledge.worker import Knowledge
+from archeus.core.missions.intent import Intents
+from archeus.core.application.planning import Planning
+from archeus.core.planning.worker import Planner
+from archeus.core.policy.engine import PolicyEngine
+from archeus.core.policy.worker import Expiry
+from archeus.core.routing.usage import FakeUsageFeed
+from archeus.harnesses.calls import real_callers
+from archeus.harnesses.fake import FakeHarness
+from archeus.harnesses.registry import AdapterRegistry
+from archeus.infra import discovery, paths
+from archeus.infra.db import Database, connection
+from archeus.infra.db.writer import (IdempotencyConflict, InvalidTransition, NotFound,
+                                     VersionConflict)
+from archeus.infra.eventlog.outbox import CursorExpired
+
+
+class CoreClientError(Exception):
+    """A typed API error (api-and-realtime §1.5): `status` + `code`, e.g.
+    422 invalid_transition, 423 policy_denied, 409 version_conflict."""
+
+    def __init__(self, status, code, detail=None):
+        super().__init__('%s %s: %s' % (status, code, detail))
+        self.status, self.code, self.detail = status, code, detail or {}
+
+
+@runtime_checkable
+class CoreClient(Protocol):
+    # ── conversation, missions ──
+    def submit_message(self, text: str, *, conversation_id: Optional[str] = None,
+                       idempotency_key: Optional[str] = None) -> dict: ...
+    def create_mission(self, *, title: str, objective: str,
+                       project_id: Optional[str] = None,
+                       success_criteria: Sequence[dict] = (),
+                       idempotency_key: Optional[str] = None) -> dict: ...
+    def get_mission(self, mission_id: str) -> dict: ...
+    def list_missions(self, *, state: Optional[str] = None,
+                      project_id: Optional[str] = None) -> list: ...
+    # ── control ──
+    def decide_approval(self, approval_id: str, decision: str, *,
+                        note: Optional[str] = None, step_up: Optional[str] = None,
+                        idempotency_key: Optional[str] = None) -> dict: ...
+    def set_policy_rule(self, *, scope_level: str, action_class: str, decision: str,
+                        scope_ref: Optional[str] = None, locked: Optional[bool] = None,
+                        match: Optional[dict] = None, boundary: Optional[dict] = None,
+                        outside: Optional[str] = None,
+                        idempotency_key: Optional[str] = None) -> dict: ...
+    def pause(self, target: str) -> dict: ...
+    def resume(self, target: str) -> dict: ...
+    def stop(self, target: str) -> dict: ...
+    # ── questions ──
+    def route_why(self, subject_id: str) -> dict: ...
+    def status(self, *, project_id: Optional[str] = None) -> dict: ...
+    def digest(self) -> dict: ...
+    def ack(self, up_to_seq: int) -> dict: ...
+    # ── world, resources ──
+    def create_project(self, *, name: str, root_paths: Sequence[str],
+                       idempotency_key: Optional[str] = None) -> dict: ...
+    def declare_constraint(self, *, project_id: str, statement: str,
+                           kind: Optional[str] = None, spec: Optional[dict] = None,
+                           idempotency_key: Optional[str] = None) -> dict: ...
+    def import_meeting(self, path: str, *, project_id: Optional[str] = None) -> dict: ...
+    def list_knowledge(self, *, project_id: Optional[str] = None,
+                       state: Optional[str] = None) -> list: ...
+    def register_account(self, *, harness_id: str, label: str, auth_kind: str,
+                         home_ref: Optional[str] = None) -> dict: ...
+    def set_resource_policy(self, account_id: str, *, priority: Optional[int] = None,
+                            allocation_pct: Optional[int] = None,
+                            reserve_pct: Optional[int] = None,
+                            brain_reserve_pct: Optional[int] = None,
+                            fallback: Optional[str] = None,
+                            expected_version: Optional[int] = None) -> dict: ...
+    # ── sessions and checkpoints (P12) ──
+    def register_session(self, *, harness_id: str, cwd: str,
+                         provider_session_ref: Optional[str] = None,
+                         mission_id: Optional[str] = None, project_id: Optional[str] = None,
+                         account_id: Optional[str] = None, model: Optional[str] = None,
+                         effort: Optional[str] = None) -> dict: ...
+    def launch_session(self, *, harness_id: str, cwd: str, mission_id: Optional[str] = None,
+                       project_id: Optional[str] = None, account_id: Optional[str] = None,
+                       model: Optional[str] = None, effort: Optional[str] = None) -> dict: ...
+    def get_session(self, session_id: str) -> dict: ...
+    def list_sessions(self, *, project_id: Optional[str] = None,
+                      mission_id: Optional[str] = None) -> list: ...
+    def session_brief(self, session_id: str) -> dict: ...
+    def resume_session(self, session_id: str, *, request_id: str, model: Optional[str] = None,
+                       effort: Optional[str] = None, deliver_brief: bool = False) -> dict: ...
+    def handoff_session(self, session_id: str, *, request_id: str, harness_id: str,
+                        account_id: Optional[str] = None, model: Optional[str] = None,
+                        effort: Optional[str] = None, reason: str = '') -> dict: ...
+    def link_session(self, session_id: str, mission_id: Optional[str]) -> dict: ...
+    def close_session(self, session_id: str) -> dict: ...
+    def checkpoints(self, execution_id: str) -> list: ...
+    def handoff_execution(self, execution_id: str) -> dict: ...
+    # ── verification and review (P13) ──
+    def verifications(self, mission_id: str) -> list: ...
+    def decide_verification(self, verification_id: str, decision: str, *,
+                            note: Optional[str] = None) -> dict: ...
+    def reviews(self, mission_id: str) -> list: ...
+    def review(self, mission_id: str, verdict: str, *, note: Optional[str] = None) -> dict: ...
+    def abandon_integration(self, task_id: str, *, reason: Optional[str] = None) -> dict: ...
+    # ── automations (P14) ──
+    def create_automation(self, *, name: str, trigger: dict, template: dict,
+                          project_id: Optional[str] = None, max_depth: Optional[int] = None,
+                          rate_limit: Optional[int] = None) -> dict: ...
+    def set_automation_state(self, automation_id: str, action: str) -> dict: ...
+    def automations(self) -> list: ...
+    def automation(self, automation_id: str) -> dict: ...
+    # ── the graph (P18) ──
+    def world_graph(self, *, focus: Optional[str] = None, depth: Optional[int] = None,
+                    limit: Optional[int] = None) -> dict: ...
+    def repository_graph(self, repository_id: str, *, focus: str = '',
+                         depth: Optional[int] = None, limit: Optional[int] = None) -> dict: ...
+    # ── the event stream ──
+    def events(self, after_seq: int = 0, *, limit: Optional[int] = None) -> list: ...
+
+
+#: The operation names, in contract order — what every binding must implement.
+OPERATIONS = tuple(name for name in CoreClient.__dict__
+                   if not name.startswith('_') and callable(CoreClient.__dict__[name]))
+
+
+def _pending(op):
+    def method(self, *args, **kwargs):
+        raise NotImplementedError(
+            'CoreClient.%s: not implemented in this binding yet; it arrives with '
+            'the phase that owns it' % op)
+    method.__name__ = op
+    return method
+
+
+class InProcessClient:
+    """The P1–P3.5 binding: a Core in this process, on an ARCHEUS_HOME.
+
+    It implements the operations the passing scenarios need (`IMPLEMENTED`)
+    over the database and the application layer; every other one still fails
+    loudly. The client registers itself as a `user_device` principal on first
+    use and keeps that identity across `_restart()`, as a paired device would;
+    Core's engine acts as its own `system` principal. Both registrations are
+    bootstraps only: the HTTP binding gets its principal from the auth layer
+    (commands.register_principal).
+
+    P3.5: Core runs the walking-skeleton engine (archeus/core/engine.py) on the
+    stub ports and the fake harness. In process there is no Core loop, so the
+    engine is pumped by `_idle()` — a scenario waiting for a state is exactly
+    the moment Core would be working. It hosts an engine, so it takes the
+    home's core.lock exactly as the Core runtime does: two engine hosts on one
+    home fail loudly instead of reconciling each other's children (p3.5b A1).
+    """
+
+    def __init__(self, home, *, callers=None, preference=None, brain=None, usage=None,
+                 real_verification=False, real_review=False):
+        self.home = str(home)
+        self._db = self._lock = None
+        self._engine = None
+        self._principal = self._system = None
+        self._world = self._knowledge = self._intents = self._plans = None
+        # the fake agent's script per task key (the rig's `script_harness`)
+        self._scenarios = {}
+        # P6: the own-call adapters and preference (the rig names fakes; None is
+        # the real adapters, each gated by ADR-0021, as the Core runtime has)
+        self._callers, self._preference = callers, preference
+        # P8: None plans through the planning worker; a stub `plan.v1` port makes
+        # the engine plan instead (a test about something else), never both
+        self._brain = brain
+        # the real policy engine (P9, D21) and the real resource router (P10)
+        # over the scripted usage feed (the rig's `usage`). P13: the verifier and
+        # reviewer are the scripted stubs unless the caller asks for the
+        # verification worker's (the judge asks for its review always)
+        self._real_verification = real_verification
+        self._real_review = real_verification or real_review
+        self._verify = None
+        self._policy = PolicyEngine()
+        self._usage = usage or FakeUsageFeed()
+        self._missions = commands.Missions(policy=self._policy)
+        self._authz = authorization.Authorization(missions=self._missions)
+        self._kind = 'user_device'
+
+    # ── binding plumbing (not part of the contract) ──
+
+    def _core(self):
+        if self._db is None:
+            assert (os.path.normcase(os.path.abspath(paths.archeus_home()))
+                    == os.path.normcase(os.path.abspath(self.home))), 'the lock is per home'
+            self._lock = discovery.acquire()
+            self._db = Database.open(connection.db_path(self.home))
+            if self._principal is None:
+                self._principal = self._db.writer.execute(commands.register_principal, {
+                    'kind': 'user_device',
+                    'scopes': ('observe', 'control', 'approve', 'admin')})['id']
+                self._system = self._db.writer.execute(commands.register_principal, {
+                    'kind': 'system', 'scopes': ('system',)})['id']
+            registry = AdapterRegistry(self._policy)
+            registry.register(FakeHarness())
+            callers = real_callers() if self._callers is None else self._callers
+            self._resources = resources.Resources(registry=registry, callers=callers)
+            self._engine = engine.Engine(
+                self._db, actor=Ref('system', self._system),
+                work=work.Work(missions=self._missions,
+                               router=resources.ResourceRouter(registry, self._usage)),
+                brain=self._brain, registry=registry, scenarios=self._scenarios,
+                verifier=None if self._real_verification else ports.ScriptedVerifier(),
+                reviewer=None if self._real_review else ports.ScriptedReview(),
+                usage=self._usage)
+            # P11: adopt or reconcile what a previous Core left, as the runtime's
+            # boot sweep does, before anything is stepped
+            self._engine.manager.boot()
+            # the world worker, pumped by `_idle` as the engine is (P4)
+            self._world = World(self._db, actor=Ref('system', self._system))
+            self._world.sweep()
+            # the session service (P12), on the judge's two fake session harnesses
+            # and a terminal that records instead of opening; its boot sweep too
+            from .support import JudgeTerminal, session_adapters
+            self._sessions = SessionService(self._db, system=Ref('system', self._system),
+                                            adapters=session_adapters(),
+                                            node=JudgeTerminal(self.home))
+            self._sessions.sweep()
+            # the knowledge worker, likewise (P6)
+            own = OwnCalls(self._db, actor=Ref('system', self._system), callers=callers,
+                           preference=self._preference or ports.LegacyOwnCallPreference(),
+                           usage=self._usage)
+            self._knowledge = Knowledge(self._db, actor=Ref('system', self._system),
+                                        passes=Passes(self._db, actor=Ref('system',
+                                                                          self._system),
+                                                      calls=own))
+            self._knowledge.sweep()
+            # the intent worker, likewise (P7); pumped after the knowledge
+            # worker, so a message is read against what was learned before it
+            self._conversations = conversation.Conversations(missions=self._missions)
+            self._intents = Intents(self._db, actor=Ref('system', self._system), calls=own,
+                                    conversations=self._conversations)
+            # the planning worker, likewise (P8): the engine plans nothing itself
+            # the policy worker's expiry, likewise (P9)
+            self._expiry = Expiry(self._db, actor=Ref('system', self._system))
+            self._plans = None if self._brain is not None else Planner(
+                self._db, actor=Ref('system', self._system), calls=own,
+                planning=Planning(work=self._engine.work))
+            # the verification worker (P13), pumped likewise; its boot sweep first
+            from archeus.core.verification.worker import VerifyWorker
+            self._verify = VerifyWorker(self._db, actor=Ref('system', self._system),
+                                        missions=self._missions,
+                                        calls=own if self._real_review else None,
+                                        verify=self._real_verification, timeout_s=60)
+            self._verify.sweep()
+            # the automation consumer (P14), pumped likewise
+            from archeus.core.automation.worker import Automations
+            self._automation = Automations(self._db, actor=Ref('system', self._system))
+        return self._db
+
+    def _actor(self):
+        self._core()
+        return Ref(self._kind, self._principal)
+
+    def _principal_client(self, kind):
+        """A client acting as a non-user principal on the same Core (the rig's
+        `principal_client`): it shares this Core and holds that kind's scopes."""
+        other = copy.copy(self)
+        other._principal = self._core().writer.execute(commands.register_principal, {
+            'kind': kind, 'scopes': PRINCIPAL_SCOPES[kind]})['id']
+        other._kind = kind
+        other.close = lambda **_kw: None
+        return other
+
+    def _call(self, fn):
+        """Run *fn*, translating Core errors into the API's typed errors."""
+        try:
+            return fn()
+        except NotFound as e:
+            raise CoreClientError(404, 'not_found', {'id': str(e)}) from e
+        except Conflict as e:
+            raise CoreClientError(409, 'conflict', dict(e.detail, why=str(e))) from e
+        except CursorExpired as e:
+            raise CoreClientError(410, 'cursor_expired', {'reason': e.reason}) from e
+        except VersionConflict as e:
+            raise CoreClientError(409, 'version_conflict', {'current': e.current}) from e
+        except GuardFailed as e:
+            raise CoreClientError(422, 'guard_failed', {
+                'machine': e.machine, 'from': e.frm, 'to': e.to, 'trigger': e.trigger,
+                'guard': e.result.guard, 'reason': e.result.reason}) from e
+        except InvalidTransition as e:          # before ValueError: it is one
+            detail = {'machine': e.machine, 'from': e.frm, 'to': e.to}
+            if isinstance(e, IllegalTrigger):
+                detail['trigger'] = e.trigger
+            raise CoreClientError(422, 'invalid_transition', detail) from e
+        except authorization.NotPermitted as e:
+            raise CoreClientError(403, 'not_permitted', {'why': str(e)}) from e
+        except authorization.NotEligible as e:
+            raise CoreClientError(409, 'approval_not_eligible', {
+                'approval_id': e.approval_id, 'why': e.why, 'detail': e.detail}) from e
+        except PolicyDenied as e:               # recorded by the command answering it (P9)
+            raise CoreClientError(423, 'policy_denied', {
+                'task': e.task_key, 'action_class': e.decision.action.action_class,
+                'decision': e.decision.decision, 'reason': e.decision.reason}) from e
+        except IdempotencyConflict as e:
+            raise CoreClientError(400, 'invalid_request', {'field': 'idempotency_key',
+                                                           'why': str(e)}) from e
+        except verification.Refused as e:       # P13, before ValueError: it is one
+            raise CoreClientError(422, 'refused', {'why': str(e)}) from e
+        except ValueError as e:
+            raise CoreClientError(400, 'invalid_request', {'why': str(e)}) from e
+
+    def _idle(self):
+        """One engine step for every mission that is not settled and one world
+        pass; True when neither changed anything — then nothing in this Core
+        can change on its own."""
+        db = self._core()
+        with db.read() as conn:
+            live = [m['id'] for m in queries.list_missions(conn)
+                    if m['state'] not in engine.SETTLED]
+        stepped = any([self._engine.step(mid)['changed'] for mid in live])
+        # the execution thread's pass (P11); a watched process advances on its own
+        ran = bool(self._engine.manager.tick()) or bool(self._engine.manager._procs)
+        worked = self._world.pass_once()['changed']
+        learned = self._knowledge.pass_once()['changed']
+        read = self._intents.pass_once()['changed']
+        planned = self._plans is not None and self._plans.pass_once()['changed']
+        expired = self._expiry.pass_once()['changed']
+        verified = self._verify.pass_once()['changed']
+        # P14: the automation consumer; a held event is work still to do
+        reacted = self._automation.pass_once()['changed'] or bool(self._automation.retrying)
+        return not (worked or learned or read or planned or stepped or expired or ran
+                    or verified or reacted)
+
+    def close(self, *, drain=True):
+        if self._db is not None:
+            self._db.close(drain=drain)
+            self._db = self._engine = self._world = self._knowledge = None   # orphans now
+            self._intents = self._plans = self._verify = self._automation = None
+            self._lock.release()
+            self._lock = None
+
+    def _script(self, task_key, steps):
+        """The rig's `script_harness`: the engine's scenario map, by task key."""
+        self._scenarios[task_key] = steps
+
+    def _report_usage(self, account_id, window, pct):
+        """The rig's `usage`: what the scripted feed says this account is at."""
+        self._usage.set(account_id, window, pct)
+
+    def _restart(self, *, kill=True):
+        """Core stops (kill: queued commands are dropped) and starts again on
+        the same home."""
+        self.close(drain=not kill)
+        self._core()
+
+    # ── the contract ──
+
+    def create_mission(self, *, title: str, objective: str,
+                       project_id: Optional[str] = None,
+                       success_criteria: Sequence[dict] = (),
+                       idempotency_key: Optional[str] = None) -> dict:
+        return self._call(lambda: self._core().writer.execute(
+            commands.create_mission,
+            {'actor': self._actor(), 'title': title, 'objective': objective,
+             'project_id': project_id,
+             'success_criteria': [dict(c) for c in success_criteria]},
+            idempotency_key=idempotency_key))
+
+    def get_mission(self, mission_id: str) -> dict:
+        def read():
+            with self._core().read() as conn:
+                return queries.get_mission(conn, mission_id)
+        return self._call(read)
+
+    def list_missions(self, *, state: Optional[str] = None,
+                      project_id: Optional[str] = None) -> list:
+        def read():
+            with self._core().read() as conn:
+                return queries.list_missions(conn, state, project_id)
+        return self._call(read)
+
+    def _control(self, verb, target):
+        if ids.kind_of(target) != 'mission':
+            raise NotImplementedError('CoreClient.%s: a mission target' % verb)
+        return self._call(lambda: self._core().writer.execute(
+            getattr(self._missions, verb), {'actor': self._actor(), 'mission_id': target}))
+
+    def stop(self, target: str) -> dict:
+        """P11 (p11-design-gate §13): `all` is the e-stop (the sentinel first),
+        a mission stops its executions, an execution stops alone."""
+        from archeus.core.application.executions import Executions
+        from archeus.node.local import LocalNode
+        x = Executions(missions=self._missions)
+        if target == 'all':
+            LocalNode.engage_estop()
+            cmd, kw = x.estop, {}
+        elif ids.kind_of(target) == 'mission':
+            cmd, kw = x.stop_mission, {'mission_id': target}
+        elif ids.kind_of(target) == 'execution':
+            cmd, kw = x.stop_execution, {'execution_id': target}
+        else:
+            raise CoreClientError(400, 'invalid_request', {'why': 'unknown target'})
+        return self._call(lambda: self._core().writer.execute(
+            cmd, dict(kw, actor=self._actor())))
+
+    def pause(self, target: str) -> dict:
+        return self._control('pause', target)
+
+    # ── approvals and policy (P9) ──
+
+    def decide_approval(self, approval_id: str, decision: str, *,
+                        note: Optional[str] = None, step_up: Optional[str] = None,
+                        idempotency_key: Optional[str] = None) -> dict:
+        """Decide an approval as a client would: read what it presents, then
+        send the decision with the `action_hash` it was shown (X02)."""
+        shown = self._read(queries.get_approval, approval_id)
+        out = self._run(self._authz.decide, {
+            'approval_id': approval_id, 'decision': decision,
+            'action_hash': shown['action_hash'], 'note': note, 'step_up': step_up},
+            idempotency_key)
+        if out.get('denied'):
+            raise CoreClientError(423, 'policy_denied', dict(out['denied'],
+                                                             approval_id=approval_id))
+        return out
+
+    def set_policy_rule(self, *, scope_level: str, action_class: str, decision: str,
+                        scope_ref: Optional[str] = None, locked: Optional[bool] = None,
+                        match: Optional[dict] = None, boundary: Optional[dict] = None,
+                        outside: Optional[str] = None,
+                        idempotency_key: Optional[str] = None) -> dict:
+        return self._run(self._authz.create_rule, {
+            'scope_level': scope_level, 'scope_ref': scope_ref, 'action_class': action_class,
+            'decision': decision, 'locked': locked, 'match': match, 'boundary': boundary,
+            'outside': outside or 'ASK'}, idempotency_key)
+
+    def resume(self, target: str) -> dict:
+        return self._control('resume', target)
+
+    def events(self, after_seq: int = 0, *, limit: Optional[int] = None) -> list:
+        def read():
+            with self._core().read() as conn:
+                return queries.events(conn, after_seq, limit=limit)
+        return self._call(read)
+
+    # ── conversation (P7) ──
+
+    def submit_message(self, text: str, *, conversation_id: Optional[str] = None,
+                       idempotency_key: Optional[str] = None) -> dict:
+        """Post the turn, wait for Archeus's reply — the intent worker's,
+        pumped by `_idle` — and return it (`message_id` is the posted turn)
+        once Core has settled what the turn set in motion, as a person reading
+        the reply would see it."""
+        posted = self._run(conversation.post_message,
+                           {'text': text, 'conversation_id': conversation_id},
+                           idempotency_key)
+
+        def reply():
+            got = self._read(queries.reply_to, posted['message_id'])
+            return got and dict(got, message_id=posted['message_id'])
+        while True:
+            got = reply()
+            if got:
+                while not self._idle():
+                    pass
+                return got
+            if self._idle() and not reply():
+                raise NotImplementedError('message %s was posted and nothing read it'
+                                          % posted['message_id'])
+
+    # ── the world (P4) ──
+
+    def _read(self, fn, *args):
+        def read():
+            with self._core().read() as conn:
+                return fn(conn, *args)
+        return self._call(read)
+
+    def _run(self, command, kwargs, idempotency_key=None):
+        return self._call(lambda: self._core().writer.execute(
+            command, dict(kwargs, actor=self._actor()), idempotency_key=idempotency_key))
+
+    def create_project(self, *, name: str, root_paths: Sequence[str],
+                       idempotency_key: Optional[str] = None) -> dict:
+        return self._run(world.create_project, {'name': name, 'root_paths': list(root_paths)},
+                         idempotency_key)
+
+    def declare_constraint(self, *, project_id: str, statement: str,
+                           kind: Optional[str] = None, spec: Optional[dict] = None,
+                           idempotency_key: Optional[str] = None) -> dict:
+        return self._run(world.declare_constraint, {
+            'project_id': project_id, 'statement': statement, 'kind': kind, 'spec': spec},
+            idempotency_key)
+
+    def status(self, *, project_id: Optional[str] = None) -> dict:
+        return self._read(world_status.status, project_id)
+
+    def digest(self) -> dict:
+        return self._read(world_digest.digest)
+
+    def ack(self, up_to_seq: int) -> dict:
+        return self._run(world.ack_digest, {'up_to_seq': up_to_seq})
+
+    # ── knowledge and own calls (P6) ──
+
+    def import_meeting(self, path: str, *, project_id: Optional[str] = None) -> dict:
+        # the import path opts in to undated notes (P7 D2): imported, then asked
+        return self._call(lambda: ingest.import_file(self._core(), self._actor(), path,
+                                                     project_id, allow_undated=True))['meeting']
+
+    def list_knowledge(self, *, project_id: Optional[str] = None,
+                       state: Optional[str] = None) -> list:
+        return self._read(queries.list_knowledge, project_id, state)
+
+    def route_why(self, subject_id: str) -> dict:
+        """A route decision by its id, or the latest one about *subject_id*
+        — for a mission, the latest that routed its work (a task), before any
+        of Archeus's own calls about it."""
+        def read(conn):
+            if ids.kind_of(subject_id) == 'route_decision':
+                return queries.get_route_decision(conn, subject_id)
+            got = queries.route_decisions(conn, subject_id)
+            if not got:
+                raise NotFound(subject_id)
+            work_ = [d for d in got if d['subject']['kind'] == 'task']
+            return queries.get_route_decision(conn, (work_ or got)[-1]['id'])
+        return self._read(read)
+
+    # ── resources (P10) ──
+
+    def register_account(self, *, harness_id: str, label: str, auth_kind: str,
+                         home_ref: Optional[str] = None) -> dict:
+        self._core()
+        probe = self._resources.probe(harness_id, home_ref)
+        return self._run(resources.register_account, {
+            'harness_id': harness_id, 'label': label, 'auth_kind': auth_kind,
+            'home_ref': home_ref, 'auth': probe})
+
+    def set_resource_policy(self, account_id: str, *, priority: Optional[int] = None,
+                            allocation_pct: Optional[int] = None,
+                            reserve_pct: Optional[int] = None,
+                            brain_reserve_pct: Optional[int] = None,
+                            fallback: Optional[str] = None,
+                            expected_version: Optional[int] = None) -> dict:
+        return self._run(resources.set_resource_policy, {
+            'account_id': account_id, 'priority': priority, 'allocation_pct': allocation_pct,
+            'reserve_pct': reserve_pct, 'brain_reserve_pct': brain_reserve_pct,
+            'fallback': fallback, 'expected_version': expected_version})
+
+
+    # ── sessions and checkpoints (P12) ──
+
+    def _sessions_do(self, fn, **kw):
+        self._core()
+        return self._call(lambda: fn(self._actor(), key=ids.new_ulid(), **kw))
+
+    def register_session(self, *, harness_id: str, cwd: str,
+                         provider_session_ref: Optional[str] = None,
+                         mission_id: Optional[str] = None, project_id: Optional[str] = None,
+                         account_id: Optional[str] = None, model: Optional[str] = None,
+                         effort: Optional[str] = None) -> dict:
+        kw = {k: v for k, v in dict(provider_session_ref=provider_session_ref,
+                                    mission_id=mission_id, project_id=project_id,
+                                    account_id=account_id, model=model,
+                                    effort=effort).items() if v is not None}
+        self._core()
+        return self._sessions_do(self._sessions.register, harness_id=harness_id, cwd=cwd, **kw)
+
+    def launch_session(self, *, harness_id: str, cwd: str, mission_id: Optional[str] = None,
+                       project_id: Optional[str] = None, account_id: Optional[str] = None,
+                       model: Optional[str] = None, effort: Optional[str] = None) -> dict:
+        kw = {k: v for k, v in dict(mission_id=mission_id, project_id=project_id,
+                                    account_id=account_id, model=model,
+                                    effort=effort).items() if v is not None}
+        self._core()
+        return self._sessions_do(self._sessions.launch, harness_id=harness_id, cwd=cwd, **kw)
+
+    def get_session(self, session_id: str) -> dict:
+        return self._read(sessions.view, session_id)
+
+    def list_sessions(self, *, project_id: Optional[str] = None,
+                      mission_id: Optional[str] = None) -> list:
+        return self._read(lambda c: sessions.listing(c, project_id=project_id,
+                                                     mission_id=mission_id))
+
+    def session_brief(self, session_id: str) -> dict:
+        return self._read(sessions.preview_brief, session_id)
+
+    def resume_session(self, session_id: str, *, request_id: str, model: Optional[str] = None,
+                       effort: Optional[str] = None, deliver_brief: bool = False) -> dict:
+        self._core()
+        return self._sessions_do(self._sessions.resume, session_id=session_id,
+                                 request_id=request_id, model=model, effort=effort,
+                                 deliver_brief=deliver_brief)
+
+    def handoff_session(self, session_id: str, *, request_id: str, harness_id: str,
+                        account_id: Optional[str] = None, model: Optional[str] = None,
+                        effort: Optional[str] = None, reason: str = '') -> dict:
+        self._core()
+        return self._sessions_do(self._sessions.handoff, source_session_id=session_id,
+                                 request_id=request_id, harness_id=harness_id,
+                                 account_id=account_id, model=model, effort=effort,
+                                 reason=reason)
+
+    def link_session(self, session_id: str, mission_id: Optional[str]) -> dict:
+        return self._run(sessions.link, {'session_id': session_id, 'mission_id': mission_id},
+                         ids.new_ulid())
+
+    def close_session(self, session_id: str) -> dict:
+        return self._run(sessions.close, {'session_id': session_id}, ids.new_ulid())
+
+    def checkpoints(self, execution_id: str) -> list:
+        return self._read(executions.checkpoints, execution_id)
+
+    def handoff_execution(self, execution_id: str) -> dict:
+        return self._run(executions.handoff_execution, {'execution_id': execution_id},
+                         ids.new_ulid())
+
+    # ── verification and review (P13) ──
+
+    def verifications(self, mission_id: str) -> list:
+        return self._read(queries.list_verifications, mission_id)['verifications']
+
+    def decide_verification(self, verification_id: str, decision: str, *,
+                            note: Optional[str] = None) -> dict:
+        return self._run(verification.Decisions(self._missions).decide, {
+            'verification_id': verification_id, 'decision': decision, 'note': note or ''},
+            ids.new_ulid())
+
+    def reviews(self, mission_id: str) -> list:
+        return self._read(queries.list_reviews, mission_id)['reviews']
+
+    def review(self, mission_id: str, verdict: str, *, note: Optional[str] = None) -> dict:
+        return self._run(verification.Decisions(self._missions).review, {
+            'mission_id': mission_id, 'verdict': verdict, 'note': note or ''}, ids.new_ulid())
+
+    def abandon_integration(self, task_id: str, *, reason: Optional[str] = None) -> dict:
+        return self._run(verification.abandon_integration,
+                         {'task_id': task_id, 'reason': reason or ''}, ids.new_ulid())
+
+    # ── automations (P14) ──
+
+    def create_automation(self, *, name: str, trigger: dict, template: dict,
+                          project_id: Optional[str] = None, max_depth: Optional[int] = None,
+                          rate_limit: Optional[int] = None) -> dict:
+        kw = {k: v for k, v in (('max_depth', max_depth), ('rate_limit', rate_limit))
+              if v is not None}
+        return self._run(automations.create, dict(kw, name=name, trigger=trigger,
+                                                  template=template, project_id=project_id),
+                         ids.new_ulid())
+
+    def set_automation_state(self, automation_id: str, action: str) -> dict:
+        return self._run(automations.set_state,
+                         {'automation_id': automation_id, 'action': action}, ids.new_ulid())
+
+    def automations(self) -> list:
+        return self._read(automations.list_automations)['automations']
+
+    def automation(self, automation_id: str) -> dict:
+        return self._read(automations.get_automation, automation_id)
+
+    # ── the graph (P18) ──
+
+    def world_graph(self, *, focus: Optional[str] = None, depth: Optional[int] = None,
+                    limit: Optional[int] = None) -> dict:
+        ref = None
+        if focus is not None:
+            kind, _, fid = focus.partition(':')
+            if kind not in graph.KINDS:
+                raise CoreClientError(400, 'invalid_request', {'field': 'focus'})
+            ref = (kind, fid)
+        return self._read(graph.world_graph, ref, depth,
+                          graph.LIMIT_DEFAULT if limit is None else limit)
+
+    def repository_graph(self, repository_id: str, *, focus: str = '',
+                         depth: Optional[int] = None, limit: Optional[int] = None) -> dict:
+        from archeus.infra.artifacts import store
+        return self._read(graph.repository_graph, repository_id, store.get, focus,
+                          1 if depth is None else depth,
+                          graph.LIMIT_DEFAULT if limit is None else limit)
+
+
+#: Operations with a real body in both bindings (P2: G1, G4; P3: the mission
+#: control verbs; P3.5: listing missions, which the SPA's two lists read).
+IMPLEMENTED = ('create_mission', 'get_mission', 'list_missions', 'events', 'pause', 'resume',
+               'create_project', 'declare_constraint', 'status', 'digest', 'ack',
+               'import_meeting', 'list_knowledge', 'route_why', 'submit_message',
+               'decide_approval', 'set_policy_rule', 'register_account',
+               'set_resource_policy', 'stop',
+               # P12
+               'register_session', 'launch_session', 'get_session', 'list_sessions',
+               'session_brief', 'resume_session', 'handoff_session', 'link_session',
+               'close_session', 'checkpoints', 'handoff_execution',
+               # P13
+               'verifications', 'decide_verification', 'reviews', 'review',
+               'abandon_integration',
+               # P14
+               'create_automation', 'set_automation_state', 'automations', 'automation',
+               # P18
+               'world_graph', 'repository_graph')
+
+# Every other operation is declared and fails loudly. Later phases replace these
+# with real bodies one by one; tests/v1/contract/test_core_client.py keeps every
+# binding's signatures identical to the Protocol's.
+for _op in OPERATIONS:
+    if _op in IMPLEMENTED:
+        continue
+    _stub = _pending(_op)
+    _stub.__signature__ = inspect.signature(getattr(CoreClient, _op))
+    setattr(InProcessClient, _op, _stub)
+del _op
+globals().pop('_stub', None)       # none left once every operation is built

@@ -352,8 +352,8 @@ HARNESSES = {
         'has_project': 'pi.has_project',
         'launch_argv': 'pi.launch_argv',
         #: archeus's OWN one-shot calls (memory, lessons, generation). Only a
-        #: harness that names one can run them; Claude Code's is built inline
-        #: in `memory._claude_stdin`. ponytail: Codex has none yet — `codex
+        #: harness that names one can run them; Claude Code's is built in
+        #: `llmcall.build_headless_args`. ponytail: Codex has none yet — `codex
         #: exec` logs progress on stderr, which the runner merges into the
         #: answer; add it with `--output-last-message` when a Codex user asks.
         'headless_argv': 'pi.headless_argv',

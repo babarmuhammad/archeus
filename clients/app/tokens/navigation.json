@@ -1,0 +1,180 @@
+{
+  "$comment": "THE navigation table (p16-design-gate §4.2, p17-design-gate §3, A1): one flat declaration. The SPA's sidebar, rail, phone tab bar, shortcuts and command bar, and the TUI's screens and keys, all read it through tools/gen_ui.py (src/nav/table.ts, archeus/cli/tui/_tables.py). `key` is the SPA shortcut with Ctrl (Windows/Linux) or Cmd (macOS); `tui` is the TUI key (ui-architecture §3). A tab's `key` is its TUI key inside an inspector; it is unique within each kind. There is no Thread tab: P16 never built one (p16-design-gate §30 deviation 10).",
+  "destinations": [
+    {
+      "id": "now",
+      "label": "Now",
+      "key": "1",
+      "tui": "1",
+      "phone": "tab",
+      "blurb": "What changed, what is happening, and the conversation"
+    },
+    {
+      "id": "work",
+      "label": "Work",
+      "key": "2",
+      "tui": "2",
+      "phone": "tab",
+      "blurb": "Every mission, grouped by what it waits on"
+    },
+    {
+      "id": "world",
+      "label": "World",
+      "key": "3",
+      "tui": "3",
+      "phone": "tab",
+      "blurb": "Projects, repositories and what Archeus knows"
+    },
+    {
+      "id": "attention",
+      "label": "Attention",
+      "key": "j",
+      "tui": "a",
+      "phone": "tab",
+      "blurb": "Everything that waits on you"
+    },
+    {
+      "id": "control",
+      "label": "Control",
+      "key": ",",
+      "tui": "4",
+      "phone": "menu",
+      "blurb": "Autonomy, automations, resources, sessions and clients"
+    }
+  ],
+  "control_sections": [
+    {
+      "id": "autonomy",
+      "label": "Autonomy"
+    },
+    {
+      "id": "automations",
+      "label": "Automations"
+    },
+    {
+      "id": "resources",
+      "label": "Resources"
+    },
+    {
+      "id": "sessions",
+      "label": "Sessions"
+    },
+    {
+      "id": "devices",
+      "label": "Clients"
+    },
+    {
+      "id": "about",
+      "label": "About"
+    }
+  ],
+  "inspector_tabs": {
+    "mission": [
+      "outcome",
+      "plan",
+      "now",
+      "evidence",
+      "why",
+      "timeline",
+      "relations"
+    ],
+    "execution": [
+      "output",
+      "checkpoints",
+      "relations"
+    ],
+    "session": [
+      "brief",
+      "lineage",
+      "relations"
+    ],
+    "knowledge_item": [
+      "detail",
+      "relations"
+    ],
+    "automation_run": [
+      "explanation",
+      "relations"
+    ],
+    "approval": [
+      "detail"
+    ],
+    "plan": [
+      "detail",
+      "relations"
+    ],
+    "verification": [
+      "detail",
+      "relations"
+    ],
+    "route_decision": [
+      "detail"
+    ],
+    "policy_decision": [
+      "detail"
+    ],
+    "context_package": [
+      "detail"
+    ],
+    "project": [
+      "detail"
+    ],
+    "repository": [
+      "detail"
+    ]
+  },
+  "tabs": {
+    "outcome": {
+      "label": "Outcome",
+      "key": "o"
+    },
+    "plan": {
+      "label": "Plan",
+      "key": "p"
+    },
+    "now": {
+      "label": "Now",
+      "key": "n"
+    },
+    "evidence": {
+      "label": "Evidence",
+      "key": "e"
+    },
+    "why": {
+      "label": "Why",
+      "key": "w"
+    },
+    "timeline": {
+      "label": "Timeline",
+      "key": "t"
+    },
+    "relations": {
+      "label": "Relations",
+      "key": "r"
+    },
+    "output": {
+      "label": "Output",
+      "key": "o"
+    },
+    "checkpoints": {
+      "label": "Checkpoints",
+      "key": "c"
+    },
+    "brief": {
+      "label": "Brief",
+      "key": "b"
+    },
+    "lineage": {
+      "label": "Lineage",
+      "key": "l"
+    },
+    "detail": {
+      "label": "Detail",
+      "key": "d"
+    },
+    "explanation": {
+      "label": "Explanation",
+      "key": "e"
+    }
+  }
+}

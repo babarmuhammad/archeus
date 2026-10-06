@@ -1,0 +1,2056 @@
+{
+ "$comment": "Shared parity cases (p17-design-gate A2): written by parity-inputs.mjs from the SPA; the SPA (test/parity.test.ts) and the TUI (tests/v1/tui/test_parity.py) are both held to every output.",
+ "cases": [
+  {
+   "fn": "missionEdges",
+   "args": [
+    {
+     "id": "msn_1",
+     "project_id": "prj_1",
+     "context_package_id": "ctx_1",
+     "origin_ref": {
+      "kind": "automation_run",
+      "id": "run_1"
+     },
+     "pending_approval_id": "apr_1"
+    },
+    {
+     "versions": [
+      {
+       "id": "pln_1",
+       "plan_version": 1,
+       "state": "SUPERSEDED"
+      },
+      {
+       "id": "pln_2",
+       "plan_version": 2,
+       "state": "APPROVED"
+      },
+      {
+       "id": "pln_3",
+       "plan_version": 3,
+       "state": "REJECTED"
+      }
+     ]
+    },
+    [
+     {
+      "id": "ses_1"
+     },
+     {
+      "id": ""
+     }
+    ]
+   ],
+   "out": [
+    {
+     "rel": "in project",
+     "to": {
+      "kind": "project",
+      "id": "prj_1"
+     },
+     "field": "missions.project_id"
+    },
+    {
+     "rel": "context used",
+     "to": {
+      "kind": "context_package",
+      "id": "ctx_1"
+     },
+     "field": "Mission.context_package_id"
+    },
+    {
+     "rel": "started from",
+     "to": {
+      "kind": "automation_run",
+      "id": "run_1"
+     },
+     "field": "Mission.origin_ref"
+    },
+    {
+     "rel": "plan v1",
+     "to": {
+      "kind": "plan",
+      "id": "pln_1"
+     },
+     "field": "plans.mission_id",
+     "inactive": true
+    },
+    {
+     "rel": "plan v2",
+     "to": {
+      "kind": "plan",
+      "id": "pln_2"
+     },
+     "field": "plans.mission_id",
+     "inactive": false
+    },
+    {
+     "rel": "plan v3",
+     "to": {
+      "kind": "plan",
+      "id": "pln_3"
+     },
+     "field": "plans.mission_id",
+     "inactive": true
+    },
+    {
+     "rel": "waiting on approval",
+     "to": {
+      "kind": "approval",
+      "id": "apr_1"
+     },
+     "field": "approvals.mission_id"
+    },
+    {
+     "rel": "continued in session",
+     "to": {
+      "kind": "session",
+      "id": "ses_1"
+     },
+     "field": "sessions.mission_id"
+    }
+   ]
+  },
+  {
+   "fn": "missionEdges",
+   "args": [
+    {
+     "id": "msn_2",
+     "origin_ref": {
+      "kind": "",
+      "id": "x"
+     }
+    },
+    null,
+    []
+   ],
+   "out": []
+  },
+  {
+   "fn": "planEdges",
+   "args": [
+    {
+     "mission_id": "msn_1",
+     "supersedes_plan_id": "pln_1",
+     "context_package_id": "ctx_1",
+     "route_decision_id": "rte_1"
+    }
+   ],
+   "out": [
+    {
+     "rel": "of mission",
+     "to": {
+      "kind": "mission",
+      "id": "msn_1"
+     },
+     "field": "plans.mission_id"
+    },
+    {
+     "rel": "replaces",
+     "to": {
+      "kind": "plan",
+      "id": "pln_1"
+     },
+     "field": "plans.supersedes_plan_id"
+    },
+    {
+     "rel": "context used",
+     "to": {
+      "kind": "context_package",
+      "id": "ctx_1"
+     },
+     "field": "Plan.context_package_id"
+    },
+    {
+     "rel": "planned by",
+     "to": {
+      "kind": "route_decision",
+      "id": "rte_1"
+     },
+     "field": "Plan.route_decision_id"
+    }
+   ]
+  },
+  {
+   "fn": "planEdges",
+   "args": [
+    {
+     "mission_id": "msn_1",
+     "supersedes_plan_id": null
+    }
+   ],
+   "out": [
+    {
+     "rel": "of mission",
+     "to": {
+      "kind": "mission",
+      "id": "msn_1"
+     },
+     "field": "plans.mission_id"
+    }
+   ]
+  },
+  {
+   "fn": "taskDependencies",
+   "args": [
+    {
+     "depends_on": [
+      "t1",
+      "t9"
+     ]
+    },
+    {
+     "t1": {
+      "id": "tsk_1"
+     }
+    }
+   ],
+   "out": [
+    {
+     "rel": "after",
+     "to": {
+      "kind": "task",
+      "id": "tsk_1"
+     },
+     "field": "Task.depends_on"
+    }
+   ]
+  },
+  {
+   "fn": "taskDependencies",
+   "args": [
+    {},
+    {}
+   ],
+   "out": []
+  },
+  {
+   "fn": "executionEdges",
+   "args": [
+    {
+     "id": "exe_2",
+     "task_id": "tsk_1",
+     "mission_id": "msn_1",
+     "handoff_from": "exe_1",
+     "session_id": "ses_1",
+     "route_decision_id": "rte_1",
+     "policy_decision_id": "pd_1"
+    }
+   ],
+   "out": [
+    {
+     "rel": "attempt of task",
+     "to": {
+      "kind": "task",
+      "id": "tsk_1"
+     },
+     "field": "executions.task_id"
+    },
+    {
+     "rel": "of mission",
+     "to": {
+      "kind": "mission",
+      "id": "msn_1"
+     },
+     "field": "executions.mission_id"
+    },
+    {
+     "rel": "continues",
+     "to": {
+      "kind": "execution",
+      "id": "exe_1"
+     },
+     "field": "Execution.handoff_from"
+    },
+    {
+     "rel": "runs in session",
+     "to": {
+      "kind": "session",
+      "id": "ses_1"
+     },
+     "field": "Execution.session_id"
+    },
+    {
+     "rel": "routed by",
+     "to": {
+      "kind": "route_decision",
+      "id": "rte_1"
+     },
+     "field": "Execution.route_decision_id"
+    },
+    {
+     "rel": "authorised by",
+     "to": {
+      "kind": "policy_decision",
+      "id": "pd_1"
+     },
+     "field": "Execution.policy_decision_id"
+    }
+   ]
+  },
+  {
+   "fn": "executionEdges",
+   "args": [
+    {
+     "id": "exe_1",
+     "task_id": "tsk_1",
+     "mission_id": "msn_1",
+     "handoff_from": null
+    }
+   ],
+   "out": [
+    {
+     "rel": "attempt of task",
+     "to": {
+      "kind": "task",
+      "id": "tsk_1"
+     },
+     "field": "executions.task_id"
+    },
+    {
+     "rel": "of mission",
+     "to": {
+      "kind": "mission",
+      "id": "msn_1"
+     },
+     "field": "executions.mission_id"
+    }
+   ]
+  },
+  {
+   "fn": "verificationEdges",
+   "args": [
+    {
+     "subject": {
+      "kind": "task",
+      "id": "tsk_1"
+     },
+     "plan_id": "pln_2",
+     "execution_id": "exe_2"
+    }
+   ],
+   "out": [
+    {
+     "rel": "verifies",
+     "to": {
+      "kind": "task",
+      "id": "tsk_1"
+     },
+     "field": "Verification.subject"
+    },
+    {
+     "rel": "of plan",
+     "to": {
+      "kind": "plan",
+      "id": "pln_2"
+     },
+     "field": "verifications.plan_id"
+    },
+    {
+     "rel": "checked the work of",
+     "to": {
+      "kind": "execution",
+      "id": "exe_2"
+     },
+     "field": "Verification.execution_id"
+    }
+   ]
+  },
+  {
+   "fn": "verificationEdges",
+   "args": [
+    {
+     "subject": {
+      "kind": "mission",
+      "id": "msn_1"
+     },
+     "plan_id": "pln_2"
+    }
+   ],
+   "out": [
+    {
+     "rel": "verifies",
+     "to": {
+      "kind": "mission",
+      "id": "msn_1"
+     },
+     "field": "Verification.subject"
+    },
+    {
+     "rel": "of plan",
+     "to": {
+      "kind": "plan",
+      "id": "pln_2"
+     },
+     "field": "verifications.plan_id"
+    }
+   ]
+  },
+  {
+   "fn": "sessionEdges",
+   "args": [
+    {
+     "mission_id": "msn_1",
+     "handoff_from_session_id": "ses_0",
+     "project_id": "prj_1"
+    },
+    {
+     "targets": [
+      {
+       "id": "ses_2"
+      },
+      {
+       "id": "ses_3"
+      }
+     ]
+    }
+   ],
+   "out": [
+    {
+     "rel": "continues mission",
+     "to": {
+      "kind": "mission",
+      "id": "msn_1"
+     },
+     "field": "sessions.mission_id"
+    },
+    {
+     "rel": "handed off from",
+     "to": {
+      "kind": "session",
+      "id": "ses_0"
+     },
+     "field": "sessions.handoff_from_session_id"
+    },
+    {
+     "rel": "handed off to",
+     "to": {
+      "kind": "session",
+      "id": "ses_2"
+     },
+     "field": "sessions.handoff_from_session_id"
+    },
+    {
+     "rel": "handed off to",
+     "to": {
+      "kind": "session",
+      "id": "ses_3"
+     },
+     "field": "sessions.handoff_from_session_id"
+    },
+    {
+     "rel": "in project",
+     "to": {
+      "kind": "project",
+      "id": "prj_1"
+     },
+     "field": "sessions.project_id"
+    }
+   ]
+  },
+  {
+   "fn": "sessionEdges",
+   "args": [
+    {
+     "id": "ses_9"
+    }
+   ],
+   "out": []
+  },
+  {
+   "fn": "knowledgeEdges",
+   "args": [
+    {
+     "id": "kn_1",
+     "supersedes_id": "kn_0",
+     "superseded_by_id": "kn_2",
+     "route_decision_id": "rte_4",
+     "relations": [
+      {
+       "src_kind": "knowledge_item",
+       "src_id": "kn_1",
+       "rel": "applies_to",
+       "dst_kind": "project",
+       "dst_id": "prj_1",
+       "confidence_tier": "INFERRED",
+       "valid_until": null
+      },
+      {
+       "src_kind": "decision",
+       "src_id": "dec_1",
+       "rel": "explains",
+       "dst_kind": "knowledge_item",
+       "dst_id": "kn_1",
+       "confidence_tier": null,
+       "valid_until": "2026-09-01T00:00:00Z"
+      },
+      {
+       "src_kind": "knowledge_item",
+       "src_id": "kn_1",
+       "rel": "mentions",
+       "dst_kind": "repository",
+       "dst_id": "rep_1",
+       "confidence_tier": "AMBIGUOUS"
+      }
+     ]
+    }
+   ],
+   "out": [
+    {
+     "rel": "applies_to",
+     "to": {
+      "kind": "project",
+      "id": "prj_1"
+     },
+     "field": "relations.applies_to",
+     "tier": "INFERRED",
+     "inactive": false
+    },
+    {
+     "rel": "explains (from)",
+     "to": {
+      "kind": "decision",
+      "id": "dec_1"
+     },
+     "field": "relations.explains",
+     "tier": "EXTRACTED",
+     "inactive": true
+    },
+    {
+     "rel": "mentions",
+     "to": {
+      "kind": "repository",
+      "id": "rep_1"
+     },
+     "field": "relations.mentions",
+     "tier": "AMBIGUOUS",
+     "inactive": false
+    },
+    {
+     "rel": "replaces",
+     "to": {
+      "kind": "knowledge_item",
+      "id": "kn_0"
+     },
+     "field": "KnowledgeItem.supersedes_id"
+    },
+    {
+     "rel": "replaced by",
+     "to": {
+      "kind": "knowledge_item",
+      "id": "kn_2"
+     },
+     "field": "KnowledgeItem.superseded_by_id",
+     "inactive": false
+    },
+    {
+     "rel": "produced by",
+     "to": {
+      "kind": "route_decision",
+      "id": "rte_4"
+     },
+     "field": "KnowledgeItem.route_decision_id"
+    }
+   ]
+  },
+  {
+   "fn": "runEdges",
+   "args": [
+    {
+     "automation_id": "aut_1",
+     "mission_id": "msn_1"
+    }
+   ],
+   "out": [
+    {
+     "rel": "run of automation",
+     "to": {
+      "kind": "automation",
+      "id": "aut_1"
+     },
+     "field": "automation_runs.automation_id"
+    },
+    {
+     "rel": "created mission",
+     "to": {
+      "kind": "mission",
+      "id": "msn_1"
+     },
+     "field": "automation_runs.mission_id"
+    }
+   ]
+  },
+  {
+   "fn": "runEdges",
+   "args": [
+    {
+     "automation_id": "aut_1",
+     "mission_id": null
+    }
+   ],
+   "out": [
+    {
+     "rel": "run of automation",
+     "to": {
+      "kind": "automation",
+      "id": "aut_1"
+     },
+     "field": "automation_runs.automation_id"
+    }
+   ]
+  },
+  {
+   "fn": "present",
+   "args": [
+    "mission",
+    "EXECUTING"
+   ],
+   "out": {
+    "cls": "active",
+    "glyph": "●",
+    "role": "state.active",
+    "label": "Executing"
+   }
+  },
+  {
+   "fn": "present",
+   "args": [
+    "mission",
+    "APPROVAL_REQUIRED"
+   ],
+   "out": {
+    "cls": "needs_you",
+    "glyph": "◆",
+    "role": "state.attention",
+    "label": "Waiting for approval"
+   }
+  },
+  {
+   "fn": "present",
+   "args": [
+    "mission",
+    "NOT_A_STATE"
+   ],
+   "out": {
+    "cls": "neutral",
+    "glyph": "?",
+    "role": "text-2",
+    "label": "NOT_A_STATE"
+   }
+  },
+  {
+   "fn": "present",
+   "args": [
+    "execution",
+    "ENDED_OK"
+   ],
+   "out": {
+    "cls": "neutral",
+    "glyph": "·",
+    "role": "text-2",
+    "label": "Exited ok — not verified"
+   }
+  },
+  {
+   "fn": "present",
+   "args": [
+    "approval",
+    "PENDING"
+   ],
+   "out": {
+    "cls": "needs_you",
+    "glyph": "◆",
+    "role": "state.attention",
+    "label": "Pending"
+   }
+  },
+  {
+   "fn": "present",
+   "args": [
+    "nope",
+    "X"
+   ],
+   "out": {
+    "cls": "neutral",
+    "glyph": "?",
+    "role": "text-2",
+    "label": "X"
+   }
+  },
+  {
+   "fn": "badge",
+   "args": [
+    "mission",
+    "COMPLETED"
+   ],
+   "out": {
+    "glyph": "✓",
+    "label": "Done — verified and reviewed",
+    "role": "state.done",
+    "cls": "done"
+   }
+  },
+  {
+   "fn": "badge",
+   "args": [
+    "task",
+    "RUNNING"
+   ],
+   "out": {
+    "glyph": "●",
+    "label": "Running",
+    "role": "state.active",
+    "cls": "active"
+   }
+  },
+  {
+   "fn": "isDone",
+   "args": [
+    "mission",
+    "COMPLETED"
+   ],
+   "out": true
+  },
+  {
+   "fn": "isDone",
+   "args": [
+    "mission",
+    "VERIFYING"
+   ],
+   "out": false
+  },
+  {
+   "fn": "isDone",
+   "args": [
+    "execution",
+    "ENDED_OK"
+   ],
+   "out": false
+  },
+  {
+   "fn": "offers",
+   "args": [
+    "mission",
+    "EXECUTING",
+    "pause"
+   ],
+   "out": true
+  },
+  {
+   "fn": "offers",
+   "args": [
+    "mission",
+    "PAUSED",
+    "resume"
+   ],
+   "out": true
+  },
+  {
+   "fn": "offers",
+   "args": [
+    "mission",
+    "COMPLETED",
+    "pause",
+    "cancel"
+   ],
+   "out": false
+  },
+  {
+   "fn": "presenceLabel",
+   "args": [
+    {
+     "state": "connected",
+     "connections": 1
+    }
+   ],
+   "out": "connected (1 stream)"
+  },
+  {
+   "fn": "presenceLabel",
+   "args": [
+    {
+     "state": "connected",
+     "connections": 3
+    }
+   ],
+   "out": "connected (3 streams)"
+  },
+  {
+   "fn": "presenceLabel",
+   "args": [
+    {
+     "state": "recent",
+     "connections": 0
+    }
+   ],
+   "out": "seen in the last minute"
+  },
+  {
+   "fn": "presenceLabel",
+   "args": [
+    {
+     "state": "absent",
+     "connections": 0
+    }
+   ],
+   "out": "not connected"
+  },
+  {
+   "fn": "presenceLabel",
+   "args": [
+    {
+     "state": "revoked",
+     "connections": 0
+    }
+   ],
+   "out": "revoked"
+  },
+  {
+   "fn": "resourceLine",
+   "args": [
+    {
+     "harness_id": "claude_code",
+     "model": "sonnet",
+     "account_id": "acc_1",
+     "effort": "high"
+    }
+   ],
+   "out": [
+    {
+     "key": "harness",
+     "label": "Harness",
+     "value": "claude_code"
+    },
+    {
+     "key": "model",
+     "label": "Model",
+     "value": "sonnet"
+    },
+    {
+     "key": "account",
+     "label": "Account",
+     "value": "acc_1"
+    },
+    {
+     "key": "effort",
+     "label": "Effort",
+     "value": "high"
+    }
+   ]
+  },
+  {
+   "fn": "resourceLine",
+   "args": [
+    {
+     "harness_id": "fake",
+     "model": null,
+     "account_id": ""
+    }
+   ],
+   "out": [
+    {
+     "key": "harness",
+     "label": "Harness",
+     "value": "fake"
+    },
+    {
+     "key": "model",
+     "label": "Model",
+     "value": "—"
+    },
+    {
+     "key": "account",
+     "label": "Account",
+     "value": "—"
+    }
+   ]
+  },
+  {
+   "fn": "statusLine",
+   "args": [
+    {
+     "state": "APPROVAL_REQUIRED",
+     "pending_approval": {
+      "kind": "plan"
+     },
+     "plan_version": 3
+    }
+   ],
+   "out": "Waiting: approve plan v3"
+  },
+  {
+   "fn": "statusLine",
+   "args": [
+    {
+     "state": "APPROVAL_REQUIRED",
+     "pending_approval": {
+      "kind": "plan"
+     },
+     "plan_version": null
+    }
+   ],
+   "out": "Waiting: approve plan v?"
+  },
+  {
+   "fn": "statusLine",
+   "args": [
+    {
+     "state": "APPROVAL_REQUIRED",
+     "pending_approval": {
+      "kind": "action"
+     }
+    }
+   ],
+   "out": "Waiting: approve a action step"
+  },
+  {
+   "fn": "statusLine",
+   "args": [
+    {
+     "state": "PLANNING",
+     "planning_blocked": {
+      "kind": "policy"
+     }
+    }
+   ],
+   "out": "Blocked: the policy denies this plan"
+  },
+  {
+   "fn": "statusLine",
+   "args": [
+    {
+     "state": "PLANNING",
+     "planning_blocked": {
+      "kind": "clarify",
+      "questions": [
+       "Which branch?",
+       "x"
+      ]
+     }
+    }
+   ],
+   "out": "Waiting: Which branch?"
+  },
+  {
+   "fn": "statusLine",
+   "args": [
+    {
+     "state": "PLANNING",
+     "planning_blocked": {
+      "kind": "clarify"
+     }
+    }
+   ],
+   "out": "Waiting: planning needs your answer (clarify)"
+  },
+  {
+   "fn": "statusLine",
+   "args": [
+    {
+     "state": "EXECUTING",
+     "tasks": [
+      {
+       "key": "t1",
+       "title": "Fix add",
+       "state": "SUCCEEDED"
+      },
+      {
+       "key": "t2",
+       "title": "Write tests",
+       "state": "RUNNING"
+      },
+      {
+       "key": "t3",
+       "title": "x",
+       "state": "PENDING"
+      }
+     ]
+    }
+   ],
+   "out": "Write tests · 1 of 3 tasks done"
+  },
+  {
+   "fn": "statusLine",
+   "args": [
+    {
+     "state": "EXECUTING",
+     "tasks": []
+    }
+   ],
+   "out": ""
+  },
+  {
+   "fn": "explainState",
+   "args": [
+    {
+     "mission": {
+      "state": "COMPLETED"
+     }
+    }
+   ],
+   "out": [
+    {
+     "text": "Completed: its result was verified, and a review accepted it.",
+     "source": "mission.state"
+    }
+   ]
+  },
+  {
+   "fn": "explainState",
+   "args": [
+    {
+     "mission": {
+      "state": "CANCELLED"
+     }
+    }
+   ],
+   "out": [
+    {
+     "text": "Cancelled.",
+     "source": "mission.state"
+    }
+   ]
+  },
+  {
+   "fn": "explainState",
+   "args": [
+    {
+     "mission": {
+      "state": "APPROVAL_REQUIRED",
+      "planning_blocked": {
+       "kind": "clarify",
+       "questions": [
+        "Which branch?",
+        "Which account?"
+       ]
+      }
+     },
+     "approval": {
+      "kind": "plan",
+      "state": "PENDING",
+      "expires_at": "2026-09-30T00:00:00Z",
+      "eligible": false,
+      "eligible_why": "the plan changed"
+     },
+     "policy": {
+      "decision": "DENY",
+      "reason": "no push to main"
+     },
+     "route": {
+      "result": "blocked",
+      "explanation": "every eligible account is at its ceiling",
+      "unblock_at": "2026-09-29T16:05:00Z"
+     },
+     "execution": {
+      "state": "ENDED_ERROR",
+      "stop_reason": null,
+      "exit_reason": "error"
+     },
+     "verification": {
+      "state": "FAILED",
+      "checks": [
+       {
+        "name": "tests",
+        "result": "fail"
+       },
+       {
+        "name": "lint",
+        "result": "pass"
+       }
+      ]
+     },
+     "review": {
+      "state": "REJECTED",
+      "verdict": "reject"
+     }
+    }
+   ],
+   "out": [
+    {
+     "text": "Planning asks: Which branch?; Which account?",
+     "source": "mission.planning_blocked"
+    },
+    {
+     "text": "A plan approval waits for you until 2026-09-30T00:00:00Z.",
+     "source": "approval"
+    },
+    {
+     "text": "It cannot be decided now: the plan changed.",
+     "source": "approval.eligible_why"
+    },
+    {
+     "text": "Policy: no push to main",
+     "source": "policy_decision"
+    },
+    {
+     "text": "Routing: every eligible account is at its ceiling (retry after 2026-09-29T16:05:00Z)",
+     "source": "route_decision"
+    },
+    {
+     "text": "The last execution ended error: error.",
+     "source": "execution"
+    },
+    {
+     "text": "Verification: Failed (tests).",
+     "source": "verification"
+    },
+    {
+     "text": "Review verdict: reject.",
+     "source": "review"
+    }
+   ]
+  },
+  {
+   "fn": "explainState",
+   "args": [
+    {
+     "mission": {
+      "state": "BLOCKED",
+      "planning_blocked": {
+       "kind": "policy"
+      }
+     },
+     "route": {
+      "result": "ask"
+     }
+    }
+   ],
+   "out": [
+    {
+     "text": "The policy denies this plan.",
+     "source": "mission.planning_blocked"
+    },
+    {
+     "text": "Routing: ask",
+     "source": "route_decision"
+    }
+   ]
+  },
+  {
+   "fn": "explainState",
+   "args": [
+    {
+     "mission": {
+      "state": "EXECUTING"
+     },
+     "approval": {
+      "kind": "action",
+      "state": "DECIDED"
+     },
+     "verification": {
+      "state": "PASSED"
+     }
+    }
+   ],
+   "out": [
+    {
+     "text": "No recorded reason.",
+     "source": "none"
+    }
+   ]
+  },
+  {
+   "fn": "ago",
+   "args": [
+    null,
+    1790683200000
+   ],
+   "out": "—"
+  },
+  {
+   "fn": "ago",
+   "args": [
+    "not a time",
+    1790683200000
+   ],
+   "out": "—"
+  },
+  {
+   "fn": "ago",
+   "args": [
+    "2026-09-29T11:59:30Z",
+    1790683200000
+   ],
+   "out": "just now"
+  },
+  {
+   "fn": "ago",
+   "args": [
+    "2026-09-29T11:50:00Z",
+    1790683200000
+   ],
+   "out": "10 min ago"
+  },
+  {
+   "fn": "ago",
+   "args": [
+    "2026-09-29T09:00:00Z",
+    1790683200000
+   ],
+   "out": "3 h ago"
+  },
+  {
+   "fn": "ago",
+   "args": [
+    "2026-09-20T12:00:00Z",
+    1790683200000
+   ],
+   "out": "9 d ago"
+  },
+  {
+   "fn": "ago",
+   "args": [
+    "2026-09-29T12:30:00Z",
+    1790683200000
+   ],
+   "out": "in 30 min"
+  },
+  {
+   "fn": "next",
+   "args": [
+    {
+     "conn": "connecting",
+     "gen": 0,
+     "since": 0
+    },
+    "frame",
+    5
+   ],
+   "out": {
+    "conn": "live",
+    "gen": 0,
+    "since": 5
+   }
+  },
+  {
+   "fn": "next",
+   "args": [
+    {
+     "conn": "connecting",
+     "gen": 0,
+     "since": 0
+    },
+    "stream_open",
+    5
+   ],
+   "out": {
+    "conn": "live",
+    "gen": 0,
+    "since": 5
+   }
+  },
+  {
+   "fn": "next",
+   "args": [
+    {
+     "conn": "live",
+     "gen": 0,
+     "since": 0
+    },
+    "stream_lost",
+    5
+   ],
+   "out": {
+    "conn": "reconnecting",
+    "gen": 0,
+    "since": 5
+   }
+  },
+  {
+   "fn": "next",
+   "args": [
+    {
+     "conn": "reconnecting",
+     "gen": 0,
+     "since": 0
+    },
+    "stream_open",
+    5
+   ],
+   "out": {
+    "conn": "resynced",
+    "gen": 1,
+    "since": 5
+   }
+  },
+  {
+   "fn": "next",
+   "args": [
+    {
+     "conn": "live",
+     "gen": 2,
+     "since": 0
+    },
+    "resync",
+    5
+   ],
+   "out": {
+    "conn": "resynced",
+    "gen": 3,
+    "since": 5
+   }
+  },
+  {
+   "fn": "next",
+   "args": [
+    {
+     "conn": "connecting",
+     "gen": 0,
+     "since": 0
+    },
+    "resync",
+    5
+   ],
+   "out": {
+    "conn": "connecting",
+    "gen": 1,
+    "since": 5
+   }
+  },
+  {
+   "fn": "next",
+   "args": [
+    {
+     "conn": "resynced",
+     "gen": 1,
+     "since": 0
+    },
+    "settled",
+    5
+   ],
+   "out": {
+    "conn": "live",
+    "gen": 1,
+    "since": 5
+   }
+  },
+  {
+   "fn": "next",
+   "args": [
+    {
+     "conn": "live",
+     "gen": 0,
+     "since": 0
+    },
+    "unauthorized",
+    5
+   ],
+   "out": {
+    "conn": "unauthenticated",
+    "gen": 0,
+    "since": 5
+   }
+  },
+  {
+   "fn": "next",
+   "args": [
+    {
+     "conn": "unauthenticated",
+     "gen": 0,
+     "since": 0
+    },
+    "stream_open",
+    5
+   ],
+   "out": {
+    "conn": "unauthenticated",
+    "gen": 0,
+    "since": 0
+   }
+  },
+  {
+   "fn": "next",
+   "args": [
+    {
+     "conn": "offline",
+     "gen": 0,
+     "since": 0
+    },
+    "stream_lost",
+    5
+   ],
+   "out": {
+    "conn": "offline",
+    "gen": 0,
+    "since": 0
+   }
+  },
+  {
+   "fn": "next",
+   "args": [
+    {
+     "conn": "offline",
+     "gen": 0,
+     "since": 0
+    },
+    "online",
+    5
+   ],
+   "out": {
+    "conn": "reconnecting",
+    "gen": 0,
+    "since": 5
+   }
+  },
+  {
+   "fn": "next",
+   "args": [
+    {
+     "conn": "live",
+     "gen": 0,
+     "since": 0
+    },
+    "self_revoked",
+    5
+   ],
+   "out": {
+    "conn": "revoked",
+    "gen": 0,
+    "since": 5
+   }
+  },
+  {
+   "fn": "next",
+   "args": [
+    {
+     "conn": "live",
+     "gen": 0,
+     "since": 0
+    },
+    "frame",
+    5
+   ],
+   "out": {
+    "conn": "live",
+    "gen": 0,
+    "since": 0
+   }
+  },
+  {
+   "fn": "freshness",
+   "args": [
+    {
+     "conn": "live",
+     "gen": 1,
+     "since": 0
+    },
+    {
+     "gen": 1,
+     "hasData": true
+    }
+   ],
+   "out": "current"
+  },
+  {
+   "fn": "freshness",
+   "args": [
+    {
+     "conn": "live",
+     "gen": 2,
+     "since": 0
+    },
+    {
+     "gen": 1,
+     "hasData": true
+    }
+   ],
+   "out": "stale"
+  },
+  {
+   "fn": "freshness",
+   "args": [
+    {
+     "conn": "reconnecting",
+     "gen": 0,
+     "since": 0
+    },
+    {
+     "gen": 0,
+     "hasData": true
+    }
+   ],
+   "out": "reconnecting"
+  },
+  {
+   "fn": "freshness",
+   "args": [
+    {
+     "conn": "reconnecting",
+     "gen": 0,
+     "since": 0
+    },
+    {
+     "gen": 0,
+     "hasData": false
+    }
+   ],
+   "out": "unavailable"
+  },
+  {
+   "fn": "freshness",
+   "args": [
+    {
+     "conn": "offline",
+     "gen": 0,
+     "since": 0
+    },
+    {
+     "gen": 0,
+     "hasData": true
+    }
+   ],
+   "out": "stale"
+  },
+  {
+   "fn": "freshness",
+   "args": [
+    {
+     "conn": "live",
+     "gen": 0,
+     "since": 0
+    },
+    {
+     "gen": 0,
+     "hasData": false,
+     "error": "x"
+    }
+   ],
+   "out": "unavailable"
+  },
+  {
+   "fn": "freshness",
+   "args": [
+    {
+     "conn": "live",
+     "gen": 0,
+     "since": 0
+    },
+    {
+     "gen": 0,
+     "hasData": true,
+     "pending": true
+    }
+   ],
+   "out": "stale"
+  },
+  {
+   "fn": "canCommand",
+   "args": [
+    "live"
+   ],
+   "out": true
+  },
+  {
+   "fn": "canCommand",
+   "args": [
+    "resynced"
+   ],
+   "out": true
+  },
+  {
+   "fn": "canCommand",
+   "args": [
+    "reconnecting"
+   ],
+   "out": false
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 403,
+     "code": "scope_required",
+     "detail": {
+      "scope": "approve"
+     }
+    }
+   ],
+   "out": "This client does not hold the “approve” scope."
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 403,
+     "code": "not_permitted",
+     "detail": {
+      "why": "local only"
+     }
+    }
+   ],
+   "out": "Not permitted: local only"
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 409,
+     "code": "version_conflict",
+     "detail": {}
+    }
+   ],
+   "out": "This changed since you opened it. It has been read again — act on what is there now."
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 422,
+     "code": "guard_failed",
+     "detail": {
+      "guard": "all_tasks_done"
+     }
+    }
+   ],
+   "out": "Refused: all_tasks_done"
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 422,
+     "code": "guard_failed",
+     "detail": {}
+    }
+   ],
+   "out": "Refused: a guard refused"
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 409,
+     "code": "invalid_transition",
+     "detail": {
+      "from": "COMPLETED",
+      "trigger": "pause"
+     }
+    }
+   ],
+   "out": "Not possible from COMPLETED (pause)."
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 409,
+     "code": "invalid_transition",
+     "detail": {
+      "from": "COMPLETED"
+     }
+    }
+   ],
+   "out": "Not possible from COMPLETED."
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 403,
+     "code": "policy_denied",
+     "detail": {
+      "reason": "destructive"
+     }
+    }
+   ],
+   "out": "The policy denies it: destructive"
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 409,
+     "code": "approval_not_eligible",
+     "detail": {
+      "why": "expired"
+     }
+    }
+   ],
+   "out": "This approval cannot be decided now: expired"
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 409,
+     "code": "queued_intent_refused",
+     "detail": {}
+    }
+   ],
+   "out": "Archeus refused a command that was sent late. Nothing was changed."
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 403,
+     "code": "host_not_allowed",
+     "detail": {}
+    }
+   ],
+   "out": "Only from the computer running Archeus."
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 503,
+     "code": "core_starting",
+     "detail": {}
+    }
+   ],
+   "out": "Archeus is starting. Try again in a moment."
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 503,
+     "code": "busy",
+     "detail": {}
+    }
+   ],
+   "out": "Archeus is busy. It will be retried once."
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 401,
+     "code": "unauthenticated",
+     "detail": {}
+    }
+   ],
+   "out": "This client is signed out."
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 400,
+     "code": "invalid_request",
+     "detail": {
+      "field": "model",
+      "why": "is not a model of this harness"
+     }
+    }
+   ],
+   "out": "Invalid: model is not a model of this harness"
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 400,
+     "code": "invalid_request",
+     "detail": {
+      "why": "no body"
+     }
+    }
+   ],
+   "out": "Invalid: no body"
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 404,
+     "code": "not_found",
+     "detail": {}
+    }
+   ],
+   "out": "It no longer exists."
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 409,
+     "code": "refused",
+     "detail": {
+      "why": "nothing to resume"
+     }
+    }
+   ],
+   "out": "Refused: nothing to resume"
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 0,
+     "code": "network",
+     "detail": {}
+    }
+   ],
+   "out": "Archeus could not be reached. Nothing was sent."
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
+     "status": 418,
+     "code": "teapot",
+     "detail": {}
+    }
+   ],
+   "out": "418 teapot"
+  },
+  {
+   "fn": "decideBody",
+   "args": [
+    {
+     "action_hash": "abc",
+     "version": 4
+    },
+    "approve",
+    "k1",
+    {}
+   ],
+   "out": {
+    "decision": "approve",
+    "action_hash": "abc",
+    "expected_version": 4,
+    "idempotency_key": "k1"
+   }
+  },
+  {
+   "fn": "decideBody",
+   "args": [
+    {
+     "action_hash": "abc",
+     "version": 4
+    },
+    "reject",
+    "k2",
+    {
+     "note": "no"
+    }
+   ],
+   "out": {
+    "decision": "reject",
+    "action_hash": "abc",
+    "expected_version": 4,
+    "idempotency_key": "k2",
+    "note": "no"
+   }
+  },
+  {
+   "fn": "keyAfter",
+   "args": [
+    "k1",
+    "network"
+   ],
+   "out": "k1"
+  },
+  {
+   "fn": "keyAfter",
+   "args": [
+    "k1",
+    "refused"
+   ],
+   "out": "NEW"
+  },
+  {
+   "fn": "keyAfter",
+   "args": [
+    "k1",
+    "ok"
+   ],
+   "out": "NEW"
+  },
+  {
+   "fn": "retryable",
+   "args": [
+    {
+     "status": 503,
+     "code": "busy",
+     "detail": {}
+    }
+   ],
+   "out": true
+  },
+  {
+   "fn": "retryable",
+   "args": [
+    {
+     "status": 409,
+     "code": "version_conflict",
+     "detail": {}
+    }
+   ],
+   "out": false
+  },
+  {
+   "fn": "staleBy",
+   "args": [
+    {
+     "event": "mission.state_changed",
+     "data": {
+      "subject": {
+       "kind": "mission",
+       "id": "msn_1"
+      }
+     }
+    },
+    "/v1/attention"
+   ],
+   "out": true
+  },
+  {
+   "fn": "staleBy",
+   "args": [
+    {
+     "event": "mission.state_changed",
+     "data": {
+      "subject": {
+       "kind": "mission",
+       "id": "msn_1"
+      }
+     }
+    },
+    "/v1/missions/msn_1?x=1"
+   ],
+   "out": true
+  },
+  {
+   "fn": "staleBy",
+   "args": [
+    {
+     "event": "mission.state_changed",
+     "data": {
+      "subject": {
+       "kind": "mission",
+       "id": "msn_1"
+      }
+     }
+    },
+    "/v1/plans/pln_1"
+   ],
+   "out": false
+  },
+  {
+   "fn": "staleBy",
+   "args": [
+    {
+     "event": "plan.state_changed",
+     "data": {
+      "subject": {
+       "kind": "plan",
+       "id": "pln_1"
+      }
+     }
+    },
+    "/v1/plans/pln_1"
+   ],
+   "out": true
+  },
+  {
+   "fn": "staleBy",
+   "args": [
+    {
+     "event": "plan.state_changed",
+     "data": {
+      "subject": {
+       "kind": "plan",
+       "id": "pln_1"
+      }
+     }
+    },
+    "/v1/plans/pln_2"
+   ],
+   "out": false
+  },
+  {
+   "fn": "staleBy",
+   "args": [
+    {
+     "event": "plan.state_changed",
+     "data": {
+      "subject": {
+       "kind": "plan",
+       "id": "pln_1"
+      }
+     }
+    },
+    "/v1/missions/msn_1/timeline?before=9"
+   ],
+   "out": true
+  },
+  {
+   "fn": "staleBy",
+   "args": [
+    {
+     "event": "execution.x",
+     "data": {
+      "subject": {
+       "kind": "execution",
+       "id": "exe_1"
+      }
+     }
+    },
+    "/v1/executions/exe_1/stream?from=10"
+   ],
+   "out": true
+  },
+  {
+   "fn": "staleBy",
+   "args": [
+    {
+     "event": "x",
+     "data": {
+      "subject": {
+       "kind": "unknown_kind",
+       "id": "u"
+      }
+     }
+    },
+    "/v1/missions"
+   ],
+   "out": false
+  },
+  {
+   "fn": "staleBy",
+   "args": [
+    {
+     "event": "x"
+    },
+    "/v1/missions"
+   ],
+   "out": false
+  },
+  {
+   "fn": "staleBy",
+   "args": [
+    {
+     "event": "x",
+     "data": {
+      "subject": {
+       "kind": "principal",
+       "id": "p"
+      }
+     }
+    },
+    "/v1/anything/at/all"
+   ],
+   "out": true
+  },
+  {
+   "fn": "staleBy",
+   "args": [
+    {
+     "event": "x",
+     "data": {
+      "subject": {
+       "kind": "execution_node",
+       "id": "n"
+      }
+     }
+    },
+    "/v1/missions"
+   ],
+   "out": false
+  }
+ ]
+}

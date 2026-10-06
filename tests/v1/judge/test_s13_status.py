@@ -1,0 +1,14 @@
+"""S13 — ask the current state across projects (SP13): a deterministic status
+with no brain, and a brain summary whose every claim links to an object."""
+
+
+def test_status_is_answered_without_the_brain(client):
+    client.create_mission(title='One', objective='Something')
+    st = client.status()
+    assert st['missions'] and st['source'] == 'deterministic'
+
+
+def test_the_brain_summary_links_every_claim(client):
+    client.create_mission(title='One', objective='Something')
+    reply = client.submit_message('What is going on across my projects?')
+    assert reply['links'] and all(link['ref']['id'] for link in reply['links'])
