@@ -1,11 +1,12 @@
 # P20 design gate — security and trust hardening
 
 Status: **APPROVED IN PART** (the user, 2026-10-05): D1, D2, D3, D4, D5, D10 and D15 as
-proposed; D7 as an amendment; D8 and D9 moved out of P20. **D6, D11, D12, D13 (breaker drills),
-D14 and the order of §5 after slice D are not yet decided** and are not inferred (§4.1).
-Implementation was authorised one slice at a time: **A, B, C and D are implemented with automated
-evidence and await their manual checks (§10); P20 is not complete; no slice after D is
-authorised** (§14). Anything
+proposed; D7 as an amendment; D8 and D9 moved out of P20. **D6 approved as written** (the user,
+2026-10-06). **D11, D12, D13 (breaker drills), D14 and the order of §5 after slice E are not yet
+decided** and are not inferred (§4.1). Implementation was authorised one slice at a time: **A, B,
+C, D and E are implemented with automated evidence; A–D await their manual checks (§10) and E's
+real-account half awaits PV-19 (D15); P20 is not complete; no slice after E is authorised, and
+slice F is not** (§14). Anything
 implementation finds that departs from an approved decision is recorded in §12 for the user's
 review, never applied silently.
 
@@ -330,13 +331,14 @@ Recorded as given. Nothing beyond what is written here is approved.
 | **D3** F7 | **Approved.** Control → About's Emergency stop already confirms before acting; a post-action status line shows Core's actual answer in the tray's terminology. No second stop mechanism |
 | **D4** F8 | **Approved.** Control → About states whether Core is armed and offers only the action that applies. No contradictory actions |
 | **D5** F6 | **Approved.** The mobile command bar gets a visible Close control, and a tap on the backdrop closes it |
+| **D6** ADR-0049 opt-ins | **Approved as written** (the user, 2026-10-06): D6's design, spawn, inventory, deny form and test exactly as §4 states them, keeping ADR-0052's "except opted-in servers" link to slice F and D6 as a prerequisite of PV-19 within D15. Slice E authorised as the next slice; F, G, H, I and J not in parallel. As built: §12 items 42–57 |
 | **D7** DPAPI | **Approved as an amendment.** First establish the evidence for what credentials and API keys Core stores. If Core stores no API key needing DPAPI, amend plan §27's obsolete requirement instead of manufacturing DPAPI work; record the evidence and rationale here (slice I) |
 | **D8** notifications | **Moved out of P20** to a later phase; the plan and dependency records are updated. Owner: **P21** (attention and Health), whose design gate decides the push transport or records its deferral |
 | **D9** Codex adapter | **Moved to P23.** No artificial evidence. It returns to discussion only if a real Codex installation and stream become available and the user reconsiders ownership. G7's xfail is re-marked `phase:P23` |
 | **D10** mobile e-stop | **Approved as proposed.** No PIN before Emergency stop, which stays the fastest safety action. Re-arm is the privileged operation and requires the PIN step-up (built in its own slice, not in A) |
 | **D15** observed run | **Approved.** No observed-run evidence is claimed before it is performed. P20 may complete its implementation and other evidence, but stays **"ready except for the observed run"** until ADR-0021 is resolved and the real run is done |
 | **Item 83** | **Proceed exactly against the existing design** (execution-architecture §10 path 2, p11 §13.4, D26). Acceptance: the e-stop is available with Core down; the local safety action actually happens; no new work starts afterwards; re-arm restores starting work; the operation is safe against accidental activation; the STOP file and the process registry are reused, with no parallel mechanism. The requirement is not weakened because the mechanism exists |
-| **Not decided** | D6 (ADR-0049 opt-in store and command), D11 (R13-03 to R13-13 owners), D12 (fuzz tooling), D13's breaker drills, D14 (mutant ids), the order of §5 after slice A; and the questions §4.2 adds |
+| **Not decided** | D11 (R13-03 to R13-13 owners), D12 (fuzz tooling), D13's breaker drills, D14 (mutant ids), the order of §5 after slice E; and the questions §4.2 adds |
 
 ### 4.2 Open questions found during implementation (the user's, not inferred)
 
@@ -906,6 +908,204 @@ D10 / V2-3 mismatch (§14.F) is left exactly as recorded.
 41. **Status: implemented, automated tests green apart from the known intermittent above,
     awaiting its manual check F6-M1 (§10).** P20 is not complete.
 
+### Slice E — PV-10, ADR-0049's settings sources (2026-10-06)
+
+Authorised by the user (2026-10-06) as the next P20 slice, with D6 approved **as written** in §4
+(§4.1). Slices F, G, H, I and J were not started. Nothing of D10, slice I, O1–O3, D11–D14,
+ADR-0021, the D13 breaker drills or the D10 / V2-3 mismatch (§14.F) was used or resolved, and
+`test_spa_marker`'s classification is unchanged. Implementation: `97040dc`.
+
+42. **As built: the store (D6, §6).**
+    - Migration `0015_opt_ins.sql`: an `opt_ins` table of versioned rows with exactly one owner
+      (`CHECK ((account_id IS NULL) <> (project_id IS NULL))`) and one row per owner, kind and
+      name (a unique index). An opt-out is the same row's next version with `opted_in` false,
+      never a second row and never a delete.
+    - The entity `OptIn` (`opi_` ids; `domain-model.md` §8.9). Kinds `source`, `plugin`, `mcp`.
+      A name matches `[A-Za-z0-9][A-Za-z0-9_.@-]{0,127}`, so a path is never a name. An account
+      may opt in only the `user` source and a project only `project` and `local`
+      (`SOURCE_OWNERS`).
+    - `core/application/optins.py`: `set_opt_in` is a Core command accepted from a **user
+      device** only (ADR-0035's `data_class` pattern); an unchanged answer writes nothing; each
+      change emits `opt_in.changed`. `effective(account, project)` is what an execution gets: its
+      account's live opt-ins plus its project's, and no other owner's.
+    - The inventory reference is `Execution.inventory_sha256` (a sha256, checked). It lives in
+      the execution row's body, since nothing queries by it, so the one migration D6 names adds
+      the table and no column.
+43. **As built: the command and the reads (D6, §7).**
+    - API: `GET /v1/opt-ins` (`observe`) and `POST /v1/opt-ins` (`admin`, an idempotency key
+      required). The execution read carries `inventory`. Generated clients, `api-reference.md`
+      and `testing-strategy.md` §1.1's contract ops (`set_opt_in`, `opt_ins`, `execution`) are
+      updated.
+    - CLI: `archeus executions opt-ins` and `archeus executions opt-in|opt-out <account|project>
+      <source|plugin|mcp> <name>`; `claude_sessions/cli.py` passes `executions` through to V1.
+    - SPA: a read-only opt-in table in Control → Resources, beside its Accounts section, that
+      follows Core when a row changes (`invalidation.json`); the execution inspector shows the
+      inventory beside its Why (`InventoryBlock`, `inventoryLines`). No form, route or
+      destination was added.
+    - TUI: the same opt-in list, read-only, and the inventory in the execution view
+      (`inventory_lines`), parity-tested against the SPA's presenters.
+44. **As built: the spawn and the inventory (D6).** `harnesses/sources.py`, stdlib only and
+    read-only (ADR-0046):
+    - `take(home, workdir, opt_ins)` builds one JSON inventory (version 1, `observed: false`):
+      hook commands, plugins, skills, MCP server **names**, permission rules and CLAUDE.md
+      hashes, each with its status (`excluded`, `opted_in`, `not_excludable`, `recorded_only`,
+      `not_found`), the opt-ins it used, and the flags derived from them. It is bounded at 500
+      items with a stated cut. It never holds an environment block, a server's definition or a
+      file's contents.
+    - The manager takes the inventory **before** the process exists, redacts it, stores it as an
+      Artifact, references it from the execution and names it in `execution.prepared`. The spawn
+      reads its flags from exactly what was stored, so the record and the argv cannot differ.
+    - The argv always carries `--setting-sources <the opted-in sources, joined>`, empty when none
+      is (left out, the CLI would load every source). It also carries `--strict-mcp-config`,
+      plus `--mcp-config <run/exec/<id>/mcp.json>` holding only the opted-in servers of their own
+      owner. `--disable-slash-commands` is passed unless a skill arrives through an opted-in
+      source or plugin. It adds one `--plugin-dir` per opted-in plugin, resolved from
+      `installed_plugins.json` (format 2) and refused when it lies outside `<home>/plugins`.
+    - Managed settings are recorded `not_excludable`. CLAUDE.md files (the account's and the
+      project's walk) are hashed and recorded `not_excludable` unless their source is opted in.
+      No flag Archeus passes is aimed at them, and `--bare` cannot keep a subscription login.
+    - ADR-0049 §2's fallback is `RECORDED_ONLY`: a source PV-19 finds cannot be narrowed is
+      loaded and recorded `recorded_only`. It is **empty**, and nothing fills it by inference.
+45. **As built: the deny form (D6).** `harnesses/hook.py`:
+    - A deny is **exit code 2 with the reason on stderr**; allow keeps its JSON at exit 0; a
+      halt keeps `{"continue": false}` at exit 0.
+    - `guarded()` turns a hook crash into a halt, and Core never answering into a halt before
+      Claude Code's own hook timeout (`HOOK_TIMEOUT_S = 120`, longer than the hook's deadline).
+    - The process leaves through `os._exit` after its own flush, so the interpreter's exit flush
+      can never replace the code.
+    - Any other exit code is non-blocking in Claude Code [DOC], so none is ever produced.
+    - The fake agent models those semantics: 2 blocks; any other code, a timeout or missing
+      JSON proceeds and emits `hook_error`. It echoes its `argv` in `started`, so a test can see
+      the flags a fail-open hook would have run under.
+46. **Readings of D6, for the user's review (applied, not decided).**
+    - **"Control → Accounts".** No Accounts tab exists; Control → Resources has an Accounts
+      section, and the list sits beside it. §7 adds no route or destination, so none was added.
+    - **`<account|project>` is the owner's id** (`acc_…` or `prj_…`), not a word followed by
+      one.
+    - **"CLI and TUI only" against §7.** D6's sentence can be read as the TUI also writing;
+      §7 gives the TUI "the opt-in list and the inventory, for parity with the SPA's reads". The
+      TUI is read-only and names the CLI command. A TUI write is a small addition if wanted.
+    - **"unless a skill is opted in".** The command's kinds are `source|plugin|mcp`, with no
+      `skill`. A skill counts as opted in when it arrives through an opted-in source or plugin.
+      Whether a left-out source's skills load once the flag is dropped is undocumented, so they
+      are then recorded `not_excludable`.
+    - **A mission with no project** gets its account's opt-ins only.
+    - **An inventory that cannot be taken** ends the execution `workspace`, charged, with the
+      reason "the settings sources could not be inventoried: <error type>". The SPA and TUI show
+      the stop reason's existing copy ("its workspace could not be made"). A dedicated stop
+      reason would be a domain addition, so it was not invented (item 47).
+47. **Found and fixed during the slice: an inventory failure re-dispatched forever.** The first
+    cut ended a failed inventory `binding`, which is **uncharged**. The task was then
+    re-dispatched on every tick: 41 executions in 40 ticks, measured. It now ends `workspace`,
+    which P11 note 11 already charges for a workspace that cannot be made. A persistent failure
+    therefore spends the task's attempts and stops. I09 asserts exactly `max_attempts`
+    executions, each `ABANDONED`/`workspace`/charged with no pid and no stream, and the task
+    `FAILED`; Q67 reverts it and is killed.
+48. **Found, not changed (P11's, pre-existing): `SpawnFailed` has the same loop.** A process
+    that cannot be started (a missing binary) ends `binding`, uncharged, and is re-dispatched on
+    every tick: 40 executions in 40 ticks, measured with a scratch test since deleted. It
+    predates slice E and is outside D6, so it is recorded for the user, not fixed.
+49. **Verification items for PV-19 (D15), not facts.** The inventory says `observed: false`
+    until an observed run:
+    - Whether Claude Code 2.1.291 accepts an **empty `--setting-sources ""`**. Its help documents
+      the list but not an empty one. If it refuses it, every execution fails to start, so this is
+      the first thing PV-19 checks; ADR-0049's fallback applies.
+    - Whether the account's login survives the narrowing.
+    - What loads under the narrowed sources: skills with and without
+      `--disable-slash-commands`, plugins through `--plugin-dir`, CLAUDE.md.
+    - The exit-code-2 deny and the halt against the real CLI.
+50. **Limitations, recorded.**
+    - `run/exec/<id>/mcp.json` holds the **full definitions** of the opted-in servers (command,
+      arguments, URL, environment), which may carry tokens. It is written only when a server is
+      opted in and never enters the record. **Slice I's secrets review (D7) should list it.**
+    - Local-scope MCP servers (`.claude.json` `projects[<path>].mcpServers`) are not inventoried.
+    - An execution references its **latest** process's inventory; earlier processes' inventories
+      are named in their `execution.prepared` events.
+    - The ancestor CLAUDE.md walk stops below the filesystem root, as Claude Code documents.
+51. **Authority boundaries.** Opt-ins are written only by a user device holding `admin`. A
+    `control` client, an agent principal or another owner is refused (I04, H01, G6, Q38, Q44).
+    Reads are `observe`. The e-stop, re-arm, authentication, stream and shell-credential
+    boundaries (§12 item 34) are untouched. ADR-0052's "except opted-in servers" (slice F)
+    reads this store; slice F is not built.
+52. **Tests.**
+    - `tests/v1/unit/test_settings_sources_units.py`, E01–E22 (33 collected): exclusion by
+      default; the argv; managed and CLAUDE.md; per-owner sources; strict MCP; plugins and their
+      containment; skills; the fallback; no secret; unreadable files; bounds; names; the deny
+      exit code, allow and halt; crash and timeout fail closed; the fake agent's fail-open model;
+      the spawn's flags equal the recorded ones; a hook that cannot write still denies.
+    - `tests/v1/integration/test_settings_sources.py`, I01–I10, H01, H02 (12, real Core): the
+      versioned row, ownership, no-op opt-outs, user-device and admin only, per-owner reach, the
+      recorded inventory and the argv, no secret stored, the inventory failure (item 47), the
+      exit-code-2 block reaching the agent, the HTTP scopes, and the CLI.
+    - G6 (`test_g06_security.py`): two new scenarios, each over both judge bindings.
+    - `tests/v1/e2e/test_spa_opt_ins.py` (2, real browser, real Core): the read-only list follows
+      Core; the inspector shows the inventory beside its Why. Check floors on both.
+    - Updated: `test_domain`, `test_execution_units`, `test_db_schema`, `test_core_client`,
+      `test_api_structure`, `tests/v1/tui/test_parity.py`, the client's parity fixtures, and
+      `test_spa_resources.py`'s one added wait (item 56).
+    - Slice E's unit, integration, E2E and G6 suites together: **59 passed, 2 skipped, 5/5
+      consecutive runs** (the skips are existing http-only judge cases). Focused suites: 407
+      passed, 4 skipped. Client 232/232, type check clean, `gen_ui.py --check` and
+      `gen_api_docs.py --check` current.
+53. **Mutants.** `tools/mutate_p20.py` Q38–Q67 (ids provisional, D14), **30/30 killed**. They
+    cover the store and its authority (Q38–Q44, Q66), the argv (Q45–Q52, Q55, Q64), the record
+    and its redaction (Q53, Q54, Q57, Q58, Q65), the inventory failure (Q56, Q67) and the deny
+    form (Q59–Q63). Q56's anchor moved with item 47 and was re-run, killed.
+    - Re-run because their lines changed: P11 X17 and X36 (`manager.py`), **2/2 killed**.
+      `test_mutation_suites_parse.py -k p20` passes (2/2).
+54. **The full run** (`tests/v1` plus `tests/test_p05_seams.py`, `ARCHEUS_E2E=1`, slices A–E):
+    - Run 1: **2700 passed, 1 failed, 14 skipped, 3 xfailed** (53 min). The failure is
+      `test_spa_marker.py::test_the_marker_travels_once_from_the_execution_to_its_task` ("the
+      marker begins at the execution: None"), the **known intermittent** (item 40), with the same
+      signature. Slice E does not touch the graph or the marker. **Not fixed and not called
+      green; its classification is unchanged.**
+    - Run 2: **2700 passed, 1 failed, 14 skipped, 3 xfailed** (40 min). The failure is
+      `test_spa_resources.py::test_an_accounts_policy_is_a_form_over_cores_route` ("timed out:
+      the budget removed"), the known intermittent of items 22/48/90. `test_spa_marker` passed.
+      This one was investigated (item 56), because slice E adds a read to the same section.
+    - **`test_spa_marker`, measured** (alone, 20 runs each): **12/20 failed at `3b29661`** and
+      **13/20 with slice E**. Same rate, so slice E does not change it. Its classification is
+      unchanged. This is measurement only.
+    - Run 3, on the tree as committed (item 56's wait and this record included): **2698
+      passed, 3 failed, 14 skipped, 3 xfailed** (34 min). `test_spa_resources` passed.
+      - `test_spa_marker`: the known intermittent, same signature.
+      - `test_spa_arrival.py::test_reduced_motion_says_the_rise_and_pulses_nothing` ("timed
+        out: the arrival is still announced"): P19 item 48's known intermittent. 0/10 alone.
+      - `test_stream_takeover.py::test_a_concurrent_burst_keeps_exactly_the_last_two_registered`
+        (`[63888, 63887] == [63887, 63888]`): **newly observed intermittent**, 0/20 alone. Core
+        kept the right two streams; only the order differed. The test's spy appends the port
+        after `_register` returns, outside the pool's lock, so two threads can append in the
+        reverse of the pool's own order. That reads as a test-side race. It is slice C's test,
+        and neither `sse.py` nor the test changed since `3b29661`. **Recorded, not fixed**
+        (outside slice E).
+    - Two earlier attempts were stopped by Claude Code for low system memory at about 79%, with
+      other sessions' browsers running. They are not results.
+    - `test_cli_help` (item 69) was not run.
+56. **Found and fixed (test side): slice E widened `test_spa_resources`'s race.**
+    - **Measured**, the test alone, 20 runs each: **1/20 failed at `3b29661`** (a detached
+      worktree with its own SPA build) and **6/20 with slice E**. The intermittent predates
+      slice E, but slice E made it more frequent.
+    - **Cause**, captured on a failing run: the second save sent `budgets: {concurrency: 2}`
+      (the blank was lost) and `project_allow: []` (the untick was kept). The first save's new
+      version reaches the form through the `/v1/accounts` refetch, and `PolicyForm` resets its
+      draft on `p.version`. The test then waited only for "Attempts at once" to read `2`, which
+      it already did before the refetch. When the reset landed between `fill('')` and
+      `uncheck()`, it wiped the first edit. Slice E's extra `/v1/opt-ins` read in the same
+      section widens that window; the form itself is unchanged.
+    - **Fix**: the test first waits until the form's `data-version` equals Core's version, then
+      edits. Every check is kept; only a wait on the right condition is added. With the fix,
+      **0/20 failed** (a scratch copy with the same wait: 0/20; deleted). The product
+      behaviour (a version change resets the draft, so the form follows Core) is P19.5's design
+      and is unchanged.
+    - Re-run because the guarding test changed: P19.5 N271–N276 (`RES`), **6/6 killed**,
+      N276 ("the form does not follow Core after a save") among them.
+    - **For the user**: this changes how often a known intermittent fails, by fixing its cause.
+      Items 22/48/90 list it; if the user prefers it kept as recorded, the fix is one `wait`
+      to revert.
+57. **Status: implemented, automated tests green apart from the known intermittent above.** No
+    manual check was added. PV-19's observed run (D15, §14.E) is owed and NOT RUN, so PV-10's
+    real-account half is unverified. P20 is not complete, and **slice F is not authorised**.
+
 ## 13. As built
 (Filled at the end of P20.)
 
@@ -924,6 +1124,7 @@ decides anything; where a line needs a decision, it names whose.
 | F4, a device's newest stream wins | D2 | C | automated green; **C-M2 not run** |
 | Item 86, one desktop-shell credential at a time | D1 | C | automated green; **C-M1 not run** |
 | F6, the command bar's Close button and backdrop tap | D5 | D | automated green (§12 item 40's known intermittent aside); **F6-M1 not run** |
+| ADR-0049 exclusion, inventory, exit-code-2 deny (PV-10): the opt-in store and command | D6 | E | automated green (§12 item 54's known intermittents aside); **the real-account half is PV-19's (D15), NOT RUN** |
 | Notifications out of P20 (to P21); plan and dependency records updated | D8 | records | done (`8fe7ce3`) |
 | The Codex adapter to P23; G7's xfail re-marked `phase:P23` | D9 | records | done; no `phase:P20` xfail remains in `tests/` |
 
@@ -936,8 +1137,7 @@ gate while its manual checks are NOT RUN.
 |---|---|---|---|
 | The re-arm PIN step-up | D10 | its own slice (J's list) | approved **as proposed**: step-up on `POST /v1/rearm` from a **paired (non-local)** device, through the existing PIN path; rulebook §19 amended to "e-stop (confirm)". Not built. **Blocked** (the user, 2026-10-05) until the user reconciles it with V2-3 (§14.F); no interpretation is chosen here |
 | The secrets review, with the DPAPI row amended if Core stores no API key | D7 (amendment) | I | not started |
-| ADR-0052 tool removal (PV-22) | ADR-0052 (DECIDED) | F | not started; its "except opted-in servers" part reads D6's opt-in store |
-| ADR-0049 exclusion, inventory, exit-code-2 deny (PV-10) | ADR-0049 (DECIDED); the store and command are D6 | E | **blocked on D6** |
+| ADR-0052 tool removal (PV-22) | ADR-0052 (DECIDED) | F | not started and **not authorised**; its "except opted-in servers" part reads D6's opt-in store, which slice E built |
 | ADR-0051 §2 boundary tests; the threat model | ADR-0051 (DECIDED) | G | not started |
 | Remote-access threat-model review; dependency audit | plan §31.1 P20 | I | not started |
 | Breaker drills, fuzzing | plan §31.1 P20 | H | **blocked on D12, D13** |
@@ -948,12 +1148,12 @@ gate while its manual checks are NOT RUN.
 |---|---|---|
 | O1 | Re-arm re-asks the plan gate for missions blocked only by the e-stop? (they stay BLOCKED today; P9's rule) | nothing in P20's slices; V2's stop-band copy (§14.F) |
 | O2 | Does Pause all (strip, Work) get F7's post-action line? | nothing until answered |
-| O3 / D14 | Are `Q01…` the suite's mutant ids? (Q01–Q33 used provisionally) | nothing; renaming is a text edit |
-| D6 | ADR-0049's opt-in store and command | slice E; part of F; PV-19 |
+| O3 / D14 | Are `Q01…` the suite's mutant ids? (Q01–Q67 used provisionally) | nothing; renaming is a text edit |
+| Slice E's readings | §12 items 46, 48 and 56: the readings of D6, the `workspace` stop reason for an inventory failure, P11's `SpawnFailed` re-dispatch loop, the `test_spa_resources` wait | nothing; each is applied or recorded and reversible |
 | D11 | Owners of R13-03 to R13-13 (none P20's as proposed) | the P21–P23 entries |
 | D12 | Fuzzing: stdlib harness or `hypothesis` | slice H |
 | D13 | The breaker drills (the e-stop half is built) | slice H |
-| §5 order | The order of the slices after C | which slice is next |
+| §5 order | The order of the slices after E | which slice is next |
 
 ### 14.D Manual verification outstanding
 
@@ -975,10 +1175,11 @@ NOT RUN). F6-M1 can be run now that slice D exists. None was removed or downgrad
   - **ADR-0052 §7** (PV-22): one observed execution confirms that a removed tool is never
     offered or called, and shows how the `mcp__*` deny behaves beside an opted-in server.
 - **What it needs first.** ADR-0021 answered for the harness (it is **OPEN**: `archeus terms
-  claude_code permit` is the user's act); PV-10 built (slice E, blocked on D6); PV-22 built
-  (slice F). Neither slice exists, so there is nothing yet to observe.
+  claude_code permit` is the user's act); PV-10 built (slice E, **built**: §12 items 42–57,
+  with its verification items in item 49); PV-22 built (slice F, not started).
 - **Status: nothing has satisfied D15.** No observed run has been performed and none is
-  claimed. Slices A–C do not touch the execution boundary.
+  claimed. Slices A–D do not touch the execution boundary; slice E does, and every effect of
+  its flags that the documentation does not state is recorded `observed: false`.
 
 ### 14.F P20 and the V2 product-design reassessment
 
@@ -1038,4 +1239,7 @@ review and the dependency audit) is equally free of open decisions, touches no U
 DR-8 and DR-2 wait on. The D10 slice is approved but should start with the user confirming its
 scope against V2-3. E, H and part of F wait on D6, D12 and D13. **The order is the user's (§5
 order is open); nothing starts until the user authorises it.**
+
+*After slice E (2026-10-06):* E is done (§12 items 42–57). F, G, H, I and J are not authorised.
+I is still free of open decisions; F now has D6's store to read; H waits on D12 and D13.
 
