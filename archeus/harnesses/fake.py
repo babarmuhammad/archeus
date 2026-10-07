@@ -23,6 +23,7 @@ from dataclasses import replace
 from claude_sessions import llmcall, proc
 
 from . import base, sources
+from .claude_code import tools as cc_tools
 
 AGENT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fake_agent.py')
 
@@ -43,7 +44,7 @@ class FakeHarness:
     def __init__(self, id=None, *, capabilities=('code_edit', 'shell', 'structured_output',
                                                   'headless', 'resume'),
                  models=(FAKE_MODEL,), enforcement='hook', efforts=(),
-                 usage_measures=('tokens',), sources=False):
+                 usage_measures=('tokens',), sources=False, tools=False):
         if id is not None:
             self.id = id
         self._caps, self._models = frozenset(capabilities), tuple(models)
@@ -53,6 +54,11 @@ class FakeHarness:
         # same inventory and flags, the flags passed to the agent, which echoes
         # them in its `started` event
         self._sources = sources
+        # P20 slice F (ADR-0052): and for its tool removal — the same --tools and
+        # --disallowedTools, which the agent honours as Claude Code does. Its own
+        # switch: a scenario that scripts a tool its task does not hold is
+        # testing the hook beneath, which removal would never let it reach
+        self._tools = tools
         self._children = {}     # execution_id -> Popen, for exit codes of what we started
         self._stopped = set()
 
@@ -91,6 +97,9 @@ class FakeHarness:
                                       home=spec.account.home_ref if spec.account else None,
                                       workdir=spec.workdir,
                                       exec_dir=base.ExecPaths(spec.execution_id).dir)
+        if self._tools:
+            argv += cc_tools.tool_argv(spec.task_contract.get('action_classes') or (),
+                                       spec.inventory)
         if spec.hook_settings:
             spec = replace(spec, env=dict(spec.env, ARCHEUS_HOOK_CMD=json.dumps(
                 list(spec.hook_settings))))

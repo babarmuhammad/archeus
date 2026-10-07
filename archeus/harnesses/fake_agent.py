@@ -31,19 +31,78 @@ halt emits `halted` with the step to resume at and exits 0. An allowed `Write` c
 verifier judges the workspace, not the report).
 
 Arguments after the scenario and the start step are the spawn's flags (P20,
-ADR-0049); `started` echoes them as `argv`.
+ADR-0049); `started` echoes them as `argv`. The agent honours the tool flags as
+Claude Code 2.1.292 was observed to (P20 slice F, ADR-0052): a tool absent from
+`--tools`, denied by `--disallowedTools` (a name, `mcp__<server>`, or a glob),
+an MCP tool whose server `--strict-mcp-config` did not load from `--mcp-config`,
+or `Skill` under `--disable-slash-commands` does not exist — its call emits
+`tool_unavailable`, never reaches the hook and never runs, and the agent goes on.
 
 Falling off the end of the scenario exits 0. The last line is always
 `{"type": "exit", "code": n}`, so a Core that did not start the process (and
 so cannot ask the OS for its exit code) still knows how it ended.
 """
 
+import fnmatch
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
+
+#: the flags that take a value (everything else is a switch)
+VALUED = ('--setting-sources', '--mcp-config', '--plugin-dir', '--tools', '--disallowedTools')
+#: one tool under two names: `init` says `Task`, the API and --tools `Agent`
+ALIASES = {'Agent': 'Task'}
+
+
+def flags_of(args):
+    """{flag: [values]} for a valued flag, {switch: []} for a switch."""
+    out, i = {}, 0
+    while i < len(args):
+        a = args[i]
+        if a in VALUED and i + 1 < len(args):
+            out.setdefault(a, []).append(args[i + 1])
+            i += 2
+            continue
+        out.setdefault(a, [])
+        i += 1
+    return out
+
+
+def _names(values):
+    return [ALIASES.get(n, n) for v in values for n in v.split(',') if n]
+
+
+def _server(name):
+    """An MCP tool's server, in the name Claude Code gives it."""
+    return name.split('__')[1] if name.count('__') >= 2 else ''
+
+
+def available(flags, name):
+    """Whether Claude Code would offer the tool *name* under *flags*."""
+    name = ALIASES.get(name, name)
+    for p in _names(flags.get('--disallowedTools', ())):
+        if fnmatch.fnmatchcase(name, p) or (
+                p.count('__') == 1 and p.startswith('mcp__') and name.startswith(p + '__')):
+            return False
+    if name.startswith('mcp__'):
+        if '--strict-mcp-config' not in flags:
+            return True
+        loaded = set()
+        for path in flags.get('--mcp-config', ()):
+            try:
+                with open(path, encoding='utf-8') as f:
+                    servers = json.load(f).get('mcpServers') or {}
+            except (OSError, ValueError):
+                servers = {}
+            loaded.update(re.sub(r'[^A-Za-z0-9_-]', '_', s) for s in servers)
+        return _server(name) in loaded
+    if name == 'Skill' and '--disable-slash-commands' in flags:
+        return False
+    return '--tools' not in flags or name in _names(flags['--tools'])
 
 
 def hook(cmd, event):
@@ -109,12 +168,18 @@ def main(argv):
           'execution_id': os.environ.get('ARCHEUS_EXECUTION_ID'),
           'stdin_bytes': len(data), 'stdin_sha256': hashlib.sha256(data).hexdigest(),
           'argv': argv[3:]})
+    flags = flags_of(argv[3:])
     for i, step in enumerate(steps):
         if i < start:
             continue
         if 'emit' in step:
             ev = step['emit']
             kind = None
+            if isinstance(ev, dict) and ev.get('type') == 'tool' and \
+                    not available(flags, ev.get('name') or ''):
+                emit({'type': 'tool_unavailable', 'name': ev.get('name'),
+                      'reason': 'No such tool available: %s' % ev.get('name')})
+                continue
             if cmd is not None and isinstance(ev, dict) and ev.get('type') == 'tool':
                 kind, reason = hook(cmd, ev)
                 if kind == 'proceed':

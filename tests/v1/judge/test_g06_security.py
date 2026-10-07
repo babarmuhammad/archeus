@@ -84,6 +84,37 @@ def test_an_execution_records_its_settings_sources_and_excludes_them_by_default(
     assert got['inventory_sha256']
 
 
+def _progress_lines(client):
+    return [line for ev in events_of(client, 'execution.progress')
+            for line in ev['payload']['last']]
+
+
+# ── P20 slice F (ADR-0052, PV-22): tool removal beneath the hook ──────────────
+
+@pytest.mark.tool_removal
+def test_a_tool_the_task_does_not_hold_never_runs_and_never_reaches_the_hook(client, rig):
+    """The task holds `write_repo` only: Bash is absent from the process's
+    tools, so the call never runs and Core is never asked about it; the held
+    Write is still judged, and allowed. Every MCP tool is denied while no
+    server is opted in, and Skill is absent while no skill is."""
+    rig.script_harness('t1', [
+        {'emit': {'type': 'tool', 'name': 'Bash', 'input': 'git push origin main'}},
+        {'emit': {'type': 'tool', 'name': 'mcp__gh__create_issue', 'input': {}}},
+        {'emit': {'type': 'tool', 'name': 'Skill', 'input': {'skill': 'any'}}},
+        {'emit': {'type': 'tool', 'name': 'Write',
+                  'input': {'file_path': 'notes.txt', 'content': 'x'}}}])
+    m = client.create_mission(title='Removal', objective='Write one note')
+    wait_for(lambda: client.get_mission(m['id'])['state'] == 'COMPLETED')
+    hooks = [ev['payload']['decision'] for ev in events_of(client, 'execution.hook')]
+    assert hooks == ['allow']                                   # the Write, alone
+    lines = _progress_lines(client)
+    assert lines.count('tool_unavailable') == 3 and 'tool Write: notes.txt' in lines
+    assert not [x for x in lines if x.startswith(('tool Bash', 'tool mcp__', 'tool Skill'))]
+    # the inventory is slice E's, unchanged: tool removal is not recorded in it
+    got = client.execution(_first_execution(client))
+    assert got['inventory']['inventory_version'] == 2 and 'tools' not in got['inventory']['flags']
+
+
 def test_only_a_user_device_opts_a_settings_source_in(client, rig):
     """An opt-in is the user's (ADR-0035's pattern): the brain principal is
     refused, the user's change is one row whose version counts every change."""

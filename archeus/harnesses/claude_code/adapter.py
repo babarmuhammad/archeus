@@ -4,6 +4,7 @@
            [--model m] [--effort e] --max-turns N --settings <exec dir>/settings.json
            --setting-sources <opted in> --strict-mcp-config [--mcp-config <exec dir>/mcp.json]
            [--disable-slash-commands] [--plugin-dir <dir>]...
+           --tools <mapped tools> [--disallowedTools <mcp patterns>]
            [--resume <session uuid>]                    (prompt on stdin)
 
 The settings file installs the Archeus hook (harnesses/hook.py) for this
@@ -12,6 +13,8 @@ the context-pressure backstop — and never touches the user's settings.json
 (ADR-0019). What the account's, the project's and the local settings sources
 would load besides is excluded unless opted in, and recorded (ADR-0049, P20 D6:
 harnesses/sources.py); the flags are read from the recorded inventory. The
+tools the process may call at all are the task's action classes mapped to
+Claude Code's names (ADR-0052, P20 slice F: tools.py), beneath the hook. The
 account is its home: `CLAUDE_CONFIG_DIR` from the account's `home_ref`, with any API key popped so it cannot shadow the login (the current
 product's `config.account_env` rule). The process I/O contract is the shared one
 (base.spawn): the stream is stream-json on stdout, tailed from a file.
@@ -30,6 +33,7 @@ from claude_sessions import config, proc, quota
 
 from .. import base, sources
 from ..calls import claude_models
+from . import tools
 
 #: turns per task size (p11-design-gate §18): a bounded agent
 MAX_TURNS = {1: 20, 2: 40, 3: 60, 4: 80, 5: 100}
@@ -130,6 +134,7 @@ class ClaudeCodeAdapter:
                                home=self._home(spec),
                                workdir=spec.workdir,
                                exec_dir=base.ExecPaths(spec.execution_id).dir)
+        a += tools.tool_argv(spec.task_contract.get('action_classes') or (), spec.inventory)
         a += ['--resume', session] if spec.resume_ref else ['--session-id', session]
         if spec.model:
             a += ['--model', spec.model]

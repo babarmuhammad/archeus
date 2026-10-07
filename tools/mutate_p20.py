@@ -5,7 +5,8 @@ answering (Q01-Q08); slice B, F7 and F8, Control → About's emergency stop
 takeover (Q18-Q25, Q33) and item 86's one shell credential at a time (Q26-Q32);
 slice D, F6's touch exit from the command bar (Q34-Q37); slice E, PV-10
 (ADR-0049, D6): settings-source opt-ins, the inventory and the exit-code-2
-deny (Q38-Q79; two e2e-guarded mutants rebuild the SPA).
+deny (Q38-Q79; two e2e-guarded mutants rebuild the SPA); slice F, PV-22
+(ADR-0052): tool removal, the CLI snapshot, the MCP deny and Skill (Q80-Q99).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -59,6 +60,11 @@ API = 'tests/v1/unit/test_api_structure.py::test_the_route_table_is_exactly_the_
 OPT_E2E = 'tests/v1/e2e/test_spa_opt_ins.py::'
 PARITY_TS = 'node:test/parity.test.ts'
 PARITY_PY = 'tests/v1/tui/test_parity.py'
+TOOLS = 'archeus/harnesses/claude_code/tools.py'
+FAKE = 'archeus/harnesses/fake.py'
+FU = 'tests/v1/unit/test_tool_removal_units.py::'
+FR = 'tests/v1/integration/test_tool_removal.py::'
+G6F = G6 + 'test_a_tool_the_task_does_not_hold_never_runs_and_never_reaches_the_hook'
 
 MUTATIONS = [
     # Slice A, item 83: execution-architecture §10 path 2
@@ -403,6 +409,104 @@ MUTATIONS = [
      "                elif type_ == 'plugin':\n                    plugin(src, name, status(src))",
      "                elif type_ == 'plugin':\n                    add(src, type_, name, status(src))")],
      [SU + 'test_E25_what_a_plugin_brings_and_the_synced_skills_are_recorded']),
+
+    # Slice F, PV-22 (ADR-0052): tool removal beneath the hook; C1, C2, C3
+    ('Q80', 'a mapping row is removed (exec)', [(TOOLS,
+     "         'exec': ('Bash', 'PowerShell'),\n",
+     "")],
+     [FU + 'test_F01_every_set_of_action_classes_gets_exactly_its_mapped_offered_tools',
+      FU + 'test_F10_every_action_class_and_every_canonicaliser_tool_has_a_mapping']),
+    ('Q81', '--allowedTools is passed (it pre-approves)', [(TOOLS,
+     "    deny = mcp_deny(inventory)\n",
+     "    deny = mcp_deny(inventory)\n    a += ['--allowedTools', a[1]]\n")],
+     [FU + 'test_F01_every_set_of_action_classes_gets_exactly_its_mapped_offered_tools',
+      FU + 'test_F02_the_adapter_always_passes_tools_and_settings_and_never_allowed_tools']),
+    ('Q82', 'nothing opted in, and no MCP tool is denied', [(TOOLS,
+     "        return ['mcp__*']",
+     "        return []")],
+     [FU + 'test_F04_nothing_opted_in_denies_every_mcp_tool',
+      FR + 'test_R01_a_removed_tool_never_runs_and_never_reaches_the_hook', G6F]),
+    ('Q83', 'no --settings (the hook is not installed)', [(CCA,
+     "             '--settings', self._settings(spec)]",
+     "             ]")],
+     [FU + 'test_F02_the_adapter_always_passes_tools_and_settings_and_never_allowed_tools',
+      SU + 'test_E21_claude_code_is_spawned_with_the_flags_of_its_recorded_inventory']),
+    ('Q84', 'an empty --tools is left out (the CLI would offer every tool)', [(TOOLS,
+     "    a = ['--tools', ','.join(allowed(action_classes, skill=not flags['disable_slash_commands']))]",
+     "    names = allowed(action_classes, skill=not flags['disable_slash_commands'])\n"
+     "    a = ['--tools', ','.join(names)] if names else []")],
+     [FU + 'test_F03_a_task_with_no_mapped_class_is_given_an_empty_tools_never_none']),
+    ('Q85', 'an excluded tool is mapped (Task under read)', [(TOOLS,
+     "TOOLS = {'read': ('Read', 'Glob', 'Grep', 'LS'),",
+     "TOOLS = {'read': ('Read', 'Glob', 'Grep', 'LS', 'Task'),")],
+     [FU + 'test_F11_every_offered_tool_is_mapped_or_excluded_and_the_snapshot_says_what_is_not_offered']),
+    ('Q86', 'Skill is always allowed', [(TOOLS,
+     "    return names + [SKILL] if skill else names",
+     "    return names + [SKILL]")],
+     [FU + 'test_F08_skill_is_allowed_exactly_when_an_opted_in_source_brings_a_skill',
+      FR + 'test_R05_skill_exists_exactly_when_an_opted_in_source_brings_a_skill']),
+    ('Q87', 'Skill is never allowed, so an opted-in skill cannot be used', [(TOOLS,
+     "    return names + [SKILL] if skill else names",
+     "    return names")],
+     [FU + 'test_F08_skill_is_allowed_exactly_when_an_opted_in_source_brings_a_skill',
+      FR + 'test_R05_skill_exists_exactly_when_an_opted_in_source_brings_a_skill']),
+    ('Q88', 'Skill follows the opposite of the slash-commands flag', [(TOOLS,
+     "skill=not flags['disable_slash_commands']",
+     "skill=flags['disable_slash_commands']")],
+     [FU + 'test_F08_skill_is_allowed_exactly_when_an_opted_in_source_brings_a_skill']),
+    ('Q89', 'an MCP deny uses the raw server name (matches nothing in Claude Code)', [(TOOLS,
+     "    return re.sub(r'[^A-Za-z0-9_-]', '_', server)",
+     "    return server")],
+     [FU + 'test_F06_a_deny_names_a_server_as_claude_code_names_its_tools',
+      FR + 'test_R03_an_opted_in_mcp_server_stays_usable_and_the_excluded_are_denied_by_name']),
+    ('Q90', 'a colliding excluded server is denied, taking the opted-in one with it', [(TOOLS,
+     "                   and mcp_name(i['name']) not in opted})",
+     "                   })")],
+     [FU + 'test_F07_an_excluded_server_that_collides_with_an_opted_in_one_is_not_denied',
+      FR + 'test_R04_an_excluded_server_whose_name_collides_with_the_opted_in_one_is_not_denied']),
+    ('Q91', 'mcp__* is denied even with a server opted in', [(TOOLS,
+     "    if not opted:\n        return ['mcp__*']",
+     "    if True:\n        return ['mcp__*']")],
+     [FU + 'test_F05_with_an_opt_in_each_named_excluded_server_is_denied_and_the_opted_in_never',
+      FR + 'test_R03_an_opted_in_mcp_server_stays_usable_and_the_excluded_are_denied_by_name']),
+    ('Q92', "a plugin's MCP server is denied by a name Claude Code was never seen to give it", [(TOOLS,
+     "                   and i.get('source') in ('user', 'project')\n",
+     "")],
+     [FU + 'test_F05_with_an_opt_in_each_named_excluded_server_is_denied_and_the_opted_in_never']),
+    ('Q93', 'a mapped name the CLI does not offer reaches --tools (LS, MultiEdit)', [(TOOLS,
+     " for t in tools if t in have]",
+     " for t in tools]")],
+     [FU + 'test_F01_every_set_of_action_classes_gets_exactly_its_mapped_offered_tools',
+      FU + 'test_F02_the_adapter_always_passes_tools_and_settings_and_never_allowed_tools']),
+    ('Q94', 'the fake agent runs a tool absent from --tools', [(AGENT,
+     "    return '--tools' not in flags or name in _names(flags['--tools'])",
+     "    return True")],
+     [FU + 'test_F12_the_fake_agent_never_runs_a_tool_absent_from_tools',
+      FR + 'test_R01_a_removed_tool_never_runs_and_never_reaches_the_hook', G6F]),
+    ('Q95', 'the fake agent ignores --disallowedTools', [(AGENT,
+     "                p.count('__') == 1 and p.startswith('mcp__') and name.startswith(p + '__')):\n"
+     "            return False",
+     "                p.count('__') == 1 and p.startswith('mcp__') and name.startswith(p + '__')):\n"
+     "            pass")],
+     [FU + 'test_F13_the_fake_agent_loads_only_strict_mcp_servers_and_honours_each_deny',
+      FR + 'test_R03_an_opted_in_mcp_server_stays_usable_and_the_excluded_are_denied_by_name']),
+    ('Q96', 'the fake agent offers an MCP server --strict-mcp-config did not load', [(AGENT,
+     "        return _server(name) in loaded",
+     "        return True")],
+     [FU + 'test_F13_the_fake_agent_loads_only_strict_mcp_servers_and_honours_each_deny']),
+    ('Q97', 'the Claude Code adapter passes no tool flags', [(CCA,
+     "        a += tools.tool_argv(spec.task_contract.get('action_classes') or (), spec.inventory)\n",
+     "")],
+     [FU + 'test_F02_the_adapter_always_passes_tools_and_settings_and_never_allowed_tools',
+      FU + 'test_F03_a_task_with_no_mapped_class_is_given_an_empty_tools_never_none']),
+    ('Q98', 'the fake harness standing in for tool removal passes no tool flags', [(FAKE,
+     "        if self._tools:",
+     "        if False:")],
+     [FR + 'test_R01_a_removed_tool_never_runs_and_never_reaches_the_hook', G6F]),
+    ('Q99', "the snapshot stops recording LS as mapped but not offered", [(TOOLS,
+     "    'mapped_not_offered': ('LS', 'MultiEdit'),",
+     "    'mapped_not_offered': ('MultiEdit',),")],
+     [FU + 'test_F11_every_offered_tool_is_mapped_or_excluded_and_the_snapshot_says_what_is_not_offered']),
 ]
 
 if __name__ == '__main__':

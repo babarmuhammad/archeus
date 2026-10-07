@@ -193,8 +193,10 @@ class InProcessClient:
     """
 
     def __init__(self, home, *, callers=None, preference=None, brain=None, usage=None,
-                 real_verification=False, real_review=False):
+                 real_verification=False, real_review=False, tool_removal=False):
         self.home = str(home)
+        # P20 slice F: the fake also stands in for Claude Code's tool removal
+        self._tool_removal = tool_removal
         self._db = self._lock = None
         self._engine = None
         self._principal = self._system = None
@@ -236,7 +238,7 @@ class InProcessClient:
                     'kind': 'system', 'scopes': ('system',)})['id']
             registry = AdapterRegistry(self._policy)
             # P20 (ADR-0049): the fake stands in for Claude Code's settings sources
-            registry.register(FakeHarness(sources=True))
+            registry.register(FakeHarness(sources=True, tools=self._tool_removal))
             callers = real_callers() if self._callers is None else self._callers
             self._resources = resources.Resources(registry=registry, callers=callers)
             self._engine = engine.Engine(
