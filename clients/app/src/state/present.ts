@@ -392,6 +392,7 @@ const INVENTORY_STATUS: Record<string, string> = {
   not_excludable: 'loaded, not excludable',
   recorded_only: 'loaded, recorded only (fallback)',
   not_found: 'opted in, not found',
+  builtin: "loaded, built into the CLI (outside Archeus's controls)",
 };
 const INVENTORY_TYPE: Record<string, string> = {
   hook: 'hook',
@@ -430,7 +431,7 @@ export function inventoryLines(inv: InventoryLike | null | undefined): [string, 
     ['MCP servers', 'only the opted in: ' + names((f.mcp_servers ?? []).map((s) => s.name))],
     ['Skills', f.disable_slash_commands ? 'disabled' : 'enabled: a skill is opted in'],
     ['Plugins for this session', names((f.plugin_dirs ?? []).filter((d) => d.path).map((d) => d.name))],
-    ['Observed on a real run', inv.observed ? 'yes' : 'not yet (PV-19): what each flag excludes is expected, not observed'],
+    ['Observed on a real run', inv.observed ? 'yes' : 'no: predicted before the spawn, by the rule PV-19 observed'],
   ];
   for (const i of inv.items ?? [])
     rows.push([`${INVENTORY_TYPE[i.type] ?? i.type} (${i.source})`, `${i.name}: ${INVENTORY_STATUS[i.status] ?? i.status}`]);

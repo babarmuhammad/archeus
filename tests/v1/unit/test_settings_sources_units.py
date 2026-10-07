@@ -96,7 +96,12 @@ def test_E01_with_nothing_opted_in_every_source_is_excluded(world):
     assert {i['name'] for i in items(inv, type='hook')} >= {
         'PreToolUse: user-hook.sh', 'PreToolUse: project-hook.sh', 'PreToolUse: local.sh'}
     assert {i['name'] for i in items(inv, type='mcp_server')} == {'gh', 'web', 'db'}
-    assert inv['observed'] is False and inv['inventory_version'] == 1
+    # a CLAUDE.md follows its source too: none loads (PV-19, O5)
+    assert {m['status'] for m in items(inv, type='claude_md')} == {'excluded'}
+    # the CLI's own are said, never omitted; the flag keeps its bundled skills out
+    assert [(i['type'], i['status']) for i in items(inv, source='cli')] == [
+        ('plugin', 'builtin'), ('skill', 'excluded')]
+    assert inv['observed'] is False and inv['inventory_version'] == 2
 
 
 def test_E02_the_argv_always_names_the_sources_even_when_none(world, tmp_path):
@@ -108,14 +113,16 @@ def test_E02_the_argv_always_names_the_sources_even_when_none(world, tmp_path):
                              exec_dir=str(tmp_path / 'y')) == a
 
 
-def test_E03_managed_settings_and_claude_md_are_recorded_never_excluded(world):
+def test_E03_managed_settings_always_apply_and_claude_md_follows_its_source(world):
     inv = take(world)
     assert status_of(inv, 'managed_settings', 'managed-settings.json') == 'not_excludable'
     assert status_of(inv, 'hook', 'managed.sh') == 'not_excludable'
     mds = items(inv, type='claude_md')
-    assert {(m['source'], m['status']) for m in mds} >= {('user', 'not_excludable'),
-                                                         ('project', 'not_excludable')}
+    assert {(m['source'], m['status']) for m in mds} >= {('user', 'excluded'),
+                                                         ('project', 'excluded')}
     assert all(len(m['sha256']) == 64 for m in mds)
+    assert 'not_excludable' not in {i['status'] for i in inv['items']
+                                    if i['source'] != 'managed'}
 
 
 # ── opt-ins, each in exactly the scope granted ───────────────────────────────
@@ -129,7 +136,7 @@ def test_E04_an_account_opting_in_its_source_loads_user_and_nothing_else(world):
     (md,) = items(inv, type='claude_md', source='user')
     assert md['status'] == 'opted_in'
     assert {m['status'] for m in items(inv, type='claude_md', source='project')} == {
-        'not_excludable'}
+        'excluded'}
 
 
 def test_E05_a_project_opting_in_project_does_not_load_local(world):
@@ -165,10 +172,12 @@ def test_E07_a_plugin_is_loaded_by_its_own_directory_and_carries_its_skills(worl
     assert d['name'] == 'pl@m' and os.path.isdir(d['path'])
     assert status_of(inv, 'skill', 'pskill') == 'opted_in'
     assert status_of(inv, 'hook', 'plugin-hook.sh') == 'opted_in'
-    # a skill arrived with the plugin: the flag is dropped, and the user's own
-    # skill, from a source that stays out, is recorded as not excludable
+    # a skill arrived with the plugin: the flag is dropped, which lets the CLI's
+    # bundled skills in, and the user's own skill, from a source that stays
+    # out, still does not load (PV-19, O5)
     assert inv['flags']['disable_slash_commands'] is False
-    assert status_of(inv, 'skill', 'uskill') == 'not_excludable'
+    assert status_of(inv, 'skill', 'uskill') == 'excluded'
+    assert status_of(inv, 'skill', 'bundled skills') == 'builtin'
     a = sources.flag_argv(inv['flags'], home=world[0], workdir=world[1],
                           exec_dir=str(tmp_path / 'e'))
     assert a[a.index('--plugin-dir') + 1] == d['path'] and '--disable-slash-commands' not in a
@@ -189,7 +198,7 @@ def test_E09_skills_stay_disabled_unless_a_skill_is_opted_in(world):
     inv = take(world, ('project', 'source', 'project'))
     assert inv['flags']['disable_slash_commands'] is False
     assert status_of(inv, 'skill', 'pjskill') == 'opted_in'
-    assert status_of(inv, 'skill', 'uskill') == 'not_excludable'
+    assert status_of(inv, 'skill', 'uskill') == 'excluded'
 
 
 def test_E10_the_fallback_loads_a_source_and_says_it_is_only_recorded(world):
@@ -300,14 +309,20 @@ def test_E17_allow_and_halt_keep_their_json_at_exit_0(tmp_path):
     os.makedirs(os.path.join(str(tmp_path), 'run'), exist_ok=True)
     open(os.path.join(str(tmp_path), 'run', 'STOP'), 'w').close()
     r = _run_hook(env, json.dumps({'tool_name': 'Read'}))
-    assert (r.returncode, json.loads(r.stdout)) == (0, {'continue': False,
-                                                          'stopReason': 'emergency stop'})
+    # a halt stops the agent AND denies the call it answers: `continue: false`
+    # alone lets Claude Code run the call first (PV-19, O4)
+    assert (r.returncode, json.loads(r.stdout)) == (0, {
+        'continue': False, 'stopReason': 'emergency stop',
+        'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
+                               'permissionDecisionReason': 'emergency stop'}})
 
 
 def test_E18_a_hook_crash_halts_and_never_exits_with_another_code(tmp_path):
     _eid, env = _env(tmp_path)
     r = _run_hook(env, 'this is not json')
-    assert r.returncode == 0 and json.loads(r.stdout)['continue'] is False
+    out = json.loads(r.stdout)
+    assert r.returncode == 0 and out['continue'] is False
+    assert out['hookSpecificOutput']['permissionDecision'] == 'deny'
     # whatever escapes, even the write of the halt, is the deny's exit code
     assert hook.guarded(lambda: 1 / 0) == hook.DENY_EXIT
     assert hook.guarded(lambda: 1) == hook.DENY_EXIT
@@ -318,7 +333,9 @@ def test_E18_a_hook_crash_halts_and_never_exits_with_another_code(tmp_path):
 def test_E19_a_core_that_never_answers_is_a_halt_before_claude_codes_own_timeout(tmp_path):
     eid, env = _env(tmp_path, wait='0.3')
     r = _run_hook(env, json.dumps({'tool_name': 'Read'}))
-    assert r.returncode == 0 and json.loads(r.stdout)['continue'] is False
+    out = json.loads(r.stdout)
+    assert r.returncode == 0 and out['continue'] is False
+    assert out['hookSpecificOutput']['permissionDecision'] == 'deny'
     assert os.path.exists(os.path.join(str(tmp_path), 'run', 'exec', eid, 'halted.json'))
     # the hook's own deadline is well inside the one Claude Code enforces on it
     assert float(os.environ.get('ARCHEUS_HOOK_WAIT', '60')) < cc.HOOK_TIMEOUT_S
@@ -332,7 +349,7 @@ def test_E19_a_core_that_never_answers_is_a_halt_before_claude_codes_own_timeout
     (1, '', 'hook_error'),              # any other code: the call proceeds
     (3, '', 'hook_error'),
     (0, 'not json', 'hook_error'),      # exit 0 with no decision: proceeds
-    (0, json.dumps({'continue': False}), 'halted'),
+    (0, json.dumps({'continue': False, 'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny'}}), 'halted'),
 ])
 def test_E20_the_fake_agent_lets_a_failing_hook_through_as_claude_code_would(
         tmp_path, code, out, expect):
@@ -348,6 +365,98 @@ def test_E20_the_fake_agent_lets_a_failing_hook_through_as_claude_code_would(
     assert evs[0]['argv'] == ['--x']
     if expect == 'hook_error':
         assert 'tool' in [e['type'] for e in evs]     # it ran: the worst case, modelled
+    if expect == 'halted':
+        assert 'tool' not in [e['type'] for e in evs]   # the halt's deny blocked it
+
+
+@pytest.mark.parametrize('answer, ran', [
+    (json.dumps({'continue': False, 'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny'}}), False),
+    (json.dumps({'continue': False}), True),
+])
+def test_E23_the_fake_agent_halts_as_claude_code_does(tmp_path, answer, ran):
+    """PV-19 (O4): `continue: false` alone does not block the call it answers
+    in Claude Code 2.1.291 — the call runs and the agent stops after it; with
+    the deny the call is blocked and the agent stops. The fake models both, so
+    a halt that loses its deny is caught here; the real CLI's own behaviour is
+    PV-19's to prove (p20-design-gate §12)."""
+    script = tmp_path / 'h.py'
+    script.write_text('import sys\nsys.stdin.read()\nsys.stdout.write(%r)\n' % answer)
+    target = tmp_path / 'work'
+    target.mkdir()
+    steps = [{'emit': {'type': 'tool', 'name': 'Write',
+                       'input': {'file_path': 'ran.txt', 'content': 'x'}}},
+             {'emit': {'type': 'assistant', 'text': 'after'}}]
+    env = dict(os.environ, ARCHEUS_HOOK_CMD=json.dumps([sys.executable, str(script)]))
+    r = subprocess.run([sys.executable, AGENT, json.dumps(steps), '0'], input='',
+                       capture_output=True, text=True, env=env, timeout=60, cwd=str(target))
+    evs = [json.loads(line) for line in r.stdout.splitlines()]
+    kinds = [e['type'] for e in evs]
+    assert 'halted' in kinds and 'assistant' not in kinds and r.returncode == 0
+    assert ('tool' in kinds) is ran and (target / 'ran.txt').exists() is ran
+
+
+def test_E25_what_a_plugin_brings_and_the_synced_skills_are_recorded(world):
+    """PV-19 (O5): a plugin's hooks may sit in its manifest (`plugin.json`), a
+    plugin a source enables brings its skills and hooks with that source, its
+    MCP servers stay out under --strict-mcp-config, the CLI names it by its
+    manifest, and the account's synced skills come with `user`. None of it
+    moves a flag."""
+    home, work, _m = world
+    up = os.path.join(home, 'plugins', 'cache', 'm', 'up', '1')
+    _write(os.path.join(up, '.claude-plugin', 'plugin.json'), {
+        'name': 'up-cli', 'hooks': {'SessionStart': [{'hooks': [
+            {'type': 'command', 'command': 'inline.sh'}]}]},
+        'mcpServers': {'upmcp': {'command': 'x'}},
+        'skills': ['./.claude/skills/', './', '../../../../../outside']})
+    _write(os.path.join(up, 'skills', 'upskill', 'SKILL.md'), 'x')
+    # skill paths the manifest declares: a directory of skills, and a path that
+    # is one skill named by its SKILL.md; one outside the plugin is not read
+    _write(os.path.join(up, '.claude', 'skills', 'declskill', 'SKILL.md'), 'x')
+    _write(os.path.join(up, 'SKILL.md'), '---\r\nname: rootskill\r\n---\r\nbody\r\n')
+    _write(os.path.join(home, 'outside', 'SKILL.md'), '---\nname: escaped\n---\n')
+    _write(os.path.join(home, 'skills', 'synced', 'org_1', 'synskill', 'SKILL.md'), 'x')
+    inst = os.path.join(home, 'plugins', 'installed_plugins.json')
+    d = json.load(open(inst))
+    d['plugins']['up@m'] = [{'scope': 'user', 'installPath': up}]
+    _write(inst, d)
+    before = {k: take(world, *o)['flags'] for k, o in (
+        ('none', ()), ('user', (('account', 'source', 'user'),)))}
+    for opt, st in (((), 'excluded'), ((('account', 'source', 'user'),), 'opted_in')):
+        inv = take(world, *opt)
+        assert [(i['status'], i.get('loads_as')) for i in items(inv, type='plugin', name='up@m')] == [
+            (st, 'up-cli')]
+        assert status_of(inv, 'hook', 'inline.sh') == st
+        assert status_of(inv, 'skill', 'upskill') == st
+        assert {i['name'] for i in items(inv, source='plugin:up@m', type='skill')} == {
+            'upskill', 'declskill', 'rootskill'}
+        assert status_of(inv, 'mcp_server', 'upmcp') == 'excluded'
+        (syn,) = items(inv, type='skill', name='synskill')
+        assert (syn['source'], syn['status'], syn['via']) == ('user', st, 'synced')
+    # recording more never changes what the process is given
+    assert before == {'none': take(world)['flags'],
+                      'user': take(world, ('account', 'source', 'user'))['flags']}
+    assert before['none']['disable_slash_commands'] is True
+
+
+def test_E24_every_claude_md_follows_its_setting_source_ancestors_too(world, tmp_path):
+    """PV-19 (O5): CLAUDE.md and .claude/CLAUDE.md, in the workdir and every
+    ancestor, follow `project`; CLAUDE.local.md there follows `local`."""
+    for rel in ('CLAUDE.md', 'CLAUDE.local.md', os.path.join('.claude', 'CLAUDE.md')):
+        _write(str(tmp_path / rel), 'ancestor')
+    _write(os.path.join(world[1], 'CLAUDE.local.md'), 'local')
+
+    anc = str(tmp_path).replace(os.sep, '/')
+
+    def mds(inv):
+        return {(m['source'], m['name'].replace(os.sep, '/').replace(anc, '<anc>'), m['status'])
+                for m in items(inv, type='claude_md')}
+    want = lambda p, lo: {  # noqa: E731
+        ('project', '<anc>/CLAUDE.md', p), ('project', '<anc>/.claude/CLAUDE.md', p),
+        ('local', '<anc>/CLAUDE.local.md', lo), ('project', 'CLAUDE.md', p),
+        ('local', 'CLAUDE.local.md', lo)}
+    assert mds(take(world)) >= want('excluded', 'excluded')
+    assert mds(take(world, ('project', 'source', 'project'))) >= want('opted_in', 'excluded')
+    assert mds(take(world, ('project', 'source', 'local'))) >= want('excluded', 'opted_in')
 
 
 # ── the Claude Code adapter: the argv reads the recorded inventory ───────────

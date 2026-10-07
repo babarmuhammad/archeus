@@ -701,7 +701,8 @@ def test_E47_the_hook_fails_closed_without_core(archeus_home, tmp_path):
     r = subprocess.run([sys.executable, M.HOOK], input=json.dumps(
         {'tool_name': 'Read', 'tool_input': {'file_path': 'a'}}), capture_output=True,
         text=True, env=env, timeout=30)
-    assert json.loads(r.stdout)['continue'] is False
+    out = json.loads(r.stdout)
+    assert out['continue'] is False and out['hookSpecificOutput']['permissionDecision'] == 'deny'
     assert os.path.exists(base.halted_path(ExecPaths(eid).dir))
 
 
@@ -718,6 +719,7 @@ def test_E48_the_hook_refuses_to_run_inside_itself_or_without_an_identity(archeu
                            capture_output=True, text=True, env=env, timeout=30)
         out = json.loads(r.stdout)
         assert out['continue'] is False and why in out['stopReason'], extra
+        assert out['hookSpecificOutput']['permissionDecision'] == 'deny', extra
     assert not os.path.exists(os.path.join(str(archeus_home), 'etc'))   # nothing written there
 
 
@@ -729,7 +731,8 @@ def test_E49_the_hook_halts_on_the_estop_sentinel_without_asking_core(archeus_ho
                    ARCHEUS_HOOK_TOKEN='hook_x')
         r = subprocess.run([sys.executable, M.HOOK], input='{"tool_name": "Read"}',
                            capture_output=True, text=True, env=env, timeout=30)
-        assert json.loads(r.stdout) == {'continue': False, 'stopReason': 'emergency stop'}
+        assert json.loads(r.stdout) == {'continue': False, 'stopReason': 'emergency stop',
+                                        'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny', 'permissionDecisionReason': 'emergency stop'}}
         assert not os.path.exists(os.path.join(ExecPaths(eid).dir, 'hook'))    # nothing asked
     finally:
         LocalNode.clear_estop()

@@ -19,8 +19,10 @@ hook first: when `ARCHEUS_HOOK_CMD` names one (a JSON argv) the agent runs it
 exactly as Claude Code runs a PreToolUse command — the call as JSON on stdin
 (p11-design-gate §10.6) — and reads its answer as Claude Code documents it:
 exit code 2 blocks the call with the reason on stderr (ADR-0049 §3, the deny);
-exit code 0 is the JSON on stdout (`continue: false` halts, a
-`permissionDecision` allows); ANY other exit code, a timeout or a hook that
+exit code 0 is the JSON on stdout (a `permissionDecision` allows or denies;
+`continue: false` stops the agent, and blocks the call only together with the
+deny: alone, the call RUNS first and the agent stops after it, as Claude Code
+2.1.291 was observed to do — PV-19, O4); ANY other exit code, a timeout or a hook that
 cannot run is a non-blocking error, and the call PROCEEDS — the worst case,
 modelled so that a hook which fails open is caught here (P20). `allow` emits
 the event; `deny` emits `tool_denied` and exits 3 (a script cannot adapt); a
@@ -64,9 +66,11 @@ def hook(cmd, event):
     except ValueError:
         return 'proceed', 'the hook printed no JSON'
     out = out if isinstance(out, dict) else {}
-    if out.get('continue') is False:
-        return 'halt', out.get('stopReason') or ''
     spec = out.get('hookSpecificOutput') or {}
+    if out.get('continue') is False:
+        if spec.get('permissionDecision') == 'deny':
+            return 'halt', out.get('stopReason') or ''
+        return 'halt_after', out.get('stopReason') or ''
     if spec.get('permissionDecision') == 'allow':
         return 'allow', ''
     return 'proceed', 'the hook gave no decision'
@@ -110,6 +114,7 @@ def main(argv):
             continue
         if 'emit' in step:
             ev = step['emit']
+            kind = None
             if cmd is not None and isinstance(ev, dict) and ev.get('type') == 'tool':
                 kind, reason = hook(cmd, ev)
                 if kind == 'proceed':
@@ -123,6 +128,9 @@ def main(argv):
             if isinstance(ev, dict) and ev.get('type') == 'tool' and ev.get('name') == 'Write':
                 write(ev.get('input') or {})
             emit(ev)
+            if kind == 'halt_after':
+                emit({'type': 'halted', 'at': i + 1, 'reason': reason})
+                return done(0)
         elif 'sleep' in step:
             time.sleep(float(step['sleep']))
         elif 'exit' in step:

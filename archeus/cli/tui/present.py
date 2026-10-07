@@ -224,7 +224,8 @@ def edge_rows(edges, of):
 INVENTORY_STATUS = {'excluded': 'excluded', 'opted_in': 'opted in',
                     'not_excludable': 'loaded, not excludable',
                     'recorded_only': 'loaded, recorded only (fallback)',
-                    'not_found': 'opted in, not found'}
+                    'not_found': 'opted in, not found',
+                    'builtin': "loaded, built into the CLI (outside Archeus's controls)"}
 INVENTORY_TYPE = {'hook': 'hook', 'permission': 'permission rule', 'plugin': 'plugin',
                   'skill': 'skill', 'mcp_server': 'MCP server', 'claude_md': 'CLAUDE.md',
                   'managed_settings': 'managed settings', 'unreadable': 'unreadable file'}
@@ -250,7 +251,7 @@ def inventory_lines(inv):
             ['Plugins for this session', names([d['name'] for d in f.get('plugin_dirs') or []
                                                 if d.get('path')])],
             ['Observed on a real run', 'yes' if inv.get('observed') else
-             'not yet (PV-19): what each flag excludes is expected, not observed']]
+             'no: predicted before the spawn, by the rule PV-19 observed']]
     for i in inv.get('items') or []:
         rows.append(['%s (%s)' % (INVENTORY_TYPE.get(i['type'], i['type']), i['source']),
                      '%s: %s' % (i['name'], INVENTORY_STATUS.get(i['status'], i['status']))])

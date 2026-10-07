@@ -18,14 +18,31 @@ NAMES, permission rules and CLAUDE.md hashes. Never an environment block, an
 MCP server's definition (its command, arguments, URL or environment) or a
 file's contents: Core redacts the record again before it stores it.
 
-Every effect of these flags that the Claude Code documentation does not state
-is a verification item until PV-19 observes it (`observed: false`); none is a
-fact here. Stdlib only.
+What the inventory says (version 2; P20 O5). It is taken BEFORE the spawn, so
+it is a prediction (`observed: false`) by the rule PV-19 observed on Claude Code
+2.1.291 (p20-design-gate §12 items 59, 69):
+  1. requested: `opt_ins` (what the owners let back in) and `flags` (exactly
+     what the process is given);
+  2. predicted loaded: an item's status `opted_in` or `recorded_only` (its
+     source loads), or `not_excludable` (managed settings: always applied);
+  3. not loaded: `excluded` (its source, plugin or server is not opted in, or
+     the flag that would load it is not given), `not_found` (opted in, absent);
+  4. outside Archeus's source controls: `builtin`, the CLI's own plugins and
+     bundled skills, recorded as one class item each because their names are
+     the CLI's and cannot be read before the spawn.
+The rule: an item follows its setting source. That includes a CLAUDE.md: the
+user's follows `user`; CLAUDE.md and .claude/CLAUDE.md in the workdir and in
+every ancestor follow `project`; CLAUDE.local.md there follows `local`. A skill
+loads only while slash commands are on and its own source (or plugin) loads.
+What a process actually loaded is its stream's `init` event, never this record:
+a PV compares the two. Any effect PV-19 has not observed is a verification
+item, never a fact here. Stdlib only.
 """
 
 import hashlib
 import json
 import os
+import re
 import sys
 
 SOURCES = ('user', 'project', 'local')
@@ -86,6 +103,26 @@ def _skills(root):
         return []
 
 
+def _plugin_skills(p, declared):
+    """The skill names plugin directory *p* brings: `skills/<name>/SKILL.md`
+    and every path its manifest declares (`skills`: one path or a list), each
+    a skill itself (named by its SKILL.md) or a directory of them. A declared
+    path outside the plugin is not read."""
+    out = set(_skills(os.path.join(p, 'skills')))
+    for rel in [declared] if isinstance(declared, str) else declared or ():
+        d = os.path.normpath(os.path.join(p, rel)) if isinstance(rel, str) else None
+        if not d or not _inside(d, p):
+            continue
+        md = os.path.join(d, 'SKILL.md')
+        if os.path.isfile(md):
+            got, _e = _read(md)
+            m = re.search(rb'^name:\s*(\S.*?)\s*$', (got or b'').split(b'\n---', 1)[0], re.M)
+            out.add(m.group(1).decode('utf-8', 'replace') if m else os.path.basename(d))
+        else:
+            out.update(_skills(d))
+    return sorted(out)
+
+
 def _settings_items(d):
     """(type, name) for the hooks, plugins and permission rules of one settings
     object. Its `env`, and everything else, is never read."""
@@ -130,19 +167,24 @@ def plugin_dir(home, name):
     return None
 
 
+_MDS = (('CLAUDE.md', 'project'), (os.path.join('.claude', 'CLAUDE.md'), 'project'),
+        ('CLAUDE.local.md', 'local'))
+
+
 def _claude_mds(workdir):
     """(source, label, path) of every CLAUDE.md Claude Code would discover from
-    *workdir*: its own (project, local) and every ancestor's."""
+    *workdir*: its own and every ancestor's, each under the source it follows
+    (PV-19: an ancestor's CLAUDE.md and .claude/CLAUDE.md follow `project`, its
+    CLAUDE.local.md `local`). An ancestor's label is its full path."""
     out = []
     if not workdir:
         return out
-    for rel, src in (('CLAUDE.md', 'project'), (os.path.join('.claude', 'CLAUDE.md'), 'project'),
-                     ('CLAUDE.local.md', 'local')):
+    for rel, src in _MDS:
         out.append((src, rel.replace(os.sep, '/'), os.path.join(workdir, rel)))
     cur = os.path.dirname(os.path.abspath(workdir))
     while cur and os.path.dirname(cur) != cur:
-        for rel in ('CLAUDE.md', 'CLAUDE.local.md'):
-            out.append(('ancestor', os.path.join(cur, rel), os.path.join(cur, rel)))
+        for rel, src in _MDS:
+            out.append((src, os.path.join(cur, rel), os.path.join(cur, rel)))
         cur = os.path.dirname(cur)
     return out
 
@@ -172,6 +214,37 @@ def take(home, workdir, opt_ins, *, recorded_only=None, managed=None):
         items.append(dict({'source': source, 'type': type_, 'name': str(name)[:NAME_MAX],
                            'status': st}, **extra))
 
+    def plugin(src, name, st, **extra):
+        """Plugin *name* and what it brings, at *st*: its skills and its hooks
+        (hooks/hooks.json or its manifest's own), and its MCP servers, which
+        --strict-mcp-config keeps out whatever *st* is (PV-19). `loads_as` is
+        the name the CLI reports it under (its manifest's). True when it
+        brings a skill."""
+        p = plugin_dir(home, name)
+        man = (_json(os.path.join(p, '.claude-plugin', 'plugin.json'))[0] or {}) if p else {}
+        add(src, 'plugin', name, st if p or src != 'plugin' else 'not_found', **dict(
+            extra, **({'loads_as': str(man['name'])[:NAME_MAX]} if isinstance(
+                man.get('name'), str) else {})))
+        if not p:
+            return False
+        tag = 'plugin:' + name
+        skills = _plugin_skills(p, man.get('skills'))
+        for s in skills:
+            add(tag, 'skill', s, st)
+        hooks = [_json(os.path.join(p, 'hooks', 'hooks.json'))[0] or {}]
+        if isinstance(man.get('hooks'), dict):
+            hooks.append({'hooks': man['hooks']})
+        for hd in hooks:
+            for type_, hname in _settings_items(hd):
+                if type_ == 'hook':
+                    add(tag, 'hook', hname, st)
+        mcp = _mcp_names(os.path.join(p, '.mcp.json'))[0]
+        if isinstance(man.get('mcpServers'), dict):
+            mcp += sorted(man['mcpServers'])
+        for m in mcp:
+            add(tag, 'mcp_server', m, 'excluded')
+        return bool(skills)
+
     # the three sources' settings files: hooks, enabled plugins, permissions
     for src in SOURCES:
         for rel in files[src] if roots[src] else ():
@@ -181,6 +254,8 @@ def take(home, workdir, opt_ins, *, recorded_only=None, managed=None):
             for type_, name in _settings_items(d or {}):
                 if type_ == 'plugin' and name in opted_plugins:
                     add(src, type_, name, 'opted_in', via='plugin_dir')
+                elif type_ == 'plugin':
+                    plugin(src, name, status(src))
                 else:
                     add(src, type_, name, status(src))
     # managed settings: always applied, so recorded and never excluded
@@ -192,19 +267,10 @@ def take(home, workdir, opt_ins, *, recorded_only=None, managed=None):
             add('managed', type_, name, 'not_excludable')
     # plugins opted in by name: loaded for this session from their directory
     dirs = []
+    dir_skills = False
     for name in opted_plugins:
-        p = plugin_dir(home, name)
-        dirs.append({'name': name, 'path': p})
-        add('plugin', 'plugin', name, 'opted_in' if p else 'not_found', via='plugin_dir')
-        if p:
-            for s in _skills(os.path.join(p, 'skills')):
-                add('plugin:' + name, 'skill', s, 'opted_in')
-            hd, _e = _json(os.path.join(p, 'hooks', 'hooks.json'))
-            for type_, hname in _settings_items(hd or {}):
-                if type_ == 'hook':
-                    add('plugin:' + name, 'hook', hname, 'opted_in')
-            for m in _mcp_names(os.path.join(p, '.mcp.json'))[0]:
-                add('plugin:' + name, 'mcp_server', m, 'opted_in')
+        dirs.append({'name': name, 'path': plugin_dir(home, name)})
+        dir_skills = plugin('plugin', name, 'opted_in', via='plugin_dir') or dir_skills
     # MCP servers: --strict-mcp-config loads only the ones passed [DOC]
     servers = []
     for owner, src, path in (('account', 'user', os.path.join(home, '.claude.json') if home
@@ -223,34 +289,37 @@ def take(home, workdir, opt_ins, *, recorded_only=None, managed=None):
         if {'owner': owner, 'name': n} not in servers:
             add('user' if owner == 'account' else 'project', 'mcp_server', n, 'not_found')
     # skills: --disable-slash-commands disables every one [DOC], so it stays
-    # unless a skill arrives with something opted in
+    # unless a skill arrives with something opted in; without it a skill still
+    # loads only if its own source does (PV-19)
     found = [(src, s) for src, root in (('user', os.path.join(home, 'skills') if home else None),
                                         ('project', os.path.join(workdir, '.claude', 'skills')
                                          if workdir else None)) if root for s in _skills(root)]
-    skill_in = any(status(src) != 'excluded' for src, _s in found) or any(
-        i['type'] == 'skill' and i['status'] == 'opted_in' for i in items)
+    skill_in = any(status(src) != 'excluded' for src, _s in found) or dir_skills
     for src, s in found:
-        # with the flag dropped, whether a left-out source's skills still load
-        # is undocumented: recorded as loaded and not excludable (ADR-0049 §2)
-        add(src, 'skill', s, 'excluded' if not skill_in else (
-            status(src) if status(src) != 'excluded' else 'not_excludable'))
-    # CLAUDE.md: no flag Archeus passes is aimed at it (and --bare cannot keep
-    # a subscription login), so it is loaded and not excludable unless its
-    # source is opted in anyway
+        add(src, 'skill', s, status(src))
+    # the account's synced skills (skills/synced/<id>/<name>) come with `user`
+    synced = os.path.join(home, 'skills', 'synced') if home else ''
+    for d in sorted(os.listdir(synced)) if synced and os.path.isdir(synced) else ():
+        for s in _skills(os.path.join(synced, d)):
+            add('user', 'skill', s, status('user'), via='synced')
+    # CLAUDE.md follows its setting source (PV-19): none loads with none opted in
     mds = [('user', 'CLAUDE.md', os.path.join(home, 'CLAUDE.md'))] if home else []
     for src, label, path in mds + _claude_mds(workdir):
         data, err = _read(path)
         if data is None and not err:
             continue
-        st = status(src) if src in SOURCES and status(src) != 'excluded' else 'not_excludable'
-        add(src, 'claude_md', label, st, **({'sha256': hashlib.sha256(data).hexdigest()}
-                                            if data is not None else {'error': err}))
+        add(src, 'claude_md', label, status(src), **({'sha256': hashlib.sha256(data).hexdigest()}
+                                                     if data is not None else {'error': err}))
+    # the CLI's own, which no settings source or flag of Archeus's reaches
+    # except --disable-slash-commands for the bundled skills (PV-19)
+    add('cli', 'plugin', 'built-in plugins', 'builtin')
+    add('cli', 'skill', 'bundled skills', 'builtin' if skill_in else 'excluded')
     flags = {'setting_sources': [s for s in SOURCES if s in opted_sources or s in recorded_only],
              'strict_mcp_config': True,
              'mcp_servers': servers,
              'disable_slash_commands': not skill_in,
              'plugin_dirs': dirs}
-    return {'inventory_version': 1, 'observed': False,
+    return {'inventory_version': 2, 'observed': False,
             'opt_ins': [{'owner': o, 'kind': k, 'name': n} for o, k, n in opt_ins],
             'recorded_only': list(recorded_only),
             'flags': flags, 'items': items[:MAX_ITEMS], 'truncated': len(items) > MAX_ITEMS}

@@ -953,7 +953,7 @@
    "fn": "inventoryLines",
    "args": [
     {
-     "inventory_version": 1,
+     "inventory_version": 2,
      "observed": false,
      "opt_ins": [],
      "recorded_only": [],
@@ -978,11 +978,29 @@
        "status": "excluded"
       },
       {
-       "source": "ancestor",
+       "source": "project",
        "type": "claude_md",
        "name": "D:/CLAUDE.md",
-       "status": "not_excludable",
+       "status": "excluded",
        "sha256": "abababababababababababababababababababababababababababababababab"
+      },
+      {
+       "source": "managed",
+       "type": "hook",
+       "name": "PreToolUse: audit.sh",
+       "status": "not_excludable"
+      },
+      {
+       "source": "cli",
+       "type": "plugin",
+       "name": "built-in plugins",
+       "status": "builtin"
+      },
+      {
+       "source": "cli",
+       "type": "skill",
+       "name": "bundled skills",
+       "status": "excluded"
       }
      ],
      "truncated": false
@@ -1007,7 +1025,7 @@
     ],
     [
      "Observed on a real run",
-     "not yet (PV-19): what each flag excludes is expected, not observed"
+     "no: predicted before the spawn, by the rule PV-19 observed"
     ],
     [
      "hook (user)",
@@ -1018,8 +1036,20 @@
      "github: excluded"
     ],
     [
-     "CLAUDE.md (ancestor)",
-     "D:/CLAUDE.md: loaded, not excludable"
+     "CLAUDE.md (project)",
+     "D:/CLAUDE.md: excluded"
+    ],
+    [
+     "hook (managed)",
+     "PreToolUse: audit.sh: loaded, not excludable"
+    ],
+    [
+     "plugin (cli)",
+     "built-in plugins: loaded, built into the CLI (outside Archeus's controls)"
+    ],
+    [
+     "skill (cli)",
+     "bundled skills: excluded"
     ]
    ]
   },
@@ -1027,7 +1057,7 @@
    "fn": "inventoryLines",
    "args": [
     {
-     "inventory_version": 1,
+     "inventory_version": 2,
      "observed": false,
      "opt_ins": [
       {
@@ -1070,7 +1100,13 @@
        "source": "user",
        "type": "skill",
        "name": "x",
-       "status": "not_excludable"
+       "status": "excluded"
+      },
+      {
+       "source": "cli",
+       "type": "skill",
+       "name": "bundled skills",
+       "status": "builtin"
       },
       {
        "source": "local",
@@ -1107,7 +1143,7 @@
     ],
     [
      "Observed on a real run",
-     "not yet (PV-19): what each flag excludes is expected, not observed"
+     "no: predicted before the spawn, by the rule PV-19 observed"
     ],
     [
      "plugin (plugin)",
@@ -1115,7 +1151,11 @@
     ],
     [
      "skill (user)",
-     "x: loaded, not excludable"
+     "x: excluded"
+    ],
+    [
+     "skill (cli)",
+     "bundled skills: loaded, built into the CLI (outside Archeus's controls)"
     ],
     [
      "weird (local)",

@@ -70,7 +70,7 @@ def test_an_execution_shows_what_it_inherited_beside_its_why(browser, core):
     check('Settings sources loaded' in text and 'none' in text, 'no source loaded, said')
     check('only the opted in: none' in text, 'MCP strict with no server')
     check('disabled' in text, 'skills disabled')
-    check('not yet (PV-19)' in text, 'not claimed as observed')
+    check('predicted before the spawn' in text, 'not claimed as observed')
     check(page.get_by_text('Why', exact=True).count() >= 1, 'beside the Why')
     check(not errors, 'no console error: %s' % errors)
     assert check.n == 6

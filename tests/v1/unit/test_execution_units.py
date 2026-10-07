@@ -220,7 +220,10 @@ def test_the_breaker_and_the_uncharged_ends_are_the_gates():
 def test_the_hook_speaks_claude_codes_vocabulary():
     assert hook.decision('allow') == {'hookSpecificOutput': {
         'hookEventName': 'PreToolUse', 'permissionDecision': 'allow'}}
-    assert hook.decision('halt', 'stop') == {'continue': False, 'stopReason': 'stop'}
+    # a halt denies the call it answers as well: `continue: false` alone lets
+    # Claude Code run it first (P20 PV-19, O4)
+    assert hook.decision('halt', 'stop') == {'continue': False, 'stopReason': 'stop',
+                                             'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny', 'permissionDecisionReason': 'stop'}}
     # P20 (ADR-0049 §3): a deny is exit code 2 with the reason on stderr, never JSON
     assert hook.answer('deny', 'no') == ('', 'no', 2)
     with pytest.raises(ValueError):

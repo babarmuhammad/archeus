@@ -19,7 +19,9 @@ Answered in Claude Code's hook protocol (P20, ADR-0049 §3):
     allow  exit 0, on stdout {"hookSpecificOutput": {..., "permissionDecision": "allow"}}
     deny   exit 2, the reason on stderr, nothing on stdout: exit code 2 is the
            documented unconditional block, whatever another source's hook says
-    halt   exit 0, on stdout {"continue": false, "stopReason": reason}
+    halt   exit 0, on stdout {"continue": false, "stopReason": reason} AND the
+           PreToolUse `permissionDecision: "deny"`: Claude Code does not treat
+           `continue: false` alone as a block of the call it answers (PV-19, O4)
 Never any other exit code: Claude Code treats one as a non-blocking error and
 lets the call through, so a crash anywhere is a halt, or a deny when even the
 halt cannot be written.
@@ -45,7 +47,15 @@ def decision(kind, reason=''):
     if kind == 'continue':
         return {}                   # a PreCompact answer: nothing to decide
     if kind == 'halt':
-        return {'continue': False, 'stopReason': reason or 'halted by Archeus'}
+        # `continue: false` alone does not block the call it answers: Claude
+        # Code 2.1.291 runs a call its own rules allow and only then stops, and
+        # does not stop at all when it refuses the call itself (PV-19, O4). The
+        # deny is what keeps a halt fail-closed for the call in flight.
+        reason = reason or 'halted by Archeus'
+        return {'continue': False, 'stopReason': reason,
+                'hookSpecificOutput': {'hookEventName': 'PreToolUse',
+                                       'permissionDecision': 'deny',
+                                       'permissionDecisionReason': reason}}
     if kind != 'allow':
         raise ValueError('only allow, halt and continue answer on stdout: %r' % (kind,))
     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse',

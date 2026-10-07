@@ -77,7 +77,10 @@ def test_an_execution_records_its_settings_sources_and_excludes_them_by_default(
                             'mcp_servers': [], 'disable_slash_commands': True,
                             'plugin_dirs': []}
     assert inv['observed'] is False and inv['opt_ins'] == []
-    assert {i['status'] for i in inv['items']} <= {'excluded', 'not_excludable'}
+    assert {i['status'] for i in inv['items']} <= {'excluded', 'not_excludable', 'builtin'}
+    # the CLI's own plugins are said, as outside Archeus's controls (P20 O5)
+    assert {(i['source'], i['type'], i['status']) for i in inv['items']
+            if i['status'] == 'builtin'} == {('cli', 'plugin', 'builtin')}
     assert got['inventory_sha256']
 
 

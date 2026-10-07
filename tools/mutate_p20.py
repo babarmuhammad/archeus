@@ -5,7 +5,7 @@ answering (Q01-Q08); slice B, F7 and F8, Control → About's emergency stop
 takeover (Q18-Q25, Q33) and item 86's one shell credential at a time (Q26-Q32);
 slice D, F6's touch exit from the command bar (Q34-Q37); slice E, PV-10
 (ADR-0049, D6): settings-source opt-ins, the inventory and the exit-code-2
-deny (Q38-Q67; two e2e-guarded mutants rebuild the SPA).
+deny (Q38-Q79; two e2e-guarded mutants rebuild the SPA).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -260,8 +260,8 @@ MUTATIONS = [
      "    if flags['disable_slash_commands']:\n", "    if False:\n")],
      [SU + 'test_E02_the_argv_always_names_the_sources_even_when_none']),
     ('Q49', 'any opt-in enables every skill', [(SRC,
-     "    skill_in = any(status(src) != 'excluded' for src, _s in found) or any(",
-     "    skill_in = bool(opt_ins) or any(")],
+     "    skill_in = any(status(src) != 'excluded' for src, _s in found) or dir_skills",
+     "    skill_in = bool(opt_ins) or dir_skills")],
      [SU + 'test_E09_skills_stay_disabled_unless_a_skill_is_opted_in']),
     ('Q50', "a project's opt-in passes the account's server of that name", [(SRC,
      "            on = (owner, n) in opted_mcp\n",
@@ -348,6 +348,61 @@ MUTATIONS = [
     ('Q66', 'an opt-out is listed as opted in', [(CTRL,
      "<td>{x.opted_in ? 'opted in' : 'opted out'}</td>", "<td>{'opted in'}</td>")],
      [OPT_E2E + 'test_the_opt_ins_are_listed_read_only_and_follow_core']),
+    # P20 slice E closeout (O4, O5): the halt's deny and the inventory's rule,
+    # both from PV-19 against the real CLI
+    ('Q68', 'a halt lets the call it answers through (the CLI runs it first)', [(HOOK,
+     "                'hookSpecificOutput': {'hookEventName': 'PreToolUse',\n"
+     "                                       'permissionDecision': 'deny',",
+     "                'hookSpecificOutput': {'hookEventName': 'PreToolUse',\n"
+     "                                       'permissionDecision': 'allow',")],
+     [SU + 'test_E17_allow_and_halt_keep_their_json_at_exit_0',
+      SU + 'test_E18_a_hook_crash_halts_and_never_exits_with_another_code']),
+    ('Q69', 'the fake agent blocks on continue: false alone (a halt without its deny goes unseen)',
+     [(AGENT,
+       "        if spec.get('permissionDecision') == 'deny':\n            return 'halt',",
+       "        if True:\n            return 'halt',")],
+     [SU + 'test_E23_the_fake_agent_halts_as_claude_code_does']),
+    ('Q70', 'a CLAUDE.md is recorded loaded whatever its source', [(SRC,
+     "        add(src, 'claude_md', label, status(src),",
+     "        add(src, 'claude_md', label, 'not_excludable',")],
+     [SU + 'test_E01_with_nothing_opted_in_every_source_is_excluded',
+      SU + 'test_E03_managed_settings_always_apply_and_claude_md_follows_its_source']),
+    ('Q71', "an excluded source's skills are recorded loaded once slash commands are on", [(SRC,
+     "        add(src, 'skill', s, status(src))",
+     "        add(src, 'skill', s, 'not_excludable' if skill_in and status(src) == 'excluded'"
+     " else status(src))")],
+     [SU + 'test_E07_a_plugin_is_loaded_by_its_own_directory_and_carries_its_skills',
+      SU + 'test_E09_skills_stay_disabled_unless_a_skill_is_opted_in']),
+    ('Q72', "the CLI's built-in plugins are silently omitted", [(SRC,
+     "    add('cli', 'plugin', 'built-in plugins', 'builtin')\n", "")],
+     [SU + 'test_E01_with_nothing_opted_in_every_source_is_excluded']),
+    ('Q73', 'the bundled skills are recorded loaded under --disable-slash-commands', [(SRC,
+     "'builtin' if skill_in else 'excluded')", "'builtin')")],
+     [SU + 'test_E01_with_nothing_opted_in_every_source_is_excluded']),
+    ('Q74', "an ancestor's CLAUDE.local.md is recorded under project", [(SRC,
+     "            out.append((src, os.path.join(cur, rel), os.path.join(cur, rel)))",
+     "            out.append(('project', os.path.join(cur, rel), os.path.join(cur, rel)))")],
+     [SU + 'test_E24_every_claude_md_follows_its_setting_source_ancestors_too']),
+    ('Q75', "a plugin's manifest hooks are not recorded", [(SRC,
+     "        if isinstance(man.get('hooks'), dict):\n            hooks.append(",
+     "        if False:\n            hooks.append(")],
+     [SU + 'test_E25_what_a_plugin_brings_and_the_synced_skills_are_recorded']),
+    ('Q76', "the skill paths a plugin's manifest declares are not read", [(SRC,
+     "    for rel in [declared] if isinstance(declared, str) else declared or ():",
+     "    for rel in ():")],
+     [SU + 'test_E25_what_a_plugin_brings_and_the_synced_skills_are_recorded']),
+    ('Q77', "the account's synced skills are not recorded", [(SRC,
+     "            add('user', 'skill', s, status('user'), via='synced')",
+     "            pass")],
+     [SU + 'test_E25_what_a_plugin_brings_and_the_synced_skills_are_recorded']),
+    ('Q78', "a plugin's MCP servers are recorded loaded under --strict-mcp-config", [(SRC,
+     "            add(tag, 'mcp_server', m, 'excluded')",
+     "            add(tag, 'mcp_server', m, st)")],
+     [SU + 'test_E25_what_a_plugin_brings_and_the_synced_skills_are_recorded']),
+    ('Q79', 'a plugin enabled by a source brings nothing into the record', [(SRC,
+     "                elif type_ == 'plugin':\n                    plugin(src, name, status(src))",
+     "                elif type_ == 'plugin':\n                    add(src, type_, name, status(src))")],
+     [SU + 'test_E25_what_a_plugin_brings_and_the_synced_skills_are_recorded']),
 ]
 
 if __name__ == '__main__':
