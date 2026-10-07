@@ -591,6 +591,13 @@ credentials; `git_push` authorised by P9 is still attempted by the agent and fai
 which is the documented V1 posture (Core-performed push is P13's merge-back). Claude Code adds
 `config.account_env(home)` and `--max-turns` from the task estimate.
 
+*As-built note, P20 slice F (ADR-0052 §8, 2026-10-07).* This section now also removes tools.
+- Claude Code is given `--tools`, naming exactly the tools its task's action classes map to that
+  the installed CLI offers, and never `--allowedTools`.
+- Its MCP servers are denied by `--disallowedTools` unless opted in (ADR-0049).
+- A tool the task does not hold cannot be called, so the hook never sees it.
+- Details: execution-architecture §2 "Tools" and p20-design-gate §12 items 75–89.
+
 ## 19. Live output (question 12)
 
 - **Capture**: stdout and stderr of the process go to `stream.jsonl` (P1 contract); a non-JSON

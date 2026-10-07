@@ -2,12 +2,15 @@
 
 Status: **APPROVED IN PART** (the user, 2026-10-05): D1, D2, D3, D4, D5, D10 and D15 as
 proposed; D7 as an amendment; D8 and D9 moved out of P20. **D6 approved as written** (the user,
-2026-10-06). **D11, D12, D13 (breaker drills), D14 and the order of §5 after slice E are not yet
+2026-10-06). **D11, D12, D13 (breaker drills), D14 and the order of §5 after slice F are not yet
 decided** and are not inferred (§4.1). Implementation was authorised one slice at a time: **A, B,
-C, D and E are implemented with automated evidence; A–D await their manual checks (§10). E is
+C, D, E and F are implemented with automated evidence; A–D await their manual checks (§10). E is
 closed for its automated and CLI-level evidence (2026-10-07, §12 items 68–74): O4 and O5 were
-approved and built, and PV-19's real-CLI cases pass. D15's observed run through Core is NOT RUN
-(ADR-0021 open). P20 is not complete; no slice after E is authorised, and slice F is not** (§14).
+approved and built, and PV-19's real-CLI cases pass. F is closed for its automated and CLI-level
+evidence (2026-10-07, §12 items 75–91): F.0 probed Claude Code 2.1.292, C1, C2 (L1, L2) and C3
+were decided and built, and the tool removal was verified against the real CLI with no model
+call. D15's observed run through Core is NOT RUN (ADR-0021 open). P20 is not complete; no slice
+after F is authorised** (§14).
 Anything
 implementation finds that departs from an approved decision is recorded in §12 for the user's
 review, never applied silently.
@@ -340,7 +343,8 @@ Recorded as given. Nothing beyond what is written here is approved.
 | **D10** mobile e-stop | **Approved as proposed.** No PIN before Emergency stop, which stays the fastest safety action. Re-arm is the privileged operation and requires the PIN step-up (built in its own slice, not in A) |
 | **D15** observed run | **Approved.** No observed-run evidence is claimed before it is performed. P20 may complete its implementation and other evidence, but stays **"ready except for the observed run"** until ADR-0021 is resolved and the real run is done |
 | **Item 83** | **Proceed exactly against the existing design** (execution-architecture §10 path 2, p11 §13.4, D26). Acceptance: the e-stop is available with Core down; the local safety action actually happens; no new work starts afterwards; re-arm restores starting work; the operation is safe against accidental activation; the STOP file and the process registry are reused, with no parallel mechanism. The requirement is not weakened because the mechanism exists |
-| **Not decided** | D11 (R13-03 to R13-13 owners), D12 (fuzz tooling), D13's breaker drills, D14 (mutant ids), the order of §5 after slice E; and the questions §4.2 adds |
+| **Slice F** (ADR-0052 PV-22) | **Authorised** (the user, 2026-10-07) after F.0 (§12 item 76), with: **C1** Variant 1, the mapping intersected with a version-stamped snapshot of the installed CLI's names, ADR-0052's completeness language unchanged, `LS`/`MultiEdit` recorded as mapped but not offered; **C2** `mcp__*` with nothing opted in, otherwise a deny per excluded server in Claude Code's normalised name; **L1** a name colliding with an opted-in server's is not denied; **L2** an unnameable source is left to `--strict-mcp-config`; **C3** `Skill` allowed exactly when an opted-in source or plugin brings a skill, judged as an unclassified `exec`. As recorded in §12 item 77; as built, items 78–89 |
+| **Not decided** | D11 (R13-03 to R13-13 owners), D12 (fuzz tooling), D13's breaker drills, D14 (mutant ids), the order of §5 after slice F; and the questions §4.2 adds |
 
 ### 4.2 Open questions found during implementation (the user's, not inferred)
 
@@ -1429,6 +1433,278 @@ run or altered.
       - the manual checks of §10.
     - P20 is not complete. **Slice F is not authorised and was not started.**
 
+### Slice F authorisation pass and F.0 (2026-10-07)
+
+Asked for by the user after slice E's closeout: establish slice F from this gate, then probe the
+installed CLI (F.0, record-only), then decide. Nothing was changed in either pass.
+
+75. **Slice F's scope, from this gate, with nothing added.**
+    - §5 item 6: ADR-0052 PV-22, the CLI's tool names read first, the mapping, the argv,
+      completeness, drift, the execution-architecture §2 amendment, p11 §18's as-built note.
+    - ADR-0052 §1–§6 and §8, PV-22's row, the plan's P20 entry ("Tool removal") and §1.5 ("its
+      version is read at the start of slice F").
+    - It depends on slice E alone: the opt-in store (the D6 row of §4.1 keeps "except opted-in
+      servers" for F) and the argv E's flags already build.
+    - Not F's: ADR-0052 §7's observed run (D15) and the live measurement of what excluding the
+      subagent and todo tools changes.
+76. **F.0: Claude Code 2.1.292, record-only, no model call** (the user's authorisation,
+    2026-10-07). 60 cases, scripts and streams in the session scratchpad (`f0/`), not the
+    repository.
+    - **How there was no model call.** 21 cases ran on the account's own subscription login and
+      the first-party host, with every HTTPS connection refused through a proxy (each debug log: 6
+      refused connections, no response), stopped at `init`. 39 ran against a local stub of the
+      Messages API on loopback, with a dummy key and a scratch account home holding only the real
+      one's cached feature flags; the stub scripted the model's tool calls and recorded which tools
+      the CLI offered.
+    - **The tool set** under slice E's flags is 32 names, identical to 2.1.291's: Bash,
+      CronCreate, CronDelete, CronList, DesignSync, Edit, EnterWorktree, ExitWorktree, Glob, Grep,
+      ListAgents, Monitor, NotebookEdit, PowerShell, PushNotification, Read, RemoteTrigger,
+      ReportFindings, ScheduleWakeup, SendMessage, ShareOnboardingGuide, Task, TaskCreate,
+      TaskGet, TaskList, TaskStop, TaskUpdate, ToolSearch, WebFetch, WebSearch, Workflow, Write.
+      `Skill` is added while slash commands are on. **`LS` and `MultiEdit`, both in ADR-0052 §2
+      and in the canonicaliser, are not offered.**
+    - **`--tools`** drops an unknown or wrongly cased name without a word (exit 0, no stderr):
+      `--tools LS` is no tool at all. `--tools ""` is accepted and means no tool. Each mapped set
+      loads exactly as named. `Task` (as `init` names it) and `Agent` (the API's name, which
+      `--tools` also accepts) are one tool.
+    - **`--disallowedTools`** with a bare name removes the tool exactly as absence from `--tools`
+      does: never offered, "No such tool available", and the hook never sees the call. `--tools`
+      does not affect MCP tools.
+    - **MCP patterns.** `mcp__*` removes every MCP tool, an opted-in server's too.
+      `mcp__<server>`, `mcp__<server>__*` and `mcp__<server>__<tool>` each remove one server's.
+      `mcp__pv` is not a prefix; `mcp__pvo*` is a glob. Comma-joined patterns all apply; a
+      pattern for a server that is not loaded is accepted silently.
+    - **MCP names.** A tool's name normalises its server's: `.` and `@` become `_`; `-` and case
+      are kept. A deny written with the raw name matches nothing. Two servers whose names
+      normalise alike are both removed by one deny.
+    - **No allow overrides a deny**: a hook allow, `--allowedTools`, a settings allow, or a
+      narrower allow under `mcp__*`.
+    - **Skill** exists only while slash commands are on, and any `--tools` without it removes it.
+      An opted-in skill still loads (it is in `init.skills`), but a call to it is refused.
+    - **WebFetch and WebSearch.** On the subscription login tool search is on (`mode=tst`) and 18
+      tools are deferred, these two among them. A `--tools` without `ToolSearch` defers nothing:
+      both are offered directly and both were called. With `ToolSearch` listed they are deferred
+      again.
+    - **The set depends on the login and the host**: an API key against another host is offered
+      29 (no RemoteTrigger, ShareOnboardingGuide or ToolSearch).
+    - **Outside the repository**, the CLI created an empty `memory` folder under the account's
+      `projects/` for the scratch directory, and its own project entry. Left for the user.
+77. **The decisions (the user, 2026-10-07), recorded as given.**
+    - **C1, Variant 1.** ADR-0052's mapping and completeness language stay as written. The
+      installed CLI is authoritative for the names passed: the mapping is intersected with a
+      checked-in, version-stamped snapshot of what it offers, and a mapped name it does not offer
+      is never passed. The canonicaliser is not changed to drop `LS` or `MultiEdit`. The
+      completeness test stays (every canonicaliser tool has a mapping). The snapshot records `LS`
+      and `MultiEdit` as mapped but not offered. Every tool in the snapshot is mapped or explicitly
+      excluded by default. `Task` and `Agent` are one tool. **Not** "mapped or retired".
+    - **C2, the normalised MCP deny.** Nothing opted in: `--disallowedTools "mcp__*"`. Something
+      opted in: `--strict-mcp-config`, `--mcp-config` holding only the opted-in servers, and a
+      deny for each excluded server the inventory names, in Claude Code's normalised name; never
+      a raw name holding `.` or `@`; never relying on an allow overriding a deny.
+    - **L1.** An excluded server that collides with an opted-in one after normalisation is left
+      out of the deny, `--strict-mcp-config` and the opted-in-only `--mcp-config` stay, and the
+      collision is recorded as a limitation of the deny list. No new D6 rule rejects the opt-in.
+    - **L2.** A source the inventory cannot name (a local-scope `.claude.json` server, a claude.ai
+      connector) gets no invented name and no fake rule: `--strict-mcp-config` excludes it, and
+      that is documented as a limitation. D6 is not changed.
+    - **C3, `Skill` conditionally.** `Skill` is allowed exactly when an opted-in source or plugin
+      brings a skill, never otherwise, and `--disable-slash-commands` is kept as it was. The hook
+      judges `Skill` as an unclassified `exec`. No other CLI tool is added because it is offered.
+    - **Slice F authorised**, alone; G to K not.
+
+### Slice F — PV-22, ADR-0052's tool removal (2026-10-07)
+
+Authorised by the user (2026-10-07) with C1, C2 (L1, L2) and C3 as item 77 records them. Nothing
+of G to K, D10, P11's `SpawnFailed` (O7), P21, P22, ADR-0037 or V2 was touched; the inventory is
+slice E's version 2, unchanged.
+
+78. **As built: `archeus/harnesses/claude_code/tools.py`**, stdlib only.
+    - `TOOLS` and `NO_TOOL` are ADR-0052 §2's rows, unchanged, `LS` and `MultiEdit` included.
+    - `SNAPSHOT` holds the version (2.1.292), the date read, the models read, the 32 names, what
+      only some models offer (`model_only`, item 80), what slash commands add (`Skill`) and what
+      is mapped but not offered (`LS`, `MultiEdit`). `EXCLUDED` names the 22 offered tools no
+      class maps. `ALIASES` makes `Agent` and `Task` one tool.
+    - `tool_argv(action_classes, inventory)`: `--tools` always, the classes' tools intersected
+      with the snapshot, in the mapping's order, plus `Skill` (item 83); `""` when nothing is
+      mapped, because left out it would mean every tool. Then `--disallowedTools` per C2
+      (item 82), when there is something to deny.
+    - The Claude Code adapter appends it after slice E's flags. `--settings` (the hook) is passed
+      as before, always; `--allowedTools` never.
+79. **C1 as built.** Only offered names are passed; the canonicaliser is untouched; the
+    completeness test is ADR-0052 §6's, unchanged (F10: every action class is mapped or has no
+    tool of its own; every tool the canonicaliser names is mapped, to the class it classifies
+    it as). F11 holds the drift rule: every offered name, `Task`/`Agent` as one, is mapped,
+    `Skill`, or excluded by default, with no overlap; mapped minus offered is exactly the
+    snapshot's `LS` and `MultiEdit`. A stale or misspelt name in the snapshot can only remove a
+    tool, never add one, and the live comparison (item 81) reports it.
+80. **Found during the slice: the tool set also depends on the model.** On 2.1.292, `haiku`
+    offers TaskCreate, TaskGet, TaskList and TaskUpdate; `sonnet`, `opus` and `fable` do not
+    (the default model of the account, `opus`, among them). Every mapped tool is offered on all
+    four. The snapshot records the four as `model_only`; all four are excluded by default, so no
+    decision moves. F11 fails if `claude_models()` gains a model the snapshot was not read for.
+81. **The live drift comparison: `tools/claude_tool_drift.py`**, record-only by F.0's method,
+    with no model call.
+    - For each model it reads `init.tools` with slash commands off and on.
+    - Once more it reads `init.tools` with `--tools` naming every mapped name plus `Skill`, which
+      proves the CLI keeps exactly the offered ones.
+    - It compares everything with the snapshot and exits 1 on any drift.
+    - Run 2026-10-07 on 2.1.292: **no drift on any of the four models**.
+    - It is a tool, not a suite test: CI has no CLI and no account, and nothing in CI claims the
+      comparison.
+82. **C2 as built.**
+    - **Nothing opted in:** `mcp__*`.
+    - **Something opted in:** one `mcp__<name>` per MCP server the recorded inventory holds as
+      `excluded` under `user` or `project`, sorted. `mcp_name` turns every character but letters,
+      digits, `_` and `-` into `_`; that covers every character a D6 name may hold.
+    - **L1:** a name that normalises to an opted-in server's is left out. Nothing is written at
+      run time, because the inventory stays version 2 (item 85). The collision is visible in the
+      record itself: an excluded and an opted-in server whose names normalise alike.
+    - **L2:** a plugin's MCP server is not named either. Claude Code's tool-name form for a
+      plugin's server was never observed, because `--strict-mcp-config` kept every one out (E25,
+      PV-19, F.0). A local-scope server and a claude.ai connector are not in the inventory at all.
+      `--strict-mcp-config` is what excludes all three.
+83. **C3 as built.**
+    - `Skill` is added exactly when the recorded inventory's `disable_slash_commands` is false,
+      which is slice E's own rule: a skill arrives through an opted-in source or plugin. The
+      record decides both flags, so they cannot disagree.
+    - The canonicaliser does not know `Skill`, so the hook judges every call to it as one
+      unclassified `exec` (F09). It does the same for `PowerShell` and every opted-in MCP tool.
+    - **A consequence, for the user's attention:** P9 never ALLOWs an unclassified action (it
+      asks), so every call to an opted-in skill or MCP server waits for an approval. R03–R05
+      approve one and see it run.
+84. **The fake.**
+    - `FakeHarness(tools=True)` passes the same `tool_argv`.
+    - The fake agent honours the tool flags as F.0 observed them: a tool absent from `--tools`, a
+      bare or `mcp__<server>` or glob deny, an MCP server `--strict-mcp-config` did not load from
+      `--mcp-config`, and `Skill` under `--disable-slash-commands` all emit `tool_unavailable`.
+      Such a call never reaches the hook and never runs, and the agent goes on.
+    - **A reading, applied:** removal has its own switch, not slice E's `sources`. The judge's
+      default Core and the integration rigs keep `sources=True` alone. Several existing scenarios
+      script a tool their task does not hold: G6's locked deny scripts `Bash` under the default
+      plan's `write_repo`, and S05 scripts `git push`. They test the hook beneath removal, which
+      removal would never let those calls reach. A judge scenario marked `tool_removal` gets
+      both.
+    - The fake agent's `Skill` refusal under `--disable-slash-commands` applies to the `sources`
+      fake as well. No existing scenario scripts `Skill`.
+85. **Why slice E's inventory stays version 2.** ADR-0052 does not require recording the tool
+    flags, and D6's inventory list does not include them; only the XR-14 brief's estimate (§8)
+    said so, and that is analysis, not a decision. The tool flags are reproducible from records:
+    the task's `action_classes`, plus the recorded inventory's MCP items and its slash-commands
+    flag. The evidence is the argv (the fake's `started` event) and the CLI's own `init`
+    (item 89). G6 asserts the inventory is still version 2 with no tool flag in it.
+86. **No new failure path.** Claude Code accepts every argv F builds (item 89) and drops an
+    unknown name rather than refusing to start. So F adds nothing that could reach P11's
+    `SpawnFailed` loop (O7), which stays deferred and untouched.
+87. **Tests.**
+    - `tests/v1/unit/test_tool_removal_units.py`, F01–F14 (34 collected), cover:
+      - every one of the 8192 sets of action classes;
+      - `--tools` always present, `--settings` always, `--allowedTools` never;
+      - the empty `--tools ""`;
+      - the MCP deny, normalised names and the collision rule;
+      - `Skill` against real inventories;
+      - unclassified `exec` for `Skill`, `PowerShell` and an MCP tool;
+      - completeness against `ACTION_CLASSES` and the canonicaliser, and the snapshot's drift
+        rule;
+      - the fake agent's `--tools`, MCP and `Skill` model.
+    - `tests/v1/integration/test_tool_removal.py`, R01–R05 (real Core):
+      - a removed tool never runs and never reaches the hook;
+      - a held tool is still judged, and denied by a DENY made after the start;
+      - an opted-in MCP server is asked, approved and run while the excluded ones are denied by
+        name;
+      - the L1 collision;
+      - `Skill` off, and on through an opted-in `user` source.
+    - G6 (`test_g06_security.py`): one `tool_removal` scenario, over both judge bindings.
+    - **Focused run: 382 passed, 2 skipped, 1 xfailed.** It covered F's and E's unit and
+      integration suites, G6, slice E's E2E, `test_execution_units`, `test_execution`, the adapter
+      contract, the e-stop drills and TUI parity. The skips are the existing http-only judge cases;
+      the xfail is the contract's Codex case (`phase:P23`). Slice E's own tests are unchanged and
+      pass.
+    - **Gates:**
+      - `test_p05_seams`, `test_traceability`, `test_state_tables` and
+        `test_mutation_suites_parse`: 100 passed, 1 skipped.
+      - `-k "traceab or design_gate or doc"` over `tests/v1`: 56 passed. The same expression at
+        `a55855a` also gives 56, so nothing was added or lost; item 73's "44" was counted on
+        another selection.
+      - `gen_ui.py --check` and `gen_api_docs.py --check`: current.
+      - The client suite was not run: no client file or inventory presentation changed.
+88. **Mutants.**
+    - `tools/mutate_p20.py` Q80–Q99 (ids provisional, D14): **20/20 killed**. They are:
+      - a mapping row removed;
+      - `--allowedTools` added;
+      - the MCP deny removed;
+      - `--settings` removed;
+      - the empty `--tools` left out;
+      - an excluded tool mapped;
+      - `Skill` always, never, or on the wrong flag;
+      - the raw MCP name used;
+      - the collision denied;
+      - `mcp__*` used beside an opt-in;
+      - a plugin's server named;
+      - a not-offered name passed;
+      - the fake agent ignoring `--tools`, `--disallowedTools` or strict MCP;
+      - the adapter or the fake passing no tool flags;
+      - the snapshot losing `LS`.
+    - Re-run because their argv, file or guard changed: Q45–Q53, Q62, Q63, Q68 and Q69, **13/13
+      killed**; `mutate_p8` M15 (`fake.py`), **1/1**. The parse gate passes.
+89. **Real-CLI validation under the implemented argv** (2026-10-07; Claude Code 2.1.292).
+    - What was run: the argv `ClaudeCodeAdapter.argv()` builds, the real `hook.py`, and a stub
+      Core on its mailbox. By F.0's method, so no model call: `init` on the subscription login with
+      every connection refused, and behaviour against the loopback stub.
+    - This is F's own check that the new flags do not regress slice E's closed behaviour. It does
+      not reopen PV-19, and it is not D15's observed run.
+
+    | Check | Result | Evidence |
+    |---|---|---|
+    | `init.tools` is the mapped set, filtered by the CLI's names | **PASS** | read+write+exec: the 8 mapped; all four classes: the 10; read with a skill opted in: Read, Glob, Grep, Skill. Never LS or MultiEdit |
+    | Empty `--tools` accepted | **PASS** | no class, and `deploy`+`git_push`: `--tools ""`, exit clean, `init.tools` empty |
+    | Excluded tools do not execute | **PASS** | a read-only task's Bash, Write, Agent and WebFetch: "No such tool available"; the hook asked once, for Read |
+    | Opted-in MCP usable | **PASS** | `pvmcp` and `pv_dot` run through the hook's allow (their markers written) |
+    | Excluded MCP unavailable | **PASS** | `gh` and `pv@at` (as `mcp__pv_at`): refused. Loaded past `--strict-mcp-config` by a second `--mcp-config`, they are still refused by the deny, by their normalised names |
+    | Normalised names | **PASS** | the deny is `mcp__gh,mcp__pv_at`, never a raw `.` or `@` |
+    | Collision (L1) | **PASS** | the account's excluded `pv.dot` is not denied; the opted-in `pv_dot` stays usable (it answered the call) |
+    | Opted-in Skill usable | **PASS** | "Launching skill: f0skill", through the hook |
+    | Skill unavailable when not opted in | **PASS** | refused; the hook not asked |
+    | Slice E's allow | **PASS** | Bash ran (its side effect written) |
+    | Slice E's deny (exit 2) | **PASS** | blocked, no side effect, the reason reaches the model, the session goes on |
+    | Slice E's halt (O4) | **PASS** | blocked, no side effect, `halted.json`, `terminal_reason: hook_stopped` |
+    | A Core that never answers | **PASS** | "Archeus did not answer; denied and halted"; blocked and stopped |
+    | A hook crash | **PASS** | "the Archeus hook failed: FileExistsError"; blocked and stopped |
+
+    And `tools/claude_tool_drift.py`: no drift on haiku, sonnet, opus or fable (item 81).
+90. **The full run** (`tests/v1` plus `tests/test_p05_seams.py`, `ARCHEUS_E2E=1`, on `17a4d10`):
+    **2744 passed, 2 failed, 14 skipped, 3 xfailed** (41 min). Both failures are
+    `test_spa_arrival.py`, a file items 22, 48 and 90 of p19-design-gate record as intermittent:
+    - `test_reduced_motion_says_the_rise_and_pulses_nothing` ("timed out: the arrival is still
+      announced"): P19 item 48's known intermittent, the same signature as §12 item 54's run 3.
+      Measured alone, 10 runs each: 3/10 failed on `17a4d10` and 2/10 on `a55855a`.
+    - `test_a_rise_in_what_needs_you_pulses_the_badge_once` ("timed out: the arrival is
+      announced"): **newly seen failing in a full run**, the same file and the same kind of timeout
+      on the announcer. Measured alone, 30 runs each: **2/30 failed on `17a4d10` and 3/30 on
+      `a55855a`**. It is not slice F's: it fails as often before F, and F touches no client file,
+      no announcer and no attention path.
+    - Neither is fixed and neither is called green. Their classification is the file's existing
+      one; this item adds the second test's name and rates. The base measurements used a detached
+      worktree of `a55855a` with the same SPA build, since F changed no client file.
+    - `test_spa_marker` and the `test_stream_takeover` burst passed in this run. `test_cli_help`
+      (item 69, outside `tests/v1`) was not run.
+91. **Status: slice F is closed for its automated and CLI-level evidence.**
+    - All of these are in: the implementation (`17a4d10`); the unit, integration, G6, focused and
+      gate checks; the 20 new mutants and the 14 re-run; the real-CLI validation under the
+      implemented argv (item 89); the live drift comparison (item 81); and the full run, whose two
+      failures are intermittents measured as pre-existing (item 90).
+    - **Still owed:**
+      - D15's observed execution through Core, which covers PV-19 and ADR-0052 §7 alike and is
+        gated by ADR-0021, still OPEN;
+      - the manual checks of §10;
+      - V2 for accounts other than the one used, and API-key accounts (the tool set depends on
+        the login, item 76).
+    - **For the user's attention:** every call to an opted-in MCP server or skill waits for an
+      approval (item 83).
+    - **A stale record, not edited:** the V2 register's PV-22 row in
+      `ARCHEUS_V2_ASSISTANT_LAYER.md` still says "decided; waiting for P20". That is a V2
+      document, left as the user's instruction requires.
+    - P20 is not complete. **G, H, I, J and K are not authorised and were not started.**
+
 ## 13. As built
 (Filled at the end of P20.)
 
@@ -1448,6 +1724,7 @@ decides anything; where a line needs a decision, it names whose.
 | Item 86, one desktop-shell credential at a time | D1 | C | automated green; **C-M1 not run** |
 | F6, the command bar's Close button and backdrop tap | D5 | D | automated green (§12 item 40's known intermittent aside); **F6-M1 not run** |
 | ADR-0049 exclusion, inventory, exit-code-2 deny (PV-10): the opt-in store and command | D6 | E | automated green (§12 item 54's known intermittents aside); **the real-account half is PV-19's (D15), NOT RUN** |
+| ADR-0052 tool removal (PV-22): `--tools` from the action classes and the CLI snapshot, the normalised MCP deny, the conditional `Skill` | ADR-0052; C1, C2, C3 (§4.1) | F | automated green and CLI-level verified (§12 items 87–90); **ADR-0052 §7's observed run is D15's, NOT RUN** |
 | Notifications out of P20 (to P21); plan and dependency records updated | D8 | records | done (`8fe7ce3`) |
 | The Codex adapter to P23; G7's xfail re-marked `phase:P23` | D9 | records | done; no `phase:P20` xfail remains in `tests/` |
 
@@ -1460,7 +1737,6 @@ gate while its manual checks are NOT RUN.
 |---|---|---|---|
 | The re-arm PIN step-up | D10 | its own slice (J's list) | approved **as proposed**: step-up on `POST /v1/rearm` from a **paired (non-local)** device, through the existing PIN path; rulebook §19 amended to "e-stop (confirm)". Not built. **Blocked** (the user, 2026-10-05) until the user reconciles it with V2-3 (§14.F); no interpretation is chosen here |
 | The secrets review, with the DPAPI row amended if Core stores no API key | D7 (amendment) | I | not started; must list `run/exec/<id>/mcp.json` (the opted-in MCP servers' full definitions, possibly tokens; §12 item 65) |
-| ADR-0052 tool removal (PV-22) | ADR-0052 (DECIDED) | F | not started and **not authorised**; its "except opted-in servers" part reads D6's opt-in store, which slice E built |
 | ADR-0051 §2 boundary tests; the threat model | ADR-0051 (DECIDED) | G | not started |
 | Remote-access threat-model review; dependency audit | plan §31.1 P20 | I | not started |
 | Breaker drills, fuzzing | plan §31.1 P20 | H | **blocked on D12, D13** |
@@ -1478,7 +1754,7 @@ gate while its manual checks are NOT RUN.
 | D11 | Owners of R13-03 to R13-13 (none P20's as proposed) | the P21–P23 entries |
 | D12 | Fuzzing: stdlib harness or `hypothesis` | slice H |
 | D13 | The breaker drills (the e-stop half is built) | slice H |
-| §5 order | The order of the slices after E | which slice is next |
+| §5 order | The order of the slices after F (F was chosen after E, §4.1) | which slice is next |
 
 ### 14.D Manual verification outstanding
 
@@ -1501,7 +1777,8 @@ NOT RUN). F6-M1 can be run now that slice D exists. None was removed or downgrad
     offered or called, and shows how the `mcp__*` deny behaves beside an opted-in server.
 - **What it needs first.** ADR-0021 answered for the harness (it is **OPEN**: `archeus terms
   claude_code permit` is the user's act); PV-10 built (slice E, **built**: §12 items 42–57,
-  with its verification items in item 49); PV-22 built (slice F, not started).
+  with its verification items in item 49); PV-22 built (slice F, **built**: §12 items 78–90,
+  verified at CLI level in item 89).
 - **Status: nothing has satisfied D15.** No observed run through Core has been performed and
   none is claimed. Slices A–D do not touch the execution boundary; slice E does, and every
   effect of its flags that the documentation does not state is recorded `observed: false`.
@@ -1520,6 +1797,15 @@ NOT RUN). F6-M1 can be run now that slice D exists. None was removed or downgrad
   - V3g, V5g and other accounts are NOT RUN.
   - **D15 is still not satisfied:** the observed execution through Core remains NOT RUN,
     gated by ADR-0021.
+- **After slice F (2026-10-07, §12 item 89):** ADR-0052 §7's two properties were shown at CLI
+  level, under the argv F builds:
+  - a removed tool is never offered or called;
+  - the MCP deny leaves an opted-in server usable and keeps the excluded ones out, even when
+    loaded past `--strict-mcp-config`.
+
+  Slice E's allow, deny, halt, timeout and crash answers still hold under the new argv. The
+  observed execution through Core, for PV-19 and ADR-0052 §7 alike, is still NOT RUN and gated
+  by ADR-0021.
 
 ### 14.F P20 and the V2 product-design reassessment
 
@@ -1589,4 +1875,9 @@ decision before a fix can be built. Nothing is authorised by this note.
 *After the closeout decisions (2026-10-07):* O4 and O5 are built and PV-19's CLI-level rerun
 passes (§12 items 68–74). O6 is recorded and O7 is deferred to P11. F, G, H, I and J are not
 authorised.
+
+*After slice F (2026-10-07):* F was authorised after F.0 and is built and verified (§12 items
+75–91). G, H, I, J and K are not authorised and were not started. G's ADR-0051 §2 boundary tests
+now have F's tool removal to test, and H's fuzzing has F's mapping to fuzz over. I is still free
+of open decisions. H waits on D12 and D13; J waits on D10 and V2-3.
 
