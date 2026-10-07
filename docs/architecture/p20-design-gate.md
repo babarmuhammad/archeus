@@ -4,11 +4,11 @@ Status: **APPROVED IN PART** (the user, 2026-10-05): D1, D2, D3, D4, D5, D10 and
 proposed; D7 as an amendment; D8 and D9 moved out of P20. **D6 approved as written** (the user,
 2026-10-06). **D11, D12, D13 (breaker drills), D14 and the order of §5 after slice E are not yet
 decided** and are not inferred (§4.1). Implementation was authorised one slice at a time: **A, B,
-C, D and E are implemented with automated evidence; A–D await their manual checks (§10). E's
-PV-19 was verified at the CLI level on 2026-10-07 (§12 items 58–67) and is **not passed**: the
-halt does not fail closed against the real CLI (O4) and the inventory's item statuses are
-inaccurate (O5); D15's observed run through Core is NOT RUN (ADR-0021 open). P20 is not complete;
-no slice after E is authorised, and slice F is not** (§14). Anything
+C, D and E are implemented with automated evidence; A–D await their manual checks (§10). E is
+closed for its automated and CLI-level evidence (2026-10-07, §12 items 68–74): O4 and O5 were
+approved and built, and PV-19's real-CLI cases pass. D15's observed run through Core is NOT RUN
+(ADR-0021 open). P20 is not complete; no slice after E is authorised, and slice F is not** (§14).
+Anything
 implementation finds that departs from an approved decision is recorded in §12 for the user's
 review, never applied silently.
 
@@ -349,10 +349,10 @@ Recorded as given. Nothing beyond what is written here is approved.
 | O1 | Should a re-arm re-ask the plan gate for missions that `builtin:estop` blocked while Core was disarmed? Today they stay BLOCKED after the re-arm (P9's existing rule, both e-stop paths) | slice A, §12 item 5 | **open**; nothing changed |
 | O2 | F7 also names the window's **Pause all** with nothing running. D3's approved text names only Control → About's Emergency stop. Does Pause all (strip, Work) get the same post-action line? | slice B, §12 item 17 | **open**; not built |
 | O3 | D14: are `Q01…` the suite's ids? Slices A and B use them provisionally (Q01–Q17) | slices A, B | **open**; ids not renamed |
-| O4 | **The halt against the real CLI.** A PreToolUse `{"continue": false}` lets a call the CLI allows by default run, and is not honoured when the CLI refuses the call. Approved D6 says both "halt keeps `continue: false`" and "crash and timeout fail closed", and the real CLI cannot satisfy both as built. Candidate observed to block the call and stop the session (2/2): `continue: false` plus `permissionDecision: "deny"` at exit 0. Which form? | slice E closeout, §12 item 60 | **open**; nothing changed; blocks the PV-19 sign-off |
-| O5 | Correct the inventory's item statuses to the observed rule (a CLAUDE.md or skill follows its setting source) and record the built-in plugins, bundled skills and ancestor `.claude/CLAUDE.md`? This is record-only; the argv is unchanged | slice E closeout, §12 item 61 | **open** (the user's go-ahead); not applied |
-| O6 | With nothing opted in, an execution loads no CLAUDE.md (user, project or ancestor). The project's file comes back only with the whole `project` source. Intended, or should executions get the project's instructions another way? | slice E closeout, §12 item 62 | **open**; nothing changed |
-| O7 | P11's `SpawnFailed` ends `binding` (uncharged), contradicting P11 note 11's definition of `binding`, and re-dispatches every tick. Charged, uncharged with a backoff or breaker, or routed away from the harness? | slice E §12 item 48; closeout item 64 | **open** (P11's code); nothing changed |
+| O4 | **The halt against the real CLI.** A PreToolUse `{"continue": false}` lets a call the CLI allows by default run, and is not honoured when the CLI refuses the call. Approved D6 says both "halt keeps `continue: false`" and "crash and timeout fail closed", and the real CLI cannot satisfy both as built. Candidate observed to block the call and stop the session (2/2): `continue: false` plus `permissionDecision: "deny"` at exit 0. Which form? | slice E closeout, §12 item 60 | **decided** (the user, 2026-10-07): both fields, as the minimal D6 correction; built, §12 item 68 |
+| O5 | Correct the inventory's item statuses to the observed rule (a CLAUDE.md or skill follows its setting source) and record the built-in plugins, bundled skills and ancestor `.claude/CLAUDE.md`? This is record-only; the argv is unchanged | slice E closeout, §12 item 61 | **decided** (the user, 2026-10-07): built, §12 item 69 |
+| O6 | With nothing opted in, an execution loads no CLAUDE.md (user, project or ancestor). The project's file comes back only with the whole `project` source. Intended, or should executions get the project's instructions another way? | slice E closeout, §12 item 62 | **recorded, not changed** (the user, 2026-10-07); a change of default is a separate design decision, §12 item 71 |
+| O7 | P11's `SpawnFailed` ends `binding` (uncharged), contradicting P11 note 11's definition of `binding`, and re-dispatches every tick. Charged, uncharged with a backoff or breaker, or routed away from the harness? | slice E §12 item 48; closeout item 64 | **deferred to P11** (the user, 2026-10-07); P11 not modified, §12 item 72 |
 
 Slice A's mutants are numbered `Q01…` in `tools/mutate_p20.py` as D14 proposes; D14 being
 undecided, the ids are provisional and renumbering them is a text edit.
@@ -1259,6 +1259,176 @@ a decision. **No code was changed.** Slice F was not started. ADR-0021 was not a
     - O4 (the halt) blocks a PV-19 sign-off and D6's fail-closed claim. O5–O7 are open.
     - P20 is not complete. **Slice F is not authorised and was not started.**
 
+### Slice E closeout decisions — O4, O5, O6, O7 and the PV-19 rerun (2026-10-07)
+
+Decided by the user on 2026-10-07 after items 58–67 (implementation: `6a09480`):
+- **O4 approved**, as the minimal D6 correction the real CLI requires.
+- **O5 approved**, as a record-correctness change only.
+- **O6** recorded and not changed.
+- **O7** deferred to P11.
+
+Slice F was not started. ADR-0021 was not answered: no `archeus terms` record was written and no
+Archeus Core ran the real harness. D15's observed run and the manual checks of §10 were not
+run or altered.
+
+68. **O4: every halt also denies the call it answers.**
+    - `hook.decision('halt', r)` now returns `{"continue": false, "stopReason": r,
+      "hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+      "permissionDecisionReason": r}}` at exit 0.
+    - **Rationale.** Item 60 measured that Claude Code 2.1.291 does not treat `continue: false`
+      alone as a block of the call it answers:
+      - a call the CLI allows by default runs first, and the session stops after it;
+      - a call the CLI refuses itself is blocked, but the session goes on.
+      The same probe showed that the two fields together block the call and stop the session.
+    - **Scope.** This is the one function every halt answer goes through, so it covers every
+      halt path D6 names:
+      - the global e-stop sentinel;
+      - this execution's PAUSE, STOP and HANDOFF flags;
+      - Core's `halt` decision;
+      - a missing identity, a hook crash, and Core not answering (the hook's own deadline).
+      `guarded()`'s exit-2 fallback is unchanged.
+    - **Unchanged:** what a halt means, which paths halt, `halted.json`, Core's handling of a
+      halted process, and slice A's independent registry kill.
+    - **The fake agent now models the real CLI.** `continue: false` with the deny blocks the
+      call and halts. `continue: false` alone lets the call run, and the agent halts after it.
+      E23 asserts both forms, so a halt that loses its deny fails in the fake-agent suite.
+      PV-19 against the real CLI (item 70) stays the authoritative check.
+    - **Tests changed:** E17 (exact halt JSON), E18, E19, E20's halt row (the call is not run),
+      E47, E48 and E49 in `test_execution.py`, and `test_the_hook_speaks_claude_codes_vocabulary`.
+    - **Mutants:** Q68 (the halt allows the call) and Q69 (the fake treats `continue: false`
+      alone as a block) are killed.
+69. **O5: the inventory records what loads (`inventory_version` 2).** `sources.take` now
+    applies the rule PV-19 observed. The flags are untouched: `--setting-sources`,
+    `--strict-mcp-config`, `--mcp-config`, `--disable-slash-commands` and `--plugin-dir` are
+    derived exactly as before, and E25 asserts that recording more moves no flag.
+    - **CLAUDE.md follows its setting source.**
+      - The user's file follows `user`.
+      - CLAUDE.md and `.claude/CLAUDE.md`, in the workdir **and in every ancestor**, follow
+        `project`.
+      - CLAUDE.local.md, in the workdir and every ancestor, follows `local`.
+      - The ancestor `.claude/CLAUDE.md` and ancestor CLAUDE.local.md were missing and are now
+        recorded. A probe on 2026-10-07 with a nested fixture observed each of these.
+    - **A skill follows its source.** A skill from an excluded source is `excluded` even when
+      `--disable-slash-commands` is dropped. Skills are also read from wherever a plugin declares
+      them (its manifest's `skills`: one path or a list; each path is a skill, named by its
+      SKILL.md, or a directory of skills). A declared path outside the plugin is not read (E25;
+      Q76).
+    - **What a plugin brings is recorded.** For a plugin opted in by name, and for one a settings
+      source enables:
+      - its skills and its hooks, including hooks declared inline in
+        `.claude-plugin/plugin.json` (caveman's were missing), at that plugin's status;
+      - its MCP servers, as `excluded`, because `--strict-mcp-config` keeps them out (observed
+        for a plugin enabled by `user`);
+      - `loads_as`, the manifest name the CLI reports it under (`vercel-plugin@vercel` loads as
+        `vercel`).
+    - **The account's synced skills** (`skills/synced/<id>/<name>`, which the CLI lists as
+      `anthropic-skills:<name>`) are recorded under `user` with `via: synced`.
+    - **The CLI's own** are recorded, not omitted, as two class items, because their names are
+      the CLI's and cannot be read before the spawn:
+      - `('cli', 'plugin', 'built-in plugins')`, `builtin`;
+      - `('cli', 'skill', 'bundled skills')`, `builtin` when slash commands are on and `excluded`
+        under `--disable-slash-commands`.
+    - **Inventory semantics** (the `sources.py` docstring; the TUI and SPA say "no: predicted
+      before the spawn, by the rule PV-19 observed" and label `builtin` "loaded, built into the
+      CLI (outside Archeus's controls)"):
+      1. **requested configuration**: `opt_ins` and `flags`, exactly what the process is given;
+      2. **predicted loaded**: status `opted_in`, `recorded_only`, or `not_excludable` (now
+         only managed settings);
+      3. **not loaded**: `excluded`, or `not_found` (opted in, absent);
+      4. **outside Archeus's source controls**: `builtin`.
+      The record is taken before the spawn (`observed: false`). What a process **actually**
+      loaded is its stream's `init` event together with the CLI's instruction-loading, and a PV
+      compares the two (item 70's V3f does).
+    - **Tests:** E01, E03, E04, E07 and E09 now assert the observed rule. E24 (the ancestor rule)
+      and E25 (plugin contents, manifest hooks, declared skill paths, synced skills, plugin MCP
+      under strict, `loads_as`, flags unchanged) are new. The G6 and E2E checks and the parity
+      fixtures were updated.
+    - **Mutants:** Q70–Q79 are killed. They cover:
+      - a CLAUDE.md recorded as loaded whatever its source;
+      - an excluded source's skills recorded as loaded;
+      - the built-in plugins omitted;
+      - the bundled skills recorded as loaded under the flag;
+      - an ancestor's CLAUDE.local.md recorded under `project`;
+      - manifest hooks, declared skill paths, synced skills, and an enabled plugin's contents
+        ignored;
+      - a plugin's MCP servers recorded as loaded.
+      Q49's anchor moved with the restructured `skill_in` line; its mutation is unchanged.
+70. **PV-19, rerun against the real CLI after O4 and O5.**
+    - **Setup.** Claude Code 2.1.291, `--model haiku`, the same OAuth account
+      (`C:\Users\mab\.claude`), the shipped `hook.py` and `sources.py`, and a stub Core on the
+      hook mailbox.
+    - **Runs.** 27 runs, all exit 0, `apiKeySource: "none"` and a successful result; 23 of them
+      with `--setting-sources ""`.
+    - **Fixture.** A project nested under a scratch ancestor, which holds a CLAUDE.md,
+      CLAUDE.local.md and `.claude/CLAUDE.md` at both levels.
+    - **Logging.** The `InstructionsLoaded` logger now writes one file per event. Item 59's
+      single appended file lost a line when hooks ran in parallel, which first read as an
+      ancestor CLAUDE.md not loading.
+    - **Recorded result.** Every case: PASS or NOT RUN, none FAIL.
+
+    | # | Item | Result | Evidence |
+    |---|---|---|---|
+    | V1 | Empty `--setting-sources ""` accepted | **PASS** | 23 runs, exit 0, success |
+    | V2 | Login survives the narrowing | **PASS** for this account | every run: `""`, `user`, `project`, `local`, all three, `--mcp-config`, `--plugin-dir`. Other accounts and API-key accounts: **NOT RUN** |
+    | V3a–V3d | Hooks, MCP, plugins and skills load only as opted in | **PASS** | as in item 59, re-observed in the seven cases below |
+    | V3e | CLAUDE.md follows its source | **PASS** (observed rule) | per instruction-loading events, in all seven cases |
+    | V3f | The recorded inventory matches what loads | **PASS**, 7/7 | an automatic comparison of every predicted-loaded item against the `init` event (MCP servers, plugins by `loads_as`, the built-in plugins, user/project skills, plugin skills, synced skills, the bundled skills), the instruction files loaded, and the hook markers. Cases: nothing opted in; `project`; `local`; `user`; all three; one MCP server; one plugin: **MATCH** in each |
+    | V3g | Managed settings always apply | **NOT RUN** | no managed settings file on this machine |
+    | V4 | An opted-out source, plugin or server does not load | **PASS** | V3a–V3f |
+    | V5a | Allow, through the `--settings` hook under `""` | **PASS**, 2/2 | exit 0, the tool ran |
+    | V5b | Deny: exit code 2, the reason on stderr | **PASS**, 2/2 | exit 2; the call blocked; the reason reaches the model; the session continues |
+    | V5c | A halt blocks the call and stops the session | **PASS**, 4/4 | on a command the CLI allows by default (`echo`) and on one it would refuse (a write), twice each: the call not run, no side effect, `terminal_reason: hook_stopped`, no assistant text after. The hook's output was the O4 JSON |
+    | V5d | A hook crash fails closed | **PASS**, 4/4 | the same two commands, twice each: "the Archeus hook failed: FileExistsError"; blocked and stopped |
+    | V5e | Core never answering fails closed | **PASS**, 4/4 | `ARCHEUS_HOOK_WAIT=5`: "Archeus did not answer; denied and halted"; `halted.json` written; blocked and stopped |
+    | V5f | Premise: another exit code, or a CLI hook timeout, is non-blocking | **characterised**, 2/2 each | exit 1 (`outcome: error`) and a 3 s CLI timeout (`outcome: cancelled`) both let the call run. That is why the hook never produces either; it does not rely on them |
+    | V5g | `guarded()`'s exit-2 fallback against the real CLI | **NOT RUN** | it cannot be provoked from outside the hook. The exit-2 deny it produces is V5b's; unit E22 covers it |
+
+71. **O6, recorded and not changed.** With no source opted in, an execution receives **no
+    CLAUDE.md at all**, including the project's CLAUDE.md that Archeus itself maintains (V3e).
+    - Restoring the project's CLAUDE.md today requires opting in the project's whole `project`
+      source, which also brings that source's hooks, permission rules and skills.
+    - D6 is not changed here. Changing the default would be a separate design decision.
+72. **O7, deferred to P11.** P11 is not modified.
+    - **Recorded for P11's follow-up:**
+      - a process that cannot be started (`SpawnFailed`) ends its execution with
+        `stop_reason='binding'`;
+      - `binding` is uncharged, so no attempt is spent;
+      - the task is therefore re-dispatched every tick, indefinitely (40 executions in 40 ticks,
+        measured in slice E);
+      - P11 note 11 defines `binding` as a stale plan binding or provider terms only.
+    - The choice between charging, a backoff or breaker, and routing away from the harness is
+      not made in P20.
+73. **Tests after the closeout.**
+    - Focused, on the closeout tree:
+      - slice E's unit (E01–E25, 37), integration (I01–I10, H01–H02), G6, slice E's E2E,
+        `test_execution_units`, `test_execution`, the e-stop drills and TUI parity: **330 passed, 2 skipped** (the
+        existing http-only judge skips);
+      - client: **232/232**, type check clean;
+      - `gen_ui.py --check` and `gen_api_docs.py --check`: current.
+    - Gate and traceability checks: `test_p05_seams`, `test_traceability`,
+      `test_state_tables` and `test_mutation_suites_parse`, **100 passed, 1 skipped**; the
+      design-gate and traceability selection of `tests/v1`, **44 passed**.
+    - Mutants:
+      - `mutate_p20`, after O4 and O5's first change: Q11, Q13, Q16, Q17, Q45–Q53, Q59–Q61,
+        Q63, Q64 and Q68–Q74, **25/25 killed**;
+      - after O5's second change (plugin contents, synced skills): Q45–Q53, Q64 and Q70–Q79,
+        **20/20 killed**;
+      - `mutate_p11` X10, `mutate_p16` M09/M13/M16, `mutate_p17` M07, `mutate_p19`
+        P06/P07/P149 and `mutate_p19_5` N78–N82/N223/N259: **14/14 killed**;
+      - the parse gate passes.
+    - Known intermittents keep their classification (`test_spa_marker` known; the
+      `test_stream_takeover` burst, slice C's test race; `test_cli_help` not run). A full run was
+      not made: the closeout touches only the hook's halt answer, the fake agent, the inventory
+      and its presenters, whose suites are above.
+74. **Status: slice E is closed for its automated and CLI-level evidence.**
+    - PV-19's real-CLI safety cases pass after O4 (V5c–V5e), and V3f passes after O5.
+    - The focused and gate checks are green, and no new unexplained failure appeared.
+    - **Still owed:**
+      - D15's observed execution through Core (gated by ADR-0021, which is open);
+      - V2 for other accounts, V3g and V5g (NOT RUN);
+      - the manual checks of §10.
+    - P20 is not complete. **Slice F is not authorised and was not started.**
+
 ## 13. As built
 (Filled at the end of P20.)
 
@@ -1303,10 +1473,8 @@ gate while its manual checks are NOT RUN.
 | O2 | Does Pause all (strip, Work) get F7's post-action line? | nothing until answered |
 | O3 / D14 | Are `Q01…` the suite's mutant ids? (Q01–Q67 used provisionally) | nothing; renaming is a text edit |
 | Slice E's readings | §12 items 46 and 56: the readings of D6, the `test_spa_resources` wait. The `workspace` stop reason for an inventory failure was reviewed and is acceptable under P11 note 11 (item 63) | nothing; each is applied and reversible |
-| O4 | The halt against the real CLI: which hook answer makes a halt block the call and stop the session (§12 item 60) | the PV-19 sign-off; D6's fail-closed claim |
-| O5 | Correct the inventory's item statuses to the observed rule (§12 item 61) | an accurate record (V3f) |
-| O6 | No CLAUDE.md reaches an execution by default (§12 item 62) | nothing in P20's slices |
-| O7 | P11's `SpawnFailed` re-dispatch loop (§12 item 64) | nothing in P20's slices; a live loop when a harness cannot spawn |
+| O6 (recorded) | No CLAUDE.md reaches an execution by default (§12 item 71). Changing that default would be a separate design decision; none is pending in P20 | nothing in P20's slices |
+| O7 (deferred) | P11's `SpawnFailed` re-dispatch loop: charge, backoff/breaker or routing (§12 item 72) | P11's follow-up; a live loop when a harness cannot spawn |
 | D11 | Owners of R13-03 to R13-13 (none P20's as proposed) | the P21–P23 entries |
 | D12 | Fuzzing: stdlib harness or `hypothesis` | slice H |
 | D13 | The breaker drills (the e-stop half is built) | slice H |
@@ -1345,6 +1513,13 @@ NOT RUN). F6-M1 can be run now that slice D exists. None was removed or downgrad
     answers (O4); the inventory's item statuses (O5).
   - **NOT RUN:** managed settings, other accounts, and the exit-2 fallback against the real CLI.
   - This does not replace the observed execution through Core, which stays gated by ADR-0021.
+- **After O4 and O5 (2026-10-07, §12 item 70):** the rerun passes.
+  - V5c–V5e: 4/4 each; the halt, crash and timeout block the call and stop the session.
+  - V3f: 7/7; the inventory matches what the CLI loaded.
+  - V1, V2 (this account), V3a–V3e, V4, V5a and V5b pass; V5f is characterised.
+  - V3g, V5g and other accounts are NOT RUN.
+  - **D15 is still not satisfied:** the observed execution through Core remains NOT RUN,
+    gated by ADR-0021.
 
 ### 14.F P20 and the V2 product-design reassessment
 
@@ -1410,4 +1585,8 @@ I is still free of open decisions; F now has D6's store to read; H waits on D12 
 
 *After slice E's closeout (2026-10-07):* PV-19's CLI-level run found O4, which needs the user's
 decision before a fix can be built. Nothing is authorised by this note.
+
+*After the closeout decisions (2026-10-07):* O4 and O5 are built and PV-19's CLI-level rerun
+passes (§12 items 68–74). O6 is recorded and O7 is deferred to P11. F, G, H, I and J are not
+authorised.
 
