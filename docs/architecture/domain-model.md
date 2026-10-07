@@ -330,12 +330,12 @@ An executable unit in the plan's DAG.
 | `kind` | code_change / research / document / presentation / inspection / verification / human |
 | `capabilities_required` | e.g. `{code_edit, shell, web, long_context, vision}` |
 | `action_classes[]` | policy classes it will exercise (write_repo, exec, web, …) |
-| `workspace_mode` | in_place / worktree (default for code_change) |
+| `workspace_mode` | in_place / worktree (default for code_change). *Under PV-20 (ADR-0053 §7 A1; not implemented):* `in_place` is withdrawn for isolated executions — whatever this field says, an isolated execution of any kind runs in a Core-established workspace (a seeded execution repository on a git root; an empty execution-private workspace with no project), never in the user's project root; a task on a non-git project root is refused before dispatch |
 | `max_attempts` | default 2 |
 | `failure_class` | why the task FAILED (`execution`, `verification`, …; policy / credential / human are not retryable); written with the move to FAILED, read by `task_failed_retryable` |
 | `estimate` | relative weight for progress |
 | `state` | Task machine |
-| `integration_state` | Integration machine (state-machines §13): the merge-back of this task's worktree branch into the mission branch. NULL when `workspace_mode = in_place`. Arrives with the machine in P13 |
+| `integration_state` | Integration machine (state-machines §13): the merge-back of this task's worktree branch into the mission branch. NULL when `workspace_mode = in_place`. Arrives with the machine in P13. *Under PV-20 (ADR-0053 §7 A1, A5):* set for every isolated task on a git root, of any kind; what merges is Core's pinned import commit |
 | P8 contract fields | `objective`, `expected_output`, `boundaries[]`, `capabilities_required[]`, `min_model_tier`, `touches[]`, `inputs[]`, `refs[]` (canonical `{kind, id}`), `serves[]` (requirement handles), `acceptance[]` (`{text, check}`; at least one for a non-`human` task, all `human` for a human one); `key` is `t1…tN`, assigned by Core in dependency order; the contract is frozen with its version (p8-design-gate §7.1) |
 
 **Integration is not an entity.** It is a lifecycle *of a task* — a task has at most one

@@ -240,6 +240,15 @@ A scope list must be a non-empty subset of the four coarse scopes, and `observe`
 - **Lockout**: 5 consecutive wrong PIN proofs from one client revoke that client (reason
   `step_up_failures`). The counter is per Core process (a restart needs local access); any correct
   proof resets it.
+- *Consequence recorded 2026-10-07 (PV-20, ADR-0053 R1-A and §7 A3; not implemented).* For a PV-20
+  §3.6 effect, `origin != 'paired'` stays **necessary but is no longer sufficient**. A trusted local
+  request also needs (1) an OS-attested connection origin that satisfies the approved user-origin
+  condition **and** (2) arrival through an approved trusted path that is neither a forwarding hop
+  nor an execution-influenced deputy. A request from an execution or the verifier, through a
+  forwarding hop or proxy, or of undetermined origin receives no §3.6 authority whatever credential
+  it presents, and a forwarded request is never direct local origin because the forwarder runs as
+  the user. Paired clients keep exactly what this section and D10 permit. The attestation mechanism
+  is PV-20's empirical work (PV-20 §3.3, §7.1).
 
 ## 7. Connection model [new]
 
@@ -298,7 +307,7 @@ equal to the loopback origin's host. Mutation M02 removes the Host half.
 | stale credential / revoked client | `auth.live` on every request and on every stream wake |
 | stolen device / credential | revoke; 180-day expiry bounds an unnoticed theft; step-up needs the PIN; admin off by default |
 | cloned client (token copied) | indistinguishable by design (a bearer token is the identity); visible as unexpected presence/actions; revoke. Device attestation is out of reach for a PWA (D2) |
-| a local credential used through the tunnel | refused: a local credential (the CLI's token, a launch-code browser) is honoured on the loopback Host only; a remote client is a paired one (D21) |
+| a local credential used through the tunnel | refused: a local credential (the CLI's token, a launch-code browser) is honoured on the loopback Host only; a remote client is a paired one (D21). Under PV-20 (ADR-0053 §7 A3) a tunnel-forwarded request is never direct local origin, whatever `Host` the forwarder passes |
 | malicious client with a valid token | can do what its scopes allow, through P9 like any client — never more: every command is the route's application command, guarded as for the local CLI |
 | cross-user | V1 has one owner; every `user_device` principal acts for that owner. Non-user principals (brain, execution, automation) hold no `observe` scope and cannot read or subscribe (P19) |
 | cross-project | a client sees the owner's whole workspace (single owner, D13); a stream may be *narrowed* to projects (§11), which is a subscription, not a permission |

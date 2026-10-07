@@ -9,8 +9,15 @@ closed for its automated and CLI-level evidence (2026-10-07, §12 items 68–74)
 approved and built, and PV-19's real-CLI cases pass. F is closed for its automated and CLI-level
 evidence (2026-10-07, §12 items 75–91): F.0 probed Claude Code 2.1.292, C1, C2 (L1, L2) and C3
 were decided and built, and the tool removal was verified against the real CLI with no model
-call. D15's observed run through Core is NOT RUN (ADR-0021 open). P20 is not complete; no slice
-after F is authorised** (§14).
+call. D15's observed run through Core is NOT RUN (ADR-0021 open). **G was started and is PAUSED**:
+its verification found two Critical OS-confinement findings (G1 credential reach, G2 local-token
+reach, §12 items 92–97), so ADR-0051 §2 is not satisfied as built; these are OS-boundary issues,
+not P11 defects, remediated by PV-20 (prerequisite PV-13 study delivered 2026-10-07; PV-20:
+decisions recorded and approved, ADR-0053; its open questions resolved except implementation and
+evidence dependencies and P11's O7; implementation not started; verification not performed — §12
+item 98; the final architecture audit's blockers A1–A6 decided and A7 corrected, ADR-0053 §7 —
+§12 item 99). P23 owns the network-egress gap (G3). P20 is not complete; no slice
+after F is authorised, and H–K were not started** (§14).
 Anything
 implementation finds that departs from an approved decision is recorded in §12 for the user's
 review, never applied silently.
@@ -106,7 +113,10 @@ screen reader has no exit (item 114).
 - `archeus/harnesses/claude_code/adapter.py` spawns with `CLAUDE_CONFIG_DIR` = the account home
   and `--settings <exec dir>/settings.json` (Archeus's `PreToolUse` and `PreCompact` hook only).
   It passes no `--setting-sources`, `--strict-mcp-config`, `--disable-slash-commands`, `--tools`
-  or `--disallowedTools`, and no `--add-dir`.
+  or `--disallowedTools`, and no `--add-dir`. *(Verified state at `59281ac`. Under PV-20, ADR-0053
+  §7 A2 — not implemented — an isolated execution never receives the account home: its
+  `CLAUDE_CONFIG_DIR` is a fresh per-execution directory with no provider login, and the settings
+  file is Core-write / execution-read; §12 item 99.)*
 - `archeus/harnesses/hook.py` denies with a JSON `permissionDecision` and exit 0; it checks
   `run/STOP` first.
 - Credential removal and the worktree workdir are built (p11 §18).
@@ -481,6 +491,11 @@ already mints launch codes.
    - a mission created while disarmed starts nothing;
    - `POST /v1/rearm` restores starting work, and a new mission's execution starts.
 
+   *Under PV-20 (ADR-0053 R6-A; not implemented; §12 item 99):* for an isolated execution the
+   drill's first step inverts — Core's death ends the isolated tree, so no process lives on for
+   the e-stop to kill. `test_A06` and A-M1 stay valid for executions that are not isolated and gain
+   an isolated variant when PV-20 is built.
+
    G5's `phase:P20` xfail is removed. On both bindings it now checks that the e-stop reports
    the one running process killed before Core returns. The judge may not import Core
    internals, so whether the process is dead is checked by `test_A06`.
@@ -497,7 +512,10 @@ already mints launch codes.
 7. **Known ceiling (unchanged, recorded).** `kill_pid_tree` checks `create_time` and then
    kills, in two steps. A pid recycled in the microseconds between them is not caught (its
    existing `ponytail:` note). Closing that gap needs handle-based tree kills (Job Objects),
-   which is PV-20's ground, not P20's.
+   which is PV-20's ground, not P20's. *Qualified 2026-10-07 (ADR-0053 R6-A; §12 item 99):* under
+   PV-20 only Core holds a Job, so the handle-based kill closes the gap when Core is up (Core ends
+   the Job) or dead (kill-on-close). The Core-less `archeus estop` path holds no Job reference and
+   keeps this ceiling.
 8. **Tests.** `tests/v1/integration/test_estop_drills.py` holds A01-A06, 7 cases:
    - exactly the live registry processes die; ended and recycled pids are untouched;
    - the sentinel is written before any kill;
@@ -1028,6 +1046,8 @@ ADR-0021, the D13 breaker drills or the D10 / V2-3 mismatch (§14.F) was used or
     - `run/exec/<id>/mcp.json` holds the **full definitions** of the opted-in servers (command,
       arguments, URL, environment), which may carry tokens. It is written only when a server is
       opted in and never enters the record. **Slice I's secrets review (D7) should list it.**
+      *Under PV-20 (ADR-0053 §7 A2; not implemented): no MCP opt-in is admitted to an isolated
+      execution, so this file is not written for one; §12 item 99.*
     - Local-scope MCP servers (`.claude.json` `projects[<path>].mcpServers`) are not inventoried.
     - An execution references its **latest** process's inventory; earlier processes' inventories
       are named in their `execution.prepared` events.
@@ -1245,6 +1265,9 @@ a decision. **No code was changed.** Slice F was not started. ADR-0021 was not a
       names only (E11, I08).
     - It belongs to **slice I's secrets review (D7)**: §14.B lists it there. It was not
       redesigned in E.
+    - *Under PV-20 (ADR-0053 §7 A2; not implemented):* **no MCP opt-in is admitted to an isolated
+      execution** (confirmed by the owner, 2026-10-07; §12 item 100), so the file is not written for
+      one; it stays a secrets-review item for executions that are not isolated (§12 item 99).
 66. **Tests after the closeout.** No code changed, so only slice E's focused suites were re-run
     on `2a205a4`:
     - unit E01–E22, integration I01–I10 and H01–H02, G6, slice E's E2E, and
@@ -1705,6 +1728,141 @@ slice E's version 2, unchanged.
       document, left as the user's instruction requires.
     - P20 is not complete. **G, H, I, J and K are not authorised and were not started.**
 
+### Slice G — paused on two Critical OS-confinement findings (2026-10-07)
+
+Slice G (ADR-0051 §2 boundary tests; the threat model) was started and **stopped before any
+implementation.** Its verification probes, run read-only, found that the boundary ADR-0051 §2
+asserts is contradicted in practice. HEAD is unchanged; nothing in the repository's code moved.
+These are recorded at the boundary / capability / evidence / impact level — no procedure, no real
+secret, no enumerated store — per the user's safety constraint for this work. The full
+remediation design is in [pv13-windows-os-confinement-study.md](pv13-windows-os-confinement-study.md)
+and [pv20-execution-isolation-design.md](pv20-execution-isolation-design.md).
+
+92. **Finding G1, Critical — an execution reaches user-owned credential authorities.** Under the
+    default `standard` profile, `write_repo` and `exec` are allowed within the worktree, and the
+    boundary check reads only the command line, so an execution can write and run self-authored
+    code with no approval. That code runs with the user's OS identity and therefore keeps the
+    user's reach into credential authorities and stores whose secrets would authorise pushing,
+    publishing or registry/SSH access. **This contradicts ADR-0051 §2's "finds no push
+    credential."** P11's `CAPABILITY_ENV` works as designed — the secrets do not live in the
+    environment but in stores the OS identity owns, which clearing an environment variable cannot
+    remove.
+93. **Finding G2, Critical — an execution reaches the local Core control boundary.** The execution
+    can reach the privileged local token and `run/` control state, which to Core's loopback API is
+    the full-scope local principal past step-up — enough to defeat approval, policy and the e-stop
+    if used. Established from code and a readable-file check; **not** exercised against the live
+    Core.
+94. **Finding G3, Medium — network egress — is P23's.** A task whose policy denies `web`, or that
+    never declared it, can still reach the network through an in-boundary `exec`. The fix (routing
+    such tasks to a `sandbox` harness) is P23's, with Codex (D9). PV-20 records it as a dependency
+    and does not solve it.
+95. **Root cause and framing.** All three are the ADR-0051 §3 OS-confinement gap: nothing below
+    the per-tool hook limits what a process with the user's identity can physically reach.
+    **These are OS-boundary issues, not P11 environment-hygiene defects** — P11's four settings
+    function as designed, and the findings must not be rewritten as a P11 bug. Changing P11's
+    environment cannot fix them, because the material sits in stores the OS identity owns.
+96. **Disposition.** **Slice G is PAUSED, not closed.** ADR-0051 §2 is not satisfied (the
+    credential-removal bullet and the workdir isolation are contradicted by G1 and G2). The
+    remediation is **PV-20**, whose prerequisite **PV-13 study is now delivered** (2026-10-07,
+    recommending AppContainer + a Job object, with a separate-user escalation path). Any ADR-0051
+    §2 boundary test written against the current identity would assert the wrong thing, so G's
+    credential/workdir tests are deferred into PV-20's suite (xfail today, flipping under
+    isolation). The P20 acceptance rule forbids an open Critical and defines **no** accepted-
+    Critical state. The disposition is now ruled (ADR-0051 superseding decision — timing, 2026-10-07;
+    PV-20 §6.4): OS confinement is a **V1.x security remediation**; G stays **PAUSED and NOT CLOSED**;
+    G1 and G2 stay **Critical and open**, neither waived nor accepted. **G's still-valid boundaries, cited
+    unchanged** (orthogonal to the OS gap): A's sentinel + registry kill, E's ADR-0049
+    exclusion/inventory and the O4 fail-closed hook, F's tool removal. *(Qualified 2026-10-07, §12
+    item 98: A's sentinel stays valid under PV-20 only with the explicit three-state determination,
+    which must land no later than PV-20's sentinel/mailbox separation; today its fail-closed result
+    under an inaccessible sentinel comes from the mailbox write failing beside it. A's registry kill
+    stays the only Core-less stop mechanism.)*
+97. **Status: slice G is paused; H, I, J and K are not authorised and were not started.** No
+    `mcp__*` / credential procedure and no harvested value is recorded here or anywhere in the
+    repository. The probes were read-only scratchpad scripts; no git state, no Core state and no
+    secret was written. ADR-0051 carries a dated note distinguishing the accepted V1 limitations
+    from the security properties PV-20 must establish.
+98. **PV-20 architecture decisions approved and recorded (2026-10-07; documentation only).** The
+    owner approved PV-20's six blocking decisions in the direction the decision matrix
+    recommended, and they are recorded in **ADR-0053** (the PV-20 ADR ADR-0051 Decision 5 requires)
+    and PV-20 §6 items 12–17: **R4b** a confined verification identity (execution-influenced code
+    never runs under the user's identity; an unavailable verifier is missing evidence, never
+    PASSED); **R4a** a separate execution repository imported as data; **R1** OS-attested execution
+    origin (R1-B only by a new owner decision); **R3** Core-brokered provider access as the target
+    (R3-A only by a separate owner security decision; until one is viable, isolated execution fails
+    closed); **R5** H2 (Core-authoritative halt state; hook records are untrusted reports); **R6**
+    Core-only Job ownership (a live isolated process is never re-adopted). R2 and R7 are
+    implementation constraints; O7 stays P11's (§4.2). This gate's records are reconciled with it:
+    - **The status** reads "decisions recorded and approved; resolved except implementation and
+      evidence dependencies and O7; implementation not started; verification not performed".
+    - **Item 96's "A's sentinel"** is qualified: valid under PV-20 only with the explicit three-state
+      determination, landed no later than the sentinel/mailbox separation.
+    - **D10 is not PV-20's re-arm control.** PV-20 §3.6 and its acceptance row 5 no longer cite D10
+      as what refuses an execution's re-arm; an execution origin is refused by the effect boundary
+      (R1-A). D10 stays exactly as approved and blocked (§14.B, V2-3): the paired-device rule only.
+    - **Item 83 stands unchanged.** The STOP file plus the process registry remains the only
+      Core-down stop mechanism; under PV-20 the Job is the execution lifetime boundary, not a second
+      Core-down authority (PV-20 §3.7).
+    Nothing was implemented, probed or committed in this pass; no production code changed. **G
+    stays PAUSED and NOT CLOSED; G1 and G2 stay Critical and open.**
+99. **PV-20 blocker decisions recorded (2026-10-07; documentation only).** A final read-only
+    architecture audit found seven blockers (A1–A7). The owner approved A1–A6 in the direction the
+    blocker decision matrix recommended; A7 is a documentation correction. All are recorded in
+    **ADR-0053 §7** and PV-20 §6 items 18–24:
+    - **A4 (H-1):** every production-dispatched execution, whatever its harness, runs under the
+      PV-20 identity inside a Core-held Job; a harness that cannot is not eligible; fake/test
+      harnesses are not production-dispatchable. Codex is not installed (§1.5), so no harness
+      loses eligibility today.
+    - **A1 (A1-1):** a Core-established workspace for every isolated execution of every task kind;
+      `workspace_mode: in_place` withdrawn for isolated executions; non-git project roots refused
+      **before dispatch**. That keeps a structural impossibility out of the `SpawnFailed` per-tick
+      re-dispatch of items 48, 64 and 72; only a transient workspace failure is O7's.
+    - **A5 (G-4):** copy seed of the base revision only; Core never runs git against an execution
+      repository as the user; working-tree import into a Core-owned repository whose pinned import
+      commit is the canonical revision; Core-pinned configuration for every Core git operation over
+      execution-derived content. *Confirmed by the owner, 2026-10-07 (item 100):* no
+      repository-controlled hook (the user's own included), filter, fsmonitor, diff/merge driver,
+      submodule, LFS transfer mechanism or other execution-derived git extension executes in those
+      operations, and Core pushes no content whose publication requires one.
+    - **A6 (V-1):** one fresh verifier principal per verification, never reused; authority a subset
+      of the execution's runtime/tool grants plus its checkout and scratch, network only if P23
+      permits; no persistent or shared cache.
+    - **A2 (A2-1):** a fresh per-execution `CLAUDE_CONFIG_DIR` with no provider login, never the
+      account home (§1.5); Core-authored spawn configuration Core-write / execution-read; opt-ins
+      only as Core-materialised data carrying no credential authority; **no MCP opt-in admitted to
+      an isolated execution** (confirmed by the owner, item 100; items 50 and 65; ADR-0049 "PV-20
+      consequence").
+    - **A3:** R1-A as an allowlist with a hop rule and a deputy rule; a trusted local §3.6 request
+      needs both the attested user-origin condition and an approved trusted path; the verifier,
+      forwarding hops, proxies, undetermined origins and execution-influenced deputies get no §3.6
+      authority (p15-design-gate §6.6, p9-design-gate D16).
+    - **A7:** state-machines §4, p11-design-gate §15.3–§15.4 and execution-architecture §4–§5
+      corrected: ENDED_OK is an execution-level fact from Core's own observed exit 0; a stream
+      result is never an exit; a Core-written `ended` tombstone is; the one-shot-allow token is
+      withdrawn in favour of the as-built Core-side approval consumption.
+
+    This gate's records are reconciled with it: §1.5 and items 50 and 65 (A2); slice A item 4,
+    `test_A06` and A-M1 (their "process lives on" step inverts for isolated executions under R6-A);
+    slice A item 7 (the Core-less path keeps its pid-recycle ceiling under R6-A). Still open and
+    external: **P11's O7** (§4.2), **P23** (egress, verification network, broker loopback reach,
+    forwarding-hop reach), **ADR-0021** (gates every real-CLI evidence run). Nothing was
+    implemented, probed or committed; no production code changed. **G stays PAUSED and NOT
+    CLOSED; G1 and G2 stay Critical and open; PV-20 is not implemented and not verified.**
+100. **A5 and A2 confirmed by the owner (2026-10-07; documentation only).** The two readings item
+    99 recorded for confirmation are confirmed, and ADR-0053 §7, PV-20 §3.1, §3.2 and §6 items
+    20 and 22, p13-design-gate §12.1, execution-architecture §2 and §7, ADR-0049 and items 65 and
+    99 now state them as rules:
+    - **A5:** no repository-controlled or execution-derived git extension executes during a Core
+      git operation on execution-derived content — repository-controlled hooks (the user's own
+      included), filters, fsmonitor, diff and merge drivers, submodules, LFS transfer mechanisms,
+      and any other execution-derived git extension. Core does not push content whose publication
+      requires executing one of them; that capability needs a separate owner decision.
+    - **A2:** **no MCP opt-in is admitted to an isolated execution.** The rule is not limited to
+      credential-bearing servers; changing it needs a new owner decision.
+
+    No other architectural change was made. Nothing was implemented or probed. **G stays PAUSED
+    and NOT CLOSED; G1 and G2 stay Critical and open; PV-20 is not implemented and not verified.**
+
 ## 13. As built
 (Filled at the end of P20.)
 
@@ -1737,7 +1895,7 @@ gate while its manual checks are NOT RUN.
 |---|---|---|---|
 | The re-arm PIN step-up | D10 | its own slice (J's list) | approved **as proposed**: step-up on `POST /v1/rearm` from a **paired (non-local)** device, through the existing PIN path; rulebook §19 amended to "e-stop (confirm)". Not built. **Blocked** (the user, 2026-10-05) until the user reconciles it with V2-3 (§14.F); no interpretation is chosen here |
 | The secrets review, with the DPAPI row amended if Core stores no API key | D7 (amendment) | I | not started; must list `run/exec/<id>/mcp.json` (the opted-in MCP servers' full definitions, possibly tokens; §12 item 65) |
-| ADR-0051 §2 boundary tests; the threat model | ADR-0051 (DECIDED) | G | not started |
+| ADR-0051 §2 boundary tests; the threat model | ADR-0051 (DECIDED) | G | **PAUSED** — slice G's verification found two Critical OS-confinement findings (G1 credential reach, G2 local-token reach); ADR-0051 §2 is not satisfied as built; remediation is PV-20 (PV-13 study delivered 2026-10-07; PV-20 decisions approved and recorded in ADR-0053; implementation not started). §12 items 92–98 |
 | Remote-access threat-model review; dependency audit | plan §31.1 P20 | I | not started |
 | Breaker drills, fuzzing | plan §31.1 P20 | H | **blocked on D12, D13** |
 
@@ -1880,4 +2038,21 @@ authorised.
 75–91). G, H, I, J and K are not authorised and were not started. G's ADR-0051 §2 boundary tests
 now have F's tool removal to test, and H's fuzzing has F's mapping to fuzz over. I is still free
 of open decisions. H waits on D12 and D13; J waits on D10 and V2-3.
+
+*After slice G started and was paused (2026-10-07):* G's verification pass found two Critical
+OS-confinement findings (G1, G2; §12 items 92–97) and was **stopped before any implementation.**
+ADR-0051 §2 is not satisfied as built: a Claude Code execution runs with the user's OS identity
+and so keeps the user's reach into user-owned credential authorities (G1) and the local Core
+control boundary (G2). These are OS-boundary issues, **not** P11 environment-hygiene defects.
+The remediation is **PV-20**; its prerequisite **PV-13 study is delivered**
+([pv13-windows-os-confinement-study.md](pv13-windows-os-confinement-study.md), 2026-10-07,
+recommending AppContainer + a Job object with a separate-user escalation path), and PV-20's design
+is prepared ([pv20-execution-isolation-design.md](pv20-execution-isolation-design.md)) as a design
+decision, **not** an implementation authorization. *(Later the same day: PV-20's decisions were
+recorded and approved in ADR-0053 — §12 item 98; implementation not started, verification not
+performed.)* P23 owns the separate network-egress gap (G3).
+G stays paused; H, I, J, K are not authorised. P20 cannot complete while the two Criticals are
+open, and P20 defines no accepted-Critical state — per ADR-0051's superseding timing decision and
+PV-20, G1 and G2 stay Critical and open (not waived or accepted), and OS confinement is a **V1.x
+security remediation**.
 

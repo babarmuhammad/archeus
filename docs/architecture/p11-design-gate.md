@@ -350,6 +350,15 @@ Decisions are `allow`, `deny` (with the reason, the agent may adapt) and `halt` 
 The response file is written only after the transaction commits; a Core that dies between leaves
 the hook to time out, which denies (fail closed).
 
+*Consequence recorded 2026-10-07 (PV-20, ADR-0053 §7 A5; not implemented):* for an isolated
+execution, **step 4 is withdrawn**. Core never runs git, or any program that reads git
+configuration, against an execution repository under the user's identity, and that repository's
+HEAD and branch are execution-controlled claims, not facts Core can rely on. What binds an
+execution's output to its task is the canonical revision — Core's pinned import commit in a
+Core-owned repository (PV-20 §3.2) — and what binds a request to its execution stays the token, the
+mailbox location and the sequence (§10.3). Step 3's `cwd` check is unchanged in meaning; its
+workspace is the A1 workspace (§17).
+
 ### 10.5 Hook failures and output
 
 A hook that crashes, cannot write its request or reads a malformed response **denies and halts**.
@@ -543,12 +552,39 @@ reconciler, so reconciliation cannot race another Core. A crash inside a transit
 the old or the new row (one transaction); a crash between a transaction and its side effect is
 covered by the marker/`pid.json`/tombstone rules above.
 
+*Consequence recorded 2026-10-07 (PV-20, ADR-0053 R6-A; not implemented):* for executions launched
+under PV-20 isolation, the **adopt** rows of this table are withdrawn. Core is the sole holder of an
+isolated execution's Job and Core's death terminates its process tree, so a restarted Core finds no
+live isolated process to adopt: it reconciles its records and resolves every remaining non-terminal
+isolated execution through terminate / reap / fail. A live isolated process is never re-adopted,
+and no lifecycle decision reads an execution-writable `pid.json` as authority. See §28 "PV-20
+consequences".
+
+*A7 correction recorded 2026-10-07 (ADR-0053 §7 A7; not implemented):* for isolated executions the
+other rows read as follows.
+- **"process gone, `ended` tombstone or exit known"** — collected only from what Core itself
+  observed: an `ended` tombstone Core wrote (`manager._tombstone`, class 4) or an exit Core
+  committed. An exit "known" from the execution's stream, a `pid.json`, or a halt or PreCompact
+  report is a claim, not an observation; with nothing Core observed the row is "nothing known" →
+  LOST → `reconciled_kill`.
+- **"PAUSING / STOPPING, process gone"** — this row's PAUSED and R6-A's terminate / reap / fail are
+  both non-advancing; which one a PAUSING isolated execution killed with Core's death receives is a
+  **non-security policy detail** left open. ENDED_OK is never a boot result for an isolated
+  execution.
+
 ### 15.4 Liveness while running
 
 Each tick checks every live process by identity. Gone without an observed exit → the exit is
 collected (the adapter reads `ended` / the stream's `result`); nothing collectable within
 `lost_after` (90 s) → `heartbeat_missing` → LOST → `reconciled_kill`. **A vanished process is
 never success**: without an observed exit code 0 there is no ENDED_OK.
+
+*A7 correction recorded 2026-10-07 (ADR-0053 §7 A7; not implemented):* for an isolated execution
+the stream's `result` is execution-authored content and **never a process exit**. The exit is what
+Core observes through the process handle it holds for the Job's root process (or the `ended`
+tombstone Core itself wrote). ENDED_OK is an execution-level fact, not success: Core records it only
+from its own observed exit 0 of an execution that was RUNNING with no outstanding Core control
+request; it moves the task to VERIFYING, never to DONE.
 
 ## 16. Parallel execution (question 16)
 
@@ -560,7 +596,9 @@ against the database:
 - the mission has fewer than `MISSION_PARALLEL` (3) live executions;
 - **workspace conflicts**: an `in_place` task never runs beside another live execution in the same
   project; two tasks whose `touches` overlap (glob prefix overlap, conservative) never run at once;
-  a task with no `touches` is exclusive within its project;
+  a task with no `touches` is exclusive within its project; *(PV-20, ADR-0053 §7 A1; not
+  implemented: `in_place` is withdrawn for isolated executions, so its clause does not apply to
+  them; the `touches` clauses are unchanged)*;
 - the account's own `concurrency` budget is P10's (the ledger's `running`).
 
 Dependencies are P8's graph as `ready_tasks` reads it; P11 adds no planning. The engine loop's
@@ -581,6 +619,27 @@ removed only by the node that created it and only when `git worktree list` confi
 (execution-architecture §7); P11 removes one only for an execution that ended ABANDONED; merge-back
 and the removal of verified worktrees are P13's.
 
+*Consequence recorded 2026-10-07 (PV-20, ADR-0053 R4a-B; not implemented):* for an isolated
+execution, the `worktree` row's linked worktree is replaced by a **separate execution repository**
+that Core seeds and whose result Core imports as data; the user's `.git` is never exposed to the
+execution. The `in_place` row is not a PV-20 fallback: an execution that would need it does not
+start under PV-20 (PV-20 §3.2, §6.3). See §28 "PV-20 consequences".
+
+*Superseding table for isolated executions (PV-20, ADR-0053 §7 A1 and A5; not implemented):*
+
+| Task | Workspace | Branch / revision |
+|---|---|---|
+| no project | an empty execution-private workspace in class 7 (PV-20 §7.5) — **not** the bare `run/exec/<id>/` | none |
+| project, first root a git repository, **any task kind** | a separate execution repository seeded by a **copy** of the recorded base revision (P13 D12: the mission branch when it exists, otherwise HEAD) — never a linked worktree, shared objects, alternates or hardlinks | the execution's own branch is a claim; the canonical revision is Core's pinned import commit in a Core-owned repository |
+| project, first root a git repository with a detached HEAD | the same, seeded from the recorded commit | the same |
+| project, first root not a git repository | **none: structurally refused before dispatch**, never a spawn/retry loop | — |
+
+`workspace_mode: in_place` is withdrawn for isolated executions; no case runs in, or falls back to,
+the user's project root. A transient failure to establish the workspace is an isolation-establishment
+failure (no spawn; O7). The Task state and `failure_class` that record a structural refusal are not
+named here. Removal of a workspace stays the creating node's, but Core never runs `git worktree` or
+any other git command against an execution repository (A5).
+
 ## 18. The execution environment (capability removal) [spec, execution-architecture §2]
 
 Every process: `ARCHEUS_EXECUTION_ID`, `ARCHEUS_HOME`, `ARCHEUS_HOOK_TOKEN`; the legacy
@@ -597,6 +656,16 @@ which is the documented V1 posture (Core-performed push is P13's merge-back). Cl
 - Its MCP servers are denied by `--disallowedTools` unless opted in (ADR-0049).
 - A tool the task does not hold cannot be called, so the hook never sees it.
 - Details: execution-architecture §2 "Tools" and p20-design-gate §12 items 75–89.
+
+*Consequence recorded 2026-10-07 (PV-20, ADR-0053 §7 A2; not implemented):* for an isolated
+execution, `config.account_env(home)` no longer points the harness at the account home. Its
+`CLAUDE_CONFIG_DIR` is a fresh, Core-created, per-execution directory in execution-private state,
+holding no provider login; provider access goes only through Core's R3-B broker. Archeus's hook
+settings and the MCP configuration are Core-authored, Core-write / execution-read, outside that
+directory. ADR-0049 opt-ins arrive only as Core-materialised data carrying no credential authority,
+and **no MCP server opt-in is admitted** to an isolated execution until separately approved. The
+environment hygiene above stays; it is no longer the only thing between the execution and the
+user's credentials.
 
 ## 19. Live output (question 12)
 
@@ -928,3 +997,45 @@ new edge (X19, X20): the state table is the last guard against a duplicate end o
 what those mutants measure is that the command refuses instead of answering as if it had
 worked. P9's suite (36) and P10's (36) still kill everything; P10's R30, R33 and R36 were
 retargeted to where P11 moved the code they guard.
+
+**PV-20 consequences (recorded 2026-10-07; [ADR-0053](decisions/ADR-0053.md); not implemented).**
+PV-20 is a V1.x security remediation; its approved architecture changes four P11 contracts. They
+are recorded here because P11 owns them; nothing in P11's code has changed, and P11 is not
+redesigned beyond these points.
+
+- **The workspace seam (R4a-B, §17).** It must accommodate a separate execution repository in place
+  of a linked worktree for isolated executions: Core seeds it (from the mission branch when one
+  exists, keeping P13 D12's rule) and imports its result as data, never honouring its
+  configuration, hooks or refs. The exact location and mechanism are implementation work.
+- **Live-process re-attachment (R6-A, §15.3).** Withdrawn for isolated executions: no adoption of a
+  live isolated process at boot; records are reconciled and remaining executions resolved through
+  terminate / reap / fail. The tests that adopt a live process (G1's adoption, the restart tests of
+  note 9) apply to non-isolated executions only, and become restart-and-fail tests for isolated
+  executions when PV-20 is built.
+- **Spawn failure never bypasses isolation (PV-20 §3.4, §6.3).** If isolation cannot be
+  established, the execution does not spawn; there is no fallback to the user's identity and no
+  fallback to `in_place`.
+- **O7 stays P11's** (p20-design-gate §4.2 O7, §12 item 72, deferred to P11 by the owner): an
+  isolation-establishment failure interacts with `SpawnFailed`, which today ends `binding`
+  (uncharged) and is re-dispatched every tick, contradicting note 11's definition of `binding`. Charged,
+  uncharged with a backoff or breaker, or routed away from the harness is **P11's open decision**,
+  required before PV-20 is implemented (PV-20 §3.4). It is not decided here.
+
+*Added 2026-10-07 after the PV-20 blocker decisions (ADR-0053 §7; not implemented).* Five more P11
+contracts change:
+
+- **Every execution's workspace (A1, §16, §17).** Every isolated execution, of every task kind,
+  gets a Core-established workspace (the superseding table under §17); `in_place` is withdrawn for
+  isolated executions; a non-git project root is refused **before dispatch**, so a structural
+  impossibility never reaches `SpawnFailed` or its per-tick re-dispatch. Only a transient
+  workspace failure is O7's.
+- **Core's git operations (A5, §10.4, §17).** Step 4's HEAD/branch read is withdrawn; seeding is a
+  copy of the base revision; the canonical revision is Core's pinned import commit in a Core-owned
+  repository. Core never runs git against an execution repository.
+- **Account home and configuration (A2, §18).** A fresh per-execution `CLAUDE_CONFIG_DIR` without a
+  provider login; Core-authored settings and MCP configuration read-only to the execution; no MCP
+  opt-in for isolated executions until separately approved.
+- **Lifecycle from execution-authored content (A7, §15.3, §15.4).** The stream's `result` is never
+  an exit; only exits Core observed (its handle, its own `ended` tombstone) are collected.
+- **Harness eligibility (A4).** An execution of any harness is dispatched only if it launches inside
+  the PV-20 identity and Job; fake and test harnesses are not production-dispatchable.

@@ -184,7 +184,7 @@ stub until P9) — "so a plan is never left undecided" (P3.5). P8 keeps that sha
 | `action_classes[]` | existing closed list | P9 |
 | `capabilities_required[]` | closed list `code_edit, shell, web, long_context, vision` (resource-router §3) | P10 |
 | `min_model_tier` | `small | mid | large`, proposed by the planner, validated only as an enum | P10 |
-| `workspace_mode` | `in_place | worktree` (default `worktree` for `code_change`) | P11 |
+| `workspace_mode` | `in_place | worktree` (default `worktree` for `code_change`). *Under PV-20 (ADR-0053 §7 A1; not implemented):* `in_place` is withdrawn for isolated executions, so the planner's `in_place` default for other kinds no longer chooses where an isolated execution runs — every one gets a Core-established workspace, and a task on a non-git project root is refused before dispatch | P11 |
 | `touches[]` | path globs, relative to a referenced repository | P8 serialisation, P11 worktrees |
 | `inputs[]` | `{from_task: key}` or `{ref: {kind,id}}`, each with `what` | P11 |
 | `refs[]` | canonical world objects the task concerns, `{kind, id}` (§9) | P10, P11, P13 |

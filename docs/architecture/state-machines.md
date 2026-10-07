@@ -303,7 +303,10 @@ stateDiagram-v2
 ```
 
 - `approved` returns the task to READY; the resumed execution receives the one-shot allow bound
-  to the approved action hash (execution-architecture §5).
+  to the approved action hash (execution-architecture §5). *Corrected 2026-10-07 (ADR-0053 §7 A7):*
+  the "allow" is not something the execution holds — as built, the covering Approval is consumed
+  Core-side, single-use, when the resumed execution's request for that action hash is evaluated
+  (p11-design-gate §10.4 step 6); authoring approval state is never the execution's (PV-20 §3.6).
 - `execution_failed_retry`: attempt < `max_attempts`. A retry re-enters ROUTING, which may pick
   a different resource (affinity is kept unless the failure was resource-attributable).
 - **The three-strikes rule (migration kit):** if the same failure signature (normalised error
@@ -363,6 +366,23 @@ stateDiagram-v2
     ENDED_REJECTED --> [*]
 ```
 
+*Correction recorded 2026-10-07 (PV-20, ADR-0053 R5 / H2, R6-A and §7 A7; not implemented). For an
+execution launched under PV-20 isolation, the diagram is read with these guards:*
+- **`exited_success` is Core's own observation, not a report.** It fires only on an exit 0 Core
+  observed through the process handle it holds (or its own `ended` tombstone). An
+  execution-authored stream `result`, `halted.json`, `precompact.json` or `pid.json` never fires it.
+- **ENDED_OK is an execution-level fact, not success.** It moves the task to VERIFYING only;
+  completion needs PASSED, which needs authoritative verification evidence (p13-design-gate §8.1),
+  and a missing verifier never yields it.
+- **`PAUSING --> ENDED_OK` and `HANDING_OFF --> ENDED_OK`** need a cause Core can classify from its
+  own state; no execution report is one. Otherwise an exit 0 from PAUSING takes
+  `halted_at_boundary` → PAUSED and one from HANDING_OFF takes `checkpoint_written` →
+  ENDED_HANDOFF; a non-zero exit takes `exited_error`. A forged or replayed halt report can move a
+  classification only toward a non-advancing state. Ambiguous termination never advances.
+- **`LOST --> RUNNING: adopted`** never fires (R6-A): a restarted Core resolves every non-terminal
+  isolated execution through terminate / reap / fail. For one PAUSING at the restart, PAUSED versus
+  failed is a **non-security policy detail**, open.
+
 - **INTENT is committed before spawn.** The row (with the planned argv, workdir and account)
   exists before any process does; the outbox consumer writes the **spawning marker**, spawns,
   and records `{pid, create_time}` in the execution's `pid.json`, the on-disk registry
@@ -378,7 +398,9 @@ stateDiagram-v2
   (default 120 s with no tool boundary) escalates to STOPPING and a checkpoint is derived.
 - **ASK mid-execution:** hook denies the action with a reason and halts → `hook_asked` → an
   Approval row bound to the action hash. `resume_approved` resumes the provider session with a
-  one-shot allow token for that hash.
+  one-shot allow token for that hash. *Corrected 2026-10-07 (ADR-0053 §7 A7): no token reaches the
+  execution; the Approval is consumed Core-side, single-use, when the resumed request for that hash
+  is evaluated (p11-design-gate §10.4 step 6; execution-architecture §5).*
 - **HANDING_OFF → ENDED_HANDOFF** ends this execution; the Execution Manager creates the next
   Execution (the next attempt number, uncharged, `handoff_from` set — as built in P12, below) for
   the same task, fed by the checkpoint.

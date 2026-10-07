@@ -484,6 +484,14 @@ guard's `step_up_valid` is *"the deciding device is local, or presented a valid 
 paired devices and the PIN. The requirement is never dropped, so an approval granted without it
 does not cover an item that needs it (§8.4.4).
 
+*Consequence recorded 2026-10-07 (PV-20, ADR-0053 R1-A and §7 A3; not implemented).* "Local"
+satisfies step-up only for a request Core can treat as **direct user origin**: an OS-attested
+connection origin meeting the approved user-origin condition, arriving through an approved trusted
+path that is neither a forwarding hop nor an execution-influenced deputy. An execution, the
+verifier, a proxy, a forwarding hop or an undetermined origin is never local here, and is refused
+every PV-20 §3.6 effect — approving an ASK among them — whatever credential it presents. D16's
+definition is otherwise unchanged; see p15-design-gate §6.6.
+
 ---
 
 ## 9. The PolicyDecision record (req. 7) [spec + new fields] (**D17**)

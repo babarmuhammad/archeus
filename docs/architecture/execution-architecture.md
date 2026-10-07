@@ -25,10 +25,10 @@ Before spawn, the manager builds the environment from the task's evaluated polic
 
 | Concern | Rule |
 |---|---|
-| Account env | `config.account_env(cfgdir)` sets the harness home var and pops API keys that would override the intended login (existing, reused) |
+| Account env | `config.account_env(cfgdir)` sets the harness home var and pops API keys that would override the intended login (existing, reused). *Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md) §7 A2, PV-20; not implemented):* an isolated execution never receives the account home, a copy of it, or implicit access to its configuration. Its `CLAUDE_CONFIG_DIR` is a fresh, Core-created, per-execution directory in execution-private state, holding no provider login; provider access goes only through Core's broker (R3-B). Core-authored spawn configuration (hook settings, MCP configuration) is Core-write / execution-read; ADR-0049 opt-ins enter only as Core-materialised data carrying no credential authority, and **no MCP opt-in is admitted to an isolated execution** (confirmed by the owner, 2026-10-07; changing it needs a new owner decision) |
 | Push/publish credentials | removed: `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=` (empty), `SSH_AUTH_SOCK` unset, `GIT_CONFIG_COUNT` injects `credential.helper=` (empty) — the agent can commit locally but cannot push. `git_push`, `deploy`, `external_comm`, merge-back are **performed by Core** after policy + approval |
-| Filesystem | workdir = task worktree (code_change) or project root (read-only tasks). Claude Code gets `--add-dir` only for allowed extra paths; Codex gets `--sandbox workspace-write` |
-| Network | Codex: network access off unless `web` is ALLOW. Claude Code: `WebFetch`/`WebSearch` removed from allowed tools unless `web` is ALLOW (*as built, P20 slice F: present exactly when the task holds `web`, and the hook judges each call; ADR-0052 derives removal from the classes held*); Bash network cannot be blocked by Archeus → tasks whose policy denies network are routed only to `sandbox` harnesses (router §3) |
+| Filesystem | workdir = task worktree (code_change) or project root (read-only tasks). Claude Code gets `--add-dir` only for allowed extra paths; Codex gets `--sandbox workspace-write`. *Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md), PV-20; not implemented):* under PV-20 the process runs under an execution identity that is not the user's, inside a Core-held Job; a code-change workdir is a separate execution repository whose result Core imports as data (the user's `.git` is never exposed); and the execution reaches its model provider only through Core's broker (conditional on production CLI feasibility). Capability removal stays; it was never an OS boundary (ADR-0051 §4). *Completed by ADR-0053 §7 A1 (not implemented):* "project root (read-only tasks)" is withdrawn for isolated executions — every isolated execution, of every task kind, gets a Core-established workspace distinct from the user's project root and `.git`: a seeded execution repository on a git root (detached HEAD: the recorded commit), an empty execution-private workspace with no project; a non-git project root is refused before dispatch, never run in place |
+| Network | Codex: network access off unless `web` is ALLOW. Claude Code: `WebFetch`/`WebSearch` removed from allowed tools unless `web` is ALLOW (*as built, P20 slice F: present exactly when the task holds `web`, and the hook judges each call; ADR-0052 derives removal from the classes held*); Bash network cannot be blocked by Archeus → tasks whose policy denies network are routed only to `sandbox` harnesses (router §3). *Under PV-20 (ADR-0053 §7 A4; not implemented):* a sandbox harness is eligible only if it launches inside the PV-20 execution identity and Job — its own sandbox is an inner layer, never a substitute; network egress is P23's |
 | Tools | Claude Code `--allowedTools` / `--disallowedTools` derived from action classes (e.g. no `Bash` for a pure `document` task) — *amended 2026-10-03 (ADR-0052): the removal is `--tools` (allow-form, from the action classes; unmapped tools excluded) plus `--disallowedTools "mcp__*"` except opted-in servers; `--allowedTools` is never passed, because it pre-approves rather than restricts.* *As built 2026-10-07 (P20 slice F; p20-design-gate §12 items 75–89): `archeus/harnesses/claude_code/tools.py`. `--tools` is passed on every spawn, empty when the task holds no mapped class. Its names are the mapping intersected with a checked-in, version-stamped snapshot of what the installed CLI offers, because Claude Code drops an unknown name without a word; `tools/claude_tool_drift.py` compares the snapshot with the installed CLI. `Skill` is added exactly when an opted-in source or plugin brings a skill. The MCP deny is `mcp__*` with nothing opted in; otherwise it is one `mcp__<name>` per excluded server, in Claude Code's normalised name. A name colliding with an opted-in server's, or a server the inventory cannot name, is left to `--strict-mcp-config`.* |
 | Limits | `--max-turns` from task size; `--max-budget-usd` where the harness supports it; wall-clock timeout per task kind |
 | Tagging | `ARCHEUS_EXECUTION_ID`, `ARCHEUS_HOME`, `ARCHEUS_CORE_URL`, `ARCHEUS_HOOK_TOKEN` (a `hook_…` token: execution-scoped, report/checkpoint/request_approval only) and the legacy `HEADLESS_MARK` so today's session lists and auto-memory skip these transcripts. `ARCHEUS_EXECUTION_ID` also makes the legacy account hooks stand down (P0.5 hook guard): `recall_hook`, `worklog_hook`, `memdirty_hook` skip; `limit_hook` records the shared latch but does not offer rotation |
@@ -109,6 +109,18 @@ when `pid.json` is missing (crash between creation and recording), marks the exe
 kills any process that match the recorded argv in the execution's workdir if one can be
 identified, and never re-spawns into the same worktree without a new attempt number.
 
+*Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md), PV-20; not implemented).* For an execution
+launched under PV-20 isolation: this directory's contents split into PV-20's seven resource classes
+on separate boundaries (pv20-execution-isolation-design §7.5); `spawning`, `pid.json` and `ended`
+are Core-only lifecycle state and are never read from an execution-writable location; the prompt
+and stream reach the process as Core-opened handles; and the "a restarted Core can re-attach"
+property does not apply, because Core's death terminates the isolated tree (R6-A). Exact files and
+directories are implementation work. *Further, under ADR-0053 §7 A1, A2 and A7:* the workdir is
+never this directory itself (an execution with no project gets an empty execution-private
+workspace); Core-authored spawn configuration has the response class's authority (Core writes, the
+execution reads); and `stream.jsonl`'s content is execution-authored — a `result` in it is never a
+process exit, while the `ended` tombstone Core writes is.
+
 ## 4. Process lifecycle
 
 ```mermaid
@@ -147,9 +159,20 @@ sequenceDiagram
   recorded). Dead → derive a
   checkpoint, mark ENDED_ERROR or LOST → task retry per policy. INTENT rows follow the
   spawning-marker rule of §3.1 (no marker → ABANDONED; marker without `pid.json` → LOST;
-  marker with `pid.json` → adopt or kill).
+  marker with `pid.json` → adopt or kill). *Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md)
+  R6-A; not implemented):* an execution launched under PV-20 isolation is **never adopted**. Core
+  is the sole holder of its Job and Core's death terminates its tree, so boot reconciles records
+  and resolves every remaining non-terminal isolated execution through terminate / reap / fail
+  (p11-design-gate §15.3).
 - **Stop.** `stop` → hook halt flag (graceful, ≤ `grace_s`) → `proc.kill_pid_tree(pid,
-  create_time)` (P0.5 seam; refuses a recycled PID).
+  create_time)` (P0.5 seam; refuses a recycled PID). *Under PV-20 (ADR-0053 R6-A; not
+  implemented):* with Core up, the forced step ends the execution's Core-held Job, which reaps the
+  whole tree; `kill_pid_tree` stays the instrument of the Core-less `archeus estop` (§10 path 2).
+- **Ending (ADR-0053 §7 A7; not implemented).** `execution.ended` → ENDED_OK is an execution-level
+  fact, not success: Core records it only from its own observed exit 0 of an execution that was
+  RUNNING with no outstanding Core control request, and it moves the task only to VERIFYING. A
+  PAUSING or HANDING_OFF execution never reaches ENDED_OK because the execution reports success;
+  ambiguous termination is non-advancing.
 - **Pause.** cooperative (state-machines §4). The mission shows "pausing…" until every execution
   reports PAUSED or escalates to stop at `pause_timeout`.
 
@@ -193,7 +216,12 @@ sequenceDiagram
   `unclassified=true`, which policy treats as the *strictest* class active for the task). The
   classifier is a convenience; capability removal (§2) is the guarantee.
 - The one-shot allow is a signed token `hmac(hook_token, action_hash)` delivered in the resumed
-  execution's environment and consumed on first use (Approval → CONSUMED).
+  execution's environment and consumed on first use (Approval → CONSUMED). *Corrected 2026-10-07
+  (ADR-0053 §2 and §7 A7):* that design is withdrawn — the execution holds its hook token, so it
+  could compute such a token itself, and authoring approval state is a PV-20 §3.6 effect. As built
+  (p11-design-gate §10.4 step 6), the approval is consumed **Core-side**: P9's
+  `authorization.evaluate_action` finds the covering Approval for the action hash and consumes it,
+  single-use, in the same transaction; nothing the execution holds or presents is the approval.
 
 ## 6. Continuity: checkpoints and hand-off
 
@@ -273,12 +301,33 @@ is the legacy delivery of this, not the contract.
   user's working branch and any push are separate policy-checked actions performed by Core.
 - Parallel tasks in a DAG each get a worktree, which is what makes parallelism safe. Tasks that
   touch the same files are serialised by the planner (declared `touches[]` globs).
+- *Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md) R4a-B; not implemented):* under PV-20 a
+  code-change task works in a **separate execution repository**, not a linked worktree of the
+  user's repository, because a linked worktree shares the user repository's refs, objects, config
+  and hooks. Core seeds it and brings its result into the mission branch by a data-only import that
+  honours none of its configuration, hooks or refs; the merge and everything after it stay Core's.
+  Mission-level verification on the mission branch runs under the confined verification identity
+  (§8).
+- *Completed 2026-10-07 by ADR-0053 §7 A1 and A5 (not implemented):* every isolated execution of
+  every task kind on a git root gets such a repository, seeded by a **copy** of the base revision
+  only (never a linked worktree, shared objects, alternates or hardlinks). Core never runs git
+  against it under the user's identity — `git worktree list` above included. Core copies its working
+  tree as data into a Core-owned import repository; **Core's pinned import commit is the canonical
+  revision**. Every Core git operation over execution-derived content — the import commit, git
+  facts, the merge, materialising a verification checkout, push — runs under a Core-pinned
+  configuration that prevents execution-controlled hooks, drivers and configuration from running.
+  **Confirmed by the owner (2026-10-07):** no repository-controlled or execution-derived git
+  extension executes in those operations — repository-controlled hooks (the user's own included),
+  filters, fsmonitor, diff and merge drivers, submodules, LFS transfer mechanisms, and any other
+  execution-derived git extension — and Core does not push content whose publication requires
+  executing one (for example LFS-dependent content); that capability needs a separate owner
+  decision (PV-20 §3.2).
 
 ## 8. Verification providers
 
 | Verifier | Checks | Independence |
 |---|---|---|
-| CodeVerifier | `test_commands` and `build_commands` from the latest RepositoryInspection (fallback: detected by marker files — `pyproject.toml` → pytest, `package.json` → `npm test`, …), plus lint if configured, plus architecture consistency check (drift) on changed modules | deterministic; runs on the node, in the worktree, with network per policy |
+| CodeVerifier | `test_commands` and `build_commands` from the latest RepositoryInspection (fallback: detected by marker files — `pyproject.toml` → pytest, `package.json` → `npm test`, …), plus lint if configured, plus architecture consistency check (drift) on changed modules | deterministic; runs on the node. *Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md) R4b; not implemented):* execution-influenced verification runs under the **confined verification identity** — distinct from the user's and the execution's identity, no access to Core state, credentials or the local token, its own Job — against a checkout at the recorded revision, **never under the user's identity**; Core records the exit code and output itself; network per P23's policy. If that identity cannot be established, no command runs and the check is missing evidence (p13-design-gate §8.1, §8.4: ERROR or AWAITING_HUMAN, never PASSED). As built today the commands still run as the user in the worktree — PV-20's open remediation. *ADR-0053 §7 A6:* one fresh verifier principal per verification, never reused; a fresh checkout of the Core-recorded revision; no persistent or shared cache; no credential, Core state or Core route; authority a subset of the execution's runtime/tool grants plus its own checkout and scratch, network only if P23 permits |
 | ResearchVerifier | every claim in the report cites a source; sources fetched and quoted; contradictions flagged; confidence recorded | model call on a different account/model when possible |
 | DocumentVerifier | required sections present, links resolve, spelling/format checks | deterministic + optional model |
 | PresentationVerifier | export exists and opens, slide/scene count, requirement checklist; visual quality → human acceptance | mostly human |
@@ -299,7 +348,7 @@ nodes (a second PC, a server) — specified now so V1 code does not assume local
 | Liveness | process-registry check | socket-as-liveness + 30 s heartbeat; GRACE 90 s; OFFLINE after |
 | Credentials | accounts registered on this node | accounts are node-bound; Core never receives credentials, only usage snapshots and auth status |
 | Artifacts | same disk | node uploads artifacts by sha256; Core dedups |
-| Offline | n/a | node keeps running executions, buffers events (bounded), replays on reconnect; Core marks executions LOST after grace and reconciles on reconnect |
+| Offline | n/a | node keeps running executions, buffers events (bounded), replays on reconnect; Core marks executions LOST after grace and reconciles on reconnect. *Open under PV-20 (ADR-0053 R6-A; recorded 2026-10-07):* this row conflicts with R6-A for isolated executions, under which no isolated process outlives the Core that holds its Job. Remote nodes are deferred; before one runs isolated executions it needs its own PV-20 analysis — nothing here decides it |
 
 ## 10. Emergency stop
 
@@ -324,4 +373,16 @@ Semantics:
   and records an event.
 - Remote stop from a phone needs Core running; the docs and the pairing screen say so plainly.
   Worst case with Core down is bounded by capability removal (no push, no deploy), the sentinel
-  (hook harnesses) and the registry kill (all harnesses).
+  (hook harnesses) and the registry kill (all harnesses). *Corrected 2026-10-07 (PV-20, ADR-0053):*
+  capability removal does **not** bound this as built — finding G1 (Critical, open) shows the push
+  and publish credentials live in stores the user's identity owns, which removing environment
+  variables cannot reach. The bound is PV-20's once implemented and evidenced; until then the
+  sentinel and the registry kill are the Core-down controls.
+- *Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md), PV-20; not implemented):* path 2 stays
+  **the only Core-less stop mechanism** (p20-design-gate §4.1 item 83). Under PV-20 the Job is the
+  execution lifetime boundary, held only by Core, and Core's death ends an isolated tree; the Job
+  is **not** a second, independent Core-down stop authority. The sentinel check must become an
+  explicit three-state determination (present / absent / indeterminate → halt) no later than
+  PV-20's separation of the sentinel from the mailbox. Under ADR-0053 §7 A4 a sandbox harness runs
+  inside a Core-held Job like every other execution, and under A6 so does every verifier principal:
+  both are in the registry path 2 kills.
