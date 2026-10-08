@@ -381,8 +381,9 @@ Semantics:
 - *Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md), PV-20; not implemented):* path 2 stays
   **the only Core-less stop mechanism** (p20-design-gate §4.1 item 83). Under PV-20 the Job is the
   execution lifetime boundary, held only by Core, and Core's death ends an isolated tree; the Job
-  is **not** a second, independent Core-down stop authority. The sentinel check must become an
-  explicit three-state determination (present / absent / indeterminate → halt) no later than
-  PV-20's separation of the sentinel from the mailbox. Under ADR-0053 §7 A4 a sandbox harness runs
+  is **not** a second, independent Core-down stop authority. The sentinel check is an explicit
+  three-state determination (present / absent / indeterminate → halt) since PV-20 slice S0
+  (2026-10-08; p20-design-gate §12 item 101), which lands it before PV-20's separation of the
+  sentinel from the mailbox; that is not row 7's verification. Under ADR-0053 §7 A4 a sandbox harness runs
   inside a Core-held Job like every other execution, and under A6 so does every verifier principal:
   both are in the registry path 2 kills.

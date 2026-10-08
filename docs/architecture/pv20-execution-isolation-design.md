@@ -1,7 +1,7 @@
 # PV-20 — Execution OS-isolation: design decisions
 
 **Status:** ARCHITECTURE DECISIONS APPROVED AND DOCUMENTED (§6 items 1–17, and the blocker decisions
-A1–A6 with the A7 correction, §6 items 18–24) — **not implementation authorization**; implementation not started; empirical evidence outstanding · **Track:** V1.x
+A1–A6 with the A7 correction, §6 items 18–24) — **not implementation authorization**; implementation: slice S0 only (§7.4 Gap A, the three-state sentinel determination, 2026-10-08), the isolation mechanism not started; empirical evidence outstanding · **Track:** V1.x
 security remediation · **Date:** 2026-10-07 · **Prerequisite:** [PV-13 study](pv13-windows-os-confinement-study.md)
 (delivered 2026-10-07) · **Source:** ADR-0051 §5; the P20 slice-G verification findings G1 and G2
 (both Critical, open — see [p20-design-gate.md](p20-design-gate.md) §12 items 92–97) · **ADR:**
@@ -390,11 +390,12 @@ tested.
 - **Sentinel state has three values (§6.10):** absent, present, and **cannot be determined**. If
   the execution cannot reliably determine the STOP sentinel's state, the requirement is
   **fail-closed** (halt), never "treat as absent". This is a PV-20 design and acceptance
-  requirement; the current hook does not satisfy it (§7.4 Gap A). **Ordering requirement:** the
-  explicit three-state determination must be implemented **no later than** the change that
-  separates the sentinel from the mailbox (§7.5). Today an inaccessible sentinel reads as absent,
-  and the observed fail-closed result comes from the mailbox write failing beside it; separating
-  the two without the determination would fail open. The item-83 sentinel stays valid under PV-20
+  requirement; the hook makes the determination since slice S0 (§7.4 Gap A), which is not its
+  verification under PV-20. **Ordering requirement:** the explicit three-state determination must
+  be implemented **no later than** the change that separates the sentinel from the mailbox (§7.5);
+  S0 satisfies it. Before S0 an inaccessible sentinel read as absent, and the observed fail-closed
+  result came from the mailbox write failing beside it; separating the two without the
+  determination would have failed open. The item-83 sentinel stays valid under PV-20
   only with this requirement met.
 - **Isolation setup failure** → fail closed, do not spawn (§3.4); charging is O7's (P11-owned, R8).
 - **Child-process failure** → unchanged from P11; the Job reaps the tree.
@@ -650,10 +651,10 @@ decision matrix recommended. None authorises implementation.
 
 ## 7. Status
 
-**`PV-20 ARCHITECTURE DECISIONS APPROVED AND DOCUMENTED (ADR-0053); IMPLEMENTATION NOT STARTED;
-EMPIRICAL EVIDENCE OUTSTANDING`.** PV-20 is a V1.x security remediation. **No PV-20 implementation has
-been performed, no acceptance evidence has been produced, and the security boundary is not claimed to
-exist.** P20 G stays PAUSED and NOT CLOSED, and G1 and G2 stay Critical and open. The audit blockers
+**`PV-20 ARCHITECTURE DECISIONS APPROVED AND DOCUMENTED (ADR-0053); IMPLEMENTATION: SLICE S0 ONLY;
+EMPIRICAL EVIDENCE OUTSTANDING`.** PV-20 is a V1.x security remediation. **Only slice S0 (§7.4 Gap A)
+has been implemented; no isolation mechanism exists, no acceptance evidence has been produced, and the
+security boundary is not claimed to exist.** P20 G stays PAUSED and NOT CLOSED, and G1 and G2 stay Critical and open. The audit blockers
 A1–A6 are decided and A7 is corrected (§6 items 18–24); that closes architecture questions, not
 implementation authorization.
 
@@ -673,7 +674,9 @@ following remain unverified:
 - isolation-establishment enforcement (§3.4);
 - undeterminable-sentinel behaviour as an **explicit three-state determination** (§3.7, §7.4 Gap A).
   The outcome-level fail-closed result observed on 2026-10-07 came from the hook's crash path, not
-  from a determination, and is therefore not this verification;
+  from a determination, and is therefore not this verification. S0 (§7.4) implements the
+  determination and tests it with injected errors under the current identity; that a denied lookup
+  under the isolated identity is reported as an error, never as not-found, is unverified;
 - OS attestation of the connecting peer on Core's local transport (R1-A, §3.3);
 - that the production Claude CLI can reach its provider through Core's broker, whether it calls
   anything outside it, and the loopback reach the broker needs (R3-B, §3.3);
@@ -795,7 +798,19 @@ PROPOSAL — UNVERIFIED: neither proven nor disproven, and the spike is not comp
   and the halt observed came from the mailbox write that follows failing under the same denied
   traversal and the hook's catch-all turning that into a halt. **Ordering:** the determination must
   land no later than the sentinel/mailbox separation of §7.5, which removes that coupling.
-  *Recorded; implementation not started.*
+  **Implemented as slice S0 (2026-10-08; p20-design-gate §12 item 101), the first and only PV-20
+  slice the owner has authorised.** All five sentinel reads in `archeus/harnesses/hook.py` — the
+  global STOP before the request, the execution's STOP, PAUSE and HANDOFF flags, and the global
+  STOP inside the wait loop — go through one determination: a successful `os.lstat` is
+  **present** (a dangling link included), `FileNotFoundError` is **absent**, and every other
+  `OSError` is **indeterminate**, which halts with its own reason. Tests use injected errors only;
+  no ACL, no confinement. What S0 does **not** settle:
+  - **Row 7 stays implementation-blocked:** on the §7.5 sentinel/mailbox separation, and on
+    isolated-identity evidence that a denied lookup is reported as an error, never as not-found.
+  - **Gap B is untouched:** a `halted.json` the execution cannot write is still lost, so Core can
+    still record ENDED_OK after a halt it did not ask for. That remains R5 / H2's Core-authoritative
+    halt state (row 15).
+  - **PV-20 is not verified; G stays PAUSED and NOT CLOSED; G1 and G2 stay Critical and open.**
 - **Gap B — halt-state durability (resolved in architecture by R5 / H2, §6.16).** `halted.json` is
   not durable when the execution legitimately lacks write access to its own directory — `_halted`
   swallows the write failure — and Core today tells a halted execution from one that finished by
@@ -873,7 +888,7 @@ AppContainer were evidenced.
 | 4 | Core effect boundary | **design-open** · implementation-blocked · evidence-blocked | origin is decided (R1-A, §6.14), but attestation on Core's transport has no evidence, and its failure would need a new owner decision (R1-B or a transport change); §3.6's closed set cannot be enforced against an origin Core cannot identify |
 | 5 | no re-arm after a halt | **design-open** · implementation-blocked · evidence-blocked | re-arm is a §3.6 member, refused to an execution through R1-A — the same open point as row 4. D10's paired-device step-up is not the mechanism (§3.6) |
 | 6 | mailbox authority | design-complete · implementation-blocked · evidence-blocked | authority model ruled (§6.6), halt reports decided (H2), layout an implementation constraint (R2, §7.5); ACE enforcement unverified |
-| 7 | sentinel three states | design-complete · implementation-blocked | Gap A: needs explicit determination, not the crash path — no later than the §7.5 separation |
+| 7 | sentinel three states | design-complete · implementation-blocked · evidence-blocked | Gap A's determination is built (S0, §7.4; injected-error tests only); still blocked on the §7.5 separation, and on evidence that a denied lookup under the isolated identity is reported as an error, never as not-found |
 | 8 | e-stop still works | design-complete · implementation-blocked · evidence-blocked | no Job object exists; R6-A and item 83 settle the design; Job behaviour and the registry kill's reach to an isolated process are unverified |
 | 9 | children remain confined | design-complete · implementation-blocked · evidence-blocked | confinement inheritance unverified |
 | 10 | establishment invariant | design-complete · implementation-blocked | O7 still open (P11's, R8; §3.4) |

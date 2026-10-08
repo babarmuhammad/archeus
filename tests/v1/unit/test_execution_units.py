@@ -2,8 +2,11 @@
 canonicaliser, the execution state table, the hook's protocol, redaction, and
 the branch/host slot P9 left for the action stage."""
 
+import contextlib
+import errno
 import json
 import os
+import stat
 import threading
 import time
 
@@ -263,6 +266,150 @@ def test_a_flag_or_the_sentinel_halts_before_asking(tmp_path):
     assert hook.run({'tool_name': 'Read'}, env)[0] == 'halt'
     assert not os.path.exists(os.path.join(d, 'hook'))
     assert os.path.exists(os.path.join(d, 'halted.json'))
+
+
+# ── PV-20 §7.4 Gap A: a sentinel is present, absent or indeterminate ────────
+
+PRESENT = {'estop': 'emergency stop', 'STOP': 'stopped by Archeus',
+           'PAUSE': 'paused by Archeus', 'HANDOFF': 'handing off to a fresh session',
+           'estop-wait': 'emergency stop'}
+
+
+def _allow(box):
+    with open(os.path.join(box, '1.res.json'), 'w', encoding='utf-8') as f:
+        json.dump({'decision': 'allow'}, f)
+
+
+@contextlib.contextmanager
+def _core(box, on_request):
+    """Core doing *on_request* once the first request is in the mailbox: with
+    `_allow`, a hook that ignores a sentinel visibly proceeds instead of waiting
+    out WAIT_S."""
+    done = threading.Event()
+
+    def core():
+        req = os.path.join(box, '1.req.json')
+        while not done.wait(0.01):
+            if os.path.exists(req):
+                on_request()
+                return
+    t = threading.Thread(target=core)
+    t.start()
+    try:
+        yield
+    finally:
+        done.set()
+        t.join()
+
+
+def _hook_with(tmp_path, monkeypatch, read, outcome):
+    """The hook with *outcome* injected at one of its five sentinel reads: the
+    estop before the request, the STOP / PAUSE / HANDOFF flag, or the estop in
+    the wait loop. Only the lookup is injected."""
+    eid = ids.new_id('execution')
+    home = str(tmp_path)
+    env = {'ARCHEUS_HOME': home, 'ARCHEUS_EXECUTION_ID': eid, 'ARCHEUS_HOOK_TOKEN': 'hook_t'}
+    d = os.path.join(home, 'run', 'exec', eid)
+    os.makedirs(d)
+    estop = os.path.join(home, 'run', 'STOP')
+    target = estop if read.startswith('estop') else os.path.join(d, read)
+    real_lstat, real_stat = os.lstat, os.stat
+    estop_reads = []
+
+    def lstat(p, *a, **kw):
+        p = os.fspath(p)
+        hit = p == target
+        if p == estop:
+            estop_reads.append(p)
+            if read.startswith('estop'):
+                hit = (len(estop_reads) > 1) == (read == 'estop-wait')
+        if hit:
+            if outcome == 'dangling':
+                return os.stat_result((stat.S_IFLNK | 0o777,) + (0,) * 9)
+            elif outcome == 'denied':
+                raise PermissionError(errno.EACCES, 'Access is denied', p)
+            elif outcome == 'oserror':
+                raise OSError(errno.EIO, 'I/O error', p)
+        return real_lstat(p, *a, **kw)
+
+    def follow(p, *a, **kw):
+        # what following a dangling link gives: the name it points at is missing
+        if outcome == 'dangling' and os.fspath(p) == target:
+            raise FileNotFoundError(errno.ENOENT, 'the link target is missing', p)
+        return real_stat(p, *a, **kw)
+
+    box = os.path.join(d, 'hook')
+
+    def on_request():
+        if outcome == 'present' and read == 'estop-wait':
+            open(estop, 'w').close()        # the estop appears while the hook waits
+        else:
+            _allow(box)
+    if outcome == 'present' and read != 'estop-wait':
+        open(target, 'w').close()
+    monkeypatch.setattr(os, 'lstat', lstat)
+    monkeypatch.setattr(os, 'stat', follow)
+    with _core(box, on_request):
+        return hook.run({'tool_name': 'Read'}, env), d
+
+
+@pytest.mark.parametrize('outcome', ['absent', 'present', 'dangling', 'denied', 'oserror'])
+@pytest.mark.parametrize('read', list(PRESENT))
+def test_each_sentinel_read_is_present_absent_or_indeterminate(tmp_path, monkeypatch, read,
+                                                               outcome):
+    (kind, why), d = _hook_with(tmp_path, monkeypatch, read, outcome)
+    asked = os.path.exists(os.path.join(d, 'hook', '1.req.json'))
+    halted = os.path.join(d, 'halted.json')
+    if outcome == 'absent':
+        assert (kind, why) == ('allow', '')
+        assert asked and not os.path.exists(halted)
+        return
+    assert kind == 'halt'
+    if outcome in ('present', 'dangling'):
+        assert why == PRESENT[read]
+    else:
+        # a distinct reason naming the sentinel, never the present one's
+        name = 'emergency stop' if read.startswith('estop') else read + ' flag'
+        assert why == "cannot determine the %s's state; halted (fail closed)" % name
+    assert asked == (read == 'estop-wait')
+    with open(halted, encoding='utf-8') as f:
+        record = json.load(f)
+    assert (record['seq'], record['reason']) == ((1 if read == 'estop-wait' else None), why)
+
+
+def test_an_undeterminable_estop_halts_while_the_mailbox_stays_writable(tmp_path, monkeypatch):
+    """PV-20 acceptance row 7's case: the sentinel cannot be read and the
+    mailbox beside it can be written. The two-state read called that absent,
+    and only a mailbox write failing next to it ever halted; the halt now comes
+    from the determination."""
+    eid = ids.new_id('execution')
+    home = str(tmp_path)
+    env = {'ARCHEUS_HOME': home, 'ARCHEUS_EXECUTION_ID': eid, 'ARCHEUS_HOOK_TOKEN': 'hook_t'}
+    d = os.path.join(home, 'run', 'exec', eid)
+    box = os.path.join(d, 'hook')
+    os.makedirs(box)
+    estop = os.path.join(home, 'run', 'STOP')
+
+    def denied(real):
+        def lookup(p, *a, **kw):
+            if os.fspath(p) == estop:
+                raise PermissionError(errno.EACCES, 'Access is denied', p)
+            return real(p, *a, **kw)
+        return lookup
+
+    monkeypatch.setattr(os, 'lstat', denied(os.lstat))
+    monkeypatch.setattr(os, 'stat', denied(os.stat))
+    assert not os.path.exists(estop)
+    probe = os.path.join(box, 'probe')
+    open(probe, 'w').close()
+    os.remove(probe)
+    with _core(box, lambda: _allow(box)):
+        kind, why = hook.run({'tool_name': 'Read'}, env)
+    assert (kind, why) == ('halt', "cannot determine the emergency stop's state; halted "
+                                   "(fail closed)")
+    assert os.listdir(box) == []
+    with open(os.path.join(d, 'halted.json'), encoding='utf-8') as f:
+        assert json.load(f)['reason'] == why
 
 
 def test_concurrent_hooks_take_distinct_sequence_numbers(tmp_path):

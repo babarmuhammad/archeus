@@ -7,8 +7,9 @@ Standard library only and no package imports: it runs inside the agent's
 process tree, with the agent's environment, and must behave identically for
 every harness that runs it.
 
-In order: the global STOP sentinel -> halt; this execution's STOP or PAUSE flag
--> halt; otherwise the request goes to Core through the execution's mailbox
+In order: the global STOP sentinel -> halt; this execution's STOP, PAUSE or
+HANDOFF flag -> halt; a sentinel whose state cannot be determined -> halt;
+otherwise the request goes to Core through the execution's mailbox
 (`<ARCHEUS_HOME>/run/exec/<id>/hook/<seq>.req.json`) and the hook waits for
 `<seq>.res.json`. Core answers `allow`, `deny` or `halt`. No answer in time, an
 unreadable answer, a missing identity, a crash: deny and halt (fail closed, D13).
@@ -79,6 +80,21 @@ def _halted(exec_dir, seq, reason):
         pass
 
 
+def _sentinel(path, name, why):
+    """None when the sentinel at *path* is absent; otherwise the halt reason —
+    *why* when it is present, a distinct one when its state cannot be determined
+    (PV-20 §3.7, §7.4 Gap A). Only a lookup that reports the name missing is
+    absent: `os.path.exists` also answered False for a denied lookup and for a
+    dangling link, which let the hook proceed."""
+    try:
+        os.lstat(path)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return "cannot determine the %s's state; halted (fail closed)" % name
+    return why
+
+
 def _reserve(box, body):
     """Write the request under the next free sequence number, atomically. The
     number is taken by creating `<seq>.lock` exclusively, and the lock is never
@@ -118,12 +134,15 @@ def run(payload, environ):
         except OSError:
             pass
         return 'continue', ''
-    if os.path.exists(os.path.join(home, 'run', 'STOP')):
-        _halted(exec_dir, None, 'emergency stop')
-        return 'halt', 'emergency stop'
-    for flag, why in (('STOP', 'stopped by Archeus'), ('PAUSE', 'paused by Archeus'),
-                      ('HANDOFF', 'handing off to a fresh session')):
-        if os.path.exists(os.path.join(exec_dir, flag)):
+    estop = os.path.join(home, 'run', 'STOP')
+    why = _sentinel(estop, 'emergency stop', 'emergency stop')
+    if why:
+        _halted(exec_dir, None, why)
+        return 'halt', why
+    for flag, reason in (('STOP', 'stopped by Archeus'), ('PAUSE', 'paused by Archeus'),
+                         ('HANDOFF', 'handing off to a fresh session')):
+        why = _sentinel(os.path.join(exec_dir, flag), flag + ' flag', reason)
+        if why:
             _halted(exec_dir, None, why)
             return 'halt', why
     box = os.path.join(exec_dir, 'hook')
@@ -132,9 +151,10 @@ def run(payload, environ):
     res = os.path.join(box, '%d.res.json' % seq)
     deadline = time.monotonic() + WAIT_S
     while time.monotonic() < deadline:
-        if os.path.exists(os.path.join(home, 'run', 'STOP')):
-            _halted(exec_dir, seq, 'emergency stop')
-            return 'halt', 'emergency stop'
+        why = _sentinel(estop, 'emergency stop', 'emergency stop')
+        if why:
+            _halted(exec_dir, seq, why)
+            return 'halt', why
         try:
             with open(res, encoding='utf-8') as f:
                 got = json.load(f)

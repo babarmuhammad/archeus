@@ -16,7 +16,9 @@ not P11 defects, remediated by PV-20 (prerequisite PV-13 study delivered 2026-10
 decisions recorded and approved, ADR-0053; its open questions resolved except implementation and
 evidence dependencies and P11's O7; implementation not started; verification not performed — §12
 item 98; the final architecture audit's blockers A1–A6 decided and A7 corrected, ADR-0053 §7 —
-§12 item 99). P23 owns the network-egress gap (G3). P20 is not complete; no slice
+§12 item 99; A2 and A5 confirmed — §12 item 100; slice S0, the Gap A three-state sentinel
+determination, built 2026-10-08 as the only authorised PV-20 slice, the isolation mechanism not
+started — §12 item 101). P23 owns the network-egress gap (G3). P20 is not complete; no slice
 after F is authorised, and H–K were not started** (§14).
 Anything
 implementation finds that departs from an approved decision is recorded in §12 for the user's
@@ -1862,6 +1864,66 @@ and [pv20-execution-isolation-design.md](pv20-execution-isolation-design.md).
 
     No other architectural change was made. Nothing was implemented or probed. **G stays PAUSED
     and NOT CLOSED; G1 and G2 stay Critical and open; PV-20 is not implemented and not verified.**
+101. **PV-20 slice S0 — Gap A, the three-state sentinel determination (2026-10-08).** The owner
+    authorised S0 as the **first and only** PV-20 implementation slice; no other slice is
+    authorised, and S1–S7 each need their own authorization naming the slice and confirming its
+    prerequisites.
+    - **Built.** `archeus/harnesses/hook.py` gains `_sentinel()`, and all five sentinel reads go
+      through it: the global STOP before the request, the execution's STOP, PAUSE and HANDOFF
+      flags, and the global STOP inside the wait loop. A successful `os.lstat` is **present** (a
+      dangling link included, which `os.path.exists` read as absent); `FileNotFoundError` is
+      **absent**; every other `OSError` is **indeterminate** and halts with its own reason,
+      "cannot determine the <sentinel>'s state; halted (fail closed)". The reasons for a present
+      sentinel are unchanged. Stdlib only; the module still imports no package.
+    - **Tests** (`tests/v1/unit/test_execution_units.py`, injected errors only — no ACL, no
+      confinement): each of the five reads × absent, present, dangling link, `PermissionError` and
+      another `OSError` (25 cases), and PV-20 row 7's own case — the sentinel undeterminable while
+      the mailbox stays writable halts, and asks Core nothing. Five mutants were each killed:
+      `lstat` → `stat` (15 failed), the two-state `os.path.exists` read (16), indeterminate treated
+      as absent (11), the wait-loop read reverted (3), the flag reads reverted (9).
+    - **Validation** (no real CLI, no model call, no network, `ARCHEUS_REAL_HARNESS` unset): the
+      execution, e-stop, fake-agent, settings-source, tool-removal and G5 suites, 252 passed and 1
+      xfailed. The full suite (`pytest tests/ -m "not real_process"`, 5,342 tests, 45 minutes): 5,320
+      passed, 15 skipped, 3 xfailed, **4 failed**. **The full suite is not green.** The four
+      failures are pre-existing and unrelated to S0; the owner directed that they stay unfixed in
+      this slice:
+      - `tests/test_cli_help.py::test_a_deferred_v1_verb_imports_only_its_dispatcher` predates
+        S0. It fails every run because `archeus approve` now imports `archeus.cli._api`. It
+        depends only on `archeus/cli/*` and the test, all unchanged by S0.
+      - `tests/v1/e2e/test_spa_arrival.py::test_a_rise_in_what_needs_you_pulses_the_badge_once`
+        (the SPA arrival "rise pulses the badge once") passed when re-run alone.
+      - `tests/v1/e2e/test_spa_motion.py::test_a_historical_event_heard_again_never_replays_or_restarts`
+        (the SPA motion "historical event never replays") passed when re-run alone.
+      - `tests/v1/e2e/test_spa_arrival.py::test_reduced_motion_says_the_rise_and_pulses_nothing`
+        (the SPA arrival "reduced motion") is intermittent and reproduces independently of S0.
+        It times out waiting for the live-region announcement:
+        - with the baseline `hook.py` it passed 6 of 6 runs; with the S0 version it failed
+          intermittently;
+        - its `deploy` Core has no executor, so no execution runs;
+        - with `hook.py` replaced by a stub that writes a marker if loaded, the failure still
+          reproduced and the marker never appeared.
+
+        The test therefore never loads `hook.py`, and the failure is not attributable to S0.
+
+      After those checks the S0-built `hook.py` was restored and verified by file hash. The docs
+      and hook tests re-run afterwards passed: 191 tests. `ruff check` is clean on the two
+      S0-modified files. **The 29 repo-wide `ruff` findings predate S0 and are outside its
+      scope, and remain unresolved:** 25 in the untracked `prototypes/` (V2) and 4 B023 in
+      `tests/v1/integration/test_stream_takeover.py`, `tests/v1/e2e/test_spa_estop_about.py` and
+      `tests/v1/e2e/test_spa_command_close.py`, none touched here.
+    - **Unchanged, as the authorization requires:** no AppContainer, Job, identity, ACE or ACL;
+      no path, layout or directory change and no mailbox/sentinel split; the sentinel writers and
+      Core's `estop_armed()`; the hook protocol and exit codes; `_reserve`, `WAIT_S` and the
+      PreCompact path; no H2 Core-owned halt state; no retry or backoff.
+    - **Not solved:** a `halted.json` the execution cannot write is still lost, so Core can still
+      record ENDED_OK after a halt it did not ask for (PV-20 §7.4 Gap B). That stays with the
+      Core-authoritative halt state (R5 / H2, PV-20 row 15).
+    - **Status.** **S0: implemented and validated within its defined scope**, and complete with
+      its commit. PV-20 row 7 stays implementation-blocked, on the sentinel/mailbox separation
+      (PV-20 §7.5) and on isolated-identity evidence that a denied lookup is reported as an error,
+      never as not-found. **PV-20 is not verified overall. G stays PAUSED and NOT CLOSED; G1 and
+      G2 stay Critical and open.** P11's O7, P23 and ADR-0021 stay unresolved; AppContainer and
+      Job evidence stays outstanding. No later slice is authorised.
 
 ## 13. As built
 (Filled at the end of P20.)
