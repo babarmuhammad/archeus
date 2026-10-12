@@ -840,8 +840,8 @@ def _spawn_rig(monkeypatch, tmp_path, decide=False, authority='present', opt_ins
         def capabilities(self, _):
             return SimpleNamespace(capabilities=('resume',))
 
-        def inventory(self, spec):
-            log.append(('inventory',))
+        def inventory(self, spec, **kw):
+            log.append(('inventory', kw))
 
     def workspace(e, mission, t, **kw):
         log.append(('workspace', kw))
@@ -896,6 +896,7 @@ def test_isolation_is_decided_once_before_the_workspace_and_the_inventory(
     assert log[0][1:] == (e.id, adapter)
     (_, spec, kw), = [x for x in log if x[0] == 'spawn']
     assert kw == {'resume_state': None, 'isolated': decide}
+    assert [x[1] for x in log if x[0] == 'inventory'] == [{'isolated': decide}]
     assert spec.isolation is None               # the node, not the manager, isolates the spec
 
 
@@ -929,6 +930,7 @@ def test_a_node_without_an_isolation_authority_spawns_unisolated_as_today(
                            'record_process']
     (_, spec, kw), = [x for x in log if x[0] == 'spawn']
     assert kw == {'resume_state': None, 'isolated': False}
+    assert [x[1] for x in log if x[0] == 'inventory'] == [{'isolated': False}]
     assert (spec.workdir, spec.isolation) == (paths.ExecPaths(e.id).work, None)
 
 

@@ -236,7 +236,8 @@ class ExecutionManager:
         # would start a new execution on every tick, forever.
         sha = size = None
         try:
-            got = adapter.inventory(spec) if hasattr(adapter, 'inventory') else None
+            got = (adapter.inventory(spec, isolated=isolated) if hasattr(adapter, 'inventory')
+                   else None)
             if got is not None:
                 data = redact(json.dumps(got, sort_keys=True)).encode('utf-8')
                 sha, size = store.put(data), len(data)

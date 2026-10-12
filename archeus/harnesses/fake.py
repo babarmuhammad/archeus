@@ -75,11 +75,11 @@ class FakeHarness:
     def authenticate(self, account):
         return base.AuthStatus(True, 'fake accounts need no login')
 
-    def inventory(self, spec):
+    def inventory(self, spec, *, isolated=False):
         if not self._sources:
             return None
         home = spec.account.home_ref if spec.account else None
-        return sources.take(home, spec.workdir, spec.opt_ins)
+        return sources.take(home, spec.workdir, spec.opt_ins, isolated=isolated)
 
     def start(self, spec):
         steps = list(spec.task_contract.get('fake_scenario', ()))

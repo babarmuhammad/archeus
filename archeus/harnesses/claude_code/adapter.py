@@ -148,10 +148,10 @@ class ClaudeCodeAdapter:
             a += ['--effort', spec.effort]
         return a
 
-    def inventory(self, spec):
+    def inventory(self, spec, *, isolated=False):
         """What this execution's settings sources load and what becomes of it
         (ADR-0049): taken before the spawn, recorded by Core, read by argv."""
-        return sources.take(self._home(spec), spec.workdir, spec.opt_ins)
+        return sources.take(self._home(spec), spec.workdir, spec.opt_ins, isolated=isolated)
 
     @staticmethod
     def _home(spec):

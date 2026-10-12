@@ -230,7 +230,7 @@ def test_I08_the_stored_inventory_carries_no_secret(x):
 
 
 def test_I09_an_inventory_that_cannot_be_taken_starts_nothing(x, monkeypatch):
-    def broken(spec):
+    def broken(spec, *, isolated=False):
         raise OSError('disk')
     monkeypatch.setattr(x.registry.get('fake'), 'inventory', broken)
     mid = ready_in(x, x.prj)
