@@ -22,6 +22,7 @@ from claude_sessions import config, proc
 
 from ..harnesses import base
 from ..infra.paths import ExecPaths, processes_registry, run_dir, stop_sentinel
+from . import isolation as isolation_mod
 
 #: control flags the hook reads (P11 PAUSE/STOP; P12 HANDOFF, p12-design-gate §10.1)
 FLAGS = ('PAUSE', 'STOP', 'HANDOFF')
@@ -35,19 +36,73 @@ CHECK_OUTPUT_KEEP = 256 * 1024
 class LocalNode:
     id = None       # the local node (ADR-0008): no ExecutionNode row in V1
 
+    #: what the hook reads (P11 PAUSE/STOP; P12 HANDOFF) — see FLAGS below
+    def __init__(self, isolation=None):
+        #: Core's isolation authority for this process (PV-20 §3.7): the per-execution
+        #: identities, the Jobs only Core holds, the quarantine ledger. Injected by the
+        #: synthetic fixtures; the production node gets the real boundary, which
+        #: dispatches nothing isolated while production dispatch stays E's.
+        self.isolation = isolation if isolation is not None else isolation_mod.Isolation(self)
+
     # ── processes ──
 
-    def spawn(self, adapter, spec, *, resume_state=None):
+    def spawn(self, adapter, spec, *, resume_state=None, isolated=None):
         """Start one process of an execution (its first, or a resume) and record
-        it in the registry. Raises base.SpawnFailed / base.AlreadySpawned."""
+        it in the registry. Raises base.SpawnFailed / base.AlreadySpawned.
+
+        `isolated` (PV-20 §3.4) asks for the isolated path; None asks the authority,
+        which says no for everything while production dispatch is E's. An isolated
+        execution's registry line carries the identity it ran under — the instrument,
+        never the authority (§3.7); the Job Core holds is the authority.
+        """
         self.clear_flags(spec.execution_id)
-        handle = (adapter.start(spec) if resume_state is None
-                  else adapter.resume(spec, resume_state))
-        self._registry({'op': 'spawn', 'execution_id': spec.execution_id,
-                        'process_seq': spec.process_seq, 'pid': handle.pid,
-                        'create_time': handle.create_time, 'argv0': adapter.id,
-                        'started_at': time.time()})
+        if isolated is None:
+            isolated = self.isolation.requested(spec.execution_id, adapter)
+        if isolated and spec.isolation is None:
+            spec = self._isolate(spec)
+        try:
+            handle = (adapter.start(spec) if resume_state is None
+                      else adapter.resume(spec, resume_state))
+        except base.SpawnFailed as err:
+            # the deterministic state of an isolation-establishment failure: the
+            # record, the registry line and the tombstone agree on the reason, so a
+            # Core that restarts into it reads what this one knew (§3.7, O7)
+            self.isolation.note_failure(spec, err)
+            raise
+        line = {'op': 'spawn', 'execution_id': spec.execution_id,
+                'process_seq': spec.process_seq, 'pid': handle.pid,
+                'create_time': handle.create_time, 'argv0': adapter.id,
+                'started_at': time.time()}
+        if spec.isolation is not None:
+            line.update(spec.isolation.facts())
+        self._registry(line)
         return handle
+
+    def _isolate(self, spec):
+        """The isolated launch for one execution's process, riding on the spec into
+        `base.spawn` (§3.4: the new mechanism behind the existing seam). The plan is
+        Core's, never the adapter's."""
+        return __import__('dataclasses').replace(
+            spec, isolation=self.isolation.request_for(spec))
+
+    # ── isolation (§3.2 Cleanup, §3.7) ──
+
+    def isolation_record(self, execution_id):
+        """Core's isolation record of an execution, or None. The one thing a restarted
+        Core reads to know an execution was isolated — never a file the execution
+        could have written (§3.3)."""
+        return self.isolation.record(execution_id)
+
+    def end_isolation(self, execution_id, *, reason=''):
+        """The execution is over: identity torn down, whatever will not go quarantined
+        (§3.2 Cleanup). S1 applies no access, so nothing is revoked. Safe on an
+        execution that was never isolated."""
+        return self.isolation.teardown(execution_id, reason=reason)
+
+    def reclaim_isolation(self, live_execution_ids=()):
+        """Boot and every pass: quarantine retried, stale identities reclaimed (§3.7).
+        Returns the executions it released."""
+        return self.isolation.reclaim(live_execution_ids)
 
     @staticmethod
     def handle(execution):
@@ -169,7 +224,12 @@ class LocalNode:
         on it and a Core starting meanwhile comes up disarmed, then a kill of
         every registry process that has no end line and is still the process
         recorded (pid and create_time; a reused pid is never touched).
-        Returns (killed, not_running) as lists of registry lines."""
+        Returns (killed, not_running) as lists of registry lines.
+
+        Isolated processes are covered here too: with Core gone the Job's only holder
+        is gone, so kill-on-close has already ended those trees (§3.7); this kill is
+        the belt for what outlived it, and never the authority.
+        """
         cls.engage_estop()
         killed, gone = [], []
         for x in cls.unended():

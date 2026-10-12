@@ -87,6 +87,32 @@ def processes_registry():
     return os.path.join(run_dir(), 'processes.jsonl')
 
 
+# ── PV-20 S1: Core's isolation state (pv20-execution-isolation-design §3.3, §3.7) ──
+#
+# Deliberately NOT under `run/exec/<id>/`: an isolation record is Core-owned state,
+# and Core-owned state is what an execution's directory must not be able to author.
+
+
+def isolation_dir():
+    """`<ARCHEUS_HOME>/run/isolation` — Core's own record of which execution holds
+    which identity, grants and Job (PV-20 §3.7). Core writes it, Core reads it."""
+    return os.path.join(run_dir(), 'isolation')
+
+
+def isolation_state(execution_id):
+    """`<ARCHEUS_HOME>/run/isolation/<execution_id>.json` — one execution's isolation
+    record: the state a restarted Core reconciles against (PV-20 §3.7)."""
+    if not ids.is_id(execution_id, 'execution'):
+        raise ValueError('not an execution id: %r' % (execution_id,))
+    return os.path.join(isolation_dir(), '%s.json' % execution_id)
+
+
+def quarantine_log():
+    """`<ARCHEUS_HOME>/run/isolation/quarantine.jsonl` — the grants and profiles Core
+    could not remove, retried on boot (PV-20 §3.7)."""
+    return os.path.join(isolation_dir(), 'quarantine.jsonl')
+
+
 class ExecPaths:
     """The per-execution files of the process I/O contract
     (execution-architecture §3.1), all in `<ARCHEUS_HOME>/run/exec/<execution_id>/`."""

@@ -119,6 +119,11 @@ class ExecutionSpec:
     # whose flags the adapter's argv reads (None: every source excluded)
     opt_ins: tuple = ()
     inventory: Optional[Mapping] = None
+    # PV-20 S1 (§3.4): Core's isolated launch for this process, or None for the
+    # detached one. An object and not a flag, on purpose: a flag without the launcher
+    # would be a fallback, and an isolated execution has none — `spawn` below reaches
+    # `proc.spawn_detached` only when this is None.
+    isolation: Optional[object] = None
 
 
 @dataclass(frozen=True)
@@ -307,11 +312,19 @@ def spawn(spec, argv):
             env[k] = v
     env['ARCHEUS_EXECUTION_ID'] = spec.execution_id
     env['ARCHEUS_HOME'] = archeus_home()
-    # a hidden console, not none: the agent runs its hooks and tools as console
-    # programs, and each would otherwise open a visible window of its own
-    child, err = proc.spawn_detached(list(argv), cwd=spec.workdir, env=env,
-                                     log=paths.stream, stdin_path=paths.prompt,
-                                     hidden_console=True)
+    if spec.isolation is not None:
+        # PV-20 §3.4/§6.3: the isolated path, or nothing. It never falls through to
+        # `spawn_detached` below — an unisolated child would run in the interactive
+        # user's own security context, the failure mode this path exists to prevent —
+        # and its failure is SpawnFailed with the reason recorded (§3.4, O7).
+        child, err = spec.isolation.launch(list(argv), cwd=spec.workdir, env=env,
+                                           paths=paths)
+    else:
+        # a hidden console, not none: the agent runs its hooks and tools as console
+        # programs, and each would otherwise open a visible window of its own
+        child, err = proc.spawn_detached(list(argv), cwd=spec.workdir, env=env,
+                                         log=paths.stream, stdin_path=paths.prompt,
+                                         hidden_console=True)
     if child is None:
         # we KNOW nothing started, so say so: a marker without `ended` would
         # otherwise read as "a process may exist" to reconciliation

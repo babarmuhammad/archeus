@@ -57,6 +57,9 @@ PRESSURE_HANDOFF, PRESSURE_PRECOMPACT = P.PRESSURE_HANDOFF, P.PRESSURE_PRECOMPAC
 PAUSE_TIMEOUT_S = 120.0
 ACCOUNTS_S = 5.0
 USAGE_S = 30.0
+#: how often the pass re-checks that no ended execution still holds an isolation
+#: identity or a grant (PV-20 §3.2 Cleanup, §3.7)
+ISOLATION_SWEEP_S = 5.0
 #: the environment every execution runs in (execution-architecture §2): it can
 #: commit locally, it cannot push with the user's credentials
 CAPABILITY_ENV = {'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': '', 'SSH_AUTH_SOCK': None,
@@ -92,7 +95,8 @@ class ExecutionManager:
         self.start_timeout, self.lost_after = start_timeout, lost_after
         # execution id -> what this manager knows about its current process
         self._procs = {}
-        self._clock = {'accounts': 0.0, 'usage': 0.0}
+        self._clock = {'accounts': 0.0, 'usage': 0.0, 'isolation': 0.0}
+        self._isolation_fault = None        # the last sweep fault logged, so it logs once
         self.booted = False
 
     def _do(self, command, **kw):
@@ -126,6 +130,11 @@ class ExecutionManager:
         if self.usage is not None and now - self._clock['usage'] >= USAGE_S:
             self._clock['usage'] = now
             did += self._ceilings(live)
+        if now - self._clock['isolation'] >= ISOLATION_SWEEP_S:
+            # not counted as work done: it is the safety net under the end paths, so
+            # an idle pass stays an idle pass
+            self._clock['isolation'] = now
+            self._sweep_isolation(live)
         return did
 
     def _step(self, e, m, disarmed):
@@ -238,10 +247,21 @@ class ExecutionManager:
         # between as already read, so its first output is never seen
         offset = self._offset(e)
         try:
+            # whether this process runs isolated is the node's isolation authority's
+            # decision (§3.4), never the adapter's and never a setting: production
+            # dispatch of isolated executions is E's, so today nothing is dispatched
+            # that way, and an execution that does run isolated can configure nothing
+            # about the invariant that governs it
             handle = self.node.spawn(adapter, spec, resume_state=resume_state)
         except (base.SpawnFailed, base.AlreadySpawned) as err:
+            # nothing started, and nothing started unisolated instead (§3.4, §6.3).
+            # `binding` is the uncharged stop reason: an isolation-establishment
+            # failure is infrastructure, not the user's task failing (P11's O7, as
+            # decided 2026-10-08), and the task goes back to READY to be re-dispatched
+            # under the bounded retry policy that policy owns.
             self._do(X.refuse, execution_id=e.id, reason='the process did not start: %s' % err,
                      stop_reason='binding')
+            self._release_isolation(e)
             return True
         self._procs[e.id] = self._fresh(adapter, handle, seq, offset, None)
         self._do(X.record_process, execution_id=e.id, pid=handle.pid,
@@ -483,6 +503,7 @@ class ExecutionManager:
         e = self._reload(e)
         self._procs.pop(e.id, None)
         if e.state in _ENDED:
+            self._release_isolation(e)                      # §3.2 Cleanup
             return
         facts = self._facts(e, p)
         # the adapter's figures are the harness's own total only when it says so;
@@ -503,12 +524,15 @@ class ExecutionManager:
                      exit_code=st.exit_code, usage=usage, usage_total=total,
                      adapter_state=result.adapter_state, final_offset=p['offset'],
                      facts=facts)
+            self._release_isolation(e)                      # §3.2 Cleanup
             return
         self._do(X.record_end, execution_id=e.id, exit_code=st.exit_code,
                  killed=result.exit_reason == 'killed', halted=result.halted,
                  failure=result.failure, usage=usage, usage_total=total,
                  summary=result.reported_summary, adapter_state=result.adapter_state,
                  final_offset=p['offset'], output=p['offset'] > 0, facts=facts)
+        if self._reload(e).state in _ENDED:
+            self._release_isolation(e)                      # §3.2 Cleanup
 
     def _facts(self, e, p):
         """What the checkpoint needs from outside the transaction (§8.2)."""
@@ -616,6 +640,9 @@ class ExecutionManager:
             except Exception as err:
                 failed = failed or err
         self.node.compact_registry()
+        # PV-20 §3.2/§3.7: a Core that comes up reclaims what the last one left — the
+        # quarantine retried, and every identity whose execution is not live torn down
+        self._sweep_isolation(live)
         self.booted = True
         if failed is not None:
             raise failed
@@ -632,6 +659,9 @@ class ExecutionManager:
         if alive and disarmed:
             self.node.kill(adapter, handle)
             alive = False
+        iso = self._isolation_record(e.id)
+        if iso is not None:
+            return self._reconcile_isolated(e, adapter, iso, handle, disarmed)
         if e.state == 'INTENT':
             if marker is None or (ended and pid is None):
                 self._do(X.refuse, execution_id=e.id, reason='no process was started',
@@ -665,6 +695,94 @@ class ExecutionManager:
             self._do(X.lost, execution_id=e.id, reason='Core restarted; no process was recorded')
             return True
         return self._collect_gone(e, adapter, handle)
+
+    def _isolation_record(self, execution_id):
+        """Core's own isolation record (PV-20 §3.7), or None. It is the only thing that
+        decides whether an execution was isolated: the registry is an instrument, and
+        nothing in the execution's directory is authority (§3.3). A node without the
+        isolation authority (a remote node, a test double) has none."""
+        getter = getattr(self.node, 'isolation_record', None)
+        return getter(execution_id) if getter is not None else None
+
+    def _reconcile_isolated(self, e, adapter, iso, handle, disarmed):
+        """Restart reconciliation of an isolated execution (PV-20 §3.7; ADR-0053
+        §7.6–7.7 and the owner's decision of 2026-10-08): **a live isolated process is
+        never re-adopted.** Its Job died with the Core that held it, so nothing of it
+        survives to adopt; the record is resolved here, and no file the execution could
+        have written — `halted.json` above all, which is the execution's own claim — is
+        read as authority. `PAUSING` becomes `PAUSED`: an interrupted process is never
+        reinterpreted as a failure, and never as success either.
+
+        The remaining states resolve at the record level through terminate / reap / fail
+        (R6-A). An isolation-establishment failure was never a process at all, so it
+        keeps the uncharged end O7's decision gives it, and re-dispatches."""
+        self._procs.pop(e.id, None)
+        if handle is not None and self.node.alive(handle):
+            # R6-A: a live isolated process after a Core restart is a contradiction —
+            # its sole Job holder died, so kill-on-close should have ended it. It is
+            # killed by identity here and never adopted.
+            self.node.kill(adapter, handle)
+        if iso.state == 'failed':
+            self._tombstone(e)
+            self._do(X.refuse, execution_id=e.id, stop_reason='binding',
+                     reason='isolation could not be established: %s'
+                            % (iso.reason or 'unknown'))
+            return True
+        if e.state in ('PAUSED', 'AWAITING_APPROVAL'):
+            return False                       # no process of ours: the pass decides
+        if e.state == 'PAUSING':
+            self._tombstone(e)
+            self._do(X.record_end, execution_id=e.id, exit_code=None, halted=True,
+                     usage=e.usage, final_offset=e.stream_offset, facts={})
+            return True
+        if e.state in ('STOPPING', 'HANDING_OFF'):
+            self._tombstone(e)
+            self._do(X.record_end, execution_id=e.id, exit_code=None, killed=True,
+                     usage=e.usage, final_offset=e.stream_offset, facts={})
+            return True
+        if e.state == 'INTENT' and handle is None:
+            self._do(X.refuse, execution_id=e.id, reason='no process was started',
+                     stop_reason='disarmed' if disarmed else 'binding')
+            return True
+        self._tombstone(e)
+        self._do(X.lost, execution_id=e.id,
+                 reason='Core restarted; the isolated process is gone and left no exit')
+        return True
+
+    def _release_isolation(self, e):
+        """§3.2 Cleanup: an execution that has ended leaves no identity and no grants
+        behind. Called on the end paths this pass watches; the sweep below is what
+        makes it every end path rather than a list of call sites."""
+        releaser = getattr(self.node, 'end_isolation', None)
+        if releaser is None:
+            return
+        try:
+            releaser(e.id, reason='ended')
+        except OSError as err:
+            # a write of this execution's own (its record, its ledger line, a registry
+            # note) failed: the record stays on disk for the sweep to finish, and the
+            # rest of this pass, and every other execution's Job, is not this one's to end
+            log.warning('execution %s: isolation release did not complete: %s', e.id, err)
+
+    def _sweep_isolation(self, live):
+        """§3.2 Cleanup and §3.7, made structural: whatever ended an execution — this
+        pass, the mission layer, a Core that died — its identity and grants go, and
+        anything that will not go is quarantined and retried. Bounded, and it never
+        touches an execution that is still live."""
+        sweeper = getattr(self.node, 'reclaim_isolation', None)
+        if sweeper is None:
+            return []
+        try:
+            done = sweeper({x.id for x in live}) or []
+        except OSError as err:
+            # logged once per distinct fault, not once per pass: the sweep runs every
+            # few seconds and a persistent fault would otherwise flood the log
+            if str(err) != self._isolation_fault:
+                log.warning('the isolation sweep did not complete: %s', err)
+            self._isolation_fault = str(err)
+            return []
+        self._isolation_fault = None
+        return done
 
     def _tombstone(self, e):
         """A process that may have existed and is not ours to watch: its
