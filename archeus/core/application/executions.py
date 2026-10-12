@@ -267,7 +267,7 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
     if e.state not in ('RUNNING', 'PAUSING', 'HANDING_OFF'):
         raise lifecycle.IllegalTrigger('execution', e.state, 'record_end',
                                        'the execution has already ended')
-    ok = clean and not halted
+    ok = exit_code == 0 and not killed and not halted
     # a resource's failure spends no attempt only where the breaker can see it: a
     # registered account (§12.4); on a harness's own account it is charged, so it
     # cannot retry forever. A halt Core did not ask for (the hook failed closed) is
