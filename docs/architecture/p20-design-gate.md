@@ -1924,6 +1924,83 @@ and [pv20-execution-isolation-design.md](pv20-execution-isolation-design.md).
       never as not-found. **PV-20 is not verified overall. G stays PAUSED and NOT CLOSED; G1 and
       G2 stay Critical and open.** P11's O7, P23 and ADR-0021 stay unresolved; AppContainer and
       Job evidence stays outstanding. No later slice is authorised.
+102. **PV-20 slice S1 — the isolated-execution path, accepted with recorded limitations
+    (2026-10-09) and committed (2026-10-12, `77008db`).** The owner's acceptance record is
+    `PV20-S1-ACCEPTANCE-2026-10-09.md`; it authorises neither S2 nor production enablement.
+    - **Committed unchanged** from the reviewed working tree, which had not been modified since
+      2026-10-09: `archeus/node/isolation.py`, its callers in the execution manager, the local
+      node and the harness base, `archeus/infra/paths.py`, the synthetic unit suite and the
+      opt-in Windows suite (`ARCHEUS_REAL_BOUNDARY=1`).
+    - **Posture:** `PRODUCTION_DISPATCH_ENABLED = False`, `A4_ENFORCED = False`,
+      `CAPABILITIES = ()`. No grant or ACE is applied, and no grant code exists.
+    - **Verified at commit:** `tests/v1/unit/test_pv20_isolation.py`, 277 passed. The Windows
+      suite was not run.
+    - **Open (the acceptance's four limitations, unchanged):** C6 product-path evidence;
+      genuine quarantine recovery; the production-shaped environment; grant application.
+103. **PV-20 S2-L — the class directories inside each execution (committed 2026-10-12,
+    `13c1172`, branch `pv20-s2`; not accepted).** The work already in the S2-L worktree,
+    committed on top of item 102 so that it can be reviewed commit by commit. **A commit is not
+    an acceptance:** S2-L's acceptance remains the owner's decision.
+    - **Built.** An execution's directory gains `req/` (class 1, written by the execution:
+      requests, `halted.json`, `precompact.json`), `res/` (class 2, written by Core: answers,
+      `settings.json`, `mcp.json`), `ctl/` (class 3, Core's STOP, PAUSE and HANDOFF flags) and
+      `own/work` and `own/state` (class 7: the no-project workspace and runtime state). The
+      directory itself and its contract files stay Core's (class 4). The layout applies to every
+      execution, isolated or not. The isolation plan carries each mailbox class as its own row,
+      and the boundary check requires the three classes to be separate directories, outside one
+      another, Core's state and the workspace, with the spawn configuration inside class 2.
+    - **Verified:** `test_pv20_isolation`, `test_execution_units`, `test_paths`,
+      `test_settings_sources_units`, `test_context_capacity` and `test_execution`: 553 passed.
+    - **Left out:** `tests/v1/integration/test_pv20_writer_fixture.py`, whose current state has
+      never been reviewed and which performs an ACL write when run.
+104. **PV-20 S-HR — `DeleteAppContainerProfile`'s answer compared unsigned (2026-10-12,
+    `16f5a0a`, `pv20-s2`).** The function is bound with restype `c_int`, so a failure HRESULT
+    arrives negative and `hr not in (0, 0x80070490)` could never match not-found: a profile
+    already gone raised `profile_delete` instead of counting as released. The answer is masked to
+    32 bits before the comparison, as `create_profile` already did. The accepted set is unchanged
+    (S_OK, not-found). Tests use a fake Win32 function; 301 passed, and without the mask the
+    not-found case fails.
+105. **PV-20 S2-G preparatory — refusals only (2026-10-12, `ef42204`, `pv20-s2`).** Two
+    defects in S1's record handling, fixed without any ACL write or new spawn path.
+    - **D1.** `Isolation.establish` reset any prior record to pending and created the profile
+      again. A Core that crashed after quarantining an identity, and before refusing its
+      execution, would resume a PAUSED execution under the quarantined identity. `establish` now
+      refuses a prior record that is not `pending` or `established`, or that carries a failure,
+      with `record_unsettled`, before any write. `established` (a PAUSED resume) and `pending`
+      (the retry of a resume that died, Finding 1) stay allowed.
+    - **D2.** The cleanup after a failed establishment quarantined the profile and overwrote the
+      record's reason, so the record lost why establishment failed and the restart
+      reconciliation, which keyed on `state == 'failed'`, no longer saw it. The record gains
+      `failure`, which `_fail` sets and cleanup never touches, and the reconciliation refuses on
+      it, uncharged, as before.
+    - The static gate also recognises the handle-based security setters (`*SetSecurityObject`,
+      `SetUserObjectSecurity`, `SetServiceObjectSecurity`); none appears in production code.
+    - **Verified:** the item 103 set, 575 passed; eight mutants (each change, the record type check
+      and the read-back), all caught.
+    - **S2-G itself is not started and is blocked on an owner decision.** Codex's readiness record
+      of 2026-10-11 found that an execution chooses the descriptor of the objects it creates, so
+      the current construction cannot promise peer exclusion for execution-created descendants
+      when the owning execution itself names a peer. The options are prepared for the owner
+      (Core-created mailbox objects; a privileged namespace; an ADR narrowing R7 to
+      non-consensual access; or the first and third together). None is decided here.
+106. **Item 101's four pre-existing full-suite failures fixed (2026-10-12, `f6abc4d`, on
+    `archeus-v1-rearchitecture`).** All four had test-side causes; no product code changed.
+    - `test_cli_help`: `archeus approve` also imports `archeus.cli._api`, the generated route-path
+      builder, which imports only `urllib.parse`. J3 still holds, and the expected list names it.
+    - The two SPA arrival tests: the load's connection banner opens the polite region's 5 s
+      window, inside which only the latest offer is kept (p16 §17), so the thread update riding
+      the same Core event could replace the arrival unsaid. Both now wait that window out. The
+      post-pulse check fails only on the pulse itself or an unbounded animation, and then waits
+      for the bounded thread-draw to end.
+    - The SPA motion test's final idle check now settles first, as every other one does.
+    - `mkdocs.yml` excludes `docs/project-context/` (private agent context), which the nav gate
+      had failed on.
+    - **Verified:** the three SPA tests 12 of 12 runs green (before: 2 of 6 and 2 of 10 runs
+      failing). The full suite: 5,600 passed, 16 skipped, 3 xfailed and 1 failed, the failure
+      being the docs nav gate that the same commit fixes. The full suite was not rerun after that
+      one-line fix.
+    - **Open, not changed:** under §17's latest-wins rule a thread update can replace an arrival
+      announcement in real use too. Whether arrivals take priority is a design decision.
 
 ## 13. As built
 (Filled at the end of P20.)

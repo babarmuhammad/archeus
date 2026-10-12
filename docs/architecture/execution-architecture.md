@@ -121,6 +121,21 @@ workspace); Core-authored spawn configuration has the response class's authority
 execution reads); and `stream.jsonl`'s content is execution-authored — a `result` in it is never a
 process exit, while the `ended` tombstone Core writes is.
 
+*As built 2026-10-12 (PV-20 S2-L, `13c1172`, not yet accepted; p20-design-gate §12 item 103).*
+The directory holds the class directories below, for **every** execution, isolated or not. Core
+creates `req/`, `res/` and `ctl/` at spawn. The files above stay in the directory itself, which is
+Core's (class 4).
+
+| Directory | Class | Written by | Holds |
+|---|---|---|---|
+| `req/` | 1 | the execution (the hook) | `<seq>.lock`, `<seq>.req.json`, `halted.json`, `precompact.json` |
+| `res/` | 2 | Core | `<seq>.res.json`, the spawn configuration (`settings.json`, `mcp.json`) |
+| `ctl/` | 3 | Core | the `STOP`, `PAUSE` and `HANDOFF` flags |
+| `own/work` | 7 | the execution | the workspace of an execution with no project |
+| `own/state` | 7 | the execution | its runtime state |
+
+The global `<ARCHEUS_HOME>/run/STOP` sentinel is unchanged.
+
 ## 4. Process lifecycle
 
 ```mermaid
