@@ -16,7 +16,11 @@ harnesses/sources.py); the flags are read from the recorded inventory. The
 tools the process may call at all are the task's action classes mapped to
 Claude Code's names (ADR-0052, P20 slice F: tools.py), beneath the hook. The
 account is its home: `CLAUDE_CONFIG_DIR` from the account's `home_ref`, with any API key popped so it cannot shadow the login (the current
-product's `config.account_env` rule). The process I/O contract is the shared one
+product's `config.account_env` rule). An isolated execution never gets the home:
+its `CLAUDE_CONFIG_DIR` is its own `ExecPaths.config` (ADR-0053 A2), which
+base.spawn creates for the first process and keeps for a resume. Nothing else of
+the inherited environment is relocated here, and no login is put there (that is
+R3-B's broker). The process I/O contract is the shared one
 (base.spawn): the stream is stream-json on stdout, tailed from a file.
 
 Normalisation (`normalise`) maps stream-json lines to the vocabulary Core
@@ -157,7 +161,9 @@ class ClaudeCodeAdapter:
     def _env(self, spec):
         env = dict(spec.env)
         home = spec.account.home_ref if spec.account else None
-        if home:
+        if spec.isolation is not None:
+            env['CLAUDE_CONFIG_DIR'] = base.ExecPaths(spec.execution_id).config
+        elif home:
             env['CLAUDE_CONFIG_DIR'] = os.path.expanduser(home)
         for k in ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'):
             env.setdefault(k, None)

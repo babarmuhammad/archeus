@@ -129,7 +129,7 @@ class ExecPaths:
     class 1, 2, 3 and 7 directories inside it are the execution's interface."""
 
     __slots__ = ('execution_id', 'dir', 'spawning', 'prompt', 'stream', 'pid', 'ended',
-                 'req', 'res', 'ctl', 'work', 'state')
+                 'req', 'res', 'ctl', 'work', 'state', 'config', 'tmp')
 
     def __init__(self, execution_id, run=None):
         # the id becomes a directory name: only a well-formed id may, so no
@@ -148,6 +148,8 @@ class ExecPaths:
         self.ctl = os.path.join(self.dir, SENTINEL_DIR)
         self.work = os.path.join(self.dir, PRIVATE_DIR, 'work')   # a project-less workspace
         self.state = os.path.join(self.dir, PRIVATE_DIR, 'state')
+        self.config = os.path.join(self.state, 'config')   # isolated CLAUDE_CONFIG_DIR (A2)
+        self.tmp = os.path.join(self.state, 'tmp')          # isolated TEMP and TMP
 
 
 def exec_paths(execution_id):

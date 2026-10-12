@@ -332,6 +332,12 @@ def spawn(spec, argv):
         # `spawn_detached` below — an unisolated child would run in the interactive
         # user's own security context, the failure mode this path exists to prevent —
         # and its failure is SpawnFailed with the reason recorded (§3.4, O7).
+        try:
+            _private_dirs(paths, seq)
+        except OSError as err:
+            mark_ended(paths, None, error=str(err))
+            raise SpawnFailed(str(err)) from err
+        env['TEMP'] = env['TMP'] = paths.tmp
         child, err = spec.isolation.launch(list(argv), cwd=spec.workdir, env=env,
                                            paths=paths)
     else:
@@ -348,6 +354,16 @@ def spawn(spec, argv):
     create_time = proc.process_create_time(child.pid)
     _write_json(paths.pid, {'pid': child.pid, 'create_time': create_time, 'process_seq': seq})
     return ProcessHandle(spec.execution_id, child.pid, create_time, paths.dir), child
+
+
+def _private_dirs(paths, seq):
+    # a resume continues the session its first process left in this config dir, so
+    # it must find the dir as it was: never re-created empty, never the account home
+    if seq > 1 and not os.path.isdir(paths.config):
+        raise OSError('the private config of %s is gone: a resume cannot start without it'
+                      % paths.execution_id)
+    os.makedirs(paths.config, exist_ok=True)
+    os.makedirs(paths.tmp, exist_ok=True)
 
 
 def mark_ended(paths, exit_code, **extra):
