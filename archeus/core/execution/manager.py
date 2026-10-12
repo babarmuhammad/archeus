@@ -519,8 +519,15 @@ class ExecutionManager:
             self._do(X.request_handoff, execution_id=e.id, stop_reason='limit',
                      reason='the provider refused for a limit')
             e = self._reload(e)
-        clean = st.exit_code == 0 and not result.halted and result.exit_reason != 'killed'
-        if e.state == 'HANDING_OFF' and not clean:
+        killed = result.exit_reason == 'killed'
+        isolated = self._isolation_record(e.id) is not None
+        if isolated:
+            # PV-20 §3.3 H2 / A7: Core's own state and observed exit decide; the halt
+            # report never does. Any other end of an isolated hand-off is ENDED_ERROR.
+            handoff = st.exit_code == 0 and not killed
+        else:
+            handoff = st.exit_code != 0 or result.halted or killed
+        if e.state == 'HANDING_OFF' and handoff:
             self._do(X.record_handoff, policy=self.policy, missions=self.missions,
                      router=self.router, execution_id=e.id, now=time.time(),
                      exit_code=st.exit_code, usage=usage, usage_total=total,
@@ -529,10 +536,11 @@ class ExecutionManager:
             self._release_isolation(e)                      # §3.2 Cleanup
             return
         self._do(X.record_end, execution_id=e.id, exit_code=st.exit_code,
-                 killed=result.exit_reason == 'killed', halted=result.halted,
+                 killed=killed, halted=result.halted,
                  failure=result.failure, usage=usage, usage_total=total,
                  summary=result.reported_summary, adapter_state=result.adapter_state,
-                 final_offset=p['offset'], output=p['offset'] > 0, facts=facts)
+                 final_offset=p['offset'], output=p['offset'] > 0, facts=facts,
+                 isolated=isolated)
         if self._reload(e).state in _ENDED:
             self._release_isolation(e)                      # §3.2 Cleanup
 
@@ -735,13 +743,13 @@ class ExecutionManager:
             return False                       # no process of ours: the pass decides
         if e.state == 'PAUSING':
             self._tombstone(e)
-            self._do(X.record_end, execution_id=e.id, exit_code=None, halted=True,
-                     usage=e.usage, final_offset=e.stream_offset, facts={})
+            self._do(X.record_end, execution_id=e.id, exit_code=None, core_halt=True,
+                     isolated=True, usage=e.usage, final_offset=e.stream_offset, facts={})
             return True
         if e.state in ('STOPPING', 'HANDING_OFF'):
             self._tombstone(e)
             self._do(X.record_end, execution_id=e.id, exit_code=None, killed=True,
-                     usage=e.usage, final_offset=e.stream_offset, facts={})
+                     isolated=True, usage=e.usage, final_offset=e.stream_offset, facts={})
             return True
         if e.state == 'INTENT' and handle is None:
             self._do(X.refuse, execution_id=e.id, reason='no process was started',

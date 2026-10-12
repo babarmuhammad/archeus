@@ -681,3 +681,112 @@ def test_a_project_less_workspace_is_the_executions_own_never_its_core_directory
     assert (workdir, branch) == (p.work, None) and os.path.isdir(workdir)
     assert workdir != p.dir
     assert not any(workdir == c or workdir.startswith(c + os.sep) for c in (p.req, p.res, p.ctl))
+
+
+# ── PV-20 §3.3 H2 / A7: how a live end is classified (state-machines §4 guards) ──
+
+def _seeded(state):
+    """One execution in *state* under a RUNNING task, on a real database. No
+    process ever ran (process_seq 0), so only the classification is exercised."""
+    from archeus.core.domain.events import new_event
+    from archeus.core.domain.values import Ref
+    from archeus.infra.db import Database
+    db = Database.open()
+    who = Ref('user_device', ids.new_id('principal'))
+    mid, pid, tid, eid = (ids.new_id(k) for k in ('mission', 'plan', 'task', 'execution'))
+
+    def run(tx, **_):
+        for row in (
+                entities.Mission(id=mid, workspace_id=ids.GLOBAL_WORKSPACE, title='M',
+                                 objective='o', state='EXECUTING'),
+                entities.Plan(id=pid, mission_id=mid, state='APPROVED'),
+                entities.Task(id=tid, plan_id=pid, mission_id=mid, key='t', title='T',
+                              kind='code_change', state='RUNNING'),
+                entities.Execution(id=eid, task_id=tid, mission_id=mid, plan_id=pid,
+                                   attempt=1, state=state)):
+            tx.insert(row, actor=who)
+        tx.append(new_event('mission.updated', Ref('mission', mid), who, payload={},
+                            workspace=ids.GLOBAL_WORKSPACE))
+    db.writer.execute(run, {})
+    return db, who, eid, tid
+
+
+def _row(db, kind, id_):
+    from archeus.infra.db import rows
+    with db.read() as r:
+        return rows.get(r, kind, id_)
+
+
+#: (isolated, state, exit code, killed, the execution's halt report) -> end state
+LIVE_ENDS = [
+    # isolated: Core's state and observed exit decide; the report never does
+    (True, 'PAUSING', 0, False, False, 'PAUSED'),
+    (True, 'PAUSING', 0, False, True, 'PAUSED'),
+    (True, 'PAUSING', 1, False, False, 'ENDED_ERROR'),
+    (True, 'PAUSING', 1, False, True, 'ENDED_ERROR'),
+    (True, 'PAUSING', None, False, True, 'ENDED_ERROR'),
+    (True, 'PAUSING', 0, True, True, 'ENDED_ERROR'),
+    (True, 'HANDING_OFF', 1, False, False, 'ENDED_ERROR'),
+    (True, 'HANDING_OFF', 1, False, True, 'ENDED_ERROR'),
+    (True, 'HANDING_OFF', None, False, False, 'ENDED_ERROR'),
+    (True, 'HANDING_OFF', 0, True, False, 'ENDED_ERROR'),
+    (True, 'RUNNING', 0, False, False, 'ENDED_OK'),
+    (True, 'RUNNING', 0, False, True, 'ENDED_ERROR'),
+    (True, 'RUNNING', 1, False, False, 'ENDED_ERROR'),
+    (True, 'STARTING', 0, False, False, 'ENDED_OK'),
+    (True, 'STOPPING', 0, False, True, 'ENDED_KILLED'),
+    (True, 'AWAITING_APPROVAL', 0, False, True, 'AWAITING_APPROVAL'),
+    # ordinary executions keep p11 §240 / p12 §317 exactly
+    (False, 'PAUSING', 0, False, False, 'ENDED_OK'),
+    (False, 'PAUSING', 1, False, True, 'PAUSED'),
+    (False, 'PAUSING', 1, False, False, 'ENDED_ERROR'),
+    (False, 'HANDING_OFF', 0, False, False, 'ENDED_OK'),
+    (False, 'HANDING_OFF', 1, False, False, 'ENDED_ERROR'),
+    (False, 'RUNNING', 0, False, False, 'ENDED_OK'),
+    (False, 'RUNNING', 0, False, True, 'ENDED_ERROR'),
+    (False, 'STARTING', 0, False, False, 'ENDED_OK'),
+    (False, 'STOPPING', 0, False, True, 'ENDED_KILLED'),
+    (False, 'AWAITING_APPROVAL', 0, False, True, 'AWAITING_APPROVAL'),
+]
+
+
+@pytest.mark.parametrize('isolated,state,code,killed,halted,want', LIVE_ENDS)
+def test_a_live_end_is_classified_by_cores_state_and_observed_exit(isolated, state, code,
+                                                                     killed, halted, want):
+    db, who, eid, tid = _seeded(state)
+    try:
+        db.writer.execute(X.record_end, {'actor': who, 'execution_id': eid, 'exit_code': code,
+                                         'killed': killed, 'halted': halted,
+                                         'isolated': isolated})
+        assert _row(db, entities.Execution, eid).entity.state == want
+        if want == 'ENDED_OK':
+            # an execution-level fact, not success: the task only reaches VERIFYING
+            assert _row(db, entities.Task, tid).entity.state == 'VERIFYING'
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('halted', [False, True])
+def test_a_misrouted_isolated_handoff_is_refused_before_any_write(halted):
+    db, who, eid, _ = _seeded('HANDING_OFF')
+    try:
+        before = _row(db, entities.Execution, eid)
+        with pytest.raises(X.lifecycle.IllegalTrigger):
+            db.writer.execute(X.record_end, {'actor': who, 'execution_id': eid, 'exit_code': 0,
+                                             'halted': halted, 'final_offset': 99,
+                                             'isolated': True})
+        after = _row(db, entities.Execution, eid)
+        assert (after.entity.state, after.version, after.entity.stream_offset) == \
+            (before.entity.state, before.version, before.entity.stream_offset)
+    finally:
+        db.close()
+
+
+def test_cores_own_restart_halt_pauses_an_isolated_execution_without_an_exit():
+    db, who, eid, _ = _seeded('PAUSING')
+    try:
+        db.writer.execute(X.record_end, {'actor': who, 'execution_id': eid, 'exit_code': None,
+                                         'core_halt': True, 'isolated': True})
+        assert _row(db, entities.Execution, eid).entity.state == 'PAUSED'
+    finally:
+        db.close()

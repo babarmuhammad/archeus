@@ -851,10 +851,11 @@ class TestRestartReconciliation:
         # no adoption: nothing records a live process
         assert not any(c is X.record_process for c, _ in m.calls)
 
-    def test_pausing_becomes_paused_via_record_end_halted(self):
+    def test_pausing_becomes_paused_via_cores_own_halt(self):
         m, e, changed = self._reconcile('PAUSING')
-        ended = [(c, k) for c, k in m.calls if c is X.record_end]
-        assert ended and ended[0][1]['halted'] is True
+        ended = [k for c, k in m.calls if c is X.record_end]
+        assert len(ended) == 1 and ended[0]['core_halt'] is True and ended[0]['isolated']
+        assert 'halted' not in ended[0]                  # never the execution's report
 
     def test_paused_leaves_the_decision_to_the_pass(self):
         m, e, changed = self._reconcile('PAUSED')
@@ -864,7 +865,7 @@ class TestRestartReconciliation:
     def test_handing_off_ends_killed(self):
         m, e, changed = self._reconcile('HANDING_OFF')
         ended = [(c, k) for c, k in m.calls if c is X.record_end]
-        assert ended and ended[0][1]['killed'] is True
+        assert ended and ended[0][1]['killed'] is True and ended[0][1]['isolated'] is True
 
     def test_establishment_failure_is_uncharged_refuse(self):
         m, e, changed = self._reconcile('INTENT', iso_state='failed')
@@ -877,7 +878,7 @@ class TestRestartReconciliation:
 
     def test_halted_json_is_never_authority(self, tmp_path, monkeypatch):
         # a forged halted.json claiming the process is paused/halted must not change
-        # the record-driven outcome: PAUSING still resolves to a halted record_end
+        # the record-driven outcome: PAUSING still resolves through Core's own halt
         from archeus.infra.paths import ExecPaths
         eid = new_execution_id()
         paths = ExecPaths(eid)
@@ -889,8 +890,56 @@ class TestRestartReconciliation:
         from types import SimpleNamespace
         e = SimpleNamespace(id=eid, state='PAUSING', usage=0, stream_offset=0)
         m._reconcile_isolated(e, object(), rec, None, disarmed=False)
-        ended = [(c, k) for c, k in m.calls if c is X.record_end]
-        assert ended and ended[0][1]['halted'] is True   # record drove it, not the file
+        ended = [k for c, k in m.calls if c is X.record_end]
+        assert ended and ended[0]['core_halt'] is True   # record drove it, not the file
+        assert 'halted' not in ended[0]
+
+
+class TestIsolatedLiveEndRoute:
+    """manager._collect (PV-20 §3.3 H2 / A7): which command a live end reaches. For an
+    isolated execution only Core's observed exit and kill decide a hand-off."""
+
+    def _collect(self, state, code, *, isolated=True, halted=False, killed=False):
+        m = _manager_with_fake_node()
+        e = SimpleNamespace(id=new_execution_id(), state=state, account_id=None)
+        rec = iso.IsolationRecord(execution_id=e.id, profile='p', state='established')
+        m.node.isolation_record = lambda eid: rec if isolated else None
+        m.node.ended = lambda handle, code, seq: None
+        m._tail = m._progress = lambda e, p: None
+        m._facts = lambda e, p: {}
+        m._release_isolation = lambda e: None
+        m.policy = m.missions = m.router = None
+        result = base.ExecutionResult(exit_reason='killed' if killed else
+                                      ('ok' if code == 0 else 'error'),
+                                      exit_code=code, halted=halted)
+        adapter = SimpleNamespace(collect_result=lambda handle: result)
+        p = {'adapter': adapter, 'handle': object(), 'seq': 1, 'offset': 0, 'usage': 0}
+        m._collect(e, p, base.ProcStatus('exited', code))
+        return m.calls
+
+    @pytest.mark.parametrize('halted', [False, True])
+    def test_an_isolated_handoff_that_exited_0_ends_through_record_handoff(self, halted):
+        calls = self._collect('HANDING_OFF', 0, halted=halted)
+        assert [c for c, _ in calls] == [X.record_handoff]
+
+    @pytest.mark.parametrize('code,killed', [(1, False), (None, False), (0, True)])
+    def test_any_other_isolated_handoff_end_reaches_record_end(self, code, killed):
+        calls = self._collect('HANDING_OFF', code, killed=killed, halted=True)
+        assert [c for c, _ in calls] == [X.record_end]
+        assert calls[0][1]['isolated'] is True and calls[0][1]['killed'] is killed
+
+    def test_an_isolated_pause_without_a_report_reaches_record_end_as_isolated(self):
+        calls = self._collect('PAUSING', 0)
+        assert [c for c, _ in calls] == [X.record_end] and calls[0][1]['isolated'] is True
+
+    @pytest.mark.parametrize('code,halted,want', [(0, False, 'record_end'),
+                                                  (0, True, 'record_handoff'),
+                                                  (1, False, 'record_handoff')])
+    def test_an_ordinary_handoff_keeps_its_route(self, code, halted, want):
+        calls = self._collect('HANDING_OFF', code, isolated=False, halted=halted)
+        assert [c for c, _ in calls] == [getattr(X, want)]
+        if want == 'record_end':
+            assert calls[0][1]['isolated'] is False
 
 
 # ── item 8: A4 built, not enforced ────────────────────────────────────────────

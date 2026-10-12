@@ -220,12 +220,22 @@ def _end_payload(e):
 
 def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False, failure=None,
                usage=None, summary='', adapter_state=None, final_offset=None, output=True,
-               facts=None, usage_total=False):
+               facts=None, usage_total=False, isolated=False, core_halt=False):
     """A process of *execution_id* is gone. Which edge that is depends on the
     state it was observed in; a second report of the same end is an invalid
     transition (nothing changes). A vanished process is never success: without
-    an observed exit code 0 there is no ENDED_OK."""
+    an observed exit code 0 there is no ENDED_OK.
+
+    For an *isolated* execution a PAUSING or HANDING_OFF end is decided by Core's
+    own state and observed exit, never by the execution's halt report (PV-20 §3.3
+    H2, A7): an exit 0 pauses (a hand-off goes through `record_handoff`), anything
+    else is ENDED_ERROR. *core_halt* is Core's own halt decision, never a report."""
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
+    clean = exit_code == 0 and not killed
+    if isolated and e.state == 'HANDING_OFF' and clean:
+        raise lifecycle.IllegalTrigger('execution', e.state, 'record_end',
+                                       'an isolated hand-off that exited 0 ends through '
+                                       'record_handoff')
     if final_offset is not None and final_offset > e.stream_offset:
         tx.update(entities.Execution, e.id, {'stream_offset': final_offset}, actor=actor)
     fields = {'adapter_state': dict(adapter_state) if adapter_state else e.adapter_state,
@@ -239,7 +249,7 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
         _event(tx, 'execution.halted', e, actor, {'exit_code': exit_code,
                                                   'process_seq': e.process_seq})
         return {'execution_id': e.id, 'state': e.state, 'waiting': True}
-    if e.state == 'PAUSING' and halted:
+    if e.state == 'PAUSING' and (core_halt or (clean if isolated else halted)):
         e = _fire(tx, e.id, 'halted_at_boundary', actor, 'halted at a tool boundary',
                   dict(fields, pid=None, create_time=None, hook_token_hash=None))
         return {'execution_id': e.id, 'state': e.state}
@@ -257,7 +267,7 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
     if e.state not in ('RUNNING', 'PAUSING', 'HANDING_OFF'):
         raise lifecycle.IllegalTrigger('execution', e.state, 'record_end',
                                        'the execution has already ended')
-    ok = exit_code == 0 and not killed and not halted
+    ok = clean and not halted
     # a resource's failure spends no attempt only where the breaker can see it: a
     # registered account (§12.4); on a harness's own account it is charged, so it
     # cannot retry forever. A halt Core did not ask for (the hook failed closed) is
