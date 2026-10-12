@@ -2001,6 +2001,23 @@ and [pv20-execution-isolation-design.md](pv20-execution-isolation-design.md).
       one-line fix.
     - **Open, not changed:** under §17's latest-wins rule a thread update can replace an arrival
       announcement in real use too. Whether arrivals take priority is a design decision.
+107. **Corrections to items 103, 105 and 106 (2026-10-12, after review of `3489a39`).** Those
+    items stand as written; where they conflict with this one, this one holds.
+    - **Item 103, "Left out".** The writer fixture's current state is not unreviewed. Its
+      SHA-256 on 2026-10-12, `B23BBA61A5C2D4E175C9155F228D7796AC45D108FFB88366C0D084D96FC72EF8`,
+      is the source Codex reviewed and ran on 2026-10-11 (Codex's writer/creator closeout of that
+      date). That evidence covers the bounded fixture only: not the product writer, recovery or
+      concurrency. The file stays uncommitted, and whether it is kept, integrated or deleted is the
+      owner's decision. Nothing was rerun for this correction.
+    - **Item 105, the options.** The option called "an ADR narrowing R7 to non-consensual access"
+      took its wording from an analysis note whose review found that an execution naming a peer
+      in a descriptor it creates is that execution's action, not the owner's consent. The note is
+      being corrected. The list in item 105 names prepared alternatives, not a design position,
+      and R7 is unchanged.
+    - **Item 106, the full suite.** It was rerun on `f6abc4d` after the `mkdocs.yml` fix, separately
+      from the authoring session: `py -m pytest tests/ -m "not real_process" -q`, 5,601 passed,
+      16 skipped, 2 deselected, 3 xfailed, 1 warning (a local log outside the repository). This is
+      reported evidence; the review of `f6abc4d` read the log and did not rerun it.
 
 ## 13. As built
 (Filled at the end of P20.)
