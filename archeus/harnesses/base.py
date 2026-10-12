@@ -309,14 +309,8 @@ def spawn(spec, argv):
             pass
         except OSError as err:
             # a halt report left over from the last process would be read as this
-            # one's: nothing starts, and the tombstone says why if it can be written —
-            # a tombstone that cannot is reported, never a reason to start anyway
-            error = 'could not remove %s: %s' % (os.path.basename(stale), err)
-            try:
-                mark_ended(paths, None, error=error)
-            except OSError as tomb:
-                error = '%s; the ended tombstone was not written: %s' % (error, tomb)
-            raise SpawnFailed(error) from err
+            # one's: nothing starts
+            _refuse(paths, 'could not remove %s: %s' % (os.path.basename(stale), err), err)
     if not config.write_atomic(paths.prompt, spec.prompt):
         raise OSError('could not write %s' % paths.prompt)
     env = dict(os.environ)
@@ -335,8 +329,7 @@ def spawn(spec, argv):
         try:
             _private_dirs(paths, seq)
         except OSError as err:
-            mark_ended(paths, None, error=str(err))
-            raise SpawnFailed(str(err)) from err
+            _refuse(paths, str(err), err)
         env['TEMP'] = env['TMP'] = paths.tmp
         child, err = spec.isolation.launch(list(argv), cwd=spec.workdir, env=env,
                                            paths=paths)
@@ -354,6 +347,17 @@ def spawn(spec, argv):
     create_time = proc.process_create_time(child.pid)
     _write_json(paths.pid, {'pid': child.pid, 'create_time': create_time, 'process_seq': seq})
     return ProcessHandle(spec.execution_id, child.pid, create_time, paths.dir), child
+
+
+def _refuse(paths, error, cause):
+    # the tombstone says why nothing started if it can be written; one that cannot
+    # is added to the reason, never a reason to start anyway or to leave the
+    # SpawnFailed route callers handle
+    try:
+        mark_ended(paths, None, error=error)
+    except OSError as tomb:
+        error = '%s; the ended tombstone was not written: %s' % (error, tomb)
+    raise SpawnFailed(error) from cause
 
 
 def _private_dirs(paths, seq):

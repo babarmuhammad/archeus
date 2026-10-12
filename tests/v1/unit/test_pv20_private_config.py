@@ -108,6 +108,21 @@ def test_a_resume_without_its_private_config_launches_nothing(tmp_path, damage):
     assert 'private config' in (base.read_json(paths.ended) or {}).get('error', '')
 
 
+def test_a_tombstone_that_cannot_be_written_still_refuses_with_both_reasons(tmp_path,
+                                                                           monkeypatch):
+    iso, spec, paths = _start_then_end(tmp_path)
+    shutil.rmtree(paths.config)
+
+    def tombstone_fails(*a, **k):
+        raise OSError('disk full')
+    monkeypatch.setattr(base, 'mark_ended', tombstone_fails)
+    with pytest.raises(base.SpawnFailed) as got:
+        _resume(spec)
+    assert 'private config' in str(got.value) and 'disk full' in str(got.value)
+    assert 'private config' in str(got.value.__cause__)
+    assert len(iso.launches) == 1
+
+
 def test_an_isolated_launch_drops_the_provider_keys(tmp_path, monkeypatch):
     monkeypatch.setenv('ANTHROPIC_API_KEY', 'sk-test')
     monkeypatch.setenv('ANTHROPIC_AUTH_TOKEN', 'tok-test')
