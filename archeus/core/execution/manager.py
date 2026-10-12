@@ -184,6 +184,19 @@ class ExecutionManager:
             self._do(X.refuse, execution_id=e.id, reason='provider terms do not permit it',
                      stop_reason='binding')
             return True
+        # whether this process runs isolated is the node's isolation authority's
+        # decision (§3.4), never the adapter's and never a setting: production dispatch
+        # of isolated executions is E's, so today nothing is dispatched that way. Taken
+        # once, before anything is chosen or recorded, and this one value is what the
+        # node gets; a decision that cannot be taken starts nothing, never unisolated.
+        try:
+            iso = getattr(self.node, 'isolation', None)
+            isolated = bool(iso is not None and iso.requested(e.id, adapter))
+        except Exception as err:
+            self._do(X.refuse, execution_id=e.id, stop_reason='binding',
+                     reason='the isolation decision could not be taken: %s'
+                     % type(err).__name__)
+            return True
         try:
             workdir, branch = self._workspace(e, m, t)
         except OSError as err:
@@ -247,12 +260,8 @@ class ExecutionManager:
         # between as already read, so its first output is never seen
         offset = self._offset(e)
         try:
-            # whether this process runs isolated is the node's isolation authority's
-            # decision (§3.4), never the adapter's and never a setting: production
-            # dispatch of isolated executions is E's, so today nothing is dispatched
-            # that way, and an execution that does run isolated can configure nothing
-            # about the invariant that governs it
-            handle = self.node.spawn(adapter, spec, resume_state=resume_state)
+            handle = self.node.spawn(adapter, spec, resume_state=resume_state,
+                                     isolated=isolated)
         except (base.SpawnFailed, base.AlreadySpawned) as err:
             # nothing started, and nothing started unisolated instead (§3.4, §6.3).
             # `binding` is the uncharged stop reason: an isolation-establishment

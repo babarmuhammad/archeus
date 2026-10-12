@@ -790,3 +790,134 @@ def test_cores_own_restart_halt_pauses_an_isolated_execution_without_an_exit():
         assert _row(db, entities.Execution, eid).entity.state == 'PAUSED'
     finally:
         db.close()
+
+
+# ── T-021 D1: one isolation decision, before the workspace and the inventory ──
+
+def _spawn_rig(monkeypatch, tmp_path, decide=False, authority='present', opt_ins=None,
+               scenario=None):
+    """manager._spawn (and _resume) on fakes, every step landing in one ordered log.
+    *decide* is what the node's isolation authority answers, or an exception it raises."""
+    from archeus.core.execution import manager as M
+    log = []
+
+    class Authority:
+        def requested(self, execution_id, adapter):
+            log.append(('requested', execution_id, adapter))
+            if isinstance(decide, Exception):
+                raise decide
+            return decide
+
+    class Node:
+        def disarmed(self):
+            return False
+
+        def spawn(self, adapter, spec, **kw):
+            log.append(('spawn', spec, kw))
+            return SimpleNamespace(pid=1, create_time=1.0)
+
+    class Adapter:
+        id = 'fake'
+
+        def discover(self):
+            return SimpleNamespace(installed=True)
+
+        def capabilities(self, _):
+            return SimpleNamespace(capabilities=('resume',))
+
+        def inventory(self, spec):
+            log.append(('inventory',))
+
+    def workspace(e, mission, t):
+        log.append(('workspace',))
+        return str(tmp_path), 'b'
+
+    def do(command, **kw):
+        log.append((command.__name__, kw))
+        return {'refused': False}
+
+    node, adapter = Node(), Adapter()
+    if authority == 'present':
+        node.isolation = Authority()
+    elif authority == 'None':
+        node.isolation = None
+    m = ExecutionManager.__new__(ExecutionManager)
+    m.registry = SimpleNamespace(get=lambda hid: adapter)
+    m.db = SimpleNamespace(read=contextlib.nullcontext)
+    m.node, m._procs, m._do, m._workspace = node, {}, do, workspace
+    m.scenarios = {'t1': scenario} if scenario else {}
+    m.policy = m.missions = m.router = None
+    m._reload = lambda e: e
+    task = SimpleNamespace(title='T', key='t1', kind='code', estimate=None, action_classes=())
+    monkeypatch.setattr(M.resources, 'terms_permit', lambda r, a: True)
+    monkeypatch.setattr(M.rows, 'get', lambda r, kind, id_: SimpleNamespace(entity=task))
+    monkeypatch.setattr(M.optins, 'effective', lambda r, **kw: dict(opt_ins or {}))
+    e = SimpleNamespace(id=ids.new_id('execution'), harness_id='fake', task_id='t',
+                        account_id=None, route_decision_id=None, process_seq=0,
+                        handoff_from=None, attempt=1, model=None, effort=None,
+                        adapter_state={'session': 's1'})
+    return m, e, SimpleNamespace(objective='o', project_id=None), adapter, log
+
+
+def _steps(log):
+    return [x[0] for x in log]
+
+
+@pytest.mark.parametrize('decide', [False, True])
+def test_isolation_is_decided_once_before_the_workspace_and_the_inventory(
+        monkeypatch, tmp_path, decide):
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, decide)
+    assert m._spawn(e, mission) is True
+    assert _steps(log) == ['requested', 'workspace', 'inventory', 'prepare_process', 'spawn',
+                           'record_process']
+    assert log[0][1:] == (e.id, adapter)
+    (_, spec, kw), = [x for x in log if x[0] == 'spawn']
+    assert kw == {'resume_state': None, 'isolated': decide}
+    assert spec.isolation is None               # the node, not the manager, isolates the spec
+
+
+@pytest.mark.parametrize('decide', [False, True])
+def test_a_resume_takes_the_same_single_decision(monkeypatch, tmp_path, decide):
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, decide)
+    e.process_seq = 1
+    assert m._resume(e, mission) is True
+    assert _steps(log).count('requested') == 1
+    assert _steps(log).index('requested') < _steps(log).index('workspace')
+    (_, spec, kw), = [x for x in log if x[0] == 'spawn']
+    assert kw == {'resume_state': {'session': 's1'}, 'isolated': decide}
+    assert spec.process_seq == 2
+
+
+@pytest.mark.parametrize('err', [OSError('unreadable'), ValueError('malformed id')])
+def test_an_isolation_decision_that_raises_starts_nothing(monkeypatch, tmp_path, err):
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, err)
+    assert m._spawn(e, mission) is True
+    assert _steps(log) == ['requested', 'refuse']
+    assert log[1][1]['stop_reason'] == 'binding'
+    assert type(err).__name__ in log[1][1]['reason']
+
+
+@pytest.mark.parametrize('authority', ['absent', 'None'])
+def test_a_node_without_an_isolation_authority_spawns_unisolated_as_today(
+        monkeypatch, tmp_path, authority):
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, authority=authority)
+    assert m._spawn(e, mission) is True
+    assert _steps(log) == ['workspace', 'inventory', 'prepare_process', 'spawn',
+                           'record_process']
+    (_, spec, kw), = [x for x in log if x[0] == 'spawn']
+    assert kw == {'resume_state': None, 'isolated': False}
+    assert (spec.workdir, spec.isolation) == (str(tmp_path), None)
+
+
+@pytest.mark.parametrize('decide', [False, True])
+def test_no_spec_or_environment_value_decides_isolation(monkeypatch, tmp_path, decide):
+    claim = 'unisolated' if decide else '1'
+    for k in ('ARCHEUS_ISOLATED', 'ARCHEUS_ISOLATION', 'ISOLATED'):
+        monkeypatch.setenv(k, claim)
+    shaped = {'isolated': not decide, 'isolation': claim}
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, decide, opt_ins=shaped,
+                                             scenario=shaped)
+    assert m._spawn(e, mission) is True
+    (_, spec, kw), = [x for x in log if x[0] == 'spawn']
+    assert kw['isolated'] is decide
+    assert (spec.task_contract['fake_scenario'], spec.opt_ins) == (shaped, shaped)  # it got in

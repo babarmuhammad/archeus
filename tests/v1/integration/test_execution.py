@@ -880,8 +880,8 @@ def _spawn_returns_after(x, marker):
     spawn() returns. Hold the return until *marker* is in its stream."""
     real = x.manager.node.spawn
 
-    def late(adapter, spec, resume_state=None):
-        handle = real(adapter, spec, resume_state=resume_state)
+    def late(adapter, spec, *, isolated, resume_state=None):
+        handle = real(adapter, spec, isolated=isolated, resume_state=resume_state)
         stream, deadline = ExecPaths(spec.execution_id).stream, time.monotonic() + 20
         while time.monotonic() < deadline:
             if os.path.exists(stream) and marker in open(stream, 'rb').read():

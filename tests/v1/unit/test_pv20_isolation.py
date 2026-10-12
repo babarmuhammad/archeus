@@ -652,6 +652,26 @@ class TestRegistryEntry:
         assert line['isolated'] is True and line['ac_sid'] == a.record(req.execution_id).sid
         assert 'core-held' in line['job']
 
+    def test_node_spawn_takes_no_isolation_decision_of_its_own(self, tmp_path):
+        # T-021 D1: the manager's one decision is required; a caller that forgets it
+        # fails loudly, and a decision passed in is never re-asked
+        node = LocalNode()
+        asked = []
+        node.isolation = SimpleNamespace(requested=lambda *a: asked.append(a) or True)
+
+        class Adapter:
+            id = 'fake'
+
+            def start(self, spec):
+                return SimpleNamespace(pid=7, create_time=1.0)
+
+        spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go',
+                                  workdir=str(tmp_path))
+        with pytest.raises(TypeError):
+            node.spawn(Adapter(), spec)
+        assert node.spawn(Adapter(), spec, isolated=False).pid == 7
+        assert asked == []
+
 
 # ── item 4 + teardown on every end path ───────────────────────────────────────
 

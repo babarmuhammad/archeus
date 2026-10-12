@@ -301,8 +301,8 @@ class Rig:
         from archeus.node.local import LocalNode
         real = LocalNode.spawn
 
-        def late(node, adapter, spec, resume_state=None):
-            handle = real(node, adapter, spec, resume_state=resume_state)
+        def late(node, adapter, spec, *, isolated, resume_state=None):
+            handle = real(node, adapter, spec, isolated=isolated, resume_state=resume_state)
             contract = spec.task_contract
             if contract.get('key') == task_key and not contract.get('continuation'):
                 stream = paths.ExecPaths(spec.execution_id).stream

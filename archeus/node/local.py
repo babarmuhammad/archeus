@@ -46,18 +46,17 @@ class LocalNode:
 
     # ── processes ──
 
-    def spawn(self, adapter, spec, *, resume_state=None, isolated=None):
+    def spawn(self, adapter, spec, *, isolated, resume_state=None):
         """Start one process of an execution (its first, or a resume) and record
         it in the registry. Raises base.SpawnFailed / base.AlreadySpawned.
 
-        `isolated` (PV-20 §3.4) asks for the isolated path; None asks the authority,
-        which says no for everything while production dispatch is E's. An isolated
+        `isolated` (PV-20 §3.4) is the decision Core's manager took from this node's
+        isolation authority before the workspace and the inventory; it is required,
+        so nothing here can take a second one that disagrees. An isolated
         execution's registry line carries the identity it ran under — the instrument,
         never the authority (§3.7); the Job Core holds is the authority.
         """
         self.clear_flags(spec.execution_id)
-        if isolated is None:
-            isolated = self.isolation.requested(spec.execution_id, adapter)
         if isolated and spec.isolation is None:
             spec = self._isolate(spec)
         try:
