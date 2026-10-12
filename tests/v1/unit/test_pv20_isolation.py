@@ -230,6 +230,7 @@ class FakeNode:
 
     def __init__(self):
         self.registry = []
+        self.kills = []
 
     def _registry(self, line):
         self.registry.append(line)
@@ -238,6 +239,7 @@ class FakeNode:
         return True
 
     def kill(self, adapter, handle):
+        self.kills.append((adapter, handle))
         return 'killed'
 
 
@@ -834,18 +836,18 @@ def _e(state):
 
 
 class TestRestartReconciliation:
-    def _reconcile(self, state, *, iso_state='established', handle=None):
+    def _reconcile(self, state, *, iso_state='established', handle=None, adapter=None):
         m = _manager_with_fake_node()
         rec = iso.IsolationRecord(execution_id='x', profile='p', state=iso_state,
                                   reason='condition_unmet:grants' if iso_state == 'failed' else '')
         e = _e(state)
-        changed = m._reconcile_isolated(e, object(), rec, handle, disarmed=False)
+        changed = m._reconcile_isolated(e, adapter or object(), rec, handle, disarmed=False)
         return m, e, changed
 
     def test_live_isolated_process_is_killed_never_adopted(self):
-        m, e, changed = self._reconcile('RUNNING', handle={'pid': 1})
-        assert m.node.alive({'pid': 1})
-        assert ('killed',) or True
+        adapter, handle = object(), {'pid': 1}
+        m, e, changed = self._reconcile('RUNNING', handle=handle, adapter=adapter)
+        assert m.node.kills == [(adapter, handle)]
         # no adoption: nothing records a live process
         assert not any(c is X.record_process for c, _ in m.calls)
 
