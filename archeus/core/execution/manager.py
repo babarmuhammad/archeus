@@ -198,7 +198,7 @@ class ExecutionManager:
                      % type(err).__name__)
             return True
         try:
-            workdir, branch = self._workspace(e, m, t)
+            workdir, branch = self._workspace(e, m, t, isolated=isolated)
         except OSError as err:
             self._do(X.refuse, execution_id=e.id, reason='no workspace: %s' % err,
                      stop_reason='workspace')
@@ -330,7 +330,7 @@ class ExecutionManager:
             return known[e.model], 'offer'
         return (min(known.values()), 'harness_smallest') if known else (None, 'none')
 
-    def _workspace(self, e, m, t):
+    def _workspace(self, e, m, t, *, isolated):
         """(workdir, branch) — §17. Recorded before the process starts."""
         if m.project_id is None:
             # the execution's own (class 7), never the Core-owned directory around it
@@ -338,6 +338,14 @@ class ExecutionManager:
             d = ExecPaths(e.id).work
             os.makedirs(d, exist_ok=True)
             return d, None
+        if isolated:
+            # A1 (PV-20 §3.2): an isolated execution never works in the user's project
+            # root or in a worktree linked to its .git, and `in_place` is withdrawn for
+            # it. Until a Core-seeded repository exists (T-016 W3 with W6) there is no
+            # other place, so it is refused here, before any git probe of the root. This
+            # is the interim refusal, charged and bounded by the task's attempts, not
+            # the refusal before dispatch that A1 asks for (W5).
+            raise OSError('an isolated execution has no project workspace yet (PV-20 A1)')
         with self.db.read() as r:
             p = rows.get(r, entities.Project, m.project_id)
         roots = list(p.entity.root_paths) if p is not None else []

@@ -677,7 +677,8 @@ def test_a_project_less_workspace_is_the_executions_own_never_its_core_directory
     eid = ids.new_id('execution')
     p = paths.ExecPaths(eid)
     workdir, branch = ExecutionManager._workspace(None, SimpleNamespace(id=eid),
-                                                  SimpleNamespace(project_id=None), None)
+                                                  SimpleNamespace(project_id=None), None,
+                                                  isolated=False)
     assert (workdir, branch) == (p.work, None) and os.path.isdir(workdir)
     assert workdir != p.dir
     assert not any(workdir == c or workdir.startswith(c + os.sep) for c in (p.req, p.res, p.ctl))
@@ -795,9 +796,11 @@ def test_cores_own_restart_halt_pauses_an_isolated_execution_without_an_exit():
 # ── T-021 D1: one isolation decision, before the workspace and the inventory ──
 
 def _spawn_rig(monkeypatch, tmp_path, decide=False, authority='present', opt_ins=None,
-               scenario=None):
+               scenario=None, project=None, mode='worktree', git=None):
     """manager._spawn (and _resume) on fakes, every step landing in one ordered log.
-    *decide* is what the node's isolation authority answers, or an exception it raises."""
+    *decide* is what the node's isolation authority answers, or an exception it raises.
+    The real `_workspace` runs; *project* is the project's root, *git* what the node's
+    git probes of it answer."""
     from archeus.core.execution import manager as M
     log = []
 
@@ -816,6 +819,18 @@ def _spawn_rig(monkeypatch, tmp_path, decide=False, authority='present', opt_ins
             log.append(('spawn', spec, kw))
             return SimpleNamespace(pid=1, create_time=1.0)
 
+        def git_branch(self, root):
+            log.append(('git_branch', root))
+            return (git or {}).get('branch')
+
+        def branch_exists(self, root, branch):
+            log.append(('branch_exists', root, branch))
+            return (git or {}).get('exists', False)
+
+        def add_worktree(self, root, path, branch, base='HEAD'):
+            log.append(('add_worktree', root, branch, base))
+            return path
+
     class Adapter:
         id = 'fake'
 
@@ -828,9 +843,14 @@ def _spawn_rig(monkeypatch, tmp_path, decide=False, authority='present', opt_ins
         def inventory(self, spec):
             log.append(('inventory',))
 
-    def workspace(e, mission, t):
-        log.append(('workspace',))
-        return str(tmp_path), 'b'
+    def workspace(e, mission, t, **kw):
+        log.append(('workspace', kw))
+        return ExecutionManager._workspace(m, e, mission, t, **kw)
+
+    def get(r, kind, id_):
+        if kind is entities.Project:
+            return SimpleNamespace(entity=SimpleNamespace(root_paths=[project]))
+        return SimpleNamespace(entity=task)
 
     def do(command, **kw):
         log.append((command.__name__, kw))
@@ -848,15 +868,18 @@ def _spawn_rig(monkeypatch, tmp_path, decide=False, authority='present', opt_ins
     m.scenarios = {'t1': scenario} if scenario else {}
     m.policy = m.missions = m.router = None
     m._reload = lambda e: e
-    task = SimpleNamespace(title='T', key='t1', kind='code', estimate=None, action_classes=())
+    task = SimpleNamespace(title='T', key='t1', kind='code', estimate=None, action_classes=(),
+                           workspace_mode=mode)
     monkeypatch.setattr(M.resources, 'terms_permit', lambda r, a: True)
-    monkeypatch.setattr(M.rows, 'get', lambda r, kind, id_: SimpleNamespace(entity=task))
+    monkeypatch.setattr(M.rows, 'get', get)
     monkeypatch.setattr(M.optins, 'effective', lambda r, **kw: dict(opt_ins or {}))
     e = SimpleNamespace(id=ids.new_id('execution'), harness_id='fake', task_id='t',
                         account_id=None, route_decision_id=None, process_seq=0,
                         handoff_from=None, attempt=1, model=None, effort=None,
                         adapter_state={'session': 's1'})
-    return m, e, SimpleNamespace(objective='o', project_id=None), adapter, log
+    mission = SimpleNamespace(objective='o', id='mission-1',
+                              project_id='project-1' if project else None)
+    return m, e, mission, adapter, log
 
 
 def _steps(log):
@@ -906,7 +929,7 @@ def test_a_node_without_an_isolation_authority_spawns_unisolated_as_today(
                            'record_process']
     (_, spec, kw), = [x for x in log if x[0] == 'spawn']
     assert kw == {'resume_state': None, 'isolated': False}
-    assert (spec.workdir, spec.isolation) == (str(tmp_path), None)
+    assert (spec.workdir, spec.isolation) == (paths.ExecPaths(e.id).work, None)
 
 
 @pytest.mark.parametrize('decide', [False, True])
@@ -921,3 +944,79 @@ def test_no_spec_or_environment_value_decides_isolation(monkeypatch, tmp_path, d
     (_, spec, kw), = [x for x in log if x[0] == 'spawn']
     assert kw['isolated'] is decide
     assert (spec.task_contract['fake_scenario'], spec.opt_ins) == (shaped, shaped)  # it got in
+
+
+# ── T-027 (T-016 W2): an isolated execution never works in the user's project ──
+
+GIT = {'on a branch': {'branch': 'main'},
+       'detached HEAD or not a repository': {'branch': None},
+       'mission branch and worktree exist': {'branch': 'main', 'exists': True}}
+
+
+def _run(m, e, mission, resume, log):
+    """A first process, or a resume; the resume's own check is taken off the log."""
+    if not resume:
+        return m._spawn(e, mission)
+    e.process_seq = 1
+    done = m._resume(e, mission)
+    assert _steps(log).count('resume_checked') == 1
+    log[:] = [x for x in log if x[0] != 'resume_checked']
+    return done
+
+
+@pytest.mark.parametrize('resume', [False, True])
+@pytest.mark.parametrize('git', list(GIT))
+@pytest.mark.parametrize('mode', ['in_place', 'worktree'])
+def test_an_isolated_project_execution_is_refused_before_its_root_is_touched(
+        monkeypatch, tmp_path, mode, git, resume):
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, True,
+                                             project=str(tmp_path / 'repo'), mode=mode,
+                                             git=GIT[git])
+    assert _run(m, e, mission, resume, log) is True
+    assert _steps(log) == ['requested', 'workspace', 'refuse']
+    assert log[1][1] == {'isolated': True}
+    assert log[2][1]['stop_reason'] == 'workspace'
+    assert 'isolated execution has no project workspace' in log[2][1]['reason']
+
+
+@pytest.mark.parametrize('decide', [False, True])
+def test_a_project_less_execution_keeps_its_own_workspace_across_a_resume(
+        monkeypatch, tmp_path, decide):
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, decide)
+    assert m._spawn(e, mission) is True
+    work = paths.ExecPaths(e.id).work
+    open(os.path.join(work, 'notes.txt'), 'w').close()
+    assert _run(m, e, mission, True, log) is True
+    assert [x[1].workdir for x in log if x[0] == 'spawn'] == [work, work]
+    assert os.listdir(work) == ['notes.txt']
+    assert 'git_branch' not in _steps(log)
+
+
+@pytest.mark.parametrize('resume', [False, True])
+def test_an_unisolated_in_place_execution_still_runs_in_the_project_root(
+        monkeypatch, tmp_path, resume):
+    root = str(tmp_path / 'repo')
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, False, project=root,
+                                             mode='in_place', git={'branch': 'main'})
+    assert _run(m, e, mission, resume, log) is True
+    assert _steps(log) == ['requested', 'workspace', 'git_branch', 'inventory',
+                           'prepare_process', 'spawn', 'record_process']
+    (prep,) = [x[1] for x in log if x[0] == 'prepare_process']
+    assert (prep['workdir'], prep['branch']) == (root, 'main')
+
+
+@pytest.mark.parametrize('resume', [False, True])
+@pytest.mark.parametrize('exists', [False, True])
+def test_an_unisolated_worktree_execution_still_gets_its_linked_worktree(
+        monkeypatch, tmp_path, exists, resume):
+    root = str(tmp_path / 'repo')
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, False, project=root,
+                                             git={'branch': 'main', 'exists': exists})
+    assert _run(m, e, mission, resume, log) is True
+    assert _steps(log) == ['requested', 'workspace', 'git_branch', 'branch_exists',
+                           'add_worktree', 'inventory', 'prepare_process', 'spawn',
+                           'record_process']
+    (add,) = [x for x in log if x[0] == 'add_worktree']
+    assert add[1:] == (root, 'archeus/mission-1.t1', 'archeus/mission-1' if exists else 'HEAD')
+    (prep,) = [x[1] for x in log if x[0] == 'prepare_process']
+    assert prep['branch'] == 'archeus/mission-1.t1' and prep['workdir'] != root
