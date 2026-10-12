@@ -4,21 +4,27 @@ the branch/host slot P9 left for the action stage."""
 
 import contextlib
 import errno
+import io
 import json
 import os
 import stat
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
+
+from claude_sessions import config, proc
 
 from archeus.core.application import executions as X
 from archeus.core.domain import actions, entities, ids, states
 from archeus.core.domain.actions import Action
 from archeus.core.execution import canonical as C
-from archeus.core.execution.manager import redact
+from archeus.core.execution.manager import ExecutionManager, redact
 from archeus.core.policy import rules
-from archeus.harnesses import hook
+from archeus.harnesses import base, hook
+from archeus.infra import paths
+from archeus.node.local import LocalNode
 
 WD = os.path.abspath('workspace-root')
 CTX = {'workdir': WD, 'branch': 'archeus/m/t', 'remotes': {'origin': 'github.com'}}
@@ -237,7 +243,9 @@ def test_the_hook_asks_through_the_mailbox_and_honours_the_answer(tmp_path):
     eid = ids.new_id('execution')
     env = {'ARCHEUS_HOME': str(tmp_path), 'ARCHEUS_EXECUTION_ID': eid,
            'ARCHEUS_HOOK_TOKEN': 'hook_t'}
-    box = os.path.join(str(tmp_path), 'run', 'exec', eid, 'hook')
+    d = os.path.join(str(tmp_path), 'run', 'exec', eid)
+    box, answers = os.path.join(d, 'req'), os.path.join(d, 'res')
+    os.makedirs(answers)
 
     def core():
         deadline = time.monotonic() + 10
@@ -245,7 +253,7 @@ def test_the_hook_asks_through_the_mailbox_and_honours_the_answer(tmp_path):
             if os.path.exists(os.path.join(box, '1.req.json')):
                 req = json.load(open(os.path.join(box, '1.req.json')))
                 assert (req['token'], req['tool'], req['seq']) == ('hook_t', 'Read', 1)
-                with open(os.path.join(box, '1.res.json'), 'w') as f:
+                with open(os.path.join(answers, '1.res.json'), 'w') as f:
                     json.dump({'decision': 'deny', 'reason': 'not today'}, f)
                 return
             time.sleep(0.02)
@@ -261,11 +269,10 @@ def test_a_flag_or_the_sentinel_halts_before_asking(tmp_path):
     env = {'ARCHEUS_HOME': str(tmp_path), 'ARCHEUS_EXECUTION_ID': eid,
            'ARCHEUS_HOOK_TOKEN': 'hook_t'}
     d = os.path.join(str(tmp_path), 'run', 'exec', eid)
-    os.makedirs(d)
-    open(os.path.join(d, 'PAUSE'), 'w').close()
+    os.makedirs(os.path.join(d, 'ctl'))
+    open(os.path.join(d, 'ctl', 'PAUSE'), 'w').close()
     assert hook.run({'tool_name': 'Read'}, env)[0] == 'halt'
-    assert not os.path.exists(os.path.join(d, 'hook'))
-    assert os.path.exists(os.path.join(d, 'halted.json'))
+    assert os.listdir(os.path.join(d, 'req')) == ['halted.json']     # reported, never asked
 
 
 # ── PV-20 §7.4 Gap A: a sentinel is present, absent or indeterminate ────────
@@ -275,8 +282,8 @@ PRESENT = {'estop': 'emergency stop', 'STOP': 'stopped by Archeus',
            'estop-wait': 'emergency stop'}
 
 
-def _allow(box):
-    with open(os.path.join(box, '1.res.json'), 'w', encoding='utf-8') as f:
+def _allow(answers):
+    with open(os.path.join(answers, '1.res.json'), 'w', encoding='utf-8') as f:
         json.dump({'decision': 'allow'}, f)
 
 
@@ -310,9 +317,11 @@ def _hook_with(tmp_path, monkeypatch, read, outcome):
     home = str(tmp_path)
     env = {'ARCHEUS_HOME': home, 'ARCHEUS_EXECUTION_ID': eid, 'ARCHEUS_HOOK_TOKEN': 'hook_t'}
     d = os.path.join(home, 'run', 'exec', eid)
-    os.makedirs(d)
+    box, answers, flags = (os.path.join(d, n) for n in ('req', 'res', 'ctl'))
+    os.makedirs(answers)
+    os.makedirs(flags)
     estop = os.path.join(home, 'run', 'STOP')
-    target = estop if read.startswith('estop') else os.path.join(d, read)
+    target = estop if read.startswith('estop') else os.path.join(flags, read)
     real_lstat, real_stat = os.lstat, os.stat
     estop_reads = []
 
@@ -338,13 +347,11 @@ def _hook_with(tmp_path, monkeypatch, read, outcome):
             raise FileNotFoundError(errno.ENOENT, 'the link target is missing', p)
         return real_stat(p, *a, **kw)
 
-    box = os.path.join(d, 'hook')
-
     def on_request():
         if outcome == 'present' and read == 'estop-wait':
             open(estop, 'w').close()        # the estop appears while the hook waits
         else:
-            _allow(box)
+            _allow(answers)
     if outcome == 'present' and read != 'estop-wait':
         open(target, 'w').close()
     monkeypatch.setattr(os, 'lstat', lstat)
@@ -358,8 +365,8 @@ def _hook_with(tmp_path, monkeypatch, read, outcome):
 def test_each_sentinel_read_is_present_absent_or_indeterminate(tmp_path, monkeypatch, read,
                                                                outcome):
     (kind, why), d = _hook_with(tmp_path, monkeypatch, read, outcome)
-    asked = os.path.exists(os.path.join(d, 'hook', '1.req.json'))
-    halted = os.path.join(d, 'halted.json')
+    asked = os.path.exists(os.path.join(d, 'req', '1.req.json'))
+    halted = os.path.join(d, 'req', 'halted.json')
     if outcome == 'absent':
         assert (kind, why) == ('allow', '')
         assert asked and not os.path.exists(halted)
@@ -379,15 +386,16 @@ def test_each_sentinel_read_is_present_absent_or_indeterminate(tmp_path, monkeyp
 
 def test_an_undeterminable_estop_halts_while_the_mailbox_stays_writable(tmp_path, monkeypatch):
     """PV-20 acceptance row 7's case: the sentinel cannot be read and the
-    mailbox beside it can be written. The two-state read called that absent,
-    and only a mailbox write failing next to it ever halted; the halt now comes
-    from the determination."""
+    class-1 directory beside it can be written. The two-state read called that
+    absent, and only a mailbox write failing next to it ever halted; the halt now
+    comes from the determination."""
     eid = ids.new_id('execution')
     home = str(tmp_path)
     env = {'ARCHEUS_HOME': home, 'ARCHEUS_EXECUTION_ID': eid, 'ARCHEUS_HOOK_TOKEN': 'hook_t'}
     d = os.path.join(home, 'run', 'exec', eid)
-    box = os.path.join(d, 'hook')
+    box, answers = os.path.join(d, 'req'), os.path.join(d, 'res')
     os.makedirs(box)
+    os.makedirs(answers)
     estop = os.path.join(home, 'run', 'STOP')
 
     def denied(real):
@@ -403,12 +411,12 @@ def test_an_undeterminable_estop_halts_while_the_mailbox_stays_writable(tmp_path
     probe = os.path.join(box, 'probe')
     open(probe, 'w').close()
     os.remove(probe)
-    with _core(box, lambda: _allow(box)):
+    with _core(box, lambda: _allow(answers)):
         kind, why = hook.run({'tool_name': 'Read'}, env)
     assert (kind, why) == ('halt', "cannot determine the emergency stop's state; halted "
                                    "(fail closed)")
-    assert os.listdir(box) == []
-    with open(os.path.join(d, 'halted.json'), encoding='utf-8') as f:
+    assert os.listdir(box) == ['halted.json']                       # nothing asked
+    with open(os.path.join(box, 'halted.json'), encoding='utf-8') as f:
         assert json.load(f)['reason'] == why
 
 
@@ -420,3 +428,256 @@ def test_concurrent_hooks_take_distinct_sequence_numbers(tmp_path):
     [t.start() for t in ts]
     [t.join() for t in ts]
     assert sorted(seqs) == list(range(1, 9))
+
+
+# ── PV-20 §7.5: one directory per resource class (S2-L) ──────────────────────
+
+def _hook_env(tmp_path, eid):
+    return {'ARCHEUS_HOME': str(tmp_path), 'ARCHEUS_EXECUTION_ID': eid,
+            'ARCHEUS_HOOK_TOKEN': 'hook_t'}
+
+
+def test_the_hook_mirrors_the_class_directories_of_the_layout():
+    assert (hook.REQUEST_DIR, hook.RESPONSE_DIR, hook.SENTINEL_DIR) == (
+        paths.REQUEST_DIR, paths.RESPONSE_DIR, paths.SENTINEL_DIR)
+
+
+def test_an_answer_beside_the_request_is_never_the_answer(tmp_path, monkeypatch):
+    """An answer in class 1 is one the execution could have written itself: the hook
+    waits for Core's in class 2, and with none there it halts at its deadline."""
+    eid = ids.new_id('execution')
+    d = os.path.join(str(tmp_path), 'run', 'exec', eid)
+    box = os.path.join(d, 'req')
+    os.makedirs(os.path.join(d, 'res'))
+    monkeypatch.setattr(hook, 'WAIT_S', 1.0)
+    with _core(box, lambda: _allow(box)):
+        kind, why = hook.run({'tool_name': 'Read'}, _hook_env(tmp_path, eid))
+    assert (kind, why) == ('halt', 'Archeus did not answer; denied and halted (fail closed)')
+    with open(os.path.join(box, 'halted.json'), encoding='utf-8') as f:
+        assert json.load(f)['seq'] == 1
+
+
+def test_an_unreadable_class_2_answer_is_never_accepted(tmp_path, monkeypatch):
+    """Core's answer is in class 2 and says allow, and the hook cannot read it: no
+    answer is accepted, and the hook halts at its deadline with class 1 writable."""
+    eid = ids.new_id('execution')
+    d = os.path.join(str(tmp_path), 'run', 'exec', eid)
+    box, answers = os.path.join(d, 'req'), os.path.join(d, 'res')
+    os.makedirs(answers)
+    answer = os.path.join(answers, '1.res.json')
+    real = open
+
+    def denied(path, *a, **kw):
+        if os.fspath(path) == answer:
+            raise PermissionError(errno.EACCES, 'Access is denied', path)
+        return real(path, *a, **kw)
+    monkeypatch.setattr(hook, 'open', denied, raising=False)    # the hook's reads only
+    monkeypatch.setattr(hook, 'WAIT_S', 1.0)
+    with _core(box, lambda: _allow(answers)):
+        kind, why = hook.run({'tool_name': 'Read'}, _hook_env(tmp_path, eid))
+    assert (kind, why) == ('halt', 'Archeus did not answer; denied and halted (fail closed)')
+    assert os.path.exists(answer)                               # there, and not accepted
+    assert os.path.exists(os.path.join(box, '1.req.json'))      # class 1 took the request
+    with open(os.path.join(box, 'halted.json'), encoding='utf-8') as f:
+        assert json.load(f)['seq'] == 1
+
+
+def test_an_unwritable_class_1_halts_and_asks_nothing(tmp_path, monkeypatch, capsys):
+    eid = ids.new_id('execution')
+    d = os.path.join(str(tmp_path), 'run', 'exec', eid)
+    os.makedirs(d)
+    open(os.path.join(d, 'req'), 'w').close()        # class 1 cannot be a directory
+    for k, v in _hook_env(tmp_path, eid).items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setenv('ARCHEUS_HOOK_ACTIVE', '')     # main() sets it; restored after
+    monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps({'tool_name': 'Read'})))
+    assert hook.main() == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out['continue'] is False
+    assert out['hookSpecificOutput']['permissionDecision'] == 'deny'
+    assert sorted(os.listdir(d)) == ['req']
+
+
+# ── U-4: a mailbox that is there is used without looking at its parent ──────
+
+def _mailbox_present(tmp_path, *others):
+    eid = ids.new_id('execution')
+    d = os.path.join(str(tmp_path), 'run', 'exec', eid)
+    for name in ('req',) + others:
+        os.makedirs(os.path.join(d, name))
+    return eid, d
+
+
+def _parent_unreadable(monkeypatch, parent):
+    """*parent* refuses its metadata, its listing and its creation, as an
+    execution's own directory may while its mailbox is open: every look at it is
+    recorded, and so is every `os.makedirs` call."""
+    touched, made = [], []
+    key = os.path.normcase(os.path.normpath(parent))
+
+    def refuse(name, real):
+        def call(p, *a, **kw):
+            if (not isinstance(p, int)
+                    and os.path.normcase(os.path.normpath(os.fspath(p))) == key):
+                touched.append(name)
+                raise PermissionError(errno.EACCES, 'Access is denied', p)
+            return real(p, *a, **kw)
+        return call
+    for name in ('stat', 'lstat', 'mkdir', 'listdir'):
+        monkeypatch.setattr(os, name, refuse(name, getattr(os, name)))
+    real_makedirs = os.makedirs
+
+    def makedirs(p, *a, **kw):
+        made.append(os.fspath(p))
+        return real_makedirs(p, *a, **kw)
+    monkeypatch.setattr(os, 'makedirs', makedirs)
+    with pytest.raises(PermissionError):
+        os.stat(parent)                 # the refusal is in force for this path
+    touched.clear()
+    return touched, made
+
+
+def test_a_present_mailbox_takes_a_request_without_looking_at_its_parent(tmp_path,
+                                                                         monkeypatch):
+    eid, d = _mailbox_present(tmp_path, 'res')
+    box, answers = os.path.join(d, 'req'), os.path.join(d, 'res')
+    touched, made = _parent_unreadable(monkeypatch, d)
+    with _core(box, lambda: _allow(answers)):
+        assert hook.run({'tool_name': 'Read'}, _hook_env(tmp_path, eid)) == ('allow', '')
+    assert sorted(os.listdir(box)) == ['1.lock', '1.req.json']
+    with open(os.path.join(box, '1.req.json'), encoding='utf-8') as f:
+        assert json.load(f)['seq'] == 1
+    assert (touched, made) == ([], [])
+
+
+def test_a_present_mailbox_takes_a_halt_without_looking_at_its_parent(tmp_path,
+                                                                      monkeypatch):
+    eid, d = _mailbox_present(tmp_path, 'ctl')
+    open(os.path.join(d, 'ctl', 'PAUSE'), 'w').close()
+    box = os.path.join(d, 'req')
+    touched, made = _parent_unreadable(monkeypatch, d)
+    assert hook.run({'tool_name': 'Read'}, _hook_env(tmp_path, eid)) == (
+        'halt', 'paused by Archeus')
+    assert os.listdir(box) == ['halted.json']                       # reported, never asked
+    with open(os.path.join(box, 'halted.json'), encoding='utf-8') as f:
+        assert json.load(f)['reason'] == 'paused by Archeus'
+    assert (touched, made) == ([], [])
+
+
+def test_a_present_mailbox_takes_a_precompact_without_looking_at_its_parent(tmp_path,
+                                                                            monkeypatch):
+    eid, d = _mailbox_present(tmp_path)
+    box = os.path.join(d, 'req')
+    touched, made = _parent_unreadable(monkeypatch, d)
+    assert hook.run({'hook_event_name': 'PreCompact', 'trigger': 'auto'},
+                    _hook_env(tmp_path, eid)) == ('continue', '')
+    assert os.listdir(box) == ['precompact.json']
+    with open(os.path.join(box, 'precompact.json'), encoding='utf-8') as f:
+        assert json.load(f)['trigger'] == 'auto'
+    assert (touched, made) == ([], [])
+
+
+def test_a_missing_mailbox_is_still_made_for_a_precompact(tmp_path):
+    eid = ids.new_id('execution')
+    box = os.path.join(str(tmp_path), 'run', 'exec', eid, 'req')
+    assert hook.run({'hook_event_name': 'PreCompact', 'trigger': 'manual'},
+                    _hook_env(tmp_path, eid)) == ('continue', '')
+    assert os.listdir(box) == ['precompact.json']
+
+
+def test_only_cores_class_2_answer_answers_a_request():
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    os.makedirs(p.req)
+    for name, body in (('1.req.json', '{"tool": "Read"}'), ('2.req.json', 'not json'),
+                       ('1.res.json', '{"decision": "allow"}')):     # the execution's own
+        with open(os.path.join(p.req, name), 'w', encoding='utf-8') as f:
+            f.write(body)
+    assert LocalNode.pending_requests(eid) == [(1, {'tool': 'Read'}), (2, None)]
+    LocalNode.respond(eid, 1, 'deny', 'no')
+    assert os.listdir(p.res) == ['1.res.json']
+    assert LocalNode.pending_requests(eid) == [(2, None)]
+
+
+def test_core_sets_the_flags_in_class_3_only():
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    LocalNode.set_flag(eid, 'PAUSE')
+    assert os.listdir(p.ctl) == ['PAUSE'] and not os.path.exists(p.req)
+    LocalNode.clear_flags(eid)
+    assert os.listdir(p.ctl) == []
+
+
+def test_the_precompact_report_is_read_from_class_1():
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    os.makedirs(p.req)
+    assert LocalNode.precompacted(eid) is False
+    open(os.path.join(p.req, 'precompact.json'), 'w').close()
+    assert LocalNode.precompacted(eid) is True
+
+
+def test_a_stale_halt_report_core_cannot_remove_starts_nothing(archeus_home, monkeypatch):
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    halted = base.halted_path(p.dir)
+    assert os.path.dirname(halted) == p.req
+    os.makedirs(p.req)
+    open(halted, 'w').close()
+    real = os.remove
+
+    def remove(path, *a, **kw):
+        if os.fspath(path) == halted:
+            raise PermissionError(errno.EACCES, 'Access is denied', path)
+        return real(path, *a, **kw)
+    monkeypatch.setattr(os, 'remove', remove)
+    started = []
+    monkeypatch.setattr(proc, 'spawn_detached', lambda *a, **kw: started.append(a))
+    spec = base.ExecutionSpec(execution_id=eid, prompt='go', workdir=str(archeus_home))
+    with pytest.raises(base.SpawnFailed, match='halted.json'):
+        base.spawn(spec, ['never-run'])
+    assert started == []                                    # and nothing unisolated either
+    assert 'halted.json' in base.read_json(p.ended)['error']
+
+
+@pytest.mark.parametrize('isolated', [False, True])
+def test_a_stale_report_and_its_tombstone_both_failing_still_start_nothing(
+        archeus_home, monkeypatch, isolated):
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    halted = base.halted_path(p.dir)
+    os.makedirs(p.req)
+    open(halted, 'w').close()
+    real_remove, real_write = os.remove, config.write_json_atomic
+
+    def remove(path, *a, **kw):
+        if os.fspath(path) == halted:
+            raise PermissionError(errno.EACCES, 'Access is denied', path)
+        return real_remove(path, *a, **kw)
+
+    def write(path, *a, **kw):
+        return False if os.fspath(path) == p.ended else real_write(path, *a, **kw)
+    monkeypatch.setattr(os, 'remove', remove)
+    monkeypatch.setattr(config, 'write_json_atomic', write)
+    launched = []
+    monkeypatch.setattr(proc, 'spawn_detached', lambda *a, **kw: launched.append(a))
+    isolation = SimpleNamespace(launch=lambda *a, **kw: launched.append(a)) if isolated else None
+    spec = base.ExecutionSpec(execution_id=eid, prompt='go', workdir=str(archeus_home),
+                              isolation=isolation)
+    with pytest.raises(base.SpawnFailed) as err:
+        base.spawn(spec, ['never-run'])
+    assert launched == []                       # no process, isolated or otherwise
+    assert 'could not remove halted.json' in str(err.value)
+    assert 'the ended tombstone was not written: could not write' in str(err.value)
+    assert isinstance(err.value.__cause__, PermissionError)
+    assert not os.path.exists(p.ended)
+
+
+def test_a_project_less_workspace_is_the_executions_own_never_its_core_directory():
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    workdir, branch = ExecutionManager._workspace(None, SimpleNamespace(id=eid),
+                                                  SimpleNamespace(project_id=None), None)
+    assert (workdir, branch) == (p.work, None) and os.path.isdir(workdir)
+    assert workdir != p.dir
+    assert not any(workdir == c or workdir.startswith(c + os.sep) for c in (p.req, p.res, p.ctl))

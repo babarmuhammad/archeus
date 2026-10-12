@@ -18,7 +18,7 @@ import pytest
 
 from archeus.core.domain import entities as E, ids
 from archeus.core.redact import redact
-from archeus.harnesses import hook, sources
+from archeus.harnesses import base, hook, sources
 from archeus.harnesses.claude_code import adapter as cc
 
 HOOK = hook.__file__
@@ -272,13 +272,13 @@ def _env(tmp_path, wait='5'):
 
 
 def _answer_with(tmp_path, eid, res):
-    box = os.path.join(str(tmp_path), 'run', 'exec', eid, 'hook')
+    d = os.path.join(str(tmp_path), 'run', 'exec', eid)
 
     def core():
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
-            if os.path.exists(os.path.join(box, '1.req.json')):
-                _write(os.path.join(box, '1.res.json'), res)
+            if os.path.exists(os.path.join(d, 'req', '1.req.json')):
+                _write(os.path.join(d, 'res', '1.res.json'), res)
                 return
             time.sleep(0.02)
     t = threading.Thread(target=core)
@@ -336,10 +336,24 @@ def test_E19_a_core_that_never_answers_is_a_halt_before_claude_codes_own_timeout
     out = json.loads(r.stdout)
     assert r.returncode == 0 and out['continue'] is False
     assert out['hookSpecificOutput']['permissionDecision'] == 'deny'
-    assert os.path.exists(os.path.join(str(tmp_path), 'run', 'exec', eid, 'halted.json'))
+    assert os.path.exists(os.path.join(str(tmp_path), 'run', 'exec', eid, 'req', 'halted.json'))
     # the hook's own deadline is well inside the one Claude Code enforces on it
     assert float(os.environ.get('ARCHEUS_HOOK_WAIT', '60')) < cc.HOOK_TIMEOUT_S
     assert hook.WAIT_S < cc.HOOK_TIMEOUT_S
+
+
+def test_the_spawn_configuration_is_core_authored_class_2(archeus_home):
+    """PV-20 §7.5: the settings file that installs the hook sits where the execution
+    may read and never write — not beside its own reports, not in Core's directory.
+    Where it sits is all this shows: that the real CLI loads its hook from there is
+    runtime evidence this test cannot give."""
+    eid = ids.new_id('execution')
+    spec = base.ExecutionSpec(execution_id=eid, prompt='go', workdir=str(archeus_home),
+                              hook_settings=(sys.executable, HOOK))
+    argv = cc.ClaudeCodeAdapter('claude').argv(spec, 'session')
+    settings = argv[argv.index('--settings') + 1]
+    assert os.path.dirname(settings) == base.ExecPaths(eid).res
+    assert os.path.isfile(settings)
 
 
 # ── the fake agent reads a hook as Claude Code documents it ─────────────────

@@ -1,8 +1,8 @@
 """The Claude Code execution adapter (execution-architecture §3; p11-design-gate §9.2).
 
     claude -p --output-format stream-json --verbose --session-id <uuid>
-           [--model m] [--effort e] --max-turns N --settings <exec dir>/settings.json
-           --setting-sources <opted in> --strict-mcp-config [--mcp-config <exec dir>/mcp.json]
+           [--model m] [--effort e] --max-turns N --settings <exec dir>/res/settings.json
+           --setting-sources <opted in> --strict-mcp-config [--mcp-config <exec dir>/res/mcp.json]
            [--disable-slash-commands] [--plugin-dir <dir>]...
            --tools <mapped tools> [--disallowedTools <mcp patterns>]
            [--resume <session uuid>]                    (prompt on stdin)
@@ -114,7 +114,9 @@ class ClaudeCodeAdapter:
         return base.AuthStatus(ok, '' if ok else 'no Claude login in %s' % account.home_ref)
 
     def _settings(self, spec):
-        path = os.path.join(base.ExecPaths(spec.execution_id).dir, 'settings.json')
+        # Core-authored spawn configuration: class 2, readable by the execution and
+        # never writable by it (PV-20 §7.5, A2)
+        path = os.path.join(base.ExecPaths(spec.execution_id).res, 'settings.json')
         hooks = {}
         if spec.hook_settings:
             cmd = ' '.join('"%s"' % a for a in spec.hook_settings)
@@ -133,7 +135,7 @@ class ClaudeCodeAdapter:
         a += sources.flag_argv((spec.inventory or {}).get('flags') or sources.DEFAULT_FLAGS,
                                home=self._home(spec),
                                workdir=spec.workdir,
-                               exec_dir=base.ExecPaths(spec.execution_id).dir)
+                               exec_dir=base.ExecPaths(spec.execution_id).res)
         a += tools.tool_argv(spec.task_contract.get('action_classes') or (), spec.inventory)
         a += ['--resume', session] if spec.resume_ref else ['--session-id', session]
         if spec.model:

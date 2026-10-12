@@ -24,7 +24,7 @@ from typing import Mapping, Optional, Protocol, runtime_checkable
 
 from claude_sessions import config, proc
 
-from ..infra.paths import ExecPaths, archeus_home
+from ..infra.paths import REQUEST_DIR, ExecPaths, archeus_home
 
 
 # ── the contract's vocabulary ───────────────────────────────────────────────
@@ -267,8 +267,10 @@ def read_json(path):
 
 
 def halted_path(exec_dir):
-    """`halted.json`: written by the hook when it halts the process (P11)."""
-    return os.path.join(exec_dir, 'halted.json')
+    """`req/halted.json`: written by the hook when it halts the process (P11). It is
+    in the execution's own class-1 directory because the execution writes it, so it
+    is the execution's claim (PV-20 §7.5; what Core makes of it is S7's, H2)."""
+    return os.path.join(exec_dir, REQUEST_DIR, 'halted.json')
 
 
 def spawn(spec, argv):
@@ -294,7 +296,10 @@ def spawn(spec, argv):
         if last.get('process_seq', 1) != seq - 1 or not os.path.exists(paths.ended):
             raise AlreadySpawned('%s: process %d may still be running'
                                  % (spec.execution_id, seq - 1))
-    os.makedirs(paths.dir, exist_ok=True)
+    # Core creates every class directory (PV-20 §7.5): the execution is never the
+    # one to make a directory inside its own Core-owned one
+    for d in (paths.dir, paths.req, paths.res, paths.ctl):
+        os.makedirs(d, exist_ok=True)
     _write_json(paths.spawning, {'execution_id': spec.execution_id, 'attempt': spec.attempt,
                                  'process_seq': seq, 'at': time.time()})
     for stale in (paths.ended, halted_path(paths.dir)):
@@ -302,6 +307,16 @@ def spawn(spec, argv):
             os.remove(stale)
         except FileNotFoundError:
             pass
+        except OSError as err:
+            # a halt report left over from the last process would be read as this
+            # one's: nothing starts, and the tombstone says why if it can be written —
+            # a tombstone that cannot is reported, never a reason to start anyway
+            error = 'could not remove %s: %s' % (os.path.basename(stale), err)
+            try:
+                mark_ended(paths, None, error=error)
+            except OSError as tomb:
+                error = '%s; the ended tombstone was not written: %s' % (error, tomb)
+            raise SpawnFailed(error) from err
     if not config.write_atomic(paths.prompt, spec.prompt):
         raise OSError('could not write %s' % paths.prompt)
     env = dict(os.environ)

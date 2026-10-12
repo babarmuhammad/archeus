@@ -78,6 +78,24 @@ def test_the_execution_files_of_the_process_io_contract(archeus_home):
     assert paths.processes_registry() == os.path.join(str(archeus_home), 'run', 'processes.jsonl')
 
 
+def test_the_execution_interface_is_one_directory_per_class(archeus_home):
+    """PV-20 §7.5 (R2): requests (1), Core's answers (2), sentinels (3) and the
+    execution's own workspace and state (7) are four directories inside the one that
+    stays Core's, derived from the id alone, and never one another."""
+    exe = ids.new_id('execution')
+    p = paths.exec_paths(exe)
+    classes = (p.req, p.res, p.ctl, os.path.dirname(p.work))
+    assert len({os.path.normcase(c) for c in classes}) == 4
+    assert all(os.path.dirname(c) == p.dir for c in classes)
+    assert [os.path.basename(c) for c in classes] == [
+        paths.REQUEST_DIR, paths.RESPONSE_DIR, paths.SENTINEL_DIR, paths.PRIVATE_DIR]
+    assert os.path.dirname(p.state) == os.path.dirname(p.work) and p.state != p.work
+    assert paths.exec_paths(exe).req == p.req
+    other = paths.exec_paths(ids.new_id('execution'))
+    assert not {p.req, p.res, p.ctl, p.work, p.state} & {
+        other.req, other.res, other.ctl, other.work, other.state}
+
+
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 ARCH = os.path.join(ROOT, 'docs', 'architecture')

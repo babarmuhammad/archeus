@@ -8,13 +8,14 @@ process tree, with the agent's environment, and must behave identically for
 every harness that runs it.
 
 In order: the global STOP sentinel -> halt; this execution's STOP, PAUSE or
-HANDOFF flag -> halt; a sentinel whose state cannot be determined -> halt;
-otherwise the request goes to Core through the execution's mailbox
-(`<ARCHEUS_HOME>/run/exec/<id>/hook/<seq>.req.json`) and the hook waits for
-`<seq>.res.json`. Core answers `allow`, `deny` or `halt`. No answer in time, an
-unreadable answer, a missing identity, a crash: deny and halt (fail closed, D13).
-A halt leaves `halted.json` in the execution's directory, which is how Core tells
-a halted process from one that finished (§9.1).
+HANDOFF flag (`<ARCHEUS_HOME>/run/exec/<id>/ctl/`) -> halt; a sentinel whose
+state cannot be determined -> halt; otherwise the request goes to Core as
+`<ARCHEUS_HOME>/run/exec/<id>/req/<seq>.req.json` and the hook waits for Core's
+`res/<seq>.res.json` — never one beside the request, which the execution could
+have written itself (PV-20 §7.5). Core answers `allow`, `deny` or `halt`. No
+answer in time, an unreadable answer, a missing identity, a crash: deny and halt
+(fail closed, D13). A halt leaves `req/halted.json`, which is how Core tells a
+halted process from one that finished (§9.1).
 
 Answered in Claude Code's hook protocol (P20, ADR-0049 §3):
     allow  exit 0, on stdout {"hookSpecificOutput": {..., "permissionDecision": "allow"}}
@@ -37,6 +38,8 @@ import time
 WAIT_S = float(os.environ.get('ARCHEUS_HOOK_WAIT', '60'))
 POLL_S = 0.05
 _ID = re.compile(r'exe_[0-9A-HJKMNP-TV-Z]{26}\Z')
+#: archeus.infra.paths' class directories, mirrored: this file imports no package
+REQUEST_DIR, RESPONSE_DIR, SENTINEL_DIR = 'req', 'res', 'ctl'
 
 
 #: Claude Code's documented blocking exit code (a deny)
@@ -70,12 +73,20 @@ def answer(kind, reason=''):
     return json.dumps(decision(kind, reason)), '', 0
 
 
-def _halted(exec_dir, seq, reason):
+def _mailbox(box):
+    # os.makedirs looks at the parent before it accepts an existing leaf, and an
+    # execution may be refused its directory's metadata while its mailbox is open
+    if not os.path.isdir(box):
+        os.makedirs(box, exist_ok=True)
+
+
+def _halted(box, seq, reason):
     try:
-        tmp = os.path.join(exec_dir, 'halted.json.tmp')
+        _mailbox(box)
+        tmp = os.path.join(box, 'halted.json.tmp')
         with open(tmp, 'w', encoding='utf-8') as f:
             json.dump({'seq': seq, 'reason': reason, 'at': time.time()}, f)
-        os.replace(tmp, os.path.join(exec_dir, 'halted.json'))
+        os.replace(tmp, os.path.join(box, 'halted.json'))
     except OSError:
         pass
 
@@ -99,7 +110,7 @@ def _reserve(box, body):
     """Write the request under the next free sequence number, atomically. The
     number is taken by creating `<seq>.lock` exclusively, and the lock is never
     removed, so two hooks can never hold one number."""
-    os.makedirs(box, exist_ok=True)
+    _mailbox(box)
     while True:
         taken = [int(n.split('.')[0]) for n in os.listdir(box)
                  if n.split('.')[0].isdigit()]
@@ -124,12 +135,13 @@ def run(payload, environ):
     if not (home and token and _ID.match(eid)):
         return 'halt', 'this process has no Archeus execution identity'
     exec_dir = os.path.join(home, 'run', 'exec', eid)
+    box = os.path.join(exec_dir, REQUEST_DIR)
     if payload.get('hook_event_name') == 'PreCompact':
         # the context-pressure backstop (p12-design-gate §13.1): recorded for
         # Core, never asked of it; compaction itself goes ahead
         try:
-            os.makedirs(exec_dir, exist_ok=True)
-            with open(os.path.join(exec_dir, 'precompact.json'), 'w', encoding='utf-8') as f:
+            _mailbox(box)
+            with open(os.path.join(box, 'precompact.json'), 'w', encoding='utf-8') as f:
                 json.dump({'at': time.time(), 'trigger': payload.get('trigger')}, f)
         except OSError:
             pass
@@ -137,23 +149,22 @@ def run(payload, environ):
     estop = os.path.join(home, 'run', 'STOP')
     why = _sentinel(estop, 'emergency stop', 'emergency stop')
     if why:
-        _halted(exec_dir, None, why)
+        _halted(box, None, why)
         return 'halt', why
     for flag, reason in (('STOP', 'stopped by Archeus'), ('PAUSE', 'paused by Archeus'),
                          ('HANDOFF', 'handing off to a fresh session')):
-        why = _sentinel(os.path.join(exec_dir, flag), flag + ' flag', reason)
+        why = _sentinel(os.path.join(exec_dir, SENTINEL_DIR, flag), flag + ' flag', reason)
         if why:
-            _halted(exec_dir, None, why)
+            _halted(box, None, why)
             return 'halt', why
-    box = os.path.join(exec_dir, 'hook')
     seq = _reserve(box, {'token': token, 'tool': payload.get('tool_name'),
                          'input': payload.get('tool_input'), 'cwd': payload.get('cwd')})
-    res = os.path.join(box, '%d.res.json' % seq)
+    res = os.path.join(exec_dir, RESPONSE_DIR, '%d.res.json' % seq)
     deadline = time.monotonic() + WAIT_S
     while time.monotonic() < deadline:
         why = _sentinel(estop, 'emergency stop', 'emergency stop')
         if why:
-            _halted(exec_dir, seq, why)
+            _halted(box, seq, why)
             return 'halt', why
         try:
             with open(res, encoding='utf-8') as f:
@@ -165,9 +176,9 @@ def run(payload, environ):
         if kind not in ('allow', 'deny', 'halt'):
             break
         if kind == 'halt':
-            _halted(exec_dir, seq, got.get('reason') or '')
+            _halted(box, seq, got.get('reason') or '')
         return kind, got.get('reason') or ''
-    _halted(exec_dir, seq, 'Archeus did not answer')
+    _halted(box, seq, 'Archeus did not answer')
     return 'halt', 'Archeus did not answer; denied and halted (fail closed)'
 
 

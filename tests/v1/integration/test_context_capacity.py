@@ -93,7 +93,7 @@ def test_an_execution_with_no_model_chosen_is_estimated(x):
 
 def _precompact_when_running(x, mid):
     e = x.drive(mid, lambda: next((e for e in _execs(x, mid) if e.state == 'RUNNING'), None))
-    with open(os.path.join(ExecPaths(e.id).dir, 'precompact.json'), 'w') as f:
+    with open(os.path.join(ExecPaths(e.id).req, 'precompact.json'), 'w') as f:
         json.dump({'at': 1}, f)
     return e
 
@@ -117,7 +117,7 @@ def test_precompact_after_a_report_keeps_the_report(x):
     mid = x.ready(task('t1', 'write_repo', 'read', min_model_tier='large'))
     e = x.drive(mid, lambda: next((e for e in _execs(x, mid) if e.state == 'RUNNING'
                                    and (e.context or {}).get('used_tokens')), None))
-    with open(os.path.join(ExecPaths(e.id).dir, 'precompact.json'), 'w') as f:
+    with open(os.path.join(ExecPaths(e.id).req, 'precompact.json'), 'w') as f:
         json.dump({'at': 1}, f)
     x.drive(mid, lambda: x.state(e.id).state == 'ENDED_HANDOFF')
     v = P.view(x.state(e.id))

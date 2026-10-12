@@ -113,11 +113,23 @@ def quarantine_log():
     return os.path.join(isolation_dir(), 'quarantine.jsonl')
 
 
+#: PV-20 §7.5 (R2): the directories inside an execution's own one, one per resource
+#: class, so that what the execution may write is never where Core answers it. The
+#: execution hook mirrors these names (it imports nothing from this package).
+REQUEST_DIR = 'req'         # class 1: the execution's requests and reports, untrusted
+RESPONSE_DIR = 'res'        # class 2: Core's answers and the spawn configuration it wrote
+SENTINEL_DIR = 'ctl'        # class 3: the STOP / PAUSE / HANDOFF flags Core sets
+PRIVATE_DIR = 'own'         # class 7: the execution's own workspace and state
+
+
 class ExecPaths:
     """The per-execution files of the process I/O contract
-    (execution-architecture §3.1), all in `<ARCHEUS_HOME>/run/exec/<execution_id>/`."""
+    (execution-architecture §3.1), all in `<ARCHEUS_HOME>/run/exec/<execution_id>/`.
+    That directory and the contract files in it are Core's (PV-20 class 4); the
+    class 1, 2, 3 and 7 directories inside it are the execution's interface."""
 
-    __slots__ = ('execution_id', 'dir', 'spawning', 'prompt', 'stream', 'pid', 'ended')
+    __slots__ = ('execution_id', 'dir', 'spawning', 'prompt', 'stream', 'pid', 'ended',
+                 'req', 'res', 'ctl', 'work', 'state')
 
     def __init__(self, execution_id, run=None):
         # the id becomes a directory name: only a well-formed id may, so no
@@ -131,6 +143,11 @@ class ExecPaths:
         self.stream = os.path.join(self.dir, 'stream.jsonl')   # stdout+stderr, tailed
         self.pid = os.path.join(self.dir, 'pid.json')          # {pid, create_time}
         self.ended = os.path.join(self.dir, 'ended')           # {exit_code, at}
+        self.req = os.path.join(self.dir, REQUEST_DIR)
+        self.res = os.path.join(self.dir, RESPONSE_DIR)
+        self.ctl = os.path.join(self.dir, SENTINEL_DIR)
+        self.work = os.path.join(self.dir, PRIVATE_DIR, 'work')   # a project-less workspace
+        self.state = os.path.join(self.dir, PRIVATE_DIR, 'state')
 
 
 def exec_paths(execution_id):

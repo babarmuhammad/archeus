@@ -187,14 +187,14 @@ class LocalNode:
     @staticmethod
     def set_flag(execution_id, flag):
         assert flag in FLAGS
-        paths = ExecPaths(execution_id)
-        os.makedirs(paths.dir, exist_ok=True)
-        with open(os.path.join(paths.dir, flag), 'w', encoding='utf-8') as f:
+        d = ExecPaths(execution_id).ctl
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, flag), 'w', encoding='utf-8') as f:
             f.write(str(time.time()))
 
     @staticmethod
     def clear_flags(execution_id):
-        d = ExecPaths(execution_id).dir
+        d = ExecPaths(execution_id).ctl
         for flag in FLAGS:
             try:
                 os.remove(os.path.join(d, flag))
@@ -204,7 +204,7 @@ class LocalNode:
     @staticmethod
     def precompacted(execution_id):
         """The PreCompact backstop fired (the hook wrote it; p12-design-gate §13.1)."""
-        return os.path.exists(os.path.join(ExecPaths(execution_id).dir, 'precompact.json'))
+        return os.path.exists(os.path.join(ExecPaths(execution_id).req, 'precompact.json'))
 
     @staticmethod
     def disarmed():
@@ -248,8 +248,11 @@ class LocalNode:
     @staticmethod
     def pending_requests(execution_id):
         """[(seq, request)] with no answer yet, lowest seq first. An unreadable
-        request is returned as None, so Core can answer it (fail closed)."""
-        box = os.path.join(ExecPaths(execution_id).dir, 'hook')
+        request is returned as None, so Core can answer it (fail closed). Only
+        Core's own answer in class 2 answers a request: an answer the execution
+        put beside its request is not one (PV-20 §7.5)."""
+        paths = ExecPaths(execution_id)
+        box = paths.req
         try:
             names = os.listdir(box)
         except FileNotFoundError:
@@ -259,7 +262,7 @@ class LocalNode:
             head, _, tail = n.partition('.')
             if tail != 'req.json' or not head.isdigit():
                 continue
-            if os.path.exists(os.path.join(box, '%s.res.json' % head)):
+            if os.path.exists(os.path.join(paths.res, '%s.res.json' % head)):
                 continue
             try:
                 with open(os.path.join(box, n), encoding='utf-8') as f:
@@ -271,7 +274,7 @@ class LocalNode:
 
     @staticmethod
     def respond(execution_id, seq, decision, reason=''):
-        box = os.path.join(ExecPaths(execution_id).dir, 'hook')
+        box = ExecPaths(execution_id).res
         os.makedirs(box, exist_ok=True)
         config.write_json_atomic(os.path.join(box, '%d.res.json' % seq),
                                  {'decision': decision, 'reason': reason}, indent=None)

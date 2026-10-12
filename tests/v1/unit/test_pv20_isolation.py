@@ -27,7 +27,7 @@ from archeus.core.application import executions as X
 from archeus.core.domain import ids
 from archeus.core.execution import manager as M
 from archeus.harnesses import base
-from archeus.infra.paths import isolation_dir, isolation_state, quarantine_log
+from archeus.infra.paths import ExecPaths, isolation_dir, isolation_state, quarantine_log
 from archeus.node import isolation as iso
 from archeus.node.local import LocalNode
 
@@ -247,8 +247,8 @@ def new_execution_id():
 
 def make_satisfying_request(execution_id, root):
     """An §3.1 inventory a synthetic fixture can satisfy but production cannot: every
-    required row present on a real directory, the broker present, the class-1/2 mailbox
-    separated, and Core's own state kept outside the boundary."""
+    required row present on a real directory, the broker present, the class 1, 2 and 3
+    directories separated, and Core's own state kept outside the boundary."""
     def d(name):
         p = os.path.join(root, name)
         os.makedirs(p, exist_ok=True)
@@ -257,20 +257,24 @@ def make_satisfying_request(execution_id, root):
     runtime = d('runtime')
     hook = d('hook')
     mailbox = d('mailbox')
+    response = d('response')
+    sentinel = d('sentinel')
     state = d('state')
     core_state = d('core_state')
     broker = d('broker')
-    spawn_config = os.path.join(root, 'spawn_config.json')
+    spawn_config = os.path.join(response, 'spawn_config.json')
     with open(spawn_config, 'w', encoding='utf-8') as f:
         json.dump({'argv': []}, f)
     grants = (iso.Grant(workspace, 'rw', 'workspace'),
               iso.Grant(runtime, 'rx', 'runtime'),
               iso.Grant(hook, 'rx', 'hook'),
-              iso.Grant(mailbox, 'rw', 'mailbox'),
-              iso.Grant(os.path.dirname(spawn_config), 'rx', 'spawn_config'),
+              iso.Grant(mailbox, 'rw', 'request'),
+              iso.Grant(response, 'rx', 'response'),
+              iso.Grant(sentinel, 'rx', 'sentinel'),
               iso.Grant(state, 'rw', 'state'))
     return iso.IsolationRequest(execution_id=execution_id, workspace=workspace,
-                                grants=grants, mailbox=mailbox, spawn_config=spawn_config,
+                                grants=grants, mailbox=mailbox, response=response,
+                                sentinel=sentinel, spawn_config=spawn_config,
                                 state_dir=state, core_state=core_state, broker=broker)
 
 
@@ -399,6 +403,139 @@ class TestInvariantFailClosed:
         conds = iso.check_invariant(b, req, {'created': True, 'sid': b.derive_sid(req.execution_id)},
                                     {'type': 'Job', 'name': '', 'inheritable':False})
         assert 'no_broad_grants' in iso.unmet_conditions(conds)
+
+
+# ── §7.5 (S2-L): each mailbox class is its own directory, with its own access ──
+# What these show is the plan and the invariant over a fake boundary; that the OS
+# keeps an execution to its classes is Windows evidence, not this.
+
+def _conds(b, req):
+    return iso.check_invariant(b, req, {'created': True, 'sid': b.derive_sid(req.execution_id)},
+                               {'type': 'Job', 'name': '', 'inheritable': False})
+
+
+def _moved(req, **where):
+    """*req* with class directories moved and the grants naming them moved with them,
+    so the only thing that changes is where a class is."""
+    rows = {'mailbox': 'request', 'response': 'response', 'sentinel': 'sentinel'}
+    to = {rows[k]: v for k, v in where.items() if k in rows}
+    grants = tuple(iso.Grant(to[g.row], g.access, g.row) if g.row in to else g
+                   for g in req.grants)
+    return iso.IsolationRequest(**{**req.__dict__, **where, 'grants': grants})
+
+
+class TestClassSeparation:
+    def test_each_class_carries_its_own_access_and_no_other(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        for row, wrong in (('request', 'rx'), ('response', 'rw'), ('sentinel', 'rw')):
+            grants = tuple(iso.Grant(g.path, wrong, g.row) if g.row == row else g
+                           for g in req.grants)
+            conds = _conds(b, iso.IsolationRequest(**{**req.__dict__, 'grants': grants}))
+            assert iso.unmet_conditions(conds) == ('grants',), row
+
+    def test_a_class_granted_at_another_classs_directory_fails_closed(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        grants = tuple(iso.Grant(req.mailbox, g.access, g.row) if g.row == 'response' else g
+                       for g in req.grants)
+        conds = _conds(b, iso.IsolationRequest(**{**req.__dict__, 'grants': grants}))
+        assert iso.unmet_conditions(conds) == ('grants',)
+
+    def test_requests_and_answers_in_one_directory_fail_closed(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        config = os.path.join(req.mailbox, 'spawn_config.json')
+        open(config, 'w').close()
+        merged = _moved(req, response=req.mailbox, spawn_config=config)
+        assert iso.unmet_conditions(_conds(b, merged)) == ('mailbox',)
+
+    def test_a_class_inside_another_fails_closed(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        inner = os.path.join(req.mailbox, 'ctl')
+        os.makedirs(inner)
+        assert iso.unmet_conditions(_conds(b, _moved(req, sentinel=inner))) == ('mailbox',)
+
+    @pytest.mark.parametrize('where', ['mailbox', 'core_state'])
+    def test_a_spawn_configuration_outside_class_2_fails_closed(self, tmp_path, where):
+        a, b, req, _ = authority(tmp_path)
+        config = os.path.join(getattr(req, where), 'spawn_config.json')
+        open(config, 'w').close()
+        moved = iso.IsolationRequest(**{**req.__dict__, 'spawn_config': config})
+        assert iso.unmet_conditions(_conds(b, moved)) == ('mailbox',)
+
+    def test_a_workspace_that_is_cores_own_directory_fails_closed(self, tmp_path):
+        # a project-less execution's workspace used to be its whole directory
+        a, b, req, _ = authority(tmp_path)
+        own = iso.IsolationRequest(**{**req.__dict__, 'core_only': (req.workspace,)})
+        assert iso.unmet_conditions(_conds(b, own)) == ('no_broad_grants',)
+
+    def test_a_class_that_is_cores_own_directory_fails_closed(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        own = iso.IsolationRequest(**{**req.__dict__, 'core_only': (req.mailbox,)})
+        assert iso.unmet_conditions(_conds(b, own)) == ('no_broad_grants', 'mailbox')
+
+    @pytest.mark.parametrize('field,row', [('workspace', 'workspace'), ('state_dir', 'state')])
+    @pytest.mark.parametrize('shape', ['is_class_1', 'inside_class_2', 'holds_class_3'])
+    def test_class_7_is_no_mailbox_class_and_neither_holds_nor_lies_in_one(
+            self, tmp_path, field, row, shape):
+        a, b, req, _ = authority(tmp_path)
+        if shape == 'holds_class_3':
+            inner = os.path.join(getattr(req, field), 'ctl')
+            os.makedirs(inner)
+            bad = _moved(req, sentinel=inner)
+        else:
+            where = req.mailbox if shape == 'is_class_1' else os.path.join(req.response, 'own')
+            os.makedirs(where, exist_ok=True)
+            grants = tuple(iso.Grant(where, g.access, g.row) if g.row == row else g
+                           for g in req.grants)
+            bad = iso.IsolationRequest(**{**req.__dict__, field: where, 'grants': grants})
+        assert iso.unmet_conditions(_conds(b, bad)) == ('mailbox',)
+
+    @pytest.mark.parametrize('nested', [False, True])
+    def test_the_workspace_may_hold_its_own_state(self, tmp_path, nested):
+        a, b, req, _ = authority(tmp_path)
+        state = os.path.join(req.workspace, 'state') if nested else req.workspace
+        os.makedirs(state, exist_ok=True)
+        grants = tuple(iso.Grant(state, g.access, g.row) if g.row == 'state' else g
+                       for g in req.grants)
+        together = iso.IsolationRequest(**{**req.__dict__, 'state_dir': state,
+                                           'grants': grants})
+        assert iso.unmet_conditions(_conds(b, together)) == ()
+
+    def test_the_production_plan_puts_each_class_in_its_own_directory(self, tmp_path,
+                                                                      monkeypatch):
+        monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path))
+        spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go',
+                                  workdir=str(tmp_path))
+        req = iso.default_plan(spec)
+        p = ExecPaths(spec.execution_id)
+        assert (req.mailbox, req.response, req.sentinel) == (p.req, p.res, p.ctl)
+        assert os.path.dirname(req.spawn_config) == p.res
+        assert req.core_only == (p.dir,) and req.broker == ''
+        assert {g.row: (g.path, g.access) for g in req.grants
+                if g.row in ('request', 'response', 'sentinel')} == {
+            'request': (p.req, 'rw'), 'response': (p.res, 'rx'), 'sentinel': (p.ctl, 'rx')}
+
+    def test_one_executions_plan_names_nothing_of_anothers(self, tmp_path, monkeypatch):
+        monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path))
+
+        def plan():
+            return iso.default_plan(base.ExecutionSpec(
+                execution_id=new_execution_id(), prompt='go', workdir=str(tmp_path)))
+
+        def own(r):
+            return {r.mailbox, r.response, r.sentinel, r.spawn_config, r.state_dir,
+                    *r.core_only}
+        a, b = plan(), plan()
+        assert not own(a) & own(b)
+        assert not any(p.startswith(b.core_only[0]) for p in own(a))
+
+
+class TestNoBoundaryForTheUnisolated:
+    def test_ending_an_execution_that_was_never_isolated_touches_no_boundary(self):
+        b = FakeBoundary()
+        a = iso.Isolation(FakeNode(), boundary=b)
+        assert a.teardown(new_execution_id(), reason='ended') is None
+        assert a.reclaim(()) == []
+        assert (b.mutations(), b.looked, b.probed, b.closed) == ([], [], [], [])
 
 
 class TestEstablish:
@@ -742,8 +879,8 @@ class TestRestartReconciliation:
         from archeus.infra.paths import ExecPaths
         eid = new_execution_id()
         paths = ExecPaths(eid)
-        os.makedirs(paths.dir, exist_ok=True)
-        with open(os.path.join(paths.dir, 'halted.json'), 'w', encoding='utf-8') as f:
+        os.makedirs(paths.req, exist_ok=True)
+        with open(base.halted_path(paths.dir), 'w', encoding='utf-8') as f:
             json.dump({'state': 'HANDLING', 'adopt': True, 'note': 'forged'}, f)
         m = _manager_with_fake_node()
         rec = iso.IsolationRecord(execution_id=eid, profile='p', state='established')
@@ -819,16 +956,26 @@ class TestProductionDispatchDisabled:
         assert a.requested(new_execution_id(), T()) is False
 
     def test_default_plan_is_unsatisfiable_in_production(self, tmp_path, monkeypatch):
-        monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path))
+        # a project apart from the home: a workspace holding the class directories
+        # would fail condition 5 on its own (see TestClassSeparation)
+        project = tmp_path / 'project'
+        project.mkdir()
+        monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path / 'home'))
         spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go',
-                                  workdir=str(tmp_path))
+                                  workdir=str(project))
         req = iso.default_plan(spec)
+        # the class 1-3 directories and the spawn configuration as `base.spawn` and the
+        # adapter leave them: the layout is there, and production still cannot start
+        for p in (req.mailbox, req.response, req.sentinel, req.state_dir):
+            os.makedirs(p)
+        open(req.spawn_config, 'w').close()
         b = FakeBoundary()
         conds = iso.check_invariant(b, req, {'created': True,
                                              'sid': b.derive_sid(spec.execution_id)},
                                     {'type': 'Job', 'name': '', 'inheritable':False})
         unmet = iso.unmet_conditions(conds)
-        assert 'grants' in unmet and 'mailbox' in unmet    # no broker, no class 1-3 mailbox
+        assert 'grants' in unmet and 'mailbox' not in unmet
+        assert conds['grants'][1] == 'no broker holds provider access (R3-B)'
 
 
 # ── Phase A containment (ACL incident, 2026-10-09) ────────────────────────────

@@ -733,7 +733,7 @@ def test_E49_the_hook_halts_on_the_estop_sentinel_without_asking_core(archeus_ho
                            capture_output=True, text=True, env=env, timeout=30)
         assert json.loads(r.stdout) == {'continue': False, 'stopReason': 'emergency stop',
                                         'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny', 'permissionDecisionReason': 'emergency stop'}}
-        assert not os.path.exists(os.path.join(ExecPaths(eid).dir, 'hook'))    # nothing asked
+        assert not os.path.exists(os.path.join(ExecPaths(eid).req, '1.req.json'))  # nothing asked
     finally:
         LocalNode.clear_estop()
 
@@ -798,7 +798,7 @@ def test_E60_a_new_core_adopts_a_live_process_and_records_its_end(x):
 def test_E61_a_crash_between_prepare_and_spawn_starts_nothing_and_charges_nothing(x):
     mid, e = _intent(x)
     x.do(X.prepare_process, execution_id=e.id, token_digest='0' * 64,
-         workdir=ExecPaths(e.id).dir, branch=None, process_seq=1)
+         workdir=ExecPaths(e.id).work, branch=None, process_seq=1)
     fresh = Rig(x.db)
     fresh.manager.boot()
     e = x.state(e.id)

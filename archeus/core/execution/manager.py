@@ -324,7 +324,9 @@ class ExecutionManager:
     def _workspace(self, e, m, t):
         """(workdir, branch) — §17. Recorded before the process starts."""
         if m.project_id is None:
-            d = ExecPaths(e.id).dir
+            # the execution's own (class 7), never the Core-owned directory around it
+            # (PV-20 §7.5)
+            d = ExecPaths(e.id).work
             os.makedirs(d, exist_ok=True)
             return d, None
         with self.db.read() as r:
@@ -434,7 +436,7 @@ class ExecutionManager:
             if req is None:
                 self.node.respond(e.id, seq, 'halt', 'the request could not be read')
                 continue
-            workdir = e.workdir or ExecPaths(e.id).dir
+            workdir = e.workdir or ExecPaths(e.id).work
             cwd = req.get('cwd')
             cwd_ok = cwd is None or _inside(cwd, workdir)
             branch_now = self.node.git_branch(workdir) if e.branch else None
@@ -536,7 +538,7 @@ class ExecutionManager:
 
     def _facts(self, e, p):
         """What the checkpoint needs from outside the transaction (§8.2)."""
-        workdir = e.workdir or ExecPaths(e.id).dir
+        workdir = e.workdir or ExecPaths(e.id).work
         return {'files_changed': self.node.diff_stat(workdir) if e.branch or e.workdir
                 else [], 'decisions': list(p.get('decisions') or [])[-30:],
                 'last_error': p.get('last_error'),

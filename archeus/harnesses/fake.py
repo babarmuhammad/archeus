@@ -96,7 +96,7 @@ class FakeHarness:
                                       sources.DEFAULT_FLAGS,
                                       home=spec.account.home_ref if spec.account else None,
                                       workdir=spec.workdir,
-                                      exec_dir=base.ExecPaths(spec.execution_id).dir)
+                                      exec_dir=base.ExecPaths(spec.execution_id).res)
         if self._tools:
             argv += cc_tools.tool_argv(spec.task_contract.get('action_classes') or (),
                                        spec.inventory)

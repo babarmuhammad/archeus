@@ -119,9 +119,14 @@ def validated_profile(execution_id):
 CONDITIONS = ('identity', 'grants', 'no_broad_grants', 'job', 'mailbox', 'isolated_path')
 
 #: what the §3.1 inventory requires Core to have granted before the process starts.
-#: A production request cannot supply all of it yet (the broker row is R3-B's, the
-#: class 1–3 mailbox separation is §7.5's), so a production request fails closed here.
-REQUIRED_GRANTS = ('workspace', 'runtime', 'hook', 'mailbox', 'spawn_config', 'state')
+#: A production request cannot supply all of it yet (the broker row is R3-B's, and
+#: the runtime and hook rows wait for Core-staged copies), so it fails closed here.
+REQUIRED_GRANTS = ('workspace', 'runtime', 'hook', 'request', 'response', 'sentinel', 'state')
+
+#: the execution's three mailbox classes (§7.5, R2) as inventory rows, each with the
+#: only access it may carry: the execution writes its requests (class 1) and reads
+#: Core's answers (class 2) and sentinels (class 3). A class may be split, never merged.
+CLASS_ROWS = (('request', 'rw'), ('response', 'rx'), ('sentinel', 'rx'))
 
 #: principals that must never hold a write ACE inside the boundary. Every one of them
 #: is a *broad* principal: what it grants reaches users and containers this execution
@@ -146,15 +151,18 @@ class Grant:
 class IsolationRequest:
     """Everything the invariant needs to point at before an isolated process may
     start. A synthetic fixture supplies each artifact; the production layout does not
-    (no broker, no class 1–3 mailbox, no materialised spawn configuration), so the
-    same check that passes in a fixture fails closed for a production execution."""
+    (no broker, and no grant on Core-staged runtime and hook copies), so the same
+    check that passes in a fixture fails closed for a production execution."""
     execution_id: str
     workspace: str
     grants: tuple = ()                   # (Grant, ...)
     mailbox: str = ''                    # class 1: the execution's own request box
-    spawn_config: str = ''               # class 2: Core-authored, execution-readable
+    response: str = ''                   # class 2: Core's answers, execution-readable
+    sentinel: str = ''                   # class 3: Core's flags, execution-readable
+    spawn_config: str = ''               # class 2: Core-authored, inside `response`
     state_dir: str = ''                  # class 7: per-execution runtime state
     core_state: str = ''                 # class 4–6: Core-owned, must stay ungranted
+    core_only: tuple = ()                # further class 4–6 paths, likewise
     broker: str = ''                     # R3-B: who brokers provider access
     isolated_path: bool = True
 
@@ -184,16 +192,25 @@ def check_invariant(api, request, identity, job_facts=None):
         and sid == _derive(api, request.execution_id),
         'no profile was created for this execution')
 
-    # 2. the required resource grants are established, workspace included (§3.1, §3.2 A1)
+    # 2. the required resource grants are established, workspace included (§3.1, §3.2 A1),
+    # and each mailbox class is granted on its own directory with its own access (§7.5)
     missing = [row for row in REQUIRED_GRANTS if request.grant_for(row) is None]
+    boxes = {'request': request.mailbox, 'response': request.response,
+             'sentinel': request.sentinel}
+    misclassed = [row for row, access in CLASS_ROWS if request.grant_for(row) is not None
+                  and (_norm(request.grant_for(row).path) != _norm(boxes[row])
+                       or request.grant_for(row).access != access)]
     absent = [g.path for g in request.grants if not os.path.isdir(g.path)]
     # a descriptor is read only where there is one: a path that is not there already
     # fails this condition by name, and a read that fails raises rather than pass
     present = [g for g in request.grants if os.path.isdir(g.path)]
     unverified = [g.path for g in present if not api.grant_established(g.path, sid, g.access)]
-    put('grants', not (missing or absent or unverified) and bool(request.workspace)
-        and os.path.isdir(request.workspace) and bool(request.broker),
+    put('grants', not (missing or misclassed or absent or unverified)
+        and bool(request.workspace) and os.path.isdir(request.workspace)
+        and bool(request.broker),
         _reason((not missing, 'missing inventory rows: %s' % (missing,)),
+                (not misclassed, 'a mailbox class granted at another path or access: %s'
+                 % (misclassed,)),
                 (not absent, 'granted path that is not present: %s' % (absent,)),
                 (not unverified, 'grant unreadable in the DACL: %s' % (unverified,)),
                 (bool(request.workspace) and os.path.isdir(request.workspace),
@@ -202,7 +219,11 @@ def check_invariant(api, request, identity, job_facts=None):
 
     # 3. prohibited broad grants are absent (§3.1)
     broad = [g.path for g in present if api.broad_write_grant(g.path, sid)]
-    leaked = [p for p in (request.core_state,) if p and api.granted_to(p, sid)]
+    # Core's own state is not granted, and not planned for a grant either: a plan that
+    # names it (the execution's directory as its workspace) never reaches a DACL
+    core = [p for p in (request.core_state,) + tuple(request.core_only) if p]
+    planned = {_norm(g.path) for g in request.grants}
+    leaked = [p for p in core if _norm(p) in planned or api.granted_to(p, sid)]
     caps = [c for c in api.capability_grants() if c]
     put('no_broad_grants', not (broad or leaked or caps),
         _reason((not broad, 'a broad principal holds write: %s' % (broad,)),
@@ -217,13 +238,21 @@ def check_invariant(api, request, identity, job_facts=None):
         else 'the Job is named, has a name that could not be read, is inheritable, '
              'or is no Job: %s' % (job_facts,))
 
-    # 5. the required Core/mailbox boundary exists (§3.3, §7.5)
-    put('mailbox', bool(request.mailbox) and bool(request.spawn_config)
+    # 5. the required Core/mailbox boundary exists (§3.3, §7.5): classes 1, 2 and 3 are
+    # three directories, none of them another or inside another or Core's own, none of
+    # them is, holds or lies inside the execution's workspace or state (class 7), and
+    # the spawn configuration Core wrote is in class 2
+    put('mailbox', all(boxes.values()) and bool(request.spawn_config)
         and bool(request.core_state)
-        and os.path.isdir(request.mailbox) and os.path.isfile(request.spawn_config)
-        and not api.granted_to(request.core_state, sid),
-        'no class-1 mailbox and Core-authored class-2 spawn configuration under the '
-        'boundary, or Core-owned state is unnamed or sits inside it')
+        and all(os.path.isdir(p) for p in boxes.values())
+        and _separate(boxes.values(), (request.workspace, request.state_dir))
+        and not {_norm(p) for p in boxes.values()} & {_norm(p) for p in core}
+        and os.path.isfile(request.spawn_config)
+        and _norm(os.path.dirname(request.spawn_config)) == _norm(request.response)
+        and not any(api.granted_to(p, sid) for p in core),
+        'no separate class 1, 2 and 3 directories apart from the workspace and state, '
+        'with the Core-authored spawn configuration in class 2, or Core-owned state is '
+        'unnamed or sits inside the boundary')
 
     # 6. the isolated spawn path is selected (§3.4)
     put('isolated_path', bool(request.isolated_path) and api.available(),
@@ -239,6 +268,26 @@ def _reason(*parts):
 
 def _text(s):
     return s if isinstance(s, str) else str(s)
+
+
+def _norm(path):
+    return os.path.normcase(os.path.abspath(path)) if path else ''
+
+
+def _within(a, b):
+    """Is *a* the directory *b*, or inside it?"""
+    a, b = _norm(a), _norm(b)
+    return a == b or a.startswith(b.rstrip(os.sep) + os.sep)
+
+
+def _separate(paths, apart=()):
+    """No two of *paths* are one directory or lie one inside the other, and none of
+    them is, holds or lies inside any of *apart* — which are not judged among
+    themselves (a workspace may hold its own state)."""
+    paths = list(paths)
+    return not (any(_within(a, b) for i, a in enumerate(paths)
+                    for j, b in enumerate(paths) if i != j)
+                or any(_within(a, o) or _within(o, a) for a in paths for o in apart if o))
 
 
 def _derive(api, execution_id):
@@ -570,23 +619,27 @@ class Isolation:
 
     # ── the isolated spawn path (§3.4) ──
 
-    def request(self, execution_id, *, workspace, grants, mailbox='', spawn_config='',
-                state_dir='', core_state='', broker=''):
+    def request(self, execution_id, *, workspace, grants, mailbox='', response='',
+                sentinel='', spawn_config='', state_dir='', core_state='', core_only=(),
+                broker=''):
         """The opaque object `base.spawn` uses instead of the detached launcher
         (§3.4: "a new spawn mechanism behind the existing seam")."""
         return IsolationContext(
             self, IsolationRequest(execution_id=execution_id, workspace=workspace,
                                    grants=tuple(grants), mailbox=mailbox,
+                                   response=response, sentinel=sentinel,
                                    spawn_config=spawn_config, state_dir=state_dir,
-                                   core_state=core_state, broker=broker))
+                                   core_state=core_state, core_only=tuple(core_only),
+                                   broker=broker))
 
     def request_for(self, spec):
         """The isolated launch of one execution's process, planned from the spec. The
         plan is Core's (§3.1: the grants are established, not requested)."""
         r = (self._plan or default_plan)(spec)
         return self.request(spec.execution_id, workspace=r.workspace, grants=r.grants,
-                            mailbox=r.mailbox, spawn_config=r.spawn_config,
-                            state_dir=r.state_dir, core_state=r.core_state,
+                            mailbox=r.mailbox, response=r.response, sentinel=r.sentinel,
+                            spawn_config=r.spawn_config, state_dir=r.state_dir,
+                            core_state=r.core_state, core_only=r.core_only,
                             broker=r.broker)
 
     def note_failure(self, spec, err):
@@ -1052,26 +1105,32 @@ def default_plan(spec):
     """The §3.1 inventory as this layout can establish it today — the production shape.
 
     It is deliberately *not* satisfiable yet: no R3-B broker holds the provider-access
-    row, and the class 1–3 mailbox separation (§7.5) does not exist, so §3.4's
-    conditions 2 and 5 stay unmet and an isolated production execution never starts —
-    with no setting that changes it (S1 gate §3: "the invariant check must test all six
-    conditions including the later-slice boundaries"). A synthetic fixture supplies its
-    own plan and satisfies the conditions in the fixture.
+    row, and nothing grants the runtime and hook rows, so §3.4's condition 2 stays unmet
+    and an isolated production execution never starts — with no setting that changes
+    it (S1 gate §3: "the invariant check must test all six conditions including the
+    later-slice boundaries"). The class 1–3 directories are the ones `base.spawn`
+    creates (§7.5), and the execution's own directory around them is Core's. A
+    synthetic fixture supplies its own plan and satisfies the conditions in the fixture.
     """
     paths = ExecPaths(spec.execution_id)
     here = os.path.dirname(os.path.abspath(__file__))
-    # planned rows only: S1 applies none of them. The runtime and hook rows name the
-    # real Python install and this repository, which no grant may ever touch (one did,
-    # 2026-10-08); applying access is the production-path slice's, on Core-staged copies
+    # planned rows only: nothing here applies any of them. The runtime and hook rows
+    # name the real Python install and this repository, which no grant may ever touch
+    # (one did, 2026-10-08); applying access is the production-path slice's, on
+    # Core-staged copies
     grants = (Grant(spec.workdir, 'rw', 'workspace'),
               Grant(os.path.dirname(os.path.abspath(sys.executable)), 'rx', 'runtime'),
               Grant(os.path.join(os.path.dirname(here), 'harnesses'), 'rx', 'hook'),
-              Grant(os.path.join(paths.dir, 'hook'), 'rw', 'mailbox'),
-              Grant(os.path.join(paths.dir, 'state'), 'rw', 'state'))
+              Grant(paths.req, 'rw', 'request'),
+              Grant(paths.res, 'rx', 'response'),
+              Grant(paths.ctl, 'rx', 'sentinel'),
+              Grant(paths.state, 'rw', 'state'))
     return IsolationRequest(execution_id=spec.execution_id, workspace=spec.workdir,
-                            grants=grants, mailbox=os.path.join(paths.dir, 'hook'),
-                            spawn_config='', state_dir=os.path.join(paths.dir, 'state'),
-                            core_state=run_dir(), broker='')
+                            grants=grants, mailbox=paths.req, response=paths.res,
+                            sentinel=paths.ctl,
+                            spawn_config=os.path.join(paths.res, 'settings.json'),
+                            state_dir=paths.state, core_state=run_dir(),
+                            core_only=(paths.dir,), broker='')
 
 
 class IsolationContext:
