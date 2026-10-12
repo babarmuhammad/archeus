@@ -2784,6 +2784,37 @@ class TestExistingProfileAnswer:
         assert kept.preexisting and not kept.owned and b.deleted == []
 
 
+@pytest.mark.skipif(iso.WindowsBoundary is None, reason='the Windows boundary')
+class TestDeleteProfileAnswer:
+    """`delete_profile` reads its answer as ctypes delivers it, a signed int. Compared
+    signed, HRESULT_FROM_WIN32(ERROR_NOT_FOUND) never matched and an already-gone
+    profile raised."""
+
+    def _delete(self, monkeypatch, hr):
+        asked = []
+        monkeypatch.setattr(iso, '_DeleteAppContainerProfile',
+                            lambda name: asked.append(name) or ctypes.c_int(hr).value)
+        eid = new_execution_id()
+        try:
+            iso.WindowsBoundary().delete_profile(eid)
+        finally:
+            assert asked == [iso.profile_name(eid)]
+
+    @pytest.mark.parametrize('label,hr', [('S_OK', 0), ('not found: already gone', 0x80070490)])
+    def test_the_accepted_answers_are_a_release(self, monkeypatch, label, hr):
+        self._delete(monkeypatch, hr)
+
+    @pytest.mark.parametrize('label,hr', [
+        ('sharing violation: in use', 0x80070020),
+        ('E_ACCESSDENIED', 0x80070005),
+        ('ERROR_NOT_FOUND as a bare Win32 code, not an HRESULT', 0x490),
+    ])
+    def test_every_other_answer_is_a_failure_reported_unsigned(self, monkeypatch, label, hr):
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            self._delete(monkeypatch, hr)
+        assert err.value.reason == 'profile_delete' and err.value.detail == 'hr=%s' % hex(hr)
+
+
 @pytest.fixture
 def launchapi(monkeypatch):
     """`WindowsBoundary.launch`'s Win32 calls replaced by fakes: the real launch runs,

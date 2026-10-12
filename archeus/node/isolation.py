@@ -1567,9 +1567,10 @@ if WINDOWS:
             """Only ever `archeus.exec.<validated execution id>`: no record, ledger or
             caller can point this at another profile (`archeus.spike.*`, another
             application's)."""
-            hr = _DeleteAppContainerProfile(validated_profile(execution_id))
+            # signed LONG from ctypes, so compared unsigned, as create_profile does
+            hr = _DeleteAppContainerProfile(validated_profile(execution_id)) & 0xFFFFFFFF
             if hr not in (0, 0x80070490):                  # not found: already gone
-                raise IsolationUnavailable('profile_delete', 'hr=%s' % hex(hr & 0xFFFFFFFF))
+                raise IsolationUnavailable('profile_delete', 'hr=%s' % hex(hr))
 
         def derive(self, execution_id):
             try:
