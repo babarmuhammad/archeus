@@ -223,7 +223,11 @@ class ExecutionManager:
             attempt=e.attempt, model=e.model, effort=e.effort, process_seq=seq,
             account=base.AccountRef(e.account_id or e.harness_id, home),
             env=dict(CAPABILITY_ENV, ARCHEUS_HOOK_TOKEN=token),
-            hook_settings=(sys.executable, HOOK), opt_ins=opt_ins,
+            # an isolated execution's hook runs isolated (-I: no PYTHON* variables, no
+            # user site, no script directory on sys.path), so the gate on every tool
+            # call imports nothing the execution could plant (T-031 §3)
+            hook_settings=(sys.executable, '-I', HOOK) if isolated else (sys.executable, HOOK),
+            opt_ins=opt_ins,
             task_contract={'key': t.key, 'kind': t.kind, 'estimate': t.estimate,
                            'action_classes': list(t.action_classes),
                            'continuation': continuation,

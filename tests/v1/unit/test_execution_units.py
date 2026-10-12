@@ -8,6 +8,7 @@ import io
 import json
 import os
 import stat
+import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -1117,3 +1118,24 @@ def test_an_unisolated_worktree_execution_still_gets_its_linked_worktree(
     assert add[1:] == (root, 'archeus/mission-1.t1', 'archeus/mission-1' if exists else 'HEAD')
     (prep,) = [x[1] for x in log if x[0] == 'prepare_process']
     assert prep['branch'] == 'archeus/mission-1.t1' and prep['workdir'] != root
+
+
+# ── T-032 (T-031 E2): an isolated execution's hook runs in isolated mode ──
+
+@pytest.mark.parametrize('resume', [False, True])
+@pytest.mark.parametrize('decide', [False, True])
+def test_an_isolated_executions_hook_runs_in_isolated_mode(monkeypatch, tmp_path, decide,
+                                                           resume):
+    from archeus.core.execution.manager import HOOK
+    from archeus.harnesses.claude_code import adapter as cc
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, decide)
+    assert _run(m, e, mission, resume, log) is True
+    assert _steps(log).count('requested') == 1          # the one decision, never re-asked
+    (_, spec, kw), = [x for x in log if x[0] == 'spawn']
+    want = (sys.executable, '-I', HOOK) if decide else (sys.executable, HOOK)
+    assert spec.hook_settings == want
+    # the Claude Code settings file carries it as it carries the rest: each part quoted
+    with open(cc.ClaudeCodeAdapter(exe='claude')._settings(spec), encoding='utf-8') as f:
+        hooks = json.load(f)['hooks']
+    cmd = ('"%s" "-I" "%s"' if decide else '"%s" "%s"') % (sys.executable, HOOK)
+    assert {h['hooks'][0]['command'] for h in hooks['PreToolUse'] + hooks['PreCompact']} == {cmd}
