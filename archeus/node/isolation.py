@@ -1594,10 +1594,14 @@ if WINDOWS:
             return self.derive(execution_id)
 
         def profile_exists(self, execution_id):
-            # spike §5.4: the package directory's state is the lifecycle evidence
-            # (`GetAppContainerFolderPath` is unusable on this build). It is evidence
-            # of a *run* identity; §3.4's first condition reads the create answer. A
-            # state that cannot be read raises: recovery never takes it for absent.
+            # spike §5.4: the package directory's state is the lifecycle evidence. The
+            # spike's 0x80070539 from `GetAppContainerFolderPath` came from passing a
+            # profile name (build 26200, not retested); given the SID string on build
+            # 26300 (A2) it answered S_OK while the profile was present and 0x80070002
+            # before create and after delete. This predicate is unchanged pending a
+            # separate decision. It is evidence of a *run* identity; §3.4's first
+            # condition reads the create answer. A state that cannot be read raises:
+            # recovery never takes it for absent.
             state = self.package_dir_state(profile_name(execution_id))
             if state == 'unknown':
                 raise IsolationUnavailable('profile_state', 'the package directory of %s '
