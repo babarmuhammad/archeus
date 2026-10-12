@@ -121,7 +121,9 @@ def test_a_historical_event_heard_again_never_replays_or_restarts(browser, slow)
     hear(page, dict(frame, id=seq + 1))
     advance(page, 100)
     check(pulses() == n + 2, 'a genuinely new event after them pulses')
-    advance(page, 1000)
+    # the reads the heard events started answer in real time, and one answering inside
+    # the idle window draws a frame there: settled first, as every other idle check is
+    settle(page)
     _still(page, check, 'after the pulses')
     check(not errors, errors)
     assert check.n >= 9
