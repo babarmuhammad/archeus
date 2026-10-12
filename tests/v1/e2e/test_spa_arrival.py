@@ -9,6 +9,8 @@ and the count still change. Afterwards nothing runs. Mutation-verified by
 tools/mutate_p19_5.py (N294 onward). Check floors keep a test that silently
 checks nothing from passing."""
 
+import math
+
 from .conftest import wait
 from .motion import running_animations
 from .test_spa_p16 import Checks, _mission, _open, _settled, deploy  # noqa: F401 (a fixture)
@@ -18,6 +20,14 @@ BADGE = 'nav[aria-label="Destinations"] .badge'
 #: the arrival pulses that start, recorded from the page's own animation events
 _PULSES = """() => { window.__pulses = 0; document.addEventListener('animationstart', e => {
   if (e.animationName === 'attention-arrival') window.__pulses++; }); }"""
+
+
+def _quiet(page):
+    """Past the polite region's 5 s window (p16 §17, POLITE_EVERY_MS) that the load's
+    connection banner opens. Inside it only the latest offer is kept, and the thread
+    update riding the same Core event as the arrival could replace it unsaid."""
+    wait(page, lambda: page.locator('#live-polite').inner_text() != '', what='the load banner')
+    page.wait_for_timeout(5100)
 
 
 def _needs_you(tc, title):
@@ -33,6 +43,7 @@ def _said(page, text):
 def test_a_rise_in_what_needs_you_pulses_the_badge_once(browser, deploy):  # noqa: F811
     check = Checks()
     context, page, errors = _open(browser, deploy)
+    _quiet(page)
     page.evaluate(_PULSES)
     check(page.locator(BADGE).count() == 0 and page.title() == 'Archeus', 'nothing needs you: no badge, the plain name')
 
@@ -44,7 +55,13 @@ def test_a_rise_in_what_needs_you_pulses_the_badge_once(browser, deploy):  # noq
     wait(page, lambda: page.title() == '(1) Archeus', what='the tab name carries the count')
     wait(page, lambda: _said(page, '1 thing needs you'), what='the arrival is announced')
     page.wait_for_timeout(500)   # past the 240 ms pulse, in real time (the announcer runs on timers)
-    check(not running_animations(page), 'after the pulse nothing runs')
+    # the same Core event draws the Now thread (600 ms, bounded): only the pulse, or
+    # anything unbounded, still running here is a failure, and the rest must end
+    anims = running_animations(page)
+    check(not [a for a in anims if a['name'] == 'attention-arrival'
+               or a['end'] is None or not math.isfinite(a['end'])],
+          'after the pulse nothing runs: %s' % anims)
+    wait(page, lambda: not running_animations(page), timeout=5, what='the animations end')
 
     _needs_you(deploy, 'Arrival two')
     wait(page, lambda: page.evaluate('window.__pulses') == 2, what='a second rise, a second pulse')
@@ -70,6 +87,7 @@ def test_a_rise_in_what_needs_you_pulses_the_badge_once(browser, deploy):  # noq
 def test_reduced_motion_says_the_rise_and_pulses_nothing(browser, deploy):  # noqa: F811
     check = Checks()
     context, page, errors = _open(browser, deploy, reduced_motion='reduce')
+    _quiet(page)
     page.evaluate(_PULSES)
     _needs_you(deploy, 'Arrival, reduced')
     wait(page, lambda: page.locator(BADGE).count() == 1, what='the badge appears')

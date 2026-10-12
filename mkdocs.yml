@@ -31,6 +31,8 @@ exclude_docs: |
   /architecture/
   /design/
   /research/
+  # Owner-maintained agent context (AGENTS.md links here); private, never a page
+  /project-context/
 
 theme:
   name: material

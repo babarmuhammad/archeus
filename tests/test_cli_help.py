@@ -133,8 +133,10 @@ def test_the_statusline_path_never_imports_the_v1_package():
 
 def test_a_deferred_v1_verb_imports_only_its_dispatcher():
     """J3: `archeus approve` imports nothing beyond the standard library and
-    the V1 CLI module itself — no Core, no database, no HTTP client."""
+    the V1 CLI module itself — no Core, no database, no HTTP client. `_api` is
+    the CLI's generated route-path builder and imports only `urllib.parse`."""
     r = _probe(['archeus', 'approve'])
     assert r.returncode == 2
     assert 'archeus approve is not available yet (arrives with P9); nothing was done' in r.stderr
-    assert r.stderr.strip().splitlines()[-1] == "['archeus', 'archeus.cli', 'archeus.cli.main']"
+    assert r.stderr.strip().splitlines()[-1] == (
+        "['archeus', 'archeus.cli', 'archeus.cli._api', 'archeus.cli.main']")
