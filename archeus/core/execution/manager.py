@@ -724,11 +724,12 @@ class ExecutionManager:
             # its sole Job holder died, so kill-on-close should have ended it. It is
             # killed by identity here and never adopted.
             self.node.kill(adapter, handle)
-        if iso.state == 'failed':
+        if iso.state == 'failed' or iso.failure:
+            # `failure` outlives the cleanup that quarantines the profile afterwards
             self._tombstone(e)
             self._do(X.refuse, execution_id=e.id, stop_reason='binding',
                      reason='isolation could not be established: %s'
-                            % (iso.reason or 'unknown'))
+                            % (iso.failure or iso.reason or 'unknown'))
             return True
         if e.state in ('PAUSED', 'AWAITING_APPROVAL'):
             return False                       # no process of ours: the pass decides

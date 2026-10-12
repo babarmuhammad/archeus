@@ -390,6 +390,7 @@ class IsolationRecord:
     sid: str = ''
     state: str = 'pending'    # pending | established | failed | torn_down | quarantined | invalid
     reason: str = ''
+    failure: str = ''         # why establishment failed; cleanup never overwrites it
     conditions: dict = field(default_factory=dict)
     planned: tuple = ()
     applied: tuple = ()
@@ -404,7 +405,8 @@ class IsolationRecord:
 
     def as_dict(self):
         return {'execution_id': self.execution_id, 'profile': self.profile, 'sid': self.sid,
-                'state': self.state, 'reason': self.reason, 'conditions': self.conditions,
+                'state': self.state, 'reason': self.reason, 'failure': self.failure,
+                'conditions': self.conditions,
                 'planned': _row_dicts(self.planned), 'applied': _row_dicts(self.applied),
                 'pid': self.pid, 'create_time': self.create_time,
                 'capabilities': list(self.capabilities), 'owned': self.owned,
@@ -428,7 +430,8 @@ SIDLESS_STATES = ('pending', 'failed', 'torn_down', 'quarantined')
 #: every field is a scalar or a flat container, so nothing nested survives the check
 #: to be written back (a structure deep enough to load can be too deep to dump)
 _RECORD_TYPES = {'execution_id': str, 'profile': str, 'sid': str, 'state': str,
-                 'reason': str, 'conditions': dict, 'planned': list, 'applied': list,
+                 'reason': str, 'failure': str, 'conditions': dict, 'planned': list,
+                 'applied': list,
                  'pid': (int, type(None)), 'create_time': (int, float, type(None)),
                  'capabilities': list, 'owned': bool, 'preexisting': bool, 'attempts': int,
                  'at': (int, float), 'updated': (int, float)}
@@ -584,7 +587,8 @@ class Isolation:
                                    reason=problem)
         return IsolationRecord(
             execution_id=execution_id, profile=d['profile'], sid=d.get('sid', ''),
-            state=d['state'], reason=d.get('reason', ''), conditions=d.get('conditions', {}),
+            state=d['state'], reason=d.get('reason', ''), failure=d.get('failure', ''),
+            conditions=d.get('conditions', {}),
             planned=_rows(d.get('planned')), pid=d.get('pid'),
             create_time=d.get('create_time'), owned=d.get('owned', False),
             preexisting=d.get('preexisting', False),
@@ -677,6 +681,14 @@ class Isolation:
             # record that says so is kept exactly as it is for review
             raise IsolationUnavailable('profile_preexisting',
                                        '%s was not created by Core' % prior.profile)
+        if prior is not None and (prior.state not in ('pending', 'established')
+                                  or prior.failure):
+            # failed, quarantined or torn down: the record is cleanup's evidence and the
+            # sweep's work, never a new start. Refused before any write, so the record,
+            # the ledger and the profile stay exactly as found. `established` is a
+            # PAUSED resume and `pending` the retry of one that died (Finding 1)
+            raise IsolationUnavailable('record_unsettled', '%s: %s' % (
+                prior.state, prior.failure or prior.reason))
         rec = prior or IsolationRecord(execution_id=request.execution_id,
                                        profile=profile_name(request.execution_id))
         try:
@@ -752,7 +764,7 @@ class Isolation:
         raised. The record left on disk is what the end path and the sweep finish from,
         and `rec.owned` is only ever true once it is on disk, so the release here
         deletes nothing the record does not say is Core's."""
-        rec.state, rec.reason = 'failed', reason
+        rec.state, rec.reason, rec.failure = 'failed', reason, reason
         unwritten = []
 
         def attempt(step, *args, **kw):

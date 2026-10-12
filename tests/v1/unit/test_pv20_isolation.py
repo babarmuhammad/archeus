@@ -1038,6 +1038,7 @@ FORGED = [
     ('the legacy grants field naming shared paths',
      lambda b, e: _good_record(b, e, grants=[_row(p) for p in SHARED]), 'unknown_fields:grants'),
     ("a user's SID", lambda b, e: _good_record(b, e, sid='S-1-5-21-1-2-3-1001'), 'sid_mismatch'),
+    ('a non-string failure', lambda b, e: _good_record(b, e, failure=1), 'malformed:failure'),
     ('SYSTEM', lambda b, e: _good_record(b, e, sid='S-1-5-18'), 'sid_mismatch'),
     ('Everyone', lambda b, e: _good_record(b, e, sid='S-1-1-0'), 'sid_mismatch'),
     ('ALL APPLICATION PACKAGES', lambda b, e: _good_record(b, e, sid='S-1-15-2-1'),
@@ -1077,7 +1078,9 @@ ACL_APIS = ('SetNamedSecurityInfo', 'SetSecurityInfo', 'SetFileSecurity',
             'SetKernelObjectSecurity', 'SetEntriesInAcl', 'TreeSetNamedSecurityInfo',
             'TreeResetNamedSecurityInfo', 'SetSecurityDescriptorDacl',
             'SetPrivateObjectSecurity', 'AddAccessAllowedAce', 'AddAccessDeniedAce',
-            'SetAclInformation', 'win32security')
+            'SetAclInformation', 'win32security',
+            # by handle: Nt/Zw/RtlSetSecurityObject, and the user and service objects
+            'SetSecurityObject', 'SetUserObjectSecurity', 'SetServiceObjectSecurity')
 PROFILE_APIS = ('CreateAppContainerProfile', 'DeleteAppContainerProfile')
 ISOLATION = 'archeus/node/isolation.py'
 
@@ -1369,6 +1372,10 @@ class TestPhaseAContainment:
         ("_f(advapi32, 'SetNamedSecurityInfoW', W.DWORD, [])", ISOLATION),
         ("advapi32.SetEntriesInAclW(1, None, None, None)", 'archeus/x.py'),
         ('import win32security', 'archeus/x.py'),
+        ("_f(ntdll, 'NtSetSecurityObject', C.c_long, [])", ISOLATION),
+        ('ntdll.ZwSetSecurityObject(h, 4, sd)', 'archeus/x.py'),
+        ('user32.SetUserObjectSecurity(h, si, sd)', 'tools/x.py'),
+        ('advapi32.SetServiceObjectSecurity(h, si, sd)', 'claude_sessions/x.py'),
         ('_DeleteAppContainerProfile(name)', 'archeus/x.py'),
         ('def teardown(self):\n    _DeleteAppContainerProfile(n)', ISOLATION),
     ])
@@ -2074,6 +2081,90 @@ class TestOwnershipRecovery:
         kept = a.record(eid)
         assert kept.reason == 'provenance_unknown' and kept.sid == b.derive_sid(eid)
         assert b.deleted == []
+
+
+# ── S2-G preparatory: an unsettled record is never a new start ────────────────
+
+UNSETTLED = [
+    ('quarantined', dict(state='quarantined', reason='profile_delete: in use', owned=True)),
+    ('failed', dict(state='failed', reason='condition_unmet:grants',
+                    failure='condition_unmet:grants', owned=True)),
+    ('failed, then quarantined by its cleanup',
+     dict(state='quarantined', reason='process_unverified', failure='condition_unmet:grants',
+          owned=True)),
+    ('provenance unknown', dict(state='failed', reason='provenance_unknown')),
+    ('a torn-down record whose removal failed', dict(state='torn_down', reason='ended', sid='')),
+    ('established, but carrying a failure', dict(failure='launch', owned=True)),
+]
+
+
+class TestUnsettledRecords:
+    """D1: `establish` used to reset any prior record to pending and create again, so
+    a Core that crashed between quarantining an identity and refusing its execution
+    would resume a process under the quarantined identity. D2: the cleanup after a
+    failed establishment overwrote the failure with its own reason."""
+
+    @pytest.mark.parametrize('label,over', UNSETTLED)
+    def test_an_unsettled_record_is_refused_before_anything_is_written(self, tmp_path,
+                                                                       label, over):
+        a, b, req, node = authority(tmp_path)
+        eid = req.execution_id
+        b.profiles.add(iso.profile_name(eid))
+        path, before = _plant(eid + '.json', _good_record(b, eid, **over))
+        _ledger({'op': 'quarantine', 'execution_id': eid, 'profile': iso.profile_name(eid),
+                 'sid': b.derive_sid(eid), 'planned': [], 'reason': 'x', 'at': 1.0})
+        ledger = _ledger_bytes()
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(req)
+        assert err.value.reason == 'record_unsettled'
+        with open(path, 'rb') as f:
+            assert f.read() == before
+        assert _ledger_bytes() == ledger
+        assert b.mutations() == [] and b.closed == [] and b.looked == []
+        assert a.held_job(eid) is None and node.registry == []
+
+    def test_a_refused_resume_launches_nothing(self, tmp_path, monkeypatch):
+        a, b, req, _ = authority(tmp_path)
+        eid = req.execution_id
+        _plant(eid + '.json', _good_record(b, eid, **dict(UNSETTLED[0][1])))
+        with pytest.raises(base.SpawnFailed) as err:
+            _launch(a, req, monkeypatch)
+        assert 'record_unsettled' in str(err.value)
+        assert b.launch_calls == [] and b.created == [] and a.launched(eid) is None
+
+    def test_a_paused_resume_reuses_its_identity(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        first = a.establish(req)
+        again = iso.Isolation(FakeNode(), boundary=b).establish(req)   # after a restart
+        assert again.state == 'established' and again.sid == first.sid and again.owned
+        assert b.deleted == []
+
+    def test_cleanup_never_overwrites_the_establishment_failure(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        name = iso.profile_name(req.execution_id)
+        b.grant_ok, b.delete_fail = False, {name}
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(req)
+        failure = err.value.reason
+        assert failure.startswith('condition_unmet:')
+        for attempt in (1, 2, 3):
+            rec = a.record(req.execution_id)
+            assert rec.state == 'quarantined' and rec.failure == failure
+            assert rec.attempts == attempt
+            assert _sweep(a) == []
+        b.delete_fail = set()
+        assert _sweep(a) == [req.execution_id] and a.record(req.execution_id) is None
+
+    @pytest.mark.parametrize('state', ['PAUSED', 'INTENT', 'AWAITING_APPROVAL'])
+    def test_a_failure_later_quarantined_is_still_refused_uncharged(self, state):
+        m = _manager_with_fake_node()
+        rec = iso.IsolationRecord(execution_id='x', profile='p', state='quarantined',
+                                  reason='process_unverified',
+                                  failure='condition_unmet:grants')
+        assert m._reconcile_isolated(_e(state), object(), rec, None, disarmed=False) is True
+        (command, kw), = m.calls
+        assert command is X.refuse and kw['stop_reason'] == 'binding'
+        assert kw['reason'].endswith('condition_unmet:grants')
 
 
 # ── F6-F9: a release is believed once it is seen, and only after its process ──
