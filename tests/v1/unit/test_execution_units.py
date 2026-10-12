@@ -733,7 +733,7 @@ def test_a_project_less_workspace_is_the_executions_own_never_its_core_directory
 
 # ── PV-20 §3.3 H2 / A7: how a live end is classified (state-machines §4 guards) ──
 
-def _seeded(state):
+def _seeded(state, stop_reason=None, max_attempts=2):
     """One execution in *state* under a RUNNING task, on a real database. No
     process ever ran (process_seq 0), so only the classification is exercised."""
     from archeus.core.domain.events import new_event
@@ -749,9 +749,10 @@ def _seeded(state):
                                  objective='o', state='EXECUTING'),
                 entities.Plan(id=pid, mission_id=mid, state='APPROVED'),
                 entities.Task(id=tid, plan_id=pid, mission_id=mid, key='t', title='T',
-                              kind='code_change', state='RUNNING'),
+                              kind='code_change', state='RUNNING',
+                              max_attempts=max_attempts),
                 entities.Execution(id=eid, task_id=tid, mission_id=mid, plan_id=pid,
-                                   attempt=1, state=state)):
+                                   attempt=1, state=state, stop_reason=stop_reason)):
             tx.insert(row, actor=who)
         tx.append(new_event('mission.updated', Ref('mission', mid), who, payload={},
                             workspace=ids.GLOBAL_WORKSPACE))
@@ -836,6 +837,53 @@ def test_cores_own_restart_halt_pauses_an_isolated_execution_without_an_exit():
         db.writer.execute(X.record_end, {'actor': who, 'execution_id': eid, 'exit_code': None,
                                          'core_halt': True, 'isolated': True})
         assert _row(db, entities.Execution, eid).entity.state == 'PAUSED'
+    finally:
+        db.close()
+
+
+#: T-026 (T-025 C1): (isolated, the hand-off's stop reason, exit code, killed, charged)
+#: of an end observed in HANDING_OFF that is not a clean isolated hand-off
+HANDOFF_ACCOUNTING = [
+    (True, cause, code, killed, False)
+    for cause in X.HANDOFF_CAUSES + ('handoff_user',)
+    for code, killed in ((1, False), (None, False), (0, True), (None, True))
+] + [
+    # a stop reason outside UNCHARGED is charged as before
+    (True, 'workspace', 1, False, True),
+    (True, None, None, True, True),
+    # ordinary direct callers keep the charge rule they had
+    (False, 'pressure', 1, False, True),
+    (False, 'handoff_user', None, True, True),
+]
+
+
+@pytest.mark.parametrize('isolated,cause,code,killed,charged', HANDOFF_ACCOUNTING)
+def test_an_isolated_end_of_a_handoff_core_asked_for_spends_no_attempt(isolated, cause, code,
+                                                                       killed, charged):
+    db, who, eid, tid = _seeded('HANDING_OFF', stop_reason=cause, max_attempts=1)
+    try:
+        db.writer.execute(X.record_end, {'actor': who, 'execution_id': eid, 'exit_code': code,
+                                         'killed': killed, 'isolated': isolated})
+        e = _row(db, entities.Execution, eid).entity
+        assert (e.state, e.charged, e.stop_reason) == ('ENDED_ERROR', charged, cause)
+        # one attempt in the budget: a charged end spends it, an uncharged one retries
+        assert _row(db, entities.Task, tid).entity.state == ('FAILED' if charged else 'READY')
+        from archeus.infra.db import rows
+        with db.read() as r:                    # never a continuation from record_end
+            assert [x.entity.id for x in rows.where(r, entities.Execution, task_id=tid)] == [eid]
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('state,code', [('RUNNING', 1), ('PAUSING', 1), ('PAUSING', None)])
+def test_an_isolated_end_outside_a_handoff_keeps_its_charge(state, code):
+    db, who, eid, tid = _seeded(state, stop_reason='pressure', max_attempts=1)
+    try:
+        db.writer.execute(X.record_end, {'actor': who, 'execution_id': eid, 'exit_code': code,
+                                         'isolated': True})
+        e = _row(db, entities.Execution, eid).entity
+        assert (e.state, e.charged) == ('ENDED_ERROR', True)
+        assert _row(db, entities.Task, tid).entity.state == 'FAILED'
     finally:
         db.close()
 

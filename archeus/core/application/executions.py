@@ -236,6 +236,9 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
         raise lifecycle.IllegalTrigger('execution', e.state, 'record_end',
                                        'an isolated hand-off that exited 0 ends through '
                                        'record_handoff')
+    # T-025 C1: an isolated end during a hand-off Core asked for is not the execution
+    # failing, so it spends no attempt; A7 still makes the end ENDED_ERROR
+    core_handoff = isolated and e.state == 'HANDING_OFF' and e.stop_reason in UNCHARGED
     if final_offset is not None and final_offset > e.stream_offset:
         tx.update(entities.Execution, e.id, {'stream_offset': final_offset}, actor=actor)
     fields = {'adapter_state': dict(adapter_state) if adapter_state else e.adapter_state,
@@ -272,7 +275,7 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
     # registered account (§12.4); on a harness's own account it is charged, so it
     # cannot retry forever. A halt Core did not ask for (the hook failed closed) is
     # charged for the same reason.
-    uncharged = failure in ('resource', 'auth') and e.account_id is not None
+    uncharged = core_handoff or (failure in ('resource', 'auth') and e.account_id is not None)
     stop = 'limit' if failure == 'limit' and e.account_id is not None else None
     e = _fire(tx, e.id, _EXIT['ok' if ok else 'error'], actor,
               'exit code %s%s' % (exit_code, ' (halted without being asked)' if halted else ''),
