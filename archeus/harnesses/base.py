@@ -342,8 +342,7 @@ def spawn(spec, argv):
     if child is None:
         # we KNOW nothing started, so say so: a marker without `ended` would
         # otherwise read as "a process may exist" to reconciliation
-        mark_ended(paths, None, error=err)
-        raise SpawnFailed(err)
+        _refuse(paths, err, None)
     create_time = proc.process_create_time(child.pid)
     _write_json(paths.pid, {'pid': child.pid, 'create_time': create_time, 'process_seq': seq})
     return ProcessHandle(spec.execution_id, child.pid, create_time, paths.dir), child

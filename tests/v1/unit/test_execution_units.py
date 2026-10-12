@@ -673,6 +673,53 @@ def test_a_stale_report_and_its_tombstone_both_failing_still_start_nothing(
     assert not os.path.exists(p.ended)
 
 
+def _launch_spec(archeus_home, monkeypatch, isolated, launcher):
+    calls = []
+
+    def launch(*a, **kw):
+        calls.append(a)
+        return launcher()
+    monkeypatch.setattr(proc, 'spawn_detached', launch)
+    monkeypatch.setattr(proc, 'process_create_time', lambda pid: 1.0)
+    spec = base.ExecutionSpec(execution_id=ids.new_id('execution'), prompt='go',
+                              workdir=str(archeus_home),
+                              isolation=SimpleNamespace(launch=launch) if isolated else None)
+    return spec, paths.ExecPaths(spec.execution_id), calls
+
+
+@pytest.mark.parametrize('tombstone', ['written', 'fails'])
+@pytest.mark.parametrize('isolated', [False, True])
+def test_a_launch_that_starts_nothing_is_spawnfailed_even_without_its_tombstone(
+        archeus_home, monkeypatch, isolated, tombstone):
+    spec, p, calls = _launch_spec(archeus_home, monkeypatch, isolated,
+                                  lambda: (None, 'the launcher said no'))
+    if tombstone == 'fails':
+        real_write = config.write_json_atomic
+        monkeypatch.setattr(config, 'write_json_atomic', lambda path, *a, **kw: (
+            False if os.fspath(path) == p.ended else real_write(path, *a, **kw)))
+    with pytest.raises(base.SpawnFailed) as err:
+        base.spawn(spec, ['never-run'])
+    assert len(calls) == 1                # one launch, no retry, no fallback to the other path
+    assert err.value.__cause__ is None    # the launcher's reason is a string, not an exception
+    assert not os.path.exists(p.pid)
+    if tombstone == 'fails':
+        assert str(err.value) == ('the launcher said no; the ended tombstone was not written: '
+                                  'could not write %s' % p.ended)
+        assert not os.path.exists(p.ended)
+    else:
+        assert str(err.value) == 'the launcher said no'
+        assert base.read_json(p.ended)['error'] == 'the launcher said no'
+
+
+@pytest.mark.parametrize('isolated', [False, True])
+def test_a_launch_that_starts_a_child_still_records_it(archeus_home, monkeypatch, isolated):
+    child = SimpleNamespace(pid=4242)
+    spec, p, calls = _launch_spec(archeus_home, monkeypatch, isolated, lambda: (child, None))
+    handle, got = base.spawn(spec, ['run'])
+    assert (handle.pid, got, len(calls)) == (4242, child, 1)
+    assert base.read_json(p.pid)['pid'] == 4242 and not os.path.exists(p.ended)
+
+
 def test_a_project_less_workspace_is_the_executions_own_never_its_core_directory():
     eid = ids.new_id('execution')
     p = paths.ExecPaths(eid)
