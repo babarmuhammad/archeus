@@ -63,6 +63,8 @@ USAGE_S = 30.0
 ISOLATION_SWEEP_S = 5.0
 #: defined beside the spawn that checks an isolated environment against it
 CAPABILITY_ENV = base.CAPABILITY_ENV
+#: a known-isolated execution's diff: Core runs no Git in its workdir (T-044)
+UNMEASURED = '(not measured: an isolated execution; Core runs no Git in its workdir)'
 
 
 def line_of(ev):
@@ -472,6 +474,9 @@ class ExecutionManager:
             # a usage report just ahead of a tool call is the pressure that hands
             # the execution off at that very call (p12-design-gate §10.1)
             self._tail(e, p)
+            # the end's and the restart's rule, not the field alone: a resumed legacy
+            # row keeps None beside the record that makes it isolated (T-036)
+            known = self._isolated(e, self._isolation_record(e.id))
         for seq, req in pending:
             did = True
             if req is None:
@@ -480,14 +485,16 @@ class ExecutionManager:
             workdir = e.workdir or ExecPaths(e.id).work
             cwd = req.get('cwd')
             cwd_ok = cwd is None or _inside(cwd, workdir)
-            branch_now = self.node.git_branch(workdir) if e.branch else None
+            git = e.branch and not known
+            branch_now = self.node.git_branch(workdir) if git else None
             ctx = {'workdir': workdir, 'branch': branch_now,
-                   'remotes': self.node.git_remotes(workdir) if e.branch else {}}
+                   'remotes': self.node.git_remotes(workdir) if git else {}}
             try:
                 canon = canonical.canonicalise(req.get('tool'), req.get('input'), ctx)
                 out = self._do(X.serve_hook, policy=self.policy, execution_id=e.id, seq=seq,
                                request=req, canon=canon, cwd_ok=cwd_ok,
-                               branch_ok=e.branch is None or branch_now == e.branch,
+                               branch_ok=e.branch is None or (not known
+                                                              and branch_now == e.branch),
                                disarmed=disarmed)
             except Exception as err:        # never allow on a failure: fail closed
                 log.warning('hook request %d of %s: %s', seq, e.id, err)
@@ -548,7 +555,8 @@ class ExecutionManager:
         if e.state in _ENDED:
             self._release_isolation(e)                      # §3.2 Cleanup
             return
-        facts = self._facts(e, p)
+        isolated = self._isolated(e, self._isolation_record(e.id))
+        facts = _unmeasured(p) if isolated else self._facts(e, p)
         # the adapter's figures are the harness's own total only when it says so;
         # the last progress report is a lower bound (ADR-0048 §3)
         usage, total = ((dict(result.usage), result.usage_total) if result.usage
@@ -561,7 +569,6 @@ class ExecutionManager:
                      reason='the provider refused for a limit')
             e = self._reload(e)
         killed = result.exit_reason == 'killed'
-        isolated = self._isolated(e, self._isolation_record(e.id))
         if isolated:
             # PV-20 §3.3 H2 / A7: Core's own state and observed exit decide; the halt
             # report never does. Any other end of an isolated hand-off is ENDED_ERROR.
@@ -823,12 +830,14 @@ class ExecutionManager:
         if e.state == 'PAUSING':
             self._tombstone(e)
             self._do(X.record_end, execution_id=e.id, exit_code=None, core_halt=True,
-                     isolated=True, usage=e.usage, final_offset=e.stream_offset, facts={})
+                     isolated=True, usage=e.usage, final_offset=e.stream_offset,
+                     facts=_unmeasured({}))
             return True
         if e.state in ('STOPPING', 'HANDING_OFF'):
             self._tombstone(e)
             self._do(X.record_end, execution_id=e.id, exit_code=None, killed=True,
-                     isolated=True, usage=e.usage, final_offset=e.stream_offset, facts={})
+                     isolated=True, usage=e.usage, final_offset=e.stream_offset,
+                     facts=_unmeasured({}))
             return True
         if e.state == 'INTENT' and handle is None:
             self._do(X.refuse, execution_id=e.id, reason='no process was started',
@@ -921,6 +930,13 @@ def _facts_from(ev, p):
     if t in ('error', 'stderr', 'limit'):
         p['last_error'] = redact(str(ev.get('text') or ev.get('error') or ev.get('kind')
                                      or t))[:300]
+
+
+def _unmeasured(p):
+    """The facts of a known-isolated end (T-044): the stream's, and no diff or end state,
+    which only Git in the execution's workdir would give."""
+    return {'files_changed': [UNMEASURED], 'decisions': list(p.get('decisions') or [])[-30:],
+            'last_error': p.get('last_error'), 'end_state': None}
 
 
 def _inside(path, root):

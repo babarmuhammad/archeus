@@ -1023,6 +1023,158 @@ def _no_registry(line):
     raise OSError('the registry cannot be written')
 
 
+#: the Core Git a known-isolated execution never reaches (T-044)
+_CORE_GIT = ('git_branch', 'git_remotes', 'diff_stat', 'end_state')
+#: (its isolation record's state or none, the row's decision): known-isolated (T-038)
+KNOWN = [('established', True), ('established', None), ('established', False),
+         ('invalid', None), (None, True)]
+
+
+def _git_node(m, allow):
+    """Every Core Git call recorded; unless *allow*, the first one fails the test where
+    it is made."""
+    seen = []
+    answers = {'git_branch': 'archeus/m.t1', 'git_remotes': {'origin': 'u'},
+               'diff_stat': [' a.py | 1 +'], 'end_state': 'digest'}
+
+    def method(name):
+        def call(path):
+            seen.append(name)
+            if not allow:
+                raise AssertionError('Core ran %s in %s' % (name, path))
+            return answers[name]
+        return call
+    for name in _CORE_GIT:
+        setattr(m.node, name, method(name))
+    return seen
+
+
+class TestIsolatedFactsWithoutCoreGit:
+    """T-044 (K4a): a known-isolated execution - its record present, valid or not, or the
+    row's decision True with the record gone - gets no Core Git in its workdir at a live
+    end, a restart or a hook, and its diff is stated as not measured, never as empty. A
+    row with no record keeps today's Git: legacy None (the owner's L1) and ordinary False."""
+
+    def _m(self, record, field, allow, branch=None):
+        m = _manager_with_fake_node()
+        git = _git_node(m, allow)
+        e = SimpleNamespace(id=new_execution_id(), state='RUNNING', account_id=None,
+                            isolated=field, process_seq=1, branch=branch, workdir='w',
+                            usage=0, stream_offset=0, harness_id='h', pid=None)
+        rec = None if record is None else iso.IsolationRecord(execution_id=e.id, profile='p',
+                                                              state=record)
+        m.node.isolation_record = lambda eid: rec
+        return m, e, git
+
+    def _end(self, state, code, record, field, *, killed=False, allow=False):
+        m, e, git = self._m(record, field, allow)
+        e.state = state
+        m.node.ended = lambda handle, code, seq: None
+        m._tail = m._progress = lambda e, p: None
+        m._release_isolation = lambda e: None
+        m.policy = m.missions = m.router = None
+        result = base.ExecutionResult(exit_reason='killed' if killed else
+                                      ('ok' if code == 0 else 'error'), exit_code=code)
+        p = {'adapter': SimpleNamespace(collect_result=lambda handle: result),
+             'handle': object(), 'seq': 1, 'offset': 0, 'usage': 0,
+             'decisions': ['kept'], 'last_error': 'boom'}
+        m._collect(e, p, base.ProcStatus('exited', code))
+        ((cmd, kw),) = m.calls
+        return cmd, kw, git
+
+    @pytest.mark.parametrize('record,field', KNOWN)
+    @pytest.mark.parametrize('state,code,killed,want', [
+        ('RUNNING', 0, False, 'record_end'), ('RUNNING', None, True, 'record_end'),
+        ('HANDING_OFF', 0, False, 'record_handoff'), ('HANDING_OFF', 1, False, 'record_end'),
+        ('PAUSING', 0, False, 'record_end')])
+    def test_a_known_isolated_end_runs_no_core_git_and_says_so(self, record, field, state,
+                                                               code, killed, want):
+        from archeus.core.execution import pressure
+        cmd, kw, git = self._end(state, code, record, field, killed=killed)
+        assert git == [] and cmd is getattr(X, want)
+        assert kw['facts'] == {'files_changed': [M.UNMEASURED], 'decisions': ['kept'],
+                               'last_error': 'boom', 'end_state': None}
+        if want == 'record_end':
+            assert kw['isolated'] is True
+        # P1: an unmeasured end is no progress, so a pressure link that hands off again
+        # keeps its charged stop
+        assert not pressure.progressed(kw['facts']['end_state'], (), [])
+
+    @pytest.mark.parametrize('field', [None, False])
+    def test_an_end_without_a_record_keeps_its_git(self, field):
+        cmd, kw, git = self._end('RUNNING', 0, None, field, allow=True)
+        assert cmd is X.record_end and kw['isolated'] is False
+        assert git == ['diff_stat', 'end_state']
+        assert (kw['facts']['files_changed'], kw['facts']['end_state']) == (
+            [' a.py | 1 +'], 'digest')
+
+    @pytest.mark.parametrize('record,field', KNOWN)
+    @pytest.mark.parametrize('state', ['PAUSING', 'STOPPING', 'HANDING_OFF'])
+    def test_a_restart_states_the_facts_as_not_measured(self, record, field, state):
+        m, e, git = self._m(record, field, allow=False)
+        e.state = state
+        m.node.files = lambda eid: ({'process_seq': 1}, {'pid': 1, 'create_time': 1.0,
+                                                         'process_seq': 1}, None)
+        m.node.alive = lambda h: False
+        m.registry = SimpleNamespace(get=lambda hid: object())
+        assert m._reconcile_one(e, disarmed=False) is True
+        ((cmd, kw),) = m.calls
+        assert cmd is X.record_end and git == []
+        assert kw['facts'] == {'files_changed': [M.UNMEASURED], 'decisions': [],
+                               'last_error': None, 'end_state': None}
+
+    def _hook(self, monkeypatch, record, field, branch, allow=False):
+        m, e, git = self._m(record, field, allow, branch=branch)
+        m.node.pending_requests = lambda eid: [(1, {'tool': 'Read', 'input': {}})]
+        answered, ctxs = [], []
+        m.node.respond = lambda eid, seq, decision, reason: answered.append(decision)
+        m._tail = lambda e, p: None
+        m.policy = None
+        monkeypatch.setattr(M.canonical, 'canonicalise',
+                            lambda tool, inp, ctx: ctxs.append(ctx) or ((), ()))
+
+        def _do(command, **kw):
+            m.calls.append((command, kw))
+            return {'decision': 'allow', 'reason': 'ok'}
+        m._do = _do
+        assert m._hooks(e, {}, disarmed=False) is True
+        ((cmd, kw),) = m.calls
+        assert cmd is X.serve_hook and answered == ['allow']
+        return kw, ctxs[0], git
+
+    @pytest.mark.parametrize('record,field', KNOWN)
+    def test_a_known_isolated_hook_reads_no_git_in_its_workdir(self, monkeypatch, record,
+                                                               field):
+        kw, ctx, git = self._hook(monkeypatch, record, field, None)
+        assert git == [] and kw['branch_ok'] is True
+        assert (ctx['branch'], ctx['remotes']) == (None, {})
+
+    @pytest.mark.parametrize('record,field', KNOWN)
+    def test_a_known_isolated_hook_with_a_branch_fails_its_gate_unread(self, monkeypatch,
+                                                                      record, field):
+        kw, ctx, git = self._hook(monkeypatch, record, field, 'archeus/m.t1')
+        assert git == [] and kw['branch_ok'] is False
+        assert (ctx['branch'], ctx['remotes']) == (None, {})
+
+    @pytest.mark.parametrize('field', [None, False])
+    def test_a_hook_without_a_record_keeps_its_branch_check(self, monkeypatch, field):
+        kw, ctx, git = self._hook(monkeypatch, None, field, 'archeus/m.t1', allow=True)
+        assert git == ['git_branch', 'git_remotes'] and kw['branch_ok'] is True
+        assert (ctx['branch'], ctx['remotes']) == ('archeus/m.t1', {'origin': 'u'})
+
+    def test_the_checkpoint_says_the_diff_was_not_measured_never_none(self):
+        from archeus.core.execution import checkpoint
+        from archeus.core.sessions import render
+        facts = M._unmeasured({})
+        cp = SimpleNamespace(id='c', task_id='t', mission_id='m', plan_version=1,
+                             execution_id='e', trigger='pause', objective='o', constraints=(),
+                             success_criteria=(), completed_steps=(),
+                             files_changed=checkpoint._clip(facts['files_changed']),
+                             decisions=(), open_problems=(), verification=(),
+                             next_action=None, as_of_seq=1)
+        assert '## Files changed\n\n- %s\n' % M.UNMEASURED in render.checkpoint(cp)
+
+
 class TestLostIsolationRecord:
     """T-037 / T-038: the transient record is gone and the row recorded Core's decision
     (T-036). A known-isolated execution is never adopted, never read for its own report,
