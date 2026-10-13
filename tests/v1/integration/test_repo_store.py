@@ -1,4 +1,5 @@
-"""PV-20 K1 (T-048): the Core-owned store with real Git, in pytest-owned temp only.
+"""PV-20 K1 (T-048) and K2 (T-066): the Core-owned store and the seed it builds,
+with real Git, in pytest-owned temp only.
 
 Each hazard is a sentinel: a hook, filter, driver or upload-pack hook that
 creates a file in `sent/` when Git runs it. The pinned operations run first,
@@ -663,3 +664,257 @@ def test_a_nested_alias_below_the_store_object_indexes_is_refused(world, tmp_pat
     with pytest.raises(OSError, match='alias|plain|hard-linked'):
         LocalNode.store_read(pid, ['rev-parse', EMPTY_TREE], workdirs=())
     assert spawned == []
+
+
+
+# ── K2 (T-066, T-049 + C-1013-T049): the seed, with real Git in pytest temp ──
+
+#: the base tree: (mode, path, bytes); 160000 takes a commit id instead of bytes
+BINARY = b'\xff\xfe\x00\x80\x00z'
+LFS = b'version https://git-lfs.github.com/spec/v1\noid sha256:' + b'0' * 64 + b'\nsize 9\n'
+
+
+def _bgit(cwd, *args, data=None, env):
+    r = subprocess.run([GIT, '-c', 'user.name=t', '-c', 'user.email=t@t'] + list(args),
+                       cwd=str(cwd), env=env, input=data, capture_output=True,
+                       stdin=None if data is not None else subprocess.DEVNULL)
+    assert r.returncode == 0, (args, r.stderr)
+    return r.stdout.decode('utf-8').strip()
+
+
+def _project(world, extra=()):
+    """A user repository in pytest temp whose HEAD tree holds every hazard T-049
+    §9 names, built with plumbing (no attribute, filter or hook runs while it is
+    made); then its own config is made hostile, after the commit."""
+    proj, env = world.tmp / 'proj', world.clean
+    _bgit(world.tmp, 'init', '-q', '-b', 'main', str(proj), env=env)
+    files = [('100644', 'bin.dat', BINARY),
+             ('100644', '.gitattributes',
+              b'* text=auto\ncrlf.txt text eol=crlf\nenc.txt working-tree-encoding=UTF-16\n'
+              b'sm.txt filter=sm\nlfs.bin filter=lfs diff=lfs merge=lfs -text\n'),
+             ('100644', '.gitmodules', b'[submodule "sub"]\n\tpath = sub\n\turl = ./nowhere\n'
+              b'\tupdate = !' + world.cmd('gitmodules').encode() + b'\n'),
+             ('100644', '.lfsconfig', b'[lfs]\n\turl = http://127.0.0.1:9/\n'),
+             ('100644', 'crlf.txt', b'a\nb\n'),
+             ('100644', 'enc.txt', 'h\u00e9llo\n'.encode('utf-8')),
+             ('100644', 'sm.txt', b'smudge me\n'),
+             ('100644', 'lfs.bin', LFS),
+             ('100755', 'run.sh', b'#!/bin/sh\necho hi\n'),
+             ('100644', 'dir/nested/deep.txt', b'deep\n'),
+             ('120000', 'link', b'bin.dat'),
+             ('120000', 'dir/up', b'../crlf.txt')]
+    for mode, path, data in files:
+        oid = _bgit(proj, 'hash-object', '-w', '--no-filters', '--stdin', data=data, env=env)
+        _bgit(proj, 'update-index', '--add', '--cacheinfo', '%s,%s,%s' % (mode, oid, path),
+              env=env)
+    _bgit(proj, 'update-index', '--add', '--cacheinfo', '160000,%s,sub' % world.c1, env=env)
+    tree = _bgit(proj, 'write-tree', env=env)
+    if extra:
+        # names Git's own index refuses on Windows reach a tree through mktree,
+        # top level only: how a hostile tree arrives (T-049 §9 UNVERIFIED part)
+        listing = subprocess.run([GIT, 'ls-tree', '-z', tree], cwd=str(proj), env=env,
+                                 capture_output=True, check=True).stdout
+        for mode, name, data in extra:
+            oid = _bgit(proj, 'hash-object', '-w', '--no-filters', '--stdin', data=data, env=env)
+            listing += b'%s blob %s\t%s\0' % (mode.encode(), oid.encode(), name.encode('utf-8'))
+            files.append((mode, name, data))
+        tree = _bgit(proj, 'mktree', '-z', data=listing, env=env)
+    head = _bgit(proj, 'commit-tree', tree, '-m', 'base', env=env)
+    _bgit(proj, 'update-ref', 'refs/heads/main', head, env=env)
+    world.git(proj, 'config', 'core.hooksPath', _fwd(world.tmp / 'hooks-l'))
+    world.git(proj, 'config', 'core.fsmonitor', world.cmd('l-fsmonitor'))
+    hooks = proj / '.git' / 'hooks'
+    hooks.mkdir(exist_ok=True)
+    (hooks / 'post-checkout').write_text('#!/bin/sh\n%s\n' % world.cmd('own-post-checkout'))
+    return proj, head, {p: (m, d) for m, p, d in files}
+
+
+def _seed(world, monkeypatch, proj, mid=None):
+    """The first-attempt chain K6 will wire: resolve, fetch (T-048's fixture
+    injection standing in for production fetch), seed."""
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    pid, eid, mid = ids.new_id('project'), ids.new_id('execution'), mid or ids.new_id('mission')
+    name, base = LocalNode.resolve_base(str(proj), 'archeus/' + mid, workdirs=())
+    LocalNode.store_fetch(pid, str(proj), name, base, 'refs/archeus/exec/%s/seed' % eid,
+                          workdirs=())
+    return pid, eid, base, 'archeus/%s.t1' % mid
+
+
+def test_a_seed_holds_exactly_the_tree_and_runs_nothing_the_world_configures(world, monkeypatch):
+    proj, head, files = _project(world)
+    _hostile(monkeypatch, world)
+    pid, eid, base, branch = _seed(world, monkeypatch, proj)
+    assert base == head
+    work = LocalNode.seed_workspace(pid, eid, base, branch, workdirs=())
+    assert work == paths.ExecPaths(eid).work and not os.path.exists(paths.seed_staging(eid))
+    for path, (mode, data) in files.items():
+        p = os.path.join(work, *path.split('/'))
+        st = os.lstat(p)
+        assert stat.S_ISREG(st.st_mode) and st.st_nlink == 1, path
+        assert not getattr(st, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+        with open(p, 'rb') as f:
+            assert f.read() == data, path        # no smudge, eol, encoding or LFS
+    sub = os.path.join(work, 'sub')
+    assert os.path.isdir(sub) and os.listdir(sub) == []             # a gitlink: empty
+    dot = os.path.join(work, '.git')
+    assert sorted(os.listdir(dot)) == sorted(local._SEED_META)
+    with open(os.path.join(dot, 'shallow'), 'rb') as f:
+        assert f.read() == base.encode() + b'\n'
+    with open(os.path.join(dot, 'HEAD'), 'rb') as f:
+        assert f.read() == b'ref: refs/heads/%s\n' % branch.encode()
+    with open(os.path.join(dot, 'config'), 'rb') as f:
+        assert f.read() == local.SEED_CONFIG
+    # the execution's own Git sees exactly the seed, links and gitlink included
+    assert world.git(work, 'rev-parse', 'HEAD') == base
+    stage = world.git(work, 'ls-files', '-s', 'link', 'sub', 'run.sh').splitlines()
+    assert [x.split()[0] for x in stage] == ['120000', '100755', '160000']
+    assert world.fired() == []
+    # no Core Git once the workspace exists: the pinned runner refuses it there
+    spawned = _spy(monkeypatch)
+    with pytest.raises(StoreError, match='execution area'):
+        LocalNode.store_git('seed', ['rev-parse', 'HEAD'], workdirs=(), git_dir=dot)
+    assert spawned == []
+    # positive controls: the same tree checked out unpinned under the same world
+    world.git(world.tmp, 'clone', '-q', str(proj), str(world.tmp / 'ctl'), env=world.hostile,
+              check=False)
+    assert {'g-smudge', 'e-post-checkout'} <= set(world.fired())
+    with open(str(world.tmp / 'ctl' / 'crlf.txt'), 'rb') as f:
+        assert f.read() == b'a\r\nb\r\n'                       # eol=crlf would have applied
+
+
+def _other(world, proj, head):
+    return _bgit(proj, 'commit-tree', head + '^{tree}', '-p', head, '-m', 'other',
+                 env=world.clean)
+
+
+def test_a_mission_branch_is_the_base_when_it_resolves(world):
+    proj, head, _files = _project(world)
+    mid, other = ids.new_id('mission'), _other(world, proj, head)
+    (proj / '.git' / 'refs' / 'heads' / 'archeus').mkdir()
+    (proj / '.git' / 'refs' / 'heads' / 'archeus' / mid).write_bytes(other.encode() + b'\n')
+    assert LocalNode.resolve_base(str(proj), 'archeus/' + mid, workdirs=()) == (
+        'refs/heads/archeus/' + mid, other)
+    assert LocalNode.resolve_base(str(proj), 'archeus/' + ids.new_id('mission'),
+                                  workdirs=()) == ('HEAD', head)
+
+
+def test_a_detached_head_is_the_commit_it_names(world):
+    proj, head, _files = _project(world)
+    other = _other(world, proj, head)
+    (proj / '.git' / 'HEAD').write_bytes(other.encode() + b'\n')
+    assert LocalNode.resolve_base(str(proj), 'archeus/' + ids.new_id('mission'),
+                                  workdirs=()) == ('HEAD', other)
+
+
+def test_an_unborn_head_or_a_root_that_is_no_repository_is_refused(world):
+    empty = world.tmp / 'empty'
+    world.git(world.tmp, 'init', '-q', str(empty))
+    plain = world.tmp / 'plain'
+    plain.mkdir()
+    for root in (empty, plain):
+        with pytest.raises(OSError):
+            LocalNode.resolve_base(str(root), 'archeus/' + ids.new_id('mission'), workdirs=())
+
+
+def test_a_retry_points_its_own_seed_ref_at_a_commit_already_in_the_store(world, monkeypatch):
+    proj, head, files = _project(world)
+    pid, eid, base, branch = _seed(world, monkeypatch, proj)
+    retry = ids.new_id('execution')
+    assert LocalNode.store_seed_ref(pid, retry, base, workdirs=()) == base
+    assert LocalNode.store_seed_ref(pid, retry, base, workdirs=()) == base     # idempotent
+    with pytest.raises(StoreError, match='names'):
+        LocalNode.store_seed_ref(pid, retry, world.c1, workdirs=())          # never moved
+    work = LocalNode.seed_workspace(pid, retry, base, branch, workdirs=())
+    with open(os.path.join(work, 'bin.dat'), 'rb') as f:
+        assert f.read() == BINARY
+
+
+def _refused(pid, eid, base, branch, match):
+    store = paths.repo_store(pid)
+    refs = _snapshot(os.path.join(store, 'refs'))
+    with pytest.raises(OSError, match=match):
+        LocalNode.seed_workspace(pid, eid, base, branch, workdirs=())
+    assert not os.path.exists(paths.ExecPaths(eid).work)                  # nothing published
+    assert _snapshot(os.path.join(store, 'refs')) == refs                 # no store ref moved
+
+
+@pytest.mark.parametrize('which', ['work', 'stage'])
+def test_an_existing_target_or_staging_directory_is_refused_and_left_as_it_is(world,
+                                                                              monkeypatch,
+                                                                              which):
+    proj, _head, _files = _project(world)
+    pid, eid, base, branch = _seed(world, monkeypatch, proj)
+    there = paths.ExecPaths(eid).work if which == 'work' else paths.seed_staging(eid)
+    os.makedirs(there)
+    with open(os.path.join(there, 'mine'), 'wb') as f:
+        f.write(b'x')
+    before = _snapshot(there)
+    with pytest.raises(StoreError, match='already exists'):
+        LocalNode.seed_workspace(pid, eid, base, branch, workdirs=())
+    assert _snapshot(there) == before
+
+
+@pytest.mark.parametrize('bound', ['SEED_MAX_ENTRIES', 'SEED_MAX_BYTES', 'SEED_MAX_DEPTH',
+                                   'SEED_MAX_PATH'])
+def test_a_bounds_breach_refuses_before_anything_is_written(world, monkeypatch, bound):
+    proj, _head, _files = _project(world)
+    pid, eid, base, branch = _seed(world, monkeypatch, proj)
+    small = {'SEED_MAX_ENTRIES': 3, 'SEED_MAX_BYTES': 10, 'SEED_MAX_DEPTH': 2,
+             'SEED_MAX_PATH': len(paths.ExecPaths(eid).work) + 8}[bound]
+    monkeypatch.setattr(local, bound, small)
+    _refused(pid, eid, base, branch, 'past|too deep')
+    assert not os.path.exists(paths.seed_staging(eid))                   # not even staging
+
+
+@pytest.mark.parametrize('path', ['.GIT', 'git~1', 'CON', 'aux.txt', 'x:y', 'trail.',
+                                  'back\\slash'])
+def test_an_unsafe_path_in_the_base_refuses_the_seed(world, monkeypatch, path):
+    proj, _head, _files = _project(world, extra=[('100644', path, b'evil\n')])
+    pid, eid, base, branch = _seed(world, monkeypatch, proj)
+    _refused(pid, eid, base, branch, 'does not seed')
+    assert not os.path.exists(paths.seed_staging(eid))
+
+
+def test_a_case_collision_in_the_base_refuses_the_seed(world, monkeypatch):
+    proj, _head, _files = _project(world, extra=[('100644', 'Readme.md', b'1\n'),
+                                                 ('100644', 'README.md', b'2\n')])
+    pid, eid, base, branch = _seed(world, monkeypatch, proj)
+    _refused(pid, eid, base, branch, 'case-insensitive')
+
+
+def test_a_tampered_staging_file_refuses_the_rename_and_staging_is_kept(world, monkeypatch):
+    """One byte changed after Core wrote it, same size: equal totals would pass it."""
+    proj, _head, _files = _project(world)
+    pid, eid, base, branch = _seed(world, monkeypatch, proj)
+    real = local._seed_walk
+
+    def tamper(top):
+        p = os.path.join(top, 'crlf.txt')
+        with open(p, 'r+b') as f:
+            f.write(b'X')
+        return real(top)
+    monkeypatch.setattr(local, '_seed_walk', tamper)
+    _refused(pid, eid, base, branch, 'differs from its tree')
+    assert os.path.isdir(paths.seed_staging(eid))                            # kept
+
+
+def test_a_seed_whose_ref_names_another_commit_is_refused(world, monkeypatch):
+    proj, _head, _files = _project(world)
+    pid, eid, base, branch = _seed(world, monkeypatch, proj)
+    LocalNode.store_fetch(pid, str(world.user), 'refs/heads/main', world.c2,
+                          'refs/archeus/exec/x/c2', workdirs=())
+    _refused(pid, eid, world.c2, branch, 'does not name')
+
+
+def test_a_junction_planted_in_staging_refuses_the_rename(world, monkeypatch, tmp_path):
+    proj, _head, _files = _project(world)
+    pid, eid, base, branch = _seed(world, monkeypatch, proj)
+    real = local._seed_walk
+
+    def plant(top):
+        (tmp_path / 'outside').mkdir()
+        _junction(os.path.join(top, 'dir', 'j'), tmp_path / 'outside')
+        return real(top)
+    monkeypatch.setattr(local, '_seed_walk', plant)
+    _refused(pid, eid, base, branch, 'alias')
+    assert os.path.isdir(paths.seed_staging(eid))                            # kept

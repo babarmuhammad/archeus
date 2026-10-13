@@ -93,6 +93,15 @@ def repo_store(project_id):
     return os.path.join(repos_dir(), '%s.git' % project_id)
 
 
+def seed_staging(execution_id):
+    """`<ARCHEUS_HOME>/repos/.seed/<execution_id>` — where Core builds an
+    execution's seeded repository before renaming it into the execution's
+    workspace (PV-20 K2, T-049 §4): Core's, never an execution's; kept."""
+    if not ids.is_id(execution_id, 'execution'):
+        raise ValueError('not an execution id: %r' % (execution_id,))
+    return os.path.join(repos_dir(), '.seed', execution_id)
+
+
 def stop_sentinel():
     """`<ARCHEUS_HOME>/run/STOP` — the e-stop sentinel (execution-architecture
     §10). P9 only reads whether it exists (every policy decision is DENY while

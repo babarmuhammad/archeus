@@ -20,13 +20,16 @@ import os
 import re
 import shutil
 import stat
+import subprocess
+import threading
 import time
 
 from claude_sessions import config, proc
 
+from ..core.domain import ids
 from ..harnesses import base
 from ..infra.paths import (ExecPaths, archeus_home, processes_registry, repo_store, repos_dir,
-                           run_dir, stop_sentinel)
+                           run_dir, seed_staging, stop_sentinel)
 from . import isolation as isolation_mod
 from .staging import _entry, _present
 
@@ -55,7 +58,9 @@ STORE_HEAD = 'ref: refs/archeus/none\n'
 STORE_READS = ('rev-parse', 'cat-file', 'ls-tree', 'merge-base', 'diff')
 #: per mode, the only subcommands the runner starts
 _STORE_ARGS = {'version': ('version',), 'init': ('init',), 'seal': ('symbolic-ref', 'mktree'),
-               'trusted': STORE_READS + ('fetch', 'update-ref'), 'base': ('rev-parse',)}
+               'trusted': STORE_READS + ('fetch', 'update-ref'), 'base': ('rev-parse',),
+               'seed': ('fetch', 'update-ref', 'symbolic-ref', 'read-tree', 'ls-files',
+                        'rev-parse')}
 #: exactly the config `init --bare` writes, whole: one [core] section, its keys
 #: in Git's order, each once. Observed at 2.49.0.windows.1 (T-048): format 0,
 #: filemode false, bare true, symlinks false, ignorecase true; symlinks,
@@ -75,6 +80,32 @@ _PROMISOR_PACK = '.promisor'
 #: a `.git` file larger than this is refused (Git reads up to 1 MiB: setup.c
 #: read_gitfile_gently); no path Core resolves is anywhere near it
 _GITFILE_MAX = 64 * 1024
+
+# PV-20 K2 (T-049 and its correction C-1013-T049): an isolated execution's seed,
+# built by Core outside the execution area and renamed in. Every bound below is
+# checked before the write it guards; one breached refuses the whole seed.
+SEED_MAX_ENTRIES = 100000
+SEED_MAX_BYTES = 2 * 1024 ** 3
+SEED_MAX_DEPTH = 64
+#: a file's whole Windows path, long-path support assumed absent
+SEED_MAX_PATH = 259
+#: one `ls-tree -l` or `ls-files -s` record as received, and so the whole listing
+SEED_MAX_RECORD = 4200
+#: seconds for the whole seed; each Git call also keeps its own timeout
+SEED_DEADLINE = 300
+#: the stdout read size of the byte core; stderr keeps this much and drops the rest
+_CHUNK, _STDERR_KEEP = 64 * 1024, 4096
+#: mode -> type an entry may have; 120000 and 160000 seeded inertly (owner Q1, A)
+_SEED_KINDS = {'100644': 'blob', '100755': 'blob', '120000': 'blob', '160000': 'commit'}
+#: the seed's .git/config, exactly: no remote, include or filter
+SEED_CONFIG = (b'[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n'
+               b'\tbare = false\n\tsymlinks = false\n\tautocrlf = false\n')
+#: the seed's .git holds exactly these, and nothing else
+_SEED_META = frozenset(('HEAD', 'config', 'shallow', 'index', 'objects', 'refs'))
+#: a task branch, one segment under archeus/ (manager: archeus/<mission>.<key>)
+_SEED_BRANCH = re.compile(r'archeus/[A-Za-z0-9_][A-Za-z0-9_.-]*')
+_UNSAFE = re.compile(r'[\\:<>"|?*\x00-\x1f\x7f]')
+_DEVICE = re.compile(r'(?i)(con|prn|aux|nul|conin\$|conout\$|(com|lpt)[0-9\u00b9\u00b2\u00b3])')
 
 
 class StoreError(OSError):
@@ -578,13 +609,18 @@ class LocalNode:
     store_fetch_accepted = False
 
     @staticmethod
-    def store_git(mode, args, *, workdirs, git_dir=None, stdin=None, timeout=120):
+    def store_git(mode, args, *, workdirs, git_dir=None, stdin=None, timeout=120, sink=None):
         """The one spawner of a pinned Git call; stdout, or StoreError. *workdirs*
-        are the execution workdirs Core recorded (its database; the node has none)."""
+        are the execution workdirs Core recorded (its database; the node has none).
+        With a *sink* (K2, C-1013-T049 §1) stdout is never decoded or held: it goes
+        to `sink.feed` in fixed chunks as it arrives, *stdin* is bytes, and a sink
+        that refuses, or *timeout*, kills the child."""
         if not args or args[0] not in _STORE_ARGS[mode]:
             raise StoreError('git %s is not a %s call' % (args[:1], mode))
         argv, env, cwd = _store_pin(mode, git_dir)
         _outside_executions([cwd] + ([git_dir] if git_dir else []), workdirs)
+        if sink is not None:
+            return _stream(argv + list(args), cwd, env, stdin, sink, timeout)
         r = proc.run(argv + list(args), cwd=cwd, env=env, timeout=timeout, stdin=stdin)
         if r is None or r.returncode:
             raise StoreError('git %s failed: %s' % (args[0], (r.stderr or r.stdout).strip()
@@ -659,7 +695,8 @@ class LocalNode:
         if LocalNode.store_fetch_accepted is not True:
             raise StoreError('no fetch into a store until its source side is accepted '
                              '(T-046 C1)')
-        if not (_REF.fullmatch(rev_name) and _REF.fullmatch(ref) and ref.startswith('refs/archeus/')
+        if not ((_REF.fullmatch(rev_name) or rev_name == 'HEAD') and _REF.fullmatch(ref)
+                and ref.startswith('refs/archeus/')
                 and '..' not in rev_name + ref and re.fullmatch(r'[0-9a-f]{40}', expect)
                 and os.path.isabs(root)):
             raise StoreError('not a fetch Core may make: %r' % ((root, rev_name, expect, ref),))
@@ -685,7 +722,10 @@ class LocalNode:
         the repository's own local config still is. Reads only; no caller yet."""
         # a ref name or a full id only: no reflog, upstream or path syntax, so
         # nothing beyond refs and objects is read to resolve it
-        if not ((_REF.fullmatch(rev) and '..' not in rev) or re.fullmatch(r'[0-9a-f]{40}', rev)):
+        # HEAD too (K2, T-049 §2: a first attempt's base when the mission branch
+        # does not resolve), read through the HEAD file `_source` checks
+        if not ((_REF.fullmatch(rev) and '..' not in rev) or rev == 'HEAD'
+                or re.fullmatch(r'[0-9a-f]{40}', rev)):
             raise StoreError('not a revision Core resolves: %r' % (rev,))
         git_dir = _source(root, workdirs)
         _pin_files(workdirs)
@@ -693,6 +733,115 @@ class LocalNode:
         return LocalNode.store_git('base', ['rev-parse', '--verify', '-q', '--end-of-options',
                                             rev + '^{commit}'], workdirs=workdirs,
                                    git_dir=git_dir).strip()
+
+    # ── K2: the seed (T-049, C-1013-T049) ──
+
+    @staticmethod
+    def resolve_base(root, mission_branch, *, workdirs):
+        """A first attempt's base (T-049 §2): (the name a fetch takes, the commit):
+        the mission branch if it resolves, else HEAD, each read once under the pin.
+        Only the commit is ever recorded."""
+        rev = 'refs/heads/' + mission_branch
+        if not (_REF.fullmatch(rev) and '..' not in rev):
+            raise StoreError('not a mission branch: %r' % (mission_branch,))
+        try:
+            return rev, LocalNode.store_resolve_base(root, rev, workdirs=workdirs)
+        except StoreError:
+            return 'HEAD', LocalNode.store_resolve_base(root, 'HEAD', workdirs=workdirs)
+
+    @staticmethod
+    def store_seed_ref(project_id, execution_id, commit, *, workdirs):
+        """The execution's own seed ref pointed at *commit*, already in the store (a
+        retry's base, T-049 §3): written once, never moved; refused if it names
+        anything else."""
+        ref = _seed_ref(execution_id)
+        if not re.fullmatch(r'[0-9a-f]{40}', commit):
+            raise StoreError('not a commit Core seeds from: %r' % (commit,))
+        store = LocalNode.store_open(project_id, workdirs=workdirs)
+        try:
+            LocalNode.store_git('trusted', ['update-ref', ref, commit, ''], workdirs=workdirs,
+                                git_dir=store)
+        except StoreError:
+            pass                        # it exists: what it names decides below
+        got = LocalNode.store_git('trusted', ['rev-parse', '--verify', '-q', ref + '^{commit}'],
+                                  workdirs=workdirs, git_dir=store).strip()
+        if got != commit:
+            raise StoreError('%s names %s, not %s' % (ref, got, commit))
+        return commit
+
+    @staticmethod
+    def seed_workspace(project_id, execution_id, seed_revision, branch, *, workdirs):
+        """The execution's repository, holding exactly the tree of *seed_revision*,
+        its own seed ref in the store (T-049 §4 with C-1013-T049): built in Core's
+        staging directory, checked there, renamed into the execution's workspace,
+        which it returns. A refusal publishes nothing and keeps what exists; no Git
+        runs once the workspace exists."""
+        end = time.monotonic() + SEED_DEADLINE
+
+        def git(mode, args, git_dir, **kw):
+            left = end - time.monotonic()
+            if left <= 0:
+                raise StoreError('the seed of %s ran past its deadline' % execution_id)
+            return LocalNode.store_git(mode, args, workdirs=workdirs, git_dir=git_dir,
+                                       timeout=min(120, left), **kw)
+        head = 'refs/heads/' + branch
+        if not (re.fullmatch(r'[0-9a-f]{40}', seed_revision) and _SEED_BRANCH.fullmatch(branch)
+                and '..' not in branch and not branch.endswith(('.', '.lock'))):
+            raise StoreError('not a seed Core builds: %r' % ((seed_revision, branch),))
+        work, stage = ExecPaths(execution_id).work, seed_staging(execution_id)
+        for p in (work, stage):     # fresh, never reused or adopted (rule c)
+            if _present(p):
+                raise StoreError('a seed target that already exists: %s' % p)
+        store = LocalNode.store_open(project_id, workdirs=workdirs)
+        ref = _seed_ref(execution_id)
+        if git('trusted', ['rev-parse', '--verify', '-q', ref + '^{commit}'],
+               store).strip() != seed_revision:
+            raise StoreError('%s does not name %s' % (ref, seed_revision))
+        # the manifest, every bound checked as it arrives and before a byte is written
+        tree = _Manifest(max(len(work), len(stage)))
+        git('trusted', ['ls-tree', '-r', '-z', '-l', '--full-tree', seed_revision], store,
+            sink=tree)
+        # the skeleton: Core's config, the seed commit shallow, the index from its tree
+        _made(repos_dir(), os.path.dirname(stage))
+        os.mkdir(stage)
+        git('init', ['init', '-q', '--object-format=sha1', '--template=' + _pin_area()[2],
+                     stage], None)
+        dot = os.path.join(stage, '.git')
+        _plain(dot, True)
+        _plain(os.path.join(dot, 'config'), False)
+        with open(os.path.join(dot, 'config'), 'wb') as f:
+            f.write(SEED_CONFIG)
+        git('seed', ['fetch', '--depth=1', '--no-tags', '--no-recurse-submodules',
+                     '--no-write-fetch-head', '--no-auto-gc', '--end-of-options', store, ref],
+            dot)
+        git('seed', ['update-ref', head, seed_revision, ''], dot)
+        git('seed', ['symbolic-ref', 'HEAD', head], dot)
+        git('seed', ['read-tree', seed_revision], dot)
+        # the files, written by Core as data: a link is its target text, a gitlink an
+        # empty directory (owner Q1, A); every blob checked against its id
+        for d in sorted(tree.dirs, key=lambda d: d.count('/')):
+            os.mkdir(os.path.join(stage, *d.split('/')))
+        blobs = [(oid, size, os.path.join(stage, *path.split('/')))
+                 for mode, oid, size, path in tree.entries if mode != '160000']
+        if blobs:
+            git('trusted', ['cat-file', '--batch'], store, sink=_Blobs(blobs),
+                stdin=b''.join(oid.encode('ascii') + b'\n' for oid, _s, _p in blobs))
+        # two domains, both before the rename: the working tree, exactly the tree's
+        # map; and the .git Core made, exactly what it wrote
+        if _seed_walk(stage) != tree.expected():
+            raise StoreError('the seed of %s differs from its tree' % execution_id)
+        _seed_meta(dot, head, seed_revision)
+        index = _Index()
+        git('seed', ['ls-files', '-s', '-z'], dot, sink=index)
+        if index.found != {(m, o, p) for m, o, _s, p in tree.entries} or git(
+                'seed', ['rev-parse', 'HEAD^{tree}'], dot) != git(
+                'trusted', ['rev-parse', seed_revision + '^{tree}'], store):
+            raise StoreError('the seed index of %s is not its tree' % execution_id)
+        _made(archeus_home(), os.path.dirname(work))
+        if _present(work):
+            raise StoreError('a seed target that already exists: %s' % work)
+        os.rename(stage, work)
+        return work
 
 
 @functools.lru_cache(maxsize=None)
@@ -744,6 +893,8 @@ def _store_pin(mode, git_dir):
         argv += ['--git-dir', git_dir, '--no-replace-objects']
         if mode == 'trusted':
             argv += ['--attr-source', EMPTY_TREE]
+        if mode == 'seed':              # Core's staging writes no reflog (C-1013-T049)
+            argv += ['-c', 'core.logAllRefUpdates=false']
         cwd = git_dir
     for c in ('core.hooksPath=' + empty, 'core.fsmonitor=false', 'core.attributesFile=' + cfg,
               'submodule.recurse=false', 'gc.auto=0', 'maintenance.auto=false'):
@@ -994,3 +1145,279 @@ def _pin_record(store, version):
         digest = hashlib.sha256(f.read()).hexdigest()
     return {'git': _git_exe(), 'version': version, 'empty_tree': EMPTY_TREE,
             'config_sha256': digest}
+
+
+# ── K2: the byte core and the seed's consumers (C-1013-T049) ──
+
+def _stream(argv, cwd, env, stdin, sink, timeout):
+    """The byte core of `store_git`: stdout straight into *sink* in fixed chunks,
+    never decoded or kept; stderr drained and capped; *stdin* fed by a thread so
+    neither pipe fills. A sink that raises, or *timeout*, kills the child, and the
+    call raises; a read that ends because of the kill is a refusal too."""
+    p = subprocess.Popen(argv, cwd=cwd, env=env, creationflags=proc.no_window_flags,
+                         stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    late, err = threading.Event(), bytearray()
+
+    def expire():
+        late.set()
+        p.kill()
+
+    def drain():
+        for chunk in iter(lambda: p.stderr.read(_CHUNK), b''):
+            err.extend(chunk[:max(0, _STDERR_KEEP - len(err))])
+
+    def feed():
+        try:
+            p.stdin.write(stdin)
+            p.stdin.close()
+        except OSError:
+            pass                        # the child is gone: its end decides
+    helpers = [threading.Thread(target=drain, daemon=True)]
+    if stdin is not None:
+        helpers.append(threading.Thread(target=feed, daemon=True))
+    timer = threading.Timer(timeout, expire)
+    timer.start()
+    for t in helpers:
+        t.start()
+    try:
+        for chunk in iter(lambda: p.stdout.read1(_CHUNK), b''):
+            sink.feed(chunk)
+        p.wait()
+        if late.is_set():
+            raise StoreError('git %s ran past its deadline' % argv[-1:])
+        if p.returncode:
+            raise StoreError('git failed: %s' % bytes(err).decode('utf-8', 'replace').strip())
+        sink.end()
+    except BaseException:
+        p.kill()
+        raise
+    finally:
+        timer.cancel()
+        p.wait()
+        for t in helpers:
+            t.join()
+        p.stdout.close()
+
+
+class _Records:
+    """NUL-ended records handed to `take` as they arrive, bounded while receiving:
+    the first record past SEED_MAX_ENTRIES, a record past SEED_MAX_RECORD or a
+    listing past both multiplied refuses before anything past it is kept."""
+
+    def __init__(self):
+        self.buf, self.n, self.total = b'', 0, 0
+
+    def feed(self, chunk):
+        self.total += len(chunk)
+        if self.total > SEED_MAX_ENTRIES * SEED_MAX_RECORD:
+            raise StoreError('a listing past %d bytes' % (SEED_MAX_ENTRIES * SEED_MAX_RECORD))
+        *recs, self.buf = (self.buf + chunk).split(b'\0')
+        for rec in recs:
+            self.n += 1
+            if self.n > SEED_MAX_ENTRIES or len(rec) > SEED_MAX_RECORD:
+                raise StoreError('a listing past its bounds at record %d' % self.n)
+            self.take(rec)
+        if len(self.buf) > SEED_MAX_RECORD:
+            raise StoreError('a listing record past %d bytes' % SEED_MAX_RECORD)
+
+    def end(self):
+        if self.buf:
+            raise StoreError('a listing that ends inside a record')
+
+
+class _Manifest(_Records):
+    """`ls-tree -r -z -l --full-tree`: every entry's mode, type, id, size and path
+    checked as it arrives, and the totals (bytes, case-folded collisions) kept
+    as they grow. *prefix* is the longest directory a file will sit under."""
+
+    def __init__(self, prefix):
+        super().__init__()
+        self.prefix, self.entries, self.dirs, self.size, self.folded = prefix, [], set(), 0, {}
+
+    def take(self, rec):
+        head, tab, raw = rec.partition(b'\t')
+        try:
+            mode, kind, oid, size = head.decode('ascii').split()
+            path = raw.decode('utf-8')
+        except ValueError:
+            raise StoreError('a tree entry Core cannot read: %r' % rec[:120])
+        gitlink = mode == '160000'
+        if not (tab and _SEED_KINDS.get(mode) == kind and re.fullmatch(r'[0-9a-f]{40}', oid)
+                and (size == '-' if gitlink else re.fullmatch(r'[0-9]{1,12}', size))):
+            raise StoreError('a tree entry Core does not seed: %r' % rec[:120])
+        _seed_path(path, self.prefix)
+        self.size += 0 if gitlink else int(size)
+        if self.size > SEED_MAX_BYTES:
+            raise StoreError('a tree past %d bytes' % SEED_MAX_BYTES)
+        parts = path.split('/')
+        for i in range(1, len(parts) + 1):
+            p = '/'.join(parts[:i])
+            if self.folded.setdefault(p.casefold(), p) != p:
+                raise StoreError('two paths one case-insensitive name: %r, %r'
+                                 % (self.folded[p.casefold()], p))
+        self.dirs.update('/'.join(parts[:i]) for i in range(1, len(parts)))
+        if gitlink:
+            self.dirs.add(path)
+        self.entries.append((mode, oid, None if gitlink else int(size), path))
+
+    def expected(self):
+        out = {d: ('d',) for d in self.dirs}
+        out.update((p, ('f', s, o)) for m, o, s, p in self.entries if m != '160000')
+        return out
+
+
+class _Index(_Records):
+    """`ls-files -s -z`: the (mode, id, path) set of the index Git built."""
+
+    def __init__(self):
+        super().__init__()
+        self.found = set()
+
+    def take(self, rec):
+        head, _tab, raw = rec.partition(b'\t')
+        try:
+            mode, oid, _stage = head.decode('ascii').split()
+            self.found.add((mode, oid, raw.decode('utf-8')))
+        except ValueError:
+            raise StoreError('an index entry Core cannot read: %r' % rec[:120])
+
+
+class _Blobs:
+    """`cat-file --batch` answers, in the order asked: each header must name the
+    id, type and size the manifest gave, its body is streamed into a file Core
+    creates exclusively while Core hashes it, and the id it hashes to must be
+    the one asked for. A missing, truncated, overlong or trailing object refuses."""
+
+    def __init__(self, want):
+        self.want, self.i, self.head, self.left, self.f, self.h = want, 0, b'', None, None, None
+
+    def feed(self, chunk):
+        while chunk:
+            if self.left is None:                       # a header
+                if self.i == len(self.want):
+                    raise StoreError('bytes after the last object')
+                nl = chunk.find(b'\n')
+                self.head += chunk if nl < 0 else chunk[:nl]
+                if len(self.head) > 100:
+                    raise StoreError('an object header Core cannot read')
+                if nl < 0:
+                    return
+                chunk = chunk[nl + 1:]
+                self._open()
+            elif self.left:                             # its body
+                part, chunk = chunk[:self.left], chunk[self.left:]
+                self.f.write(part)
+                self.h.update(part)
+                self.left -= len(part)
+            else:                                       # the newline that ends it
+                if chunk[:1] != b'\n':
+                    raise StoreError('an object longer than its header')
+                chunk = chunk[1:]
+                self._close()
+
+    def _open(self):
+        oid, size, path = self.want[self.i]
+        if self.head != b'%s blob %d' % (oid.encode('ascii'), size):
+            raise StoreError('git gave %r for %s, a blob of %d' % (self.head[:100], oid, size))
+        self.head, self.left = b'', size
+        self.f, self.h = open(path, 'xb'), hashlib.sha1(b'blob %d\0' % size)
+
+    def _close(self):
+        self.f.close()
+        if self.h.hexdigest() != self.want[self.i][0]:
+            raise StoreError('a blob that is not %s' % self.want[self.i][0])
+        self.i, self.left, self.f = self.i + 1, None, None
+
+    def end(self):
+        if self.i != len(self.want) or self.left is not None or self.head:
+            raise StoreError('the objects ended early, at %d of %d' % (self.i, len(self.want)))
+
+
+def _seed_ref(execution_id):
+    if not ids.is_id(execution_id, 'execution'):
+        raise StoreError('not an execution id: %r' % (execution_id,))
+    return 'refs/archeus/exec/%s/seed' % execution_id
+
+
+def _seed_path(path, prefix):
+    """T-049 §5: a path Core will write on Windows, or StoreError."""
+    parts = path.split('/')
+    if len(parts) > SEED_MAX_DEPTH or prefix + 1 + len(path) > SEED_MAX_PATH:
+        raise StoreError('a path too deep or too long to seed: %r' % path)
+    for c in parts:
+        if (c in ('', '.', '..') or _UNSAFE.search(c) or c[-1] in '. '
+                or _DEVICE.fullmatch(c.split('.')[0].rstrip(' '))
+                or c.casefold() in ('.git', 'git~1')):
+            raise StoreError('a path Core does not seed: %r' % path)
+
+
+def _blob_id(path, size):
+    h = hashlib.sha1(b'blob %d\0' % size)
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1 << 20), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _seed_walk(top):
+    """The working tree under *top*, its root `.git` excluded:
+    {path: ('f', size, blob id) | ('d',)}, every entry plain and singly linked."""
+    found = {}
+
+    def walk(d, rel):
+        for name in os.listdir(d):
+            if not rel and name == '.git':
+                continue
+            p, r = os.path.join(d, name), rel + name
+            st = _plain(p, None)
+            if stat.S_ISDIR(st.st_mode):
+                found[r] = ('d',)
+                walk(p, r + '/')
+            else:
+                found[r] = ('f', st.st_size, _blob_id(p, st.st_size))
+    walk(top, '')
+    return found
+
+
+def _seed_meta(dot, head, rev):
+    """The seed's `.git`, exactly as Core made it: these names and no other, Core's
+    bytes in HEAD, config and shallow, one ref naming the seed, no borrowed store,
+    and no alias anywhere below it."""
+    names = set(os.listdir(dot))
+    if names != _SEED_META:
+        raise StoreError('a seed .git holding %s' % sorted(names ^ _SEED_META))
+    for name, want in (('HEAD', b'ref: %s\n' % head.encode('ascii')), ('config', SEED_CONFIG),
+                       ('shallow', rev.encode('ascii') + b'\n'), ('index', None)):
+        _plain(os.path.join(dot, name), False)
+        if want is not None:
+            with open(os.path.join(dot, name), 'rb') as f:
+                if f.read() != want:
+                    raise StoreError('a seed .git/%s Core did not write' % name)
+    refs = {}
+    for top in ('objects', 'refs'):
+        _plain(os.path.join(dot, top), True)
+        for d, dirs, files in os.walk(os.path.join(dot, top)):
+            for n in dirs + files:          # checked before os.walk descends into it
+                _plain(os.path.join(d, n), None)
+            if top == 'refs':
+                for n in files:
+                    with open(os.path.join(d, n), 'rb') as f:
+                        refs[os.path.relpath(os.path.join(d, n), dot).replace(os.sep, '/')] = f.read()
+    if refs != {head: rev.encode('ascii') + b'\n'} or os.listdir(os.path.join(dot, 'objects',
+                                                                               'info')):
+        raise StoreError('a seed .git with refs or object stores Core did not make')
+
+
+def _made(top, path):
+    """*path* and every directory between *top* (Core's) and it: each made by Core
+    when absent, and each plain."""
+    d = top
+    for part in os.path.relpath(path, top).split(os.sep):
+        d = os.path.join(d, part)
+        if not _present(d):
+            try:
+                os.mkdir(d)
+            except FileExistsError:
+                pass
+        _plain(d, True)

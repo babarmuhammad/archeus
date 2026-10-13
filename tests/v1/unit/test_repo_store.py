@@ -1,11 +1,15 @@
-"""PV-20 K1 (T-048): the Core-owned store's one pin, with no process started.
+"""PV-20 K1 (T-048) and K2 (T-066): the Core-owned store's one pin and the seed's
+byte core and checks, with no process started.
 
 Every Git call here is answered by a fake `proc.run` that records argv, env and
 cwd; a refusal is asserted together with zero calls. Real Git runs only in
 tests/v1/integration/test_repo_store.py."""
 
 import ast
+import hashlib
 import os
+import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -463,7 +467,7 @@ def test_a_plain_shallow_and_grafts_file_are_read(spawns, tmp_path):
     assert [c.argv[-1] for c in spawns.calls] == ['version', 'refs/heads/main^{commit}']
 
 
-@pytest.mark.parametrize('rev', ['-x', 'main', 'HEAD', 'refs/heads/main@{1}', 'main@{upstream}',
+@pytest.mark.parametrize('rev', ['-x', 'main', 'head', 'refs/heads/main@{1}', 'main@{upstream}',
                                  'HEAD~1', 'refs/heads/main:a.txt', ':/fix', 'refs/heads/../x',
                                  'refs/heads/main^2', '1' * 39])
 def test_base_resolution_takes_a_ref_name_or_a_full_id_only(spawns, tmp_path, rev):
@@ -474,6 +478,8 @@ def test_base_resolution_takes_a_ref_name_or_a_full_id_only(spawns, tmp_path, re
     assert spawns.calls == []
     LocalNode.store_resolve_base(root, '1' * 40, workdirs=())
     assert spawns.calls[-1].argv[-1] == '1' * 40 + '^{commit}'
+    LocalNode.store_resolve_base(root, 'HEAD', workdirs=())         # K2: HEAD itself, only
+    assert spawns.calls[-1].argv[-1] == 'HEAD^{commit}'
 
 
 @pytest.mark.parametrize('call', ['base', 'fetch'])
@@ -776,11 +782,11 @@ STORE_KEYS = ('--git-dir', '--attr-source', '--no-replace-objects', 'GIT_CONFIG_
               'GIT_ALLOW_PROTOCOL', 'GIT_PROTOCOL_FROM_USER', 'GIT_CEILING_DIRECTORIES',
               'GIT_NO_LAZY_FETCH')
 STORE_C = ('core.hooksPath=', 'core.fsmonitor=', 'core.attributesFile=', 'gc.auto=',
-           'maintenance.auto=', 'submodule.recurse=')
+           'maintenance.auto=', 'submodule.recurse=', 'core.logAllRefUpdates=')
 LOCAL = 'archeus/node/local.py'
 #: who may call the spawner and the builder (later cards add theirs by name)
 CALLERS = {'store_git': ('store_open', 'store_read', 'store_fetch', 'store_resolve_base',
-                         '_git_version'),
+                         '_git_version', 'store_seed_ref', 'seed_workspace'),
            '_store_pin': ('store_git',)}
 
 
@@ -837,6 +843,8 @@ def _production_trees():
     ("def store_open(pid):\n    _store_pin('trusted', s)", LOCAL),
     ("CAPABILITY_ENV = {'GIT_TERMINAL_PROMPT': '0', 'GIT_CONFIG_GLOBAL': ''}",
      'archeus/harnesses/base.py'),
+    ("def _seed_check(dot):\n    LocalNode.store_git('seed', ['ls-files', '-s', '-z'])", LOCAL),
+    ("argv += ['-c', 'core.logAllRefUpdates=false']", 'archeus/core/execution/manager.py'),
 ])
 def test_the_detector_sees_a_second_store_pin(snippet, rel):
     assert _store_pin_violations(ast.parse(snippet), rel)
@@ -858,3 +866,450 @@ def test_no_second_store_pin_exists_and_the_reviewed_env_pins_are_untouched():
             ('archeus/harnesses/base.py', 'GIT_CONFIG_COUNT'),
             ('archeus/harnesses/base.py', 'GIT_TERMINAL_PROMPT'),
             ('archeus/node/local.py', 'GIT_TERMINAL_PROMPT')} <= seen
+
+
+
+# ── K2 (T-066, T-049 + C-1013-T049): the seed's pin, byte core and checks ─────
+
+def test_the_seed_mode_runs_under_the_whole_pin_and_writes_no_reflog():
+    _pin_, empty, cfg = _pin()
+    dot = os.path.join(paths.seed_staging(ids.new_id('execution')), '.git')
+    argv, env, cwd = local._store_pin('seed', dot)
+    cs = [argv[i + 1] for i, a in enumerate(argv) if a == '-c']
+    assert set(cs) == set(PINS) | {'core.hooksPath=' + empty, 'core.attributesFile=' + cfg,
+                                   'core.logAllRefUpdates=false'}
+    assert argv[argv.index('--git-dir') + 1] == dot and cwd == dot
+    assert '--no-replace-objects' in argv and '--attr-source' not in argv
+    assert set(env) <= ALLOWED_ENV and env['HOME'] == empty
+
+
+def test_seed_staging_is_cores_and_named_by_the_execution():
+    eid = ids.new_id('execution')
+    assert paths.seed_staging(eid) == os.path.join(paths.repos_dir(), '.seed', eid)
+    for bad in ('..', 'exe_x', ids.new_id('project'), ''):
+        with pytest.raises(ValueError):
+            paths.seed_staging(bad)
+
+
+@pytest.mark.parametrize('mode,args', [('seed', ['config', 'core.hooksPath', 'x']),
+                                       ('seed', ['checkout', 'HEAD']),
+                                       ('seed', ['cat-file', '--batch']),
+                                       ('seed', ['init'])])
+def test_a_seed_subcommand_outside_its_mode_is_refused(spawns, mode, args):
+    with pytest.raises(StoreError, match='is not a'):
+        LocalNode.store_git(mode, args, workdirs=(), git_dir=paths.repos_dir())
+    assert spawns.calls == []
+
+
+class Child:
+    """A child process answered in-process: stdout handed out one chunk per read,
+    or, with *stall*, nothing until it is killed. Nothing is started."""
+
+    def __init__(self, chunks=(), code=0, stall=False):
+        self.chunks, self.code, self.stall = list(chunks), code, stall
+        self.killed, self.written, self.returncode = threading.Event(), b'', None
+        err = [b'boom'] if code else []
+        self.stdout = SimpleNamespace(read1=self._read1, close=lambda: None)
+        self.stderr = SimpleNamespace(read=lambda n: err.pop() if err else b'')
+        self.stdin = SimpleNamespace(write=self._write, close=lambda: None)
+
+    def _read1(self, n):
+        if self.stall:
+            self.killed.wait(10)
+            return b''
+        if self.killed.is_set() or not self.chunks:
+            return b''
+        return self.chunks.pop(0)
+
+    def _write(self, data):
+        self.written += data
+
+    def kill(self):
+        self.killed.set()
+
+    def wait(self):
+        self.returncode = -9 if self.killed.is_set() else self.code
+        return self.returncode
+
+
+@pytest.fixture
+def child(monkeypatch):
+    """`subprocess.Popen` answered by a `Child`: the call is recorded, never started."""
+    box = SimpleNamespace(made=[], child=None)
+
+    def popen(argv, **kw):
+        box.made.append(SimpleNamespace(argv=argv, **kw))
+        return box.child
+    monkeypatch.setattr(local.subprocess, 'Popen', popen)
+    box.use = lambda c: setattr(box, 'child', c) or c
+    return box
+
+
+class Sink:
+    def __init__(self, refuse_at=None):
+        self.got, self.ended, self.refuse_at = [], False, refuse_at
+
+    def feed(self, chunk):
+        self.got.append(chunk)
+        if self.refuse_at is not None and len(self.got) >= self.refuse_at:
+            raise StoreError('refused by the sink')
+
+    def end(self):
+        self.ended = True
+
+
+STORE = lambda: paths.repo_store(ids.new_id('project'))     # noqa: E731
+
+
+def test_the_byte_core_hands_raw_bytes_to_the_sink_and_feeds_stdin_as_bytes(child, spawns):
+    raw = [b'\xff\xfe\x00', b'\x80\x00z']
+    c = child.use(Child(raw))
+    sink = Sink()
+    LocalNode.store_git('trusted', ['cat-file', '--batch'], workdirs=(), git_dir=STORE(),
+                        stdin=b'abc\n', sink=sink)
+    assert sink.got == raw and sink.ended and c.written == b'abc\n'
+    made = child.made[0]
+    assert made.argv[0] == GIT and made.argv[-2:] == ['cat-file', '--batch']
+    assert made.creationflags == local.proc.no_window_flags and spawns.calls == []
+
+
+def test_a_sink_that_refuses_kills_the_child_before_it_reads_on(child):
+    c = child.use(Child([b'x' * 10] * 50))
+    with pytest.raises(StoreError, match='refused by the sink'):
+        LocalNode.store_git('trusted', ['ls-tree', 'x'], workdirs=(), git_dir=STORE(),
+                            sink=Sink(refuse_at=3))
+    assert c.killed.is_set() and len(c.chunks) == 47
+
+
+def test_a_child_that_stalls_is_killed_at_the_deadline(child):
+    c = child.use(Child(stall=True))
+    t = time.monotonic()
+    with pytest.raises(StoreError, match='deadline'):
+        LocalNode.store_git('trusted', ['ls-tree', 'x'], workdirs=(), git_dir=STORE(),
+                            sink=Sink(), timeout=0.2)
+    assert c.killed.is_set() and time.monotonic() - t < 5
+
+
+def test_a_failed_child_is_a_refusal_and_its_output_is_not_taken(child):
+    child.use(Child([b'partial'], code=1))
+    sink = Sink()
+    with pytest.raises(StoreError, match='git failed'):
+        LocalNode.store_git('trusted', ['ls-tree', 'x'], workdirs=(), git_dir=STORE(), sink=sink)
+    assert not sink.ended
+
+
+@pytest.mark.parametrize('where', ['work', 'dot'])
+def test_a_byte_call_in_an_execution_area_is_refused_before_a_spawn(child, where):
+    work = paths.ExecPaths(ids.new_id('execution')).work
+    with pytest.raises(StoreError, match='execution area'):
+        LocalNode.store_git('seed', ['ls-files', '-s', '-z'], workdirs=(),
+                            git_dir=work if where == 'work' else os.path.join(work, '.git'),
+                            sink=Sink())
+    assert child.made == []
+
+
+# the manifest, record by record (`ls-tree -r -z -l --full-tree`)
+
+OID = lambda data: hashlib.sha1(b'blob %d\0' % len(data) + data).hexdigest()   # noqa: E731
+COMMIT = 'c' * 40
+
+
+def _rec(mode, path, data=b'x', kind=None, oid=None, size=None):
+    kind = kind or ('commit' if mode == '160000' else 'blob')
+    oid = oid or (COMMIT if mode == '160000' else OID(data))
+    size = size if size is not None else ('-' if mode == '160000' else str(len(data)))
+    return (b'%s %s %s %7s\t' % (mode.encode(), kind.encode(), oid.encode(), size.encode())
+            + (path.encode('utf-8') if isinstance(path, str) else path) + b'\0')
+
+
+def _manifest(records, chunk=7, prefix=40):
+    m = local._Manifest(prefix)
+    data = b''.join(records)
+    for i in range(0, len(data), chunk):
+        m.feed(data[i:i + chunk])
+    m.end()
+    return m
+
+
+def test_a_manifest_maps_links_to_files_and_gitlinks_to_empty_directories():
+    m = _manifest([_rec('100644', 'a.txt', b'A'), _rec('100755', 'bin/run', b'R'),
+                   _rec('120000', 'link', b'a.txt'), _rec('160000', 'deps/sub')])
+    assert m.expected() == {'a.txt': ('f', 1, OID(b'A')), 'bin': ('d',),
+                            'bin/run': ('f', 1, OID(b'R')), 'link': ('f', 5, OID(b'a.txt')),
+                            'deps': ('d',), 'deps/sub': ('d',)}
+    assert [e[0] for e in m.entries] == ['100644', '100755', '120000', '160000']
+
+
+@pytest.mark.parametrize('path', [
+    '', 'a//b', './a', 'a/./b', 'a/../b', '..', 'a\\b', 'a:b', 'C:x', 'a\x01b', 'a\x1fb',
+    'a\x7fb', 'x<y', 'x>y', 'x"y', 'x|y', 'x?y', 'x*y', 'CON', 'con.txt', 'Aux', 'nul .txt',
+    'COM1', 'lpt9.log', 'com\u00b9', 'CONIN$', 'a/PRN/b', 'trail.', 'trail ', 'd./x',
+    '.git', '.GIT', 'a/.Git/b', 'git~1', 'a/GIT~1/x', 'a/' * 64 + 'b',
+    'x' * 300])
+def test_a_path_core_does_not_write_on_windows_refuses_the_seed(path):
+    with pytest.raises(StoreError):
+        _manifest([_rec('100644', 'ok.txt'), _rec('100644', path)])
+
+
+def test_a_path_that_is_not_utf8_refuses_the_seed():
+    with pytest.raises(StoreError, match='cannot read'):
+        _manifest([_rec('100644', b'bad\xff')])
+
+
+def test_the_full_path_counts_the_directory_it_lands_in():
+    name = 'x' * 50
+    _manifest([_rec('100644', name)], prefix=local.SEED_MAX_PATH - 51)
+    with pytest.raises(StoreError, match='too long'):
+        _manifest([_rec('100644', name)], prefix=local.SEED_MAX_PATH - 50)
+
+
+@pytest.mark.parametrize('rec', [
+    _rec('100644', 'a', kind='commit'), _rec('160000', 'a', kind='blob'),
+    _rec('040000', 'a', kind='tree'), _rec('100664', 'a'), _rec('100644', 'a', size='-'),
+    _rec('160000', 'a', size='1'), _rec('100644', 'a', oid='a' * 64),
+    _rec('100644', 'a', oid='A' * 40), _rec('100644', 'a', size='-1'),
+    b'100644 blob ' + b'a' * 40 + b'a\0', b'garbage\0'])
+def test_an_entry_core_does_not_seed_refuses_it(rec):
+    with pytest.raises(StoreError):
+        _manifest([rec])
+
+
+@pytest.mark.parametrize('paths_', [('Readme.md', 'README.md'), ('A/x', 'a/y'), ('a', 'A/b'),
+                                    ('d/E', 'D/e')])
+def test_two_paths_one_name_under_case_folding_refuse_before_any_write(paths_):
+    with pytest.raises(StoreError, match='case-insensitive'):
+        _manifest([_rec('100644', p) for p in paths_])
+
+
+def test_a_listing_past_its_count_is_refused_while_it_arrives(monkeypatch):
+    monkeypatch.setattr(local, 'SEED_MAX_ENTRIES', 3)
+    m, fed = local._Manifest(40), 0
+    data = b''.join(_rec('100644', 'f%d' % i) for i in range(10))
+    chunk = 64
+    with pytest.raises(StoreError, match='past its bounds'):
+        for i in range(0, len(data), chunk):
+            fed += 1
+            m.feed(data[i:i + chunk])
+    assert len(m.entries) == 3 and fed * chunk <= 4 * len(_rec('100644', 'f0')) + chunk
+
+
+def test_a_record_past_its_size_is_refused_before_its_end_arrives(monkeypatch):
+    monkeypatch.setattr(local, 'SEED_MAX_RECORD', 100)
+    m = local._Manifest(40)
+    with pytest.raises(StoreError, match='past'):
+        m.feed(b'1' * 101)                      # no NUL yet: refused on its length alone
+    with pytest.raises(StoreError, match='past its bounds'):
+        local._Manifest(40).feed(_rec('100644', 'x' * 60) + _rec('100644', 'y' * 20))
+
+
+def test_a_listing_past_its_total_bytes_is_refused(monkeypatch):
+    monkeypatch.setattr(local, 'SEED_MAX_ENTRIES', 2)
+    monkeypatch.setattr(local, 'SEED_MAX_RECORD', 80)
+    m = local._Manifest(40)
+    m.feed(b'x' * 80)
+    with pytest.raises(StoreError, match='bytes'):
+        m.feed(b'x' * 81)
+
+
+def test_a_tree_past_its_bytes_or_depth_is_refused(monkeypatch):
+    monkeypatch.setattr(local, 'SEED_MAX_BYTES', 10)
+    with pytest.raises(StoreError, match='past 10 bytes'):
+        _manifest([_rec('100644', 'a', b'x' * 6), _rec('100644', 'b', b'x' * 5)])
+    monkeypatch.setattr(local, 'SEED_MAX_DEPTH', 2)
+    _manifest([_rec('100644', 'a/b')])
+    with pytest.raises(StoreError, match='too deep'):
+        _manifest([_rec('100644', 'a/b/c')])
+
+
+def test_a_listing_that_ends_inside_a_record_is_refused():
+    m = local._Manifest(40)
+    m.feed(_rec('100644', 'a')[:-1])
+    with pytest.raises(StoreError, match='ends inside'):
+        m.end()
+
+
+# the blobs (`cat-file --batch`), streamed into files Core creates
+
+def _blobs(tmp_path, wanted):
+    """(sink, [(oid, size, path)]) for *wanted*: {name: bytes}."""
+    want = [(OID(d), len(d), str(tmp_path / n)) for n, d in wanted.items()]
+    return local._Blobs(want), want
+
+
+def _answer(*objs):
+    return b''.join(b'%s blob %d\n%s\n' % (OID(d).encode(), len(d), d) for d in objs)
+
+
+@pytest.mark.parametrize('chunk', [1, 3, 64 * 1024])
+def test_a_binary_blob_round_trips_byte_for_byte(tmp_path, chunk):
+    data = {'bin': b'\xff\xfe\x00\x80\x00z', 'empty': b'', 'two': b'\xff\xfe\x00\x80\x00z'}
+    sink, want = _blobs(tmp_path, data)
+    raw = _answer(*data.values())
+    for i in range(0, len(raw), chunk):
+        sink.feed(raw[i:i + chunk])
+    sink.end()
+    for (oid, size, path), d in zip(want, data.values()):
+        with open(path, 'rb') as f:
+            assert f.read() == d
+
+
+def test_a_blob_core_already_has_a_file_for_is_refused_not_overwritten(tmp_path):
+    (tmp_path / 'bin').write_bytes(b'mine')
+    sink, _want = _blobs(tmp_path, {'bin': b'theirs'})
+    with pytest.raises(FileExistsError):
+        sink.feed(_answer(b'theirs'))
+    assert (tmp_path / 'bin').read_bytes() == b'mine'
+
+
+@pytest.mark.parametrize('case', ['truncated', 'overlong-header', 'longer-body', 'trailing',
+                                  'wrong-type', 'missing', 'other-content', 'other-id'])
+def test_a_blob_answer_core_did_not_ask_for_is_refused(tmp_path, case):
+    d = b'\xff\xfe\x00\x80\x00z'
+    sink, _want = _blobs(tmp_path, {'bin': d})
+    o = OID(d).encode()
+    raw = {'truncated': b'%s blob 6\n%s' % (o, d[:5]),
+           'overlong-header': b'%s blob 7\n%s?\n' % (o, d),
+           'longer-body': b'%s blob 6\n%s?\n' % (o, d),
+           'trailing': _answer(d) + b'x',
+           'wrong-type': b'%s tree 6\n%s\n' % (o, d),
+           'missing': b'%s missing\n' % o,
+           'other-content': b'%s blob 6\n%s\n' % (o, b'\xff\xfe\x00\x80\x00Z'),
+           'other-id': b'%s blob 6\n%s\n' % (b'0' * 40, d)}[case]
+    with pytest.raises(StoreError):
+        sink.feed(raw)
+        sink.end()
+
+
+# the two domains of a staged seed (C-1013-T049 §2), on plain files only
+
+BRANCH = 'refs/heads/archeus/m.t1'
+REV = 'd' * 40
+
+
+def _staged(tmp_path):
+    """A staging directory exactly as a good seed leaves it, and its manifest."""
+    top = tmp_path / 'stage'
+    files = {'a.txt': b'A\n', 'd/e.txt': b'E\n', 'link': b'a.txt'}
+    m = _manifest([_rec('100644', 'a.txt', files['a.txt']), _rec('100644', 'd/e.txt', b'E\n'),
+                   _rec('120000', 'link', b'a.txt'), _rec('160000', 'sub')])
+    for p, d in files.items():
+        (top / p).parent.mkdir(parents=True, exist_ok=True)
+        (top / p).write_bytes(d)
+    (top / 'sub').mkdir()
+    dot = top / '.git'
+    for d in (('objects', 'info'), ('objects', 'pack'), ('refs', 'heads', 'archeus'),
+              ('refs', 'tags')):
+        (dot.joinpath(*d)).mkdir(parents=True)
+    (dot / 'objects' / 'pack' / 'pack-1.pack').write_bytes(b'P')
+    (dot / 'HEAD').write_bytes(b'ref: %s\n' % BRANCH.encode())
+    (dot / 'config').write_bytes(local.SEED_CONFIG)
+    (dot / 'shallow').write_bytes(REV.encode() + b'\n')
+    (dot / 'index').write_bytes(b'DIRC')
+    (dot / 'refs' / 'heads' / 'archeus' / 'm.t1').write_bytes(REV.encode() + b'\n')
+    return top, dot, m
+
+
+def test_a_good_staging_directory_passes_both_domains(tmp_path):
+    top, dot, m = _staged(tmp_path)
+    assert local._seed_walk(str(top)) == m.expected()
+    local._seed_meta(str(dot), BRANCH, REV)
+
+
+@pytest.mark.parametrize('plant', [
+    ('hooks', 'post-checkout'), ('info', 'attributes'), ('objects', 'info', 'alternates'),
+    ('objects', 'info', 'http-alternates'), ('commondir',), ('config.worktree',),
+    ('logs', 'HEAD'), ('description',), ('FETCH_HEAD',), ('packed-refs',),
+    ('refs', 'heads', 'other'), ('refs', 'replace', 'x')])
+def test_metadata_core_did_not_make_refuses_the_seed(tmp_path, plant):
+    top, dot, _m = _staged(tmp_path)
+    p = dot.joinpath(*plant)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(REV.encode() + b'\n')
+    with pytest.raises(StoreError):
+        local._seed_meta(str(dot), BRANCH, REV)
+
+
+@pytest.mark.parametrize('name,data', [('HEAD', b'ref: refs/heads/main\n'),
+                                       ('shallow', b'e' * 40 + b'\n'),
+                                       ('config', local.SEED_CONFIG + b'[remote "o"]\n'),
+                                       (os.path.join('refs', 'heads', 'archeus', 'm.t1'),
+                                        b'e' * 40 + b'\n')])
+def test_metadata_core_wrote_with_other_bytes_refuses_the_seed(tmp_path, name, data):
+    top, dot, _m = _staged(tmp_path)
+    (dot / name).write_bytes(data)
+    with pytest.raises(StoreError, match='did not'):
+        local._seed_meta(str(dot), BRANCH, REV)
+
+
+@pytest.mark.parametrize('case', ['tampered', 'extra-file', 'missing-file', 'extra-dir',
+                                  'full-gitlink', 'other-link-text', 'nested-git', 'file-for-dir'])
+def test_a_working_tree_that_is_not_the_trees_map_refuses_the_seed(tmp_path, case):
+    """Accounting by domain, never by totals: a same-size edit is caught."""
+    top, _dot, m = _staged(tmp_path)
+    if case == 'tampered':
+        (top / 'a.txt').write_bytes(b'B\n')
+    elif case == 'extra-file':
+        (top / 'd' / 'x').write_bytes(b'')
+    elif case == 'missing-file':
+        (top / 'd' / 'e.txt').unlink()
+    elif case == 'extra-dir':
+        (top / 'empty').mkdir()
+    elif case == 'full-gitlink':
+        (top / 'sub' / 'x').write_bytes(b'')
+    elif case == 'other-link-text':
+        (top / 'link').write_bytes(b'b.txt')
+    elif case == 'nested-git':
+        (top / 'd' / '.GIT').mkdir()
+    else:
+        (top / 'sub').rmdir()
+        (top / 'sub').write_bytes(b'')
+    assert local._seed_walk(str(top)) != m.expected()
+
+
+def test_a_hard_linked_working_file_refuses_the_seed(tmp_path):
+    top, _dot, _m = _staged(tmp_path)
+    os.link(str(top / 'a.txt'), str(tmp_path / 'outside'))
+    with pytest.raises(StoreError, match='hard-linked'):
+        local._seed_walk(str(top))
+
+
+# the node's seed entry points, refused with nothing started
+
+@pytest.mark.parametrize('rev,branch', [('e' * 39, 'archeus/m.t'), ('E' * 40, 'archeus/m.t'),
+                                        ('e' * 64, 'archeus/m.t'), ('e' * 40, 'a..b'),
+                                        ('e' * 40, '-x'), ('e' * 40, 'a b'), ('e' * 40, '')])
+def test_a_seed_core_does_not_build_is_refused_before_anything(spawns, child, rev, branch):
+    with pytest.raises(StoreError, match='not a seed'):
+        LocalNode.seed_workspace(ids.new_id('project'), ids.new_id('execution'), rev, branch,
+                                 workdirs=())
+    assert spawns.calls == [] and child.made == []
+    assert not os.path.exists(paths.repos_dir())
+
+
+@pytest.mark.parametrize('eid,commit', [('exe_x', 'e' * 40), (None, 'e' * 39),
+                                        (None, 'HEAD')])
+def test_a_seed_ref_core_does_not_write_is_refused_before_anything(spawns, eid, commit):
+    with pytest.raises(StoreError):
+        LocalNode.store_seed_ref(ids.new_id('project'), eid or ids.new_id('execution'), commit,
+                                 workdirs=())
+    assert spawns.calls == []
+
+
+def test_a_first_attempt_takes_the_mission_branch_else_head(spawns, monkeypatch, tmp_path):
+    root = _repo(tmp_path / 'u')
+    calls = []
+
+    def run(argv, **kw):
+        calls.append(argv[-1])
+        if argv[-1] == 'version':
+            return SimpleNamespace(returncode=0, stdout='git version 2.49.0\n', stderr='')
+        found = argv[-1] == 'HEAD^{commit}'
+        return SimpleNamespace(returncode=0 if found else 1, stdout='1' * 40 + '\n' if found
+                               else '', stderr='')
+    monkeypatch.setattr(local.proc, 'run', run)
+    assert LocalNode.resolve_base(root, 'archeus/m', workdirs=()) == ('HEAD', '1' * 40)
+    assert calls == ['version', 'refs/heads/archeus/m^{commit}', 'HEAD^{commit}']
+    calls.clear()
+    with pytest.raises(StoreError, match='not a mission branch'):
+        LocalNode.resolve_base(root, 'a..b', workdirs=())
+    assert calls == []

@@ -93,16 +93,21 @@ def binding(conn, e):
 # ── process start and progress ──────────────────────────────────────────────
 
 def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, process_seq,
-                    isolated, inventory_sha256=None, inventory_size=None):
+                    isolated, inventory_sha256=None, inventory_size=None, seed_revision=None):
     """Before a process starts: the binding still holds (else the execution ends
     uncharged and the task is re-dispatched), and the new process's number,
     workdir, branch and hook token hash are recorded — and (P20, ADR-0049) the
     inventory of what its settings sources load, an artifact the manager has
     already stored, referenced from the execution. The isolation decision
     (T-035) is recorded at the first preparation; a later one under a different
-    decision ends the execution uncharged, and a legacy row stays unknown."""
+    decision ends the execution uncharged, and a legacy row stays unknown. So is
+    the commit its seed was built from (K2, T-049 §7): a resume must name the one
+    recorded, None included, or it ends uncharged the same way."""
     if not isinstance(isolated, bool):
         raise ValueError('prepare_process needs the isolation decision as a bool')
+    if seed_revision is not None and not (isinstance(seed_revision, str)
+                                          and entities.SEED_REVISION.fullmatch(seed_revision)):
+        raise ValueError('a seed revision is a commit id: %r' % (seed_revision,))
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
     if e.state not in ('INTENT', 'PAUSED', 'AWAITING_APPROVAL'):
         raise lifecycle.IllegalTrigger('execution', e.state, 'prepare_process',
@@ -116,7 +121,12 @@ def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, p
         why = 'its isolation decision changed (recorded %s, now %s)' % (e.isolated, isolated)
         return dict(refuse(tx, actor=actor, execution_id=e.id, reason=why,
                            stop_reason='binding'), refused=why)
+    if e.process_seq >= 1 and seed_revision != e.seed_revision:
+        why = 'its seed changed (recorded %s, now %s)' % (e.seed_revision, seed_revision)
+        return dict(refuse(tx, actor=actor, execution_id=e.id, reason=why,
+                           stop_reason='binding'), refused=why)
     recorded = isolated if e.process_seq == 0 else e.isolated
+    seed = seed_revision if e.process_seq == 0 else e.seed_revision
     why = binding(tx.conn, e)
     if why is not None:
         return dict(refuse(tx, actor=actor, execution_id=e.id, reason=why,
@@ -127,17 +137,43 @@ def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, p
     tx.update(entities.Execution, e.id, {'process_seq': process_seq, 'workdir': workdir,
                                          'branch': branch, 'hook_token_hash': token_digest,
                                          'hook_seq': 0 if e.process_seq == 0 else e.hook_seq,
-                                         'isolated': recorded,
+                                         'isolated': recorded, 'seed_revision': seed,
                                          'inventory_sha256': inventory_sha256},
               actor=actor)
     _event(tx, 'execution.prepared', e, actor, {'process_seq': process_seq, 'workdir': workdir,
                                                 'branch': branch,
                                                 'inventory': inventory_sha256,
-                                                'isolated': recorded})
+                                                'isolated': recorded,
+                                                'seed_revision': seed})
     return {'execution_id': e.id, 'process_seq': process_seq, 'refused': None}
 
 
-def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None):
+class SeedRefused(Exception):
+    """No base an execution's seed may be built from: it is refused, charged, and on
+    its task's last attempt the task fails with `failure_class`."""
+
+    def __init__(self, why, failure_class):
+        super().__init__(why)
+        self.failure_class = failure_class
+
+
+def seed_base(conn, e):
+    """T-049 §2: the commit *e*'s seed is built from, read from Core's write-once
+    records only (a retry: the latest earlier attempt's), or None for a first
+    attempt, whose base the node reads once from the user's repository. A hand-off
+    continuation continues its predecessor's import, which K3 records; without one
+    there is nothing to continue, and under T-030 §3.3 Q2 (owner, A) that is a
+    charged failure of class `import`, never a seed of something else."""
+    if e.handoff_from is not None:
+        raise SeedRefused('%s continues %s, which has no import' % (e.id, e.handoff_from),
+                          'import')
+    earlier = [r.entity for r in rows.where(conn, entities.Execution, task_id=e.task_id)
+               if r.entity.attempt < e.attempt and r.entity.seed_revision is not None]
+    return max(earlier, key=lambda x: x.attempt).seed_revision if earlier else None
+
+
+def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None,
+           failure_class='execution'):
     """An execution with no process ends here: INTENT never spawned
     (ABANDONED), a paused or waiting one is discarded (ENDED_KILLED). Uncharged,
     and the task goes back to READY, unless the reason is the task's own (a
@@ -153,7 +189,7 @@ def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None):
         e = _fire(tx, e.id, 'discarded', actor, reason, dict(fields, exit_reason='killed'))
         e = _finish(tx, actor, e, facts)
         _event(tx, 'execution.ended', e, actor, _end_payload(e))
-    return _respond(tx, actor, e, reason)
+    return _respond(tx, actor, e, reason, failure_class)
 
 
 def record_process(tx, *, actor, execution_id, pid, create_time, process_seq):
@@ -355,7 +391,7 @@ def lost(tx, *, actor, execution_id, reason, facts=None):
     return _ended(tx, actor, e, None, facts)
 
 
-def _respond(tx, actor, e, why):
+def _respond(tx, actor, e, why, failure_class='execution'):
     """The task's (and for a stop, the mission's) response to *e* ending."""
     t = lifecycle.load(tx, entities.Task, e.task_id).entity
     out = {'execution_id': e.id, 'state': e.state, 'charged': e.charged}
@@ -374,7 +410,7 @@ def _respond(tx, actor, e, why):
                            )[0].entity
     else:
         t = charged_failure(tx, actor, t, 'execution_failed_retry', 'execution_failed_final',
-                            'execution', why).entity
+                            failure_class, why).entity
     return {**out, 'task_state': t.state}
 
 
