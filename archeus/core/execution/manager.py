@@ -94,6 +94,7 @@ class ExecutionManager:
         self._procs = {}
         self._clock = {'accounts': 0.0, 'usage': 0.0, 'isolation': 0.0}
         self._isolation_fault = None        # the last sweep fault logged, so it logs once
+        self._noted = set()                 # (execution id, op) registry notes already left
         self.booted = False
 
     def _do(self, command, **kw):
@@ -180,6 +181,14 @@ class ExecutionManager:
         if not permitted:
             self._do(X.refuse, execution_id=e.id, reason='provider terms do not permit it',
                      stop_reason='binding')
+            return True
+        if e.isolated is True and self._isolation_record(e.id) is None:
+            # T-037 rule 4: without its record a resume would be decided afresh and, if
+            # its profile is gone, run under a new identity (R7). Refused before the
+            # decision, the workspace and the inventory, never re-established.
+            self._do(X.refuse, execution_id=e.id, stop_reason='binding',
+                     reason='its isolation record is gone: an isolated execution resumes '
+                            'only under the identity it was prepared with')
             return True
         # whether this process runs isolated is the node's isolation authority's
         # decision (§3.4), never the adapter's and never a setting: production dispatch
@@ -539,7 +548,7 @@ class ExecutionManager:
                      reason='the provider refused for a limit')
             e = self._reload(e)
         killed = result.exit_reason == 'killed'
-        isolated = self._isolation_record(e.id) is not None
+        isolated = self._isolated(e, self._isolation_record(e.id))
         if isolated:
             # PV-20 §3.3 H2 / A7: Core's own state and observed exit decide; the halt
             # report never does. Any other end of an isolated hand-off is ENDED_ERROR.
@@ -689,7 +698,7 @@ class ExecutionManager:
             self.node.kill(adapter, handle)
             alive = False
         iso = self._isolation_record(e.id)
-        if iso is not None:
+        if self._isolated(e, iso):
             return self._reconcile_isolated(e, adapter, iso, handle, disarmed)
         if e.state == 'INTENT':
             if marker is None or (ended and pid is None):
@@ -733,6 +742,27 @@ class ExecutionManager:
         getter = getattr(self.node, 'isolation_record', None)
         return getter(execution_id) if getter is not None else None
 
+    def _isolated(self, e, iso):
+        """Whether the live end and the restart treat *e* as isolated (T-037 rule 1): its
+        record exists (valid or not), or the row recorded Core's decision as isolated
+        (T-036) and the record has gone missing. A row prepared before the field existed
+        keeps the ordinary rules (the owner's N1) and is never written as ordinary. The
+        field is a decision, not evidence of confinement; when it alone decides, or is
+        unknown, the registry gets one line per execution per Core."""
+        if iso is not None:
+            return True
+        if e.isolated is True:
+            self._note(e, 'isolation_record_missing')
+            return True
+        if e.isolated is None and e.process_seq >= 1:
+            self._note(e, 'isolation_decision_unknown')
+        return False
+
+    def _note(self, e, op):
+        if (e.id, op) not in self._noted:
+            self._noted.add((e.id, op))
+            self.node._registry({'op': op, 'execution_id': e.id, 'at': time.time()})
+
     def _reconcile_isolated(self, e, adapter, iso, handle, disarmed):
         """Restart reconciliation of an isolated execution (PV-20 §3.7; ADR-0053
         §7.6–7.7 and the owner's decision of 2026-10-08): **a live isolated process is
@@ -744,14 +774,16 @@ class ExecutionManager:
 
         The remaining states resolve at the record level through terminate / reap / fail
         (R6-A). An isolation-establishment failure was never a process at all, so it
-        keeps the uncharged end O7's decision gives it, and re-dispatches."""
+        keeps the uncharged end O7's decision gives it, and re-dispatches. *iso* is None
+        when the record is gone and the row's decision alone says isolated (T-037): the
+        same outcomes, and no record is synthesized for it."""
         self._procs.pop(e.id, None)
         if handle is not None and self.node.alive(handle):
             # R6-A: a live isolated process after a Core restart is a contradiction —
             # its sole Job holder died, so kill-on-close should have ended it. It is
             # killed by identity here and never adopted.
             self.node.kill(adapter, handle)
-        if iso.state == 'failed' or iso.failure:
+        if iso is not None and (iso.state == 'failed' or iso.failure):
             # `failure` outlives the cleanup that quarantines the profile afterwards
             self._tombstone(e)
             self._do(X.refuse, execution_id=e.id, stop_reason='binding',

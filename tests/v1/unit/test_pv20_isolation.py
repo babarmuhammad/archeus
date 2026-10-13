@@ -838,6 +838,7 @@ class TestCrashWindow:
 def _manager_with_fake_node():
     m = M.ExecutionManager.__new__(M.ExecutionManager)
     m._procs = {}
+    m._noted = set()
     m.node = FakeNode()
     m.calls = []
 
@@ -850,9 +851,10 @@ def _manager_with_fake_node():
     return m
 
 
-def _e(state):
+def _e(state, isolated=True):
     from types import SimpleNamespace
-    return SimpleNamespace(id=new_execution_id(), state=state, usage=0, stream_offset=0)
+    return SimpleNamespace(id=new_execution_id(), state=state, usage=0, stream_offset=0,
+                           isolated=isolated, process_seq=1, harness_id='h', pid=None)
 
 
 class TestRestartReconciliation:
@@ -919,9 +921,10 @@ class TestIsolatedLiveEndRoute:
     """manager._collect (PV-20 §3.3 H2 / A7): which command a live end reaches. For an
     isolated execution only Core's observed exit and kill decide a hand-off."""
 
-    def _collect(self, state, code, *, isolated=True, halted=False, killed=False):
+    def _collect(self, state, code, *, isolated=True, halted=False, killed=False, field=None):
         m = _manager_with_fake_node()
-        e = SimpleNamespace(id=new_execution_id(), state=state, account_id=None)
+        e = SimpleNamespace(id=new_execution_id(), state=state, account_id=None,
+                            isolated=field, process_seq=1)
         rec = iso.IsolationRecord(execution_id=e.id, profile='p', state='established')
         m.node.isolation_record = lambda eid: rec if isolated else None
         m.node.ended = lambda handle, code, seq: None
@@ -952,14 +955,127 @@ class TestIsolatedLiveEndRoute:
         calls = self._collect('PAUSING', 0)
         assert [c for c, _ in calls] == [X.record_end] and calls[0][1]['isolated'] is True
 
+    @pytest.mark.parametrize('field', [False, None])
     @pytest.mark.parametrize('code,halted,want', [(0, False, 'record_end'),
                                                   (0, True, 'record_handoff'),
                                                   (1, False, 'record_handoff')])
-    def test_an_ordinary_handoff_keeps_its_route(self, code, halted, want):
-        calls = self._collect('HANDING_OFF', code, isolated=False, halted=halted)
+    def test_an_ordinary_handoff_keeps_its_route(self, code, halted, want, field):
+        calls = self._collect('HANDING_OFF', code, isolated=False, halted=halted, field=field)
         assert [c for c, _ in calls] == [getattr(X, want)]
         if want == 'record_end':
             assert calls[0][1]['isolated'] is False
+
+    # T-037 rule 1: the record gone, the row's decision still routes the end
+    @pytest.mark.parametrize('code,killed', [(1, False), (None, False), (0, True)])
+    def test_a_lost_record_handoff_end_still_reaches_record_end(self, code, killed):
+        calls = self._collect('HANDING_OFF', code, isolated=False, field=True, killed=killed,
+                              halted=True)
+        assert [c for c, _ in calls] == [X.record_end] and calls[0][1]['isolated'] is True
+
+    def test_a_lost_record_clean_handoff_still_hands_off(self):
+        calls = self._collect('HANDING_OFF', 0, isolated=False, field=True)
+        assert [c for c, _ in calls] == [X.record_handoff]
+
+    def test_a_lost_record_pause_reaches_record_end_as_isolated(self):
+        calls = self._collect('PAUSING', 0, isolated=False, field=True)
+        assert [c for c, _ in calls] == [X.record_end] and calls[0][1]['isolated'] is True
+
+
+class TestLostIsolationRecord:
+    """T-037 / T-038: the transient record is gone and the row recorded Core's decision
+    (T-036). A known-isolated execution is never adopted, never read for its own report,
+    and killed only through a verified identity; a legacy unknown row keeps today's
+    ordinary rules (the owner's N1) and is never written as ordinary."""
+
+    def _reconcile(self, state, *, field=True, record=None, alive=True, create_time=1.0,
+                   pid=True, adapter=None):
+        m = _manager_with_fake_node()
+        e = _e(state, isolated=field)
+        m.node.isolation_record = lambda eid: record
+        m.node.files = lambda eid: ({'process_seq': 1}, {'pid': 4242, 'create_time': create_time,
+                                                         'process_seq': 1} if pid else None,
+                                    None)
+        # verified identity: alive only with a create time to match against
+        m.node.alive = lambda h: alive and h.create_time is not None
+        # any read of the execution's own files would go through the adapter: object()
+        # has no status/collect_result, so such a read raises
+        adapter = adapter or object()
+        m.registry = SimpleNamespace(get=lambda hid: adapter)
+        m._adopt = lambda e, a, h: m.calls.append(('adopt', {'handle': h}))
+        m._collect_gone = lambda e, a, h: m.calls.append(('collect_gone', {}))
+        changed = m._reconcile_one(e, disarmed=False)
+        return m, e, adapter, changed
+
+    def _commands(self, m):
+        return [c for c, _ in m.calls]
+
+    @pytest.mark.parametrize('state,want', [
+        ('RUNNING', [X.lost]), ('STARTING', [X.lost]), ('INTENT', [X.lost]),
+        ('PAUSING', [X.record_end]), ('STOPPING', [X.record_end]),
+        ('HANDING_OFF', [X.record_end]), ('PAUSED', []), ('AWAITING_APPROVAL', [])])
+    def test_a_live_process_is_killed_by_identity_never_adopted(self, state, want):
+        m, e, adapter, _ = self._reconcile(state)
+        (killed,) = m.node.kills
+        assert killed[0] is adapter and (killed[1].pid, killed[1].create_time) == (4242, 1.0)
+        assert self._commands(m) == want                  # no record_process/adopt/handoff
+        if state == 'PAUSING':
+            assert m.calls[0][1]['core_halt'] is True and m.calls[0][1]['isolated'] is True
+        if state in ('STOPPING', 'HANDING_OFF'):
+            assert m.calls[0][1]['killed'] is True and m.calls[0][1]['isolated'] is True
+
+    @pytest.mark.parametrize('state,want', [('RUNNING', [X.lost]), ('PAUSING', [X.record_end]),
+                                            ('PAUSED', [])])
+    def test_a_pid_without_a_verified_identity_is_never_killed(self, state, want):
+        m, e, adapter, _ = self._reconcile(state, create_time=None)
+        assert m.node.kills == []
+        assert self._commands(m) == want
+
+    def test_the_executions_own_report_is_never_read(self):
+        # an adapter that would report what a forged halted.json and a result line say:
+        # exit 0, halted. The outcome is Core's, and the adapter is never asked
+        asked = []
+        adapter = SimpleNamespace(
+            status=lambda h: asked.append('status') or base.ProcStatus('exited', 0),
+            collect_result=lambda h: asked.append('collect') or base.ExecutionResult(
+                exit_reason='ok', exit_code=0, halted=True))
+        m, e, _, _ = self._reconcile('RUNNING', alive=False, adapter=adapter)
+        assert asked == [] and self._commands(m) == [X.lost]
+
+    def test_without_a_process_the_intent_is_refused_uncharged(self):
+        m, e, _, _ = self._reconcile('INTENT', pid=False)
+        assert self._commands(m) == [X.refuse] and m.calls[0][1]['stop_reason'] == 'binding'
+
+    @pytest.mark.parametrize('field,lines', [(None, ['isolation_decision_unknown']),
+                                             (False, [])])
+    def test_a_row_not_known_isolated_keeps_the_ordinary_route(self, field, lines):
+        m, e, _, _ = self._reconcile('RUNNING', field=field)
+        assert m.node.kills == [] and [c for c, _ in m.calls] == ['adopt']
+        assert [x['op'] for x in m.node.registry] == lines
+        assert e.isolated is field                        # nothing relabels it
+
+    def test_a_record_still_decides_over_an_ordinary_field(self):
+        rec = iso.IsolationRecord(execution_id='x', profile='p', state='established')
+        m, e, _, _ = self._reconcile('RUNNING', field=False, record=rec)
+        assert len(m.node.kills) == 1 and self._commands(m) == [X.lost]
+        assert m.node.registry == []
+
+    def test_reconcile_isolated_takes_no_record(self):
+        m = _manager_with_fake_node()
+        e = _e('INTENT')
+        assert m._reconcile_isolated(e, object(), None, None, disarmed=False) is True
+        assert [c for c, _ in m.calls] == [X.refuse]
+        assert m.calls[0][1]['stop_reason'] == 'binding'
+
+    def test_the_registry_line_is_left_once_per_execution(self):
+        m = _manager_with_fake_node()
+        e = _e('PAUSED')
+        m.node.isolation_record = lambda eid: None
+        m.node.files = lambda eid: (None, None, None)
+        m.registry = SimpleNamespace(get=lambda hid: object())
+        m._reconcile_one(e, disarmed=False)
+        m._reconcile_one(e, disarmed=False)
+        assert [x['op'] for x in m.node.registry] == ['isolation_record_missing']
+        assert m.node.registry[0]['execution_id'] == e.id
 
 
 # ── item 8: A4 built, not enforced ────────────────────────────────────────────

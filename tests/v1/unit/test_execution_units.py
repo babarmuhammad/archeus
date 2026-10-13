@@ -1037,10 +1037,29 @@ def _spawn_rig(monkeypatch, tmp_path, decide=False, authority='present', opt_ins
     e = SimpleNamespace(id=ids.new_id('execution'), harness_id='fake', task_id='t',
                         account_id=None, route_decision_id=None, process_seq=0,
                         handoff_from=None, attempt=1, model=None, effort=None,
-                        adapter_state={'session': 's1'})
+                        adapter_state={'session': 's1'}, isolated=None)
     mission = SimpleNamespace(objective='o', id='mission-1',
                               project_id='project-1' if project else None)
     return m, e, mission, adapter, log
+
+
+@pytest.mark.parametrize('field', [True, False, None])
+@pytest.mark.parametrize('record', [True, False])
+def test_a_resume_without_its_isolation_record_is_refused_before_the_decision(
+        monkeypatch, tmp_path, field, record):
+    # T-037 rule 4: recorded isolated, record gone -> refused before anything is decided,
+    # made or inventoried; every other combination keeps the T-023 order
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, decide=bool(field))
+    m.node.isolation_record = lambda eid: object() if record else None
+    e.process_seq, e.isolated = 1, field
+    assert m._resume(e, mission) is True
+    if field is True and not record:
+        assert _steps(log) == ['resume_checked', 'refuse']
+        assert log[1][1]['stop_reason'] == 'binding'
+        assert 'isolation record is gone' in log[1][1]['reason']
+    else:
+        assert _steps(log)[:3] == ['resume_checked', 'requested', 'workspace']
+        assert 'refuse' not in _steps(log)
 
 
 def _steps(log):
