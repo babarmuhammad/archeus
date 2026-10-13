@@ -790,15 +790,53 @@ def _outside_executions(paths_, workdirs):
 
 
 def _source(root, workdirs):
-    """A repository Core reads from, refused when its root or the git directory
-    its `.git` names lies in an execution area. Returns that git directory."""
+    """A repository Core reads from, refused when anything Git reads it through
+    lies in an execution area: its root, the git directory its `.git` names,
+    the common directory that one names (config, objects and refs come from
+    there) and every object store it borrows from. Each is checked before the
+    file naming the next is read. Returns the git directory."""
     from claude_sessions import repos
     if not os.path.isabs(root):
         raise StoreError('not a repository Core may read: %r' % (root,))
-    _outside_executions([root], workdirs)       # before its .git is read at all
+    _outside_executions([root], workdirs)
     git_dir = repos._gitdir(root) or root
     _outside_executions([git_dir], workdirs)
+    common = git_dir
+    if _present(os.path.join(git_dir, 'commondir')):
+        # gitrepository-layout: one path; a relative one is against the git dir
+        (common,) = _named_dirs(os.path.join(git_dir, 'commondir'), git_dir, one=True)
+        _outside_executions([common], workdirs)
+    stores = [(os.path.join(common, 'objects'), 0)]
+    while stores:
+        objects, depth = stores.pop()
+        alternates = os.path.join(objects, 'info', 'alternates')
+        if not _present(alternates):
+            continue
+        if depth == 5:                  # Git itself follows no deeper
+            raise StoreError('alternates nested too deep: %s' % alternates)
+        # gitrepository-layout: one per line; a relative one is against the objects dir
+        for alt in _named_dirs(alternates, objects):
+            _outside_executions([alt], workdirs)
+            stores.append((alt, depth + 1))
     return git_dir
+
+
+def _named_dirs(path, base, one=False):
+    """The directories a commondir (*one*) or alternates file names, relative
+    ones against *base*; StoreError when Core cannot read them exactly as Git
+    would: unreadable, empty, a second line in a commondir, a comment or quoted
+    line, a carriage return, or anything that is not a directory."""
+    try:
+        with open(path, 'rb') as f:
+            text = f.read().decode('utf-8')
+    except (OSError, UnicodeDecodeError) as e:
+        raise StoreError('cannot read %s: %s' % (path, e))
+    names = [text.rstrip('\r\n')] if one else [x for x in text.split('\n') if x]
+    dirs = [os.path.join(base, x) for x in names]
+    if not names or any(not x or x[0] in '#"' or '\r' in x or '\n' in x for x in names) \
+            or not all(os.path.isdir(d) for d in dirs):
+        raise StoreError('an indirection Core cannot resolve to directories: %s' % path)
+    return dirs
 
 
 def _plain(path, is_dir):

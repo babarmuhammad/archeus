@@ -436,3 +436,50 @@ def test_a_pin_area_alias_to_an_empty_directory_receives_nothing(world, tmp_path
         with pytest.raises(OSError, match='alias|plain'):
             call()
         assert os.listdir(str(external)) == []
+
+
+@pytest.mark.parametrize('where', ['run', 'worktrees', 'recorded'])
+@pytest.mark.parametrize('kind', ['commondir', 'alternates'])
+def test_a_common_dir_or_store_linked_into_an_execution_area_is_refused(world, tmp_path,
+                                                                        monkeypatch, where, kind):
+    """The file names an innocent path; the path is a junction into the area."""
+    recorded = tmp_path / 'wd'
+    target = {'run': os.path.join(paths.ExecPaths(ids.new_id('execution')).state, 'c'),
+              'worktrees': os.path.join(paths.archeus_home(), 'worktrees', 'p', 'm', 't1', 'c'),
+              'recorded': str(recorded / 'c')}[where]
+    os.makedirs(target)
+    link = tmp_path / 'innocent'
+    _junction(link, target)
+    gd = tmp_path / 'gd'
+    (gd / 'objects' / 'info').mkdir(parents=True)
+    (gd / kind if kind == 'commondir' else gd / 'objects' / 'info' / 'alternates').write_bytes(
+        str(link).encode() + b'\n')
+    root = tmp_path / 'root'
+    root.mkdir()
+    (root / '.git').write_text('gitdir: %s\n' % gd)
+    spawned = []
+    monkeypatch.setattr(local.proc, 'run', lambda *a, **k: spawned.append(a))
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    with pytest.raises(StoreError, match='execution area'):
+        LocalNode.store_resolve_base(str(root), 'refs/heads/main', workdirs=[str(recorded)])
+    with pytest.raises(StoreError, match='execution area'):
+        LocalNode.store_fetch(ids.new_id('project'), str(root), 'refs/heads/main', '0' * 40,
+                              'refs/archeus/exec/e1/seed', workdirs=[str(recorded)])
+    assert spawned == []
+
+
+def test_a_linked_worktree_is_read_through_its_real_common_dir(world, monkeypatch):
+    """The control, with Git's own indirection: `git worktree add` writes a
+    `.git` file and a relative commondir; both resolve outside every area."""
+    wt = world.tmp / 'linked'
+    world.git(world.user, 'worktree', 'add', '-q', '-b', 'side', str(wt))
+    gd = world.git(wt, 'rev-parse', '--absolute-git-dir')
+    fired = world.fired()                       # the worktree's own post-checkout, unpinned
+    with open(os.path.join(gd, 'commondir')) as f:
+        assert not os.path.isabs(f.read().strip())          # Git wrote a relative one
+    assert LocalNode.store_resolve_base(str(wt), 'refs/heads/main', workdirs=()) == world.c2
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    pid = ids.new_id('project')
+    assert LocalNode.store_fetch(pid, str(wt), 'refs/heads/main', world.c2,
+                                 'refs/archeus/exec/e1/seed', workdirs=()) == world.c2
+    assert world.fired() == fired

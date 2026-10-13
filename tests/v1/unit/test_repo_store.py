@@ -195,6 +195,117 @@ def test_a_pin_area_inside_a_recorded_workdir_makes_and_starts_nothing(spawns, t
     assert spawns.calls == [] and _tree(paths.archeus_home()) == before
 
 
+def _areas(tmp_path):
+    """One existing directory in each kind of execution area, and the recorded workdir."""
+    wd = str(tmp_path / 'recorded-wd')
+    areas = {'run': os.path.join(paths.ExecPaths(ids.new_id('execution')).state, 'c'),
+             'worktrees': os.path.join(paths.archeus_home(), 'worktrees', 'p', 'm', 't1', 'c'),
+             'recorded': os.path.join(wd, 'c')}
+    for d in areas.values():
+        os.makedirs(d)
+    return areas, wd
+
+
+def _indirect(tmp_path, commondir=None, alternates=None, nested=None):
+    """A repository whose `.git` names a git directory outside it, which may name
+    a common directory (*commondir*, the file's exact bytes) and whose objects may
+    borrow stores (*alternates*); *nested* is a second store's alternates."""
+    gd = tmp_path / 'gd'
+    (gd / 'objects' / 'info').mkdir(parents=True)
+    root = _repo(tmp_path / 'u', str(gd))
+    if commondir is not None:
+        (gd / 'commondir').write_bytes(commondir)
+    if alternates is not None:
+        (gd / 'objects' / 'info' / 'alternates').write_bytes(alternates)
+    if nested is not None:
+        alt = tmp_path / 'alt1'
+        (alt / 'info').mkdir(parents=True)
+        (alt / 'info' / 'alternates').write_bytes(nested)
+        (gd / 'objects' / 'info' / 'alternates').write_bytes(str(alt).encode())
+    return root, str(gd)
+
+
+def _read_through(root, call, wd):
+    if call == 'base':
+        return LocalNode.store_resolve_base(root, 'refs/heads/main', workdirs=[wd])
+    return LocalNode.store_fetch(ids.new_id('project'), root, 'refs/heads/main', '0' * 40,
+                                 'refs/archeus/exec/e1/seed', workdirs=[wd])
+
+
+@pytest.mark.parametrize('call', ['base', 'fetch'])
+@pytest.mark.parametrize('form', ['absolute', 'relative'])
+@pytest.mark.parametrize('kind', ['commondir', 'alternates', 'nested-alternates'])
+@pytest.mark.parametrize('where', ['run', 'worktrees', 'recorded'])
+def test_a_common_dir_or_borrowed_store_in_an_execution_area_is_refused(
+        spawns, monkeypatch, tmp_path, where, kind, form, call):
+    """gitrepository-layout: config, objects and refs come from `commondir` (a
+    relative one against the git dir), objects also from every alternate (a
+    relative one against the objects dir). Each is checked before any spawn."""
+    areas, wd = _areas(tmp_path)
+    target = areas[where]
+    gd = tmp_path / 'gd'
+    against = {'commondir': gd, 'alternates': gd / 'objects', 'nested-alternates':
+               tmp_path / 'alt1'}[kind]
+    text = (target if form == 'absolute' else os.path.relpath(target, str(against))).encode()
+    root, _gd = _indirect(tmp_path, **{'commondir': {'commondir': text + b'\n'},
+                                       'alternates': {'alternates': text + b'\n'},
+                                       'nested-alternates': {'nested': text}}[kind])
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    with pytest.raises(StoreError, match='execution area'):
+        _read_through(root, call, wd)
+    assert spawns.calls == []
+
+
+@pytest.mark.parametrize('call', ['base', 'fetch'])
+@pytest.mark.parametrize('case', ['commondir-empty', 'commondir-two-lines', 'commondir-a-file',
+                                  'commondir-missing', 'commondir-crlf-inside',
+                                  'alternates-comment', 'alternates-quoted', 'alternates-missing',
+                                  'alternates-cr', 'alternates-too-deep'])
+def test_an_indirection_core_cannot_read_as_git_would_is_refused(spawns, monkeypatch, tmp_path,
+                                                                 case, call):
+    out = tmp_path / 'outside'
+    out.mkdir()
+    (tmp_path / 'a-file').write_bytes(b'')
+    o = str(out).encode()
+    kw = {'commondir-empty': {'commondir': b''},
+          'commondir-two-lines': {'commondir': o + b'\n' + o + b'\n'},
+          'commondir-a-file': {'commondir': str(tmp_path / 'a-file').encode()},
+          'commondir-missing': {'commondir': str(tmp_path / 'nowhere').encode()},
+          'commondir-crlf-inside': {'commondir': o + b'\r\nx'},
+          'alternates-comment': {'alternates': b'# ' + o + b'\n'},
+          'alternates-quoted': {'alternates': b'"' + o + b'"\n'},
+          'alternates-missing': {'alternates': str(tmp_path / 'nowhere').encode()},
+          'alternates-cr': {'alternates': o + b'\r\n'},
+          'alternates-too-deep': {'alternates': b'.'}}[case]
+    root, gd = _indirect(tmp_path, **kw)
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    with pytest.raises(StoreError, match='cannot resolve|cannot read|too deep'):
+        _read_through(root, call, str(tmp_path / 'wd'))
+    assert spawns.calls == []
+
+
+@pytest.mark.parametrize('form', ['absolute', 'relative'])
+def test_a_common_dir_and_borrowed_stores_outside_every_area_are_read(spawns, monkeypatch,
+                                                                      tmp_path, form):
+    common = tmp_path / 'common'
+    (common / 'objects' / 'info').mkdir(parents=True)
+    alt = tmp_path / 'alt'
+    alt.mkdir()
+    gd = tmp_path / 'gd'
+    rel = lambda p, base: (str(p) if form == 'absolute' else os.path.relpath(str(p), str(base)))
+    (common / 'objects' / 'info' / 'alternates').write_bytes(
+        rel(alt, common / 'objects').encode() + b'\n')
+    root, _gd = _indirect(tmp_path, commondir=rel(common, gd).encode() + b'\n')
+    LocalNode.store_resolve_base(root, 'refs/heads/main', workdirs=[str(tmp_path / 'wd')])
+    assert [c.argv[-1] for c in spawns.calls] == ['version', 'refs/heads/main^{commit}']
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    with pytest.raises(OSError) as err:          # past the source: the fake init makes no store
+        LocalNode.store_fetch(ids.new_id('project'), root, 'refs/heads/main', '0' * 40,
+                              'refs/archeus/exec/e1/seed', workdirs=[str(tmp_path / 'wd')])
+    assert 'execution area' not in str(err.value)
+    assert any('init' in c.argv for c in spawns.calls)
+
+
 def test_a_root_and_git_dir_outside_every_area_are_read(spawns, tmp_path):
     root = _repo(tmp_path / 'u', str(tmp_path / 'elsewhere' / 'g'))
     LocalNode.store_resolve_base(root, 'refs/heads/main', workdirs=[str(tmp_path / 'wd')])
