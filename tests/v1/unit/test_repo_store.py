@@ -1107,8 +1107,8 @@ def test_a_listing_past_its_total_bytes_is_refused(monkeypatch):
     monkeypatch.setattr(local, 'SEED_MAX_RECORD', 80)
     m = local._Manifest(40)
     m.feed(b'x' * 80)
-    with pytest.raises(StoreError, match='bytes'):
-        m.feed(b'x' * 81)
+    with pytest.raises(StoreError, match=r'a listing past 160 bytes'):
+        m.feed(b'x' * 81)               # the total trips before the record does
 
 
 def test_a_tree_past_its_bytes_or_depth_is_refused(monkeypatch):
