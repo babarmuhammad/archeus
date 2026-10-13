@@ -476,6 +476,72 @@ def test_base_resolution_takes_a_ref_name_or_a_full_id_only(spawns, tmp_path, re
     assert spawns.calls[-1].argv[-1] == '1' * 40 + '^{commit}'
 
 
+@pytest.mark.parametrize('call', ['base', 'fetch'])
+@pytest.mark.parametrize('content', [
+    pytest.param(lambda gd: b'gitdir: ' + b'x' * (64 * 1024), id='over-the-cap'),
+    pytest.param(lambda gd: b'gitdir: ' + gd + b'\xff\n', id='invalid-utf8'),
+    pytest.param(lambda gd: b'gitdir:  ' + gd + b'\n', id='leading-space'),
+    pytest.param(lambda gd: b'gitdir: \t' + gd + b'\n', id='leading-tab'),
+    pytest.param(lambda gd: b'gitdir: ' + gd + b' \n', id='trailing-space'),
+    pytest.param(lambda gd: b'gitdir: ' + gd + b'\t\r\n', id='trailing-tab'),
+    pytest.param(lambda gd: b'gitdir:' + gd + b'\n', id='no-space-after-prefix'),
+    pytest.param(lambda gd: b'GITDIR: ' + gd + b'\n', id='prefix-case'),
+    pytest.param(lambda gd: gd + b'\n', id='no-prefix'),
+    pytest.param(lambda gd: b'gitdir: \r\n', id='empty'),
+    pytest.param(lambda gd: b'gitdir: ' + gd + b'\x00x\n', id='nul'),
+    pytest.param(lambda gd: b'gitdir: ' + gd + b'\nsecond\n', id='second-line'),
+])
+def test_a_git_file_core_cannot_read_as_git_does_is_refused(spawns, monkeypatch, tmp_path,
+                                                            content, call):
+    """setup.c read_gitfile_gently: the whole file, the exact prefix, only
+    trailing CR and LF trimmed. Blanks Git would keep, bytes it would read
+    differently and anything over the cap are refused before anything starts."""
+    gd = tmp_path / 'gd'
+    root = _repo(tmp_path / 'u', str(gd))
+    (tmp_path / 'u' / '.git').write_bytes(content(str(gd).encode()))
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    with pytest.raises(StoreError, match=r'\.git file'):
+        _read_through(root, call, str(tmp_path / 'wd'))
+    assert spawns.calls == []
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='drive and root relative paths are Windows forms')
+@pytest.mark.parametrize('path', [b'C:gd', b'\\gd', b'/gd'])
+def test_a_drive_or_root_relative_git_file_is_refused(spawns, tmp_path, path):
+    root = _repo(tmp_path / 'u', str(tmp_path / 'gd'))
+    (tmp_path / 'u' / '.git').write_bytes(b'gitdir: ' + path + b'\n')
+    with pytest.raises(StoreError, match=r'\.git file'):
+        LocalNode.store_resolve_base(root, 'refs/heads/main', workdirs=())
+    assert spawns.calls == []
+
+
+@pytest.mark.parametrize('ending', [b'\n', b'\r\n', b'\r\n\r\n', b''])
+def test_a_git_file_resolves_where_git_resolves_it(spawns, tmp_path, ending):
+    gd = tmp_path / 'gd'
+    root = _repo(tmp_path / 'u', str(gd))
+    (tmp_path / 'u' / '.git').write_bytes(b'gitdir: ' + str(gd).encode() + ending)
+    LocalNode.store_resolve_base(root, 'refs/heads/main', workdirs=())
+    argv = spawns.calls[-1].argv
+    assert argv[argv.index('--git-dir') + 1] == str(gd)
+
+
+def test_a_relative_git_file_resolves_against_its_root(spawns, tmp_path):
+    gd = tmp_path / 'gd'
+    root = _repo(tmp_path / 'u', str(gd))
+    (tmp_path / 'u' / '.git').write_bytes(b'gitdir: ../gd\n')
+    LocalNode.store_resolve_base(root, 'refs/heads/main', workdirs=())
+    argv = spawns.calls[-1].argv
+    assert os.path.normpath(argv[argv.index('--git-dir') + 1]) == str(gd)
+
+
+def test_a_long_git_file_is_read_whole(tmp_path):
+    """The legacy reader stopped at 4096 characters; Git reads the whole file."""
+    root = tmp_path / 'u'
+    root.mkdir()
+    (root / '.git').write_bytes(b'gitdir: ' + b'a' * 5000 + b'\n')
+    assert local._git_dir_of(str(root)) == os.path.join(str(root), 'a' * 5000)
+
+
 def test_a_root_and_git_dir_outside_every_area_are_read(spawns, tmp_path):
     root = _repo(tmp_path / 'u', str(tmp_path / 'elsewhere' / 'g'))
     LocalNode.store_resolve_base(root, 'refs/heads/main', workdirs=[str(tmp_path / 'wd')])

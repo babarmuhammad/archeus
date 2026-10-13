@@ -8,8 +8,10 @@ hazard is fired once WITHOUT the pin, so an empty `sent/` is evidence and not a
 sentinel that could never fire. The user repository is a temp fixture: no real
 repository, installed runtime or network is touched."""
 
+import hashlib
 import os
 import shutil
+import stat
 import subprocess
 import sys
 
@@ -74,8 +76,8 @@ class World:
             + '[core]\n\tfsmonitor = %s\n' % self.cmd('g-fsmonitor')
             + '[diff "sent"]\n\tcommand = %s\n' % self.cmd('g-extdiff')
             + '[diff "tc"]\n\ttextconv = %s\n' % self.cmd('g-textconv')
-            + '[filter "sent"]\n\tclean = %s\n\tsmudge = %s\n' % (self.cmd('g-clean'),
-                                                                 self.cmd('g-smudge'))
+            + '[filter "cl"]\n\tclean = %s\n' % self.cmd('g-clean')
+            + '[filter "sm"]\n\tsmudge = %s\n' % self.cmd('g-smudge')
             + '[uploadpack]\n\tpackObjectsHook = %s\n' % self.cmd('g-packhook'))
         #: the world a Core process could inherit: global config with an include,
         #: and command-scope config from the environment
@@ -85,8 +87,10 @@ class World:
                             GIT_CONFIG_VALUE_0=_fwd(tmp / 'hooks-e'))
         self.user = tmp / 'user'
         self.git(self.tmp, 'init', '-q', '-b', 'main', str(self.user))
-        (self.user / '.gitattributes').write_text('a.txt diff=sent filter=sent\nb.txt diff=tc\n')
+        (self.user / '.gitattributes').write_text(
+            'a.txt diff=sent filter=cl\nb.txt diff=tc\nc.txt filter=cl\ns.txt filter=sm\n')
         (self.user / 'a.txt').write_text('one\n')
+        (self.user / 's.txt').write_text('ess\n')
         self.git(self.user, 'add', '-A')
         self.git(self.user, 'commit', '-q', '-m', 'c1')
         self.c1 = self.git(self.user, 'rev-parse', 'HEAD')
@@ -225,7 +229,8 @@ def test_the_pinned_store_runs_nothing_the_world_configures(world, monkeypatch):
                                  workdirs=()) == world.c2
     read = lambda *a: LocalNode.store_read(pid, list(a), workdirs=())
     assert read('rev-parse', ref).strip() == world.c2
-    assert read('ls-tree', '--name-only', ref).split() == ['.gitattributes', 'a.txt', 'b.txt']
+    assert read('ls-tree', '--name-only', ref).split() == ['.gitattributes', 'a.txt', 'b.txt',
+                                                              's.txt']
     assert read('merge-base', world.c1, world.c2).strip() == world.c1
     assert read('diff', '--numstat', world.c1, world.c2).splitlines() == [
         '1\t1\ta.txt', '1\t0\tb.txt']
@@ -239,30 +244,41 @@ def test_the_pinned_store_runs_nothing_the_world_configures(world, monkeypatch):
                                         workdirs=()) == world.c2
     assert world.fired() == []                                    # the pinned path: nothing
 
-    # positive controls: the same hazards, unpinned, each fire
-    h, u, scratch = world.hostile, world.user, world.tmp / 'scratch'
-    world.git(world.tmp, 'init', '-q', str(scratch))
-    world.git(scratch, 'commit', '-q', '--allow-empty', '-m', 'x', env=h)
-    assert 'e-post-commit' in world.fired()        # command scope outranks the include
-    world.git(scratch, 'commit', '-q', '--allow-empty', '-m', 'y',
-              env=dict(h, GIT_CONFIG_COUNT='0'))                       # the include alone
-    assert 'g-post-commit' in world.fired()
-    world.git(u, 'commit', '-q', '--allow-empty', '-m', 'z')             # the repo's own hooksPath
-    assert 'l-post-commit' in world.fired()
-    world.git(u, 'diff', world.c1, world.c2, env=h)                       # driver and textconv
-    assert {'g-extdiff', 'g-textconv'} <= set(world.fired())
-    (u / 'a.txt').write_text('three\n')
-    world.git(u, 'add', 'a.txt', env=h)                                   # clean filter
-    assert 'g-clean' in world.fired()
-    world.git(u, 'status', env=dict(h, GIT_CONFIG_COUNT='0'), check=False)  # fsmonitor
-    assert 'l-fsmonitor' in world.fired() or 'g-fsmonitor' in world.fired()
+    # positive controls: each hazard on its own, unpinned, with its own sentinel
+    # that had not fired before the control and has after it
+    h, u = world.hostile, world.user
+    g_only = dict(h, GIT_CONFIG_COUNT='0')      # the global config (and its include) alone
+    fired = []
+
+    def fires(name, cwd, *args, env=None):
+        assert name not in world.fired(), name
+        world.git(cwd, *args, env=env, check=False)
+        assert name in world.fired(), name
+        fired.append(name)
+    scratch, quiet = world.tmp / 'scratch', world.tmp / 'quiet'
+    for r in (scratch, quiet):
+        world.git(world.tmp, 'init', '-q', str(r))
+        (r / 'f.txt').write_text('f\n')
+        world.git(r, 'add', 'f.txt')
+        world.git(r, 'commit', '-q', '-m', 'f')
+    # fsmonitor first: every later control in these repositories refreshes an index
+    fires('g-fsmonitor', quiet, 'status', env=g_only)    # global config, no local one
+    fires('l-fsmonitor', u, 'status')                    # the repo's own config, no global
+    fires('e-post-commit', scratch, 'commit', '-q', '--allow-empty', '-m', 'x', env=h)
+    fires('g-post-commit', scratch, 'commit', '-q', '--allow-empty', '-m', 'y', env=g_only)
+    fires('l-post-commit', u, 'commit', '-q', '--allow-empty', '-m', 'z')
+    fires('g-extdiff', u, 'diff', world.c1, world.c2, '--', 'a.txt', env=h)
+    fires('g-textconv', u, 'diff', world.c1, world.c2, '--', 'b.txt', env=h)
+    (u / 'c.txt').write_text('see\n')
+    fires('g-clean', u, 'add', 'c.txt', env=h)
+    os.remove(str(u / 's.txt'))
+    fires('g-smudge', u, 'checkout', '--', 's.txt', env=h)
     world.git(world.tmp, 'init', '-q', '--bare', str(world.tmp / 'scratch.git'))
-    world.git(world.tmp / 'scratch.git', 'fetch', '-q', str(u), 'refs/heads/main:refs/x',
-              env=dict(h, GIT_CONFIG_COUNT='0'), check=False)                 # source side
-    assert 'g-packhook' in world.fired()
+    fires('g-packhook', world.tmp / 'scratch.git', 'fetch', '-q', str(u),
+          'refs/heads/main:refs/x', env=g_only)          # the source side
     unpinned = world.git(world.tmp, '--git-dir', store, 'cat-file', '-p', world.a2)
     assert unpinned == 'bee'                                               # the replace ref
-    print('\nK1 controls fired unpinned: %s' % world.fired())
+    print('\nK1 controls fired unpinned, one by one: %s' % fired)
 
 
 def test_a_fetch_whose_ref_moved_is_refused_and_keeps_what_came(world, monkeypatch):
@@ -313,8 +329,19 @@ def _aliased(path, outside):
     _junction(path, outside)
 
 
-def _files(top):
-    return sorted(os.path.join(d, f) for d, _s, fs in os.walk(str(top)) for f in fs)
+def _snapshot(top):
+    """Every entry under *top*: size, content hash (files), mode and mtime."""
+    out = {}
+    for d, dirs, files in os.walk(str(top)):
+        for n in dirs + files:
+            p = os.path.join(d, n)
+            st = os.lstat(p)
+            digest = None
+            if stat.S_ISREG(st.st_mode):
+                with open(p, 'rb') as f:
+                    digest = hashlib.sha256(f.read()).hexdigest()
+            out[os.path.relpath(p, str(top))] = (st.st_size, digest, st.st_mode, st.st_mtime_ns)
+    return out
 
 
 @pytest.mark.parametrize('what', ['store', 'objects', 'objects-info', 'objects-pack', 'refs',
@@ -358,10 +385,10 @@ def test_a_seal_never_writes_through_an_objects_alias(world, tmp_path, monkeypat
     else:
         outside.mkdir()
         _junction(os.path.join(store, 'objects', EMPTY_TREE[:2]), outside)
-    before = _files(outside)
+    before = _snapshot(outside)
     with pytest.raises(OSError, match='alias|plain'):
         LocalNode.store_open(pid, workdirs=())
-    assert _files(outside) == before and not any(EMPTY_TREE[2:] in f for f in _files(outside))
+    assert _snapshot(outside) == before and not any(EMPTY_TREE[2:] in f for f in before)
     with open(os.path.join(store, 'HEAD')) as f:
         assert f.read() != STORE_HEAD                     # the seal never started
     assert not os.path.exists(os.path.join(paths.repos_dir(), '.pin', pid + '.json'))
@@ -570,10 +597,10 @@ def test_a_lazy_fetch_source_is_refused_and_the_pin_alone_still_fetches_nothing(
     monkeypatch.setattr(local.proc, 'run', real_run)
     monkeypatch.setattr(local, '_SOURCE_CONFIG_REFUSED', (b'include',))
     monkeypatch.setattr(local, '_PROMISOR_PACK', '.never')
-    before = _files(lazy)
+    before = _snapshot(lazy), _snapshot(u)
     with pytest.raises(StoreError, match='rev-parse failed'):
         LocalNode.store_resolve_base(str(lazy), 'refs/heads/main', workdirs=())
-    assert 'lazy-fetch' not in world.fired() and _files(lazy) == before
+    assert 'lazy-fetch' not in world.fired() and (_snapshot(lazy), _snapshot(u)) == before
     world.git(lazy, 'rev-parse', '--verify', '-q', c3 + '^{commit}', check=False)
     assert 'lazy-fetch' in world.fired()                  # the positive control
 
@@ -611,4 +638,28 @@ def test_a_source_info_or_object_index_alias_is_refused(world, tmp_path, monkeyp
     _aliased(str(path), tmp_path / ('outside-' + what))
     spawned = _spy(monkeypatch)
     _both_refused(world.user, (), 'alias|plain')
+    assert spawned == []
+
+
+@pytest.mark.parametrize('what', ['junction', 'hard-link'])
+@pytest.mark.parametrize('where', [('objects', 'info', 'commit-graphs'),
+                                   ('objects', 'pack', 'multi-pack-index.d')])
+def test_a_nested_alias_below_the_store_object_indexes_is_refused(world, tmp_path, monkeypatch,
+                                                                   what, where):
+    """gitformat-commit-graph: a chain lives in objects/info/commit-graphs/; an
+    incremental multi-pack-index in objects/pack/multi-pack-index.d/."""
+    pid = ids.new_id('project')
+    store = LocalNode.store_open(pid, workdirs=())
+    nested = os.path.join(store, *where)
+    os.makedirs(nested)
+    if what == 'junction':
+        (tmp_path / 'outside').mkdir()
+        _junction(os.path.join(nested, 'x'), tmp_path / 'outside')
+    else:
+        f = os.path.join(nested, 'graph-1.graph')
+        open(f, 'wb').close()
+        os.link(f, str(tmp_path / 'outside-file'))
+    spawned = _spy(monkeypatch)
+    with pytest.raises(OSError, match='alias|plain|hard-linked'):
+        LocalNode.store_read(pid, ['rev-parse', EMPTY_TREE], workdirs=())
     assert spawned == []

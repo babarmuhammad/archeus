@@ -72,6 +72,9 @@ _SOURCE_CONFIG_REFUSED = (b'include', b'promisor', b'partialclone', b'objectform
                           b'refstorage', b'alternaterefs')
 #: a pack fetched from a promisor remote: its repository lazy-fetches
 _PROMISOR_PACK = '.promisor'
+#: a `.git` file larger than this is refused (Git reads up to 1 MiB: setup.c
+#: read_gitfile_gently); no path Core resolves is anywhere near it
+_GITFILE_MAX = 64 * 1024
 
 
 class StoreError(OSError):
@@ -808,7 +811,6 @@ def _source(root, workdirs):
     and refs come from there), the config files and refs Git reads, and every
     object store it borrows from. Each is checked before the file naming the
     next is read, and nothing is started until all are. Returns the git dir."""
-    from claude_sessions import repos
     if not os.path.isabs(root):
         raise StoreError('not a repository Core may read: %r' % (root,))
     _outside_executions([root], workdirs)
@@ -817,9 +819,7 @@ def _source(root, workdirs):
     if _present(root.rstrip('/\\') + '.git'):
         raise StoreError('a source with a sibling %s.git upload-pack could take: %s'
                          % (os.path.basename(root), root))
-    if _present(os.path.join(root, '.git')):
-        _plain(os.path.join(root, '.git'), None)
-    git_dir = repos._gitdir(root) or root
+    git_dir = _git_dir_of(root)
     _outside_executions([git_dir], workdirs)
     _plain(git_dir, True)
     common = git_dir
@@ -902,6 +902,36 @@ def _objects_plain(objects):
                         raise StoreError('a source with %s: %s' % (n, d))
 
 
+def _git_dir_of(root):
+    """The git directory Git takes for *root*: `.git` itself when it is a
+    directory, *root* when there is none, else what the `.git` file names, read
+    as setup.c read_gitfile_gently reads it: the whole file, the exact
+    "gitdir: " prefix, only trailing CR and LF trimmed, a relative path against
+    *root*. What Core could not match exactly is refused: an alias, a file over
+    _GITFILE_MAX, invalid UTF-8, an empty path, a NUL or line break left in it,
+    leading or trailing blanks Git would keep, and on Windows a drive-relative
+    or root-relative path."""
+    dot = os.path.join(root, '.git')
+    if not _present(dot):
+        return root
+    st = _plain(dot, None)
+    if stat.S_ISDIR(st.st_mode):
+        return dot
+    with open(dot, 'rb') as f:
+        data = f.read(_GITFILE_MAX + 1)
+    if len(data) > _GITFILE_MAX or not data.startswith(b'gitdir: '):
+        raise StoreError('a .git file Core does not read: %s' % dot)
+    try:
+        path = data[8:].rstrip(b'\r\n').decode('utf-8')
+    except UnicodeDecodeError:
+        raise StoreError('a .git file that is not UTF-8: %s' % dot)
+    drive, rest = os.path.splitdrive(path)
+    if (not path or any(c in path for c in '\0\r\n') or path != path.strip(' \t')
+            or os.name == 'nt' and bool(drive) != rest.startswith(('/', '\\'))):
+        raise StoreError('a .git file naming a path Core does not resolve: %s' % dot)
+    return os.path.join(root, path)
+
+
 def _named_dirs(path, base, one=False):
     """The directories a commondir (*one*) or alternates file names, relative
     ones against *base*; StoreError when Core cannot read them exactly as Git
@@ -941,14 +971,15 @@ def _layout(store, owned):
         _plain(os.path.join(store, rel), False)
     # ponytail: loose object files are not lstat'ed one by one (keep-all makes
     # that O(objects) per open); their directories are
-    for top in (store, os.path.join(store, 'info'), os.path.join(store, 'objects'),
-                os.path.join(store, 'objects', 'info'), os.path.join(store, 'objects', 'pack')):
-        if _present(top):
-            for n in os.listdir(top):
-                _plain(os.path.join(top, n), None)
-    for d, dirs, files in os.walk(os.path.join(store, 'refs')):
-        for n in dirs + files:          # checked before os.walk descends into it
-            _plain(os.path.join(d, n), None)
+    for top in (store, os.path.join(store, 'objects')):
+        for n in os.listdir(top):
+            _plain(os.path.join(top, n), None)
+    # everything below these, however deep (commit-graph chains, multi-pack
+    # indexes, bitmaps, reverse indexes): few files, all Git's own
+    for top in ('info', 'refs', os.path.join('objects', 'info'), os.path.join('objects', 'pack')):
+        for d, dirs, files in os.walk(os.path.join(store, top)):
+            for n in dirs + files:      # checked before os.walk descends into it
+                _plain(os.path.join(d, n), None)
     hooks = os.path.join(store, 'hooks')
     if _present(hooks) and os.listdir(hooks):
         raise StoreError('a store with hooks: %s' % store)
