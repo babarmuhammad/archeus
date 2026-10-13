@@ -60,11 +60,8 @@ USAGE_S = 30.0
 #: how often the pass re-checks that no ended execution still holds an isolation
 #: identity or a grant (PV-20 §3.2 Cleanup, §3.7)
 ISOLATION_SWEEP_S = 5.0
-#: the environment every execution runs in (execution-architecture §2): it can
-#: commit locally, it cannot push with the user's credentials
-CAPABILITY_ENV = {'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': '', 'SSH_AUTH_SOCK': None,
-                  'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'credential.helper',
-                  'GIT_CONFIG_VALUE_0': ''}
+#: defined beside the spawn that checks an isolated environment against it
+CAPABILITY_ENV = base.CAPABILITY_ENV
 
 
 def line_of(ev):

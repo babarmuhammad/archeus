@@ -18,6 +18,7 @@ spawning marker exists is NEVER spawned again — a retry is a new execution id
 
 import json
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Protocol, runtime_checkable
@@ -25,6 +26,16 @@ from typing import Mapping, Optional, Protocol, runtime_checkable
 from claude_sessions import config, proc
 
 from ..infra.paths import REQUEST_DIR, ExecPaths, archeus_home
+
+#: the environment every execution runs in (execution-architecture §2): it can
+#: commit locally, it cannot push with the user's credentials
+CAPABILITY_ENV = {'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': '', 'SSH_AUTH_SOCK': None,
+                  'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'credential.helper',
+                  'GIT_CONFIG_VALUE_0': ''}
+#: the Windows rows of an isolated environment apply where the isolation exists;
+#: a test pins it to exercise them anywhere
+_WINDOWS = os.name == 'nt'
+_HOOK_TOKEN = re.compile(r'hook_[A-Za-z0-9_-]+')
 
 
 # ── the contract's vocabulary ───────────────────────────────────────────────
@@ -313,14 +324,6 @@ def spawn(spec, argv):
             _refuse(paths, 'could not remove %s: %s' % (os.path.basename(stale), err), err)
     if not config.write_atomic(paths.prompt, spec.prompt):
         raise OSError('could not write %s' % paths.prompt)
-    env = dict(os.environ)
-    for k, v in spec.env.items():
-        if v is None:
-            env.pop(k, None)
-        else:
-            env[k] = v
-    env['ARCHEUS_EXECUTION_ID'] = spec.execution_id
-    env['ARCHEUS_HOME'] = archeus_home()
     if spec.isolation is not None:
         # PV-20 §3.4/§6.3: the isolated path, or nothing. It never falls through to
         # `spawn_detached` below — an unisolated child would run in the interactive
@@ -330,10 +333,21 @@ def spawn(spec, argv):
             _private_dirs(paths, seq)
         except OSError as err:
             _refuse(paths, str(err), err)
-        env['TEMP'] = env['TMP'] = paths.tmp
+        try:
+            env = _isolated_env(spec, paths)
+        except ValueError as err:
+            _refuse(paths, str(err), err)
         child, err = spec.isolation.launch(list(argv), cwd=spec.workdir, env=env,
                                            paths=paths)
     else:
+        env = dict(os.environ)
+        for k, v in spec.env.items():
+            if v is None:
+                env.pop(k, None)
+            else:
+                env[k] = v
+        env['ARCHEUS_EXECUTION_ID'] = spec.execution_id
+        env['ARCHEUS_HOME'] = archeus_home()
         # a hidden console, not none: the agent runs its hooks and tools as console
         # programs, and each would otherwise open a visible window of its own
         child, err = proc.spawn_detached(list(argv), cwd=spec.workdir, env=env,
@@ -365,8 +379,97 @@ def _private_dirs(paths, seq):
     if seq > 1 and not os.path.isdir(paths.config):
         raise OSError('the private config of %s is gone: a resume cannot start without it'
                       % paths.execution_id)
-    os.makedirs(paths.config, exist_ok=True)
-    os.makedirs(paths.tmp, exist_ok=True)
+    for d in (paths.config, paths.tmp) + _profile(paths.home)[1:]:
+        os.makedirs(d, exist_ok=True)
+
+
+def _profile(home):
+    """(home, roaming, local): an isolated execution's own profile, never the account's."""
+    return (home, os.path.join(home, 'AppData', 'Roaming'),
+            os.path.join(home, 'AppData', 'Local'))
+
+
+def _inside(path, roots):
+    a = os.path.normcase(os.path.realpath(path))
+    for root in roots:
+        b = os.path.normcase(os.path.realpath(root))
+        if a == b or a.startswith(b.rstrip(os.sep) + os.sep):
+            return True
+    return False
+
+
+def _absolute(entry):
+    # on Windows an absolute entry with a drive letter: never relative, drive-relative,
+    # rooted without a drive, or UNC
+    drive = os.path.splitdrive(entry)[0]
+    return os.path.isabs(entry) and (os.name != 'nt' or (len(drive) == 2 and drive[1] == ':'))
+
+
+def _isolated_env(spec, paths):
+    """An isolated execution's whole environment, built from nothing (ADR-0053 A2; T-031
+    Correction C-1012-T031): these names, each from its one authority, and no other.
+    `spec.env` is a request: a name Core puts there is accepted only as the value Core
+    derives itself, any other refuses. Raises ValueError naming a variable, never a value.
+
+    PATH is an interim narrowing of Core's own, unverified: an entry kept is not shown
+    to be unwritable by the execution, and no variable confines where DLLs or modules
+    are searched for (that is the staged runtime's, T-017 C4)."""
+    acct = spec.account.home_ref if spec.account else None
+    banned = [os.path.expanduser(acct)] if acct else []
+    banned += [os.path.expanduser('~'), archeus_home(), spec.workdir,
+               os.environ.get('TEMP'), os.environ.get('TMP')]
+    banned = [b for b in banned if b]
+    home, roaming, local = _profile(paths.home)
+    out = {'TEMP': paths.tmp, 'TMP': paths.tmp, 'CLAUDE_CONFIG_DIR': paths.config,
+           'USERPROFILE': home, 'HOME': home, 'APPDATA': roaming, 'LOCALAPPDATA': local,
+           'HOMEDRIVE': os.path.splitdrive(home)[0], 'HOMEPATH': os.path.splitdrive(home)[1],
+           'ARCHEUS_EXECUTION_ID': spec.execution_id, 'ARCHEUS_HOME': archeus_home(),
+           'GIT_CONFIG_NOSYSTEM': '1'}
+    out.update((k, v) for k, v in CAPABILITY_ENV.items() if v is not None)
+    if _WINDOWS:
+        root = os.environ.get('SystemRoot')
+        if not (root and os.path.isabs(root) and os.path.isdir(root)) or _inside(root, banned):
+            raise ValueError('SystemRoot is not a usable Windows directory')
+        comspec = os.path.join(root, 'System32', 'cmd.exe')
+        if not os.path.isfile(comspec):
+            raise ValueError('ComSpec, derived from SystemRoot, does not exist')
+        out.update(SystemRoot=root, windir=root, SystemDrive=os.path.splitdrive(root)[0],
+                   ComSpec=comspec)
+    kept, seen = [], set()
+    for entry in (os.environ.get('PATH') or '').split(os.pathsep):
+        if not (entry and _absolute(entry) and os.path.isdir(entry)) or _inside(entry, banned):
+            continue
+        key = os.path.normcase(os.path.realpath(entry))
+        if key not in seen:
+            seen.add(key)
+            kept.append(entry)
+    out['PATH'] = os.pathsep.join(kept)
+    derived = dict(out)
+    if spec.hook_settings:
+        derived['ARCHEUS_HOOK_CMD'] = json.dumps(list(spec.hook_settings))
+    canon = {k.upper(): k for k in list(derived) + ['ARCHEUS_HOOK_TOKEN']}
+    named = {}
+    for k, v in spec.env.items():
+        if k.upper() in named:
+            raise ValueError('spec.env names %s and %s, one variable' % (named[k.upper()], k))
+        named[k.upper()] = k
+        if v is None:
+            continue                       # a removal: absent by construction already
+        name = canon.get(k.upper())
+        if name is None:
+            raise ValueError('%s is not a variable an isolated execution may be given' % k)
+        if name == 'ARCHEUS_HOOK_TOKEN':
+            if not _HOOK_TOKEN.fullmatch(v):
+                raise ValueError('ARCHEUS_HOOK_TOKEN is not a hook token')
+        elif name == 'CLAUDE_CONFIG_DIR':
+            same = {os.path.normcase(os.path.realpath(x)) for x in (v, paths.config)}
+            if len(same) != 1:
+                raise ValueError('CLAUDE_CONFIG_DIR is not the private config')
+            continue
+        elif v != derived[name]:
+            raise ValueError('%s is not the value Core derives for it' % name)
+        out[name] = v
+    return out
 
 
 def mark_ended(paths, exit_code, **extra):
