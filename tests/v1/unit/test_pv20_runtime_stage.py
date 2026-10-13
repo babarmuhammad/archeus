@@ -383,37 +383,89 @@ def _planting(monkeypatch, name, data=b'planted'):
     monkeypatch.setattr(os, 'mkdir', mkdir)
 
 
-@pytest.mark.parametrize('rel,after,left', [
+@pytest.mark.parametrize('rel,writes,left', [
     ('Lib', 0, {}),
     ('Lib/encodings', 0, {}),
     # swapped once the first file beneath it is written: nothing after that one
-    ('Lib', 1, {'encodings/__init__.py': b'# encodings'})])
+    ('Lib', sum('/' not in r for r in COPIED) + 1,
+     {'encodings/__init__.py': b'# encodings'})])
 def test_a_directory_made_in_the_temporary_tree_is_checked_before_every_write_beneath_it(
-        rt, monkeypatch, rel, after, left):
-    # the directory the stager made reports a reparse point from its (after+1)-th lstat
-    # on, as a junction swapped in for it would: nothing more is written through it
-    real, calls = os.lstat, []
+        rt, monkeypatch, rel, writes, left):
+    # the directory the stager made reports a reparse point once *writes* files are in
+    # the tree, as a junction swapped in for it would: nothing more is written through it
+    real, real_write, done = os.lstat, staging._write, []
     tail = os.path.normcase(os.path.join(*rel.split('/')))
+
+    def write(dst, chunks):
+        got = real_write(dst, chunks)
+        done.append(dst)
+        return got
 
     def fake(p, *a, **k):
         st = real(p, *a, **k)
         parent = os.path.dirname(os.path.abspath(p))
         while os.path.basename(parent) and not os.path.basename(parent).startswith('.tmp-'):
             parent = os.path.dirname(parent)
-        if not os.path.basename(parent) or \
+        if len(done) < writes or not os.path.basename(parent) or \
                 os.path.normcase(os.path.relpath(os.path.abspath(p), parent)) != tail:
-            return st
-        calls.append(p)
-        if len(calls) <= after:
             return st
         return SimpleNamespace(st_mode=st.st_mode, st_ino=st.st_ino, st_dev=st.st_dev,
                                st_size=st.st_size, st_mtime_ns=st.st_mtime_ns,
                                st_nlink=st.st_nlink, st_file_attributes=REPARSE)
+    monkeypatch.setattr(staging, '_write', write)
     monkeypatch.setattr(os, 'lstat', fake)
     with pytest.raises(StageError, match='an alias'):
         _stage(rt)
     (tmp,) = _runtime()
     assert _files(os.path.join(paths.runtime_dir(), tmp, *rel.split('/'))) == left
+    assert _published() == []
+
+
+TOP = sum('/' not in r for r in COPIED)
+DIRS = {'/'.join(r.split('/')[:i]) for r in COPIED for i in range(1, r.count('/') + 1)}
+
+
+@pytest.mark.parametrize('which', ['home', 'runtime', 'tmp'])
+@pytest.mark.parametrize('writes,dirs', [
+    (1, 0),                         # after the first copy
+    (TOP, 0),                       # before the first mkdir
+    (len(STAGED) - 2, len(DIRS))])  # before the _pth
+def test_the_destination_chain_is_checked_again_before_every_write(rt, monkeypatch, which,
+                                                                   writes, dirs):
+    # once *writes* files are in the temporary tree, *which* reports a reparse point,
+    # as a junction swapped in for it would: nothing more is written. The checks narrow
+    # that window; they do not close it (C-1013-T034 C1.8)
+    real_lstat, real_write, done = os.lstat, staging._write, []
+
+    def write(dst, chunks):
+        got = real_write(dst, chunks)
+        done.append(dst)
+        return got
+
+    def target(p):
+        p = os.path.normcase(os.path.abspath(p))
+        runtime = os.path.normcase(os.path.abspath(paths.runtime_dir()))
+        return {'home': p == os.path.normcase(os.path.abspath(paths.archeus_home())),
+                'runtime': p == runtime,
+                'tmp': os.path.dirname(p) == runtime and
+                os.path.basename(p).startswith('.tmp-')}[which]
+
+    def fake(p, *a, **k):
+        st = real_lstat(p, *a, **k)
+        if len(done) < writes or not target(p):
+            return st
+        return SimpleNamespace(st_mode=st.st_mode, st_ino=st.st_ino, st_dev=st.st_dev,
+                               st_size=st.st_size, st_mtime_ns=st.st_mtime_ns,
+                               st_nlink=st.st_nlink, st_file_attributes=REPARSE)
+    monkeypatch.setattr(staging, '_write', write)
+    monkeypatch.setattr(os, 'lstat', fake)
+    with pytest.raises(StageError, match='an alias'):
+        _stage(rt)
+    (tmp,) = _runtime()
+    top = os.path.join(paths.runtime_dir(), tmp)
+    assert len(done) == writes
+    assert len(_files(top)) == writes
+    assert sum(len(ds) for _d, ds, _n in os.walk(top)) == dirs     # nor made through it
     assert _published() == []
 
 

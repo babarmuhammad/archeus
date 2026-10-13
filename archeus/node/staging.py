@@ -118,6 +118,20 @@ def _runtime():
     return runtime
 
 
+def _dest(tmp, rel):
+    """Where *rel* goes in *tmp*, once every directory above it, from ARCHEUS_HOME
+    down, is plain: checked again before each mkdir and each write."""
+    _entry(paths.archeus_home(), True)
+    _entry(paths.runtime_dir(), True)
+    d = tmp
+    _entry(d, True)
+    parts = rel.split('/')
+    for name in parts[:-1]:
+        d = os.path.join(d, name)
+        _entry(d, True)
+    return os.path.join(d, parts[-1])
+
+
 def _write(dst, chunks):
     """Writes a new name only (`xb`) and hashes what it wrote; every written
     entry is checked once more, plain and single-named, before publication."""
@@ -186,22 +200,20 @@ def stage(source_root, hook_path, version=sys.version_info[:2]):
         return verify(final)
     tmp = os.path.join(runtime, '.tmp-%s-%d-%s' % (digest, os.getpid(), os.urandom(8).hex()))
     os.mkdir(tmp)
-    _entry(tmp, True)
     made = set()
     for rel, src, size, sha, sig in rows:
         parts = rel.split('/')
         for i in range(1, len(parts)):
-            d = os.path.join(tmp, *parts[:i])
+            d = '/'.join(parts[:i])
             if d not in made:
-                os.mkdir(d)
+                os.mkdir(_dest(tmp, d))
                 made.add(d)
-            _entry(d, True)             # before anything is written beneath it
         with open(src, 'rb') as f:
-            got = _write(os.path.join(tmp, *parts), iter(lambda: f.read(1 << 20), b''))
+            got = _write(_dest(tmp, rel), iter(lambda: f.read(1 << 20), b''))
         if got != sha or _sig(_entry(src, False)) != sig:
             raise StageError('%s changed while it was staged' % src)
-    _write(os.path.join(tmp, pth_name), [pth])
-    _write(os.path.join(tmp, MANIFEST), [manifest])
+    _write(_dest(tmp, pth_name), [pth])
+    _write(_dest(tmp, MANIFEST), [manifest])
     if _tree(tmp) != digest:
         raise StageError('the stage was not what was planned: %s' % tmp)
     try:
