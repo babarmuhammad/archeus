@@ -1391,11 +1391,12 @@ def test_a_first_attempt_has_no_recorded_base_and_a_retry_takes_the_latest_earli
     try:
         with db.read() as r:
             assert X.seed_base(r, _row(db, entities.Execution, eid).entity) is None
-        unseeded, latest, retry = _attempts(db, eid, (2, None, None), (3, OTHER, None),
-                                            (4, None, None))
+        unseeded, latest, retry, after = _attempts(db, eid, (2, None, None), (3, OTHER, None),
+                                                   (4, None, None), (5, None, None))
         with db.read() as r:
             assert X.seed_base(r, unseeded) == SEED     # the user's refs are not re-read
             assert X.seed_base(r, retry) == OTHER       # the latest, not the first
+            assert X.seed_base(r, after) == OTHER       # one never seeded is skipped
     finally:
         db.close()
 

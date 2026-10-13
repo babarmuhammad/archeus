@@ -918,3 +918,31 @@ def test_a_junction_planted_in_staging_refuses_the_rename(world, monkeypatch, tm
     monkeypatch.setattr(local, '_seed_walk', plant)
     _refused(pid, eid, base, branch, 'alias')
     assert os.path.isdir(paths.seed_staging(eid))                            # kept
+
+
+def test_an_index_that_is_not_the_manifest_refuses_the_rename(world, monkeypatch):
+    """`read-tree --empty` in place of the seed's tree: HEAD still names the seed,
+    so only the ls-files check can see the index is not the tree."""
+    proj, _head, _files = _project(world)
+    pid, eid, base, branch = _seed(world, monkeypatch, proj)
+    real = LocalNode.store_git
+
+    def empty_index(mode, args, **kw):
+        if args[:1] == ['read-tree']:
+            args = ['read-tree', '--empty']
+        return real(mode, args, **kw)
+    monkeypatch.setattr(LocalNode, 'store_git', staticmethod(empty_index))
+    _refused(pid, eid, base, branch, 'seed index')
+
+
+def test_a_head_tree_that_is_not_the_seeds_refuses_the_rename(world, monkeypatch):
+    proj, _head, _files = _project(world)
+    pid, eid, base, branch = _seed(world, monkeypatch, proj)
+    real = LocalNode.store_git
+
+    def other_tree(mode, args, **kw):
+        if mode == 'seed' and args == ['rev-parse', 'HEAD^{tree}']:
+            return 'f' * 40 + '\n'
+        return real(mode, args, **kw)
+    monkeypatch.setattr(LocalNode, 'store_git', staticmethod(other_tree))
+    _refused(pid, eid, base, branch, 'seed index')
