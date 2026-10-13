@@ -8,6 +8,7 @@ verification worker, so the copy is the one the worker makes."""
 
 from archeus.core.application import verification as V
 from archeus.core.domain import entities
+from archeus.core.domain.events import new_event
 from archeus.core.domain.values import Ref
 from archeus.harnesses.base import ModelInfo
 from archeus.harnesses.fake import FakeHarness
@@ -28,9 +29,21 @@ def _execution(r, out):
 
 
 def _verify(r, out):
-    """The execution ends; a verification of it starts as the worker starts one."""
+    """The execution ends; a verification of it starts as the worker starts one.
+    The rig reports its process through `record_spawn`, which records no
+    isolation decision, and an unknown one is guarded (A6). A current Core's
+    `prepare_process` records an ordinary execution as exactly False (T-036), so
+    the fixture records that decision first, standing in for it."""
+    e = _execution(r, out)
+
+    def ordinary(tx, *, actor):
+        tx.update(entities.Execution, e.id, {'isolated': False}, actor=actor)
+        tx.append(new_event('mission.updated', Ref('mission', e.mission_id), actor,
+                            payload={'fields': [], 'forged_by': 'test'}))
+    r.do(ordinary)
     r.finish(out)
     e = _execution(r, out)
+    assert (e.isolated, e.process_seq) == (False, 1)
     return r.all(entities.Verification, id=r.do(
         V.start, missions=r.missions, subject=Ref('task', e.task_id), verifier='code',
         execution_id=e.id)['verification_id'])[0], e
