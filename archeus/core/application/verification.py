@@ -35,6 +35,9 @@ ERROR_ATTEMPTS = 2
 REVIEW_CALL_ATTEMPTS = 2
 _REVIEW = {'accept': 'verdict_accept', 'changes_requested': 'verdict_changes',
            'reject': 'verdict_reject'}
+#: why a command check of a guarded mission waits on a person (A6, T-041)
+WITHHELD = ('verification withheld: its commands would run over content of a mission with '
+            'isolated or unknown provenance')
 
 
 class Refused(ValueError):
@@ -94,6 +97,25 @@ def _get(conn, cls, eid):
 def _where(conn, cls, **eq):
     from ...infra.db import rows
     return rows.where(conn, cls, **eq)
+
+
+def unconfined(conn, mission_id):
+    """May Core run a command check of mission *mission_id* unconfined (A6,
+    T-041 §3)? Only when every prepared execution of the mission - any task,
+    plan version or attempt - was recorded exactly not isolated: True and
+    unknown (None) are guarded. Derived on every call, never stored: executions
+    are never deleted and the field is written once, so a guarded mission stays
+    guarded. Not `manager._isolated`, whose legacy rule routes None as ordinary."""
+    return all(r.entity.isolated is False
+               for r in _where(conn, entities.Execution, mission_id=mission_id)
+               if r.entity.process_seq >= 1)
+
+
+def _supplies_revision(tx, v):
+    """May verification *v*'s revision be merged (A5)? Not when it was read from
+    a known-isolated execution's workdir; legacy None keeps today's reading (G1)."""
+    e = tx.get(entities.Execution, v.execution_id) if v.execution_id else None
+    return e is not None and e.entity.isolated is not True
 
 
 def _in_force(tx, t):
@@ -159,6 +181,9 @@ def start(tx, *, actor, missions, subject, verifier, execution_id=None, criterio
         plan_id, who, execution_id = active_plan(tx.conn, m.id).entity.id, None, None
     else:
         raise Refused('a verification is of a task or a mission')
+    guarded = not unconfined(tx.conn, m.id)
+    if guarded and verifier != 'generic_human':
+        raise Refused('mission %s: %s' % (m.id, WITHHELD))
     v = entities.Verification(
         id=ids.new_id('verification'), subject=subject, verifier=verifier, plan_id=plan_id,
         criterion=criterion, execution_id=execution_id, revision=revision,
@@ -170,10 +195,12 @@ def start(tx, *, actor, missions, subject, verifier, execution_id=None, criterio
             'plan_id': plan_id, 'execution_id': execution_id, 'revision': revision,
             'verifier': verifier})
     if verifier == 'generic_human':
+        why = WITHHELD if guarded else 'nothing deterministic can decide this'
         row = _fire(tx, entities.Verification, v.id, 'generic_verifier', actor,
-                    'nothing deterministic can decide this; waiting for your acceptance')
+                    why + '; waiting for your acceptance')
         if subject.kind == 'task':
-            _hold(tx, actor, missions, m, row, 'waiting for your acceptance of task %s' % t.key)
+            _hold(tx, actor, missions, m, row, 'waiting for your acceptance of task %s%s'
+                  % (t.key, ' (%s)' % WITHHELD if guarded else ''))
         return {'verification_id': v.id, 'state': 'AWAITING_HUMAN'}
     _fire(tx, entities.Verification, v.id, 'start', actor, 'verifier %s' % verifier)
     return {'verification_id': v.id, 'state': 'RUNNING'}
@@ -281,10 +308,17 @@ def task_branch(t):
 # ── ERROR: retry once, then the user (§6) ───────────────────────────────────
 
 def retry(tx, *, actor, verification_id):
-    """ERROR -> PENDING -> RUNNING on the same row (its lineage unchanged)."""
+    """ERROR -> PENDING -> RUNNING on the same row (its lineage unchanged).
+    A guarded mission's row is refused before anything is written (A6): it is
+    held, or a mission criterion gets a fresh human row, never re-run."""
     v = lifecycle.load(tx, entities.Verification, verification_id).entity
     if v.subject.kind == 'task':
-        _task_lineage(tx, v.subject.id, v.execution_id)
+        t, _e = _task_lineage(tx, v.subject.id, v.execution_id)
+        mission_id = t.mission_id
+    else:
+        mission_id = v.subject.id
+    if not unconfined(tx.conn, mission_id):
+        raise Refused('verification %s is not retried: %s' % (v.id, WITHHELD))
     _fire(tx, entities.Verification, v.id, 'retry', actor,
           'retrying after: %s' % (v.error or 'an error'), fields={'holds_mission': False})
     _fire(tx, entities.Verification, v.id, 'start', actor, 'verifier %s' % v.verifier)
@@ -298,8 +332,9 @@ def hold(tx, *, actor, missions, verification_id):
     v = row.entity
     m = _mission(tx, v.subject.id if v.subject.kind == 'mission'
                  else lifecycle.load(tx, entities.Task, v.subject.id).entity.mission_id)
-    return _hold(tx, actor, missions, m, row,
-                 'verification could not run: %s' % (v.error or 'error'))
+    why = ('verification could not run: %s' % (v.error or 'error')
+           if unconfined(tx.conn, m.id) else WITHHELD)
+    return _hold(tx, actor, missions, m, row, why)
 
 
 def _hold(tx, actor, missions, m, row, reason):
@@ -411,7 +446,7 @@ def sweep(tx, *, actor):
 def _integration_facts(tx, t, revision):
     passed = [r.entity for r in tx.where(entities.Verification, plan_id=t.plan_id)
               if r.entity.subject == Ref('task', t.id) and r.entity.state == 'PASSED'
-              and r.entity.revision is not None]
+              and r.entity.revision is not None and _supplies_revision(tx, r.entity)]
     # positional (task state, plan in force, verified revision, revision): only
     # Tx.transition names a state field (test_guards)
     return guards.IntegrationFacts(t.state, _in_force(tx, t),

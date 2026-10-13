@@ -11,6 +11,7 @@ write and the engine's judgement of it.
 import dataclasses
 import os
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -509,3 +510,409 @@ def test_a_task_branch_holding_commits_its_base_lacks_is_never_moved(tmp_path):
         LocalNode.add_worktree(root, str(tmp_path / 'wt'), 'archeus/m.t1', base='main')
     assert _git(root, 'rev-parse', 'archeus/m.t1') == tip
     assert not os.path.exists(str(tmp_path / 'wt'))
+
+
+# ── A6: the interim command guard (T-041, T-042) ────────────────────────────
+
+#: the Git a legacy unknown or ordinary execution keeps under G1 (never a command)
+_GIT = ('git_head', 'git_dirty', 'git_snapshot', 'branch_exists', 'git_merge_base',
+        'mission_worktree', 'git_is_ancestor', 'git_merge', 'remove_worktree')
+
+
+class _Node:
+    """The worker's node with every call recorded: a method in *allow* reaches
+    the real node, one in *fake* is answered by it, and any other call fails
+    the test where it is made."""
+
+    def __init__(self, real, allow=(), fake=None):
+        self.real, self.allow, self.fake, self.calls = real, set(allow), dict(fake or {}), []
+
+    def __getattr__(self, name):
+        def call(*a, **k):
+            self.calls.append(name)
+            if name in self.fake:
+                return self.fake[name](*a, **k)
+            if name in self.allow:
+                return getattr(self.real, name)(*a, **k)
+            raise AssertionError('the worker called node.%s%r' % (name, a))
+        return call
+
+
+def _node(c, monkeypatch, allow=(), fake=None):
+    node = _Node(c._verify.node, allow, fake)
+    monkeypatch.setattr(c._verify, 'node', node)
+    return node
+
+
+def _forge(c, mid, change):
+    """A row changed or added directly, as an older Core or another path left it."""
+    def put(tx, *, actor):
+        change(tx, actor)
+        tx.append(new_event('mission.updated', Ref('mission', mid), actor,
+                            payload={'fields': [], 'forged_by': 'test'}))
+    _do(c, put)
+
+
+def _isolate(c, mid, execution_id, value=True):
+    _forge(c, mid, lambda tx, actor: tx.update(entities.Execution, execution_id,
+                                               {'isolated': value}, actor=actor))
+
+
+def _another_execution(c, t, **kw):
+    """Another attempt of task *t*, recorded as it ended (never ENDED_OK, so it
+    is not the one verified)."""
+    def put(tx, actor):
+        attempt = 1 + max(r.entity.attempt for r in tx.where(entities.Execution, task_id=t.id))
+        tx.insert(entities.Execution(id=ids.new_id('execution'), task_id=t.id,
+                                     mission_id=t.mission_id, plan_id=t.plan_id,
+                                     attempt=attempt, **kw), actor=actor)
+    _forge(c, t.mission_id, put)
+
+
+def _verifying(c):
+    """A mission whose one task waits for its verification, nothing recorded yet."""
+    repo, mid = _mission(c, Rig(c), steps=[_write(FIX), {'emit': {'type': 'result',
+                                                                  'summary': 'done'}}])
+    pump(c, lambda: _t(c, mid) == 'VERIFYING' and not _vs(c, mid))
+    t = _task(c, mid)
+    with c._core().read() as conn:
+        e = V.verified_execution(conn, t)
+    return repo, mid, t, e
+
+
+def _unconfined(c, mid):
+    with c._core().read() as conn:
+        return V.unconfined(conn, mid)
+
+
+def _held(c, mid):
+    return [x for x in c.events(0) if x['type'] == 'mission.state_changed'
+            and x['subject']['id'] == mid and x['payload']['to'] == 'BLOCKED'][-1]['payload']
+
+
+def _errored(c):
+    """A task's code verification that errored once, as Core recorded it before
+    the guard: revision and workspace are what the execution's workdir held."""
+    _repo, mid, t, e = _verifying(c)
+    vid = _do(c, V.start, missions=c._missions, subject=Ref('task', t.id), verifier='code',
+              execution_id=e.id, revision='r1', base_revision='b1', workspace=e.workdir,
+              criteria=[dict(x, index=i, result='unknown')
+                        for i, x in enumerate(t.acceptance)])['verification_id']
+    _do(c, V.record, missions=c._missions, verification_id=vid,
+        checks=[{'name': 'test', 'kind': 'command', 'result': 'error', 'detail': 'no runner'}])
+    return mid, t, e, vid
+
+
+def _frozen(v):
+    return {f: getattr(v, f) for f in entities.Verification._FROZEN}
+
+
+def test_A6_the_guard_reads_every_prepared_execution_of_the_mission_and_never_clears(core):
+    _repo, mid, t, e = _verifying(core)
+    assert e.isolated is False and _unconfined(core, mid)
+    # never prepared: no decision recorded, so it guards nothing
+    _another_execution(core, t, isolated=True, process_seq=0, state='ABANDONED')
+    assert _unconfined(core, mid)
+    # an isolated attempt that failed
+    _another_execution(core, t, isolated=True, process_seq=1, state='ENDED_ERROR')
+    assert not _unconfined(core, mid)
+    # and no later exactly-ordinary attempt lifts it
+    _another_execution(core, t, isolated=False, process_seq=2, state='ENDED_ERROR')
+    assert not _unconfined(core, mid)
+    _repo2, other, _t2, _e2 = _verifying(core)
+    assert _unconfined(core, other)                 # another mission is its own
+
+
+def test_A6_an_execution_of_a_superseded_plan_still_guards_its_mission(core):
+    _repo, mid = _mission(core, Rig(core), steps=[_write(WRONG), {'emit': {'type': 'result',
+                                                                           'summary': 'done'}}])
+    pump(core, lambda: core.get_mission(mid)['plan_version'] == 2)
+    with core._core().read() as conn:
+        first = min((r.entity for r in rows.where(conn, entities.Plan, mission_id=mid)),
+                    key=lambda p: p.plan_version)
+        old = [r.entity for task in rows.where(conn, entities.Task, plan_id=first.id)
+               for r in rows.where(conn, entities.Execution, task_id=task.entity.id)]
+    assert first.state == 'SUPERSEDED' and old and _unconfined(core, mid)
+    _isolate(core, mid, old[0].id)
+    assert not _unconfined(core, mid)
+
+
+@pytest.mark.parametrize('isolated', [True, None])
+def test_A6_one_execution_not_exactly_ordinary_guards_its_whole_mission(core, isolated):
+    _repo, mid, t, _e = _verifying(core)
+    _another_execution(core, t, isolated=isolated, process_seq=1, state='ABANDONED')
+    assert not _unconfined(core, mid)
+
+
+def test_A6_an_isolated_execution_goes_to_you_with_no_git_and_no_revision(core, monkeypatch):
+    _repo, mid, t, e = _verifying(core)
+    _isolate(core, mid, e.id)
+    node = _node(core, monkeypatch)                 # any node call fails the test
+    pump(core, lambda: _state(core, mid) == 'BLOCKED')
+    (v,) = _vs(core, mid, 'task')
+    assert (v['verifier'], v['state']) == ('generic_human', 'AWAITING_HUMAN')
+    assert v['revision'] is None and v['base_revision'] is None and v['workspace'] is None
+    assert V.WITHHELD in _held(core, mid)['reason']
+    (why,) = [x['payload']['reason'] for x in core.events(0) if x['subject']['id'] == v['id']
+              and x['type'] == 'verification.state_changed'
+              and x['payload'].get('trigger') == 'generic_verifier']
+    assert why.startswith(V.WITHHELD) and 'nothing deterministic' not in why
+    assert node.calls == []
+    # you accept it: the task succeeds, and nothing its workdir claimed is mergeable
+    core.decide_verification(v['id'], 'accept')
+    t = _task(core, mid)
+    assert (t.state, t.integration_state) == ('SUCCEEDED', 'PENDING')
+    for _ in range(3):
+        assert core._verify.pass_once()['did'] == 'lost_race'
+    assert node.calls == [] and _t(core, mid, 'integration_state') == 'PENDING'
+
+
+def test_A6_an_unknown_execution_keeps_its_git_and_loses_its_commands(core, monkeypatch):
+    """G1: a legacy None execution's workdir is read as today; nothing of the
+    mission is run, its criteria are yours, and its review gets no diff."""
+    _repo, mid, t, e = _verifying(core)
+    _isolate(core, mid, e.id, None)
+    node = _node(core, monkeypatch, allow=_GIT)     # run_check and git_numstat fail the test
+    pump(core, lambda: _state(core, mid) == 'BLOCKED')
+    (v,) = _vs(core, mid, 'task')
+    assert (v['verifier'], v['state']) == ('generic_human', 'AWAITING_HUMAN')
+    assert v['revision'] and v['workspace'] == e.workdir and 'git_head' in node.calls
+    core.decide_verification(v['id'], 'accept')
+    pump(core, lambda: _vs(core, mid, 'mission'))
+    assert _t(core, mid, 'integration_state') == 'MERGED'      # G1: its revision merges
+    crit = _vs(core, mid, 'mission')
+    assert crit and {(x['verifier'], x['state'], x['workspace']) for x in crit} == {
+        ('generic_human', 'AWAITING_HUMAN', None)}
+    seen = []
+    monkeypatch.setattr(core._verify, 'calls', SimpleNamespace(
+        run=lambda **ask: seen.append(ask['prompt']) or SimpleNamespace(state='error')))
+    core._verify._review(mid)
+    assert 'withheld, not empty' in seen[0]
+    assert 'run_check' not in node.calls and 'git_numstat' not in node.calls
+
+
+def test_A6_an_ordinary_review_still_reads_the_mission_diff(core, monkeypatch):
+    _repo, mid = _mission(core, Rig(core), steps=[_write(FIX), {'emit': {'type': 'result',
+                                                                         'summary': 'done'}}])
+    pump(core, lambda: _state(core, mid) == 'REVIEWING')
+    node = _node(core, monkeypatch, allow=_GIT + ('git_numstat',))
+    seen = []
+    monkeypatch.setattr(core._verify, 'calls', SimpleNamespace(
+        run=lambda **ask: seen.append(ask['prompt']) or SimpleNamespace(state='error')))
+    core._verify._review(mid)
+    assert node.calls == ['git_numstat'] and 'withheld' not in seen[0]
+
+
+def test_A6_an_ordinary_task_of_a_guarded_mission_keeps_its_git_and_loses_its_commands(
+        core, monkeypatch):
+    _repo, mid, t, e = _verifying(core)
+    _another_execution(core, t, isolated=True, process_seq=1, state='ENDED_ERROR')
+    node = _node(core, monkeypatch, allow=_GIT)
+    pump(core, lambda: _state(core, mid) == 'BLOCKED')
+    (v,) = _vs(core, mid, 'task')
+    assert (v['verifier'], v['state']) == ('generic_human', 'AWAITING_HUMAN') and v['revision']
+    assert 'git_head' in node.calls and 'run_check' not in node.calls
+
+
+def test_A6_the_sink_refuses_a_code_verification_of_a_guarded_mission(core):
+    _repo, mid, t, e = _verifying(core)
+    _isolate(core, mid, e.id)
+    n = len(core.events(0))
+    with pytest.raises(V.Refused, match='withheld'):
+        _do(core, V.start, missions=core._missions, subject=Ref('task', t.id),
+            verifier='code', execution_id=e.id)
+    assert not _vs(core, mid) and len(core.events(0)) == n
+
+
+def test_A6_a_mission_guarded_between_the_read_and_the_start_runs_nothing(core, monkeypatch):
+    _repo, mid, t, _e = _verifying(core)
+    real_do, real_start = core._verify._do, V.start
+
+    def racing(command, **kw):
+        if command is real_start and kw['verifier'] == 'code':
+            _another_execution(core, t, isolated=True, process_seq=1, state='ENDED_ERROR')
+        return real_do(command, **kw)
+    monkeypatch.setattr(core._verify, '_do', racing)
+    node = _node(core, monkeypatch, allow=_GIT)
+    assert core._verify.pass_once()['did'] == 'lost_race'
+    assert not _vs(core, mid) and 'run_check' not in node.calls
+    assert core._verify.pass_once()['did'] == 'verify_task'
+    (v,) = _vs(core, mid, 'task')
+    assert v['verifier'] == 'generic_human' and 'run_check' not in node.calls
+
+
+def test_A6_a_guarded_rows_error_is_held_once_and_never_re_run(core, monkeypatch):
+    mid, _t1, e, vid = _errored(core)
+    _isolate(core, mid, e.id)
+    before, seq = _get(core, entities.Verification, vid), core.events(0)[-1]['seq']
+    node = _node(core, monkeypatch)
+    pump(core, lambda: _state(core, mid) == 'BLOCKED')
+    pump(core)                                      # quiescent: held once, nothing else
+    after = _get(core, entities.Verification, vid)
+    assert (after.state, after.errors, after.holds_mission) == ('ERROR', 1, True)
+    assert _frozen(after) == _frozen(before) and after.revision == 'r1'
+    assert _held(core, mid)['reason'] == V.WITHHELD
+    changes = [x['payload'] for x in core.events(seq) if x['subject']['id'] == vid
+               and x['type'] == 'verification.state_changed']
+    assert not [p for p in changes if p['to'] in ('PENDING', 'RUNNING', 'AWAITING_HUMAN')]
+    assert len([p for p in changes if p.get('holds_mission')]) == 1
+    assert node.calls == []
+
+
+def test_A6_the_retry_sink_refuses_a_guarded_row_before_writing(core):
+    mid, _t1, e, vid = _errored(core)
+    _isolate(core, mid, e.id)
+    before, n = _get(core, entities.Verification, vid), len(core.events(0))
+    with pytest.raises(V.Refused, match='withheld'):
+        _do(core, V.retry, verification_id=vid)
+    assert _get(core, entities.Verification, vid) == before and len(core.events(0)) == n
+    assert _state(core, mid) == 'EXECUTING'
+
+
+def test_A6_a_retry_runs_nothing_unless_the_sink_says_it_runs(core, monkeypatch):
+    mid, _t1, _e, vid = _errored(core)               # ordinary: the planner retries it
+    monkeypatch.setattr(V, 'retry', lambda tx, *, actor, verification_id: {
+        'verification_id': verification_id, 'state': 'AWAITING_HUMAN'})
+
+    def never(*a, **k):
+        raise AssertionError('read the commands of a retry that does not run')
+    monkeypatch.setattr(evidence, 'project_root', never)
+    monkeypatch.setattr(evidence, 'commands', never)
+    node = _node(core, monkeypatch)
+    assert core._verify.pass_once()['did'] == 'retry'
+    assert node.calls == []
+
+
+def test_A6_a_mission_guarded_between_the_plan_and_the_retry_runs_nothing(core, monkeypatch):
+    mid, _t1, e, vid = _errored(core)
+    real_do, real_retry = core._verify._do, V.retry
+
+    def racing(command, **kw):
+        if command is real_retry:
+            _isolate(core, mid, e.id)               # committed before the retry's transaction
+        return real_do(command, **kw)
+    monkeypatch.setattr(core._verify, '_do', racing)
+    node = _node(core, monkeypatch)
+    assert core._verify.pass_once()['did'] == 'lost_race'
+    assert _get(core, entities.Verification, vid).state == 'ERROR' and node.calls == []
+    assert core._verify.pass_once()['did'] == 'hold'
+    assert node.calls == []
+
+
+def test_A6_a_held_rows_lineage_can_never_be_accepted_or_merged(core, monkeypatch):
+    mid, _t1, e, vid = _errored(core)
+    _isolate(core, mid, e.id)
+    node = _node(core, monkeypatch)
+    pump(core, lambda: _state(core, mid) == 'BLOCKED')
+    with pytest.raises(CoreClientError) as err:
+        core.decide_verification(vid, 'accept')
+    assert err.value.status == 409
+    t = _task(core, mid)
+    assert (t.state, t.integration_state) == ('VERIFYING', None)
+    from archeus.core.application import errors
+    with pytest.raises(errors.LOST_RACE):
+        _do(core, V.begin_merge, task_id=t.id, revision='r1')
+    assert node.calls == []
+    _user(core, core._missions.cancel, mission_id=mid)     # H: the supported way out
+    assert _state(core, mid) == 'CANCELLED'
+
+
+@pytest.mark.parametrize('isolated', [True, False])
+def test_A6_an_old_human_rows_revision_merges_only_if_its_execution_may_supply_it(
+        core, monkeypatch, isolated):
+    """A human row the pre-K5a path recorded with the workdir's HEAD: accepting
+    it never makes a known-isolated execution's claim mergeable (A5)."""
+    _repo, mid, t, e = _verifying(core)
+    vid = _do(core, V.start, missions=core._missions, subject=Ref('task', t.id),
+              verifier='generic_human', execution_id=e.id, revision='r1', workspace=e.workdir,
+              criteria=[dict(x, index=i, result='unknown')
+                        for i, x in enumerate(t.acceptance)])['verification_id']
+    _isolate(core, mid, e.id, isolated)
+    core.decide_verification(vid, 'accept')
+    assert (_t(core, mid), _t(core, mid, 'integration_state')) == ('SUCCEEDED', 'PENDING')
+    node = _node(core, monkeypatch, fake={
+        'git_merge_base': lambda *a: 'b' * 40, 'mission_worktree': lambda *a: 'wt',
+        'git_head': lambda *a: None, 'git_merge': lambda *a: ('merged', 'a' * 40),
+        'remove_worktree': lambda *a: None})
+    out = core._verify.pass_once()
+    if isolated:
+        assert out['did'] == 'lost_race' and node.calls == []
+        assert _t(core, mid, 'integration_state') == 'PENDING'
+    else:
+        assert out['did'] == 'merge' and 'git_merge' in node.calls
+        assert _t(core, mid, 'integration_state') == 'MERGED'
+
+
+def test_A6_a_guarded_criterion_in_error_is_superseded_by_a_fresh_row_for_you(core, monkeypatch):
+    repo, mid = _mission(core, Rig(core), steps=[_write(FIX), {'emit': {'type': 'result',
+                                                                        'summary': 'done'}}])
+    pump(core, lambda: _state(core, mid) == 'VERIFYING')
+    m = _get(core, entities.Mission, mid)
+    wt = os.path.join(os.environ['ARCHEUS_HOME'], 'worktrees', repo.project_id, mid, '_mission')
+    old = _do(core, V.start, missions=core._missions, subject=Ref('mission', mid),
+              verifier='code', criterion=0, revision=m.integration_head,
+              base_revision=m.integration_base, workspace=wt,
+              criteria=[dict(m.success_criteria[0], index=0, result='unknown')])['verification_id']
+    _do(core, V.record, missions=core._missions, verification_id=old,
+        checks=[{'name': 'test', 'kind': 'command', 'result': 'error', 'detail': 'no runner'}])
+    before = _get(core, entities.Verification, old)
+    with core._core().read() as conn:
+        e = V.verified_execution(conn, _task(core, mid))
+    _isolate(core, mid, e.id)
+
+    def never(*a, **k):
+        raise AssertionError('a guarded criterion was retried')
+    monkeypatch.setattr(core._verify, '_retry', never)
+    node = _node(core, monkeypatch, allow=('git_head',))   # Core's own mission worktree head
+    pump(core, lambda: len(_vs(core, mid, 'mission')) > 1)
+    assert _get(core, entities.Verification, old) == before
+    fresh = [x for x in _vs(core, mid, 'mission') if x['id'] != old]
+    assert [x['criterion'] for x in fresh] == list(range(len(m.success_criteria)))
+    assert {(x['verifier'], x['state'], x['revision'], x['workspace']) for x in fresh} == {
+        ('generic_human', 'AWAITING_HUMAN', m.integration_head, None)}
+    assert set(node.calls) <= {'git_head'}
+    with pytest.raises(V.Refused, match='withheld'):
+        _do(core, V.start, missions=core._missions, subject=Ref('mission', mid),
+            verifier='code', criterion=0, revision=m.integration_head)
+
+
+def test_A6_a_guarded_mission_with_nothing_integrated_never_falls_back_to_your_root(
+        core, monkeypatch):
+    _repo, mid = _mission(core, Rig(core), steps=[_write(FIX), {'emit': {'type': 'result',
+                                                                         'summary': 'done'}}])
+    pump(core, lambda: _state(core, mid) == 'VERIFYING')
+    with core._core().read() as conn:
+        e = V.verified_execution(conn, _task(core, mid))
+    _isolate(core, mid, e.id)
+    # nothing integrated: before the guard, the criteria ran in your project root
+    _forge(core, mid, lambda tx, actor: tx.update(
+        entities.Mission, mid, {'integration_base': None, 'integration_head': None},
+        actor=actor))
+    node = _node(core, monkeypatch)
+    pump(core, lambda: _vs(core, mid, 'mission'))
+    crit = _vs(core, mid, 'mission')
+    assert {(x['verifier'], x['revision'], x['workspace']) for x in crit} == {
+        ('generic_human', None, None)}
+    assert node.calls == []
+
+
+def test_A6_an_isolated_execution_without_a_project_never_reaches_git_or_a_command(
+        core, monkeypatch):
+    rig = Rig(core)
+    rig.script_harness('t1', [_write(FIX), {'emit': {'type': 'result', 'summary': 'done'}}])
+    mid = core.create_mission(title='Fix add', objective='Make add add')['id']
+    pump(core, lambda: _t(core, mid) == 'VERIFYING' and not _vs(core, mid))
+    with core._core().read() as conn:
+        e = V.verified_execution(conn, _task(core, mid))
+    assert e.branch is None
+    _isolate(core, mid, e.id)
+    node = _node(core, monkeypatch)
+    pump(core, lambda: _state(core, mid) == 'BLOCKED')
+    (v,) = _vs(core, mid, 'task')
+    assert (v['verifier'], v['revision'], v['workspace']) == ('generic_human', None, None)
+    core.decide_verification(v['id'], 'accept')
+    assert (_t(core, mid), _t(core, mid, 'integration_state')) == ('SUCCEEDED', None)
+    pump(core, lambda: _vs(core, mid, 'mission'))
+    assert {(x['verifier'], x['workspace']) for x in _vs(core, mid, 'mission')} == {
+        ('generic_human', None)}
+    assert node.calls == []
