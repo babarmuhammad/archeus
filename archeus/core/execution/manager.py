@@ -249,7 +249,7 @@ class ExecutionManager:
                      % type(err).__name__)
             return True
         out = self._do(X.prepare_process, execution_id=e.id, token_digest=X.token_hash(token),
-                       workdir=workdir, branch=branch, process_seq=seq,
+                       workdir=workdir, branch=branch, process_seq=seq, isolated=isolated,
                        inventory_sha256=sha, inventory_size=size)
         if out['refused']:
             return True

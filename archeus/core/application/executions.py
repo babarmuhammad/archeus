@@ -93,12 +93,16 @@ def binding(conn, e):
 # ── process start and progress ──────────────────────────────────────────────
 
 def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, process_seq,
-                    inventory_sha256=None, inventory_size=None):
+                    isolated, inventory_sha256=None, inventory_size=None):
     """Before a process starts: the binding still holds (else the execution ends
     uncharged and the task is re-dispatched), and the new process's number,
     workdir, branch and hook token hash are recorded — and (P20, ADR-0049) the
     inventory of what its settings sources load, an artifact the manager has
-    already stored, referenced from the execution."""
+    already stored, referenced from the execution. The isolation decision
+    (T-035) is recorded at the first preparation; a later one under a different
+    decision ends the execution uncharged, and a legacy row stays unknown."""
+    if not isinstance(isolated, bool):
+        raise ValueError('prepare_process needs the isolation decision as a bool')
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
     if e.state not in ('INTENT', 'PAUSED', 'AWAITING_APPROVAL'):
         raise lifecycle.IllegalTrigger('execution', e.state, 'prepare_process',
@@ -106,6 +110,13 @@ def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, p
     if process_seq != e.process_seq + 1:
         raise ValueError('process %d of %s cannot follow %d' % (process_seq, e.id,
                                                                 e.process_seq))
+    # a refusal, not IllegalTrigger: the manager's pass treats that as a lost
+    # race and would re-attempt (and re-refuse) a PAUSED execution forever
+    if e.process_seq >= 1 and e.isolated is not None and e.isolated != isolated:
+        why = 'its isolation decision changed (recorded %s, now %s)' % (e.isolated, isolated)
+        return dict(refuse(tx, actor=actor, execution_id=e.id, reason=why,
+                           stop_reason='binding'), refused=why)
+    recorded = isolated if e.process_seq == 0 else e.isolated
     why = binding(tx.conn, e)
     if why is not None:
         return dict(refuse(tx, actor=actor, execution_id=e.id, reason=why,
@@ -116,11 +127,13 @@ def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, p
     tx.update(entities.Execution, e.id, {'process_seq': process_seq, 'workdir': workdir,
                                          'branch': branch, 'hook_token_hash': token_digest,
                                          'hook_seq': 0 if e.process_seq == 0 else e.hook_seq,
+                                         'isolated': recorded,
                                          'inventory_sha256': inventory_sha256},
               actor=actor)
     _event(tx, 'execution.prepared', e, actor, {'process_seq': process_seq, 'workdir': workdir,
                                                 'branch': branch,
-                                                'inventory': inventory_sha256})
+                                                'inventory': inventory_sha256,
+                                                'isolated': recorded})
     return {'execution_id': e.id, 'process_seq': process_seq, 'refused': None}
 
 

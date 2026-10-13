@@ -798,12 +798,58 @@ def test_E60_a_new_core_adopts_a_live_process_and_records_its_end(x):
 def test_E61_a_crash_between_prepare_and_spawn_starts_nothing_and_charges_nothing(x):
     mid, e = _intent(x)
     x.do(X.prepare_process, execution_id=e.id, token_digest='0' * 64,
-         workdir=ExecPaths(e.id).work, branch=None, process_seq=1)
+         workdir=ExecPaths(e.id).work, branch=None, process_seq=1, isolated=False)
     fresh = Rig(x.db)
     fresh.manager.boot()
     e = x.state(e.id)
     assert (e.state, e.charged) == ('ABANDONED', False)
     assert x.task_of(mid).state == 'READY'
+
+
+# ── PV-20 T-035/T-036: the isolation decision is recorded once, at preparation ─
+
+def _prep(x, e, seq, isolated):
+    return x.do(X.prepare_process, execution_id=e.id, token_digest='0' * 64,
+                workdir=ExecPaths(e.id).work, branch=None, process_seq=seq, isolated=isolated)
+
+
+@pytest.mark.parametrize('decide', [True, False])
+def test_the_first_preparation_records_the_isolation_decision(x, decide):
+    mid, e = _intent(x)
+    assert e.isolated is None                             # never prepared: unknown
+    assert _prep(x, e, 1, decide)['refused'] is None
+    assert x.state(e.id).isolated is decide
+    (ev,) = x.events('execution.prepared')
+    assert ev['payload']['isolated'] is decide
+    assert _prep(x, e, 2, decide)['refused'] is None      # the same decision again
+    assert (x.state(e.id).isolated, x.state(e.id).process_seq) == (decide, 2)
+    assert [v['payload']['isolated'] for v in x.events('execution.prepared')] == [decide] * 2
+
+
+@pytest.mark.parametrize('decide', [True, False])
+def test_a_later_preparation_under_the_other_decision_ends_it_uncharged(x, decide):
+    mid, e = _intent(x)
+    _prep(x, e, 1, decide)
+    out = _prep(x, e, 2, not decide)
+    assert 'isolation decision changed' in out['refused']
+    e = x.state(e.id)
+    assert (e.state, e.stop_reason, e.charged) == ('ABANDONED', 'binding', False)
+    assert (e.isolated, e.process_seq) == (decide, 1)     # nothing of the preparation
+    assert len(x.events('execution.prepared')) == 1
+    assert x.task_of(mid).state == 'READY'
+
+
+@pytest.mark.parametrize('decide', [True, False])
+def test_a_legacy_prepared_row_stays_unknown(x, decide):
+    mid, e = _intent(x)
+    def legacy(tx, actor):                                # prepared before the field existed
+        tx.update(entities.Execution, e.id, {'process_seq': 1}, actor=actor)
+        X._event(tx, 'execution.prepared', e, actor, {'process_seq': 1})
+    x.do(legacy)
+    assert _prep(x, e, 2, decide)['refused'] is None
+    e = x.state(e.id)
+    assert (e.isolated, e.process_seq) == (None, 2)       # never relabelled ordinary
+    assert x.events('execution.prepared')[-1]['payload']['isolated'] is None
 
 
 def test_E62_a_disarmed_core_kills_live_orphans_at_boot(x):

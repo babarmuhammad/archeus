@@ -1008,11 +1008,17 @@ class Execution(Entity):
     end_state_digest: str = None
     # P20 (ADR-0049, D6): the artifact recording what its settings sources load
     inventory_sha256: str = None
+    # PV-20 (T-035): Core's isolation decision, written once at the first
+    # preparation. A decision, never evidence that confinement happened; None
+    # is unknown (never prepared, or prepared before the field existed)
+    isolated: bool = None
     state: str = None
 
     def _check(self):
         if self.inventory_sha256 is not None and not _HEX64.fullmatch(self.inventory_sha256):
             raise ValueError('Execution.inventory_sha256 names an artifact (a sha256)')
+        if self.isolated is not None and not isinstance(self.isolated, bool):
+            raise ValueError('Execution.isolated is a bool or None')
 
 
 #: How a Session came to exist (p12-design-gate D1): the one an execution ran in,

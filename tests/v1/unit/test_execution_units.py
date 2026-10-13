@@ -734,9 +734,10 @@ def test_a_project_less_workspace_is_the_executions_own_never_its_core_directory
 
 # ── PV-20 §3.3 H2 / A7: how a live end is classified (state-machines §4 guards) ──
 
-def _seeded(state, stop_reason=None, max_attempts=2):
+def _seeded(state, stop_reason=None, max_attempts=2, isolated=None, process_seq=0):
     """One execution in *state* under a RUNNING task, on a real database. No
-    process ever ran (process_seq 0), so only the classification is exercised."""
+    process ever ran (process_seq 0 by default), so only the classification is
+    exercised."""
     from archeus.core.domain.events import new_event
     from archeus.core.domain.values import Ref
     from archeus.infra.db import Database
@@ -753,7 +754,8 @@ def _seeded(state, stop_reason=None, max_attempts=2):
                               kind='code_change', state='RUNNING',
                               max_attempts=max_attempts),
                 entities.Execution(id=eid, task_id=tid, mission_id=mid, plan_id=pid,
-                                   attempt=1, state=state, stop_reason=stop_reason)):
+                                   attempt=1, state=state, stop_reason=stop_reason,
+                                   isolated=isolated, process_seq=process_seq)):
             tx.insert(row, actor=who)
         tx.append(new_event('mission.updated', Ref('mission', mid), who, payload={},
                             workspace=ids.GLOBAL_WORKSPACE))
@@ -765,6 +767,69 @@ def _row(db, kind, id_):
     from archeus.infra.db import rows
     with db.read() as r:
         return rows.get(r, kind, id_)
+
+
+def _prepare(db, eid, isolated, seq=2):
+    from archeus.core.domain.values import Ref
+    return db.writer.execute(X.prepare_process, {
+        'actor': Ref('system', ids.new_id('principal')), 'execution_id': eid,
+        'token_digest': '0' * 64, 'workdir': 'w',
+        'branch': None, 'process_seq': seq, 'isolated': isolated})
+
+
+@pytest.mark.parametrize('recorded', [True, False])
+def test_a_resume_under_the_other_isolation_decision_ends_it_uncharged(recorded):
+    db, who, eid, tid = _seeded('PAUSED', isolated=recorded, process_seq=1)
+    try:
+        out = _prepare(db, eid, not recorded)
+        assert 'isolation decision changed' in out['refused']
+        e = _row(db, entities.Execution, eid).entity
+        assert (e.state, e.stop_reason, e.charged) == ('ENDED_KILLED', 'binding', False)
+        assert (e.isolated, e.process_seq) == (recorded, 1)
+        assert _row(db, entities.Task, tid).entity.state == 'READY'
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('recorded,decide', [(True, True), (False, False), (None, True),
+                                             (None, False)])
+def test_a_resume_under_the_same_or_an_unknown_decision_passes_the_comparison(recorded,
+                                                                              decide):
+    # the seeded row has no dispatch decision, so the binding refuses next: its
+    # reason, not the isolation one, shows the comparison let it through
+    db, who, eid, _ = _seeded('PAUSED', isolated=recorded, process_seq=1)
+    try:
+        out = _prepare(db, eid, decide)
+        assert out['refused'] and 'isolation' not in out['refused']
+        assert _row(db, entities.Execution, eid).entity.isolated is recorded
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('bad', [None, 1, 0, 'true'])
+def test_preparation_needs_the_decision_as_a_bool(bad):
+    db, who, eid, _ = _seeded('INTENT')
+    try:
+        with pytest.raises(ValueError):
+            _prepare(db, eid, bad, seq=1)
+        with pytest.raises(TypeError):
+            db.writer.execute(X.prepare_process, {
+                'actor': who, 'execution_id': eid, 'token_digest': '0' * 64, 'workdir': 'w',
+                'branch': None, 'process_seq': 1})
+        assert _row(db, entities.Execution, eid).entity.process_seq == 0
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('bad', [1, 0, 'true'])
+def test_the_isolated_field_is_a_bool_or_unknown(bad):
+    kw = dict(id=ids.new_id('execution'), task_id=ids.new_id('task'),
+              mission_id=ids.new_id('mission'))
+    with pytest.raises(ValueError):
+        entities.Execution(**kw, isolated=bad)
+    body = entities.Execution(**kw).to_dict()
+    del body['isolated']
+    assert entities.Execution.from_dict(body).isolated is None
 
 
 #: (isolated, state, exit code, killed, the execution's halt report) -> end state
@@ -993,6 +1058,7 @@ def test_isolation_is_decided_once_before_the_workspace_and_the_inventory(
     (_, spec, kw), = [x for x in log if x[0] == 'spawn']
     assert kw == {'resume_state': None, 'isolated': decide}
     assert [x[1] for x in log if x[0] == 'inventory'] == [{'isolated': decide}]
+    assert [x[1]['isolated'] for x in log if x[0] == 'prepare_process'] == [decide]
     assert spec.isolation is None               # the node, not the manager, isolates the spec
 
 
@@ -1005,6 +1071,7 @@ def test_a_resume_takes_the_same_single_decision(monkeypatch, tmp_path, decide):
     assert _steps(log).index('requested') < _steps(log).index('workspace')
     (_, spec, kw), = [x for x in log if x[0] == 'spawn']
     assert kw == {'resume_state': {'session': 's1'}, 'isolated': decide}
+    assert [x[1]['isolated'] for x in log if x[0] == 'prepare_process'] == [decide]
     assert spec.process_seq == 2
 
 
@@ -1027,6 +1094,7 @@ def test_a_node_without_an_isolation_authority_spawns_unisolated_as_today(
     (_, spec, kw), = [x for x in log if x[0] == 'spawn']
     assert kw == {'resume_state': None, 'isolated': False}
     assert [x[1] for x in log if x[0] == 'inventory'] == [{'isolated': False}]
+    assert [x[1]['isolated'] for x in log if x[0] == 'prepare_process'] == [False]
     assert (spec.workdir, spec.isolation) == (paths.ExecPaths(e.id).work, None)
 
 
