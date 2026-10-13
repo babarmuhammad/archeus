@@ -2,7 +2,8 @@
 is decided before any credential or code is read, and only the user's origin
 reaches a route other than the public page. The attestor here is a fake; the
 production one takes every peer as the user, so nothing changes until R1-A is
-activated."""
+activated. A paired credential reaches a privileged route only through a
+configured remote host (T-053 C2, Q4-A; T-059)."""
 
 import ast
 import logging
@@ -18,11 +19,13 @@ from v1.judge.support import wait_for
 AUTHORITY = {('POST', '/v1/devices/launch/code'), ('POST', '/v1/devices/launch/redeem'),
              ('POST', '/v1/devices/pair/start'), ('POST', '/v1/devices/pair/redeem')}
 NOT_USER = [auth.EXECUTION, auth.VERIFIER, auth.UNDETERMINED]
+TUNNEL = 'pc.tailnet.ts.net'
+SCOPE = {(r.method, r.path): r.scope for r in routes.ROUTES}
 
 
 @pytest.fixture
 def core(archeus_home):
-    c = TempCore(archeus_home).start()
+    c = TempCore(archeus_home, remote_hosts=(TUNNEL,)).start()
     yield c
     c.stop()
 
@@ -164,3 +167,56 @@ def test_the_request_log_never_records_a_token_or_a_code(core, caplog):
     lines = [rec.getMessage() for rec in caplog.records]
     assert any('/v1/health 403' in line for line in lines)           # the log was seen
     assert not [line for line in lines if core.token in line or code in line]
+
+
+# ── a paired credential: privileged only through the remote host (T-059) ──
+
+def _paired(core, scopes=auth.SCOPES):
+    code = core.http('POST', '/v1/devices/pair/start', body={'scopes': list(scopes)})
+    return _redeem(core, 'pair', code.json()['code']).json()['token']
+
+
+def _mission(core, token, **kw):
+    return core.http('POST', '/v1/missions', token=token, **kw,
+                     body={'title': 'M', 'objective': 'o', 'idempotency_key': os.urandom(8).hex()})
+
+
+def test_a_paired_credential_on_the_loopback_host_reaches_no_privileged_route(core):
+    """Q4-A: neither branch's path, so no §3.6 effect, and nothing written."""
+    token = _paired(core)                                  # every scope: only the Host refuses
+    before = _head(core), _devices(core)
+    for key in sorted(routes.PRIVILEGED):
+        if SCOPE[key] is None:
+            continue                                       # a redemption reads no credential
+        r = core.http(key[0], _path(key[1]), body={}, token=token)
+        assert (r.status, r.json()['error']) == (403, 'host_not_allowed'), key
+    assert (_head(core), _devices(core)) == before
+
+
+def test_on_the_loopback_host_it_keeps_its_observe_and_ordinary_routes(core):
+    token = _paired(core)
+    assert core.http('GET', '/v1/missions', token=token).status == 200
+    ack = core.http('POST', '/v1/digest/ack', body={'up_to_seq': _head(core)}, token=token)
+    assert ack.status == 200, ack.body
+
+
+def test_through_the_remote_host_its_privileged_routes_are_p15s_and_a_local_one_is_not(core):
+    token, tunnel = _paired(core, ('observe', 'control')), {'Host': TUNNEL}
+    r = _mission(core, token, headers=tunnel)
+    assert r.status == 200, r.body
+    assert _mission(core, core.token, headers=tunnel).json()['error'] == 'host_not_allowed'
+    assert _mission(core, core.token).status == 200        # D21, unchanged
+
+
+@pytest.mark.parametrize('spoof, error', [
+    ({'X-Forwarded-Host': TUNNEL}, 'host_not_allowed'),
+    ({'Forwarded': 'host=' + TUNNEL}, 'host_not_allowed'),
+    ({'X-Original-Host': TUNNEL}, 'host_not_allowed'),
+    ({'Origin': 'https://' + TUNNEL}, 'cross_site'),
+])
+def test_only_the_host_header_names_the_remote_host(core, spoof, error):
+    token = _paired(core)
+    before = _head(core)
+    r = _mission(core, token, headers=spoof)
+    assert (r.status, r.json()['error']) == (403, error)
+    assert _head(core) == before
