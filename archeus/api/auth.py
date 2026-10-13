@@ -84,6 +84,18 @@ def live(cred, presented_hash, now=None):
     return cred['expires_at'] is None or cred['expires_at'] > (now or now_iso())
 
 
+#: Who is on the other end of a connection (ADR-0053 R1-A, T-053 §4): only the
+#: user's own processes may hold user-device authority.
+USER, EXECUTION, VERIFIER, UNDETERMINED = 'user', 'execution', 'verifier', 'undetermined'
+ORIGINS = (USER, EXECUTION, VERIFIER, UNDETERMINED)
+
+
+def attest_user(peer):
+    """The attestor until R1-A is activated: every peer is taken as the user, so
+    nothing changes (T-057). A real one observes the process behind *peer*."""
+    return USER
+
+
 class Origin:
     """The accepted origins: `http://127.0.0.1:<port>` (D10, §18.3) and, when
     the user enables remote access, `https://<host>` for each configured tunnel

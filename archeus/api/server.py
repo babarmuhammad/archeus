@@ -8,6 +8,7 @@ in this order, each step failing closed:
     3 no token or access_token in the query        401 token_in_url
     4 body at most 1 MiB                           413 payload_too_large
     5 a known route, with its method               404 / 405
+      the peer's origin is the user (any route but the public page)   403 origin_refused
     6 a live device credential (if the route has a scope)   401 unauthenticated
     7 the credential carries the route's scope     403 scope_required
     8 a JSON object body; an idempotency_key on a keyed command   400
@@ -174,7 +175,8 @@ class Api:
     def __init__(self, *, db, missions, port, health, version, conversations=None,
                  authorization=None, resources=None, executions=None, sessions=None,
                  heartbeat_s=15.0, launch_clock=time.monotonic, static_dir=STATIC_DIR,
-                 command_timeout=COMMAND_TIMEOUT_S, remote_hosts=()):
+                 command_timeout=COMMAND_TIMEOUT_S, remote_hosts=(),
+                 attestor=auth.attest_user):
         self.db, self.missions, self.health, self.version = db, missions, health, version
         self.conversations = conversations
         self.authorization = authorization
@@ -206,6 +208,17 @@ class Api:
         self.sse = sse.Streams(db, heartbeat_s=heartbeat_s, stopping=lambda: self.stopping)
         self.requests = threading.BoundedSemaphore(REQUEST_SLOTS)
         self.command_timeout = command_timeout
+        self.attestor = attestor
+
+    def attest(self, peer):
+        """The origin of *peer* (R1-A); an attestor that fails, or answers
+        anything but a known origin, makes it undetermined: fail closed."""
+        try:
+            origin = self.attestor(peer)
+        except Exception as e:
+            log.warning('origin attestation failed: %s', type(e).__name__)
+            return auth.UNDETERMINED
+        return origin if origin in auth.ORIGINS else auth.UNDETERMINED
 
     def authenticate(self, header):
         token = auth.bearer(header)
@@ -297,6 +310,7 @@ class Handler(BaseHTTPRequestHandler):
     def _serve(self):
         started = time.monotonic()
         self._status, self.principal, self.body, self.token_hash = None, None, {}, None
+        self.attested = None
         self._unread = False
         self.api = self.server.api
         self.peer = self.client_address
@@ -333,6 +347,12 @@ class Handler(BaseHTTPRequestHandler):
                 if not self.api.requests.acquire(blocking=False):
                     raise Refused(503, 'busy', headers={'Retry-After': '1'})
                 slot = self.api.requests
+            if routes.CLASS.get((route.method, route.path), 'privileged') != 'public':
+                # R1-A (T-053 P1, P7): decided before any credential or code is
+                # read, so a refusal spends no code and writes nothing
+                self.attested = self.api.attest(self.peer)
+                if self.attested != auth.USER:
+                    raise Refused(403, 'origin_refused', {'origin': self.attested})
             extra = {}
             if route.scope is not None:
                 self.principal, self.token_hash = self.api.authenticate(
