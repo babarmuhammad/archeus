@@ -47,6 +47,7 @@ Python install through a path parameter and broke it; nothing here takes one.
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import time
@@ -580,6 +581,14 @@ def _ledger_problem(e, api):
 #: how long a profile's deletion waits for the root process once Core has closed its Job
 EXIT_WAIT_S = 2.0
 
+#: a confined verifier run's limits (A6-3, T-054 C-1013 §3). They are soft DETECTION:
+#: Core polls, so between two polls a writer is bounded only by its own rate, and no
+#: hard bound on bytes written is claimed
+CONFINED_OUT_MAX = 64 << 20         # out.log
+CONFINED_GROWTH_MAX = 2 << 30       # checkout and scratch growth over the start
+CONFINED_POLL_S = 1.0
+CONFINED_WALK_MAX = 200000          # entries per accounting walk
+
 
 class Isolation:
     """Core's isolation authority for one process: the per-execution identities, the
@@ -609,6 +618,8 @@ class Isolation:
         self.faults = {}
         #: executions whose `released` line this Core has seen confirmed: profile absent
         self._released = set()
+        #: verifier attempts this Core is running now: live whatever a caller says (A6-3)
+        self._confined = set()
 
     # ── the boundary ──
 
@@ -1112,7 +1123,7 @@ class Isolation:
         error is a bug, and a ledger that cannot be read, a record directory that cannot
         be listed, or a registry that cannot take the fault's own note fails the whole
         sweep, for the manager to report."""
-        live = set(live_execution_ids or ())
+        live = set(live_execution_ids or ()) | self._confined
         done, seen = [], set()
         for execution_id, (n, entry) in sorted(self._ledger().items()):
             if execution_id in live:
@@ -1195,6 +1206,164 @@ class Isolation:
                 if key not in live:
                     out.append(key)
         return out
+
+    # ── one confined verifier attempt (A6-3, T-054 C-1013 §1 and §3) ──
+
+    def run_confined(self, request, argv, *, env, timeout, out_path, stdin_path, record,
+                     keep):
+        """One verifier attempt, in this order: establish its principal (nothing is
+        launched unless all six conditions hold) -> launch into its Core-held Job with
+        Core's handles -> wait under the soft limits -> tree shutdown, after confirmed
+        quiescence when the root exited cleanly -> freeze the output -> `record(result)`
+        -> delete the profile. Returns `run_check`'s result plus `confinement`; `error`
+        is set whenever the run cannot be read as a clean finish.
+
+        *record* is the caller's durable write of the verdict. It returns once the
+        verdict is recorded, or once the row no longer awaits it; whatever it raises
+        leaves the profile for reclaim and propagates. A teardown that fails quarantines
+        the profile and never touches the result."""
+        key = request.execution_id
+        self._confined.add(key)
+        try:
+            result, established = self._run_confined(request, argv, env, timeout,
+                                                      out_path, stdin_path, keep)
+            record(result)
+            if established:
+                self._contained(key, lambda: self.teardown(key, reason='verified'))
+            return result
+        finally:
+            self._confined.discard(key)
+
+    def _run_confined(self, request, argv, env, timeout, out_path, stdin_path, keep):
+        key, api = request.execution_id, self.boundary
+        t0 = time.monotonic()
+        try:
+            rec = self.establish(request)
+        except IsolationUnavailable as err:
+            return _confined_result(out_path, keep, t0, 'isolation: %s' % err.reason, None,
+                                    {}), False
+        facts = {'isolated': True, 'ac_profile': rec.profile, 'ac_sid': rec.sid,
+                 'capabilities': list(rec.capabilities),
+                 'job': 'core-held-unnamed-kill-on-close'}
+        rows = [request.grant_for(r).path for r in ('checkout', 'scratch')]
+        roots = [p for p in rows if not any(_norm(p) != _norm(q) and _within(p, q)
+                                            for q in rows)]
+        try:
+            start = _tree_bytes(roots)
+        except OSError as err:
+            error, child = 'accounting_failed: %s' % err, None
+        else:
+            error, child = self._confined_launch(api, rec, request, argv, env, stdin_path,
+                                                 out_path)
+        deadline = t0 + timeout
+        while error is None:
+            exited = child.wait(min(CONFINED_POLL_S,
+                                    max(0.0, deadline - time.monotonic()))) is not None
+            error = _over_limit(out_path, roots, start)
+            if error or exited:
+                break
+            if time.monotonic() >= deadline:
+                error = 'timed out after %ds' % timeout
+        if error is None:
+            error = self._quiescent(api, self.held_job(key))
+        try:
+            self._close_job(key)
+        except (IsolationUnavailable, OSError) as err:
+            error = error or 'shutdown_failed: %s' % err
+        code = None if error else child.wait(0)
+        return _confined_result(out_path, keep, t0, error, code, facts), True
+
+    def _confined_launch(self, api, rec, request, argv, env, stdin_path, out_path):
+        handles = []
+        try:
+            handles.append(api.open_inherited(stdin_path, 'read'))
+            handles.append(api.open_inherited(out_path, 'append'))
+            child = api.launch(list(argv), cwd=request.workspace, env=env,
+                               profile=rec.profile, job=self.held_job(rec.execution_id),
+                               stdin=handles[0], stdout=handles[1])
+        except Exception as err:                       # nothing half-started survives
+            failed = getattr(err, 'child', None)
+            if failed is not None:
+                self._live[rec.execution_id] = failed
+            return 'launch_failed: %s' % err, None
+        finally:
+            for h in handles:
+                try:
+                    api.close_handle(h)
+                except Exception:
+                    pass
+        self._live[rec.execution_id] = child
+        return None, child
+
+    @staticmethod
+    def _quiescent(api, job):
+        """None once the held Job reports no member within `EXIT_WAIT_S`, else why not.
+        A count Core cannot read is never zero, and a survivor is never waited out."""
+        count = getattr(api, 'job_active_processes', None)
+        if job is None or count is None:
+            return 'quiescence_unknown: no Job count to read'
+        deadline = time.monotonic() + EXIT_WAIT_S
+        while True:
+            try:
+                n = count(job)
+            except (IsolationUnavailable, OSError) as err:
+                return 'quiescence_unknown: %s' % err
+            if type(n) is int and n == 0:
+                return None
+            if time.monotonic() >= deadline:
+                return 'quiescence_unknown: %r still in the Job' % (n,)
+            time.sleep(0.05)
+
+
+def _tree_bytes(roots):
+    """Bytes under *roots*, counted without following any link: a symlink or a
+    reparse point (a junction) counts as itself and is never entered. Raises OSError
+    when an entry cannot be classified or the walk outgrows `CONFINED_WALK_MAX`, so an
+    unknown size is never read as a small one."""
+    total, seen, todo = 0, 0, list(roots)
+    while todo:
+        with os.scandir(todo.pop()) as entries:
+            for e in entries:
+                seen += 1
+                if seen > CONFINED_WALK_MAX:
+                    raise OSError('more than %d entries' % CONFINED_WALK_MAX)
+                st = e.stat(follow_symlinks=False)
+                reparse = getattr(st, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+                if stat.S_ISDIR(st.st_mode) and not reparse:
+                    todo.append(e.path)
+                elif stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode) or reparse:
+                    total += st.st_size
+                else:
+                    raise OSError('an entry that cannot be classified: %s' % e.path)
+    return total
+
+
+def _over_limit(out_path, roots, start):
+    try:
+        out = os.lstat(out_path).st_size
+        grown = _tree_bytes(roots) - start
+    except OSError as err:
+        return 'accounting_failed: %s' % err
+    if out > CONFINED_OUT_MAX:
+        return 'limit_exceeded: out.log holds %d bytes' % out
+    if grown > CONFINED_GROWTH_MAX:
+        return 'limit_exceeded: the checkout and scratch grew %d bytes' % grown
+    return None
+
+
+def _confined_result(out_path, keep, t0, error, code, facts):
+    tail, size = _captured(out_path, keep)
+    return {'exit_code': code, 'duration_ms': int((time.monotonic() - t0) * 1000),
+            'error': error, 'output': tail, 'output_bytes': size, 'truncated': size > keep,
+            'confinement': facts}
+
+
+def _captured(out_path, keep):
+    """The output, frozen: its last *keep* bytes and its size."""
+    size = os.path.getsize(out_path)
+    with open(out_path, 'rb') as f:
+        f.seek(max(0, size - keep))
+        return f.read(), size
 
 
 def _staged(cmd):

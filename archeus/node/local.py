@@ -21,7 +21,7 @@ import time
 from claude_sessions import config, proc
 
 from ..harnesses import base
-from ..infra.paths import ExecPaths, processes_registry, run_dir, stop_sentinel
+from ..infra.paths import ExecPaths, VerifyPaths, processes_registry, run_dir, stop_sentinel
 from . import isolation as isolation_mod
 
 #: control flags the hook reads (P11 PAUSE/STOP; P12 HANDOFF, p12-design-gate §10.1)
@@ -522,3 +522,29 @@ class LocalNode:
         return {'exit_code': None if error else child.returncode,
                 'duration_ms': int((time.monotonic() - t0) * 1000), 'error': error,
                 'output': tail, 'output_bytes': size, 'truncated': size > keep}
+
+    def run_confined_check(self, verification_id, attempt, argv, *, toolchain, timeout,
+                           record, keep=CHECK_OUTPUT_KEEP):
+        """`run_check` confined (A6-3, T-054): the command runs as this attempt's own
+        principal inside a Core-held Job, in the checkout Core materialised under
+        `run/verify/<vid>/<n>/own/`, with an environment built from nothing and empty
+        stdin. The result is `run_check`'s plus `confinement`; *record* writes the
+        verdict before the profile goes (`Isolation.run_confined`). Not wired to the
+        verification worker yet (A6-4)."""
+        p = VerifyPaths(verification_id, attempt)
+        scratch = os.path.dirname(p.checkout)
+        for d in (p.checkout, p.home, p.tmp, p.config):
+            os.makedirs(d, exist_ok=True)
+        stdin = os.path.join(p.dir, 'stdin')
+        for f in (stdin, p.out):
+            open(f, 'wb').close()
+        grant = isolation_mod.Grant
+        request = isolation_mod.IsolationRequest(
+            execution_id=isolation_mod.Principal('verify', verification_id, attempt).key,
+            workspace=p.checkout,
+            grants=(grant(p.checkout, 'rw', 'checkout'), grant(scratch, 'rw', 'scratch'))
+            + tuple(grant(d, 'rx', 'toolchain') for d in toolchain),
+            core_state=run_dir())
+        return self.isolation.run_confined(
+            request, argv, env=base._verifier_env(toolchain, scratch), timeout=timeout,
+            out_path=p.out, stdin_path=stdin, record=record, keep=keep)
