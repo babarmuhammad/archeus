@@ -584,10 +584,9 @@ class LocalNode:
         """The project's store, created and sealed the first time and checked
         against its pin record every time (T-046 C1 steps 1-6). Returns its path."""
         store = repo_store(project_id)
-        pin = os.path.join(repos_dir(), '.pin')
-        _outside_executions([store, pin], workdirs)
-        _pin_files()
-        version = _git_version()
+        _outside_executions([store], workdirs)
+        pin = _pin_files(workdirs)
+        version = _git_version(workdirs)
         owned = os.path.join(pin, project_id + '.owned')
         record = os.path.join(pin, project_id + '.json')
         if not _present(store):
@@ -675,8 +674,8 @@ class LocalNode:
         if rev.startswith('-'):
             raise StoreError('not a revision: %r' % (rev,))
         git_dir = _source(root, workdirs)
-        _pin_files()
-        _git_version()
+        _pin_files(workdirs)
+        _git_version(workdirs)
         return LocalNode.store_git('base', ['rev-parse', '--verify', '-q', '--end-of-options',
                                             rev + '^{commit}'], workdirs=workdirs,
                                    git_dir=git_dir).strip()
@@ -692,23 +691,31 @@ def _git_exe():
     return exe
 
 
-@functools.lru_cache(maxsize=None)
-def _git_version():
-    # cwd is the pin's empty directory, which store_open checks against the recorded
-    # workdirs before it asks for the version; here only run/ and worktrees/ apply
-    out = LocalNode.store_git('version', ['version'], workdirs=()).strip()
+#: `git version` of each absolute executable, read once per process
+_VERSION = {}
+
+
+def _git_version(workdirs):
+    """The version, refused below the floor. It runs in the pin's empty
+    directory, so the caller's recorded workdirs are checked against the pin
+    area every time: by the spawner when it runs, here when it is cached."""
+    exe = _git_exe()
+    if exe in _VERSION:
+        _outside_executions(_pin_area(), workdirs)
+        return _VERSION[exe]
+    out = LocalNode.store_git('version', ['version'], workdirs=workdirs).strip()
     m = re.match(r'git version (\d+)\.(\d+)\.(\d+)', out)
     if not m or tuple(int(x) for x in m.groups()) < STORE_GIT_FLOOR:
         raise StoreError('git %r is older than %s or unreadable'
                          % (out, '.'.join(map(str, STORE_GIT_FLOOR))))
+    _VERSION[exe] = out
     return out
 
 
 def _store_pin(mode, git_dir):
     """The one pin (T-046 C1): argv prefix, environment and cwd of a store call.
     Of the inherited environment only the platform's own variables survive."""
-    pin = os.path.join(repos_dir(), '.pin')
-    empty, cfg = os.path.join(pin, 'empty'), os.path.join(pin, 'empty.cfg')
+    _repos, _pin, empty, cfg = _pin_area()
     exe = _git_exe()
     env = {k: os.environ[k] for k in ('SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP') if k in os.environ}
     env.update(PATH=os.path.dirname(exe), HOME=empty, XDG_CONFIG_HOME=empty,
@@ -729,18 +736,34 @@ def _store_pin(mode, git_dir):
     return argv, env, cwd
 
 
-def _pin_files():
-    """`repos/.pin/`: the empty directory and file every pin points Git at,
-    created by Core and refused once anything is in them."""
+def _pin_area():
+    """`repos/`, `repos/.pin/` and the empty directory and file every pin points Git at."""
     pin = os.path.join(repos_dir(), '.pin')
-    empty, cfg = os.path.join(pin, 'empty'), os.path.join(pin, 'empty.cfg')
-    os.makedirs(empty, exist_ok=True)
-    try:
-        open(cfg, 'xb').close()
-    except FileExistsError:
-        pass
-    for d in (archeus_home(), repos_dir(), pin, empty):
+    return repos_dir(), pin, os.path.join(pin, 'empty'), os.path.join(pin, 'empty.cfg')
+
+
+def _pin_files(workdirs):
+    """The pin area, made by Core and refused once anything is in it. Nothing is
+    made until the area is checked against the caller's recorded workdirs, and
+    each level is checked as it is before the next is made below it, then
+    again once made, so no write lands through an alias."""
+    repos, pin, empty, cfg = _pin_area()
+    _outside_executions([repos, pin, empty, cfg], workdirs)
+    home = archeus_home()
+    if not _present(home):
+        os.makedirs(home)                   # its ancestors are not Core's
+    for d in (home, repos, pin, empty):
+        if not _present(d):
+            try:
+                os.mkdir(d)
+            except FileExistsError:
+                pass
         _plain(d, True)
+    if not _present(cfg):
+        try:
+            open(cfg, 'xb').close()
+        except FileExistsError:
+            pass
     if os.listdir(empty) or _plain(cfg, False).st_size:
         raise StoreError('a pin file is not empty: %s' % pin)
     return pin

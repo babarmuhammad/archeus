@@ -33,10 +33,10 @@ WINDOWS_INIT_CONFIG = (b'[core]\n\trepositoryformatversion = 0\n\tfilemode = fal
 @pytest.fixture(autouse=True)
 def fresh_git():
     local._git_exe.cache_clear()
-    local._git_version.cache_clear()
+    local._VERSION.clear()
     yield
     local._git_exe.cache_clear()
-    local._git_version.cache_clear()
+    local._VERSION.clear()
 
 
 def _fwd(p):
@@ -129,8 +129,8 @@ def _hostile(monkeypatch, world):
 
 def test_the_installed_git_meets_the_floor_through_the_pin(capsys):
     """`git version`, run by the pinned runner in Core's empty pin directory."""
-    local._pin_files()
-    v = local._git_version()
+    local._pin_files(())
+    v = local._git_version(())
     print('\nK1 git: %s | %s | floor %s' % (local._git_exe(), v,
                                             '.'.join(map(str, STORE_GIT_FLOOR))))
     assert os.path.isabs(local._git_exe())
@@ -146,7 +146,7 @@ def test_a_store_is_created_bare_sealed_and_recorded(world):
         assert f.read() == STORE_HEAD
     with open(os.path.join(store, 'config'), 'rb') as f:
         cfg = f.read()
-    print('\nK1 init config (%s): %r' % (local._git_version(), cfg))
+    print('\nK1 init config (%s): %r' % (local._git_version(()), cfg))
     assert local._INIT_CONFIG.fullmatch(cfg.decode('ascii'))
     if sys.platform == 'win32':
         assert cfg == WINDOWS_INIT_CONFIG
@@ -419,3 +419,20 @@ def test_a_root_linked_into_an_execution_area_is_refused(world, tmp_path, monkey
             LocalNode.store_fetch(ids.new_id('project'), str(link), 'refs/heads/main', '0' * 40,
                                   'refs/archeus/exec/e1/seed', workdirs=[str(recorded)])
     assert spawned == []
+
+
+@pytest.mark.parametrize('what', ['repos', 'pin', 'pin-empty'])
+def test_a_pin_area_alias_to_an_empty_directory_receives_nothing(world, tmp_path, what):
+    """A level of the pin area that already exists as an alias is refused before
+    anything is made below it: the directory it points at stays empty."""
+    repos, pin, empty, _cfg = local._pin_area()
+    os.makedirs({'repos': paths.archeus_home(), 'pin': repos, 'pin-empty': pin}[what])
+    external = tmp_path / 'external'
+    external.mkdir()
+    _junction({'repos': repos, 'pin': pin, 'pin-empty': empty}[what], external)
+    for call in (lambda: LocalNode.store_open(ids.new_id('project'), workdirs=()),
+                 lambda: LocalNode.store_resolve_base(str(world.user), 'refs/heads/main',
+                                                      workdirs=())):
+        with pytest.raises(OSError, match='alias|plain'):
+            call()
+        assert os.listdir(str(external)) == []

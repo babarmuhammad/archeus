@@ -40,13 +40,13 @@ class Spawns:
 @pytest.fixture(autouse=True)
 def spawns(monkeypatch):
     local._git_exe.cache_clear()
-    local._git_version.cache_clear()
+    local._VERSION.clear()
     monkeypatch.setattr(local.shutil, 'which', lambda name: GIT)
     s = Spawns()
     monkeypatch.setattr(local.proc, 'run', s)
     yield s
     local._git_exe.cache_clear()
-    local._git_version.cache_clear()
+    local._VERSION.clear()
 
 
 def _pin():
@@ -118,6 +118,10 @@ def test_a_recorded_workdir_is_an_execution_area_wherever_it_lies(spawns, tmp_pa
                                 git_dir=git_dir)
     with pytest.raises(StoreError, match='execution area'):
         LocalNode.store_open(ids.new_id('project'), workdirs=[paths.repos_dir()])
+    pid = ids.new_id('project')
+    with pytest.raises(StoreError, match='execution area'):      # the store alone, not the pin
+        LocalNode.store_open(pid, workdirs=[paths.repo_store(pid)])
+    assert not os.path.lexists(paths.repos_dir())
     with pytest.raises(StoreError, match='a collection'):
         LocalNode.store_git('base', ['rev-parse', 'HEAD'], workdirs=wd, git_dir=wd)
     assert spawns.calls == []
@@ -163,6 +167,32 @@ def test_a_root_or_the_git_dir_it_names_in_an_execution_area_is_refused(spawns, 
             LocalNode.store_fetch(ids.new_id('project'), root, 'refs/heads/main', '0' * 40,
                                   'refs/archeus/exec/e1/seed', workdirs=[wd])
     assert spawns.calls == []
+
+
+def _tree(top):
+    return sorted(os.path.join(d, n) for d, ds, fs in os.walk(top) for n in ds + fs)
+
+
+@pytest.mark.parametrize('recorded', ['home', 'repos', 'pin', 'empty'])
+@pytest.mark.parametrize('cache', ['cold', 'warm'])
+def test_a_pin_area_inside_a_recorded_workdir_makes_and_starts_nothing(spawns, tmp_path,
+                                                                       cache, recorded):
+    """A recorded workdir that holds the pin area: no entry point makes anything
+    there or starts Git there, with the version not read yet or already cached."""
+    root = _repo(tmp_path / 'u')
+    if cache == 'warm':
+        LocalNode.store_resolve_base(root, 'refs/heads/main', workdirs=())
+        assert spawns.calls[0].argv[-1] == 'version'
+        spawns.calls.clear()
+    repos, pin, empty, _cfg = local._pin_area()
+    wd = {'home': paths.archeus_home(), 'repos': repos, 'pin': pin, 'empty': empty}[recorded]
+    before = _tree(paths.archeus_home())
+    for call in (lambda: LocalNode.store_resolve_base(root, 'refs/heads/main', workdirs=[wd]),
+                 lambda: LocalNode.store_open(ids.new_id('project'), workdirs=[wd]),
+                 lambda: local._git_version([wd])):
+        with pytest.raises(StoreError, match='execution area'):
+            call()
+    assert spawns.calls == [] and _tree(paths.archeus_home()) == before
 
 
 def test_a_root_and_git_dir_outside_every_area_are_read(spawns, tmp_path):
@@ -234,7 +264,7 @@ def _unsealed(pid, config=INIT_CONFIG, claimed=True):
     """A store as `init --bare --template=<empty>` leaves it, claimed by Core,
     before the seal: what a crash between init and seal leaves behind."""
     store = paths.repo_store(pid)
-    pin = local._pin_files()
+    pin = local._pin_files(())
     if claimed:
         open(os.path.join(pin, pid + '.owned'), 'xb').close()
     for d in (('objects', 'info'), ('objects', 'pack'), ('refs', 'heads'), ('refs', 'tags')):
