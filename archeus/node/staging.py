@@ -67,19 +67,46 @@ def _sha(path):
     return h.hexdigest()
 
 
+def _inside(root, src):
+    real, rootc = os.path.normcase(os.path.realpath(src)), os.path.normcase(root)
+    if real != rootc and not real.startswith(rootc + os.sep):
+        raise StageError('outside the runtime it is copied from: %s' % src)
+
+
+def _hook(hook_path):
+    st = _entry(hook_path, False)
+    if os.path.normcase(os.path.realpath(hook_path)) != \
+            os.path.normcase(os.path.abspath(hook_path)):
+        raise StageError('the hook script is reached through an alias: %s' % hook_path)
+    return st
+
+
+def _source(root, rel, src):
+    """What planning checked of *src*, checked again immediately before it is
+    opened: the hook not reached through an alias; a runtime file's every
+    component from the pinned root down plain, the leaf a file, inside the root."""
+    if rel == HOOK:
+        return _hook(src)
+    d = root
+    _entry(d, True)
+    for name in rel.split('/')[:-1]:
+        d = os.path.join(d, name)
+        _entry(d, True)
+    st = _entry(src, False)
+    _inside(root, src)
+    return st
+
+
 def _plan(source_root, hook_path, version):
-    """What the stage will hold — (relative path, source, size, sha256, lstat
-    signature) per copied file — and the `._pth` bytes and the manifest bytes."""
+    """The pinned source root; what the stage will hold — (relative path, source,
+    size, sha256, lstat signature) per copied file; the `._pth` and the manifest."""
     root = os.path.realpath(source_root)
     _entry(root, True)
-    rootc = os.path.normcase(root)
     rows = []
 
     def take(src, rel, is_dir=None):
         st = _entry(src, is_dir)
-        real = os.path.normcase(os.path.realpath(src))
-        if real != rootc and not real.startswith(rootc + os.sep):
-            raise StageError('outside the runtime it is copied from: %s' % src)
+        _inside(root, src)
         if stat.S_ISDIR(st.st_mode):
             for name in sorted(os.listdir(src)):
                 if name not in SKIP:
@@ -94,17 +121,14 @@ def _plan(source_root, hook_path, version):
             take(src, name, name in TREES)
         elif name in ('python.exe', dll, 'Lib'):
             raise StageError('the runtime has no %s: %s' % (name, root))
-    st = _entry(hook_path, False)
-    if os.path.normcase(os.path.realpath(hook_path)) != \
-            os.path.normcase(os.path.abspath(hook_path)):
-        raise StageError('the hook script is reached through an alias: %s' % hook_path)
+    st = _hook(hook_path)
     rows.append((HOOK, hook_path, st.st_size, _sha(hook_path), _sig(st)))
     pth_name, pth = 'python%d%d._pth' % version, b'Lib\nDLLs\n'
     files = sorted([[r[0], r[2], r[3]] for r in rows] +
                    [[pth_name, len(pth), hashlib.sha256(pth).hexdigest()]])
     manifest = json.dumps({'python': '%d.%d' % version, 'source_root': root, 'files': files},
                           sort_keys=True, separators=(',', ':')).encode()
-    return rows, (pth_name, pth), manifest
+    return root, rows, (pth_name, pth), manifest
 
 
 def _runtime():
@@ -193,7 +217,7 @@ def stage(source_root, hook_path, version=sys.version_info[:2]):
     """The stage for this runtime and hook: an existing one, verified, or a new
     one built from *source_root* (the real install, `sys.base_prefix`, never a
     venv). A stage that fails verification is refused, never repaired."""
-    rows, (pth_name, pth), manifest = _plan(source_root, hook_path, version)
+    root, rows, (pth_name, pth), manifest = _plan(source_root, hook_path, version)
     digest = hashlib.sha256(manifest).hexdigest()
     runtime = _runtime()
     final = os.path.join(runtime, digest)
@@ -204,6 +228,8 @@ def stage(source_root, hook_path, version=sys.version_info[:2]):
     os.mkdir(tmp)
     made = set()
     for rel, src, size, sha, sig in rows:
+        if _sig(_source(root, rel, src)) != sig:
+            raise StageError('%s changed after it was planned' % src)
         parts = rel.split('/')
         for i in range(1, len(parts)):
             d = '/'.join(parts[:i])

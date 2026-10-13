@@ -319,10 +319,13 @@ def test_a_hook_reached_through_an_alias_refuses(rt, monkeypatch, tmp_path):
     assert os.listdir(rt.home) == []
 
 
-def test_a_source_that_changes_while_it_is_copied_refuses(rt, monkeypatch):
+@pytest.mark.parametrize('after,match', [
+    (1, 'changed after it was planned'),       # the plan's view, then another before the copy
+    (2, 'changed while it was staged')])       # ... the same before the copy, another after
+def test_a_source_that_changes_while_it_is_copied_refuses(rt, monkeypatch, after, match):
     p = os.path.join(rt.src, 'Lib', 'os.py')
-    _fake_lstat(monkeypatch, p, after=1, st_mtime_ns=1)      # the plan's view, then another
-    with pytest.raises(StageError, match='changed'):
+    _fake_lstat(monkeypatch, p, after=after, st_mtime_ns=1)
+    with pytest.raises(StageError, match=match):
         _stage(rt)
     assert _published() == [] and len(_runtime()) == 1        # the temporary tree stays
 
@@ -472,6 +475,55 @@ def test_the_destination_chain_is_checked_again_before_every_write(rt, monkeypat
     assert len(done) == writes
     assert len(_files(top)) == writes
     assert sum(len(ds) for _d, ds, _n in os.walk(top)) == dirs     # nor made through it
+    assert _published() == []
+
+
+@pytest.mark.parametrize('rel,how,match', [
+    ('Lib', 'alias', 'an alias'),                     # an ancestor, after planning
+    ('Lib/encodings', 'alias', 'an alias'),
+    ('Lib/os.py', 'alias', 'an alias'),               # the leaf
+    ('Lib/json/__init__.py', 'outside', 'outside the runtime'),
+    ('Lib/json/__init__.py', 'rewritten', 'changed after it was planned'),
+    ('hook.py', 'outside', 'reached through an alias')])
+def test_the_source_is_checked_again_immediately_before_each_copy(rt, monkeypatch, rel, how,
+                                                                  match):
+    # what planning checked of a source changes between planning and its copy: it is
+    # refused before it is opened, nothing beneath it is made, and nothing published
+    src = rt.hook if rel == 'hook.py' else os.path.join(rt.src, *rel.split('/'))
+    want = os.path.normcase(os.path.abspath(src))
+    planned, real_plan, real_lstat, real_realpath = [], staging._plan, os.lstat, \
+        os.path.realpath
+
+    def plan(*a, **k):
+        got = real_plan(*a, **k)
+        planned.append(True)
+        if how == 'rewritten':
+            with open(src, 'ab') as f:
+                f.write(b' and more')
+        return got
+
+    def lstat(p, *a, **k):
+        st = real_lstat(p, *a, **k)
+        if how != 'alias' or not planned or os.path.normcase(os.path.abspath(p)) != want:
+            return st
+        return SimpleNamespace(st_mode=st.st_mode, st_ino=st.st_ino, st_dev=st.st_dev,
+                               st_size=st.st_size, st_mtime_ns=st.st_mtime_ns,
+                               st_nlink=st.st_nlink, st_file_attributes=REPARSE)
+
+    def realpath(p, *a, **k):
+        if how == 'outside' and planned and os.path.normcase(os.path.abspath(p)) == want:
+            return os.path.join(str(rt.tmp), 'elsewhere', os.path.basename(p))
+        return real_realpath(p, *a, **k)
+    monkeypatch.setattr(staging, '_plan', plan)
+    monkeypatch.setattr(os, 'lstat', lstat)
+    monkeypatch.setattr(os.path, 'realpath', realpath)
+    with pytest.raises(StageError, match=match):
+        _stage(rt)
+    (tmp,) = _runtime()
+    got = _files(os.path.join(paths.runtime_dir(), tmp))
+    assert not [r for r in got if r == rel or r.startswith(rel + '/')]
+    if rel in ('Lib', 'Lib/encodings'):        # the first file beneath it: no Lib made
+        assert not os.path.exists(os.path.join(paths.runtime_dir(), tmp, 'Lib'))
     assert _published() == []
 
 
