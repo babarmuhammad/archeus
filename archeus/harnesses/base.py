@@ -405,6 +405,44 @@ def _absolute(entry):
     return os.path.isabs(entry) and (os.name != 'nt' or (len(drive) == 2 and drive[1] == ':'))
 
 
+def _windows_rows(banned):
+    """The Windows rows of a built-from-nothing environment: SystemRoot and what is
+    derived from it, never from a directory in *banned*."""
+    root = os.environ.get('SystemRoot')
+    if not (root and os.path.isabs(root) and os.path.isdir(root)) or _inside(root, banned):
+        raise ValueError('SystemRoot is not a usable Windows directory')
+    comspec = os.path.join(root, 'System32', 'cmd.exe')
+    if not os.path.isfile(comspec):
+        raise ValueError('ComSpec, derived from SystemRoot, does not exist')
+    return {'SystemRoot': root, 'windir': root, 'SystemDrive': os.path.splitdrive(root)[0],
+            'ComSpec': comspec}
+
+
+def _verifier_env(toolchain_dirs, scratch):
+    """A confined verifier's whole environment, built from nothing (T-054 A6-2): its
+    scratch is its profile and temp, PATH is the Core-staged toolchain and nothing
+    else, and no caller adds a name - no Archeus, hook, broker, provider, Git or proxy
+    variable can reach it. Raises ValueError naming what is wrong, never a value."""
+    if not (_absolute(scratch) and os.path.isdir(scratch)):
+        raise ValueError('scratch is not an absolute directory')
+    dirs = list(toolchain_dirs)
+    if not dirs:
+        raise ValueError('a verifier runs only a Core-staged toolchain, and none was given')
+    for d in dirs:
+        if not (_absolute(d) and os.path.isdir(d)) or _inside(d, [scratch]):
+            raise ValueError('a toolchain entry is not a staged directory outside scratch')
+    home, roaming, local = _profile(scratch)
+    tmp = os.path.join(scratch, 'tmp')
+    out = {'TEMP': tmp, 'TMP': tmp, 'USERPROFILE': home, 'HOME': home, 'APPDATA': roaming,
+           'LOCALAPPDATA': local, 'HOMEDRIVE': os.path.splitdrive(home)[0],
+           'HOMEPATH': os.path.splitdrive(home)[1], 'PATH': os.pathsep.join(dirs)}
+    if _WINDOWS:
+        banned = [os.path.expanduser('~'), archeus_home(), scratch,
+                  os.environ.get('TEMP'), os.environ.get('TMP')]
+        out.update(_windows_rows([b for b in banned if b]))
+    return out
+
+
 def _isolated_env(spec, paths):
     """An isolated execution's whole environment, built from nothing (ADR-0053 A2; T-031
     Correction C-1012-T031): these names, each from its one authority, and no other.
@@ -427,14 +465,7 @@ def _isolated_env(spec, paths):
            'GIT_CONFIG_NOSYSTEM': '1'}
     out.update((k, v) for k, v in CAPABILITY_ENV.items() if v is not None)
     if _WINDOWS:
-        root = os.environ.get('SystemRoot')
-        if not (root and os.path.isabs(root) and os.path.isdir(root)) or _inside(root, banned):
-            raise ValueError('SystemRoot is not a usable Windows directory')
-        comspec = os.path.join(root, 'System32', 'cmd.exe')
-        if not os.path.isfile(comspec):
-            raise ValueError('ComSpec, derived from SystemRoot, does not exist')
-        out.update(SystemRoot=root, windir=root, SystemDrive=os.path.splitdrive(root)[0],
-                   ComSpec=comspec)
+        out.update(_windows_rows(banned))
     kept, seen = [], set()
     for entry in (os.environ.get('PATH') or '').split(os.pathsep):
         if not (entry and _absolute(entry) and os.path.isdir(entry)) or _inside(entry, banned):
