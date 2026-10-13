@@ -56,7 +56,8 @@ from claude_sessions import config
 
 from ..core.domain import ids
 from ..harnesses import base
-from ..infra.paths import ExecPaths, isolation_dir, isolation_state, quarantine_log, run_dir
+from ..infra.paths import (MAX_ATTEMPT, VERIFY_KEY, ExecPaths, isolation_dir, isolation_state,
+                           quarantine_log, run_dir, verify_key_parts)
 from . import staging
 
 WINDOWS = sys.platform.startswith('win')
@@ -73,6 +74,9 @@ NETWORK_CAPABILITY_SIDS = ('S-1-15-3-1', 'S-1-15-3-2')
 #: the principal's name is derived from the execution id, so a resume of an execution
 #: reaches its own identity and no other execution can name it (R7).
 PROFILE_PREFIX = 'archeus.exec.'
+#: a verifier attempt's principal (A6): derived from its verification id and attempt,
+#: so it never equals or contains an execution's
+VERIFY_PREFIX = 'archeus.verify.'
 
 #: E's constant, not a setting: production dispatch of isolated executions is not
 #: implemented, so no real harness is dispatched isolated (PV-20 §3.4, §3.8; S1 gate
@@ -86,13 +90,17 @@ def production_dispatch_enabled():
 
 def profile_name(execution_id):
     """R7: the per-execution principal's name — one per execution, never shared, and
-    re-derivable (which is what lets a resume reuse it and a boot reclaim find it)."""
+    re-derivable (which is what lets a resume reuse it and a boot reclaim find it). A
+    verifier key names `archeus.verify.<verification_id>.<attempt>`."""
+    if str(execution_id).startswith(VERIFY_KEY):
+        p = principal(execution_id)
+        return '%s%s.%d' % (VERIFY_PREFIX, p.owner_id.lower(), p.attempt)
     safe = ''.join(c if (c.isalnum() or c in '_.-') else '-' for c in str(execution_id))
     return (PROFILE_PREFIX + safe.lower())[:127]
 
 
 def is_stale_profile(name):
-    return str(name or '').lower().startswith(PROFILE_PREFIX)
+    return str(name or '').lower().startswith((PROFILE_PREFIX, VERIFY_PREFIX))
 
 
 class IsolationUnavailable(Exception):
@@ -105,12 +113,45 @@ class IsolationUnavailable(Exception):
                          % (reason, ': %s' % detail if detail else ''))
 
 
+@dataclass(frozen=True)
+class Principal:
+    """One isolated principal (A6, T-054 C-1013 §2): the Core id it serves and, for a
+    verifier, which attempt. Its `key` is the only map key, record path and name source;
+    an execution's key is its own id. Every attempt is its own principal, so a retry
+    never reuses one."""
+    kind: str                   # 'exec' | 'verify'
+    owner_id: str
+    attempt: int = 0
+
+    def __post_init__(self):
+        owner = {'exec': 'execution', 'verify': 'verification'}.get(self.kind)
+        if not (owner and ids.is_id(self.owner_id, owner) and type(self.attempt) is int
+                and 0 <= self.attempt < MAX_ATTEMPT
+                and (self.kind == 'verify' or self.attempt == 0)):
+            raise IsolationUnavailable('profile_name', 'not a principal: %r' % (self,))
+
+    @property
+    def key(self):
+        if self.kind == 'exec':
+            return self.owner_id
+        return '%s%s.%d' % (VERIFY_KEY, self.owner_id, self.attempt)
+
+
+def principal(key):
+    """The principal *key* names; anything malformed is refused, never repaired."""
+    if str(key).startswith(VERIFY_KEY):
+        try:
+            vid, n = verify_key_parts(key)
+        except ValueError as err:
+            raise IsolationUnavailable('profile_name', str(err))
+        return Principal('verify', vid, n)
+    return Principal('exec', key)
+
+
 def validated_profile(execution_id):
-    """The profile name of a well-formed execution id. Every profile operation goes
+    """The profile name of a well-formed principal key. Every profile operation goes
     through this, so a name is never taken from a caller, a record or the ledger."""
-    if not ids.is_id(execution_id, 'execution'):
-        raise IsolationUnavailable('profile_name', 'not an execution id: %r' % (execution_id,))
-    return profile_name(execution_id)
+    return profile_name(principal(execution_id).key)
 
 
 # ── the §3.4 pre-spawn invariant ─────────────────────────────────────────────
@@ -124,6 +165,10 @@ CONDITIONS = ('identity', 'grants', 'no_broad_grants', 'job', 'mailbox', 'isolat
 #: the runtime and hook rows name Core's stage, which nothing grants), so it fails
 #: closed here.
 REQUIRED_GRANTS = ('workspace', 'runtime', 'hook', 'request', 'response', 'sentinel', 'state')
+
+#: a verifier's whole inventory (A6, T-054 §3): its checkout and scratch, which it
+#: writes, and Core's staged toolchain, which it runs. Any other row is condition 5's.
+VERIFY_GRANTS = (('checkout', 'rw'), ('scratch', 'rw'), ('toolchain', 'rx'))
 
 #: the execution's three mailbox classes (§7.5, R2) as inventory rows, each with the
 #: only access it may carry: the execution writes its requests (class 1) and reads
@@ -155,7 +200,7 @@ class IsolationRequest:
     start. A synthetic fixture supplies each artifact; the production layout does not
     (no broker, and no grant on Core-staged runtime and hook copies), so the same
     check that passes in a fixture fails closed for a production execution."""
-    execution_id: str
+    execution_id: str                    # the principal's key (`Principal.key`)
     workspace: str
     grants: tuple = ()                   # (Grant, ...)
     mailbox: str = ''                    # class 1: the execution's own request box
@@ -170,6 +215,10 @@ class IsolationRequest:
 
     def grant_for(self, row):
         return next((g for g in self.grants if g.row == row), None)
+
+    @property
+    def kind(self):
+        return 'verify' if str(self.execution_id).startswith(VERIFY_KEY) else 'exec'
 
 
 def check_invariant(api, request, identity, job_facts=None):
@@ -196,12 +245,23 @@ def check_invariant(api, request, identity, job_facts=None):
 
     # 2. the required resource grants are established, workspace included (§3.1, §3.2 A1),
     # and each mailbox class is granted on its own directory with its own access (§7.5)
-    missing = [row for row in REQUIRED_GRANTS if request.grant_for(row) is None]
     boxes = {'request': request.mailbox, 'response': request.response,
              'sentinel': request.sentinel}
-    misclassed = [row for row, access in CLASS_ROWS if request.grant_for(row) is not None
-                  and (_norm(request.grant_for(row).path) != _norm(boxes[row])
-                       or request.grant_for(row).access != access)]
+    verifier = request.kind == 'verify'
+    if verifier:
+        # A6: each of its three rows at exactly its access, its checkout the workspace
+        missing = [row for row, access in VERIFY_GRANTS
+                   if getattr(request.grant_for(row), 'access', None) != access]
+        checkout = request.grant_for('checkout')
+        misclassed = [] if checkout and _norm(checkout.path) == _norm(request.workspace) \
+            else ['checkout']
+        misplaced = 'the checkout is not granted as the workspace: %s'
+    else:
+        missing = [row for row in REQUIRED_GRANTS if request.grant_for(row) is None]
+        misclassed = [row for row, access in CLASS_ROWS if request.grant_for(row) is not None
+                      and (_norm(request.grant_for(row).path) != _norm(boxes[row])
+                           or request.grant_for(row).access != access)]
+        misplaced = 'a mailbox class granted at another path or access: %s'
     absent = [g.path for g in request.grants if not os.path.isdir(g.path)]
     # a descriptor is read only where there is one: a path that is not there already
     # fails this condition by name, and a read that fails raises rather than pass
@@ -209,15 +269,14 @@ def check_invariant(api, request, identity, job_facts=None):
     unverified = [g.path for g in present if not api.grant_established(g.path, sid, g.access)]
     put('grants', not (missing or misclassed or absent or unverified)
         and bool(request.workspace) and os.path.isdir(request.workspace)
-        and bool(request.broker),
+        and (verifier or bool(request.broker)),
         _reason((not missing, 'missing inventory rows: %s' % (missing,)),
-                (not misclassed, 'a mailbox class granted at another path or access: %s'
-                 % (misclassed,)),
+                (not misclassed, misplaced % (misclassed,)),
                 (not absent, 'granted path that is not present: %s' % (absent,)),
                 (not unverified, 'grant unreadable in the DACL: %s' % (unverified,)),
                 (bool(request.workspace) and os.path.isdir(request.workspace),
                  'no Core-established workspace (§3.2, A1)'),
-                (bool(request.broker), 'no broker holds provider access (R3-B)')))
+                (verifier or bool(request.broker), 'no broker holds provider access (R3-B)')))
 
     # 3. prohibited broad grants are absent (§3.1)
     broad = [g.path for g in present if api.broad_write_grant(g.path, sid)]
@@ -243,18 +302,29 @@ def check_invariant(api, request, identity, job_facts=None):
     # 5. the required Core/mailbox boundary exists (§3.3, §7.5): classes 1, 2 and 3 are
     # three directories, none of them another or inside another or Core's own, none of
     # them is, holds or lies inside the execution's workspace or state (class 7), and
-    # the spawn configuration Core wrote is in class 2
-    put('mailbox', all(boxes.values()) and bool(request.spawn_config)
-        and bool(request.core_state)
-        and all(os.path.isdir(p) for p in boxes.values())
-        and _separate(boxes.values(), (request.workspace, request.state_dir))
-        and not {_norm(p) for p in boxes.values()} & {_norm(p) for p in core}
-        and os.path.isfile(request.spawn_config)
-        and _norm(os.path.dirname(request.spawn_config)) == _norm(request.response)
-        and not any(api.granted_to(p, sid) for p in core),
-        'no separate class 1, 2 and 3 directories apart from the workspace and state, '
-        'with the Core-authored spawn configuration in class 2, or Core-owned state is '
-        'unnamed or sits inside the boundary')
+    # the spawn configuration Core wrote is in class 2. A verifier (A6) has the inverse:
+    # no mailbox class, spawn configuration, broker or other row named, and Core's own
+    # state named and ungranted
+    if verifier:
+        stray = [g.row for g in request.grants if g.row not in dict(VERIFY_GRANTS)]
+        put('mailbox', not (stray or any(boxes.values()) or request.spawn_config
+                            or request.broker)
+            and bool(request.core_state) and not any(api.granted_to(p, sid) for p in core),
+            'a verifier is given an execution interface (a mailbox class, a spawn '
+            'configuration, a broker or rows %s), or Core-owned state is unnamed or '
+            'granted' % (stray,))
+    else:
+        put('mailbox', all(boxes.values()) and bool(request.spawn_config)
+            and bool(request.core_state)
+            and all(os.path.isdir(p) for p in boxes.values())
+            and _separate(boxes.values(), (request.workspace, request.state_dir))
+            and not {_norm(p) for p in boxes.values()} & {_norm(p) for p in core}
+            and os.path.isfile(request.spawn_config)
+            and _norm(os.path.dirname(request.spawn_config)) == _norm(request.response)
+            and not any(api.granted_to(p, sid) for p in core),
+            'no separate class 1, 2 and 3 directories apart from the workspace and state, '
+            'with the Core-authored spawn configuration in class 2, or Core-owned state is '
+            'unnamed or sits inside the boundary')
 
     # 6. the isolated spawn path is selected (§3.4)
     put('isolated_path', bool(request.isolated_path) and api.available(),
@@ -498,7 +568,9 @@ def _ledger_problem(e, api):
         return problem
     if e.get('op') not in ('quarantine', 'released'):
         return 'op_unknown'
-    if not ids.is_id(e.get('execution_id'), 'execution'):
+    try:
+        principal(e.get('execution_id'))
+    except IsolationUnavailable:
         return 'execution_id_invalid'
     if e['op'] == 'released':
         return ''
@@ -610,8 +682,9 @@ class Isolation:
                              'applied %r)' % (rec.execution_id, rec.state, rec.applied))
         rec.updated = time.time()
         rec.at = rec.at or rec.updated
-        os.makedirs(isolation_dir(), exist_ok=True)
-        if not config.write_json_atomic(isolation_state(rec.execution_id), rec.as_dict(),
+        path = isolation_state(rec.execution_id)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if not config.write_json_atomic(path, rec.as_dict(),
                                         indent=None):
             raise OSError('could not write the isolation record of %s' % rec.execution_id)
         return rec
@@ -673,6 +746,10 @@ class Isolation:
         quarantine line, a registry note) is an establishment failure like any other:
         nothing starts, and what is on disk decides what cleanup may do."""
         api = self.boundary
+        if request.kind == 'verify' and os.path.lexists(isolation_state(request.execution_id)):
+            # every verifier attempt is used once: a record of it, whatever its state,
+            # means it was already started, so it is never started again (A6)
+            raise IsolationUnavailable('attempt_consumed', request.execution_id)
         prior = self.record(request.execution_id)
         if prior is not None and prior.state == 'invalid':
             # a record exists and cannot be trusted: nothing is created for this
@@ -1096,22 +1173,27 @@ class Isolation:
         return bool(out) and out['profile'] == 'torn_down'
 
     def stale(self, live_execution_ids=()):
-        """Isolation records whose execution is not live. A file whose name is not an
-        execution id is reported, never acted on."""
+        """Isolation records whose principal is not live, executions' and verifier
+        attempts' alike. A file whose name is not a principal's is reported, never acted
+        on."""
         live = set(live_execution_ids or ())
-        try:
-            names = os.listdir(isolation_dir())
-        except FileNotFoundError:
-            return []
         out = []
-        for n in names:
-            if not n.endswith('.json'):
+        for prefix, why in (('', 'not_an_execution_id'), (VERIFY_KEY, 'not_a_verifier_key')):
+            try:
+                names = os.listdir(os.path.join(isolation_dir(), prefix))
+            except FileNotFoundError:
                 continue
-            eid = n[:-len('.json')]
-            if not ids.is_id(eid, 'execution'):
-                self._report_invalid(n, 'not_an_execution_id')
-            elif eid not in live:
-                out.append(eid)
+            for n in names:
+                if not n.endswith('.json'):
+                    continue
+                key = prefix + n[:-len('.json')]
+                try:
+                    principal(key)
+                except IsolationUnavailable:
+                    self._report_invalid(prefix + n, why)
+                    continue
+                if key not in live:
+                    out.append(key)
         return out
 
 

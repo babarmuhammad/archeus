@@ -27,7 +27,8 @@ from archeus.core.application import executions as X
 from archeus.core.domain import ids
 from archeus.core.execution import manager as M
 from archeus.harnesses import base
-from archeus.infra.paths import ExecPaths, isolation_dir, isolation_state, quarantine_log
+from archeus.infra.paths import (ExecPaths, VerifyPaths, isolation_dir, isolation_state,
+                                  quarantine_log, run_dir)
 from archeus.node import isolation as iso
 from archeus.node.local import LocalNode
 
@@ -746,6 +747,182 @@ class TestTeardown:
         # the quarantined ACE names only this execution's own principal
         assert entry['sid'] == rec.sid
         assert entry['sid'] != _stable_sid('some-other-execution')
+
+
+# ── A6-1 (T-055): a verifier attempt is its own principal, apart from executions ──
+
+_EID, _VID = ids.new_id('execution'), ids.new_id('verification')
+
+
+def make_verifier_request(key, root):
+    """A verifier attempt's whole inventory (A6): the checkout and scratch it writes, the
+    staged toolchain it runs, and Core's own state named and kept apart."""
+    def d(name):
+        p = os.path.join(root, name)
+        os.makedirs(p, exist_ok=True)
+        return p
+    checkout = d('checkout')
+    return iso.IsolationRequest(execution_id=key, workspace=checkout,
+                                grants=(iso.Grant(checkout, 'rw', 'checkout'),
+                                        iso.Grant(d('scratch'), 'rw', 'scratch'),
+                                        iso.Grant(d('toolchain'), 'rx', 'toolchain')),
+                                core_state=d('core_state'))
+
+
+def _verify_key(attempt=0, vid=_VID):
+    return iso.Principal('verify', vid, attempt).key
+
+
+class TestVerifierPrincipal:
+    def test_an_execution_is_keyed_named_and_recorded_as_before(self):
+        p = iso.principal(_EID)
+        assert p == iso.Principal('exec', _EID, 0) and p.key == _EID
+        assert iso.validated_profile(_EID) == iso.profile_name(_EID) == 'archeus.exec.' + _EID.lower()
+        assert isolation_state(_EID) == os.path.join(isolation_dir(), _EID + '.json')
+
+    def test_a_verifier_attempt_has_its_own_key_name_record_and_files(self):
+        key = _verify_key(3)
+        assert key == 'verify/%s.3' % _VID and iso.principal(key) == iso.Principal('verify', _VID, 3)
+        assert iso.validated_profile(key) == 'archeus.verify.%s.3' % _VID.lower()
+        assert isolation_state(key) == os.path.join(isolation_dir(), 'verify', _VID + '.3.json')
+        v = VerifyPaths(_VID, 3)
+        assert v.dir == os.path.join(run_dir(), 'verify', _VID, '3')
+        assert v.out == os.path.join(v.dir, 'out.log')
+        own = os.path.join(v.dir, 'own')
+        assert (v.checkout, v.home, v.tmp, v.config) == tuple(
+            os.path.join(own, n) for n in ('checkout', 'home', 'tmp', 'config'))
+
+    @pytest.mark.parametrize('kind,owner,attempt', [
+        ('verify', _EID, 0), ('exec', _VID, 0), ('exec', _EID, 1), ('verify', _VID, -1),
+        ('verify', _VID, iso.MAX_ATTEMPT), ('verify', _VID, True), ('verify', _VID, '1'),
+        ('job', _EID, 0)])
+    def test_a_cross_kind_or_malformed_principal_is_refused_at_construction(
+            self, kind, owner, attempt):
+        with pytest.raises(iso.IsolationUnavailable):
+            iso.Principal(kind, owner, attempt)
+
+    @pytest.mark.parametrize('key', [
+        'verify/%s.01' % _VID, 'verify/%s.' % _VID, 'verify/%s' % _VID,
+        'verify/%s.\u00b2' % _VID, 'verify/%s.0' % _EID, 'verify/../%s.0' % _VID,
+        'verify/%s.%d' % (_VID, iso.MAX_ATTEMPT), 'exe_not-an-id'])
+    def test_a_malformed_key_names_no_principal_profile_or_record(self, key):
+        with pytest.raises(iso.IsolationUnavailable):
+            iso.principal(key)
+        with pytest.raises(iso.IsolationUnavailable):
+            iso.validated_profile(key)
+        with pytest.raises(ValueError):
+            isolation_state(key)
+
+    @pytest.mark.parametrize('owner,attempt', [(_EID, 0), (_VID, -1), (_VID, '../x')])
+    def test_verify_paths_take_only_a_verifier_attempt(self, owner, attempt):
+        with pytest.raises(ValueError):
+            VerifyPaths(owner, attempt)
+
+    def test_no_name_is_ever_cut_so_no_two_keys_share_one(self):
+        # every valid key's name is below the 127-character cut, so the cut never
+        # applies and the name keeps the whole key: distinct keys, distinct names
+        longest = iso.profile_name(_verify_key(iso.MAX_ATTEMPT - 1))
+        assert len(longest) < 127 and len(iso.profile_name(_EID)) < 127
+        names = {iso.profile_name(_verify_key(n)) for n in (0, 1, 10, 11, iso.MAX_ATTEMPT - 1)}
+        assert len(names) == 5
+        same_ulid = 'ver_' + _EID[len('exe_'):]
+        assert iso.profile_name(_verify_key(0, same_ulid)) != iso.profile_name(_EID)
+        assert iso.is_stale_profile(longest) and iso.is_stale_profile(iso.profile_name(_EID))
+
+    def test_a_verifier_attempt_establishes_with_exactly_its_three_rows(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        key = _verify_key()
+        rec = a.establish(make_verifier_request(key, str(tmp_path / 'v')))
+        assert rec.state == 'established' and rec.profile == iso.validated_profile(key)
+        assert all(holds for holds, _ in rec.conditions.values())
+        assert b.created == [rec.profile]
+        # never the parent's identity: another principal, another SID, another Job slot
+        exe = a.establish(req)
+        assert exe.sid != rec.sid and exe.profile != rec.profile
+        assert set(a.held_jobs()) == {key, req.execution_id}
+        assert a.held_job(key) != a.held_job(req.execution_id)
+
+    @pytest.mark.parametrize('change', ['no_checkout', 'no_scratch', 'no_toolchain',
+                                        'toolchain_rw', 'checkout_rx', 'workspace_elsewhere'])
+    def test_a_missing_or_wrongly_granted_row_fails_condition_2(self, tmp_path, change):
+        b = FakeBoundary()
+        req = make_verifier_request(_verify_key(), str(tmp_path))
+        rows = {g.row: g for g in req.grants}
+        if change.startswith('no_'):
+            rows.pop(change[3:])
+        elif change == 'toolchain_rw':
+            rows['toolchain'] = iso.Grant(rows['toolchain'].path, 'rw', 'toolchain')
+        elif change == 'checkout_rx':
+            rows['checkout'] = iso.Grant(rows['checkout'].path, 'rx', 'checkout')
+        workspace = (rows['scratch'].path if change == 'workspace_elsewhere'
+                     else req.workspace)
+        broken = iso.IsolationRequest(**{**req.__dict__, 'grants': tuple(rows.values()),
+                                         'workspace': workspace})
+        conds = _conds(b, broken)
+        assert conds['grants'][0] is False and conds['mailbox'][0] is True
+
+    @pytest.mark.parametrize('extra', ['mailbox', 'response', 'sentinel', 'spawn_config',
+                                       'broker', 'hook_row', 'request_row', 'no_core_state'])
+    def test_an_execution_interface_on_a_verifier_fails_condition_5(self, tmp_path, extra):
+        b = FakeBoundary()
+        req = make_verifier_request(_verify_key(), str(tmp_path))
+        elsewhere = str(tmp_path / 'elsewhere')
+        os.makedirs(elsewhere)
+        if extra.endswith('_row'):
+            change = {'grants': req.grants + (iso.Grant(elsewhere, 'rx', extra[:-4]),)}
+        elif extra == 'no_core_state':
+            change = {'core_state': ''}
+        else:
+            change = {extra: elsewhere}
+        conds = _conds(b, iso.IsolationRequest(**{**req.__dict__, **change}))
+        assert conds['mailbox'][0] is False and conds['grants'][0] is True
+        assert _conds(b, req)['mailbox'][0] is True
+
+    def test_an_attempt_starts_once_and_a_retry_is_a_new_principal(self, tmp_path):
+        a, b, _, _ = authority(tmp_path)
+        key0, key1 = _verify_key(0), _verify_key(1)
+        req0 = make_verifier_request(key0, str(tmp_path / 'a0'))
+        rec0 = a.establish(req0)
+        # re-entry for a running attempt: refused before anything is created or launched
+        created = list(b.created)
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(req0)
+        assert err.value.reason == 'attempt_consumed'
+        assert b.created == created and b.launch_calls == []
+        # attempt 0 will not go: quarantined, its record and evidence kept
+        b.delete_fail.add(rec0.profile)
+        assert a.teardown(key0, reason='ended')['profile'] == 'quarantined'
+        assert key0 in a.quarantined()
+        out0 = VerifyPaths(_VID, 0).out
+        os.makedirs(os.path.dirname(out0))
+        with open(out0, 'wb') as f:
+            f.write(b'attempt 0 evidence')
+        before = {p: open(p, 'rb').read() for p in (isolation_state(key0), quarantine_log(), out0)}
+        # the retry is attempt 1: its own key, profile and record; attempt 0 untouched
+        rec1 = a.establish(make_verifier_request(key1, str(tmp_path / 'a1')))
+        assert rec1.profile == iso.validated_profile(key1) != rec0.profile
+        assert os.path.isfile(isolation_state(key1))
+        assert {p: open(p, 'rb').read() for p in before} == before
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(req0)
+        assert err.value.reason == 'attempt_consumed'
+
+    def test_reclaim_sees_both_kinds_and_acts_only_on_derivable_records(self, tmp_path):
+        a, b, req, node = authority(tmp_path)
+        key = _verify_key(2)
+        a.establish(req)
+        rec = a.establish(make_verifier_request(key, str(tmp_path / 'v')))
+        junk = os.path.join(isolation_dir(), 'verify')
+        for name in ('junk.json', _EID + '.0.json', _VID + '.01.json'):
+            with open(os.path.join(junk, name), 'w', encoding='utf-8') as f:
+                f.write('{}')
+        assert sorted(a.stale(live_execution_ids=[key])) == [req.execution_id]
+        assert set(a.reclaim(live_execution_ids=[])) == {req.execution_id, key}
+        assert rec.profile in b.deleted and iso.profile_name(req.execution_id) in b.deleted
+        assert sorted(os.listdir(junk)) == sorted(
+            ['junk.json', _EID + '.0.json', _VID + '.01.json'])
+        assert {v for k, v in a.invalid.items() if k.startswith('verify/')} == {
+            'not_a_verifier_key'}
 
 
 # ── Finding 1: the profile-before-record crash window (record-first + recovery) ─

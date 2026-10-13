@@ -105,12 +105,34 @@ def isolation_dir():
     return os.path.join(run_dir(), 'isolation')
 
 
-def isolation_state(execution_id):
+#: A6 (T-054): a verifier attempt's key is `verify/<verification_id>.<attempt>`. An
+#: execution's key is its own id, so every execution record path stays as it was.
+VERIFY_KEY = 'verify/'
+#: bounds the attempt so a verifier's profile name never reaches the 127-character cut
+MAX_ATTEMPT = 10 ** 6
+
+
+def verify_key_parts(key):
+    """`(verification_id, attempt)` of a verifier key, or ValueError. The attempt is
+    canonical decimal, so one attempt has one key."""
+    rest = key[len(VERIFY_KEY):] if isinstance(key, str) and key.startswith(VERIFY_KEY) else ''
+    vid, _, n = rest.rpartition('.')
+    if not (ids.is_id(vid, 'verification') and n.isascii() and n.isdigit()
+            and n == str(int(n)) and int(n) < MAX_ATTEMPT):
+        raise ValueError('not a verifier key: %r' % (key,))
+    return vid, int(n)
+
+
+def isolation_state(key):
     """`<ARCHEUS_HOME>/run/isolation/<execution_id>.json` — one execution's isolation
-    record: the state a restarted Core reconciles against (PV-20 §3.7)."""
-    if not ids.is_id(execution_id, 'execution'):
-        raise ValueError('not an execution id: %r' % (execution_id,))
-    return os.path.join(isolation_dir(), '%s.json' % execution_id)
+    record: the state a restarted Core reconciles against (PV-20 §3.7). A verifier
+    attempt's is `run/isolation/verify/<verification_id>.<attempt>.json`."""
+    if isinstance(key, str) and key.startswith(VERIFY_KEY):
+        vid, n = verify_key_parts(key)
+        return os.path.join(isolation_dir(), 'verify', '%s.%d.json' % (vid, n))
+    if not ids.is_id(key, 'execution'):
+        raise ValueError('not an execution id: %r' % (key,))
+    return os.path.join(isolation_dir(), '%s.json' % key)
 
 
 def quarantine_log():
@@ -161,3 +183,21 @@ class ExecPaths:
 
 def exec_paths(execution_id):
     return ExecPaths(execution_id)
+
+
+class VerifyPaths:
+    """One verifier attempt's files (A6, T-054 §4), in
+    `<ARCHEUS_HOME>/run/verify/<verification_id>/<attempt>/`. That directory and `out`
+    are Core's; `own/` is the verifier's class 7, its checkout and scratch."""
+
+    __slots__ = ('dir', 'out', 'checkout', 'home', 'tmp', 'config')
+
+    def __init__(self, verification_id, attempt, run=None):
+        vid, n = verify_key_parts('%s%s.%s' % (VERIFY_KEY, verification_id, attempt))
+        self.dir = os.path.join(run or run_dir(), 'verify', vid, str(n))
+        self.out = os.path.join(self.dir, 'out.log')
+        own = os.path.join(self.dir, PRIVATE_DIR)
+        self.checkout = os.path.join(own, 'checkout')
+        self.home = os.path.join(own, 'home')
+        self.tmp = os.path.join(own, 'tmp')
+        self.config = os.path.join(own, 'config')
