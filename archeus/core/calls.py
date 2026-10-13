@@ -68,11 +68,12 @@ class OwnCalls:
                  usage=usage)
 
     def run(self, *, purpose, source, workspace_id, project_id, prompt, schema, check,
-            workdir, context_package_id=None, forbidden=None):
+            workdir, context_package_id=None, forbidden=None, no_tools=False):
         """Route and make one call. `check(parsed)` is the caller's own
         validation beyond the schema: a list of problems, empty when it holds.
         `forbidden` ({harnesses, accounts}) keeps resources out of the election
-        (P13: a review is routed away from the accounts that did the work)."""
+        (P13: a review is routed away from the accounts that did the work).
+        `no_tools` is CallSpec's."""
         with self.db.read() as conn:
             req, snap, readings = resources.call_snapshot(
                 conn, callers=self.callers, feed=self.usage, preference=self.preference.get(),
@@ -118,7 +119,7 @@ class OwnCalls:
         account = base.AccountRef(d['account_id'] or d['account_ref'], acct.get('home_ref'))
         spec = base.CallSpec(route_decision_id=rd, purpose=purpose, prompt=prompt,
                              workdir=workdir, account=account, schema=schema, model=model,
-                             limits={'timeout_s': self.timeout_s})
+                             limits={'timeout_s': self.timeout_s}, no_tools=no_tools)
         usage, problems = {}, []
         for attempt in range(1, ATTEMPTS + 1):
             try:

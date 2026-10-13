@@ -151,6 +151,10 @@ class CallSpec:
     schema: Optional[Mapping] = None
     model: Optional[str] = None
     limits: Mapping = field(default_factory=dict)       # timeout_s
+    # True: no tool at all, not even the harness's read-only set (K-O2: a call
+    # whose prompt carries execution-influenced data must not be able to read
+    # Core's own files). An adapter that cannot express it refuses the call.
+    no_tools: bool = False
 
 
 @dataclass(frozen=True)

@@ -186,13 +186,15 @@ class Passes:
             _context_lines(pkg)])
         # K-O2 (T-053 P6): never the user's repository. A call run there loads
         # whatever project settings and hooks an execution's merged work put in
-        # it, as the user; the facts above are what the pass gets instead.
+        # it, as the user; the facts above are what the pass gets instead. And
+        # no tools: those facts are execution-influenced, and a read tool would
+        # let them steer the call into Core's own files.
         c = self.calls.run(purpose='knowledge_extraction',
                            source={'kind': 'repository_inspection', 'id': i.id},
                            workspace_id=project.workspace_id, project_id=project.id,
                            prompt=KNOWLEDGE_PREFIX + suffix, schema=KNOWLEDGE_SCHEMA,
                            check=check_knowledge, workdir=paths.archeus_home(),
-                           context_package_id=pkg['id'])
+                           context_package_id=pkg['id'], no_tools=True)
         if c.state != 'ok':
             return c.state
         return self._record(c, K.record_knowledge_pass, called=self._called(c, pkg['id']),
