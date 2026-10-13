@@ -104,8 +104,72 @@ def test_a_store_call_in_an_execution_area_is_refused_before_a_spawn(spawns, whe
     for mode, args in (('seal', ['mktree']), ('trusted', ['rev-parse', 'HEAD']),
                        ('base', ['rev-parse', 'HEAD'])):
         with pytest.raises(StoreError, match='execution area'):
-            LocalNode.store_git(mode, args, git_dir=path)
+            LocalNode.store_git(mode, args, workdirs=(), git_dir=path)
     assert spawns.calls == []
+
+
+def test_a_recorded_workdir_is_an_execution_area_wherever_it_lies(spawns, tmp_path):
+    """The node has no database: Core passes the workdirs it recorded, and a
+    call at or under any of them is refused like one in run/ or worktrees/."""
+    wd = str(tmp_path / 'recorded-wd')
+    for git_dir in (wd, os.path.join(wd, '.git'), os.path.join(wd, 'a', 'b')):
+        with pytest.raises(StoreError, match='execution area'):
+            LocalNode.store_git('base', ['rev-parse', 'HEAD'], workdirs=[None, '', wd],
+                                git_dir=git_dir)
+    with pytest.raises(StoreError, match='execution area'):
+        LocalNode.store_open(ids.new_id('project'), workdirs=[paths.repos_dir()])
+    with pytest.raises(StoreError, match='a collection'):
+        LocalNode.store_git('base', ['rev-parse', 'HEAD'], workdirs=wd, git_dir=wd)
+    assert spawns.calls == []
+    LocalNode.store_git('base', ['rev-parse', 'HEAD'], workdirs=[wd + '-other'], git_dir=wd)
+    assert len(spawns.calls) == 1                       # the control: not recorded, it runs
+
+
+def _repo(where, gitdir_to=None):
+    """A repository root; with *gitdir_to*, its `.git` is a file naming that directory."""
+    os.makedirs(where, exist_ok=True)
+    if gitdir_to is None:
+        os.makedirs(os.path.join(where, '.git'), exist_ok=True)
+    else:
+        with open(os.path.join(where, '.git'), 'w') as f:
+            f.write('gitdir: %s\n' % gitdir_to)
+    return str(where)
+
+
+@pytest.mark.parametrize('case', ['root-in-work', 'root-recorded', 'root-under-recorded',
+                                  'root-in-work-gitdir-outside', 'root-recorded-gitdir-outside',
+                                  'gitdir-in-state', 'gitdir-in-recorded', 'gitdir-in-worktrees'])
+@pytest.mark.parametrize('call', ['base', 'fetch'])
+def test_a_root_or_the_git_dir_it_names_in_an_execution_area_is_refused(spawns, monkeypatch,
+                                                                        tmp_path, case, call):
+    """Class-7 `.git` indirection: the root AND the git directory its `.git`
+    names are checked before anything runs."""
+    e = paths.ExecPaths(ids.new_id('execution'))
+    wd = str(tmp_path / 'recorded-wd')
+    root = {'root-in-work': lambda: _repo(e.work),
+            'root-recorded': lambda: _repo(wd),
+            'root-under-recorded': lambda: _repo(os.path.join(wd, 'sub')),
+            'root-in-work-gitdir-outside': lambda: _repo(e.work, str(tmp_path / 'out' / 'g')),
+            'root-recorded-gitdir-outside': lambda: _repo(wd, str(tmp_path / 'out' / 'g')),
+            'gitdir-in-state': lambda: _repo(tmp_path / 'u1', os.path.join(e.state, 'g')),
+            'gitdir-in-recorded': lambda: _repo(tmp_path / 'u2', os.path.join(wd, 'g')),
+            'gitdir-in-worktrees': lambda: _repo(tmp_path / 'u3', os.path.join(
+                paths.archeus_home(), 'worktrees', 'p', 'm', 't1', '.git'))}[case]()
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    with pytest.raises(StoreError, match='execution area'):
+        if call == 'base':
+            LocalNode.store_resolve_base(root, 'refs/heads/main', workdirs=[wd])
+        else:
+            LocalNode.store_fetch(ids.new_id('project'), root, 'refs/heads/main', '0' * 40,
+                                  'refs/archeus/exec/e1/seed', workdirs=[wd])
+    assert spawns.calls == []
+
+
+def test_a_root_and_git_dir_outside_every_area_are_read(spawns, tmp_path):
+    root = _repo(tmp_path / 'u', str(tmp_path / 'elsewhere' / 'g'))
+    LocalNode.store_resolve_base(root, 'refs/heads/main', workdirs=[str(tmp_path / 'wd')])
+    (call,) = [c for c in spawns.calls if c.argv[-1] != 'version']
+    assert call.argv[call.argv.index('--git-dir') + 1] == str(tmp_path / 'elsewhere' / 'g')
 
 
 @pytest.mark.parametrize('mode,args', [('trusted', ['config', '--list']),
@@ -114,16 +178,17 @@ def test_a_store_call_in_an_execution_area_is_refused_before_a_spawn(spawns, whe
                                        ('init', ['version']), ('trusted', [])])
 def test_a_subcommand_outside_its_mode_is_refused(spawns, mode, args):
     with pytest.raises(StoreError):
-        LocalNode.store_git(mode, args, git_dir=paths.repo_store(ids.new_id('project')))
+        LocalNode.store_git(mode, args, workdirs=(),
+                            git_dir=paths.repo_store(ids.new_id('project')))
     with pytest.raises(StoreError, match='not a store read'):
-        LocalNode.store_read(ids.new_id('project'), ['update-ref', 'refs/x', 'y'])
+        LocalNode.store_read(ids.new_id('project'), ['update-ref', 'refs/x', 'y'], workdirs=())
     assert spawns.calls == []
 
 
 @pytest.mark.parametrize('bad', ['../x', 'prj_x', ids.new_id('execution'), '', None])
 def test_an_ill_formed_project_id_names_no_store(spawns, bad):
     with pytest.raises(ValueError, match='not a project id'):
-        LocalNode.store_open(bad)
+        LocalNode.store_open(bad, workdirs=())
     assert spawns.calls == []
 
 
@@ -131,7 +196,7 @@ def test_an_ill_formed_project_id_names_no_store(spawns, bad):
 def test_no_absolute_git_means_no_store(spawns, monkeypatch, found):
     monkeypatch.setattr(local.shutil, 'which', lambda name: found)
     with pytest.raises(StoreError, match='no absolute git'):
-        LocalNode.store_open(ids.new_id('project'))
+        LocalNode.store_open(ids.new_id('project'), workdirs=())
     assert spawns.calls == []
 
 
@@ -141,7 +206,7 @@ def test_an_old_or_unreadable_git_is_refused_after_its_one_version_call(spawns, 
     spawns.version = version
     pid = ids.new_id('project')
     with pytest.raises(StoreError, match='older than 2.41.0'):
-        LocalNode.store_open(pid)
+        LocalNode.store_open(pid, workdirs=())
     assert [c.argv[-1] for c in spawns.calls] == ['version']
     assert spawns.calls[0].cwd == _pin()[1]
     assert not os.path.lexists(paths.repo_store(pid))
@@ -156,44 +221,87 @@ def test_a_pin_file_with_anything_in_it_is_refused(spawns, which):
     if which == 'dir':
         open(os.path.join(empty, 'post-commit'), 'wb').close()
     with pytest.raises(StoreError, match='not empty'):
-        LocalNode.store_open(ids.new_id('project'))
+        LocalNode.store_open(ids.new_id('project'), workdirs=())
     assert spawns.calls == []
+
+
+#: what `init --bare` wrote at 2.49.0.windows.1 (pinned by the integration test)
+INIT_CONFIG = (b'[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = true\n'
+               b'\tsymlinks = false\n\tignorecase = true\n')
+
+
+def _unsealed(pid, config=INIT_CONFIG, claimed=True):
+    """A store as `init --bare --template=<empty>` leaves it, claimed by Core,
+    before the seal: what a crash between init and seal leaves behind."""
+    store = paths.repo_store(pid)
+    pin = local._pin_files()
+    if claimed:
+        open(os.path.join(pin, pid + '.owned'), 'xb').close()
+    for d in (('objects', 'info'), ('objects', 'pack'), ('refs', 'heads'), ('refs', 'tags')):
+        os.makedirs(os.path.join(store, *d))
+    with open(os.path.join(store, 'HEAD'), 'wb') as f:
+        f.write(b'ref: refs/heads/master\n')
+    with open(os.path.join(store, 'config'), 'wb') as f:
+        f.write(config)
+    return store, pin
 
 
 def test_a_store_core_never_claimed_is_refused_not_adopted(spawns):
     pid = ids.new_id('project')
-    store = paths.repo_store(pid)
-    os.makedirs(os.path.join(store, 'refs'))
-    with open(os.path.join(store, 'config'), 'wb') as f:
-        f.write(b'[core]\n\trepositoryformatversion = 0\n\tbare = true\n')
+    _unsealed(pid, claimed=False)
     with pytest.raises(StoreError, match='never claimed'):
-        LocalNode.store_open(pid)
+        LocalNode.store_open(pid, workdirs=())
     assert [c.argv[-1] for c in spawns.calls] == ['version']
 
 
-@pytest.mark.parametrize('config,refs', [
-    (b'[core]\n\tbare = true\n[include]\n\tpath = x\n', False),
-    (b'[core]\n\tbare = true\n\thooksPath = x\n', False),
-    (b'[core]\n\tbare = true\n\tfsmonitor = x\n', False),
-    (b'[core]\n\tbare = true\n', True),
-])
-def test_an_unsealed_store_is_never_blessed_by_what_it_holds(spawns, config, refs):
-    """Core claimed it and a crash came before the seal: it is sealed only while
-    its config is exactly what `init --bare` writes and it holds no ref."""
+def test_an_unsealed_store_with_exactly_the_init_config_is_sealed(spawns):
     pid = ids.new_id('project')
-    store = paths.repo_store(pid)
-    pin = local._pin_files()
-    open(os.path.join(pin, pid + '.owned'), 'xb').close()
-    os.makedirs(os.path.join(store, 'refs', 'heads'))
-    with open(os.path.join(store, 'config'), 'wb') as f:
-        f.write(config)
-    if refs:
-        with open(os.path.join(store, 'refs', 'heads', 'main'), 'w') as f:
-            f.write('0' * 40 + '\n')
-    with pytest.raises(StoreError, match='unsealed store'):
-        LocalNode.store_open(pid)
+    _unsealed(pid)
+    with pytest.raises(StoreError, match='the empty tree is'):    # the fake writes no tree
+        LocalNode.store_open(pid, workdirs=())
+    assert [c.argv[-1] for c in spawns.calls] == ['version', 'refs/archeus/none', 'mktree']
+
+
+@pytest.mark.parametrize('config', [
+    pytest.param(b'', id='empty'),
+    pytest.param(INIT_CONFIG.replace(b'\tbare = true\n', b''), id='missing-bare'),
+    pytest.param(INIT_CONFIG.replace(b'\trepositoryformatversion = 0\n', b''),
+                 id='missing-format'),
+    pytest.param(INIT_CONFIG.replace(b'\tfilemode = false\n', b''), id='missing-filemode'),
+    pytest.param(INIT_CONFIG.replace(b'bare = true', b'bare = false'), id='bare-false'),
+    pytest.param(INIT_CONFIG.replace(b'version = 0', b'version = 1'), id='format-1'),
+    pytest.param(INIT_CONFIG.replace(b'symlinks = false', b'symlinks = true'), id='symlinks-true'),
+    pytest.param(INIT_CONFIG + b'\tbare = true\n', id='duplicate-bare'),
+    pytest.param(INIT_CONFIG.replace(b'\tbare = true\n', b'\tbare = true\n\tbare = false\n'),
+                 id='contradictory-bare'),
+    pytest.param(INIT_CONFIG + b'[core]\n\tbare = true\n', id='second-core'),
+    pytest.param(INIT_CONFIG + b'[include]\n\tpath = x\n', id='include'),
+    pytest.param(INIT_CONFIG + b'\thooksPath = x\n', id='extra-key'),
+    pytest.param(INIT_CONFIG + b'\tfsmonitor = x\n', id='fsmonitor'),
+    pytest.param(INIT_CONFIG.replace(b'\n', b'\r\n'), id='crlf'),
+    pytest.param(INIT_CONFIG.replace(b'\tfilemode = false\n\tbare = true\n',
+                                     b'\tbare = true\n\tfilemode = false\n'), id='reordered'),
+    pytest.param(INIT_CONFIG[:-1], id='no-final-newline'),
+])
+def test_an_unsealed_store_is_sealed_only_with_exactly_the_init_config(spawns, config):
+    """Core claimed it and a crash came before the seal: only the whole config
+    `init --bare` writes is Core's, never a set of individually plausible lines."""
+    pid = ids.new_id('project')
+    _store, pin = _unsealed(pid, config)
+    with pytest.raises(StoreError, match='config Core did not write'):
+        LocalNode.store_open(pid, workdirs=())
     assert [c.argv[-1] for c in spawns.calls] == ['version']
     assert not os.path.lexists(os.path.join(pin, pid + '.json'))
+
+
+def test_an_unsealed_store_that_holds_a_ref_is_refused(spawns):
+    pid = ids.new_id('project')
+    store, _pin_ = _unsealed(pid)
+    with open(os.path.join(store, 'refs', 'heads', 'main'), 'w') as f:
+        f.write('0' * 40 + '\n')
+    with pytest.raises(StoreError, match='holds refs'):
+        LocalNode.store_open(pid, workdirs=())
+    assert [c.argv[-1] for c in spawns.calls] == ['version']
 
 
 @pytest.mark.parametrize('plant', [('hooks', 'post-update'), ('info', 'attributes'),
@@ -201,14 +309,29 @@ def test_an_unsealed_store_is_never_blessed_by_what_it_holds(spawns, config, ref
                                    ('config.worktree',)])
 def test_a_store_with_an_execution_point_is_refused(spawns, plant):
     pid = ids.new_id('project')
-    store = paths.repo_store(pid)
-    pin = local._pin_files()
-    open(os.path.join(pin, pid + '.owned'), 'xb').close()
+    store, _pin_ = _unsealed(pid)
     os.makedirs(os.path.join(store, *plant[:-1]), exist_ok=True)
     open(os.path.join(store, *plant), 'wb').close()
     with pytest.raises(StoreError, match='a store with'):
-        LocalNode.store_open(pid)
+        LocalNode.store_open(pid, workdirs=())
     assert [c.argv[-1] for c in spawns.calls] == ['version']
+
+
+@pytest.mark.parametrize('which', ['config', 'HEAD', 'owned', 'pin-cfg', 'pack-file'])
+def test_a_hard_linked_metadata_file_is_refused_before_it_is_read(spawns, tmp_path, which):
+    """Same bytes, another file: a hard link makes a store file somebody else's."""
+    pid = ids.new_id('project')
+    store, pin = _unsealed(pid)
+    path = {'config': os.path.join(store, 'config'), 'HEAD': os.path.join(store, 'HEAD'),
+            'owned': os.path.join(pin, pid + '.owned'), 'pin-cfg': os.path.join(pin, 'empty.cfg'),
+            'pack-file': os.path.join(store, 'objects', 'pack', 'pack-x.pack')}[which]
+    if not os.path.exists(path):
+        open(path, 'wb').close()
+    os.link(path, str(tmp_path / ('outside-' + which)))
+    assert os.lstat(path).st_nlink == 2
+    with pytest.raises(OSError, match='hard-linked'):
+        LocalNode.store_open(pid, workdirs=())
+    assert [c.argv[-1] for c in spawns.calls] in ([], ['version'])
 
 
 def test_no_environment_or_test_marker_unlocks_a_fetch(spawns, monkeypatch):
@@ -216,11 +339,11 @@ def test_no_environment_or_test_marker_unlocks_a_fetch(spawns, monkeypatch):
         monkeypatch.setenv(k, '1')
     with pytest.raises(StoreError, match='no fetch into a store'):
         LocalNode.store_fetch(ids.new_id('project'), os.path.abspath(os.sep), 'refs/heads/main',
-                              '0' * 40, 'refs/archeus/exec/x/seed')
+                              '0' * 40, 'refs/archeus/exec/x/seed', workdirs=())
     monkeypatch.setattr(LocalNode, 'store_fetch_accepted', 1)        # truthy is not accepted
     with pytest.raises(StoreError, match='no fetch into a store'):
         LocalNode.store_fetch(ids.new_id('project'), os.path.abspath(os.sep), 'refs/heads/main',
-                              '0' * 40, 'refs/archeus/exec/x/seed')
+                              '0' * 40, 'refs/archeus/exec/x/seed', workdirs=())
     assert spawns.calls == []
 
 
@@ -237,7 +360,7 @@ def test_an_accepted_fetch_still_takes_only_what_core_may_ask(spawns, monkeypatc
     monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
     with pytest.raises(StoreError, match='not a fetch Core may make'):
         LocalNode.store_fetch(ids.new_id('project'), root or os.path.abspath(os.sep), rev,
-                              expect, ref)
+                              expect, ref, workdirs=())
     assert spawns.calls == []
 
 

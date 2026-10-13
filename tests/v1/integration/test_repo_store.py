@@ -24,6 +24,10 @@ GIT = shutil.which('git')
 pytestmark = pytest.mark.skipif(not GIT, reason='no git on PATH')
 SENTINEL = 'import os, sys\nopen(os.path.join(sys.argv[1], sys.argv[2]), "w").close()\n'
 HOOKS = ('reference-transaction', 'post-commit', 'post-checkout', 'post-merge', 'post-update')
+#: what `init --bare -q --object-format=sha1 --template=<empty>` wrote at the
+#: pinned 2.49.0.windows.1 (observed here, T-048): the shape local._INIT_CONFIG pins
+WINDOWS_INIT_CONFIG = (b'[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n'
+                       b'\tbare = true\n\tsymlinks = false\n\tignorecase = true\n')
 
 
 @pytest.fixture(autouse=True)
@@ -135,13 +139,17 @@ def test_the_installed_git_meets_the_floor_through_the_pin(capsys):
 
 def test_a_store_is_created_bare_sealed_and_recorded(world):
     pid = ids.new_id('project')
-    store = LocalNode.store_open(pid)
+    store = LocalNode.store_open(pid, workdirs=())
     assert store == paths.repo_store(pid)
     pin = os.path.join(paths.repos_dir(), '.pin')
     with open(os.path.join(store, 'HEAD')) as f:
         assert f.read() == STORE_HEAD
-    with open(os.path.join(store, 'config')) as f:
-        assert 'bare = true' in f.read()
+    with open(os.path.join(store, 'config'), 'rb') as f:
+        cfg = f.read()
+    print('\nK1 init config (%s): %r' % (local._git_version(), cfg))
+    assert local._INIT_CONFIG.fullmatch(cfg.decode('ascii'))
+    if sys.platform == 'win32':
+        assert cfg == WINDOWS_INIT_CONFIG
     for absent in ('hooks', 'info', 'description', 'commondir', 'config.worktree',
                    os.path.join('objects', 'info', 'alternates')):
         assert not os.path.exists(os.path.join(store, absent)), absent
@@ -150,15 +158,15 @@ def test_a_store_is_created_bare_sealed_and_recorded(world):
         rec = json.load(f)
     assert rec['git'] == local._git_exe() and rec['empty_tree'] == EMPTY_TREE
     assert os.path.exists(os.path.join(pin, pid + '.owned'))
-    assert LocalNode.store_read(pid, ['cat-file', '-t', EMPTY_TREE]).strip() == 'tree'
-    assert LocalNode.store_open(pid) == store                      # reopening is checking
+    assert LocalNode.store_read(pid, ['cat-file', '-t', EMPTY_TREE], workdirs=()).strip() == 'tree'
+    assert LocalNode.store_open(pid, workdirs=()) == store                      # reopening is checking
     assert world.fired() == []
 
 
 @pytest.mark.parametrize('plant', ['alternates', 'attributes', 'config', 'hook', 'head'])
 def test_a_store_changed_after_its_seal_is_refused(world, plant):
     pid = ids.new_id('project')
-    store = LocalNode.store_open(pid)
+    store = LocalNode.store_open(pid, workdirs=())
     if plant == 'alternates':
         open(os.path.join(store, 'objects', 'info', 'alternates'), 'w').close()
     elif plant == 'attributes':
@@ -174,9 +182,9 @@ def test_a_store_changed_after_its_seal_is_refused(world, plant):
         with open(os.path.join(store, 'HEAD'), 'w') as f:
             f.write('ref: refs/heads/main\n')
     with pytest.raises(StoreError):
-        LocalNode.store_open(pid)
+        LocalNode.store_open(pid, workdirs=())
     with pytest.raises(StoreError):
-        LocalNode.store_read(pid, ['rev-parse', '--verify', '-q', EMPTY_TREE])
+        LocalNode.store_read(pid, ['rev-parse', '--verify', '-q', EMPTY_TREE], workdirs=())
 
 
 def test_a_crash_between_init_and_seal_is_sealed_on_the_next_open(world, monkeypatch):
@@ -189,20 +197,20 @@ def test_a_crash_between_init_and_seal_is_sealed_on_the_next_open(world, monkeyp
         return real(mode, args, **kw)
     monkeypatch.setattr(LocalNode, 'store_git', staticmethod(crash))
     with pytest.raises(StoreError, match='crashed'):
-        LocalNode.store_open(pid)
+        LocalNode.store_open(pid, workdirs=())
     assert os.path.isdir(paths.repo_store(pid))
     monkeypatch.setattr(LocalNode, 'store_git', staticmethod(real))
-    assert LocalNode.store_open(pid) == paths.repo_store(pid)
+    assert LocalNode.store_open(pid, workdirs=()) == paths.repo_store(pid)
 
 
 def test_a_sealed_store_whose_record_is_lost_is_refused_once_it_holds_refs(world, monkeypatch):
     monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
     pid = ids.new_id('project')
     LocalNode.store_fetch(pid, str(world.user), 'refs/heads/main', world.c2,
-                          'refs/archeus/exec/e1/seed')
+                          'refs/archeus/exec/e1/seed', workdirs=())
     os.remove(os.path.join(paths.repos_dir(), '.pin', pid + '.json'))
     with pytest.raises(StoreError, match='holds refs'):
-        LocalNode.store_open(pid)
+        LocalNode.store_open(pid, workdirs=())
 
 
 def test_the_pinned_store_runs_nothing_the_world_configures(world, monkeypatch):
@@ -211,10 +219,11 @@ def test_the_pinned_store_runs_nothing_the_world_configures(world, monkeypatch):
     _hostile(monkeypatch, world)
     monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
     pid = ids.new_id('project')
-    store = LocalNode.store_open(pid)
+    store = LocalNode.store_open(pid, workdirs=())
     ref = 'refs/archeus/exec/e1/seed'
-    assert LocalNode.store_fetch(pid, str(world.user), 'refs/heads/main', world.c2, ref) == world.c2
-    read = lambda *a: LocalNode.store_read(pid, list(a))
+    assert LocalNode.store_fetch(pid, str(world.user), 'refs/heads/main', world.c2, ref,
+                                 workdirs=()) == world.c2
+    read = lambda *a: LocalNode.store_read(pid, list(a), workdirs=())
     assert read('rev-parse', ref).strip() == world.c2
     assert read('ls-tree', '--name-only', ref).split() == ['.gitattributes', 'a.txt', 'b.txt']
     assert read('merge-base', world.c1, world.c2).strip() == world.c1
@@ -226,7 +235,8 @@ def test_the_pinned_store_runs_nothing_the_world_configures(world, monkeypatch):
     with open(os.path.join(store, 'refs', 'replace', world.a2), 'w') as f:
         f.write(world.b2 + '\n')
     assert read('cat-file', '-p', world.a2) == 'two\n'
-    assert LocalNode.store_resolve_base(str(world.user), 'refs/heads/main') == world.c2
+    assert LocalNode.store_resolve_base(str(world.user), 'refs/heads/main',
+                                        workdirs=()) == world.c2
     assert world.fired() == []                                    # the pinned path: nothing
 
     # positive controls: the same hazards, unpinned, each fire
@@ -260,8 +270,8 @@ def test_a_fetch_whose_ref_moved_is_refused_and_keeps_what_came(world, monkeypat
     pid = ids.new_id('project')
     with pytest.raises(StoreError, match='lost race'):
         LocalNode.store_fetch(pid, str(world.user), 'refs/heads/main', world.c1,
-                              'refs/archeus/exec/e1/seed')
-    read = lambda *a: LocalNode.store_read(pid, list(a))
+                              'refs/archeus/exec/e1/seed', workdirs=())
+    read = lambda *a: LocalNode.store_read(pid, list(a), workdirs=())
     assert read('rev-parse', 'refs/archeus/incoming/exec/e1/seed').strip() == world.c2
     with pytest.raises(StoreError):
         read('rev-parse', '--verify', '-q', 'refs/archeus/exec/e1/seed')
@@ -273,7 +283,7 @@ def test_the_file_protocol_pin_governs_a_plain_local_path(world, monkeypatch):
     same pinned call with only `ext` allowed is refused."""
     monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
     pid = ids.new_id('project')
-    store = LocalNode.store_open(pid)
+    store = LocalNode.store_open(pid, workdirs=())
     argv, env, cwd = local._store_pin('trusted', store)
     fetch = argv + ['fetch', '--no-tags', '--no-write-fetch-head', str(world.user),
                     '+refs/heads/main:refs/archeus/incoming/probe']
@@ -282,3 +292,130 @@ def test_the_file_protocol_pin_governs_a_plain_local_path(world, monkeypatch):
     assert r.returncode != 0 and 'transport' in r.stderr.lower(), r.stderr
     r = subprocess.run(fetch, cwd=cwd, env=env, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+# ── aliases (T-048 r2): nothing Git resolves in a store may be a link ────────
+
+def _junction(link, target):
+    """A directory alias in pytest temp: a junction on Windows (no privilege
+    needed), a symlink elsewhere."""
+    if sys.platform == 'win32':
+        r = subprocess.run(['cmd', '/c', 'mklink', '/J', str(link), str(target)],
+                           capture_output=True, text=True)
+        assert r.returncode == 0, r.stdout + r.stderr
+    else:
+        os.symlink(str(target), str(link), target_is_directory=True)
+
+
+def _aliased(path, outside):
+    """*path* moved to *outside*, and a directory alias left where it was."""
+    os.rename(path, str(outside))
+    _junction(path, outside)
+
+
+def _files(top):
+    return sorted(os.path.join(d, f) for d, _s, fs in os.walk(str(top)) for f in fs)
+
+
+@pytest.mark.parametrize('what', ['store', 'objects', 'objects-info', 'objects-pack', 'refs',
+                                  'refs-heads', 'info', 'repos', 'pin', 'pin-empty'])
+def test_a_directory_alias_in_the_store_or_its_pin_is_refused(world, tmp_path, what):
+    pid = ids.new_id('project')
+    store = LocalNode.store_open(pid, workdirs=())
+    pin = os.path.join(paths.repos_dir(), '.pin')
+    j = os.path.join
+    path = {'store': store, 'objects': j(store, 'objects'), 'objects-info': j(store, 'objects', 'info'),
+            'objects-pack': j(store, 'objects', 'pack'), 'refs': j(store, 'refs'),
+            'refs-heads': j(store, 'refs', 'heads'), 'info': j(store, 'info'),
+            'repos': paths.repos_dir(), 'pin': pin, 'pin-empty': j(pin, 'empty')}[what]
+    if what == 'info':
+        os.makedirs(path)                   # init with an empty template makes none
+    _aliased(path, tmp_path / ('outside-' + what))
+    with pytest.raises(OSError, match='alias|plain'):
+        LocalNode.store_open(pid, workdirs=())
+    with pytest.raises(OSError, match='alias|plain'):
+        LocalNode.store_read(pid, ['rev-parse', EMPTY_TREE], workdirs=())
+
+
+@pytest.mark.parametrize('what', ['objects', 'objects-4b'])
+def test_a_seal_never_writes_through_an_objects_alias(world, tmp_path, monkeypatch, what):
+    """A crash left a claimed, unsealed store; its objects (or the directory the
+    empty tree goes to) became an alias: the seal is refused and writes nothing."""
+    pid = ids.new_id('project')
+    real = LocalNode.store_git
+
+    def crash(mode, args, **kw):
+        if mode == 'seal':
+            raise StoreError('crashed before the seal')
+        return real(mode, args, **kw)
+    monkeypatch.setattr(LocalNode, 'store_git', staticmethod(crash))
+    with pytest.raises(StoreError, match='crashed'):
+        LocalNode.store_open(pid, workdirs=())
+    monkeypatch.setattr(LocalNode, 'store_git', staticmethod(real))
+    store, outside = paths.repo_store(pid), tmp_path / 'outside'
+    if what == 'objects':
+        _aliased(os.path.join(store, 'objects'), outside)
+    else:
+        outside.mkdir()
+        _junction(os.path.join(store, 'objects', EMPTY_TREE[:2]), outside)
+    before = _files(outside)
+    with pytest.raises(OSError, match='alias|plain'):
+        LocalNode.store_open(pid, workdirs=())
+    assert _files(outside) == before and not any(EMPTY_TREE[2:] in f for f in _files(outside))
+    with open(os.path.join(store, 'HEAD')) as f:
+        assert f.read() != STORE_HEAD                     # the seal never started
+    assert not os.path.exists(os.path.join(paths.repos_dir(), '.pin', pid + '.json'))
+
+
+@pytest.mark.parametrize('which', ['config', 'HEAD', 'record', 'owned', 'pin-cfg', 'empty-tree'])
+def test_a_hard_link_to_sealed_metadata_is_refused_even_with_matching_bytes(world, tmp_path,
+                                                                            which):
+    pid = ids.new_id('project')
+    store = LocalNode.store_open(pid, workdirs=())
+    pin = os.path.join(paths.repos_dir(), '.pin')
+    path = {'config': os.path.join(store, 'config'), 'HEAD': os.path.join(store, 'HEAD'),
+            'record': os.path.join(pin, pid + '.json'), 'owned': os.path.join(pin, pid + '.owned'),
+            'pin-cfg': os.path.join(pin, 'empty.cfg'),
+            'empty-tree': os.path.join(store, 'objects', EMPTY_TREE[:2], EMPTY_TREE[2:])}[which]
+    os.link(path, str(tmp_path / 'outside'))
+    if which == 'empty-tree':           # a loose object file: not checked one by one (ponytail)
+        assert LocalNode.store_open(pid, workdirs=()) == store
+        return
+    with pytest.raises(OSError, match='hard-linked'):
+        LocalNode.store_open(pid, workdirs=())
+
+
+@pytest.mark.parametrize('what', ['config', 'objects'])
+def test_a_symlink_in_the_store_is_refused(world, tmp_path, what):
+    pid = ids.new_id('project')
+    store = LocalNode.store_open(pid, workdirs=())
+    path, outside = os.path.join(store, what), str(tmp_path / 'outside')
+    os.rename(path, outside)
+    try:
+        os.symlink(outside, path, target_is_directory=what == 'objects')
+    except OSError as e:
+        os.rename(outside, path)
+        pytest.skip('this account cannot create a symlink: %s' % e)
+    with pytest.raises(OSError, match='alias|plain'):
+        LocalNode.store_open(pid, workdirs=())
+
+
+def test_a_root_linked_into_an_execution_area_is_refused(world, tmp_path, monkeypatch):
+    """Resolved, not only as written: a junction whose target is an execution's
+    workspace, or a workdir Core recorded, is that area."""
+    work = paths.ExecPaths(ids.new_id('execution')).work
+    os.makedirs(work)
+    recorded = tmp_path / 'wd'
+    recorded.mkdir()
+    spawned = []
+    monkeypatch.setattr(local.proc, 'run', lambda *a, **k: spawned.append(a))
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    for target in (work, str(recorded)):
+        link = tmp_path / ('innocent-%d' % len(os.listdir(str(tmp_path))))
+        _junction(link, target)
+        with pytest.raises(StoreError, match='execution area'):
+            LocalNode.store_resolve_base(str(link), 'refs/heads/main', workdirs=[str(recorded)])
+        with pytest.raises(StoreError, match='execution area'):
+            LocalNode.store_fetch(ids.new_id('project'), str(link), 'refs/heads/main', '0' * 40,
+                                  'refs/archeus/exec/e1/seed', workdirs=[str(recorded)])
+    assert spawned == []
