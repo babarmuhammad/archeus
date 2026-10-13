@@ -114,22 +114,24 @@ def _runtime():
         os.mkdir(runtime)
     except FileExistsError:
         pass
-    _entry(runtime, True)
     return runtime
 
 
-def _dest(tmp, rel):
-    """Where *rel* goes in *tmp*, once every directory above it, from ARCHEUS_HOME
-    down, is plain: checked again before each mkdir and each write."""
-    _entry(paths.archeus_home(), True)
-    _entry(paths.runtime_dir(), True)
-    d = tmp
-    _entry(d, True)
-    parts = rel.split('/')
-    for name in parts[:-1]:
-        d = os.path.join(d, name)
+def _plain(*dirs):
+    """ARCHEUS_HOME, runtime/ and *dirs*, each a plain directory: checked again
+    before every act beneath them."""
+    for d in (paths.archeus_home(), paths.runtime_dir()) + dirs:
         _entry(d, True)
-    return os.path.join(d, parts[-1])
+
+
+def _dest(tmp, rel):
+    """Where *rel* goes in *tmp*, once every directory above it is plain."""
+    parts = rel.split('/')
+    dirs = [tmp]
+    for name in parts[:-1]:
+        dirs.append(os.path.join(dirs[-1], name))
+    _plain(*dirs)
+    return os.path.join(dirs[-1], parts[-1])
 
 
 def _write(dst, chunks):
@@ -181,8 +183,7 @@ def verify(stage_dir):
     if os.path.normcase(os.path.dirname(os.path.abspath(stage_dir))) != \
             os.path.normcase(paths.runtime_dir()):
         raise StageError('not a stage: %s' % stage_dir)
-    _entry(paths.archeus_home(), True)
-    _entry(paths.runtime_dir(), True)
+    _plain()
     if _tree(stage_dir) != os.path.basename(stage_dir):
         raise StageError('the stage does not match its name: %s' % stage_dir)
     return stage_dir
@@ -199,6 +200,7 @@ def stage(source_root, hook_path, version=sys.version_info[:2]):
     if _present(final):
         return verify(final)
     tmp = os.path.join(runtime, '.tmp-%s-%d-%s' % (digest, os.getpid(), os.urandom(8).hex()))
+    _plain()
     os.mkdir(tmp)
     made = set()
     for rel, src, size, sha, sig in rows:
@@ -216,6 +218,7 @@ def stage(source_root, hook_path, version=sys.version_info[:2]):
     _write(_dest(tmp, MANIFEST), [manifest])
     if _tree(tmp) != digest:
         raise StageError('the stage was not what was planned: %s' % tmp)
+    _plain(tmp)
     try:
         os.rename(tmp, final)
     except OSError:

@@ -425,17 +425,12 @@ TOP = sum('/' not in r for r in COPIED)
 DIRS = {'/'.join(r.split('/')[:i]) for r in COPIED for i in range(1, r.count('/') + 1)}
 
 
-@pytest.mark.parametrize('which', ['home', 'runtime', 'tmp'])
-@pytest.mark.parametrize('writes,dirs', [
-    (1, 0),                         # after the first copy
-    (TOP, 0),                       # before the first mkdir
-    (len(STAGED) - 2, len(DIRS))])  # before the _pth
-def test_the_destination_chain_is_checked_again_before_every_write(rt, monkeypatch, which,
-                                                                   writes, dirs):
-    # once *writes* files are in the temporary tree, *which* reports a reparse point,
-    # as a junction swapped in for it would: nothing more is written. The checks narrow
-    # that window; they do not close it (C-1013-T034 C1.8)
-    real_lstat, real_write, done = os.lstat, staging._write, []
+def _swap(monkeypatch, which, when):
+    """`os.lstat` of *which* (home, runtime or tmp) reports a reparse point, as a
+    junction swapped in for it would, from the first call at which *when(path)*
+    holds on. Returns the list of `_write` destinations, in order. The checks this
+    drives narrow that window; they do not close it (C-1013-T034 C1.8)."""
+    real_lstat, real_write, done, on = os.lstat, staging._write, [], []
 
     def write(dst, chunks):
         got = real_write(dst, chunks)
@@ -443,7 +438,6 @@ def test_the_destination_chain_is_checked_again_before_every_write(rt, monkeypat
         return got
 
     def target(p):
-        p = os.path.normcase(os.path.abspath(p))
         runtime = os.path.normcase(os.path.abspath(paths.runtime_dir()))
         return {'home': p == os.path.normcase(os.path.abspath(paths.archeus_home())),
                 'runtime': p == runtime,
@@ -451,14 +445,26 @@ def test_the_destination_chain_is_checked_again_before_every_write(rt, monkeypat
                 os.path.basename(p).startswith('.tmp-')}[which]
 
     def fake(p, *a, **k):
+        on.extend([True] if not on and when(p, done) else [])
         st = real_lstat(p, *a, **k)
-        if len(done) < writes or not target(p):
+        if not on or not target(os.path.normcase(os.path.abspath(p))):
             return st
         return SimpleNamespace(st_mode=st.st_mode, st_ino=st.st_ino, st_dev=st.st_dev,
                                st_size=st.st_size, st_mtime_ns=st.st_mtime_ns,
                                st_nlink=st.st_nlink, st_file_attributes=REPARSE)
     monkeypatch.setattr(staging, '_write', write)
     monkeypatch.setattr(os, 'lstat', fake)
+    return done
+
+
+@pytest.mark.parametrize('which', ['home', 'runtime', 'tmp'])
+@pytest.mark.parametrize('writes,dirs', [
+    (1, 0),                         # after the first copy
+    (TOP, 0),                       # before the first mkdir
+    (len(STAGED) - 2, len(DIRS))])  # before the _pth
+def test_the_destination_chain_is_checked_again_before_every_write(rt, monkeypatch, which,
+                                                                   writes, dirs):
+    done = _swap(monkeypatch, which, lambda p, done: len(done) >= writes)
     with pytest.raises(StageError, match='an alias'):
         _stage(rt)
     (tmp,) = _runtime()
@@ -467,6 +473,39 @@ def test_the_destination_chain_is_checked_again_before_every_write(rt, monkeypat
     assert len(_files(top)) == writes
     assert sum(len(ds) for _d, ds, _n in os.walk(top)) == dirs     # nor made through it
     assert _published() == []
+
+
+@pytest.mark.parametrize('which', ['home', 'runtime'])
+def test_a_published_stage_behind_an_alias_is_never_verified_or_reused(rt, monkeypatch,
+                                                                       which):
+    final = _stage(rt)
+    _swap(monkeypatch, which, lambda p, done: True)
+    with pytest.raises(StageError, match='an alias'):
+        staging.verify(final)
+    with pytest.raises(StageError, match='an alias'):
+        _stage(rt)
+
+
+@pytest.mark.parametrize('which', ['home', 'runtime'])
+def test_a_swap_during_the_lookup_makes_no_temporary_directory(rt, monkeypatch, which):
+    def looked_up(p, done):        # the existing-stage lookup: runtime/<64 hex>
+        name = os.path.basename(p)
+        return len(name) == 64 and os.path.normcase(os.path.dirname(os.path.abspath(p))) == \
+            os.path.normcase(os.path.abspath(paths.runtime_dir()))
+    done = _swap(monkeypatch, which, looked_up)
+    with pytest.raises(StageError, match='an alias'):
+        _stage(rt)
+    assert _runtime() == [] and done == []
+
+
+@pytest.mark.parametrize('which', ['home', 'runtime', 'tmp'])
+def test_a_swap_after_the_last_write_publishes_nothing(rt, monkeypatch, which):
+    done = _swap(monkeypatch, which, lambda p, done: len(done) == len(STAGED))
+    with pytest.raises(StageError, match='an alias'):
+        _stage(rt)
+    (tmp,) = _runtime()
+    assert tmp.startswith('.tmp-') and _published() == []
+    assert set(_files(os.path.join(paths.runtime_dir(), tmp))) == STAGED
 
 
 def test_a_name_planted_in_the_temporary_directory_is_never_written_through(rt, monkeypatch):
