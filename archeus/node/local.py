@@ -42,10 +42,11 @@ CHECK_OUTPUT_KEEP = 256 * 1024
 # pinned runner. The pins remove Git's configured execution points; they do not
 # make Git a sandbox for hostile objects.
 
-#: the oldest Git whose manual documents every pin `_store_pin` sets: `--attr-source`
-#: and GIT_ATTR_SOURCE first appear in the 2.41.0 git(1) manual (absent from
-#: 2.40.0), GIT_CONFIG_GLOBAL/SYSTEM earlier (absent from 2.31.0)
-STORE_GIT_FLOOR = (2, 41, 0)
+#: the oldest Git that honours every pin `_store_pin` sets: GIT_NO_LAZY_FETCH
+#: first appears in the 2.45.0 git(1) manual and is absent from v2.44.0's git.c
+#: and promisor-remote.c; `--attr-source`/GIT_ATTR_SOURCE from 2.41.0,
+#: GIT_CONFIG_GLOBAL/SYSTEM earlier (absent from 2.31.0)
+STORE_GIT_FLOOR = (2, 45, 0)
 #: every store is created SHA-1, so this is the empty tree its attributes come from
 EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 #: a store's HEAD: unborn, so no tree of its content is ever "the current one"
@@ -63,6 +64,14 @@ _INIT_CONFIG = re.compile(r'\[core\]\n\trepositoryformatversion = 0\n\tfilemode 
                           r'\tbare = true\n(\tsymlinks = false\n)?(\tignorecase = true\n)?'
                           r'(\tprecomposeunicode = true\n)?')
 _REF = re.compile(r'refs/[A-Za-z0-9_][A-Za-z0-9_./-]*')
+#: what a source's config may not say at all (case-insensitive bytes, fail
+#: closed: a value that merely contains one is refused too): includes, promisor
+#: remotes and partial clones (lazy fetch from them), another object format, a
+#: ref backend other than files, and alternate-ref commands
+_SOURCE_CONFIG_REFUSED = (b'include', b'promisor', b'partialclone', b'objectformat',
+                          b'refstorage', b'alternaterefs')
+#: a pack fetched from a promisor remote: its repository lazy-fetches
+_PROMISOR_PACK = '.promisor'
 
 
 class StoreError(OSError):
@@ -671,8 +680,10 @@ class LocalNode:
         """The commit *rev* names in the project repository at *root*, read under
         the pin: global and system config, hooks and replace refs are not read;
         the repository's own local config still is. Reads only; no caller yet."""
-        if rev.startswith('-'):
-            raise StoreError('not a revision: %r' % (rev,))
+        # a ref name or a full id only: no reflog, upstream or path syntax, so
+        # nothing beyond refs and objects is read to resolve it
+        if not ((_REF.fullmatch(rev) and '..' not in rev) or re.fullmatch(r'[0-9a-f]{40}', rev)):
+            raise StoreError('not a revision Core resolves: %r' % (rev,))
         git_dir = _source(root, workdirs)
         _pin_files(workdirs)
         _git_version(workdirs)
@@ -720,7 +731,8 @@ def _store_pin(mode, git_dir):
     env = {k: os.environ[k] for k in ('SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP') if k in os.environ}
     env.update(PATH=os.path.dirname(exe), HOME=empty, XDG_CONFIG_HOME=empty,
                GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=cfg, GIT_CONFIG_SYSTEM=cfg,
-               GIT_TERMINAL_PROMPT='0', GIT_ALLOW_PROTOCOL='file', GIT_PROTOCOL_FROM_USER='0')
+               GIT_TERMINAL_PROMPT='0', GIT_ALLOW_PROTOCOL='file', GIT_PROTOCOL_FROM_USER='0',
+               GIT_NO_LAZY_FETCH='1')
     argv = [exe]
     if git_dir is None:                 # version, init: no repository may be discovered
         env['GIT_CEILING_DIRECTORIES'] = repos_dir()
@@ -800,6 +812,11 @@ def _source(root, workdirs):
     if not os.path.isabs(root):
         raise StoreError('not a repository Core may read: %r' % (root,))
     _outside_executions([root], workdirs)
+    # upload-pack's enter_repo tries <root>/.git, <root>, <root>.git/.git, <root>.git
+    # (path.c): a sibling it could settle on instead of what is checked here is refused
+    if _present(root.rstrip('/\\') + '.git'):
+        raise StoreError('a source with a sibling %s.git upload-pack could take: %s'
+                         % (os.path.basename(root), root))
     if _present(os.path.join(root, '.git')):
         _plain(os.path.join(root, '.git'), None)
     git_dir = repos._gitdir(root) or root
@@ -822,12 +839,25 @@ def _source(root, workdirs):
                 # alphanumerics, '-' and '.', so every include or includeIf
                 # header holds these bytes; a value that merely says the word
                 # is refused too (fail closed: Core follows no include)
-                if b'include' in f.read().lower():
-                    raise StoreError('a source config with an include Core does not follow: %s'
-                                     % cfg)
-    for f in (os.path.join(git_dir, 'HEAD'), os.path.join(common, 'packed-refs')):
-        if _present(f):
-            _plain(f, False)
+                data = f.read().lower()
+            for word in _SOURCE_CONFIG_REFUSED:
+                if word in data:
+                    raise StoreError('a source config saying %r, which Core does not follow: %s'
+                                     % (word.decode(), cfg))
+    if _present(os.path.join(common, 'reftable')):
+        raise StoreError('a reftable source (extensions.refStorage): %s' % common)
+    # commit.c prepare_commit_graft reads info/grafts and the shallow file to parse a commit
+    for d in {git_dir, common}:
+        for rel in (('HEAD',), ('packed-refs',), ('shallow',), ('info',), ('info', 'grafts')):
+            p = os.path.join(d, *rel)
+            if _present(p):
+                _plain(p, rel == ('info',))
+    if _present(os.path.join(common, 'packed-refs')):
+        with open(os.path.join(common, 'packed-refs'), 'rb') as f:
+            if b'refs/replace/' in f.read():
+                raise StoreError('a source with replace refs: %s' % common)
+    if _present(os.path.join(common, 'refs', 'replace')):
+        raise StoreError('a source with replace refs: %s' % common)
     for refs in {os.path.join(git_dir, 'refs'), os.path.join(common, 'refs')}:
         if _present(refs):
             _plain(refs, True)
@@ -852,16 +882,24 @@ def _source(root, workdirs):
 
 
 def _objects_plain(objects):
-    """An object store, its fan-out directories, `info/` and `pack/` are no
-    alias. Their files are not held to one link: `clone --local` hard-links
-    objects, and an object is named by its own hash."""
+    """An object store, its fan-out directories and everything below `info/`
+    and `pack/` (commit-graph chain, multi-pack-index, bitmaps, reverse
+    indexes) are no alias. Their files are not held to one link: `clone
+    --local` hard-links objects, and an object is named by its own hash. A
+    promisor pack (lazy fetch) or http-alternates is refused."""
     # ponytail: loose object files inside the fan-out directories are not lstat'ed
     # (O(objects) per read); the directories that hold them are
     _plain(objects, True)
-    for top in (objects, os.path.join(objects, 'info'), os.path.join(objects, 'pack')):
+    for n in os.listdir(objects):
+        _entry(os.path.join(objects, n), None)
+    for top in (os.path.join(objects, 'info'), os.path.join(objects, 'pack')):
         if _present(top):
-            for n in os.listdir(top):
-                _entry(os.path.join(top, n), None)
+            _plain(top, True)
+            for d, dirs, files in os.walk(top):
+                for n in dirs + files:          # checked before os.walk descends into it
+                    _entry(os.path.join(d, n), None)
+                    if n.endswith(_PROMISOR_PACK) or n == 'http-alternates':
+                        raise StoreError('a source with %s: %s' % (n, d))
 
 
 def _named_dirs(path, base, one=False):

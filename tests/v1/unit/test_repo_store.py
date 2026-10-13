@@ -22,7 +22,7 @@ PINS = ('core.fsmonitor=false', 'submodule.recurse=false', 'gc.auto=0', 'mainten
 ALLOWED_ENV = {'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'PATH', 'HOME', 'XDG_CONFIG_HOME',
                'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM',
                'GIT_TERMINAL_PROMPT', 'GIT_ALLOW_PROTOCOL', 'GIT_PROTOCOL_FROM_USER',
-               'GIT_CEILING_DIRECTORIES'}
+               'GIT_CEILING_DIRECTORIES', 'GIT_NO_LAZY_FETCH'}
 
 
 class Spawns:
@@ -66,6 +66,7 @@ def test_every_mode_runs_one_absolute_git_under_the_whole_pin():
         assert (env['HOME'], env['XDG_CONFIG_HOME']) == (empty, empty)
         assert (env['GIT_CONFIG_GLOBAL'], env['GIT_CONFIG_SYSTEM']) == (cfg, cfg)
         assert env['GIT_CONFIG_NOSYSTEM'] == '1' and env['GIT_ALLOW_PROTOCOL'] == 'file'
+        assert env['GIT_NO_LAZY_FETCH'] == '1'                 # no lazy fetch, any mode
         assert env['PATH'] == os.path.dirname(GIT)
         if git_dir is None:
             assert '--git-dir' not in argv and '--attr-source' not in argv
@@ -335,7 +336,7 @@ def test_a_source_config_holding_any_include_is_refused(spawns, monkeypatch, tmp
     open(target, 'wb').close()
     root = _repo(tmp_path / 'u', str(tmp_path / 'gd'), config=INCLUDES[form] % target.encode())
     monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
-    with pytest.raises(StoreError, match='an include Core does not follow'):
+    with pytest.raises(StoreError, match="saying 'include'"):
         _read_through(root, call, wd)
     assert spawns.calls == []
 
@@ -352,7 +353,7 @@ def test_a_config_worktree_holding_an_include_is_refused(spawns, monkeypatch, tm
     (gd / 'config.worktree').write_bytes(b'[include]\n\tpath = %s\n'
                                          % str(tmp_path / 'x.cfg').encode())
     monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
-    with pytest.raises(StoreError, match='an include Core does not follow'):
+    with pytest.raises(StoreError, match="saying 'include'"):
         _read_through(root, call, str(tmp_path / 'wd'))
     assert spawns.calls == []
 
@@ -382,6 +383,97 @@ def test_a_hard_linked_source_metadata_file_is_refused(spawns, monkeypatch, tmp_
     with pytest.raises(OSError, match='hard-linked'):
         _read_through(root, call, str(tmp_path / 'wd'))
     assert spawns.calls == []
+
+
+@pytest.mark.parametrize('call', ['base', 'fetch'])
+@pytest.mark.parametrize('config', [
+    pytest.param(b'[extensions]\n\tpartialClone = origin\n', id='partialclone'),
+    pytest.param(b'[remote "origin"]\n\tPromisor = true\n', id='promisor'),
+    pytest.param(b'[remote "origin"]\n\tpartialCloneFilter = blob:none\n', id='filter'),
+    pytest.param(b'[extensions]\n\tobjectFormat = sha256\n', id='objectformat'),
+    pytest.param(b'[extensions]\n\tcompatObjectFormat = sha256\n', id='compatobjectformat'),
+    pytest.param(b'[EXTENSIONS]\n\tREFSTORAGE = reftable\n', id='refstorage'),
+    pytest.param(b'[core]\n\talternateRefsCommand = x\n', id='alternaterefscommand'),
+    pytest.param(b'[core]\n\tAlternateRefsPrefixes = refs/heads\n', id='alternaterefsprefixes'),
+])
+def test_a_source_config_naming_what_core_does_not_follow_is_refused(spawns, monkeypatch,
+                                                                     tmp_path, config, call):
+    """Lazy fetch from a promisor remote, another object format or ref backend,
+    alternate-ref commands: refused before anything starts, in any case."""
+    root = _repo(tmp_path / 'u', str(tmp_path / 'gd'), config=b'[core]\n\tbare = false\n' + config)
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    with pytest.raises(StoreError, match='which Core does not follow'):
+        _read_through(root, call, str(tmp_path / 'wd'))
+    assert spawns.calls == []
+
+
+@pytest.mark.parametrize('call', ['base', 'fetch'])
+@pytest.mark.parametrize('case', ['reftable', 'promisor-pack', 'http-alternates', 'replace-loose',
+                                  'replace-packed', 'sibling-dot-git'])
+def test_a_source_form_core_refuses_starts_nothing(spawns, monkeypatch, tmp_path, case, call):
+    gd = tmp_path / 'gd'
+    root = _repo(tmp_path / 'u', str(gd))
+    if case == 'reftable':
+        (gd / 'reftable').mkdir()
+    elif case == 'promisor-pack':
+        (gd / 'objects' / 'pack' / 'pack-1.promisor').write_bytes(b'')
+    elif case == 'http-alternates':
+        (gd / 'objects' / 'info' / 'http-alternates').write_bytes(b'x\n')
+    elif case == 'replace-loose':
+        (gd / 'refs' / 'replace').mkdir()
+        (gd / 'refs' / 'replace' / ('1' * 40)).write_bytes(b'2' * 40 + b'\n')
+    elif case == 'replace-packed':
+        (gd / 'packed-refs').write_bytes(b'2' * 40 + b' refs/replace/' + b'1' * 40 + b'\n')
+    else:
+        (tmp_path / 'u.git').mkdir()           # upload-pack's enter_repo could take it
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    with pytest.raises(StoreError):
+        _read_through(root, call, str(tmp_path / 'wd'))
+    assert spawns.calls == []
+
+
+@pytest.mark.parametrize('call', ['base', 'fetch'])
+@pytest.mark.parametrize('which', ['shallow', 'grafts', 'common-shallow', 'common-grafts'])
+def test_a_hard_linked_shallow_or_grafts_file_is_refused(spawns, monkeypatch, tmp_path, which,
+                                                         call):
+    """commit.c reads both to parse a commit: they are the source's own."""
+    gd, common = tmp_path / 'gd', tmp_path / 'common'
+    root = _repo(tmp_path / 'u', str(gd))
+    if which.startswith('common'):
+        _repo(tmp_path / 'c', str(common))
+        (gd / 'commondir').write_bytes(str(common).encode() + b'\n')
+    base = common if which.startswith('common') else gd
+    path = base / 'shallow' if which.endswith('shallow') else base / 'info' / 'grafts'
+    path.parent.mkdir(exist_ok=True)
+    path.write_bytes(b'')
+    os.link(str(path), str(tmp_path / 'outside'))
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    with pytest.raises(OSError, match='hard-linked'):
+        _read_through(root, call, str(tmp_path / 'wd'))
+    assert spawns.calls == []
+
+
+def test_a_plain_shallow_and_grafts_file_are_read(spawns, tmp_path):
+    gd = tmp_path / 'gd'
+    root = _repo(tmp_path / 'u', str(gd))
+    (gd / 'shallow').write_bytes(b'1' * 40 + b'\n')
+    (gd / 'info').mkdir()
+    (gd / 'info' / 'grafts').write_bytes(b'')
+    LocalNode.store_resolve_base(root, 'refs/heads/main', workdirs=())
+    assert [c.argv[-1] for c in spawns.calls] == ['version', 'refs/heads/main^{commit}']
+
+
+@pytest.mark.parametrize('rev', ['-x', 'main', 'HEAD', 'refs/heads/main@{1}', 'main@{upstream}',
+                                 'HEAD~1', 'refs/heads/main:a.txt', ':/fix', 'refs/heads/../x',
+                                 'refs/heads/main^2', '1' * 39])
+def test_base_resolution_takes_a_ref_name_or_a_full_id_only(spawns, tmp_path, rev):
+    """No reflog, upstream, path or ancestry syntax: nothing but refs and objects."""
+    root = _repo(tmp_path / 'u')
+    with pytest.raises(StoreError, match='not a revision Core resolves'):
+        LocalNode.store_resolve_base(root, rev, workdirs=())
+    assert spawns.calls == []
+    LocalNode.store_resolve_base(root, '1' * 40, workdirs=())
+    assert spawns.calls[-1].argv[-1] == '1' * 40 + '^{commit}'
 
 
 def test_a_root_and_git_dir_outside_every_area_are_read(spawns, tmp_path):
@@ -419,12 +511,12 @@ def test_no_absolute_git_means_no_store(spawns, monkeypatch, found):
     assert spawns.calls == []
 
 
-@pytest.mark.parametrize('version', ['git version 2.40.9\n', 'git version 1.9.0\n', 'garbage\n',
+@pytest.mark.parametrize('version', ['git version 2.44.9\n', 'git version 2.40.9\n', 'git version 1.9.0\n', 'garbage\n',
                                      ''])
 def test_an_old_or_unreadable_git_is_refused_after_its_one_version_call(spawns, version):
     spawns.version = version
     pid = ids.new_id('project')
-    with pytest.raises(StoreError, match='older than 2.41.0'):
+    with pytest.raises(StoreError, match='older than 2.45.0'):
         LocalNode.store_open(pid, workdirs=())
     assert [c.argv[-1] for c in spawns.calls] == ['version']
     assert spawns.calls[0].cwd == _pin()[1]
@@ -615,7 +707,8 @@ def test_the_store_is_v1s_and_no_reset_names_it(archeus_home):
 #: the literals only the store pin uses; `-c` values by prefix
 STORE_KEYS = ('--git-dir', '--attr-source', '--no-replace-objects', 'GIT_CONFIG_GLOBAL',
               'GIT_CONFIG_SYSTEM', 'GIT_ATTR_SOURCE', 'GIT_NO_REPLACE_OBJECTS',
-              'GIT_ALLOW_PROTOCOL', 'GIT_PROTOCOL_FROM_USER', 'GIT_CEILING_DIRECTORIES')
+              'GIT_ALLOW_PROTOCOL', 'GIT_PROTOCOL_FROM_USER', 'GIT_CEILING_DIRECTORIES',
+              'GIT_NO_LAZY_FETCH')
 STORE_C = ('core.hooksPath=', 'core.fsmonitor=', 'core.attributesFile=', 'gc.auto=',
            'maintenance.auto=', 'submodule.recurse=')
 LOCAL = 'archeus/node/local.py'

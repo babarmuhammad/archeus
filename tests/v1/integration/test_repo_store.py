@@ -506,7 +506,7 @@ def test_a_source_config_git_wrote_with_an_inclusion_is_refused(world, monkeypat
     """As Git itself writes it: `git config include.path ...` in the source."""
     world.git(world.user, 'config', how, _fwd(world.tmp / 'nowhere.cfg'))
     spawned = _spy(monkeypatch)
-    _both_refused(world.user, (), 'an include Core does not follow')
+    _both_refused(world.user, (), "saying 'include'")
     assert spawned == []
 
 
@@ -542,4 +542,73 @@ def test_a_hard_linked_metadata_file_of_a_real_source_is_refused(world, tmp_path
             str(tmp_path / 'outside'))
     spawned = _spy(monkeypatch)
     _both_refused(root, (), 'hard-linked')
+    assert spawned == []
+
+
+def _file_url(p):
+    return 'file:///' + _fwd(p).lstrip('/')
+
+
+def test_a_lazy_fetch_source_is_refused_and_the_pin_alone_still_fetches_nothing(world,
+                                                                                 monkeypatch):
+    """A real partial clone (blob:none from a file:// source in pytest temp)
+    whose main names a commit it does not hold; its promisor remote's
+    upload-pack is a sentinel. Refused before anything starts; with that
+    refusal taken away, GIT_NO_LAZY_FETCH alone keeps the commit lookup from
+    fetching or writing anything; unpinned, the same lookup reaches the remote."""
+    u, lazy = world.user, world.tmp / 'lazy'
+    world.git(u, 'config', 'uploadpack.allowFilter', 'true')
+    world.git(world.tmp, 'clone', '-q', '--filter=blob:none', _file_url(u), str(lazy))
+    world.git(u, 'commit', '-q', '--allow-empty', '-m', 'c3')
+    c3 = world.git(u, 'rev-parse', 'HEAD')
+    (lazy / '.git' / 'refs' / 'heads' / 'main').write_bytes(c3.encode() + b'\n')
+    world.git(lazy, 'config', 'remote.origin.uploadpack', world.cmd('lazy-fetch'))
+    real_run = local.proc.run
+    spawned = _spy(monkeypatch)
+    _both_refused(lazy, (), 'which Core does not follow')
+    assert spawned == []
+    monkeypatch.setattr(local.proc, 'run', real_run)
+    monkeypatch.setattr(local, '_SOURCE_CONFIG_REFUSED', (b'include',))
+    monkeypatch.setattr(local, '_PROMISOR_PACK', '.never')
+    before = _files(lazy)
+    with pytest.raises(StoreError, match='rev-parse failed'):
+        LocalNode.store_resolve_base(str(lazy), 'refs/heads/main', workdirs=())
+    assert 'lazy-fetch' not in world.fired() and _files(lazy) == before
+    world.git(lazy, 'rev-parse', '--verify', '-q', c3 + '^{commit}', check=False)
+    assert 'lazy-fetch' in world.fired()                  # the positive control
+
+
+def test_a_shallow_clone_is_a_plain_source(world):
+    s = world.tmp / 'shallow'
+    world.git(world.tmp, 'clone', '-q', '--depth', '1', _file_url(world.user), str(s))
+    assert (s / '.git' / 'shallow').exists()
+    assert LocalNode.store_resolve_base(str(s), 'refs/heads/main', workdirs=()) == world.c2
+
+
+def test_a_source_with_graphs_and_indexes_is_read(world, monkeypatch):
+    """commit-graph, multi-pack-index and reverse indexes are guarded, then read
+    as data: Git writes them itself, so refusing them would refuse most repositories."""
+    u = world.user
+    world.git(u, 'repack', '-q', '-a', '-d')
+    world.git(u, 'commit-graph', 'write', '--reachable')
+    world.git(u, 'multi-pack-index', 'write')
+    gd = u / '.git' / 'objects'
+    assert (gd / 'info' / 'commit-graph').exists() and (gd / 'pack' / 'multi-pack-index').exists()
+    assert LocalNode.store_resolve_base(str(u), 'refs/heads/main', workdirs=()) == world.c2
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    assert LocalNode.store_fetch(ids.new_id('project'), str(u), 'refs/heads/main', world.c2,
+                                 'refs/archeus/exec/e1/seed', workdirs=()) == world.c2
+
+
+@pytest.mark.parametrize('what', ['info', 'commit-graphs', 'multi-pack-index.d',
+                                  'inside-commit-graphs'])
+def test_a_source_info_or_object_index_alias_is_refused(world, tmp_path, monkeypatch, what):
+    gd = world.user / '.git'
+    path = {'info': gd / 'info', 'commit-graphs': gd / 'objects' / 'info' / 'commit-graphs',
+            'multi-pack-index.d': gd / 'objects' / 'pack' / 'multi-pack-index.d',
+            'inside-commit-graphs': gd / 'objects' / 'info' / 'commit-graphs' / 'x'}[what]
+    path.mkdir(parents=True, exist_ok=True)
+    _aliased(str(path), tmp_path / ('outside-' + what))
+    spawned = _spy(monkeypatch)
+    _both_refused(world.user, (), 'alias|plain')
     assert spawned == []
