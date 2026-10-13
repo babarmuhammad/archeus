@@ -26,7 +26,7 @@ LEGACY_DIRNAME = '.archeus'
 #: Linux). V1 creates only these entries, and a reset removes only these —
 #: never the directory as a whole.
 V1_OWNED = ('archeus.db', 'archeus.db-wal', 'archeus.db-shm', 'artifacts', 'backups',
-            'logs', 'run', 'worktrees')
+            'logs', 'run', 'runtime', 'worktrees')
 
 #: Entries the legacy Qt shell (claude_sessions/gui_qt.py) may keep here. V1
 #: never writes, moves or deletes them.
@@ -72,6 +72,12 @@ def archeus_home(environ=None, platform=None):
 def run_dir():
     """`<ARCHEUS_HOME>/run` — liveness and e-stop files that work without Core."""
     return os.path.join(archeus_home(), 'run')
+
+
+def runtime_dir():
+    """`<ARCHEUS_HOME>/runtime` — Core-staged copies of the hook's runtime, one
+    directory per content digest, kept (PV-20 C4a, node/staging.py)."""
+    return os.path.join(archeus_home(), 'runtime')
 
 
 def stop_sentinel():

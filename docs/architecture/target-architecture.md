@@ -213,6 +213,7 @@ step:
 | `logs/` | V1 | Core diagnostics, `core.log` (plan §28) |
 | `run/` | V1 | liveness, process registry, per-execution files, STOP (path contract from P1) |
 | `worktrees/` | V1 | node-computed task worktrees (P11) |
+| `runtime/` | V1 | Core-staged hook runtime copies, content-addressed, kept: no V1 code deletes them and the migration-plan §7 reset list does not name them (PV-20 C4a) |
 | `cache/` | legacy Qt shell | Qt/QtWebEngine pipeline and shader cache (exists today) |
 | `QtWebEngine/` | legacy Qt shell | persistent web-profile storage, if the shell ever persists a profile |
 
