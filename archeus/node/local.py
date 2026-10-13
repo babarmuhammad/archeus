@@ -791,34 +791,77 @@ def _outside_executions(paths_, workdirs):
 
 def _source(root, workdirs):
     """A repository Core reads from, refused when anything Git reads it through
-    lies in an execution area: its root, the git directory its `.git` names,
-    the common directory that one names (config, objects and refs come from
-    there) and every object store it borrows from. Each is checked before the
-    file naming the next is read. Returns the git directory."""
+    lies in an execution area or is an alias: its root, its `.git`, the git
+    directory that names, the common directory that one names (config, objects
+    and refs come from there), the config files and refs Git reads, and every
+    object store it borrows from. Each is checked before the file naming the
+    next is read, and nothing is started until all are. Returns the git dir."""
     from claude_sessions import repos
     if not os.path.isabs(root):
         raise StoreError('not a repository Core may read: %r' % (root,))
     _outside_executions([root], workdirs)
+    if _present(os.path.join(root, '.git')):
+        _plain(os.path.join(root, '.git'), None)
     git_dir = repos._gitdir(root) or root
     _outside_executions([git_dir], workdirs)
+    _plain(git_dir, True)
     common = git_dir
     if _present(os.path.join(git_dir, 'commondir')):
+        _plain(os.path.join(git_dir, 'commondir'), False)
         # gitrepository-layout: one path; a relative one is against the git dir
         (common,) = _named_dirs(os.path.join(git_dir, 'commondir'), git_dir, one=True)
         _outside_executions([common], workdirs)
+        _plain(common, True)
+    # git-config FILES: the repository's config, and config.worktree when
+    # extensions.worktreeConfig names it (read here whenever it exists)
+    for cfg in (os.path.join(common, 'config'), os.path.join(git_dir, 'config.worktree')):
+        if _present(cfg):
+            _plain(cfg, False)
+            with open(cfg, 'rb') as f:
+                # git-config: section names are case-insensitive and only
+                # alphanumerics, '-' and '.', so every include or includeIf
+                # header holds these bytes; a value that merely says the word
+                # is refused too (fail closed: Core follows no include)
+                if b'include' in f.read().lower():
+                    raise StoreError('a source config with an include Core does not follow: %s'
+                                     % cfg)
+    for f in (os.path.join(git_dir, 'HEAD'), os.path.join(common, 'packed-refs')):
+        if _present(f):
+            _plain(f, False)
+    for refs in {os.path.join(git_dir, 'refs'), os.path.join(common, 'refs')}:
+        if _present(refs):
+            _plain(refs, True)
+            for d, dirs, files in os.walk(refs):
+                for n in dirs + files:      # checked before os.walk descends into it
+                    _plain(os.path.join(d, n), None)
     stores = [(os.path.join(common, 'objects'), 0)]
     while stores:
         objects, depth = stores.pop()
+        _objects_plain(objects)
         alternates = os.path.join(objects, 'info', 'alternates')
         if not _present(alternates):
             continue
         if depth == 5:                  # Git itself follows no deeper
             raise StoreError('alternates nested too deep: %s' % alternates)
+        _plain(alternates, False)
         # gitrepository-layout: one per line; a relative one is against the objects dir
         for alt in _named_dirs(alternates, objects):
             _outside_executions([alt], workdirs)
             stores.append((alt, depth + 1))
     return git_dir
+
+
+def _objects_plain(objects):
+    """An object store, its fan-out directories, `info/` and `pack/` are no
+    alias. Their files are not held to one link: `clone --local` hard-links
+    objects, and an object is named by its own hash."""
+    # ponytail: loose object files inside the fan-out directories are not lstat'ed
+    # (O(objects) per read); the directories that hold them are
+    _plain(objects, True)
+    for top in (objects, os.path.join(objects, 'info'), os.path.join(objects, 'pack')):
+        if _present(top):
+            for n in os.listdir(top):
+                _entry(os.path.join(top, n), None)
 
 
 def _named_dirs(path, base, one=False):

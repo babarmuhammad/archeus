@@ -129,14 +129,20 @@ def test_a_recorded_workdir_is_an_execution_area_wherever_it_lies(spawns, tmp_pa
     assert len(spawns.calls) == 1                       # the control: not recorded, it runs
 
 
-def _repo(where, gitdir_to=None):
-    """A repository root; with *gitdir_to*, its `.git` is a file naming that directory."""
+def _repo(where, gitdir_to=None, config=b'[core]\n\tbare = false\n'):
+    """A repository root and its git directory's metadata; with *gitdir_to*, its
+    `.git` is a file naming that directory."""
     os.makedirs(where, exist_ok=True)
-    if gitdir_to is None:
-        os.makedirs(os.path.join(where, '.git'), exist_ok=True)
-    else:
+    gd = os.path.join(where, '.git') if gitdir_to is None else gitdir_to
+    if gitdir_to is not None:
         with open(os.path.join(where, '.git'), 'w') as f:
             f.write('gitdir: %s\n' % gitdir_to)
+    for d in (('objects', 'info'), ('objects', 'pack'), ('refs', 'heads')):
+        os.makedirs(os.path.join(gd, *d), exist_ok=True)
+    with open(os.path.join(gd, 'HEAD'), 'wb') as f:
+        f.write(b'ref: refs/heads/main\n')
+    with open(os.path.join(gd, 'config'), 'wb') as f:
+        f.write(config)
     return str(where)
 
 
@@ -304,6 +310,78 @@ def test_a_common_dir_and_borrowed_stores_outside_every_area_are_read(spawns, mo
                               'refs/archeus/exec/e1/seed', workdirs=[str(tmp_path / 'wd')])
     assert 'execution area' not in str(err.value)
     assert any('init' in c.argv for c in spawns.calls)
+
+
+#: every way a config file can hold an include (git-config "Syntax", "Includes",
+#: "Conditional includes"): section names are case-insensitive, a variable may
+#: follow its header on the same line, and the deprecated dotted subsection form
+INCLUDES = [b'[include]\n\tpath = %s\n', b'[includeIf "gitdir:**"]\n\tpath = %s\n',
+            b'[INCLUDE]\n\tPATH = %s\n', b'[IncludeIF "onbranch:main"]\n\tpath = %s\n',
+            b'[core]\n\tbare = false\n[include] path = %s\n', b'[includeif.gitdir/i:x]\n\tpath = %s\n',
+            b'[core]\n\tbare = false\n  [  Include  ]\n  path = %s\n']
+
+
+@pytest.mark.parametrize('call', ['base', 'fetch'])
+@pytest.mark.parametrize('form', range(len(INCLUDES)))
+@pytest.mark.parametrize('where', ['run', 'worktrees', 'recorded', 'outside'])
+def test_a_source_config_holding_any_include_is_refused(spawns, monkeypatch, tmp_path, where,
+                                                         form, call):
+    """Fail closed: Core follows no include, wherever it points. A source with
+    none is read (test_a_root_and_git_dir_outside_every_area_are_read)."""
+    areas, wd = _areas(tmp_path)
+    areas['outside'] = str(tmp_path / 'outside')
+    os.makedirs(areas['outside'])
+    target = os.path.join(areas[where], 'x.cfg')
+    open(target, 'wb').close()
+    root = _repo(tmp_path / 'u', str(tmp_path / 'gd'), config=INCLUDES[form] % target.encode())
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    with pytest.raises(StoreError, match='an include Core does not follow'):
+        _read_through(root, call, wd)
+    assert spawns.calls == []
+
+
+@pytest.mark.parametrize('call', ['base', 'fetch'])
+@pytest.mark.parametrize('extension', [True, False])
+def test_a_config_worktree_holding_an_include_is_refused(spawns, monkeypatch, tmp_path,
+                                                         extension, call):
+    """git-config FILES: $GIT_DIR/config.worktree is read when
+    extensions.worktreeConfig is set; Core reads it whenever it exists."""
+    gd = tmp_path / 'gd'
+    root = _repo(tmp_path / 'u', str(gd), config=b'[core]\n\tbare = false\n' + (
+        b'[extensions]\n\tworktreeConfig = true\n' if extension else b''))
+    (gd / 'config.worktree').write_bytes(b'[include]\n\tpath = %s\n'
+                                         % str(tmp_path / 'x.cfg').encode())
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    with pytest.raises(StoreError, match='an include Core does not follow'):
+        _read_through(root, call, str(tmp_path / 'wd'))
+    assert spawns.calls == []
+
+
+@pytest.mark.parametrize('call', ['base', 'fetch'])
+@pytest.mark.parametrize('which', ['dot-git-file', 'config', 'config.worktree', 'HEAD',
+                                   'packed-refs', 'loose-ref', 'commondir', 'alternates'])
+def test_a_hard_linked_source_metadata_file_is_refused(spawns, monkeypatch, tmp_path, which,
+                                                       call):
+    """Same bytes, another file: what Git reads a source through is the source's own."""
+    gd = tmp_path / 'gd'
+    root = _repo(tmp_path / 'u', str(gd))
+    common = tmp_path / 'common'
+    for d in (('objects',), ('refs',)):
+        (common.joinpath(*d)).mkdir(parents=True)
+    path = {'dot-git-file': os.path.join(root, '.git'), 'config': str(gd / 'config'),
+            'config.worktree': str(gd / 'config.worktree'), 'HEAD': str(gd / 'HEAD'),
+            'packed-refs': str(gd / 'packed-refs'), 'loose-ref': str(gd / 'refs' / 'heads' / 'x'),
+            'commondir': str(gd / 'commondir'),
+            'alternates': str(gd / 'objects' / 'info' / 'alternates')}[which]
+    if not os.path.exists(path):
+        with open(path, 'wb') as f:
+            f.write({'commondir': str(common).encode(), 'alternates': str(common / 'objects')
+                     .encode()}.get(which, b''))
+    os.link(path, str(tmp_path / 'outside'))
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    with pytest.raises(OSError, match='hard-linked'):
+        _read_through(root, call, str(tmp_path / 'wd'))
+    assert spawns.calls == []
 
 
 def test_a_root_and_git_dir_outside_every_area_are_read(spawns, tmp_path):

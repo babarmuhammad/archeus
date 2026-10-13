@@ -97,9 +97,9 @@ class World:
         self.c2 = self.git(self.user, 'rev-parse', 'HEAD')
         self.a2 = self.git(self.user, 'rev-parse', 'HEAD:a.txt')
         self.b2 = self.git(self.user, 'rev-parse', 'HEAD:b.txt')
-        # the source repository's OWN config: an include to hooks, an fsmonitor
-        (tmp / 'local-inc.cfg').write_text('[core]\n\thooksPath = %s\n' % _fwd(tmp / 'hooks-l'))
-        self.git(self.user, 'config', 'include.path', _fwd(tmp / 'local-inc.cfg'))
+        # the source repository's OWN config: hooks and an fsmonitor (an include
+        # would make Core refuse the source: test_a_source_config_git_wrote_with_an_inclusion_is_refused)
+        self.git(self.user, 'config', 'core.hooksPath', _fwd(tmp / 'hooks-l'))
         self.git(self.user, 'config', 'core.fsmonitor', self.cmd('l-fsmonitor'))
         assert self.fired() == []
 
@@ -247,7 +247,7 @@ def test_the_pinned_store_runs_nothing_the_world_configures(world, monkeypatch):
     world.git(scratch, 'commit', '-q', '--allow-empty', '-m', 'y',
               env=dict(h, GIT_CONFIG_COUNT='0'))                       # the include alone
     assert 'g-post-commit' in world.fired()
-    world.git(u, 'commit', '-q', '--allow-empty', '-m', 'z')             # the repo's own include
+    world.git(u, 'commit', '-q', '--allow-empty', '-m', 'z')             # the repo's own hooksPath
     assert 'l-post-commit' in world.fired()
     world.git(u, 'diff', world.c1, world.c2, env=h)                       # driver and textconv
     assert {'g-extdiff', 'g-textconv'} <= set(world.fired())
@@ -483,3 +483,63 @@ def test_a_linked_worktree_is_read_through_its_real_common_dir(world, monkeypatc
     assert LocalNode.store_fetch(pid, str(wt), 'refs/heads/main', world.c2,
                                  'refs/archeus/exec/e1/seed', workdirs=()) == world.c2
     assert world.fired() == fired
+
+
+def _spy(monkeypatch):
+    spawned = []
+    monkeypatch.setattr(local.proc, 'run', lambda *a, **k: spawned.append(a))
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    return spawned
+
+
+def _both_refused(root, workdirs, match):
+    with pytest.raises(OSError, match=match):
+        LocalNode.store_resolve_base(str(root), 'refs/heads/main', workdirs=workdirs)
+    with pytest.raises(OSError, match=match):
+        LocalNode.store_fetch(ids.new_id('project'), str(root), 'refs/heads/main', '0' * 40,
+                              'refs/archeus/exec/e1/seed', workdirs=workdirs)
+
+
+@pytest.mark.parametrize('how', ['include.path', 'includeIf.gitdir:**.path',
+                                 'IncludeIf.onbranch:main.path'])
+def test_a_source_config_git_wrote_with_an_inclusion_is_refused(world, monkeypatch, how):
+    """As Git itself writes it: `git config include.path ...` in the source."""
+    world.git(world.user, 'config', how, _fwd(world.tmp / 'nowhere.cfg'))
+    spawned = _spy(monkeypatch)
+    _both_refused(world.user, (), 'an include Core does not follow')
+    assert spawned == []
+
+
+@pytest.mark.parametrize('what', ['objects', 'refs', 'refs-heads', 'dot-git'])
+def test_a_source_metadata_directory_alias_is_refused(world, tmp_path, monkeypatch, what):
+    """objects/ linked into a recorded workdir with no alternates file, refs/
+    or one of its directories linked elsewhere, or .git itself a junction."""
+    recorded = tmp_path / 'wd'
+    recorded.mkdir()
+    gd = world.user / '.git'
+    path = {'objects': gd / 'objects', 'refs': gd / 'refs', 'refs-heads': gd / 'refs' / 'heads',
+            'dot-git': gd}[what]
+    assert not (gd / 'objects' / 'info' / 'alternates').exists()
+    _aliased(str(path), recorded / what)
+    spawned = _spy(monkeypatch)
+    _both_refused(world.user, [str(recorded)], 'alias|plain|execution area')
+    assert spawned == []
+
+
+@pytest.mark.parametrize('which', ['config', 'HEAD', 'packed-refs', 'commondir'])
+def test_a_hard_linked_metadata_file_of_a_real_source_is_refused(world, tmp_path, monkeypatch,
+                                                                 which):
+    root = world.user
+    if which == 'packed-refs':
+        world.git(root, 'pack-refs', '--all')
+    if which == 'commondir':
+        root = world.tmp / 'linked'
+        world.git(world.user, 'worktree', 'add', '-q', '-b', 'side', str(root))
+    gd = world.git(root, 'rev-parse', '--absolute-git-dir')
+    path = os.path.join(world.git(root, 'rev-parse', '--git-common-dir') if which in (
+        'config', 'packed-refs') else gd, which)
+    os.link(os.path.join(root, path) if not os.path.isabs(path) else path,
+            str(tmp_path / 'outside'))
+    spawned = _spy(monkeypatch)
+    _both_refused(root, (), 'hard-linked')
+    assert spawned == []
