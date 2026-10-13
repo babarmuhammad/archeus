@@ -113,7 +113,9 @@ class VerifyWorker:
                     due.append(('verify_mission', m.id))
             for t in tasks:
                 if t.integration_state in ('PENDING', 'MERGING'):
-                    due.append(('merge', t.id))
+                    # one that may never merge waits for the user (cancel), not a hot loop
+                    if V.mergeable_revision(conn, t) is not None:
+                        due.append(('merge', t.id))
                 elif t.integration_state == 'CONFLICT' and m.state == 'EXECUTING':
                     due.append(('retry_merge', t.id))
             if m.state == 'REVIEWING' and self.calls is not None and self._review_due(conn, m,
@@ -283,11 +285,10 @@ class VerifyWorker:
             t = rows.get(conn, entities.Task, task_id).entity
             m = rows.get(conn, entities.Mission, t.mission_id).entity
             root = evidence.project_root(conn, m.project_id)
-            passed = [v for v in _rows(conn, entities.Verification, plan_id=t.plan_id)
-                      if v.subject == Ref('task', t.id) and v.state == 'PASSED'
-                      and v.revision is not None]
+            revision = V.mergeable_revision(conn, t)
             e = V.verified_execution(conn, t)
-        revision = passed[-1].revision if passed else None
+        if revision is None:            # PENDING or a MERGING a restart left: before any node call
+            raise V.Refused('task %s has no revision a merge may take (A5)' % t.id)
         if t.integration_state == 'PENDING':
             self._do(V.begin_merge, task_id=t.id, revision=revision)
         branch = mission_branch(m.id)

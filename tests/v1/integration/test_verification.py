@@ -559,8 +559,8 @@ def _isolate(c, mid, execution_id, value=True):
 
 
 def _another_execution(c, t, **kw):
-    """Another attempt of task *t*, recorded as it ended (never ENDED_OK, so it
-    is not the one verified)."""
+    """Another attempt of task *t*, recorded as it ended (ENDED_OK makes it the
+    one verified)."""
     def put(tx, actor):
         attempt = 1 + max(r.entity.attempt for r in tx.where(entities.Execution, task_id=t.id))
         tx.insert(entities.Execution(id=ids.new_id('execution'), task_id=t.id,
@@ -663,7 +663,7 @@ def test_A6_an_isolated_execution_goes_to_you_with_no_git_and_no_revision(core, 
     t = _task(core, mid)
     assert (t.state, t.integration_state) == ('SUCCEEDED', 'PENDING')
     for _ in range(3):
-        assert core._verify.pass_once()['did'] == 'lost_race'
+        assert core._verify.pass_once() == {'changed': False}     # waits, never a hot loop
     assert node.calls == [] and _t(core, mid, 'integration_state') == 'PENDING'
 
 
@@ -836,11 +836,109 @@ def test_A6_an_old_human_rows_revision_merges_only_if_its_execution_may_supply_i
         'remove_worktree': lambda *a: None})
     out = core._verify.pass_once()
     if isolated:
-        assert out['did'] == 'lost_race' and node.calls == []
+        assert out == {'changed': False} and node.calls == []
         assert _t(core, mid, 'integration_state') == 'PENDING'
     else:
         assert out['did'] == 'merge' and 'git_merge' in node.calls
         assert _t(core, mid, 'integration_state') == 'MERGED'
+
+
+_FAKE_MERGE = {'git_merge_base': lambda *a: 'b' * 40, 'mission_worktree': lambda *a: 'wt',
+               'git_head': lambda *a: None, 'git_merge': lambda *a: ('merged', 'a' * 40),
+               'remove_worktree': lambda *a: None}
+
+
+def _accepted(c, *, revision='r1'):
+    """A task you accepted on a human row that recorded *revision*, waiting to merge."""
+    _repo, mid, t, e = _verifying(c)
+    vid = _do(c, V.start, missions=c._missions, subject=Ref('task', t.id),
+              verifier='generic_human', execution_id=e.id, revision=revision,
+              workspace=e.workdir, criteria=[dict(x, index=i, result='unknown')
+                                             for i, x in enumerate(t.acceptance)])['verification_id']
+    c.decide_verification(vid, 'accept')
+    assert (_t(c, mid), _t(c, mid, 'integration_state')) == ('SUCCEEDED', 'PENDING')
+    return mid, _task(c, mid), e, vid
+
+
+def _mergeable(c, t):
+    with c._core().read() as conn:
+        return V.mergeable_revision(conn, t)
+
+
+@pytest.mark.parametrize('isolated', [True, None, False])
+def test_A6_a_merge_a_restart_left_running_never_takes_an_isolated_claim(
+        core, monkeypatch, isolated):
+    """A task that reached MERGING before K5a, its execution known-isolated
+    since: the worker, the planner and the completion sink each refuse it before
+    any node call. Legacy None and ordinary False merge as today (G1)."""
+    mid, t, e, vid = _accepted(core)
+    _do(core, V.begin_merge, task_id=t.id, revision='r1')
+    _isolate(core, mid, e.id, isolated)
+    assert _t(core, mid, 'integration_state') == 'MERGING'
+    before, seen = _frozen(_get(core, entities.Verification, vid)), len(core.events(0))
+    node = _node(core, monkeypatch, fake=_FAKE_MERGE)
+    if isolated:
+        assert _mergeable(core, t) is None
+        assert core._verify.pass_once() == {'changed': False}
+        with pytest.raises(V.Refused):
+            core._verify._merge(t.id)
+        with pytest.raises(V.Refused):
+            _do(core, V.record_merge, missions=core._missions, task_id=t.id,
+                outcome='merged', head='a' * 40)
+        assert node.calls == [] and len(core.events(0)) == seen
+        assert _t(core, mid, 'integration_state') == 'MERGING'
+    else:
+        assert _mergeable(core, t) == 'r1'
+        assert core._verify.pass_once()['did'] == 'merge' and 'git_merge' in node.calls
+        assert _t(core, mid, 'integration_state') == 'MERGED'
+    assert _frozen(_get(core, entities.Verification, vid)) == before
+
+
+def test_A6_an_isolated_latest_row_never_falls_back_to_an_older_revision(core, monkeypatch):
+    """The latest PASSED row speaks for the task: when its execution is
+    known-isolated nothing merges, not the revision an older ordinary row named,
+    even once a later ordinary end is the verified execution."""
+    _repo, mid, t, e = _verifying(core)
+
+    def older(tx, actor):
+        attempt = 1 + max(r.entity.attempt for r in tx.where(entities.Execution, task_id=t.id))
+        x = tx.insert(entities.Execution(id=ids.new_id('execution'), task_id=t.id,
+                                         mission_id=mid, plan_id=t.plan_id, attempt=attempt,
+                                         isolated=False, process_seq=1, state='ENDED_ERROR'),
+                      actor=actor).entity
+        tx.insert(entities.Verification(id=ids.new_id('verification'), subject=Ref('task', t.id),
+                                        verifier='code', plan_id=t.plan_id, execution_id=x.id,
+                                        revision='r0', state='PASSED'), actor=actor)
+    _forge(core, mid, older)
+    vid = _do(core, V.start, missions=core._missions, subject=Ref('task', t.id),
+              verifier='generic_human', execution_id=e.id, revision='r1', workspace=e.workdir,
+              criteria=[dict(x, index=i, result='unknown')
+                        for i, x in enumerate(t.acceptance)])['verification_id']
+    _isolate(core, mid, e.id)
+    core.decide_verification(vid, 'accept')
+    t = _task(core, mid)
+    _another_execution(core, t, isolated=False, process_seq=1, state='ENDED_OK')
+    with core._core().read() as conn:
+        assert V.verified_execution(conn, t).isolated is False
+    assert t.integration_state == 'PENDING' and _mergeable(core, t) is None
+    node = _node(core, monkeypatch, fake=_FAKE_MERGE)
+    assert core._verify.pass_once() == {'changed': False}
+    from archeus.core.application import errors
+    for revision in ('r0', 'r1'):
+        with pytest.raises(errors.LOST_RACE):
+            _do(core, V.begin_merge, task_id=t.id, revision=revision)
+    assert node.calls == [] and _t(core, mid, 'integration_state') == 'PENDING'
+
+
+def test_A6_a_later_isolated_end_withdraws_an_accepted_revision(core, monkeypatch):
+    """The row's own execution was ordinary, but the task's verified execution
+    - its latest ENDED_OK - is known-isolated: that lineage merges nothing."""
+    mid, t, _e, _vid = _accepted(core)
+    _another_execution(core, t, isolated=True, process_seq=1, state='ENDED_OK')
+    assert _mergeable(core, t) is None
+    node = _node(core, monkeypatch, fake=_FAKE_MERGE)
+    assert core._verify.pass_once() == {'changed': False} and node.calls == []
+    assert _t(core, mid, 'integration_state') == 'PENDING'
 
 
 def test_A6_a_guarded_criterion_in_error_is_superseded_by_a_fresh_row_for_you(core, monkeypatch):

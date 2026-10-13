@@ -111,11 +111,20 @@ def unconfined(conn, mission_id):
                if r.entity.process_seq >= 1)
 
 
-def _supplies_revision(tx, v):
-    """May verification *v*'s revision be merged (A5)? Not when it was read from
-    a known-isolated execution's workdir; legacy None keeps today's reading (G1)."""
-    e = tx.get(entities.Execution, v.execution_id) if v.execution_id else None
-    return e is not None and e.entity.isolated is not True
+def mergeable_revision(conn, t):
+    """The revision a merge of task *t* may take (D10, A5): what its latest
+    PASSED verification of its plan recorded, and none at all when that row's
+    execution or the task's verified execution is known-isolated - never an
+    older row instead. Legacy None keeps today's reading (G1)."""
+    passed = [r.entity for r in _where(conn, entities.Verification, plan_id=t.plan_id)
+              if r.entity.subject == Ref('task', t.id) and r.entity.state == 'PASSED']
+    if not passed:
+        return None
+    v, e = passed[-1], verified_execution(conn, t)
+    src = _get(conn, entities.Execution, v.execution_id) if v.execution_id else None
+    if src is None or src.isolated is True or (e is not None and e.isolated is True):
+        return None
+    return v.revision
 
 
 def _in_force(tx, t):
@@ -444,13 +453,10 @@ def sweep(tx, *, actor):
 # ── integration (§12) ───────────────────────────────────────────────────────
 
 def _integration_facts(tx, t, revision):
-    passed = [r.entity for r in tx.where(entities.Verification, plan_id=t.plan_id)
-              if r.entity.subject == Ref('task', t.id) and r.entity.state == 'PASSED'
-              and r.entity.revision is not None and _supplies_revision(tx, r.entity)]
     # positional (task state, plan in force, verified revision, revision): only
     # Tx.transition names a state field (test_guards)
     return guards.IntegrationFacts(t.state, _in_force(tx, t),
-                                   passed[-1].revision if passed else None, revision)
+                                   mergeable_revision(tx.conn, t), revision)
 
 
 def begin_merge(tx, *, actor, task_id, revision):
@@ -470,6 +476,8 @@ def record_merge(tx, *, actor, missions, task_id, outcome, head=None, base=None,
     m = _mission(tx, t.mission_id)
     if t.integration_state != 'MERGING':
         raise Refused('task %s is not merging (%s)' % (t.id, t.integration_state))
+    if mergeable_revision(tx.conn, t) is None:
+        raise Refused('task %s has no revision a merge may take (A5)' % t.id)
     if outcome == 'merged':
         _fire(tx, entities.Task, t.id, 'fast_forward_or_clean', actor,
               'merged into %s at %s' % (_mission_branch(m.id), head), machine='integration',
