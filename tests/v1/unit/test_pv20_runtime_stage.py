@@ -139,6 +139,23 @@ def test_a_runtime_without_its_interpreter_dll_or_stdlib_is_refused(rt, missing)
     assert os.listdir(rt.home) == []
 
 
+@pytest.mark.parametrize('name', ['python.exe', 'python310.dll', 'python3.dll', 'Lib', 'DLLs'])
+def test_a_part_of_the_wrong_type_is_refused_before_anything_is_written(rt, name):
+    p = os.path.join(rt.src, name)
+    was_dir = os.path.isdir(p)
+    shutil.rmtree(p) if was_dir else os.remove(p)
+    if was_dir:
+        with open(p, 'wb') as f:
+            f.write(b'a file where a directory belongs')
+    else:
+        os.mkdir(p)
+        with open(os.path.join(p, 'x'), 'wb') as f:
+            f.write(b'x')
+    with pytest.raises(StageError, match='not the plain entry expected'):
+        _stage(rt)
+    assert os.listdir(rt.home) == []
+
+
 @pytest.mark.parametrize('missing', ['python3.dll', 'vcruntime140.dll', 'DLLs'])
 def test_an_optional_part_may_be_absent(rt, missing):
     p = os.path.join(rt.src, missing)
@@ -364,6 +381,40 @@ def _planting(monkeypatch, name, data=b'planted'):
             with open(os.path.join(p, name), 'wb') as f:
                 f.write(data)
     monkeypatch.setattr(os, 'mkdir', mkdir)
+
+
+@pytest.mark.parametrize('rel,after,left', [
+    ('Lib', 0, {}),
+    ('Lib/encodings', 0, {}),
+    # swapped once the first file beneath it is written: nothing after that one
+    ('Lib', 1, {'encodings/__init__.py': b'# encodings'})])
+def test_a_directory_made_in_the_temporary_tree_is_checked_before_every_write_beneath_it(
+        rt, monkeypatch, rel, after, left):
+    # the directory the stager made reports a reparse point from its (after+1)-th lstat
+    # on, as a junction swapped in for it would: nothing more is written through it
+    real, calls = os.lstat, []
+    tail = os.path.normcase(os.path.join(*rel.split('/')))
+
+    def fake(p, *a, **k):
+        st = real(p, *a, **k)
+        parent = os.path.dirname(os.path.abspath(p))
+        while os.path.basename(parent) and not os.path.basename(parent).startswith('.tmp-'):
+            parent = os.path.dirname(parent)
+        if not os.path.basename(parent) or \
+                os.path.normcase(os.path.relpath(os.path.abspath(p), parent)) != tail:
+            return st
+        calls.append(p)
+        if len(calls) <= after:
+            return st
+        return SimpleNamespace(st_mode=st.st_mode, st_ino=st.st_ino, st_dev=st.st_dev,
+                               st_size=st.st_size, st_mtime_ns=st.st_mtime_ns,
+                               st_nlink=st.st_nlink, st_file_attributes=REPARSE)
+    monkeypatch.setattr(os, 'lstat', fake)
+    with pytest.raises(StageError, match='an alias'):
+        _stage(rt)
+    (tmp,) = _runtime()
+    assert _files(os.path.join(paths.runtime_dir(), tmp, *rel.split('/'))) == left
+    assert _published() == []
 
 
 def test_a_name_planted_in_the_temporary_directory_is_never_written_through(rt, monkeypatch):

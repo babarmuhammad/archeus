@@ -75,8 +75,8 @@ def _plan(source_root, hook_path, version):
     rootc = os.path.normcase(root)
     rows = []
 
-    def take(src, rel):
-        st = _entry(src)
+    def take(src, rel, is_dir=None):
+        st = _entry(src, is_dir)
         real = os.path.normcase(os.path.realpath(src))
         if real != rootc and not real.startswith(rootc + os.sep):
             raise StageError('outside the runtime it is copied from: %s' % src)
@@ -91,7 +91,7 @@ def _plan(source_root, hook_path, version):
     for name in FILES + (dll,) + TREES:
         src = os.path.join(root, name)
         if _present(src):
-            take(src, name)
+            take(src, name, name in TREES)
         elif name in ('python.exe', dll, 'Lib'):
             raise StageError('the runtime has no %s: %s' % (name, root))
     st = _entry(hook_path, False)
@@ -187,14 +187,15 @@ def stage(source_root, hook_path, version=sys.version_info[:2]):
     tmp = os.path.join(runtime, '.tmp-%s-%d-%s' % (digest, os.getpid(), os.urandom(8).hex()))
     os.mkdir(tmp)
     _entry(tmp, True)
-    made = {''}
+    made = set()
     for rel, src, size, sha, sig in rows:
         parts = rel.split('/')
         for i in range(1, len(parts)):
-            d = '/'.join(parts[:i])
+            d = os.path.join(tmp, *parts[:i])
             if d not in made:
-                os.mkdir(os.path.join(tmp, *parts[:i]))
+                os.mkdir(d)
                 made.add(d)
+            _entry(d, True)             # before anything is written beneath it
         with open(src, 'rb') as f:
             got = _write(os.path.join(tmp, *parts), iter(lambda: f.read(1 << 20), b''))
         if got != sha or _sig(_entry(src, False)) != sig:
