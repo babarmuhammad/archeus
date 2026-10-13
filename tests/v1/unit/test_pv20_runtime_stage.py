@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import stat
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -18,8 +19,10 @@ import pytest
 from archeus.infra import paths
 from archeus.node import staging
 from archeus.node.staging import MANIFEST, StageError
+from archeus.node.staging import stage as captured_stage
 
 V = (3, 10)
+INSTALL = sys.base_prefix           # read at import, before any test monkeypatches sys
 REPARSE = stat.FILE_ATTRIBUTE_REPARSE_POINT
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
@@ -655,3 +658,83 @@ def test_the_runtime_is_v1s_and_no_reset_names_it(archeus_home):
         text = f.read()
     reset = text[text.index('To reset V1'):text.index('is **never** deleted')]
     assert '`run/`' in reset and 'runtime' not in reset
+
+
+# ── the suite never stages the real install (tests/v1/conftest.py, T-040) ───
+
+def _sentinels(monkeypatch):
+    """Every read the planner would make of a source, and the planner itself, record
+    and refuse instead: a guard that let the install through is caught before
+    anything of the install is read."""
+    reached = []
+
+    def refuse(name):
+        def sentinel(*a, **k):
+            reached.append((name, a))
+            raise AssertionError('the guard let %s run: %r' % (name, a))
+        return sentinel
+    real_realpath, install = os.path.realpath, os.path.normcase(INSTALL)
+
+    def realpath(p, *a, **k):
+        q = os.path.normcase(os.path.abspath(p))
+        if os.path.splitdrive(q)[0] == os.path.splitdrive(install)[0] and \
+                os.path.commonpath([q, install]) in (q, install):
+            reached.append(('realpath', p))
+            raise AssertionError('the guard let realpath run on %s' % p)
+        return real_realpath(p, *a, **k)
+    monkeypatch.setattr(staging._plan, '__wrapped__', refuse('the planner'), raising=False)
+    for name in ('_entry', '_present', '_sha', '_hook'):
+        monkeypatch.setattr(staging, name, refuse(name))
+    monkeypatch.setattr(os.path, 'realpath', realpath)
+    return reached
+
+
+NT = pytest.mark.skipif(os.name != 'nt', reason='case and separators fold only on Windows')
+
+
+@pytest.mark.parametrize('form', [
+    lambda: INSTALL,
+    lambda: INSTALL + os.sep,
+    lambda: os.path.join(INSTALL, 'Lib'),
+    lambda: os.path.join(INSTALL, 'Lib', '..'),
+    lambda: os.path.dirname(INSTALL),
+    lambda: sys.prefix,
+    lambda: os.path.dirname(sys.executable),
+    pytest.param(lambda: INSTALL.upper(), marks=NT),
+    pytest.param(lambda: INSTALL.replace(os.sep, '/'), marks=NT),
+], ids=['install', 'trailing-sep', 'inside', 'dotdot', 'parent', 'prefix', 'launcher',
+        'case', 'slashes'])
+@pytest.mark.parametrize('call', [lambda *a: staging.stage(*a), captured_stage],
+                         ids=['module', 'captured-alias'])
+def test_staging_the_installed_runtime_fails_the_test_before_any_read(monkeypatch, tmp_path,
+                                                                      form, call):
+    reached = _sentinels(monkeypatch)
+    with pytest.raises(pytest.fail.Exception, match='staged the installed runtime'):
+        call(form(), str(tmp_path / 'hook.py'), V)
+    assert reached == []
+
+
+def test_the_guard_knows_the_install_even_once_sys_is_monkeypatched(monkeypatch, tmp_path):
+    # the manager tests point sys.base_prefix at a synthetic install
+    for name in ('base_prefix', 'prefix', 'executable'):
+        monkeypatch.setattr(sys, name, str(tmp_path / 'py' / 'python.exe'))
+    reached = _sentinels(monkeypatch)
+    with pytest.raises(pytest.fail.Exception):
+        captured_stage(INSTALL, str(tmp_path / 'hook.py'), V)
+    assert reached == []
+
+
+def test_a_synthetic_runtime_reaches_the_planner_unchanged(monkeypatch, tmp_path):
+    seen = []
+
+    class Planned(Exception):
+        pass
+
+    def planner(*a, **k):
+        seen.append(a)
+        raise Planned
+    monkeypatch.setattr(staging._plan, '__wrapped__', planner, raising=False)
+    src, hook = str(tmp_path / 'py'), str(tmp_path / 'hook.py')
+    with pytest.raises(Planned):
+        captured_stage(src, hook, V)
+    assert seen == [(src, hook, V)]
