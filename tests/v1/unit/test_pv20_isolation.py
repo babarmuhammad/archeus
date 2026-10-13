@@ -921,8 +921,11 @@ class TestIsolatedLiveEndRoute:
     """manager._collect (PV-20 §3.3 H2 / A7): which command a live end reaches. For an
     isolated execution only Core's observed exit and kill decide a hand-off."""
 
-    def _collect(self, state, code, *, isolated=True, halted=False, killed=False, field=None):
+    def _collect(self, state, code, *, isolated=True, halted=False, killed=False, field=None,
+                 registry_fails=False):
         m = _manager_with_fake_node()
+        if registry_fails:
+            m.node._registry = _no_registry
         e = SimpleNamespace(id=new_execution_id(), state=state, account_id=None,
                             isolated=field, process_seq=1)
         rec = iso.IsolationRecord(execution_id=e.id, profile='p', state='established')
@@ -980,6 +983,25 @@ class TestIsolatedLiveEndRoute:
         calls = self._collect('PAUSING', 0, isolated=False, field=True)
         assert [c for c, _ in calls] == [X.record_end] and calls[0][1]['isolated'] is True
 
+    # the note is an instrument: a registry that cannot be written changes no end, and by
+    # now the handle is already out of _procs, so a raise would turn it into a restart
+    @pytest.mark.parametrize('state,code,field,want,isolated', [
+        ('HANDING_OFF', 0, True, 'record_handoff', None),
+        ('HANDING_OFF', 1, True, 'record_end', True),
+        ('RUNNING', 0, True, 'record_end', True),
+        ('HANDING_OFF', 0, None, 'record_end', False)])
+    def test_a_registry_that_cannot_be_written_never_changes_a_live_end(
+            self, caplog, state, code, field, want, isolated):
+        calls = self._collect(state, code, isolated=False, field=field, registry_fails=True)
+        assert [c for c, _ in calls] == [getattr(X, want)]
+        if want == 'record_end':
+            assert (calls[0][1]['isolated'], calls[0][1]['exit_code']) == (isolated, code)
+        assert 'registry note was not written' in caplog.text
+
+
+def _no_registry(line):
+    raise OSError('the registry cannot be written')
+
 
 class TestLostIsolationRecord:
     """T-037 / T-038: the transient record is gone and the row recorded Core's decision
@@ -988,8 +1010,10 @@ class TestLostIsolationRecord:
     ordinary rules (the owner's N1) and is never written as ordinary."""
 
     def _reconcile(self, state, *, field=True, record=None, alive=True, create_time=1.0,
-                   pid=True, adapter=None):
+                   pid=True, adapter=None, registry_fails=False):
         m = _manager_with_fake_node()
+        if registry_fails:
+            m.node._registry = _no_registry
         e = _e(state, isolated=field)
         m.node.isolation_record = lambda eid: record
         m.node.files = lambda eid: ({'process_seq': 1}, {'pid': 4242, 'create_time': create_time,
@@ -1066,7 +1090,7 @@ class TestLostIsolationRecord:
         assert [c for c, _ in m.calls] == [X.refuse]
         assert m.calls[0][1]['stop_reason'] == 'binding'
 
-    def test_the_registry_line_is_left_once_per_execution(self):
+    def test_the_registry_line_is_left_once_per_execution(self, caplog):
         m = _manager_with_fake_node()
         e = _e('PAUSED')
         m.node.isolation_record = lambda eid: None
@@ -1076,6 +1100,28 @@ class TestLostIsolationRecord:
         m._reconcile_one(e, disarmed=False)
         assert [x['op'] for x in m.node.registry] == ['isolation_record_missing']
         assert m.node.registry[0]['execution_id'] == e.id
+        assert caplog.text.count('isolation_record_missing') == 1    # and one warning
+
+    def test_a_registry_that_cannot_be_written_never_stops_the_kill(self, caplog):
+        m, e, adapter, _ = self._reconcile('RUNNING', registry_fails=True)
+        assert len(m.node.kills) == 1 and self._commands(m) == [X.lost]
+        assert 'registry note was not written' in caplog.text
+
+    @pytest.mark.parametrize('field,op', [(True, 'isolation_record_missing'),
+                                          (None, 'isolation_decision_unknown')])
+    def test_the_note_survives_the_boot_compaction(self, field, op):
+        m = _manager_with_fake_node()
+        e = _e('RUNNING', isolated=field)
+        m._read = lambda: ([e], {})
+        m._sweep_isolation = lambda live: []
+        m.node.disarmed = lambda: False
+        m.node.isolation_record = lambda eid: None
+        m.node.files = lambda eid: (None, None, None)
+        m.node.compact_registry = m.node.registry.clear      # keeps no note line
+        m.registry = SimpleNamespace(get=lambda hid: object())
+        m.boot()
+        assert self._commands(m) == [X.lost]
+        assert [(x['op'], x['execution_id']) for x in m.node.registry] == [(op, e.id)]
 
 
 # ── item 8: A4 built, not enforced ────────────────────────────────────────────

@@ -678,6 +678,10 @@ class ExecutionManager:
             except Exception as err:
                 failed = failed or err
         self.node.compact_registry()
+        # compaction keeps only unended spawns, so the notes the reconciles above left
+        # are written again after it
+        for execution_id, op in sorted(self._noted):
+            self._registry_note(execution_id, op)
         # PV-20 §3.2/§3.7: a Core that comes up reclaims what the last one left — the
         # quarantine retried, and every identity whose execution is not live torn down
         self._sweep_isolation(live)
@@ -759,9 +763,20 @@ class ExecutionManager:
         return False
 
     def _note(self, e, op):
-        if (e.id, op) not in self._noted:
-            self._noted.add((e.id, op))
-            self.node._registry({'op': op, 'execution_id': e.id, 'at': time.time()})
+        if (e.id, op) in self._noted:
+            return
+        self._noted.add((e.id, op))
+        log.warning('execution %s: %s', e.id, op)
+        self._registry_note(e.id, op)
+
+    def _registry_note(self, execution_id, op):
+        # an instrument only: a failed write must never stop the classification it
+        # describes, which runs mid-end with the process handle already dropped
+        try:
+            self.node._registry({'op': op, 'execution_id': execution_id, 'at': time.time()})
+        except OSError as err:
+            log.warning('execution %s: the %s registry note was not written: %s',
+                        execution_id, op, err)
 
     def _reconcile_isolated(self, e, adapter, iso, handle, disarmed):
         """Restart reconciliation of an isolated execution (PV-20 §3.7; ADR-0053
