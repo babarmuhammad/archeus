@@ -33,6 +33,24 @@ from archeus.node.local import LocalNode
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+
+def _staged_hook(tmp_path):
+    """The hook command Core hands `default_plan` (C4b): a real stage, built from a
+    synthetic runtime tree, so no installed runtime is ever read or copied."""
+    from archeus.infra import paths
+    from archeus.node import staging
+    src = tmp_path / 'synthetic-py'
+    for rel in ('python.exe', 'python310.dll', 'Lib/os.py'):
+        p = src / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b'synthetic')
+    hook = tmp_path / 'synthetic-hook' / 'hook.py'
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_bytes(b'# the hook')
+    os.makedirs(paths.archeus_home(), exist_ok=True)
+    stage = staging.stage(str(src), str(hook), version=(3, 10))
+    return os.path.join(stage, 'python.exe'), '-I', os.path.join(stage, 'hook.py')
+
 #: an ACL-changing program, however it is spelled on a command line
 ACL_TOOL = re.compile(r'(?i)(?:^|[\s\\/"\'])(?:i?cacls|takeown)(?:\.exe)?(?:$|[\s"\'])|set-acl')
 
@@ -506,7 +524,7 @@ class TestClassSeparation:
                                                                       monkeypatch):
         monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path))
         spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go',
-                                  workdir=str(tmp_path))
+                                  workdir=str(tmp_path), hook_settings=_staged_hook(tmp_path))
         req = iso.default_plan(spec)
         p = ExecPaths(spec.execution_id)
         assert (req.mailbox, req.response, req.sentinel) == (p.req, p.res, p.ctl)
@@ -518,10 +536,12 @@ class TestClassSeparation:
 
     def test_one_executions_plan_names_nothing_of_anothers(self, tmp_path, monkeypatch):
         monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path))
+        hook = _staged_hook(tmp_path)
 
         def plan():
             return iso.default_plan(base.ExecutionSpec(
-                execution_id=new_execution_id(), prompt='go', workdir=str(tmp_path)))
+                execution_id=new_execution_id(), prompt='go', workdir=str(tmp_path),
+                hook_settings=hook))
 
         def own(r):
             return {r.mailbox, r.response, r.sentinel, r.spawn_config, r.state_dir,
@@ -1195,7 +1215,7 @@ class TestProductionDispatchDisabled:
         project.mkdir()
         monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path / 'home'))
         spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go',
-                                  workdir=str(project))
+                                  workdir=str(project), hook_settings=_staged_hook(tmp_path))
         req = iso.default_plan(spec)
         # the class 1-3 directories and the spawn configuration as `base.spawn` and the
         # adapter leave them: the layout is there, and production still cannot start
@@ -1209,6 +1229,79 @@ class TestProductionDispatchDisabled:
         unmet = iso.unmet_conditions(conds)
         assert 'grants' in unmet and 'mailbox' not in unmet
         assert conds['grants'][1] == 'no broker holds provider access (R3-B)'
+
+
+# ── T-040 (C4b): the runtime and hook rows name Core's verified stage ─────────
+
+class TestStagedHookRows:
+    def test_the_runtime_and_hook_rows_name_the_stage_and_nothing_shared(self, tmp_path,
+                                                                         monkeypatch):
+        from archeus.infra import paths
+        monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path / 'home'))
+        cmd = _staged_hook(tmp_path)
+        project = tmp_path / 'project'
+        project.mkdir()
+        req = iso.default_plan(base.ExecutionSpec(
+            execution_id=new_execution_id(), prompt='go', workdir=str(project),
+            hook_settings=cmd))
+        stage = os.path.dirname(cmd[0])
+        assert {g.row: (g.path, g.access) for g in req.grants if g.row in ('runtime', 'hook')} \
+            == {'runtime': (stage, 'rx'), 'hook': (stage, 'rx')}
+        assert os.path.dirname(stage) == paths.runtime_dir()
+        for g in req.grants:
+            for shared in (os.path.dirname(os.path.abspath(sys.executable)), sys.base_prefix,
+                           REPO):
+                p, s = os.path.normcase(g.path), os.path.normcase(shared)
+                assert p != s and not p.startswith(s + os.sep), (g.row, g.path)
+
+    def _refused(self, tmp_path, cmd):
+        b = FakeBoundary()
+        a = iso.Isolation(FakeNode(), boundary=b)
+        started = []
+
+        class Adapter:
+            id = 'fake'
+
+            def start(self, spec):
+                started.append(spec)
+
+        node = LocalNode(isolation=a)
+        spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go',
+                                  workdir=str(tmp_path), hook_settings=cmd)
+        with pytest.raises(base.SpawnFailed, match='isolation: the hook'):
+            node.spawn(Adapter(), spec, isolated=True)
+        # refused before any profile operation, and nothing started
+        assert (b.created, b.looked, b.launch_calls, started) == ([], [], [], [])
+        assert a.record(spec.execution_id) is None
+
+    @pytest.mark.parametrize('forge', [
+        'missing', 'ordinary', 'list', 'no -I', 'relative', 'relative to the stage',
+        'hook elsewhere', 'not under runtime', 'tampered'])
+    def test_a_missing_forged_or_unverified_hook_command_is_refused(self, tmp_path,
+                                                                    monkeypatch, forge):
+        monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path / 'home'))
+        exe, flag, hook = _staged_hook(tmp_path)
+        stage = os.path.dirname(exe)
+        fake = tmp_path / 'fake'
+        fake.mkdir()
+        if forge == 'tampered':
+            with open(os.path.join(stage, 'Lib', 'os.py'), 'ab') as f:
+                f.write(b' changed')
+        if forge == 'relative to the stage':
+            # it would verify from here, and the CLI would resolve it from the workdir
+            monkeypatch.chdir(os.path.dirname(stage))
+        digest = os.path.basename(stage)
+        cmd = {'missing': None,
+               'ordinary': (sys.executable, M.HOOK),
+               'list': [exe, flag, hook],
+               'no -I': (exe, '-E', hook),
+               'relative': ('python.exe', '-I', 'hook.py'),
+               'relative to the stage': (os.path.join(digest, 'python.exe'), '-I',
+                                         os.path.join(digest, 'hook.py')),
+               'hook elsewhere': (exe, '-I', M.HOOK),
+               'not under runtime': (str(fake / 'python.exe'), '-I', str(fake / 'hook.py')),
+               'tampered': (exe, flag, hook)}[forge]
+        self._refused(tmp_path, cmd)
 
 
 # ── Phase A containment (ACL incident, 2026-10-09) ────────────────────────────
@@ -1360,13 +1453,16 @@ class TestPhaseAContainment:
         # install, the repository and its harness sources on every unmet establishment
         b = FakeBoundary()
         a = iso.Isolation(FakeNode(), boundary=b)
-        spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go', workdir=REPO)
+        spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go', workdir=REPO,
+                                  hook_settings=_staged_hook(tmp_path))
         with pytest.raises(iso.IsolationUnavailable) as err:
             a.establish(iso.default_plan(spec))
         assert err.value.reason.startswith('condition_unmet:')
         rec = a.record(spec.execution_id)
         assert rec.state == 'failed' and rec.applied == ()
-        assert {REPO, PY_INSTALL} <= {g.path for g in rec.planned}     # kept as evidence
+        planned = {g.path for g in rec.planned}                        # kept as evidence
+        assert REPO in planned and os.path.dirname(spec.hook_settings[0]) in planned
+        assert PY_INSTALL not in planned                    # C4b: the stage, never the install
         name = iso.profile_name(spec.execution_id)
         assert b.deleted == [name] and b.assigned == [] and b.launch_calls == []
         # the end path and the sweep finish the job with nothing but the profile

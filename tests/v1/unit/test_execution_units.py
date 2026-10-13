@@ -957,13 +957,22 @@ def test_an_isolated_end_outside_a_handoff_keeps_its_charge(state, code):
 # ── T-021 D1: one isolation decision, before the workspace and the inventory ──
 
 def _spawn_rig(monkeypatch, tmp_path, decide=False, authority='present', opt_ins=None,
-               scenario=None, project=None, mode='worktree', git=None):
+               scenario=None, project=None, mode='worktree', git=None, staged=None):
     """manager._spawn (and _resume) on fakes, every step landing in one ordered log.
     *decide* is what the node's isolation authority answers, or an exception it raises.
     The real `_workspace` runs; *project* is the project's root, *git* what the node's
-    git probes of it answer."""
+    git probes of it answer. The stager is faked, so no installed runtime is read:
+    *staged* is the error it raises, or None for a stage under tmp_path."""
     from archeus.core.execution import manager as M
     log = []
+    stage_dir = str(tmp_path / 'home' / 'runtime' / ('a' * 64))
+
+    def stage(source_root, hook_path):
+        log.append(('stage', source_root, hook_path))
+        if staged is not None:
+            raise staged
+        return stage_dir
+    monkeypatch.setattr(M.staging, 'stage', stage)
 
     class Authority:
         def requested(self, execution_id, adapter):
@@ -1058,7 +1067,7 @@ def test_a_resume_without_its_isolation_record_is_refused_before_the_decision(
         assert log[1][1]['stop_reason'] == 'binding'
         assert 'isolation record is gone' in log[1][1]['reason']
     else:
-        assert _steps(log)[:3] == ['resume_checked', 'requested', 'workspace']
+        assert _steps(log)[:2] == ['resume_checked', 'requested'] and 'workspace' in _steps(log)
         assert 'refuse' not in _steps(log)
 
 
@@ -1071,8 +1080,8 @@ def test_isolation_is_decided_once_before_the_workspace_and_the_inventory(
         monkeypatch, tmp_path, decide):
     m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, decide)
     assert m._spawn(e, mission) is True
-    assert _steps(log) == ['requested', 'workspace', 'inventory', 'prepare_process', 'spawn',
-                           'record_process']
+    assert _steps(log) == ['requested'] + ['stage'] * decide + [
+        'workspace', 'inventory', 'prepare_process', 'spawn', 'record_process']
     assert log[0][1:] == (e.id, adapter)
     (_, spec, kw), = [x for x in log if x[0] == 'spawn']
     assert kw == {'resume_state': None, 'isolated': decide}
@@ -1158,10 +1167,10 @@ def test_an_isolated_project_execution_is_refused_before_its_root_is_touched(
                                              project=str(tmp_path / 'repo'), mode=mode,
                                              git=GIT[git])
     assert _run(m, e, mission, resume, log) is True
-    assert _steps(log) == ['requested', 'workspace', 'refuse']
-    assert log[1][1] == {'isolated': True}
-    assert log[2][1]['stop_reason'] == 'workspace'
-    assert 'isolated execution has no project workspace' in log[2][1]['reason']
+    assert _steps(log) == ['requested', 'stage', 'workspace', 'refuse']
+    assert log[2][1] == {'isolated': True}
+    assert log[3][1]['stop_reason'] == 'workspace'
+    assert 'isolated execution has no project workspace' in log[3][1]['reason']
 
 
 @pytest.mark.parametrize('decide', [False, True])
@@ -1219,10 +1228,50 @@ def test_an_isolated_executions_hook_runs_in_isolated_mode(monkeypatch, tmp_path
     assert _run(m, e, mission, resume, log) is True
     assert _steps(log).count('requested') == 1          # the one decision, never re-asked
     (_, spec, kw), = [x for x in log if x[0] == 'spawn']
-    want = (sys.executable, '-I', HOOK) if decide else (sys.executable, HOOK)
+    stage = str(tmp_path / 'home' / 'runtime' / ('a' * 64))
+    want = ((os.path.join(stage, 'python.exe'), '-I', os.path.join(stage, 'hook.py'))
+            if decide else (sys.executable, HOOK))
     assert spec.hook_settings == want
     # the Claude Code settings file carries it as it carries the rest: each part quoted
     with open(cc.ClaudeCodeAdapter(exe='claude')._settings(spec), encoding='utf-8') as f:
         hooks = json.load(f)['hooks']
-    cmd = ('"%s" "-I" "%s"' if decide else '"%s" "%s"') % (sys.executable, HOOK)
+    cmd = ' '.join('"%s"' % part for part in want)
     assert {h['hooks'][0]['command'] for h in hooks['PreToolUse'] + hooks['PreCompact']} == {cmd}
+
+
+# ── T-040 (C4b): the isolated hook runs from Core's verified stage ──
+
+@pytest.mark.parametrize('resume', [False, True])
+def test_every_isolated_process_stages_from_the_real_install_never_a_venv(
+        monkeypatch, tmp_path, resume):
+    from archeus.core.execution.manager import HOOK
+    base_prefix, venv = str(tmp_path / 'install'), str(tmp_path / 'venv' / 'Scripts')
+    monkeypatch.setattr(sys, 'base_prefix', base_prefix)
+    monkeypatch.setattr(sys, 'executable', os.path.join(venv, 'python.exe'))
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, True)
+    assert _run(m, e, mission, resume, log) is True
+    # once per process, a resume's included: verified again, never a cached answer
+    assert [x for x in log if x[0] == 'stage'] == [('stage', base_prefix, HOOK)]
+    assert _steps(log).index('stage') == _steps(log).index('requested') + 1
+    (_, spec, kw), = [x for x in log if x[0] == 'spawn']
+    assert not [p for p in spec.hook_settings if p.startswith((venv, base_prefix))]
+
+
+@pytest.mark.parametrize('resume', [False, True])
+def test_an_ordinary_process_never_stages(monkeypatch, tmp_path, resume):
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, False)
+    assert _run(m, e, mission, resume, log) is True
+    assert 'stage' not in _steps(log)
+
+
+@pytest.mark.parametrize('resume', [False, True])
+@pytest.mark.parametrize('err', [OSError('copy failed'), PermissionError('denied')])
+def test_a_stage_that_cannot_be_made_or_verified_starts_nothing_uncharged(
+        monkeypatch, tmp_path, resume, err):
+    from archeus.node.staging import StageError
+    for failure in (err, StageError('the stage differs from its manifest')):
+        m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, True, staged=failure)
+        assert _run(m, e, mission, resume, log) is True
+        assert _steps(log) == ['requested', 'stage', 'refuse']   # no workspace, inventory,
+        assert log[2][1]['stop_reason'] == 'binding'             # preparation or spawn
+        assert 'hook runtime could not be staged' in log[2][1]['reason']

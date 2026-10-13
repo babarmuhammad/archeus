@@ -57,6 +57,7 @@ from claude_sessions import config
 from ..core.domain import ids
 from ..harnesses import base
 from ..infra.paths import ExecPaths, isolation_dir, isolation_state, quarantine_log, run_dir
+from . import staging
 
 WINDOWS = sys.platform.startswith('win')
 
@@ -120,7 +121,8 @@ CONDITIONS = ('identity', 'grants', 'no_broad_grants', 'job', 'mailbox', 'isolat
 
 #: what the §3.1 inventory requires Core to have granted before the process starts.
 #: A production request cannot supply all of it yet (the broker row is R3-B's, and
-#: the runtime and hook rows wait for Core-staged copies), so it fails closed here.
+#: the runtime and hook rows name Core's stage, which nothing grants), so it fails
+#: closed here.
 REQUIRED_GRANTS = ('workspace', 'runtime', 'hook', 'request', 'response', 'sentinel', 'state')
 
 #: the execution's three mailbox classes (§7.5, R2) as inventory rows, each with the
@@ -1113,6 +1115,25 @@ class Isolation:
         return out
 
 
+def _staged(cmd):
+    """The stage the isolated hook command runs from: Core's `(python.exe, -I,
+    hook.py)` inside one verified stage under `runtime/`. Anything else (no command,
+    another shape, paths outside one stage, a stage that does not verify) refuses the
+    launch before any profile is touched."""
+    if not (isinstance(cmd, tuple) and len(cmd) == 3 and cmd[1] == '-I'
+            and all(isinstance(p, str) and os.path.isabs(p) for p in (cmd[0], cmd[2]))):
+        raise base.SpawnFailed('isolation: the hook command is not a staged one: %r'
+                               % (cmd,))
+    stage = os.path.dirname(cmd[0])
+    if (cmd[0], cmd[2]) != (os.path.join(stage, 'python.exe'),
+                            os.path.join(stage, staging.HOOK)):
+        raise base.SpawnFailed('isolation: the hook command is not one stage: %r' % (cmd,))
+    try:
+        return staging.verify(stage)
+    except OSError as err:
+        raise base.SpawnFailed('isolation: the hook runtime does not verify: %s' % err)
+
+
 def default_plan(spec):
     """The §3.1 inventory as this layout can establish it today — the production shape.
 
@@ -1125,14 +1146,13 @@ def default_plan(spec):
     synthetic fixture supplies its own plan and satisfies the conditions in the fixture.
     """
     paths = ExecPaths(spec.execution_id)
-    here = os.path.dirname(os.path.abspath(__file__))
+    stage = _staged(spec.hook_settings)
     # planned rows only: nothing here applies any of them. The runtime and hook rows
-    # name the real Python install and this repository, which no grant may ever touch
-    # (one did, 2026-10-08); applying access is the production-path slice's, on
-    # Core-staged copies
+    # name Core's verified stage (C4b), never the real Python install or this
+    # repository, which no grant may ever touch (one did, 2026-10-08)
     grants = (Grant(spec.workdir, 'rw', 'workspace'),
-              Grant(os.path.dirname(os.path.abspath(sys.executable)), 'rx', 'runtime'),
-              Grant(os.path.join(os.path.dirname(here), 'harnesses'), 'rx', 'hook'),
+              Grant(stage, 'rx', 'runtime'),
+              Grant(stage, 'rx', 'hook'),
               Grant(paths.req, 'rw', 'request'),
               Grant(paths.res, 'rx', 'response'),
               Grant(paths.ctl, 'rx', 'sentinel'),

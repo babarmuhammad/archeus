@@ -30,6 +30,7 @@ from ...harnesses import base
 from ...infra.artifacts import store
 from ...infra.db import rows
 from ...infra.paths import ExecPaths
+from ...node import staging
 from ...node.local import LocalNode
 from ..application import errors, executions as X, optins, resources
 from ..domain import entities, states
@@ -203,6 +204,18 @@ class ExecutionManager:
                      reason='the isolation decision could not be taken: %s'
                      % type(err).__name__)
             return True
+        hook = (sys.executable, HOOK)
+        if isolated:
+            # C4b (T-034): the isolated hook runs from Core's verified copy of the real
+            # install (base_prefix, never a venv launcher's directory), verified again on
+            # every process, a resume's included. No copy, no start: never Core's own
+            try:
+                stage = staging.stage(sys.base_prefix, HOOK)
+            except OSError as err:
+                self._do(X.refuse, execution_id=e.id, stop_reason='binding',
+                         reason='the hook runtime could not be staged: %s' % err)
+                return True
+            hook = (os.path.join(stage, 'python.exe'), '-I', os.path.join(stage, staging.HOOK))
         try:
             workdir, branch = self._workspace(e, m, t, isolated=isolated)
         except OSError as err:
@@ -232,7 +245,7 @@ class ExecutionManager:
             # an isolated execution's hook runs isolated (-I: no PYTHON* variables, no
             # user site, no script directory on sys.path), so the gate on every tool
             # call imports nothing the execution could plant (T-031 §3)
-            hook_settings=(sys.executable, '-I', HOOK) if isolated else (sys.executable, HOOK),
+            hook_settings=hook,
             opt_ins=opt_ins,
             task_contract={'key': t.key, 'kind': t.kind, 'estimate': t.estimate,
                            'action_classes': list(t.action_classes),
