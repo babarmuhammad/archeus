@@ -495,8 +495,12 @@ class LocalNode:
         import subprocess
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         # the project's own commands, not Core's: nothing of a pytest that may be
-        # running Core (a test) leaks into them
-        env = {k: v for k, v in os.environ.items() if not k.startswith('PYTEST_')}
+        # running Core (a test) leaks into them, and no ARCHEUS_* name - HOME
+        # locates run/ (core.json, local-token), the hook names carry execution
+        # credentials. K-O2 interim, not R4b: the user's identity still reads
+        # run/ at its default location.
+        env = {k: v for k, v in os.environ.items()
+               if not k.startswith(('PYTEST_', 'ARCHEUS_'))}
         env.update(PYTHONDONTWRITEBYTECODE='1', GIT_TERMINAL_PROMPT='0')
         t0 = time.monotonic()
         with open(out_path, 'wb') as out:
