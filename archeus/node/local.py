@@ -13,16 +13,21 @@ A process is identified by (pid, create_time), never by a pid alone
 time through the P0.5 seam `proc.process_create_time`.
 """
 
+import functools
 import hashlib
 import json
 import os
+import re
+import shutil
 import time
 
 from claude_sessions import config, proc
 
 from ..harnesses import base
-from ..infra.paths import ExecPaths, processes_registry, run_dir, stop_sentinel
+from ..infra.paths import (ExecPaths, archeus_home, processes_registry, repo_store, repos_dir,
+                           run_dir, stop_sentinel)
 from . import isolation as isolation_mod
+from .staging import _entry, _present
 
 #: control flags the hook reads (P11 PAUSE/STOP; P12 HANDOFF, p12-design-gate §10.1)
 FLAGS = ('PAUSE', 'STOP', 'HANDOFF')
@@ -31,6 +36,32 @@ FLAGS = ('PAUSE', 'STOP', 'HANDOFF')
 CORE_GIT_NAME, CORE_GIT_EMAIL = 'Archeus', 'archeus@localhost'
 #: the tail of a check's output kept as evidence (p13-design-gate §8.2)
 CHECK_OUTPUT_KEEP = 256 * 1024
+
+# PV-20 K1 (T-046 and its correction C-1013-T046): Core's own Git store, run by one
+# pinned runner. The pins remove Git's configured execution points; they do not
+# make Git a sandbox for hostile objects.
+
+#: the oldest Git whose manual documents every pin `_store_pin` sets: `--attr-source`
+#: and GIT_ATTR_SOURCE first appear in the 2.41.0 git(1) manual (absent from
+#: 2.40.0), GIT_CONFIG_GLOBAL/SYSTEM earlier (absent from 2.31.0)
+STORE_GIT_FLOOR = (2, 41, 0)
+#: every store is created SHA-1, so this is the empty tree its attributes come from
+EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
+#: a store's HEAD: unborn, so no tree of its content is ever "the current one"
+STORE_HEAD = 'ref: refs/archeus/none\n'
+#: the plumbing `store_read` may run in a trusted store
+STORE_READS = ('rev-parse', 'cat-file', 'ls-tree', 'merge-base', 'diff')
+#: per mode, the only subcommands the runner starts
+_STORE_ARGS = {'version': ('version',), 'init': ('init',), 'seal': ('symbolic-ref', 'mktree'),
+               'trusted': STORE_READS + ('fetch', 'update-ref'), 'base': ('rev-parse',)}
+#: the only lines `init --bare` may leave in a store's config before Core seals it
+_INIT_CONFIG = re.compile(r'\[core\]|\t(repositoryformatversion = 0|bare = true|'
+                          r'(filemode|symlinks|ignorecase|precomposeunicode) = (true|false))')
+_REF = re.compile(r'refs/[A-Za-z0-9_][A-Za-z0-9_./-]*')
+
+
+class StoreError(OSError):
+    """A store, its pin or a Git call cannot be trusted: refused, nothing kept back."""
 
 
 class LocalNode:
@@ -522,3 +553,210 @@ class LocalNode:
         return {'exit_code': None if error else child.returncode,
                 'duration_ms': int((time.monotonic() - t0) * 1000), 'error': error,
                 'output': tail, 'output_bytes': size, 'truncated': size > keep}
+
+    # ── PV-20 K1: the Core-owned store (keep-all: nothing here deletes) ──
+
+    #: no production caller may fetch until the source side of a local fetch is
+    #: accepted on evidence (T-046 C1); only a test sets this, on purpose, by name
+    store_fetch_accepted = False
+
+    @staticmethod
+    def store_git(mode, args, *, git_dir=None, stdin=None, timeout=120):
+        """The one spawner of a pinned Git call; stdout, or StoreError."""
+        if not args or args[0] not in _STORE_ARGS[mode]:
+            raise StoreError('git %s is not a %s call' % (args[:1], mode))
+        argv, env, cwd = _store_pin(mode, git_dir)
+        _outside_executions(cwd, *([git_dir] if git_dir else []))
+        r = proc.run(argv + list(args), cwd=cwd, env=env, timeout=timeout, stdin=stdin)
+        if r is None or r.returncode:
+            raise StoreError('git %s failed: %s' % (args[0], (r.stderr or r.stdout).strip()
+                                                     if r is not None else 'could not run'))
+        return r.stdout
+
+    @staticmethod
+    def store_open(project_id):
+        """The project's store, created and sealed the first time and checked
+        against its pin record every time (T-046 C1 steps 1-6). Returns its path."""
+        store = repo_store(project_id)
+        pin = _pin_files()
+        version = _git_version()
+        owned = os.path.join(pin, project_id + '.owned')
+        record = os.path.join(pin, project_id + '.json')
+        if not _present(store):
+            try:
+                open(owned, 'xb').close()       # Core claims the store before it exists
+            except FileExistsError:
+                pass                            # a claim a crash left before its init
+            LocalNode.store_git('init', ['init', '--bare', '-q', '--object-format=sha1',
+                                         '--template=' + os.path.join(pin, 'empty'), store])
+        elif not _present(owned):
+            raise StoreError('a store Core never claimed: %s' % store)
+        _layout(store)
+        cfg = os.path.join(store, 'config')
+        if not _present(record):
+            if _present(os.path.join(store, 'packed-refs')) or any(
+                    files for _d, _s, files in os.walk(os.path.join(store, 'refs'))):
+                raise StoreError('an unsealed store holds refs: %s' % store)
+            with open(cfg, 'rb') as f:
+                lines = f.read().decode('utf-8').splitlines()
+            if not all(_INIT_CONFIG.fullmatch(x) for x in lines if x):
+                raise StoreError('an unsealed store has config Core did not write: %s' % store)
+            LocalNode.store_git('seal', ['symbolic-ref', 'HEAD', 'refs/archeus/none'], git_dir=store)
+            tree = LocalNode.store_git('seal', ['mktree'], git_dir=store, stdin='').strip()
+            if tree != EMPTY_TREE:
+                raise StoreError('the empty tree is %s, not %s' % (tree, EMPTY_TREE))
+            if not config.write_json_atomic(record, _pin_record(store, version)):
+                raise StoreError('could not record the pin of %s' % store)
+        with open(record, encoding='utf-8') as f:
+            if json.load(f) != _pin_record(store, version):
+                raise StoreError('the store or its Git is not the one Core sealed: %s' % store)
+        with open(os.path.join(store, 'HEAD'), 'rb') as f:
+            head = f.read().decode('utf-8', 'replace')
+        if head != STORE_HEAD or not os.path.isfile(
+                os.path.join(store, 'objects', EMPTY_TREE[:2], EMPTY_TREE[2:])):
+            raise StoreError('the store is not as Core sealed it: %s' % store)
+        return store
+
+    @staticmethod
+    def store_read(project_id, args):
+        """Plumbing in a trusted store; a diff never runs an external driver or textconv."""
+        args = list(args)
+        if not args or args[0] not in STORE_READS:
+            raise StoreError('git %s is not a store read' % args[:1])
+        store = LocalNode.store_open(project_id)
+        if args[0] == 'diff':
+            args[1:1] = ['--no-ext-diff', '--no-textconv']
+        return LocalNode.store_git('trusted', args, git_dir=store)
+
+    @staticmethod
+    def store_fetch(project_id, root, rev_name, expect, ref):
+        """*rev_name* of the repository at *root* into the store as *ref*, only if
+        it still names *expect*, the commit Core resolved (T-046 §4.2); the
+        incoming ref is kept. Unavailable until `store_fetch_accepted`."""
+        if LocalNode.store_fetch_accepted is not True:
+            raise StoreError('no fetch into a store until its source side is accepted '
+                             '(T-046 C1)')
+        if not (_REF.fullmatch(rev_name) and _REF.fullmatch(ref) and ref.startswith('refs/archeus/')
+                and '..' not in rev_name + ref and re.fullmatch(r'[0-9a-f]{40}', expect)
+                and os.path.isabs(root)):
+            raise StoreError('not a fetch Core may make: %r' % ((root, rev_name, expect, ref),))
+        store = LocalNode.store_open(project_id)
+        _outside_executions(root)
+        incoming = 'refs/archeus/incoming/' + ref[len('refs/archeus/'):]
+        LocalNode.store_git('trusted', ['fetch', '--no-tags', '--no-recurse-submodules',
+                                        '--no-write-fetch-head', '--no-auto-gc', '--end-of-options',
+                                        root, '+%s:%s' % (rev_name, incoming)], git_dir=store)
+        got = LocalNode.store_git('trusted', ['rev-parse', '--verify', '-q', incoming + '^{commit}'],
+                                  git_dir=store).strip()
+        if got != expect:
+            raise StoreError('lost race: %s is now %s, not %s' % (rev_name, got, expect))
+        LocalNode.store_git('trusted', ['update-ref', ref, expect], git_dir=store)
+        return expect
+
+    @staticmethod
+    def store_resolve_base(root, rev):
+        """The commit *rev* names in the project repository at *root*, read under
+        the pin: global and system config, hooks and replace refs are not read;
+        the repository's own local config still is. Reads only; no caller yet."""
+        from claude_sessions import repos
+        _pin_files()
+        _git_version()
+        git_dir = repos._gitdir(root)
+        if not git_dir or rev.startswith('-'):
+            raise StoreError('no repository or revision to resolve: %r' % ((root, rev),))
+        return LocalNode.store_git('base', ['rev-parse', '--verify', '-q', '--end-of-options',
+                                            rev + '^{commit}'], git_dir=git_dir).strip()
+
+
+@functools.lru_cache(maxsize=None)
+def _git_exe():
+    # resolved once per process; on Windows `which` also searches the current
+    # directory first, which yields a relative path: refused, never run
+    exe = shutil.which('git')
+    if not exe or not os.path.isabs(exe):
+        raise StoreError('no absolute git on PATH: %r' % (exe,))
+    return exe
+
+
+@functools.lru_cache(maxsize=None)
+def _git_version():
+    out = LocalNode.store_git('version', ['version']).strip()
+    m = re.match(r'git version (\d+)\.(\d+)\.(\d+)', out)
+    if not m or tuple(int(x) for x in m.groups()) < STORE_GIT_FLOOR:
+        raise StoreError('git %r is older than %s or unreadable'
+                         % (out, '.'.join(map(str, STORE_GIT_FLOOR))))
+    return out
+
+
+def _store_pin(mode, git_dir):
+    """The one pin (T-046 C1): argv prefix, environment and cwd of a store call.
+    Of the inherited environment only the platform's own variables survive."""
+    pin = os.path.join(repos_dir(), '.pin')
+    empty, cfg = os.path.join(pin, 'empty'), os.path.join(pin, 'empty.cfg')
+    exe = _git_exe()
+    env = {k: os.environ[k] for k in ('SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP') if k in os.environ}
+    env.update(PATH=os.path.dirname(exe), HOME=empty, XDG_CONFIG_HOME=empty,
+               GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=cfg, GIT_CONFIG_SYSTEM=cfg,
+               GIT_TERMINAL_PROMPT='0', GIT_ALLOW_PROTOCOL='file', GIT_PROTOCOL_FROM_USER='0')
+    argv = [exe]
+    if git_dir is None:                 # version, init: no repository may be discovered
+        env['GIT_CEILING_DIRECTORIES'] = repos_dir()
+        cwd = empty if mode == 'version' else repos_dir()
+    else:
+        argv += ['--git-dir', git_dir, '--no-replace-objects']
+        if mode == 'trusted':
+            argv += ['--attr-source', EMPTY_TREE]
+        cwd = git_dir
+    for c in ('core.hooksPath=' + empty, 'core.fsmonitor=false', 'core.attributesFile=' + cfg,
+              'submodule.recurse=false', 'gc.auto=0', 'maintenance.auto=false'):
+        argv += ['-c', c]
+    return argv, env, cwd
+
+
+def _pin_files():
+    """`repos/.pin/`: the empty directory and file every pin points Git at,
+    created by Core and refused once anything is in them."""
+    pin = os.path.join(repos_dir(), '.pin')
+    empty, cfg = os.path.join(pin, 'empty'), os.path.join(pin, 'empty.cfg')
+    os.makedirs(empty, exist_ok=True)
+    try:
+        open(cfg, 'xb').close()
+    except FileExistsError:
+        pass
+    for d in (archeus_home(), repos_dir(), pin, empty):
+        _entry(d, True)
+    if os.listdir(empty) or _entry(cfg, False).st_size:
+        raise StoreError('a pin file is not empty: %s' % pin)
+    return pin
+
+
+def _outside_executions(*paths_):
+    """No store call names a path in an execution's area: run/ (every class-1..7
+    directory) and the task worktrees."""
+    for p in paths_:
+        p = os.path.normcase(os.path.abspath(p))
+        for area in (run_dir(), os.path.join(archeus_home(), 'worktrees')):
+            a = os.path.normcase(os.path.abspath(area))
+            try:
+                if os.path.commonpath([p, a]) == a:
+                    raise StoreError('a store call inside an execution area: %s' % p)
+            except ValueError:      # another drive
+                pass
+
+
+def _layout(store):
+    _entry(store, True)
+    hooks = os.path.join(store, 'hooks')
+    if _present(hooks) and os.listdir(hooks):
+        raise StoreError('a store with hooks: %s' % store)
+    for rel in (('info', 'attributes'), ('objects', 'info', 'alternates'), ('commondir',),
+                ('config.worktree',)):
+        if _present(os.path.join(store, *rel)):
+            raise StoreError('a store with %s: %s' % ('/'.join(rel), store))
+
+
+def _pin_record(store, version):
+    with open(os.path.join(store, 'config'), 'rb') as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    return {'git': _git_exe(), 'version': version, 'empty_tree': EMPTY_TREE,
+            'config_sha256': digest}
