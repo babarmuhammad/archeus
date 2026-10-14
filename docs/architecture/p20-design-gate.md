@@ -2108,6 +2108,37 @@ credential store was read: this review covers Archeus's own files and code only.
        kept as written, and every read path redacts it (`core/execution/output.py:30`). It is
        third-party content, not an Archeus credential.
 
+112. **Remote-access threat-model review (P15).**
+     - **Where it lives.** ADR-0051 §3 assigns the threat model document to slice G, which is
+       paused (item 96). The review therefore lives here. That document can take it over by
+       reference when G resumes.
+     - **Method.** Each row of p15-design-gate §8.4, plus §8.1's environments, read against the
+       code at `91cbb0c`. Nothing was exercised through a real tunnel.
+
+     | Surface / threat | Control as built | Evidence |
+     |---|---|---|
+     | Exposure | Core binds `127.0.0.1` only; a tunnel is opt-in via `--remote-host` | `api/server.py:448`; `auth.Origin` (`api/auth.py:99`) |
+     | DNS rebinding, origin abuse | Exact Host allowlist, then fetch metadata (`Sec-Fetch-Site` ∈ same-origin/none) and an Origin matching the Host's own origin | `server.py:330`, `:333`; `auth.py:112`, `:125` |
+     | Token in URL or logs | `token`/`access_token` in a query → `401 token_in_url`. The stdlib request log is silenced. Core's own line has method, route template, status, duration and device id: no header, query or body | `server.py:337`, `:266`, `:412` |
+     | CSRF, WebSocket hijack | Bearer header only, no cookie. The stream is a `fetch` with the header, not a WebSocket | `server.py:361`; `clients/app/src/api/transport.ts` `sender` |
+     | Local credential through the tunnel | A non-paired credential is honoured on the loopback Host only | `server.py:369-375` |
+     | Paired credential's privileged effects | Only through a configured remote host, on scoped routes, after authentication and scope checks. `launch/redeem` and `pair/redeem` are unscoped (T-083 correction) | `server.py:376-381` |
+     | Pairing code replay, brute force | Single use, 120 s; more than 10 failed redemptions in 60 s burn every live code and lock for 60 s | `auth.py:34`, `:202-234` |
+     | Launch code | Single use, 60 s, memory only; a local-only route needs a loopback peer and the loopback Host (§8.3) | `auth.py:30`, `:154-196` |
+     | Stale or revoked credential | `auth.live` on every request; a stream re-checks its token on every wake; revoke closes the device's streams before answering | `auth.py:75-84`; `api/sse.py:148`, `:223`; `api/routes.py:951-953` |
+     | Stolen device | 180-day paired expiry; revoke; step-up PIN as a pbkdf2 record (item 109) | `auth.py:36`; `routes.py:742-748` |
+     | Replayed or queued mutation | Idempotency keys on keyed commands; a command replayed from an offline queue is refused unless declared replayable | `server.py:17` (step 8), `:388-394` |
+     | Stream exhaustion | 8 stream slots; at a device's cap, the newest stream wins (D2) | `sse.py:31`, `:99` |
+     | Script injection | CSP `script-src 'self'`, `nosniff`, `no-referrer` on every response | `auth.py:40-46`; `server.py:254`, `:285` |
+     | Process origin (R1-A) | The attestor takes every peer as the user until R1-A is activated (T-057); `origin_refused` cannot yet fire | `auth.py:93-96`; `server.py:353-358` |
+
+     - **GAPs.** No High was found on the remote path.
+       - The R1-A attestor is inert by design until PV-20 activates it. It is a local-process
+         control, owned by PV-20, not by P15.
+       - I-F1 and I-F2 (item 111) bear on a local reader of the home, not on a remote client.
+     - **Not run:** a real tunnel (Tailscale Serve or another), a paired phone, or an
+       adversarial client. The manual checks of §10 stay as they are.
+
 ## 13. As built
 (Filled at the end of P20.)
 
