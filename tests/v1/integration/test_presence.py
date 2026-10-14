@@ -592,6 +592,31 @@ def test_R1_five_wrong_pins_revoke_the_client_and_no_pin_means_no_step_up(deploy
     assert _get(deploy, '/v1/approvals/%s' % a['id']).json()['state'] == 'PENDING'
 
 
+def test_D13_the_pin_breaker_resets_on_a_right_pin_and_a_new_pairing_recovers(deploy):
+    """p20-design-gate D13: the step-up breaker's recovery. Four wrong PINs and
+    a right one approve and clear the count; after a revocation the user pairs
+    again and the still-pending approval is decided."""
+    pin = '482913'
+    _d, phone = pair(deploy, pin=pin)
+    first, second = (_pending(deploy, _mission(deploy)) for _ in range(2))
+
+    def decide(a, token, step_up):
+        return _phone(deploy, '/v1/approvals/%s/decide' % a['id'],
+                      {'decision': 'approve', 'action_hash': a['action_hash'],
+                       'step_up': step_up}, token=token)
+    for _ in range(4):
+        assert decide(first, phone, '000000').json()['error'] == 'guard_failed'
+    assert decide(first, phone, pin).status == 200
+    for _ in range(4):
+        assert decide(second, phone, '000000').json()['error'] == 'guard_failed'
+    assert _get(deploy, '/v1/version', phone).status == 200               # count was reset
+    assert decide(second, phone, '000000').json()['error'] == 'guard_failed'
+    assert _get(deploy, '/v1/version', phone).status == 401               # fifth in a row
+    _d2, again = pair(deploy, pin=pin, name='phone again')
+    assert decide(second, again, pin).status == 200
+    assert _get(deploy, '/v1/approvals/%s' % second['id']).json()['state'] == 'APPROVED'
+
+
 def test_P24_reconnecting_during_an_approval_decides_it_once(deploy):
     _d, phone = pair(deploy, pin='482913')
     mid = _mission(deploy)
