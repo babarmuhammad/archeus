@@ -28,7 +28,7 @@ from archeus.core.domain import ids
 from archeus.core.execution import manager as M
 from archeus.harnesses import base
 from archeus.infra.paths import (ExecPaths, VerifyPaths, isolation_dir, isolation_state,
-                                  quarantine_log, run_dir)
+                                  quarantine_log, run_dir, verify_consumed)
 from archeus.node import isolation as iso
 from archeus.node.local import LocalNode
 
@@ -861,6 +861,36 @@ class TestVerifierPrincipal:
         conds = _conds(b, broken)
         assert conds['grants'][0] is False and conds['mailbox'][0] is True
 
+    @pytest.mark.parametrize('change', ['extra_toolchain_rw', 'second_checkout',
+                                        'second_scratch', 'same_toolchain_twice'])
+    def test_every_grant_is_checked_not_only_the_first_of_its_row(self, tmp_path, change):
+        a, b, _, _ = authority(tmp_path)
+        req = make_verifier_request(_verify_key(), str(tmp_path / 'v'))
+        rows = {g.row: g for g in req.grants}
+        other = str(tmp_path / 'other')
+        os.makedirs(other)
+        extra = {'extra_toolchain_rw': iso.Grant(other, 'rw', 'toolchain'),
+                 'second_checkout': iso.Grant(other, 'rw', 'checkout'),
+                 'second_scratch': iso.Grant(other, 'rw', 'scratch'),
+                 'same_toolchain_twice': rows['toolchain']}[change]
+        broken = iso.IsolationRequest(**{**req.__dict__, 'grants': req.grants + (extra,)})
+        conds = _conds(b, broken)
+        assert conds['grants'][0] is False and conds['mailbox'][0] is True
+        # and so the attempt never launches: the invariant refuses it at establishment
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(broken)
+        assert err.value.reason.startswith('condition_unmet:') and 'grants' in err.value.reason
+        assert b.launch_calls == []
+
+    def test_several_distinct_read_only_toolchains_hold(self, tmp_path):
+        b = FakeBoundary()
+        req = make_verifier_request(_verify_key(), str(tmp_path))
+        more = str(tmp_path / 'toolchain2')
+        os.makedirs(more)
+        two = iso.IsolationRequest(**{**req.__dict__, 'grants': req.grants + (
+            iso.Grant(more, 'rx', 'toolchain'),)})
+        assert all(holds for holds, _ in _conds(b, two).values())
+
     @pytest.mark.parametrize('extra', ['mailbox', 'response', 'sentinel', 'spawn_config',
                                        'broker', 'hook_row', 'request_row', 'no_core_state'])
     def test_an_execution_interface_on_a_verifier_fails_condition_5(self, tmp_path, extra):
@@ -907,6 +937,67 @@ class TestVerifierPrincipal:
             a.establish(req0)
         assert err.value.reason == 'attempt_consumed'
 
+    @pytest.mark.parametrize('route', ['teardown', 'reclaim'])
+    def test_a_released_attempt_is_never_started_again_under_any_authority(self, tmp_path, route):
+        a, b, _, _ = authority(tmp_path)
+        key0, key1 = _verify_key(0), _verify_key(1)
+        req0 = make_verifier_request(key0, str(tmp_path / 'a0'))
+        rec0 = a.establish(req0)
+        out0 = VerifyPaths(_VID, 0).out
+        os.makedirs(os.path.dirname(out0))
+        with open(out0, 'wb') as f:
+            f.write(b'attempt 0 evidence')
+        if route == 'teardown':
+            assert a.teardown(key0, reason='ended')['profile'] == 'torn_down'
+        else:
+            assert key0 in a.reclaim(live_execution_ids=[])
+        # the release really happened: profile deleted, record gone, marker kept
+        assert rec0.profile in b.deleted and not os.path.lexists(isolation_state(key0))
+        marker = verify_consumed(key0)
+        kept = {p: open(p, 'rb').read() for p in (marker, out0)}
+        created = list(b.created)
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(req0)
+        assert err.value.reason == 'attempt_consumed'
+        # a restarted Core: a new authority over a new boundary, same disk
+        a2, b2, _, _ = authority(tmp_path)
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a2.establish(req0)
+        assert err.value.reason == 'attempt_consumed'
+        assert b.created == created and b2.created == [] and b2.launch_calls == []
+        assert not os.path.lexists(isolation_state(key0))
+        # the next attempt is a new principal and starts; attempt 0's evidence stays
+        rec1 = a2.establish(make_verifier_request(key1, str(tmp_path / 'a1')))
+        assert rec1.state == 'established' and os.path.isfile(verify_consumed(key1))
+        assert {p: open(p, 'rb').read() for p in kept} == kept
+
+    def test_a_record_without_a_marker_is_still_consumed(self, tmp_path):
+        a, b, _, _ = authority(tmp_path)
+        key = _verify_key()
+        path = isolation_state(key)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write('{}')
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(make_verifier_request(key, str(tmp_path / 'v')))
+        assert err.value.reason == 'attempt_consumed'
+        assert b.created == [] and not os.path.lexists(verify_consumed(key))
+
+    def test_an_attempt_that_cannot_be_marked_is_not_admitted(self, tmp_path, monkeypatch):
+        a, b, _, _ = authority(tmp_path)
+        key = _verify_key()
+        real = open
+
+        def refuse(path, *args, **kw):
+            if str(path).endswith('.consumed'):
+                raise PermissionError('denied')
+            return real(path, *args, **kw)
+        monkeypatch.setattr('builtins.open', refuse)
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(make_verifier_request(key, str(tmp_path / 'v')))
+        assert err.value.reason == 'attempt_unadmitted'
+        assert b.created == [] and not os.path.lexists(isolation_state(key))
+
     def test_reclaim_sees_both_kinds_and_acts_only_on_derivable_records(self, tmp_path):
         a, b, req, node = authority(tmp_path)
         key = _verify_key(2)
@@ -919,8 +1010,10 @@ class TestVerifierPrincipal:
         assert sorted(a.stale(live_execution_ids=[key])) == [req.execution_id]
         assert set(a.reclaim(live_execution_ids=[])) == {req.execution_id, key}
         assert rec.profile in b.deleted and iso.profile_name(req.execution_id) in b.deleted
+        # the junk is left as found, and the reclaimed attempt keeps only its marker
         assert sorted(os.listdir(junk)) == sorted(
-            ['junk.json', _EID + '.0.json', _VID + '.01.json'])
+            ['junk.json', _EID + '.0.json', _VID + '.01.json',
+             os.path.basename(verify_consumed(key))])
         assert {v for k, v in a.invalid.items() if k.startswith('verify/')} == {
             'not_a_verifier_key'}
 

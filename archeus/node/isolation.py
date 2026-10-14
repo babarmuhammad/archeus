@@ -58,6 +58,7 @@ from claude_sessions import config
 from ..core.domain import ids
 from ..harnesses import base
 from ..infra.paths import (MAX_ATTEMPT, VERIFY_KEY, ExecPaths, isolation_dir, isolation_state,
+                           verify_consumed,
                            quarantine_log, run_dir, verify_key_parts)
 from . import staging
 
@@ -222,6 +223,41 @@ class IsolationRequest:
         return 'verify' if str(self.execution_id).startswith(VERIFY_KEY) else 'exec'
 
 
+def _admit(key):
+    """A verifier attempt is used once (A6): its consumed marker is created exclusively
+    before anything else, and nothing removes it, so a released, reclaimed or
+    restarted-over attempt is refused like a running one. A record without a marker
+    (written before the marker existed) is refused too."""
+    marker = verify_consumed(key)
+    if os.path.lexists(isolation_state(key)):
+        raise IsolationUnavailable('attempt_consumed', key)
+    try:
+        os.makedirs(os.path.dirname(marker), exist_ok=True)
+        with open(marker, 'x', encoding='utf-8') as f:
+            f.write(key + '\n')
+    except FileExistsError:
+        raise IsolationUnavailable('attempt_consumed', key) from None
+    except OSError as err:
+        # nothing was created: the attempt is not admitted, and not started
+        raise IsolationUnavailable('attempt_unadmitted', '%s: %s' % (key, err)) from None
+
+
+def _verify_rows(request):
+    """Every grant of a verifier checked, never only the first of a row: exactly one
+    checkout and one scratch, any number of distinct toolchain paths, each row at
+    exactly its access. Returns the problems, empty when the rows hold."""
+    access = dict(VERIFY_GRANTS)
+    rows = [g.row for g in request.grants]
+    out = [row for row in access if row not in rows]
+    out += ['%s:%s' % (g.row, g.access) for g in request.grants
+            if g.row in access and g.access != access[g.row]]
+    out += ['%s:duplicate' % row for row in ('checkout', 'scratch') if rows.count(row) > 1]
+    tools = [_norm(g.path) for g in request.grants if g.row == 'toolchain']
+    if len(set(tools)) != len(tools):
+        out.append('toolchain:duplicate')
+    return out
+
+
 def check_invariant(api, request, identity, job_facts=None):
     """The §3.4 invariant as data: `condition -> (holds, why)`. Unmet conditions are
     returned, never raised, so the caller can record the whole six-condition state —
@@ -250,9 +286,8 @@ def check_invariant(api, request, identity, job_facts=None):
              'sentinel': request.sentinel}
     verifier = request.kind == 'verify'
     if verifier:
-        # A6: each of its three rows at exactly its access, its checkout the workspace
-        missing = [row for row, access in VERIFY_GRANTS
-                   if getattr(request.grant_for(row), 'access', None) != access]
+        # A6: every row at exactly its access, its one checkout the workspace
+        missing = _verify_rows(request)
         checkout = request.grant_for('checkout')
         misclassed = [] if checkout and _norm(checkout.path) == _norm(request.workspace) \
             else ['checkout']
@@ -757,10 +792,8 @@ class Isolation:
         quarantine line, a registry note) is an establishment failure like any other:
         nothing starts, and what is on disk decides what cleanup may do."""
         api = self.boundary
-        if request.kind == 'verify' and os.path.lexists(isolation_state(request.execution_id)):
-            # every verifier attempt is used once: a record of it, whatever its state,
-            # means it was already started, so it is never started again (A6)
-            raise IsolationUnavailable('attempt_consumed', request.execution_id)
+        if request.kind == 'verify':
+            _admit(request.execution_id)
         prior = self.record(request.execution_id)
         if prior is not None and prior.state == 'invalid':
             # a record exists and cannot be trusted: nothing is created for this

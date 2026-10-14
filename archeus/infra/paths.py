@@ -135,6 +135,15 @@ def isolation_state(key):
     return os.path.join(isolation_dir(), '%s.json' % key)
 
 
+def verify_consumed(key):
+    """`run/isolation/verify/<verification_id>.<attempt>.consumed` — the marker that a
+    verifier attempt was admitted once (A6). Created exclusively before anything else
+    about the attempt, and never removed: teardown and reclaim delete the record, and
+    the attempt must still never start again, under this Core or a restarted one."""
+    vid, n = verify_key_parts(key)
+    return os.path.join(isolation_dir(), 'verify', '%s.%d.consumed' % (vid, n))
+
+
 def quarantine_log():
     """`<ARCHEUS_HOME>/run/isolation/quarantine.jsonl` — the grants and profiles Core
     could not remove, retried on boot (PV-20 §3.7)."""
