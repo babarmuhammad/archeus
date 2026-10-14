@@ -148,8 +148,9 @@ def test_n05_a_real_adapter_passes_the_gate_and_its_argv_is_the_harness_own(make
                                                                             tmp_path):
     """The whole path with the real pi adapter and a stand-in runner: terms
     permitted, pi's flags, pi's vocabulary, prompted schema, Core validation.
-    The knowledge pass asks for no tools (K-O2), which pi cannot be asked for,
-    so it is refused with nothing spawned; the decisions pass runs."""
+    The knowledge pass asks for no tools (K-O2), which pi does not declare, so
+    the router's capability step leaves it unavailable with nothing spawned
+    (T-069); the decisions pass runs."""
     from claude_sessions import harnesses, llmcall
     seen = []
     monkeypatch.setattr(harnesses, 'exe', lambda hid=None: 'C:/x/pi.exe')
@@ -165,8 +166,11 @@ def test_n05_a_real_adapter_passes_the_gate_and_its_argv_is_the_harness_own(make
     r.run(C.decide_provider_terms, harness_id='pi', headless='permitted')
     repo = project(r)
     kp = r.kp(repo.project_id)
-    assert (kp['state'], kp['items'], seen) == ('failed', 0, [])
-    assert 'no tools' in kp['reason']
+    assert (kp['state'], kp['items'], seen) == ('unavailable', 0, [])
+    rd = r.read(queries.get_route_decision, kp['route_decision_id'])
+    (pi,) = rd['candidates']
+    assert (rd['requirements']['capabilities'], pi['eliminated_at_step']) == (
+        ['headless', 'no_tools'], 'capability')
     notes = tmp_path / 'planning-2026-09-20.md'
     notes.write_text('# Planning\nDECISION: ship dark-first.\n', encoding='utf-8')
     ingest.import_file(r.db, r.user, str(notes))

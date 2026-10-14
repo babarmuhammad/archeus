@@ -64,7 +64,7 @@ class ClaudeCodeCaller:
         # no cost is declared and a cost budget is refused (ADR-0048 §3)
         return base.Capabilities(
             frozenset({'headless', 'structured_output', 'interactive', 'resume', 'code_edit',
-                       'shell'}), 'hook', claude_models(), structured_output='native',
+                       'shell', 'no_tools'}), 'hook', claude_models(), structured_output='native',
             usage_measures=frozenset({'tokens'}))
 
     def authenticate(self, account):
@@ -125,6 +125,7 @@ class PiCaller:
 
     def capabilities(self, account=None):
         models, note = pi_offers(account)
+        # no `no_tools`: no pi form meaning NO tools is verified (call() refuses one)
         return base.Capabilities(frozenset({'headless', 'structured_output', 'interactive'}),
                                  'none', models, structured_output='prompted',
                                  models_note=note)
