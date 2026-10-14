@@ -21,9 +21,11 @@ moves a mission: it writes rows and the engine's `advance` judges them.
 
 import logging
 import os
+import sys
 
 from ...infra import paths
 from ...infra.db import rows
+from ...node import staging
 from ...node.local import LocalNode, PathTooLong
 from ..application import calls as C
 from ..application import errors, verification as V
@@ -31,7 +33,7 @@ from ..application.commands import active_plan
 from ..domain import entities
 from ..domain.values import Ref
 from ..engine import SETTLED
-from ..execution.manager import mission_branch
+from ..execution.manager import HOOK, mission_branch
 from . import evidence, reviewer
 
 log = logging.getLogger('archeus.core')
@@ -141,7 +143,7 @@ class VerifyWorker:
             return [('verify_task', t.id, e.id)]
         for v in mine:
             if v.state == 'ERROR':
-                if not V.unconfined(conn, m.id):
+                if not V.unconfined(conn, m.id) and v.verifier_version != V.CONFINED_VERIFIER:
                     # A6: a guarded row is never re-run; it is held once (T-041 C2)
                     hold = not v.holds_mission and m.state == 'EXECUTING'
                     return [('hold', v.id)] if hold else []
@@ -211,7 +213,14 @@ class VerifyWorker:
         indexed = [dict(c, index=i) for i, c in enumerate(t.acceptance)]
         auto = [c for c in indexed if c['check'] == 'automatic']
         prov = evidence.provenance(e)
-        # A6: a guarded mission's commands never run; a person decides instead
+        route = self._confined_route(m, t, e) if guarded else None
+        if route is not None:
+            out = self._do(V.start, missions=self.missions, subject=Ref('task', t.id),
+                           verifier=_CODE, execution_id=e.id, revision=e.import_revision,
+                           provenance=prov, criteria=[dict(c, result='unknown') for c in auto])
+            self._run_confined(out['verification_id'], 0, *route)
+            return True
+        # A6: a guarded mission's commands never run unconfined; a person decides instead
         cmds = [] if guarded else [('test', c) for c in tests] + [('build', c) for c in builds]
         if not (auto and revision is not None and t.kind in evidence.CODE_KINDS and cmds):
             # nothing deterministic can decide it: a human does (§8.4, §13)
@@ -224,15 +233,59 @@ class VerifyWorker:
                        verifier=_CODE, execution_id=e.id, revision=revision,
                        base_revision=base, workspace=ws, provenance=prov,
                        criteria=[dict(c, result='unknown') for c in auto])
-        self._run_and_record(out['verification_id'], t, root, ws, revision, base, cmds)
+        self._run_and_record(out['verification_id'], t, root, ws, revision, base, cmds,
+                             out['verifier_version'])
         return True
 
-    def _run_and_record(self, vid, t, root, ws, revision, base, cmds):
+    # ── confined (A6-4, T-054 C-1013 §4) ──
+
+    def toolchain(self):
+        """The Core-staged runtime a confined check may run from, and nothing else
+        (owner T-054 Q1 A: a check needing more is a person's)."""
+        return [staging.stage(sys.base_prefix, HOOK)]
+
+    def _confined_route(self, m, t, e):
+        """((kind, command), argv, toolchain) of a confined run of *e*'s checks,
+        decided before any row starts (owner T-054 Q2 A), or None: a person decides."""
+        if not (V.CONFINED_VERIFICATION_ENABLED and e.import_revision is not None
+                and t.kind in evidence.CODE_KINDS
+                and any(c['check'] == 'automatic' for c in t.acceptance)):
+            return None
+        with self.db.read() as conn:
+            tests, builds = evidence.commands(conn, m.project_id,
+                                              evidence.project_root(conn, m.project_id))
+        cmds = [('test', c) for c in tests] + [('build', c) for c in builds]
+        # ponytail: one command per attempt, since an attempt is one principal (A6-3);
+        # several commands need a principal each, which the contract does not give yet
+        if len(cmds) != 1:
+            return None
+        try:
+            toolchain = self.toolchain()
+        except OSError:
+            return None
+        argv = evidence.confined_argv(cmds[0][1], toolchain)
+        return None if argv is None else (cmds[0], argv, toolchain)
+
+    def _run_confined(self, vid, attempt, cmd, argv, toolchain):
+        """Attempt *attempt* of row *vid*, confined; the verdict is recorded before
+        its principal goes. No changes check and no Git after it: Core materialised
+        the input and runs no Git over what the verifier wrote."""
+        def record(result):
+            try:
+                self._do(V.record, missions=self.missions, verification_id=vid,
+                         checks=[evidence.check_of(cmd[0], cmd[1], argv, result)])
+            except V.Refused as err:
+                # nothing awaits this attempt any more: its principal may go
+                log.info('verification: confined %s not recorded: %s', vid, err)
+        self.node.run_confined_check(vid, attempt, argv, toolchain=toolchain,
+                                     timeout=self.timeout_s, record=record)
+
+    def _run_and_record(self, vid, t, root, ws, revision, base, cmds, version):
         checks = []
         if t.kind == 'code_change' and base is not None:
             checks.append(evidence.changes_check(self.node, root, base, revision))
         checks += evidence.run_commands(self.node, ws, cmds, verification_id=vid,
-                                        timeout_s=self.timeout_s)
+                                        timeout_s=self.timeout_s, verifier_version=version)
         now = self.node.git_head(ws)
         if now != revision or self.node.git_dirty(ws, tracked_only=True):
             checks.append({'name': 'workspace', 'kind': 'git', 'result': 'error',
@@ -258,6 +311,8 @@ class VerifyWorker:
     def _retry(self, verification_id):
         with self.db.read() as conn:
             v = rows.get(conn, entities.Verification, verification_id).entity
+        if v.verifier_version == V.CONFINED_VERIFIER:
+            return self._retry_confined(v)
         if self._do(V.retry, verification_id=v.id)['state'] != 'RUNNING':
             return True
         if v.subject.kind == 'task':
@@ -267,7 +322,8 @@ class VerifyWorker:
                 root = evidence.project_root(conn, m.project_id)
                 tests, builds = evidence.commands(conn, m.project_id, root)
             cmds = [('test', c) for c in tests] + [('build', c) for c in builds]
-            self._run_and_record(v.id, t, root, v.workspace, v.revision, v.base_revision, cmds)
+            self._run_and_record(v.id, t, root, v.workspace, v.revision, v.base_revision, cmds,
+                                 v.verifier_version)
         else:
             with self.db.read() as conn:
                 m = rows.get(conn, entities.Mission, v.subject.id).entity
@@ -275,10 +331,26 @@ class VerifyWorker:
                 tests, builds = evidence.commands(conn, m.project_id, root)
             cmds = [('test', c) for c in tests] + [('build', c) for c in builds]
             checks = evidence.run_commands(self.node, v.workspace, cmds, verification_id=v.id,
-                                           timeout_s=self.timeout_s)
+                                           timeout_s=self.timeout_s,
+                                           verifier_version=v.verifier_version)
             head = self.node.git_head(v.workspace) if m.integration_base is not None else None
             self._do(V.record, missions=self.missions, verification_id=v.id, checks=checks,
                      head=head)
+        return True
+
+    def _retry_confined(self, v):
+        """A confined row's next attempt: a new principal (attempt = its errors so far,
+        which only grow), and only if it can still run confined - else it is held."""
+        with self.db.read() as conn:
+            t = rows.get(conn, entities.Task, v.subject.id).entity
+            m = rows.get(conn, entities.Mission, t.mission_id).entity
+            e = rows.get(conn, entities.Execution, v.execution_id).entity
+        route = self._confined_route(m, t, e)
+        if route is None:
+            return self._hold(v.id)
+        if self._do(V.retry, verification_id=v.id)['state'] != 'RUNNING':
+            return True
+        self._run_confined(v.id, v.errors, *route)
         return True
 
     def _hold(self, verification_id):
@@ -376,9 +448,12 @@ class VerifyWorker:
             started = [self._do(V.start, missions=self.missions, subject=Ref('mission', m.id),
                                 verifier=_CODE, criterion=i, revision=m.integration_head,
                                 base_revision=m.integration_base, workspace=ws,
-                                criteria=crit)['verification_id'] for i, crit in auto]
-            checks = evidence.run_commands(self.node, ws, cmds, verification_id=started[0],
-                                           timeout_s=self.timeout_s)
+                                criteria=crit) for i, crit in auto]
+            checks = evidence.run_commands(self.node, ws, cmds,
+                                           verification_id=started[0]['verification_id'],
+                                           timeout_s=self.timeout_s,
+                                           verifier_version=started[0]['verifier_version'])
+            started = [out['verification_id'] for out in started]
             # the branch may have moved while the commands ran: the last record notes it
             head = self.node.git_head(ws) if m.integration_base is not None else None
             for n, vid in enumerate(started, 1):
