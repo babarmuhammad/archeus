@@ -130,7 +130,8 @@ class Planner:
                            prompt=planner.prompt(m, lines, replan=replan),
                            schema=planner.SCHEMA,
                            check=lambda p: planner.check(p, facts, criteria=m.success_criteria),
-                           workdir=paths.archeus_home(), context_package_id=pkg_id)
+                           workdir=paths.fresh_call_dir, context_package_id=pkg_id,
+                           no_tools=True)
         base = dict(mission_id=mission_id, during=state, round_seq=round_seq)
         if c.state != 'ok':
             self._do(self.planning.note, outcome=c.state, detail=c.detail,

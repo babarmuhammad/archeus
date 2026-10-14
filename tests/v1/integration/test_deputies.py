@@ -1,7 +1,8 @@
 """K-O2 (T-053 §6, P6): Archeus's own calls run as the user, so none of them
 may run in the user's repository, where an execution's merged work can leave
-project settings and hooks; the knowledge pass, whose prompt carries
-execution-influenced facts, runs with no tools at all; and a verification
+project settings and hooks; every own call, whose prompt carries
+execution-influenced text, runs with no tools at all in a fresh empty
+directory of its own, never Core's state root (T-081); and a verification
 command gets none of Core's ARCHEUS_* discovery or credentials. Fake adapters,
 stand-in runners and a fake process only: no CLI is spawned."""
 
@@ -15,18 +16,19 @@ from types import SimpleNamespace
 import pytest
 
 from archeus.core.calls import OwnCalls
-from archeus.core.domain import ids
+from archeus.core.domain import entities, ids
+from archeus.core.knowledge import ingest
 from archeus.harnesses import base
 from archeus.harnesses import calls as real
 from archeus.harnesses.fake import FakeCaller
 from archeus.infra import paths
 from archeus.node.local import LocalNode
+from v1.integration.test_intent import WORK
 from v1.integration.test_knowledge import GOOD, Rig, project
+from v1.integration.test_planning import ONE, Rig as PRig
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
     __file__)))))
-#: the ARCHEUS_HOME helpers whose result an own call may run in
-CORE_OWNED = {'archeus_home'}
 #: CallSpec is built in exactly one place, from OwnCalls.run's own `workdir`
 PASS_THROUGH = 'archeus/core/calls.py'
 
@@ -45,14 +47,14 @@ def _name(fn):
     return fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, 'id', None)
 
 
-def _core_owned(v):
-    return (isinstance(v, ast.Call) and isinstance(v.func, ast.Attribute)
-            and isinstance(v.func.value, ast.Name) and v.func.value.id == 'paths'
-            and v.func.attr in CORE_OWNED and not v.args and not v.keywords)
-
-
-#: the one own call that runs in a fresh empty directory of its own
-FRESH = ('archeus/core/knowledge/passes.py', 'knowledge')
+#: every own call, by the function that makes it: each runs in a fresh empty
+#: directory of its own, with no tools
+FRESH = {('archeus/core/knowledge/passes.py', 'knowledge'),
+         ('archeus/core/knowledge/passes.py', 'decisions'),
+         ('archeus/core/knowledge/passes.py', 'lessons'),
+         ('archeus/core/missions/intent.py', '_brain'),
+         ('archeus/core/planning/worker.py', 'plan'),
+         ('archeus/core/verification/worker.py', '_review')}
 
 
 def _fresh(v):
@@ -69,17 +71,21 @@ def _in_functions():
                     yield rel, fn.name, n
 
 
-def test_every_own_call_runs_in_a_core_owned_directory():
+def _no_tools(kw):
+    v = kw.get('no_tools')
+    return isinstance(v, ast.Constant) and v.value is True
+
+
+def test_every_own_call_runs_in_a_fresh_directory_with_no_tools():
     """An own call is any call carrying both `purpose=` and `workdir=` (OwnCalls.run,
-    the argument dict a caller builds for it, CallSpec); its workdir is a
-    Core-owned paths helper, never a repository path or a variable. The
-    knowledge pass alone gets a fresh empty one; the others keep ARCHEUS_HOME."""
-    for src in ('repo.path', 'workdir', 'os.getcwd()', 'paths.archeus_home(x)',
-                'other.archeus_home()', 'paths.exec_paths()', "paths.archeus_home(a='b')"):
-        assert not _core_owned(ast.parse(src, mode='eval').body), src
-    assert _core_owned(ast.parse('paths.archeus_home()', mode='eval').body)
-    for src in ('paths.fresh_call_dir(x)', 'other.fresh_call_dir', 'paths.call_dir'):
+    the argument dict a caller builds for it, CallSpec); its workdir is
+    `paths.fresh_call_dir` handed over uncalled, never ARCHEUS_HOME, a repository
+    path or a variable, and it says `no_tools=True` (T-081)."""
+    for src in ('paths.fresh_call_dir(x)', 'other.fresh_call_dir', 'paths.call_dir',
+                'paths.archeus_home()', 'repo.path', 'workdir', 'os.getcwd()'):
         assert not _fresh(ast.parse(src, mode='eval').body), src
+    for src in ('f(no_tools=False)', 'f()', 'f(no_tools=x)', "f(no_tools='True')"):
+        assert not _no_tools({k.arg: k.value for k in ast.parse(src, mode='eval').body.keywords})
     seen, bad, fresh = set(), [], set()
     for rel, fn, n in _in_functions():
         if not isinstance(n, ast.Call):
@@ -93,17 +99,18 @@ def test_every_own_call_runs_in_a_core_owned_directory():
         w = kw['workdir']
         through = (rel == PASS_THROUGH and _name(n.func) == 'CallSpec'
                    and isinstance(w, ast.Name) and w.id == 'workdir')
-        if _fresh(w):
+        if _fresh(w) and _no_tools(kw):
             fresh.add((rel, fn))
-        elif not (through or _core_owned(w)):
-            bad.append('%s:%d workdir=%s' % (rel, n.lineno, ast.unparse(w)))
+        elif not through:
+            bad.append('%s:%d workdir=%s no_tools=%s' % (
+                rel, n.lineno, ast.unparse(w), kw.get('no_tools') and ast.unparse(kw['no_tools'])))
     assert not bad, bad
-    assert fresh == {FRESH}
+    assert fresh == FRESH
     # the helper is named nowhere else in archeus/ but where it is defined
     named = {(rel, fn) for rel, fn, n in _in_functions()
              if isinstance(n, (ast.Attribute, ast.Name))
              and 'fresh_call_dir' in (getattr(n, 'attr', None), getattr(n, 'id', None))}
-    assert named == {FRESH}, named
+    assert named == FRESH, named
     # three passes, intent, planner, review, and CallSpec itself: a scan that
     # stops finding them reports clean
     assert len(seen) >= 7, seen
@@ -232,18 +239,78 @@ def test_a_refused_directory_fails_the_knowledge_pass_with_nothing_spawned(db, t
     assert not [s for s in f.sent if s[0].purpose == 'knowledge_extraction']
 
 
-def test_only_the_knowledge_pass_asks_for_no_tools():
-    """Every `no_tools=` in archeus/, by the function it is in: the knowledge pass
-    sets it, OwnCalls.run hands it to CallSpec, and both default to False, so
-    the other own calls keep the tools they had."""
+# ── T-081: the other own calls, each made once through its own path ──
+
+LESSON = {'lessons': [{'title': 'Pin the formatter', 'text': 'it drifts', 'outcome': 'failed'}]}
+DECIDED = {'decisions': [{'statement': 'Ship dark-first'}]}
+REPLIES = {'brain': [{'parsed': WORK}], 'planner': [{'parsed': ONE}],
+           'knowledge_extraction': [{'parsed': DECIDED}], 'lesson': [{'parsed': LESSON}]}
+#: the four own calls this rig reaches (the review is in test_verification.py)
+FOUR = {'brain', 'planner', 'knowledge_extraction', 'lesson'}
+
+
+def _four(db, tmp_path, caller):
+    """brain (a message), planner (a mission), decisions (meeting notes) and lessons
+    (asked directly: this rig's engine never ends a mission); what each recorded."""
+    parent = tmp_path / 'repos'
+    parent.mkdir()
+    r = PRig(db, str(parent), [caller])
+    _reply, it = r.say('Add a --version flag to the CLI')
+    mid = r.mission()
+    r.settle()
+    notes = tmp_path / 'planning-2026-09-20.md'
+    notes.write_text('# Planning\nDECISION: ship dark-first.\n', encoding='utf-8')
+    ingest.import_file(r.db, r.user, str(notes))
+    r.settle()
+    return r, {'brain': it.resolution, 'planner': r.m(mid).planning_blocked,
+               'lesson': r.passes.lessons(mid),
+               'decisions': [d.state for d in r.items(type='DECISION')]}
+
+
+def test_every_other_own_call_runs_with_no_tools_in_a_fresh_directory_of_its_own(db,
+                                                                                tmp_path):
+    f = FakeCaller('fake', replies=REPLIES)
+    r, got = _four(db, tmp_path, f)
+    assert got['brain'] == 'mission_created' and got['decisions'] == ['CANDIDATE']
+    assert (got['planner'], got['lesson']) == (None, 'ok')
+    assert {spec.purpose for spec, _ in f.sent} == FOUR
+    home = os.path.normcase(paths.archeus_home())
+    for spec, _ in f.sent:
+        assert spec.no_tools is True, spec.purpose
+        assert spec.workdir == paths.call_dir(spec.route_decision_id), spec.purpose
+        assert os.path.isdir(spec.workdir) and os.listdir(spec.workdir) == []
+        assert os.path.normcase(spec.workdir) != home
+
+
+def test_with_only_pi_every_other_own_call_is_unavailable_and_nothing_is_made(db, tmp_path):
+    """pi cannot make a call with no tools (T-069), so with nothing else eligible
+    each call ends unavailable at the router's capability step: nothing spawned,
+    no call directory, and each worker records it as any unavailable call."""
+    pi = FakeCaller('pi', no_tools=False, replies=REPLIES)
+    r, got = _four(db, tmp_path, pi)
+    assert pi.sent == []
+    assert got['brain'] == 'declined' and got['decisions'] == []
+    assert got['planner']['outcome'] == 'unavailable' and got['lesson'] == 'unavailable'
+    rds = r.all(entities.RouteDecision)
+    assert {rd.purpose for rd in rds} == FOUR
+    for rd in rds:
+        assert rd.result == 'blocked' and rd.requirements['capabilities'] == [
+            'headless', 'no_tools']
+        (c,) = rd.candidates
+        assert (c['resource'], c['eliminated_at_step']) == ('pi', 'capability')
+        assert not os.path.exists(paths.call_dir(rd.id))
+
+
+def test_every_own_call_and_nothing_else_asks_for_no_tools():
+    """Every `no_tools=` in archeus/, by the function it is in: each own call
+    sets it, OwnCalls.run hands it to CallSpec, and both default to False."""
     got = set()
     for rel, tree in _sources():
         for fn in ast.walk(tree):
             if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 got |= {(rel, fn.name, ast.unparse(k.value)) for n in ast.walk(fn)
                         if isinstance(n, ast.Call) for k in n.keywords if k.arg == 'no_tools'}
-    assert got == {('archeus/core/knowledge/passes.py', 'knowledge', 'True'),
-                   (PASS_THROUGH, 'run', 'no_tools')}
+    assert got == {(rel, fn, 'True') for rel, fn in FRESH} | {(PASS_THROUGH, 'run', 'no_tools')}
     assert inspect.signature(OwnCalls.run).parameters['no_tools'].default is False
     assert base.CallSpec.__dataclass_fields__['no_tools'].default is False
 

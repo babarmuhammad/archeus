@@ -401,10 +401,12 @@ class VerifyWorker:
         if guarded:
             text += ('\nChanges on the mission branch: withheld, not empty (the mission has '
                      'isolated or unknown provenance).')
+        # no tools (K-O2, T-081): the prompt carries the execution's own summaries, and a
+        # read tool in Core's state root could open the worktree whose diff is withheld
         ask = dict(purpose='review', source={'kind': 'mission', 'id': m.id},
                    workspace_id=m.workspace_id, project_id=m.project_id, prompt=text,
                    schema=reviewer.SCHEMA, check=reviewer.check,
-                   workdir=paths.archeus_home())
+                   workdir=paths.fresh_call_dir, no_tools=True)
         c = self.calls.run(forbidden=reviewer.forbidden(executed), **ask)
         if c.state == 'unavailable':
             # no independent resource is free: the review runs anyway (§14.3)

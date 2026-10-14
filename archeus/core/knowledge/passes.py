@@ -218,8 +218,8 @@ class Passes:
                                m.name, 'held %s' % m.held_at if m.held_at else 'undated',
                                notes),
                            schema=DECISIONS_SCHEMA, check=check_decisions,
-                           workdir=paths.archeus_home(),
-                           context_package_id=pkg_id)
+                           workdir=paths.fresh_call_dir,
+                           context_package_id=pkg_id, no_tools=True)
         if c.state != 'ok':
             return c.state
         return self._record(c, K.record_decisions, called=self._called(c, pkg_id),
@@ -247,8 +247,8 @@ class Passes:
         c = self.calls.run(purpose='lesson', source={'kind': 'mission', 'id': m.id},
                            workspace_id=m.workspace_id, project_id=m.project_id,
                            prompt=LESSONS_PREFIX + '\n'.join(lines), schema=LESSONS_SCHEMA,
-                           check=check_lessons, workdir=paths.archeus_home(),
-                           context_package_id=m.context_package_id)
+                           check=check_lessons, workdir=paths.fresh_call_dir,
+                           context_package_id=m.context_package_id, no_tools=True)
         if c.state != 'ok':
             return c.state
         return self._record(c, K.record_lessons, called=self._called(c, m.context_package_id),
