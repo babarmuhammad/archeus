@@ -2019,6 +2019,95 @@ and [pv20-execution-isolation-design.md](pv20-execution-isolation-design.md).
       16 skipped, 2 deselected, 3 xfailed, 1 warning (a local log outside the repository). This is
       reported evidence; the review of `f6abc4d` read the log and did not rerun it.
 
+### Slice I — secrets review (D7), remote-access threat model, dependency audit (2026-10-15)
+
+Built on the T-072 integration candidate `91cbb0c`. Nothing of G, H, J, K, D10, P21 or V2 was
+touched. No ACL was written, no Windows isolation or profile API was called, and no OS or user
+credential store was read: this review covers Archeus's own files and code only.
+
+108. **The order after slice F, D12, D13 and D14 decided (the owner, 2026-10-15).** Recorded as
+     given (AskUserQuestion answers in the Claude session):
+     - Order: "I then H, beside G (Recommended)". Slice I runs first, then H, both while G
+       (PV-20) waits on T-004, each slice with its own commits and gate items. This lifts §4.1's
+       "F, G, H, I and J not in parallel" for I and H beside G only; J and K are unchanged.
+     - D12: "Stdlib harness (Recommended)". That is `random.Random(seed)` plus a recorded corpus
+       and structured mutation in `tools/fuzz_p20.py`, with a fixed seed and a small budget in CI
+       and a large budget on demand. No new dependency.
+     - D13 and D14: "Approve both as written (Recommended)". The drills and the mutant ids are
+       exactly as §4 states them.
+109. **Secrets at rest, by writer and protection (D7).** Every credential Archeus issues starts
+     as a CSPRNG draw (`secrets.*` or `os.urandom`). The table below follows each draw to where
+     its value goes; draws that are not secrets are listed under it.
+
+     | Secret | At rest in | Form | Writer | Protection |
+     |---|---|---|---|---|
+     | Local token: the CLI's device credential, every scope | `run/local-token` | plaintext | `infra/discovery.py:205` `write_local_token`, called from `core/runtime.py:546` | Created `O_CREAT\|O_EXCL`, mode `0600`. POSIX: Core refuses to start when `run/` or the file is readable by group or others (`discovery.py:177` `token_protection`). Windows: inherits the ARCHEUS_HOME DACL, with T-089's warning when a broad principal may write the home (`discovery.py:159`) |
+     | Device-token hashes: the local token, launch-code and paired clients | DB `tokens.token_hash` | sha256 | `infra/db/writer.py:124` `Tx.insert_token`, from `runtime.py:545`, `api/routes.py:235`, `:283` and `core/application/commands.py:147` | Hash only, and the writer has no plaintext parameter. Compared with `hmac.compare_digest` (`api/auth.py:79`) |
+     | Hook-token hash | DB execution row `hook_token_hash` | sha256 | `core/application/executions.py:141` | Cleared to `None` on every end path (`executions.py:196`, `:345`, `:351`, `:357`, `:380`, `:456`, `:675`, `:710`). Stripped from reads (`:929`, `:977`) |
+     | Hook token, plaintext | `run/exec/<id>/req/<seq>.req.json` | plaintext JSON field `token` | the hook process, `harnesses/hook.py:160` via `_reserve` (`:109`) | Inherits the execution directory's ACL. Dead once the execution ends, because its hash is cleared and a hashless execution refuses every token (`executions.py:741`). Not deleted (item 111) |
+     | Step-up PIN | DB device row `pin_hash` | `pbkdf2_sha256`, 200,000 iterations, 16-byte salt | `core/application/commands.py:96` `hash_pin`, from `api/routes.py:286` | `entities.PIN_HASH` refuses any other shape (`entities.py:194`, `:229`). Compared with `hmac.compare_digest` |
+     | The Qt shell page's device token | `<ARCHEUS_HOME>/QtWebEngine/archeus` (the persistent QtWebEngine profile, its IndexedDB) | plaintext | the SPA, `clients/app/src/api/transport.ts:38` `saveToken`, under `claude_sessions/gui_qt.py:171-173` and `archeus/cli/gui.py:38` | Inherits the ARCHEUS_HOME DACL (item 111) |
+     | Database backups | the backup directory | copies of the DB, so the hashes above | `infra/db/backup.py:56` | As the rows they copy |
+
+     - **Memory only:** launch codes (60 s) and pairing codes (120 s), held as sha256 keys
+       (`api/auth.py:165`); the desktop shell's own credential (`cli/gui.py` module docstring,
+       p20 D1).
+     - **Not stored by Archeus:** a device token returned once by `launch/redeem` or
+       `pair/redeem`. It lives in that client's own storage, on the client's device.
+     - **Not secrets:** a 500 answer's reference (`api/server.py:169`); the Core instance id
+       (`:206`); ULID entropy (`core/domain/ids.py`); a staging temp name (`node/staging.py:226`);
+       CLI and shell idempotency keys and request ids (`cli/main.py`, `cli/gui.py:150`).
+     - **Gate:** `tests/v1/unit/test_p20_secrets.py`.
+       - It fails when a draw or a caller of `auth.new_token()` appears that this table does not
+         name, or when a row's draw is gone.
+       - It checks the local token's `O_EXCL` and `0600` from the source, so the check holds on
+         Windows as well as POSIX. POSIX also has the behavioural test in `test_core_lifecycle`.
+       - It checks that `insert_token` takes only a hash, that the hook-token hash is the
+         execution's only token field, and that a PIN is accepted only as a pbkdf2 record.
+       - Mutation-verified on a `git archive` copy, 5 of 5 caught, restored passes: an unlisted
+         draw; a new `new_token()` caller; the token file's mode loosened to `0644`; `O_EXCL`
+         dropped; a plaintext `token` parameter on `insert_token`.
+110. **D7 concluded: Core stores no API key.**
+     - `Account` has no secret field (`core/domain/entities.py:1363`): `home_ref` is a path,
+       and the `accounts` table holds that entity's body.
+     - No draw or writer above produces an API key.
+     - The Claude Code adapter removes `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` from an
+       execution's environment rather than supplying them (`harnesses/claude_code/adapter.py:168`).
+     - An account's login, API key or OAuth, lives in the harness's own home, which Archeus does
+       not write.
+     - So, as D7 directs, plan §27's DPAPI requirement is amended rather than built. The
+       amendment is appended to plan §27. The local token stays under the profile ACL, as p3.5b
+       D5 accepted; DPAPI remains an option, not built.
+     - Not examined here: what the adapters' login probe reads in the account's home
+       (`harnesses/calls.py:79-82`, via `claude_sessions.usage._creds`). That is the user's own
+       credential store, outside this review's limits. It concerns reach, not storage, and is
+       recorded on T-093 for routing.
+111. **Findings.** None is High; each is the owner's to dispose of.
+     - **I-F1, Medium: on Windows the home check reads write, while the local token's threat is
+       read.**
+       - `token_protection` warns on Windows only when `broad_writer` finds a broad principal
+         with a write-like allow ACE (`isolation.py:1763`).
+       - `run/local-token` holds every scope. A home whose DACL lets a broad principal read but
+         not write gives no warning, while that principal can read the token.
+       - The default home, `%LOCALAPPDATA%\Archeus`, is under the user profile. The case needs a
+         non-default ARCHEUS_HOME.
+       - Options: also warn on a broad read-like ACE; or accept it, with a documentation note.
+     - **I-F2, Medium: a second plaintext credential at rest that the documentation does not
+       name.**
+       - The Qt shell's page keeps its device token, with the scopes its launch code granted (D2), in the persistent
+         QtWebEngine profile under ARCHEUS_HOME.
+       - `discovery.py`'s docstring and plan §27 both describe `run/local-token` as the only
+         plaintext secret at rest.
+       - Its protection is the same as the local token's, so I-F1 applies to it too.
+       - Options: document it as accepted; or make the shell's page credential memory-only
+         (an off-the-record page credential, which would change D2's restart behaviour).
+     - **I-F3, Low: plaintext hook tokens stay in each execution's `req/` directory after it
+       ends.** Nothing removes `run/exec/<id>`. Each token is dead, because its hash is cleared.
+       The residue grows with the number of executions.
+     - **I-F4, Low: raw execution output at rest is not redacted.** Whatever an agent printed is
+       kept as written, and every read path redacts it (`core/execution/output.py:30`). It is
+       third-party content, not an Archeus credential.
+
 ## 13. As built
 (Filled at the end of P20.)
 

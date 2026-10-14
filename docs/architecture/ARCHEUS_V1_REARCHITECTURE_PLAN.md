@@ -376,6 +376,8 @@ upgrade path); pairing with 2-minute single-use rate-limited codes shown only in
 | Supply chain | Core stdlib-only; SPA dependencies pinned with lockfile, built in CI, audited (`npm audit` gate); `git clone` of anything uses `proc.remote_url_ok` + `--` (existing rule) |
 | Prompt injection | fetched content, meeting notes and agent output are data: never parsed as commands; control verbs only from user principals; brain outputs validated against schemas before any command |
 
+*Amendment 2026-10-15 (P20 slice I, D7; p20-design-gate §12 items 109-111):* the secrets review found that Core stores no API key. `Account` holds a home path and no secret; no credential Archeus issues is an API key; and an account's login, whether an API key or OAuth, stays in the harness's own home, which Archeus does not write. The "API keys at rest via DPAPI" clause of the Credential isolation row and the "DPAPI is the upgrade path" note of the Authentication row therefore describe no stored key. DPAPI is not built. The local token stays under the profile ACL (p3.5b D5), and DPAPI remains an option for it. The plaintext credentials Archeus does keep at rest are `run/local-token` and, under the Qt shell, the page's device token in the persistent QtWebEngine profile (finding I-F2). Their protection and the open findings are in p20-design-gate §12 items 109-111.
+
 ## 28. Observability
 
 Everything is reconstructable from the event log plus decision records:
