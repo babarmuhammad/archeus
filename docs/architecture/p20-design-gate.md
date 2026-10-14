@@ -2290,6 +2290,19 @@ Fakes only: no real provider call, no Windows isolation, profile or ACL API, no 
      - **§10 against this slice:** every Q-mutant is killed and the affected P19 mutants were
        re-run. H-F1 is the owner's. Slice J (only if D8, D9 or D10 put it in P20) and slice K
        remain; G stays paused on T-004.
+119. **H-F1 decided and built (2026-10-15).** The owner's answer, verbatim: "Re-enable clears
+     count (Recommended)". `automations._armed_window` returns an automation's runs in the
+     hour for events after its `armed_seq`, and both the rate limit and the loop guard count
+     only those. Re-enabling sets `armed_seq` to the head, so a re-enabled automation starts
+     both counts afresh; a real loop still trips the guard on its third new escalation.
+     - Tests: `test_D13_a_reenabled_automation_fires_again` now also asserts it stays
+       ENABLED after one and two new escalations and is suspended by the third;
+       `test_H_F1_a_rate_limited_automation_reenabled_within_the_hour_fires` re-enables a
+       rate-limit-suspended automation inside the hour and asserts its next event asks for a
+       mission.
+     - Mutants, each caught: the window ignoring `armed_seq` (both tests fail), only the
+       guard ignoring it (the D13 test fails), only the rate count ignoring it (the H-F1
+       test fails).
 
 ## 13. As built
 (Filled at the end of P20.)
