@@ -76,6 +76,23 @@ def _no_tools(kw):
     return isinstance(v, ast.Constant) and v.value is True
 
 
+def _own_call(rel, n):
+    """None when *n* is no own call (it lacks `purpose=` or `workdir=`); else
+    'through' (CallSpec built from OwnCalls.run's own workdir), 'fresh' (a fresh
+    directory and no tools), or what is wrong with it."""
+    kw = {k.arg: k.value for k in n.keywords if k.arg}
+    if 'purpose' not in kw or 'workdir' not in kw:
+        return None
+    w = kw['workdir']
+    if (rel == PASS_THROUGH and _name(n.func) == 'CallSpec'
+            and isinstance(w, ast.Name) and w.id == 'workdir'):
+        return 'through'
+    if _fresh(w) and _no_tools(kw):
+        return 'fresh'
+    return 'workdir=%s no_tools=%s' % (ast.unparse(w), kw.get('no_tools') and ast.unparse(
+        kw['no_tools']))
+
+
 def test_every_own_call_runs_in_a_fresh_directory_with_no_tools():
     """An own call is any call carrying both `purpose=` and `workdir=` (OwnCalls.run,
     the argument dict a caller builds for it, CallSpec); its workdir is
@@ -86,24 +103,29 @@ def test_every_own_call_runs_in_a_fresh_directory_with_no_tools():
         assert not _fresh(ast.parse(src, mode='eval').body), src
     for src in ('f(no_tools=False)', 'f()', 'f(no_tools=x)', "f(no_tools='True')"):
         assert not _no_tools({k.arg: k.value for k in ast.parse(src, mode='eval').body.keywords})
+    call = lambda src, rel='archeus/x.py': _own_call(rel, ast.parse(src, mode='eval').body)
+    assert call("run(purpose='p', workdir=paths.fresh_call_dir, no_tools=True)") == 'fresh'
+    assert call("CallSpec(purpose=p, workdir=workdir)", PASS_THROUGH) == 'through'
+    assert call("run(purpose='p', no_tools=True)") is None
+    for src in ("run(purpose='p', workdir=paths.archeus_home(), no_tools=True)",
+                "run(purpose='p', workdir=paths.fresh_call_dir)",
+                "dict(purpose='p', workdir=repo.path, no_tools=True)",
+                "CallSpec(purpose=p, workdir=workdir)"):
+        assert call(src) not in (None, 'fresh', 'through'), src
     seen, bad, fresh = set(), [], set()
     for rel, fn, n in _in_functions():
         if not isinstance(n, ast.Call):
             continue
-        kw = {k.arg: k.value for k in n.keywords if k.arg}
         if _name(n.func) == 'CallSpec':
             assert rel == PASS_THROUGH, '%s:%d builds a CallSpec' % (rel, n.lineno)
-        if 'purpose' not in kw or 'workdir' not in kw:
+        got = _own_call(rel, n)
+        if got is None:
             continue
         seen.add((rel, n.lineno))
-        w = kw['workdir']
-        through = (rel == PASS_THROUGH and _name(n.func) == 'CallSpec'
-                   and isinstance(w, ast.Name) and w.id == 'workdir')
-        if _fresh(w) and _no_tools(kw):
+        if got == 'fresh':
             fresh.add((rel, fn))
-        elif not through:
-            bad.append('%s:%d workdir=%s no_tools=%s' % (
-                rel, n.lineno, ast.unparse(w), kw.get('no_tools') and ast.unparse(kw['no_tools'])))
+        elif got != 'through':
+            bad.append('%s:%d %s' % (rel, n.lineno, got))
     assert not bad, bad
     assert fresh == FRESH
     # the helper is named nowhere else in archeus/ but where it is defined
