@@ -259,12 +259,14 @@ class VerifyWorker:
         except OSError:
             return None
         argv = evidence.confined_argv(cmds[0][1], toolchain)
-        return None if argv is None else (cmds[0], argv, toolchain)
+        return None if argv is None else (cmds[0], argv, toolchain, m.project_id,
+                                          e.import_revision)
 
-    def _run_confined(self, vid, attempt, cmd, argv, toolchain):
-        """Attempt *attempt* of row *vid*, confined; the verdict is recorded before
-        its principal goes. No changes check and no Git after it: Core materialised
-        the input and runs no Git over what the verifier wrote."""
+    def _run_confined(self, vid, attempt, cmd, argv, toolchain, project_id, revision):
+        """Attempt *attempt* of row *vid*, confined over the tree of *revision*; the
+        verdict is recorded before its principal goes. No changes check and no Git
+        after it: Core materialised the input and runs no Git over what the verifier
+        wrote."""
         def record(result):
             try:
                 self._do(V.record, missions=self.missions, verification_id=vid,
@@ -272,8 +274,13 @@ class VerifyWorker:
             except V.Refused as err:
                 # nothing awaits this attempt any more: its principal may go
                 log.info('verification: confined %s not recorded: %s', vid, err)
+        with self.db.read() as conn:     # K1: no store call may name a recorded workdir
+            workdirs = [x.entity.workdir for x in rows.where(conn, entities.Execution)
+                        if x.entity.workdir]
         self.node.run_confined_check(vid, attempt, argv, toolchain=toolchain,
-                                     timeout=self.timeout_s, record=record)
+                                     timeout=self.timeout_s, record=record,
+                                     project_id=project_id, revision=revision,
+                                     workdirs=workdirs)
 
     def _run_and_record(self, vid, t, root, ws, revision, base, cmds, version):
         checks = []

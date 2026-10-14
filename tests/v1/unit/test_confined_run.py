@@ -12,7 +12,8 @@ import pytest
 
 from archeus.infra.paths import VerifyPaths
 from archeus.node import isolation as iso
-from archeus.node.local import LocalNode
+from archeus.node import local
+from archeus.node.local import LocalNode, StoreError
 # os_tripwire is autouse: importing it arms the same OS tripwire here
 from v1.unit.test_pv20_isolation import (FakeBoundary, FakeChild, FakeNode, _VID, _verify_key,
                                          make_verifier_request, os_tripwire)  # noqa: F401
@@ -61,6 +62,23 @@ class Boundary(FakeBoundary):
     def launch(self, argv, **kw):
         super().launch(argv, **kw)
         return self.child
+
+
+_STORE = {'project_id': 'prj_01M4XA5SPY74RQJ0KR1SF7JJHN', 'revision': 'e' * 40,
+          'workdirs': ()}
+
+
+@pytest.fixture(autouse=True)
+def exported(monkeypatch):
+    """A stand-in for the store export: records its call and writes one file."""
+    calls = []
+
+    def export(project_id, revision, top, workdirs, deadline):
+        calls.append((project_id, revision, top, tuple(workdirs)))
+        with open(os.path.join(top, 'from-the-tree.txt'), 'xb') as f:
+            f.write(b'tree')
+    monkeypatch.setattr(local, '_export_tree', export)
+    return calls
 
 
 @pytest.fixture(autouse=True)
@@ -477,7 +495,7 @@ def test_the_node_runs_a_check_confined_in_its_attempts_own_files(tmp_path):
     recorded = []
     result = node.run_confined_check(_VID, 0, ['python', '-c', 'pass'],
                                      toolchain=[str(toolchain)], timeout=5,
-                                     record=recorded.append)
+                                     record=recorded.append, **_STORE)
     assert result['error'] is None and result['output'] == b'ok' and recorded == [result]
     call, = b.launch_calls
     own = os.path.dirname(call['cwd'])
@@ -514,12 +532,12 @@ def test_the_same_attempt_again_touches_none_of_its_files(tmp_path):
     b, node, toolchain = _node(tmp_path, step)
     recorded = []
     first = node.run_confined_check(_VID, 0, ['tool'], toolchain=toolchain, timeout=5,
-                                    record=recorded.append)
+                                    record=recorded.append, **_STORE)
     assert first['error'] is None
     before, created, launched = _tree(VerifyPaths(_VID, 0).dir), list(b.created), \
         len(b.launch_calls)
     again = node.run_confined_check(_VID, 0, ['tool'], toolchain=toolchain, timeout=5,
-                                    record=recorded.append)
+                                    record=recorded.append, **_STORE)
     assert again['error'] == 'isolation: attempt_consumed' and recorded == [first, again]
     assert again['output'] == b'' and again['output_bytes'] == 0
     assert _tree(VerifyPaths(_VID, 0).dir) == before
@@ -535,12 +553,12 @@ def test_files_already_there_are_never_reused_or_truncated(tmp_path):
     b, node, toolchain = _node(tmp_path)
     recorded = []
     result = node.run_confined_check(_VID, 0, ['tool'], toolchain=toolchain, timeout=5,
-                                     record=recorded.append)
+                                     record=recorded.append, **_STORE)
     assert result['error'].startswith('prepare_failed') and recorded == [result]
     assert _tree(v.dir) == before and b.created == [] and b.launch_calls == []
     # admitted, so consumed: the attempt never starts later either
     again = node.run_confined_check(_VID, 0, ['tool'], toolchain=toolchain, timeout=5,
-                                    record=recorded.append)
+                                    record=recorded.append, **_STORE)
     assert again['error'] == 'isolation: attempt_consumed' and _tree(v.dir) == before
 
 
@@ -598,4 +616,31 @@ def test_a_preparation_that_raises_anything_leaves_no_admission_behind(tmp_path,
     with pytest.raises(iso.IsolationUnavailable) as err:
         a.establish(req)                            # the consumed marker refuses it
     assert err.value.reason == 'attempt_consumed'
+    assert b.created == [] and b.launch_calls == []
+
+
+def test_the_checkout_holds_the_exported_tree_before_the_command_starts(tmp_path, exported):
+    seen = []
+
+    def step(child):
+        seen.append(sorted(os.listdir(VerifyPaths(_VID, 0).checkout)))
+        child.returncode = 0
+    b, node, toolchain = _node(tmp_path, step)
+    result = node.run_confined_check(_VID, 0, ['tool'], toolchain=toolchain, timeout=5,
+                                     record=lambda r: None, **_STORE)
+    assert result['error'] is None and seen == [['from-the-tree.txt']]
+    assert exported == [(_STORE['project_id'], _STORE['revision'],
+                         VerifyPaths(_VID, 0).checkout, ())]
+
+
+def test_a_tree_core_cannot_export_launches_nothing_and_is_recorded(tmp_path, monkeypatch):
+    def refuse(*a):
+        raise StoreError('synthetic export failure')
+    monkeypatch.setattr(local, '_export_tree', refuse)
+    b, node, toolchain = _node(tmp_path)
+    recorded = []
+    result = node.run_confined_check(_VID, 0, ['tool'], toolchain=toolchain, timeout=5,
+                                     record=recorded.append, **_STORE)
+    assert result['error'] == 'prepare_failed: synthetic export failure'
+    assert result['exit_code'] is None and recorded == [result]
     assert b.created == [] and b.launch_calls == []

@@ -206,7 +206,8 @@ def start(tx, *, actor, missions, subject, verifier, execution_id=None, criterio
     guarded = not unconfined(tx.conn, m.id)
     version = VERIFIER_VERSION
     if guarded and verifier != 'generic_human':
-        if not (subject.kind == 'task' and confined(e, revision, workspace)):
+        if not (subject.kind == 'task' and verifier == 'code'
+                and confined(e, revision, workspace)):
             raise Refused('mission %s: %s' % (m.id, WITHHELD))
         version = CONFINED_VERIFIER
     v = entities.Verification(
