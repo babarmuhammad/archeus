@@ -1150,6 +1150,45 @@ ROUTES = (
           schemas.AUTOMATION_STATE, 'AutomationWritten'),
 )
 
+#: R1-A (ADR-0053; T-053 §4 P1, P2, P7): every route's class. PV-20 §3.6 is the
+#: canonical privileged list and this is its route projection; a route whose
+#: class is unclear counts as privileged. Every observe-scoped route is
+#: 'observe' (a read, or a query that writes nothing); every other route is
+#: named below, and a test fails on one that is not.
+_NAMED = {
+    'public': ('GET /', 'GET /assets/*', 'GET /sw.js', 'GET /manifest.webmanifest'),
+    # creates or extends a credential: only the user's origin reaches the code
+    'authority': ('POST /v1/devices/launch/code', 'POST /v1/devices/launch/redeem',
+                  'POST /v1/devices/pair/start', 'POST /v1/devices/pair/redeem'),
+    # presentation state, monotone and replayable (p15-design-gate D18)
+    'ordinary': ('POST /v1/digest/ack',),
+    'privileged': (
+        'POST /v1/missions', 'POST /v1/missions/{id}/pause', 'POST /v1/missions/{id}/resume',
+        'POST /v1/missions/pause-all', 'POST /v1/missions/resume-all',
+        'POST /v1/missions/{id}/reprioritize', 'POST /v1/missions/{id}/stop',
+        'POST /v1/executions/{id}/stop', 'POST /v1/estop', 'POST /v1/rearm',
+        'POST /v1/sessions/{id}/handoff', 'POST /v1/executions/{id}/handoff',
+        'POST /v1/sessions', 'POST /v1/sessions/{id}/resume', 'POST /v1/sessions/{id}/link',
+        'POST /v1/sessions/{id}/close',
+        'POST /v1/plans/{id}/edit', 'POST /v1/approvals/{id}/decide',
+        'POST /v1/verifications/{id}/decide', 'POST /v1/missions/{id}/review',
+        'POST /v1/tasks/{id}/integration/abandon',
+        'POST /v1/policies/rules', 'POST /v1/policies/rules/{id}/retire',
+        'POST /v1/policies/profile',
+        'POST /v1/devices/{id}/revoke', 'POST /v1/projects', 'POST /v1/provider-terms/{id}',
+        'POST /v1/accounts', 'POST /v1/accounts/{id}/state', 'POST /v1/resource-policies/{id}',
+        'POST /v1/missions/{id}/resources', 'POST /v1/opt-ins', 'POST /v1/automations',
+        'POST /v1/automations/{id}/state', 'POST /v1/meetings/import',
+        # unclear against §3.6, so privileged
+        'POST /v1/projects/{id}/constraints', 'POST /v1/conversations/{id}/messages',
+        'POST /v1/intents/{id}/clarify', 'POST /v1/knowledge/{id}/confirm',
+        'POST /v1/knowledge/{id}/reject', 'POST /v1/knowledge/{id}/retract',
+        'POST /v1/knowledge/{id}/supersede', 'POST /v1/knowledge/forget', 'POST /v1/feedback'),
+}
+CLASS = {**{(r.method, r.path): 'observe' for r in ROUTES if r.scope == 'observe'},
+         **{tuple(k.split(' ', 1)): c for c, keys in _NAMED.items() for k in keys}}
+PRIVILEGED = frozenset(k for k, c in CLASS.items() if c in ('privileged', 'authority'))
+
 #: The query parameters each GET route reads (for the docs and the client).
 QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),
          '/v1/sessions': ('project', 'mission', 'state'),

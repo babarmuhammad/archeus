@@ -47,6 +47,12 @@ def _post(tc, path, body=None, token=None, headers=None):
                    **({'token': token} if token else {}))
 
 
+def _phone(tc, path, body=None, token=None, headers=None):
+    """A paired client's command comes through the tunnel: on the loopback Host
+    a paired credential reaches no privileged route (T-053 Q4-A)."""
+    return _post(tc, path, body, token, dict(headers or {}, Host=REMOTE))
+
+
 def _get(tc, path, token=None):
     return tc.http('GET', path, **({'token': token} if token else {}))
 
@@ -111,10 +117,11 @@ def _settle(tc):
 def slow(archeus_home, clock):
     """A Core whose one task runs for 30 s on the fake harness, with the
     judge's session harnesses."""
-    tc = TempCore(archeus_home, launch_clock=clock, heartbeat_s=0.1, ports=runtime.Ports(
-        brain=ports.FixedPlanBrain(engine.SKELETON_PLAN), scenarios=dict(SLOW),
-        executors=[FakeHarness()], sessions=session_adapters(),
-        terminal=JudgeTerminal(archeus_home))).start()
+    tc = TempCore(archeus_home, launch_clock=clock, heartbeat_s=0.1, remote_hosts=(REMOTE,),
+                  ports=runtime.Ports(
+                      brain=ports.FixedPlanBrain(engine.SKELETON_PLAN), scenarios=dict(SLOW),
+                      executors=[FakeHarness()], sessions=session_adapters(),
+                      terminal=JudgeTerminal(archeus_home))).start()
     yield tc
     for p in list(tc.core.manager._procs.values()):
         proc.kill_pid_tree(p['handle'].pid, p['handle'].create_time)
@@ -124,7 +131,7 @@ def slow(archeus_home, clock):
 @pytest.fixture
 def deploy(archeus_home, clock):
     """A Core whose plan deploys: its approval needs step-up (P9 D16)."""
-    tc = TempCore(archeus_home, launch_clock=clock,
+    tc = TempCore(archeus_home, launch_clock=clock, remote_hosts=(REMOTE,),
                   ports=runtime.Ports(brain=ports.FixedPlanBrain(DEPLOY))).start()
     yield tc
     tc.stop()
@@ -425,8 +432,8 @@ def test_P11_a_retry_after_a_lost_answer_does_nothing_twice(slow):
     _d, phone = pair(tc)
     mid, _eid = _running(tc)
     body = {'idempotency_key': 'pause-once'}
-    first = _post(tc, '/v1/missions/%s/pause' % mid, body, token=phone)
-    again = _post(tc, '/v1/missions/%s/pause' % mid, body, token=phone)
+    first = _phone(tc, '/v1/missions/%s/pause' % mid, body, token=phone)
+    again = _phone(tc, '/v1/missions/%s/pause' % mid, body, token=phone)
     assert first.status == again.status == 200 and first.json() == again.json()
     moves = [e for e in _events(tc) if e['type'] == 'mission.state_changed'
              and e['subject']['id'] == mid and e['payload']['to'] == 'PAUSED']
@@ -439,14 +446,14 @@ def test_P12_a_queued_command_is_refused_unless_declared_replayable(slow):
     mid, _eid = _running(tc)
     before = _head(tc)
     queued = {'X-Archeus-Queued': '1'}
-    r = _post(tc, '/v1/missions/%s/pause' % mid, token=phone, headers=queued)
+    r = _phone(tc, '/v1/missions/%s/pause' % mid, token=phone, headers=queued)
     assert (r.status, r.json()['error']) == (409, 'queued_intent_refused')
     assert [e['type'] for e in _events(tc) if e['seq'] > before
             and e['subject']['id'] == mid] == []                     # nothing written
     ack = tc.http('POST', '/v1/digest/ack', body={'up_to_seq': before}, token=phone,
                   headers=queued)
     assert ack.status == 200
-    assert _post(tc, '/v1/missions/%s/pause' % mid, token=phone).status == 200     # live
+    assert _phone(tc, '/v1/missions/%s/pause' % mid, token=phone).status == 200     # live
 
 
 def test_P13_a_mutation_built_on_a_stale_read_is_refused(slow):
@@ -455,11 +462,11 @@ def test_P13_a_mutation_built_on_a_stale_read_is_refused(slow):
     mid, _eid = _running(tc)
     seen = _get(tc, '/v1/missions/%s' % mid, phone).json()['version']
     assert _post(tc, '/v1/missions/%s/pause' % mid).status == 200   # the desktop moves it
-    r = _post(tc, '/v1/missions/%s/resume' % mid, {'expected_version': seen}, token=phone)
+    r = _phone(tc, '/v1/missions/%s/resume' % mid, {'expected_version': seen}, token=phone)
     assert (r.status, r.json()['error']) == (409, 'version_conflict')
     assert r.json()['detail']['current'] > seen
     fresh = _get(tc, '/v1/missions/%s' % mid, phone).json()['version']
-    r = _post(tc, '/v1/missions/%s/resume' % mid, {'expected_version': fresh}, token=phone)
+    r = _phone(tc, '/v1/missions/%s/resume' % mid, {'expected_version': fresh}, token=phone)
     assert r.status == 200, r.body
 
 
@@ -491,7 +498,7 @@ def test_P07_P08_P23_a_client_going_away_ends_nothing_and_reconnecting_repeats_n
 def test_P15_remote_execution_control_is_p11s_stop(slow):
     did, phone = pair(slow)
     mid, eid = _running(slow)
-    r = _post(slow, '/v1/executions/%s/stop' % eid, token=phone)
+    r = _phone(slow, '/v1/executions/%s/stop' % eid, token=phone)
     assert r.status == 200, r.body
     _wait(lambda: _get(slow, '/v1/executions/%s' % eid).json()['state'].startswith('ENDED'),
           'the execution ends')
@@ -513,7 +520,7 @@ def test_P16_P30_resuming_is_p12s_and_a_connection_is_never_a_session(slow, tmp_
     _wait(lambda: {e['type'] for e in _events(slow) if e['seq'] > head} ==
           {'device.stream_opened', 'device.stream_closed'}, 'the traces')
     assert _get(slow, '/v1/sessions').json()['sessions'] == before       # P30
-    r = _post(slow, '/v1/sessions/%s/resume' % sid, {'request_id': 'r1'}, token=phone)
+    r = _phone(slow, '/v1/sessions/%s/resume' % sid, {'request_id': 'r1'}, token=phone)
     assert r.status == 200 and r.json()['id'] == sid and r.json()['launch'], r.body
     assert [s['id'] for s in _get(slow, '/v1/sessions').json()['sessions']] == [sid]
 
@@ -535,12 +542,12 @@ def test_P14_R1_a_paired_client_approves_through_p9_with_its_pin(deploy):
     a = _pending(deploy, mid)
     assert a['step_up']
     body = {'decision': 'approve', 'action_hash': a['action_hash']}
-    r = _post(deploy, '/v1/approvals/%s/decide' % a['id'], body, token=phone)
+    r = _phone(deploy, '/v1/approvals/%s/decide' % a['id'], body, token=phone)
     assert (r.status, r.json()['error']) == (422, 'guard_failed')           # no proof
-    r = _post(deploy, '/v1/approvals/%s/decide' % a['id'],
+    r = _phone(deploy, '/v1/approvals/%s/decide' % a['id'],
               dict(body, action_hash='0' * 64, step_up='482913'), token=phone)
     assert (r.status, r.json()['error']) == (422, 'guard_failed')           # other action
-    r = _post(deploy, '/v1/approvals/%s/decide' % a['id'], dict(body, step_up='482913'),
+    r = _phone(deploy, '/v1/approvals/%s/decide' % a['id'], dict(body, step_up='482913'),
               token=phone)
     assert r.status == 200 and r.json()['state'] == 'APPROVED', r.body
     outcomes = [d['outcome'] for d in _get(deploy, '/v1/policy-decisions?mission=%s'
@@ -558,10 +565,10 @@ def test_P19_B5_a_chat_approve_needs_the_same_step_up_as_the_card(deploy):
     url = '/v1/conversations/%s/messages' % mid
     body = {'text': 'approve', 'decision': {'approval_id': a['id'], 'action_hash':
                                              a['action_hash'], 'expected_version': a['version']}}
-    r = _post(deploy, url, dict(body, idempotency_key='no-pin'), token=phone)
+    r = _phone(deploy, url, dict(body, idempotency_key='no-pin'), token=phone)
     assert (r.status, r.json()['error']) == (422, 'guard_failed')           # no proof
     assert all(m['text'] != 'approve' for m in _get(deploy, url).json()['messages'])
-    r = _post(deploy, url, dict(body, step_up='482913', idempotency_key='pin'), token=phone)
+    r = _phone(deploy, url, dict(body, step_up='482913', idempotency_key='pin'), token=phone)
     assert r.status == 200, r.body
     assert _get(deploy, '/v1/approvals/%s' % a['id']).json()['state'] in ('APPROVED',
                                                                           'CONSUMED')
@@ -574,10 +581,10 @@ def test_R1_five_wrong_pins_revoke_the_client_and_no_pin_means_no_step_up(deploy
     mid = _mission(deploy)
     a = _pending(deploy, mid)
     body = {'decision': 'approve', 'action_hash': a['action_hash']}
-    assert _post(deploy, '/v1/approvals/%s/decide' % a['id'], body,
+    assert _phone(deploy, '/v1/approvals/%s/decide' % a['id'], body,
                  token=nopin).json()['error'] == 'guard_failed'
     for i in range(5):
-        r = _post(deploy, '/v1/approvals/%s/decide' % a['id'], dict(body, step_up='000000'),
+        r = _phone(deploy, '/v1/approvals/%s/decide' % a['id'], dict(body, step_up='000000'),
                   token=phone)
         assert r.json()['error'] == 'guard_failed', i
     assert _get(deploy, '/v1/version', phone).status == 401
@@ -593,8 +600,8 @@ def test_P24_reconnecting_during_an_approval_decides_it_once(deploy):
     assert _get(deploy, '/v1/approvals/%s' % a['id'], phone).json()['state'] == 'PENDING'
     body = {'decision': 'approve', 'action_hash': a['action_hash'], 'step_up': '482913',
             'idempotency_key': 'once'}
-    first = _post(deploy, '/v1/approvals/%s/decide' % a['id'], body, token=phone)
-    again = _post(deploy, '/v1/approvals/%s/decide' % a['id'], body, token=phone)
+    first = _phone(deploy, '/v1/approvals/%s/decide' % a['id'], body, token=phone)
+    again = _phone(deploy, '/v1/approvals/%s/decide' % a['id'], body, token=phone)
     assert first.status == 200 and first.json() == again.json()
     decided = [e for e in _events(deploy) if e['type'] == 'approval.state_changed'
                and e['subject']['id'] == a['id'] and e['payload']['to'] == 'APPROVED']
@@ -615,7 +622,7 @@ def test_P29_a_client_originated_mutation_is_traceable_to_its_client(slow):
     did, phone = pair(tc, name='Pixel', host_label='phone')
     s = SSEClient(tc.base_url, phone)
     mid, _eid = _running(tc)
-    assert _post(tc, '/v1/missions/%s/pause' % mid, token=phone).status == 200
+    assert _phone(tc, '/v1/missions/%s/pause' % mid, token=phone).status == 200
     s.close()
     d = _device(tc, did)
     (pause,) = [e for e in _events(tc) if e['type'] == 'mission.state_changed'
