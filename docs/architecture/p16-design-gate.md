@@ -679,6 +679,13 @@ removed because the connection dropped.
 
 No optimistic state: after a command the view re-reads; the new state appears when Core has it.
 
+*Amended 2026-10-14 (T-083; R1-A Q4-A, T-059 / T-070):* a paired client acting on the loopback
+Host gets `403 remote_host_required` on every privileged or authority route
+(`archeus/api/server.py:375-381`), shown as "Only through the configured remote connection to
+Archeus." (`clients/app/src/data/commands.ts:57`), not the local-only text of the
+`host_not_allowed` row above. Observe routes and the digest ack keep working there. A paired
+client cannot mint a launch code (api-and-realtime.md section 1, amendment of the same date).
+
 ### 13.4 Reconnect protocol (P15 §13, used as designed)
 
 On a new stream after a drop: `GET /v1/sync`; if `core.instance` changed (Core restarted) or the

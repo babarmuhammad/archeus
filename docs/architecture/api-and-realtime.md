@@ -34,6 +34,28 @@ mobile (ADR-0010). Push beyond ntfy is **DEFERRED**.
    core_stopping`; the full table is p3.5b-design-gate.md §5.5 and the generated
    [api-reference.md](api-reference.md) lists every route.
 
+*Amended 2026-10-14 (T-083; R1-A Q4-A, implemented by T-059 606d5b6 and T-070 dcbc848):* error
+item 5 gains `403 remote_host_required`. A `paired` credential that carries the route's scope but
+names a Host other than a configured remote host - on the pipeline that can only be the loopback
+Host, since `Origin.host_ok` (`archeus/api/auth.py:112`) admits nothing else - is refused on
+every route in `routes.PRIVILEGED` (`archeus/api/routes.py:1190`: the `privileged` and
+`authority` classes of `_NAMED`, `:1161-1165`) with `{"error": "remote_host_required",
+"detail": {"why": "a paired client does this through its remote host"}}`
+(`archeus/api/server.py:375-381`, rendered by `_refuse` at `:294`). The check runs after
+`scope_required` and before the handler, so the refusal writes nothing. On the loopback Host such a
+credential keeps the observe routes and the `ordinary` digest ack. Why (T-053 Q4 A): a paired
+client's privileged effects come only through branch P, the configured tunnel; a paired credential
+presented directly on loopback is neither of ADR-0053's two branches. `host_not_allowed` keeps its
+meanings (a Host outside the allowlist, a local credential through the tunnel, a local-only route
+reached through the tunnel). The TUI and the SPA say "Only through the configured remote connection
+to Archeus." (`archeus/cli/tui/sync.py:143`, `clients/app/src/data/commands.ts:57`). Consequence,
+found by T-082: a paired credential cannot mint a launch code or start a pairing at all - on the
+loopback Host `POST /v1/devices/launch/code` and `POST /v1/devices/pair/start` are `authority`
+routes and answer `remote_host_required`, and through the tunnel their handlers' `_loopback`
+(`archeus/api/routes.py:100`, called at `:209`, `:247`) answers `host_not_allowed`. The
+`launch_code` handler's minter's-scopes check (`:213-215`, D2) is therefore reached only by a local
+credential (the CLI's, or a launch-code browser holding `admin`).
+
 ## 2. Resource surface (conceptual)
 
 | Area | Queries (GET) | Commands (POST) |
