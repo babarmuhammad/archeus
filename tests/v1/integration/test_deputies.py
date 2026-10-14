@@ -342,12 +342,23 @@ def test_every_own_call_and_nothing_else_asks_for_no_tools():
     assert base.CallSpec.__dataclass_fields__['no_tools'].default is False
 
 
+#: the environment each stand-in spawn was given, in order
+ENVS = []
+
+#: what a no-tools Claude call adds beyond `--tools ""` (T-086): `--tools` covers
+#: built-ins only, and `claude -p` would otherwise load MCP servers, skills,
+#: project/local settings (their hooks) and every ancestor directory's CLAUDE.md
+NO_TOOLS_EXTRA = ['--strict-mcp-config', '--disable-slash-commands', '--setting-sources', 'user']
+
+
 def _call(monkeypatch, tmp_path, caller, **kw):
     """The argv a real adapter would spawn, from a stand-in runner."""
     from claude_sessions import config, harnesses, llmcall
     seen = []
     monkeypatch.setattr(llmcall, 'run_headless', lambda cmd, stdin=None, **k: (
-        seen.append(cmd), llmcall.Result(0, '{}', '', '', False))[1])
+        seen.append(cmd), ENVS.append(k['env']), llmcall.Result(0, '{}', '', '', False))[2])
+    monkeypatch.delenv('CLAUDE_CODE_DISABLE_CLAUDE_MDS', raising=False)
+    ENVS.clear()
     monkeypatch.setattr(llmcall, 'budget_args', lambda: [])
     monkeypatch.setattr(config, 'get_claude_exe', lambda: 'C:/x/claude.exe')
     monkeypatch.setattr(harnesses, 'exe', lambda hid=None: 'C:/x/pi.exe')
@@ -366,6 +377,24 @@ def test_claude_with_no_tools_gets_an_empty_tools_list(monkeypatch, tmp_path):
     deny = cmd.index('--disallowedTools') + 1        # the only list that may name a tool
     named = {t for i, a in enumerate(cmd) if i != deny for t in a.split(',')}
     assert not named & {'Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'Bash'}
+
+
+def test_claude_with_no_tools_also_drops_mcp_skills_project_settings_and_claude_md(
+        monkeypatch, tmp_path):
+    (cmd,), _ = _call(monkeypatch, tmp_path, real.ClaudeCodeCaller(), no_tools=True)
+    i = cmd.index('--strict-mcp-config')
+    assert cmd[i:i + len(NO_TOOLS_EXTRA)] == NO_TOOLS_EXTRA
+    assert '--mcp-config' not in cmd                  # strict with none named: no server at all
+    (env,) = ENVS
+    assert env['CLAUDE_CODE_DISABLE_CLAUDE_MDS'] == '1'
+    assert env['CLAUDE_CONFIG_DIR'] == str(tmp_path)  # the account's login still applies
+
+
+def test_an_ordinary_claude_call_keeps_its_context(monkeypatch, tmp_path):
+    (cmd,), _ = _call(monkeypatch, tmp_path, real.ClaudeCodeCaller())
+    assert not set(NO_TOOLS_EXTRA) & set(cmd)
+    (env,) = ENVS
+    assert 'CLAUDE_CODE_DISABLE_CLAUDE_MDS' not in env
 
 
 def test_pi_with_no_tools_gets_no_tools_and_no_extensions(monkeypatch, tmp_path):

@@ -89,14 +89,18 @@ class ClaudeCodeCaller:
             return base.CallResult(error='unavailable', detail='Claude Code is not installed')
         extra = () if spec.schema is None else (
             '--output-format', 'json', '--json-schema', json.dumps(spec.schema, sort_keys=True))
+        env = config.account_env(spec.account.home_ref)
         if spec.no_tools:
             # empty, never left out: no `--tools` at all means every tool
-            # (claude_code/tools.py relies on the same form)
-            extra = ('--tools', '') + extra
+            # (claude_code/tools.py relies on the same form). `--tools` covers
+            # built-ins only, so MCP servers, skills, project/local settings
+            # (their hooks) and every ancestor's CLAUDE.md go too (T-086)
+            extra = ('--tools', '', '--strict-mcp-config', '--disable-slash-commands',
+                     '--setting-sources', 'user') + extra
+            env['CLAUDE_CODE_DISABLE_CLAUDE_MDS'] = '1'
         args, stdin = llmcall.build_headless_args(exe, spec.prompt, spec.model or '',
                                                   llmcall.budget_args(), extra)
-        r = llmcall.run_headless(args, stdin, cwd=spec.workdir,
-                                 env=config.account_env(spec.account.home_ref),
+        r = llmcall.run_headless(args, stdin, cwd=spec.workdir, env=env,
                                  timeout=spec.limits.get('timeout_s', 600))
         if r.returncode != 0:
             return _failed(r)
