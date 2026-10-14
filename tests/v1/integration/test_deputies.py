@@ -348,7 +348,10 @@ ENVS = []
 #: what a no-tools Claude call adds beyond `--tools ""` (T-086): `--tools` covers
 #: built-ins only, and `claude -p` would otherwise load MCP servers, skills,
 #: project/local settings (their hooks) and every ancestor directory's CLAUDE.md
-NO_TOOLS_EXTRA = ['--strict-mcp-config', '--disable-slash-commands', '--setting-sources', 'user']
+NO_TOOLS_EXTRA = ['--strict-mcp-config', '--disable-slash-commands', '--setting-sources', 'user',
+                  '--safe-mode']
+#: and its environment: no CLAUDE.md, no auto memory
+NO_TOOLS_ENV = {'CLAUDE_CODE_DISABLE_CLAUDE_MDS': '1', 'CLAUDE_CODE_DISABLE_AUTO_MEMORY': '1'}
 
 
 def _call(monkeypatch, tmp_path, caller, **kw):
@@ -357,7 +360,10 @@ def _call(monkeypatch, tmp_path, caller, **kw):
     seen = []
     monkeypatch.setattr(llmcall, 'run_headless', lambda cmd, stdin=None, **k: (
         seen.append(cmd), ENVS.append(k['env']), llmcall.Result(0, '{}', '', '', False))[2])
-    monkeypatch.delenv('CLAUDE_CODE_DISABLE_CLAUDE_MDS', raising=False)
+    for k in NO_TOOLS_ENV:
+        monkeypatch.delenv(k, raising=False)
+    # a key in the environment shadows the account login; account_env must drop it
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'not-a-key')
     ENVS.clear()
     monkeypatch.setattr(llmcall, 'budget_args', lambda: [])
     monkeypatch.setattr(config, 'get_claude_exe', lambda: 'C:/x/claude.exe')
@@ -386,15 +392,17 @@ def test_claude_with_no_tools_also_drops_mcp_skills_project_settings_and_claude_
     assert cmd[i:i + len(NO_TOOLS_EXTRA)] == NO_TOOLS_EXTRA
     assert '--mcp-config' not in cmd                  # strict with none named: no server at all
     (env,) = ENVS
-    assert env['CLAUDE_CODE_DISABLE_CLAUDE_MDS'] == '1'
-    assert env['CLAUDE_CONFIG_DIR'] == str(tmp_path)  # the account's login still applies
+    assert {k: env.get(k) for k in NO_TOOLS_ENV} == NO_TOOLS_ENV
+    # still the account's environment, so its login applies
+    assert (env.get('CLAUDE_CONFIG_DIR'), env.get('ANTHROPIC_API_KEY')) == (str(tmp_path), None)
 
 
 def test_an_ordinary_claude_call_keeps_its_context(monkeypatch, tmp_path):
     (cmd,), _ = _call(monkeypatch, tmp_path, real.ClaudeCodeCaller())
     assert not set(NO_TOOLS_EXTRA) & set(cmd)
     (env,) = ENVS
-    assert 'CLAUDE_CODE_DISABLE_CLAUDE_MDS' not in env
+    assert not set(NO_TOOLS_ENV) & set(env)
+    assert (env.get('CLAUDE_CONFIG_DIR'), env.get('ANTHROPIC_API_KEY')) == (str(tmp_path), None)
 
 
 def test_pi_with_no_tools_gets_no_tools_and_no_extensions(monkeypatch, tmp_path):

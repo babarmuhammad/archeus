@@ -94,10 +94,12 @@ class ClaudeCodeCaller:
             # empty, never left out: no `--tools` at all means every tool
             # (claude_code/tools.py relies on the same form). `--tools` covers
             # built-ins only, so MCP servers, skills, project/local settings
-            # (their hooks) and every ancestor's CLAUDE.md go too (T-086)
+            # (their hooks) and every ancestor's CLAUDE.md go too (T-086).
+            # --safe-mode also drops the user's plugins, hooks, agents and auto
+            # memory while auth still works; --bare would too, but never reads OAuth
             extra = ('--tools', '', '--strict-mcp-config', '--disable-slash-commands',
-                     '--setting-sources', 'user') + extra
-            env['CLAUDE_CODE_DISABLE_CLAUDE_MDS'] = '1'
+                     '--setting-sources', 'user', '--safe-mode') + extra
+            env.update(CLAUDE_CODE_DISABLE_CLAUDE_MDS='1', CLAUDE_CODE_DISABLE_AUTO_MEMORY='1')
         args, stdin = llmcall.build_headless_args(exe, spec.prompt, spec.model or '',
                                                   llmcall.budget_args(), extra)
         r = llmcall.run_headless(args, stdin, cwd=spec.workdir, env=env,
