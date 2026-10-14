@@ -31,6 +31,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.a
     __file__)))))
 #: CallSpec is built in exactly one place, from OwnCalls.run's own `workdir`
 PASS_THROUGH = 'archeus/core/calls.py'
+#: the one adapter that turns the request into argv by name (pi's no-tools form, T-085)
+PI_ADAPTER = ('archeus/harnesses/calls.py', 'call', 'spec.no_tools')
 
 
 def _sources():
@@ -305,9 +307,10 @@ def test_every_other_own_call_runs_with_no_tools_in_a_fresh_directory_of_its_own
 
 
 def test_with_only_pi_every_other_own_call_is_unavailable_and_nothing_is_made(db, tmp_path):
-    """pi cannot make a call with no tools (T-069), so with nothing else eligible
-    each call ends unavailable at the router's capability step: nothing spawned,
-    no call directory, and each worker records it as any unavailable call."""
+    """A harness that cannot make a call with no tools (T-069; pi before T-085),
+    with nothing else eligible: each call ends unavailable at the router's
+    capability step, nothing spawned, no call directory, and each worker records
+    it as any unavailable call."""
     pi = FakeCaller('pi', no_tools=False, replies=REPLIES)
     r, got = _four(db, tmp_path, pi)
     assert pi.sent == []
@@ -325,14 +328,16 @@ def test_with_only_pi_every_other_own_call_is_unavailable_and_nothing_is_made(db
 
 def test_every_own_call_and_nothing_else_asks_for_no_tools():
     """Every `no_tools=` in archeus/, by the function it is in: each own call
-    sets it, OwnCalls.run hands it to CallSpec, and both default to False."""
+    sets it, OwnCalls.run hands it to CallSpec, pi's adapter hands it to its argv,
+    and both defaults are False."""
     got = set()
     for rel, tree in _sources():
         for fn in ast.walk(tree):
             if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 got |= {(rel, fn.name, ast.unparse(k.value)) for n in ast.walk(fn)
                         if isinstance(n, ast.Call) for k in n.keywords if k.arg == 'no_tools'}
-    assert got == {(rel, fn, 'True') for rel, fn in FRESH} | {(PASS_THROUGH, 'run', 'no_tools')}
+    assert got == {(rel, fn, 'True') for rel, fn in FRESH} | {(PASS_THROUGH, 'run', 'no_tools'),
+                                                             PI_ADAPTER}
     assert inspect.signature(OwnCalls.run).parameters['no_tools'].default is False
     assert base.CallSpec.__dataclass_fields__['no_tools'].default is False
 
@@ -363,9 +368,11 @@ def test_claude_with_no_tools_gets_an_empty_tools_list(monkeypatch, tmp_path):
     assert not named & {'Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'Bash'}
 
 
-def test_pi_refuses_a_call_with_no_tools_and_spawns_nothing(monkeypatch, tmp_path):
-    seen, res = _call(monkeypatch, tmp_path, real.PiCaller(), no_tools=True)
-    assert seen == [] and res.error == 'failed' and 'no tools' in res.detail
+def test_pi_with_no_tools_gets_no_tools_and_no_extensions(monkeypatch, tmp_path):
+    # T-085: `--no-tools` alone changes only pi's default; an extension could add one back
+    (cmd,), res = _call(monkeypatch, tmp_path, real.PiCaller(), no_tools=True)
+    assert cmd == ['C:/x/pi.exe', '-p', '--no-session', '--no-tools', '--no-extensions']
+    assert res.error is None
 
 
 def test_every_other_own_call_keeps_its_argv(monkeypatch, tmp_path):

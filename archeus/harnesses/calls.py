@@ -113,7 +113,8 @@ class ClaudeCodeCaller:
 
 
 class PiCaller:
-    """`pi -p --no-session --tools read,grep,find,ls [--model provider/id]`,
+    """`pi -p --no-session --tools read,grep,find,ls [--model provider/id]`
+    (`--no-tools --no-extensions` for a call with no tools),
     the schema in the prompt (pi has no schema flag), on pi's own home. A model
     is pi's vocabulary or nothing: Core never hands it Claude Code's."""
     id = 'pi'
@@ -125,8 +126,8 @@ class PiCaller:
 
     def capabilities(self, account=None):
         models, note = pi_offers(account)
-        # no `no_tools`: no pi form meaning NO tools is verified (call() refuses one)
-        return base.Capabilities(frozenset({'headless', 'structured_output', 'interactive'}),
+        return base.Capabilities(frozenset({'headless', 'structured_output', 'interactive',
+                                            'no_tools'}),
                                  'none', models, structured_output='prompted',
                                  models_note=note)
 
@@ -146,13 +147,9 @@ class PiCaller:
         exe = self.discover().executable
         if not exe:
             return base.CallResult(error='unavailable', detail='pi is not installed')
-        if spec.no_tools:
-            # pi is known here only as `--tools read,grep,find,ls`; no form that
-            # means NO tools has been verified, so refuse rather than run with those
-            return base.CallResult(error='failed', detail='pi cannot be asked to run with no '
-                                   'tools; this call needs a harness that can')
         prompt = spec.prompt if spec.schema is None else base.prompted(spec.prompt, spec.schema)
-        args, stdin = llmcall.build_headless_args(exe, prompt, spec.model or '', harness='pi')
+        args, stdin = llmcall.build_headless_args(exe, prompt, spec.model or '', harness='pi',
+                                                  no_tools=spec.no_tools)
         r = llmcall.run_headless(args, stdin, cwd=spec.workdir,
                                  env=config.account_env(spec.account.home_ref),
                                  timeout=spec.limits.get('timeout_s', 600))

@@ -33,13 +33,15 @@ DISALLOWED_TOOLS = 'Write,Edit,NotebookEdit,Bash'
 Result = namedtuple('Result', 'returncode stdout reason error timed_out')
 
 
-def build_headless_args(exe, prompt, model='', budget_args=(), extra_args=(), harness=None):
+def build_headless_args(exe, prompt, model='', budget_args=(), extra_args=(), harness=None,
+                        no_tools=False):
     """(argv, stdin_text) for one headless call.
 
     *harness* None is Claude Code. Any other id is a CLI whose descriptor names
     a `headless_argv` (read-only, ephemeral in its own flags); it gets *model*
     in its own vocabulary, and never *budget_args*/*extra_args*, which are
-    Claude Code flags.
+    Claude Code flags. *no_tools* is for such a CLI only (Claude Code's form is
+    an extra arg).
 
     The prompt leaves with `sessions.HEADLESS_MARK` appended: `claude -p`
     writes a transcript like any session, and the mark is how session lists
@@ -47,7 +49,7 @@ def build_headless_args(exe, prompt, model='', budget_args=(), extra_args=(), ha
     from .sessions import HEADLESS_MARK
     if harness is not None:
         from . import harnesses
-        args = harnesses.impl('headless_argv', harness)(exe, model)
+        args = harnesses.impl('headless_argv', harness)(exe, model, no_tools=no_tools)
     else:
         args = [exe, '-p', '--max-turns', MAX_TURNS, '--disallowedTools', DISALLOWED_TOOLS]
         if model:

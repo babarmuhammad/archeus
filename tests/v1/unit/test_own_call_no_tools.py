@@ -129,11 +129,11 @@ def test_the_router_adds_no_requirement_of_its_own():
     assert R.route(req, snap)['selected'] == 'pi'
 
 
-def test_claude_code_declares_no_tools_and_pi_does_not(monkeypatch):
+def test_claude_code_and_pi_both_declare_no_tools(monkeypatch):
     monkeypatch.setattr(real, 'claude_models', lambda: ())
     monkeypatch.setattr(real, 'pi_offers', lambda account=None: ((), 'stand-in'))
     assert 'no_tools' in real.ClaudeCodeCaller().capabilities().capabilities
-    assert 'no_tools' not in real.PiCaller().capabilities().capabilities
+    assert 'no_tools' in real.PiCaller().capabilities().capabilities       # T-085
 
 
 def test_a_fake_caller_states_it_explicitly():
