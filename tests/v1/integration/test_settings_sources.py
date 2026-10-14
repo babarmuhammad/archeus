@@ -342,7 +342,6 @@ def test_T099_the_boot_sweep_removes_leftovers_and_only_them(x):
     assert not os.path.exists(ExecPaths(e.id).mcp)
 
 
-
 def test_T099_an_estopped_execution_leaves_no_mcp_config(x):
     mid, e = _mcp_running(x)
     LocalNode.engage_estop()
@@ -355,7 +354,8 @@ def test_T099_an_estopped_execution_leaves_no_mcp_config(x):
     assert not os.path.exists(ExecPaths(e.id).mcp)
 
 
-def test_T099_an_execution_that_ends_while_its_halt_is_exiting_is_still_collected(x):
+def test_T099_an_execution_that_ends_while_its_halt_is_exiting_is_still_collected(
+        x, monkeypatch):
     """A halt for approval, then a stop before the next pass collects the exiting
     process (here an account ceiling): the execution is no longer live, so the
     pass over live executions never reaches its process."""
@@ -369,6 +369,14 @@ def test_T099_an_execution_that_ends_while_its_halt_is_exiting_is_still_collecte
     x.manager._stop_account(x.acc, 'ceiling', 'usage reached the allocation')
     assert x.state(e.id).state == 'ENDED_KILLED'
     p = x.manager._procs[e.id]
+    # while it still runs it is left alone: its end is not written under a live
+    # process, which a Core-less e-stop would then skip, and its config stays
+    status = p['adapter'].status
+    monkeypatch.setattr(p['adapter'], 'status', lambda h: type('S', (), {'state': 'running'}))
+    x.manager.tick()
+    assert e.id in x.manager._procs
+    assert not os.path.exists(ExecPaths(e.id).ended) and os.path.exists(ExecPaths(e.id).mcp)
+    monkeypatch.setattr(p['adapter'], 'status', status)
     deadline = time.monotonic() + 15
     while p['adapter'].status(p['handle']).state == 'running':
         assert time.monotonic() < deadline, 'the halted process never exited'
@@ -394,6 +402,22 @@ def test_T099_a_launch_that_raises_leaves_no_mcp_config(x, monkeypatch):
     for r in refused():
         assert os.path.exists(ExecPaths(r.id).spawning)      # the argv was built
         assert not os.path.exists(ExecPaths(r.id).mcp)
+
+
+def test_T099_a_prompt_that_cannot_be_written_leaves_no_mcp_config(x, monkeypatch):
+    """An OSError before a child exists (here the prompt) drops the config too,
+    not only a SpawnFailed."""
+    opt(x, x.acc, 'mcp', 'gh')
+    real = base.config.write_atomic
+    monkeypatch.setattr(base.config, 'write_atomic', lambda path, data, *a, **k: (
+        False if os.path.basename(path) == os.path.basename(ExecPaths(ids.new_id('execution')).prompt)
+        else real(path, data, *a, **k)))
+    mid = ready_in(x, x.prj)
+    with pytest.raises(OSError, match='could not write'):   # the manager's tick sees it
+        x.drive(mid, lambda: None)
+    [r] = x.all(entities.Execution)
+    assert os.path.exists(ExecPaths(r.id).spawning)          # the argv was built
+    assert not os.path.exists(ExecPaths(r.id).mcp)
 
 
 def test_T099_a_spawn_refused_as_already_spawned_keeps_the_config_a_process_may_hold(
@@ -425,6 +449,7 @@ def test_T099_a_tombstone_that_cannot_be_written_still_drops_the_config(x, monke
     assert not os.path.exists(ExecPaths(e.id).mcp)
     monkeypatch.undo()
     x.drive(mid, ended(x, e.id))
+
 
 # ── the routes and the CLI ───────────────────────────────────────────────────
 
