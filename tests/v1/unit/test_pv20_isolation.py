@@ -2373,6 +2373,62 @@ def _readers(acl):
     return Readers()
 
 
+@pytest.mark.parametrize('ace,want', [
+    ((0x0, 'S-1-5-11', 0x1301BF, 0x3), 'S-1-5-11'),        # Authenticated Users MODIFY (D:\\)
+    ((0x0, 'S-1-1-0', 0x1200A9, 0), None),                  # Everyone read+execute only
+    ((0x1, 'S-1-5-11', 0x1301BF, 0), None),                 # a deny ACE grants nothing
+    ((0x0, 'S-1-5-32-544', 0x1F01FF, 0), None),             # Administrators are not broad
+    ((0x0, 'S-1-5-32-545', 0x1301BF, 0x08), 'S-1-5-32-545'),   # inherit-only still counts
+])
+def test_the_broad_writer_of_a_path(ace, want):
+    acl = {'h': [(0x0, ME, 0x1F01FF, 0), (0x0, 'S-1-5-18', 0x1F01FF, 0), ace]}
+    assert _readers(acl).broad_writer('h') == want
+
+
+def _home_warning(monkeypatch, tmp_path, sid=None, err=None):
+    from archeus.infra import discovery
+    seen = []
+
+    class Reader:
+        def broad_writer(self, path):
+            seen.append(path)
+            if err:
+                raise err
+            return sid
+    monkeypatch.setattr(discovery, '_home_dacl', Reader)
+    return discovery._home_warning(str(tmp_path / 'not' / 'yet')), seen
+
+
+def test_a_broad_writer_on_the_home_is_a_warning_naming_it(monkeypatch, tmp_path):
+    msg, seen = _home_warning(monkeypatch, tmp_path, sid='S-1-5-11')
+    assert seen == [str(tmp_path)]                  # the folder a missing home inherits from
+    assert 'ARCHEUS_HOME %s can be written by Authenticated Users (S-1-5-11)' % tmp_path in msg
+    assert 'user profile' in msg
+
+
+def test_a_home_only_its_user_may_write_is_no_warning(monkeypatch, tmp_path):
+    assert _home_warning(monkeypatch, tmp_path)[0] is None
+
+
+def test_an_unreadable_home_acl_is_a_warning_not_a_crash(monkeypatch, tmp_path):
+    msg, _ = _home_warning(monkeypatch, tmp_path,
+                           err=iso.IsolationUnavailable('dacl_unreadable', 'winerror=5'))
+    assert msg.startswith('the ACL of ARCHEUS_HOME') and 'winerror=5' in msg
+
+
+def test_posix_never_reads_a_dacl(monkeypatch, tmp_path):
+    from archeus.infra import discovery, paths
+
+    class Never:
+        def broad_writer(self, path):
+            raise AssertionError('read a DACL off Windows')
+    monkeypatch.setattr(discovery, 'WINDOWS', False)
+    monkeypatch.setattr(discovery, '_home_dacl', Never)
+    monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path))
+    assert discovery.token_protection() == (True, None)
+    assert paths.archeus_home() == str(tmp_path)
+
+
 def _descriptor_boundary(acl):
     """A fake boundary whose grant readers are the real ones, over `acl[path]`."""
     class Boundary(iso.DaclReaders, FakeBoundary):
