@@ -463,3 +463,136 @@ def test_t064_loopback_and_pipe_reach_from_an_appcontainer(boundary):
         tok = r['observed']
         assert tok is None or (tok['is_appcontainer'] == 1 and tok['ac_sid'] == ident['sid']
                                and not set(tok['capability_sids']) & PYTEST_SIDS)
+
+
+# ── T-068 (K-O4): who is on the other end of a loopback connection ────────────
+# Authorised 2026-10-14 (owner, T-068, after T-064): T-064's probe plus read-only
+# observations from this process: the TCP table's owner PID for connections to the
+# listener, that PID's token, and the DACLs of the ARCHEUS_HOME tree this test made.
+# A token is opened only for this process and the processes this test launched.
+
+_TCP_STATES = {1: 'CLOSED', 2: 'LISTEN', 3: 'SYN_SENT', 4: 'SYN_RCVD', 5: 'ESTABLISHED',
+               6: 'FIN_WAIT1', 7: 'FIN_WAIT2', 8: 'CLOSE_WAIT', 9: 'CLOSING',
+               10: 'LAST_ACK', 11: 'TIME_WAIT', 12: 'DELETE_TCB'}
+
+
+def _tcp_rows(port):
+    """GetExtendedTcpTable(AF_INET, TCP_TABLE_OWNER_PID_ALL): every IPv4 row with *port*
+    at either end."""
+    ip = ctypes.WinDLL('iphlpapi')
+    size = wintypes.DWORD(0)
+    ip.GetExtendedTcpTable(None, ctypes.byref(size), False, 2, 5, 0)
+    for _ in range(4):
+        buf = (ctypes.c_byte * (size.value + 4096))()
+        size = wintypes.DWORD(ctypes.sizeof(buf))
+        if ip.GetExtendedTcpTable(buf, ctypes.byref(size), False, 2, 5, 0) == 0:
+            break
+    else:
+        raise OSError('GetExtendedTcpTable kept growing')
+    raw = bytes(buf)
+    n = struct.unpack_from('<I', raw, 0)[0]
+    out = []
+    for i in range(n):
+        st, la, lp, ra, rp, pid = struct.unpack_from('<IIIIII', raw, 4 + 24 * i)
+        lp, rp = socket.ntohs(lp & 0xFFFF), socket.ntohs(rp & 0xFFFF)
+        if port in (lp, rp):
+            out.append({'state': _TCP_STATES.get(st, st),
+                        'local': '%s:%d' % (socket.inet_ntoa(struct.pack('<I', la)), lp),
+                        'remote': '%s:%d' % (socket.inet_ntoa(struct.pack('<I', ra)), rp),
+                        'pid': pid})
+    return out
+
+
+def _token_of(b, pid):
+    """OpenProcess(QUERY_LIMITED_INFORMATION) + GetTokenInformation on *pid*: user SID,
+    AppContainer SID and flag, integrity level, and the PID's creation time."""
+    h = iso._OpenProcess(iso.PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not h:
+        return {'pid': pid, 'error': 'OpenProcess winerror=%s' % iso._err()}
+    tok = wintypes.HANDLE()
+    try:
+        if not iso._OpenProcessToken(h, iso.TOKEN_QUERY, ctypes.byref(tok)):
+            return {'pid': pid, 'error': 'OpenProcessToken winerror=%s' % iso._err()}
+        try:
+            return {'pid': pid, 'user': b._token_sid(tok, iso.TOKEN_USER),
+                    'is_appcontainer': b._token_flag(tok, iso.TOKEN_IS_APPCONTAINER),
+                    'ac_sid': b._token_sid(tok, iso.TOKEN_APPCONTAINER_SID),
+                    'integrity': b._token_integrity(tok),
+                    'created': proc.process_create_time(pid)}
+        finally:
+            iso._CloseHandle(tok)
+    finally:
+        iso._CloseHandle(h)
+
+
+def _busy(n=300000):
+    return [CMD, '/d', '/c', 'for /l %%i in (1,1,%d) do @rem' % n]
+
+
+def test_t068_origin_of_user_appcontainer_and_verifier_principals(boundary):
+    lst = _Listener()
+    mine = {os.getpid()}
+    seen = {}
+    try:
+        control = socket.create_connection(('127.0.0.1', lst.port), timeout=5)
+        control.sendall(b'GET / HTTP/1.0\r\n\r\n')
+        control.recv(64)
+        user_rows = _tcp_rows(lst.port)
+        user = _token_of(boundary, os.getpid())
+
+        def during(tag):
+            def look(child):
+                mine.add(child.pid)
+                time.sleep(1.0)                        # curl is mid-connect by now
+                rows = _tcp_rows(lst.port)
+                seen[tag] = {'rows': rows, 'token': _token_of(boundary, child.pid),
+                             'row_tokens': {r['pid']: _token_of(boundary, r['pid'])
+                                            for r in rows if r['pid'] in mine}}
+                return seen[tag]
+            return look
+
+        eid = ids.new_id('execution')
+        ac_ident, ac_runs = _probe_runs(boundary, eid, [_curl(lst.port)],
+                                        observe=during('appcontainer'))
+        vkey = iso.Principal('verify', ids.new_id('verification'), 0).key
+        v_ident, v_runs = _probe_runs(boundary, vkey, [_curl(lst.port)],
+                                      observe=during('verifier'))
+
+        # early exit: the process ends before it is observed. Its handle is still held
+        # (the IsolatedProcess), so the PID cannot name another process yet
+        ekey = ids.new_id('execution')
+        early = {}
+
+        def after_exit(child):
+            mine.add(child.pid)
+            child.wait(10)
+            early['exit_code'] = child.poll()
+            early['by_pid'] = _token_of(boundary, child.pid)
+            return early
+        e_ident, e_runs = _probe_runs(boundary, ekey, [[CMD, '/d', '/c', 'exit 0']],
+                                      observe=after_exit)
+        control.close()
+    finally:
+        lst.close()
+
+    home = archeus_home()
+    dacls = {}
+    for d, subdirs, _files in os.walk(home):
+        dacls[os.path.relpath(d, home)] = boundary.dacl(d)
+    _evidence('T-068', listener_port=lst.port, user_rows=user_rows, user_token=user,
+              appcontainer={'profile': iso.profile_name(eid), 'sid': ac_ident['sid'],
+                            'runs': ac_runs},
+              verifier={'key': vkey, 'profile': iso.profile_name(vkey), 'sid': v_ident['sid'],
+                        'derived_sid': boundary.derive_sid(vkey), 'runs': v_runs},
+              early_exit={'profile': iso.profile_name(ekey), 'sid': e_ident['sid'],
+                          'runs': e_runs},
+              listener_peers=lst.peers, archeus_home=home, dacls=dacls)
+    # the user process: this test, on both ends of its own connection
+    assert {r['pid'] for r in user_rows if r['state'] == 'ESTABLISHED'} == {os.getpid()}
+    assert user['is_appcontainer'] == 0 and user['ac_sid'] is None
+    for tag, ident in (('appcontainer', ac_ident), ('verifier', v_ident)):
+        tok = seen[tag]['token']
+        assert tok['is_appcontainer'] == 1 and tok['ac_sid'] == ident['sid']
+        assert tok['user'] == user['user'] and tok['integrity'] == '0x1000'
+    assert v_ident['sid'] == boundary.derive_sid(vkey)
+    assert early['exit_code'] == 0 and early['by_pid'].get('ac_sid') == e_ident['sid']
