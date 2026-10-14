@@ -122,15 +122,14 @@ def test_a_concurrent_burst_keeps_exactly_the_last_two_registered(tc, monkeypatc
     is the pool's own, decided under its lock, never the network's."""
     dev, token = observe_device(tc)
     old = _open(tc, token, 2)
-    order, real = [], sse.Streams._register
+    order, real = [], sse._Stream
 
-    def spy(self, device_id, conn=None):
-        out = real(self, device_id, conn)
-        with lock:
-            order.append(conn.getpeername()[1])
-        return out
-    lock = threading.Lock()
-    monkeypatch.setattr(sse.Streams, '_register', spy)
+    # recorded where `_register` builds the stream, inside the pool's lock: a
+    # record taken after `_register` returns can swap two neighbours
+    def stream(device_id, conn=None):
+        order.append(conn.getpeername()[1])
+        return real(device_id, conn)
+    monkeypatch.setattr(sse, '_Stream', stream)
     gate, got = threading.Barrier(8), []
 
     def go():
