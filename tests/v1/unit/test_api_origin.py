@@ -12,6 +12,7 @@ import os
 import pytest
 
 from archeus.api import auth, routes, server
+from archeus.cli.tui import sync
 from archeus.infra.eventlog import outbox
 from v1.judge.http import TempCore, request
 from v1.judge.support import wait_for
@@ -189,8 +190,16 @@ def test_a_paired_credential_on_the_loopback_host_reaches_no_privileged_route(co
         if SCOPE[key] is None:
             continue                                       # a redemption reads no credential
         r = core.http(key[0], _path(key[1]), body={}, token=token)
-        assert (r.status, r.json()['error']) == (403, 'host_not_allowed'), key
+        assert (r.status, r.json()['error']) == (403, 'remote_host_required'), key
     assert (_head(core), _devices(core)) == before
+
+
+def test_the_tui_explains_that_refusal_as_a_remote_connection_not_a_local_one(core):
+    r = _mission(core, _paired(core))
+    said = sync.explain({'status': r.status, 'code': r.json()['error'],
+                         'detail': r.json().get('detail')})
+    assert said == 'Only through the configured remote connection to Archeus.'
+    assert said != sync.explain({'status': 403, 'code': 'host_not_allowed', 'detail': {}})
 
 
 def test_on_the_loopback_host_it_keeps_its_observe_and_ordinary_routes(core):
@@ -209,9 +218,9 @@ def test_through_the_remote_host_its_privileged_routes_are_p15s_and_a_local_one_
 
 
 @pytest.mark.parametrize('spoof, error', [
-    ({'X-Forwarded-Host': TUNNEL}, 'host_not_allowed'),
-    ({'Forwarded': 'host=' + TUNNEL}, 'host_not_allowed'),
-    ({'X-Original-Host': TUNNEL}, 'host_not_allowed'),
+    ({'X-Forwarded-Host': TUNNEL}, 'remote_host_required'),
+    ({'Forwarded': 'host=' + TUNNEL}, 'remote_host_required'),
+    ({'X-Original-Host': TUNNEL}, 'remote_host_required'),
     ({'Origin': 'https://' + TUNNEL}, 'cross_site'),
 ])
 def test_only_the_host_header_names_the_remote_host(core, spoof, error):

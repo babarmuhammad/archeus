@@ -11,8 +11,9 @@ in this order, each step failing closed:
       the peer's origin is the user (any route but the public page)   403 origin_refused
     6 a live device credential (if the route has a scope)   401 unauthenticated
     7 the credential carries the route's scope     403 scope_required
-      a local credential names the loopback Host; a paired one names its
-      remote host on a privileged route             403 host_not_allowed
+      a local credential names the loopback Host    403 host_not_allowed
+      a paired one names its remote host on a privileged route
+                                                    403 remote_host_required
     8 a JSON object body; an idempotency_key on a keyed command   400
     9 the handler: ONE command through the writer, or ONE read query
 
@@ -376,7 +377,7 @@ class Handler(BaseHTTPRequestHandler):
                     # a paired credential's privileged effects come only through
                     # a configured remote host (branch P); on the loopback Host
                     # it keeps observe and ordinary routes (T-053 Q4-A)
-                    raise Refused(403, 'host_not_allowed',
+                    raise Refused(403, 'remote_host_required',
                                   {'why': 'a paired client does this through its remote host'})
                 self.api.seen[self.principal['device_id']] = (time.monotonic(), auth.now_iso())
                 if route.method == 'GET' and route.path != routes.STREAM:
