@@ -82,7 +82,7 @@ class OwnCalls:
                 conn, callers=self.callers, feed=self.usage, preference=self.preference.get(),
                 purpose=purpose, schema=schema, project_id=project_id,
                 min_tier=CALL_TIERS.get(purpose), forbidden=forbidden,
-                max_run_s=ATTEMPTS * self.timeout_s)
+                max_run_s=ATTEMPTS * self.timeout_s, no_tools=no_tools)
         # decided inside the transaction that records it, over fresh ledgers:
         # two calls cannot both take an account's last slot (ADR-0048 D-25.4)
         got = self._do(resources.record_call_route, purpose=purpose, source=dict(source),

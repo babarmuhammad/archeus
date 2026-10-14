@@ -205,8 +205,9 @@ class FakeCaller:
 
     def __init__(self, id='fake', *, headless=True, structured='native', installed=True,
                  replies=None, models=(FAKE_MODEL,), efforts=(), auth_ok=True,
-                 usage_measures=('tokens',)):
+                 usage_measures=('tokens',), no_tools=True):
         self.id, self.headless, self.structured = id, headless, structured
+        self.no_tools = no_tools
         self.installed, self.models = installed, tuple(models)
         self.efforts, self.auth_ok = tuple(efforts), auth_ok
         self.usage_measures = frozenset(usage_measures)
@@ -218,6 +219,8 @@ class FakeCaller:
 
     def capabilities(self, account=None):
         caps = {'headless', 'structured_output'} if self.headless else {'interactive'}
+        if self.headless and self.no_tools:
+            caps.add('no_tools')            # a scripted reply runs no tool at all
         return base.Capabilities(frozenset(caps), 'none', self.models,
                                  structured_output=self.structured if self.headless else None,
                                  efforts=self.efforts, usage_measures=self.usage_measures)
