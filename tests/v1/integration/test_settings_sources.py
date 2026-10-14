@@ -23,12 +23,13 @@ from archeus.cli import main as cli
 from archeus.core.application import authorization as A
 from archeus.core.application import commands, executions as X, lifecycle, optins, world
 from archeus.core.domain import entities, ids
-from archeus.harnesses import sources
+from archeus.harnesses import base, sources
 from archeus.harnesses.fake import FakeHarness
 from archeus.infra.artifacts import store
 from archeus.infra.paths import ExecPaths
+from claude_sessions import proc
 
-from v1.integration.test_execution import Rig, _running, ended
+from v1.integration.test_execution import DONE, Rig, _running, ended
 from v1.integration.test_policy import AUTO, task
 
 TOKEN = 'Bearer ' + 'z' * 30
@@ -209,8 +210,7 @@ def test_I07_the_owners_opt_ins_reach_the_spawn_and_no_one_elses(x):
                               {'owner': 'project', 'kind': 'source', 'name': 'project'}]
     argv = started(e)['argv']
     assert argv[:2] == ['--setting-sources', 'project'] and '--strict-mcp-config' in argv
-    cfg = json.load(open(argv[argv.index('--mcp-config') + 1], encoding='utf-8'))
-    assert list(cfg['mcpServers']) == ['gh']                 # never the project's `db`
+    assert started(e)['mcp_servers'] == ['gh']               # never the project's `db`
     assert [i['status'] for i in inv['items'] if i['name'] == 'db'] == ['excluded']
     # a mission with no project gets the account's opt-ins and nothing of the project's
     e2 = run_one(x, x.ready())
@@ -264,6 +264,80 @@ def test_I10_a_deny_reaches_the_agent_as_the_exit_code_2_block(x):
     assert denied and denied[0]['reason'], evs
     assert 'hook_error' not in [v.get('type') for v in evs]
     assert [ev['payload']['decision'] for ev in x.events('execution.hook')] == ['deny']
+
+
+# ── T-099: the MCP config holds keys, so it lives only while a process runs ──
+
+def _mcp_running(x, sleep=30):
+    opt(x, x.acc, 'mcp', 'gh')
+    x.scenarios['t1'] = [{'emit': {'type': 'working'}}, {'sleep': sleep}, DONE]
+    mid = ready_in(x, x.prj)
+    e = _running(x, mid)
+    assert os.path.exists(ExecPaths(e.id).mcp)
+    assert started(e)['argv'][started(e)['argv'].index('--mcp-config') + 1] ==         ExecPaths(e.id).mcp
+    return mid, e
+
+
+def test_T099_a_clean_exit_leaves_no_mcp_config(x):
+    mid, e = _mcp_running(x, sleep=0.5)
+    x.drive(mid, ended(x, e.id))
+    assert x.state(e.id).state == 'ENDED_OK'
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def test_T099_a_stopped_execution_leaves_no_mcp_config(x):
+    mid, e = _mcp_running(x)
+    x.do(X.Executions(missions=x.missions).stop_execution, who=x.user, execution_id=e.id)
+    x.drive(mid, ended(x, e.id))
+    assert x.state(e.id).state == 'ENDED_KILLED'
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def test_T099_a_spawn_that_fails_leaves_no_mcp_config(x, monkeypatch):
+    opt(x, x.acc, 'mcp', 'gh')
+    monkeypatch.setattr(base.proc, 'spawn_detached', lambda *a, **k: (None, 'no process'))
+    mid = ready_in(x, x.prj)
+    refused = lambda: [r for r in x.all(entities.Execution) if r.state == 'ABANDONED']  # noqa: E731
+    x.drive(mid, refused)
+    for r in refused():
+        assert os.path.exists(ExecPaths(r.id).spawning)      # the argv was built
+        assert not os.path.exists(ExecPaths(r.id).mcp)
+
+
+def test_T099_a_process_that_died_while_core_was_down_leaves_no_mcp_config(x):
+    mid, e = _mcp_running(x)
+    proc.kill_pid_tree(e.pid, e.create_time)
+    x.manager._procs.clear()                                 # the old Core is gone
+    fresh = Rig(x.db, adapters=[FakeHarness(sources=True)])
+    fresh.manager.boot()
+    assert x.state(e.id).state in ('LOST', 'ENDED_ERROR', 'ENDED_KILLED'), x.state(e.id).state
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def test_T099_the_boot_sweep_removes_leftovers_and_only_them(x):
+    mid, e = _mcp_running(x, sleep=1.5)
+    # a crash leftover: an ended execution's config the end never removed
+    left = ids.new_id('execution')
+    paths = ExecPaths(left)
+    os.makedirs(paths.res)
+    for f in (paths.mcp, os.path.join(paths.res, 'settings.json'),
+              os.path.join(paths.res, '1.res.json'), os.path.join(paths.req, 'mcp.json')):
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        _write(f, {'x': 1})
+    stray = os.path.join(os.path.dirname(paths.dir), 'not-an-id', 'res', 'mcp.json')
+    _write(stray, {'x': 1})
+    fresh = Rig(x.db, adapters=[FakeHarness(sources=True)])
+    fresh.scenarios.update(x.scenarios)
+    assert e.id in fresh.manager.boot() and e.id in fresh.manager._procs
+    assert not os.path.exists(paths.mcp)                     # the leftover is gone
+    assert os.path.exists(os.path.join(paths.res, 'settings.json'))
+    assert os.path.exists(os.path.join(paths.res, '1.res.json'))
+    assert os.path.exists(os.path.join(paths.req, 'mcp.json'))  # not the path flag_argv writes
+    assert os.path.exists(stray)                              # not an execution's directory
+    assert os.path.exists(ExecPaths(e.id).mcp)                # the adopted process's survives
+    x.manager._procs.clear()
+    fresh.drive(mid, ended(fresh, e.id))
+    assert not os.path.exists(ExecPaths(e.id).mcp)
 
 
 # ── the routes and the CLI ───────────────────────────────────────────────────

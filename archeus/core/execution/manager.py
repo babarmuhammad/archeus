@@ -746,6 +746,7 @@ class ExecutionManager:
             except Exception as err:
                 failed = failed or err
         self.node.compact_registry()
+        base.sweep_mcp_configs(set(self._procs))
         # compaction keeps only unended spawns, so the notes the reconciles above left
         # are written again after it
         for execution_id, op in sorted(self._noted):

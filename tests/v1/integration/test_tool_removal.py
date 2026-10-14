@@ -121,8 +121,7 @@ def test_R03_an_opted_in_mcp_server_stays_usable_and_the_excluded_are_denied_by_
     argv = started(e)['argv']
     # every excluded server, named as Claude Code names its tools; never mcp__*
     assert flag(argv, '--disallowedTools') == 'mcp__db,mcp__pv_dot,mcp__web'
-    cfg = json.load(open(flag(argv, '--mcp-config'), encoding='utf-8'))
-    assert list(cfg['mcpServers']) == ['gh']
+    assert started(e)['mcp_servers'] == ['gh']              # what the process loaded
     evs = stream(e)
     assert [v['name'] for v in evs if v['type'] == 'tool'] == ['mcp__gh__issue']
     assert [v['name'] for v in evs if v['type'] == 'tool_unavailable'] == [
@@ -140,8 +139,7 @@ def test_R04_an_excluded_server_whose_name_collides_with_the_opted_in_one_is_not
     e = through_approval(x, ready_in(x, x.prj, task('t1', 'read')))
     argv = started(e)['argv']
     assert flag(argv, '--disallowedTools') == 'mcp__db,mcp__gh,mcp__web'
-    cfg = json.load(open(flag(argv, '--mcp-config'), encoding='utf-8'))
-    assert list(cfg['mcpServers']) == ['pv_dot']        # the opted-in definition alone
+    assert started(e)['mcp_servers'] == ['pv_dot']      # the opted-in definition alone
     evs = stream(e)
     assert [v['name'] for v in evs if v['type'] == 'tool'] == ['mcp__pv_dot__x']
     assert [v['name'] for v in evs if v['type'] == 'tool_unavailable'] == ['mcp__gh__issue']

@@ -238,6 +238,7 @@ REQUEST_DIR = 'req'         # class 1: the execution's requests and reports, unt
 RESPONSE_DIR = 'res'        # class 2: Core's answers and the spawn configuration it wrote
 SENTINEL_DIR = 'ctl'        # class 3: the STOP / PAUSE / HANDOFF flags Core sets
 PRIVATE_DIR = 'own'         # class 7: the execution's own workspace and state
+MCP_CONFIG = 'mcp.json'     # in class 2: the opted-in MCP servers, keys included (T-099)
 
 
 class ExecPaths:
@@ -247,7 +248,7 @@ class ExecPaths:
     class 1, 2, 3 and 7 directories inside it are the execution's interface."""
 
     __slots__ = ('execution_id', 'dir', 'spawning', 'prompt', 'stream', 'pid', 'ended',
-                 'req', 'res', 'ctl', 'work', 'state', 'config', 'tmp', 'home')
+                 'req', 'res', 'ctl', 'mcp', 'work', 'state', 'config', 'tmp', 'home')
 
     def __init__(self, execution_id, run=None):
         # the id becomes a directory name: only a well-formed id may, so no
@@ -264,6 +265,9 @@ class ExecPaths:
         self.req = os.path.join(self.dir, REQUEST_DIR)
         self.res = os.path.join(self.dir, RESPONSE_DIR)
         self.ctl = os.path.join(self.dir, SENTINEL_DIR)
+        # the opted-in servers' env and headers are third-party keys: the file lives only
+        # while a process runs (T-099; base.mark_ended and the boot sweep remove it)
+        self.mcp = os.path.join(self.res, MCP_CONFIG)
         self.work = os.path.join(self.dir, PRIVATE_DIR, 'work')   # a project-less workspace
         self.state = os.path.join(self.dir, PRIVATE_DIR, 'state')
         self.config = os.path.join(self.state, 'config')   # isolated CLAUDE_CONFIG_DIR (A2)

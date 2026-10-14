@@ -91,18 +91,23 @@ def available(flags, name):
     if name.startswith('mcp__'):
         if '--strict-mcp-config' not in flags:
             return True
-        loaded = set()
-        for path in flags.get('--mcp-config', ()):
-            try:
-                with open(path, encoding='utf-8') as f:
-                    servers = json.load(f).get('mcpServers') or {}
-            except (OSError, ValueError):
-                servers = {}
-            loaded.update(re.sub(r'[^A-Za-z0-9_-]', '_', s) for s in servers)
+        loaded = {re.sub(r'[^A-Za-z0-9_-]', '_', s) for s in mcp_servers(flags)}
         return _server(name) in loaded
     if name == 'Skill' and '--disable-slash-commands' in flags:
         return False
     return '--tools' not in flags or name in _names(flags['--tools'])
+
+
+def mcp_servers(flags):
+    """The servers `--mcp-config` loads, as the real CLI's init event lists them."""
+    out = []
+    for path in flags.get('--mcp-config', ()):
+        try:
+            with open(path, encoding='utf-8') as f:
+                out += list(json.load(f).get('mcpServers') or {})
+        except (OSError, ValueError):
+            pass
+    return out
 
 
 def hook(cmd, event):
@@ -164,11 +169,11 @@ def main(argv):
         emit({'type': 'exit', 'code': code})
         return code
 
+    flags = flags_of(argv[3:])
     emit({'type': 'started', 'pid': os.getpid(), 'at_step': start,
           'execution_id': os.environ.get('ARCHEUS_EXECUTION_ID'),
           'stdin_bytes': len(data), 'stdin_sha256': hashlib.sha256(data).hexdigest(),
-          'argv': argv[3:]})
-    flags = flags_of(argv[3:])
+          'argv': argv[3:], 'mcp_servers': mcp_servers(flags)})
     for i, step in enumerate(steps):
         if i < start:
             continue

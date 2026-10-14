@@ -50,6 +50,8 @@ import os
 import re
 import sys
 
+from ..infra.paths import MCP_CONFIG
+
 SOURCES = ('user', 'project', 'local')
 #: Sources that PV-19 found cannot be narrowed without breaking the account's
 #: login: they are loaded and only recorded (ADR-0049 §2's fallback). Empty
@@ -382,7 +384,7 @@ def flag_argv(flags, *, home, workdir, exec_dir):
     out it would mean every source — and empty when nothing is opted in."""
     a = ['--setting-sources', ','.join(flags['setting_sources']), '--strict-mcp-config']
     if flags['mcp_servers']:
-        path = os.path.join(exec_dir, 'mcp.json')
+        path = os.path.join(exec_dir, MCP_CONFIG)
         os.makedirs(exec_dir, exist_ok=True)
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(mcp_config(home, workdir, flags['mcp_servers']), f)

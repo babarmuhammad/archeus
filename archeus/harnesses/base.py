@@ -17,6 +17,7 @@ spawning marker exists is NEVER spawned again — a retry is a new execution id
 """
 
 import json
+import logging
 import os
 import re
 import time
@@ -25,7 +26,9 @@ from typing import Mapping, Optional, Protocol, runtime_checkable
 
 from claude_sessions import config, proc
 
-from ..infra.paths import REQUEST_DIR, ExecPaths, archeus_home
+from ..infra.paths import REQUEST_DIR, ExecPaths, archeus_home, run_dir
+
+log = logging.getLogger('archeus.harnesses')
 
 #: the environment every execution runs in (execution-architecture §2): it can
 #: commit locally, it cannot push with the user's credentials
@@ -508,8 +511,41 @@ def _isolated_env(spec, paths):
 
 
 def mark_ended(paths, exit_code, **extra):
-    """Write the `ended` tombstone (Core, when it observes the exit)."""
+    """Write the `ended` tombstone (Core, when it observes the exit). Every end of a
+    process passes here, so this is where its MCP config goes (T-099)."""
     _write_json(paths.ended, dict({'exit_code': exit_code, 'at': time.time()}, **extra))
+    drop_mcp_config(paths)
+
+
+def drop_mcp_config(paths):
+    """Remove *paths*' MCP config: it holds the opted-in servers' keys. A failure is
+    logged, never raised: the end it belongs to must still be recorded, and the boot
+    sweep tries again."""
+    try:
+        os.remove(paths.mcp)
+    except FileNotFoundError:
+        pass
+    except OSError as err:
+        log.warning('execution %s: its MCP config was not removed: %s',
+                    paths.execution_id, err)
+
+
+def sweep_mcp_configs(keep):
+    """At boot, the MCP config of every execution whose process this Core is not
+    watching (*keep*): a Core that died while one ran never saw that end."""
+    root = os.path.join(run_dir(), 'exec')
+    try:
+        names = os.listdir(root)
+    except FileNotFoundError:
+        return
+    for name in names:
+        if name in keep:
+            continue
+        try:
+            paths = ExecPaths(name)
+        except ValueError:
+            continue                    # not an execution's directory
+        drop_mcp_config(paths)
 
 
 def read_stream(path, offset=0):
