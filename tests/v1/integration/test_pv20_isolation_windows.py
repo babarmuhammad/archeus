@@ -269,3 +269,197 @@ def test_pending_record_never_created_reclaims_idempotently(boundary):
     assert a.record(eid) is None                    # record removed after cleanup
     assert eid not in a.quarantined()               # nothing left standing
     assert eid not in a.reclaim(live_execution_ids=[])
+
+
+# ── T-064 (P23): what an isolated process can reach on loopback ───────────────
+# Authorised 2026-10-14 (owner, T-064): one AppContainer profile per run with zero
+# capability SIDs, a kill-on-close Job, and only System32 curl.exe and cmd.exe inside
+# it, against one pytest-owned 127.0.0.1 listener, one per-run named pipe and one
+# closed port. Nothing here changes an ACL, a firewall rule or a loopback exemption.
+
+import ctypes                                   # noqa: E402
+import json                                     # noqa: E402
+import secrets                                  # noqa: E402
+import socket                                   # noqa: E402
+import struct                                   # noqa: E402
+import threading                                # noqa: E402
+from ctypes import wintypes                     # noqa: E402
+
+SYS32 = os.path.join(SYSTEM_ROOT, 'System32')
+CURL = os.path.join(SYS32, 'curl.exe')
+
+
+def _evidence(card, **facts):
+    """Each observation, verbatim, to the file the run names (outside the basetemp,
+    which is deleted); nothing when the run names none."""
+    path = os.environ.get('ARCHEUS_NATIVE_EVIDENCE')
+    if path:
+        with open(path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(dict(card=card, **facts), default=str) + '\n')
+
+
+class _Listener:
+    """One TCP listener on 127.0.0.1 in this process. It answers any connection with a
+    minimal HTTP response and keeps it open (T-068 reads the connection table while
+    they exist), recording each peer."""
+
+    def __init__(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind(('127.0.0.1', 0))
+        self.sock.listen(8)
+        self.sock.settimeout(0.2)
+        self.port = self.sock.getsockname()[1]
+        self.peers, self.held, self._stop = [], [], False
+        self._t = threading.Thread(target=self._run, daemon=True)
+        self._t.start()
+
+    def _run(self):
+        while not self._stop:
+            try:
+                c, addr = self.sock.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            self.peers.append(addr)
+            self.held.append(c)
+            try:
+                c.settimeout(2)
+                c.recv(1024)
+                c.sendall(b'HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\nok')
+            except OSError:
+                pass
+
+    def close(self):
+        self._stop = True
+        self._t.join(5)
+        for c in self.held:
+            c.close()
+        self.sock.close()
+
+
+def _closed_port():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(('127.0.0.1', 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+class _Pipe:
+    """One inbound named pipe with a per-run random name, created with the default
+    security descriptor (no DACL is written), local clients only."""
+
+    def __init__(self):
+        k = ctypes.WinDLL('kernel32', use_last_error=True)
+        k.CreateNamedPipeW.restype = wintypes.HANDLE
+        k.CreateNamedPipeW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                       wintypes.DWORD, wintypes.DWORD, wintypes.DWORD,
+                                       wintypes.DWORD, ctypes.c_void_p]
+        k.ConnectNamedPipe.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
+        k.ReadFile.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
+                               ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+        k.CloseHandle.argtypes = [wintypes.HANDLE]
+        self.k = k
+        self.name = r'\\.\pipe\archeus-probe-%s' % secrets.token_hex(8)
+        # PIPE_ACCESS_INBOUND, PIPE_TYPE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS
+        self.h = k.CreateNamedPipeW(self.name, 0x1, 0x8, 1, 0, 4096, 0, None)
+        if self.h in (None, 0, wintypes.HANDLE(-1).value):
+            raise OSError('CreateNamedPipeW failed (%s)' % ctypes.get_last_error())
+        self.got = None
+        self._t = threading.Thread(target=self._serve, daemon=True)
+        self._t.start()
+
+    def _serve(self):
+        self.k.ConnectNamedPipe(self.h, None)      # ERROR_PIPE_CONNECTED is a connect too
+        buf = ctypes.create_string_buffer(256)
+        n = wintypes.DWORD(0)
+        if self.k.ReadFile(self.h, buf, 256, ctypes.byref(n), None):
+            self.got = buf.raw[:n.value]
+        else:
+            self.got = b''
+
+    def close(self):
+        if self._t.is_alive():                     # nobody else connected: unblock it
+            with open(self.name, 'wb') as f:
+                f.write(b'self')
+        self._t.join(5)
+        self.k.CloseHandle(self.h)
+
+
+def _probe_runs(b, key, argvs, *, observe=None):
+    """Launch each argv in turn inside one AppContainer profile (zero capability SIDs)
+    and one Core-held kill-on-close Job, with Core-opened stdio, cwd System32 and the
+    minimal environment. *observe(child)* runs while the process is alive."""
+    created = b._pv20_created
+    ident = b.create_profile(key)
+    created['profiles'].append(key)
+    job = b.create_job(key)
+    created['jobs'].append(job)
+    root = os.path.join(archeus_home(), 'run', 'probe')
+    os.makedirs(root, exist_ok=True)
+    prompt = os.path.join(root, 'p')
+    open(prompt, 'w').close()
+    out = []
+    for i, argv in enumerate(argvs):
+        stream = os.path.join(root, 's%d' % i)
+        open(stream, 'w').close()
+        hs = [b.open_inherited(prompt, 'read'), b.open_inherited(stream, 'append')]
+        try:
+            # LOCALAPPDATA: an AppContainer CreateProcessW answers ERROR_ENVVAR_NOT_FOUND
+            # (203) for a block without it (T-064, build 26200); the system points it at
+            # the container's own folder
+            child = b.launch(argv, cwd=SYS32, env=_minimal_env(LOCALAPPDATA=os.environ['LOCALAPPDATA']),
+                             profile=iso.profile_name(key),
+                             job=job, stdin=hs[0], stdout=hs[1])
+            seen = observe(child) if observe else None
+            rc = child.wait(30)
+        finally:
+            for h in hs:
+                b.close_handle(h)
+        out.append({'argv': [os.path.basename(argv[0])] + list(argv[1:]), 'rc': rc,
+                    'out': open(stream, encoding='utf-8', errors='replace').read().strip(),
+                    'pid': child.pid, 'observed': seen})
+    return ident, out
+
+
+def _curl(port):
+    return [CURL, '-q', '-sS', '-m', '5', '--noproxy', '*', 'http://127.0.0.1:%d/' % port]
+
+
+def test_t064_loopback_and_pipe_reach_from_an_appcontainer(boundary):
+    lst, pipe = _Listener(), _Pipe()
+    closed = _closed_port()
+    try:
+        # control: this process reaches its own listener, so a refusal below is the
+        # boundary's and not a dead listener
+        with socket.create_connection(('127.0.0.1', lst.port), timeout=5) as c:
+            c.sendall(b'GET / HTTP/1.0\r\n\r\n')
+            control = c.recv(64)
+        before = len(lst.peers)
+        eid = ids.new_id('execution')
+        ident, runs = _probe_runs(boundary, eid, [
+            _curl(lst.port),
+            _curl(closed),
+            [CMD, '/d', '/c', 'echo ping>%s' % pipe.name],
+        ], observe=lambda child: boundary.token(child.pid) if child.poll() is None else None)
+        time.sleep(0.5)
+        reached = lst.peers[before:]
+    finally:
+        lst.close()
+        pipe.close()
+    _evidence('T-064', profile=iso.profile_name(eid), sid=ident['sid'],
+              listener_port=lst.port, closed_port=closed, pipe=pipe.name,
+              control_reply=control, listener_peers_from_container=reached,
+              pipe_received=pipe.got, runs=runs)
+    assert control.startswith(b'HTTP/1.0 200')
+    listener, closed_run, piped = runs
+    # observed 2026-10-14 (build 26200): the listener is never reached (curl 28, a
+    # timeout, not a refusal), the closed port is refused (curl 7), the pipe is denied
+    assert reached == [] and listener['rc'] == 28
+    assert closed_run['rc'] == 7
+    assert piped['rc'] != 0 and pipe.got == b'self'        # only the test's own unblock
+    for r in runs:
+        tok = r['observed']
+        assert tok is None or (tok['is_appcontainer'] == 1 and tok['ac_sid'] == ident['sid']
+                               and not set(tok['capability_sids']) & PYTEST_SIDS)
