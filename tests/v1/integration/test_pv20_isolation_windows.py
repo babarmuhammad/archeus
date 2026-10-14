@@ -596,3 +596,30 @@ def test_t068_origin_of_user_appcontainer_and_verifier_principals(boundary):
         assert tok['user'] == user['user'] and tok['integrity'] == '0x1000'
     assert v_ident['sid'] == boundary.derive_sid(vkey)
     assert early['exit_code'] == 0 and early['by_pid'].get('ac_sid') == e_ident['sid']
+
+
+# ── T-063 part 1 (A6-5): the real confined verifier path, no grant ───────────
+# Authorised 2026-10-14 (owner, T-063 part 1): one verifier attempt through the node's
+# real run_confined_check, with the profile and Job the node creates, a System32
+# command, and no ACL grant (S2-G stays T-004's).
+
+def test_t063_the_real_confined_path_refuses_before_launch_without_grants(boundary):
+    from archeus.node.local import LocalNode
+    node = LocalNode()
+    node.isolation = iso.Isolation(node, boundary=boundary)
+    vid = ids.new_id('verification')
+    key = iso.Principal('verify', vid, 0).key
+    got = []
+    result = node.run_confined_check(vid, 0, [CMD, '/d', '/c', 'echo confined'],
+                                     toolchain=(SYS32,), timeout=10, record=got.append)
+    rec = node.isolation.record(key)
+    _evidence('T-063', key=key, profile=iso.profile_name(key), result=result, recorded=got,
+              record=rec.as_dict() if rec else None,
+              profile_exists_after=boundary.profile_exists(key))
+    # observed 2026-10-14: condition 2 holds for no row - nothing grants the checkout,
+    # scratch or toolchain to the attempt's SID - so nothing is launched, the verdict
+    # is recorded as an isolation error, and the profile the node made is gone
+    assert result['error'].startswith('isolation: condition_unmet:grants')
+    assert result['exit_code'] is None and got == [result]
+    assert rec is not None and rec.state == 'failed'
+    assert boundary.profile_exists(key) is False
