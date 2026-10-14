@@ -1764,3 +1764,18 @@ def test_any_other_workspace_failure_keeps_the_charged_workspace_end(monkeypatch
     assert m._spawn(e, mission) is True
     kw = log[-1][1]
     assert kw['stop_reason'] == 'workspace' and 'missions' not in kw
+
+
+@pytest.mark.parametrize('state', ['INTENT', 'RUNNING'])
+def test_a_blocking_reason_is_not_a_stop_reason(state):
+    from archeus.core.domain.values import Ref
+    db, who, eid, _ = _seeded(state)
+    try:
+        before = _row(db, entities.Execution, eid)
+        with pytest.raises(ValueError, match='not a stop reason'):
+            db.writer.execute(X.stop, {'actor': Ref('system', ids.new_id('principal')),
+                                       'execution_id': eid, 'reason': 'x',
+                                       'stop_reason': 'path_too_long'})
+        assert _row(db, entities.Execution, eid).version == before.version
+    finally:
+        db.close()

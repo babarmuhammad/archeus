@@ -501,6 +501,9 @@ def stop(tx, *, actor, execution_id, reason, stop_reason='user'):
     already stopping or ended is an invalid transition: nothing changes."""
     if stop_reason not in entities.STOP_REASONS:
         raise ValueError('unknown stop reason %r' % (stop_reason,))
+    if stop_reason in BLOCKING:
+        # a blocking reason is a refusal's, made where the mission is in hand (refuse)
+        raise ValueError('%r is not a stop reason' % (stop_reason,))
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
     if e.state in ('INTENT', 'PAUSED', 'AWAITING_APPROVAL'):
         return refuse(tx, actor=actor, execution_id=e.id, reason=reason,
