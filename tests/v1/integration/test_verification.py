@@ -1023,3 +1023,210 @@ def test_A6_an_isolated_execution_without_a_project_never_reaches_git_or_a_comma
     assert {(x['verifier'], x['workspace']) for x in _vs(core, mid, 'mission')} == {
         ('generic_human', None)}
     assert node.calls == []
+
+
+# ── A6-4: confined routing and sinks (T-054 C-1013 §4), with a fake confined runner ──
+
+SEED_REV, IMP = 'a' * 40, 'c' * 40
+
+
+class _Confined:
+    """A fake `run_confined_check`: records each attempt and answers with
+    *results* in turn, calling *record* before it returns, as the real one does."""
+
+    def __init__(self, *results):
+        self.results, self.seen, self.recorded = list(results), [], []
+
+    def __call__(self, vid, attempt, argv, *, toolchain, timeout, record):
+        self.seen.append((vid, attempt, list(argv), list(toolchain)))
+        r = dict({'exit_code': 0, 'duration_ms': 1, 'error': None, 'output': b'ok',
+                  'output_bytes': 2, 'truncated': False,
+                  'confinement': {'isolated': True, 'job': 'fake'}}, **self.results.pop(0))
+        record(r)
+        self.recorded.append(vid)
+        return r
+
+
+@pytest.fixture
+def toolchain(tmp_path):
+    d = tmp_path / 'stage'
+    d.mkdir()
+    prog = d / ('tool.exe' if os.name == 'nt' else 'tool')
+    prog.write_bytes(b'')
+    prog.chmod(0o755)
+    return str(d), str(prog)
+
+
+def _imported(c, monkeypatch, toolchain, cmds=('tool --check',), enabled=True):
+    """A verifying task whose execution was isolated, seeded and imported."""
+    _repo, mid, t, e = _verifying(c)
+    _forge(c, mid, lambda tx, actor: tx.update(entities.Execution, e.id, {
+        'isolated': True, 'seed_revision': SEED_REV, 'import_revision': IMP}, actor=actor))
+    monkeypatch.setattr(V, 'CONFINED_VERIFICATION_ENABLED', enabled)
+    monkeypatch.setattr(evidence, 'commands', lambda conn, project_id, root: (tuple(cmds), ()))
+    monkeypatch.setattr(c._verify, 'toolchain', lambda: [toolchain[0]])
+    return mid, t, _get(c, entities.Execution, e.id)
+
+
+def _row(c, mid):
+    (v,) = _vs(c, mid, 'task')
+    return _get(c, entities.Verification, v['id'])
+
+
+def test_A6_4_a_guarded_task_with_its_import_runs_confined_and_its_pass_is_marked(
+        core, monkeypatch, toolchain):
+    mid, t, e = _imported(core, monkeypatch, toolchain)
+    fake = _Confined({})
+    node = _node(core, monkeypatch, fake={'run_confined_check': fake})
+    pump(core, lambda: _vs(core, mid, 'task') and _row(core, mid).state == 'PASSED')
+    v = _row(core, mid)
+    assert (v.verifier, v.verifier_version, v.revision) == ('code', V.CONFINED_VERIFIER, IMP)
+    assert (v.workspace, v.base_revision) == (None, None)
+    (check,) = v.checks
+    assert check['result'] == 'pass' and check['confinement'] == {'isolated': True,
+                                                                  'job': 'fake'}
+    prog = os.path.normcase(toolchain[1])
+    assert [os.path.normcase(check['argv'][0])] + check['argv'][1:] == [prog, '--check']
+    ((vid, n, argv, chain),) = fake.seen
+    assert (vid, n, os.path.normcase(argv[0]), argv[1:], chain) == (
+        v.id, 0, prog, ['--check'], [toolchain[0]])
+    assert node.calls == ['run_confined_check']        # no Git, no unconfined run
+
+
+def test_A6_4_with_the_switch_off_a_guarded_task_still_goes_to_you(core, monkeypatch,
+                                                                   toolchain):
+    mid, t, e = _imported(core, monkeypatch, toolchain, enabled=False)
+    node = _node(core, monkeypatch)
+    pump(core, lambda: _state(core, mid) == 'BLOCKED')
+    v = _row(core, mid)
+    assert (v.verifier, v.verifier_version) == ('generic_human', V.VERIFIER_VERSION)
+    assert node.calls == []
+    with pytest.raises(V.Refused, match='withheld'):
+        _do(core, V.start, missions=core._missions, subject=Ref('task', t.id),
+            verifier='code', execution_id=e.id, revision=IMP)
+
+
+@pytest.mark.parametrize('kw', [{'revision': 'd' * 40}, {'revision': None},
+                                {'revision': IMP, 'workspace': 'w'}])
+def test_A6_4_the_sink_refuses_a_guarded_code_row_not_over_its_recorded_import(
+        core, monkeypatch, toolchain, kw):
+    mid, t, e = _imported(core, monkeypatch, toolchain)
+    n = len(core.events(0))
+    with pytest.raises(V.Refused, match='withheld'):
+        _do(core, V.start, missions=core._missions, subject=Ref('task', t.id),
+            verifier='code', execution_id=e.id, **kw)
+    assert not _vs(core, mid) and len(core.events(0)) == n
+
+
+def test_A6_4_a_caller_cannot_name_the_verifier_version(core, monkeypatch, toolchain):
+    mid, t, e = _imported(core, monkeypatch, toolchain)
+    n = len(core.events(0))
+    for version in (V.CONFINED_VERIFIER, V.VERIFIER_VERSION):
+        with pytest.raises(TypeError, match='verifier_version'):
+            _do(core, V.start, missions=core._missions, subject=Ref('task', t.id),
+                verifier='code', execution_id=e.id, revision=IMP, verifier_version=version)
+    assert not _vs(core, mid) and len(core.events(0)) == n
+
+
+def test_A6_4_an_unguarded_code_row_is_never_marked_confined(core, monkeypatch):
+    monkeypatch.setattr(V, 'CONFINED_VERIFICATION_ENABLED', True)
+    _repo, mid, t, e = _verifying(core)
+    out = _do(core, V.start, missions=core._missions, subject=Ref('task', t.id),
+              verifier='code', execution_id=e.id, revision='r1', workspace=e.workdir)
+    assert out['verifier_version'] == V.VERIFIER_VERSION
+    assert _get(core, entities.Verification, out['verification_id']).verifier_version == \
+        V.VERIFIER_VERSION
+
+
+def test_A6_4_run_commands_refuses_a_confined_row_before_any_node_call(core, monkeypatch):
+    node = _Node(None)
+    with pytest.raises(ValueError, match='only confined'):
+        evidence.run_commands(node, 'w', [('test', 'tool')], verification_id='v',
+                              timeout_s=1, verifier_version=V.CONFINED_VERIFIER)
+    assert node.calls == []
+
+
+@pytest.mark.parametrize('cmds', [(), ('tool --check', 'tool --other'), ('python -c 1',),
+                                  (os.path.abspath(__file__).replace(os.sep, '/'),)])
+def test_A6_4_a_check_that_cannot_run_confined_goes_to_you_before_any_row_starts(
+        core, monkeypatch, toolchain, cmds):
+    mid, t, e = _imported(core, monkeypatch, toolchain, cmds=cmds)
+    node = _node(core, monkeypatch)
+    pump(core, lambda: _state(core, mid) == 'BLOCKED')
+    v = _row(core, mid)
+    assert (v.verifier, v.state) == ('generic_human', 'AWAITING_HUMAN') and node.calls == []
+
+
+def test_A6_4_a_guarded_task_without_an_import_goes_to_you(core, monkeypatch, toolchain):
+    mid, t, e = _imported(core, monkeypatch, toolchain)
+    _forge(core, mid, lambda tx, actor: tx.update(entities.Execution, e.id,
+                                                  {'import_revision': None}, actor=actor))
+    node = _node(core, monkeypatch)
+    pump(core, lambda: _state(core, mid) == 'BLOCKED')
+    assert _row(core, mid).verifier == 'generic_human' and node.calls == []
+
+
+def test_A6_4_a_legacy_frozen_row_is_still_held_with_the_switch_on(core, monkeypatch,
+                                                                   toolchain):
+    # as an older Core recorded it, and over exactly what the import now says
+    _repo, mid, t, e = _verifying(core)
+    vid = _do(core, V.start, missions=core._missions, subject=Ref('task', t.id),
+              verifier='code', execution_id=e.id, revision=IMP,
+              criteria=[dict(x, index=i, result='unknown')
+                        for i, x in enumerate(t.acceptance)])['verification_id']
+    _do(core, V.record, missions=core._missions, verification_id=vid,
+        checks=[{'name': 'test', 'kind': 'command', 'result': 'error', 'detail': 'no runner'}])
+    _forge(core, mid, lambda tx, actor: tx.update(entities.Execution, e.id, {
+        'isolated': True, 'seed_revision': SEED_REV, 'import_revision': IMP}, actor=actor))
+    monkeypatch.setattr(V, 'CONFINED_VERIFICATION_ENABLED', True)
+    monkeypatch.setattr(core._verify, 'toolchain', lambda: [toolchain[0]])
+    before = _get(core, entities.Verification, vid)
+    node = _node(core, monkeypatch)
+    pump(core, lambda: _state(core, mid) == 'BLOCKED')
+    pump(core)
+    after = _get(core, entities.Verification, vid)
+    assert (after.state, after.holds_mission, after.verifier_version) == (
+        'ERROR', True, V.VERIFIER_VERSION)
+    assert _frozen(after) == _frozen(before) and node.calls == []
+    with pytest.raises(V.Refused, match='withheld'):
+        _do(core, V.retry, verification_id=vid)
+
+
+def test_A6_4_a_retry_is_a_new_attempt_under_a_new_principal(core, monkeypatch, toolchain):
+    mid, t, e = _imported(core, monkeypatch, toolchain)
+    fake = _Confined({'exit_code': None, 'error': 'quiescence_unknown'}, {})
+    _node(core, monkeypatch, fake={'run_confined_check': fake})
+    pump(core, lambda: _vs(core, mid, 'task') and _row(core, mid).state == 'PASSED')
+    v = _row(core, mid)
+    assert [(vid, n) for vid, n, _a, _t in fake.seen] == [(v.id, 0), (v.id, 1)]
+    assert (v.errors, v.verifier_version, v.revision) == (1, V.CONFINED_VERIFIER, IMP)
+
+
+def test_A6_4_a_confined_row_that_can_no_longer_run_confined_is_held_not_run(
+        core, monkeypatch, toolchain):
+    mid, t, e = _imported(core, monkeypatch, toolchain)
+    fake = _Confined({'exit_code': None, 'error': 'timed out after 1s'})
+    node = _node(core, monkeypatch, fake={'run_confined_check': fake})
+    pump(core, lambda: _vs(core, mid, 'task') and _row(core, mid).state == 'ERROR')
+    vid = _row(core, mid).id
+    monkeypatch.setattr(V, 'CONFINED_VERIFICATION_ENABLED', False)
+    with pytest.raises(V.Refused, match='withheld'):
+        _do(core, V.retry, verification_id=vid)
+    pump(core, lambda: _state(core, mid) == 'BLOCKED')
+    v = _row(core, mid)
+    assert (v.state, v.holds_mission, v.errors) == ('ERROR', True, 1)
+    assert node.calls == ['run_confined_check'] and len(fake.seen) == 1
+
+
+def test_A6_4_a_verdict_the_row_no_longer_awaits_lets_the_principal_go(core, monkeypatch,
+                                                                       toolchain):
+    mid, t, e = _imported(core, monkeypatch, toolchain)
+    fake = _Confined({})
+    _node(core, monkeypatch, fake={'run_confined_check': fake})
+
+    def gone(tx, **kw):
+        raise V.Refused('verification is CANCELLED, not RUNNING')
+    monkeypatch.setattr(V, 'record', gone)
+    assert core._verify.pass_once()['did'] == 'verify_task'
+    assert fake.recorded == [_row(core, mid).id]        # record returned: teardown proceeds
+    assert _row(core, mid).state == 'RUNNING'

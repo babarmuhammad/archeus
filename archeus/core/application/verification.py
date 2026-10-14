@@ -29,6 +29,11 @@ from .executions import charged_failure
 
 #: the verifier implementation a row names (p13-design-gate §8.2)
 VERIFIER_VERSION = 'p13.1'
+#: the one a guarded mission's code row names: its commands run only confined (A6-4,
+#: T-054 C-1013 §4); stamped by the sink, never passed in
+CONFINED_VERIFIER = 'a6.1'
+#: activation's switch, a separate owner go; until then no guarded code row starts
+CONFINED_VERIFICATION_ENABLED = False
 #: an ERROR is retried once, then the mission waits for the user (§6)
 ERROR_ATTEMPTS = 2
 #: failed `review` calls per plan version before the worker waits for the user (§7)
@@ -111,6 +116,14 @@ def unconfined(conn, mission_id):
                if r.entity.process_seq >= 1)
 
 
+def confined(e, revision, workspace):
+    """May a guarded code row of execution *e* run (A6-4)? Only confined, while
+    activation's switch is on, over the import Core recorded for *e* and no
+    workdir. Read in the sink's own transaction; nothing a caller passes decides it."""
+    return (CONFINED_VERIFICATION_ENABLED and workspace is None
+            and e.import_revision is not None and revision == e.import_revision)
+
+
 def mergeable_revision(conn, t):
     """The revision a merge of task *t* may take (D10, A5): what its latest
     PASSED verification of its plan recorded, and none at all when that row's
@@ -191,13 +204,16 @@ def start(tx, *, actor, missions, subject, verifier, execution_id=None, criterio
     else:
         raise Refused('a verification is of a task or a mission')
     guarded = not unconfined(tx.conn, m.id)
+    version = VERIFIER_VERSION
     if guarded and verifier != 'generic_human':
-        raise Refused('mission %s: %s' % (m.id, WITHHELD))
+        if not (subject.kind == 'task' and confined(e, revision, workspace)):
+            raise Refused('mission %s: %s' % (m.id, WITHHELD))
+        version = CONFINED_VERIFIER
     v = entities.Verification(
         id=ids.new_id('verification'), subject=subject, verifier=verifier, plan_id=plan_id,
         criterion=criterion, execution_id=execution_id, revision=revision,
         base_revision=base_revision, workspace=workspace, performed_by=who,
-        verifier_version=VERIFIER_VERSION, provenance=provenance, criteria=tuple(criteria))
+        verifier_version=version, provenance=provenance, criteria=tuple(criteria))
     tx.insert(v, actor=actor)
     _event(tx, 'verification.created', Ref('verification', v.id), actor, m,
            {'subject': {'kind': subject.kind, 'id': subject.id}, 'criterion': criterion,
@@ -212,7 +228,7 @@ def start(tx, *, actor, missions, subject, verifier, execution_id=None, criterio
                   % (t.key, ' (%s)' % WITHHELD if guarded else ''))
         return {'verification_id': v.id, 'state': 'AWAITING_HUMAN'}
     _fire(tx, entities.Verification, v.id, 'start', actor, 'verifier %s' % verifier)
-    return {'verification_id': v.id, 'state': 'RUNNING'}
+    return {'verification_id': v.id, 'state': 'RUNNING', 'verifier_version': version}
 
 
 # ── record (§8.4, §10, §20) ─────────────────────────────────────────────────
@@ -319,14 +335,18 @@ def task_branch(t):
 def retry(tx, *, actor, verification_id):
     """ERROR -> PENDING -> RUNNING on the same row (its lineage unchanged).
     A guarded mission's row is refused before anything is written (A6): it is
-    held, or a mission criterion gets a fresh human row, never re-run."""
+    held, or a mission criterion gets a fresh human row, never re-run - unless
+    `start` stamped it confined and it still may run confined (A6-4)."""
     v = lifecycle.load(tx, entities.Verification, verification_id).entity
+    e = None
     if v.subject.kind == 'task':
-        t, _e = _task_lineage(tx, v.subject.id, v.execution_id)
+        t, e = _task_lineage(tx, v.subject.id, v.execution_id)
         mission_id = t.mission_id
     else:
         mission_id = v.subject.id
-    if not unconfined(tx.conn, mission_id):
+    if not unconfined(tx.conn, mission_id) and not (
+            v.verifier_version == CONFINED_VERIFIER and e is not None
+            and confined(e, v.revision, v.workspace)):
         raise Refused('verification %s is not retried: %s' % (v.id, WITHHELD))
     _fire(tx, entities.Verification, v.id, 'retry', actor,
           'retrying after: %s' % (v.error or 'an error'), fields={'holds_mission': False})
