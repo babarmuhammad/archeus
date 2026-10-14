@@ -3743,7 +3743,8 @@ def launchapi(monkeypatch):
 
 def _real_launch():
     return iso.WindowsBoundary().launch(['fake.exe', '--x'], cwd='C:/synthetic',
-                                        env={'A': '1'}, profile='archeus.exec.synthetic',
+                                        env={'A': '1', 'LOCALAPPDATA': 'C:/synthetic/local'},
+                                        profile='archeus.exec.synthetic',
                                         job=0x900, stdin=STDIN, stdout=STDOUT)
 
 
@@ -3972,3 +3973,50 @@ class TestEndOrder:
         log, _cmd, kw = self._end(tmp_path, state, code, killed=killed, seeded=seeded)
         assert 'query' not in log and 'import' not in log
         assert 'import_revision' not in kw and 'no_import' not in kw
+
+
+@pytest.mark.skipif(iso.WindowsBoundary is None, reason='the Windows boundary')
+def test_an_appcontainer_block_without_localappdata_is_refused_before_any_os_call(monkeypatch):
+    # T-088: CreateProcessW answers 203 for such a block; the boundary says why first
+    def touched(*a, **k):
+        raise AssertionError('an OS call was made')
+    for name in ('_InitializeProcThreadAttributeList', '_DeriveAppContainerSidFromAppContainerName',
+                 '_CreateProcessW', '_SetHandleInformation'):
+        monkeypatch.setattr(iso, name, touched)
+    env = {'SystemRoot': r'C:\Windows', 'PATH': r'C:\Windows\System32'}
+    with pytest.raises(iso.IsolationUnavailable) as err:
+        iso.WindowsBoundary().launch(['cmd.exe'], cwd='.', env=env, profile='p', job=None,
+                                     stdin=None, stdout=None)
+    assert (err.value.reason, err.value.detail) == (
+        'environment_block', 'an AppContainer block needs LOCALAPPDATA')
+
+
+def _job_info_written(monkeypatch, execution_id):
+    """What create_job hands SetInformationJobObject, copied out of the call."""
+    import ctypes
+    seen = []
+
+    def set_info(h, cls, ref, size):
+        seen.append((cls, iso._ELI.from_buffer_copy(ctypes.string_at(ctypes.addressof(ref._obj),
+                                                                     size))))
+        return 1
+    monkeypatch.setattr(iso, '_CreateJobObjectW', lambda *a: 0x77)
+    monkeypatch.setattr(iso, '_SetHandleInformation', lambda *a: 1)
+    monkeypatch.setattr(iso, '_SetInformationJobObject', set_info)
+    monkeypatch.setattr(iso.WindowsBoundary, 'job_facts',
+                        lambda self, h: {'type': 'Job', 'name': '', 'inheritable': False})
+    assert iso.WindowsBoundary().create_job(execution_id) == 0x77
+    (cls, li), = seen
+    assert cls == iso.JOB_OBJECT_EXTENDED_LIMIT_INFORMATION
+    b = li.Basic
+    return (b.LimitFlags, b.ActiveProcessLimit, li.JobMemoryLimit, b.PerJobUserTimeLimit,
+            b.PerProcessUserTimeLimit, li.ProcessMemoryLimit)
+
+
+@pytest.mark.skipif(iso.WindowsBoundary is None, reason='the Windows boundary')
+def test_the_verifier_job_carries_its_budgets_and_an_execution_job_does_not(monkeypatch):
+    # T-090 (owner values): 64 processes, 4 GiB for the Job, 10 minutes of Job user CPU
+    verify = iso.Principal('verify', ids.new_id('verification'), 0).key
+    assert _job_info_written(monkeypatch, verify) == (
+        0x2000 | 0x8 | 0x200 | 0x4, 64, 4 * 1024 ** 3, 10 * 60 * 10 ** 7, 0, 0)
+    assert _job_info_written(monkeypatch, ids.new_id('execution')) == (0x2000, 0, 0, 0, 0, 0)
