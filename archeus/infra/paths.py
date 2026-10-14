@@ -8,10 +8,12 @@ invalidation — this codebase's recurring bug.
 is already a legacy project workdir (the one for any project rooted at the home
 directory), legacy code writes logs and memory there, and legacy cleanup may
 delete below any `.archeus` directory. Nothing here creates, migrates or deletes
-it — or anything else: these functions compute paths and touch no disk.
+it. These functions compute paths and touch no disk, with one exception:
+`fresh_call_dir` creates (never deletes) the empty directory an own call runs in.
 """
 
 import os
+import stat
 import sys
 
 from ..core.domain import ids
@@ -170,6 +172,39 @@ def quarantine_log():
     """`<ARCHEUS_HOME>/run/isolation/quarantine.jsonl` — the grants and profiles Core
     could not remove, retried on boot (PV-20 §3.7)."""
     return os.path.join(isolation_dir(), 'quarantine.jsonl')
+
+
+def call_dir(route_decision_id):
+    """`<ARCHEUS_HOME>/run/calls/<route_decision_id>` — the working directory of
+    one own call (K-O2), named after the RouteDecision that made it."""
+    if not ids.is_id(route_decision_id, 'route_decision'):
+        raise ValueError('not a route decision id: %r' % (route_decision_id,))
+    return os.path.join(run_dir(), 'calls', route_decision_id)
+
+
+def _plain_dir(path):
+    st = os.lstat(path)
+    if (getattr(st, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+            or not stat.S_ISDIR(st.st_mode)):
+        raise OSError('not a plain directory (a link, junction or file): %s' % path)
+
+
+def fresh_call_dir(route_decision_id):
+    """Create `call_dir(route_decision_id)` and return it, only if it did not exist
+    and is empty, and it and every directory from ARCHEUS_HOME down to it is plain.
+    Raises OSError otherwise. Kept: nothing ever deletes it (keep-all)."""
+    leaf = call_dir(route_decision_id)
+    chain = [archeus_home(), run_dir(), os.path.dirname(leaf)]
+    _plain_dir(chain[0])
+    for d in chain[1:]:
+        os.makedirs(d, exist_ok=True)
+        _plain_dir(d)
+    os.mkdir(leaf)                      # fresh only: an existing one is refused
+    for d in chain + [leaf]:
+        _plain_dir(d)
+    if os.listdir(leaf):
+        raise OSError('the call directory is not empty: %s' % leaf)
+    return leaf
 
 
 #: PV-20 §7.5 (R2): the directories inside an execution's own one, one per resource

@@ -89,6 +89,10 @@ class ClaudeCodeCaller:
             return base.CallResult(error='unavailable', detail='Claude Code is not installed')
         extra = () if spec.schema is None else (
             '--output-format', 'json', '--json-schema', json.dumps(spec.schema, sort_keys=True))
+        if spec.no_tools:
+            # empty, never left out: no `--tools` at all means every tool
+            # (claude_code/tools.py relies on the same form)
+            extra = ('--tools', '') + extra
         args, stdin = llmcall.build_headless_args(exe, spec.prompt, spec.model or '',
                                                   llmcall.budget_args(), extra)
         r = llmcall.run_headless(args, stdin, cwd=spec.workdir,
@@ -141,6 +145,11 @@ class PiCaller:
         exe = self.discover().executable
         if not exe:
             return base.CallResult(error='unavailable', detail='pi is not installed')
+        if spec.no_tools:
+            # pi is known here only as `--tools read,grep,find,ls`; no form that
+            # means NO tools has been verified, so refuse rather than run with those
+            return base.CallResult(error='failed', detail='pi cannot be asked to run with no '
+                                   'tools; this call needs a harness that can')
         prompt = spec.prompt if spec.schema is None else base.prompted(spec.prompt, spec.schema)
         args, stdin = llmcall.build_headless_args(exe, prompt, spec.model or '', harness='pi')
         r = llmcall.run_headless(args, stdin, cwd=spec.workdir,
