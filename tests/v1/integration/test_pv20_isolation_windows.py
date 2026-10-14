@@ -528,6 +528,10 @@ def _busy(n=300000):
 
 
 def test_t068_origin_of_user_appcontainer_and_verifier_principals(boundary):
+    """Each principal's identity is read from the token of the PID that owns its row in
+    the TCP table. NOT covered: K-O4's PID-reuse requirement - Core holds the process
+    handle here, so the PID cannot be reused; reuse/race evidence stays open and needs
+    its own authorisation."""
     lst = _Listener()
     mine = {os.getpid()}
     seen = {}
@@ -543,7 +547,8 @@ def test_t068_origin_of_user_appcontainer_and_verifier_principals(boundary):
                 mine.add(child.pid)
                 time.sleep(1.0)                        # curl is mid-connect by now
                 rows = _tcp_rows(lst.port)
-                seen[tag] = {'rows': rows, 'token': _token_of(boundary, child.pid),
+                seen[tag] = {'pid': child.pid, 'rows': rows,
+                             'token': _token_of(boundary, child.pid),
                              'row_tokens': {r['pid']: _token_of(boundary, r['pid'])
                                             for r in rows if r['pid'] in mine}}
                 return seen[tag]
@@ -588,8 +593,12 @@ def test_t068_origin_of_user_appcontainer_and_verifier_principals(boundary):
     # the user process: this test, on both ends of its own connection
     assert {r['pid'] for r in user_rows if r['state'] == 'ESTABLISHED'} == {os.getpid()}
     assert user['is_appcontainer'] == 0 and user['ac_sid'] is None
+    want = '127.0.0.1:%d' % lst.port
     for tag, ident in (('appcontainer', ac_ident), ('verifier', v_ident)):
-        tok = seen[tag]['token']
+        look = seen[tag]
+        match = [r for r in look['rows'] if r['remote'] == want and r['pid'] == look['pid']]
+        assert match, 'no %s connection to %s in the TCP table: %r' % (tag, want, look['rows'])
+        tok = look['row_tokens'][match[0]['pid']]          # identity from the row's owner
         assert tok['is_appcontainer'] == 1 and tok['ac_sid'] == ident['sid']
         assert tok['user'] == user['user'] and tok['integrity'] == '0x1000'
     assert v_ident['sid'] == boundary.derive_sid(vkey)
