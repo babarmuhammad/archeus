@@ -18,6 +18,7 @@ import pytest
 from claude_sessions import config, proc
 
 from archeus.core.application import executions as X
+from archeus.core.application import queries
 from archeus.core.domain import actions, entities, ids, states
 from archeus.core.domain.actions import Action
 from archeus.core.execution import canonical as C
@@ -735,7 +736,7 @@ def test_a_project_less_workspace_is_the_executions_own_never_its_core_directory
 # ── PV-20 §3.3 H2 / A7: how a live end is classified (state-machines §4 guards) ──
 
 def _seeded(state, stop_reason=None, max_attempts=2, isolated=None, process_seq=0,
-            seed_revision=None):
+            seed_revision=None, import_revision=None):
     """One execution in *state* under a RUNNING task, on a real database. No
     process ever ran (process_seq 0 by default), so only the classification is
     exercised."""
@@ -757,7 +758,8 @@ def _seeded(state, stop_reason=None, max_attempts=2, isolated=None, process_seq=
                 entities.Execution(id=eid, task_id=tid, mission_id=mid, plan_id=pid,
                                    attempt=1, state=state, stop_reason=stop_reason,
                                    isolated=isolated, process_seq=process_seq,
-                                   seed_revision=seed_revision)):
+                                   seed_revision=seed_revision,
+                                   import_revision=import_revision)):
             tx.insert(row, actor=who)
         tx.append(new_event('mission.updated', Ref('mission', mid), who, payload={},
                             workspace=ids.GLOBAL_WORKSPACE))
@@ -1437,5 +1439,197 @@ def test_any_other_refusal_still_fails_the_last_attempt_as_execution():
                                      'execution_id': eid, 'stop_reason': 'workspace',
                                      'reason': 'no workspace'})
         assert _row(db, entities.Task, tid).entity.failure_class == 'execution'
+    finally:
+        db.close()
+
+
+
+# ── PV-20 K3 (T-051 §5, §7; T-030 §3.3 Q2 answered A): the recorded import ────
+
+IMP = 'c' * 40
+
+
+def _end(db, who, eid, **kw):
+    return db.writer.execute(X.record_end, dict({'actor': who, 'execution_id': eid,
+                                                 'exit_code': 0, 'isolated': True}, **kw))
+
+
+@pytest.mark.parametrize('bad', ['C' * 40, 'c' * 39, 'c' * 64, 'HEAD', 1])
+def test_the_import_is_a_sha1_commit_id_or_unknown(bad):
+    kw = dict(id=ids.new_id('execution'), task_id=ids.new_id('task'),
+              mission_id=ids.new_id('mission'))
+    with pytest.raises(ValueError):
+        entities.Execution(**kw, import_revision=bad)
+    body = entities.Execution(**kw).to_dict()
+    body.pop('import_revision', None)
+    assert entities.Execution.from_dict(body).import_revision is None
+
+
+def test_a_clean_end_records_its_import_in_the_same_transaction():
+    db, who, eid, tid = _seeded('RUNNING', isolated=True, seed_revision=SEED)
+    try:
+        _end(db, who, eid, import_revision=IMP)
+        e = _row(db, entities.Execution, eid).entity
+        assert (e.state, e.import_revision, e.charged) == ('ENDED_OK', IMP, True)
+        assert _row(db, entities.Task, tid).entity.state == 'VERIFYING'
+        with db.read() as r:
+            (ev,) = _events(r, eid, 'execution.ended')
+        assert ev['payload']['import_revision'] == IMP
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('max_attempts,task_state,failure_class', [(1, 'FAILED', 'import'),
+                                                                   (2, 'READY', None)])
+def test_a_clean_end_without_its_import_stands_and_is_charged_as_import(
+        max_attempts, task_state, failure_class):
+    db, who, eid, tid = _seeded('RUNNING', isolated=True, seed_revision=SEED,
+                                max_attempts=max_attempts)
+    try:
+        _end(db, who, eid, no_import='not quiescent: 1 process(es) still in its Job')
+        e, t = _row(db, entities.Execution, eid).entity, _row(db, entities.Task, tid).entity
+        assert (e.state, e.import_revision, e.charged) == ('ENDED_OK', None, True)
+        assert (t.state, t.failure_class) == (task_state, failure_class)
+        with db.read() as r:
+            reasons = [ev['payload'].get('reason') or '' for ev in queries.events(r)
+                       if ev['subject']['id'] == tid]
+        assert any('no import: not quiescent' in x for x in reasons)
+    finally:
+        db.close()
+
+
+def test_an_unseeded_clean_end_has_nothing_to_import_and_succeeds():
+    db, who, eid, tid = _seeded('RUNNING', isolated=True)
+    try:
+        _end(db, who, eid)
+        assert _row(db, entities.Task, tid).entity.state == 'VERIFYING'
+        with pytest.raises(ValueError, match='never seeded'):
+            db2, who2, eid2, _ = _seeded('RUNNING', isolated=True)
+            try:
+                _end(db2, who2, eid2, import_revision=IMP)
+            finally:
+                db2.close()
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('kw', [{'exit_code': 1}, {'killed': True}, {'halted': True}])
+def test_only_a_clean_end_imports(kw):
+    db, who, eid, _ = _seeded('RUNNING', isolated=True, seed_revision=SEED)
+    try:
+        before = _row(db, entities.Execution, eid)
+        with pytest.raises(ValueError, match='only a clean end'):
+            _end(db, who, eid, import_revision=IMP, **kw)
+        assert _row(db, entities.Execution, eid).version == before.version
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('kw', [{'exit_code': 1}, {'killed': True}])
+def test_an_unclean_end_needs_no_import_and_keeps_its_own_class(kw):
+    db, who, eid, tid = _seeded('RUNNING', isolated=True, seed_revision=SEED, max_attempts=1)
+    try:
+        _end(db, who, eid, **kw)
+        assert _row(db, entities.Task, tid).entity.failure_class == 'execution'
+    finally:
+        db.close()
+
+
+def test_an_import_is_written_once():
+    db, who, eid, _ = _seeded('RUNNING', isolated=True, seed_revision=SEED,
+                              import_revision=IMP)
+    try:
+        with pytest.raises(ValueError, match='already recorded'):
+            _end(db, who, eid, import_revision='d' * 40)
+        with pytest.raises(ValueError, match='already recorded'):
+            _end(db, who, eid)
+        assert _row(db, entities.Execution, eid).entity.import_revision == IMP
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('state', ['STOPPING', 'PAUSING', 'ENDED_KILLED'])
+def test_a_lost_race_records_no_import(state):
+    """The row left RUNNING after the route was captured: a LOST_RACE, which the
+    pass already handles, and nothing of the end is written."""
+    db, who, eid, _ = _seeded(state, isolated=True, seed_revision=SEED)
+    try:
+        before = _row(db, entities.Execution, eid)
+        with pytest.raises(X.lifecycle.IllegalTrigger):
+            _end(db, who, eid, import_revision=IMP)
+        after = _row(db, entities.Execution, eid)
+        assert (after.version, after.entity.import_revision) == (before.version, None)
+    finally:
+        db.close()
+
+
+def _handoff(db, who, eid, **kw):
+    return db.writer.execute(X.record_handoff, dict(
+        {'actor': who, 'execution_id': eid, 'policy': None, 'missions': None, 'router': None,
+         'now': 0.0, 'exit_code': 0}, **kw))
+
+
+@pytest.mark.parametrize('stop_reason', ['limit', 'pressure'])
+@pytest.mark.parametrize('max_attempts,task_state', [(1, 'FAILED'), (2, 'READY')])
+def test_a_handoff_without_its_import_has_no_continuation_and_is_charged_as_import(
+        monkeypatch, stop_reason, max_attempts, task_state):
+    from archeus.core.execution import handoff
+    monkeypatch.setattr(handoff, 'continue_task', lambda tx, **kw: pytest.fail('continued'))
+    db, who, eid, tid = _seeded('HANDING_OFF', stop_reason=stop_reason, isolated=True,
+                                seed_revision=SEED, max_attempts=max_attempts)
+    try:
+        out = _handoff(db, who, eid, no_import='its isolation record is gone')
+        assert out['continuation'] is None and 'no import' in out['refused']
+        e, t = _row(db, entities.Execution, eid).entity, _row(db, entities.Task, tid).entity
+        assert (e.state, e.charged, e.import_revision) == ('ENDED_HANDOFF', True, None)
+        assert t.state == task_state
+        if task_state == 'FAILED':
+            assert t.failure_class == 'import'
+    finally:
+        db.close()
+
+
+def test_a_handoff_with_its_import_records_it_and_continues(monkeypatch):
+    from archeus.core.execution import handoff
+    seen = []
+    monkeypatch.setattr(handoff, 'continue_task', lambda tx, **kw: seen.append(
+        kw['execution'].import_revision) or {'execution_id': 'next', 'refused': None})
+    db, who, eid, _ = _seeded('HANDING_OFF', stop_reason='limit', isolated=True,
+                              seed_revision=SEED)
+    try:
+        out = _handoff(db, who, eid, import_revision=IMP, facts={'end_state': 'e' * 40})
+        e = _row(db, entities.Execution, eid).entity
+        assert (out['continuation'], e.import_revision, e.charged) == ('next', IMP, False)
+        assert seen == [IMP]
+    finally:
+        db.close()
+
+
+def test_a_handoff_imports_once():
+    db, who, eid, _ = _seeded('HANDING_OFF', stop_reason='limit', isolated=True,
+                              seed_revision=SEED, import_revision=IMP)
+    try:
+        with pytest.raises(ValueError, match='already recorded'):
+            _handoff(db, who, eid, import_revision='d' * 40)
+    finally:
+        db.close()
+
+
+def test_a_continuation_is_seeded_from_its_predecessors_import():
+    db, who, eid, _ = _seeded('ENDED_HANDOFF', seed_revision=SEED, import_revision=IMP)
+    try:
+        (cont,) = _attempts(db, eid, (2, None, eid))
+        with db.read() as r:
+            assert X.seed_base(r, cont) == IMP
+    finally:
+        db.close()
+
+
+def test_a_retry_takes_the_latest_seeded_attempts_import_else_its_seed():
+    db, who, eid, _ = _seeded('ENDED_OK', seed_revision=SEED, import_revision=IMP)
+    try:
+        (retry,) = _attempts(db, eid, (2, None, None))
+        with db.read() as r:
+            assert X.seed_base(r, retry) == IMP
     finally:
         db.close()

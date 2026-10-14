@@ -91,7 +91,8 @@ def os_tripwire(monkeypatch):
                  '_AssignProcessToJobObject', '_CreateJobObjectW', '_SetInformationJobObject',
                  '_InitializeProcThreadAttributeList', '_UpdateProcThreadAttribute',
                  '_DeleteProcThreadAttributeList', '_SetHandleInformation',
-                 '_GetHandleInformation', '_CreateFileW', '_CloseHandle'):
+                 '_GetHandleInformation', '_CreateFileW', '_CloseHandle',
+                 '_QueryInformationJobObject'):
         def trip(*a, _name=name):
             hits.append((_name, a))
             raise AssertionError('the real %s was reached' % _name)
@@ -156,6 +157,10 @@ class FakeBoundary:
         self.deleted = []
         self.closed = []
         self.assigned = []
+        #: the Job's active-process count, one answer per read (K3); an exception
+        #: instance is raised; the last answer repeats
+        self.active = [0]
+        self.order = []                   # the fence's reads and the closes, in order
 
     def available(self):
         return self.available_ok
@@ -228,6 +233,14 @@ class FakeBoundary:
 
     def close_job(self, job):
         self.closed.append(job)
+        self.order.append('close')
+
+    def job_active_processes(self, job):
+        self.order.append('query')
+        n = self.active.pop(0) if len(self.active) > 1 else self.active[0]
+        if isinstance(n, Exception):
+            raise n
+        return n
 
     def close_handle(self, handle):
         pass
@@ -874,7 +887,7 @@ def _manager_with_fake_node():
 def _e(state, isolated=True):
     from types import SimpleNamespace
     return SimpleNamespace(id=new_execution_id(), state=state, usage=0, stream_offset=0,
-                           isolated=isolated, process_seq=1, harness_id='h', pid=None)
+                           isolated=isolated, process_seq=1, seed_revision=None, harness_id='h', pid=None)
 
 
 class TestRestartReconciliation:
@@ -947,7 +960,7 @@ class TestIsolatedLiveEndRoute:
         if registry_fails:
             m.node._registry = _no_registry
         e = SimpleNamespace(id=new_execution_id(), state=state, account_id=None,
-                            isolated=field, process_seq=1)
+                            isolated=field, process_seq=1, seed_revision=None)
         rec = iso.IsolationRecord(execution_id=e.id, profile='p', state='established')
         m.node.isolation_record = lambda eid: rec if isolated else None
         m.node.ended = lambda handle, code, seq: None
@@ -1059,7 +1072,7 @@ class TestIsolatedFactsWithoutCoreGit:
         m = _manager_with_fake_node()
         git = _git_node(m, allow)
         e = SimpleNamespace(id=new_execution_id(), state='RUNNING', account_id=None,
-                            isolated=field, process_seq=1, branch=branch, workdir='w',
+                            isolated=field, process_seq=1, seed_revision=None, branch=branch, workdir='w',
                             usage=0, stream_offset=0, harness_id='h', pid=None)
         rec = None if record is None else iso.IsolationRecord(execution_id=e.id, profile='p',
                                                               state=record)
@@ -3543,3 +3556,148 @@ class TestLaunchOnWindows:
         assert 'AssignProcessToJobObject' in err.value.detail
         assert launchapi.resumed == [] and launchapi.terminated == [0x700]
         assert err.value.child.pid == 4242
+
+
+
+# ── K3 (C-1012-T030-2 §1-§2): the held-Job fence and the order of an end ─────
+
+@pytest.fixture
+def fence_clock(monkeypatch):
+    """The fence's clock, moved only by its own sleeps."""
+    now = [0.0]
+    monkeypatch.setattr(iso, '_clock', lambda: now[0])
+    monkeypatch.setattr(iso, '_sleep', lambda s: now.__setitem__(0, now[0] + s))
+    return now
+
+
+SEED, IMP = 'a' * 40, 'c' * 40
+
+
+class TestFence:
+    def _held(self, tmp_path, *answers):
+        a, b, req, _ = authority(tmp_path)
+        a._ensure_job(req.execution_id)
+        b.active = list(answers)
+        return a, b, req.execution_id
+
+    def test_zero_after_some_polls_is_quiescence_and_the_job_closes_after(self, tmp_path,
+                                                                        fence_clock):
+        a, b, eid = self._held(tmp_path, 2, 1, 0)
+        assert a.fence(eid) is None
+        assert b.order == ['query', 'query', 'query', 'close']
+        assert a.held_job(eid) is None
+
+    def test_a_survivor_at_the_bound_is_no_import_and_the_job_still_closes(self, tmp_path,
+                                                                          fence_clock):
+        a, b, eid = self._held(tmp_path, 1)
+        why = a.fence(eid)
+        assert '1 process(es) still in its Job' in why
+        assert b.order[-1] == 'close' and b.order.count('close') == 1
+        assert fence_clock[0] >= iso.EXIT_WAIT_S                   # waited the bound, no more
+        assert fence_clock[0] < iso.EXIT_WAIT_S + 2 * iso.FENCE_POLL_S
+
+    @pytest.mark.parametrize('answer', [iso.IsolationUnavailable('job_query', 'synthetic'),
+                                        OSError('denied'), -1, None, True, '0', 0.0])
+    def test_a_query_that_fails_or_is_no_count_is_no_import(self, tmp_path, fence_clock,
+                                                            answer):
+        a, b, eid = self._held(tmp_path, answer)
+        assert a.fence(eid) is not None
+        assert b.order == ['query', 'close']
+
+    def test_no_held_job_is_no_import_and_nothing_is_asked(self, tmp_path, fence_clock):
+        a, b, req, _ = authority(tmp_path)
+        assert a.fence(req.execution_id) == 'no Job is held for it'
+        assert b.order == []
+
+    def test_the_unavailable_boundary_imports_nothing(self, tmp_path, fence_clock):
+        # its close fails too, so the fence raises; the manager reads any raise as
+        # no import (TestEndOrder), and the Job is no longer Core's to hold
+        a, _b, req, _ = authority(tmp_path, boundary=iso.UnavailableBoundary())
+        a._jobs[req.execution_id] = 'job'
+        with pytest.raises(iso.IsolationUnavailable):
+            a.fence(req.execution_id)
+        assert a.held_job(req.execution_id) is None
+
+
+class TestEndOrder:
+    """manager._collect for a seeded isolated execution: the exit tombstone, the fence's
+    query, the close, the import, one transaction, then the teardown."""
+
+    def _end(self, tmp_path, state='RUNNING', code=0, *, killed=False, answers=(0,),
+             record=True, seeded=True, import_fails=False):
+        m = _manager_with_fake_node()
+        a, b, req, _ = authority(tmp_path)
+        eid = req.execution_id
+        a._ensure_job(eid)
+        b.active = list(answers)
+        log = b.order
+        e = SimpleNamespace(id=eid, state=state, account_id=None, isolated=True,
+                            process_seq=1, seed_revision=SEED if seeded else None,
+                            mission_id='msn')
+        rec = iso.IsolationRecord(execution_id=eid, profile='p', state='established')
+        m.node.isolation_record = lambda x: rec if record else None
+        m.node.ended = lambda handle, code, seq: log.append('tombstone')
+        m.node.fence_isolation = a.fence
+
+        def imported(pid, x, seed, *, workdirs):
+            log.append('import')
+            if import_fails:
+                raise OSError('the seeded link link was changed')
+            assert (pid, x, seed, workdirs) == ('prj', eid, SEED, ['w'])
+            return {'revision': IMP, 'tree': 'f' * 40, 'files_changed': ['A x'],
+                    'deleted': 0, 'dropped_dirs': 0}
+        m.node.import_workspace = imported
+        m._store_inputs = lambda x: ('prj', ['w'])
+        m._tail = m._progress = lambda e, p: None
+        m._release_isolation = lambda e: log.append('teardown')
+        m.policy = m.missions = m.router = None
+        real_do = m._do
+        m._do = lambda command, **kw: (log.append(command.__name__), real_do(command, **kw))
+        reloads = []
+        # the end is written by the transaction: the row the pass reads after it has ended
+        m._reload = lambda x: reloads.append(1) or (
+            x if len(reloads) == 1 else SimpleNamespace(**dict(vars(x), state='ENDED_OK')))
+        result = base.ExecutionResult(exit_reason='killed' if killed else
+                                      ('ok' if code == 0 else 'error'), exit_code=code)
+        p = {'adapter': SimpleNamespace(collect_result=lambda handle: result),
+             'handle': object(), 'seq': 1, 'offset': 1, 'usage': 0}
+        m._collect(e, p, base.ProcStatus('exited', code))
+        ((cmd, kw),) = m.calls
+        return log, cmd, kw
+
+    @pytest.mark.parametrize('state,want', [('RUNNING', 'record_end'),
+                                            ('HANDING_OFF', 'record_handoff')])
+    def test_exit_fence_close_import_transaction_teardown(self, tmp_path, fence_clock,
+                                                          state, want):
+        log, cmd, kw = self._end(tmp_path, state, answers=(1, 0))
+        assert log == ['tombstone', 'query', 'query', 'close', 'import', want, 'teardown']
+        assert (kw['import_revision'], kw['no_import']) == (IMP, None)
+        assert kw['facts']['end_state'] == 'f' * 40 and kw['facts']['files_changed'] == ['A x']
+
+    @pytest.mark.parametrize('answers,record,import_fails,why', [
+        ((1,), True, False, 'not quiescent: 1 process(es)'),
+        ((OSError('x'),), True, False, 'could not be queried'),
+        ((iso.IsolationUnavailable('job_close', 'x'),), True, False, 'could not be queried'),
+        ((0,), False, False, 'isolation record is gone'),
+        ((0,), True, True, 'seeded link link was changed')])
+    def test_every_no_import_case_reaches_the_transaction_with_its_cause(
+            self, tmp_path, fence_clock, answers, record, import_fails, why):
+        log, cmd, kw = self._end(tmp_path, answers=answers, record=record,
+                                 import_fails=import_fails)
+        assert cmd is X.record_end and kw['import_revision'] is None and why in kw['no_import']
+        assert 'import' not in log or import_fails
+        assert kw['facts']['end_state'] is None                       # unmeasured stands
+        assert log[-2:] == ['record_end', 'teardown']
+
+    def test_a_held_job_with_no_record_is_never_imported(self, tmp_path, fence_clock):
+        log, _cmd, kw = self._end(tmp_path, record=False)
+        assert 'query' not in log and 'import' not in log
+
+    @pytest.mark.parametrize('state,code,killed,seeded', [
+        ('RUNNING', 1, False, True), ('RUNNING', 0, True, True), ('PAUSING', 0, False, True),
+        ('HANDING_OFF', 1, False, True), ('RUNNING', 0, False, False)])
+    def test_an_end_that_imports_nothing_is_not_fenced(self, tmp_path, fence_clock, state,
+                                                       code, killed, seeded):
+        log, _cmd, kw = self._end(tmp_path, state, code, killed=killed, seeded=seeded)
+        assert 'query' not in log and 'import' not in log
+        assert 'import_revision' not in kw and 'no_import' not in kw

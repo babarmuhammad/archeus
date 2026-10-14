@@ -786,7 +786,8 @@ STORE_C = ('core.hooksPath=', 'core.fsmonitor=', 'core.attributesFile=', 'gc.aut
 LOCAL = 'archeus/node/local.py'
 #: who may call the spawner and the builder (later cards add theirs by name)
 CALLERS = {'store_git': ('store_open', 'store_read', 'store_fetch', 'store_resolve_base',
-                         '_git_version', 'store_seed_ref', 'seed_workspace'),
+                         '_git_version', 'store_seed_ref', 'seed_workspace',
+                         'import_workspace'),
            '_store_pin': ('store_git',)}
 
 
@@ -1465,3 +1466,259 @@ def test_cleanup_that_fails_never_replaces_the_failure_it_runs_under(child):
         LocalNode.store_git('trusted', ['cat-file', '--batch'], workdirs=(), git_dir=STORE(),
                             stdin=b'q\n', sink=Failing())
     assert c.closed == {'stdin', 'stdout', 'stderr'}
+
+
+
+# ── K3 (T-067, T-051 §3-§4 + C-1013-T051): the import, with no process started ──
+
+LINK, SUB, GITLINK_C = b'target.txt', 'sub', 'e' * 40
+
+
+def _seedmap(*extra):
+    """A seed: a.txt 100644, run.sh 100755, link 120000, sub 160000."""
+    return _manifest([_rec('100644', 'a.txt', b'A\n'), _rec('100755', 'run.sh', b'R\n'),
+                      _rec('120000', 'link', LINK), _rec('160000', SUB, oid=GITLINK_C)]
+                     + list(extra))
+
+
+def _workspace(tmp_path, **changes):
+    """The seed as K2 leaves it on disk, then *changes*: name -> bytes, a dict for
+    a directory (its entries), or None to delete."""
+    work = tmp_path / 'work'
+    work.mkdir()
+    (work / '.git').mkdir()
+    (work / '.git' / 'config').write_bytes(b'[core]\n\tfsmonitor = evil\n')
+    tree = {'a.txt': b'A\n', 'run.sh': b'R\n', 'link': LINK, SUB: {}}
+    tree.update(changes)
+
+    def put(d, entries):
+        for name, v in entries.items():
+            if v is None:
+                continue
+            if isinstance(v, dict):
+                (d / name).mkdir()
+                put(d / name, v)
+            else:
+                (d / name).write_bytes(v)
+    put(work, tree)
+    return str(work)
+
+
+def _plan(work, seed=None):
+    plan, counts = local._import_plan(work, seed or _seedmap(), _Ample())
+    return {p: (m, o) for m, p, o, _s in plan}, counts, plan
+
+
+def test_an_unchanged_workspace_plans_exactly_its_seed(tmp_path):
+    got, counts, _ = _plan(_workspace(tmp_path))
+    assert got == {'a.txt': ('100644', None), 'run.sh': ('100755', None),
+                   'link': ('120000', OID(LINK)), SUB: ('160000', GITLINK_C)}
+    assert counts == {'deleted': 0, 'dropped_dirs': 0}
+
+
+@pytest.mark.parametrize('change,want', [
+    ({'link': None}, {'deleted': 1}), ({SUB: None}, {'deleted': 1}),
+    ({'a.txt': b'edited\n'}, {}), ({'new.txt': b'target.txt'}, {}),
+    ({'empty': {}}, {'dropped_dirs': 1}), ({'d': {'e': {}}}, {'dropped_dirs': 2})])
+def test_the_seed_table_and_its_controls(tmp_path, change, want):
+    got, counts, _ = _plan(_workspace(tmp_path, **change))
+    assert counts == dict({'deleted': 0, 'dropped_dirs': 0}, **want)
+    if 'a.txt' in change:
+        assert got['a.txt'] == ('100644', None)              # the seed's mode, new bytes
+    if 'new.txt' in change:
+        assert got['new.txt'] == ('100644', None)            # never 120000 by its bytes
+    for gone in [k for k, v in change.items() if v is None]:
+        assert gone not in got
+
+
+@pytest.mark.parametrize('change,why', [
+    ({'link': b'/etc/passwd'}, 'seeded link link was changed'),
+    ({'link': {}}, 'seeded link link was changed'),
+    ({SUB: {'x': b'x'}}, 'seeded gitlink sub was changed'),
+    ({SUB: {'.git': {}}}, 'seeded gitlink sub was changed'),
+    ({SUB: b''}, 'seeded gitlink sub was changed'),
+    ({'d': {'.GIT': {}}}, 'does not seed'), ({'d': {'git~1': {}}}, 'does not seed'),
+    ({'aux.txt': b''}, 'does not seed')])
+def test_an_edited_or_replaced_representation_or_a_nested_git_refuses(tmp_path, change, why):
+    with pytest.raises(StoreError, match=why):
+        _plan(_workspace(tmp_path, **change))
+
+
+def test_the_root_git_is_skipped_by_name_and_never_read(tmp_path, monkeypatch):
+    work = _workspace(tmp_path)
+    os.rename(os.path.join(work, '.git'), os.path.join(work, 'GIT~1'))
+    got, _c, _p = _plan(work)
+    assert 'GIT~1' not in got and not any(p.startswith('.git') for p in got)
+
+
+def _fake_lstat(monkeypatch, target, **attrs):
+    """`os.lstat` answering *target* as the alias *attrs* describe, everything else as
+    the disk does: no real link, junction or reparse point is made (T-067)."""
+    real = os.lstat
+
+    def lstat(path, *a, **k):
+        st = real(path, *a, **k)
+        if os.path.normcase(os.fspath(path)) != os.path.normcase(target):
+            return st
+        return SimpleNamespace(**dict({n: getattr(st, n) for n in dir(st)
+                                       if n.startswith('st_')}, **attrs))
+    monkeypatch.setattr(os, 'lstat', lstat)
+
+
+@pytest.mark.parametrize('name', ['a.txt', 'link', SUB, 'd', os.path.join('d', 'f')])
+@pytest.mark.parametrize('alias', ['symlink', 'junction', 'reparse-file', 'hard-link'])
+def test_a_link_anywhere_refuses_the_import_and_is_never_followed(tmp_path, monkeypatch,
+                                                                  name, alias):
+    import stat as st_
+    work = _workspace(tmp_path, d={'f': b'f'})
+    attrs = {'symlink': {'st_mode': st_.S_IFLNK | 0o777},
+             'junction': {'st_mode': st_.S_IFDIR | 0o777,
+                          'st_file_attributes': st_.FILE_ATTRIBUTE_REPARSE_POINT},
+             'reparse-file': {'st_file_attributes': st_.FILE_ATTRIBUTE_REPARSE_POINT},
+             'hard-link': {'st_nlink': 2}}[alias]
+    if alias == 'hard-link' and name in (SUB, 'd'):
+        attrs = {'st_nlink': 2, 'st_mode': st_.S_IFREG | 0o644}   # a "directory" that is a file
+    _fake_lstat(monkeypatch, os.path.join(work, name), **attrs)
+    opened = []
+    real_open = open
+    monkeypatch.setattr(local, 'open', lambda p, *a, **k: (opened.append(p),
+                                                           real_open(p, *a, **k))[1],
+                        raising=False)
+    with pytest.raises(OSError):
+        _plan(work)
+    assert os.path.join(work, name) not in opened
+
+
+def test_a_name_that_is_not_utf8_refuses(tmp_path, monkeypatch):
+    work = _workspace(tmp_path)
+    real = os.listdir
+    monkeypatch.setattr(os, 'listdir', lambda d: real(d) + ['bad\udc80'] if d == work
+                        else real(d))
+    with pytest.raises(StoreError, match='not UTF-8'):
+        _plan(work)
+
+
+def test_two_names_one_under_case_folding_refuse(tmp_path, monkeypatch):
+    work = _workspace(tmp_path)
+    (tmp_path / 'work' / 'X.txt').write_bytes(b'1')
+    real = os.listdir
+    monkeypatch.setattr(os, 'listdir', lambda d: real(d) + ['x.txt'] if d == work
+                        else real(d))
+    with pytest.raises(StoreError, match='case-insensitive'):
+        _plan(work)
+
+
+@pytest.mark.parametrize('bound,value,match', [('SEED_MAX_ENTRIES', 3, 'entries'),
+                                               ('SEED_MAX_BYTES', 4, 'bytes'),
+                                               ('SEED_MAX_DEPTH', 1, 'too deep')])
+def test_a_bound_breached_by_the_walk_refuses(tmp_path, monkeypatch, bound, value, match):
+    work, seed = _workspace(tmp_path, d={'f': b'f'}), _seedmap()
+    monkeypatch.setattr(local, bound, value)
+    with pytest.raises(StoreError, match=match):
+        _plan(work, seed)
+
+
+def test_the_walk_reads_the_deadline_at_every_entry(tmp_path):
+    work = _workspace(tmp_path, d={'e': {}})
+    reads = []
+
+    class Counting:
+        def left(self):
+            reads.append(1)
+            if len(reads) > 6:
+                raise StoreError('ran past its deadline')
+            return 1.0
+    with pytest.raises(StoreError, match='deadline'):
+        local._import_plan(work, _seedmap(), Counting())
+
+
+# the stream: one commit on the seed, each file re-checked and hashed as it goes
+
+def _stream_of(plan, sent=None):
+    return b''.join(local._import_stream(ids.new_id('execution'), REV, plan, _Ample(),
+                                         {} if sent is None else sent))
+
+
+def test_the_stream_is_one_commit_on_the_seed_ending_with_done(tmp_path):
+    work = _workspace(tmp_path, **{'n.bin': b'\x00\xff\x80\n'})
+    _got, _c, plan = _plan(work)
+    sent = {}
+    raw = _stream_of(plan, sent)
+    head, rest = raw.split(b'deleteall\n', 1)
+    assert head.startswith(b'commit refs/archeus/exec/exe_') and b'/import\n' in head
+    assert b'\nfrom %s\n' % REV.encode() in head and head.count(b'\ncommitter Archeus ') == 1
+    assert rest.endswith(b'done\n')
+    assert b'M 120000 %s link\n' % OID(LINK).encode() in rest
+    assert b'M 160000 %s sub\n' % GITLINK_C.encode() in rest
+    assert b'M 100644 inline n.bin\ndata 4\n\x00\xff\x80\n\n' in rest
+    assert b'M 100755 inline run.sh\n' in rest
+    assert sent == {'a.txt': ('100644', OID(b'A\n')), 'run.sh': ('100755', OID(b'R\n')),
+                    'link': ('120000', OID(LINK)), SUB: ('160000', GITLINK_C),
+                    'n.bin': ('100644', OID(b'\x00\xff\x80\n'))}
+
+
+@pytest.mark.parametrize('how', ['replaced', 'grew', 'shrank'])
+def test_a_file_that_is_not_the_one_walked_stops_the_stream_before_done(tmp_path, how):
+    work = _workspace(tmp_path)
+    _got, _c, plan = _plan(work)
+    p = os.path.join(work, 'a.txt')
+    if how == 'replaced':
+        os.remove(p)
+        with open(p, 'wb') as f:
+            f.write(b'A\n')                     # same size, another file
+    else:
+        with open(p, 'wb' if how == 'shrank' else 'ab') as f:
+            f.write(b'' if how == 'shrank' else b'more')
+    chunks = []
+    with pytest.raises(StoreError, match='changed after the walk|grew|shrank'):
+        for c in local._import_stream(ids.new_id('execution'), REV, plan, _Ample(), {}):
+            chunks.append(c)
+    assert not b''.join(chunks).endswith(b'done\n')
+
+
+def test_the_import_mode_runs_only_fast_import_under_the_whole_pin(spawns):
+    _pin_, empty, cfg = _pin()
+    store = paths.repo_store(ids.new_id('project'))
+    argv, env, cwd = local._store_pin('import', store)
+    assert argv[argv.index('--git-dir') + 1] == store and cwd == store
+    assert '--no-replace-objects' in argv and set(env) <= ALLOWED_ENV
+    for args in (['fetch'], ['update-ref', 'x', 'y'], ['cat-file', '--batch'], ['init']):
+        with pytest.raises(StoreError, match='is not a'):
+            LocalNode.store_git('import', args, workdirs=(), git_dir=store)
+    assert spawns.calls == []
+
+
+# the byte core carries the stream: chunks as produced, a producer's error is the failure
+
+def test_the_byte_core_feeds_a_stream_of_chunks_in_order(child):
+    c = child.use(Child([b'']))
+    LocalNode.store_git('import', ['fast-import', '--done'], workdirs=(), git_dir=STORE(),
+                        stdin=iter([b'one ', b'two ', b'done\n']), sink=Sink())
+    assert c.written == b'one two done\n' and 'stdin' in c.closed
+
+
+def test_a_stream_that_fails_while_produced_is_the_failure_and_kills_the_writer(child):
+    c = child.use(Child([b''], stall=True))
+
+    def produced():
+        yield b'commit x\n'
+        raise StoreError('a.txt changed after the walk')
+    sink = Sink()
+    with pytest.raises(StoreError, match='changed after the walk'):
+        LocalNode.store_git('import', ['fast-import', '--done'], workdirs=(), git_dir=STORE(),
+                            stdin=produced(), sink=sink, timeout=5)
+    assert c.killed.is_set() and c.written == b'commit x\n' and sink.aborted
+    assert c.closed == {'stdin', 'stdout', 'stderr'}
+
+
+def test_fast_import_writing_to_stdout_refuses():
+    with pytest.raises(StoreError, match='stdout'):
+        local._Silent().feed(b'x')
+
+
+@pytest.mark.parametrize('rev', ['e' * 39, 'E' * 40, 'e' * 64, 'HEAD'])
+def test_an_import_onto_anything_but_a_commit_id_starts_nothing(spawns, child, rev):
+    with pytest.raises(StoreError, match='not a seed Core imports onto'):
+        LocalNode.import_workspace(ids.new_id('project'), ids.new_id('execution'), rev,
+                                   workdirs=())
+    assert spawns.calls == [] and child.made == []

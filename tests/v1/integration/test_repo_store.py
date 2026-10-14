@@ -1005,3 +1005,158 @@ def test_a_blob_write_that_fails_leaves_nothing_open_or_published(world, monkeyp
     _refused(pid, eid, base, branch, 'no space left')
     assert len(files) == 3 and all(f.closed for f in files)
     assert os.path.isdir(paths.seed_staging(eid))                            # kept
+
+
+
+# ── K3 (T-067, T-051 + C-1013-T051): the import, with real Git in pytest temp ──
+
+def _seeded(world, monkeypatch):
+    proj, head, files = _project(world)
+    pid, eid, base, branch = _seed(world, monkeypatch, proj)
+    work = LocalNode.seed_workspace(pid, eid, base, branch, workdirs=())
+    return pid, eid, base, work, files
+
+
+def _tree_of(pid, rev):
+    out = LocalNode.store_read(pid, ['ls-tree', '-r', '-z', '-l', '--full-tree', rev],
+                               workdirs=())
+    rows = {}
+    for rec in out.split('\0'):
+        if rec:
+            head, path = rec.split('\t', 1)
+            mode, _kind, oid, _size = head.split()
+            rows[path] = (mode, oid)
+    return rows
+
+
+def test_an_import_is_exactly_the_workspace_on_its_seed_and_runs_nothing(world, monkeypatch):
+    """Edits, a new file, a deletion and an emptied directory, in a workspace whose
+    own .git is hostile; links and the gitlink untouched. Nothing the workspace or
+    the world configures runs, and the tree is exactly what was on disk."""
+    pid, eid, base, work, files = _seeded(world, monkeypatch)
+    _hostile(monkeypatch, world)
+    dot = os.path.join(work, '.git')
+    with open(os.path.join(dot, 'config'), 'ab') as f:
+        f.write(('[core]\n\tfsmonitor = %s\n[filter "cl"]\n\tclean = %s\n'
+                 % (world.cmd('w-fsmonitor'), world.cmd('w-clean'))).encode())
+    os.makedirs(os.path.join(dot, 'hooks'))
+    with open(os.path.join(dot, 'hooks', 'post-commit'), 'w') as f:
+        f.write('#!/bin/sh\n%s\n' % world.cmd('w-hook'))
+    os.makedirs(os.path.join(dot, 'refs', 'replace'))
+    with open(os.path.join(work, '.gitattributes'), 'wb') as f:
+        f.write(b'* filter=cl text eol=crlf\n')
+    new = b'\x00\xff\xfe invalid utf-8 \x80\r\n'
+    with open(os.path.join(work, 'new.bin'), 'wb') as f:
+        f.write(new)
+    with open(os.path.join(work, 'crlf.txt'), 'wb') as f:
+        f.write(b'changed\n')
+    os.remove(os.path.join(work, 'dir', 'nested', 'deep.txt'))       # dir/nested now empty
+    os.remove(os.path.join(work, 'run.sh'))
+    got = LocalNode.import_workspace(pid, eid, base, workdirs=())
+    assert world.fired() == []
+    tree = _tree_of(pid, got['revision'])
+    seed = _tree_of(pid, base)
+    assert tree['link'] == seed['link'] and tree['link'][0] == '120000'
+    assert tree['dir/up'] == seed['dir/up']
+    assert tree['sub'] == ('160000', world.c1)                # a gitlink kept by its id
+    assert tree['bin.dat'] == seed['bin.dat'] and tree['bin.dat'][0] == '100644'
+    assert 'run.sh' not in tree and 'dir/nested/deep.txt' not in tree
+    assert tree['new.bin'][0] == '100644'
+    with open(os.path.join(work, 'new.bin'), 'rb') as f:
+        assert hashlib.sha1(b'blob %d\0' % len(new) + f.read()).hexdigest() == tree['new.bin'][1]
+    assert tree['crlf.txt'][1] == hashlib.sha1(b'blob 8\0changed\n').hexdigest()
+    assert set(tree) == set(seed) - {'run.sh', 'dir/nested/deep.txt'} | {'new.bin'}
+    assert (got['deleted'], got['dropped_dirs']) == (2, 1)
+    assert 'A new.bin' in got['files_changed'] and 'D run.sh' in got['files_changed']
+    parents = LocalNode.store_read(pid, ['rev-parse', got['revision'] + '^@'], workdirs=())
+    assert parents.split() == [base]
+    assert LocalNode.store_read(pid, ['rev-parse', got['revision'] + '^{tree}'],
+                                workdirs=()).strip() == got['tree']
+    # the import ref is written once
+    with pytest.raises(StoreError, match='written once'):
+        LocalNode.import_workspace(pid, eid, base, workdirs=())
+    # the controls: the workspace's own config does fire under unpinned Git
+    world.git(work, 'status', env=world.clean, check=False)
+    assert 'w-fsmonitor' in world.fired()
+
+
+def test_an_unchanged_workspace_imports_as_its_seed_tree(world, monkeypatch):
+    pid, eid, base, work, _files = _seeded(world, monkeypatch)
+    got = LocalNode.import_workspace(pid, eid, base, workdirs=())
+    assert got['tree'] == LocalNode.store_read(pid, ['rev-parse', base + '^{tree}'],
+                                               workdirs=()).strip()
+    assert (got['deleted'], got['dropped_dirs'], got['files_changed']) == (0, 0, [])
+
+
+@pytest.mark.parametrize('case', ['link-edited', 'link-now-a-dir', 'gitlink-filled',
+                                  'gitlink-git', 'gitlink-now-a-file', 'nested-git',
+                                  'hard-link'])
+def test_a_refused_import_writes_no_ref_and_keeps_the_workspace(world, monkeypatch, tmp_path,
+                                                                case):
+    pid, eid, base, work, _files = _seeded(world, monkeypatch)
+    j = lambda *p: os.path.join(work, *p)         # noqa: E731
+    if case == 'link-edited':
+        with open(j('link'), 'wb') as f:
+            f.write(b'/etc/passwd')
+    elif case == 'link-now-a-dir':
+        os.remove(j('link'))
+        os.mkdir(j('link'))
+    elif case == 'gitlink-filled':
+        with open(j('sub', 'x'), 'wb') as f:
+            f.write(b'x')
+    elif case == 'gitlink-git':
+        os.mkdir(j('sub', '.git'))
+    elif case == 'gitlink-now-a-file':
+        os.rmdir(j('sub'))
+        with open(j('sub'), 'wb') as f:
+            f.write(b'')
+    elif case == 'nested-git':
+        os.makedirs(j('dir', '.GIT'))
+    else:
+        os.link(j('crlf.txt'), str(tmp_path / 'outside'))
+    before = _snapshot(work)
+    with pytest.raises(OSError):
+        LocalNode.import_workspace(pid, eid, base, workdirs=())
+    assert _snapshot(work) == before
+    with pytest.raises(StoreError):
+        LocalNode.store_read(pid, ['rev-parse', '--verify', '-q',
+                                   'refs/archeus/exec/%s/import' % eid], workdirs=())
+
+
+def test_a_stream_cut_short_commits_nothing_and_the_store_still_opens(world, monkeypatch):
+    """A file that changes after the walk stops the stream before `done`: fast-import
+    is killed, no ref is written, and what it leaves is recorded here."""
+    pid, eid, base, work, _files = _seeded(world, monkeypatch)
+    store = paths.repo_store(pid)
+    before = _snapshot(store)
+    real = local._import_plan
+
+    def changed_after(work_, seed, deadline):
+        plan, counts = real(work_, seed, deadline)
+        with open(os.path.join(work_, 'crlf.txt'), 'ab') as f:
+            f.write(b'more')
+        return plan, counts
+    monkeypatch.setattr(local, '_import_plan', changed_after)
+    with pytest.raises(StoreError, match='changed after the walk'):
+        LocalNode.import_workspace(pid, eid, base, workdirs=())
+    with pytest.raises(StoreError):
+        LocalNode.store_read(pid, ['rev-parse', '--verify', '-q',
+                                   'refs/archeus/exec/%s/import' % eid], workdirs=())
+    left = sorted(set(_snapshot(store)) - set(before))
+    print('\nK3 a cut fast-import left: %s' % left)
+    assert LocalNode.store_open(pid, workdirs=()) == store          # still opens
+
+
+def test_a_bound_breached_by_the_workspace_refuses_before_the_writer_starts(world,
+                                                                            monkeypatch):
+    pid, eid, base, work, _files = _seeded(world, monkeypatch)
+    with open(os.path.join(work, 'big'), 'wb') as f:
+        f.write(b'x' * 64)
+    monkeypatch.setattr(local, 'SEED_MAX_BYTES', 40)
+    started = []
+    real = local._stream
+    monkeypatch.setattr(local, '_stream', lambda argv, *a: (started.append(argv[-3:]),
+                                                           real(argv, *a))[1])
+    with pytest.raises(StoreError, match='past 40 bytes'):
+        LocalNode.import_workspace(pid, eid, base, workdirs=())
+    assert not any('fast-import' in a for a in started)

@@ -1017,6 +1017,9 @@ class Execution(Entity):
     # PV-20 K2 (T-049 §2): the commit its seed was built from, written once at the
     # first preparation; the only base any later step may use. None: not seeded
     seed_revision: str = None
+    # PV-20 K3 (T-051 §5): the commit Core imported its workspace as, written once by
+    # its end transaction. None: no import (never seeded, or refused: §7)
+    import_revision: str = None
     state: str = None
 
     def _check(self):
@@ -1027,6 +1030,10 @@ class Execution(Entity):
         if self.seed_revision is not None and not (
                 isinstance(self.seed_revision, str) and SEED_REVISION.fullmatch(self.seed_revision)):
             raise ValueError('Execution.seed_revision is a commit id')
+        if self.import_revision is not None and not (
+                isinstance(self.import_revision, str)
+                and re.fullmatch(r'[0-9a-f]{40}', self.import_revision)):
+            raise ValueError('Execution.import_revision is a commit id in a SHA-1 store')
 
 
 #: How a Session came to exist (p12-design-gate D1): the one an execution ran in,

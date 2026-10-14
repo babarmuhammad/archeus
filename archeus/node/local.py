@@ -60,7 +60,8 @@ STORE_READS = ('rev-parse', 'cat-file', 'ls-tree', 'merge-base', 'diff')
 _STORE_ARGS = {'version': ('version',), 'init': ('init',), 'seal': ('symbolic-ref', 'mktree'),
                'trusted': STORE_READS + ('fetch', 'update-ref'), 'base': ('rev-parse',),
                'seed': ('fetch', 'update-ref', 'symbolic-ref', 'read-tree', 'ls-files',
-                        'rev-parse')}
+                        'rev-parse'),
+               'import': ('fast-import',)}
 #: exactly the config `init --bare` writes, whole: one [core] section, its keys
 #: in Git's order, each once. Observed at 2.49.0.windows.1 (T-048): format 0,
 #: filemode false, bare true, symlinks false, ignorecase true; symlinks,
@@ -170,6 +171,11 @@ class LocalNode:
         Core reads to know an execution was isolated — never a file the execution
         could have written (§3.3)."""
         return self.isolation.record(execution_id)
+
+    def fence_isolation(self, execution_id):
+        """Quiescence before an import (K3): None, or why there is none. The
+        execution's Job is closed either way."""
+        return self.isolation.fence(execution_id)
 
     def end_isolation(self, execution_id, *, reason=''):
         """The execution is over: identity torn down, whatever will not go quarantined
@@ -770,6 +776,52 @@ class LocalNode:
         return commit
 
     @staticmethod
+    def import_workspace(project_id, execution_id, seed_revision, *, workdirs):
+        """The execution's workspace as one commit on its *seed_revision* in the store
+        (K3, T-051 §3-§5 with C-1013-T051), once the fence has confirmed quiescence.
+        Core's own Python walks it, never Git, following nothing; one `fast-import`
+        writes `refs/archeus/exec/<id>/import`, which must not exist yet, from a stream
+        Core generates; the commit's parent and its whole tree are read back and must
+        be exactly what Core sent. Returns {revision, tree, files_changed, deleted,
+        dropped_dirs}; any refusal is StoreError, and the workspace and the store keep
+        whatever exists (keep-all)."""
+        deadline = _Deadline(execution_id)
+
+        def git(mode, args, **kw):
+            return LocalNode.store_git(mode, args, workdirs=workdirs, git_dir=store,
+                                       timeout=deadline.left(), **kw)
+        if not re.fullmatch(r'[0-9a-f]{40}', seed_revision):
+            raise StoreError('not a seed Core imports onto: %r' % (seed_revision,))
+        work, ref = ExecPaths(execution_id).work, _import_ref(execution_id)
+        store = LocalNode.store_open(project_id, workdirs=workdirs)
+        try:
+            git('trusted', ['rev-parse', '--verify', '-q', ref])
+        except StoreError:
+            pass                        # absent: the only state an import starts from
+        else:
+            raise StoreError('%s exists already: an import is written once' % ref)
+        seed = _Manifest(len(work))     # the seed map: the only authority for a mode
+        git('trusted', ['ls-tree', '-r', '-z', '-l', '--full-tree', seed_revision], sink=seed)
+        plan, counts = _import_plan(work, seed, deadline)
+        sent = {}
+        git('import', ['fast-import', '--done', '--quiet'], sink=_Silent(),
+            stdin=_import_stream(execution_id, seed_revision, plan, deadline, sent))
+        rev = git('trusted', ['rev-parse', '--verify', '-q', ref + '^{commit}']).strip()
+        head = git('trusted', ['cat-file', 'commit', rev]).split('\n\n', 1)[0].split('\n')
+        parents = [x[7:] for x in head if x.startswith('parent ')]
+        tree = [x[5:] for x in head if x.startswith('tree ')]
+        back = _Manifest(len(work))
+        git('trusted', ['ls-tree', '-r', '-z', '-l', '--full-tree', rev], sink=back)
+        if parents != [seed_revision] or len(tree) != 1 or \
+                {p: (m, o) for m, o, _s, p in back.entries} != sent:
+            raise StoreError('%s is not what Core sent: kept, never recorded' % ref)
+        was = {p: (m, o) for m, o, _s, p in seed.entries}
+        changed = sorted(['A ' + p for p in sent if p not in was]
+                         + ['M ' + p for p in sent if p in was and was[p] != sent[p]]
+                         + ['D ' + p for p in was if p not in sent])
+        return dict(counts, revision=rev, tree=tree[0], files_changed=changed[:500])
+
+    @staticmethod
     def seed_workspace(project_id, execution_id, seed_revision, branch, *, workdirs):
         """The execution's repository, holding exactly the tree of *seed_revision*,
         its own seed ref in the store (T-049 §4 with C-1013-T049): built in Core's
@@ -1151,14 +1203,16 @@ def _pin_record(store, version):
 def _stream(argv, cwd, env, stdin, sink, timeout):
     """The byte core of `store_git`: stdout straight into *sink* in fixed chunks,
     never decoded or kept; stderr drained and capped; *stdin* fed by a thread so
-    neither pipe fills. A sink that raises, or *timeout*, kills the child, and the
+    neither pipe fills; *stdin* is bytes or an iterable of byte chunks, and an error
+    raised while producing it is the call's failure. A sink that raises, or
+    *timeout*, kills the child, and the
     call raises; a read that ends because of the kill is a refusal too. On any
     failure the sink is aborted (it closes what it opened), and every stream is
     closed either way; neither can replace the failure that got there first."""
     p = subprocess.Popen(argv, cwd=cwd, env=env, creationflags=proc.no_window_flags,
                          stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    late, err = threading.Event(), bytearray()
+    late, err, fed = threading.Event(), bytearray(), []
 
     def expire():
         late.set()
@@ -1169,10 +1223,21 @@ def _stream(argv, cwd, env, stdin, sink, timeout):
             err.extend(chunk[:max(0, _STDERR_KEEP - len(err))])
 
     def feed():
+        chunks = iter((stdin,) if isinstance(stdin, bytes) else stdin)
         try:
-            p.stdin.write(stdin)
-        except OSError:
-            pass                        # the child is gone: its end decides
+            while True:
+                try:
+                    chunk = next(chunks)
+                except StopIteration:
+                    break
+                except BaseException as e:      # producing the stream failed: that is
+                    fed.append(e)               # the failure, and nothing is finished
+                    p.kill()
+                    break
+                try:
+                    p.stdin.write(chunk)
+                except OSError:
+                    break               # the child is gone: its end decides
         finally:
             _quietly(p.stdin.close)     # EOF for the child, on every path
     helpers = [threading.Thread(target=drain, daemon=True)]
@@ -1186,6 +1251,10 @@ def _stream(argv, cwd, env, stdin, sink, timeout):
         for chunk in iter(lambda: p.stdout.read1(_CHUNK), b''):
             sink.feed(chunk)
         p.wait()
+        for t in helpers:
+            t.join()
+        if fed:
+            raise fed[0]
         if late.is_set():
             raise StoreError('git %s ran past its deadline' % argv[-1:])
         if p.returncode:
@@ -1464,3 +1533,121 @@ def _made(top, path, deadline):
             except FileExistsError:
                 pass
         _plain(d, True)
+
+
+# ── K3: the import (T-051 §3-§5, C-1013-T051) ──
+
+class _Silent:
+    """`fast-import --quiet` answers nothing on stdout; anything there refuses."""
+
+    def feed(self, chunk):
+        raise StoreError('fast-import wrote to stdout: %r' % chunk[:120])
+
+    def end(self):
+        pass
+
+    def abort(self):
+        pass
+
+
+def _import_ref(execution_id):
+    return _seed_ref(execution_id)[:-len('seed')] + 'import'
+
+
+def _import_plan(work, seed, deadline):
+    """The workspace as Core will send it: [(mode, path, id, source)], with
+    {deleted, dropped_dirs}. Core's own walk, never Git and never with *work* as a
+    cwd, the root `.git` (or `git~1`) skipped by name. Every entry is lstat-ed and a
+    link, junction, other reparse point or second hard link refuses the import, as
+    a nested `.git` does (owner Q1, A); so does a path the seed would refuse, a
+    case-insensitive collision, or a bound. A path's mode comes only from the seed
+    map: a seeded 120000 or 160000 is kept by id when unchanged and refuses the
+    import when edited or replaced (C-1013-T051 §3); any other file is the seed's
+    100644/100755, or 100644 when new. A regular file's source is its lstat
+    identity, re-checked when it is opened; an empty directory is dropped, counted."""
+    seeded = {p: (m, o) for m, o, _s, p in seed.entries}
+    plan, folded, count = [], {}, {'entries': 0, 'bytes': 0, 'dropped_dirs': 0}
+    _plain(work, True)
+
+    def walk(d, rel):
+        for name in sorted(os.listdir(d)):
+            deadline.left()
+            if not rel and name.casefold() in ('.git', 'git~1'):
+                continue
+            r, p = rel + name, os.path.join(d, name)
+            try:
+                r.encode('utf-8')
+            except UnicodeEncodeError:
+                raise StoreError('a path that is not UTF-8: %r' % r)
+            _seed_path(r, len(work))
+            if folded.setdefault(r.casefold(), r) != r:
+                raise StoreError('two paths one case-insensitive name: %r, %r'
+                                 % (folded[r.casefold()], r))
+            count['entries'] += 1
+            if count['entries'] > SEED_MAX_ENTRIES:
+                raise StoreError('a workspace past %d entries' % SEED_MAX_ENTRIES)
+            st = _plain(p, None)            # never followed: refused before any use
+            mode, oid = seeded.get(r, (None, None))
+            isdir = stat.S_ISDIR(st.st_mode)
+            if mode == '160000':
+                if not isdir or os.listdir(p):
+                    raise StoreError('the seeded gitlink %s was changed' % r)
+                plan.append(('160000', r, oid, None))
+            elif mode == '120000':
+                if isdir or _blob_id(p, st.st_size, deadline) != oid:
+                    raise StoreError('the seeded link %s was changed' % r)
+                plan.append(('120000', r, oid, None))
+            elif isdir:
+                before = len(plan)
+                walk(p, r + '/')
+                if len(plan) == before:
+                    count['dropped_dirs'] += 1
+            else:
+                count['bytes'] += st.st_size
+                if count['bytes'] > SEED_MAX_BYTES:
+                    raise StoreError('a workspace past %d bytes' % SEED_MAX_BYTES)
+                plan.append((mode if mode in ('100644', '100755') else '100644', r, None,
+                             (st.st_dev, st.st_ino, st.st_size, p)))
+    walk(work, '')
+    kept = {r for _m, r, _o, _s in plan}
+    return plan, {'deleted': len(set(seeded) - kept), 'dropped_dirs': count['dropped_dirs']}
+
+
+def _import_stream(execution_id, seed_revision, plan, deadline, sent):
+    """The one fast-import stream: a commit on *seed_revision* whose tree is exactly
+    *plan*, Core's identity and time, `done` last so a stream cut short commits
+    nothing. Each file is opened, checked to be the entry the walk saw, and hashed
+    by Core while sent; *sent* fills with {path: (mode, id)}."""
+    msg = b'archeus: the workspace of %s\n' % execution_id.encode('ascii')
+    yield (b'commit %s\ncommitter %s <%s> %d +0000\ndata %d\n%s\nfrom %s\ndeleteall\n'
+           % (_import_ref(execution_id).encode('ascii'), CORE_GIT_NAME.encode('ascii'),
+              CORE_GIT_EMAIL.encode('ascii'), int(time.time()), len(msg), msg,
+              seed_revision.encode('ascii')))
+    for mode, path, oid, source in plan:
+        deadline.left()
+        name = path.encode('utf-8')
+        if source is None:                      # a seeded link or gitlink, by its id
+            yield b'M %s %s %s\n' % (mode.encode('ascii'), oid.encode('ascii'), name)
+            sent[path] = (mode, oid)
+            continue
+        dev, ino, size, p = source
+        with open(p, 'rb') as f:
+            st = os.fstat(f.fileno())
+            if (st.st_dev, st.st_ino, st.st_size) != (dev, ino, size):
+                raise StoreError('%s changed after the walk' % path)
+            h = hashlib.sha1(b'blob %d\0' % size)
+            yield b'M %s inline %s\ndata %d\n' % (mode.encode('ascii'), name, size)
+            left = size
+            while left:
+                deadline.left()
+                chunk = f.read(min(left, 1 << 20))
+                if not chunk:
+                    raise StoreError('%s shrank while it was read' % path)
+                h.update(chunk)
+                left -= len(chunk)
+                yield chunk
+            if f.read(1):
+                raise StoreError('%s grew while it was read' % path)
+        yield b'\n'
+        sent[path] = (mode, h.hexdigest())
+    yield b'done\n'
