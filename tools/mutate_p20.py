@@ -1,12 +1,14 @@
-"""The P20 mutation suite (p20-design-gate §4.1; D14's ids are provisional until
-the user decides it). Slice A, item 83: the e-stop with Core down or not
+"""The P20 mutation suite (p20-design-gate §4.1; D14, decided by the user
+2026-10-15). Slice A, item 83: the e-stop with Core down or not
 answering (Q01-Q08); slice B, F7 and F8, Control → About's emergency stop
 (Q09-Q17; an e2e-guarded mutant rebuilds the SPA); slice C, F4's stream
 takeover (Q18-Q25, Q33) and item 86's one shell credential at a time (Q26-Q32);
 slice D, F6's touch exit from the command bar (Q34-Q37); slice E, PV-10
 (ADR-0049, D6): settings-source opt-ins, the inventory and the exit-code-2
 deny (Q38-Q79; two e2e-guarded mutants rebuild the SPA); slice F, PV-22
-(ADR-0052): tool removal, the CLI snapshot, the MCP deny and Skill (Q80-Q99).
+(ADR-0052): tool removal, the CLI snapshot, the MCP deny and Skill (Q80-Q99);
+slice I, the secrets gate (Q100-Q103); slice H, the breaker drills (D13) and
+the two defects the fuzz harness found (D12) (Q104-Q110).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -65,6 +67,16 @@ FAKE = 'archeus/harnesses/fake.py'
 FU = 'tests/v1/unit/test_tool_removal_units.py::'
 FR = 'tests/v1/integration/test_tool_removal.py::'
 G6F = G6 + 'test_a_tool_the_task_does_not_hold_never_runs_and_never_reaches_the_hook'
+DISC = 'archeus/infra/discovery.py'
+AUTH = 'archeus/api/auth.py'
+AUTO = 'archeus/core/application/automations.py'
+AUTHZ = 'archeus/core/application/authorization.py'
+CANON = 'archeus/core/execution/canonical.py'
+SEC = 'tests/v1/unit/test_p20_secrets.py::'
+XI = 'tests/v1/integration/test_execution.py::'
+PR = 'tests/v1/integration/test_presence.py::'
+AU = 'tests/v1/integration/test_automation.py::'
+FZ = 'tests/v1/integration/test_p20_fuzz.py::'
 
 MUTATIONS = [
     # Slice A, item 83: execution-architecture §10 path 2
@@ -507,6 +519,57 @@ MUTATIONS = [
      "    'mapped_not_offered': ('LS', 'MultiEdit'),",
      "    'mapped_not_offered': ('MultiEdit',),")],
      [FU + 'test_F11_every_offered_tool_is_mapped_or_excluded_and_the_snapshot_says_what_is_not_offered']),
+    # Slice I: the secrets review's gate (D7)
+    ('Q100', 'the local token file is not created exclusively', [(DISC,
+     "os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)",
+     "os.open(path, os.O_CREAT | os.O_WRONLY, 0o600)")],
+     [SEC + 'test_the_local_token_file_is_created_exclusively_and_owner_only']),
+    ('Q101', 'the local token file is readable by others', [(DISC,
+     "os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)",
+     "os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)")],
+     [SEC + 'test_the_local_token_file_is_created_exclusively_and_owner_only']),
+    ('Q102', 'a step-up PIN record is cheap to brute-force', [(CMD,
+     "PIN_ITERATIONS = 200_000",
+     "PIN_ITERATIONS = 1_000")],
+     [SEC + 'test_a_step_up_pin_is_kept_only_as_a_pbkdf2_record']),
+    ('Q103', 'a secret is drawn somewhere the table does not name', [(MGR,
+     "'hook_' + secrets.token_urlsafe(32)",
+     "'hook_' + secrets.token_hex(32)")],
+     [SEC + 'test_every_random_draw_in_archeus_is_in_the_secrets_table']),
+    # Slice H, D13: each breaker tripped and its recovery observed
+    ('Q104', 'the breaker counts every failure, not only resource and auth', [(EXE,
+     "and x.entity.failure in ('resource', 'auth') and x.entity.ended_at]",
+     "and x.entity.ended_at]")],
+     [XI + 'test_D13_the_execution_breaker_trips_opens_cools_and_recovers']),
+    ('Q105', 'an OPEN account never cools down', [(EXE,
+     "elif a.health == 'OPEN' and now - since >= COOLDOWN_S:",
+     "elif False:")],
+     [XI + 'test_D13_the_execution_breaker_trips_opens_cools_and_recovers']),
+    ('Q106', 'a successful probe does not recover a DEGRADED account', [(EXE,
+     "elif a.health == 'DEGRADED' and beat and any(t > since for t in oks):",
+     "elif False:")],
+     [XI + 'test_D13_the_execution_breaker_trips_opens_cools_and_recovers']),
+    ('Q107', 'a right PIN does not reset the wrong-PIN count', [(AUTH,
+     "            self._n.pop(device_id, None)\n",
+     "            pass\n")],
+     [PR + 'test_D13_the_pin_breaker_resets_on_a_right_pin_and_a_new_pairing_recovers']),
+    ('Q108', 'a suspended automation cannot be re-enabled', [(AUTO,
+     "'user_reenables' if row.entity.state == 'SUSPENDED'",
+     "'enable_within_policy' if row.entity.state == 'SUSPENDED'")],
+     [AU + 'test_D13_a_reenabled_automation_fires_again']),
+    # Slice H, D12: what the fuzz harness found
+    ('Q109', "a simulated action or rule built from a malformed dict is a 500", [(AUTHZ,
+     "    except TypeError as e:",
+     "    except KeyError as e:")],
+     ['tests/v1/integration/test_policy_http.py::'
+      'test_H04b_a_malformed_simulated_action_or_rule_is_a_400_not_a_500',
+      FZ + 'test_no_fuzzed_command_body_is_a_500']),
+    ('Q110', 'a path the OS cannot resolve raises out of the canonicaliser', [(CANON,
+     "    except (OSError, ValueError):",
+     "    except KeyError:")],
+     ['tests/v1/unit/test_execution_units.py::'
+      'test_a_path_the_os_cannot_resolve_is_unclassified_not_an_error',
+      FZ + 'test_the_canonicaliser_answers_every_fuzzed_call_conservatively']),
 ]
 
 if __name__ == '__main__':
