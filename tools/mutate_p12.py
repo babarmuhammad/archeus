@@ -131,7 +131,7 @@ MUTATIONS = [
      "        if False:")],
      [I + '::test_E81_a_continuation_goes_only_where_the_router_sends_it']),
     ('Y13', 'a hand-off charged an attempt', [(EX,
-     "              {'exit_reason': 'handoff', 'exit_code': exit_code, 'charged': guarded is not None,",
+     "              {'exit_reason': 'handoff', 'exit_code': exit_code, 'charged': refused is not None,",
      "              {'exit_reason': 'handoff', 'exit_code': exit_code, 'charged': True,")],
      [I + '::test_E79_pressure_hands_off_and_the_task_continues_where_it_was']),
     ('Y14', 'a hand-off moves its task', [(HO,
