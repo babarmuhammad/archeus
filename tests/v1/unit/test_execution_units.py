@@ -736,7 +736,7 @@ def test_a_project_less_workspace_is_the_executions_own_never_its_core_directory
 # ── PV-20 §3.3 H2 / A7: how a live end is classified (state-machines §4 guards) ──
 
 def _seeded(state, stop_reason=None, max_attempts=2, isolated=None, process_seq=0,
-            seed_revision=None, import_revision=None):
+            seed_revision=None, import_revision=None, account_id=None):
     """One execution in *state* under a RUNNING task, on a real database. No
     process ever ran (process_seq 0 by default), so only the classification is
     exercised."""
@@ -759,7 +759,7 @@ def _seeded(state, stop_reason=None, max_attempts=2, isolated=None, process_seq=
                                    attempt=1, state=state, stop_reason=stop_reason,
                                    isolated=isolated, process_seq=process_seq,
                                    seed_revision=seed_revision,
-                                   import_revision=import_revision)):
+                                   import_revision=import_revision, account_id=account_id)):
             tx.insert(row, actor=who)
         tx.append(new_event('mission.updated', Ref('mission', mid), who, payload={},
                             workspace=ids.GLOBAL_WORKSPACE))
@@ -1631,5 +1631,20 @@ def test_a_retry_takes_the_latest_seeded_attempts_import_else_its_seed():
         (retry,) = _attempts(db, eid, (2, None, None))
         with db.read() as r:
             assert X.seed_base(r, retry) == IMP
+    finally:
+        db.close()
+
+
+
+def test_a_clean_end_without_its_import_is_charged_even_where_its_failure_would_not_be():
+    """A resource failure on a registered account spends no attempt (§12.4); with no
+    import the clean end is the import's failure, and that is charged (T-051 §7)."""
+    db, who, eid, tid = _seeded('RUNNING', isolated=True, seed_revision=SEED, max_attempts=1,
+                                account_id=ids.new_id('account'))
+    try:
+        _end(db, who, eid, failure='resource', no_import='its isolation record is gone')
+        e, t = _row(db, entities.Execution, eid).entity, _row(db, entities.Task, tid).entity
+        assert (e.state, e.charged) == ('ENDED_OK', True)
+        assert (t.state, t.failure_class) == ('FAILED', 'import')
     finally:
         db.close()

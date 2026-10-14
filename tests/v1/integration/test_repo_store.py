@@ -1160,3 +1160,23 @@ def test_a_bound_breached_by_the_workspace_refuses_before_the_writer_starts(worl
     with pytest.raises(StoreError, match='past 40 bytes'):
         LocalNode.import_workspace(pid, eid, base, workdirs=())
     assert not any('fast-import' in a for a in started)
+
+
+
+@pytest.mark.parametrize('how', ['tree', 'parent'])
+def test_a_commit_that_is_not_what_core_sent_is_never_returned(world, monkeypatch, how):
+    """Core's read-back, not fast-import's word: the stream is altered between what
+    Core records as sent and what reaches Git, and the import is refused."""
+    pid, eid, base, work, _files = _seeded(world, monkeypatch)
+    real = local._import_stream
+
+    def altered(execution_id, seed_revision, plan, deadline, sent):
+        for chunk in real(execution_id, seed_revision, plan, deadline, sent):
+            if how == 'parent':
+                chunk = chunk.replace(b'from %s\n' % seed_revision.encode(), b'')
+            yield chunk
+        if how == 'tree':
+            sent['ghost.txt'] = ('100644', 'e' * 40)
+    monkeypatch.setattr(local, '_import_stream', altered)
+    with pytest.raises(StoreError, match='is not what Core sent'):
+        LocalNode.import_workspace(pid, eid, base, workdirs=())

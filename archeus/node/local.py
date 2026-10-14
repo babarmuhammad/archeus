@@ -1606,7 +1606,7 @@ def _import_plan(work, seed, deadline):
                 count['bytes'] += st.st_size
                 if count['bytes'] > SEED_MAX_BYTES:
                     raise StoreError('a workspace past %d bytes' % SEED_MAX_BYTES)
-                plan.append((mode if mode in ('100644', '100755') else '100644', r, None,
+                plan.append((mode or '100644', r, None,
                              (st.st_dev, st.st_ino, st.st_size, p)))
     walk(work, '')
     kept = {r for _m, r, _o, _s in plan}
