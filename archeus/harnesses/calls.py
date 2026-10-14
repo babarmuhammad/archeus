@@ -19,6 +19,14 @@ from claude_sessions import config, llmcall
 
 from . import base
 
+
+def _env(home):
+    # T-053 P6: nothing of Core's own process reaches an own call - no ARCHEUS_*
+    # (HOME locates run/, the hook names carry credentials) and nothing of a pytest
+    # running Core; the prefixes run_check drops (archeus/node/local.py)
+    return {k: v for k, v in config.account_env(home).items()
+            if not k.startswith(('PYTEST_', 'ARCHEUS_'))}
+
 _MODEL_REFUSED = re.compile(r'model', re.I)
 _MODEL_WHY = re.compile(r'not found|does not exist|invalid|ambiguous|unknown|not available', re.I)
 
@@ -89,7 +97,7 @@ class ClaudeCodeCaller:
             return base.CallResult(error='unavailable', detail='Claude Code is not installed')
         extra = () if spec.schema is None else (
             '--output-format', 'json', '--json-schema', json.dumps(spec.schema, sort_keys=True))
-        env = config.account_env(spec.account.home_ref)
+        env = _env(spec.account.home_ref)
         if spec.no_tools:
             # empty, never left out: no `--tools` at all means every tool
             # (claude_code/tools.py relies on the same form). `--tools` covers
@@ -157,7 +165,7 @@ class PiCaller:
         args, stdin = llmcall.build_headless_args(exe, prompt, spec.model or '', harness='pi',
                                                   no_tools=spec.no_tools)
         r = llmcall.run_headless(args, stdin, cwd=spec.workdir,
-                                 env=config.account_env(spec.account.home_ref),
+                                 env=_env(spec.account.home_ref),
                                  timeout=spec.limits.get('timeout_s', 600))
         if r.returncode != 0:
             return _failed(r)
