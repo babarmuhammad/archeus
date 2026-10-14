@@ -15,7 +15,15 @@ import subprocess
 
 import pytest
 
+from v1.integration.test_verification import FIX, _mission, _t, _task, _write, pump
+from v1.judge import support
+from v1.judge.client import InProcessClient
+from v1.judge.conftest import recorded_brain
+from v1.judge.support import Rig
+
+from archeus.core.domain import entities
 from archeus.core.verification import worker
+from archeus.infra.db import rows
 from archeus.node import local
 from archeus.node.local import LocalNode
 
@@ -172,3 +180,82 @@ def test_the_mission_worktree_is_refused_where_the_task_worktree_still_fits(
         assert mission in str(err.value) and '221 characters' in str(err.value)
         assert not os.path.exists(mission)
     assert _git(repo, 'worktree', 'list', '--porcelain').count('worktree ') == 2   # main + task
+
+
+# ── T-078 (A): the refusal is uncharged and the mission waits, once ─────────
+
+STEPS = [_write(FIX), {'emit': {'type': 'result', 'summary': 'done'}}]
+
+
+@pytest.fixture
+def long_core(request, tmp_path, monkeypatch, capped):
+    """An in-process Core (test_verification's rig) whose ARCHEUS_HOME is exactly
+    `request.param` characters long."""
+    home = _home(tmp_path, request.param)
+    monkeypatch.setenv('ARCHEUS_HOME', home)
+    c = InProcessClient(home, callers=[recorded_brain()], real_verification=True)
+    monkeypatch.setattr(support, 'idle', c._idle)
+    yield c
+    c.close()
+
+
+def _of(c, cls, **eq):
+    with c._core().read() as conn:
+        return [r.entity for r in rows.where(conn, cls, **eq)]
+
+
+def _events(c, kind):
+    import json
+    with c._core().read() as conn:
+        return [json.loads(p) for (p,) in conn.execute(
+            'select payload from events where type = ? order by seq', (kind,))]
+
+
+def _planner_calls(c):
+    return sum(1 for p in _events(c, 'archeus_call.ended') if p.get('purpose') == 'planner')
+
+
+def _blocks(c, mid):
+    return [p for p in _events(c, 'mission.state_changed') if p.get('to') == 'BLOCKED']
+
+
+@pytest.mark.parametrize('long_core', [141], indirect=True)
+def test_past_home_140_a_task_is_refused_once_uncharged_and_its_mission_waits(long_core):
+    c = long_core
+    _repo, mid = _mission(c, Rig(c), steps=STEPS)
+    pump(c, lambda: c.get_mission(mid)['state'] == 'BLOCKED')
+    pump(c)                                     # and then nothing moves: no retry, no loop
+    (e,) = _of(c, entities.Execution)
+    assert (e.state, e.stop_reason, e.charged) == ('ABANDONED', 'path_too_long', False)
+    assert _t(c, mid) == 'READY'                # not failed: no attempt spent, no replan
+    assert _planner_calls(c) == 1               # the first plan's, and no other
+    assert not [p for p in _events(c, 'mission.state_changed') if p.get('to') == 'REPLANNING']
+    (block,) = _blocks(c, mid)
+    why = block['reason']
+    assert e.workdir is None and os.path.join('worktrees', '') in why
+    assert '221 characters' in why and 'at most 220' in why and 'ARCHEUS_HOME' in why
+
+
+@pytest.mark.parametrize('long_core', [140], indirect=True)
+def test_at_home_140_the_task_runs_as_before(long_core):
+    c = long_core
+    _repo, mid = _mission(c, Rig(c), steps=STEPS)
+    pump(c, lambda: _t(c, mid) == 'VERIFYING')
+    assert [e.stop_reason for e in _of(c, entities.Execution)] == [None]
+    assert not _blocks(c, mid)
+
+
+@pytest.mark.parametrize('long_core', [135], indirect=True)
+def test_a_mission_worktree_git_refuses_blocks_the_mission_once_at_merge_time(long_core):
+    c = long_core                   # task .git 215 fits; the mission's 221 does not
+    _repo, mid = _mission(c, Rig(c), steps=STEPS)
+    pump(c, lambda: c.get_mission(mid)['state'] == 'BLOCKED')
+    t = _task(c, mid)
+    assert (t.state, t.integration_state) == ('SUCCEEDED', 'MERGING')
+    pump(c)                         # the merge is not tried again while it waits
+    (block,) = _blocks(c, mid)
+    assert block['reason'].startswith('no mission worktree: the worktree ')
+    assert '_mission' in block['reason'] and '221 characters' in block['reason']
+    with c._core().read() as conn:
+        assert not [d for d in c._verify.plan(conn) if d[0] == 'merge']
+    assert [e.stop_reason for e in _of(c, entities.Execution)] == [None]   # nothing charged

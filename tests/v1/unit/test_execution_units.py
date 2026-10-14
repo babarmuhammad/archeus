@@ -220,9 +220,13 @@ def test_the_breaker_and_the_uncharged_ends_are_the_gates():
     assert set(X.UNCHARGED) == {'user', 'estop', 'ceiling', 'limit', 'breaker',
                                 'pause_timeout', 'cancel', 'binding', 'disarmed',
                                 # P12: a hand-off spends no attempt (p12-design-gate D20)
-                                'pressure', 'handoff_user'}
+                                'pressure', 'handoff_user',
+                                # T-078: Git refuses the path's length on every attempt
+                                'path_too_long'}
     # P11 §28 note 11: a workspace that cannot be made is the task's own end
     assert set(entities.STOP_REASONS) - set(X.UNCHARGED) == {'workspace'}
+    # T-078: a refusal every attempt would repeat blocks its mission, uncharged
+    assert X.BLOCKING == ('path_too_long',) and set(X.BLOCKING) <= set(X.UNCHARGED)
 
 
 # ── §10 the hook's protocol, without a process ──────────────────────────────
@@ -1314,3 +1318,36 @@ def test_without_a_git_dir_cap_no_length_is_refused(monkeypatch):
 def test_the_git_dir_cap_is_windows_only():
     from archeus.node import local
     assert local.GIT_DIR_MAX == (220 if os.name == 'nt' else None)
+
+
+@pytest.mark.parametrize('resume', [False, True])
+def test_a_worktree_path_git_refuses_is_refused_uncharged_and_blocks_its_mission(
+        monkeypatch, tmp_path, resume):
+    from archeus.node import local
+    root = str(tmp_path / 'repo')
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, False, project=root,
+                                             git={'branch': 'main'})
+    m.missions = sentinel = object()
+
+    def too_long(root, path, branch, base='HEAD'):
+        log.append(('add_worktree', root, branch, base))
+        raise local.PathTooLong('the worktree %s needs a .git path of 221 characters' % path)
+    m.node.add_worktree = too_long
+    assert _run(m, e, mission, resume, log) is True
+    assert _steps(log)[-2:] == ['add_worktree', 'refuse']        # nothing inventoried or spawned
+    kw = log[-1][1]
+    assert kw['stop_reason'] == 'path_too_long' and kw['missions'] is sentinel
+    assert kw['reason'].startswith('no workspace: the worktree ') and '221 characters' in kw['reason']
+
+
+def test_any_other_workspace_failure_keeps_the_charged_workspace_end(monkeypatch, tmp_path):
+    root = str(tmp_path / 'repo')
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, False, project=root,
+                                             git={'branch': 'main'})
+
+    def fails(root, path, branch, base='HEAD'):
+        raise OSError('git worktree add failed: something else')
+    m.node.add_worktree = fails
+    assert m._spawn(e, mission) is True
+    kw = log[-1][1]
+    assert kw['stop_reason'] == 'workspace' and 'missions' not in kw

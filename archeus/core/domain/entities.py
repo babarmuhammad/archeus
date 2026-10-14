@@ -870,7 +870,10 @@ STOP_REASONS = ('user', 'estop', 'ceiling', 'limit', 'breaker', 'pause_timeout',
                 'workspace',
                 # P12 (p12-design-gate §10.1): why an execution handed off; the
                 # account changes are the existing `limit` and `ceiling`
-                'pressure', 'handoff_user')
+                'pressure', 'handoff_user',
+                # T-078: Git for Windows refuses the worktree for its path's length
+                # alone; the same on every attempt, so its mission waits for the user
+                'path_too_long')
 #: How an adapter classifies an end (p11-design-gate §9.1): who owns it.
 FAILURES = ('resource', 'task', 'auth', 'limit')
 

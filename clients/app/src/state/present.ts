@@ -24,6 +24,7 @@ const STOPPED: Record<string, string> = {
   binding: 'stopped: what it was bound to changed',
   disarmed: 'stopped: Archeus was disarmed',
   workspace: 'stopped: its workspace could not be made',
+  path_too_long: 'stopped: its workspace path is too long for Git; use a shorter Archeus folder',
 };
 const FAILED: Record<string, string> = {
   resource: 'the account or its provider failed',

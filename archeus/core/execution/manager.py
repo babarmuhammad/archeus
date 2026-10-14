@@ -31,7 +31,7 @@ from ...infra.artifacts import store
 from ...infra.db import rows
 from ...infra.paths import ExecPaths
 from ...node import staging
-from ...node.local import LocalNode
+from ...node.local import LocalNode, PathTooLong
 from ..application import errors, executions as X, optins, resources
 from ..domain import entities, states
 from ..redact import redact  # p11-design-gate §19; shared since P12, and P20's inventory
@@ -220,6 +220,10 @@ class ExecutionManager:
             hook = (os.path.join(stage, 'python.exe'), '-I', os.path.join(stage, staging.HOOK))
         try:
             workdir, branch = self._workspace(e, m, t, isolated=isolated)
+        except PathTooLong as err:
+            self._do(X.refuse, execution_id=e.id, reason='no workspace: %s' % err,
+                     stop_reason='path_too_long', missions=self.missions)
+            return True
         except OSError as err:
             self._do(X.refuse, execution_id=e.id, reason='no workspace: %s' % err,
                      stop_reason='workspace')

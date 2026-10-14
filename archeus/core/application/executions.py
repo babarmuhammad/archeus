@@ -36,7 +36,10 @@ LIVE = ('INTENT', 'STARTING', 'RUNNING', 'AWAITING_APPROVAL', 'PAUSING', 'PAUSED
         'STOPPING', 'LOST', 'HANDING_OFF')
 #: ends the task does not own: they spend no attempt (D9)
 UNCHARGED = ('user', 'estop', 'ceiling', 'limit', 'breaker', 'pause_timeout', 'cancel',
-             'binding', 'disarmed', 'pressure', 'handoff_user')
+             'binding', 'disarmed', 'pressure', 'handoff_user', 'path_too_long')
+#: refusals every later attempt would repeat: the mission waits for the user
+#: instead of re-dispatching the task (T-078)
+BLOCKING = ('path_too_long',)
 #: how an end is reported, by the state it is observed in (§8.1)
 _EXIT = {'ok': 'exited_success', 'error': 'exited_error'}
 _USAGE_KEYS = ('tokens_in', 'tokens_out', 'cache_read', 'cache_write', 'cost_usd')
@@ -137,11 +140,13 @@ def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, p
     return {'execution_id': e.id, 'process_seq': process_seq, 'refused': None}
 
 
-def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None):
+def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None, missions=None):
     """An execution with no process ends here: INTENT never spawned
     (ABANDONED), a paused or waiting one is discarded (ENDED_KILLED). Uncharged,
     and the task goes back to READY, unless the reason is the task's own (a
-    workspace that cannot be made, §28 note 11): that one spends an attempt."""
+    workspace that cannot be made, §28 note 11): that one spends an attempt. A
+    BLOCKING reason also blocks the mission on *reason* (needs *missions*), so
+    the READY task is not dispatched again until the user resumes it."""
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
     fields = {'stop_reason': stop_reason, 'charged': stop_reason not in UNCHARGED,
               'ended_at': _now_iso(),
@@ -153,7 +158,10 @@ def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None):
         e = _fire(tx, e.id, 'discarded', actor, reason, dict(fields, exit_reason='killed'))
         e = _finish(tx, actor, e, facts)
         _event(tx, 'execution.ended', e, actor, _end_payload(e))
-    return _respond(tx, actor, e, reason)
+    out = _respond(tx, actor, e, reason)
+    if stop_reason in BLOCKING:
+        _block(tx, actor, missions, e.mission_id, reason)
+    return out
 
 
 def record_process(tx, *, actor, execution_id, pid, create_time, process_seq):
