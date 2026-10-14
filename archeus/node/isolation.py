@@ -507,6 +507,10 @@ def _ledger_problem(e, api):
 
 #: how long a profile's deletion waits for the root process once Core has closed its Job
 EXIT_WAIT_S = 2.0
+#: how often the fence reads a Job's active-process count while it waits (K3)
+FENCE_POLL_S = 0.05
+#: the fence's clock and sleep: a test moves them, never the code
+_clock, _sleep = time.monotonic, time.sleep
 
 
 class Isolation:
@@ -804,6 +808,37 @@ class Isolation:
 
     def held_jobs(self):
         return dict(self._jobs)
+
+    def fence(self, execution_id, *, wait=EXIT_WAIT_S):
+        """Quiescence before an import (C-1012-T030-2 §1): the Job's active-process
+        count, read through the handle Core still holds and polled for up to *wait*
+        seconds, then the Job closed whatever the answer. None when the count reached
+        zero; otherwise why not: no Job held (every end after a restart), a query that
+        fails or answers anything but a count, or members left at the bound. Zero shows
+        only that the Job is empty, never that no writer outside it exists (T-008)."""
+        job = self._jobs.get(execution_id)
+        if job is None:
+            return 'no Job is held for it'
+        end, why = _clock() + wait, None
+        try:
+            while True:
+                try:
+                    n = self.boundary.job_active_processes(job)
+                except Exception as err:
+                    why = 'its Job could not be queried: %s' % type(err).__name__
+                    break
+                if type(n) is not int or n < 0:
+                    why = 'its Job answered %r, not a process count' % (n,)
+                    break
+                if n == 0:
+                    break
+                if _clock() >= end:
+                    why = '%d process(es) still in its Job after %gs' % (n, wait)
+                    break
+                _sleep(FENCE_POLL_S)
+        finally:
+            self._close_job(execution_id)       # kill-on-close: a survivor ends here
+        return why
 
     def launched(self, execution_id):
         return self._live.get(execution_id)
@@ -1438,6 +1473,14 @@ if WINDOWS:
                     ('ActiveProcessLimit', W.DWORD), ('Affinity', C.c_size_t),
                     ('PriorityClass', W.DWORD), ('SchedulingClass', W.DWORD)]
 
+    class _JBAI(C.Structure):
+        # JOBOBJECT_BASIC_ACCOUNTING_INFORMATION: four LARGE_INTEGER times, then DWORDs
+        _fields_ = [('TotalUserTime', C.c_longlong), ('TotalKernelTime', C.c_longlong),
+                    ('ThisPeriodTotalUserTime', C.c_longlong),
+                    ('ThisPeriodTotalKernelTime', C.c_longlong),
+                    ('TotalPageFaultCount', W.DWORD), ('TotalProcesses', W.DWORD),
+                    ('ActiveProcesses', W.DWORD), ('TotalTerminatedProcesses', W.DWORD)]
+
     class _ELI(C.Structure):
         _fields_ = [('Basic', _BL), ('IoInfo', C.c_ulonglong * 6),
                     ('ProcessMemoryLimit', C.c_size_t), ('JobMemoryLimit', C.c_size_t),
@@ -1458,6 +1501,9 @@ if WINDOWS:
     _CreateFileW = _f(kernel32, 'CreateFileW', W.HANDLE,
                       [W.PWSTR, W.DWORD, W.DWORD, C.c_void_p, W.DWORD, W.DWORD, W.HANDLE])
     _CreateJobObjectW = _f(kernel32, 'CreateJobObjectW', W.HANDLE, [C.c_void_p, W.PWSTR])
+    _QueryInformationJobObject = _f(kernel32, 'QueryInformationJobObject', W.BOOL,
+                                    [W.HANDLE, W.INT, C.c_void_p, W.DWORD,
+                                     C.POINTER(W.DWORD)])
     _SetInformationJobObject = _f(kernel32, 'SetInformationJobObject', W.BOOL,
                                   [W.HANDLE, W.INT, C.c_void_p, W.DWORD])
     _AssignProcessToJobObject = _f(kernel32, 'AssignProcessToJobObject', W.BOOL,
@@ -1526,6 +1572,7 @@ if WINDOWS:
     HANDLE_FLAG_INHERIT = 0x1
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
     JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+    JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION = 1
     OBJECT_TYPE_INFORMATION, OBJECT_NAME_INFORMATION = 2, 1
     PROCESS_CREATE_PROCESS, PROCESS_QUERY_LIMITED_INFORMATION = 0x0800, 0x1000
     PROCESS_QUERY_INFORMATION, PROCESS_TERMINATE, PROCESS_DUP_HANDLE = 0x0400, 0x1, 0x40
@@ -1671,6 +1718,16 @@ if WINDOWS:
                 return None
             return {'type': self._obj_type(handle), 'name': self._obj_name(handle),
                     'inheritable': bool(self._handle_flags(handle) & HANDLE_FLAG_INHERIT)}
+
+        def job_active_processes(self, job):
+            """The Job's `ActiveProcesses` (JobObjectBasicAccountingInformation), read
+            through Core's own handle. Written for the K3 fence and never run here: a
+            reading on a real Job is T-008's (C6)."""
+            info = _JBAI()
+            _win(_QueryInformationJobObject(job, JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION,
+                                            C.byref(info), C.sizeof(info), None),
+                 'QueryInformationJobObject')
+            return int(info.ActiveProcesses)
 
         def assign_job(self, job, process_handle):
             if job is None:

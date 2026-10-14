@@ -93,16 +93,21 @@ def binding(conn, e):
 # ── process start and progress ──────────────────────────────────────────────
 
 def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, process_seq,
-                    isolated, inventory_sha256=None, inventory_size=None):
+                    isolated, inventory_sha256=None, inventory_size=None, seed_revision=None):
     """Before a process starts: the binding still holds (else the execution ends
     uncharged and the task is re-dispatched), and the new process's number,
     workdir, branch and hook token hash are recorded — and (P20, ADR-0049) the
     inventory of what its settings sources load, an artifact the manager has
     already stored, referenced from the execution. The isolation decision
     (T-035) is recorded at the first preparation; a later one under a different
-    decision ends the execution uncharged, and a legacy row stays unknown."""
+    decision ends the execution uncharged, and a legacy row stays unknown. So is
+    the commit its seed was built from (K2, T-049 §7): a resume must name the one
+    recorded, None included, or it ends uncharged the same way."""
     if not isinstance(isolated, bool):
         raise ValueError('prepare_process needs the isolation decision as a bool')
+    if seed_revision is not None and not (isinstance(seed_revision, str)
+                                          and entities.SEED_REVISION.fullmatch(seed_revision)):
+        raise ValueError('a seed revision is a commit id: %r' % (seed_revision,))
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
     if e.state not in ('INTENT', 'PAUSED', 'AWAITING_APPROVAL'):
         raise lifecycle.IllegalTrigger('execution', e.state, 'prepare_process',
@@ -116,7 +121,12 @@ def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, p
         why = 'its isolation decision changed (recorded %s, now %s)' % (e.isolated, isolated)
         return dict(refuse(tx, actor=actor, execution_id=e.id, reason=why,
                            stop_reason='binding'), refused=why)
+    if e.process_seq >= 1 and seed_revision != e.seed_revision:
+        why = 'its seed changed (recorded %s, now %s)' % (e.seed_revision, seed_revision)
+        return dict(refuse(tx, actor=actor, execution_id=e.id, reason=why,
+                           stop_reason='binding'), refused=why)
     recorded = isolated if e.process_seq == 0 else e.isolated
+    seed = seed_revision if e.process_seq == 0 else e.seed_revision
     why = binding(tx.conn, e)
     if why is not None:
         return dict(refuse(tx, actor=actor, execution_id=e.id, reason=why,
@@ -127,17 +137,50 @@ def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, p
     tx.update(entities.Execution, e.id, {'process_seq': process_seq, 'workdir': workdir,
                                          'branch': branch, 'hook_token_hash': token_digest,
                                          'hook_seq': 0 if e.process_seq == 0 else e.hook_seq,
-                                         'isolated': recorded,
+                                         'isolated': recorded, 'seed_revision': seed,
                                          'inventory_sha256': inventory_sha256},
               actor=actor)
     _event(tx, 'execution.prepared', e, actor, {'process_seq': process_seq, 'workdir': workdir,
                                                 'branch': branch,
                                                 'inventory': inventory_sha256,
-                                                'isolated': recorded})
+                                                'isolated': recorded,
+                                                'seed_revision': seed})
     return {'execution_id': e.id, 'process_seq': process_seq, 'refused': None}
 
 
-def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None):
+class SeedRefused(Exception):
+    """No base an execution's seed may be built from: it is refused, charged, and on
+    its task's last attempt the task fails with `failure_class`."""
+
+    def __init__(self, why, failure_class):
+        super().__init__(why)
+        self.failure_class = failure_class
+
+
+def seed_base(conn, e):
+    """T-049 §2: the commit *e*'s seed is built from, read from Core's write-once
+    records only (a retry: the latest earlier attempt's), or None for a first
+    attempt, whose base the node reads once from the user's repository. A hand-off
+    continuation continues its predecessor's import (K3); without one there is
+    nothing to continue, and under T-030 §3.3 Q2 (owner, A) that is a charged
+    failure of class `import`, never a seed of something else. A retry takes the
+    latest earlier seeded attempt's import, else that attempt's own seed."""
+    if e.handoff_from is not None:
+        prev = rows.get(conn, entities.Execution, e.handoff_from).entity
+        if prev.import_revision is None:
+            raise SeedRefused('%s continues %s, which has no import' % (e.id, prev.id),
+                              'import')
+        return prev.import_revision
+    earlier = [r.entity for r in rows.where(conn, entities.Execution, task_id=e.task_id)
+               if r.entity.attempt < e.attempt and r.entity.seed_revision is not None]
+    if not earlier:
+        return None
+    last = max(earlier, key=lambda x: x.attempt)
+    return last.import_revision or last.seed_revision
+
+
+def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None,
+           failure_class='execution'):
     """An execution with no process ends here: INTENT never spawned
     (ABANDONED), a paused or waiting one is discarded (ENDED_KILLED). Uncharged,
     and the task goes back to READY, unless the reason is the task's own (a
@@ -153,7 +196,7 @@ def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None):
         e = _fire(tx, e.id, 'discarded', actor, reason, dict(fields, exit_reason='killed'))
         e = _finish(tx, actor, e, facts)
         _event(tx, 'execution.ended', e, actor, _end_payload(e))
-    return _respond(tx, actor, e, reason)
+    return _respond(tx, actor, e, reason, failure_class)
 
 
 def record_process(tx, *, actor, execution_id, pid, create_time, process_seq):
@@ -228,12 +271,13 @@ def _usage(usage):
 def _end_payload(e):
     return {'exit_reason': e.exit_reason, 'exit_code': e.exit_code, 'task_id': e.task_id,
             'attempt': e.attempt, 'stop_reason': e.stop_reason, 'charged': e.charged,
-            'final_offset': e.stream_offset}
+            'final_offset': e.stream_offset, 'import_revision': e.import_revision}
 
 
 def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False, failure=None,
                usage=None, summary='', adapter_state=None, final_offset=None, output=True,
-               facts=None, usage_total=False, isolated=False, core_halt=False):
+               facts=None, usage_total=False, isolated=False, core_halt=False,
+               import_revision=None, no_import=None):
     """A process of *execution_id* is gone. Which edge that is depends on the
     state it was observed in; a second report of the same end is an invalid
     transition (nothing changes). A vanished process is never success: without
@@ -242,9 +286,21 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
     For an *isolated* execution a PAUSING or HANDING_OFF end is decided by Core's
     own state and observed exit, never by the execution's halt report (PV-20 §3.3
     H2, A7): an exit 0 pauses (a hand-off goes through `record_handoff`), anything
-    else is ENDED_ERROR. *core_halt* is Core's own halt decision, never a report."""
+    else is ENDED_ERROR. *core_halt* is Core's own halt decision, never a report.
+
+    A seeded execution's ENDED_OK is written with its *import_revision* in the same
+    transaction (K3, T-051 §5); without one the end stands and the task takes the
+    charged failure of class `import` (§7, owner A), *no_import* saying why."""
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
+    _import_once(e, import_revision)
     clean = exit_code == 0 and not killed
+    if import_revision is not None and not (clean and not halted):
+        raise ValueError('only a clean end imports its workspace')
+    if import_revision is not None and e.state not in ('RUNNING', 'STARTING'):
+        # the row moved after the route was captured: a lost race, and the import,
+        # kept in the store, is never recorded (C-1012-T030-2 §2 step 5)
+        raise lifecycle.IllegalTrigger('execution', e.state, 'record_end',
+                                       'an import is recorded only by a running end')
     if isolated and e.state == 'HANDING_OFF' and clean:
         raise lifecycle.IllegalTrigger('execution', e.state, 'record_end',
                                        'an isolated hand-off that exited 0 ends through '
@@ -284,6 +340,7 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
         raise lifecycle.IllegalTrigger('execution', e.state, 'record_end',
                                        'the execution has already ended')
     ok = exit_code == 0 and not killed and not halted
+    missing = _missing_import(e, import_revision, no_import) if ok else None
     # a resource's failure spends no attempt only where the breaker can see it: a
     # registered account (§12.4); on a harness's own account it is charged, so it
     # cannot retry forever. A halt Core did not ask for (the hook failed closed) is
@@ -293,9 +350,10 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
     e = _fire(tx, e.id, _EXIT['ok' if ok else 'error'], actor,
               'exit code %s%s' % (exit_code, ' (halted without being asked)' if halted else ''),
               dict(fields, exit_reason='ok' if ok else 'error', exit_code=exit_code,
-                   charged=not (uncharged or stop), stop_reason=stop or e.stop_reason,
-                   ended_at=_now_iso(), hook_token_hash=None, **end))
-    return _ended(tx, actor, e, usage, facts, usage_total)
+                   charged=missing is not None or not (uncharged or stop),
+                   stop_reason=stop or e.stop_reason, ended_at=_now_iso(),
+                   hook_token_hash=None, import_revision=import_revision, **end))
+    return _ended(tx, actor, e, usage, facts, usage_total, missing)
 
 
 def _finish(tx, actor, e, facts):
@@ -332,11 +390,30 @@ def _ledger(tx, actor, e, usage, total=False):
                                    account_id=e.account_id, basis=basis, **u), actor=actor)
 
 
-def _ended(tx, actor, e, usage, facts=None, usage_total=False):
+def _ended(tx, actor, e, usage, facts=None, usage_total=False, missing=None):
     _ledger(tx, actor, e, usage, usage_total)
     e = _finish(tx, actor, e, facts)
     _event(tx, 'execution.ended', e, actor, _end_payload(e))
+    if missing is not None:
+        return _respond(tx, actor, e, 'execution %s ended (%s), %s' % (e.id, e.exit_reason,
+                                                                        missing),
+                        'import', no_import=True)
     return _respond(tx, actor, e, 'execution %s ended (%s)' % (e.id, e.exit_reason))
+
+
+def _import_once(e, import_revision):
+    """`import_revision` is written once, by the end that imported (T-051 §5)."""
+    if e.import_revision is not None:
+        raise ValueError('%s already recorded its import %s' % (e.id, e.import_revision))
+    if import_revision is not None and e.seed_revision is None:
+        raise ValueError('%s was never seeded: it has nothing to import' % e.id)
+
+
+def _missing_import(e, import_revision, no_import):
+    """Why a seeded execution's clean end has no import (T-051 §7), or None."""
+    if e.seed_revision is None or import_revision is not None:
+        return None
+    return 'no import: %s' % (no_import or 'none was made')
 
 
 def lost(tx, *, actor, execution_id, reason, facts=None):
@@ -355,13 +432,14 @@ def lost(tx, *, actor, execution_id, reason, facts=None):
     return _ended(tx, actor, e, None, facts)
 
 
-def _respond(tx, actor, e, why):
-    """The task's (and for a stop, the mission's) response to *e* ending."""
+def _respond(tx, actor, e, why, failure_class='execution', no_import=False):
+    """The task's (and for a stop, the mission's) response to *e* ending. A clean
+    end with no import (*no_import*) cannot be verified or merged: charged (§7)."""
     t = lifecycle.load(tx, entities.Task, e.task_id).entity
     out = {'execution_id': e.id, 'state': e.state, 'charged': e.charged}
     if t.state != 'RUNNING':
         return {**out, 'task_state': t.state}
-    if e.state == 'ENDED_OK':
+    if e.state == 'ENDED_OK' and not no_import:
         t = lifecycle.fire(tx, entities.Task, t.id, 'execution_succeeded', actor=actor,
                            reason='%s; verifying' % why)[0].entity
     elif e.state == 'ENDED_REJECTED':
@@ -374,7 +452,7 @@ def _respond(tx, actor, e, why):
                            )[0].entity
     else:
         t = charged_failure(tx, actor, t, 'execution_failed_retry', 'execution_failed_final',
-                            'execution', why).entity
+                            failure_class, why).entity
     return {**out, 'task_state': t.state}
 
 
@@ -543,40 +621,46 @@ def no_progress(tx, e, end_state):
 
 def record_handoff(tx, *, actor, policy, missions, router, execution_id, now, exit_code=None,
                    usage=None, adapter_state=None, final_offset=None, facts=None,
-                   usage_total=False):
+                   usage_total=False, import_revision=None, no_import=None):
     """The process of a HANDING_OFF execution is gone: in one transaction its
     checkpoint, HANDING_OFF -> ENDED_HANDOFF (uncharged), and the continuation
     (P9, P10, a new INTENT with `handoff_from`). The task and the mission do
     not move unless there is no continuation (then the task is READY again,
-    uncharged)."""
+    uncharged). A seeded execution hands off its *import_revision*, which its
+    continuation is seeded from; without one there is no continuation, and the
+    hand-off is the charged failure of class `import` (K3, T-051 §7, owner A)."""
     from ..execution.handoff import continue_task
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
     if e.state != 'HANDING_OFF':
         raise lifecycle.IllegalTrigger('execution', e.state, 'checkpoint_written',
                                        'the execution is not handing off')
+    _import_once(e, import_revision)
+    missing = _missing_import(e, import_revision, no_import)
     if final_offset is not None and final_offset > e.stream_offset:
         tx.update(entities.Execution, e.id, {'stream_offset': final_offset}, actor=actor)
     end_state = (facts or {}).get('end_state')
-    guarded = no_progress(tx, e, end_state)
+    guarded = None if missing else no_progress(tx, e, end_state)
+    refused = missing or guarded
     e = _fire(tx, e.id, 'checkpoint_written', actor,
-              guarded or 'handed off (%s): the checkpoint is written' % e.stop_reason,
-              {'exit_reason': 'handoff', 'exit_code': exit_code, 'charged': guarded is not None,
+              refused or 'handed off (%s): the checkpoint is written' % e.stop_reason,
+              {'exit_reason': 'handoff', 'exit_code': exit_code, 'charged': refused is not None,
                'ended_at': _now_iso(), 'hook_token_hash': None, 'end_state_digest': end_state,
+               'import_revision': import_revision,
                'adapter_state': dict(adapter_state) if adapter_state else e.adapter_state})
     _ledger(tx, actor, e, usage, usage_total)
     e = _finish(tx, actor, e, dict(facts or {}, context_insufficient=guarded) if guarded
                 else facts)
     _event(tx, 'execution.ended', e, actor, _end_payload(e))
-    if guarded is not None:
-        # ADR-0047 §5: no continuation; the attempt is spent and the ordinary
-        # retry (a fresh execution) or FAILED -> replan takes over
+    if refused is not None:
+        # ADR-0047 §5 and T-051 §7: no continuation; the attempt is spent and the
+        # ordinary retry (a fresh execution) or FAILED -> replan takes over
         t = lifecycle.load(tx, entities.Task, e.task_id).entity
         if t.state == 'RUNNING':
             t = charged_failure(tx, actor, t, 'execution_failed_retry', 'execution_failed_final',
-                                'context_insufficient', 'execution %s: %s' % (e.id, guarded)
-                                ).entity
+                                'import' if missing else 'context_insufficient',
+                                'execution %s: %s' % (e.id, refused)).entity
         return {'execution_id': e.id, 'state': e.state, 'continuation': None,
-                'refused': guarded, 'task_state': t.state}
+                'refused': refused, 'task_state': t.state}
     nxt = continue_task(tx, actor=actor, policy=policy, missions=missions, router=router,
                         execution=e, now=now)
     return {'execution_id': e.id, 'state': e.state, 'continuation': nxt['execution_id'],

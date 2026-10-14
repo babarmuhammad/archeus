@@ -26,7 +26,7 @@ LEGACY_DIRNAME = '.archeus'
 #: Linux). V1 creates only these entries, and a reset removes only these —
 #: never the directory as a whole.
 V1_OWNED = ('archeus.db', 'archeus.db-wal', 'archeus.db-shm', 'artifacts', 'backups',
-            'logs', 'run', 'runtime', 'worktrees')
+            'logs', 'repos', 'run', 'runtime', 'worktrees')
 
 #: Entries the legacy Qt shell (claude_sessions/gui_qt.py) may keep here. V1
 #: never writes, moves or deletes them.
@@ -78,6 +78,28 @@ def runtime_dir():
     """`<ARCHEUS_HOME>/runtime` — Core-staged copies of the hook's runtime, one
     directory per content digest, kept (PV-20 C4a, node/staging.py)."""
     return os.path.join(archeus_home(), 'runtime')
+
+
+def repos_dir():
+    """`<ARCHEUS_HOME>/repos` — Core's own Git stores, one bare repository per
+    project, and the pin files they run under (PV-20 K1, node/local.py); kept."""
+    return os.path.join(archeus_home(), 'repos')
+
+
+def repo_store(project_id):
+    """`<ARCHEUS_HOME>/repos/<project_id>.git` — one project's Core-owned store."""
+    if not ids.is_id(project_id, 'project'):
+        raise ValueError('not a project id: %r' % (project_id,))
+    return os.path.join(repos_dir(), '%s.git' % project_id)
+
+
+def seed_staging(execution_id):
+    """`<ARCHEUS_HOME>/repos/.seed/<execution_id>` — where Core builds an
+    execution's seeded repository before renaming it into the execution's
+    workspace (PV-20 K2, T-049 §4): Core's, never an execution's; kept."""
+    if not ids.is_id(execution_id, 'execution'):
+        raise ValueError('not an execution id: %r' % (execution_id,))
+    return os.path.join(repos_dir(), '.seed', execution_id)
 
 
 def stop_sentinel():

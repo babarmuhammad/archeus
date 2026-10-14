@@ -24,6 +24,8 @@ from .actions import (ACTION_CLASSES, APPROVAL_KINDS, BOUNDARY_KEYS, DECISIONS, 
 from .values import ORIGINS, PRINCIPAL_SCOPES, SOURCE_KINDS, Ref
 
 _HEX64 = re.compile(r'[0-9a-f]{64}')
+#: a commit id, SHA-1 or SHA-256, lowercase (PV-20 K2, T-049 §9)
+SEED_REVISION = re.compile(r'[0-9a-f]{40}|[0-9a-f]{64}')
 #: `_FROZEN` value meaning every field except the state
 FROZEN_ALL = ('*',)
 #: Autonomy profiles, loosest last (p9-design-gate §5, D5)
@@ -1012,6 +1014,12 @@ class Execution(Entity):
     # preparation. A decision, never evidence that confinement happened; None
     # is unknown (never prepared, or prepared before the field existed)
     isolated: bool = None
+    # PV-20 K2 (T-049 §2): the commit its seed was built from, written once at the
+    # first preparation; the only base any later step may use. None: not seeded
+    seed_revision: str = None
+    # PV-20 K3 (T-051 §5): the commit Core imported its workspace as, written once by
+    # its end transaction. None: no import (never seeded, or refused: §7)
+    import_revision: str = None
     state: str = None
 
     def _check(self):
@@ -1019,6 +1027,13 @@ class Execution(Entity):
             raise ValueError('Execution.inventory_sha256 names an artifact (a sha256)')
         if self.isolated is not None and not isinstance(self.isolated, bool):
             raise ValueError('Execution.isolated is a bool or None')
+        if self.seed_revision is not None and not (
+                isinstance(self.seed_revision, str) and SEED_REVISION.fullmatch(self.seed_revision)):
+            raise ValueError('Execution.seed_revision is a commit id')
+        if self.import_revision is not None and not (
+                isinstance(self.import_revision, str)
+                and re.fullmatch(r'[0-9a-f]{40}', self.import_revision)):
+            raise ValueError('Execution.import_revision is a commit id in a SHA-1 store')
 
 
 #: How a Session came to exist (p12-design-gate D1): the one an execution ran in,

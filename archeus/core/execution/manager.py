@@ -555,7 +555,8 @@ class ExecutionManager:
         if e.state in _ENDED:
             self._release_isolation(e)                      # §3.2 Cleanup
             return
-        isolated = self._isolated(e, self._isolation_record(e.id))
+        rec = self._isolation_record(e.id)
+        isolated = self._isolated(e, rec)
         facts = _unmeasured(p) if isolated else self._facts(e, p)
         # the adapter's figures are the harness's own total only when it says so;
         # the last progress report is a lower bound (ADR-0048 §3)
@@ -575,12 +576,26 @@ class ExecutionManager:
             handoff = st.exit_code == 0 and not killed
         else:
             handoff = st.exit_code != 0 or result.halted or killed
-        if e.state == 'HANDING_OFF' and handoff:
+        handing = e.state == 'HANDING_OFF' and handoff
+        # K3 (C-1012-T030-2 §2): the route is captured above; a seeded execution whose
+        # route is a clean end or a hand-off is fenced, its Job closed, and its
+        # workspace imported, all before the one transaction that records the end
+        clean = (st.exit_code == 0 and not killed and not result.halted
+                 and (e.state == 'RUNNING' or e.state == 'STARTING' and p['offset'] > 0))
+        imported = {}
+        if isolated and e.seed_revision is not None and (handing or clean):
+            imported = self._import(e, rec)
+            if imported.get('revision'):
+                facts = dict(facts, end_state=imported['tree'],
+                             files_changed=imported['files_changed'])
+        imp = {'import_revision': imported['revision'], 'no_import': imported['why']} \
+            if imported else {}
+        if handing:
             self._do(X.record_handoff, policy=self.policy, missions=self.missions,
                      router=self.router, execution_id=e.id, now=time.time(),
                      exit_code=st.exit_code, usage=usage, usage_total=total,
                      adapter_state=result.adapter_state, final_offset=p['offset'],
-                     facts=facts)
+                     facts=facts, **imp)
             self._release_isolation(e)                      # §3.2 Cleanup
             return
         self._do(X.record_end, execution_id=e.id, exit_code=st.exit_code,
@@ -588,9 +603,38 @@ class ExecutionManager:
                  failure=result.failure, usage=usage, usage_total=total,
                  summary=result.reported_summary, adapter_state=result.adapter_state,
                  final_offset=p['offset'], output=p['offset'] > 0, facts=facts,
-                 isolated=isolated)
+                 isolated=isolated, **imp)
         if self._reload(e).state in _ENDED:
             self._release_isolation(e)                      # §3.2 Cleanup
+
+    def _import(self, e, rec):
+        """{revision, tree, files_changed, why} of a seeded execution's import (K3):
+        only through Core's own isolation record and the Job this Core still holds,
+        and only once the fence answered zero. Anything else is no import, with why
+        (T-051 §7); never an exception at an end whose handle is already dropped."""
+        out = {'revision': None, 'why': None}
+        if rec is None:
+            return dict(out, why='its isolation record is gone')
+        try:
+            why = self.node.fence_isolation(e.id)
+            if why is not None:
+                return dict(out, why='not quiescent: %s' % why)
+            project_id, workdirs = self._store_inputs(e)
+            got = self.node.import_workspace(project_id, e.id, e.seed_revision,
+                                             workdirs=workdirs)
+        except Exception as err:            # fail closed: every failure is no import
+            log.warning('execution %s: no import: %s', e.id, err)
+            return dict(out, why='%s: %s' % (type(err).__name__, err))
+        return dict(got, why=None)
+
+    def _store_inputs(self, e):
+        """The project whose store an import writes, and every workdir Core recorded
+        (K1: no store call may name one)."""
+        with self.db.read() as r:
+            m = rows.get(r, entities.Mission, e.mission_id).entity
+            workdirs = [x.entity.workdir for x in rows.where(r, entities.Execution)
+                        if x.entity.workdir]
+        return m.project_id, workdirs
 
     def _facts(self, e, p):
         """What the checkpoint needs from outside the transaction (§8.2)."""
