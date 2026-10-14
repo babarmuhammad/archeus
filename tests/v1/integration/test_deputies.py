@@ -31,6 +31,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.a
     __file__)))))
 #: CallSpec is built in exactly one place, from OwnCalls.run's own `workdir`
 PASS_THROUGH = 'archeus/core/calls.py'
+#: the one adapter that turns the request into argv by name (pi's no-tools form, T-085)
+PI_ADAPTER = ('archeus/harnesses/calls.py', 'call', 'spec.no_tools')
 
 
 def _sources():
@@ -305,9 +307,10 @@ def test_every_other_own_call_runs_with_no_tools_in_a_fresh_directory_of_its_own
 
 
 def test_with_only_pi_every_other_own_call_is_unavailable_and_nothing_is_made(db, tmp_path):
-    """pi cannot make a call with no tools (T-069), so with nothing else eligible
-    each call ends unavailable at the router's capability step: nothing spawned,
-    no call directory, and each worker records it as any unavailable call."""
+    """A harness that cannot make a call with no tools (T-069; pi before T-085),
+    with nothing else eligible: each call ends unavailable at the router's
+    capability step, nothing spawned, no call directory, and each worker records
+    it as any unavailable call."""
     pi = FakeCaller('pi', no_tools=False, replies=REPLIES)
     r, got = _four(db, tmp_path, pi)
     assert pi.sent == []
@@ -325,16 +328,30 @@ def test_with_only_pi_every_other_own_call_is_unavailable_and_nothing_is_made(db
 
 def test_every_own_call_and_nothing_else_asks_for_no_tools():
     """Every `no_tools=` in archeus/, by the function it is in: each own call
-    sets it, OwnCalls.run hands it to CallSpec, and both default to False."""
+    sets it, OwnCalls.run hands it to CallSpec, pi's adapter hands it to its argv,
+    and both defaults are False."""
     got = set()
     for rel, tree in _sources():
         for fn in ast.walk(tree):
             if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 got |= {(rel, fn.name, ast.unparse(k.value)) for n in ast.walk(fn)
                         if isinstance(n, ast.Call) for k in n.keywords if k.arg == 'no_tools'}
-    assert got == {(rel, fn, 'True') for rel, fn in FRESH} | {(PASS_THROUGH, 'run', 'no_tools')}
+    assert got == {(rel, fn, 'True') for rel, fn in FRESH} | {(PASS_THROUGH, 'run', 'no_tools'),
+                                                             PI_ADAPTER}
     assert inspect.signature(OwnCalls.run).parameters['no_tools'].default is False
     assert base.CallSpec.__dataclass_fields__['no_tools'].default is False
+
+
+#: the environment each stand-in spawn was given, in order
+ENVS = []
+
+#: what a no-tools Claude call adds beyond `--tools ""` (T-086): `--tools` covers
+#: built-ins only, and `claude -p` would otherwise load MCP servers, skills,
+#: project/local settings (their hooks) and every ancestor directory's CLAUDE.md
+NO_TOOLS_EXTRA = ['--strict-mcp-config', '--disable-slash-commands', '--setting-sources', 'user',
+                  '--safe-mode']
+#: and its environment: no CLAUDE.md, no auto memory
+NO_TOOLS_ENV = {'CLAUDE_CODE_DISABLE_CLAUDE_MDS': '1', 'CLAUDE_CODE_DISABLE_AUTO_MEMORY': '1'}
 
 
 def _call(monkeypatch, tmp_path, caller, **kw):
@@ -342,7 +359,12 @@ def _call(monkeypatch, tmp_path, caller, **kw):
     from claude_sessions import config, harnesses, llmcall
     seen = []
     monkeypatch.setattr(llmcall, 'run_headless', lambda cmd, stdin=None, **k: (
-        seen.append(cmd), llmcall.Result(0, '{}', '', '', False))[1])
+        seen.append(cmd), ENVS.append(k['env']), llmcall.Result(0, '{}', '', '', False))[2])
+    for k in NO_TOOLS_ENV:
+        monkeypatch.delenv(k, raising=False)
+    # a key in the environment shadows the account login; account_env must drop it
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'not-a-key')
+    ENVS.clear()
     monkeypatch.setattr(llmcall, 'budget_args', lambda: [])
     monkeypatch.setattr(config, 'get_claude_exe', lambda: 'C:/x/claude.exe')
     monkeypatch.setattr(harnesses, 'exe', lambda hid=None: 'C:/x/pi.exe')
@@ -363,9 +385,31 @@ def test_claude_with_no_tools_gets_an_empty_tools_list(monkeypatch, tmp_path):
     assert not named & {'Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'Bash'}
 
 
-def test_pi_refuses_a_call_with_no_tools_and_spawns_nothing(monkeypatch, tmp_path):
-    seen, res = _call(monkeypatch, tmp_path, real.PiCaller(), no_tools=True)
-    assert seen == [] and res.error == 'failed' and 'no tools' in res.detail
+def test_claude_with_no_tools_also_drops_mcp_skills_project_settings_and_claude_md(
+        monkeypatch, tmp_path):
+    (cmd,), _ = _call(monkeypatch, tmp_path, real.ClaudeCodeCaller(), no_tools=True)
+    i = cmd.index('--strict-mcp-config')
+    assert cmd[i:i + len(NO_TOOLS_EXTRA)] == NO_TOOLS_EXTRA
+    assert '--mcp-config' not in cmd                  # strict with none named: no server at all
+    (env,) = ENVS
+    assert {k: env.get(k) for k in NO_TOOLS_ENV} == NO_TOOLS_ENV
+    # still the account's environment, so its login applies
+    assert (env.get('CLAUDE_CONFIG_DIR'), env.get('ANTHROPIC_API_KEY')) == (str(tmp_path), None)
+
+
+def test_an_ordinary_claude_call_keeps_its_context(monkeypatch, tmp_path):
+    (cmd,), _ = _call(monkeypatch, tmp_path, real.ClaudeCodeCaller())
+    assert not set(NO_TOOLS_EXTRA) & set(cmd)
+    (env,) = ENVS
+    assert not set(NO_TOOLS_ENV) & set(env)
+    assert (env.get('CLAUDE_CONFIG_DIR'), env.get('ANTHROPIC_API_KEY')) == (str(tmp_path), None)
+
+
+def test_pi_with_no_tools_gets_no_tools_and_no_extensions(monkeypatch, tmp_path):
+    # T-085: `--no-tools` alone changes only pi's default; an extension could add one back
+    (cmd,), res = _call(monkeypatch, tmp_path, real.PiCaller(), no_tools=True)
+    assert cmd == ['C:/x/pi.exe', '-p', '--no-session', '--no-tools', '--no-extensions']
+    assert res.error is None
 
 
 def test_every_other_own_call_keeps_its_argv(monkeypatch, tmp_path):

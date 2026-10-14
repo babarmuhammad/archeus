@@ -89,14 +89,20 @@ class ClaudeCodeCaller:
             return base.CallResult(error='unavailable', detail='Claude Code is not installed')
         extra = () if spec.schema is None else (
             '--output-format', 'json', '--json-schema', json.dumps(spec.schema, sort_keys=True))
+        env = config.account_env(spec.account.home_ref)
         if spec.no_tools:
             # empty, never left out: no `--tools` at all means every tool
-            # (claude_code/tools.py relies on the same form)
-            extra = ('--tools', '') + extra
+            # (claude_code/tools.py relies on the same form). `--tools` covers
+            # built-ins only, so MCP servers, skills, project/local settings
+            # (their hooks) and every ancestor's CLAUDE.md go too (T-086).
+            # --safe-mode also drops the user's plugins, hooks, agents and auto
+            # memory while auth still works; --bare would too, but never reads OAuth
+            extra = ('--tools', '', '--strict-mcp-config', '--disable-slash-commands',
+                     '--setting-sources', 'user', '--safe-mode') + extra
+            env.update(CLAUDE_CODE_DISABLE_CLAUDE_MDS='1', CLAUDE_CODE_DISABLE_AUTO_MEMORY='1')
         args, stdin = llmcall.build_headless_args(exe, spec.prompt, spec.model or '',
                                                   llmcall.budget_args(), extra)
-        r = llmcall.run_headless(args, stdin, cwd=spec.workdir,
-                                 env=config.account_env(spec.account.home_ref),
+        r = llmcall.run_headless(args, stdin, cwd=spec.workdir, env=env,
                                  timeout=spec.limits.get('timeout_s', 600))
         if r.returncode != 0:
             return _failed(r)
@@ -113,7 +119,8 @@ class ClaudeCodeCaller:
 
 
 class PiCaller:
-    """`pi -p --no-session --tools read,grep,find,ls [--model provider/id]`,
+    """`pi -p --no-session --tools read,grep,find,ls [--model provider/id]`
+    (`--no-tools --no-extensions` for a call with no tools),
     the schema in the prompt (pi has no schema flag), on pi's own home. A model
     is pi's vocabulary or nothing: Core never hands it Claude Code's."""
     id = 'pi'
@@ -125,8 +132,8 @@ class PiCaller:
 
     def capabilities(self, account=None):
         models, note = pi_offers(account)
-        # no `no_tools`: no pi form meaning NO tools is verified (call() refuses one)
-        return base.Capabilities(frozenset({'headless', 'structured_output', 'interactive'}),
+        return base.Capabilities(frozenset({'headless', 'structured_output', 'interactive',
+                                            'no_tools'}),
                                  'none', models, structured_output='prompted',
                                  models_note=note)
 
@@ -146,13 +153,9 @@ class PiCaller:
         exe = self.discover().executable
         if not exe:
             return base.CallResult(error='unavailable', detail='pi is not installed')
-        if spec.no_tools:
-            # pi is known here only as `--tools read,grep,find,ls`; no form that
-            # means NO tools has been verified, so refuse rather than run with those
-            return base.CallResult(error='failed', detail='pi cannot be asked to run with no '
-                                   'tools; this call needs a harness that can')
         prompt = spec.prompt if spec.schema is None else base.prompted(spec.prompt, spec.schema)
-        args, stdin = llmcall.build_headless_args(exe, prompt, spec.model or '', harness='pi')
+        args, stdin = llmcall.build_headless_args(exe, prompt, spec.model or '', harness='pi',
+                                                  no_tools=spec.no_tools)
         r = llmcall.run_headless(args, stdin, cwd=spec.workdir,
                                  env=config.account_env(spec.account.home_ref),
                                  timeout=spec.limits.get('timeout_s', 600))

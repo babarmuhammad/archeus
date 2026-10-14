@@ -144,13 +144,13 @@ def test_n04_only_the_user_answers_the_terms_question(make):
         r.run(C.decide_provider_terms, harness_id='pi', headless='maybe')
 
 
-def test_n05_a_real_adapter_past_the_gate_is_still_never_asked_for_an_own_call(
-        make, monkeypatch, tmp_path):
-    """The whole path with the real pi adapter and a stand-in runner, terms
-    permitted. Every own call asks for no tools (K-O2, T-081), which pi does not
-    declare, so the router's capability step leaves the knowledge pass and the
-    decisions pass unavailable with nothing spawned (T-069). pi's own argv for a
-    call with tools is test_deputies.py's."""
+def test_n05_a_real_adapter_passes_the_gate_and_its_argv_is_the_harness_own(make, monkeypatch,
+                                                                            tmp_path):
+    """The whole path with the real pi adapter and a stand-in runner: terms
+    permitted, pi's flags, pi's vocabulary, prompted schema, Core validation.
+    Every own call asks for no tools (K-O2, T-081) and pi declares that it can
+    make one (T-085), so both the knowledge pass and the decisions pass reach pi,
+    each with pi's no-tools form."""
     from claude_sessions import harnesses, llmcall
     seen = []
     monkeypatch.setattr(harnesses, 'exe', lambda hid=None: 'C:/x/pi.exe')
@@ -166,18 +166,20 @@ def test_n05_a_real_adapter_past_the_gate_is_still_never_asked_for_an_own_call(
     r.run(C.decide_provider_terms, harness_id='pi', headless='permitted')
     repo = project(r)
     kp = r.kp(repo.project_id)
-    assert (kp['state'], kp['items'], seen) == ('unavailable', 0, [])
+    asked = len(seen)               # the stand-in's answer is not a knowledge one, so it may retry
+    assert kp['state'] != 'unavailable' and asked >= 1
     rd = r.read(queries.get_route_decision, kp['route_decision_id'])
-    (pi,) = rd['candidates']
-    assert (rd['requirements']['capabilities'], pi['eliminated_at_step']) == (
-        ['headless', 'no_tools'], 'capability')
+    assert (rd['requirements']['capabilities'], rd['selected']) == (['headless', 'no_tools'], 'pi')
     notes = tmp_path / 'planning-2026-09-20.md'
     notes.write_text('# Planning\nDECISION: ship dark-first.\n', encoding='utf-8')
     ingest.import_file(r.db, r.user, str(notes))
     r.settle()
-    assert (r.items(type='DECISION'), seen) == ([], [])
-    rds = r.read(lambda c: queries.route_decisions(c, purpose='knowledge_extraction'))
-    assert len(rds) == 2 and {x['result'] for x in rds} == {'blocked'}
+    assert [d.state for d in r.items(type='DECISION')] == ['CANDIDATE']
+    assert len(seen) == asked + 1
+    for cmd, _ in seen:
+        assert cmd[1:] == ['-p', '--no-session', '--no-tools', '--no-extensions', '--model',
+                           'spark/qwen3.8']
+    assert 'matching this JSON Schema' in seen[-1][1]
 
 
 # ── N06–N08 provenance, no execution, usage ──
