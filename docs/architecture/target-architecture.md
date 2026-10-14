@@ -248,6 +248,25 @@ group may write it, logs a warning naming the principal and the path, which `arc
 also prints. It warns and never refuses: pytest's temporary homes and existing installs outside
 the profile inherit that ACE.
 
+**Qualification 2026-10-15 (T-089, Codex batch finding 2).** The amendment above mixes three
+things of different strength. (a) *Recommended placement*: `ARCHEUS_HOME` under the user profile
+is the default and the recommendation; that a profile folder is writable only by the user,
+SYSTEM and Administrators is the stock Windows profile ACL, not something Core sets or verifies.
+(b) *Measured*: the `D:\` inheritance (Authenticated Users `S-1-5-11` holding MODIFY on a new
+folder) was measured on one machine in T-068; other drives and machines may differ. (c) *What the
+check does*: `discovery._home_warning` reads the DACL with the boundary's reader
+(`DaclReaders.broad_writer`) and names the first principal of `isolation.BROAD_PRINCIPALS`
+(Everyone, Authenticated Users, Users, ALL APPLICATION PACKAGES, ALL RESTRICTED APPLICATION
+PACKAGES) that holds an allow ACE with a write-like right (`_write_like`: write data, append,
+extended attributes, attributes, delete, delete child, `WRITE_DAC`, `WRITE_OWNER`, generic
+write or all). It is conservative and is not an effective-access evaluation: deny ACEs are not
+weighed against it, an inherit-only ACE counts, and only the first such principal is named. When
+the home does not exist yet the check walks up to the nearest existing ancestor and reads that
+folder's DACL as the one the home will inherit from. When the DACL cannot be read
+(`IsolationUnavailable`, e.g. `dacl_unreadable`) the result is a warning,
+`the ACL of ARCHEUS_HOME <path> could not be read: <error>`, not a crash or a refusal. Off
+Windows this check does not run; the POSIX mode check on `run/` and the token file is unchanged.
+
 | Store | Technology | Contents | Truth for |
 |---|---|---|---|
 | `<ARCHEUS_HOME>/archeus.db` | SQLite WAL, `PRAGMA user_version` migrations | all entities of domain-model.md, `events`, `consumer_cursors`, `consumer_effects`, `idempotency_keys` | current state, history, knowledge |
