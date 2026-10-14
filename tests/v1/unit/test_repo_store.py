@@ -1613,11 +1613,48 @@ def test_a_link_anywhere_refuses_the_import_and_is_never_followed(tmp_path, monk
     assert os.path.join(work, name) not in opened
 
 
+class _Listing:
+    """`os.scandir` as the walk sees it: the real entries of each directory, then
+    *extra* names in *where*; *pulled* counts every entry handed out."""
+
+    def __init__(self, monkeypatch, where=None, extra=()):
+        self.real, self.where, self.extra, self.pulled = os.scandir, where, extra, []
+        monkeypatch.setattr(os, 'scandir', self)
+        monkeypatch.setattr(os, 'listdir', lambda d: pytest.fail('a whole listing of %s' % d))
+
+    def __call__(self, d):
+        listing = self
+
+        class It:
+            def __init__(self):
+                self.it = listing.real(d)
+                self.gen = self.entries()
+
+            def entries(self):
+                for ent in self.it:
+                    yield ent
+                if d == listing.where:
+                    yield from (SimpleNamespace(name=n) for n in listing.extra)
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                ent = next(self.gen)
+                listing.pulled.append(ent.name)
+                return ent
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                self.it.close()
+        return It()
+
+
 def test_a_name_that_is_not_utf8_refuses(tmp_path, monkeypatch):
     work = _workspace(tmp_path)
-    real = os.listdir
-    monkeypatch.setattr(os, 'listdir', lambda d: real(d) + ['bad\udc80'] if d == work
-                        else real(d))
+    _Listing(monkeypatch, work, ['bad\udc80'])
     with pytest.raises(StoreError, match='not UTF-8'):
         _plan(work)
 
@@ -1625,11 +1662,54 @@ def test_a_name_that_is_not_utf8_refuses(tmp_path, monkeypatch):
 def test_two_names_one_under_case_folding_refuse(tmp_path, monkeypatch):
     work = _workspace(tmp_path)
     (tmp_path / 'work' / 'X.txt').write_bytes(b'1')
-    real = os.listdir
-    monkeypatch.setattr(os, 'listdir', lambda d: real(d) + ['x.txt'] if d == work
-                        else real(d))
+    _Listing(monkeypatch, work, ['x.txt'])
     with pytest.raises(StoreError, match='case-insensitive'):
         _plan(work)
+
+
+def test_an_oversized_directory_is_refused_without_reading_its_whole_listing(tmp_path,
+                                                                              monkeypatch):
+    work = _workspace(tmp_path, big={'f%03d' % i: b'x' for i in range(200)})
+    monkeypatch.setattr(local, 'SEED_MAX_ENTRIES', 10)
+    listing = _Listing(monkeypatch)
+    with pytest.raises(StoreError, match='entries'):
+        _plan(work)
+    assert sum(1 for n in listing.pulled if n[:1] == 'f' and n[1:].isdigit()) <= 11  # of 200
+
+
+def test_a_changed_gitlink_is_known_from_its_first_entry(tmp_path, monkeypatch):
+    work = _workspace(tmp_path, **{SUB: {'n%03d' % i: b'x' for i in range(200)}})
+    listing = _Listing(monkeypatch)
+    with pytest.raises(StoreError, match='seeded gitlink'):
+        _plan(work)
+    assert sum(1 for n in listing.pulled if n.startswith('n')) == 1
+
+
+def test_a_seeded_link_of_another_size_is_refused_before_it_is_hashed(tmp_path, monkeypatch):
+    work = _workspace(tmp_path, link=LINK + b'-longer')
+    monkeypatch.setattr(local, '_blob_id', lambda *a, **k: pytest.fail('hashed'))
+    with pytest.raises(StoreError, match='seeded link link was changed'):
+        _plan(work)
+
+
+def test_a_seeded_link_counts_against_the_byte_budget(tmp_path, monkeypatch):
+    work, seed = _workspace(tmp_path), _seedmap()          # the seed read under the real bound
+    budget = len(b'A\n') + len(b'R\n') + len(LINK) - 1   # one byte short of the workspace
+    monkeypatch.setattr(local, 'SEED_MAX_BYTES', budget)
+    with pytest.raises(StoreError, match='a workspace past'):
+        _plan(work, seed)
+    monkeypatch.setattr(local, 'SEED_MAX_BYTES', budget + 1)
+    _plan(work, seed)                                       # the workspace itself fits
+
+
+def test_a_seeded_link_is_hashed_only_as_the_entry_the_walk_saw(tmp_path):
+    p = tmp_path / 'l'
+    p.write_bytes(LINK)
+    st = os.lstat(p)
+    assert local._blob_id(str(p), len(LINK), _Ample(), seen=st) == OID(LINK)
+    other = SimpleNamespace(st_dev=st.st_dev, st_ino=st.st_ino + 1, st_size=st.st_size)
+    with pytest.raises(StoreError, match='changed after the walk'):
+        local._blob_id(str(p), len(LINK), _Ample(), seen=other)
 
 
 @pytest.mark.parametrize('bound,value,match', [('SEED_MAX_ENTRIES', 3, 'entries'),

@@ -580,14 +580,15 @@ class ExecutionManager:
         # K3 (C-1012-T030-2 §2): the route is captured above; a seeded execution whose
         # route is a clean end or a hand-off is fenced, its Job closed, and its
         # workspace imported, all before the one transaction that records the end
-        clean = (st.exit_code == 0 and not killed and not result.halted
-                 and (e.state == 'RUNNING' or e.state == 'STARTING' and p['offset'] > 0))
+        clean = X.imports(e.state, st.exit_code, killed, result.halted, p['offset'] > 0)
         imported = {}
         if isolated and e.seed_revision is not None and (handing or clean):
             imported = self._import(e, rec)
             if imported.get('revision'):
                 facts = dict(facts, end_state=imported['tree'],
-                             files_changed=imported['files_changed'])
+                             files_changed=imported['files_changed'],
+                             import_counts={'deleted': imported['deleted'],
+                                            'dropped_dirs': imported['dropped_dirs']})
         imp = {'import_revision': imported['revision'], 'no_import': imported['why']} \
             if imported else {}
         if handing:

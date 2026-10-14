@@ -1563,6 +1563,46 @@ def test_a_lost_race_records_no_import(state):
         db.close()
 
 
+@pytest.mark.parametrize('outcome', [{'import_revision': IMP},
+                                     {'no_import': 'its isolation record is gone'}])
+@pytest.mark.parametrize('state', ['STOPPING', 'PAUSING'])
+def test_a_route_that_moved_records_neither_import_outcome(state, outcome):
+    """The manager captured a running clean end and imported (or failed to); the
+    row moved first. Neither outcome is recorded: a lost race, nothing written, so
+    the pass records the end the row is in now."""
+    db, who, eid, _ = _seeded(state, isolated=True, seed_revision=SEED)
+    try:
+        before = _row(db, entities.Execution, eid)
+        with pytest.raises(X.lifecycle.IllegalTrigger):
+            _end(db, who, eid, **outcome)
+        after = _row(db, entities.Execution, eid)
+        assert (after.version, after.entity.charged) == (before.version, before.entity.charged)
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('state,output,want', [('RUNNING', False, True), ('STARTING', True, True),
+                                               ('STARTING', False, False),
+                                               ('STOPPING', True, False)])
+def test_one_classification_decides_the_import_route(state, output, want):
+    assert X.imports(state, 0, False, False, output) is want
+    assert X.imports(state, 1, False, False, output) is False
+    assert X.imports(state, 0, True, False, output) is False
+    assert X.imports(state, 0, False, True, output) is False
+
+
+def test_an_imported_end_records_what_the_import_left_out():
+    db, who, eid, _ = _seeded('RUNNING', isolated=True, seed_revision=SEED)
+    try:
+        _end(db, who, eid, import_revision=IMP,
+             facts={'import_counts': {'deleted': 2, 'dropped_dirs': 1}})
+        with db.read() as r:
+            (ev,) = _events(r, eid, 'execution.ended')
+        assert ev['payload']['import_counts'] == {'deleted': 2, 'dropped_dirs': 1}
+    finally:
+        db.close()
+
+
 def _handoff(db, who, eid, **kw):
     return db.writer.execute(X.record_handoff, dict(
         {'actor': who, 'execution_id': eid, 'policy': None, 'missions': None, 'router': None,

@@ -3645,7 +3645,7 @@ class TestEndOrder:
                 raise OSError('the seeded link link was changed')
             assert (pid, x, seed, workdirs) == ('prj', eid, SEED, ['w'])
             return {'revision': IMP, 'tree': 'f' * 40, 'files_changed': ['A x'],
-                    'deleted': 0, 'dropped_dirs': 0}
+                    'deleted': 2, 'dropped_dirs': 1}
         m.node.import_workspace = imported
         m._store_inputs = lambda x: ('prj', ['w'])
         m._tail = m._progress = lambda e, p: None
@@ -3673,6 +3673,7 @@ class TestEndOrder:
         assert log == ['tombstone', 'query', 'query', 'close', 'import', want, 'teardown']
         assert (kw['import_revision'], kw['no_import']) == (IMP, None)
         assert kw['facts']['end_state'] == 'f' * 40 and kw['facts']['files_changed'] == ['A x']
+        assert kw['facts']['import_counts'] == {'deleted': 2, 'dropped_dirs': 1}
 
     @pytest.mark.parametrize('answers,record,import_fails,why', [
         ((1,), True, False, 'not quiescent: 1 process(es)'),

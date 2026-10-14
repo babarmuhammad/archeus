@@ -1256,7 +1256,7 @@ def _stream(argv, cwd, env, stdin, sink, timeout):
         for chunk in iter(lambda: p.stdout.read1(_CHUNK), b''):
             sink.feed(chunk)
         p.wait()
-        for t in helpers:
+        for _target, t in started:
             t.join()
         if fed:
             raise fed[0]
@@ -1467,9 +1467,15 @@ class _Deadline:
         return left
 
 
-def _blob_id(path, size, deadline):
+def _blob_id(path, size, deadline, seen=None):
+    """The blob id of *path*'s bytes; with *seen*, the lstat the walk made, the
+    opened file must still be that entry."""
     h = hashlib.sha1(b'blob %d\0' % size)
     with open(path, 'rb') as f:
+        if seen is not None:
+            st = os.fstat(f.fileno())
+            if (st.st_dev, st.st_ino, st.st_size) != (seen.st_dev, seen.st_ino, seen.st_size):
+                raise StoreError('%s changed after the walk' % path)
         for chunk in iter(lambda: f.read(1 << 20), b''):
             deadline.left()
             h.update(chunk)
@@ -1572,49 +1578,64 @@ def _import_plan(work, seed, deadline):
     import when edited or replaced (C-1013-T051 §3); any other file is the seed's
     100644/100755, or 100644 when new. A regular file's source is its lstat
     identity, re-checked when it is opened; an empty directory is dropped, counted."""
-    seeded = {p: (m, o) for m, o, _s, p in seed.entries}
+    seeded = {p: (m, o, s) for m, o, s, p in seed.entries}
     plan, folded, count = [], {}, {'entries': 0, 'bytes': 0, 'dropped_dirs': 0}
     _plain(work, True)
 
+    def budget(size):
+        count['bytes'] += size
+        if count['bytes'] > SEED_MAX_BYTES:
+            raise StoreError('a workspace past %d bytes' % SEED_MAX_BYTES)
+
     def walk(d, rel):
-        for name in sorted(os.listdir(d)):
-            deadline.left()
-            if not rel and name.casefold() in ('.git', 'git~1'):
-                continue
-            r, p = rel + name, os.path.join(d, name)
-            try:
-                r.encode('utf-8')
-            except UnicodeEncodeError:
-                raise StoreError('a path that is not UTF-8: %r' % r)
-            _seed_path(r, len(work))
-            if folded.setdefault(r.casefold(), r) != r:
-                raise StoreError('two paths one case-insensitive name: %r, %r'
-                                 % (folded[r.casefold()], r))
-            count['entries'] += 1
-            if count['entries'] > SEED_MAX_ENTRIES:
-                raise StoreError('a workspace past %d entries' % SEED_MAX_ENTRIES)
-            st = _plain(p, None)            # never followed: refused before any use
-            mode, oid = seeded.get(r, (None, None))
-            isdir = stat.S_ISDIR(st.st_mode)
-            if mode == '160000':
-                if not isdir or os.listdir(p):
+        # one entry at a time, bounds and deadline checked per entry: a directory
+        # is never listed whole first (fast-import takes a tree in any order)
+        with os.scandir(d) as entries:
+            for ent in entries:
+                step(ent.name, d, rel)
+
+    def step(name, d, rel):
+        deadline.left()
+        if not rel and name.casefold() in ('.git', 'git~1'):
+            return
+        r, p = rel + name, os.path.join(d, name)
+        try:
+            r.encode('utf-8')
+        except UnicodeEncodeError:
+            raise StoreError('a path that is not UTF-8: %r' % r)
+        _seed_path(r, len(work))
+        if folded.setdefault(r.casefold(), r) != r:
+            raise StoreError('two paths one case-insensitive name: %r, %r'
+                             % (folded[r.casefold()], r))
+        count['entries'] += 1
+        if count['entries'] > SEED_MAX_ENTRIES:
+            raise StoreError('a workspace past %d entries' % SEED_MAX_ENTRIES)
+        st = _plain(p, None)            # never followed: refused before any use
+        mode, oid, size = seeded.get(r, (None, None, None))
+        isdir = stat.S_ISDIR(st.st_mode)
+        if mode == '160000':
+            if not isdir:
+                raise StoreError('the seeded gitlink %s was changed' % r)
+            with os.scandir(p) as inside:       # empty: one entry is enough to know
+                if next(inside, None) is not None:
                     raise StoreError('the seeded gitlink %s was changed' % r)
-                plan.append(('160000', r, oid, None))
-            elif mode == '120000':
-                if isdir or _blob_id(p, st.st_size, deadline) != oid:
-                    raise StoreError('the seeded link %s was changed' % r)
-                plan.append(('120000', r, oid, None))
-            elif isdir:
-                before = len(plan)
-                walk(p, r + '/')
-                if len(plan) == before:
-                    count['dropped_dirs'] += 1
-            else:
-                count['bytes'] += st.st_size
-                if count['bytes'] > SEED_MAX_BYTES:
-                    raise StoreError('a workspace past %d bytes' % SEED_MAX_BYTES)
-                plan.append((mode or '100644', r, None,
-                             (st.st_dev, st.st_ino, st.st_size, p)))
+            plan.append(('160000', r, oid, None))
+        elif mode == '120000':
+            if isdir or st.st_size != size:     # refused before a byte is hashed
+                raise StoreError('the seeded link %s was changed' % r)
+            budget(st.st_size)
+            if _blob_id(p, st.st_size, deadline, seen=st) != oid:
+                raise StoreError('the seeded link %s was changed' % r)
+            plan.append(('120000', r, oid, None))
+        elif isdir:
+            before = len(plan)
+            walk(p, r + '/')
+            if len(plan) == before:
+                count['dropped_dirs'] += 1
+        else:
+            budget(st.st_size)
+            plan.append((mode or '100644', r, None,
+                         (st.st_dev, st.st_ino, st.st_size, p)))
     walk(work, '')
     kept = {r for _m, r, _o, _s in plan}
     return plan, {'deleted': len(set(seeded) - kept), 'dropped_dirs': count['dropped_dirs']}
