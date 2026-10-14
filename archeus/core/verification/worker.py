@@ -24,7 +24,7 @@ import os
 
 from ...infra import paths
 from ...infra.db import rows
-from ...node.local import LocalNode
+from ...node.local import LocalNode, PathTooLong
 from ..application import calls as C
 from ..application import errors, verification as V
 from ..application.commands import active_plan
@@ -62,6 +62,9 @@ class VerifyWorker:
         self.timeout_s = timeout_s or evidence.CHECK_TIMEOUT_S
         self.on_wake = None
         self.stopping = lambda: False
+        # mission -> the state it was left in when its worktree path was too long
+        # (T-078); ponytail: in memory, so a restart spends one more refused merge
+        self._too_long = {}
 
     def _do(self, command, **kw):
         return self.db.writer.execute(command, dict(kw, actor=self.actor))
@@ -111,7 +114,11 @@ class VerifyWorker:
                     due += self._task_due(conn, m, t, vs)
                 if V.mission_open(m) and self._mission_due(m, vs):
                     due.append(('verify_mission', m.id))
+            if self._too_long.get(m.id, m.state) != m.state:
+                del self._too_long[m.id]            # the user moved it on: try again
             for t in tasks:
+                if t.integration_state in ('PENDING', 'MERGING') and m.id in self._too_long:
+                    continue                        # waits for the user, not a hot loop
                 if t.integration_state in ('PENDING', 'MERGING'):
                     # one that may never merge waits for the user (cancel), not a hot loop
                     if V.mergeable_revision(conn, t) is not None:
@@ -293,8 +300,17 @@ class VerifyWorker:
             self._do(V.begin_merge, task_id=t.id, revision=revision)
         branch = mission_branch(m.id)
         base = m.integration_base or self.node.git_merge_base(root, revision, 'HEAD')
-        wt = self.node.mission_worktree(root, _mission_wt(m.project_id, m.id), branch,
-                                        base or revision)
+        try:
+            wt = self.node.mission_worktree(root, _mission_wt(m.project_id, m.id), branch,
+                                            base or revision)
+        except PathTooLong as err:
+            why = 'no mission worktree: %s' % err
+            log.warning('verification: merge of task %s: %s', t.id, why)
+            if m.state == 'EXECUTING':
+                self._do(self.missions.fire, mission_id=m.id, trigger='block', reason=why)
+            with self.db.read() as conn:
+                self._too_long[m.id] = rows.get(conn, entities.Mission, m.id).entity.state
+            return True
         head = self.node.git_head(wt)
         if head is not None and self.node.git_is_ancestor(root, revision, head):
             outcome, got = 'merged', head          # merged before a restart (§12.4)
