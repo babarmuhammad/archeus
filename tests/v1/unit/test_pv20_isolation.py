@@ -3743,7 +3743,8 @@ def launchapi(monkeypatch):
 
 def _real_launch():
     return iso.WindowsBoundary().launch(['fake.exe', '--x'], cwd='C:/synthetic',
-                                        env={'A': '1'}, profile='archeus.exec.synthetic',
+                                        env={'A': '1', 'LOCALAPPDATA': 'C:/synthetic/local'},
+                                        profile='archeus.exec.synthetic',
                                         job=0x900, stdin=STDIN, stdout=STDOUT)
 
 
@@ -3971,3 +3972,19 @@ class TestEndOrder:
         log, _cmd, kw = self._end(tmp_path, state, code, killed=killed, seeded=seeded)
         assert 'query' not in log and 'import' not in log
         assert 'import_revision' not in kw and 'no_import' not in kw
+
+
+@pytest.mark.skipif(iso.WindowsBoundary is None, reason='the Windows boundary')
+def test_an_appcontainer_block_without_localappdata_is_refused_before_any_os_call(monkeypatch):
+    # T-088: CreateProcessW answers 203 for such a block; the boundary says why first
+    def touched(*a, **k):
+        raise AssertionError('an OS call was made')
+    for name in ('_InitializeProcThreadAttributeList', '_DeriveAppContainerSidFromAppContainerName',
+                 '_CreateProcessW', '_SetHandleInformation'):
+        monkeypatch.setattr(iso, name, touched)
+    env = {'SystemRoot': r'C:\Windows', 'PATH': r'C:\Windows\System32'}
+    with pytest.raises(iso.IsolationUnavailable) as err:
+        iso.WindowsBoundary().launch(['cmd.exe'], cwd='.', env=env, profile='p', job=None,
+                                     stdin=None, stdout=None)
+    assert (err.value.reason, err.value.detail) == (
+        'environment_block', 'an AppContainer block needs LOCALAPPDATA')

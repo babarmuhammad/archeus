@@ -2338,6 +2338,12 @@ if WINDOWS:
             CreateProcessW runs. A process created and then not confined or not resumed
             is terminated, and its handle rides on the error as `child`, so the end path
             waits on that process and never on a PID that may name another by then."""
+            # an AppContainer CreateProcessW refuses a block without LOCALAPPDATA with
+            # ERROR_ENVVAR_NOT_FOUND (203); any value will do - Windows points the child
+            # at <value>\Packages\<moniker>\AC itself (T-088, measured)
+            if 'LOCALAPPDATA' not in env:
+                raise IsolationUnavailable('environment_block',
+                                           'an AppContainer block needs LOCALAPPDATA')
             command = subprocess.list2cmdline([str(a) for a in argv])
             stdio = list(dict.fromkeys((stdin, stdout)))  # stderr is stdout's own handle
             listed = (W.HANDLE * len(stdio))(*stdio)       # read by CreateProcessW: kept alive

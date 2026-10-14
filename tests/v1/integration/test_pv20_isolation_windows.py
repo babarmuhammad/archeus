@@ -50,7 +50,8 @@ def _minimal_env(**extra):
     """The whole environment an isolated test process gets, built here: never the
     test runner's own, which carries whatever secrets the shell holds."""
     return {'SystemRoot': SYSTEM_ROOT, 'ComSpec': CMD,
-            'PATH': os.path.join(SYSTEM_ROOT, 'System32'), **extra}
+            'PATH': os.path.join(SYSTEM_ROOT, 'System32'),
+            'LOCALAPPDATA': os.path.join(archeus_home(), 'local'), **extra}
 
 
 @pytest.fixture
@@ -309,7 +310,7 @@ class _Listener:
         self.sock.listen(8)
         self.sock.settimeout(0.2)
         self.port = self.sock.getsockname()[1]
-        self.peers, self.held, self._stop = [], [], False
+        self.peers, self.held, self.errors, self._stop = [], [], [], False
         self._t = threading.Thread(target=self._run, daemon=True)
         self._t.start()
 
@@ -327,8 +328,8 @@ class _Listener:
                 c.settimeout(2)
                 c.recv(1024)
                 c.sendall(b'HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\nok')
-            except OSError:
-                pass
+            except OSError as err:
+                self.errors.append(repr(err))
 
     def close(self):
         self._stop = True
@@ -406,10 +407,7 @@ def _probe_runs(b, key, argvs, *, observe=None):
         open(stream, 'w').close()
         hs = [b.open_inherited(prompt, 'read'), b.open_inherited(stream, 'append')]
         try:
-            # LOCALAPPDATA: an AppContainer CreateProcessW answers ERROR_ENVVAR_NOT_FOUND
-            # (203) for a block without it (T-064, build 26200); the system points it at
-            # the container's own folder
-            child = b.launch(argv, cwd=SYS32, env=_minimal_env(LOCALAPPDATA=os.environ['LOCALAPPDATA']),
+            child = b.launch(argv, cwd=SYS32, env=_minimal_env(),
                              profile=iso.profile_name(key),
                              job=job, stdin=hs[0], stdout=hs[1])
             seen = observe(child) if observe else None
@@ -623,3 +621,40 @@ def test_t063_the_real_confined_path_refuses_before_launch_without_grants(bounda
     assert result['exit_code'] is None and got == [result]
     assert rec is not None and rec.state == 'failed'
     assert boundary.profile_exists(key) is False
+
+
+# ── T-088: what an AppContainer launch needs of LOCALAPPDATA ──────────────────
+# Authorised 2026-10-14 (owner, D10): the boundary fix and its native verification
+# under the T-064 rules.
+
+@pytest.mark.parametrize('local', ['absent', 'user', 'made', 'missing'])
+def test_t088_an_appcontainer_launch_needs_localappdata_and_any_value_will_do(
+        boundary, tmp_path, local):
+    r"""Measured on build 26200: without LOCALAPPDATA CreateProcessW answers 203; with
+    any value - the user's, a directory Core made, one that does not exist - Windows
+    starts the process and points it at <value>\Packages\<moniker>\AC. The boundary
+    refuses the first case itself, before any OS object is touched."""
+    value = {'absent': None, 'user': os.environ.get('LOCALAPPDATA'),
+             'made': str(tmp_path / 'profile' / 'AppData' / 'Local'),
+             'missing': str(tmp_path / 'nowhere' / 'Local')}[local]
+    if local == 'made':
+        os.makedirs(value)
+    env = _minimal_env()
+    if value is None:
+        del env['LOCALAPPDATA']
+    else:
+        env['LOCALAPPDATA'] = value
+    try:
+        text, tok, ident = _isolated_stream_run(
+            boundary, boundary._pv20_created, [CMD, '/d', '/c', 'echo L=%LOCALAPPDATA%'], env=env)
+        outcome = {'launched': True, 'text': text.strip(), 'ac': tok['is_appcontainer']}
+    except iso.IsolationUnavailable as err:
+        outcome = {'launched': False, 'error': '%s: %s' % (err.reason, err.detail)}
+    _evidence('T-088', local=local, value=value, **outcome)
+    if value is None:
+        assert outcome == {'launched': False,
+                           'error': 'environment_block: an AppContainer block needs LOCALAPPDATA'}
+    else:
+        assert outcome['launched'] and outcome['ac'] == 1
+        assert outcome['text'].startswith('L=%s\\Packages\\archeus.exec.' % value)
+        assert outcome['text'].endswith('\\AC')
