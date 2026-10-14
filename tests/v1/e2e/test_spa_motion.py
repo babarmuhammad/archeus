@@ -9,6 +9,8 @@ nothing from passing."""
 import math
 import time
 
+import pytest
+
 from .conftest import wait
 from .motion import advance, canvas_ink, freeze, frames, hear, running_animations, settle
 from .test_spa_p16 import Checks, _go, _mission, _open, _settled
@@ -127,4 +129,31 @@ def test_a_historical_event_heard_again_never_replays_or_restarts(browser, slow)
     _still(page, check, 'after the pulses')
     check(not errors, errors)
     assert check.n >= 9
+    context.close()
+
+
+def test_freeze_owns_what_the_page_started_before_it(browser, core):
+    """A read sent and a timer set before freeze() are still settle()'s and the
+    clock's: an untracked read would answer later, and a native timer fire in
+    real time, both drawing past a frame count (CI run 38646019877, T-095)."""
+    context, page, errors = _open(browser, core)
+    held = []
+    page.route('**/t095-probe', lambda route: held.append(route))
+    page.evaluate("() => void fetch('/t095-probe').catch(() => undefined)")
+    wait(page, lambda: held, timeout=5, what='the probe is sent')
+    freeze(page)
+    with pytest.raises(AssertionError, match='reads in flight'):
+        settle(page, timeout=1)     # it knows the read is still out, and waits for it
+    held[0].fulfill(status=204)
+    settle(page)
+    context.close()
+
+    context, page, errors = _open(browser, core)
+    page.evaluate('() => { window.__late = 0; setTimeout(() => { window.__late = 1; }, 1500); }')
+    freeze(page)                    # pause_at jumps 1000 ms: 500 ms still owed
+    page.wait_for_timeout(1700)     # real time: a native timer would have fired
+    assert page.evaluate('window.__late') == 0, 'a timer set before freeze ran on its own'
+    advance(page, 600)
+    assert page.evaluate('window.__late') == 1, 'the clock runs the timer it owns'
+    assert not errors, errors
     context.close()

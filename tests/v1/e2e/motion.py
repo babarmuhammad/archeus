@@ -21,12 +21,13 @@ _COUNT = """() => {
 }"""
 
 
-def freeze(page):
-    """Stop the page's clock and start counting frames. Call once the page has
-    loaded; from here on nothing time-driven runs unless `advance` is called."""
+def watch(page):
+    """Before the page loads: the fake clock (flowing until `freeze`) and the
+    reads in flight. Either one started later misses what the app did first: a
+    timer or frame asked for before the install stays native and fires in real
+    time after `freeze`, and a read already in flight is not waited for, so
+    both land past `settle` and draw after a frame count (T-095)."""
     page.clock.install()
-    page.clock.pause_at(page.evaluate('Date.now()') + 1000)
-    page.evaluate(_COUNT)
     flight = _FLIGHT.setdefault(page, set())
 
     def reads(r):
@@ -34,6 +35,14 @@ def freeze(page):
     page.on('request', lambda r: flight.add(r) if reads(r) else None)
     page.on('requestfinished', lambda r: flight.discard(r))
     page.on('requestfailed', lambda r: flight.discard(r))
+
+
+def freeze(page):
+    """Stop the page's clock and start counting frames. Call once a page that
+    `watch` saw load has loaded; from here on nothing time-driven runs unless
+    `advance` is called."""
+    page.clock.pause_at((page.evaluate('Date.now()') + 1000) / 1000)   # seconds, not ms
+    page.evaluate(_COUNT)
 
 
 def advance(page, ms):

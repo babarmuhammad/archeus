@@ -19,6 +19,7 @@ from claude_sessions import proc
 from v1.judge.http import TempCore, request
 
 from .conftest import wait
+from .motion import watch
 
 APP = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'clients', 'app')
 with open(os.path.join(APP, 'tokens', 'navigation.json'), encoding='utf-8') as _f:
@@ -67,6 +68,7 @@ def _open(browser, tc, scopes=FULL, platform=None, **ctx):
     errors = []
     page.on('console', lambda m: errors.append(m.text) if m.type == 'error' else None)
     page.on('pageerror', lambda e: errors.append(str(e)))
+    watch(page)
     page.goto(tc.core.launch_url(scopes))
     page.get_by_role('heading', name='Now', exact=True).wait_for()
     return context, page, errors

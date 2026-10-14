@@ -147,6 +147,7 @@ def test_the_mark_the_strip_and_the_favicon_follow_what_archeus_is_doing(browser
     _go(page, '#/now')
     freeze(page)
     settle(page)
+    advance(page, EVERY_MS)     # past the turn the attempt's own frames just played
     page.evaluate(_TURNS)
     page.evaluate("() => document.getAnimations().forEach(a => a.finish())")
     rest = page.evaluate(_NODE)
