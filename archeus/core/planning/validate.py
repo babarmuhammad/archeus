@@ -21,6 +21,7 @@ A task here is a dict with `key` (a model label or a task key), `depends_on`,
 import fnmatch
 import hashlib
 import json
+from dataclasses import replace
 
 from ..domain import entities
 from ..domain.actions import ACTION_CLASSES
@@ -219,6 +220,10 @@ def problems(tasks, *, criteria=(), explicit=(), asked=()):
 
 _PLAN_SKIP = ('id', 'state', 'digest')
 _TASK_SKIP = ('id', 'state', 'failure_class', 'plan_id')
+# P13's merge-back writes these after approval. Every stored digest hashed them
+# at these defaults, so they are reset rather than dropped: dropping the keys
+# would invalidate every digest already recorded.
+_TASK_RUNTIME = {'integration_state': None, 'merged_revision': None, 'conflicts': ()}
 
 
 def digest(plan, tasks):
@@ -227,7 +232,8 @@ def digest(plan, tasks):
     # `edited_by` came with P19 B4: a digest stored before it never had the key
     body = {'plan': {k: v for k, v in plan.to_dict().items() if k not in _PLAN_SKIP
                      and not (k == 'edited_by' and v is None)},
-            'tasks': sorted(({k: v for k, v in t.to_dict().items() if k not in _TASK_SKIP}
+            'tasks': sorted(({k: v for k, v in replace(t, **_TASK_RUNTIME).to_dict().items()
+                              if k not in _TASK_SKIP}
                              for t in tasks), key=lambda t: t['key'])}
     return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(',', ':'))
                           .encode('utf-8')).hexdigest()
