@@ -20,6 +20,7 @@ from archeus.core.domain import entities, ids
 from archeus.core.domain.events import new_event
 from archeus.core.domain.values import Ref
 from archeus.core.verification import evidence
+from archeus.infra import paths
 from archeus.infra.db import rows
 from v1.judge.client import CoreClientError, InProcessClient
 from v1.judge.conftest import recorded_brain
@@ -685,9 +686,10 @@ def test_A6_an_unknown_execution_keeps_its_git_and_loses_its_commands(core, monk
         ('generic_human', 'AWAITING_HUMAN', None)}
     seen = []
     monkeypatch.setattr(core._verify, 'calls', SimpleNamespace(
-        run=lambda **ask: seen.append(ask['prompt']) or SimpleNamespace(state='error')))
+        run=lambda **ask: seen.append(ask) or SimpleNamespace(state='error')))
     core._verify._review(mid)
-    assert 'withheld, not empty' in seen[0]
+    assert 'withheld, not empty' in seen[0]['prompt']
+    assert (seen[0]['no_tools'], seen[0]['workdir']) == (True, paths.fresh_call_dir)
     assert 'run_check' not in node.calls and 'git_numstat' not in node.calls
 
 
@@ -698,9 +700,16 @@ def test_A6_an_ordinary_review_still_reads_the_mission_diff(core, monkeypatch):
     node = _node(core, monkeypatch, allow=_GIT + ('git_numstat',))
     seen = []
     monkeypatch.setattr(core._verify, 'calls', SimpleNamespace(
-        run=lambda **ask: seen.append(ask['prompt']) or SimpleNamespace(state='error')))
+        run=lambda **ask: seen.append(ask) or SimpleNamespace(
+            state='unavailable' if len(seen) == 1 else 'error')))
     core._verify._review(mid)
-    assert node.calls == ['git_numstat'] and 'withheld' not in seen[0]
+    assert node.calls == ['git_numstat'] and 'withheld' not in seen[0]['prompt']
+    # T-081: the retry without `forbidden` (no independent resource) is the same
+    # call, with no tools in a fresh directory of its own, never ARCHEUS_HOME
+    first, retry = seen
+    assert 'forbidden' in first and 'forbidden' not in retry
+    for ask in seen:
+        assert (ask['no_tools'], ask['workdir']) == (True, paths.fresh_call_dir)
 
 
 def test_A6_an_ordinary_task_of_a_guarded_mission_keeps_its_git_and_loses_its_commands(

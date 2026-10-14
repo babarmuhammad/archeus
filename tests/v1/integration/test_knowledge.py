@@ -144,13 +144,13 @@ def test_n04_only_the_user_answers_the_terms_question(make):
         r.run(C.decide_provider_terms, harness_id='pi', headless='maybe')
 
 
-def test_n05_a_real_adapter_passes_the_gate_and_its_argv_is_the_harness_own(make, monkeypatch,
-                                                                            tmp_path):
-    """The whole path with the real pi adapter and a stand-in runner: terms
-    permitted, pi's flags, pi's vocabulary, prompted schema, Core validation.
-    The knowledge pass asks for no tools (K-O2), which pi does not declare, so
-    the router's capability step leaves it unavailable with nothing spawned
-    (T-069); the decisions pass runs."""
+def test_n05_a_real_adapter_past_the_gate_is_still_never_asked_for_an_own_call(
+        make, monkeypatch, tmp_path):
+    """The whole path with the real pi adapter and a stand-in runner, terms
+    permitted. Every own call asks for no tools (K-O2, T-081), which pi does not
+    declare, so the router's capability step leaves the knowledge pass and the
+    decisions pass unavailable with nothing spawned (T-069). pi's own argv for a
+    call with tools is test_deputies.py's."""
     from claude_sessions import harnesses, llmcall
     seen = []
     monkeypatch.setattr(harnesses, 'exe', lambda hid=None: 'C:/x/pi.exe')
@@ -175,11 +175,9 @@ def test_n05_a_real_adapter_passes_the_gate_and_its_argv_is_the_harness_own(make
     notes.write_text('# Planning\nDECISION: ship dark-first.\n', encoding='utf-8')
     ingest.import_file(r.db, r.user, str(notes))
     r.settle()
-    assert [d.state for d in r.items(type='DECISION')] == ['CANDIDATE']
-    (cmd, stdin), = seen
-    assert cmd[1:] == ['-p', '--no-session', '--tools', 'read,grep,find,ls', '--model',
-                       'spark/qwen3.8']
-    assert 'matching this JSON Schema' in stdin
+    assert (r.items(type='DECISION'), seen) == ([], [])
+    rds = r.read(lambda c: queries.route_decisions(c, purpose='knowledge_extraction'))
+    assert len(rds) == 2 and {x['result'] for x in rds} == {'blocked'}
 
 
 # ── N06–N08 provenance, no execution, usage ──
