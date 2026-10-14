@@ -29,7 +29,7 @@ from dataclasses import replace
 from ...harnesses import base
 from ...infra.artifacts import store
 from ...infra.db import rows
-from ...infra.paths import ExecPaths
+from ...infra.paths import ExecPaths, task_worktree
 from ...node import staging
 from ...node.local import LocalNode, PathTooLong
 from ..application import errors, executions as X, optins, resources
@@ -387,8 +387,7 @@ class ExecutionManager:
             # one segment under archeus/: P9's profiles bound commits to `archeus/*`,
             # where `*` never crosses a `/` (p11-design-gate §28)
             want = 'archeus/%s.%s' % (m.id, t.key)
-            from ...infra.paths import archeus_home
-            path = os.path.join(archeus_home(), 'worktrees', m.project_id, m.id, t.key)
+            path = task_worktree(m.project_id, m.id, t.key)
             # P13 (p13-design-gate D12): once the mission branch holds a merged
             # result, a later task starts from it, so it sees what it depends on
             mission = mission_branch(m.id)

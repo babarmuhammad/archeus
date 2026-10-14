@@ -8,8 +8,9 @@ invalidation — this codebase's recurring bug.
 is already a legacy project workdir (the one for any project rooted at the home
 directory), legacy code writes logs and memory there, and legacy cleanup may
 delete below any `.archeus` directory. Nothing here creates, migrates or deletes
-it. These functions compute paths and touch no disk, with one exception:
-`fresh_call_dir` creates (never deletes) the empty directory an own call runs in.
+it. These functions compute paths and touch no disk, with two exceptions:
+`fresh_call_dir` creates (never deletes) the empty directory an own call runs in,
+and the two worktree resolvers read whether an earlier-layout directory exists.
 """
 
 import os
@@ -69,6 +70,29 @@ def archeus_home(environ=None, platform=None):
         raise ValueError('ARCHEUS_HOME may not be (or be inside) a legacy .archeus '
                          'directory, which holds legacy project data: %s' % path)
     return path
+
+
+def task_worktree(project_id, mission_id, key):
+    """`<ARCHEUS_HOME>/worktrees/<mission ULID>/<task key>` (target-architecture
+    §5.1, amendment 2026-10-14), or the earlier layout's directory when it exists."""
+    return _worktree(project_id, mission_id, key)
+
+
+def mission_worktree_path(project_id, mission_id):
+    """`<ARCHEUS_HOME>/worktrees/<mission ULID>/_mission`, or the earlier layout's
+    directory when it exists."""
+    return _worktree(project_id, mission_id, '_mission')
+
+
+def _worktree(project_id, mission_id, leaf):
+    # The one resolver that reads the disk (it writes nothing). The earlier
+    # `<project-id>/<mission-id>/` layout is kept and used where a worktree already
+    # exists: its branch is checked out there, so Git would refuse a second path.
+    root = os.path.join(archeus_home(), 'worktrees')
+    legacy = os.path.join(root, project_id, mission_id, leaf)
+    if os.path.isdir(legacy):
+        return legacy
+    return os.path.join(root, mission_id.split('_', 1)[-1], leaf)
 
 
 def run_dir():

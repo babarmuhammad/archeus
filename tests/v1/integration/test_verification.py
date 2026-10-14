@@ -22,6 +22,7 @@ from archeus.core.domain.values import Ref
 from archeus.core.verification import evidence
 from archeus.infra import paths
 from archeus.infra.db import rows
+from archeus.node.local import LocalNode
 from v1.judge.client import CoreClientError, InProcessClient
 from v1.judge.conftest import recorded_brain
 from v1.judge import support
@@ -125,7 +126,7 @@ def test_V04_a_mission_branch_moved_after_its_criteria_were_verified_is_verified
     rig = Rig(core)
     repo, mid = _mission(core, rig, steps=[_write(FIX), {'emit': {'type': 'result',
                                                                   'summary': 'done'}}])
-    wt = os.path.join(os.environ['ARCHEUS_HOME'], 'worktrees', repo.project_id, mid, '_mission')
+    wt = paths.mission_worktree_path(repo.project_id, mid)
     real, moved = evidence.run_commands, []
 
     def run_then_move(node, workspace, cmds, **kw):
@@ -313,7 +314,7 @@ def test_a_conflicting_merge_blocks_the_mission_and_can_be_abandoned(core):
     pump(core, lambda: _t(core, mid) in ('VERIFYING', 'SUCCEEDED'))
     # the mission branch gains a conflicting change before the task's result lands
     subprocess.run(['git', 'branch', 'archeus/%s' % mid, 'HEAD'], cwd=repo.path, check=True)
-    wt = os.path.join(os.environ['ARCHEUS_HOME'], 'worktrees', repo.project_id, mid, '_mission')
+    wt = paths.mission_worktree_path(repo.project_id, mid)
     subprocess.run(['git', 'worktree', 'add', '-q', '--', wt, 'archeus/%s' % mid],
                    cwd=repo.path, check=True)
     with open(os.path.join(wt, 'calc.py'), 'w', encoding='utf-8', newline='\n') as f:
@@ -955,7 +956,7 @@ def test_A6_a_guarded_criterion_in_error_is_superseded_by_a_fresh_row_for_you(co
                                                                         'summary': 'done'}}])
     pump(core, lambda: _state(core, mid) == 'VERIFYING')
     m = _get(core, entities.Mission, mid)
-    wt = os.path.join(os.environ['ARCHEUS_HOME'], 'worktrees', repo.project_id, mid, '_mission')
+    wt = paths.mission_worktree_path(repo.project_id, mid)
     old = _do(core, V.start, missions=core._missions, subject=Ref('mission', mid),
               verifier='code', criterion=0, revision=m.integration_head,
               base_revision=m.integration_base, workspace=wt,
@@ -1230,3 +1231,33 @@ def test_A6_4_a_verdict_the_row_no_longer_awaits_lets_the_principal_go(core, mon
     assert core._verify.pass_once()['did'] == 'verify_task'
     assert fake.recorded == [_row(core, mid).id]        # record returned: teardown proceeds
     assert _row(core, mid).state == 'RUNNING'
+
+
+# ── worktree layout (target-architecture §5.1, amendment 2026-10-14) ────────
+
+@pytest.mark.parametrize('before', [(), ('t1',), ('t1', '_mission')],
+                         ids=['new', 'task-old', 'both-old'])
+def test_worktrees_of_the_earlier_layout_are_used_where_they_are(core, before):
+    """A mission begun before the short layout: the task's branch is checked out
+    at its old path (a new attempt, or a restart, finds it there) and maybe the
+    mission branch too; it verifies, merges through whichever `_mission` exists
+    and reads that worktree's head when it verifies the mission."""
+    repo, mid = _mission(core, Rig(core), steps=[_write(FIX), {'emit': {
+        'type': 'result', 'summary': 'done'}}])
+    home = os.environ['ARCHEUS_HOME']
+    old = {k: os.path.join(home, 'worktrees', repo.project_id, mid, k) for k in ('t1', '_mission')}
+    new = {k: os.path.join(home, 'worktrees', mid[len('msn_'):], k) for k in old}
+    if 't1' in before:
+        LocalNode.add_worktree(repo.path, old['t1'], 'archeus/%s.t1' % mid, base='HEAD')
+    if '_mission' in before:
+        LocalNode.mission_worktree(repo.path, old['_mission'], 'archeus/%s' % mid, 'HEAD')
+    pump(core, lambda: _state(core, mid) == 'COMPLETED')
+    used = {k: (old if k in before else new)[k] for k in old}
+    with core._core().read() as conn:
+        (e,) = [r.entity for r in rows.where(conn, entities.Execution)]
+    assert e.workdir == used['t1']
+    head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=used['_mission'],
+                          capture_output=True, text=True, check=True).stdout.strip()
+    assert _get(core, entities.Mission, mid).integration_head == head
+    assert not os.path.exists((new if '_mission' in before else old)['_mission'])
+    assert _t(core, mid, 'integration_state') == 'MERGED'

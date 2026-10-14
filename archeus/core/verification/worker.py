@@ -20,7 +20,6 @@ moves a mission: it writes rows and the engine's `advance` judges them.
 """
 
 import logging
-import os
 import sys
 
 from ...infra import paths
@@ -44,10 +43,6 @@ _HUMAN = 'generic_human'
 
 def _rows(conn, cls, **eq):
     return [r.entity for r in rows.where(conn, cls, **eq)]
-
-
-def _mission_wt(project_id, mission_id):
-    return os.path.join(paths.archeus_home(), 'worktrees', project_id, mission_id, '_mission')
 
 
 class VerifyWorker:
@@ -373,8 +368,8 @@ class VerifyWorker:
         branch = mission_branch(m.id)
         base = m.integration_base or self.node.git_merge_base(root, revision, 'HEAD')
         try:
-            wt = self.node.mission_worktree(root, _mission_wt(m.project_id, m.id), branch,
-                                            base or revision)
+            wt = self.node.mission_worktree(root, paths.mission_worktree_path(m.project_id, m.id),
+                                            branch, base or revision)
         except PathTooLong as err:
             why = 'no mission worktree: %s' % err
             log.warning('verification: merge of task %s: %s', t.id, why)
@@ -415,7 +410,7 @@ class VerifyWorker:
             tests, builds = evidence.commands(conn, m.project_id, root)
             guarded = not V.unconfined(conn, m.id)
         if m.integration_base is not None:
-            ws = _mission_wt(m.project_id, m.id)
+            ws = paths.mission_worktree_path(m.project_id, m.id)
             disk = self.node.git_head(ws)
             if disk != m.integration_head:
                 # moved on disk since Core recorded it: what was verified is stale

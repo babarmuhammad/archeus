@@ -8,8 +8,8 @@ repository path past about 149 characters failed every execution (T-077 §3).
 T-078 (A): a worktree whose `.git` path Git for Windows would refuse ("'$GIT_DIR'
 too big", past 220 characters) is refused by Core first, before anything is
 made, with the path, its length, the limit and what to change. The check runs
-on the path itself, so the mission worktree (home + 86) hits it before a task's
-(home + 80) does (T-079 section 2)."""
+on the path itself, so the mission worktree (home + 51) hits it before a task's
+(home + 45) does (T-079 section 2, the layout T-080 made)."""
 import os
 import subprocess
 
@@ -22,7 +22,7 @@ from v1.judge.conftest import recorded_brain
 from v1.judge.support import Rig
 
 from archeus.core.domain import entities
-from archeus.core.verification import worker
+from archeus.infra import paths
 from archeus.infra.db import rows
 from archeus.node import local
 from archeus.node.local import LocalNode
@@ -124,8 +124,8 @@ def _home(tmp_path, n):
     return stem + 'x' * (n - len(stem))
 
 
-def _task_wt(home):        # manager.py _workspace: worktrees/<project>/<mission>/<task key>
-    return os.path.join(home, 'worktrees', PRJ, MSN, 't1')
+def _task_wt(home):        # manager.py _workspace: worktrees/<mission ULID>/<task key>
+    return os.path.join(home, 'worktrees', MSN[len('msn_'):], 't1')
 
 
 def _plain_repo(tmp_path):
@@ -146,13 +146,13 @@ def capped(monkeypatch):
     monkeypatch.setattr(local, 'GIT_DIR_MAX', 220)
 
 
-@pytest.mark.parametrize('n, made', [(140, True), (141, False)])
-def test_a_task_worktree_is_made_up_to_home_140_and_refused_first_past_it(
+@pytest.mark.parametrize('n, made', [(175, True), (176, False)])
+def test_a_task_worktree_is_made_up_to_home_175_and_refused_first_past_it(
         git_env, capped, tmp_path, n, made):
     home = _home(tmp_path, n)
     repo = _plain_repo(tmp_path)
     path = _task_wt(home)
-    assert len(os.path.join(path, '.git')) == n + 80
+    assert len(os.path.join(path, '.git')) == n + 45
     if made:
         assert LocalNode.add_worktree(repo, path, 'archeus/m.t1', base='main') == path
         assert os.path.isdir(path)
@@ -166,10 +166,10 @@ def test_a_task_worktree_is_made_up_to_home_140_and_refused_first_past_it(
 
 def test_the_mission_worktree_is_refused_where_the_task_worktree_still_fits(
         git_env, capped, monkeypatch, tmp_path):
-    home = _home(tmp_path, 135)         # task .git 215 fits; mission .git 221 does not
+    home = _home(tmp_path, 170)         # task .git 215 fits; mission .git 221 does not
     monkeypatch.setenv('ARCHEUS_HOME', home)
     repo = _plain_repo(tmp_path)
-    task, mission = _task_wt(home), worker._mission_wt(PRJ, MSN)
+    task, mission = _task_wt(home), paths.mission_worktree_path(PRJ, MSN)
     assert (len(os.path.join(task, '.git')), len(os.path.join(mission, '.git'))) == (215, 221)
     assert LocalNode.add_worktree(repo, task, 'archeus/m.t1', base='main') == task
     for branch_first in (False, True):          # both of mission_worktree's paths
@@ -219,8 +219,8 @@ def _blocks(c, mid):
     return [p for p in _events(c, 'mission.state_changed') if p.get('to') == 'BLOCKED']
 
 
-@pytest.mark.parametrize('long_core', [141], indirect=True)
-def test_past_home_140_a_task_is_refused_once_uncharged_and_its_mission_waits(long_core):
+@pytest.mark.parametrize('long_core', [176], indirect=True)
+def test_past_home_175_a_task_is_refused_once_uncharged_and_its_mission_waits(long_core):
     c = long_core
     _repo, mid = _mission(c, Rig(c), steps=STEPS)
     pump(c, lambda: c.get_mission(mid)['state'] == 'BLOCKED')
@@ -236,8 +236,8 @@ def test_past_home_140_a_task_is_refused_once_uncharged_and_its_mission_waits(lo
     assert '221 characters' in why and 'at most 220' in why and 'ARCHEUS_HOME' in why
 
 
-@pytest.mark.parametrize('long_core', [140], indirect=True)
-def test_at_home_140_the_task_runs_as_before(long_core):
+@pytest.mark.parametrize('long_core', [175], indirect=True)
+def test_at_home_175_the_task_runs_as_before(long_core):
     c = long_core
     _repo, mid = _mission(c, Rig(c), steps=STEPS)
     pump(c, lambda: _t(c, mid) == 'VERIFYING')
@@ -245,7 +245,7 @@ def test_at_home_140_the_task_runs_as_before(long_core):
     assert not _blocks(c, mid)
 
 
-@pytest.mark.parametrize('long_core', [135], indirect=True)
+@pytest.mark.parametrize('long_core', [170], indirect=True)
 def test_a_mission_worktree_git_refuses_blocks_the_mission_once_at_merge_time(long_core):
     c = long_core                   # task .git 215 fits; the mission's 221 does not
     _repo, mid = _mission(c, Rig(c), steps=STEPS)

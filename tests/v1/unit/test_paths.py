@@ -167,3 +167,33 @@ def test_no_instruction_deletes_archeus_home_as_a_whole():
 def test_only_an_execution_id_can_name_an_execution_directory(bad):
     with pytest.raises(ValueError):
         paths.ExecPaths(bad)
+
+
+# ── worktrees (target-architecture §5.1, amendment 2026-10-14) ──
+
+PRJ, MSN = ids.new_id('project'), ids.new_id('mission')
+WORKTREE = {'t1': lambda: paths.task_worktree(PRJ, MSN, 't1'),
+            '_mission': lambda: paths.mission_worktree_path(PRJ, MSN)}
+
+
+@pytest.mark.parametrize('leaf', sorted(WORKTREE))
+def test_a_new_worktree_is_named_by_the_mission_ulid_alone(archeus_home, leaf):
+    want = os.path.join(str(archeus_home), 'worktrees', MSN[len('msn_'):], leaf)
+    assert WORKTREE[leaf]() == want
+    assert not archeus_home.exists()
+
+
+@pytest.mark.parametrize('leaf', sorted(WORKTREE))
+def test_a_worktree_of_the_earlier_layout_is_still_found(archeus_home, leaf):
+    legacy = archeus_home / 'worktrees' / PRJ / MSN / leaf
+    legacy.mkdir(parents=True)
+    assert WORKTREE[leaf]() == str(legacy)
+
+
+@pytest.mark.parametrize('leaf', sorted(WORKTREE))
+def test_only_a_directory_counts_as_an_earlier_worktree(archeus_home, leaf):
+    legacy = archeus_home / 'worktrees' / PRJ / MSN / leaf
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text('')
+    assert WORKTREE[leaf]() == os.path.join(str(archeus_home), 'worktrees', MSN[len('msn_'):], leaf)
+
