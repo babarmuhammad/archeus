@@ -119,6 +119,9 @@ def test_precompact_after_a_report_keeps_the_report(x):
                                    and (e.context or {}).get('used_tokens')), None))
     with open(os.path.join(ExecPaths(e.id).dir, 'precompact.json'), 'w') as f:
         json.dump({'at': 1}, f)
+    # the agent is asleep: no output arrives, and the signal is recorded all the same
+    x.drive(mid, lambda: x.state(e.id).state == 'HANDING_OFF')
+    assert P.view(x.state(e.id))['quality'] == 'signalled'
     x.drive(mid, lambda: x.state(e.id).state == 'ENDED_HANDOFF')
     v = P.view(x.state(e.id))
     assert (v['quality'], v['used_tokens'], v['window'], v['remaining']) == (
