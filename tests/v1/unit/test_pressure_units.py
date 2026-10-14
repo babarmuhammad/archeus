@@ -210,7 +210,9 @@ def test_no_stated_minimum_is_no_minimum_not_fits():
 def _repo(tmp_path):
     root = str(tmp_path / 'repo')
     os.makedirs(root)
-    g = ['git', '-c', 'user.name=t', '-c', 'user.email=t@t']
+    # no background maintenance from these commits: a detached `maintenance run --auto`
+    # can leave .git/objects/maintenance.lock in the middle of a test's snapshot
+    g = ['git', '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'maintenance.auto=false']
     subprocess.run(['git', 'init', '-q', root], check=True)
     with open(os.path.join(root, 'kept.txt'), 'w') as f:
         f.write('one\n')
@@ -233,6 +235,12 @@ def _snapshot(root):
 def test_the_end_state_digest_measures_head_diff_and_untracked_and_writes_nothing(tmp_path,
                                                                                 monkeypatch):
     root = _repo(tmp_path)
+    # any auto-maintenance the digest set off would now write a commit-graph, in the
+    # foreground, so the snapshot below sees it
+    for k, v in (('maintenance.auto', 'true'), ('maintenance.autoDetach', 'false'),
+                 ('maintenance.commit-graph.enabled', 'true'),
+                 ('maintenance.commit-graph.auto', '-1')):
+        subprocess.run(['git', 'config', k, v], cwd=root, check=True)
     with open(os.path.join(root, 'kept.txt'), 'w') as f:
         f.write('two\n')                                       # a tracked change
     with open(os.path.join(root, 'new.txt'), 'w') as f:
