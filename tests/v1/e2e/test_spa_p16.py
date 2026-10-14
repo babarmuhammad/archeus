@@ -59,8 +59,10 @@ def _settled(tc, mid, want):
         time.sleep(0.05)
 
 
-def _open(browser, tc, scopes=FULL, **ctx):
+def _open(browser, tc, scopes=FULL, platform=None, **ctx):
     context = browser.new_context(**ctx)
+    if platform:
+        context.add_init_script(PLATFORM % json.dumps(platform))
     page = context.new_page()
     errors = []
     page.on('console', lambda m: errors.append(m.text) if m.type == 'error' else None)
@@ -222,7 +224,8 @@ def test_a_restart_shows_reconnecting_then_current_data(browser, core):
 def test_keyboard_only_navigation(browser, core):
     mid = _mission(core, 'Keyboard')
     _settled(core, mid, 'COMPLETED')
-    context, page, errors = _open(browser, core)
+    # Alt+digit is the browser's on Linux (Q-A5), and CI's browser runs on Linux
+    context, page, errors = _open(browser, core, platform='Win32')
     page.keyboard.press('Tab')
     assert page.evaluate('document.activeElement.textContent') == 'Skip to content'
     page.keyboard.press('Alt+2')
