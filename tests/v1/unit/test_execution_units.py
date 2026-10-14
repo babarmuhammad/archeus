@@ -1275,3 +1275,42 @@ def test_a_stage_that_cannot_be_made_or_verified_starts_nothing_uncharged(
         assert _steps(log) == ['requested', 'stage', 'refuse']   # no workspace, inventory,
         assert log[2][1]['stop_reason'] == 'binding'             # preparation or spawn
         assert 'hook runtime could not be staged' in log[2][1]['reason']
+
+
+# ── T-078: a worktree Git refuses for its length alone is refused first ─────
+
+def _wt_of_git_len(n):
+    """An absolute worktree path whose `.git` path is exactly *n* characters."""
+    base = os.path.abspath(os.sep + 'h')
+    path = base + 'x' * (n - len(os.path.join(base, '.git')))
+    assert len(os.path.join(path, '.git')) == n
+    return path
+
+
+def test_a_worktree_git_dir_up_to_the_limit_passes_the_length_check(monkeypatch):
+    from archeus.node import local
+    monkeypatch.setattr(local, 'GIT_DIR_MAX', 220)
+    local.check_worktree_path(_wt_of_git_len(220))          # the last length Git accepts
+
+
+def test_a_worktree_git_dir_past_the_limit_is_refused_with_what_to_change(monkeypatch):
+    from archeus.node import local
+    monkeypatch.setattr(local, 'GIT_DIR_MAX', 220)
+    path = _wt_of_git_len(221)
+    with pytest.raises(local.PathTooLong) as err:
+        local.check_worktree_path(path)
+    assert isinstance(err.value, OSError)                   # every caller already handles it
+    msg = str(err.value)
+    assert path in msg and '221 characters' in msg and 'at most 220' in msg
+    assert 'ARCHEUS_HOME' in msg
+
+
+def test_without_a_git_dir_cap_no_length_is_refused(monkeypatch):
+    from archeus.node import local
+    monkeypatch.setattr(local, 'GIT_DIR_MAX', None)
+    local.check_worktree_path(_wt_of_git_len(400))
+
+
+def test_the_git_dir_cap_is_windows_only():
+    from archeus.node import local
+    assert local.GIT_DIR_MAX == (220 if os.name == 'nt' else None)

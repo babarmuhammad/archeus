@@ -24,6 +24,28 @@ from ..harnesses import base
 from ..infra.paths import ExecPaths, processes_registry, run_dir, stop_sentinel
 from . import isolation as isolation_mod
 
+#: every worktree Core makes or removes checks out paths past MAX_PATH; the
+#: user's own config is never written, only this one command's (T-078)
+_WORKTREE = ('-c', 'core.longpaths=true', 'worktree')
+#: Git for Windows refuses a worktree whose `.git` path is longer than this
+#: ("'$GIT_DIR' too big"), and core.longpaths does not lift it (measured, T-077);
+#: no such cap elsewhere
+GIT_DIR_MAX = 220 if os.name == 'nt' else None
+
+
+class PathTooLong(OSError):
+    """A worktree Git would refuse for its path's length alone."""
+
+
+def check_worktree_path(path):
+    """Raise PathTooLong, before anything is made, when *path*'s `.git` is
+    past GIT_DIR_MAX: that refusal is the same on every attempt."""
+    git_dir = os.path.join(os.path.abspath(path), '.git')
+    if GIT_DIR_MAX is not None and len(git_dir) > GIT_DIR_MAX:
+        raise PathTooLong('the worktree %s needs a .git path of %d characters; Git for Windows '
+                          'accepts at most %d. Set ARCHEUS_HOME to a shorter folder'
+                          % (path, len(git_dir), GIT_DIR_MAX))
+
 #: control flags the hook reads (P11 PAUSE/STOP; P12 HANDOFF, p12-design-gate §10.1)
 FLAGS = ('PAUSE', 'STOP', 'HANDOFF')
 #: Core's own git identity for the snapshot commit and merges (P13 §12), set per
@@ -360,6 +382,7 @@ class LocalNode:
         or raises OSError with git's reason."""
         if os.path.isdir(path):
             return path             # this execution's own, made before a restart
+        check_worktree_path(path)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         flag = '-b'
         if LocalNode.branch_exists(root, branch):
@@ -370,7 +393,7 @@ class LocalNode:
                 raise OSError('branch %s holds commits %s does not; it is left as it is'
                               % (branch, base))
             flag = '-B'
-        r = proc.run(['git', 'worktree', 'add', flag, branch, '--', path, base], cwd=root,
+        r = proc.run(['git', *_WORKTREE, 'add', flag, branch, '--', path, base], cwd=root,
                      timeout=60)
         if r is None or r.returncode != 0:
             raise OSError('git worktree add failed: %s' % ((r.stderr or r.stdout or '').strip()
@@ -385,7 +408,7 @@ class LocalNode:
                      for line in (proc.git(['worktree', 'list', '--porcelain'], root)
                                   or '').splitlines() if line.startswith('worktree '))
         if listed:
-            proc.git(['worktree', 'remove', '--force', '--', path], root, timeout=60)
+            proc.git([*_WORKTREE, 'remove', '--force', '--', path], root, timeout=60)
         return listed
 
     # ── verification and merge-back (P13, p13-design-gate §8, §12) ──
@@ -458,9 +481,10 @@ class LocalNode:
         from *base* the first time (§12.1). Returns the path or raises OSError."""
         if os.path.isdir(path):
             return path
+        check_worktree_path(path)
         if LocalNode.branch_exists(root, branch):
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            r = proc.run(['git', 'worktree', 'add', '--', path, branch], cwd=root, timeout=60)
+            r = proc.run(['git', *_WORKTREE, 'add', '--', path, branch], cwd=root, timeout=60)
             if r is None or r.returncode != 0:
                 raise OSError('git worktree add failed: %s'
                               % ((r.stderr or r.stdout or '').strip() if r else 'no git'))
