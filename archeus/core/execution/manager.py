@@ -124,7 +124,7 @@ class ExecutionManager:
                 log.info('execution %s: lost a race: %s', e.id, err)
             except errors.WriterClosed:
                 raise
-        did += self._orphans({e.id for e in live})
+        did += self._orphans({e.id for e in live}, disarmed)
         now = time.monotonic()
         if now - self._clock['accounts'] >= ACCOUNTS_S:
             self._clock['accounts'] = now
@@ -139,16 +139,23 @@ class ExecutionManager:
             self._sweep_isolation(live)
         return did
 
-    def _orphans(self, live):
+    def _orphans(self, live, disarmed):
         """A process whose execution ended while it was still exiting (a halt,
         then a stop before the next pass) is no longer live, so the pass above
         never reaches it: it is collected here once it has exited, which is where
-        its end is recorded and its keys removed (T-099)."""
+        its end is recorded and its keys removed (T-099). One still running after
+        the stop grace (at once under the e-stop) is killed, as a STOPPING one is:
+        its execution has already ended, so nothing else ever will (T-102)."""
         did = 0
         for xid in [i for i in self._procs if i not in live]:
             p = self._procs[xid]
             st = p['adapter'].status(p['handle'])
             if st.state == 'running':
+                if p['since'] is None:
+                    p['since'] = time.monotonic()
+                if disarmed or time.monotonic() - p['since'] >= self.grace_s:
+                    self.node.kill(p['adapter'], p['handle'])
+                    did += 1
                 continue
             with self.db.read() as r:
                 e = rows.get(r, entities.Execution, xid).entity

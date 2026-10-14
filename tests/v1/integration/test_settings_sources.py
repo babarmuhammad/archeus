@@ -388,6 +388,68 @@ def test_T099_an_execution_that_ends_while_its_halt_is_exiting_is_still_collecte
     assert not os.path.exists(ExecPaths(e.id).mcp)
 
 
+def _halted_then_ended(x, monkeypatch):
+    """An execution ended (an account ceiling) while its halted process still runs,
+    and that process made to look as if it ignores the stop until it is killed.
+    Returns (execution, kills)."""
+    opt(x, x.acc, 'mcp', 'gh')
+    x.scenarios['t1'] = [TOOL('mcp__gh__issue', {}), DONE]
+    mid = ready_in(x, x.prj, task('t1', 'read'))
+    e = x.drive(mid, lambda: (lambda e: e if e is not None
+                              and e.state == 'AWAITING_APPROVAL' else None)(
+        x.exe(mission_id=mid)))
+    assert e.id in x.manager._procs
+    x.manager._stop_account(x.acc, 'ceiling', 'usage reached the allocation')
+    assert x.state(e.id).state == 'ENDED_KILLED'
+    p, kills = x.manager._procs[e.id], []
+    status, kill = p['adapter'].status, x.manager.node.kill
+    monkeypatch.setattr(p['adapter'], 'status', lambda h: (
+        status(h) if kills else type('S', (), {'state': 'running'})))
+    monkeypatch.setattr(x.manager.node, 'kill', lambda a, h: (kills.append(h), kill(a, h))[1])
+    return e, kills
+
+
+def _collected(x, e):
+    deadline = time.monotonic() + 15
+    while e.id in x.manager._procs:
+        assert time.monotonic() < deadline, 'never collected'
+        x.manager.tick()
+        time.sleep(0.05)
+    assert os.path.exists(ExecPaths(e.id).ended)
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def test_T102_an_ended_executions_process_that_ignores_the_stop_is_killed_after_the_grace(
+        x, monkeypatch):
+    e, kills = _halted_then_ended(x, monkeypatch)
+    x.manager.tick()
+    assert kills == [] and e.id in x.manager._procs          # inside the grace: waited for
+    time.sleep(x.manager.grace_s + 0.05)
+    x.manager.tick()
+    assert len(kills) == 1                                   # past it: killed
+    _collected(x, e)
+
+
+def test_T102_under_the_estop_it_is_killed_at_once(x, monkeypatch):
+    e, kills = _halted_then_ended(x, monkeypatch)
+    x.manager.grace_s = 60.0
+    LocalNode.engage_estop()
+    try:
+        x.manager.tick()
+    finally:
+        LocalNode.clear_estop()
+    assert len(kills) == 1
+    _collected(x, e)
+
+
+def test_T102_one_that_exits_inside_the_grace_is_never_killed(x, monkeypatch):
+    e, kills = _halted_then_ended(x, monkeypatch)
+    x.manager.grace_s = 60.0
+    kills.append('let it run')                               # status reads the real process
+    _collected(x, e)
+    assert kills == ['let it run']
+
+
 def test_T099_a_launch_that_raises_leaves_no_mcp_config(x, monkeypatch):
     """A launch that raises SpawnFailed itself, as an isolated launch failing after
     establishment does, never passes the spawn's own refusal."""
@@ -406,18 +468,27 @@ def test_T099_a_launch_that_raises_leaves_no_mcp_config(x, monkeypatch):
 
 def test_T099_a_prompt_that_cannot_be_written_leaves_no_mcp_config(x, monkeypatch):
     """An OSError before a child exists (here the prompt) drops the config too,
-    not only a SpawnFailed."""
+    not only a SpawnFailed. Since T-102 it is a refusal: the execution is
+    abandoned with its tombstone, and the pass goes on - the task is dispatched
+    again and the next attempt runs."""
     opt(x, x.acc, 'mcp', 'gh')
-    real = base.config.write_atomic
-    monkeypatch.setattr(base.config, 'write_atomic', lambda path, data, *a, **k: (
-        False if os.path.basename(path) == os.path.basename(ExecPaths(ids.new_id('execution')).prompt)
-        else real(path, data, *a, **k)))
+    x.scenarios['t1'] = [DONE]
+    real, failed = base.config.write_atomic, []
+    prompt = os.path.basename(ExecPaths(ids.new_id('execution')).prompt)
+
+    def once(path, data, *a, **k):
+        if os.path.basename(path) == prompt and not failed:
+            failed.append(path)
+            return False
+        return real(path, data, *a, **k)
+    monkeypatch.setattr(base.config, 'write_atomic', once)
     mid = ready_in(x, x.prj)
-    with pytest.raises(OSError, match='could not write'):   # the manager's tick sees it
-        x.drive(mid, lambda: None)
-    [r] = x.all(entities.Execution)
+    x.drive(mid, lambda: any(r.state == 'ENDED_OK' for r in x.all(entities.Execution)))
+    [r] = [r for r in x.all(entities.Execution) if r.state == 'ABANDONED']
+    assert r.stop_reason == 'binding'
     assert os.path.exists(ExecPaths(r.id).spawning)          # the argv was built
     assert not os.path.exists(ExecPaths(r.id).mcp)
+    assert 'could not write' in base.read_json(ExecPaths(r.id).ended)['error']
 
 
 def test_T099_a_spawn_refused_as_already_spawned_keeps_the_config_a_process_may_hold(

@@ -316,10 +316,15 @@ def spawn(spec, argv):
                                  % (spec.execution_id, seq - 1))
     try:
         child = _start(spec, argv, paths, seq)
-    except BaseException:
+    except BaseException as err:
         # nothing started: the MCP config this attempt's argv wrote goes with it
         # (T-099). Not mark_ended: an isolation failure has written its own tombstone
         drop_mcp_config(paths)
+        if isinstance(err, OSError):
+            # a write that failed before any child (the marker, the prompt) is a
+            # refusal like the others in _start: a tombstone, and the SpawnFailed
+            # every caller handles rather than a crash of the manager's pass (T-102)
+            _refuse(paths, str(err), err)
         raise
     create_time = proc.process_create_time(child.pid)
     _write_json(paths.pid, {'pid': child.pid, 'create_time': create_time, 'process_seq': seq})
