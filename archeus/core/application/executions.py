@@ -385,10 +385,14 @@ def _finish(tx, actor, e, facts):
     """What every end of an execution that ran leaves behind (p12-design-gate
     §6, D5): the headless session it ran in, and its checkpoint."""
     from ..execution import checkpoint
-    from . import sessions
+    from . import queries, sessions
     if e.process_seq >= 1 and e.session_id is None:
         ref = (e.adapter_state or {}).get('session')
-        sessions.headless_session(tx, actor=actor, execution=e,
+        # the session is Core's record of what ran, whoever ends the execution: a
+        # user's stop or e-stop of a halted one ends it from their own command (T-101)
+        core = (actor if actor.kind == 'system'
+                else Ref('system', queries.system_principal(tx.conn)))
+        sessions.headless_session(tx, actor=core, execution=e,
                                   provider_session_ref=ref if isinstance(ref, str) else None)
         e = lifecycle.load(tx, entities.Execution, e.id).entity
     if checkpoint.ran(e):

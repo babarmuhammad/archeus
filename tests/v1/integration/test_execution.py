@@ -507,6 +507,48 @@ def test_E29_an_approved_action_resumes_the_same_execution_and_is_used_once(x):
     assert x.one(entities.Approval, id=a.id).state == 'CONSUMED'
 
 
+def _halted_for_approval(x):
+    """An execution waiting for an action approval, its halted process collected:
+    it ran (process 1) and has no session yet, which is written at its end."""
+    x.scenarios['t1'] = [TOOL('Bash', 'git push origin main'), DONE]
+    mid = x.ready_approved(task('t1', 'write_repo', 'git_push'))
+    e = x.drive(mid, lambda: (x.exe(mission_id=mid) is not None
+                              and x.exe(mission_id=mid).state == 'AWAITING_APPROVAL'
+                              and x.exe(mission_id=mid)))
+    x.drive(mid, lambda: e.id not in x.manager._procs)
+    e = x.state(e.id)
+    assert (e.state, e.process_seq, e.session_id) == ('AWAITING_APPROVAL', 1, None)
+    return mid, e
+
+
+def _session_of(x, e):
+    s = x.one(entities.Session, id=x.state(e.id).session_id)
+    created = [ev for ev in x.events('session.created') if ev['subject']['id'] == s.id]
+    assert len(created) == 1 and created[0]['actor']['kind'] == 'system', created
+    return s
+
+
+def test_T101_a_user_stop_ends_an_execution_waiting_for_approval(x):
+    mid, e = _halted_for_approval(x)
+    x.do(X.Executions(missions=x.missions).stop_execution, who=x.user, execution_id=e.id)
+    got = x.state(e.id)
+    assert (got.state, got.stop_reason) == ('ENDED_KILLED', 'user')
+    assert _session_of(x, e).execution_id == e.id       # Core's record of what ran
+
+
+def test_T101_the_estop_records_itself_over_an_execution_waiting_for_approval(x):
+    mid, e = _halted_for_approval(x)
+    LocalNode.engage_estop()
+    try:
+        out = x.do(X.Executions(missions=x.missions).estop, who=x.user)
+    finally:
+        LocalNode.clear_estop()
+    assert out['stopped'] == [e.id]
+    assert (x.state(e.id).state, x.state(e.id).stop_reason) == ('ENDED_KILLED', 'estop')
+    assert [ev['payload']['killed'] for ev in x.events('core.estopped')] == [[e.id]]
+    assert _session_of(x, e).execution_id == e.id
+
+
 # ── runtime: ceilings, limits, the breaker, usage ────────────────────────────
 
 def test_E30_crossing_the_allocation_stops_the_execution_uncharged_and_drops_affinity(db):
