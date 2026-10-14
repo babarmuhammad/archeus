@@ -28,8 +28,8 @@ from claude_sessions import config, proc
 
 from ..core.domain import ids
 from ..harnesses import base
-from ..infra.paths import (ExecPaths, archeus_home, processes_registry, repo_store, repos_dir,
-                           run_dir, seed_staging, stop_sentinel)
+from ..infra.paths import (ExecPaths, VerifyPaths, archeus_home, processes_registry,
+                           repo_store, repos_dir, run_dir, seed_staging, stop_sentinel)
 from . import isolation as isolation_mod
 from .staging import _entry, _present
 
@@ -607,6 +607,40 @@ class LocalNode:
         return {'exit_code': None if error else child.returncode,
                 'duration_ms': int((time.monotonic() - t0) * 1000), 'error': error,
                 'output': tail, 'output_bytes': size, 'truncated': size > keep}
+
+    def run_confined_check(self, verification_id, attempt, argv, *, toolchain, timeout,
+                           record, keep=CHECK_OUTPUT_KEEP):
+        """`run_check` confined (A6-3, T-054): the command runs as this attempt's own
+        principal inside a Core-held Job, in the checkout Core materialised under
+        `run/verify/<vid>/<n>/own/`, with an environment built from nothing and empty
+        stdin. The result is `run_check`'s plus `confinement`; *record* writes the
+        verdict before the profile goes (`Isolation.run_confined`). Not wired to the
+        verification worker yet (A6-4)."""
+        p = VerifyPaths(verification_id, attempt)
+        scratch = os.path.dirname(p.checkout)
+        stdin = os.path.join(p.dir, 'stdin')
+
+        def prepare():
+            # after admission, and fresh-only: an attempt's files are never reused,
+            # truncated or written over, whatever is already there
+            os.makedirs(os.path.dirname(p.dir), exist_ok=True)
+            os.mkdir(p.dir)
+            os.mkdir(scratch)
+            for d in (p.checkout, p.home, p.tmp, p.config):
+                os.mkdir(d)
+            for f in (stdin, p.out):
+                open(f, 'xb').close()
+            return base._verifier_env(toolchain, scratch)
+        grant = isolation_mod.Grant
+        request = isolation_mod.IsolationRequest(
+            execution_id=isolation_mod.Principal('verify', verification_id, attempt).key,
+            workspace=p.checkout,
+            grants=(grant(p.checkout, 'rw', 'checkout'), grant(scratch, 'rw', 'scratch'))
+            + tuple(grant(d, 'rx', 'toolchain') for d in toolchain),
+            core_state=run_dir())
+        return self.isolation.run_confined(
+            request, argv, env=None, timeout=timeout,
+            out_path=p.out, stdin_path=stdin, record=record, keep=keep, prepare=prepare)
 
     # ── PV-20 K1: the Core-owned store (keep-all: nothing here deletes) ──
 

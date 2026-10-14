@@ -47,6 +47,7 @@ Python install through a path parameter and broke it; nothing here takes one.
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import time
@@ -56,7 +57,9 @@ from claude_sessions import config
 
 from ..core.domain import ids
 from ..harnesses import base
-from ..infra.paths import ExecPaths, isolation_dir, isolation_state, quarantine_log, run_dir
+from ..infra.paths import (MAX_ATTEMPT, VERIFY_KEY, ExecPaths, isolation_dir, isolation_state,
+                           verify_consumed,
+                           quarantine_log, run_dir, verify_key_parts)
 from . import staging
 
 WINDOWS = sys.platform.startswith('win')
@@ -73,6 +76,9 @@ NETWORK_CAPABILITY_SIDS = ('S-1-15-3-1', 'S-1-15-3-2')
 #: the principal's name is derived from the execution id, so a resume of an execution
 #: reaches its own identity and no other execution can name it (R7).
 PROFILE_PREFIX = 'archeus.exec.'
+#: a verifier attempt's principal (A6): derived from its verification id and attempt,
+#: so it never equals or contains an execution's
+VERIFY_PREFIX = 'archeus.verify.'
 
 #: E's constant, not a setting: production dispatch of isolated executions is not
 #: implemented, so no real harness is dispatched isolated (PV-20 §3.4, §3.8; S1 gate
@@ -86,13 +92,17 @@ def production_dispatch_enabled():
 
 def profile_name(execution_id):
     """R7: the per-execution principal's name — one per execution, never shared, and
-    re-derivable (which is what lets a resume reuse it and a boot reclaim find it)."""
+    re-derivable (which is what lets a resume reuse it and a boot reclaim find it). A
+    verifier key names `archeus.verify.<verification_id>.<attempt>`."""
+    if str(execution_id).startswith(VERIFY_KEY):
+        p = principal(execution_id)
+        return '%s%s.%d' % (VERIFY_PREFIX, p.owner_id.lower(), p.attempt)
     safe = ''.join(c if (c.isalnum() or c in '_.-') else '-' for c in str(execution_id))
     return (PROFILE_PREFIX + safe.lower())[:127]
 
 
 def is_stale_profile(name):
-    return str(name or '').lower().startswith(PROFILE_PREFIX)
+    return str(name or '').lower().startswith((PROFILE_PREFIX, VERIFY_PREFIX))
 
 
 class IsolationUnavailable(Exception):
@@ -105,12 +115,45 @@ class IsolationUnavailable(Exception):
                          % (reason, ': %s' % detail if detail else ''))
 
 
+@dataclass(frozen=True)
+class Principal:
+    """One isolated principal (A6, T-054 C-1013 §2): the Core id it serves and, for a
+    verifier, which attempt. Its `key` is the only map key, record path and name source;
+    an execution's key is its own id. Every attempt is its own principal, so a retry
+    never reuses one."""
+    kind: str                   # 'exec' | 'verify'
+    owner_id: str
+    attempt: int = 0
+
+    def __post_init__(self):
+        owner = {'exec': 'execution', 'verify': 'verification'}.get(self.kind)
+        if not (owner and ids.is_id(self.owner_id, owner) and type(self.attempt) is int
+                and 0 <= self.attempt < MAX_ATTEMPT
+                and (self.kind == 'verify' or self.attempt == 0)):
+            raise IsolationUnavailable('profile_name', 'not a principal: %r' % (self,))
+
+    @property
+    def key(self):
+        if self.kind == 'exec':
+            return self.owner_id
+        return '%s%s.%d' % (VERIFY_KEY, self.owner_id, self.attempt)
+
+
+def principal(key):
+    """The principal *key* names; anything malformed is refused, never repaired."""
+    if str(key).startswith(VERIFY_KEY):
+        try:
+            vid, n = verify_key_parts(key)
+        except ValueError as err:
+            raise IsolationUnavailable('profile_name', str(err))
+        return Principal('verify', vid, n)
+    return Principal('exec', key)
+
+
 def validated_profile(execution_id):
-    """The profile name of a well-formed execution id. Every profile operation goes
+    """The profile name of a well-formed principal key. Every profile operation goes
     through this, so a name is never taken from a caller, a record or the ledger."""
-    if not ids.is_id(execution_id, 'execution'):
-        raise IsolationUnavailable('profile_name', 'not an execution id: %r' % (execution_id,))
-    return profile_name(execution_id)
+    return profile_name(principal(execution_id).key)
 
 
 # ── the §3.4 pre-spawn invariant ─────────────────────────────────────────────
@@ -124,6 +167,10 @@ CONDITIONS = ('identity', 'grants', 'no_broad_grants', 'job', 'mailbox', 'isolat
 #: the runtime and hook rows name Core's stage, which nothing grants), so it fails
 #: closed here.
 REQUIRED_GRANTS = ('workspace', 'runtime', 'hook', 'request', 'response', 'sentinel', 'state')
+
+#: a verifier's whole inventory (A6, T-054 §3): its checkout and scratch, which it
+#: writes, and Core's staged toolchain, which it runs. Any other row is condition 5's.
+VERIFY_GRANTS = (('checkout', 'rw'), ('scratch', 'rw'), ('toolchain', 'rx'))
 
 #: the execution's three mailbox classes (§7.5, R2) as inventory rows, each with the
 #: only access it may carry: the execution writes its requests (class 1) and reads
@@ -155,7 +202,7 @@ class IsolationRequest:
     start. A synthetic fixture supplies each artifact; the production layout does not
     (no broker, and no grant on Core-staged runtime and hook copies), so the same
     check that passes in a fixture fails closed for a production execution."""
-    execution_id: str
+    execution_id: str                    # the principal's key (`Principal.key`)
     workspace: str
     grants: tuple = ()                   # (Grant, ...)
     mailbox: str = ''                    # class 1: the execution's own request box
@@ -170,6 +217,45 @@ class IsolationRequest:
 
     def grant_for(self, row):
         return next((g for g in self.grants if g.row == row), None)
+
+    @property
+    def kind(self):
+        return 'verify' if str(self.execution_id).startswith(VERIFY_KEY) else 'exec'
+
+
+def _admit(key):
+    """A verifier attempt is used once (A6): its consumed marker is created exclusively
+    before anything else, and nothing removes it, so a released, reclaimed or
+    restarted-over attempt is refused like a running one. A record without a marker
+    (written before the marker existed) is refused too."""
+    marker = verify_consumed(key)
+    if os.path.lexists(isolation_state(key)):
+        raise IsolationUnavailable('attempt_consumed', key)
+    try:
+        os.makedirs(os.path.dirname(marker), exist_ok=True)
+        with open(marker, 'x', encoding='utf-8') as f:
+            f.write(key + '\n')
+    except FileExistsError:
+        raise IsolationUnavailable('attempt_consumed', key) from None
+    except OSError as err:
+        # nothing was created: the attempt is not admitted, and not started
+        raise IsolationUnavailable('attempt_unadmitted', '%s: %s' % (key, err)) from None
+
+
+def _verify_rows(request):
+    """Every grant of a verifier checked, never only the first of a row: exactly one
+    checkout and one scratch, any number of distinct toolchain paths, each row at
+    exactly its access. Returns the problems, empty when the rows hold."""
+    access = dict(VERIFY_GRANTS)
+    rows = [g.row for g in request.grants]
+    out = [row for row in access if row not in rows]
+    out += ['%s:%s' % (g.row, g.access) for g in request.grants
+            if g.row in access and g.access != access[g.row]]
+    out += ['%s:duplicate' % row for row in ('checkout', 'scratch') if rows.count(row) > 1]
+    tools = [_norm(g.path) for g in request.grants if g.row == 'toolchain']
+    if len(set(tools)) != len(tools):
+        out.append('toolchain:duplicate')
+    return out
 
 
 def check_invariant(api, request, identity, job_facts=None):
@@ -196,12 +282,22 @@ def check_invariant(api, request, identity, job_facts=None):
 
     # 2. the required resource grants are established, workspace included (§3.1, §3.2 A1),
     # and each mailbox class is granted on its own directory with its own access (§7.5)
-    missing = [row for row in REQUIRED_GRANTS if request.grant_for(row) is None]
     boxes = {'request': request.mailbox, 'response': request.response,
              'sentinel': request.sentinel}
-    misclassed = [row for row, access in CLASS_ROWS if request.grant_for(row) is not None
-                  and (_norm(request.grant_for(row).path) != _norm(boxes[row])
-                       or request.grant_for(row).access != access)]
+    verifier = request.kind == 'verify'
+    if verifier:
+        # A6: every row at exactly its access, its one checkout the workspace
+        missing = _verify_rows(request)
+        checkout = request.grant_for('checkout')
+        misclassed = [] if checkout and _norm(checkout.path) == _norm(request.workspace) \
+            else ['checkout']
+        misplaced = 'the checkout is not granted as the workspace: %s'
+    else:
+        missing = [row for row in REQUIRED_GRANTS if request.grant_for(row) is None]
+        misclassed = [row for row, access in CLASS_ROWS if request.grant_for(row) is not None
+                      and (_norm(request.grant_for(row).path) != _norm(boxes[row])
+                           or request.grant_for(row).access != access)]
+        misplaced = 'a mailbox class granted at another path or access: %s'
     absent = [g.path for g in request.grants if not os.path.isdir(g.path)]
     # a descriptor is read only where there is one: a path that is not there already
     # fails this condition by name, and a read that fails raises rather than pass
@@ -209,15 +305,14 @@ def check_invariant(api, request, identity, job_facts=None):
     unverified = [g.path for g in present if not api.grant_established(g.path, sid, g.access)]
     put('grants', not (missing or misclassed or absent or unverified)
         and bool(request.workspace) and os.path.isdir(request.workspace)
-        and bool(request.broker),
+        and (verifier or bool(request.broker)),
         _reason((not missing, 'missing inventory rows: %s' % (missing,)),
-                (not misclassed, 'a mailbox class granted at another path or access: %s'
-                 % (misclassed,)),
+                (not misclassed, misplaced % (misclassed,)),
                 (not absent, 'granted path that is not present: %s' % (absent,)),
                 (not unverified, 'grant unreadable in the DACL: %s' % (unverified,)),
                 (bool(request.workspace) and os.path.isdir(request.workspace),
                  'no Core-established workspace (§3.2, A1)'),
-                (bool(request.broker), 'no broker holds provider access (R3-B)')))
+                (verifier or bool(request.broker), 'no broker holds provider access (R3-B)')))
 
     # 3. prohibited broad grants are absent (§3.1)
     broad = [g.path for g in present if api.broad_write_grant(g.path, sid)]
@@ -243,18 +338,29 @@ def check_invariant(api, request, identity, job_facts=None):
     # 5. the required Core/mailbox boundary exists (§3.3, §7.5): classes 1, 2 and 3 are
     # three directories, none of them another or inside another or Core's own, none of
     # them is, holds or lies inside the execution's workspace or state (class 7), and
-    # the spawn configuration Core wrote is in class 2
-    put('mailbox', all(boxes.values()) and bool(request.spawn_config)
-        and bool(request.core_state)
-        and all(os.path.isdir(p) for p in boxes.values())
-        and _separate(boxes.values(), (request.workspace, request.state_dir))
-        and not {_norm(p) for p in boxes.values()} & {_norm(p) for p in core}
-        and os.path.isfile(request.spawn_config)
-        and _norm(os.path.dirname(request.spawn_config)) == _norm(request.response)
-        and not any(api.granted_to(p, sid) for p in core),
-        'no separate class 1, 2 and 3 directories apart from the workspace and state, '
-        'with the Core-authored spawn configuration in class 2, or Core-owned state is '
-        'unnamed or sits inside the boundary')
+    # the spawn configuration Core wrote is in class 2. A verifier (A6) has the inverse:
+    # no mailbox class, spawn configuration, broker or other row named, and Core's own
+    # state named and ungranted
+    if verifier:
+        stray = [g.row for g in request.grants if g.row not in dict(VERIFY_GRANTS)]
+        put('mailbox', not (stray or any(boxes.values()) or request.spawn_config
+                            or request.broker)
+            and bool(request.core_state) and not any(api.granted_to(p, sid) for p in core),
+            'a verifier is given an execution interface (a mailbox class, a spawn '
+            'configuration, a broker or rows %s), or Core-owned state is unnamed or '
+            'granted' % (stray,))
+    else:
+        put('mailbox', all(boxes.values()) and bool(request.spawn_config)
+            and bool(request.core_state)
+            and all(os.path.isdir(p) for p in boxes.values())
+            and _separate(boxes.values(), (request.workspace, request.state_dir))
+            and not {_norm(p) for p in boxes.values()} & {_norm(p) for p in core}
+            and os.path.isfile(request.spawn_config)
+            and _norm(os.path.dirname(request.spawn_config)) == _norm(request.response)
+            and not any(api.granted_to(p, sid) for p in core),
+            'no separate class 1, 2 and 3 directories apart from the workspace and state, '
+            'with the Core-authored spawn configuration in class 2, or Core-owned state is '
+            'unnamed or sits inside the boundary')
 
     # 6. the isolated spawn path is selected (§3.4)
     put('isolated_path', bool(request.isolated_path) and api.available(),
@@ -498,7 +604,9 @@ def _ledger_problem(e, api):
         return problem
     if e.get('op') not in ('quarantine', 'released'):
         return 'op_unknown'
-    if not ids.is_id(e.get('execution_id'), 'execution'):
+    try:
+        principal(e.get('execution_id'))
+    except IsolationUnavailable:
         return 'execution_id_invalid'
     if e['op'] == 'released':
         return ''
@@ -511,6 +619,14 @@ EXIT_WAIT_S = 2.0
 FENCE_POLL_S = 0.05
 #: the fence's clock and sleep: a test moves them, never the code
 _clock, _sleep = time.monotonic, time.sleep
+
+#: a confined verifier run's limits (A6-3, T-054 C-1013 §3). They are soft DETECTION:
+#: Core polls, so between two polls a writer is bounded only by its own rate, and no
+#: hard bound on bytes written is claimed
+CONFINED_OUT_MAX = 64 << 20         # out.log
+CONFINED_GROWTH_MAX = 2 << 30       # checkout and scratch growth over the start
+CONFINED_POLL_S = 1.0
+CONFINED_WALK_MAX = 200000          # entries per accounting walk
 
 
 class Isolation:
@@ -541,6 +657,9 @@ class Isolation:
         self.faults = {}
         #: executions whose `released` line this Core has seen confirmed: profile absent
         self._released = set()
+        #: verifier attempts this Core is running now: live whatever a caller says (A6-3)
+        self._confined = set()
+        self._admitted = set()        # verifier keys this Core admitted, not yet established
 
     # ── the boundary ──
 
@@ -614,8 +733,9 @@ class Isolation:
                              'applied %r)' % (rec.execution_id, rec.state, rec.applied))
         rec.updated = time.time()
         rec.at = rec.at or rec.updated
-        os.makedirs(isolation_dir(), exist_ok=True)
-        if not config.write_json_atomic(isolation_state(rec.execution_id), rec.as_dict(),
+        path = isolation_state(rec.execution_id)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if not config.write_json_atomic(path, rec.as_dict(),
                                         indent=None):
             raise OSError('could not write the isolation record of %s' % rec.execution_id)
         return rec
@@ -677,6 +797,11 @@ class Isolation:
         quarantine line, a registry note) is an establishment failure like any other:
         nothing starts, and what is on disk decides what cleanup may do."""
         api = self.boundary
+        if request.kind == 'verify':
+            if request.execution_id in self._admitted:
+                self._admitted.discard(request.execution_id)     # admitted by run_confined
+            else:
+                _admit(request.execution_id)
         prior = self.record(request.execution_id)
         if prior is not None and prior.state == 'invalid':
             # a record exists and cannot be trusted: nothing is created for this
@@ -1070,7 +1195,7 @@ class Isolation:
         error is a bug, and a ledger that cannot be read, a record directory that cannot
         be listed, or a registry that cannot take the fault's own note fails the whole
         sweep, for the manager to report."""
-        live = set(live_execution_ids or ())
+        live = set(live_execution_ids or ()) | self._confined
         done, seen = [], set()
         for execution_id, (n, entry) in sorted(self._ledger().items()):
             if execution_id in live:
@@ -1131,23 +1256,235 @@ class Isolation:
         return bool(out) and out['profile'] == 'torn_down'
 
     def stale(self, live_execution_ids=()):
-        """Isolation records whose execution is not live. A file whose name is not an
-        execution id is reported, never acted on."""
+        """Isolation records whose principal is not live, executions' and verifier
+        attempts' alike. A file whose name is not a principal's is reported, never acted
+        on."""
         live = set(live_execution_ids or ())
-        try:
-            names = os.listdir(isolation_dir())
-        except FileNotFoundError:
-            return []
         out = []
-        for n in names:
-            if not n.endswith('.json'):
+        for prefix, why in (('', 'not_an_execution_id'), (VERIFY_KEY, 'not_a_verifier_key')):
+            try:
+                names = os.listdir(os.path.join(isolation_dir(), prefix))
+            except FileNotFoundError:
                 continue
-            eid = n[:-len('.json')]
-            if not ids.is_id(eid, 'execution'):
-                self._report_invalid(n, 'not_an_execution_id')
-            elif eid not in live:
-                out.append(eid)
+            for n in names:
+                if not n.endswith('.json'):
+                    continue
+                key = prefix + n[:-len('.json')]
+                try:
+                    principal(key)
+                except IsolationUnavailable:
+                    self._report_invalid(prefix + n, why)
+                    continue
+                if key not in live:
+                    out.append(key)
         return out
+
+    # ── one confined verifier attempt (A6-3, T-054 C-1013 §1 and §3) ──
+
+    def run_confined(self, request, argv, *, env, timeout, out_path, stdin_path, record,
+                     keep, prepare=None):
+        """One verifier attempt, in this order: admit it (its consumed marker, before
+        any file of it is written) -> `prepare()`, the caller's fresh-only creation of
+        the attempt's files, which returns the environment built over them (and replaces
+        *env*) -> establish its principal (nothing is
+        launched unless all six conditions hold) -> launch into its Core-held Job with
+        Core's handles -> wait under the soft limits -> tree shutdown, after confirmed
+        quiescence when the root exited cleanly -> freeze the output -> `record(result)`
+        -> delete the profile. Returns `run_check`'s result plus `confinement`; `error`
+        is set whenever the run cannot be read as a clean finish.
+
+        *record* is the caller's durable write of the verdict. It returns once the
+        verdict is recorded, or once the row no longer awaits it; whatever it raises
+        leaves the profile for reclaim and propagates. A teardown that fails quarantines
+        the profile and never touches the result. Anything raised after
+        establishment closes the Job first and propagates: no result is recorded and
+        the profile is left for reclaim."""
+        key = request.execution_id
+        self._confined.add(key)
+        try:
+            result, established = self._run_confined(request, argv, env, timeout,
+                                                      out_path, stdin_path, keep, prepare)
+            record(result)
+            if established:
+                self._contained(key, lambda: self.teardown(key, reason='verified'))
+            return result
+        finally:
+            self._confined.discard(key)
+
+    def _run_confined(self, request, argv, env, timeout, out_path, stdin_path, keep, prepare):
+        key, api = request.execution_id, self.boundary
+        t0 = time.monotonic()
+        try:
+            _admit(key)
+        except IsolationUnavailable as err:
+            # refused before any file of the attempt is touched, so nothing is read
+            return _unread(t0, 'isolation: %s' % err.reason), False
+        self._admitted.add(key)
+        if prepare is not None:
+            try:
+                env = prepare()
+            except (OSError, ValueError) as err:
+                self._admitted.discard(key)          # admitted and consumed, never started
+                return _unread(t0, 'prepare_failed: %s' % err), False
+        try:
+            rec = self.establish(request)
+        except IsolationUnavailable as err:
+            return _confined_result(out_path, keep, t0, 'isolation: %s' % err.reason, None,
+                                    {}), False
+        finally:
+            self._admitted.discard(key)
+        facts = {'isolated': True, 'ac_profile': rec.profile, 'ac_sid': rec.sid,
+                 'capabilities': list(rec.capabilities),
+                 'job': 'core-held-unnamed-kill-on-close'}
+        rows = [request.grant_for(r).path for r in ('checkout', 'scratch')]
+        roots = [p for p in rows if not any(_norm(p) != _norm(q) and _within(p, q)
+                                            for q in rows)]
+        deadline = t0 + timeout
+        late = 'timed out after %ds' % timeout
+        try:
+            try:
+                start = _tree_bytes(roots)
+            except OSError as err:
+                error, child = 'accounting_failed: %s' % err, None
+            else:
+                error, child = self._confined_launch(api, rec, request, argv, env,
+                                                     stdin_path, out_path)
+            while error is None:
+                exited = child.wait(min(CONFINED_POLL_S,
+                                        max(0.0, deadline - time.monotonic()))) is not None
+                # the deadline is read after the monitor and before the exit counts:
+                # an exit or an accounting pass that ends late is a timeout, not a pass
+                error = _over_limit(out_path, roots, start) or (
+                    late if time.monotonic() >= deadline else None)
+                if exited:
+                    break
+            if error is None:
+                error = self._quiescent(api, self.held_job(key)) or (
+                    late if time.monotonic() >= deadline else None)
+        except BaseException:
+            # the Job never outlives a failure here: closed, and the failure raised as it
+            # was. No result is recorded and the profile is left for reclaim
+            try:
+                self._close_job(key)
+            except Exception:
+                pass
+            raise
+        try:
+            self._close_job(key)
+        except (IsolationUnavailable, OSError) as err:
+            error = error or 'shutdown_failed: %s' % err
+        code = None if error else child.wait(0)
+        return _confined_result(out_path, keep, t0, error, code, facts), True
+
+    def _confined_launch(self, api, rec, request, argv, env, stdin_path, out_path):
+        handles = []
+        try:
+            handles.append(api.open_inherited(stdin_path, 'read'))
+            handles.append(api.open_inherited(out_path, 'append'))
+            child = api.launch(list(argv), cwd=request.workspace, env=env,
+                               profile=rec.profile, job=self.held_job(rec.execution_id),
+                               stdin=handles[0], stdout=handles[1])
+        except Exception as err:                       # nothing half-started survives
+            failed = getattr(err, 'child', None)
+            if failed is not None:
+                self._live[rec.execution_id] = failed
+            return 'launch_failed: %s' % err, None
+        finally:
+            for h in handles:
+                try:
+                    api.close_handle(h)
+                except Exception:
+                    pass
+        self._live[rec.execution_id] = child
+        return None, child
+
+    @staticmethod
+    def _quiescent(api, job):
+        """None once the held Job reports no member within `EXIT_WAIT_S`, else why not.
+        A count Core cannot read is never zero, and a survivor is never waited out."""
+        count = getattr(api, 'job_active_processes', None)
+        if job is None or count is None:
+            return 'quiescence_unknown: no Job count to read'
+        deadline = time.monotonic() + EXIT_WAIT_S
+        while True:
+            try:
+                n = count(job)
+            except (IsolationUnavailable, OSError) as err:
+                return 'quiescence_unknown: %s' % err
+            if type(n) is int and n == 0:
+                return None
+            if time.monotonic() >= deadline:
+                return 'quiescence_unknown: %r still in the Job' % (n,)
+            time.sleep(0.05)
+
+
+def _tree_bytes(roots):
+    """Bytes under *roots*, counted without following any link: a symlink or a
+    reparse point (a junction) counts as itself and is never entered. Raises OSError
+    when an entry cannot be classified or the walk outgrows `CONFINED_WALK_MAX`, so an
+    unknown size is never read as a small one."""
+    total, seen, todo = 0, 0, list(roots)
+    while todo:
+        path = todo.pop()
+        # a root, or a directory queued as plain and replaced before its turn, is read
+        # again without following: an alias is never entered. The interval between this
+        # read and the scan itself stays open (a same-user race), narrowed not closed
+        if not _plain_dir(os.lstat(path)):
+            raise OSError('not a plain directory when scanned: %s' % path)
+        with os.scandir(path) as entries:
+            for e in entries:
+                seen += 1
+                if seen > CONFINED_WALK_MAX:
+                    raise OSError('more than %d entries' % CONFINED_WALK_MAX)
+                st = e.stat(follow_symlinks=False)
+                reparse = getattr(st, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+                if _plain_dir(st):
+                    todo.append(e.path)
+                elif stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode) or reparse:
+                    total += st.st_size
+                else:
+                    raise OSError('an entry that cannot be classified: %s' % e.path)
+    return total
+
+
+def _plain_dir(st):
+    return stat.S_ISDIR(st.st_mode) and not (
+        getattr(st, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _over_limit(out_path, roots, start):
+    try:
+        out = os.lstat(out_path).st_size
+        grown = _tree_bytes(roots) - start
+    except OSError as err:
+        return 'accounting_failed: %s' % err
+    if out > CONFINED_OUT_MAX:
+        return 'limit_exceeded: out.log holds %d bytes' % out
+    if grown > CONFINED_GROWTH_MAX:
+        return 'limit_exceeded: the checkout and scratch grew %d bytes' % grown
+    return None
+
+
+def _unread(t0, error):
+    """A refusal before any file of the attempt was written: no output read."""
+    return {'exit_code': None, 'duration_ms': int((time.monotonic() - t0) * 1000),
+            'error': error, 'output': b'', 'output_bytes': 0, 'truncated': False,
+            'confinement': {}}
+
+
+def _confined_result(out_path, keep, t0, error, code, facts):
+    tail, size = _captured(out_path, keep)
+    return {'exit_code': code, 'duration_ms': int((time.monotonic() - t0) * 1000),
+            'error': error, 'output': tail, 'output_bytes': size, 'truncated': size > keep,
+            'confinement': facts}
+
+
+def _captured(out_path, keep):
+    """The output, frozen: its last *keep* bytes and its size."""
+    size = os.path.getsize(out_path)
+    with open(out_path, 'rb') as f:
+        f.seek(max(0, size - keep))
+        return f.read(), size
 
 
 def _staged(cmd):
