@@ -83,11 +83,18 @@ def request(base, method, path, *, token=None, body=None, headers=None, raw=None
     if data is not None:
         h.setdefault('Content-Type', 'application/json')
     req = urllib.request.Request(base + path, data=data, method=method, headers=h)
+    start = time.monotonic()
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return Response(r.status, r.headers, r.read())
     except urllib.error.HTTPError as e:
         return Response(e.code, e.headers, e.read())
+    except (TimeoutError, urllib.error.URLError) as e:
+        # a connect timeout arrives wrapped in URLError, a read timeout bare
+        if not isinstance(getattr(e, 'reason', e), TimeoutError):
+            raise
+        raise TimeoutError('%s %s: no answer within the %ss socket timeout (%.1fs elapsed)'
+                           % (method, path, timeout, time.monotonic() - start)) from e
 
 
 class HttpClient:
