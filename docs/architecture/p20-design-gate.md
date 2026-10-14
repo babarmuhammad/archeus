@@ -2046,7 +2046,7 @@ credential store was read: this review covers Archeus's own files and code only.
      | Hook-token hash | DB execution row `hook_token_hash` | sha256 | `core/application/executions.py:141` | Cleared to `None` on every end path (`executions.py:196`, `:345`, `:351`, `:357`, `:380`, `:456`, `:675`, `:710`). Stripped from reads (`:929`, `:977`) |
      | Hook token, plaintext | `run/exec/<id>/req/<seq>.req.json` | plaintext JSON field `token` | the hook process, `harnesses/hook.py:160` via `_reserve` (`:109`) | Inherits the execution directory's ACL. Dead once the execution ends, because its hash is cleared and a hashless execution refuses every token (`executions.py:741`). Not deleted (item 111) |
      | Step-up PIN | DB device row `pin_hash` | `pbkdf2_sha256`, 200,000 iterations, 16-byte salt | `core/application/commands.py:96` `hash_pin`, from `api/routes.py:286` | `entities.PIN_HASH` refuses any other shape (`entities.py:194`, `:229`). Compared with `hmac.compare_digest` |
-     | The Qt shell page's device token | `<ARCHEUS_HOME>/QtWebEngine/archeus` (the persistent QtWebEngine profile, its IndexedDB) | plaintext | the SPA, `clients/app/src/api/transport.ts:38` `saveToken`, under `claude_sessions/gui_qt.py:171-173` and `archeus/cli/gui.py:38` | Inherits the ARCHEUS_HOME DACL (item 111) |
+     | The Qt shell page's device token | the Qt shell's persistent QtWebEngine profile, `QtWebEngine/archeus` in the home (the legacy Qt shell's entry, target-architecture §5.1), its IndexedDB | plaintext | the SPA, `clients/app/src/api/transport.ts:38` `saveToken`, under `claude_sessions/gui_qt.py:171-173` and `archeus/cli/gui.py:38` | Inherits the ARCHEUS_HOME DACL (item 111) |
      | Database backups | the backup directory | copies of the DB, so the hashes above | `infra/db/backup.py:56` | As the rows they copy |
 
      - **Memory only:** launch codes (60 s) and pairing codes (120 s), held as sha256 keys
@@ -2161,6 +2161,29 @@ credential store was read: this review covers Archeus's own files and code only.
        `3d98f84`.** `91cbb0c` was built on `f6abc4d` + `3257dd0` and still pins `source-map-js`
        1.2.1. The next T-072 rebuild must take `3d98f84` from the branch. It closes with that
        merge and needs no separate change.
+
+114. **Slice I verified, and its status (2026-10-15).**
+     - **Ran, on this slice's head:**
+       - `tests/v1/unit`, `tests/v1/judge/test_traceability.py`, `tests/test_p05_seams.py`, the
+         integration files `test_core_lifecycle`, `test_estop_drills`, `test_presence` and
+         `test_stream_takeover`, and the contract files `test_core_client` and
+         `test_adapter_contract`, with `-m "not real_process"`: 2,644 passed, 5 skipped,
+         1 xfailed.
+       - `ruff check . --extend-exclude prototypes`: clean. `git diff --check`: clean.
+       - The mutants of item 109: 5 of 5 caught.
+     - **A correction inside this slice.** The first run failed one test:
+       `test_paths::test_the_ownership_table_is_the_declaration`. Item 109's table had written
+       the Qt profile as a `<ARCHEUS_HOME>/` path, a form that test reserves for V1-owned
+       entries. The cell now names the entry without that form; nothing else in the table
+       changed.
+     - **Not run:** POSIX; the SPA, browser and e2e suites; native tests; a real tunnel or
+       paired phone; a Python audit of the optional extras; the networked `npm audit` (the CI
+       result of item 113 stands in for it).
+     - **§10 against this slice.** The secrets review, the remote-access review and the
+       dependency audit are committed, and none of their findings is High. The threat model
+       document itself remains slice G's (item 112). I-F1, I-F2 and I-F5 are Medium and are
+       the owner's to dispose of: I-F5 closes with the next candidate rebuild.
+     - Slice H is next (item 108).
 
 ## 13. As built
 (Filled at the end of P20.)
