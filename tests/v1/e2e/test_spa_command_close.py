@@ -94,7 +94,7 @@ def test_forced_colours_and_high_contrast_keep_close_visible(browser, core):
         check(close.is_visible() and style[0] == 'visible' and style[1] != 'none'
               and style[2] != 'none' and style[3] >= 1, '%s: Close drawn with a border: %s' % (media, style))
         close.tap()
-        wait(page, lambda: not _is_open(page), what='Close closes the bar under %s' % media)
+        wait(page, lambda page=page: not _is_open(page), what='Close closes the bar under %s' % media)
         check(True, '%s: Close still closes' % media)
         check(not errors, errors)
         context.close()
