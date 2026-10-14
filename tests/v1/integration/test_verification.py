@@ -514,6 +514,31 @@ def test_a_task_branch_holding_commits_its_base_lacks_is_never_moved(tmp_path):
     assert not os.path.exists(str(tmp_path / 'wt'))
 
 
+def test_a_snapshot_of_a_rewrite_that_changes_nothing_keeps_the_head(tmp_path):
+    """Under core.autocrlf the checkout holds CRLF; a task that writes the same
+    content with LF changes the file's size, so `status` calls it modified while
+    `add` stages nothing. That is no change to commit, not a git failure."""
+    root = _repo_with_commit(tmp_path)
+    _git(root, 'config', 'core.autocrlf', 'true')
+    calc = os.path.join(root, 'calc.py')
+    with open(calc, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(FIX)
+    _git(root, 'add', 'calc.py')
+    _git(root, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'calc')
+    os.remove(calc)
+    _git(root, 'checkout', '-q', '--', 'calc.py')
+    with open(calc, 'rb') as f:
+        assert b'\r\n' in f.read()
+    with open(calc, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(FIX)
+    head = _git(root, 'rev-parse', 'HEAD')
+    assert LocalNode.git_dirty(root) is True
+    assert LocalNode.git_snapshot(root, 'nothing new') == head
+    with open(os.path.join(root, 'notes.txt'), 'w', encoding='utf-8') as f:
+        f.write('new\n')
+    assert LocalNode.git_snapshot(root, 'something new') != head
+
+
 # ── A6: the interim command guard (T-041, T-042) ────────────────────────────
 
 #: the Git a legacy unknown or ordinary execution keeps under G1 (never a command)
