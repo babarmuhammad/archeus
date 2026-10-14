@@ -931,13 +931,15 @@ class Child:
         return b''
 
     def _write(self, data):
+        if self.code == 'gone':
+            raise BrokenPipeError('the child is gone')
         self.written += data
 
     def kill(self):
         self.killed.set()
 
     def wait(self):
-        self.returncode = -9 if self.killed.is_set() else self.code
+        self.returncode = -9 if self.killed.is_set() else 0 if self.code == 'gone' else self.code
         return self.returncode
 
 
@@ -1390,14 +1392,15 @@ def test_hashing_a_big_file_reads_the_deadline_per_mib(clock, tmp_path):
     assert len(reads) == 2                    # refused at the first MiB read once it is late
 
 
-@pytest.mark.parametrize('how', ['ok', 'sink-refuses', 'child-fails', 'timeout'])
+@pytest.mark.parametrize('how', ['ok', 'stdin-unwritable', 'sink-refuses', 'child-fails',
+                                 'timeout'])
 def test_every_stream_the_byte_core_opened_is_closed_whatever_happened(child, how):
-    c = child.use(Child([b'a', b'b'], code=1 if how == 'child-fails' else 0,
-                        stall=how == 'timeout'))
+    code = {'child-fails': 1, 'stdin-unwritable': 'gone'}.get(how, 0)
+    c = child.use(Child([b'a', b'b'], code=code, stall=how == 'timeout'))
     sink = Sink(refuse_at=1 if how == 'sink-refuses' else None)
     call = lambda: LocalNode.store_git('trusted', ['cat-file', '--batch'], workdirs=(),  # noqa
                                        git_dir=STORE(), stdin=b'q\n', sink=sink, timeout=0.3)
-    if how == 'ok':
+    if how in ('ok', 'stdin-unwritable'):
         call()
         assert not hasattr(sink, 'aborted')
     else:

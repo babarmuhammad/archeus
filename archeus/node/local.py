@@ -1200,9 +1200,8 @@ def _stream(argv, cwd, env, stdin, sink, timeout):
         p.wait()
         for t in helpers:
             t.join()
-        for pipe in (p.stdin, p.stdout, p.stderr):
-            if pipe is not None:
-                _quietly(pipe.close)
+        for pipe in (p.stdout, p.stderr):  # stdin: the feeder's finally
+            _quietly(pipe.close)
 
 
 def _quietly(close):
