@@ -1695,6 +1695,10 @@ def _write_like(mask):
                         | WRITE_DAC | WRITE_OWNER | DELETE))
 
 
+def _read_like(mask):
+    return bool(mask & (GENERIC_READ | GENERIC_ALL | FILE_READ_DATA))
+
+
 def parse_ace(raw):
     """One DACL ACE as `(type, sid, mask, flags)`, read from its own bytes: ACE_HEADER
     (type, flags, size), the mask, then the SID (MS-DTYP 2.4.2). Anything that is not
@@ -1764,8 +1768,16 @@ class DaclReaders:
         """The first of `BROAD_PRINCIPALS` that an allow ACE on *path* gives a write-like
         right, or None. Conservative like `granted_to`: an inherit-only ACE counts, since
         it reaches everything created inside *path*."""
+        return self._broad(path, _write_like)
+
+    def broad_reader(self, path):
+        """`broad_writer` for reading: a broad principal that may read *path*'s data (on a
+        directory, list it; inherited, read what is created in it)."""
+        return self._broad(path, _read_like)
+
+    def _broad(self, path, like):
         return next((s for t, s, m, f in self.dacl(path)
-                     if t in ALLOW_ACE_TYPES and _write_like(m) and s in BROAD_PRINCIPALS), None)
+                     if t in ALLOW_ACE_TYPES and like(m) and s in BROAD_PRINCIPALS), None)
 
 
 if WINDOWS:

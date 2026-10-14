@@ -188,19 +188,22 @@ def test_a_home_a_broad_principal_may_write_warns_in_status_and_the_log(archeus_
     home = paths.archeus_home()
     core = TempCore(archeus_home).start()
     try:
-        sid = isolation.WindowsBoundary().broad_writer(home)  # the real DACL, read only
+        boundary = isolation.WindowsBoundary()              # the real DACL, read only
+        sid, how = boundary.broad_writer(home), 'written'
+        if sid is None:
+            sid, how = boundary.broad_reader(home), 'read'
         code, out = _status(capsys, monkeypatch)
         assert code == 0
-        if sid is None:
+        if sid is None:     # the token inherits the home's ACL, so it is clean too
             assert core.core.warning is None and 'warning:' not in out
         else:
-            want = 'ARCHEUS_HOME %s can be written by %s (%s)' % (
-                os.path.abspath(home), isolation.BROAD_PRINCIPALS[sid], sid)
+            want = 'ARCHEUS_HOME %s can be %s by %s (%s)' % (
+                os.path.abspath(home), how, isolation.BROAD_PRINCIPALS[sid], sid)
             assert want in core.core.warning and 'warning: ' + want in out
     finally:
         core.stop()
     log = open(os.path.join(home, 'logs', 'core.log'), encoding='utf-8').read()
-    assert (sid is None) == ('can be written by' not in log)
+    assert (sid is None) == ('can be %s by' % how not in log)
 
 
 @pytest.mark.skipif(not WINDOWS, reason='the Windows home-ACL rule')
