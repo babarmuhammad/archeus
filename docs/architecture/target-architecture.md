@@ -238,6 +238,16 @@ reset behaviour are unchanged. The layouts recorded in `execution-architecture.m
 `p11-design-gate.md` (workspace table), `p13-design-gate.md` (§8, §12.1), `pv13-…` and
 `pv20-execution-isolation-design.md` describe worktrees created before this amendment.
 
+**Amendment 2026-10-14 (T-089, who may write the home).** `ARCHEUS_HOME` belongs under the user
+profile, as the default `%LOCALAPPDATA%\Archeus` is: a folder there inherits an ACL that only the
+user, SYSTEM and Administrators may write. A folder under a drive root such as `D:\` inherits
+MODIFY for Authenticated Users, so every signed-in user of the machine could change Core's
+database, `run/` and worktrees (measured, T-068). On Windows Core reads the home's DACL at start
+(read only; nothing writes an ACL) and, when Everyone, Authenticated Users, Users or an app-package
+group may write it, logs a warning naming the principal and the path, which `archeus status`
+also prints. It warns and never refuses: pytest's temporary homes and existing installs outside
+the profile inherit that ACE.
+
 | Store | Technology | Contents | Truth for |
 |---|---|---|---|
 | `<ARCHEUS_HOME>/archeus.db` | SQLite WAL, `PRAGMA user_version` migrations | all entities of domain-model.md, `events`, `consumer_cursors`, `consumer_effects`, `idempotency_keys` | current state, history, knowledge |

@@ -188,11 +188,11 @@ CLASS_ROWS = (('request', 'rw'), ('response', 'rx'), ('sentinel', 'rx'))
 #: principals that must never hold a write ACE inside the boundary. Every one of them
 #: is a *broad* principal: what it grants reaches users and containers this execution
 #: has no business reaching (§3.1, "what it explicitly cannot access").
-BROAD_PRINCIPALS = ('S-1-1-0',            # Everyone
-                    'S-1-5-11',           # Authenticated Users
-                    'S-1-5-32-545',       # Builtin\Users
-                    'S-1-15-2-1',          # ALL APPLICATION PACKAGES
-                    'S-1-15-2-2')          # RESTRICTED ALL APPLICATION PACKAGES
+BROAD_PRINCIPALS = {'S-1-1-0': 'Everyone',
+                    'S-1-5-11': 'Authenticated Users',
+                    'S-1-5-32-545': 'Users',
+                    'S-1-15-2-1': 'ALL APPLICATION PACKAGES',
+                    'S-1-15-2-2': 'ALL RESTRICTED APPLICATION PACKAGES'}
 
 
 @dataclass(frozen=True)
@@ -1759,6 +1759,13 @@ class DaclReaders:
         return next((s for t, s, m, f in self.dacl(path)
                      if t in ALLOW_ACE_TYPES and _write_like(m)
                      and (s in BROAD_PRINCIPALS or s not in (sid, SYSTEM_SID, me))), None)
+
+    def broad_writer(self, path):
+        """The first of `BROAD_PRINCIPALS` that an allow ACE on *path* gives a write-like
+        right, or None. Conservative like `granted_to`: an inherit-only ACE counts, since
+        it reaches everything created inside *path*."""
+        return next((s for t, s, m, f in self.dacl(path)
+                     if t in ALLOW_ACE_TYPES and _write_like(m) and s in BROAD_PRINCIPALS), None)
 
 
 if WINDOWS:
