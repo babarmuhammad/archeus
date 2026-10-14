@@ -15,6 +15,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -888,11 +889,11 @@ def test_a_tampered_staging_file_refuses_the_rename_and_staging_is_kept(world, m
     pid, eid, base, branch = _seed(world, monkeypatch, proj)
     real = local._seed_walk
 
-    def tamper(top):
+    def tamper(top, *a):
         p = os.path.join(top, 'crlf.txt')
         with open(p, 'r+b') as f:
             f.write(b'X')
-        return real(top)
+        return real(top, *a)
     monkeypatch.setattr(local, '_seed_walk', tamper)
     _refused(pid, eid, base, branch, 'differs from its tree')
     assert os.path.isdir(paths.seed_staging(eid))                            # kept
@@ -911,10 +912,10 @@ def test_a_junction_planted_in_staging_refuses_the_rename(world, monkeypatch, tm
     pid, eid, base, branch = _seed(world, monkeypatch, proj)
     real = local._seed_walk
 
-    def plant(top):
+    def plant(top, *a):
         (tmp_path / 'outside').mkdir()
         _junction(os.path.join(top, 'dir', 'j'), tmp_path / 'outside')
-        return real(top)
+        return real(top, *a)
     monkeypatch.setattr(local, '_seed_walk', plant)
     _refused(pid, eid, base, branch, 'alias')
     assert os.path.isdir(paths.seed_staging(eid))                            # kept
@@ -946,3 +947,61 @@ def test_a_head_tree_that_is_not_the_seeds_refuses_the_rename(world, monkeypatch
         return real(mode, args, **kw)
     monkeypatch.setattr(LocalNode, 'store_git', staticmethod(other_tree))
     _refused(pid, eid, base, branch, 'seed index')
+
+
+
+# ── T-066 CHANGES r1: the one deadline reaches publication; a failed blob closes ──
+
+def _late_clock(monkeypatch):
+    """The seed's clock: real time plus an offset the test moves."""
+    offset = [0.0]
+    monkeypatch.setattr(local, '_clock', lambda: time.monotonic() + offset[0])
+    return offset
+
+
+@pytest.mark.parametrize('when', ['during-walk', 'during-final-parent', 'after-final-parent'])
+def test_a_seed_late_at_its_last_checks_is_refused_and_never_published(world, monkeypatch,
+                                                                       when):
+    """The clock is past the deadline only while the step named runs (or, for
+    the last, from then on), so only that step's own check can see it."""
+    proj, _head, _files = _project(world)
+    pid, eid, base, branch = _seed(world, monkeypatch, proj)
+    offset, late = _late_clock(monkeypatch), 10.0 * local.SEED_DEADLINE
+    name = '_seed_walk' if when == 'during-walk' else '_made'
+    real = getattr(local, name)
+
+    def step(*a):
+        final = name == '_seed_walk' or a[0] == paths.archeus_home()
+        if final and when != 'after-final-parent':
+            offset[0] = late
+            try:
+                return real(*a)
+            finally:
+                offset[0] = 0.0
+        out = real(*a)
+        if final:
+            offset[0] = late
+        return out
+    monkeypatch.setattr(local, name, step)
+    _refused(pid, eid, base, branch, 'past its deadline')
+    assert os.path.isdir(paths.seed_staging(eid))                            # kept
+
+
+def test_a_blob_write_that_fails_leaves_nothing_open_or_published(world, monkeypatch):
+    proj, _head, _files = _project(world)
+    pid, eid, base, branch = _seed(world, monkeypatch, proj)
+    files, real_open = [], open
+
+    def opening(path, mode='r', *a, **k):
+        f = real_open(path, mode, *a, **k)
+        if 'x' in mode:
+            files.append(f)
+            if len(files) == 3:
+                def full(data):
+                    raise OSError('no space left on the device')
+                f.write = full
+        return f
+    monkeypatch.setattr(local, 'open', opening, raising=False)
+    _refused(pid, eid, base, branch, 'no space left')
+    assert len(files) == 3 and all(f.closed for f in files)
+    assert os.path.isdir(paths.seed_staging(eid))                            # kept

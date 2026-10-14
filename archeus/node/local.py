@@ -776,14 +776,11 @@ class LocalNode:
         staging directory, checked there, renamed into the execution's workspace,
         which it returns. A refusal publishes nothing and keeps what exists; no Git
         runs once the workspace exists."""
-        end = time.monotonic() + SEED_DEADLINE
+        deadline = _Deadline(execution_id)
 
         def git(mode, args, git_dir, **kw):
-            left = end - time.monotonic()
-            if left <= 0:
-                raise StoreError('the seed of %s ran past its deadline' % execution_id)
             return LocalNode.store_git(mode, args, workdirs=workdirs, git_dir=git_dir,
-                                       timeout=min(120, left), **kw)
+                                       timeout=min(120, deadline.left()), **kw)
         head = 'refs/heads/' + branch
         if not (re.fullmatch(r'[0-9a-f]{40}', seed_revision) and _SEED_BRANCH.fullmatch(branch)
                 and '..' not in branch and not branch.endswith(('.', '.lock'))):
@@ -802,7 +799,7 @@ class LocalNode:
         git('trusted', ['ls-tree', '-r', '-z', '-l', '--full-tree', seed_revision], store,
             sink=tree)
         # the skeleton: Core's config, the seed commit shallow, the index from its tree
-        _made(repos_dir(), os.path.dirname(stage))
+        _made(repos_dir(), os.path.dirname(stage), deadline)
         os.mkdir(stage)
         git('init', ['init', '-q', '--object-format=sha1', '--template=' + _pin_area()[2],
                      stage], None)
@@ -820,6 +817,7 @@ class LocalNode:
         # the files, written by Core as data: a link is its target text, a gitlink an
         # empty directory (owner Q1, A); every blob checked against its id
         for d in sorted(tree.dirs, key=lambda d: d.count('/')):
+            deadline.left()
             os.mkdir(os.path.join(stage, *d.split('/')))
         blobs = [(oid, size, os.path.join(stage, *path.split('/')))
                  for mode, oid, size, path in tree.entries if mode != '160000']
@@ -828,18 +826,19 @@ class LocalNode:
                 stdin=b''.join(oid.encode('ascii') + b'\n' for oid, _s, _p in blobs))
         # two domains, both before the rename: the working tree, exactly the tree's
         # map; and the .git Core made, exactly what it wrote
-        if _seed_walk(stage) != tree.expected():
+        if _seed_walk(stage, deadline) != tree.expected():
             raise StoreError('the seed of %s differs from its tree' % execution_id)
-        _seed_meta(dot, head, seed_revision)
+        _seed_meta(dot, head, seed_revision, deadline)
         index = _Index()
         git('seed', ['ls-files', '-s', '-z'], dot, sink=index)
         if index.found != {(m, o, p) for m, o, _s, p in tree.entries} or git(
                 'seed', ['rev-parse', 'HEAD^{tree}'], dot) != git(
                 'trusted', ['rev-parse', seed_revision + '^{tree}'], store):
             raise StoreError('the seed index of %s is not its tree' % execution_id)
-        _made(archeus_home(), os.path.dirname(work))
+        _made(archeus_home(), os.path.dirname(work), deadline)
         if _present(work):
             raise StoreError('a seed target that already exists: %s' % work)
+        deadline.left()                 # immediately before publication
         os.rename(stage, work)
         return work
 
@@ -1153,7 +1152,9 @@ def _stream(argv, cwd, env, stdin, sink, timeout):
     """The byte core of `store_git`: stdout straight into *sink* in fixed chunks,
     never decoded or kept; stderr drained and capped; *stdin* fed by a thread so
     neither pipe fills. A sink that raises, or *timeout*, kills the child, and the
-    call raises; a read that ends because of the kill is a refusal too."""
+    call raises; a read that ends because of the kill is a refusal too. On any
+    failure the sink is aborted (it closes what it opened), and every stream is
+    closed either way; neither can replace the failure that got there first."""
     p = subprocess.Popen(argv, cwd=cwd, env=env, creationflags=proc.no_window_flags,
                          stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1170,9 +1171,10 @@ def _stream(argv, cwd, env, stdin, sink, timeout):
     def feed():
         try:
             p.stdin.write(stdin)
-            p.stdin.close()
         except OSError:
             pass                        # the child is gone: its end decides
+        finally:
+            _quietly(p.stdin.close)     # EOF for the child, on every path
     helpers = [threading.Thread(target=drain, daemon=True)]
     if stdin is not None:
         helpers.append(threading.Thread(target=feed, daemon=True))
@@ -1191,13 +1193,24 @@ def _stream(argv, cwd, env, stdin, sink, timeout):
         sink.end()
     except BaseException:
         p.kill()
+        _quietly(sink.abort)
         raise
     finally:
         timer.cancel()
         p.wait()
         for t in helpers:
             t.join()
-        p.stdout.close()
+        for pipe in (p.stdin, p.stdout, p.stderr):
+            if pipe is not None:
+                _quietly(pipe.close)
+
+
+def _quietly(close):
+    """Cleanup that must not replace the failure it runs under."""
+    try:
+        close()
+    except Exception:
+        pass
 
 
 class _Records:
@@ -1224,6 +1237,9 @@ class _Records:
     def end(self):
         if self.buf:
             raise StoreError('a listing that ends inside a record')
+
+    def abort(self):
+        pass                            # it holds nothing open
 
 
 class _Manifest(_Records):
@@ -1333,6 +1349,12 @@ class _Blobs:
         if self.i != len(self.want) or self.left is not None or self.head:
             raise StoreError('the objects ended early, at %d of %d' % (self.i, len(self.want)))
 
+    def abort(self):
+        """The file a failure left open is closed; what was written stays in staging."""
+        f, self.f = self.f, None
+        if f is not None:
+            f.close()
+
 
 def _seed_ref(execution_id):
     if not ids.is_id(execution_id, 'execution'):
@@ -1352,21 +1374,41 @@ def _seed_path(path, prefix):
             raise StoreError('a path Core does not seed: %r' % path)
 
 
-def _blob_id(path, size):
+#: the clock every seed deadline reads (a test moves it, never the code)
+_clock = time.monotonic
+
+
+class _Deadline:
+    """The one deadline of a whole seed (T-049 §5): read before every Git call, at
+    every entry and hashed MiB of the checks, and immediately before publication."""
+
+    def __init__(self, what):
+        self.end, self.what = _clock() + SEED_DEADLINE, what
+
+    def left(self):
+        left = self.end - _clock()
+        if left <= 0:
+            raise StoreError('the seed of %s ran past its deadline' % self.what)
+        return left
+
+
+def _blob_id(path, size, deadline):
     h = hashlib.sha1(b'blob %d\0' % size)
     with open(path, 'rb') as f:
         for chunk in iter(lambda: f.read(1 << 20), b''):
+            deadline.left()
             h.update(chunk)
     return h.hexdigest()
 
 
-def _seed_walk(top):
+def _seed_walk(top, deadline):
     """The working tree under *top*, its root `.git` excluded:
     {path: ('f', size, blob id) | ('d',)}, every entry plain and singly linked."""
     found = {}
 
     def walk(d, rel):
         for name in os.listdir(d):
+            deadline.left()
             if not rel and name == '.git':
                 continue
             p, r = os.path.join(d, name), rel + name
@@ -1375,12 +1417,12 @@ def _seed_walk(top):
                 found[r] = ('d',)
                 walk(p, r + '/')
             else:
-                found[r] = ('f', st.st_size, _blob_id(p, st.st_size))
+                found[r] = ('f', st.st_size, _blob_id(p, st.st_size, deadline))
     walk(top, '')
     return found
 
 
-def _seed_meta(dot, head, rev):
+def _seed_meta(dot, head, rev, deadline):
     """The seed's `.git`, exactly as Core made it: these names and no other, Core's
     bytes in HEAD, config and shallow, one ref naming the seed, no borrowed store,
     and no alias anywhere below it."""
@@ -1399,6 +1441,7 @@ def _seed_meta(dot, head, rev):
         _plain(os.path.join(dot, top), True)
         for d, dirs, files in os.walk(os.path.join(dot, top)):
             for n in dirs + files:          # checked before os.walk descends into it
+                deadline.left()
                 _plain(os.path.join(d, n), None)
             if top == 'refs':
                 for n in files:
@@ -1409,11 +1452,12 @@ def _seed_meta(dot, head, rev):
         raise StoreError('a seed .git with refs or object stores Core did not make')
 
 
-def _made(top, path):
+def _made(top, path, deadline):
     """*path* and every directory between *top* (Core's) and it: each made by Core
     when absent, and each plain."""
     d = top
     for part in os.path.relpath(path, top).split(os.sep):
+        deadline.left()
         d = os.path.join(d, part)
         if not _present(d):
             try:

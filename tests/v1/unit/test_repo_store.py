@@ -903,23 +903,32 @@ def test_a_seed_subcommand_outside_its_mode_is_refused(spawns, mode, args):
 
 class Child:
     """A child process answered in-process: stdout handed out one chunk per read,
-    or, with *stall*, nothing until it is killed. Nothing is started."""
+    then, with *stall*, nothing until it is killed. Nothing is started. Each pipe
+    records its close; with *close_fails* every close raises."""
 
-    def __init__(self, chunks=(), code=0, stall=False):
+    def __init__(self, chunks=(), code=0, stall=False, close_fails=False):
         self.chunks, self.code, self.stall = list(chunks), code, stall
         self.killed, self.written, self.returncode = threading.Event(), b'', None
+        self.closed = set()
         err = [b'boom'] if code else []
-        self.stdout = SimpleNamespace(read1=self._read1, close=lambda: None)
-        self.stderr = SimpleNamespace(read=lambda n: err.pop() if err else b'')
-        self.stdin = SimpleNamespace(write=self._write, close=lambda: None)
+
+        def closer(name):
+            def close():
+                self.closed.add(name)
+                if close_fails:
+                    raise OSError('close failed: %s' % name)
+            return close
+        self.stdout = SimpleNamespace(read1=self._read1, close=closer('stdout'))
+        self.stderr = SimpleNamespace(read=lambda n: err.pop() if err else b'',
+                                      close=closer('stderr'))
+        self.stdin = SimpleNamespace(write=self._write, close=closer('stdin'))
 
     def _read1(self, n):
+        if self.chunks and not self.killed.is_set():
+            return self.chunks.pop(0)
         if self.stall:
             self.killed.wait(10)
-            return b''
-        if self.killed.is_set() or not self.chunks:
-            return b''
-        return self.chunks.pop(0)
+        return b''
 
     def _write(self, data):
         self.written += data
@@ -956,6 +965,9 @@ class Sink:
 
     def end(self):
         self.ended = True
+
+    def abort(self):
+        self.aborted = True
 
 
 STORE = lambda: paths.repo_store(ids.new_id('project'))     # noqa: E731
@@ -1211,8 +1223,8 @@ def _staged(tmp_path):
 
 def test_a_good_staging_directory_passes_both_domains(tmp_path):
     top, dot, m = _staged(tmp_path)
-    assert local._seed_walk(str(top)) == m.expected()
-    local._seed_meta(str(dot), BRANCH, REV)
+    assert local._seed_walk(str(top), _Ample()) == m.expected()
+    local._seed_meta(str(dot), BRANCH, REV, _Ample())
 
 
 @pytest.mark.parametrize('plant', [
@@ -1226,7 +1238,7 @@ def test_metadata_core_did_not_make_refuses_the_seed(tmp_path, plant):
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_bytes(REV.encode() + b'\n')
     with pytest.raises(StoreError):
-        local._seed_meta(str(dot), BRANCH, REV)
+        local._seed_meta(str(dot), BRANCH, REV, _Ample())
 
 
 @pytest.mark.parametrize('name,data', [('HEAD', b'ref: refs/heads/main\n'),
@@ -1238,7 +1250,7 @@ def test_metadata_core_wrote_with_other_bytes_refuses_the_seed(tmp_path, name, d
     top, dot, _m = _staged(tmp_path)
     (dot / name).write_bytes(data)
     with pytest.raises(StoreError, match='did not'):
-        local._seed_meta(str(dot), BRANCH, REV)
+        local._seed_meta(str(dot), BRANCH, REV, _Ample())
 
 
 @pytest.mark.parametrize('case', ['tampered', 'extra-file', 'missing-file', 'extra-dir',
@@ -1263,14 +1275,14 @@ def test_a_working_tree_that_is_not_the_trees_map_refuses_the_seed(tmp_path, cas
     else:
         (top / 'sub').rmdir()
         (top / 'sub').write_bytes(b'')
-    assert local._seed_walk(str(top)) != m.expected()
+    assert local._seed_walk(str(top), _Ample()) != m.expected()
 
 
 def test_a_hard_linked_working_file_refuses_the_seed(tmp_path):
     top, _dot, _m = _staged(tmp_path)
     os.link(str(top / 'a.txt'), str(tmp_path / 'outside'))
     with pytest.raises(StoreError, match='hard-linked'):
-        local._seed_walk(str(top))
+        local._seed_walk(str(top), _Ample())
 
 
 # the node's seed entry points, refused with nothing started
@@ -1313,3 +1325,140 @@ def test_a_first_attempt_takes_the_mission_branch_else_head(spawns, monkeypatch,
     with pytest.raises(StoreError, match='not a mission branch'):
         LocalNode.resolve_base(root, 'a..b', workdirs=())
     assert calls == []
+
+
+
+# ── T-066 CHANGES r1: one shared deadline, aborted sinks, closed streams ───────
+
+class _Ample:
+    """A deadline that never runs out, for the checks tested for something else."""
+
+    def left(self):
+        return 1.0
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """The seed's clock, under the test's hand."""
+    now = [1000.0]
+    monkeypatch.setattr(local, '_clock', lambda: now[0])
+    return now
+
+
+def test_the_seed_deadline_runs_out_once_its_seconds_have_passed(clock):
+    d = local._Deadline('exe_x')
+    assert d.left() == local.SEED_DEADLINE
+    clock[0] += local.SEED_DEADLINE - 1
+    assert d.left() == 1
+    clock[0] += 1
+    with pytest.raises(StoreError, match='exe_x ran past its deadline'):
+        d.left()
+
+
+def _expired(clock):
+    d = local._Deadline('exe_x')
+    clock[0] += local.SEED_DEADLINE
+    return d
+
+
+def test_every_python_check_of_a_seed_reads_the_deadline(clock, tmp_path):
+    top, dot, _m = _staged(tmp_path)
+    (tmp_path / 'dirs' / 'x').mkdir(parents=True)        # nothing to hash: the walk itself
+    for check in (lambda d: local._seed_walk(str(top), d),
+                  lambda d: local._seed_walk(str(tmp_path / 'dirs'), d),
+                  lambda d: local._seed_meta(str(dot), BRANCH, REV, d),
+                  lambda d: local._made(str(tmp_path), str(tmp_path / 'a' / 'b'), d)):
+        with pytest.raises(StoreError, match='deadline'):
+            check(_expired(clock))
+    assert not (tmp_path / 'a').exists()                 # nothing made past it
+
+
+def test_hashing_a_big_file_reads_the_deadline_per_mib(clock, tmp_path):
+    p = tmp_path / 'big'
+    p.write_bytes(b'x' * (3 << 20))
+    d = local._Deadline('exe_x')
+    reads = []
+
+    def late():
+        reads.append(1)
+        if len(reads) == 2:
+            clock[0] += local.SEED_DEADLINE
+        return local._Deadline.left(d)
+    d.left = late
+    with pytest.raises(StoreError, match='deadline'):
+        local._blob_id(str(p), 3 << 20, d)
+    assert len(reads) == 2                    # refused at the first MiB read once it is late
+
+
+@pytest.mark.parametrize('how', ['ok', 'sink-refuses', 'child-fails', 'timeout'])
+def test_every_stream_the_byte_core_opened_is_closed_whatever_happened(child, how):
+    c = child.use(Child([b'a', b'b'], code=1 if how == 'child-fails' else 0,
+                        stall=how == 'timeout'))
+    sink = Sink(refuse_at=1 if how == 'sink-refuses' else None)
+    call = lambda: LocalNode.store_git('trusted', ['cat-file', '--batch'], workdirs=(),  # noqa
+                                       git_dir=STORE(), stdin=b'q\n', sink=sink, timeout=0.3)
+    if how == 'ok':
+        call()
+        assert not hasattr(sink, 'aborted')
+    else:
+        with pytest.raises(StoreError):
+            call()
+        assert sink.aborted
+    assert c.closed == {'stdin', 'stdout', 'stderr'}
+
+
+class _Opened:
+    """`open` as `local` sees it, every file it hands out kept; with *fail_at*, the
+    n-th file's write raises the way a full disk does."""
+
+    def __init__(self, fail_at=None):
+        self.files, self.fail_at = [], fail_at
+
+    def __call__(self, path, mode='r', *a, **k):
+        f = open(path, mode, *a, **k)
+        self.files.append(f)
+        if len(self.files) == self.fail_at:
+            def full(data):
+                raise OSError('no space left on the device')
+            f.write = full
+        return f
+
+
+def _batch(*objs):
+    return b''.join(b'%s blob %d\n%s\n' % (OID(d).encode(), len(d), d) for d in objs)
+
+
+@pytest.mark.parametrize('case', ['truncated', 'write-error', 'timeout', 'wrong-content'])
+def test_a_blob_stream_that_fails_leaves_no_file_open_and_keeps_its_error(child, monkeypatch,
+                                                                          tmp_path, case):
+    one, two = b'\xff\xfe\x00\x80\x00z', b'second blob\n'
+    raw = _batch(one, two)
+    chunks = {'truncated': [raw[:-5]], 'write-error': [raw], 'timeout': [raw[:-5]],
+              'wrong-content': [raw.replace(b'second', b'SECOND')]}[case]
+    c = child.use(Child(chunks, stall=case == 'timeout'))
+    opened = _Opened(fail_at=2 if case == 'write-error' else None)
+    monkeypatch.setattr(local, 'open', opened, raising=False)
+    sink = local._Blobs([(OID(one), len(one), str(tmp_path / 'one')),
+                         (OID(two), len(two), str(tmp_path / 'two'))])
+    want = {'truncated': 'ended early', 'write-error': 'no space left',
+            'timeout': 'past its deadline', 'wrong-content': 'not'}[case]
+    with pytest.raises(OSError, match=want):
+        LocalNode.store_git('trusted', ['cat-file', '--batch'], workdirs=(), git_dir=STORE(),
+                            stdin=b'q\n', sink=sink, timeout=0.3)
+    assert len(opened.files) == 2 and all(f.closed for f in opened.files)
+    assert c.closed == {'stdin', 'stdout', 'stderr'} and c.killed.is_set()
+
+
+def test_cleanup_that_fails_never_replaces_the_failure_it_runs_under(child):
+    c = child.use(Child([b'a'], close_fails=True))
+
+    class Failing(Sink):
+        def feed(self, chunk):
+            raise ValueError('the first failure')
+
+        def abort(self):
+            raise RuntimeError('the abort failed too')
+    with pytest.raises(ValueError, match='the first failure'):
+        LocalNode.store_git('trusted', ['cat-file', '--batch'], workdirs=(), git_dir=STORE(),
+                            stdin=b'q\n', sink=Failing())
+    assert c.closed == {'stdin', 'stdout', 'stderr'}
