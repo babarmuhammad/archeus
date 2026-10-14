@@ -1296,6 +1296,43 @@ def test_worktrees_of_the_earlier_layout_are_used_where_they_are(core, before):
     assert _t(core, mid, 'integration_state') == 'MERGED'
 
 
+def test_one_mission_verifies_and_merges_task_worktrees_of_both_layouts(core):
+    """A mission split across the upgrade: t1's branch is checked out at the
+    earlier layout's path, t2 and t3 have none and get the short layout. Each
+    runs where the resolver puts it, every change reaches the one `_mission`
+    worktree, and the mission verifies and completes. Before T-092 this
+    stopped at the second dispatch: t1's merge changed the plan's digest.
+    Each task carries the fix, because each is verified in its own worktree."""
+    rig = Rig(core)
+    repo = rig.fixture_repo('verify-python')
+    done = {'emit': {'type': 'result', 'summary': 'done'}}
+    rig.script_harness('t1', [_write(FIX), done])
+    for k in ('t2', 't3'):
+        rig.script_harness(k, [_write(FIX), _write(k + '\n', k + '.txt'), done])
+    mid = core.create_mission(title='Steps', objective='Hand off once',
+                              project_id=repo.project_id)['id']
+    home = os.environ['ARCHEUS_HOME']
+    old = os.path.join(home, 'worktrees', repo.project_id, mid, 't1')
+    new = os.path.join(home, 'worktrees', mid[len('msn_'):])
+    LocalNode.add_worktree(repo.path, old, 'archeus/%s.t1' % mid, base='HEAD')
+    pump(core, lambda: _state(core, mid) == 'COMPLETED')
+    with core._core().read() as conn:
+        tasks = {t.entity.id: t.entity for t in rows.where(conn, entities.Task, mission_id=mid)}
+        used = {tasks[e.entity.task_id].key: e.entity.workdir
+                for e in rows.where(conn, entities.Execution)}
+    assert used == {'t1': old, 't2': os.path.join(new, 't2'), 't3': os.path.join(new, 't3')}
+    assert {t.integration_state for t in tasks.values()} == {'MERGED'}
+    wt = os.path.join(new, '_mission')
+    with open(os.path.join(wt, 'calc.py'), encoding='utf-8') as f:
+        assert f.read() == FIX
+    for k in ('t2', 't3'):
+        with open(os.path.join(wt, k + '.txt'), encoding='utf-8') as f:
+            assert f.read() == k + '\n'
+    head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=wt,
+                          capture_output=True, text=True, check=True).stdout.strip()
+    assert _get(core, entities.Mission, mid).integration_head == head
+
+
 def test_A6_4_a_tree_core_could_not_export_is_an_error_never_a_pass(core, monkeypatch,
                                                                     toolchain):
     mid, t, e = _imported(core, monkeypatch, toolchain)
