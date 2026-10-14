@@ -56,6 +56,17 @@ routes and answer `remote_host_required`, and through the tunnel their handlers'
 `launch_code` handler's minter's-scopes check (`:213-215`, D2) is therefore reached only by a local
 credential (the CLI's, or a launch-code browser holding `admin`).
 
+*Correction 2026-10-15 (T-083, Codex batch finding 1):* the amendment above says "every route in
+`routes.PRIVILEGED`"; the check is narrower. It sits inside `if route.scope is not None`
+(`archeus/api/server.py:360`), so it applies only to a PRIVILEGED route that has a scope, and only
+after `origin_refused` (`:358`), `401 unauthenticated` (`:364`) and `403 scope_required` (`:366`):
+a paired credential missing the route's scope gets `scope_required`, never `remote_host_required`.
+`POST /v1/devices/launch/redeem` and `POST /v1/devices/pair/redeem` are `authority` routes with
+scope `None` (`archeus/api/routes.py:990`, `:998`): no credential is read on them, so neither
+`remote_host_required` nor any paired-credential narrowing applies, and they keep their code-based
+redemption semantics unchanged. The consequence for `launch/code` and `pair/start` stands: both
+carry scope `admin` (`:988`, `:996`).
+
 ## 2. Resource surface (conceptual)
 
 | Area | Queries (GET) | Commands (POST) |
