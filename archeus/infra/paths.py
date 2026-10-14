@@ -8,7 +8,8 @@ invalidation — this codebase's recurring bug.
 is already a legacy project workdir (the one for any project rooted at the home
 directory), legacy code writes logs and memory there, and legacy cleanup may
 delete below any `.archeus` directory. Nothing here creates, migrates or deletes
-it — or anything else: these functions compute paths and touch no disk.
+it — or anything else: these functions compute paths and write nothing (the two
+worktree resolvers read whether an earlier-layout directory exists).
 """
 
 import os
