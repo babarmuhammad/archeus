@@ -123,10 +123,16 @@ def test_the_marker_travels_once_from_the_execution_to_its_task(browser, slow): 
     f0, n = frames(page), markers()
     hear(page, _frame(ex['id'], seq))
     wait(page, lambda: markers() == n + 1, what='the marker starts')
-    advance(page, 16)                           # the first frame
-    a = _along(page, s, t)
+    # the first frame is drawn, but at progress 0 the marker lies over the execution's own
+    # node, already ink-coloured in the baseline: how much of it shows as new depends on the
+    # layout, so it may take a frame or two to clear the node (still under 0.1 of the edge)
+    a, el = None, 0
+    while a is None and el < 48:
+        advance(page, 16)
+        el += 16
+        a = _along(page, s, t)
     check(a is not None and a[0] < 0.1 and a[1] < 6, 'the marker begins at the execution: %s' % (a,))
-    advance(page, MARKER_MS // 2 - 16)
+    advance(page, MARKER_MS // 2 - el)
     a = _along(page, s, t)
     check(a is not None and 0.35 < a[0] < 0.6 and a[1] < 6, 'the marker is half way along the edge: %s' % (a,))
     # the same event again mid-travel, and a stream lost and back (a resync): no restart
