@@ -2139,6 +2139,29 @@ credential store was read: this review covers Archeus's own files and code only.
      - **Not run:** a real tunnel (Tailscale Serve or another), a paired phone, or an
        adversarial client. The manual checks of §10 stay as they are.
 
+113. **Dependency audit.**
+     - **Python runtime: stdlib only.** `pyproject.toml`'s `[project]` has no `dependencies` key.
+       The extras are `dev = ["pytest"]` and `gui = ["PyQt6", "PyQt6-WebEngine"]`
+       (`pyproject.toml:79-81`), the latter for the optional desktop shell. No Python audit tool
+       was run on the extras; that is not run.
+     - **The SPA's lockfile.** `clients/app/package-lock.json`, lockfileVersion 3: 51 packages,
+       by npm's own count 5 prod, 47 dev, 27 optional.
+     - **The offline audit is not evidence.**
+       - `npm audit --offline --package-lock-only` (npm 11.12.1) answered "found 0
+         vulnerabilities" on `91cbb0c`.
+       - That same lockfile pins `source-map-js` 1.2.1, the version GHSA-68fv-2mgg-jv7q names.
+         The advisory failed CI's `npm audit --audit-level=high` on `f6abc4d` (T-073), and
+         `3d98f84` raised it to 1.2.2 on the branch.
+       - An offline audit has no advisory data, so its zero is vacuous.
+     - **The networked audit, from CI.** Run 38646019877 on `b26225a`, the branch head carrying
+       `3d98f84`. Job `v1-client`, step "Build and audit the SPA" (`npm ci`, `npm run build`,
+       `npm audit --audit-level=high`, `.github/workflows/ci.yml:225`): **success**. It gates
+       high and critical only.
+     - **Finding I-F5, Medium until the next candidate rebuild: the integration candidate lacks
+       `3d98f84`.** `91cbb0c` was built on `f6abc4d` + `3257dd0` and still pins `source-map-js`
+       1.2.1. The next T-072 rebuild must take `3d98f84` from the branch. It closes with that
+       merge and needs no separate change.
+
 ## 13. As built
 (Filled at the end of P20.)
 
