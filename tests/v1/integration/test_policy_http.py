@@ -130,6 +130,16 @@ def test_H04_request_changes_replans_and_simulate_writes_nothing(deploy_core):
     assert tc.http('GET', '/v1/events').json()['events'][-1]['seq'] == head
 
 
+@pytest.mark.parametrize('body', [{'action': {}}, {'action': {'nonsense': 1}},
+                                  {'action': {'class': 'read', 'target': 'x'}, 'extra_rules': [{}]}])
+def test_H04b_a_malformed_simulated_action_or_rule_is_a_400_not_a_500(tc, body):
+    """Found by tools/fuzz_p20.py (P20 D12): the action and the rules are built
+    from the request's own dicts, so a missing or unknown field is the
+    request's fault."""
+    r = tc.http('POST', '/v1/policies/simulate', body=body)
+    assert (r.status, r.json()['error']) == (400, 'invalid_request')
+
+
 def test_H05_profiles_are_admin_only_and_the_health_names_the_policy_worker(deploy_core):
     tc = deploy_core
     got = _post(tc, '/v1/policies/profile', {'scope': 'user', 'profile': 'careful'})
