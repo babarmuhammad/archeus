@@ -787,7 +787,7 @@ LOCAL = 'archeus/node/local.py'
 #: who may call the spawner and the builder (later cards add theirs by name)
 CALLERS = {'store_git': ('store_open', 'store_read', 'store_fetch', 'store_resolve_base',
                          '_git_version', 'store_seed_ref', 'seed_workspace',
-                         'import_workspace'),
+                         'import_workspace', '_export_tree'),
            '_store_pin': ('store_git',)}
 
 

@@ -1028,8 +1028,10 @@ class _Confined:
     def __init__(self, *results):
         self.results, self.seen, self.recorded = list(results), [], []
 
-    def __call__(self, vid, attempt, argv, *, toolchain, timeout, record):
+    def __call__(self, vid, attempt, argv, *, toolchain, timeout, record, project_id,
+                 revision, workdirs):
         self.seen.append((vid, attempt, list(argv), list(toolchain)))
+        self.inputs = getattr(self, 'inputs', []) + [(project_id, revision, list(workdirs))]
         r = dict({'exit_code': 0, 'duration_ms': 1, 'error': None, 'output': b'ok',
                   'output_bytes': 2, 'truncated': False,
                   'confinement': {'isolated': True, 'job': 'fake'}}, **self.results.pop(0))
@@ -1082,6 +1084,12 @@ def test_A6_4_a_guarded_task_with_its_import_runs_confined_and_its_pass_is_marke
     assert (vid, n, os.path.normcase(argv[0]), argv[1:], chain) == (
         v.id, 0, prog, ['--check'], [toolchain[0]])
     assert node.calls == ['run_confined_check']        # no Git, no unconfined run
+    ((project_id, revision, workdirs),) = fake.inputs
+    with core._core().read() as r:
+        m = rows.get(r, entities.Mission, mid).entity
+        recorded = [x.entity.workdir for x in rows.where(r, entities.Execution)
+                    if x.entity.workdir]
+    assert (project_id, revision, workdirs) == (m.project_id, IMP, recorded)
 
 
 def test_A6_4_with_the_switch_off_a_guarded_task_still_goes_to_you(core, monkeypatch,
@@ -1221,3 +1229,28 @@ def test_A6_4_a_verdict_the_row_no_longer_awaits_lets_the_principal_go(core, mon
     assert core._verify.pass_once()['did'] == 'verify_task'
     assert fake.recorded == [_row(core, mid).id]        # record returned: teardown proceeds
     assert _row(core, mid).state == 'RUNNING'
+
+
+def test_A6_4_a_tree_core_could_not_export_is_an_error_never_a_pass(core, monkeypatch,
+                                                                    toolchain):
+    mid, t, e = _imported(core, monkeypatch, toolchain)
+    fake = _Confined({'error': 'prepare_failed: synthetic export failure', 'exit_code': None,
+                      'output': b'', 'output_bytes': 0})
+    _node(core, monkeypatch, fake={'run_confined_check': fake})
+    pump(core, lambda: _vs(core, mid, 'task') and _row(core, mid).state != 'RUNNING')
+    v = _row(core, mid)
+    assert v.state != 'PASSED' and v.verifier_version == V.CONFINED_VERIFIER
+    (check,) = v.checks
+    assert check['result'] == 'error' and 'synthetic export failure' in check['detail']
+
+
+@pytest.mark.parametrize('verifier', ['ci', 'lint', 'review'])
+def test_A6_4_only_the_code_verifier_runs_confined(core, monkeypatch, toolchain, verifier):
+    mid, t, e = _imported(core, monkeypatch, toolchain)
+    with core._core().read() as r:
+        before = len(list(rows.where(r, entities.Verification)))
+    with pytest.raises(V.Refused, match='withheld'):
+        _do(core, V.start, missions=core._missions, subject=Ref('task', t.id),
+            verifier=verifier, execution_id=e.id, revision=IMP)
+    with core._core().read() as r:
+        assert len(list(rows.where(r, entities.Verification))) == before

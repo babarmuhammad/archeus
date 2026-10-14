@@ -1180,3 +1180,47 @@ def test_a_commit_that_is_not_what_core_sent_is_never_returned(world, monkeypatc
     monkeypatch.setattr(local, '_import_stream', altered)
     with pytest.raises(StoreError, match='is not what Core sent'):
         LocalNode.import_workspace(pid, eid, base, workdirs=())
+
+
+# ── A6-4 (T-062): the confined verifier's checkout, exported from the store ──
+
+def test_an_export_is_exactly_the_tree_with_no_git_and_runs_nothing_configured(world,
+                                                                             monkeypatch):
+    proj, head, files = _project(world)
+    _hostile(monkeypatch, world)
+    pid, _eid, base, _branch = _seed(world, monkeypatch, proj)
+    top = world.tmp / 'export'
+    top.mkdir()
+    local._export_tree(pid, base, str(top), (), local._Deadline('test'))
+    for path, (mode, data) in files.items():
+        p = os.path.join(str(top), *path.split('/'))
+        st = os.lstat(p)
+        assert stat.S_ISREG(st.st_mode) and st.st_nlink == 1, path
+        with open(p, 'rb') as f:
+            assert f.read() == data, path        # no smudge, eol, encoding or LFS
+    assert os.listdir(str(top / 'sub')) == [] and not os.path.exists(str(top / '.git'))
+    listed = {line.split('\t', 1)[1] for line in world.git(
+        proj, 'ls-tree', '-r', '--full-tree', head).splitlines()}
+    assert listed == set(files) | {'sub'}
+    assert world.fired() == []
+
+
+@pytest.mark.parametrize('case', ['no-store', 'not-a-commit', 'unknown', 'not-empty',
+                                  'extra-file'])
+def test_an_export_core_cannot_make_is_refused(world, monkeypatch, case):
+    proj, head, _files = _project(world)
+    _hostile(monkeypatch, world)
+    pid, _eid, base, _branch = _seed(world, monkeypatch, proj)
+    top = world.tmp / 'export'
+    top.mkdir()
+    rev = {'not-a-commit': 'HEAD', 'unknown': 'f' * 40}.get(case, base)
+    if case == 'no-store':
+        pid = ids.new_id('project')
+    if case == 'not-empty':
+        (top / 'run.sh').write_bytes(b'planted')
+    if case == 'extra-file':                # not in the tree: only the walk sees it
+        (top / 'planted.txt').write_bytes(b'planted')
+    with pytest.raises(OSError):        # StoreError, or a file Core will not write over
+        local._export_tree(pid, rev, str(top), (), local._Deadline('test'))
+    if case == 'no-store':
+        assert not os.path.exists(paths.repo_store(pid))     # nothing created to read it

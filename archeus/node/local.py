@@ -637,13 +637,14 @@ class LocalNode:
                 'output': tail, 'output_bytes': size, 'truncated': size > keep}
 
     def run_confined_check(self, verification_id, attempt, argv, *, toolchain, timeout,
-                           record, keep=CHECK_OUTPUT_KEEP):
+                           record, project_id, revision, workdirs, keep=CHECK_OUTPUT_KEEP):
         """`run_check` confined (A6-3, T-054): the command runs as this attempt's own
-        principal inside a Core-held Job, in the checkout Core materialised under
+        principal inside a Core-held Job, in a checkout holding exactly the tree of
+        *revision* from *project_id*'s store (no `.git`) under
         `run/verify/<vid>/<n>/own/`, with an environment built from nothing and empty
         stdin. The result is `run_check`'s plus `confinement`; *record* writes the
-        verdict before the profile goes (`Isolation.run_confined`). Not wired to the
-        verification worker yet (A6-4)."""
+        verdict before the profile goes (`Isolation.run_confined`). A tree Core
+        cannot export is a preparation failure: nothing is launched."""
         p = VerifyPaths(verification_id, attempt)
         scratch = os.path.dirname(p.checkout)
         stdin = os.path.join(p.dir, 'stdin')
@@ -658,6 +659,8 @@ class LocalNode:
                 os.mkdir(d)
             for f in (stdin, p.out):
                 open(f, 'xb').close()
+            _export_tree(project_id, revision, p.checkout, workdirs,
+                         _Deadline('the export for %s' % verification_id))
             return base._verifier_env(toolchain, scratch)
         grant = isolation_mod.Grant
         request = isolation_mod.IsolationRequest(
@@ -930,14 +933,8 @@ class LocalNode:
         git('seed', ['read-tree', seed_revision], dot)
         # the files, written by Core as data: a link is its target text, a gitlink an
         # empty directory (owner Q1, A); every blob checked against its id
-        for d in sorted(tree.dirs, key=lambda d: d.count('/')):
-            deadline.left()
-            os.mkdir(os.path.join(stage, *d.split('/')))
-        blobs = [(oid, size, os.path.join(stage, *path.split('/')))
-                 for mode, oid, size, path in tree.entries if mode != '160000']
-        if blobs:
-            git('trusted', ['cat-file', '--batch'], store, sink=_Blobs(blobs),
-                stdin=b''.join(oid.encode('ascii') + b'\n' for oid, _s, _p in blobs))
+        _write_tree(tree, stage, deadline,
+                    lambda **kw: git('trusted', ['cat-file', '--batch'], store, **kw))
         # two domains, both before the rename: the working tree, exactly the tree's
         # map; and the .git Core made, exactly what it wrote
         if _seed_walk(stage, deadline) != tree.expected():
@@ -955,6 +952,42 @@ class LocalNode:
         deadline.left()                 # immediately before publication
         os.rename(stage, work)
         return work
+
+
+def _write_tree(tree, top, deadline, batch):
+    """*tree*'s directories and files under the empty *top*, written by Core as data
+    (a link is its target text, a gitlink an empty directory, owner Q1 A); every
+    blob is checked against its id as it streams in through *batch* (`cat-file`)."""
+    for d in sorted(tree.dirs, key=lambda d: d.count('/')):
+        deadline.left()
+        os.mkdir(os.path.join(top, *d.split('/')))
+    blobs = [(oid, size, os.path.join(top, *path.split('/')))
+             for mode, oid, size, path in tree.entries if mode != '160000']
+    if blobs:
+        batch(sink=_Blobs(blobs),
+              stdin=b''.join(oid.encode('ascii') + b'\n' for oid, _s, _p in blobs))
+
+
+def _export_tree(project_id, revision, top, workdirs, deadline):
+    """The tree of commit *revision* from *project_id*'s store into the empty *top*,
+    with no `.git` (A6-4, T-054 §4): the seed's manifest, writer and walk, so the
+    same bounds hold and the result is exactly the tree's map."""
+    if not re.fullmatch(r'[0-9a-f]{40}', revision or ''):
+        raise StoreError('not a revision Core exports: %r' % (revision,))
+
+    def git(args, **kw):
+        return LocalNode.store_git('trusted', args, workdirs=workdirs, git_dir=store,
+                                   timeout=min(120, deadline.left()), **kw)
+    if not _present(repo_store(project_id)):
+        raise StoreError('no store holds %s for %s' % (revision, project_id))
+    store = LocalNode.store_open(project_id, workdirs=workdirs)
+    if git(['rev-parse', '--verify', '-q', revision + '^{commit}']).strip() != revision:
+        raise StoreError('%s is not a commit in the store' % revision)
+    tree = _Manifest(len(top))
+    git(['ls-tree', '-r', '-z', '-l', '--full-tree', revision], sink=tree)
+    _write_tree(tree, top, deadline, lambda **kw: git(['cat-file', '--batch'], **kw))
+    if _seed_walk(top, deadline) != tree.expected():
+        raise StoreError('the export of %s differs from its tree' % revision)
 
 
 @functools.lru_cache(maxsize=None)
