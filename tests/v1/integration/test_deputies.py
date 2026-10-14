@@ -8,9 +8,14 @@ stand-in runners and a fake process only: no CLI is spawned."""
 import ast
 import inspect
 import os
+import stat
 import subprocess
+from types import SimpleNamespace
+
+import pytest
 
 from archeus.core.calls import OwnCalls
+from archeus.core.domain import ids
 from archeus.harnesses import base
 from archeus.harnesses import calls as real
 from archeus.harnesses.fake import FakeCaller
@@ -46,31 +51,59 @@ def _core_owned(v):
             and v.func.attr in CORE_OWNED and not v.args and not v.keywords)
 
 
+#: the one own call that runs in a fresh empty directory of its own
+FRESH = ('archeus/core/knowledge/passes.py', 'knowledge')
+
+
+def _fresh(v):
+    """`paths.fresh_call_dir`, handed over uncalled: OwnCalls.run makes it."""
+    return (isinstance(v, ast.Attribute) and v.attr == 'fresh_call_dir'
+            and isinstance(v.value, ast.Name) and v.value.id == 'paths')
+
+
+def _in_functions():
+    for rel, tree in _sources():
+        for fn in ast.walk(tree):
+            if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for n in ast.walk(fn):
+                    yield rel, fn.name, n
+
+
 def test_every_own_call_runs_in_a_core_owned_directory():
     """An own call is any call carrying both `purpose=` and `workdir=` (OwnCalls.run,
     the argument dict a caller builds for it, CallSpec); its workdir is a
-    Core-owned paths helper, never a repository path or a variable."""
+    Core-owned paths helper, never a repository path or a variable. The
+    knowledge pass alone gets a fresh empty one; the others keep ARCHEUS_HOME."""
     for src in ('repo.path', 'workdir', 'os.getcwd()', 'paths.archeus_home(x)',
                 'other.archeus_home()', 'paths.exec_paths()', "paths.archeus_home(a='b')"):
         assert not _core_owned(ast.parse(src, mode='eval').body), src
     assert _core_owned(ast.parse('paths.archeus_home()', mode='eval').body)
-    seen, bad = [], []
-    for rel, tree in _sources():
-        for n in ast.walk(tree):
-            if not isinstance(n, ast.Call):
-                continue
-            kw = {k.arg: k.value for k in n.keywords if k.arg}
-            if _name(n.func) == 'CallSpec':
-                assert rel == PASS_THROUGH, '%s:%d builds a CallSpec' % (rel, n.lineno)
-            if 'purpose' not in kw or 'workdir' not in kw:
-                continue
-            seen.append((rel, n.lineno))
-            w = kw['workdir']
-            through = (rel == PASS_THROUGH and _name(n.func) == 'CallSpec'
-                       and isinstance(w, ast.Name) and w.id == 'workdir')
-            if not (through or _core_owned(w)):
-                bad.append('%s:%d workdir=%s' % (rel, n.lineno, ast.unparse(w)))
+    for src in ('paths.fresh_call_dir(x)', 'other.fresh_call_dir', 'paths.call_dir'):
+        assert not _fresh(ast.parse(src, mode='eval').body), src
+    seen, bad, fresh = set(), [], set()
+    for rel, fn, n in _in_functions():
+        if not isinstance(n, ast.Call):
+            continue
+        kw = {k.arg: k.value for k in n.keywords if k.arg}
+        if _name(n.func) == 'CallSpec':
+            assert rel == PASS_THROUGH, '%s:%d builds a CallSpec' % (rel, n.lineno)
+        if 'purpose' not in kw or 'workdir' not in kw:
+            continue
+        seen.add((rel, n.lineno))
+        w = kw['workdir']
+        through = (rel == PASS_THROUGH and _name(n.func) == 'CallSpec'
+                   and isinstance(w, ast.Name) and w.id == 'workdir')
+        if _fresh(w):
+            fresh.add((rel, fn))
+        elif not (through or _core_owned(w)):
+            bad.append('%s:%d workdir=%s' % (rel, n.lineno, ast.unparse(w)))
     assert not bad, bad
+    assert fresh == {FRESH}
+    # the helper is named nowhere else in archeus/ but where it is defined
+    named = {(rel, fn) for rel, fn, n in _in_functions()
+             if isinstance(n, (ast.Attribute, ast.Name))
+             and 'fresh_call_dir' in (getattr(n, 'attr', None), getattr(n, 'id', None))}
+    assert named == {FRESH}, named
     # three passes, intent, planner, review, and CallSpec itself: a scan that
     # stops finding them reports clean
     assert len(seen) >= 7, seen
@@ -83,7 +116,10 @@ def test_the_knowledge_pass_runs_outside_the_repository_on_its_facts(db, tmp_pat
     r = Rig(db, str(parent), [f])
     repo = project(r)
     (spec, prompt), = [s for s in f.sent if s[0].purpose == 'knowledge_extraction']
-    assert spec.workdir == paths.archeus_home()
+    # its own fresh directory, named after its route decision, under run/
+    assert spec.workdir == paths.call_dir(spec.route_decision_id)
+    assert os.path.isdir(spec.workdir) and os.listdir(spec.workdir) == []
+    assert os.path.normcase(spec.workdir) != os.path.normcase(paths.archeus_home())
     assert os.path.normcase(os.path.abspath(repo.path)) not in os.path.normcase(spec.workdir)
     assert 'Read the repository in the working directory' not in prompt
     facts = dict(line.split(': ', 1) for line in prompt.splitlines()
@@ -93,6 +129,107 @@ def test_the_knowledge_pass_runs_outside_the_repository_on_its_facts(db, tmp_pat
     assert facts['Module directories'] and facts['Imports between module directories'] != 'none'
     assert ' -> ' in facts['Imports between module directories']
     assert spec.no_tools is True
+
+
+# ── the fresh call directory: fresh-only, plain, empty, kept ──
+
+def _rd():
+    return ids.new_id('route_decision')
+
+
+def test_a_call_directory_is_fresh_empty_and_its_own(db):
+    a, b = _rd(), _rd()
+    got = paths.fresh_call_dir(a)
+    assert got == paths.call_dir(a) == os.path.join(paths.run_dir(), 'calls', a)
+    assert os.path.isdir(got) and os.listdir(got) == []
+    assert paths.fresh_call_dir(b) != got
+    with pytest.raises(FileExistsError):        # never reused, even empty
+        paths.fresh_call_dir(a)
+    assert os.path.isdir(got)                   # and the refusal removed nothing
+
+
+@pytest.mark.parametrize('name', ['..', 'rte_x', '../../repo', 'exe_' + '0' * 26])
+def test_a_call_directory_is_named_only_by_a_route_decision_id(db, name):
+    with pytest.raises(ValueError):
+        paths.call_dir(name)
+
+
+def test_nothing_in_paths_deletes_or_moves():
+    tree = ast.parse(open(os.path.join(ROOT, 'archeus', 'infra', 'paths.py'),
+                          encoding='utf-8').read())
+    called = {_name(n.func) for n in ast.walk(tree) if isinstance(n, ast.Call)
+              and isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Name)
+              and n.func.value.id in ('os', 'shutil')}
+    assert 'mkdir' in called
+    assert not called & {'rmdir', 'removedirs', 'remove', 'unlink', 'rmtree', 'rename',
+                         'replace', 'move'}
+
+
+def _fake_lstat(monkeypatch, target, kind, when=lambda: True):
+    """os.lstat as it is, except that *target* is a junction, a symlink or a file
+    (while *when* holds)."""
+    real_lstat = os.lstat
+    fake = {'junction': SimpleNamespace(st_mode=stat.S_IFDIR | 0o777,
+                                        st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT),
+            'symlink': SimpleNamespace(st_mode=stat.S_IFLNK | 0o777, st_file_attributes=0),
+            'file': SimpleNamespace(st_mode=stat.S_IFREG | 0o666, st_file_attributes=0)}[kind]
+
+    def lstat(p, *a, **kw):
+        if when() and os.path.normcase(os.path.abspath(p)) == os.path.normcase(target()):
+            return fake
+        return real_lstat(p, *a, **kw)
+    monkeypatch.setattr(os, 'lstat', lstat)
+
+
+COMPONENTS = {'home': lambda rd: paths.archeus_home(), 'run': lambda rd: paths.run_dir(),
+              'calls': lambda rd: os.path.dirname(paths.call_dir(rd)),
+              'leaf': lambda rd: paths.call_dir(rd)}
+
+
+@pytest.mark.parametrize('kind', ['junction', 'symlink', 'file'])
+@pytest.mark.parametrize('where', sorted(COMPONENTS))
+def test_an_alias_anywhere_from_home_to_the_call_directory_is_refused(db,
+                                                                       monkeypatch, where,
+                                                                       kind):
+    rd = _rd()
+    _fake_lstat(monkeypatch, lambda: COMPONENTS[where](rd), kind)
+    with pytest.raises(OSError, match='not a plain directory'):
+        paths.fresh_call_dir(rd)
+    # an alias above it is seen before anything is made through it
+    assert (where == 'leaf') == os.path.isdir(paths.call_dir(rd))
+
+
+@pytest.mark.parametrize('where', ['home', 'run', 'calls'])
+def test_a_parent_swapped_for_an_alias_after_the_mkdir_is_refused(db, monkeypatch, where):
+    """Checked before the leaf is made and again after: a swap in between is seen."""
+    rd, made, real_mkdir = _rd(), [], os.mkdir
+    monkeypatch.setattr(os, 'mkdir', lambda p, *a, **kw: (
+        real_mkdir(p, *a, **kw), made.append(p == paths.call_dir(rd)))[0])
+    _fake_lstat(monkeypatch, lambda: COMPONENTS[where](rd), 'junction', when=lambda: any(made))
+    with pytest.raises(OSError, match='not a plain directory'):
+        paths.fresh_call_dir(rd)
+
+
+def test_a_call_directory_that_is_not_empty_is_refused(db, monkeypatch):
+    rd, real = _rd(), os.listdir
+    monkeypatch.setattr(os, 'listdir', lambda p: ['planted'] if p == paths.call_dir(rd)
+                        else real(p))
+    with pytest.raises(OSError, match='not empty'):
+        paths.fresh_call_dir(rd)
+
+
+def test_a_refused_directory_fails_the_knowledge_pass_with_nothing_spawned(db, tmp_path,
+                                                                          monkeypatch):
+    parent = tmp_path / 'repos'
+    parent.mkdir()
+    f = FakeCaller(replies={'knowledge_extraction': [{'parsed': GOOD}]})
+    r = Rig(db, str(parent), [f])
+    _fake_lstat(monkeypatch, lambda: os.path.join(paths.run_dir(), 'calls'), 'junction')
+    repo = project(r)
+    kp = r.kp(repo.project_id)
+    assert (kp['state'], kp['items']) == ('failed', 0)
+    assert 'no working directory' in kp['reason'] and 'not a plain directory' in kp['reason']
+    assert not [s for s in f.sent if s[0].purpose == 'knowledge_extraction']
 
 
 def test_only_the_knowledge_pass_asks_for_no_tools():

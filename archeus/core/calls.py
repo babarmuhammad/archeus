@@ -73,7 +73,10 @@ class OwnCalls:
         validation beyond the schema: a list of problems, empty when it holds.
         `forbidden` ({harnesses, accounts}) keeps resources out of the election
         (P13: a review is routed away from the accounts that did the work).
-        `no_tools` is CallSpec's."""
+        `no_tools` is CallSpec's. A callable `workdir` is made from the route
+        decision id only once the call is about to run (K-O2: a fresh directory
+        per call, none for a call that never runs); if it raises, the call ends
+        `failed` with nothing spawned."""
         with self.db.read() as conn:
             req, snap, readings = resources.call_snapshot(
                 conn, callers=self.callers, feed=self.usage, preference=self.preference.get(),
@@ -117,6 +120,13 @@ class OwnCalls:
         model = d['model']
         from ..harnesses import base
         account = base.AccountRef(d['account_id'] or d['account_ref'], acct.get('home_ref'))
+        if callable(workdir):
+            try:
+                workdir = workdir(rd)
+            except OSError as e:
+                why = 'no working directory for the call: %s' % e
+                self._end(rd, 'failed', reason=why)
+                return Called(rd, 'failed', None, None, why, 0, None)
         spec = base.CallSpec(route_decision_id=rd, purpose=purpose, prompt=prompt,
                              workdir=workdir, account=account, schema=schema, model=model,
                              limits={'timeout_s': self.timeout_s}, no_tools=no_tools)
