@@ -314,6 +314,19 @@ def spawn(spec, argv):
         if last.get('process_seq', 1) != seq - 1 or not os.path.exists(paths.ended):
             raise AlreadySpawned('%s: process %d may still be running'
                                  % (spec.execution_id, seq - 1))
+    try:
+        child = _start(spec, argv, paths, seq)
+    except BaseException:
+        # nothing started: the MCP config this attempt's argv wrote goes with it
+        # (T-099). Not mark_ended: an isolation failure has written its own tombstone
+        drop_mcp_config(paths)
+        raise
+    create_time = proc.process_create_time(child.pid)
+    _write_json(paths.pid, {'pid': child.pid, 'create_time': create_time, 'process_seq': seq})
+    return ProcessHandle(spec.execution_id, child.pid, create_time, paths.dir), child
+
+
+def _start(spec, argv, paths, seq):
     # Core creates every class directory (PV-20 §7.5): the execution is never the
     # one to make a directory inside its own Core-owned one
     for d in (paths.dir, paths.req, paths.res, paths.ctl):
@@ -364,9 +377,7 @@ def spawn(spec, argv):
         # we KNOW nothing started, so say so: a marker without `ended` would
         # otherwise read as "a process may exist" to reconciliation
         _refuse(paths, err, None)
-    create_time = proc.process_create_time(child.pid)
-    _write_json(paths.pid, {'pid': child.pid, 'create_time': create_time, 'process_seq': seq})
-    return ProcessHandle(spec.execution_id, child.pid, create_time, paths.dir), child
+    return child
 
 
 def _refuse(paths, error, cause):
@@ -513,8 +524,10 @@ def _isolated_env(spec, paths):
 def mark_ended(paths, exit_code, **extra):
     """Write the `ended` tombstone (Core, when it observes the exit). Every end of a
     process passes here, so this is where its MCP config goes (T-099)."""
-    _write_json(paths.ended, dict({'exit_code': exit_code, 'at': time.time()}, **extra))
-    drop_mcp_config(paths)
+    try:
+        _write_json(paths.ended, dict({'exit_code': exit_code, 'at': time.time()}, **extra))
+    finally:
+        drop_mcp_config(paths)
 
 
 def drop_mcp_config(paths):

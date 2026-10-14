@@ -27,9 +27,10 @@ from archeus.harnesses import base, sources
 from archeus.harnesses.fake import FakeHarness
 from archeus.infra.artifacts import store
 from archeus.infra.paths import ExecPaths
+from archeus.node.local import LocalNode
 from claude_sessions import proc
 
-from v1.integration.test_execution import DONE, Rig, _running, ended
+from v1.integration.test_execution import DONE, TOOL, Rig, _running, ended
 from v1.integration.test_policy import AUTO, task
 
 TOKEN = 'Bearer ' + 'z' * 30
@@ -274,7 +275,8 @@ def _mcp_running(x, sleep=30):
     mid = ready_in(x, x.prj)
     e = _running(x, mid)
     assert os.path.exists(ExecPaths(e.id).mcp)
-    assert started(e)['argv'][started(e)['argv'].index('--mcp-config') + 1] ==         ExecPaths(e.id).mcp
+    argv = started(e)['argv']
+    assert argv[argv.index('--mcp-config') + 1] == ExecPaths(e.id).mcp
     return mid, e
 
 
@@ -339,6 +341,90 @@ def test_T099_the_boot_sweep_removes_leftovers_and_only_them(x):
     fresh.drive(mid, ended(fresh, e.id))
     assert not os.path.exists(ExecPaths(e.id).mcp)
 
+
+
+def test_T099_an_estopped_execution_leaves_no_mcp_config(x):
+    mid, e = _mcp_running(x)
+    LocalNode.engage_estop()
+    try:
+        assert x.do(X.Executions(missions=x.missions).estop, who=x.user)['stopped'] == [e.id]
+        x.drive(mid, ended(x, e.id))
+    finally:
+        LocalNode.clear_estop()
+    assert (x.state(e.id).state, x.state(e.id).stop_reason) == ('ENDED_KILLED', 'estop')
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def test_T099_an_execution_that_ends_while_its_halt_is_exiting_is_still_collected(x):
+    """A halt for approval, then a stop before the next pass collects the exiting
+    process (here an account ceiling): the execution is no longer live, so the
+    pass over live executions never reaches its process."""
+    opt(x, x.acc, 'mcp', 'gh')
+    x.scenarios['t1'] = [TOOL('mcp__gh__issue', {}), DONE]
+    mid = ready_in(x, x.prj, task('t1', 'read'))
+    e = x.drive(mid, lambda: (lambda e: e if e is not None
+                              and e.state == 'AWAITING_APPROVAL' else None)(
+        x.exe(mission_id=mid)))
+    assert e.id in x.manager._procs                          # the halt is still exiting
+    x.manager._stop_account(x.acc, 'ceiling', 'usage reached the allocation')
+    assert x.state(e.id).state == 'ENDED_KILLED'
+    p = x.manager._procs[e.id]
+    deadline = time.monotonic() + 15
+    while p['adapter'].status(p['handle']).state == 'running':
+        assert time.monotonic() < deadline, 'the halted process never exited'
+        time.sleep(0.05)
+    for _ in range(3):
+        x.manager.tick()
+    assert e.id not in x.manager._procs
+    assert os.path.exists(ExecPaths(e.id).ended)
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def test_T099_a_launch_that_raises_leaves_no_mcp_config(x, monkeypatch):
+    """A launch that raises SpawnFailed itself, as an isolated launch failing after
+    establishment does, never passes the spawn's own refusal."""
+    opt(x, x.acc, 'mcp', 'gh')
+
+    def raising(*a, **k):
+        raise base.SpawnFailed('isolation: launch_failed (test)')
+    monkeypatch.setattr(base.proc, 'spawn_detached', raising)
+    mid = ready_in(x, x.prj)
+    refused = lambda: [r for r in x.all(entities.Execution) if r.state == 'ABANDONED']  # noqa: E731
+    x.drive(mid, refused)
+    for r in refused():
+        assert os.path.exists(ExecPaths(r.id).spawning)      # the argv was built
+        assert not os.path.exists(ExecPaths(r.id).mcp)
+
+
+def test_T099_a_spawn_refused_as_already_spawned_keeps_the_config_a_process_may_hold(
+        x, monkeypatch):
+    """A marker that is already there means a process of this execution may still
+    run and read its config: the refusal leaves the file to that process's end, or
+    to the boot sweep."""
+    opt(x, x.acc, 'mcp', 'gh')
+    real = base.spawn
+
+    def marked(spec, argv):
+        base._write_json(ExecPaths(spec.execution_id).spawning, {'process_seq': 1})
+        return real(spec, argv)
+    monkeypatch.setattr(base, 'spawn', marked)
+    mid = ready_in(x, x.prj)
+    refused = lambda: [r for r in x.all(entities.Execution) if r.state == 'ABANDONED']  # noqa: E731
+    x.drive(mid, refused)
+    assert all(os.path.exists(ExecPaths(r.id).mcp) for r in refused())
+
+
+def test_T099_a_tombstone_that_cannot_be_written_still_drops_the_config(x, monkeypatch):
+    mid, e = _mcp_running(x, sleep=0.5)
+
+    def broken(path, obj):
+        raise OSError('disk full')
+    monkeypatch.setattr(base, '_write_json', broken)
+    with pytest.raises(OSError):
+        base.mark_ended(ExecPaths(e.id), 0)
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+    monkeypatch.undo()
+    x.drive(mid, ended(x, e.id))
 
 # ── the routes and the CLI ───────────────────────────────────────────────────
 

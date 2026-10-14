@@ -124,6 +124,7 @@ class ExecutionManager:
                 log.info('execution %s: lost a race: %s', e.id, err)
             except errors.WriterClosed:
                 raise
+        did += self._orphans({e.id for e in live})
         now = time.monotonic()
         if now - self._clock['accounts'] >= ACCOUNTS_S:
             self._clock['accounts'] = now
@@ -136,6 +137,26 @@ class ExecutionManager:
             # an idle pass stays an idle pass
             self._clock['isolation'] = now
             self._sweep_isolation(live)
+        return did
+
+    def _orphans(self, live):
+        """A process whose execution ended while it was still exiting (a halt,
+        then a stop before the next pass) is no longer live, so the pass above
+        never reaches it: it is collected here once it has exited, which is where
+        its end is recorded and its keys removed (T-099)."""
+        did = 0
+        for xid in [i for i in self._procs if i not in live]:
+            p = self._procs[xid]
+            st = p['adapter'].status(p['handle'])
+            if st.state == 'running':
+                continue
+            with self.db.read() as r:
+                e = rows.get(r, entities.Execution, xid).entity
+            try:
+                self._collect(e, p, st)
+                did += 1
+            except errors.LOST_RACE as err:
+                log.info('execution %s: lost a race: %s', xid, err)
         return did
 
     def _step(self, e, m, disarmed):
