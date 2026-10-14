@@ -658,3 +658,42 @@ def test_t088_an_appcontainer_launch_needs_localappdata_and_any_value_will_do(
         assert outcome['launched'] and outcome['ac'] == 1
         assert outcome['text'].startswith('L=%s\\Packages\\archeus.exec.' % value)
         assert outcome['text'].endswith('\\AC')
+
+
+# ── T-090: the verifier Job's budgets, read back and the process count observed ──
+# Authorised 2026-10-14 (owner, D11, values given): verifier Job only. The production
+# count is 64; to observe it without starting 65 processes the test lowers the same
+# module constant create_job reads (VERIFY_ACTIVE_PROCESSES) to 1, so the code path is
+# the production one and only the number differs.
+
+@pytest.mark.parametrize('count', [1, 64])
+def test_t090_the_verifier_job_limits_a_contained_process_tree(boundary, monkeypatch, count):
+    import ctypes
+    monkeypatch.setattr(iso, 'VERIFY_ACTIVE_PROCESSES', count)
+    key = iso.Principal('verify', ids.new_id('verification'), 0).key
+    # an AppContainer cmd starting a second cmd: recorded only - inside the container
+    # the child is refused ("access denied") whatever the count, so it cannot show it
+    ident, runs = _probe_runs(boundary, key, [[CMD, '/d', '/c', '%s /d /c echo inner' % CMD]])
+    job = boundary._pv20_created['jobs'][-1]
+    li = iso._ELI()
+    assert iso._QueryInformationJobObject(job, iso.JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                                          ctypes.byref(li), ctypes.sizeof(li), None)
+    read = {'flags': hex(li.Basic.LimitFlags), 'active': li.Basic.ActiveProcessLimit,
+            'job_memory': li.JobMemoryLimit, 'job_cpu_100ns': li.Basic.PerJobUserTimeLimit}
+    # the count itself: one System32 cmd alive in the Job, then a second assigned to it
+    pid1, h1 = _spawn_suspended_in_job(boundary, job, [CMD, '/d', '/c', 'ping -n 6 127.0.0.1'])
+    try:
+        try:
+            pid2, h2 = _spawn_suspended_in_job(boundary, job, [CMD, '/d', '/c', 'exit 0'])
+            iso._CloseHandle(h2)
+            second = 'assigned'
+        except iso.IsolationUnavailable as err:
+            second = '%s: %s' % (err.reason, err.detail)
+    finally:
+        iso._TerminateProcess(h1, 1)
+        iso._CloseHandle(h1)
+    _evidence('T-090', count=count, key=key, read_back=read, appcontainer_run=runs[0],
+              second_process=second)
+    assert read == {'flags': hex(0x2000 | 0x8 | 0x200 | 0x4), 'active': count,
+                    'job_memory': 4 * 1024 ** 3, 'job_cpu_100ns': 10 * 60 * 10 ** 7}
+    assert (second == 'assigned') is (count > 1), second

@@ -115,6 +115,14 @@ class IsolationUnavailable(Exception):
                          % (reason, ': %s' % detail if detail else ''))
 
 
+#: the confined verifier's Job budgets (T-054 section 5; owner values 2026-10-14, T-090):
+#: at most 64 live processes, 4 GiB committed by the whole Job, and 10 minutes of user
+#: CPU across it (PerJobUserTimeLimit counts 100 ns units). An execution's Job has none
+VERIFY_ACTIVE_PROCESSES = 64
+VERIFY_JOB_MEMORY = 4 << 30
+VERIFY_JOB_CPU_100NS = 10 * 60 * 10 ** 7
+
+
 @dataclass(frozen=True)
 class Principal:
     """One isolated principal (A6, T-054 C-1013 §2): the Core id it serves and, for a
@@ -1908,6 +1916,8 @@ if WINDOWS:
     ERROR_INVALID_PARAMETER = 87
     HANDLE_FLAG_INHERIT = 0x1
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+    JOB_OBJECT_LIMIT_JOB_TIME, JOB_OBJECT_LIMIT_ACTIVE_PROCESS = 0x4, 0x8
+    JOB_OBJECT_LIMIT_JOB_MEMORY = 0x200
     JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
     JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION = 1
     OBJECT_TYPE_INFORMATION, OBJECT_NAME_INFORMATION = 2, 1
@@ -2035,6 +2045,13 @@ if WINDOWS:
                 _win(_SetHandleInformation(h, HANDLE_FLAG_INHERIT, 0), 'SetHandleInformation')
                 li = _ELI()
                 li.Basic.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                if str(execution_id).startswith(VERIFY_KEY):
+                    li.Basic.LimitFlags |= (JOB_OBJECT_LIMIT_ACTIVE_PROCESS
+                                            | JOB_OBJECT_LIMIT_JOB_MEMORY
+                                            | JOB_OBJECT_LIMIT_JOB_TIME)
+                    li.Basic.ActiveProcessLimit = VERIFY_ACTIVE_PROCESSES
+                    li.JobMemoryLimit = VERIFY_JOB_MEMORY
+                    li.Basic.PerJobUserTimeLimit = VERIFY_JOB_CPU_100NS
                 _win(_SetInformationJobObject(h, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
                                              C.byref(li), C.sizeof(li)),
                      'SetInformationJobObject(KILL_ON_JOB_CLOSE)')
