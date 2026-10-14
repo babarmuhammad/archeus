@@ -421,6 +421,25 @@ def test_every_other_own_call_keeps_its_argv(monkeypatch, tmp_path):
     assert cmd == ['C:/x/pi.exe', '-p', '--no-session', '--tools', 'read,grep,find,ls']
 
 
+@pytest.mark.parametrize('caller', [real.ClaudeCodeCaller, real.PiCaller])
+@pytest.mark.parametrize('no_tools', [False, True])
+def test_an_own_call_gets_none_of_cores_own_environment(monkeypatch, tmp_path, caller,
+                                                        no_tools):
+    # T-087 / T-053 P6: what is Core's stays Core's; the account, PATH and the
+    # user's own variables (a provider key such as SPARK_QWEN_KEY) still reach it
+    for k, v in (('ARCHEUS_HOME', str(tmp_path)), ('ARCHEUS_DEBUG', '1'),
+                 ('PYTEST_CURRENT_TEST', 'x'), ('KEEP_ME', 'yes')):
+        monkeypatch.setenv(k, v)
+    _call(monkeypatch, tmp_path, caller(), no_tools=no_tools)
+    (env,) = ENVS
+    assert not [k for k in env if k.upper().startswith(('ARCHEUS_', 'PYTEST_'))]
+    from claude_sessions import harnesses
+    home = harnesses.of(str(tmp_path))['home_env']     # the account's own home variable
+    assert (env.get(home), env.get('KEEP_ME'), env.get('ANTHROPIC_API_KEY')) == (
+        str(tmp_path), 'yes', None)
+    assert env.get('PATH') == os.environ['PATH']
+
+
 class _Child:
     returncode = 0
 
