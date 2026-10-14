@@ -539,6 +539,28 @@ def test_a_snapshot_of_a_rewrite_that_changes_nothing_keeps_the_head(tmp_path):
     assert LocalNode.git_snapshot(root, 'something new') != head
 
 
+def test_a_snapshot_whose_staged_check_fails_still_commits_what_is_staged(tmp_path,
+                                                                          monkeypatch):
+    """`diff --cached --quiet` answering neither 0 nor 1 is not "nothing staged":
+    the snapshot goes on to commit, so staged work is never left out of the revision."""
+    from archeus.node import local
+    root = _repo_with_commit(tmp_path)
+    head = _git(root, 'rev-parse', 'HEAD')
+    with open(os.path.join(root, 'notes.txt'), 'w', encoding='utf-8') as f:
+        f.write('new\n')
+    real = local.proc.run
+
+    def run(args, **kw):
+        if args[1:3] == ['diff', '--cached']:
+            return subprocess.CompletedProcess(args, 128, '', 'fatal: synthetic')
+        return real(args, **kw)
+
+    monkeypatch.setattr(local.proc, 'run', run)
+    new = LocalNode.git_snapshot(root, 'staged')
+    assert new != head
+    assert _git(root, 'show', '--name-only', '--format=', new) == 'notes.txt'
+
+
 # ── A6: the interim command guard (T-041, T-042) ────────────────────────────
 
 #: the Git a legacy unknown or ordinary execution keeps under G1 (never a command)
@@ -1302,12 +1324,13 @@ def test_one_mission_verifies_and_merges_task_worktrees_of_both_layouts(core):
     runs where the resolver puts it, every change reaches the one `_mission`
     worktree, and the mission verifies and completes. Before T-092 this
     stopped at the second dispatch: t1's merge changed the plan's digest.
-    Each task carries the fix, because each is verified in its own worktree."""
+    Each task carries the fix, because t1 and t2 are dispatched together from
+    the fixture's base; each also leaves its own file, so the merge of every
+    task, the earlier-layout one included, is visible in `_mission`."""
     rig = Rig(core)
     repo = rig.fixture_repo('verify-python')
     done = {'emit': {'type': 'result', 'summary': 'done'}}
-    rig.script_harness('t1', [_write(FIX), done])
-    for k in ('t2', 't3'):
+    for k in ('t1', 't2', 't3'):
         rig.script_harness(k, [_write(FIX), _write(k + '\n', k + '.txt'), done])
     mid = core.create_mission(title='Steps', objective='Hand off once',
                               project_id=repo.project_id)['id']
@@ -1325,7 +1348,7 @@ def test_one_mission_verifies_and_merges_task_worktrees_of_both_layouts(core):
     wt = os.path.join(new, '_mission')
     with open(os.path.join(wt, 'calc.py'), encoding='utf-8') as f:
         assert f.read() == FIX
-    for k in ('t2', 't3'):
+    for k in ('t1', 't2', 't3'):
         with open(os.path.join(wt, k + '.txt'), encoding='utf-8') as f:
             assert f.read() == k + '\n'
     head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=wt,
