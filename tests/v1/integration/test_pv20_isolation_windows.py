@@ -291,12 +291,9 @@ CURL = os.path.join(SYS32, 'curl.exe')
 
 
 def _evidence(card, **facts):
-    """Each observation, verbatim, to the file the run names (outside the basetemp,
-    which is deleted); nothing when the run names none."""
-    path = os.environ.get('ARCHEUS_NATIVE_EVIDENCE')
-    if path:
-        with open(path, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(dict(card=card, **facts), default=str) + '\n')
+    """Each observation, verbatim, to the test's captured output (`pytest -rP` prints
+    it): the authorisation allows no write outside the basetemp."""
+    print(json.dumps(dict(card=card, **facts), default=str))
 
 
 class _Listener:
@@ -446,21 +443,24 @@ def test_t064_loopback_and_pipe_reach_from_an_appcontainer(boundary):
     finally:
         lst.close()
         pipe.close()
+    listener, closed_run, piped = runs
+    # cmd exits before it can be observed: its identity is recorded, not claimed
+    pipe_identity = piped['observed'] or 'unverified: exited before observation'
     _evidence('T-064', profile=iso.profile_name(eid), sid=ident['sid'],
               listener_port=lst.port, closed_port=closed, pipe=pipe.name,
               control_reply=control, listener_peers_from_container=reached,
-              pipe_received=pipe.got, runs=runs)
+              pipe_received=pipe.got, pipe_identity=pipe_identity, runs=runs)
     assert control.startswith(b'HTTP/1.0 200')
-    listener, closed_run, piped = runs
     # observed 2026-10-14 (build 26200): the listener is never reached (curl 28, a
     # timeout, not a refusal), the closed port is refused (curl 7), the pipe is denied
     assert reached == [] and listener['rc'] == 28
     assert closed_run['rc'] == 7
     assert piped['rc'] != 0 and pipe.got == b'self'        # only the test's own unblock
-    for r in runs:
+    for r in (listener, closed_run):                       # live while observed: required
         tok = r['observed']
-        assert tok is None or (tok['is_appcontainer'] == 1 and tok['ac_sid'] == ident['sid']
-                               and not set(tok['capability_sids']) & PYTEST_SIDS)
+        assert tok is not None, 'no AppContainer identity observed for %s' % r['argv']
+        assert tok['is_appcontainer'] == 1 and tok['ac_sid'] == ident['sid']
+        assert not set(tok['capability_sids']) & PYTEST_SIDS
 
 
 # ── T-068 (K-O4): who is on the other end of a loopback connection ────────────
