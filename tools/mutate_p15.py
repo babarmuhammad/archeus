@@ -144,8 +144,8 @@ MUTATIONS = [
      "        return self.origin if host in (None, self.host) else 'http://%s' % host")],
      [I + '::test_R3_a_remote_host_is_accepted_only_as_itself_over_https']),
     ('M23', 'a local credential is honoured through the tunnel', [(SRV,
-     "                if (self.principal['origin'] != 'paired'",
-     "                if False and (self.principal['origin'] != 'paired'")],
+     "                    if not self.api.origin.local_host(host):",
+     "                    if False:")],
      [I + '::test_R3_a_remote_host_is_accepted_only_as_itself_over_https']),
     # ── ownership (§9, §15) ──
     ('M17', 'a redemption may carry a model', [(SCH,
