@@ -69,6 +69,29 @@ def archeus_home(environ=None, platform=None):
     return path
 
 
+def task_worktree(project_id, mission_id, key):
+    """`<ARCHEUS_HOME>/worktrees/<mission ULID>/<task key>` (target-architecture
+    §5.1, amendment 2026-10-14), or the earlier layout's directory when it exists."""
+    return _worktree(project_id, mission_id, key)
+
+
+def mission_worktree_path(project_id, mission_id):
+    """`<ARCHEUS_HOME>/worktrees/<mission ULID>/_mission`, or the earlier layout's
+    directory when it exists."""
+    return _worktree(project_id, mission_id, '_mission')
+
+
+def _worktree(project_id, mission_id, leaf):
+    # The one resolver that reads the disk (it writes nothing). The earlier
+    # `<project-id>/<mission-id>/` layout is kept and used where a worktree already
+    # exists: its branch is checked out there, so Git would refuse a second path.
+    root = os.path.join(archeus_home(), 'worktrees')
+    legacy = os.path.join(root, project_id, mission_id, leaf)
+    if os.path.isdir(legacy):
+        return legacy
+    return os.path.join(root, mission_id.split('_', 1)[-1], leaf)
+
+
 def run_dir():
     """`<ARCHEUS_HOME>/run` — liveness and e-stop files that work without Core."""
     return os.path.join(archeus_home(), 'run')

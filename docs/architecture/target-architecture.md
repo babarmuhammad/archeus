@@ -223,6 +223,20 @@ code, tool or instruction deletes `<ARCHEUS_HOME>` as a whole** — a reset remo
 by name (migration-plan §7). The Qt cache stays where it is: moving it would change legacy
 behaviour for no V1 benefit, and the two sets of names do not overlap.
 
+**Amendment 2026-10-14 (T-080, worktree layout).** New task worktrees are created at
+`<ARCHEUS_HOME>/worktrees/<mission ULID>/<task-key>` and the mission worktree at
+`<ARCHEUS_HOME>/worktrees/<mission ULID>/_mission`, where `<mission ULID>` is the mission id
+without its `msn_` prefix. The project segment and the id prefixes are dropped because Git on
+Windows refuses a worktree whose `.git` path passes 220 characters (`'$GIT_DIR' too big`,
+measured, T-077). The old layout capped `ARCHEUS_HOME` at 134 characters, and the new one at 169.
+Worktrees created under the earlier layout
+`<ARCHEUS_HOME>/worktrees/<project-id>/<mission-id>/<task-key>` (and `…/_mission`) are kept where
+they are and still used: Core looks for the earlier path first and uses it when it exists. Nothing
+is moved or deleted by the change. `worktrees/` remains one V1 entry. Its ownership, keep-all and
+reset behaviour are unchanged. The layouts recorded in `execution-architecture.md` §(workspace),
+`p11-design-gate.md` (workspace table), `p13-design-gate.md` (§8, §12.1), `pv13-…` and
+`pv20-execution-isolation-design.md` describe worktrees created before this amendment.
+
 | Store | Technology | Contents | Truth for |
 |---|---|---|---|
 | `<ARCHEUS_HOME>/archeus.db` | SQLite WAL, `PRAGMA user_version` migrations | all entities of domain-model.md, `events`, `consumer_cursors`, `consumer_effects`, `idempotency_keys` | current state, history, knowledge |
