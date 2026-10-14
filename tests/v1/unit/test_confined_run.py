@@ -542,3 +542,60 @@ def test_files_already_there_are_never_reused_or_truncated(tmp_path):
     again = node.run_confined_check(_VID, 0, ['tool'], toolchain=toolchain, timeout=5,
                                     record=recorded.append)
     assert again['error'] == 'isolation: attempt_consumed' and _tree(v.dir) == before
+
+
+def _exits_after(b, act):
+    """The Job's count: *act* runs once (a descendant's last deed), then the Job is empty."""
+    def count(job):
+        b.events.append('count')
+        act()
+        return 0
+    b.job_active_processes = count
+
+
+def test_a_descendant_past_the_output_cap_before_it_exits_is_never_a_pass(run, tmp_path,
+                                                                          monkeypatch):
+    monkeypatch.setattr(iso, 'CONFINED_OUT_MAX', 100)
+    b = Boundary()                                 # the root exits clean, writes nothing
+
+    def late():
+        with open(str(tmp_path / 'out0.log'), 'ab') as f:
+            f.write(b'z' * 1000)
+    _exits_after(b, late)
+    result, recorded, _a, _req = run(b)
+    assert result['error'].startswith('limit_exceeded: out.log') and result['exit_code'] is None
+    assert recorded == [result]
+
+
+def test_a_walk_a_descendant_breaks_before_it_exits_is_never_a_pass(run, monkeypatch):
+    real, armed = os.scandir, []
+
+    def scandir(path):
+        if armed and 'scratch' in str(path):
+            raise PermissionError('denied (synthetic)')
+        return real(path)
+    monkeypatch.setattr(os, 'scandir', scandir)
+    b = Boundary()
+    _exits_after(b, lambda: armed.append(1))
+    result, recorded, _a, _req = run(b)
+    assert result['error'].startswith('accounting_failed') and result['exit_code'] is None
+    assert recorded == [result]
+
+
+@pytest.mark.parametrize('exc', [RuntimeError('synthetic'), KeyboardInterrupt()])
+def test_a_preparation_that_raises_anything_leaves_no_admission_behind(tmp_path, exc):
+    b = Boundary()
+    a = iso.Isolation(FakeNode(), boundary=b)
+    req = make_verifier_request(_verify_key(0), str(tmp_path / 'a0'))
+    out, stdin = str(tmp_path / 'out0.log'), str(tmp_path / 'stdin')
+
+    def prepare():
+        raise exc
+    with pytest.raises(type(exc)):
+        a.run_confined(req, ['tool'], env={}, timeout=5, out_path=out, stdin_path=stdin,
+                       record=lambda r: pytest.fail('recorded'), keep=1024, prepare=prepare)
+    assert req.execution_id not in a._admitted
+    with pytest.raises(iso.IsolationUnavailable) as err:
+        a.establish(req)                            # the consumed marker refuses it
+    assert err.value.reason == 'attempt_consumed'
+    assert b.created == [] and b.launch_calls == []

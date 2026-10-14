@@ -1323,8 +1323,12 @@ class Isolation:
         if prepare is not None:
             try:
                 env = prepare()
-            except (OSError, ValueError) as err:
-                self._admitted.discard(key)          # admitted and consumed, never started
+            except BaseException as err:
+                # admitted and consumed, never started: whatever prepare raised, the
+                # admission goes with it, or a later establish would skip the marker
+                self._admitted.discard(key)
+                if not isinstance(err, (OSError, ValueError)):
+                    raise
                 return _unread(t0, 'prepare_failed: %s' % err), False
         try:
             rec = self.establish(request)
@@ -1359,8 +1363,11 @@ class Isolation:
                 if exited:
                     break
             if error is None:
-                error = self._quiescent(api, self.held_job(key)) or (
-                    late if time.monotonic() >= deadline else None)
+                # accounted again once the Job is empty: a descendant may have written
+                # past a cap, or broken the walk, after the root's last poll
+                error = self._quiescent(api, self.held_job(key)) or \
+                    _over_limit(out_path, roots, start) or (
+                        late if time.monotonic() >= deadline else None)
         except BaseException:
             # the Job never outlives a failure here: closed, and the failure raised as it
             # was. No result is recorded and the profile is left for reclaim
