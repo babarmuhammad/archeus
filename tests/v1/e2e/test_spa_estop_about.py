@@ -129,7 +129,7 @@ def test_a_refused_a_failed_and_an_unanswered_stop_claim_nothing(browser, core):
     for answer, want in answers:
         page.route('**/v1/estop', answer)
         _press_stop(page).get_by_role('button', name='Emergency stop').click()
-        wait(page, lambda: want.split(':')[0] in _said(page), what=want)
+        wait(page, lambda want=want: want.split(':')[0] in _said(page), what=want)
         check(_said(page).startswith(want), 'said %r, wanted %r' % (_said(page), want))
         check(_section(page).locator('[role=alert][data-estop-said]').count() == 1, 'a failure is an alert')
         check(_health(core) is True, 'Core is still armed: nothing was stopped')

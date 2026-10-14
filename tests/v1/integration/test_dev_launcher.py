@@ -110,6 +110,8 @@ def test_it_waits_for_health_opens_after_it_and_a_ctrl_c_stops_core_cleanly(monk
                                                                             capsys):
     argv = _real_core_argv()
     monkeypatch.setattr(v1_env, 'core_argv', lambda hosts=(): argv)
+    # CI's test job does not build the SPA; the unbuilt case has its own test
+    monkeypatch.setattr(v1_env, 'spa_problem', lambda: (None, None))
     events = []
 
     def opener(url):

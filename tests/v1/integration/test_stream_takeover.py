@@ -27,7 +27,7 @@ def _open(tc, token, n):
         before = tc.core.api.sse.count()
         s = SSEClient(tc.base_url, token)
         assert s.status == 200
-        _until(lambda: tc.core.api.sse.count() > before or s.eof, 'registered')
+        _until(lambda before=before, s=s: tc.core.api.sse.count() > before or s.eof, 'registered')
         out.append(s)
     return out
 

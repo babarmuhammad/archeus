@@ -139,7 +139,9 @@ def test_one_home_is_one_account_and_its_home_never_changes(r, tmp_path):
     home = str(tmp_path / 'Claude')
     a = r.account('A', home_ref=home)
     with pytest.raises(ValueError, match='already registered as account %s' % a):
-        r.account('again', home_ref=os.path.join(str(tmp_path), '.', 'claude') + os.sep)
+        # normcase folds case only where the filesystem does (Windows)
+        again = 'claude' if os.name == 'nt' else 'Claude'
+        r.account('again', home_ref=os.path.join(str(tmp_path), '.', again) + os.sep)
     r.account('other harness', harness_id='pi', home_ref=home)   # keys never cross harnesses
     with pytest.raises(ValueError, match=r"frozen once recorded: \['home_ref'\]"):
         r.do(lambda tx, actor: tx.update(entities.Account, a, {'home_ref': str(tmp_path)},
