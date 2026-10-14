@@ -2185,6 +2185,112 @@ credential store was read: this review covers Archeus's own files and code only.
        the owner's to dispose of: I-F5 closes with the next candidate rebuild.
      - Slice H is next (item 108).
 
+### Slice H — drills, fuzzing, mutants (2026-10-15)
+
+Built on slice I's head `853f63f`, under item 108's order and D12, D13 and D14 as decided there.
+Fakes only: no real provider call, no Windows isolation, profile or ACL API, no network.
+
+115. **D13, the breaker drills: each breaker of §1.6 tripped on purpose and its recovery
+     observed** (`407438b`). What existed was mapped first; a drill was added only where the
+     trip or the recovery had no test.
+     - **The execution breaker** (per account, resource and auth failures). E32 covered the trip
+       only. `test_execution.py::test_D13_the_execution_breaker_trips_opens_cools_and_recovers`
+       walks the whole Account cycle on the real machine: a storm of non-resource failures moves
+       nothing; a resource/auth storm gives DEGRADED; errors that persist past a beat give OPEN;
+       nothing moves before the cooldown and DEGRADED after it; a successful probe gives
+       AVAILABLE; and the recovered account is routed again. Synthetic ended executions reach
+       `accounts_tick` through the transaction's own read, so every boundary is exact.
+     - **The pairing breaker** (`PairingLocked`). Its trip and its reopening after the window
+       were already covered (`test_presence.py::test_R4_…` and
+       `test_presence_units.py::test_the_failure_breaker_burns_every_code_and_reopens_after_its_window`);
+       nothing was added.
+     - **Five wrong PINs revoke a client.** R1 covered the trip.
+       `test_presence.py::test_D13_the_pin_breaker_resets_on_a_right_pin_and_a_new_pairing_recovers`
+       adds the recovery: four wrong PINs and a right one approve and reset the count; after the
+       fifth wrong PIN in a row revokes the client, a new pairing decides the approval that was
+       still pending.
+     - **The loop guard** (S10b). E16 covered the suspension and the re-arm without replay.
+       `test_automation.py::test_D13_a_reenabled_automation_fires_again` adds that a re-enabled
+       automation acts on the next event.
+     - **The e-stop drills** were slice A's (A01–A06, E24, E25, E49). The one case D13 names that
+       none covered was the e-stop with Core running against the other enforcement kind:
+       `test_execution.py::test_D13_the_estop_with_core_running_kills_a_registry_only_execution`
+       stops an execution of a harness with no hook (enforcement `none`, routed only for ALLOW
+       work) through the registry kill, uncharged, like E24's hooked one.
+     - **Finding H-F1, for the owner (not changed).** The loop guard counts the escalated and
+       rate-limited runs of the last hour including those before a re-enable. Observed: an
+       automation suspended by three escalations and re-enabled fires again, then is suspended
+       again by its first new escalation; one suspended by three rate-limited runs and re-enabled
+       inside the hour is suspended again by its very next event and fires nothing. p14-design-gate
+       §10 says "re-enabling re-arms it"; whether re-arming also clears the window it counts is
+       not stated. The drill asserts only what is: the re-enabled automation acts on its next
+       event. If re-arming should clear the count, the change is to count runs after the
+       automation's `armed_seq` in `automations._guard`.
+
+116. **D12, the fuzz harness** (`fa381b0`). `tools/fuzz_p20.py` is stdlib only.
+     - **Routes.** Every command route, meaning the 51 with a request schema, gets bodies built
+       from its own schema and then mutated: a type swapped, a required field dropped, an
+       unknown field added, a huge or control-character string, an out-of-range number, deep
+       nesting. The endpoint floor's recorded junk bodies are the corpus' other half. Each request
+       runs through the real route table and `server.Handler._serve` in process, with no socket
+       per request, so a large budget does not run into the ephemeral-port limit
+       (p11-design-gate D31). The peer is attested as the user because attestation is not the
+       fuzz target; it is tested where it was built (T-057).
+     - **The canonicaliser.** Mutated inputs for every tool ADR-0052's mapping names, plus Skill,
+       the aliases and unknown names. For an input it cannot parse it must answer the
+       conservative class: one unclassified `exec`.
+     - **The property** for both targets is the one D12 states: no 500 and no unhandled
+       exception.
+     - **CI**: `tests/v1/integration/test_p20_fuzz.py`, seed 20, with 3000 route requests and
+       10000 canonicaliser calls, in about 3 s. On demand: `py tools/fuzz_p20.py --seed S --budget N`.
+     - **What it found, both fixed in their own commits inside the accepted design:**
+       - `d3812ca`: `POST /v1/policies/simulate` built the Action and each extra rule straight
+         from the request's dicts. An empty action, an unknown field or an empty rule raised
+         TypeError, which §5.5's table does not map, so the route answered 500. A TypeError
+         there is the request's fault now: 400 `invalid_request`.
+         `test_policy_http.py::test_H04b_…` covers three bodies.
+       - `e34fd9c`: `canonicalise` let `realpath` raise for a NUL anywhere in a path, and on
+         Windows for a path too long to resolve. The manager fails closed on any exception, so
+         the hook answered halt and the execution ended instead of P9 judging the call. The
+         module's own rule, a parse failure is one unclassified `exec`, now applies to these
+         errors at its single entry, which covers the file tools and a command's path arguments
+         alike. `test_execution_units.py::test_a_path_the_os_cannot_resolve_is_unclassified_not_an_error`
+         covers it; the long-path case runs on Windows only, because POSIX `realpath` does not
+         refuse a long name.
+     - With either fix reverted, the CI fuzz test fails. Seeds 1–5 at a budget of 3000 per
+       target are clean after both fixes.
+
+117. **D14, the mutants** (`52d2137`). There are 11 new mutants in `tools/mutate_p20.py`.
+     - Q100–Q103 break slice I's secrets gate: the local token created without O_EXCL, the
+       local token readable by others, a cheap PIN record, a secret drawn where the table does
+       not name it.
+     - Q104–Q108 break the recoveries item 115 observes.
+     - Q109 and Q110 put back item 116's two defects.
+     - Results, each kill named by the test written for it:
+       - The new set: 11/11 killed.
+       - The whole suite: Q01–Q110, 110/110 killed, including the eleven e2e-guarded mutants,
+         which rebuild the SPA.
+       - P19's tray e-stop mutants P126–P131: 6/6 killed.
+     - The SPA build needed `clients/app/node_modules`. It was installed with
+       `npm ci --ignore-scripts --offline` from the local cache; no network was used.
+
+118. **Slice H verified, and its status (2026-10-15).**
+     - **Ran, on this slice's head**, all with `-m "not real_process"`:
+       - Unit: `test_execution_units`, `test_p20_secrets`, `test_mutation_suites_parse`,
+         `test_presence_units` and `test_automation_units`.
+       - Integration: `test_execution`, `test_presence`, `test_automation`,
+         `test_policy_http`, `test_p20_fuzz` and `test_estop_drills`.
+       - Judge: `test_traceability`.
+       - Result: 548 passed. Separately, `test_api_errors` (the endpoint floor) and
+         `test_api_structure` gave 129 passed. `ruff`: clean.
+       - With the SPA's dependencies installed, `test_mutation_suites_parse` type-checks the
+         TypeScript mutants. That is most of the 769 s run; it is not slice H's cost.
+     - **Not run:** the full `tests/v1`; POSIX; native tests; the SPA and browser e2e suites
+       outside the mutants that rebuild the SPA.
+     - **§10 against this slice:** every Q-mutant is killed and the affected P19 mutants were
+       re-run. H-F1 is the owner's. Slice J (only if D8, D9 or D10 put it in P20) and slice K
+       remain; G stays paused on T-004.
+
 ## 13. As built
 (Filled at the end of P20.)
 
