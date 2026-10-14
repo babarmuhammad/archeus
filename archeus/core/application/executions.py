@@ -276,10 +276,24 @@ def _usage(usage):
 
 # ── ends (§8.1, §8.3) ───────────────────────────────────────────────────────
 
-def _end_payload(e):
-    return {'exit_reason': e.exit_reason, 'exit_code': e.exit_code, 'task_id': e.task_id,
-            'attempt': e.attempt, 'stop_reason': e.stop_reason, 'charged': e.charged,
-            'final_offset': e.stream_offset, 'import_revision': e.import_revision}
+def _end_payload(e, facts=None):
+    out = {'exit_reason': e.exit_reason, 'exit_code': e.exit_code, 'task_id': e.task_id,
+           'attempt': e.attempt, 'stop_reason': e.stop_reason, 'charged': e.charged,
+           'final_offset': e.stream_offset, 'import_revision': e.import_revision}
+    if (facts or {}).get('import_counts'):
+        # what the import left out of its commit (T-051 §3): deleted seed paths and
+        # dropped empty directories, recorded with the end that imported
+        out['import_counts'] = dict(facts['import_counts'])
+    return out
+
+
+def imports(state, exit_code, killed, halted, output):
+    """The route on which a seeded execution's end imports its workspace (K3,
+    C-1012-T030-2 §2): a clean exit of a running execution, or of a starting one
+    that wrote output. One classification for the manager, which captures it
+    before the import, and for `record_end`, which checks it still holds."""
+    return (exit_code == 0 and not killed and not halted
+            and (state == 'RUNNING' or state == 'STARTING' and output))
 
 
 def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False, failure=None,
@@ -302,13 +316,16 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
     _import_once(e, import_revision)
     clean = exit_code == 0 and not killed
-    if import_revision is not None and not (clean and not halted):
-        raise ValueError('only a clean end imports its workspace')
-    if import_revision is not None and e.state not in ('RUNNING', 'STARTING'):
-        # the row moved after the route was captured: a lost race, and the import,
-        # kept in the store, is never recorded (C-1012-T030-2 §2 step 5)
-        raise lifecycle.IllegalTrigger('execution', e.state, 'record_end',
-                                       'an import is recorded only by a running end')
+    if import_revision is not None or no_import is not None:
+        # an import was attempted on the route the manager captured: either outcome
+        # stands only if that route still holds (C-1012-T030-2 §2 step 5)
+        if not (clean and not halted):
+            raise ValueError('only a clean end imports its workspace')
+        if not imports(e.state, exit_code, killed, halted, output):
+            # the row moved after the route was captured: a lost race, and the
+            # import, kept in the store, is never recorded
+            raise lifecycle.IllegalTrigger('execution', e.state, 'record_end',
+                                           'an import is recorded only by a running end')
     if isolated and e.state == 'HANDING_OFF' and clean:
         raise lifecycle.IllegalTrigger('execution', e.state, 'record_end',
                                        'an isolated hand-off that exited 0 ends through '
@@ -401,7 +418,7 @@ def _ledger(tx, actor, e, usage, total=False):
 def _ended(tx, actor, e, usage, facts=None, usage_total=False, missing=None):
     _ledger(tx, actor, e, usage, usage_total)
     e = _finish(tx, actor, e, facts)
-    _event(tx, 'execution.ended', e, actor, _end_payload(e))
+    _event(tx, 'execution.ended', e, actor, _end_payload(e, facts))
     if missing is not None:
         return _respond(tx, actor, e, 'execution %s ended (%s), %s' % (e.id, e.exit_reason,
                                                                         missing),
@@ -658,7 +675,7 @@ def record_handoff(tx, *, actor, policy, missions, router, execution_id, now, ex
     _ledger(tx, actor, e, usage, usage_total)
     e = _finish(tx, actor, e, dict(facts or {}, context_insufficient=guarded) if guarded
                 else facts)
-    _event(tx, 'execution.ended', e, actor, _end_payload(e))
+    _event(tx, 'execution.ended', e, actor, _end_payload(e, facts))
     if refused is not None:
         # ADR-0047 §5 and T-051 §7: no continuation; the attempt is spent and the
         # ordinary retry (a fresh execution) or FAILED -> replan takes over
