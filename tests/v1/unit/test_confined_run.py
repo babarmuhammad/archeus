@@ -4,8 +4,9 @@ real Job; the order, the soft limits and every way a run fails closed are checke
 what Core asked the boundary and what it recorded."""
 
 import os
-import sys
+import stat
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -216,30 +217,101 @@ def test_scratch_growth_past_its_cap_is_an_error(run, tmp_path, monkeypatch):
     assert result['error'].startswith('limit_exceeded: the checkout and scratch')
 
 
-def _link(target, at):
-    if sys.platform.startswith('win'):
-        import _winapi
-        _winapi.CreateJunction(target, at)
-    else:
-        os.symlink(target, at, target_is_directory=True)
+# Aliases are SIMULATED: the metadata a junction or a symlink presents is faked over
+# real plain directories, so no link is ever created here. (An earlier revision of this
+# file created real junctions under pytest temp with _winapi.CreateJunction.)
+JUNCTION = SimpleNamespace(st_mode=stat.S_IFDIR | 0o777, st_size=0,
+                           st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT)
+SYMLINK = SimpleNamespace(st_mode=stat.S_IFLNK | 0o777, st_size=0, st_file_attributes=0)
+
+
+class _Entry:
+    def __init__(self, entry, alias):
+        self._e, self._alias = entry, alias
+        self.name, self.path = entry.name, entry.path
+
+    def stat(self, follow_symlinks=True):
+        return self._alias if not follow_symlinks else self._e.stat()
+
+
+def _aliased_entries(monkeypatch, aliases):
+    """`os.scandir` answers with entries whose own metadata is *aliases*[name]."""
+    real = os.scandir
+
+    class Listing:
+        def __init__(self, path):
+            self._it = real(path)
+
+        def __enter__(self):
+            return [_Entry(e, aliases[e.name]) if e.name in aliases else e
+                    for e in self._it.__enter__()]
+
+        def __exit__(self, *exc):
+            return self._it.__exit__(*exc)
+    monkeypatch.setattr(os, 'scandir', Listing)
+
+
+def _aliased_lstat(monkeypatch, path, alias):
+    """`os.lstat` answers *alias* for *path*: as if it were swapped after it was queued."""
+    real, target = os.lstat, os.path.normcase(os.path.abspath(path))
+
+    def lstat(p, *a, **kw):
+        if os.path.normcase(os.path.abspath(p)) == target:
+            return alias
+        return real(p, *a, **kw)
+    monkeypatch.setattr(os, 'lstat', lstat)
 
 
 def test_accounting_never_follows_a_link_or_a_cycle(run, tmp_path, monkeypatch):
-    outside = tmp_path / 'outside'
-    outside.mkdir()
-    (outside / 'huge').write_bytes(b'z' * 5000)
     monkeypatch.setattr(iso, 'CONFINED_GROWTH_MAX', 1000)
     monkeypatch.setattr(iso, 'CONFINED_WALK_MAX', 50)
     scratch = str(tmp_path / 'a0' / 'scratch')
 
-    def plant(child):                        # the verifier plants a link out, and a loop
-        _link(str(outside), os.path.join(scratch, 'out'))
-        _link(scratch, os.path.join(scratch, 'loop'))
+    def plant(child):          # the verifier plants a link out and a loop (simulated)
+        for name in ('out', 'loop'):
+            os.makedirs(os.path.join(scratch, name))
+            with open(os.path.join(scratch, name, 'huge'), 'wb') as f:
+                f.write(b'z' * 5000)
         child.returncode = 0
+    _aliased_entries(monkeypatch, {'out': JUNCTION, 'loop': SYMLINK})
     b = Boundary(child=Child(step=plant))
     result, _rec, _a, _req = run(b)
     assert result['error'] is None and result['exit_code'] == 0
     assert iso._tree_bytes([scratch]) < 1000
+
+
+@pytest.mark.parametrize('alias', [JUNCTION, SYMLINK], ids=['junction', 'symlink'])
+def test_a_root_that_is_an_alias_is_never_scanned(run, tmp_path, monkeypatch, alias):
+    _aliased_lstat(monkeypatch, tmp_path / 'a0' / 'scratch', alias)
+    b = Boundary()
+    result, recorded, _a, _req = run(b)
+    assert result['error'].startswith('accounting_failed: not a plain directory')
+    assert b.launch_calls == [] and recorded == [result]
+
+
+@pytest.mark.parametrize('alias', [JUNCTION, SYMLINK], ids=['junction', 'symlink'])
+def test_a_directory_swapped_after_it_was_queued_is_never_entered(tmp_path, monkeypatch,
+                                                                   alias):
+    root = tmp_path / 'scratch'
+    (root / 'sub').mkdir(parents=True)
+    (root / 'sub' / 'huge').write_bytes(b'z' * 5000)
+    assert iso._tree_bytes([str(root)]) == 5000              # plain: counted
+    _aliased_lstat(monkeypatch, root / 'sub', alias)         # its listing said plain dir
+    with pytest.raises(OSError, match='not a plain directory when scanned'):
+        iso._tree_bytes([str(root)])
+
+
+def test_a_swap_during_the_run_is_accounting_failed(run, tmp_path, monkeypatch):
+    sub = tmp_path / 'a0' / 'scratch' / 'sub'
+
+    def swap(child):
+        sub.mkdir(exist_ok=True)
+        _aliased_lstat(monkeypatch, sub, JUNCTION)
+        child.returncode = 0
+    b = Boundary(child=Child(step=swap))
+    result, recorded, _a, _req = run(b)
+    assert result['error'].startswith('accounting_failed') and result['exit_code'] is None
+    assert recorded == [result] and b.events[0] == 'close'
 
 
 def test_an_entry_the_walk_cannot_read_is_accounting_failed(run, tmp_path, monkeypatch):
@@ -291,6 +363,96 @@ def test_a_consumed_attempt_is_never_rerun_and_its_profile_is_left_alone(run):
     assert 'delete' not in b.events
 
 
+class Clock:
+    """Scene time for the deadline: only what a step adds moves it."""
+
+    def __init__(self):
+        self.t = 1000.0
+
+    def monotonic(self):
+        return self.t
+
+    def sleep(self, _s):
+        pass
+
+    def time(self):
+        return time.time()
+
+
+def test_an_exit_that_lands_after_the_deadline_is_a_timeout(run, monkeypatch):
+    clock = Clock()
+    monkeypatch.setattr(iso, 'time', clock)
+
+    def late(child):
+        clock.t += 60
+        child.returncode = 0
+    b = Boundary(child=Child(step=late))
+    result, recorded, _a, _req = run(b, timeout=5)
+    assert result['error'] == 'timed out after 5s' and result['exit_code'] is None
+    assert 'count' not in b.events and b.events[0] == 'close' and recorded == [result]
+
+
+def test_an_accounting_pass_that_ends_after_the_deadline_is_a_timeout(run, monkeypatch):
+    clock = Clock()
+    monkeypatch.setattr(iso, 'time', clock)
+    real = iso._over_limit
+
+    def slow(*a):
+        clock.t += 60
+        return real(*a)
+    monkeypatch.setattr(iso, '_over_limit', slow)
+    b = Boundary()                                       # exits on its first wait
+    result, _rec, _a, _req = run(b, timeout=5)
+    assert result['error'] == 'timed out after 5s' and result['exit_code'] is None
+    assert 'count' not in b.events
+
+
+def test_a_quiescence_read_that_ends_after_the_deadline_is_a_timeout(run, monkeypatch):
+    clock = Clock()
+    monkeypatch.setattr(iso, 'time', clock)
+    b = Boundary()
+    real = b.job_active_processes
+
+    def slow(job):
+        clock.t += 60
+        return real(job)
+    b.job_active_processes = slow
+    result, _rec, _a, _req = run(b, timeout=5)
+    assert result['error'] == 'timed out after 5s' and result['exit_code'] is None
+
+
+@pytest.mark.parametrize('where', ['wait', 'accounting', 'quiescence'])
+def test_a_failure_after_establishment_closes_the_job_and_records_nothing(
+        run, monkeypatch, where):
+    def boom(*_a, **_kw):
+        raise RuntimeError('synthetic %s failure' % where)
+    if where == 'wait':
+        b = Boundary(child=Child(step=boom))
+    else:
+        b = Boundary()
+        if where == 'accounting':
+            monkeypatch.setattr(iso, '_over_limit', boom)
+        else:
+            b.job_active_processes = boom
+    a = iso.Isolation(FakeNode(), boundary=b)
+    with pytest.raises(RuntimeError, match='synthetic'):
+        run(b, authority=a)
+    key = _verify_key()
+    assert 'close' in b.events and a.held_job(key) is None
+    assert 'record' not in b.events and 'delete' not in b.events
+    assert a.record(key).state == 'established'              # left for reclaim
+
+
+def test_a_close_that_fails_during_a_failure_keeps_the_original_failure(run):
+    def boom(child):
+        raise RuntimeError('synthetic wait failure')
+    b = Boundary(child=Child(step=boom))
+    b.close_fail = iso.IsolationUnavailable('job_close', 'synthetic')
+    with pytest.raises(RuntimeError, match='synthetic wait failure'):
+        run(b)
+    assert 'close' in b.events and 'record' not in b.events
+
+
 def test_reclaim_spares_an_attempt_this_core_is_running(run):
     b = Boundary()
     seen = []
@@ -322,3 +484,61 @@ def test_the_node_runs_a_check_confined_in_its_attempts_own_files(tmp_path):
     assert call['cwd'].endswith(os.path.join('own', 'checkout'))
     assert call['env']['PATH'] == str(toolchain) and call['env']['TEMP'] == os.path.join(own, 'tmp')
     assert not any(k.startswith('ARCHEUS') for k in call['env'])
+
+
+def _tree(root):
+    out = {}
+    for d, _dirs, files in os.walk(root):
+        out[os.path.relpath(d, root)] = None
+        for f in files:
+            with open(os.path.join(d, f), 'rb') as h:
+                out[os.path.relpath(os.path.join(d, f), root)] = h.read()
+    return out
+
+
+def _node(tmp_path, step=None):
+    b = Boundary(child=Child(step=step))
+    node = LocalNode(isolation=iso.Isolation(FakeNode(), boundary=b))
+    toolchain = tmp_path / 'toolchain'
+    toolchain.mkdir(exist_ok=True)
+    return b, node, [str(toolchain)]
+
+
+def test_the_same_attempt_again_touches_none_of_its_files(tmp_path):
+    out = VerifyPaths(_VID, 0).out
+
+    def step(child):
+        with open(out, 'ab') as f:
+            f.write(b'attempt 0 output')
+        child.returncode = 0
+    b, node, toolchain = _node(tmp_path, step)
+    recorded = []
+    first = node.run_confined_check(_VID, 0, ['tool'], toolchain=toolchain, timeout=5,
+                                    record=recorded.append)
+    assert first['error'] is None
+    before, created, launched = _tree(VerifyPaths(_VID, 0).dir), list(b.created), \
+        len(b.launch_calls)
+    again = node.run_confined_check(_VID, 0, ['tool'], toolchain=toolchain, timeout=5,
+                                    record=recorded.append)
+    assert again['error'] == 'isolation: attempt_consumed' and recorded == [first, again]
+    assert again['output'] == b'' and again['output_bytes'] == 0
+    assert _tree(VerifyPaths(_VID, 0).dir) == before
+    assert b.created == created and len(b.launch_calls) == launched
+
+
+def test_files_already_there_are_never_reused_or_truncated(tmp_path):
+    v = VerifyPaths(_VID, 0)
+    os.makedirs(v.checkout)
+    with open(v.out, 'wb') as f:
+        f.write(b'not ours')
+    before = _tree(v.dir)
+    b, node, toolchain = _node(tmp_path)
+    recorded = []
+    result = node.run_confined_check(_VID, 0, ['tool'], toolchain=toolchain, timeout=5,
+                                     record=recorded.append)
+    assert result['error'].startswith('prepare_failed') and recorded == [result]
+    assert _tree(v.dir) == before and b.created == [] and b.launch_calls == []
+    # admitted, so consumed: the attempt never starts later either
+    again = node.run_confined_check(_VID, 0, ['tool'], toolchain=toolchain, timeout=5,
+                                    record=recorded.append)
+    assert again['error'] == 'isolation: attempt_consumed' and _tree(v.dir) == before

@@ -655,6 +655,7 @@ class Isolation:
         self._released = set()
         #: verifier attempts this Core is running now: live whatever a caller says (A6-3)
         self._confined = set()
+        self._admitted = set()        # verifier keys this Core admitted, not yet established
 
     # ── the boundary ──
 
@@ -793,7 +794,10 @@ class Isolation:
         nothing starts, and what is on disk decides what cleanup may do."""
         api = self.boundary
         if request.kind == 'verify':
-            _admit(request.execution_id)
+            if request.execution_id in self._admitted:
+                self._admitted.discard(request.execution_id)     # admitted by run_confined
+            else:
+                _admit(request.execution_id)
         prior = self.record(request.execution_id)
         if prior is not None and prior.state == 'invalid':
             # a record exists and cannot be trusted: nothing is created for this
@@ -1243,8 +1247,11 @@ class Isolation:
     # ── one confined verifier attempt (A6-3, T-054 C-1013 §1 and §3) ──
 
     def run_confined(self, request, argv, *, env, timeout, out_path, stdin_path, record,
-                     keep):
-        """One verifier attempt, in this order: establish its principal (nothing is
+                     keep, prepare=None):
+        """One verifier attempt, in this order: admit it (its consumed marker, before
+        any file of it is written) -> `prepare()`, the caller's fresh-only creation of
+        the attempt's files, which returns the environment built over them (and replaces
+        *env*) -> establish its principal (nothing is
         launched unless all six conditions hold) -> launch into its Core-held Job with
         Core's handles -> wait under the soft limits -> tree shutdown, after confirmed
         quiescence when the root exited cleanly -> freeze the output -> `record(result)`
@@ -1254,12 +1261,14 @@ class Isolation:
         *record* is the caller's durable write of the verdict. It returns once the
         verdict is recorded, or once the row no longer awaits it; whatever it raises
         leaves the profile for reclaim and propagates. A teardown that fails quarantines
-        the profile and never touches the result."""
+        the profile and never touches the result. Anything raised after
+        establishment closes the Job first and propagates: no result is recorded and
+        the profile is left for reclaim."""
         key = request.execution_id
         self._confined.add(key)
         try:
             result, established = self._run_confined(request, argv, env, timeout,
-                                                      out_path, stdin_path, keep)
+                                                      out_path, stdin_path, keep, prepare)
             record(result)
             if established:
                 self._contained(key, lambda: self.teardown(key, reason='verified'))
@@ -1267,38 +1276,64 @@ class Isolation:
         finally:
             self._confined.discard(key)
 
-    def _run_confined(self, request, argv, env, timeout, out_path, stdin_path, keep):
+    def _run_confined(self, request, argv, env, timeout, out_path, stdin_path, keep, prepare):
         key, api = request.execution_id, self.boundary
         t0 = time.monotonic()
+        try:
+            _admit(key)
+        except IsolationUnavailable as err:
+            # refused before any file of the attempt is touched, so nothing is read
+            return _unread(t0, 'isolation: %s' % err.reason), False
+        self._admitted.add(key)
+        if prepare is not None:
+            try:
+                env = prepare()
+            except (OSError, ValueError) as err:
+                self._admitted.discard(key)          # admitted and consumed, never started
+                return _unread(t0, 'prepare_failed: %s' % err), False
         try:
             rec = self.establish(request)
         except IsolationUnavailable as err:
             return _confined_result(out_path, keep, t0, 'isolation: %s' % err.reason, None,
                                     {}), False
+        finally:
+            self._admitted.discard(key)
         facts = {'isolated': True, 'ac_profile': rec.profile, 'ac_sid': rec.sid,
                  'capabilities': list(rec.capabilities),
                  'job': 'core-held-unnamed-kill-on-close'}
         rows = [request.grant_for(r).path for r in ('checkout', 'scratch')]
         roots = [p for p in rows if not any(_norm(p) != _norm(q) and _within(p, q)
                                             for q in rows)]
-        try:
-            start = _tree_bytes(roots)
-        except OSError as err:
-            error, child = 'accounting_failed: %s' % err, None
-        else:
-            error, child = self._confined_launch(api, rec, request, argv, env, stdin_path,
-                                                 out_path)
         deadline = t0 + timeout
-        while error is None:
-            exited = child.wait(min(CONFINED_POLL_S,
-                                    max(0.0, deadline - time.monotonic()))) is not None
-            error = _over_limit(out_path, roots, start)
-            if error or exited:
-                break
-            if time.monotonic() >= deadline:
-                error = 'timed out after %ds' % timeout
-        if error is None:
-            error = self._quiescent(api, self.held_job(key))
+        late = 'timed out after %ds' % timeout
+        try:
+            try:
+                start = _tree_bytes(roots)
+            except OSError as err:
+                error, child = 'accounting_failed: %s' % err, None
+            else:
+                error, child = self._confined_launch(api, rec, request, argv, env,
+                                                     stdin_path, out_path)
+            while error is None:
+                exited = child.wait(min(CONFINED_POLL_S,
+                                        max(0.0, deadline - time.monotonic()))) is not None
+                # the deadline is read after the monitor and before the exit counts:
+                # an exit or an accounting pass that ends late is a timeout, not a pass
+                error = _over_limit(out_path, roots, start) or (
+                    late if time.monotonic() >= deadline else None)
+                if exited:
+                    break
+            if error is None:
+                error = self._quiescent(api, self.held_job(key)) or (
+                    late if time.monotonic() >= deadline else None)
+        except BaseException:
+            # the Job never outlives a failure here: closed, and the failure raised as it
+            # was. No result is recorded and the profile is left for reclaim
+            try:
+                self._close_job(key)
+            except Exception:
+                pass
+            raise
         try:
             self._close_job(key)
         except (IsolationUnavailable, OSError) as err:
@@ -1355,20 +1390,31 @@ def _tree_bytes(roots):
     unknown size is never read as a small one."""
     total, seen, todo = 0, 0, list(roots)
     while todo:
-        with os.scandir(todo.pop()) as entries:
+        path = todo.pop()
+        # a root, or a directory queued as plain and replaced before its turn, is read
+        # again without following: an alias is never entered. The interval between this
+        # read and the scan itself stays open (a same-user race), narrowed not closed
+        if not _plain_dir(os.lstat(path)):
+            raise OSError('not a plain directory when scanned: %s' % path)
+        with os.scandir(path) as entries:
             for e in entries:
                 seen += 1
                 if seen > CONFINED_WALK_MAX:
                     raise OSError('more than %d entries' % CONFINED_WALK_MAX)
                 st = e.stat(follow_symlinks=False)
                 reparse = getattr(st, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
-                if stat.S_ISDIR(st.st_mode) and not reparse:
+                if _plain_dir(st):
                     todo.append(e.path)
                 elif stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode) or reparse:
                     total += st.st_size
                 else:
                     raise OSError('an entry that cannot be classified: %s' % e.path)
     return total
+
+
+def _plain_dir(st):
+    return stat.S_ISDIR(st.st_mode) and not (
+        getattr(st, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
 
 
 def _over_limit(out_path, roots, start):
@@ -1382,6 +1428,13 @@ def _over_limit(out_path, roots, start):
     if grown > CONFINED_GROWTH_MAX:
         return 'limit_exceeded: the checkout and scratch grew %d bytes' % grown
     return None
+
+
+def _unread(t0, error):
+    """A refusal before any file of the attempt was written: no output read."""
+    return {'exit_code': None, 'duration_ms': int((time.monotonic() - t0) * 1000),
+            'error': error, 'output': b'', 'output_bytes': 0, 'truncated': False,
+            'confinement': {}}
 
 
 def _confined_result(out_path, keep, t0, error, code, facts):

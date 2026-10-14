@@ -533,11 +533,19 @@ class LocalNode:
         verification worker yet (A6-4)."""
         p = VerifyPaths(verification_id, attempt)
         scratch = os.path.dirname(p.checkout)
-        for d in (p.checkout, p.home, p.tmp, p.config):
-            os.makedirs(d, exist_ok=True)
         stdin = os.path.join(p.dir, 'stdin')
-        for f in (stdin, p.out):
-            open(f, 'wb').close()
+
+        def prepare():
+            # after admission, and fresh-only: an attempt's files are never reused,
+            # truncated or written over, whatever is already there
+            os.makedirs(os.path.dirname(p.dir), exist_ok=True)
+            os.mkdir(p.dir)
+            os.mkdir(scratch)
+            for d in (p.checkout, p.home, p.tmp, p.config):
+                os.mkdir(d)
+            for f in (stdin, p.out):
+                open(f, 'xb').close()
+            return base._verifier_env(toolchain, scratch)
         grant = isolation_mod.Grant
         request = isolation_mod.IsolationRequest(
             execution_id=isolation_mod.Principal('verify', verification_id, attempt).key,
@@ -546,5 +554,5 @@ class LocalNode:
             + tuple(grant(d, 'rx', 'toolchain') for d in toolchain),
             core_state=run_dir())
         return self.isolation.run_confined(
-            request, argv, env=base._verifier_env(toolchain, scratch), timeout=timeout,
-            out_path=p.out, stdin_path=stdin, record=record, keep=keep)
+            request, argv, env=None, timeout=timeout,
+            out_path=p.out, stdin_path=stdin, record=record, keep=keep, prepare=prepare)
