@@ -1732,6 +1732,19 @@
    "fn": "explain",
    "args": [
     {
+     "status": 403,
+     "code": "remote_host_required",
+     "detail": {
+      "why": "a paired client does this through its remote host"
+     }
+    }
+   ],
+   "out": "Only through the configured remote connection to Archeus."
+  },
+  {
+   "fn": "explain",
+   "args": [
+    {
      "status": 503,
      "code": "core_starting",
      "detail": {}
