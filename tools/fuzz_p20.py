@@ -1,0 +1,259 @@
+"""P20 D12: a stdlib fuzz harness for the command routes and the canonicaliser.
+
+    py tools/fuzz_p20.py                     seed 0, budget 2000 per target
+    py tools/fuzz_p20.py --seed 7 --budget 50000
+
+Two targets, one property: nothing answers 500 or raises.
+
+- Every command route (each route with a request schema) gets bodies built from
+  its own schema and then mutated: a field's type swapped, a required field
+  dropped, an unknown field added, a string made huge or full of control
+  characters, a number pushed out of range, a value nested deep. The recorded
+  junk bodies of the endpoint floor (tests/v1/integration/test_api_errors.py)
+  are the corpus' other half. Each request runs through the real route table
+  and the real `server.Handler._serve`, in process: no socket per request, so
+  a large budget does not exhaust Windows' ephemeral ports (p11-design-gate
+  D31). The peer is attested as the user because attestation is not what is
+  fuzzed here; it is tested where it is built (T-057).
+- `canonicalise()` over every tool ADR-0052's mapping names (plus Skill, the
+  aliases and unknown names), with mutated inputs. For an input it cannot
+  parse it must answer the conservative class: one unclassified `exec`.
+
+Run on demand it builds its own Core in a temporary ARCHEUS_HOME on the fake
+harness; tests/v1/integration/test_p20_fuzz.py runs both targets in CI with a
+fixed seed and a small budget.
+"""
+import argparse
+import io
+import json
+import os
+import random
+import shlex
+import shutil
+import socket
+import sys
+import tempfile
+from types import SimpleNamespace
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+from archeus.api import auth, routes, schemas, server  # noqa: E402
+from archeus.core.execution import canonical  # noqa: E402
+from archeus.harnesses.claude_code import tools as cc_tools  # noqa: E402
+
+JUNK = [b'', b'{}', b'[]', b'null', b'{"idempotency_key": null}', b'\x00\x01', b'{"a":',
+        json.dumps({'idempotency_key': 'k', 'title': ['x'], 'objective': {'o': 1}}).encode(),
+        json.dumps({'idempotency_key': 'k', 'code': 5, 'platform': 'web'}).encode(),
+        json.dumps({'idempotency_key': 'k' * 5000}).encode()]
+WEIRD = ['', ' ', 'x' * 70000, '\x00', '\u202e\u200b', '../../etc', 'C:\\Windows', '%s%n',
+         '{"a": 1}', 'null', '😀' * 50, 'msn_' + 'A' * 26, '\ud800'.encode('utf-8', 'surrogatepass')
+         .decode('utf-8', 'replace')]
+NUMBERS = [0, -1, 2 ** 63, -2 ** 63, 10 ** 400, 1.5, float('1e308'), True]
+
+
+def example(rnd, schema, depth=0):
+    """A value of *schema*'s shape (shapes.validate's subset)."""
+    if 'ref' in schema:
+        schema = dict(schemas.TYPES[schema['ref']], nullable=schema.get('nullable'))
+    if schema.get('nullable') and rnd.random() < 0.1:
+        return None
+    if 'enum' in schema:
+        return rnd.choice(schema['enum'])
+    t = schema.get('type')
+    if t == 'object':
+        props = schema.get('properties', {})
+        need = set(schema.get('required', ()))
+        return {k: example(rnd, v, depth + 1) for k, v in props.items()
+                if k in need or (depth < 4 and rnd.random() < 0.5)}
+    if t == 'array':
+        return [example(rnd, schema['items'], depth + 1)
+                for _ in range(0 if depth > 4 else rnd.randint(0, 3))]
+    if t == 'string':
+        return rnd.choice(['k%d' % rnd.randint(0, 9), 'Fix the flaky test', 'msn_x',
+                           'a' * rnd.randint(1, 40)])
+    if t == 'integer':
+        return rnd.randint(-2, 100)
+    if t == 'number':
+        return rnd.uniform(-1, 100)
+    if t == 'boolean':
+        return rnd.random() < 0.5
+    return {}
+
+
+def mutate(rnd, value, depth=0):
+    """*value* with one structural change somewhere inside it."""
+    if isinstance(value, dict) and value and rnd.random() < 0.7:
+        k = rnd.choice(sorted(value))
+        out = dict(value)
+        op = rnd.randrange(4)
+        if op == 0:
+            del out[k]
+        elif op == 1:
+            out['zz_' + rnd.choice(WEIRD)[:20]] = rnd.choice(NUMBERS + WEIRD)
+        else:
+            out[k] = mutate(rnd, out[k], depth + 1)
+        return out
+    if isinstance(value, list) and value and rnd.random() < 0.7:
+        out = list(value)
+        i = rnd.randrange(len(out))
+        out[i] = mutate(rnd, out[i], depth + 1)
+        return out
+    return rnd.choice([None, [], {}, [value] * 3, {'x': value}, rnd.choice(NUMBERS),
+                       rnd.choice(WEIRD), nest(rnd.randint(50, 400))])
+
+
+def nest(n):
+    v = 1
+    for _ in range(n):
+        v = {'a': [v]}
+    return v
+
+
+def body(rnd, route):
+    if rnd.random() < 0.1:
+        return rnd.choice(JUNK)
+    b = example(rnd, route.request_schema)
+    if isinstance(b, dict) and route.idempotent == 'required' and rnd.random() < 0.9:
+        b['idempotency_key'] = 'fz%d' % rnd.getrandbits(40)
+    for _ in range(rnd.choice([0, 1, 1, 2, 3])):
+        b = mutate(rnd, b)
+    try:
+        return json.dumps(b, allow_nan=False).encode('utf-8', 'surrogatepass')
+    except (ValueError, OverflowError):
+        return json.dumps(b, allow_nan=True).encode('utf-8', 'surrogatepass')
+
+
+class _Request(server.Handler):
+    """One request through the real `_serve`, without a socket."""
+
+    def __init__(self, api, method, path, raw, token):
+        self.server = SimpleNamespace(api=api)
+        self.command, self.path, self.request_version = method, path, 'HTTP/1.1'
+        self.requestline, self.close_connection = '%s %s HTTP/1.1' % (method, path), True
+        self.headers = {'Host': api.origin.host, 'Content-Length': str(len(raw)),
+                        'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
+        self.rfile, self.wfile = io.BytesIO(raw), io.BytesIO()
+        self.client_address = ('127.0.0.1', 0)
+        self._serve()
+
+
+def fill(rnd, path, ids):
+    while '{id}' in path:
+        path = path.replace('{id}', rnd.choice(ids), 1)
+    return path
+
+
+def fuzz_routes(api, token, seed, budget):
+    """Failures as (method, path, raw, status); [] when the property holds."""
+    rnd = random.Random(seed)
+    api.attestor = lambda peer: auth.USER
+    commands = [r for r in routes.ROUTES if r.request_schema is not None]
+    made = _Request(api, 'POST', '/v1/missions', json.dumps(
+        {'title': 'fuzz', 'objective': 'o', 'idempotency_key': 'fz-seed'}).encode(), token)
+    real = json.loads(made.wfile.getvalue().split(b'\r\n\r\n', 1)[1])['id']
+    ids = [real, 'x', 'msn_', '..', 'msn_' + 'A' * 300, '%E2%98%83']
+    failures = []
+    for i in range(budget):
+        route = commands[i % len(commands)] if i < len(commands) else rnd.choice(commands)
+        path, raw = fill(rnd, route.path, ids), body(rnd, route)
+        try:
+            status = _Request(api, route.method, path, raw, token)._status
+        except Exception as e:                      # _serve answers every exception
+            failures.append((route.method, path, raw[:200], repr(e)))
+            continue
+        # 503 is Core saying busy or stopping, which the fuzz itself can cause
+        if status is None or (status >= 500 and status != 503):
+            failures.append((route.method, path, raw[:200], status))
+    return failures
+
+
+CTX = {'workdir': os.getcwd(), 'branch': 'archeus/m/t', 'remotes': {'origin': 'github.com'}}
+PARSED = set(canonical.READ_TOOLS + canonical.WRITE_TOOLS) | {'WebFetch', 'WebSearch', 'Bash'}
+
+
+def tool_names():
+    names = {t for ts in cc_tools.TOOLS.values() for t in ts}
+    return sorted(names | {cc_tools.SKILL} | set(cc_tools.ALIASES) | {'Unknown', '', 'bash'})
+
+
+def tool_input(rnd, tool):
+    base = {'command': rnd.choice(['git status', 'ls -la', 'npm install x', 'echo "a;b"',
+                                   "cat 'unterminated", 'git push --force origin main',
+                                   'python -c "print(1)"', 'a=1 ls', '']),
+            'file_path': rnd.choice(['src/a.py', '../../x', '~/.ssh/id', 'C:\\x', '']),
+            'url': rnd.choice(['https://example.com', 'http://[::1', '', 'example.com/a'])}
+    v = mutate(rnd, base) if rnd.random() < 0.6 else base
+    return v if rnd.random() < 0.9 else rnd.choice([None, 'git status', 42, [], ['ls']])
+
+
+def fuzz_canonical(seed, budget):
+    """Failures as (tool, input, why); [] when the property holds."""
+    rnd = random.Random(seed)
+    names, failures = tool_names(), []
+    for i in range(budget):
+        tool = names[i % len(names)] if i < len(names) else rnd.choice(names)
+        inp = tool_input(rnd, tool)
+        try:
+            actions, unclassified = canonical.canonicalise(tool, inp, CTX)
+        except Exception as e:
+            failures.append((tool, inp, repr(e)))
+            continue
+        why = conservative(tool, inp, actions, unclassified)
+        if why:
+            failures.append((tool, inp, why))
+    return failures
+
+
+def conservative(tool, inp, actions, unclassified):
+    """Why the answer is less strict than the conservative one, or None."""
+    if not actions:
+        return 'no action'
+    if unclassified and [a.action_class for a in actions] != ['exec']:
+        return 'unclassified but not one exec action'
+    if tool not in PARSED and not unclassified:
+        return 'a tool it does not parse was classified'
+    if tool == 'Bash':
+        cmd = inp.get('command') if isinstance(inp, dict) else inp
+        cmd = str(cmd or '')
+        try:
+            ok = bool(shlex.split(cmd, posix=True))
+        except ValueError:
+            ok = False
+        if not ok and not unclassified:
+            return 'an unparseable command was classified'
+    return None
+
+
+def free_port():
+    with socket.socket() as s:
+        s.bind(('127.0.0.1', 0))
+        return s.getsockname()[1]
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument('--seed', type=int, default=0)
+    ap.add_argument('--budget', type=int, default=2000)
+    args = ap.parse_args(argv)
+    home = tempfile.mkdtemp(prefix='fuzz-p20-')
+    os.environ['ARCHEUS_HOME'] = home
+    from archeus.core import engine, ports, runtime
+    from archeus.harnesses.fake import FakeHarness
+    core = runtime.Core(port=free_port(), ports=runtime.Ports(
+        brain=ports.FixedPlanBrain(engine.SKELETON_PLAN), executors=[FakeHarness()],
+        verifier=ports.ScriptedVerifier(), reviewer=ports.ScriptedReview())).start()
+    try:
+        bad = fuzz_routes(core.api, core.local['token'], args.seed, args.budget)
+    finally:
+        core.stop(drain=False)
+        shutil.rmtree(home, ignore_errors=True)
+    bad += fuzz_canonical(args.seed, args.budget)
+    for f in bad[:50]:
+        print('FAIL', f)
+    print('%d failures (seed %d, budget %d per target)' % (len(bad), args.seed, args.budget))
+    return 1 if bad else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
