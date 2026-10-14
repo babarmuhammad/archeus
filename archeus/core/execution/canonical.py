@@ -55,6 +55,13 @@ PROD = ('--prod', '--production', 'prod', 'production')
 
 def canonicalise(tool, tool_input, ctx):
     """(actions, unclassified) for one tool call."""
+    try:
+        return _canonicalise(tool, tool_input, ctx)
+    except (OSError, ValueError):      # a path the OS refuses to resolve (NUL, too long)
+        return [_unclassified(str(tool))], True
+
+
+def _canonicalise(tool, tool_input, ctx):
     tool_input = tool_input if isinstance(tool_input, dict) else {'command': tool_input}
     if tool in READ_TOOLS or tool in WRITE_TOOLS:
         path = next((tool_input[k] for k in PATH_FIELDS if isinstance(tool_input.get(k), str)),

@@ -95,6 +95,17 @@ def test_an_unknown_tool_is_unclassified():
     assert u is True and got[0]['class'] == 'exec'
 
 
+@pytest.mark.parametrize('tool,inp', [
+    ('Read', {'file_path': 'a\x00b'}), ('Bash', {'command': 'cat a\x00b'}),
+    pytest.param('Write', {'file_path': 'x' * 70000}, marks=pytest.mark.skipif(
+        sys.platform != 'win32', reason='only Windows refuses an over-long path'))])
+def test_a_path_the_os_cannot_resolve_is_unclassified_not_an_error(tool, inp):
+    """Found by tools/fuzz_p20.py (P20 D12): realpath raises on a NUL or an
+    over-long path; that is a parse failure, so one unclassified exec."""
+    got, u = one(tool, inp)
+    assert u is True and [a['class'] for a in got] == ['exec']
+
+
 def test_paths_inside_are_workspace_relative_and_outside_stay_absolute():
     assert one('Write', {'file_path': 'src/a.py'})[0][0]['paths'] == ['src/a.py']
     for escape in ('../x', os.path.abspath(os.sep + 'etc'), '~/x', 'src/../../x'):
