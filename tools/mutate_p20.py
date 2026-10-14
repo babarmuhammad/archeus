@@ -8,7 +8,9 @@ slice D, F6's touch exit from the command bar (Q34-Q37); slice E, PV-10
 deny (Q38-Q79; two e2e-guarded mutants rebuild the SPA); slice F, PV-22
 (ADR-0052): tool removal, the CLI snapshot, the MCP deny and Skill (Q80-Q99);
 slice I, the secrets gate (Q100-Q103); slice H, the breaker drills (D13) and
-the two defects the fuzz harness found (D12) (Q104-Q110).
+the two defects the fuzz harness found (D12) (Q104-Q110); H-F1, re-enabling
+starts the counts afresh (Q111-Q112), and T-093's corrected secrets gate: a
+secret written twice, a mode changed after the create (Q113-Q114).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -523,11 +525,11 @@ MUTATIONS = [
     ('Q100', 'the local token file is not created exclusively', [(DISC,
      "os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)",
      "os.open(path, os.O_CREAT | os.O_WRONLY, 0o600)")],
-     [SEC + 'test_the_local_token_file_is_created_exclusively_and_owner_only']),
+     [SEC + 'test_the_local_token_file_is_created_exclusively_with_a_posix_owner_only_mode']),
     ('Q101', 'the local token file is readable by others', [(DISC,
      "os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)",
      "os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)")],
-     [SEC + 'test_the_local_token_file_is_created_exclusively_and_owner_only']),
+     [SEC + 'test_the_local_token_file_is_created_exclusively_with_a_posix_owner_only_mode']),
     ('Q102', 'a step-up PIN record is cheap to brute-force', [(CMD,
      "PIN_ITERATIONS = 200_000",
      "PIN_ITERATIONS = 1_000")],
@@ -535,7 +537,7 @@ MUTATIONS = [
     ('Q103', 'a secret is drawn somewhere the table does not name', [(MGR,
      "'hook_' + secrets.token_urlsafe(32)",
      "'hook_' + secrets.token_hex(32)")],
-     [SEC + 'test_every_random_draw_in_archeus_is_in_the_secrets_table']),
+     [SEC + 'test_every_source_in_archeus_is_in_the_secrets_table_with_its_count']),
     # Slice H, D13: each breaker tripped and its recovery observed
     ('Q104', 'the breaker counts every failure, not only resource and auth', [(EXE,
      "and x.entity.failure in ('resource', 'auth') and x.entity.ended_at]",
@@ -570,6 +572,26 @@ MUTATIONS = [
      ['tests/v1/unit/test_execution_units.py::'
       'test_a_path_the_os_cannot_resolve_is_unclassified_not_an_error',
       FZ + 'test_the_canonicaliser_answers_every_fuzzed_call_conservatively']),
+    # H-F1 (the owner, 2026-10-15): re-enabling starts the counts afresh
+    ('Q111', 'the loop guard counts the runs from before the re-enable', [(AUTO,
+     "    recent = [(r.state, r.reason_code) for r in _armed_window(tx, a)]",
+     "    recent = [(r.entity.state, r.entity.reason_code) for r in tx.where("
+     "entities.AutomationRun, automation_id=a.id)]")],
+     [AU + 'test_D13_a_reenabled_automation_fires_again']),
+    ('Q112', 'the rate limit counts the missions from before the re-enable', [(AUTO,
+     "    made = sum(1 for r in _armed_window(tx, a) if r.state in _CREATED)",
+     "    made = sum(1 for r in tx.where(entities.AutomationRun, automation_id=a.id)"
+     " if r.entity.state in _CREATED)")],
+     [AU + 'test_H_F1_a_rate_limited_automation_reenabled_within_the_hour_fires']),
+    # T-093's corrected secrets gate: writers, not draw sites
+    ('Q113', 'the local token is also written to a second file', [(DISC,
+     "        f.write(token)\n",
+     "        f.write(token)\n    open(path + '.bak', 'w').write(token)\n")],
+     [SEC + 'test_every_secret_write_in_archeus_is_in_the_writers_table']),
+    ('Q114', "the local token's mode is changed after its exclusive create", [(DISC,
+     "        f.write(token)\n",
+     "        f.write(token)\n    os.chmod(path, 0o644)\n")],
+     [SEC + 'test_no_code_in_archeus_changes_a_files_mode']),
 ]
 
 if __name__ == '__main__':
