@@ -787,7 +787,7 @@ LOCAL = 'archeus/node/local.py'
 #: who may call the spawner and the builder (later cards add theirs by name)
 CALLERS = {'store_git': ('store_open', 'store_read', 'store_fetch', 'store_resolve_base',
                          '_git_version', 'store_seed_ref', 'seed_workspace',
-                         'import_workspace'),
+                         'import_workspace', '_publish_once'),
            '_store_pin': ('store_git',)}
 
 
@@ -1408,6 +1408,30 @@ def test_every_stream_the_byte_core_opened_is_closed_whatever_happened(child, ho
         with pytest.raises(StoreError):
             call()
         assert sink.aborted
+    assert c.closed == {'stdin', 'stdout', 'stderr'}
+
+
+@pytest.mark.parametrize('failing', [1, 2, 3])
+def test_a_helper_that_fails_to_start_leaves_nothing_open_and_keeps_its_error(child, monkeypatch,
+                                                                             failing):
+    """The timer (1st start), the stderr drain (2nd) or the stdin feeder (3rd)
+    cannot start: the child is killed, every pipe closed - stdin too, when no
+    feeder was there to close it - and the start's own error is what is raised."""
+    import threading
+    c = child.use(Child([b'a', b'b'], stall=True))
+    real, n = threading.Thread.start, []
+
+    def start(self):
+        n.append(1)
+        if len(n) == failing:
+            raise RuntimeError('cannot start thread %d' % failing)
+        return real(self)
+    monkeypatch.setattr(threading.Thread, 'start', start)
+    sink = Sink()
+    with pytest.raises(RuntimeError, match='cannot start thread %d' % failing):
+        LocalNode.store_git('trusted', ['cat-file', '--batch'], workdirs=(), git_dir=STORE(),
+                            stdin=b'q\n', sink=sink, timeout=5)
+    assert sink.aborted and c.killed.is_set()
     assert c.closed == {'stdin', 'stdout', 'stderr'}
 
 

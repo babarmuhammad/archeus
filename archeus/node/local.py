@@ -717,9 +717,7 @@ class LocalNode:
                                   workdirs=workdirs, git_dir=store).strip()
         if got != expect:
             raise StoreError('lost race: %s is now %s, not %s' % (rev_name, got, expect))
-        LocalNode.store_git('trusted', ['update-ref', ref, expect], workdirs=workdirs,
-                            git_dir=store)
-        return expect
+        return _publish_once(ref, expect, store, workdirs)
 
     @staticmethod
     def store_resolve_base(root, rev, *, workdirs):
@@ -763,17 +761,8 @@ class LocalNode:
         ref = _seed_ref(execution_id)
         if not re.fullmatch(r'[0-9a-f]{40}', commit):
             raise StoreError('not a commit Core seeds from: %r' % (commit,))
-        store = LocalNode.store_open(project_id, workdirs=workdirs)
-        try:
-            LocalNode.store_git('trusted', ['update-ref', ref, commit, ''], workdirs=workdirs,
-                                git_dir=store)
-        except StoreError:
-            pass                        # it exists: what it names decides below
-        got = LocalNode.store_git('trusted', ['rev-parse', '--verify', '-q', ref + '^{commit}'],
-                                  workdirs=workdirs, git_dir=store).strip()
-        if got != commit:
-            raise StoreError('%s names %s, not %s' % (ref, got, commit))
-        return commit
+        return _publish_once(ref, commit, LocalNode.store_open(project_id, workdirs=workdirs),
+                             workdirs)
 
     @staticmethod
     def import_workspace(project_id, execution_id, seed_revision, *, workdirs):
@@ -893,6 +882,21 @@ class LocalNode:
         deadline.left()                 # immediately before publication
         os.rename(stage, work)
         return work
+
+
+def _publish_once(ref, commit, store, workdirs):
+    """*ref* created at *commit*, never moved (T-049 §3): a ref that already names
+    *commit* is the same publication; one naming anything else is refused."""
+    try:
+        LocalNode.store_git('trusted', ['update-ref', ref, commit, ''], workdirs=workdirs,
+                            git_dir=store)
+    except StoreError:
+        pass                            # it exists: what it names decides below
+    got = LocalNode.store_git('trusted', ['rev-parse', '--verify', '-q', ref + '^{commit}'],
+                              workdirs=workdirs, git_dir=store).strip()
+    if got != commit:
+        raise StoreError('%s names %s, not %s' % (ref, got, commit))
+    return commit
 
 
 @functools.lru_cache(maxsize=None)
@@ -1240,14 +1244,15 @@ def _stream(argv, cwd, env, stdin, sink, timeout):
                     break               # the child is gone: its end decides
         finally:
             _quietly(p.stdin.close)     # EOF for the child, on every path
-    helpers = [threading.Thread(target=drain, daemon=True)]
-    if stdin is not None:
-        helpers.append(threading.Thread(target=feed, daemon=True))
-    timer = threading.Timer(timeout, expire)
-    timer.start()
-    for t in helpers:
-        t.start()
+    # everything after Popen runs under the cleanup below: a helper that fails to
+    # start must not leave the child, its pipes or stdin without an owner
+    timer, started = threading.Timer(timeout, expire), []
     try:
+        timer.start()
+        for target in (drain, feed) if stdin is not None else (drain,):
+            t = threading.Thread(target=target, daemon=True)
+            t.start()
+            started.append((target, t))
         for chunk in iter(lambda: p.stdout.read1(_CHUNK), b''):
             sink.feed(chunk)
         p.wait()
@@ -1267,8 +1272,10 @@ def _stream(argv, cwd, env, stdin, sink, timeout):
     finally:
         timer.cancel()
         p.wait()
-        for t in helpers:
+        for _target, t in started:
             t.join()
+        if stdin is not None and feed not in [x for x, _t in started]:
+            _quietly(p.stdin.close)     # no feeder started to close it
         for pipe in (p.stdout, p.stderr):  # stdin: the feeder's finally
             _quietly(pipe.close)
 

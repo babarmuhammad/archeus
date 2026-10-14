@@ -741,6 +741,24 @@ def _seed(world, monkeypatch, proj, mid=None):
     return pid, eid, base, 'archeus/%s.t1' % mid
 
 
+def test_a_published_seed_ref_is_never_moved_by_another_fetch(world, monkeypatch):
+    """T-049 §3: the first attempt's seed ref is created once. The same fetch again
+    is the same publication; a fetch of another commit into it is refused and the
+    seed keeps the commit it was published at."""
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    pid, ref = ids.new_id('project'), 'refs/archeus/exec/e1/seed'
+    fetch = lambda rev, want: LocalNode.store_fetch(pid, str(world.user), rev, want, ref,  # noqa
+                                                    workdirs=())
+    assert fetch('refs/heads/main', world.c2) == world.c2
+    assert fetch('refs/heads/main', world.c2) == world.c2         # the same publication
+    # a second branch at c1, written as a file so no hook of the source repo runs
+    (world.user / '.git' / 'refs' / 'heads' / 'old').write_text(world.c1 + '\n')
+    with pytest.raises(StoreError, match='names %s, not %s' % (world.c2, world.c1)):
+        fetch('refs/heads/old', world.c1)
+    assert LocalNode.store_read(pid, ['rev-parse', ref], workdirs=()).strip() == world.c2
+    assert world.fired() == []
+
+
 def test_a_seed_holds_exactly_the_tree_and_runs_nothing_the_world_configures(world, monkeypatch):
     proj, head, files = _project(world)
     _hostile(monkeypatch, world)
