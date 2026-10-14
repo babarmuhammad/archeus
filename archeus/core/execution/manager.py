@@ -499,7 +499,9 @@ class ExecutionManager:
                  reason=P.reason(p['context'], p['pressure']))
 
     def _progress(self, e, p):
-        if not p['events'] and p['offset'] == e.stream_offset:
+        # a context changed without new output (the PreCompact backstop) is still news
+        if not p['events'] and p['offset'] == e.stream_offset \
+                and p.get('context') == e.context and p.get('pressure') == e.pressure:
             return
         self._do(X.record_progress, execution_id=e.id, offset=p['offset'], events=p['events'],
                  lines=p['lines'], usage=p['usage'], pressure=p.get('pressure'),
