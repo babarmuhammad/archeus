@@ -2303,6 +2303,85 @@ Fakes only: no real provider call, no Windows isolation, profile or ACL API, no 
      - Mutants, each caught: the window ignoring `armed_seq` (both tests fail), only the
        guard ignoring it (the D13 test fails), only the rate count ignoring it (the H-F1
        test fails).
+120. **Correction 2026-10-15 (T-093 review) to slice I, items 109-112.** The independent review
+     of slice I (`.collab/reviews/T-093-853f63f.claude.md`, CHANGES) found the records below
+     wrong or incomplete. Nothing above is reworded; this item supersedes the parts it names.
+     - **D7 is overturned for third-party keys (supersedes item 110's heading and its second
+       and fourth bullets, and item 109's opening sentence).** Core writes third-party API keys
+       at rest. For an execution with an opted-in MCP server, `harnesses/sources.py:384-388`
+       `flag_argv` copies the server's full definition from the account's `.claude.json` or the
+       project's `.mcp.json`, `env` and `headers` included, into `run/exec/<id>/res/mcp.json` in
+       plaintext, and nothing deleted it. Those fields are where users put their keys. §14.B
+       had already said the secrets review must list this file (item 65); item 109 did not.
+       D7 stands for harness-account keys only: `Account` holds no secret, and the adapter
+       still removes `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`.
+       - **The owner's decision, 2026-10-15** (verbatim): "The last decision i was writing when
+         you gave me options to choose , choose you reccomended option". That is "Delete at
+         end + sweep": the file exists only while the execution's process runs, it is deleted
+         on every end path, and a boot sweep removes what a crash left. DPAPI cannot help,
+         because the CLI reads the file in plaintext.
+       - **Built in T-099**, outside this slice's commits: `56e4c8b`, `b2dbf4c` and `c1cc825`
+         in the detached checkout `D:/archeus-p20-mcp`, reviewed by an independent Claude
+         reviewer (APPROVE on `b2dbf4c`). While a process runs the keys are still on disk, and
+         after a Core-less e-stop the file stays until the next boot's sweep.
+       - **Item 109's table gains a row:** opted-in MCP servers' definitions, at
+         `run/exec/<id>/res/mcp.json`, plaintext JSON, written by `sources.flag_argv`,
+         protected by the execution directory's inherited ACL and deleted when the execution's
+         process ends (T-099).
+     - **The secrets gate is rebuilt (supersedes item 109's "Gate" bullet).** As committed, it
+       counted draw sites as a set, so all seven of the reviewer's writer mutants survived: a
+       second draw in a listed function, `from secrets import`, an aliased `secrets`, `uuid4`
+       used as a secret, the local token copied to a second file, `chmod` after the exclusive
+       open, and an aliased `new_token`. `47404c1` replaces it with two exact censuses:
+       - sources, counted per (file, scope, source) with every import form resolved, `uuid.uuid4`
+         and `random.SystemRandom` added, and module bodies, class bodies and lambdas included;
+       - secret writes, followed from a secret source, an external secret (an MCP definition, the
+         hook token read back from the environment) or a writer helper's secret parameter,
+         through assignments, to a content sink or a writer helper.
+       It also fails on any mode change in `archeus/`. Its docstring names what it still cannot
+       see: a secret kept on an attribute or a container and written by another scope, a second
+       hop through an unlisted function, a subprocess or shell write, and a new external source.
+       All seven reviewer mutants and the five earlier ones are caught on a `git archive` copy.
+       `tools/mutate_p20.py` gains Q113 and Q114 for the write and mode gates.
+     - **The Windows `0600` claim is narrowed (supersedes item 109's "holds on Windows as well as
+       POSIX").** On Windows `os.open`'s mode sets only the read-only attribute, so `0o600`
+       does nothing there. The test checks the POSIX mode literal on every platform and is
+       renamed `test_the_local_token_file_is_created_exclusively_with_a_posix_owner_only_mode`.
+       On Windows the file's protection is the home DACL (I-F1, T-096).
+     - **I-F2 is corrected (supersedes its heading and first two sub-bullets).**
+       - The documentation does name the token: `archeus/cli/gui.py:38-42` `profile_dir` says the
+         profile holds "the device token". The conflict is with `discovery.py`'s docstring and
+         plan §27 only.
+       - The credential is stronger than "the scopes its launch code granted" says. The shell's
+         launch code is minted with `observe`, `control`, `approve` and `admin`
+         (`cli/main.py:258-260`). The device token it redeems for has no expiry and no supersede
+         slot (`api/routes.py:224-231`, `core/application/commands.py:131-148`), so each
+         `archeus gui` start leaves one more live admin-scope device credential. Whether older
+         values linger in the profile's LevelDB files was not examined. T-096 owns the fix.
+     - **I-F3 widens (supersedes its heading).** Each `run/exec/<id>/req/<seq>.req.json` also
+       holds the raw tool `input` (`harnesses/hook.py:160-161`): Bash commands and file
+       contents, unredacted and kept after the execution ends, with whatever secret an agent
+       typed. Low, as before.
+     - **Item 110's last-but-one bullet is narrowed.** Core (`archeus/`) does not write an
+       account's home. The legacy engine does: `claude_sessions/hooks.py:639-640` `_save`
+       read-modify-writes `settings.json` in each account's config directory, with no
+       credential in it.
+     - **Item 112 is incomplete; these rows complete it.** Its "Method" said each row of p15
+       §8.4 was read; four were not, and neither was §8.2's tunnel assumption.
+
+       | Surface / threat | Control as built | Evidence |
+       |---|---|---|
+       | Emergency stop | No PIN, by D10: the stop stays the fastest safety action | `api/routes.py:1075` (`POST /v1/estop`, `control`) |
+       | Re-arm | **GAP.** `POST /v1/rearm` is a plain `control` route with no step-up, and a paired client's default scopes include `control`. D10 approved a PIN step-up on re-arm from a paired device; it is not built, and §14.B records it as blocked by the user until it is reconciled with V2-3. A stolen paired phone, through the configured remote host, can re-arm after the user pressed Emergency stop | `api/routes.py:634-637`, `:1076`; `core/application/executions.py:568-573`; `api/auth.py:35`; card T-098 |
+       | Stolen device (corrects item 112's row) | Step-up applies today to the three human approval decisions only (`api/routes.py:742-748`), not to re-arm | as the row above |
+       | Cloned client (token copied) | By design indistinguishable: a bearer token is the identity. Visible as unexpected presence or actions; revoke | p15 §8.4 |
+       | Malicious client with a valid token | Can do what its scopes allow, through P9 like any client: every command is the route's application command, guarded as for the local CLI | p15 §8.4, §9 |
+       | Cross-user | V1 has one owner; every `user_device` principal acts for that owner. Non-user principals hold no `observe` scope and cannot read or subscribe | p15 §8.4 (P19) |
+       | Cross-project | A client sees the owner's whole workspace; a stream may be narrowed to projects, which is a subscription, not a permission | p15 §8.4, §11 |
+       | Tunnel Host passthrough (§8.2) | **Stated assumption, GAP in the user documentation.** The local/remote split (`api/server.py:369-375`) and the local-only check (`api/routes.py:100-105`) rest on the request's `Host`, because a tunnel forwards from loopback. A proxy that rewrites `Host` to `127.0.0.1` makes every remote request local. p15 §8.2 says "the runbook says so"; no such runbook text was found in `docs/` (searched for the requirement in every `docs/*.md` and `docs/architecture/*.md`). Under PV-20 (ADR-0053 §7 A3) a tunnel-forwarded request is never direct local origin, but that attestor is inert until PV-20 activates it | p15 §8.2; this review |
+
+       "No High was found on the remote path" (item 112) stands only with the re-arm GAP above
+       stated beside it; whether that gap is High is the owner's to say through D10 and V2-3.
 
 ## 13. As built
 (Filled at the end of P20.)
