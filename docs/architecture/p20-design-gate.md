@@ -2383,6 +2383,39 @@ Fakes only: no real provider call, no Windows isolation, profile or ACL API, no 
        "No High was found on the remote path" (item 112) stands only with the re-arm GAP above
        stated beside it; whether that gap is High is the owner's to say through D10 and V2-3.
 
+### Slice J — D10, the re-arm step-up from a paired client (2026-10-15)
+
+121. **V2-3 resolved and slice J authorised (the owner, 2026-10-15).** Asked who needs a PIN to
+     re-arm, the owner answered, verbatim: "Paired devices only (Recommended)". That is D10 as
+     approved on 2026-10-05: `POST /v1/rearm` from a paired (non-local) client needs a valid
+     step-up proof; a local client re-arms by being local; Emergency stop asks no PIN anywhere.
+     The V2 copy (SS-4, SS-6) becomes device-specific (§14.F). This lifts §14.B's block on D10.
+122. **Built (card T-098).** One mechanism, the one the three human approval decisions already
+     use: `executions.rearm` calls P9's `authorization._step_up_valid`, which decides "paired"
+     from Core's own record of how the client registered (`Device.origin == 'paired'`, or the
+     pre-P15 platform rule), never from the request's address. A paired client without a PIN
+     cannot satisfy it. A refused re-arm is `422 guard_failed` with the guard `step_up` (machine
+     `core`, `disarmed` -> `armed`, trigger `rearm`), so the sentinel stays and Core stays
+     disarmed. The route counts a wrong proof toward the same revocation as an approval's
+     (`_step_up_failed`: the fifth in a row revokes the client) and resets the count on a right
+     one. A proof is per request: a re-arm carries no step-up into the next one. Schema
+     `REARM` adds an optional `step_up`; the generated client and the API reference are
+     regenerated. The SPA's Control → About shows a PIN field above Re-arm when this client's
+     `capabilities.step_up` is `pin`, and says a client with no PIN cannot re-arm and should
+     re-arm on the desktop; the tray, the TUI and the local SPA are unchanged (all local).
+123. **Verified (2026-10-15).** `test_presence.py` J01-J03: a paired client's e-stop asks no PIN;
+     its re-arm without a proof, or with a wrong one, is refused and leaves Core disarmed; with
+     its PIN it re-arms; the next re-arm asks again; the local desktop re-arms with none; a
+     paired client without a PIN cannot re-arm; five wrong re-arm PINs revoke the client.
+     Mutants Q115-Q117 (`tools/mutate_p20.py`): 3 of 3 killed. Focused set 379 passed
+     (presence, e-stop drills, judge G5, execution, execution over HTTP, P19.5 core, start
+     confirmation, API structure and generated client, API errors and auth, design gates, the
+     fuzz harness); `test_spa_estop_about.py` 3 passed against a fresh SPA build; the client's
+     node tests 233 of 234 (the one failure is the known CRLF working-copy case in
+     `rowpulse.test.ts`). **Not run:** an end-to-end test of the PIN field with a paired browser
+     (no e2e pairs a browser), POSIX, the full `tests/v1`. Item 112's re-arm GAP and item 120's
+     re-arm row are closed by this slice.
+
 ## 13. As built
 (Filled at the end of P20.)
 
@@ -2534,6 +2567,11 @@ change words and placement; none may change, without a new gate:
 | V2-3 | **Who needs a PIN to resume.** | D10 as approved: step-up on re-arm **from a paired (non-local) device**; the local desktop asks none | SS-4's hint says "resuming needs a PIN" and SS-6 applies on every surface, the local desktop included | the user: either V2's copy is device-specific, or D10's scope widens. P20 does not change D10 |
 | V2-4 | **Push ownership.** | D8: notifications and push moved out of P20, to P21 | `ARCHEUS_V2_UI_ARCHITECTURE.md` ("P20: push, credentials") and the LV2-2 plan ("P20's push and credential review (LV2-3)") still name P20 | records only: D8 stands; the V2 documents are stale on this point and are not edited here |
 | V2-5 | **DR-8's at-rest question.** | D7's approved scope: enumerate every secret written at rest | DR-8 asks whether its at-rest question (check output may hold secrets) is handed to D7 | the user: an open hand-off, not a conflict |
+
+**V2-3 resolved (the owner, 2026-10-15).** "Paired devices only (Recommended)": D10 stands as
+approved, re-arm asks a PIN only from a paired client, and the V2 copy (SS-4's hint, SS-6) is to
+say so per device rather than "resuming needs a PIN" everywhere. The copy change is the V2
+work's; slice J (§12 items 121-123) built the P20 side.
 
 ### 14.G Is there a defensible next slice? (written after slice C; slice D has since been done)
 
