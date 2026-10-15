@@ -106,6 +106,27 @@ def test_a_path_the_os_cannot_resolve_is_unclassified_not_an_error(tool, inp):
     assert u is True and [a['class'] for a in got] == ['exec']
 
 
+@pytest.mark.parametrize('tool,inp', [
+    ('Write', {}), ('Write', None), ('Write', {'file_path': ['/etc/passwd']}),
+    ('Edit', {'file_path': 5}), ('Read', {'file_path': ''}), ('LS', {}),
+    ('NotebookEdit', {'notebook_path': {'a': 1}}), ('Glob', {'path': 7}),
+    ('WebFetch', {'url': ['http://evil']}), ('WebFetch', {}), ('WebFetch', {'url': 'http://[::1'}),
+    ('Bash', {'command': ['ls']}), ('Bash', 42)])
+def test_an_input_missing_what_its_tool_needs_is_unclassified(tool, inp):
+    """T-094 review, finding 2 (P20 D12): a path tool with its path missing,
+    empty or not a string came out write_repo on '.', and a fetch with a
+    non-string URL as web with no host - both less strict than the one
+    unclassified exec that P9 never allows on its own."""
+    got, u = one(tool, inp)
+    assert u is True and [a['class'] for a in got] == ['exec'], (tool, inp, got)
+
+
+def test_glob_and_grep_without_a_path_search_the_workspace():
+    for tool in ('Glob', 'Grep'):
+        (a,), u = one(tool, {'pattern': '*.py'})
+        assert (a['class'], a['paths'], u) == ('read', ['.'], False)
+
+
 def test_paths_inside_are_workspace_relative_and_outside_stay_absolute():
     assert one('Write', {'file_path': 'src/a.py'})[0][0]['paths'] == ['src/a.py']
     for escape in ('../x', os.path.abspath(os.sep + 'etc'), '~/x', 'src/../../x'):

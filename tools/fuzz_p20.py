@@ -17,7 +17,10 @@ Two targets, one property: nothing answers 500 or raises.
   fuzzed here; it is tested where it is built (T-057).
 - `canonicalise()` over every tool ADR-0052's mapping names (plus Skill, the
   aliases and unknown names), with mutated inputs. For an input it cannot
-  parse it must answer the conservative class: one unclassified `exec`.
+  parse it must answer the conservative class: one unclassified `exec`. That
+  holds for every parsed tool: a path tool with its path missing (Glob and
+  Grep may omit theirs), empty or not a string, a fetch whose URL has no host,
+  a command that is not a string shlex can split.
 
 Run on demand it builds its own Core in a temporary ARCHEUS_HOME on the fake
 harness; tests/v1/integration/test_p20_fuzz.py runs both targets in CI with a
@@ -213,16 +216,31 @@ def conservative(tool, inp, actions, unclassified):
         return 'unclassified but not one exec action'
     if tool not in PARSED and not unclassified:
         return 'a tool it does not parse was classified'
-    if tool == 'Bash':
-        cmd = inp.get('command') if isinstance(inp, dict) else inp
-        cmd = str(cmd or '')
-        try:
-            ok = bool(shlex.split(cmd, posix=True))
-        except ValueError:
-            ok = False
-        if not ok and not unclassified:
-            return 'an unparseable command was classified'
+    if not unclassified and not parseable(tool, inp if isinstance(inp, dict) else
+                                          {'command': inp}):
+        return 'an input it cannot parse was classified'
     return None
+
+
+def parseable(tool, inp):
+    """Whether *inp* carries what *tool* needs, judged without the canonicaliser:
+    a non-empty string path (Glob and Grep may omit theirs), a URL with a host,
+    a command shlex can split."""
+    def text(v):
+        return isinstance(v, str) and bool(v)
+    if tool in canonical.READ_TOOLS or tool in canonical.WRITE_TOOLS:
+        given = [inp[k] for k in canonical.PATH_FIELDS if k in inp]
+        return text(given[0]) if given else tool in ('Glob', 'Grep')
+    if tool == 'WebFetch':
+        url = inp.get('url')
+        return text(url) and canonical.host_of(url) is not None
+    if tool == 'Bash':
+        cmd = inp.get('command')
+        try:
+            return text(cmd) and bool(shlex.split(cmd, posix=True))
+        except ValueError:
+            return False
+    return True
 
 
 def free_port():
