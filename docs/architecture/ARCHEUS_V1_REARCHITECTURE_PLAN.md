@@ -380,6 +380,8 @@ upgrade path); pairing with 2-minute single-use rate-limited codes shown only in
 
 *Correction 2026-10-15 (P20 slice I, T-093 review; p20-design-gate §12 item 120) to the amendment above:* Core does keep third-party API keys at rest, transiently. For an execution with an opted-in MCP server, the server's full definition, `env` and `headers` included, is copied into `run/exec/<id>/res/mcp.json` in plaintext; since T-099 it exists only while the execution's process runs and a boot sweep removes what a crash left (the owner's decision of 2026-10-15). DPAPI still does not apply: the CLI reads that file in plaintext. The local token and the Qt page's device token remain the plaintext credentials Archeus itself issues and keeps; "an account's login stays in the harness's own home, which Archeus does not write" holds for Core, while the legacy engine read-modify-writes `settings.json` there, with no credential in it.
 
+*Correction 2026-10-15 (P20 slice I, T-103 review; p20-design-gate §12 item 125) to the correction above:* "since T-099 it exists only while the execution's process runs" holds once T-099 is integrated. In the tree that carries this correction, nothing deletes `res/mcp.json`. The plaintext credentials Archeus itself issues and keeps also include a third: the hook token. It sits in `run/exec/<id>/req/<seq>.req.json`, beside the raw tool input. It is live while its execution runs (its hash is cleared on every end path), and the file is never deleted (finding I-F3).
+
 ## 28. Observability
 
 Everything is reconstructable from the event log plus decision records:

@@ -2472,6 +2472,50 @@ Fakes only: no real provider call, no Windows isolation, profile or ACL API, no 
        which was fixed, and all 32 suites then parse. Focused reruns after each commit passed:
        332, then 240. Revert experiments on archive copies: each fix reverted fails its own new
        test. **Not run:** the full `tests/v1`, POSIX, the full Q01-Q124 suite.
+125. **Correction 2026-10-15 (T-103 review) to items 119 and 120.** The independent review
+     (`reviews/T-103-7c92b10.claude.md`) found H-F1 sound and item 120 accurate, but the
+     rebuilt static census claimed sinks it could never match: all 9 of its new mutants
+     survived. Items 119 and 120 are not reworded.
+     - **Finding 1 (Medium) and finding 2 (Low), `0199238`.** `write_atomic` and
+       `write_json_atomic` are only ever called dotted (`config.write_json_atomic`), and the
+       matcher compared bare names. Now `_name` resolves a dotted chain of any length, so a
+       fully dotted `archeus.api.auth.new_token()` is a source. The atomic writers match on their
+       last segment. `.writelines`, `print(..., file=...)` and a logging call on a logger are
+       sinks. In a scope that writes a secret, a file copy is one more write. The CLI's draws,
+       which the table exempts, no longer taint its own output. The docstring now names what
+       stays unseen. Of 21 mutants (the T-093 reviewer's 7, the original 5, and this review's
+       N1-N9), 20 are caught. The 21st, N8, stores a token as a device's name: a database row,
+       out of the census's reach by construction.
+     - **The runtime gate, `883e11d`.** `tests/v1/integration/test_p20_secrets_runtime.py`
+       records every `secrets.token_urlsafe` draw with its kind, decided by the function that
+       asked for it, and plants an opted-in MCP server's keys (an env var and a header) and an
+       account settings secret. After two lifecycles (pairing, a launch redemption, a mission, a
+       stream and a revocation over HTTP; an execution with two opted-in servers and a hooked
+       tool call), every file under ARCHEUS_HOME is read as bytes, the database, its WAL and
+       core.log included. Each secret may appear only where its kind is kept: the local token in
+       `run/local-token`, the hook token in `run/exec/*/req/*.req.json`, the MCP keys in
+       `run/exec/*/res/mcp.json`; device tokens, codes and the settings secret nowhere. Each
+       lifecycle also asserts that what it expects to find is found. Q125-Q128: 4 of 4 killed.
+       Q125 and Q127 (a token through the dotted atomic writer, an aliased chmod) are killed by
+       the static census; Q126 and Q128 (a token logged to core.log, a token stored as a
+       launch-redeemed device's name) by the runtime gate. That corrects `883e11d`'s message,
+       which credited the runtime gate with "the last two".
+     - **Finding 3 (Low), `0199238`.** The no-mode-change test runs through the import aliases
+       and covers `copymode`, `copystat` and the shutil copies that carry mode bits.
+     - **Finding 4 (Low).** Item 119's rate limit is per arm, and every enable moves
+       `armed_seq`: a plain DISABLED -> ENABLED also restarts both counts, not only
+       SUSPENDED -> ENABLED. Only a user device holding `admin` can enable. p14-design-gate §10
+       gains a dated amendment saying so.
+     - **Findings 5 and 6 (Low).** Plan §27 gains a correction: "since T-099 it exists only
+       while the execution's process runs" holds once T-099 is integrated, and the hook token in
+       `req.json` is the third plaintext credential Archeus issues and keeps. In item 120,
+       "Item 110's last-but-one bullet" means item 110's fourth bullet of six, the one about the
+       harness home "which Archeus does not write"; the last-but-one is "So, as D7 directs".
+     - **Verified (2026-10-15).** `-m "not real_process"`, 850 passed. The set: both secrets
+       gates, the fuzz harness, policy over HTTP and in process, the canonicaliser units,
+       automation, e-stop drills, execution, execution security, API errors and auth, presence,
+       knowledge over HTTP, judge G5, the doc gates. Mutants ran on copies of the working tree.
+       **Not run:** the full `tests/v1`, POSIX, e2e.
 
 ## 13. As built
 (Filled at the end of P20.)
