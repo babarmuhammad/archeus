@@ -13,7 +13,8 @@ starts the counts afresh (Q111-Q112), and T-093's corrected secrets gate: a
 secret written twice, a mode changed after the create (Q113-Q114); slice J,
 D10's re-arm step-up from a paired client (Q115-Q117); T-094's review: the
 gate tests and drills no mutant named, and the defects its stronger fuzz
-corpus and oracle found (Q118-Q124).
+corpus and oracle found (Q118-Q124); T-103's review: the static census's
+sinks and the runtime secrets gate (Q125-Q128).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -90,6 +91,9 @@ AE = 'tests/v1/integration/test_api_errors.py::'
 FREE = AE + 'test_a_bad_value_inside_a_free_form_field_is_a_400_not_a_500'
 H04B = ('tests/v1/integration/test_policy_http.py::'
         'test_H04b_a_malformed_simulated_action_or_rule_is_a_400_not_a_500')
+RTM = 'archeus/core/runtime.py'
+RUN_LOCAL = ('tests/v1/integration/test_p20_secrets_runtime.py::'
+             'test_no_minted_credential_is_at_rest_outside_its_one_home')
 
 MUTATIONS = [
     # Slice A, item 83: execution-architecture §10 path 2
@@ -656,6 +660,24 @@ MUTATIONS = [
      "    if not isinstance(t, str) or t not in types:",
      "    if t not in types:")],
      [FREE]),
+    # T-103's review: the static census's sinks, and the runtime gate
+    ('Q125', 'the local token is written again through the dotted atomic writer', [(DISC,
+     "        f.write(token)\n",
+     "        f.write(token)\n    config.write_json_atomic(path + '.json', {'t': token})\n")],
+     [SEC + 'test_every_secret_write_in_archeus_is_in_the_writers_table']),
+    ('Q126', 'the local token is logged to core.log', [(RTM,
+     "        discovery.write_local_token(token)\n",
+     "        discovery.write_local_token(token)\n        log.info('local token %s', token)\n")],
+     [SEC + 'test_every_secret_write_in_archeus_is_in_the_writers_table', RUN_LOCAL]),
+    ('Q127', "the local token's mode is changed through an aliased chmod", [(DISC,
+     "        f.write(token)\n",
+     "        f.write(token)\n    from os import chmod as ch\n    ch(path, 0o644)\n")],
+     [SEC + 'test_no_code_in_archeus_changes_a_files_mode']),
+    # a database row: a shape the static census cannot see, by construction
+    ('Q128', "a launch-redeemed device's token is stored as its name", [(ROUTES,
+     "        'name': (req.body.get('name') or '').strip() or 'browser (%s)' % req.body['platform'],",
+     "        'name': token,")],
+     [RUN_LOCAL]),
 ]
 
 if __name__ == '__main__':
