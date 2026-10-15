@@ -1531,3 +1531,12 @@ until P19.5 is explicitly finished.
 
 **P19.5 exited** (the user's exit sign-off, 2026-10-05, at `59281ac`). Items 83 and 86, F4, F6,
 F7 and F8 carry to P20 ([p20-design-gate.md](p20-design-gate.md)).
+
+**Amendment 2026-10-15 (T-096) to item 81.** The shell's page no longer keeps its device token
+in the profile, so it no longer survives a restart. The appearance choice and B7's snapshot
+still do. The owner chose this on 2026-10-15 (AskUserQuestion answer, verbatim): "Memory-only
+(Recommended)". Each `archeus gui` launch redeems a fresh launch code into the slot `desktop
+shell page`, which revokes the previous page credential. The page keeps the token in memory and
+gets a fresh launch address on a reload. A token an earlier shell stored is revoked before it is
+deleted. A second concurrent `archeus gui` signs out the first window's page. See
+[p20-design-gate.md](p20-design-gate.md) §12, T-096.2 and T-096.3.
