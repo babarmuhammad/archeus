@@ -10,7 +10,8 @@ deny (Q38-Q79; two e2e-guarded mutants rebuild the SPA); slice F, PV-22
 slice I, the secrets gate (Q100-Q103); slice H, the breaker drills (D13) and
 the two defects the fuzz harness found (D12) (Q104-Q110); H-F1, re-enabling
 starts the counts afresh (Q111-Q112), and T-093's corrected secrets gate: a
-secret written twice, a mode changed after the create (Q113-Q114).
+secret written twice, a mode changed after the create (Q113-Q114); slice J,
+D10's re-arm step-up from a paired client (Q115-Q117).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -58,6 +59,7 @@ MGR = 'archeus/core/execution/manager.py'
 EXE = 'archeus/core/application/executions.py'
 MISSION = 'clients/app/src/surfaces/Mission.tsx'
 SU = 'tests/v1/unit/test_settings_sources_units.py::'
+PRS = 'tests/v1/integration/test_presence.py::'
 SI = 'tests/v1/integration/test_settings_sources.py::'
 G6 = 'tests/v1/judge/test_g06_security.py::'
 API = 'tests/v1/unit/test_api_structure.py::test_the_route_table_is_exactly_the_p35b_to_p18_tables'
@@ -592,6 +594,22 @@ MUTATIONS = [
      "        f.write(token)\n",
      "        f.write(token)\n    os.chmod(path, 0o644)\n")],
      [SEC + 'test_no_code_in_archeus_changes_a_files_mode']),
+    # Slice J, D10 (V2-3 resolved 2026-10-15: paired devices only)
+    ('Q115', 'a paired client re-arms without its PIN', [(EXE,
+     "    if not authorization._step_up_valid(tx, actor, step_up):",
+     "    if False:")],
+     [PRS + 'test_J01_a_paired_client_re_arms_only_with_its_pin',
+      PRS + 'test_J02_a_paired_client_without_a_pin_cannot_re_arm_and_the_desktop_can']),
+    ('Q116', "the re-arm route drops the client's proof", [(ROUTES,
+     "        out = req.run(req.api.executions.rearm, {'step_up': proof})",
+     "        out = req.run(req.api.executions.rearm, {'step_up': None})")],
+     [PRS + 'test_J01_a_paired_client_re_arms_only_with_its_pin']),
+    ('Q117', 'a wrong re-arm PIN is not counted toward the revocation', [(ROUTES,
+     "        if proof is not None and 'step-up' in e.result.reason:\n"
+     "            _step_up_failed(req)",
+     "        if proof is not None and 'step-up' in e.result.reason:\n"
+     "            pass")],
+     [PRS + 'test_J03_five_wrong_re_arm_pins_revoke_the_client_as_an_approvals_would']),
 ]
 
 if __name__ == '__main__':

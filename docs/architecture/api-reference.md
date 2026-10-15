@@ -2094,6 +2094,7 @@ interface EstopRequest {
 
 ```ts
 interface RearmRequest {
+  step_up?: string | null;
   idempotency_key: string;
 }
 ```

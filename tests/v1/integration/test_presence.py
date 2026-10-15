@@ -716,3 +716,55 @@ def test_the_cli_pairs_lists_and_revokes(tc, capsys):
     assert _device(tc, did)['state'] == 'REVOKED'
     assert cli.main(['pair', '--scopes', 'control']) == 2          # observe is required
     assert cli.main(['core', '--remote-host', '*.ts.net']) == 2      # refused, nothing started
+
+
+# ── P20 D10 (slice J): re-arming from a paired client takes its PIN ──
+
+def _armed(tc):
+    return _get(tc, '/v1/health').json()['armed']
+
+
+def test_J01_a_paired_client_re_arms_only_with_its_pin(remote):
+    """D10, V2-3 resolved 2026-10-15 ("paired devices only"): the e-stop
+    asks nothing, the re-arm asks the paired client's PIN, every time."""
+    did, phone = pair(remote, platform='web', pin='482913')
+    assert _phone(remote, '/v1/estop', token=phone).status == 200     # never a PIN
+    assert _armed(remote) is False
+    r = _phone(remote, '/v1/rearm', token=phone)
+    assert (r.status, r.json()['error']) == (422, 'guard_failed'), r.body
+    assert 'step-up' in r.json()['detail']['reason']
+    r = _phone(remote, '/v1/rearm', {'step_up': '000000'}, token=phone)
+    assert (r.status, r.json()['error']) == (422, 'guard_failed')     # a wrong PIN
+    assert _armed(remote) is False
+    r = _phone(remote, '/v1/rearm', {'step_up': '482913'}, token=phone)
+    assert r.status == 200 and r.json() == {'armed': True}, r.body
+    assert _armed(remote) is True
+    # a proof is per request: the next re-arm asks again
+    assert _phone(remote, '/v1/estop', token=phone).status == 200
+    assert _phone(remote, '/v1/rearm', token=phone).status == 422
+    assert _armed(remote) is False
+    assert _post(remote, '/v1/rearm').status == 200                   # the local desktop: none
+    assert _armed(remote) is True and _device(remote, did)['state'] != 'REVOKED'
+
+
+def test_J02_a_paired_client_without_a_pin_cannot_re_arm_and_the_desktop_can(remote):
+    _d, nopin = pair(remote, platform='web')
+    assert _device(remote, _d)['capabilities'] == {'step_up': 'none'}
+    assert _phone(remote, '/v1/estop', token=nopin).status == 200
+    assert _phone(remote, '/v1/rearm', token=nopin).status == 422
+    assert _phone(remote, '/v1/rearm', {'step_up': '123456'}, token=nopin).status == 422
+    assert _armed(remote) is False
+    assert _post(remote, '/v1/rearm').status == 200
+    assert _armed(remote) is True
+
+
+def test_J03_five_wrong_re_arm_pins_revoke_the_client_as_an_approvals_would(remote):
+    """The re-arm counts toward the same step-up breaker (p15 D19)."""
+    did, phone = pair(remote, pin='482913')
+    assert _post(remote, '/v1/estop').status == 200
+    for i in range(5):
+        r = _phone(remote, '/v1/rearm', {'step_up': '000000'}, token=phone)
+        assert r.json()['error'] == 'guard_failed', i
+    assert _device(remote, did)['state'] == 'REVOKED'
+    assert _armed(remote) is False
+    assert _post(remote, '/v1/rearm').status == 200

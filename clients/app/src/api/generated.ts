@@ -1332,6 +1332,7 @@ export interface EstopRequest {
 }
 
 export interface RearmRequest {
+  step_up?: string | null;
   idempotency_key: string;
 }
 
