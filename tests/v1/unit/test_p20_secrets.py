@@ -5,30 +5,42 @@ Two censuses over archeus/, both exact (p20-design-gate §12 items 109 and 120):
 1. SOURCES. Every call that draws randomness or issues a credential:
    `secrets.*`, `os.urandom`, `uuid.uuid4`, `random.SystemRandom` and
    `auth.new_token`, in any import form (`import secrets as s`,
-   `from secrets import token_hex`, `from .auth import new_token as nt`),
-   counted per (file, function, source). A second draw in a listed function
-   changes a count, a new one adds a row, and either fails until the table
-   says where the value goes.
+   `from secrets import token_hex`, `from .auth import new_token as nt`,
+   `import archeus.api.auth` then `archeus.api.auth.new_token()`), counted
+   per (file, function, source). A second draw in a listed function changes a
+   count, a new one adds a row, and either fails until the table says where
+   the value goes. The CLI's draws are idempotency keys and request ids.
 2. SECRET WRITES. Inside each function, a value is a secret when it comes from
    a secret source call, from an external secret (an opted-in MCP server's
    definition, the hook token read back from the environment), from a
    parameter named in WRITER_PARAMS, or from an assignment over such a value.
-   A secret write is a content sink (`json.dump`, `write_atomic`,
-   `write_json_atomic`, `shutil.copy*`, any `.write`, `.write_text` or
-   `.write_bytes`, `os.write` among them) or a call to a WRITER_PARAMS helper,
-   with a secret among its arguments; a helper's return value is not a secret.
+   A secret write is a sink call with a secret among its arguments:
+   `json.dump`; `write_atomic` and `write_json_atomic` in any dotted form
+   (`config.write_json_atomic`); any `.write`, `.writelines`, `.write_text`
+   or `.write_bytes`; `print(..., file=...)`; a logging call on a logger
+   (`log.info`, `logging.warning`, `self._log.error`: core.log is a file); a
+   call to a WRITER_PARAMS helper. A helper's return value is not a secret.
+   In a scope that writes a secret, every file copy (`shutil.copy*`,
+   `os.link`) is one more secret write: a copy of the file just written.
    Each scope's count (module, class body or function, lambdas included) must
    equal WRITERS: a token copied to a second file is a second write.
-   And no code in archeus/ changes a file's mode (`chmod` and friends): a mode
-   loosened after an exclusive create would undo it.
+   And no code in archeus/ changes a file's mode, in any import form: `chmod`
+   and friends, `shutil.copymode`/`copystat`, and the shutil copies that carry
+   mode bits. A mode loosened after an exclusive create would undo it.
 
 What this does NOT see, by construction: a secret kept on an attribute or in
-a container and written by another scope; a secret passed to a function
-that is not a WRITER_PARAMS helper and written there (one hop only); a write
+a container and written by another scope; a secret passed to a function that
+is not a WRITER_PARAMS helper and written there (one hop only); a write
 through a subprocess or a shell; a secret read from a source not named here
-(a new external file); database rows (the hash tests below hold those); ACL
-changes (test_pv20_isolation's static gate holds those). It over-counts on
-purpose: anything computed from a secret (a hash included) is treated as one.
+(a new external file); a copy, rename or move of a secret file by a scope that
+did not write it; a logger the code does not name with "log"; a secret in a
+database row (the hash tests below pin only insert_token's signature and the
+Execution's token fields); ACL changes (test_pv20_isolation's static gate
+holds those). The runtime gate (tests/v1/integration/test_p20_secrets_runtime.py)
+reads every file Core leaves behind, the database included, for the secrets it
+actually minted: it covers whatever the lifecycle it drives runs, in any
+syntax. This census over-counts on purpose: anything computed from a secret
+(a hash included) is treated as one.
 """
 
 import ast
@@ -119,10 +131,16 @@ WRITERS = {
             'keys), kept only while the execution runs (T-099)'),
 }
 
-_FILE_SINKS = {'json.dump', 'write_atomic', 'write_json_atomic',
-               'shutil.copy', 'shutil.copyfile', 'shutil.copy2'}
-_METHOD_SINKS = {'write', 'write_text', 'write_bytes'}
-_MODE_CHANGES = {'chmod', 'fchmod', 'lchmod'}
+_FILE_SINKS = {'json.dump'}
+#: matched on the last segment: archeus calls them `config.write_atomic(...)`
+_HELPER_SINKS = {'write_atomic', 'write_json_atomic'}
+_METHOD_SINKS = {'write', 'write_text', 'write_bytes', 'writelines'}
+#: `log.info(...)`, `logging.warning(...)`, `self._log.error(...)`: core.log is a file
+_LOG_METHODS = {'debug', 'info', 'warning', 'warn', 'error', 'exception', 'critical', 'log'}
+#: a file copied in a scope that writes a secret is a second copy of it
+_COPIES = {'shutil.copy', 'shutil.copyfile', 'shutil.copy2', 'os.link'}
+_MODE_CHANGES = {'chmod', 'fchmod', 'lchmod', 'copymode', 'copystat'}
+_MODE_COPIES = {'shutil.copy', 'shutil.copy2'}           # these copy the mode bits too
 
 
 def _modules():
@@ -150,14 +168,19 @@ def _aliases(tree):
 
 
 def _name(func, aliases):
-    """The callee as its last two dotted parts with aliases resolved; '.attr' for
-    a method of anything that is not a plain name; None otherwise."""
+    """The callee as its last two dotted parts with aliases resolved, through a
+    dotted chain of any length (`archeus.api.auth.new_token`); '.attr' for a
+    method of anything that is not a name or a chain of names; None otherwise."""
     if isinstance(func, ast.Name):
         full = aliases.get(func.id, func.id)
-    elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
-        full = '%s.%s' % (aliases.get(func.value.id, func.value.id), func.attr)
     elif isinstance(func, ast.Attribute):
-        return '.' + func.attr
+        chain, base = [func.attr], func.value
+        while isinstance(base, ast.Attribute):
+            chain.append(base.attr)
+            base = base.value
+        if not isinstance(base, ast.Name):
+            return '.' + func.attr
+        full = '.'.join([aliases.get(base.id, base.id)] + chain[::-1])
     else:
         return None
     parts = full.split('.')
@@ -225,7 +248,7 @@ def _census():
                 if src in SOURCES:
                     sources[(rel, qual, src)] += 1
                     row = SITES.get((rel, qual, src))
-                    if row is None or row[1] in SECRET:
+                    if (row[1] in SECRET) if row else rel != CLI_KEYS:
                         secret_calls.add(id(c))
                 elif src and src.split('.')[-1] in EXTERNAL_CALLS:
                     secret_calls.add(id(c))
@@ -240,13 +263,20 @@ def _census():
                         if _secret(n.context_expr, tainted, secret_calls, aliases):
                             tainted |= {x.id for x in ast.walk(n.optional_vars)
                                         if isinstance(x, ast.Name)}
+            found = copies = 0
             for c in calls:
                 callee = _name(c.func, aliases) or ''
-                sink = (callee in _FILE_SINKS or callee.split('.')[-1] in _HELPERS
-                        or (isinstance(c.func, ast.Attribute) and c.func.attr in _METHOD_SINKS))
+                head, _, last = callee.rpartition('.')
+                sink = (callee in _FILE_SINKS or last in _HELPER_SINKS or last in _HELPERS
+                        or (isinstance(c.func, ast.Attribute) and c.func.attr in _METHOD_SINKS)
+                        or (callee == 'print' and any(k.arg == 'file' for k in c.keywords))
+                        or (last in _LOG_METHODS and 'log' in head.lower()))
                 args = list(c.args) + [k.value for k in c.keywords]
                 if sink and any(_secret(a, tainted, secret_calls, aliases) for a in args):
-                    writes[(rel, qual)] += 1
+                    found += 1
+                copies += callee in _COPIES
+            if found:
+                writes[(rel, qual)] += found + copies
     return sources, writes
 
 
@@ -273,10 +303,16 @@ def test_every_secret_write_in_archeus_is_in_the_writers_table(census):
 
 
 def test_no_code_in_archeus_changes_a_files_mode():
-    found = [(rel, n.lineno) for rel, tree in _modules() for n in ast.walk(tree)
-             if isinstance(n, ast.Call) and (
-                 (isinstance(n.func, ast.Attribute) and n.func.attr in _MODE_CHANGES)
-                 or (isinstance(n.func, ast.Name) and n.func.id in _MODE_CHANGES))]
+    """`chmod` and friends in any import form (`from os import chmod as ch`),
+    and the shutil copies that carry mode bits onto their target."""
+    found = []
+    for rel, tree in _modules():
+        aliases = _aliases(tree)
+        for n in ast.walk(tree):
+            if isinstance(n, ast.Call):
+                callee = _name(n.func, aliases) or ''
+                if callee.rpartition('.')[2] in _MODE_CHANGES or callee in _MODE_COPIES:
+                    found.append((rel, n.lineno, callee))
     assert found == []
 
 
