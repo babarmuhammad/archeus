@@ -61,11 +61,22 @@ shell.__class__ = Spy
 LOOK = """(() => ({theme: document.documentElement.dataset.theme,
                  contrast: document.documentElement.dataset.contrast,
                  stored: localStorage.getItem('archeus-appearance'),
-                 at: location.href}))()"""
+                 at: location.href, old: !!window.__old,
+                 booting: !!document.querySelector('main.notice.boot'),
+                 notice: !!document.querySelector('main.notice'), tok: window.__tok,
+                 conn: (document.querySelector('.shell') || {dataset: {}}).dataset.conn || 'none',
+                 rendered: !!document.querySelector('main.notice, .shell')}))()"""
 SET = "localStorage.setItem('archeus-appearance', JSON.stringify({theme: 'dark', contrast: 'high'}))"
+# T-096: what the page's IndexedDB holds under the device-token key
+KICK = """(() => { const o = indexedDB.open('archeus', 1);
+  o.onupgradeneeded = () => o.result.createObjectStore('auth');
+  o.onsuccess = () => { const q = o.result.transaction('auth').objectStore('auth').get('device-token');
+    q.onsuccess = () => { window.__tok = q.result === undefined ? 'none' : 'present'; }; }; })()"""
 
 
 def ready(view, app):
+    if out.get('menu'):                          # on_ready rides every loadFinished
+        return
     from PyQt6.QtCore import Qt
     page = view.page()
     prof = page.profile()
@@ -80,6 +91,22 @@ def ready(view, app):
     def pixel():
         return tray.icon().pixmap(32, 32).toImage().pixelColor(24, 24).name()
 
+    def stored_token(then):
+        page.runJavaScript(KICK)
+
+        def wait():
+            page.runJavaScript(LOOK, lambda v: then(v['tok']) if v and v.get('tok')
+                               else QTimer.singleShot(100, wait))
+        wait()
+
+    def quit_after(tok):
+        out['tok'] = tok
+        QTimer.singleShot(800, acts['Quit'].trigger)
+
+    def reloaded(looked):                        # T-096: a reload keeps the page signed in
+        out['reloaded'] = looked
+        stored_token(quit_after)
+
     def finish(looked):
         out['look'] = looked
         menu.aboutToShow.emit()                  # the menu opens: Attention is read
@@ -87,6 +114,9 @@ def ready(view, app):
         if mode == 'first':
             acts['Pause all'].trigger()
             page.runJavaScript(SET)
+            out['calls'] = list(calls)
+            page.runJavaScript('window.__old = 1', lambda _: (view.reload(), poll(reloaded)))
+            return
         else:
             win = view.window()
             win.close()                          # hides to the tray, reads Attention
@@ -107,11 +137,13 @@ def ready(view, app):
             QTimer.singleShot(100, lambda: answer('confirm'))
             acts['Emergency stop'].trigger()
         out['calls'] = list(calls)
-        QTimer.singleShot(800, acts['Quit'].trigger)
+        stored_token(quit_after)
 
-    def poll():
-        page.runJavaScript(LOOK, lambda v: finish(v) if v and v['theme'] and
-                           'launch=' not in v['at'] else QTimer.singleShot(100, poll))
+    def poll(then=finish):
+        page.runJavaScript(LOOK, lambda v: then(v) if v and v['theme'] and not v['old']
+                           and v['rendered'] and not v['booting'] and v['conn'] != 'connecting'
+                           and 'launch=' not in v['at']
+                           else QTimer.singleShot(100, lambda: poll(then)))
     poll()
 
 
@@ -151,6 +183,10 @@ def test_the_window_keeps_its_profile_across_a_restart_and_the_tray_acts(archeus
         assert first['look']['stored'] is None                    # nothing chosen yet
         assert first['icon_on_open'] != gui.attention_colour(first['dark']).lower()
         assert first['calls'] == [['attention', 0], 'pause_all']
+        # T-096: the page's token lives in its memory only, and a reload is
+        # answered with a fresh launch address, so the page stays signed in
+        assert first['look']['conn'] == 'live' and first['tok'] == 'none'
+        assert first['reloaded']['conn'] == 'live' and '?r=1' in first['reloaded']['at']
 
         r = tc.http('POST', '/v1/missions', body={'title': 'Needs a person', 'objective': 'o',
                                                   'idempotency_key': 'qt-%f' % time.time()})
@@ -173,5 +209,10 @@ def test_the_window_keeps_its_profile_across_a_restart_and_the_tray_acts(archeus
             assert (title, text, default) == ('Emergency stop', gui.ESTOP_CONFIRM, 'Cancel')
             assert sorted(buttons) == ['Cancel', 'Emergency stop']
         assert len(second['asked']) == 2
+        assert second['look']['conn'] == 'live' and second['tok'] == 'none'
+        # each page credential took the page's slot: the two before the last are revoked
+        pages = [d['state'] for d in tc.http('GET', '/v1/devices').json()['devices']
+                 if d['name'] == 'browser (web)']
+        assert pages == ['REVOKED', 'REVOKED', 'ACTIVE'], pages
     finally:
         tc.stop(kill=True)

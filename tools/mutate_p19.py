@@ -596,7 +596,7 @@ MUTATIONS = [
      "    return client.Core(info['port'], out['token'])", "    return client.Core(info['port'], token)")],
      [SH_CRED]),
     ('P116', "the window's page gets less than the local grant", [(MAIN,
-     "{'scopes': ['observe', 'control', 'approve', 'admin']})", "{'scopes': ['observe']})")],
+     "{'scopes': ['observe', 'control', 'approve', 'admin']}", "{'scopes': ['observe']}")],
      [SH + 'test_the_page_opens_on_a_launch_code_with_the_full_local_grant']),
     ('P117', 'a running Core is started again', [(GUI,
      "    if state == 'not_running':\n        err = start()",

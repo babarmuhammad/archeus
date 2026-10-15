@@ -254,23 +254,29 @@ def _get(info, method, path, body=None):
         return None
 
 
-def _launch_code(info):
+def _launch_code(info, slot=None):
     # the user at this machine opens the app with its full grant (p16-design-gate D2)
-    out = _get(info, 'POST', endpoints.launch_code(),
-               {'scopes': ['observe', 'control', 'approve', 'admin']})
+    body = {'scopes': ['observe', 'control', 'approve', 'admin']}
+    if slot:
+        body['supersede'] = slot
+    out = _get(info, 'POST', endpoints.launch_code(), body)
     if out is None:
         print('could not get a launch code from Core on port %d' % info['port'], file=sys.stderr)
         return None
     return out['code']
 
 
-def launch_url(info):
+def launch_url(info, slot=None):
     """The app's address with a fresh launch code in its fragment, which never
     reaches a server log (api-and-realtime §5.1): `core --open`, `gui` and the
     legacy GUI's "Open Archeus V1" all open the app this way. None after
-    saying on stderr why."""
-    code = _launch_code(info)
-    return None if code is None else 'http://127.0.0.1:%d/#launch=%s' % (info['port'], code)
+    saying on stderr why. With *slot* (the Qt shell's page, T-096) the code
+    takes that slot, so its redeem revokes the slot's previous holder, and
+    `memory=1` has the page keep its token in memory only (p20 D1): no page
+    credential outlives the shell."""
+    code = _launch_code(info, slot)
+    return None if code is None else 'http://127.0.0.1:%d/#launch=%s%s' % (
+        info['port'], code, '&memory=1' if slot else '')
 
 
 def terms(harness=None, headless=None, rotation=None):
