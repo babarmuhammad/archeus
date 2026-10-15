@@ -10,7 +10,9 @@ Two targets, one property: nothing answers 500 or raises.
   dropped, an unknown field added, a string made huge or full of control
   characters, a number pushed out of range, a value nested deep. The recorded
   junk bodies of the endpoint floor (tests/v1/integration/test_api_errors.py)
-  are the corpus' other half. Each request runs through the real route table
+  are the corpus' other half, and RECORDED holds valid bodies for the routes
+  whose schema types a field as a bare object, so mutation reaches its values.
+  Each request runs through the real route table
   and the real `server.Handler._serve`, in process: no socket per request, so
   a large budget does not exhaust Windows' ephemeral ports (p11-design-gate
   D31). The peer is attested as the user because attestation is not what is
@@ -53,6 +55,36 @@ WEIRD = ['', ' ', 'x' * 70000, '\x00', '\u202e\u200b', '../../etc', 'C:\\Windows
          '{"a": 1}', 'null', '😀' * 50, 'msn_' + 'A' * 26, '\ud800'.encode('utf-8', 'surrogatepass')
          .decode('utf-8', 'replace')]
 NUMBERS = [0, -1, 2 ** 63, -2 ** 63, 10 ** 400, 1.5, float('1e308'), True]
+#: valid bodies, as the integration tests send them, for the routes whose schema
+#: types a field as a bare object: example() can only fill such a field with {},
+#: so without a real body to corrupt, mutation never reaches a value inside it
+RECORDED = {
+    '/v1/plans/{id}/edit': {'tasks': [{
+        'key': 't1', 'title': 'Fix it', 'kind': 'research', 'objective': 'Do: fix it',
+        'action_classes': ['read'], 'refs': [{'kind': 'note', 'id': 'n1'}],
+        'inputs': [{'what': 'the log', 'from_task': 't0'}],
+        'acceptance': [{'text': 'tests pass', 'check': 'automatic'}]}]},
+    '/v1/projects/{id}/constraints': {'statement': 's', 'kind': 'forbid_dependency',
+                                      'spec': {'from': 'a/**', 'to': 'b/**'}},
+    '/v1/knowledge/forget': {'selector': {'ids': ['kn_x'], 'type': 'lesson'}},
+    '/v1/resource-policies/{id}': {'priority': 2, 'fallback': 'allow',
+                                   'budgets': {'tokens_per_day': 1000}},
+    '/v1/policies/rules': {'scope_level': 'USER', 'action_class': 'deploy',
+                           'decision': 'ALLOW_WITHIN_BOUNDARY',
+                           'match': {'environment': 'dev'}, 'boundary': {'paths': ['src/**']}},
+    '/v1/policies/simulate': {
+        'action': {'class': 'git_push', 'target': 'origin', 'branch': 'main',
+                   'host': 'github.com'},
+        # ws_global is the simulation mission's own workspace: that rule is on the
+        # chain, so a corrupted value inside it reaches the engine
+        'extra_rules': [{'scope_level': 'WORKSPACE', 'scope_ref': 'ws_global',
+                         'action_class': 'git_push', 'decision': 'ALLOW',
+                         'match': {'branch_glob': 'main'}, 'expires_at': '2099-01-01T00:00:00Z'},
+                        {'scope_level': 'USER', 'action_class': 'read', 'decision': 'ASK'}]},
+    '/v1/automations': {'name': 'follow up',
+                        'trigger': {'type': 'mission.created', 'where': {'title': 'seed'}},
+                        'template': {'title': 'follow up {subject.id}', 'objective': 'look at it'}},
+}
 
 
 def example(rnd, schema, depth=0):
@@ -106,6 +138,24 @@ def mutate(rnd, value, depth=0):
                        rnd.choice(WEIRD), nest(rnd.randint(50, 400))])
 
 
+def poke(rnd, value):
+    """Replace one leaf of *value*, chosen uniformly at any depth, in place: what
+    reaches a value inside a recorded body that mutate() mostly walks past."""
+    slots = []
+
+    def walk(v):
+        for k in (sorted(v) if isinstance(v, dict) else range(len(v))
+                  if isinstance(v, list) else ()):
+            if isinstance(v[k], (dict, list)) and v[k]:
+                walk(v[k])
+            else:
+                slots.append((v, k))
+    walk(value)
+    if slots:
+        parent, k = rnd.choice(slots)
+        parent[k] = rnd.choice(NUMBERS + WEIRD + [None, [], {}, ['x'], {'x': 1}])
+
+
 def nest(n):
     v = 1
     for _ in range(n):
@@ -116,11 +166,19 @@ def nest(n):
 def body(rnd, route):
     if rnd.random() < 0.1:
         return rnd.choice(JUNK)
-    b = example(rnd, route.request_schema)
+    recorded = RECORDED.get(route.path)
+    if recorded and rnd.random() < 0.85:
+        # only leaf pokes: a structural mutation mostly breaks the body before
+        # the value it carries is ever read
+        b = json.loads(json.dumps(recorded))
+        for _ in range(rnd.choice([1, 1, 2])):
+            poke(rnd, b)
+    else:
+        b = example(rnd, route.request_schema)
+        for _ in range(rnd.choice([0, 1, 1, 2, 3])):
+            b = mutate(rnd, b)
     if isinstance(b, dict) and route.idempotent == 'required' and rnd.random() < 0.9:
         b['idempotency_key'] = 'fz%d' % rnd.getrandbits(40)
-    for _ in range(rnd.choice([0, 1, 1, 2, 3])):
-        b = mutate(rnd, b)
     try:
         return json.dumps(b, allow_nan=False).encode('utf-8', 'surrogatepass')
     except (ValueError, OverflowError):

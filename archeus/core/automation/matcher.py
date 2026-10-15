@@ -46,7 +46,7 @@ def validate_trigger(trigger, types):
     if extra:
         raise Invalid('a trigger has no %s' % sorted(extra))
     t = trigger.get('type')
-    if t not in types:
+    if not isinstance(t, str) or t not in types:
         raise Invalid('%r is not a registered event type' % (t,))
     if t.startswith(FORBIDDEN_PREFIXES):
         raise Invalid("an automation cannot react to automation events (%s): that is a loop "

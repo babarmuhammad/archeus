@@ -130,12 +130,22 @@ def test_H04_request_changes_replans_and_simulate_writes_nothing(deploy_core):
     assert tc.http('GET', '/v1/events').json()['events'][-1]['seq'] == head
 
 
-@pytest.mark.parametrize('body', [{'action': {}}, {'action': {'nonsense': 1}},
-                                  {'action': {'class': 'read', 'target': 'x'}, 'extra_rules': [{}]}])
+_READ = {'class': 'read', 'target': 'x'}
+
+
+@pytest.mark.parametrize('body', [
+    {'action': {}}, {'action': {'nonsense': 1}}, {'action': _READ, 'extra_rules': [{}]},
+    {'action': _READ, 'extra_rules': [{'scope_level': 'USER', 'action_class': 'read',
+                                       'decision': 'MAYBE'}]},
+    {'action': _READ, 'extra_rules': [{'scope_level': 'USER', 'action_class': 'read',
+                                       'decision': 'ALLOW', 'expires_at': 5}]},
+    {'action': dict(_READ, host=['github.com'])}])
 def test_H04b_a_malformed_simulated_action_or_rule_is_a_400_not_a_500(tc, body):
     """Found by tools/fuzz_p20.py (P20 D12): the action and the rules are built
     from the request's own dicts, so a missing or unknown field is the
-    request's fault."""
+    request's fault. A rule is checked as create_rule would check it (the same
+    PolicyRule), so a decision outside the vocabulary or an expiry that is not
+    a timestamp never reaches the engine (T-094 review, finding 1)."""
     r = tc.http('POST', '/v1/policies/simulate', body=body)
     assert (r.status, r.json()['error']) == (400, 'invalid_request')
 

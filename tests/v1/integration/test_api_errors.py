@@ -76,6 +76,20 @@ def test_a_malformed_body_is_400_and_writes_nothing(tc, raw, field):
     assert len(tc.client().events(0)) == before
 
 
+@pytest.mark.parametrize('n,path,body', [
+    (1, '/v1/knowledge/forget', {'selector': {'ids': [5]}}),
+    (2, '/v1/knowledge/forget', {'selector': {'ids': ['kno_x'], 'project_id': ['p']}}),
+    (3, '/v1/automations', {'name': 'n', 'trigger': {'type': {'x': 1}},
+                            'template': {'title': 't', 'objective': 'o'}})])
+def test_a_bad_value_inside_a_free_form_field_is_a_400_not_a_500(tc, n, path, body):
+    """Found by tools/fuzz_p20.py once its corpus held valid bodies to corrupt
+    (T-094 review, finding 1): a selector id that is not a string reached the
+    SQLite bind, and a trigger type that is not a string the event registry's
+    set lookup. The schema types both fields as bare objects."""
+    r = tc.http('POST', path, body=dict(body, idempotency_key='free-form-%d' % n))
+    assert (r.status, r.json()['error']) == (400, 'invalid_request'), r.body
+
+
 def test_a_body_over_one_mebibyte_is_413_unread(tc):
     r = tc.http('POST', '/v1/missions', raw=b'{' + b' ' * (1 << 20) + b'}')
     assert _err(r) == (413, 'payload_too_large', {})
