@@ -450,6 +450,76 @@ def test_T102_one_that_exits_inside_the_grace_is_never_killed(x, monkeypatch):
     assert kills == ['let it run']
 
 
+def _restart_with_an_ended_process(x):
+    """The last Core recorded its execution's end while the process still ran, then
+    died before collecting it. Returns (the execution, the new Core's rig)."""
+    mid, e = _mcp_running(x)
+    x.manager._procs.clear()                                 # the old Core is gone
+    x.do(X.lost, execution_id=e.id, reason='the end the old Core recorded')
+    assert x.state(e.id).state in lifecycle.states.terminal('execution')
+    fresh = Rig(x.db, adapters=[FakeHarness(sources=True)])
+    fresh.scenarios.update(x.scenarios)
+    return x.state(e.id), fresh
+
+
+def _handle(e):
+    return base.ProcessHandle(e.id, e.pid, e.create_time, ExecPaths(e.id).dir)
+
+
+def test_T105_after_a_restart_an_ended_executions_process_is_killed_after_the_grace(x):
+    e, fresh = _restart_with_an_ended_process(x)
+    fresh.manager.boot()
+    assert e.id in fresh.manager._procs                      # taken in, not left running
+    assert os.path.exists(ExecPaths(e.id).mcp)               # the sweep keeps what it reads
+    fresh.manager.tick()
+    assert fresh.manager.node.alive(_handle(e))                      # inside the grace: waited for
+    time.sleep(fresh.manager.grace_s + 0.05)
+    deadline = time.monotonic() + 15
+    while e.id in fresh.manager._procs:
+        assert time.monotonic() < deadline, 'never killed and collected'
+        fresh.manager.tick()
+        time.sleep(0.05)
+    assert not fresh.manager.node.alive(_handle(e))
+    assert os.path.exists(ExecPaths(e.id).ended)
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+    assert e.id not in {x_['execution_id'] for x_ in LocalNode.unended()}
+
+
+def test_T105_under_the_estop_it_is_killed_at_once(x):
+    e, fresh = _restart_with_an_ended_process(x)
+    fresh.manager.grace_s = 60.0
+    LocalNode.engage_estop()
+    try:
+        fresh.manager.boot()
+        fresh.manager.tick()
+        deadline = time.monotonic() + 15
+        while fresh.manager.node.alive(_handle(e)):
+            assert time.monotonic() < deadline, 'not killed under the e-stop'
+            time.sleep(0.05)
+    finally:
+        LocalNode.clear_estop()
+
+
+def test_T105_a_process_already_gone_is_not_taken_in_and_its_config_is_swept(x):
+    e, fresh = _restart_with_an_ended_process(x)
+    proc.kill_pid_tree(e.pid, e.create_time)
+    fresh.manager.boot()
+    assert e.id not in fresh.manager._procs
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def test_T105_a_live_execution_is_never_taken_in_as_an_orphan(x):
+    mid, e = _mcp_running(x, sleep=1.5)
+    x.manager._procs.clear()
+    fresh = Rig(x.db, adapters=[FakeHarness(sources=True)])
+    fresh.scenarios.update(x.scenarios)
+    fresh.manager.boot()
+    p = fresh.manager._procs[e.id]                           # adopted as live
+    fresh.manager._adopt_orphans(fresh.manager._read()[0])
+    assert fresh.manager._procs[e.id] is p
+    fresh.drive(mid, ended(fresh, e.id))
+
+
 def test_T099_a_launch_that_raises_leaves_no_mcp_config(x, monkeypatch):
     """A launch that raises SpawnFailed itself, as an isolated launch failing after
     establishment does, never passes the spawn's own refusal."""

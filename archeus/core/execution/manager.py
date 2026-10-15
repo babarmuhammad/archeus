@@ -781,6 +781,7 @@ class ExecutionManager:
                 done.append(e.id)
             except Exception as err:
                 failed = failed or err
+        self._adopt_orphans(live)
         self.node.compact_registry()
         base.sweep_mcp_configs(set(self._procs))
         # compaction keeps only unended spawns, so the notes the reconciles above left
@@ -794,6 +795,30 @@ class ExecutionManager:
         if failed is not None:
             raise failed
         return done
+
+    def _adopt_orphans(self, live):
+        """A process the last Core started whose execution has already ended, still
+        running (a halt that had not exited when its execution was stopped): the
+        pass over live executions never reaches it, so it is taken in here, its MCP
+        config kept from the sweep below, and _orphans kills it after the stop grace
+        (at once under the e-stop) and collects it (T-105). One that is gone is
+        left to the registry compaction and the sweep, as before."""
+        unended = getattr(self.node, 'unended', None)
+        if unended is None:
+            return
+        keep = {e.id for e in live} | set(self._procs)
+        for line in unended():
+            if line['execution_id'] in keep:
+                continue
+            handle = base.ProcessHandle(line['execution_id'], line['pid'],
+                                        line['create_time'], ExecPaths(line['execution_id']).dir)
+            if not self.node.alive(handle):
+                continue
+            with self.db.read() as r:
+                e = rows.get(r, entities.Execution, line['execution_id']).entity
+            self._procs[e.id] = self._fresh(self.registry.get(e.harness_id), handle,
+                                            line.get('process_seq', 1), e.stream_offset, e.usage)
+            keep.add(e.id)
 
     def _reconcile_one(self, e, disarmed):
         marker, pid, ended = self.node.files(e.id)
