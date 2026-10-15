@@ -4,6 +4,7 @@
 // ever travels in the Authorization header — never in a URL.
 import { api, type Send } from './generated.ts';
 import { clearSnapshot } from '../data/snapshot.ts';
+import { newKey } from '../data/commands.ts';
 
 const DB = 'archeus';
 const STORE = 'auth';
@@ -46,6 +47,21 @@ export const clearToken = () => {
   held = undefined;
   return store('readwrite', (s) => s.delete(KEY));
 };
+
+/** A token an earlier shell kept on disk (T-096): revoked through itself before
+ * it is deleted, because deleted but live it would still be an admin token in
+ * the profile - LevelDB keeps a deleted value's bytes until it compacts, and no
+ * page can make it, so what stays is a dead token. Core down or refusing: it
+ * stays where it is and the next launch tries again. */
+async function retire(old: string) {
+  const send = sender(old);
+  try {
+    await api.revokeDevice(send, (await api.sync(send)).client.id, { idempotency_key: newKey() });
+  } catch (e) {
+    if (!(e instanceof CoreError && e.status === 401)) return; // 401: already dead
+  }
+  await store('readwrite', (s) => s.delete(KEY));
+}
 
 /** `onSeq` hears the `X-Archeus-Seq` Core sent with a read (P15 §13): the event
  * head the answer was read at. */
@@ -90,7 +106,8 @@ export function takeFragment(): { launch?: string; pair?: string } {
  * is no token or Core refused it. */
 export async function authenticate(launch?: string): Promise<string | null> {
   if (memoryOnly()) {
-    await store('readwrite', (s) => s.delete(KEY)); // one an earlier shell kept on disk
+    const old = await store<string | undefined>('readonly', (s) => s.get(KEY));
+    if (old) await retire(old);
     // no launch code: Core down is still the offline snapshot (P19 B7), whose
     // cue is the error a read with no token meets
     if (!launch) await api.version(sender()).catch((e) => {

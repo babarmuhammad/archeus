@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { authenticate, takeFragment, CoreError } from '../src/api/transport.ts';
 
 let disk: Map<string, unknown>;
-let answer: () => Promise<Response>;
+let answer: (path: string, init: RequestInit) => Promise<Response>;
+let log: string[];
 const g = globalThis as Record<string, unknown>;
 
 function request(result?: unknown) {
@@ -17,6 +18,7 @@ function request(result?: unknown) {
 
 beforeEach(() => {
   disk = new Map();
+  log = [];
   const session = new Map<string, string>();
   g.sessionStorage = { getItem: (k: string) => session.get(k) ?? null, setItem: (k: string, v: string) => session.set(k, v) };
   g.location = { hash: '', pathname: '/', search: '' };
@@ -24,11 +26,14 @@ beforeEach(() => {
   const store = {
     get: (k: string) => request(disk.get(k)),
     put: (v: unknown, k: string) => (disk.set(k, v), request()),
-    delete: (k: string) => (disk.delete(k), request()),
+    delete: (k: string) => (log.push('delete ' + k), disk.delete(k), request()),
     clear: () => request(),
   };
   g.indexedDB = { open: () => request({ transaction: () => ({ objectStore: () => store }) }) };
-  g.fetch = () => answer();
+  g.fetch = (path: string, init: RequestInit) => {
+    log.push(`${init.method} ${path} ${(init.headers as Record<string, string>).Authorization ?? '-'}`);
+    return answer(path, init);
+  };
 });
 
 const json = (status: number, body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { status }));
@@ -38,10 +43,40 @@ function shellPage(launch?: string) {
   return takeFragment().launch;
 }
 
-test('a shell page redeems its code, keeps the token off disk and drops one an earlier shell kept', async () => {
+// a Core that knows the earlier shell's token as device dvc_old
+const core = (path: string) =>
+  path === '/v1/sync'
+    ? json(200, { client: { id: 'dvc_old' } })
+    : path.endsWith('/revoke')
+      ? json(200, { ok: true })
+      : json(200, { device_id: 'dvc_1', token: 'tok', scopes: ['observe'] });
+
+test('a shell page revokes the token an earlier shell kept through itself, then deletes it, then redeems its code', async () => {
   disk.set('device-token', 'old');
-  answer = () => json(200, { device_id: 'dvc_1', token: 'tok', scopes: ['observe'] });
+  answer = core;
   assert.equal(await authenticate(shellPage('code')), 'tok');
+  assert.deepEqual(log.slice(0, 3), [
+    'GET /v1/sync Bearer old',
+    'POST /v1/devices/dvc_old/revoke Bearer old',
+    'delete device-token',
+  ]);
+  assert.equal(disk.has('device-token'), false);
+});
+
+test('Core down: the token an earlier shell kept stays until a launch can revoke it', async () => {
+  disk.set('device-token', 'old');
+  shellPage();
+  answer = () => Promise.reject(new TypeError('connection refused'));
+  await assert.rejects(authenticate(undefined), (e) => e instanceof CoreError && e.status === 0);
+  assert.equal(disk.get('device-token'), 'old');
+  assert.equal(log.some((l) => l.startsWith('delete')), false);
+});
+
+test('a token Core already revoked is deleted with no revoke of its own', async () => {
+  disk.set('device-token', 'old');
+  answer = (path) => (path === '/v1/sync' ? json(401, { error: 'unauthenticated' }) : core(path));
+  assert.equal(await authenticate(shellPage('code')), 'tok');
+  assert.equal(log.some((l) => l.includes('/revoke')), false);
   assert.equal(disk.has('device-token'), false);
 });
 

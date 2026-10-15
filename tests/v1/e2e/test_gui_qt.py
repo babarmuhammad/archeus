@@ -153,6 +153,45 @@ with open(out_path, 'w') as f:
 '''
 
 
+# T-096: an earlier shell kept its page token in the profile's IndexedDB at
+# Core's origin; this child puts one there the same way, from a same-origin page
+# that is not the SPA (which would sign itself in)
+SEED = r'''
+import sys
+from PyQt6.QtCore import QTimer, QUrl
+from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+from PyQt6.QtWidgets import QApplication
+store, url, token = sys.argv[1:4]
+app = QApplication(['seed'])
+profile = QWebEngineProfile('archeus', app)
+profile.setPersistentStoragePath(store)
+page = QWebEnginePage(profile)
+PUT = """new Promise((res) => { const o = indexedDB.open('archeus', 1);
+  o.onupgradeneeded = () => o.result.createObjectStore('auth');
+  o.onsuccess = () => { const t = o.result.transaction('auth', 'readwrite');
+    t.objectStore('auth').put(%r, 'device-token');
+    t.oncomplete = () => { o.result.close(); window.__put = 1; }; }; })"""
+def done(v):
+    if v: QTimer.singleShot(500, app.quit)
+    else: QTimer.singleShot(100, lambda: page.runJavaScript('window.__put', done))
+page.loadFinished.connect(lambda ok: (page.runJavaScript(PUT % token), done(None)))
+page.load(QUrl(url))
+QTimer.singleShot(30000, app.quit)
+app.exec()
+del page
+'''
+
+
+def _bytes_hold(root, secret):
+    needles = (secret.encode('ascii'), secret.encode('utf-16-le'))
+    for d, _, fs in os.walk(root):
+        for f in fs:
+            with open(os.path.join(d, f), 'rb') as fh:
+                if any(n in fh.read() for n in needles):
+                    return os.path.relpath(os.path.join(d, f), root)
+    return None
+
+
 def _run(home, mode, tmp_path):
     out = os.path.join(str(tmp_path), 'qt-%s.json' % mode)
     env = dict(os.environ, ARCHEUS_HOME=str(home), QT_QPA_PLATFORM='offscreen')
@@ -174,6 +213,16 @@ def test_the_window_keeps_its_profile_across_a_restart_and_the_tray_acts(archeus
                                                     action_classes=['deploy'])])
     tc = TempCore(archeus_home, ports=runtime.Ports(brain=ports.FixedPlanBrain(deploy))).start()
     try:
+        # T-096: a page token an earlier shell left in this profile, as it did before
+        # the page kept it in memory: a legacy launch code, no slot
+        code = tc.http('POST', '/v1/devices/launch/code',
+                       body={'scopes': ['observe', 'control', 'approve', 'admin']}).json()['code']
+        legacy = tc.http('POST', '/v1/devices/launch/redeem', body={'code': code, 'platform': 'web'}).json()
+        env = dict(os.environ, ARCHEUS_HOME=str(archeus_home), QT_QPA_PLATFORM='offscreen')
+        subprocess.run([sys.executable, '-c', SEED, gui.profile_dir(), tc.base_url + '/v1/version',
+                        legacy['token']], env=env, capture_output=True, timeout=60)
+        assert _bytes_hold(gui.profile_dir(), legacy['token']), 'the seed did not reach the profile'
+
         first = _run(archeus_home, 'first', tmp_path)
         assert first['rc'] == 0
         assert first['off_the_record'] is False
@@ -187,6 +236,9 @@ def test_the_window_keeps_its_profile_across_a_restart_and_the_tray_acts(archeus
         # answered with a fresh launch address, so the page stays signed in
         assert first['look']['conn'] == 'live' and first['tok'] == 'none'
         assert first['reloaded']['conn'] == 'live' and '?r=1' in first['reloaded']['at']
+        # T-096: the first memory-mode page revoked the token it found, through itself
+        devices = tc.http('GET', '/v1/devices').json()['devices']
+        assert [d['state'] for d in devices if d['id'] == legacy['device_id']] == ['REVOKED']
 
         r = tc.http('POST', '/v1/missions', body={'title': 'Needs a person', 'objective': 'o',
                                                   'idempotency_key': 'qt-%f' % time.time()})
@@ -212,7 +264,10 @@ def test_the_window_keeps_its_profile_across_a_restart_and_the_tray_acts(archeus
         assert second['look']['conn'] == 'live' and second['tok'] == 'none'
         # each page credential took the page's slot: the two before the last are revoked
         pages = [d['state'] for d in tc.http('GET', '/v1/devices').json()['devices']
-                 if d['name'] == 'browser (web)']
+                 if d['name'] == 'browser (web)' and d['id'] != legacy['device_id']]
         assert pages == ['REVOKED', 'REVOKED', 'ACTIVE'], pages
+        # ...and deleted it. LevelDB may keep the deleted value's bytes until it
+        # compacts, which no page can force, so what may be left is a dead token
+        assert tc.http('GET', '/v1/sync', token=legacy['token']).status == 401
     finally:
         tc.stop(kill=True)
