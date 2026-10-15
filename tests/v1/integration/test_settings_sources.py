@@ -687,6 +687,60 @@ def test_T102_only_an_oserror_before_a_child_is_refused(x, monkeypatch):
     assert not [r for r in x.all(entities.Execution) if r.state == 'ABANDONED']
 
 
+def _spends_its_attempts(x, mid):
+    x.drive(mid, lambda: x.task_of(mid).state == 'FAILED')
+    runs = x.all(entities.Execution, task_id=x.task_of(mid).id)
+    assert [(r.state, r.stop_reason, r.charged) for r in runs] == [
+        ('ABANDONED', 'workspace', True)] * 2
+    return runs
+
+
+def test_T102_an_mcp_config_that_can_never_be_written_spends_the_tasks_attempts(
+        x, monkeypatch):
+    """The MCP config is the execution's own file too, written while the argv is
+    built, before base.spawn: a write that fails every time is charged like the
+    spawn's other writes and ends the task FAILED, never an OSError out of the
+    tick that stops Core and comes back uncharged."""
+    opt(x, x.acc, 'mcp', 'gh')
+    real = base.config.write_atomic
+
+    def write(path, data, *a, **k):
+        if os.path.basename(path) == os.path.basename(ExecPaths(ids.new_id('execution')).mcp):
+            return False
+        return real(path, data, *a, **k)
+    monkeypatch.setattr(base.config, 'write_atomic', write)
+    runs = _spends_its_attempts(x, ready_in(x, x.prj, task('t1', 'write_repo',
+                                                           max_attempts=2)))
+    assert not any(os.path.exists(ExecPaths(r.id).mcp) for r in runs)
+
+
+@pytest.mark.parametrize('what', ['ended', 'halted', 'class_dir'])
+def test_T102_every_write_before_a_child_is_charged(x, monkeypatch, what):
+    """Each of _start's own writes, not only the prompt: a stale tombstone or halt
+    report that cannot be removed (an execution can plant a directory under its
+    halt report's name, so its own resume fails and its own task pays), and a class
+    directory that cannot be made."""
+    any_ = ExecPaths(ids.new_id('execution'))
+    target = {'ended': os.path.basename(any_.ended),
+              'halted': os.path.basename(base.halted_path(any_.dir)),
+              'class_dir': os.path.basename(any_.ctl)}[what]
+    real_remove, real_makedirs = os.remove, os.makedirs
+
+    def remove(path, *a, **k):
+        if what != 'class_dir' and os.path.basename(path) == target:
+            raise PermissionError(path)
+        return real_remove(path, *a, **k)
+
+    def makedirs(path, *a, **k):
+        if what == 'class_dir' and os.path.basename(os.path.normpath(path)) == target \
+                and os.path.basename(os.path.dirname(os.path.normpath(path))).startswith('exe_'):
+            raise PermissionError(path)
+        return real_makedirs(path, *a, **k)
+    monkeypatch.setattr(base.os, 'remove', remove)
+    monkeypatch.setattr(base.os, 'makedirs', makedirs)
+    _spends_its_attempts(x, ready_in(x, x.prj, task('t1', 'write_repo', max_attempts=2)))
+
+
 def test_T099_a_spawn_refused_as_already_spawned_keeps_the_config_a_process_may_hold(
         x, monkeypatch):
     """A marker that is already there means a process of this execution may still

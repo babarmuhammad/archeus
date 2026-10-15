@@ -50,6 +50,9 @@ import os
 import re
 import sys
 
+from claude_sessions import config
+
+from . import base
 from ..infra.paths import MCP_CONFIG
 
 SOURCES = ('user', 'project', 'local')
@@ -385,9 +388,12 @@ def flag_argv(flags, *, home, workdir, exec_dir):
     a = ['--setting-sources', ','.join(flags['setting_sources']), '--strict-mcp-config']
     if flags['mcp_servers']:
         path = os.path.join(exec_dir, MCP_CONFIG)
-        os.makedirs(exec_dir, exist_ok=True)
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(mcp_config(home, workdir, flags['mcp_servers']), f)
+        # the execution's own file, written while the argv is built and before any
+        # child exists: one Core cannot write is the charged refusal the spawn's other
+        # writes are (T-102), never an OSError out of the manager's tick
+        if not config.write_atomic(path, json.dumps(
+                mcp_config(home, workdir, flags['mcp_servers']))):
+            raise base.SpawnWriteFailed('could not write %s' % path)
         a += ['--mcp-config', path]
     if flags['disable_slash_commands']:
         a.append('--disable-slash-commands')
