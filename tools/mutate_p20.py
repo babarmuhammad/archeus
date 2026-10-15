@@ -11,7 +11,9 @@ slice I, the secrets gate (Q100-Q103); slice H, the breaker drills (D13) and
 the two defects the fuzz harness found (D12) (Q104-Q110); H-F1, re-enabling
 starts the counts afresh (Q111-Q112), and T-093's corrected secrets gate: a
 secret written twice, a mode changed after the create (Q113-Q114); slice J,
-D10's re-arm step-up from a paired client (Q115-Q117).
+D10's re-arm step-up from a paired client (Q115-Q117); T-094's review: the
+gate tests and drills no mutant named, and the defects its stronger fuzz
+corpus and oracle found (Q118-Q124).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -81,6 +83,13 @@ XI = 'tests/v1/integration/test_execution.py::'
 PR = 'tests/v1/integration/test_presence.py::'
 AU = 'tests/v1/integration/test_automation.py::'
 FZ = 'tests/v1/integration/test_p20_fuzz.py::'
+WRT = 'archeus/infra/db/writer.py'
+KNOW = 'archeus/core/application/knowledge.py'
+MATCH = 'archeus/core/automation/matcher.py'
+AE = 'tests/v1/integration/test_api_errors.py::'
+FREE = AE + 'test_a_bad_value_inside_a_free_form_field_is_a_400_not_a_500'
+H04B = ('tests/v1/integration/test_policy_http.py::'
+        'test_H04b_a_malformed_simulated_action_or_rule_is_a_400_not_a_500')
 
 MUTATIONS = [
     # Slice A, item 83: execution-architecture §10 path 2
@@ -610,6 +619,43 @@ MUTATIONS = [
      "        if proof is not None and 'step-up' in e.result.reason:\n"
      "            pass")],
      [PRS + 'test_J03_five_wrong_re_arm_pins_revoke_the_client_as_an_approvals_would']),
+    # T-094's review: the gate tests and drills no Q mutant named, and its fixes
+    ('Q118', 'the CLI draws a secret where it drew an idempotency key', [(MAIN,
+     "    body = {'headless': headless, 'idempotency_key': os.urandom(16).hex()}",
+     "    body = {'headless': headless, 'idempotency_key': secrets.token_hex(16)}")],
+     [SEC + 'test_the_cli_draws_only_idempotency_keys_and_request_ids']),
+    ('Q119', 'a credential row can be inserted with its plaintext token', [(WRT,
+     "    def insert_token(self, *, token_hash, kind, principal_id, scopes, actor, expires_at=None):",
+     "    def insert_token(self, *, token_hash, kind, principal_id, scopes, actor, expires_at=None,"
+     " token=None):")],
+     [SEC + 'test_device_and_hook_credentials_are_stored_as_hashes_only']),
+    # the kill has no enforcement branch, and the e-stop reaches it twice (the
+    # command's stop and the manager's disarmed check): this mutant takes the
+    # one place both meet, named by E24 (hooked) and the registry-only drill
+    ('Q120', 'a stopping execution under the e-stop waits out the grace before its kill', [(MGR,
+     "        if state == 'STOPPING' and (disarmed or e.stop_reason in _NOW",
+     "        if state == 'STOPPING' and (False")],
+     [XI + 'test_E24_the_estop_kills_everything_now_and_core_stays_disarmed_until_rearmed',
+      XI + 'test_D13_the_estop_with_core_running_kills_a_registry_only_execution']),
+    ('Q121', 'a simulated extra rule reaches the engine unchecked', [(AUTHZ,
+     "        extra = [_simulated_rule(conn, i, r) for i, r in enumerate(extra_rules)]",
+     "        extra = [R.rule(**dict(r, id=r.get('id') or 'simulated:%d' % i, source='user'))"
+     " for i, r in enumerate(extra_rules)]")],
+     [H04B, FZ + 'test_no_fuzzed_command_body_is_a_500']),
+    ('Q122', 'a path tool with no usable path is classified on the workspace', [(CANON,
+     "        if given and not _text(given[0]) or not given and tool not in OPTIONAL_PATH:",
+     "        if False:")],
+     ['tests/v1/unit/test_execution_units.py::'
+      'test_an_input_missing_what_its_tool_needs_is_unclassified',
+      FZ + 'test_the_canonicaliser_answers_every_fuzzed_call_conservatively']),
+    ('Q123', "a forget selector's ids reach the database unchecked", [(KNOW,
+     "                and all(isinstance(i, str) for i in selector['ids'])):",
+     "                or True):")],
+     [FREE]),
+    ('Q124', "an automation trigger's type reaches the registry unchecked", [(MATCH,
+     "    if not isinstance(t, str) or t not in types:",
+     "    if t not in types:")],
+     [FREE]),
 ]
 
 if __name__ == '__main__':

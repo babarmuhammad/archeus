@@ -461,15 +461,17 @@ def test_E25_an_estop_racing_a_spawn_kills_what_started(x, monkeypatch):
 def test_D13_the_estop_with_core_running_kills_a_registry_only_execution(db):
     """p20-design-gate D13's other enforcement kind: a harness with no hook
     (enforcement 'none', routed only for ALLOW work) has nothing to halt it but
-    the registry kill, and it is stopped like E24's hooked one."""
-    x = Rig(db, adapters=[FakeHarness(enforcement='none')])
+    the registry kill, and it is stopped like E24's hooked one. Stopped NOW:
+    with a stop grace far longer than the wait, only the e-stop's immediate
+    kill can end it in time."""
+    x = Rig(db, adapters=[FakeHarness(enforcement='none')], grace_s=120)
     try:
-        x.scenarios['t1'] = [{'emit': {'type': 'working'}}, {'sleep': 30}]
+        x.scenarios['t1'] = [{'emit': {'type': 'working'}}, {'sleep': 60}]
         mid = x.ready(task('t1', 'read'))
         e = _running(x, mid)
         LocalNode.engage_estop()
         assert x.do(X.Executions(missions=x.missions).estop, who=x.user)['stopped'] == [e.id]
-        x.drive(mid, ended(x, e.id))
+        x.drive(mid, ended(x, e.id), timeout=20)
         assert (x.state(e.id).state, x.state(e.id).stop_reason,
                 x.state(e.id).charged) == ('ENDED_KILLED', 'estop', False)
         assert proc.process_create_time(e.pid) != e.create_time
