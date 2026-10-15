@@ -464,13 +464,15 @@ def test_T099_a_launch_that_raises_leaves_no_mcp_config(x, monkeypatch):
     for r in refused():
         assert os.path.exists(ExecPaths(r.id).spawning)      # the argv was built
         assert not os.path.exists(ExecPaths(r.id).mcp)
+        # a launch's own failure stays uncharged (O7); only Core's writes are charged
+        assert (r.stop_reason, r.charged) == ('binding', False)
 
 
 def test_T099_a_prompt_that_cannot_be_written_leaves_no_mcp_config(x, monkeypatch):
     """An OSError before a child exists (here the prompt) drops the config too,
     not only a SpawnFailed. Since T-102 it is a refusal: the execution is
-    abandoned with its tombstone, and the pass goes on - the task is dispatched
-    again and the next attempt runs."""
+    abandoned with its tombstone and charged like a workspace that cannot be
+    made, and the pass goes on - the next attempt runs."""
     opt(x, x.acc, 'mcp', 'gh')
     x.scenarios['t1'] = [DONE]
     real, failed = base.config.write_atomic, []
@@ -485,10 +487,45 @@ def test_T099_a_prompt_that_cannot_be_written_leaves_no_mcp_config(x, monkeypatc
     mid = ready_in(x, x.prj)
     x.drive(mid, lambda: any(r.state == 'ENDED_OK' for r in x.all(entities.Execution)))
     [r] = [r for r in x.all(entities.Execution) if r.state == 'ABANDONED']
-    assert r.stop_reason == 'binding'
+    assert (r.stop_reason, r.charged) == ('workspace', True)
     assert os.path.exists(ExecPaths(r.id).spawning)          # the argv was built
     assert not os.path.exists(ExecPaths(r.id).mcp)
     assert 'could not write' in base.read_json(ExecPaths(r.id).ended)['error']
+
+
+def _prompt_write(monkeypatch, fail):
+    real = base.config.write_atomic
+    prompt = os.path.basename(ExecPaths(ids.new_id('execution')).prompt)
+
+    def write(path, data, *a, **k):
+        if os.path.basename(path) == prompt:
+            return fail()
+        return real(path, data, *a, **k)
+    monkeypatch.setattr(base.config, 'write_atomic', write)
+
+
+def test_T102_a_prompt_that_can_never_be_written_spends_the_tasks_attempts(x, monkeypatch):
+    """A write that fails every time ends the task FAILED after its attempts, as a
+    workspace that cannot be made does (P11 note 11) - never a new execution on
+    every tick."""
+    _prompt_write(monkeypatch, lambda: False)
+    mid = ready_in(x, x.prj, task('t1', 'write_repo', max_attempts=2))
+    x.drive(mid, lambda: x.task_of(mid).state == 'FAILED')
+    runs = x.all(entities.Execution, task_id=x.task_of(mid).id)
+    assert [(r.state, r.stop_reason, r.charged) for r in runs] == [
+        ('ABANDONED', 'workspace', True)] * 2
+
+
+def test_T102_only_an_oserror_before_a_child_is_refused(x, monkeypatch):
+    """Anything else raised there is a bug, not the disk: it is not turned into a
+    charged refusal of the user's task."""
+    def bug():
+        raise RuntimeError('a bug, not the disk')
+    _prompt_write(monkeypatch, bug)
+    mid = ready_in(x, x.prj)
+    with pytest.raises(RuntimeError, match='a bug, not the disk'):
+        x.drive(mid, lambda: False, timeout=10)
+    assert not [r for r in x.all(entities.Execution) if r.state == 'ABANDONED']
 
 
 def test_T099_a_spawn_refused_as_already_spawned_keeps_the_config_a_process_may_hold(

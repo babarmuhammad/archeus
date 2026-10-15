@@ -320,6 +320,14 @@ class ExecutionManager:
         try:
             handle = self.node.spawn(adapter, spec, resume_state=resume_state,
                                      isolated=isolated)
+        except base.SpawnWriteFailed as err:
+            # Core could not write the execution's own files: charged like a workspace
+            # that cannot be made (P11 note 11), so a failure that persists spends
+            # max_attempts instead of being re-dispatched on every tick (T-102)
+            self._do(X.refuse, execution_id=e.id, reason='the process did not start: %s' % err,
+                     stop_reason='workspace')
+            self._release_isolation(e)
+            return True
         except (base.SpawnFailed, base.AlreadySpawned) as err:
             # nothing started, and nothing started unisolated instead (§3.4, §6.3).
             # `binding` is the uncharged stop reason: an isolation-establishment

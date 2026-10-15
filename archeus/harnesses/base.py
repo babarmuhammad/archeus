@@ -264,6 +264,13 @@ class SpawnFailed(RuntimeError):
     """No process was created (the `ended` tombstone records why)."""
 
 
+class SpawnWriteFailed(SpawnFailed):
+    """No process was created because Core could not write the execution's own
+    files before it (a class directory, the marker, a stale tombstone, the
+    prompt). The task is charged as for a workspace that cannot be made (P11
+    note 11): an uncharged end would re-dispatch it on every tick, forever."""
+
+
 class StopRefused(RuntimeError):
     """The recorded pid is alive but is not the process we started (PID reuse)."""
 
@@ -321,9 +328,9 @@ def spawn(spec, argv):
         # (T-099). Not mark_ended: an isolation failure has written its own tombstone
         drop_mcp_config(paths)
         if isinstance(err, OSError):
-            # a write that failed before any child (the marker, the prompt) is a
-            # refusal like the others in _start: a tombstone, and the SpawnFailed
-            # every caller handles rather than a crash of the manager's pass (T-102)
+            # what _start's own writes did not catch (the isolated launch's): a
+            # refusal with its tombstone and the SpawnFailed every caller handles,
+            # never an exception that stops the manager's thread (T-102)
             _refuse(paths, str(err), err)
         raise
     create_time = proc.process_create_time(child.pid)
@@ -332,23 +339,28 @@ def spawn(spec, argv):
 
 
 def _start(spec, argv, paths, seq):
-    # Core creates every class directory (PV-20 §7.5): the execution is never the
-    # one to make a directory inside its own Core-owned one
-    for d in (paths.dir, paths.req, paths.res, paths.ctl):
-        os.makedirs(d, exist_ok=True)
-    _write_json(paths.spawning, {'execution_id': spec.execution_id, 'attempt': spec.attempt,
-                                 'process_seq': seq, 'at': time.time()})
-    for stale in (paths.ended, halted_path(paths.dir)):
-        try:
-            os.remove(stale)
-        except FileNotFoundError:
-            pass
-        except OSError as err:
-            # a halt report left over from the last process would be read as this
-            # one's: nothing starts
-            _refuse(paths, 'could not remove %s: %s' % (os.path.basename(stale), err), err)
-    if not config.write_atomic(paths.prompt, spec.prompt):
-        raise OSError('could not write %s' % paths.prompt)
+    try:
+        # Core creates every class directory (PV-20 §7.5): the execution is never the
+        # one to make a directory inside its own Core-owned one
+        for d in (paths.dir, paths.req, paths.res, paths.ctl):
+            os.makedirs(d, exist_ok=True)
+        _write_json(paths.spawning, {'execution_id': spec.execution_id,
+                                     'attempt': spec.attempt, 'process_seq': seq,
+                                     'at': time.time()})
+        for stale in (paths.ended, halted_path(paths.dir)):
+            try:
+                os.remove(stale)
+            except FileNotFoundError:
+                pass
+            except OSError as err:
+                # a halt report left over from the last process would be read as
+                # this one's: nothing starts
+                raise OSError('could not remove %s: %s'
+                              % (os.path.basename(stale), err)) from err
+        if not config.write_atomic(paths.prompt, spec.prompt):
+            raise OSError('could not write %s' % paths.prompt)
+    except OSError as err:
+        _refuse(paths, str(err), err, SpawnWriteFailed)
     if spec.isolation is not None:
         # PV-20 §3.4/§6.3: the isolated path, or nothing. It never falls through to
         # `spawn_detached` below — an unisolated child would run in the interactive
@@ -385,7 +397,7 @@ def _start(spec, argv, paths, seq):
     return child
 
 
-def _refuse(paths, error, cause):
+def _refuse(paths, error, cause, failed=SpawnFailed):
     # the tombstone says why nothing started if it can be written; one that cannot
     # is added to the reason, never a reason to start anyway or to leave the
     # SpawnFailed route callers handle
@@ -393,7 +405,7 @@ def _refuse(paths, error, cause):
         mark_ended(paths, None, error=error)
     except OSError as tomb:
         error = '%s; the ended tombstone was not written: %s' % (error, tomb)
-    raise SpawnFailed(error) from cause
+    raise failed(error) from cause
 
 
 def _private_dirs(paths, seq):
