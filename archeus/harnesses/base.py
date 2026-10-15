@@ -26,7 +26,7 @@ from typing import Mapping, Optional, Protocol, runtime_checkable
 
 from claude_sessions import config, proc
 
-from ..infra.paths import REQUEST_DIR, ExecPaths, archeus_home, run_dir
+from ..infra.paths import MCP_CONFIG, REQUEST_DIR, ExecPaths, archeus_home, run_dir
 
 log = logging.getLogger('archeus.harnesses')
 
@@ -547,17 +547,28 @@ def mark_ended(paths, exit_code, **extra):
         drop_mcp_config(paths)
 
 
+# config.write_atomic's temp copy of the MCP config, `<path>.<pid>.tmp`: a Core that
+# dies between writing it and os.replace leaves the keys there, not at `paths.mcp`
+_MCP_TMP = re.compile(re.escape(MCP_CONFIG) + r'\.\d+\.tmp')
+
+
 def drop_mcp_config(paths):
-    """Remove *paths*' MCP config: it holds the opted-in servers' keys. A failure is
-    logged, never raised: the end it belongs to must still be recorded, and the boot
-    sweep tries again."""
+    """Remove *paths*' MCP config and any temp copy of it: both hold the opted-in
+    servers' keys. A failure is logged, never raised: the end it belongs to must
+    still be recorded, and the boot sweep tries again."""
+    res = os.path.dirname(paths.mcp)
     try:
-        os.remove(paths.mcp)
-    except FileNotFoundError:
-        pass
-    except OSError as err:
-        log.warning('execution %s: its MCP config was not removed: %s',
-                    paths.execution_id, err)
+        tmps = [os.path.join(res, n) for n in os.listdir(res) if _MCP_TMP.fullmatch(n)]
+    except OSError:
+        tmps = []                       # no res directory: nothing was written
+    for path in [paths.mcp] + tmps:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError as err:
+            log.warning('execution %s: its MCP config was not removed: %s',
+                        paths.execution_id, err)
 
 
 def sweep_mcp_configs(keep):

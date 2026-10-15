@@ -343,6 +343,46 @@ def test_T099_the_boot_sweep_removes_leftovers_and_only_them(x):
     assert not os.path.exists(ExecPaths(e.id).mcp)
 
 
+def _tmp_of(path):
+    """config.write_atomic's temp copy of *path*, as a Core that died before
+    os.replace leaves it."""
+    return '%s.%d.tmp' % (path, 4242)
+
+
+def test_T102_an_end_removes_the_configs_temp_copy_too(x):
+    mid, e = _mcp_running(x, sleep=0.5)
+    tmp = _tmp_of(ExecPaths(e.id).mcp)
+    _write(tmp, {'mcpServers': {'gh': {'env': {'TOKEN': 'secret'}}}})
+    x.drive(mid, ended(x, e.id))
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+    assert not os.path.exists(tmp)
+
+
+def test_T102_the_boot_sweep_removes_a_temp_copy_and_only_that(x):
+    mid, e = _mcp_running(x, sleep=1.5)
+    live_tmp = _tmp_of(ExecPaths(e.id).mcp)
+    _write(live_tmp, {'x': 1})
+    # a Core that died between write_atomic's temp and os.replace: no mcp.json at all
+    left = ExecPaths(ids.new_id('execution'))
+    os.makedirs(left.res)
+    tmp = _tmp_of(left.mcp)
+    _write(tmp, {'x': 1})
+    keep = [os.path.join(left.res, n) for n in (
+        'mcp.json.bak', 'mcp-other.json', 'mcp.json.tmp', 'mcp.json.12.tmp.keep',
+        'mcp.json.x1.tmp', 'settings.json.42.tmp')]
+    for f in keep:
+        _write(f, {'x': 1})
+    fresh = Rig(x.db, adapters=[FakeHarness(sources=True)])
+    fresh.scenarios.update(x.scenarios)
+    assert e.id in fresh.manager.boot()
+    assert not os.path.exists(tmp)                            # the dead Core's keys are gone
+    assert [f for f in keep if not os.path.exists(f)] == []   # nothing else starting "mcp"
+    assert os.path.exists(live_tmp)                           # a watched execution's is kept
+    x.manager._procs.clear()
+    fresh.drive(mid, ended(fresh, e.id))
+    assert not os.path.exists(live_tmp)
+
+
 def test_T099_an_estopped_execution_leaves_no_mcp_config(x):
     mid, e = _mcp_running(x)
     LocalNode.engage_estop()
