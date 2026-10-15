@@ -642,6 +642,8 @@ def rearm(req):
         if proof is not None and 'step-up' in e.result.reason:
             _step_up_failed(req)
         raise
+    if req.replayed:            # the stored answer, and nothing re-armed (T-107)
+        return 200, out
     if proof is not None:
         req.api.step_up.reset(req.principal['device_id'])
     LocalNode.clear_estop()
@@ -754,7 +756,7 @@ def post_message(req):
         if b.get('step_up') is not None and 'step-up' in e.result.reason:
             _step_up_failed(req)
         raise
-    if b.get('step_up') is not None:
+    if b.get('step_up') is not None and not req.replayed:
         req.api.step_up.reset(req.principal['device_id'])
     decided = out.pop('decided')
     if decided.get('denied'):
@@ -861,7 +863,7 @@ def decide_approval(req):
         if b.get('step_up') is not None and 'step-up' in e.result.reason:
             _step_up_failed(req)
         raise
-    if b.get('step_up') is not None:
+    if b.get('step_up') is not None and not req.replayed:
         req.api.step_up.reset(req.principal['device_id'])
     if out.get('denied'):
         raise Refused(423, 'policy_denied', dict(out['denied'], approval_id=out['approval_id']))

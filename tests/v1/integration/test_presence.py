@@ -768,3 +768,62 @@ def test_J03_five_wrong_re_arm_pins_revoke_the_client_as_an_approvals_would(remo
     assert _device(remote, did)['state'] == 'REVOKED'
     assert _armed(remote) is False
     assert _post(remote, '/v1/rearm').status == 200
+
+
+def test_J04_a_replayed_re_arm_answers_from_the_row_and_re_arms_nothing(remote):
+    """T-107: a retry of a re-arm after a later e-stop is the stored answer and
+    nothing more - Core stays disarmed, no second `core.rearmed`, and a repeat
+    that differs only in its PIN is the same replay (no oracle, no strike)."""
+    did, phone = pair(remote, platform='web', pin='482913')
+    assert _phone(remote, '/v1/estop', token=phone).status == 200
+    once = {'step_up': '482913', 'idempotency_key': 'rearm-once'}
+    assert _phone(remote, '/v1/rearm', once, token=phone).json() == {'armed': True}
+    assert _phone(remote, '/v1/estop', token=phone).status == 200
+    for pin in ('482913', '000000'):
+        r = _phone(remote, '/v1/rearm', dict(once, step_up=pin), token=phone)
+        assert (r.status, r.json()) == (200, {'armed': True}), r.body
+        assert _armed(remote) is False
+    assert len([e for e in _events(remote) if e['type'] == 'core.rearmed']) == 1
+    assert _device(remote, did)['state'] != 'REVOKED'
+
+
+def test_J05_a_replayed_decision_resets_no_step_up_count(deploy):
+    """T-107: only a decision that ran clears the paired client's strike count;
+    its replay leaves the count where it was, so the fifth wrong PIN still
+    revokes."""
+    did, phone = pair(deploy, pin='482913')
+    a, b = _pending(deploy, _mission(deploy)), _pending(deploy, _mission(deploy))
+    ok = {'decision': 'approve', 'action_hash': a['action_hash'], 'step_up': '482913',
+          'idempotency_key': 'decide-once'}
+    assert _phone(deploy, '/v1/approvals/%s/decide' % a['id'], ok, token=phone).status == 200
+    wrong = {'decision': 'approve', 'action_hash': b['action_hash'], 'step_up': '000000'}
+    for i in range(4):
+        r = _phone(deploy, '/v1/approvals/%s/decide' % b['id'], wrong, token=phone)
+        assert r.json()['error'] == 'guard_failed', i
+    r = _phone(deploy, '/v1/approvals/%s/decide' % a['id'], ok, token=phone)
+    assert r.status == 200, r.body                                       # the stored answer
+    r = _phone(deploy, '/v1/approvals/%s/decide' % b['id'], wrong, token=phone)
+    assert r.json()['error'] == 'guard_failed'
+    assert _device(deploy, did)['state'] == 'REVOKED'
+
+
+def test_J06_a_replayed_decision_by_message_resets_no_step_up_count(deploy):
+    """T-107, the conversation path of J05: a card's decision carried by a
+    message clears the strike count only when it ran."""
+    did, phone = pair(deploy, platform='web', pin='482913')
+    mid = _mission(deploy)
+    a, b = _pending(deploy, mid), _pending(deploy, _mission(deploy))
+    url = '/v1/conversations/%s/messages' % mid
+    ok = {'text': 'approve', 'step_up': '482913', 'idempotency_key': 'say-once',
+          'decision': {'approval_id': a['id'], 'action_hash': a['action_hash'],
+                       'expected_version': a['version']}}
+    assert _phone(deploy, url, ok, token=phone).status == 200
+    wrong = {'decision': 'approve', 'action_hash': b['action_hash'], 'step_up': '000000'}
+    for i in range(4):
+        r = _phone(deploy, '/v1/approvals/%s/decide' % b['id'], wrong, token=phone)
+        assert r.json()['error'] == 'guard_failed', i
+    r = _phone(deploy, url, ok, token=phone)
+    assert r.status == 200, r.body                                       # the stored answer
+    r = _phone(deploy, '/v1/approvals/%s/decide' % b['id'], wrong, token=phone)
+    assert r.json()['error'] == 'guard_failed'
+    assert _device(deploy, did)['state'] == 'REVOKED'
