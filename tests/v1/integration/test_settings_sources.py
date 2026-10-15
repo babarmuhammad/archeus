@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import time
 
 import pytest
@@ -26,7 +27,7 @@ from archeus.core.domain import entities, ids
 from archeus.harnesses import base, sources
 from archeus.harnesses.fake import FakeHarness
 from archeus.infra.artifacts import store
-from archeus.infra.paths import ExecPaths
+from archeus.infra.paths import ExecPaths, processes_registry
 from archeus.node.local import LocalNode
 from claude_sessions import proc
 
@@ -518,6 +519,94 @@ def test_T105_a_live_execution_is_never_taken_in_as_an_orphan(x):
     fresh.manager._adopt_orphans(fresh.manager._read()[0])
     assert fresh.manager._procs[e.id] is p
     fresh.drive(mid, ended(fresh, e.id))
+
+
+def _wait_dead(alive, what):
+    deadline = time.monotonic() + 15
+    while alive():
+        assert time.monotonic() < deadline, what
+        time.sleep(0.05)
+
+
+def test_T105_a_line_with_no_execution_row_is_killed_and_boot_comes_up(x, caplog):
+    """A registry line whose execution this database does not hold (a restored
+    backup, while a process started after it still runs): the process is ours by
+    its recorded identity, nothing would ever end it, so boot kills it and says
+    so - and comes up, compacting and sweeping as always."""
+    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+    try:
+        stray = ids.new_id('execution')
+        x.manager.node._registry({'op': 'spawn', 'execution_id': stray, 'process_seq': 1,
+                                  'pid': child.pid,
+                                  'create_time': proc.process_create_time(child.pid)})
+        os.makedirs(ExecPaths(stray).res, exist_ok=True)
+        _write(ExecPaths(stray).mcp, {'mcpServers': {}})
+        fresh = Rig(x.db, adapters=[FakeHarness(sources=True)])
+        with caplog.at_level('WARNING', logger='archeus.execution'):
+            fresh.manager.boot()
+        assert fresh.manager.booted and stray not in fresh.manager._procs
+        _wait_dead(lambda: child.poll() is None, 'the stray process was left running')
+        assert not os.path.exists(ExecPaths(stray).mcp)          # the sweep still ran
+        assert 'no row for it' in caplog.text
+    finally:
+        if child.poll() is None:
+            child.kill()
+
+
+def test_T105_a_harness_this_core_does_not_register_is_killed_and_boot_comes_up(
+        x, monkeypatch, caplog):
+    e, fresh = _restart_with_an_ended_process(x)
+
+    def unknown(harness_id):
+        raise KeyError(harness_id)
+    monkeypatch.setattr(fresh.manager.registry, 'get', unknown)
+    try:
+        with caplog.at_level('WARNING', logger='archeus.execution'):
+            fresh.manager.boot()
+        assert fresh.manager.booted and e.id not in fresh.manager._procs
+        _wait_dead(lambda: fresh.manager.node.alive(_handle(e)), 'left running')
+        assert not os.path.exists(ExecPaths(e.id).mcp)
+        assert "no harness 'fake'" in caplog.text
+    finally:
+        proc.kill_pid_tree(e.pid, e.create_time)
+
+
+def test_T105_a_line_that_fails_does_not_keep_core_down(x, monkeypatch):
+    """Anything else a line raises is raised by boot only after it has compacted
+    and swept, as a failed reconcile is: Core is booted, the keys are gone."""
+    e, fresh = _restart_with_an_ended_process(x)
+
+    def odd(handle):
+        raise RuntimeError('an odd line')
+    monkeypatch.setattr(fresh.manager.node, 'alive', odd)
+    try:
+        with pytest.raises(RuntimeError, match='an odd line'):
+            fresh.manager.boot()
+        assert fresh.manager.booted
+        assert not os.path.exists(ExecPaths(e.id).mcp)
+    finally:
+        proc.kill_pid_tree(e.pid, e.create_time)
+
+
+def test_T105_a_pid_now_held_by_another_process_is_neither_taken_in_nor_killed(x):
+    """Identity is the pid AND the create time the line recorded: a line whose
+    create time no longer matches names some other process, never ours."""
+    e, fresh = _restart_with_an_ended_process(x)
+    path = processes_registry()
+    lines = [json.loads(v) for v in open(path, encoding='utf-8') if v.strip()]
+    for v in lines:
+        if v.get('op') == 'spawn' and v['execution_id'] == e.id:
+            v['create_time'] = v['create_time'] + 1
+    with open(path, 'w', encoding='utf-8') as f:
+        f.writelines(json.dumps(v, sort_keys=True) + '\n' for v in lines)
+    try:
+        fresh.manager.grace_s = 0.0
+        fresh.manager.boot()
+        assert e.id not in fresh.manager._procs
+        fresh.manager.tick()
+        assert fresh.manager.node.alive(_handle(e))          # the stranger still runs
+    finally:
+        proc.kill_pid_tree(e.pid, e.create_time)
 
 
 def test_T099_a_launch_that_raises_leaves_no_mcp_config(x, monkeypatch):

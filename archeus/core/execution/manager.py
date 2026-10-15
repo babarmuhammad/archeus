@@ -27,6 +27,7 @@ import time
 from dataclasses import replace
 
 from ...harnesses import base
+from ...harnesses.registry import PolicyStubError
 from ...infra.artifacts import store
 from ...infra.db import rows
 from ...infra.paths import ExecPaths, task_worktree
@@ -781,7 +782,7 @@ class ExecutionManager:
                 done.append(e.id)
             except Exception as err:
                 failed = failed or err
-        self._adopt_orphans(live)
+        failed = self._adopt_orphans(live) or failed
         self.node.compact_registry()
         base.sweep_mcp_configs(set(self._procs))
         # compaction keeps only unended spawns, so the notes the reconciles above left
@@ -802,23 +803,55 @@ class ExecutionManager:
         pass over live executions never reaches it, so it is taken in here, its MCP
         config kept from the sweep below, and _orphans kills it after the stop grace
         (at once under the e-stop) and collects it (T-105). One that is gone is
-        left to the registry compaction and the sweep, as before."""
+        left to the registry compaction and the sweep, as before. Each line is taken
+        on its own, as boot's reconciles are: a failure is returned for boot to
+        raise after its sweeps, never raised here, so one odd line cannot keep a
+        Core from coming up."""
         unended = getattr(self.node, 'unended', None)
         if unended is None:
-            return
+            return None
+        failed = None
         keep = {e.id for e in live} | set(self._procs)
         for line in unended():
             if line['execution_id'] in keep:
                 continue
-            handle = base.ProcessHandle(line['execution_id'], line['pid'],
-                                        line['create_time'], ExecPaths(line['execution_id']).dir)
-            if not self.node.alive(handle):
-                continue
-            with self.db.read() as r:
-                e = rows.get(r, entities.Execution, line['execution_id']).entity
-            self._procs[e.id] = self._fresh(self.registry.get(e.harness_id), handle,
-                                            line.get('process_seq', 1), e.stream_offset, e.usage)
-            keep.add(e.id)
+            try:
+                if self._adopt_orphan(line):
+                    keep.add(line['execution_id'])
+            except Exception as err:
+                failed = failed or err
+        return failed
+
+    def _adopt_orphan(self, line):
+        """True when the line's process is taken in. It is ours only while it is
+        still the process recorded (pid AND create time): a pid now held by anything
+        else is left alone. One this Core cannot track - no execution row in this
+        database (a restored backup), or a harness it does not register - is still
+        ours by that identity and run/core.lock, and nothing would ever end it, so it
+        is killed by that identity at once and logged, never left running."""
+        xid = line['execution_id']
+        handle = base.ProcessHandle(xid, line['pid'], line['create_time'],
+                                    ExecPaths(xid).dir)
+        if not self.node.alive(handle):
+            return False
+        with self.db.read() as r:
+            row = rows.get(r, entities.Execution, xid)
+        adapter = None
+        if row is not None:
+            try:
+                adapter = self.registry.get(row.entity.harness_id)
+            except (KeyError, PolicyStubError):
+                pass
+        if adapter is None:
+            log.warning('execution %s: its process %s is still running, but this Core '
+                        'has %s; killed by its recorded identity', xid, handle.pid,
+                        'no row for it' if row is None else
+                        'no harness %r' % row.entity.harness_id)
+            self.node.kill_identity(handle)
+            return False
+        self._procs[xid] = self._fresh(adapter, handle, line.get('process_seq', 1),
+                                       row.entity.stream_offset, row.entity.usage)
+        return True
 
     def _reconcile_one(self, e, disarmed):
         marker, pid, ended = self.node.files(e.id)
