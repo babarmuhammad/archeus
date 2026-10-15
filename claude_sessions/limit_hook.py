@@ -62,7 +62,12 @@ def handle(data):
     # No `events` import here on purpose: a hook is on a per-turn path and every
     # writer to that log is an archeus-owned process. `rotate.offer` records
     # what happened, which is the fact worth having anyway.
-    rotate.offer(cwd, transcript, sid, why='rate_limit in a live session')
+    # An Archeus V1 execution (ARCHEUS_EXECUTION_ID set) hands off through its
+    # own checkpoint; a rotation offer here would open a second, competing
+    # session. The latch above is still wanted: both apps must agree the
+    # account is limited. (P0.5 hook guard)
+    if not os.environ.get('ARCHEUS_EXECUTION_ID'):
+        rotate.offer(cwd, transcript, sid, why='rate_limit in a live session')
     return {'terminalSequence': BELL}
 
 

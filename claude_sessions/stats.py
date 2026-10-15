@@ -2,6 +2,7 @@
 
 import os
 import json
+import time
 
 # waiver: the stats cache is per account by design (its numbers are that
 # account's sessions), and the multi-account roll-up walks all_config_dirs.
@@ -356,7 +357,9 @@ def assemble_breakdown(entries, days=14, silent=True, recent=6):
     #
     # Both of these are free: the loop below already has every session's mtime,
     # account and message count. No extra scan, no deeper parse.
-    now_ts = now.timestamp()
+    # mtimes are on time.time()'s clock; datetime.now() is coarser on Windows and
+    # reads up to a tick EARLIER, which makes a just-touched session's age negative
+    now_ts = time.time()
     hour_b = [0] * 24                       # sessions touched, per hour, last 24h
     live_by_acct = {}                       # sessions touched within LIVE_WINDOW
     live_b = []                             # …and which ones they are

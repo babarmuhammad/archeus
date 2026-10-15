@@ -172,6 +172,7 @@ a handler sees them; a missing or malformed one is a 400.
 | `/api/skills/remove` | `api_skill_remove` | Delete a skill folder. A PERSONAL one is removed from every account that |
 | `/api/statusline` | `api_statusline_set` | `cfgdir` targets one account; omitting it means every account, which is |
 | `/api/system-prompt` | `api_system_prompt_set` | — |
+| `/api/v1/open` | `api_open_v1` | The sidebar foot's "Open Archeus V1" (p19-design-gate B8): asks the |
 | `/api/worklog` | `api_worklog_set` | Per-project recent-work memory on/off. |
 | `/api/worktree/merge` | `api_worktree_merge` | Merge a worktree branch, behind the standard approval gate. |
 
