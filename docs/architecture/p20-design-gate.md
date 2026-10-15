@@ -2416,6 +2416,63 @@ Fakes only: no real provider call, no Windows isolation, profile or ACL API, no 
      (no e2e pairs a browser), POSIX, the full `tests/v1`. Item 112's re-arm GAP and item 120's
      re-arm row are closed by this slice.
 
+### Slice H corrected after its review (2026-10-15)
+
+124. **Correction 2026-10-15 (T-094 review) to slice H, items 115-117.** The independent review
+     (`reviews/T-094-36160ba.claude.md`) returned CHANGES with two Medium findings. All six
+     findings are answered here; items 115-117 are not reworded.
+     - **Finding 1 (Medium), `faa53d1`.** `POST /v1/policies/simulate` still answered 500 for an
+       extra rule whose decision is outside the vocabulary or whose `expires_at` is a number.
+       Item 116's harness could not see it, because the schema types `action` and
+       `extra_rules[]` as bare objects. The simulator now builds each extra rule through the
+       `PolicyRule` entity `create_rule` uses. A USER rule with no `scope_ref` is given the
+       owner's, and a GLOBAL user rule is refused as it is there. `PolicyRule` checks
+       `expires_at`; `Action` checks its string fields. The harness gains `RECORDED` (valid
+       bodies for the seven routes with a bare-object field) and `poke()` (one leaf replaced,
+       chosen uniformly). With the fix reverted, the CI seed finds the 500, and so do 8 of 10
+       seeds at budget 3000. The stronger corpus found two more 500s, both fixed in the same
+       commit and pinned in `test_api_errors`: a `knowledge/forget` selector id that is not a
+       string reached SQLite's binding, and an automation trigger type that is not a string
+       reached the event registry's set lookup. Eleven seeds at budget 3000 are clean.
+     - **Finding 2 (Medium), `87790fe`.** Item 116's property ("for an input it cannot parse it
+       must answer the conservative class") held only for Bash and unknown tools. Write or Edit
+       with a missing or non-string path came out `write_repo` on `.`, and WebFetch with a
+       non-string URL as `web` with no host. Now a path tool whose required path is missing,
+       empty or not a string (Glob and Grep may omit theirs), a fetch whose URL is not a string
+       with a host, and a command that is not a string are each one unclassified `exec`. The
+       harness's oracle asks that of every parsed tool, judged from the input. With the old
+       canonicaliser it fails on about 700 inputs per seed. `mutate_p11`'s X12 follows the
+       rewritten line and is still killed.
+     - **Finding 3 (Low), `9dd1a57`.** Q118-Q124 name the gates no mutant named and the defects
+       above: the CLI-draws test, the hashes-only test, the simulated rule, the path tool, the
+       forget id and the trigger type. The registry-only e-stop drill could not be named as it
+       stood: the e-stop reaches the kill twice (the command's stop and the manager's disarmed
+       check), and the rig's 0.3 s stop grace made "now" and "after the grace" look the same.
+       A mutant on either path, or on the kill itself, survived. The drill now runs with a 120 s
+       grace and a 20 s wait, so only the immediate kill ends a hookless execution in time.
+       Q120 (the kill under the e-stop waits out the grace) is killed by it and also names E24.
+       Q118-Q124: 7 of 7 killed, run in a copy of the working tree. The slice A-F tests the
+       review listed as named by no Q mutant stay recorded there; they are not mapped here.
+     - **Finding 4 (Low, optional): not taken.** The fallback's unclassified `exec` carries the
+       tool's name, not its input, so the approval shows no command and its single-use hash is
+       not bound to one. What reaches that fallback (a NUL, a path the OS refuses, a missing
+       field) cannot run as written anyway.
+     - **Finding 5 (Low): answered by T-103.** The rate-limit trip's recovery is drilled by
+       `test_H_F1_a_rate_limited_automation_reenabled_within_the_hour_fires` (`88a857b`,
+       item 119), killed by Q112.
+     - **Finding 6 (nit), two wordings.** In item 115, "through the registry kill" is, with Core
+       running, the manager's handle kill (`manager._control` to `LocalNode.kill` to
+       `adapter.stop(handle)`). It is not the `run/processes.jsonl` sweep that Core-down uses.
+       In item 117, Q103 does not draw a secret at an unlisted site. It changes the draw call at
+       a site the table already names (`token_urlsafe` to `token_hex` in the hook-token draw),
+       and is killed on the call's text.
+     - **Verified (2026-10-15).** Unit tests, policy, knowledge, automation, execution,
+       execution security, API errors and the fuzz harness, `-m "not real_process"`: 1,090
+       passed before the mutation-suite parse check. That check failed on X12's stale anchor,
+       which was fixed, and all 32 suites then parse. Focused reruns after each commit passed:
+       332, then 240. Revert experiments on archive copies: each fix reverted fails its own new
+       test. **Not run:** the full `tests/v1`, POSIX, the full Q01-Q124 suite.
+
 ## 13. As built
 (Filled at the end of P20.)
 
