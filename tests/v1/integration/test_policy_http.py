@@ -133,21 +133,38 @@ def test_H04_request_changes_replans_and_simulate_writes_nothing(deploy_core):
 _READ = {'class': 'read', 'target': 'x'}
 
 
-@pytest.mark.parametrize('body', [
-    {'action': {}}, {'action': {'nonsense': 1}}, {'action': _READ, 'extra_rules': [{}]},
-    {'action': _READ, 'extra_rules': [{'scope_level': 'USER', 'action_class': 'read',
-                                       'decision': 'MAYBE'}]},
-    {'action': _READ, 'extra_rules': [{'scope_level': 'USER', 'action_class': 'read',
-                                       'decision': 'ALLOW', 'expires_at': 5}]},
-    {'action': dict(_READ, host=['github.com'])}])
-def test_H04b_a_malformed_simulated_action_or_rule_is_a_400_not_a_500(tc, body):
+_WS = {'scope_level': 'WORKSPACE', 'scope_ref': 'ws_global'}
+_AWB = dict(_WS, decision='ALLOW_WITHIN_BOUNDARY')
+_PUSH = {'class': 'git_push', 'target': 'a', 'host': 'github.com', 'branch': 'main'}
+
+
+@pytest.mark.parametrize('body,why', [
+    ({'action': {}}, 'not well formed'), ({'action': {'nonsense': 1}}, 'not well formed'),
+    ({'action': _READ, 'extra_rules': [{}]}, 'scope_level'),
+    ({'action': _READ, 'extra_rules': [dict(_WS, action_class='read', decision='MAYBE')]},
+     'decision'),
+    ({'action': _READ, 'extra_rules': [dict(_WS, action_class='read', decision='ALLOW',
+                                            expires_at=5)]}, 'expires_at'),
+    ({'action': dict(_READ, host=['github.com'])}, 'host'),
+    *[({'action': a, 'extra_rules': [dict(_AWB, action_class=a['class'], boundary={k: v})]},
+       'boundary.' + k) for a, k, v in [
+        ({'class': 'write_repo', 'target': 'a', 'paths': ['a']}, 'paths', 5),
+        ({'class': 'write_repo', 'target': 'a', 'paths': ['a']}, 'paths', None),
+        (_PUSH, 'hosts', 5), (_PUSH, 'branches', 5),
+        ({'class': 'deploy', 'target': 'a', 'environment': 'dev'}, 'environments', 5),
+        ({'class': 'write_repo', 'target': 'a', 'paths': ['a']}, 'max_cost_band', 'huge')]]])
+def test_H04b_a_malformed_simulated_action_or_rule_is_a_400_not_a_500(tc, body, why):
     """Found by tools/fuzz_p20.py (P20 D12): the action and the rules are built
     from the request's own dicts, so a missing or unknown field is the
     request's fault. A rule is checked as create_rule would check it (the same
-    PolicyRule), so a decision outside the vocabulary or an expiry that is not
-    a timestamp never reaches the engine (T-094 review, finding 1)."""
+    PolicyRule), so a decision outside the vocabulary, an expiry that is not
+    a timestamp or a boundary value check_boundary cannot read never reaches
+    the engine (T-094 review, finding 1; re-review, finding 1). The rules are
+    WORKSPACE-scoped so each is refused on the check it names, not on a
+    missing owner."""
     r = tc.http('POST', '/v1/policies/simulate', body=body)
     assert (r.status, r.json()['error']) == (400, 'invalid_request')
+    assert why in r.json()['detail']['why'], r.json()
 
 
 def test_H05_profiles_are_admin_only_and_the_health_names_the_policy_worker(deploy_core):

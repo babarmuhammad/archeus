@@ -691,6 +691,11 @@ MUTATIONS = [
      "        req.api.step_up.reset(req.principal['device_id'])\n    LocalNode.clear_estop()",
      "        pass\n    LocalNode.clear_estop()")],
      [PRS + 'test_J03b_a_right_re_arm_pin_resets_the_count']),
+    # T-094's re-review: a boundary value check_boundary cannot read
+    ('Q132', "a rule's boundary values reach the engine unchecked", [(ENT,
+     "            for k, v in self.boundary.items():      # the shapes rules.check_boundary reads",
+     "            for k, v in ():")],
+     [H04B, FREE, FZ + 'test_no_fuzzed_command_body_is_a_500']),
 ]
 
 if __name__ == '__main__':

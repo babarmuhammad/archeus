@@ -46,6 +46,7 @@ sys.path.insert(0, ROOT)
 from archeus.api import auth, routes, schemas, server  # noqa: E402
 from archeus.core.execution import canonical  # noqa: E402
 from archeus.harnesses.claude_code import tools as cc_tools  # noqa: E402
+from archeus.node.local import LocalNode  # noqa: E402
 
 JUNK = [b'', b'{}', b'[]', b'null', b'{"idempotency_key": null}', b'\x00\x01', b'{"a":',
         json.dumps({'idempotency_key': 'k', 'title': ['x'], 'objective': {'o': 1}}).encode(),
@@ -80,6 +81,9 @@ RECORDED = {
         'extra_rules': [{'scope_level': 'WORKSPACE', 'scope_ref': 'ws_global',
                          'action_class': 'git_push', 'decision': 'ALLOW',
                          'match': {'branch_glob': 'main'}, 'expires_at': '2099-01-01T00:00:00Z'},
+                        {'scope_level': 'WORKSPACE', 'scope_ref': 'ws_global',
+                         'action_class': 'git_push', 'decision': 'ALLOW_WITHIN_BOUNDARY',
+                         'boundary': {'hosts': ['github.com'], 'branches': ['main']}},
                         {'scope_level': 'USER', 'action_class': 'read', 'decision': 'ASK'}]},
     '/v1/automations': {'name': 'follow up',
                         'trigger': {'type': 'mission.created', 'where': {'title': 'seed'}},
@@ -139,17 +143,17 @@ def mutate(rnd, value, depth=0):
 
 
 def poke(rnd, value):
-    """Replace one leaf of *value*, chosen uniformly at any depth, in place: what
-    reaches a value inside a recorded body that mutate() mostly walks past."""
+    """Replace one node of *value*, a leaf or a whole container, chosen uniformly
+    at any depth, in place: what reaches a value inside a recorded body that
+    mutate() mostly walks past (a list a boundary holds, as well as its items)."""
     slots = []
 
     def walk(v):
         for k in (sorted(v) if isinstance(v, dict) else range(len(v))
                   if isinstance(v, list) else ()):
-            if isinstance(v[k], (dict, list)) and v[k]:
+            slots.append((v, k))
+            if isinstance(v[k], (dict, list)):
                 walk(v[k])
-            else:
-                slots.append((v, k))
     walk(value)
     if slots:
         parent, k = rnd.choice(slots)
@@ -168,7 +172,7 @@ def body(rnd, route):
         return rnd.choice(JUNK)
     recorded = RECORDED.get(route.path)
     if recorded and rnd.random() < 0.85:
-        # only leaf pokes: a structural mutation mostly breaks the body before
+        # only node pokes: a structural mutation mostly breaks the body before
         # the value it carries is ever read
         b = json.loads(json.dumps(recorded))
         for _ in range(rnd.choice([1, 1, 2])):
@@ -226,6 +230,9 @@ def fuzz_routes(api, token, seed, budget):
         # 503 is Core saying busy or stopping, which the fuzz itself can cause
         if status is None or (status >= 500 and status != 503):
             failures.append((route.method, path, raw[:200], status))
+        # an e-stop the fuzz fired answers every later evaluation DENY before the
+        # engine reads a rule, so its effect is undone: the next body reaches policy
+        LocalNode.clear_estop()
     return failures
 
 

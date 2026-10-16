@@ -1690,6 +1690,12 @@ class PolicyRule(Entity):
                     and set(self.boundary) <= set(BOUNDARY_KEYS)):
                 raise ValueError('PolicyRule.boundary keys are %s: %r'
                                  % (BOUNDARY_KEYS, self.boundary))
+            for k, v in self.boundary.items():      # the shapes rules.check_boundary reads
+                if not (v in COST_BANDS if k == 'max_cost_band' else isinstance(v, (list, tuple))
+                        and all(isinstance(s, str) and s for s in v)):
+                    raise ValueError('PolicyRule.boundary.%s is %s: %r' % (
+                        k, 'one of %s' % (COST_BANDS,) if k == 'max_cost_band'
+                        else 'a list of non-empty strings', v))
         elif self.decision == 'ALLOW_WITHIN_BOUNDARY':
             raise ValueError('ALLOW_WITHIN_BOUNDARY needs a boundary')
 

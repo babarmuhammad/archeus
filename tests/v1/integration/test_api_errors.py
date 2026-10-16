@@ -80,12 +80,16 @@ def test_a_malformed_body_is_400_and_writes_nothing(tc, raw, field):
     (1, '/v1/knowledge/forget', {'selector': {'ids': [5]}}),
     (2, '/v1/knowledge/forget', {'selector': {'ids': ['kno_x'], 'project_id': ['p']}}),
     (3, '/v1/automations', {'name': 'n', 'trigger': {'type': {'x': 1}},
-                            'template': {'title': 't', 'objective': 'o'}})])
+                            'template': {'title': 't', 'objective': 'o'}}),
+    (4, '/v1/policies/rules', {'scope_level': 'USER', 'action_class': 'write_repo',
+                               'decision': 'ALLOW_WITHIN_BOUNDARY', 'boundary': {'paths': 5}})])
 def test_a_bad_value_inside_a_free_form_field_is_a_400_not_a_500(tc, n, path, body):
     """Found by tools/fuzz_p20.py once its corpus held valid bodies to corrupt
     (T-094 review, finding 1): a selector id that is not a string reached the
     SQLite bind, and a trigger type that is not a string the event registry's
-    set lookup. The schema types both fields as bare objects."""
+    set lookup. The schema types these fields as bare objects. A rule whose
+    boundary value check_boundary cannot read was STORED (200), and every
+    later evaluation of its class raised (T-094 re-review, finding 1)."""
     r = tc.http('POST', path, body=dict(body, idempotency_key='free-form-%d' % n))
     assert (r.status, r.json()['error']) == (400, 'invalid_request'), r.body
 
