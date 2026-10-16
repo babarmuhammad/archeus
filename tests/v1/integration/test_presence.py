@@ -768,3 +768,18 @@ def test_J03_five_wrong_re_arm_pins_revoke_the_client_as_an_approvals_would(remo
     assert _device(remote, did)['state'] == 'REVOKED'
     assert _armed(remote) is False
     assert _post(remote, '/v1/rearm').status == 200
+
+
+def test_J03b_a_right_re_arm_pin_resets_the_count(remote):
+    """Item 122: five wrong IN A ROW revoke; a right PIN between them starts
+    the count again (T-098 review finding 5)."""
+    did, phone = pair(remote, pin='482913')
+    assert _post(remote, '/v1/estop').status == 200
+    for i in range(4):
+        assert _phone(remote, '/v1/rearm', {'step_up': '000000'}, token=phone).status == 422, i
+    assert _phone(remote, '/v1/rearm', {'step_up': '482913'}, token=phone).status == 200
+    assert _post(remote, '/v1/estop').status == 200
+    for i in range(4):
+        assert _phone(remote, '/v1/rearm', {'step_up': '000000'}, token=phone).status == 422, i
+    assert _device(remote, did)['state'] == 'ACTIVE'
+    assert _armed(remote) is False

@@ -354,6 +354,15 @@ export type Outcome =
   | { ok: true; out: unknown }
   | { ok: false; kind: 'refused' | 'failed' | 'network'; why: string };
 
+/** Why a step-up Core will ask for cannot be answered from here yet (P9's
+ * approvals, D10's re-arm): this client has no PIN, or fewer than its six
+ * digits are typed. An empty proof is a wrong one and counts toward the
+ * revocation (T-098). */
+export function stepUpBlocked(capability: string | undefined, pin: string): string | null {
+  if (capability === 'none') return 'This client has no PIN: it cannot satisfy a step-up.';
+  return capability === 'pin' && pin.length < 6 ? 'Enter this client’s PIN first.' : null;
+}
+
 /** Core's armed state in words; *armed* undefined is "Core cannot be reached",
  * never a guess from an older read. */
 export function armedText(armed: boolean | undefined): string {

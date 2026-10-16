@@ -28,7 +28,7 @@ import { canCommand } from '../data/connection';
 import { motionMode, type MotionPref } from '../data/commands';
 import { send } from '../data/core';
 import { CONTROL_SECTIONS, INSPECTOR_TABS, TAB_LABEL, href, objectHref } from '../nav/destinations';
-import { ago, armedText, estopSaid, presenceLabel, templateText, triggerText, usageText } from '../state/present';
+import { ago, armedText, estopSaid, presenceLabel, stepUpBlocked, templateText, triggerText, usageText } from '../state/present';
 import { BUDGETS, draftBudgets, policyProblem, type PolicyDraft } from '../state/policy';
 import { QR } from '../components/QR';
 import { Relations } from '../components/Relations';
@@ -938,7 +938,7 @@ function Estop({ health }: { health: Snapshot<Health> }) {
             <p className="hint">This client has no PIN, so it cannot re-arm: re-arm on the desktop.</p>
           ) : null}
           <div className="row">
-            <ActionButton label="Re-arm" scope="control" run={(key) => api.rearm(send(), { idempotency_key: key, step_up: stepUp === 'pin' ? pin : undefined })} reread={['/v1']} report={(o) => setSaid(estopSaid('rearm', o))} />
+            <ActionButton label="Re-arm" scope="control" disabled={stepUpBlocked(stepUp, pin)} run={(key) => api.rearm(send(), { idempotency_key: key, step_up: stepUp === 'pin' ? pin : undefined })} reread={['/v1']} report={(o) => { setPin(''); setSaid(estopSaid('rearm', o)); }} />
           </div>
         </>
       ) : null}

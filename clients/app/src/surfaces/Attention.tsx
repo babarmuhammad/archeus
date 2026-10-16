@@ -8,7 +8,7 @@ import { decideBody } from '../data/commands';
 import { send } from '../data/core';
 import { useRead, useRefresh } from '../data/cache';
 import { objectHref } from '../nav/destinations';
-import { ago } from '../state/present';
+import { ago, stepUpBlocked } from '../state/present';
 import { ActionButton, Changed, Details, Empty, Fresh, KV, Loadable, Prose, StateBadge, thread, useChanged, useMe } from '../components/ui';
 
 export const KIND_LABEL: Record<string, string> = {
@@ -124,7 +124,6 @@ export function ApprovalCard({ id }: { id: string }) {
         const stepUp = !!a.step_up;
         const capability = sync.data?.client.capabilities.step_up;
         const needsPin = stepUp && capability === 'pin';
-        const cannotStepUp = stepUp && capability === 'none' ? 'This client has no PIN: it cannot satisfy a step-up.' : null;
         const destructive = stepUp || (p.what ?? []).some((w) => ['destructive', 'deploy'].includes(w.class));
         const notEligible = a.state !== 'PENDING' ? `This approval is ${a.state.toLowerCase()}.` : !a.eligible ? `Not decidable now: ${a.eligible_why ?? 'no reason given'}.` : null;
         const decided = a.decided_by ? `Decided ${ago(String(a.decided_at))}${a.decided_by === sync.data?.client.principal_id ? ' on this client' : ' on another client'}` : null;
@@ -136,7 +135,7 @@ export function ApprovalCard({ id }: { id: string }) {
             label={a.kind === 'plan' ? 'Approve plan' : 'Approve'}
             scope="approve"
             kind="primary"
-            disabled={notEligible ?? cannotStepUp ?? (needsPin && pin.length < 6 ? 'Enter this client’s PIN first.' : null)}
+            disabled={notEligible ?? (stepUp ? stepUpBlocked(capability, pin) : null)}
             run={(key) => api.decideApproval(send(), a.id, decideBody(a, 'approve', key, extra()))}
             reread={reread}
           />

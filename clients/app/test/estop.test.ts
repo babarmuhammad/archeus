@@ -3,7 +3,7 @@
 // Mutation-verified by tools/mutate_p20.py (Q09 onward).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { armedText, estopSaid } from '../src/state/present.ts';
+import { armedText, estopSaid, stepUpBlocked } from '../src/state/present.ts';
 
 test('the state is said, and unreachable is not guessed (F8)', () => {
   assert.equal(armedText(true), 'Armed: Archeus accepts new work.');
@@ -50,4 +50,13 @@ test('a re-arm is said only from Core’s answer (F8)', () => {
   assert.equal(refused.when, false);
   assert.equal(estopSaid('rearm', { ok: false, kind: 'network', why: '' }).text,
     'Core did not answer, so the re-arm is not confirmed.');
+});
+
+test('a step-up is sent only when it can be answered (T-098)', () => {
+  assert.equal(stepUpBlocked('local', ''), null);
+  assert.equal(stepUpBlocked(undefined, ''), null);
+  assert.equal(stepUpBlocked('none', '482913'), 'This client has no PIN: it cannot satisfy a step-up.');
+  assert.equal(stepUpBlocked('pin', ''), 'Enter this client’s PIN first.');
+  assert.equal(stepUpBlocked('pin', '48291'), 'Enter this client’s PIN first.');
+  assert.equal(stepUpBlocked('pin', '482913'), null);
 });

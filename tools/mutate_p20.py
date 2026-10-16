@@ -14,7 +14,8 @@ secret written twice, a mode changed after the create (Q113-Q114); slice J,
 D10's re-arm step-up from a paired client (Q115-Q117); T-094's review: the
 gate tests and drills no mutant named, and the defects its stronger fuzz
 corpus and oracle found (Q118-Q124); T-103's review: the static census's
-sinks and the runtime secrets gate (Q125-Q128).
+sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
+Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -678,6 +679,18 @@ MUTATIONS = [
      "        'name': (req.body.get('name') or '').strip() or 'browser (%s)' % req.body['platform'],",
      "        'name': token,")],
      [RUN_LOCAL]),
+    # T-098's review: the Re-arm button's PIN rule, the PIN left behind, the reset
+    ('Q129', 'Re-arm is offered to a PIN client with no PIN typed', [(CTRL,
+     'disabled={stepUpBlocked(stepUp, pin)}', 'disabled={stepUpBlocked(undefined, pin)}')],
+     [AB + 'test_a_pin_client_re_arms_only_with_six_digits_and_the_pin_never_stays']),
+    ('Q130', "the PIN stays in the field after the re-arm returns", [(CTRL,
+     "report={(o) => { setPin(''); setSaid(estopSaid('rearm', o)); }}",
+     "report={(o) => { setSaid(estopSaid('rearm', o)); }}")],
+     [AB + 'test_a_pin_client_re_arms_only_with_six_digits_and_the_pin_never_stays']),
+    ('Q131', "a right re-arm PIN does not reset the count", [(ROUTES,
+     "        req.api.step_up.reset(req.principal['device_id'])\n    LocalNode.clear_estop()",
+     "        pass\n    LocalNode.clear_estop()")],
+     [PRS + 'test_J03b_a_right_re_arm_pin_resets_the_count']),
 ]
 
 if __name__ == '__main__':
