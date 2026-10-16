@@ -642,8 +642,8 @@ def rearm(req):
         if proof is not None and 'step-up' in e.result.reason:
             _step_up_failed(req)
         raise
-    if req.replayed:            # the stored answer, and nothing re-armed (T-107)
-        return 200, out
+    if req.replayed:            # nothing re-armed, and the answer says what Core is (T-107)
+        return 200, dict(out, armed=not LocalNode.disarmed())
     if proof is not None:
         req.api.step_up.reset(req.principal['device_id'])
     LocalNode.clear_estop()
