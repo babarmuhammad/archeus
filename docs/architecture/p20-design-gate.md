@@ -2549,6 +2549,41 @@ Fakes only: no real provider call, no Windows isolation, profile or ACL API, no 
        235 (the known CRLF case in `rowpulse.test.ts`); `tsc --noEmit` clean; the doc gates
        (paths, traceability, design) 73 passed and the P20 mutation suite parses. **Not run:** a
        real paired browser, POSIX, the full `tests/v1`.
+127. **Correction 2026-10-16 (T-094 re-review) to slice H, item 124.** The independent re-review
+     (`reviews/T-094-2f93182.claude.md`) found finding 1's class still open one level down:
+     `POST /v1/policies/simulate` answered 500 for a rule whose boundary VALUE is malformed
+     (`{"paths": 5}`, `{"hosts": 5}`, `{"branches": 5}`, `{"environments": 5}`,
+     `{"paths": null}`). `PolicyRule` checked a boundary's keys, not its values, and
+     `rules.check_boundary` iterates each value. Pre-existing at slice H's head. Worse,
+     `POST /v1/policies/rules` STORED such a rule (200), after which every evaluation of its
+     class raised: simulate answered 500 and the hook path would halt every matching tool call.
+     - **Fix.** `PolicyRule` refuses a boundary value `check_boundary` cannot read: `paths`,
+       `hosts`, `branches` and `environments` are lists of non-empty strings, `max_cost_band` is
+       one of the cost bands. Both `create_rule` and the simulator build through it, so both
+       answer 400 `invalid_request`. A row is decoded through the same entity, so a rule stored
+       before this change with such a value would now fail every read of the policy rules rather
+       than one class's evaluation; no in-tree client writes a boundary and V1 Core has not
+       shipped (it is on no released branch), so no migration is added.
+     - **Pinned.** `test_H04b` holds the five bodies plus a `max_cost_band` outside the bands, and
+       asserts the refusal names the check it is about; its decision and `expires_at` cases are
+       now WORKSPACE-scoped, so they reach the check they name rather than failing on a missing
+       owner (re-review non-blocking 1). `test_a_bad_value_inside_a_free_form_field_is_a_400_not_a_500`
+       gains the stored-rule body. Q132 removes the check.
+     - **The harness reaches it.** `poke()` now replaces a container as well as a leaf, and the
+       simulate corpus holds an `ALLOW_WITHIN_BOUNDARY` rule. A second reach problem surfaced on
+       the way: the route fuzz fires `POST /v1/estop`, and while the sentinel stands every
+       evaluation is DENY before the engine reads a rule, so most of a run never reached policy
+       (with the corpus change alone, the CI seed found nothing even at budget 10000). The fuzz
+       now clears the sentinel after each request. With the fix reverted the CI test fails on a
+       simulate 500, and so do 10 of 11 seeds (0-9 and 20) at budget 3000, a fresh Core per seed
+       as `fuzz_p20.main` builds it; with the fix, seeds 0-11 and 20 at budget 3000 are clean (run
+       in turn on one Core).
+     - **Item 124's seed count.** "8 of 10 seeds at budget 3000" is 7 of 10 when measured the
+       same way (seeds 0-9, `authorization.py` at `d6877a2`, the harness at `2f93182`, a fresh
+       Core per seed): seeds 5, 6 and 7 find none. The CI seed finds it either way.
+     - **Left for the card:** the simulated USER rule's misleading message on a Core with no owner
+       yet, and the canonicaliser taking the first path field present whatever the tool
+       (re-review non-blocking 2 and 3).
 
 ## 13. As built
 (Filled at the end of P20.)
