@@ -2585,6 +2585,64 @@ Fakes only: no real provider call, no Windows isolation, profile or ACL API, no 
        yet, and the canonicaliser taking the first path field present whatever the tool
        (re-review non-blocking 2 and 3).
 
+128. **Correction 2026-10-16 (Codex review of D7 and the threat model) to items 110, 112, 120,
+     125 and 126.** Codex reviewed only D7 as amended and the credential threat model
+     (`reviews/T-103-ec90967.md`, CHANGES, four findings). Nothing below changes code; it narrows
+     what the earlier items claim and names what is still open.
+     - **MCP keys are a non-isolated behaviour only.** Item 120's plaintext
+       `run/exec/<id>/res/mcp.json` describes executions without isolation, which is all this
+       tree runs. ADR-0053 admits no MCP opt-in inside an isolated execution, and nothing here
+       changes that: an isolated execution receives no MCP definition and no key. Admitting MCP
+       servers under isolation would need a new owner decision; the owner's "Delete at end +
+       sweep" answer of 2026-10-15 (item 120) covers the non-isolated file only.
+     - **Readers, current and target.** An inherited ACL is not a reader boundary. Today any
+       process running as the same user can read every plaintext credential below; another user
+       can read one only if ARCHEUS_HOME's ACL lets them. Core writes no ACL. In this tree it warns
+       on a broad principal that can WRITE the home (T-089, `3bdc485`); the warning for a broad
+       READER of the home and of `run/local-token` is T-096 (`a2be0f4`, `D:/archeus-p20-f`) and
+       is not in this tree. The PV-20 target, not in force while isolation is not enforced: an
+       isolated execution reads only its own hook request, never `run/local-token`, another
+       execution's files or any MCP key. No item claims isolation protects these files today.
+     - **Inventory, file retention and credential validity** (two different lifetimes):
+       - *Local token*, `run/local-token`: the local scopes, no expiry. Core reuses it across
+         restarts while it is live and mints a new one only when it is not
+         (`core/runtime.py`); the file is not removed when Core stops. Valid until revoked.
+       - *Hook token*, `run/exec/<id>/req/*.req.json`: one per execution, valid while the
+         execution is live. The files outlive the token; nothing in this tree deletes an
+         execution directory (I-F3).
+       - *MCP keys*, `run/exec/<id>/res/mcp.json`: in this tree the file persists indefinitely.
+         With T-099 (not in this tree) it is deleted on every end path and swept at boot, but a
+         crash or a Core-less e-stop leaves it until the next boot, and no deletion can expire a
+         third-party key once copied; rotating it is the key owner's, outside archeus.
+       - *Desktop shell page token* (missing from item 125's list): in this tree the Qt shell's
+         page credential is a device token with observe, control, approve and admin scopes and no
+         expiry, persisted in the Qt profile's IndexedDB under ARCHEUS_HOME, and older copies may
+         remain (I-F2). T-096 (not in this tree) keeps it in memory only and revokes an old
+         stored one on first launch; the revoked value's bytes can remain, dead, in the profile's
+         LevelDB log.
+       - *PIN-derived request hashes*: in this tree a command carrying a step-up proof stores a
+         plain sha256 of its arguments, PIN included, in the idempotency table for 24 h, and a
+         6-digit PIN is recoverable from it (T-098 review finding 5). T-107
+         (`D:/archeus-p20-idem`, not in this tree) keeps proofs out of the hash and migration
+         0016 drops the old rows.
+     - **Backups.** A backup is an SQLite online-backup copy of the database only
+       (`infra/db/backup.py`), so no file under `run/` is in one. The database holds token
+       hashes, not tokens; in this tree it also holds the PIN-derived hashes above while they
+       are kept, and a backup taken in that window keeps them for the backup's life.
+     - **Item 125's runtime gate is bounded by what it exercises.** "Device tokens, codes and the
+       settings secret nowhere" holds for the paths its two lifecycles reach. It launches no Qt
+       shell, so it says nothing of the page token; its HTTP mission step is refused
+       (`403 remote_host_required`, unchecked; T-103 re-review finding 6), so no mission is
+       created; the rig execution writes no `core.log`, and the user's PIN is not among the
+       scanned values (re-review findings 1 and 3).
+     - **Still open, unchanged:** no Core-held rotation of the local token; no deletion of
+       finished execution directories; no expiry or rotation for the page token in this tree.
+     - **Item 126, corrected (T-098 re-review, Low).** "No e2e pairs a browser" is wrong:
+       `tests/v1/e2e/test_unification.py` (lines 141-197) pairs a phone page through `Tunnel`
+       with origin `paired` and approves with its PIN. The stubbed e2e item 126 describes is
+       still a valid gate for the Re-arm rule; a real paired re-arm case on that fixture was
+       not added.
+
 ## 13. As built
 (Filled at the end of P20.)
 
