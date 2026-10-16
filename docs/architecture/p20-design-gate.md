@@ -2516,6 +2516,39 @@ Fakes only: no real provider call, no Windows isolation, profile or ACL API, no 
        automation, e-stop drills, execution, execution security, API errors and auth, presence,
        knowledge over HTTP, judge G5, the doc gates. Mutants ran on copies of the working tree.
        **Not run:** the full `tests/v1`, POSIX, e2e.
+126. **Correction 2026-10-16 (T-098 review) to slice J, items 122 and 123.** The independent
+     review (`reviews/T-098-d6877a2.claude.md`) found the server side of D10 sound and asked for
+     three fixes. Items 122 and 123 are not reworded.
+     - **Finding 1 (Medium).** Re-arm had no disabled rule, so with nothing typed it sent
+       `step_up: ""`, which Core counts as a wrong proof: five impatient taps revoked the client.
+       The approval card's rule is now one helper, `stepUpBlocked` in `state/present.ts`, and
+       both the approval card and Re-arm use it. A client with no PIN, or fewer than six digits
+       typed, is not offered the button and is told why.
+     - **Finding 2 (Low-Medium).** The PIN stayed in the e-stop section's state after a re-arm,
+       so the next e-stop showed it already filled in. The field is emptied as soon as the
+       re-arm returns, whatever Core answered.
+     - **Finding 5 (Low).** Item 122's "resets the count on a right one" had no test for re-arm.
+       `test_J03b`: four wrong PINs, a right one, an e-stop, four more wrong ones, and the client
+       is still ACTIVE.
+     - **Finding 6 (doc).** D10's amendment of the rulebook's §19 to "e-stop (confirm)" is
+       appended there (`ARCHEUS_V1_VISUAL_ARCHITECTURE_RECONCILIATION.md` §19).
+     - Findings 3 and 4 (a replayed key re-arms again; the PIN is recoverable from the stored
+       request hash) predate slice J and are card T-107's, in another checkout.
+     - **Verified (2026-10-16).** No e2e pairs a browser, so
+       `test_spa_estop_about.py::test_a_pin_client_re_arms_only_with_six_digits_and_the_pin_never_stays`
+       answers `/v1/sync` with Core's own answer and `step_up: pin`, and passes the re-arm on to
+       the real (local) Core without its PIN after recording it. It checks that Re-arm is not
+       offered with no PIN or five digits and is with six, that the PIN went with the request,
+       and that the field is empty after a re-arm Core accepted and after one it refused. The
+       real paired path stays covered at the server by J01-J03b. A node case covers the
+       helper's four answers. Mutants Q129-Q131: 3 of 3 killed (Re-arm ignoring the client's
+       capability and the PIN left in the field, both by the e2e; the reset deleted, by J03b),
+       and Q115-Q117 are still 3 of 3 killed. `-m "not real_process"`: presence, e-stop drills,
+       judge G5, the e-stop e2e, API structure and auth, 118 passed; the approval card's e2e
+       files (copy, mission thread, P16, unification), 21 passed; the client's node tests 234 of
+       235 (the known CRLF case in `rowpulse.test.ts`); `tsc --noEmit` clean; the doc gates
+       (paths, traceability, design) 73 passed and the P20 mutation suite parses. **Not run:** a
+       real paired browser, POSIX, the full `tests/v1`.
 
 ## 13. As built
 (Filled at the end of P20.)
