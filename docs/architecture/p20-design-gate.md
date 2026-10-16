@@ -2642,6 +2642,14 @@ Fakes only: no real provider call, no Windows isolation, profile or ACL API, no 
        with origin `paired` and approves with its PIN. The stubbed e2e item 126 describes is
        still a valid gate for the Re-arm rule; a real paired re-arm case on that fixture was
        not added.
+     - **Correction to the PIN-derived bullet above** (Codex re-check, `reviews/T-103-cbc0ee6.md`).
+       "For 24 h" is how long a stored answer replays, not how long its row is kept. A row is
+       deleted only when its own key is used again after it expired (`writer._recall`);
+       `infra/eventlog/retention.prune` deletes expired rows, but nothing in `archeus/` calls it.
+       So in this tree a PIN-derived hash can stay in the database indefinitely and be in any
+       later backup, not only in one taken within 24 h. With T-107 no new row holds a proof and
+       0016 drops the old ones; the idempotency table's unbounded retention for every other
+       command stays open.
 
 ## 13. As built
 (Filled at the end of P20.)
