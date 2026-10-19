@@ -25,7 +25,7 @@ import sys
 
 import pytest
 
-from archeus.harnesses import sources
+from archeus.harnesses import base, sources
 from archeus.harnesses.fake import FakeHarness
 from archeus.core.application import world
 from archeus.infra import paths
@@ -39,7 +39,7 @@ from v1.judge.http import SSEClient, request
 ALLOWED = {
     'local': ('run/local-token',),
     'hook': ('run/exec/*/req/*.req.json',),
-    # T-099 deletes it when the execution ends; T-099 is not in this tree
+    # only while its execution runs: T-099 deletes it when the execution ends
     'mcp': ('run/exec/*/res/mcp.json',),
 }
 #: the function that asked for a token -> what it is
@@ -134,17 +134,29 @@ def rig(db, tmp_path, monkeypatch):
     x.cleanup()
 
 
-def test_an_execution_leaves_its_hook_token_and_mcp_keys_only_where_they_are_kept(minted, rig):
+def test_an_execution_leaves_its_hook_token_and_mcp_keys_only_where_they_are_kept(
+        minted, rig, monkeypatch):
     opt(rig, rig.acc, 'mcp', 'gh')
     opt(rig, rig.acc, 'mcp', 'api')
     rig.scenarios['t1'] = [TOOL('Read', {'file_path': 'README.md'}), DONE]
+    planted = [('mcp', MCP_ENV_KEY), ('mcp', MCP_HEADER_KEY), ('settings', SETTINGS_KEY)]
+    live = []                                     # the scan while the config still exists
+    drop = base.drop_mcp_config
+
+    def scan_then_drop(p):
+        now = list(minted) + planted              # the hook token is minted at spawn
+        live.append(({k for k, _rel in _hits(now)}, leaks(now)))
+        return drop(p)
+    monkeypatch.setattr(base, 'drop_mcp_config', scan_then_drop)
     e = run_one(rig, ready_in(rig, rig.prj, task('t1', 'read')))
     assert e.state == 'ENDED_OK'
-    found = list(minted) + [('mcp', MCP_ENV_KEY), ('mcp', MCP_HEADER_KEY),
-                            ('settings', SETTINGS_KEY)]
+    found = list(minted) + planted
     assert 'hook' in {k for k, _v in found}
-    hits = {k for k, rel in _hits(found)}
+    assert live, 'the execution ended without dropping its MCP config'
+    hits, leaked = live[0]
     assert {'hook', 'mcp'} <= hits, hits          # each kind was written where it is kept
+    assert leaked == []
+    assert 'mcp' not in {k for k, _rel in _hits(found)}   # gone once the execution ended
     assert leaks(found) == []
 
 
