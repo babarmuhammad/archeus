@@ -16,7 +16,7 @@ from ._tables import CONTROL_SECTIONS, DESTINATIONS, INSPECTOR_TABS, TABS
 # what a digest headline means in words (Now.tsx HEADLINE)
 HEADLINE = {'needs_you': 'needs you', 'drift_found': 'drift found', 'failed': 'failed',
             'completed': 'completed', 'drift_cleared': 'drift cleared',
-            'progressed': 'progressed'}
+            'progressed': 'progressed', 'new_messages': 'new messages'}
 SETTLED = ('COMPLETED', 'CANCELLED', 'FAILED', 'BLOCKED', 'PAUSED', 'APPROVAL_REQUIRED')
 # design system §7: the TUI's object-kind letters
 LETTER = {'mission': 'M', 'project': 'P', 'repository': 'R', 'decision': 'D', 'person': '@',
@@ -250,6 +250,10 @@ def now(app, doc):
         if g.get('truncated'):
             doc.hint('Some older events are no longer kept; this is what remains.')
         for x in g['groups']:
+            if x['headline'] == 'new_messages':          # R13-03: one row, no raw ids
+                doc.add('  ' + T(app, '%d new %s' % (x['count'], 'message' if x['count'] == 1
+                                                     else 'messages')), target=go(view='now'))
+                continue
             doc.add('  ' + ref_label(app, x['ref']['kind'], x['ref']['id']) + '  '
                     + T(app, HEADLINE.get(x['headline'], x['headline'])) + ' · %d %s'
                     % (x['count'], 'event' if x['count'] == 1 else 'events'),
@@ -1094,7 +1098,7 @@ def mission_insp(app, doc, kind, mid, tab):
             confirm='Stop every execution of this mission now. Their processes are killed; the '
                     'mission waits for you, blocked, and resuming it dispatches the work again.')
     {'outcome': outcome, 'plan': plan_tab, 'now': now_tab, 'evidence': evidence, 'why': why,
-     'timeline': timeline,
+     'timeline': timeline, 'trace': trace,
      'relations': lambda app, doc, m, _mp: relations(app, doc, 'mission', m['id'])}[tab](
         app, doc, m, mp)
 
@@ -1378,6 +1382,50 @@ def timeline(app, doc, m, mp):
         doc.act('L', 'Load older events', 'observe',
                 lambda k, v: pages.append(nb), sent='Older events read.',
                 ident='older:' + m['id'])
+
+
+def trace(app, doc, m, mp):
+    """P21 slice C (p21-design-gate D3, D14): the mission's events oldest first
+    and each attempt's lanes, a call paired with its result. The replay with
+    its own clock is the SPA's; here the trace is read as it stands."""
+    t = doc.load(endpoints.mission_trace(m['id']), 'the trace')
+    if t is None:
+        return
+    if not t['events']:
+        doc.empty('No events yet.')
+    if t['truncated']:
+        doc.hint('Only the most recent events are shown.')
+    for e in t['events']:
+        bits = ['  ' + T(app, e['type']), T(app, e['subject']['kind']),
+                app.st.paint(ago(app, e.get('at')), 'text-2')]
+        if e.get('cause_chain'):
+            bits.append(app.st.paint('caused by %d earlier event(s)' % len(e['cause_chain']),
+                                     'text-2'))
+        doc.add(' '.join(bits), target=open_(e['subject']['kind'], e['subject']['id']))
+    for x in t['executions']:
+        b = P.badge('execution', x['state'])
+        doc.h('Attempt %s · %s' % (x['attempt'], b['label']))
+        doc.add('  ' + app.st.paint('open the execution', 'text'),
+                target=open_('execution', x['id']))
+        if not x['available']:
+            doc.empty('No output was read for this attempt.')
+        for lane in x['lanes']:
+            doc.add('  ' + T(app, 'Main conversation' if lane['lane'] == 'main' else
+                              'A subagent' if lane['from'] is None else
+                              'Subagent of step %d' % (lane['from'] + 1), 'text-2'))
+            for st in lane['steps']:
+                n = '    %d ' % (st['i'] + 1)
+                if st['type'] == 'assistant':
+                    doc.add(n + T(app, (st.get('text') or '')[:200]))
+                elif st['type'] == 'tool':
+                    doc.add(n + T(app, st.get('name') or '?') + ' ' + app.st.paint(
+                        'no result yet' if 'result' not in st else
+                        '→ step %d' % (st['result'] + 1), 'text-2'))
+                else:
+                    doc.add(n + app.st.paint('failed' if st.get('is_error') else 'returned',
+                                             'state.blocked' if st.get('is_error') else 'text-2'))
+    doc.hint('%d policy and %d route decisions: the Why tab explains them.'
+             % (len(t['policy_decisions']), len(t['route_decisions'])))
 
 
 def execution_insp(app, doc, kind, eid, tab):

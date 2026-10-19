@@ -399,6 +399,10 @@ class endpoints:
         return _path('/v1/missions/{id}/timeline', id_) + _q((('before', before), ('limit', limit),))
 
     @staticmethod
+    def mission_trace(id_):
+        return _path('/v1/missions/{id}/trace', id_)
+
+    @staticmethod
     def list_automations():
         return _path('/v1/automations')
 

@@ -186,6 +186,37 @@ TYPES = {
         'events': {'type': 'array', 'items': {'ref': 'Event'}},
         'next_before': {'type': 'integer', 'nullable': True}},
         'required': ['mission_id', 'events', 'next_before']},
+    # ── P21 slice C (p21-design-gate D3, D14): a mission's trace ──
+    'TraceStep': {'type': 'object', 'properties': {
+        'i': {'type': 'integer'},
+        'type': {'type': 'string', 'enum': ['assistant', 'tool', 'tool_result']},
+        'text': {'type': 'string'}, 'name': {'type': 'string', 'nullable': True},
+        'is_error': {'type': 'boolean'}, 'result': {'type': 'integer'},
+        'call': {'type': 'integer'}},
+        'required': ['i', 'type']},
+    'TraceLane': {'type': 'object', 'properties': {
+        'lane': {'type': 'string'}, 'from': {'type': 'integer', 'nullable': True},
+        'steps': {'type': 'array', 'items': {'ref': 'TraceStep'}}},
+        'required': ['lane', 'from', 'steps']},
+    'TraceExecution': {'type': 'object', 'properties': {
+        'id': {'type': 'string'}, 'task_id': {'type': 'string', 'nullable': True},
+        'state': {'type': 'string'}, 'attempt': {'type': 'integer'},
+        'route_decision_id': {'type': 'string', 'nullable': True},
+        'policy_decision_id': {'type': 'string', 'nullable': True},
+        'checkpoints': {'type': 'array', 'items': {'type': 'string'}},
+        'available': {'type': 'boolean'}, 'truncated': {'type': 'boolean'},
+        'lanes': {'type': 'array', 'items': {'ref': 'TraceLane'}}},
+        'required': ['id', 'task_id', 'state', 'attempt', 'route_decision_id',
+                     'policy_decision_id', 'checkpoints', 'available', 'truncated', 'lanes']},
+    'Trace': {'type': 'object', 'properties': {
+        'mission_id': {'type': 'string'},
+        'events': {'type': 'array', 'items': {'ref': 'Event'}},
+        'truncated': {'type': 'boolean'},
+        'policy_decisions': {'type': 'array', 'items': {'ref': 'PolicyDecision'}},
+        'route_decisions': {'type': 'array', 'items': {'ref': 'RouteDecision'}},
+        'executions': {'type': 'array', 'items': {'ref': 'TraceExecution'}}},
+        'required': ['mission_id', 'events', 'truncated', 'policy_decisions',
+                     'route_decisions', 'executions']},
     'ExecutionOutput': {'type': 'object', 'properties': {
         'execution_id': {'type': 'string'}, 'offset': {'type': 'integer'},
         'next_offset': {'type': 'integer'},
@@ -334,7 +365,8 @@ TYPES = {
     'DigestGroup': {'type': 'object', 'properties': {
         'ref': {'ref': 'Subject'},
         'headline': {'type': 'string', 'enum': ['needs_you', 'drift_found', 'failed',
-                                                'completed', 'drift_cleared', 'progressed']},
+                                                'completed', 'drift_cleared', 'progressed',
+                                                'new_messages']},
         'count': {'type': 'integer'}, 'first_seq': {'type': 'integer'},
         'last_seq': {'type': 'integer'}, 'project_id': {'type': 'string', 'nullable': True},
         'types': {'type': 'array', 'items': {'type': 'string'}}},

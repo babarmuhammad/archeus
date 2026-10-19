@@ -27,6 +27,12 @@ ND = 'archeus/node/local.py'
 U = 'tests/v1/unit/test_pressure_units.py'
 I = 'tests/v1/integration/test_context_capacity.py'
 E = 'tests/v1/integration/test_execution.py'
+TR = 'archeus/core/application/trace.py'
+CC = 'archeus/harnesses/claude_code/adapter.py'
+GR = 'archeus/core/application/grammar.py'
+CV = 'archeus/core/application/conversation.py'
+DG = 'archeus/core/world/digest.py'
+TT = 'tests/v1/integration/test_trace.py'
 
 MUTATIONS = [
     # ── unknown is never 0 (CX-8) ──
@@ -138,6 +144,47 @@ MUTATIONS = [
      "        hashes = git('hash-object', '--stdin-paths',",
      "        hashes = git('hash-object', '-w', '--stdin-paths',")],
      [U + '::test_the_end_state_digest_measures_head_diff_and_untracked_and_writes_nothing']),
+    # ── P21 slice C: the trace (D3, D14), `why` (R13-05), the digest (R13-03) ──
+    ('Z30', 'a result is paired with whichever call came first', [(TR,
+     "            call = calls.get(e.get('tool_use_id'))",
+     "            call = next(iter(calls.values()), None)")],
+     [TT + '::test_a_call_is_paired_with_its_result_inside_its_sidechain_lane']),
+    ('Z31', 'every step is put in the main lane', [(TR,
+     "        out.setdefault(e.get('lane') or MAIN, []).append(step)",
+     "        out.setdefault(MAIN, []).append(step)")],
+     [TT + '::test_a_call_is_paired_with_its_result_inside_its_sidechain_lane']),
+    ('Z32', "a call's input is carried into the trace", [(TR,
+     "            step['name'] = e.get('name')",
+     "            step['name'], step['input'] = e.get('name'), e.get('input')")],
+     [TT + '::test_a_call_is_paired_with_its_result_inside_its_sidechain_lane']),
+    ('Z33', "the Claude stream's sidechain is dropped", [(CC,
+     "    lane = raw.get('parent_tool_use_id')",
+     "    lane = None")],
+     [TT + '::test_the_claude_stream_carries_the_call_ids_and_the_sidechain']),
+    ('Z34', 'the trace lists events newest first', [(TR,
+     "    return {'mission_id': mission_id, 'events': t['events'][::-1],",
+     "    return {'mission_id': mission_id, 'events': t['events'],")],
+     [TT + '::test_the_trace_reads_the_missions_events_decisions_and_lanes']),
+    ('Z35', 'a bare why in a thread is left to the brain', [(GR,
+     "            return Control('why', {'kind': 'mission', 'id': mission}, '') if mission else None",
+     "            return None")],
+     [TT + '::test_a_bare_why_in_a_thread_says_why_its_mission_exists']),
+    ('Z36', 'an explicit why <mission> answers why the mission exists', [(CV,
+     "            text, rd = _why(tx, target, bare=not arg)",
+     "            text, rd = _why(tx, target, bare=True)")],
+     ['tests/v1/integration/test_intent.py::test_i18_control_verbs_never_call_the_model']),
+    ('Z37', 'a declined reading cites an ADR to the user', [(CV,
+     "        why = {'gated': 'no harness is permitted to make the call yet (provider terms: '",
+     "        why = {'gated': 'no harness is permitted to make the call yet (provider terms, ADR-0021: '")],
+     [TT + '::test_a_declined_reading_names_no_adr']),
+    ('Z38', 'each message is a digest row of its own again', [(DG,
+     "        if kind == 'message':\n            kind, eid = _thread_of(conn, eid)",
+     "        if False:\n            kind, eid = _thread_of(conn, eid)")],
+     [TT + '::test_the_digest_folds_messages_into_their_mission_or_one_new_messages_row']),
+    ('Z39', 'the primary conversation folds into the mission rows', [(DG,
+     "    return 'conversation', c.entity.id",
+     "    return 'mission', c.entity.id")],
+     [TT + '::test_the_digest_folds_messages_into_their_mission_or_one_new_messages_row']),
 ]
 
 

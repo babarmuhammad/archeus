@@ -260,8 +260,10 @@ class Conversations:
             cards.append(_card('status', target['kind'] if target else 'workspace',
                                target['id'] if target else ids.GLOBAL_WORKSPACE))
         elif verb == 'why':
-            text, rd = _why(tx, target)
-            if rd is not None:              # the card is the record (G5); the text its words
+            text, rd = _why(tx, target, bare=not arg)
+            if not arg:
+                cards.append(_card('mission', 'mission', target['id']))
+            elif rd is not None:              # the card is the record (G5); the text its words
                 cards.append(_card('route_explanation', 'route_decision', rd))
                 links.append({'ref': {'kind': 'route_decision', 'id': rd}})
         else:                                               # remember
@@ -350,8 +352,8 @@ class Conversations:
         msg = _user(tx, message_id)
         it = _intent(tx, actor, msg, kind='question', route_decision_id=route_decision_id,
                      resolution='declined', reason='%s: %s' % (state, detail))
-        why = {'gated': 'no harness is permitted to make the call yet (provider terms, '
-                        'ADR-0021: `archeus terms <harness> permit`)',
+        why = {'gated': 'no harness is permitted to make the call yet (provider terms: '
+                        '`archeus terms <harness> permit`)',
                'invalid': 'the reading did not pass validation twice',
                'unavailable': 'no harness that can make the call is installed'}
         return _reply(tx, actor, msg, it, 'I could not read this message: %s. Please '
@@ -872,8 +874,23 @@ def _status(tx, target):
     return text, links
 
 
-def _why(tx, target):
-    """(the words, the RouteDecision they explain or None)."""
+#: why a mission exists, from its origin (R13-05): said as a person would
+_ORIGIN = {'conversation': 'you asked for it in a conversation',
+           'idea': 'it was made from one of your ideas',
+           'automation': 'one of your automations started it',
+           'legacy_import': 'it was brought over from the earlier app'}
+
+
+def _why(tx, target, bare=False):
+    """(the words, the RouteDecision they explain or None). A bare `why` (only
+    the thread's mission is its target) asks why the mission exists."""
+    if bare:
+        row = tx.get(entities.Mission, target['id'])
+        if row is None:
+            return 'There is no mission %s.' % target['id'], None
+        m = row.entity
+        return 'This mission exists because %s: "%s".' % (_ORIGIN[m.origin],
+                                                         m.objective or m.title), None
     if target['kind'] == 'execution':
         from .live import explain
         row = tx.get(entities.Execution, target['id'])

@@ -54,20 +54,24 @@ def normalise(raw):
     if t == 'stderr':
         return [raw]
     out = []
+    # a subagent's turn names the tool call that spawned it: its sidechain lane
+    # (p21-design-gate D14); the main conversation has none
+    lane = raw.get('parent_tool_use_id')
     if t == 'assistant':
         msg = raw.get('message') or {}
         for block in msg.get('content') or ():
             if block.get('type') == 'text':
-                out.append({'type': 'assistant', 'text': block.get('text', '')})
+                out.append({'type': 'assistant', 'text': block.get('text', ''), 'lane': lane})
             elif block.get('type') == 'tool_use':
                 out.append({'type': 'tool', 'name': block.get('name'),
-                            'input': block.get('input')})
+                            'input': block.get('input'), 'id': block.get('id'), 'lane': lane})
         if isinstance(msg.get('usage'), dict):
             out.append({'type': 'usage', 'usage': msg['usage']})
     elif t == 'user':
         for block in (raw.get('message') or {}).get('content') or ():
             if isinstance(block, dict) and block.get('type') == 'tool_result':
-                out.append({'type': 'tool_result', 'is_error': bool(block.get('is_error'))})
+                out.append({'type': 'tool_result', 'is_error': bool(block.get('is_error')),
+                            'tool_use_id': block.get('tool_use_id'), 'lane': lane})
     elif t == 'result':
         text = str(raw.get('result') or '')
         usage = dict(raw.get('usage') or {})

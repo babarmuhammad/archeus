@@ -25,8 +25,8 @@ test('a phone always reaches Attention and Now from its tab bar (M18)', () => {
   assert.ok(tabs.length <= 4);
 });
 
-test('the mission inspector has its tabs in the gate order', () => {
-  assert.deepEqual(INSPECTOR_TABS.mission, ['outcome', 'plan', 'now', 'evidence', 'why', 'timeline', 'relations']);
+test('the mission inspector has its tabs in the gate order (p16 D1, plus the P21 D3 Trace)', () => {
+  assert.deepEqual(INSPECTOR_TABS.mission, ['outcome', 'plan', 'now', 'evidence', 'why', 'timeline', 'trace', 'relations']);
 });
 
 test('a decision echoes the displayed action hash and version (M14)', () => {

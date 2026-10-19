@@ -158,6 +158,8 @@ def resolve(conn, text, mission=None, harnesses=()):
         return None if proj is None else Control('status', {'kind': 'project', 'id': proj.id},
                                                   p.arg)
     if p.verb == 'why':
-        kind = ids.kind_of(p.arg) if p.arg else None
+        if not p.arg:       # in a mission's thread: why this mission (R13-05)
+            return Control('why', {'kind': 'mission', 'id': mission}, '') if mission else None
+        kind = ids.kind_of(p.arg)
         return None if kind is None else Control('why', {'kind': kind, 'id': p.arg}, p.arg)
     return None

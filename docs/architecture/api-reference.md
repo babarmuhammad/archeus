@@ -117,6 +117,7 @@ given trigger on a given subject is decided in the application layer (P9), never
 | POST | `/v1/tasks/{id}/integration/abandon` | control | required | — | `AbandonIntegrationRequest` | `IntegrationAbandoned` |
 | GET | `/v1/attention` | observe | — | — | — | `Attention` |
 | GET | `/v1/missions/{id}/timeline` | observe | — | `before`, `limit` | — | `Timeline` |
+| GET | `/v1/missions/{id}/trace` | observe | — | — | — | `Trace` |
 | GET | `/v1/automations` | observe | — | — | — | `AutomationList` |
 | GET | `/v1/automations/{id}` | observe | — | — | — | `Automation` |
 | GET | `/v1/automations/{id}/simulate` | observe | — | `days` | — | `AutomationSimulation` |
@@ -575,7 +576,7 @@ interface Digest {
 ```ts
 interface DigestGroup {
   ref: Subject;
-  headline: 'needs_you' | 'drift_found' | 'failed' | 'completed' | 'drift_cleared' | 'progressed';
+  headline: 'needs_you' | 'drift_found' | 'failed' | 'completed' | 'drift_cleared' | 'progressed' | 'new_messages';
   count: number;
   first_seq: number;
   last_seq: number;
@@ -1664,6 +1665,60 @@ interface Timeline {
   mission_id: string;
   events: Event[];
   next_before: number | null;
+}
+```
+
+### `Trace`
+
+```ts
+interface Trace {
+  mission_id: string;
+  events: Event[];
+  truncated: boolean;
+  policy_decisions: PolicyDecision[];
+  route_decisions: RouteDecision[];
+  executions: TraceExecution[];
+}
+```
+
+### `TraceExecution`
+
+```ts
+interface TraceExecution {
+  id: string;
+  task_id: string | null;
+  state: string;
+  attempt: number;
+  route_decision_id: string | null;
+  policy_decision_id: string | null;
+  checkpoints: string[];
+  available: boolean;
+  truncated: boolean;
+  lanes: TraceLane[];
+}
+```
+
+### `TraceLane`
+
+```ts
+interface TraceLane {
+  lane: string;
+  from: number | null;
+  steps: TraceStep[];
+}
+```
+
+### `TraceStep`
+
+```ts
+interface TraceStep {
+  i: number;
+  type: 'assistant' | 'tool' | 'tool_result';
+  text?: string;
+  name?: string | null;
+  is_error?: boolean;
+  result?: number;
+  call?: number;
 }
 ```
 
