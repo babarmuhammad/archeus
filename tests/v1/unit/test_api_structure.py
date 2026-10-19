@@ -297,6 +297,11 @@ P20 = {
     ('GET', '/v1/opt-ins', 'observe', None),
     ('POST', '/v1/opt-ins', 'admin', 'required'),
 }
+#: P21 slice F (p21-design-gate D7): the command bar's search, a read under the
+#: same `observe` as the three lists it cuts
+P21 = {
+    ('GET', '/v1/search', 'observe', None),
+}
 
 
 def test_the_route_table_is_exactly_the_p35b_to_p18_tables():
@@ -307,7 +312,7 @@ def test_the_route_table_is_exactly_the_p35b_to_p18_tables():
     reads are the only paths that may name a graph."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
     tables = (EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16
-              | P18 | P195 | P20)
+              | P18 | P195 | P20 | P21)
     assert got == tables
     assert len(routes.ROUTES) == len(tables)
     # P15: the only pairing paths are start and redeem; no route pairs a node
