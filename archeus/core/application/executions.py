@@ -235,10 +235,11 @@ def record_process(tx, *, actor, execution_id, pid, create_time, process_seq):
 
 
 def record_progress(tx, *, actor, execution_id, offset, events=0, lines=(), usage=None,
-                    pressure=None, context=None):
+                    pressure=None, context=None, served=None):
     """New stream output was read up to *offset*: the offset (never backwards),
-    the cumulative usage, the pressure with its basis (ADR-0047 §2),
-    `first_output`, and `execution.progress`."""
+    the cumulative usage, the pressure with its basis (ADR-0047 §2), the served
+    model at its provenance level (ADR-0031 §6), `first_output`, and
+    `execution.progress`."""
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
     if offset < e.stream_offset:
         raise ValueError('progress for %s went backwards (%d < %d)'
@@ -252,7 +253,8 @@ def record_progress(tx, *, actor, execution_id, offset, events=0, lines=(), usag
         got['pressure'] = round(float(pressure), 4)
     if context is not None:
         got['context'] = dict(context)
-    if offset == e.stream_offset and got.get('usage', e.usage) == e.usage             and got.get('pressure', e.pressure) == e.pressure \
+    got.update(_served(e, served))
+    if 'served_level' not in got and offset == e.stream_offset and got.get('usage', e.usage) == e.usage             and got.get('pressure', e.pressure) == e.pressure \
             and got.get('context', e.context) == e.context:
         return {'execution_id': e.id, 'offset': offset}          # nothing new
     tx.update(entities.Execution, e.id, got, actor=actor)
@@ -265,6 +267,24 @@ def record_progress(tx, *, actor, execution_id, offset, events=0, lines=(), usag
     _event(tx, 'execution.progress', e, actor, {'offset': offset, 'events': events,
                                                 'last': last, 'usage': got.get('usage')})
     return {'execution_id': e.id, 'offset': offset}
+
+
+def _served(e, served):
+    """The provenance fields to write for a reported {level, model} (ADR-0031 §6):
+    a level is never lowered; at the same level a later report of another model
+    wins (the harness changed model mid-run). SERVED and BILLED name the exact
+    revision; REQUESTED and ROUTED never claim one."""
+    if not served or not served.get('model'):
+        return {}
+    levels = entities.PROVENANCE_LEVELS
+    level, model = served['level'], str(served['model'])[:200]
+    old = levels.index(e.served_level) if e.served_level else -1
+    if levels.index(level) < old or (levels.index(level) == old and model == e.served_model):
+        return {}
+    out = {'served_level': level, 'served_model': model}
+    if level in ('SERVED', 'BILLED'):
+        out['model_revision'] = model
+    return out
 
 
 def _usage(usage):
@@ -646,9 +666,9 @@ def no_progress(tx, e, end_state):
         chain.append(prev)
         cur = prev.handoff_from
     earlier = [x.end_state_digest for x in chain if x.end_state_digest is not None]
-    # the artifacts an execution recorded count too; no execution records one
-    # until the producer record exists (V1-3, P21), so none are passed yet
-    if pressure.progressed(end_state, (), earlier):
+    # the artifacts it recorded count too (clause 5 (ii)); its own checkpoint is
+    # derived after this guard, so it is never among them
+    if pressure.progressed(end_state, artifacts_of(tx.conn, e), earlier):
         return None
     why = ('its end state could not be measured' if end_state is None else
            'it ended in a state an earlier link of its chain already ended in')
@@ -943,7 +963,33 @@ def view(conn, execution_id):
     out['handoff'] = handoff_of(conn, row.entity)
     out['why'] = explain(conn, row.entity)
     out['inventory'] = inventory(row.entity.inventory_sha256)
+    out['artifacts'] = artifacts_of(conn, row.entity)
     return out
+
+
+def record_artifact(tx, *, actor, execution, sha, media_type, size, kind, label=''):
+    """*execution* produced the artifact *sha* (ADR-0034 §1, P21 D5): its Artifact
+    row when the bytes are new, its producer record, and `artifact.recorded`."""
+    if tx.get(entities.Artifact, sha) is None:
+        tx.insert(entities.Artifact(id=sha, media_type=media_type, size=size), actor=actor)
+    rec = entities.ArtifactRecord(id=ids.new_id('artifact_record'), artifact_id=sha,
+                                  produced_by=Ref('execution', execution.id), kind=kind,
+                                  task_id=execution.task_id, mission_id=execution.mission_id,
+                                  label=label)
+    tx.insert(rec, actor=actor)
+    m = lifecycle.load(tx, entities.Mission, execution.mission_id).entity
+    tx.append(new_event('artifact.recorded', Ref('artifact_record', rec.id), actor, payload={
+        'artifact_id': sha, 'kind': kind, 'execution': execution.id,
+        'task_id': execution.task_id}, workspace=m.workspace_id, project=m.project_id))
+    return rec
+
+
+def artifacts_of(conn, e):
+    """What *e* produced, oldest first: {artifact_id, kind, label}."""
+    return [{'artifact_id': r.entity.artifact_id, 'kind': r.entity.kind,
+             'label': r.entity.label}
+            for r in rows.where(conn, entities.ArtifactRecord, task_id=e.task_id)
+            if r.entity.produced_by.id == e.id]
 
 
 def inventory(sha):

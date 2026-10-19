@@ -137,7 +137,8 @@ def test_a_fresh_database_reaches_the_current_schema(db):
             'conversations', 'messages', 'intents', 'ideas',
             'policy_rules', 'policy_decisions', 'approvals',
             'accounts', 'resource_policies', 'usage_snapshots',
-            'sessions', 'checkpoints', 'pause_batches', 'opt_ins', 'metrics_daily'} <= tables
+            'sessions', 'checkpoints', 'pause_batches', 'opt_ins', 'artifact_records',
+            'metrics_daily'} <= tables
 
 
 def test_0016_drops_the_idempotency_rows_whose_hash_covered_a_pin(tmp_path):

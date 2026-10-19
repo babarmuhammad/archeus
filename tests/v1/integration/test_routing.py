@@ -341,6 +341,31 @@ def test_I_H2_a_persisted_decision_replays_to_itself(r):
     assert R.explain(again, rd.requirements) == rd.explanation
 
 
+def test_I_H3_every_recorded_requirement_names_its_source(r):
+    """K5 (p21-design-gate D11): a decision can say where each requirement came from
+    ("classified as"), for a task and for an own call, in Core's vocabulary."""
+    r.account('A')
+    r.dispatch(r.ready())
+    fake = FakeCaller('fb', replies={'brain': [{'parsed': {'ok': True}}]})
+    own = OC.OwnCalls(r.db, actor=r.system, callers=[fake], usage=r.feed,
+                      preference=ports.FixedOwnCallPreference())
+    own.run(purpose='brain', source={'kind': 'mission', 'id': 'msn_x'}, workspace_id='ws_global',
+            project_id=None, prompt='p', schema=None, check=lambda p: [], workdir='.')
+    task_rd, call_rd = sorted(r.rds(), key=lambda d: d.subject.kind != 'task')
+    for rd in (task_rd, call_rd):
+        req = rd.requirements
+        src = req['_source']
+        assert set(src) == set(req) - set(resources.REQ_IDENTITY) - {'_source'}, rd.subject
+        assert set(src.values()) <= set(resources.REQ_SOURCES)
+    assert {k: task_rd.requirements['_source'][k] for k in (
+        'capabilities', 'min_model_tier', 'size', 'preferred', 'policy')} == {
+        'capabilities': 'plan_contract', 'min_model_tier': 'plan_contract',
+        'size': 'plan_contract', 'preferred': 'user_override', 'policy': 'policy'}
+    assert call_rd.requirements['_source']['forbidden'] == 'caller'
+    # the router reads none of it: the decision still replays to itself
+    assert resources.replay(task_rd)['selected'] == task_rd.selected
+
+
 # ── I-U usage attributed to its decision ───────────────────────────────────
 
 def test_I_U1_an_executions_usage_points_at_its_route_decision_and_counts_for_budgets(r):

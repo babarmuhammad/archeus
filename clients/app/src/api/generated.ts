@@ -367,6 +367,10 @@ export interface Execution {
   charged?: boolean | null;
   version: number;
   end_state_digest?: string | null;
+  served_model?: string | null;
+  served_level?: 'REQUESTED' | 'ROUTED' | 'SERVED' | 'BILLED' | null;
+  model_revision?: string | null;
+  artifacts?: Record<string, unknown>[];
   context: ContextState;
   handoff?: Handoff;
   why?: string;

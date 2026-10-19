@@ -212,6 +212,9 @@ def test_the_claude_code_adapter_normalises_a_recorded_stream(tmp_path):
     assert (result['summary'], result['is_error']) == ('ok', False)
     assert result['usage']['input_tokens'] == 9 and result['usage']['total_cost_usd'] > 0
     assert 'limit' not in types                        # a warning is not a refusal
+    # provenance (ADR-0031 §6): the transcript names the served model, the usage bills it
+    assert [ev['model'] for ev in events if ev['type'] == 'model'] == ['claude-haiku-4-5-20251001']
+    assert result['billed'] == ['claude-haiku-4-5-20251001']
     # the adapter's own reading of a finished execution directory
     d = tmp_path / 'exec'
     d.mkdir()

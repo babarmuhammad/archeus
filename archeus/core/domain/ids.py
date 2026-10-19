@@ -36,6 +36,7 @@ PREFIXES = {
     'policy_rule': 'pol', 'policy_decision': 'pdc', 'approval': 'apr',
     'automation': 'aut', 'automation_run': 'arn',
     'context_package': 'ctx', 'pause_batch': 'pab', 'opt_in': 'opi',
+    'artifact_record': 'arc',
 }
 assert len(set(PREFIXES.values())) == len(PREFIXES), 'two kinds share a prefix'
 
