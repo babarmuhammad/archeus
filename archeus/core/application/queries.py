@@ -169,6 +169,25 @@ def list_knowledge(conn, project_id=None, state=None, type=None):
     return [view(r) for r in rows.where(conn, entities.KnowledgeItem, **eq)]
 
 
+#: how many hits of each kind one search answers
+SEARCH_LIMIT = 20
+
+
+def search(conn, needle, limit=SEARCH_LIMIT):
+    """Missions, projects and knowledge items whose title holds *needle*, case
+    ignored (p21-design-gate D7): the same rows `/v1/missions`, `/v1/projects` and
+    `/v1/knowledge` already answer, cut to what the command bar shows."""
+    n = needle.casefold()
+
+    def hits(cls, text, keys):
+        got = (view(r) for r in rows.where(conn, cls) if n in getattr(r.entity, text).casefold())
+        return [{k: v[k] for k in keys} for v in got][:limit]
+    # ponytail: a scan of three tables in Python; an FTS index when titles reach the tens of thousands
+    return {'missions': hits(entities.Mission, 'title', ('id', 'title', 'state', 'version')),
+            'projects': hits(entities.Project, 'name', ('id', 'name')),
+            'knowledge': hits(entities.KnowledgeItem, 'title', ('id', 'title'))}
+
+
 def get_knowledge(conn, knowledge_item_id):
     """One item with its supersession chain (oldest first) and its relations."""
     row = rows.get(conn, entities.KnowledgeItem, knowledge_item_id)

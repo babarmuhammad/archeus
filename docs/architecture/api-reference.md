@@ -57,6 +57,7 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/v1/context/{id}` | observe | — | — | — | `ContextPackage` |
 | POST | `/v1/context/preview` | observe | — | — | `PreviewContextRequest` | `ContextPreview` |
 | GET | `/v1/knowledge` | observe | — | `project`, `state`, `type` | — | `KnowledgeList` |
+| GET | `/v1/search` | observe | — | `q` | — | `SearchResult` |
 | GET | `/v1/knowledge/{id}` | observe | — | — | — | `KnowledgeDetail` |
 | POST | `/v1/knowledge/{id}/confirm` | control | required | — | `ConfirmKnowledgeRequest` | `KnowledgeChanged` |
 | POST | `/v1/knowledge/{id}/reject` | control | required | — | `RejectKnowledgeRequest` | `KnowledgeChanged` |
@@ -1520,6 +1521,27 @@ interface RuleWritten {
 interface Scope {
   workspace: string;
   project: string | null;
+}
+```
+
+### `SearchResult`
+
+```ts
+interface SearchResult {
+  missions: {
+    id: string;
+    title: string;
+    state: string;
+    version: number;
+  }[];
+  projects: {
+    id: string;
+    name: string;
+  }[];
+  knowledge: {
+    id: string;
+    title: string;
+  }[];
 }
 ```
 

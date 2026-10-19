@@ -3,8 +3,9 @@
 
 Ctrl+K opens it; ↑/↓ move the active option (aria-activedescendant,
 aria-selected) and Enter takes it. A mission's actions are the same Core verbs
-as its buttons, each saying its effect first from Core's live work. Search is
-over what this client has read — typing sends nothing. "Tell Archeus" reuses
+as its buttons, each saying its effect first from Core's live work. While
+connected, typing asks Core's search and the hits are Core's (P21 D7); offline
+the hits come from what this client has read and no search is sent. "Tell Archeus" reuses
 its key after a network failure. Without a connection or the control scope an
 action says why and sends nothing. Mutation-verified by tools/mutate_p19_5.py.
 Check floors keep a test that silently checks nothing from passing."""
@@ -39,7 +40,8 @@ def test_the_palette_moves_by_arrows_and_acts_by_cores_verbs(browser, slow):  # 
     page.on('request', lambda r: reads.append(r.url) if '/v1/' in r.url and 'events' not in r.url else None)
     _open_palette(page)
     page.keyboard.type('the chart')
-    check(not [u for u in reads if 'q=' in u or 'search' in u], 'typing sends no search: %s' % reads)
+    wait(page, lambda: [u for u in reads if '/v1/search?q=' in u], what='a Core search')
+    check(True, "typing asks Core's search (D7)")
     labels = _hits(page).all_inner_texts()
     live = len([x for x in slow.http('GET', '/v1/status').json()['live'] if x['mission_id'] == m1])
     want = '%d running %s' % (live, 'attempt pauses' if live == 1 else 'attempts pause')
@@ -67,6 +69,14 @@ def test_the_palette_moves_by_arrows_and_acts_by_cores_verbs(browser, slow):  # 
     _hits(page).filter(has_text='Resume').click()
     _settled(slow, m2, 'EXECUTING')
     check(True, 'a click on "Resume" resumes it')
+
+    # the hits are Core's answer, not this client's lists (D7)
+    page.route('**/v1/search?*', lambda r: r.fulfill(status=200, content_type='application/json', body=json.dumps(
+        {'missions': [], 'projects': [{'id': 'prj_core_only', 'name': 'chart from Core only'}], 'knowledge': []})))
+    box.fill('chart from')
+    wait(page, lambda: 'Project: chart from Core only' in _hits(page).all_inner_texts(), what='a hit only Core knows')
+    check(True, "a hit only Core's search answered is shown")
+    page.unroute('**/v1/search?*')
 
     # going to an object closes the palette
     box.fill('the chart')
@@ -108,6 +118,8 @@ def test_the_palette_moves_by_arrows_and_acts_by_cores_verbs(browser, slow):  # 
     page.on('request', lambda r: posts.append(r.url) if r.method == 'POST' and '/v1/missions/' in r.url else None)
     context.set_offline(True)
     page.wait_for_timeout(300)
+    searched = []
+    page.on('request', lambda r: searched.append(r.url) if '/v1/search' in r.url else None)
     _open_palette(page)
     page.locator('#cmd').fill('the chart')
     act = _hits(page).filter(has_text='Resume')
@@ -117,7 +129,8 @@ def test_the_palette_moves_by_arrows_and_acts_by_cores_verbs(browser, slow):  # 
     page.wait_for_timeout(400)
     check(slow.http('GET', '/v1/missions/' + m1).json()['state'] == 'PAUSED', 'nothing changed')
     check(not posts, 'and nothing was even tried: %s' % posts)
+    check(not searched, 'offline, no search is sent; the hits are the cached reads: %s' % searched)
     context.set_offline(False)
     check(not [e for e in errors if 'ERR_FAILED' not in e and 'net::' not in e], errors)
     context.close()
-    assert check.n >= 17
+    assert check.n >= 19

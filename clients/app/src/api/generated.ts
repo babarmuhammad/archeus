@@ -964,6 +964,23 @@ export interface Scope {
   project: string | null;
 }
 
+export interface SearchResult {
+  missions: {
+    id: string;
+    title: string;
+    state: string;
+    version: number;
+  }[];
+  projects: {
+    id: string;
+    name: string;
+  }[];
+  knowledge: {
+    id: string;
+    title: string;
+  }[];
+}
+
 export interface Session {
   id: string;
   harness_id: string;
@@ -1511,6 +1528,7 @@ export const paths = {
   digest: () => '/v1/digest',
   getContextPackage: (id: string) => '/v1/context/' + encodeURIComponent(id),
   listKnowledge: (query: { project?: string; state?: KnowledgeItem['state']; type?: string } = {}) => '/v1/knowledge' + qs(query),
+  searchTitles: (query: { q?: string } = {}) => '/v1/search' + qs(query),
   getKnowledge: (id: string) => '/v1/knowledge/' + encodeURIComponent(id),
   listRouteDecisions: (query: { source?: string; purpose?: string } = {}) => '/v1/route-decisions' + qs(query),
   getRouteDecision: (id: string) => '/v1/route-decisions/' + encodeURIComponent(id),
@@ -1614,6 +1632,8 @@ export const api = {
     send<ContextPreview>('POST', '/v1/context/preview', body),
   listKnowledge: (send: Send, query: { project?: string; state?: KnowledgeItem['state']; type?: string } = {}) =>
     send<KnowledgeList>('GET', paths.listKnowledge(query)),
+  searchTitles: (send: Send, query: { q?: string } = {}) =>
+    send<SearchResult>('GET', paths.searchTitles(query)),
   getKnowledge: (send: Send, id: string) =>
     send<KnowledgeDetail>('GET', paths.getKnowledge(id)),
   confirmKnowledge: (send: Send, id: string, body: ConfirmKnowledgeRequest) =>

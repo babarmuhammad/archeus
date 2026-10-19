@@ -3,11 +3,11 @@
 // by the same Core verb as its button — each action saying its effect first —
 // or tell Archeus something: the text goes to the primary conversation, where
 // Core's grammar and intent pipeline decide what it means. The client parses
-// no verb (§5, §19) and decides no permission; search is cache-only (P21 owns
-// server search).
+// no verb (§5, §19) and decides no permission. While connected, the hits come
+// from Core's search (p21-design-gate D7); offline, from what this client has read.
 import { useEffect, useRef, useState } from 'react';
-import { paths, api, type KnowledgeList, type MissionList, type ProjectList, type Status } from '../api/generated';
-import { store, useConn } from '../data/cache';
+import { paths, api, type KnowledgeList, type MissionList, type ProjectList, type SearchResult, type Status } from '../api/generated';
+import { store, useConn, useRead } from '../data/cache';
 import { CoreError } from '../api/transport';
 import { explain, keyAfter, newKey, retryable } from '../data/commands';
 import { canCommand } from '../data/connection';
@@ -31,20 +31,21 @@ export function CommandBar({ open, onClose }: { open: boolean; onClose: () => vo
     if (!open && dlg.current?.open) dlg.current.close();
   }, [open]);
   const read = <T,>(p: string) => store.snapshot(p).data as T | undefined;
+  const live = canCommand(conn.conn);
+  const needle = q.trim();
+  const found = useRead<SearchResult>(live && needle ? paths.searchTitles({ q: needle }) : null).data;
   const hits = paletteHits(
     {
       destinations: DESTINATIONS.map((d) => ({ id: d.id, label: d.label, to: href({ view: d.id }) })),
-      missions: read<MissionList>(paths.listMissions())?.missions ?? [],
-      projects: read<ProjectList>(paths.listProjects())?.projects ?? [],
-      knowledge: (read<KnowledgeList>(paths.listKnowledge())?.knowledge ?? []) as { id: string; title?: string | null }[],
+      missions: found?.missions ?? read<MissionList>(paths.listMissions())?.missions ?? [],
+      projects: found?.projects ?? read<ProjectList>(paths.listProjects())?.projects ?? [],
+      knowledge: found?.knowledge ?? ((read<KnowledgeList>(paths.listKnowledge())?.knowledge ?? []) as { id: string; title?: string | null }[]),
       live: read<Status>(paths.status())?.live ?? [],
     },
     q,
   );
   const at = Math.min(active, Math.max(0, hits.length - 1));
-  const live = canCommand(conn.conn);
   const ready = live ? 'live' : conn.conn === 'reconnecting' ? 'reconnecting' : 'off';
-  const needle = q.trim();
   const why = !live ? 'Not connected — nothing is sent while reconnecting.' : !can('control') ? 'This client does not hold the “control” scope.' : null;
 
   async function act(h: Extract<Hit, { act: string }>) {

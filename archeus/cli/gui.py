@@ -35,6 +35,23 @@ NOT_RUNNING = 'Archeus Core is not running'
 #: what the tray asks before its Emergency stop: the app's own confirmation (rulebook §6 O-1, §17)
 ESTOP_CONFIRM = ('Every running execution is killed now and Archeus refuses new work until '
                  'you re-arm it. Missions are not lost; they wait.')
+#: how often the tray reads Core's events while the window is hidden (P21 slice G)
+NOTICE_EVERY_S = 10
+#: an approval's kind in the tray's words; nothing else of an approval is ever said
+APPROVAL_WORDS = {'plan': 'plan', 'task': 'task', 'action': 'tool call',
+                  'route': 'route choice', 'start': 'start'}
+ESTOPPED = 'Emergency stop: every execution was stopped'
+
+
+def notice(event):
+    """What the tray says for one event, or None (p21-design-gate D1): only an
+    approval request and an e-stop, named by their kind, never by their content."""
+    if event['type'] == 'core.estopped':
+        return ESTOPPED
+    if event['type'] == 'approval.requested':
+        kind = (event.get('payload') or {}).get('kind')
+        return 'A %s waits for your decision' % APPROVAL_WORDS.get(kind, 'request')
+    return None
 
 
 def profile_dir():
@@ -140,6 +157,7 @@ class Shell:
     attention_colour = staticmethod(attention_colour)
     estop = staticmethod(estop)
     estop_confirm = ESTOP_CONFIRM
+    NOTICE_EVERY_S = NOTICE_EVERY_S
 
     def page_url(self):
         """A fresh launch address for the window's page (D2's scopes) in the
@@ -166,6 +184,20 @@ class Shell:
             return self._own.get(endpoints.attention_items())[0]['count']
         except client.CoreError:
             return None
+
+    def notices(self, after):
+        """(the event head read, what the tray says) for what happened after
+        *after*; with *after* None only the head, so nothing older is said. Core
+        unreadable: (*after*, [])."""
+        from .tui import client
+        try:
+            if after is None:
+                return self._own.get(endpoints.events(limit=1))[1], []
+            events = self._own.get(endpoints.events(after=after, limit=500))[0]['events']
+        except client.CoreError:
+            return after, []
+        said = [s for s in map(notice, events) if s]
+        return (events[-1]['seq'] if events else after), said
 
 
 def main():

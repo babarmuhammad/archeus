@@ -156,7 +156,11 @@ def run_v1(shell, on_ready=None):
       Cancel; only its own button reaches `shell.estop`.
     - The tray icon carries the attention colour only while Attention's count
       is non-zero, read when the menu opens and when the window hides to the
-      tray. There is no timer.
+      tray.
+    - While the window is hidden, and only then, the tray reads Core's events
+      every `shell.NOTICE_EVERY_S` seconds and says an approval request or an
+      e-stop in a notification, by kind only (p21-design-gate D1). Showing the
+      window stops it.
     - GPU compositing stays on, as in `run_desktop`.
     """
     from PyQt6.QtCore import Qt, QTimer, QUrl
@@ -213,6 +217,8 @@ def run_v1(shell, on_ready=None):
             ev.ignore()
             self.hide()
             refresh()
+            heard[0] = shell.notices(None)[0]     # from now: nothing older is said
+            watch.start()
 
     win = Window()
     win.setWindowTitle('Archeus')
@@ -246,12 +252,26 @@ def run_v1(shell, on_ready=None):
     win.resize(1280, 840)
 
     def show():
+        watch.stop()
         win.showNormal()
         win.raise_()
         win.activateWindow()
 
     def say(text):
         tray.showMessage('Archeus', text)
+
+    heard = [None]
+
+    def notify():
+        heard[0], said = shell.notices(heard[0])
+        for text in said:
+            say(text)
+        if said:
+            refresh()
+
+    watch = QTimer(win)
+    watch.setInterval(shell.NOTICE_EVERY_S * 1000)
+    watch.timeout.connect(notify)
 
     def estop():
         # destructive, so it asks first, Cancel the default (rulebook §6 O-1, §17)
