@@ -514,6 +514,53 @@ def test_a_task_branch_holding_commits_its_base_lacks_is_never_moved(tmp_path):
     assert not os.path.exists(str(tmp_path / 'wt'))
 
 
+def test_a_snapshot_of_a_rewrite_that_changes_nothing_keeps_the_head(tmp_path):
+    """Under core.autocrlf the checkout holds CRLF; a task that writes the same
+    content with LF changes the file's size, so `status` calls it modified while
+    `add` stages nothing. That is no change to commit, not a git failure."""
+    root = _repo_with_commit(tmp_path)
+    _git(root, 'config', 'core.autocrlf', 'true')
+    calc = os.path.join(root, 'calc.py')
+    with open(calc, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(FIX)
+    _git(root, 'add', 'calc.py')
+    _git(root, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'calc')
+    os.remove(calc)
+    _git(root, 'checkout', '-q', '--', 'calc.py')
+    with open(calc, 'rb') as f:
+        assert b'\r\n' in f.read()
+    with open(calc, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(FIX)
+    head = _git(root, 'rev-parse', 'HEAD')
+    assert LocalNode.git_dirty(root) is True
+    assert LocalNode.git_snapshot(root, 'nothing new') == head
+    with open(os.path.join(root, 'notes.txt'), 'w', encoding='utf-8') as f:
+        f.write('new\n')
+    assert LocalNode.git_snapshot(root, 'something new') != head
+
+
+def test_a_snapshot_whose_staged_check_fails_still_commits_what_is_staged(tmp_path,
+                                                                          monkeypatch):
+    """`diff --cached --quiet` answering neither 0 nor 1 is not "nothing staged":
+    the snapshot goes on to commit, so staged work is never left out of the revision."""
+    from archeus.node import local
+    root = _repo_with_commit(tmp_path)
+    head = _git(root, 'rev-parse', 'HEAD')
+    with open(os.path.join(root, 'notes.txt'), 'w', encoding='utf-8') as f:
+        f.write('new\n')
+    real = local.proc.run
+
+    def run(args, **kw):
+        if args[1:3] == ['diff', '--cached']:
+            return subprocess.CompletedProcess(args, 128, '', 'fatal: synthetic')
+        return real(args, **kw)
+
+    monkeypatch.setattr(local.proc, 'run', run)
+    new = LocalNode.git_snapshot(root, 'staged')
+    assert new != head
+    assert _git(root, 'show', '--name-only', '--format=', new) == 'notes.txt'
+
+
 # ── A6: the interim command guard (T-041, T-042) ────────────────────────────
 
 #: the Git a legacy unknown or ordinary execution keeps under G1 (never a command)
@@ -1269,6 +1316,44 @@ def test_worktrees_of_the_earlier_layout_are_used_where_they_are(core, before):
     assert _get(core, entities.Mission, mid).integration_head == head
     assert not os.path.exists((new if '_mission' in before else old)['_mission'])
     assert _t(core, mid, 'integration_state') == 'MERGED'
+
+
+def test_one_mission_verifies_and_merges_task_worktrees_of_both_layouts(core):
+    """A mission split across the upgrade: t1's branch is checked out at the
+    earlier layout's path, t2 and t3 have none and get the short layout. Each
+    runs where the resolver puts it, every change reaches the one `_mission`
+    worktree, and the mission verifies and completes. Before T-092 this
+    stopped at the second dispatch: t1's merge changed the plan's digest.
+    Each task carries the fix, because t1 and t2 are dispatched together from
+    the fixture's base; each also leaves its own file, so the merge of every
+    task, the earlier-layout one included, is visible in `_mission`."""
+    rig = Rig(core)
+    repo = rig.fixture_repo('verify-python')
+    done = {'emit': {'type': 'result', 'summary': 'done'}}
+    for k in ('t1', 't2', 't3'):
+        rig.script_harness(k, [_write(FIX), _write(k + '\n', k + '.txt'), done])
+    mid = core.create_mission(title='Steps', objective='Hand off once',
+                              project_id=repo.project_id)['id']
+    home = os.environ['ARCHEUS_HOME']
+    old = os.path.join(home, 'worktrees', repo.project_id, mid, 't1')
+    new = os.path.join(home, 'worktrees', mid[len('msn_'):])
+    LocalNode.add_worktree(repo.path, old, 'archeus/%s.t1' % mid, base='HEAD')
+    pump(core, lambda: _state(core, mid) == 'COMPLETED')
+    with core._core().read() as conn:
+        tasks = {t.entity.id: t.entity for t in rows.where(conn, entities.Task, mission_id=mid)}
+        used = {tasks[e.entity.task_id].key: e.entity.workdir
+                for e in rows.where(conn, entities.Execution)}
+    assert used == {'t1': old, 't2': os.path.join(new, 't2'), 't3': os.path.join(new, 't3')}
+    assert {t.integration_state for t in tasks.values()} == {'MERGED'}
+    wt = os.path.join(new, '_mission')
+    with open(os.path.join(wt, 'calc.py'), encoding='utf-8') as f:
+        assert f.read() == FIX
+    for k in ('t1', 't2', 't3'):
+        with open(os.path.join(wt, k + '.txt'), encoding='utf-8') as f:
+            assert f.read() == k + '\n'
+    head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=wt,
+                          capture_output=True, text=True, check=True).stdout.strip()
+    assert _get(core, entities.Mission, mid).integration_head == head
 
 
 def test_A6_4_a_tree_core_could_not_export_is_an_error_never_a_pass(core, monkeypatch,

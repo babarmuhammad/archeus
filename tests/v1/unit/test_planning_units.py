@@ -283,3 +283,14 @@ def test_a_planners_version_keeps_the_digest_it_was_stored_with():
     assert validate.digest(p, [task]) == old
     from dataclasses import replace
     assert validate.digest(replace(p, edited_by='prn_01J0000000000000000000000A'), [task]) != old
+    # T-092: P13's merge-back writes these after approval; the digest stored at
+    # approval must still hold for every later dispatch of the same plan
+    merged = replace(task, integration_state='MERGED', merged_revision='a' * 40,
+                     conflicts=('calc.py',))
+    assert validate.digest(p, [merged]) == old
+    assert validate.digest(p, [replace(merged, objective='another')]) != old
+    # every field outside the dispatch contract is skipped or reset, so a new
+    # runtime field cannot break the digest again
+    from dataclasses import fields
+    runtime = {f.name for f in fields(entities.Task)} - set(entities.Task._FROZEN)
+    assert runtime <= set(validate._TASK_SKIP) | set(validate._TASK_RUNTIME)

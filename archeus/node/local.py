@@ -522,15 +522,22 @@ class LocalNode:
     @staticmethod
     def git_snapshot(workdir, message):
         """Commit everything *workdir* holds uncommitted, as Archeus (§12.2).
-        Returns the new HEAD, or raises OSError."""
+        Returns the new HEAD (unchanged when nothing was staged), or raises OSError."""
         ident = ['-c', 'user.name=' + CORE_GIT_NAME, '-c', 'user.email=' + CORE_GIT_EMAIL,
                  '-c', 'commit.gpgsign=false']
-        for args in (['add', '-A'], ident + ['commit', '-q', '--no-verify', '-m', message]):
+
+        def run(what, args):
             r = proc.run(['git'] + args, cwd=workdir, timeout=60)
             if r is None or r.returncode != 0:
-                raise OSError('git %s failed: %s' % (args[-1] if args[0] == 'add' else 'commit',
-                                                    (r.stderr or r.stdout or '').strip()
-                                                    if r is not None else 'no git'))
+                raise OSError('git %s failed: %s' % (what, (r.stderr or r.stdout or '').strip()
+                                                     if r is not None else 'no git'))
+
+        run('add', ['add', '-A'])
+        # `status` can call a file modified that `add` then stages nothing for: a
+        # rewrite with the same content changes its size under core.autocrlf
+        staged = proc.run(['git', 'diff', '--cached', '--quiet'], cwd=workdir, timeout=60)
+        if staged is None or staged.returncode != 0:
+            run('commit', ident + ['commit', '-q', '--no-verify', '-m', message])
         return LocalNode.git_head(workdir)
 
     @staticmethod
