@@ -7,6 +7,7 @@ a doctor is wanted, so it opens the database itself, read-only at the file.
 
 import datetime as dt
 import os
+import sqlite3
 
 from ..infra.db import connection, migrate
 from .domain import states
@@ -60,6 +61,8 @@ def doctor(now=None):
                     'AND updated_at < ? ORDER BY updated_at' % ','.join('?' * len(ended)),
                     ended + (cutoff,)):
                 finding(DOCTOR_STUCK, 'execution %s %s since %s' % (xid, state, at))
+        except sqlite3.DatabaseError as e:     # a malformed or torn file: the case doctor is for
+            finding(DOCTOR_DB, 'database %s cannot be read: %s' % (path, e))
         finally:
             conn.close()
     try:

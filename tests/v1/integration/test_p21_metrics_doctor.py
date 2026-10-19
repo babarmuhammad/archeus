@@ -6,6 +6,8 @@ import json
 import logging.handlers
 import os
 
+import pytest
+
 from archeus.cli import main as cli
 from archeus.core import doctor as doc
 from archeus.core import metrics, runtime
@@ -231,3 +233,19 @@ def test_doctor_reports_a_broken_hook_and_a_newer_schema(archeus_home, tmp_path,
     assert doc.doctor() == doc.DOCTOR_SCHEMA | doc.DOCTOR_HOOK
     out = capsys.readouterr().out
     assert 'this Archeus expects' in out and 'the execution hook' in out
+
+
+@pytest.mark.parametrize('damage', ['garbage', 'truncated'])
+def test_doctor_reports_a_malformed_database_and_writes_nothing(archeus_home, capsys, damage):
+    Database.open().close()
+    path = connection.db_path()
+    data = open(path, 'rb').read()
+    open(path, 'wb').write(os.urandom(len(data)) if damage == 'garbage' else data[:len(data) // 2])
+    before = _tree(paths.archeus_home())
+    code = doc.doctor()
+    out = capsys.readouterr().out
+    assert code & doc.DOCTOR_DB
+    assert 'FINDING database' in out and 'doctor: exit %d' % code in out
+    after = _tree(paths.archeus_home())
+    assert {k: v for k, v in after.items() if not k.endswith(('-wal', '-shm'))} == {
+        k: v for k, v in before.items() if not k.endswith(('-wal', '-shm'))}
